@@ -49,7 +49,7 @@ The principal code paths inspected were:
 
 The build source list includes the relevant modules, and the main-program calls establish that the outer iteration is not merely an unused design sketch. I did not rebuild or inspect the symbol tables of a particular executable; its build provenance should be checked before any new production measurement.
 
-Supporting records include [the tolerance anchoring memo](certification_tolerance_anchoring_20260910.md), [decisions 22 and 23](To_be_determined_by_user_20260906.md), and N35–N38 in [Update_EXHALE.md](Update_EXHALE.md). Their reported run results are not relabeled as new measurements here.
+Supporting records include [the tolerance anchoring memo](certification_tolerance_anchoring_20260910.md), [decisions 22 and 23](To_be_determined_by_user_20260906.md), and N35–N38 in [Update_EXHALE_stage2.md](Update_EXHALE_stage2.md). Their reported run results are not relabeled as new measurements here.
 
 No production source, configuration, restart, or reference output was changed. No atmosphere was advanced. The existing instruction to stop after N37/N38 was respected.
 

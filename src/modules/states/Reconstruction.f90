@@ -21,7 +21,7 @@
       ! would have produced, to the bit.
       integer :: n_faces_positivity_limited = 0
 
-      ! ---- THE WELL-BALANCED ARM ("Well balanced:", default off) ----
+      ! ---- THE WELL-BALANCED OPTION ("Well balanced:", default off) ----
       ! The local hydrostatic equilibrium of cell j is the one of constant
       ! density through its own (rho_j, p_j),
       !     p_eq,j(r) = p_j - rho_j (phi(r) - phi(r_j)),
@@ -48,7 +48,7 @@
       ! kept so that a face state the boundary condition or the positivity
       ! limiter has rewritten is recognized (its departure is then re-formed
       ! from the state it now carries, at the cost of the O(1) subtraction the
-      ! rest of the arm avoids).
+      ! rest of that option avoids).
       real*8, allocatable :: wb_pL_asm(:), wb_pR_asm(:)
 
       contains
@@ -68,7 +68,7 @@
       real*8, dimension(3) :: S0,S1
       real*8, dimension(1-Ng:N+Ng) :: C1,C2,D1,D2
 
-      ! Well-balanced arm: the cell's own equilibrium is formed first, the
+      ! Well-balanced option: the cell's own equilibrium is formed first, the
       ! reconstruction below then works on the departure from it.
       real*8, dimension(3) :: Wc
 
@@ -209,7 +209,7 @@
                dWm = dW(:,j-1)
                Wc  = W(:,j)
 
-               ! WELL-BALANCED ARM: the pressure component is reconstructed
+               ! WELL-BALANCED OPTION: the pressure component is reconstructed
                ! in the coordinate of the DEPARTURE from cell j's local
                ! hydrostatic equilibrium, whose value at the cell centre is
                ! zero and at a neighboring centre is that cell's pressure
@@ -307,7 +307,7 @@
       ! rho > 0 and p > 0 wherever the reconstruction lost them.
       call positivity_limited_faces(u_in,WL_out,WR_out)
 
-      ! Well-balanced arm: the equilibrium mismatch of every face, and the
+      ! Well-balanced option: the equilibrium mismatch of every face, and the
       ! departures of the face states the two steps above rewrote.
       if (well_balanced) call well_balanced_face_departures(WL_out,WR_out)
 
@@ -587,7 +587,7 @@
       ! switch: as soon as a reconstructed rho or p crossed zero, the WHOLE
       ! face pair was replaced by the two cell averages. That is a STEP
       ! DISCONTINUITY of the residual F(Y), and it is what stopped the
-      ! molecular arm's steady solve. Measured on the hot Uranus hand-off:
+      ! molecular reload's steady solve. Measured on the hot Uranus hand-off:
       ! the WENO3 left density at the face of cell 273 (r = 1.2324 R_p) sat at
       ! 2.50e-15 against cell averages of 1e-4, eleven orders below and
       ! positive by a hair, so the iterate sat exactly on the switching

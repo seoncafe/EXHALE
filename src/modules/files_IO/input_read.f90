@@ -664,13 +664,13 @@
 				! fixed-wind transport relaxations, judged jointly by the
 				! certification of the refreshed state
 				! (steady_wind_with_element_diffusion). MEASURED on the two
-				! reloads of backup/regression (Update_EXHALE.md section 8,
+				! reloads of backup/regression (Update_EXHALE_stage2.md section 8,
 				! 2026-09-11): the alternation brings every elemental wind
 				! row of the HD 209458 b reload inside 1e-5 in 12 passes
 				! and the hot-Uranus H2 wind row from 7.4e-2 to 2.2e-2 in
 				! 40 passes, while the coupled solve certifies neither
 				! (stage 2, items N0 to N38). True keeps the coupled solve
-				! as a measurement arm. On a molecular configuration it
+				! as a control to measure against. On a molecular configuration it
 				! requires "Molecular carrier transport: True", because H2
 				! must be an unknown and not an eliminated variable;
 				! checked below, after every key is parsed.
@@ -1010,7 +1010,7 @@
 				! emits in LTE and absorbs the same diluted B_nu(T0) the
 				! `Base IR field` closure supplies, so each stops cooling at
 				! its own radiative equilibrium temperature instead of running
-				! the layer down (TO_BE_DONE.md item (G)). Default False.
+				! the layer down (docs/TO_BE_DONE.md item (G)). Default False.
 				! H2O and CO need `Oxygen chemistry: True` to exist at all; H2
 				! needs `Molecular chemistry: True`. See
 				! molecular_infrared_cooling.f90.
@@ -1603,7 +1603,7 @@
       ! so an element that is partly in OH, H2O or CO keeps its ratio to
       ! hydrogen and the mass closure m_1 n_H + m_He n_He = rho still holds.
       !
-      ! What is still refused is the TRACE-METAL arm. It transports each
+      ! What is still refused is TRACE-METAL DIFFUSION. It transports each
       ! metal element's own mixing ratio, so it has to move the element's
       ! molecular carriers with the ion stages -- and CO carries one oxygen
       ! AND one carbon, so a step that moves O and C by different factors
@@ -1614,7 +1614,7 @@
       if (he_metal_diffusion) then
          write(*,*) '(input_read) ERROR: "Oxygen chemistry: True" and'//   &
                     ' "He_metal_diffusion: True" are not solved together.'
-         write(*,*) '  The trace-metal diffusion arm counts each metal'
+         write(*,*) '  The trace-metal diffusion operator counts each metal'
          write(*,*) '  element over its ion stages alone, so with the'
          write(*,*) '  oxygen chemistry on it would transport an oxygen'
          write(*,*) '  reservoir missing everything bound into OH, H2O'

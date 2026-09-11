@@ -2019,7 +2019,7 @@
             ! negative, and the run dies on the square root, not on anything
             ! physical: measured at He/H = 1 over the molecular hot-Uranus base,
             ! where a Mach 38-224 layer forms and cell 233 goes from p = +5.6 to
-            ! p = -3.6e-2 in a single step at CFL 0.6 while the same arm runs
+            ! p = -3.6e-2 in a single step at CFL 0.6 while the same configuration runs
             ! 12000 steps at CFL 0.2.
             !
             ! So each stage is tested, and the violation is answered in two
@@ -5223,7 +5223,7 @@
       ! HAND-OFF STARTS IT, at a pseudo-time of 1.0, not at the CFL interval:
       ! a state written by a run is already relaxed, and a continuation
       ! started at the CFL dt from it does not reach the root.  MEASURED
-      ! (2026-09-11, docs/Update_EXHALE.md section 8, 8 threads): the
+      ! (2026-09-11, docs/Update_EXHALE_stage2.md section 8, 8 threads): the
       ! hydrodynamic solve of the hot-Uranus carrier reload stands at
       ! ||R|| 1.13 after 40 iterations from the CFL start and at 1.5e-9 in
       ! 12 iterations from 1.0; the HD 209458 b element reload stagnates at
@@ -6532,10 +6532,25 @@
                  if (j50 .eq. 0 .and. x2 .lt. 0.5d0)  j50 = jf
                  if (j01 .eq. 0 .and. x2 .lt. 1.0d-2) j01 = jf
               enddo
-              write(*,'(A,F8.4,A,F8.4,A,I0,A,ES9.2,A)')                  &
-                   '    H2 front: x2=0.5 at r=', r(max(j50,1)),          &
-                   '  x2=1e-2 at r=', r(max(j01,1)), '  (pass ', it_diff, &
-                   ', trust', trust_pass, ')'
+              ! A front that has left the domain (no cell below the level)
+              ! is reported as such, not as the radius of the first cell.
+              block
+                character(len=12) :: s50, s01
+                if (j50 .gt. 0) then
+                   write(s50,'(F8.4)') r(j50)
+                else
+                   s50 = ' > r(N)'
+                endif
+                if (j01 .gt. 0) then
+                   write(s01,'(F8.4)') r(j01)
+                else
+                   s01 = ' > r(N)'
+                endif
+                write(*,'(A,A,A,A,A,I0,A,ES9.2,A)')                        &
+                     '    H2 front: x2=0.5 at r=', trim(s50),              &
+                     '  x2=1e-2 at r=', trim(s01), '  (pass ', it_diff,    &
+                     ', trust', trust_pass, ')'
+              end block
             end block
             call carrier_drift_location(cdl_j, cdl_ic)
             if (cdl_j .gt. 0)                                            &

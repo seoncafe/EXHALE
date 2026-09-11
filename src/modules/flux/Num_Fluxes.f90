@@ -52,7 +52,7 @@
       ! floating point, so nothing moves off the constant-gamma arithmetic.
       ! The HLLC branch needs no such average: its Davis/Einfeldt speeds
       ! min(v-c) / max(v+c) already take one sound speed per side.
-      ! WELL-BALANCED ARM ("Well balanced:").  With the optional arguments
+      ! WELL-BALANCED OPTION ("Well balanced:").  With the optional arguments
       ! present the PRESSURE JUMP of the Riemann problem is not formed as
       ! pR - pL, the difference of two O(1) face pressures, but as
       !     dp = dp_eq + dev_R - dev_L
@@ -317,7 +317,7 @@
             !---------------------------------!
 
             ! Evaluate the conserved-variables differences.  Under the
-            ! well-balanced arm the pressure jump is the one built from the
+            ! well-balanced option the pressure jump is the one built from the
             ! departures (see the header), not the difference of the two
             ! O(1) face pressures.
             drho = rhoR - rhoL
@@ -498,7 +498,7 @@
       PF(3) = v*(E+p)
       
       ! Add pressure for PLM discretization.  Not under the well-balanced
-      ! arm: there the pressure force of both discretizations is assembled in
+      ! option: there the pressure force of both discretizations is assembled in
       ! RK_rhs from the departure of the face pressure from the cell's own
       ! hydrostatic equilibrium, so the momentum flux carried through the
       ! face is the kinetic one alone.

@@ -133,7 +133,7 @@
       ! brackets its root, so Newton safeguarded by bisection on that bracket
       ! converges from the upper end.  The stopping tolerance and the
       ! iteration limit are the kind's, so the root is resolved to the
-      ! precision the arm is run at (fv_newton_tol, fv_newton_maxit).
+      ! precision this instantiation is run at (fv_newton_tol, fv_newton_maxit).
       real(fv), intent(in) :: x2, u_in
       real(fv) :: T_out, Tlo, Thi, T, Tnew, f, df, u_rv, c_rv
       integer  :: it
@@ -309,7 +309,7 @@
 
       subroutine piecewise_linear_faces_fv(u_in, WL_rec, WR_rec,         &
                                            P_up, P_dn, dev_L, dev_R)
-      ! WELL-BALANCED ARM.  With the four optional arrays present the
+      ! WELL-BALANCED OPTION.  With the four optional arrays present the
       ! PRESSURE is reconstructed in the coordinate of the departure from the
       ! cell's own local hydrostatic equilibrium; the value at the cell's own
       ! centre is then identically zero and the equilibrium face value is
@@ -424,7 +424,7 @@
       ! arrays of Reconstruction_step, so the two schemes cannot disagree
       ! about which weights are frozen.
       !
-      ! WELL-BALANCED ARM.  With the four optional arrays present the
+      ! WELL-BALANCED OPTION.  With the four optional arrays present the
       ! pressure component is reconstructed in the coordinate of the
       ! departure from cell j's local hydrostatic equilibrium, whose value at
       ! the cell centre is zero and at a neighboring centre is that cell's
@@ -725,11 +725,11 @@
 
       subroutine reconstructed_faces_fv(plm, u_in, WL_out, WR_out,       &
                                         n_scaled, dev_L, dev_R, dp_eq)
-      ! Mirrors Reconstruct: under the well-balanced arm the cell's own
+      ! Mirrors Reconstruct: under the well-balanced option the cell's own
       ! equilibrium is formed first, the reconstruction works on the
       ! departure from it, and the face departures and the equilibrium
       ! mismatch are finished after the boundary states and the positivity
-      ! limiter.  dev_L, dev_R and dp_eq are set only under the arm.
+      ! limiter.  dev_L, dev_R and dp_eq are set only under that option.
       logical, intent(in) :: plm
       real(fv), dimension(3,1-Ng:N+Ng), intent(in)  :: u_in
       real(fv), dimension(3,1-Ng:N+Ng), intent(out) :: WL_out, WR_out
@@ -805,7 +805,7 @@
       PF(3) = v*(E+p)
 
       ! Add pressure for PLM discretization.  Not under the well-balanced
-      ! arm: there the pressure force of both discretizations is assembled
+      ! option: there the pressure force of both discretizations is assembled
       ! in the cell loop from the departure of the face pressure from the
       ! cell's own hydrostatic equilibrium, so the momentum flux carried
       ! through the face is the kinetic one alone.
@@ -999,7 +999,7 @@
       ! the arithmetic mean of the two, which is that value exactly wherever
       ! the two sides agree.
       !
-      ! WELL-BALANCED ARM.  With the optional arguments present the PRESSURE
+      ! WELL-BALANCED OPTION.  With the optional arguments present the PRESSURE
       ! JUMP of the Riemann problem is not pR - pL, the difference of two
       ! O(1) face pressures, but
       !     dp = dp_eq + dev_R - dev_L
@@ -1189,7 +1189,7 @@
             K3(2) = v_avg + a_avg
             K3(3) = H_avg + v_avg*a_avg
 
-            ! Under the well-balanced arm the pressure jump is the one
+            ! Under the well-balanced option the pressure jump is the one
             ! built from the departures (see the header), not the
             ! difference of the two O(1) face pressures.
             drho = rhoR - rhoL
@@ -1248,7 +1248,7 @@
          pC = pressure_from_energy_density_fv(j, u(1),                   &
                  u(3)-0.5_fv*u(2)*u(2)/u(1))
 
-      ! WELL-BALANCED ARM.  The gravitational source and the geometric
+      ! WELL-BALANCED OPTION.  The gravitational source and the geometric
       ! pressure term are then not evaluated here at all: they cancel the
       ! equilibrium part of the momentum flux difference IDENTICALLY, and
       ! the cell loop assembles the momentum row from what is left, the
@@ -1285,16 +1285,16 @@
       real(fv), dimension(3,1-Ng:N+Ng), intent(in)  :: u_in
       real(fv), dimension(3,1-Ng:N+Ng), intent(out) :: WL,WR,dF,S,ff
       real(fv), dimension(1-Ng:N+Ng),   intent(out) :: fpr
-      ! WELL-BALANCED ARM.  The face pressure of every interface measured
+      ! WELL-BALANCED OPTION.  The face pressure of every interface measured
       ! from the hydrostatic equilibrium of the cell on each side,
       !   face_q_up(f) = face_p(f) - P_up(f),
       !   face_q_dn(f) = face_p(f) - P_dn(f+1),
       ! both of the size of the departure from equilibrium.  They are what
-      ! the momentum row is assembled from when the arm is on: the O(1)
+      ! the momentum row is assembled from when that option is on: the O(1)
       ! pressure of the cell and the gravitational source cancel in the
       ! ALGEBRA instead of in floating point.  They are HANDED BACK because
       ! the momentum row's pressure-gradient term is (A+ q_up - A- q_dn)/dV
-      ! under the arm: a reader that is given the row but not the
+      ! under it: a reader that is given the row but not the
       ! departures it was built from cannot form that term for this state.
       ! Zero unless well_balanced is set, which is what the row assembly
       ! and every reader of them read as "no departure to carry".
@@ -1364,7 +1364,7 @@
 
          if (.not. plm)  dF(2,j) = dF(2,j) + (pR - pL)/dr
 
-         ! THE MOMENTUM ROW UNDER THE WELL-BALANCED ARM.  The pressure is
+         ! THE MOMENTUM ROW UNDER THE WELL-BALANCED OPTION.  The pressure is
          ! not in Fp(2)/Fm(2) here (physical_flux_fv leaves it out), and
          ! what replaces it is the face pressure measured from THIS cell's
          ! own hydrostatic equilibrium.  The two identities that make the
@@ -1424,7 +1424,7 @@
       real(fv), dimension(3,1-Ng:N+Ng), intent(out), optional ::         &
                                                     dF_at_working_kind
       ! THE FACE DEPARTURES THE MOMENTUM ROW WAS BUILT FROM, under the
-      ! well-balanced arm, rounded to double with the rest.  A caller that
+      ! well-balanced option, rounded to double with the rest.  A caller that
       ! reads back the terms of the momentum row asks for them; the row
       ! identity they satisfy is, with A+ = r_+^2, A- = r_-^2,
       !   PLM     dF(2,j) = [A+ (F_up(j)   + q_up(j))
@@ -1432,7 +1432,7 @@
       !   WENO3   dF(2,j) = [A+ F_up(j) - A- F_dn(j-1)]/dV
       !                    + [q_up(j) - q_dn(j-1)]/dr
       ! so the pressure gradient of the departure is recoverable from them
-      ! alone.  Zero with the arm off, where the row carries the cell's own
+      ! alone.  Zero with that option off, where the row carries the cell's own
       ! pressure instead.
       real*8, dimension(1-Ng:N+Ng), intent(out), optional ::             &
                                                     fq_up8, fq_dn8
@@ -1474,7 +1474,7 @@
             ! The two schemes give the interface different departures and
             ! weight the face-pressure difference differently (one under
             ! WENO3, zero under PLM), so no single pair satisfies the
-            ! identity above for om*dF_PLM + lam*dF_WENO3.  The arm refuses
+            ! identity above for om*dF_PLM + lam*dF_WENO3.  The generic text refuses
             ! 0 < lambda < 1 for that reason (the_generic_text_is_usable,
             ! hydrodynamic_rows.f90); the combination below is the same one
             ! the face flux and the face pressure carry, and it is what a

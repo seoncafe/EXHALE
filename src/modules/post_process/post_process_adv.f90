@@ -1574,7 +1574,7 @@
 	 		! sqrt(T/T0) in the Badnell recombination fit (rr_badnell), so a
 	 		! negative T there is a NaN cooling rate in an ordinary build and an
 	 		! abort under -ffpe-trap=invalid. Measured on the He/H = 1 molecular
-	 		! arm, which is metals-off and so had no test at all: cells 278-280
+	 		! case, which is metals-off and so had no test at all: cells 278-280
 	 		! come back at -42, -640 and -2474 K on the second pass. Keep the
 	 		! converged equilibrium temperature -- the same state the
 	 		! non-converged branch above keeps, and for the same reason.

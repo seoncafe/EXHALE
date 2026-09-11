@@ -50,7 +50,7 @@ takes its base state from -- by 7.7e-04. Section 7.
 ## 1. The observation, and what it was about
 
 `LHS1140b/exhale/crossings_pc090/results.txt` section 7 recorded, on the
-LHS 1140 b He/H = 9.0 arm:
+LHS 1140 b He/H = 9.0 rung:
 
 > At He/H = 9.0 the two builds put the deep boundary 2.1e-6 K apart
 > (424.9534068835 vs 424.9534089414 K, tropopause 1.2e-7 K apart), and out of
@@ -267,7 +267,7 @@ inherits the profile in exactly three ways, and each is measured above:
 
 So the handoff's own reproducibility contributes at most 6.5e-08 to the He
 residual and nothing to the H residual, against `tol = 0.05` and against the
-0.084-0.085 flux-window spread the two LHS 1140 b arms actually carry
+0.084-0.085 flux-window spread the two LHS 1140 b rungs actually carry
 (recorded in `crossings_pc090/results.txt` section 7, not re-measured here).
 The oxygen reservoir, the one quantity that does move by 0.5 %, does not enter
 the H or He residual at all.
@@ -404,7 +404,7 @@ adapter's wall time.
 ### 8.3 What it does to an observable, measured end to end
 
 One elemental-flux closure rung was re-run through the pinned adapter: the
-crossing arm of `LHS1140b/exhale/crossings_j96` section 6, reservoir 8.2117,
+crossing rung of `LHS1140b/exhale/crossings_j96` section 6, reservoir 8.2117,
 same binary, same seed, same `closure.json`, same trial fluxes, same tolerance,
 same wind protocol -- the adapter is the only difference. Record
 `LHS1140b/exhale/adapter_grid_fix/` (the stored ladder was read only).
@@ -429,9 +429,9 @@ chain reads at the matching level -- T, r, `q_H2`, He/H -- moves by 0, 1.6e-08,
 1.6e-07 and 1.6e-07 across the largest grid step there is.
 
 **Against the +0.73 % of `crossings_j96` section 5.** That section split the
-+1.96 % the reservoir-9.0 arm moved into +1.22 % from the section-96
++1.96 % the reservoir-9.0 rung moved into +1.22 % from the section-96
 secondary-ionization branching and +0.73 % from the adapter, and attributed the
-adapter's share to the `insert_level` correction of section 7. The two arms
+adapter's share to the `insert_level` correction of section 7. The two rungs
 compared here differ only in the grid, and by the largest grid step there is,
 and the line moves by +0.00015 %. The grid is 2.0e-04 of the +0.73 %, so the
 +0.73 % is not the grid: the attribution in `crossings_j96` section 5 stands.
@@ -456,9 +456,9 @@ residuals to five digits, the same converged He/H.
 
 **Every future handoff column is a different column from the stored ones.**
 The `crossings_gm25` ladder (photochem 0.8.4), `crossings_pc090` (0.9.0),
-`flux_closure`, `ladder_gm25` and the arms `crossings_j96` re-measured were all
+`flux_closure`, `ladder_gm25` and the rungs `crossings_j96` re-measured were all
 written by an adapter that accepted whatever grid the chemistry stopped on. A
-column written now is on the pinned grid, so a stored arm and a re-run of the
+column written now is on the pinned grid, so a stored rung and a re-run of the
 same command are no longer comparable at the level of the file. The size of the
 break is measured above and is bounded by the two grid groups:
 
@@ -494,7 +494,7 @@ this.
   oxygen reservoir, and the column at fixed level index reproduces to 2.1e-08.
   Columns written from 2026-08-30 on are not comparable, at the level of the
   file, with the stored `crossings_gm25`, `crossings_pc090`, `flux_closure` and
-  `crossings_j96` arms; the He I 10830 equivalent width of a closed rung moves
+  `crossings_j96` rungs; the He I 10830 equivalent width of a closed rung moves
   by +1.5e-06 relative between the two, so nothing quoted from those ladders
   changes at its printed precision (section 8.4).
 - The deep boundary temperature of the LHS 1140 b He/H = 9.0 climate solution

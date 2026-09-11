@@ -504,7 +504,7 @@
 
       ! WHETHER THE SHARED CONSTRAINT IS WHAT A STATE IS JUDGED BY.
       ! EXHALE_INVENTORY_SHARED=0 judges by the separate box sides of the
-      ! carriers instead, which is the arm the shared constraint is measured
+      ! carriers instead, which is what the shared constraint is measured
       ! against.  It is a measurement switch of the classification and not a
       ! physics option: no production path reads it, and the constraint is a
       ! property of the state either way.

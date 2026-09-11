@@ -832,7 +832,7 @@ stated so a surprise is recognizable.
   not addressed by Phase C.
 * **The mass-loss rate should not move much.** The wind above `1.4 R_p` is
   insensitive to every base variant measured so far (item (V): flux spread
-  `2.4e-3` in all five arms, `log10 Mdot` `10.28-10.34`), and section 3.1 (ii)
+  `2.4e-3` in all five runs, `log10 Mdot` `10.28-10.34`), and section 3.1 (ii)
   shows the artifact is confined to two cells. If `Mdot` moves by more than the
   cycle noise, that is a result to investigate, not to accept.
 * Goldens will not be byte-identical, for every case. This is a physics/model

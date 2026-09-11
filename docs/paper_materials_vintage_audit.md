@@ -204,7 +204,7 @@ code does not contain.
 | `HD209458b/oi1302/` | 2026-08-30 09:03:53 | past 96; `cx_O2p_H` **off** (the section-104 default-off pair) |
 | `HD209458b/oi1302_diffusion/` | 2026-08-30 09:07:27 | past 96; `cx_O2p_H` off; the other half of that pair |
 | `HD209458b/oi1302_cxO2p_1/` | 2026-08-30 09:38:59 | **the only run whose physics equals the current default** -- its `metals.inp` carries `cx_O2p_H 1.0`, and section 107 names it as the reference the new default reproduces |
-| `HD209458b/oi1302_cxO2p_3/` | 2026-08-30 09:39:01 | scale 3.0 sensitivity arm; no `tpm_*` |
+| `HD209458b/oi1302_cxO2p_3/` | 2026-08-30 09:39:01 | scale 3.0 sensitivity run; no `tpm_*` |
 
 The source of section 107 (`charge_exchange.f90`, `metals_input_read.f90`)
 is dated 2026-08-30 12:02, after all four, which is consistent: they are the
@@ -274,7 +274,7 @@ Two traps that campaign already paid for and this one should not:
   runs that took the *same* path, never against the file sitting in the
   directory.
 - **A converged-looking `info = 0` at a loose `Resid tol` may be a wind
-  that took zero Newton steps.** Section 106 found one arm at
+  that took zero Newton steps.** Section 106 found one run at
   `Resid tol: 5.0e-3` handing back `||Fs||2 = 1.27` against 0.018-0.074 on
   its siblings. Check the achieved residual, not only `info`.
 
@@ -282,7 +282,7 @@ And one property of these solutions that no re-solve removes: section 106
 measured a **seed hysteresis of 4.6 %** in equivalent width -- one identical
 configuration reaching three different fixed points depending on which
 converged wind it started from, each at `info = 0` and `||R|| ~ 1e-4`. That
-is larger than what gate 96 is worth on the same arms. It was measured on
+is larger than what gate 96 is worth on the same runs. It was measured on
 LHS 1140 b and has not been looked for on these four planets.
 
 ---

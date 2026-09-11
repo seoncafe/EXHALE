@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""VULCAN -> EXHALE lower-atmosphere profile (the cross-check arm of E2).
+"""VULCAN -> EXHALE lower-atmosphere profile (the cross-check of E2).
 
 Same schema, same command line and same fingerprint rule as
 `photochem_to_lower_profile.py`; the only difference is where the chemistry
-comes from.  VULCAN has no climate model, so this arm can never be the path
-away from a prescribed T(p) (`docs/vulcan_photochem_comparison.md` P1.7);
+comes from.  VULCAN has no climate model, so this producer can never be
+the path away from a prescribed T(p)
+(`docs/vulcan_photochem_comparison.md` P1.7);
 what it is for is stating, on the same planet and the same matching level,
 how much of the handoff is the chemistry code rather than the chemistry
 (P1 measured 1.70x in q_H on an 864 K base and 1.08x on a 2331 K base).
@@ -104,7 +105,7 @@ def main():
 
     # A stated eddy coefficient (--kzz-const, or --kzz-power with --kzz-ref)
     # replaces the one the VULCAN run was mixed at; with neither stated the
-    # file keeps VULCAN's own K_zz(p).  This arm cannot re-solve the
+    # file keeps VULCAN's own K_zz(p).  This producer cannot re-solve the
     # chemistry, so a stated profile here changes only what is handed over.
     Kzz = sch.eddy_diffusion_coefficient(p_bar, args)
     if Kzz is None:
@@ -170,13 +171,13 @@ def main():
         p_match_bar=args.p_match, p_top_bar=0.0, p_deep_bar=0.0,
         trial_flux_H=args.trial_flux_H, trial_flux_He=args.trial_flux_He,
         iteration=args.iteration, reached_steady_state=True,
-        notes=('cross-check arm: a finished VULCAN solution, T(p) prescribed'
+        notes=('cross-check: a finished VULCAN solution, T(p) prescribed'
                ' and no climate step; F_H and F_He are the STATED trial'
                ' fluxes, not measured') + conden)
 
     # The El/H ratios VULCAN was given are a property of its own
     # configuration, not of this file, so there is no input vector to check
-    # the deepest level against here; what the two arms are compared on is
+    # the deepest level against here; what the two producers are compared on is
     # the matching level (docs/phase_e_flux_closure_design.md test T-E9).
     sch.write_handoff(args, cols, header, order)
 

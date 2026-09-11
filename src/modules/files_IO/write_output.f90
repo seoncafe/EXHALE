@@ -940,7 +940,7 @@
       ! atoms are not there -- and the code has no H2O or CO infrared bands
       ! to put in their place. H3+ is the only molecular coolant it carries.
       !
-      ! That is item (G) of TO_BE_DONE.md arriving through the composition
+      ! That is item (G) of docs/TO_BE_DONE.md arriving through the composition
       ! instead of through the temperature, and section 9 of
       ! docs/a2_oxygen_option_design.md says so in advance: A2 is the
       ! composition of the molecular layer and (G) is its energy. Measured
@@ -1007,7 +1007,7 @@
             ' "Molecular IR bands" off, so nothing replaces the [O I]'//   &
             ' and C I/C II lines the molecules switched off and the'//     &
             ' layer they are in is warmer than the same composition'//     &
-            ' would really be (TO_BE_DONE.md item (G)).'
+            ' would really be (docs/TO_BE_DONE.md item (G)).'
 
       ! ---- FUV band penetration and the G4 band ledger ----
       ! THE QUANTITY THAT IS CLOSED. For every band, the photons the beam

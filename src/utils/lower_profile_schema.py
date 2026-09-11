@@ -4,7 +4,7 @@
 `docs/phase_e_flux_closure_design.md` section 2 fixes one file format and one
 fingerprint for the handoff, and section 4 asks for two producers of it:
 `photochem_to_lower_profile.py` (production) and `vulcan_to_lower_profile.py`
-(the cross-check arm), behind the same command line.  Everything that is a
+(the cross-check), behind the same command line.  Everything that is a
 property of the FORMAT rather than of either chemistry code lives here, so
 that the two adapters cannot drift apart:
 
@@ -127,7 +127,7 @@ def formula_elements(name):
     change the nuclei, so they are stripped before the formula is parsed.  A
     label that is not a formula returns no nuclei rather than a wrong count.
 
-    This is the VULCAN arm's route.  Photochem states the composition matrix
+    This is the VULCAN route.  Photochem states the composition matrix
     itself (`dat.species_composition`) and that is used instead, because
     labels like `O1D` and `N2D` are excited states, not formulas, and would
     parse into nuclei that do not exist.

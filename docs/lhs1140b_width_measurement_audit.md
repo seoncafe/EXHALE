@@ -287,7 +287,7 @@ per-command flag: `LHS1140b/winered_hires_y.sh` exports it and every LHS
 measured effect, at `flux_closure/heh10p3/k01`, is a blend width of 0.2805
 against 0.2674 A and a red depth of 3.526 against 3.696 per cent; the
 red-pair equivalent width changes by less than 1e-4 %A anywhere, so no
-crossing moves. The required broadening falls by 0.12 km/s on every arm.
+crossing moves. The required broadening falls by 0.12 km/s on every rung.
 The pre-correction curves are kept beside the new ones as
 `tpm_*_R80k.txt`.
 

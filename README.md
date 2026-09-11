@@ -279,7 +279,13 @@ schemas, convergence recipes, post-processing) is in
   documentation lives. All the details this file used to carry are there
 - [`docs/EXHALE_user_manual.pdf`](docs/EXHALE_user_manual.pdf), the reference
   manual: every input key, every output column, the physics and the solver
-- [`docs/Update_EXHALE.md`](docs/Update_EXHALE.md): the current update log (stage 2, from 2026-09-05), whose PDF carries the
+- [`docs/EXHALE_physics_and_algorithms.pdf`](docs/EXHALE_physics_and_algorithms.pdf),
+  the physical equations and the numerical algorithms as the code applies them
+  (hydrodynamics, radiation, ionization, heating and cooling, molecules and
+  metals, the marching scheme, boundary and initial conditions, the stationary
+  solve), written from the source at the depth of the ATES paper; the section
+  files are `docs/physics_overview/*.tex`
+- [`docs/Update_EXHALE_stage2.md`](docs/Update_EXHALE_stage2.md): the current update log (stage 2, from 2026-09-05), whose PDF carries the
   code-size appendix against the original ATES and the list of source inherited unchanged from it
   (`docs/Update_EXHALE_appendix.tex`, re-measured with `src/utils/codesize.py`);
   [`docs/Update_EXHALE_stage1.pdf`](docs/Update_EXHALE_stage1.pdf): sections 1-171, the dated changelog against
@@ -333,7 +339,7 @@ schemas, convergence recipes, post-processing) is in
   stationary solver section by section, ending with what the design became
 
 `docs/` holds roughly forty further memos on individual investigations;
-[`TO_BE_DONE.md`](TO_BE_DONE.md) is the open-items list.
+[`docs/TO_BE_DONE.md`](docs/TO_BE_DONE.md) is the open-items list.
 
 ---
 
@@ -391,4 +397,4 @@ schemas, convergence recipes, post-processing) is in
 
 Kwang-Il Seon (KASI / UST)
 
-Last updated: 2026-09-11 21:19 KST
+Last updated: 2026-09-12 06:36 KST

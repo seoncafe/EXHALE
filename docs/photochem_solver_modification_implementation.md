@@ -6,10 +6,10 @@ Date: 2026-08-29
 
 The deep elemental residual diagnosed in `deep_level_elemental_check.md` is
 removed at its source, and **it does not move the observable**. Re-measured on
-the corrected build with 11 arms, the LHS 1140 b flux-closure crossing of the
+the corrected build with 11 rungs, the LHS 1140 b flux-closure crossing of the
 He I 10830 equivalent width is at He/H = **9.0484** (chord) / **9.0461**
 (quadratic) -- the same to every digit the photochem 0.8.4 ladder printed. On
-seven arms that are like-for-like the equivalent width moves by at most
+seven rungs that are like-for-like the equivalent width moves by at most
 `1.2e-6` in relative terms and `log10 Mdot` does not move in its fourth
 decimal. The residual was real, the correction is right, and the science answer
 is unchanged. Record: `LHS1140b/exhale/crossings_pc090/results.txt`.
@@ -261,7 +261,7 @@ measurement contradicts both.** It is recorded in
   reservoir values; 9.45, recorded there as `not attempted` on 0.8.4, is a
   failure on 0.8.4.
 
-Neither composition is a bracket arm of the crossing, and the solution is
+Neither composition is a bracket point of the crossing, and the solution is
 smooth across them (deep temperature falls monotonically from 422.72470 K at
 He/H = 9.30 to 420.61128 K at 9.60). Setting `epsfcn = 1e-4`, which requires
 `hybrd` in place of `hybrd1`, takes the 61-point grid from 54/61 to 61/61 in
@@ -278,18 +278,18 @@ regenerated. It has now been done, and it is the scientific conclusion of the
 whole change.
 
 The flux-closure crossing was re-determined end to end on the corrected build
-with 11 arms, using the same EXHALE binary, the same scripts, the same single
+with 11 rungs, using the same EXHALE binary, the same scripts, the same single
 parent seed and the same tolerances as the stored 0.8.4 ladder -- only the
 interpreter differs. Record:
 `LHS1140b/exhale/crossings_pc090/results.txt`.
 
-| quantity | 0.8.4, 16 arms | corrected build, 11 arms |
+| quantity | 0.8.4, 16 rungs | corrected build, 11 rungs |
 |---|---:|---:|
 | crossing, chord | 9.0484 | 9.0484 |
 | crossing, quadratic | 9.0461 | 9.0461 |
 | 1 sigma band | 8.4923 -- 10.7716 | 8.4649 -- 10.7357 |
 
-**The crossing does not move to any printed digit.** On the seven arms seeded
+**The crossing does not move to any printed digit.** On the seven rungs seeded
 identically in both builds the equivalent width moves by at most `1.2e-6` in
 relative terms and `log10 Mdot` is unchanged in its fourth decimal. The handoff
 profile itself does move -- at He/H = 9 the deepest-level N/H departure goes
@@ -299,10 +299,10 @@ which is set by H, He and the temperature.
 
 **The 1 sigma band moves for a different reason than the solver.** Its low end
 was previously interpolated across the band He/H = 8.5 -- 8.7, which the
-handoff check refused and which no arm covered; the corrected build runs that
-band (departures `1.4e-14` to `3.2e-14`), so real arms at 8.5 and 8.6 now carry
+handoff check refused and which no rung covered; the corrected build runs that
+band (departures `1.4e-14` to `3.2e-14`), so real rungs at 8.5 and 8.6 now carry
 that end and it moves from 8.4923 to 8.4649. The high end moves from 10.7716 to
-10.7357 because the 10.6 arm was not seeded the same way in the two ladders --
+10.7357 because the 10.6 rung was not seeded the same way in the two ladders --
 a seed difference of `1.1e-3` in equivalent width, the same size as the seed
 spread the stored ladder already measured, not a solver difference.
 
@@ -342,7 +342,7 @@ Tested: dependency patch application, gas-giant equilibrium initialization,
 all 38 saved deep equilibrium states, all three recorded climate failures,
 neighboring climate states, all shared temperature-solve entry points, a
 45-point reservoir scan carrying complete columns, and 11 complete flux-closure
-arms through to synthesized He I 10830 equivalent widths.
+rungs through to synthesized He I 10830 equivalent widths.
 
 Not tested, and not claimed:
 
@@ -353,7 +353,7 @@ Not tested, and not claimed:
 - Condensate-rich and sulfur-network equilibrium sweeps. Note that after the
   section 3 fix a condensing level is accepted on the solver's own `converged`
   flag, so the closure test does not speak for such a level at all.
-- The stored 0.8.4 ladder was not re-run; the seven like-for-like arms are the
+- The stored 0.8.4 ladder was not re-run; the seven like-for-like rungs are the
   comparison. He/H = 9.5 cannot be repeated on this build without the
   `--climate-t-deep-guess` workaround of section 4.4.
 - The seed systematic was not re-measured on the corrected build.

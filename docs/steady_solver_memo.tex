@@ -865,7 +865,7 @@ is separated from what the outer residual may keep
 (\code{eq\_sweep\_reltol} = \code{outer\_residual\_closure\_target} divided by
 the measured amplification of the closure map at the base).
 
-\subsection{Three arms that were measured and are OFF}
+\subsection{Three options that were measured and are OFF}
 \label{sec:armsoff}
 
 Each of these was implemented and measured against both fixtures, and each is
@@ -874,7 +874,7 @@ delivered disarmed because the measurement did not support it.
 \begin{center}\small
 \begin{tabular}{@{}lll@{}}
 \toprule
-arm & switch & why it is off \\
+option & switch & why it is off \\
 \midrule
 periodic restart of the & \code{EXHALE\_TR\_RESTART\_STALL} &
   no reset helps: atomic $2.671\times10^{-2}$ \\
@@ -931,12 +931,12 @@ WORSE on both fixtures, so more of the same direction is not the answer
 either. The untried freedom is the COLUMN preconditioner; the row scaling is
 fixed by \S\ref{sec:meritscale}.
 
-\paragraph{And the arm is chaotic at the level of the last bit.} The atomic
+\paragraph{And the element reload is chaotic at the level of the last bit.} The atomic
 element fixture is not a reproducible quantity. A control that multiplies
 three ghost quantities by $1 + 2\times10^{-16}$, changing no equation and
 posing no boundary, moves $\|R\|$ at iteration $40$ from
 $3.212\times10^{-2}$ to $1.125$; a physically correct refill of the same
-ghosts moves it to $1.199$; the three arms part at outer $10$--$11$ and from
+ghosts moves it to $1.199$; the three builds part at outer $10$--$11$ and from
 each other. The amplifier is the Krylov leg at its one-digit tolerance: the
 relative residual reached differs by $0.3\%$ at outer $10$, the promise by
 $0.4\%$, then $2.7\times$ at outer $11$, and at outer $12$ the three take
@@ -944,10 +944,10 @@ different branches of the acceptance ($0.874$ accepted, $-1.98$ refused,
 $85$ accepted).
 
 The consequence is a rule for anyone measuring this route: ``it reproduces
-the previous arm'' rejects correct changes as readily as wrong ones, and
-$\|R\|$ at iteration $N$ is not what an arm can carry. What it can carry is
-named outcomes: which row binds, the refusal counts by name, the flux spread,
-the mass closure.
+the previous build'' rejects correct changes as readily as wrong ones, and
+$\|R\|$ at iteration $N$ is not what such a comparison can carry. What it can
+carry is named outcomes: which row binds, the refusal counts by name, the
+flux spread, the mass closure.
 
 \subsection{The residual contract}
 \label{sec:rescontract}
@@ -1043,7 +1043,7 @@ Every number above is either MEASURED in the item that produced it or READ
 from the stage-2 record, \code{docs/Update\_EXHALE.md} section~7, items N0
 through N30, and \code{docs/ISSUES\_20260909.md}. None of them was
 re-measured for this memo; the fixtures are the two reload directories under
-\code{backup/regression/} that those items name, and the arm's own
+\code{backup/regression/} that those items name, and the element reload's own
 irreproducibility (\S\ref{sec:limit}) is the reason a re-measurement would
 not reproduce $\|R\|$ at a fixed iteration anyway.
 

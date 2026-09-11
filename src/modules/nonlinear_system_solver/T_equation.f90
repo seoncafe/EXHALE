@@ -130,7 +130,7 @@
 	! sqrt(TT), and lambda_rec_HII raises (2*157807/TT) to the power 1.970,
 	! which is a NaN for TT < 0 and an overflow for TT -> 0+. The NaN then
 	! poisons the Newton step, and under -ffpe-trap=invalid it aborts the run
-	! (measured in the post-process of the He/H = 1 molecular arm, which is
+	! (measured in the post-process of the He/H = 1 molecular case, which is
 	! metals-off: lambda_rec_HII in Cool_coeff.f90, from hybrd1). So
 	! floor the argument of the rate functions at a small positive temperature,
 	! unconditionally: it is the domain of the fits, not an option. The

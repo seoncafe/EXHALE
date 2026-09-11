@@ -479,17 +479,17 @@
 	! routinely returns finished roots it cannot certify).
 	!
 	! The value is set from the measured populations of the full 8-case
-	! regression matrix plus the He/H = 1 molecular arm (2026-08-31):
+	! regression matrix plus the He/H = 1 molecular case (2026-08-31):
 	! across the matrix every solver-converged accepted root sits at
 	! res <= 7.8e-8 and every root accepted without solver convergence at
 	! res <= 2.7e-7 -- the scale is hybrd1's xtol = sqrt(eps) ~ 1.5e-8
 	! times a scaled-Jacobian norm of order 1-10 -- while the smallest
 	! above-tolerance acceptance of the matrix (a cold-start base cell
 	! recovering over the next sweeps) is 1.1e-3 and the poisoned events
-	! of the He/H = 1 arm reach 2e-2..1.4e6. 1e-6 sits 3.7x above the
+	! of the He/H = 1 case reach 2e-2..1.4e6. 1e-6 sits 3.7x above the
 	! measured root tail, in a decade ([1e-6, 1e-5)) that is empty in
 	! every matrix histogram, and 1100x below the matrix's smallest
-	! non-root; the He/H = 1 arm additionally carries one borderline
+	! non-root; the He/H = 1 case additionally carries one borderline
 	! accepted iterate at 2.1e-6, which this value classifies (and marks)
 	! as a non-root rather than stretching the root band to cover it.
 	real*8, parameter :: ieq_res_tol = 1.0d-6

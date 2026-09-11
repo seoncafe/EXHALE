@@ -606,7 +606,7 @@ re-run under its own step cap. The alternative the error message names is a
 state-mapping step that interpolates a stored state onto the grid the run
 builds, which does not exist today
 (`docs/development_plan_20260905_rev3.md` section 10.2 item 3). Note also that
-these four restarts predate the `# coupling:` header of Update_EXHALE.md
+these four restarts predate the `# coupling:` header of Update_EXHALE_stage2.md
 section 144, so even regenerated they will not reproduce their stored logs.
 
 The remaining cases carrying `Solver: Newton` -- `mol_base_handoff`,
@@ -760,7 +760,7 @@ Neither solve met its own target, so neither row is an anchor: both are five
 to six decades above `cert_tol_carrier = 1e-8` and what they measure is a solve
 that stopped, not a stationary state. The elemental rows were not exercised at
 all, because the elemental balances are not yet rows of the stationary system
-(B5 target 1 for the element arm is not implemented; the report of the item
+(B5 target 1 for the element rows is not implemented; the report of the item
 says what is left).
 
 The observation of section 9 therefore stands unchanged and is now stated with
@@ -810,7 +810,7 @@ pass.**
 
 ### 11.4 What B5d measured, and why the anchors still have nothing to stand on (2026-09-08)
 
-B5d asked whether the element arm's failure to converge is the equation or the
+B5d asked whether the element solve's failure to converge is the equation or the
 Newton model, and the answer is the model
 (`docs/steady_solver_design.md` section 16). Two defects of the model were
 found and repaired, and both are repairs to the SOLVE and not to the

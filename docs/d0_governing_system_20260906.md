@@ -20,7 +20,7 @@ number appears it is one of
 - a value quoted from a source comment, which records a measurement made when
   that code was written (marked "code site records");
 - a value quoted from `docs/physics_numerics_audit_20260905.md`,
-  `docs/code_status_20260905.md` or `docs/Update_EXHALE.md` (marked with the
+  `docs/code_status_20260905.md` or `docs/Update_EXHALE_stage2.md` (marked with the
   document).
 
 No quoted number was re-measured. Where a document and the code disagree, the
@@ -38,7 +38,7 @@ another routine is named, and a bare `EXHALE_main.f90` is the main program
 "THE ADOPTION BOUNDARY", "Staged secondary ionization") and whose fourteen
 step operations are numbered by the `as_op_*` tags of `attempted_step.f90`.
 Statements about code that the series has since changed are kept as the dated
-record they are, with the change and its `docs/Update_EXHALE.md` item named at
+record they are, with the change and its `docs/Update_EXHALE_stage2.md` item named at
 the site.
 
 **Term entries.** Each term is given as (a) its physical meaning, (b) its
@@ -1175,7 +1175,7 @@ G = [(m_He - m_c1) m_H g - (Zbar_He - Zbar_c1) eE]/kT
 The ambipolar term is not a hard-wired constant:
 `eE = -(1/n_e) d(n_e kT)/dr` is evaluated from the solved electron density and
 temperature by central difference, and the same array is handed
-out (`eEout`) so the trace-metal arm uses one definition;
+out (`eEout`) so the trace-metal solve uses one definition;
 the comment records that the metal loop previously assumed the
 proton-plasma constant `eE = m_H g/2`, "which is wrong wherever helium or the
 metals carry a significant share of the electrons". Stated limits.
@@ -1406,7 +1406,7 @@ called once each marching step after the ionization solve. The equation
 is `e(T_new) - e(T_old) = dt (heat - cool(T_new))` divided by
 `(n_tot + n_e)`.
 
-**Replaced on 2026-09-06 (item B2, `docs/Update_EXHALE.md`).** What this
+**Replaced on 2026-09-06 (item B2, `docs/Update_EXHALE_stage2.md`).** What this
 section describes is the update as it stood on 2026-09-06. The solve is now
 bracketed and residual-controlled (`energy_balance_init`,
 `energy_balance_update`, `energy_balance_finish` in the same file), cooling is
@@ -1563,7 +1563,7 @@ reset plus an independently applied heat source without a derivation.
 (`ionization_equilibrium.f90`) and overwrote it with `calc_rho` of the
 equilibrium composition; `W(1,:) = rho` in the marching source stage of
 `EXHALE_main.f90` and `W_to_U` pushed that into the **conserved mass row**.
-**Removed 2026-09-06 (item B3c, `docs/Update_EXHALE.md`):** the density is
+**Removed 2026-09-06 (item B3c, `docs/Update_EXHALE_stage2.md`):** the density is
 `intent(in)` and `calc_rho` builds the optional `rho_recon`, which is a check
 and is never applied. The code's own
 diagnostic names this: `EXHALE_UPDATE_MAP` reports a `chem` column and states
@@ -1576,7 +1576,7 @@ the production map that the steady residual does not contain
 `src/tests/grid_and_gates/output_state_consistency.sh` compares
 `Hydro_ioniz.txt` column 6 (`heat`) against `Heating_breakdown.txt` column 4
 (`heat_total`) over the physical cells, reference 0, tolerance 1e-6.
-`docs/Update_EXHALE.md` section 6 (item 2c-STATE)
+`docs/Update_EXHALE_stage2.md` section 6 (item 2c-STATE)
 records the test as RED at 1.2e-5, with the cause stated there: the heat column
 is assembled from the pre-sweep rates while the breakdown re-evaluates on the
 post-sweep composition, together with the `excited_H_update` call between the
@@ -1821,8 +1821,8 @@ tools read:
 | **C1** | The composition update changes thermal energy at fixed temperature, separately from the explicit energy sources. Not obtained by integrating any heating term. | `EXHALE_main.f90`; audit N1  **Closed 2026-09-06 (B3c):** rows 7 to 9 are one local source step at fixed volume, the energy row anchored on `u_th_old`; no `comp_p_from_T` and no `W_to_U` in the loop. |
 | **C2** | The chemistry stage overwrites `rho` and pushes it into the conserved mass row, so it is not conservative in `u`; the steady residual contains no such term. | `ionization_equilibrium.f90`; `EXHALE_main.f90`  **Closed 2026-09-06 (B3c):** the density is `intent(in)` to `ioniz_eq` and the mass sum of the returned composition is a checked diagnostic. |
 | **C3** | The semi-implicit energy update performs two iterations but re-evaluates cooling once, so the returned `cool` belongs to the previous iterate; `heat` is frozen and contains temperature-dependent reaction terms; no residual acceptance test. | `energy_semi_implicit.f90`; audit N5  **Closed 2026-09-06 (B2):** the update is a bracketed, residual-controlled solve; cooling at the returned temperature; a floor is a failure, not a clamp. |
-| **C4** | `Hydro_ioniz.txt` `heat` and `Heating_breakdown.txt` `heat_total` are not one state (quoted RED at 1.2e-5). Separately, the test's source citation is stale: the block it names no longer exists. | test; `EXHALE_main.f90`; `docs/Update_EXHALE.md` section 6  **Citation half closed 2026-09-06** (test header rewritten to the rate lag; measured RED at 1.19e-5, header `sec_ion=F`); the rate-lag half stays for Phase 3. |
-| **C5** | Two photon-grid constructions: threshold-cut geometric bins for the analytic spectra, central differences around table nodes with no threshold cutting for a loaded SED. | `set_energy_vectors.f90` vs `sed_read.f90`  **Closed 2026-09-06** (item 2c-SEDGRID, `Update_EXHALE.md` section 6: the loaded grid is edge-based with every active threshold inserted; `stellar_flux_eV` reads the table rows `e_sed_node`/`F_sed_node`). |
+| **C4** | `Hydro_ioniz.txt` `heat` and `Heating_breakdown.txt` `heat_total` are not one state (quoted RED at 1.2e-5). Separately, the test's source citation is stale: the block it names no longer exists. | test; `EXHALE_main.f90`; `docs/Update_EXHALE_stage2.md` section 6  **Citation half closed 2026-09-06** (test header rewritten to the rate lag; measured RED at 1.19e-5, header `sec_ion=F`); the rate-lag half stays for Phase 3. |
+| **C5** | Two photon-grid constructions: threshold-cut geometric bins for the analytic spectra, central differences around table nodes with no threshold cutting for a loaded SED. | `set_energy_vectors.f90` vs `sed_read.f90`  **Closed 2026-09-06** (item 2c-SEDGRID, `Update_EXHALE_stage2.md` section 6: the loaded grid is edge-based with every active threshold inserted; `stellar_flux_eV` reads the table rows `e_sed_node`/`F_sed_node`). |
 | **C6** | The Balmer continuum is integrated on its own 400-point trapezoid over a band the photon grid also covers, and H(n=2) is not an absorber in `tauE`, so it removes no photons from the beam while its band neighbors do. | `excited_hydrogen.f90`; `util_ion_eq.f90` |
 | **C7** | Lyman-alpha: the cooling function charges the full 10.2 eV per collisional excitation as escaping radiation with no escape probability, in the same cells where `lya_rt` computes an escape probability far below one, while the de-excitation heat returns 10.2 eV. | `Cool_coeff.f90` and `util_ion_eq.f90` vs `lya_rt.f90` and `excited_hydrogen.f90` |
 | **C8** | The same H/He and metal cooling sum is written twice, and the post-process temperature is solved with a different set of channels from the hydro temperature: no H3+, no molecular infrared bands, no molecular electrons in `n_e`, no Balmer, Lyman-Werner, molecular chemical or FUV heat; `post_process_adv.f90` calls `eval_cool` without `nheiTR`. | `util_ion_eq.f90` vs `T_equation.f90`; `post_process_adv.f90` |
@@ -1939,7 +1939,7 @@ decision that is still open. One sentence each.
     files stop carrying molecular columns that were never corrected?
 12. **The `T_equation` and `eval_cool` duplication (C8).** One assembly with two
     entry points, or two assemblies with a test that pins them together?
-13. **Trace-metal diffusion (C29).** Should the metal arm gain a counter-flux in
+13. **Trace-metal diffusion (C29).** Should the trace-metal solve gain a counter-flux in
     the hydrogen component, or should it be labeled a trace approximation with a
     stated validity domain?
 14. **`alpha` (C16).** Removed 2026-09-06 (no statement read it); no question remains.

@@ -1,4 +1,4 @@
-# P49. What blocks the JFNK on the molecular arm: it is not the H2 front's
+# P49. What blocks the JFNK in the molecular configuration: it is not the H2 front's
 # chemistry, it is the positivity guard of the reconstruction
 
 **Judgment first, and it contradicts both hypotheses the item was opened to
@@ -528,7 +528,7 @@ asked for the count first, and it is:
 
 (The two counts are not directly comparable: the old one counted face pairs,
 the new one face states.) `refused = 0` in all of them, so **the whole move is
-(i); (ii') changes nothing outside the molecular arm.**
+(i); (ii') changes nothing outside the molecular configuration.**
 
 How far they moved, against the same source without the change:
 

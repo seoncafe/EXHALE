@@ -51,7 +51,7 @@
 	! threshold energy (Verner et al. 1996 fit of Fe I: E_0 = 0.0546 eV, a
 	! factor 2.5 over 0.4 eV), and with this budget every metal
 	! photoionization rate the grid forms is within 5e-4 of the exact
-	! integral (photon_grid_threshold_edges; docs/Update_EXHALE.md section 6).
+	! integral (photon_grid_threshold_edges; docs/Update_EXHALE_stage2.md section 6).
 	integer, parameter :: num_TR = 89
 	! The n = 2 band carries no cross section of an active absorber (that is
 	! what e_abs_low means, see the split below), and the H(n=2)

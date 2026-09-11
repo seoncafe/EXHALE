@@ -820,11 +820,11 @@ Five boundary prescriptions were tried and none moves cell 1
 baseline, the Shapiro filter, `Base velocity: massflux`, Low-Mach damping, and
 the two combined. Cells 2-12 do respond to dissipation (alternating density
 amplitude 2.28e-3 -> 2.84e-4 with the filter while marching, 5.06e-4 -> 1.09e-4
-with Low-Mach damping in the converged state); cell 1 does not. Of the arms that
+with Low-Mach damping in the converged state); cell 1 does not. Of the runs that
 reached `info = 0`, `log10 Mdot` reads 10.29 (A), 10.34 (B), 10.28 (C), 10.29 (E)
 and 10.29 (G) against a cycle-to-cycle noise of about 0.01 dex, so only the
 Shapiro filter's +0.05 dex is outside the noise, and it is worse on every base
-metric. Arms D and F never converged and their 10.35 and 10.47 are marked in the
+metric. Runs D and F never converged and their 10.35 and 10.47 are marked in the
 source document as not quotable.
 
 The layer is not under-resolved: `H(T_eq)/dr = 288` cells, 127 with the run's own
@@ -2263,7 +2263,7 @@ path is exactly what item 11 changed, while all ten default cases are cold
 starts and none exercises any of it. Either regenerate the pair of IC files from
 a state the code wrote and add the case to the matrix, or retire it.
 
-### 12.5 A stored arm case is refused at startup by the base-composition check (AE)
+### 12.5 A stored ladder case is refused at startup by the base-composition check (AE)
 
 **QUARANTINED 2026-09-03 (user decision):** moved to
 `backup/regression/_quarantined/armD_D1`, inputs untouched so the refusal stays
@@ -2338,7 +2338,7 @@ switch costs a `dtu` jump of 1.763x, and a 500-step ramp reduces it to 0.990x.
 | `dlambda = 0.02`, adaptive | 11919 | 2 | 1.200 |
 | `dlambda = 0.002`, adaptive | 12360 | 0 | **0.990** |
 
-`log10 Mdot` is 10.35 in every arm; the ramps cost no wall time (they are
+`log10 Mdot` is 10.35 in every run; the ramps cost no wall time (they are
 slightly faster). A control that stays on PLM to the cap does **not** converge
 (`du = 3.9e-3` at 15000 steps) and lands 0.08 dex higher with a base 400-700 K
 hotter, so the switch is buying something real.
@@ -2417,7 +2417,7 @@ Stored outputs without those fields should not be used as regression references.
 |---|---|---|
 | 12.1-12.3 H2 photochannels | Approximations documented in code; channel stoichiometry incomplete for double ionization and neutral dissociation. Introduce explicit cross sections for mutually exclusive final states and derive every species and electron source from their stoichiometric vectors. | **Agree**, and this is a better design than the three separate patches the first edition proposed. See Phase E1. |
 | 12.4 round-trip case | Confirmed. Rebuild the fixture from a deliberately short deterministic run, not from an expensive converged product. Test write/read/write identity and one-step continuity. | **Agree**, and adopted -- the first edition proposed regenerating from a converged run, which is both expensive and the wrong kind of fixture. |
-| 12.5 stale arm case | Confirmed configuration conflict; intent cannot be inferred from code. Quarantine it from active regression and label the historical result invalid. | **Agree**, and executed 2026-09-03: the case is moved to `backup/regression/_quarantined/armD_D1` with a `NOTE.txt` recording why. |
+| 12.5 stale ladder case | Confirmed configuration conflict; intent cannot be inferred from code. Quarantine it from active regression and label the historical result invalid. | **Agree**, and executed 2026-09-03: the case is moved to `backup/regression/_quarantined/armD_D1` with a `NOTE.txt` recording why. |
 | 12.6 base-H2 fit coverage | Confirmed by path analysis; not rerun. Add a small setup/equilibrium test that omits the handoff and asserts the fitted base H2 fraction and the resulting ghost composition. | **Agree.** A setup-level test is cheaper than the run-level case the first edition implied. |
 | 12.7 PLM to WENO3 | Open path verified; diagnosis historical. Treat PLM and WENO3 as separate discretizations: use PLM to form an initial guess, then continue in the residual or flux blend before solving the WENO3 system. | **Agree**, and it reframes the item -- the first edition recorded it as a `du` floor, which is a symptom of switching the discrete operator in one step. See Phase F. |
 | 12.8 oxygen-carrier double count | Critical reported conservation failure; the exact offending refresh was not isolated. Add element-budget assertions around every ionization sweep, carrier write-back, and outer steady pass. Fix before any coupled A2 result is accepted. | **Agree, and this item is under-ranked in the first edition.** It is a prerequisite for item 2, not a smaller item. See Phase A1. |
@@ -2726,7 +2726,7 @@ not -- item (AA)'s layer swings and the 2050-2300 step period of
 **Naming caveat.** "D6" is the label the Phase C design document uses for this,
 as the sixth of its design decisions. It collides twice: `TO_BE_DONE.md`'s letter
 series already has an item **(D)**, and `docs/a2_oxygen_option_design.md` uses
-"D6" for an unrelated base-condition arm. If this becomes a `TO_BE_DONE.md` item
+"D6" for an unrelated base-condition case. If this becomes a `TO_BE_DONE.md` item
 it needs a name that is unique in that series -- the same discipline applied to
 `P52` earlier in this catalog.
 
@@ -2760,14 +2760,14 @@ no modified source.
 
 **The base cells are not what carries the front.** Three 60,000-step
 continuations from the gate-window minimum, differing only in an environment
-probe: a reference arm, one freezing the first five physical cells to their
+probe: a reference run, one freezing the first five physical cells to their
 step-1 state after every step, and one freezing the first two. The freeze
 demonstrably works (the frozen cells move by `~7e-16` against `~1e-3` in the
-reference). **Every front level is identical across the three arms at both
+reference). **Every front level is identical across the three runs at both
 times**, to the four decimals the trace prints, and the front moves in all three
 by the same amount; `du` agrees to three digits and all three converge at 42,458,
 42,598 and 42,530 steps with `log10 Mdot = 10.45`. The two inner spread windows
-differ between arms by 3 to 7 percent -- the freeze does change the layer, as it
+differ between runs by 3 to 7 percent -- the freeze does change the layer, as it
 must. **So the base cells move the residual and not the front.**
 
 That separates this from item 4 and from item 2's floor: the residual floor at
@@ -2776,7 +2776,7 @@ characteristic boundary of section 152 will not fix this one.**
 
 ### What has been decided, in three sentences (section 10)
 
-**(1) The creep is motion in physical time, not a step bias.** Three arms
+**(1) The creep is motion in physical time, not a step bias.** Three runs
 differing only in `CFL:` -- 0.6, 0.3, 0.15, a factor 4 on `dt`, an input key and
 no source change -- traced at step intervals in the same ratio so that matched
 rows are matched physical times, put **all three front levels at exactly the
@@ -2788,7 +2788,7 @@ same radius at every matched time**:
 | 3 | 6,000 / 12,000 / 24,000 | 1.0566 / 1.0566 / 1.0566 | 1.1407 / 1.1407 / 1.1407 | 1.1518 / 1.1518 / 1.1518 |
 | 6 | 12,000 / 24,000 / -- | 1.0574 / 1.0574 | 1.1425 / 1.1425 | 1.1537 / 1.1537 |
 
-A step-count bias would put the small-`dt` arm four times further per unit
+A step-count bias would put the small-`dt` run four times further per unit
 physical time; it puts it in the same place, with `du` agreeing to two or three
 digits. This also retires an earlier reading: section 134's grid pair, "the same
 advance per 20,000 steps on 500 and 1000 cells", cannot be read as a step bias

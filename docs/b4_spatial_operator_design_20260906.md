@@ -146,8 +146,8 @@ velocity is what removes the two defects the present operators each worked
 around in their own way: the cell whose two face velocities straddle zero
 (which froze the composition of the first free cell of a breathing base, the
 reason the element operator refuses face-averaged upwinding) and the cell that
-is outflowing at both faces (which evacuated the metals, the reason the trace
-arm moved to the mixing ratio). Neither arises when the species ride on the
+is outflowing at both faces (which evacuated the metals, the reason the trace-metal
+solve moved to the mixing ratio). Neither arises when the species ride on the
 same face mass flux the density rides on, because a cell can then only lose
 what the mass row says it loses.
 
@@ -203,7 +203,7 @@ ions together, closed by the derived zero-current condition (J0) of B1 T4.1
 and the ambipolar field (F) of B1 T4.2, and solved by one matrix inversion per
 cell under the mass condition (B10). Three consequences for the operator:
 
-1. **One inversion, not two arms.** The H/He binary and the trace metals are
+1. **One inversion, not two solves.** The H/He binary and the trace metals are
    rows of the same matrix (B1 decision 5), so `sum_s rho_s w_s = 0` holds by
    construction at every face and the counter-flux is derived rather than
    assumed. The present sequential solve against a frozen hydrogen background
@@ -243,7 +243,7 @@ So the target is:
   species and the mass are advected by the same operator at the same time
   level and a uniform composition is preserved to the bit;
 - **one implicit diffusive solve** for the whole species vector, replacing the
-  present two (the element binary plus its trace arm, and the carrier block
+  present two (the element binary plus its trace-metal solve, and the carrier block
   tridiagonal). The chemistry source stays inside that solve for the carriers,
   which is what the carrier Newton exists for; species with no kinetic model
   of their own contribute a row with a zero source.
@@ -346,7 +346,7 @@ cases it touches. The transport-active cases of the default matrix are READ
 from their `input.inp`: `mol_carrier` (`Molecular carrier transport: True`),
 `mol_diffusion` (`He_diffusion: True`, `He_Kzz: 1.0e9`) and `lower_profile`
 (`He_diffusion: True`, `He_metal_diffusion: True`, the only case with the
-trace-metal arm and therefore the only one carrying C29). No case in the
+trace-metal solve and therefore the only one carrying C29). No case in the
 matrix sets an oxygen key, so the conditional carrier default
 (`carrier_transport = thereis_oxychem`) never fires there. `wasp_full`,
 `wasp_he23off`, the five `mol_*` snapshot cases and `hydrostatic_column` run
@@ -633,7 +633,7 @@ judgment on that measurement, not a golden-stability judgment.
 
 One (B9) matrix inversion per cell face over all diffusing species, closed by
 (J0) and (B10); the proton enters with its charge; the ambipolar field becomes
-a face quantity; the trace metals leave their frozen-background arm.
+a face quantity; the trace metals leave their frozen background.
 
 Tests (B1 AT-4a to AT-4c):
 - **zero net diffusive mass** on a static isothermal column with a trace
@@ -1121,7 +1121,7 @@ source of an O(1) hydrostatic imbalance anywhere in the interior, and a
 well-balanced correction (B4-5b) would buy accuracy in the WENO3 branch, not
 consistency.
 
-**(ii) [Measured before B4-4a, 2026-09-06; closed the same day: the outer ghost is now the isothermal hydrostatic continuation of cell N and the outer-cell residual falls at order 1.6 to 1.8, see `Update_EXHALE.md` section 7 item B4-4a.] The O(1) residual is at the OUTER free-outflow boundary, and under PLM
+**(ii) [Measured before B4-4a, 2026-09-06; closed the same day: the outer ghost is now the isothermal hydrostatic continuation of cell N and the outer-cell residual falls at order 1.6 to 1.8, see `Update_EXHALE_stage2.md` section 7 item B4-4a.] The O(1) residual is at the OUTER free-outflow boundary, and under PLM
 it does not converge.** `max|R|` sits at cell N at every grid and for every
 scheme. Under PLM it is 0.750 of the local weight and grid independent (order
 0.006), with cell N-1 at 0.248; under WENO3 it starts at 6.4e-2 and falls at

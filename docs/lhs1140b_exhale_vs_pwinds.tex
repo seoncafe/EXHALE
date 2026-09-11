@@ -77,7 +77,7 @@ by $1.4$, $1.6$, $2.0$ and $0.1$ per cent on the four helium-rich cases and
 crossings do not all move the same way: a pattern that reads as the split
 being renormalized about the SvS85 value, although nothing here checks that
 reading against the rate itself. All five were re-solved on the
-corrected binary, each inside a bracket of two run arms and each then solved
+corrected binary, each inside a bracket of two solved rungs and each then solved
 at the crossing composition itself
 (\texttt{LHS1140b/exhale/crossings\_j96}). Four of the five move by $0.1$ to
 $2.7$ per cent; the fifth, the flux closure, moves by $9.2$ per cent, not
@@ -244,7 +244,7 @@ bound how far any single crossing should be read.
       absolute equivalent width of every rung of every ladder carries a
       systematic the closure tolerance does not reach.
 \item \emph{The closure crossing carries a seed systematic of order half a
-      unit in reservoir.} Re-closing an arm from a neighbour instead of
+      unit in reservoir.} Re-closing a rung from a neighbour instead of
       from the common parent moves its equivalent width by $0.2$--$1.9$ per
       cent, which at the local slope is a large fraction of a unit in
       $\mathrm{He/H}$, and no test the driver applies sees it
@@ -259,7 +259,7 @@ bound how far any single crossing should be read.
       made with Photochem 0.8.4; the closure results here are Photochem
       0.9.0 with the local corrections of
       \texttt{docs/photochem\_solver\_modification\_*.md}. On the seven
-      arms that can be compared like for like the equivalent width moves by
+      rungs that can be compared like for like the equivalent width moves by
       at most $1.2\times10^{-6}$ in relative terms and $\log_{10}\dot M$
       does not move in its fourth decimal, \emph{even though the correction
       takes the deepest-level elemental residual from $2\times10^{-5}$ to
@@ -796,7 +796,7 @@ table is kept as the record of the scan that was run and the crossing of
 Sect.~\ref{sec:ew} is \emph{not} read from it: it is read from a ladder of
 twelve solutions over $\mathrm{He/H} = 0.39$--$0.46$ solved on the current
 binary (\texttt{LHS1140b/exhale/crossings\_j96}), which brackets the
-measurement with arms that were run.
+measurement with rungs that were run.
 
 \begin{figure}[htbp]\centering
 \includegraphics[width=\textwidth]{figures/lhs1140b_fig4style.pdf}
@@ -804,11 +804,11 @@ measurement with arms that were run.
 at its best fit (the MCMC medians its Fig.~4 legend states) computed
 with the authors' released settings (solid;
 dotted is the same run with turbulence off), and right, EXHALE at the three
-arms of the well-mixed ladder of record that bracket the equivalent-width
-crossing $0.4132$: $\mathrm{He/H} = 0.40$, $0.415$ (the solved arm
+rungs of the well-mixed ladder of record that bracket the equivalent-width
+crossing $0.4132$: $\mathrm{He/H} = 0.40$, $0.415$ (the solved rung
 nearest the crossing), and $0.46$
 (\texttt{LHS1140b/exhale/crossings\_j96}, the ladder on the current binary;
-both syntheses of each arm were run for this figure in
+both syntheses of each rung were run for this figure in
 \texttt{refresh\_j96/fig4style/}).
 Solid EXHALE curves carry the same turbulence
 term p-winds uses; dotted are without it. Over that range of composition the
@@ -970,16 +970,16 @@ spectrum gives $EW = 1.108 \pm 0.030$\,\%\,\AA. EXHALE crosses it at
 \end{equation}
 
 that is $5.0\times$ solar, a helium mass fraction of $0.62$. The crossing is
-read inside a bracket of two solved arms, $0.410$ at $EW = 1.0982$ and
+read inside a bracket of two solved rungs, $0.410$ at $EW = 1.0982$ and
 $0.415$ at $1.1133$\,\%\,\AA{} against the observed $1.1084 \pm 0.0295$,
 and a chord and a quadratic through the ladder agree on it to $0.07$ per
 cent ($0.4132$ against $0.4135$). A run at $0.4132$ itself gives
 $EW = 1.1072$\,\%\,\AA, $0.03\sigma$ from the measurement, on the lineage
 the crossing was read on
 (\texttt{LHS1140b/exhale/crossings\_j96}); re-seeded from the nearest
-neighbouring arm the same composition gives $1.1161$, still inside the band
+neighbouring rung the same composition gives $1.1161$, still inside the band
 and about $1$ per cent away in He/H, which is the path spread on this axis.
-Two lineages were solved, the second re-seeded arm by arm from the stored
+Two lineages were solved, the second re-seeded rung by rung from the stored
 solutions of the same compositions; the seed moves the crossing from
 $0.4132$ to $0.4154$, $0.53$ per cent, which is the size of the path spread
 on this axis. Enabling the turbulence term was not measured on this ladder
@@ -1004,13 +1004,13 @@ larger factor.
 \includegraphics[width=0.55\textwidth]{figures/lhs1140b_ew_vs_heh.pdf}
 \caption{Red-pair equivalent width against composition, with and without the
 turbulence term, against the measured band. The crossing is insensitive to
-the broadening treatment: all seven arms of this scan were re-solved on the
+the broadening treatment: all seven rungs of this scan were re-solved on the
 current binary and each was synthesized twice
 (\texttt{LHS1140b/exhale/refresh\_j96/scan/}), so both curves stand on one
 physics, and they cross the measured band at $\mathrm{He/H} = 0.4051$
 without the turbulence term and $0.3982$ with it, $1.7$ per cent apart. The
 crossing this memo quotes for this axis, $0.4132$, is the one of
-Sect.~\ref{sec:ew}, read off the ten-arm ladder whose spacing brackets the
+Sect.~\ref{sec:ew}, read off the ten-rung ladder whose spacing brackets the
 measurement four times more closely; this scan reproduces it to $2.0$ per
 cent.}
 \label{fig:ew}
@@ -1111,12 +1111,12 @@ was tuned to them. Figure~\ref{fig:broadened} shows the profile and the two
 crossings.
 
 The number does not depend on which solution is broadened. The neighbouring
-arm of the same ladder, $\mathrm{He/H} = 0.42$, asks for
-$22.22$\,km\,s$^{-1}$ and the $K_{zz} = 0$ arm at $\mathrm{He/H} = 3.79$
+rung of the same ladder, $\mathrm{He/H} = 0.42$, asks for
+$22.22$\,km\,s$^{-1}$ and the $K_{zz} = 0$ run at $\mathrm{He/H} = 3.79$
 for $22.24$; the $\mathrm{He/H} = 0.55$ run with the turbulence term
 already on asks for $21.76$ and solar composition for $22.40$, although the
 solar run is a third of the observed absorption ($0.423\%$ red, EW
-$0.379$) and so matches the shape while missing the amount. All four arms
+$0.379$) and so matches the shape while missing the amount. All four runs
 are on the current physics: the first two are the ladder runs of
 \texttt{LHS1140b/exhale/crossings\_j96}, the last two were re-solved for
 this comparison in
@@ -1342,15 +1342,15 @@ same route in every case: the same control input, the same direct-steady
 JFNK solve at $\|R\|_{\rm tol} = 5.0\times10^{-3}$, the same single
 post-processing pass and transit synthesis, and the same red-pair equivalent
 width on the vacuum window $10832.60$--$10834.20$\,\AA.
-Table~\ref{tab:kzzcross} is the result. Five arms were solved at every
+Table~\ref{tab:kzzcross} is the result. Five rungs were solved at every
 decade, placed so that both ends of the measurement's $1\sigma$ interval as
-well as the crossing itself fall inside solved arms: \emph{every entry of
+well as the crossing itself fall inside solved rungs: \emph{every entry of
 the table is interpolated inside a bracket of two runs, and nothing is
 extrapolated}. Two of the entries, $K_{zz} = 0$ and $K_{zz} = 10^{9}$, were
 afterwards solved at the interpolated composition itself and return
 $EW = 1.1068$ and $1.1082$\,\%\,\AA{} against the measured $1.108$
 (\texttt{LHS1140b/exhale/crossings\_j96}), each on the lineage its crossing
-was read on: re-seeded from the nearest neighbouring arm they give
+was read on: re-seeded from the nearest neighbouring rung they give
 $1.1090$ and $1.1019$ instead, both still inside the band and about $1$ per
 cent away in He/H. Two readings of each bracket agree: a chord and a
 quadratic in $\log$--$\log$ differ by $0.11$ per cent at worst and by
@@ -1359,7 +1359,7 @@ $0.05$ or better at six of the eight decades.
 \begin{table}[htbp]\centering
 \caption{Where the red-pair equivalent width crosses the measured
 $1.108 \pm 0.030$\,\%\,\AA, at every decade of the eddy coefficient, with
-binary H/He diffusion active throughout. Five arms per decade (six at
+binary H/He diffusion active throughout. Five rungs per decade (six at
 $10^{10}$, seven at $K_{zz} = 0$, eight at $10^{9}$); the crossing is the
 chord reading and the $1\sigma$ range
 propagates the measurement error alone, within one $K_{zz}$. The decades
@@ -1428,7 +1428,7 @@ neither revision touched it.
 
 That plateau is where it is for a reason that is measured rather than
 assumed: the operator adds $K_{zz}$ to the molecular coefficient, and the
-base coefficient of the $K_{zz} = 0$ arm at the crossing composition is
+base coefficient of the $K_{zz} = 0$ run at the crossing composition is
 $D_{\rm eff} = 1.2379\times10^{6}$\,cm$^2$\,s$^{-1}$ (measured at
 $r = 1.00029\,R_p$ in \texttt{output/element\_flux\_profile.txt}, dominant
 pair He\,\textsc{i}--H\,\textsc{i}), so $K_{zz} = 10^{6}$ raises it by
@@ -1436,7 +1436,7 @@ $81\%$, $10^{5}$ by $8\%$ and $10^{4}$ by $0.8\%$. The sharper measurement
 holds the composition fixed at $\mathrm{He/H} = 3.8075$ and solves one
 common seed at every decade: the equivalent width departs from the
 $K_{zz} = 0$ one by less than $3\times10^{-13}$ of the measurement error at
-$10^{1}$, $10^{2}$, $10^{3}$ and $10^{4}$ (the four arms reproduce the
+$10^{1}$, $10^{2}$, $10^{3}$ and $10^{4}$ (the four runs reproduce the
 $K_{zz} = 0$ one to $10^{-14}$\,\%\,\AA{} in absolute equivalent width),
 by $0.21$ at $10^{5}$ and by $1.78$ at $10^{6}$: \emph{no eddy coefficient at or below
 $10^{4}$\,cm$^2$\,s$^{-1}$ is distinguishable from none at all by this
@@ -1490,18 +1490,18 @@ re-solved on the current binary
 (\texttt{LHS1140b/exhale/refresh\_j96/misc/}), so the composition-
 renormalized secondary-ionization split of \emph{Update\_EXHALE} Sect.~96
 is in all of them. \emph{That split is what retires the caveat this
-passage used to carry.} Sect.~88.4(a) had named the $K_{zz} = 0$ arm's
+passage used to carry.} Sect.~88.4(a) had named the $K_{zz} = 0$ run's
 advection-corrected metastable column as unusable, because the
 volumetric secondary-ionization rate was divided by a singlet density that
 the settling drives to zero; Sect.~96 removes both such divisions. Measured
-on the arm itself, cells above $1.5\,R_{\rm p}$ whose ground singlet has
+on the run itself, cells above $1.5\,R_{\rm p}$ whose ground singlet has
 collapsed below the metastable go from $77$ of $504$ to $0$ of $504$, and
-the arm's metastable peak falls by a factor $3.1$, from $0.134$ to
+the run's metastable peak falls by a factor $3.1$, from $0.134$ to
 $0.043$\,cm$^{-3}$: the defect had been \emph{inflating} the settled column,
 so the factor above is larger than the one this passage used to quote and
 is now quoted without a hedge. The correction does not act equally on the
-four: the three arms with eddy mixing move by at most $0.01$\,dex in
-$\dot M$ and $0.3\%$ in density, the settled arm by $0.01$\,dex and $3.0\%$,
+four: the three runs with eddy mixing move by at most $0.01$\,dex in
+$\dot M$ and $0.3\%$ in density, the settled run by $0.01$\,dex and $3.0\%$,
 and it sharpens the reading: the wind panels now spread by $4$ per cent
 in density and $15$ in velocity while the composition
 panels still span two to four orders of magnitude. Temperature is the one bulk
@@ -1772,7 +1772,7 @@ temperature and outflow speed there; the last three characterize the
 absorber-weighted ($w = n_{2^3S}r^2\,dr$) distribution of $|v_r|$ over the
 advection-corrected $2^3S$ column that the transit tool integrates. The
 He/H\,$=1000$ solutions have no outward density maximum (their $n_{2^3S}$
-peaks at the base), and are marked $\dagger$. All six arms were re-solved
+peaks at the base), and are marked $\dagger$. All six runs were re-solved
 for this table, each restarted on its own stored solution with the
 composition unchanged, so every row carries the He\,$2^3S$\,$+$\,H
 ionization coefficient of Garc\'ia Mu\~noz (2025)
@@ -1782,7 +1782,7 @@ post-process (Sect.~88). The runs are
 \texttt{LHS1140b/exhale/refresh\_j96/bump/};
 all six reached \texttt{info}\,$=0$ with a JFNK residual
 $\Vert R\Vert \le 9.9\times10^{-4}$ against their own tolerance of
-$10^{-3}$, and the last pass each arm ran accepted no
+$10^{-3}$, and the last pass each of them ran accepted no
 step, so the quoted values are Newton-finished.}
 \label{tab:bump}
 \begin{tabular}{lrrrrrr}
@@ -1813,7 +1813,7 @@ describe: against the same balance with the rates frozen at the peak
 temperature, the solved population stands a factor $2.4$--$30$ high at the
 density maximum and up to $9.8$--$156$ high further out. On the GJ\,1132
 proxy at the equivalent-width-matched composition
-$\mathrm{He/H} = 0.4132$, on the nearest solved arm
+$\mathrm{He/H} = 0.4132$, on the nearest solved rung
 (\texttt{crossings\_j96/wm\_heh0p415}), the maximum sits at
 $5.269\,R_p$ where $T = 1546$\,K, against $T_{\rm max} = 4591$\,K at
 $1.449\,R_p$: the temperature has fallen to $0.34$ of its peak, which is the
@@ -1853,7 +1853,7 @@ correctly captured; the host is the wrong one for it to help.
 \includegraphics[width=0.98\textwidth]{figures/lhs1140b_bump.pdf}
 \caption{The adiabatic-cooling metastable bump in the EXHALE solutions
 (solid: advection-corrected, the profiles the transit integral uses;
-dotted: local equilibrium; faint curves on the right-hand axes). Two arms of
+dotted: local equilibrium; faint curves on the right-hand axes). Two cases of
 Table~\ref{tab:bump} are drawn: He/H\,$=0.55$ on the GJ\,1132 proxy and
 solar He/H on the GJ\,699 one. (a) The metastable fraction rises outward
 over the cooling leg, from the temperature maximum out to a maximum of $f_3$
@@ -2052,7 +2052,7 @@ solution, with $\alpha_{2^3S} = 2.10\times 10^{-13}(T/10^4)^{-0.778}$ and the
 Garc\'ia Mu\~noz (2025) destruction rate of Eq.~(\ref{eq:gm25}). Both
 columns are recomputed here from the solved profiles. What the coefficient
 replacement leaves alone is the wind the table stands on: between the last
-solution of this arm that predates the replacement
+solution of this case that predates the replacement
 (\texttt{flux\_closure/heh11p1/k00}) and the re-solved one $T$ agrees to
 $1.2$ per cent and $t_{\rm rec}$ to $1.8$ at every radius, because the
 metastable is a trace population and not an energy-budget term. The last three columns are
@@ -2333,7 +2333,7 @@ from $35.87$ to $3.48$\,\%\,\AA; it reads $3.57$ here); the six
 helium-poorer rows, which are the ones the crossing is interpolated in, are
 unaffected by \emph{that} correction. All seven rows are re-solved on the
 current binary (\texttt{LHS1140b/exhale/refresh\_j96/misc/}). The crossing
-quoted below is read off a separate ladder of nine arms over
+quoted below is read off a separate ladder of nine rungs over
 $\mathrm{He/H} = 0.042$--$0.052$
 (\texttt{LHS1140b/exhale/crossings\_j96}, lineage G), and the two now agree
 more closely than they did: interpolated in $\log$--$\log$, the six rows
@@ -2362,12 +2362,12 @@ chord and quadratic agreeing to $0.00$ per cent. A run at $0.0483$ itself
 gives $EW = 1.1079$\,\%\,\AA, $0.00\sigma$ from the measurement, solved on
 the lineage the crossing was read on
 (\texttt{LHS1140b/exhale/crossings\_j96}). The bracketing runs are
-what fix this: the arms at $0.048$ and $0.049$ straddle the measurement
+what fix this: the rungs at $0.048$ and $0.049$ straddle the measurement
 directly ($EW = 1.1012$ and $1.1225$ against
 $1.108 \pm 0.030$\,\%\,\AA), so the crossing is measured rather than
 extrapolated from the solar case. The ladder is monotone throughout and
-evenly spaced in $EW$ to four decimals, and a second lineage seeded arm by
-arm from the stored solutions of the same compositions gives $0.0482$, $0.2$
+evenly spaced in $EW$ to four decimals, and a second lineage seeded rung by
+rung from the stored solutions of the same compositions gives $0.0482$, $0.2$
 per cent away. The turbulence-on crossing was not measured on this ladder;
 on the seven-row scan above, re-solved and synthesized both ways on the
 current binary, the turbulence term moves the crossing from $0.0484$ to
@@ -2394,7 +2394,7 @@ GJ\,699 scan the red-pair FWHM is $0.281$--$0.352$\,\AA{}
 $0.281$--$0.282$\,\AA), against
 the measured $0.841$\,\AA. Measuring the deficit the way
 Sect.~\ref{sec:broadening} does (convolving with a Gaussian and asking
-which width reproduces the observation) the arm at the crossing needs
+which width reproduces the observation) the rung at the crossing needs
 $21.97$\,km\,s$^{-1}$ FWHM of added velocity spread, against
 $22.22$\,km\,s$^{-1}$ for the equivalent-width-matched GJ\,1132 solution and
 $22.23$ for the diffusive one of Sect.~\ref{sec:diffbroad}. A
@@ -2416,7 +2416,7 @@ the last of them has since been looked for on both spectra
 \caption{The GJ\,699 proxy, five times the XUV of the GJ\,1132 proxy used
 elsewhere in this memo. Left: the measurement with the EXHALE solution
 nearest the equivalent-width crossing $0.0483$, the $\mathrm{He/H} = 0.048$
-arm of the ladder of record, and the solar
+rung of the ladder of record, and the solar
 case on this spectrum, with the GJ\,1132 solar case dotted for contrast; all
 curves without the turbulence term and shifted by the fitted
 $v_{\rm wind} = +2.26$\,km\,s$^{-1}$. Every curve is on the current binary,
@@ -2447,7 +2447,7 @@ of the coupled problem rather than a number chosen for it. The
 implementation and its tests are recorded in
 \texttt{docs/phase\_e\_flux\_closure\_design.md} and
 \texttt{docs/Update\_EXHALE.md}, Sects.~76--79; the design runs are
-\texttt{LHS1140b/exhale/flux\_closure/}. The three arms of this section have
+\texttt{LHS1140b/exhale/flux\_closure/}. The three runs of this section have
 since been re-run end to end (chemistry, wind, elemental-flux measurement
 and damped update) on Photochem $0.9.0$ with the re-pinned adapter of
 \emph{Update\_EXHALE} Sect.~99 and on the current binary
@@ -2526,7 +2526,7 @@ Figs.~\ref{fig:pccol} and~\ref{fig:pccol2} draw every column of the schema
 except the two elemental-flux columns, which are constants carrying the
 trial fluxes the header states. The file measured here is
 \texttt{LHS1140b/lower\_profile/lower\_atmosphere\_profile.dat}, the one-way
-handoff at iteration $0$; the closed arms of Sect.~\ref{sec:closureladder}
+handoff at iteration $0$; the closed rungs of Sect.~\ref{sec:closureladder}
 carry their own copies and are compared at the end of this section.
 
 \medskip
@@ -2642,7 +2642,7 @@ So of the $23$ columns, six numbers at one level plus one full column are
 what the wind is actually built from.
 
 \medskip
-\noindent\textbf{What the reservoir does to the column.} The closure arms
+\noindent\textbf{What the reservoir does to the column.} The closure rungs
 each carry their own solved column, and raising
 the reservoir changes it in three measurable ways
 (Fig.~\ref{fig:pccol2}d--f). The deep boundary cools, $520.3 \rightarrow
@@ -2724,7 +2724,7 @@ match, $1.05\times10^{5}$ at $1$\,bar and $2.56\times10^{4}$ at the
 $16.73$\,bar deep boundary: a factor $9.5$ below the constant at the match,
 and four decades below it at the bottom.
 
-Two arms separate the chemistry from the wind, because the profile hands over
+Two cases separate the chemistry from the wind, because the profile hands over
 both:
 \begin{itemize}\itemsep0.2ex
 \item \emph{A, chemistry only.} The column is solved on
@@ -2739,7 +2739,7 @@ both:
       thousandths of a radius deep in which the coefficient is $9.5$ times
       lower at the base and equal at the top. The homopause under the
       constant sits at $1.056\,R_{\rm p}$
-      (\texttt{kzz\_decision.md}, Sect.~3), outside that shell. \emph{Arm B
+      (\texttt{kzz\_decision.md}, Sect.~3), outside that shell. \emph{Case B
       is therefore a bounded test of the wind side and not a test of
       lowering $K_{zz}$ where helium settles}; the unbounded version of that
       is the magnitude scan, which is already measured.
@@ -2756,7 +2756,7 @@ high-trial-flux closure branch (\texttt{flux\_closure/hi}, $k=6$). Runs and
 the measurement script: \texttt{LHS1140b/exhale/kzz\_power/}. The test has
 since been repeated run by run on the current binary
 (\texttt{LHS1140b/exhale/refresh\_j96/xuvkzz/}, the two ``recorded, other
-seed'' arms in \texttt{L11p1} and \texttt{L2p09}), and the reasoning it was first
+seed'' rows in \texttt{L11p1} and \texttt{L2p09}), and the reasoning it was first
 reported under (that the coefficient is common to both sides of every
 entry, so a ratio between two chemistries at fixed everything else does not
 turn on it) is confirmed rather than overturned: every ratio the test
@@ -2771,7 +2771,7 @@ the wind the constant; \emph{B} hands it Eq.~(\ref{eq:kzzpow}) as well. The
 reference row is the constant-$K_{zz}$ profile re-solved with the same seed,
 and the row above it is the same profile solved on an earlier occasion from a
 different seed: the path spread of the workflow, against which the effect
-of the eddy form is to be read. All eight arms are on the current
+of the eddy form is to be read. All eight runs are on the current
 binary. $EW$ is on this memo's red-pair window, comparable with the
 observed $1.108 \pm 0.030$\,\%\,\AA.}
 \label{tab:kzzform}
@@ -2816,7 +2816,7 @@ is what it does not.}
 \label{tab:kzzformmatch}
 \begin{tabular}{lrr}
 \toprule
-quantity at the match & $11.11$ arm & $2.09$ arm \\
+quantity at the match & $11.11$ rung & $2.09$ rung \\
 \midrule
 \multicolumn{3}{l}{\emph{consumed by the wind}} \\
 $X_{\rm He}$ & $0.9985$ & $0.9985$ \\
@@ -2841,7 +2841,7 @@ $q_{\rm H}$    & $4.99$  & $5.55$ \\
 \medskip
 \noindent\textbf{What did move: the carriers, by up to four decades.} The
 lower part of Table~\ref{tab:kzzformmatch} is the real effect of the eddy
-form, and it is large. Nitrogen changes carrier outright: on the $11.11$ arm
+form, and it is large. Nitrogen changes carrier outright: on the $11.11$ rung
 $q_{\rm NH_3}$ at the match falls from $6.32\times10^{-6}$ to
 $2.43\times10^{-8}$ while $q_{\rm N_2}$ rises from $1.21\times10^{-7}$ to
 $3.46\times10^{-6}$, so a column that was NH$_3$-dominated becomes
@@ -2857,17 +2857,17 @@ the handoff transmits.
 \medskip
 \noindent\textbf{The crossing, against the path spread.} Converted with the
 local slope $\mathrm{d}\ln EW/\mathrm{d}\ln(\mathrm{He/H}) = 0.382$ measured
-over the $11.11$--$12.01$ interval of the ladder these arms belong to, the
+over the $11.11$--$12.01$ interval of the ladder these rungs belong to, the
 four equivalent widths move that ladder's crossing from $11.73$ to $11.61$
 and $11.63$ on
-the $11.11$ arm and to $11.48$ and $11.62$ on the $2.09$ one: $-0.25$ to
+the $11.11$ rung and to $11.48$ and $11.62$ on the $2.09$ one: $-0.25$ to
 $-0.10$ in He/H, under a tenth of the $10.92$--$12.58$ interval the
 measurement's own $1\sigma$ band allowed there. All four now move it the
 same way, downward. In relative terms that is
 $-2.1$ to $-0.8$ per cent, and it is the relative figure that carries over
 to the present crossing. It is also no larger than the
 workflow's path spread: re-solving the \emph{same} profile from a different
-seed moves the equivalent width by $1.08$ per cent on the $11.11$ arm and
+seed moves the equivalent width by $1.08$ per cent on the $11.11$ rung and
 $0.38$ per cent on the $2.09$ one, against the $0.32$--$0.83$ per cent the
 eddy form produces. The signal is buried in the spread of the procedure that
 would have to measure it: by a narrower margin than before, $1.08$ against
@@ -2986,7 +2986,7 @@ both of them in the gas phase across the trap
 
 \subsection{The closure, and what it returns}
 
-Three arms were run, from the reference trial pair
+Three runs were made, from the reference trial pair
 $(\Phi_{\rm H},\Phi_{\rm He}) = (1.8, 1.3)\times10^{7}$\,g\,s$^{-1}$ and from
 $0.3\times$ and $3\times$ it, all seeded from the same converged wind and all
 starting from the same ${\rm He/H} = 2.09$ reservoir.
@@ -3003,7 +3003,7 @@ closure re-run end to end on the current binary and on Photochem $0.9.0$
 with the re-pinned adapter of \emph{Update\_EXHALE} Sect.~99
 (\texttt{LHS1140b/exhale/refresh\_j96/closure/}); as on the ladder of
 Sect.~\ref{sec:closureladder}, each converged iterate's wind is then
-re-solved on its own output with the profile held fixed, so that arms which
+re-solved on its own output with the profile held fixed, so that runs which
 stopped at different $k$ are read at the same place.
 \emph{Both line columns are now at $R = 68{,}000$}, the
 resolving power of the measurement and of the rest of this memo. An earlier
@@ -3029,22 +3029,22 @@ $1.108 \pm 0.030$ \\
 \end{tabular}
 \end{table}
 
-\noindent The three arms agree on He/H to $7.8\times10^{-6}$, on
+\noindent The three runs agree on He/H to $7.8\times10^{-6}$, on
 $\log_{10}\dot M$ to better than the $0.005$ the log prints, and on the
 fluxes to $0.8\%$ and $3.5\%$, over a factor of ten in where they started:
 the closure is single-valued on this planet. The damping was never exercised
-(the residual fell on every iteration), but the $3\times$ arm used six of
+(the residual fell on every iteration), but the $3\times$ run used six of
 its eight allowed steps, so a start further than an order of magnitude out
 would need a larger iteration budget.
 
 \medskip
 \noindent\emph{One systematic on this branch is larger than anything the
 closure resolves, and it is stated rather than corrected.} A four-pass JFNK
-re-solve of one and the same arm (identical \texttt{input.inp}, identical
+re-solve of one and the same run (identical \texttt{input.inp}, identical
 handoff column, identical binary, each pass seeded from the previous one and
 each reaching \texttt{info}\,$=0$ at $\|R\| \simeq 10^{-4}$) lands on
 different fixed points depending on which converged wind it started from:
-on the $1.0\times$ arm, $EW = 0.519$, $0.532$ and $0.542$\,\%\,\AA{} from
+on the $1.0\times$ run, $EW = 0.519$, $0.532$ and $0.542$\,\%\,\AA{} from
 three seeds, a spread of $4.6$ per cent. Four further passes move each
 lineage by at most $0.23$ per cent and leave the flux spread and the base
 temperature unmoved, so these are three fixed points of the protocol and not
@@ -3053,7 +3053,7 @@ different composition drifts ($5.9$, $6.2$ and $7.3\times10^{-4}$), which is
 where the hysteresis lives. Every profile-branch line number in this memo
 therefore carries a seed systematic of that order, which is larger than the
 $1.8$ per cent the secondary-ionization correction of
-\emph{Update\_EXHALE} Sect.~96 is worth on these arms. The comparisons here
+\emph{Update\_EXHALE} Sect.~96 is worth on these runs. The comparisons here
 are internally consistent because each holds the seed protocol fixed; the
 hysteresis itself is not diagnosed
 (\texttt{LHS1140b/exhale/refresh\_j96/closure/results.txt}, Sect.~3).
@@ -3165,7 +3165,7 @@ molecular chemistry off, so no molecular carrier appears in the wind. Mean
 mass per particle is $(n_{\rm H} + 4n_{\rm He})/(n_{\rm H} + n_{\rm He} +
 n_e)$; nuclei are counted as H\,\textsc{i}\,$+$\,H\,\textsc{ii} and
 He\,\textsc{i}\,$+$\,He\,\textsc{ii}\,$+$\,He\,\textsc{iii}. The values are
-from the advection-corrected profiles; the reference arm of the closure
+from the advection-corrected profiles; the reference run of the closure
 (\texttt{.../flux\_closure/ref/k00/}) reproduces the $2.09$ column to $0.6\%$
 or better in every entry.
 
@@ -3178,7 +3178,7 @@ $1.108 \pm 0.030$\,\%\,\AA. All three solutions were re-solved on the
 current binary, each to four
 JFNK passes from its own output with the lower atmosphere held fixed
 (\texttt{LHS1140b/exhale/refresh\_j96/thermostat/}), so the table is read
-off one binary and one physics; every arm is Newton-finished at
+off one binary and one physics; each is Newton-finished at
 $\|R\|_{\rm tol} = 1.0\times10^{-4}$ except the $10.31$ one, whose own
 tolerance is $4.0\times10^{-4}$. The composition-renormalized
 secondary-ionization split of \emph{Update\_EXHALE} Sect.~96 raised the last
@@ -3300,8 +3300,8 @@ argument rests on.
 \noindent\emph{Diffusion keeps the wind far less helium-rich than the
 reservoir.} On both branches the helium fraction falls steeply through the
 line-forming region and then flattens: ${\rm He/H} = 2.09$ at the base gives
-$0.236$ by nuclei at $2\,R_p$ and $0.189$ beyond $5\,R_p$ on this arm
-($0.189$ on the reference arm quoted in Sect.~\ref{sec:closure}); $10.31$
+$0.236$ by nuclei at $2\,R_p$ and $0.189$ beyond $5\,R_p$ on this run
+($0.189$ on the reference run quoted in Sect.~\ref{sec:closure}); $10.31$
 gives $1.413$ and $1.148$. That is a factor $8.9$ and $7.3$ between the
 reservoir and the wind at $2\,R_p$, and $11.0$ and $9.0$ beyond $5\,R_p$, in
 a solution where the reservoir is an output of the closure
@@ -3421,13 +3421,13 @@ $1.61$ that the same line returns above a prescribed metal-free base
 by the base and not by the mixing, which is $K_{zz} = 10^{9}$ with
 diffusion active in both. The setup: the closure driver is run at nineteen
 reservoirs between $7.0$ and $9.5$. Fifteen of them, everything at $8.0$ and
-above, come \emph{from one common parent} (the converged $9.71$ arm of the
+above, come \emph{from one common parent} (the converged $9.71$ rung of the
 earlier ladder, so no reservoir step exceeds $1.21\times$); that parent is
 $1.39\times$ away from $7.0$, past the $1.35\times$ this series holds to, so
-the four arms below $8.0$ take the new $8.0$ arm as their parent instead, a
+the four rungs below $8.0$ take the new $8.0$ rung as their parent instead, a
 step of at most $1.14\times$. The crossing and the $-1\sigma$ end lie in the
 single-parent region. Each converged iterate's wind is then re-solved on its
-own output with the profile held fixed, so that arms which stopped at
+own output with the profile held fixed, so that rungs which stopped at
 different $k$ are read at the same place. Everything else is the
 configuration of Sect.~\ref{sec:closure}, Photochem with the
 \texttt{clima} step solved, $K_{zz} = 10^{9}$, a $1\,\mu$bar match, the
@@ -3439,16 +3439,16 @@ was solved twice on the pre-Sect.~96 branching, once with Photochem 0.8.4
 corrections (\texttt{crossings\_pc090}), which is what the
 chemistry-version caveat of Sect.~1 is measured on.
 
-The earlier ladder of nine arms between $2.09$ and $12.0$, seeded one step
+The earlier ladder of nine rungs between $2.09$ and $12.0$, seeded one step
 at a time, is superseded by this one and is not re-tabulated. What it
 established and this ladder confirms is recorded where it belongs:
-Sect.~\ref{sec:outerinherit} keeps the discarded arm that showed a
+Sect.~\ref{sec:outerinherit} keeps the discarded rung that showed a
 converged wind inheriting its outer region from its seed.
 
 \begin{table}[htbp]\centering\small
 \setlength{\tabcolsep}{3.6pt}
 \caption{The reservoir ladder under flux closure, on the current binary and
-Photochem 0.9.0 in the system interpreter. One row per arm, at the iteration
+Photochem 0.9.0 in the system interpreter. One row per rung, at the iteration
 $k$ where the $5\%$ residual criterion was met; fluxes in
 $10^{6}$\,g\,s$^{-1}$, the cold-trap oxygen in $10^{-7}$ nuclei per H
 interpolated to the matching level. The equivalent width is on this memo's
@@ -3456,7 +3456,7 @@ red-pair window, directly comparable with the observed
 $1.108 \pm 0.030$\,\%\,\AA. The $8.21$ and $8.26$ rungs straddle that
 measurement, and every rung from $7.51$ to $9.31$ lies inside its $1\sigma$
 band. $\varepsilon$ is the larger of the two elemental closure residuals.
-The four arms below reservoir $8.0$ are parented on the $8.0$ arm rather
+The four rungs below reservoir $8.0$ are parented on the $8.0$ rung rather
 than on the common $9.71$ parent, for the step-size reason given in the
 text.}
 \label{tab:closureladder}
@@ -3492,14 +3492,14 @@ $0.841$ & $1.108 \pm 0.030$ & - \\
 \end{tabular}
 \end{table}
 
-Every arm returns a matching-level He/H equal to its reservoir to four
+Every rung returns a matching-level He/H equal to its reservoir to four
 digits, for the reason Sect.~\ref{sec:closure} measured at $2.09$: at
 $K_{zz} = 10^{9}$ the eddy-mixed column reaches the microbar match, so the
 escape flux does not set the composition there. What the ladder adds is the
 line.
 
 \medskip
-\noindent\textbf{The crossing.} The arms at $8.21$ and $8.26$ straddle the
+\noindent\textbf{The crossing.} The rungs at $8.21$ and $8.26$ straddle the
 measured equivalent width directly, $1.1075$ below it and $1.1098$ above
 against $1.108 \pm 0.030$\,\%\,\AA, and every rung from $7.51$ to $9.31$
 is itself inside the measurement's $1\sigma$ band. The crossing is therefore
@@ -3509,7 +3509,7 @@ read inside a bracket the runs measured, not off the end of a scan:
   1\sigma\ \text{interval}),
 \end{equation}
 where the range carries the measurement error alone and none of the model
-uncertainty, and both of its edges are bracketed by solved arms as well.
+uncertainty, and both of its edges are bracketed by solved rungs as well.
 Two readings of the same ladder agree on the center: chord interpolation in
 $\log$--$\log$ between the two straddling rungs gives $8.2117$ and a
 quadratic in $\log$--$\log$ gives $8.2115$, $0.00$ per cent apart.
@@ -3521,7 +3521,7 @@ the closed solution is more sensitive to the split than the others: at
 reservoir $9.0$ the split raises the equivalent width by $1.2$ per cent at a
 frozen lower-atmosphere profile and by $2.0$ per cent once the closure is
 re-run, which is the same size as the $1.4$ and $1.6$ per cent the
-well-mixed and $K_{zz} = 10^{9}$ arms move. It is that this ladder is the
+well-mixed and $K_{zz} = 10^{9}$ ladders move. It is that this ladder is the
 shallowest of the five in composition: its equivalent width rises as
 $(\mathrm{He/H})^{0.27}$ across the whole ladder, and as
 $(\mathrm{He/H})^{0.20}$ over the stretch between the old crossing and the
@@ -3536,7 +3536,7 @@ every digit either printed.
 bracket $0.05$ wide in reservoir, and has also been solved directly}: the
 closure run at reservoir $\mathrm{He/H} = 8.2117$, chemistry, wind,
 elemental-flux measurement and under-relaxed update, then its converged
-iterate's wind re-solved to its own fixed point as every arm of record was,
+iterate's wind re-solved to its own fixed point as every rung of record was,
 gives $EW = 1.107775$\,\%\,\AA{} against the $1.107999$ the chord
 asserts, a difference of $2.2\times10^{-4}$\,\%\,\AA{} or $0.008\sigma$
 (\texttt{LHS1140b/exhale/crossings\_j96}). \emph{And the ladder is not
@@ -3545,10 +3545,10 @@ $\mathrm{d}\ln EW/\mathrm{d}\ln(\mathrm{He/H})$ over the successive
 intervals runs from $0.05$ to $0.40$ about a mean of $0.27$: the equivalent
 width rises by $0.0023$\,\%\,\AA{} between $8.21$ and $8.26$ and by only
 $0.0004$ over the equally wide interval $8.26$--$8.31$. That step is not a
-lineage artifact: re-closing the $8.3$ arm from its $8.2$ neighbour
+lineage artifact: re-closing the $8.3$ rung from its $8.2$ neighbour
 instead of from the common parent reproduces it to $0.01$ per cent, and the
-$9.0$ arm to $0.12$ per cent, and unlike the earlier ladder's it does not
-track the iteration count, since both arms of the flat interval stop at
+$9.0$ rung to $0.12$ per cent, and unlike the earlier ladder's it does not
+track the iteration count, since both rungs of the flat interval stop at
 $k = 2$ at residuals $0.034$ and $0.033$. \emph{It is the closure's own
 $\mathrm{tol} = 0.05$, made visible.} What the sublinearity settles is that
 the equivalent width does \emph{not} saturate before the measurement is
@@ -3579,11 +3579,11 @@ $F_{\rm He} = 2.0\times10^{7}$\,g\,s$^{-1}$.
       number.
 \item \textbf{The escape rate is flat along the whole ladder}, $7.39$ to
       $7.40$ in $\log_{10}\dot M$ over a factor $1.3$ in reservoir, and
-      $7.39$--$7.50$ once the earlier arms down to $2.09$ are included. So
+      $7.39$--$7.50$ once the earlier rungs down to $2.09$ are included. So
       here too the composition is fixed by the line and not by the wind, and
       the $\dot M$ this memo quotes does not depend on where in the ladder
       the crossing lands.
-\item \textbf{A seed systematic sits under all of it.} Three arms
+\item \textbf{A seed systematic sits under all of it.} Three rungs
       re-closed from the neighbour below instead of from the common parent
       move by $0.2$--$1.9$ per cent in equivalent width, which at the local
       slope is of order half a unit in reservoir: larger than the
@@ -3594,7 +3594,7 @@ $F_{\rm He} = 2.0\times10^{7}$\,g\,s$^{-1}$.
 
 The wind residual the JFNK finish reaches degrades as the reservoir grows
 (the line search stalls on the base contact mode and returns its best
-iterate), so the target was raised arm by arm and the achieved values
+iterate), so the target was raised rung by rung and the achieved values
 recorded rather than smoothed over: $\|R\| = 1.5$--$3.1\times10^{-4}$ at
 $\|R\|_{\rm tol} = 4.0\times10^{-4}$, all at \texttt{info} $=0$. The test
 the closure actually applies is not that residual but the elemental
@@ -3621,7 +3621,7 @@ at $\mathrm{Kn} \le 0.019$.
 
 The effect was found on the earlier ladder, at its $12.01$ rung, and it is
 why the ladder of Table~\ref{tab:closureladder} is climbed from one common
-parent. That rung was first reached in one step from the $8.0$ arm, a
+parent. That rung was first reached in one step from the $8.0$ rung, a
 $1.50\times$ jump in reservoir; a control run reached the same reservoir
 from $11.11$, a $1.08\times$ step. The two solutions agree on
 everything the closure and the chemistry set, and disagree on the line:
@@ -3633,7 +3633,7 @@ everything the closure and the chemistry set, and disagree on the line:
       against $1.0660\times10^{-6}$ nuclei per H.
 \item \emph{Both converged}: \texttt{info}~$=0$ at
       $\|R\| = 1.866\times10^{-4}$ (jump-seeded) and $1.287\times10^{-4}$
-      (control), both inside the $4.0\times10^{-4}$ target the arm was run
+      (control), both inside the $4.0\times10^{-4}$ target the rung was run
       to, and both inside the closure's own flux-spread tolerance.
 \item \emph{Different line}: $EW = 1.4293$ against $1.2094$\,\%\,\AA{} and a
       red depth of $4.789$ against $3.956$ per cent, an $18$ per cent
@@ -3651,12 +3651,12 @@ closed ladder, from the advection-corrected profiles. $r_{\rm drop}$ is the
 first radius outside $1.5\,R_p$ at which $T$ falls below half of
 $T(12\,R_p)$; the last column is the share of the He\,$2\,^3S$ radial
 column that lies outside $10\,R_p$. Every entry was recomputed from the run
-directories for this table. These arms are on the current binary, re-solved
-arm by arm in
+directories for this table. These rungs are on the current binary, re-solved
+rung by rung in
 \texttt{LHS1140b/exhale/refresh\_j96/xuvkzz/}; the same two diagnostics on the
 single-parent ladder of Table~\ref{tab:closureladder} are $r_{\rm drop} =
 20.46$ falling to $19.47\,R_p$ and an outer column share of
-$0.0091$--$0.0095$, flat across every arm, with no arm standing out.}
+$0.0091$--$0.0095$, flat across every rung, with none standing out.}
 \label{tab:outerinherit}
 \begin{tabular}{lrrr}
 \toprule
@@ -3712,10 +3712,10 @@ $11.9\,R_p$ and then separate abruptly (the departure passes $10$ per
 cent at $11.95\,R_p$ and $50$ per cent at $12.14$, reaching a factor $5.1$),
 so the region in which they differ is $12$--$30\,R_p$, not the
 $20$--$30\,R_p$ an earlier draft of this paragraph gave. The exobase of
-these two arms is not the $18.8$--$25.9\,R_p$ of
+these two runs is not the $18.8$--$25.9\,R_p$ of
 Sect.~\ref{sec:validity} either: that is the three-case range of
 Table~\ref{tab:validity}, whose cases are two non-closure runs and the
-$2.09$ closure arm. For this pair it is $11.81\,R_p$ (jump-seeded) and
+$2.09$ closure run. For this pair it is $11.81\,R_p$ (jump-seeded) and
 $14.73$ (control). Putting the corrected radii together: for the solution
 being discarded the whole differing region lies outside its own exobase,
 where $\mathrm{Kn} > 1$; for its control the innermost $2.6\,R_p$ of that
@@ -3735,8 +3735,8 @@ the current branching against $11.8$--$18.8$ on the one before it.
 checked directly at $\mathrm{He/H} = 3.0$, from a seed $3.7\times$ away in
 composition and in the downward direction the ladder never takes: it returns
 the same $r_{\rm drop}$ to the digit, with everything else inside the
-closure tolerance. The $5.0$, $8.0$ and $2.09$ arms were not checked this
-way. Separately, the $10.31$ arm was re-run from the same seed in its own
+closure tolerance. The $5.0$, $8.0$ and $2.09$ rungs were not checked this
+way. Separately, the $10.31$ rung was re-run from the same seed in its own
 directory and reproduced bitwise, which fixes determinism but says nothing
 about the seed dependence. The practical rule the episode leaves is that a
 ladder scan must be climbed one step at a time; the record is
@@ -3761,12 +3761,12 @@ neither is the other: the scalar-base solution at $\mathrm{He/H} = 2.13$
 ($EW = 1.355$, at its own $\|R\|_{\rm tol} = 5.0\times10^{-3}$) and the
 flux-closed solution at $\mathrm{He/H} = 9.71$ ($EW = 1.140$).
 Both grids are on the current binary
-(\texttt{LHS1140b/exhale/refresh\_j96/xuvkzz/}), every arm re-solved to its
+(\texttt{LHS1140b/exhale/refresh\_j96/xuvkzz/}), every point re-solved to its
 own fixed point. The composition-renormalized
 secondary-ionization split of \emph{Update\_EXHALE} Sect.~96 does not move
 the grid uniformly: the two fiducial points barely move, up $1.1$ and $0.8$
 per cent, while every scaled point \emph{falls} again, this time by up to a
-factor $22$. That pattern (the fiducial holds and the faint arms lose
+factor $22$. That pattern (the fiducial holds and the faint points lose
 depth) is the same one the Penning replacement produced before it; its
 consequence for the two crossings is not, and is the subject of the next
 paragraph. The result the section rests on is the
@@ -3774,7 +3774,7 @@ comparison between the two grids, and both are made the same way.
 
 \begin{table}[htbp]\centering
 \caption{The He\,10830 line against the XUV scaling, from the two models
-that reproduce the 2024 measurement, every arm re-solved on the current
+that reproduce the 2024 measurement, every point re-solved on the current
 binary (\texttt{LHS1140b/exhale/refresh\_j96/xuvkzz/}). Bold marks the
 row at which each model is nearest the $0.6$ per cent depth limit of the
 2025 epoch from below. In the scalar model that row is a genuine bracket
@@ -3830,7 +3830,7 @@ result; but the contrast between the two shapes has collapsed from a factor
 $71$ to a factor $5.8$, so it is now a difference of degree.
 And the closed grid is not monotonic below $0.25$: the $0.01$ point stands at
 $0.161$ per cent against $0.0049$ at $0.10$, a factor $33$, and the $0.15$
-point at $0.052$ against $0.024$ at $0.20$. All four of those arms stop at
+point at $0.052$ against $0.024$ at $0.20$. All four of those points stop at
 \texttt{info}~$=2$, just above their own residual target, on winds that have
 fallen to $\log_{10}\dot M = 5.4$--$6.5$; none of the closed depths below
 $0.25$ is to be read as a monotone sequence or as a limit on how faint the
@@ -3876,7 +3876,7 @@ happens to cut the limit. Both panels are on the current binary.}
 
 Measured the way Sect.~\ref{sec:broadening} measures it (convolve the
 solved profile with a Gaussian and ask which one reproduces the observed
-width) the arm at the closure crossing asks for $21.95$\,km\,s$^{-1}$
+width) the rung at the closure crossing asks for $21.95$\,km\,s$^{-1}$
 FWHM ($\sigma = 9.32$\,km\,s$^{-1}$), against $22.22$ in the well-mixed
 limit, $22.23$ with diffusion at the adopted $K_{zz}$, and $21.97$ on the
 $5.1\times$ brighter proxy. Those four solutions span a factor $170$ in
@@ -3901,9 +3901,9 @@ convolved into agreement, because broadening conserves equivalent width.
 \begin{figure}[htbp]\centering
 \includegraphics[width=\textwidth]{figures/lhs1140b_closure.pdf}
 \caption{\textbf{The flux-closed solution and the column it stands on.}
-(a) The three closure arms (started a factor of ten apart in the trial
+(a) The three closure runs (started a factor of ten apart in the trial
 escape flux) are indistinguishable, and all three fall well short of the
-measured line in absorbing power; the thick curve is the reference arm
+measured line in absorbing power; the thick curve is the reference run
 convolved with the $22.3$\,km\,s$^{-1}$ FWHM Gaussian that reproduces the
 observed width, which then lands below the observed depth because the
 equivalent width was already short. Model curves are shifted by the fitted
@@ -4011,7 +4011,7 @@ at $29.05\,R_p$, the HD\,209458\,b one at $4.15\,R_p$. ``Max Kn'' is over
 the critical region, i.e.\ from peak heating to the sonic point, or to the
 outer boundary where there is no sonic point. All four runs are on the
 current binary and are Newton-finished: the three LHS\,1140\,b rows are the
-arms of Table~\ref{tab:thermostat} and of the wide scan
+solutions of Table~\ref{tab:thermostat} and of the wide scan
 (\texttt{LHS1140b/exhale/refresh\_j96/}), the HD\,209458\,b control is
 \texttt{backup/phase\_d\_baseline/new\_kzz1e9\_d3b} re-solved in
 \texttt{refresh\_j96/validity/}.}
@@ -4184,13 +4184,13 @@ The line is not reproduced. What stands:
       the answer is further conditional: $0.0483$ well mixed on the GJ\,699
       proxy, $0.4132$ well mixed on the GJ\,1132 proxy, $3.81$ wherever
       $K_{zz} \le 10^{4}$ leaves the molecular coefficient alone. Every one
-      of those is read inside a bracket of two solved arms, a chord and
+      of those is read inside a bracket of two solved rungs, a chord and
       a quadratic through each ladder agree on it to $0.11$ per cent or
       better, and each has since been solved at its own composition and
       returns the measured equivalent width to within $0.04\sigma$
       (\texttt{LHS1140b/exhale/crossings\_j96}); the confirmation holds on
       the lineage each crossing was read on, and re-seeded from the nearest
-      neighbouring arm instead the same compositions move by about $1$ per
+      neighbouring rung instead the same compositions move by about $1$ per
       cent in He/H, the path spread quoted elsewhere here. The match is always available, so it constrains the
       composition only as far as the assumptions behind it are secure.
 \item \textbf{Those five numbers have moved twice, and the structure
@@ -4300,13 +4300,13 @@ The line is not reproduced. What stands:
 \item \textbf{The composition the line needs above a photochemical base:
       $\mathrm{He/H} = 8.212$.} A ladder of nineteen flux-closed solutions
       over reservoirs $7.0$--$9.5$, fifteen of them from one common parent
-      and each arm's wind re-solved to its own fixed point, has two rungs
+      and each rung's wind re-solved to its own fixed point, has two rungs
       that straddle the measured equivalent width
       directly, $8.21$ at $EW = 1.1075$ and $8.26$ at $1.1098$ against
       $1.108 \pm 0.030$\,\%\,\AA, and every rung from $7.51$ to $9.31$ is
       inside the measurement's
       $1\sigma$ band. The crossing is $8.212$, with $7.474$--$9.395$ for
-      that band, both edges of it bracketed by solved arms too
+      that band, both edges of it bracketed by solved rungs too
       (Sect.~\ref{sec:closureladder},
       Table~\ref{tab:closureladder}). The crossing has also been solved
       directly at $8.2117$ and returns $EW = 1.107775$\,\%\,\AA, on the
@@ -4331,7 +4331,7 @@ The line is not reproduced. What stands:
       value at the crossing. Both numbers carry the width shortfall
       (FWHM $0.280$ against $0.841$\,\AA) and the collisional caveat above,
       and a seed systematic that this ladder measures at $0.01$--$0.12$ per
-      cent in equivalent width on the two arms nearest the crossing. This is
+      cent in equivalent width on the two rungs nearest the crossing. This is
       the answer on the solved-column branch; $1.61$ is the answer
       to the same question above a prescribed metal-free base, and neither
       is an independent prediction of the model.

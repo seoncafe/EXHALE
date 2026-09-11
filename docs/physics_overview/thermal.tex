@@ -1,0 +1,344 @@
+\section{The thermal source: heating and cooling}
+\label{sec:thermal}
+
+\subsection{The heating channels}
+\label{sec:thermal:heat}
+
+The volumetric heating rate of a cell is a sum of physically distinct
+deposits, and there is exactly one list of them
+(\texttt{util\_ion\_eq.f90}): \texttt{heating\_of\_composition} fills every
+column of \texttt{heat\_chan}, the total it returns is the sum of those
+columns in that order, and the header of \texttt{output/Heating\_breakdown.txt}
+is built from the same names, so a deposit cannot exist in the energy
+equation and be missing from the breakdown.
+
+\begin{center}
+\begin{tabular}{@{}>{\raggedright\arraybackslash}p{0.075\textwidth}>{\raggedright\arraybackslash}p{0.40\textwidth}>{\raggedright\arraybackslash}p{0.44\textwidth}@{}}
+\toprule
+\# & name & what it is\\
+\midrule
+1--6 & \texttt{heat\_HI \dots\ heat\_metals} &
+  photoionization of each absorber, $n_a h^{(1)}_a$ of
+  \eqref{eq:rad:photoheat}--\eqref{eq:rad:heatcontraction}\\
+7  & \texttt{heat\_Hpe[excitedH]} & photoelectric heating of H($n{=}2$) by
+     the Balmer continuum, \eqref{eq:ion:balmer}\\
+8  & \texttt{heat\_Hdx[Lya-deexc]} & collisional de-excitation of the
+     Ly$\alpha$-pumped $n=2$ atoms (\texttt{incl\_deexc\_heat}, default on)\\
+9  & \texttt{heat\_He\_recomb} & photoelectrons of the H\,{\sc i}, H$_2$ and
+     metal ionizations driven by helium recombination radiation\\
+10--12 & \texttt{heat\_He23S\_*} & He($2^3$S)$+$H Penning and associative
+     branches, and He($2^3$S)$+$H$_2$ Penning\\
+13--14 & \texttt{heat\_H2\_LW\_*} & kinetic energy of the Lyman-Werner
+     dissociation fragments, and collisional de-excitation of the H$_2$
+     fluorescence\\
+15 & \texttt{heat\_mol\_chem} & net chemical heat of the collisional
+     reactions of the H$_2$/He network\\
+16--19 & \texttt{heat\_FUV\_photolysis}, \texttt{heat\_oxygen\_collisional},
+     \texttt{heat\_CO\_Hep\_transfer}, \texttt{heat\_CO\_photodissoc} &
+     the oxygen option's deposits\\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Channels 1--6 are the photoheating integrals of
+Sec.~\ref{sec:radiation:rates}, already carrying the heating efficiency
+$f_{\rm heat}$ of \eqref{eq:rad:fheat}. Channel 15 exists because the return
+path that makes ionization energy a non-channel in an atomic gas is different
+in a molecular one (\texttt{molecular\_reaction\_heat.f90}). Follow one
+closed cycle:
+\[
+{\rm H_2}+h\nu \to {\rm H_2^+}+e \quad(\text{the photon pays }
+I({\rm H_2})=15.43\,{\rm eV}),
+\qquad
+{\rm H_2^+}+{\rm H_2}\to{\rm H_3^+}+{\rm H} \quad(+1.70\,{\rm eV}),
+\]
+\[
+{\rm H_3^+}+e \to {\rm H_2}+{\rm H}\quad(+9.25\,{\rm eV},\ \text{dissociative:
+the energy goes into the fragments, not a photon}).
+\]
+The cycle returns to H$_2$ having turned one H$_2$ into H$+$H and having left
+$I({\rm H_2})-D_0({\rm H_2}) = 15.43-4.48 = 10.95$\,eV in the gas, with no
+photon anywhere in it to carry that away. Measured on the converged
+He/H $=0.0793$ hot Uranus, that is 81 percent of the total heating rate at
+$1.02\,r_{\rm base}$. \texttt{Molecular reaction heat} is therefore
+\emph{on} by default; it is unreachable in an atomic run, so no non-molecular
+result moves.
+
+\subsection{The cooling channels}
+\label{sec:thermal:cool}
+
+\texttt{eval\_cool} (\texttt{util\_ion\_eq.f90}) assembles the cooling rate
+of every cell as
+\begin{equation}
+\Lambda = n_e\left(\Lambda_{\rm ff}+\Lambda_{\rm cx}
+                 +\Lambda_{\rm rec}+\Lambda_{\rm ci}\right)
+        + \Lambda_{\rm metal} + \Lambda_{\rm H_3^+}
+        + \Lambda_{\rm H_2} + \Lambda_{\rm H_2O} + \Lambda_{\rm CO},
+\label{eq:th:cooltotal}
+\end{equation}
+in erg\,cm$^{-3}$\,s$^{-1}$, with $n_e$ the same charge sum the ionization
+balance uses (\texttt{calc\_ne}), molecular donors included, since inside a
+deep molecular base H$_3^+$ is the dominant ion. The breakdown written to
+\texttt{output/Cooling\_breakdown.txt} is read straight off the arrays
+\eqref{eq:th:cooltotal} is built from, so the columns sum to $\Lambda$
+exactly.
+
+\paragraph{Recombination.} $\Lambda_{\rm rec} =
+\lambda_{\rm HII}n_{\rm HII}+\lambda_{\rm HeII}n_{\rm HeII}
++\lambda_{\rm HeIII}n_{\rm HeIII}$ with, for hydrogen \citep{Hui1997},
+\begin{equation}
+\lambda_{\rm HII}(T) = 3.435\times10^{-30}\,T\,
+   \frac{x^{1.970}}{\left[1+(x/2.250)^{0.376}\right]^{3.720}},
+\qquad x = \frac{2\times157807}{T}.
+\label{eq:th:reccool}
+\end{equation}
+The helium terms are $kT$ times the \emph{same} recombination coefficient
+the ionization balance runs on, so electrons are not removed at one rate and
+the gas charged at another.
+
+\paragraph{Collisional ionization.} $\Lambda_{\rm ci}$ charges each
+ionization its measured potential in erg,
+\begin{equation}
+\Lambda_{\rm ci} = E_{\rm th}^{\rm HI}\beta_{\rm HI}n_{\rm HI}
+   + E_{\rm th}^{\rm HeI}\beta_{\rm HeI}n_{1^1{\rm S}}
+   + E_{\rm th}^{\rm HeII}\beta_{\rm HeII}n_{\rm HeII}
+   + E_{\rm th}^{2^3{\rm S}}\beta_{2^3{\rm S}}n_{2^3{\rm S}},
+\label{eq:th:cicool}
+\end{equation}
+the He\,{\sc i} term acting on the ground \emph{singlet}
+$n(1^1{\rm S}) = n({\rm He\,I}) - n(2^3{\rm S})$, because the metastable
+sits 19.8\,eV up and carries its own 4.8\,eV threshold in the last term.
+The same subtraction is made in the photoheating and in the collisional
+excitation below, so the metastable is never charged the ground-state
+coefficients as well.
+
+\paragraph{Collisional excitation.} $\Lambda_{\rm cx}$ is the sum of three
+fits,
+\begin{equation}
+\lambda_{\rm HI} = \frac{7.5\times10^{-19}}{1+\sqrt{T/10^{5}}}e^{-118348/T},
+\qquad
+\lambda_{\rm HeI} = 1.1\times10^{-19}T^{0.082}e^{-2.3\times10^{5}/T},
+\qquad
+\lambda_{\rm HeII} = \frac{5.54\times10^{-17}T^{-0.397}}{1+\sqrt{T/10^{5}}}
+                     e^{-473638/T},
+\label{eq:th:coexcool}
+\end{equation}
+contracted with $n_{\rm HI}$, $n(1^1{\rm S})$ and $n_{\rm HeII}$. The first
+of these is the Ly$\alpha$-dominated hydrogen line cooling, and it is the
+optically thin fit as written: \emph{no escape probability multiplies the
+Ly$\alpha$ cooling channel.} $\lambda_{\rm HI}$ is
+\texttt{lambda\_coex\_HI} of \texttt{Cool\_coeff.f90} and
+\texttt{eval\_cool} contracts it with $n_{\rm HI}$ and $n_e$ with no such
+factor anywhere. The two escape probabilities the code does compute enter
+elsewhere: $\beta$ of \texttt{lya\_rt.f90} \eqref{eq:ion:neufeld} enters the
+H($n{=}2$) populations and the pumping field, and $\beta_{ul}$ of
+\texttt{fine\_structure\_line\_transfer} enters the metal ground-term
+statistical equilibrium \eqref{eq:th:fsse}; neither is read by any cooling
+coefficient. The asymmetry is deliberate: multiplying $\lambda_{\rm HI}$ by
+an escape probability would leave the trapped fraction with no owner while
+keeping the de-excitation heating channel 8 as an independent source, that is
+it would double count. A ledger carrying both is the stated target and is not
+built.
+
+With the metastable tracked, two further terms are added to
+$\Lambda_{\rm cx}$, both scaling with the explicitly computed
+$n(2^3{\rm S})$: the $2^3$S$\to2^3$P excitation followed by 10830\,\AA{}
+decay and escape, and the $2^3$S$\to2^1$S (0.80\,eV) and $2^3$S$\to2^1$P
+(1.40\,eV) collisional conversions, each removing its threshold energy from
+the electron gas. The ground-to-triplet excitation $q_{13}$ is deliberately
+excluded here, being already inside $\lambda_{\rm HeI}$.
+
+\paragraph{Free-free.} $\Lambda_{\rm ff} = 1.426\times10^{-27}\sqrt{T}
+\sum_{\rm ions} Z_{\rm ion}^{2}\,\bar g(T,Z_{\rm ion})\,n_{\rm ion}$, with
+$\bar g$ the thermally averaged Gaunt factor of \citet{vanHoof2014},
+interpolated linearly in $x = \log_{10}(Z^{2}\,157807/T)$
+and clamped to the tabulated range. Only $Z_{\rm ion}=1$ and 2 occur.
+The molecular ions H$_2^+$, H$_3^+$ and HeH$^+$ do donate to $n_e$ but are
+deliberately left out of this charge sum: they exist only in the
+$T\sim10^{3}$\,K molecular base, where this hot-plasma expression is an
+extrapolation whose emission comes out at frequencies the atmosphere is not
+thin to, and where H$_3^+$ and metal lines dominate by far.
+
+\paragraph{Metal lines.} $\Lambda_{\rm metal} = n_e\sum_i n_{{\rm m},i}
+c_i(T)$ with $c_i$ a closed-form analytic fit to the CHIANTI v11.0.2
+optically thin line-cooling curve of that ion. The C/N/O fits are the
+default (\texttt{cno\_chianti = .true.}; \texttt{cno\_cool 0} in
+\texttt{metals.inp} restores the legacy set ported from AIOLOS), and
+Mg\,{\sc i/ii}, Ca\,{\sc ii}, Na\,{\sc i} and Fe\,{\sc i/ii} follow the same
+route. Two entries are not in CHIANTI v11 and are built otherwise: the
+Na\,{\sc i} D doublet with a $\bar g$ factor 0.2 calibrated against the
+CHIANTI Mg\,{\sc ii} and Ca\,{\sc ii} values, and the Fe\,{\sc i} permitted
+multiplets.
+
+Two density-dependent replacements are made on top of those coronal curves,
+because a coronal fit assumes $\Lambda\propto n_e$ and no level saturation
+while the base of an irradiated atmosphere runs at $n_e\sim10^{9}$,
+$n_{\rm HI}\sim10^{14}$\,cm$^{-3}$, decades above the critical densities of
+the lines involved.
+
+\begin{itemize}
+\item \emph{Fe\,{\sc ii}} takes a two-dimensional statistical-equilibrium
+  table $\Lambda_{\rm eff}(T,n_e) = \left(\sum_u n_u A_{ul}\Delta E_{ul}\right)/n_e$,
+  whose $1/n_e$ cancels the $n_e$ of the assembly and so leaves the correct
+  saturated emission; at low $n_e$ it reduces to the coronal rate. Without
+  it the forbidden $a\,^6$D lines overestimate the base cooling by about
+  four decades.
+\item \emph{Ground-term fine structure} of C\,{\sc i} ([C\,{\sc i}] 609.1,
+  370.4\,$\mu$m), C\,{\sc ii} (157.7\,$\mu$m), N\,{\sc ii} (205.3,
+  121.8\,$\mu$m) and O\,{\sc i} (63.2, 145.5, 44.1\,$\mu$m) is replaced by
+  the exact statistical equilibrium of the ground term,
+  \begin{equation}
+  \sum_j f_j R_{ji} = f_i\sum_j R_{ij},
+  \quad \sum_i f_i = 1,
+  \quad R_{ul} = C_{ul}+\beta_{ul}A_{ul},
+  \quad R_{lu} = C_{ul}\frac{g_u}{g_l}e^{-E_{ul}/kT},
+  \label{eq:th:fsse}
+  \end{equation}
+  with $C_{ul} = n_e k_{e,ul}(T)+n_{\rm HI}k_{{\rm H},ul}(T)$ and
+  $k_{e,ul} = 8.629\times10^{-6}\Upsilon/(g_u\sqrt T)$, the effective
+  collision strengths $\Upsilon$ being quartic fits in
+  $x = \log_{10}(T/10^{4})$ to the CHIANTI \texttt{.scups} values over
+  $10^{3}$--$10^{5}$\,K (largest error 4.8 percent) and the H-atom rates
+  taken from \citet{YanBabb2023} for C\,{\sc i} and N\,{\sc ii},
+  \citet{Abrahamsson2007} for O\,{\sc i} and \citet{Barinovs2005} for
+  C\,{\sc ii}. The
+  emitted power per ion is
+  $W_{\rm FS} = \sum_{u>l} f_u\beta_{ul}A_{ul}k_{\rm B}E_{ul}$ and the
+  coefficient returned is $\Lambda_{\rm eff} = W_{\rm FS}/n_e+\Lambda_{\rm rem}$,
+  $\Lambda_{\rm rem}$ being a refit of the coronal curve keeping only the
+  channels that leave the ground term.
+\end{itemize}
+
+The line trapping $\beta_{ul}$ of these fine-structure lines is the
+line-center escape probability formed from the columns above and below the
+cell (\texttt{fine\_structure\_line\_transfer}), and it enters \emph{inside}
+the statistical equilibrium as $A_{ul}\to\beta_{ul}A_{ul}$ rather than as a
+factor on the result: in the subcritical limit the cooling is set by the
+collisional excitation rate and is independent of $\beta$, and in the
+saturated limit the escaping flux is proportional to it. $\beta = 1$
+reproduces the optically thin result exactly, and that is the value every
+other metal ion keeps. With \texttt{Base IR field: True} (default off) the
+same lines also \emph{absorb} the thermal infrared of the lower atmosphere,
+a blackbody at $T_0$ covering the sky fraction the base subtends, through
+the photon occupation number $\bar n_{ul}$; this gives the layer a radiative
+equilibrium floor instead of letting it cool into vacuum.
+
+\paragraph{Molecular infrared.} $\Lambda_{\rm H_3^+}$ is the
+\citet{Miller2013} emission of one H$_3^+$ molecule in LTE,
+\begin{equation}
+\Lambda_{\rm H_3^+} = 4\pi\,n_{\rm H_3^+}\,E(T)\,s(T,n_{\rm H_2}),
+\qquad
+\ln E(T) = \sum_n C_n T^{n}\ \ \mathrm{[W\,molecule^{-1}\,sr^{-1}]},
+\label{eq:th:h3p}
+\end{equation}
+their Table 5 (the ``using $z(t)$'' column) with the non-LTE departure
+factor $s$ of their Table 6, whose only collider is H$_2$ through the
+proton-hopping reaction with the \citet{Oka2004} coefficient
+$2\times10^{-15}$\,m$^{3}$\,s$^{-1}$. Table 6 covers
+$n({\rm H_2}) = 10^{6}$--$10^{14}$\,cm$^{-3}$; below that the code adopts
+the linear low-collider limit $s(T,n) = s(T,10^{6})\,n/10^{6}$ and records
+the cell as evaluated outside the tabulated range. This is the dominant
+coolant of a molecular base: the atomic channels above are all exponentially
+suppressed at $T\sim10^{3}$\,K, so leaving it out leaves that gas with no
+radiative loss at all.
+
+With \texttt{Molecular IR bands: True} (default off) three further net
+exchanges are added (\texttt{molecular\_infrared\_cooling.f90}): the H$_2$
+quadrupole and magnetic-dipole line spectrum, and the H$_2$O and CO
+vibration-rotation bands. Each is a \emph{net} rate,
+\begin{equation}
+\Lambda_X^{\rm net} = n_X\left[E_X(T)-W_{\rm dil}\,E_X^{\rm abs}(T;T_{\rm rad})\right],
+\qquad
+E_X(T) = 4\pi\sum_b\sigma_b(T)\int_b B_\nu(T)\,{\rm d}\nu,
+\label{eq:th:molir}
+\end{equation}
+so each vanishes at its own radiative equilibrium temperature instead of
+running the layer down to nothing; a column is negative wherever that channel
+heats. The dilution $W_{\rm dil}$ is the same $0.5\,f_{\rm sky}$ the H$_3^+$ closure
+uses and is zero when \texttt{Base IR field} is off, which reduces these
+channels to pure emitters. Without them a converged molecular layer radiates
+itself down to 190--400\,K against an equilibrium temperature of
+1100--1400\,K.
+
+\subsection{Advancing the temperature}
+\label{sec:thermal:tsolve}
+
+\paragraph{In the marching loop.} The temperature of a cell is advanced by
+\texttt{solve\_energy\_semi\_implicit}
+(\texttt{energy\_semi\_implicit.f90}), the inner step of the coupled
+temperature-composition source step: the marching loop alternates it with
+the composition sweep until the pair stops moving, so the composition is
+fixed for one pass and not for the whole step. With the composition and the
+photoheating frozen over the step,
+\begin{equation}
+\rho e(T)-\rho e_{\rm old} = \Delta t\left[\mathcal{H}-\Lambda(T)\right],
+\qquad\text{i.e.}\qquad
+R(T) = \varepsilon(T)-\varepsilon_{\rm old}
+       -a\left[\mathcal{H}-\Lambda(T)\right] = 0,
+\quad a = \frac{\Delta t}{n_{\rm tot}+n_e},
+\label{eq:th:semiimplicit}
+\end{equation}
+with $\varepsilon = \rho e/(n_{\rm tot}+n_e)$ the internal energy per
+particle, which is what \texttt{internal\_energy\_per\_particle} returns.
+The caloric internal energy $\rho e$ is that of \eqref{eq:caloric}. The root is
+found by a safeguarded Newton-bisection hybrid on a physical bracket whose
+ends are the floor of the equation-of-state validity and a ceiling above the
+heating-only update: the search starts from the explicit-Euler point,
+brackets the root as it goes, and once both ends are known takes a Newton
+step whenever that step stays strictly inside the bracket and the bracket
+keeps halving, bisecting otherwise. The Newton derivative is exact in the
+equation-of-state term (\texttt{heat\_capacity\_per\_particle}) and a secant
+estimate in ${\rm d}\Lambda/{\rm d}T$, which affects only the path, the
+safeguard owning the convergence.
+
+What is tested before the update is returned is the residual at the
+\emph{returned} temperature against $|R|/s$ with
+$s = |\rho e_{\rm old}|+\Delta t(|\mathcal{H}|+|\Lambda|)$, and admissibility; the
+cooling written back is $\Lambda(T_{\rm returned})$, evaluated there and not
+at a previous iterate. There is no clamp: a cell that does not meet the
+tolerance, that has no bracket, or that reaches the equation-of-state floor
+is a named failure, nothing is assembled from it, and the step controller
+retakes the step at half $\Delta t$ as in Sec.~\ref{sec:numerics:rk}. The floor is
+not a reservoir: reaching it means the balance asks for a temperature below
+the range in which the equation of state and the rate fits are defined, and a
+floor representing real external heating would have to be a specified
+reservoir with its own budget. \texttt{use\_semi\_implicit\_energy} is on by
+default.
+
+\paragraph{In the advection post-process.} \texttt{T\_equation.f90} is
+\emph{not} the marching loop's temperature solve. Its module
+\texttt{equation\_T} is used by \texttt{post\_process\_adv.f90}
+(Sec.~\ref{sec:postprocessing:adv}) and by test drivers, and by nothing else;
+what it solves is the \emph{steady} internal-energy balance of the profile,
+upwind differenced,
+\begin{equation}
+\nabla\!\cdot\!(u\mathbf{v}) + p\,\nabla\!\cdot\!\mathbf{v}
+ = \rho v\frac{{\rm d}e}{{\rm d}r}
+ - p\,v\frac{{\rm d}\ln\rho}{{\rm d}r}
+ + h\,\nabla\!\cdot\!(\rho\mathbf{v})
+ = \mathcal{H}-\Lambda,
+\label{eq:th:teq}
+\end{equation}
+with $e$ the internal energy per unit mass and $h = e+p/\rho$ the enthalpy
+per unit mass. The upstream term carries the \emph{upstream} cell's specific internal
+energy formed at the upstream composition and temperature, not this cell's
+caloric state evaluated at $T_{\rm up}$: the rovibrational heat capacity
+belongs to the gas that holds the molecules, so across a dissociation front
+two cells at the same temperature store different energy. The root is
+bracketed rather than guessed (\texttt{solve\_T\_brent}, on by default
+through \texttt{use\_brent\_tsolve}): 80 logarithmically spaced probes from
+$\max(0.05T_{\rm guess},1\,{\rm K})$ to $4T_{\rm guess}$ locate the
+\emph{first} sign change, i.e.\ the lowest root, and Brent's method closes
+the bracket to $2\epsilon|b|+{\rm tol}/2$ with ${\rm tol}=10^{-10}$ in
+$T/T_0$, which is what keeps the solve off the hot spurious root;
+\texttt{hybrd1} on the same residual is the fallback. The metal densities and
+the fine-structure escape probabilities are held fixed while the root finder
+varies $T$, the latter because the optical depth is a column over the whole
+atmosphere and not a function of this cell's trial temperature.
+
+\paragraph{The heating efficiency.} The diagnostic $\eta_{\rm heat}$ of
+\eqref{eq:rad:eta}, written as column \texttt{eta} by
+\texttt{write\_output.f90}, is a property of the composition the sweep
+returned and is not a free parameter anywhere in the code; the closed-form
+parameterizations of the same quantity that the literature uses are
+reproduced offline by \texttt{eta\_approx.py} for comparison only.

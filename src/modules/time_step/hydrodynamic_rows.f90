@@ -40,7 +40,7 @@
       ! composition, the heating and the cooling remain double: what is
       ! evaluated here is the arithmetic of the finite-volume operator on a
       ! given composition, which is where the residual's non-smoothness
-      ! floor is (docs/Update_EXHALE.md item N33: the Roe flux of a face in
+      ! floor is (docs/Update_EXHALE_stage2.md item N33: the Roe flux of a face in
       ! the near-hydrostatic base layer is built from state jumps 3e5 to
       ! 6e6 times smaller than the states, so it carries the last bit of
       ! O(1) quantities, and the row divides the flux difference by the cell
@@ -75,7 +75,7 @@
 
       module hydrodynamic_rows
       ! WHICH ARITHMETIC THE STATIONARY RESIDUAL'S HYDRODYNAMIC ROWS ARE
-      ! ASSEMBLED IN, and the arm that changes it.
+      ! ASSEMBLED IN, and what changes it.
       !
       ! Default: the production routines (Reconstruct, RK_rhs, Num_flux,
       ! source), in double, reached through
@@ -106,11 +106,11 @@
       ! IT IS NOT A DISCRETIZATION AND NOTHING IS ADOPTED FROM IT.  The
       ! equations, the scheme, the boundary construction and the
       ! composition are the same; only the width of the mantissa the
-      ! arithmetic runs in is different, and the arm is off unless the
+      ! arithmetic runs in is different, and it is off unless the
       ! environment names it.  The physically right treatment of the floor
       ! is a well-balanced flux difference at the base, not extra precision.
       !
-      ! Restrictions of the arm, each of which stops the run rather than
+      ! Restrictions of this assembly, each of which stops the run rather than
       ! silently evaluating something else: the low-Mach contact-mode
       ! dissipation flux is not part of the generic text, the
       ! reconstruction flags must be the consistent pair the schemes are
@@ -118,13 +118,13 @@
       ! two schemes is refused because the momentum row's terms are read
       ! off by a single-scheme rule (the_generic_text_is_usable).
       !
-      ! WHAT THE ARM HANDS BACK BESIDE THE ROWS.  The face flux, the face
+      ! WHAT IT HANDS BACK BESIDE THE ROWS.  The face flux, the face
       ! pressure and, under the well-balanced key, the face departures the
       ! momentum row was assembled from, all in the module arrays of
       ! RK_integration that every later reader of them uses
       ! (store_the_interface_fluxes).  That is what lets the momentum row's
-      ! terms and its reference scale describe the state the arm just
-      ! assembled and not the last state RK_rhs saw.
+      ! terms and its reference scale describe the state just
+      ! assembled here and not the last state RK_rhs saw.
 
       use global_parameters
       use RK_integration, only: face_flux, face_p, face_q_up, face_q_dn
@@ -138,20 +138,19 @@
 
       implicit none
       private
-      public :: generic_precision_rows_arm
-      public :: ARM_OFF, ARM_QUADRUPLE, ARM_GENERIC_DOUBLE
+      public :: generic_precision_rows_selected
+      public :: ROWS_PRODUCTION, ROWS_QUADRUPLE, ROWS_GENERIC_DOUBLE
       public :: hydrodynamic_rows_in_quadruple_precision
       public :: hydrodynamic_rows_in_double_precision
       public :: quad_rows_calls, quad_rows_seconds
 
       ! What EXHALE_RESID_QUAD selects.
-      integer, parameter :: ARM_OFF            = 0  ! the production routines
-      integer, parameter :: ARM_QUADRUPLE      = 1  ! the generic text at real(16)
-      integer, parameter :: ARM_GENERIC_DOUBLE = 2  ! the generic text at real(8)
+      integer, parameter :: ROWS_PRODUCTION     = 0  ! the production routines
+      integer, parameter :: ROWS_QUADRUPLE      = 1  ! the generic text at real(16)
+      integer, parameter :: ROWS_GENERIC_DOUBLE = 2  ! the generic text at real(8)
 
-      ! How many times the quadruple pipeline ran and how long it spent
-      ! there, so the cost of the arm is a measured number and not an
-      ! estimate.
+      ! How many times the quadruple assembly ran and how long it spent
+      ! there, so its cost is a measured number and not an estimate.
       integer :: quad_rows_calls   = 0
       real*8  :: quad_rows_seconds = 0.0d0
 
@@ -159,9 +158,9 @@
 
       ! ------------------------------------------------------!
 
-      integer function generic_precision_rows_arm() result(mode)
-      ! EXHALE_RESID_QUAD: absent or anything else ARM_OFF, 1
-      ! ARM_QUADRUPLE, 2 ARM_GENERIC_DOUBLE.  Read at every call rather than
+      integer function generic_precision_rows_selected() result(mode)
+      ! EXHALE_RESID_QUAD: absent or anything else ROWS_PRODUCTION, 1
+      ! ROWS_QUADRUPLE, 2 ROWS_GENERIC_DOUBLE.  Read at every call rather than
       ! cached, so that a test can arm and disarm it inside one process; the
       ! read costs microseconds against a residual evaluation of
       ! milliseconds.
@@ -173,24 +172,24 @@
       ! the solve visits and not one stated by a test.
       character(len=32) :: env
       integer :: st, ln
-      mode = ARM_OFF
+      mode = ROWS_PRODUCTION
       env = ' '
       call get_environment_variable('EXHALE_RESID_QUAD', env,            &
                                     length=ln, status=st)
       if (st .ne. 0 .or. ln .le. 0) return
       select case (trim(adjustl(env)))
       case ('1')
-         mode = ARM_QUADRUPLE
+         mode = ROWS_QUADRUPLE
       case ('2')
-         mode = ARM_GENERIC_DOUBLE
+         mode = ROWS_GENERIC_DOUBLE
       end select
-      end function generic_precision_rows_arm
+      end function generic_precision_rows_selected
 
       ! ------------------------------------------------------!
 
       subroutine hydrodynamic_rows_in_double_precision(u,WL,WR,dF,S)
       ! The generic text at kind(1.0d0).  Not on any run's path: it is the
-      ! control of the arm, compared against the production routines.
+      ! control of that experiment, compared against the production routines.
       real*8, dimension(3,1-Ng:N+Ng), intent(in)  :: u
       real*8, dimension(3,1-Ng:N+Ng), intent(out) :: WL,WR,dF,S
       real*8, dimension(3,1-Ng:N+Ng) :: ff
@@ -235,7 +234,7 @@
       ! the run summary.
       !
       ! THE FACE DEPARTURES BELONG TO THE STATE THAT WAS JUST ASSEMBLED.
-      ! Under the well-balanced arm the momentum row's pressure-gradient
+      ! Under the well-balanced option the momentum row's pressure-gradient
       ! term is the gradient of the departure, (A+ q_up - A- q_dn)/dV under
       ! PLM and (q_up - q_dn)/dr under WENO3
       ! (momentum_row_terms_of_cell, RK_rhs.f90), so a reader handed the
@@ -245,7 +244,7 @@
       ! own pressure instead, nothing reads these two arrays, and they are
       ! left as they stand.
       !
-      ! There is one pair of departures to store because the arm evaluates
+      ! There is one pair of departures to store because this assembly evaluates
       ! ONE reconstruction: the_generic_text_is_usable refuses a
       ! reconstruction continuation with 0 < lambda < 1, where the blended
       ! row is not the row of any single pair.
@@ -274,7 +273,7 @@
 
       subroutine the_generic_text_is_usable()
       ! The three configurations the generic text does not carry.  All of
-      ! them stop the run: an arm that quietly evaluated a different
+      ! them stop the run: a control experiment that quietly evaluated a different
       ! operator would answer a question nobody asked.
       !
       ! A RECONSTRUCTION CONTINUATION STRICTLY INSIDE (0,1) IS ONE OF THEM.

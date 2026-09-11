@@ -248,7 +248,7 @@ network-plus-domain rerun (its phase P1), is `docs/oxygen_chemistry_new_plan.md`
 
 This section is the record of phase **P1** of `docs/oxygen_chemistry_new_plan.md`
 (reinstall Photochem, rerun the comparison with matched network *and* matched
-vertical domain, add Photochem's gas-giant mechanism as a third arm, export the
+vertical domain, add Photochem's gas-giant mechanism as a third network, export the
 reaction budget at the handoff level, and measure the EXHALE-level effect on a
 planet that converges). Everything below was measured on 2026-08-26 in this
 working copy. The 2026-08-09 sections above are left unedited; where a number
@@ -294,12 +294,12 @@ as a reference for the gas-giant workflow.
    1e-7 bar default with the climate grid cut at 0.5 dyn/cm^2. `gasgiants`
    requires `3*TOA < P_climate_top`, so the supplied T(p) is cut at
    3.05*TOA rather than at a fixed pressure.
-2. **A third arm**, `zahnle_s`: the same Zahnle set with sulfur, i.e. the
+2. **A third network**, `zahnle_s`: the same Zahnle set with sulfur, i.e. the
    H/He/N/O/C/S gas-giant mechanism that `photochem.extensions.gasgiants`
    generates.
 3. **Reaction budgets** exported (`EvoAtmosphere.production_and_loss`) for H2,
    H2O, OH and H on the model grid.
-4. **A second planet**, HD 209458 b, run through all three Photochem arms
+4. **A second planet**, HD 209458 b, run through all three Photochem networks
    against the existing VULCAN solution, so that the wind-level measurement is
    made on a planet whose EXHALE run is a molecular-base configuration seeded
    from the handoff. (This item originally said that HD 189733 b "does not
@@ -307,7 +307,7 @@ as a reference for the gas-giant workflow.
    `HD189733b/run_20260819_const.log` ends with `(JFNK) done info=0`,
    `||R|| = 8.349e-4`, log10 Mdot = 9.14, and that solution is the one sitting
    in `HD189733b/output/`. What HD 189733 b lacks is not convergence but a
-   `base.inp` molecular-base run of the four arms; the wind-level arm
+   `base.inp` molecular-base run of the four networks; the wind-level
    comparison was never set up for it.)
 5. **VULCAN reruns with a truncated domain**, so the domain sensitivity is
    measured in both codes rather than in one.
@@ -316,7 +316,7 @@ Held fixed exactly as in 2026-08-09: T(p), Kzz, the stellar spectrum and its
 (R_star/a)^2 dilution, gravity, the Lodders elemental abundances VULCAN actually
 reads, and the 48 deg zenith angle.
 
-## P1.2 HD 189733 b at 1 microbar, all arms
+## P1.2 HD 189733 b at 1 microbar, all networks
 
 | run | code | network | model top [dyn/cm^2] | T [K] | q_H2 | q_H |
 |---|---|---|---|---|---|---|
@@ -395,13 +395,13 @@ numerics.
 "O family" means every channel with O, O(1D), OH or H2O as a reactant or
 product.
 
-| arm | gross loss | gross production | net loss | O family, gross loss | O family, net |
+| network | gross loss | gross production | net loss | O family, gross loss | O family, net |
 |---|---|---|---|---|---|
 | C' Photochem/NCHO | 1.470e7 | 6.087e6 | 8.617e6 | 99.1% | **99.0%** |
 | B' Photochem/Zahnle | 4.235e6 | 1.347e6 | 2.888e6 | 98.8% | **99.6%** |
 | D' Photochem/Zahnle+S | 7.271e6 | 4.419e6 | 2.851e6 | 59.0% | **99.3%** |
 
-The single largest channel in every arm is `OH + H2 -> H2O + H` (90.2% of gross
+The single largest channel in every network is `OH + H2 -> H2O + H` (90.2% of gross
 loss in C', 95.9% in B', 57.2% in D'), and the water made that way is returned
 to OH mostly by photolysis (`H2O + hv -> OH + H`, 54% of H2O loss in C') and by
 `H2O + H -> OH + H2`. In D' the sulfur channel `S + H2 -> H + HS` carries 40% of
@@ -410,13 +410,13 @@ the gross loss but is almost exactly balanced by its reverse
 net.
 
 **Gate answer for HD 189733 b: yes.** The H2O/OH cycle dominates H2 destruction
-at the handoff level: 99% of the net in all three arms, independent of which
+at the handoff level: 99% of the net in all three networks, independent of which
 network is used.
 
 The same budget on **HD 209458 b** reads differently, and the difference
 explains the rest of this section:
 
-| arm, level | gross loss | net loss | O family, gross | O family, net |
+| network, level | gross loss | net loss | O family, gross | O family, net |
 |---|---|---|---|---|
 | C' at 1 ubar (T = 2331 K) | 8.367e9 | 6.089e6 | 99.9% | **29.6%** |
 | B' at 1 ubar | 7.606e9 | 5.889e6 | 99.9% | 25.4% |
@@ -457,13 +457,13 @@ with `H = p/(rho g)` and `g = G M_p/r^2` from that run's own `input.inp`
 `mu = 1.2751 m_H` measured as `rho/(m_H p/k_B T)`) gives **`H = 1.115e8` cm and
 `tau_adv = H/v = 2.132e8` s**, 14% below the numbers above; the 1.27e8 could not
 be reproduced from the run and no `mu`/`g` was recorded with it. The ratio is
-unchanged in order of magnitude: `tau_chem/tau_adv = 1.05e-3` (arm C'). The full
+unchanged in order of magnitude: `tau_chem/tau_adv = 1.05e-3` (network C'). The full
 re-measurement, including the same ratio on HD 189733 b and its radial profile,
 is in `oxygen_chemistry_new_plan.md` phase P4.
 
-## P1.5 HD 209458 b: the three arms agree, and why
+## P1.5 HD 209458 b: the three networks agree, and why
 
-Same three arms, the VULCAN solution being the converged
+Same three networks, the VULCAN solution being the converged
 `vulcan_work/hd209_vulcan/output/HD209.vul` of 2026-08-10 (no rerun).
 
 | level | A VULCAN/NCHO | C' pc/NCHO | B' pc/Zahnle | D' pc/Zahnle+S |
@@ -490,15 +490,15 @@ H2.
 > kept as recorded but stand on that base; see `INVALID_BASE_TEMPERATURE.md`
 > in each run directory and item P35 of `TO_BE_DONE.md`.
 
-Run directories `vulcan_work/pc_compare_p1/exhale_hd209/p1e-6_seed/<arm>/`. All
+Run directories `vulcan_work/pc_compare_p1/exhale_hd209/p1e-6_seed/<network>/`. All
 five runs are the same `HD209458b/input.inp` with `Molecular base: True`,
 the same `metals.inp`, the same initial condition (the converged state in
 `vulcan_work/hd209_wind_response/photo_newton/output`), the same executable and
-the same 4 OpenMP threads; they differ in `base.inp` only. Each arm's `base.inp`
+the same 4 OpenMP threads; they differ in `base.inp` only. Each network's `base.inp`
 is written from its own solution, so `T_base`, `r_base` and `HeH_base` are that
-arm's own values as well (they agree to 0.06%, as in 2026-08-09).
+network's own values as well (they agree to 0.06%, as in 2026-08-09).
 
-| arm | q_H2_base | ntot_bc | JFNK | ghost T [K] | log10 Mdot [g/s] | vs VULCAN |
+| code / network | q_H2_base | ntot_bc | JFNK | ghost T [K] | log10 Mdot [g/s] | vs VULCAN |
 |---|---|---|---|---|---|---|
 | VULCAN / NCHO | 0.4237 | 0.703 | info=0, \|\|R\|\| 9.7e-4 | 1638.7 | **9.8853** | - |
 | Photochem / NCHO | 0.4536 | 0.689 | info=0, \|\|R\|\| 3.6e-4 | 1605.0 | **9.8788** | -1.5% |
@@ -510,7 +510,7 @@ log10 Mdot is `exhale_io.mdot_log10` on the `_adv` profiles; the code's own
 printed values are 9.94 / 9.93 / 9.93 / 9.97 and give the same differences.
 
 **Measured: the choice of photochemistry code and network moves HD 209458 b's
-mass-loss rate by at most 0.035 dex (8.3%) across the four arms, and by 1.5%
+mass-loss rate by at most 0.035 dex (8.3%) across the four combinations, and by 1.5%
 between the two codes on the same network**, all four JFNK-converged. The
 deeper-handoff set below shows that this configuration's own JFNK-to-JFNK
 spread is about 0.025 dex, so 0.035 dex is an upper bound on the effect rather
@@ -524,16 +524,16 @@ For contrast, the equilibrium-fit reference is a much larger perturbation
 "photochemical against equilibrium" difference recorded in
 `base_composition_handoff_plan.md` §11 (-12.9% at a matched marching state)
 therefore remains the un-Newton-finished number it was; **only the
-arm-against-arm comparison here is JFNK-converged.**
+code-and-network comparison here is JFNK-converged.**
 
 ### The same measurement at the deeper handoff, and what it says about the noise
 
 `p1e-4_seed/`, identical in construction but at `p_base = 1e-4` bar (T = 1850 K),
-where the arms are physically almost the same solution: q_H2 = 0.8020 (VULCAN),
+where the combinations are physically almost the same solution: q_H2 = 0.8020 (VULCAN),
 0.8027 (Photochem/NCHO), 0.8028 (Photochem/Zahnle), 0.7757 (Photochem/Zahnle+S).
 All five runs reached `JFNK info=0`.
 
-| arm | q_H2_base | ntot_bc | log10 Mdot | vs VULCAN |
+| code / network | q_H2_base | ntot_bc | log10 Mdot | vs VULCAN |
 |---|---|---|---|---|
 | VULCAN / NCHO | 0.8020 | 0.556 | 9.7517 | - |
 | Photochem / NCHO | 0.8027 | 0.555 | 9.7764 | +5.9% |
@@ -545,7 +545,7 @@ All five runs reached `JFNK info=0`.
 does not follow `ntot_bc`.** Read as a noise measurement, this configuration
 reproduces log10 Mdot to about **0.025 dex** between JFNK solutions that started
 from the same IC and differ negligibly in their boundary data. The honest
-conclusion for §P1.6 is therefore: the arm-to-arm effect at the 1 microbar
+conclusion for §P1.6 is therefore: the code-and-network effect at the 1 microbar
 handoff (0.035 dex spread, ordered by `ntot_bc`) is only marginally above that
 floor, and the safe statement is **"the choice of photochemistry code or network
 moves HD 209458 b's mass loss by at most a few percent, comparable to the
@@ -554,7 +554,7 @@ signal of 8.3%.
 
 Two further sets were launched from the cold isothermal IC (`p1e-6/`, `p1e-4/`)
 as an independent path check. They were still marching down when the session
-ended and were stopped: `du` was 0.40 (all four 1 microbar arms; 1.17 for the
+ended and were stopped: `du` was 0.40 (all four 1 microbar runs; 1.17 for the
 equilibrium-fit reference) at 71500 steps, and 0.33 (all five) at 71000 steps at
 1e-4 bar. Nothing above uses them. The equilibrium-fit reference at 1 microbar
 was also stopped: after its JFNK failure it sat between `du` = 0.076 and 0.096
@@ -565,7 +565,7 @@ for 70000 further steps, i.e. it neither converged nor diverged.
 The plan leaves the VULCAN-or-Photochem decision to the user. What P1 measured:
 
 > [decision taken 2026-08-27] Photochem is the production chemistry
-> (`src/utils/photochem_to_lower_profile.py`) and VULCAN the cross-check arm
+> (`src/utils/photochem_to_lower_profile.py`) and VULCAN the cross-check
 > (`src/utils/vulcan_to_lower_profile.py`), on the last row of the table
 > below: only Photochem carries a climate model, so only it can be the route
 > away from a prescribed T(p). Record: `docs/Update_EXHALE_stage1.md` sections 77-78,
@@ -576,7 +576,7 @@ The plan leaves the VULCAN-or-Photochem decision to the user. What P1 measured:
 |---|---|---|
 | installation | in-tree copy (`EXHALE_v1.00/VULCAN`), fetched by `src/utils/setup_vulcan.sh`; pure Python, no build | one conda package plus its data package; not importable from the default interpreter, so a dedicated environment is required |
 | reproducibility of a run | config file edited in place; `chem_funs.py` regenerated per network | mechanism and thermodynamic files written by the script; data package versioned |
-| runtime (HD 189733 b, this session) | 629 s / 1985 steps and 1593 s / 4821 steps (the two truncated domains, VULCAN's own CPU-time line); 1370 s / ~4300 steps (2026-08-09, full domain) | under 2 minutes per arm, all reaching steady state (wall clock from the log timestamps on a shared machine, not a controlled benchmark) |
+| runtime (HD 189733 b, this session) | 629 s / 1985 steps and 1593 s / 4821 steps (the two truncated domains, VULCAN's own CPU-time line); 1370 s / ~4300 steps (2026-08-09, full domain) | under 2 minutes for each network, all reaching steady state (wall clock from the log timestamps on a shared machine, not a controlled benchmark) |
 | network flexibility | its own NCHO/SNCHO sets, plain text | its own Zahnle sets by atom list, plus any VULCAN network through `vulcan2yaml` |
 | domain | any `P_t`; took VULCAN's own 6000 K thermospheric top | thermodynamic data limit the top to T well below 6000 K (NH2 failed); the model top must sit below the climate grid top by 3x |
 | q_H agreement on the same network | reference | 1.70x on HD 189733 b (864 K base), 1.08x on HD 209458 b (2331 K base) |

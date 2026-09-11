@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate docs/Update_EXHALE.tex from docs/Update_EXHALE.md.
+"""Generate docs/Update_EXHALE_stage2.tex from docs/Update_EXHALE_stage2.md.
 
 The Markdown log is the file the entries are appended to; the TeX file is
 its typeset twin in the memo class the earlier stage logs use
@@ -13,16 +13,16 @@ body; the path is relative to docs/, where latexmk runs. Regenerate after
 appending to the log or editing the appendix:
 
     python3 src/utils/update_log_to_tex.py
-    cd docs && latexmk -pdf Update_EXHALE.tex
+    cd docs && latexmk -pdf Update_EXHALE_stage2.tex
 """
 import os, re, subprocess, sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-MD = os.path.join(ROOT, 'docs', 'Update_EXHALE.md')
-TEX = os.path.join(ROOT, 'docs', 'Update_EXHALE.tex')
+MD = os.path.join(ROOT, 'docs', 'Update_EXHALE_stage2.md')
+TEX = os.path.join(ROOT, 'docs', 'Update_EXHALE_stage2.tex')
 
 PREAMBLE = r"""%% EXHALE: running update log, stage 2 (from 2026-09-05).
-%% GENERATED from Update_EXHALE.md by src/utils/update_log_to_tex.py;
+%% GENERATED from Update_EXHALE_stage2.md by src/utils/update_log_to_tex.py;
 %% edit the Markdown, not this file.
 %% Author: Kwang-Il Seon
 \documentclass[english,a4paper]{my_memo}

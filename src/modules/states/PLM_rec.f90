@@ -9,7 +9,7 @@
    contains
    
    subroutine PLM_rec(u_in,WL_rec,WR_rec,P_up,P_dn,dev_L,dev_R)
-   ! WELL-BALANCED ARM.  With the four optional arrays present (the caller
+   ! WELL-BALANCED OPTION.  With the four optional arrays present (the caller
    ! passes them when "Well balanced:" is set) the PRESSURE is reconstructed
    ! in the coordinate of the departure from the cell's own local hydrostatic
    ! equilibrium: the stencil data becomes the neighboring cell's pressure
@@ -19,7 +19,7 @@
    ! acts on that unchanged, and the equilibrium face value P_up / P_dn is
    ! added back at the end.  The departure itself is returned so that the
    ! Riemann jump and the pressure force can be formed from small numbers.
-   ! Density and velocity are reconstructed as they are without the arm
+   ! Density and velocity are reconstructed as they are without it
    ! (Kaeppeli and Mishra 2016, A&A 587, A94, section 2.1.3).
    integer :: j,k
    real*8, dimension(3,1-Ng:N+Ng),intent(in) :: u_in
@@ -50,7 +50,7 @@
             call U_to_W_comp(u_in(:,k),W(:,k-j),k)
       enddo
 
-      ! WELL-BALANCED ARM: the pressure stencil in departure coordinates.
+      ! WELL-BALANCED OPTION: the pressure stencil in departure coordinates.
       ! The departure at a neighboring cell centre is measured against the
       ! equilibrium continued to it through the face, that is with THIS
       ! cell's density up to the face and the NEIGHBOUR's beyond it, which is
@@ -60,8 +60,8 @@
       ! where the same construction appears as the average density of a
       ! uniform mesh).  Continuing the cell's own constant density over the
       ! whole gap instead would leave data of the size (rho_j - rho_j+1) x
-      ! (potential difference), and the arm would be second order and not
-      ! exact.
+      ! (potential difference), and the reconstruction would be second order
+      ! and not exact.
       ! The difference of the two cell pressures is taken FIRST, while it is
       ! still an exact floating-point operation, and the hydrostatic terms
       ! are added to it afterwards; the reverse order would bury the small

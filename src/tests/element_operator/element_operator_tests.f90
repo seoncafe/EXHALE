@@ -2,7 +2,7 @@
       ! WHOSE BOUNDARY THE ELEMENT TRANSPORT OPERATOR IS MEASURED UNDER
       ! (PLAN_20260909_rev1 items N26b and N26c).
       !
-      ! The element arm has two spellings of one balance: the fixed-wind
+      ! The element operator has two spellings of one balance: the fixed-wind
       ! relaxation, which takes backward-Euler steps of it, and
       ! element_transport_residual, which measures it at an infinite step
       ! length.  At the top the condition both are posed under is zero

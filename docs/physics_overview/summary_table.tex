@@ -1,0 +1,486 @@
+\section{The input keys that select physics}
+\label{sec:keys}
+
+Runtime configuration is by the presence of a key, not by a compile flag
+(Sec.~\ref{sec:intro:what}).  Three companion files are read at startup and
+their mere presence is itself a switch:
+\texttt{metals.inp} turns the trace metals on, \texttt{opacity.inp} the
+tabulated continuum opacities, and \texttt{base.inp} the lower-atmosphere
+handoff.
+
+Table~\ref{tab:keys} lists the keys that select physics or the numerical
+scheme, with the default the code takes when the key is absent.  The defaults
+were read from \texttt{parameters.f90} and the parsing from
+\texttt{input\_read.f90}; keys that only name a file, a path or an output
+option are omitted.  Four lines of the core block are mandatory and have no
+default: they are marked as such.
+
+{\small
+\begin{longtable}{@{}>{\raggedright\arraybackslash}p{0.245\textwidth}>{\raggedright\arraybackslash}p{0.155\textwidth}>{\raggedright\arraybackslash}p{0.45\textwidth}@{}}
+\caption{Physics and algorithm keys of \texttt{input.inp}, with the value the
+code takes when the key is absent.}
+\label{tab:keys}\\
+\toprule
+Key & Default & What it selects, and where \\
+\midrule
+\endfirsthead
+\multicolumn{3}{l}{\small\itshape Table \thetable{} continued}\\
+\toprule
+Key & Default & What it selects, and where \\
+\midrule
+\endhead
+\bottomrule
+\endfoot
+
+\multicolumn{3}{l}{\itshape Geometry, grid and the one-dimensional approximation}\\
+\midrule
+\texttt{2D approximate method:} & mandatory &
+  \texttt{Mdot/4}, \texttt{Rate/2}, \texttt{Rate/4} or \texttt{alpha}: the
+  dayside dilution of every stellar beam and the factor on $\dot M$
+  (Table~\ref{tab:2d}; \texttt{parameters.f90}, \texttt{utilities.f90}). \\
+\texttt{Grid type:} & mandatory &
+  \texttt{Uniform}, \texttt{Mixed} or \texttt{Stretched}
+  (\texttt{define\_grid.f90}). \\
+\texttt{Grid cells:} & 500 &
+  Number of physical cells; ghosts are added on top
+  (\texttt{define\_grid.f90}). \\
+\texttt{Base grid [dr,cells]:} & $2\times10^{-4}$, 50 &
+  Width and count of the uniform base region of the \texttt{Mixed} grid
+  (\texttt{define\_grid.f90}). \\
+\texttt{Domain mode:} & Roche &
+  \texttt{Spherical} drops the tidal and centrifugal terms of
+  \eqref{eq:roche} (\texttt{grav\_field.f90}). \\
+\texttt{Outer radius [R\_p]:} & L1 radius &
+  Outer boundary; required in spherical mode
+  (\texttt{input\_read.f90}). \\
+\midrule
+\multicolumn{3}{l}{\itshape Discretization}\\
+\midrule
+\texttt{Numerical flux:} & mandatory &
+  \texttt{HLLC}, \texttt{ROE} or \texttt{LLF}
+  (\texttt{Num\_Fluxes.f90}); \texttt{ROE} is refused with the molecular
+  ladder equation of state. \\
+\texttt{Reconstruction scheme:} & mandatory &
+  \texttt{PLM}, \texttt{WENO3} or the two-stage \texttt{PLM+WENO3}
+  (\texttt{Reconstruction.f90}). \\
+\texttt{Reconstruction continuation:} & off &
+  $\Delta\lambda$ of the homotopy \eqref{eq:homotopy} between the two
+  operators (\texttt{steady\_residual.f90}). \\
+\texttt{CFL:} & 0.6 &
+  CFL number of \eqref{eq:cfl} (\texttt{eval\_dt.f90}). \\
+\texttt{Time stepping:} & global &
+  \texttt{Local} gives every cell its own pseudo-time step
+  (\texttt{eval\_dt.f90}). \\
+\texttt{Well balanced:} & off &
+  Carries the departure from the cell's own hydrostatic equilibrium instead of
+  the state (\texttt{Reconstruction.f90}, \texttt{RK\_rhs.f90}). \\
+\texttt{Low-Mach damping:} & off, $M_{\rm th}=10^{-3}$ &
+  Gated fourth-difference dissipation \eqref{eq:lowmach} of the contact mode
+  (\texttt{low\_mach\_dissipation.f90}). \\
+\texttt{Shapiro filter:} & off, every 4 steps &
+  1-2-1 low-pass filter on the marched state
+  (\texttt{Apply\_BC.f90}). \\
+\texttt{Caloric EOS:} & \texttt{ladder} &
+  \texttt{monatomic} forces $\gamma = 5/3$ everywhere
+  (\texttt{caloric\_eos.f90}). \\
+\texttt{Energy solver:} & semi-implicit &
+  \texttt{Explicit} reverts the source update to forward Euler
+  (\texttt{energy\_semi\_implicit.f90}). \\
+\midrule
+\multicolumn{3}{l}{\itshape Boundary and initial conditions}\\
+\midrule
+\texttt{Base BC:} & \texttt{density} &
+  \texttt{pressure <microbar>} sets the base level from a pressure instead of
+  a density (\texttt{input\_read.f90}, \texttt{base\_boundary.f90}). \\
+\texttt{IC mode:} & \texttt{cold} &
+  \texttt{cold}, \texttt{transonic}, \texttt{hot\_parker}, \texttt{auto} or
+  \texttt{windae} (\texttt{set\_IC.f90}). \\
+\texttt{Transonic IC:} & off &
+  Older synonym of \texttt{IC mode: transonic}. \\
+\texttt{Hot Parker IC:} & off, $T_{\rm wind}=10^4$~K &
+  Older synonym of \texttt{IC mode: hot\_parker}. \\
+\texttt{Restart intent:} & relaxation &
+  What a loaded state is continued as: \texttt{trajectory},
+  \texttt{relaxation} or \texttt{stationary} (\texttt{load\_IC.f90}). \\
+\midrule
+\multicolumn{3}{l}{\itshape Convergence and the stationary solvers}\\
+\midrule
+\texttt{du\_th [PLM,WENO3]:} & $10^{-3}$ &
+  Threshold on the mass-flux spread \eqref{eq:du}; a second value makes the
+  run two-stage (\texttt{EXHALE\_main.f90}). \\
+\texttt{Escape radius [R\_p]:} & mandatory &
+  Inner edge of the window \eqref{eq:du} is taken over
+  (\texttt{define\_grid.f90}). \\
+\texttt{Resid tol:} & off &
+  Residual convergence instead of the flux spread; the solvers use $10^{-5}$
+  when it is absent (\texttt{steady\_residual.f90}). \\
+\texttt{Flux spread tol:} & $2\times10^{-5}$, $r_{\rm flux}=1.2$ &
+  The flux gate of the acceptance test
+  (\texttt{steady\_residual.f90}). \\
+\texttt{Solver:} & marching only &
+  \texttt{Newton} hands over to the stationary solve once the spread falls
+  below $10^{-2}$ (\texttt{steady\_newton.f90}). \\
+\texttt{Stall:} & $10^{-6}$, 2000 steps &
+  Plateau detector of the marching stop (\texttt{EXHALE\_main.f90}). \\
+\texttt{Level tol:} & off &
+  Mass-flux level stability required beside every marching stop. \\
+\texttt{Max steps:} & $10^{6}$ &
+  Hard cap on marching iterations. \\
+\texttt{Newton solver:} & on &
+  \texttt{False} reverts the composition solve to MINPACK \texttt{hybrd1}
+  (\texttt{newton\_solver.f90}). \\
+\texttt{Brent solver:} & on &
+  \texttt{False} reverts the post-process temperature solve
+  (\texttt{T\_equation.f90}). \\
+\midrule
+\multicolumn{3}{l}{\itshape Atomic hydrogen and helium}\\
+\midrule
+\texttt{Include He23S?} & on &
+  The $\mathrm{He}\,2^3S$ metastable as a solved level
+  (\texttt{System\_HeH\_TR*.f90}). \\
+\texttt{ATES\_photoionization\_rate} & off &
+  Reverts He\,I photoionization to the legacy ATES fit
+  (\texttt{cross\_sec.f90}). \\
+\texttt{Legacy\_HHe\_rates} & off &
+  Reverts H/He recombination and collisional ionization to the ATES fits
+  (\texttt{util\_ion\_eq.f90}). \\
+\texttt{Atomic rate set:} & \texttt{default} &
+  \texttt{Koskinen2022} swaps four atomic H/He rate coefficients
+  (\texttt{util\_ion\_eq.f90}). \\
+\texttt{Secondary\_ionization} & on, staged &
+  Secondary ionization by fast photoelectrons; \texttt{Immediate} applies it
+  from step 0 (\texttt{electron\_energy\_degradation.f90}). \\
+\texttt{He\_rec\_coupling} & on &
+  He\,II recombination radiation ionizing H\,I
+  (\texttt{util\_ion\_eq.f90}). \\
+\texttt{He\_H\_charge\_exchange} & on &
+  The He/H charge-exchange pair (\texttt{charge\_exchange.f90}). \\
+\texttt{Photoelectron heating:} & \texttt{excess} &
+  Whether a photoionization deposits $h\nu - E_{\rm th}$ or a stated fraction
+  of $h\nu$ (\texttt{util\_ion\_eq.f90}). \\
+\texttt{Deexc heat} & on &
+  Collisional de-excitation heating of $\mathrm{H}(n{=}2)$
+  (\texttt{excited\_hydrogen.f90}). \\
+\midrule
+\multicolumn{3}{l}{\itshape Radiation field}\\
+\midrule
+\texttt{Spectrum type:} & mandatory &
+  \texttt{Load}, \texttt{Power-law}, \texttt{Planck} or
+  \texttt{Monochromatic}: the spectrum of the whole photon grid
+  (\texttt{sed\_read.f90}, \texttt{J\_inc.f90}). \\
+\texttt{Stellar Teff:} + \texttt{Stellar radius:} & 0 (off) &
+  Enable the diluted-blackbody Balmer continuum and the $\mathrm{H}(n{=}2)$
+  model (\texttt{excited\_hydrogen.f90}). \\
+\texttt{Stellar Lya flux:} & 0 &
+  Stellar Ly-$\alpha$ at the orbit; also band B2 of the oxygen photolysis
+  (\texttt{lya\_rt.f90}). \\
+\texttt{Jlya escape-prob} & parameterized &
+  The Neufeld escape-probability Ly-$\alpha$ transfer
+  (\texttt{lya\_rt.f90}). \\
+\texttt{Jlya RT file:} & none &
+  Import a $J_{\mathrm{Ly}\alpha}(r)$ profile computed elsewhere. \\
+\texttt{Lya stellar halfwidth:} & 70 km/s &
+  Half-width of the stellar Ly-$\alpha$ line. \\
+\texttt{Lya stellar boost:} & 5.0 &
+  Bounded buildup of the trapped stellar beam. \\
+\texttt{Lya absorbing bottom} & reflecting &
+  Closes the Ly-$\alpha$ domain from below with an absorber. \\
+\texttt{Stellar LW flux:} & 0 &
+  Lyman-Werner band flux driving $\mathrm{H}_2$ photodissociation
+  (\texttt{lyman\_werner.f90}). \\
+\texttt{Stellar FUV B3/B4 flux:} & 0 &
+  The two longer FUV bands of the oxygen photolysis
+  (\texttt{water\_photolysis.f90}). \\
+\midrule
+\multicolumn{3}{l}{\itshape Molecules, metals and the lower atmosphere}\\
+\midrule
+\texttt{metals.inp} present & metals off &
+  Trace metals solved in the same coupled system as H and He
+  (\texttt{System\_HeH\_metals.f90}). \\
+\quad \texttt{eos\_metals} & 1 &
+  Metals in the bulk mass, electron and particle budget
+  (\texttt{composition.f90}). \\
+\quad \texttt{cno\_cool} & 1 (CHIANTI) &
+  0 reverts C/N/O line cooling to the legacy analytic fits
+  (\texttt{Cool\_coeff.f90}). \\
+\texttt{Molecular chemistry:} & off &
+  The $\mathrm{H_2}/\mathrm{H_2^+}/\mathrm{H_3^+}/\mathrm{HeH^+}$ network
+  (\texttt{System\_HeH\_mol.f90}, \texttt{mol\_rates.f90}). \\
+\texttt{Oxygen chemistry:} & off &
+  OH, $\mathrm{H_2O}$ and CO with their photolysis
+  (\texttt{oxygen\_rates.f90}, \texttt{water\_photolysis.f90}). \\
+\texttt{Molecular carrier transport:} & follows oxygen chemistry &
+  Vertical transport of the molecular carriers
+  (\texttt{diffusive\_photochemistry.f90}). \\
+\texttt{Coupled carrier solve:} & off &
+  $n(\mathrm{H_2})$ as a fourth Newton unknown per cell instead of an
+  alternation (\texttt{steady\_newton.f90}). \\
+\texttt{Ionization transport:} & off &
+  $\mathrm{H^+}$ carried with the flow as a fifth carrier. \\
+\texttt{Molecular base:} & off &
+  Removes the H nuclei bound into $\mathrm{H}_2$ from the base particle count
+  \eqref{eq:ntotbc} (\texttt{composition.f90}). \\
+\texttt{Molecular reaction heat:} & on &
+  Deposits the energy the collisional molecular reactions release
+  (\texttt{molecular\_reaction\_heat.f90}). \\
+\texttt{Molecular IR bands:} & off &
+  $\mathrm{H_2}$, $\mathrm{H_2O}$ and CO infrared line cooling
+  (\texttt{molecular\_infrared\_cooling.f90}). \\
+\texttt{Base IR field:} & off &
+  The infrared coolants see the thermal radiation of the atmosphere below the
+  base instead of vacuum. \\
+\texttt{Lower atmosphere:} & none &
+  \texttt{analytic} or \texttt{vulcan} lower-atmosphere pre-step
+  (\texttt{lower\_column.f90}). \\
+\texttt{Lower atmosphere profile:} & none &
+  The lower atmosphere handed over as a table over pressure
+  (\texttt{lower\_atmosphere\_profile.f90}). \\
+\texttt{Lower column:} & off &
+  1-bar radius of the analytic column. \\
+\midrule
+\multicolumn{3}{l}{\itshape Diffusion and molecular transport}\\
+\midrule
+\texttt{He\_diffusion} & off &
+  He/H diffusive separation as a transported element
+  (\texttt{binary\_element\_diffusion.f90}). \\
+\texttt{He\_metal\_diffusion} & off &
+  Extends the same operator to the trace metals. \\
+\texttt{He\_Kzz} & 0 &
+  Constant eddy diffusion coefficient where no profile states one. \\
+\texttt{He\_alphaT} & 0 &
+  Thermal-diffusion factor. \\
+\texttt{He\_ambipolar} & on &
+  Ambipolar term of the element diffusion. \\
+\texttt{Viscosity:} & off &
+  Radial viscous force and its dissipation \eqref{eq:viscous}
+  (\texttt{viscous\_conduction.f90}). \\
+\texttt{Conduction:} & off &
+  Heat conduction with $\kappa(T)$ of \eqref{eq:transport_coeff}. \\
+\end{longtable}
+}
+
+\begin{thebibliography}{99}
+
+\bibitem[Abrahamsson et al.(2007)]{Abrahamsson2007}
+Abrahamsson, E., Krems, R.~V., \& Dalgarno, A. 2007, ApJ, 654, 1171
+
+\bibitem[Allgower \& Georg(2003)]{Allgower2003}
+Allgower, E.~L., \& Georg, K. 2003, Introduction to Numerical Continuation
+Methods, SIAM Classics in Applied Mathematics 45 (Philadelphia: SIAM)
+
+\bibitem[Backx et al.(1976)]{Backx1976}
+Backx, C., Wight, G.~R., \& Van der Wiel, M.~J. 1976, J. Phys. B, 9, 315
+
+\bibitem[Badnell(2006)]{Badnell2006}
+Badnell, N.~R. 2006, ApJS, 167, 334
+
+\bibitem[Banks \& Kockarts(1973)]{Banks1973}
+Banks, P.~M., \& Kockarts, G. 1973, Aeronomy (New York: Academic Press)
+
+\bibitem[Barinovs et al.(2005)]{Barinovs2005}
+Barinovs, \v{G}., van Hemert, M.~C., Krems, R., \& Dalgarno, A. 2005,
+ApJ, 620, 537
+
+\bibitem[Batten et al.(1997)]{Batten1997}
+Batten, P., Clarke, N., Lambert, C., \& Causon, D.~M. 1997,
+SIAM J. Sci. Comput., 18, 1553
+
+\bibitem[Biassoni et al.(2024)]{Biassoni2024}
+Biassoni, F., Caldiroli, A., Gallo, E., et al. 2024, A\&A, 682, A115
+
+\bibitem[Caldiroli et al.(2021)]{Caldiroli2021}
+Caldiroli, A., Haardt, F., Gallo, E., et al. 2021, A\&A, 655, A30
+
+\bibitem[Cecchi-Pestellini et al.(2009)]{Cecchi2009}
+Cecchi-Pestellini, C., Ciaravella, A., Micela, G., \& Penz, T. 2009,
+A\&A, 496, 863
+
+\bibitem[Christie et al.(2013)]{Christie2013}
+Christie, D., Arras, P., \& Li, Z.-Y. 2013, ApJ, 772, 144
+
+\bibitem[Chung et al.(1993)]{Chung1993}
+Chung, Y.~M., Lee, E.-M., Masuoka, T., \& Samson, J.~A.~R. 1993,
+J. Chem. Phys., 99, 885
+
+\bibitem[Cohen \& Lane(1971)]{Cohen1971}
+Cohen, J.~S., \& Lane, N.~F. 1971, Chem. Phys. Lett., 10, 623
+
+\bibitem[Cohen \& Lane(1977)]{Cohen1977}
+Cohen, J.~S., \& Lane, N.~F. 1977, J. Chem. Phys., 66, 586
+
+\bibitem[Dalgarno et al.(1999)]{Dalgarno1999}
+Dalgarno, A., Yan, M., \& Liu, W. 1999, ApJS, 125, 237
+
+\bibitem[Draine(2011)]{Draine2011}
+Draine, B.~T. 2011, Physics of the Interstellar and Intergalactic Medium
+(Princeton: Princeton Univ. Press)
+
+\bibitem[Draine \& Bertoldi(1996)]{Draine1996}
+Draine, B.~T., \& Bertoldi, F. 1996, ApJ, 468, 269
+
+\bibitem[Drake et al.(1969)]{Drake1969}
+Drake, G.~W., Victor, G.~A., \& Dalgarno, A. 1969, Phys. Rev., 180, 25
+
+\bibitem[Einfeldt et al.(1991)]{Einfeldt1991}
+Einfeldt, B., Munz, C.-D., Roe, P.~L., \& Sj\"ogreen, B. 1991,
+J. Comput. Phys., 92, 273
+
+\bibitem[Garc\'ia Mu\~noz(2025)]{GarciaMunoz2025}
+Garc\'ia Mu\~noz, A. 2025, A\&A, 698, A199
+
+\bibitem[Gordon \& McBride(1994)]{Gordon1994}
+Gordon, S., \& McBride, B.~J. 1994, Computer Program for Calculation of
+Complex Chemical Equilibrium Compositions and Applications, NASA RP-1311
+
+\bibitem[Gottlieb \& Shu(1998)]{Gottlieb1998}
+Gottlieb, S., \& Shu, C.-W. 1998, Math. Comput., 67, 73
+
+\bibitem[Harrington(1973)]{Harrington1973}
+Harrington, J.~P. 1973, MNRAS, 162, 43
+
+\bibitem[Hu et al.(2013)]{Hu2013}
+Hu, X.~Y., Adams, N.~A., \& Shu, C.-W. 2013, J. Comput. Phys., 242, 169
+
+\bibitem[Huang et al.(2023)]{Huang2023}
+Huang, C., Koskinen, T., Lavvas, P., \& Fossati, L. 2023, ApJ, 951, 123
+
+\bibitem[Hui \& Gnedin(1997)]{Hui1997}
+Hui, L., \& Gnedin, N.~Y. 1997, MNRAS, 292, 27
+
+\bibitem[Jameson et al.(1981)]{Jameson1981}
+Jameson, A., Schmidt, W., \& Turkel, E. 1981, AIAA Paper 81-1259
+
+\bibitem[K\"appeli \& Mishra(2014)]{Kaeppeli2014}
+K\"appeli, R., \& Mishra, S. 2014, J. Comput. Phys., 259, 199
+
+\bibitem[K\"appeli \& Mishra(2016)]{Kaeppeli2016}
+K\"appeli, R., \& Mishra, S. 2016, A\&A, 587, A94
+
+\bibitem[Knoll \& Keyes(2004)]{Knoll2004}
+Knoll, D.~A., \& Keyes, D.~E. 2004, J. Comput. Phys., 193, 357
+
+\bibitem[Koskinen et al.(2013)]{Koskinen2013}
+Koskinen, T.~T., Harris, M.~J., Yelle, R.~V., \& Lavvas, P. 2013,
+Icarus, 226, 1678
+
+\bibitem[Koskinen et al.(2022)]{Koskinen2022}
+Koskinen, T.~T., Lavvas, P., Huang, C., et al. 2022, ApJ, 929, 52
+
+\bibitem[Krause(1979)]{Krause1979}
+Krause, M.~O. 1979, J. Phys. Chem. Ref. Data, 8, 307
+
+\bibitem[Kurganov \& Tadmor(2000)]{Kurganov2000}
+Kurganov, A., \& Tadmor, E. 2000, J. Comput. Phys., 160, 241
+
+\bibitem[Locci et al.(2022)]{Locci2022}
+Locci, D., Cecchi-Pestellini, C., \& Micela, G. 2022, PSJ, 3, 1
+
+\bibitem[Mao \& Kaastra(2016)]{Mao2016}
+Mao, J., \& Kaastra, J. 2016, A\&A, 587, A84
+
+\bibitem[Miller et al.(2013)]{Miller2013}
+Miller, S., Stallard, T., Tennyson, J., \& Melin, H. 2013,
+J. Phys. Chem. A, 117, 9770
+
+\bibitem[Morgner \& Niehaus(1979)]{Morgner1979}
+Morgner, H., \& Niehaus, A. 1979, J. Phys. B, 12, 1805
+
+\bibitem[Neufeld(1990)]{Neufeld1990}
+Neufeld, D.~A. 1990, ApJ, 350, 216
+
+\bibitem[Norcross(1971)]{Norcross1971}
+Norcross, D.~W. 1971, J. Phys. B, 4, 652
+
+\bibitem[Odert et al.(2020)]{Odert2020}
+Odert, P., Erkaev, N.~V., Lammer, H., et al. 2020, A\&A, 638, A49
+
+\bibitem[Oka \& Epp(2004)]{Oka2004}
+Oka, T., \& Epp, E. 2004, ApJ, 613, 349
+
+\bibitem[Oklop\v{c}i\'c \& Hirata(2018)]{Oklopcic2018}
+Oklop\v{c}i\'c, A., \& Hirata, C.~M. 2018, ApJ, 855, L11
+
+\bibitem[Perthame \& Shu(1996)]{Perthame1996}
+Perthame, B., \& Shu, C.-W. 1996, Numer. Math., 73, 119
+
+\bibitem[Poinsot \& Lele(1992)]{Poinsot1992}
+Poinsot, T.~J., \& Lele, S.~K. 1992, J. Comput. Phys., 101, 104
+
+\bibitem[Robinson \& Catling(2012)]{Robinson2012}
+Robinson, T.~D., \& Catling, D.~C. 2012, ApJ, 757, 104
+
+\bibitem[Roe(1981)]{Roe1981}
+Roe, P.~L. 1981, J. Comput. Phys., 43, 357
+
+\bibitem[Roueff et al.(2019)]{Roueff2019}
+Roueff, E., Abgrall, H., Czachorowski, P., et al. 2019, A\&A, 630, A58
+
+\bibitem[Rusanov(1961)]{Rusanov1961}
+Rusanov, V.~V. 1961, J. Comput. Math. Phys. USSR, 1, 267
+
+\bibitem[Salz et al.(2016)]{Salz2016}
+Salz, M., Czesla, S., Schneider, P.~C., \& Schmitt, J.~H.~M.~M. 2016,
+A\&A, 586, A75
+
+\bibitem[Samson \& Haddad(1994)]{Samson1994}
+Samson, J.~A.~R., \& Haddad, G.~N. 1994, J. Opt. Soc. Am. B, 11, 277
+
+\bibitem[Sekiya et al.(1980)]{Sekiya1980}
+Sekiya, M., Nakazawa, K., \& Hayashi, C. 1980, Prog. Theor. Phys., 64, 1968
+
+\bibitem[Shull \& van Steenberg(1985)]{Shull1985}
+Shull, J.~M., \& van Steenberg, M.~E. 1985, ApJ, 298, 268
+
+\bibitem[Taylor et al.(2025)]{Taylor2025}
+Taylor, J., Oklop\v{c}i\'c, A., Rustamkulov, Z., et al. 2025, ApJ, 989, 68
+
+\bibitem[Thompson(1987)]{Thompson1987}
+Thompson, K.~W. 1987, J. Comput. Phys., 68, 1
+
+\bibitem[Toro et al.(1994)]{Toro1994}
+Toro, E.~F., Spruce, M., \& Speares, W. 1994, Shock Waves, 4, 25
+
+\bibitem[Toro(2009)]{Toro2009}
+Toro, E.~F. 2009, Riemann Solvers and Numerical Methods for Fluid Dynamics,
+3rd edn. (Berlin: Springer)
+
+\bibitem[van Hoof et al.(2014)]{vanHoof2014}
+van Hoof, P.~A.~M., Williams, R.~J.~R., Volk, K., et al. 2014,
+MNRAS, 444, 420
+
+\bibitem[Verner \& Yakovlev(1995)]{Verner1995}
+Verner, D.~A., \& Yakovlev, D.~G. 1995, A\&AS, 109, 125
+
+\bibitem[Verner et al.(1996)]{Verner1996}
+Verner, D.~A., Ferland, G.~J., Korista, K.~T., \& Yakovlev, D.~G. 1996,
+ApJ, 465, 487
+
+\bibitem[Visscher et al.(2006)]{Visscher2006}
+Visscher, C., Lodders, K., \& Fegley, B., Jr. 2006, ApJ, 648, 1181
+
+\bibitem[Visser et al.(2009)]{Visser2009}
+Visser, R., van Dishoeck, E.~F., \& Black, J.~H. 2009, A\&A, 503, 323
+
+\bibitem[Voronov(1997)]{Voronov1997}
+Voronov, G.~S. 1997, At. Data Nucl. Data Tables, 65, 1
+
+\bibitem[Watson et al.(1981)]{Watson1981}
+Watson, A.~J., Donahue, T.~M., \& Walker, J.~C.~G. 1981, Icarus, 48, 150
+
+\bibitem[Yamaleev \& Carpenter(2009)]{Yamaleev2009}
+Yamaleev, N.~K., \& Carpenter, M.~H. 2009, J. Comput. Phys., 228, 3025
+
+\bibitem[Yan et al.(1998)]{Yan1998}
+Yan, M., Sadeghpour, H.~R., \& Dalgarno, A. 1998, ApJ, 496, 1044
+
+\bibitem[Yan \& Babb(2023)]{YanBabb2023}
+Yan, P.-G., \& Babb, J.~F. 2023, MNRAS, 518, 6004
+
+\bibitem[Zhang \& Shu(2010a)]{Zhang2010}
+Zhang, X., \& Shu, C.-W. 2010a, J. Comput. Phys., 229, 8918
+
+\bibitem[Zhang \& Shu(2010b)]{Zhang2010b}
+Zhang, X., \& Shu, C.-W. 2010b, J. Comput. Phys., 229, 3091
+
+
+\end{thebibliography}

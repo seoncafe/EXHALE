@@ -5,7 +5,7 @@ how to build it and run one example. This file is the detail: one entry per
 task, with the exact lines and commands, the expected output, and where the
 full documentation lives. Everything here is opt-in; a bare `input.inp` runs
 the legacy ATES-compatible model. (Reference manual:
-`docs/EXHALE_user_manual.pdf`; changelog: `docs/Update_EXHALE.md` (current, from 2026-09-05) and `docs/Update_EXHALE_stage1.pdf` (sections 1-171).)
+`docs/EXHALE_user_manual.pdf`; changelog: `docs/Update_EXHALE_stage2.md` (current, from 2026-09-05) and `docs/Update_EXHALE_stage1.pdf` (sections 1-171).)
 
 **Contents**
 
@@ -621,7 +621,7 @@ wrong limit for a lower atmosphere, and the startup report says so.
 
 The oxygen chemistry requires `Molecular chemistry: True`, helium and a
 non-zero oxygen abundance, and it refuses `q_H2_base` (it computes that quantity) and
-`He_metal_diffusion` (the trace-metal arm would transport an oxygen reservoir
+`He_metal_diffusion` (trace-metal diffusion would transport an oxygen reservoir
 missing everything bound into OH, H2O and CO, and CO carries an oxygen *and* a
 carbon nucleus, so it cannot follow two element factors at once).
 `He_diffusion: True` alone is accepted, the molecular carriers already move
@@ -707,7 +707,7 @@ synthetic column that documents the schema).
 ### Producing one from a photochemistry model
 
 ```bash
-# production arm: Photochem, in the Python it is installed into (see below)
+# production route: Photochem, in the Python it is installed into (see below)
 python3 \
   src/utils/photochem_to_lower_profile.py <run_dir> \
       --mp 0.720 --r-ref 1.36 \
@@ -716,7 +716,7 @@ python3 \
       --r-star 1.155 --a-orb 0.0480 \
       --p-match 1e-6 --toa 1e-2 [--atoms H,He,N,O,C,S]
 
-# cross-check arm: a finished VULCAN run, same options, same schema
+# cross-check: a finished VULCAN run, same options, same schema
 python3 src/utils/vulcan_to_lower_profile.py <run_dir> \
       --vulfile vulcan_work/hd209_vulcan/output/HD209.vul \
       --mp 0.720 --r-ref 1.36 --p-match 1e-6
@@ -755,7 +755,7 @@ law above the radiative-convective boundary, a mixing-length law below it,
 does not exist in these tools (`docs/eddy_diffusion_kzz.tex`).
 
 A stated coefficient governs **both** the chemistry and the output. On the
-Photochem arm with a `--tp-file` that carries a `K_zz` column, `--kzz-const`
+Photochem route with a `--tp-file` that carries a `K_zz` column, `--kzz-const`
 used to be applied to the written column only, leaving the chemistry solved on
 the file's own profile: a column whose composition no single `K_zz` produced.
 Every recorded use in this repository is `--climate`, which carries no `K_zz`
@@ -766,7 +766,7 @@ one:
 
 - `reached_steady_state`. Nothing is written unless the chemistry converged:
   a non-steady solution has no elemental flux to hand over.
-- `notes`, `measured_flux_H`, `measured_flux_He`. The Photochem arm **imposes**
+- `notes`, `measured_flux_H`, `measured_flux_He`. The Photochem route **imposes**
   `--trial-flux-H` and `--trial-flux-He` as a flux upper boundary condition on
   the carriers at its model top (all of the hydrogen on H2 while atomic H
   carries under 1% of the hydrogen nuclei there, split by the measured share
@@ -779,9 +779,9 @@ one:
   `F_He` COLUMNS still carry the stated trial value at every level. Measuring
   the wind's own elemental flux over the overlap and iterating the two models
   to agreement is the closure driver, which does not exist yet. The VULCAN
-  cross-check arm reads a finished `.vul` file and cannot impose anything, so
+  cross-check reads a finished `.vul` file and cannot impose anything, so
   it stays one-way.
-- `--p-top-bar` (Photochem arm) states the model top in bar directly, in place
+- `--p-top-bar` (Photochem only) states the model top in bar directly, in place
   of `--toa` in dyn/cm^2; the two name the same level and only one may be
   given. The solution settles within about a factor of three of it, so the
   table stops near rather than exactly at that pressure.
@@ -883,7 +883,7 @@ modifications you need to make if you set it up by hand:
 
 ## Obtaining Photochem (third-party, not in this repo)
 
-The Photochem arm of the profile handoff, and the elemental-flux closure that
+The Photochem route of the profile handoff, and the elemental-flux closure that
 drives it (`src/utils/element_flux_closure.py`), need a Photochem that is
 neither the plain release nor the conda-forge package: Equilibrate's elemental
 mass-balance test used one absolute threshold set by the most abundant element
@@ -1025,7 +1025,7 @@ different blocks is refused.
 Refused: the key without `Load IC? True`, `trajectory` with `Run mode: init`,
 `stationary` without `Solver: Newton`.
 
-**`Restart option change:`** exists for the arm ladder this project converges
+**`Restart option change:`** exists for the option ladder this project converges
 with: converge without an option, restart with it on, converge again. Naming
 a token permits exactly that token to differ; everything else still refuses
 and states the token. Six tokens may **never** be named, because they decide
@@ -1038,14 +1038,14 @@ the permitted changes.
 
 One practical consequence: **states written before the Jupiter-radius
 unification cannot be reloaded at all** (every cell center moved, so the grid
-guard refuses them). That covers the stored arm directories, the planet
+guard refuses them). That covers the stored `arm*` case directories, the planet
 folders and `benchmarks/`; regenerating them is user-gated.
 -> `docs/input_schema.md` K43, K44 and appendix D.2; manual §2.
 
 ## Measurement hooks you may meet in a log
 
 These are environment variables, all **off by default**, that turn on a
-diagnostic or swap in a measurement arm. They are not input keys and none of
+diagnostic or swap in a measurement setting. They are not input keys and none of
 them is part of a production run; they exist so that a claim about the solver
 can be measured instead of argued. Read the exact behavior at the
 `get_environment_variable` call that reads each one.
@@ -1058,7 +1058,7 @@ can be measured instead of argued. Read the exact behavior at the
 | `EXHALE_CERT_ANCHOR=1` | the certification's anchoring block: every row read in the layer and wind windows separately, with its worst cell. `EXHALE_CERT_ANCHOR_R=<r>` follows one radius | `certification.f90` |
 | `EXHALE_INVENTORY_REPORT=1` | the elemental inventory verdict of a state, with the worst breach of each element | `element_inventory.f90` |
 | `EXHALE_RESID_BRANCH_REPORT=1` | the residual's branch report, and then **STOPS the run** | `steady_newton.f90` |
-| `EXHALE_KRYLOV_ON_THE_BALL=1` | stop the Krylov cycle where the iterate leaves the trust ball and return the boundary point (a mixed arm; measured, default off) | `steady_newton.f90` |
+| `EXHALE_KRYLOV_ON_THE_BALL=1` | stop the Krylov cycle where the iterate leaves the trust ball and return the boundary point (a mixed stopping rule; measured, default off) | `steady_newton.f90` |
 | `EXHALE_GM_REORTHO=1` | orthogonalize the Arnoldi basis twice; `EXHALE_GM_ORTHO=1` only measures the loss of orthogonality that decides whether it is worth its inner products | `steady_newton.f90` |
 | `EXHALE_CAUCHY_LEG_BY_IMAGE=1` | admit the approximate-gradient leg by its share of the model image alone, without the length test against the radius (fires zero times on the present trajectories) | `steady_newton.f90` |
 | `EXHALE_TR_RESTART_AT=<n>`, `EXHALE_TR_RESTART_STALL=<n>`, `EXHALE_TR_RESTART_WHAT=<letters>` | force a trust-region restart after outer iteration `n`, or after `n` iterations without improvement (0 disarms, and is the default), and choose which of the five resets it takes: `r` radius and ceiling, `t` pseudo-transient shift, `c` closure map at the base, `a` acceptance memory, `b` return to the best iterate | `steady_newton.f90` |
@@ -1347,7 +1347,7 @@ goldens: `backup/regression/wasp_full_newton/IC/` (the certified atomic
 state, read by the `restart_intent` rows of `src/tests/grid_and_gates/`, and
 refreshed only together with the golden) and
 `backup/regression/atomic_elem_newton/` (HD 209458 b with eight element rows,
-the diagnostic entry point of the atomic element arm, with its own `IC/`
+the diagnostic entry point of the atomic element reload, with its own `IC/`
 reload pair).
 
 The goldens are current as of 2026-09-10: fifteen cases and `roundtrip` were
@@ -1443,7 +1443,7 @@ while keeping `EXHALE.x`. The planet directories `HD209458b/`, `HD189733b/`,
 ## Where results and documents live
 
 - `docs/EXHALE_user_manual.pdf`: full reference (inputs, outputs, physics)
-- `docs/Update_EXHALE.md`: current update log (stage 2, from 2026-09-05); its PDF carries the code-size appendix vs ATES (`docs/Update_EXHALE_appendix.tex`); `docs/Update_EXHALE_stage1.pdf`: sections 1-171, dated changelog
+- `docs/Update_EXHALE_stage2.md`: current update log (stage 2, from 2026-09-05); its PDF carries the code-size appendix vs ATES (`docs/Update_EXHALE_appendix.tex`); `docs/Update_EXHALE_stage1.pdf`: sections 1-171, dated changelog
 - `docs/cooling_formulas.pdf`: the analytic CHIANTI cooling fits
 - `docs/photoion_cross_sections.pdf`, `docs/recombination_coefficients.pdf`:
   atomic data and its benchmarks
@@ -1472,4 +1472,4 @@ while keeping `EXHALE.x`. The planet directories `HD209458b/`, `HD189733b/`,
   comparison with other escape codes
 - `docs/code_review_20260702.md`: full-code review report (fixes and
   recommendations)
-- `TO_BE_DONE.md`: open items
+- `docs/TO_BE_DONE.md`: open items

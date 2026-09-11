@@ -1,0 +1,162 @@
+\section{Introduction and conventions}
+\label{sec:intro}
+
+\subsection{What the code solves}
+\label{sec:intro:what}
+
+EXHALE integrates the one-dimensional, spherically symmetric equations of
+radiation hydrodynamics for the escaping upper atmosphere of an irradiated
+planet.  The radial domain runs from a base near the lower atmosphere, which
+a run may place at the planet radius or at a stated pressure level (the
+$1\,\mu$bar level of the \citet{Koskinen2022} handoff is the one the molecular
+configurations use), out to the Roche-lobe (L1) radius of the planet--star
+system or, in the spherical domain mode, to a radius the user states.  The
+unknowns advanced in time are the conserved hydrodynamic state
+$u = (\rho,\,\rho v,\,\mathcal{E})$ on a finite-volume radial grid, together with the
+ionization and chemical state of the gas: hydrogen and helium always, the
+metastable $\mathrm{He}\,2^3S$ level, a set of trace metals, and a molecular
+network carrying $\mathrm{H}_2$, $\mathrm{H}_2^+$, $\mathrm{H}_3^+$,
+$\mathrm{HeH}^+$ and, optionally, the oxygen carriers OH, $\mathrm{H_2O}$ and
+CO.  The radiative source term couples the two: the stellar spectrum is
+attenuated along the radial column, photoionizes and heats the gas, and the
+gas cools through recombination, collisional and line processes whose rates
+depend on the composition the ionization solve returns.
+
+The code is a heavily extended fork of ATES v2.0 \citep{Caldiroli2021,
+Biassoni2024}.  The hydrodynamic core, the finite-volume discretization, the
+three-stage strong-stability-preserving Runge-Kutta integration and the
+choice of approximate Riemann solvers are recognizably those of ATES; the
+equation of state, the lower boundary condition, the reconstruction, the
+steady-state solvers, the transported species and essentially all of the
+chemistry are not.  Every physics extension is selected at run time by the
+presence of a key in \texttt{input.inp} or of a companion file
+(\texttt{metals.inp}, \texttt{opacity.inp}, \texttt{base.inp}), and every one
+of them defaults to off, so that a configuration that states none of them
+reproduces the atomic H/He problem.
+
+\subsection{Units}
+\label{sec:intro:units}
+
+The equations are solved in dimensionless form.  The normalization is fixed
+once, in \texttt{input\_read.f90}, from the planet radius $R_0$, the base
+temperature $T_0$, and the base number density $n_0$:
+%
+\begin{equation}
+  v_0 = \sqrt{\frac{k_B T_0}{m_{\rm H}}}, \qquad
+  t_s = \frac{R_0}{v_0}, \qquad
+  p_0 = n_0\,m_{\rm H}\,v_0^2, \qquad
+  q_0 = \frac{n_0\,m_{\rm H}\,v_0^3}{R_0},
+  \label{eq:units}
+\end{equation}
+%
+where $m_{\rm H} = 1.67353284\times10^{-24}$~g is the mass of the hydrogen
+\emph{atom}, not the atomic mass unit.  Radii are in units of $R_0$, so the
+base level sits at $r = 1$; velocities in $v_0$; mass densities in
+$n_0m_{\rm H}$; pressures in $p_0$; temperatures in $T_0$; and volumetric energy
+rates in $q_0$.  The mass unit being the hydrogen atom, the density is the
+number of hydrogen-atom masses per unit volume, and a species contributes
+$m_{\rm species}/m_{\rm H}$ to it; the species table therefore carries
+$m(\mathrm{He\,I}) = 3.9715259$ and not $4$.
+
+The gravitational potential is measured in $v_0^2$, so it is fixed by the
+single dimensionless group
+%
+\begin{equation}
+  b_0 = \frac{G M_p m_{\rm H}}{k_B T_0 R_0},
+  \label{eq:b0}
+\end{equation}
+%
+the Jeans escape parameter at the base.  Only three further dimensionless
+numbers enter the potential and the domain: $\tilde a = a_{\rm orb}/R_0$, the
+mass ratio $M_\star/M_p$, and the outer radius.
+
+The base level itself may be stated in three ways, and a run that states two
+that disagree is stopped at startup: \texttt{Log10 lower boundary number
+density} gives $n_0$ directly; \texttt{Base BC: pressure} states the base
+pressure in microbar and $n_0$ follows from
+$n_0 = p_{\rm base}/(k_B T_0\,\hat n_{\rm bc})$; and a lower-atmosphere
+handoff (\texttt{base.inp} or a profile file) states $p_{\rm base}$ in bar
+and $n_0$ follows the same way.  Here $\hat n_{\rm bc}$ is the base particle
+count per H+He nucleus, which the composition module derives from the
+element ratios and, with a molecular base, from the H nuclei bound into
+$\mathrm{H}_2$ (Sec.~\ref{sec:hydro:eos}).
+
+\subsection{Notation}
+\label{sec:intro:notation}
+
+One symbol stands for one quantity throughout this document.  The table below
+fixes the symbols that appear in more than one section.  Symbols introduced
+inside a published fit and defined where they appear (the $x$ of a
+Verner-type cross section, the $\lambda$ of a recombination-cooling fit, the
+$\alpha$ of a spectral index) are local to that fit and are not in the table.
+
+\begin{center}
+\small
+\begin{tabular}{@{}>{\raggedright\arraybackslash}p{0.13\textwidth}>{\raggedright\arraybackslash}p{0.46\textwidth}>{\raggedright\arraybackslash}p{0.33\textwidth}@{}}
+\toprule
+symbol & quantity & note \\
+\midrule
+$u$ & conserved state $(\rho,\rho v,\mathcal{E})$ &
+  the unknown of the hydrodynamics, Sec.~\ref{sec:hydro:euler} \\
+$W$ & primitive state $(\rho,v,p)$ & what the reconstruction works on \\
+$\rho$, $v$, $p$, $T$ & mass density, radial velocity, pressure,
+  temperature & \\
+$\mathcal{E}$, $\rho e$, $e$, $\varepsilon$ & total energy density, internal
+  energy density, internal energy per unit mass, internal energy per
+  particle & $\mathcal{E} = \tfrac12\rho v^2+\rho e$ \\
+$\Phi$ & gravitational potential & $\Phi_i$, $\Phi_c$ at interfaces and cell
+  centers \\
+$\gamma_{\rm eff}$, $c_s$ & effective adiabatic index, sound speed &
+  from the caloric equation of state \eqref{eq:caloric} \\
+$m_{\rm H}$ & mass of the hydrogen atom & the code's mass unit,
+  \eqref{eq:units} \\
+$\mu$, $\kappa$ & dynamic viscosity, heat conductivity &
+  \eqref{eq:transport_coeff} only \\
+$n_X$, $n_{\rm tot}$, $n_e$ & number density of species $X$, of all heavy
+  particles, of free electrons & \\
+$x_{X^{q+}}$, $f_i$ & ionization fraction of a stage, mixing ratio
+  $n_i/n_{\rm tot}$ & fractions of the element's own nuclei \\
+$E$, $h\nu$ & photon energy & always subscripted where a particular
+  energy is meant ($E_k$, $E_{\rm th}$) \\
+$F_E$, $\mathcal{F}_k$ & incident and attenuated flux per unit photon
+  energy & \eqref{eq:rad:workingflux} \\
+$\sigma$, $\tau$ & photoionization cross section, optical depth & \\
+$\Gamma$, $\alpha$, $\beta$ & photoionization rate, recombination
+  coefficient, electron-impact ionization coefficient &
+  Sec.~\ref{sec:ionization:cellsystem} \\
+$\mathcal{H}$, $\Lambda$ & volumetric heating rate, volumetric cooling
+  rate & erg\,cm$^{-3}$\,s$^{-1}$; $Q = \mathcal{H}-\Lambda$ \\
+$\xi_{\rm day}$ & dayside dilution of every stellar beam &
+  Table~\ref{tab:2d} \\
+$J_i$, $J$ & diffusive number flux of a carrier, diffusive mass flux of an
+  element & Secs.~\ref{sec:mol:carrier}, \ref{sec:mol:diffusion} \\
+$dF$, $S$, $R$ & discrete flux difference, source, stationary residual &
+  \eqref{eq:dF1}--\eqref{eq:source}, \eqref{eq:residual} \\
+$A_\pm$, $\Delta V_j$, $\Delta r_j$ & face areas, cell volume, cell width &
+  \eqref{eq:geom} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\subsection{How to read this document}
+\label{sec:intro:layout}
+
+Every equation below is the discrete operator the code applies, taken from
+the source and not from a derivation.  Where the code's expression differs
+from the textbook form (the spherical pressure term under PLM, the
+gravitational work term folded into the energy flux, the mean molecular
+weight that is never formed), the code's form is given and the difference is
+stated.  Routines are named with the file they live in, for instance
+\texttt{RK\_rhs.f90}, so that a statement here can be checked against one
+place in the tree.
+
+Section~\ref{sec:hydro} states the conservation laws, the equation of state
+and the source terms.  The sections that follow it state the radiation field,
+the ionization and chemical network, the thermal source and the molecular and
+metal chemistry.  Section~\ref{sec:numerics} then gives the grid, the
+reconstruction, the Riemann solvers, the time integration and the operator
+splitting; Sec.~\ref{sec:bcic} the boundary and initial conditions; and
+Sec.~\ref{sec:steady} the stationary residual, its acceptance test and the
+solvers that drive it to zero.  A section on the post-processing tools closes
+the physics account, and Sec.~\ref{sec:keys} tabulates the input keys that
+select physics, with the default each of them takes when the key is absent.

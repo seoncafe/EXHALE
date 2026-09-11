@@ -5,14 +5,14 @@ Written to restart from in a fresh session. Read this first; then
 done, every problem resolved, every problem open with its evidence),
 `docs/PLAN_20260909_rev1.md` (the plan those items belong to),
 `docs/session_handoff_20260910.md` (the last handoff), and
-`docs/Update_EXHALE.md` section 7 (the dated record of items B5e to N30).
+`docs/Update_EXHALE_stage2.md` section 7 (the dated record of items B5e to N30).
 This document replaces `docs/code_status_20260905.md`, which is kept as the
 state at the opening of stage 2; every row below is the state after item N30.
 
 Every statement was verified against the source or against a measurement of
 the sessions of 2026-09-05 to 09-10. A number is labeled MEASURED (this
 document ran it), READ (from the source or from a file) or LOGGED (copied
-from `docs/Update_EXHALE.md` or `docs/ISSUES_20260909.md`, which state their
+from `docs/Update_EXHALE_stage2.md` or `docs/ISSUES_20260909.md`, which state their
 own measurement). Statements carried over from before 2026-09-05 without
 re-measurement are marked "per the earlier record".
 
@@ -31,8 +31,8 @@ an element row from `He_diffusion` or a carrier row from the molecular
 carriers, converges on any route**, and both species-row certification
 tolerances were anchored by measurement only on 2026-09-10 (decision 22 a,
 item N30): 1e-5 gating at r >= 1.20, the rows below reported. The two
-candidate states stand at 2.9e-4 (atomic element arm, wind) and 7.3e-2
-(carrier arm) against that gate, so neither is certified. The problems begin
+candidate states stand at 2.9e-4 (atomic element reload, wind) and 7.3e-2
+(carrier reload) against that gate, so neither is certified. The problems begin
 exactly there (section 4).
 
 ## 1. The tree
@@ -62,7 +62,7 @@ exactly there (section 4).
   `backup/regression/wasp_full_newton/IC/` (the certified atomic state, read
   by the `restart_intent` rows of `src/tests/grid_and_gates/`) and
   `backup/regression/atomic_elem_newton/` (HD 209458 b with eight element
-  rows, the diagnostic entry point of the atomic element arm, with its own
+  rows, the diagnostic entry point of the atomic element reload, with its own
   `IC/` reload pair).
 * Assertion suites: `make test` builds and runs `element_census_tests`,
   `diffusion_tests`, `residual_determinism` and **every executable
@@ -79,7 +79,7 @@ exactly there (section 4).
   driver's header. `run_fcheck.sh` (a `-fcheck` build on one bounded
   HD 209458 b case) was last CLEAN at the 2026-09-07 gate and has not been
   re-run since (LOGGED, ISSUES 3.8).
-* Documentation: `docs/Update_EXHALE.md` (stage 2, sections restart at 1;
+* Documentation: `docs/Update_EXHALE_stage2.md` (stage 2, sections restart at 1;
   section 7 holds every item from the PLAN rev2 series to N30) and
   `docs/Update_EXHALE_stage1.md` (26,086 lines, sections 1-171); 146 memos in
   `docs/`; `docs/input_schema.md` (every input key, keys K43 to K45 added by
@@ -100,7 +100,7 @@ row; **X** not implemented.
 | Godunov (HLLC) + RK3, PLM and WENO3 reconstruction, Mixed grid, runtime cell count | V | ATES heritage; the regression matrix. The WENO3 stencil coefficients were swapped until item WENO3-ORDER (`C2(j)` on `dWp` in WL, `C1(j-1)` on `dWm` in WR); the measured convergence rate moved 2.991 to 3.000. The positivity limiter clamps to `epsilon*W_avg` and can no longer return a zero density or pressure |
 | gravity: Roche potential truncated at L1 (default) or spherical to a stated radius (`Domain mode: Spherical`, `Outer radius [R_p]`) | V | Huang 2023 Case B (Roche, per the earlier record); Koskinen 2022 Model A velocity and neutral densities (spherical) |
 | lower boundary: fixed rho or p at the base, isothermal ghost, base velocity from the mass flux; characteristic face condition | L | the molecular base "breathes": a marching limit cycle at the default CFL (absent below CFL 0.15-0.3). It keeps `du` from converging in molecular runs and distorts fixed-step snapshots. Separately, the base cell amplifies any composition inaccuracy by about 4e3 through `Apply_BC`'s continuous-temperature ghost (ISSUES 3.3) |
-| outer boundary: outflow. The upper ghost of a transported element or carrier column follows the iterate (zero gradient), the marching path's own rule | I | N26. Before it the ghost was frozen at the pre-solve composition and the outermost element row was unconstrained from outward; the change moved the atomic element arm from `\|\|R\|\|` 1.36e-2 to 3.7e-4 (LOGGED) |
+| outer boundary: outflow. The upper ghost of a transported element or carrier column follows the iterate (zero gradient), the marching path's own rule | I | N26. Before it the ghost was frozen at the pre-solve composition and the outermost element row was unconstrained from outward; the change moved the atomic element reload from `\|\|R\|\|` 1.36e-2 to 3.7e-4 (LOGGED) |
 | viscosity, conduction (Watson et al. 1981 kappa) | I | keys `Viscosity`, `Conduction`; conduction negligible on Model A, as they state |
 | caloric EOS: H2 rovibrational ladder, atoms/ions/electrons 3/2 k; `Caloric EOS: monatomic` (comparison option) | I | the Koskinen gate's outer temperature is insensitive to it (20 K) |
 | the material advective term: ONE discretization shared by the RK stages, the stationary rows and both relaxations | I | B4-1, B4-1c |
@@ -259,11 +259,11 @@ at 2e-3 in the wind and 9.8 in the layer".]
 
 **What does not certify:**
 
-* **The atomic element arm** (HD 209458 b, `He_diffusion`,
+* **The atomic element reload** (HD 209458 b, `He_diffusion`,
   `He_metal_diffusion`, eight element rows). Handed back at `||R||` 2.3e-4
   after N29; its binding row in the gated window is the helium row at 2.9e-4
   of its scale against 1e-5 (LOGGED, N30). NOT certified.
-* **The molecular carrier arm** (the hot-Uranus column with H2 transported).
+* **The molecular carrier reload** (the hot-Uranus column with H2 transported).
   Handed back at `||R||` 0.25; the H2 row of the binding cell reads 7.3e-2
   against 1e-5 (LOGGED, N30). NOT certified.
 * **No other configuration with a species row** has converged on any route.
@@ -271,12 +271,12 @@ at 2e-3 in the wind and 9.8 in the layer".]
 **What limits them**, in one sentence each, all MEASURED by the items named:
 the linear solve, which cannot reach 0.1 of its right-hand side in 40 Krylov
 products on this operator and whose Arnoldi image is 15 to 21 percent off it
-(N24, N27, and N21 agreeing); the atomic arm's ulp-level chaos, a one-ulp
+(N24, N27, and N21 agreeing); the atomic reload's ulp-level chaos, a one-ulp
 change of the upper ghosts moving `||R||` at iteration 40 from 3.2e-2 to 1.1,
 because the Krylov leg's one-digit tolerance decides which vector crosses it
 at the last bits of the residual (N26c); and, for the layer, the element
 flux, conserved to 2.6e-2 in the wind and not at all below (memo section 9.8).
-The consequence for acceptance, stated by N26c: **the arm's `||R||` at a fixed
+The consequence for acceptance, stated by N26c: **the reload's `||R||` at a fixed
 iteration is not an acceptance quantity**; named outcomes are (binding rows,
 refusals, flux spread). UPDATE 2026-09-10 evening (N31 to N36): the linear
 algebra is exhausted as a lever. The Arnoldi gap is a ROUNDING FLOOR of the
@@ -315,7 +315,7 @@ exist or that no method can certify these rows.]
 day by the user's instruction, as the PARTITIONED route rather than the
 coupled species-row solve, and it delivered: the plan is
 `docs/PLAN_20260911_partitioned_solver.md` and the dated record with every
-number is `docs/Update_EXHALE.md` **section 8**. Three defects of the
+number is `docs/Update_EXHALE_stage2.md` **section 8**. Three defects of the
 partitioned route were found and repaired (a failed element composition
 solve handed back as an update; a carrier movement bound tested after the
 step was applied; a stop test weaker than the acceptance test at return),
@@ -346,7 +346,17 @@ reload CERTIFIES at pass 12 (MEASURED, P16 and P17). The hot-Uranus carrier
 reload remains uncertified on its H2 wind row: a 110-pass continuation
 (decision 2) shows the front still moving (x2 = 0.5 from 1.0726 to
 1.1230 R_p) and a uniform wind floor of 2.2e-2 that the bounded carrier
-pass does not relax (Update_EXHALE.md section 8, "User decisions").
+pass does not relax (Update_EXHALE_stage2.md section 8, "User decisions"). Item P21,
+which made the carrier relaxation solve the chemistry of the composition it
+advances, then measured what that front is: at a fixed wind the joint fixed
+point of transport plus chemistry is a FULLY MOLECULAR column (x2 = 0.98 at
+1.1 R_p and 0.33 at 3.0 R_p, the front outside the domain, no cell clamped onto
+the element budget), so the front's position is set by the hydrodynamic
+response and not by the carrier operator alone, while the 2.2e-2 wind floor is
+reproduced digit for digit with the chemistry refreshed and is therefore the
+bound's measure, absolute in the grid maximum, and not the frozen chemistry
+(MEASURED, P21; Update_EXHALE_stage2.md section 8, "P21: the fixed point at a fixed
+wind, and the production loop").
 
 ## 4. Where the problems begin (ordered by size and depth)
 
@@ -433,7 +443,7 @@ The full account of each, with its evidence and its next item, is
    ~~the program is CLOSED by the user~~ **SUPERSEDED 2026-09-11**: it was
    reopened as the partitioned route and the discriminating measurement was
    made (`docs/PLAN_20260911_partitioned_solver.md`,
-   `docs/Update_EXHALE.md` section 8). The corrected form of that section 7
+   `docs/Update_EXHALE_stage2.md` section 8). The corrected form of that section 7
    is in the document itself; the analysis document's own errors were
    corrected the same day.
 2. **The layer's element flux conservation** (memo section 9.8): conserved to
@@ -490,7 +500,7 @@ The full account of each, with its evidence and its next item, is
   `EXHALE_resolved.out`; a run with one must say so in any report.
 * A stated `Stellar LW flux: 0.0` turns the band off even with a spectrum
   file; an absent key with a spectrum file integrates the band.
-* An exact `options` comparison guards every restart, so the old arm-ladder
+* An exact `options` comparison guards every restart, so the old restart-ladder
   workflow (converge without an option, restart with it on) needs
   `Restart option change:` naming the tokens allowed to differ.
 * Kill by PID after checking `/proc/<pid>/cwd`; never `pkill`. Use `\cp -f`

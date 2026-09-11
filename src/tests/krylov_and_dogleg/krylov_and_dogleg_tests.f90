@@ -179,8 +179,8 @@
                                  cert_tol_energy,                         &
                                  cert_tol_element_at, cert_tol_carrier_at,&
                                  cert_regime_wind_r
-      use hydrodynamic_rows, only: generic_precision_rows_arm,            &
-                 ARM_OFF, ARM_QUADRUPLE, ARM_GENERIC_DOUBLE,              &
+      use hydrodynamic_rows, only: generic_precision_rows_selected,       &
+                 ROWS_PRODUCTION, ROWS_QUADRUPLE, ROWS_GENERIC_DOUBLE,    &
                  hydrodynamic_rows_in_double_precision
       use steady_residual_mod, only: reconstruction_continuation_rhs
       use hydrodynamic_rows_quadruple, only:                              &
@@ -615,7 +615,7 @@
                    band_difference_on, .false., nfail)
       call log_row('krylov_residual_history_is_off_by_default',          &
                    gm_residual_history_on, .false., nfail)
-      ! ---- THE TWO ARMS OF ITEM N36 ARE OFF UNLESS NAMED, read in the
+      ! ---- THE TWO OPTIONS OF ITEM N36 ARE OFF UNLESS NAMED, read in the
       !      same resolved state.
       call log_row('the_model_row_equilibration_is_off_by_default',      &
                    model_row_equilibration_on, .false., nfail)
@@ -2167,9 +2167,9 @@
                    jv_additivity_on, .true., nf)
       call log_row('the_column_scaled_probe_arms_from_the_environment',   &
                    jv_probe_on_the_column_scales, .true., nf)
-      ! WITH THE ARM ON, A LINEAR TEST OPERATOR IS STILL RETURNED EXACTLY:
-      ! neither probe rule enters where the action is stated as a matrix,
-      ! so an arm comparison on a linear system measures nothing.
+      ! WITH BOTH HOOKS ON, A LINEAR TEST OPERATOR IS STILL RETURNED
+      ! EXACTLY: neither probe rule enters where the action is stated as a
+      ! matrix, so a comparison on a linear system measures nothing.
       call probe_rule_on_a_linear_operator(nf)
       jp_status = c_setenv('EXHALE_JV_ADDITIVITY'//c_null_char,           &
                            ''//c_null_char, 1)
@@ -2915,7 +2915,7 @@
       ! THE CYCLE THAT RETURNS THE STEP ITS TRUE RESIDUAL CHOOSES (N36).
       !
       ! On a LINEAR operator the residual of the reduced problem is the
-      ! residual of the step, so the arm may not move anything: the step it
+      ! residual of the step, so that stop may not move anything: the step it
       ! returns is the step the same subspace gives, and the tolerance it
       ! announces is announced only where the residual reached it. On an
       ! operator whose action drifts with the product count -- what the
@@ -2944,7 +2944,7 @@
       call run_krylov(tr_A, tr_b, gm_true_residual_first, 1.0d-14,        &
                       lin_test_dense, tr_x20, tr_it20, tr_out20,          &
                       tr_rel20, tr_sn20)
-      ! The arm, asked for a tolerance the cycle reaches exactly at its
+      ! The true-residual stop, asked for a tolerance the cycle reaches at
       ! first check: it has to stop there, name the tolerance and hand
       ! back the step of that subspace.
       gm_step_by_its_true_residual = .true.
@@ -3142,26 +3142,26 @@
       ! ------------------------------------------------------!
 
       subroutine well_balanced_operator_rows(nf)
-      ! THE WELL-BALANCED ARM ("Well balanced:", default off; item N37,
+      ! THE WELL-BALANCED OPTION ("Well balanced:", default off; item N37,
       ! docs/well_balanced_flux_difference_design_20260910.md).  Four
       ! statements, on the same twelve-cell stretched grid the extended
       ! precision rows use:
       !
-      !   * WITH NO GRAVITY the arm is the base scheme.  The local
+      !   * WITH NO GRAVITY it is the base scheme.  The local
       !     equilibrium is then the constant p_j, the departure data is the
       !     ordinary pressure stencil and the face pressure measured against
       !     the equilibrium is the ordinary one, so every row must come back
       !     the same to rounding.  It is NOT asserted bitwise: the pressure
-      !     jump of the Riemann problem is formed additively under the arm
+      !     jump of the Riemann problem is formed additively under the key
       !     (the difference of the two cell pressures plus the departures)
       !     and as pR - pL without it, and the two roundings differ in the
       !     last bit of the jump.  Measured on a uniform state and on a Sod
       !     shock tube, for both reconstructions.
-      !   * WITH GRAVITY, on the discrete equilibrium the arm defines (the
+      !   * WITH GRAVITY, on the discrete equilibrium the key defines (the
       !     state whose two neighboring equilibrium extrapolations agree at
       !     every face), the momentum row falls to the rounding level while
       !     the base scheme leaves its truncation error.  This is the
-      !     operator identity the arm exists for, asserted here on a second
+      !     operator identity the key exists for, asserted here on a second
       !     grid and a second geometry from the one
       !     src/tests/grid_and_gates/hydrostatic_residual.f90 uses.
       !   * The generic double instantiation of the kind-generic operator
@@ -3223,10 +3223,10 @@
       base_face_W(3) = x_pre
       base_face_lower_W = base_face_W
       call rel_row('well_balanced_uniform_flow_is_the_base_scheme[PLM]',  &
-                   arm_departure_of_the_rows(xu, xn, xg, .true.),         &
+                   key_departure_of_the_rows(xu, xn, xg, .true.),         &
                    0.0d0, 1.0d-13, nf)
       call rel_row('well_balanced_uniform_flow_is_the_base_scheme[WENO3]',&
-                   arm_departure_of_the_rows(xu, xn, xg, .false.),        &
+                   key_departure_of_the_rows(xu, xn, xg, .false.),        &
                    0.0d0, 1.0d-13, nf)
 
       ! ---- (2) no gravity, a Sod shock tube ----
@@ -3249,13 +3249,13 @@
       base_face_W(3) = 1.0d0
       base_face_lower_W = base_face_W
       call rel_row('well_balanced_shock_tube_is_the_base_scheme[PLM]',    &
-                   arm_departure_of_the_rows(xu, xn, xg, .true.),         &
+                   key_departure_of_the_rows(xu, xn, xg, .true.),         &
                    0.0d0, 1.0d-13, nf)
       call rel_row('well_balanced_shock_tube_is_the_base_scheme[WENO3]',  &
-                   arm_departure_of_the_rows(xu, xn, xg, .false.),        &
+                   key_departure_of_the_rows(xu, xn, xg, .false.),        &
                    0.0d0, 1.0d-13, nf)
 
-      ! ---- (3) with gravity, on the arm's own discrete equilibrium ----
+      ! ---- (3) with gravity, on the key's own discrete equilibrium ----
       ! phi = -b0/r, and an isothermal column with p = c^2 rho whose
       ! densities solve the face-matching condition
       !   p_j+1 + rho_j+1 (phi_c(j+1) - phi_i(j))
@@ -3318,13 +3318,13 @@
          if (xs .eq. 1) then
             call rel_row('well_balanced_momentum_row_on_its_own_'//       &
                  'equilibrium[PLM]', x_wb, 0.0d0, 1.0d-13, nf)
-            call log_row('the_same_column_is_not_balanced_without_the_'// &
-                 'arm[PLM]', x_off .gt. 1.0d-9, .true., nf)
+            call log_row('the_same_column_is_not_balanced_without_'//    &
+                 'the_key[PLM]', x_off .gt. 1.0d-9, .true., nf)
          else
             call rel_row('well_balanced_momentum_row_on_its_own_'//       &
                  'equilibrium[WENO3]', x_wb, 0.0d0, 1.0d-13, nf)
-            call log_row('the_same_column_is_not_balanced_without_the_'// &
-                 'arm[WENO3]', x_off .gt. 1.0d-9, .true., nf)
+            call log_row('the_same_column_is_not_balanced_without_'//    &
+                 'the_key[WENO3]', x_off .gt. 1.0d-9, .true., nf)
          endif
       enddo
 
@@ -3357,7 +3357,7 @@
                x_dev = max(x_dev, abs(xSb(xk,xj)-xSa(xk,xj)))
          enddo
       enddo
-      call rel_row('generic_double_is_the_operator_bitwise_with_the_arm', &
+      call rel_row('generic_double_is_the_operator_bitwise_with_the_key', &
                    x_dev, 0.0d0, 0.0d0, nf)
 
       ! ---- put the globals back ----
@@ -3383,10 +3383,10 @@
 
       ! ------------------------------------------------------!
 
-      real*8 function arm_departure_of_the_rows(xu, xn, xg, plm)        &
+      real*8 function key_departure_of_the_rows(xu, xn, xg, plm)        &
                                                               result(dev)
       ! The rows R = dF - S of one state evaluated twice, with the
-      ! well-balanced arm off and on, and the largest departure between
+      ! well-balanced key off and on, and the largest departure between
       ! them relative to the largest row of the base scheme, over the
       ! physical cells.  With no gravity the two are the same operator, so
       ! this is the number that says so.
@@ -3426,7 +3426,7 @@
          enddo
       enddo
 
-      end function arm_departure_of_the_rows
+      end function key_departure_of_the_rows
 
 
       ! ------------------------------------------------------!
@@ -3439,30 +3439,30 @@
       ! under PLM and (q_up - q_dn)/dr under WENO3
       ! (momentum_row_terms_of_cell, RK_rhs.f90), and the departures are
       ! read from the module arrays face_q_up / face_q_dn of
-      ! RK_integration.  The kind-generic arm assembles the row itself, so
+      ! RK_integration.  The kind-generic rows are assembled here, so
       ! unless it stores its own departures in those arrays the term, the
       ! momentum row's reference scale built on it and the certification
       ! measure read against that scale describe the last state RK_rhs was
       ! evaluated on, or the zeros of the first allocation, and not the
-      ! state the arm was called on.
+      ! state they were assembled on.
       !
-      ! Both groups below are evaluated on a state the arm assembles AFTER
+      ! Both groups below are evaluated on a state those rows assemble AFTER
       ! a right-hand side was evaluated on a DIFFERENT state, which is the
       ! configuration in which the two can be told apart:
       !
       !   * momentum_pressure_gradient and residual_row_scale(2, j, u) of
-      !     the arm are those the production routines give for the SAME
+      !     those rows are those the production routines give for the SAME
       !     state.  Bitwise for the generic-double instantiation, which is
       !     the production operator bit for bit (tolerance 0, as in N37's
-      !     generic_double_is_the_operator_bitwise_with_the_arm), and to
+      !     generic_double_is_the_operator_bitwise_with_the_key), and to
       !     1e-13 for the quadruple one, which rounds to double once on the
       !     way out (the tolerance of N37's
       !     well_balanced_uniform_flow_is_the_base_scheme rows).
-      !   * the stored departures are the ARM'S OWN.  A first evaluation
+      !   * the stored departures are THOSE ROWS' OWN.  A first evaluation
       !     with no prior right-hand side, where the arrays hold zeros,
       !     cannot be arranged inside one driver process, so what is
       !     asserted instead is the identity that implies it: the momentum
-      !     row the arm returned is rebuilt here from the stored face flux
+      !     row they returned is rebuilt here from the stored face flux
       !     and the stored departures alone, and must be that row.  With
       !     departures belonging to another state the rebuild misses it.
       use RK_integration,      only: momentum_pressure_gradient,         &
@@ -3483,7 +3483,7 @@
       real*8  :: x_dr, x_rp, x_rm, x_dAp, x_dAm, x_dV
       integer :: xj, xs, xa, x_status
       character(len=8)  :: sch
-      character(len=10) :: arm_name
+      character(len=10) :: kind_name
       integer :: sv_N, sv_wmode
       logical :: sv_plm, sv_weno, sv_lam_on, sv_wb, sv_visc, sv_cond
       real*8  :: sv_mu0
@@ -3533,7 +3533,7 @@
       enddo
 
       ! TWO STATES THAT SHARE NOTHING BUT THE GRID.  uB is the state the
-      ! arm is asked about; uA, with a different density slope, the
+      ! key is asked about; uA, with a different density slope, the
       ! opposite sign of velocity and a different pressure slope, is the
       ! state the previous right-hand side was evaluated on, so that its
       ! face departures are nowhere near uB's.
@@ -3586,15 +3586,15 @@
             call set_ioniz_eq_sweep_state_kind(ieq_state_marching)
             call assemble_residual(uA, np1, zz, zz, Rp)
 
-            ! ---- the arm on uB ----
+            ! ---- the kind-generic rows on uB ----
             if (xa .eq. 1) then
                x_status = c_setenv('EXHALE_RESID_QUAD'//c_null_char,      &
                                    '1'//c_null_char, 1)
-               arm_name = '[quad]'
+               kind_name = '[quad]'
             else
                x_status = c_setenv('EXHALE_RESID_QUAD'//c_null_char,      &
                                    '2'//c_null_char, 1)
-               arm_name = '[double]'
+               kind_name = '[double]'
             endif
             call set_ioniz_eq_sweep_state_kind(ieq_state_steady_iterate)
             call assemble_residual(uB, np1, zz, zz, Rq)
@@ -3638,22 +3638,22 @@
             if (ref_row .gt. 0.0d0) d_row = d_row/ref_row
 
             if (xa .eq. 1) then
-               call rel_row('arm_momentum_pressure_gradient_is_the_'//    &
-                    'production_term'//trim(arm_name)//trim(sch),         &
+               call rel_row('generic_rows_momentum_pressure_gradient_'//  &
+                    'is_the_production_term'//trim(kind_name)//trim(sch), &
                     d_pg, 0.0d0, 1.0d-13, nf)
-               call rel_row('arm_momentum_row_scale_is_the_production_'// &
-                    'scale'//trim(arm_name)//trim(sch),                   &
+               call rel_row('generic_rows_momentum_row_scale_is_the_'//   &
+                    'production_scale'//trim(kind_name)//trim(sch),        &
                     d_sc, 0.0d0, 1.0d-13, nf)
             else
-               call rel_row('arm_momentum_pressure_gradient_is_the_'//    &
-                    'production_term'//trim(arm_name)//trim(sch),         &
+               call rel_row('generic_rows_momentum_pressure_gradient_'//  &
+                    'is_the_production_term'//trim(kind_name)//trim(sch), &
                     d_pg, 0.0d0, 0.0d0, nf)
-               call rel_row('arm_momentum_row_scale_is_the_production_'// &
-                    'scale'//trim(arm_name)//trim(sch),                   &
+               call rel_row('generic_rows_momentum_row_scale_is_the_'//   &
+                    'production_scale'//trim(kind_name)//trim(sch),        &
                     d_sc, 0.0d0, 0.0d0, nf)
             endif
-            call rel_row('arm_stored_departures_rebuild_its_momentum_'//  &
-                 'row'//trim(arm_name)//trim(sch),                        &
+            call rel_row('generic_rows_stored_departures_rebuild_the_'//  &
+                 'momentum_row'//trim(kind_name)//trim(sch),               &
                  d_row, 0.0d0, 1.0d-13, nf)
          enddo
       enddo
@@ -3693,8 +3693,9 @@
       ! the two instantiations of the generic text are one operator, so
       ! these rows state:
       !
-      !   * the arm is off unless the environment names it, and it names
-      !     the quadruple and the generic-double instantiation separately;
+      !   * the selection is off unless the environment names it, and it
+      !     names the quadruple and the generic-double instantiation
+      !     separately;
       !   * the DOUBLE instantiation of the generic text reproduces
       !     Reconstruct + RK_rhs + Num_flux + source BIT FOR BIT on a state
       !     with structure in it (a bitwise reference, not a tolerance);
@@ -3727,25 +3728,26 @@
       real*8, dimension(:), allocatable :: sv_r, sv_redg, sv_dr,          &
                                            sv_gpi, sv_gpc
 
-      ! ---- the arm, and only from the environment ----
+      ! ---- the selection, and only from the environment ----
       x_status = c_unsetenv('EXHALE_RESID_QUAD'//c_null_char)
-      call int_row('the_extended_precision_rows_arm_is_off_by_default',   &
-                   generic_precision_rows_arm(), ARM_OFF, nf)
+      call int_row('the_extended_precision_rows_are_off_by_default',      &
+                   generic_precision_rows_selected(), ROWS_PRODUCTION, nf)
       x_status = c_setenv('EXHALE_RESID_QUAD'//c_null_char,               &
                           '1'//c_null_char, 1)
-      call int_row('the_arm_names_the_quadruple_instantiation',           &
-                   generic_precision_rows_arm(), ARM_QUADRUPLE, nf)
+      call int_row('the_selector_names_the_quadruple_instantiation',      &
+                   generic_precision_rows_selected(), ROWS_QUADRUPLE, nf)
       x_status = c_setenv('EXHALE_RESID_QUAD'//c_null_char,               &
                           '2'//c_null_char, 1)
-      call int_row('the_arm_names_the_generic_double_instantiation',      &
-                   generic_precision_rows_arm(), ARM_GENERIC_DOUBLE, nf)
+      call int_row('the_selector_names_the_generic_double_'//             &
+                   'instantiation',                                      &
+                   generic_precision_rows_selected(), ROWS_GENERIC_DOUBLE, nf)
       x_status = c_setenv('EXHALE_RESID_QUAD'//c_null_char,               &
                           'yes'//c_null_char, 1)
-      call int_row('an_unnamed_value_leaves_the_arm_off',                 &
-                   generic_precision_rows_arm(), ARM_OFF, nf)
+      call int_row('an_unnamed_value_leaves_the_production_rows',         &
+                   generic_precision_rows_selected(), ROWS_PRODUCTION, nf)
       x_status = c_unsetenv('EXHALE_RESID_QUAD'//c_null_char)
-      call int_row('the_arm_disarms_again',                               &
-                   generic_precision_rows_arm(), ARM_OFF, nf)
+      call int_row('the_selection_is_dropped_again',                      &
+                   generic_precision_rows_selected(), ROWS_PRODUCTION, nf)
 
       ! ---- a grid and a scheme to evaluate the operator on ----
       sv_N = N;  sv_wmode = weno_mode
@@ -3867,7 +3869,7 @@
          q_dV = (q_rp*q_rp*q_rp - q_rm*q_rm*q_rm)/3.0_qp
          q_ref = q_rho*q_vel*(q_rp*q_rp - q_rm*q_rm)/q_dV
          ! The quadruple row BEFORE the rounding to double: the single
-         ! rounding on the way out is what the arm hands the solver, but
+         ! rounding on the way out is what these rows hand the solver, but
          ! it is also a double ulp, which would hide the arithmetic this
          ! row is about.
          x_dev_q = max(x_dev_q,                                           &

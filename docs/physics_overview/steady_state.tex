@@ -1,0 +1,359 @@
+\section{The stationary state}
+\label{sec:steady}
+
+Marching to a steady state is only one of the two ways EXHALE reaches one.
+The other is to solve for it directly, as the root of the stationary residual
+of the very same discrete operator.  This section states that residual, the
+measure by which a state is judged steady, and the two solvers that drive it
+to zero.
+
+\subsection{The stationary residual}
+\label{sec:steady:residual}
+
+\texttt{assemble\_residual} (\texttt{steady\_residual.f90}) evaluates the
+right-hand side of one forward Euler step of the marching operator and
+subtracts the radiative source from its third row,
+%
+\begin{equation}
+  \begin{aligned}
+    R_1 &= dF_1 - S_1, \\
+    R_2 &= dF_2 - S_2 - S_\mu, \\
+    R_3 &= dF_3 - S_3 - (\mathcal{H} - \Lambda) - S_{\mathcal{E}},
+  \end{aligned}
+  \label{eq:residual}
+\end{equation}
+%
+with $dF$ and $S$ from \eqref{eq:dF1} to \eqref{eq:source}, evaluated through
+the same \texttt{reconstruction\_continuation\_rhs} the marching stages call,
+so that the fixed point of the marching and the zero of the residual are the
+same state by construction.  The lowest ghost cell has no lower face and
+therefore no balance to state; its row is explicitly zero, so that no reader
+of $R$ finds a heating rate standing alone in a row that has no fluxes.
+
+A residual row is a dimensional quantity and has to be divided by something
+before it can be compared with a tolerance.  Every row is divided by the
+largest term \emph{that row itself contains}
+(\texttt{residual\_row\_scale}):
+%
+\begin{equation}
+  s_1(j) = \frac{\max\bigl(|F_{j-1/2}|A_-,\ |F_{j+1/2}|A_+\bigr)}{\Delta V_j},
+  \quad
+  s_2(j) = \max\bigl(|{\rm ram}|,\ |\partial_r p|,\
+                     \rho|\partial_r\Phi|,\ |S_\mu|\bigr),
+  \quad
+  s_3(j) = \max\bigl(|dF_3|,\ |S_3|,\ \mathcal{H},\ \Lambda\bigr).
+  \label{eq:rowscales}
+\end{equation}
+%
+Since $\Delta V_j$ is exactly the volume the flux difference was divided by,
+$R_1/s_1$ is the fractional change of the mass flux across the cell, and the
+mass row having no source, that fraction is the whole of what the row says.
+The momentum scale uses the three gathered physical terms of
+Sec.~\ref{sec:hydro:pressure} and not $dF_2$ and $S_2$, for the reason given
+there.
+
+A signal-speed bound $D_k(|v|+c_s)/\Delta r$ is not usable as the scale of
+these rows: nothing in any of them moves at $c_s$, so in a quasi-hydrostatic
+layer that bound stands far above the terms the row holds and $R_1$ divided by
+it is the fractional flux error per cell \emph{times} the local Mach number,
+which at Mach $5\times10^{-5}$ is a blindness of four decades.
+
+These are the scales of the \emph{measure} only.  The Newton system and its
+merit keep the state scales $D_k$ of \texttt{state\_scales\_of\_cell}, so the
+merit and the acceptance test are deliberately not one expression apart.
+
+\subsection{The acceptance test}
+\label{sec:steady:gates}
+
+\texttt{steady\_gates\_met} is the only definition of an accepted steady state
+in the code: every route that may stop on ``the equations are satisfied'', the
+two stationary solvers and the marching loop under \texttt{Resid tol:}, calls
+it.  Four gates:
+%
+\begin{enumerate}
+\item the \emph{residual gate}, $\|R\| < $ \texttt{resid\_tol}, with $\|R\|$
+      the maximum over physical cells and rows of $|R_k(j)|/s_k(j)$;
+\item the \emph{flux gate}, the spread of the Riemann face mass flux
+      $F_{f+1/2}r_{f+1/2}^2$ over $r \ge r_{\rm flux}$ below
+      \texttt{flux\_spread\_th} (default $2\times10^{-5}$ at
+      $r_{\rm flux} = 1.2\,R_p$).  A residual norm does not say this: a
+      slowly varying flux has a small local derivative, and two states that
+      differ by a factor 25 in the spread differ by only 1.9 to 5.7 in every
+      residual norm tried.  It is taken on the \emph{face} flux and not on
+      the cell-centered $\rho v r^2$, because the finite-volume update moves
+      the face flux and the centered product is a reconstruction of the
+      state;
+\item the \emph{chemistry gate}, no cell carrying a composition that is not a
+      root of the chemical network, that is no cell in acceptance class 4 or 6
+      of Sec.~\ref{sec:ionization:solve}.  Heat and cool in the energy row are
+      evaluated on the accepted composition, so on such a cell the row is a
+      number computed on a state the chemistry does not describe;
+\item the \emph{carrier gate}, where $n(\mathrm{H_2})$ is among the unknowns:
+      the carrier row balanced to \texttt{carrier\_resid\_th} of its own
+      largest terms.
+\end{enumerate}
+%
+A caller that cannot supply the third makes no statement about the chemistry
+and the test rests on the others; the marching stop is such a caller.
+
+\subsection{Certification}
+\label{sec:steady:certification}
+
+The four gates above judge the hydrodynamic rows and at most one species row.
+A configuration that also carries an elemental transport balance, a level
+population or a set of eliminated species would reach its answer with nothing
+said about those equations.  \texttt{certification.f90} closes that: it lists
+every equation the configuration makes independent and returns, for each, one
+of three statuses, \emph{not applicable}, \emph{evaluated} with its residual
+measured on \emph{this} state, or \emph{unavailable}.  The third is the point
+of the construction: a routine that returns zeros when its frozen background
+is not ready is indistinguishable at the call site from a balanced equation,
+and an active equation with no evaluator returns nothing at all.  Both now say
+so, and a state carrying either is written and not certified.
+
+The inventory covers the three hydrodynamic rows, each transported carrier
+balance, the He/H partition and the trace elemental transport balances, the
+$\mathrm{He}\,2^3S$ and $\mathrm{H}(n{=}2)$ level balances, and the
+eliminated-species closure of the coupled cell system.  Every row measure is
+the \emph{maximum} over physical cells of $|{\rm res}|/\max({\rm scale},
+{\rm floor})$, never a volume average: a front or a thin layer must not be
+averaged away by the wind that carries most of the volume.  The volume average
+is reported beside it and is never decisive.  The measurement has no side
+effects; every module array the carrier evaluator writes is held aside around
+the call, allocation status included, because a certification is a measurement
+of a state and not an operation on it.
+
+The tolerances are one per kind of row, so that the report says which number
+refused a state:
+$3\times10^{-12}$ for mass, $10^{-8}$ for momentum, $10^{-6}$ for energy,
+$10^{-5}$ for an elemental or carrier balance in the wind, and the
+composition solve's own root tolerance for the closure and the level
+balances.  One number for the three hydrodynamic rows is not possible: on one
+converged state the three reach values seven decades apart and their one-ulp
+arithmetic floors two decades apart.
+
+Two of these are functions and not constants.  A species row is gated only in
+the wind, $r \ge 1.20\,R_p$, and reported without gating below it: the balance
+is a cancellation between terms whose ratio is set by the flow, the advective
+divergence carrying the row in the wind and the eddy and settling terms
+carrying it below the homopause, each of the latter orders of magnitude larger
+than their difference, so the precision the same equation can be resolved to is
+not one number.  And the mass row's tolerance is a function of the cell,
+%
+\begin{equation}
+  \mathrm{tol}_1(j) = \max\Bigl[3\times10^{-12},\
+                         \min\bigl(1,\ c_{\rm round}\,f(j)\bigr)\Bigr],
+  \qquad c_{\rm round} = 10,
+  \label{eq:masstol}
+\end{equation}
+%
+anchored on the rounding floor of that cell's own continuity row,
+%
+\begin{equation}
+  f(j) = \epsilon_{\rm mach}\,
+         \frac{\max_{\rm faces}\bigl[\rho(|v| + c_s)A\bigr]}
+              {\max_{\rm faces}\bigl|A F\bigr|}.
+  \label{eq:massfloor}
+\end{equation}
+%
+The reasoning is that each interface flux is assembled from two reconstructed
+states and from their jumps, and where the column is nearly hydrostatic those
+jumps stand many decades below the states, so a correctly rounded interface
+flux carries the last bit of the $O(\rho c_s)$ quantities the Riemann solve is
+built from and not the last bit of its own value $\rho v$.  The smallest flux
+difference the arithmetic can resolve is then
+$\epsilon\,\rho(|v|+c_s)A/\Delta V$, which is one ulp in the wind and about
+$\epsilon/\mathrm{Mach}$ in a layer whose flux is a tiny residue of the
+momentum.  Measured at the base of three reference configurations that floor
+spans four decades, $5.7\times10^{-14}$ to $3.2\times10^{-11}$, so a single
+fixed number would hold one state to eight ulps of its own base layer and
+another to a tenth of one ulp.  The margin $c_{\rm round} = 10$ stands a
+factor 3.7 above the largest measured ratio between the step the row takes
+when one ulp is added to every density and the estimate \eqref{eq:massfloor}.
+The ceiling of unity is not an operative branch on any state measured: the row
+measure is the fractional change of the mass flux across a cell, so a state
+whose estimated floor reaches 1 is one whose mass row cannot be judged at
+all.
+
+\subsection{The Jacobian-free Newton-Krylov solve}
+\label{sec:steady:jfnk}
+
+The unknowns of the direct solve are the conserved state on the physical cells,
+%
+\begin{equation}
+  Y = \bigl(\rho_j,\ (\rho v)_j,\ \mathcal{E}_j,\ \{y_{s,j}\}\bigr)_{j=1}^{N},
+  \qquad n_{\rm var} = 3 + n_{\rm spec},
+  \label{eq:unknowns}
+\end{equation}
+%
+where the optional species rows $y_{s,j}$ are the elemental mass fractions of
+the diffusing elements and the transported molecular carriers, registered by
+\texttt{set\_transported\_species\_rows} from the configuration.  The ghost
+cells are not unknowns: the boundary condition fills them from the interior at
+every residual evaluation.  The ionization state and the temperature are
+eliminated \emph{locally} inside the residual, that is, given $Y$ the
+equilibrium sweep of Sec.~\ref{sec:ionization:solve} re-solves the composition
+and returns the consistent heating and cooling of Sec.~\ref{sec:thermal}, so that $F(Y)$ is a residual of size $n_{\rm var}N$ and not of the
+full chemical system.
+
+The solve is a Jacobian-free Newton-Krylov iteration in the sense of
+\citet{Knoll2004}: the Krylov method needs only the action of the Jacobian on
+a vector, which is taken as a forward difference of the residual, so the
+nonlocal radiative coupling never has to be assembled.
+
+The outer iteration of \texttt{solve\_steady\_jfnk} is, per step: evaluate the
+full residual $F$ at the iterate; build the banded finite-difference Jacobian
+of the \emph{frozen-radiation} residual as a preconditioner; solve
+$(I/\Delta\tau + J)\,\delta Y = -F$ by right-preconditioned GMRES with the
+matrix-vector product taken matrix free, so that the nonlocal radiative
+coupling is captured; take a step along a controlled direction; and ramp
+$\Delta\tau$.
+
+\paragraph{The banded preconditioner.}
+WENO3 reaches two cells on either side and within a cell every variable
+couples, so in the flat ordering $Y(n_{\rm var}(j-1)+k)$ a column couples to
+rows within $|{\rm row} - {\rm col}| \le 3n_{\rm var}-1$; the half-bandwidths
+are that number and a graph coloring with stride
+$n_{\rm color} = k_l + k_u + 1 = 6n_{\rm var}-1$ makes the row supports of
+same-color columns disjoint, so that the frozen-radiation residual, which is
+strictly local, is captured exactly by that many finite-difference probes.  For
+$n_{\rm var} = 3$ this is 8 and 17.  The band is factored by LAPACK
+\texttt{dgbtrf} and applied as the right preconditioner of the Krylov cycle.
+The finite-difference and Krylov probe steps are taken in the diagonally
+scaled variables of \texttt{cell\_state\_scales}, the characteristic magnitude
+of each unknown in its own cell; a probe point that leaves the set of states
+the code can describe, a chemical balance row going to \texttt{NaN} or
+overflowing, is answered by halving the step and sampling closer to the
+iterate, at most six times, and never by accepting a non-finite residual or
+inventing a derivative.
+
+\paragraph{The step control.}
+Where the system carries no species row the step is the Krylov direction with
+a backtracking line search on the merit $\|F/D\|_2$, with a Grippo
+non-monotone reference, the worst true merit of the last five iterates, so
+that sideways steps are admissible and the solve can leave a bad
+neighborhood.  Where the system carries a species row the step control is a
+scaled trust region with a Powell dogleg: the path runs from the origin to the
+Cauchy point $s_U$, the minimizer of the linear model along the steepest
+descent direction, and from there to the Krylov point $s_N$, and the step is
+where that path first meets the ball of radius $\Delta$,
+%
+\begin{equation}
+  s = a_U s_U + a_N s_N,
+  \qquad
+  \begin{cases}
+    a_U = 0,\ a_N = 1                 & \|s_N\| \le \Delta,\\
+    a_U = \Delta/\|s_U\|,\ a_N = 0    & \|s_U\| \ge \Delta,\\
+    a_U = 1-\tau,\ a_N = \tau         & \text{otherwise},
+  \end{cases}
+  \label{eq:dogleg}
+\end{equation}
+%
+with $\tau$ the root of $\|s_U + \tau(s_N - s_U)\| = \Delta$ in $[0,1]$.
+Returning the two coefficients rather than the vector is deliberate: the image
+$As$ follows from $As_U$ and $As_N$ by linearity and costs no further
+matrix-free product.  The Krylov leg is solved without the pseudo-transient
+shift, $As_N = -r_0$ rather than $(I/\Delta\tau + A)s_N = -r_0$, because the
+dogleg falls monotonically along its path only when that leg is the model's own
+minimizer.  A species unknown also carries a box, the fraction-to-the-boundary
+rule holding the step inside the physical range of a mass fraction, and an
+element with no reservoir is excluded from the registry altogether: its
+unknown would sit exactly on its own lower bound with no room below, and the
+boundary rule then returns zero for any direction with a component pointing
+there, so the whole Krylov direction would be refused.
+
+\paragraph{The ledger and the stop.}
+The best iterate reached so far is kept, with its composition, its flux spread
+and whether it met the gates.  The non-monotone search accepts sideways steps,
+which is what lets the solve leave a bad neighborhood and also what lets it
+circle, so when the best iterate has not improved for 20 outer iterations the
+solve returns to it and switches to a monotone Armijo acceptance, and if that
+buys nothing in another 20 it stops and reports that it stagnated, a different
+statement from ``no descent direction exists''.  The loop-top stop requires
+the certified rows of Sec.~\ref{sec:steady:certification} and not only the
+merit: the two are different functionals, and a window on the merit alone
+bounds nothing about the quantity the state is judged by.  The return flag is
+0 when the returned state met the acceptance gate and every judged row, 1 at
+the iteration limit, 2 when the solve ended without a state meeting the gate,
+and 3 at an iterate where no feasible descent direction exists.  A flag of 2
+is not a solver failure: the solve converged and the certification refused the
+state it hands back, naming the row, and that state is written with the
+refusal recorded rather than marched on.
+
+\subsection{Pseudo-transient continuation}
+\label{sec:steady:ptc}
+
+\texttt{solve\_steady\_ptc} is the same residual solved with the banded
+Jacobian used as the \emph{operator} and not only as a preconditioner: per
+iteration $(I/\Delta\tau + J)\delta Y = -F$ is solved by LAPACK banded LU,
+the step is taken with a backtracking line search and a positivity test, and
+$\Delta\tau$ follows the switched-evolution-relaxation ramp
+$\Delta\tau \leftarrow \Delta\tau\,\|R\|_{\rm old}/\|R\|_{\rm new}$, cut on a
+failed step.  As $\Delta\tau \to \infty$ this is Newton's method; at small
+$\Delta\tau$ it behaves like explicit relaxation, which is the robust startup
+the continuation exists for.  The route is not available with a carrier
+unknown: it builds its Jacobian from the frozen residual, which by
+construction performs no equilibrium sweep and therefore has no carrier row,
+and giving it one would mean assembling that row from a background nothing in
+the routine refreshes.  The caller is told so rather than being handed a
+silently three-row answer.
+
+The starting $\Delta\tau$ matters: the marching handoff starts the
+continuation from $\Delta\tau_0 = 1$ and the two direct routes from the CFL
+step.
+
+\subsection{The partitioned outer iteration}
+\label{sec:steady:partitioned}
+
+A species the run moves by an operator-split transport step instead of by a
+Newton row, which is the diffusing elements always and the molecular carriers
+whenever \texttt{Coupled carrier solve} is off, has a stationary balance no
+hydrodynamic solve touches; a single steady solve would freeze it at whatever
+state it was handed.  \texttt{steady\_wind\_with\_element\_diffusion} in
+\texttt{EXHALE\_main.f90} alternates the two: solve the wind at fixed
+composition, relax the composition to its own steady state in that wind,
+solve again.  The composition relaxations are the fixed-wind element
+relaxation of \texttt{binary\_element\_diffusion.f90}
+(Sec.~\ref{sec:mol:diffusion}), under-relaxed with a factor $\omega$ starting
+at $0.5$, and the fixed-wind carrier relaxation of
+\texttt{diffusive\_photochemistry.f90} (Sec.~\ref{sec:mol:carrier}), bounded
+by a movement trust rather than damped.  The advecting flux handed to the element operator is the face
+mass flux of the state just solved, read from the row terms that state
+assembled, so the operator is given its wind and does not reach into the
+residual for one.
+
+What is accepted is only a state on which the certification of the
+\emph{full} set of active equations passes, evaluated on the refreshed state
+the routine would hand back.  A hydrodynamic solve returning 0 while an
+alternated species row refuses is not an accepted state: that flag is a
+statement about the rows in the Newton registry, and the alternated rows
+stand outside it by construction.  Conversely a nonzero hydrodynamic flag does
+not end the loop by itself, because the composition update that follows it
+still makes progress.
+
+The quantity the alternation waits on is the worst gated species row of the
+certification, judged in the wind.  Where it fails to fall over a pass, both
+updates are shortened, $\omega$ halved down to a floor of $0.125$ and the
+carrier movement bound halved down to $10^{-3}$, and three consecutive passes
+without a fall end the loop rather than spend the budget on a fixed point the
+alternation is not approaching.  The endings are named: the joint
+certification passes; a row of the state is not finite; the element
+composition update is refused; the joint measure stops falling; the pass
+budget ends uncertified.
+
+Two rules keep the state self-consistent.  The progress control stands
+\emph{ahead} of the composition update, so the pass that ends the iteration
+takes no update and what is handed back is the very state the certification of
+that pass was evaluated on; and the last pass of the budget takes no update
+either, an update existing only to be consumed by the next hydrodynamic solve.
+Taking it would replace a stationary wind by a state whose hydrodynamic rows
+the update itself spoiled, by eleven decades in the mass row on a molecular
+configuration.
+
+With \texttt{Coupled carrier solve: True} the alternation does not arise for
+the carriers at all: $n(\mathrm{H_2})$ becomes a fourth Newton unknown per
+cell, one solve returns a wind and a carrier partition that are steady states
+of each other, and the outer loop runs once.  With no alternated species at
+all, which is what an atomic run and a fully coupled run both give, the body
+is one steady solve followed by the state refresh and the flag is the solve's
+own.

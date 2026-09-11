@@ -14,7 +14,7 @@
 ! their incident field; it could not reach the rest of the layer, where the
 ! coolants that matter in a real H2 atmosphere -- water, carbon monoxide and
 ! molecular hydrogen itself -- were simply absent.  This module supplies them.
-! TO_BE_DONE.md item (G).
+! docs/TO_BE_DONE.md item (G).
 !
 ! THE PHYSICS.  For an optically thin layer in LTE the net radiative loss per
 ! unit volume of species X is

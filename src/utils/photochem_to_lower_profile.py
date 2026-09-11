@@ -72,8 +72,8 @@ import radiative_convective_column as rcc                # noqa: E402
 
 # Lodders 2009 as VULCAN reads it from
 # fastchem_vulcan/input/solar_element_abundances.dat, i.e. the same elemental
-# vector the P1 comparison gave both codes, so the two arms of E2 differ in
-# their chemistry and not in what they were told the gas is made of.
+# vector the P1 comparison gave both codes, so the two producers of E2
+# differ in their chemistry and not in what they were told the gas is made of.
 SOLAR_ABUNDANCES = dict(H=1.0, He=9.69170e-2, C=2.77588e-4, N=8.18465e-5,
                         O=6.06178e-4, S=1.31826e-5)
 

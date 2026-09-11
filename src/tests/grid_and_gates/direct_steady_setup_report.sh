@@ -13,7 +13,7 @@
 #
 # WHAT IS RUN
 #   backup/regression/roundtrip, copied out, with EXHALE_PTC=1 and the JFNK
-#   arm of that route bounded to one outer iteration (EXHALE_PTC_JFNK=1,
+#   solve of that route bounded to one outer iteration (EXHALE_PTC_JFNK=1,
 #   EXHALE_JFNK_MAXIT=1): the report is written before the solve, so one
 #   iteration is enough to reach the point under test and the row costs a
 #   few seconds.

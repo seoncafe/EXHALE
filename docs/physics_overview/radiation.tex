@@ -1,0 +1,460 @@
+\section{The stellar radiation field and its absorption}
+\label{sec:radiation}
+
+\subsection{The incident spectrum}
+\label{sec:radiation:spectrum}
+
+The star is represented by a plane beam that falls radially onto the
+substellar column. Its spectral shape is chosen once, by the
+\texttt{Spectrum type:} key of \texttt{input.inp}, and that single choice
+fills \emph{every} band of the photon grid: the extreme ultraviolet and
+X-ray bands, and also the part below the hydrogen Lyman edge where the
+He\,$2^3$S metastable, the low-ionization-potential metals and hydrogen in
+$n=2$ absorb. The three types are implemented in
+\texttt{J\_inc.f90} (\texttt{stellar\_flux\_eV}) and
+\texttt{sed\_read.f90}:
+
+\begin{description}
+\item[Power law] (\texttt{is\_PL\_sed}). Two power laws of one common index
+  $\alpha \equiv$ \texttt{PLind}, normalized separately on the EUV interval
+  $[E_{\rm low},E_{\rm mid}]$ and on the X-ray interval
+  $[E_{\rm mid},E_{\rm top}]$. With
+  $L_{\rm X}$ and $L_{\rm EUV}$ the two band luminosities, $a$ the orbital
+  distance and $\mathcal{R} = 10^{L_{\rm X}-L_{\rm EUV}}$,
+  %
+  \begin{equation}
+  J_{\rm XUV} = \frac{10^{L_{\rm X}} + 10^{L_{\rm EUV}}}{4\pi a^{2}},
+  \qquad
+  J_{\rm X} = \frac{\mathcal{R}}{1+\mathcal{R}}J_{\rm XUV},
+  \qquad
+  J_{\rm EUV} = \frac{1}{1+\mathcal{R}}J_{\rm XUV},
+  \label{eq:rad:bandsplit}
+  \end{equation}
+  %
+  and, for $\alpha \neq -1$ and $P_1 = \alpha+1$,
+  %
+  \begin{equation}
+  J_{\rm inc}(E) =
+  \begin{cases}
+    \dfrac{P_1 J_{\rm EUV}}{E_{\rm mid}^{P_1}-E_{\rm low}^{P_1}}\,E^{\alpha},
+      & E < E_{\rm mid},\\[2ex]
+    \dfrac{P_1 J_{\rm X}}{E_{\rm top}^{P_1}-E_{\rm mid}^{P_1}}\,E^{\alpha},
+      & E \ge E_{\rm mid},
+  \end{cases}
+  \label{eq:rad:powerlaw}
+  \end{equation}
+  %
+  the logarithmic form replacing the ratio at $\alpha=-1$, and the X-ray
+  normalization set to zero when \texttt{thereis\_Xray} is false. Below
+  $E_{\rm low}$ the same law is extrapolated, which is what the type means
+  rather than an accident.
+\item[Planck] (\texttt{spectrum\_is\_planck}). The photospheric blackbody
+  seen at the orbit,
+  %
+  \begin{equation}
+  F_\nu = \pi B_\nu(T_{\rm eff})\left(\frac{R_\star}{a}\right)^{2},
+  \qquad
+  B_\nu = \frac{2h\nu^{3}/c^{2}}{e^{h\nu/kT_{\rm eff}}-1},
+  \label{eq:rad:planck}
+  \end{equation}
+  %
+  converted to a flux per unit photon energy by $F_E = F_\nu\,{\rm d}\nu/{\rm d}E$
+  with ${\rm d}\nu/{\rm d}E = 2.417989242\times 10^{14}$\,Hz\,eV$^{-1}$.
+  For $h\nu/kT_{\rm eff} > 700$ the Wien form replaces $1/(e^{x}-1)$ so that
+  no exponential overflows. The absolute scale comes from $T_{\rm eff}$ and
+  $R_\star$, not from the two luminosities, so the grid-integrated flux
+  generally differs from $J_{\rm XUV}$; \texttt{write\_setup\_report.f90}
+  states both.
+\item[Load] (\texttt{do\_read\_sed}). A measured spectral energy
+  distribution read by \texttt{read\_sed} (\texttt{sed\_read.f90}): two
+  columns, bin central wavelength in \AA{} and flux at the planet in
+  erg\,cm$^{-2}$\,s$^{-1}$\,\AA$^{-1}$, ascending in wavelength. Between
+  two rows the field is interpolated log-linearly in $\log E$, exact for the
+  power-law segments a tabulated continuum is made of; outside the band it
+  returns zero, and \texttt{spectrum\_covers\_eV} must be asked first so
+  that the run stops rather than integrating a zero the input never stated.
+\end{description}
+
+A monochromatic option (\texttt{is\_monochr}) puts the whole
+$10^{L_{\rm EUV}}/4\pi a^{2}$ at a single energy $E_{\rm low}$.
+
+\paragraph{Bands of the photon grid.} \texttt{set\_energy\_vectors.f90}
+lays the grid out over at most six bands,
+\[
+[E_{\rm floor},E_{\rm abs}],\;
+[E_{\rm abs},13.598\,{\rm eV}],\;
+[13.598,24.587],\;
+[24.587,54.418],\;
+[54.418,E_{\rm mid}],\;
+[E_{\rm mid},E_{\rm top}],
+\]
+with fixed bin budgets $(20,89,50,50,50,50)$. $E_{\rm low}$, $E_{\rm mid}$
+and $E_{\rm top}$ are stated by the
+\texttt{[E\_low,E\_mid,E\_high]} line of \texttt{input.inp} (the tutorial
+run uses $13.60$, $123.98$ and $1.24\times10^{3}$\,eV; with
+\texttt{Use only EUV? True} the top is held at $1.24\times10^{3}$\,eV and
+the X-ray normalization is zero). $E_{\rm abs}$ is
+\texttt{sub\_lyman\_absorber\_threshold\_eV()}, the lowest ionization
+threshold of an absorber of the bulk gas below the hydrogen edge: the
+He\,$2^3$S metastable at 4.768\,eV when it is tracked, or the neutral stage
+of an active low-IP metal (K\,{\sc i} 4.341, Na\,{\sc i} 5.139,
+Ca\,{\sc i} 6.113, Mg\,{\sc i} 7.646, Fe\,{\sc i} 7.902, Si\,{\sc i} 8.152,
+S\,{\sc i} 10.36\,eV) when one is lower. $E_{\rm floor}$ is
+\texttt{photon\_grid\_floor\_eV()}, which lowers that further to
+$E_{\rm th}({\rm H}, n{=}2) = E_{\rm th}({\rm H})/4 = 3.3996$\,eV, the head
+of the Balmer continuum, whenever the excited-hydrogen coupling is armed.
+The interval $[E_{\rm floor},E_{\rm abs}]$ carries no bulk-gas absorber: it
+exists so that the H($n{=}2$) band is stated, that rate being a closed-form
+integral over it (Sec.~\ref{sec:ionization:n2}) and not a sum over these bins.
+
+\paragraph{Every ionization threshold is a bin edge.} A photoionization
+rate is the rectangle sum $\sum_k F_k \sigma_k \Delta E_k/E_k$, so a bin
+that \emph{contains} a threshold would charge the absorber its cross
+section, read at the bin center, over the part of the bin below the threshold
+where it cannot absorb at all. \texttt{ionization\_thresholds\_active}
+therefore collects every threshold the run carries (H\,{\sc i},
+He\,{\sc i}, He\,{\sc ii}, He\,$2^3$S, H$_2$ and its two channel
+thresholds, and every photoionizable stage of an element with nonzero
+abundance together with its subshell turn-ons); each band is cut at those
+falling strictly inside it, and its budget is shared over the subintervals in
+proportion to their logarithmic widths (largest remainder, at least one bin
+each). The bins are geometric and $E_k$ is the \emph{geometric} mean of the
+edges, the more accurate abscissa of a rectangle rule for a power-law
+integrand. A grid whose points sat \emph{on} the thresholds instead overstates
+the exact $P_{\rm HI}$, $P_{\rm HeI}$ and $P_{\rm HeII}$ by factors
+$1.095$, $1.016$ and $1.030$.
+
+\paragraph{Dayside dilution.} Every stellar beam of the code is multiplied by
+the dilution $\xi_{\rm day}$ of Table~\ref{tab:2d}: the XUV grid in
+\texttt{set\_energy\_vectors}, $F_{\rm XUV} \to \xi_{\rm day}F_{\rm XUV}$;
+the stellar Ly$\alpha$ beam in \texttt{lya\_rt.f90} and
+\texttt{excited\_hydrogen.f90}; and the four far-ultraviolet bands through
+\texttt{fuv\_band\_flux}.
+
+\paragraph{Bands stated by their integrated flux.} Four far-ultraviolet
+bands lie almost entirely below the photon grid and are given by scalar
+keys instead, in the band order of \texttt{water\_photolysis.f90}: LW
+(912--1201\,\AA, \texttt{Stellar LW flux}), B2 (the H\,{\sc i} Ly$\alpha$
+line at 1215.67\,\AA, \texttt{Stellar Lya flux}), B3 (1231--1450\,\AA) and
+B4 (1451--2304\,\AA). \texttt{fuv\_band\_flux} returns
+$\xi_{\rm day}F_{\rm band}$, the dilution being applied where the beam is
+used so that the keys keep their stated meaning, the band flux at the
+planet's orbit.
+
+\subsection{Photoionization cross sections}
+\label{sec:radiation:crosssec}
+
+All cross sections are carried in units of $10^{-18}$\,cm$^{2}$
+(\texttt{cross\_sec.f90}) and are evaluated once, at the grid centers, into
+the vectors \texttt{s\_hi}, \texttt{s\_hei}, \texttt{s\_heii},
+\texttt{s\_heiTR}, \texttt{s\_h2} and the table \texttt{sigma\_tab}.
+
+\begin{description}
+\item[Hydrogenic ions] (H\,{\sc i}, He\,{\sc ii}), function
+  \texttt{sigma}. With $\epsilon = \sqrt{E/E_{\rm th}-1}$,
+  \begin{equation}
+  \sigma(E) = \frac{6.3}{Z^{2}}\left(\frac{E_{\rm th}}{E}\right)^{4}
+  \frac{\exp\!\left[4-4\arctan(\epsilon)/\epsilon\right]}
+       {1-\exp(-2\pi/\epsilon)},\qquad E>E_{\rm th},
+  \label{eq:rad:hydrogenic}
+  \end{equation}
+  and $6.3/Z^{2}$ exactly at threshold, zero below it. $E_{\rm th}$ is the
+  \emph{measured} potential of the ion, the same energy the grid uses as a
+  band edge and the photoelectron is charged against.
+\item[He\,{\sc i} ground singlet] The \citet{Verner1996} single-shell fit,
+  \begin{equation}
+  x = \frac{E}{E_0}-y_0,\quad z=\sqrt{x^{2}+y_1^{2}},\quad Q=5.5-P/2,
+  \qquad
+  \sigma = \sigma_0\left[(x-1)^{2}+y_w^{2}\right]z^{-Q}
+           \left(1+\sqrt{z/y_a}\right)^{-P},
+  \label{eq:rad:vfky96}
+  \end{equation}
+  with the published parameters $(E_0,\sigma_0,y_a,P,y_w,y_0,y_1) =
+  (13.61, 949.2, 1.469, 3.188, 2.039, 0.4434, 2.136)$ and $E_{\rm th}$ taken
+  as the global He\,{\sc i} threshold (it only gates the fit). The legacy
+  ATES two-term fit $0.6935/[(E/100)^{1.82}+(E/100)^{3.23}]$ is restored by
+  \texttt{ates\_photoion\_rate} (default off).
+\item[He\,$2^3$S metastable] Two forms of \eqref{eq:rad:vfky96} joined by a
+  log-linear bridge: wing A from the 4.768\,eV threshold to the Cooper
+  minimum at 34.70\,eV, wing B from the resonance-averaged bump at 45.59\,eV
+  upward, and a power law joining them continuously in between. Each wing is
+  a fit at the few-percent level to the \citet{Norcross1971} and TOPbase
+  background.
+\item[Metal ions] \texttt{metal\_photoion\_sigma} returns the \emph{shell
+  sum} over the seven subshells of \citet{Verner1996} and
+  \citet{Verner1995}; the
+  1995 form is \eqref{eq:rad:vfky96} with $y_0=y_1=0$ and
+  $Q = 5.5+\ell-P/2$. Above the $E_{\max}$ of the 1996 outer-shell table the
+  handover to the 1995 subshell fit is made, as in Verner's own
+  \texttt{phfit2}; extrapolating the outer-shell fit is not conservative
+  (the Fe\,{\sc i} row rises as $E^{2-Q}$ and reaches 24.9\,Mb at 1240\,eV
+  against a true 0.51\,Mb). An inner-shell absorption is charged to one
+  ionization of the absorbing stage with a photoelectron of
+  $h\nu - E_{\rm th}({\rm outer})$, which approximates the Auger cascade and
+  undercounts the charge state by at least one stage; this is the
+  approximation the published exoplanet photochemistry models make
+  \citep{Cecchi2009, Locci2022}. Fluorescence is neglected: with $E_{\rm top}=1240$\,eV only
+  C, N, O and Na\,{\sc i} can have a K hole, and their K yields \citep{Krause1979} are 0.28, 0.52, 0.83 and 2.3
+  percent.
+\item[H$_2$] \texttt{sigma\_H2} is a piecewise \emph{measured} total
+  photoabsorption: $k_{\rm bx}\times$ \citet{Backx1976} Table 1 over
+  15.4--18\,eV with $k_{\rm bx}=1.016415$, \citet{Samson1994} Table 1
+  over 18--300\,eV, and $k_{\rm hi}\times$ the \citet{Yan1998} eq.~(19) $E^{-7/2}$ sum-rule tail above 300\,eV with
+  $k_{\rm hi}=0.885805$, all interpolated in $\log\sigma$ against $\log E$.
+  No piece of the Yan fit survives below 300\,eV: its three published pieces
+  do not meet at their own join energies, stepping by a factor 1.719 at
+  18\,eV and 0.619 at 85\,eV.
+\item[Opacity models] \texttt{opacity\_models.f90} dispatches the cross
+  sections through a model selected in the optional \texttt{opacity.inp}:
+  \texttt{A} analytic (the curves above, the default), \texttt{C} constant
+  above threshold, \texttt{P} constant with the \citet{Robinson2012}
+  pressure broadening $f(p) = 1 + a\,(p/p_{\rm piv})^{n}$, and \texttt{T} a
+  two-column table. In model \texttt{P} the multiplier $f(p)$ of a cell is
+  stored in \texttt{opa\_pf}$(j)$ and carried identically in the optical
+  depth and in the local absorption, so that the photons a cell removes from
+  the beam are the photons it absorbs.
+\end{description}
+
+\subsection{Transfer along the radial ray}
+\label{sec:radiation:transfer}
+
+The transfer is frequency-integrated over the grid of
+Sec.~\ref{sec:radiation:spectrum} and is pure absorption: there is no
+scattering term and no diffuse field in the XUV. For cell $j$ the column of
+each absorber \emph{outside} the cell is accumulated from the top down by
+\texttt{advance\_starward\_columns} (\texttt{util\_ion\_eq.f90}) on the same
+rectangle rule the grid uses,
+\begin{equation}
+N_a^{\rm out}(j) = \sum_{j'>j} n_a(j')\,\Delta r_{j'}R_0\,f(p_{j'}),
+\label{eq:rad:column}
+\end{equation}
+and the cell's \emph{own} depth is formed from its own density rather than
+as a difference of two columns, which is the same number in exact
+arithmetic and loses its digits to cancellation for a thin cell. The two
+optical depths at photon energy $E_k$ are
+\begin{equation}
+\tau^{\rm out}_k = \sum_a \sigma_{a,k}N^{\rm out}_a,
+\qquad
+\Delta\tau_k = \sum_a \sigma_{a,k}\,n_a(j)\,\Delta r_j R_0 f(p_j),
+\label{eq:rad:tau}
+\end{equation}
+the sum running over H\,{\sc i}, the He\,{\sc i} ground singlet,
+He\,{\sc ii}, He\,$2^3$S when tracked, H$_2$ when the molecular chemistry is
+on, and every photoionizable metal stage.
+
+The attenuated flux the cell's \emph{rate} sees is the \emph{mean} of the
+beam over the cell, not its value at either face
+(\texttt{cell\_mean\_attenuation} in \texttt{utilities.f90}). Since the
+densities are uniform inside a cell, $\tau(s) = \tau^{\rm out}+s\,\Delta\tau$
+and
+\begin{equation}
+\left\langle e^{-\tau}\right\rangle_{\rm cell}
+ = e^{-\tau^{\rm out}}\,\frac{1-e^{-\Delta\tau}}{\Delta\tau},
+\label{eq:rad:cellmean}
+\end{equation}
+the second factor being \texttt{absorbed\_fraction\_per\_unit\_depth}, which
+switches to its series $1-\Delta\tau/2+\Delta\tau^{2}/6$ below
+$\Delta\tau = 10^{-8}$. Only this mean makes the photons the cell absorbs
+equal the photons the beam loses across it; a one-point rule at the inner
+face is low by 42 percent at $\Delta\tau=1$, the depth a cell carries at the
+ionization front. The optional \texttt{alpha} form of the 2-D approximation replaces
+\eqref{eq:rad:cellmean} by \eqref{eq:alpha2d}, which has no closed form.
+
+The working flux of the cell is therefore
+\begin{equation}
+\mathcal{F}_k(j) = F_{{\rm XUV},k}\,
+   \left\langle e^{-\tau}\right\rangle_{k,{\rm cell}}\, f(p_j),
+\label{eq:rad:workingflux}
+\end{equation}
+the model-\texttt{P} factor being folded once into the shared flux weight
+rather than into each cross section, which is identical because every
+integrand below is linear in exactly one cross section.
+
+\subsection{Photoionization and photoheating rates}
+\label{sec:radiation:rates}
+
+Every integral is the rectangle sum over the grid,
+$\sum_k(\cdot)\,\Delta E_k$, with $\Delta E_k$ the exact bin width, so
+$\sum_k \Delta E_k = E_{\rm top}-E_{\rm floor}$ exactly. For absorber $a$
+the photoionization rate per particle and the photoheating rate of
+\emph{one} particle of that absorber are
+\begin{align}
+P_a &= \sum_k \mathcal{F}_k\,\frac{\sigma_{a,k}}{E_k}\,\Delta E_k
+       \times 10^{-18}\,\mathrm{erg^{-1}eV},
+  \label{eq:rad:photorate}\\
+h^{(1)}_a &= \sum_k \mathcal{F}_k\,
+   \left(1-\frac{E_{{\rm th},a}}{E_k}\right) f_{\rm heat}(E_k)\,
+   \sigma_{a,k}\,\Delta E_k \times 10^{-18}\ \ [\mathrm{erg\,s^{-1}}],
+  \label{eq:rad:photoheat}
+\end{align}
+where the factor $1-E_{\rm th}/E$ is the share of the photon left as
+photoelectron kinetic energy (\texttt{photoelectron\_share}; the key
+\texttt{photoheat\_photon\_fraction}, default off, replaces it by a constant
+fraction), and $f_{\rm heat}$ is the secondary-ionization heat fraction of
+Sec.~\ref{sec:radiation:secondary}. The heating of the cell is the contraction
+of these one-particle rates with the composition,
+\begin{equation}
+\mathcal{H} = \sum_a n_a\,h^{(1)}_a,
+\label{eq:rad:heatcontraction}
+\end{equation}
+performed in exactly one place (\texttt{photoheating\_of\_cell}) and split
+by absorber into the six columns H\,{\sc i}, He\,{\sc i}, He\,{\sc ii},
+He\,$2^3$S, H$_2$, metals. The heating efficiency written to the output is
+\begin{equation}
+\eta_{\rm heat} = \frac{\mathcal{H}}{\displaystyle\sum_k \mathcal{F}_k
+        \Big(\sum_a \sigma_{a,k} n_a\Big)\Delta E_k\times 10^{-18}},
+\label{eq:rad:eta}
+\end{equation}
+the ratio of the energy deposited to the energy absorbed, set to zero in a
+transparent or unilluminated cell.
+
+\paragraph{Molecular channels.} H$_2$ absorption is resolved into four
+mutually exclusive final states whose cross sections are \emph{shares} of
+$\sigma_{{\rm H}_2}$, so the opacity and the total H$_2$ destruction rate are
+unchanged. Each channel is charged its own threshold in
+\eqref{eq:rad:photoheat}, and the two deposits that are not a photoelectron,
+the kinetic energy release of the double channel and the internal excitation
+the neutral channel radiates away, are stated with the channels themselves in
+Sec.~\ref{sec:mol:h2photo}.
+
+\paragraph{Self-consistency of the field with the composition.} Nothing in
+\eqref{eq:rad:tau} depends on any cell inside $j$, which is what lets the
+equilibrium sweep march outside in and re-form the field of one cell against
+its own composition (Sec.~\ref{sec:ionization:solve}); the cell mean
+\eqref{eq:rad:cellmean} is formed once per pass so that no second attenuation
+is stacked on the first. The rates are constants of the cell's nonlinear
+solve, carrying the field dependence inside the residual meaning a
+re-integration of the photon grid at every residual evaluation.
+
+\subsection{Secondary ionization by photoelectrons}
+\label{sec:radiation:secondary}
+
+A photoelectron faster than $E_{\rm sec} = 30$\,eV does not thermalize
+completely: part of its energy ionizes further neutrals.
+\texttt{electron\_energy\_degradation.f90} divides the labor between two
+published determinations. \citet{Shull1985} supply
+the energy budget of the ionization channels as a function of the ionized
+fraction $x$,
+\begin{equation}
+\phi_{\rm HI}(x) = 0.3908\left(1-x^{0.4092}\right)^{1.7592},
+\qquad
+\phi_{\rm HeI}(x) = 0.0554\left(1-x^{0.4614}\right)^{1.6660},
+\label{eq:rad:svs85}
+\end{equation}
+whose form vanishes at $x=1$ where no neutral is left. \citet{Dalgarno1999}
+supply the heating fraction and everything that
+depends on molecular hydrogen; their Table 4 mean energies per ion pair,
+$W(x,E_0) = a(1+c\,x^{b})$, give the energy dependence,
+\begin{equation}
+f_{\rm HI}(x,E_0) = \phi_{\rm HI}(x)\frac{W_{\rm H^+}(x,1\,{\rm keV})}
+                                          {W_{\rm H^+}(x,E_0)},
+\qquad
+f_{\rm HeI}(x,E_0) = \phi_{\rm HeI}(x)\frac{W_{\rm He^+}(x,1\,{\rm keV})}
+                                            {W_{\rm He^+}(x,E_0)},
+\label{eq:rad:sec_energy}
+\end{equation}
+so that the high-energy limit is exactly \citeauthor{Shull1985}'s. The
+division of that energy among the targets is recomputed on the cell's own
+densities, using the collision weight $1.89$ that \citeauthor{Dalgarno1999}'s
+eqs.~(9) and (10) imply (their coefficients $1.89$ and $0.53$ are reciprocal
+to 0.17 percent), with $r_{\rm ref} = n({\rm He\,I})/n({\rm H\,I}) = 0.1$
+the reference composition of the fits:
+\begin{equation}
+w = (n_{\rm HI}+1.89\,n_{\rm H_2})r_{\rm ref}f_{\rm HI} + n_{\rm HeI}f_{\rm HeI},
+\quad
+c_{\rm HI} = \frac{f_{\rm ion}\,r_{\rm ref}f_{\rm HI}}{w},
+\quad
+c_{\rm H_2} = 1.89\,c_{\rm HI},
+\quad
+c_{\rm HeI} = \frac{f_{\rm ion}f_{\rm HeI}}{w},
+\label{eq:rad:sec_split}
+\end{equation}
+with $f_{\rm ion} = f_{\rm HI}+f_{\rm HeI}$. These coefficients are
+\emph{per target particle} (units cm$^{3}$), so
+$n_{\rm HI}c_{\rm HI}+n_{\rm H_2}c_{\rm H_2}+n_{\rm HeI}c_{\rm HeI}=f_{\rm ion}$
+identically and nothing is divided by a vanishing neutral density. The heat
+fraction is
+\begin{equation}
+f_{\rm heat}(E_0) = 1 - \left[1-\eta_{\rm mix}(x,E_0)\right](1-x)
+                     + f_{\rm diss} + f_{\rm vib} + f_{\rm fluor},
+\label{eq:rad:fheat}
+\end{equation}
+with $\eta_{\rm D} = 1 + (\eta_{\rm D,0}-1)/(1+c\,x^{b})$ their eq.~(14) and
+$\eta_{\rm mix}$ their eq.~(12) mixing of the H/He and H$_2$/He efficiencies.
+The factor $(1-x)$ is this code's closure and not either source's: the
+channels that compete with heat need a neutral to act on, and
+\citeauthor{Dalgarno1999}'s form leaves 10 percent of the primary energy unthermalized even at
+$x=1$. The three molecular terms (fragment kinetic energy, direct
+vibrational excitation of $v=1,2$, and the vibrational energy the B and C
+states return on fluorescing) vanish identically with $n({\rm H}_2)$; the
+last two carry the collisional quench fraction of
+\texttt{h2\_vibrational\_relaxation.f90}, since a radiated excitation is not
+heat.
+
+The secondary rates are added to the primary ones of
+\eqref{eq:rad:photorate}: for an absorber $a$ whose photoelectron energy
+exceeds $E_{\rm sec}$,
+\begin{equation}
+P^{\rm sec}_{\rm HI} = \sum_k \mathcal{F}_k\,
+   \frac{\sigma_{a,k}n_a}{E_k}\,c_{\rm HI}(E_k)\,
+   \frac{E_k-E_{{\rm th},a}}{E_{\rm th}({\rm H\,I})}\,\Delta E_k
+   \times 10^{-18}\,\mathrm{erg^{-1}eV},
+\label{eq:rad:secrate}
+\end{equation}
+and likewise for He\,{\sc i} and H$_2$; the H$_2$ secondaries additionally
+make one proton per 22 H$_2^+$ ions \citep[after their eq.~10]{Dalgarno1999}, which is an added yield and not a share.
+
+\paragraph{Staged activation.} The key \texttt{Secondary\_ionization} is
+\emph{on} by default (\texttt{use\_sec\_ion = .true.}) but \emph{staged}:
+the runtime flag \texttt{sec\_ion\_active} stays false until the wind has
+first converged without the coupling, because from a cold initial condition
+the base feedback amplifies the startup transient into a runaway
+(\texttt{EXHALE\_main.f90}, the block that sets \texttt{sec\_ion\_active =
+.true.} once any of the mass-flux, step-change, plateau or steady gates is
+met, and again before the JFNK handover so that Newton is never asked to
+solve a system the marched state does not approximately satisfy).
+\texttt{Secondary\_ionization: Immediate} applies it from step 0 and
+\texttt{False} disables it entirely. Photoelectrons between 13.6 and 30\,eV
+are still treated as depositing all their energy as heat, which is a limit
+of the published tables and not a physical threshold.
+
+\subsection{Reprocessed and non-stellar fields}
+\label{sec:radiation:internal}
+
+Three fields in the code are not the direct stellar beam.
+
+\paragraph{Helium recombination radiation.} With
+\texttt{He\_rec\_coupling} (default on), the photons emitted when
+He\,{\sc ii} recombines are coupled on the spot to the ionization of
+H\,{\sc i}, H$_2$ and the metals (\texttt{he\_rec\_coupling} in
+\texttt{util\_ion\_eq.f90}). Each cascade exit is represented at one photon
+energy: the ground-capture continuum starting at $E_{\rm th}({\rm He\,I})$,
+the $2^1P\to1^1S$ resonance line at 21.2\,eV, the $2^3S\to1^1S$ line at
+19.8\,eV, and the part of the $2^1S$ two-photon continuum above the hydrogen
+edge. The last is not a line: integrating the \citet{Drake1969} shape over 13.598--20.62\,eV gives 0.5564 ionizing photons per decay
+carrying 8.9646\,eV, a mean in-band photon energy of 16.110\,eV and hence
+2.512\,eV of photoelectron energy per photon, against 3.511\,eV for a flat
+distribution over the same window.
+
+\paragraph{Lyman-Werner band.} The 912--1201\,\AA{} beam is solved once for
+all of its absorbers together (\texttt{fuv\_lw\_photon\_field}), because an
+H$_2$O molecule cannot absorb a photon an H$_2$ line has already taken. Its
+transmission down to a face is $T = (1-A)e^{-\tau_c}$ with
+$A = \int \sigma_{\rm pump}f_{\rm shield}(N_{\rm H_2})n_{\rm H_2}{\rm d}r$,
+and across one cell the identity
+\begin{equation}
+T^{\rm out}-T^{\rm in} = e^{-\tau^{\rm out}}
+  \left[(1-A^{\rm out})\left(1-e^{-\Delta\tau}\right)
+        + \Delta A\, e^{-\Delta\tau}\right]
+\label{eq:rad:lwsplit}
+\end{equation}
+is exact, so the photons the cell removes split into a continuum share and a
+line share with nothing left over. The continuum factor $e^{-\tau_c}$ is the
+\citet{Draine1996} eq.~(40) term, identically 1 where the oxygen option is
+off. Line self-shielding is the tabulated function of
+$(T, n, N_{\rm H_2})$ of Sec.~\ref{sec:mol:lw}. CO is shielded on the same beam by
+the \citet{Visser2009} function
+$\Theta(N_{\rm CO},N_{\rm H_2})$ (\texttt{co\_self\_shielding\_table.f90}).
+
+\paragraph{Ly$\alpha$ and the Balmer continuum} are described with the
+excited-hydrogen model in Sec.~\ref{sec:ionization:n2}.

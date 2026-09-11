@@ -8,7 +8,7 @@ how that row is transported and did **not** move where the coupled solve fails.
 
 ## What was run
 
-One march, two arms, one binary. The arms differ by the environment variable
+One march, two runs, one binary. The runs differ by the environment variable
 `EXHALE_TRUST_REGION` and by nothing else -- same executable, same `input.inp`,
 same restart files -- so any difference between them is the step control and
 not the state, the physics or the build.
@@ -28,11 +28,11 @@ not the state, the physics or the build.
   JFNK takes it at once. Trust region off: the backtracking line search.
 * **tr** -- the same restart with `EXHALE_TRUST_REGION=1`.
 
-Both arms hand off at step 2 and, on failure, march 2,000 steps and retry,
+Both runs hand off at step 2 and, on failure, march 2,000 steps and retry,
 three attempts in all -- the existing recovery, unchanged.
 
 Logs: `.../scratchpad/p159/{march,ls,tr}/`. The acceptance criteria were fixed
-in `.../scratchpad/p159/PLAN.md` **before** the arms were run.
+in `.../scratchpad/p159/PLAN.md` **before** the runs were started.
 
 ## The ledgers
 
@@ -87,14 +87,14 @@ transported in a variable the mass row does not conserve; that was physically
 wrong and is fixed; and the coupled solve fails in the same cells it failed in
 before. The two facts are independent and both are results.
 
-**5. The trust region reaches the lowest residual seen on either arm** --
+**5. The trust region reaches the lowest residual seen in either run** --
 `||R|| = 0.916`, in the attempt that ran to the 500-iteration cap accepting
 every one of its 500 steps -- at eight times the cost (16,258 residual
 evaluations against about 2,000). It is progress, and it is slow.
 
-Per P17, no magnitude from either arm is quoted as physics: neither reached
-`info = 0`, and the mass-loss rates the two arms end on (`10.41`, `10.42`) are
-recorded here only as the two arms' end states, not as a rate.
+Per P17, no magnitude from either run is quoted as physics: neither reached
+`info = 0`, and the mass-loss rates the two runs end on (`10.41`, `10.42`) are
+recorded here only as the two runs' end states, not as a rate.
 
 ## Why the trust radius contracts: the leg belongs to a different model
 

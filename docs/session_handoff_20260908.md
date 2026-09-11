@@ -3,15 +3,15 @@
 ## State on 2026-09-10 (read this first; the sections below are the 2026-09-08 record)
 
 - Plan of record `docs/PLAN_20260909_rev1.md`; items N-1 to N30 DONE and
-  logged in `docs/Update_EXHALE.md` section 7; decisions 13 to 22 taken
+  logged in `docs/Update_EXHALE_stage2.md` section 7; decisions 13 to 22 taken
   (`docs/To_be_determined_by_user_20260906.md`). The state of the code is
   `docs/code_status_20260910.md`; the problems are `docs/ISSUES_20260909.md`
   (sections 3.1 to 3.8 and 5 current as of N30).
 - Goldens: refreshed 2026-09-10 00:40 (`golden_pre_stageD_20260910/` is the
   previous set), `lower_profile` again at 11:10 (`golden_pre_n29_20260910/`);
   `make check` PASS on the shared build at that gate.
-- Fixtures: `backup/regression/atomic_elem_newton/IC` (atomic element arm,
-  README with the control of every arm), `backup/regression/wasp_full_newton/IC`
+- Fixtures: `backup/regression/atomic_elem_newton/IC` (atomic element reload,
+  README with the control of every run), `backup/regression/wasp_full_newton/IC`
   (the certified atomic state, bitwise guard); the carrier reload is made by
   the scratch recipe of the 2026-09-09 session (B5k `mkrun.sh carrier`) and
   is NOT pinned in the tree yet.
@@ -21,7 +21,7 @@
   `lower_atmosphere_coupling`, `EXHALE_user_manual` (tex and pdf), `README.md`,
   `README_HOWTO.md`, `TO_BE_DONE.md`, `steady_solver_design.md` section 22.
 - N31 DONE 2026-09-10 (logged): the action's nonadditivity is a
-  non-smoothness floor of the residual, not curvature; neither probe arm
+  non-smoothness floor of the residual, not curvature; neither probe option
   adopted; carrier reload pinned as `backup/regression/carrier_elem_newton`.
   N32 DONE: the floor follows no inner tolerance and is not in the
   chemistry; it sits in the hydrodynamic rows (mass, energy) of cells 1 to
@@ -30,7 +30,7 @@
   face (bound `epsilon x face state x r^2/dV`, followed over 4.6 decades).
   Next: DECISION 23 (`docs/To_be_determined_by_user_20260906.md`):
   well-balanced flux differencing (recommended), quad accumulation as the
-  control, coarser base cells, or accept the floor. N34 (the control) DONE: the floor is confirmed (the quad arm lands on
+  control, coarser base cells, or accept the floor. N34 (the control) DONE: the floor is confirmed (the quadruple-precision assembly lands on
   the double bound of the state handed in) and the Arnoldi gap falls by 31,
   but the Krylov cycle still stalls at 0.21 (hydrodynamic binding row) and
   0.98 (element and carrier binding rows): the floor is not what holds the
@@ -39,7 +39,7 @@
   near-singular on the species rows (Ritz ratio 6.6e5 carrier, 1.1e4
   atomic; binding row's diagonal 3.3e3 below its hydrodynamic coupling)
   and a longer Krylov cycle returns a worse step (true residual optimum at
-  60 to 80 products). N36 DONE: both arms fail acceptance, stay off; the linear algebra is
+  60 to 80 products). N36 DONE: both options fail acceptance, stay off; the linear algebra is
   exhausted as a lever. Decision 23 DECIDED (a) 2026-09-10; N37 (well-balanced flux
   difference, default-off option) launched. The remaining question (the discretization of the species rows that bind at the
   front). Uncommitted: N31 to N36 source (`steady_newton.f90`,
@@ -53,7 +53,7 @@ This file covers the two batches that followed it: B5, B5b, B5c,
 FIELD-SELF, DIFT-LINK, THREAD-DET, HYG-PY, DOCS-LINES (gate 1), then B5d,
 B5e, COST4, COST5, COST6, HYG-T9, HYG-4 (gate 2), with COST7 (decision 8)
 in progress. The record is
-`docs/Update_EXHALE.md` section 7; `docs/Update_EXHALE.{tex,pdf}` is its
+`docs/Update_EXHALE_stage2.md` section 7; `docs/Update_EXHALE_stage2.{tex,pdf}` is its
 generated twin (`python3 src/utils/update_log_to_tex.py`, then latexmk).
 
 ## Verified state
@@ -172,7 +172,7 @@ cycle; the limiter is now the linear solve). N5 done (replay GREEN on four
 configurations; conditional closure exceeds the tolerances, two suite rows
 FAIL by design; B5h's two roots do not reproduce with H2 transported).
 Decisions 14 (route i) and 20 (one functional) taken 2026-09-09. N20 done (one functional: carrier
-0.446, atomic arm collapses on conditioning), N16b/N16d/N16e done (species
+0.446, atomic reload collapses on conditioning), N16b/N16d/N16e done (species
 rows in the estimate; the checkpoint restore complete; p = 3 for the RK3
 rows, p = 1 for the split rows). N8a done (one empty Jacobian
 column was the collapse; column floor + equilibrated preconditioner; atomic
@@ -191,22 +191,22 @@ advisor decision). N10 brief ready (restart contract), launches after N11b
 frees `write_output.f90`. N22 done (face writes were the cause;
 atomic reload 1.36e-2 in 113 iterations), N10 done (restart contract; decision
 item 21 on option-changing restarts). N10b done (decision 21 a: `Restart
-option change` key; the arm directories written before the RJ unification
-are configurations, not restart sources). N23 and N24 done (the atomic arm's
+option change` key; the `arm*` directories written before the RJ unification
+are configurations, not restart sources). N23 and N24 done (the atomic reload's
 obstruction is the sodium row of cell 500 and the linear model there).
 **Stage D gate PASSED 2026-09-10 00:27 and the goldens were refreshed at
 00:40** (previous set `golden_pre_stageD_20260910/`; marching files identical
 on all 16 cases; `_adv` files moved by design). N25 done: the Arnoldi gap is the
 nonlinearity of the finite-difference action (not orthogonality), the ball
-truncation is a measured arm (default off), and the sodium row's upper ghost
+truncation is a measured option (default off), and the sodium row's upper ghost
 is FROZEN at the pre-solve composition during a stationary solve (a defect
 of `eval_residual`, not of the operator). N26 done: the upper ghost follows
-the iterate; atomic arm 1.36e-2 -> 3.7e-4, binding row now the interior He
+the iterate; atomic reload 1.36e-2 -> 3.7e-4, binding row now the interior He
 row of cell 246; carrier `||R||` 0.25 (same binding cell). N27 done: the helium row of
 cell 246 is held by the linear solve (Krylov 40/40 at 0.99, Arnoldi gap
 0.147 not tracking the step), not by physics, bound, closure or tolerance.
-**N26b's ghost refill in the element operator BREAKS the atomic arm** (1.199
-at iteration 40 where N26's arm reached 3.2e-2; advisor confirmed): N26c reverted it: the arm is chaotic
+**N26b's ghost refill in the element operator BREAKS the atomic reload** (1.199
+at iteration 40 where N26's reload reached 3.2e-2; advisor confirmed): N26c reverted it: the reload is chaotic
 at the ulp level (a one-ulp ghost change breaks it as badly), so its
 `||R||` at a fixed iteration is not an acceptance quantity; the linear solve
 is the limiter (N21, N24, N27). The user chose the advisor's
@@ -226,7 +226,7 @@ the layer's element flux conservation, N6 steps 1-4, the manual PDF. The user ma
 candidate certifies, N6 steps 1-4, the cleanup items of ISSUES 3.7, and the
 PDF of the user manual (two keys behind its source).)
 
-1. **The carrier arm of the stationary solve** (B5g, B5h, B5j, B5k;
+1. **The carrier reload of the stationary solve** (B5g, B5h, B5j, B5k;
    decisions 11a and 12c taken): the carrier unknown is `ln n` by default,
    `mol_carrier` `||R||` 1.415 -> 0.9957, no bound held, no Cauchy-only
    step; still not converged. **Next obstruction (B5k, MEASURED)**: the

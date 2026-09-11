@@ -48,7 +48,7 @@ v = 0 pumps). LW-NORM measured the consequence: the column integral reached
 `lyman_werner.f90` lost. Item 6 of
 `docs/To_be_determined_by_user_20260906.md` chose between rebuilding on
 912-1110 A and widening the beam; the user adopted the widening on
-2026-09-06 (item LW-NORM-B of `docs/Update_EXHALE.md` section 7), because the
+2026-09-06 (item LW-NORM-B of `docs/Update_EXHALE_stage2.md` section 7), because the
 1110-1201 A lines are real absorbers of a 700-3200 K layer and carry about a
 third of the dissociations at saturation. `F_BAND_ERG` in `lbl_table.py`
 carries the derivation of the deck's flat band flux over the wider interval;

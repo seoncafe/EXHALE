@@ -415,7 +415,7 @@ carry a \texttt{\# solution\_id} matching the profile's or the run stops. Two
 producers write the format: \texttt{src/utils/photochem\_to\_lower\_profile.py}
 (the production path, with the temperature structure either prescribed or solved
 by its radiative--convective climate model) and
-\texttt{src/utils/vulcan\_to\_lower\_profile.py} (the cross-check arm, VULCAN
+\texttt{src/utils/vulcan\_to\_lower\_profile.py} (the cross-check path, VULCAN
 carries no climate model). Column-by-column schema:
 \texttt{docs/input\_schema.md} \S2d; example: \texttt{examples/17\_lower\_profile/}.
 
@@ -694,7 +694,7 @@ the trace transport left it. The difference was written into hydrogen at
 every call. MEASURED at one cell of the certification column whose metal/H
 was $0.024401$ against the reservoir's $0.028227$, $\sum_i m_i f_i$ went
 $1.0000000 \rightarrow 1.0000636$ in a single step: mass created. A second
-leak of the same kind: the trace-metal arm wrote metal densities with no
+leak of the same kind: the trace-metal transport wrote metal densities with no
 counter-flux in the hydrogen they diffuse through
 ($3.0\times10^{-3}$ on the suite column with the metals frozen).
 
@@ -727,10 +727,10 @@ zero-gradient top was tried and reverted. It is physically the right
 condition and it changes the residual by one element's outermost row in its
 twelfth digit and nothing else (the production callers already hand the
 operator ghosts equal to the cell to one to four units in the last place),
-but the atomic element arm of the stationary solve does not survive a
+but the atomic element rows of the stationary solve do not survive a
 last-bit change of those ghosts, whatever makes it: a control that merely
 multiplies the same three ghost quantities by $1 + 2\times10^{-16}$ and poses
-no boundary at all moves the arm just as far. The amplifier is the Krylov leg
+no boundary at all moves them just as far. The amplifier is the Krylov leg
 at its one-digit tolerance, which crosses that tolerance on a different
 vector and sends the acceptance test down a different branch a few
 iterations later. The asymmetry therefore stays in the tree, documented at

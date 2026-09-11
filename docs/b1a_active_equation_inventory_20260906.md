@@ -105,7 +105,7 @@ narrower exists.
 | `Ionization transport` | `ionization_transport` (`.false.`) | H+ as the fifth carrier; `x_hp_fixed` imposed on the sweep for `j >= 1` (`ionization_equilibrium.f90`, `ioniz_eq`). Refuses `Molecular chemistry: False`, `Molecular carrier transport: False`, `Coupled carrier solve`, `Solver: Newton` (`input_read.f90`, `input_read`) |
 | `Coupled carrier solve` | `carrier_in_newton` (`.false.`) | `set_transported_species_rows` (`steady_newton.f90`): one row and one unknown per transported balance the configuration activates, and `nvar_jac` with them |
 | `He_diffusion` | `he_diffusion` (`.false.`) | `element_diffusion_step` (`binary_element_diffusion.f90`), called from the attempted step of `EXHALE_main.f90` and from `steady_wind_with_element_diffusion` |
-| `He_Kzz`, `He_alphaT`, `He_ambipolar`, `He_metal_diffusion` | `he_kzz` 0, `he_alphaT` 0, `he_ambipolar` `.true.`, `he_metal_diffusion` `.false.` | terms of the diffusive flux `J` (`settling_coefficient`, `drift_and_gradient_face_coefficients`) and the trace-metal arm (`solve_trace_element_in_hydrogen`), all `binary_element_diffusion.f90` |
+| `He_Kzz`, `He_alphaT`, `He_ambipolar`, `He_metal_diffusion` | `he_kzz` 0, `he_alphaT` 0, `he_ambipolar` `.true.`, `he_metal_diffusion` `.false.` | terms of the diffusive flux `J` (`settling_coefficient`, `drift_and_gradient_face_coefficients`) and the trace-metal solve (`solve_trace_element_in_hydrogen`), all `binary_element_diffusion.f90` |
 | `Stellar Teff` **and** `Stellar radius` | `use_excited_H = (T_star_eff > 0) .and. (R_star > 0)` (`input_read.f90`, `input_read`) | `excited_H_update` and the whole H(n=2) system (`excited_hydrogen.f90`); the Balmer continuum band; `Spectrum type: Planck` is refused without both (same routine) |
 | `Secondary_ionization` | `use_sec_ion` `.true.`, `sec_ion_immediate` `.false.` (`input_read.f90`, `input_read`) | the SvS85 partition inside the photoheating integrand (`util_ion_eq.f90`, `photoelectron_share` and the `photoionization_field_at_cell_H` / `_HHe` integrands); staged flip in the "Staged secondary ionization" block of `EXHALE_main.f90` |
 | `Base IR field` | `base_ir_field` (`.false.`) | `fine_structure_line_transfer` incident field (`Cool_coeff.f90`) and `h3p_net_cooling_rate` (`h3p_cooling.f90`) |
@@ -160,7 +160,7 @@ Three rows on the physical cells, `u = (rho, rho v, E)`
 Two facts about the mass row that A2 must not lose (D0 C2): the chemistry stage
 overwrites `rho` and pushes it into the conserved row, and the stationary
 residual has no such term. **Both were removed on 2026-09-06 (item B3c,
-`docs/Update_EXHALE.md`):** `ioniz_eq` now takes the density `intent(in)`
+`docs/Update_EXHALE_stage2.md`):** `ioniz_eq` now takes the density `intent(in)`
 (`ionization_equilibrium.f90`, the `n_io` declaration and its T2.1 note), the
 mass sum of the returned composition comes back as the optional check
 `rho_recon` built by `calc_rho`, and the pressure rebuild that pushed it into
@@ -287,7 +287,7 @@ last sweep left.
 
 **State-consistent evaluation: yes, since A2 step 4.**
 `element_transport_residual` (`binary_element_diffusion.f90`,
-public) returns the STATIONARY balance of both arms on a state handed in:
+public) returns the STATIONARY balance of both parts on a state handed in:
 
 - the He/H partition, `div(r^2 J)/r^2 + rho v dX/dr = 0` (no source, no sink),
   obtained by evaluating the operator's own `composition_residual` at a step
@@ -301,7 +301,7 @@ It returns the residual and the scale cell by cell, in `g cm^-3 s^-1` for
 helium and `s^-1` for a trace element; the scale of a row is the sum of the
 magnitudes of its own terms and the floor beneath it is a rate 1e-20 of the
 base composition carried across the domain in one flow time `R0/v0`. Cell 1
-carries no equation in either arm (it is the Dirichlet reservoir the operator
+carries no equation in either (it is the Dirichlet reservoir the operator
 states) and reads zero against that floor.
 
 `composition_residual` is still private but now returns its
@@ -515,7 +515,7 @@ rebuild `p` from the **same** `T`, `W_to_U`. In the monatomic limit that moved
 `u_th` by `(3/2) k_B T Delta n_part` with no source behind it (D0 C1), and
 there was **no molecular or metal guard** on the sequence, which was F2's
 point: a pure H/He run with changing ionization ran it every step. **Removed on
-2026-09-06 (item B3c, `docs/Update_EXHALE.md`):** rows 7 to 9 are now one local
+2026-09-06 (item B3c, `docs/Update_EXHALE_stage2.md`):** rows 7 to 9 are now one local
 source step per cell at fixed volume, iterated to a fixed point, with the
 energy row anchored on `u_th_old` and no `comp_p_from_T` and no `W_to_U` in the
 loop (`EXHALE_main.f90`, the `coupled_source` loop and the note above it).

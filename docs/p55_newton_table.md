@@ -32,7 +32,7 @@ reports "no descent along the Newton or the damped Gauss-Newton direction" at it
 first iteration, `||grad merit|| = 3.8e+11`, and the marching retry does not
 recover it inside its 2100-step cap. Its face spread is `21`, so no threshold
 would have accepted it; the old cell-centred gate refused it too. This is the
-molecular Lyman-Werner arm case, item (S)/(P) territory, not an acceptance
+molecular Lyman-Werner case, item (S)/(P) territory, not an acceptance
 question.
 
 **`jfnk_hd189` is misnamed.** Its `input.inp` carries no `Solver:` key at all, so

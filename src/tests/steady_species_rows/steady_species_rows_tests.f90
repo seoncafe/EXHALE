@@ -470,7 +470,7 @@
       ! the way, not 1e-8/1e-8 (the "Resid tol" reading this replaces,
       ! under which the HD 209458 b element reload's mass row at 1e-9 read
       ! as certified by the ledger while the acceptance refused it,
-      ! Update_EXHALE.md section 8, P10). The cell's rounding floor is
+      ! Update_EXHALE_stage2.md section 8, P10). The cell's rounding floor is
       ! 1e-30, ten times which is far below 3e-12, so the tolerance that
       ! applies to its continuity row is the fixed one.
       q(1,1) = 1.0d-9;  q(2,1) = 1.0d-13;  q(3,1) = 1.0d-8
@@ -637,7 +637,7 @@
       ! row SCALES is the size of the advective term itself, which is what
       ! says the assertion is not vacuous.
       !
-      ! metals runs the same column with the trace-element arm on
+      ! metals runs the same column with trace-element diffusion on
       ! (He_metal_diffusion), which is the only path that exercises the
       ! deferred correction of solve_trace_element_in_hydrogen; its rows
       ! carry the worst trace element of the column.
@@ -1306,7 +1306,7 @@
       ! synthetic cell has none of, so it is written here
       ! (carrier_headroom_set_for_test). The rows below are in the DENSITY
       ! coordinate; in ln n it is the same row read through the logarithm,
-      ! and that arm is measured on the coupled run itself.
+      ! and that coordinate is measured on the coupled run itself.
       !
       ! RED AND GREEN, ONE ENVIRONMENT VARIABLE APART.
       ! EXHALE_ELEMENT_CONSTRAINT_ROWS=0 puts the budget back under a

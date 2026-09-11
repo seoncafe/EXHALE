@@ -1,0 +1,483 @@
+\section{Hydrodynamics}
+\label{sec:hydro}
+
+\subsection{Conserved variables and the conservation laws}
+\label{sec:hydro:euler}
+
+The conserved state of a cell is the triple
+%
+\begin{equation}
+  u = \bigl(\rho,\; \rho v,\; \mathcal{E}\bigr)^{\!\top},
+  \qquad
+  \mathcal{E} = \tfrac{1}{2}\rho v^2 + \rho e,
+  \label{eq:cons}
+\end{equation}
+%
+with $\rho e$ the internal energy density.  The map between $u$ and the
+primitive triple $W = (\rho, v, p)$ is \texttt{UW\_conversions.f90}: the
+density and the momentum are trivial, and the pressure follows from the
+caloric equation of state of Sec.~\ref{sec:hydro:eos},
+$p = p(\rho, \rho e)$, evaluated with the composition of the cell the state
+belongs to.  For a reconstructed face state that cell is the cell the state
+was extrapolated from, because the composition ratios the equation of state
+needs are ratios of number densities and are therefore independent of the
+density.
+
+The equations integrated are the Euler equations in spherical symmetry with
+gravity and a radiative source,
+%
+\begin{equation}
+  \begin{aligned}
+    \frac{\partial\rho}{\partial t}
+      &+ \frac{1}{r^2}\frac{\partial}{\partial r}\bigl(r^2\rho v\bigr) = 0,\\
+    \frac{\partial(\rho v)}{\partial t}
+      &+ \frac{1}{r^2}\frac{\partial}{\partial r}\bigl(r^2\rho v^2\bigr)
+       + \frac{\partial p}{\partial r}
+       = -\rho\,\frac{\partial\Phi}{\partial r} + S_\mu,\\
+    \frac{\partial \mathcal{E}}{\partial t}
+      &+ \frac{1}{r^2}\frac{\partial}{\partial r}\bigl(r^2 (\mathcal{E}+p)v\bigr)
+       = -\rho v\,\frac{\partial\Phi}{\partial r} + Q + S_{\mathcal{E}},
+  \end{aligned}
+  \label{eq:euler}
+\end{equation}
+%
+where $Q = \mathcal{H} - \Lambda$ is the net radiative heating minus cooling
+per unit volume (Sec.~\ref{sec:thermal}) and $S_\mu$, $S_{\mathcal{E}}$ are the viscous and conductive
+sources of Sec.~\ref{sec:hydro:transport}, both off unless a run asks for
+them.  The factor $4\pi$ that would appear in the face areas and the cell
+volume cancels between them and is simply not carried.
+
+\subsection{The discrete divergence}
+\label{sec:hydro:divergence}
+
+\texttt{RK\_rhs.f90} assembles the right-hand side of \eqref{eq:euler} as a
+flux difference \texttt{dF} and a source \texttt{S}, so that one forward
+Euler stage of the marching loop is $u \leftarrow u - \Delta t\,(dF - S)$ and
+the stationary residual is $R = dF - S$ with the radiative source subtracted
+from its third row.  With
+%
+\begin{equation}
+  A_\pm = r_{j\pm1/2}^2,\qquad
+  \Delta V_j = \frac{r_{j+1/2}^3 - r_{j-1/2}^3}{3},\qquad
+  \Delta r_j = r_{j+1/2} - r_{j-1/2},
+  \label{eq:geom}
+\end{equation}
+%
+and $F_\pm$ the numerical flux at the two faces of cell $j$
+(Sec.~\ref{sec:numerics:riemann}), the three rows are
+%
+\begin{align}
+  dF_1(j) &= \frac{A_+ F_+^{\rho} - A_- F_-^{\rho}}{\Delta V_j},
+  \label{eq:dF1}\\
+  dF_2(j) &= \frac{A_+ F_+^{\rho v} - A_- F_-^{\rho v}}{\Delta V_j}
+             \;+\; w_p\,\frac{p_R - p_L}{\Delta r_j},
+  \label{eq:dF2}\\
+  dF_3(j) &= \frac{A_+ F_+^{\mathcal{E}} - A_- F_-^{\mathcal{E}}
+             \;+\; \delta F_3}{\Delta V_j},
+  \label{eq:dF3}
+\end{align}
+%
+with $F^{\rho} = \rho v$, $F^{\mathcal{E}} = v(\mathcal{E}+p)$, and $p_L$, $p_R$ the face
+pressures the Riemann solver returns at the lower and upper face.  The weight
+$w_p$ and the content of $F^{\rho v}$ depend on the reconstruction, because
+the spherical pressure term is split differently in the two schemes
+(Sec.~\ref{sec:hydro:pressure}).
+
+The term $\delta F_3$ in \eqref{eq:dF3} is the gravitational work,
+%
+\begin{equation}
+  \delta F_3 = A_+ F_+^{\rho}\bigl[\Phi_i(j) - \Phi_c(j)\bigr]
+             - A_- F_-^{\rho}\bigl[\Phi_i(j-1) - \Phi_c(j)\bigr],
+  \label{eq:dF3p}
+\end{equation}
+%
+with $\Phi_i$ the potential at the cell interfaces and $\Phi_c$ at the cell
+centers (\texttt{set\_gravity\_grid.f90}).  Expanding the bracket separates
+\eqref{eq:dF3} into the energy flux of \citet{Caldiroli2021}, their Eq.~(14),
+$F^{\mathcal{E}} + F^{\rho}\Phi$ taken at the interface potential, minus
+$\Phi_c(j)$ times the mass-flux divergence, which is their energy source
+$\Phi_j L^\rho_j$.  The two forms are algebraically the same operator; the
+code carries it as one term so that the mass flux the work term rides on is
+the very flux the continuity row differenced.
+
+\subsection{The spherical pressure term and gravity}
+\label{sec:hydro:pressure}
+
+The pressure gradient in spherical symmetry is
+%
+\begin{equation}
+  \frac{\partial p}{\partial r}
+    = \frac{1}{r^2}\frac{\partial}{\partial r}\bigl(r^2 p\bigr)
+      - \frac{2p}{r},
+  \label{eq:sphp}
+\end{equation}
+%
+and the two reconstructions use the two sides of this identity.  Under PLM,
+\texttt{Phys\_flux} adds $p$ to the momentum flux, so the first term of
+\eqref{eq:sphp} is inside $dF_2$ and the geometric correction is carried by
+the source; $w_p = 0$.  Under WENO3 the pressure is left out of the flux and
+the whole gradient enters as the single face difference
+$(p_R-p_L)/\Delta r_j$; $w_p = 1$.  \texttt{Source.f90} accordingly returns
+%
+\begin{equation}
+  S_1 = 0,\qquad
+  S_2 = -\frac{\rho_L + \rho_R}{2}\,
+         \frac{\Phi_i(j) - \Phi_i(j-1)}{\Delta r_j}
+        \;+\; \underbrace{\frac{A_+ - A_-}{\Delta V_j}\,p_c}
+              _{\text{PLM only}},\qquad
+  S_3 = 0,
+  \label{eq:source}
+\end{equation}
+%
+where $\rho_L$ and $\rho_R$ are the two reconstructed face densities that
+bound the cell and $p_c$ is the cell's own pressure from the caloric equation
+of state.  Because $(A_+-A_-)/\Delta V_j \to 2/r$ as the cell narrows, the
+PLM branch of \eqref{eq:source} is the second term of \eqref{eq:sphp}.
+
+The three physical terms of the momentum equation, the ram divergence, the
+spherical pressure gradient and the weight $\rho\,\partial\Phi/\partial r$,
+are gathered out of these pieces by
+\texttt{momentum\_row\_terms\_of\_cell} in the same file and stored.  They are
+not $dF_2$ and $S_2$: under PLM each of those holds a part of order $2p/r$
+that cancels against the other, so a magnitude built from them alone reads
+$2p/r$ on a uniform pressure at rest, where the physical force is zero.  The
+gathered terms are what the stationary residual scales the momentum row by
+(Sec.~\ref{sec:steady:residual}).
+
+\subsection{The gravitational potential}
+\label{sec:hydro:gravity}
+
+\texttt{grav\_field.f90} carries two potentials, selected by
+\texttt{Domain mode}.  The default is the full Roche potential of a
+synchronously rotating planet,
+%
+\begin{equation}
+  \Phi(r) = -\frac{b_0}{r}
+            - \frac{b_0\,\mathcal{M}}{\tilde a - r}
+            - \frac{b_0(1+\mathcal{M})}{2\tilde a^{3}}
+              \left(\frac{\tilde a\,\mathcal{M}}{1+\mathcal{M}} - r\right)^{\!2},
+  \qquad \mathcal{M} = \frac{M_\star}{M_p},\quad
+  \tilde a = \frac{a_{\rm orb}}{R_0},
+  \label{eq:roche}
+\end{equation}
+%
+in code units, which is Eq.~(2) of \citet{Caldiroli2021}:
+the planetary term, the stellar tidal term and the centrifugal term about the
+center of mass.  With \texttt{Domain mode: Spherical} the last two terms are
+dropped and $\Phi = -b_0/r$, which is what allows the domain to be carried
+past the L1 radius.  The analytic derivative $d\Phi/dr$ is provided beside it
+and is used by the initial-condition sonic-point search; the flux assembly
+itself never differentiates $\Phi$, it differences the tabulated $\Phi_i$ and
+$\Phi_c$, which are evaluated once at startup at the true face and center
+radii.
+
+The default outer radius in Roche mode is the L1 (Hill) radius
+$r_{\max} = (3\mathcal{M})^{-1/3}\tilde a$; \texttt{Outer radius} overrides
+it.
+
+\subsection{Equation of state}
+\label{sec:hydro:eos}
+
+The thermal equation of state is that of an ideal gas of all particles
+including free electrons,
+%
+\begin{equation}
+  p = (n_{\rm tot} + n_e)\,k_B T
+  \qquad\Longleftrightarrow\qquad
+  T = \frac{p}{n_{\rm tot} + n_e}\ \ \text{in code units},
+  \label{eq:thermal_eos}
+\end{equation}
+%
+which is \texttt{comp\_T\_from\_p} and \texttt{comp\_p\_from\_T} of
+\texttt{composition.f90}.  The particle and electron counts are built in one
+place, \texttt{get\_species\_densities} in the same file, from the density and
+the species mass fractions: \texttt{calc\_ntot} adds one particle for every
+species the run carries (H\,I, H\,II, He\,I, He\,II, He\,III, every metal ion
+stage, and each of $\mathrm{H}_2$, $\mathrm{H}_2^+$, $\mathrm{H}_3^+$,
+$\mathrm{HeH}^+$, OH, $\mathrm{H_2O}$, CO), and \texttt{calc\_ne} adds the
+free electrons weighted by the net charge of each species.  The
+$\mathrm{He}\,2^3S$ column is not added by either: it is an excited level of
+He\,I and its particle and its nucleus are already counted there.  Trace
+metals enter both sums only under the \texttt{eos\_metals} policy of
+Sec.~\ref{sec:mol:metals}, on by default, so that the legacy H/He-only budget
+can be reproduced exactly.
+
+The code never forms a mean molecular weight for the equation of state.  The
+mean molecular weight of \citet{Caldiroli2021}, their footnote 1, is a derived
+diagnostic here; \eqref{eq:thermal_eos} with the explicit particle count is
+what the hydrodynamics uses, so the temperature of a cell is a function of its
+composition and never of a fitted composition ratio.
+
+The \emph{caloric} half of the equation of state is \texttt{caloric\_eos.f90}.
+For an atomic gas it is the monatomic relation
+$\rho e = p/(\gamma_{\rm ad}-1)$ with $\gamma_{\rm ad} = 5/3$, exactly as in
+ATES.  This is not valid in a molecular layer: at the 400 to 1300~K of the
+$\mathrm{H}_2$ base the rotational ladder of $\mathrm{H}_2$ is populated (the
+$J=1$ level lies at 170~K), so an $\mathrm{H}_2$ molecule stores about
+$\tfrac{5}{2}k_BT$ and the vibrational ladder adds to that above $\sim800$~K.
+Where the gas is 80\% $\mathrm{H}_2$ the heat capacity is then wrong by a
+factor 1.67.  The mixture relation used instead is
+%
+\begin{equation}
+  \rho e = \tfrac{3}{2}(n_{\rm tot}+n_e)k_BT + n(\mathrm{H_2})\,k_B\,u_{\rm rv}(T),
+  \qquad
+  \frac{C_V}{k_B} = \tfrac{3}{2}(n_{\rm tot}+n_e) + n(\mathrm{H_2})\,c_{\rm rv}(T),
+  \label{eq:caloric}
+\end{equation}
+%
+so that the exponent making $\rho e = p/(\gamma_{\rm eff}-1)$ exact is
+$\gamma_{\rm eff} = 1 + (n_{\rm tot}+n_e)k_B/C_V$, a function of both the
+composition and the temperature.  The mean rovibrational energy $u_{\rm rv}$
+and the heat capacity $c_{\rm rv}$ are evaluated from the complete bound
+rovibrational ladder of $\mathrm{H}_2\,X^1\Sigma_g^+$, 302 levels to
+51966~K, that is to the 4.478~eV dissociation limit
+\citep[Table 2 through VizieR]{Roueff2019}; the same partition function is the
+internal partition function of the
+$\mathrm{H}+\mathrm{H}\leftrightarrow\mathrm{H}_2$ equilibrium constant
+\eqref{eq:mol:r12}, so the energy and the chemistry cannot disagree.
+$\mathrm{H}_2^+$, $\mathrm{H}_3^+$, $\mathrm{HeH}^+$ and the oxygen carriers
+are counted as monatomic, a stated approximation valid while they stay trace
+species (their largest ratio to $n(\mathrm{H_2})$ in the molecular layer of
+the reference configuration is $1.7\times10^{-7}$).  Dissociation is not a
+heat capacity and is not in \eqref{eq:caloric}; it is a chemical source
+term.  The branch between the
+two forms is structural, not a limit: a run with no molecules and a cell with
+$n(\mathrm{H_2})$ exactly zero both take the constant-$\gamma_{\rm ad}$
+expression verbatim.  The key \texttt{Caloric EOS: monatomic} forces the
+monatomic form everywhere.
+
+The mapping $\rho e \to p$ in the molecular branch is the inverse of
+\eqref{eq:caloric} and costs one safeguarded Newton iteration per cell; the
+mapping $p \to \rho e$ is direct.  The sound speed used by the Riemann
+solvers and by the time step is $c_s = \sqrt{\gamma_{\rm eff}p/\rho}$
+evaluated with the cell's own composition.
+
+Two base composition scalars follow from the same module.  The gas mass per
+hydrogen nucleus is
+$m_{\rm H\text{-}nuc} = m(\mathrm{H\,I}) + m(\mathrm{He\,I})\,y + \sum_e A_e X_e$
+with $y = n_{\rm He}/n_{\rm H}$; the base particle count per H+He nucleus is
+%
+\begin{equation}
+  \hat n_{\rm bc} = \frac{1 + y + \sum_e X_e}{1 + y}
+                    - \frac{1}{2}\,\frac{x_{\mathrm{H_2}}}{1+y},
+  \qquad
+  x_{\mathrm{H_2}} = \frac{2 q_{\mathrm{H_2}}(1+y)}{1 + q_{\mathrm{H_2}}},
+  \label{eq:ntotbc}
+\end{equation}
+%
+where $x_{\mathrm{H_2}}$ is the fraction of base hydrogen nuclei bound into
+$\mathrm{H}_2$
+and the last term is present only with \texttt{Molecular base: True}.  The
+mixing ratio $q_{\mathrm{H_2}}$ is the one a lower-atmosphere handoff states,
+or otherwise the chemical-equilibrium fit \eqref{eq:mol:qh2} at
+$(p_{\rm base}, T_0)$ (Sec.~\ref{sec:mol:handoff}).  The same
+$x_{\mathrm{H_2}}$ is imposed on the inflowing ghost composition, so the equation of state
+and the species state describe one gas.
+
+\subsection{The well-balanced option}
+\label{sec:hydro:wb}
+
+\texttt{Well balanced: True} (default off) changes the coordinate the
+pressure is carried in.  The local hydrostatic equilibrium of cell $j$ is the
+constant-density one through its own $(\rho_j, p_j)$,
+%
+\begin{equation}
+  p_{{\rm eq},j}(r) = p_j - \rho_j\bigl[\Phi(r) - \Phi(r_j)\bigr],
+  \label{eq:wb_eq}
+\end{equation}
+%
+(Eq.~16 of \citealt{Kaeppeli2016}), whose two face values are
+$P_{\rm up}(j) = p_j - \rho_j[\Phi_i(j)-\Phi_c(j)]$ and
+$P_{\rm dn}(j) = p_j + \rho_j[\Phi_c(j)-\Phi_i(j-1)]$.  The reconstruction
+then works on the departure from \eqref{eq:wb_eq} rather than on the pressure
+itself, the Riemann pressure jump is formed as
+$\Delta p = \Delta p_{\rm eq} + q_R - q_L$ from quantities that are all of
+the size of the departure, and the momentum row is assembled from the face
+pressure measured against each side's own equilibrium.  The two identities
+that make the substitution exact are
+%
+\begin{equation}
+  \begin{aligned}
+    A_+P_{\rm up} - A_-P_{\rm dn} - (A_+-A_-)p_j
+      &= -\rho_j\bigl\{A_+[\Phi_i(j)-\Phi_c(j)]
+         + A_-[\Phi_c(j)-\Phi_i(j-1)]\bigr\}, \\
+    P_{\rm up} - P_{\rm dn} &= -\rho_j\bigl[\Phi_i(j)-\Phi_i(j-1)\bigr],
+  \end{aligned}
+  \label{eq:wb_identities}
+\end{equation}
+%
+the first for the PLM assembly and the second for WENO3.  Their left-hand
+sides are the equilibrium part of the pressure terms the row carries and
+their right-hand sides are the discrete gravitational source, so the two
+cancel in the algebra, \texttt{Source.f90} returns $S_2 = 0$ and neither side
+is ever evaluated.  This is the momentum source of
+\citet{Kaeppeli2014}, their Eq.~(2.26), in spherical geometry.  What cancels is
+still the physics the row balances, so its magnitude,
+%
+\begin{equation}
+  \mathcal{W}_j = \frac{\bigl|\rho_j\{A_+[\Phi_i(j)-\Phi_c(j)]
+        + A_-[\Phi_c(j)-\Phi_i(j-1)]\}\bigr|}{\Delta V_j}
+  \quad\text{(PLM)},\qquad
+  \mathcal{W}_j = \frac{\bigl|\rho_j[\Phi_i(j)-\Phi_i(j-1)]\bigr|}{\Delta r_j}
+  \quad\text{(WENO3)},
+  \label{eq:wb_weight}
+\end{equation}
+%
+is formed separately and is the term the momentum residual is read against
+under this option.
+
+\subsection{Low-Mach dissipation of the contact mode}
+\label{sec:hydro:lowmach}
+
+The HLLC flux resolves the contact wave exactly, so the dissipation it
+applies to the entropy family is proportional to the contact speed $S_*
+\simeq v$ and vanishes as the flow stalls; the acoustic families keep theirs
+at $|v|\pm c_s$.  A stagnant layer can then carry a $2\Delta r$ pattern in
+$v$ and $T$ that nothing in the scheme removes.  \texttt{Low-Mach damping:}
+(default off, \texttt{low\_mach\_dissipation.f90}) adds a gated
+fourth-difference stress \citep{Jameson1981} to the numerical momentum flux,
+%
+\begin{equation}
+  D_p^{\,j+1/2} = \epsilon_4\,g(M)\,\rho_f\,\lambda_f
+    \bigl(v_{j+2} - 3v_{j+1} + 3v_j - v_{j-1}\bigr),
+  \qquad
+  D_{\mathcal{E}}^{\,j+1/2} = v_f\,D_p^{\,j+1/2},
+  \label{eq:lowmach}
+\end{equation}
+%
+with $\rho_f$, $v_f$ the face averages and
+$\lambda_f = \tfrac12[(|v|+c_s)_j + (|v|+c_s)_{j+1}]$ the face spectral
+radius.  The gate
+$g = [\max(0,\,1 - M_f^2/M_{\rm th}^2)]^2$, written in $M^2$ so that it is
+smooth where the velocity changes sign, is unity at rest and identically zero
+above $M_{\rm th}$ (default $10^{-3}$).  The pair $(D_p, D_{\mathcal{E}})$ conserves total
+energy exactly and converts kinetic energy into heat and never the reverse;
+the mass flux is untouched.  The term is added inside \texttt{RK\_rhs.f90}, so
+the marching right-hand side and the stationary residual solve the same
+equation, which is what distinguishes it from the Shapiro filter of
+Sec.~\ref{sec:numerics:split}.
+
+\subsection{Viscosity and heat conduction}
+\label{sec:hydro:transport}
+
+\texttt{Viscosity: True} and \texttt{Conduction: True} (both default off,
+\texttt{viscous\_conduction.f90}) add the Navier-Stokes level of the same
+equations, the level the CETIMB code (the time-dependent upper-atmosphere model of Koskinen and collaborators, \citealt{Koskinen2013, Koskinen2022}) carries.  For
+the Newtonian stress in spherical symmetry the only nonzero components are
+$\tau_{rr} = \tfrac{4}{3}\mu(v' - v/r)$ and
+$\tau_{\theta\theta} = \tau_{\varphi\varphi} = -\tfrac12\tau_{rr}$, so
+exactly
+%
+\begin{equation}
+  S_\mu = \frac{1}{r^2}\frac{\partial}{\partial r}\bigl(r^2\tau_{rr}\bigr)
+          + \frac{\tau_{rr}}{r},
+  \qquad
+  q_\mu = \frac{4}{3}\mu\left(\frac{\partial v}{\partial r} - \frac{v}{r}\right)^{\!2},
+  \qquad
+  S_{\mathcal{E}} = v S_\mu + q_\mu
+        + \frac{1}{r^2}\frac{\partial}{\partial r}
+          \left(r^2\kappa\frac{\partial T}{\partial r}\right).
+  \label{eq:viscous}
+\end{equation}
+%
+These differ from the expressions printed as Eqs.~(B5) and (B6) of
+\citet{Koskinen2022}: those carry a different gradient term
+($\mu' v'$ against $\tfrac43\mu' v/r$), a geometric coefficient $16/3$ against
+$8/3$, and a dissipation that is not sign definite, and the printed pair does
+not satisfy $vS_\mu + q_\mu = \nabla\!\cdot\!(\tau\cdot v)$.  Physical
+correctness being the criterion, \eqref{eq:viscous} is what is implemented and
+the discrepancy is recorded in the source.
+
+Neither Koskinen paper prints the transport coefficients, so the atomic
+hydrogen conductivity of \citet{Watson1981} is used,
+%
+\begin{equation}
+  \kappa(T) = 4.45\times10^{4}\left(\frac{T}{1000\,\mathrm{K}}\right)^{0.7}
+  \ \mathrm{erg\,cm^{-1}\,s^{-1}\,K^{-1}},
+  \qquad
+  \mu(T) = \frac{4}{15}\frac{m_{\rm H}}{k_B}\,\kappa(T),
+  \label{eq:transport_coeff}
+\end{equation}
+%
+the second being the Chapman-Enskog/Eucken relation for a monatomic gas,
+Prandtl number $2/3$.  Both are the \emph{neutral} values: above the
+ionization front the electron conductivity is far larger and that regime is
+not covered, which is stated at the routine.  In code units
+$\mu_{\rm code} = \mu_{\rm cgs}/(n_0 m_{\rm H} v_0 R_0)$, the inverse Reynolds
+number, and $\kappa_{\rm code} = \tfrac{15}{4}\mu_{\rm code}$.
+
+Both operators are assembled once as tridiagonal coefficient triplets on the
+same faces and volumes as \eqref{eq:geom}, and the same triplets serve as the
+source entering the stationary residual and as the matrix of a Crank-Nicolson
+update in the marching loop, so the marched fixed point and the zero of the
+residual are the same state.  The inner boundary takes the flux through the
+base face from the anchored ghost, held fixed during the implicit step; the
+outer boundary carries zero diffusive flux, which is the condition an
+extrapolated outflow ghost admits.  A step whose solve leaves a cell below
+the temperature floor of the equation of state fails with a named status
+rather than returning the floor, because returning it would add energy with
+no source behind it.
+
+\subsection{The two-dimensional approximation}
+\label{sec:hydro:2d}
+
+A one-dimensional radial model of an irradiated sphere has to state how the
+stellar flux and the mass loss are shared over the planet.  The mandatory key
+\texttt{2D approximate method} carries that statement, in the four forms of
+Table~\ref{tab:2d}.  The dilution factor $\xi$ is applied to every stellar
+beam at the point where the beam is used, and in one place only
+(\texttt{dayside\_dilution} in \texttt{parameters.f90}): the XUV photon grid,
+the stellar Ly-$\alpha$ beam and the FUV bands all read it.  The stated
+fluxes therefore keep their meaning as the flux at the planet's orbit, and
+the correction to the mass-loss rate is applied once, at the end of the run
+\eqref{eq:pp:mdot}.
+
+\begin{table}[htb]
+\centering
+\caption{The \texttt{2D approximate method} options, as
+\texttt{input\_read.f90} normalizes them, \texttt{dayside\_dilution} applies
+$\xi$ and \texttt{EXHALE\_main.f90} applies the $\dot M$ factor.}
+\label{tab:2d}
+\begin{tabular}{llll}
+\toprule
+Key word & Stored as & $\xi$ & $\dot M$ factor \\
+\midrule
+\texttt{Mdot/4} & \texttt{Mdot/4}          & $1$    & $1/4$ \\
+\texttt{Rate/2} & \texttt{Rate/2 + Mdot/2} & $1/2$  & $1/2$ \\
+\texttt{Rate/4} & \texttt{Rate/4 + Mdot}   & $1/4$  & $1$   \\
+\texttt{alpha}  & \texttt{alpha}           & $1$    & $1$   \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The first row is the recipe of \citet{Salz2016} that the ATES paper adopts:
+the undiluted substellar rates with the resulting mass-loss rate divided by
+four.  The second is the tidally locked reading, dayside averaged rates with
+the outflow leaving one hemisphere; the third the rapidly rotating one,
+rates reduced by four with the outflow leaving the whole surface.  These are
+the three recipes of \citet{Caldiroli2021}, their Sec.~2.4.
+
+The fourth is different in kind.  With \texttt{alpha} the run states a
+coefficient $\alpha$ and the attenuated field carries the further factor
+$1/(1+\alpha\tau)$ inside the column integral \citep{Sekiya1980, Odert2020},
+so that the cell-mean attenuation becomes
+%
+\begin{equation}
+  \bigl\langle e^{-\tau}\bigr\rangle_{\rm cell}
+  = \int_0^1 \frac{e^{-\tau_{\rm out} - s\,\delta\tau}}
+                  {1 + \alpha(\tau_{\rm out} + s\,\delta\tau)}\,ds,
+  \label{eq:alpha2d}
+\end{equation}
+%
+which is the cell-mean attenuation \eqref{eq:rad:cellmean} with the further
+factor inside the integral; it has no closed form and is integrated by
+composite three-point Gauss-Legendre on segments of optical depth at most
+$0.25$.  With $\alpha = 0$, the default and the only value for which the field
+is a pure exponential, it reduces to \eqref{eq:rad:cellmean} itself.
+
+The range of validity is stated at the routine: $\xi = 1/2$ is the
+illuminated hemisphere seen by an \emph{optically thin} absorber.  Where a
+band is shielded the true shell average is lower, the slant columns away from
+the substellar point being longer; it is 0.20 to 0.33 for the Lyman-Werner
+band over a molecular layer.  No key asks for that refinement, so a shielded
+band is diluted by the optically thin factor.

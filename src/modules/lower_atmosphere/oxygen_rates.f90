@@ -1055,7 +1055,7 @@
       ! WHY THIS IS THE CARBON RESERVOIR OF THE A2 NETWORK.  Decision D4 of
       ! docs/a2_oxygen_option_design.md carries CO as an unreactive oxygen
       ! reservoir -- it holds 45-46% of the oxygen at every level of every
-      ! measured arm, so a network that gives the whole oxygen abundance to
+      ! measured case, so a network that gives the whole oxygen abundance to
       ! the water family over-supplies the OH cycle by about a factor two --
       ! and takes its abundance from a chemical-equilibrium C/O partition
       ! (that document's section 3.7).  The C=O bond is 11.1 eV, four times

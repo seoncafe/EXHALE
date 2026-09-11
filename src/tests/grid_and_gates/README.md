@@ -145,7 +145,7 @@ recomputed 2.826589937536.
 
 ### 4. `output_state_consistency.sh` -> `output_state`
 
-Two arms since 2026-09-11 (item P14): the heat-column consistency below, and
+Two checks since 2026-09-11 (item P14): the heat-column consistency below, and
 `outer_iteration_ending_hands_back_one_state`, which forces the stationary
 outer iteration's stagnation ending on the hot-Uranus carrier reload
 (`EXHALE_CARRIER_TRUST=1e-4`, `EXHALE_JFNK_MAXIT=5`) and asserts that the
@@ -307,25 +307,25 @@ The driver carries three further groups of assertions on the momentum row's
 reference scale, on the same ladder and the same four scheme/solver pairs, so
 the whole program is 60 assertions.
 
-**The arm on its own discrete equilibrium (12, item N37).** The state whose
+**The well-balanced key on its own discrete equilibrium (12, item N37).** The state whose
 two neighboring equilibrium extrapolations agree at every shared face,
 integrated outward from the analytic density of cell 1, is built beside the
-analytic column; with the arm on, the momentum, mass and energy rows of the
+analytic column; with the key on, the momentum, mass and energy rows of the
 interior cells 3..N-2 must fall to the rounding level there (bound 1e-13 of
 the size of the terms each row is built from, the arithmetic bound
 `epsilon p r^2/dV` being 1e-12 of the momentum weight at the base of this
 grid). MEASURED: the momentum row falls from 7.0e-5 (PLM) and 2.5e-3 (WENO3)
-of the local weight without the arm to 4.1e-14 and 3.9e-14 with it at
+of the local weight with the key off to 4.1e-14 and 3.9e-14 with it at
 N = 250, and stays at 4.5e-14 to 5.5e-14 at N = 500, 1000, 2000, while the
 base scheme falls at its design order. The analytic column is measured too
-and reported: on it both arms carry the truncation error of the
+and reported: on it the key and the base scheme both carry the truncation error of the
 discretization of gravity, which is what separates that error from the
 floating-point assembly.
 
-**The arm's momentum row scale (16, item P4 of
+**The key's momentum row scale (16, item P4 of
 `docs/PLAN_20260911_partitioned_solver.md`).** The quantity is the row
 DIVIDED BY ITS OWN REFERENCE SCALE, `residual_row_scale(2,...)`, the one
-expression the stationary solver's acceptance test reads. With the arm on the
+expression the stationary solver's acceptance test reads. With the key on the
 equilibrium pressure force and the gravitational source cancel in the algebra
 before the row is formed, so a scale built from the row's remaining terms
 alone is the row itself and reads one however small the imbalance becomes.
@@ -337,14 +337,14 @@ eps = 1e-6) and halves with the perturbation (MEASURED ratio 2.0000 to 1e-8,
 the departure being homogeneous of degree one in eps); and with `b0 = 0` the
 equilibrium pressure force is zero and the scale is the row's own terms
 `max(|ram|, |dp/dr|)` exactly, each formed in the driver from the face data
-the evaluation stored (MEASURED 0). The departure of the arm's scale from the
+the evaluation stored (MEASURED 0). The departure of the key's scale from the
 BASE SCHEME's at zero gravity is reported and not asserted: the two are the
 same expression up to the rounding of the two flux assemblies (MEASURED 1.7e-13
 to 3.7e-13 over the four pairs). Expected on the entry text of P4: the first
 three groups RED at exactly 1.000 (the degenerate scale), the zero-gravity
 limit GREEN. Its fourth statement was RED on the entry text of P11 as well
 (MEASURED 0.750 for all four pairs), because it read the scale against
-`max(|dF_2|, |S_2|)`, which under the arm is the SUM of the two terms and is
+`max(|dF_2|, |S_2|)`, which under the key is the SUM of the two terms and is
 smaller than either wherever they cancel; 0.944 of what that statement
 reported at zero gravity was the PLM geometric pressure term, which item P11
 removed from the scale.
@@ -357,13 +357,13 @@ discretization's pieces `dF_2` and `S_2` are not those terms: under PLM the
 pressure sits partly in the momentum flux (`Phys_flux` adds `p`) and partly in
 the geometric source `(A+ - A-) p_c/dV`, each carrying an O(2 p/r) part that
 cancels against the other. Four states whose terms are known in closed form,
-the base scheme and the arm, interior cells 3..N-2:
+the base scheme and the key, interior cells 3..N-2:
 
 | statement | bound | entry text | after |
 |---|---|---|---|
 | `zero_gravity_uniform_state_momentum_scale_vanishes` (no gravity, uniform `p`, at rest; the scale over `(A+ - A-) p_j/dV`) | 1e-8 | **1.00000E+00 FAIL** under PLM, 3.3e-308 PASS under WENO3 | 3.3e-308 (the `tiny` floor of `momentum_row_scale`, which is where a fully zero row is divided) |
 | `momentum_scale_is_not_below_the_weight_on_the_discrete_equilibrium` (`(w - s)/w`, with `w` the weight `source` forms from the two face densities) | 1e-12 | **2.79E-01 FAIL** under PLM, 0 PASS under WENO3 | 0, the weight being one of the terms the max runs over |
-| `well_balanced_momentum_scale_is_the_equilibrium_pressure_force` (the same state under the arm, `(|s - epf|- |R|)/epf`) | 1e-12 | 0 PASS | 0 |
+| `well_balanced_momentum_scale_is_the_equilibrium_pressure_force` (the same state under the key, `(|s - epf|- |R|)/epf`) | 1e-12 | 0 PASS | 0 |
 | `momentum_scaled_row_tracks_the_imbalance` (the pressure perturbed by `eps` and `eps/2`, the ratio of the scaled imbalance the perturbation ADDS) | \|ratio - 2\| < 0.1 | 2.0000 PASS | 2.0000 |
 | `supersonic_uniform_flow_momentum_scale_is_the_ram_divergence` (no gravity, uniform `p`, `v = 3 c_s`; against `(A+ - A-) rho v v/dV`) | 1e-8 | **6.66667E-02 FAIL** under PLM, which is `1/(gamma M M)`, the pressure the momentum flux still carries; 4.2e-13 PASS under WENO3 | 1.9e-14 (PLM), 4.2e-13 (WENO3) |
 
@@ -373,13 +373,13 @@ base scheme they are neither round-off nor a term of the equation: the
 departure `|s - w|/w` on the discrete equilibrium (MEASURED 8.5e-4 at N = 250
 falling to 2.3e-6 at N = 2000 under PLM with ROE, 2.2e-3 to 4.5e-5 under
 WENO3 with HLLC), which carries the base scheme's own truncation error on a
-state that is the equilibrium of the ARM's reconstruction and, with HLLC, the
+state that is the equilibrium of the WELL-BALANCED reconstruction and, with HLLC, the
 dissipative part of a momentum flux whose face pressure is one side's own
 value rather than an average; and the zero-gravity scale itself.
 
 The undifferenced form of the halving statement is why the perturbation
-statement subtracts the unperturbed row: the base scheme's row on the arm's
-discrete equilibrium is its own truncation error, which is larger than a
+statement subtracts the unperturbed row: the base scheme's row on the
+well-balanced discrete equilibrium is its own truncation error, which is larger than a
 1e-6 perturbation's imbalance and does not halve with it (MEASURED on the
 entry text: the undifferenced ratio is 1.0012 at N = 250 and 1.586 at
 N = 2000, the truncation falling with the grid).
@@ -485,7 +485,7 @@ upwinding.
 
 | | |
 |---|---|
-| Origin | PLAN_20260909_rev1 item N10b and decision 21 of `docs/To_be_determined_by_user_20260906.md`, option a: the restart contract of N10 refuses any difference in the `options` field, which forbids the arm ladder this code is converged with (converge without an option, restart with it on, converge again) |
+| Origin | PLAN_20260909_rev1 item N10b and decision 21 of `docs/To_be_determined_by_user_20260906.md`, option a: the restart contract of N10 refuses any difference in the `options` field, which forbids the option ladder this code is converged with (converge without an option, restart with it on, converge again) |
 | Quantity | eleven statements: a rung whose named option differs loads, says so, and writes the change into both halves of the state it produces as one `# option_change` line; the same difference with nothing named refuses the load and states the TOKEN that differs, not only the field; a named token that does not differ is reported and nothing else, and writes no line; the key stops the run on an unknown token, on a token that decides how many unknowns the state has (`mol`), on a word that names the grid instead of an option (`N`), and without `Load IC? True`; a rung inherits the `# option_change` lines of the rung it was restarted from; and `EXHALE_setup.out` states both what was known about the loaded state's configuration and what this run was allowed to change |
 | Reference | the refusals taken with the token or the key named; one `# option_change` line after rung 1 and two after rung 2, the second naming `cond=F -> cond=T` |
 | Why | a state written under one option set is not a solution of another, which is why N10 refuses the difference; but it is a legitimate STARTING POINT for it, and that is the whole ladder workflow. The key makes the change explicit and auditable instead of silent (option b) or impossible (option c) |
@@ -502,7 +502,7 @@ upwinding.
 | Reference | a non-empty file carrying both lines |
 | Why | the setup report is the record of the configuration a run resolved, and every reader of a run directory attributes its outputs to it. The route solves and stops inside its own branch and never reaches the marching route's call, so what it left was the empty file the unit is opened with |
 | Tolerance | 0: the file is written or it is not, the line is there or it is not |
-| Configurations | one short run on a copy of `backup/regression/roundtrip` with `EXHALE_PTC=1`, its JFNK arm bounded to one outer iteration (`EXHALE_PTC_JFNK=1`, `EXHALE_JFNK_MAXIT=1`). The report is written before the solve, so one iteration reaches the point under test. Nothing in `backup/` is written to |
+| Configurations | one short run on a copy of `backup/regression/roundtrip` with `EXHALE_PTC=1`, its JFNK solve bounded to one outer iteration (`EXHALE_PTC_JFNK=1`, `EXHALE_JFNK_MAXIT=1`). The report is written before the solve, so one iteration reaches the point under test. Nothing in `backup/` is written to |
 | Expected before N28 | **RED**, MEASURED with the entry binary `EXHALE_lwv.x`: `EXHALE_setup.out` has 0 lines; with the call on this route it has 66 |
 
 ## Working directories
@@ -587,7 +587,7 @@ the first two are red without it.
 **P11 (2026-09-11).** `hydrostatic_residual` gained twenty assertions on the
 momentum row's reference scale against the TERMS OF THE MOMENTUM EQUATION,
 after the scale stopped being `max(|dF_2|, |S_2|)`: on a state with no force
-at all, on the discrete hydrostatic equilibrium under both arms, on a
+at all, on the discrete hydrostatic equilibrium with the key off and on, on a
 perturbation of it, and on supersonic uniform flow. Ten of the sixty
 assertions of the program were RED on the entry text, all PLM (the geometric
 pressure term `(A+ - A-) p_c/dV` entering the max separately from the flux

@@ -12,7 +12,7 @@ against `energy = 1.440E+00` in the same print, so section 152 did remove the
 momentum imbalance it was built to remove; what it did not remove is the
 molecular layer.
 
-**And a control arm says the step control is not the whole story.** The same
+**And a control run says the step control is not the whole story.** The same
 hand-off state solved by the Picard alternation instead (no carrier unknown at
 all) also returns `info = 2` on all three attempts, stagnating at
 `||R|| = 3.705E-01` with its worst cell in the **energy** row at `r = 1.0117`
@@ -166,7 +166,7 @@ mass     1.10-1.20 :  3.961E-05 / 1.927E-03
 momentum r<1.03    :  6.092E-05 / 3.648E-01   (1.7E-04)
 ```
 
-## 4. Control arm: the Picard alternation on the same state
+## 4. Control run: the Picard alternation on the same state
 
 Same hand-off state, same input except the `Coupled carrier solve` line
 removed, so the carrier is relaxed at fixed wind instead of solved.
@@ -243,7 +243,7 @@ result.
 | **n_e [cm^-3], this state** | 8.06e5 | 2.75e7 | 4.96e7 | 6.89e7 | 7.19e7 | 6.54e7 | 6.41e7 | 4.63e7 | 2.01e7 |
 
 H2 front of this state, three levels: `f = 0.5` at `1.0656`, `f = 1e-2` at
-`1.1333`, `f = 1e-4` at `1.2897`. `log10 Mdot = 10.43` (marched; the Picard arm
+`1.1333`, `f = 1e-4` at `1.2897`. `log10 Mdot = 10.43` (marched; the Picard run
 after 7000 further steps gives 10.39, and neither is a Newton-grade number).
 
 **The P23 verdict does not change.** Transport-on marching keeps H2 alive
@@ -312,7 +312,7 @@ question.
    merit change in with the trust region. Apply `p51d2_trust_region.patch`
    alone.
 
-**Why both rank below an operator-level question.** The Picard control arm
+**Why both rank below an operator-level question.** The Picard control run
 stagnates on the same state with no carrier unknown at all, in the energy row
 of the same molecular layer, and leaves the carrier row 7.5x its target. A step
 control cannot repair a state that is not near a root. Section 10.2 of
@@ -353,7 +353,7 @@ property of the solve or of how far the march had got. It was not tested.
 * Whether the coupled floor `||R|| ~ 1.06` is the same number on a different
   planet or a different base level. One case only.
 * The third Picard attempt of the first launch was lost when that process ended
-  without writing a completion line; the arm was re-run from the same restart
+  without writing a completion line; the run was repeated from the same restart
   files and the numbers in section 4 are from the re-run, whose attempts 1 and
   2 reproduce the first launch to all printed digits (`5.928E-01` /
   `3.831E-01`, spread `9.222E-03` / `2.609E-02`). The cause of the first

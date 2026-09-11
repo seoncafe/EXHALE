@@ -19,7 +19,7 @@ moved and what did not; the reading of section 7 is unchanged by it.
 
 Every number below is labelled MEASURED (N8b or N8c ran it) or READ (from
 source or from another item's report). The two candidate states are the ones
-the arms of N26 handed back:
+the reloads of N26 handed back:
 
 - **atomic element candidate**: HD 209458 b, `He_diffusion`, `He_metal_diffusion`,
   eight element rows. Before N29 it was handed back at `||R||` 3.719e-4 with
@@ -32,7 +32,7 @@ the arms of N26 handed back:
   transported, handed back at `||R||` 0.25 with the H2 row of cell 205 at
   0.48 (READ, N26). Re-entered the same way; the H2 row reproduces at
   **4.7996747301264420e-1** at cell 205 (MEASURED, and the same seventeen
-  digits after N29: the carrier arm carries no metals and no element row, so
+  digits after N29: the carrier reload carries no metals and no element row, so
   the projection N29 corrected is never reached and the handed-back state is
   byte-identical to N26's).
 
@@ -257,7 +257,7 @@ beside the certification's own cell-centered mass-flux spread of the state,
 conserved to 2e-3 where the same faces conserve mass to 1.5e-3, and in the
 diffusion-dominated layer neither is conserved at all: the standing base wave
 puts the spread at 40 times the median before N29 and still at 9 times after
-it. **The 1e-6 the arm is quoted with is a cell-centered mass flux and says
+it. **The 1e-6 the candidate is quoted with is a cell-centered mass flux and says
 nothing about the element fluxes**, which are three to four decades worse in
 the same state. N29 buys a factor 4 in the layer and nothing in the wind,
 which is what a mass-closure fix should do: the leak was largest where the
@@ -275,7 +275,7 @@ species did not carry its own density:
 with the code's own mass policy (`calc_rho`), 1.9e-9 at the base and growing
 monotonically outward. The three-unknown control with no element transport
 (`backup/regression/wasp_full_newton`) reads **1.93e-9** on the same measure,
-so this was specific to the element-transport arm.
+so this was specific to the element-transport path.
 
 It is reproduced in the suite on a synthetic column that starts exactly
 closed: **6.2e-16 as built, 3.37e-3 after the element transport relaxation**,
@@ -293,7 +293,7 @@ back to hydrogen the mass it takes from helium.
 | the three-unknown control, `golden/wasp_full_newton` | 1.93e-9 | 1.93e-9 (unchanged) |
 
 1.9e-9 is the precision of the written file itself, which the three-unknown
-control has always read, so the element-transport arm is now closed as well
+control has always read, so the element-transport path is now closed as well
 as any state the code writes.
 
 The two consequences the closure had are gone with it: (a) a reload
@@ -453,12 +453,12 @@ because this item does not own that file. Nothing below is implemented.
 > directly. Decision 22 (a) was taken on this option and stands.]
 > **(b) Keep 1e-8 and state that the fixtures cannot certify.** The value
 > stays where it is, the report says that no state this implementation has
-> produced reaches it at the radii that bind, and the species-row arms are
+> produced reaches it at the radii that bind, and the species-row solves are
 > documented as uncertified by every method measured so far.
 > This is honest and it makes the certification a measurement rather than a
 > gate for these rows.
 > [corrected 2026-09-11: option (b) read "no state of this discretization can
-> reach it at the radii that bind, and the species-row arms are documented as
+> reach it at the radii that bind, and the species-row solves are documented as
 > permanently uncertified until the operator's order or the grid changes".
 > That inference is WITHDRAWN. Spatial truncation error is not a lower bound
 > on the algebraic residual of the discrete equations (review section 3.1),
@@ -550,7 +550,7 @@ in this memo therefore stands unchanged, and it was re-measured rather than
 assumed.
 
 The atomic state is a different state, as the ulp-level sensitivity of this
-arm (N26c) guarantees it must be after a change of this size. It is a better
+reload (N26c) guarantees it must be after a change of this size. It is a better
 one on every reading that is not a tolerance: `||R||` 1.6 times lower, the
 mass closure six decades lower, the reload returning the writer's rows.
 
@@ -794,8 +794,8 @@ every reported number in the two runs; they part at pass 6, the first pass
 whose hydrodynamic solve stops on the loop-top test because the mass row is
 inside its own tolerance (`info = 0` where the control's is `info = 2`).
 
-The wall times of the two arms (1047 s against 1041 s) are not a comparison:
-the P16 arm shared the machine with a test suite and the control did not.
+The wall times of the two runs (1047 s against 1041 s) are not a comparison:
+the P16 run shared the machine with a test suite and the control did not.
 The two other passes that end `info = 0` in the new run are 6 and 12.
 
 Note that this control is the CURRENT tree's entry text and not P10's binary,
@@ -828,8 +828,8 @@ to signal.
 
 The H2 carrier row is unchanged pass by pass, as it must be, the carrier
 relaxation sitting outside the hydrodynamic solve: 7.38E-02 at cell 290,
-7.22E-02 at 289, 7.06E-02 at 288 in both arms. It still refuses the state
-(2 entries refuse the last pass in both arms). The three passes cost 15.47 s
+7.22E-02 at 289, 7.06E-02 at 288 in both runs. It still refuses the state
+(2 entries refuse the last pass in both runs). The three passes cost 15.47 s
 against the control's 69.39 s, because each hydrodynamic solve now stops when
 its rows are within their tolerances instead of spending its budget on a
 mass row below the rounding of the base layer.
@@ -866,7 +866,7 @@ mass row below the rounding of the base layer.
   `cert_tol_mass_ceiling` and `cert_mass_gate_name` as absent.
 
 Reported by this item and CLOSED the same day by items P17 and P18 (READ,
-`docs/Update_EXHALE.md` section 8): at the time of writing the best-iterate
+`docs/Update_EXHALE_stage2.md` section 8): at the time of writing the best-iterate
 ledger still formed its hydrodynamic distance from the three row maxima over
 the fixed tolerances (`rc(1)/cert_tol_mass`), so it ranked the mass row
 against 3e-12 while the stop test and the acceptance read the cell's own

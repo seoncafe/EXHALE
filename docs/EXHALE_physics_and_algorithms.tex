@@ -1,0 +1,40 @@
+%% EXHALE: the physical equations and the algorithms that solve them.
+%% Written 2026-09-11 from the source (src/), at the level of Caldiroli et al.
+%% (2021, A&A 655, A30, the ATES paper) sections 2 and 3, for EXHALE v1.00.
+%% The section files under physics_overview/ are the document; edit them.
+%% Author: Kwang-Il Seon
+\documentclass[english,a4paper]{my_memo}
+\synctex=1
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{longtable}
+\usepackage{url}
+\urlstyle{tt}
+\usepackage[authoryear,round]{natbib}
+\usepackage{babel}
+\sloppy
+\begin{document}
+
+\title{EXHALE: physical equations and numerical algorithms}
+\author{Kwang-Il Seon}
+\date{Last updated: \docmoddate}
+\maketitle
+
+\tableofcontents
+\bigskip
+
+\input{physics_overview/introduction}
+\input{physics_overview/hydrodynamics}
+\input{physics_overview/radiation}
+\input{physics_overview/ionization}
+\input{physics_overview/thermal}
+\input{physics_overview/molecules_metals}
+\input{physics_overview/numerics}
+\input{physics_overview/boundaries_initial}
+\input{physics_overview/steady_state}
+\input{physics_overview/postprocessing}
+\input{physics_overview/summary_table}
+
+\end{document}

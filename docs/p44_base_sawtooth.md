@@ -259,9 +259,9 @@ The same reconstruction at the base face for every state measured:
 
 The reconstruction is approximate -- it assumes the exact divergence form and it
 accumulates the residual of the whole quasi-hydrostatic layer, which is why the
-converged arms spread over 0.34-0.98 rather than sitting on 1.00. What is not
+converged runs spread over 0.34-0.98 rather than sitting on 1.00. What is not
 approximate is the sign and the order of magnitude: the base faces of every
-converged arm carry an **outward** mass flux **of order the wind flux**, while
+converged run carry an **outward** mass flux **of order the wind flux**, while
 the cell-centred product at cell 1 is 200 times the wind flux **inward**. The
 cell-centred `rho v` at the base is therefore not a flux the discretization
 transports, which is the signature of a collocated odd-even velocity mode rather
@@ -280,10 +280,10 @@ composition condition would naturally be gated on.
 
 ## 4. The four configurations, measured
 
-All arms restart from the same converged reference state
+All runs restart from the same converged reference state
 (`ladder/runs/heh0p0793c_r1/output/`) with `Load IC? True`,
 `du_th [PLM,WENO3]: 1.0e9 1.0e-3` and `Solver: Newton 100.0`, i.e. the chain
-settings that produced it, so the comparison is like for like. The converged arms each march 2002
+settings that produced it, so the comparison is like for like. The converged runs each march 2002
 steps (the secondary-ionization flip at step 2 plus the `N_stall = 2000` hold)
 and then hand off to the JFNK finish. `OMP_NUM_THREADS=8`,
 `EXHALE_MAXSTEPS=20000`.
@@ -318,7 +318,7 @@ second cycle then moves them by 0.00 dex and 0.0007 `R_p`. So the reference
 state was not yet a fixed point of the restart-plus-JFNK workflow, and **A, not
 the reference, is the control**. Cycle-to-cycle drift on either baseline is
 about 0.01 dex in `Mdot` and 0.002-0.003 `R_p` in the front, which is the noise
-floor against which the arms must be read.
+floor against which the runs must be read.
 
 ### (a) Amplitude of `rho v r^2` in cells 1-8, against the wind value
 
@@ -332,19 +332,19 @@ floor against which the arms must be read.
 
 ### (b) `log10 Mdot`
 
-Quoted only for the arms that reached `info = 0`: A 10.29, B 10.34, C 10.28,
+Quoted only for the runs that reached `info = 0`: A 10.29, B 10.34, C 10.28,
 E 10.29, G 10.29, against the control's own second-cycle 10.29. B's +0.05 dex is
 five times the cycle noise; C, E and G move `Mdot` by at most 0.01 dex. D and F
 never converged, so their 10.35 and 10.47 are not quotable.
 
 ### (c) Does the base face become an inflow?
 
-In no arm does `v(1)` change sign except D (-39 cm/s, still negative) and F
+In no run does `v(1)` change sign except D (-39 cm/s, still negative) and F
 (+65 cm/s, in a state that has already destroyed the layer -- see below). The
-ghost velocity is positive in every arm, but in A, B and E it is only the
+ghost velocity is positive in every run, but in A, B and E it is only the
 softplus floor of the smooth valve (`0.5(v_1 + sqrt(v_1^2 + eps^2))` with
 `eps = 1e-4` code units `= 30.7 cm/s`, which for `v_1 = -248.88` evaluates to
-`0.940` against the `0.9412` in the file). C is the one arm where the ghost
+`0.940` against the `0.9412` in the file). C is the one run where the ghost
 velocity is a real number: `F_c/(rho_bc r^2) = +1.71 cm/s`. And as section 3
 shows, the *face* flux is already outward at about the wind rate in all of them.
 
@@ -360,9 +360,9 @@ altogether (1.0001, peak `n(H3+)` 9.7e5 at the ghost).
 ### (e) Residual and wind-region spread
 
 `||R||` is the volume-weighted JFNK norm at exit. C is the best (2.66e-4, 3.3
-times below the control), E next (7.62e-4), B the worst of the converged arms
+times below the control), E next (7.62e-4), B the worst of the converged runs
 (9.61e-4). The wind-region spread of `rho v r^2` is 2.4e-3 in every converged
-arm, i.e. the wind above `r = 1.4 R_p` is insensitive to all of this.
+run, i.e. the wind above `r = 1.4 R_p` is insensitive to all of this.
 
 ### D and F in detail
 
@@ -1332,7 +1332,7 @@ as beside `p_base` (`input_read.f90`, `base_level_from_handoff`). The
 `examples/17_lower_profile/input.inp` and from the case, so the run now starts
 at the profile's own level and its solution changed (base density 1.0e14 ->
 5.0e12 cm^-3, printed log10 Mdot 8.44 -> 7.92 for that change alone; measured
-in `docs/Update_EXHALE.md` section 6, item 2c-BASE, not re-measured here).
+in `docs/Update_EXHALE_stage2.md` section 6, item 2c-BASE, not re-measured here).
 
 `write_setup_report.f90` carries one line naming both numbers and the source,
 which is `base.inp p_base`, `the profile matching level p_match`,
@@ -1369,7 +1369,7 @@ not about this change.
 
 ### 10.3 The gate moved to the level its own radius already implied
 
-The six molecular regression cases and the sixteen diagnostic arms now read
+The six molecular regression cases and the sixteen diagnostic runs now read
 
 ```
 q_H2_base 0.84            (gate, He/H = 0.0793)
@@ -1594,7 +1594,7 @@ Not checked: a cold start under `Shapiro filter`, `Base velocity: massflux`,
 `Low-Mach damping` were run from scratch); any other planet; `Base BC: pressure`;
 the transit observables; whether cell 1 responds to a Shapiro filter applied for
 many more than 2000 marching steps; whether the 0.05 dex `Mdot` offset of the
-Shapiro arm persists over further restart cycles; an 8x base grid, which would
+Shapiro run persists over further restart cycles; an 8x base grid, which would
 test whether `v(1)` stays first order below `dr = 5e-5 R_p`; and the term-by-term
 budget of cell 1 that section 7.3 says the non-converging base temperature
 needs.

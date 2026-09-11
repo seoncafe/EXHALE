@@ -66,8 +66,7 @@ The initial state and copied input in the final molecular coupled and partitione
 
 ## What the repository carries
 
-The driver, the two scripts, `summarize_runs.py`, `build.log` and this file are
-committed. The `runs/` directory (38 MB of copied inputs, `.state` and `.faces`
-dumps and logs) is kept in this working copy only, like `backup/`; the numbers
-the report quotes from it are all in the report itself and in
-`docs/Update_EXHALE.md` section 8.
+The driver, the two scripts, `summarize_runs.py`, `build.log`, this file and, since
+commit `a7c18a6` (2026-09-11), the `runs/` directory with its copied inputs,
+`.state` and `.faces` dumps and logs (38 MB). The numbers the report quotes from
+`runs/` are all in the report itself and in `docs/Update_EXHALE_stage2.md` section 8.

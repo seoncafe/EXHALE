@@ -137,7 +137,7 @@
       !   B4        -98.5%  -85.4%  -42.7%     -99.2%  -90.5%  -52.5%
       !
       ! and, on a REAL stellar spectrum rather than a blackbody -- the
-      ! HD 189733 b flux at the planet that the P1 Photochem reference arm
+      ! HD 189733 b flux at the planet that the P1 Photochem reference
       ! was run with, weighted properly -- s_b/s_b(flat) is
       !
       !                H2O      OH

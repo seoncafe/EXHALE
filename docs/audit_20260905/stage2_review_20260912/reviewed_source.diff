@@ -1,0 +1,2654 @@
+diff --git a/src/EXHALE_main.f90 b/src/EXHALE_main.f90
+index 52eb605..018bb86 100644
+--- a/src/EXHALE_main.f90
++++ b/src/EXHALE_main.f90
+@@ -2019,7 +2019,7 @@
+             ! negative, and the run dies on the square root, not on anything
+             ! physical: measured at He/H = 1 over the molecular hot-Uranus base,
+             ! where a Mach 38-224 layer forms and cell 233 goes from p = +5.6 to
+-            ! p = -3.6e-2 in a single step at CFL 0.6 while the same arm runs
++            ! p = -3.6e-2 in a single step at CFL 0.6 while the same configuration runs
+             ! 12000 steps at CFL 0.2.
+             !
+             ! So each stage is tested, and the violation is answered in two
+@@ -5223,7 +5223,7 @@
+       ! HAND-OFF STARTS IT, at a pseudo-time of 1.0, not at the CFL interval:
+       ! a state written by a run is already relaxed, and a continuation
+       ! started at the CFL dt from it does not reach the root.  MEASURED
+-      ! (2026-09-11, docs/Update_EXHALE.md section 8, 8 threads): the
++      ! (2026-09-11, docs/Update_EXHALE_stage2.md section 8, 8 threads): the
+       ! hydrodynamic solve of the hot-Uranus carrier reload stands at
+       ! ||R|| 1.13 after 40 iterations from the CFL start and at 1.5e-9 in
+       ! 12 iterations from 1.0; the HD 209458 b element reload stagnates at
+@@ -6532,10 +6532,25 @@
+                  if (j50 .eq. 0 .and. x2 .lt. 0.5d0)  j50 = jf
+                  if (j01 .eq. 0 .and. x2 .lt. 1.0d-2) j01 = jf
+               enddo
+-              write(*,'(A,F8.4,A,F8.4,A,I0,A,ES9.2,A)')                  &
+-                   '    H2 front: x2=0.5 at r=', r(max(j50,1)),          &
+-                   '  x2=1e-2 at r=', r(max(j01,1)), '  (pass ', it_diff, &
+-                   ', trust', trust_pass, ')'
++              ! A front that has left the domain (no cell below the level)
++              ! is reported as such, not as the radius of the first cell.
++              block
++                character(len=12) :: s50, s01
++                if (j50 .gt. 0) then
++                   write(s50,'(F8.4)') r(j50)
++                else
++                   s50 = ' > r(N)'
++                endif
++                if (j01 .gt. 0) then
++                   write(s01,'(F8.4)') r(j01)
++                else
++                   s01 = ' > r(N)'
++                endif
++                write(*,'(A,A,A,A,A,I0,A,ES9.2,A)')                        &
++                     '    H2 front: x2=0.5 at r=', trim(s50),              &
++                     '  x2=1e-2 at r=', trim(s01), '  (pass ', it_diff,    &
++                     ', trust', trust_pass, ')'
++              end block
+             end block
+             call carrier_drift_location(cdl_j, cdl_ic)
+             if (cdl_j .gt. 0)                                            &
+diff --git a/src/modules/files_IO/input_read.f90 b/src/modules/files_IO/input_read.f90
+index 9c0b17c..33bc85e 100644
+--- a/src/modules/files_IO/input_read.f90
++++ b/src/modules/files_IO/input_read.f90
+@@ -664,13 +664,13 @@
+ 				! fixed-wind transport relaxations, judged jointly by the
+ 				! certification of the refreshed state
+ 				! (steady_wind_with_element_diffusion). MEASURED on the two
+-				! reloads of backup/regression (Update_EXHALE.md section 8,
++				! reloads of backup/regression (Update_EXHALE_stage2.md section 8,
+ 				! 2026-09-11): the alternation brings every elemental wind
+ 				! row of the HD 209458 b reload inside 1e-5 in 12 passes
+ 				! and the hot-Uranus H2 wind row from 7.4e-2 to 2.2e-2 in
+ 				! 40 passes, while the coupled solve certifies neither
+ 				! (stage 2, items N0 to N38). True keeps the coupled solve
+-				! as a measurement arm. On a molecular configuration it
++				! as a control to measure against. On a molecular configuration it
+ 				! requires "Molecular carrier transport: True", because H2
+ 				! must be an unknown and not an eliminated variable;
+ 				! checked below, after every key is parsed.
+@@ -1010,7 +1010,7 @@
+ 				! emits in LTE and absorbs the same diluted B_nu(T0) the
+ 				! `Base IR field` closure supplies, so each stops cooling at
+ 				! its own radiative equilibrium temperature instead of running
+-				! the layer down (TO_BE_DONE.md item (G)). Default False.
++				! the layer down (docs/TO_BE_DONE.md item (G)). Default False.
+ 				! H2O and CO need `Oxygen chemistry: True` to exist at all; H2
+ 				! needs `Molecular chemistry: True`. See
+ 				! molecular_infrared_cooling.f90.
+@@ -1603,7 +1603,7 @@
+       ! so an element that is partly in OH, H2O or CO keeps its ratio to
+       ! hydrogen and the mass closure m_1 n_H + m_He n_He = rho still holds.
+       !
+-      ! What is still refused is the TRACE-METAL arm. It transports each
++      ! What is still refused is TRACE-METAL DIFFUSION. It transports each
+       ! metal element's own mixing ratio, so it has to move the element's
+       ! molecular carriers with the ion stages -- and CO carries one oxygen
+       ! AND one carbon, so a step that moves O and C by different factors
+@@ -1614,7 +1614,7 @@
+       if (he_metal_diffusion) then
+          write(*,*) '(input_read) ERROR: "Oxygen chemistry: True" and'//   &
+                     ' "He_metal_diffusion: True" are not solved together.'
+-         write(*,*) '  The trace-metal diffusion arm counts each metal'
++         write(*,*) '  The trace-metal diffusion operator counts each metal'
+          write(*,*) '  element over its ion stages alone, so with the'
+          write(*,*) '  oxygen chemistry on it would transport an oxygen'
+          write(*,*) '  reservoir missing everything bound into OH, H2O'
+diff --git a/src/modules/files_IO/load_IC.f90 b/src/modules/files_IO/load_IC.f90
+index 3977428..271a9c2 100644
+--- a/src/modules/files_IO/load_IC.f90
++++ b/src/modules/files_IO/load_IC.f90
+@@ -170,7 +170,7 @@
+    ! Comparing the whole field exactly is right for a state that claims to
+    ! be stationary and wrong for the way this project reaches its
+    ! solutions: converge without an option, restart with it on, converge
+-   ! again (the arm ladder). The input key "Restart option change:" names
++   ! again (the option ladder). The input key "Restart option change:" names
+    ! the tokens that are ALLOWED to differ; every other difference is still
+    ! refused by name, and the change that was allowed is written into the
+    ! new state's block, so a rung of a ladder states what it was reached
+diff --git a/src/modules/files_IO/lower_atmosphere_profile.f90 b/src/modules/files_IO/lower_atmosphere_profile.f90
+index 8da99ef..2ade6b2 100644
+--- a/src/modules/files_IO/lower_atmosphere_profile.f90
++++ b/src/modules/files_IO/lower_atmosphere_profile.f90
+@@ -239,7 +239,7 @@
+       lap_in_use = .true.
+       ! A stated iteration index is what makes a profile drivable by the
+       ! flux-closure loop; the trial flux is legitimately zero on the first
+-      ! arm, so a zero value says nothing.  A hand-written profile with no
++      ! iteration, so a zero value says nothing.  A hand-written profile with no
+       ! iteration index runs, it just cannot be iterated.
+       lap_iterable = (lap_iteration .ge. 0)
+ 
+diff --git a/src/modules/files_IO/write_output.f90 b/src/modules/files_IO/write_output.f90
+index 0287852..612d815 100644
+--- a/src/modules/files_IO/write_output.f90
++++ b/src/modules/files_IO/write_output.f90
+@@ -940,7 +940,7 @@
+       ! atoms are not there -- and the code has no H2O or CO infrared bands
+       ! to put in their place. H3+ is the only molecular coolant it carries.
+       !
+-      ! That is item (G) of TO_BE_DONE.md arriving through the composition
++      ! That is item (G) of docs/TO_BE_DONE.md arriving through the composition
+       ! instead of through the temperature, and section 9 of
+       ! docs/a2_oxygen_option_design.md says so in advance: A2 is the
+       ! composition of the molecular layer and (G) is its energy. Measured
+@@ -1007,7 +1007,7 @@
+             ' "Molecular IR bands" off, so nothing replaces the [O I]'//   &
+             ' and C I/C II lines the molecules switched off and the'//     &
+             ' layer they are in is warmer than the same composition'//     &
+-            ' would really be (TO_BE_DONE.md item (G)).'
++            ' would really be (docs/TO_BE_DONE.md item (G)).'
+ 
+       ! ---- FUV band penetration and the G4 band ledger ----
+       ! THE QUANTITY THAT IS CLOSED. For every band, the photons the beam
+diff --git a/src/modules/flux/Num_Fluxes.f90 b/src/modules/flux/Num_Fluxes.f90
+index d77295d..b57c02e 100644
+--- a/src/modules/flux/Num_Fluxes.f90
++++ b/src/modules/flux/Num_Fluxes.f90
+@@ -52,7 +52,7 @@
+       ! floating point, so nothing moves off the constant-gamma arithmetic.
+       ! The HLLC branch needs no such average: its Davis/Einfeldt speeds
+       ! min(v-c) / max(v+c) already take one sound speed per side.
+-      ! WELL-BALANCED ARM ("Well balanced:").  With the optional arguments
++      ! WELL-BALANCED OPTION ("Well balanced:").  With the optional arguments
+       ! present the PRESSURE JUMP of the Riemann problem is not formed as
+       ! pR - pL, the difference of two O(1) face pressures, but as
+       !     dp = dp_eq + dev_R - dev_L
+@@ -317,7 +317,7 @@
+             !---------------------------------!
+ 
+             ! Evaluate the conserved-variables differences.  Under the
+-            ! well-balanced arm the pressure jump is the one built from the
++            ! well-balanced option the pressure jump is the one built from the
+             ! departures (see the header), not the difference of the two
+             ! O(1) face pressures.
+             drho = rhoR - rhoL
+@@ -498,7 +498,7 @@
+       PF(3) = v*(E+p)
+       
+       ! Add pressure for PLM discretization.  Not under the well-balanced
+-      ! arm: there the pressure force of both discretizations is assembled in
++      ! option: there the pressure force of both discretizations is assembled in
+       ! RK_rhs from the departure of the face pressure from the cell's own
+       ! hydrostatic equilibrium, so the momentum flux carried through the
+       ! face is the kinetic one alone.
+diff --git a/src/modules/functions/binary_element_diffusion.f90 b/src/modules/functions/binary_element_diffusion.f90
+index ac9a933..8fa41d4 100644
+--- a/src/modules/functions/binary_element_diffusion.f90
++++ b/src/modules/functions/binary_element_diffusion.f90
+@@ -1213,7 +1213,7 @@
+       ! ONLY HELIUM IS DAMPED.  X is the member of the normalized pair, and
+       ! the projection below is the map from it back into the species vector;
+       ! a trace element is slaved to the hydrogen background and carries no
+-      ! such projection, so the trace arm keeps the composition the
++      ! such projection, so the trace elements keep the composition the
+       ! relaxation left.  The drift reported to the outer loop covers every
+       ! element either way, because it measures the distance to the fixed
+       ! point and not the step applied.
+@@ -2033,7 +2033,7 @@
+       ! multiplies by the factor that returns them to the units of its own
+       ! row.
+       !
+-      ! THERE IS ONE OF THESE IN THE ELEMENT ARM, and the backward-Euler
++      ! THERE IS ONE OF THESE IN THE ELEMENT OPERATOR, and the backward-Euler
+       ! step, the fixed-wind relaxation and the stationary elemental row all
+       ! read it here.  Two spellings of one term have two fixed points, so an
+       ! alternation of a relaxation with one and a row with the other cannot
+@@ -2582,7 +2582,7 @@
+       ! units, so a cell where every term vanishes reads zero rather than
+       ! dividing by zero.
+       !
+-      ! Cell 1 carries no equation in either arm: it is the Dirichlet
++      ! Cell 1 carries no equation for either element: it is the Dirichlet
+       ! reservoir the operator states, so its residual is reported as zero
+       ! against the floor.
+       !
+@@ -3397,7 +3397,8 @@
+ 
+       subroutine element_mass_fractions(f_sp, Y)
+       ! The transported element mass fractions of a species vector: helium in
+-      ! column 1, each trace metal in column 1+im when the metal arm is on.
++      ! column 1, each trace metal in column 1+im when trace-metal diffusion
++      ! is on.
+       ! The mass sum is the cell's own (mixture_mass_split), the two-component
+       ! closure of the module header, so column 1 is exactly the X the
+       ! diffusive half solves and the columns are true mass fractions of it.
+@@ -3571,8 +3572,8 @@
+       ! an element fraction means.
+       !
+       ! The split WITHIN an element is left to the ionization solve, which is
+-      ! the division of labour project_elements states.  With the metal arm
+-      ! on, each metal element is put on the amount its own advected mass
++      ! the division of labour project_elements states.  With trace-metal
++      ! diffusion on, each metal element is put on the amount its own advected mass
+       ! fraction asks for and the hydrogen group takes the mass that is left,
+       ! so the mixture's mass is unchanged by the write-back.
+       real*8, dimension(1-Ng:N+Ng,n_species), intent(inout) :: f_sp
+diff --git a/src/modules/init/parameters.f90 b/src/modules/init/parameters.f90
+index a09ca74..61a4826 100644
+--- a/src/modules/init/parameters.f90
++++ b/src/modules/init/parameters.f90
+@@ -537,7 +537,7 @@
+       ! before 2026-08-30: the only infrared coolants below the H2 -> H front
+       ! were H3+ and the ground-term fine-structure lines, so a converged
+       ! molecular layer had nothing holding it and collapsed to 190-400 K
+-      ! (TO_BE_DONE.md item (G)). .true. adds the H2 quadrupole and magnetic
++      ! (docs/TO_BE_DONE.md item (G)). .true. adds the H2 quadrupole and magnetic
+       ! dipole line spectrum and the H2O and CO bands, each exchanging with the
+       ! same diluted B_nu(T0) `Base IR field` supplies, so each stops at its own
+       ! radiative equilibrium temperature. See molecular_infrared_cooling.f90.
+diff --git a/src/modules/init/set_energy_vectors.f90 b/src/modules/init/set_energy_vectors.f90
+index c77a35e..2e4d15d 100644
+--- a/src/modules/init/set_energy_vectors.f90
++++ b/src/modules/init/set_energy_vectors.f90
+@@ -51,7 +51,7 @@
+ 	! threshold energy (Verner et al. 1996 fit of Fe I: E_0 = 0.0546 eV, a
+ 	! factor 2.5 over 0.4 eV), and with this budget every metal
+ 	! photoionization rate the grid forms is within 5e-4 of the exact
+-	! integral (photon_grid_threshold_edges; docs/Update_EXHALE.md section 6).
++	! integral (photon_grid_threshold_edges; docs/Update_EXHALE_stage2.md section 6).
+ 	integer, parameter :: num_TR = 89
+ 	! The n = 2 band carries no cross section of an active absorber (that is
+ 	! what e_abs_low means, see the split below), and the H(n=2)
+diff --git a/src/modules/lower_atmosphere/diffusive_photochemistry.f90 b/src/modules/lower_atmosphere/diffusive_photochemistry.f90
+index 1dfccea..f5f5722 100644
+--- a/src/modules/lower_atmosphere/diffusive_photochemistry.f90
++++ b/src/modules/lower_atmosphere/diffusive_photochemistry.f90
+@@ -245,7 +245,7 @@
+       ! It also fixes the approximation.  A water molecule that diffuses out
+       ! of a cell really takes its oxygen with it; here the oxygen stays and
+       ! reappears as O I.  That is the same statement EXHALE already makes
+-      ! about every metal when the trace-metal diffusion arm is off -- the
++      ! about every metal when trace-metal diffusion (`He_metal_diffusion`) is off -- the
+       ! element is slaved to hydrogen at melem_ab -- and it is why this
+       ! operator transports SPECIATION and not elements.  Elemental
+       ! separation of oxygen is he_metal_diffusion's subject, and the two
+diff --git a/src/modules/lower_atmosphere/element_inventory.f90 b/src/modules/lower_atmosphere/element_inventory.f90
+index 9e99b7f..593b05c 100644
+--- a/src/modules/lower_atmosphere/element_inventory.f90
++++ b/src/modules/lower_atmosphere/element_inventory.f90
+@@ -504,7 +504,7 @@
+ 
+       ! WHETHER THE SHARED CONSTRAINT IS WHAT A STATE IS JUDGED BY.
+       ! EXHALE_INVENTORY_SHARED=0 judges by the separate box sides of the
+-      ! carriers instead, which is the arm the shared constraint is measured
++      ! carriers instead, which is what the shared constraint is measured
+       ! against.  It is a measurement switch of the classification and not a
+       ! physics option: no production path reads it, and the constraint is a
+       ! property of the state either way.
+diff --git a/src/modules/lower_atmosphere/mol_rates.f90 b/src/modules/lower_atmosphere/mol_rates.f90
+index 1b55c72..5ef4b58 100644
+--- a/src/modules/lower_atmosphere/mol_rates.f90
++++ b/src/modules/lower_atmosphere/mol_rates.f90
+@@ -525,8 +525,8 @@
+       ! a half orders (VULCAN 3.31e-6 T^-1, Photochem 1.0e-12 cm^3 s^-1), so
+       ! the onset density n_crit = k_inf/k_0 was evaluated with BOTH.
+       ! Measured on the five molecular regression cases and both diagnostic
+-      ! arms, the largest molecular-layer particle density is 5.4e13 cm^-3
+-      ! (matrix) and 7.2e14 cm^-3 (He/H = 10 arm), against n_crit >=
++      ! runs, the largest molecular-layer particle density is 5.4e13 cm^-3
++      ! (matrix) and 7.2e14 cm^-3 (He/H = 10 run), against n_crit >=
+       ! 4.4e19 cm^-3 from the STRICTER of the two at this k_0. Every
+       ! configuration is therefore at least four and a half orders below the
+       ! onset, and the two references' disagreement never enters. The
+diff --git a/src/modules/lower_atmosphere/molecular_infrared_cooling.f90 b/src/modules/lower_atmosphere/molecular_infrared_cooling.f90
+index 9bba54c..06f5c40 100644
+--- a/src/modules/lower_atmosphere/molecular_infrared_cooling.f90
++++ b/src/modules/lower_atmosphere/molecular_infrared_cooling.f90
+@@ -14,7 +14,7 @@
+ ! their incident field; it could not reach the rest of the layer, where the
+ ! coolants that matter in a real H2 atmosphere -- water, carbon monoxide and
+ ! molecular hydrogen itself -- were simply absent.  This module supplies them.
+-! TO_BE_DONE.md item (G).
++! docs/TO_BE_DONE.md item (G).
+ !
+ ! THE PHYSICS.  For an optically thin layer in LTE the net radiative loss per
+ ! unit volume of species X is
+diff --git a/src/modules/lower_atmosphere/oxygen_rates.f90 b/src/modules/lower_atmosphere/oxygen_rates.f90
+index 740fbc5..9f5d720 100644
+--- a/src/modules/lower_atmosphere/oxygen_rates.f90
++++ b/src/modules/lower_atmosphere/oxygen_rates.f90
+@@ -1055,7 +1055,7 @@
+       ! WHY THIS IS THE CARBON RESERVOIR OF THE A2 NETWORK.  Decision D4 of
+       ! docs/a2_oxygen_option_design.md carries CO as an unreactive oxygen
+       ! reservoir -- it holds 45-46% of the oxygen at every level of every
+-      ! measured arm, so a network that gives the whole oxygen abundance to
++      ! measured case, so a network that gives the whole oxygen abundance to
+       ! the water family over-supplies the OH cycle by about a factor two --
+       ! and takes its abundance from a chemical-equilibrium C/O partition
+       ! (that document's section 3.7).  The C=O bond is 11.1 eV, four times
+diff --git a/src/modules/lower_atmosphere/water_photolysis.f90 b/src/modules/lower_atmosphere/water_photolysis.f90
+index 1834aa1..c431df5 100644
+--- a/src/modules/lower_atmosphere/water_photolysis.f90
++++ b/src/modules/lower_atmosphere/water_photolysis.f90
+@@ -137,7 +137,7 @@
+       !   B4        -98.5%  -85.4%  -42.7%     -99.2%  -90.5%  -52.5%
+       !
+       ! and, on a REAL stellar spectrum rather than a blackbody -- the
+-      ! HD 189733 b flux at the planet that the P1 Photochem reference arm
++      ! HD 189733 b flux at the planet that the P1 Photochem reference
+       ! was run with, weighted properly -- s_b/s_b(flat) is
+       !
+       !                H2O      OH
+diff --git a/src/modules/nonlinear_system_solver/T_equation.f90 b/src/modules/nonlinear_system_solver/T_equation.f90
+index ef90372..46e8ad7 100644
+--- a/src/modules/nonlinear_system_solver/T_equation.f90
++++ b/src/modules/nonlinear_system_solver/T_equation.f90
+@@ -130,7 +130,7 @@
+ 	! sqrt(TT), and lambda_rec_HII raises (2*157807/TT) to the power 1.970,
+ 	! which is a NaN for TT < 0 and an overflow for TT -> 0+. The NaN then
+ 	! poisons the Newton step, and under -ffpe-trap=invalid it aborts the run
+-	! (measured in the post-process of the He/H = 1 molecular arm, which is
++	! (measured in the post-process of the He/H = 1 molecular case, which is
+ 	! metals-off: lambda_rec_HII in Cool_coeff.f90, from hybrd1). So
+ 	! floor the argument of the rate functions at a small positive temperature,
+ 	! unconditionally: it is the domain of the fits, not an option. The
+diff --git a/src/modules/nonlinear_system_solver/constrained_chemical_equilibrium.f90 b/src/modules/nonlinear_system_solver/constrained_chemical_equilibrium.f90
+index e8df407..deaeeea 100644
+--- a/src/modules/nonlinear_system_solver/constrained_chemical_equilibrium.f90
++++ b/src/modules/nonlinear_system_solver/constrained_chemical_equilibrium.f90
+@@ -228,7 +228,7 @@
+ 	! gives the same composition a norm of order sqrt(n_unknown) and puts the
+ 	! test back in reach.
+ 	!
+-	! Measured on the He/H = 1 hot-Uranus arm at 12000 steps, with the floor
++	! Measured on the He/H = 1 hot-Uranus case at 12000 steps, with the floor
+ 	! in place in BOTH: u_shift = 1 left no cell on the 11.4 K temperature
+ 	! floor and none below 50 K, and promoted 481 cells to this solve
+ 	! (3208 field solves); u_shift = 0 pinned 22 cells at the floor and 46
+@@ -256,7 +256,7 @@
+ 	! explored because truncation error then grows as eta.
+ 	!
+ 	! With the floor in place the value stopped mattering to the solution, as
+-	! it should: on the He/H = 1 hot-Uranus arm above, 1e-4, 1e-5 and 1e-6 all
++	! it should: on the He/H = 1 hot-Uranus case above, 1e-4, 1e-5 and 1e-6 all
+ 	! left no cell on the temperature floor, all gave the same log10 Mdot to
+ 	! the printed 8.89, and differed only in how many cells the sweep promoted
+ 	! to this solve at all (481, 524, 483 of 502).
+diff --git a/src/modules/post_process/post_process_adv.f90 b/src/modules/post_process/post_process_adv.f90
+index 9309766..4018307 100644
+--- a/src/modules/post_process/post_process_adv.f90
++++ b/src/modules/post_process/post_process_adv.f90
+@@ -1574,7 +1574,7 @@
+ 	 		! sqrt(T/T0) in the Badnell recombination fit (rr_badnell), so a
+ 	 		! negative T there is a NaN cooling rate in an ordinary build and an
+ 	 		! abort under -ffpe-trap=invalid. Measured on the He/H = 1 molecular
+-	 		! arm, which is metals-off and so had no test at all: cells 278-280
++	 		! case, which is metals-off and so had no test at all: cells 278-280
+ 	 		! come back at -42, -640 and -2474 K on the second pass. Keep the
+ 	 		! converged equilibrium temperature -- the same state the
+ 	 		! non-converged branch above keeps, and for the same reason.
+diff --git a/src/modules/radiation/ionization_equilibrium.f90 b/src/modules/radiation/ionization_equilibrium.f90
+index c658e75..df5209f 100644
+--- a/src/modules/radiation/ionization_equilibrium.f90
++++ b/src/modules/radiation/ionization_equilibrium.f90
+@@ -479,17 +479,17 @@
+ 	! routinely returns finished roots it cannot certify).
+ 	!
+ 	! The value is set from the measured populations of the full 8-case
+-	! regression matrix plus the He/H = 1 molecular arm (2026-08-31):
++	! regression matrix plus the He/H = 1 molecular case (2026-08-31):
+ 	! across the matrix every solver-converged accepted root sits at
+ 	! res <= 7.8e-8 and every root accepted without solver convergence at
+ 	! res <= 2.7e-7 -- the scale is hybrd1's xtol = sqrt(eps) ~ 1.5e-8
+ 	! times a scaled-Jacobian norm of order 1-10 -- while the smallest
+ 	! above-tolerance acceptance of the matrix (a cold-start base cell
+ 	! recovering over the next sweeps) is 1.1e-3 and the poisoned events
+-	! of the He/H = 1 arm reach 2e-2..1.4e6. 1e-6 sits 3.7x above the
++	! of the He/H = 1 case reach 2e-2..1.4e6. 1e-6 sits 3.7x above the
+ 	! measured root tail, in a decade ([1e-6, 1e-5)) that is empty in
+ 	! every matrix histogram, and 1100x below the matrix's smallest
+-	! non-root; the He/H = 1 arm additionally carries one borderline
++	! non-root; the He/H = 1 case additionally carries one borderline
+ 	! accepted iterate at 2.1e-6, which this value classifies (and marks)
+ 	! as a non-root rather than stretching the root band to cover it.
+ 	real*8, parameter :: ieq_res_tol = 1.0d-6
+diff --git a/src/modules/radiation/util_ion_eq.f90 b/src/modules/radiation/util_ion_eq.f90
+index 1e9bbe1..3b483c9 100644
+--- a/src/modules/radiation/util_ion_eq.f90
++++ b/src/modules/radiation/util_ion_eq.f90
+@@ -3091,7 +3091,7 @@
+ 	! LTE emission minus absorption of the diluted B_nu(T0) the lower
+ 	! atmosphere presents -- so each vanishes at its own radiative equilibrium
+ 	! temperature instead of running the layer down to nothing. That fixed
+-	! point is what TO_BE_DONE.md item (G) asks for; the emission magnitudes
++	! point is what docs/TO_BE_DONE.md item (G) asks for; the emission magnitudes
+ 	! alone would only deepen the collapse.
+ 	! Off by default (`Molecular IR bands`). The dilution is the same
+ 	! 0.5*base_sky_fraction the H3+ closure uses, and it is zero when
+diff --git a/src/modules/states/PLM_rec.f90 b/src/modules/states/PLM_rec.f90
+index 10ea00d..b62c197 100644
+--- a/src/modules/states/PLM_rec.f90
++++ b/src/modules/states/PLM_rec.f90
+@@ -9,7 +9,7 @@
+    contains
+    
+    subroutine PLM_rec(u_in,WL_rec,WR_rec,P_up,P_dn,dev_L,dev_R)
+-   ! WELL-BALANCED ARM.  With the four optional arrays present (the caller
++   ! WELL-BALANCED OPTION.  With the four optional arrays present (the caller
+    ! passes them when "Well balanced:" is set) the PRESSURE is reconstructed
+    ! in the coordinate of the departure from the cell's own local hydrostatic
+    ! equilibrium: the stencil data becomes the neighboring cell's pressure
+@@ -19,7 +19,7 @@
+    ! acts on that unchanged, and the equilibrium face value P_up / P_dn is
+    ! added back at the end.  The departure itself is returned so that the
+    ! Riemann jump and the pressure force can be formed from small numbers.
+-   ! Density and velocity are reconstructed as they are without the arm
++   ! Density and velocity are reconstructed as they are without it
+    ! (Kaeppeli and Mishra 2016, A&A 587, A94, section 2.1.3).
+    integer :: j,k
+    real*8, dimension(3,1-Ng:N+Ng),intent(in) :: u_in
+@@ -50,7 +50,7 @@
+             call U_to_W_comp(u_in(:,k),W(:,k-j),k)
+       enddo
+ 
+-      ! WELL-BALANCED ARM: the pressure stencil in departure coordinates.
++      ! WELL-BALANCED OPTION: the pressure stencil in departure coordinates.
+       ! The departure at a neighboring cell centre is measured against the
+       ! equilibrium continued to it through the face, that is with THIS
+       ! cell's density up to the face and the NEIGHBOUR's beyond it, which is
+@@ -60,8 +60,8 @@
+       ! where the same construction appears as the average density of a
+       ! uniform mesh).  Continuing the cell's own constant density over the
+       ! whole gap instead would leave data of the size (rho_j - rho_j+1) x
+-      ! (potential difference), and the arm would be second order and not
+-      ! exact.
++      ! (potential difference), and the reconstruction would be second order
++      ! and not exact.
+       ! The difference of the two cell pressures is taken FIRST, while it is
+       ! still an exact floating-point operation, and the hydrostatic terms
+       ! are added to it afterwards; the reverse order would bury the small
+diff --git a/src/modules/states/Reconstruction.f90 b/src/modules/states/Reconstruction.f90
+index 99e0ea1..7cb4df8 100644
+--- a/src/modules/states/Reconstruction.f90
++++ b/src/modules/states/Reconstruction.f90
+@@ -21,7 +21,7 @@
+       ! would have produced, to the bit.
+       integer :: n_faces_positivity_limited = 0
+ 
+-      ! ---- THE WELL-BALANCED ARM ("Well balanced:", default off) ----
++      ! ---- THE WELL-BALANCED OPTION ("Well balanced:", default off) ----
+       ! The local hydrostatic equilibrium of cell j is the one of constant
+       ! density through its own (rho_j, p_j),
+       !     p_eq,j(r) = p_j - rho_j (phi(r) - phi(r_j)),
+@@ -48,7 +48,7 @@
+       ! kept so that a face state the boundary condition or the positivity
+       ! limiter has rewritten is recognized (its departure is then re-formed
+       ! from the state it now carries, at the cost of the O(1) subtraction the
+-      ! rest of the arm avoids).
++      ! rest of that option avoids).
+       real*8, allocatable :: wb_pL_asm(:), wb_pR_asm(:)
+ 
+       contains
+@@ -68,7 +68,7 @@
+       real*8, dimension(3) :: S0,S1
+       real*8, dimension(1-Ng:N+Ng) :: C1,C2,D1,D2
+ 
+-      ! Well-balanced arm: the cell's own equilibrium is formed first, the
++      ! Well-balanced option: the cell's own equilibrium is formed first, the
+       ! reconstruction below then works on the departure from it.
+       real*8, dimension(3) :: Wc
+ 
+@@ -209,7 +209,7 @@
+                dWm = dW(:,j-1)
+                Wc  = W(:,j)
+ 
+-               ! WELL-BALANCED ARM: the pressure component is reconstructed
++               ! WELL-BALANCED OPTION: the pressure component is reconstructed
+                ! in the coordinate of the DEPARTURE from cell j's local
+                ! hydrostatic equilibrium, whose value at the cell centre is
+                ! zero and at a neighboring centre is that cell's pressure
+@@ -307,7 +307,7 @@
+       ! rho > 0 and p > 0 wherever the reconstruction lost them.
+       call positivity_limited_faces(u_in,WL_out,WR_out)
+ 
+-      ! Well-balanced arm: the equilibrium mismatch of every face, and the
++      ! Well-balanced option: the equilibrium mismatch of every face, and the
+       ! departures of the face states the two steps above rewrote.
+       if (well_balanced) call well_balanced_face_departures(WL_out,WR_out)
+ 
+@@ -587,7 +587,7 @@
+       ! switch: as soon as a reconstructed rho or p crossed zero, the WHOLE
+       ! face pair was replaced by the two cell averages. That is a STEP
+       ! DISCONTINUITY of the residual F(Y), and it is what stopped the
+-      ! molecular arm's steady solve. Measured on the hot Uranus hand-off:
++      ! molecular reload's steady solve. Measured on the hot Uranus hand-off:
+       ! the WENO3 left density at the face of cell 273 (r = 1.2324 R_p) sat at
+       ! 2.50e-15 against cell averages of 1e-4, eleven orders below and
+       ! positive by a hair, so the iterate sat exactly on the switching
+diff --git a/src/modules/states/Source.f90 b/src/modules/states/Source.f90
+index 6383360..50666bd 100644
+--- a/src/modules/states/Source.f90
++++ b/src/modules/states/Source.f90
+@@ -31,7 +31,7 @@
+    
+    !--- Evaluare source term ---!
+ 
+-   ! WELL-BALANCED ARM ("Well balanced:").  The gravitational source and the
++   ! WELL-BALANCED OPTION ("Well balanced:").  The gravitational source and the
+    ! geometric pressure term are then not evaluated here at all: they cancel
+    ! the equilibrium part of the momentum flux difference IDENTICALLY, and
+    ! RK_rhs assembles the momentum row from what is left, the departure of
+diff --git a/src/modules/time_step/RK_rhs.f90 b/src/modules/time_step/RK_rhs.f90
+index ebb28f9..844c0e0 100644
+--- a/src/modules/time_step/RK_rhs.f90
++++ b/src/modules/time_step/RK_rhs.f90
+@@ -23,21 +23,21 @@
+       real*8, dimension(:,:), allocatable :: face_flux
+       real*8, dimension(:),   allocatable :: face_p
+ 
+-      ! WELL-BALANCED ARM.  The face pressure of every interface measured
++      ! WELL-BALANCED OPTION.  The face pressure of every interface measured
+       ! from the hydrostatic equilibrium of the cell on each side,
+       !   face_q_up(f) = face_p(f) - P_up(f),
+       !   face_q_dn(f) = face_p(f) - P_dn(f+1),
+       ! both of the size of the departure from equilibrium.  They are what
+-      ! the momentum row is assembled from when the arm is on: the O(1)
++      ! the momentum row is assembled from when that option is on: the O(1)
+       ! pressure of the cell and the gravitational source cancel in the
+       ! ALGEBRA (see the header of the cell loop) instead of in floating
+       ! point.  Filled only when well_balanced is set.
+       real*8, dimension(:),   allocatable :: face_q_up, face_q_dn
+ 
+-      ! WELL-BALANCED ARM.  The magnitude of the pressure force of each
++      ! WELL-BALANCED OPTION.  The magnitude of the pressure force of each
+       ! cell's own hydrostatic equilibrium, which is the gravitational
+       ! weight the cell carries and is the term the momentum row's residual
+-      ! is read against under the arm, since the row itself no longer holds
++      ! is read against under it, since the row itself no longer holds
+       ! either of them.  Written out at
+       ! equilibrium_pressure_force_of_state, which is the only place it is
+       ! formed.  Filled only when well_balanced is set.
+@@ -58,7 +58,7 @@
+       !                                  gradient the row carries
+       !   momentum_gravity(j)            rho dphi/dr as `source` forms it,
+       !                                  and the equilibrium pressure force
+-      !                                  under the well-balanced arm, where
++      !                                  under the well-balanced option, where
+       !                                  the row itself carries neither
+       !
+       ! The three add up to the assembled row dF(2,j) - S(2,j) exactly.
+@@ -233,7 +233,7 @@
+          ! Correct for WENO3 discretization
+          if (use_weno3)  dF(2,j) = dF(2,j) + (pR - pL)/dr
+ 
+-         ! THE MOMENTUM ROW UNDER THE WELL-BALANCED ARM.  The pressure is
++         ! THE MOMENTUM ROW UNDER THE WELL-BALANCED OPTION.  The pressure is
+          ! not in Fp(2)/Fm(2) here (Phys_flux leaves it out), and what
+          ! replaces it is the face pressure measured from THIS cell's own
+          ! hydrostatic equilibrium.  The two identities that make the
+@@ -295,7 +295,7 @@
+       ! the face values of the constant-density equilibrium through the
+       ! cell's own (rho_j, p_j) (Kaeppeli and Mishra 2016, A&A 587, A94,
+       ! their eq. 16, in spherical geometry), the identities the momentum
+-      ! row of the well-balanced arm rests on are
++      ! row of the well-balanced option rests on are
+       !
+       !   A+ P_up - A- P_dn - (A+ - A-) p_j
+       !        = -rho_j [ A+ (phi_i(j) - phi_c(j))
+@@ -354,7 +354,8 @@
+       ! ONE CELL'S MOMENTUM ROW SPLIT INTO THE TERMS OF THE PHYSICAL
+       ! EQUATION, and the single definition of that split.  The three
+       ! outputs add up to the assembled row dF(2) - S(2) exactly, whichever
+-      ! reconstruction and whichever arm produced it:
++      ! reconstruction produced it and whether or not the well-balanced
++      ! option is on:
+       !
+       !   PLM    Phys_flux gives the momentum flux the pressure, so the
+       !          face value is rho v v + p and the flux difference holds
+@@ -365,7 +366,7 @@
+       !   WENO3  Phys_flux leaves the pressure out and RK_rhs adds the face
+       !          difference (p_R - p_L)/dr, which is the whole gradient the
+       !          row carries; `source` has no geometric term.
+-      !   arm    Phys_flux leaves the pressure out on either reconstruction
++      !   WB     Phys_flux leaves the pressure out on either reconstruction
+       !          and the row carries the face pressure measured from each
+       !          side's own hydrostatic equilibrium, which is the pressure
+       !          gradient OF THE DEPARTURE.  The equilibrium part of the
+@@ -415,13 +416,13 @@
+       subroutine momentum_row_terms_of_state(WL,WR,S)
+       ! The three terms of every cell's momentum row, from the face data the
+       ! flux assembly stored (face_flux, face_p and, under the well-balanced
+-      ! arm, face_q_up / face_q_dn) and the source that assembly returned.
++      ! option, face_q_up / face_q_dn) and the source that assembly returned.
+       !
+       ! THE GRAVITATIONAL TERM IS THE ONE `source` FORMS, the half-sum of
+       ! the two reconstructed face densities times the interface potential
+       ! difference over dr (Source.f90); the two must stay in step.  Under
+-      ! the arm `source` returns zero and the weight is the equilibrium
+-      ! pressure force, which is the same physics in the arm's own
++      ! that option `source` returns zero and the weight is the equilibrium
++      ! pressure force, which is the same physics in that option's own
+       ! discretization (equilibrium_pressure_force_of_state).
+       real*8, dimension(3,1-Ng:N+Ng), intent(in) :: WL,WR,S
+       integer :: j
+@@ -431,9 +432,9 @@
+          allocate(momentum_ram_divergence(1-Ng:N+Ng),                    &
+                   momentum_pressure_gradient(1-Ng:N+Ng),                 &
+                   momentum_gravity(1-Ng:N+Ng))
+-      ! The face departures are passed below whether the arm is on or not,
++      ! The face departures are passed below whether that option is on or not,
+       ! and the kind-generic rows allocate face_flux / face_p without them,
+-      ! so a stationary evaluation on that arm reached before any marching
++      ! so a stationary evaluation through those rows reached before any marching
+       ! stage would otherwise pass an unallocated array element.
+       if (.not. allocated(face_q_up)) then
+          allocate(face_q_up(1-Ng:N+Ng), face_q_dn(1-Ng:N+Ng))
+@@ -590,10 +591,10 @@
+                call lax_friedrichs_flux(W_avg(:,jf),W_avg(:,jf+1),      &
+                                         flux_lo(:,jf),p_lo(jf),         &
+                                         jf,min(jf+1,N+Ng))
+-               ! Under the well-balanced arm the row is assembled from the
++               ! Under the well-balanced option the row is assembled from the
+                ! face pressure measured against each side's equilibrium, so
+                ! a replaced face needs its own pair.  It is formed here by
+-               ! subtracting two O(1) numbers, which is what the arm avoids
++               ! subtracting two O(1) numbers, which is what that option avoids
+                ! everywhere else: a repaired face is not well balanced, as a
+                ! first-order Lax-Friedrichs face cannot be (it resolves no
+                ! stationary contact).
+@@ -674,7 +675,7 @@
+             ! LAST of the two evaluations and not their blend (the blend is
+             ! formed in reconstruction_continuation_rhs on dF, S, face_flux
+             ! and face_p), so a face this repair replaces inside a
+-            ! continuation ramp carries that arm's pressure force rather
++            ! continuation ramp carries that evaluation's pressure force rather
+             ! than the homotopy's.  A replaced face is not well balanced in
+             ! any case (see above), and the repair runs only on a stage that
+             ! left rho > 0, rho e > 0.
+diff --git a/src/modules/time_step/attempted_step.f90 b/src/modules/time_step/attempted_step.f90
+index 0dd2399..f3b505c 100644
+--- a/src/modules/time_step/attempted_step.f90
++++ b/src/modules/time_step/attempted_step.f90
+@@ -537,7 +537,7 @@
+       !   species      the carrier fractions of the transported chemistry,
+       !                each a number of particles per unit of rho*n0
+       !   element      the transported element mass fractions (helium, and
+-      !                the trace metals when the metal arm diffuses), which
++      !                the trace metals when trace-metal diffusion is on), which
+       !                exist only where the element-diffusion operator runs
+       !   charge_T     the electron fraction and the temperature, the two
+       !                quantities through which a trace species reaches the
+diff --git a/src/modules/time_step/hydrodynamic_rows.f90 b/src/modules/time_step/hydrodynamic_rows.f90
+index 69c5728..3b07179 100644
+--- a/src/modules/time_step/hydrodynamic_rows.f90
++++ b/src/modules/time_step/hydrodynamic_rows.f90
+@@ -40,7 +40,7 @@
+       ! composition, the heating and the cooling remain double: what is
+       ! evaluated here is the arithmetic of the finite-volume operator on a
+       ! given composition, which is where the residual's non-smoothness
+-      ! floor is (docs/Update_EXHALE.md item N33: the Roe flux of a face in
++      ! floor is (docs/Update_EXHALE_stage2.md item N33: the Roe flux of a face in
+       ! the near-hydrostatic base layer is built from state jumps 3e5 to
+       ! 6e6 times smaller than the states, so it carries the last bit of
+       ! O(1) quantities, and the row divides the flux difference by the cell
+@@ -75,7 +75,7 @@
+ 
+       module hydrodynamic_rows
+       ! WHICH ARITHMETIC THE STATIONARY RESIDUAL'S HYDRODYNAMIC ROWS ARE
+-      ! ASSEMBLED IN, and the arm that changes it.
++      ! ASSEMBLED IN, and what changes it.
+       !
+       ! Default: the production routines (Reconstruct, RK_rhs, Num_flux,
+       ! source), in double, reached through
+@@ -106,11 +106,11 @@
+       ! IT IS NOT A DISCRETIZATION AND NOTHING IS ADOPTED FROM IT.  The
+       ! equations, the scheme, the boundary construction and the
+       ! composition are the same; only the width of the mantissa the
+-      ! arithmetic runs in is different, and the arm is off unless the
++      ! arithmetic runs in is different, and it is off unless the
+       ! environment names it.  The physically right treatment of the floor
+       ! is a well-balanced flux difference at the base, not extra precision.
+       !
+-      ! Restrictions of the arm, each of which stops the run rather than
++      ! Restrictions of this assembly, each of which stops the run rather than
+       ! silently evaluating something else: the low-Mach contact-mode
+       ! dissipation flux is not part of the generic text, the
+       ! reconstruction flags must be the consistent pair the schemes are
+@@ -118,13 +118,13 @@
+       ! two schemes is refused because the momentum row's terms are read
+       ! off by a single-scheme rule (the_generic_text_is_usable).
+       !
+-      ! WHAT THE ARM HANDS BACK BESIDE THE ROWS.  The face flux, the face
++      ! WHAT IT HANDS BACK BESIDE THE ROWS.  The face flux, the face
+       ! pressure and, under the well-balanced key, the face departures the
+       ! momentum row was assembled from, all in the module arrays of
+       ! RK_integration that every later reader of them uses
+       ! (store_the_interface_fluxes).  That is what lets the momentum row's
+-      ! terms and its reference scale describe the state the arm just
+-      ! assembled and not the last state RK_rhs saw.
++      ! terms and its reference scale describe the state just
++      ! assembled here and not the last state RK_rhs saw.
+ 
+       use global_parameters
+       use RK_integration, only: face_flux, face_p, face_q_up, face_q_dn
+@@ -138,20 +138,19 @@
+ 
+       implicit none
+       private
+-      public :: generic_precision_rows_arm
+-      public :: ARM_OFF, ARM_QUADRUPLE, ARM_GENERIC_DOUBLE
++      public :: generic_precision_rows_selected
++      public :: ROWS_PRODUCTION, ROWS_QUADRUPLE, ROWS_GENERIC_DOUBLE
+       public :: hydrodynamic_rows_in_quadruple_precision
+       public :: hydrodynamic_rows_in_double_precision
+       public :: quad_rows_calls, quad_rows_seconds
+ 
+       ! What EXHALE_RESID_QUAD selects.
+-      integer, parameter :: ARM_OFF            = 0  ! the production routines
+-      integer, parameter :: ARM_QUADRUPLE      = 1  ! the generic text at real(16)
+-      integer, parameter :: ARM_GENERIC_DOUBLE = 2  ! the generic text at real(8)
++      integer, parameter :: ROWS_PRODUCTION     = 0  ! the production routines
++      integer, parameter :: ROWS_QUADRUPLE      = 1  ! the generic text at real(16)
++      integer, parameter :: ROWS_GENERIC_DOUBLE = 2  ! the generic text at real(8)
+ 
+-      ! How many times the quadruple pipeline ran and how long it spent
+-      ! there, so the cost of the arm is a measured number and not an
+-      ! estimate.
++      ! How many times the quadruple assembly ran and how long it spent
++      ! there, so its cost is a measured number and not an estimate.
+       integer :: quad_rows_calls   = 0
+       real*8  :: quad_rows_seconds = 0.0d0
+ 
+@@ -159,9 +158,9 @@
+ 
+       ! ------------------------------------------------------!
+ 
+-      integer function generic_precision_rows_arm() result(mode)
+-      ! EXHALE_RESID_QUAD: absent or anything else ARM_OFF, 1
+-      ! ARM_QUADRUPLE, 2 ARM_GENERIC_DOUBLE.  Read at every call rather than
++      integer function generic_precision_rows_selected() result(mode)
++      ! EXHALE_RESID_QUAD: absent or anything else ROWS_PRODUCTION, 1
++      ! ROWS_QUADRUPLE, 2 ROWS_GENERIC_DOUBLE.  Read at every call rather than
+       ! cached, so that a test can arm and disarm it inside one process; the
+       ! read costs microseconds against a residual evaluation of
+       ! milliseconds.
+@@ -173,24 +172,24 @@
+       ! the solve visits and not one stated by a test.
+       character(len=32) :: env
+       integer :: st, ln
+-      mode = ARM_OFF
++      mode = ROWS_PRODUCTION
+       env = ' '
+       call get_environment_variable('EXHALE_RESID_QUAD', env,            &
+                                     length=ln, status=st)
+       if (st .ne. 0 .or. ln .le. 0) return
+       select case (trim(adjustl(env)))
+       case ('1')
+-         mode = ARM_QUADRUPLE
++         mode = ROWS_QUADRUPLE
+       case ('2')
+-         mode = ARM_GENERIC_DOUBLE
++         mode = ROWS_GENERIC_DOUBLE
+       end select
+-      end function generic_precision_rows_arm
++      end function generic_precision_rows_selected
+ 
+       ! ------------------------------------------------------!
+ 
+       subroutine hydrodynamic_rows_in_double_precision(u,WL,WR,dF,S)
+       ! The generic text at kind(1.0d0).  Not on any run's path: it is the
+-      ! control of the arm, compared against the production routines.
++      ! control of that experiment, compared against the production routines.
+       real*8, dimension(3,1-Ng:N+Ng), intent(in)  :: u
+       real*8, dimension(3,1-Ng:N+Ng), intent(out) :: WL,WR,dF,S
+       real*8, dimension(3,1-Ng:N+Ng) :: ff
+@@ -235,7 +234,7 @@
+       ! the run summary.
+       !
+       ! THE FACE DEPARTURES BELONG TO THE STATE THAT WAS JUST ASSEMBLED.
+-      ! Under the well-balanced arm the momentum row's pressure-gradient
++      ! Under the well-balanced option the momentum row's pressure-gradient
+       ! term is the gradient of the departure, (A+ q_up - A- q_dn)/dV under
+       ! PLM and (q_up - q_dn)/dr under WENO3
+       ! (momentum_row_terms_of_cell, RK_rhs.f90), so a reader handed the
+@@ -245,7 +244,7 @@
+       ! own pressure instead, nothing reads these two arrays, and they are
+       ! left as they stand.
+       !
+-      ! There is one pair of departures to store because the arm evaluates
++      ! There is one pair of departures to store because this assembly evaluates
+       ! ONE reconstruction: the_generic_text_is_usable refuses a
+       ! reconstruction continuation with 0 < lambda < 1, where the blended
+       ! row is not the row of any single pair.
+@@ -274,7 +273,7 @@
+ 
+       subroutine the_generic_text_is_usable()
+       ! The three configurations the generic text does not carry.  All of
+-      ! them stop the run: an arm that quietly evaluated a different
++      ! them stop the run: a control experiment that quietly evaluated a different
+       ! operator would answer a question nobody asked.
+       !
+       ! A RECONSTRUCTION CONTINUATION STRICTLY INSIDE (0,1) IS ONE OF THEM.
+diff --git a/src/modules/time_step/hydrodynamic_rows_body.inc b/src/modules/time_step/hydrodynamic_rows_body.inc
+index bd6143a..20b9a4e 100644
+--- a/src/modules/time_step/hydrodynamic_rows_body.inc
++++ b/src/modules/time_step/hydrodynamic_rows_body.inc
+@@ -133,7 +133,7 @@
+       ! brackets its root, so Newton safeguarded by bisection on that bracket
+       ! converges from the upper end.  The stopping tolerance and the
+       ! iteration limit are the kind's, so the root is resolved to the
+-      ! precision the arm is run at (fv_newton_tol, fv_newton_maxit).
++      ! precision this instantiation is run at (fv_newton_tol, fv_newton_maxit).
+       real(fv), intent(in) :: x2, u_in
+       real(fv) :: T_out, Tlo, Thi, T, Tnew, f, df, u_rv, c_rv
+       integer  :: it
+@@ -309,7 +309,7 @@
+ 
+       subroutine piecewise_linear_faces_fv(u_in, WL_rec, WR_rec,         &
+                                            P_up, P_dn, dev_L, dev_R)
+-      ! WELL-BALANCED ARM.  With the four optional arrays present the
++      ! WELL-BALANCED OPTION.  With the four optional arrays present the
+       ! PRESSURE is reconstructed in the coordinate of the departure from the
+       ! cell's own local hydrostatic equilibrium; the value at the cell's own
+       ! centre is then identically zero and the equilibrium face value is
+@@ -424,7 +424,7 @@
+       ! arrays of Reconstruction_step, so the two schemes cannot disagree
+       ! about which weights are frozen.
+       !
+-      ! WELL-BALANCED ARM.  With the four optional arrays present the
++      ! WELL-BALANCED OPTION.  With the four optional arrays present the
+       ! pressure component is reconstructed in the coordinate of the
+       ! departure from cell j's local hydrostatic equilibrium, whose value at
+       ! the cell centre is zero and at a neighboring centre is that cell's
+@@ -725,11 +725,11 @@
+ 
+       subroutine reconstructed_faces_fv(plm, u_in, WL_out, WR_out,       &
+                                         n_scaled, dev_L, dev_R, dp_eq)
+-      ! Mirrors Reconstruct: under the well-balanced arm the cell's own
++      ! Mirrors Reconstruct: under the well-balanced option the cell's own
+       ! equilibrium is formed first, the reconstruction works on the
+       ! departure from it, and the face departures and the equilibrium
+       ! mismatch are finished after the boundary states and the positivity
+-      ! limiter.  dev_L, dev_R and dp_eq are set only under the arm.
++      ! limiter.  dev_L, dev_R and dp_eq are set only under that option.
+       logical, intent(in) :: plm
+       real(fv), dimension(3,1-Ng:N+Ng), intent(in)  :: u_in
+       real(fv), dimension(3,1-Ng:N+Ng), intent(out) :: WL_out, WR_out
+@@ -805,7 +805,7 @@
+       PF(3) = v*(E+p)
+ 
+       ! Add pressure for PLM discretization.  Not under the well-balanced
+-      ! arm: there the pressure force of both discretizations is assembled
++      ! option: there the pressure force of both discretizations is assembled
+       ! in the cell loop from the departure of the face pressure from the
+       ! cell's own hydrostatic equilibrium, so the momentum flux carried
+       ! through the face is the kinetic one alone.
+@@ -999,7 +999,7 @@
+       ! the arithmetic mean of the two, which is that value exactly wherever
+       ! the two sides agree.
+       !
+-      ! WELL-BALANCED ARM.  With the optional arguments present the PRESSURE
++      ! WELL-BALANCED OPTION.  With the optional arguments present the PRESSURE
+       ! JUMP of the Riemann problem is not pR - pL, the difference of two
+       ! O(1) face pressures, but
+       !     dp = dp_eq + dev_R - dev_L
+@@ -1189,7 +1189,7 @@
+             K3(2) = v_avg + a_avg
+             K3(3) = H_avg + v_avg*a_avg
+ 
+-            ! Under the well-balanced arm the pressure jump is the one
++            ! Under the well-balanced option the pressure jump is the one
+             ! built from the departures (see the header), not the
+             ! difference of the two O(1) face pressures.
+             drho = rhoR - rhoL
+@@ -1248,7 +1248,7 @@
+          pC = pressure_from_energy_density_fv(j, u(1),                   &
+                  u(3)-0.5_fv*u(2)*u(2)/u(1))
+ 
+-      ! WELL-BALANCED ARM.  The gravitational source and the geometric
++      ! WELL-BALANCED OPTION.  The gravitational source and the geometric
+       ! pressure term are then not evaluated here at all: they cancel the
+       ! equilibrium part of the momentum flux difference IDENTICALLY, and
+       ! the cell loop assembles the momentum row from what is left, the
+@@ -1285,16 +1285,16 @@
+       real(fv), dimension(3,1-Ng:N+Ng), intent(in)  :: u_in
+       real(fv), dimension(3,1-Ng:N+Ng), intent(out) :: WL,WR,dF,S,ff
+       real(fv), dimension(1-Ng:N+Ng),   intent(out) :: fpr
+-      ! WELL-BALANCED ARM.  The face pressure of every interface measured
++      ! WELL-BALANCED OPTION.  The face pressure of every interface measured
+       ! from the hydrostatic equilibrium of the cell on each side,
+       !   face_q_up(f) = face_p(f) - P_up(f),
+       !   face_q_dn(f) = face_p(f) - P_dn(f+1),
+       ! both of the size of the departure from equilibrium.  They are what
+-      ! the momentum row is assembled from when the arm is on: the O(1)
++      ! the momentum row is assembled from when that option is on: the O(1)
+       ! pressure of the cell and the gravitational source cancel in the
+       ! ALGEBRA instead of in floating point.  They are HANDED BACK because
+       ! the momentum row's pressure-gradient term is (A+ q_up - A- q_dn)/dV
+-      ! under the arm: a reader that is given the row but not the
++      ! under it: a reader that is given the row but not the
+       ! departures it was built from cannot form that term for this state.
+       ! Zero unless well_balanced is set, which is what the row assembly
+       ! and every reader of them read as "no departure to carry".
+@@ -1364,7 +1364,7 @@
+ 
+          if (.not. plm)  dF(2,j) = dF(2,j) + (pR - pL)/dr
+ 
+-         ! THE MOMENTUM ROW UNDER THE WELL-BALANCED ARM.  The pressure is
++         ! THE MOMENTUM ROW UNDER THE WELL-BALANCED OPTION.  The pressure is
+          ! not in Fp(2)/Fm(2) here (physical_flux_fv leaves it out), and
+          ! what replaces it is the face pressure measured from THIS cell's
+          ! own hydrostatic equilibrium.  The two identities that make the
+@@ -1424,7 +1424,7 @@
+       real(fv), dimension(3,1-Ng:N+Ng), intent(out), optional ::         &
+                                                     dF_at_working_kind
+       ! THE FACE DEPARTURES THE MOMENTUM ROW WAS BUILT FROM, under the
+-      ! well-balanced arm, rounded to double with the rest.  A caller that
++      ! well-balanced option, rounded to double with the rest.  A caller that
+       ! reads back the terms of the momentum row asks for them; the row
+       ! identity they satisfy is, with A+ = r_+^2, A- = r_-^2,
+       !   PLM     dF(2,j) = [A+ (F_up(j)   + q_up(j))
+@@ -1432,7 +1432,7 @@
+       !   WENO3   dF(2,j) = [A+ F_up(j) - A- F_dn(j-1)]/dV
+       !                    + [q_up(j) - q_dn(j-1)]/dr
+       ! so the pressure gradient of the departure is recoverable from them
+-      ! alone.  Zero with the arm off, where the row carries the cell's own
++      ! alone.  Zero with that option off, where the row carries the cell's own
+       ! pressure instead.
+       real*8, dimension(1-Ng:N+Ng), intent(out), optional ::             &
+                                                     fq_up8, fq_dn8
+@@ -1474,7 +1474,7 @@
+             ! The two schemes give the interface different departures and
+             ! weight the face-pressure difference differently (one under
+             ! WENO3, zero under PLM), so no single pair satisfies the
+-            ! identity above for om*dF_PLM + lam*dF_WENO3.  The arm refuses
++            ! identity above for om*dF_PLM + lam*dF_WENO3.  The generic text refuses
+             ! 0 < lambda < 1 for that reason (the_generic_text_is_usable,
+             ! hydrodynamic_rows.f90); the combination below is the same one
+             ! the face flux and the face pressure carry, and it is what a
+diff --git a/src/modules/time_step/steady_newton.f90 b/src/modules/time_step/steady_newton.f90
+index f1040b4..e67b322 100644
+--- a/src/modules/time_step/steady_newton.f90
++++ b/src/modules/time_step/steady_newton.f90
+@@ -334,7 +334,7 @@
+       ! element row, recorded from the state the unknown vector is packed
+       ! from.
+       !
+-      ! Cell 1 carries no transport balance in either arm: it is the
++      ! Cell 1 carries no transport balance in either solve: it is the
+       ! reservoir the operator holds at the input composition
+       ! (`solve_mass_fraction` pins Xhe(1-Ng:1) = X_base, and the trace solve
+       ! pins the base mixing ratio at its own entry value), so
+@@ -460,7 +460,7 @@
+       ! produces, and it falls as the reciprocal of the arc over two
+       ! decades either side of the standard one with no crossover, so a
+       ! longer arc buys accuracy in proportion until the curvature term
+-      ! meets it. This is the arm that measures where that is.
++      ! meets it. This scale is what measures where that is.
+       real*8  :: jv_probe_arc_scale = 1.0d0
+       ! WHAT THE LAST PROBE OF jv_product ACTUALLY DID, so that a defect can
+       ! be attributed to a decision of the feasible set rather than to the
+@@ -1047,7 +1047,7 @@
+       ! (gm_step_by_its_true_residual): the reduced least-squares residual
+       ! keeps falling, the residual the step reaches against the operator
+       ! does not, and the step handed back is the best true residual the
+-      ! cycle saw. Only this arm can name it.
++      ! cycle saw. Only the true-residual stop can name it.
+       integer, parameter :: gm_true_residual_turned      = 8
+       integer, parameter :: n_gm_outcome_kind           = 8
+       ! The reduced problem's rank, and an Arnoldi breakdown, are decided
+@@ -1113,7 +1113,7 @@
+       integer, parameter :: n_tr_reset_kind             = 5
+       ! WHICH OF THE FIVE A RESTART OF THIS SOLVE TAKES
+       ! (read_trust_region_restart_controls). All five is what a re-entry
+-      ! does; a single one is how the arms of item N21 separate them.
++      ! does; a single one is how the measurements of item N21 separate them.
+       logical :: tr_reset_wanted(n_tr_reset_kind) = .true.
+       ! The outer iteration at which one restart is forced whatever the
+       ! trigger says, 0 for none (EXHALE_TR_RESTART_AT). It exists so that
+@@ -1130,7 +1130,7 @@
+       integer :: tr_restart_without_improvement = 0
+       ! THE DEFAULT OF THAT TRIGGER. It is 0 -- disarmed -- until the
+       ! restart is measured to help on both species-row fixtures; the
+-      ! measurement of item N21 is what may change it, and the arms are
++      ! measurement of item N21 is what may change it, and the settings are
+       ! reached through EXHALE_TR_RESTART_STALL.
+       integer, parameter :: tr_restart_stall_default = 0
+       ! How many restarts this solve has taken, and of which kind.
+@@ -1144,7 +1144,7 @@
+       ! which it is spent (EXHALE_GM_CYCLES_FROM, 1 by default). The two
+       ! exist so that a restarted cycle can be armed part way into a solve,
+       ! on the same prefix of iterations a restart of the trust-region
+-      ! state is armed on, and the two arms then differ in one thing.
++      ! state is armed on, and the two runs then differ in one thing.
+       integer :: gm_restart_cycles_wanted = 1
+       integer :: gm_restart_cycles_from   = 1
+ 
+@@ -1337,7 +1337,7 @@
+       ! system, and its exact solution is the same step. What E changes is
+       ! the norm the truncated Krylov cycle minimizes, and with it the
+       ! meaning of "relative residual 1e-1" and the subspace the cycle
+-      ! selects. THIS ARM CHANGES THE LINEAR MODEL'S INNER PRODUCT AND
++      ! selects. ROW EQUILIBRATION CHANGES THE LINEAR MODEL'S INNER PRODUCT AND
+       ! NOTHING THE SOLVE IS JUDGED BY: the step comes back in the same
+       ! coordinates, its image A s is mapped back to the certification
+       ! scales before it leaves the cycle, and the relative residual the
+@@ -1372,7 +1372,7 @@
+       ! fixtures (section N35) the reduced residual falls monotonically
+       ! with the subspace size while the residual the returned step reaches
+       ! against the operator stops falling at 60 to 80 products and rises.
+-      ! With this arm the cycle forms its candidate step every
++      ! With this option the cycle forms its candidate step every
+       ! gm_true_residual_stride products from gm_true_residual_first on,
+       ! and at every point where the cycle would otherwise end -- its last
+       ! product, an Arnoldi breakdown, the reduced problem reaching the
+@@ -1578,7 +1578,7 @@
+       ! solve's own opening residual evaluation. So the opening state is
+       ! packed as a density, evaluated, and the carrier slots are then
+       ! rewritten as logarithms with the floor the evaluation produced
+-      ! (arm_carrier_log_unknown). The residual is a function of the STATE
++      ! (form_carrier_unknown_space). The residual is a function of the STATE
+       ! and not of the coordinates it is named in, so that opening residual
+       ! stands for the armed vector as well.
+       logical :: carrier_log_unknown_wanted = .true.
+@@ -1624,8 +1624,8 @@
+       ! It is fixed once per solve from the state the solve begins at: an
+       ! unknown space that moved with the iterate would make the residual a
+       ! function of the iteration and not of the state. It is formed for the
+-      ! density unknown as well, so that the two arms are measured against
+-      ! one yardstick.
++      ! density unknown as well, so that the density unknown and the
++      ! logarithm are measured against one yardstick.
+       real*8, allocatable :: carrier_log_floor(:,:)
+       ! THE BOX THE SPECIES UNKNOWNS OF THIS STEP LIVE IN, one lower and one
+       ! upper bound per unknown of the flat vector, in the coordinates the
+@@ -1677,15 +1677,15 @@
+       ! corners: with every carrier density non-negative the shared row
+       ! implies each of them.
+       !
+-      ! EXHALE_ELEMENT_CONSTRAINT_ROWS=0 is the measurement arm: the budget
+-      ! goes back under a coordinate face and no row is formed, which is the
+-      ! box the B5j to B5l measurements were made in.
++      ! EXHALE_ELEMENT_CONSTRAINT_ROWS=0 is the control it is measured
++      ! against: the budget goes back under a coordinate face and no row is
++      ! formed, which is the box the B5j to B5l measurements were made in.
+       logical :: element_constraint_rows_on = .true.
+       ! WHETHER THE WRITE-BACK RESTORES THE ELEMENT TOTALS OF THE CELL IT
+       ! WRITES (item N4b deliverable 4). It is a conservation statement and
+       ! not an option: an operator that moves one element of a cell without
+       ! the other changes the composition the run was given.
+-      ! EXHALE_ELEMENT_WRITE_BACK=0 is the arm it is measured against, in
++      ! EXHALE_ELEMENT_WRITE_BACK=0 is the control it is measured against, in
+       ! which the carrier column is written and nothing puts the element
+       ! total back, and the He/H of the state then leaves its reservoir
+       ! along the solve (item N4a section 6b).
+@@ -2502,8 +2502,8 @@
+       logical function the_linear_model_rows_are_equilibrated(neq)       &
+                result(yes)
+       ! Whether the Krylov cycle is to work in the equilibrated rows: the
+-      ! arm is on, a scaling was formed for the band currently factored,
+-      ! and it is a scaling of this many rows.
++      ! row equilibration is on, a scaling was formed for the band currently
++      ! factored, and it is a scaling of this many rows.
+       integer, intent(in) :: neq
+       yes = model_row_equilibration_on .and. model_rows_equilibrated
+       if (yes) yes = allocated(model_row_equilibration)
+@@ -3238,7 +3238,7 @@
+             ! IT IS ALSO A FACE OF THE UNKNOWN BOX now
+             ! (freeze_species_unknown_box), so a projected trial cannot
+             ! leave it and this screen cannot refuse one.  It remains the
+-            ! backstop of the paths no projection covers: the arm that
++            ! backstop of the paths no projection covers: the option that
+             ! shortens the step instead (EXHALE_SPECIES_BOUND_PROJECT=0),
+             ! the ray probes of the model test, and the marching route's own
+             ! evaluations.
+@@ -6152,10 +6152,10 @@
+       ! above THAT (carrier_over_its_budget_max,
+       ! n_carrier_above_its_budget).
+       !
+-      ! THE RATIO IS FORMED IN BOTH ARMS. With the density unknown the floor
++      ! THE RATIO IS FORMED IN BOTH SPACES. With the density unknown the floor
+       ! is not a bound of the space and a carrier driven to zero reports a
+-      ! ratio of zero, which is the whole difference between the two arms in
+-      ! one number; with ln n the density cannot be zero and the ratio says
++      ! ratio of zero, which is the whole difference between the two spaces
++      ! in one number; with ln n the density cannot be zero and the ratio says
+       ! how far above the floor the solve stayed.
+       real*8, dimension(nvar_jac*N), intent(in) :: Y
+       real*8  :: val, fl, nbu
+@@ -6239,7 +6239,7 @@
+       !                                    the face of the box.
+       !   EXHALE_ELEMENT_WRITE_BACK=0      write the carrier column without
+       !                                    restoring the element totals of
+-      !                                    the cell, which is the arm the
++      !                                    the cell, which is what the
+       !                                    conservation is measured against
+       !                                    (item N4b).
+       !   EXHALE_ELEMENT_CONSTRAINT_ROWS=0 carry the shared element budget
+@@ -6247,11 +6247,11 @@
+       !                                    instead of as a row of the step,
+       !                                    which is the box the B5j to B5l
+       !                                    measurements were made in and is
+-      !                                    the arm the rows are measured
++      !                                    what the rows are measured
+       !                                    against (item N4b).
+       !   EXHALE_CARRIER_LOG_UNKNOWN=0     carry the carrier DENSITY as the
+       !                                    unknown instead of ln n, which is
+-      !                                    the arm the logarithm was measured
++      !                                    what the logarithm was measured
+       !                                    against (item B5j) and is not the
+       !                                    default (user decision,
+       !                                    2026-09-08).
+@@ -6488,7 +6488,7 @@
+          if (iselect .gt. 0) jfnk_maxit_wanted = iselect
+       endif
+       ! NOT ARMED HERE: the opening state is packed and evaluated as a
+-      ! density, and arm_carrier_log_unknown rewrites it once the floor the
++      ! density, and form_carrier_unknown_space rewrites it once the floor the
+       ! logarithm needs exists.
+       carrier_unknown_is_logarithmic = .false.
+       if (allocated(carrier_log_floor)) deallocate(carrier_log_floor)
+@@ -6531,7 +6531,7 @@
+       !
+       !   EXHALE_TR_RESTART_AT=<n>     force one restart after outer
+       !                                iteration n, whatever the trigger
+-      !                                says. The measurement arm: n is the
++      !                                says. The measurement setting: n is the
+       !                                iteration a capped solve hands its
+       !                                state back at, so the restart acts on
+       !                                the same iterate a re-entry would.
+@@ -6634,7 +6634,7 @@
+       !
+       ! Two ways for it to be due, and they are read in this order.
+       !
+-      ! The forced iteration is the measurement arm: it names one iterate,
++      ! The forced iteration is the measurement setting: it names one iterate,
+       ! the one a solve capped there hands back, so that a restart on that
+       ! state can be compared with continuing from it.
+       !
+@@ -8021,7 +8021,7 @@
+ 
+       ! ------------------------------------------------------!
+ 
+-      subroutine arm_carrier_log_unknown(Y)
++      subroutine form_carrier_unknown_space(Y)
+       ! THE FLOOR OF THE LOGARITHMIC CARRIER UNKNOWN, one number per cell
+       ! and per carrier row, formed once per solve from the state the solve
+       ! starts at: the element budget of that carrier in that cell times the
+@@ -8032,8 +8032,8 @@
+       ! evaluated as densities, are rewritten as their logarithms and the
+       ! space is armed for the rest of the solve.
+       !
+-      ! IT IS FORMED FOR THE DENSITY UNKNOWN AS WELL, so that a run of either
+-      ! arm is measured against the same yardstick and the reported ratio of
++      ! IT IS FORMED FOR THE DENSITY UNKNOWN AS WELL, so that a run in either
++      ! space is measured against the same yardstick and the reported ratio of
+       ! a carrier to its own floor means the same thing in both.
+       !
+       ! WHERE THE STATE DOES NOT DEFINE IT the logarithm is not available:
+@@ -8086,7 +8086,7 @@
+          enddo
+       endif
+       call report_carrier_unknown_space
+-      end subroutine arm_carrier_log_unknown
++      end subroutine form_carrier_unknown_space
+ 
+       ! ------------------------------------------------------!
+ 
+@@ -8145,8 +8145,8 @@
+       ! room between its value and its own ceiling made the
+       ! fraction-to-the-boundary rule return zero for the whole direction.
+       !
+-      ! In the measurement arm EXHALE_ELEMENT_CONSTRAINT_ROWS=0 the budget
+-      ! comes back under a coordinate face, which is the box the B5j to B5l
++      ! With EXHALE_ELEMENT_CONSTRAINT_ROWS=0 the budget comes back under a
++      ! coordinate face, which is the box the B5j to B5l
+       ! measurements were made in, and it is then RAISED to the iterate
+       ! wherever the iterate already stands outside it: the budget is frozen
+       ! at the iterate and depends on the very unknown it constrains, so a
+@@ -8256,9 +8256,9 @@
+ 
+       logical function element_constraint_rows_known() result(known)
+       ! Whether this step carries the shared element budget as rows. False
+-      ! on the three-unknown route, on a solve with no carrier unknown, in
+-      ! the measurement arm, and before the first residual evaluation has
+-      ! made the carrier operator freeze a budget.
++      ! on the three-unknown route, on a solve with no carrier unknown, with
++      ! EXHALE_ELEMENT_CONSTRAINT_ROWS=0, and before the first residual
++      ! evaluation has made the carrier operator freeze a budget.
+       known = elem_rows_frozen
+       end function element_constraint_rows_known
+ 
+@@ -11075,11 +11075,11 @@
+       ! WHETHER THIS CYCLE WORKS IN THE EQUILIBRATED ROWS OF THE LINEAR
+       ! MODEL (model_row_equilibration_on), and the norm of the right-hand
+       ! side on the CERTIFICATION scales, which is what the relative
+-      ! residual handed back is measured against whether the arm is on or
+-      ! off.
++      ! residual handed back is measured against whether the row
++      ! equilibration is on or off.
+       logical :: row_equil_here
+       real*8  :: beta_cert
+-      ! The true-residual arm's work space (gm_step_by_its_true_residual):
++      ! The true-residual stop's work space (gm_step_by_its_true_residual):
+       ! the best step its residual against the operator has seen, that
+       ! step's image, its residual, the residual of the check before, how
+       ! many consecutive checks have risen and at which product the best
+@@ -11089,7 +11089,7 @@
+       integer :: n_true_rise, j_true_best
+       logical :: true_resid_here, have_a_best_step, check_here
+       ! Whether the reduced problem reaching the tolerance ends the cycle.
+-      ! It always does without the true-residual arm; with it, only where
++      ! It always does without the true-residual stop; with it, only where
+       ! the iterate could not be measured against the operator.
+       logical :: reduced_tolerance_stops
+ 
+@@ -11130,7 +11130,7 @@
+          write(*,'(A,I0,A,ES11.3)') ' (JFNK) [diag 16] residual history'//&
+               ' of a cycle of ', m, ' products, tolerance asked ', rtol
+       endif
+-      ! THE ROW SCALING OF THE LINEAR MODEL, and the arm that lets the
++      ! THE ROW SCALING OF THE LINEAR MODEL, and the option that lets the
+       ! cycle keep the step its true residual chooses. Both are read once
+       ! here, so that a cycle works in one model from its first product to
+       ! its last.
+@@ -11242,7 +11242,7 @@
+          else
+             w = w/D + idtau*z
+          endif
+-         ! AND THE ROW SCALING OF THE LINEAR MODEL, where the arm is on:
++         ! AND THE ROW SCALING OF THE LINEAR MODEL, where it is on:
+          ! the operator the cycle works with is E A_z and the band it is
+          ! preconditioned by is E times the same band, so the two agree
+          ! (unit_infinity_norm_row_scaling_of_the_band).
+@@ -11378,7 +11378,7 @@
+                         else
+                            u = u/D + idtau*xh
+                         endif
+-                        ! AND THE ROW SCALING OF THE LINEAR MODEL, where the arm is on:
++                        ! AND THE ROW SCALING OF THE LINEAR MODEL, where it is on:
+                         ! the operator the cycle works with is E A_z and the band it is
+                         ! preconditioned by is E times the same band, so the two agree
+                         ! (unit_infinity_norm_row_scaling_of_the_band).
+@@ -11423,8 +11423,8 @@
+             ! THE CHECK POINTS ARE THE PERIODIC ONES AND EVERY POINT AT
+             ! WHICH THE CYCLE WOULD OTHERWISE END: the last product of the
+             ! subspace, an Arnoldi breakdown, and the reduced problem
+-            ! reaching the tolerance. With this arm the reduced residual
+-            ! stops nothing on its own -- it is the quantity the arm
++            ! reaching the tolerance. With this option the reduced residual
++            ! stops nothing on its own -- it is the quantity the option
+             ! exists to stop trusting -- so where it reaches the tolerance
+             ! the iterate is measured against the operator and the cycle
+             ! ends only if the TRUE residual reached it too. Measuring the
+@@ -11621,7 +11621,7 @@
+             else
+                w = w/D + idtau*z
+             endif
+-            ! AND THE ROW SCALING OF THE LINEAR MODEL, where the arm is on:
++            ! AND THE ROW SCALING OF THE LINEAR MODEL, where it is on:
+             ! the operator the cycle works with is E A_z and the band it is
+             ! preconditioned by is E times the same band, so the two agree
+             ! (unit_infinity_norm_row_scaling_of_the_band).
+@@ -11648,7 +11648,7 @@
+                   else
+                      u = u/D + idtau*z
+                   endif
+-                  ! AND THE ROW SCALING OF THE LINEAR MODEL, where the arm is on:
++                  ! AND THE ROW SCALING OF THE LINEAR MODEL, where it is on:
+                   ! the operator the cycle works with is E A_z and the band it is
+                   ! preconditioned by is E times the same band, so the two agree
+                   ! (unit_infinity_norm_row_scaling_of_the_band).
+@@ -11688,7 +11688,7 @@
+                   else
+                      w = w/D + idtau*u
+                   endif
+-                  ! AND THE ROW SCALING OF THE LINEAR MODEL, where the arm is on:
++                  ! AND THE ROW SCALING OF THE LINEAR MODEL, where it is on:
+                   ! the operator the cycle works with is E A_z and the band it is
+                   ! preconditioned by is E times the same band, so the two agree
+                   ! (unit_infinity_norm_row_scaling_of_the_band).
+@@ -11798,7 +11798,7 @@
+       ! operator was smallest, its own image from the product that measured
+       ! it, and that residual on the CERTIFICATION scales, which is the
+       ! norm every reader of gm_resid_rel works in. The reduced problem's
+-      ! residual is not consulted: it is the quantity this arm exists to
++      ! residual is not consulted: it is the quantity this option exists to
+       ! stop trusting.
+       if (true_resid_here .and. have_a_best_step) then
+          x = xbest
+@@ -11950,7 +11950,7 @@
+             else
+                w = w/D + idtau*x
+             endif
+-            ! AND THE ROW SCALING OF THE LINEAR MODEL, where the arm is on:
++            ! AND THE ROW SCALING OF THE LINEAR MODEL, where it is on:
+             ! the operator the cycle works with is E A_z and the band it is
+             ! preconditioned by is E times the same band, so the two agree
+             ! (unit_infinity_norm_row_scaling_of_the_band).
+@@ -12309,7 +12309,7 @@
+       logical :: jv_ok, row_equil_here
+       neq   = nvar_jac*N
+       ! The spectrum measured is that of the operator the CYCLE runs, so
+-      ! it carries the row scaling of the linear model where that arm is
++      ! it carries the row scaling of the linear model where that scaling is
+       ! on (the_linear_model_rows_are_equilibrated).
+       row_equil_here = the_linear_model_rows_are_equilibrated(neq)
+       kdone = 0;  info = 0
+@@ -12337,7 +12337,7 @@
+          else
+             w = w/D + idtau*z
+          endif
+-         ! AND THE ROW SCALING OF THE LINEAR MODEL, where the arm is on:
++         ! AND THE ROW SCALING OF THE LINEAR MODEL, where it is on:
+          ! the operator the cycle works with is E A_z and the band it is
+          ! preconditioned by is E times the same band, so the two agree
+          ! (unit_infinity_norm_row_scaling_of_the_band).
+@@ -15219,7 +15219,7 @@
+       ! is formed from, so this is the earliest point at which the space can
+       ! be armed; F belongs to the state and stands for the rewritten vector
+       ! as it stands for the packed one.
+-      call arm_carrier_log_unknown(Y)
++      call form_carrier_unknown_space(Y)
+       ! AND THE BOX THEY LIVE IN IS FORMED, from this state and from the
+       ! element budget the evaluation above made the carrier operator
+       ! freeze. It is re-formed at the top of every outer iteration, from
+diff --git a/src/modules/time_step/steady_residual.f90 b/src/modules/time_step/steady_residual.f90
+index bb774c7..4d63cbf 100644
+--- a/src/modules/time_step/steady_residual.f90
++++ b/src/modules/time_step/steady_residual.f90
+@@ -36,8 +36,9 @@
+       use RK_integration
+       use viscous_conduction, only: transport_active,                   &
+                                     viscous_conduction_sources
+-      use hydrodynamic_rows, only: generic_precision_rows_arm,          &
+-                                   ARM_QUADRUPLE, ARM_GENERIC_DOUBLE,   &
++      use hydrodynamic_rows, only: generic_precision_rows_selected,     &
++                                   ROWS_PRODUCTION, ROWS_QUADRUPLE,     &
++                                   ROWS_GENERIC_DOUBLE,                 &
+                                    hydrodynamic_rows_in_quadruple_precision, &
+                                    hydrodynamic_rows_in_double_precision
+       use ionization_equilibrium, only: ieq_sweep_state_kind,           &
+@@ -78,13 +79,13 @@
+       ! the momentum flux and partly in the geometric source, each of them
+       ! carrying an O(2 p/r) part that cancels against the other, so
+       ! max(|dF_2|, |S_2|) reads 2 p/r where the physical force is zero;
+-      ! under the well-balanced arm the whole equilibrium pressure force
++      ! under the well-balanced option the whole equilibrium pressure force
+       ! and the weight cancel in the algebra and S_2 is zero, so a row
+       ! scaled by its remaining terms alone would be its own scale and read
+       ! one however small the imbalance became. RK_rhs gathers the pieces
+       ! back into the ram divergence, the spherical pressure gradient and
+       ! the weight (momentum_ram_divergence, momentum_pressure_gradient,
+-      ! momentum_gravity), and the weight under the arm is the equilibrium
++      ! momentum_gravity), and the weight under that option is the equilibrium
+       ! pressure force, which therefore enters the max once.
+       !
+       ! The state is kept so that a caller asking for the scale of a
+@@ -190,7 +191,7 @@
+          face_p    = om*fp_plm + lam*face_p
+          ! The momentum row on the homotopy is the same combination of the
+          ! two schemes' rows, so each term of the equation it holds, and
+-         ! the equilibrium pressure force it is read against under the arm,
++         ! the equilibrium pressure force it is read against under that option,
+          ! is the same combination of the two forms.
+          momentum_ram_divergence    = om*ram_plm                         &
+                                     + lam*momentum_ram_divergence
+@@ -221,7 +222,7 @@
+       ! Local scratch so callers' own WL/WR/dF/S are untouched
+       real*8, dimension(3,1-Ng:N+Ng) :: WL, WR, dF, S, W
+       real*8, dimension(1-Ng:N+Ng)   :: Tc, Smom, Sene
+-      integer :: arm
++      integer :: rows_kind
+ 
+       ! THE ARITHMETIC THE HYDRODYNAMIC ROWS ARE ASSEMBLED IN.  Normally the
+       ! production routines, in double.  EXHALE_RESID_QUAD=1 sends the
+@@ -230,23 +231,23 @@
+       ! quadruple-precision instantiation of the same kind-generic text, as
+       ! the control experiment of where the residual's non-smoothness floor
+       ! comes from: that floor is the rounding of this flux assembly, and an
+-      ! arm that lowers the rounding by eighteen decades and nothing else
++      ! assembly that lowers the rounding by eighteen decades and nothing else
+       ! separates the rounding from every other candidate. Default off, and
+       ! nothing is adopted from it; see the header of module
+       ! hydrodynamic_rows.
+-      arm = 0
++      rows_kind = ROWS_PRODUCTION
+       if (ieq_sweep_state_kind .ne. ieq_state_marching)                  &
+-         arm = generic_precision_rows_arm()
+-      if (arm .eq. ARM_QUADRUPLE) then
++         rows_kind = generic_precision_rows_selected()
++      if (rows_kind .eq. ROWS_QUADRUPLE) then
+          call hydrodynamic_rows_in_quadruple_precision(u, WL, WR, dF, S)
+-      else if (arm .eq. ARM_GENERIC_DOUBLE) then
++      else if (rows_kind .eq. ROWS_GENERIC_DOUBLE) then
+          call hydrodynamic_rows_in_double_precision(u, WL, WR, dF, S)
+       else
+          call reconstruction_continuation_rhs(u, WL, WR, dF, S)
+       endif
+       ! The kind-generic rows return the momentum row and store the
+       ! interface fluxes, the face pressures and, under the well-balanced
+-      ! arm, the face departures they were built from
++      ! option, the face departures they were built from
+       ! (store_the_interface_fluxes), but neither the three terms of the
+       ! momentum equation nor the equilibrium pressure force the row is
+       ! read against.  Both are functions of the state, the potential, the
+@@ -254,11 +255,11 @@
+       ! expression of each is evaluated here for the state just assembled
+       ! rather than left at whatever the last call to RK_rhs produced.  A
+       ! reconstruction continuation (0 < recon_lambda < 1) never reaches
+-      ! this arm: the generic text refuses it, because a blended flux
+-      ! carries neither scheme's pressure convention alone.  The arm is
+-      ! the rounding control experiment of module hydrodynamic_rows and is
+-      ! default off.
+-      if (arm .ne. 0) then
++      ! the kind-generic rows: the generic text refuses it, because a blended
++      ! flux carries neither scheme's pressure convention alone.  Those rows
++      ! are the rounding control experiment of module hydrodynamic_rows and
++      ! are default off.
++      if (rows_kind .ne. ROWS_PRODUCTION) then
+          if (well_balanced) call equilibrium_pressure_force_of_state(u)
+          call momentum_row_terms_of_state(WL, WR, S)
+       endif
+@@ -369,8 +370,8 @@
+          ! discretization: RK_rhs gathers the ram divergence, the whole
+          ! spherical pressure gradient and the weight out of dF(2) and
+          ! S(2), which split the pressure between them under PLM and
+-         ! cancel it against the weight under the well-balanced arm.  The
+-         ! weight is momentum_gravity on either arm, so the equilibrium
++         ! cancel it against the weight under the well-balanced option.  The
++         ! weight is momentum_gravity either way, so the equilibrium
+          ! pressure force enters once and not twice.
+          momentum_largest_term(j) =                                      &
+             max(abs(momentum_ram_divergence(j)),                         &
+@@ -708,26 +709,26 @@
+       !          that balance; where ram and pressure gradient cancel each
+       !          other, as they do at a sonic point, it is smaller than
+       !          either term.
+-      !   arm    Under "Well balanced:" the equilibrium pressure force and
++      !   WB     Under "Well balanced:" the equilibrium pressure force and
+       !          the weight cancel in the algebra before the row is formed,
+       !          so S_2 is zero and dF_2 holds the DEPARTURE alone: the
+       !          remaining terms ARE the numerator and a row divided by them
+       !          reads one whatever the imbalance is.  MEASURED before the
+       !          weight was put back: every normalized momentum residual of
+       !          the carrier reload was exactly 1.000000E+00, against 1.954
+-      !          for the same state without the arm (Update_EXHALE N37).
++      !          for the same state without it (Update_EXHALE N37).
+       !
+-      ! Under the arm the weight is the pressure force of the cell's own
++      ! Under that option the weight is the pressure force of the cell's own
+       ! hydrostatic equilibrium,
+       !
+       !   |rho_j [A+ (phi_i(j) - phi_c(j))
+       !         + A- (phi_c(j) - phi_i(j-1))]|/dV       (PLM form)
+       !   |rho_j (phi_i(j) - phi_i(j-1))|/dr            (WENO3 form)
+       !
+-      ! which is the same physics in the arm's own discretization and is
++      ! which is the same physics in that option's own discretization and is
+       ! what momentum_gravity carries there; the pressure gradient is then
+-      ! the departure the row holds.  The numerator is untouched on every
+-      ! arm and is never re-formed from a cancelled term.
++      ! the departure the row holds.  The numerator is untouched either way
++      ! and is never re-formed from a cancelled term.
+       !
+       ! WHY A TERM OF THE EQUATION AND NOT A SIGNAL-SPEED BOUND.  In a
+       ! quasi-hydrostatic layer the pressure gradient and the weight nearly
+diff --git a/src/tests/carrier_retry/carrier_retry.f90 b/src/tests/carrier_retry/carrier_retry.f90
+index bc1c9cb..1f74c26 100644
+--- a/src/tests/carrier_retry/carrier_retry.f90
++++ b/src/tests/carrier_retry/carrier_retry.f90
+@@ -171,6 +171,7 @@
+       real*8, allocatable :: nhi_r(:), nhii_r(:), nhei_r(:), nheii_r(:)
+       real*8, allocatable :: nheiii_r(:), nheiTR_r(:), ne_r(:), ntot_r(:)
+       real*8, allocatable :: nm_r(:,:), T_ret(:)
++      real*8, allocatable :: ntot0_c(:), T_ent(:)
+       real*8  :: move_pass, move_sweep, dev_ntot, dev_TK
+       integer :: jj
+ 
+@@ -1035,6 +1036,128 @@
+       call check_absolute('and_moves_nothing', maxval(abs(f_sp - f_sp0)), &
+            0.0d0, 0.0d0)
+ 
++
++      ! ---- (11) the chemistry the pass carries with it --------------- !
++      !
++      ! A RELAXATION PASS ADVANCES TRANSPORT AND CHEMISTRY TOGETHER.  The
++      ! transport operator integrates the carrier rows on the background of
++      ! ONE equilibrium sweep (bg_cell: the rates, the temperature, the
++      ! third-body density and the eliminated species), so a pass that
++      ! keeps many steps on one background converges to the fixed point of
++      ! a different problem.  MEASURED on the hot-Uranus carrier reload
++      ! (READ, docs/solver_partition_experiment_20260911.md sec. 4): a full
++      ! frozen-background relaxation drove the gated H2 wind row to
++      ! 2.449021e-13 and the chemical refresh that followed put the same
++      ! row at 7.989781e-2, above the 7.380744e-2 the pass had started
++      ! from.  The rows below state the repair on this column: after a
++      ! pass, the background the NEXT transport step would read describes
++      ! the composition the pass hands back, not the composition it began
++      ! with.
++      !
++      ! THE JOINT FIXED POINT CANNOT BE ASSERTED ON THIS COLUMN, and the
++      ! ladder above says why: the shortest admissible trial still moves
++      ! 6.46e-4 of the largest entry H2 mixing ratio, six decades above
++      ! relax_tol = 1e-10, so no pass of this operator on this column can
++      ! report carrier_relax_fixed_point.  What is asserted instead is the
++      ! consistency the joint fixed point rests on, on the two quantities
++      ! of the background that the carrier rows read directly, and by one
++      ! further sweep taken on the returned state.
++      allocate(f_swept(1-Ng:N+Ng,n_species))
++      allocate(nhi_r(1-Ng:N+Ng), nhii_r(1-Ng:N+Ng))
++      allocate(nhei_r(1-Ng:N+Ng), nheii_r(1-Ng:N+Ng))
++      allocate(nheiii_r(1-Ng:N+Ng), nheiTR_r(1-Ng:N+Ng))
++      allocate(ne_r(1-Ng:N+Ng), ntot_r(1-Ng:N+Ng), T_ret(1-Ng:N+Ng))
++      allocate(nm_r(1-Ng:N+Ng,n_mion))
++
++      call seed_mass_row_of_the_column(v_relax)
++      call seed_background_at_the_entry_composition()
++      f_sp = f_sp0
++      call carrier_checkpoint_restore(chk0)
++      call relax_photochemical_composition(rho, v_relax, p_col, T_col,    &
++                                           f_sp, heat_col, cool_col,      &
++                                           eta_col, 1.0d-2, dr_wide,      &
++                                           ns_wide, oc_wide)
++      call check_positive('the_consistency_rows_read_a_pass_that_kept'//  &
++           '_a_step', dble(ns_wide))
++
++      ! The densities and the temperature of the composition the pass
++      ! handed back, formed here from that composition and the fixed
++      ! pressure, independently of anything the routine wrote.
++      nhei_r   = 0.0d0
++      nheii_r  = 0.0d0
++      nheiii_r = 0.0d0
++      nheiTR_r = 0.0d0
++      call get_species_densities(rho, f_sp, nhi_r, nhii_r, nhei_r,        &
++                                 nheii_r, nheiii_r, nheiTR_r, nm_r,       &
++                                 ne_r, ntot_r)
++      call comp_T_from_p(p_col, ntot_r, ne_r, T_ret)
++
++      ! THE THIRD-BODY DENSITY THE CARRIER ROWS READ.  bg_cell%ntot is the
++      ! density of third bodies M of the three-body molecular reactions, so
++      ! a pass that leaves it at the entry composition's value integrates
++      ! its later steps at a formation rate the gas no longer has.  The row
++      ! is relative: the background must stand closer to the composition
++      ! the pass RETURNS than to the one it STARTED from.
++      dev_ntot  = 0.0d0
++      move_pass = 0.0d0
++      do jj = 1, N
++         dev_ntot  = max(dev_ntot, abs(bg_cell(jj)%ntot/n0 - ntot_r(jj))  &
++                                   /ntot_r(jj))
++         move_pass = max(move_pass, abs(bg_cell(jj)%ntot/n0 - ntot0_c(jj))&
++                                    /ntot0_c(jj))
++      enddo
++      write(*,'(a,2es12.4)') ' (carrier_retry) background third-body'//   &
++           ' density against the returned and the entry composition: ',   &
++           dev_ntot, move_pass
++      call check_absolute('the_background_third_body_density_follows'//   &
++           '_the_composition',                                            &
++           logical_as_double(dev_ntot .lt. move_pass), 1.0d0, 0.0d0)
++
++      ! THE TEMPERATURE THE RATES WERE FORMED AT, on the same reading.  The
++      ! carriers move the particle count, so at the fixed pressure of this
++      ! pass the temperature of the gas moves with them.
++      dev_TK     = 0.0d0
++      move_sweep = 0.0d0
++      do jj = 1, N
++         dev_TK     = max(dev_TK, abs(bg_cell(jj)%T_K/T0 - T_ret(jj))     &
++                                  /T_ret(jj))
++         move_sweep = max(move_sweep, abs(bg_cell(jj)%T_K/T0 - T_ent(jj)) &
++                                      /T_ent(jj))
++      enddo
++      write(*,'(a,2es12.4)') ' (carrier_retry) background temperature'//  &
++           ' against the returned and the entry composition: ',           &
++           dev_TK, move_sweep
++      call check_absolute('the_background_temperature_follows_the'//      &
++           '_composition',                                                &
++           logical_as_double(dev_TK .lt. move_sweep), 1.0d0, 0.0d0)
++
++      ! ONE FURTHER SWEEP ON THE RETURNED STATE.  A state whose chemistry
++      ! the pass has closed on moves less under another sweep than it moved
++      ! under the pass itself; a state carrying the chemical lag of every
++      ! step taken on one background does not.  The sweep is taken on a
++      ! COPY, and it rewrites bg_cell, so it is the last thing this section
++      ! does.
++      move_pass = maxval(abs(f_sp(1:N,:) - f_sp0(1:N,:)))
++      f_swept   = f_sp
++      call ioniz_eq(T_ret, rho, f_swept, heat_col, cool_col, eta_col)
++      move_sweep = maxval(abs(f_swept(1:N,:) - f_sp(1:N,:)))
++      write(*,'(a,es12.4,a,es12.4)') ' (carrier_retry) the pass moved'//   &
++           ' the composition by ', move_pass, ' and one further sweep'//  &
++           ' moves it by ', move_sweep
++      call check_absolute('one_sweep_after_the_pass_moves_less_than'//    &
++           '_the_pass_did',                                               &
++           logical_as_double(move_sweep .lt. move_pass), 1.0d0, 0.0d0)
++      ! AND IT MOVES NO MORE THAN A SECOND SOLVE OF A CONVERGED CELL CAN.
++      ! The bound is the cell solve's own step criterion, hybrd1's
++      ! xtol = sqrt(machine epsilon) = 1.5e-8: a sweep re-entered at a
++      ! composition it has already converged on can only move it by that
++      ! much, so anything above it is chemistry the pass never took.  It is
++      ! the solver's number and not a setting of this test.
++      call check_absolute('and_moves_no_more_than_the_cell_solve_s_own'// &
++           '_step_criterion',                                             &
++           logical_as_double(move_sweep .lt. sqrt(epsilon(1.0d0))),       &
++           1.0d0, 0.0d0)
++
+       if (assertion_failures .gt. 0) then
+          write(*,'(a)') 'carrier_retry: FAILED'
+          stop 1
+@@ -1257,6 +1380,46 @@
+ 
+       !--------------!
+ 
++      subroutine seed_background_at_the_entry_composition()
++      ! THE FROZEN CELL STATE OF SECTION (11), SEEDED AT THE COLUMN'S OWN
++      ! COMPOSITION.  The rows of that section read how far the background
++      ! stands from the entry composition and from the returned one, so the
++      ! two quantities of it that the carrier rows read directly, the
++      ! third-body density and the temperature, start at the values the
++      ! entry composition actually has.  The rate coefficients are the
++      ! section's usual frozen ones.
++      real*8, allocatable :: nhi_e(:), nhii_e(:), nhei_e(:), nheii_e(:)
++      real*8, allocatable :: nheiii_e(:), nheiTR_e(:), ne_e(:)
++      real*8, allocatable :: nm_e(:,:)
++      integer :: j
++      if (.not. allocated(ntot0_c)) then
++         allocate(ntot0_c(1-Ng:N+Ng), T_ent(1-Ng:N+Ng))
++      endif
++      allocate(nhi_e(1-Ng:N+Ng), nhii_e(1-Ng:N+Ng))
++      allocate(nhei_e(1-Ng:N+Ng), nheii_e(1-Ng:N+Ng))
++      allocate(nheiii_e(1-Ng:N+Ng), nheiTR_e(1-Ng:N+Ng))
++      allocate(ne_e(1-Ng:N+Ng), nm_e(1-Ng:N+Ng,n_mion))
++      nhei_e   = 0.0d0
++      nheii_e  = 0.0d0
++      nheiii_e = 0.0d0
++      nheiTR_e = 0.0d0
++      call get_species_densities(rho, f_sp0, nhi_e, nhii_e, nhei_e,       &
++                                 nheii_e, nheiii_e, nheiTR_e, nm_e,       &
++                                 ne_e, ntot0_c)
++      call comp_T_from_p(p_col, ntot0_c, ne_e, T_ent)
++      do j = 1-Ng, N+Ng
++         call set_frozen_cell_rates(j)
++         bg_cell(j)%ntot = ntot0_c(j)*n0
++         bg_cell(j)%T_K  = T_ent(j)*T0
++         T_col(j)        = T_ent(j)
++      enddo
++      heat_col = 0.0d0
++      cool_col = 0.0d0
++      eta_col  = 0.0d0
++      end subroutine seed_background_at_the_entry_composition
++
++      !--------------!
++
+       subroutine restore_frozen_background()
+       ! The cell state every pass of section (10) is entered with.  A pass
+       ! equilibrates the chemistry on each step it keeps, so it leaves
+diff --git a/src/tests/element_operator/element_operator_tests.f90 b/src/tests/element_operator/element_operator_tests.f90
+index 1ae75be..73f3feb 100644
+--- a/src/tests/element_operator/element_operator_tests.f90
++++ b/src/tests/element_operator/element_operator_tests.f90
+@@ -2,7 +2,7 @@
+       ! WHOSE BOUNDARY THE ELEMENT TRANSPORT OPERATOR IS MEASURED UNDER
+       ! (PLAN_20260909_rev1 items N26b and N26c).
+       !
+-      ! The element arm has two spellings of one balance: the fixed-wind
++      ! The element operator has two spellings of one balance: the fixed-wind
+       ! relaxation, which takes backward-Euler steps of it, and
+       ! element_transport_residual, which measures it at an infinite step
+       ! length.  At the top the condition both are posed under is zero
+diff --git a/src/tests/grid_and_gates/README.md b/src/tests/grid_and_gates/README.md
+index fd4878e..00be25e 100644
+--- a/src/tests/grid_and_gates/README.md
++++ b/src/tests/grid_and_gates/README.md
+@@ -145,7 +145,7 @@ recomputed 2.826589937536.
+ 
+ ### 4. `output_state_consistency.sh` -> `output_state`
+ 
+-Two arms since 2026-09-11 (item P14): the heat-column consistency below, and
++Two checks since 2026-09-11 (item P14): the heat-column consistency below, and
+ `outer_iteration_ending_hands_back_one_state`, which forces the stationary
+ outer iteration's stagnation ending on the hot-Uranus carrier reload
+ (`EXHALE_CARRIER_TRUST=1e-4`, `EXHALE_JFNK_MAXIT=5`) and asserts that the
+@@ -307,25 +307,25 @@ The driver carries three further groups of assertions on the momentum row's
+ reference scale, on the same ladder and the same four scheme/solver pairs, so
+ the whole program is 60 assertions.
+ 
+-**The arm on its own discrete equilibrium (12, item N37).** The state whose
++**The well-balanced key on its own discrete equilibrium (12, item N37).** The state whose
+ two neighboring equilibrium extrapolations agree at every shared face,
+ integrated outward from the analytic density of cell 1, is built beside the
+-analytic column; with the arm on, the momentum, mass and energy rows of the
++analytic column; with the key on, the momentum, mass and energy rows of the
+ interior cells 3..N-2 must fall to the rounding level there (bound 1e-13 of
+ the size of the terms each row is built from, the arithmetic bound
+ `epsilon p r^2/dV` being 1e-12 of the momentum weight at the base of this
+ grid). MEASURED: the momentum row falls from 7.0e-5 (PLM) and 2.5e-3 (WENO3)
+-of the local weight without the arm to 4.1e-14 and 3.9e-14 with it at
++of the local weight with the key off to 4.1e-14 and 3.9e-14 with it at
+ N = 250, and stays at 4.5e-14 to 5.5e-14 at N = 500, 1000, 2000, while the
+ base scheme falls at its design order. The analytic column is measured too
+-and reported: on it both arms carry the truncation error of the
++and reported: on it the key and the base scheme both carry the truncation error of the
+ discretization of gravity, which is what separates that error from the
+ floating-point assembly.
+ 
+-**The arm's momentum row scale (16, item P4 of
++**The key's momentum row scale (16, item P4 of
+ `docs/PLAN_20260911_partitioned_solver.md`).** The quantity is the row
+ DIVIDED BY ITS OWN REFERENCE SCALE, `residual_row_scale(2,...)`, the one
+-expression the stationary solver's acceptance test reads. With the arm on the
++expression the stationary solver's acceptance test reads. With the key on the
+ equilibrium pressure force and the gravitational source cancel in the algebra
+ before the row is formed, so a scale built from the row's remaining terms
+ alone is the row itself and reads one however small the imbalance becomes.
+@@ -337,14 +337,14 @@ eps = 1e-6) and halves with the perturbation (MEASURED ratio 2.0000 to 1e-8,
+ the departure being homogeneous of degree one in eps); and with `b0 = 0` the
+ equilibrium pressure force is zero and the scale is the row's own terms
+ `max(|ram|, |dp/dr|)` exactly, each formed in the driver from the face data
+-the evaluation stored (MEASURED 0). The departure of the arm's scale from the
++the evaluation stored (MEASURED 0). The departure of the key's scale from the
+ BASE SCHEME's at zero gravity is reported and not asserted: the two are the
+ same expression up to the rounding of the two flux assemblies (MEASURED 1.7e-13
+ to 3.7e-13 over the four pairs). Expected on the entry text of P4: the first
+ three groups RED at exactly 1.000 (the degenerate scale), the zero-gravity
+ limit GREEN. Its fourth statement was RED on the entry text of P11 as well
+ (MEASURED 0.750 for all four pairs), because it read the scale against
+-`max(|dF_2|, |S_2|)`, which under the arm is the SUM of the two terms and is
++`max(|dF_2|, |S_2|)`, which under the key is the SUM of the two terms and is
+ smaller than either wherever they cancel; 0.944 of what that statement
+ reported at zero gravity was the PLM geometric pressure term, which item P11
+ removed from the scale.
+@@ -357,13 +357,13 @@ discretization's pieces `dF_2` and `S_2` are not those terms: under PLM the
+ pressure sits partly in the momentum flux (`Phys_flux` adds `p`) and partly in
+ the geometric source `(A+ - A-) p_c/dV`, each carrying an O(2 p/r) part that
+ cancels against the other. Four states whose terms are known in closed form,
+-the base scheme and the arm, interior cells 3..N-2:
++the base scheme and the key, interior cells 3..N-2:
+ 
+ | statement | bound | entry text | after |
+ |---|---|---|---|
+ | `zero_gravity_uniform_state_momentum_scale_vanishes` (no gravity, uniform `p`, at rest; the scale over `(A+ - A-) p_j/dV`) | 1e-8 | **1.00000E+00 FAIL** under PLM, 3.3e-308 PASS under WENO3 | 3.3e-308 (the `tiny` floor of `momentum_row_scale`, which is where a fully zero row is divided) |
+ | `momentum_scale_is_not_below_the_weight_on_the_discrete_equilibrium` (`(w - s)/w`, with `w` the weight `source` forms from the two face densities) | 1e-12 | **2.79E-01 FAIL** under PLM, 0 PASS under WENO3 | 0, the weight being one of the terms the max runs over |
+-| `well_balanced_momentum_scale_is_the_equilibrium_pressure_force` (the same state under the arm, `(|s - epf|- |R|)/epf`) | 1e-12 | 0 PASS | 0 |
++| `well_balanced_momentum_scale_is_the_equilibrium_pressure_force` (the same state under the key, `(|s - epf|- |R|)/epf`) | 1e-12 | 0 PASS | 0 |
+ | `momentum_scaled_row_tracks_the_imbalance` (the pressure perturbed by `eps` and `eps/2`, the ratio of the scaled imbalance the perturbation ADDS) | \|ratio - 2\| < 0.1 | 2.0000 PASS | 2.0000 |
+ | `supersonic_uniform_flow_momentum_scale_is_the_ram_divergence` (no gravity, uniform `p`, `v = 3 c_s`; against `(A+ - A-) rho v v/dV`) | 1e-8 | **6.66667E-02 FAIL** under PLM, which is `1/(gamma M M)`, the pressure the momentum flux still carries; 4.2e-13 PASS under WENO3 | 1.9e-14 (PLM), 4.2e-13 (WENO3) |
+ 
+@@ -373,13 +373,13 @@ base scheme they are neither round-off nor a term of the equation: the
+ departure `|s - w|/w` on the discrete equilibrium (MEASURED 8.5e-4 at N = 250
+ falling to 2.3e-6 at N = 2000 under PLM with ROE, 2.2e-3 to 4.5e-5 under
+ WENO3 with HLLC), which carries the base scheme's own truncation error on a
+-state that is the equilibrium of the ARM's reconstruction and, with HLLC, the
++state that is the equilibrium of the WELL-BALANCED reconstruction and, with HLLC, the
+ dissipative part of a momentum flux whose face pressure is one side's own
+ value rather than an average; and the zero-gravity scale itself.
+ 
+ The undifferenced form of the halving statement is why the perturbation
+-statement subtracts the unperturbed row: the base scheme's row on the arm's
+-discrete equilibrium is its own truncation error, which is larger than a
++statement subtracts the unperturbed row: the base scheme's row on the
++well-balanced discrete equilibrium is its own truncation error, which is larger than a
+ 1e-6 perturbation's imbalance and does not halve with it (MEASURED on the
+ entry text: the undifferenced ratio is 1.0012 at N = 250 and 1.586 at
+ N = 2000, the truncation falling with the grid).
+@@ -485,7 +485,7 @@ upwinding.
+ 
+ | | |
+ |---|---|
+-| Origin | PLAN_20260909_rev1 item N10b and decision 21 of `docs/To_be_determined_by_user_20260906.md`, option a: the restart contract of N10 refuses any difference in the `options` field, which forbids the arm ladder this code is converged with (converge without an option, restart with it on, converge again) |
++| Origin | PLAN_20260909_rev1 item N10b and decision 21 of `docs/To_be_determined_by_user_20260906.md`, option a: the restart contract of N10 refuses any difference in the `options` field, which forbids the option ladder this code is converged with (converge without an option, restart with it on, converge again) |
+ | Quantity | eleven statements: a rung whose named option differs loads, says so, and writes the change into both halves of the state it produces as one `# option_change` line; the same difference with nothing named refuses the load and states the TOKEN that differs, not only the field; a named token that does not differ is reported and nothing else, and writes no line; the key stops the run on an unknown token, on a token that decides how many unknowns the state has (`mol`), on a word that names the grid instead of an option (`N`), and without `Load IC? True`; a rung inherits the `# option_change` lines of the rung it was restarted from; and `EXHALE_setup.out` states both what was known about the loaded state's configuration and what this run was allowed to change |
+ | Reference | the refusals taken with the token or the key named; one `# option_change` line after rung 1 and two after rung 2, the second naming `cond=F -> cond=T` |
+ | Why | a state written under one option set is not a solution of another, which is why N10 refuses the difference; but it is a legitimate STARTING POINT for it, and that is the whole ladder workflow. The key makes the change explicit and auditable instead of silent (option b) or impossible (option c) |
+@@ -502,7 +502,7 @@ upwinding.
+ | Reference | a non-empty file carrying both lines |
+ | Why | the setup report is the record of the configuration a run resolved, and every reader of a run directory attributes its outputs to it. The route solves and stops inside its own branch and never reaches the marching route's call, so what it left was the empty file the unit is opened with |
+ | Tolerance | 0: the file is written or it is not, the line is there or it is not |
+-| Configurations | one short run on a copy of `backup/regression/roundtrip` with `EXHALE_PTC=1`, its JFNK arm bounded to one outer iteration (`EXHALE_PTC_JFNK=1`, `EXHALE_JFNK_MAXIT=1`). The report is written before the solve, so one iteration reaches the point under test. Nothing in `backup/` is written to |
++| Configurations | one short run on a copy of `backup/regression/roundtrip` with `EXHALE_PTC=1`, its JFNK solve bounded to one outer iteration (`EXHALE_PTC_JFNK=1`, `EXHALE_JFNK_MAXIT=1`). The report is written before the solve, so one iteration reaches the point under test. Nothing in `backup/` is written to |
+ | Expected before N28 | **RED**, MEASURED with the entry binary `EXHALE_lwv.x`: `EXHALE_setup.out` has 0 lines; with the call on this route it has 66 |
+ 
+ ## Working directories
+@@ -587,7 +587,7 @@ the first two are red without it.
+ **P11 (2026-09-11).** `hydrostatic_residual` gained twenty assertions on the
+ momentum row's reference scale against the TERMS OF THE MOMENTUM EQUATION,
+ after the scale stopped being `max(|dF_2|, |S_2|)`: on a state with no force
+-at all, on the discrete hydrostatic equilibrium under both arms, on a
++at all, on the discrete hydrostatic equilibrium with the key off and on, on a
+ perturbation of it, and on supersonic uniform flow. Ten of the sixty
+ assertions of the program were RED on the entry text, all PLM (the geometric
+ pressure term `(A+ - A-) p_c/dV` entering the max separately from the flux
+diff --git a/src/tests/grid_and_gates/direct_steady_setup_report.sh b/src/tests/grid_and_gates/direct_steady_setup_report.sh
+index 7cfc860..9b9ea09 100755
+--- a/src/tests/grid_and_gates/direct_steady_setup_report.sh
++++ b/src/tests/grid_and_gates/direct_steady_setup_report.sh
+@@ -13,7 +13,7 @@
+ #
+ # WHAT IS RUN
+ #   backup/regression/roundtrip, copied out, with EXHALE_PTC=1 and the JFNK
+-#   arm of that route bounded to one outer iteration (EXHALE_PTC_JFNK=1,
++#   solve of that route bounded to one outer iteration (EXHALE_PTC_JFNK=1,
+ #   EXHALE_JFNK_MAXIT=1): the report is written before the solve, so one
+ #   iteration is enough to reach the point under test and the row costs a
+ #   few seconds.
+diff --git a/src/tests/grid_and_gates/hydrostatic_residual.f90 b/src/tests/grid_and_gates/hydrostatic_residual.f90
+index a64bf24..2ddb0c1 100644
+--- a/src/tests/grid_and_gates/hydrostatic_residual.f90
++++ b/src/tests/grid_and_gates/hydrostatic_residual.f90
+@@ -92,14 +92,14 @@
+       !   is the characteristic condition of base_boundary, a different object
+       !   from the interior pair and from the outer condition.
+       !
+-      ! THE MOMENTUM ROW'S REFERENCE SCALE UNDER THE WELL-BALANCED ARM
++      ! THE MOMENTUM ROW'S REFERENCE SCALE UNDER THE WELL-BALANCED KEY
+       !   The three assertions of measure_momentum_row_scale below are of the
+       !   NORMALIZED row, R_2/s_2 with s_2 = residual_row_scale(2,...), the
+       !   one expression the stationary solver's acceptance test reads: on
+       !   the scheme's own discrete equilibrium it must be at the rounding
+       !   level and not at one; on a perturbed state it must be below one and
+       !   proportional to the perturbation; and with no gravity it must be
+-      !   the scale the base scheme uses.  The arm cancels the equilibrium
++      !   the scale the base scheme uses.  The key cancels the equilibrium
+       !   pressure force and the gravitational source against each other
+       !   before the row is formed, so a scale built from the row's remaining
+       !   terms alone is the row itself and reads one however small the
+@@ -110,7 +110,7 @@
+       !   what the scale is on four states whose momentum terms are known in
+       !   closed form: no term at all (no gravity, uniform pressure, at
+       !   rest), the weight alone (the scheme's own discrete hydrostatic
+-      !   equilibrium, under both arms), an imbalance proportional to a
++      !   equilibrium, with the key off and on), an imbalance proportional to a
+       !   perturbation, and a pure ram divergence (supersonic uniform flow).
+       !   A scale made of the discretization's pieces, max(|dF_2|, |S_2|),
+       !   fails the first and the last under PLM, where the pressure is
+@@ -467,7 +467,7 @@
+ 
+       close(iu)
+ 
+-      ! ---- the well-balanced arm, on the same grid ----
++      ! ---- the well-balanced key, on the same grid ----
+       call measure_well_balanced(u, WL, WR, dF, S, rho_a, p_a, Rn, b0_case)
+       call measure_momentum_row_scale(u, WL, WR, dF, S, rho_a, b0_case)
+       call measure_momentum_physical_terms(u, WL, WR, dF, S, rho_a,       &
+@@ -481,7 +481,7 @@
+ 
+       subroutine measure_well_balanced(u, WL, WR, dF, S, rho_a, p_a, Rn,  &
+                                        b0_case)
+-      ! WHAT IS MEASURED, AND WHY TWO COLUMNS.  The well-balanced arm
++      ! WHAT IS MEASURED, AND WHY TWO COLUMNS.  The well-balanced key
+       ! ("Well balanced:", default off) preserves the equilibrium ITS OWN
+       ! discretization defines, which is the state whose two neighboring
+       ! equilibrium extrapolations agree at every shared face,
+@@ -497,7 +497,7 @@
+       ! reconstructions.  The ANALYTIC column of the ladder above is measured
+       ! as well (`analytic`): it satisfies the CONTINUUM balance and departs
+       ! from the discrete one by the truncation error of the equilibrium
+-      ! extrapolation, so on it the arm is second order like the base scheme
++      ! extrapolation, so on it the key is second order like the base scheme
+       ! and the two columns together say which part of the residual is the
+       ! discretization of gravity and which is the floating-point assembly.
+       ! Their paper measures the same pair: their initial data is the
+@@ -650,7 +650,7 @@
+       ! and the largest value over the interior cells 3..N-2 on each:
+       !
+       !   equilibrium  the discrete equilibrium of the scheme, on which the
+-      !                arm's row is at the rounding level.  The scaled row
++      !                key's row is at the rounding level.  The scaled row
+       !                must be there too; a scale built from the row's
+       !                remaining terms alone returns the row itself and
+       !                reads exactly one.
+@@ -665,19 +665,19 @@
+       !                weights are scale free), so the ratio is 2 to the
+       !                accuracy of the O(eps^2) terms.
+       !   no gravity   b0 = 0 on a state with structure in it, where the
+-      !                equilibrium pressure force is zero and the arm's
++      !                equilibrium pressure force is zero and the key's
+       !                scale must therefore be the two terms the row still
+       !                holds, max(|ram|, |dp/dr|), exactly.  The departure
+-      !                of the arm's scale from the BASE SCHEME's on the same
++      !                of the key's scale from the BASE SCHEME's on the same
+       !                state is reported and not asserted: with no gravity
+       !                each side's own hydrostatic equilibrium is its own
+-      !                cell pressure, so the arm's pressure gradient is the
++      !                cell pressure, so the key's pressure gradient is the
+       !                base scheme's, term for term, and the two scales are
+       !                the same number up to the rounding of the two flux
+       !                assemblies (MEASURED below).
+       !
+       ! The scale is a function of the state, so the SAME state is never
+-      ! asked for it under two different arms without a state in between:
++      ! asked for it with the key off and on without a state in between:
+       ! refresh_row_terms answers a repeated request for one state from what
+       ! it already holds.
+       real*8, dimension(3,1-Ng:N+Ng), intent(inout) :: u, WL, WR, dF, S
+@@ -753,7 +753,7 @@
+ 
+          enddo
+ 
+-         ! ---- no gravity: the arm's scale is the base scheme's ----
++         ! ---- no gravity: the key's scale is the base scheme's ----
+          b0 = 0.0d0
+          call set_gravity_grid
+          do j = 1-Ng,N+Ng
+@@ -773,7 +773,7 @@
+          ! ram divergence and the pressure gradient, each formed here from
+          ! the face data this evaluation stored: |dF_2| is their SUM and is
+          ! smaller than either wherever they cancel, which is what the scale
+-         ! must not be.  The arm's pressure gradient is the face pressure
++         ! must not be.  The key's pressure gradient is the face pressure
+          ! measured from each side's own equilibrium, and with no gravity
+          ! that equilibrium is the cell pressure itself, so these are also
+          ! the base scheme's two terms.
+@@ -794,7 +794,7 @@
+             s_on(j) = residual_row_scale(2, j, u)
+          enddo
+          ! Another state in between, so that the scale of u is formed
+-         ! again under the other arm and not answered from what this one
++         ! again with the key the other way and not answered from what this one
+          ! left.
+          well_balanced = .false.
+          s_break = residual_row_scale(2, 3, 1.5d0*u)
+@@ -859,13 +859,13 @@
+       !   the discrete hydrostatic equilibrium of the scheme, at rest.  The
+       !        pressure gradient and the weight are equal and opposite and
+       !        are the only terms, so the scale is the weight, and the
+-      !        weight of the arm the row was assembled by: the half-sum of
++      !        weight of the scheme the row was assembled by: the half-sum of
+       !        the two face densities times the interface potential
+       !        difference for the base scheme, as Source.f90 forms it, and
+       !        the pressure force of the cell's own equilibrium under
+       !        "Well balanced:", where that cancellation is algebraic.  The
+       !        two differ by the O(dr/r) of their geometric weighting and
+-      !        are not interchangeable references.  Under the arm that
++      !        are not interchangeable references.  Under the key that
+       !        weight is the scale exactly; for the base scheme what is
+       !        asserted is that the scale is not below it.
+       !   the same equilibrium with the pressure perturbed by eps and
+@@ -884,7 +884,7 @@
+       real*8, parameter :: eps_p = 1.0d-6
+       real*8, parameter :: mach  = 3.0d0
+       real*8, dimension(1-Ng:N+Ng) :: rho_d, p_d, R0
+-      real*8  :: z_frac, z_scale, e_base, b_base, e_arm, p_rat, u_ram
++      real*8  :: z_frac, z_scale, e_base, b_base, e_wb, p_rat, u_ram
+       real*8  :: x1, x2, sc, wgt, epf, ramr, cs_u, v_u
+       real*8  :: shape_p, twopi, span, geo, dAp, dAm, dV
+       real*8  :: s_break
+@@ -961,7 +961,7 @@
+          ! the weight on this state (MEASURED on the entry text).  The
+          ! departure |s - w|/w is REPORTED and not asserted, because it is
+          ! not round-off on this state for the base scheme: the state is the
+-         ! equilibrium of the ARM's reconstruction, on which the base
++         ! equilibrium of the WELL-BALANCED reconstruction, on which the base
+          ! scheme's own row is its truncation error, and the HLLC face
+          ! pressure is one side's own value rather than an average, so the
+          ! momentum flux carries a dissipative part of the size dr/H times
+@@ -980,14 +980,14 @@
+             endif
+          enddo
+ 
+-         ! The same state under the arm, whose weight is the pressure force
++         ! The same state under the key, whose weight is the pressure force
+          ! of the cell's own equilibrium (the right-hand side of the
+          ! cancellation identity, in the form the assembled row belongs to).
+          well_balanced = .true.
+          call Reconstruct(u, WL, WR)
+          call RK_rhs(u, WL, WR, dF, S)
+          s_break = residual_row_scale(2, 3, 1.5d0*u)
+-         e_arm   = 0.0d0
++         e_wb   = 0.0d0
+          do j = 3,N-2
+             dAp = r_edg(j)*r_edg(j)
+             dAm = r_edg(j-1)*r_edg(j-1)
+@@ -999,7 +999,7 @@
+                epf = abs(u(1,j)*(Gphi_i(j) - Gphi_i(j-1)))/dr_j(j)
+             endif
+             sc = residual_row_scale(2, j, u)
+-            if (epf .gt. 0.0d0) e_arm = max(e_arm,                       &
++            if (epf .gt. 0.0d0) e_wb = max(e_wb,                       &
+                (abs(sc - epf) - abs(dF(2,j) - S(2,j)))/epf)
+          enddo
+          well_balanced = .false.
+@@ -1007,8 +1007,8 @@
+          ! ---- the perturbed equilibrium, base scheme: the scaled
+          !      imbalance the perturbation adds halves with it ----
+          ! WHAT IS DIFFERENCED, AND WHY.  The base scheme's row on the
+-         ! arm's discrete equilibrium is not zero: that state is the
+-         ! equilibrium of the arm's reconstruction, and the base scheme's
++         ! well-balanced discrete equilibrium is not zero: that state is the
++         ! equilibrium of that reconstruction, and the base scheme's
+          ! own truncation error on it is eps-independent and larger than the
+          ! perturbation's imbalance here (MEASURED on the entry text: the
+          ! undifferenced ratio is 1.0012 at N = 250 and 1.586 at N = 2000,
+@@ -1017,7 +1017,7 @@
+          ! unperturbed row of the same cell is subtracted; it and every face
+          ! quantity built from it are homogeneous of degree one in the
+          ! perturbation, so the ratio is 2 up to O(eps).  A scale that is
+-         ! the row itself, which is what the well-balanced arm had before
++         ! the row itself, which is what the well-balanced key had before
+          ! the weight was put back, returns 1 here and not 2.
+          do j = 1-Ng,N+Ng
+             u(1,j) = rho_d(j)
+@@ -1088,7 +1088,7 @@
+          call set_gravity_grid
+ 
+          write(iu4,'(I8,I3,7ES24.16)') N, is, z_frac, z_scale, e_base,   &
+-            b_base, e_arm, p_rat, u_ram
++            b_base, e_wb, p_rat, u_ram
+ 
+       enddo
+ 
+@@ -1134,7 +1134,7 @@
+            ' of the momentum equation, interior cells 3..N-2'
+       write(*,'(A)') '        N  scheme      zero-g/(2p/r)'//            &
+            '     zero-g scale   base |s-w|/w'//                          &
+-           '    base (w-s)/w     arm |s-w|/w'//                          &
++           '    base (w-s)/w      WB |s-w|/w'//                          &
+            '   halving ratio     supersonic ram'
+       do i = 1,nrec
+          write(*,'(A,I8,2X,A10,2X,5ES16.5,F15.6,ES17.5)')                &
+@@ -1154,11 +1154,11 @@
+       ! cell pressure.  On the discrete equilibrium the base scheme's
+       ! statement is one sided, (w - s)/w <= 0, which says the weight is one
+       ! of the terms the max runs over and is an inequality of the assembly
+-      ! and not a tolerance; the arm's is two sided and exact, the scale
++      ! and not a tolerance; the key's is two sided and exact, the scale
+       ! being the equilibrium pressure force itself (MEASURED 0.00000E+00
+       ! at every N and every pair).  The departure |s - w|/w of the base
+       ! scheme is reported, not asserted: on this state, which is the
+-      ! equilibrium of the arm's reconstruction, it carries the base
++      ! equilibrium of the well-balanced reconstruction, it carries the base
+       ! scheme's truncation error and, with HLLC, the dissipative part of a
+       ! momentum flux whose face pressure is one side's own value.  The halving
+       ! ratio is asserted against two to a tenth, which is an algebraic
+@@ -1214,7 +1214,7 @@
+       ! ------------------------------------------------------------------ !
+ 
+       subroutine report_momentum_row_scale(nfail)
+-      ! The normalized momentum row of the well-balanced arm, on the three
++      ! The normalized momentum row of the well-balanced key, on the three
+       ! states measure_momentum_row_scale builds.
+       integer, intent(inout) :: nfail
+ 
+@@ -1243,7 +1243,7 @@
+ 
+       write(*,'(A)') ''
+       write(*,'(A)') '  DIAGNOSTIC momentum row over its own reference'// &
+-           ' scale, well-balanced arm ON, interior cells 3..N-2'
++           ' scale, well-balanced key ON, interior cells 3..N-2'
+       write(*,'(A)') '        N  scheme        equilibrium'//            &
+            '    perturbed(eps)  perturbed(eps/2)   ratio'//              &
+            '   zero-g vs base  zero-g vs own terms'
+@@ -1255,7 +1255,7 @@
+             sp2(i), rat, szr(i), sow(i)
+       enddo
+ 
+-      ! THE BOUNDS.  On the discrete equilibrium the arm's momentum row is
++      ! THE BOUNDS.  On the discrete equilibrium the key's momentum row is
+       ! at the rounding level of a row assembled from cell pressures,
+       ! epsilon x p x r^2/dV, which is 1e-12 of the cell's own weight at the
+       ! base of this grid and far below it above; 1e-10 is above that bound
+@@ -1435,9 +1435,9 @@
+ 
+       subroutine report_well_balanced(nfail)
+       ! The well-balanced table, both ways: the discrete equilibrium of the
+-      ! scheme, on which the arm must return the rounding level, and the
+-      ! analytic column, on which both arms carry the truncation error of the
+-      ! discretization of gravity.
++      ! scheme, on which the key must return the rounding level, and the
++      ! analytic column, on which the key and the base scheme both carry the
++      ! truncation error of the discretization of gravity.
+       integer, intent(inout) :: nfail
+ 
+       integer, parameter :: mxw = 512
+@@ -1478,7 +1478,7 @@
+             wv(i) .eq. 1, mom(i), mas(i), ene(i)
+       enddo
+ 
+-      ! THE ASSERTION.  On the discrete equilibrium of the scheme the arm
++      ! THE ASSERTION.  On the discrete equilibrium of the scheme the key
+       ! must leave the rounding level in every row, at every N and for both
+       ! reconstructions.  1e-13 is not a tolerance chosen to pass: the
+       ! arithmetic bound of a row assembled from cell pressures is
+diff --git a/src/tests/grid_and_gates/restart_option_change.sh b/src/tests/grid_and_gates/restart_option_change.sh
+index 5233d88..b890dad 100755
+--- a/src/tests/grid_and_gates/restart_option_change.sh
++++ b/src/tests/grid_and_gates/restart_option_change.sh
+@@ -4,7 +4,7 @@
+ #  PLAN_20260909_rev1 item N10b).
+ #
+ # WHAT IS UNDER TEST
+-#   1. A rung of an arm ladder loads: a state written with one option set is
++#   1. A rung of an option ladder loads: a state written with one option set is
+ #      restarted under another, and the load is accepted for exactly the
+ #      tokens "Restart option change:" names.
+ #   2. The same difference with nothing named still refuses the load, and the
+diff --git a/src/tests/krylov_and_dogleg/krylov_and_dogleg_tests.f90 b/src/tests/krylov_and_dogleg/krylov_and_dogleg_tests.f90
+index 63b93f9..6deda74 100644
+--- a/src/tests/krylov_and_dogleg/krylov_and_dogleg_tests.f90
++++ b/src/tests/krylov_and_dogleg/krylov_and_dogleg_tests.f90
+@@ -179,8 +179,8 @@
+                                  cert_tol_energy,                         &
+                                  cert_tol_element_at, cert_tol_carrier_at,&
+                                  cert_regime_wind_r
+-      use hydrodynamic_rows, only: generic_precision_rows_arm,            &
+-                 ARM_OFF, ARM_QUADRUPLE, ARM_GENERIC_DOUBLE,              &
++      use hydrodynamic_rows, only: generic_precision_rows_selected,       &
++                 ROWS_PRODUCTION, ROWS_QUADRUPLE, ROWS_GENERIC_DOUBLE,    &
+                  hydrodynamic_rows_in_double_precision
+       use steady_residual_mod, only: reconstruction_continuation_rhs
+       use hydrodynamic_rows_quadruple, only:                              &
+@@ -615,7 +615,7 @@
+                    band_difference_on, .false., nfail)
+       call log_row('krylov_residual_history_is_off_by_default',          &
+                    gm_residual_history_on, .false., nfail)
+-      ! ---- THE TWO ARMS OF ITEM N36 ARE OFF UNLESS NAMED, read in the
++      ! ---- THE TWO OPTIONS OF ITEM N36 ARE OFF UNLESS NAMED, read in the
+       !      same resolved state.
+       call log_row('the_model_row_equilibration_is_off_by_default',      &
+                    model_row_equilibration_on, .false., nfail)
+@@ -2167,9 +2167,9 @@
+                    jv_additivity_on, .true., nf)
+       call log_row('the_column_scaled_probe_arms_from_the_environment',   &
+                    jv_probe_on_the_column_scales, .true., nf)
+-      ! WITH THE ARM ON, A LINEAR TEST OPERATOR IS STILL RETURNED EXACTLY:
+-      ! neither probe rule enters where the action is stated as a matrix,
+-      ! so an arm comparison on a linear system measures nothing.
++      ! WITH BOTH HOOKS ON, A LINEAR TEST OPERATOR IS STILL RETURNED
++      ! EXACTLY: neither probe rule enters where the action is stated as a
++      ! matrix, so a comparison on a linear system measures nothing.
+       call probe_rule_on_a_linear_operator(nf)
+       jp_status = c_setenv('EXHALE_JV_ADDITIVITY'//c_null_char,           &
+                            ''//c_null_char, 1)
+@@ -2915,7 +2915,7 @@
+       ! THE CYCLE THAT RETURNS THE STEP ITS TRUE RESIDUAL CHOOSES (N36).
+       !
+       ! On a LINEAR operator the residual of the reduced problem is the
+-      ! residual of the step, so the arm may not move anything: the step it
++      ! residual of the step, so that stop may not move anything: the step it
+       ! returns is the step the same subspace gives, and the tolerance it
+       ! announces is announced only where the residual reached it. On an
+       ! operator whose action drifts with the product count -- what the
+@@ -2944,7 +2944,7 @@
+       call run_krylov(tr_A, tr_b, gm_true_residual_first, 1.0d-14,        &
+                       lin_test_dense, tr_x20, tr_it20, tr_out20,          &
+                       tr_rel20, tr_sn20)
+-      ! The arm, asked for a tolerance the cycle reaches exactly at its
++      ! The true-residual stop, asked for a tolerance the cycle reaches at
+       ! first check: it has to stop there, name the tolerance and hand
+       ! back the step of that subspace.
+       gm_step_by_its_true_residual = .true.
+@@ -3142,26 +3142,26 @@
+       ! ------------------------------------------------------!
+ 
+       subroutine well_balanced_operator_rows(nf)
+-      ! THE WELL-BALANCED ARM ("Well balanced:", default off; item N37,
++      ! THE WELL-BALANCED OPTION ("Well balanced:", default off; item N37,
+       ! docs/well_balanced_flux_difference_design_20260910.md).  Four
+       ! statements, on the same twelve-cell stretched grid the extended
+       ! precision rows use:
+       !
+-      !   * WITH NO GRAVITY the arm is the base scheme.  The local
++      !   * WITH NO GRAVITY it is the base scheme.  The local
+       !     equilibrium is then the constant p_j, the departure data is the
+       !     ordinary pressure stencil and the face pressure measured against
+       !     the equilibrium is the ordinary one, so every row must come back
+       !     the same to rounding.  It is NOT asserted bitwise: the pressure
+-      !     jump of the Riemann problem is formed additively under the arm
++      !     jump of the Riemann problem is formed additively under the key
+       !     (the difference of the two cell pressures plus the departures)
+       !     and as pR - pL without it, and the two roundings differ in the
+       !     last bit of the jump.  Measured on a uniform state and on a Sod
+       !     shock tube, for both reconstructions.
+-      !   * WITH GRAVITY, on the discrete equilibrium the arm defines (the
++      !   * WITH GRAVITY, on the discrete equilibrium the key defines (the
+       !     state whose two neighboring equilibrium extrapolations agree at
+       !     every face), the momentum row falls to the rounding level while
+       !     the base scheme leaves its truncation error.  This is the
+-      !     operator identity the arm exists for, asserted here on a second
++      !     operator identity the key exists for, asserted here on a second
+       !     grid and a second geometry from the one
+       !     src/tests/grid_and_gates/hydrostatic_residual.f90 uses.
+       !   * The generic double instantiation of the kind-generic operator
+@@ -3223,10 +3223,10 @@
+       base_face_W(3) = x_pre
+       base_face_lower_W = base_face_W
+       call rel_row('well_balanced_uniform_flow_is_the_base_scheme[PLM]',  &
+-                   arm_departure_of_the_rows(xu, xn, xg, .true.),         &
++                   key_departure_of_the_rows(xu, xn, xg, .true.),         &
+                    0.0d0, 1.0d-13, nf)
+       call rel_row('well_balanced_uniform_flow_is_the_base_scheme[WENO3]',&
+-                   arm_departure_of_the_rows(xu, xn, xg, .false.),        &
++                   key_departure_of_the_rows(xu, xn, xg, .false.),        &
+                    0.0d0, 1.0d-13, nf)
+ 
+       ! ---- (2) no gravity, a Sod shock tube ----
+@@ -3249,13 +3249,13 @@
+       base_face_W(3) = 1.0d0
+       base_face_lower_W = base_face_W
+       call rel_row('well_balanced_shock_tube_is_the_base_scheme[PLM]',    &
+-                   arm_departure_of_the_rows(xu, xn, xg, .true.),         &
++                   key_departure_of_the_rows(xu, xn, xg, .true.),         &
+                    0.0d0, 1.0d-13, nf)
+       call rel_row('well_balanced_shock_tube_is_the_base_scheme[WENO3]',  &
+-                   arm_departure_of_the_rows(xu, xn, xg, .false.),        &
++                   key_departure_of_the_rows(xu, xn, xg, .false.),        &
+                    0.0d0, 1.0d-13, nf)
+ 
+-      ! ---- (3) with gravity, on the arm's own discrete equilibrium ----
++      ! ---- (3) with gravity, on the key's own discrete equilibrium ----
+       ! phi = -b0/r, and an isothermal column with p = c^2 rho whose
+       ! densities solve the face-matching condition
+       !   p_j+1 + rho_j+1 (phi_c(j+1) - phi_i(j))
+@@ -3318,13 +3318,13 @@
+          if (xs .eq. 1) then
+             call rel_row('well_balanced_momentum_row_on_its_own_'//       &
+                  'equilibrium[PLM]', x_wb, 0.0d0, 1.0d-13, nf)
+-            call log_row('the_same_column_is_not_balanced_without_the_'// &
+-                 'arm[PLM]', x_off .gt. 1.0d-9, .true., nf)
++            call log_row('the_same_column_is_not_balanced_without_'//    &
++                 'the_key[PLM]', x_off .gt. 1.0d-9, .true., nf)
+          else
+             call rel_row('well_balanced_momentum_row_on_its_own_'//       &
+                  'equilibrium[WENO3]', x_wb, 0.0d0, 1.0d-13, nf)
+-            call log_row('the_same_column_is_not_balanced_without_the_'// &
+-                 'arm[WENO3]', x_off .gt. 1.0d-9, .true., nf)
++            call log_row('the_same_column_is_not_balanced_without_'//    &
++                 'the_key[WENO3]', x_off .gt. 1.0d-9, .true., nf)
+          endif
+       enddo
+ 
+@@ -3357,7 +3357,7 @@
+                x_dev = max(x_dev, abs(xSb(xk,xj)-xSa(xk,xj)))
+          enddo
+       enddo
+-      call rel_row('generic_double_is_the_operator_bitwise_with_the_arm', &
++      call rel_row('generic_double_is_the_operator_bitwise_with_the_key', &
+                    x_dev, 0.0d0, 0.0d0, nf)
+ 
+       ! ---- put the globals back ----
+@@ -3383,10 +3383,10 @@
+ 
+       ! ------------------------------------------------------!
+ 
+-      real*8 function arm_departure_of_the_rows(xu, xn, xg, plm)        &
++      real*8 function key_departure_of_the_rows(xu, xn, xg, plm)        &
+                                                               result(dev)
+       ! The rows R = dF - S of one state evaluated twice, with the
+-      ! well-balanced arm off and on, and the largest departure between
++      ! well-balanced key off and on, and the largest departure between
+       ! them relative to the largest row of the base scheme, over the
+       ! physical cells.  With no gravity the two are the same operator, so
+       ! this is the number that says so.
+@@ -3426,7 +3426,7 @@
+          enddo
+       enddo
+ 
+-      end function arm_departure_of_the_rows
++      end function key_departure_of_the_rows
+ 
+ 
+       ! ------------------------------------------------------!
+@@ -3439,30 +3439,30 @@
+       ! under PLM and (q_up - q_dn)/dr under WENO3
+       ! (momentum_row_terms_of_cell, RK_rhs.f90), and the departures are
+       ! read from the module arrays face_q_up / face_q_dn of
+-      ! RK_integration.  The kind-generic arm assembles the row itself, so
++      ! RK_integration.  The kind-generic rows are assembled here, so
+       ! unless it stores its own departures in those arrays the term, the
+       ! momentum row's reference scale built on it and the certification
+       ! measure read against that scale describe the last state RK_rhs was
+       ! evaluated on, or the zeros of the first allocation, and not the
+-      ! state the arm was called on.
++      ! state they were assembled on.
+       !
+-      ! Both groups below are evaluated on a state the arm assembles AFTER
++      ! Both groups below are evaluated on a state those rows assemble AFTER
+       ! a right-hand side was evaluated on a DIFFERENT state, which is the
+       ! configuration in which the two can be told apart:
+       !
+       !   * momentum_pressure_gradient and residual_row_scale(2, j, u) of
+-      !     the arm are those the production routines give for the SAME
++      !     those rows are those the production routines give for the SAME
+       !     state.  Bitwise for the generic-double instantiation, which is
+       !     the production operator bit for bit (tolerance 0, as in N37's
+-      !     generic_double_is_the_operator_bitwise_with_the_arm), and to
++      !     generic_double_is_the_operator_bitwise_with_the_key), and to
+       !     1e-13 for the quadruple one, which rounds to double once on the
+       !     way out (the tolerance of N37's
+       !     well_balanced_uniform_flow_is_the_base_scheme rows).
+-      !   * the stored departures are the ARM'S OWN.  A first evaluation
++      !   * the stored departures are THOSE ROWS' OWN.  A first evaluation
+       !     with no prior right-hand side, where the arrays hold zeros,
+       !     cannot be arranged inside one driver process, so what is
+       !     asserted instead is the identity that implies it: the momentum
+-      !     row the arm returned is rebuilt here from the stored face flux
++      !     row they returned is rebuilt here from the stored face flux
+       !     and the stored departures alone, and must be that row.  With
+       !     departures belonging to another state the rebuild misses it.
+       use RK_integration,      only: momentum_pressure_gradient,         &
+@@ -3483,7 +3483,7 @@
+       real*8  :: x_dr, x_rp, x_rm, x_dAp, x_dAm, x_dV
+       integer :: xj, xs, xa, x_status
+       character(len=8)  :: sch
+-      character(len=10) :: arm_name
++      character(len=10) :: kind_name
+       integer :: sv_N, sv_wmode
+       logical :: sv_plm, sv_weno, sv_lam_on, sv_wb, sv_visc, sv_cond
+       real*8  :: sv_mu0
+@@ -3533,7 +3533,7 @@
+       enddo
+ 
+       ! TWO STATES THAT SHARE NOTHING BUT THE GRID.  uB is the state the
+-      ! arm is asked about; uA, with a different density slope, the
++      ! key is asked about; uA, with a different density slope, the
+       ! opposite sign of velocity and a different pressure slope, is the
+       ! state the previous right-hand side was evaluated on, so that its
+       ! face departures are nowhere near uB's.
+@@ -3586,15 +3586,15 @@
+             call set_ioniz_eq_sweep_state_kind(ieq_state_marching)
+             call assemble_residual(uA, np1, zz, zz, Rp)
+ 
+-            ! ---- the arm on uB ----
++            ! ---- the kind-generic rows on uB ----
+             if (xa .eq. 1) then
+                x_status = c_setenv('EXHALE_RESID_QUAD'//c_null_char,      &
+                                    '1'//c_null_char, 1)
+-               arm_name = '[quad]'
++               kind_name = '[quad]'
+             else
+                x_status = c_setenv('EXHALE_RESID_QUAD'//c_null_char,      &
+                                    '2'//c_null_char, 1)
+-               arm_name = '[double]'
++               kind_name = '[double]'
+             endif
+             call set_ioniz_eq_sweep_state_kind(ieq_state_steady_iterate)
+             call assemble_residual(uB, np1, zz, zz, Rq)
+@@ -3638,22 +3638,22 @@
+             if (ref_row .gt. 0.0d0) d_row = d_row/ref_row
+ 
+             if (xa .eq. 1) then
+-               call rel_row('arm_momentum_pressure_gradient_is_the_'//    &
+-                    'production_term'//trim(arm_name)//trim(sch),         &
++               call rel_row('generic_rows_momentum_pressure_gradient_'//  &
++                    'is_the_production_term'//trim(kind_name)//trim(sch), &
+                     d_pg, 0.0d0, 1.0d-13, nf)
+-               call rel_row('arm_momentum_row_scale_is_the_production_'// &
+-                    'scale'//trim(arm_name)//trim(sch),                   &
++               call rel_row('generic_rows_momentum_row_scale_is_the_'//   &
++                    'production_scale'//trim(kind_name)//trim(sch),        &
+                     d_sc, 0.0d0, 1.0d-13, nf)
+             else
+-               call rel_row('arm_momentum_pressure_gradient_is_the_'//    &
+-                    'production_term'//trim(arm_name)//trim(sch),         &
++               call rel_row('generic_rows_momentum_pressure_gradient_'//  &
++                    'is_the_production_term'//trim(kind_name)//trim(sch), &
+                     d_pg, 0.0d0, 0.0d0, nf)
+-               call rel_row('arm_momentum_row_scale_is_the_production_'// &
+-                    'scale'//trim(arm_name)//trim(sch),                   &
++               call rel_row('generic_rows_momentum_row_scale_is_the_'//   &
++                    'production_scale'//trim(kind_name)//trim(sch),        &
+                     d_sc, 0.0d0, 0.0d0, nf)
+             endif
+-            call rel_row('arm_stored_departures_rebuild_its_momentum_'//  &
+-                 'row'//trim(arm_name)//trim(sch),                        &
++            call rel_row('generic_rows_stored_departures_rebuild_the_'//  &
++                 'momentum_row'//trim(kind_name)//trim(sch),               &
+                  d_row, 0.0d0, 1.0d-13, nf)
+          enddo
+       enddo
+@@ -3693,8 +3693,9 @@
+       ! the two instantiations of the generic text are one operator, so
+       ! these rows state:
+       !
+-      !   * the arm is off unless the environment names it, and it names
+-      !     the quadruple and the generic-double instantiation separately;
++      !   * the selection is off unless the environment names it, and it
++      !     names the quadruple and the generic-double instantiation
++      !     separately;
+       !   * the DOUBLE instantiation of the generic text reproduces
+       !     Reconstruct + RK_rhs + Num_flux + source BIT FOR BIT on a state
+       !     with structure in it (a bitwise reference, not a tolerance);
+@@ -3727,25 +3728,26 @@
+       real*8, dimension(:), allocatable :: sv_r, sv_redg, sv_dr,          &
+                                            sv_gpi, sv_gpc
+ 
+-      ! ---- the arm, and only from the environment ----
++      ! ---- the selection, and only from the environment ----
+       x_status = c_unsetenv('EXHALE_RESID_QUAD'//c_null_char)
+-      call int_row('the_extended_precision_rows_arm_is_off_by_default',   &
+-                   generic_precision_rows_arm(), ARM_OFF, nf)
++      call int_row('the_extended_precision_rows_are_off_by_default',      &
++                   generic_precision_rows_selected(), ROWS_PRODUCTION, nf)
+       x_status = c_setenv('EXHALE_RESID_QUAD'//c_null_char,               &
+                           '1'//c_null_char, 1)
+-      call int_row('the_arm_names_the_quadruple_instantiation',           &
+-                   generic_precision_rows_arm(), ARM_QUADRUPLE, nf)
++      call int_row('the_selector_names_the_quadruple_instantiation',      &
++                   generic_precision_rows_selected(), ROWS_QUADRUPLE, nf)
+       x_status = c_setenv('EXHALE_RESID_QUAD'//c_null_char,               &
+                           '2'//c_null_char, 1)
+-      call int_row('the_arm_names_the_generic_double_instantiation',      &
+-                   generic_precision_rows_arm(), ARM_GENERIC_DOUBLE, nf)
++      call int_row('the_selector_names_the_generic_double_'//             &
++                   'instantiation',                                      &
++                   generic_precision_rows_selected(), ROWS_GENERIC_DOUBLE, nf)
+       x_status = c_setenv('EXHALE_RESID_QUAD'//c_null_char,               &
+                           'yes'//c_null_char, 1)
+-      call int_row('an_unnamed_value_leaves_the_arm_off',                 &
+-                   generic_precision_rows_arm(), ARM_OFF, nf)
++      call int_row('an_unnamed_value_leaves_the_production_rows',         &
++                   generic_precision_rows_selected(), ROWS_PRODUCTION, nf)
+       x_status = c_unsetenv('EXHALE_RESID_QUAD'//c_null_char)
+-      call int_row('the_arm_disarms_again',                               &
+-                   generic_precision_rows_arm(), ARM_OFF, nf)
++      call int_row('the_selection_is_dropped_again',                      &
++                   generic_precision_rows_selected(), ROWS_PRODUCTION, nf)
+ 
+       ! ---- a grid and a scheme to evaluate the operator on ----
+       sv_N = N;  sv_wmode = weno_mode
+@@ -3867,7 +3869,7 @@
+          q_dV = (q_rp*q_rp*q_rp - q_rm*q_rm*q_rm)/3.0_qp
+          q_ref = q_rho*q_vel*(q_rp*q_rp - q_rm*q_rm)/q_dV
+          ! The quadruple row BEFORE the rounding to double: the single
+-         ! rounding on the way out is what the arm hands the solver, but
++         ! rounding on the way out is what these rows hand the solver, but
+          ! it is also a double ulp, which would hide the arithmetic this
+          ! row is about.
+          x_dev_q = max(x_dev_q,                                           &
+diff --git a/src/tests/steady_species_rows/run.sh b/src/tests/steady_species_rows/run.sh
+index 9f0f225..80bd1b7 100755
+--- a/src/tests/steady_species_rows/run.sh
++++ b/src/tests/steady_species_rows/run.sh
+@@ -38,9 +38,9 @@
+ # EXHALE_INVENTORY_COUPLED_STATES is a colon-separated list of run
+ # directories whose output/Ion_species.txt is a state a JFNK with carrier
+ # rows returned (no default: those rows are skipped without it); and
+-# EXHALE_INVENTORY_SHARED=0 is the measurement arm that judges a state by
++# EXHALE_INVENTORY_SHARED=0 is the control that judges a state by
+ # the separate box sides instead of the shared element constraint, and
+-# EXHALE_ELEMENT_CONSTRAINT_ROWS=0 the arm that carries the shared element
++# EXHALE_ELEMENT_CONSTRAINT_ROWS=0 the one that carries the shared element
+ # budget as a coordinate face of the unknown box instead of as a row of the
+ # step.
+ #
+@@ -144,7 +144,7 @@ fi
+ # carriers of one element spend one budget, so a state on both their
+ # ceilings holds two hydrogen nuclei where the cell has one.  Running the
+ # same driver with EXHALE_INVENTORY_SHARED=0 judges a state by those
+-# separate sides, which is the arm the shared constraint is measured
++# separate sides, which is what the shared constraint is measured
+ # against, and the three named below must then call every one of the
+ # infeasible states feasible; a suite in which they pass either way would
+ # be asserting nothing.
+@@ -569,16 +569,16 @@ if [ -n "$CPAIR" ]; then
+          esac
+       fi
+       # AND THE FLOOR IS THE SAME NUMBER IN BOTH, because it is formed from
+-      # the state and not from the unknown space: the two arms are then
+-      # measured against one yardstick.
++      # the state and not from the unknown space: the density unknown and
++      # the logarithm are then measured against one yardstick.
+       FD="$(grep -m1 '(JFNK) carrier floor' "$CD/run.log" |
+             sed -n 's/.*smallest *\([0-9.E+-]*\), largest *\([0-9.E+-]*\).*/\1 \2/p' || true)"
+       FS="$(grep -m1 '(JFNK) carrier floor' "$CS/run.log" |
+             sed -n 's/.*smallest *\([0-9.E+-]*\), largest *\([0-9.E+-]*\).*/\1 \2/p' || true)"
+       if [ -n "$FD" ] && [ "$FD" = "$FS" ]; then
+-         echo "PASS carrier_floor_is_the_same_in_both_arms measured=$FD reference=$FS tol=0"
++         echo "PASS carrier_floor_is_the_same_in_both_spaces measured=$FD reference=$FS tol=0"
+       else
+-         echo "FAIL carrier_floor_is_the_same_in_both_arms measured=$FD reference=$FS tol=0"
++         echo "FAIL carrier_floor_is_the_same_in_both_spaces measured=$FD reference=$FS tol=0"
+          rc=1
+       fi
+    fi
+diff --git a/src/tests/steady_species_rows/steady_species_rows_tests.f90 b/src/tests/steady_species_rows/steady_species_rows_tests.f90
+index 1e46cfb..608210a 100644
+--- a/src/tests/steady_species_rows/steady_species_rows_tests.f90
++++ b/src/tests/steady_species_rows/steady_species_rows_tests.f90
+@@ -470,7 +470,7 @@
+       ! the way, not 1e-8/1e-8 (the "Resid tol" reading this replaces,
+       ! under which the HD 209458 b element reload's mass row at 1e-9 read
+       ! as certified by the ledger while the acceptance refused it,
+-      ! Update_EXHALE.md section 8, P10). The cell's rounding floor is
++      ! Update_EXHALE_stage2.md section 8, P10). The cell's rounding floor is
+       ! 1e-30, ten times which is far below 3e-12, so the tolerance that
+       ! applies to its continuity row is the fixed one.
+       q(1,1) = 1.0d-9;  q(2,1) = 1.0d-13;  q(3,1) = 1.0d-8
+@@ -637,7 +637,7 @@
+       ! row SCALES is the size of the advective term itself, which is what
+       ! says the assertion is not vacuous.
+       !
+-      ! metals runs the same column with the trace-element arm on
++      ! metals runs the same column with trace-element diffusion on
+       ! (He_metal_diffusion), which is the only path that exercises the
+       ! deferred correction of solve_trace_element_in_hydrogen; its rows
+       ! carry the worst trace element of the column.
+@@ -1306,7 +1306,7 @@
+       ! synthetic cell has none of, so it is written here
+       ! (carrier_headroom_set_for_test). The rows below are in the DENSITY
+       ! coordinate; in ln n it is the same row read through the logarithm,
+-      ! and that arm is measured on the coupled run itself.
++      ! and that coordinate is measured on the coupled run itself.
+       !
+       ! RED AND GREEN, ONE ENVIRONMENT VARIABLE APART.
+       ! EXHALE_ELEMENT_CONSTRAINT_ROWS=0 puts the budget back under a
+diff --git a/src/utils/h2_shielding_lbl/README.md b/src/utils/h2_shielding_lbl/README.md
+index 7c73151..0c3853c 100644
+--- a/src/utils/h2_shielding_lbl/README.md
++++ b/src/utils/h2_shielding_lbl/README.md
+@@ -48,7 +48,7 @@ v = 0 pumps). LW-NORM measured the consequence: the column integral reached
+ `lyman_werner.f90` lost. Item 6 of
+ `docs/To_be_determined_by_user_20260906.md` chose between rebuilding on
+ 912-1110 A and widening the beam; the user adopted the widening on
+-2026-09-06 (item LW-NORM-B of `docs/Update_EXHALE.md` section 7), because the
++2026-09-06 (item LW-NORM-B of `docs/Update_EXHALE_stage2.md` section 7), because the
+ 1110-1201 A lines are real absorbers of a 700-3200 K layer and carry about a
+ third of the dissociations at saturation. `F_BAND_ERG` in `lbl_table.py`
+ carries the derivation of the deck's flat band flux over the wider interval;
+diff --git a/src/utils/lower_profile_schema.py b/src/utils/lower_profile_schema.py
+index 58798bd..a43c38c 100644
+--- a/src/utils/lower_profile_schema.py
++++ b/src/utils/lower_profile_schema.py
+@@ -4,7 +4,7 @@
+ `docs/phase_e_flux_closure_design.md` section 2 fixes one file format and one
+ fingerprint for the handoff, and section 4 asks for two producers of it:
+ `photochem_to_lower_profile.py` (production) and `vulcan_to_lower_profile.py`
+-(the cross-check arm), behind the same command line.  Everything that is a
++(the cross-check), behind the same command line.  Everything that is a
+ property of the FORMAT rather than of either chemistry code lives here, so
+ that the two adapters cannot drift apart:
+ 
+@@ -127,7 +127,7 @@ def formula_elements(name):
+     change the nuclei, so they are stripped before the formula is parsed.  A
+     label that is not a formula returns no nuclei rather than a wrong count.
+ 
+-    This is the VULCAN arm's route.  Photochem states the composition matrix
++    This is the VULCAN route.  Photochem states the composition matrix
+     itself (`dat.species_composition`) and that is used instead, because
+     labels like `O1D` and `N2D` are excited states, not formulas, and would
+     parse into nuclei that do not exist.
+diff --git a/src/utils/photochem_to_lower_profile.py b/src/utils/photochem_to_lower_profile.py
+index 1a29604..f3de42b 100644
+--- a/src/utils/photochem_to_lower_profile.py
++++ b/src/utils/photochem_to_lower_profile.py
+@@ -72,8 +72,8 @@ import radiative_convective_column as rcc                # noqa: E402
+ 
+ # Lodders 2009 as VULCAN reads it from
+ # fastchem_vulcan/input/solar_element_abundances.dat, i.e. the same elemental
+-# vector the P1 comparison gave both codes, so the two arms of E2 differ in
+-# their chemistry and not in what they were told the gas is made of.
++# vector the P1 comparison gave both codes, so the two producers of E2
++# differ in their chemistry and not in what they were told the gas is made of.
+ SOLAR_ABUNDANCES = dict(H=1.0, He=9.69170e-2, C=2.77588e-4, N=8.18465e-5,
+                         O=6.06178e-4, S=1.31826e-5)
+ 
+diff --git a/src/utils/update_log_to_tex.py b/src/utils/update_log_to_tex.py
+index 992094f..84120a5 100644
+--- a/src/utils/update_log_to_tex.py
++++ b/src/utils/update_log_to_tex.py
+@@ -1,5 +1,5 @@
+ #!/usr/bin/env python3
+-"""Generate docs/Update_EXHALE.tex from docs/Update_EXHALE.md.
++"""Generate docs/Update_EXHALE_stage2.tex from docs/Update_EXHALE_stage2.md.
+ 
+ The Markdown log is the file the entries are appended to; the TeX file is
+ its typeset twin in the memo class the earlier stage logs use
+@@ -13,16 +13,16 @@ body; the path is relative to docs/, where latexmk runs. Regenerate after
+ appending to the log or editing the appendix:
+ 
+     python3 src/utils/update_log_to_tex.py
+-    cd docs && latexmk -pdf Update_EXHALE.tex
++    cd docs && latexmk -pdf Update_EXHALE_stage2.tex
+ """
+ import os, re, subprocess, sys
+ 
+ ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+-MD = os.path.join(ROOT, 'docs', 'Update_EXHALE.md')
+-TEX = os.path.join(ROOT, 'docs', 'Update_EXHALE.tex')
++MD = os.path.join(ROOT, 'docs', 'Update_EXHALE_stage2.md')
++TEX = os.path.join(ROOT, 'docs', 'Update_EXHALE_stage2.tex')
+ 
+ PREAMBLE = r"""%% EXHALE: running update log, stage 2 (from 2026-09-05).
+-%% GENERATED from Update_EXHALE.md by src/utils/update_log_to_tex.py;
++%% GENERATED from Update_EXHALE_stage2.md by src/utils/update_log_to_tex.py;
+ %% edit the Markdown, not this file.
+ %% Author: Kwang-Il Seon
+ \documentclass[english,a4paper]{my_memo}
+diff --git a/src/utils/vulcan_to_lower_profile.py b/src/utils/vulcan_to_lower_profile.py
+index 570b286..b1801c8 100644
+--- a/src/utils/vulcan_to_lower_profile.py
++++ b/src/utils/vulcan_to_lower_profile.py
+@@ -1,10 +1,11 @@
+ #!/usr/bin/env python3
+-"""VULCAN -> EXHALE lower-atmosphere profile (the cross-check arm of E2).
++"""VULCAN -> EXHALE lower-atmosphere profile (the cross-check of E2).
+ 
+ Same schema, same command line and same fingerprint rule as
+ `photochem_to_lower_profile.py`; the only difference is where the chemistry
+-comes from.  VULCAN has no climate model, so this arm can never be the path
+-away from a prescribed T(p) (`docs/vulcan_photochem_comparison.md` P1.7);
++comes from.  VULCAN has no climate model, so this producer can never be
++the path away from a prescribed T(p)
++(`docs/vulcan_photochem_comparison.md` P1.7);
+ what it is for is stating, on the same planet and the same matching level,
+ how much of the handoff is the chemistry code rather than the chemistry
+ (P1 measured 1.70x in q_H on an 864 K base and 1.08x on a 2331 K base).
+@@ -104,7 +105,7 @@ def main():
+ 
+     # A stated eddy coefficient (--kzz-const, or --kzz-power with --kzz-ref)
+     # replaces the one the VULCAN run was mixed at; with neither stated the
+-    # file keeps VULCAN's own K_zz(p).  This arm cannot re-solve the
++    # file keeps VULCAN's own K_zz(p).  This producer cannot re-solve the
+     # chemistry, so a stated profile here changes only what is handed over.
+     Kzz = sch.eddy_diffusion_coefficient(p_bar, args)
+     if Kzz is None:
+@@ -170,13 +171,13 @@ def main():
+         p_match_bar=args.p_match, p_top_bar=0.0, p_deep_bar=0.0,
+         trial_flux_H=args.trial_flux_H, trial_flux_He=args.trial_flux_He,
+         iteration=args.iteration, reached_steady_state=True,
+-        notes=('cross-check arm: a finished VULCAN solution, T(p) prescribed'
++        notes=('cross-check: a finished VULCAN solution, T(p) prescribed'
+                ' and no climate step; F_H and F_He are the STATED trial'
+                ' fluxes, not measured') + conden)
+ 
+     # The El/H ratios VULCAN was given are a property of its own
+     # configuration, not of this file, so there is no input vector to check
+-    # the deepest level against here; what the two arms are compared on is
++    # the deepest level against here; what the two producers are compared on is
+     # the matching level (docs/phase_e_flux_closure_design.md test T-E9).
+     sch.write_handoff(args, cols, header, order)
+ 

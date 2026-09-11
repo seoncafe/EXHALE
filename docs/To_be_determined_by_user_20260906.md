@@ -2,7 +2,7 @@
 
 Five items. Each gives the background, the options, what each option moves,
 and the advisor's recommendation. Nothing here has been implemented; the code
-state each item refers to is that of `docs/Update_EXHALE.md` section 6
+state each item refers to is that of `docs/Update_EXHALE_stage2.md` section 6
 (binary `b2c15e53c888d09fa90ffdad80443c3a`, `make check` byte-identical on
 sixteen cases, `run_fcheck.sh` clean).
 
@@ -13,7 +13,7 @@ sixteen cases, `run_fcheck.sh` clean).
 damped Newton (`diffusive_photochemistry.f90`, `solve_carriers`). Batch 2b
 made a failed status stop the run. On 2026-09-06 `oxygen_chemistry` hit that
 stop on the 89-bin photon grid; the diagnosis (report
-`oxygen_carrier_newton_report.md`, summarized in `Update_EXHALE.md` section 6)
+`oxygen_carrier_newton_report.md`, summarized in `Update_EXHALE_stage2.md` section 6)
 found the Newton correct and a root present, but the damped line search
 needed 141 iterations to cross a stiff transient (an H2 destruction time of
 1.4 s against a 2.85 s step) while the budget was 30. The budget is now 200
@@ -34,7 +34,7 @@ fails a step (all seventeen today).
 
 **Recommendation: (b).**
 
-**Decided 2026-09-06: (b).** A failed energy update refuses the attempted step; the controller retakes it at half dt; exhaustion exits 2 with the diagnostics. Item ACCEPT-1/2 of `Update_EXHALE.md` section 7.
+**Decided 2026-09-06: (b).** A failed energy update refuses the attempted step; the controller retakes it at half dt; exhaustion exits 2 with the diagnostics. Item ACCEPT-1/2 of `Update_EXHALE_stage2.md` section 7.
 
 ## 2. The relaxation amnesty of the ionization sweep
 
@@ -62,7 +62,7 @@ where the amnesty fired in their early steps.
 "keep the previous state" rather than a stop. It belongs before the Phase 3
 coupled update.
 
-**Decided 2026-09-06: (a), cap = 1e2.** The amnesty keeps a non-root only up to a residual cap measured on the regression matrix; above it the cell keeps the composition it entered the sweep with (acceptance class 6, counted and reported like class 4). MEASURED on the sixteen default cases: every amnesty event of the matrix is in the step-0 sweep of `oxygen_chemistry`, 111 of them between 1e-6 and 8.9 and 4 between 8.6e4 and 1.5e5, with nothing in between; the four large ones are at cells 85 to 88, which are exactly the cells whose energy update then fails. The cap is the smallest power of ten at least 3x above the first population. Item ACCEPT-1/2 of `Update_EXHALE.md` section 7.
+**Decided 2026-09-06: (a), cap = 1e2.** The amnesty keeps a non-root only up to a residual cap measured on the regression matrix; above it the cell keeps the composition it entered the sweep with (acceptance class 6, counted and reported like class 4). MEASURED on the sixteen default cases: every amnesty event of the matrix is in the step-0 sweep of `oxygen_chemistry`, 111 of them between 1e-6 and 8.9 and 4 between 8.6e4 and 1.5e5, with nothing in between; the four large ones are at cells 85 to 88, which are exactly the cells whose energy update then fails. The cap is the smallest power of ten at least 3x above the first population. Item ACCEPT-1/2 of `Update_EXHALE_stage2.md` section 7.
 
 ## 3. Acceptance of the D0 document (the Phase 2 gate)
 
@@ -181,7 +181,7 @@ to compute to make a ledger close. (A) is the fallback if the key
 redefinition is not wanted now; it is the memo's own earlier ruling and a
 one-line script change.
 
-**Decided 2026-09-06: (B).** The Lyman-Werner band becomes 912-1201 A (band B1 merged into it, the `Stellar FUV B1 flux` key retired), the table regenerated per photon of that band, and the beam loses what the table absorbs. Item LW-NORM-B of `Update_EXHALE.md` section 7.
+**Decided 2026-09-06: (B).** The Lyman-Werner band becomes 912-1201 A (band B1 merged into it, the `Stellar FUV B1 flux` key retired), the table regenerated per photon of that band, and the beam loses what the table absorbs. Item LW-NORM-B of `Update_EXHALE_stage2.md` section 7.
 
 ## 7. Inner-shell photoionization of the metals (REF-METALS, 2026-09-07)
 
@@ -246,7 +246,7 @@ percent of the total) says the effect is small either way; (b) is preferred
 over (a) because it is what the field does and it removes a known omission
 rather than recording one. (c) stays a ladder redesign for later.
 
-**Decided 2026-09-07: (b), the revised recommendation.** Item METALS-INNER of `Update_EXHALE.md` section 7.
+**Decided 2026-09-07: (b), the revised recommendation.** Item METALS-INNER of `Update_EXHALE_stage2.md` section 7.
 
 **Landed 2026-09-07.** `metal_photoion_sigma` returns the shell sum and
 reproduces `phfit2`'s sum to better than 1e-10 at 17 ions x 12 energies from
@@ -423,7 +423,7 @@ unknowns of the stationary system and the solver treated them as
 unconstrained; on `mol_carrier` the outermost carrier is driven to and past
 zero and the cell that binds the solve has its carrier at exactly zero
 where its own row wants +2.75e-6, so no direction can be sampled there.
-B5j MEASURED three arms on `mol_carrier`, none converging: the entry text
+B5j MEASURED three runs on `mol_carrier`, none converging: the entry text
 (`||R||` 1.929, 527 refused samples, step cut-backs to 2^-49); a
 bound-aware trust region, now the default (1.415, 0 refused, cut-backs to
 2^-4); and the carrier carried as `ln n` (`EXHALE_CARRIER_LOG_UNKNOWN=1` (the spelling at B5j; since B5k the log unknown is the default and `=0` restores the density):
@@ -538,7 +538,7 @@ UNCONFIRMED until N8b.
 
 The restart contract (decision 15 a) refuses a state whose `options` block
 differs from the run's, exactly. That is right for a stationary state and it
-forbids the arm-ladder workflow this project uses (converge without an
+forbids the restart-ladder workflow this project uses (converge without an
 option, restart with it on, converge again: `armA_noLW -> armA_LW`, the He/H
 rungs, the H2 channel rungs). Legacy pairs (no block) are unaffected; every
 rung produced from now on would be refused. Options:
@@ -615,7 +615,7 @@ measured floor follows it over 4.6 decades along the column at a ratio of
 5.5 to 12, on both fixtures (atomic reload and carrier reload), with no
 branch, no fallback and no inner iteration flipping anywhere. The floor is
 irreducible in this discretization: no probe rule (N31), no inner
-tolerance (N32) and no arm inside the solver can lower it. Its consequence
+tolerance (N32) and nothing inside the solver can lower it. Its consequence
 is confined to the stationary solves with species rows (the three-unknown
 route certifies; the marching path is unaffected, its steps never divide
 by the cell width at this precision). Options:
@@ -629,7 +629,7 @@ sense of Kappeli and Mishra 2016, A&A 587, A94; LeVeque 1998, JCP 146,
 346; the published references are to be read in full before the design is
 fixed; `docs/b4_spatial_operator_design_20260906.md` sections on the
 well-balanced pressure-gravity form are the in-house starting point). A change to `Num_Fluxes.f90`, `RK_rhs.f90` and `Source.f90`, so it
-touches the MARCHING path too: built as a default-off arm, measured on both
+touches the MARCHING path too: built as a default-off option, measured on both
 reload fixtures by named outcomes (the floor must fall to the epsilon level,
 the additivity defect's exponent must turn positive, the Krylov cycle must
 reach 0.1 within 40 products at the binding iterate) and on the regression
@@ -658,7 +658,7 @@ width, so this is a measurement, not a remedy.
 
 (d) **Accept the floor** and judge the species-row solves by the
 certification only, which the anchored tolerances already do (decision 22):
-the Krylov cycle stays at 0.99, the arms stay chaotic at the last bit
+the Krylov cycle stays at 0.99, the reloads stay chaotic at the last bit
 (N26c), and no species-row configuration will certify below the floor's
 reach in the layer. Honest, and it closes the program at "not converged".
 
@@ -670,7 +670,7 @@ not yet justified).
 
 **N34 (the control experiment, 2026-09-10) changes the weighing.** With the
 hydrodynamic rows of the stationary residual evaluated in quadruple
-precision (default-off arm `EXHALE_RESID_QUAD=1`), the floor fell only by a
+precision (default-off option `EXHALE_RESID_QUAD=1`), the floor fell only by a
 factor 2.1 and landed on `epsilon_double x face state x r^2/dV` exactly
 (ratio 0.93 to 1.4): four fifths of the floor was the assembly's own
 arithmetic, the rest is the double representation of what the assembly is
@@ -680,11 +680,11 @@ So N33's amplifier is confirmed a second way, and ONLY removing the
 amplifier (a well-balanced form, option (a)) or widening the whole state
 reaches the floor; option (b) cannot. But the Krylov stall is NOT held by
 the floor alone: where the binding row is hydrodynamic (atomic reload, cap
-40) the arm makes the Arnoldi image faithful (gap 1.19e-1 to 3.81e-3) and
+40) the quadruple precision makes the Arnoldi image faithful (gap 1.19e-1 to 3.81e-3) and
 the cycle still exhausts 40 products at 0.21 against 0.10; at cap 250 the
 binding rows are the element Fe rows of the front cells (atomic) and the H2
 carrier row of cell 205 (carrier), which do not pass through the flux
-assembly, and their cycles stand at 0.98 to 0.99 with the arm on. What
+assembly, and their cycles stand at 0.98 to 0.99 with the quadruple precision on. What
 holds them is the CONDITIONING of the preconditioned operator on the
 species rows, not measured yet.
 
@@ -699,7 +699,7 @@ preconditioner misses their coupling: the diffusion coupling across cells,
 the coupling of an element row to the hydrodynamic rows through
 `mass_per_H`, the front). That measurement (N35) runs without a decision;
 (a) waits for this one. Option (b) is retired as a remedy (kept as the
-measured arm it is); (c) and (d) stand as written.
+measured option it is); (c) and (d) stand as written.
 
 **N35/N36 (2026-09-10 evening) close the linear-algebra branch.** The band
 misses no coupling; the preconditioned operator is near-singular on the

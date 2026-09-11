@@ -4,7 +4,7 @@
 #  PLAN_20260909_rev1 item N10b).
 #
 # WHAT IS UNDER TEST
-#   1. A rung of an arm ladder loads: a state written with one option set is
+#   1. A rung of an option ladder loads: a state written with one option set is
 #      restarted under another, and the load is accepted for exactly the
 #      tokens "Restart option change:" names.
 #   2. The same difference with nothing named still refuses the load, and the

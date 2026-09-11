@@ -802,7 +802,7 @@ the carrier operator). With a zero-gradient element mass fraction the
 element mixing ratio is zero-gradient too, since
 $m_{\rm sum}/n_{\rm H} = m_1 + m_{\rm He}\,(n_{\rm He}/n_{\rm H})$ is fixed
 by the helium mass fraction: MEASURED at $1.4\times10^{-16}$. Before that
-write the outermost element row of the atomic arm read
+write the outermost element row of the element reload read
 $1.19\times10^{-2}$ of its own scale against an interior level of
 $1.3\times10^{-13}$, and the sodium row of the outermost cell bound the
 solve on 51 of 109 iterations; with it, on 0 of 252.
@@ -815,14 +815,14 @@ measured under the boundary its caller states, while its relaxation twins
 arrays before every pass. That asymmetry is deliberate and it is
 documented at the routine. A refill was implemented in the residual and
 then reverted: it changes the residual by one element's outermost row in
-its twelfth digit and nothing else, yet the atomic element arm does not
+its twelfth digit and nothing else, yet the atomic element rows do not
 survive a last-bit change of the upper ghosts, whatever makes it. MEASURED:
 a control that merely multiplies the same three ghost quantities by
 $1 + 2\times10^{-16}$, posing no boundary at all, moves $\|R\|$ at iteration
 40 from $3.212\times10^{-2}$ (the caller's ghosts) to $1.125$, against
 $1.199$ for the refill. The reading that matters beyond this item is that
 $\|R\|$ at a fixed iteration count is not a reproducible quantity for that
-arm; the suite \texttt{src/tests/element\_operator} therefore asserts the
+solve; the suite \texttt{src/tests/element\_operator} therefore asserts the
 size of the caller dependence ($1.19\times10^{-2}$ on a stale caller)
 rather than assuming it away.
 

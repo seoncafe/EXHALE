@@ -3091,7 +3091,7 @@
 	! LTE emission minus absorption of the diluted B_nu(T0) the lower
 	! atmosphere presents -- so each vanishes at its own radiative equilibrium
 	! temperature instead of running the layer down to nothing. That fixed
-	! point is what TO_BE_DONE.md item (G) asks for; the emission magnitudes
+	! point is what docs/TO_BE_DONE.md item (G) asks for; the emission magnitudes
 	! alone would only deepen the collapse.
 	! Off by default (`Molecular IR bands`). The dilution is the same
 	! 0.5*base_sky_fraction the H3+ closure uses, and it is zero when

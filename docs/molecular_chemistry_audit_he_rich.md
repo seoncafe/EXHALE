@@ -424,7 +424,7 @@ molecular chemistry on.**  None of the 170 `input.inp` files under
 `Ion_species.txt` files carries an H2 / H2+ / H3+ / HeH+ column.  Every
 statement corrected above lives inside a `thereis_mol` branch, so the He/H =
 2.09 solution, the `heh{3,5,8,9p7,10p3,12}` closure ladder and the
-`heh2p13_diff_kzz1e9` arm are untouched, and no re-convergence is needed.
+`heh2p13_diff_kzz1e9` run are untouched, and no re-convergence is needed.
 
 What can be measured on those stored solutions is the size of the factor
 that *would* have been wrong had they been molecular.  The mis-supplied
@@ -490,7 +490,7 @@ mol_lyman_werner mol_diffusion`), and `make check` re-run afterwards.
 * R1-R4, which duplicate rates EXHALE takes from its own atomic modules;
   the molecular system uses the EXHALE arrays, not `mol_rates`, for them.
 * Convergence.  Every run here is a 12000-step relaxation snapshot with no
-  Newton finish, chosen so that the He/H = 0.0793 arm reproduces a golden
+  Newton finish, chosen so that the He/H = 0.0793 run reproduces a golden
   bitwise.  No `Mdot` in this document is a converged mass-loss rate.
 * ~~Whether the row scaling of the molecular system is what drives the
   simplex failures at high He/H.~~  **Answered 2026-08-29**, see section 7.
@@ -541,7 +541,7 @@ dense hot wall at r = 1.144.
 cell average of cell 233 already carries the identical `-3.64985e-2`, its
 pressure slope limited to zero, so both of its face states are its own average;
 the conservative update takes that cell from p = +5.58 to negative in one step,
-in a base region running at Mach 38 to 224. The same arm at `CFL: 0.2` completes
+in a base region running at Mach 38 to 224. The same run at `CFL: 0.2` completes
 12000 steps with no NaN. The repair is a positivity test on each RK stage with a
 dt bisection when it fails, plus a positivity guard on the reconstructed face
 states -- which was a real and separate gap, firing 1164 times in `wasp_full`

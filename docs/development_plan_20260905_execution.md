@@ -34,7 +34,7 @@ stated in rev 3.
 
 ## Step 1. Phase 0: evidence and gates (advisor + workers in parallel, about one week)
 
-**DONE 2026-09-05** (`Update_EXHALE.md` sections 2 and 3).
+**DONE 2026-09-05** (`Update_EXHALE_stage2.md` sections 2 and 3).
 
 1. Baseline without touching `golden/`: the post-170 outputs already in the
    case directories are copied once to
@@ -85,7 +85,7 @@ repaired the same day (20 assertions pass).
 
 Ordered by golden movement so that each movement is attributable.
 
-2a. **DONE 2026-09-05** (`Update_EXHALE.md` section 4; seven items, seven
+2a. **DONE 2026-09-05** (`Update_EXHALE_stage2.md` section 4; seven items, seven
     workers on disjoint files).
     No golden movement expected (opt-in paths, dead code, guards):
     A2 ROE with the caller contract; opacity model P applied to the
@@ -111,7 +111,7 @@ Ordered by golden movement so that each movement is attributable.
     Lyman-alpha item predicts, and its scratch baseline was re-snapshotted with
     the previous copy kept.
 
-2b. **DONE 2026-09-05** (`Update_EXHALE.md` section 5; five code items and
+2b. **DONE 2026-09-05** (`Update_EXHALE_stage2.md` section 5; five code items and
     one documentation pass, disjoint files, one advisor rebuild and gate).
     Bounded, moves some goldens:
     A1 LLF speed with the four counters (positivity path reached or not);
@@ -127,7 +127,7 @@ Ordered by golden movement so that each movement is attributable.
     re-snapshotted with the post-2a copy kept (section 5 of the log has the
     largest relative change of every case).
 
-2c. **Code DONE 2026-09-05** (`Update_EXHALE.md` section 6; fourteen items,
+2c. **Code DONE 2026-09-05** (`Update_EXHALE_stage2.md` section 6; fourteen items,
     every one measured alone, one advisor rebuild, `make test`, sixteen-case
     gate against the post-2b baseline, `hp_*` IC regenerated on the new grid,
     baseline re-snapshotted, `golden/` archived to `golden_pre170_20260905/`

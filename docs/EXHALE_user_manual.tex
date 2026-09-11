@@ -666,7 +666,7 @@ Variable & Effect \\
   census after each write-back and report (1) or stop on (2) a breach; off by
   default, and the only check that sees a write-back that creates nuclei. \\
 \multicolumn{2}{@{}p{\dimexpr\linewidth-2\tabcolsep}@{}}{\emph{Measurement
-  arms of the stationary solve. Each was implemented, measured against both
+  options of the stationary solve. Each was implemented, measured against both
   species-row fixtures and left in the default the measurement supported;
   none changes a default run.}} \\
 \texttt{EXHALE\_ELEMENT\_CONSTRAINT\_ROWS=0} & Limit a species trial by the
@@ -683,7 +683,7 @@ Variable & Effect \\
   the carrier fixture; default off. \\
 \texttt{EXHALE\_GM\_REORTHO=1} & Reorthogonalize the Arnoldi basis. The
   measured orthogonality loss is $10^{-13}$ to $3\times10^{-12}$, so it is
-  not the limiter, and the arm is worse on both fixtures; default off. \\
+  not the limiter, and the option is worse on both fixtures; default off. \\
 \texttt{EXHALE\_COLUMN\_EQUIL=1} & Equilibrate the columns of the model as
   well as of the factored band. It moves the trust-region coordinates and
   trials ascend; measured and not adopted. \\
@@ -1262,7 +1262,7 @@ defaults restore the standard behavior).}\label{tab:inp-opt}\\
   (def.: no option may differ) & Which switches of the state file's
   \texttt{\# options} line are \emph{allowed} to differ between the loaded
   state and this run. The restart contract otherwise refuses any option
-  difference, which forbids the arm ladder this code is converged with:
+  difference, which forbids the ladder of settings this code is converged with:
   converge without an option, restart with it on, converge again. Naming a
   token (\texttt{sec\_ion}, \texttt{He23S}, \texttt{mol\_heat},
   \texttt{base\_ir}, \texttt{cond}, \dots) permits exactly that token to
@@ -1429,7 +1429,7 @@ defaults restore the standard behavior).}\label{tab:inp-opt}\\
   base H$_2$/H partition instead of importing one. Requires
   \texttt{Molecular chemistry: True}, He/H\,$>0$ and a non-zero oxygen
   abundance; refuses \texttt{q\_H2\_base} (it computes that quantity) and
-  \texttt{He\_metal\_diffusion} (that arm counts an element over its ion
+  \texttt{He\_metal\_diffusion} (that option counts an element over its ion
   stages alone, and CO carries an oxygen \emph{and} a carbon nucleus, so it
   cannot follow two element factors at once). \texttt{He\_diffusion} alone is
   accepted. Supply the band fluxes with \texttt{Stellar LW flux},
@@ -2151,7 +2151,7 @@ conservation holds by construction and $\rho$ is untouched; every positivity or
 element limiter that fires is counted and reported in the trailer of
 \texttt{output/Oxygen\_chemistry.txt}. This operator therefore transports
 \emph{speciation} and not elements, which is why it cannot be run together with
-\texttt{He\_metal\_diffusion}: that arm transports elements, and CO carries an
+\texttt{He\_metal\_diffusion}: that option transports elements, and CO carries an
 oxygen and a carbon nucleus and so cannot follow two element factors at once.
 \texttt{Molecular carrier transport: False}
 restores the earlier local steady state; it isolates the chemistry for testing
@@ -2175,7 +2175,7 @@ carbon is molecular, where, and that those nuclei no longer cool.
 
 The option is \textbf{default off} and refuses combinations that would give one
 quantity two owners: \texttt{q\_H2\_base} (it computes that partition), and
-\texttt{He\_metal\_diffusion} (the trace-metal arm counts each metal element
+\texttt{He\_metal\_diffusion} (the trace-metal transport counts each metal element
 over its ion stages alone, so it would transport an oxygen reservoir missing
 everything bound into OH, H$_2$O and CO (about half the element), and
 moving the carriers with it needs a rule for CO, which carries an oxygen
@@ -2433,7 +2433,7 @@ prescribed (\texttt{-{}-tp-file}) or solved for by the radiative--convective
 climate model (\texttt{-{}-climate}), in which case the tropopause, and with it
 the water cold trap, is part of the solution rather than an input.
 \texttt{vulcan\_to\_lower\_profile.py} converts a finished VULCAN
-\texttt{.vul} output into the same format; it is the cross-check arm, not a
+\texttt{.vul} output into the same format; it is the cross-check, not a
 second production path, because VULCAN carries no climate model and so can
 never be the route away from a prescribed $T(p)$.
 
@@ -2449,7 +2449,7 @@ fitted by Parmentier et al.\ (2013), $0.4$ that of Charnay et al.\ (2015).
 The two are mutually exclusive, \texttt{-{}-kzz-power} without
 \texttt{-{}-kzz-ref} is refused, and the power-law settings enter the
 \texttt{solution\_id} only when they are in use, so stating neither leaves a
-run and its fingerprint exactly as they were. On the Photochem arm a stated
+run and its fingerprint exactly as they were. On the Photochem path a stated
 coefficient is the profile the chemistry is \emph{solved} on and not only the
 one reported. There is no ceiling on the power law: the file's own top bounds
 it, and EXHALE gives every cell above the shallowest tabulated level that

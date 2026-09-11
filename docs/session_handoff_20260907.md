@@ -1,8 +1,8 @@
 # Session handoff, 2026-09-07
 
 State of the tree at the end of the PLAN rev2 series (Steps A, B, C and the
-items that grew out of them; `docs/Update_EXHALE.md` section 7 is the record,
-`docs/Update_EXHALE.{tex,pdf}` its generated twin).
+items that grew out of them; `docs/Update_EXHALE_stage2.md` section 7 is the record,
+`docs/Update_EXHALE_stage2.{tex,pdf}` its generated twin).
 
 ## Verified state
 
@@ -16,7 +16,7 @@ items that grew out of them; `docs/Update_EXHALE.md` section 7 is the record,
   `make check`: REGRESSION PASS, 16 cases, 64 files byte-identical
   (13:21-16:25 KST). `run_fcheck.sh`: CLEAN.
 - Movement of every case against the previous goldens: the table in the
-  "Series gate" entry of `Update_EXHALE.md` (log10 Mdot within +-0.05 dex;
+  "Series gate" entry of `Update_EXHALE_stage2.md` (log10 Mdot within +-0.05 dex;
   `wasp_full_newton` 13.30 certified; `wasp_he23off` exits 2 by design, its
   stationary claim refused at the default tolerance).
 

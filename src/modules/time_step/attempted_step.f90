@@ -537,7 +537,7 @@
       !   species      the carrier fractions of the transported chemistry,
       !                each a number of particles per unit of rho*n0
       !   element      the transported element mass fractions (helium, and
-      !                the trace metals when the metal arm diffuses), which
+      !                the trace metals when trace-metal diffusion is on), which
       !                exist only where the element-diffusion operator runs
       !   charge_T     the electron fraction and the temperature, the two
       !                quantities through which a trace species reaches the

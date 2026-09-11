@@ -38,9 +38,9 @@
 # EXHALE_INVENTORY_COUPLED_STATES is a colon-separated list of run
 # directories whose output/Ion_species.txt is a state a JFNK with carrier
 # rows returned (no default: those rows are skipped without it); and
-# EXHALE_INVENTORY_SHARED=0 is the measurement arm that judges a state by
+# EXHALE_INVENTORY_SHARED=0 is the control that judges a state by
 # the separate box sides instead of the shared element constraint, and
-# EXHALE_ELEMENT_CONSTRAINT_ROWS=0 the arm that carries the shared element
+# EXHALE_ELEMENT_CONSTRAINT_ROWS=0 the one that carries the shared element
 # budget as a coordinate face of the unknown box instead of as a row of the
 # step.
 #
@@ -144,7 +144,7 @@ fi
 # carriers of one element spend one budget, so a state on both their
 # ceilings holds two hydrogen nuclei where the cell has one.  Running the
 # same driver with EXHALE_INVENTORY_SHARED=0 judges a state by those
-# separate sides, which is the arm the shared constraint is measured
+# separate sides, which is what the shared constraint is measured
 # against, and the three named below must then call every one of the
 # infeasible states feasible; a suite in which they pass either way would
 # be asserting nothing.
@@ -569,16 +569,16 @@ if [ -n "$CPAIR" ]; then
          esac
       fi
       # AND THE FLOOR IS THE SAME NUMBER IN BOTH, because it is formed from
-      # the state and not from the unknown space: the two arms are then
-      # measured against one yardstick.
+      # the state and not from the unknown space: the density unknown and
+      # the logarithm are then measured against one yardstick.
       FD="$(grep -m1 '(JFNK) carrier floor' "$CD/run.log" |
             sed -n 's/.*smallest *\([0-9.E+-]*\), largest *\([0-9.E+-]*\).*/\1 \2/p' || true)"
       FS="$(grep -m1 '(JFNK) carrier floor' "$CS/run.log" |
             sed -n 's/.*smallest *\([0-9.E+-]*\), largest *\([0-9.E+-]*\).*/\1 \2/p' || true)"
       if [ -n "$FD" ] && [ "$FD" = "$FS" ]; then
-         echo "PASS carrier_floor_is_the_same_in_both_arms measured=$FD reference=$FS tol=0"
+         echo "PASS carrier_floor_is_the_same_in_both_spaces measured=$FD reference=$FS tol=0"
       else
-         echo "FAIL carrier_floor_is_the_same_in_both_arms measured=$FD reference=$FS tol=0"
+         echo "FAIL carrier_floor_is_the_same_in_both_spaces measured=$FD reference=$FS tol=0"
          rc=1
       fi
    fi

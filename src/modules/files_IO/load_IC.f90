@@ -170,7 +170,7 @@
    ! Comparing the whole field exactly is right for a state that claims to
    ! be stationary and wrong for the way this project reaches its
    ! solutions: converge without an option, restart with it on, converge
-   ! again (the arm ladder). The input key "Restart option change:" names
+   ! again (the option ladder). The input key "Restart option change:" names
    ! the tokens that are ALLOWED to differ; every other difference is still
    ! refused by name, and the change that was allowed is written into the
    ! new state's block, so a rung of a ladder states what it was reached

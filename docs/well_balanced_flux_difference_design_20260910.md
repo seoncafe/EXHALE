@@ -147,9 +147,9 @@ the neighbor's beyond it,
 with the value at the cell's own center identically zero. Continuing cell j's
 own constant density over the whole gap to the neighboring center instead
 would leave data of size (rho_j - rho_j+1) x (potential difference across
-half a cell), which does NOT vanish on the discrete equilibrium: the arm
+half a cell), which does NOT vanish on the discrete equilibrium: the scheme
 would then be second order and not exact (MEASURED: with that form the WENO3
-arm leaves 2.5e-5 of the momentum weight on the discrete column at N = 250
+scheme leaves 2.5e-5 of the momentum weight on the discrete column at N = 250
 instead of 3.9e-14). The form above is the spherical, non-uniform-mesh
 counterpart of the average density in the 2016 paper's eq. (26), and
 d_plus(j) is exactly the face mismatch dp_eq(j) of (c) below. The limited slope
@@ -261,7 +261,7 @@ departures from it.
    subtracting two assembled face states. Their papers state the property up to
    machine precision and do not distinguish these; for us the distinction is
    the whole point.
-4. WENO3. Their second-order scheme uses a limited linear slope; our WENO3 arm
+4. WENO3. Their second-order scheme uses a limited linear slope; our WENO3 form
    applies the same equilibrium/departure split to the third-order stencil.
    Nothing in the argument uses the linearity of the reconstruction, only that
    it returns zero for zero data.

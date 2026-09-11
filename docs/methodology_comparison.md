@@ -140,7 +140,7 @@ through a Neufeld escape-probability closure or an imported field, and the trans
 post-processor `EXHALE_transit.py`. Size of the production build: 95 Fortran source
 files, 50,762 SLOC excluding blank and comment lines (`src/utils/codesize.py`, measured
 2026-09-11; the 74 test drivers under `src/tests/` add 20,741), of which 30,003 are in
-modules that do not exist in upstream ATES; the appendix of `docs/Update_EXHALE.pdf`
+modules that do not exist in upstream ATES; the appendix of `docs/Update_EXHALE_stage2.pdf`
 carries the full table.
 
 ## 4. Side-by-side methodology table

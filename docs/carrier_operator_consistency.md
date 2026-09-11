@@ -200,7 +200,7 @@ plateau instead of reaching it.  Sampled every 2000 steps to step 27 914:
 `dtu` fell to 4.3e-6 in both, so the state has stopped moving while the mass
 flux keeps a 3.7% radial spread.  **The variable change does not move that
 plateau**, and the coupled Newton was therefore never offered a state in either
-arm.  The three gates on the new operator's state and which row is blocked are
+run.  The three gates on the new operator's state and which row is blocked are
 still unmeasured.  The plateau is the section 157 wall and it is a separate
 obstruction from the one this section closes.
 

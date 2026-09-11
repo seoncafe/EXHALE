@@ -23,21 +23,21 @@
       real*8, dimension(:,:), allocatable :: face_flux
       real*8, dimension(:),   allocatable :: face_p
 
-      ! WELL-BALANCED ARM.  The face pressure of every interface measured
+      ! WELL-BALANCED OPTION.  The face pressure of every interface measured
       ! from the hydrostatic equilibrium of the cell on each side,
       !   face_q_up(f) = face_p(f) - P_up(f),
       !   face_q_dn(f) = face_p(f) - P_dn(f+1),
       ! both of the size of the departure from equilibrium.  They are what
-      ! the momentum row is assembled from when the arm is on: the O(1)
+      ! the momentum row is assembled from when that option is on: the O(1)
       ! pressure of the cell and the gravitational source cancel in the
       ! ALGEBRA (see the header of the cell loop) instead of in floating
       ! point.  Filled only when well_balanced is set.
       real*8, dimension(:),   allocatable :: face_q_up, face_q_dn
 
-      ! WELL-BALANCED ARM.  The magnitude of the pressure force of each
+      ! WELL-BALANCED OPTION.  The magnitude of the pressure force of each
       ! cell's own hydrostatic equilibrium, which is the gravitational
       ! weight the cell carries and is the term the momentum row's residual
-      ! is read against under the arm, since the row itself no longer holds
+      ! is read against under it, since the row itself no longer holds
       ! either of them.  Written out at
       ! equilibrium_pressure_force_of_state, which is the only place it is
       ! formed.  Filled only when well_balanced is set.
@@ -58,7 +58,7 @@
       !                                  gradient the row carries
       !   momentum_gravity(j)            rho dphi/dr as `source` forms it,
       !                                  and the equilibrium pressure force
-      !                                  under the well-balanced arm, where
+      !                                  under the well-balanced option, where
       !                                  the row itself carries neither
       !
       ! The three add up to the assembled row dF(2,j) - S(2,j) exactly.
@@ -233,7 +233,7 @@
          ! Correct for WENO3 discretization
          if (use_weno3)  dF(2,j) = dF(2,j) + (pR - pL)/dr
 
-         ! THE MOMENTUM ROW UNDER THE WELL-BALANCED ARM.  The pressure is
+         ! THE MOMENTUM ROW UNDER THE WELL-BALANCED OPTION.  The pressure is
          ! not in Fp(2)/Fm(2) here (Phys_flux leaves it out), and what
          ! replaces it is the face pressure measured from THIS cell's own
          ! hydrostatic equilibrium.  The two identities that make the
@@ -295,7 +295,7 @@
       ! the face values of the constant-density equilibrium through the
       ! cell's own (rho_j, p_j) (Kaeppeli and Mishra 2016, A&A 587, A94,
       ! their eq. 16, in spherical geometry), the identities the momentum
-      ! row of the well-balanced arm rests on are
+      ! row of the well-balanced option rests on are
       !
       !   A+ P_up - A- P_dn - (A+ - A-) p_j
       !        = -rho_j [ A+ (phi_i(j) - phi_c(j))
@@ -354,7 +354,8 @@
       ! ONE CELL'S MOMENTUM ROW SPLIT INTO THE TERMS OF THE PHYSICAL
       ! EQUATION, and the single definition of that split.  The three
       ! outputs add up to the assembled row dF(2) - S(2) exactly, whichever
-      ! reconstruction and whichever arm produced it:
+      ! reconstruction produced it and whether or not the well-balanced
+      ! option is on:
       !
       !   PLM    Phys_flux gives the momentum flux the pressure, so the
       !          face value is rho v v + p and the flux difference holds
@@ -365,7 +366,7 @@
       !   WENO3  Phys_flux leaves the pressure out and RK_rhs adds the face
       !          difference (p_R - p_L)/dr, which is the whole gradient the
       !          row carries; `source` has no geometric term.
-      !   arm    Phys_flux leaves the pressure out on either reconstruction
+      !   WB     Phys_flux leaves the pressure out on either reconstruction
       !          and the row carries the face pressure measured from each
       !          side's own hydrostatic equilibrium, which is the pressure
       !          gradient OF THE DEPARTURE.  The equilibrium part of the
@@ -415,13 +416,13 @@
       subroutine momentum_row_terms_of_state(WL,WR,S)
       ! The three terms of every cell's momentum row, from the face data the
       ! flux assembly stored (face_flux, face_p and, under the well-balanced
-      ! arm, face_q_up / face_q_dn) and the source that assembly returned.
+      ! option, face_q_up / face_q_dn) and the source that assembly returned.
       !
       ! THE GRAVITATIONAL TERM IS THE ONE `source` FORMS, the half-sum of
       ! the two reconstructed face densities times the interface potential
       ! difference over dr (Source.f90); the two must stay in step.  Under
-      ! the arm `source` returns zero and the weight is the equilibrium
-      ! pressure force, which is the same physics in the arm's own
+      ! that option `source` returns zero and the weight is the equilibrium
+      ! pressure force, which is the same physics in that option's own
       ! discretization (equilibrium_pressure_force_of_state).
       real*8, dimension(3,1-Ng:N+Ng), intent(in) :: WL,WR,S
       integer :: j
@@ -431,9 +432,9 @@
          allocate(momentum_ram_divergence(1-Ng:N+Ng),                    &
                   momentum_pressure_gradient(1-Ng:N+Ng),                 &
                   momentum_gravity(1-Ng:N+Ng))
-      ! The face departures are passed below whether the arm is on or not,
+      ! The face departures are passed below whether that option is on or not,
       ! and the kind-generic rows allocate face_flux / face_p without them,
-      ! so a stationary evaluation on that arm reached before any marching
+      ! so a stationary evaluation through those rows reached before any marching
       ! stage would otherwise pass an unallocated array element.
       if (.not. allocated(face_q_up)) then
          allocate(face_q_up(1-Ng:N+Ng), face_q_dn(1-Ng:N+Ng))
@@ -590,10 +591,10 @@
                call lax_friedrichs_flux(W_avg(:,jf),W_avg(:,jf+1),      &
                                         flux_lo(:,jf),p_lo(jf),         &
                                         jf,min(jf+1,N+Ng))
-               ! Under the well-balanced arm the row is assembled from the
+               ! Under the well-balanced option the row is assembled from the
                ! face pressure measured against each side's equilibrium, so
                ! a replaced face needs its own pair.  It is formed here by
-               ! subtracting two O(1) numbers, which is what the arm avoids
+               ! subtracting two O(1) numbers, which is what that option avoids
                ! everywhere else: a repaired face is not well balanced, as a
                ! first-order Lax-Friedrichs face cannot be (it resolves no
                ! stationary contact).
@@ -674,7 +675,7 @@
             ! LAST of the two evaluations and not their blend (the blend is
             ! formed in reconstruction_continuation_rhs on dF, S, face_flux
             ! and face_p), so a face this repair replaces inside a
-            ! continuation ramp carries that arm's pressure force rather
+            ! continuation ramp carries that evaluation's pressure force rather
             ! than the homotopy's.  A replaced face is not well balanced in
             ! any case (see above), and the repair runs only on a stage that
             ! left rho > 0, rho e > 0.

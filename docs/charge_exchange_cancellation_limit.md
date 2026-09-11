@@ -10,13 +10,13 @@ and the one that closed it was neither.*
 
 ## The outcome first
 
-Cell 387 at step 0 of the `He/H = 1` molecular arm no longer exists as a
+Cell 387 at step 0 of the `He/H = 1` molecular run no longer exists as a
 failure. It closed when a **missing reaction channel** was added to the
 network -- the non-radiative He+ + H electron capture of Kingdon & Ferland
 (1996), whose source is the same Zygelman et al. (1989) calculation the code's
 radiative rate already came from. The He+ balance had been incomplete, and no
 amount of numerical work on an incomplete balance was going to produce a root
-of it. With the channel adopted the He/H = 1 arm runs to 12,000 steps with
+of it. With the channel adopted the He/H = 1 run reaches 12,000 steps with
 **zero** non-root acceptances.
 
 The three explanations, in the order they were advanced:
@@ -75,7 +75,7 @@ were verified directly from the implementation.
 ## 1a. Measured outcome (2026-08-31): the charge-exchange attribution is false
 
 The diagnostic this memo asked for was built and run on the actual cell-387
-step-0 state, captured from the He/H = 1 arm and re-evaluated without the
+step-0 state, captured from the He/H = 1 run and re-evaluated without the
 hydrodynamics. **The premise that the H+ row is a near-cancellation of the two
 H--He rates is wrong, and section 2.1's expectation below - that the residual
 measures "a small net rate against a scale containing the two gross rates" -
@@ -117,7 +117,7 @@ number 2.03e16, three orders worse.
 What finally resolved cell 387 was neither numerical: the He+ balance was
 **incomplete**. The non-radiative He+ + H channel was missing from the network
 (see `molecular_chemistry_audit_he_rich.md` section 4.3.1). With it adopted,
-the He/H = 1 arm runs 200 steps with **zero** non-root acceptances and cell 387
+the He/H = 1 run marches 200 steps with **zero** non-root acceptances and cell 387
 no longer appears at all, against two non-roots and a res = 2.072e-02 event at
 that cell before.
 
@@ -441,7 +441,7 @@ The fix is accepted only if all of the following hold:
    standalone residual evaluation.
 4. The constrained solve reaches the same root from nearby seeds and does not
    rely on projection.
-5. The low-He/H molecular regression and the He/H = 1 focused arm show no new
+5. The low-He/H molecular regression and the He/H = 1 focused run show no new
    accepted non-roots. Atomic-only paths need no rerun if they are untouched.
 6. If a row basis changes, numerical rank is verified for every active network
    configuration: molecular H/He, triplet, oxygen carriers, and metals.

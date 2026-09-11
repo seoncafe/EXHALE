@@ -525,8 +525,8 @@
       ! a half orders (VULCAN 3.31e-6 T^-1, Photochem 1.0e-12 cm^3 s^-1), so
       ! the onset density n_crit = k_inf/k_0 was evaluated with BOTH.
       ! Measured on the five molecular regression cases and both diagnostic
-      ! arms, the largest molecular-layer particle density is 5.4e13 cm^-3
-      ! (matrix) and 7.2e14 cm^-3 (He/H = 10 arm), against n_crit >=
+      ! runs, the largest molecular-layer particle density is 5.4e13 cm^-3
+      ! (matrix) and 7.2e14 cm^-3 (He/H = 10 run), against n_crit >=
       ! 4.4e19 cm^-3 from the STRICTER of the two at this k_0. Every
       ! configuration is therefore at least four and a half orders below the
       ! onset, and the two references' disagreement never enters. The

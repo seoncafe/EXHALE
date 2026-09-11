@@ -239,7 +239,7 @@
       lap_in_use = .true.
       ! A stated iteration index is what makes a profile drivable by the
       ! flux-closure loop; the trial flux is legitimately zero on the first
-      ! arm, so a zero value says nothing.  A hand-written profile with no
+      ! iteration, so a zero value says nothing.  A hand-written profile with no
       ! iteration index runs, it just cannot be iterated.
       lap_iterable = (lap_iteration .ge. 0)
 

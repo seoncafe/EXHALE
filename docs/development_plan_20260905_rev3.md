@@ -144,7 +144,7 @@ tolerance, not round-off) / moved; a bounded run is `run_check.sh check
 
 ### 4.1 Phase 1: bounded corrections (A1, A2, A3-scale, A8)
 
-**A1, LLF signal speed** (`Num_Fluxes.f90` 287): **Landed 2026-09-05 (batch 2b, `Update_EXHALE.md` section 5).** `a1 = max(abs(vL)+aL,
+**A1, LLF signal speed** (`Num_Fluxes.f90` 287): **Landed 2026-09-05 (batch 2b, `Update_EXHALE_stage2.md` section 5).** `a1 = max(abs(vL)+aL,
 abs(vR)+aR)`. Reporting (T8): the existing `n_faces_flux_positivity_limited`
 counts **repaired interfaces in successful repair calls** (it increments only
 when `repaired` is true); it is not a call count, and a repaired attempt can
@@ -178,7 +178,7 @@ part of the task (T1):
 Gate: the three ROE tests of 3.3, with the final flux and the conservative
 update as the tested objects, not the auxiliary routine alone.
 
-**Landed 2026-09-05 (batch 2a, `Update_EXHALE.md` section 4).** Implemented as approved in
+**Landed 2026-09-05 (batch 2a, `Update_EXHALE_stage2.md` section 4).** Implemented as approved in
 `docs/a2_roe_interface.md`, with four accepted deviations: a positivity guard
 on the input states at the top of the estimator, the `Numerical flux: ROE`
 refusal placed in the consistency block after the optional keys, the old
@@ -187,7 +187,7 @@ printed for ROE runs only. Thirty ROE assertions of
 `src/tests/physics_probe/riemann_wave_speeds.f90` are green.
 
 **A3, carrier reference scales and returned-state diagnostics**, split (T2):
-**Landed 2026-09-05 (batch 2b, `Update_EXHALE.md` section 5; increment (a) only).** 
+**Landed 2026-09-05 (batch 2b, `Update_EXHALE_stage2.md` section 5; increment (a) only).** 
 
 - Increment (a), bounded and delegable now: one element-reference table for
   every carrier used by the Jacobian step and the residual floor;
@@ -237,7 +237,7 @@ The report of such a run names which quantities, if any, are independently
 supported.
 
 **A8, Chung detector inversion** (`h2_photo_channels.f90`), extended (T7):
-**Landed 2026-09-05 (batch 2b, `Update_EXHALE.md` section 5).** 
+**Landed 2026-09-05 (batch 2b, `Update_EXHALE_stage2.md` section 5).** 
 
 - Header and inversion rewritten to the detector observable `(N_S +
   N_D)/N_M`; the "overcount" note removed; Chung's "about 20% at 80 eV" read
@@ -504,7 +504,7 @@ No source was changed; no atmosphere was run.
 
 ### 10.1 New P0 defects (wrong answer in a default path)
 
-**Landed 2026-09-05 (batch 2c, `Update_EXHALE.md` section 6):** items 1 (`dr_j`), 2 (thresholds on bin edges, extended to every active threshold and the H2 channel edges, and on 2026-09-06 to the loaded-SED grid as well, D0 item C5) and 3 (decision 13: Planck type in 2a, the Balmer continuum on the run's type in 2c).
+**Landed 2026-09-05 (batch 2c, `Update_EXHALE_stage2.md` section 6):** items 1 (`dr_j`), 2 (thresholds on bin edges, extended to every active threshold and the H2 channel edges, and on 2026-09-06 to the loaded-SED grid as well, D0 item C5) and 3 (decision 13: Planck type in 2a, the Balmer continuum on the run's type in 2c).
 
 1. **The cell width `dr_j(j)` is the width of cell j+1.**
    `src/modules/init/define_grid.f90` 152 and 185:
@@ -585,7 +585,7 @@ No source was changed; no atmosphere was run.
 
 ### 10.2 New P1 defects
 
-**Landed 2026-09-05 (batch 2c, `Update_EXHALE.md` section 6):** items 1 (momentum kick), 2 (one state per output file; the heat column / breakdown mismatch itself stays for Phase 3), 3 (restart grid guard), 4 (profile base level), 5 (signed `du`), 6 (C I Voronov row), 9 and 11 (helium mass, Jupiter radius, one definition each with the thresholds and the other constants). Items 7, 8, 10, 12 landed in 2a (section 4).
+**Landed 2026-09-05 (batch 2c, `Update_EXHALE_stage2.md` section 6):** items 1 (momentum kick), 2 (one state per output file; the heat column / breakdown mismatch itself stays for Phase 3), 3 (restart grid guard), 4 (profile base level), 5 (signed `du`), 6 (C I Voronov row), 9 and 11 (helium mass, Jupiter radius, one definition each with the thresholds and the other constants). Items 7, 8, 10, 12 landed in 2a (section 4).
 
 1. **Momentum kick.** `EXHALE_main.f90` 1333: `u(2,:) = u(2,:) + 1.0e-16` is
    applied to the state, not to a copy, before the `dtu` diagnostic; `u_old =
@@ -648,7 +648,7 @@ No source was changed; no atmosphere was run.
    `calc_column_dens*` and nothing else, so the beam loses f(p) times more
    photons than ionize anything or heat the gas. Opt-in (`opacity.inp`,
    model P); no regression case ships one.
-   **Landed 2026-09-05 (batch 2a, `Update_EXHALE.md` section 4).** The factor now multiplies the shared flux
+   **Landed 2026-09-05 (batch 2a, `Update_EXHALE_stage2.md` section 4).** The factor now multiplies the shared flux
    weight of every absorption integrand, so the beam's loss equals the local
    absorption; a cell with f = 10 closes energy and H I ionizations to 3e-8.
 
@@ -663,7 +663,7 @@ No source was changed; no atmosphere was run.
    chemistry: True` with a Lyman-alpha flux; `examples/18_oxygen_chemistry`,
    where B2 is 6% of the unattenuated photolysis; unbounded for a
    Lyman-alpha-dominated star). No regression case has oxygen chemistry.
-   **Landed 2026-09-05 (batch 2a, `Update_EXHALE.md` section 4).** Band B2 carries
+   **Landed 2026-09-05 (batch 2a, `Update_EXHALE_stage2.md` section 4).** Band B2 carries
    `lya_stellar_beam_transmission(T, tau)`, the expression `lya_rt.f90` already
    held inline. The `oxygen_chemistry` case moved as expected and its scratch
    baseline was re-snapshotted.
@@ -677,7 +677,7 @@ No source was changed; no atmosphere was run.
 10. **The same bridge converts He/H to mass fractions with 4 m_H and hands
     the solver CODATA masses** (`wae_exhale_input.f90` 71-77), so Wind-AE
     solves at 1.00717x the requested He/H. Same reach as item 9.
-    **Landed 2026-09-05 (batch 2a, `Update_EXHALE.md` section 4).** The mass fractions
+    **Landed 2026-09-05 (batch 2a, `Update_EXHALE_stage2.md` section 4).** The mass fractions
     are built from the same `m_He/m_H` the solver is handed, and the
     reconstructed He/H equals the input to 1e-12. The `RJ`/`MJ`/`MSUN`
     half of the pair is decision 14 and is not in this batch.
@@ -699,7 +699,7 @@ No source was changed; no atmosphere was run.
     it solves the local H+ root and returns a candidate the acceptance test
     (`ion_system_HeH_mol_metals`, which does pin row 1) then rejects; each
     such cell spends up to 40 `hybrd` solves before falling to class 4.
-    Opt-in. **Landed 2026-09-05 (batch 2a, `Update_EXHALE.md` section 4).** `hp_is_fixed` pins
+    Opt-in. **Landed 2026-09-05 (batch 2a, `Update_EXHALE_stage2.md` section 4).** `hp_is_fixed` pins
     `species_fixed(is_HII)` like H2 and the oxygen carriers. The three `hp_*`
     cases never enter the continuation, so no run exercises it yet.
 
@@ -707,7 +707,7 @@ No source was changed; no atmosphere was run.
 
 | Item | Location | Note |
 |---|---|---|
-| Conduction stage floors T at 0.01 T0 silently | `viscous_conduction.f90` 527-532 | the explicit energy update counts the same floor; this one does not, and a floored cell is not a zero of the steady residual. Landed 2026-09-06 (B2b: a floored cell is a failure of the stage, counted by `conduction_floor_cell_hits`; `Update_EXHALE.md` section 7). |
+| Conduction stage floors T at 0.01 T0 silently | `viscous_conduction.f90` 527-532 | the explicit energy update counts the same floor; this one does not, and a floored cell is not a zero of the steady residual. Landed 2026-09-06 (B2b: a floored cell is a failure of the stage, counted by `conduction_floor_cell_hits`; `Update_EXHALE_stage2.md` section 7). |
 | `minloc(..., dim=1)` used as a declared subscript | `set_IC.f90` 116-118 | index off by Ng; out of bounds near the top |
 | `dF(:,1-Ng)`, `S(:,1-Ng)`, `WL(:,1-Ng)` read before written | `RK_rhs.f90` 92, `Apply_BC.f90` 231 | overwritten before use; traps under `-finit-real=snan` |
 | `refresh_row_terms` drops `Smom`/`Sene` and accumulates the energy scale with `max` | `steady_residual.f90` 298-303 | systematic in the self-consistency loop |
@@ -826,7 +826,7 @@ No source was changed; no atmosphere was run.
     the integrated grid flux against the nominal J_XUV), so that a user who
     wants a photospheric NUV selects Planck or a table. The threshold-bin
     quadrature (10.1 item 2) stands independently.
-    **Landed 2026-09-05 (batch 2a, item 2a-PLANCK, `Update_EXHALE.md`
+    **Landed 2026-09-05 (batch 2a, item 2a-PLANCK, `Update_EXHALE_stage2.md`
     section 4):** the `Planck` type, which requires `Stellar Teff` and
     `Stellar radius` and fills the whole photon grid from
     `planck_stellar_flux_eV`, and the three setup-report lines (the type, the
@@ -920,7 +920,7 @@ No source was changed; no atmosphere was run.
     1995 A file is not caught; the WASP-52 b file reaches 3700 A. Phase 1
     (2a): a reader behavior change that moves no golden, since every
     regression case is power-law.
-    **Landed 2026-09-05 (batch 2a, item 2a-SED, `Update_EXHALE.md`
+    **Landed 2026-09-05 (batch 2a, item 2a-SED, `Update_EXHALE_stage2.md`
     section 4):** the run stops with `error stop 1` and no key to continue,
     and the message names the file, the band not covered in eV and A, each
     absorber whose threshold lies below the lowest photon in the file (He 2^3S

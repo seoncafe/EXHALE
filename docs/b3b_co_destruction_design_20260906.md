@@ -625,7 +625,7 @@ Test suite `co_destruction`, part 3:
 
 Two cases touch this code.
 
-**`oxygen_chemistry`.** READ, `docs/Update_EXHALE.md` (the A1scale and A3b
+**`oxygen_chemistry`.** READ, `docs/Update_EXHALE_stage2.md` (the A1scale and A3b
 entries): the case is refused at step 2 under the physical-terms acceptance,
 with a CO row at 5.5e-8 beside a clamped cell, 37 retry attempts to the floor
 all refused; under A3b it runs its 1000 steps in initialization mode with 998

@@ -1,0 +1,449 @@
+\section{The molecular layer, the trace metals and element transport}
+\label{sec:mol}
+
+Everything in this section is \emph{off} by default. A run acquires the
+molecular layer by asking for it (\texttt{Molecular chemistry: True}, which
+also switches \texttt{Molecular base} on so that the base particle count and
+the chemistry describe one gas), the metals by the presence of \texttt{metals.inp} or of elemental
+abundances in a handoff file, and the element transport by
+\texttt{He\_diffusion}. An atomic, metal-free run never enters any of the
+code described here.
+
+\subsection{\texorpdfstring{The H$_2$/He reaction network}{The H2/He reaction network}}
+\label{sec:mol:network}
+
+\texttt{mol\_rates.f90} carries the reaction rate coefficients of
+\citet{Koskinen2022} Table 1 as published, in cgs
+(cm$^{3}$\,s$^{-1}$, and cm$^{6}$\,s$^{-1}$ for the two three-body entries
+R13 and R15, which the code multiplies by the total heavy-particle density).
+EXHALE carries one temperature, so the heavy-particle and the electron
+temperature of that table are the same variable. The photorates P1--P5 of
+the paper are marked ``SC'' there, computed from cross sections, stellar
+flux and columns; in EXHALE they are the integrals of
+Sec.~\ref{sec:radiation:rates} and are not part of this module.
+
+One entry is deliberately \emph{not} transcribed. R12, the thermal
+dissociation of H$_2$, is built by detailed balance from the R15
+recombination,
+\begin{equation}
+k_{12}(T) = \frac{k_{3b}(T)}{K_{\rm eq}(T)},
+\label{eq:mol:r12}
+\end{equation}
+with $K_{\rm eq}$ the ${\rm H}+{\rm H}\rightleftharpoons{\rm H_2}$
+equilibrium constant built from the same internal partition function
+$Q_{\rm H_2}(T)$ the caloric equation of state uses
+(Sec.~\ref{sec:mol:caloric}), because the two Table-1 entries are the same
+channel in opposite directions and their source measurements do not overlap
+in temperature. The third body of R12, R13 and R15 is the total gas-particle
+density excluding electrons, so every heavy particle is an equally efficient
+third body; a monatomic third body has no internal modes to take up the
+released energy, so these three rates with He as $M$ are upper bounds. Two
+further limits in a helium-dominated gas, the missing
+${\rm H_2^+}+{\rm He}\to{\rm HeH^+}+{\rm H}$ channel and the R16--R20
+disagreements with \citet{GarciaMunoz2025}, are recorded at the code site
+rather than patched, since fixing either would replace a Table-1 entry with a
+rate from another compilation.
+
+The eight balance rows the network makes are
+\eqref{eq:ion:h2row}--\eqref{eq:ion:hehprow} together with the H$^+$,
+He$^+$, He$^{2+}$ and He\,$2^3$S rows of Sec.~\ref{sec:ionization:cellsystem}.
+
+\subsection{\texorpdfstring{H$_2$ photoabsorption resolved into channels}{H2 photoabsorption resolved into channels}}
+\label{sec:mol:h2photo}
+
+\texttt{h2\_photo\_channels.f90} splits the one measured cross section
+$\sigma_{\rm H_2}(E)$ into four mutually exclusive final states whose sum is
+identically $\sigma_{\rm H_2}$, so no consumer of the opacity changes and
+the total H$_2$ destruction rate is what it was; what changes is which
+fragments the source terms are told to make.
+\begin{align}
+\sigma_N &= f_n(E)\,\sigma_{\rm H_2}(E)
+  &&{\rm H_2}+h\nu\to{\rm H}+{\rm H}\ \ (33\text{--}41\,{\rm eV\ window}),
+  \label{eq:mol:chanN}\\
+\sigma_M+\sigma_S+\sigma_D &= \left[1-f_n(E)\right]\sigma_{\rm H_2}(E)
+  &&\text{the three ionizing channels},
+  \label{eq:mol:chanMSD}
+\end{align}
+with $f_n$ the neutral fraction of \citet{Chung1993} Table 1, carried as
+a \emph{fraction} so that it rides on this code's $\sigma_{\rm H_2}$
+normalization rather than importing theirs. Inside the ionizing part the
+split follows the \citeauthor{Chung1993} Table II ratio column
+$r(E) = \sigma({\rm H^+})/\sigma({\rm H_2^+})$, a ratio of time-of-flight
+detector signals and therefore a ratio of \emph{events}, one count per event
+and not one per proton;
+\texttt{frac\_H2\_dissociative\_ionization} is that column converted to
+$\sigma({\rm H^+})/[\sigma({\rm H^+})+\sigma({\rm H_2^+})]$ and tabulated at
+69 energies from 18.076 to 124\,eV, linearly interpolated, zero at and below
+threshold and held flat above 124\,eV. The thresholds are 15.4\,eV (M,
+leaves H$_2^+$), 18.076\,eV (S, leaves H\,$+$\,H$^+$), 51.4\,eV (D, two
+protons), and none of its own for N. With the default
+\texttt{h2\_double\_ionization = 'off'} only the S channel is resolved
+separately.
+
+The energy of one absorbed photon is accounted channel by channel by
+\texttt{h2\_channel\_energy\_recipients}, the single statement of what each
+channel charges, and the recipients of each sum to $h\nu$ once. Two entries
+are fixed with no free parameter: the double channel's vertical threshold
+51.4\,eV \citep{Yan1998} exceeds the asymptotic product
+energy $D_0+2I({\rm H}) = 31.675$\,eV by exactly the kinetic energy release
+of the two receding protons, 19.725\,eV; and the neutral window leaves both
+fragments in $n=2$ (the Q2 $^1\Pi_u$ state whose fluorescence curve overlaps
+this cross section), so $2E(n{=}1\to2)$ departs as prompt Ly$\alpha$ and
+two-photon continuum and is not heat.
+
+\subsection{Lyman-Werner photodissociation}
+\label{sec:mol:lw}
+
+\texttt{lyman\_werner.f90} adds the Solomon process,
+${\rm H_2}(X)+h\nu(11.2\text{--}13.6\,{\rm eV})\to{\rm H_2}(B,C)\to{\rm H}+{\rm H}$,
+which the \citeauthor{Koskinen2022} Table-1 network leaves out (their photorates start
+at the 15.4\,eV edge). The band is 912--1201\,\AA{}: 912\,\AA{} is the H
+Lyman edge, and 1201\,\AA{} is both the blue edge of band B2 and the red end
+of the Lyman and Werner line list the shielding table is built from. \citeauthor{Draine1996}'s own 912--1110\,\AA{} is not used, because a planetary base runs
+at 700--3200\,K where the vibrationally excited levels pump in lines longward
+of 1110\,\AA{} that carry about a third of the dissociations at saturation.
+One band, one line list, one normalization.
+
+The optically thin rate is formed from the band-integrated \emph{energy}
+flux at the planet and the mean photon energy of a flat $F_\lambda$ band,
+$\langle h\nu\rangle = 2hc/(912+1201\,\mbox{\AA}) = 11.7354$\,eV:
+\begin{equation}
+k_{\rm LW}^{\rm thin} = \sigma_{\rm LW}\,
+   \frac{\xi_{\rm day}F_{\rm LW}}{\langle h\nu\rangle}.
+\label{eq:mol:klw}
+\end{equation}
+The band-mean $\sigma_{\rm LW}$ is not the effective cross section
+$2.263\times10^{-18}$\,cm$^{2}$ that \citet{Draine1996} Table 1 and 2 imply
+for a flat-$F_\lambda$ field restated per 912--1201\,\AA{} photon: the rate
+is the level-resolved table of \texttt{h2\_self\_shielding\_table.f90},
+normalized per photon of the same band, and that number is only the limit it
+approaches in optically thin interstellar conditions.
+
+That table is a line-by-line calculation with \emph{overlapping} lines, and
+it stores three different counts because three are needed:
+$\sigma_{\rm diss}$, dissociations per unit incident band photon fluence,
+which carries the self-shielding, the line overlap and the trapping of the
+fluorescent photons and sets the rate and the fragment heating;
+$p_{\rm single} = D/(D+\sum A_{ul})$, dissociations per pump with every
+fluorescent photon free to escape, which sets the vibrational heat return
+because a trapped decay plus its re-absorption moves one molecule down and
+another up and deposits nothing; and
+$p_{\rm eff} = D/(D+\sum A_{ul}P_{\rm loss})$, dissociations per photon
+removed from the beam, which is the band photon ledger. They are related by
+$\sigma_{\rm diss} = p_{\rm eff}\,\sigma_{\rm pump}$, and the beam's own loss
+is served from the same table, so the photons the beam loses and the
+dissociations the rate spends are one absorption with one normalization.
+Line overlap is not a correction at these columns: at
+$n_{\rm H}=10^{13}$\,cm$^{-3}$ the surviving pumping relative to a
+one-line-at-a-time calculation is 0.45 at $N_{\rm H_2}=10^{20}$\,cm$^{-2}$
+and 900\,K, and $4.8\times10^{-5}$ at $4.4\times10^{21}$\,cm$^{-2}$ and
+2700\,K, which is where the base of a molecular layer sits. The rate enters
+\eqref{eq:ion:h2row} as $g_{\rm LW}$ and is zero when no band flux is
+supplied.
+
+\subsection{The caloric equation of state}
+\label{sec:mol:caloric}
+
+The caloric equation of state that gives the bound H$_2$ its rovibrational
+heat capacity is \eqref{eq:caloric} of Sec.~\ref{sec:hydro:eos}, where it is
+stated with its validity and its \texttt{Caloric EOS: monatomic} switch.
+\texttt{caloric\_eos.f90} supplies the four maps the hydrodynamics needs,
+$(\rho,\rho e)\to T$, $(\rho,\rho e)\to p$, $(\rho,p)\to\rho e$ and
+$(\rho,p)\to\gamma_{\rm eff}$, and $\gamma_{\rm eff}$ itself for the wave
+speeds.
+
+\subsection{Carrier transport}
+\label{sec:mol:carrier}
+
+Everywhere else in the code the composition of a cell is the root of a local
+algebraic system. \texttt{diffusive\_photochemistry.f90} solves, instead,
+the continuity equation of the neutral carriers H$_2$, OH, H$_2$O and CO,
+\begin{equation}
+\frac{\partial n_i}{\partial t}
+ + \frac{1}{r^{2}}\frac{\partial}{\partial r}
+   \left[r^{2}\left(n_i v + J_i\right)\right] = P_i - L_i,
+\qquad
+J_i = -n_{\rm tot}\left(D_i+K_{zz}\right)\frac{\partial f_i}{\partial r}
+         - n_i D_i\left(\frac{1}{H_i}-\frac{1}{H_{\rm atm}}\right),
+\label{eq:mol:carriereq}
+\end{equation}
+with $f_i = n_i/n_{\rm tot}$. Between them these four carry every H nucleus
+that is not atomic or in a molecular ion and every O and C nucleus that is
+not a free atom. H$_2^+$, H$_3^+$, HeH$^+$ and O($^1$D) are left local; on
+the HD\,209458\,b molecular example the three molecular ions together carry
+at most $1.2\times10^{-9}$ of the H nuclei, and the H-nucleus budget is
+closed against the element total rather than against a sum of transported
+species, so whatever they hold is simply not available to the carriers. All
+four transported species are neutral, so the ambipolar field term of the
+general drift-diffusion equation is absent rather than neglected.
+
+$D_i$ is Blanc's law over the background carriers (H\,{\sc i}, H\,{\sc ii},
+H$_2$, H$_2^+$, H$_3^+$, He\,{\sc i}, He\,{\sc ii}, He\,{\sc iii},
+HeH$^+$), each pair from the rigid-sphere coefficient of \citet{Banks1973}. The ion-neutral polarization enhancement is not added: the
+transported species only exist where the gas is neutral (electron fraction
+per H nucleus at most $10^{-7}$ over the cells that hold H$_2$), so the ion
+pairs carry that share of the Blanc friction sum, and for H$_2$O the
+induced-dipole formula would be the wrong one anyway, a permanent dipole of
+1.85\,D dominating the capture rate. $K_{zz}$ is read from
+\texttt{kzz\_cell} and nowhere else; that array is filled once, from the
+scalar \texttt{He\_Kzz} or from the lower-atmosphere profile's own $K_{zz}$
+column. Settling is $G_i = (m_i-\bar m)g/(kT)$ with $\bar m = \rho/n_{\rm tot}$
+and $g$ from the same potential the hydrodynamics uses; thermal diffusion is
+not carried ($\alpha_T=0$), there being no evaluated $\alpha_T$ for H$_2$O,
+OH or CO in an H$_2$/He bath.
+
+$P_i-L_i$ is not written in this module: it is obtained by calling the very
+rows the local equilibrium solve uses, \texttt{mol\_heh\_rows} row 4 for
+H$_2$ and \texttt{oxygen\_carrier\_rows} for OH and H$_2$O, at the trial
+densities with the background frozen, and the Jacobian is a forward
+difference of those same calls, so a rate that changes there changes here.
+CO has no chemical source and only its transport moves it, with a ceiling
+from \texttt{limit\_to\_element\_budget} that keeps it from carrying the
+oxygen and the carbon out of the wind, where the molecule cannot survive and
+where the O\,{\sc i} and C\,{\sc ii} lines are the coolant.
+
+The discretization is cell-centered $f_i$, face-centered fluxes on
+\texttt{r\_edg}, one backward-Euler step per call, Newton with a
+backtracking line search, block tridiagonal with $4\times4$ blocks. Faces 0
+and $N$ carry zero diffusive flux; the drift term switches from central to
+donor cell on a P\'eclet test. The element reservoirs at the base are
+Dirichlet, imposed through \texttt{melem\_ab}, the base density and the
+equation of state, but the \emph{partition} of each element among its
+carriers is not imposed anywhere, which is what makes the comparison against
+a photochemical handoff a test rather than a tautology.
+
+The material advection of a carrier is \emph{not} in these rows. It is the
+divergence of the hydrodynamic face mass flux, $F_\rho(j)Y_c(j)/m_c$, taken
+with the mass row itself inside the Runge-Kutta stages \eqref{eq:ssprk3} on
+the same faces, areas, volumes and time step
+(\texttt{species\_face\_flux.f90}), so a cell
+can only lose the carrier the mass row says it loses and a uniform partition
+is preserved to round-off. That this half must ride on the \emph{face} mass flux is a numerical
+statement about the front: a first-order donor-cell difference on the cell
+velocity carries a numerical diffusivity $|v|\Delta r/2$, which on the
+500-cell hot Uranus grid is 8.5, 20 and 22 times the molecular $D$ of H$_2$
+at 1.15, 1.30 and $1.50\,R_{\rm p}$. The key is
+\texttt{Molecular carrier transport}, default off.
+
+\subsection{The oxygen option}
+\label{sec:mol:oxygen}
+
+With \texttt{thereis\_oxychem} (default off) three neutral carriers OH,
+H$_2$O and CO join the network. \texttt{oxygen\_rates.f90} carries the rate
+coefficients, each transcribed from a named publication and each checked
+against two independent ports of the same literature that are on this
+machine (the Photochem \texttt{zahnle\_earth.yaml} network and the VULCAN
+\texttt{NCHO\_photo\_network.txt}), every disagreement being recorded at the
+coefficient. \texttt{water\_photolysis.f90} supplies the photolysis,
+\[
+{\rm H_2O}+h\nu\to{\rm OH}+{\rm H},\quad
+\to{\rm H_2}+{\rm O}(^1{\rm D}),\quad
+\to{\rm O}+{\rm H}+{\rm H};
+\qquad
+{\rm OH}+h\nu\to{\rm O}+{\rm H},
+\]
+in the four far-ultraviolet bands of Sec.~\ref{sec:radiation:spectrum}, whose
+edges are fixed by the branching ratios rather than chosen: the three-body
+branch opens only in the interval containing Ly$\alpha$ and is 12 percent
+there, so Ly$\alpha$ needs its own band on branching grounds alone. The first
+branch alone carries 54.5 percent of the H$_2$O loss at the HD\,189733\,b
+base, which makes the OH/H$_2$O cycle catalytic rather than a one-way sink.
+\texttt{co\_photodissociation.f90} destroys CO on the same Lyman-Werner beam,
+using a band-mean dissociation cross section times the band photon flux and
+the \citet{Visser2009} shielding function
+$\Theta(N_{\rm CO},N_{\rm H_2})$ rather than their $k_0\Theta$ form, because
+EXHALE has a band flux and not an interstellar field and $k_0$ is a statement
+about a particular field. The other CO destruction channel is the He$^+$
+charge transfer
+${\rm He^+}+{\rm CO}\to{\rm C^+}+{\rm O}+{\rm He}$ at the Langevin value
+$1.6\times10^{-9}$\,cm$^{3}$\,s$^{-1}$, which appears in the He$^+$ row of
+\eqref{eq:ion:h2prow}'s system and whose $+2.2117$\,eV appears in heating
+channel 18, one event counted once.
+
+\subsection{The lower-atmosphere handoff}
+\label{sec:mol:handoff}
+
+The base of the escape model sits at a stated pressure level, and three
+routes supply the state there.
+
+\paragraph{The analytic column.} \texttt{lower\_column.f90} integrates the
+hypsometric relation from the 1-bar level up to the base pressure (default
+1\,$\mu$bar), isothermal at $T_{\rm eq}$ with spherical gravity, using the
+mean molecular weight of the chemical-equilibrium H$_2$/H/He partition of
+\citet{Visscher2006} as fitted by \citet{Koskinen2022} eqs.~(11)--(13),
+\begin{equation}
+q_{\rm H_2} = \frac{1.9845+10^{u}-\sqrt{10^{u}\left(3.9690+10^{u}\right)}}{2.3670},
+\qquad
+u = -\frac{23672}{T}-\log_{10}p\,[{\rm bar}]+6.2645,
+\label{eq:mol:qh2}
+\end{equation}
+with $q_{\rm He}$ from the elemental He/H and $q_{\rm H} = 1-q_{\rm H_2}-q_{\rm He}$.
+It returns the radius of the base level and the base mixing ratios, and
+also a fully atomic bracket, because in chemical equilibrium
+$q_{\rm H_2}(1\,\mu{\rm bar})$ stays large up to $T\sim2000$\,K while
+photochemistry dissociates H$_2$ there: a large $q_{\rm H_2}$ on a hot planet
+is the signal that a photochemical handoff is needed. The validation case is
+the \citet{Koskinen2022} Model A Uranus-mass planet at 0.05\,au, for which
+the column gives $r_0(1\,\mu{\rm bar}) = 1.34\,R_{1\rm bar}$ with
+$q_{\rm H_2}\simeq0.84$.
+
+\paragraph{\texttt{base.inp}, the scalar handoff.} An optional file of
+``key value'' lines, written by \texttt{src/utils/run\_lower.py} or
+\texttt{src/utils/vulcan\_to\_base.py}. Every key belongs to one of five
+categories and the category states what the value may do to the wind:
+\emph{provenance} (comments only); \emph{EOS boundary}
+(\texttt{T\_base}$\to T_0$, \texttt{r\_base}$\to R_0$, \texttt{p\_base}, and
+\texttt{q\_H2\_base}, the H$_2$ volume mixing ratio of the base gas);
+\emph{elemental reservoir} (\texttt{HeH\_base} and
+\texttt{<El>\_H\_base} for the ten elements, overriding \texttt{metals.inp}
+for that element); \emph{initial guess} (no key today); and \emph{boundary
+constraint} (\texttt{Kzz\_base}$\to$\texttt{he\_kzz}). \texttt{q\_H2\_base}
+is the $q_{\mathrm{H_2}}$ of \eqref{eq:ntotbc} and is imposed on the H$_2$
+partition of the inflowing ghost species as well; it is refused above
+$0.5/(0.5+{\rm He/H})$. Species mixing ratios other than \texttt{q\_H2\_base}
+stay comments: no part of the code consumes them, so presenting them as
+physics would be false. A \texttt{base.inp} that states \texttt{p\_base} fixes the base level and
+$n_0$ is derived from it as in Sec.~\ref{sec:intro:units}, instead of being
+read from \texttt{input.inp}.
+
+\paragraph{\texttt{Lower atmosphere profile}, the tabulated handoff.}
+\texttt{lower\_atmosphere\_profile.f90} reads the lower model's solution
+over an \emph{interval} of pressure that reaches above the level where
+EXHALE places its base. It supplies the state at the matching level
+$p_{\rm match}$ ($T$, $r$, $q_{\rm H_2}$, and the elemental ratios He/H and
+El/H), which is what the base equation of state and the elemental reservoirs
+are built from, and $K_{zz}$ as a \emph{profile}, because the homopause,
+the only consequential thing $K_{zz}$ does, is where $K_{zz}=D_{12}$, a
+property of two profiles, and the molecular coefficient rises by nearly five
+decades between the base and $1.2\,R_{\rm p}$. Every intensive quantity is
+interpolated linearly in $\log p$, the variable both models solve on;
+extrapolation is never performed. The values go in through exactly the doors
+the scalar keys use, so nothing in the base equation of state changes; $n$
+and $\rho$ carried by the file are \emph{not} imposed, the base density
+remaining $n_0$.
+
+\subsection{Trace metals}
+\label{sec:mol:metals}
+
+\texttt{metals.inp} (\texttt{metals\_input\_read.f90}) sets the elemental
+abundances $n_X/n_{\rm H}$ by number, one ion per line with the neutral label
+naming the element; a second statement of the same element stops the run,
+since two abundances for one element are two answers to one question. The
+same file also carries \texttt{cno\_cool}, \texttt{eos\_metals},
+\texttt{cx\_full} and \texttt{cx\_O2p\_H}. The ionization of each element is
+solved in the same coupled system as hydrogen and helium
+(\texttt{System\_HeH\_metals.f90} and its triplet and molecular
+counterparts), through the rows \eqref{eq:ion:metalrows}; the code carries no
+parallel decoupled metal solver.
+
+\texttt{eos\_metals} (default \emph{on}) puts the metals into the bulk gas
+budget consistently: their mass in $\rho$ and hence in $\mu$, $v_0$, $p_0$;
+their electrons in $n_e$; and their nuclei in $n_{\rm tot}$ and in the ghost
+pressure, matching the charge balance the ionization systems already use.
+The legacy trace approximation (metals in the ionization and cooling but not
+in the bulk gas) is \texttt{eos\_metals 0}. A metals-off run is identical
+either way, every metal sum vanishing.
+
+\subsection{Binary element transport}
+\label{sec:mol:diffusion}
+
+\texttt{binary\_element\_diffusion.f90} treats the gas as two components
+moving through each other with the single mass-averaged velocity of the
+hydrodynamics: component 1 is the hydrogen carriers together with the trace
+metals and the heavy nuclei bound in the molecular carriers, and component
+He is helium in all stages. Since $\rho_1+\rho_{\rm He}=\rho$ exactly, the
+two diffusive mass fluxes close, $J_1=-J_{\rm He}$, and the composition
+update creates no mass. The transported variable is the helium \emph{mass}
+fraction $X = \rho_{\rm He}/\rho\in[0,1]$, which is bounded at both ends
+unlike the ratio $n_{\rm He}/n_{\rm H}$ that the earlier trace kernel
+carried and that diverges exactly in the helium-rich limit this operator
+exists for. The equation is
+\begin{equation}
+\frac{\partial(\rho X)}{\partial t}
+ + \frac{1}{r^{2}}\frac{\partial}{\partial r}
+   \left[r^{2}\left(\rho X v + J\right)\right] = 0,
+\qquad
+J = -\rho\left(D_{12}+K_{zz}\right)\frac{\partial X}{\partial r}
+    - \rho D_{12}\,G\,X(1-X),
+\label{eq:mol:hediff}
+\end{equation}
+\begin{equation}
+G = \frac{\left(m_{\rm He}-m_{c1}\right)m_{\rm H}g
+          -\left(\bar Z_{\rm He}-\bar Z_{c1}\right)eE}{kT}
+   + \alpha_T\frac{{\rm d}\ln T}{{\rm d}r}
+   - \frac{{\rm d}\ln\psi}{{\rm d}r}\qquad[{\rm cm^{-1}}].
+\label{eq:mol:hedriftG}
+\end{equation}
+The masses and charges in $G$ are \emph{carrier} quantities:
+$\psi = n_{1c}/n_{\rm H}$ is the number of collision partners each hydrogen
+nucleus is spread over (1 atomic, $1/2$ fully molecular) and
+$m_{c1}=m_1/\psi$. The gradient coefficient collapses to $\rho D_{12}$ for
+any $\psi$, so the Fickian term is the same in the molecular and the atomic
+region; the piece of the mole-fraction gradient the chemistry carries does
+not cancel and rides in $G$ as $-{\rm d}\ln\psi/{\rm d}r$, which vanishes
+identically wherever $\psi$ is constant. The ambipolar field is computed and
+not assumed, following \citet{Koskinen2013} section 2.1,
+\begin{equation}
+eE = -\frac{1}{n_e}\frac{{\rm d}(n_ekT)}{{\rm d}r}
+   = -kT\frac{{\rm d}\ln(n_eT)}{{\rm d}r},
+\label{eq:mol:ambipolar}
+\end{equation}
+in the logarithmic form, which is exact for the barometric stratification of
+the base and the same second-order central difference elsewhere. It is
+gated by \texttt{he\_ambipolar} (default on); $\alpha_T$ is 0 by default
+(\texttt{He\_alphaT}).
+
+The equation is split. The advection of the element mass fraction is a
+divergence of the same face mass flux the density rides on and is carried
+inside the Runge-Kutta stages \eqref{eq:ssprk3}, so each element's nucleus total over the
+domain changes only by its boundary fluxes to round-off. What is left for
+the implicit step here is
+$\rho(X^{\rm new}-X^{\rm adv})/\Delta t = -r^{-2}\partial_r(r^{2}J)$, taken
+at the composition the stages advected; the operator advects only when it is
+\emph{given} the face mass flux, which happens in the fixed-wind relaxation
+that has no stages to ride on.
+
+The discrete operator is one backward-Euler step with frozen coefficients,
+faces carrying $r^{2}$ areas, Newton on a tridiagonal Jacobian (the step is
+nonlinear in $X$ through the product $X(1-X)$). The gradient term is central;
+the drift term keeps a P\'eclet hybrid, central where
+$|B|\Delta r \le 2(A+E)$ and donor cell otherwise. The two factors of
+$X(1-X)$ come from \emph{opposite} sides of the face, because the drift is a
+counter-flow and a donor-cell rule must take each element's mass fraction
+from the cell that element leaves:
+\begin{equation}
+J_{\rm drift}(f) =
+\begin{cases}
+ -B_f\,X(j{+}1)\left[1-X(j)\right], & B_f\ge0\ \ (\text{helium inward}),\\
+ -B_f\,X(j)\left[1-X(j{+}1)\right], & B_f<0.
+\end{cases}
+\label{eq:mol:driftface}
+\end{equation}
+A donor at $X=0$ then sends nothing and an acceptor at $X=1$ receives
+nothing, so a cell on either end of the axis cannot be pushed past it; with
+the P\'eclet switch the same holds in the central branch, and the row
+argument (time term, gradient flux, upwind advection and drift all of one
+sign at a cell that first touches an end) gives $0\le X\le1$ on the residual
+itself rather than through a comparison principle. Measured, the worst excursion outside $[0,1]$ before the assertion clip is
+$-1.05\times10^{-1}$.
+
+\texttt{project\_elements} then rebuilds the species vector on the new
+element totals: helium-bearing species are scaled by
+$r_{\rm He}=n_{\rm He}^{\rm new}/n_{\rm He}^{\rm old}$, component-1 species
+by $r_1$, and a species carrying a nucleus of each (HeH$^+$) by
+$\min(r_1,r_{\rm He})$, the nuclei this undercounts for the element with the
+larger factor being deposited into that element's neutral ground species.
+Every operation is a multiplication by a nonnegative factor or an addition,
+so no negative intermediate can arise and both element totals are met
+exactly. The invariant is that the species handed back carry the mass the
+species handed in carried, to round-off, which requires $r_1$ to be the ratio
+of the two component-1 \emph{masses} read from the cell. The result is the
+initial guess for \texttt{ioniz\_eq}, which owns the split \emph{within} an
+element while this step owns the element totals.
+
+The whole operator is gated by \texttt{He\_diffusion}, default off. With
+\texttt{he\_metal\_diffusion} (default off) each trace element additionally
+carries its own mass fraction and its own binary coefficient; otherwise the
+metals are frozen to hydrogen, i.e.\ they ride in component 1 at the
+metal/H ratio the cell holds, and what \texttt{project\_elements} preserves
+for them is that ratio and not the density.

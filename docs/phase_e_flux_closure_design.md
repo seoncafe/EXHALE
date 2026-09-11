@@ -2,7 +2,7 @@
 
 **Status: implemented, 2026-08-27, milestones E1 through E5, section 8.
 The six decisions of section 9 were confirmed as proposed and are in the code
-as written, except that the helium-flux arm of decision 5 was answered the
+as written, except that the helium-flux question of decision 5 was answered the
 other way: the closure iterates helium as well as hydrogen. Sections 2-6 now
 describe code rather than a proposal, and every test of section 7 has been
 run. Two of them are answered against their first form and the answer is the
@@ -115,7 +115,7 @@ Header (machine-readable `key value` lines, all required unless marked):
 | `p_top_bar` | the shallowest level the file carries; must be `< p_match_bar` so that an overlap exists |
 | `p_deep_bar` | the deepest level carried (diagnostic; EXHALE never reads below the match) |
 | `trial_flux_H` | the elemental H flux imposed at the lower model's upper boundary for this solution, `g/s` outward positive |
-| `trial_flux_He` | the same for helium (usually 0 for the first arm) |
+| `trial_flux_He` | the same for helium (usually 0 for the first solution) |
 | `iteration` | closure iteration index k that produced this file |
 | `reached_steady_state` | `T`/`F` from the chemistry solver |
 | `notes` (optional) | free text |
@@ -383,8 +383,8 @@ at `1.0e-4`.
 ## 4. The Photochem adapter
 
 **`src/utils/photochem_to_lower_profile.py`**, with
-`src/utils/vulcan_to_lower_profile.py` the cross-check arm behind the same
-command-line interface. The VULCAN arm is a cross-check, not a second
+`src/utils/vulcan_to_lower_profile.py` the cross-check behind the same
+command-line interface. The VULCAN adapter is a cross-check, not a second
 production path: P1 left the code choice to the user, and P1's evidence table
 gives Photochem the climate model, which is the only path away from a
 prescribed T(p) (`vulcan_photochem_comparison.md` P1.7).
@@ -615,7 +615,7 @@ one-way profiles of E2 and E3 remain reproducible: verified by reproducing
 That the boundary condition takes is checked every iteration rather than
 assumed: the adapter measures the model's own top-of-atmosphere elemental
 fluxes with `gas_fluxes()` and writes them into the profile header as
-`measured_flux_H` / `measured_flux_He`. On the LHS 1140 b reference arm the
+`measured_flux_H` / `measured_flux_He`. On the LHS 1140 b reference run the
 imposed 1.800000e7 g/s comes back as 1.800162e7 g/s, a departure of 9e-5.
 The closed-top solution's own numerical floor is 3.0 g/s in hydrogen and
 18.2 g/s in helium, seven decades below the fluxes at issue.
@@ -664,7 +664,7 @@ away.
 
 **Run on LHS 1140 b, 2026-08-27**, from `Phi_ref = 1.8e7 g/s` in hydrogen and
 `1.3e7 g/s` in helium (the fluxes the neighboring solution carries) and from
-`0.3 x` and `3 x` those. The three arms are
+`0.3 x` and `3 x` those. The three runs are
 `LHS1140b/exhale/flux_closure/{ref,lo,hi}`.
 
 | start | k at convergence | converged `F_H` [g/s] | `F_He` [g/s] | `He/H` at the match | `log10 Mdot` | He 10830 red depth [%] | EW [mA] |
@@ -679,12 +679,12 @@ inside the 5 per cent criterion. **T-E7 passes**, and the closure is
 single-valued on this planet rather than multivalued.
 
 Two things the run says about the loop itself. `omega` stayed at 0.5 in every
-arm: the residual fell on every iteration and the halving rule never fired,
+run: the residual fell on every iteration and the halving rule never fired,
 so the Picard map is a plain contraction here and the damping was not tested
 by this planet. And the iteration count is exactly what a contraction with
-`omega = 0.5` predicts: the residual halves each step, so the arm starting
+`omega = 0.5` predicts: the residual halves each step, so the run starting
 1.98 away needs seven iterations and the one starting 0.70 away needs six,
-both inside `k_max = 8`, with no margin to spare for the 3x arm. A start
+both inside `k_max = 8`, with no margin to spare for the 3x run. A start
 further than an order of magnitude out would need a larger `k_max` or a
 secant acceleration.
 
@@ -737,8 +737,8 @@ precautionary:
 | T-E2 | scalar fallback | with no `Lower atmosphere profile:` key, `make check` is **6/6 byte-identical**; goldens untouched |
 | T-E3 | constant K_zz identity | a profile whose `Kzz` column is uniformly `1.0e9`, on the `mol_diffusion` case, reproduces that case's golden bitwise (section 3.2's IEEE argument, verified rather than asserted) |
 | T-E4 | pair enforcement | a profile plus a `base.inp` carrying an EOS/reservoir/constraint key stops with the key named; a pair with mismatched `solution_id` stops with both ids printed; a legacy `base.inp` alone still runs |
-| T-E5 | overlap flux | `F_H` and `F_He` over the overlap window are flat to the same tolerance as the mass flux (T8 criterion), on a converged LHS 1140 b run with diffusion on -- **measured 2026-08-27, and the answer is that they are not, in the overlap window.** Where that window is non-empty at all it holds 12-18 faces between 1.007 and 1.0098 R_p and the flux there has a radial spread of 13 (F_H) to 35 (F_He), with a median 4.5x the flux the wind actually carries. The criterion is met in the steady-flux window instead, and there it is met exactly as stated: `F_H` 0.44%, `F_He` 0.46%, mass flux 0.45% on the reference arm. Section 3.4 records why the overlap interval cannot do better |
-| T-E6 | closure residual | the loop of section 6.1 reaches `eps_k <= 0.05` within `k_max`, and the residual is above neither the flux spread nor the reproducibility floor -- **passes 2026-08-27** on all three LHS 1140 b arms (`k` = 0, 5, 6 against `k_max` = 8); the converged residuals are 0.015, 0.031 and 0.029 against window spreads of 0.004-0.009 |
+| T-E5 | overlap flux | `F_H` and `F_He` over the overlap window are flat to the same tolerance as the mass flux (T8 criterion), on a converged LHS 1140 b run with diffusion on -- **measured 2026-08-27, and the answer is that they are not, in the overlap window.** Where that window is non-empty at all it holds 12-18 faces between 1.007 and 1.0098 R_p and the flux there has a radial spread of 13 (F_H) to 35 (F_He), with a median 4.5x the flux the wind actually carries. The criterion is met in the steady-flux window instead, and there it is met exactly as stated: `F_H` 0.44%, `F_He` 0.46%, mass flux 0.45% on the reference run. Section 3.4 records why the overlap interval cannot do better |
+| T-E6 | closure residual | the loop of section 6.1 reaches `eps_k <= 0.05` within `k_max`, and the residual is above neither the flux spread nor the reproducibility floor -- **passes 2026-08-27** on all three LHS 1140 b runs (`k` = 0, 5, 6 against `k_max` = 8); the converged residuals are 0.015, 0.031 and 0.029 against window spreads of 0.004-0.009 |
 | T-E7 | initial-value insensitivity | section 6.3: three starts, converged `HeH` within 5%, `log10 Mdot` within 0.025 dex -- **passes 2026-08-27**: `He/H` agrees to 5.5e-6 and `log10 Mdot` to better than the printed 0.005 across starts spanning 10x |
 | T-E8 | element budget | `src/utils/element_budget.py <case>` closes for H, He and every element the profile carries, at its default tolerance, against `EXHALE_resolved.out` (the pre-existing He 2^3S double count of `calc_rho`, `docs/Update_EXHALE_stage1.md` section 74, is the known exception and is reported, not hidden) -- **closed 2026-08-27** on the LHS 1140 b profile run: C 1.44e-14, N 1.47e-14, O 1.45e-14 against 1e-8. With `He_diffusion` on, He/H is a solved profile and not a column invariant (2.0921 at the base, 0.167 at 30 R_p), so the H and He rows are stated at the base cell, where the reservoir is the boundary condition, and the separation is reported beside them; `EXHALE_resolved.out` now carries `he_diffusion` so the checker knows which of the two it is testing |
 | T-E9 | cross-code | the VULCAN adapter run at the same match on the same planet gives an `X_He` and an `F_H` whose difference is stated beside the P1 spread (network 3.95, code 1.70 on a 864 K base; 1.02/1.08 on a 2331 K base) |
@@ -764,7 +764,7 @@ diffusion on the direct steady route and the restart behavior of
 ## 9. Decisions to confirm before implementation
 
 **All six were confirmed as proposed on 2026-08-27 and are implemented as
-written, except that the helium-flux arm of decision 5 belongs to E4.**
+written, except that the helium-flux question of decision 5 belongs to E4.**
 
 Expensive to reverse, because each fixes a file format, a user-visible key,
 or a physical convention:
@@ -803,7 +803,7 @@ or a physical convention:
    of the same decision.
 6. **Which code is the production chemistry.** P1 left this to the user
    (`vulcan_photochem_comparison.md` P1.7). This design assumes Photochem for
-   production and VULCAN as the cross-check arm, because only Photochem has
+   production and VULCAN as the cross-check, because only Photochem has
    the climate model section 5 requires. If the user decides otherwise, the
    climate step needs an external radiative-convective model and section 5 is
    rewritten.

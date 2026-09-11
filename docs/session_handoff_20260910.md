@@ -4,7 +4,7 @@ The state to restart from. Read `docs/code_status_20260910.md` first, then
 `docs/ISSUES_20260909.md` (sections 3.1 and 5 carry the stage-2 solver
 account to its close), `docs/PLAN_20260909_rev1.md` (the plan of record),
 `docs/To_be_determined_by_user_20260906.md` (decisions 1 to 23) and
-`docs/Update_EXHALE.md` section 7 (the dated record, items B5e to N38). The
+`docs/Update_EXHALE_stage2.md` section 7 (the dated record, items B5e to N38). The
 previous handoffs (`session_handoff_20260908.md`, `_20260907.md`,
 `_20260905.md`) are records and are not updated.
 
@@ -20,7 +20,7 @@ previous handoffs (`session_handoff_20260908.md`, `_20260907.md`,
   `backup/regression/golden_pre_stageD_20260910/`), `lower_profile` again at
   11:10 for N29 (`golden_pre_n29_20260910/`); `make check` PASS on the
   shared build at that gate. Nothing since N30 moves a default path: every
-  N31 to N38 change is a default-off hook, arm or key, verified bitwise on
+  N31 to N38 change is a default-off hook, option or key, verified bitwise on
   `backup/regression/wasp_full_newton/IC` and on the first 40 iterations of
   the atomic reload after each item.
 - Suites: 25 `src/tests/*/run.sh`; `krylov_and_dogleg` grew 174 -> 264 rows
@@ -37,8 +37,8 @@ previous handoffs (`session_handoff_20260908.md`, `_20260907.md`,
 
 ## What this session settled (N31 to N38, all measured, nothing adopted)
 
-The species-row stationary solves (atomic element arm, molecular carrier
-arm) do not converge, and the reason is now stated by measurement rather
+The species-row stationary solves (atomic element reload, molecular carrier
+reload) do not converge, and the reason is now stated by measurement rather
 than by reading:
 
 1. The finite-difference Jacobian action is not additive along the
@@ -49,7 +49,7 @@ than by reading:
    column). It follows no inner tolerance (N32). Quadruple precision inside
    the assembly lowers it by 2.1 only, onto the double representation of
    what the assembly is handed (N34).
-2. With a faithful image (N34's quad arm) the Krylov cycle STILL stalls: the
+2. With a faithful image (N34's quadruple-precision assembly) the Krylov cycle STILL stalls: the
    banded preconditioner misses no coupling, the preconditioned operator is
    near-singular on the species rows themselves (Ritz ratio 6.6e5 carrier,
    1.1e4 atomic; the binding carrier row's diagonal 3.3e3 below its coupling
@@ -90,7 +90,7 @@ routes, neither started:
   solve (the "tridiagonal Newton of the implicit step" already exists in
   `binary_element_diffusion.f90`), an outer Picard iteration with
   under-relaxation to the joint fixed point, certification unchanged. Linear
-  convergence instead of quadratic, which the present arm does not enjoy
+  convergence instead of quadratic, which the present solve does not enjoy
   anyway (chaotic at the ulp level, N26c). Two variants: a Picard fixed
   point between the two solves, or the CETIMB way (READ from the session
   memory of Koskinen et al. 2013 and Huang et al. 2023, to be re-checked in

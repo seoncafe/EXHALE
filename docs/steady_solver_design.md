@@ -496,9 +496,9 @@ belongs to is read once: the caller obtains it with
 `face_mass_flux_of_state` and passes it in, so the element module carries no
 dependence on the steady residual (item DIFT-LINK; a `functions/` module
 reaching up into `time_step/` dragged the whole tree plus LAPACK into every
-program linking it, and `diffusion_tests.x` stopped linking). The trace-element arm takes the divergence of the same face
+program linking it, and `diffusion_tests.x` stopped linking). The trace-element rows take the divergence of the same face
 element mass fluxes, converted by `n0 msum/A_X` and `1/n_H` into the mixing
-ratio per second its row is written in, and its solve became a deferred
+ratio per second they are written in, and their solve became a deferred
 correction: the matrix carries the diffusive half and the donor-cell part of
 the advective term, the right-hand side carries what the reconstruction and
 the bounding add on top of the donor cell at the current iterate, so the fixed
@@ -533,7 +533,7 @@ hands over.
 
 The marching path does not move: `element_diffusion_step` is called there
 without a flux and carries the diffusive half alone, and `mol_diffusion` and
-`lower_profile` (the latter with `He_metal_diffusion`, so the trace arm runs
+`lower_profile` (the latter with `He_metal_diffusion`, so the trace-element solve runs
 too) are byte-identical at 300 steps before and after.
 
 ## 16. The banded model an element row can be solved on (2026-09-08, B5d)
@@ -772,7 +772,7 @@ MEASURED, `wasp_full_newton` reloaded from its own converged state is
 byte-identical before and after, `info = 0`, CERTIFIED, at the same 6 outer
 iterations and `log10 Mdot = 13.30`.
 
-### 17.5 The carrier arm is not rescued by this, and the ledger says why
+### 17.5 The carrier reload is not rescued by this, and the ledger says why
 
 MEASURED on `mol_carrier` reloaded with `Coupled carrier solve: True`,
 `Solver: Newton 100.0`, `Resid tol: 1.0e-8`, one thread: the line search
@@ -890,7 +890,7 @@ So the 66-iteration convergence of section 17.1 is a property of one
 particular sequence of evaluations of this case and not of the state: two
 independent perturbations of order 1e-8 in the row scale -- the self-test's,
 and the change of which evaluation the scale is taken from -- both send it to
-the same stagnation. **What is recorded here is that the element arm of the
+the same stagnation. **What is recorded here is that the element solve of the
 coupled solve rests on a seed-dependent residual**, and that no step control
 can be judged on this case until the elimination has one fixed point. The
 element row measure of the stagnated state is 9.992e-01 against
@@ -902,9 +902,9 @@ The three-unknown route is untouched by all of it: with no species row
 is zero and the gate ignores it, and the scale reordering has no reader
 between the two positions.
 
-### 18.5 The carrier arm: what "no Krylov direction could be sampled" was
+### 18.5 The carrier reload: what "no Krylov direction could be sampled" was
 
-Section 17.5 left the carrier arm stagnating with 18 of its 49 iterations
+Section 17.5 left the carrier reload stagnating with 18 of its 49 iterations
 ending on `no Krylov direction could be sampled` and a count of "500 trials
 refused for the element budget". Both statements are now measured, and the
 second was mislabeled.
@@ -957,7 +957,7 @@ state:
 | GMRES cycles truncated / colors zeroed | 18 / 0 | 0 / 0 |
 | `\|\|R\|\|` returned, H2 row of the returned state | 1.873, 1.62e-01 | 1.873, 1.62e-01 |
 
-**The arm is not converged by this and the repair does not claim to be.**
+**The carrier reload is not converged by this and the repair does not claim to be.**
 What it removes is an iteration with no Newton model; what remains is the
 same bound seen from the trial side, the dogleg cutting its step back by
 `2^-25` to `2^-49` to keep it describable and the merit not moving. A trust
@@ -1062,7 +1062,7 @@ mass, while the Newton holds the unknown at exactly zero and the row reads
 `-1.00000` of its own scale. Twenty-six to thirty-two species unknowns of one
 state sit on their bounds at once.
 
-**The two arms, MEASURED on `mol_carrier`** with `Coupled carrier solve: True`,
+**The two unknowns, MEASURED on `mol_carrier`** with `Coupled carrier solve: True`,
 `Molecular carrier transport: True`, `Solver: Newton 100.0`, `Resid tol` 1e-8,
 one thread, ONE binary, the two runs an environment variable apart, each run
 to its own exit (item B5k):
@@ -1086,7 +1086,7 @@ to its own exit (item B5k):
 | adopted carriers at or below the floor | **716** | **0** |
 | `log10 Mdot` | 10.62 | 10.63 |
 
-The one entry in which the density arm reads better is the volume-weighted
+The one entry in which the density unknown reads better is the volume-weighted
 carrier row, and it is the same fact as the entry above it: pinning the
 carrier of one cell at zero makes THAT cell's row read 1 and leaves the rest
 of the column alone, while the logarithm spreads a smaller error over more
@@ -1171,14 +1171,14 @@ own cell and the count of adopted carriers at or below it. MEASURED on
 `mol_carrier`, one binary and one environment variable apart: with `ln n` the
 ratio is 2.53e+15 and the count 0; with the density unknown the ratio is 0 and
 the count 716, which is the same fact as the exact zero of the table above. On
-`mol_diffusion` with H2 carried the log arm reads 4.02e+08 and 0.
+`mol_diffusion` with H2 carried the log unknown reads 4.02e+08 and 0.
 `src/tests/steady_species_rows/run.sh` carries both as rows
 (`carrier_is_above_its_own_floor_*`, `carrier_never_reached_its_floor_*`),
 GREEN on the log runs and RED on the density one.
 
-### 20.2a What limits the log arm now, MEASURED
+### 20.2a What limits the log unknown now, MEASURED
 
-Neither arm converges. What stops the log arm is no longer a lower bound: on
+Neither converges. What stops the log unknown is no longer a lower bound: on
 `mol_carrier` it holds no unknown on a bound, takes no Cauchy-only step, needs
 no backward sample and has no sample refused for a negative carrier. Its steps
 are model-accurate -- the reduction ratio of the last ten accepted steps runs
@@ -1190,14 +1190,14 @@ refusing is the element budget: **157 residual samples refused for cells
 outside it, against 0 for a negative carrier**. The region itself is not the
 limit; its radius spent 30 of 68 iterations at its own ceiling.
 
-So the completion the density arm was missing -- Bertsekas' two-metric
+So the completion the density unknown was missing -- Bertsekas' two-metric
 projection, Newton on the free variables and a scaled gradient on the bound
-ones -- is **not** what the log arm needs: it has no bound variables. The
+ones -- is **not** what the log unknown needs: it has no bound variables. The
 constraint now shortening its steps is the carrier CEILING, the element budget,
 which `species_unknowns_outside_their_bounds` deliberately does not treat as a
 face of the box ("the element budget above it is a comparison and not a bound")
 and which is enforced only by refusing an evaluated state. Giving the model
-that constraint is a different repair from the one the density arm asked for.
+that constraint is a different repair from the one the density unknown asked for.
 
 ### 20.3 What the certification is not asked to do
 
@@ -1342,8 +1342,8 @@ Krylov cycle rather than only that component.
 
 `mol_carrier` reloaded with `Coupled carrier solve: True`,
 `Molecular carrier transport: True`, `Solver: Newton`, `Resid tol: 1.0e-8`,
-one thread, the carrier in `ln n`; one binary, `EXHALE_SPECIES_BUDGET_FACE=0` (retired by N4b, 2026-09-09; the measurement arm is now `EXHALE_ELEMENT_CONSTRAINT_ROWS=0`)
-apart. The switched-off arm reproduces the entry text iteration for iteration
+one thread, the carrier in `ln n`; one binary, `EXHALE_SPECIES_BUDGET_FACE=0` (retired by N4b, 2026-09-09; the measurement option is now `EXHALE_ELEMENT_CONSTRAINT_ROWS=0`)
+apart. The switched-off run reproduces the entry text iteration for iteration
 and byte for byte in both output files, so the face is the only behavior this
 item changed on this route.
 
@@ -1363,7 +1363,7 @@ item changed on this route.
 | `log10 Mdot` | 10.63 | 10.63 |
 
 So the face does what it was built to do: the halvings against the budget and
-the refusals for leaving it are gone, exactly. It does NOT converge the arm,
+the refusals for leaving it are gone, exactly. It does NOT converge the carrier reload,
 and it does not improve `||R||` on this case; it moves the limit to a
 different, named place. **The Krylov leg is now what refuses the step**: with
 the trial on a face, 19 of 53 iterations end because the model of the projected
@@ -1429,7 +1429,7 @@ Sections 1 to 21 are the record of how the stationary solver was built and
 what each measurement refuted along the way; they are left as they were
 written. This section states what the design IS at the end of stage 2, after
 items N1 to N30, and what it does not yet do. Numbers are LOGGED from
-`docs/Update_EXHALE.md` section 7 and `docs/ISSUES_20260909.md` unless marked
+`docs/Update_EXHALE_stage2.md` section 7 and `docs/ISSUES_20260909.md` unless marked
 otherwise.
 
 ### 22.1 The system
@@ -1515,7 +1515,7 @@ The atomic three-unknown solve converges and certifies
 
 No solve carrying a species row certifies. The two candidates:
 
-| arm | `\|\|R\|\|` handed back | binding row in the gated window | verdict |
+| reload | `\|\|R\|\|` handed back | binding row in the gated window | verdict |
 |---|---|---|---|
 | atomic element (eight element rows, HD 209458 b) | 2.3e-4 | helium, 2.9e-4 of its scale against 1e-5 | NOT certified |
 | molecular carrier (hot Uranus, H2 transported) | 0.25 | H2, 7.3e-2 against 1e-5 | NOT certified |
@@ -1545,13 +1545,13 @@ right discretization but not by itself the cure.
 
 ### 22.5 Two facts about this solver that change how it is judged
 
-- **The atomic arm is chaotic at the ulp level** (N26c). A one-ulp change of
+- **The atomic reload is chaotic at the ulp level** (N26c). A one-ulp change of
   the upper ghosts, with no boundary posed, moves `||R||` at iteration 40
   from 3.2e-2 to 1.1, because the Krylov leg's one-digit tolerance decides
   which vector crosses it at the last bits of the residual. A physically
-  correct ghost refill (N26b) broke the arm for this reason and was
+  correct ghost refill (N26b) broke the reload for this reason and was
   reverted; the element operator's caller dependence stays, measured, in
-  `src/tests/element_operator`. **Consequence: the arm's `||R||` at a fixed
+  `src/tests/element_operator`. **Consequence: the reload's `||R||` at a fixed
   iteration is not an acceptance quantity.** What is quoted instead are
   named outcomes: which row binds, which screen refused, the flux spread.
 - **Marching relaxes what the Newton cannot**, and much of the reason is now

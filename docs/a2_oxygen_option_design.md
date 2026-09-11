@@ -142,12 +142,12 @@ Two features of that network matter for what A2 has to add:
 
 Re-measured for this design from the P1 Photochem budget files (the pickles hold
 `production` / `loss` arrays with their reaction strings on a 100-level grid;
-the arms are C' = Photochem/NCHO, B' = Photochem/Zahnle, D' = Photochem/Zahnle+S).
+the networks are C' = Photochem/NCHO, B' = Photochem/Zahnle, D' = Photochem/Zahnle+S).
 The document's own P1.4/P1.5 tables were reproduced to the quoted digits; the
 reaction-by-reaction rankings below are new and are cited to the pickles, not to the
 document.
 
-**HD 189733 b, 1 microbar, 864 K, arm C': net H2 loss 8.617e6 cm^-3 s^-1**
+**HD 189733 b, 1 microbar, 864 K, network C': net H2 loss 8.617e6 cm^-3 s^-1**
 
 | share of net | channel |
 |---|---|
@@ -163,7 +163,7 @@ and the cycle that returns the water to OH: H2O loss is 54.5% `H2O + hv -> H + O
 `H2O + hv -> H + H + O`; H2O production is 100.0% `OH + H2 -> H2O + H`. OH loss
 is 97.6% `OH + H2`, 2.4% `OH + H -> O + H2`, and 0.02% `OH + CO -> H + CO2`.
 
-**HD 209458 b, 1 microbar, 2331 K, arm C': net H2 loss 6.089e6 cm^-3 s^-1**
+**HD 209458 b, 1 microbar, 2331 K, network C': net H2 loss 6.089e6 cm^-3 s^-1**
 
 | share of net | channel |
 |---|---|
@@ -173,7 +173,7 @@ is 97.6% `OH + H2`, 2.4% `OH + H -> O + H2`, and 0.02% `OH + CO -> H + CO2`.
 | 1.7% | `O(1D) + H2 -> OH + H` |
 | 0.02% | `CO + H2 -> HCO + H` |
 
-**HD 209458 b, 1e-4 bar, 1830 K, arm C', net 1.306e8 cm^-3 s^-1**: `H2 + M`
+**HD 209458 b, 1e-4 bar, 1830 K, network C', net 1.306e8 cm^-3 s^-1**: `H2 + M`
 97.2%, `OH + H2` 1.5%, `O + H2` 1.2%, `CO + H2 -> HCO + H` 0.13%.
 
 Four things follow, and they are the whole justification for the species list:
@@ -195,7 +195,7 @@ Four things follow, and they are the whole justification for the species list:
    and if anything stronger; the "twice as effective" ordering is not
    (`docs/a2_reaction_audit.md` section 3).
 3. **CO must be carried as an oxygen reservoir even though no CO reaction
-   matters.** Measured oxygen inventory, arm C':
+   matters.** Measured oxygen inventory, network C':
 
    | case | H2O | CO | OH | O | CO2 |
    |---|---|---|---|---|---|
@@ -203,7 +203,7 @@ Four things follow, and they are the whole justification for the species list:
    | HD 209458 b, 1 microbar | 42.9% | 45.8% | 7.3% | 4.0% | ~0 |
    | HD 209458 b, 1e-4 bar | 54.0% | 45.8% | 0.2% | ~0 | ~0 |
 
-   CO locks 45-46% of the oxygen at every level in every arm. A network that
+   CO locks 45-46% of the oxygen at every level in every network. A network that
    gives all of `melem_ab(iel_O)` to the water family over-supplies the OH cycle
    by about a factor of two. The largest CO channel measured anywhere is
    `CO + H2 -> HCO + H` at 0.13% of the net, so CO is required as a *sink*, not
@@ -446,7 +446,7 @@ deposited heat balance.
 | hydrocarbons beyond CO (`CH3 + H2`, `CH + H2`) | <= 1.0% gross, <= 0.01% net | negligible at the measured levels |
 | CO chemistry (`CO + H2 -> HCO + H`, `OH + CO -> H + CO2`) | <= 0.13% of any net budget | CO stays an inert reservoir |
 | CO2 | 0.3% of the oxygen on HD 189733 b, ~0 elsewhere | folded into CO or dropped (decision D4) |
-| O2, HO2, H2O2, HCO, H2CO | every one of them below `1e-8` by volume at every measured level in every arm (O2 is the largest, `1.04e-8` on HD 209458 b at 1 microbar and `1.10e-10` on HD 189733 b) | dropped outright |
+| O2, HO2, H2O2, HCO, H2CO | every one of them below `1e-8` by volume at every measured level in every network (O2 is the largest, `1.04e-8` on HD 209458 b at 1 microbar and `1.10e-10` on HD 189733 b) | dropped outright |
 | water-family ions | the measured oxygen at these levels is neutral | see section 2.4 |
 
 **Validity range to be written into the module header.** A2 is valid where the
@@ -563,7 +563,7 @@ solves. That is not automatic: it is a constraint on the discretization
 | the Dirichlet base and zero-gradient top | reuse the pattern (lines 485-522); section 3.7 |
 | damped Picard co-convergence with the steady solver | reuse `steady_wind_with_element_diffusion` (EXHALE_main.f90:1336-1426); section 3.8 |
 | the element write-back `project_elements` | **must be extended**, not reused as is: it slaves every `mion` column to `r_H` (lines 1900-1903) and re-seeds an absent element in its neutral stage. A molecule carrying both H and O is in the position `HeH+` occupies for the H/He pair, where the code already uses `rBoth = min(rH, rHe)` (line 1893) |
-| `element_nucleus_counts` | **must gain an oxygen arm.** Today it sums `bsp_nH` and `bsp_nHe` only. Without a `bsp_nO` analogue, every O nucleus bound in OH, H2O or CO disappears from the metal operator's `nX` and `project_elements` scales it as if it were hydrogen |
+| `element_nucleus_counts` | **must gain an oxygen count.** Today it sums `bsp_nH` and `bsp_nHe` only. Without a `bsp_nO` analogue, every O nucleus bound in OH, H2O or CO disappears from the metal operator's `nX` and `project_elements` scales it as if it were hydrogen |
 | `m_1 = mass_per_H_nucleus_without_He()` | **must be revisited.** It is `bsp_mass(isp_HI) + sum(melem_ab*melem_A)` (`composition.f90:214-229`), i.e. the binary H/He closure assumes a *fixed* metal/H. Oxygen chemistry that moves O relative to H breaks that assumption; the mass-closure diagnostic at `binary_element_diffusion.f90:660-664` is what would report it |
 
 The last three rows are the real integration cost of A2, and they are the
@@ -777,7 +777,7 @@ bsp_mass(H2O) = 2.0 + melem_A(iel_O)      = 17.875
 bsp_mass(CO)  = melem_A(iel_C) + melem_A(iel_O) = 27.793
 ```
 
-(Numbers as of batch 2c of `Update_EXHALE.md`; before it the metal masses were
+(Numbers as of batch 2c of `Update_EXHALE_stage2.md`; before it the metal masses were
 taken in atomic mass units as if they were m_H units, 0.78% high.)
 
 and, critically, **the oxygen bound into OH, H2O and CO must be removed from the
@@ -964,7 +964,7 @@ the Photochem handoff on the HD 189733 b base, run as a regression so that the
 two owners of the oxygen physics cannot drift apart silently.
 
 **What is compared.** The H2 fraction at the EXHALE base level, from an A2 run
-of HD 189733 b, against the Photochem arm C' solution already stored in
+of HD 189733 b, against the Photochem network C' solution already stored in
 `vulcan_work/pc_compare_p1/hd189_toa1e-2/pc_ncho_solution.pkl`.
 
 **On which quantity, and this matters.** `q_H2` as EXHALE defines it is a
@@ -995,7 +995,7 @@ which is independent of He/H, and which the code already prints as the
 
 **Tolerance, and its justification.** P1 measured, at matched network and
 matched domain, the spread between two mature photochemistry codes on this exact
-planet and level: **code arm 1.70x in `q_H`**, against a network arm of 3.95x
+planet and level: **1.70x in `q_H` between the two codes**, against 3.95x between networks
 (and 1.08x / 1.02x respectively on HD 209458 b's 2331 K base). A newly written
 Fortran network with a deliberately reduced reaction set cannot reasonably be
 held to a tighter standard than two full codes running the same network on the
@@ -1008,7 +1008,7 @@ same profile. So:
 
   P1 measured its 1.70 on `q_H`, a volume mixing ratio, not on `1 - x_H2`. The
   two are related exactly, at fixed He/H and fixed elemental hydrogen, by
-  `q_H / (1 - x_H2) = 1 / [ (1 - x_H2/2) + He/H ]`, so the ratio between two arms
+  `q_H / (1 - x_H2) = 1 / [ (1 - x_H2/2) + He/H ]`, so the ratio between two solutions
   differs between the two measures by at most about 6% over the pass band at
   `He/H = 0.0833`. Transferring the factor is therefore safe, and the arithmetic
   is written here so that it is checked rather than assumed.
@@ -1016,7 +1016,7 @@ same profile. So:
   (`0.023 <= 1 - x_H2 <= 0.355`). Landing outside that band means A2 is a worse
   approximation than simply choosing a different published network, which is the
   condition under which the option should not ship on by default at all.
-- **The comparison pins He/H in both arms** and re-runs the Photochem arm at the
+- **The comparison pins He/H in both solutions** and re-runs the Photochem one at the
   EXHALE run's He/H if they differ, rather than comparing across it.
 
 **Why this is not circular.** It is only a test if A2 is allowed to get the
@@ -1048,7 +1048,7 @@ compiles".
 | **M1** | **DONE: `docs/a2_reaction_audit.md`.** Every reaction of section 2.4 traced to a published source, its validity range recorded, the conservation skeleton checked at reaction level (elements and charge balance in each reaction), and an explicit verdict on O8-O12. The thermodynamic data for section 2.5, if D2 says so. No code beyond a new `mol_rates`-style module of coefficients | the audit table exists, every row cites a publication read (not a database entry recalled), and the network conserves H, O and C reaction by reaction. A standalone driver reproduces one published rate curve per reaction against its source figure or table |
 | **M2** | **DONE: local kinetics only.** The A2 species solved as a local steady state, with the FUV bands, inside the existing cell-by-cell solve. No transport. This is deliberately the state P4 says is *wrong*, it is built because it isolates the chemistry from the transport for debugging | G1, G2, G3, G4 pass. The HD 189733 b base partition is measured and reported, and it is expected to *miss* the A/B target, that miss is the measurement that motivates M3 |
 | **M3** | **DONE -- vertical transport.** The species transport-chemistry solve of section 3, the Dirichlet/zero-flux boundary of 3.7, the write-back and the element bookkeeping of section 4 | G5, G10 pass; the marching loop and the steady Picard loop both converge on a case that converges today; `tau_chem/tau_adv` is an output |
-| **M4** | **The A/B gate.** HD 189733 b run against the stored Photochem C' arm, He/H pinned, on `x_H2` | section 6.2's pass band. This is the milestone that decides whether A2 ships |
+| **M4** | **The A/B gate.** HD 189733 b run against the stored Photochem C' solution, He/H pinned, on `x_H2` | section 6.2's pass band. This is the milestone that decides whether A2 ships |
 | **M5** | **Integration and regression.** `_adv` made loud, transit-tool guard, `EXHALE_resolved.out` provenance, IC round trip, the new regression case | G6, G7, G8, G9 pass; `make check` byte-identical with the key absent; goldens refreshed only at the end of the series and the refresh reported |
 | **M6** | **Documentation.** `docs/input_schema.md` sections 2b and 4, `README.md`, `README_HOWTO.md`, the user manual's lower-atmosphere section, `docs/Update_EXHALE_stage1.md`, and the validity-range statement of section 2.7 written into the module header | the manual states what A2 computes, what it assumes, and where it is not valid, in the same terms as section 2.7 |
 
@@ -1103,7 +1103,7 @@ with the Lyman-Werner interval running 912-1201 A and band B1 merged into it;
 `water_photolysis.f90` section 3 is the current statement.)*
 
 **The measurement that motivates M3.** `x_H2 = 0.773` at the HD 189733 b base
-against 0.910 for the stored photochemical arm and a pass band of 0.847-0.947.
+against 0.910 for the stored photochemical solution and a pass band of 0.847-0.947.
 It misses low, inside the outright-failure band but outside the pass band. The
 run is a bounded 12000-step relaxation from cold whose base sits at 1410 K
 rather than 864 K, so this is a measurement of the chemistry and not the A/B
@@ -1227,7 +1227,7 @@ measurement.**
   converges in 4-16 iterations to 2e-13 where it had been hitting its cap of 30.
 
 **The A/B measurement, on HD 189733 b with the band fluxes of the same stellar
-spectrum the reference arm was run with (LW 600.1, B1 648.4, B2 1.4957e4,
+spectrum the reference solution was run with (LW 600.1, B1 648.4, B2 1.4957e4,
 B3 1374.1, B4 4.6295e4 erg cm^-2 s^-1), 12000-step relaxation snapshots from
 cold, none of them a converged wind:**
 
@@ -1237,7 +1237,7 @@ cold, none of them a converged wind:**
 | transport, `K_zz = 0` | 1214.3 K | **0.608** | 0.026 / 0.025 / 0.478 / 0.471 |
 | transport, `K_zz = 1e9` | 1191.3 K | **0.581** | 0.032 / 0.028 / 0.475 / 0.465 |
 
-against 0.910 for the stored photochemical arm, a pass band of
+against 0.910 for the stored photochemical solution, a pass band of
 `0.847 <= x_H2 <= 0.947` and an outright-failure band of
 `0.645 <= x_H2 <= 0.977`. The local-kinetics run reproduces M2's 0.773 (0.769
 here, the 0.4% being the re-split FUV bands). **Transport moves the partition
@@ -1363,18 +1363,18 @@ fine-structure channels of the same layer.
 Two caveats, and they are why this is not M4 passed:
 
 - **Neither run is converged**, and section 6.2's gate is a statement about a
-  converged wind. `Mdot` is NaN in the bands-off arm and the bands-on arm's mass
+  converged wind. `Mdot` is NaN in the bands-off run and the bands-on run's mass
   flux still varies by a factor 2.5 over the wind. `x_H2 = 0.483` is outside the
   pass band `0.847-0.947` and below the outright-failure band.
-- **The bands-off arm is not the M3 table's.** Section 109 records the band
+- **The bands-off run is not the M3 table's.** Section 109 records the band
   fluxes and the protocol but not the rest of the input file, and the run
-  directories no longer exist; rebuilt from the recorded keys the arm lands at
+  directories no longer exist; rebuilt from the recorded keys the run lands at
   760.2 K / 0.330 where M3's `K_zz = 1e9` row has 1191.3 K / 0.581. Only the
   difference between the two columns above is a measurement of the coolant
   change.
 
 A converged A2 wind was attempted for this measurement and does not exist yet:
-both arms were restarted with the converged-molecular recipe and marched a
+both runs were restarted with the converged-molecular recipe and marched a
 further 13000 steps, and `du` plateaus at 1.10-1.60 (bands off) and 1.08-1.35
 (bands on) instead of descending to the 5e-2 hand-off. **The non-convergence
 survives the coolant being supplied**, which locates it in the base
@@ -1388,7 +1388,7 @@ G5 still closes (`src/utils/element_budget.py`: 1.8e-14 with the bands on), and
 the G4 ledger gained an infrared side -- the column-integrated emitted, absorbed
 and net power of the three bands against the incident flux `W sigma T0^4` that
 bounds what an optically thin layer can absorb, measured 73x below its bound on
-the bands-on arm (absorbed 7.5e5 against 5.4e7 erg cm^-2 s^-1).
+the bands-on run (absorbed 7.5e5 against 5.4e7 erg cm^-2 s^-1).
 
 ---
 
@@ -1455,7 +1455,7 @@ spectral regions, different code, one region of the atmosphere.
 
 **The measured payoff on the wind is small and is an upper bound.** P1.6
 measured, on the one converged planet, at most **0.035 dex in `Mdot`** across
-four chemistry arms, and the same measurement at a level where the arms differ
+four chemistry networks, and the same measurement at a level where the networks differ
 by 0.1% still spreads by 0.025 dex, so 0.035 dex is at the level of the
 configuration's own JFNK-to-JFNK reproducibility. A2 is justified by
 self-containedness and by turning an unbounded uncertainty into a modeling

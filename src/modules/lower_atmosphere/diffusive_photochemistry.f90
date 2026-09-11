@@ -245,7 +245,7 @@
       ! It also fixes the approximation.  A water molecule that diffuses out
       ! of a cell really takes its oxygen with it; here the oxygen stays and
       ! reappears as O I.  That is the same statement EXHALE already makes
-      ! about every metal when the trace-metal diffusion arm is off -- the
+      ! about every metal when trace-metal diffusion (`He_metal_diffusion`) is off -- the
       ! element is slaved to hydrogen at melem_ab -- and it is why this
       ! operator transports SPECIATION and not elements.  Elemental
       ! separation of oxygen is he_metal_diffusion's subject, and the two

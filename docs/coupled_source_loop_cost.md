@@ -9,7 +9,7 @@ from. Items: B3c (the loop), COST2 (Aitken taken cell by cell, a coupled Newton
 declined), COST3 (carried columns), FIELD-SELF (the cell's own optical
 depth), COST4 (the ladder of modes), COST5 (the pass-count law), COST6 (the
 global-mode extrapolation), COST7 (the stopping test on the estimated
-error). Reports: `docs/Update_EXHALE.md`, the entries of those names. All numbers MEASURED unless marked otherwise; "p" is passes a
+error). Reports: `docs/Update_EXHALE_stage2.md`, the entries of those names. All numbers MEASURED unless marked otherwise; "p" is passes a
 coupled step, wall times are one thread on the 72-core machine unless said.
 
 ## 1. What the tolerances cost (2026-09-06)
@@ -117,7 +117,7 @@ count from 6.93 to 6.11, the rest being taken up by the temperature.
 ## 3. The ladder of nested modes (COST4)
 
 See section 2 above, the paragraph beginning "THE COUNT IS A LADDER"; the
-full matrix is in the COST4 entry of `docs/Update_EXHALE.md`.
+full matrix is in the COST4 entry of `docs/Update_EXHALE_stage2.md`.
 
 ## 4. The pass-count law (COST5)
 
@@ -125,7 +125,7 @@ See section 2 above, the paragraph beginning "WHAT THE COUNT IS, AS A
 FORMULA"; the tolerance scan (8.06 / 6.96 / 5.68 / 4.04 at 1e-9 / 1e-8 /
 1e-7 / 1e-6) and the cell-tolerance scan (6.96 / 6.97 / 6.97 / 6.98 at
 1.5e-8 / 1e-10 / 1e-12 / 1e-14) are in the COST5 entry of
-`docs/Update_EXHALE.md`.
+`docs/Update_EXHALE_stage2.md`.
 
 ## 5. The extrapolation: why the object is the global mode (COST6)
 

@@ -1,0 +1,131 @@
+\section{Output and post-processing}
+\label{sec:postprocessing}
+
+\subsection{The advection-corrected profiles}
+\label{sec:postprocessing:adv}
+
+For the reason given in Sec.~\ref{sec:ionization:advected},
+\texttt{post\_process\_adv.f90} re-solves the profile once, at the end of the
+run, with the ionization advected: the systems \eqref{eq:ion:advh}--\eqref{eq:ion:advhe2} are solved cell by cell
+from the base outward, each cell taking the upstream cell's solved fractions
+as its $x^{\rm up}$, and the temperature is then re-solved on the steady
+internal-energy equation \eqref{eq:th:teq} with the Brent bracket of
+Sec.~\ref{sec:thermal:tsolve}.
+
+Three properties of that pass are worth stating.
+
+\begin{itemize}
+\item The third term of \eqref{eq:th:teq}, the enthalpy flux carried by the
+  divergence of the mass flux, $h\,r^{-2}{\rm d}(\rho v r^{2})/{\rm d}r$,
+  vanishes for a stationary mass flux and for nothing else, so a correction
+  built without it would describe a converged wind and no other state. The
+  divergence is formed with the same operator the mass row of the state uses,
+  $(A_pF_p-A_mF_m)/{\rm d}V$ over the control volume whose two bounding
+  points are the two points the upwind energy difference is taken between,
+  so the term is an exact zero wherever those two carry the same
+  $\rho v r^{2}$.
+\item A cell is corrected only where the correction means something. Above
+  the Damk\"ohler number $10^{2}$, formed with the \emph{slowest} relaxing
+  species of the solved system, the gas reaches local equilibrium many times
+  over while it crosses the cell and the equilibrium solution already solves
+  the advection equation, so the cell is pinned to it. Below an equilibrium
+  ion fraction of $10^{-6}$ the residual, which carries the neutral
+  fraction, cannot represent the ion density to better than about a percent.
+  Where the mass row of the supplied state exceeds
+  \texttt{adv\_conditional\_tol} as a fraction of its own largest term, the
+  cell keeps the run's own value; each cell's verdict travels in the output
+  file as \texttt{adv\_T\_status}, \texttt{adv\_comp\_status} and
+  \texttt{adv\_mass\_row}.
+\item The reconstruction treats the gas as H/He plus trace metals and
+  \emph{excludes} the molecular species: H$_2$, H$_2^+$, H$_3^+$ and
+  HeH$^+$ are not passed in and are not re-solved, so inside a molecular
+  layer the \texttt{\_adv} particle count omits the neutral H$_2$ and the
+  molecular-ion electrons. The output file says so in its own header rather
+  than only in the source.
+\end{itemize}
+
+The first of those gates has a fourth companion: wherever $v\le0$ on either
+face, the cell keeps the converged equilibrium ionization and temperature,
+because the upwind discretization takes the upstream state from the cell
+below, which is not the upstream cell when the gas moves inward, and the
+residence time $\Delta r/v$ is then negative as well. The relaxation rate
+entering the Damk\"ohler number is the total rate at which each solved
+population is destroyed and re-formed, and the \emph{minimum} over the
+species the system solves is taken, because He($2^3$S) relaxes orders of
+magnitude more slowly than hydrogen ($A_{31} = 1.272\times10^{-4}$\,s$^{-1}$
+sets the floor) and the vector is only as local as its slowest member.
+
+\subsection{The mass-loss rate}
+\label{sec:postprocessing:mdot}
+
+The quantity the run reports as \texttt{Log10 of steady-state Mdot} is
+measured at one radius, in \texttt{EXHALE\_main.f90}:
+\begin{equation}
+\dot M = 4\pi\,\rho(j)\,v(j)\,r(j)^{2}\,n_0v_0m_{\rm H} R_0^{2}
+\qquad\text{at}\qquad j = \max(N-20,\,1),
+\label{eq:pp:mdot}
+\end{equation}
+the offset of 20 cells keeping the evaluation far enough from the outer
+boundary, and the floor at $j=1$ keeping it out of the base ghosts where the
+boundary closure and not the wind sets $\rho$ and $v$. A logarithm is taken
+only where the flow there is directed outward: $\rho v \le 0$ is an inflow,
+which is not a mass-loss rate, and the run then reports the signed flux
+instead of a logarithm. The dayside convention of Table~\ref{tab:2d} is applied here and only here:
+$\log_{10}\dot M \to \log_{10}\dot M - \log_{10}2$ for
+\texttt{Rate/2 + Mdot/2}, and $-\log_{10}4$ for \texttt{Mdot/4}.
+
+A \emph{quantitative} $\dot M$ must come from a state the steady solver has
+finished. A run stopped on the $\mathrm{du}$ threshold \eqref{eq:du} alone carries a
+path-dependent spread of several percent in \eqref{eq:pp:mdot}; the two-stage
+marching of Sec.~\ref{sec:numerics:reconstruction} followed by the stationary
+solve of Sec.~\ref{sec:steady:jfnk} is the working recipe, and it is what the
+regression matrix uses.
+
+\subsection{Output files}
+\label{sec:postprocessing:files}
+
+Every file written to \texttt{output/} carries a schema header, so a reader
+adapts instead of counting columns. \texttt{Hydro\_ioniz.txt} opens with
+\texttt{\# EXHALE schema 2} and then
+\begin{verbatim}
+# columns r[Rp] rho[mH/cm3] v[cm/s] p[cgs] T[K] heat[erg/cm3/s] cool[erg/cm3/s]
+\end{verbatim}
+(with three further status columns on the \texttt{\_adv} file). Column 2 is
+$\rho n_0$, the \emph{mass} density in units of $m_{\rm H}$ per cm$^{3}$
+with the metals included under the \texttt{eos\_metals} policy, not a number
+density. The first and last \texttt{Ng} rows of every file are ghost cells
+filled by the boundary conditions, and their $\rho v r^{2}$ is a boundary
+extrapolation. \texttt{Ion\_species.txt} carries the species fractions in the
+\texttt{species\_table} order of Sec.~\ref{sec:ionization:species};
+\texttt{Heating\_breakdown.txt} and \texttt{Cooling\_breakdown.txt} carry the
+channel decompositions of Sec.~\ref{sec:thermal}, each built from the array the
+energy equation itself used, so the channel sum and the \texttt{heat} or
+\texttt{cool} column of \texttt{Hydro\_ioniz.txt} are the same number to
+round-off; \texttt{Excited\_H.txt}, \texttt{Lyman\_Werner.txt},
+\texttt{FUV\_bands.txt}, \texttt{Oxygen\_chemistry.txt} and
+\texttt{OI\_levels.txt} carry the optional physics. The Python loader
+\texttt{examples/exhale\_io.py} reads all of them through those headers
+(\texttt{exhale\_io.Run('output/')} gives \texttt{.r}, \texttt{.T},
+\texttt{.Mdot} and the rest), and it should be used in place of any new
+column parser.
+
+\subsection{The transmission spectrum}
+\label{sec:postprocessing:transit}
+
+\texttt{EXHALE\_transit.py}, with the library
+\texttt{exhale\_transit\_lib.py}, builds transit transmission spectra from
+the \texttt{\_adv} profiles: the He\,{\sc i} 10830\,\AA{} triplet,
+Ly$\alpha$, H$\alpha$ and H$\beta$, and the metal doublets Mg\,{\sc ii}
+h\&k, Ca\,{\sc ii} H\&K and Na\,{\sc i} D, the metal lines being skipped
+automatically for a metals-off run. It integrates the Voigt line opacity
+over impact parameter, averages over the stellar disk, and convolves with
+the instrument profile and the planet's rotation; the Balmer branch builds
+the non-LTE $2s/2p$ populations following \citet{Christie2013}, the
+same model Sec.~\ref{sec:ionization:n2} solves inside the Fortran code. An
+optional triaxial Roche geometry comes from \texttt{roche\_recon.py}.
+Overrides are environment variables (\texttt{EXHALE\_TRANSIT\_*}: resolving
+power, He window, rotation period, azimuthal samples) and the output keeps
+the historical \texttt{tpm\_*.txt} names, each with its own
+\texttt{\# transit\_schema 1} metadata block. The physics of that tool is
+documented separately in \texttt{docs/transmission\_spectrum.pdf} and is not
+repeated here.

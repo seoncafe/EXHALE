@@ -313,18 +313,18 @@ Still not changed: the check itself, its location, or the refusal policy.
 ## 9. What this does to the LHS 1140 b result: nothing measurable
 
 The flux-closure crossing was re-determined end to end on the corrected build,
-11 arms, same EXHALE binary, same scripts, same parent seed, same tolerances --
+11 rungs, same EXHALE binary, same scripts, same parent seed, same tolerances --
 only the interpreter differs. Record:
 `LHS1140b/exhale/crossings_pc090/results.txt`.
 
-| quantity | 0.8.4, 16 arms | corrected build, 11 arms |
+| quantity | 0.8.4, 16 rungs | corrected build, 11 rungs |
 |---|---:|---:|
 | crossing, chord | 9.0484 | 9.0484 |
 | crossing, quadratic | 9.0461 | 9.0461 |
 | 1 sigma band | 8.4923 -- 10.7716 | 8.4649 -- 10.7357 |
 
 - **The crossing does not move**, to every digit either solve prints. On the
-  seven arms seeded identically in both builds the He I 10830 equivalent width
+  seven rungs seeded identically in both builds the He I 10830 equivalent width
   moves by at most `1.2e-6` in relative terms and `log10 Mdot` is unchanged in
   its fourth decimal. That is the scientific result of the correction: the
   equilibrium residual was real and is now gone, and it was never reaching the
@@ -335,9 +335,9 @@ only the interpreter differs. Record:
   10830, which is set by H, He and the temperature.
 - **The 1 sigma band moves, but not because of the solver.** Its low end used
   to be interpolated across the un-runnable band He/H = 8.5--8.7; that band now
-  runs (departures 1.4e-14 to 3.2e-14) and real arms at 8.5 and 8.6 carry the
+  runs (departures 1.4e-14 to 3.2e-14) and real rungs at 8.5 and 8.6 carry the
   end, moving it from 8.4923 to 8.4649. Its high end moves from 10.7716 to
-  10.7357 because the 10.6 arm was not seeded the same way in the two ladders
+  10.7357 because the 10.6 rung was not seeded the same way in the two ladders
   -- a 1.1e-3 seed difference in equivalent width, the size of the seed spread
   the stored ladder already measured.
 - **The refusals at other reservoir values are gone too.** He/H = 6.0, 10.20
@@ -393,7 +393,7 @@ The same defect is in 0.8.4, at the same rate and at other compositions:
 The earlier table in this section listed 9.45 as `not attempted` on 0.8.4; it
 is a **failure** there. With the two builds measured on the same grid the "three
 removed, one introduced" accounting does not stand, and it is withdrawn.
-Neither value is a bracket arm of the crossing, and the solution is smooth
+Neither value is a bracket point of the crossing, and the solution is smooth
 across the failures -- the deep temperature falls monotonically from 422.72470
 K at He/H = 9.30 to 420.61128 K at 9.60.
 

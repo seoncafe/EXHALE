@@ -9,7 +9,7 @@
 > tolerance argument built on spatial truncation error, the conditioning
 > claim taken from Ritz-value ratios, the description of what partitioning
 > removes and of what code it needs, the attribution of a hydrodynamic
-> finish to CETIMB, the effect claimed for the well-balanced arm, two section
+> finish to CETIMB, the effect claimed for the well-balanced option, two section
 > numbers of Koskinen et al. 2013, and the globalization of the
 > three-unknown path.
 
@@ -45,9 +45,9 @@ i), and acceptance by the certification of the returned state (decision
 
 The three-unknown route (no species rows) converges and certifies
 (`wasp_full_newton`, `||R||` 1.7e-9). No configuration with a species row
-does. The atomic element arm stands at `||R||` 2.3e-4 to 3.7e-4 with the
+does. The atomic element reload stands at `||R||` 2.3e-4 to 3.7e-4 with the
 element rows of the front cells binding (wind element row 2.9e-4 against
-1e-5); the carrier arm at `||R||` 9.6e-2 with the H2 carrier row of the
+1e-5); the carrier reload at `||R||` 9.6e-2 with the H2 carrier row of the
 front cell 205 binding (7.3e-2 against 1e-5).
 
 ## 2. What was measured, lever by lever
@@ -59,7 +59,7 @@ front cell 205 binding (7.3e-2 against 1e-5).
 | N7b, N20, N22, N23 | the trust region: ray test, merit scale, face-write hold, leg rules | each removed a class of refusal; the plateau stayed |
 | N21 | trust-region restarts, the Krylov budget (40/80/160) | not the limiter; the marching between two solves relaxes what the Newton cannot |
 | N25 | reorthogonalization; a direction on the ball | orthogonality loss 4.4e-13 (READ, N25); no gain |
-| N26 | the upper ghost of a transported column follows the iterate | the largest single gain (3.2e-2 at iteration 40); the arm is chaotic at the last bit (N26c) |
+| N26 | the upper ghost of a transported column follows the iterate | the largest single gain (3.2e-2 at iteration 40); the reload is chaotic at the last bit (N26c) |
 | N27 | the binding helium row, term by term | held by the LINEAR solve: 40 of 40 products at 0.99 against 0.1 |
 | N29 | mass creation in the element projection | fixed; `lower_profile` golden moved |
 | N30 | the certification tolerances anchored by regime | 1e-5 in the wind; nothing certifies |
@@ -121,7 +121,7 @@ Four facts, each measured independently, describe one failure:
    4.4.]
 4. **The marching relaxes what the coupled Newton cannot.** N21: a second
    solve entered after about 2000 marching steps enters at `||R||` 6.06e-2,
-   better than the first solve handed back. N26c: the arm is chaotic at the
+   better than the first solve handed back. N26c: the reload is chaotic at the
    last bit. Both say that this method, from these initial states, does not
    behave as a Newton iteration in a basin does; neither locates the
    mechanism, and neither excludes a smooth discrete root nearby, since
@@ -167,7 +167,7 @@ regime (decision 22); the element inventory and its constraint rows
 conserving (N29); the restart contract (decision 21); the `_adv` product
 (decision 16); the transit census (decision 17); the fixtures
 (`atomic_elem_newton`, `carrier_elem_newton`, `wasp_full_newton/IC`); the
-diagnostics (`[diag 4..18]`) and the measured, default-off arms of N31 to
+diagnostics (`[diag 4..18]`) and the measured, default-off options of N31 to
 N38, which are the instruments a different approach would be judged with.
 
 [corrected 2026-09-11: the first item read "the certified three-unknown JFNK
@@ -209,7 +209,7 @@ test is exactly that weaker condition, review 5.3.]
   rounding floor stays in the hydrodynamic rows. [corrected 2026-09-11: this
   bullet claimed the route "removes the failing coupling", review 5.2.]
 - What it costs: at best linear convergence of the outer loop, and only
-  conditionally (the present coupled arm does not enjoy quadratic
+  conditionally (the present coupled solve does not enjoy quadratic
   convergence either, N26c); one JFNK solve per outer pass (MEASURED,
   experiment section 5.1: about 63.83 s and 70.74 s for the two atomic hydro
   calls at a 40-iteration cap, against about 0.11 s for each 30-step element
@@ -354,7 +354,7 @@ with cells of width 2e-4 in a finite-volume scheme in r (1.955e-4 for a base
 cell, READ, N33). Two changes act on that amplifier at its root:
 [corrected 2026-09-11: the layer's non-stationarity (P54) was named here as
 the same property. It is not established to be one: N37 measured the same
-mechanical drain with and without the well-balanced arm and traced it to the
+mechanical drain with and without the well-balanced option and traced it to the
 outer boundary, so physical forcing, boundary compatibility and stability
 have to be separated from grid spacing (review 8.2, and the closing
 paragraph of this section).]
@@ -396,7 +396,7 @@ every golden, review 8.1.]
 
 Also stated rather than smoothed over: the layer's non-stationarity is not
 attributable to thin radial cells alone. N37 records that the mechanical
-column drains by the same amount with the well-balanced arm as without
+column drains by the same amount with the well-balanced option as without
 (max |v|/c_s 0.796 against 0.792 at 300 steps, 2.776 against 2.777 at 3000,
 READ from N37) and that this drain is set by the outer boundary; physical
 forcing, boundary compatibility and stability have to be separated from
@@ -413,14 +413,14 @@ times the probe arc falls from 3.151e-5 to 2.410e-7 (MEASURED in N37).
 
 What it does NOT do is remove the rounding floor. N37 MEASURED that the
 floor did not move: the energy row of cell 1 stands at 1.009e-11 with the
-arm against 1.046e-11 without, cells 84, 167 and 251 the same to a factor
-1.3 (READ from `docs/Update_EXHALE.md` N37), because a cell pressure is
+option against 1.046e-11 without, cells 84, 167 and 251 the same to a factor
+1.3 (READ from `docs/Update_EXHALE_stage2.md` N37), because a cell pressure is
 itself a rounded double and every jump built from two of them steps by its
-last bit whatever the grouping. What the arm removes from the row is the
+last bit whatever the grouping. What the option removes from the row is the
 equilibrium's algebraic cancellation, not the rounding floor. Exact
 preservation of a specified discrete equilibrium and a lower floating-point
 floor for arbitrary perturbed states are different properties (review 7.1).
-[corrected 2026-09-11: this section said the arm "removes the rounding
+[corrected 2026-09-11: this section said the option "removes the rounding
 amplifier from the hydrodynamic rows", which contradicts N37's own
 measurement, review 7.1; and it cited N34 and N35, which predate the N37
 implementation and do not measure it, so N37's own results are used here.]
@@ -432,11 +432,11 @@ by the hydrodynamic discretization.
 One defect sits in the way of a default-on decision, and is being corrected
 as item P4 of `docs/PLAN_20260911_partitioned_solver.md`: under
 `Well balanced: True`, `store_row_terms` scales the momentum row by
-`max(|dF(2)|, |S(2)|, |Smom|)` while the arm returns `S(2) = 0` by
+`max(|dF(2)|, |S(2)|, |Smom|)` while the option returns `S(2) = 0` by
 construction, so the row is its own scale and every scaled momentum
 residual is exactly 1 (MEASURED in N37 on the carrier reload as loaded:
-1.000000E+00 with the arm against 1.954 without; review 7.2; ISSUES 3.7).
-The reference has to become the pressure force the arm cancels
+1.000000E+00 with the option against 1.954 without; review 7.2; ISSUES 3.7).
+The reference has to become the pressure force the option cancels
 analytically, `|rho_j (A+ (phi_i(j) - phi_c(j)) + A- (phi_c(j) -
 phi_i(j-1)))|/dV`, beside the dynamic and the other source terms, with the
 numerator left as the actual imbalance. Until that lands, N37's stationary
@@ -541,7 +541,7 @@ with the question of the method's convergence.
 
 ## 8. Sources
 
-- This repository: `docs/Update_EXHALE.md` section 7, items N0 to N38;
+- This repository: `docs/Update_EXHALE_stage2.md` section 7, items N0 to N38;
   `docs/ISSUES_20260909.md` sections 3.1 and 5;
   `docs/To_be_determined_by_user_20260906.md` decisions 14, 20, 22, 23;
   `docs/certification_tolerance_anchoring_20260910.md`;
@@ -584,9 +584,9 @@ Each item is marked where it lands; the reason is with the mark.
 4. Partitioning moves the coupling into the outer iteration matrix `(1 - omega) I + omega D^-1 C A^-1 B` rather than removing it (review 5.2): section 5.1 and the comparison table.
 5. The outer loop is not new code (`steady_wind_with_element_diffusion`, `src/EXHALE_main.f90` lines 5989 to 6235 at a0f4292; review 5.1): section 5.1 now names the joint acceptance contract (review 5.3) and the defects D1 to D3 (experiment section 7) as what is missing, and records that the frozen-background solution at 2.449021e-13 returned to 7.989781e-2 after the refresh, so the outer feedback is the difficulty.
 6. The hydrodynamic finish after a march is EXHALE's proposal, not CETIMB's (review 6.3, 6.4): section 5.2 renamed, with the recheck of the species rows after any hydrodynamic correction and the unsplit defect of a split fixed point (review 6.5) as its two conditions.
-7. The well-balanced arm does not remove the rounding floor (N37 MEASURED 1.009e-11 with it against 1.046e-11 without; review 7.1): section 5.4 rewritten, with the momentum reference-scale defect named as item P4 of `docs/PLAN_20260911_partitioned_solver.md` (review 7.2).
+7. The well-balanced option does not remove the rounding floor (N37 MEASURED 1.009e-11 with it against 1.046e-11 without; review 7.1): section 5.4 rewritten, with the momentum reference-scale defect named as item P4 of `docs/PLAN_20260911_partitioned_solver.md` (review 7.2).
 8. Koskinen et al. 2013: lower boundary conditions 2.1.1, upper 2.1.2, numerical methods 2.1.3 (review 6.1): sections 5.3 and 8. In 5.3, a supported handoff level is not a rewrite, a mass or log-pressure coordinate is, and the coordinate change does not by itself linearize the balance (review 8.1, 8.2); the layer's non-stationarity is no longer attributed to thin cells alone.
 9. The three-unknown path does not use the species trust region (`use_tr = (nspec_row .gt. 0)`, `steady_newton.f90:14855`; review 5.5): section 4.
 10. Section 7 is a baseline, not a binary decision (review 10.2): the review's five-point list, with the numbers the 2026-09-11 experiment measured against it.
-11. Three numbers made precise against their source: the N1/N8a row (atomic abort at `||R||` 1.777 to 3.800e-2 at the 150 cap, carrier 0.446 to 0.1513), the N4b row (carrier 0.151 to 0.090, where this document read 1.4 to 0.09) and the N25 orthogonality loss (4.4e-13), all READ from `docs/Update_EXHALE.md` and `docs/ISSUES_20260909.md` section 3.1.
+11. Three numbers made precise against their source: the N1/N8a row (atomic abort at `||R||` 1.777 to 3.800e-2 at the 150 cap, carrier 0.446 to 0.1513), the N4b row (carrier 0.151 to 0.090, where this document read 1.4 to 0.09) and the N25 orthogonality loss (4.4e-13), all READ from `docs/Update_EXHALE_stage2.md` and `docs/ISSUES_20260909.md` section 3.1.
 12. Added: section 5.5, partitioned components inside one coupled method (Knoll and Keyes 2004; review section 9); the bound on section 3 point 2 (a small chemical contribution to one row is not a measurement of chemical stiffness, review 5.4); and the acceptance wording of section 5.1 (below the gates, not "stopped moving", review 5.3).

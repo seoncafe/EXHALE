@@ -1213,7 +1213,7 @@
       ! ONLY HELIUM IS DAMPED.  X is the member of the normalized pair, and
       ! the projection below is the map from it back into the species vector;
       ! a trace element is slaved to the hydrogen background and carries no
-      ! such projection, so the trace arm keeps the composition the
+      ! such projection, so the trace elements keep the composition the
       ! relaxation left.  The drift reported to the outer loop covers every
       ! element either way, because it measures the distance to the fixed
       ! point and not the step applied.
@@ -2033,7 +2033,7 @@
       ! multiplies by the factor that returns them to the units of its own
       ! row.
       !
-      ! THERE IS ONE OF THESE IN THE ELEMENT ARM, and the backward-Euler
+      ! THERE IS ONE OF THESE IN THE ELEMENT OPERATOR, and the backward-Euler
       ! step, the fixed-wind relaxation and the stationary elemental row all
       ! read it here.  Two spellings of one term have two fixed points, so an
       ! alternation of a relaxation with one and a row with the other cannot
@@ -2582,7 +2582,7 @@
       ! units, so a cell where every term vanishes reads zero rather than
       ! dividing by zero.
       !
-      ! Cell 1 carries no equation in either arm: it is the Dirichlet
+      ! Cell 1 carries no equation for either element: it is the Dirichlet
       ! reservoir the operator states, so its residual is reported as zero
       ! against the floor.
       !
@@ -3397,7 +3397,8 @@
 
       subroutine element_mass_fractions(f_sp, Y)
       ! The transported element mass fractions of a species vector: helium in
-      ! column 1, each trace metal in column 1+im when the metal arm is on.
+      ! column 1, each trace metal in column 1+im when trace-metal diffusion
+      ! is on.
       ! The mass sum is the cell's own (mixture_mass_split), the two-component
       ! closure of the module header, so column 1 is exactly the X the
       ! diffusive half solves and the columns are true mass fractions of it.
@@ -3571,8 +3572,8 @@
       ! an element fraction means.
       !
       ! The split WITHIN an element is left to the ionization solve, which is
-      ! the division of labour project_elements states.  With the metal arm
-      ! on, each metal element is put on the amount its own advected mass
+      ! the division of labour project_elements states.  With trace-metal
+      ! diffusion on, each metal element is put on the amount its own advected mass
       ! fraction asks for and the hydrogen group takes the mass that is left,
       ! so the mixture's mass is unchanged by the write-back.
       real*8, dimension(1-Ng:N+Ng,n_species), intent(inout) :: f_sp

@@ -1,7 +1,7 @@
 %% Appendices of the EXHALE update log.
 %%
-%% HAND-MAINTAINED, unlike Update_EXHALE.tex, which src/utils/update_log_to_tex.py
-%% generates from Update_EXHALE.md.  The generator emits \appendix and then
+%% HAND-MAINTAINED, unlike Update_EXHALE_stage2.tex, which src/utils/update_log_to_tex.py
+%% generates from Update_EXHALE_stage2.md.  The generator emits \appendix and then
 %% \input{Update_EXHALE_appendix} after the converted body, so this fragment
 %% carries no \appendix, no \documentclass and no \begin{document} /
 %% \end{document} of its own.  Edit this file directly, then regenerate the
@@ -298,8 +298,8 @@ table, each for a documented reason rather than drift.
       the constrained chemical equilibrium). The \texttt{params} dummy also
       became assumed-size, so one transport array serves systems of different
       length. \texttt{hybrd1} passes \texttt{.false.} and is therefore
-      unchanged in behaviour.
-\item \texttt{states/\allowbreak Source.f90} gained the well-balanced arm of
+      unchanged in behavior.
+\item \texttt{states/\allowbreak Source.f90} gained the well-balanced option of
       2026-09-10 (item N37 of the stage-2 solver program,
       \texttt{docs/ISSUES\_20260909.md}): under
       \texttt{Well balanced: True} the gravitational source and the geometric

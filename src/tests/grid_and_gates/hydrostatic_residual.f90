@@ -92,14 +92,14 @@
       !   is the characteristic condition of base_boundary, a different object
       !   from the interior pair and from the outer condition.
       !
-      ! THE MOMENTUM ROW'S REFERENCE SCALE UNDER THE WELL-BALANCED ARM
+      ! THE MOMENTUM ROW'S REFERENCE SCALE UNDER THE WELL-BALANCED KEY
       !   The three assertions of measure_momentum_row_scale below are of the
       !   NORMALIZED row, R_2/s_2 with s_2 = residual_row_scale(2,...), the
       !   one expression the stationary solver's acceptance test reads: on
       !   the scheme's own discrete equilibrium it must be at the rounding
       !   level and not at one; on a perturbed state it must be below one and
       !   proportional to the perturbation; and with no gravity it must be
-      !   the scale the base scheme uses.  The arm cancels the equilibrium
+      !   the scale the base scheme uses.  The key cancels the equilibrium
       !   pressure force and the gravitational source against each other
       !   before the row is formed, so a scale built from the row's remaining
       !   terms alone is the row itself and reads one however small the
@@ -110,7 +110,7 @@
       !   what the scale is on four states whose momentum terms are known in
       !   closed form: no term at all (no gravity, uniform pressure, at
       !   rest), the weight alone (the scheme's own discrete hydrostatic
-      !   equilibrium, under both arms), an imbalance proportional to a
+      !   equilibrium, with the key off and on), an imbalance proportional to a
       !   perturbation, and a pure ram divergence (supersonic uniform flow).
       !   A scale made of the discretization's pieces, max(|dF_2|, |S_2|),
       !   fails the first and the last under PLM, where the pressure is
@@ -467,7 +467,7 @@
 
       close(iu)
 
-      ! ---- the well-balanced arm, on the same grid ----
+      ! ---- the well-balanced key, on the same grid ----
       call measure_well_balanced(u, WL, WR, dF, S, rho_a, p_a, Rn, b0_case)
       call measure_momentum_row_scale(u, WL, WR, dF, S, rho_a, b0_case)
       call measure_momentum_physical_terms(u, WL, WR, dF, S, rho_a,       &
@@ -481,7 +481,7 @@
 
       subroutine measure_well_balanced(u, WL, WR, dF, S, rho_a, p_a, Rn,  &
                                        b0_case)
-      ! WHAT IS MEASURED, AND WHY TWO COLUMNS.  The well-balanced arm
+      ! WHAT IS MEASURED, AND WHY TWO COLUMNS.  The well-balanced key
       ! ("Well balanced:", default off) preserves the equilibrium ITS OWN
       ! discretization defines, which is the state whose two neighboring
       ! equilibrium extrapolations agree at every shared face,
@@ -497,7 +497,7 @@
       ! reconstructions.  The ANALYTIC column of the ladder above is measured
       ! as well (`analytic`): it satisfies the CONTINUUM balance and departs
       ! from the discrete one by the truncation error of the equilibrium
-      ! extrapolation, so on it the arm is second order like the base scheme
+      ! extrapolation, so on it the key is second order like the base scheme
       ! and the two columns together say which part of the residual is the
       ! discretization of gravity and which is the floating-point assembly.
       ! Their paper measures the same pair: their initial data is the
@@ -650,7 +650,7 @@
       ! and the largest value over the interior cells 3..N-2 on each:
       !
       !   equilibrium  the discrete equilibrium of the scheme, on which the
-      !                arm's row is at the rounding level.  The scaled row
+      !                key's row is at the rounding level.  The scaled row
       !                must be there too; a scale built from the row's
       !                remaining terms alone returns the row itself and
       !                reads exactly one.
@@ -665,19 +665,19 @@
       !                weights are scale free), so the ratio is 2 to the
       !                accuracy of the O(eps^2) terms.
       !   no gravity   b0 = 0 on a state with structure in it, where the
-      !                equilibrium pressure force is zero and the arm's
+      !                equilibrium pressure force is zero and the key's
       !                scale must therefore be the two terms the row still
       !                holds, max(|ram|, |dp/dr|), exactly.  The departure
-      !                of the arm's scale from the BASE SCHEME's on the same
+      !                of the key's scale from the BASE SCHEME's on the same
       !                state is reported and not asserted: with no gravity
       !                each side's own hydrostatic equilibrium is its own
-      !                cell pressure, so the arm's pressure gradient is the
+      !                cell pressure, so the key's pressure gradient is the
       !                base scheme's, term for term, and the two scales are
       !                the same number up to the rounding of the two flux
       !                assemblies (MEASURED below).
       !
       ! The scale is a function of the state, so the SAME state is never
-      ! asked for it under two different arms without a state in between:
+      ! asked for it with the key off and on without a state in between:
       ! refresh_row_terms answers a repeated request for one state from what
       ! it already holds.
       real*8, dimension(3,1-Ng:N+Ng), intent(inout) :: u, WL, WR, dF, S
@@ -753,7 +753,7 @@
 
          enddo
 
-         ! ---- no gravity: the arm's scale is the base scheme's ----
+         ! ---- no gravity: the key's scale is the base scheme's ----
          b0 = 0.0d0
          call set_gravity_grid
          do j = 1-Ng,N+Ng
@@ -773,7 +773,7 @@
          ! ram divergence and the pressure gradient, each formed here from
          ! the face data this evaluation stored: |dF_2| is their SUM and is
          ! smaller than either wherever they cancel, which is what the scale
-         ! must not be.  The arm's pressure gradient is the face pressure
+         ! must not be.  The key's pressure gradient is the face pressure
          ! measured from each side's own equilibrium, and with no gravity
          ! that equilibrium is the cell pressure itself, so these are also
          ! the base scheme's two terms.
@@ -794,7 +794,7 @@
             s_on(j) = residual_row_scale(2, j, u)
          enddo
          ! Another state in between, so that the scale of u is formed
-         ! again under the other arm and not answered from what this one
+         ! again with the key the other way and not answered from what this one
          ! left.
          well_balanced = .false.
          s_break = residual_row_scale(2, 3, 1.5d0*u)
@@ -859,13 +859,13 @@
       !   the discrete hydrostatic equilibrium of the scheme, at rest.  The
       !        pressure gradient and the weight are equal and opposite and
       !        are the only terms, so the scale is the weight, and the
-      !        weight of the arm the row was assembled by: the half-sum of
+      !        weight of the scheme the row was assembled by: the half-sum of
       !        the two face densities times the interface potential
       !        difference for the base scheme, as Source.f90 forms it, and
       !        the pressure force of the cell's own equilibrium under
       !        "Well balanced:", where that cancellation is algebraic.  The
       !        two differ by the O(dr/r) of their geometric weighting and
-      !        are not interchangeable references.  Under the arm that
+      !        are not interchangeable references.  Under the key that
       !        weight is the scale exactly; for the base scheme what is
       !        asserted is that the scale is not below it.
       !   the same equilibrium with the pressure perturbed by eps and
@@ -884,7 +884,7 @@
       real*8, parameter :: eps_p = 1.0d-6
       real*8, parameter :: mach  = 3.0d0
       real*8, dimension(1-Ng:N+Ng) :: rho_d, p_d, R0
-      real*8  :: z_frac, z_scale, e_base, b_base, e_arm, p_rat, u_ram
+      real*8  :: z_frac, z_scale, e_base, b_base, e_wb, p_rat, u_ram
       real*8  :: x1, x2, sc, wgt, epf, ramr, cs_u, v_u
       real*8  :: shape_p, twopi, span, geo, dAp, dAm, dV
       real*8  :: s_break
@@ -961,7 +961,7 @@
          ! the weight on this state (MEASURED on the entry text).  The
          ! departure |s - w|/w is REPORTED and not asserted, because it is
          ! not round-off on this state for the base scheme: the state is the
-         ! equilibrium of the ARM's reconstruction, on which the base
+         ! equilibrium of the WELL-BALANCED reconstruction, on which the base
          ! scheme's own row is its truncation error, and the HLLC face
          ! pressure is one side's own value rather than an average, so the
          ! momentum flux carries a dissipative part of the size dr/H times
@@ -980,14 +980,14 @@
             endif
          enddo
 
-         ! The same state under the arm, whose weight is the pressure force
+         ! The same state under the key, whose weight is the pressure force
          ! of the cell's own equilibrium (the right-hand side of the
          ! cancellation identity, in the form the assembled row belongs to).
          well_balanced = .true.
          call Reconstruct(u, WL, WR)
          call RK_rhs(u, WL, WR, dF, S)
          s_break = residual_row_scale(2, 3, 1.5d0*u)
-         e_arm   = 0.0d0
+         e_wb   = 0.0d0
          do j = 3,N-2
             dAp = r_edg(j)*r_edg(j)
             dAm = r_edg(j-1)*r_edg(j-1)
@@ -999,7 +999,7 @@
                epf = abs(u(1,j)*(Gphi_i(j) - Gphi_i(j-1)))/dr_j(j)
             endif
             sc = residual_row_scale(2, j, u)
-            if (epf .gt. 0.0d0) e_arm = max(e_arm,                       &
+            if (epf .gt. 0.0d0) e_wb = max(e_wb,                       &
                (abs(sc - epf) - abs(dF(2,j) - S(2,j)))/epf)
          enddo
          well_balanced = .false.
@@ -1007,8 +1007,8 @@
          ! ---- the perturbed equilibrium, base scheme: the scaled
          !      imbalance the perturbation adds halves with it ----
          ! WHAT IS DIFFERENCED, AND WHY.  The base scheme's row on the
-         ! arm's discrete equilibrium is not zero: that state is the
-         ! equilibrium of the arm's reconstruction, and the base scheme's
+         ! well-balanced discrete equilibrium is not zero: that state is the
+         ! equilibrium of that reconstruction, and the base scheme's
          ! own truncation error on it is eps-independent and larger than the
          ! perturbation's imbalance here (MEASURED on the entry text: the
          ! undifferenced ratio is 1.0012 at N = 250 and 1.586 at N = 2000,
@@ -1017,7 +1017,7 @@
          ! unperturbed row of the same cell is subtracted; it and every face
          ! quantity built from it are homogeneous of degree one in the
          ! perturbation, so the ratio is 2 up to O(eps).  A scale that is
-         ! the row itself, which is what the well-balanced arm had before
+         ! the row itself, which is what the well-balanced key had before
          ! the weight was put back, returns 1 here and not 2.
          do j = 1-Ng,N+Ng
             u(1,j) = rho_d(j)
@@ -1088,7 +1088,7 @@
          call set_gravity_grid
 
          write(iu4,'(I8,I3,7ES24.16)') N, is, z_frac, z_scale, e_base,   &
-            b_base, e_arm, p_rat, u_ram
+            b_base, e_wb, p_rat, u_ram
 
       enddo
 
@@ -1134,7 +1134,7 @@
            ' of the momentum equation, interior cells 3..N-2'
       write(*,'(A)') '        N  scheme      zero-g/(2p/r)'//            &
            '     zero-g scale   base |s-w|/w'//                          &
-           '    base (w-s)/w     arm |s-w|/w'//                          &
+           '    base (w-s)/w      WB |s-w|/w'//                          &
            '   halving ratio     supersonic ram'
       do i = 1,nrec
          write(*,'(A,I8,2X,A10,2X,5ES16.5,F15.6,ES17.5)')                &
@@ -1154,11 +1154,11 @@
       ! cell pressure.  On the discrete equilibrium the base scheme's
       ! statement is one sided, (w - s)/w <= 0, which says the weight is one
       ! of the terms the max runs over and is an inequality of the assembly
-      ! and not a tolerance; the arm's is two sided and exact, the scale
+      ! and not a tolerance; the key's is two sided and exact, the scale
       ! being the equilibrium pressure force itself (MEASURED 0.00000E+00
       ! at every N and every pair).  The departure |s - w|/w of the base
       ! scheme is reported, not asserted: on this state, which is the
-      ! equilibrium of the arm's reconstruction, it carries the base
+      ! equilibrium of the well-balanced reconstruction, it carries the base
       ! scheme's truncation error and, with HLLC, the dissipative part of a
       ! momentum flux whose face pressure is one side's own value.  The halving
       ! ratio is asserted against two to a tenth, which is an algebraic
@@ -1214,7 +1214,7 @@
       ! ------------------------------------------------------------------ !
 
       subroutine report_momentum_row_scale(nfail)
-      ! The normalized momentum row of the well-balanced arm, on the three
+      ! The normalized momentum row of the well-balanced key, on the three
       ! states measure_momentum_row_scale builds.
       integer, intent(inout) :: nfail
 
@@ -1243,7 +1243,7 @@
 
       write(*,'(A)') ''
       write(*,'(A)') '  DIAGNOSTIC momentum row over its own reference'// &
-           ' scale, well-balanced arm ON, interior cells 3..N-2'
+           ' scale, well-balanced key ON, interior cells 3..N-2'
       write(*,'(A)') '        N  scheme        equilibrium'//            &
            '    perturbed(eps)  perturbed(eps/2)   ratio'//              &
            '   zero-g vs base  zero-g vs own terms'
@@ -1255,7 +1255,7 @@
             sp2(i), rat, szr(i), sow(i)
       enddo
 
-      ! THE BOUNDS.  On the discrete equilibrium the arm's momentum row is
+      ! THE BOUNDS.  On the discrete equilibrium the key's momentum row is
       ! at the rounding level of a row assembled from cell pressures,
       ! epsilon x p x r^2/dV, which is 1e-12 of the cell's own weight at the
       ! base of this grid and far below it above; 1e-10 is above that bound
@@ -1435,9 +1435,9 @@
 
       subroutine report_well_balanced(nfail)
       ! The well-balanced table, both ways: the discrete equilibrium of the
-      ! scheme, on which the arm must return the rounding level, and the
-      ! analytic column, on which both arms carry the truncation error of the
-      ! discretization of gravity.
+      ! scheme, on which the key must return the rounding level, and the
+      ! analytic column, on which the key and the base scheme both carry the
+      ! truncation error of the discretization of gravity.
       integer, intent(inout) :: nfail
 
       integer, parameter :: mxw = 512
@@ -1478,7 +1478,7 @@
             wv(i) .eq. 1, mom(i), mas(i), ene(i)
       enddo
 
-      ! THE ASSERTION.  On the discrete equilibrium of the scheme the arm
+      ! THE ASSERTION.  On the discrete equilibrium of the scheme the key
       ! must leave the rounding level in every row, at every N and for both
       ! reconstructions.  1e-13 is not a tolerance chosen to pass: the
       ! arithmetic bound of a row assembled from cell pressures is

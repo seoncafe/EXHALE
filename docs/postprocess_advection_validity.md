@@ -7,7 +7,7 @@
 > by the certification's face-flux mass operator against
 > `adv_conditional_tol = 1e-2`, and the header block `# adv_schema 2`. The
 > current description is in `README.md`, `README_HOWTO.md`, the user manual
-> section 4 and `docs/Update_EXHALE.md` (entries N11, N11b). The measured
+> section 4 and `docs/Update_EXHALE_stage2.md` (entries N11, N11b). The measured
 > numbers below are of the old product and are kept for the record.
 
 2026-08-12. Files: `src/modules/post_process/post_process_adv.f90`,
@@ -703,5 +703,5 @@ Fixed in passing, outside the post-process: `LHS1140b/make_memo_figures.py` and
 `HeI + HeII + HeIII + HeITR`, counting the metastable twice -- it is a level of
 He I and is already inside the `HeI` column (`species_table.f90` says so in
 capitals). Both now sum the three ion stages only. The stored figures and
-tables move by at most `2e-6` relative (measured on the four `K_zz` arms), so
+tables move by at most `2e-6` relative (measured on the four `K_zz` runs), so
 nothing was regenerated.

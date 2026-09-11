@@ -334,7 +334,7 @@
       ! element row, recorded from the state the unknown vector is packed
       ! from.
       !
-      ! Cell 1 carries no transport balance in either arm: it is the
+      ! Cell 1 carries no transport balance in either solve: it is the
       ! reservoir the operator holds at the input composition
       ! (`solve_mass_fraction` pins Xhe(1-Ng:1) = X_base, and the trace solve
       ! pins the base mixing ratio at its own entry value), so
@@ -460,7 +460,7 @@
       ! produces, and it falls as the reciprocal of the arc over two
       ! decades either side of the standard one with no crossover, so a
       ! longer arc buys accuracy in proportion until the curvature term
-      ! meets it. This is the arm that measures where that is.
+      ! meets it. This scale is what measures where that is.
       real*8  :: jv_probe_arc_scale = 1.0d0
       ! WHAT THE LAST PROBE OF jv_product ACTUALLY DID, so that a defect can
       ! be attributed to a decision of the feasible set rather than to the
@@ -1047,7 +1047,7 @@
       ! (gm_step_by_its_true_residual): the reduced least-squares residual
       ! keeps falling, the residual the step reaches against the operator
       ! does not, and the step handed back is the best true residual the
-      ! cycle saw. Only this arm can name it.
+      ! cycle saw. Only the true-residual stop can name it.
       integer, parameter :: gm_true_residual_turned      = 8
       integer, parameter :: n_gm_outcome_kind           = 8
       ! The reduced problem's rank, and an Arnoldi breakdown, are decided
@@ -1113,7 +1113,7 @@
       integer, parameter :: n_tr_reset_kind             = 5
       ! WHICH OF THE FIVE A RESTART OF THIS SOLVE TAKES
       ! (read_trust_region_restart_controls). All five is what a re-entry
-      ! does; a single one is how the arms of item N21 separate them.
+      ! does; a single one is how the measurements of item N21 separate them.
       logical :: tr_reset_wanted(n_tr_reset_kind) = .true.
       ! The outer iteration at which one restart is forced whatever the
       ! trigger says, 0 for none (EXHALE_TR_RESTART_AT). It exists so that
@@ -1130,7 +1130,7 @@
       integer :: tr_restart_without_improvement = 0
       ! THE DEFAULT OF THAT TRIGGER. It is 0 -- disarmed -- until the
       ! restart is measured to help on both species-row fixtures; the
-      ! measurement of item N21 is what may change it, and the arms are
+      ! measurement of item N21 is what may change it, and the settings are
       ! reached through EXHALE_TR_RESTART_STALL.
       integer, parameter :: tr_restart_stall_default = 0
       ! How many restarts this solve has taken, and of which kind.
@@ -1144,7 +1144,7 @@
       ! which it is spent (EXHALE_GM_CYCLES_FROM, 1 by default). The two
       ! exist so that a restarted cycle can be armed part way into a solve,
       ! on the same prefix of iterations a restart of the trust-region
-      ! state is armed on, and the two arms then differ in one thing.
+      ! state is armed on, and the two runs then differ in one thing.
       integer :: gm_restart_cycles_wanted = 1
       integer :: gm_restart_cycles_from   = 1
 
@@ -1337,7 +1337,7 @@
       ! system, and its exact solution is the same step. What E changes is
       ! the norm the truncated Krylov cycle minimizes, and with it the
       ! meaning of "relative residual 1e-1" and the subspace the cycle
-      ! selects. THIS ARM CHANGES THE LINEAR MODEL'S INNER PRODUCT AND
+      ! selects. ROW EQUILIBRATION CHANGES THE LINEAR MODEL'S INNER PRODUCT AND
       ! NOTHING THE SOLVE IS JUDGED BY: the step comes back in the same
       ! coordinates, its image A s is mapped back to the certification
       ! scales before it leaves the cycle, and the relative residual the
@@ -1372,7 +1372,7 @@
       ! fixtures (section N35) the reduced residual falls monotonically
       ! with the subspace size while the residual the returned step reaches
       ! against the operator stops falling at 60 to 80 products and rises.
-      ! With this arm the cycle forms its candidate step every
+      ! With this option the cycle forms its candidate step every
       ! gm_true_residual_stride products from gm_true_residual_first on,
       ! and at every point where the cycle would otherwise end -- its last
       ! product, an Arnoldi breakdown, the reduced problem reaching the
@@ -1578,7 +1578,7 @@
       ! solve's own opening residual evaluation. So the opening state is
       ! packed as a density, evaluated, and the carrier slots are then
       ! rewritten as logarithms with the floor the evaluation produced
-      ! (arm_carrier_log_unknown). The residual is a function of the STATE
+      ! (form_carrier_unknown_space). The residual is a function of the STATE
       ! and not of the coordinates it is named in, so that opening residual
       ! stands for the armed vector as well.
       logical :: carrier_log_unknown_wanted = .true.
@@ -1624,8 +1624,8 @@
       ! It is fixed once per solve from the state the solve begins at: an
       ! unknown space that moved with the iterate would make the residual a
       ! function of the iteration and not of the state. It is formed for the
-      ! density unknown as well, so that the two arms are measured against
-      ! one yardstick.
+      ! density unknown as well, so that the density unknown and the
+      ! logarithm are measured against one yardstick.
       real*8, allocatable :: carrier_log_floor(:,:)
       ! THE BOX THE SPECIES UNKNOWNS OF THIS STEP LIVE IN, one lower and one
       ! upper bound per unknown of the flat vector, in the coordinates the
@@ -1677,15 +1677,15 @@
       ! corners: with every carrier density non-negative the shared row
       ! implies each of them.
       !
-      ! EXHALE_ELEMENT_CONSTRAINT_ROWS=0 is the measurement arm: the budget
-      ! goes back under a coordinate face and no row is formed, which is the
-      ! box the B5j to B5l measurements were made in.
+      ! EXHALE_ELEMENT_CONSTRAINT_ROWS=0 is the control it is measured
+      ! against: the budget goes back under a coordinate face and no row is
+      ! formed, which is the box the B5j to B5l measurements were made in.
       logical :: element_constraint_rows_on = .true.
       ! WHETHER THE WRITE-BACK RESTORES THE ELEMENT TOTALS OF THE CELL IT
       ! WRITES (item N4b deliverable 4). It is a conservation statement and
       ! not an option: an operator that moves one element of a cell without
       ! the other changes the composition the run was given.
-      ! EXHALE_ELEMENT_WRITE_BACK=0 is the arm it is measured against, in
+      ! EXHALE_ELEMENT_WRITE_BACK=0 is the control it is measured against, in
       ! which the carrier column is written and nothing puts the element
       ! total back, and the He/H of the state then leaves its reservoir
       ! along the solve (item N4a section 6b).
@@ -2502,8 +2502,8 @@
       logical function the_linear_model_rows_are_equilibrated(neq)       &
                result(yes)
       ! Whether the Krylov cycle is to work in the equilibrated rows: the
-      ! arm is on, a scaling was formed for the band currently factored,
-      ! and it is a scaling of this many rows.
+      ! row equilibration is on, a scaling was formed for the band currently
+      ! factored, and it is a scaling of this many rows.
       integer, intent(in) :: neq
       yes = model_row_equilibration_on .and. model_rows_equilibrated
       if (yes) yes = allocated(model_row_equilibration)
@@ -3238,7 +3238,7 @@
             ! IT IS ALSO A FACE OF THE UNKNOWN BOX now
             ! (freeze_species_unknown_box), so a projected trial cannot
             ! leave it and this screen cannot refuse one.  It remains the
-            ! backstop of the paths no projection covers: the arm that
+            ! backstop of the paths no projection covers: the option that
             ! shortens the step instead (EXHALE_SPECIES_BOUND_PROJECT=0),
             ! the ray probes of the model test, and the marching route's own
             ! evaluations.
@@ -6152,10 +6152,10 @@
       ! above THAT (carrier_over_its_budget_max,
       ! n_carrier_above_its_budget).
       !
-      ! THE RATIO IS FORMED IN BOTH ARMS. With the density unknown the floor
+      ! THE RATIO IS FORMED IN BOTH SPACES. With the density unknown the floor
       ! is not a bound of the space and a carrier driven to zero reports a
-      ! ratio of zero, which is the whole difference between the two arms in
-      ! one number; with ln n the density cannot be zero and the ratio says
+      ! ratio of zero, which is the whole difference between the two spaces
+      ! in one number; with ln n the density cannot be zero and the ratio says
       ! how far above the floor the solve stayed.
       real*8, dimension(nvar_jac*N), intent(in) :: Y
       real*8  :: val, fl, nbu
@@ -6239,7 +6239,7 @@
       !                                    the face of the box.
       !   EXHALE_ELEMENT_WRITE_BACK=0      write the carrier column without
       !                                    restoring the element totals of
-      !                                    the cell, which is the arm the
+      !                                    the cell, which is what the
       !                                    conservation is measured against
       !                                    (item N4b).
       !   EXHALE_ELEMENT_CONSTRAINT_ROWS=0 carry the shared element budget
@@ -6247,11 +6247,11 @@
       !                                    instead of as a row of the step,
       !                                    which is the box the B5j to B5l
       !                                    measurements were made in and is
-      !                                    the arm the rows are measured
+      !                                    what the rows are measured
       !                                    against (item N4b).
       !   EXHALE_CARRIER_LOG_UNKNOWN=0     carry the carrier DENSITY as the
       !                                    unknown instead of ln n, which is
-      !                                    the arm the logarithm was measured
+      !                                    what the logarithm was measured
       !                                    against (item B5j) and is not the
       !                                    default (user decision,
       !                                    2026-09-08).
@@ -6488,7 +6488,7 @@
          if (iselect .gt. 0) jfnk_maxit_wanted = iselect
       endif
       ! NOT ARMED HERE: the opening state is packed and evaluated as a
-      ! density, and arm_carrier_log_unknown rewrites it once the floor the
+      ! density, and form_carrier_unknown_space rewrites it once the floor the
       ! logarithm needs exists.
       carrier_unknown_is_logarithmic = .false.
       if (allocated(carrier_log_floor)) deallocate(carrier_log_floor)
@@ -6531,7 +6531,7 @@
       !
       !   EXHALE_TR_RESTART_AT=<n>     force one restart after outer
       !                                iteration n, whatever the trigger
-      !                                says. The measurement arm: n is the
+      !                                says. The measurement setting: n is the
       !                                iteration a capped solve hands its
       !                                state back at, so the restart acts on
       !                                the same iterate a re-entry would.
@@ -6634,7 +6634,7 @@
       !
       ! Two ways for it to be due, and they are read in this order.
       !
-      ! The forced iteration is the measurement arm: it names one iterate,
+      ! The forced iteration is the measurement setting: it names one iterate,
       ! the one a solve capped there hands back, so that a restart on that
       ! state can be compared with continuing from it.
       !
@@ -8021,7 +8021,7 @@
 
       ! ------------------------------------------------------!
 
-      subroutine arm_carrier_log_unknown(Y)
+      subroutine form_carrier_unknown_space(Y)
       ! THE FLOOR OF THE LOGARITHMIC CARRIER UNKNOWN, one number per cell
       ! and per carrier row, formed once per solve from the state the solve
       ! starts at: the element budget of that carrier in that cell times the
@@ -8032,8 +8032,8 @@
       ! evaluated as densities, are rewritten as their logarithms and the
       ! space is armed for the rest of the solve.
       !
-      ! IT IS FORMED FOR THE DENSITY UNKNOWN AS WELL, so that a run of either
-      ! arm is measured against the same yardstick and the reported ratio of
+      ! IT IS FORMED FOR THE DENSITY UNKNOWN AS WELL, so that a run in either
+      ! space is measured against the same yardstick and the reported ratio of
       ! a carrier to its own floor means the same thing in both.
       !
       ! WHERE THE STATE DOES NOT DEFINE IT the logarithm is not available:
@@ -8086,7 +8086,7 @@
          enddo
       endif
       call report_carrier_unknown_space
-      end subroutine arm_carrier_log_unknown
+      end subroutine form_carrier_unknown_space
 
       ! ------------------------------------------------------!
 
@@ -8145,8 +8145,8 @@
       ! room between its value and its own ceiling made the
       ! fraction-to-the-boundary rule return zero for the whole direction.
       !
-      ! In the measurement arm EXHALE_ELEMENT_CONSTRAINT_ROWS=0 the budget
-      ! comes back under a coordinate face, which is the box the B5j to B5l
+      ! With EXHALE_ELEMENT_CONSTRAINT_ROWS=0 the budget comes back under a
+      ! coordinate face, which is the box the B5j to B5l
       ! measurements were made in, and it is then RAISED to the iterate
       ! wherever the iterate already stands outside it: the budget is frozen
       ! at the iterate and depends on the very unknown it constrains, so a
@@ -8256,9 +8256,9 @@
 
       logical function element_constraint_rows_known() result(known)
       ! Whether this step carries the shared element budget as rows. False
-      ! on the three-unknown route, on a solve with no carrier unknown, in
-      ! the measurement arm, and before the first residual evaluation has
-      ! made the carrier operator freeze a budget.
+      ! on the three-unknown route, on a solve with no carrier unknown, with
+      ! EXHALE_ELEMENT_CONSTRAINT_ROWS=0, and before the first residual
+      ! evaluation has made the carrier operator freeze a budget.
       known = elem_rows_frozen
       end function element_constraint_rows_known
 
@@ -11075,11 +11075,11 @@
       ! WHETHER THIS CYCLE WORKS IN THE EQUILIBRATED ROWS OF THE LINEAR
       ! MODEL (model_row_equilibration_on), and the norm of the right-hand
       ! side on the CERTIFICATION scales, which is what the relative
-      ! residual handed back is measured against whether the arm is on or
-      ! off.
+      ! residual handed back is measured against whether the row
+      ! equilibration is on or off.
       logical :: row_equil_here
       real*8  :: beta_cert
-      ! The true-residual arm's work space (gm_step_by_its_true_residual):
+      ! The true-residual stop's work space (gm_step_by_its_true_residual):
       ! the best step its residual against the operator has seen, that
       ! step's image, its residual, the residual of the check before, how
       ! many consecutive checks have risen and at which product the best
@@ -11089,7 +11089,7 @@
       integer :: n_true_rise, j_true_best
       logical :: true_resid_here, have_a_best_step, check_here
       ! Whether the reduced problem reaching the tolerance ends the cycle.
-      ! It always does without the true-residual arm; with it, only where
+      ! It always does without the true-residual stop; with it, only where
       ! the iterate could not be measured against the operator.
       logical :: reduced_tolerance_stops
 
@@ -11130,7 +11130,7 @@
          write(*,'(A,I0,A,ES11.3)') ' (JFNK) [diag 16] residual history'//&
               ' of a cycle of ', m, ' products, tolerance asked ', rtol
       endif
-      ! THE ROW SCALING OF THE LINEAR MODEL, and the arm that lets the
+      ! THE ROW SCALING OF THE LINEAR MODEL, and the option that lets the
       ! cycle keep the step its true residual chooses. Both are read once
       ! here, so that a cycle works in one model from its first product to
       ! its last.
@@ -11242,7 +11242,7 @@
          else
             w = w/D + idtau*z
          endif
-         ! AND THE ROW SCALING OF THE LINEAR MODEL, where the arm is on:
+         ! AND THE ROW SCALING OF THE LINEAR MODEL, where it is on:
          ! the operator the cycle works with is E A_z and the band it is
          ! preconditioned by is E times the same band, so the two agree
          ! (unit_infinity_norm_row_scaling_of_the_band).
@@ -11378,7 +11378,7 @@
                         else
                            u = u/D + idtau*xh
                         endif
-                        ! AND THE ROW SCALING OF THE LINEAR MODEL, where the arm is on:
+                        ! AND THE ROW SCALING OF THE LINEAR MODEL, where it is on:
                         ! the operator the cycle works with is E A_z and the band it is
                         ! preconditioned by is E times the same band, so the two agree
                         ! (unit_infinity_norm_row_scaling_of_the_band).
@@ -11423,8 +11423,8 @@
             ! THE CHECK POINTS ARE THE PERIODIC ONES AND EVERY POINT AT
             ! WHICH THE CYCLE WOULD OTHERWISE END: the last product of the
             ! subspace, an Arnoldi breakdown, and the reduced problem
-            ! reaching the tolerance. With this arm the reduced residual
-            ! stops nothing on its own -- it is the quantity the arm
+            ! reaching the tolerance. With this option the reduced residual
+            ! stops nothing on its own -- it is the quantity the option
             ! exists to stop trusting -- so where it reaches the tolerance
             ! the iterate is measured against the operator and the cycle
             ! ends only if the TRUE residual reached it too. Measuring the
@@ -11621,7 +11621,7 @@
             else
                w = w/D + idtau*z
             endif
-            ! AND THE ROW SCALING OF THE LINEAR MODEL, where the arm is on:
+            ! AND THE ROW SCALING OF THE LINEAR MODEL, where it is on:
             ! the operator the cycle works with is E A_z and the band it is
             ! preconditioned by is E times the same band, so the two agree
             ! (unit_infinity_norm_row_scaling_of_the_band).
@@ -11648,7 +11648,7 @@
                   else
                      u = u/D + idtau*z
                   endif
-                  ! AND THE ROW SCALING OF THE LINEAR MODEL, where the arm is on:
+                  ! AND THE ROW SCALING OF THE LINEAR MODEL, where it is on:
                   ! the operator the cycle works with is E A_z and the band it is
                   ! preconditioned by is E times the same band, so the two agree
                   ! (unit_infinity_norm_row_scaling_of_the_band).
@@ -11688,7 +11688,7 @@
                   else
                      w = w/D + idtau*u
                   endif
-                  ! AND THE ROW SCALING OF THE LINEAR MODEL, where the arm is on:
+                  ! AND THE ROW SCALING OF THE LINEAR MODEL, where it is on:
                   ! the operator the cycle works with is E A_z and the band it is
                   ! preconditioned by is E times the same band, so the two agree
                   ! (unit_infinity_norm_row_scaling_of_the_band).
@@ -11798,7 +11798,7 @@
       ! operator was smallest, its own image from the product that measured
       ! it, and that residual on the CERTIFICATION scales, which is the
       ! norm every reader of gm_resid_rel works in. The reduced problem's
-      ! residual is not consulted: it is the quantity this arm exists to
+      ! residual is not consulted: it is the quantity this option exists to
       ! stop trusting.
       if (true_resid_here .and. have_a_best_step) then
          x = xbest
@@ -11950,7 +11950,7 @@
             else
                w = w/D + idtau*x
             endif
-            ! AND THE ROW SCALING OF THE LINEAR MODEL, where the arm is on:
+            ! AND THE ROW SCALING OF THE LINEAR MODEL, where it is on:
             ! the operator the cycle works with is E A_z and the band it is
             ! preconditioned by is E times the same band, so the two agree
             ! (unit_infinity_norm_row_scaling_of_the_band).
@@ -12309,7 +12309,7 @@
       logical :: jv_ok, row_equil_here
       neq   = nvar_jac*N
       ! The spectrum measured is that of the operator the CYCLE runs, so
-      ! it carries the row scaling of the linear model where that arm is
+      ! it carries the row scaling of the linear model where that scaling is
       ! on (the_linear_model_rows_are_equilibrated).
       row_equil_here = the_linear_model_rows_are_equilibrated(neq)
       kdone = 0;  info = 0
@@ -12337,7 +12337,7 @@
          else
             w = w/D + idtau*z
          endif
-         ! AND THE ROW SCALING OF THE LINEAR MODEL, where the arm is on:
+         ! AND THE ROW SCALING OF THE LINEAR MODEL, where it is on:
          ! the operator the cycle works with is E A_z and the band it is
          ! preconditioned by is E times the same band, so the two agree
          ! (unit_infinity_norm_row_scaling_of_the_band).
@@ -15219,7 +15219,7 @@
       ! is formed from, so this is the earliest point at which the space can
       ! be armed; F belongs to the state and stands for the rewritten vector
       ! as it stands for the packed one.
-      call arm_carrier_log_unknown(Y)
+      call form_carrier_unknown_space(Y)
       ! AND THE BOX THEY LIVE IN IS FORMED, from this state and from the
       ! element budget the evaluation above made the carrier operator
       ! freeze. It is re-formed at the top of every outer iteration, from

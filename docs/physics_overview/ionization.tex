@@ -1,0 +1,488 @@
+\section{Ionization and chemical state}
+\label{sec:ionization}
+
+\subsection{The species carried}
+\label{sec:ionization:species}
+
+The composition of a cell is the vector \texttt{f\_sp}$(j,\cdot)$ of species
+fractions, laid out once in \texttt{species\_table.f90}:
+
+\begin{center}
+\begin{tabular}{llp{0.46\textwidth}}
+\toprule
+column(s) & species & note\\
+\midrule
+1--2   & H\,{\sc i}, H\,{\sc ii} & fractions of the hydrogen nuclei\\
+3--5   & He\,{\sc i}, He\,{\sc ii}, He\,{\sc iii} & fractions of the helium
+         nuclei; column 3 \emph{contains} the metastable\\
+6      & He\,$2^3$S & the metastable triplet, tracked when
+         \texttt{Include He23S?} is true (default on)\\
+7--33  & the 27 metal ion stages & C, O, N, Mg, Si, Ca, Fe in three stages;
+         Na, K, S in two\\
+34--37 & H$_2$, H$_2^+$, H$_3^+$, HeH$^+$ & molecular option
+         (\texttt{thereis\_mol}, default off)\\
+38--40 & OH, H$_2$O, CO & oxygen option (\texttt{thereis\_oxychem},
+         default off)\\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Ten elements carry a nuclear abundance $n_X/n_{\rm H}$, set by
+\texttt{metals.inp} (\texttt{metals\_input\_read.f90}) or by a
+lower-atmosphere handoff. Masses are in units of the hydrogen \emph{atom}:
+helium weighs $m_{\rm He}/m_{\rm H} = 3.9715259$ and the metal weights are
+the CIAAW values converted from the unified mass unit by
+$1\,{\rm u} = 0.99223573\,m_{\rm H}$.
+
+\subsection{The cell system}
+\label{sec:ionization:cellsystem}
+
+For each cell the code solves a system of algebraic balance equations at
+fixed temperature, density and radiation field. The unknowns are stage
+\emph{fractions}, and one stage of each element is closed as the remainder
+rather than being an unknown: $n({\rm H\,I}) = (1-x_{\rm H^+})n_{\rm H}$,
+$n({\rm He\,I}) = (1-x_{\rm He^+}-x_{\rm He^{2+}})n_{\rm He}$, and for a metal
+element $n(X^{0}) = (1-x_{X^+}-x_{X^{2+}})n_X$. The layout is
+
+\begin{center}
+\begin{tabular}{ll}
+\toprule
+rows & contents\\
+\midrule
+1--3 & $x_{\rm H^+}$, $x_{\rm He^+}$, $x_{\rm He^{2+}}$\\
+4    & He\,$2^3$S (triplet systems) \emph{or} H$_2$ (molecular systems)\\
+5--8 & H$_2^+$, H$_3^+$, HeH$^+$, He\,$2^3$S (molecular systems)\\
+$m_{\rm base}$\dots & two rows per metal element
+       (\texttt{metal\_row\_base()})\\
+$i_{\rm ox}$\dots & OH and H$_2$O (oxygen option)\\
+\bottomrule
+\end{tabular}
+\end{center}
+
+with $m_{\rm base} = 4$, or 5 with the triplet. In the molecular layout
+$i_{\rm ox} = 8$, or 9 with the triplet, and
+$m_{\rm base} = i_{\rm ox}$, raised by two when the oxygen chemistry is on
+(\texttt{metal\_row\_base}, \texttt{oxygen\_row\_base}: one definition, read
+by the residual and by the driver alike). Seven residual routines cover the
+configurations: \texttt{System\_H}, \texttt{System\_HeH},
+\texttt{System\_HeH\_metals}, \texttt{System\_HeH\_TR},
+\texttt{System\_HeH\_TR\_metals}, \texttt{System\_HeH\_mol} and
+\texttt{System\_HeH\_mol\_metals}. The shared rows live once, in
+\texttt{ion\_residual\_core.f90}.
+
+\paragraph{The H/He rows.} With photoionization rates $\Gamma$, case-B
+recombination coefficients $\alpha$ and electron-impact ionization
+coefficients $\beta$, \texttt{heh\_rows} writes
+\begin{align}
+0 &= n_{\rm HI}\Gamma_{\rm HI}
+   + \left(n_{\rm HI}\beta_{\rm HI}-\alpha_{\rm HII}n_{\rm HII}\right)n_e,
+   \label{eq:ion:hrow}\\
+0 &= n_{\rm HeI}\Gamma_{\rm HeI}
+   + \left(n_{\rm HeI}\beta_{\rm HeI}-\alpha_{\rm HeII}n_{\rm HeII}\right)n_e,
+   \label{eq:ion:herow}\\
+0 &= n_{\rm HeII}\Gamma_{\rm HeII}
+   + \left(n_{\rm HeII}\beta_{\rm HeII}-\alpha_{\rm HeIII}n_{\rm HeIII}\right)n_e,
+   \label{eq:ion:he2row}
+\end{align}
+with $n_e$ the charge sum of every tracked ion,
+$n_e = n_{\rm HII}+n_{\rm HeII}+2n_{\rm HeIII}+\sum_i Z_i n_{{\rm m},i}
+ + n_{\rm H_2^+}+n_{\rm H_3^+}+n_{\rm HeH^+}$
+(\texttt{calc\_ne}), so charge neutrality is imposed identically rather
+than solved for. Each metal element contributes
+\begin{equation}
+0 = n_{X^0}\Gamma_{X^0}
+  + \left(n_{X^0}\beta_{X^0}-\alpha_{X^+}n_{X^+}\right)n_e,
+\qquad
+0 = n_{X^+}\Gamma_{X^+}
+  + \left(n_{X^+}\beta_{X^+}-\alpha_{X^{2+}}n_{X^{2+}}\right)n_e,
+\label{eq:ion:metalrows}
+\end{equation}
+the second row being replaced by $x_{X^{2+}}=0$ for a two-stage element, and
+the whole pair by $x_{X^+}=x_{X^{2+}}=0$ for an element with zero abundance.
+
+\paragraph{The triplet row.} With the metastable tracked, the He rows are
+rewritten in the form of \citet{Oklopcic2018} (rows 2 and 3 summed, the triplet and the
+singlet ground state distinguished) and the fourth row is the $2^3$S
+balance,
+\begin{equation}
+0 = -n_{2^3{\rm S}}\Gamma_{2^3{\rm S}}
+    + n_e\left[n_{\rm HeII}\alpha_{2^3{\rm S}}
+             + n_{1^1{\rm S}}q_{13}
+             - n_{2^3{\rm S}}(q_{31a}+q_{31b})
+             - n_{2^3{\rm S}}\beta_{2^3{\rm S}}\right]
+    - n_{2^3{\rm S}}\left(A_{31}+n_{\rm HI}Q_{31}\right),
+\label{eq:ion:tripletrow}
+\end{equation}
+where $q_{13}$ is the collisional excitation out of the singlet ground
+state, $q_{31a}$ and $q_{31b}$ the collisional conversions to $2^1$S and
+$2^1$P, $A_{31} = 1.272\times10^{-4}$\,s$^{-1}$ the forbidden radiative
+decay, $\beta_{2^3{\rm S}}$ the electron-impact ionization of the
+metastable at its own 4.8\,eV threshold, and $Q_{31}$ the \emph{total}
+He($2^3$S)$+$H ionization rate coefficient. Both channels of $Q_{31}$
+quench the metastable, so the sink takes the sum; only the Penning branch
+$f_{\rm P}=0.9$ leaves a lasting proton, and it appears as the source
+$f_{\rm P}Q_{31}n_{2^3{\rm S}}n_{\rm HI}$ in the H$^+$ row. The remaining
+10 percent is associative ionization to HeH$^+$, which the atomic systems
+drop (in an atomic gas HeH$^+$ dissociatively recombines straight back) and
+the molecular system carries explicitly.
+
+\paragraph{The molecular rows.} \texttt{mol\_heh\_rows} adds four species
+balances on the \citet{Koskinen2022} Table 1 network
+(Sec.~\ref{sec:mol:network}). Schematically, writing $g$ for photorates and
+$k_n$ for the Table-1 coefficients,
+\begin{align}
+\text{H}_2:\quad 0 &= k_6 n_e n_{\rm H_3^+} + k_9 n_{\rm H_2^+}n_{\rm HI}
+   + k_{11}n_{\rm H_3^+}n_{\rm HI} + k_{15}n_{\rm HI}^{2}
+   \nonumber\\ &\quad
+   - \big[g_{\rm H_2} + g_{\rm LW} + (k_{10}+k_{13})n_{\rm HII}
+          + k_{12}n_{\rm tot} + k_{14}n_e + k_8 n_{\rm H_2^+}
+          + (k_{17}+k_{20}+k_{23})n_{\rm HeII} + k_{18}n_{\rm HeH^+}
+          + k^{\rm ion}_{\rm H_2}n_{2^3{\rm S}}\big]n_{\rm H_2},
+   \label{eq:ion:h2row}\\
+\text{H}_2^+:\quad 0 &=
+   \left(g_{\rm H_2}-g^{\rm di}-g^{\rm dd}-g^{\rm nd}\right)n_{\rm H_2}
+   + k_{10}n_{\rm HII}n_{\rm H_2} + k_{11}n_{\rm H_3^+}n_{\rm HI}
+   + k_{19}n_{\rm HeH^+}n_{\rm HI} + k_{23}n_{\rm HeII}n_{\rm H_2}
+   \nonumber\\ &\quad
+   + f_{\rm P}k^{\rm ion}_{\rm H_2}n_{2^3{\rm S}}n_{\rm H_2}
+   - \left(k_5 n_e + k_8 n_{\rm H_2} + k_9 n_{\rm HI}\right)n_{\rm H_2^+},
+   \label{eq:ion:h2prow}\\
+\text{H}_3^+:\quad 0 &= k_8 n_{\rm H_2^+}n_{\rm H_2}
+   + k_{13}n_{\rm HII}n_{\rm H_2} + k_{18}n_{\rm HeH^+}n_{\rm H_2}
+   - \left[(k_6+k_7)n_e + k_{11}n_{\rm HI}\right]n_{\rm H_3^+},
+   \label{eq:ion:h3prow}\\
+\text{HeH}^+:\quad 0 &= k_{20}n_{\rm HeII}n_{\rm H_2}
+   + (1-f_{\rm P})n_{2^3{\rm S}}
+     \left(Q_{31}n_{\rm HI}+k^{\rm ion}_{\rm H_2}n_{\rm H_2}\right)
+   - \left(k_{16}n_e+k_{18}n_{\rm H_2}+k_{19}n_{\rm HI}\right)n_{\rm HeH^+},
+   \label{eq:ion:hehprow}
+\end{align}
+and the H$^+$ row gains
+$(g^{\rm di}+2g^{\rm dd})n_{\rm H_2} + k_9 n_{\rm H_2^+}n_{\rm HI}
+ + k_{17}n_{\rm HeII}n_{\rm H_2}
+ - (k_{10}+k_{13})n_{\rm HII}n_{\rm H_2}$. The factor 2 on the double
+photoionization branch is the stoichiometry, two protons out of one event,
+while the H$_2$ destroyed is still one per event, which is why
+\eqref{eq:ion:h2row} is not doubled with it.
+
+\subsection{The rate coefficients}
+\label{sec:ionization:rates}
+
+All of the following live in \texttt{Cool\_coeff.f90} unless stated. The
+default set is selected by \texttt{Legacy\_HHe\_rates: False} (default) and
+\texttt{Atomic rate set: default}; the two alternatives are the
+\citet{Hui1997} fits and the \citet{Koskinen2022} Table 1 fits, and the
+three meet at the accessor functions at the end of that module.
+
+\paragraph{Recombination.} Radiative recombination follows the \citet[2023 update]{Badnell2006}
+total ground-level fit
+\begin{equation}
+\alpha_{\rm RR}(T) = \frac{A}
+  {\sqrt{T/T_0}\left(1+\sqrt{T/T_0}\right)^{1-B'}
+   \left(1+\sqrt{T/T_1}\right)^{1+B'}},
+\qquad B' = B + C e^{-T_2/T},
+\label{eq:ion:rrbadnell}
+\end{equation}
+implemented as \texttt{rr\_badnell} (its dummy \texttt{T0} keeps the
+published notation and is not the code's temperature scale). Dielectronic
+recombination of He\,{\sc ii} adds the adf09 three-term sum
+$T^{-3/2}\sum_i c_i e^{-E_i/T}$. Case B is formed by subtracting the $n=1$
+direct-capture level fit of \citet{Mao2016},
+\begin{equation}
+\alpha_1(T) = \frac{a_0\,\theta^{-b_0-c_0\ln\theta}
+                    \left(1+a_2\theta^{-b_2}\right)}
+                   {1+a_1\theta^{-b_1}},
+\qquad \theta = k_{\rm B}T\ \mathrm{[eV]},
+\label{eq:ion:rrmao}
+\end{equation}
+so that $\alpha_{\rm B} = \alpha_{\rm A}-\alpha_1$ for H\,{\sc ii},
+He\,{\sc ii} and He\,{\sc iii}. The metal stages take Badnell RR $+$ adf09
+DR through the same two forms, with the one gap (Ca\,{\sc ii}, K-like)
+handled separately and noted at the code site.
+
+\paragraph{Collisional ionization.} \citet{Voronov1997} Table 1,
+\begin{equation}
+\beta(T) = A\,\frac{\left(1+P\sqrt{U}\right)U^{K}e^{-U}}{X+U},
+\qquad U = \frac{\Delta E}{k_{\rm B}T},
+\label{eq:ion:voronov}
+\end{equation}
+with $(\Delta E,P,A,X,K)$ equal to $(13.6,0,2.91\times10^{-8},0.232,0.39)$
+for H\,{\sc i}, $(24.6,0,1.75\times10^{-8},0.180,0.35)$ for He\,{\sc i} and
+$(54.4,1,2.05\times10^{-9},0.265,0.25)$ for He\,{\sc ii}. The $\Delta E$
+here is Voronov's own fit coefficient, not the measured potential; the
+energy \emph{removed} per ionization is the measured one,
+$E_{{\rm th}}$ in erg.
+
+\paragraph{Charge exchange.} \texttt{charge\_exchange.f90} carries the 63
+reactions of \citet{Huang2023} Table 4 plus one row that is not in it. The default active set is Group A, the 23 metal$+$H/H$^+$
+reactions; \texttt{cx\_full} adds the metal$+$He (C) and metal$+$metal (D)
+groups. The He$\leftrightarrow$H pair (Group B),
+${\rm He}^0+{\rm H}^+ \rightleftharpoons {\rm He}^+ + {\rm H}^0$, is applied
+separately by \texttt{he\_h\_cx\_fvec} so that it is available in
+\emph{every} system containing helium and is never counted twice; it is
+gated by \texttt{He\_H\_charge\_exchange} (default on). Group E is the one
+reaction outside Table 4, ${\rm O}^{2+}+{\rm H}^0\to{\rm O}^{+}+{\rm H}^+$,
+on by default at the published rate because its absence leaves the
+O\,{\sc iii} profile wrong by decades in the region a transit probes;
+\texttt{cx\_O2p\_H 0} in \texttt{metals.inp} restores the Table-4-only set
+exactly. Each reaction enters as $R = k\,n_{\rm donor}n_{\rm acceptor}$, so
+the zero-abundance guard is automatic.
+
+\paragraph{Penning ionization of the metastable.} The total
+He($2^3$S)$+$H ionization rate coefficient is the Maxwell-Boltzmann average
+of the \citet{Cohen1971} and \citet{Morgner1979} cross sections as collected
+by \citet{GarciaMunoz2025},
+\begin{equation}
+Q_{31}(T) = 10^{-9}\exp\!\left[-\frac{86.4804}{T}
+   - 0.286766\ln T + 0.0868445\left(\ln T\right)^{2}
+   - 5.73001\times10^{-3}\left(\ln T\right)^{3}\right]\ \mathrm{cm^{3}\,s^{-1}},
+\label{eq:ion:penning}
+\end{equation}
+smooth, positive and single-peaked at $3.8\times10^{3}$\,K. The code notes
+at that site why the two-branch power law of \citet{Taylor2025} Table 2 is
+\emph{not} used: it jumps by a factor 1.5724 at 4000\,K,
+which a rate coefficient cannot do, and it disagrees with that paper's own
+Figure 19; the expression above agrees with Figure 19 to 10--20 percent.
+The corresponding He($2^3$S)$+$H$_2$ coefficient is
+$k = aT^{b}e^{c/T}$ with the \citet{Cohen1977} amplitudes of the
+\citet{GarciaMunoz2025} network file, reproducing its Table A.5 to 0.13
+percent. Both split 0.9\,:\,0.1 between the Penning and the associative
+branch.
+
+\subsection{Solving one cell}
+\label{sec:ionization:solve}
+
+\paragraph{The solver.} \texttt{solve\_ieq} (\texttt{newton\_solver.f90})
+tries a damped Newton iteration with an \emph{analytic} Jacobian first
+(\texttt{newton\_dense}: backtracking Armijo line search on
+$\|f\|_2$, at most 60 iterations and 20 line-search steps), and on any
+failure restores the entry guess and calls the in-tree MINPACK
+\texttt{hybrd1} from the same guess, so the result can never be worse than
+the forward-difference solve. Each residual routine ships its own exact
+Jacobian; the photoionization rates are constants of the solve, so those
+Jacobians are exact for the system actually solved
+(Sec.~\ref{sec:radiation:rates}). Run-wide counters record how many cells each
+route handled, and \texttt{EXHALE\_FORCE\_HYBRD1} forces the MINPACK path
+for an A/B comparison. \texttt{use\_newton\_ieq} is on by default.
+
+\paragraph{The sweep.} \texttt{ioniz\_eq} (\texttt{ionization\_equilibrium.f90})
+takes the temperature and the total density as \emph{inputs} and overwrites
+the species fractions in place; chemistry rearranges nucleons and electrons
+and creates no mass, so the mass density is never corrected by this step and
+the mass sum of the returned composition is a check against it
+(\texttt{rho\_recon}), never a correction. The grid is traversed from the
+top down in blocks; the columns of \eqref{eq:rad:column} are advanced with
+the composition already solved, so the field each cell is solved at is
+self-consistent with the states above it in one traversal. Inside a cell
+the pair (field, composition) is iterated at most
+\texttt{xuv\_self\_field\_passes} times, stopping when the accepted stage
+fractions move by less than \texttt{xuv\_self\_field\_tol}. Cells within a
+block are independent and the sweep is OpenMP-parallel with the per-cell
+scratch declared \texttt{threadprivate}; blocks are of fixed even length so
+that the vectorized transcendental calls pair the same lanes at any thread
+count.
+
+\paragraph{Acceptance classes.} Every cell's returned state carries a class,
+and the contract is that classes 1, 2, 3 and 5 are \emph{roots} of the
+requested equations (each passed the same two tests, a state inside the
+element simplex and a normalized reaction residual at or below
+\texttt{ieq\_res\_tol}) and differ only in how the root was found:
+
+\begin{center}
+\begin{tabular}{cl}
+\toprule
+class & meaning\\
+\midrule
+1 & root of the last attempt made\\
+2 & root of the best earlier attempt\\
+3 & root after projecting the closest attempt onto the element budget\\
+4 & not a root; accepted under the relaxation amnesty and reported\\
+5 & root of the constrained element-conserving continuation solve\\
+6 & not a root, residual above \texttt{ieq\_nonroot\_res\_cap}: the cell
+    \emph{keeps the composition it entered the sweep with}\\
+\bottomrule
+\end{tabular}
+\end{center}
+
+A residual that is not a finite number is a class-4 non-root by
+construction, since NaN passes every tolerance test. A consumer counting
+states its chemistry does not describe counts classes 4 and 6 and nothing
+else.
+
+\paragraph{The constrained continuation.}
+\texttt{constrained\_chemical\_equilibrium.f90} is the second formulation of
+the molecular network, and it removes the possibility of an unphysical
+iterate instead of repairing one. The unknowns are $u_k = \ln n_k$, so
+$n_k>0$ for every iterate, converged or not (the logarithmic composition
+variables of the CEA method, \citealt{Gordon1994}); element
+conservation is an explicit residual row per element rather than a closure,
+so a species carrying nuclei of two elements (HeH$^+$, OH, H$_2$O) satisfies
+both rows at the accepted root; and $n_e$ is the charge-neutrality sum, never
+an unknown. Because the network is bistable in its starting point (a
+molecular basin in the shielded base, an atomic basin above the H$_2\to$H
+front), the solve is a natural-parameter continuation \citep{Allgower2003} in the
+radiation field:
+$\lambda$ scales the field from six decades below the cell's own, where the
+composition is known in closed form from the H$_2$ dissociation equilibrium
+of the local $p,T$, up to $\lambda=1$, each rung starting from the previous
+rung's root and a failed rung being bisected geometrically. The rungs use the
+general MINPACK \texttt{hybrd} and not \texttt{hybrd1}, whose fixed initial
+trust radius $100\|x\|$ would open a first step of $e^{10^{4}}$ in every
+density when $\|u\|\sim130$. A transported fraction, when one is imposed,
+enters as a further constraint row.
+
+\subsection{Ionization carried by the flow}
+\label{sec:ionization:advected}
+
+Where the recombination time is not short compared with the flow time, the
+local balance of Sec.~\ref{sec:ionization:cellsystem} is not the answer. Two
+places in the code carry the ionization state along the flow instead.
+
+\paragraph{The implicit advection systems.} \texttt{System\_implicit\_adv\_H},
+\texttt{\_HeH} and \texttt{\_HeH\_TR} solve, per hydrogen nucleus and with
+$c_1 = \Delta r/v$ the residence time of the cell,
+\begin{align}
+0 &= x^{\rm up}_{\rm HI}-x_{\rm HI}
+   + c_1\left[-\left(\Gamma_{\rm HI}+\beta_{\rm HI}x_e n_{\rm H}\right)x_{\rm HI}
+              + \alpha_{\rm HII}x_{\rm HII}x_e n_{\rm H}\right],
+   \label{eq:ion:advh}\\
+0 &= x^{\rm up}_{\rm HeI}-x_{\rm HeI}
+   + c_1\left[-\left(\Gamma_{\rm HeI}+\beta_{\rm HeI}x_e n_{\rm H}\right)x_{\rm HeI}
+              + \alpha_{\rm HeII}x_{\rm HeII}x_e n_{\rm H}\right],
+   \label{eq:ion:advhe}\\
+0 &= x^{\rm up}_{\rm HeIII}-x_{\rm HeIII}
+   + c_1\left[\left(\Gamma_{\rm HeII}+\beta_{\rm HeII}x_e n_{\rm H}\right)x_{\rm HeII}
+              - \alpha_{\rm HeIII}x_{\rm HeIII}x_e n_{\rm H}\right],
+   \label{eq:ion:advhe2}
+\end{align}
+with $x_e = x_{\rm HII} + ({\rm He/H})_{\rm local}(x_{\rm HeII}+2x_{\rm HeIII})
++ x_e^{\rm metal}$, and the same He$\leftrightarrow$H charge-exchange terms
+on rows 1 and 2. The helium ratio is the global one on the legacy path and
+the \emph{local}, radius-dependent one when the element diffusion is on,
+since the global value would misstate $n_e$ by the separation factor. These
+are the systems of the \texttt{\_adv} post-process
+(Sec.~\ref{sec:postprocessing:adv}).
+
+\paragraph{Transported protons.} With \texttt{Ionization transport} (default
+off) H$^+$ is carried as a fifth transported species on the hydrodynamic
+face mass flux inside the Runge-Kutta stages \eqref{eq:ssprk3}, in the same
+way the molecular carriers are (Sec.~\ref{sec:mol:carrier}), and its local balance is then a constraint rather
+than a closure.
+
+\subsection{\texorpdfstring{Excited hydrogen and the Ly$\alpha$ field}{Excited hydrogen and the Lyman-alpha field}}
+\label{sec:ionization:n2}
+
+\texttt{excited\_hydrogen.f90} solves the $2s/2p$ statistical equilibrium of
+\citet[their eqs.~(12)--(13)]{Christie2013} as a
+$2\times2$ linear system,
+\begin{equation}
+\begin{pmatrix} L_{2p} & -M_{12}\\ -M_{21} & L_{2s}\end{pmatrix}
+\begin{pmatrix} n_{2p}\\ n_{2s}\end{pmatrix}
+=\begin{pmatrix} S_{2p}\\ S_{2s}\end{pmatrix},
+\qquad
+n_{2p} = \frac{S_{2p}L_{2s}+M_{12}S_{2s}}{L_{2p}L_{2s}-M_{12}M_{21}},
+\label{eq:ion:n2pop}
+\end{equation}
+whose sources are the recombination cascade, collisional excitation from
+$1s$ and radiative pumping by the Ly$\alpha$ mean intensity, and whose
+sinks are radiative decay, the two-photon continuum, collisional
+de-excitation, $\ell$-mixing and photoionization by the stellar Balmer
+continuum. The atomic data are in one place
+(\texttt{hydrogen\_n2\_rates.f90}): $A_{2p1s}=6.2649\times10^{8}$\,s$^{-1}$
+(NIST ASD, the nonrelativistic dipole value carrying the reduced-mass
+factor), $A_{2s1s}=8.26$\,s$^{-1}$, $g_{1s}=g_{2s}=2$, $g_{2p}=6$,
+$f_{\rm Ly\alpha}=0.4162$, the \citeauthor{Christie2013} Table 2 collisional rates
+such as
+$q_{1s2p} = 1.71\times10^{-8}\,t_4^{-0.077}e^{-118400/T}$, their
+detailed-balance inverses, and the \citet{Draine2011} case-B recombination and
+its $2s/2p$ split,
+\begin{equation}
+\alpha_{\rm B} = 2.54\times10^{-13}\,
+   t_4^{-0.8163-0.0208\ln t_4},
+\qquad
+\alpha_{2s} = \left(0.282+0.047t_4-0.006t_4^{2}\right)\alpha_{\rm B},
+\label{eq:ion:alphaB}
+\end{equation}
+with $t_4 = T/10^{4}$\,K. The removal of a $2p$ atom without emission of a
+line photon is
+\begin{equation}
+D_{2p} = n_e q_{2p1s} + \Gamma_{2p}
+       + n_e C_{2p2s}\frac{A_{2s1s}}
+         {A_{2s1s}+n_e(q_{2s1s}+C_{2s2p})+\Gamma_{2s}}.
+\label{eq:ion:d2p}
+\end{equation}
+
+\paragraph{Balmer continuum.} The $n=2$ photoionization rate and the
+photoelectric heating it delivers are integrals over
+$[E_{\rm th}({\rm H},n{=}2), E_{\rm th}({\rm H})]$ of the run's own
+spectrum with the hydrogenic cross section
+$\sigma_2(E) = \sigma_2^{\rm thr}(E_2/E)^{3}$,
+$\sigma_2^{\rm thr} = 1.4\times10^{-17}$\,cm$^{2}$:
+\begin{equation}
+\Gamma_2 = \frac{\sigma_2^{\rm thr}E_2^{3}}{h\,\nu_{\rm eV}}
+           \int F_E\,E^{-4}\,{\rm d}E,
+\qquad
+h^{(1)}_2 = \sigma_2^{\rm thr}E_2^{3}
+           \int F_E\left(E^{-3}-E_2E^{-4}\right){\rm d}E.
+\label{eq:ion:balmer}
+\end{equation}
+The quadrature resolves the field it integrates, which a fixed rule cannot:
+for a loaded table the nodes are the table's \emph{own} rows, and each
+segment is integrated in closed form because the interpolation is a power
+law there; for the power law the whole band is closed form; only for the
+smooth Planck field is a composite five-point Gauss-Legendre rule on a
+geometric subdivision used. The feedback is lagged-explicit: it is computed
+once per timestep before the ionization and energy solve, and the frozen
+arrays are read inside \texttt{ioniz\_eq} and never inside its Newton
+iteration. The whole module is gated by \texttt{use\_excited\_H}, which is
+armed by supplying \texttt{Stellar Teff [K]:} and
+\texttt{Stellar radius [R\_sun]:}; it is \emph{off} by default.
+
+\paragraph{The Ly$\alpha$ field.} \texttt{lya\_rt.f90} closes the line with
+an escape probability rather than a Monte Carlo, because the columns
+involved reach $\tau_0 \sim 10^{8}$ at line center. With
+$\Delta\nu_{\rm D} = \nu_{\rm Ly\alpha}\sqrt{2kT/m_{\rm H}}/c$, the Voigt
+parameter $a = (A_{2p1s}/4\pi)/\Delta\nu_{\rm D}$ and the line-center depth
+accumulated cell by cell from $n_{\rm HI}C_{\rm Ly\alpha}/\Delta\nu_{\rm D}$,
+the escape probability of a photon emitted at the cell center is
+\begin{equation}
+\beta = \frac{1}{1+\langle N\rangle},
+\qquad
+\langle N\rangle = \frac{4\sqrt6}{\pi^{2}}
+   \frac{\tau_{\rm up}+\tau_{\rm dn}}{2}\,\Psi(\xi),
+\qquad
+\xi = \frac{\tau_{\rm dn}}{\tau_{\rm up}+\tau_{\rm dn}},
+\qquad
+\Psi(\xi) = \sum_{n\ \rm odd}\frac{\sin(n\pi\xi)}{n^{2}},
+\label{eq:ion:neufeld}
+\end{equation}
+which is \citet{Neufeld1990} eq.~(3.27) at zero continuum
+destruction, reducing for a mid-plane source to \citet{Harrington1973}
+eq.~(40), $\langle N\rangle = 0.909316\,B$. The form $1/(1+\langle N\rangle)$ and not $1/\langle N\rangle$ is used
+because $\langle N\rangle$ counts absorptions per photon generated, so a
+photon is emitted $1+\langle N\rangle$ times before it leaves; this is exact
+at both ends and needs no join between the thin and thick limits. Under
+$R_{\rm II}$-A redistribution $\langle N\rangle$ is independent of $a$, so
+the Voigt parameter survives only in the one-flight penetration of the
+stellar beam. The trapped internal field and the stellar term are
+\begin{equation}
+J_{\rm int} = \frac{2h\nu^{3}}{c^{2}}\frac{g_{1s}}{g_{2p}}
+   \frac{P\left(1-\beta\right)}{\left(A_{2p1s}\beta+D_{2p}\right)n_{\rm HI}},
+\qquad
+J_\star = \frac{\xi_{\rm day}F_{\rm Ly\alpha}}{4\pi\Delta\nu_\star}
+          \left\langle T_s E\right\rangle,
+\qquad
+J_{\rm Ly\alpha} = J_{\rm int}+J_\star,
+\label{eq:ion:jlya}
+\end{equation}
+with $P = \alpha_{\rm B}n_e n_{\rm HII} + C_{1s2p}n_e n_{\rm HI}$ the
+internal production, $T_s = {\rm erfc}\!\left(x_1/\sqrt2 X_s\right)$ the
+fraction of the broad stellar profile whose wings reach depth $\tau$, and
+$\langle\cdot\rangle$ the mean of the beam over the cell's own optical
+depth. The published solution requires $(a\tau)^{1/3}>10$
+(\citeauthor{Neufeld1990} section Va); cells outside that are counted by
+\texttt{lya\_wing\_domain\_record} and are carried there by the thin limit
+$\beta\to1$, which \eqref{eq:ion:neufeld} reaches smoothly. The alternative
+\texttt{jlya\_mode = 1} reads an externally computed $J_{\rm Ly\alpha}(r)$,
+for instance from the LaRT Monte Carlo code, and interpolates it onto the
+grid.

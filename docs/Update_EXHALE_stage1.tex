@@ -6779,7 +6779,7 @@ relied on the default must now say \texttt{He\_Kzz: 1.0e9};
 \texttt{examples/14\_diffusion} already does. The four stored run directories
 that carried \texttt{He\_diffusion: True} without the key ---
 \texttt{benchmarks/hd209}, \texttt{docs/version\_compare/v2\_diff},
-\texttt{docs/version\_compare/wasp\_v2\_diff}, \texttt{scratch\_fs/hd189} ---
+\texttt{docs/version\_compare/wasp\_v2\_diff}, \texttt{scratch\_fs/hd189} (deleted 2026-09-12: a stale fine-structure-cooling scratch run superseded by \texttt{HD189733b/}) ---
 now state \texttt{He\_Kzz: 1.0e9} explicitly, so each input records the eddy
 coefficient its stored output was produced with; no output was regenerated.
 \texttt{docs/input\_schema.md} K19 and \texttt{README\_HOWTO.md} are updated.
@@ -8653,7 +8653,7 @@ line:
   column and writes the handoff. This is the production path.
 \item \texttt{src/utils/vulcan\_to\_lower\_profile.py} --- the same schema and
   the same fingerprint from a finished VULCAN \texttt{.vul} output. This is the
-  cross-check arm, not a second production path: VULCAN has no climate model, so
+  cross-check, not a second production path: VULCAN has no climate model, so
   it can never be the route away from a prescribed $T(p)$
   (\texttt{docs/vulcan\_photochem\_comparison.md} P1.7).
 \item \texttt{src/utils/lower\_profile\_schema.py} --- everything that is a
@@ -8711,7 +8711,7 @@ How the carriers are counted differs by code, and it has to. VULCAN labels are
 formulas once the ionization sign and the excited-state suffix are stripped
 (\texttt{H3+}, \texttt{CH2\_1}), so they are parsed. Photochem labels are
 \textbf{not}: \texttt{O1D} and \texttt{N2D} are excited states, and a formula
-parser reads them as an oxygen with a deuterium attached. The Photochem arm
+parser reads them as an oxygen with a deuterium attached. The Photochem path
 therefore takes the composition from the model's own matrix
 (\texttt{dat.species\_composition}), indexed by name against
 \texttt{dat.atoms\_names} --- which is also the trap P1.8 item 4 records, since
@@ -8773,8 +8773,8 @@ HD\,209458\,b, the P1 configuration ($M_p = 0.720\,M_{\rm J}$,
 $r(1\,{\rm bar}) = 1.36\,R_{\rm J}$, $R_\star = 1.155\,R_\odot$,
 $a = 0.0480$\,AU, Gueymard solar spectrum diluted, zenith 48\,deg, TOA
 $10^{-2}$\,dyn/cm$^2$, VULCAN's own \texttt{atm\_HD209\_Kzz.txt} as the
-prescribed $T(p)$, $K_{zz}(p)$), matching level 1 microbar. Both Photochem arms
-reached steady state; the VULCAN arm is its stored HD209 output.
+prescribed $T(p)$, $K_{zz}(p)$), matching level 1 microbar. Both Photochem runs
+reached steady state; the VULCAN one is its stored HD209 output.
 
 \begin{center}\small
 \begin{tabular}{@{}lllll@{}}
@@ -8817,7 +8817,7 @@ agree to $10^{-4}$ or better.
 \texttt{X\_O} and \texttt{q\_H2O} differ by 1.20x and 1.55x for a reason that is
 not a code difference: the stored VULCAN HD209 run was configured with
 \texttt{O/H = 5.03e-4}, against the Lodders 2009 \texttt{6.06e-4} the Photochem
-arms were given. That is a difference of input, and it is what the
+runs were given. That is a difference of input, and it is what the
 \texttt{X\_<El>} columns are for --- it would have been invisible in a
 comparison of molecular mixing ratios alone.
 
@@ -8828,10 +8828,10 @@ comparison of molecular mixing ratios alone.
 \toprule
 test & result \\
 \midrule
-the same input twice, VULCAN arm &
+the same input twice, VULCAN path &
   same \texttt{solution\_id} (\texttt{4f80f048...}), and the profile files are
   \textbf{byte-identical} \\
-the same input twice, Photochem arm (two full chemistry solves) &
+the same input twice, Photochem path (two full chemistry solves) &
   same \texttt{solution\_id} (\texttt{f6232692...}), and the profile files are
   \textbf{byte-identical}: the chemistry solve reproduces, so the fingerprint
   and the table agree \\
@@ -9183,7 +9183,7 @@ reproducible; that was checked by reproducing
 That the condition takes is checked every iteration instead of trusted. The
 adapter measures the model's own top-of-atmosphere elemental fluxes with
 \texttt{gas\_fluxes()} and writes them into the header as
-\texttt{measured\_flux\_H} and \texttt{measured\_flux\_He}. On the reference arm
+\texttt{measured\_flux\_H} and \texttt{measured\_flux\_He}. On the reference run
 the imposed $1.800000\times10^{7}$\,g/s comes back as
 $1.800162\times10^{7}$\,g/s, a departure of $9\times10^{-5}$; the closed-top
 solution's own numerical floor is 3.0\,g/s in hydrogen and 18.2\,g/s in helium,
@@ -9235,7 +9235,7 @@ where the wind's mass flux is not yet its own.
 uses. At a steady state the elemental flux $4\pi r^2(\rho X v + J)$ does not
 depend on radius, so a flux measured there \emph{is} the flux through the
 matching level; that identity, and not convenience, is what makes it a statement
-about the handoff. On the reference arm it holds 191 faces and gives
+about the handoff. On the reference run it holds 191 faces and gives
 $F_{\rm H} = 1.8143\times10^{7}$\,g/s,
 $F_{\rm He} = 1.3204\times10^{7}$\,g/s with radial spreads of 0.44 and 0.46 per
 cent, flat to the same tolerance as the mass flux itself (0.45 per cent). That
@@ -9292,7 +9292,7 @@ mass-loss rate never appear. The first LHS\,1140\,b closure run reported
 
 \subsection{LHS\,1140\,b, closed}
 
-Three arms, from $\Phi_{\rm ref} = (1.8\times10^{7}, 1.3\times10^{7})$\,g/s in
+Three runs, from $\Phi_{\rm ref} = (1.8\times10^{7}, 1.3\times10^{7})$\,g/s in
 (H, He) and from \texttt{0.3 x} and \texttt{3 x} that, all seeded from the same
 converged wind, all with \texttt{He/H = 2.09} as the \emph{starting} reservoir.
 
@@ -9317,11 +9317,11 @@ The three converged \texttt{He/H} agree to $5.5\times10^{-6}$,
 $\log_{10}\dot M$ to better than the 0.005 the log prints, $F_{\rm H}$ to
 $3.8\times10^{-3}$ and $F_{\rm He}$ to $2.0\times10^{-2}$ --- all far inside the
 5 per cent criterion, so \textbf{T-E7 passes and the closure is single-valued on
-this planet.} $\omega$ never halved in any arm: the residual fell on every
+this planet.} $\omega$ never halved in any run: the residual fell on every
 iteration, so the map is a plain contraction here and the damping rule was not
 exercised. The iteration counts are exactly what a contraction at
 $\omega = 0.5$ predicts, the residual halving each step, which also says the
-\texttt{3x} arm used six of its eight allowed iterations with no margin: a start
+\texttt{3x} run used six of its eight allowed iterations with no margin: a start
 further than an order of magnitude out would need a larger $k_{\max}$ or a
 secant acceleration.
 
@@ -9346,7 +9346,7 @@ closure does not weaken that; it says the separation happens in the wind and not
 below the match.
 
 \paragraph{The flux budget.} $F_{\rm H} + F_{\rm He}$ reproduces the mass flux
-identically --- exactly, in the two arms whose medians fall on the same face ---
+identically --- exactly, in the two runs whose medians fall on the same face ---
 because the binary operator's $X$ is the helium mass fraction of the H$+$He
 mixture and the trace metals ride inside $\rho$. So the measured $F_{\rm H}$ is
 hydrogen \emph{plus} metals, overstating elemental hydrogen by the metal mass
@@ -9390,7 +9390,7 @@ pinned at $1.85\times10^{3}$\,s, the model clock at $1.42\times10^{7}$\,s,
 limiting cell \texttt{nz = 72 and H2O} --- the cold trap --- exiting on
 ``Maximal allowed steps exceeded (10000)''); stopped 2026-08-27.}
 
-The cross-check arm was built on the production profile's own $T(p)$ and
+The cross-check path was built on the production profile's own $T(p)$ and
 $K_{zz}$ and never produced a profile, so there is no VULCAN composition at the
 match, no wind run on one, and no cross-code difference to state beside the P1
 spread. \texttt{LHS1140b/exhale/flux\_closure/vulcan\_arm/} holds only an
@@ -9408,7 +9408,7 @@ which made the cold trap invisible in \texttt{X\_O} whatever
 \texttt{.vul}'s own \texttt{atm['gas\_indx']}, condensate is excluded from
 $\mu$ always as VULCAN itself does, and the flag now selects. The Photochem
 adapter and \texttt{lower\_profile\_schema.py} are untouched, so the production
-arm and its \texttt{solution\_id 5130...} are unaffected. Second, a
+path and its \texttt{solution\_id 5130...} are unaffected. Second, a
 configuration trap worth stating because it silently produces a wrong atmosphere
 rather than an error: \texttt{vulcan\_cfg.He\_H} is NOT read on the FastChem
 \texttt{ini\_mix = 'EQ'} path (\texttt{build\_atm.ini\_fc} builds the element
@@ -9741,12 +9741,12 @@ $n_e$.
 The consequence is visible where it should be. On the \texttt{mol\_diffusion}
 configuration re-run at \texttt{He/H} = 1, 10 and 1000 (only the
 \texttt{He/H number ratio} and the \texttt{HeH\_base} of the handoff changed,
-12000 marching steps, \texttt{OMP\_NUM\_THREADS=1}), the \texttt{He/H} = 10 arm
+12000 marching steps, \texttt{OMP\_NUM\_THREADS=1}), the \texttt{He/H} = 10 case
 no longer aborts on the marching loop's NaN detector and completes all 12000
 steps, and the number of cells whose molecular root leaves the physical simplex
 and has to be clamped onto the element budget falls from 37 to 4 at
 \texttt{He/H} = 1000 and from 181 to 169 at \texttt{He/H} = 10. The
-\texttt{He/H} = 1 arm still aborts, later (5538 steps against 3402); it is not
+\texttt{He/H} = 1 case still aborts, later (5538 steps against 3402); it is not
 diagnosed here.
 
 \subsection{A guard that was not guarding}
@@ -9808,7 +9808,7 @@ None of the 170 \texttt{input.inp} files under \texttt{LHS1140b/} sets
 \texttt{Molecular chemistry}, and none of the 193 \texttt{Ion\_species.txt}
 files carries an H$_2$/H$_2^+$/H$_3^+$/HeH$^+$ column. Every statement corrected
 above lives inside a \texttt{thereis\_mol} branch, so the \texttt{He/H} = 2.09
-solution, the closure ladder and the \texttt{heh2p13\_diff\_kzz1e9} arm are
+solution, the closure ladder and the \texttt{heh2p13\_diff\_kzz1e9} run are
 untouched and no re-convergence is needed. What can be measured on those stored
 solutions is the size of the factor that \emph{would} have been wrong had they
 been molecular --- the ratio of the mis-supplied $\rho/m_{\rm H}$ to the EOS
@@ -9864,7 +9864,7 @@ Goldens re-snapshotted for the four moved cases at the end of the series, and
 the exobase (2026-08-27)}\label{sec:outer-inherit}
 % ===================================================================== %
 The LHS\,1140\,b closure ladder (\texttt{LHS1140b/kzz\_decision.md} Sect.~8)
-climbs a reservoir axis by seeding each arm from the converged wind of the arm
+climbs a reservoir axis by seeding each rung from the converged wind of the rung
 below. One rung was reached by a large jump instead of a step, and it converged
 to a different solution --- different only where the continuum equations no
 longer hold. This section records what separates the two, why neither
@@ -9872,11 +9872,11 @@ convergence test noticed, and what it means for reading any of these winds.
 
 \subsection{The two solutions}
 
-Both are flux-closure arms at the same reservoir \texttt{He/H} $= 12.0$ over
+Both are flux-closure rungs at the same reservoir \texttt{He/H} $= 12.0$ over
 the same photochemical lower atmosphere. One,
-\texttt{LHS1140b/exhale/flux\_closure/heh12/}, was seeded from the $8.0$ arm ---
+\texttt{LHS1140b/exhale/flux\_closure/heh12/}, was seeded from the $8.0$ rung ---
 a $1.50\times$ jump in reservoir --- and closed at $k = 4$. The other,
-\texttt{.../heh12\_ctl/}, was seeded from the $11.1$ arm, a $1.08\times$ step,
+\texttt{.../heh12\_ctl/}, was seeded from the $11.1$ rung, a $1.08\times$ step,
 and closed at $k = 2$.
 
 \begin{center}\small
@@ -10002,12 +10002,12 @@ integrates) for monotonicity along the scan.
 Path independence was checked directly at \texttt{He/H} $= 3.0$, from a seed
 $3.7\times$ away in composition and in the downward direction the ladder never
 takes: it returns the same $r_{\rm drop}$ to the digit, with everything else
-inside the closure tolerance. The $5.0$, $8.0$ and $2.09$ arms were not checked
+inside the closure tolerance. The $5.0$, $8.0$ and $2.09$ rungs were not checked
 this way. Determinism was checked separately at $10.31$
 (\texttt{.../heh10p3\_ctl/}, same seed, re-run): \texttt{Hydro\_ioniz\_adv.txt}
 and \texttt{Ion\_species\_adv.txt} reproduce bitwise, which says nothing about
 seed dependence. \textbf{No code was changed by this section}; the ladder table,
-the crossing and the figure were re-derived on the control arm, and the record
+the crossing and the figure were re-derived on the control run, and the record
 is \texttt{LHS1140b/kzz\_decision.md} Sect.~8.3 and
 \texttt{docs/lhs1140b\_exhale\_vs\_pwinds.tex}, ``The outer region a converged
 wind inherits''.
@@ -10298,7 +10298,7 @@ cool branch continued to this reservoir by refilling and re-solving
 Note what the $T_{\rm max}$ and EW rows do \emph{not} say: in this particular
 step the band happened to cost only 3\,K and 1\,\% of the equivalent width. The
 factor-23 cooling loss and the 3899\,$\to$\,5879\,K jump quoted above belong to
-the recorded scan arms, where the band sits where the C\,\textsc{i} cooling is
+the recorded scan runs, where the band sits where the C\,\textsc{i} cooling is
 decisive. The band is a defect wherever it appears; how much it moves the
 answer depends on where it lands.
 
@@ -10335,7 +10335,7 @@ answer depends on where it lands.
   Both clean, no trap.
 \end{itemize}
 
-\textbf{Not done, and left to a decision.} The 128 contaminated arms of
+\textbf{Not done, and left to a decision.} The 128 contaminated runs of
 \texttt{LHS1140b/exhale/kzz\_profile\_scan} are unchanged on disk. The repair
 prevents the band from forming; it does not repair a stored state, and
 re-running that scan is a data decision, not a code one.
@@ -11002,9 +11002,9 @@ flux closure & $11.73$ & $\mathbf{9.317}$ & $8.792$--$10.050$\\
 The local-slope estimate (slopes $0.709$, $0.921$, $0.382$) gives $0.435$,
 $1.738$ and $9.676$ for comparison; the direct ladder solve is the number to
 use. Two caveats stand on the flux-closure entry: $9.317$ is an
-interpolation across existing arms, not a re-run closure, and confirming it
-means solving a closure arm at a reservoir near $9.3$, where the cold-trap
-composition differs arm by arm. The stored He/H grid runs elsewhere in
+interpolation across existing rungs, not a re-run closure, and confirming it
+means solving a closure rung at a reservoir near $9.3$, where the cold-trap
+composition differs rung by rung. The stored He/H grid runs elsewhere in
 \texttt{LHS1140b/exhale} are still on the old coefficient and were not
 re-solved.
 
@@ -11346,7 +11346,7 @@ $n_{\rm HeI} \le n(2^3S)$ in the \texttt{\_adv} file above $1.5\,R_p$:
 \texttt{heh0p55\_diff\_fix} (171 cells of 233 each),
 \texttt{heh0p55\_diff\_kzz1e6} (36), \texttt{xuv0p01\_heh2p13} (25) and
 \texttt{xuv0p10\_heh2p13} (28). All six are helium-settled: $K_{zz} \le 10^6$,
-or a reduced XUV flux. The $K_{zz} = 0$ arm of
+or a reduced XUV flux. The $K_{zz} = 0$ run of
 Fig.~\texttt{lhs1140b\_kzz\_profiles.pdf} and its quoted peak
 $n(2^3S) = 0.046$\,cm$^{-3}$ are read from the first of them.
 
@@ -11372,7 +11372,7 @@ Found in passing and fixed, outside the post-process:
 density as \texttt{HeI + HeII + HeIII + HeITR}, counting the metastable twice
 --- it is a level of He\,\textsc{i} and is already inside the \texttt{HeI}
 column, which \texttt{species\_table.f90} states in capitals. Both now sum the
-three ion stages. Measured on the four $K_{zz}$ arms of the memo figure, the
+three ion stages. Measured on the four $K_{zz}$ runs of the memo figure, the
 quoted elemental ratios move by at most $2\times10^{-6}$ relative
 ($0.318246 \rightarrow 0.318244$ at $5\,R_p$, $K_{zz} = 10^{10}$), so nothing
 was regenerated.
@@ -11487,10 +11487,10 @@ went to $10^{-10}$.
 \subsection*{89.7 What it means for the LHS 1140\,b crossings}
 
 Against \texttt{crossings\_gm25/results.txt}: the flux-closure crossing at
-He/H = 9.048 is untouched --- the 9.0 and 9.1 arms both ran and bracket it ---
+He/H = 9.048 is untouched --- the 9.0 and 9.1 rungs both ran and bracket it ---
 and so is the $-1\sigma$ end 10.77, bracketed by 10.6 and 11.0. The
 \textbf{$+1\sigma$ end 8.49 was interpolated across the un-runnable band}, a
-3.4\,\% gap in reservoir between the 8.45 and 8.75 arms; with the tolerance
+3.4\,\% gap in reservoir between the 8.45 and 8.75 rungs; with the tolerance
 raised those five rungs can be run and that end replaced by measurement. That
 was done, on the corrected build: \S\,90. Because the refusals at
 6.0, 10.20--10.25, 14.643, 15.090 and 25.0 are the same trap at other
@@ -11524,10 +11524,10 @@ that did not move (2026-08-29)}
 \textbf{The judgement first.} The residual \S\,89 diagnosed was fixed where it
 came from --- in Photochem's chemical-equilibrium path, not by relaxing this
 code's check --- and \textbf{it does not move the observable}. Re-measured end
-to end on the corrected build with 11 arms, the LHS 1140\,b flux-closure
+to end on the corrected build with 11 rungs, the LHS 1140\,b flux-closure
 crossing of the He\,\textsc{i} 10830 equivalent width is at
 He/H = \textbf{9.0484} (chord) / \textbf{9.0461} (quadratic), the same to every
-digit the photochem 0.8.4 ladder printed; on seven like-for-like arms the
+digit the photochem 0.8.4 ladder printed; on seven like-for-like rungs the
 equivalent width moves by at most $1.2\times10^{-6}$ in relative terms and
 $\log_{10}\dot M$ is unchanged in its fourth decimal. The one EXHALE change is
 that \texttt{-{}-abundance-tol} goes back to its design value,
@@ -11619,7 +11619,7 @@ and are unaffected.
 \begin{center}
 \begin{tabular}{@{}lrr@{}}
 \hline
-quantity & 0.8.4, 16 arms & corrected build, 11 arms \\
+quantity & 0.8.4, 16 rungs & corrected build, 11 rungs \\
 \hline
 crossing, chord     & 9.0484 & 9.0484 \\
 crossing, quadratic & 9.0461 & 9.0461 \\
@@ -11635,9 +11635,9 @@ and \texttt{q\_HCN} move by up to $10^{-2}$ relative --- none of which reaches
 He\,\textsc{i} 10830, a line set by H, He and the temperature. \textbf{The
 $1\sigma$ band moves for a different reason than the solver}: its low end used
 to be interpolated across the un-runnable band He/H = 8.5--8.7, which now runs
-(departures $1.4$--$3.2\times10^{-14}$), so real arms at 8.5 and 8.6 carry that
+(departures $1.4$--$3.2\times10^{-14}$), so real rungs at 8.5 and 8.6 carry that
 end and it goes $8.4923 \rightarrow 8.4649$; the high end goes
-$10.7716 \rightarrow 10.7357$ because the 10.6 arm was not seeded the same way
+$10.7716 \rightarrow 10.7357$ because the 10.6 rung was not seeded the same way
 in the two ladders, a $1.1\times10^{-3}$ seed difference in equivalent width,
 the size of the seed spread the stored ladder already measured.
 
@@ -11661,7 +11661,7 @@ forward-difference Jacobian formed at a step below the flux residual's
 round-off jitter. \textbf{The net accounting of ``three failures removed, one
 introduced'' written here does not hold}: it compared against 0.8.4 columns
 that had not been run at the matching reservoir values, and 9.45 in particular
-fails on 0.8.4. Neither value is a bracket arm of the crossing. Diagnosis,
+fails on 0.8.4. Neither value is a bracket rung of the crossing. Diagnosis,
 repair and status: \S\,91; item (M) of \texttt{TO\_BE\_DONE.md}.
 
 \subsection*{90.7 Scope}
@@ -11682,7 +11682,7 @@ remains the reproduction path for every profile whose header reads
 built and measured),
 \texttt{docs/deep\_level\_elemental\_check.md} \S\S\,8--10 (the tolerance, the
 crossings, the climate solve);
-\texttt{LHS1140b/exhale/crossings\_pc090/} (the 11-arm re-measurement) and
+\texttt{LHS1140b/exhale/crossings\_pc090/} (the 11-rung re-measurement) and
 \texttt{LHS1140b/exhale/nh\_refusal\_diagnosis/scan\_pc090/} (the 45-point
 reservoir scan on the corrected build). The Photochem changes live outside this
 repository, in the local \texttt{photochem/} tree.
@@ -11876,10 +11876,10 @@ $422.00813$, $421.30374$ and $415.15428$ above, agreeing to the last printed
 digit. The deep temperature is monotone in composition across the whole grid,
 $433.26144$\,K at 8.00 falling to $411.97203$\,K at 11.00.
 
-\textbf{What it moves.} Nothing in the observable. The two arms of the
+\textbf{What it moves.} Nothing in the observable. The two rungs of the
 LHS 1140\,b elemental-flux-closure ladder that bracket the He\,\textsc{i}
 10830 crossing were re-run end to end on the corrected environment against the
-stored arms of \texttt{LHS1140b/exhale/crossings\_pc090}, which are the same
+stored rungs of \texttt{LHS1140b/exhale/crossings\_pc090}, which are the same
 photochem 0.9.0 source without the repair --- same seed, same parent, same
 binary, same transit configuration. Both closure iterations converge at
 $k = 1$ on residuals equal to the stored ones to all five decimals, and the
@@ -11888,7 +11888,7 @@ equivalent width moves by $5\times10^{-8}$ in relative terms:
 \begin{center}
 \begin{tabular}{lllr l}
 \hline
-arm & EW without the repair & with it & relative & $\log_{10}\dot M$ \\
+rung & EW without the repair & with it & relative & $\log_{10}\dot M$ \\
 \hline
 9.0 & 1.1068538680 & 1.1068539227 & $+4.94\times10^{-8}$ & $7.39 \to 7.39$ \\
 9.1 & 1.1092155021 & 1.1092155563 & $+4.88\times10^{-8}$ & $7.39 \to 7.39$ \\
@@ -12022,7 +12022,7 @@ $3.1\times10^{-7}$, N/H $3.2\times10^{-7}$, O/H $5.2\times10^{-3}$.
 (\texttt{binary\_element\_diffusion.f90}), which moves by
 $5.2\times10^{-5}\,R_p$. Against \texttt{tol = 0.05} on
 $|F - \Phi|/|F|$, and against the 0.084--0.085 flux-window spread the two
-LHS 1140\,b arms carry, the handoff's own reproducibility is six orders below
+LHS 1140\,b rungs carry, the handoff's own reproducibility is six orders below
 the tolerance in He/H and does not enter the H residual at all. Worth stating:
 the closure re-runs the adapter in every iteration directory, so the oxygen
 reservoir carries a 0.5\,\% step between iterations of one ladder --- nothing
@@ -12155,7 +12155,7 @@ $+$ row scaling & 1000 & 12000 & no  & 38  & 6048079 & 450   & 0.01\,\% & 11.09 
 These are relaxation snapshots followed by the steady solver, not a composition
 study; the $\dot M$ column is a diagnostic of where each run went. What it does
 show is that the row scaling is a change of \emph{path}: at He/H $=100$ and
-1000, where every arm completes, $\dot M$ moves by 0.01 and 0.02\,dex while the
+1000, where every case completes, $\dot M$ moves by 0.01 and 0.02\,dex while the
 failed-attempt fraction falls by three and a half orders of magnitude. A
 positive diagonal scaling of a residual has exactly the same zeros, so this is
 what should happen.
@@ -12230,8 +12230,8 @@ helium-dominated one.
 
 \textbf{The corrected third body is what brings the NaN abort back.} The tree as
 found does not abort at any He/H tested --- the earlier abort at step 5538 is
-absent from it --- and with R13/R15 corrected the He/H $=1$ arm aborts at step
-3406 and the He/H $=10$ arm at 8827. The physically correct third body is kept;
+absent from it --- and with R13/R15 corrected the He/H $=1$ case aborts at step
+3406 and the He/H $=10$ case at 8827. The physically correct third body is kept;
 the abort it exposes is diagnosed below and recorded as an open item.
 
 \subsection*{Where the He/H $=1$ NaN is}
@@ -12291,7 +12291,7 @@ alone:
 \item \texttt{make check} passes byte-identical on \texttt{wasp\_full},
 \texttt{wasp\_he23off} and \texttt{lower\_profile} --- the three non-molecular
 cases --- against goldens that predate the series.
-\item The LHS\,1140\,b arm
+\item The LHS\,1140\,b run
 \texttt{LHS1140b/exhale/crossings\_gm25/rs\_heh0p425}, re-solved in a scratch
 copy from its stored restart with the pre-series binary and with the new one,
 writes \textbf{byte-identical} \texttt{Hydro\_ioniz.txt},
@@ -12404,7 +12404,7 @@ the equilibrium files of \emph{every} stored PP-only run in the tree were
 computed with the secondary channel off while their \texttt{\_adv} files beside
 them were computed with it on. That includes the three
 \texttt{LHS1140b/examples/} cases of record and the LHS\,1140\,b post-process
-arms.
+runs.
 
 \textbf{How far the numbers move.} Measured on scratch copies of the two
 crossing examples (the run directories themselves untouched), same loaded wind,
@@ -12504,11 +12504,11 @@ The Euler equations live on $\rho > 0$, $\rho e > 0$, and a conservative update
 preserves that set only under a CFL bound --- $\Delta t(|v|+c)/\Delta r \le 1/2$
 for the first-order HLL family (Einfeldt et al.\ 1991; Batten et al.\ 1997),
 tighter with a high-order reconstruction. EXHALE marches at CFL 0.6, past that
-bound already, and the He/H\,$=1$ arm develops a base region at \textbf{Mach 38
-to 224}, where it bites. The direct test: the same arm at \texttt{CFL: 0.2}
+bound already, and the He/H\,$=1$ case develops a base region at \textbf{Mach 38
+to 224}, where it bites. The direct test: the same case at \texttt{CFL: 0.2}
 completes 12000 steps with no NaN. Every regression golden has a base Mach
 number of $0.000 \pm 0.002$ and a domain maximum of 0.94--2.11, which is why
-only this arm dies.
+only this case dies.
 
 \textbf{Two guards, one for each.}
 
@@ -12537,15 +12537,15 @@ Together the two make an invariant the code did not have: every state
 averages entering a reconstruction have been tested by the step control and the
 face states leaving it by the face guard.
 
-\textbf{Result at He/H\,$=1$.} The arm that aborts at step 3406 --- with the
+\textbf{Result at He/H\,$=1$.} The case that aborts at step 3406 --- with the
 current code, and with the face guard alone --- runs its full 12000 steps with
 the step control: 7500 steps retaken, 29409 $\Delta t$ bisections, no NaN, and
 the face guard never fires there. Rebuilt with
-\texttt{-ffpe-trap=invalid,zero,overflow}, the marching loop of that arm reaches
+\texttt{-ffpe-trap=invalid,zero,overflow}, the marching loop of that case reaches
 its 12000-step cap with no trap at all (last logged step 11994); what still
 aborted was its \emph{post-process},
 on two temperature guards that were conditioned on the metal switch, and those
-are the next section. The state the arm reaches is still not a converged wind
+are the next section. The state the case reaches is still not a converged wind
 ($du = 12.8$); what is fixed is that the code no longer dies on a square root.
 Why that base reaches Mach 38 is a separate open question
 (\texttt{TO\_BE\_DONE.md} item (P)).
@@ -12661,7 +12661,7 @@ corrected. H$_2$ is a source of photoelectrons in the caller but never a target,
 SvS85 having no H$_2$ channel, so in a molecular layer the energy that would
 ionize H$_2$ goes to H\,I. Both statements are now in the code at the routine.
 
-\textbf{The contaminated arm.}
+\textbf{The contaminated case.}
 \texttt{LHS1140b/exhale/heh0p55\_diff\_ctrl} (He/H\,$=0.55$, no $K_{zz}$, helium
 settled to $n_{\rm He}/n_{\rm H} = 6\times10^{-6}$ by diffusion) was the run the
 item was opened on. Re-run in a scratch copy, cells above $1.5\,R_p$ whose ground
@@ -12731,11 +12731,11 @@ conditioned on \texttt{pp\_metal\_on}, and neither of them is about metals. Both
 state that a temperature is positive, which is a property of a temperature and
 not of the composition, and where the condition was false the code evaluated
 recombination and cooling fits at a negative argument. Found while running the
-He/H\,$=1$ molecular arm of the preceding section under
-\texttt{-ffpe-trap=invalid,zero,overflow}; that arm is metals-off, so it had no
+He/H\,$=1$ molecular case of the preceding section under
+\texttt{-ffpe-trap=invalid,zero,overflow}; that case is metals-off, so it had no
 test at all.
 
-\textbf{What the run does.} The marching loop of that arm completes all 12000
+\textbf{What the run does.} The marching loop of that case completes all 12000
 steps clean under the trap --- which is the verification of the preceding
 section --- and the abort is in \texttt{post\_process\_adv}:
 
@@ -12781,7 +12781,7 @@ recombination fit takes the square root of it.
   solve.
 \end{itemize}
 
-\textbf{Verified.} With both in, the same arm's post-process runs its ten passes
+\textbf{Verified.} With both in, the same case's post-process runs its ten passes
 with $\min T_K$ staying positive throughout (11.40, 7.156, 0.300, 0.433, 0.354,
 \ldots{} settling at 0.3523\,K) and completes under
 \texttt{-ffpe-trap=invalid,zero,overflow}. The end-of-run rejection count reports
@@ -12988,7 +12988,7 @@ time. The pinned fixed point is near the lower of the two former groups
 and $2.4\times10^{-2}$ from the upper one.
 
 \textbf{Measured, the observable.} One elemental-flux closure rung was re-run
-end to end: the crossing arm of \texttt{LHS1140b/exhale/crossings\_j96}
+end to end: the crossing rung of \texttt{LHS1140b/exhale/crossings\_j96}
 \S\,6, reservoir 8.2117, same binary, same seed, same \texttt{closure.json},
 same trial fluxes, same tolerance, same wind protocol, the adapter the only
 difference. Its stored last iterate had stopped on the upper grid
@@ -13007,10 +13007,10 @@ He\,\textsc{i} 10830 chain reads at the matching level --- $T$, $r$,
 $1.6\times10^{-7}$.
 
 \textbf{Against the $+0.73$\,\% of \texttt{crossings\_j96}.} That record split
-the $+1.96$\,\% its reservoir-9.0 arm moved into $+1.22$\,\% from the \S\,96
+the $+1.96$\,\% its reservoir-9.0 rung moved into $+1.22$\,\% from the \S\,96
 secondary-ionization branching and $+0.73$\,\% from the adapter, and attributed
 the adapter's share to the \texttt{insert\_level} correction of \S\,92. The two
-arms compared here differ only in the grid, and by the largest grid step there
+runs compared here differ only in the grid, and by the largest grid step there
 is, and the line moves by $+0.00015$\,\%. The grid is $2.0\times10^{-4}$ of the
 $+0.73$\,\%; the attribution stands.
 
@@ -13028,9 +13028,9 @@ same converged He/H at the match.
 \textbf{What this breaks.} Every handoff column written from now on is a
 different column from the stored ones. \texttt{crossings\_gm25} (photochem
 0.8.4), \texttt{crossings\_pc090}, \texttt{flux\_closure},
-\texttt{ladder\_gm25} and the arms \texttt{crossings\_j96} re-measured were all
+\texttt{ladder\_gm25} and the rungs \texttt{crossings\_j96} re-measured were all
 written by an adapter that accepted whatever grid the chemistry stopped on, so
-a stored arm and a re-run of the same command are no longer comparable at the
+a stored run and a re-run of the same command are no longer comparable at the
 level of the file. The break is bounded by the two grid groups: at most
 $2.5\times10^{-2}$ in pressure, \texttt{n\_tot} and \texttt{rho} at fixed level
 index and $1.5$--$5.2\times10^{-3}$ in the matching-level O/H, everything else
@@ -13179,7 +13179,7 @@ the negative side in up to 114 of the 504 cells. Three measurements, all on
 scratch copies of runs in the tree, all single-threaded:
 
 \begin{enumerate}
-\item \emph{The GJ\,699 arm of \texttt{crossings\_j96} unchanged}
+\item \emph{The GJ\,699 run of \texttt{crossings\_j96} unchanged}
   (\texttt{g\_heh0p048}, LHS\,1140\,b, He\,$2^3$S on, \texttt{Do only PP}). The
   metastable reaches 0.99\% of the summed He\,I, so the difference never
   approaches zero: \textbf{no floor fires}, the report line stays silent, and
@@ -13873,15 +13873,15 @@ No source was changed and nothing was rebuilt: \texttt{EXHALE.x} of
 site & what it said & what it says now \\
 \midrule
 \texttt{fig:kzzprof} &
-the $K_{zz}=0$ arm's metastable column ``is not to be trusted'', Sect.~88.4(a) &
+the $K_{zz}=0$ run's metastable column ``is not to be trusted'', Sect.~88.4(a) &
 Sect.~96 \emph{is} that repair: cells above $1.5\,R_p$ whose ground singlet has
 collapsed below the metastable go from 77 of 504 to \textbf{0 of 504}, the peak
-falls $0.134 \rightarrow 0.043$\,cm$^{-3}$, and the factor over the four arms,
+falls $0.134 \rightarrow 0.043$\,cm$^{-3}$, and the factor over the four runs,
 158, is now \textbf{506} quoted without a hedge \\
 \texttt{fig:ew} &
 the turbulence-on curve ``has no counterpart on the current physics'', so
 redrawing either curve alone would mix physics &
-both curves now exist on one physics (7 arms re-solved, each synthesized
+both curves now exist on one physics (7 runs re-solved, each synthesized
 twice); crossings \textbf{0.4051} and \textbf{0.3982}, 1.7\,\% apart \\
 the GJ\,699 seven-row scan &
 ``the seven rows have not been re-solved on the current branching, so that
@@ -13900,7 +13900,7 @@ the two slopes ``differ by two orders of magnitude'' &
 the closed XUV grid &
 one non-monotonic point, at 0.01 &
 non-monotonic \textbf{below 0.25 as a whole} (0.15 above 0.20 as well); all
-four such arms stop at \texttt{info}\,$=2$ \\
+four such points stop at \texttt{info}\,$=2$ \\
 \texttt{tab:metatimes} &
 ``$T$ agrees to 1.3 per cent and $t_{\rm rec}$ to \textbf{1.4} at every
 radius'' &
@@ -13910,7 +13910,7 @@ radius'' &
 only the last one does; \texttt{heh0p55} takes a step in pass 3 \\
 $x({\rm He\,III})$ at $2\,R_p$ &
 ``stays below $2\times10^{-4}$'' &
-$2.06\times10^{-4}$ on the 10.31 arm; rewritten as ``at most
+$2.06\times10^{-4}$ on the 10.31 rung; rewritten as ``at most
 $2.1\times10^{-4}$'' \\
 \bottomrule
 \end{tabular}
@@ -13928,14 +13928,14 @@ survived both corrections.
 
 \subsection*{Two defects found in the campaign's own material}
 
-\textbf{The thermostat table's scalar arm was not a converged wind.} It
+\textbf{The thermostat table's scalar-base solution was not a converged wind.} It
 carried \texttt{Resid tol: 5.0e-3}, at which the JFNK finish takes
 \textbf{zero iterations} and hands back a state residual
-$\Vert F_s\Vert_2 = 1.27$, against $0.018$--$0.074$ on the other three arms of
+$\Vert F_s\Vert_2 = 1.27$, against $0.018$--$0.074$ on the other three solutions of
 the same table. The memo had noticed the symptom and excused it --- ``the two
 tables are each internally consistent and differ by 1 per cent for that
 reason'' --- and on the current binary that gap had grown to $4.7\,\%$. A wind
-that stops without taking a Newton step is not a steady solution, so the arm
+that stops without taking a Newton step is not a steady solution, so it
 was re-solved at \texttt{1.0e-4}
 (\texttt{refresh\_j96/thermostat/ms2p13\_r1e4}, $\Vert F_s\Vert_2 = 0.018$)
 and Table \texttt{tab:thermostat} now reads its scalar column off that. The
@@ -13944,7 +13944,7 @@ thermostat table's scalar column are now the same configuration at the same
 tolerance and agree to $0.3\,\%$.
 
 \textbf{A seed hysteresis larger than the effect being measured.} One and the
-same profile-branch arm --- identical \texttt{input.inp}, identical handoff
+same profile-branch run --- identical \texttt{input.inp}, identical handoff
 column, identical binary, four JFNK passes each reaching \texttt{info}\,$=0$
 at $\Vert R\Vert \simeq 10^{-4}$ --- lands on \textbf{three different fixed
 points} depending on which converged wind it started from:
@@ -13954,7 +13954,7 @@ spread and base temperature unmoved, so these are three fixed points and not
 three truncations; the steady-wind diffusion outer pass reports three
 different composition drifts ($5.9$, $6.2$, $7.3\times10^{-4}$), which is
 where the hysteresis lives. That is larger than the $1.8\,\%$ the Sect.-96
-branching is worth on these arms and larger than the $0.31$--$1.5\,\%$ path
+branching is worth on these runs and larger than the $0.31$--$1.5\,\%$ path
 spread the memo quotes elsewhere. It is now stated in \texttt{sec:closure} as
 a systematic every profile-branch line number carries. Not diagnosed.
 
@@ -13970,9 +13970,9 @@ a systematic every profile-branch line number carries. Not diagnosed.
       \texttt{refresh\_j96/thermostat/fc2p09} (no \texttt{base.inp}) and
       \texttt{refresh\_j96/xuvkzz/L2p09} (with it) are the same configuration
       from the same lineage and give $EW = 0.544501$ both, to every digit,
-      because on a profile arm \texttt{base.inp} carries provenance and not
+      because on a profile run \texttt{base.inp} carries provenance and not
       state.
-\item The memo said ``All eight arms of this scan''; the scan has
+\item The memo said the scan has eight rungs; it has
       \textbf{seven} (\texttt{SCAN\_EARLIER} in
       \texttt{make\_memo\_figures.py}).
 \item Three places quoted ``a factor 189 in composition'' for the span of the
@@ -14006,7 +14006,7 @@ and to announce every write and every skip. Redrawn: \texttt{bestfit},
 
 \texttt{make\_memo\_figures.py} was re-pointed at the new runs, and two of its
 anchors moved to the runs solved \emph{at} their own crossing rather than at
-the nearest ladder arm: \texttt{EWMATCH\_TAG} to
+the nearest ladder rung: \texttt{EWMATCH\_TAG} to
 \texttt{crossings\_j96/cf\_W1132\_P} (He/H = 0.4132) and \texttt{DIFF\_TAG} to
 \texttt{crossings\_j96/cf\_K1e9\_P} (1.6108). \texttt{bump\_analysis.py}'s
 \texttt{RUNDIR} moved to \texttt{refresh\_j96/bump}.
@@ -14240,7 +14240,7 @@ against $+7.8\%$.
 
 \subsection*{CO is an oxygen reservoir at its own equilibrium}
 
-CO locks 45--46\% of the oxygen at every measured level of every arm, so a
+CO locks 45--46\% of the oxygen at every measured level of every run, so a
 network that gave the whole oxygen abundance to the water family would
 over-supply the OH cycle by about a factor two. Decision D4 carries it, frozen
 chemically, at a chemical-equilibrium C/O partition: the physical root of
@@ -14317,7 +14317,7 @@ at any grid spacing.
 
 \textbf{The band average is the weakest part of the treatment, and its size is
 measured rather than asserted.} Against the real HD\,189733\,b flux at the planet
---- the spectrum the reference photochemical arm was run with, weighted properly
+--- the spectrum the reference photochemical run used, weighted properly
 --- $\sigma_b/\sigma_b({\rm flat})$ is 0.958 (B1), 1.349 (B3) and \textbf{0.219}
 (B4) for H$_2$O, and 0.839 / 1.070 / \textbf{0.164} for OH. B1 is good to 4--16\%
 and B3 to about 35\%; B4 is off by a factor 4.6--6.1, because its cross section
@@ -14394,8 +14394,8 @@ advection-corrected.
 
 Measured on three runs: the hot-Uranus molecular gate with the option on
 (\texttt{oxon}) and with every band flux at zero (\texttt{oxnofuv}), and HD 189733 b with the
-band fluxes taken from the same stellar spectrum the reference photochemical arm
-was run with (B1 1248.5, B2 1.4957e4, B3 1374.1, B4 4.6295e4, LW 600.1
+band fluxes taken from the same stellar spectrum the reference photochemical run
+used (B1 1248.5, B2 1.4957e4, B3 1374.1, B4 4.6295e4, LW 600.1
 erg\,cm$^{-2}$\,s$^{-1}$). All three are bounded 12000-step relaxation snapshots from cold,
 matched to the step cap the \texttt{mol\_metals} regression case already uses; \textbf{none of
 them is a converged wind}, and no number below is quoted as one.
@@ -14457,7 +14457,7 @@ molecular seed, so starting from zero there was not an option.
 \textbf{The HD 189733 b base partition, which M2 exists to measure.} The option
 returns \texttt{x\_H2 = 2 n\_H2 / n\_H = 0.773} at the base cell, against 0.986 for the
 same configuration with the option off and 0.910 for the stored photochemical
-arm. The A/B pass band of section 6.2 is \texttt{0.847 $<$= x\_H2 $<$= 0.947}, so \textbf{it
+run. The A/B pass band of section 6.2 is \texttt{0.847 $<$= x\_H2 $<$= 0.947}, so \textbf{it
 misses}, which is what the milestone table says M2 is expected to do; it stays
 inside the outright-failure band (\texttt{0.023 $<$= 1 - x\_H2 $<$= 0.355}, and
 \texttt{1 - x\_H2 = 0.227} here). Two things make this a measurement of the chemistry
@@ -14500,7 +14500,7 @@ notice; the bounds-checked build stopped on it at once. \texttt{n\_x\_max} is no
 oxygen-chemistry case as well as against the off-path case its own script uses.
 
 \textbf{What M2 deliberately does not do.} No vertical transport (M3), no A/B
-against the stored photochemical arm (M4), no regression case and no transit guard
+against the stored photochemical run (M4), no regression case and no transit guard
 (M5). \texttt{backup/regression/mol\_oxygen} is M5's deliverable and is not added
 here, so the matrix is unchanged at seven cases.
 
@@ -14721,7 +14721,7 @@ element conservation is exact by construction rather than by cancellation, and
 the sum of its nuclei's masses. It also fixes the approximation: a water
 molecule that diffuses out of a cell really takes its oxygen with it, and here
 the oxygen stays and reappears as O\,\textsc{i}. That is the same statement
-EXHALE already makes about every metal when the trace-metal diffusion arm is
+EXHALE already makes about every metal when trace-metal diffusion is
 off, and it is why this operator transports SPECIATION and not elements. For
 hydrogen the distinction does not arise --- the H total is the element, so
 transporting the partition \texttt{2 n\_H2/n\_H} IS transporting what the gate
@@ -14785,11 +14785,11 @@ inferred from the partition it produces.
 \subsection*{The A/B measurement, and what it says}
 
 The gate is the H-nucleus bound fraction \texttt{x\_H2 = 2 n\_H2/n\_H} at the
-HD\,189733\,b base against the stored Photochem arm's 0.910, with a pass band of
+HD\,189733\,b base against the stored Photochem run's 0.910, with a pass band of
 \texttt{0.847 $<$= x\_H2 $<$= 0.947} and an outright-failure band of
 \texttt{0.645 $<$= x\_H2 $<$= 0.977} (design section 6.2). Three 12000-step
 relaxation snapshots from cold, same configuration, band fluxes from the same
-stellar spectrum the reference arm was run with; \textbf{none of them is a
+stellar spectrum the reference run used; \textbf{none of them is a
 converged wind} (\texttt{du} ends at 51, \texttt{Mdot} is NaN), exactly as for
 the section-108 runs:
 
@@ -14933,7 +14933,7 @@ opt-out and it is named. \texttt{Oxygen chemistry} together with
 \texttt{He\_diffusion} is no longer refused --- \texttt{project\_elements}
 scales every H-bearing species and the metal ion columns by the same factor, so
 an element partly in OH, H$_2$O or CO keeps its ratio to hydrogen --- but
-\texttt{He\_metal\_diffusion} still is, because that arm transports each metal
+\texttt{He\_metal\_diffusion} still is, because that option transports each metal
 element's own mixing ratio and CO carries an oxygen AND a carbon nucleus, so it
 cannot follow two element factors at once.
 
@@ -15158,7 +15158,7 @@ change reaching that branch.
 
 \textbf{The four solutions below carry the single-band H$_3^+$ closure}, which
 \S112 replaces the same day. The H$_2$ channel numbers are unaffected --- that
-is what this section is about --- but the H$_3^+$ share of the metals-off arms
+is what this section is about --- but the H$_3^+$ share of the metals-off runs
 is not, and \S112 re-measures the same four combinations with both closures. Its
 verdict on this section's conclusions: they hold.
 
@@ -15231,10 +15231,10 @@ The A/B is two 12000-step relaxations from cold, HD\,189733\,b with
 \texttt{Oxygen transport}, \texttt{He\_Kzz: 1.0e9}, solar metals and the five
 band fluxes of \S109's stellar spectrum, differing only in
 \texttt{Molecular IR bands} (with \texttt{Base IR field} beside it).
-\textbf{The configuration is a reconstruction, and its bands-off arm is not
+\textbf{The configuration is a reconstruction, and its bands-off run is not
 \S109's}: \S109 records the band fluxes and the protocol but not the rest of the
 input file, and the run directories are gone. Rebuilt from the keys it does
-record, the bands-off arm lands at a base of 760.2\,K and $x_{\rm H_2}=0.330$
+record, the bands-off run lands at a base of 760.2\,K and $x_{\rm H_2}=0.330$
 where \S109's $K_{zz}=10^9$ row has 1191.3\,K and 0.581, so only the difference
 between the two columns below is a measurement of this section's change.
 
@@ -15259,11 +15259,11 @@ the base cooler and the water bands carrying the energy, free atomic oxygen
 falls from 0.161 of the element to 0.004 and the water rises from 0.369 to
 0.584, starving the O1 channel that destroys H$_2$. \textbf{Neither run is
 converged and the M4 gate is not passed by this pair} --- $\dot M$ is NaN in the
-bands-off arm and the bands-on arm's mass flux still varies by a factor 2.5 ---
+bands-off run and the bands-on run's mass flux still varies by a factor 2.5 ---
 these being the same bounded relaxations \S109 used, with the same caveat.
 
 \noindent\textbf{A converged A2 wind was attempted and does not exist yet.} Both
-arms were restarted from the 12000-step state with the converged-molecular
+runs were restarted from the 12000-step state with the converged-molecular
 recipe (\texttt{Load IC? True}, \texttt{Solver: Newton 5.0e-2},
 \texttt{Resid tol: 1.0e-5}, \texttt{Max steps: 150000}) and marched a further
 13000 steps. $du$ does not descend toward the $5\times10^{-2}$ hand-off: over
@@ -15419,7 +15419,7 @@ counter reports every repair.
 
 Section~95 answered a stage that left $\rho>0$, $\rho e>0$ by discarding the
 step and retaking it from \texttt{u\_old} at half $\Delta t$ --- correct, but
-global: on the He/H$\,=1$ molecular arm of item~(P), whose base runs at Mach
+global: on the He/H$\,=1$ molecular case of item~(P), whose base runs at Mach
 38--224, it cost 7500 retaken steps and 29409 bisections, the whole grid
 marching at a reduced $\Delta t$ because one or two cells violate the
 positivity bound. That is the adaptive form of ``lower the CFL number and run
@@ -15452,10 +15452,10 @@ or density floor exists anywhere in the chain. The counter is
 \texttt{Num\_flux} was extracted into \texttt{lax\_friedrichs\_flux} so the
 correction and the flux option share one definition.
 
-Measured on item (P)'s own arm (\texttt{mol\_diffusion} at He/H$\,=1$,
+Measured on item (P)'s own case (\texttt{mol\_diffusion} at He/H$\,=1$,
 \texttt{HeH\_base 1.0}, CFL 0.6, 12000 steps): 8156 interface fluxes dropped
 to first order, \textbf{0 steps retaken, 0 bisections} (against \S95's
-7500/29409 on the same arm), no NaN, $\log_{10}\dot M = 8.89$. The arm still
+7500/29409 on the same case), no NaN, $\log_{10}\dot M = 8.89$. The case still
 marches a Mach 38--224 base with $du=13.5$; why the base BC admits that state
 remains item (P)'s open half.
 
@@ -15463,7 +15463,7 @@ remains item (P)'s open half.
 
 The positivity protections fire \emph{zero} times on every A2 configuration
 below --- the A2 story is what the repaired code measured, not what the repair
-changed. The reconstruction of \S110's bands-on arm reproduces (base ghost
+changed. The reconstruction of \S110's bands-on run reproduces (base ghost
 829.0\,K, $x_{\rm H_2}=0.4824$, $\log_{10}\dot M=9.24$, Planck-mean
 $\tau_{\rm H_2O}=2.48\times10^{-3}$, $\tau_{\rm CO}=2.78\times10^{-3}$;
 element budgets $\le10^{-12}$).
@@ -15514,9 +15514,9 @@ after it is fixed.
 counter zero; the two WENO3-stage cases move as above and their goldens were
 refreshed at the end of the series (check$\to$golden$\to$check). He/H$\,=1$
 at CFL 0.6 completes as tabulated. The \texttt{run\_fcheck.sh} ladder --- the
-script's bounded HD\,209458\,b case, plus the three arms where the new
+script's bounded HD\,209458\,b case, plus the three cases where the new
 protections actually fire (\texttt{wasp\_full} 800 steps with 36 ghost
-repairs, He/H$\,=1$ 4000 steps with 76 flux corrections, the A2 oxygen arm
+repairs, He/H$\,=1$ 4000 steps with 76 flux corrections, the A2 oxygen case
 400 steps), all under \texttt{-O1 -fcheck=bounds,do,mem} --- fired no runtime
 check.
 
@@ -15572,7 +15572,7 @@ it computed.
 
 \textbf{This is not a cold-edge defect.} The band this routine is used in is the
 molecular layer, 190--300\,K on the hot-Uranus gate and 11--30\,K on the
-He/H$\,=1$ arms, and the bracket is wrong throughout it.
+He/H$\,=1$ cases, and the bracket is wrong throughout it.
 
 \subsection*{The closure that replaces it}
 The same net exchange with a diluted blackbody the other three infrared channels
@@ -15754,7 +15754,7 @@ section.} Both statements section~110 closed on survive:
 
 What does move:
 \begin{itemize}
-\item \textbf{Metals on, either bands arm: 0.02--3.5\,K everywhere}, the coldest
+\item \textbf{Metals on, either bands setting: 0.02--3.5\,K everywhere}, the coldest
   cell by $\le0.8$\,K, the front by $\le1.6\times10^{-4}\,R_\mathrm{p}$, $\dot M$ by
   $\le0.01$\,dex. Section~110's metals-on numbers stand as measured.
 \item \textbf{Metals off, bands on: 20--163\,K warmer with the new closure} ---
@@ -15764,13 +15764,13 @@ What does move:
   $10.31\to10.32$.
 \item \textbf{Metals off, bands off: the old closure does not converge and the
   new one does.} From the same initial state, the same code except this routine,
-  the old arm's JFNK aborts --- ``line search found no descent step in 12
+  the old closure's JFNK aborts --- ``line search found no descent step in 12
   consecutive iterations'', \texttt{info = 2}, best iterate
   $\|R\|=1.0\times10^{-3}$, worst cell $r=1.001$ --- and falls back to marching;
-  the new arm converges to $\|R\|=5.6\times10^{-6}$ in 75 outer iterations. This
+  the new closure converges to $\|R\|=5.6\times10^{-6}$ in 75 outer iterations. This
   is the metals-off branch, where H$_3^+$ carries the whole cooling of the base,
   so it is where an unbounded heating term costs the most. The old column is
-  The old arm then marched to its 150000-step cap without the $du$ stop
+  The old closure then marched to its 150000-step cap without the $du$ stop
   re-arming and stopped at $du=8.6\times10^{-4}$ with a mass-flux spread of
   $\mathbf{1.59\times10^{-2}}$ over $r>1.2$, seven times that of any converged
   solution here ($2.4\times10^{-3}$): it is a marching state, not a wind, so its
@@ -15793,7 +15793,7 @@ closures differ most. $du$ at step 12000 goes $2.7910\to2.7905$ and
 $\log_{10}\dot M$ stays 10.58. Refreshed at the end of this change with
 check\,$\to$\,golden\,$\to$\,check.
 
-\subsection*{The \texttt{Base IR field} NaN of the He/H\,$=1$ arm}
+\subsection*{The \texttt{Base IR field} NaN of the He/H\,$=1$ case}
 \texttt{docs/supersonic\_molecular\_base.md} section 11.6 reports that switching
 \texttt{Base IR field} on in the He/H\,$=1$ molecular case reaches NaN at step 3,
 and attributes it to this routine. \textbf{Reproduced and fixed.} The case is
@@ -15840,7 +15840,7 @@ the same concurrent load): no measurable cost.
 \item \texttt{run\_fcheck.sh}: \textbf{CLEAN} on its own bounded HD\,209458\,b
   case. That case has no molecular chemistry and no \texttt{Base IR field}, so a
   second ladder was run under the same \texttt{-O1 -fcheck=bounds,do,mem} build
-  on the two arms that do reach this routine --- \texttt{mol\_ir\_bands} and the
+  on the two cases that do reach this routine --- \texttt{mol\_ir\_bands} and the
   He/H\,$=1$ \texttt{Base IR field} case, 1500 steps each: no runtime check
   fired and no NaN line in either.
 \item Closure properties: the exact zero, the low-temperature bound and the
@@ -15869,13 +15869,13 @@ projection; and a non-root acceptance is never silent. The MINPACK exit code
 participates in neither direction: $\texttt{info}=1$ is an \texttt{xtol}
 statement about the step, not about the residual (measured: an
 $\texttt{info}=1$ iterate $7.9\times10^{-2}$ outside the simplex at step~0 of
-the He/H$\,=1$ arm, and an $\texttt{info}=1$ in-bounds iterate at residual
+the He/H$\,=1$ case, and an $\texttt{info}=1$ in-bounds iterate at residual
 $2.8\times10^{-5}$), and $\texttt{info}=4$ routinely returns finished roots it
 cannot certify (16{,}293 of them at residual $\le10^{-6}$ in one He/H$\,=1$
 run).\par}
 
 The acceptance statistics were measured \emph{first}, on the full 8-case
-regression matrix and on the He/H$\,=1$ molecular arm, with the acceptance
+regression matrix and on the He/H$\,=1$ molecular case, with the acceptance
 decisions unchanged (\texttt{make check} byte-identical for the instrumented
 build, 8/8). The measurement then fixed three design decisions that could not
 have been made a priori: the tolerance, the fate of the goldens, and the stop
@@ -15936,7 +15936,7 @@ is empty in every matrix histogram; the above-tolerance acceptances start at
 $1.1\times10^{-3}$. The tolerance is therefore
 $\texttt{ieq\_res\_tol}=10^{-6}$: $3.7\times$ above the measured root tail,
 $1100\times$ below the matrix's smallest non-root, inside the empty decade.
-The He/H$\,=1$ arm carries one borderline accepted iterate at
+The He/H$\,=1$ case carries one borderline accepted iterate at
 $2.1\times10^{-6}$, which this value classifies (and marks) as a non-root
 rather than stretching the root band to cover it.
 
@@ -15984,9 +15984,9 @@ $\Delta t$-retry stage was considered and rejected on the same measurement:
 the failures live in the cold-start composition, not in the step size, and
 the largest events occur at step~0, where no $\Delta t$ exists.
 
-\subsection*{What the He/H$\,=1$ arm now does, and what it deliberately still does not}
+\subsection*{What the He/H$\,=1$ case now does, and what it deliberately still does not}
 
-Under the new rule the He/H$\,=1$ molecular arm (the \texttt{mol\_diffusion}
+Under the new rule the He/H$\,=1$ molecular case (the \texttt{mol\_diffusion}
 gate with He/H$\,=1$, 12000 steps) marches with \textbf{8 loudly-reported
 non-root acceptances instead of silent ones}: step~0, cell 387
 ($\texttt{info}=1$, $7.9\times10^{-2}$ outside the simplex, projected,
@@ -16024,7 +16024,7 @@ The order of proof was: instrument, measure, implement, re-verify.
   every case where the old rule kept a non-root the new rule keeps the same
   state --- measured directly, zero events in which an attempt at the same
   cell and step had res $\le10^{-6}$ while the accepted state was above it
-  (the ``passed-over root'' check, also zero in the He/H$\,=1$ arm).
+  (the ``passed-over root'' check, also zero in the He/H$\,=1$ case).
 \item No golden was refreshed in this stage: every golden mtime predates the
   implementation. Byte-identity is the structural statement that the new rule
   accepts exactly the states the matrix cases were already choosing --- what
@@ -16034,7 +16034,7 @@ The order of proof was: instrument, measure, implement, re-verify.
   \texttt{-fcheck=bounds,do,mem} binary (HD 209458 b,
   $\log_{10}\dot M = 9.60$, no runtime trap), the production build restored
   and its compiler verified (GCC 13.1.0); plus the same build run on the
-  molecular arms (\texttt{mol\_metals} gate and the He/H$\,=1$ arm, 1500
+  molecular cases (\texttt{mol\_metals} gate and the He/H$\,=1$ case, 1500
   steps each): no runtime trap.
 \item Cost: the instrumented 12000-step \texttt{mol\_ir\_bands} relaxation
   runs in 9\,m\,47\,s under concurrent load against 9\,m\,51\,s for the
@@ -16055,7 +16055,7 @@ The order of proof was: instrument, measure, implement, re-verify.
 (\texttt{docs/supersonic\_molecular\_base.md} \S11.5-B) was to build a
 chemical equilibrium solve whose iterates cannot leave the physical
 composition domain, so that the poisoning \S113 could catch but not
-condemn --- cell 387 of the He/H$\,=1$ arm, accepted at a normalized reaction
+condemn --- cell 387 of the He/H$\,=1$ case, accepted at a normalized reaction
 residual of $2.072\times10^{-2}$ --- would stop entering at all. The solver
 was built and it works. \textbf{It is not what closed cell 387.} Two pieces
 of physics did: the non-radiative He$^+$ + H electron capture, a channel the
@@ -16076,7 +16076,7 @@ deliberately: two of the three were argued from plausible mechanisms before
 the failing state had been dumped and examined, and the state was diagnostic
 the moment it was.
 
-The He/H$\,=1$ arm now runs 12{,}000 steps with \textbf{zero} non-root
+The He/H$\,=1$ case now runs 12{,}000 steps with \textbf{zero} non-root
 acceptances, against nine in \S113. $\log_{10}\dot M = 8.89$ is unchanged by
 every change in this section.
 
@@ -16329,14 +16329,14 @@ independently.
   balance row, and the thermochemical fit, which describes a neutral gas in
   equilibrium, does not apply to them.
 \item \textbf{The missing channel and the inverted guard closed it.} With
-  both in place the arm's step-0 event is gone and the run carries zero
+  both in place the case's step-0 event is gone and the run carries zero
   non-root acceptances.
 \end{itemize}
 
 \subsection*{What is NOT resolved, and is handed on}
 
-Cells in the He/H$\,=1$ arm still reach the temperature floor of the
-semi-implicit energy update (0.01 in code units; 11.4 K at this arm's
+Cells in the He/H$\,=1$ case still reach the temperature floor of the
+semi-implicit energy update (0.01 in code units; 11.4 K at this case's
 $T_0 = 1140$ K). The trajectory shows two distinct populations: a cold-start
 transient that \textsc{recovers} (127 cells on the floor at step 10, 3 by
 step 2000) and a late re-collapse that does not (1 at step 4000, 8 at 6000,
@@ -16358,20 +16358,20 @@ The clamp was silent. It is now counted and reported at the end of every run
 --- activations, distinct cells, first and last step --- for the same reason
 \S113 made non-root acceptances loud.
 
-\textbf{A caveat that applies to every arm number in this section.} The
-He/H$\,=1$ arm carries \texttt{q\_H2\_base 0.75}, and the largest H$_2$
+\textbf{A caveat that applies to every number from this case in this section.} The
+He/H$\,=1$ case carries \texttt{q\_H2\_base 0.75}, and the largest H$_2$
 mixing ratio its composition admits is $0.5/(0.5 + {\rm He/H}) = 0.3333$. The
 input is therefore $2.25\times$ over its own ceiling and the code has been
-silently capping it, so this arm was not a clean probe of the window. Nothing
+silently capping it, so this case was not a clean probe of the window. Nothing
 in the preceding subsections depends on it --- the guard bug, the adopted
 channel, the cell-387 diagnosis and the matrix goldens are all independent
 --- but the floor-cell trajectory, the $\eta$ sweep and the collapse ordering
-reported here were all measured on that arm and are qualified accordingly.
-Re-specifying the arm with an admissible \texttt{q\_H2\_base} and
+reported here were all measured on that case and are qualified accordingly.
+Re-specifying the case with an admissible \texttt{q\_H2\_base} and
 re-measuring is the first item of the window block.
 
 A residual sensitivity remains and is stated rather than hidden: with the
-guard fixed, the floor population of this arm is 38, 36 and 27 cells at
+guard fixed, the floor population of this case is 38, 36 and 27 cells at
 $\eta = 10^{-4}$, $10^{-5}$ and $10^{-6}$, against 62, 27 and 31 before the
 fix. The spread narrows from a factor 2.30 to 1.41 but does not close, so
 which already-collapsing cells end on the floor still depends on a derivative
@@ -16381,7 +16381,7 @@ $\log_{10}\dot M$ is 8.89 in all three, and in every stage variant measured.
 \textbf{No acceptance test against the dissociation equilibrium was added},
 and the measurement is the reason. Such a test would have to establish that a
 cell is shielded, neutral \textsc{and} chemically equilibrated before the
-thermochemical fit is a valid yardstick. At step 10 of this arm the fit calls
+thermochemical fit is a valid yardstick. At step 10 of this case the fit calls
 all 59 fully ionized cells wrong and would force H$_2$ onto gas with no
 neutral hydrogen at all, and 47 of them remain atomic to the end of the run.
 A criterion that cannot cheaply establish those three conditions is a new
@@ -16409,13 +16409,13 @@ defect, not a guard.
   byte-identical, PASS}, in 67\,m\,20\,s. That one run establishes both that
   the counter does not perturb any result and that the snapshot itself was
   not taken from a contaminated build.
-\item \textbf{He/H$\,=1$ arm}, 12000 steps: zero non-root acceptances (nine
+\item \textbf{He/H$\,=1$ case}, 12000 steps: zero non-root acceptances (nine
   in \S113), every promotion accepted as a root,
-  $\log_{10}\dot M = 8.89$. \textbf{He/H$\,=10$ arm}: 5 non-root
+  $\log_{10}\dot M = 8.89$. \textbf{He/H$\,=10$ case}: 5 non-root
   acceptances, longest streak 1 sweep, $\log_{10}\dot M = 8.84$. Element
   budgets close to $4\times10^{-16}$ in both.
 \item \textbf{Cost of the promotion path}: 485 cells promoted and 3191 field
-  solves in 0.084 s over a 12000-step arm; on the matrix, \texttt{mol\_metals}
+  solves in 0.084 s over a 12000-step run; on the matrix, \texttt{mol\_metals}
   promotes 48 cells (1887 field solves, 0.202 s) and \texttt{mol\_ir\_bands}
   26. Five of the eight cases promote nothing at all. Matrix wall time is
   unchanged within the spread of the machine (67--69 minutes across the runs
@@ -16424,11 +16424,11 @@ defect, not a guard.
   $\log_{10}\dot M = 9.60$, no runtime trap, production build restored). The
   same \texttt{-O1 -fcheck=bounds,do,mem} build was additionally run on the
   two molecular configurations for 1500 steps each --- the
-  \texttt{mol\_metals} gate and the He/H$\,=1$ arm --- with \textbf{no
+  \texttt{mol\_metals} gate and the He/H$\,=1$ case --- with \textbf{no
   runtime check fired in either}.
 \item \textbf{The temperature-floor counter behaves as intended}: silent on
   \texttt{mol\_metals}, which never reaches the floor, and loud on the
-  He/H$\,=1$ arm, which closes 1500 steps with \texttt{energy floor WARNING:
+  He/H$\,=1$ case, which closes 1500 steps with \texttt{energy floor WARNING:
   176356 activation(s) in 257 distinct cell(s), steps 0 to 1499}. That
   population is the cold-start transient above seen from the other side: it
   was there before, and until now nothing said so.
@@ -16443,7 +16443,7 @@ defect, not a guard.
 \textbf{The judgement first.} Section 114 closed the third stage of the
 supersonic-molecular-base series with the chemistry solver working but two of
 its inputs still inconsistent with each other, and with a measuring
-instrument --- the He/H$\,=1$ arm --- whose floor-cell population depended on
+instrument --- the He/H$\,=1$ case --- whose floor-cell population depended on
 an arbitrary derivative step. This section cleans the instrument before the
 boundary condition is measured with it. Four changes, each measured on its
 own:\par}
@@ -16490,7 +16490,7 @@ require --- that the gas is vibrationally equilibrated --- holds by five to
 nine orders: critical densities for vibrational equilibration are
 $10^4$--$10^8$ cm$^{-3}$ at 1000 K, against a measured molecular-layer
 density of $5.4\times10^{13}$ cm$^{-3}$ in the matrix cases and
-$7.2\times10^{14}$ in the arms.
+$7.2\times10^{14}$ in the diagnostic cases.
 
 The primary source settles it anyway. Breshears \& Bird (1973), the
 shock-tube measurement behind Baulch's recommendation, describe their
@@ -16592,7 +16592,7 @@ not be safe under the OpenMP-parallel ionization sweep.
 byte-identity gate is vacuous here: \texttt{wasp\_full} has no molecular
 chemistry, and \texttt{mol\_base\_handoff} never promotes a cell, so neither
 ever enters the constrained solver and neither can exercise the new argument.
-The test that means something is the He/H$\,=1$ arm, which promotes 503 cells
+The test that means something is the He/H$\,=1$ case, which promotes 503 cells
 and spends 3345 field solves in the routine; run with the pre-change binary
 and with a build passing false from the constrained solver, its output is
 byte-identical. A verification design has to be checked against the path it
@@ -16609,7 +16609,7 @@ for departure variables which start and end near zero, so without the offset
 the solve runs past its own root to a slow-progress exit.
 
 \textbf{What this change did not do.} It was aimed at an $\eta$-dependence in
-the arm's floor-cell population --- 38, 36 and 27 cells at
+the case's floor-cell population --- 38, 36 and 27 cells at
 $\eta = 10^{-4}, 10^{-5}, 10^{-6}$. That dependence was already gone before
 the floor was implemented: the detailed-balance work above had driven the
 population to zero. The floor is justified because the step rule was wrong as
@@ -16725,7 +16725,7 @@ amplification rather than physical change; where they are quoted there they
 now say so.
 
 \textbf{The sharpest demonstration this series produced.} On the He/H$\,=1$
-arm, with the Lyman-Werner path inactive and everything else identical, the
+case, with the Lyman-Werner path inactive and everything else identical, the
 same $2.4\times10^{-8}$ perturbation sent the run to an entirely different
 12000-step state: $\log_{10}\dot M$ 8.89 against 11.04, median temperature
 981 K against 2875 K, $du$ 13.5 against 121.
@@ -16755,12 +16755,12 @@ roots-without-convergence (1488 against 611) are sensitive. Acceptance
 statements therefore carry no condition; thermal statements carry the state
 as one.
 
-The consequence for how the arm may be used is blunt. It is a legitimate
+The consequence for how the case may be used is blunt. It is a legitimate
 probe of \emph{acceptance behavior}, which is what \S\S114--115 used it for.
 It is \textbf{not} an instrument for any quantitative statement, because an
 arbitrarily small perturbation relocates it. Its $\dot M$ records where a
 non-converged run happened to be at step 12000; it measures nothing. Taken
-with the fact that this arm's \texttt{q\_H2\_base} is 2.25 times its own
+with the fact that this case's \texttt{q\_H2\_base} is 2.25 times its own
 composition ceiling and has been silently capped throughout, no number from
 it should be quoted as a physical result until it is re-specified and driven
 to convergence.
@@ -16794,16 +16794,16 @@ to convergence.
 \item \textbf{\texttt{run\_fcheck.sh}: CLEAN} (HD 209458 b,
   $\log_{10}\dot M = 9.60$, production build restored), plus the same
   \texttt{-O1 -fcheck=bounds,do,mem} build on the \texttt{mol\_metals} gate
-  and the He/H$\,=1$ arm for 1500 steps each --- no runtime check fired in
+  and the He/H$\,=1$ case for 1500 steps each --- no runtime check fired in
   either.
 \item \textbf{The three-$\eta$ sweep, for the record.} On the final build the
-  arm closes with zero cells at the temperature floor at every $\eta$,
+  case closes with zero cells at the temperature floor at every $\eta$,
   against 38, 36 and 27 before this block. The population is now
   $\eta$-independent because it is empty, and that was achieved by the
   detailed-balance work rather than by the finite-difference floor.
 \item \textbf{Each change measured on its own.} B1: the H$_2$ front moves one
   grid cell, max $n(\rm H_3^+)$ $\times1.02$, $\log_{10}\dot M$ unchanged;
-  the arm's $n(\rm H_3^+)$ $\times2.43$ and its energy-floor activations fall
+  the case's $n(\rm H_3^+)$ $\times2.43$ and its energy-floor activations fall
   37\%. B2: byte-identical on a run that actually exercises the new argument.
   Constants: $1.9\times10^{-7}$ on the converged \texttt{wasp\_full}.
   Lyman-Werner: byte-identical on \texttt{mol\_lyman\_werner}, the only case
@@ -16813,11 +16813,11 @@ to convergence.
 \subsection*{What this series taught, which is not about any one change}
 
 Four defects in this series were diagnosed as numerical and were not. Cell
-387 of the He/H$\,=1$ arm was attributed in turn to a floating-point
+387 of the He/H$\,=1$ case was attributed in turn to a floating-point
 cancellation, to a finite-difference step, and to wrong-basin convergence in
 warm cells; it was closed by a missing reaction channel and an inverted
 asymptotic guard. Thirty-seven per cent of the thermal-collapse pressure in
-that arm came off from a rate correction that leaves $\dot M$ untouched. The
+that case came off from a rate correction that leaves $\dot M$ untouched. The
 $\eta$-dependence that motivated the finite-difference floor had already been
 removed by detailed balance before the floor existed.
 
@@ -16997,9 +16997,9 @@ $\log_{10}\dot M$ & 10.57 & 10.58 \\
 \end{tabular}
 \end{center}
 
-The He/H$\,=1$ arm is \textbf{byte-identical in all seven output files} --- it
-carries no Lyman-Werner flux, so this correction does not touch the arm's
-thermal state, and none of the arm results of \S\S114--115 are affected by it.
+The He/H$\,=1$ case is \textbf{byte-identical in all seven output files} --- it
+carries no Lyman-Werner flux, so this correction does not touch the case's
+thermal state, and none of the case results of \S\S114--115 are affected by it.
 
 \textbf{The realized size of the correction, cell by cell}, is what the
 headline number does not convey. Across the 504 cells the ratio
@@ -17035,7 +17035,7 @@ itself.
 \item \textbf{\texttt{run\_fcheck.sh}: CLEAN}, production build restored and
   verified to carry only GCC 13.1.0. The same
   \texttt{-O1 -fcheck=bounds,do,mem} build was run on the
-  \texttt{mol\_metals} gate and the He/H$\,=1$ arm for 1500 steps each:
+  \texttt{mol\_metals} gate and the He/H$\,=1$ case for 1500 steps each:
   \textbf{no runtime check fired in either}.
 \item \textbf{Unit check} against an independent evaluation, four points: the
   compiled routine reproduces DB96/Richings = 5.3967, 4.2954, 3.6089 and
@@ -17191,7 +17191,7 @@ requested $q_{\mathrm{H_2}}$, the ceiling and the implied $x_2$ written to
 \begin{itemize}
 \item \textbf{8 of 8 regression cases byte-identical.} C2 refuses and does
   nothing else, which was its acceptance criterion.
-\item \textbf{The refusal fires} on the He/H$\,=1$ diagnostic arm: requested
+\item \textbf{The refusal fires} on the He/H$\,=1$ diagnostic case: requested
   0.750000 against a ceiling of 0.333333, $2.25\times$ over, silently capped
   until now.
 \item \textbf{The boundary case is accepted.}
@@ -17229,22 +17229,22 @@ Three things follow.
 \item \textbf{The entire He/H $=1$--1000 diagnostic ladder is outside it.} A
   molecular base anywhere on that ladder has to state \texttt{q\_H2\_base}
   explicitly; there is no fit to fall back on. This is a constraint on the
-  window re-measurement, not only on one arm.
+  window re-measurement, not only on one case.
 \item \textbf{The silent clamp had been concealing exactly this} for as long
   as the molecular base has existed, turning an out-of-range fit into a fully
   molecular base without a word. This is the part of C2's value that goes
-  beyond refusing one arm.
+  beyond refusing one case.
 \end{itemize}
 
 The validity range is now stated at the code site, above
 \texttt{q\_h2\_equilibrium} in \texttt{lower\_column.f90}, because that is
 where the next reader will meet it.
 
-\textbf{The arm's replacement value follows from this, and is not another
-representative number.} The He/H $=1$ arm needs an admissible
+\textbf{The case's replacement value follows from this, and is not another
+representative number.} The He/H $=1$ case needs an admissible
 \texttt{q\_H2\_base}, and the choice is $0.300861$, fixed by requiring that
 the fraction of H nuclei bound into H$_2$ be \textbf{the same
-$x_2 = 0.9251143$ the matrix cases carry} (the arm reproduces it to seven
+$x_2 = 0.9251143$ the matrix cases carry} (the case reproduces it to seven
 digits, at 0.9026 of its ceiling). The reason is that a He/H ladder is
 supposed to vary He/H. If the base molecularity moves along the ladder as
 well, the two variables are confounded and a measured trend cannot be
@@ -17329,7 +17329,7 @@ $7.35\times10^{12}$, H$_2$ $4.286\times10^{13}$, H$_3^+$
 $5.26\times10^{4}$~cm$^{-3}$. Hydrogen is not ionized; the fully ionized
 11--132~K base recorded in \texttt{docs/supersonic\_molecular\_base.md}
 \S11.3 does not recur here. This is one probe on one case and is not a claim
-about the He/H$\,=1$ arm, which is refused by C2 as configured and is
+about the He/H$\,=1$ case, which is refused by C2 as configured and is
 re-specified in the window re-measurement block.
 
 \subsection*{C3: the base boundary now says when it is over-specified}
@@ -17366,7 +17366,7 @@ assuming which branch produced it.
 
 Both branches were exercised. The molecular gate stays deeply subsonic and
 says so (\texttt{inflow stayed subsonic, max Mach 6.622E-03}); the
-re-specified He/H$\,=1$ arm crosses at step 6 and the warning fires. The arm
+re-specified He/H$\,=1$ case crosses at step 6 and the warning fires. That
 figure is a statement that the branch runs, not a physical result: that run
 is an unconverged 1500-step relaxation, and whether the phenomenon survives
 re-specification and convergence is the window re-measurement block's
@@ -17384,7 +17384,7 @@ source (Equilibrate's removal of undecidable unknowns, CHIMES's cheap test
 before the solver) and is recorded as an approved specification in
 \texttt{TO\_BE\_DONE.md} (P27). It is not implemented, and the reason is a
 measurement one rather than a scheduling one: its effect can only be measured
-on a converged arm, which does not exist until the arm is re-specified and
+on a converged case, which does not exist until the case is re-specified and
 driven to Newton convergence. Implemented today it would be default-off code
 that does nothing and that nothing verifies. The acceptance criteria are
 fixed now so that they are not negotiated later: \textbf{zero activations in
@@ -17425,7 +17425,7 @@ where the residual is uninformative, not what drove a cell into that state.
   comment-only claim is otherwise only as good as the reader's eye, and here
   byte-identity across two builds established it without anyone having to
   trust the claim.
-\item \textbf{The arm is refused as configured}, which is the intended
+\item \textbf{The case is refused as configured}, which is the intended
   outcome and not a failure: \texttt{q\_H2\_base 0.75} at
   \texttt{HeH\_base 1.0} against a ceiling of 0.3333. Its re-specified value
   is $0.300861$.
@@ -18117,7 +18117,7 @@ a direction and an order, not a converged answer.)
   $10^{-16}$ to $5\times10^{-5}$.
 \item \textbf{A helium-dominated gas.} Neither degradation source samples
   one, and neither vibrational-quench source gives a helium rate. This is the
-  validity limit that matters most for the He/H $= 1$--$10$ arms, and it is
+  validity limit that matters most for the He/H $= 1$--$10$ cases, and it is
   in the header of both new modules.
 \end{itemize}
 
@@ -18365,7 +18365,7 @@ on that state at all, and the line-search trial test
 (\texttt{steady\_newton.f90:944-945}) covers only density and pressure
 positivity. A probe state can therefore drive a balance row of the
 molecular network to NaN, and \texttt{normalized\_reaction\_residual}
-returns it. In the marching phase of this arm it never happens: the
+returns it. In the marching phase of this case it never happens: the
 \texttt{-fcheck} build runs 2002 marching steps and trips on the first JFNK
 residual evaluation.
 
@@ -18404,7 +18404,7 @@ bins are diagnostic counters; no physics reads them.
 \begin{enumerate}
 \item \emph{The reproduction, 8 threads.} \texttt{armD\_D2\_newton} now
   enters the steady solver, runs its JFNK iterations to the no-descent
-  abort, exits \texttt{info=2} (this arm does not converge; the criterion
+  abort, exits \texttt{info=2} (this case does not converge; the criterion
   here is the absence of the crash) and finishes the run.
 \item \emph{Serial versus parallel byte-identity}, re-checked after the
   change on the two cases that exercise the atomic and the molecular
@@ -18441,7 +18441,7 @@ marching steps that followed it, largest residual $1.74\times10^{97}$, with
 18373 cells promoted to the constrained continuation solve of which 34 were
 accepted.
 
-\emph{The pathological arm is not serial-versus-parallel byte-identical in
+\emph{The pathological case is not serial-versus-parallel byte-identical in
 its marching phase either.} \texttt{armD\_D2\_newton} at 1 and at 8 threads
 diverges in the last bit at step 1267, well before the steady solver is
 reached. It is reproducible at each thread count and it is present in the
@@ -18491,11 +18491,11 @@ at startup from this section on; it is its own subsection below because the
 refusal invalidates existing runs and the decision to write it was the user's. The measured consequence is that the ``molecular base runs
 supersonic near $\mathrm{He/H}\sim1$--$10$'' window of
 \texttt{docs/supersonic\_molecular\_base.md} is not a physical phenomenon: the
-same arm now relaxes to a subsonic, warm, fully molecular base.
+same case now relaxes to a subsonic, warm, fully molecular base.
 
 \subsection*{What the defect did}
 
-In the $\mathrm{He/H}=1$ hot-Uranus arm the first physical cell was fully
+In the $\mathrm{He/H}=1$ hot-Uranus case the first physical cell was fully
 ionized ($f({\rm H\,\textsc{ii}})=1$) after the single \texttt{ioniz\_eq} pass
 of step 0. With $n_{\rm HI}=0$ the photon production rate
 $P_{\rm add}\sim1.5\times10^{-5}$~cm$^{-3}$\,s$^{-1}$ became a rate coefficient
@@ -18646,7 +18646,7 @@ network on so the H$_2$ the particle count assumes is actually carried, or drop
 be atomic.
 
 \textbf{What the refusal invalidates.} \texttt{backup/regression/armD\_D1} (a
-diagnostic arm, input deliberately left as it was so the refusal reproduces
+diagnostic case, input deliberately left as it was so the refusal reproduces
 there) and 30 HD~209458\,b VULCAN handoff runs under \texttt{vulcan\_work/}, all
 at $T_0 = 1450$~K:
 
@@ -18663,7 +18663,7 @@ group & \texttt{ntot\_bc} range & base ghost [K] \\
 
 The lowest values come from the deep $10^{-4}$~bar handoffs
 ($\mathtt{q\_H2\_base}\sim0.80$, $x_2=0.977$) and the highest from the two
-shallow chemical-equilibrium-fit arms ($q_{\rm H_2}=0.006$). None has been
+shallow chemical-equilibrium-fit cases ($q_{\rm H_2}=0.006$). None has been
 re-run --- that is a separate instruction. Each run directory carries an
 \texttt{INVALID\_BASE\_TEMPERATURE.md} with its own numbers, the two parent
 directories carry the summary tables above, and the seven documents that quote
@@ -18695,7 +18695,7 @@ here.
   \texttt{wasp\_he23off} (the atomic branch) and \texttt{lower\_profile}.
   \texttt{Hydro\_ioniz.txt} and \texttt{Ion\_species.txt} identical to the
   goldens in all three.
-\item \textbf{The arm, 12000 steps} (\texttt{backup/regression/armD\_D2}, the
+\item \textbf{The case, 12000 steps} (\texttt{backup/regression/armD\_D2}, the
   hot Uranus at $\mathrm{He/H}=1$ with \texttt{q\_H2\_base 0.300861},
   \texttt{OMP\_NUM\_THREADS=1}): base inflow subsonic throughout at max Mach
   $8.64\times10^{-2}$, zero energy-floor activations, zero activations of the
@@ -18911,7 +18911,7 @@ $v$ rather than use the value.
 
 \subsection*{What the code now says, measured}
 
-The verification arms are two builds of the \textbf{same source tree} --- the
+The verification uses two builds of the \textbf{same source tree} --- the
 tree as it stood after section~\ref{sec:he-rec-absorber} went in --- one of them
 with this change and one without, so the comparison isolates it. Single thread
 unless stated.
@@ -18920,7 +18920,7 @@ unless stated.
 All nine matrix cases plus \texttt{wasp\_full\_newton} and
 \texttt{wasp\_he23off\_newton}: the data lines of \texttt{Hydro\_ioniz.txt} and
 \texttt{Ion\_species.txt} agree in all 22 file pairs, and the nine matrix cases
-reproduce \texttt{backup/regression/golden/} exactly in both arms.
+reproduce \texttt{backup/regression/golden/} exactly in both builds.
 \texttt{wasp\_full\_newton} is one of the two cases that runs the JFNK to
 convergence (\texttt{info = 0}, $\|R\| = 5.615\times10^{-4}$ in 18 outer
 iterations), so its identity is the statement that matters: \textbf{no
@@ -18932,8 +18932,8 @@ iterate sweeps, 388 probe sweeps.
 build at \texttt{OMP\_NUM\_THREADS = 1} and \texttt{= 8}: both output files
 identical.
 
-\textbf{The He/H = 1 arm, restarted from a healthy state and forced through
-the JFNK.} The arm of section~\ref{sec:he-rec-absorber}
+\textbf{The He/H = 1 case, restarted from a healthy state and forced through
+the JFNK.} The case of section~\ref{sec:he-rec-absorber}
 (\texttt{hotUranus\_diffusion}, He/H = 1, molecular chemistry and He/H
 diffusion on) was restarted from its step-168{,}550 state ---
 $du = 1.735\times10^{-2}$, monotonically converging --- with
@@ -18945,7 +18945,7 @@ be what stops it.} (The restart was necessary: that marching run does not reach
 \texttt{du\_th} by itself --- its $du$ bottoms out at $9.96\times10^{-3}$ at
 step 251{,}287 and then rises again.)
 
-At one thread the two arms are \textbf{byte-identical}, output files and JFNK
+At one thread the two builds are \textbf{byte-identical}, output files and JFNK
 trace alike. The run marches 2002 steps to $du = 3.1094\times10^{-2}$, enters
 the JFNK three times, and every one of them returns \texttt{info = 0}; the last
 leaves $\|R\| = 3.264\times10^{-4}$ and the run closes as \emph{converged: JFNK
@@ -18962,7 +18962,7 @@ roots without solver convergence and 18 constrained-continuation roots and
 sweeps, 199{,}584 converged roots and again no non-root, no non-finite residual
 and no off-simplex cell in any of the three.
 
-At 8 threads both arms also converged, \texttt{info = 0}, but at
+At 8 threads both builds also converged, \texttt{info = 0}, but at
 $\log_{10}\dot{M} = 10.35$ (old) and $10.33$ (new) against the serial $10.32$.
 The traces separated at the very first JFNK line --- the starting
 $\|F_s\|_2$ differed in its third digit, before any hygiene decision can act
@@ -19016,11 +19016,11 @@ steady-solver probes   & 1{,}254  & 21{,}789 ($2.14\times10^{2}$) & 12{,}695 & 9
 The entire non-root population, and every non-finite reaction residual,
 belonged to states the run never adopted; the marching phase it actually walked
 is clean, which the merged report had made impossible to see. The JFNK on that
-state fails in both arms (\texttt{info = 2} after the 12 no-descent iterations,
+state fails in both builds (\texttt{info = 2} after the 12 no-descent iterations,
 then marching resumes and the run ends at the same
 $\log_{10}\dot{M} = 17.68$), and the new code says why:
 \texttt{probe states without an admissible residual: 0 Jacobian color(s)
-zeroed, 14 GMRES cycle(s) truncated}. (That arm is not thread-reproducible in
+zeroed, 14 GMRES cycle(s) truncated}. (That case is not thread-reproducible in
 its marching phase, so its counter totals differ from run to run; the JFNK
 block and the final mass-loss rate do not.)
 
@@ -19080,7 +19080,7 @@ physically absurd; positivity of density and pressure is still the only other
 filter, and no temperature band was added because the code has none to use.
 \item \textbf{The six halvings are a bound, not a measurement.} Nothing here
 measures how often a probe becomes admissible on the second or third halving;
-the counters record only how often all six failed. On the healthy He/H = 1 arm
+the counters record only how often all six failed. On the healthy He/H = 1 case
 that was never; on the old pathological restart it was 14 GMRES cycles and no
 Jacobian color.
 \end{itemize}
@@ -19462,7 +19462,7 @@ monotonic and undramatic: raising He/H from 0.0793 to 30 thins the molecular
 layer, pulls the hydrogen ionization front inward, heats the wind and leaves
 the mass-loss rate almost unchanged. There is no window and no crossing
 anywhere on the ladder, which is what section~\ref{sec:he-rec-absorber}
-predicted when it removed the two defects that had made the He/H${}\sim1$ arm
+predicted when it removed the two defects that had made the He/H${}\sim1$ case
 look supersonic. The full account, with the convergence recipe and the run
 ledger of each rung, is \texttt{docs/supersonic\_molecular\_base.md}
 section~13; this section is its record here.}
@@ -19480,7 +19480,7 @@ ceiling $0.5/(0.5 + {\rm He/H})$, by 8 to 13\%.
 \subsection{The rungs}
 
 Seven \texttt{info = 0} states (the six rungs plus the second
-He/H${}=0.0793$ rung that carries the arm's \texttt{He\_diffusion}),
+He/H${}=0.0793$ rung that carries the case's \texttt{He\_diffusion}),
 \texttt{OMP\_NUM\_THREADS=8}:
 
 \begin{center}
@@ -19546,7 +19546,7 @@ marched state back to the JFNK closes it immediately at \texttt{info = 0}. The
 cells that move during the excursion are at $r = 2.12$--$2.19\,R_p$, not at the
 base; below $1.1\,R_p$ nothing moves by more than 0.5\%.
 
-This answers the two-solution question of item (P17) for this arm: the marching
+This answers the two-solution question of item (P17) for this case: the marching
 branch and the JFNK branch are not two steady solutions. It does not show that
 no second solution exists elsewhere.
 
@@ -19877,7 +19877,7 @@ solver had no direction that uses the gradient (2026-09-02)}
 % ===================================================================== %
 \textbf{Judgment first. The suspected cause was wrong and the real one is
 simple. The WENO3 smoothness weights are not what makes the JFNK hand-off fail
-on the He/H\,=\,0.3 arm: the inner Newton model already freezes them, and
+on the He/H\,=\,0.3 case: the inner Newton model already freezes them, and
 freezing them in the line search too changes the merit at the rejected step by
 seven parts in ten thousand --- the step still ascends. What ascends is the
 Newton/PTC direction itself, at every damping including the
@@ -20097,7 +20097,7 @@ refreshed for section~\ref{sec:he-rec-thin}.
 
 \begin{enumerate}
 \item \textbf{The control that reproduced the failure now converges.} The
-He/H\,=\,0.3 arm restarted single-stage (\texttt{Reconstruction scheme: WENO3},
+He/H\,=\,0.3 case restarted single-stage (\texttt{Reconstruction scheme: WENO3},
 no PLM step), marching to the hand-off at step 105: before, \texttt{info = 2}
 at $\|R\| = 1.258\times10^{-2}$ after eleven bit-identical iterations at
 $\lambda = 9.54\times10^{-7}$; after, \texttt{info = 0} at
@@ -20154,7 +20154,7 @@ is already below \texttt{du\_th\_plm} continue in WENO3 --- was implemented,
 measured, and \textbf{held back}, because the measurement says the accident is
 doing something the escape does not.
 
-On the same arm, from the same wind:
+On the same case, from the same wind:
 
 \begin{center}\small
 \begin{tabular}{lrrr}
@@ -20358,7 +20358,7 @@ default), same binary for the row, so the only difference is the measure:
 \begin{center}\small
 \begin{tabular}{lrrr}
 \toprule
-state (He/H\,=\,0.3 arm) & flux spread, $r>1.2\,R_p$ & old $\|R\|$ & new $\|R\|$ \\
+state (He/H\,=\,0.3 case) & flux spread, $r>1.2\,R_p$ & old $\|R\|$ & new $\|R\|$ \\
 \midrule
 two-stage restart (one PLM step) & $3.02\times10^{-3}$ & $6.97\times10^{-4}$ & $6.97\times10^{-4}$ \\
 single-stage restart (no PLM step) & $7.59\times10^{-2}$ & $\mathbf{4.93\times10^{-4}}$ & $\mathbf{4.00\times10^{-3}}$ \\
@@ -20423,7 +20423,7 @@ $\to 1.74\times10^{-3}$ (1001) $\to 1.62\times10^{-3}$ (1601), and ends at
 were non-monotone acceptances --- each damped Gauss--Newton step buying about
 one part in ten thousand of the merit, and the
 worst cell walks slowly down from $r = 1.134$ to $r = 1.066$ --- i.e.\ onto the
-H$_2$ front of this arm, which sits at $1.0681\,R_p$. It is a slow mode of the
+H$_2$ front of this case, which sits at $1.0681\,R_p$. It is a slow mode of the
 energy equation at the molecular front, not a null mode of the base contact or
 of the ghost temperature, and it is asymptotic rather than budget-limited: no
 practical iteration count reaches $10^{-3}$ from there. Repairing it is solver
@@ -20700,7 +20700,7 @@ The condition now fires on this planet, where the cell-centred test left it
 permanently off, and it closes 56\% of the composition jump. It does not move
 the front ($1.1016 \to 1.1017$), which is the right outcome: this is a boundary
 condition on the partition, not on the wind. On \texttt{mol\_base\_handoff},
-where the cell-centred velocity happens to agree in sign, the arm is nearly
+where the cell-centred velocity happens to agree in sign, the case is nearly
 unchanged and slightly better --- the jump goes from 0.0147 to 0.0090 --- because
 the cell-centred test also flipped transiently during the run and the flux test
 does not.
@@ -21400,7 +21400,7 @@ photoionization, is what the protons come from.
 \begin{table}[htbp]
 \centering
 \caption{The He/H\,$=0.0793$ hot Uranus of Sec.~\ref{sec:heh-ladder},
-re-converged from its own restart; JFNK \texttt{info=0} in every arm.}
+re-converged from its own restart; JFNK \texttt{info=0} in all three.}
 \begin{tabular}{lcccc}
 \toprule
  & $\log_{10}\dot M$ & H$_2$ front [$R_p$] & $\max n(\mathrm{H_3^+})$ & base $n(\mathrm{H^+})$ \\
@@ -23004,8 +23004,8 @@ both numbers:
  - Base level: n0 =  3.0903E+12 cm^-3 (from the density key) -> p =  1.0069E-06 bar
 \end{lstlisting}
 
-\textbf{The gate and the arms.} The six molecular regression cases and the
-sixteen diagnostic arms now carry \texttt{p\_base 1.000e-06} with the density
+\textbf{The gate and the diagnostic cases.} The six molecular regression cases and the
+sixteen diagnostic cases now carry \texttt{p\_base 1.000e-06} with the density
 key deleted from \texttt{input.inp}, and the gate's \texttt{q\_H2\_base} becomes
 \textbf{$0.84$} --- the same paper's value at the same level (Sec.~3.2: ``The
 volume mixing ratio of H2 at the lower boundary is about q0 = 0.84 while H is a
@@ -23526,7 +23526,7 @@ case & pre vs.\ new & guard firings, pre $\to$ new & trials refused \\
 \noindent The two counts are not directly comparable: the old one counted face
 pairs, the new one face states. \texttt{refused} $= 0$ everywhere, so the whole
 move is the limiter; the chemistry refusal changes nothing outside the molecular
-arm. Only the two WASP-121b cases fire the guard at all, which is why only they
+case. Only the two WASP-121b cases fire the guard at all, which is why only they
 move.
 
 \begin{center}
@@ -24917,7 +24917,7 @@ the limited slope refreshed                & $-0.506$ & $-0.119$ & $-0.017$ & $\
 
 \noindent Two things at once: the direction is never a good Newton direction
 --- it delivers half the descent an exact one would even at iteration 1 --- and
-it changes sign at iteration 4 or 5 in every arm regardless of how the Krylov
+it changes sign at iteration 4 or 5 in every run regardless of how the Krylov
 step is solved or whether the limiter is frozen. All three end at the same
 place, carrier row $1.02$--$1.03\times10^{-2}$ against a $10^{-3}$ gate.
 

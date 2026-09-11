@@ -171,6 +171,7 @@
       real*8, allocatable :: nhi_r(:), nhii_r(:), nhei_r(:), nheii_r(:)
       real*8, allocatable :: nheiii_r(:), nheiTR_r(:), ne_r(:), ntot_r(:)
       real*8, allocatable :: nm_r(:,:), T_ret(:)
+      real*8, allocatable :: ntot0_c(:), T_ent(:)
       real*8  :: move_pass, move_sweep, dev_ntot, dev_TK
       integer :: jj
 
@@ -1035,6 +1036,128 @@
       call check_absolute('and_moves_nothing', maxval(abs(f_sp - f_sp0)), &
            0.0d0, 0.0d0)
 
+
+      ! ---- (11) the chemistry the pass carries with it --------------- !
+      !
+      ! A RELAXATION PASS ADVANCES TRANSPORT AND CHEMISTRY TOGETHER.  The
+      ! transport operator integrates the carrier rows on the background of
+      ! ONE equilibrium sweep (bg_cell: the rates, the temperature, the
+      ! third-body density and the eliminated species), so a pass that
+      ! keeps many steps on one background converges to the fixed point of
+      ! a different problem.  MEASURED on the hot-Uranus carrier reload
+      ! (READ, docs/solver_partition_experiment_20260911.md sec. 4): a full
+      ! frozen-background relaxation drove the gated H2 wind row to
+      ! 2.449021e-13 and the chemical refresh that followed put the same
+      ! row at 7.989781e-2, above the 7.380744e-2 the pass had started
+      ! from.  The rows below state the repair on this column: after a
+      ! pass, the background the NEXT transport step would read describes
+      ! the composition the pass hands back, not the composition it began
+      ! with.
+      !
+      ! THE JOINT FIXED POINT CANNOT BE ASSERTED ON THIS COLUMN, and the
+      ! ladder above says why: the shortest admissible trial still moves
+      ! 6.46e-4 of the largest entry H2 mixing ratio, six decades above
+      ! relax_tol = 1e-10, so no pass of this operator on this column can
+      ! report carrier_relax_fixed_point.  What is asserted instead is the
+      ! consistency the joint fixed point rests on, on the two quantities
+      ! of the background that the carrier rows read directly, and by one
+      ! further sweep taken on the returned state.
+      allocate(f_swept(1-Ng:N+Ng,n_species))
+      allocate(nhi_r(1-Ng:N+Ng), nhii_r(1-Ng:N+Ng))
+      allocate(nhei_r(1-Ng:N+Ng), nheii_r(1-Ng:N+Ng))
+      allocate(nheiii_r(1-Ng:N+Ng), nheiTR_r(1-Ng:N+Ng))
+      allocate(ne_r(1-Ng:N+Ng), ntot_r(1-Ng:N+Ng), T_ret(1-Ng:N+Ng))
+      allocate(nm_r(1-Ng:N+Ng,n_mion))
+
+      call seed_mass_row_of_the_column(v_relax)
+      call seed_background_at_the_entry_composition()
+      f_sp = f_sp0
+      call carrier_checkpoint_restore(chk0)
+      call relax_photochemical_composition(rho, v_relax, p_col, T_col,    &
+                                           f_sp, heat_col, cool_col,      &
+                                           eta_col, 1.0d-2, dr_wide,      &
+                                           ns_wide, oc_wide)
+      call check_positive('the_consistency_rows_read_a_pass_that_kept'//  &
+           '_a_step', dble(ns_wide))
+
+      ! The densities and the temperature of the composition the pass
+      ! handed back, formed here from that composition and the fixed
+      ! pressure, independently of anything the routine wrote.
+      nhei_r   = 0.0d0
+      nheii_r  = 0.0d0
+      nheiii_r = 0.0d0
+      nheiTR_r = 0.0d0
+      call get_species_densities(rho, f_sp, nhi_r, nhii_r, nhei_r,        &
+                                 nheii_r, nheiii_r, nheiTR_r, nm_r,       &
+                                 ne_r, ntot_r)
+      call comp_T_from_p(p_col, ntot_r, ne_r, T_ret)
+
+      ! THE THIRD-BODY DENSITY THE CARRIER ROWS READ.  bg_cell%ntot is the
+      ! density of third bodies M of the three-body molecular reactions, so
+      ! a pass that leaves it at the entry composition's value integrates
+      ! its later steps at a formation rate the gas no longer has.  The row
+      ! is relative: the background must stand closer to the composition
+      ! the pass RETURNS than to the one it STARTED from.
+      dev_ntot  = 0.0d0
+      move_pass = 0.0d0
+      do jj = 1, N
+         dev_ntot  = max(dev_ntot, abs(bg_cell(jj)%ntot/n0 - ntot_r(jj))  &
+                                   /ntot_r(jj))
+         move_pass = max(move_pass, abs(bg_cell(jj)%ntot/n0 - ntot0_c(jj))&
+                                    /ntot0_c(jj))
+      enddo
+      write(*,'(a,2es12.4)') ' (carrier_retry) background third-body'//   &
+           ' density against the returned and the entry composition: ',   &
+           dev_ntot, move_pass
+      call check_absolute('the_background_third_body_density_follows'//   &
+           '_the_composition',                                            &
+           logical_as_double(dev_ntot .lt. move_pass), 1.0d0, 0.0d0)
+
+      ! THE TEMPERATURE THE RATES WERE FORMED AT, on the same reading.  The
+      ! carriers move the particle count, so at the fixed pressure of this
+      ! pass the temperature of the gas moves with them.
+      dev_TK     = 0.0d0
+      move_sweep = 0.0d0
+      do jj = 1, N
+         dev_TK     = max(dev_TK, abs(bg_cell(jj)%T_K/T0 - T_ret(jj))     &
+                                  /T_ret(jj))
+         move_sweep = max(move_sweep, abs(bg_cell(jj)%T_K/T0 - T_ent(jj)) &
+                                      /T_ent(jj))
+      enddo
+      write(*,'(a,2es12.4)') ' (carrier_retry) background temperature'//  &
+           ' against the returned and the entry composition: ',           &
+           dev_TK, move_sweep
+      call check_absolute('the_background_temperature_follows_the'//      &
+           '_composition',                                                &
+           logical_as_double(dev_TK .lt. move_sweep), 1.0d0, 0.0d0)
+
+      ! ONE FURTHER SWEEP ON THE RETURNED STATE.  A state whose chemistry
+      ! the pass has closed on moves less under another sweep than it moved
+      ! under the pass itself; a state carrying the chemical lag of every
+      ! step taken on one background does not.  The sweep is taken on a
+      ! COPY, and it rewrites bg_cell, so it is the last thing this section
+      ! does.
+      move_pass = maxval(abs(f_sp(1:N,:) - f_sp0(1:N,:)))
+      f_swept   = f_sp
+      call ioniz_eq(T_ret, rho, f_swept, heat_col, cool_col, eta_col)
+      move_sweep = maxval(abs(f_swept(1:N,:) - f_sp(1:N,:)))
+      write(*,'(a,es12.4,a,es12.4)') ' (carrier_retry) the pass moved'//   &
+           ' the composition by ', move_pass, ' and one further sweep'//  &
+           ' moves it by ', move_sweep
+      call check_absolute('one_sweep_after_the_pass_moves_less_than'//    &
+           '_the_pass_did',                                               &
+           logical_as_double(move_sweep .lt. move_pass), 1.0d0, 0.0d0)
+      ! AND IT MOVES NO MORE THAN A SECOND SOLVE OF A CONVERGED CELL CAN.
+      ! The bound is the cell solve's own step criterion, hybrd1's
+      ! xtol = sqrt(machine epsilon) = 1.5e-8: a sweep re-entered at a
+      ! composition it has already converged on can only move it by that
+      ! much, so anything above it is chemistry the pass never took.  It is
+      ! the solver's number and not a setting of this test.
+      call check_absolute('and_moves_no_more_than_the_cell_solve_s_own'// &
+           '_step_criterion',                                             &
+           logical_as_double(move_sweep .lt. sqrt(epsilon(1.0d0))),       &
+           1.0d0, 0.0d0)
+
       if (assertion_failures .gt. 0) then
          write(*,'(a)') 'carrier_retry: FAILED'
          stop 1
@@ -1254,6 +1377,46 @@
       cool_col = 0.0d0
       eta_col  = 0.0d0
       end subroutine seed_pressure_of_the_column
+
+      !--------------!
+
+      subroutine seed_background_at_the_entry_composition()
+      ! THE FROZEN CELL STATE OF SECTION (11), SEEDED AT THE COLUMN'S OWN
+      ! COMPOSITION.  The rows of that section read how far the background
+      ! stands from the entry composition and from the returned one, so the
+      ! two quantities of it that the carrier rows read directly, the
+      ! third-body density and the temperature, start at the values the
+      ! entry composition actually has.  The rate coefficients are the
+      ! section's usual frozen ones.
+      real*8, allocatable :: nhi_e(:), nhii_e(:), nhei_e(:), nheii_e(:)
+      real*8, allocatable :: nheiii_e(:), nheiTR_e(:), ne_e(:)
+      real*8, allocatable :: nm_e(:,:)
+      integer :: j
+      if (.not. allocated(ntot0_c)) then
+         allocate(ntot0_c(1-Ng:N+Ng), T_ent(1-Ng:N+Ng))
+      endif
+      allocate(nhi_e(1-Ng:N+Ng), nhii_e(1-Ng:N+Ng))
+      allocate(nhei_e(1-Ng:N+Ng), nheii_e(1-Ng:N+Ng))
+      allocate(nheiii_e(1-Ng:N+Ng), nheiTR_e(1-Ng:N+Ng))
+      allocate(ne_e(1-Ng:N+Ng), nm_e(1-Ng:N+Ng,n_mion))
+      nhei_e   = 0.0d0
+      nheii_e  = 0.0d0
+      nheiii_e = 0.0d0
+      nheiTR_e = 0.0d0
+      call get_species_densities(rho, f_sp0, nhi_e, nhii_e, nhei_e,       &
+                                 nheii_e, nheiii_e, nheiTR_e, nm_e,       &
+                                 ne_e, ntot0_c)
+      call comp_T_from_p(p_col, ntot0_c, ne_e, T_ent)
+      do j = 1-Ng, N+Ng
+         call set_frozen_cell_rates(j)
+         bg_cell(j)%ntot = ntot0_c(j)*n0
+         bg_cell(j)%T_K  = T_ent(j)*T0
+         T_col(j)        = T_ent(j)
+      enddo
+      heat_col = 0.0d0
+      cool_col = 0.0d0
+      eta_col  = 0.0d0
+      end subroutine seed_background_at_the_entry_composition
 
       !--------------!
 

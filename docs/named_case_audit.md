@@ -101,9 +101,9 @@ Currently all four keys are ACCEPTED (`input_read.f90:659, 664, 706, 779`).
 | case | key | name says |
 |---|---|---|
 | `jfnk_cold`, `jfnk_hd189`, `jfnk_hd189_tight`, `tpm_hd189` | `Valve eps: 1.0e-4` | nothing about the valve |
-| `armD_D4b` | `Hydrostatic base: True` | arm D, variant 4b |
-| `armD_D4a` | `Base ghost temperature: continuous` | arm D, variant 4a |
-| `armD_D3` | `Base velocity: massflux` | arm D, variant 3 |
+| `armD_D4b` | `Hydrostatic base: True` | case D, variant 4b |
+| `armD_D4a` | `Base ghost temperature: continuous` | case D, variant 4a |
+| `armD_D3` | `Base velocity: massflux` | case D, variant 3 |
 
 `armD_D3`, `armD_D4a` and `armD_D4b` are the *point* of those three cases: each
 exists to exercise one base-boundary variant, and the key IS the variant.  When
@@ -287,16 +287,16 @@ means the two agree.
 
 | case | name says | input does | mismatch / at-risk | proposal |
 |---|---|---|---|---|
-| `armA_LW` | arm A, Lyman-Werner on | hotUranus_d, `Solver: Newton`, `maxsteps 40000` | | keep |
-| `armA_noLW` | arm A, no LW | same without the LW flux | | keep |
-| `armD_D2` | arm D variant 2 | `Solver: Newton`, `maxsteps 12000` | | keep |
+| `armA_LW` | case A, Lyman-Werner on | hotUranus_d, `Solver: Newton`, `maxsteps 40000` | | keep |
+| `armA_noLW` | case A, no LW | same without the LW flux | | keep |
+| `armD_D2` | case D variant 2 | `Solver: Newton`, `maxsteps 12000` | | keep |
 | `armD_D2_LW` | D2 + LW | same + LW flux | | keep |
 | `armD_D2_LW_newton` | D2 + LW, Newton finish | `Solver: Newton 100.`, `Load IC? True`, `maxsteps 2100` | `_IC` has no `# coupling:` (1.4) | regenerate the `_IC` pair |
 | `armD_D2_newton` | D2, Newton finish | `Solver: Newton 100.`, `Load IC? True`, no `maxsteps` | same | same |
 | `armD_D2_newton_bigstack` | the same, larger stack | `input.inp` byte-identical to `armD_D2_newton`; the difference is the environment | none: `NOTE.txt` states it -- `OMP_NUM_THREADS=8`, `OMP_STACKSIZE=1G`, crash reproduction only, and its log ends at the segfault so there is deliberately no result | keep; it is the model for the `env` proposal of 1.2 |
-| `armD_D3` | arm D variant 3 | + **`Base velocity: massflux`** | Phase C is expected to refuse the key (1.3) | quarantine with a `NOTE.txt` when Phase C lands |
-| `armD_D4a` | arm D variant 4a | + **`Base ghost temperature: continuous`** | same | same |
-| `armD_D4b` | arm D variant 4b | + **`Hydrostatic base: True`** | same | same |
+| `armD_D3` | case D variant 3 | + **`Base velocity: massflux`** | Phase C is expected to refuse the key (1.3) | quarantine with a `NOTE.txt` when Phase C lands |
+| `armD_D4a` | case D variant 4a | + **`Base ghost temperature: continuous`** | same | same |
+| `armD_D4b` | case D variant 4b | + **`Hydrostatic base: True`** | same | same |
 | `armHeH_0p3` | the He/H = 0.3 rung | `He/H number ratio: 0.3` | | keep |
 | `armHeH_3` | He/H = 3 | matches | | keep |
 | `armHeH_10` | He/H = 10 | matches | | keep |
@@ -323,7 +323,7 @@ means the two agree.
 | `wasp_hybrid_finish` | the hybrid stop | `Load IC? True`, `_IC` without a coupling header; ATES-era log; stopped on `du plateau` | 1.4, 1.6 | regenerate the `_IC`; the name is accurate |
 | `wasp_localdt` | local time stepping | `Time stepping:` key present, ATES-era log | 1.6 | keep; re-run or mark |
 | `wasp_localdt_cont` | its continuation | `Load IC? True`, `_IC` without a coupling header; ATES-era log | 1.4, 1.6 | same |
-| `_quarantined/armD_D1` | arm D variant 1 | already quarantined: refused at startup by the P35 check (`Molecular base: True` with `Molecular chemistry: False`) | | leave as is |
+| `_quarantined/armD_D1` | case D variant 1 | already quarantined: refused at startup by the P35 check (`Molecular base: True` with `Molecular chemistry: False`) | | leave as is |
 
 ## 4. What this audit did not do
 
@@ -367,7 +367,7 @@ case or was the case:
 * `armD_D3`, `armD_D4a`, `armD_D4b` exist *to exercise* their key. They are
   moved to `_quarantined/` beside `armD_D1`, with their inputs untouched and a
   `NOTE.txt` saying that their stored results are from a boundary condition the
-  code no longer has, and that whether the arm was testing the option or the
+  code no longer has, and that whether the case was testing the option or the
   physics the option stood in for is not inferable from the input. That is the
   campaign's intent to state, not the code's.
 

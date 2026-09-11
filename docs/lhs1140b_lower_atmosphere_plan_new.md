@@ -242,7 +242,7 @@ criteria, in the order they are stated above:
 
 Where the numbers live: the closure runs are
 `LHS1140b/exhale/flux_closure/{ref,lo,hi}/` (one `k**` directory per
-iteration, with `closure_history.txt` and `closure.log` per arm), the
+iteration, each with its own `closure_history.txt` and `closure.log`), the
 profile and its provenance-only `base.inp` are `LHS1140b/lower_profile/`,
 and the execution board row is `LHS1140b/WORKPLAN.md` step E.  The route is
 pinned in the regression matrix by `backup/regression/lower_profile`
@@ -304,9 +304,9 @@ asserted here.]
 
 Unchanged from the first draft in substance: Phase E *is* oxygen-plan
 P1/P2 driven by a real science case, and since 2026-08-27 it has been run
-as such: P1's Photochem arm is the production adapter
-(`src/utils/photochem_to_lower_profile.py`) with VULCAN as the cross-check
-arm, and P2's handoff contract is what the profile schema and its refusal
+as such: P1's Photochem route is the production adapter
+(`src/utils/photochem_to_lower_profile.py`) with VULCAN as the cross-check,
+and P2's handoff contract is what the profile schema and its refusal
 rules replace at the profile level.  The diffusion work overlaps the
 P3 diffusion item, with the correction that neither plan's diffusion step
 yields crossover masses without a multicomponent treatment neither plan

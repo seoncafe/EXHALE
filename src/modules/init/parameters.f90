@@ -537,7 +537,7 @@
       ! before 2026-08-30: the only infrared coolants below the H2 -> H front
       ! were H3+ and the ground-term fine-structure lines, so a converged
       ! molecular layer had nothing holding it and collapsed to 190-400 K
-      ! (TO_BE_DONE.md item (G)). .true. adds the H2 quadrupole and magnetic
+      ! (docs/TO_BE_DONE.md item (G)). .true. adds the H2 quadrupole and magnetic
       ! dipole line spectrum and the H2O and CO bands, each exchanging with the
       ! same diluted B_nu(T0) `Base IR field` supplies, so each stops at its own
       ! radiative equilibrium temperature. See molecular_infrared_cooling.f90.

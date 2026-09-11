@@ -31,7 +31,7 @@
    
    !--- Evaluare source term ---!
 
-   ! WELL-BALANCED ARM ("Well balanced:").  The gravitational source and the
+   ! WELL-BALANCED OPTION ("Well balanced:").  The gravitational source and the
    ! geometric pressure term are then not evaluated here at all: they cancel
    ! the equilibrium part of the momentum flux difference IDENTICALLY, and
    ! RK_rhs assembles the momentum row from what is left, the departure of

@@ -228,7 +228,7 @@
 	! gives the same composition a norm of order sqrt(n_unknown) and puts the
 	! test back in reach.
 	!
-	! Measured on the He/H = 1 hot-Uranus arm at 12000 steps, with the floor
+	! Measured on the He/H = 1 hot-Uranus case at 12000 steps, with the floor
 	! in place in BOTH: u_shift = 1 left no cell on the 11.4 K temperature
 	! floor and none below 50 K, and promoted 481 cells to this solve
 	! (3208 field solves); u_shift = 0 pinned 22 cells at the floor and 46
@@ -256,7 +256,7 @@
 	! explored because truncation error then grows as eta.
 	!
 	! With the floor in place the value stopped mattering to the solution, as
-	! it should: on the He/H = 1 hot-Uranus arm above, 1e-4, 1e-5 and 1e-6 all
+	! it should: on the He/H = 1 hot-Uranus case above, 1e-4, 1e-5 and 1e-6 all
 	! left no cell on the temperature floor, all gave the same log10 Mdot to
 	! the printed 8.89, and differed only in how many cells the sweep promoted
 	! to this solve at all (481, 524, 483 of 502).

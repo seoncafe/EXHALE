@@ -56,7 +56,7 @@ domain 1.07 / network 3.95 / code 1.70, not 4.0 / 1.8; Photochem *does* import,
 from the dedicated conda environment built for the 2026-08-09
 comparison: the 2026-08-19 check had used the default interpreter. The 7.2x is
 also specific to HD 189733 b's 864 K base: on HD 209458 b's 2331 K base the
-same three arms agree to 1.02x (network) and 1.08x (code).
+same three networks agree to 1.02x (network) and 1.08x (code).
 
 ---
 
@@ -269,7 +269,7 @@ passages were read, not the full papers):
 | Koskinen et al. 2013a (Icarus 226, 1678) | **Both problems, on HD 209458 b.** States "the dissociation of H2 is caused by dissociation of H2O" with the H2/H transition near 1 microbar (the Problem-A mechanism of section 2.2, already modeled) and includes H3+, CO, H2O and CH4 as "strong infrared coolants", the (G) physics. The paper-level original of what A2 plus a (G) fix would build; also the ancestor of the Tier design (Koskinen et al. 2022 supplies Tier 1 and the `mol_rates` table). |
 | Lavvas et al. 2014 (ApJ 796, 15) | The catalytic-destruction and atomic-metal-release context cited by `lower_atmosphere_coupling.md`, the physical basis for A1b's metal abundances. Its transit opacities include H2 CIA and H2O. |
 | Lavvas & Arfaux 2021 (MNRAS 502, 5643) | Middle-atmosphere thermal structure with CIA in the radiative transfer; notes CIA becomes significant at p > 1 bar: a literature anchor for keeping CIA out of the >= 1 microbar EXHALE domain. |
-| Wogan et al. 2025 (PSJ 6, 256) | The Photochem code paper ("a general chemical and climate model"): the methods source for phase P1's external arm. |
+| Wogan et al. 2025 (PSJ 6, 256) | The Photochem code paper ("a general chemical and climate model"): the methods source for phase P1's external code. |
 | Robeling et al. 2026 (Kompot) | **The code-level analog of the (G) physics**: a 1-D self-consistent thermo-chemical upper-atmosphere model (Jupiter as an exoplanet analogue) carrying H2-H2 and H2-He CIA (Abel et al. 2011) plus H2O/CO/CO2/CH4 opacities in the radiative budget, what EXHALE cannot do below the front. |
 | Johnstone et al. 2018 (A&A 617, A107) | Same code lineage; molecular IR cooling (CO2, NO) controlling thermospheric structure in terrestrial atmospheres, the same physics class as (G). |
 | Miller et al. 2013 | The H3+ cooling function: already in EXHALE (`h3p_cooling.f90`). |
@@ -298,7 +298,7 @@ legacy six-key `base.inp` reproduces the current goldens byte-for-byte.
 **P1: external photochemistry on equal footing. GATE MET, 2026-08-26; exercised on a real target 2026-08-27.** Reinstall Photochem (it
 does not import today) with its data package; rerun the HD 189733 b comparison
 with matched network *and* matched vertical domain, adding Photochem's official
-gas-giant H/He/N/O/C(/S) mechanism as a third arm; export the H2O/OH
+gas-giant H/He/N/O/C(/S) mechanism as a third network; export the H2O/OH
 production/loss budgets near 1 microbar, not only `q_H2`; and measure the
 EXHALE-level effect on at least one *converged* planet (HD 189733 b itself does
 not reach steady state in EXHALE, so it cannot be the only case). Gate: the
@@ -315,16 +315,16 @@ dominates H2 destruction at the handoff level.
   artifact was the smallest of the three, and the domain sensitivity is itself
   code-dependent - truncating VULCAN instead moves q_H by 1.70x the other way.
 - budget: on HD 189733 b the H2O/OH cycle carries **99% of net H2 destruction**
-  at 1 microbar in all three arms (`OH + H2 -> H2O + H` alone is 57-96% of the
+  at 1 microbar in all three networks (`OH + H2 -> H2O + H` alone is 57-96% of the
   gross loss). On HD 209458 b, whose base sits at 2331 K, the same channels run
   1000x faster than the net but in near-exact balance, and `H2 + M -> H + H + M`
   carries 70% of the net: **the partition there is thermal, not photochemical.**
 - `tau_chem(H2)/tau_adv ~ 1e-3` at the handoff level (P4 condition 2, met at
   that level only).
-- EXHALE effect, HD 209458 b, four arms JFNK-converged (`info=0`):
-  **at most 0.035 dex (8.3%) in Mdot** across the arms, 1.5% between the two
+- EXHALE effect, HD 209458 b, four runs JFNK-converged (`info=0`):
+  **at most 0.035 dex (8.3%) in Mdot** across the runs, 1.5% between the two
   codes on the same network, +6.6% for the sulfur mechanism. The same
-  measurement at the 1e-4 bar handoff, where the arms differ by 0.1%, still
+  measurement at the 1e-4 bar handoff, where the runs differ by 0.1%, still
   spreads by 0.025 dex, so **0.035 dex is an upper bound, not a resolved
   signal**: the wind-level consequence of the code choice on this planet is at
   the level of the configuration's own JFNK-to-JFNK reproducibility. The
@@ -382,7 +382,7 @@ science case, and it has now been run end to end on LHS 1140 b
 above:
 
 - **P1's code choice was taken.**  Photochem is the production chemistry
-  (`src/utils/photochem_to_lower_profile.py`) and VULCAN the cross-check arm
+  (`src/utils/photochem_to_lower_profile.py`) and VULCAN the cross-check
   (`src/utils/vulcan_to_lower_profile.py`), on the ground P1 itself
   identified: only Photochem carries a climate model, so only it can be the
   route away from a prescribed `T(p)`.  P1's network-vs-code split reappears
@@ -490,7 +490,7 @@ passes with the new physics default off.
 *Conditions (1) and (2) measured, 2026-08-30.* Both were re-measured from the
 stored P1 solutions rather than quoted: the Photochem budgets from
 `vulcan_work/pc_compare_p1/{hd189_toa1e-2,hd209_toa1e-2}/pc_*_budget.pkl`, the
-VULCAN arm reconstructed from `VULCAN/output/HD189.vul` and
+VULCAN solution reconstructed from `VULCAN/output/HD189.vul` and
 `vulcan_work/hd209_vulcan/output/HD209.vul` with the rate recipe of
 `VULCAN/diagnose.py`, and every advection time computed from an EXHALE
 `Hydro_ioniz.txt` with that run's own `mu` and `g`. Every number in the P1.4
@@ -502,18 +502,18 @@ The two planets do not give the same answer.**
 
 | planet, level | O family, gross loss | **O family, net loss** | largest single channel |
 |---|---|---|---|
-| HD 189733 b, 1 ubar, 864 K (4 arms) | 59.0-99.2% | **96.3-99.6%** | `OH + H2 -> H2O + H`, 57.2-91.9% of gross |
-| HD 209458 b, 1 ubar, 2331 K (4 arms) | 95.3-99.9% | **20.3-41.7%** | `OH + H2 -> H2O + H`, 50.2-65.0% of gross |
-| HD 209458 b, 1e-4 bar, 1830 K (4 arms) | 43.9-100.0% | **1.3-4.2%** | `OH + H2` 98%, or `S + H2` 48% in the sulfur arm |
+| HD 189733 b, 1 ubar, 864 K (4 networks) | 59.0-99.2% | **96.3-99.6%** | `OH + H2 -> H2O + H`, 57.2-91.9% of gross |
+| HD 209458 b, 1 ubar, 2331 K (4 networks) | 95.3-99.9% | **20.3-41.7%** | `OH + H2 -> H2O + H`, 50.2-65.0% of gross |
+| HD 209458 b, 1e-4 bar, 1830 K (4 networks) | 43.9-100.0% | **1.3-4.2%** | `OH + H2` 98%, or `S + H2` 48% in the sulfur network |
 
-- **HD 189733 b: condition (1) is met**, in all four arms and independently of
+- **HD 189733 b: condition (1) is met**, in all four networks and independently of
   the network.
 - **HD 209458 b: condition (1) is not met.** The oxygen channels are the fastest
   ones there, but they run in near-exact balance in both directions, and the net
   is carried by thermal dissociation `H2 + M -> H + H + M` (58-96% of the net,
   the higher figure at the deeper level). **At 1e-4 bar (where the production
   configuration actually hands off), the oxygen cycle carries 2.6% of the net
-  (arm C').** That is the sharpest failure of condition (1) anywhere in the
+  (network C').** That is the sharpest failure of condition (1) anywhere in the
   measurement, and it is at the level the code uses.
 
 **Condition (2): is `tau_chem << tau_adv` there? Again the two planets differ,

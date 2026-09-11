@@ -36,8 +36,9 @@
       use RK_integration
       use viscous_conduction, only: transport_active,                   &
                                     viscous_conduction_sources
-      use hydrodynamic_rows, only: generic_precision_rows_arm,          &
-                                   ARM_QUADRUPLE, ARM_GENERIC_DOUBLE,   &
+      use hydrodynamic_rows, only: generic_precision_rows_selected,     &
+                                   ROWS_PRODUCTION, ROWS_QUADRUPLE,     &
+                                   ROWS_GENERIC_DOUBLE,                 &
                                    hydrodynamic_rows_in_quadruple_precision, &
                                    hydrodynamic_rows_in_double_precision
       use ionization_equilibrium, only: ieq_sweep_state_kind,           &
@@ -78,13 +79,13 @@
       ! the momentum flux and partly in the geometric source, each of them
       ! carrying an O(2 p/r) part that cancels against the other, so
       ! max(|dF_2|, |S_2|) reads 2 p/r where the physical force is zero;
-      ! under the well-balanced arm the whole equilibrium pressure force
+      ! under the well-balanced option the whole equilibrium pressure force
       ! and the weight cancel in the algebra and S_2 is zero, so a row
       ! scaled by its remaining terms alone would be its own scale and read
       ! one however small the imbalance became. RK_rhs gathers the pieces
       ! back into the ram divergence, the spherical pressure gradient and
       ! the weight (momentum_ram_divergence, momentum_pressure_gradient,
-      ! momentum_gravity), and the weight under the arm is the equilibrium
+      ! momentum_gravity), and the weight under that option is the equilibrium
       ! pressure force, which therefore enters the max once.
       !
       ! The state is kept so that a caller asking for the scale of a
@@ -190,7 +191,7 @@
          face_p    = om*fp_plm + lam*face_p
          ! The momentum row on the homotopy is the same combination of the
          ! two schemes' rows, so each term of the equation it holds, and
-         ! the equilibrium pressure force it is read against under the arm,
+         ! the equilibrium pressure force it is read against under that option,
          ! is the same combination of the two forms.
          momentum_ram_divergence    = om*ram_plm                         &
                                     + lam*momentum_ram_divergence
@@ -221,7 +222,7 @@
       ! Local scratch so callers' own WL/WR/dF/S are untouched
       real*8, dimension(3,1-Ng:N+Ng) :: WL, WR, dF, S, W
       real*8, dimension(1-Ng:N+Ng)   :: Tc, Smom, Sene
-      integer :: arm
+      integer :: rows_kind
 
       ! THE ARITHMETIC THE HYDRODYNAMIC ROWS ARE ASSEMBLED IN.  Normally the
       ! production routines, in double.  EXHALE_RESID_QUAD=1 sends the
@@ -230,23 +231,23 @@
       ! quadruple-precision instantiation of the same kind-generic text, as
       ! the control experiment of where the residual's non-smoothness floor
       ! comes from: that floor is the rounding of this flux assembly, and an
-      ! arm that lowers the rounding by eighteen decades and nothing else
+      ! assembly that lowers the rounding by eighteen decades and nothing else
       ! separates the rounding from every other candidate. Default off, and
       ! nothing is adopted from it; see the header of module
       ! hydrodynamic_rows.
-      arm = 0
+      rows_kind = ROWS_PRODUCTION
       if (ieq_sweep_state_kind .ne. ieq_state_marching)                  &
-         arm = generic_precision_rows_arm()
-      if (arm .eq. ARM_QUADRUPLE) then
+         rows_kind = generic_precision_rows_selected()
+      if (rows_kind .eq. ROWS_QUADRUPLE) then
          call hydrodynamic_rows_in_quadruple_precision(u, WL, WR, dF, S)
-      else if (arm .eq. ARM_GENERIC_DOUBLE) then
+      else if (rows_kind .eq. ROWS_GENERIC_DOUBLE) then
          call hydrodynamic_rows_in_double_precision(u, WL, WR, dF, S)
       else
          call reconstruction_continuation_rhs(u, WL, WR, dF, S)
       endif
       ! The kind-generic rows return the momentum row and store the
       ! interface fluxes, the face pressures and, under the well-balanced
-      ! arm, the face departures they were built from
+      ! option, the face departures they were built from
       ! (store_the_interface_fluxes), but neither the three terms of the
       ! momentum equation nor the equilibrium pressure force the row is
       ! read against.  Both are functions of the state, the potential, the
@@ -254,11 +255,11 @@
       ! expression of each is evaluated here for the state just assembled
       ! rather than left at whatever the last call to RK_rhs produced.  A
       ! reconstruction continuation (0 < recon_lambda < 1) never reaches
-      ! this arm: the generic text refuses it, because a blended flux
-      ! carries neither scheme's pressure convention alone.  The arm is
-      ! the rounding control experiment of module hydrodynamic_rows and is
-      ! default off.
-      if (arm .ne. 0) then
+      ! the kind-generic rows: the generic text refuses it, because a blended
+      ! flux carries neither scheme's pressure convention alone.  Those rows
+      ! are the rounding control experiment of module hydrodynamic_rows and
+      ! are default off.
+      if (rows_kind .ne. ROWS_PRODUCTION) then
          if (well_balanced) call equilibrium_pressure_force_of_state(u)
          call momentum_row_terms_of_state(WL, WR, S)
       endif
@@ -369,8 +370,8 @@
          ! discretization: RK_rhs gathers the ram divergence, the whole
          ! spherical pressure gradient and the weight out of dF(2) and
          ! S(2), which split the pressure between them under PLM and
-         ! cancel it against the weight under the well-balanced arm.  The
-         ! weight is momentum_gravity on either arm, so the equilibrium
+         ! cancel it against the weight under the well-balanced option.  The
+         ! weight is momentum_gravity either way, so the equilibrium
          ! pressure force enters once and not twice.
          momentum_largest_term(j) =                                      &
             max(abs(momentum_ram_divergence(j)),                         &
@@ -708,26 +709,26 @@
       !          that balance; where ram and pressure gradient cancel each
       !          other, as they do at a sonic point, it is smaller than
       !          either term.
-      !   arm    Under "Well balanced:" the equilibrium pressure force and
+      !   WB     Under "Well balanced:" the equilibrium pressure force and
       !          the weight cancel in the algebra before the row is formed,
       !          so S_2 is zero and dF_2 holds the DEPARTURE alone: the
       !          remaining terms ARE the numerator and a row divided by them
       !          reads one whatever the imbalance is.  MEASURED before the
       !          weight was put back: every normalized momentum residual of
       !          the carrier reload was exactly 1.000000E+00, against 1.954
-      !          for the same state without the arm (Update_EXHALE N37).
+      !          for the same state without it (Update_EXHALE N37).
       !
-      ! Under the arm the weight is the pressure force of the cell's own
+      ! Under that option the weight is the pressure force of the cell's own
       ! hydrostatic equilibrium,
       !
       !   |rho_j [A+ (phi_i(j) - phi_c(j))
       !         + A- (phi_c(j) - phi_i(j-1))]|/dV       (PLM form)
       !   |rho_j (phi_i(j) - phi_i(j-1))|/dr            (WENO3 form)
       !
-      ! which is the same physics in the arm's own discretization and is
+      ! which is the same physics in that option's own discretization and is
       ! what momentum_gravity carries there; the pressure gradient is then
-      ! the departure the row holds.  The numerator is untouched on every
-      ! arm and is never re-formed from a cancelled term.
+      ! the departure the row holds.  The numerator is untouched either way
+      ! and is never re-formed from a cancelled term.
       !
       ! WHY A TERM OF THE EQUATION AND NOT A SIGNAL-SPEED BOUND.  In a
       ! quasi-hydrostatic layer the pressure gradient and the weight nearly

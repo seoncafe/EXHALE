@@ -12,14 +12,14 @@ Everything in sections 2, 3.1, 3.3, 5 and 6 below was measured or derived
 for this document from the code and from stored output. The numbers carried
 over from item (P) -- the He/H = 1 profile rows and the section-93 abort
 matrix -- are marked where they appear, because **the output directories of
-the He/H = 1 and He/H = 10 molecular arms were not kept** and they cannot be
+the He/H = 1 and He/H = 10 molecular runs were not kept** and they cannot be
 re-measured without re-running.
 
 **Status, 2026-09-02: the window is closed and it was not physics.** Section 12
 identifies the two code defects that produced it -- an on-the-spot He
 recombination photon budget with no competing absorber, and an initial
 condition that clipped the H2 fraction at 1 instead of at the element-ratio
-ceiling -- and shows the He/H = 1 arm relaxing to a subsonic, warm, fully
+ceiling -- and shows the He/H = 1 run relaxing to a subsonic, warm, fully
 molecular base once either one is cut. Read section 12 first; sections 1-11
 are the investigation that led to it and their conclusions about *causes* are
 superseded there, while their measurements of the boundary condition itself
@@ -54,7 +54,7 @@ term. This is the answer to item (P)'s question "should the base BC be able to
 reach a supersonic inflow at all": it should not. Nothing in the code tested
 for that crossing when this was written; the base-face Mach diagnostic of
 11.5-D now does, and reports the maximum inflow Mach of every run. **What has
-changed since is that the arm no longer produces a crossing at all**: section
+changed since is that the run no longer produces a crossing at all**: section
 12 shows the supersonic base was driven by two code defects, and with those
 corrected the same configuration keeps the base at Mach 0.086. The
 characteristic count below is still the reason a crossing would be
@@ -69,7 +69,7 @@ one of its exclusions:
   reaction residual of the state retained after a nonconverged solve or after
   projection onto the element bounds. The controlled runs in section 11 expose
   that unchecked path in the first physical cell;
-* update positivity (sections 95 and 111: the same arm now completes 12000
+* update positivity (sections 95 and 111: the same run now completes 12000
   steps with 0 retaken steps and 0 dt bisections, and still marches
   `du = 13.5`, so positivity was never what made the state supersonic);
 * **the base mean molecular weight on its own**, which item (P) named as a
@@ -345,7 +345,7 @@ Those six runs are stored, so the table was recomputed here from their own
 `output/Hydro_ioniz.txt` (`c = sqrt(gamma p / (rho m_H))`, `gamma = 5/3`, the
 code's `g`; physical cells and the base only):
 
-| arm | He/H | base Mach | max Mach | at | min T [K] | `v_base` [cm/s] | `c_bc` [cm/s] |
+| run | He/H | base Mach | max Mach | at | min T [K] | `v_base` [cm/s] | `c_bc` [cm/s] |
 |---|---|---|---|---|---|---|---|
 | `heh0p55` | 0.55 | 0.000 | 0.821 | 29.05 R_p | 133.0 | 0.169 | 1.227e5 |
 | `heh2p13_diff_kzz1e9` | 2.13 | 0.000 | 0.813 | 29.05 R_p | 226.0 | 0.072 | 1.011e5 |
@@ -373,7 +373,7 @@ directories were not kept.**
 | 1000 | no, 12000 steps | 11.09 |
 
 Two groups separated by more than two decades in `Mdot`. Since section 111 the
-He/H = 1 arm completes its 12000 steps (0 steps retaken, 0 dt bisections,
+He/H = 1 run completes its 12000 steps (0 steps retaken, 0 dt bisections,
 8156 interface fluxes dropped to first order, log10 Mdot 8.89), so the *abort*
 is gone; the *state* is not, and `du` stays at 13.5.
 
@@ -426,9 +426,9 @@ the list.
 | candidate | status | the measurement |
 |---|---|---|
 | the molecular chemistry solver | **identified initiating defect** | Row scaling changed the MINPACK path, but `ionization_equilibrium.f90` still retains a physical-bounds iterate when `info /= 1`, without checking its final reaction residual. If all iterates lie outside the bounds, it projects one onto the element budget and again does not recompute the residual. Section 11 measures fully ionized H at 28--244 K in the affected first cell. |
-| the reconstruction producing a negative pressure | **excluded as the cause of the abort** | Section 95: the negative pressure was already in the *cell average* (`p = -3.64985e-2`, the identical number in the cell and both of its faces, the slope limited to zero), so the reconstruction only passed it on. The real violation was update positivity at CFL 0.6 in a Mach 38-224 layer. `positivity_limited_faces` was added anyway and is not idle -- 1388 non-positive face states in 9000 steps of `wasp_full`, which HLLC had been swallowing -- but it never fires on this arm. |
-| update positivity | **excluded as the cause of the supersonic state** | Section 111: with the local flux correction the same arm completes 12000 steps with 0 retaken steps, 0 dt bisections, no NaN, and 8156 corrected interface fluxes. It marches. `du` is still 13.5. Positivity was keeping the run alive, not making it supersonic. |
-| helium-rich composition as such | **excluded** | Section 3.1, re-measured: six atomic arms from He/H = 0.55 to 10000, base Mach 0.000 in all six, maximum Mach 0.78-0.82. |
+| the reconstruction producing a negative pressure | **excluded as the cause of the abort** | Section 95: the negative pressure was already in the *cell average* (`p = -3.64985e-2`, the identical number in the cell and both of its faces, the slope limited to zero), so the reconstruction only passed it on. The real violation was update positivity at CFL 0.6 in a Mach 38-224 layer. `positivity_limited_faces` was added anyway and is not idle -- 1388 non-positive face states in 9000 steps of `wasp_full`, which HLLC had been swallowing -- but it never fires in this run. |
+| update positivity | **excluded as the cause of the supersonic state** | Section 111: with the local flux correction the same run completes 12000 steps with 0 retaken steps, 0 dt bisections, no NaN, and 8156 corrected interface fluxes. It marches. `du` is still 13.5. Positivity was keeping the run alive, not making it supersonic. |
+| helium-rich composition as such | **excluded** | Section 3.1, re-measured: six atomic runs from He/H = 0.55 to 10000, base Mach 0.000 in all six, maximum Mach 0.78-0.82. |
 | the base mean molecular weight alone | **excluded** | Section 2.3, derived from the code's base composition functions: monotone, 1.37x in the sonic threshold over four decades. |
 | the base boundary condition | **remaining** | Sections 2 and 5. |
 
@@ -451,7 +451,7 @@ the interior runs.
 
 *How to decide it.* `Base velocity: massflux` replaces the copy by
 `v = F_c/(rho_bc r^2)`, which is set by the wind's own flux constant and does
-not read `v_1` at all. If the same arm run with that key stays subsonic at the
+not read `v_1` at all. If the same case run with that key stays subsonic at the
 base, the free-velocity feedback is the mechanism; if it still runs
 supersonic, H1 is wrong and the driver is above the boundary. This is a
 one-run test on an existing case (D3).
@@ -510,7 +510,7 @@ a value the base can have.
 
 The consequence for the scan: raising `He/H` from 0.0793 to 1 changed *two*
 things, the composition and the effective base molecular content (from 92.5 %
-of H nuclei in H2 to 100 %, saturated by the cap). Every arm at He/H >= 0.167
+of H nuclei in H2 to 100 %, saturated by the cap). Every run at He/H >= 0.167
 in this matrix ran with a saturated base.
 
 *How to decide its relevance.* Re-run He/H = 1 with `q_H2_base` removed from
@@ -541,7 +541,7 @@ is weaker below He/H ~ 1). That is the required product of opposing trends
 from section 3.3.
 
 *How to decide it.* `output/Cooling_breakdown.txt` (written by every run) at
-the first ten cells, for the arms of the D-list below: read the H3+ and H2
+the first ten cells, for the runs of the D-list below: read the H3+ and H2
 channels as a fraction of the total, and the resulting `T(1)/T0`. If the base
 temperature ratio is non-monotonic in He/H with a minimum in 1-10, H3 is
 supported. This costs nothing beyond the runs already needed for D1/D2.
@@ -556,7 +556,7 @@ supplies the mass) rather than the driver.
 
 *How to decide it.* Time resolution, which the stored snapshot cannot give:
 write `Hydro_ioniz.txt` every 100 steps for the first 3500 steps of the
-He/H = 1 arm and find which forms first -- the base crossing M = 1, or the
+He/H = 1 run and find which forms first -- the base crossing M = 1, or the
 front. If the front is first, H4; if the base is first, H1/H2/H3.
 
 ---
@@ -595,7 +595,7 @@ checking the base Mach number of the result.
 
 ## 7. A defect in the recorded snapshot
 
-Recorded here because the arm has to be re-run anyway and this should be
+Recorded here because the run has to be repeated anyway and this should be
 checked when it is.
 
 **The base row's pressure is not a value the base pressure BC can produce.**
@@ -632,7 +632,7 @@ Three readings, none of which can be tested without the run:
    particle count is exactly 1.000 with the pressure *as printed*, and would
    become 0.600 -- below the fully molecular limit 0.750 and therefore
    impossible -- if the factor were global.
-3. **The arm did not run the legacy pin.** `hydrostatic_base` extrapolates and
+3. **The run did not use the legacy pin.** `hydrostatic_base` extrapolates and
    is not bounded by `ntot_bc`; but extrapolating item (P)'s own rows 2 and 3
    to `r = 1.0` gives 0.264, not 19.674, so this reading is not supported by
    the table itself.
@@ -663,7 +663,7 @@ so the dumped ghost is a post-`Apply_BC` state.
   throughout.
 * The chemistry solver, the reconstruction and update positivity are all
   excluded as causes of the supersonic state (section 4).
-* Helium alone is excluded: six atomic arms from He/H = 0.55 to 10000 have a
+* Helium alone is excluded: six atomic runs from He/H = 0.55 to 10000 have a
   base Mach of 0.000 (re-measured here).
 * The base mean molecular weight alone is excluded: monotone, 1.37x in the
   threshold velocity over four decades.
@@ -677,7 +677,7 @@ so the dumped ghost is a post-`Apply_BC` state.
   pressure, or neither -- first lets `v_1` reach 2e5 cm/s.
 * Whether the base crosses M = 1 before or after the front at 1.14 R_p forms.
 * Whether the window has anything to do with the silently capped
-  `q_H2_base = 0.75` (H2b), which made every arm at He/H >= 0.167 run with a
+  `q_H2_base = 0.75` (H2b), which made every run at He/H >= 0.167 start with a
   saturated molecular base.
 * The window's edges. Only He/H = 1, 10, 100, 1000 were run; the boundary is
   somewhere in (10, 100) on one side and below 1 on the other, unmeasured.
@@ -1017,18 +1017,18 @@ survey:
   passes at **99.9% of the limit**. The comparison at the boundary
   (inequality sense and round-off) must be written so that this example is
   not refused;
-* what E *does* refuse is our own diagnostic arm: the He/H = 1 arm carries
+* what E *does* refuse is our own diagnostic run: the He/H = 1 run carries
   `q_H2_base 0.75` against a ceiling of 0.3333, **2.25x over**, and the code
   has been silently capping it.
 
 **A question this raises for the window re-measurement, recorded as a
-question and not as a claim.** If the He/H = 1 arm's base composition has all
-along been a silently capped, physically impossible value, then that arm was
+question and not as a claim.** If the He/H = 1 run's base composition has all
+along been a silently capped, physically impossible value, then that run was
 not a clean probe of the window. D2 above shows the cap is not the cause of
 the runaway, and that stands. What is *not* established is how much the
 phenomenon itself -- "a molecular base runs supersonic near He/H ~ 1-10" --
 is entangled with an over-specified base H2 fraction. Answering it requires
-re-specifying the arm with a physically admissible `q_H2_base` and
+re-specifying the run with a physically admissible `q_H2_base` and
 re-measuring, and that is the first item of the window re-measurement block.
 
 #### D. Keep the hydrodynamic guard, but do not call it the chemistry fix
@@ -1101,10 +1101,10 @@ diagnostics of an invalid state, not physical predictions.
 **Judgment first: there is no physical window. "A molecular base runs
 supersonic near He/H ~ 1-10" is not a property of helium-rich molecular
 atmospheres; it is what two defects in this code do to each other, and with
-both corrected the same arm relaxes to a subsonic, warm, fully molecular base.
+both corrected the same run relaxes to a subsonic, warm, fully molecular base.
 Nothing about the boundary condition needed to change to get there.** The
 characteristic count of section 2 stands as written -- a supersonic inflow
-would still be an over-specified boundary -- but the arm no longer produces
+would still be an over-specified boundary -- but the run no longer produces
 one, so the crossing that section 11 was trying to explain never happens.
 
 The two defects are independent of each other, they are in different files,
@@ -1130,12 +1130,12 @@ competition factor,
 
 which is the fraction of those photons that H I wins from He I. It vanishes
 correctly as `n_HI -> 0`. **Every other channel had no competition factor at
-all**: in the He 2^3S branch, which is the one the arm runs, those are the
+all**: in the He 2^3S branch, which is the one the run uses, those are the
 singlet-excited captures (the 584 A resonance and the 2^1S two-photon
 continuum), the 19.8 eV 2^3S decay line, and the 2^3S collisionally converted
 into the singlets; in the atomic branch it is the case-B cascade. All were
 assumed to deposit *every* photon into H I. With `n_HI = 0` the floor `1.0d-99` then converts a perfectly ordinary
-photon production rate into an enormous rate coefficient. In the He/H = 1 arm
+photon production rate into an enormous rate coefficient. In the He/H = 1 run
 `P_add ~ 1.5e-5 cm^-3 s^-1` became `dP_HI ~ 1.5e94 s^-1`, and `x(H II) = 1`
 became the exact root of the hydrogen balance row of the first physical cell.
 
@@ -1202,7 +1202,7 @@ corrected that is harmless.
 ### 12.3 The controlled runs
 
 All rows are `backup/regression/armD_D2` (the hot Uranus at He/H = 1 with
-`q_H2_base 0.300861`, i.e. the x2-matched arm of section 117), 12000 steps,
+`q_H2_base 0.300861`, i.e. the x2-matched run of section 117), 12000 steps,
 `OMP_NUM_THREADS=1`.
 
 | run | change | max base Mach | energy-floor activations | log10 Mdot |
@@ -1274,11 +1274,11 @@ need to be. What section 11.5 called "the boundary-condition problem" in item
 P1 was the *downstream* half of a chain whose source was the photon budget of
 one cell.
 
-### 12.6 The arm converges: the first quotable He/H = 1 rate
+### 12.6 The run converges: the first quotable He/H = 1 rate
 
 `backup/regression/arm_heh1_x2matched` -- the same configuration without the
 12000-step cap, PLM+WENO3, `du_th 0.5 1e-3`, `Solver: Newton`,
-`OMP_NUM_THREADS=1` -- was run to see whether the corrected arm would reach the
+`OMP_NUM_THREADS=1` -- was run to see whether the corrected run would reach the
 `du` threshold on its own and hand over to the JFNK Newton finish. Marching
 alone does not get there in any reasonable time (below), but the state it is
 descending towards **does** solve under the JFNK when the solver is handed it
@@ -1311,7 +1311,7 @@ is about: the state being descended towards is subsonic, warm and molecular at
 the base, with zero energy-floor activations and no non-root acceptances.
 Nothing in it resembles the failure of sections 1-11.
 
-**The arm does not have to march there: the JFNK solves it (2026-09-02).** The
+**The run does not have to march there: the JFNK solves it (2026-09-02).** The
 step-168,550 state of that run (`du = 1.735e-2`, still falling monotonically)
 was taken as a restart -- `Load IC? True`, `du_th [PLM,WENO3]: 1.0e9 1.0e-3`,
 `Solver: Newton 100.0`, so the hand-off is armed and the solver is entered
@@ -1322,7 +1322,7 @@ closes as *converged: JFNK steady solution* at `||R|| = 6.572e-4`, with
 > **`log10 Mdot = 10.32` g/s**, and the same at 1 and at 8 threads
 
 **This is the first quotable quantitative He/H = 1 value.** Everything this
-document quoted for the arm before it -- including the 12000-step snapshot
+document quoted for the run before it -- including the 12000-step snapshot
 10.91 of section 12.3 -- is a relaxation snapshot, and item (P17) of
 `TO_BE_DONE.md` says why such a number is not a rate.
 
@@ -1367,7 +1367,7 @@ taken at step 168,550, i.e. **before** the turnaround above, so the JFNK solved
 the state on the descending branch; what the branch after step 251,287 settles
 to is a separate question and is not answered here.
 
-**The thread dependence this arm used to show was a defect of the solution's
+**The thread dependence this run used to show was a defect of the solution's
 definition, and it is repaired (item (P37), 2026-09-02).** Before the repair
 the same case converged to `log10 Mdot` 10.32, 10.33 and 10.35 depending on the
 thread count and the OpenMP schedule. The cause was in the constrained
@@ -1390,9 +1390,9 @@ monotonic and undramatic: raising He/H from 0.0793 to 30 thins the molecular
 layer, pulls the hydrogen ionization front inward, heats the wind, and leaves
 the mass-loss rate almost unchanged. There is no window and no crossing
 anywhere on the ladder, which is what section 12 predicted. The JFNK solution
-of the He/H = 1 arm is also stable under pure time marching -- 50,000 marching
+of the He/H = 1 run is also stable under pure time marching -- 50,000 marching
 steps leave it where it was and lower its steady residual -- so on this
-evidence the arm has one solution, not two. What the campaign did turn up is a
+evidence the case has one solution, not two. What the campaign did turn up is a
 new code defect, in the same He recombination coupling section 120 repaired,
 which fires only for He/H >= 3 and only in the fully ionized outer wind; it
 moves the ionization front of those rungs and does not touch their molecular
@@ -1404,7 +1404,7 @@ changes in it and uncommitted (`seed_species_of_cell` is present in
 `constrained_chemical_equilibrium.f90`, so the section-121 constrained-solver
 seed repair is in; HEAD was `6d07d48`). The copy was built and run outside the
 repository so that a concurrent change to the tree could not enter the
-campaign, and none of these arms sets `Stellar LW flux`, which is what that
+campaign, and none of these runs sets `Stellar LW flux`, which is what that
 change touched. The runs are in the campaign scratch directory under
 `.../scratchpad/ladder/runs/`. No metals, no `opacity.inp`;
 `Secondary_ionization` at its STAGED default.
@@ -1429,8 +1429,8 @@ Every value is admissible: `q_H2_base` is below its element-ratio ceiling on
 every rung, by 8 to 13%.
 
 The He/H = 0.0793 rung is `backup/regression/mol_base_handoff` without its
-`maxsteps` pin, which differs from the arm in one further respect -- it does
-not set `He_diffusion` -- so a **second 0.0793 rung was run with the arm's
+`maxsteps` pin, which differs from the other rungs in one further respect -- it does
+not set `He_diffusion` -- so a **second 0.0793 rung was run with their
 `He_diffusion: True` and `He_Kzz: 1.0e9`** to keep that variable from riding
 along with He/H. It is reported as its own row.
 
@@ -1604,7 +1604,7 @@ precision of the rate.
 
 **What this answers, and what it does not.** The two-solution question of item
 (P17) asked whether the marching branch and the JFNK branch are two different
-steady solutions. On this arm they are not: marching does not leave the JFNK
+steady solutions. In this run they are not: marching does not leave the JFNK
 solution, it improves its residual, and it returns the same rate; the two
 states differ only in a base layer whose velocity is four orders below the
 wind. **It does not show that no second solution exists elsewhere** -- it shows
@@ -2021,7 +2021,7 @@ survive to the radii Koskinen and Frelikh report; that requires solving the
 transported problem, and the advection estimate above is made on a profile
 that the closure itself produced. It does not rank the R17 rate against the
 missing transport term -- both act at the top of the front and only one of
-them has been evaluated. And it says nothing about the He/H = 30 arm or about
+them has been evaluated. And it says nothing about the He/H = 30 run or about
 the metals-on gates, where the electron density and hence every dissociative
 recombination branch is different.
 
@@ -2168,7 +2168,7 @@ confirms the level on every rung, for instance
 ```
 
 with `n0` running 1.1690e13 (He/H = 0.0793) to 6.4561e12 cm^-3 (He/H = 30). As
-in section 13.1 the gate rung differs from the five arms in one further respect
+in section 13.1 the gate rung differs from the five runs in one further respect
 -- it does not set `He_diffusion` -- and that difference rides along with He/H
 between the first and second rung of the table below.
 
@@ -2794,7 +2794,7 @@ the printed digit at 0.3 and 1 and to 1 K at 10.
 #### 14.7.5 What this does and does not say about the input files
 
 The candidate this campaign was set up to decide is whether the molecular
-regression and diagnostic-arm inputs should carry
+regression and diagnostic-run inputs should carry
 `Base grid [dr,cells]: 1.0e-4 100` and `Grid cells: 550` **as a property of the
 input file** -- section 136 and `docs/p44_base_sawtooth.md` section 9.5 having
 already decided that a grid must not be gated on a physics key, since that would
