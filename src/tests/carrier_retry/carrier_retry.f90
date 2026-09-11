@@ -45,7 +45,7 @@
       use global_parameters
       use species_table
       use ionization_equilibrium, only: bg_cell, bg_ready,                &
-                                        ioniz_eq_allocate_arrays
+                                        ioniz_eq_allocate_arrays, ioniz_eq
       use diffusive_photochemistry, only:                                 &
            carrier_set_init, carrier_transport_interval,                  &
            carrier_checkpoint, carrier_checkpoint_take,                   &
@@ -76,6 +76,10 @@
            carrier_relax_nothing_to_advance, carrier_relax_outcome_text
       use element_census, only: element_nuclei_and_charge, n_element
       use gravity_grid_construction, only: set_gravity_grid
+      use energy_vectors_construct,  only: set_energy_vectors
+      use charge_exchange,           only: cx_init
+      use composition,               only: get_species_densities,         &
+                                           comp_p_from_T, comp_T_from_p
       use base_boundary,             only: set_base_reservoir
       use BC_Apply,                  only: Apply_BC
       use steady_residual_mod,       only: assemble_residual
@@ -153,6 +157,22 @@
       real*8, allocatable :: nnuc0(:,:), nnuc1(:,:)
       real*8, allocatable :: nchg0(:), nchg1(:), rcomp0(:), rcomp1(:)
       real*8, allocatable :: v_relax(:), v_fast(:)
+      ! The hydrodynamic state the relaxation holds fixed while it advances
+      ! the carriers, and the sweep outputs it writes beside the
+      ! composition: the pressure of the entry state, the temperature of
+      ! whatever composition stands beside it, and the heating, cooling and
+      ! heating-efficiency columns of the last equilibrium sweep.
+      real*8, allocatable :: p_col(:), T_col(:)
+      real*8, allocatable :: heat_col(:), cool_col(:), eta_col(:)
+      ! (11) the chemistry the pass carries with it: the densities of the
+      ! composition a pass hands back, the temperature they imply at the
+      ! fixed pressure, and one further sweep taken on that state.
+      real*8, allocatable :: f_swept(:,:)
+      real*8, allocatable :: nhi_r(:), nhii_r(:), nhei_r(:), nheii_r(:)
+      real*8, allocatable :: nheiii_r(:), nheiTR_r(:), ne_r(:), ntot_r(:)
+      real*8, allocatable :: nm_r(:,:), T_ret(:)
+      real*8  :: move_pass, move_sweep, dev_ntot, dev_TK
+      integer :: jj
 
       call setup_globals()
       call build_molecular_hydrogen_column()
@@ -863,8 +883,11 @@
       ! RETURNED STATE, and it is the bound that ends the pass.
       f_sp = f_sp0
       call carrier_checkpoint_restore(chk0)
-      call relax_photochemical_composition(rho, v_relax, f_sp, 1.0d-2,   &
-                                           dr_wide, ns_wide, oc_wide)
+      call restore_frozen_background()
+      call relax_photochemical_composition(rho, v_relax, p_col, T_col,    &
+                                           f_sp, heat_col, cool_col,      &
+                                           eta_col, 1.0d-2, dr_wide,      &
+                                           ns_wide, oc_wide)
       write(*,'(a,es10.2,a,es12.4,a,i0,a,a)') ' (carrier_retry) trust ',  &
            1.0d-2, ': drift ', dr_wide, ' in ', ns_wide, ' kept steps,'// &
            ' ending on '//trim(carrier_relax_outcome_text(oc_wide))
@@ -892,8 +915,11 @@
       ! it where it was.
       f_sp = f_sp0
       call carrier_checkpoint_restore(chk0)
-      call relax_photochemical_composition(rho, v_relax, f_sp, 1.0d-3,   &
-                                           dr_tight, ns_tight, oc_tight)
+      call restore_frozen_background()
+      call relax_photochemical_composition(rho, v_relax, p_col, T_col,    &
+                                           f_sp, heat_col, cool_col,      &
+                                           eta_col, 1.0d-3, dr_tight,     &
+                                           ns_tight, oc_tight)
       write(*,'(a,es10.2,a,es12.4,a,i0,a,a)') ' (carrier_retry) trust ',  &
            1.0d-3, ': drift ', dr_tight, ' in ', ns_tight,               &
            ' kept steps, ending on '//                                    &
@@ -917,8 +943,11 @@
       ! advance, which the ending and the zero drift both say.
       f_sp = f_sp0
       call carrier_checkpoint_restore(chk0)
-      call relax_photochemical_composition(rho, v_relax, f_sp, 1.0d-4,   &
-                                           dr_none, ns_none, oc_none)
+      call restore_frozen_background()
+      call relax_photochemical_composition(rho, v_relax, p_col, T_col,    &
+                                           f_sp, heat_col, cool_col,      &
+                                           eta_col, 1.0d-4, dr_none,      &
+                                           ns_none, oc_none)
       call check_absolute('a_bound_no_trial_can_meet_keeps_no_step',      &
            dble(ns_none), 0.0d0, 0.0d0)
       call check_absolute('and_hands_back_the_entry_composition',         &
@@ -935,8 +964,11 @@
       ! take it back.
       f_sp = f_sp0
       call carrier_checkpoint_restore(chk0)
-      call relax_photochemical_composition(rho, v_relax, f_sp, 0.0d0,    &
-                                           dr_zero, ns_zero, oc_zero)
+      call restore_frozen_background()
+      call relax_photochemical_composition(rho, v_relax, p_col, T_col,    &
+                                           f_sp, heat_col, cool_col,      &
+                                           eta_col, 0.0d0, dr_zero,       &
+                                           ns_zero, oc_zero)
       call check_absolute('a_pass_that_may_not_move_keeps_no_step',       &
            dble(ns_zero), 0.0d0, 0.0d0)
       call check_absolute('and_returns_the_entry_composition_bit_for'//   &
@@ -957,8 +989,11 @@
       call carrier_checkpoint_restore(chk0)
       run_mode = run_mode_init
       carrier_reject_leading_attempts_for_test = 1000000
-      call relax_photochemical_composition(rho, v_fast, f_sp, 1.0d0,     &
-                                           dr_ref, ns_ref, oc_ref)
+      call restore_frozen_background()
+      call relax_photochemical_composition(rho, v_fast, p_col, T_col,     &
+                                           f_sp, heat_col, cool_col,      &
+                                           eta_col, 1.0d0, dr_ref,        &
+                                           ns_ref, oc_ref)
       carrier_reject_leading_attempts_for_test = 0
       run_mode = run_mode_phys
       write(*,'(a,i0,a,a)') ' (carrier_retry) a pass whose every'//       &
@@ -988,8 +1023,11 @@
       ! and that is its own ending and neither a bound nor a fixed point.
       carrier_transport = .false.
       f_sp = f_sp0
-      call relax_photochemical_composition(rho, v_relax, f_sp, 1.0d0,    &
-                                           dr_zero, ns_zero, oc_zero)
+      call restore_frozen_background()
+      call relax_photochemical_composition(rho, v_relax, p_col, T_col,    &
+                                           f_sp, heat_col, cool_col,      &
+                                           eta_col, 1.0d0, dr_zero,       &
+                                           ns_zero, oc_zero)
       carrier_transport = .true.
       carrier_transport_stop_on_failure = .true.
       call check_absolute('a_pass_with_no_transported_carrier_says_so',   &
@@ -1089,15 +1127,16 @@
       ionization_transport = .true.
       weno_mode          = 0
       j_min              = 1
-      allocate(r(1-Ng:N+Ng), r_edg(1-Ng:N+Ng), dr_j(1-Ng:N+Ng))
+      ! Every grid-sized array of global_parameters at once, by the one
+      ! routine the run itself uses, because the equilibrium sweep this
+      ! column now calls reads several of them (opa_pf among the rest).
+      call allocate_grid_arrays
       do j = 1-Ng, N+Ng
          r(j)     = 1.0d0 + 0.02d0*dble(j)
          r_edg(j) = 1.0d0 + 0.02d0*(dble(j) + 0.5d0)
          dr_j(j)  = 0.02d0
       enddo
-      allocate(kzz_cell(1-Ng:N+Ng))
       kzz_cell = 0.0d0
-      allocate(Gphi_c(1-Ng:N+Ng), Gphi_i(1-Ng:N+Ng))
       call set_gravity_grid
       ! The hydrodynamic keys the mass row of this column is assembled with
       ! (seed_mass_row_of_the_column): one reconstruction, one Riemann
@@ -1115,6 +1154,30 @@
       q0         = 1.0d0
       allocate(melem_ab(n_melem))
       melem_ab = 0.0d0
+      ! THE PHOTON GRID AND THE COUPLED SYSTEM THE SWEEP SOLVES.  The
+      ! relaxation pass equilibrates the chemistry on every step it keeps,
+      ! so this column needs the spectrum the rates are formed from and the
+      ! unknown count of the molecular system.  The spectrum is the
+      ! power law of the hot-Uranus fixture, which fixes nothing tested
+      ! here: what the rows below read is the carrier movement and the
+      ! consistency of the background with the composition, not a rate.
+      is_PL_sed    = .true.
+      thereis_Xray = .true.
+      e_low  = 13.60d0
+      e_mid  = 123.98d0
+      e_top  = 1.24d3
+      PLind  = -1.0d0
+      LX     = 27.20d0
+      LEUV   = 27.93d0
+      a_orb  = 0.0480d0*AU
+      call set_energy_vectors
+      ! The molecular system: H+/He+/He++ and the four molecular carriers of
+      ! the hydrogen nuclei, with two stages of each metal element above
+      ! them (input_read sets the same count for this configuration).
+      N_eq = 7 + 2*n_melem
+      lwa  = (N_eq*(3*N_eq + 13))/2
+      allocate(sys_sol(N_eq), sys_x(N_eq), wa(lwa))
+      call cx_init
       call carrier_set_init()
       call ioniz_eq_allocate_arrays()
       bg_ready = .true.
@@ -1150,7 +1213,65 @@
          call set_frozen_cell_rates(j)
       enddo
       f_sp0 = f_sp
+      allocate(p_col(1-Ng:N+Ng), T_col(1-Ng:N+Ng))
+      allocate(heat_col(1-Ng:N+Ng), cool_col(1-Ng:N+Ng))
+      allocate(eta_col(1-Ng:N+Ng))
+      call seed_pressure_of_the_column()
       end subroutine build_molecular_hydrogen_column
+
+      !--------------!
+
+      subroutine seed_pressure_of_the_column()
+      ! THE PRESSURE THE RELAXATION HOLDS FIXED.  A pass is taken at a wind
+      ! that does not move, and the temperature of every composition it
+      ! visits is p/(n_tot + n_e) at that pressure.  The pressure is
+      ! therefore set once, from the entry composition and the temperature
+      ! of the frozen cell state, so that the entry state is its own:
+      ! recomputing T at the entry composition returns exactly the
+      ! temperature the frozen rates were formed at, and what moves T later
+      ! is the particle count the carriers change.
+      real*8, allocatable :: nhi_s(:), nhii_s(:), nhei_s(:), nheii_s(:)
+      real*8, allocatable :: nheiii_s(:), nheiTR_s(:), ne_s(:), ntot_s(:)
+      real*8, allocatable :: nm_s(:,:)
+      integer :: j
+      allocate(nhi_s(1-Ng:N+Ng), nhii_s(1-Ng:N+Ng))
+      allocate(nhei_s(1-Ng:N+Ng), nheii_s(1-Ng:N+Ng))
+      allocate(nheiii_s(1-Ng:N+Ng), nheiTR_s(1-Ng:N+Ng))
+      allocate(ne_s(1-Ng:N+Ng), ntot_s(1-Ng:N+Ng))
+      allocate(nm_s(1-Ng:N+Ng,n_mion))
+      nhei_s   = 0.0d0
+      nheii_s  = 0.0d0
+      nheiii_s = 0.0d0
+      nheiTR_s = 0.0d0
+      call get_species_densities(rho, f_sp0, nhi_s, nhii_s, nhei_s,       &
+                                 nheii_s, nheiii_s, nheiTR_s, nm_s,       &
+                                 ne_s, ntot_s)
+      do j = 1-Ng, N+Ng
+         T_col(j) = bg_cell(j)%T_K/T0
+      enddo
+      call comp_p_from_T(T_col, ntot_s, ne_s, p_col)
+      heat_col = 0.0d0
+      cool_col = 0.0d0
+      eta_col  = 0.0d0
+      end subroutine seed_pressure_of_the_column
+
+      !--------------!
+
+      subroutine restore_frozen_background()
+      ! The cell state every pass of section (10) is entered with.  A pass
+      ! equilibrates the chemistry on each step it keeps, so it leaves
+      ! bg_cell describing the composition it handed back; the rows below
+      ! compare passes with one another, and each has to start from the
+      ! same background and the same temperature.
+      integer :: j
+      do j = 1-Ng, N+Ng
+         call set_frozen_cell_rates(j)
+         T_col(j) = bg_cell(j)%T_K/T0
+      enddo
+      heat_col = 0.0d0
+      cool_col = 0.0d0
+      eta_col  = 0.0d0
+      end subroutine restore_frozen_background
 
       !--------------!
 

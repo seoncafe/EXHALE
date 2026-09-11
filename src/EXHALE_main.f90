@@ -6440,20 +6440,30 @@
                endif
             endif
             ! The molecular carriers are a THIRD participant in the same
-            ! Picard iteration, relaxed to their own steady state at the
-            ! same fixed wind, bounded by trust_pass rather than damped.
-            ! The header records why the damping exists at all -- nothing
-            ! in a Picard iteration of two solves keeps them from chasing
-            ! each other -- and a third participant makes that risk larger.
+            ! Picard iteration, relaxed towards their own steady state at
+            ! the same fixed wind, bounded by trust_pass rather than
+            ! damped. The header records why the damping exists at all --
+            ! nothing in a Picard iteration of two solves keeps them from
+            ! chasing each other -- and a third participant makes that risk
+            ! larger.
+            !
+            ! THE PASS CARRIES THE CHEMISTRY WITH IT. It equilibrates the
+            ! eliminated species, the electron density, the temperature and
+            ! the rate coefficients on every step it keeps, at this pass's
+            ! fixed (rho, v, p), so the state it hands back is already a
+            ! state the chemistry has closed on and the sweep that used to
+            ! stand here would re-solve its own answer. What is left is to
+            ! fill the density columns this routine keeps beside the
+            ! composition.
             if (outer_ending .eq. outer_running .and. thereis_mol .and.   &
                 carrier_transport .and. .not. carrier_in_newton) then
-               call relax_photochemical_composition(rho,v,f_sp,           &
+               call relax_photochemical_composition(rho,v,p,T,f_sp,       &
+                                              heat,cool,eta,              &
                                               trust_pass, carrier_drift,  &
                                               kc, outcome=carrier_outcome)
                call get_species_densities(rho,f_sp,nhi,nhii,nhei,nheii,   &
                                           nheiii,nheiTR,nm,ne,n_tot)
                call comp_T_from_p(p,n_tot,ne,T)
-               call ioniz_eq(T,rho,f_sp,heat,cool,eta,last_sweep)
                comp_drift = max(comp_drift, carrier_drift)
                kd = max(kd, kc)
             endif
