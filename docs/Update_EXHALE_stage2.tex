@@ -8898,6 +8898,237 @@ Fourth \texttt{make\ check} after P21 and the terminology sweep (advisor, 2026-0
   beside it was fixed by the advisor (above).
 \end{itemize}
 
+\subsection{9. PLAN\_20260912: the seven findings of the stage-2 review (2026-09-12)}\label{9-plan_20260912-the-seven-findings-of-the-stage-2-review-2026-09-12}
+
+Plan of record: \texttt{docs/PLAN\_20260912\_review\_fixes.md}. User instruction of
+2026-09-12: analyze \texttt{docs/Update\_EXHALE\_stage2\_review\_20260912.md} against the
+code, and where its analysis is right, write the plan and start the
+corrections. All seven findings R1 to R7 were confirmed in the source before
+the plan was written (the confirming lines are listed at the head of the plan);
+the corrections are items Q1 to Q4, Q1 and Q4 by the advisor, Q2 and Q3 by
+workers under \texttt{docs/worker\_rules.md}. Every number below is MEASURED on the
+tree of this section unless marked READ.
+
+\subsubsection{The state contract at a fixed hydrodynamic state (R2, R3)}\label{the-state-contract-at-a-fixed-hydrodynamic-state-r2-r3}
+
+The decision behind Q1: at a fixed hydrodynamic state the quantities the solve
+holds are the conserved variables \texttt{u\ =\ (rho,\ rho\ v,\ E)}. A composition update
+at fixed hydro keeps \texttt{u} and recomputes the pressure and the temperature from
+the unchanged thermal energy \texttt{rho\ e\ =\ E\ -\ (rho\ v)\^{}2/(2\ rho)} through the
+caloric EOS of the new composition (\texttt{pressure\_from\_energy\_density} after
+\texttt{get\_species\_densities}, then \texttt{comp\_T\_from\_p}). A held pressure is not a state
+the solve knows: the review\textquotesingle s 500-cell probe showed that keeping \texttt{p} while the
+main loop keeps \texttt{E} describes two molecular states 3.3e-3 apart.
+
+\subsubsection{The items}\label{the-items-1}
+
+\begin{itemize}
+\tightlist
+\item
+  \textbf{Q1 (R1, R2, R3, R6, R7 and the outer progress measure), advisor.}
+  \texttt{diffusive\_photochemistry.f90} (+206/-204), the carrier branch and the
+  summary of \texttt{steady\_wind\_with\_element\_diffusion} in \texttt{EXHALE\_main.f90},
+  \texttt{src/tests/carrier\_retry/carrier\_retry.f90} (+195/-77) and its \texttt{run.sh}.
+
+  \begin{itemize}
+  \tightlist
+  \item
+    R1: \texttt{photochemical\_transport\_step} takes an optional \texttt{trial} argument; a
+    trial of the stationary relaxation returns before the history mark, the
+    message and the stop, so a rejected trial (an uncovered interval, a
+    chemistry that did not close, a displacement beyond the movement bound)
+    leaves \texttt{carrier\_history\_certifiable\_flag} as it found it. The marching
+    path passes no \texttt{trial} and is unchanged.
+  \item
+    R2, R3: \texttt{relax\_photochemical\_composition(u,\ v,\ f\_sp,\ p,\ T,\ heat,\ cool,\ eta,\ trust,\ drift,\ nstep,\ outcome)} now takes the conserved state; \texttt{p} and
+    \texttt{T} are outputs. \texttt{pressure\_and\_temperature\_at\_fixed\_conserved\_state}
+    is the one expression of the contract above, and
+    \texttt{equilibrate\_chemistry\_at\_fixed\_conserved\_state} cycles (p, T at fixed u;
+    sweep; p, T again) until the largest relative change of T falls below
+    1e-6 (at most five cycles), reads the sweep ledger (\texttt{n\_nonfinite}) and a
+    finite composition, and reports \texttt{ok}; a refresh that does not close
+    refuses the trial (\texttt{carrier\_relax\_chemistry\_refused}, a new named ending
+    "the chemistry of the shortest admissible trial did not close") and the
+    entry composition, background, p, T, heating, cooling and eta are
+    restored. The caller in \texttt{EXHALE\_main.f90} rebuilds \texttt{W} from the unchanged
+    \texttt{u} and takes the returned composition; nothing is reconstructed from a
+    held pressure any more.
+  \item
+    R6: the carrier retry suite\textquotesingle s column is built by
+    \texttt{column\_carrying\_its\_own\_density} of \texttt{src/tests/test\_columns.f90} (the
+    mass-closed constructor of the element suites; \texttt{run.sh} compiles it
+    before the driver) with the ions moved out of the neutrals; a row asserts
+    the column reconstructs its own density to 1e-13 before any step. The
+    consistency rows are absolute: the returned pressure is that of the
+    unchanged thermal energy (0.0), the returned temperature is that of the
+    returned composition (0.0), the background third-body density and
+    temperature the sweep stored are those of the returned composition
+    (6.53e-7 and 2.28e-7 relative, allowance 10 \texttt{ieq\_res\_tol}), and one
+    further sweep leaves the returned composition within the sweep tolerance
+    (8.83e-7 against \texttt{ieq\_res\_tol}). Nine rows for R1: a rejected trial keeps
+    the history certifiable, keeps no step, hands back the entry composition
+    bit for bit and names the refused interval; a pass after the refusals
+    keeps a step and stays eligible; a refused trial in phys mode reports
+    exhausted, leaves the history certifiable and writes no composition.
+    RED on the entry text (the trial marking the history, the refresh not
+    closed): five rows fail (pressure 1.2e-7, temperature 3.5e-7, further
+    sweep 1.2e-6, the two R1 rows 0 of 1); GREEN on the tree: 138 PASS, 0
+    FAIL.
+  \item
+    R7 and the progress measure: the outer summary of
+    \texttt{steady\_wind\_with\_element\_diffusion} ranks every entry by its binding
+    distance (\texttt{dist\_bind}, \texttt{row\_at\_bind}, \texttt{jbind} where the entry carries
+    them), so the mass row\textquotesingle s refusal is attributed to the cell that binds it
+    and not to the largest row over another cell\textquotesingle s tolerance; and the
+    progress control halves omega and the carrier movement bound on the
+    JOINT distance of the state (the largest entry over its own tolerance,
+    \texttt{prog\_worst}), not on the worst species row alone. An entry that is not
+    finite or not available counts as an infinite distance.
+  \item
+    The review\textquotesingle s 500-cell probe (\texttt{docs/audit\_20260905/stage2\_review\_20260912/\ molecular\_wind\_state\_probe.f90}, adapted to the new signature, hot-Uranus
+    carrier reload, one hydro solve and one bounded relaxation at trust
+    0.01): returned temperature against the EOS of the returned state 0.0
+    (was 5.5997819e-9), pressure of the unchanged thermal energy against the
+    returned pressure 0.0 (was 3.2993e-3), thermal-energy change a held
+    pressure would need 6.9e-16 (was 3.3250e-3); mass closure 8.33e-15 and
+    the five retained steps at drift 9.9955e-3 unchanged.
+  \item
+    Impact on the routes: the unbounded pass of P21 M1 repeated on the new
+    contract (\texttt{EXHALE\_CARRIER\_TRUST=1e6}, cap 40) reaches the fixed wind\textquotesingle s
+    fixed point in 61 transport steps at drift 0.995 with the H2 front
+    (x2 = 0.5) at 3.079 R\_p (P21: 57 steps, 2.237 R\_p; both fully molecular
+    fixed points, the front leaving the domain). The 12-pass production loop
+    ends at H2 row 5.49e-2 at cell 279, front 1.0755 R\_p (the 110-pass ladder
+    of P16 at pass 12: 5.50e-2 at cell 279, 1.0765 R\_p); no pass triggered
+    the halving. \texttt{atomic\_elem\_newton} at three passes: pass lines identical to
+    the control build. \texttt{wasp\_full\_newton} reload and the \texttt{mol\_carrier} case
+    (12000 steps, one thread): data rows identical to the control build and
+    to the golden.
+  \end{itemize}
+\item
+  \textbf{Q2 (R4 in the operator), worker (Sonnet).}
+  \texttt{binary\_element\_diffusion.f90} (+108/-43),
+  \texttt{src/tests/element\_operator/element\_operator\_tests.f90} (+88/-1).
+  \texttt{element\_diffusion\_step} judges its candidate on every call: the entry
+  composition is kept, the four tests (solved, finite, X inside {[}0,1{]} to
+  \texttt{element\_fraction\_bound\_tol}, mass closure no worse than the entry\textquotesingle s by
+  \texttt{element\_mass\_closure\_tol}) run whether or not \texttt{status} is present, and the
+  entry composition is restored on a refusal. The outcome is always left in
+  the new public \texttt{element\_step\_last\_status}, and \texttt{element\_step\_outcome\_text}
+  names it. Two new rows repeat the ordinary and the NaN-residual steps with
+  no \texttt{status} at the call site: RED on the entry text (the refused candidate
+  with departure 0.86 adopted, the status left at accepted), GREEN after
+  (\texttt{element\_operator} 28/0). A second, independent defect found by the change:
+  the Newton solve of the helium mass fraction (\texttt{solve\_mass\_fraction}) read
+  its arithmetic floor only on a DESCENDING pass, so a step whose residual had
+  already reached the floor and whose next pass found no improving trial
+  reported unsolved (residuals 1e-12 to 1.1e-5 at the refusal, MEASURED on
+  the closed-column relaxations of \texttt{diffusion\_tests} T1a, T7c, T7d and T10,
+  which went 35/0 to 27/8 under the unconditional judgment alone); the
+  no-descent exit now reads the same floor, and \texttt{newton\_drop} moved from
+  1e-6 to 2e-5 so that the \textasciitilde1e-5 floor of the K\_zz = 2e12 homopause column
+  (T7), which the module header already documented, lies inside it
+  (\texttt{diffusion\_tests} 35/0 again). Cost on \texttt{mol\_diffusion} at 300 steps: 54.4 s
+  against 54.2 s, inside the noise. \texttt{mol\_diffusion} and \texttt{lower\_profile} at 300
+  steps: data rows identical to the control build. \texttt{atomic\_elem\_newton}: pass
+  1 identical; at pass 2 the judged rows are identical and omega differs
+  (0.500 control, 0.250 Q2), attributable to the floor change turning a
+  floor-level residual from unsolved to solved (READ from the Q2 report; the
+  advisor\textquotesingle s own three-pass run of the merged tree, above, has omega 0.250 at
+  pass 2 on both builds because the control binary of that run already
+  carried Q2).
+\item
+  \textbf{Q3 (R5), worker (Sonnet).} \texttt{certification.f90} (+105/-17),
+  \texttt{src/tests/certification/certification\_contexts.f90} (+106),
+  \texttt{docs/certification\_tolerance\_anchoring\_20260910.md} (addendum).
+  \texttt{mass\_row\_cell\_verdict} returns a third, optional outcome: RESOLVED
+  (\texttt{cert\_mass\_round\_margin\ *\ floor\ \textless{}\ cert\_tol\_mass\_ceiling}, judged as P16
+  anchored it) or UNRESOLVED (the margin times the floor reaches the ceiling,
+  or the floor is not finite): an unresolved cell never reads \texttt{within}, its
+  distance is \texttt{max(1,\ q/ceiling)}, so the review\textquotesingle s counterexample (q = 0.5 at
+  floor 1) reads \texttt{within\ =\ F}, distance 1.0 (entry text: \texttt{within\ =\ T}, 0.5).
+  The column loop is the pure \texttt{mass\_row\_column\_verdict}, which counts the
+  unresolved cells and names the first (\texttt{n\_mass\_unresolved},
+  \texttt{j\_first\_mass\_unresolved}), and the report names that cell even when a
+  different cell binds the verdict. \texttt{certification} 84/0 (70/0 before the
+  new rows), \texttt{krylov\_and\_dogleg} 334/0, \texttt{steady\_species\_rows} 195/0 (READ
+  from the Q3 report; the advisor\textquotesingle s run of \texttt{certification} on the merged tree
+  84/0). The addendum records that the margin of 10 was measured on three
+  converged or converging fixtures only, none a near-zero-flow or
+  molecular-EOS column: the UNRESOLVED outcome exists for the regime the
+  fixtures do not reach.
+\item
+  \textbf{Q4 (R4 in the marching caller), advisor.} The marching loop of
+  \texttt{EXHALE\_main.f90} reads \texttt{element\_step\_last\_status} after the element step:
+  in phys mode a refused step refuses the whole attempted step
+  (\texttt{as\_reject\_element} at the diffusion operation, the verdict text naming
+  the test that refused it), which the controller restores and retakes at
+  half dt like a carrier interval left uncovered; in init mode the march goes
+  on from the composition the step restored and the refusals are counted
+  (the final report prints "element steps refused inside the initialization
+  march: n"). A test knob, \texttt{element\_refuse\_leading\_steps\_for\_test}
+  (\texttt{EXHALE\_ELEMENT\_REFUSE\_STEPS}, zero in every production run), refuses the
+  first n element steps so the path can be exercised: on \texttt{mol\_diffusion} in
+  phys mode with two refusals injected, attempt 1 at dt 1.47451E-04 and
+  attempt 2 at 7.37253E-05 are refused "at the element diffusion step: an
+  element invariant broke" and attempt 3 runs at 3.68626E-05; in init mode
+  the two refusals are counted and the run exits 0. (The phys-mode run of
+  that fixture then fails at step 0 on the coupled source step\textquotesingle s fixed point
+  with or without the knob, exit 2: a property of that fixed-step snapshot in
+  phys mode, not of Q4.) Found beside it and fixed: the refusal census of
+  \texttt{attempted\_step\_note\_step} stopped one reason short
+  (\texttt{as\_reject\_source\_fixed\_point}), so a source-energy refusal was never
+  counted by reason; the bound is now \texttt{as\_reject\_source\_energy}.
+\item
+  \textbf{The stagnation row of \texttt{grid\_and\_gates}.} On the joint progress measure
+  the configuration \texttt{output\_state\_consistency.sh} used to force the
+  stagnation ending (\texttt{EXHALE\_JFNK\_MAXIT=5}, \texttt{EXHALE\_CARRIER\_TRUST=1e-4}) runs
+  out its budget instead: the starved hydrodynamic rows keep falling (energy
+  4.9E-01 to 3.9E-02 over 8 passes, 1.1E-01 at 20) while the H2 row stands at
+  7.3E-02. The row now uses \texttt{EXHALE\_JFNK\_MAXIT=40} with
+  \texttt{EXHALE\_CARRIER\_TRUST=1e-6}: the hydro solves reach their roots, the H2
+  row stands at 7.38E-02 for four passes and the ending is announced at pass
+  4; the second assertion of that script (the ending hands back one state)
+  measures 7.1e-16 against 1e-12. The script\textquotesingle s header and the suite README
+  say why the configuration moved.
+\end{itemize}
+
+\subsubsection{Gates}\label{gates-1}
+
+Advisor verification of the merged tree (private build \texttt{build\_Q1} /
+\texttt{EXHALE\_Q1.x} of the default toolchain, deleted at the close): \texttt{carrier\_retry}
+138/0, \texttt{certification} 84/0, \texttt{element\_operator} 28/0, \texttt{attempted\_step} 70/0,
+\texttt{steady\_species\_rows} 195/0, \texttt{krylov\_and\_dogleg} 334/0, \texttt{diffusion\_tests}
+35/0, \texttt{carrier\_returned\_state\_acceptance} 36/0, \texttt{carrier\_reference\_scales}
+14/0, \texttt{carrier\_constraint\_attribution} 10/0, \texttt{species\_masses} 9/0,
+\texttt{steady\_completion\_flag} 3/0; \texttt{grid\_and\_gates} 198/1, the one FAIL the
+stagnation row on its old configuration (the suite was started before the
+script was re-anchored), and the re-anchored \texttt{output\_state\_consistency.sh}
+4/4 on its own afterwards. \texttt{make\ check} (advisor, 2026-09-12 10:35 KST, the
+shared \texttt{build/} rebuilt from this tree with the gfortran on PATH, conda-forge
+16.2): \textbf{REGRESSION PASS (all cases byte-identical)}, 64 file comparisons
+PASS with data identical. A first launch of the gate with the system gfortran
+13.1 on PATH was stopped before its verdict and is not counted: the goldens
+are snapshots of the 16.2 build and a verdict against another compiler would
+say nothing about this change.
+
+\subsubsection{Reported by the workers and not fixed}\label{reported-by-the-workers-and-not-fixed-1}
+
+\begin{itemize}
+\tightlist
+\item
+  Q2: the out-of-bounds outcome of the element step (\texttt{element\_step\_out\_of\_bounds})
+  is not reachable on a synthetic column of the suite\textquotesingle s size (the drift flux
+  vanishes at both ends of the composition axis in the discrete operator), so
+  the new rows cover the solve-failed and nonfinite outcomes only; the one
+  measured out-of-bounds excursion of record is P1\textquotesingle s, on the atomic reload.
+\item
+  Q3: \texttt{grid\_and\_gates} row \texttt{mass\_flux\_spread\_recomputed\_from\_output} failed
+  once on the worker\textquotesingle s control run ("no\_dump\_line") and passed on its measured
+  run and on the advisor\textquotesingle s; the P17 note on two concurrent invocations of that
+  suite sharing something outside \texttt{EXHALE\_TEST\_OUT} stands.
+\end{itemize}
+
 \appendix
 \input{Update_EXHALE_appendix}
 \end{document}

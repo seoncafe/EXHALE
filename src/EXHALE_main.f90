@@ -19,6 +19,10 @@
                              comp_p_from_T, element_ratio_HeH,             &
                              n_cells_he_singlet_clamped
       use binary_element_diffusion, only: element_diffusion_step,          &
+                                          element_step_last_status,      &
+                                          element_step_accepted,         &
+                                          element_step_outcome_text,     &
+                                          element_refuse_leading_steps_for_test, &
                                           relax_element_composition,      &
                                           element_relaxation_converged,   &
                                           element_relaxation_step_budget, &
@@ -93,7 +97,7 @@
                                as_fixed_dt_seconds, err_pass_index,     &
                                attempted_step_checkpoint_checksum,      &
                                as_reject_injected,                      &
-                               as_reject_carrier,                        &
+                               as_reject_carrier, as_reject_element,     &
                                as_reject_hydro_stage, as_reject_int_error, &
                                as_reject_energy,                         &
                                as_reject_source_fixed_point,             &
@@ -505,7 +509,13 @@
       integer :: nex_n, nex_first, nex_last, nex_j, nex_ic
       real*8  :: nex_ratio, nex_phys, nex_full
       character(len=48) :: as_bad_item
-      logical :: as_carrier_ok, dt_bounded_by_rejection
+      logical :: as_carrier_ok, as_element_ok, dt_bounded_by_rejection
+      ! Element steps refused inside the initialization march (the
+      ! composition is a numerical iterate there and the march goes on
+      ! from the entry composition the step restored): counted for the
+      ! final report, so a refusal never passes silently in either mode.
+      integer :: n_element_refused_init = 0
+      character(len=64) :: as_env
       real*8  :: as_frac_done
       integer :: as_nsub, as_carrier_status
       ! The ledger family in force around a stationary solve, which is
@@ -1564,6 +1574,11 @@
       dt_last_accepted        = -1.0d0
       dt_bounded_by_rejection = .false.
       call attempted_step_read_environment()
+      ! Test knob of the element step (see binary_element_diffusion):
+      ! refuse the first n element steps so the controller's handling of
+      ! a refused step can be exercised. Zero in every production run.
+      call get_environment_variable('EXHALE_ELEMENT_REFUSE_STEPS', as_env)
+      if (len_trim(as_env) .gt. 0) read(as_env,*) element_refuse_leading_steps_for_test
       call energy_update_read_environment()
       ! THE CONTROLLER OWNS THE DECISION on an uncovered carrier interval
       ! (see the call site in the step), so the operator's own stop is off
@@ -1990,6 +2005,7 @@
             as_trial_reason = 0
             as_trial_op     = 0
             as_carrier_ok = .true.
+            as_element_ok = .true.
 
             !--- Thermodynamic evolution ---!
 
@@ -2295,6 +2311,23 @@
                call species_advection_project(f_sp)
             if (he_diffusion)                                         &
                call element_diffusion_step(rho,v,T,f_sp,dt_loc)
+
+            ! A REFUSED ELEMENT STEP (review R4, item Q4). The step judges
+            ! its candidate on every call and hands back the entry
+            ! composition when the candidate is not a state of the gas
+            ! (element_step_last_status names which test refused it). THE
+            ! STEP CONTROLLER OWNS THE DECISION, as for the carriers below:
+            ! in phys mode the whole attempted step is refused, restored
+            ! and retaken at half dt; in init mode the state is a numerical
+            ! iterate, the march goes on from the restored composition and
+            ! the refusal is counted for the final report.
+            if (he_diffusion .and.                                        &
+                element_step_last_status .ne. element_step_accepted) then
+               as_element_ok = .false.
+               if (run_mode .eq. run_mode_phys) exit trial
+               as_element_ok = .true.
+               n_element_refused_init = n_element_refused_init + 1
+            endif
 
             if (attempted_step_injected_refusal(as_op_diffusion)) then
                as_inject_op = as_op_diffusion;  exit trial
@@ -2933,6 +2966,14 @@
                   as_verd%what      = 'the nested positivity retry'//      &
                                       ' exhausted its bisections'
                endif
+            else if (.not. as_element_ok) then
+               as_verd%accepted  = .false.
+               as_verd%reason    = as_reject_element
+               as_verd%operation = as_op_diffusion
+               as_verd%what      = 'the element step refused its'//      &
+                                   ' candidate: '//                       &
+                                   trim(element_step_outcome_text(       &
+                                        element_step_last_status))
             else if (.not. as_carrier_ok) then
                as_verd%accepted  = .false.
                as_verd%reason    = as_reject_carrier
@@ -4365,6 +4406,10 @@
       ! The rows the carrier solve left at the arithmetic round-off of
       ! their own full terms: accepted and flagged, informational, never a
       ! statement that a state is wrong (A1scale3; review 2 section 5.3).
+      if (he_diffusion .and. n_element_refused_init .gt. 0)               &
+         write(*,'(A,I0,A)') '     element steps refused inside the'//    &
+              ' initialization march: ', n_element_refused_init,          &
+              ' (the march went on from the entry composition each time)'
       if (thereis_mol .and. carrier_transport) then
          call carrier_roundoff_limited_record(nro_last, nro_total, nro_sub)
          if (nro_total .gt. 0)                                            &
@@ -6156,6 +6201,13 @@
       real*8  :: sp_worst, sp_worst_prev, sp_meas, sp_tol, trust_pass
       real*8  :: row_mass, row_mom, row_ene, t_pass0
       real*8  :: ref_worst, ref_meas, ref_tol, row_here
+      ! THE PROGRESS OF THE WHOLE STATE: the largest distance from its own
+      ! tolerance over every active entry of the certification, each read
+      ! at the cell that binds it (the continuity row's tolerance is a
+      ! function of the cell, so its distance is dist_bind at jbind, never
+      ! the largest measure over another cell's tolerance).  An entry that
+      ! could not be judged, or is not finite, counts as not fallen.
+      real*8  :: prog_worst, prog_worst_prev, dist_here
       logical :: species_alternated, pass_certified, rows_finite
       logical :: update_taken
       character(len=52) :: sp_name, ref_name, unjudged_name
@@ -6207,6 +6259,8 @@
       n_no_fall     = 0
       sp_worst      = -1.0d0
       sp_worst_prev = huge(1.0d0)
+      prog_worst_prev = huge(1.0d0)
+      prog_worst    = huge(1.0d0)
       sp_meas       = 0.0d0
       sp_tol        = 0.0d0
       sp_cell       = 0
@@ -6300,9 +6354,11 @@
          ref_name  = 'none'
          n_unjudged = 0
          unjudged_name = 'none';  unjudged_why = ''
+         prog_worst = 0.0d0
          do icert = 1, cert_now%n
             if (cert_now%e(icert)%status .eq. cert_unavailable) then
                n_unjudged = n_unjudged + 1
+               prog_worst = huge(1.0d0)
                if (n_unjudged .eq. 1) then
                   unjudged_name = cert_now%e(icert)%name
                   unjudged_why  = cert_now%e(icert)%reason
@@ -6310,7 +6366,10 @@
                cycle
             endif
             if (cert_now%e(icert)%status .ne. cert_evaluated) cycle
-            if (.not. cert_now%e(icert)%finite) rows_finite = .false.
+            if (.not. cert_now%e(icert)%finite) then
+               rows_finite = .false.
+               prog_worst  = huge(1.0d0)
+            endif
             if (cert_now%e(icert)%regime_gated) then
                row_here  = cert_now%e(icert)%row_max_gate
                cell_here = cert_now%e(icert)%jworst_gate
@@ -6319,19 +6378,31 @@
                cell_here = cert_now%e(icert)%jworst
             endif
             if (cert_now%e(icert)%tol .le. 0.0d0) cycle
+            ! The distance of this entry from its own tolerance, at the
+            ! cell that binds it: where the tolerance is a function of the
+            ! cell (jbind > 0) the verdict was taken cell by cell and its
+            ! measure, tolerance and cell are the binding ones.
+            if (cert_now%e(icert)%jbind .gt. 0) then
+               dist_here = cert_now%e(icert)%dist_bind
+               row_here  = cert_now%e(icert)%row_at_bind
+               cell_here = cert_now%e(icert)%jbind
+            else
+               dist_here = row_here/cert_now%e(icert)%tol
+            endif
+            prog_worst = max(prog_worst, dist_here)
             if (cert_now%e(icert)%regime_gated .and.                      &
-                row_here/cert_now%e(icert)%tol .gt. sp_worst) then
-               sp_worst = row_here/cert_now%e(icert)%tol
+                dist_here .gt. sp_worst) then
+               sp_worst = dist_here
                sp_meas  = row_here
                sp_tol   = cert_now%e(icert)%tol
                sp_cell  = cell_here
                sp_name  = cert_now%e(icert)%name
             endif
             if (.not. cert_now%e(icert)%within_tol .and.                  &
-                row_here/cert_now%e(icert)%tol .gt. ref_worst) then
-               ref_worst = row_here/cert_now%e(icert)%tol
+                dist_here .gt. ref_worst) then
+               ref_worst = dist_here
                ref_meas  = row_here
-               ref_tol   = cert_now%e(icert)%tol
+               ref_tol   = row_here/max(dist_here, 1.0d-300)
                ref_cell  = cell_here
                ref_name  = cert_now%e(icert)%name
             endif
@@ -6363,28 +6434,29 @@
          ! header); the ending itself is announced with the others, below
          ! the summary line of the pass.
          if (outer_ending .eq. outer_running) then
-            if (sp_cell .gt. 0 .and. sp_worst .ge. sp_worst_prev) then
+            if (prog_worst .ge. prog_worst_prev) then
                n_no_fall = n_no_fall + 1
                if (he_diffusion .and. comp_omega .gt. 0.125d0) then
                   comp_omega = max(0.5d0*comp_omega, 0.125d0)
-                  write(*,'(A,F6.3)') '    -> the worst gated species'//  &
-                       ' row did not fall; under-relaxation omega =',     &
+                  write(*,'(A,F6.3)') '    -> the joint distance of the'//&
+                       ' state did not fall; under-relaxation omega =',   &
                        comp_omega
                endif
                if (thereis_mol .and. carrier_transport .and.              &
                    .not. carrier_in_newton .and.                          &
                    trust_pass .gt. carrier_trust_floor) then
                   trust_pass = max(0.5d0*trust_pass, carrier_trust_floor)
-                  write(*,'(A,ES9.2)') '    -> the worst gated species'//  &
-                       ' row did not fall; carrier movement bound =',     &
+                  write(*,'(A,ES9.2)') '    -> the joint distance of the'//&
+                       ' state did not fall; carrier movement bound =',   &
                        trust_pass
                endif
                if (n_no_fall .ge. outer_no_fall_max)                      &
                   outer_ending = outer_no_progress
-            else if (sp_cell .gt. 0) then
+            else
                n_no_fall = 0
             endif
-            sp_worst_prev = sp_worst
+            sp_worst_prev   = sp_worst
+            prog_worst_prev = prog_worst
          endif
 
          ! ---- THE COMPOSITION UPDATE THE NEXT SOLVE WILL CONSUME ----
@@ -6450,17 +6522,25 @@
             ! THE PASS CARRIES THE CHEMISTRY WITH IT. It equilibrates the
             ! eliminated species, the electron density, the temperature and
             ! the rate coefficients on every step it keeps, at this pass's
-            ! fixed (rho, v, p), so the state it hands back is already a
+            ! fixed conserved state u, so the state it hands back is already a
             ! state the chemistry has closed on and the sweep that used to
             ! stand here would re-solve its own answer. What is left is to
             ! fill the density columns this routine keeps beside the
             ! composition.
             if (outer_ending .eq. outer_running .and. thereis_mol .and.   &
                 carrier_transport .and. .not. carrier_in_newton) then
-               call relax_photochemical_composition(rho,v,p,T,f_sp,       &
+               ! The conserved state u is what the relaxation holds; the
+               ! pressure and temperature it returns are those of the
+               ! composition it hands back at that u, and U_to_W below
+               ! forms the same pressure by the same equation of state,
+               ! so the conserved variables the next solve consumes and
+               ! the primitive state beside them describe one gas.
+               call relax_photochemical_composition(u,v,f_sp,p,T,         &
                                               heat,cool,eta,              &
                                               trust_pass, carrier_drift,  &
                                               kc, outcome=carrier_outcome)
+               call U_to_W(u,W)
+               rho = W(1,:);  v = W(2,:);  p = W(3,:)
                call get_species_densities(rho,f_sp,nhi,nhii,nhei,nheii,   &
                                           nheiii,nheiTR,nm,ne,n_tot)
                call comp_T_from_p(p,n_tot,ne,T)
@@ -6588,8 +6668,9 @@
          else if (outer_ending .eq. outer_no_progress) then
             jfnk_info = 1
             write(*,'(A,I0,A,I0,A)') ' (EXHALE_main) outer pass ',        &
-                 it_diff, ': REFUSED -- the worst gated species row'//     &
-                 ' has not fallen in ', n_no_fall, ' consecutive'//        &
+                 it_diff, ': REFUSED -- the joint distance of the state'//&
+                 ' (its largest entry over its own tolerance) has not'//   &
+                 ' fallen in ', n_no_fall, ' consecutive'//                &
                  ' passes; the alternation is not approaching a joint'//   &
                  ' fixed point at these step lengths.'
             write(*,'(A,ES10.3,A,ES10.3,A,A,A,I0)') '    it stands'//     &

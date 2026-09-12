@@ -227,6 +227,13 @@
       ! branch on any state measured: it would need a base Mach number
       ! below 1e-15.
       real*8, parameter, public :: cert_tol_mass_ceiling = 1.0d0
+      ! THE TWO OUTCOMES OF THE MASS ROW AT ONE CELL (review R5, item Q3).
+      ! `cert_tol_mass_ceiling` above says a cell whose estimated floor
+      ! reaches it cannot be judged, not that it passes; mass_row_cell_
+      ! verdict below returns one of these through its optional `status`,
+      ! and a cell it names UNRESOLVED never reads `within`, whatever q is.
+      integer, parameter, public :: cert_mass_row_resolved   = 1
+      integer, parameter, public :: cert_mass_row_unresolved = 2
       ! THE TWO SPECIES-ROW TOLERANCES ARE VALUES OF A FUNCTION OF THE
       ! RADIUS, cert_tol_carrier_at and cert_tol_element_at below, and every
       ! reader of them goes through those two accessors. The constants here
@@ -428,6 +435,14 @@
          ! or from the fixed floor, so a reader can tell which gate
          ! refused or admitted the state.
          logical           :: tol_anchored = .false.
+         ! MASS ROW ONLY (review R5, item Q3): how many cells of the column
+         ! carry an estimated rounding floor that reaches the ceiling, and
+         ! the first such cell in cell order, so the report can name a cell
+         ! whose balance was never judged even when a different cell binds
+         ! the verdict. Zero and 0 on every other row, and on a mass row
+         ! with no unresolved cell.
+         integer           :: n_mass_unresolved = 0
+         integer           :: j_first_mass_unresolved = 0
       end type cert_entry
 
       type, public :: cert_report
@@ -565,6 +580,7 @@
       public :: certification_row_measure_over
       public :: cert_tol_element_at, cert_tol_carrier_at
       public :: cert_tol_mass_at, mass_row_cell_verdict
+      public :: mass_row_column_verdict
       public :: cert_mass_gate_name
       public :: certification_species_row_gate
       public :: certification_entry_index
@@ -791,12 +807,28 @@
       ! ------------------------------------------------------!
 
       pure subroutine mass_row_cell_verdict(q, floor_q, tol, dist,        &
-                                            within, anchored)
+                                            within, anchored, status)
       ! THE VERDICT ON ONE CELL OF THE CONTINUITY ROW, and the single
       ! expression of it: the tolerance that applies there, the distance
-      ! from it, and which of the two gates set it.
+      ! from it, which of the two gates set it, and (optionally) whether
+      ! the cell could be judged at all.
       !
-      !   tol = max( cert_tol_mass, min( ceiling, c_round * floor ) )
+      !   raw = c_round * floor
+      !
+      ! UNRESOLVED: raw >= ceiling, or floor_q is not a finite number. The
+      ! comment beside cert_tol_mass_ceiling states the reason: an estimated
+      ! floor that reaches the ceiling is a row whose balance the assembly
+      ! cannot resolve, not one that passes. Such a cell never reads
+      ! `within`, whatever q is; its distance is max(1, q/ceiling), so a
+      ! reader that ranks cells by distance still sees a refusal rather than
+      ! a zero.
+      !
+      ! RESOLVED: raw < ceiling. The rule is the one anchored by item P16,
+      !
+      !   tol = max( cert_tol_mass, raw )
+      !
+      ! and `anchored` says whether the fixed floor or the rounding anchor
+      ! set it.
       !
       ! q is the cell's row measure |R_1|/s_1 and floor_q the rounding
       ! floor OF THAT SAME MEASURE (mass_row_rounding_floor). The rule is
@@ -805,12 +837,27 @@
       real*8,  intent(in)  :: q, floor_q
       real*8,  intent(out) :: tol, dist
       logical, intent(out) :: within, anchored
-      tol      = max(cert_tol_mass,                                       &
-                     min(cert_tol_mass_ceiling,                           &
-                         cert_mass_round_margin*floor_q))
-      anchored = (tol .gt. cert_tol_mass)
-      dist     = q/tol
-      within   = (dist .lt. 1.0d0)
+      integer, intent(out), optional :: status
+      real*8  :: raw
+      logical :: floor_is_not_finite
+      ! A NaN floor fails every ordered comparison, including .ge. against
+      ! the ceiling, so it is caught by the one comparison an IEEE NaN
+      ! never satisfies: equality with itself.
+      floor_is_not_finite = .not. (floor_q .eq. floor_q)
+      raw = cert_mass_round_margin*floor_q
+      if (floor_is_not_finite .or. raw .ge. cert_tol_mass_ceiling) then
+         tol      = cert_tol_mass_ceiling
+         anchored = .true.
+         dist     = max(1.0d0, q/tol)
+         within   = .false.
+         if (present(status)) status = cert_mass_row_unresolved
+      else
+         tol      = max(cert_tol_mass, raw)
+         anchored = (tol .gt. cert_tol_mass)
+         dist     = q/tol
+         within   = (dist .lt. 1.0d0)
+         if (present(status)) status = cert_mass_row_resolved
+      endif
       end subroutine mass_row_cell_verdict
 
       ! ------------------------------------------------------!
@@ -1351,6 +1398,26 @@
       ! ------------------------------------------------------!
 
       subroutine mass_row_verdict(ent, rr, ss, u)
+      ! THE CONTINUITY ROW'S VERDICT ON A PHYSICAL STATE: the rounding floor
+      ! of every cell, read off u, handed to the aggregator below. Nothing
+      ! here decides the verdict; mass_row_column_verdict is the one
+      ! expression of it, and is exercised directly by the test suite on
+      ! synthetic floors so that a verdict can be asserted without also
+      ! standing up a flux reconstruction on a physical state.
+      type(cert_entry), intent(inout) :: ent
+      real*8, dimension(1:N),                 intent(in) :: rr, ss
+      real*8, dimension(3,1-Ng:N+Ng),         intent(in) :: u
+      real*8, dimension(N) :: floors
+      integer :: j
+      do j = 1, N
+         floors(j) = mass_row_rounding_floor(j, u)
+      enddo
+      call mass_row_column_verdict(N, rr, ss, floors, ent)
+      end subroutine mass_row_verdict
+
+      ! ------------------------------------------------------!
+
+      pure subroutine mass_row_column_verdict(nc, rr, ss, floors, ent)
       ! THE CONTINUITY ROW'S VERDICT, TAKEN CELL BY CELL, because its
       ! tolerance is a function of the cell (cert_tol_mass_at). The cell
       ! that binds is the one whose measure stands furthest outside its own
@@ -1363,18 +1430,27 @@
       ! expression for every row of the report, and the acceptance gate is
       ! asserted against them (gate_equals_certification, steady_newton.f90).
       ! What this routine decides is the verdict and which number took it.
-      type(cert_entry), intent(inout) :: ent
-      real*8, dimension(1:N),                 intent(in) :: rr, ss
-      real*8, dimension(3,1-Ng:N+Ng),         intent(in) :: u
+      !
+      ! REVIEW R5 (item Q3): a cell whose floor makes the row UNRESOLVED
+      ! (mass_row_cell_verdict) is counted and the first one is named
+      ! (n_mass_unresolved, j_first_mass_unresolved), whether or not it is
+      ! also the binding cell.
+      integer,                 intent(in)    :: nc
+      real*8,  dimension(nc),  intent(in)    :: rr, ss, floors
+      type(cert_entry),        intent(inout) :: ent
       real*8  :: q, tt, dd
       logical :: wi, an, wi_bind
-      integer :: j
+      integer :: j, st
       ent%jbind = 0;  ent%dist_bind = 0.0d0;  ent%row_at_bind = 0.0d0
+      ent%n_mass_unresolved = 0;  ent%j_first_mass_unresolved = 0
       wi_bind = .true.
-      do j = 1, N
+      do j = 1, nc
          q = abs(rr(j))/max(ss(j), cert_scale_floor)
-         call mass_row_cell_verdict(q, mass_row_rounding_floor(j, u),     &
-                                    tt, dd, wi, an)
+         call mass_row_cell_verdict(q, floors(j), tt, dd, wi, an, st)
+         if (st .eq. cert_mass_row_unresolved) then
+            ent%n_mass_unresolved = ent%n_mass_unresolved + 1
+            if (ent%n_mass_unresolved .eq. 1) ent%j_first_mass_unresolved = j
+         endif
          if (ent%jbind .eq. 0 .or. dd .gt. ent%dist_bind) then
             ent%jbind        = j
             ent%dist_bind    = dd
@@ -1386,7 +1462,7 @@
          if (j .eq. ent%jworst) ent%tol_at_jworst = tt
       enddo
       ent%within_tol = ent%finite .and. wi_bind
-      end subroutine mass_row_verdict
+      end subroutine mass_row_column_verdict
 
       ! ------------------------------------------------------!
 
@@ -1765,6 +1841,18 @@
                     '        the largest measure sits at cell ',           &
                     rep%e(i)%jworst, ', whose own tolerance is ',          &
                     rep%e(i)%tol_at_jworst, ' there'
+            ! REVIEW R5, ITEM Q3: an unresolved mass row is named even when
+            ! a different, worse-refusing cell is the one that binds the
+            ! verdict, so a reader is never left inferring "certified" from
+            ! a within_tol=F line whose text describes a different cell.
+            if (rep%e(i)%n_mass_unresolved .gt. 0)                         &
+               write(*,'(A,I0,A,I0,A)')                                    &
+                    '        mass row unresolved: the estimated'//         &
+                    ' rounding floor of the flux difference reaches'//     &
+                    ' the row itself at cell ',                            &
+                    rep%e(i)%j_first_mass_unresolved,                      &
+                    ' (', rep%e(i)%n_mass_unresolved,                      &
+                    ' cell(s) of the column)'
             if (rep%e(i)%n_roundoff_limited .gt. 0)                        &
                write(*,'(A,I0,A)') '        round-off limited rows over'// &
                     ' the run: ', rep%e(i)%n_roundoff_limited,             &

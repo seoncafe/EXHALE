@@ -98,7 +98,8 @@
                                           element_step_solve_failed,      &
                                           element_step_mass_closure_failed,&
                                           element_relaxation_converged,   &
-                                          element_mass_closure_departure
+                                          element_mass_closure_departure, &
+                                          element_step_last_status
       use test_columns, only: column_carrying_its_own_density,            &
                               column_mass_closure
       use, intrinsic :: ieee_arithmetic, only: ieee_value, ieee_quiet_nan
@@ -110,6 +111,7 @@
       call the_element_transport_returns_the_mass_it_was_given(nf)
       call the_advective_write_back_returns_the_mass_it_was_given(nf)
       call an_inadmissible_composition_is_not_handed_back(nf)
+      call the_enforcement_does_not_read_the_caller(nf)
       write(*,'(A)') ''
       if (nf .gt. 0) then
          write(*,'(A,I0,A)') 'element_operator: ', nf, ' row(s) failed'
@@ -739,5 +741,90 @@
 
       deallocate(rho_c, v_c, T_c, T_nan, Frho, dt_c, f_c, f_keep, Y0, Y1)
       end subroutine an_inadmissible_composition_is_not_handed_back
+
+      ! ================================================================= !
+
+      subroutine the_enforcement_does_not_read_the_caller(nf)
+      ! THE SAME FOUR TESTS RUN WHETHER OR NOT status IS PRESENT.  R4 of
+      ! docs/Update_EXHALE_stage2_review_20260912.md: the marching call at
+      ! EXHALE_main.f90:2297 passes no status argument, and on the entry
+      ! text (before this item) that call carried judged = .false., so an
+      ! unconverged inner solve was adopted there uninspected.  The two rows
+      ! below repeat the ordinary step and the residual-not-a-number step of
+      ! an_inadmissible_composition_is_not_handed_back with NO status
+      ! argument at the call site, and read element_step_last_status
+      ! afterward instead: the entry text moves the composition on the
+      ! second row (a NaN residual is adopted because nothing there ever
+      ! judges it), so this row is RED before the fix and GREEN after.
+      !
+      ! A candidate that the converged solve itself pushes outside [0,1] by
+      ! more than element_fraction_bound_tol is not reproduced here: the
+      ! drift flux vanishes at both ends of the composition axis in the
+      ! discrete operator (module header), so a solve that reports solved
+      ! leaves X inside [0,1] to round-off on every column this suite can
+      ! build, and forcing it further (an oversized dt_code, a reservoir
+      ! X_base outside [0,1]) only ever reaches the solve_failed branch
+      ! instead, because the same nonlinearity that could push X outside
+      ! the bound is what stops the line search from descending first. The
+      ! P1 report's one measured out-of-bounds excursion is on the strongly
+      ! nonstationary atomic background of a production reload
+      ! (atomic_elem_newton, not reachable on a synthetic column of this
+      ! size); element_step_out_of_bounds is exercised there, not here.
+      integer, intent(inout) :: nf
+      integer, parameter :: nc = 40
+      real*8, dimension(:),   allocatable :: rho_c, v_c, T_c, T_nan, Frho
+      real*8, dimension(:),   allocatable :: dt_c
+      real*8, dimension(:,:), allocatable :: f_c, f_keep, Y0, Y1
+      real*8  :: moved, dfmax
+      integer :: j
+      real*8, parameter :: dt_diffusive = 2.0d1
+
+      call synthetic_element_column(nc)
+      allocate(rho_c(1-Ng:N+Ng), v_c(1-Ng:N+Ng), T_c(1-Ng:N+Ng),          &
+               T_nan(1-Ng:N+Ng), Frho(1-Ng:N+Ng), dt_c(1-Ng:N+Ng))
+      allocate(f_c(1-Ng:N+Ng,n_species), f_keep(1-Ng:N+Ng,n_species))
+      allocate(Y0(1-Ng:N+Ng,1+n_melem), Y1(1-Ng:N+Ng,1+n_melem))
+
+      do j = 1-Ng, N+Ng
+         rho_c(j) = exp(-3.0d0*(r(j) - 1.0d0))
+         v_c(j)   = 0.0d0
+         T_c(j)   = 1.0d0
+         Frho(j)  = 1.0d-4/(r_edg(j)*r_edg(j))
+         dt_c(j)  = dt_diffusive
+      enddo
+
+      ! --- a healthy step, no status: accepted, and the composition moves
+      call column_carrying_its_own_density(f_c, 0.0d0, .true., 0.0d0)
+      f_keep = f_c
+      call element_mass_fractions(f_c, Y0)
+      call element_diffusion_step(rho_c, v_c, T_c, f_c, dt_c, Frho_in = Frho)
+      call element_mass_fractions(f_c, Y1)
+      moved = 0.0d0
+      do j = 2, N
+         moved = max(moved, abs(Y1(j,1) - Y0(j,1))/max(Y0(1,1), 1.0d-300))
+      enddo
+      call outcome_row('an_unread_healthy_step_is_accepted',                &
+                       element_step_last_status, element_step_accepted, nf)
+      call exceeds_row('an_unread_healthy_step_moves_the_composition',     &
+                       moved, 1.0d-6, nf)
+
+      ! --- a residual that is not a number at any iterate, no status: the
+      ! composition the caller reads back has to be the one it handed in,
+      ! bit for bit, and element_step_last_status has to name the refusal.
+      f_c   = f_keep
+      T_nan = T_c
+      T_nan(N/2) = ieee_value(1.0d0, ieee_quiet_nan)
+      call element_diffusion_step(rho_c, v_c, T_nan, f_c, dt_c,            &
+                                  Frho_in = Frho)
+      dfmax = maxval(abs(f_c - f_keep))
+      call outcome_row('an_unread_unsolved_step_is_still_refused',         &
+                       element_step_last_status, element_step_solve_failed,&
+                       nf)
+      call bound_row(                                                      &
+           'an_unread_unsolved_step_still_leaves_the_entry_composition',   &
+           dfmax, 0.0d0, nf)
+
+      deallocate(rho_c, v_c, T_c, T_nan, Frho, dt_c, f_c, f_keep, Y0, Y1)
+      end subroutine the_enforcement_does_not_read_the_caller
 
       end program element_operator_tests

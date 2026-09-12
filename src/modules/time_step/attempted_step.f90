@@ -1547,7 +1547,7 @@
       type(attempted_step_verdict), intent(in) :: verd
       n_step_rejections = n_step_rejections + 1
       if (verd%reason .ge. 0 .and.                                         &
-          verd%reason .le. as_reject_source_fixed_point)                   &
+          verd%reason .le. as_reject_source_energy)                        &
          n_reject_by_reason(verd%reason) =                                 &
             n_reject_by_reason(verd%reason) + 1
       if (verd%operation .ge. 0 .and. verd%operation .le. as_op_last)      &

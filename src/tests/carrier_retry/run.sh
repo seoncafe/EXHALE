@@ -83,6 +83,10 @@ order=$(python3 "$probe/source_closure.py" "$root" "$driver") || { echo "FAIL so
 order=$(printf '%s\n' "$order" | grep -v '/build_stamp\.f90$')
 order="$stamp
 $order"
+# The mass-closed column constructor the driver uses lives beside the
+# drivers, not in the production tree, so the closure does not find it;
+# it is compiled immediately before the driver.
+order=$(printf '%s\n' "$order" | sed "s|^$driver\$|$root/src/tests/test_columns.f90\n$driver|")
 
 objects=()
 for src in "${extra[@]}" $order; do

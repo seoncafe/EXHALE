@@ -892,3 +892,56 @@ removed the fixed-tolerance form, so one expression of the distance exists.
   `backup/regression/carrier_elem_newton/README.md`, and
   `wasp_full_newton` with `Load IC? True` and `Restart intent: stationary`
   added.
+
+### Addendum, 2026-09-12: the ceiling admitted a row it should refuse (R5)
+
+`Update_EXHALE_stage2_review_20260912.md` section 7 executed the cell
+verdict directly against the production routine and reported
+
+```
+q = 0.5, floor_q = 1
+tol = 1, distance = 0.5, within = T
+```
+
+the case this anchor's own comment beside `cert_tol_mass_ceiling` had
+already named: a state whose estimated floor reaches the ceiling "cannot be
+judged at all rather than one that passes," and the implementation instead
+clipped the tolerance there and read `q/tol < 1`, which passes a row at half
+the clipped ceiling regardless of how unresolvable its floor is. Item Q3
+closed this by giving `mass_row_cell_verdict` a third, optional output,
+`status`, one of two named outcomes:
+
+- **RESOLVED** (`cert_mass_round_margin*floor_q < cert_tol_mass_ceiling`,
+  and `floor_q` a finite number): judged against its tolerance as before,
+  `anchored` still saying whether that tolerance is the fixed 3e-12 or the
+  rounding anchor.
+- **UNRESOLVED** (`cert_mass_round_margin*floor_q >= cert_tol_mass_ceiling`,
+  or `floor_q` not finite): the balance cannot be judged. Such a cell never
+  reads `within`, whatever `q` is; its distance is `max(1, q/ceiling)`, so a
+  reader that ranks cells by distance still sees a refusal and not a zero.
+  The production counterexample above now reads `status = UNRESOLVED`,
+  `distance = 1.0`, `within = F`.
+
+The column routine, `mass_row_column_verdict` (the pure aggregator
+`mass_row_verdict` now hands its per-cell floors to), counts the unresolved
+cells of the column and names the first one (`n_mass_unresolved`,
+`j_first_mass_unresolved` of the report entry); the report and the
+refusing-entry text name that cell even when a different, worse-refusing
+cell is the one binding the verdict, with the reason "mass row unresolved:
+the estimated rounding floor of the flux difference reaches the row itself
+at cell j."
+
+**Caution carried forward.** `cert_mass_round_margin = 10` was measured
+(this item's own anchor, above) against the largest step-to-estimate ratio
+on three fixtures only: `wasp_full_newton`, the HD 209458 b element reload,
+and the hot-Uranus carrier reload. All three are converged or converging
+atomic-or-mixed hydrodynamic columns at ordinary base Mach numbers (3.9e-3
+to 5.1e-6). Nothing here measures the margin, or the two rounding-floor
+estimates it is built from, on a near-zero-flow state (a genuinely
+symmetric column, where the mass flux itself, not only its cell-to-cell
+difference, is at the arithmetic floor) or on a molecular-EOS layer, where
+the caloric mixture, not a single monatomic gas, sets `c_s`. The UNRESOLVED
+outcome exists for exactly the regime the three fixtures do not reach; the
+cell-level and column-level tests below exercise its logic directly on
+synthetic floors rather than presenting the ceiling as measured on such a
+state.

@@ -298,7 +298,9 @@
       use utils_ion_eq, only: fuv_lw_photon_field
       use utils, only: calc_ne
       use ionization_equilibrium, only: bg_cell, bg_ready, finite_real,   &
-                                        ioniz_eq
+                                        ioniz_eq, ioniz_eq_ledger
+      use ion_cell_state, only: ion_rates
+      use caloric_eos, only: pressure_from_energy_density
       use steady_residual_mod, only: carrier_row_scale,                  &
                                      face_mass_flux_of_state
       use species_advective_transport, only: species_face_fraction,      &
@@ -446,6 +448,7 @@
       public :: carrier_record_refused_rows
       public :: carrier_perturb_checkpointed_state_for_test
       public :: carrier_reject_leading_attempts_for_test
+      public :: carrier_history_reset_for_test
       public :: carrier_initial_substep_for_test
       public :: carrier_transport_stop_on_failure
       public :: carrier_transport_stops_suppressed
@@ -695,6 +698,10 @@
       integer, parameter, public :: carrier_relax_step_budget      = 2
       integer, parameter, public :: carrier_relax_interval_refused = 3
       integer, parameter, public :: carrier_relax_nothing_to_advance = 4
+      ! The chemistry of a kept transport step did not close (a sweep that
+      ! left a cell non-finite), and the shortest admissible trial did no
+      ! better: the entry state is handed back.
+      integer, parameter, public :: carrier_relax_chemistry_refused = 5
 
       ! The background this step holds frozen: the ion stages, the molecular
       ! ions and the free electrons (sec. 4).  Filled once per step by
@@ -1651,6 +1658,13 @@
       ok = carrier_history_certifiable_flag
       end function carrier_history_certifiable
 
+      ! The history mark put back to its start, for a test driver that
+      ! marks it in one section and needs an unmarked run in the next.  A
+      ! run never calls this: a history once marked stays marked.
+      subroutine carrier_history_reset_for_test()
+      carrier_history_certifiable_flag = .true.
+      end subroutine carrier_history_reset_for_test
+
       ! HOW OFTEN DOUBLE PRECISION, AND NOT THE PHYSICS, SET THE ACCURACY
       ! OF AN ACCEPTED ROW.  nlast is the count in the last accepted
       ! substep, ntotal the sum over the run and nsubsteps how many
@@ -1772,11 +1786,21 @@
       ! carrier_interval_status is the value the caller reads instead of
       ! inferring the outcome from a stop.
       subroutine photochemical_transport_step(rho, v, f_sp, dt_code,      &
-                                              carrier_interval_status)
+                                              carrier_interval_status,   &
+                                              trial)
       real(dp), dimension(1-Ng:N+Ng),           intent(in)    :: rho, v
       real(dp), dimension(1-Ng:N+Ng),           intent(in)    :: dt_code
       real(dp), dimension(1-Ng:N+Ng,n_species), intent(inout) :: f_sp
       integer, intent(out), optional :: carrier_interval_status
+      ! A TRIAL is a step the caller keeps only if it likes the result: the
+      ! stationary relaxation takes one, reads the status, and undoes the
+      ! composition when the interval was not covered or the state left its
+      ! bound.  A trial that fails is therefore not an interval the run
+      ! adopted without integrating it, and it leaves the carrier history
+      ! of the run untouched; the attempts ledger still counts it.  A step
+      ! the marching loop takes is never a trial.
+      logical, intent(in), optional :: trial
+      logical :: is_trial
 
       type(carrier_verdict) :: verdict
       logical  :: completed
@@ -1794,6 +1818,8 @@
       ! leaves through the first return below: its interval is covered by
       ! definition, and a caller reads that instead of an undefined value
       ! it would have had to pre-set itself.
+      is_trial = .false.
+      if (present(trial)) is_trial = trial
       carrier_interval_status_last = carrier_interval_covered
       if (present(carrier_interval_status))                               &
            carrier_interval_status = carrier_interval_covered
@@ -1840,6 +1866,9 @@
          carrier_exhausted_worst_full  = fw
       endif
 
+      ! A trial is undone by its caller: no history mark, no message, no
+      ! stop, whatever the run mode.
+      if (is_trial) return
       if (run_mode .ne. run_mode_phys) then
          ! Initialization and continuation: one line, and the march goes
          ! on from the entry carriers.  The mark is what a certification
@@ -4778,6 +4807,8 @@
          txt = 'the shortest admissible trial was not covered'
       case (carrier_relax_nothing_to_advance)
          txt = 'nothing to advance: no carrier, or no frozen background'
+      case (carrier_relax_chemistry_refused)
+         txt = 'the chemistry of the shortest admissible trial did not close'
       case default
          txt = 'undefined'
       end select
@@ -4785,49 +4816,104 @@
 
       ! ------------------------------------------------------------- !
 
-      ! THE CHEMISTRY OF A COMPOSITION AT A WIND THAT DOES NOT MOVE.
+      ! THE PRESSURE AND THE TEMPERATURE OF A COMPOSITION AT A FIXED
+      ! CONSERVED STATE.  At a wind that does not move the quantities held
+      ! are the conserved variables u = (rho, rho v, E): the thermal energy
+      ! rho e = E - (rho v)^2/(2 rho) is fixed, and the pressure is the one
+      ! the caloric equation of state of the CURRENT composition assigns
+      ! to it (pressure_from_energy_density, which reads the composition
+      ! get_species_densities has just refreshed, so a change of the
+      ! molecular content changes the heat capacity and with it p and T at
+      ! the same rho e).  A held pressure would describe a different gas
+      ! from the one the hydrodynamic solve holds.
+      subroutine pressure_and_temperature_at_fixed_conserved_state(u,     &
+                                                     f_sp, p, T, ntot, ne)
+      real(dp), dimension(3,1-Ng:N+Ng),         intent(in)    :: u
+      real(dp), dimension(1-Ng:N+Ng,n_species), intent(in)    :: f_sp
+      real(dp), dimension(1-Ng:N+Ng),           intent(out)   :: p, T
+      real(dp), dimension(1-Ng:N+Ng),           intent(out)   :: ntot, ne
+
+      real(dp), dimension(1-Ng:N+Ng) :: nhi, nhii, nhei, nheii, nheiii
+      real(dp), dimension(1-Ng:N+Ng) :: nheiTR
+      real(dp), dimension(1-Ng:N+Ng,n_mion) :: nm
+      integer :: j
+
+      nhei   = 0.0d0
+      nheii  = 0.0d0
+      nheiii = 0.0d0
+      nheiTR = 0.0d0
+      call get_species_densities(u(1,:), f_sp, nhi, nhii, nhei, nheii,    &
+                                 nheiii, nheiTR, nm, ne, ntot)
+      do j = 1-Ng, N+Ng
+         p(j) = pressure_from_energy_density(j, u(1,j),                   &
+                   u(3,j) - 0.5d0*u(2,j)*u(2,j)/u(1,j))
+      enddo
+      call comp_T_from_p(p, ntot, ne, T)
+      end subroutine pressure_and_temperature_at_fixed_conserved_state
+
+      ! ------------------------------------------------------------- !
+
+      ! THE CHEMISTRY OF A COMPOSITION AT A FIXED CONSERVED STATE.
       !
       ! The carriers this operator transports are held at the values it
       ! wrote: the sweep is handed the transported partition and fixes
       ! x(H2), the oxygen carriers and, where the protons are carried, the
       ! ionized fraction, from the composition it reads.  What it returns
-      ! is therefore the chemistry OF that partition and not a re-solution
-      ! of it: the locally eliminated stages (H2+, H3+, HeH+, the helium
-      ! and metal stages, and H+ where it is not carried), the electron
-      ! density, the temperature beside them and the rate coefficients of
-      ! every cell.
+      ! is the chemistry OF that partition: the locally eliminated stages
+      ! (H2+, H3+, HeH+, the helium and metal stages, and H+ where it is
+      ! not carried), the electron density, and the rate coefficients and
+      ! background of every cell.
       !
-      ! rho and p belong to the conserved state and are not touched, which
-      ! is what "at a fixed wind" means: the composition moves, the
-      ! hydrodynamic state does not, and T = p/(n_tot + n_e) is the
-      ! temperature of the composition at that pressure.
-      subroutine equilibrate_chemistry_at_fixed_pressure(rho, p, f_sp,    &
-                                                         T, heat, cool,   &
-                                                         eta)
-      real(dp), dimension(1-Ng:N+Ng),           intent(in)    :: rho, p
+      ! The sweep changes the particle count, and with it the temperature
+      ! the fixed thermal energy assigns to the gas, so one sweep at the
+      ! entry temperature is not a closed thermochemical state.  The cycle
+      ! (densities, p from rho e, T, sweep) is therefore repeated until T
+      ! stops moving: the state handed back is one whose composition,
+      ! temperature, pressure and rate coefficients belong together at the
+      ! conserved variables the hydrodynamic solve holds.  The tolerance
+      ! is the sweep's own reaction-residual tolerance (ieq_res_tol, 1e-6):
+      ! a temperature change below it cannot move a composition the sweep
+      ! has converged to that tolerance.
+      !
+      ! ok is false when a sweep left a cell non-finite; the caller then
+      ! discards the step and the background this sweep wrote.
+      subroutine equilibrate_chemistry_at_fixed_conserved_state(u, f_sp,  &
+                                             p, T, heat, cool, eta, ok,   &
+                                             n_cycles)
+      real(dp), dimension(3,1-Ng:N+Ng),         intent(in)    :: u
       real(dp), dimension(1-Ng:N+Ng,n_species), intent(inout) :: f_sp
-      real(dp), dimension(1-Ng:N+Ng),           intent(inout) :: T
+      real(dp), dimension(1-Ng:N+Ng),           intent(out)   :: p, T
       real(dp), dimension(1-Ng:N+Ng),           intent(inout) :: heat, cool
       real(dp), dimension(1-Ng:N+Ng),           intent(inout) :: eta
+      logical,                                  intent(out)   :: ok
+      integer,                                  intent(out)   :: n_cycles
 
-      real(dp), dimension(1-Ng:N+Ng) :: nhi, nhii, nhei, nheii, nheiii
-      real(dp), dimension(1-Ng:N+Ng) :: nheiTR, ne, ntot_gas
-      real(dp), dimension(1-Ng:N+Ng,n_mion) :: nm
+      integer,  parameter :: cycles_max = 5
+      real(dp), parameter :: t_cycle_tol = 1.0d-6
+      real(dp), dimension(1-Ng:N+Ng) :: ntot, ne, T_prev
+      type(ioniz_eq_ledger) :: ledger
+      integer :: k
 
-      ! The four helium columns are carried in and out of
-      ! get_species_densities, which leaves them alone where the run has no
-      ! helium; they start defined so that nothing downstream can read a
-      ! value this routine never wrote.
-      nhei   = 0.0d0
-      nheii  = 0.0d0
-      nheiii = 0.0d0
-      nheiTR = 0.0d0
-      call get_species_densities(rho, f_sp, nhi, nhii, nhei, nheii,       &
-                                 nheiii, nheiTR, nm, ne, ntot_gas)
-      call comp_T_from_p(p, ntot_gas, ne, T)
-      call ioniz_eq(T, rho, f_sp, heat, cool, eta)
-
-      end subroutine equilibrate_chemistry_at_fixed_pressure
+      ok = .true.
+      n_cycles = 0
+      call pressure_and_temperature_at_fixed_conserved_state(u, f_sp,     &
+                                                             p, T, ntot, ne)
+      do k = 1, cycles_max
+         T_prev = T
+         call ioniz_eq(T, u(1,:), f_sp, heat, cool, eta, ledger)
+         n_cycles = k
+         if (ledger%n_nonfinite .gt. 0 .or.                               &
+             .not. all(f_sp(1:N,:) .eq. f_sp(1:N,:)) .or.                 &
+             .not. all(abs(f_sp(1:N,:)) .le. huge(1.0d0))) then
+            ok = .false.
+            return
+         endif
+         call pressure_and_temperature_at_fixed_conserved_state(u, f_sp,  &
+                                                             p, T, ntot, ne)
+         if (maxval(abs(T(1:N) - T_prev(1:N))/max(T(1:N), 1.0d-300))      &
+             .lt. t_cycle_tol) return
+      enddo
+      end subroutine equilibrate_chemistry_at_fixed_conserved_state
 
       ! ------------------------------------------------------------- !
 
@@ -4837,101 +4923,41 @@
       ! geometrically while the state keeps moving, with the steady mass
       ! flux in place of the instantaneous velocity so that a breathing
       ! base does not drive the relaxation.
-      subroutine relax_photochemical_composition(rho, v, p, T, f_sp,      &
+      !
+      ! WHAT IS HELD.  The conserved variables u of the state the
+      ! hydrodynamic solve handed over.  The composition moves; rho, rho v
+      ! and E do not; the pressure and the temperature beside the returned
+      ! composition are the ones the caloric equation of state of THAT
+      ! composition assigns to the unchanged thermal energy
+      ! (pressure_and_temperature_at_fixed_conserved_state), so the
+      ! conserved variables the next solve consumes and the primitive state
+      ! beside them describe one gas.
+      !
+      ! THE BOUND is on the composition handed back, not on the transport
+      ! step: every trial is taken on a copy, the chemistry of a kept step
+      ! is closed on the new composition at the fixed conserved state, and
+      ! only then is the displacement from the pass entry measured, on the
+      ! largest H2 mixing ratio of the ENTRY state.  A trial whose returned
+      ! state lies outside `trust`, whose interval the operator did not
+      ! cover, whose chemistry did not close, or which left a species
+      ! non-finite, is undone (composition and background) and retried at
+      ! half the length down to relax_grow_min.  MEASURED (P2, hot-Uranus
+      ! carrier reload): the shortest admissible trial still moves 6.5e-4 of
+      ! the entry H2 maximum, so at a bound below that nothing is kept.
+      !
+      ! THE FIXED POINT is one at which a full-length trial no longer moves
+      ! the carriers, with the chemistry closed on each side of it.
+      subroutine relax_photochemical_composition(u, v, f_sp, p, T,       &
                                                  heat, cool, eta,         &
                                                  trust, drift, nstep,     &
                                                  outcome)
-      ! THE PASS RELAXES TRANSPORT AND CHEMISTRY TOGETHER AT A FIXED WIND.
-      ! The transport operator integrates the carrier rows on the chemical
-      ! and radiative background of ONE state (bg_cell: the rates, the
-      ! temperature, the particle count and the eliminated species of the
-      ! last equilibrium sweep).  Every step this pass keeps is therefore
-      ! followed by a sweep on the composition that step wrote, so the
-      ! background the NEXT step reads is the background OF THE COMPOSITION
-      ! IT ADVANCES, and the state the pass converges to is a fixed point
-      ! of transport AND chemistry at the fixed (rho, v, p).
-      !
-      ! WHY THE SWEEP IS INSIDE THE PASS AND NOT ONLY AFTER IT.  A pass
-      ! that advances the carriers on a background frozen for its whole
-      ! length converges to the fixed point of a different problem, and the
-      ! measurement says how different: a full frozen-background relaxation
-      ! of the hot-Uranus carrier reload drove the gated H2 wind row to
-      ! 2.449021e-13, and the chemical refresh that followed it put the
-      ! same row back at 7.989781e-2, above where the pass had started
-      ! (7.380744e-2).  READ from
-      ! docs/solver_partition_experiment_20260911.md sec. 4.  The frozen
-      ! fixed point is not a fixed point of the coupled system, so reaching
-      ! it accurately buys nothing.
-      !
-      ! THE STATE HANDED BACK LIES WITHIN `trust` OF THE STATE HANDED IN.
-      ! The displacement is the largest change of any solved carrier column
-      ! anywhere on the grid, divided by the largest H2 mixing ratio of the
-      ! ENTRY state.  That single measure is what the bound is enforced on
-      ! and what `drift` reports; its normalization is a property of the
-      ! entry state, so the bound cannot move while the pass runs and the
-      ! number enforced is the number reported.
-      !
-      ! THE BOUND IS ENFORCED BEFORE ACCEPTANCE.  Each transport step is
-      ! taken with the entry composition of that step held aside: a step
-      ! whose state lies outside the bound is discarded, the composition is
-      ! put back, and the step is halved and tried again, down to
-      ! relax_grow_min of the cell's own transport time; a step that lies
-      ! inside is kept, and only a kept step is followed by the sweep.  A
-      ! step the operator itself refuses takes the same ladder, for the
-      ! same reason: the trial length is this relaxation's own choice and a
-      ! shorter interval moves the state less.  A displacement tested only
-      ! after an applied step bounds nothing, which is MEASURED in
-      ! docs/solver_partition_experiment_20260911.md sec. 7.2: at
-      ! trust = 0.01 a single step of this operator moved the composition
-      ! by 0.02812676, 0.02780587 and 0.02748751 in three successive
-      ! passes of a molecular case.
-      !
-      ! THE BOUND IS ON THE COMPOSITION, NOT ON THE TIME, and the
-      ! difference is what makes it a bound at all.  A cap on how many flow
-      ! times one pass may advance controls nothing: at one tenth of a
-      ! cell's flow time the pass still crosses about sixty cells at the H2
-      ! front and the move is of order unity either way (READ from
-      ! docs/Update_EXHALE_stage1.md sec. 128: drifts 0.536 and 0.533 at
-      ! caps of 1.0 and 0.1).  The front is advected, and advection is not
-      ! slow on any time scale such a bound can be written in.  It IS slow
-      ! on a composition scale: the first step, at the cell's own crossing
-      ! time, moves the largest mixing ratio by 1.1e-2, so a bound of 1e-2
-      ! is met at the first step and a bound of 0.4 is not met until the
-      ! pass is most of the way to the clamped ceiling state.
-      !
-      ! WHY A BOUNDED ADVANCE AND NEITHER THE FIXED-WIND STEADY STATE NOR A
-      ! BLEND OF IT WITH THE ENTRY STATE.  All three were measured on the
-      ! He/H = 0.0793 hot Uranus, from a wind the steady solver had just
-      ! accepted at info = 0, with the background frozen for the whole pass
-      ! (READ from docs/p50_carrier_wind_alternation.md; the numbers are of
-      ! that operator and the refresh above is what the first of them says
-      ! is missing):
-      !
-      !  * The frozen-background fixed-wind steady state is not near the
-      !    entry state and is not a solution of anything.  It drives
-      !    x2 = 2n(H2)/n_H to the hydrogen ELEMENT CEILING, exactly 1.0, in
-      !    123 of 500 cells between 1.047 and 1.227 R_p, a state pinned by
-      !    limit_to_element_budget over a quarter of the grid.  Handing it
-      !    over threw ||R|| from 1.5e-4 to 1.9e-2 and the next solve
-      !    aborted.
-      !  * A blend of two states solves neither equation.  Carrier steady
-      !    residual: entry 1.6e-4, relaxed exit 2.2e-3, the omega = 0.5
-      !    blend 8.6e-3, and it threw ||R|| to 6.7e-2 rather than 1.9e-2.
-      !    Reducing omega is measured to hurt (omega = 1.8e-3 gave 2.0e-1).
-      !  * A bounded advance, handed over whole, does work: at 1e-2 the
-      !    steady solve returned info = 0 on 20 consecutive passes with
-      !    ||R|| between 2.4e-4 and 3.1e-4, where the blend aborted on the
-      !    first.  The bound is where the margin is: the solve still
-      !    accepts at 0.2 and stops accepting at 0.4, so 1e-2 stands a
-      !    factor 20 inside the boundary.
-      !
-      ! `outcome` names what ended the pass rather than leaving a caller to
-      ! read success into a stop, and the fixed-point ending is the only
-      ! one that says the carriers and their chemistry stopped moving
-      ! together at this wind.
-      real(dp), dimension(1-Ng:N+Ng),           intent(in)    :: rho, v, p
-      real(dp), dimension(1-Ng:N+Ng),           intent(inout) :: T
+      real(dp), dimension(3,1-Ng:N+Ng),         intent(in)    :: u
+      real(dp), dimension(1-Ng:N+Ng),           intent(in)    :: v
       real(dp), dimension(1-Ng:N+Ng,n_species), intent(inout) :: f_sp
+      ! The pressure and temperature of the composition handed back, at
+      ! the conserved state u; consistent with f_sp whether or not a step
+      ! was kept.
+      real(dp), dimension(1-Ng:N+Ng),           intent(out)   :: p, T
       real(dp), dimension(1-Ng:N+Ng),           intent(inout) :: heat, cool
       real(dp), dimension(1-Ng:N+Ng),           intent(inout) :: eta
       real(dp),                                 intent(in)    :: trust
@@ -4939,25 +4965,35 @@
       integer,                                  intent(out)   :: nstep
       integer, intent(out), optional :: outcome
 
-      real(dp), dimension(1-Ng:N+Ng) :: dt_code
+      real(dp), dimension(1-Ng:N+Ng) :: rho, dt_code, ntot_e, ne_e
       real(dp), dimension(1-Ng:N+Ng,n_carrier_max) :: fprev, fnow, fentry
       real(dp), dimension(1-Ng:N+Ng,n_carrier_max) :: Dco
       real(dp), dimension(1-Ng:N+Ng,n_species) :: f_held
       real(dp), dimension(1-Ng:N+Ng) :: ntot, TK, mbar, nrho, wfac
       real(dp), dimension(1-Ng:N+Ng) :: nH_free, nO_free, nC_free
+      real(dp), dimension(1-Ng:N+Ng) :: p_held, T_held, heat_held
+      real(dp), dimension(1-Ng:N+Ng) :: cool_held, eta_held
+      type(ion_rates), dimension(:), allocatable :: bg_held
       real(dp) :: drj, tdiff, tadv, grow, tscale, dmax, x_ref
-      integer  :: j, k, ic, ending, step_status
-      logical  :: too_long
+      integer  :: j, k, ic, ending, step_status, refusal, n_cycles
+      logical  :: refused, chem_ok
       type(element_census_state) :: cen_relax
+      ! Why the last trial was undone; the ending names it when the
+      ! shortest admissible trial is refused for that reason.
+      integer, parameter :: refused_interval  = 1
+      integer, parameter :: refused_bound     = 2
+      integer, parameter :: refused_chemistry = 3
 
       drift  = 0.0d0
       nstep  = 0
+      rho    = u(1,:)
       if (.not. thereis_mol .or. .not. carrier_transport .or.             &
           .not. bg_ready) then
          if (present(outcome)) outcome = carrier_relax_nothing_to_advance
+         call pressure_and_temperature_at_fixed_conserved_state(u, f_sp,  &
+                                                          p, T, ntot_e, ne_e)
          return
       endif
-
       call element_census_take('relax_photochemical_composition',         &
                                rho, f_sp, cen_relax)
       tscale = R0/v0
@@ -4974,86 +5010,68 @@
       enddo
       dt_code(1-Ng:0)   = dt_code(1)
       dt_code(N+1:N+Ng) = dt_code(N)
-
-      ! THE NORMALIZATION OF THE BOUND IS THE ENTRY STATE'S, one number for
-      ! the whole grid: a cell holding 1e-5 of the gas cannot report a large
-      ! change by being small, and the denominator does not move as the
-      ! pass advances.
       x_ref  = max(maxval(fentry(1:N,ic_H2)), 1.0d-30)
+      ! The primitive state of the entry composition at u: what is handed
+      ! back when no step is kept.
+      call pressure_and_temperature_at_fixed_conserved_state(u, f_sp,     &
+                                                          p, T, ntot_e, ne_e)
       grow   = 1.0d0
       ending = carrier_relax_step_budget
       fnow   = fentry
-      ! THE ROWS OF THIS PASS CARRY THE ADVECTIVE TERM.  This is the
-      ! fixed-wind relaxation: it takes many transport steps with no
-      ! hydrodynamic stage between them, so the advection the marching loop
-      ! takes with the mass row is not being taken anywhere else, and the
-      ! state this pass is asked for is the one at which the WHOLE carrier
-      ! equation balances at a wind that does not move.
+      allocate(bg_held(lbound(bg_cell,1):ubound(bg_cell,1)))
       carrier_rows_advect = .true.
       do k = 1, relax_maxstep
-         ! The composition this trial starts from, so that a trial this pass
-         ! will not keep can be undone.  The operator rebuilds its own
-         ! assembly arrays and its frozen background from the composition at
-         ! every call, so putting the composition back is what the next
-         ! trial reads; the attempt ledgers and step diagnostics of a
-         ! discarded trial are the record of an attempt that happened and
-         ! are not rolled back with it.
-         f_held = f_sp
+         f_held    = f_sp
+         bg_held   = bg_cell
+         p_held    = p;     T_held    = T
+         heat_held = heat;  cool_held = cool;  eta_held = eta
+         refused   = .false.
+         refusal   = 0
          call photochemical_transport_step(rho, v, f_sp, dt_code*grow,    &
-                                           step_status)
-         ! TWO WAYS FOR A TRIAL TO BE TOO LONG, and one ladder for both.
-         ! The operator refuses a returned state whose rows are out of
-         ! balance and writes no composition; the pass refuses a state
-         ! outside its movement bound.  Neither says the pass is finished:
-         ! the trial length is this relaxation's own choice, not a physical
-         ! time it owes anybody, and over a shorter interval the state
-         ! moves less and its rows balance more easily.  So a refused trial
-         ! is undone and halved, down to relax_grow_min, and the ending
-         ! names which refusal stood at that floor.
-         !
-         ! THE BOUND IS READ OFF THE TRANSPORT OUTPUT, before the sweep,
-         ! because the sweep is what the pass does with a step it has
-         ! decided to keep: a trial that is put back must leave the
-         ! chemistry where it found it, and it does, since nothing has
-         ! re-solved it yet.
-         too_long = (step_status .ne. carrier_interval_covered)
-         if (.not. too_long) then
+                                           step_status, trial = .true.)
+         if (step_status .ne. carrier_interval_covered) then
+            refused = .true.;  refusal = refused_interval
+         endif
+         if (.not. refused) then
+            call equilibrate_chemistry_at_fixed_conserved_state(u, f_sp,  &
+                                             p, T, heat, cool, eta,       &
+                                             chem_ok, n_cycles)
+            if (.not. chem_ok) then
+               refused = .true.;  refusal = refused_chemistry
+            endif
+         endif
+         if (.not. refused) then
             call carrier_state(rho, f_sp, fnow, ntot, nrho, wfac,        &
                                TK, mbar, nH_free, nO_free, nC_free)
-            too_long = (carrier_composition_displacement(fnow, fentry)    &
-                        /x_ref .gt. trust)
+            if (carrier_composition_displacement(fnow, fentry)/x_ref      &
+                .gt. trust) then
+               refused = .true.;  refusal = refused_bound
+            endif
          endif
-         if (too_long) then
+         if (refused) then
+            ! The trial and everything it wrote are undone: composition,
+            ! background, primitive state.
             f_sp = f_held
+            bg_cell = bg_held
+            p = p_held;  T = T_held
+            heat = heat_held;  cool = cool_held;  eta = eta_held
             fnow = fprev
             if (grow .le. relax_grow_min) then
-               if (step_status .ne. carrier_interval_covered) then
+               select case (refusal)
+               case (refused_interval)
                   ending = carrier_relax_interval_refused
-               else
+               case (refused_chemistry)
+                  ending = carrier_relax_chemistry_refused
+               case default
                   ending = carrier_relax_movement_bound
-               endif
+               end select
                exit
             endif
             grow = max(0.5d0*grow, relax_grow_min)
             cycle
          endif
          nstep = nstep + 1
-         ! THE CHEMISTRY FOLLOWS THE STEP THAT WAS KEPT.  bg_cell, the
-         ! temperature and the eliminated species now describe the
-         ! composition this step wrote, so the next transport step reads
-         ! the background of the state it advances.  carrier_rows_advect is
-         ! this module's own switch and the sweep does not see it.
-         call equilibrate_chemistry_at_fixed_pressure(rho, p, f_sp, T,    &
-                                                      heat, cool, eta)
-         call carrier_state(rho, f_sp, fnow, ntot, nrho, wfac,           &
-                            TK, mbar, nH_free, nO_free, nC_free)
          dmax  = carrier_composition_displacement(fnow, fprev)
-         ! A FIXED POINT IS A STATE A FULL-LENGTH STEP NO LONGER MOVES,
-         ! measured between two states the chemistry has closed on, so that
-         ! what it reports is the joint fixed point and not the transport's
-         ! own.  A shortened trial moves the state proportionally less, so
-         ! its small movement is a statement about the step and not about
-         ! the state, and it cannot end the pass here.
          if (dmax/x_ref .lt. relax_tol .and. grow .ge. 1.0d0) then
             ending = carrier_relax_fixed_point
             exit
@@ -5062,12 +5080,7 @@
          if (grow .lt. 1.0d12) grow = grow*1.5d0
       enddo
       carrier_rows_advect = .false.
-
-      ! HOW FAR THE STATE HANDED BACK STANDS FROM THE STATE HANDED IN, on
-      ! the same measure the bound was enforced on and read off the
-      ! returned composition itself, so that the two can never be two
-      ! numbers.  It is reported, and it is not a convergence gate -- see
-      ! the caller.
+      deallocate(bg_held)
       call carrier_state(rho, f_sp, fnow, ntot, nrho, wfac, TK,          &
                          mbar, nH_free, nO_free, nC_free)
       drift = 0.0d0
@@ -5084,19 +5097,8 @@
          enddo
       enddo
       drift = drift/x_ref
-
-      ! Every step this pass kept is a covered transport interval, whose
-      ! write-back restores the entry element totals cell by cell, and a
-      ! discarded trial leaves the composition it started from.  The
-      ! equilibrium sweep between two steps repartitions the stages of each
-      ! element at a fixed density and moves no nucleus either.  The
-      ! elemental content of the returned state is therefore the entry
-      ! content at the fixed rho of this pass, whatever the trial lengths
-      ! were.
       call element_census_verify(cen_relax, rho, f_sp, rho_is_fixed=.true.)
-
       if (present(outcome)) outcome = ending
-
       end subroutine relax_photochemical_composition
 
       ! End of module

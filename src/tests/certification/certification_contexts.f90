@@ -84,6 +84,8 @@
       call a_species_row_is_gated_in_the_wind_and_reported_below_it()
       call the_five_anchoring_numbers_of_a_synthetic_column()
       call the_mass_row_tolerance_is_anchored_on_its_rounding_floor()
+      call a_mass_row_at_the_ceiling_is_unresolved_not_passed()
+      call a_column_with_one_unresolved_cell_is_not_certified()
 
       if (n_fail .gt. 0) then
          write(*,'(A,I0,A)') 'certification_contexts: ', n_fail,          &
@@ -1048,6 +1050,110 @@
       call check_log('the_margin_stands_above_every_measured_ratio',      &
                      cert_mass_round_margin .gt. 2.68d0, .true.)
       end subroutine the_mass_row_tolerance_is_anchored_on_its_rounding_floor
+
+      ! ------------------------------------------------------!
+
+      subroutine a_mass_row_at_the_ceiling_is_unresolved_not_passed()
+      ! REVIEW R5 (item Q3): the counterexample the review executed directly
+      ! against the production routine,
+      !
+      !   q = 0.5, floor_q = 1;  tol = 1, distance = 0.5, within = T
+      !
+      ! is the superseded behavior, transcribed below and refused by name.
+      ! `cert_tol_mass_ceiling`'s own comment says a cell whose estimated
+      ! floor reaches it "cannot be judged at all rather than one that
+      ! passes"; mass_row_cell_verdict's `status` output now says so.
+      real*8  :: tol, dist, q, fl
+      logical :: within, anchored
+      integer :: status
+
+      ! (7) THE COUNTEREXAMPLE ITSELF: q = 0.5 at floor_q = 1 is UNRESOLVED
+      ! and never within, however small q is beside the clipped tol = 1.
+      q  = 0.5d0
+      fl = 1.0d0
+      call mass_row_cell_verdict(q, fl, tol, dist, within, anchored, status)
+      call check_int('a_row_whose_floor_reaches_the_ceiling_is_unresolved', &
+                     status, cert_mass_row_unresolved)
+      call check_log('an_unresolved_row_is_never_within',                  &
+                     within, .false.)
+      ! The superseded rule, transcribed: clip the tolerance at the ceiling
+      ! and read q/tol < 1 with no third outcome. It is what the review
+      ! executed and found passing.
+      call check_log('the_superseded_rule_passed_the_same_row',            &
+                     (q/min(cert_tol_mass_ceiling,                         &
+                            cert_mass_round_margin*fl)) .lt. 1.0d0, .true.)
+
+      ! (8) q = 0 at the same floor is unresolved for the same reason: the
+      ! balance cannot be judged whatever the numerator is.
+      call mass_row_cell_verdict(0.0d0, fl, tol, dist, within, anchored,    &
+                                 status)
+      call check_int('zero_flux_at_an_unresolvable_floor_is_still_unresolved', &
+                     status, cert_mass_row_unresolved)
+      call check_log('and_still_not_within', within, .false.)
+
+      ! (9) A NaN floor (an arithmetic estimate that failed to form) is
+      ! unresolved, not a false RESOLVED from a comparison a NaN always
+      ! loses.
+      fl = 0.0d0;  fl = fl/fl     ! IEEE NaN, no ieee_arithmetic dependence
+      call mass_row_cell_verdict(0.5d0, fl, tol, dist, within, anchored,    &
+                                 status)
+      call check_int('a_nonfinite_floor_is_unresolved',                    &
+                     status, cert_mass_row_unresolved)
+      call check_log('a_nonfinite_floor_is_never_within', within, .false.)
+
+      ! (10) The resolved side of the same boundary: a floor just inside the
+      ! ceiling (raw = 0.8, not 1.0) with q chosen so tol > q. RESOLVED,
+      ! anchored (the rounding floor set the tolerance, not the fixed
+      ! value), and within.
+      fl = 0.08d0                 ! raw = c_round*fl = 0.8 < ceiling
+      q  = 0.5d0
+      call mass_row_cell_verdict(q, fl, tol, dist, within, anchored,        &
+                                 status)
+      call check_int('a_row_below_the_ceiling_is_resolved',                &
+                     status, cert_mass_row_resolved)
+      call check_log('and_anchored_on_its_own_floor', anchored, .true.)
+      call check_log('and_within_its_anchored_tolerance', within, .true.)
+      end subroutine a_mass_row_at_the_ceiling_is_unresolved_not_passed
+
+      ! ------------------------------------------------------!
+
+      subroutine a_column_with_one_unresolved_cell_is_not_certified()
+      ! REVIEW R5, THE COLUMN AGGREGATION: mass_row_column_verdict (the
+      ! pure aggregator mass_row_verdict now hands its cell-by-cell floors
+      ! to) must count the unresolved cells and name the first one, and the
+      ! column must not certify on their account -- not only the cell-level
+      ! rule tested above. Driven on synthetic rows and floors so that this
+      ! is a statement about the aggregator alone and not about whether a
+      ! physical flux reconstruction can be pushed to an unresolvable state.
+      !
+      ! Ten cells, resolved and comfortably within except cell 4, whose
+      ! floor alone reaches the ceiling (raw = 10*0.2 = 2 >= 1); q there is
+      ! deliberately SMALL (0.01) so that a rule reading only q/tol could
+      ! call it the best cell of the column, not the one that refuses it.
+      integer, parameter :: nc = 10
+      real*8  :: rr(nc), ss(nc), floors(nc)
+      type(cert_entry) :: ent
+      integer :: j
+      do j = 1, nc
+         rr(j)     = 1.0d-13
+         ss(j)     = 1.0d0
+         floors(j) = 1.0d-13     ! resolved and comfortably within elsewhere
+      enddo
+      rr(4)     = 1.0d-2
+      floors(4) = 0.2d0          ! c_round*floor = 2.0 >= ceiling: unresolved
+      ent%jworst = 1;  ent%finite = .true.
+      call mass_row_column_verdict(nc, rr, ss, floors, ent)
+      write(*,'(A,I0,A,I0)') '  DIAGNOSTIC a column with one unresolvable '//&
+           'cell: unresolved cells = ', ent%n_mass_unresolved,              &
+           ', first at cell ', ent%j_first_mass_unresolved
+      call check_int('one_unresolvable_cell_is_counted',                   &
+                     ent%n_mass_unresolved, 1)
+      call check_int('the_report_names_that_cell', ent%j_first_mass_unresolved, 4)
+      call check_log('the_column_is_not_certified_on_its_account',         &
+                     ent%within_tol, .false.)
+      call check_int('the_unresolved_cell_is_where_the_verdict_binds',     &
+                     ent%jbind, 4)
+      end subroutine a_column_with_one_unresolved_cell_is_not_certified
 
       ! ------------------------------------------------------!
 

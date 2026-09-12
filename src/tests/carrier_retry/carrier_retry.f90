@@ -45,7 +45,8 @@
       use global_parameters
       use species_table
       use ionization_equilibrium, only: bg_cell, bg_ready,                &
-                                        ioniz_eq_allocate_arrays, ioniz_eq
+                                        ioniz_eq_allocate_arrays, ioniz_eq,&
+                                        ieq_res_tol
       use diffusive_photochemistry, only:                                 &
            carrier_set_init, carrier_transport_interval,                  &
            carrier_checkpoint, carrier_checkpoint_take,                   &
@@ -66,6 +67,7 @@
            photochemical_transport_step, carrier_interval_covered,        &
            carrier_interval_exhausted, carrier_last_interval_status,      &
            carrier_exhausted_record, carrier_history_certifiable,         &
+           carrier_history_reset_for_test,                                &
            carrier_transport_stop_on_failure,                             &
            carrier_transport_stops_suppressed,                            &
            carrier_step_verdict, carrier_last_verdict_of_run,             &
@@ -73,7 +75,12 @@
            relax_photochemical_composition,                               &
            carrier_relax_movement_bound, carrier_relax_fixed_point,       &
            carrier_relax_step_budget, carrier_relax_interval_refused,     &
-           carrier_relax_nothing_to_advance, carrier_relax_outcome_text
+           carrier_relax_nothing_to_advance, carrier_relax_outcome_text,  &
+           carrier_relax_chemistry_refused
+      use test_columns,  only: column_carrying_its_own_density,           &
+                               column_mass_closure
+      use Conversion,     only: W_to_U
+      use caloric_eos,    only: pressure_from_energy_density
       use element_census, only: element_nuclei_and_charge, n_element
       use gravity_grid_construction, only: set_gravity_grid
       use energy_vectors_construct,  only: set_energy_vectors
@@ -174,9 +181,27 @@
       real*8, allocatable :: ntot0_c(:), T_ent(:)
       real*8  :: move_pass, move_sweep, dev_ntot, dev_TK
       integer :: jj
+      ! The conserved state the relaxation holds (rho, rho v, E) formed
+      ! from the column's density, the wind of the section and the entry
+      ! pressure by the code's own equation of state.
+      real*8, allocatable :: u_col(:,:), W_col(:,:)
+      real*8  :: closure_entry, dev_p, dev_T, move_rel, fref
+      ! (12) a rejected stationary trial leaves the carrier history alone.
+      real*8  :: dr_hist
+      integer :: ns_hist, oc_hist, st_trial, run_mode_held, isp
+      logical :: hist_before, hist_after
 
       call setup_globals()
       call build_molecular_hydrogen_column()
+      ! THE COLUMN CARRIES ITS OWN DENSITY: every quantitative statement
+      ! below rests on a composition that reconstructs rho, so a fraction
+      ! added on top of a closed mass budget would make them statements
+      ! about a gas that does not exist.
+      closure_entry = column_mass_closure(rho, f_sp0)
+      write(*,'(a,es12.4)') ' (carrier_retry) mass closure of the'//      &
+           ' entry column: ', closure_entry
+      call check_absolute('the_column_reconstructs_its_own_density',      &
+           closure_entry, 0.0d0, 1.0d-13)
 
       ! ---- (1) the checkpoint round trip ----------------------------- !
       !
@@ -885,8 +910,9 @@
       f_sp = f_sp0
       call carrier_checkpoint_restore(chk0)
       call restore_frozen_background()
-      call relax_photochemical_composition(rho, v_relax, p_col, T_col,    &
-                                           f_sp, heat_col, cool_col,      &
+      call conserved_of(v_relax)
+      call relax_photochemical_composition(u_col, v_relax, f_sp, p_col,     &
+                                           T_col, heat_col, cool_col,    &
                                            eta_col, 1.0d-2, dr_wide,      &
                                            ns_wide, oc_wide)
       write(*,'(a,es10.2,a,es12.4,a,i0,a,a)') ' (carrier_retry) trust ',  &
@@ -917,8 +943,9 @@
       f_sp = f_sp0
       call carrier_checkpoint_restore(chk0)
       call restore_frozen_background()
-      call relax_photochemical_composition(rho, v_relax, p_col, T_col,    &
-                                           f_sp, heat_col, cool_col,      &
+      call conserved_of(v_relax)
+      call relax_photochemical_composition(u_col, v_relax, f_sp, p_col,     &
+                                           T_col, heat_col, cool_col,    &
                                            eta_col, 1.0d-3, dr_tight,     &
                                            ns_tight, oc_tight)
       write(*,'(a,es10.2,a,es12.4,a,i0,a,a)') ' (carrier_retry) trust ',  &
@@ -945,8 +972,9 @@
       f_sp = f_sp0
       call carrier_checkpoint_restore(chk0)
       call restore_frozen_background()
-      call relax_photochemical_composition(rho, v_relax, p_col, T_col,    &
-                                           f_sp, heat_col, cool_col,      &
+      call conserved_of(v_relax)
+      call relax_photochemical_composition(u_col, v_relax, f_sp, p_col,     &
+                                           T_col, heat_col, cool_col,    &
                                            eta_col, 1.0d-4, dr_none,      &
                                            ns_none, oc_none)
       call check_absolute('a_bound_no_trial_can_meet_keeps_no_step',      &
@@ -966,8 +994,9 @@
       f_sp = f_sp0
       call carrier_checkpoint_restore(chk0)
       call restore_frozen_background()
-      call relax_photochemical_composition(rho, v_relax, p_col, T_col,    &
-                                           f_sp, heat_col, cool_col,      &
+      call conserved_of(v_relax)
+      call relax_photochemical_composition(u_col, v_relax, f_sp, p_col,     &
+                                           T_col, heat_col, cool_col,    &
                                            eta_col, 0.0d0, dr_zero,       &
                                            ns_zero, oc_zero)
       call check_absolute('a_pass_that_may_not_move_keeps_no_step',       &
@@ -991,8 +1020,9 @@
       run_mode = run_mode_init
       carrier_reject_leading_attempts_for_test = 1000000
       call restore_frozen_background()
-      call relax_photochemical_composition(rho, v_fast, p_col, T_col,     &
-                                           f_sp, heat_col, cool_col,      &
+      call conserved_of(v_fast)
+      call relax_photochemical_composition(u_col, v_fast, f_sp, p_col,     &
+                                           T_col, heat_col, cool_col,    &
                                            eta_col, 1.0d0, dr_ref,        &
                                            ns_ref, oc_ref)
       carrier_reject_leading_attempts_for_test = 0
@@ -1025,8 +1055,9 @@
       carrier_transport = .false.
       f_sp = f_sp0
       call restore_frozen_background()
-      call relax_photochemical_composition(rho, v_relax, p_col, T_col,    &
-                                           f_sp, heat_col, cool_col,      &
+      call conserved_of(v_relax)
+      call relax_photochemical_composition(u_col, v_relax, f_sp, p_col,     &
+                                           T_col, heat_col, cool_col,    &
                                            eta_col, 1.0d0, dr_zero,       &
                                            ns_zero, oc_zero)
       carrier_transport = .true.
@@ -1073,8 +1104,9 @@
       call seed_background_at_the_entry_composition()
       f_sp = f_sp0
       call carrier_checkpoint_restore(chk0)
-      call relax_photochemical_composition(rho, v_relax, p_col, T_col,    &
-                                           f_sp, heat_col, cool_col,      &
+      call conserved_of(v_relax)
+      call relax_photochemical_composition(u_col, v_relax, f_sp, p_col,     &
+                                           T_col, heat_col, cool_col,    &
                                            eta_col, 1.0d-2, dr_wide,      &
                                            ns_wide, oc_wide)
       call check_positive('the_consistency_rows_read_a_pass_that_kept'//  &
@@ -1091,72 +1123,131 @@
                                  nheii_r, nheiii_r, nheiTR_r, nm_r,       &
                                  ne_r, ntot_r)
       call comp_T_from_p(p_col, ntot_r, ne_r, T_ret)
-
-      ! THE THIRD-BODY DENSITY THE CARRIER ROWS READ.  bg_cell%ntot is the
-      ! density of third bodies M of the three-body molecular reactions, so
-      ! a pass that leaves it at the entry composition's value integrates
-      ! its later steps at a formation rate the gas no longer has.  The row
-      ! is relative: the background must stand closer to the composition
-      ! the pass RETURNS than to the one it STARTED from.
-      dev_ntot  = 0.0d0
-      move_pass = 0.0d0
+      ! THE BACKGROUND DESCRIBES THE COMPOSITION HANDED BACK, absolutely:
+      ! the third-body density and the temperature the next transport step
+      ! reads are those of the returned composition to the tolerance the
+      ! sweep itself converges to (ieq_res_tol), not merely closer to it
+      ! than to the entry.
+      dev_ntot = 0.0d0
+      dev_TK   = 0.0d0
       do jj = 1, N
-         dev_ntot  = max(dev_ntot, abs(bg_cell(jj)%ntot/n0 - ntot_r(jj))  &
-                                   /ntot_r(jj))
-         move_pass = max(move_pass, abs(bg_cell(jj)%ntot/n0 - ntot0_c(jj))&
-                                    /ntot0_c(jj))
+         dev_ntot = max(dev_ntot, abs(bg_cell(jj)%ntot/n0 - ntot_r(jj))   &
+                                  /ntot_r(jj))
+         dev_TK   = max(dev_TK, abs(bg_cell(jj)%T_K/T0 - T_col(jj))       &
+                                /T_col(jj))
       enddo
       write(*,'(a,2es12.4)') ' (carrier_retry) background third-body'//   &
-           ' density against the returned and the entry composition: ',   &
-           dev_ntot, move_pass
-      call check_absolute('the_background_third_body_density_follows'//   &
-           '_the_composition',                                            &
-           logical_as_double(dev_ntot .lt. move_pass), 1.0d0, 0.0d0)
-
-      ! THE TEMPERATURE THE RATES WERE FORMED AT, on the same reading.  The
-      ! carriers move the particle count, so at the fixed pressure of this
-      ! pass the temperature of the gas moves with them.
-      dev_TK     = 0.0d0
-      move_sweep = 0.0d0
+           ' density and temperature against the returned state: ',      &
+           dev_ntot, dev_TK
+      call check_absolute('the_background_third_body_density_is_that'//   &
+           '_of_the_returned_composition', dev_ntot, 0.0d0,               &
+           1.0d1*ieq_res_tol)
+      call check_absolute('the_background_temperature_is_that_of_the'//   &
+           '_returned_composition', dev_TK, 0.0d0, 1.0d1*ieq_res_tol)
+      ! THE EQUATION OF STATE ROUND TRIP AT THE FIXED CONSERVED STATE: the
+      ! pressure handed back is the one the caloric equation of state of
+      ! the returned composition assigns to the unchanged thermal energy,
+      ! and the temperature is p/(n_tot + n_e) of that composition.
+      dev_p = 0.0d0
+      dev_T = 0.0d0
       do jj = 1, N
-         dev_TK     = max(dev_TK, abs(bg_cell(jj)%T_K/T0 - T_ret(jj))     &
-                                  /T_ret(jj))
-         move_sweep = max(move_sweep, abs(bg_cell(jj)%T_K/T0 - T_ent(jj)) &
-                                      /T_ent(jj))
+         dev_p = max(dev_p, abs(p_col(jj)                                 &
+                    - pressure_from_energy_density(jj, u_col(1,jj),       &
+                        u_col(3,jj) - 0.5d0*u_col(2,jj)**2/u_col(1,jj)))  &
+                    /p_col(jj))
+         dev_T = max(dev_T, abs(T_col(jj) - T_ret(jj))/T_ret(jj))
       enddo
-      write(*,'(a,2es12.4)') ' (carrier_retry) background temperature'//  &
-           ' against the returned and the entry composition: ',           &
-           dev_TK, move_sweep
-      call check_absolute('the_background_temperature_follows_the'//      &
-           '_composition',                                                &
-           logical_as_double(dev_TK .lt. move_sweep), 1.0d0, 0.0d0)
-
-      ! ONE FURTHER SWEEP ON THE RETURNED STATE.  A state whose chemistry
-      ! the pass has closed on moves less under another sweep than it moved
-      ! under the pass itself; a state carrying the chemical lag of every
-      ! step taken on one background does not.  The sweep is taken on a
-      ! COPY, and it rewrites bg_cell, so it is the last thing this section
-      ! does.
+      write(*,'(a,2es12.4)') ' (carrier_retry) equation of state round'// &
+           ' trip at the fixed conserved state, p and T: ', dev_p, dev_T
+      call check_absolute('the_returned_pressure_is_that_of_the'//        &
+           '_unchanged_thermal_energy', dev_p, 0.0d0, 1.0d-13)
+      call check_absolute('and_the_returned_temperature_is_that_of'//     &
+           '_the_returned_composition', dev_T, 0.0d0, 1.0d-13)
+      ! THE CHEMICAL RESIDUAL OF THE RETURNED STATE: a further sweep at
+      ! the returned temperature moves the composition by no more than the
+      ! sweep's own convergence tolerance, relative to each species that
+      ! is present, which is what a closed chemical state means.
       move_pass = maxval(abs(f_sp(1:N,:) - f_sp0(1:N,:)))
       f_swept   = f_sp
-      call ioniz_eq(T_ret, rho, f_swept, heat_col, cool_col, eta_col)
-      move_sweep = maxval(abs(f_swept(1:N,:) - f_sp(1:N,:)))
+      call ioniz_eq(T_col, rho, f_swept, heat_col, cool_col, eta_col)
+      move_rel = 0.0d0
+      do jj = 1, N
+         do isp = 1, n_species
+            fref = f_sp(jj,isp)
+            if (fref .gt. 1.0d-20)                                        &
+               move_rel = max(move_rel, abs(f_swept(jj,isp) - fref)/fref)
+         enddo
+      enddo
       write(*,'(a,es12.4,a,es12.4)') ' (carrier_retry) the pass moved'//   &
            ' the composition by ', move_pass, ' and one further sweep'//  &
-           ' moves it by ', move_sweep
-      call check_absolute('one_sweep_after_the_pass_moves_less_than'//    &
-           '_the_pass_did',                                               &
-           logical_as_double(move_sweep .lt. move_pass), 1.0d0, 0.0d0)
-      ! AND IT MOVES NO MORE THAN A SECOND SOLVE OF A CONVERGED CELL CAN.
-      ! The bound is the cell solve's own step criterion, hybrd1's
-      ! xtol = sqrt(machine epsilon) = 1.5e-8: a sweep re-entered at a
-      ! composition it has already converged on can only move it by that
-      ! much, so anything above it is chemistry the pass never took.  It is
-      ! the solver's number and not a setting of this test.
-      call check_absolute('and_moves_no_more_than_the_cell_solve_s_own'// &
-           '_step_criterion',                                             &
-           logical_as_double(move_sweep .lt. sqrt(epsilon(1.0d0))),       &
-           1.0d0, 0.0d0)
+           ' moves it by (relative, present species) ', move_rel
+      call check_absolute('one_further_sweep_leaves_the_returned'//       &
+           '_composition_within_the_sweep_tolerance', move_rel, 0.0d0,   &
+           ieq_res_tol)
+
+      ! ---- (12) a rejected stationary trial leaves the history alone --- !
+      !
+      ! A trial of the relaxation is a step the caller keeps only if it
+      ! likes the result.  One that the operator cannot cover is undone,
+      ! composition and background, and is not an interval the run adopted
+      ! without integrating it: the carrier history the certification
+      ! reads stays as it was, whatever the run mode.  An adopted physical
+      ! interval that fails still marks it (section (2) above).
+      call carrier_history_reset_for_test()
+      run_mode_held = run_mode
+      run_mode = run_mode_init
+      f_sp = f_sp0
+      call carrier_checkpoint_restore(chk0)
+      call restore_frozen_background()
+      call conserved_of(v_relax)
+      carrier_reject_leading_attempts_for_test = 1000000
+      hist_before = carrier_history_certifiable()
+      call relax_photochemical_composition(u_col, v_relax, f_sp, p_col,   &
+                                           T_col, heat_col, cool_col,     &
+                                           eta_col, 1.0d-2, dr_hist,      &
+                                           ns_hist, oc_hist)
+      hist_after = carrier_history_certifiable()
+      carrier_reject_leading_attempts_for_test = 0
+      write(*,'(a,l1,a,l1,a,i0,a,a)') ' (carrier_retry) history before'//  &
+           ' the refused trials ', hist_before, ', after ', hist_after,    &
+           ', kept steps ', ns_hist, ', ending on '//                     &
+           trim(carrier_relax_outcome_text(oc_hist))
+      call check_absolute('a_rejected_stationary_trial_keeps_the'//       &
+           '_history_certifiable',                                        &
+           logical_as_double(hist_before .and. hist_after), 1.0d0, 0.0d0)
+      call check_absolute('and_keeps_no_step', dble(ns_hist), 0.0d0, 0.0d0)
+      call check_absolute('and_hands_back_the_entry_composition_bit'//    &
+           '_for_bit', maxval(abs(f_sp - f_sp0)), 0.0d0, 0.0d0)
+      call check_absolute('and_names_the_refused_interval',               &
+           dble(oc_hist), dble(carrier_relax_interval_refused), 0.0d0)
+      f_sp = f_sp0
+      call carrier_checkpoint_restore(chk0)
+      call restore_frozen_background()
+      call conserved_of(v_relax)
+      call relax_photochemical_composition(u_col, v_relax, f_sp, p_col,   &
+                                           T_col, heat_col, cool_col,     &
+                                           eta_col, 1.0d-2, dr_hist,      &
+                                           ns_hist, oc_hist)
+      call check_absolute('a_pass_after_the_refusals_keeps_a_step',       &
+           logical_as_double(ns_hist .gt. 0), 1.0d0, 0.0d0)
+      call check_absolute('and_stays_eligible',                           &
+           logical_as_double(carrier_history_certifiable()), 1.0d0, 0.0d0)
+      run_mode = run_mode_phys
+      f_sp = f_sp0
+      call carrier_checkpoint_restore(chk0)
+      call restore_frozen_background()
+      carrier_reject_leading_attempts_for_test = 1000000
+      call photochemical_transport_step(rho, v_relax, f_sp, dt_code,      &
+                                        st_trial, trial = .true.)
+      carrier_reject_leading_attempts_for_test = 0
+      call check_absolute('a_refused_trial_in_phys_mode_reports'//        &
+           '_exhausted', dble(st_trial), dble(carrier_interval_exhausted), &
+           0.0d0)
+      call check_absolute('and_leaves_the_history_certifiable',           &
+           logical_as_double(carrier_history_certifiable()), 1.0d0, 0.0d0)
+      call check_absolute('and_writes_no_composition',                    &
+           maxval(abs(f_sp - f_sp0)), 0.0d0, 0.0d0)
+      run_mode = run_mode_held
 
       if (assertion_failures .gt. 0) then
          write(*,'(a)') 'carrier_retry: FAILED'
@@ -1324,14 +1415,19 @@
          v(j)   = 0.02d0*r(j)
       enddo
       dt_code = 1.0d-3
-      f_sp = 0.0d0
-      f_sp(:,isp_HI)   = 0.20d0
+      ! A column whose species carry the density they are measured
+      ! against (test_columns): 80 percent of the hydrogen nuclei in H2,
+      ! helium at the reservoir mass fraction everywhere.  The trace ions
+      ! are then moved out of their own element's neutral so that nothing
+      ! is added on top of a closed mass budget.
+      call column_carrying_its_own_density(f_sp, 0.8d0, .false., 0.0d0)
       f_sp(:,isp_HII)  = 1.0d-6
-      f_sp(:,isp_H2)   = 0.40d0
+      f_sp(:,isp_HI)   = f_sp(:,isp_HI) - 1.0d-6
       f_sp(:,isp_H2p)  = 1.0d-10
       f_sp(:,isp_H3p)  = 1.0d-10
-      f_sp(:,isp_HeI)  = 0.0793d0
+      f_sp(:,isp_H2)   = f_sp(:,isp_H2) - 2.5d-10
       f_sp(:,isp_HeII) = 1.0d-8
+      f_sp(:,isp_HeI)  = f_sp(:,isp_HeI) - 1.0d-8
       do j = 1-Ng, N+Ng
          call set_frozen_cell_rates(j)
       enddo
@@ -1339,6 +1435,7 @@
       allocate(p_col(1-Ng:N+Ng), T_col(1-Ng:N+Ng))
       allocate(heat_col(1-Ng:N+Ng), cool_col(1-Ng:N+Ng))
       allocate(eta_col(1-Ng:N+Ng))
+      allocate(u_col(3,1-Ng:N+Ng), W_col(3,1-Ng:N+Ng))
       call seed_pressure_of_the_column()
       end subroutine build_molecular_hydrogen_column
 
@@ -1377,6 +1474,27 @@
       cool_col = 0.0d0
       eta_col  = 0.0d0
       end subroutine seed_pressure_of_the_column
+
+      ! The conserved state (rho, rho v, E) of the entry composition at
+      ! the wind vv and the entry pressure, by the code's own equation of
+      ! state evaluated on the ENTRY composition (the caloric state is the
+      ! one get_species_densities last refreshed, so it is refreshed here
+      ! on f_sp0 first).
+      subroutine conserved_of(vv)
+      real*8, dimension(1-Ng:N+Ng), intent(in) :: vv
+      real*8, allocatable :: a1(:), a2(:), a3(:), a4(:), a5(:), a6(:)
+      real*8, allocatable :: a7(:), a8(:), am(:,:)
+      allocate(a1(1-Ng:N+Ng), a2(1-Ng:N+Ng), a3(1-Ng:N+Ng))
+      allocate(a4(1-Ng:N+Ng), a5(1-Ng:N+Ng), a6(1-Ng:N+Ng))
+      allocate(a7(1-Ng:N+Ng), a8(1-Ng:N+Ng), am(1-Ng:N+Ng,n_mion))
+      a3 = 0.0d0;  a4 = 0.0d0;  a5 = 0.0d0;  a6 = 0.0d0
+      call get_species_densities(rho, f_sp0, a1, a2, a3, a4, a5, a6, am,  &
+                                 a7, a8)
+      W_col(1,:) = rho
+      W_col(2,:) = vv
+      W_col(3,:) = p_col
+      call W_to_U(W_col, u_col)
+      end subroutine conserved_of
 
       !--------------!
 

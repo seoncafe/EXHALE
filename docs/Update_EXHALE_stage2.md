@@ -8659,3 +8659,213 @@ Fourth `make check` after P21 and the terminology sweep (advisor, 2026-09-12 01:
   builds them, so nothing compiles them; they are the record of the run they
   belong to and are left as they stand. The `H2 front:` diagnostic P21 reported
   beside it was fixed by the advisor (above).
+
+## 9. PLAN_20260912: the seven findings of the stage-2 review (2026-09-12)
+
+Plan of record: `docs/PLAN_20260912_review_fixes.md`. User instruction of
+2026-09-12: analyze `docs/Update_EXHALE_stage2_review_20260912.md` against the
+code, and where its analysis is right, write the plan and start the
+corrections. All seven findings R1 to R7 were confirmed in the source before
+the plan was written (the confirming lines are listed at the head of the plan);
+the corrections are items Q1 to Q4, Q1 and Q4 by the advisor, Q2 and Q3 by
+workers under `docs/worker_rules.md`. Every number below is MEASURED on the
+tree of this section unless marked READ.
+
+### The state contract at a fixed hydrodynamic state (R2, R3)
+
+The decision behind Q1: at a fixed hydrodynamic state the quantities the solve
+holds are the conserved variables `u = (rho, rho v, E)`. A composition update
+at fixed hydro keeps `u` and recomputes the pressure and the temperature from
+the unchanged thermal energy `rho e = E - (rho v)^2/(2 rho)` through the
+caloric EOS of the new composition (`pressure_from_energy_density` after
+`get_species_densities`, then `comp_T_from_p`). A held pressure is not a state
+the solve knows: the review's 500-cell probe showed that keeping `p` while the
+main loop keeps `E` describes two molecular states 3.3e-3 apart.
+
+### The items
+
+- **Q1 (R1, R2, R3, R6, R7 and the outer progress measure), advisor.**
+  `diffusive_photochemistry.f90` (+206/-204), the carrier branch and the
+  summary of `steady_wind_with_element_diffusion` in `EXHALE_main.f90`,
+  `src/tests/carrier_retry/carrier_retry.f90` (+195/-77) and its `run.sh`.
+  - R1: `photochemical_transport_step` takes an optional `trial` argument; a
+    trial of the stationary relaxation returns before the history mark, the
+    message and the stop, so a rejected trial (an uncovered interval, a
+    chemistry that did not close, a displacement beyond the movement bound)
+    leaves `carrier_history_certifiable_flag` as it found it. The marching
+    path passes no `trial` and is unchanged.
+  - R2, R3: `relax_photochemical_composition(u, v, f_sp, p, T, heat, cool,
+    eta, trust, drift, nstep, outcome)` now takes the conserved state; `p` and
+    `T` are outputs. `pressure_and_temperature_at_fixed_conserved_state`
+    is the one expression of the contract above, and
+    `equilibrate_chemistry_at_fixed_conserved_state` cycles (p, T at fixed u;
+    sweep; p, T again) until the largest relative change of T falls below
+    1e-6 (at most five cycles), reads the sweep ledger (`n_nonfinite`) and a
+    finite composition, and reports `ok`; a refresh that does not close
+    refuses the trial (`carrier_relax_chemistry_refused`, a new named ending
+    "the chemistry of the shortest admissible trial did not close") and the
+    entry composition, background, p, T, heating, cooling and eta are
+    restored. The caller in `EXHALE_main.f90` rebuilds `W` from the unchanged
+    `u` and takes the returned composition; nothing is reconstructed from a
+    held pressure any more.
+  - R6: the carrier retry suite's column is built by
+    `column_carrying_its_own_density` of `src/tests/test_columns.f90` (the
+    mass-closed constructor of the element suites; `run.sh` compiles it
+    before the driver) with the ions moved out of the neutrals; a row asserts
+    the column reconstructs its own density to 1e-13 before any step. The
+    consistency rows are absolute: the returned pressure is that of the
+    unchanged thermal energy (0.0), the returned temperature is that of the
+    returned composition (0.0), the background third-body density and
+    temperature the sweep stored are those of the returned composition
+    (6.53e-7 and 2.28e-7 relative, allowance 10 `ieq_res_tol`), and one
+    further sweep leaves the returned composition within the sweep tolerance
+    (8.83e-7 against `ieq_res_tol`). Nine rows for R1: a rejected trial keeps
+    the history certifiable, keeps no step, hands back the entry composition
+    bit for bit and names the refused interval; a pass after the refusals
+    keeps a step and stays eligible; a refused trial in phys mode reports
+    exhausted, leaves the history certifiable and writes no composition.
+    RED on the entry text (the trial marking the history, the refresh not
+    closed): five rows fail (pressure 1.2e-7, temperature 3.5e-7, further
+    sweep 1.2e-6, the two R1 rows 0 of 1); GREEN on the tree: 138 PASS, 0
+    FAIL.
+  - R7 and the progress measure: the outer summary of
+    `steady_wind_with_element_diffusion` ranks every entry by its binding
+    distance (`dist_bind`, `row_at_bind`, `jbind` where the entry carries
+    them), so the mass row's refusal is attributed to the cell that binds it
+    and not to the largest row over another cell's tolerance; and the
+    progress control halves omega and the carrier movement bound on the
+    JOINT distance of the state (the largest entry over its own tolerance,
+    `prog_worst`), not on the worst species row alone. An entry that is not
+    finite or not available counts as an infinite distance.
+  - The review's 500-cell probe (`docs/audit_20260905/stage2_review_20260912/
+    molecular_wind_state_probe.f90`, adapted to the new signature, hot-Uranus
+    carrier reload, one hydro solve and one bounded relaxation at trust
+    0.01): returned temperature against the EOS of the returned state 0.0
+    (was 5.5997819e-9), pressure of the unchanged thermal energy against the
+    returned pressure 0.0 (was 3.2993e-3), thermal-energy change a held
+    pressure would need 6.9e-16 (was 3.3250e-3); mass closure 8.33e-15 and
+    the five retained steps at drift 9.9955e-3 unchanged.
+  - Impact on the routes: the unbounded pass of P21 M1 repeated on the new
+    contract (`EXHALE_CARRIER_TRUST=1e6`, cap 40) reaches the fixed wind's
+    fixed point in 61 transport steps at drift 0.995 with the H2 front
+    (x2 = 0.5) at 3.079 R_p (P21: 57 steps, 2.237 R_p; both fully molecular
+    fixed points, the front leaving the domain). The 12-pass production loop
+    ends at H2 row 5.49e-2 at cell 279, front 1.0755 R_p (the 110-pass ladder
+    of P16 at pass 12: 5.50e-2 at cell 279, 1.0765 R_p); no pass triggered
+    the halving. `atomic_elem_newton` at three passes: pass lines identical to
+    the control build. `wasp_full_newton` reload and the `mol_carrier` case
+    (12000 steps, one thread): data rows identical to the control build and
+    to the golden.
+- **Q2 (R4 in the operator), worker (Sonnet).**
+  `binary_element_diffusion.f90` (+108/-43),
+  `src/tests/element_operator/element_operator_tests.f90` (+88/-1).
+  `element_diffusion_step` judges its candidate on every call: the entry
+  composition is kept, the four tests (solved, finite, X inside [0,1] to
+  `element_fraction_bound_tol`, mass closure no worse than the entry's by
+  `element_mass_closure_tol`) run whether or not `status` is present, and the
+  entry composition is restored on a refusal. The outcome is always left in
+  the new public `element_step_last_status`, and `element_step_outcome_text`
+  names it. Two new rows repeat the ordinary and the NaN-residual steps with
+  no `status` at the call site: RED on the entry text (the refused candidate
+  with departure 0.86 adopted, the status left at accepted), GREEN after
+  (`element_operator` 28/0). A second, independent defect found by the change:
+  the Newton solve of the helium mass fraction (`solve_mass_fraction`) read
+  its arithmetic floor only on a DESCENDING pass, so a step whose residual had
+  already reached the floor and whose next pass found no improving trial
+  reported unsolved (residuals 1e-12 to 1.1e-5 at the refusal, MEASURED on
+  the closed-column relaxations of `diffusion_tests` T1a, T7c, T7d and T10,
+  which went 35/0 to 27/8 under the unconditional judgment alone); the
+  no-descent exit now reads the same floor, and `newton_drop` moved from
+  1e-6 to 2e-5 so that the ~1e-5 floor of the K_zz = 2e12 homopause column
+  (T7), which the module header already documented, lies inside it
+  (`diffusion_tests` 35/0 again). Cost on `mol_diffusion` at 300 steps: 54.4 s
+  against 54.2 s, inside the noise. `mol_diffusion` and `lower_profile` at 300
+  steps: data rows identical to the control build. `atomic_elem_newton`: pass
+  1 identical; at pass 2 the judged rows are identical and omega differs
+  (0.500 control, 0.250 Q2), attributable to the floor change turning a
+  floor-level residual from unsolved to solved (READ from the Q2 report; the
+  advisor's own three-pass run of the merged tree, above, has omega 0.250 at
+  pass 2 on both builds because the control binary of that run already
+  carried Q2).
+- **Q3 (R5), worker (Sonnet).** `certification.f90` (+105/-17),
+  `src/tests/certification/certification_contexts.f90` (+106),
+  `docs/certification_tolerance_anchoring_20260910.md` (addendum).
+  `mass_row_cell_verdict` returns a third, optional outcome: RESOLVED
+  (`cert_mass_round_margin * floor < cert_tol_mass_ceiling`, judged as P16
+  anchored it) or UNRESOLVED (the margin times the floor reaches the ceiling,
+  or the floor is not finite): an unresolved cell never reads `within`, its
+  distance is `max(1, q/ceiling)`, so the review's counterexample (q = 0.5 at
+  floor 1) reads `within = F`, distance 1.0 (entry text: `within = T`, 0.5).
+  The column loop is the pure `mass_row_column_verdict`, which counts the
+  unresolved cells and names the first (`n_mass_unresolved`,
+  `j_first_mass_unresolved`), and the report names that cell even when a
+  different cell binds the verdict. `certification` 84/0 (70/0 before the
+  new rows), `krylov_and_dogleg` 334/0, `steady_species_rows` 195/0 (READ
+  from the Q3 report; the advisor's run of `certification` on the merged tree
+  84/0). The addendum records that the margin of 10 was measured on three
+  converged or converging fixtures only, none a near-zero-flow or
+  molecular-EOS column: the UNRESOLVED outcome exists for the regime the
+  fixtures do not reach.
+- **Q4 (R4 in the marching caller), advisor.** The marching loop of
+  `EXHALE_main.f90` reads `element_step_last_status` after the element step:
+  in phys mode a refused step refuses the whole attempted step
+  (`as_reject_element` at the diffusion operation, the verdict text naming
+  the test that refused it), which the controller restores and retakes at
+  half dt like a carrier interval left uncovered; in init mode the march goes
+  on from the composition the step restored and the refusals are counted
+  (the final report prints "element steps refused inside the initialization
+  march: n"). A test knob, `element_refuse_leading_steps_for_test`
+  (`EXHALE_ELEMENT_REFUSE_STEPS`, zero in every production run), refuses the
+  first n element steps so the path can be exercised: on `mol_diffusion` in
+  phys mode with two refusals injected, attempt 1 at dt 1.47451E-04 and
+  attempt 2 at 7.37253E-05 are refused "at the element diffusion step: an
+  element invariant broke" and attempt 3 runs at 3.68626E-05; in init mode
+  the two refusals are counted and the run exits 0. (The phys-mode run of
+  that fixture then fails at step 0 on the coupled source step's fixed point
+  with or without the knob, exit 2: a property of that fixed-step snapshot in
+  phys mode, not of Q4.) Found beside it and fixed: the refusal census of
+  `attempted_step_note_step` stopped one reason short
+  (`as_reject_source_fixed_point`), so a source-energy refusal was never
+  counted by reason; the bound is now `as_reject_source_energy`.
+- **The stagnation row of `grid_and_gates`.** On the joint progress measure
+  the configuration `output_state_consistency.sh` used to force the
+  stagnation ending (`EXHALE_JFNK_MAXIT=5`, `EXHALE_CARRIER_TRUST=1e-4`) runs
+  out its budget instead: the starved hydrodynamic rows keep falling (energy
+  4.9E-01 to 3.9E-02 over 8 passes, 1.1E-01 at 20) while the H2 row stands at
+  7.3E-02. The row now uses `EXHALE_JFNK_MAXIT=40` with
+  `EXHALE_CARRIER_TRUST=1e-6`: the hydro solves reach their roots, the H2
+  row stands at 7.38E-02 for four passes and the ending is announced at pass
+  4; the second assertion of that script (the ending hands back one state)
+  measures 7.1e-16 against 1e-12. The script's header and the suite README
+  say why the configuration moved.
+
+### Gates
+
+Advisor verification of the merged tree (private build `build_Q1` /
+`EXHALE_Q1.x` of the default toolchain, deleted at the close): `carrier_retry`
+138/0, `certification` 84/0, `element_operator` 28/0, `attempted_step` 70/0,
+`steady_species_rows` 195/0, `krylov_and_dogleg` 334/0, `diffusion_tests`
+35/0, `carrier_returned_state_acceptance` 36/0, `carrier_reference_scales`
+14/0, `carrier_constraint_attribution` 10/0, `species_masses` 9/0,
+`steady_completion_flag` 3/0; `grid_and_gates` 198/1, the one FAIL the
+stagnation row on its old configuration (the suite was started before the
+script was re-anchored), and the re-anchored `output_state_consistency.sh`
+4/4 on its own afterwards. `make check` (advisor, 2026-09-12 10:35 KST, the
+shared `build/` rebuilt from this tree with the gfortran on PATH, conda-forge
+16.2): **REGRESSION PASS (all cases byte-identical)**, 64 file comparisons
+PASS with data identical. A first launch of the gate with the system gfortran
+13.1 on PATH was stopped before its verdict and is not counted: the goldens
+are snapshots of the 16.2 build and a verdict against another compiler would
+say nothing about this change.
+
+### Reported by the workers and not fixed
+
+- Q2: the out-of-bounds outcome of the element step (`element_step_out_of_bounds`)
+  is not reachable on a synthetic column of the suite's size (the drift flux
+  vanishes at both ends of the composition axis in the discrete operator), so
+  the new rows cover the solve-failed and nonfinite outcomes only; the one
+  measured out-of-bounds excursion of record is P1's, on the atomic reload.
+- Q3: `grid_and_gates` row `mass_flux_spread_recomputed_from_output` failed
+  once on the worker's control run ("no_dump_line") and passed on its measured
+  run and on the advisor's; the P17 note on two concurrent invocations of that
+  suite sharing something outside `EXHALE_TEST_OUT` stands.

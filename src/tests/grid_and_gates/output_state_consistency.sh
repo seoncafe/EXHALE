@@ -174,12 +174,19 @@ rc1=$?
 #   S  a copy of backup/regression/carrier_elem_newton, the hot-Uranus carrier
 #      reload, partitioned (`Coupled carrier solve: False`) with
 #      `Restart intent: stationary`, forced to stagnate: at
-#      EXHALE_JFNK_MAXIT=5 each hydrodynamic solve is far from its root and
-#      the worst gated species row rises at the third pass and stands, so
-#      outer_no_fall_max = 3 passes without a fall end the iteration at pass
-#      5 (MEASURED 2026-09-11, identical pass lines at 1 and at 8 threads).
-#      EXHALE_CARRIER_TRUST=1e-4 keeps the carrier movement small enough that
-#      the run reaches the ending in five passes.
+#      EXHALE_JFNK_MAXIT=40 each hydrodynamic solve reaches its root
+#      (info = 0, the three hydrodynamic rows inside their tolerances) and
+#      EXHALE_CARRIER_TRUST=1e-6 bounds the carrier pass so tightly that the
+#      H2 row, the entry the joint distance is then set by, does not fall
+#      from one pass to the next, so outer_no_fall_max = 3 passes without a
+#      fall end the iteration at pass 4 (MEASURED 2026-09-12 on the joint
+#      progress metric of item Q1: H2 row 7.38E-02 at passes 1 to 4, hydro
+#      rows 1e-11 to 6e-9, the ending announced at pass 4).  The earlier
+#      setting, EXHALE_JFNK_MAXIT=5 with EXHALE_CARRIER_TRUST=1e-4, reached
+#      the ending only while the progress measure was the worst species row
+#      alone: on the joint measure the starved hydrodynamic rows (energy
+#      4.9E-01 falling to 3.9E-02 over 8 passes) keep falling and that
+#      configuration runs out its budget (MEASURED 2026-09-12).
 #   R  the state S wrote, handed back as the _IC pair with
 #      `Restart intent: stationary evaluate`, the route that measures a loaded
 #      state and writes it back unchanged.  No step and no solve are taken, so
@@ -208,8 +215,8 @@ sed 's/^Coupled carrier solve:.*/Coupled carrier solve: False/' \
     "$CASE2/input.inp" > "$STAG/solve/input.inp"
 printf 'Restart intent: stationary\n' >> "$STAG/solve/input.inp"
 cp "$CASE2"/IC/*.txt "$STAG/solve/output/"
-( cd "$STAG/solve" && env OMP_NUM_THREADS=1 EXHALE_CARRIER_TRUST=1e-4 \
-  EXHALE_OUTER_PASSES=8 EXHALE_JFNK_MAXIT=5 "$EXE" > run.log 2>&1 )
+( cd "$STAG/solve" && env OMP_NUM_THREADS=1 EXHALE_CARRIER_TRUST=1e-6 \
+  EXHALE_OUTER_PASSES=8 EXHALE_JFNK_MAXIT=40 "$EXE" > run.log 2>&1 )
 rc=$?
 if [ $rc -ne 0 ] && [ $rc -ne 2 ]; then
    echo "FAIL outer_iteration_ending_run measured=exit_$rc reference=exit_0 tol=0"

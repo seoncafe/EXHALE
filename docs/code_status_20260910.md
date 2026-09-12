@@ -4,7 +4,7 @@ Written to restart from in a fresh session. Read this first; then
 `docs/ISSUES_20260909.md` (the problem-centered account of stage 2: what was
 done, every problem resolved, every problem open with its evidence),
 `docs/PLAN_20260909_rev1.md` (the plan those items belong to),
-`docs/session_handoff_20260910.md` (the last handoff), and
+`docs/session_handoff_20260912.md` (the last handoff), and
 `docs/Update_EXHALE_stage2.md` section 7 (the dated record of items B5e to N30).
 This document replaces `docs/code_status_20260905.md`, which is kept as the
 state at the opening of stage 2; every row below is the state after item N30.

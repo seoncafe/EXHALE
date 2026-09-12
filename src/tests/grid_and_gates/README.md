@@ -148,7 +148,8 @@ recomputed 2.826589937536.
 Two checks since 2026-09-11 (item P14): the heat-column consistency below, and
 `outer_iteration_ending_hands_back_one_state`, which forces the stationary
 outer iteration's stagnation ending on the hot-Uranus carrier reload
-(`EXHALE_CARRIER_TRUST=1e-4`, `EXHALE_JFNK_MAXIT=5`) and asserts that the
+(`EXHALE_CARRIER_TRUST=1e-6`, `EXHALE_JFNK_MAXIT=40`, since the joint
+progress measure of 2026-09-12) and asserts that the
 written state re-evaluates to itself (relative temperature movement below
 1e-12; MEASURED 6.5e-14 after P14 against 1.3e-8 before).
 

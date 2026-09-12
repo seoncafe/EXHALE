@@ -389,6 +389,23 @@
       public :: element_step_accepted, element_step_solve_failed
       public :: element_step_nonfinite, element_step_out_of_bounds
       public :: element_step_mass_closure_failed
+      ! THE OUTCOME OF THE MOST RECENT CALL, whether or not that call asked
+      ! for status.  The candidate a step produces is judged against the
+      ! same four tests every time: acceptance of a numerical update cannot
+      ! depend on whether the caller asked to be told the result.  A caller
+      ! that does not read status still gets the composition it was handed
+      ! back unmoved on a refusal, and can read this variable afterward to
+      ! find out that happened (the marching path at EXHALE_main.f90 reads
+      ! it to decide whether to shorten the step).
+      integer, protected :: element_step_last_status = element_step_accepted
+      public :: element_step_last_status
+      ! TEST KNOB: the next this many calls report the nonlinear solve
+      ! unsolved whatever it did, so a caller's handling of a refused
+      ! step can be exercised on a column that would not refuse by
+      ! itself (EXHALE_ELEMENT_REFUSE_STEPS, read by the marching loop;
+      ! zero in every production run).
+      integer, public :: element_refuse_leading_steps_for_test = 0
+      public :: element_step_outcome_text
       ! THE OUTCOME OF A RELAXATION, which is not the outcome of one step.
       ! A relaxation whose composition stopped moving has reached the fixed
       ! point of the transport operator; one that ran out of steps has not,
@@ -596,19 +613,19 @@
       ! the elements twice.  The relaxation at a fixed wind has no stages to
       ! ride on and supplies the flux itself.
       !
-      ! status (optional) IS WHAT MAKES THE UPDATE CONDITIONAL.  Asked for,
-      ! the step keeps the composition it was handed, and hands back a new
-      ! one only if the nonlinear solve reported the step solved and the
-      ! result is admissible: finite everywhere, X inside [0,1] to
-      ! element_fraction_bound_tol before the range clip, and standing no
-      ! farther from the density the step held fixed, by more than
-      ! element_mass_closure_tol, than the composition it was handed did.
-      ! Otherwise the entry composition is restored and the named outcome
-      ! says which test refused it.  Not asked for, the step is
-      ! unconditional, which is
-      ! the marching path: there the composition is one operator-split half
-      ! of a time step whose acceptance is decided afterwards, on the state
-      ! the whole step produced, by the attempted-step contract.
+      ! THE STEP HANDS BACK A NEW COMPOSITION ONLY IF IT IS ADMISSIBLE, EVERY
+      ! CALL, WHETHER OR NOT status IS ASKED FOR.  A composition that does
+      ! not reconstruct the density it was advanced under, or whose helium
+      ! mass fraction left [0,1], is not a state of the gas whichever loop
+      ! asked for the step: acceptance of a numerical update cannot depend
+      ! on a diagnostic argument.  The candidate is accepted only if the
+      ! nonlinear solve reported the step solved and the result is finite
+      ! everywhere, X inside [0,1] to element_fraction_bound_tol before the
+      ! range clip, and standing no farther from the density the step held
+      ! fixed, by more than element_mass_closure_tol, than the composition
+      ! it was handed did; otherwise the entry composition is restored.  The
+      ! outcome is always left in element_step_last_status, and in status
+      ! too where the caller supplied it.
 
       real*8, dimension(1-Ng:N+Ng),           intent(in)    :: rho, v, Tcode
       real*8, dimension(1-Ng:N+Ng,n_species), intent(inout) :: f_sp
@@ -638,20 +655,18 @@
       real*8 :: tscale, X_base, m_1, fXbase, rXsc, Xover, Xunder, qdep
       real*8 :: dJl, dJr, closure
       integer :: j, jlo, im, i0m, top, k, n_vanished, outcome
-      logical :: shut_base, advect, judged, solved
+      logical :: shut_base, advect, solved
 
       if (present(status)) status = element_step_accepted
+      element_step_last_status = element_step_accepted
       if (.not. he_diffusion) return
       if (.not. thereis_He)   return
 
-      ! The composition the step is to keep if the update turns out to be
-      ! inadmissible.  Held only where a caller asks to be told, so the
-      ! marching path carries neither the copy nor the tests.
-      judged = present(status)
-      if (judged) then
-         allocate(f_entry(1-Ng:N+Ng,n_species))
-         f_entry = f_sp
-      endif
+      ! The composition to restore if the candidate turns out inadmissible.
+      ! Kept on every call, not only where a caller reads status: whether
+      ! the update is a state of the gas does not depend on who is asking.
+      allocate(f_entry(1-Ng:N+Ng,n_species))
+      f_entry = f_sp
 
       shut_base = .false.
       if (present(closed_base)) shut_base = closed_base
@@ -732,9 +747,15 @@
       ! to zero is not zeroed and the bounds on X are the converged step's.
       ! The entry composition stands, and the trace metals are not advanced
       ! against a hydrogen background that was never moved.
-      if (judged .and. .not. solved) then
+      if (element_refuse_leading_steps_for_test .gt. 0) then
+         element_refuse_leading_steps_for_test =                           &
+            element_refuse_leading_steps_for_test - 1
+         solved = .false.
+      endif
+      if (.not. solved) then
          f_sp   = f_entry
-         status = element_step_solve_failed
+         element_step_last_status = element_step_solve_failed
+         if (present(status)) status = element_step_solve_failed
          element_mass_closure_departure = -1.0d0     ! no candidate to weigh
          deallocate(f_entry)
          return
@@ -852,23 +873,22 @@
       ! that would be handed back, together with the two tests that finite
       ! and bounded populations make, and the update stands or the entry
       ! composition does.
-      if (judged) then
-         call mixture_mass_split(f_sp, nucH, nucHe, mass1, msum_out)
-         closure = maxval(abs(msum_out(1:N) - 1.0d0))
-         element_mass_closure_departure = closure
-         outcome = element_step_accepted
-         if (.not. every_species_is_finite(f_sp)) then
-            outcome = element_step_nonfinite
-         else if (max(Xover, Xunder) .gt. element_fraction_bound_tol) then
-            outcome = element_step_out_of_bounds
-         else if (closure - maxval(abs(msum(1:N) - 1.0d0))                &
-                  .gt. element_mass_closure_tol) then
-            outcome = element_step_mass_closure_failed
-         endif
-         if (outcome .ne. element_step_accepted) f_sp = f_entry
-         status = outcome
-         deallocate(f_entry)
+      call mixture_mass_split(f_sp, nucH, nucHe, mass1, msum_out)
+      closure = maxval(abs(msum_out(1:N) - 1.0d0))
+      element_mass_closure_departure = closure
+      outcome = element_step_accepted
+      if (.not. every_species_is_finite(f_sp)) then
+         outcome = element_step_nonfinite
+      else if (max(Xover, Xunder) .gt. element_fraction_bound_tol) then
+         outcome = element_step_out_of_bounds
+      else if (closure - maxval(abs(msum(1:N) - 1.0d0))                   &
+               .gt. element_mass_closure_tol) then
+         outcome = element_step_mass_closure_failed
       endif
+      if (outcome .ne. element_step_accepted) f_sp = f_entry
+      element_step_last_status = outcome
+      if (present(status)) status = outcome
+      deallocate(f_entry)
 
       if (diffusion_check_on()) then
          call mixture_mass_split(f_sp, nucH, nucHe, mass1, msum_out)
@@ -892,6 +912,30 @@
       real*8, dimension(1-Ng:N+Ng,n_species), intent(in) :: f_sp
       ok = all(f_sp .eq. f_sp) .and. all(abs(f_sp) .le. huge(1.0d0))
       end function every_species_is_finite
+
+      ! ------------------------------------------------------------------ !
+
+      pure function element_step_outcome_text(outcome) result(text)
+      ! One of the five names element_step_last_status (or a status
+      ! argument) can carry, in words, for a caller that reports rather
+      ! than branches on the integer (the marching controller's log line).
+      integer, intent(in) :: outcome
+      character(len=32)   :: text
+      select case (outcome)
+      case (element_step_accepted)
+         text = 'accepted'
+      case (element_step_solve_failed)
+         text = 'nonlinear solve did not converge'
+      case (element_step_nonfinite)
+         text = 'candidate composition not finite'
+      case (element_step_out_of_bounds)
+         text = 'helium fraction left [0,1]'
+      case (element_step_mass_closure_failed)
+         text = 'mass closure worsened'
+      case default
+         text = 'unrecognized outcome'
+      end select
+      end function element_step_outcome_text
 
       ! ------------------------------------------------------------------ !
 
@@ -2165,7 +2209,13 @@
       integer, parameter :: newton_maxit  = 30
       real*8,  parameter :: newton_tol    = 1.0d-12
       real*8,  parameter :: newton_floor  = 1.0d-8
-      real*8,  parameter :: newton_drop   = 1.0d-6
+      ! Set to clear the ~1e-5 floor the paragraph above documents for the
+      ! K_zz = 2e12 homopause column of test T7 (MEASURED here at 2e-6 to
+      ! 1.1e-5 once the no-descent branch below reads the same floor a
+      ! descending pass does): 1e-6 left that column's own floor outside
+      ! both floor tests, so a column at its OWN conditioning limit read as
+      ! unsolved on every pass and never advanced.
+      real*8,  parameter :: newton_drop   = 2.0d-5
       integer, parameter :: newton_halves = 8
       ! A residual this large after every pass is not a conditioning floor,
       ! it is a step that was not solved; that is what gets announced.
@@ -2276,8 +2326,23 @@
          ! Every halving spent without descent.  The direction is not one the
          ! residual of this step decreases along, so no trial along it is an
          ! iterate of this equation: the trial is discarded and Xhe is left
-         ! where the last accepted one put it.
-         if (.not. descended) exit
+         ! where the last accepted one put it.  A residual that already
+         ! stands at the arithmetic floor (newton_floor) or has already
+         ! dropped newton_drop below where the step started is the SAME
+         ! floor the it >= 3 branch above recognizes on a descending pass;
+         ! a step whose last descent reached it and then found no further
+         ! trial to improve on has reached that floor too, and is not an
+         ! unsolved row for having reached it one pass sooner.  Without this
+         ! branch the floor was only ever read on a DESCENDING pass, so a
+         ! step whose residual had already fallen to it (rnorm ~ 1e-12 to
+         ! 1e-9, MEASURED on the closed-column relaxations of T1a/T7c/T7d/T10)
+         ! reported unsolved on the very next pass, whose halving could not
+         ! improve on round-off: not a failed step, an already-solved one.
+         if (.not. descended) then
+            if (rnorm .le. newton_floor .or. rnorm .le. newton_drop*rstart)&
+               solved = .true.
+            exit
+         endif
          Xhe   = Xtry
          rprev = rnorm
          rnorm = rtry
