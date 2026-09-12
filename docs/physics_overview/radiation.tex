@@ -151,9 +151,12 @@ from that file by \texttt{sed\_band\_integrated\_flux} (\texttt{sed\_read.f90}),
 F_{\rm band} = \int_{\lambda_{\rm lo}}^{\lambda_{\rm hi}} F_\lambda\,d\lambda,
 \label{eq:rad:bandflux}
 \end{equation}
-a trapezoid over the file's rows clipped to the band, the file being already
-at the planet: LW on any molecular run, B3 and B4 when the oxygen
-chemistry is on. The two analytic spectrum types cannot supply these
+the exact integral of the piecewise-linear table, the flux interpolated at
+each clipped band edge before the trapezoid (a constant or a linear
+spectrum integrates exactly whatever the nodes), the file being already at
+the planet and read once for the three bands: LW on any molecular run, B3
+and B4 when the oxygen chemistry is on. A file that does not reach both
+edges of a band the run needs stops the run and asks for the key. The two analytic spectrum types cannot supply these
 bands (a power law is the XUV fit extrapolated downward, a Planck curve
 the photosphere, while the stellar far-ultraviolet is chromospheric), and
 the ionizing grid retained by \texttt{read\_sed} ends at the lowest active

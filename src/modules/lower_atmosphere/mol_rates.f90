@@ -90,7 +90,7 @@
       ! it is h2_partition_function of caloric_eos, the one Boltzmann sum
       ! over the one H2 level ladder.  See the H2 THERMOCHEMISTRY block
       ! below.
-      public :: k3b_H_H_to_H2, keq_H_H_to_H2,                             &
+      public :: k3b_H_H_to_H2, keq_H_H_to_H2, h2_thermochemistry_ready,                             &
                 h2_thermochemistry_init, h2_dissociation_energy_eV
 
       ! ------------------------------------------------------------------ !
@@ -168,6 +168,14 @@
       ! ------------------------------------------------------------------ !
 
       contains
+
+      logical function h2_thermochemistry_ready()
+      ! Whether h2_thermochemistry_init has been called; the ionization
+      ! sweep's serial prologue calls the initializer when it has not, so
+      ! that no parallel region ever builds the table.
+      h2_thermochemistry_ready = keq_table_ready
+      end function h2_thermochemistry_ready
+
 
       ! D0(H2) in eV.  The bond energy has ONE definition in this code, the
       ! spectroscopic D0_H2_cm above; anything that needs it as an energy
@@ -605,10 +613,17 @@
       real*8, intent(in) :: T
       real*8  :: ln_t, frac
       integer :: i
+      ! The table is built ONCE, serially, by h2_thermochemistry_init (the
+      ! main program calls it before any parallel sweep; a test driver that
+      ! uses this function calls it first). A lazy build here was removed on
+      ! 2026-09-13 (review P2): the readiness flag was read outside the
+      ! critical region that built the table, which is a data race for any
+      ! caller that reaches this function concurrently before the build.
       if (.not. keq_table_ready) then
-!$omp critical (h2_thermochemistry_table)
-         if (.not. keq_table_ready) call h2_thermochemistry_init
-!$omp end critical (h2_thermochemistry_table)
+         write(*,*) '(mol_rates) ERROR: keq_H_H_to_H2 called before'//   &
+                    ' h2_thermochemistry_init. Call the initializer'//    &
+                    ' serially first. Aborting.'
+         error stop 1
       endif
       ln_t = log(min(max(T, T_keq_lo), T_keq_hi))
       i    = int((ln_t - keq_lnT(1))/(keq_lnT(2) - keq_lnT(1))) + 1

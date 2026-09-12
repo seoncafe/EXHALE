@@ -15,7 +15,7 @@
 
       implicit none
       private
-      public :: solve_ieq, newton_dense
+      public :: solve_ieq, newton_dense, newton_solver_read_environment
       ! Run-wide usage counters (reported once at the end of the run): how many
       ! ionization-equilibrium solves the analytic-Jacobian Newton handled vs.
       ! how many fell back to MINPACK hybrd1.
@@ -24,9 +24,18 @@
       ! EXHALE_FORCE_HYBRD1 is set (to a non-empty value), solve_ieq skips Newton
       ! and always uses MINPACK hybrd1. Lets the same binary produce both the
       ! Newton and the reference hybrd1 outputs for an A/B comparison.
-      logical, save :: nt_init = .false., nt_force = .false.
+      logical, save :: nt_force = .false.
 
       contains
+
+      subroutine newton_solver_read_environment()
+      ! Serial, once: the EXHALE_FORCE_HYBRD1 validation switch (any value
+      ! set = every ionization cell solve goes to hybrd1 instead of Newton).
+      character(len=8) :: envval
+      call get_environment_variable('EXHALE_FORCE_HYBRD1', envval)
+      nt_force = (len_trim(envval) .gt. 0)
+      end subroutine newton_solver_read_environment
+
 
       ! Try the analytic-Jacobian Newton; on failure restore x and call hybrd1.
       ! used_newton returns .true. iff Newton converged (for fallback counting).
@@ -44,19 +53,17 @@
       integer, intent(out), optional :: converged
       integer :: info, info_m
       real*8  :: xsave(n), fvec(n)
-      character(len=8) :: envval
 
-      ! One-time check of the EXHALE_FORCE_HYBRD1 validation switch.
-      if (.not. nt_init) then
-         call get_environment_variable('EXHALE_FORCE_HYBRD1', envval)
-         nt_force = (len_trim(envval) .gt. 0)
-         nt_init  = .true.
-      endif
+      ! The EXHALE_FORCE_HYBRD1 validation switch is read ONCE, serially,
+      ! by newton_solver_read_environment (input_read calls it after the
+      ! keys); a caller that never called it runs with the switch off. The
+      ! lazy read that stood here was removed on 2026-09-13 (review P2): it
+      ! wrote two shared variables without synchronization and relied on
+      ! the main program's serial first sweep to be safe.
 
       xsave = x
       ! solve_ieq is called from the OpenMP-parallel ionization cell sweep; the
-      ! run-wide usage counters must be updated atomically (nt_init was already
-      ! set on the serial first step, so its lazy-init block above does not race).
+      ! run-wide usage counters must be updated atomically.
       !$omp atomic
       nt_calls = nt_calls + 1
       if (nt_force .or. .not. use_newton_ieq) then

@@ -32,9 +32,9 @@ flags=(-O0 -g -fcheck=all -fbacktrace -fopenmp -J"$work" -I"$work")
 # this suite calls it.
 prefix=$(dirname "$(dirname "$(command -v "$FC")")")
 if [ -f "$prefix/lib/libopenblas.so" ]; then
-  lapack=(-L"$prefix/lib" -lopenblas -Wl,-rpath,"$prefix/lib")
+  lapack=(-L"$prefix/lib" -lopenblas -Wl,-rpath,"$prefix/lib" -ldl)
 else
-  lapack=(-llapack)
+  lapack=(-llapack -ldl)
 fi
 
 # MINPACK and the free subroutines the equilibrium solvers call by name,

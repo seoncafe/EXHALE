@@ -1,6 +1,7 @@
    module ionization_equilibrium
 	! Evaluate the ionization structure and the heating and cooling functions for a given temperature
 
+	use mol_rates, only: h2_thermochemistry_init, h2_thermochemistry_ready
 	use global_parameters
    use ion_cell_state, only: ieq_cell, ion_rates
    use species_table, only: n_mion, mion_fsp, n_melem, melem_i0,        &
@@ -1401,6 +1402,14 @@
 		         N1_blk,N15_blk,N2_blk,NTR_blk,NH2_blk,Nm_blk,             &
 		         N1_face=N1_face)
 
+	! The H2 thermochemistry table is built here, SERIALLY, if no caller
+	! built it yet (the main program does at startup; a test driver may
+	! not): the sweep below is the first parallel region that reads it,
+	! and the lazy build inside keq_H_H_to_H2 was removed on 2026-09-13
+	! (review P2) because its readiness read outside the critical region
+	! was a data race.
+	if (thereis_mol .and. .not. h2_thermochemistry_ready())               &
+		call h2_thermochemistry_init
 		!$omp parallel do default(shared) schedule(static)                 &
 		!$omp   private(j, heat_row) if(count > 0)
 		do j = jb_hi, jb_lo, -1
@@ -1459,6 +1468,7 @@
 			ieq_cell%P_HI     = P_HI(j)
 			ieq_cell%rchiiB   = rchiiB(j)
 			ieq_cell%nh       = nh(j)
+			ieq_cell%jcell    = j
 			ieq_cell%a_ion_HI = a_ion_HI(j)
 
 			 ! Initial guess
@@ -1782,6 +1792,7 @@
 			ieq_cell%rcheiiB    = rcheiiB(j)
 			ieq_cell%rcheiiiB   = rcheiiiB(j)
 			ieq_cell%nh         = nh(j)
+			ieq_cell%jcell      = j
 			ieq_cell%nhe        = nhe(j)
 			ieq_cell%a_ion_HI   = a_ion_HI(j)
 			ieq_cell%a_ion_HeI  = a_ion_HeI(j)

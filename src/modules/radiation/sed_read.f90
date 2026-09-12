@@ -505,29 +505,44 @@
 	
 	! End of module
 	
-      double precision function sed_band_integrated_flux(w_lo, w_hi)      &
-                                result(F_band)
-      ! Band-integrated flux of the numerical SED over [w_lo, w_hi] A, at
-      ! the planet [erg cm^-2 s^-1]: the quantity the band-flux keys state
-      ! ("Stellar LW flux" over 912-1201 A, "Stellar FUV B3 flux" over
-      ! 1231-1450 A, "Stellar FUV B4 flux" over 1451-2304 A; the edges are
-      ! fuv_band_lo_A / fuv_band_hi_A of oxygen_rates). Band B2, the
-      ! Ly-alpha line, is NOT integrated here: a line flux reconstructed
-      ! from observations is a better number than a trapezoid over
-      ! whatever rows the file has across 1202-1230 A, so it stays a key
-      ! ("Stellar Lya flux").
+      subroutine sed_band_fluxes(nb, w_lo, w_hi, F_band, covered)
+      ! Band-integrated fluxes of the numerical SED over nb wavelength bands
+      ! [w_lo(b), w_hi(b)] A, at the planet [erg cm^-2 s^-1]: the quantities
+      ! the band-flux keys state ("Stellar LW flux" over 912-1201 A,
+      ! "Stellar FUV B3 flux" over 1231-1450 A, "Stellar FUV B4 flux" over
+      ! 1451-2304 A; the edges are fuv_band_lo_A / fuv_band_hi_A of
+      ! oxygen_rates). Band B2, the Ly-alpha line, is NOT integrated here:
+      ! a line flux reconstructed from observations is a better number
+      ! than a trapezoid over whatever rows the file has across 1202-1230 A,
+      ! so it stays a key ("Stellar Lya flux").
+      !
+      ! THE INTEGRAL IS THAT OF THE PIECEWISE-LINEAR SPECTRUM THE TABLE
+      ! DEFINES, exactly. Each tabulated segment [w_prev, w] is clipped to
+      ! the band, the flux is interpolated at the two clipped edges, and the
+      ! trapezoid of the clipped piece is added; a constant or a linear
+      ! spectrum therefore integrates exactly whatever the nodes, and one
+      ! segment that covers the whole band is a valid integral. (Until
+      ! 2026-09-13 the clipped piece was weighted with the fluxes at the
+      ! UNCLIPPED nodes, which is not the integral of the stated
+      ! interpolation -- 0.8 percent low on a linear spectrum over a band
+      ! whose edges fall inside the segments -- and a band covered by one
+      ! segment was returned as zero because segments were counted instead
+      ! of coverage: findings B1 and B2 of the 2026-09-12 review.)
+      !
+      ! covered(b) is true only when the table reaches BOTH edges of band b
+      ! (first node <= w_lo, last node >= w_hi). A band the table does not
+      ! reach gets F_band = 0 and covered = .false.; the caller decides what
+      ! that means (input_read stops and asks for the key: a positive field
+      ! is never turned into zero silently, and a stated zero is the run's
+      ! own decision). The file is read ONCE for all nb bands.
       !
       ! The Lyman-Werner interval is 912-1201 A: the H Lyman edge to the
       ! start of band B2, which is also the red end of the line list the
       ! H2 self-shielding table is built from (lyman_werner.f90 sec. 1).
       ! It ran to 1110 A until 2026-09-06, when the 1110-1201 A band B1 was
-      ! merged into it.
-      !
-      ! The integral is carried out by the code instead of by hand. No
-      ! dilution is applied here because EXHALE's own SED file is already AT
-      ! THE PLANET, which is what read_sed's header states; the (R_star/a)^2
-      ! step belongs to the stellar-surface files the value used to be
-      ! produced from. Checked against that route on the NARROWER
+      ! merged into it. No dilution is applied here because EXHALE's own SED
+      ! file is already AT THE PLANET, which is what read_sed's header
+      ! states. Checked against the stellar-surface route on the NARROWER
       ! Lyman-Werner band, when it was the band: Gueymard's solar spectrum
       ! integrated over 912-1110 A at the stellar surface and diluted to
       ! 0.048 AU behind a 1.155 R_sun star gave 329 erg cm^-2 s^-1 against
@@ -536,41 +551,81 @@
       ! Every one of these intervals is OUTSIDE the ionizing range read_sed
       ! retains (912 A is 13.6 eV, the H I edge, and everything longward is
       ! below it), so the file is re-read here rather than taken from the
-      ! selected arrays. Trapezoid on the bin centres; rows outside the band
-      ! are skipped, and the two rows bracketing each edge are kept so a
-      ! coarse grid does not lose the ends. Zero if fewer than two segments
-      ! fall in the band (a file that does not reach it).
-      real*8, intent(in) :: w_lo, w_hi
-      real*8  :: w, f, w_prev, f_prev, wa, wb
-      integer :: io, nin
+      ! selected arrays. The table is validated as it is read: a malformed
+      ! row, a wavelength that is not positive, finite and strictly
+      ! increasing, or a flux that is not finite and nonnegative stops the
+      ! run with the row named, as read_sed does for the ionizing part.
+      integer, intent(in)  :: nb
+      real*8,  intent(in)  :: w_lo(nb), w_hi(nb)
+      real*8,  intent(out) :: F_band(nb)
+      logical, intent(out) :: covered(nb)
+      real*8  :: w, f, w_prev, f_prev, wa, wb, fa, fb, slope, w_first
+      integer :: io, b, nrow
       logical :: have_prev
       F_band    = 0.0d0
-      nin       = 0
+      covered   = .false.
       have_prev = .false.
       w_prev    = 0.0d0
       f_prev    = 0.0d0
+      w_first   = 0.0d0
+      nrow      = 0
       open(unit = 71, file = sed_file, status = 'old', iostat = io)
-      if (io .ne. 0) return
+      if (io .ne. 0) then
+         write(*,*) '(sed_read) ERROR: the spectrum file cannot be'//   &
+                    ' opened for the band integrals: ', trim(sed_file)
+         error stop 1
+      endif
       do
-         if (.not. sed_next_row(71, w, f, io)) exit
-         if (io .ne. 0) exit
-         if (have_prev .and. w .gt. w_prev) then
-            wa = max(w_prev, w_lo)
-            wb = min(w,      w_hi)
-            if (wb .gt. wa) then
-               ! trapezoid of the segment, clipped to the band
-               F_band = F_band + 0.5d0*(f_prev + f)*(wb - wa)
-               nin    = nin + 1
+         if (.not. sed_next_row(71, w, f, io)) then
+            if (io .gt. 0) then
+               write(*,'(A,I0,A)') ' (sed_read) ERROR: malformed data'//  &
+                    ' row ', nrow + 1, ' of the spectrum file (band'//    &
+                    ' integrals): two numbers expected.'
+               error stop 1
             endif
+            exit
+         endif
+         nrow = nrow + 1
+         if (.not. (w .gt. 0.0d0 .and. w .le. huge(w)) .or.              &
+             .not. (f .ge. 0.0d0 .and. f .le. huge(f))) then
+            write(*,'(A,I0,A)') ' (sed_read) ERROR: data row ', nrow,    &
+                 ' of the spectrum file: the wavelength must be'//        &
+                 ' positive and finite and the flux finite and'//         &
+                 ' nonnegative.'
+            error stop 1
+         endif
+         if (have_prev) then
+            if (w .le. w_prev) then
+               write(*,'(A,I0,A)') ' (sed_read) ERROR: data row ', nrow, &
+                    ' of the spectrum file: the wavelengths must'//       &
+                    ' increase strictly.'
+               error stop 1
+            endif
+            slope = (f - f_prev)/(w - w_prev)
+            do b = 1, nb
+               wa = max(w_prev, w_lo(b))
+               wb = min(w,      w_hi(b))
+               if (wb .gt. wa) then
+                  fa = f_prev + slope*(wa - w_prev)
+                  fb = f_prev + slope*(wb - w_prev)
+                  F_band(b) = F_band(b) + 0.5d0*(fa + fb)*(wb - wa)
+               endif
+            enddo
+         else
+            w_first = w
          endif
          w_prev    = w
          f_prev    = f
          have_prev = .true.
-         if (w .gt. w_hi) exit
       enddo
       close(71)
-      if (nin .lt. 2) F_band = 0.0d0
-      end function sed_band_integrated_flux
+      if (have_prev) then
+         do b = 1, nb
+            covered(b) = (w_first .le. w_lo(b) .and. w_prev .ge. w_hi(b))
+            if (.not. covered(b)) F_band(b) = 0.0d0
+         enddo
+      endif
+      end subroutine sed_band_fluxes
 
       ! ------------------------------------------------------------- !
 

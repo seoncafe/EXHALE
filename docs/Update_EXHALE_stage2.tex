@@ -9386,6 +9386,122 @@ Gate of the tree carrying the ghost particle-count fix: \texttt{make\ check}
 (advisor, 2026-09-12 22:57 KST): \textbf{REGRESSION PASS (all cases
 byte-identical)}, 64 file comparisons PASS with data identical.
 
+\subsection{10. PLAN\_20260913: the findings of the two reviews of 2026-09-12 (2026-09-13)}\label{10-plan_20260913-the-findings-of-the-two-reviews-of-2026-09-12-2026-09-13}
+
+Plan of record: \texttt{docs/PLAN\_20260913\_review\_fixes.md}. User instruction: read
+\texttt{docs/code\_bug\_optimization\_review\_20260912.md} and
+\texttt{docs/parallel\_code\_review\_20260912.md}, confirm each finding in the code,
+plan the corrections and carry them out, running the binary in parallel
+where that shortens the verification. Every finding (B1 to B6, P1 to P3) was
+confirmed in the source before the plan was written (the confirming lines
+are in the plan\textquotesingle s table); items S1 to S9. Every number below is MEASURED on
+this tree unless marked READ.
+
+\begin{itemize}
+\tightlist
+\item
+  \textbf{S1 (B1, B2, O3): the band integral of a loaded spectrum.}
+  \texttt{sed\_read.f90}: \texttt{sed\_band\_fluxes(nb,\ w\_lo,\ w\_hi,\ F,\ covered)} replaces
+  \texttt{sed\_band\_integrated\_flux}; the file is read once for the three bands,
+  validated as it is read (positive, finite, strictly increasing
+  wavelengths; finite nonnegative flux; a malformed row stops the run with
+  the row named), and each band gets the exact integral of the
+  piecewise-linear table (the flux interpolated at the clipped edges before
+  the trapezoid); \texttt{covered(b)} says whether the table reaches both edges,
+  and \texttt{input\_read} (\texttt{band\_from\_spectrum}) STOPS when a band the run needs is
+  not covered, naming the key (a stated zero is the run\textquotesingle s decision; a
+  silent zero is not). MEASURED on the hot-Uranus oxygen case with the
+  Koskinen file: B3 4.686E+02 and B4 4.443E+05 erg cm\^{}-2 s\^{}-1 against the
+  exact piecewise-linear integrals 4.685913E+02 and 4.443075E+05 (the
+  entry text gave 4.696E+02 and 4.445E+05, 0.2 and 0.05 percent high). New
+  test \texttt{fuv\_band\_quadrature} in \texttt{spectrum\_type} (linear spectrum on unequal
+  nodes with edges inside segments, on nodes and at the ends, exact to
+  1e-12; one covering segment; constant spectrum; an uncovered band): 14/0.
+  \texttt{wasp121b\_sed\_sensitivity} moved to the new routine with its own
+  transcription corrected the same way (\texttt{spectrum\_type} 170/0 over the
+  whole suite). \texttt{docs/input\_schema.md}, the manual\textquotesingle s key rows and the
+  physics document\textquotesingle s band paragraph say the new rule.
+\item
+  \textbf{S2 (B3, B4, O2 counters): the thermochemical closure contract.}
+  \texttt{equilibrate\_chemistry\_at\_fixed\_conserved\_state} starts with \texttt{ok\ =\ .false.} and sets it only when a cycle\textquotesingle s temperature increment is below
+  \texttt{chem\_cycle\_tol} AND the sweep ledger reports no nonfinite and no
+  off-simplex cell AND \texttt{p}, \texttt{T}, \texttt{heat}, \texttt{cool}, \texttt{eta} are finite with `p
+
+  \begin{quote}
+  0\texttt{,\ }T \textgreater{} 0\texttt{;\ the\ reason\ (}converged\texttt{,\ }cycle budget spent\texttt{,\ }nonfinite
+  composition\texttt{,\ }a cell left the element simplex\texttt{,\ }not admissible\texttt{)\ and\ the\ last\ increment\ are\ returned\ and\ the\ run-wide\ counts\ kept\ (}n\_chem\_closure\_cycles\texttt{,\ }n\_chem\_closures\_reached\texttt{,\ }n\_chem\_closures\_refused\texttt{).\ The\ relaxation\textquotesingle{}s\ refusal\ branch\ was\ already\ restoring\ the\ trial.\ Test\ knob\ }chem\_cycles\_cap\_for\_test\texttt{;\ four\ new\ rows\ in\ }carrier\_retry\texttt{(an\ exhausted\ closure\ refuses\ the\ trial,\ names\ the\ spent\ budget,\ keeps\ no\ step,\ hands\ back\ the\ entry\ composition\ bit\ for\ bit).\ One\ existing\ row\ was\ restated:\ on\ the\ synthetic\ column\ the\ pass\ after\ the\ refused\ trials\ is\ refused\ by\ the\ CHEMISTRY\ (one\ molecular\ clamp,\ budget\ violation\ 6.5e-4,\ on\ the\ background\ seeded\ at\ that\ state),\ which\ the\ old\ contract\ had\ hidden;\ the\ row\ now\ asserts\ what\ the\ history\ can\ be\ judged\ by\ (the\ pass\ is\ not\ refused\ at\ the\ interval\ and\ the\ history\ stays\ certifiable),\ and\ the\ section-11\ pass,\ prepared\ on\ the\ background\ of\ the\ composition\ it\ relaxes\ from,\ keeps\ its\ two\ steps\ as\ before.}carrier\_retry` 142/0. On the Model A fixture (3 passes) every closure
+  is reached: pass lines identical to the day before.
+  \end{quote}
+\item
+  \textbf{S3 (B5, B6): the state mapper.} \texttt{src/utils/map\_state\_to\_grid.py}
+  validates finite, positive, strictly increasing radii in both source
+  files and the target, their agreement to 1e-12, the column labels, a
+  positive hydrogen-nucleus density, and that every physical target center
+  lies inside the source\textquotesingle s rows (ghosts included: the lower ghosts carry
+  the inflow reservoir composition and are interpolated like every other
+  row, never rebuilt from the physical cells; only a target ghost may lie
+  outside and is then extrapolated linearly in ln r); a violation is refused
+  with exit 2 and nothing written. The output is an initialization seed:
+  \texttt{\#\ coupling:\ mode=init\ t\_phys=0\ certified=F\ ...}, the source line kept as
+  \texttt{\#\ mapped-from-coupling:}. New suite \texttt{src/tests/state\_mapper} (identity
+  mapping exact; a 2e-4-shifted grid round trip 1.8e-5 on a 400-row column;
+  He/H invariant to 1e-12; mismatched species radii, out-of-support
+  physical targets and non-monotone radii refused; ghosts extrapolated;
+  metadata rewritten): 17/0. The Model A fixture\textquotesingle s \texttt{IC/} regenerated with
+  it (physical rows identical to the earlier mapping, ghosts within 1e-4;
+  the 3-pass run reproduces the day-before pass lines).
+\item
+  \textbf{S4 (P1): the continuation dump.} \texttt{cce\_dump\_paths\_read} reads the two
+  environment paths once, serially, from \texttt{input\_read}; \texttt{write\_continuation\_\ dump} takes the path by argument, keeps every read and write of the
+  once-only flag inside the critical region, sets the flag only after the
+  file is open, and records the cell (\texttt{ieq\_cell\%jcell}, a new field set by
+  the sweep; dump format 2, the probe reads 1 and 2).
+\item
+  \textbf{S5 (P2): explicit initialization.} \texttt{keq\_H\_H\_to\_H2} no longer builds
+  the H2 thermochemistry table lazily (it stops with a message if the table
+  is not ready); the table is built serially by the main program, by the
+  sweep\textquotesingle s serial prologue (\texttt{ioniz\_eq}) and by \texttt{carrier\_set\_init}, so every
+  entry point that precedes a parallel read builds it. The Newton solver\textquotesingle s
+  \texttt{EXHALE\_FORCE\_HYBRD1} switch is read once by
+  \texttt{newton\_solver\_read\_environment} from \texttt{input\_read}; a driver that never
+  calls it runs with the switch off. \texttt{init.f90} switches dynamic team
+  adjustment off, reports the team obtained (an \texttt{omp\ single} block, the
+  \texttt{master} construct being deprecated since OpenMP 5.1), says whether the
+  count came from \texttt{OMP\_NUM\_THREADS} or the default min(cores, 16), and its
+  coverage comment now lists the present parallel regions (the old thread
+  line was cut by its fixed format and said "default" whatever the
+  source).
+\item
+  \textbf{S6 (P3): the BLAS thread policy.} New \texttt{blas\_thread\_policy.f90}: the
+  OpenBLAS entry points are resolved at run time (\texttt{dlopen}/\texttt{dlsym}, \texttt{-ldl}
+  on the GNU link and in every test script), the count is set to 1 unless
+  \texttt{OPENBLAS\_NUM\_THREADS} is stated, and the setup report says what was
+  found and set; a build without OpenBLAS is left alone. MEASURED on the
+  \texttt{wasp\_full\_newton} reload at 8 OpenMP threads: 16.33 s with 1 BLAS
+  thread against 16.32 s with 8 (the library\textquotesingle s default here follows
+  \texttt{OMP\_NUM\_THREADS}; unset, it is the machine\textquotesingle s 72): the band
+  factorizations gain nothing from a BLAS team, and the policy costs
+  nothing.
+\item
+  \textbf{S7: verification, in parallel.} Suites on the private build, run
+  concurrently: \texttt{spectrum\_type} 170/0, \texttt{carrier\_retry} 142/0,
+  \texttt{carrier\_returned\_state\_acceptance} 36/0, \texttt{attempted\_step} 70/0,
+  \texttt{certification} 84/0, \texttt{steady\_species\_rows} 195/0, \texttt{krylov\_and\_dogleg}
+  334/0, \texttt{element\_operator} 28/0, \texttt{species\_masses} 9/0,
+  \texttt{steady\_completion\_flag} 3/0, \texttt{grid\_and\_gates} 198/0, \texttt{state\_mapper}
+  17/0; the Model A fixture 3 passes; the two BLAS timing runs;
+  \texttt{make\ check} (the full matrix, \texttt{OMP\_NUM\_THREADS=1}, run on the merged
+  tree while the suites ran): REGRESSION PASS, every case byte-identical
+  against the goldens, as the plan required (no option defaults changed;
+  the band integral is not exercised by the gate\textquotesingle s power-law spectra, the
+  closure contract reports the same result on every gate case).
+\item
+  \textbf{S8: measured-first items, not changed} (O1, O2 beyond the counters,
+  A, B, C, E of the parallel review): recorded in \texttt{docs/TO\_BE\_DONE.md} with
+  the measurement each needs; the counters of S2 and the team/BLAS report
+  of S5/S6 are the instrumentation for them.
+\end{itemize}
+
 \appendix
 \input{Update_EXHALE_appendix}
 \end{document}

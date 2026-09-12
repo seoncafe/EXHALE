@@ -77,8 +77,12 @@ make                                    # build ./EXHALE.x at the repo root
 cd examples/tutorial && ../../EXHALE.x  # reads ./input.inp, writes ./output/
 ```
 
-`OMP_NUM_THREADS` controls the parallel ionization sweep; the serial and
-parallel results are bitwise identical.
+`OMP_NUM_THREADS` controls the OpenMP team (the ionization sweep, the rate
+tables, the carrier residual, the reconstructions and the hydrodynamic rows;
+default min(cores, 16), dynamic adjustment off, the team obtained is
+reported); the serial and parallel results are bitwise identical.
+`OPENBLAS_NUM_THREADS` controls the separate thread pool of the OpenBLAS the
+GNU build links; unset, the binary sets it to 1 at startup (README, Build).
 
 ## Run a standard converged model
 

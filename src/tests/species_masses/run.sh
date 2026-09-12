@@ -36,9 +36,9 @@ flags=(-O0 -g -fcheck=all -fbacktrace -fopenmp -J"$work" -I"$work")
 # then misbehaves at run time.
 prefix=$(dirname "$(dirname "$(command -v "$FC")")")
 if [ -f "$prefix/lib/libopenblas.so" ]; then
-  ldlibs=(-L"$prefix/lib" -lopenblas -Wl,-rpath,"$prefix/lib")
+  ldlibs=(-L"$prefix/lib" -lopenblas -Wl,-rpath,"$prefix/lib" -ldl)
 else
-  ldlibs=(-llapack)
+  ldlibs=(-llapack -ldl)
 fi
 
 drivers=(

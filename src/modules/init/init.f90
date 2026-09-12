@@ -14,6 +14,7 @@
       use Conversion
       use BC_Apply
       use omp_lib
+      use blas_thread_policy, only: blas_threads_set_policy, blas_threads_report
       use IC_load
       use initial_conditions
       use composition, only: get_species_densities
@@ -29,6 +30,7 @@
       ! Initialize the simulation setup
 
       integer :: n_omp_threads, omp_env_st
+      integer :: n_omp_obtained
       character(len=32) :: omp_env
       real*8, dimension(1-Ng:N+Ng)   :: rho,v,p,T
       ! composition scratch: only n_part_cell1 (set inside get_species_densities)
@@ -69,23 +71,48 @@
 
       !---- Global options ----!
       
-      ! Set the number of threads used. The current OpenMP coverage is limited
-      ! (only the radiation rate loop + the ionization loop are parallel), so a
-      ! ~500-cell grid scales out by ~16 threads and beyond that the fork/join
-      ! overhead makes it SLOWER (measured: 16 thr ~ 59 steps/s, 60 thr ~ 56).
-      ! Policy: honor an explicit OMP_NUM_THREADS (any value); otherwise default
-      ! to min(cores, 16) instead of grabbing every core for ~no gain.
+      ! Set the number of threads used. The OpenMP regions are the ionization
+      ! sweep (ionization_equilibrium), the rate and cooling tables
+      ! (util_ion_eq), the carrier residual and Jacobian
+      ! (diffusive_photochemistry), the reconstructions (PLM_rec,
+      ! Reconstruction), the conserved/primitive conversions (UW_conversions),
+      ! the marching right-hand side (RK_rhs) and the stationary hydrodynamic
+      ! rows (hydrodynamic_rows): a ~500-cell grid scales out by ~16 threads
+      ! and beyond that the fork/join overhead makes it SLOWER (measured
+      ! 2026-07 with fewer regions: 16 thr ~ 59 steps/s, 60 thr ~ 56; not
+      ! remeasured with the present coverage). Policy: honor an explicit
+      ! OMP_NUM_THREADS (any value); otherwise default to min(cores, 16).
+      ! Dynamic team adjustment is switched OFF so that the team size is the
+      ! one requested and the threadprivate scratch of the sweeps persists
+      ! across regions (OpenMP guarantees that only for a fixed team), and
+      ! the size actually obtained is reported. The thread pool of the
+      ! LAPACK library is a separate matter (blas_thread_policy).
       call get_environment_variable('OMP_NUM_THREADS', omp_env, status=omp_env_st)
       if (omp_env_st .eq. 0 .and. len_trim(omp_env) .gt. 0) then
          n_omp_threads = omp_get_max_threads()          ! user set it explicitly
       else
          n_omp_threads = min(omp_get_max_threads(), 16) ! sensible default
       endif
+      call omp_set_dynamic(.false.)
       call omp_set_num_threads(n_omp_threads)
-      write(*,'(A12,I3,A21)') '    - Using',n_omp_threads,                   &
-                              ' OMP threads (default)'
-      if (omp_env_st .eq. 0 .and. len_trim(omp_env) .gt. 0)                  &
-         write(*,'(A)') '      (from OMP_NUM_THREADS)'
+      n_omp_obtained = 0
+!$omp parallel
+!$omp single
+      n_omp_obtained = omp_get_num_threads()
+!$omp end single
+!$omp end parallel
+      if (omp_env_st .eq. 0 .and. len_trim(omp_env) .gt. 0) then
+         write(*,'(A,I3,A)') '    - Using', n_omp_threads,                   &
+                             ' OMP threads (from OMP_NUM_THREADS)'
+      else
+         write(*,'(A,I3,A)') '    - Using', n_omp_threads,                   &
+                             ' OMP threads (default: min(cores, 16))'
+      endif
+      if (n_omp_obtained .ne. n_omp_threads)                                  &
+         write(*,'(A,I0,A)') '      (team obtained: ', n_omp_obtained,        &
+                             ' threads)'
+      call blas_threads_set_policy()
+      call blas_threads_report(6)
       
       ! Loop parameters
       count = 0  

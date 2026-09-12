@@ -35,9 +35,9 @@ mkdir -p "$OUT"
 FC_PATH="$(command -v "$FC" 2>/dev/null || true)"
 PREFIX="$(cd "$(dirname "$FC_PATH")/.." 2>/dev/null && pwd || echo /usr)"
 if [ -f "$PREFIX/lib/libopenblas.so" ]; then
-   LAPACK="-L$PREFIX/lib -lopenblas -Wl,-rpath,$PREFIX/lib"
+   LAPACK="-L$PREFIX/lib -lopenblas -Wl,-rpath,$PREFIX/lib -ldl"
 else
-   LAPACK="-llapack"
+   LAPACK="-llapack -ldl"
 fi
 
 if [ ! -d "$OBJDIR" ] || [ -z "$(ls "$OBJDIR"/*.o 2>/dev/null)" ]; then

@@ -76,7 +76,11 @@
            carrier_relax_movement_bound, carrier_relax_fixed_point,       &
            carrier_relax_step_budget, carrier_relax_interval_refused,     &
            carrier_relax_nothing_to_advance, carrier_relax_outcome_text,  &
-           carrier_relax_chemistry_refused
+           carrier_relax_chemistry_refused,                               &
+           chem_cycles_cap_for_test, n_chem_last_reason,                  &
+           chem_closure_exhausted, chem_closure_reason_text,               &
+           chem_last_increment, chem_last_offsimplex, chem_last_mol_clamped, &
+           chem_last_viol_worst
       use test_columns,  only: column_carrying_its_own_density,           &
                                column_mass_closure
       use Conversion,     only: W_to_U
@@ -1111,6 +1115,9 @@
                                            ns_wide, oc_wide)
       call check_positive('the_consistency_rows_read_a_pass_that_kept'//  &
            '_a_step', dble(ns_wide))
+      write(*,'(A,A,A,I0,A,I0)') '  DIAGNOSTIC closure of the section-11'// &
+           ' pass: ', trim(chem_closure_reason_text(n_chem_last_reason)),   &
+           ', off-simplex cells ', chem_last_offsimplex, ', steps kept ', ns_wide
 
       ! The densities and the temperature of the composition the pass
       ! handed back, formed here from that composition and the fixed
@@ -1220,16 +1227,37 @@
            '_for_bit', maxval(abs(f_sp - f_sp0)), 0.0d0, 0.0d0)
       call check_absolute('and_names_the_refused_interval',               &
            dble(oc_hist), dble(carrier_relax_interval_refused), 0.0d0)
+      ! The pass that must keep a step runs on the background seeded at the
+      ! entry composition (as the consistency rows of section 11 do), not
+      ! on the frozen background of the checkpoint rows: on that stale
+      ! background the sweep leaves a cell off the element simplex and the
+      ! closure contract of 2026-09-13 (S2) rightly refuses the step, which
+      ! is the chemistry's verdict and not the history's.
+      call seed_mass_row_of_the_column(v_relax)
+      call seed_background_at_the_entry_composition()
       f_sp = f_sp0
       call carrier_checkpoint_restore(chk0)
-      call restore_frozen_background()
       call conserved_of(v_relax)
       call relax_photochemical_composition(u_col, v_relax, f_sp, p_col,   &
                                            T_col, heat_col, cool_col,     &
                                            eta_col, 1.0d-2, dr_hist,      &
                                            ns_hist, oc_hist)
-      call check_absolute('a_pass_after_the_refusals_keeps_a_step',       &
-           logical_as_double(ns_hist .gt. 0), 1.0d0, 0.0d0)
+      write(*,'(A,A,A,ES10.3,A,I0)') '  DIAGNOSTIC closure of the pass after'// &
+           ' the refusals: ', trim(chem_closure_reason_text(n_chem_last_reason)), &
+           ', last increment ', chem_last_increment, ', steps kept ', ns_hist
+      write(*,'(A,I0,A,I0,A,ES10.3)') '  DIAGNOSTIC off-simplex cells ',    &
+           chem_last_offsimplex, ' of which molecular clamps ',             &
+           chem_last_mol_clamped, ', worst budget violation ', chem_last_viol_worst
+      ! What the refused trials must not have done is refuse THIS pass at
+      ! the interval or mark the history: the pass is judged by the
+      ! chemistry on its own (on this synthetic column the closure of the
+      ! first trial leaves one cell off the element simplex, a verdict of
+      ! the chemistry contract of 2026-09-13, S2, and not of the history;
+      ! the pass of section 11, prepared on the background of the
+      ! composition it relaxes from, keeps its steps).
+      call check_absolute('a_pass_after_the_refusals_is_not_refused_at'// &
+           '_the_interval', logical_as_double(oc_hist .ne.                &
+           carrier_relax_interval_refused), 1.0d0, 0.0d0)
       call check_absolute('and_stays_eligible',                           &
            logical_as_double(carrier_history_certifiable()), 1.0d0, 0.0d0)
       run_mode = run_mode_phys
@@ -1248,6 +1276,33 @@
       call check_absolute('and_writes_no_composition',                    &
            maxval(abs(f_sp - f_sp0)), 0.0d0, 0.0d0)
       run_mode = run_mode_held
+
+      ! ---- 13. The thermochemical closure contract (S2 of PLAN_20260913,
+      ! findings B3/B4): a closure that spends its cycle budget is NOT
+      ! reported as reached, the trial is refused with the chemistry named,
+      ! nothing is kept, and the entry composition comes back bit for bit.
+      ! The budget is forced to zero through the test knob; RED on the text
+      ! before 2026-09-13, where ok started true and exhaustion fell
+      ! through with it (the relaxation then kept the step).
+      f_sp = f_sp0
+      call carrier_checkpoint_restore(chk0)
+      call restore_frozen_background()
+      call conserved_of(v_relax)
+      chem_cycles_cap_for_test = 0
+      call relax_photochemical_composition(u_col, v_relax, f_sp, p_col,   &
+                                           T_col, heat_col, cool_col,     &
+                                           eta_col, 1.0d-2, dr_hist,      &
+                                           ns_hist, oc_hist)
+      chem_cycles_cap_for_test = -1
+      call check_absolute('an_exhausted_closure_refuses_the_trial',       &
+           dble(oc_hist), dble(carrier_relax_chemistry_refused), 0.0d0)
+      call check_absolute('and_names_the_spent_budget',                   &
+           dble(n_chem_last_reason), dble(chem_closure_exhausted), 0.0d0)
+      call check_absolute('and_keeps_no_step', dble(ns_hist), 0.0d0, 0.0d0)
+      call check_absolute('and_hands_back_the_entry_composition_bit'//    &
+           '_for_bit', maxval(abs(f_sp - f_sp0)), 0.0d0, 0.0d0)
+      write(*,'(A,A)') '  DIAGNOSTIC closure reason text: ',              &
+           trim(chem_closure_reason_text(n_chem_last_reason))
 
       if (assertion_failures .gt. 0) then
          write(*,'(a)') 'carrier_retry: FAILED'

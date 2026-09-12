@@ -226,7 +226,13 @@ The Makefile takes the compiler from `PATH` and, when that compiler's prefix
 carries an OpenBLAS (the conda-forge gfortran 16.2 of this machine does), links
 that prefix's LAPACK and records it in the rpath -- so the binary and its
 LAPACK share one libgfortran runtime; otherwise it links the system `-llapack`
-(`make LAPACK_LIBS='...'` overrides). The compiler's path and version are part
+(`make LAPACK_LIBS='...'` overrides). OpenBLAS runs its own thread pool,
+independent of OpenMP and by default as wide as the machine: at startup the
+binary sets it to one thread unless `OPENBLAS_NUM_THREADS` is stated, and the
+setup report says which library it found and what it set (the band
+factorizations of the stationary solve are too small to gain from a BLAS team:
+MEASURED 16.33 s against 16.32 s on the `wasp_full_newton` reload at 1 and 8
+BLAS threads, 2026-09-13). The compiler's path and version are part
 of the rebuild stamp: objects of one gfortran are never linked by another.
 The Intel compilers (`make FC=ifx`, `FC=ifort`) link MKL (`-qmkl=sequential`)
 by the same rule; `make FC=ifx OBJDIR=build_ifx EXE=EXHALE_ifx.x` builds a
@@ -397,4 +403,4 @@ schemas, convergence recipes, post-processing) is in
 
 Kwang-Il Seon (KASI / UST)
 
-Last updated: 2026-09-12 23:01
+Last updated: 2026-09-13 08:23

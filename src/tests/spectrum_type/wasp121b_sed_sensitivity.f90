@@ -64,7 +64,7 @@
       !   5 F(1700-2600.5 A) of C against B, 1e-12 relative: the whole
       !     metastable band is B's.
       !   6 the driver's band integral against the production
-      !     lyman_werner_band_flux_from_sed(), 1e-12 relative on all three
+      !     sed_band_fluxes (the production band integral), 1e-12 relative on all three
       !     candidates, so the band fluxes it prints are the production
       !     prescription and not a second one.  The LW band is 912-1201 A
       !     on both sides since 2026-09-06.
@@ -90,8 +90,7 @@
       use species_table,            only: n_melem, iel_C, iel_N, iel_O,      &
                                           iel_Mg, iel_Ca, iel_Na, iel_Fe
       use energy_vectors_construct, only: set_energy_vectors
-      use sed_reader,               only: sed_next_row,                      &
-                                          lyman_werner_band_flux_from_sed
+      use sed_reader,               only: sed_next_row, sed_band_fluxes
       use excited_hydrogen,         only: gamma_n2_balmer, heat_n2_balmer
 
       implicit none
@@ -286,14 +285,14 @@
       h_bal(i) = xi*heat_n2_balmer()
 
       ! Band fluxes of the file itself, by the prescription
-      ! lyman_werner_band_flux_from_sed uses: trapezoid on the rows, clipped
+      ! sed_band_fluxes uses: the exact piecewise-linear integral, clipped
       ! to the band, at the planet, undiluted (the file is already at the
       ! planet's orbit).  Assertion 6 checks the transcription against the
       ! production function on the band that function owns.
       do ib = 1,n_band
          f_band(ib,i) = file_band_flux(w_band_lo(ib), w_band_hi(ib))
       enddo
-      f_lw_prod(i) = lyman_werner_band_flux_from_sed()
+      f_lw_prod(i) = production_band_flux(912.0d0, 1201.0d0)
       f_xuv1(i)    = file_band_flux(1.0d0,  911.6d0)
       f_xuv10(i)   = file_band_flux(10.0d0, 911.6d0)
       f_tr_band(i) = file_band_flux(w_join, w_tr)
@@ -302,21 +301,36 @@
 
       ! ----------------------------------------------------------------- !
 
+      double precision function production_band_flux(w_lo, w_hi)         &
+                                result(F_band)
+      ! The production integral (sed_read::sed_band_fluxes) over one band.
+      real*8, intent(in) :: w_lo, w_hi
+      real*8  :: F(1)
+      logical :: cov(1)
+      call sed_band_fluxes(1, (/ w_lo /), (/ w_hi /), F, cov)
+      F_band = F(1)
+      end function production_band_flux
+
+      ! ----------------------------------------------------------------- !
+
       double precision function file_band_flux(w_lo, w_hi) result(F_band)
       ! Band-integrated flux of sed_file over [w_lo, w_hi] at the planet
-      ! [erg cm^-2 s^-1].  A transcription of lyman_werner_band_flux_from_sed
-      ! with the band an argument: the production row reader, a trapezoid on
-      ! consecutive rows clipped to the band, and no dilution, because an
-      ! EXHALE SED file is already the flux at the planet's orbit.
+      ! [erg cm^-2 s^-1].  A transcription of the production prescription
+      ! (sed_read::sed_band_fluxes) with the band an argument: the
+      ! production row reader, the exact integral of the piecewise-linear
+      ! table over the band (the flux interpolated at each clipped edge
+      ! before the trapezoid, since 2026-09-13), zero when the table does
+      ! not reach both edges, and no dilution, because an EXHALE SED file is
+      ! already the flux at the planet's orbit.
       real*8, intent(in) :: w_lo, w_hi
-      real*8  :: w, f, w_prev, f_prev, wa, wb
-      integer :: io, nin
+      real*8  :: w, f, w_prev, f_prev, wa, wb, fa, fb, slope, w_first
+      integer :: io
       logical :: have_prev
       F_band    = 0.0d0
-      nin       = 0
       have_prev = .false.
       w_prev    = 0.0d0
       f_prev    = 0.0d0
+      w_first   = 0.0d0
       open(unit = 73, file = sed_file, status = 'old', iostat = io)
       if (io .ne. 0) return
       do
@@ -326,17 +340,21 @@
             wa = max(w_prev, w_lo)
             wb = min(w,      w_hi)
             if (wb .gt. wa) then
-               F_band = F_band + 0.5d0*(f_prev + f)*(wb - wa)
-               nin    = nin + 1
+               slope = (f - f_prev)/(w - w_prev)
+               fa = f_prev + slope*(wa - w_prev)
+               fb = f_prev + slope*(wb - w_prev)
+               F_band = F_band + 0.5d0*(fa + fb)*(wb - wa)
             endif
+         else if (.not. have_prev) then
+            w_first = w
          endif
          w_prev    = w
          f_prev    = f
          have_prev = .true.
-         if (w .gt. w_hi) exit
       enddo
       close(73)
-      if (nin .lt. 2) F_band = 0.0d0
+      if (.not. have_prev .or. w_first .gt. w_lo .or. w_prev .lt. w_hi)  &
+         F_band = 0.0d0
       end function file_band_flux
 
       ! ----------------------------------------------------------------- !

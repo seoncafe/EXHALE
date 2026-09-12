@@ -96,6 +96,9 @@
 		! He+ + CO and by photodissociation in the carrier row, and read by
 		! the He+ row of mol_heh_rows for the same He+ + CO loss (B3b-CO2).
 		! Assigned by ioniz_eq for every cell of an oxygen-chemistry run.
+		! The cell this context describes (1..N; 0 = not a grid cell), for
+		! diagnostics written from inside a parallel sweep.
+		integer :: jcell = 0
 		real*8 :: n_ofam = 0.0d0
 		real*8 :: n_co = 0.0d0
 		! Imposed carrier partitions. Where a partition is not a local root,

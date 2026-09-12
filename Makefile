@@ -67,9 +67,9 @@ FC_PATH    := $(shell command -v $(FC) 2>/dev/null)
 FC_VERSION := $(shell $(FC) -dumpfullversion -dumpversion 2>/dev/null | head -n 1)
 TOOLCHAIN_PREFIX ?= $(abspath $(dir $(FC_PATH))..)
 ifneq (,$(wildcard $(TOOLCHAIN_PREFIX)/lib/libopenblas.so))
-  LAPACK_LIBS ?= -L$(TOOLCHAIN_PREFIX)/lib -lopenblas -Wl,-rpath,$(TOOLCHAIN_PREFIX)/lib
+  LAPACK_LIBS ?= -L$(TOOLCHAIN_PREFIX)/lib -lopenblas -Wl,-rpath,$(TOOLCHAIN_PREFIX)/lib -ldl
 else
-  LAPACK_LIBS ?= -llapack
+  LAPACK_LIBS ?= -llapack -ldl
 endif
 LDLIBS ?= $(LAPACK_LIBS)
 
@@ -197,6 +197,7 @@ SRC := \
   src/modules/init/set_energy_vectors.f90 \
   src/modules/init/set_gravity_grid.f90 \
   src/modules/init/set_IC.f90 \
+  src/modules/init/blas_thread_policy.f90 \
   src/modules/init/init.f90 \
   $(wildcard src/modules/wind_ae/wae_*.f90) \
   src/EXHALE_main.f90

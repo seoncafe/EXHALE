@@ -269,6 +269,7 @@
       ! (1996) for the H2 band; the reaction set is
       ! docs/a2_reaction_audit.md.
 
+      use mol_rates, only: h2_thermochemistry_init, h2_thermochemistry_ready
       use global_parameters
       use caloric_eos, only: adiabatic_index_at_T
       use grav_func,     only: Dphi
@@ -697,6 +698,31 @@
       integer, parameter, public :: carrier_relax_fixed_point      = 1
       integer, parameter, public :: carrier_relax_step_budget      = 2
       integer, parameter, public :: carrier_relax_interval_refused = 3
+      ! THE THERMOCHEMICAL CLOSURE (equilibrate_chemistry_at_fixed_
+      ! conserved_state): its cycle budget, its temperature tolerance, the
+      ! named reasons it returns, and the run-wide counts the relaxation
+      ! report prints (item S2 of PLAN_20260913: the cost of the closure is
+      ! measured, not guessed). chem_cycles_cap_for_test, when nonnegative,
+      ! replaces the budget so that a test can force exhaustion.
+      integer,  parameter, public :: chem_cycles_max = 5
+      real(dp), parameter, public :: chem_cycle_tol  = 1.0d-6
+      integer,  parameter, public :: chem_closure_converged      = 0
+      integer,  parameter, public :: chem_closure_exhausted      = 1
+      integer,  parameter, public :: chem_closure_nonfinite      = 2
+      integer,  parameter, public :: chem_closure_off_simplex    = 3
+      integer,  parameter, public :: chem_closure_not_admissible = 4
+      integer, public :: chem_cycles_cap_for_test = -1
+      integer, public :: n_chem_closure_cycles   = 0
+      integer, public :: n_chem_closures_reached = 0
+      integer, public :: n_chem_closures_refused = 0
+      integer, public :: n_chem_last_reason      = chem_closure_converged
+      ! The ledger counts of the last closure's last sweep (diagnostics).
+      integer, public :: chem_last_offsimplex = 0, chem_last_nonfinite = 0
+      integer, public :: chem_last_mol_clamped = 0
+      real(dp), public :: chem_last_viol_worst = 0.0d0
+      real(dp), public :: chem_last_increment    = 0.0d0
+      public :: equilibrate_chemistry_at_fixed_conserved_state
+      public :: chem_closure_reason_text
       integer, parameter, public :: carrier_relax_nothing_to_advance = 4
       ! The chemistry of a kept transport step did not close (a sweep that
       ! left a cell non-finite), and the shortest admissible trial did no
@@ -1153,6 +1179,14 @@
       else
          n_carrier = ic_H2              ! H2 alone
       endif
+
+      ! The H2 thermochemistry table is built here, serially, if no caller
+      ! built it yet: the carrier source terms read it inside parallel
+      ! regions, and a lazy build there was removed on 2026-09-13
+      ! (review P2). The main program initializes it at startup; this
+      ! covers a test driver that enters through the carriers.
+      if (thereis_mol .and. .not. h2_thermochemistry_ready())             &
+         call h2_thermochemistry_init
 
       ! THE TRANSPORTED SET.  Each solved carrier is advected on the
       ! hydrodynamic face mass fluxes inside the Runge-Kutta stages, on the
@@ -4879,7 +4913,25 @@
       ! discards the step and the background this sweep wrote.
       subroutine equilibrate_chemistry_at_fixed_conserved_state(u, f_sp,  &
                                              p, T, heat, cool, eta, ok,   &
-                                             n_cycles)
+                                             n_cycles, reason, increment)
+      ! THE THERMOCHEMICAL CLOSURE AT A FIXED CONSERVED STATE, and its
+      ! contract. Cycles of (p, T of the composition at the unchanged
+      ! thermal energy; one equilibrium sweep; p, T again) are taken until
+      ! the temperature stops moving. The closure is reported as reached,
+      ! ok = .true., ONLY when all of the following hold on the last cycle:
+      ! the relative temperature increment is below chem_cycle_tol; the
+      ! sweep's ledger reports no nonfinite cell and no cell left off the
+      ! element simplex (n_offsimplex counts the molecular clamps and the
+      ! atomic handback failures of the sweep, the sweep's own statement
+      ! that a cell did not close); and p, T, heat, cool and eta are finite
+      ! on the physical cells with p > 0 and T > 0. Anything else -- the
+      ! cycle budget spent, a nonfinite composition, an off-simplex cell, a
+      ! state that is not admissible -- is ok = .false. with the reason
+      ! named, and the caller restores the trial. Until 2026-09-13 ok
+      ! started true and the exhausted loop fell through with it, and the
+      ! off-simplex count was not read (findings B3 and B4 of the review of
+      ! 2026-09-12): an algebraically consistent (p, T) beside a chemistry
+      ! evaluated at an earlier temperature was handed back as closed.
       real(dp), dimension(3,1-Ng:N+Ng),         intent(in)    :: u
       real(dp), dimension(1-Ng:N+Ng,n_species), intent(inout) :: f_sp
       real(dp), dimension(1-Ng:N+Ng),           intent(out)   :: p, T
@@ -4887,33 +4939,89 @@
       real(dp), dimension(1-Ng:N+Ng),           intent(inout) :: eta
       logical,                                  intent(out)   :: ok
       integer,                                  intent(out)   :: n_cycles
+      integer,  intent(out), optional :: reason
+      real(dp), intent(out), optional :: increment
 
-      integer,  parameter :: cycles_max = 5
-      real(dp), parameter :: t_cycle_tol = 1.0d-6
       real(dp), dimension(1-Ng:N+Ng) :: ntot, ne, T_prev
       type(ioniz_eq_ledger) :: ledger
-      integer :: k
+      real(dp) :: dT
+      integer  :: k, why, cap
 
-      ok = .true.
+      ok       = .false.
       n_cycles = 0
+      why      = chem_closure_exhausted
+      dT       = huge(1.0d0)
+      cap      = chem_cycles_max
+      if (chem_cycles_cap_for_test .ge. 0) cap = chem_cycles_cap_for_test
       call pressure_and_temperature_at_fixed_conserved_state(u, f_sp,     &
                                                              p, T, ntot, ne)
-      do k = 1, cycles_max
+      do k = 1, cap
          T_prev = T
          call ioniz_eq(T, u(1,:), f_sp, heat, cool, eta, ledger)
          n_cycles = k
+         chem_last_offsimplex  = ledger%n_offsimplex
+         chem_last_nonfinite   = ledger%n_nonfinite
+         chem_last_mol_clamped = ledger%n_mol_clamped
+         chem_last_viol_worst  = ledger%viol_worst
          if (ledger%n_nonfinite .gt. 0 .or.                               &
              .not. all(f_sp(1:N,:) .eq. f_sp(1:N,:)) .or.                 &
              .not. all(abs(f_sp(1:N,:)) .le. huge(1.0d0))) then
-            ok = .false.
-            return
+            why = chem_closure_nonfinite;  exit
+         endif
+         if (ledger%n_offsimplex .gt. 0) then
+            why = chem_closure_off_simplex;  exit
          endif
          call pressure_and_temperature_at_fixed_conserved_state(u, f_sp,  &
                                                              p, T, ntot, ne)
-         if (maxval(abs(T(1:N) - T_prev(1:N))/max(T(1:N), 1.0d-300))      &
-             .lt. t_cycle_tol) return
+         if (.not. thermal_state_admissible(p, T, heat, cool, eta)) then
+            why = chem_closure_not_admissible;  exit
+         endif
+         dT = maxval(abs(T(1:N) - T_prev(1:N))/max(T(1:N), 1.0d-300))
+         if (dT .lt. chem_cycle_tol) then
+            ok = .true.;  why = chem_closure_converged;  exit
+         endif
       enddo
+      n_chem_closure_cycles = n_chem_closure_cycles + n_cycles
+      if (ok) then
+         n_chem_closures_reached = n_chem_closures_reached + 1
+      else
+         n_chem_closures_refused = n_chem_closures_refused + 1
+      endif
+      if (present(reason))    reason    = why
+      if (present(increment)) increment = dT
       end subroutine equilibrate_chemistry_at_fixed_conserved_state
+
+      ! ------------------------------------------------------------- !
+
+      logical function thermal_state_admissible(p, T, heat, cool, eta)   &
+                       result(adm)
+      ! Finite p, T, heat, cool and eta on the physical cells, with p > 0
+      ! and T > 0: the state the closure hands back must be a gas.
+      real(dp), dimension(1-Ng:N+Ng), intent(in) :: p, T, heat, cool, eta
+      adm = all(p(1:N) .gt. 0.0d0) .and. all(p(1:N) .le. huge(1.0d0))    &
+            .and. all(T(1:N) .gt. 0.0d0) .and. all(T(1:N) .le. huge(1.0d0)) &
+            .and. all(heat(1:N) .eq. heat(1:N))                           &
+            .and. all(abs(heat(1:N)) .le. huge(1.0d0))                    &
+            .and. all(cool(1:N) .eq. cool(1:N))                           &
+            .and. all(abs(cool(1:N)) .le. huge(1.0d0))                    &
+            .and. all(eta(1:N) .eq. eta(1:N))                             &
+            .and. all(abs(eta(1:N)) .le. huge(1.0d0))
+      end function thermal_state_admissible
+
+      ! ------------------------------------------------------------- !
+
+      function chem_closure_reason_text(why) result(txt)
+      integer, intent(in) :: why
+      character(len=40) :: txt
+      select case (why)
+      case (chem_closure_converged);      txt = 'converged'
+      case (chem_closure_exhausted);      txt = 'cycle budget spent'
+      case (chem_closure_nonfinite);      txt = 'nonfinite composition'
+      case (chem_closure_off_simplex);    txt = 'a cell left the element simplex'
+      case (chem_closure_not_admissible); txt = 'p, T, heat, cool or eta not admissible'
+      case default;                       txt = 'unrecognized reason'
+      end select
+      end function chem_closure_reason_text
 
       ! ------------------------------------------------------------- !
 
@@ -5035,7 +5143,9 @@
          if (.not. refused) then
             call equilibrate_chemistry_at_fixed_conserved_state(u, f_sp,  &
                                              p, T, heat, cool, eta,       &
-                                             chem_ok, n_cycles)
+                                             chem_ok, n_cycles,           &
+                                             n_chem_last_reason,          &
+                                             chem_last_increment)
             if (.not. chem_ok) then
                refused = .true.;  refusal = refused_chemistry
             endif

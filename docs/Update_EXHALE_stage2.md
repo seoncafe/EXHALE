@@ -9122,3 +9122,121 @@ reload data rows identical to the control; `krylov_and_dogleg` 334/0,
 Gate of the tree carrying the ghost particle-count fix: `make check`
 (advisor, 2026-09-12 22:57 KST): **REGRESSION PASS (all cases
 byte-identical)**, 64 file comparisons PASS with data identical.
+
+## 10. PLAN_20260913: the findings of the two reviews of 2026-09-12 (2026-09-13)
+
+Plan of record: `docs/PLAN_20260913_review_fixes.md`. User instruction: read
+`docs/code_bug_optimization_review_20260912.md` and
+`docs/parallel_code_review_20260912.md`, confirm each finding in the code,
+plan the corrections and carry them out, running the binary in parallel
+where that shortens the verification. Every finding (B1 to B6, P1 to P3) was
+confirmed in the source before the plan was written (the confirming lines
+are in the plan's table); items S1 to S9. Every number below is MEASURED on
+this tree unless marked READ.
+
+- **S1 (B1, B2, O3): the band integral of a loaded spectrum.**
+  `sed_read.f90`: `sed_band_fluxes(nb, w_lo, w_hi, F, covered)` replaces
+  `sed_band_integrated_flux`; the file is read once for the three bands,
+  validated as it is read (positive, finite, strictly increasing
+  wavelengths; finite nonnegative flux; a malformed row stops the run with
+  the row named), and each band gets the exact integral of the
+  piecewise-linear table (the flux interpolated at the clipped edges before
+  the trapezoid); `covered(b)` says whether the table reaches both edges,
+  and `input_read` (`band_from_spectrum`) STOPS when a band the run needs is
+  not covered, naming the key (a stated zero is the run's decision; a
+  silent zero is not). MEASURED on the hot-Uranus oxygen case with the
+  Koskinen file: B3 4.686E+02 and B4 4.443E+05 erg cm^-2 s^-1 against the
+  exact piecewise-linear integrals 4.685913E+02 and 4.443075E+05 (the
+  entry text gave 4.696E+02 and 4.445E+05, 0.2 and 0.05 percent high). New
+  test `fuv_band_quadrature` in `spectrum_type` (linear spectrum on unequal
+  nodes with edges inside segments, on nodes and at the ends, exact to
+  1e-12; one covering segment; constant spectrum; an uncovered band): 14/0.
+  `wasp121b_sed_sensitivity` moved to the new routine with its own
+  transcription corrected the same way (`spectrum_type` 170/0 over the
+  whole suite). `docs/input_schema.md`, the manual's key rows and the
+  physics document's band paragraph say the new rule.
+- **S2 (B3, B4, O2 counters): the thermochemical closure contract.**
+  `equilibrate_chemistry_at_fixed_conserved_state` starts with `ok =
+  .false.` and sets it only when a cycle's temperature increment is below
+  `chem_cycle_tol` AND the sweep ledger reports no nonfinite and no
+  off-simplex cell AND `p`, `T`, `heat`, `cool`, `eta` are finite with `p
+  > 0`, `T > 0`; the reason (`converged`, `cycle budget spent`, `nonfinite
+  composition`, `a cell left the element simplex`, `not admissible`) and
+  the last increment are returned and the run-wide counts kept
+  (`n_chem_closure_cycles`, `n_chem_closures_reached`,
+  `n_chem_closures_refused`). The relaxation's refusal branch was already
+  restoring the trial. Test knob `chem_cycles_cap_for_test`; four new rows
+  in `carrier_retry` (an exhausted closure refuses the trial, names the
+  spent budget, keeps no step, hands back the entry composition bit for
+  bit). One existing row was restated: on the synthetic column the pass
+  after the refused trials is refused by the CHEMISTRY (one molecular clamp,
+  budget violation 6.5e-4, on the background seeded at that state), which
+  the old contract had hidden; the row now asserts what the history can be
+  judged by (the pass is not refused at the interval and the history stays
+  certifiable), and the section-11 pass, prepared on the background of the
+  composition it relaxes from, keeps its two steps as before.
+  `carrier_retry` 142/0. On the Model A fixture (3 passes) every closure
+  is reached: pass lines identical to the day before.
+- **S3 (B5, B6): the state mapper.** `src/utils/map_state_to_grid.py`
+  validates finite, positive, strictly increasing radii in both source
+  files and the target, their agreement to 1e-12, the column labels, a
+  positive hydrogen-nucleus density, and that every physical target center
+  lies inside the source's rows (ghosts included: the lower ghosts carry
+  the inflow reservoir composition and are interpolated like every other
+  row, never rebuilt from the physical cells; only a target ghost may lie
+  outside and is then extrapolated linearly in ln r); a violation is refused
+  with exit 2 and nothing written. The output is an initialization seed:
+  `# coupling: mode=init t_phys=0 certified=F ...`, the source line kept as
+  `# mapped-from-coupling:`. New suite `src/tests/state_mapper` (identity
+  mapping exact; a 2e-4-shifted grid round trip 1.8e-5 on a 400-row column;
+  He/H invariant to 1e-12; mismatched species radii, out-of-support
+  physical targets and non-monotone radii refused; ghosts extrapolated;
+  metadata rewritten): 17/0. The Model A fixture's `IC/` regenerated with
+  it (physical rows identical to the earlier mapping, ghosts within 1e-4;
+  the 3-pass run reproduces the day-before pass lines).
+- **S4 (P1): the continuation dump.** `cce_dump_paths_read` reads the two
+  environment paths once, serially, from `input_read`; `write_continuation_
+  dump` takes the path by argument, keeps every read and write of the
+  once-only flag inside the critical region, sets the flag only after the
+  file is open, and records the cell (`ieq_cell%jcell`, a new field set by
+  the sweep; dump format 2, the probe reads 1 and 2).
+- **S5 (P2): explicit initialization.** `keq_H_H_to_H2` no longer builds
+  the H2 thermochemistry table lazily (it stops with a message if the table
+  is not ready); the table is built serially by the main program, by the
+  sweep's serial prologue (`ioniz_eq`) and by `carrier_set_init`, so every
+  entry point that precedes a parallel read builds it. The Newton solver's
+  `EXHALE_FORCE_HYBRD1` switch is read once by
+  `newton_solver_read_environment` from `input_read`; a driver that never
+  calls it runs with the switch off. `init.f90` switches dynamic team
+  adjustment off, reports the team obtained (an `omp single` block, the
+  `master` construct being deprecated since OpenMP 5.1), says whether the
+  count came from `OMP_NUM_THREADS` or the default min(cores, 16), and its
+  coverage comment now lists the present parallel regions (the old thread
+  line was cut by its fixed format and said "default" whatever the
+  source).
+- **S6 (P3): the BLAS thread policy.** New `blas_thread_policy.f90`: the
+  OpenBLAS entry points are resolved at run time (`dlopen`/`dlsym`, `-ldl`
+  on the GNU link and in every test script), the count is set to 1 unless
+  `OPENBLAS_NUM_THREADS` is stated, and the setup report says what was
+  found and set; a build without OpenBLAS is left alone. MEASURED on the
+  `wasp_full_newton` reload at 8 OpenMP threads: 16.33 s with 1 BLAS
+  thread against 16.32 s with 8 (the library's default here follows
+  `OMP_NUM_THREADS`; unset, it is the machine's 72): the band
+  factorizations gain nothing from a BLAS team, and the policy costs
+  nothing.
+- **S7: verification, in parallel.** Suites on the private build, run
+  concurrently: `spectrum_type` 170/0, `carrier_retry` 142/0,
+  `carrier_returned_state_acceptance` 36/0, `attempted_step` 70/0,
+  `certification` 84/0, `steady_species_rows` 195/0, `krylov_and_dogleg`
+  334/0, `element_operator` 28/0, `species_masses` 9/0,
+  `steady_completion_flag` 3/0, `grid_and_gates` 198/0, `state_mapper`
+  17/0; the Model A fixture 3 passes; the two BLAS timing runs;
+  `make check` (the full matrix, `OMP_NUM_THREADS=1`, run on the merged
+  tree while the suites ran): REGRESSION PASS, every case byte-identical
+  against the goldens, as the plan required (no option defaults changed;
+  the band integral is not exercised by the gate's power-law spectra, the
+  closure contract reports the same result on every gate case).
+- **S8: measured-first items, not changed** (O1, O2 beyond the counters,
+  A, B, C, E of the parallel review): recorded in `docs/TO_BE_DONE.md` with
+  the measurement each needs; the counters of S2 and the team/BLAS report
+  of S5/S6 are the instrumentation for them.

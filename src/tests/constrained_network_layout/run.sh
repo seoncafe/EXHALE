@@ -33,9 +33,9 @@ flags=(-O0 -g -fcheck=all -fbacktrace -fopenmp -J"$work" -I"$work")
 prefix=$(dirname "$(dirname "$(command -v "$FC")")")
 if [ -z "${LAPACK_LIBS:-}" ]; then
   if [ -f "$prefix/lib/libopenblas.so" ]; then
-    LAPACK_LIBS="-L$prefix/lib -lopenblas -Wl,-rpath,$prefix/lib"
+    LAPACK_LIBS="-L$prefix/lib -lopenblas -Wl,-rpath,$prefix/lib -ldl"
   else
-    LAPACK_LIBS="-llapack"
+    LAPACK_LIBS="-llapack -ldl"
   fi
 fi
 read -r -a lapack <<< "$LAPACK_LIBS"

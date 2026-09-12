@@ -158,6 +158,7 @@
 
 	implicit none
 	private
+	public :: cce_dump_paths_read
 	public :: equilibrium_from_molecular_limit
 	! Opt-in diagnostic (docs/charge_exchange_cancellation_limit.md section 5).
 	! cce_probe_from_dump is the entry the standalone driver calls; it is not
@@ -451,7 +452,14 @@
 	! then written ONCE, for the first failing cell of the run. These three
 	! are deliberately NOT threadprivate: the once-only guard has to be
 	! shared, and it is taken inside a critical region.
-	character(len=512), save :: cce_dump_path  = ' '
+	! The two paths are read ONCE, serially, by cce_dump_paths_read (called
+	! from input_read after the keys), never inside the parallel sweep; the
+	! once-only flags are read and written inside the critical region only,
+	! and set only after the file was opened (review P1, 2026-09-12: the
+	! path buffer was written by every thread outside the region and the
+	! flag was read outside it).
+	character(len=512), save :: cce_dump_path_fail = ' '
+	character(len=512), save :: cce_dump_path_ok   = ' '
 	logical, save :: cce_dump_written = .false.
 	logical, save :: cce_ok_written   = .false.
 	! Seed perturbation, for the probe's reproducibility test only: when the
@@ -715,7 +723,8 @@
 		! Opt-in: preserve the first such state so that it can be
 		! re-evaluated without the hydrodynamics (phase A of the review
 		! plan). Costs one environment-variable read per run when off.
-		call write_continuation_dump('EXHALE_CCE_DUMP', cce_dump_written,&
+		call write_continuation_dump(cce_dump_path_fail,                 &
+		                             cce_dump_written,                  &
 		                             n_e_ref, p_bar, nx, mbase, iox,    &
 		                             lam_ref, lam_try, sden_work,       &
 		                             info_loc)
@@ -724,7 +733,7 @@
 
 	! Opt-in: preserve the first state that DID reach the full field, so
 	! that the seed-robustness test has an actual root to reproduce.
-	call write_continuation_dump('EXHALE_CCE_DUMP_OK', cce_ok_written,   &
+	call write_continuation_dump(cce_dump_path_ok, cce_ok_written,       &
 	                             n_e_ref, p_bar, nx, mbase, iox,         &
 	                             lam_ref, lam_try, sden_ref, info_loc)
 
@@ -1695,7 +1704,18 @@
 	!  reaches any of it.
 	! ===============================================================
 
-	subroutine write_continuation_dump(envname, already, n_e_ref, p_bar,   &
+	subroutine cce_dump_paths_read()
+	! Read once, serially, before any parallel sweep: the file names of the
+	! two opt-in cell dumps (EXHALE_CCE_DUMP: the first cell whose
+	! continuation did not reach the full field; EXHALE_CCE_DUMP_OK: the
+	! first that did). Empty = off.
+	call get_environment_variable('EXHALE_CCE_DUMP',    cce_dump_path_fail)
+	call get_environment_variable('EXHALE_CCE_DUMP_OK', cce_dump_path_ok)
+	end subroutine cce_dump_paths_read
+
+	!----------------------------------!
+
+	subroutine write_continuation_dump(path, already, n_e_ref, p_bar,      &
 	                                   nx, mbase, iox, lam_ref, lam_try,   &
 	                                   sden, info_loc)
 	! Save everything a standalone evaluation of this cell needs. The rate
@@ -1707,24 +1727,30 @@
 	! values is what makes the standalone reproduction a check rather than a
 	! transcription.
 
-	character(len=*), intent(in) :: envname
+	character(len=*), intent(in) :: path
 	logical, intent(inout) :: already
 	real*8,  intent(in) :: n_e_ref, p_bar, lam_ref, lam_try
 	integer, intent(in) :: nx, mbase, iox, info_loc
 	real*8,  intent(in) :: sden(n_species_max)
 	integer :: iu, ios, e
 
-	if (already) return
-	call get_environment_variable(envname, cce_dump_path)
-	if (len_trim(cce_dump_path) .eq. 0) return
+	! path is one of the two module strings, read once by
+	! cce_dump_paths_read and never written afterwards; with the dumps off
+	! (empty path, the production case) nothing below is entered and no
+	! shared variable is touched. The flag lives entirely inside the
+	! critical region and is set only once the file is open: the cell that
+	! writes is the first thread to enter, which the file records by its
+	! cell index (ieq_cell%jcell), so a reader knows which cell it is.
+	if (len_trim(path) .eq. 0) return
 
 	!$omp critical (cce_dump_guard)
 	if (.not. already) then
-		already = .true.
-		open(newunit=iu, file=trim(cce_dump_path), status='replace',   &
+		open(newunit=iu, file=trim(path), status='replace',            &
 		     action='write', iostat=ios)
 		if (ios .eq. 0) then
-			write(iu,*) 1                      ! dump format version
+			already = .true.
+			write(iu,*) 2                      ! dump format version
+			write(iu,*) ieq_cell%jcell         ! the cell written (format 2)
 			write(iu,*) thereis_HeITR, thereis_metals, thereis_oxychem
 			write(iu,*) HeH
 			write(iu,*) nx, mbase, iox, info_loc
@@ -1757,9 +1783,9 @@
 			enddo
 			write(iu,*) sden(1:n_species_max)
 			close(iu)
-			write(*,'(A,A,A,A)') ' (constrained_chemical_'//   &
-				'equilibrium) cell state (', envname,               &
-				') written to ', trim(cce_dump_path)
+			write(*,'(A,I0,A,A)') ' (constrained_chemical_'//  &
+				'equilibrium) cell state of cell ', ieq_cell%jcell,  &
+				' written to ', trim(path)
 			flush(6)
 		endif
 	endif
@@ -1959,7 +1985,7 @@
 	character(len=*), intent(in) :: fname
 
 	real*8  :: n_e_ref, p_bar, lam_ref, lam_try, HeH_in
-	integer :: nx, mbase, iox, info_in, ver, nel
+	integer :: nx, mbase, iox, info_in, ver, nel, jcell_in
 	real*8  :: sden(n_species_max), u(n_species_max), fres(n_species_max)
 	real*8  :: mg_ntot(n_melem), mg_g0(n_melem), mg_g1(n_melem)
 	real*8  :: mg_b0(n_melem), mg_b1(n_melem), mg_a1(n_melem)
@@ -1988,11 +2014,14 @@
 		return
 	endif
 	read(iu,*) ver
-	if (ver .ne. 1) then
+	if (ver .ne. 1 .and. ver .ne. 2) then
 		write(*,'(A,I0)') ' cce_probe: unsupported dump version ', ver
 		close(iu)
 		return
 	endif
+	! Format 2 (2026-09-13) records the cell the dump was written from.
+	jcell_in = 0
+	if (ver .eq. 2) read(iu,*) jcell_in
 	read(iu,*) thereis_HeITR, thereis_metals, thereis_oxychem
 	read(iu,*) HeH_in
 	HeH = HeH_in

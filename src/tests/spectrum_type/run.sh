@@ -19,7 +19,7 @@
 #
 # Usage: src/tests/spectrum_type/run.sh [test ...]
 #        names: planck_field balmer_field balmer_quad n2_floor sed_edges
-#               sed_semantics wasp121_sed spectrum_gate
+#               fuv_quad sed_semantics wasp121_sed spectrum_gate
 set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$HERE/../../.." && pwd)"
@@ -36,9 +36,9 @@ mkdir -p "$OUT"
 FC_PATH="$(command -v "$FC" 2>/dev/null || true)"
 PREFIX="$(cd "$(dirname "$FC_PATH")/.." 2>/dev/null && pwd || echo /usr)"
 if [ -f "$PREFIX/lib/libopenblas.so" ]; then
-   LAPACK="-L$PREFIX/lib -lopenblas -Wl,-rpath,$PREFIX/lib"
+   LAPACK="-L$PREFIX/lib -lopenblas -Wl,-rpath,$PREFIX/lib -ldl"
 else
-   LAPACK="-llapack"
+   LAPACK="-llapack -ldl"
 fi
 
 if [ ! -d "$OBJDIR" ] || [ -z "$(ls "$OBJDIR"/*.o 2>/dev/null)" ]; then
@@ -58,7 +58,7 @@ fi
 # Every object but the main program: the driver brings its own.
 PROD_OBJ="$(ls "$OBJDIR"/*.o | grep -vE '(EXHALE_main|_tests|_probe)\.o$' | tr '\n' ' ')"
 
-WANT="${*:-planck_field balmer_field balmer_quad n2_floor sed_edges sed_semantics wasp121_sed spectrum_gate}"
+WANT="${*:-planck_field balmer_field balmer_quad fuv_quad n2_floor sed_edges sed_semantics wasp121_sed spectrum_gate}"
 n_fail=0
 
 want() { case " $WANT " in *" $1 "*) return 0;; *) return 1;; esac; }
@@ -118,6 +118,23 @@ if want balmer_quad; then
       run_one balmer_band_quadrature env OMP_NUM_THREADS=1 \
               EXHALE_TEST_ROOT="$ROOT" \
               sh -c "cd '$OUT/balmer_quad_run' && '$OUT/balmer_band_quadrature.x'"
+fi
+
+if want fuv_quad; then
+   rm -f "$OUT/fuv_band_quadrature.x"
+   $FC $FFLAGS_TEST -J"$OUT" -I"$OBJDIR" \
+       -o "$OUT/fuv_band_quadrature.x" \
+       "$HERE/../physics_probe/assertion_report.f90" \
+       "$HERE/fuv_band_quadrature.f90" $PROD_OBJ $LAPACK || {
+      echo "FAIL fuv_band_quadrature_build measured=compile_error reference=ok tol=0"
+      n_fail=$((n_fail+1)); }
+   # The driver writes its own small spectrum tables into the directory
+   # it runs in.
+   rm -rf "$OUT/fuv_quad_run"
+   mkdir -p "$OUT/fuv_quad_run"
+   [ -x "$OUT/fuv_band_quadrature.x" ] && \
+      run_one fuv_band_quadrature env OMP_NUM_THREADS=1 \
+              sh -c "cd '$OUT/fuv_quad_run' && '$OUT/fuv_band_quadrature.x'"
 fi
 
 if want n2_floor; then

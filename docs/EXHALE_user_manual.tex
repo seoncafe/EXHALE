@@ -1064,12 +1064,15 @@ defaults restore the standard behavior).}\label{tab:inp-opt}\\
   at all, and where the grid does reach that far, a power-law type gives
   only the XUV fit extrapolated downward rather than a stellar FUV spectrum.
   With \texttt{Spectrum type: Load} the key may be omitted: the band is
-  then integrated from the spectrum file over 912--1201\,\AA{} (a trapezoid
-  over the file's rows, the file being at the planet already) and the
-  setup report says so. A stated value always wins, and a stated 0 switches
-  the band off even when the file could supply it (the comparison with a
-  model that has no H$_2$ photodissociation). Without a spectrum file,
-  0 (default) = no photodissociation. The
+  then integrated from the spectrum file over 912--1201\,\AA{} (the exact
+  integral of the piecewise-linear table, the flux interpolated at each
+  clipped edge; one read of the file serves the LW, B3 and B4 bands; the
+  file is at the planet already) and the setup report says so. A stated
+  value always wins, and a stated 0 switches the band off even when the file
+  could supply it (the comparison with a model that has no H$_2$
+  photodissociation). A file that does not reach both edges of the band
+  stops the run and asks for the key: a positive field is never turned into
+  zero silently. Without a spectrum file, 0 (default) = no photodissociation. The
   key is inert without \texttt{Molecular chemistry: True}. Writes
   \texttt{output/Lyman\_Werner.txt}
   (\path{docs/lower_atmosphere_coupling.md}). With
@@ -1093,9 +1096,10 @@ defaults restore the standard behavior).}\label{tab:inp-opt}\\
   \texttt{B2} is the Ly$\alpha$ line and comes from
   \texttt{Stellar Lya flux}. With \texttt{Spectrum type: Load} and
   \texttt{Oxygen chemistry: True}, a run that does not state this key gets
-  the band integrated from the spectrum file over 1231--1450\,\AA{} (a
-  trapezoid over the file's rows, as for \texttt{Stellar LW flux}), and the
-  setup report says so; a stated value, zero included, always wins. \\
+  the band integrated from the spectrum file over 1231--1450\,\AA{} (the
+  exact piecewise-linear integral, as for \texttt{Stellar LW flux}; a file
+  that does not reach the band stops the run), and the setup report says
+  so; a stated value, zero included, always wins. \\
 \texttt{Stellar FUV B4 flux [erg/cm2/s]:} & real (def.\ 0) & The same over
   1451--2304\,\AA{} (band \texttt{B4}, branching 1.00/0.00/0.00), integrated
   from the spectrum file under the same rule when not stated. \emph{Read

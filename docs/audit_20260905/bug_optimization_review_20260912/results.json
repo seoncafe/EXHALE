@@ -1,0 +1,108 @@
+{
+  "isolated_fortran_stdout": "clipped_linear_flux=  1.5250000000000000E+05\nsingle_segment_flux=  0.0000000000000000E+00\ncycle_exhaustion_ok=T, cycles=5, last_relative_increment=  0.009434\noff_simplex_ok=T, cycles=1\n",
+  "exact_linear_band_integral": 153750.0,
+  "mapper_exit_code": 0,
+  "mapper_stdout": "wrote /nfs/mocafe/kiseon/RT_Codes/ExoAtmosphere/EXHALE_v1.00/docs/audit_20260905/bug_optimization_review_20260912/mapped/Hydro_ioniz.txt (2, 4)\nwrote /nfs/mocafe/kiseon/RT_Codes/ExoAtmosphere/EXHALE_v1.00/docs/audit_20260905/bug_optimization_review_20260912/mapped/Ion_species.txt (2, 3)\n",
+  "mapper_stderr": "",
+  "mapped_hydro": [
+    [
+      1.0,
+      10.0,
+      1.0,
+      100.0
+    ],
+    [
+      3.0,
+      5.0,
+      1.0,
+      100.0
+    ]
+  ],
+  "mapped_species": [
+    [
+      1.0,
+      9.0,
+      1.0
+    ],
+    [
+      3.0,
+      2.5,
+      2.5
+    ]
+  ],
+  "limitations": [
+    "Fortran chemistry dependencies are deterministic stubs; no atmospheric occurrence frequency is measured.",
+    "Mapper fixtures test input validation, not a physically calibrated atmosphere."
+  ],
+  "separate_mapper_cases": {
+    "mismatched_radii_only": {
+      "exit_code": 0,
+      "stderr": "",
+      "header": [
+        "# coupling mode=phys t_phys=123 certified=T",
+        "# columns r rho v[km/s] T[K]",
+        "# mapped: onto the cell centers of /nfs/mocafe/kiseon/RT_Codes/ExoAtmosphere/EXHALE_v1.00/docs/audit_20260905/bug_optimization_review_20260912/mismatched_radii_only/target.txt from /nfs/mocafe/kiseon/RT_Codes/ExoAtmosphere/EXHALE_v1.00/docs/audit_20260905/bug_optimization_review_20260912/mismatched_radii_only/source/Hydro_ioniz.txt by map_state_to_grid.py; largest relative center shift 0.00e+00"
+      ],
+      "hydro": [
+        [
+          1.0,
+          10.0,
+          1.0,
+          100.0
+        ],
+        [
+          2.0,
+          5.0,
+          1.0,
+          100.0
+        ]
+      ]
+    },
+    "out_of_range_only": {
+      "exit_code": 0,
+      "stderr": "",
+      "header": [
+        "# coupling mode=phys t_phys=123 certified=T",
+        "# columns r rho v[km/s] T[K]",
+        "# mapped: onto the cell centers of /nfs/mocafe/kiseon/RT_Codes/ExoAtmosphere/EXHALE_v1.00/docs/audit_20260905/bug_optimization_review_20260912/out_of_range_only/target.txt from /nfs/mocafe/kiseon/RT_Codes/ExoAtmosphere/EXHALE_v1.00/docs/audit_20260905/bug_optimization_review_20260912/out_of_range_only/source/Hydro_ioniz.txt by map_state_to_grid.py; largest relative center shift 3.33e-01"
+      ],
+      "hydro": [
+        [
+          1.0,
+          10.0,
+          1.0,
+          100.0
+        ],
+        [
+          3.0,
+          5.0,
+          1.0,
+          100.0
+        ]
+      ]
+    },
+    "interior_remap_metadata": {
+      "exit_code": 0,
+      "stderr": "",
+      "header": [
+        "# coupling mode=phys t_phys=123 certified=T",
+        "# columns r rho v[km/s] T[K]",
+        "# mapped: onto the cell centers of /nfs/mocafe/kiseon/RT_Codes/ExoAtmosphere/EXHALE_v1.00/docs/audit_20260905/bug_optimization_review_20260912/interior_remap_metadata/target.txt from /nfs/mocafe/kiseon/RT_Codes/ExoAtmosphere/EXHALE_v1.00/docs/audit_20260905/bug_optimization_review_20260912/interior_remap_metadata/source/Hydro_ioniz.txt by map_state_to_grid.py; largest relative center shift 3.33e-01"
+      ],
+      "hydro": [
+        [
+          1.0,
+          10.0,
+          1.0,
+          100.0
+        ],
+        [
+          1.5,
+          6.666666666666667,
+          1.0,
+          100.0
+        ]
+      ]
+    }
+  }
+}

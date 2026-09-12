@@ -1,0 +1,5 @@
+# coupling mode=phys t_phys=123 certified=T
+# columns r rho v[km/s] T[K]
+# mapped: onto the cell centers of /nfs/mocafe/kiseon/RT_Codes/ExoAtmosphere/EXHALE_v1.00/docs/audit_20260905/bug_optimization_review_20260912/target.txt from /nfs/mocafe/kiseon/RT_Codes/ExoAtmosphere/EXHALE_v1.00/docs/audit_20260905/bug_optimization_review_20260912/mismatched_source/Hydro_ioniz.txt by map_state_to_grid.py; largest relative center shift 3.33e-01
+  1.0000000000000000E+00   1.0000000000000000E+01   1.0000000000000000E+00   1.0000000000000000E+02
+  3.0000000000000000E+00   5.0000000000000000E+00   1.0000000000000000E+00   1.0000000000000000E+02

@@ -19,8 +19,10 @@
                           lap_value_at_match, lap_element_ratio_at_match
    ! FUV photolysis thresholds of the oxygen chemistry, filled once here
    ! (serially) because the OpenMP cell sweep only reads them.
-   use water_photolysis, only: water_photolysis_init, ib_LW, ib_B3, ib_B4
-   use sed_reader, only: sed_band_integrated_flux
+   use water_photolysis, only: water_photolysis_init, ib_LW, ib_B3, ib_B4, n_fuv_band
+   use sed_reader, only: sed_band_fluxes
+   use constrained_chemical_equilibrium, only: cce_dump_paths_read
+   use newton_solver, only: newton_solver_read_environment
    use oxygen_rates, only: fuv_band_lo_A, fuv_band_hi_A
    use diffusive_photochemistry, only: carrier_set_init
    use base_boundary, only: set_base_reservoir
@@ -85,6 +87,8 @@
    contains
       
    subroutine input_read
+   real*8,  dimension(n_fuv_band) :: band_flux_sed
+   logical, dimension(n_fuv_band) :: band_covered_sed
    ! Subroutine to read the input file and assign names and values
    !    to global constants
 
@@ -1571,35 +1575,30 @@
    ! over the file's rows across 1202-1230 A. The Lyman-Werner band is
    ! integrated for any molecular run (H2 absorbs it); B3 and B4 only with
    ! the oxygen chemistry, the only consumer of those two.
-   if (thereis_mol .and. .not. lw_flux_stated .and. do_read_sed) then
-      F_LW_star = sed_band_integrated_flux(fuv_band_lo_A(ib_LW),          &
-                                           fuv_band_hi_A(ib_LW))
-      if (F_LW_star .gt. 0.0d0) then
-         write(*,'(A,ES10.3,A)') ' (input_read) Stellar LW flux from the'// &
-              ' spectrum file: ', F_LW_star, ' erg cm^-2 s^-1 (912-1201 A)'
-         lw_from_spectrum = .true.
+   ! Serial, once, before any parallel sweep: the opt-in cell-dump paths of
+   ! the constrained chemical equilibrium and the Newton validation switch
+   ! (review P1/P2, 2026-09-12: both used to be read lazily inside the sweep).
+   call cce_dump_paths_read()
+   call newton_solver_read_environment()
+
+   if (do_read_sed .and. thereis_mol) then
+      ! One read of the file for the three continuum bands; a band the run
+      ! needs that the file does not reach stops the run and asks for the
+      ! key (a stated value, zero included, is the run's own decision; a
+      ! silent zero is not).
+      call sed_band_fluxes(n_fuv_band, fuv_band_lo_A, fuv_band_hi_A,      &
+                           band_flux_sed, band_covered_sed)
+      if (.not. lw_flux_stated) then
+         call band_from_spectrum('Stellar LW flux', ib_LW, F_LW_star,     &
+                                 lw_from_spectrum)
       endif
-   endif
-   if (thereis_oxychem .and. do_read_sed) then
-      if (.not. fuv_b3_flux_stated) then
-         F_FUV_B3 = sed_band_integrated_flux(fuv_band_lo_A(ib_B3),         &
-                                             fuv_band_hi_A(ib_B3))
-         if (F_FUV_B3 .gt. 0.0d0) then
-            write(*,'(A,ES10.3,A)') ' (input_read) Stellar FUV B3 flux'//  &
-                 ' from the spectrum file: ', F_FUV_B3,                    &
-                 ' erg cm^-2 s^-1 (1231-1450 A)'
-            fuv_b3_from_spectrum = .true.
-         endif
-      endif
-      if (.not. fuv_b4_flux_stated) then
-         F_FUV_B4 = sed_band_integrated_flux(fuv_band_lo_A(ib_B4),         &
-                                             fuv_band_hi_A(ib_B4))
-         if (F_FUV_B4 .gt. 0.0d0) then
-            write(*,'(A,ES10.3,A)') ' (input_read) Stellar FUV B4 flux'//  &
-                 ' from the spectrum file: ', F_FUV_B4,                    &
-                 ' erg cm^-2 s^-1 (1451-2304 A)'
-            fuv_b4_from_spectrum = .true.
-         endif
+      if (thereis_oxychem) then
+         if (.not. fuv_b3_flux_stated)                                    &
+            call band_from_spectrum('Stellar FUV B3 flux', ib_B3,         &
+                                    F_FUV_B3, fuv_b3_from_spectrum)
+         if (.not. fuv_b4_flux_stated)                                    &
+            call band_from_spectrum('Stellar FUV B4 flux', ib_B4,         &
+                                    F_FUV_B4, fuv_b4_from_spectrum)
       endif
    endif
 
@@ -2430,6 +2429,29 @@
       error stop 1
    endif
    end function req_eband
+
+   subroutine band_from_spectrum(keyname, ib, F, from_spectrum)
+   ! One band of the loaded spectrum handed to its key: the integral when
+   ! the file covers the band, a stop naming the key when it does not.
+   character(len=*), intent(in)  :: keyname
+   integer,          intent(in)  :: ib
+   real*8,           intent(out) :: F
+   logical,          intent(out) :: from_spectrum
+   if (.not. band_covered_sed(ib)) then
+      write(*,'(A,A,A)') ' (input_read) ERROR: "', keyname, '" is not'//   &
+           ' stated and the spectrum file does not reach the band'
+      write(*,'(A,F7.1,A,F7.1,A)') '   ', fuv_band_lo_A(ib), ' - ',       &
+           fuv_band_hi_A(ib), ' A it would be integrated over. State'//   &
+           ' the key (a stated 0 switches the band off), or supply a'//   &
+           ' file that covers the band. Aborting.'
+      error stop 1
+   endif
+   F = band_flux_sed(ib)
+   from_spectrum = .true.
+   write(*,'(A,A,A,ES10.3,A,F7.1,A,F7.1,A)') ' (input_read) ', keyname,   &
+        ' from the spectrum file: ', F, ' erg cm^-2 s^-1 (',              &
+        fuv_band_lo_A(ib), '-', fuv_band_hi_A(ib), ' A)'
+   end subroutine band_from_spectrum
 
    end subroutine input_read
 

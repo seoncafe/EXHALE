@@ -10,7 +10,7 @@ below 13.6 eV alike, which is the band where the He 2^3S metastable
 Run everything with
 
     src/tests/spectrum_type/run.sh [planck_field] [balmer_field] \
-                                  [balmer_quad] [n2_floor] [sed_edges] \
+                                  [balmer_quad] [fuv_quad] [n2_floor] [sed_edges] \
                                   [sed_semantics] [wasp121_sed] \
                                   [spectrum_gate]
 
@@ -63,6 +63,16 @@ analytic types side by side: 0.41857 s^-1 for the power law of
 RED before item 2c-BALMER (the driver does not build: `stellar_flux_eV` and
 `spectrum_covers_eV` do not exist and the two production functions take a
 temperature and a dilution factor), GREEN after it.
+
+## fuv_quad (`fuv_band_quadrature.f90`)
+
+The band integral of a loaded spectrum, `sed_read::sed_band_fluxes`, on
+spectra with closed-form integrals written by the driver itself: F = lambda
+on four unequally spaced nodes with band edges inside segments, on nodes and
+at the table ends (exact to 1e-12), a single two-node segment covering the
+band (a valid integral, not zero), a constant spectrum over the LW band, a
+band the table does not reach (reported uncovered, flux 0). RED on the text
+before 2026-09-13 (findings B1 and B2 of the review of 2026-09-12).
 
 ## balmer_quad (`balmer_band_quadrature.f90`)
 
@@ -259,7 +269,7 @@ provisional composite `wasp121b_composite_huang2023.txt` (A's solar XUV below
 
 The four photoionization rates are formed as `util_ion_eq` forms them; the
 Balmer rate and heating are `gamma_n2_balmer` and `heat_n2_balmer`; the band
-fluxes use the prescription of `lyman_werner_band_flux_from_sed`. Everything
+fluxes use the prescription of `sed_band_fluxes` (the exact piecewise-linear integral since 2026-09-13). Everything
 is printed side by side with the C/A and C/B ratios as a **sensitivity of the
 production rates to the candidate input**. It is not a bias of any candidate:
 a bias would need a justified reference field for WASP-121, which the
@@ -274,7 +284,7 @@ workspace does not have.
 | `C_F_1_912_is_the_stated_F_XUV` | 1.6e6 erg cm^-2 s^-1, the normalization the header states (Huang et al. 2023 section 2.2 with the band definition of Salz et al. 2019). MEASURED 1.8e-4 | 1e-3 relative |
 | `C_F_10_912_equals_A` | A's F(10-912 A): the whole XUV component is A's. MEASURED 0 | 1e-12 relative |
 | `C_F_1700_2600_equals_B` | B's F(1700-2600.5 A): the whole metastable band is B's. MEASURED 0 | 1e-12 relative |
-| `band_integral_is_production_LW_A/B/C` | the production `lyman_werner_band_flux_from_sed()` on the same file, so the band fluxes printed are the production prescription and not a second one. The LW band is 912-1201 A on both sides since 2026-09-06. MEASURED 0 | 1e-12 relative |
+| `band_integral_is_production_LW_A/B/C` | the production `sed_band_fluxes` on the same file, so the band fluxes printed are the production prescription and not a second one. The LW band is 912-1201 A on both sides since 2026-09-06. MEASURED 0 | 1e-12 relative |
 
 The measured table is reproduced in `inputdata/sed/README.md`, WASP-121 b
 section. The headline numbers: C's ground-state rates are A's exactly and move
