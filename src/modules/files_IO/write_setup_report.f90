@@ -232,6 +232,15 @@
       ' - FUV band fluxes at the planet [erg cm^-2 s^-1]'//               &
       ' LW/B2(Lya)/B3/B4: ', F_LW_star, F_Lya_star,                       &
       F_FUV_B3, F_FUV_B4
+		if (fuv_b3_from_spectrum .or. fuv_b4_from_spectrum) then
+			write(outfile,'(A,L1,A,L1,A)') &
+      '  (B3 integrated from the numerical spectrum: ', fuv_b3_from_spectrum, &
+      '; B4: ', fuv_b4_from_spectrum, '; a stated key always wins)'
+		endif
+		if (fuv_b3_flux_stated .and. F_FUV_B3 .le. 0.0d0) write(outfile,*) &
+      '  - band B3 OFF: "Stellar FUV B3 flux" stated as zero'
+		if (fuv_b4_flux_stated .and. F_FUV_B4 .le. 0.0d0) write(outfile,*) &
+      '  - band B4 OFF: "Stellar FUV B4 flux" stated as zero'
 		write(outfile,*) &
       '- The 912-1201 A band is the Lyman-Werner interval and carries'//  &
       ' "Stellar LW flux": H2, H2O and OH share that beam'

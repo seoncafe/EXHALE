@@ -3,7 +3,9 @@
 run against Koskinen et al. (2022, ApJ 929, 52) Model A, a = 0.05 au.
 
 Usage: k22_model_a_figures.py <run_output_dir> [<second_run_output_dir>] [<third_run_output_dir>]
-       (default: benchmarks/koskinen2022_model_a/output)
+       (default: benchmarks/koskinen2022_model_a/matched_hnu_minus_I/output, the
+       matched run; benchmarks/koskinen2022_model_a/output is the superseded
+       Roche-domain state of the morning of 2026-09-05, see the README there)
 
 The Model A curves are the digitized readings of docs/p23_published_profiles.md
 section 5.1 (Figure 8 densities, Figure 7 T and v; log10 n in cm^-3), on
@@ -57,7 +59,8 @@ def load(outdir):
 
 def main():
     args = sys.argv[1:]
-    out = args[0] if args else os.path.join(HERE, '..', 'benchmarks', 'koskinen2022_model_a', 'output')
+    out = args[0] if args else os.path.join(HERE, '..', 'benchmarks', 'koskinen2022_model_a',
+                                            'matched_hnu_minus_I', 'output')
     A = load(out); B = load(args[1]) if len(args) > 1 else None; C = load(args[2]) if len(args) > 2 else None
     fdir = os.environ.get('K22_FIG_DIR') or os.path.join(HERE, 'figures', 'k22_model_a'); os.makedirs(fdir, exist_ok=True)
     plt.rcParams.update({'font.size': 10, 'axes.labelsize': 11, 'legend.fontsize': 8.5})

@@ -132,14 +132,38 @@ the stellar Ly$\alpha$ beam in \texttt{lya\_rt.f90} and
 \texttt{fuv\_band\_flux}.
 
 \paragraph{Bands stated by their integrated flux.} Four far-ultraviolet
-bands lie almost entirely below the photon grid and are given by scalar
-keys instead, in the band order of \texttt{water\_photolysis.f90}: LW
-(912--1201\,\AA, \texttt{Stellar LW flux}), B2 (the H\,{\sc i} Ly$\alpha$
-line at 1215.67\,\AA, \texttt{Stellar Lya flux}), B3 (1231--1450\,\AA) and
-B4 (1451--2304\,\AA). \texttt{fuv\_band\_flux} returns
-$\xi_{\rm day}F_{\rm band}$, the dilution being applied where the beam is
-used so that the keys keep their stated meaning, the band flux at the
-planet's orbit.
+bands lie almost entirely below the photon grid and enter as
+band-integrated energy fluxes at the planet's orbit rather than through
+the grid, in the band order of \texttt{water\_photolysis.f90}: LW
+(912--1201\,\AA), B2 (the H\,{\sc i} Ly$\alpha$ line at 1215.67\,\AA,
+band 1202--1230\,\AA), B3 (1231--1450\,\AA) and B4 (1451--2304\,\AA). The
+edges are fixed by the physics of the absorbers and not chosen: 912\,\AA{}
+is the Lyman edge, 1201\,\AA{} the red end of the H$_2$ Lyman and Werner
+line list, and the B2/B3/B4 edges follow the H$_2$O branching ratios
+(Sec.~\ref{sec:mol:oxygen}). Each band flux has one of two sources. A key
+in \texttt{input.inp} states it (\texttt{Stellar LW flux},
+\texttt{Stellar Lya flux}, \texttt{Stellar FUV B3 flux},
+\texttt{Stellar FUV B4 flux}), and a stated value, zero included, always
+stands. Where no key is given and the spectrum is a loaded file
+(\texttt{Spectrum type: Load}), the three continuum bands are integrated
+from that file by \texttt{sed\_band\_integrated\_flux} (\texttt{sed\_read.f90}),
+\begin{equation}
+F_{\rm band} = \int_{\lambda_{\rm lo}}^{\lambda_{\rm hi}} F_\lambda\,d\lambda,
+\label{eq:rad:bandflux}
+\end{equation}
+a trapezoid over the file's rows clipped to the band, the file being already
+at the planet: LW on any molecular run, B3 and B4 when the oxygen
+chemistry is on. The two analytic spectrum types cannot supply these
+bands (a power law is the XUV fit extrapolated downward, a Planck curve
+the photosphere, while the stellar far-ultraviolet is chromospheric), and
+the ionizing grid retained by \texttt{read\_sed} ends at the lowest active
+threshold, so the file is re-read for them. Band B2 is never integrated:
+a Ly$\alpha$ line flux reconstructed from observations is a better number
+than a trapezoid over whatever rows the file has across 30\,\AA, so it is
+always a key. \texttt{fuv\_band\_flux} returns $\xi_{\rm day}F_{\rm band}$,
+the dilution being applied where the beam is used so that the stated or
+integrated values keep their meaning, the band flux at the planet's orbit;
+the setup report states all four and names the source of each.
 
 \subsection{Photoionization cross sections}
 \label{sec:radiation:crosssec}
@@ -217,6 +241,46 @@ the vectors \texttt{s\_hi}, \texttt{s\_hei}, \texttt{s\_heii},
 
 \subsection{Transfer along the radial ray}
 \label{sec:radiation:transfer}
+
+\paragraph{The continuous form.} What the code evaluates is the
+frequency-resolved absorption of the incident beam along the substellar
+radial ray. With $F_E(a)$ the incident flux per unit photon energy at the
+orbital distance $a$ (for the power law, $J_{\rm XUV} = L_{\rm XUV}/4\pi a^{2}$
+of \eqref{eq:rad:bandsplit}; for the Planck and table types,
+Sec.~\ref{sec:radiation:spectrum}), the flux reaching radius $r$ is
+\begin{equation}
+F_E(r) = F_E(a)\,e^{-\tau_E(r)},
+\qquad
+\tau_E(r) = \sum_a \sigma_{a,E}\int_r^{r_{\rm top}} n_a(r')\,dr',
+\label{eq:rad:continuous_tau}
+\end{equation}
+the sum running over every photoionizing absorber $a$ and the column
+starting at zero at the outer edge of the grid, $r_{\rm top} = r(N+N_g)$:
+no absorber is carried beyond the domain, which is where these expressions
+differ from Eq.~(4) of \citet{Caldiroli2021}, whose integral runs to $a$.
+The photoionization rate of one particle of absorber $a$ and the
+photoheating rate of the gas are then
+\begin{equation}
+\Gamma_a(r) = \int_{E_{{\rm th},a}}^{\infty}
+   \frac{F_E(r)}{E}\,\sigma_{a,E}\,dE,
+\qquad
+\mathcal{H}(r) = \sum_a n_a(r)\int_{E_{{\rm th},a}}^{\infty}
+   F_E(r)\left(1-\frac{E_{{\rm th},a}}{E}\right)\sigma_{a,E}\,dE,
+\label{eq:rad:continuous_rates}
+\end{equation}
+which are Eq.~(3) of \citet{Caldiroli2021} and its rate counterpart,
+$1-E_{\rm th}/E$ being the fraction of the photon energy carried off by the
+photoelectron. Two factors the code adds to \eqref{eq:rad:continuous_tau}
+are stated where they enter below: the pressure-dependent opacity weight
+$f(p)$ of the optional model~\texttt{P}, and the secondary-ionization heat
+fraction $f_{\rm heat}(E)$ that multiplies the photoelectron share in
+$\mathcal{H}$ when secondary ionization is on
+(Sec.~\ref{sec:radiation:secondary}). The rest of this section is the
+discretization of \eqref{eq:rad:continuous_tau} and
+\eqref{eq:rad:continuous_rates} on the photon grid and on the radial cells,
+each line of which was read against \texttt{photoionization\_field\_at\_cell\_HHe}
+(\texttt{util\_ion\_eq.f90}), the one routine that forms the field and the
+rates of a cell.
 
 The transfer is frequency-integrated over the grid of
 Sec.~\ref{sec:radiation:spectrum} and is pure absorption: there is no

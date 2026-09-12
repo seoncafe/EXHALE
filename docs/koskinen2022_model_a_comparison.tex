@@ -19,7 +19,7 @@
 \title{EXHALE against the published hot-Uranus solution:\\
        Koskinen et al.\ (2022) Model A at 0.05 au}
 \author{Kwang-Il Seon}
-\date{2026-09-05}
+\date{2026-09-05; the H$_2$ extent section added 2026-09-12}
 \maketitle
 
 \begin{quote}\small\itshape
@@ -101,6 +101,7 @@ numerics & operator-split van Leer, 1~s steps, Shapiro filter & not matched (dif
 \end{longtable}}
 
 \subsection{The runs}
+\label{sec:runs}
 
 \texttt{benchmarks/koskinen2022\_model\_a/} holds the input files and the
 final states. \texttt{matched\_hnu\_minus\_I/} is the run with every
@@ -218,6 +219,7 @@ hydrogen (right); black $h\nu - I$, gray full $h\nu$, dashed $0.55\,h\nu$.}
 \end{figure}
 
 \section{What the matching found, in order}
+\label{sec:findings}
 
 \textbf{Gravity.} The single largest difference was the potential. The
 earlier run used EXHALE's default Roche domain (the stellar tidal term,
@@ -291,6 +293,7 @@ the R10 proton sink that sets their low H$^+$.
 rate per ionization their code deposits (or the tabulated Figure~9 curves).
 
 \subsection{Why the results are not identical: every difference, with its size}
+\label{sec:diffs}
 
 In the order of what it does to the comparison.
 
@@ -368,11 +371,187 @@ In the order of what it does to the comparison.
 Items 1 and 3 are the ones that keep the results from being identical;
 item 2 is the next; the rest are at the level of the points.
 
+
+\section{The H$_2$ extent: where Model~A keeps its molecules, and where each EXHALE state does (2026-09-12)}
+\label{sec:h2extent}
+
+\subsection{What Model~A says}
+
+Their text (section~3.1, p.~9): ``H becomes the dominant species at around
+$r \approx 2\,R_p$, but the density of H$_2$ remains significant at all
+altitudes.'' Their Figure~16 gives the reason: chemical loss of H$_2$
+(photodissociation and dissociative ionization) exceeds its production
+everywhere above the base, and the balance is made by \emph{outflow}, which
+carries fresh H$_2$ up from the deeper layers. There is no H$_2$ front in
+Model~A; the H$_2$ fraction falls smoothly from the base to the top of the
+domain.
+
+To put numbers on that, their Figure~8 was digitized a second time on
+2026-09-12, independently of the 2026-09-05 readings of
+\texttt{docs/p23\_published\_profiles.md} section~5.1: the page rendered at
+400~dpi, the frame and the printed ticks located by their pixel rows and
+columns (169.4~px per $R_p$, 74.3~px per decade, tick residuals below
+0.4~px), each curve isolated by its RGB distance from its matplotlib color,
+one value per pixel column, the dash gaps of the H$_2$ dash-dot curve bridged
+by linear interpolation, and a 7-point running median. The table is
+\texttt{benchmarks/koskinen2022\_model\_a/model\_a\_fig8\_digitized.txt} (H$_2$,
+H, He every 0.1~$R_p$). Checks against the paper: $q_0({\rm H}_2) = 0.837$ and
+$q_0({\rm H}) = 0.028$ at the first readable column (stated 0.84 and 0.026);
+He/(H$+2$H$_2$) $= 0.083$--$0.090$ over 3--8~$R_p$ (stated 0.0793); and
+against the 2026-09-05 readings the two digitizations agree to within
+0.06~dex for H$_2$ and 0.02~dex for H and He at every tabulated radius (the
+one 0.056~dex entry is at 2.00~$R_p$, where the H and H$_2$ curves cross and
+the dash gap is bridged). In the base-radius coordinate of the EXHALE grid,
+$r/r_{\rm base} = (r/R_p)/1.34$, the fraction of hydrogen nuclei bound in
+H$_2$, $f({\rm H}_2) = 2n({\rm H}_2)/(2n({\rm H}_2)+n({\rm H}))$, is
+0.93 at 1.2, 0.69 at 1.5, 0.53 at 2.0, 0.43 at 3.0 and 0.39 at 4.0
+$r_{\rm base}$; $f = 0.5$ is crossed at 2.15~$r_{\rm base}$ (2.9~$R_p$), and
+$f$ never reaches $10^{-2}$ inside the domain.
+
+\subsection{The EXHALE states}
+
+Four EXHALE states of the hot Uranus exist, and they do not describe one
+configuration. Figure~\ref{fig:h2extent} and Table~\ref{tab:h2extent} put
+them beside Model~A.
+
+\begin{table}[htbp]
+\centering\small
+\caption{$f({\rm H}_2)$ at five radii. The matched run is
+\texttt{matched\_hnu\_minus\_I} of Sec.~\ref{sec:runs} (spherical domain to
+7.24~$r_{\rm base}$, \texttt{Rate/4 + Mdot}); the three carrier-reload states
+are the fixture \texttt{backup/regression/carrier\_elem\_newton} of the
+stationary-solver series, whose configuration differs from the matched run
+in the domain and in the flux (text). MEASURED 2026-09-12 with
+\texttt{docs/k22\_h2\_figure.py}.}
+\label{tab:h2extent}
+\begin{tabular}{lccccc}
+\toprule
+$r/r_{\rm base}$ & 1.2 & 1.5 & 2.0 & 3.0 & 4.0 \\
+\midrule
+Model A (Fig.~8 digitized) & 0.933 & 0.691 & 0.530 & 0.430 & 0.389 \\
+matched run (\texttt{matched\_hnu\_minus\_I}, 2026-09-05) & 0.884 & 0.588 & 0.408 & 0.310 & 0.267 \\
+carrier reload, pinned state & 0.000 & 0.000 & 0.000 & 0.000 & 0.000 \\
+carrier reload, 12 bounded passes & 0.000 & 0.000 & 0.000 & 0.000 & 0.000 \\
+carrier reload, fixed-wind fixed point & 0.971 & 0.910 & 0.760 & 0.510 & 0.388 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=\linewidth]{h2_extent.pdf}
+\caption{Left: $n({\rm H}_2)$ (and, thin dashed, $n({\rm H})$) of Model~A
+from the 2026-09-12 digitization (green; circles and squares the 2026-09-05
+readings) against the four EXHALE states. Right: the fraction of H nuclei in
+H$_2$. Black: the matched run \texttt{matched\_hnu\_minus\_I} (spherical
+domain to 7.24~$r_{\rm base}$); red: the pinned state of the carrier reload
+fixture (Roche domain to 4.71~$r_{\rm base}$); orange dashed: that fixture
+after 12 bounded passes of the partitioned stationary loop; blue dotted: its
+fixed point at a fixed wind. Model~A's own top is 7.16~$r_{\rm base}$
+(9.6~$R_p$).}
+\label{fig:h2extent}
+\end{figure}
+
+\textbf{The matched run}
+(\texttt{benchmarks/koskinen2022\_model\_a/matched\_hnu\_minus\_I/output}, the
+$h\nu - I$ run of Sec.~\ref{sec:runs}, on the spherical domain to
+7.24~$r_{\rm base}$ that matches Model~A's 9.6~$R_p$ top) has the same shape
+as Model~A: no front, H$_2$ carried to the top of the domain, $f({\rm H}_2)$
+0.05--0.12 below theirs at every radius (0.88 against 0.93 at
+1.2~$r_{\rm base}$, 0.59 against 0.69 at 1.5, 0.41 against 0.53 at 2.0, 0.31
+against 0.43 at 3.0, 0.27 against 0.39 at 4.0), $f = 0.5$ at 1.67 against
+their 2.15~$r_{\rm base}$. $n({\rm H}_2)$ itself is a nearly uniform
+0.23--0.27~dex below theirs from 1.2 to 7~$r_{\rm base}$, a constant factor
+of 1.7--1.9 rather than a growing gap, which is the deficit item~3 of
+Sec.~\ref{sec:diffs} attributes to the supply from the layer and to the
+electron density that feeds R10, not to the H$_2$ chemistry. (A first
+version of this comparison, the same day, was drawn on
+\texttt{benchmarks/koskinen2022\_model\_a/output}, the superseded
+Roche-domain state of the morning of 2026-09-05 whose top is
+4.72~$r_{\rm base}$; the README of that directory now says which state is
+which.)
+
+\textbf{The carrier reload fixture} is a different object. Its
+\texttt{input.inp} shares the planet, the star, the spectrum and the base of
+the matched run, but differs in five respects that change the physics of the
+answer: the \emph{domain}, EXHALE's default Roche potential truncated at
+L1 with the top at 4.71~$r_{\rm base}$, against the matched
+\texttt{Domain mode: Spherical} to 7.24 (the difference that moved the sonic
+point from 2.9 to 4.7~$R_p$ in Sec.~\ref{sec:findings} and was the largest
+single correction of the matching); \texttt{2D approximate method: Rate/2 +
+Mdot/2} against the matched \texttt{Rate/4 + Mdot} (twice the incident flux
+the paper's dayside average defines); \texttt{Secondary\_ionization: False}
+against \texttt{Immediate}; no \texttt{Ionization transport}; and the
+stationary solver keys (\texttt{Solver: Newton 100}, \texttt{Coupled carrier
+solve: True}, \texttt{du\_th} stage~2 at 10). It is the fixture of the
+solver series, pinned on 2026-09-10 from a state of the B5g session, and it
+was never re-matched after the gravity and spectrum corrections of this
+memo. Its pinned state came from the
+B5g session of the solver series (the fixture README), not from a converged
+march, and in it the H$_2$ is confined to the base: $f = 0.5$ at
+1.072~$r_{\rm base}$, $f = 10^{-2}$ at 1.097, and above 1.5~$r_{\rm base}$
+$n({\rm H}_2)$ sits on a floor near $4\times10^{2}$~cm$^{-3}$ while Model~A
+has $10^{9}$--$10^{7}$ there. The 12-pass and 110-pass records of the
+partitioned stationary loop on this fixture
+(\texttt{docs/Update\_EXHALE\_stage2.md} sections~8 and~9) move that front
+outward by 0.003 and 0.05~$r_{\rm base}$ respectively and never reach Model~A's
+shape: after 12 passes $f = 0.5$ is at 1.076 and $f = 10^{-2}$ at 1.103.
+The fixed-wind fixed point (the movement bound removed, the chemistry
+solved on the advancing composition, 61 transport steps) goes the other way,
+more molecular than Model~A inside its own domain (0.91 against 0.69 at
+1.5, 0.76 against 0.53 at 2.0, 0.51 against 0.43 at 3.0, equal at 4.0),
+with no cell below $f = 10^{-2}$.
+
+\subsection{What this settles and what it does not}
+
+\begin{enumerate}
+\item The ``H$_2$ front that walks outward and does not stop'' is a
+  property of the carrier reload fixture under the partitioned stationary
+  route, not of EXHALE's solution of Model~A. The marching solution of the
+  matched configuration has no front and carries H$_2$ to the top with a
+  0.06--0.12 deficit in $f({\rm H}_2)$. Any statement about the front has to
+  name the fixture.
+\item The fixture's confinement of H$_2$ is consistent with its inputs: the
+  Roche domain to 4.71~$r_{\rm base}$ that the matching replaced, twice the
+  dayside flux of the matched run and no secondary ionization put a
+  different wind and a stronger photodissociating and photoionizing field on
+  the base, and its pinned state was not a converged march. The solver series
+  never re-matched the fixture, so every statement about the H$_2$ front in
+  the stage-2 log is a statement about a configuration that is not Model~A.
+  The next measurement is therefore the fixture re-pinned on the matched
+  keys (spherical 7.24, \texttt{Rate/4 + Mdot}, \texttt{Secondary\_ionization:
+  Immediate}, \texttt{Ionization transport: True}) from the matched run's
+  state, on which the stationary route and the marching solution describe one
+  configuration; until then the front's position on the fixture is not to be
+  read as physics.
+\item The fixed-wind fixed point shows what the carrier operator alone does
+  when the wind is held: it fills the domain with H$_2$ beyond what Model~A
+  carries. The front's position is therefore set by the hydrodynamic
+  response, and neither the bounded advance (too little) nor the unbounded
+  one (too much) is the coupled answer; that answer is the one the marching
+  run gives, and the question for the stationary route is whether it can
+  reach the same state, which it has not yet (the wind H$_2$ row floors at
+  $2.2\times10^{-2}$ against the $10^{-5}$ gate; stage-2 log section~8).
+\item Against Model~A the open physics is still the 0.06--0.12 deficit of
+  the matched run, whose candidates are listed in Sec.~\ref{sec:diffs}: the
+  supply of H$_2$ from the layer and the electron density. The digitization
+  is not the limit: 0.06~dex in $n({\rm H}_2)$ is 0.02 in $f$ where
+  $f \sim 0.5$.
+\end{enumerate}
+
 \section{Provenance}
 
 Figures and the table: \texttt{docs/k22\_model\_a\_figures.py} (run on
-\texttt{benchmarks/koskinen2022\_model\_a/output}). Digitized Model~A:
-\texttt{docs/p23\_published\_profiles.md} section~5.1. The electron-density
+the three \texttt{matched\_*/output} directories of
+\texttt{benchmarks/koskinen2022\_model\_a/}; the \texttt{output/} at that
+level is the superseded Roche-domain state, see the README there).
+Digitized Model~A:
+\texttt{docs/p23\_published\_profiles.md} section~5.1, and for the H$_2$
+extent of Sec.~\ref{sec:h2extent} the table
+\path{benchmarks/koskinen2022_model_a/model_a_fig8_digitized.txt}
+(2026-09-12) with the figure script \path{docs/k22_h2_figure.py}; the two
+stationary-route states it plots are pinned under
+\path{benchmarks/koskinen2022_model_a/carrier_reload_states/}. The electron-density
 diagnosis that led to the configuration: \texttt{docs/k22\_electron\_density\_excess.md};
 the changes of the code behind it: \texttt{docs/Update\_EXHALE.md} sections
 168--170.

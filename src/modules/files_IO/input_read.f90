@@ -19,8 +19,9 @@
                           lap_value_at_match, lap_element_ratio_at_match
    ! FUV photolysis thresholds of the oxygen chemistry, filled once here
    ! (serially) because the OpenMP cell sweep only reads them.
-   use water_photolysis, only: water_photolysis_init
-   use sed_reader, only: lyman_werner_band_flux_from_sed
+   use water_photolysis, only: water_photolysis_init, ib_LW, ib_B3, ib_B4
+   use sed_reader, only: sed_band_integrated_flux
+   use oxygen_rates, only: fuv_band_lo_A, fuv_band_hi_A
    use diffusive_photochemistry, only: carrier_set_init
    use base_boundary, only: set_base_reservoir
    ! The vocabulary of the restart metadata block's 'options' field, defined
@@ -717,6 +718,7 @@
 				! "Stellar FUV B3 flux [erg/cm2/s]: <F>" -- 1231-1450 A.
 				str = get_word(line, 6)
 				read(str,*) F_FUV_B3
+				fuv_b3_flux_stated = .true.
 			else if (lbl_match(line, 'Stellar FUV B4 flux')) then
 				! "Stellar FUV B4 flux [erg/cm2/s]: <F>" -- 1451-2304 A.
 				! B2 is the Ly-alpha line and is supplied by "Stellar Lya
@@ -725,6 +727,7 @@
 				! by the Ly-alpha line (water_photolysis.f90), not chosen.
 				str = get_word(line, 6)
 				read(str,*) F_FUV_B4
+				fuv_b4_flux_stated = .true.
 			else if (lbl_match(line, 'Stellar LW flux')) then
 				! "Stellar LW flux [erg/cm2/s]: <F>" -- band-integrated
 				! stellar flux over 912-1201 A at the planet's orbit. Drives
@@ -1547,6 +1550,59 @@
    ! producer of the base H2/H partition, so it joins the single-source rule
    ! that the lower-atmosphere profile and base.inp already follow rather
    ! than inventing one of its own.
+   ! THE FUV BAND FLUXES, when the run did not state them and a numerical
+   ! spectrum is available. Done here, BEFORE the oxygen-chemistry report
+   ! and its warnings below, so that those judge the fluxes the run will
+   ! actually use.
+   !
+   ! H2 photodissociation and the H2O/OH photolysis are not options of the
+   ! physics: the bands exist whenever the star does. What was optional was
+   ! our knowing the numbers, and a run with a spectrum file knows them --
+   ! so each band is integrated by the documented prescription (the band's
+   ! interval of the SED, at the planet) instead of being left at zero and
+   ! silently switching the channel off. A stated key always wins: it is
+   ! the more specific statement, and a band-integrated measurement can be
+   ! better than our trapezoid over whatever grid the file happens to have
+   ! -- and a stated ZERO wins too: it is the run saying the band is not to
+   ! be used (a comparison with a model that has no H2 photodissociation,
+   ! or no continuum photolysis), not the run not knowing. Band B2 is the
+   ! Ly-alpha line and stays a key ("Stellar Lya flux"): a line flux
+   ! reconstructed from observations is a better number than a trapezoid
+   ! over the file's rows across 1202-1230 A. The Lyman-Werner band is
+   ! integrated for any molecular run (H2 absorbs it); B3 and B4 only with
+   ! the oxygen chemistry, the only consumer of those two.
+   if (thereis_mol .and. .not. lw_flux_stated .and. do_read_sed) then
+      F_LW_star = sed_band_integrated_flux(fuv_band_lo_A(ib_LW),          &
+                                           fuv_band_hi_A(ib_LW))
+      if (F_LW_star .gt. 0.0d0) then
+         write(*,'(A,ES10.3,A)') ' (input_read) Stellar LW flux from the'// &
+              ' spectrum file: ', F_LW_star, ' erg cm^-2 s^-1 (912-1201 A)'
+         lw_from_spectrum = .true.
+      endif
+   endif
+   if (thereis_oxychem .and. do_read_sed) then
+      if (.not. fuv_b3_flux_stated) then
+         F_FUV_B3 = sed_band_integrated_flux(fuv_band_lo_A(ib_B3),         &
+                                             fuv_band_hi_A(ib_B3))
+         if (F_FUV_B3 .gt. 0.0d0) then
+            write(*,'(A,ES10.3,A)') ' (input_read) Stellar FUV B3 flux'//  &
+                 ' from the spectrum file: ', F_FUV_B3,                    &
+                 ' erg cm^-2 s^-1 (1231-1450 A)'
+            fuv_b3_from_spectrum = .true.
+         endif
+      endif
+      if (.not. fuv_b4_flux_stated) then
+         F_FUV_B4 = sed_band_integrated_flux(fuv_band_lo_A(ib_B4),         &
+                                             fuv_band_hi_A(ib_B4))
+         if (F_FUV_B4 .gt. 0.0d0) then
+            write(*,'(A,ES10.3,A)') ' (input_read) Stellar FUV B4 flux'//  &
+                 ' from the spectrum file: ', F_FUV_B4,                    &
+                 ' erg cm^-2 s^-1 (1451-2304 A)'
+            fuv_b4_from_spectrum = .true.
+         endif
+      endif
+   endif
+
    if (thereis_oxychem) then
       if (.not. thereis_mol) then
          write(*,*) '(input_read) ERROR: "Oxygen chemistry: True" needs'// &
@@ -2072,28 +2128,6 @@
    ! changing this default is a deliberate step with a golden refresh, not a
    ! side effect of adding the operator.
    if (.not. carrier_transport_stated) carrier_transport = thereis_oxychem
-
-   ! The Lyman-Werner band flux, when the run did not state one and a
-   ! numerical spectrum is available.
-   !
-   ! H2 photodissociation is not an option of the physics: the band exists
-   ! whenever the star does. What was optional was our knowing the number,
-   ! and a run with a spectrum file knows it -- so it is computed by the
-   ! documented prescription (912-1201 A of the SED, at the planet) instead
-   ! of being left at zero and silently switching the channel off. A stated
-   ! "Stellar LW flux" always wins: it is the more specific statement, and a
-   ! band-integrated measurement can be better than our trapezoid over
-   ! whatever grid the file happens to have -- and a stated ZERO wins too:
-   ! it is the run saying the band is not to be used (a comparison with a
-   ! model that has no H2 photodissociation), not the run not knowing.
-   if (thereis_mol .and. .not. lw_flux_stated .and. do_read_sed) then
-      F_LW_star = lyman_werner_band_flux_from_sed()
-      if (F_LW_star .gt. 0.0d0) then
-         write(*,'(A,ES10.3,A)') ' (input_read) Stellar LW flux from the'// &
-              ' spectrum file: ', F_LW_star, ' erg cm^-2 s^-1 (912-1201 A)'
-         lw_from_spectrum = .true.
-      endif
-   endif
 
    ! WHAT "Ionization transport: True" REQUIRES, refused rather than repaired.
    ! Each of these is a configuration in which the option would silently

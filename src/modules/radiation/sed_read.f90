@@ -505,35 +505,42 @@
 	
 	! End of module
 	
-      double precision function lyman_werner_band_flux_from_sed()         &
+      double precision function sed_band_integrated_flux(w_lo, w_hi)      &
                                 result(F_band)
-      ! Band-integrated flux over 912-1201 A of the numerical SED, at the
-      ! planet [erg cm^-2 s^-1] -- the quantity "Stellar LW flux" states.
+      ! Band-integrated flux of the numerical SED over [w_lo, w_hi] A, at
+      ! the planet [erg cm^-2 s^-1]: the quantity the band-flux keys state
+      ! ("Stellar LW flux" over 912-1201 A, "Stellar FUV B3 flux" over
+      ! 1231-1450 A, "Stellar FUV B4 flux" over 1451-2304 A; the edges are
+      ! fuv_band_lo_A / fuv_band_hi_A of oxygen_rates). Band B2, the
+      ! Ly-alpha line, is NOT integrated here: a line flux reconstructed
+      ! from observations is a better number than a trapezoid over
+      ! whatever rows the file has across 1202-1230 A, so it stays a key
+      ! ("Stellar Lya flux").
       !
-      ! THE BAND IS THE LYMAN-WERNER INTERVAL, 912-1201 A: the H Lyman edge
-      ! to the start of band B2 of the FUV band list, which is also the red
-      ! end of the line list the H2 self-shielding table is built from
-      ! (lyman_werner.f90 sec. 1). It ran to 1110 A until 2026-09-06, when
-      ! the 1110-1201 A band B1 was merged into it.
+      ! The Lyman-Werner interval is 912-1201 A: the H Lyman edge to the
+      ! start of band B2, which is also the red end of the line list the
+      ! H2 self-shielding table is built from (lyman_werner.f90 sec. 1).
+      ! It ran to 1110 A until 2026-09-06, when the 1110-1201 A band B1 was
+      ! merged into it.
       !
-      ! The integral is carried out by the code instead of by hand: the
-      ! stellar spectrum over 91.2-120.1 nm at the planet's orbit. No
+      ! The integral is carried out by the code instead of by hand. No
       ! dilution is applied here because EXHALE's own SED file is already AT
       ! THE PLANET, which is what read_sed's header states; the (R_star/a)^2
       ! step belongs to the stellar-surface files the value used to be
-      ! produced from. Checked against that route on the NARROWER band, when
-      ! it was the band: Gueymard's solar spectrum integrated over
-      ! 912-1110 A at the stellar surface and diluted to 0.048 AU behind a
-      ! 1.155 R_sun star gave 329 erg cm^-2 s^-1 against the 343 the
-      ! molecular cases carried, i.e. the two agreed to 4%.
+      ! produced from. Checked against that route on the NARROWER
+      ! Lyman-Werner band, when it was the band: Gueymard's solar spectrum
+      ! integrated over 912-1110 A at the stellar surface and diluted to
+      ! 0.048 AU behind a 1.155 R_sun star gave 329 erg cm^-2 s^-1 against
+      ! the 343 the molecular cases carried, i.e. the two agreed to 4%.
       !
-      ! The interval is OUTSIDE the ionizing range read_sed retains (912 A is
-      ! 13.6 eV, the H I edge, and everything longward is below it), so the
-      ! file is re-read here rather than taken from the selected arrays.
-      ! Trapezoid on the bin centres; rows outside the band are skipped, and
-      ! the two rows bracketing each edge are kept so a coarse grid does not
-      ! lose the ends.
-      real*8, parameter :: w_lo = 912.0d0, w_hi = 1201.0d0
+      ! Every one of these intervals is OUTSIDE the ionizing range read_sed
+      ! retains (912 A is 13.6 eV, the H I edge, and everything longward is
+      ! below it), so the file is re-read here rather than taken from the
+      ! selected arrays. Trapezoid on the bin centres; rows outside the band
+      ! are skipped, and the two rows bracketing each edge are kept so a
+      ! coarse grid does not lose the ends. Zero if fewer than two segments
+      ! fall in the band (a file that does not reach it).
+      real*8, intent(in) :: w_lo, w_hi
       real*8  :: w, f, w_prev, f_prev, wa, wb
       integer :: io, nin
       logical :: have_prev
@@ -563,7 +570,7 @@
       enddo
       close(71)
       if (nin .lt. 2) F_band = 0.0d0
-      end function lyman_werner_band_flux_from_sed
+      end function sed_band_integrated_flux
 
       ! ------------------------------------------------------------- !
 

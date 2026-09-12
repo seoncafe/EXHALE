@@ -365,6 +365,17 @@ Derived from the same reading:
   10 percent of that between 1.21 and 1.32) and is 1.8e5 cm^-3 at the top of
   the domain.
 
+**Second digitization, 2026-09-12.** Figure 8 was read again independently
+(page rendered at 400 dpi, ticks located from the print, 169.4 px per R_p and
+74.3 px per decade, RGB isolation of each curve, dash gaps bridged, 7-point
+median), every 0.1 R_p, into
+`benchmarks/koskinen2022_model_a/model_a_fig8_digitized.txt` (H2, H, He). The
+two readings agree to within 0.06 dex for H2 and 0.02 dex for H and He at every
+radius of the table above; the derived f(H2) is 0.93 at 1.2 r_base, 0.69 at
+1.5, 0.53 at 2.0, 0.43 at 3.0, 0.39 at 4.0. The comparison with every EXHALE
+state of the hot Uranus is `docs/koskinen2022_model_a_comparison.tex`, section
+"The H2 extent".
+
 ### 5.2 Koskinen et al. (2022) Figure 13: the revised Model A
 
 Their Figure 13 repeats the Model A composition with an approximate treatment

@@ -8869,3 +8869,154 @@ say nothing about this change.
   once on the worker's control run ("no_dump_line") and passed on its measured
   run and on the advisor's; the P17 note on two concurrent invocations of that
   suite sharing something outside `EXHALE_TEST_OUT` stands.
+
+### The oxygen rows in the physics document (2026-09-12, user report)
+
+The user read page 18 of `docs/EXHALE_physics_and_algorithms.pdf` and found
+that "The molecular rows" wrote the four H2/H2+/H3+/HeH+ balances and nothing
+of the oxygen-bearing molecules. Confirmed against the code: with
+`thereis_oxychem` the cell system of `System_HeH_mol_metals` carries two more
+unknowns, `n_OH/n_O` and `n_H2O/n_O`, whose balances `oxygen_carrier_rows`
+writes on O1/O1r, O2/O2r, the three H2O photolysis channels and the OH
+photolysis, with the H2 row gaining the exchange with the water cycle, free
+atomic oxygen closing the family (`n_O - n_OH - n_H2O - n_CO`) and the H
+closure gaining `n_OH + 2 n_H2O`; the reverses come from detailed balance on
+the NIST-JANAF Shomate Gibbs energies; the O4 + O6 pair is one channel with
+O(1D) eliminated exactly; CO is not a row of the cell system but a
+transported carrier destroyed one-sidedly by He+ + CO (Langevin 1.6e-9,
+UMIST RATE22 4068) and by Lyman-Werner photodissociation with the Visser et
+al. (2009) shielding, the He+ row taking the He+ it consumes at the frozen
+CO of the sweep. A paragraph "The oxygen rows" with the two balance equations
+now follows "The molecular rows" in `docs/physics_overview/ionization.tex`,
+the oxygen-option subsection cross-references it, the carrier-transport
+subsection got a label, and three references were added (Baulch et al.
+2005, Chase 1998, Millar et al. 2024). Rebuilt with `latexmk`: 58 pages, no
+undefined citation or reference, no overfull box.
+
+### ESWENO assessment memo (2026-09-12, user question)
+
+The user asked what the energy-stable WENO schemes gain and pointed at the
+three papers under `references/`. New memo
+`docs/esweno_assessment_20260912.{tex,pdf}` (5 pages), written from the
+published versions of Yamaleev & Carpenter (2009a, JCP 228, 3025; 2009b, JCP
+228, 4248) and Fisher et al. (2011, JCP 230, 3727) and from
+`src/modules/states/Reconstruction.f90`: the energy estimate comes from an
+added nonlinear dissipation term (2009a Eqs. 9, 35 to 37) whose proof needs
+only 0 <= w <= 1 and sum w = 1; the new weight functions (Eqs. 18, 21, 22)
+with epsilon = O(Delta xi^2) hold the design order at smooth extrema and are
+separable from the estimate; the proof covers linear hyperbolic systems in
+characteristic form on periodic grids, with no proof for the Euler equations
+or a component-wise reconstruction (their Sections 5 and 6.2); the 2011
+closures keep it on a finite domain with nonuniform flux points near the
+boundaries; the cost is 15 to 20 percent (2009b Table 1). EXHALE's WENO3
+already uses the 2009a weights and floor and not the dissipation term, and
+three properties of the code (finite-volume state reconstruction on a
+stretched grid, component-wise, nonlinear Euler) keep the estimate from
+carrying over. No code change; nothing measured on this code attributes an
+instability to the reconstruction's symmetric part.
+
+### The continuous transfer equations in the physics document (2026-09-12, user request)
+
+The user asked for the flux and rate formulas of Caldiroli et al. (2021)
+Eqs. (3) and (4) in `docs/EXHALE_physics_and_algorithms.tex`, to be added
+only after checking them against what the code computes. Checked in
+`photoionization_field_at_cell_HHe` (`util_ion_eq.f90`): the outside column
+times cross sections gives tau_out, the cell's own densities give dtau, the
+working flux is `F_XUV * cell_mean_attenuation(tau_out, dtau) * opa_pf(j)`,
+the rate is `sum(int_f * sigma / E * dE) * 1e-18 * erg2eV` and the
+one-particle heating `sum(int_f * (1 - E_th/E) * f_heat * sigma * dE) *
+1e-18`, contracted with the densities in `photoheating_of_cell`; the
+discrete equations already in the document are these lines term by term.
+Added at the head of "Transfer along the radial ray": the continuous form
+F_E(r) = F_E(a) exp(-tau_E), tau_E = sum_a sigma_a int_r^{r_top} n_a dr',
+Gamma_a and H(r) as Caldiroli's Eq. (3), with the one difference stated (the
+column starts at zero at the outer edge of the grid, r(N+Ng), not at a).
+Rebuilt: 59 pages, no undefined reference, no overfull box.
+
+### FUV bands B3 and B4 integrated from the spectrum file (2026-09-12, user instruction)
+
+The user asked why `Stellar LW flux` and `Stellar FUV B3/B4 flux` are
+separate inputs when a spectrum is given. READ from the code: with
+`Spectrum type: Load` the Lyman-Werner flux was already integrated from the
+file when its key was absent, but B3 (1231-1450 A) and B4 (1451-2304 A)
+came only from their keys; the analytic spectrum types cannot state those
+bands (a power law is the XUV fit extrapolated, a Planck the photosphere)
+and the ionizing photon grid does not carry them, which is why the keys
+exist. Instruction: integrate B3 and B4 from the file as well; Ly-alpha
+(band B2) stays a key, a reconstructed line flux being the better number.
+
+Done: `sed_read.f90`'s `lyman_werner_band_flux_from_sed` became
+`sed_band_integrated_flux(w_lo, w_hi)` (one trapezoid over the file's rows
+clipped to any band); `input_read.f90` calls it with the band edges of
+`oxygen_rates` (`fuv_band_lo_A/hi_A`) for LW on any molecular run and for
+B3 and B4 with the oxygen chemistry on, when the key is absent and a file
+is loaded; a stated key, zero included, always wins (`fuv_b3_flux_stated`,
+`fuv_b4_flux_stated`, `fuv_b3_from_spectrum`, `fuv_b4_from_spectrum` in
+`parameters.f90`); the setup report names the source and a stated zero.
+Fixed beside it: the derivation ran AFTER the oxygen-chemistry warnings, so
+a loaded-spectrum run without the LW key was told "Stellar LW flux is zero"
+while the file supplied it; the block now runs before those warnings.
+Manual rows of the two keys updated (`EXHALE_user_manual.tex`, rebuilt).
+
+MEASURED (private build, hot-Uranus oxygen case with
+`inputdata/sed/hot_uranus_solar_koskinen2022.txt` loaded, 3 steps): with the
+keys removed the run reads B3 4.696E+02 and B4 4.445E+05 erg cm^-2 s^-1
+against a hand trapezoid of the same file 4.696068E+02 and 4.444851E+05 (LW
+without its key 3.687E+02 against 3.687009E+02); with the keys stated
+(694.8, 658782.2) the stated values stand; with B3 stated as zero the band
+is off and the report says so. No regression case combines a loaded
+spectrum with the oxygen chemistry, so the new path fires in none of them;
+`make check` on the merged tree is recorded below.
+Documentation of the rule (user instruction, same day): the physics
+document's "Bands stated by their integrated flux" paragraph
+(`docs/physics_overview/radiation.tex`) now states the two sources of each
+band flux, the band integral (its Eq. for F_band), why the analytic spectrum
+types cannot supply the bands, and why Ly-alpha stays a key; the manual's
+`Stellar LW flux` row, the `Oxygen chemistry` row and the Tier 2b section
+(`docs/EXHALE_user_manual.tex`) say the same at the keys. Both rebuilt.
+
+### The H2 extent against Koskinen et al. (2022) Model A (2026-09-12, user instruction)
+
+The user asked how far out Model A keeps its H2, then for a digitization of
+their Figure 8 and a full record of the present state in
+`docs/koskinen2022_model_a_comparison.tex`. Their text: "H becomes the
+dominant species at around r = 2 R_p, but the density of H2 remains
+significant at all altitudes" (their Figure 16: outflow supplies the H2 the
+chemistry destroys). Figure 8 digitized a second time, independently of the
+2026-09-05 readings (400 dpi, ticks from the print, RGB isolation, every
+0.1 R_p): `benchmarks/koskinen2022_model_a/model_a_fig8_digitized.txt`;
+the two readings agree to 0.06 dex (H2) and 0.02 dex (H, He); q0(H2) 0.837
+and q0(H) 0.028 recovered against the stated 0.84 and 0.026. f(H2) of
+Model A: 0.93 / 0.69 / 0.53 / 0.43 / 0.39 at 1.2 / 1.5 / 2.0 / 3.0 / 4.0
+r_base, f = 0.5 at 2.15 r_base, never below 1e-2.
+
+New section 5 of the memo ("The H2 extent"), figure
+`docs/figures/k22_model_a/h2_extent.pdf` (`docs/k22_h2_figure.py`), the two
+stationary-route states pinned under
+`benchmarks/koskinen2022_model_a/carrier_reload_states/`. MEASURED: the
+matched run `matched_hnu_minus_I` (spherical domain to 7.24 r_base, Rate/4 +
+Mdot) has Model A's shape, no front, f(H2) 0.88 / 0.59 / 0.41 / 0.31 / 0.27
+at the same radii, i.e. 0.05 to 0.12 below, and n(H2) a uniform 0.23 to
+0.27 dex below theirs from 1.2 to 7 r_base. The carrier reload fixture of
+the solver series (`backup/regression/carrier_elem_newton`) is NOT that
+configuration: Roche domain to 4.71 r_base, `Rate/2 + Mdot/2`, no secondary
+ionization, no ionization transport, pinned from a B5g state; in it f(H2)
+is zero above 1.1 r_base (f = 0.5 at 1.072, 1e-2 at 1.097), 12 bounded
+passes move that to 1.076 / 1.103, and the fixed-wind fixed point fills the
+domain (0.97 / 0.91 / 0.76 / 0.51 / 0.39). So the "walking H2 front" of
+sections 8 and 9 is a statement about the fixture, not about EXHALE's Model
+A solution; the next measurement is the fixture re-pinned on the matched
+keys from the matched run's state.
+
+The user caught, from the figure, that the first version of the comparison
+was drawn on `benchmarks/koskinen2022_model_a/output`, the superseded
+Roche-domain state of the morning of 2026-09-05 (top 4.72 r_base), and that
+the fixture's domain differs from Model A's: the section and the figure were
+redrawn on `matched_hnu_minus_I`, both figure scripts now default to that
+run, and `benchmarks/koskinen2022_model_a/README.md` (new) says which
+directory is which.
+
+Gate of the tree carrying the band-flux change, the H2-extent memo and the
+ESWENO memo: `make check` (advisor, 2026-09-12 15:38 KST, the shared
+`build/` rebuilt with the gfortran on PATH): **REGRESSION PASS (all cases
+byte-identical)**, 64 file comparisons PASS with data identical.

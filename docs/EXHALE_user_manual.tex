@@ -1063,7 +1063,13 @@ defaults restore the standard behavior).}\label{tab:inp-opt}\\
   metal and no armed excited-H coupling has no grid point in 11.2--13.6\,eV
   at all, and where the grid does reach that far, a power-law type gives
   only the XUV fit extrapolated downward rather than a stellar FUV spectrum.
-  0 (default) = no photodissociation, and the
+  With \texttt{Spectrum type: Load} the key may be omitted: the band is
+  then integrated from the spectrum file over 912--1201\,\AA{} (a trapezoid
+  over the file's rows, the file being at the planet already) and the
+  setup report says so. A stated value always wins, and a stated 0 switches
+  the band off even when the file could supply it (the comparison with a
+  model that has no H$_2$ photodissociation). Without a spectrum file,
+  0 (default) = no photodissociation. The
   key is inert without \texttt{Molecular chemistry: True}. Writes
   \texttt{output/Lyman\_Werner.txt}
   (\path{docs/lower_atmosphere_coupling.md}). With
@@ -1085,9 +1091,14 @@ defaults restore the standard behavior).}\label{tab:inp-opt}\\
 \texttt{Stellar FUV B3 flux [erg/cm2/s]:} & real (def.\ 0) & The same over
   1231--1450\,\AA{} (band \texttt{B3}, branching 0.89/0.11/0.00). Band
   \texttt{B2} is the Ly$\alpha$ line and comes from
-  \texttt{Stellar Lya flux}. \\
+  \texttt{Stellar Lya flux}. With \texttt{Spectrum type: Load} and
+  \texttt{Oxygen chemistry: True}, a run that does not state this key gets
+  the band integrated from the spectrum file over 1231--1450\,\AA{} (a
+  trapezoid over the file's rows, as for \texttt{Stellar LW flux}), and the
+  setup report says so; a stated value, zero included, always wins. \\
 \texttt{Stellar FUV B4 flux [erg/cm2/s]:} & real (def.\ 0) & The same over
-  1451--2304\,\AA{} (band \texttt{B4}, branching 1.00/0.00/0.00). \emph{Read
+  1451--2304\,\AA{} (band \texttt{B4}, branching 1.00/0.00/0.00), integrated
+  from the spectrum file under the same rule when not stated. \emph{Read
   the caveat in \S\ref{sec:oxychem}}: the H$_2$O cross section falls three
   decades across this band, so a single band average misrepresents it by a
   factor of several for a red spectrum. \\
@@ -1433,8 +1444,11 @@ defaults restore the standard behavior).}\label{tab:inp-opt}\\
   stages alone, and CO carries an oxygen \emph{and} a carbon nucleus, so it
   cannot follow two element factors at once). \texttt{He\_diffusion} alone is
   accepted. Supply the band fluxes with \texttt{Stellar LW flux},
-  \texttt{Stellar FUV B3/B4 flux} and \texttt{Stellar Lya flux}; without
-  them the run returns the chemical equilibrium of the O/OH/H$_2$O family
+  \texttt{Stellar FUV B3/B4 flux} and \texttt{Stellar Lya flux}; with
+  \texttt{Spectrum type: Load} the three continuum bands (LW, B3, B4) are
+  integrated from the spectrum file when their keys are absent, and only
+  Ly$\alpha$ has to be stated. Without band fluxes the run returns the
+  chemical equilibrium of the O/OH/H$_2$O family
   rather than a photochemical partition, and says so at startup. Writes
   \texttt{output/Oxygen\_chemistry.txt} and \texttt{output/FUV\_bands.txt}
   and appends \texttt{OH H2O CO} to \texttt{Ion\_species.txt}
@@ -2022,6 +2036,13 @@ Stellar Lya flux [erg/cm2/s]:    14957.2  # 1215.67 A, the Lya line   (B2)
 Stellar FUV B3 flux [erg/cm2/s]:  1374.1  # 1231-1450 A               (B3)
 Stellar FUV B4 flux [erg/cm2/s]: 46294.8  # 1451-2304 A               (B4)
 \end{verbatim}
+With \texttt{Spectrum type: Load} the three continuum lines (LW, B3, B4) may
+be omitted: each band is then integrated from the spectrum file over its own
+interval, a trapezoid over the file's rows (the file is already at the
+planet), and the setup report names the source of every band. Only the
+Ly$\alpha$ line is always a key, because a line flux reconstructed from
+observations is a better number than a trapezoid over the file's rows across
+1202--1230\,\AA. A stated value, zero included, always wins over the file.
 Tier 2 can build a molecular base but not \emph{decide} how molecular it is:
 the H$_2$/H partition is either imposed through the \texttt{q\_H2\_base}
 handoff or taken from a chemical-equilibrium fit, neither of which is
@@ -2108,9 +2129,10 @@ axis. Until 2026-09-06 $A$ was DB96 eq.~(39), an equivalent width of the
 narrower 912--1110\,\AA{} band, and the two normalizations disagreed by 45 per
 cent. The split is exact cell by cell, so what the three absorbers take is
 what the beam loses, and \texttt{output/FUV\_bands.txt} reports that ledger.
-A run with the oxygen chemistry on and \texttt{Stellar LW flux} left at 0 is
-warned that it gets no H$_2$O or OH photolysis over 912--1201\,\AA, where
-those cross sections peak.
+A run with the oxygen chemistry on, no spectrum file and
+\texttt{Stellar LW flux} left at 0 is warned that it gets no H$_2$O or OH
+photolysis over 912--1201\,\AA, where those cross sections peak; with a
+spectrum file that band, and B3 and B4, are integrated from it unless stated.
 
 \textbf{Three limitations to read before quoting a result.} (i) The band
 average assumes a flat $F_\lambda$ inside each band. Measured against a real

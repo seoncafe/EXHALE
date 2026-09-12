@@ -1,0 +1,275 @@
+%% EXHALE: what the energy-stable WENO (ESWENO) schemes offer, and what of
+%% them the code already uses. Written 2026-09-12 from the three published
+%% papers in ../references/ (Yamaleev & Carpenter 2009a,b; Fisher et al.
+%% 2011) and from src/modules/states/Reconstruction.f90.
+%% Author: Kwang-Il Seon
+\documentclass[english,a4paper]{my_memo}
+\synctex=1
+\usepackage{booktabs}
+\usepackage{amsmath}
+\usepackage[authoryear,round]{natbib}
+\usepackage{babel}
+\emergencystretch=3em
+
+\title{Energy-stable WENO: what the three papers establish and what EXHALE uses}
+\author{Kwang-Il Seon}
+\date{Last updated: \docmoddate}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+The energy-stable WENO (ESWENO) schemes of \citet{Yamaleev2009a,Yamaleev2009b}
+and their finite-domain closures \citep{Fisher2011} add to a conventional WENO
+flux a nonlinear artificial dissipation term built from the WENO weights
+themselves, and prove that the resulting finite-difference operator is
+$L_2$-stable for linear hyperbolic equations with continuous or discontinuous
+data, with no total-variation assumption and no time-step restriction beyond
+the usual one. The same papers introduce new weight functions that hold the
+design order at smooth extrema with any number of vanishing derivatives, and
+the 2011 paper supplies summation-by-parts boundary closures so the estimate
+holds on a finite domain. EXHALE's WENO3 reconstruction already uses the
+2009a weight functions and their $\epsilon=O(\Delta\xi^2)$ floor; it does not
+compute the dissipation term, so it inherits the accuracy result and not the
+energy estimate. Three properties of the code keep the estimate from carrying
+over as published: a finite-volume reconstruction of the primitive state on a
+stretched grid, a component-wise rather than characteristic reconstruction,
+and the nonlinear Euler system, for which the papers themselves give no
+proof. This memo records what each paper proves, at which equation, and what
+would have to change for the estimate to apply.
+\end{abstract}
+
+\section{The question}
+
+The question asked on 2026-09-12 was what ESWENO gains over conventional
+WENO. The three papers are in \texttt{../references/} (the files
+\texttt{Yamaleev\_2009JCP\_228\_3025.pdf}, \texttt{Yamaleev\_2009JCP\_228\_4248.pdf}
+and \texttt{Fisher\_2011JCP\_230\_3727.pdf}) and every statement below was read
+in those published versions; equation numbers are theirs. What the code does
+is read from \texttt{src/modules/states/Reconstruction.f90}, whose WENO3
+branch carries its own account of the same papers.
+
+\section{The third-order scheme \citep{Yamaleev2009a}}
+
+\subsection{The construction}
+
+The scalar wave equation $u_t + f_x = 0$, $f = au$, $a \ge 0$, is
+discretized on a uniform periodic grid as (their Eq.~9)
+\begin{equation}
+  \frac{\partial \mathbf{u}}{\partial t} + P^{-1} Q \mathbf{f}
+  = -\,P^{-1} D_1^{T} S D_1 \mathbf{f},
+  \label{eq:esweno}
+\end{equation}
+where $P^{-1}Q$ is the skew-symmetric part of the conventional third-order
+WENO derivative matrix, $D_1$ the two-point difference operator, and $S$ a
+symmetric matrix that is a nonlinear function of the solution through the
+WENO weights. The left side is the WENO scheme; the right side is the
+addition. Multiplying by $\mathbf{u}^{T}P$ gives (their Eq.~11)
+\begin{equation}
+  \frac{d}{dt}\|\mathbf{u}\|_P^2 + a\,\mathbf{u}^{T}(Q+Q^{T})\mathbf{u}
+  = -\,a\,(D_1\mathbf{u})^{T}(S+S^{T})D_1\mathbf{u},
+\end{equation}
+so the energy cannot grow if $Q+Q^{T}$ vanishes in the periodic interior and
+$S$ is positive semidefinite. Their $S$ (Eqs.~35 to 37) is
+\begin{equation}
+  S = S_1 + D_1^{T} S_2 D_1,\qquad
+  s^{1}_{jj} = \mu_j - \tfrac{1}{8}\big(w^{1}_{j+1/2} - w^{1}_{j-1/2}\big),\qquad
+  s^{2}_{jj} = \tfrac{1}{4} w^{1}_{j-1/2},
+\end{equation}
+\begin{equation}
+  \mu_j = \tfrac{1}{8}\sqrt{\big(w^{1}_{j+1/2} - w^{1}_{j-1/2}\big)^2 + \delta^2},
+\end{equation}
+with $w^{1}$ the weight of the upwind stencil and $\delta$ a small positive
+parameter that keeps $\mu_j$ a $C^1$ function of the solution. The proof of
+positive semidefiniteness (their Section~4.1) uses only two properties of
+the weights, their Eq.~23: $0 \le w^{r} \le 1$ and $w^{0} + w^{1} = 1$. It
+holds for any weight functions with those properties, continuous or
+discontinuous data alike (their Remark~6), and fails if a weight is negative
+(Remark~7). The stencil is the five points of conventional WENO3 (Remark~4).
+
+The dissipation term is third order on smooth data, so the scheme keeps the
+design order there; it is what makes the operator's symmetric part
+negative semidefinite. The papers state as the distinctive feature that the
+symmetric part of the conventional WENO operator can have positive
+eigenvalues, so conventional WENO ``may become locally unstable''
+(their Section~7), and that no energy estimate is available for it.
+
+\subsection{The new weight functions}
+
+Independently of the dissipation term, the paper replaces the
+\citet{Jiang1996} weights $\alpha_r = d_r/(\epsilon + \beta_r)^2$ by
+(their Eqs.~18, 21, 22)
+\begin{equation}
+  w^{r} = \frac{\alpha_r}{\alpha_0 + \alpha_1},\qquad
+  \alpha_r = d_r\Big(1 + \frac{\tau}{\epsilon + \beta_r}\Big),\qquad
+  \tau = (u_{j+1} - 2u_j + u_{j-1})^2,
+  \label{eq:weights}
+\end{equation}
+with $\beta_0 = (u_{j+1}-u_j)^2$, $\beta_1 = (u_j - u_{j-1})^2$,
+$d_0 = 2/3$, $d_1 = 1/3$. On smooth data $w^{r} = d_r + O(\Delta x^2)$ (their
+Eq.~24) with no assumption on the number of vanishing derivatives, provided
+$\epsilon \ge O(\Delta x^2)$ (Eq.~51); with $\epsilon = 0$ the ratio
+$\tau/\beta_r$ is $O(1)$ at a smooth extremum and both WENO and ESWENO drop
+to second order there (Eq.~57), which is what the Jiang--Shu weights do on
+practical grids (Eq.~58). Nullifying the stencil astride a discontinuity
+requires $\epsilon \le O(\Delta x^2)$ (Eq.~61), so $\epsilon = O(\Delta x^2)$
+(Eq.~62), made scale-invariant with the computational spacing
+$\Delta\xi = 1/J$ (Eq.~64) and given the solution scale by
+\begin{equation}
+  \epsilon = \max\big(\|u_0^2\|,\ \|(u_0)_\xi^2\|\big)\,\Delta\xi^2,\qquad
+  \delta = \Delta\xi^2
+\end{equation}
+(Eqs.~65, 66; $L_1$ norms of the initial condition, evaluated once). The
+paper says explicitly that ``these weights can also be used with the
+conventional third-order WENO scheme'' (Section~3.1): the accuracy result
+and the energy estimate are separable, and only the latter needs the
+dissipation term.
+
+\subsection{Scope of the proof}
+
+The estimate is proven for the scalar equation and, in Section~5, for a
+system of constant-coefficient linear hyperbolic equations in
+\emph{characteristic} form, ``while it is not clear how to obtain a similar
+energy estimate when the system of equations is discretized in the
+component-wise fashion.'' For the Euler equations the paper is explicit
+(Section~6.2): ``No stability proof is currently available for the ESWENO
+scheme for the nonlinear Euler equations and the above characteristic
+decomposition which is done locally at each point.'' The nonlinear tests
+(quasi-one-dimensional nozzle, subsonic and transonic; time-dependent
+problems with strong shocks and contacts) are reported as stable and
+essentially non-oscillatory, with a local Roe-averaged characteristic
+decomposition and global Lax--Friedrichs splitting, but as observations.
+
+\section{Arbitrary order \citep{Yamaleev2009b}}
+
+The second paper turns the construction into a procedure for any order:
+decompose the symmetric part of the WENO operator into a sum
+$\sum_{i=0}^{s}[D_1^{i}]\Lambda_i[D_1^{i}]^{T}$ of nested two-point
+differences with diagonal $\Lambda_i$ (their Lemma~1 and Appendix),
+replace each diagonal entry by its smoothly positive part
+$\tfrac12\big(\sqrt{\lambda^2+\delta_i^2} - \lambda\big)$ (Eq.~23), and add
+the resulting positive semidefinite operator (Eq.~24) as the dissipation
+term. Fifth-order upwind-biased schemes as a one-parameter family, a
+sixth-order central scheme, and schemes to eighth order are given, with
+weight functions of the form \eqref{eq:weights} and constraints on their
+parameters that keep design order with any number of vanishing derivatives
+(their Eq.~58 and the floor of Eq.~79 are the higher-order counterparts of
+the 2009a forms).
+
+The measured cost (their Table~1, linear wave equation, 101 points, five
+periods): the third-, fifth- and sixth-order ESWENO schemes take 15 to 20
+percent more CPU time than the WENO schemes they are built on, the
+fourth-order one somewhat more; no attempt at optimization was made. The
+stencil width is unchanged.
+
+\section{Boundary closures \citep{Fisher2011}}
+
+The 2009 estimates are for periodic domains. The 2011 paper builds
+closures for the fourth-order ESWENO scheme that satisfy the
+summation-by-parts convention, $D = P^{-1}[Q + R]$ with
+$Q + Q^{T} = \mathrm{diag}[-1, 0, \ldots, 0, 1]$ and $R$ symmetric positive
+semidefinite (their Eqs.~4, 5), so that with a simultaneous-approximation-term
+boundary condition of strength $\sigma \le -1/2$ the semi-discrete energy is
+bounded (Theorem~1). The finding that makes it possible is that the flux
+points near a boundary must be \emph{nonuniform} and derived from the norm
+$P$ (their Section~3.3), which is what lets accuracy, the SBP convention and
+the WENO stencil biasing hold at once. Second-order closures stable in a
+diagonal norm and third-order closures stable in a block norm give global
+third and fourth order. Test cases (their Section~7): the linear wave
+equation, steady quasi-one-dimensional nozzle flow with the nonlinear Euler
+equations, an unsteady two-dimensional Euler vortex, and a supersonic
+hydrogen--air mixing layer with the Navier--Stokes equations; an eigenvalue
+study shows the discrete operator stable for smooth and discontinuous data.
+The appendices give the near-wall smoothness indicators, a pseudo-code for
+the Euler equations, and the interpolation weights and dissipation
+coefficients of both closures.
+
+\section{What EXHALE uses today}
+
+The WENO3 branch of \texttt{Reconstruction.f90} builds its smoothness
+factors from Eq.~\eqref{eq:weights}: $\alpha_r = d_r(1 + \tau/(\epsilon +
+\beta_r))$ with $\tau$ the squared second difference, $\beta_r$ the squared
+one-sided differences, $d_0 = 2/3$, $d_1 = 1/3$, and the floor
+$\epsilon = dr_j^2$, the local cell width squared, which carries the
+$O(\Delta x^2)$ scaling of Eqs.~62 to 64 with the local width standing in for
+the uniform $\Delta\xi$ and without the solution scale of Eq.~65. The code's
+own note measures what that choice costs: nothing in a smooth region (the
+face error and the convergence rate on the production grid are flat for
+$\epsilon = (\kappa\, dr_j)^2$ over $\kappa$ from $10^{-1}$ to $10^{3}$,
+$L_\infty$ $2.99\times10^{-8}$ at $N = 800$, rate 2.991, from the
+\texttt{weno3\_reconstruction\_order} test), and something in the stencil
+biasing, where on the WASP-121b reference output $\beta_r/\epsilon$ runs from
+$8.4\times10^{3}$ at the base to $2.2\times10^{-6}$ at the top and a third of
+the cells sit below $10^{-2}$, with no biasing left. So the code has the
+accuracy result of the 2009a weights (Eq.~24), the design order at smooth
+extrema included.
+
+It does \emph{not} compute the right-hand side of Eq.~\eqref{eq:esweno}: no
+$\mu_j$, no $\delta$, no dissipation flux (their Eq.~48). The same note says
+so and gives three reasons the energy estimate would not carry over even if
+it did:
+\begin{enumerate}
+\item The papers reconstruct the \emph{flux} by finite differences on a
+  uniform grid (neither 2009 paper treats a non-uniform grid; the 2011 one
+  makes the flux points non-uniform only near the boundaries and for a
+  different reason). EXHALE reconstructs the primitive \emph{state} in a
+  finite-volume sense on a radial grid whose spacing varies by a factor of
+  about 20 across the domain, with volume-coordinate stencil coefficients of
+  its own (\texttt{weno3\_geometry\_coefficients}), and hands the two states
+  to an HLLC Riemann solver.
+\item The estimate for a system holds in characteristic form. EXHALE
+  reconstructs component by component, on primitive variables, which is the
+  case the paper says it cannot bound.
+\item The equations are the nonlinear Euler system with sources, for which
+  the papers themselves claim no proof.
+\end{enumerate}
+
+\section{Assessment}
+
+What ESWENO offers, in the order the papers establish it:
+\begin{enumerate}
+\item A proof, not an observation, that the semi-discrete operator does not
+  create energy for linear hyperbolic problems, on any data, with no TVB
+  assumption and no large-time-step constraint; and the converse statement
+  that conventional WENO's symmetric part can have positive eigenvalues.
+\item Design-order accuracy at smooth extrema with any number of vanishing
+  derivatives, through the weights of Eq.~\eqref{eq:weights} and the
+  $O(\Delta\xi^2)$ floor. This part EXHALE already has.
+\item A systematic route to any order, at 15 to 20 percent more cost and the
+  same stencil.
+\item Boundary closures that keep the estimate on a finite domain, where
+  conventional WENO closures lose either order or stability.
+\end{enumerate}
+What it does not offer: a proof for the nonlinear Euler equations, for a
+component-wise reconstruction, or for a finite-volume reconstruction on a
+stretched grid, which are the three properties of EXHALE's hydrodynamics.
+
+For the questions open in this code the papers are therefore not a lever
+yet. The base sound-wave oscillation and the marching limit cycle
+(\texttt{docs/Update\_EXHALE\_stage1.md} items P44 and P54) were traced to
+the boundary treatment and the time integration, not to the reconstruction
+weights, and nothing measured on this code attributes an instability to a
+positive eigenvalue of the reconstruction's symmetric part. Adopting the
+dissipation term would first require restating the reconstruction as a
+finite-difference flux operator in characteristic variables on the uniform
+computational coordinate $\xi$ (the grid is a smooth map $r(\xi)$, so that
+much is possible), and the finite-domain closures of \citet{Fisher2011}
+would replace the ghost-cell boundary treatment at both ends. That is a
+different hydrodynamic scheme, not an option to add to the present one, and
+it would be judged as any such change is: by the certification of the
+returned state and by the byte-identical regression on the cases whose
+scheme is unchanged. No such work is planned.
+
+\begin{thebibliography}{9}
+\bibitem[Fisher et al.\ (2011)]{Fisher2011}
+Fisher, T.~C., Carpenter, M.~H., Yamaleev, N.~K., \& Frankel, S.~H. 2011,
+J. Comput. Phys., 230, 3727
+\bibitem[Jiang \& Shu (1996)]{Jiang1996}
+Jiang, G.-S., \& Shu, C.-W. 1996, J. Comput. Phys., 126, 202
+\bibitem[Yamaleev \& Carpenter (2009a)]{Yamaleev2009a}
+Yamaleev, N.~K., \& Carpenter, M.~H. 2009a, J. Comput. Phys., 228, 3025
+\bibitem[Yamaleev \& Carpenter (2009b)]{Yamaleev2009b}
+Yamaleev, N.~K., \& Carpenter, M.~H. 2009b, J. Comput. Phys., 228, 4248
+\end{thebibliography}
+
+\end{document}

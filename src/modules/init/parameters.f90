@@ -386,6 +386,13 @@
       ! Was F_LW_star computed from the numerical spectrum rather than
       ! stated by the run?  Reported, so the source of the number is visible.
       logical :: lw_from_spectrum = .false.
+      ! The same two statements for the FUV continuum bands B3 (1231-1450 A)
+      ! and B4 (1451-2304 A) of the oxygen photolysis: whether input.inp
+      ! STATED the key (a stated zero switches the band off), and whether
+      ! the value was integrated from the spectrum file instead. Band B2 is
+      ! the Ly-alpha line and is always stated ("Stellar Lya flux").
+      logical :: fuv_b3_flux_stated = .false., fuv_b4_flux_stated = .false.
+      logical :: fuv_b3_from_spectrum = .false., fuv_b4_from_spectrum = .false.
       ! Oxygen chemistry (the A2 option, docs/a2_oxygen_option_design.md):
       ! OH / H2O / CO added to the coupled molecular ionization equilibrium,
       ! with the H2O and OH photolysis of the FUV bands.  It is what lets
