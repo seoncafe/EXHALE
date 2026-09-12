@@ -3460,6 +3460,29 @@
       enddo
       n_eq_sweeps_tot = n_eq_sweeps_tot + n_eq_sweeps_last
 
+      ! THE GHOST CELLS' PARTICLE COUNT IS THAT OF THE GHOSTS THE RESIDUAL
+      ! READS. The Apply_BC at the end of each sweep pass rebuilds the ghost
+      ! states from the interior with the composition the sweep just left
+      ! (base_boundary_states reads n_part_cell1 of that composition), so
+      ! the ghost density the loop's own get_species_densities used, taken
+      ! from the u that ENTERED the pass, is one composition stale. The
+      ! residual assembly then read a ghost particle count that did not
+      ! belong to the ghost state it was given, and the base-face conductive
+      ! flux, which is formed from the ghost temperature W(3)/n_part, was
+      ! evaluated on that stale count: MEASURED on the hot-Uranus fixture
+      ! of docs/koskinen2022_model_a_comparison.tex section 5.4 (conduction
+      ! on) the ghost -1 density differed by 8.8e-4 between the two, the
+      ! conduction source of cell 1 by 0.65 percent of itself, and the
+      ! certification, which forms the count from the state it is handed,
+      ! read the energy row of cell 1 at 2.073e-4 of its scale while this
+      ! residual reported 1e-11 there. Re-forming the count from the ghosts
+      ! as refreshed makes the two evaluations one; without conduction or
+      ! viscosity the count enters no row and nothing changes.
+      call U_to_W(u, W)
+      rho = W(1,:)
+      call get_species_densities(rho,f_sp,nhi,nhii,nhei,nheii,         &
+                                 nheiii,nheiTR,nm,ne,n_tot)
+
       if (resid_capture_operator_state) then
          ! The pipeline's own inputs, kept for the jump scan before the
          ! flux assembly consumes them.

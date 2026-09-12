@@ -435,6 +435,7 @@ carrier reload, pinned state & 0.000 & 0.000 & 0.000 & 0.000 & 0.000 \\
 carrier reload, 12 bounded passes & 0.000 & 0.000 & 0.000 & 0.000 & 0.000 \\
 carrier reload, fixed-wind fixed point & 0.971 & 0.910 & 0.760 & 0.510 & 0.388 \\
 matched fixture, 12 bounded passes (Sec.~\ref{sec:matchedfixture}) & 0.930 & 0.650 & 0.431 & 0.310 & 0.265 \\
+matched fixture, 60 bounded passes, ghost count fixed (Sec.~\ref{sec:matchedfixture}) & 0.931 & 0.660 & 0.460 & 0.346 & 0.296 \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -449,8 +450,9 @@ H$_2$. Black: the matched run \texttt{matched\_hnu\_minus\_I} (spherical
 domain to 7.24~$r_{\rm base}$); red: the pinned state of the carrier reload
 fixture (Roche domain to 4.71~$r_{\rm base}$); orange dashed: that fixture
 after 12 bounded passes of the partitioned stationary loop; blue dotted: its
-fixed point at a fixed wind; purple: the fixture re-pinned on the matched
-configuration after 12 bounded passes (Sec.~\ref{sec:matchedfixture}).
+fixed point at a fixed wind; purple dashed and solid: the fixture re-pinned
+on the matched configuration after 12 and, with the ghost particle count
+fixed, after 60 bounded passes (Sec.~\ref{sec:matchedfixture}).
 Model~A's own top is 7.16~$r_{\rm base}$ (9.6~$R_p$).}
 \label{fig:h2extent}
 \end{figure}
@@ -598,27 +600,47 @@ to 0.431 at 2.0 (0.530), and is unchanged above 3 (0.310 and 0.265 against
 partitioned route does not confine H$_2$; the walking front of the solver
 fixture was that fixture's.
 
-\textbf{What stops the loop.} A 60-pass run ends at pass 13 on the
-stagnation ending, and the entry that stops it is not a species row: the
-\emph{hydrodynamic energy row at cell 1} reads $2.073\times10^{-4}$ against
-$10^{-6}$ on every pass, to four digits, while the solve's own residual at
-that cell is $-1.0\times10^{-11}$ (its printed terms: flux divergence
-$-1.116\times10^{-3}$, heating $5.05\times10^{-4}$, cooling
-$1.69\times10^{-3}$, the conduction source therefore $7.2\times10^{-5}$).
-With \texttt{Conduction: False} the same three passes give the energy row at
-$4\times10^{-9}$, so the $2\times10^{-4}$ is a 0.5 percent disagreement on
-the base cell's conduction source between the solve's evaluation and the
-certification's, whose residual is assembled after the outer loop's own
-sweep. It is reproduced, not diagnosed: the two candidates are the ghost
-cell's particle count (the temperature the base-face conductive flux is
-formed from), which the two paths may form from different ghost compositions,
-and the sweep's re-solution of the ghost cells. Since item Q1 the loop's
-progress measure is the joint distance of the state, which that constant
-entry dominates (207 tolerances against the species rows' 74), so the loop
-ends on ``did not fall'' at pass 13 whatever the species rows do. Until the
-disagreement is removed the matched fixture cannot be run past the
-stagnation guard, and the twelve passes above are the measurement of record
-(\texttt{benchmarks/koskinen2022\_model\_a/matched\_fixture\_states/pass12}).
+\textbf{What stopped the loop, and its diagnosis.} A first 60-pass run ended
+at pass 13 on the stagnation ending, and the entry that stopped it was not a
+species row: the \emph{hydrodynamic energy row at cell 1} read
+$2.073\times10^{-4}$ against $10^{-6}$ on every pass, to four digits, while
+the solve's own residual at that cell was $-1.0\times10^{-11}$; with
+\texttt{Conduction: False} the same row was $4\times10^{-9}$. Instrumented
+on a private copy of the tree, the solve's final residual evaluation and the
+certification's assembly were captured on one state and subtracted cell by
+cell: at cell 1 every input (particle count, temperature, heating, cooling)
+was identical and only the conduction source differed ($5.406\times10^{-5}$
+against $5.371\times10^{-5}$, the $3.5\times10^{-7}$ of the energy row); the
+one input that differed was the particle count of ghost cell $-1$
+($8.8\times10^{-4}$ relative), because the solve had formed it from the
+ghost density of the state that entered its sweep pass (1.22394867) and
+then refreshed the ghosts at the end of the pass (1.22503037,
+\texttt{Apply\_BC}, whose base ghost reads the particle count of the
+composition the sweep just left), handing the assembly the refreshed state
+with the stale count. The base-face conductive flux is formed from the
+ghost temperature $W_3/n_{\rm part}$, so it was one composition stale; the
+certification, which forms the count from the state it is handed, was
+right. (The first hypothesis, a missing ghost fill in the outer loop, was
+tested and refuted: the ghost state was identical to $10^{-11}$.) Fixed in
+\texttt{newton\_residual} (\texttt{steady\_newton.f90}): the density and the
+count are re-formed from the refreshed ghosts before the assembly. Without
+conduction or viscosity the count enters no row, and the atomic
+\texttt{wasp\_full\_newton} reload is byte-identical in its data rows.
+
+\textbf{60 bounded passes after the fix} (2 to 7~s a pass, \texttt{info = 0}
+every pass): the cell-1 energy row reads $3.5\times10^{-9}$; the H$^+$ row
+falls to $3.7\times10^{-4}$ (cell 135) and the H$_2$ row to
+$4.1\times10^{-4}$, now at the top of the domain (cell 500); the movement
+bound was halved three times to $1.25\times10^{-3}$ and the run spent its
+budget. $f({\rm H}_2)$ keeps moving toward Model~A: 0.931 / 0.660 / 0.460 /
+0.346 / 0.296 at 1.2 / 1.5 / 2.0 / 3.0 / 4.0~$r_{\rm base}$ against Model~A's
+0.933 / 0.691 / 0.530 / 0.430 / 0.389 (the loaded marching state 0.884 /
+0.588 / 0.408 / 0.310 / 0.267); $f = 0.5$ at 1.851~$r_{\rm base}$ (Model~A
+2.15); $x({\rm H}^+)$ 0.061 / 0.133 at 2.0 / 3.0 (Model~A 0.020 / 0.080). The
+remaining gap to Model~A is now 0.03 to 0.09 in $f$ and the direction of the
+relaxation is toward it. State pinned as
+\texttt{benchmarks/koskinen2022\_model\_a/matched\_fixture\_states/pass60}
+(\texttt{pass12} is the state before the fix).
 
 \section{Provenance}
 

@@ -37,7 +37,8 @@ so this file says it explicitly):
   fixture re-pinned on THIS configuration
   (`backup/regression/carrier_model_a_newton`, the matched run's state
   mapped onto the current grid) after 12 bounded passes of the partitioned
-  loop (memo section 5.4).
+  loop (memo section 5.4); `pass60/` the same after 60 passes, run after the
+  Newton residual's ghost particle-count fix of the same day.
 * `carrier_reload_states/` -- two states of the stationary-solver fixture
   `backup/regression/carrier_elem_newton` (`pass12/`: 12 bounded passes of
   the partitioned loop; `fixed_wind/`: the fixed point at a fixed wind),

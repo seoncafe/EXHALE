@@ -9079,3 +9079,46 @@ be run past the stagnation guard until it is removed.
 Gate of the tree carrying the lifted refusal and the state mapper:
 `make check` (advisor, 2026-09-12 18:55 KST): **REGRESSION PASS (all cases
 byte-identical)**, 64 file comparisons PASS with data identical.
+
+### The base cell's energy row: diagnosed and fixed (2026-09-12, user instruction)
+
+Instrumented on a private copy of the tree: the JFNK's final residual
+evaluation and the outer loop's certification assembly were captured on ONE
+state and subtracted cell by cell. At cell 1 every input (particle count,
+temperature, heating, cooling) was identical and only the energy residual
+differed (3.5e-7); the conduction source of cell 1 was 5.406e-5 in the JFNK
+against 5.371e-5 in the outer loop; and the one input that differed was the
+particle count of ghost cell -1 (JFNK 0.545985, outer 0.546468, 8.8e-4
+relative), traced to the ghost DENSITY the JFNK's count was formed from:
+1.22394867 (the ghost of the state that entered the sweep pass) against
+1.22503037 (the ghost after the pass's own `Apply_BC`). `newton_residual`
+computed `rho` and the particle count at the top of each sweep pass and
+refreshed the ghosts at its end (`base_boundary_states` reads
+`n_part_cell1` of the composition the sweep just left), then handed
+`assemble_residual` the refreshed `u` with the stale count; the base-face
+conductive flux, formed from the ghost temperature W(3)/n_part, was one
+composition stale. The certification forms the count from the state it is
+handed and was right. The ghost-fill hypothesis (`Apply_BC` missing in the
+outer loop) was tested first and refuted (ghost state identical to 1e-11).
+
+Fix (`steady_newton.f90`, `newton_residual`): after the sweep loop the
+density and the particle count are re-formed from the refreshed ghosts
+before the assembly. MEASURED on the matched fixture: the cell-1 energy row
+in the certification 7.8e-9 at pass 1 and 3.5e-9 at pass 3 (was 2.073e-4);
+the 60-pass run no longer stops at pass 13 and spends its budget with the
+H2 row at 4.1e-4 (cell 500, the top) and the H+ row at 3.7e-4 (cell 135),
+hydro info=0 every pass, f(H2) at 1.2 / 1.5 / 2.0 / 3.0 / 4.0 r_base
+0.931 / 0.660 / 0.460 / 0.346 / 0.296 against Model A's 0.933 / 0.691 /
+0.530 / 0.430 / 0.389 (the loaded marching state 0.884 / 0.588 / 0.408 /
+0.310 / 0.267), f = 0.5 at 1.851 r_base (Model A 2.15), x(H+) 0.061 /
+0.133 at 2.0 / 3.0 (Model A 0.020 / 0.080). State pinned as
+`matched_fixture_states/pass60`, figure and memo section 5.4 updated.
+Without conduction or viscosity the count enters no row: `wasp_full_newton`
+reload data rows identical to the control; `krylov_and_dogleg` 334/0,
+`steady_species_rows` 195/0, `certification` 84/0,
+`carrier_returned_state_acceptance` 36/0, `steady_completion_flag` 3/0.
+`make check` recorded below.
+
+Gate of the tree carrying the ghost particle-count fix: `make check`
+(advisor, 2026-09-12 22:57 KST): **REGRESSION PASS (all cases
+byte-identical)**, 64 file comparisons PASS with data identical.
