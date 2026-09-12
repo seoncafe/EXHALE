@@ -1519,15 +1519,18 @@ defaults restore the standard behavior).}\label{tab:inp-opt}\\
   $K_{zz}$ still applies, it being a bulk mixing coefficient. There is no base
   Dirichlet value, no handoff stating an ionization fraction, so the lower
   ghost cells stay with the sweep. \textbf{It requires \texttt{Molecular
-  carrier transport: True} and \texttt{Molecular chemistry: True}, and with
-  \texttt{Solver: Newton} it requires \texttt{Coupled carrier solve: True} as
-  well}; each of the three is a fatal refusal at startup. With that third key
-  the stationary system carries the proton's row and the sweep is handed the
-  Newton unknown, while without it the proton is outside the unknown space and
-  the last equilibrium sweep would put back the local ionization state this
-  option exists to leave. Marching requires none of the three. The direct
-  steady route (\texttt{EXHALE\_PTC=1}) is refused outright, for the same
-  reason. Recorded in \texttt{EXHALE\_resolved.out} as
+  carrier transport: True} and \texttt{Molecular chemistry: True}}; each is a
+  fatal refusal at startup. With \texttt{Solver: Newton} both stationary
+  routes carry it: with \texttt{Coupled carrier solve: True} the stationary
+  system carries the proton's row and the sweep is handed the Newton unknown;
+  without it the route is the partitioned alternation, whose hydrodynamic
+  solves hold the composition and whose sweeps are handed the transported
+  proton fraction of that composition, the carrier relaxation between the
+  solves transporting it (until 2026-09-12 this combination was refused, on
+  the premise, true of the plain Newton finish and not of the alternation,
+  that the last sweep would put the proton back on its local root). Marching
+  requires neither. The direct steady route (\texttt{EXHALE\_PTC=1}) is
+  refused outright. Recorded in \texttt{EXHALE\_resolved.out} as
   \texttt{ionization\_transport} and in a restart file's \texttt{\# coupling:}
   line as \texttt{iontrans=T}. Default off: it changes every
   ionization-dependent number of a run (\S\ref{sec:oxychem}). \\

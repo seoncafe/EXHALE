@@ -9,8 +9,8 @@ so this file says it explicitly):
 * `matched_hnu_minus_I/` -- **the matched run.** Every condition of the
   memo's table in force: `Domain mode: Spherical`, `Outer radius [R_p]: 7.24`
   (Model A's 9.6 R_p top in base radii), `Rate/4 + Mdot`,
-  `Secondary_ionization: Immediate`, `Ionization transport: True`, the
-  Ribas-band spectrum, photoelectron accounting h nu - I. Use this for any
+  `Ionization transport: True`, `Conduction: True`, `Atomic rate set:
+  Koskinen2022`, the Ribas-band spectrum to 2 keV, photoelectron accounting h nu - I. Use this for any
   comparison with Model A. `matched_full_hnu/` and `matched_fraction_0p55/`
   are the same run continued with the two other photoelectron accountings
   (comparison options, not physics).
@@ -33,12 +33,18 @@ so this file says it explicitly):
   H, He densities), digitized 2026-09-12 every 0.1 R_p
   (`docs/p23_published_profiles.md` section 5.1 carries the 2026-09-05
   readings of every curve).
+* `matched_fixture_states/pass12/` -- the state of the stationary-solver
+  fixture re-pinned on THIS configuration
+  (`backup/regression/carrier_model_a_newton`, the matched run's state
+  mapped onto the current grid) after 12 bounded passes of the partitioned
+  loop (memo section 5.4).
 * `carrier_reload_states/` -- two states of the stationary-solver fixture
   `backup/regression/carrier_elem_newton` (`pass12/`: 12 bounded passes of
   the partitioned loop; `fixed_wind/`: the fixed point at a fixed wind),
   pinned for the memo's H2-extent section. That fixture is NOT the matched
-  configuration (Roche domain to 4.71 r_base, `Rate/2 + Mdot/2`, no secondary
-  ionization, no ionization transport); the memo says what it is there for.
+  configuration (Roche domain to 4.71 r_base, power-law spectrum, 0.048 au,
+  1.2 M_sun, `Rate/2 + Mdot/2`, He 2^3S on, no ionization transport, no
+  conduction, default atomic rates); the memo says what it is there for.
 
 Regenerate the memo's figures and table with
 `python3 docs/k22_model_a_figures.py` (its default input is the matched run;

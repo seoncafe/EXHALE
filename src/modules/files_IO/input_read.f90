@@ -2150,30 +2150,29 @@
       endif
       ! THE STATIONARY SOLVE AND THE TRANSPORTED PROTON.
       !
-      ! Whether the two can be asked for together is decided by ONE thing:
-      ! whether H+ is an unknown of the stationary system. The proton is a
-      ! transported carrier (carrier_set_init), and the stationary system
-      ! carries a row and an unknown for every transported balance the
-      ! configuration activates, so with "Coupled carrier solve" the sweep
-      ! is HANDED the proton fraction (x_hp_fixed, imposed from the Newton
-      ! unknown) and solves the other stages against it, while the proton's
-      ! own equation is the stationary balance the Newton drives to zero.
-      ! Nothing is undone and the combination is supported.
-      !
-      ! Without that key the proton is outside the unknown space: the sweep
-      ! re-solves it on its own local root, which is exactly the departure
-      ! from local equilibrium this option exists to compute. That is
-      ! refused, and marching is the path for it.
-      if (use_newton_solver .and. .not. carrier_in_newton) then
-         write(*,*) '(input_read) ERROR: "Ionization transport: True" with'
-         write(*,*) '  "Solver: Newton" needs "Coupled carrier solve:'
-         write(*,*) '  True". Without it the proton is not an unknown of'
-         write(*,*) '  the stationary system, so the last equilibrium'
-         write(*,*) '  sweep would put back the local ionization state'
-         write(*,*) '  this option exists to leave. Set the third key, or'
-         write(*,*) '  march. Aborting.'
-         error stop 1
-      endif
+      ! Both stationary routes are supported. With "Coupled carrier solve"
+      ! the proton is an unknown of the Newton system: the sweep is HANDED
+      ! the proton fraction (x_hp_fixed, imposed from the Newton unknown)
+      ! and solves the other stages against it, while the proton's own
+      ! equation is the stationary balance the Newton drives to zero.
+      ! Without that key the stationary route is the partitioned
+      ! alternation (steady_wind_with_element_diffusion, item P6 of
+      ! 2026-09-11): the hydrodynamic solve holds the composition, and
+      ! every equilibrium sweep it makes is handed the transported proton
+      ! fraction of that composition (ionization_equilibrium, the
+      ! x_hp_fixed block: imposed whenever the carriers are transported and
+      ! the state is a restart or carries a background), so the proton is
+      ! never put back on its local root; the carrier relaxation between the
+      ! hydrodynamic solves then transports it. Until 2026-09-12 this
+      ! combination was refused on the premise that the last sweep would
+      ! re-solve the proton locally, which was true of the plain JFNK finish
+      ! the refusal was written for (2026-09-10) and is not true of the
+      ! alternation that replaced it. Marching is unaffected either way.
+      if (use_newton_solver .and. .not. carrier_in_newton)                &
+         write(*,'(A)') ' (input_read) Ionization transport with the'//    &
+            ' partitioned stationary route: the sweeps of the'//          &
+            ' hydrodynamic solve are handed the transported proton'//     &
+            ' fraction; the carrier relaxation transports it.'
    endif
 
    ! A COUPLED STEADY SOLVE MAY NOT ELIMINATE H2.

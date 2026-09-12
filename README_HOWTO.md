@@ -462,12 +462,15 @@ in the interior cells (the lower ghosts stay the reservoir). Use it where the
 wind leaves a shell faster than it ionizes -- on the hot-Uranus Koskinen 2022
 gate `P r/|v|` is 0.15-0.35 above 1.5 r_base and the local root over-ionizes
 by 2-5x (`docs/k22_electron_density_excess.md` sec. 7). It needs `Molecular
-carrier transport: True` and `Molecular chemistry: True`, and with
-`Solver: Newton` it needs `Coupled carrier solve: True` as well: the proton is
-a transported carrier, so the coupled route gives it a row in the stationary
-system and hands the sweep the Newton unknown, while without that key the
-proton is outside the unknown space and the last equilibrium sweep puts back
-the local ionization state this option exists to leave. Marching needs neither
+carrier transport: True` and `Molecular chemistry: True`. With
+`Solver: Newton` both stationary routes carry it: the coupled route
+(`Coupled carrier solve: True`) gives the proton a row in the stationary
+system and hands the sweep the Newton unknown; the partitioned alternation
+(the default, that key off) holds the composition through each hydrodynamic
+solve, whose sweeps are handed the transported proton fraction, and
+transports it in the carrier relaxation between the solves (until 2026-09-12
+that combination was refused, on a premise that held for the plain Newton
+finish the refusal was written for and not for the alternation). Marching needs neither
 of the two solver keys, and the direct steady route (`EXHALE_PTC=1`) is
 refused outright.
 

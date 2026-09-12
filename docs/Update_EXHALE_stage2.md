@@ -8999,8 +8999,11 @@ Mdot) has Model A's shape, no front, f(H2) 0.88 / 0.59 / 0.41 / 0.31 / 0.27
 at the same radii, i.e. 0.05 to 0.12 below, and n(H2) a uniform 0.23 to
 0.27 dex below theirs from 1.2 to 7 r_base. The carrier reload fixture of
 the solver series (`backup/regression/carrier_elem_newton`) is NOT that
-configuration: Roche domain to 4.71 r_base, `Rate/2 + Mdot/2`, no secondary
-ionization, no ionization transport, pinned from a B5g state; in it f(H2)
+configuration: Roche domain to 4.71 r_base, power-law spectrum at 0.048 au
+around a 1.2 M_sun star, `Rate/2 + Mdot/2`, He 2^3S on, no ionization
+transport, no conduction, default atomic rates (a first reading listed five
+differences from a diff against the superseded root `input.inp`; corrected
+against `matched_hnu_minus_I/input.inp`), pinned from a B5g state; in it f(H2)
 is zero above 1.1 r_base (f = 0.5 at 1.072, 1e-2 at 1.097), 12 bounded
 passes move that to 1.076 / 1.103, and the fixed-wind fixed point fills the
 domain (0.97 / 0.91 / 0.76 / 0.51 / 0.39). So the "walking H2 front" of
@@ -9019,4 +9022,60 @@ directory is which.
 Gate of the tree carrying the band-flux change, the H2-extent memo and the
 ESWENO memo: `make check` (advisor, 2026-09-12 15:38 KST, the shared
 `build/` rebuilt with the gfortran on PATH): **REGRESSION PASS (all cases
+byte-identical)**, 64 file comparisons PASS with data identical.
+
+### The Model A fixture re-pinned on the matched configuration (2026-09-12, user instruction "proceed")
+
+New fixture `backup/regression/carrier_model_a_newton` (README there): the
+matched run's `input.inp` with the stationary keys appended and its final
+state as the IC pair. Two changes were needed for it to run:
+
+- `input_read.f90`: the refusal of `Ionization transport: True` with
+  `Solver: Newton` and no `Coupled carrier solve` (2026-09-10) is lifted.
+  READ in `ionization_equilibrium.f90`: the `x_hp_fixed` block imposes the
+  transported proton fraction on every sweep whenever the carriers are
+  transported and the state is a restart or carries a background, so in the
+  partitioned alternation (P6) the hydrodynamic solve's sweeps are handed
+  the transported proton and the carrier relaxation transports it; the
+  refusal's premise (the last sweep re-solving the proton locally) held for
+  the plain Newton finish it was written for and not for the alternation.
+  MEASURED on the fixture: over 12 passes x(H+) moves by at most 0.011,
+  downward, not to the local root. Manual key row and `README_HOWTO.md`
+  updated.
+- `src/utils/map_state_to_grid.py` (new; closes the `interp_ic.py`
+  housekeeping item): the matched state was written on the 2026-09-05 grid
+  and the mixed grid moved on 2026-09-10 (`3414478`) by up to 4.4e-4 in the
+  centers, which `load_IC` refuses at 1e-10. The tool maps a state onto
+  another grid's centers (rho, p, heat, cool in log against ln r; v, T
+  linear; every species as its ratio to the hydrogen nuclei, so He/H is
+  exact in every mapped cell; the loader's He/H check at 1e-6 failed on a
+  first version that interpolated the densities themselves, 1.04e-5).
+  Round trip onto the old centers: rho, p, T to 2e-4, v to 5e-3.
+
+MEASURED (12 bounded passes, `EXHALE_JFNK_MAXIT=40`, 8 threads, 3 to 7 s a
+pass, hydro info=0 every pass): the H+ carrier row falls 2.1e-1 -> 7.4e-4
+(gate 1e-5), the H2 row ends at 7.0e-4, and f(H2) moves TOWARD Model A:
+0.884 -> 0.930 at 1.2 r_base (Model A 0.933), 0.588 -> 0.650 at 1.5 (0.691),
+0.408 -> 0.431 at 2.0 (0.530), unchanged above 3; f = 0.5 from 1.676 to
+1.785 r_base (Model A 2.15); no cell below 1e-2. The confined H2 of the
+solver fixture was that fixture's configuration. State pinned as
+`benchmarks/koskinen2022_model_a/matched_fixture_states/pass12`, figure
+`h2_extent.pdf` redrawn with it, memo section 5.4.
+
+FOUND, reproduced, NOT diagnosed: a 60-pass run stops at pass 13 on the
+stagnation ending because the hydrodynamic energy row of cell 1 reads
+2.073e-4 (tolerance 1e-6) on every pass while the solve's own residual there
+is -1.0e-11; with `Conduction: False` it is 4e-9. The conduction source at
+cell 1 is 7.2e-5, so the certification's assembly (after the outer loop's
+own sweep) and the solve's disagree by 0.5 percent of it. Candidates: the
+ghost cell's particle count behind the base-face conductive flux, formed
+from different ghost compositions on the two paths, or the sweep's local
+re-solution of the ghosts. Recorded in `docs/TO_BE_DONE.md` and
+`docs/ISSUES_20260909.md` section 3.7 with the instrumentation it needs.
+Because the joint progress measure (Q1) is dominated by that constant entry
+(207 tolerances against the species rows' 74), the matched fixture cannot
+be run past the stagnation guard until it is removed.
+
+Gate of the tree carrying the lifted refusal and the state mapper:
+`make check` (advisor, 2026-09-12 18:55 KST): **REGRESSION PASS (all cases
 byte-identical)**, 64 file comparisons PASS with data identical.

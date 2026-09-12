@@ -60,6 +60,7 @@ only.
 \section{The EXHALE configuration}
 
 \subsection{Every condition of Model A, and what EXHALE does with it}
+\label{sec:inputs}
 
 Checked one by one against the published text (sections 2.5, 3.2, Appendix B,
 Table~1 of Koskinen et al.\ 2022; section 2 of Koskinen et al.\ 2013a for the
@@ -433,6 +434,7 @@ matched run (\texttt{matched\_hnu\_minus\_I}, 2026-09-05) & 0.884 & 0.588 & 0.40
 carrier reload, pinned state & 0.000 & 0.000 & 0.000 & 0.000 & 0.000 \\
 carrier reload, 12 bounded passes & 0.000 & 0.000 & 0.000 & 0.000 & 0.000 \\
 carrier reload, fixed-wind fixed point & 0.971 & 0.910 & 0.760 & 0.510 & 0.388 \\
+matched fixture, 12 bounded passes (Sec.~\ref{sec:matchedfixture}) & 0.930 & 0.650 & 0.431 & 0.310 & 0.265 \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -447,8 +449,9 @@ H$_2$. Black: the matched run \texttt{matched\_hnu\_minus\_I} (spherical
 domain to 7.24~$r_{\rm base}$); red: the pinned state of the carrier reload
 fixture (Roche domain to 4.71~$r_{\rm base}$); orange dashed: that fixture
 after 12 bounded passes of the partitioned stationary loop; blue dotted: its
-fixed point at a fixed wind. Model~A's own top is 7.16~$r_{\rm base}$
-(9.6~$R_p$).}
+fixed point at a fixed wind; purple: the fixture re-pinned on the matched
+configuration after 12 bounded passes (Sec.~\ref{sec:matchedfixture}).
+Model~A's own top is 7.16~$r_{\rm base}$ (9.6~$R_p$).}
 \label{fig:h2extent}
 \end{figure}
 
@@ -472,18 +475,28 @@ Roche-domain state of the morning of 2026-09-05 whose top is
 which.)
 
 \textbf{The carrier reload fixture} is a different object. Its
-\texttt{input.inp} shares the planet, the star, the spectrum and the base of
-the matched run, but differs in five respects that change the physics of the
-answer: the \emph{domain}, EXHALE's default Roche potential truncated at
-L1 with the top at 4.71~$r_{\rm base}$, against the matched
-\texttt{Domain mode: Spherical} to 7.24 (the difference that moved the sonic
-point from 2.9 to 4.7~$R_p$ in Sec.~\ref{sec:findings} and was the largest
-single correction of the matching); \texttt{2D approximate method: Rate/2 +
-Mdot/2} against the matched \texttt{Rate/4 + Mdot} (twice the incident flux
-the paper's dayside average defines); \texttt{Secondary\_ionization: False}
-against \texttt{Immediate}; no \texttt{Ionization transport}; and the
-stationary solver keys (\texttt{Solver: Newton 100}, \texttt{Coupled carrier
-solve: True}, \texttt{du\_th} stage~2 at 10). It is the fixture of the
+\texttt{input.inp} is the hot-Uranus configuration of the solver series
+(the B5g session), and against the matched run it differs in most of the
+inputs the table of Sec.~\ref{sec:inputs} lists: the \emph{domain}, EXHALE's
+default Roche potential truncated at L1 with the top at 4.71~$r_{\rm base}$,
+against the matched \texttt{Domain mode: Spherical} to 7.24 (the difference
+that moved the sonic point from 2.9 to 4.7~$R_p$ in Sec.~\ref{sec:findings}
+and was the largest single correction of the matching); the
+\emph{spectrum}, a power law of index $-1$ normalized on
+$\log L_{\rm X} = 27.20$ and $\log L_{\rm EUV} = 27.93$ to 1.24~keV,
+against the Ribas-band solar file to 2~keV; the \emph{orbit and star},
+0.048~au and 1.2~$M_\odot$ against 0.05~au and 1.0~$M_\odot$; the
+\emph{dayside average}, \texttt{Rate/2 + Mdot/2} against \texttt{Rate/4 +
+Mdot} (twice the incident flux the paper defines); the He~$2^3$S metastable
+on against off; no \texttt{Ionization transport} (the matched run carries
+H$^+$ with the flow) and no \texttt{Conduction}; the atomic rate set left at
+the default against \texttt{Koskinen2022}; and the stationary solver keys
+(\texttt{Solver: Newton 100}, \texttt{Coupled carrier solve: True},
+\texttt{du\_th} stage~2 at 10). Both switch secondary ionization off. (A
+first version of this paragraph listed five differences, read from a diff
+against the superseded \texttt{input.inp} at the top of the benchmark
+directory rather than against the matched run's; the list above is the diff
+against \texttt{matched\_hnu\_minus\_I/input.inp}.) It is the fixture of the
 solver series, pinned on 2026-09-10 from a state of the B5g session, and it
 was never re-matched after the gravity and spectrum corrections of this
 memo. Its pinned state came from the
@@ -509,21 +522,18 @@ with no cell below $f = 10^{-2}$.
   property of the carrier reload fixture under the partitioned stationary
   route, not of EXHALE's solution of Model~A. The marching solution of the
   matched configuration has no front and carries H$_2$ to the top with a
-  0.06--0.12 deficit in $f({\rm H}_2)$. Any statement about the front has to
+  0.05--0.12 deficit in $f({\rm H}_2)$. Any statement about the front has to
   name the fixture.
 \item The fixture's confinement of H$_2$ is consistent with its inputs: the
   Roche domain to 4.71~$r_{\rm base}$ that the matching replaced, twice the
-  dayside flux of the matched run and no secondary ionization put a
-  different wind and a stronger photodissociating and photoionizing field on
-  the base, and its pinned state was not a converged march. The solver series
+  dayside flux of the matched run on a harder power-law spectrum, no
+  ionization transport and no conduction put a different wind and a
+  stronger photodissociating and photoionizing field on the base, and its
+  pinned state was not a converged march. The solver series
   never re-matched the fixture, so every statement about the H$_2$ front in
-  the stage-2 log is a statement about a configuration that is not Model~A.
-  The next measurement is therefore the fixture re-pinned on the matched
-  keys (spherical 7.24, \texttt{Rate/4 + Mdot}, \texttt{Secondary\_ionization:
-  Immediate}, \texttt{Ionization transport: True}) from the matched run's
-  state, on which the stationary route and the marching solution describe one
-  configuration; until then the front's position on the fixture is not to be
-  read as physics.
+  the stage-2 log up to this point is a statement about a configuration that
+  is not Model~A. The fixture re-pinned on the matched keys is
+  Sec.~\ref{sec:matchedfixture}, measured the same day.
 \item The fixed-wind fixed point shows what the carrier operator alone does
   when the wind is held: it fills the domain with H$_2$ beyond what Model~A
   carries. The front's position is therefore set by the hydrodynamic
@@ -532,12 +542,83 @@ with no cell below $f = 10^{-2}$.
   run gives, and the question for the stationary route is whether it can
   reach the same state, which it has not yet (the wind H$_2$ row floors at
   $2.2\times10^{-2}$ against the $10^{-5}$ gate; stage-2 log section~8).
-\item Against Model~A the open physics is still the 0.06--0.12 deficit of
+\item Against Model~A the open physics is still the 0.05--0.12 deficit of
   the matched run, whose candidates are listed in Sec.~\ref{sec:diffs}: the
   supply of H$_2$ from the layer and the electron density. The digitization
   is not the limit: 0.06~dex in $n({\rm H}_2)$ is 0.02 in $f$ where
   $f \sim 0.5$.
 \end{enumerate}
+
+
+\subsection{The fixture re-pinned on the matched configuration (2026-09-12)}
+\label{sec:matchedfixture}
+
+\texttt{backup/regression/carrier\_model\_a\_newton} is the matched run's
+\texttt{input.inp} with the stationary keys appended (\texttt{Solver: Newton
+100.0}, \texttt{Coupled carrier solve: False}, \texttt{Resid tol: 1.0e-8},
+\texttt{Restart intent: stationary}, the stage-2 \texttt{du\_th} at 10 so
+that no march runs) and the matched run's final state as its \texttt{IC/}
+pair. Two things had to change before it would run. First, the partitioned
+stationary route refused \texttt{Ionization transport: True} (a refusal of
+2026-09-10, written for the plain Newton finish, on the premise that the last
+equilibrium sweep would put the proton back on its local root); in the
+alternation of 2026-09-11 the hydrodynamic solve holds the composition and
+every sweep it makes is handed the transported proton fraction of that
+composition (the \texttt{x\_hp\_fixed} block of
+\texttt{ionization\_equilibrium.f90} is imposed whenever the carriers are
+transported and the state is a restart), so the premise does not hold there
+and the refusal was lifted (\texttt{input\_read.f90}, an informational line
+in its place). Second, the matched run's state was written on 2026-09-05 and
+the mixed grid changed on 2026-09-10 (stage-2 species-row commit): the
+centers differ by up to $4.4\times10^{-4}$ relative, which
+\texttt{load\_IC} refuses at $10^{-10}$. The state was mapped onto the
+current grid by the new \texttt{src/utils/map\_state\_to\_grid.py}
+(density, pressure, heating and cooling in $\log$ against $\ln r$, velocity
+and temperature linear, every species as its ratio to the hydrogen-nucleus
+density so that He/H and the element abundances are the same in every mapped
+cell to round-off; the original state is kept as \texttt{IC\_grid\_20260905/}).
+MEASURED: mapping back onto the old centers reproduces $\rho$, $p$ and $T$
+to $2\times10^{-4}$ and $v$ to $5\times10^{-3}$, and the loader accepts the
+mapped state.
+
+\textbf{12 bounded passes} (\texttt{EXHALE\_OUTER\_PASSES=12},
+\texttt{EXHALE\_JFNK\_MAXIT=40}, 8 threads; 3 to 7~s a pass, every
+hydrodynamic solve \texttt{info = 0}). The proton is carried: the largest
+change of $x({\rm H}^+)$ over the twelve passes is 0.011 (at
+2.15~$r_{\rm base}$), a drift downward everywhere (0.073 to 0.062 at 2.0,
+0.148 to 0.139 at 3.0; Model~A 0.020 and 0.080), not a reset to the local
+root. The worst gated species row is the H$^+$ carrier balance, falling
+from $2.1\times10^{-1}$ to $7.4\times10^{-4}$ against the $10^{-5}$ gate;
+the H$_2$ row ends at $7.0\times10^{-4}$. The H$_2$ profile keeps Model~A's
+shape and moves \emph{toward} it: $f({\rm H}_2)$ goes from 0.884 to 0.930
+at 1.2~$r_{\rm base}$ (Model~A 0.933), 0.588 to 0.650 at 1.5 (0.691), 0.408
+to 0.431 at 2.0 (0.530), and is unchanged above 3 (0.310 and 0.265 against
+0.430 and 0.389); $f = 0.5$ moves from 1.676 to 1.785~$r_{\rm base}$ (Model~A
+2.15), and no cell is below $10^{-2}$. So on the matched configuration the
+partitioned route does not confine H$_2$; the walking front of the solver
+fixture was that fixture's.
+
+\textbf{What stops the loop.} A 60-pass run ends at pass 13 on the
+stagnation ending, and the entry that stops it is not a species row: the
+\emph{hydrodynamic energy row at cell 1} reads $2.073\times10^{-4}$ against
+$10^{-6}$ on every pass, to four digits, while the solve's own residual at
+that cell is $-1.0\times10^{-11}$ (its printed terms: flux divergence
+$-1.116\times10^{-3}$, heating $5.05\times10^{-4}$, cooling
+$1.69\times10^{-3}$, the conduction source therefore $7.2\times10^{-5}$).
+With \texttt{Conduction: False} the same three passes give the energy row at
+$4\times10^{-9}$, so the $2\times10^{-4}$ is a 0.5 percent disagreement on
+the base cell's conduction source between the solve's evaluation and the
+certification's, whose residual is assembled after the outer loop's own
+sweep. It is reproduced, not diagnosed: the two candidates are the ghost
+cell's particle count (the temperature the base-face conductive flux is
+formed from), which the two paths may form from different ghost compositions,
+and the sweep's re-solution of the ghost cells. Since item Q1 the loop's
+progress measure is the joint distance of the state, which that constant
+entry dominates (207 tolerances against the species rows' 74), so the loop
+ends on ``did not fall'' at pass 13 whatever the species rows do. Until the
+disagreement is removed the matched fixture cannot be run past the
+stagnation guard, and the twelve passes above are the measurement of record
+(\texttt{benchmarks/koskinen2022\_model\_a/matched\_fixture\_states/pass12}).
 
 \section{Provenance}
 

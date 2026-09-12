@@ -9,8 +9,10 @@ docs/p23_published_profiles.md 5.1 (circles). EXHALE: the matched marching run
 (benchmarks/koskinen2022_model_a/matched_hnu_minus_I/output; NOT the
 superseded Roche-domain state in benchmarks/koskinen2022_model_a/output, see
 the README there), the carrier reload fixture's pinned
-state (backup/regression/carrier_elem_newton/IC) and the two stationary-route
-states pinned beside the benchmark (carrier_reload_states/pass12, fixed_wind).
+state (backup/regression/carrier_elem_newton/IC), the two stationary-route
+states of that fixture pinned beside the benchmark (carrier_reload_states/
+pass12, fixed_wind), and the state of the fixture re-pinned on the matched
+configuration after 12 bounded passes (matched_fixture_states/pass12).
 Writes docs/figures/k22_model_a/h2_extent.pdf.
 """
 import os, sys
@@ -41,8 +43,9 @@ def load(d):
 RUNS = [('matched run (2026-09-05, spherical 7.24, Rate/4 + Mdot, hnu-I)', 'benchmarks/koskinen2022_model_a/matched_hnu_minus_I/output', 'k-', 1.8),
         ('carrier reload, pinned state (Roche 4.7, Rate/2 + Mdot/2)', 'backup/regression/carrier_elem_newton/IC', '-', 1.2),
         ('carrier reload, 12 bounded passes', 'benchmarks/koskinen2022_model_a/carrier_reload_states/pass12', '--', 1.2),
-        ('carrier reload, fixed-wind fixed point', 'benchmarks/koskinen2022_model_a/carrier_reload_states/fixed_wind', ':', 1.6)]
-COLS = ['k', 'C3', 'C1', 'C0']
+        ('carrier reload, fixed-wind fixed point', 'benchmarks/koskinen2022_model_a/carrier_reload_states/fixed_wind', ':', 1.6),
+        ('matched fixture, 12 bounded passes (2026-09-12)', 'benchmarks/koskinen2022_model_a/matched_fixture_states/pass12', '-', 1.6)]
+COLS = ['k', 'C3', 'C1', 'C0', 'C4']
 
 fig, ax = plt.subplots(1, 2, figsize=(11, 4.4))
 m = rb > 1.08
