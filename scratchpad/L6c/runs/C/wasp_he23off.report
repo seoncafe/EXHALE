@@ -1,0 +1,5 @@
+[wasp_he23off/C]      final: count=17623  du= 9.8323E-04  dtu= 3.2891E-05
+     PASS Hydro_ioniz.txt (IDENTICAL)
+     PASS Ion_species.txt (IDENTICAL)
+     PASS Hydro_ioniz_adv.txt (IDENTICAL)
+     PASS Ion_species_adv.txt (IDENTICAL)

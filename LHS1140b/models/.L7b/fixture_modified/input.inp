@@ -1,0 +1,39 @@
+Planet name: hotUranus
+Planet radius [R_J]: 0.4899
+Planet mass [M_J]: 0.045739
+Equilibrium temperature [K]: 1140.0
+Orbital distance [AU]: 0.0500
+Escape radius [R_p]: 2.00
+He/H number ratio: 0.0793
+2D approximate method: Rate/4 + Mdot
+Parent star mass [M_sun]: 1.000
+Spectrum type: Load from file..
+Spectrum file: /nfs/mocafe/kiseon/RT_Codes/ExoAtmosphere/EXHALE_v1.00/benchmarks/koskinen2022_model_a/solar_ribas2005_bands_0p05au.txt
+Use only EUV? False
+[E_low,E_mid,E_high] = [ 13.60 , 123.98 , 2.0e3 ]
+Log10 of X-ray luminosity [erg/s]: 27.448
+Log10 of EUV luminosity [erg/s]: 27.923
+Grid type: Mixed
+Numerical flux: HLLC
+Reconstruction scheme: PLM+WENO3
+Include He23S? False
+Load IC? True
+Do only PP: False
+Force start: False
+Domain mode: Spherical
+Outer radius [R_p]: 7.24
+Molecular chemistry: True
+du_th [PLM,WENO3]: 1.0e9 1.0e1
+Secondary_ionization: False
+He_rec_coupling: False
+Molecular reaction heat: False
+Conduction: True
+Molecular carrier transport: True
+Stall [tol,N]: 0.0 2000
+Ionization transport: True
+Stellar LW flux [erg/cm2/s]: 0.0
+Atomic rate set: Koskinen2022
+Solver: Newton 100.0
+Coupled carrier solve: False
+Resid tol: 1.0e-8
+Restart intent: stationary

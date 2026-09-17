@@ -1,0 +1,5 @@
+[wasp_full/M]      final: count=12251  du= 9.7613E-04  dtu= 5.1390E-05
+     FAIL Hydro_ioniz.txt (EXCEEDS 1.0e-03  max rel 1.976e+00 at row 209 col 3 (-4087.7284555805604 vs 4187.2383693340134))
+     FAIL Ion_species.txt (EXCEEDS 1.0e-03  max rel 8.168e-01 at row 299 col 26 (906.94059193839939 vs 4950.0987903882869))
+     FAIL Hydro_ioniz_adv.txt (EXCEEDS 1.0e-03  max rel 1.976e+00 at row 209 col 3 (-4087.7284555805604 vs 4187.2383693340134))
+     FAIL Ion_species_adv.txt (EXCEEDS 1.0e-03  max rel 1.000e+00 at row 290 col 35 (1 vs 0))

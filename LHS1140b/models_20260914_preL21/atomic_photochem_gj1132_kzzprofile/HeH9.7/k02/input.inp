@@ -1,0 +1,34 @@
+# atomic_photochem_gj1132_kzzprofile
+# The atomic wind over the Photochem column handed across as a profile; the reservoir He/H is solved by the elemental-flux closure, so the composition is an output.
+Planet name: LHS1140b_atomic_photochem_gj1132_kzzprofile_HeH9.7
+Planet radius [R_J]: 0.157692
+Planet mass [M_J]: 0.0176220
+Equilibrium temperature [K]: 226.0
+Orbital distance [AU]: 0.0946
+Escape radius [R_p]: 2.00
+He/H number ratio: 9.7
+2D approximate method: Mdot
+Parent star mass [M_sun]: 0.1844
+Spectrum type: Load from file..
+Spectrum file: ../../../../sed/lhs1140_sed_gj1132_at_b.txt
+Use only EUV? False
+[E_low,E_mid,E_high] = [ 13.60 , 123.98 , 1.24e3 ]
+Log10 of X-ray luminosity [erg/s]: 26.372
+Log10 of EUV luminosity [erg/s]: 26.404
+Grid type: Mixed
+Numerical flux: HLLC
+Reconstruction scheme: PLM
+Include He23S? True
+Load IC? True
+Do only PP: True
+Force start: False
+He_diffusion: True
+Domain mode: Spherical
+Outer radius [R_p]: 30.0
+Stellar radius [R_sun]: 0.2159
+Base BC: pressure 1.0
+Resid tol: 4.0e-6
+Well balanced: True
+Secondary_ionization: Immediate
+CFL: 1.0e-12
+Lower atmosphere profile: lower_atmosphere_profile.dat

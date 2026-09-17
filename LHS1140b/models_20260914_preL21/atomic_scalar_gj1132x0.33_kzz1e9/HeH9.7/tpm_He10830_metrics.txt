@@ -1,0 +1,29 @@
+# transit_schema 1
+# transit_product: a one-way transmission of the profile named below; this block adds comments only, and the columns are the spectrum
+# adv_input ./output/Hydro_ioniz_adv.txt
+# adv_schema 2
+# adv_input_certified F no_stationary_claim (see the certification report of the run)
+# adv_stationarity_operator face_flux_mass the mass row of the state, |R_1|/s_1 with s_1 the row's own largest term, which is the fractional change of the FACE mass flux across the cell; the same operator the stationary certification measures that row by, and its value for every row is the adv_mass_row column of Hydro_ioniz_adv.txt.
+# adv_conditional_tol 1.0E-02 the correction of a corrected row is accurate to this fraction of itself in the mass flux: the terms the correction drops are the ones the mass divergence puts into the steady equations, each of them adv_mass_row times a term they keep, so the product is FIRST ORDER in that measure. A row at or below this fraction is corrected and is a CONDITIONAL correction to it; a row above it is retained. This is not the tolerance of a certified stationary state, which is a statement about the WHOLE state and is reported in the adv_input_certified line.
+# adv_mass_row max 1.599e+00 over the 500 rows of the profile; the measure of every row is the adv_mass_row column of that file
+# adv_model_restrictions the post-process reconstructs an H/He + trace-metal gas: the molecular (H2 H2p H3p HeHp) and oxygen (OH H2O CO) columns are NOT advection corrected and are the equilibrium solution, those species are absent from the particle and electron counts every equation here is solved with, and the H3+ infrared cooling is absent from its energy balance, so the metal and H/He columns inside a molecular layer inherit that approximation.
+# input_provenance: git=43bc28cef587 tree=dirty run=2026-09-14T07:41:47
+# input_provenance: ck_input=723473909548076650 ck_base=-1 ck_metals=-1
+# input_provenance: recon=PLM base_bc=characteristic carrier=none restart_schema=3 resid_def=145 N=500
+# transit_tool git=43bc28cef587 EXHALE_transit.py mtime=2026-09-09T19:33:43 exhale_transit_lib.py mtime=2026-09-09T19:52:38
+# census sampled_rows 500 refused_rows 7 above_disk_cap 48
+# census_refusal_reasons retained: 7 rows
+# census_composition corrected: 465 rows, retained: 35 rows
+# census_share_b[Rp] 1.0000 1.4397 2.0726 3.0230 4.3521 6.3477 9.1386 13.3289
+# census_share       0.0000 0.0000 0.0000 0.0000 0.0000 0.0000 0.0000 0.0000
+# census_share_max 0.0000 at b = 1.0000 Rp
+# census_note a share of line-center optical depth carried by refused rows is a CONTRIBUTION diagnostic and not an uncertainty on the transit depth: the disk-averaged transmission averages exp(-tau) and is nonlinear in tau, so a saturated ray moves little when its optical depth moves
+# override EXHALE_TRANSIT_RES_HETR=68000
+# He 10830 line metrics (three-Gaussian fit, air frame,
+# instrument-convolved curve; he_line_metrics.py)
+red_depth      3.647179e+00
+blue_depth     5.150429e-01
+red_blue       7.081310e+00
+fwhm_A         2.683852e-01
+shift_A       -1.094802e-03
+sigma_A        1.047540e-01

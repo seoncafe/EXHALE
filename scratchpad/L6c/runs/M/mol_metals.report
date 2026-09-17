@@ -1,0 +1,5 @@
+[mol_metals/M]      final: count=12000  du= 7.9165E-01  dtu= 5.7714E-03
+     FAIL Hydro_ioniz.txt (EXCEEDS 1.0e-03  max rel 7.315e-01 at row 32 col 7 (4.752000398435815e-09 vs 1.7700120371093196e-08))
+     FAIL Ion_species.txt (EXCEEDS 1.0e-03  max rel 2.609e-02 at row 491 col 7 (544.5311618489394 vs 559.11895850354153))
+     FAIL Hydro_ioniz_adv.txt (EXCEEDS 1.0e-03  max rel 7.561e-01 at row 33 col 7 (4.1312535170996667e-09 vs 1.6935320058770317e-08))
+     FAIL Ion_species_adv.txt (EXCEEDS 1.0e-03  max rel 2.609e-02 at row 491 col 7 (544.5311618489394 vs 559.11895850354153))

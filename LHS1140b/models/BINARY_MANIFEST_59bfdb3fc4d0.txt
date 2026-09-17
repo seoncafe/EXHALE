@@ -1,0 +1,292 @@
+# EXHALE.x md5 59bfdb3fc4d0104fc2e9c3734596d2f6, built 2026-09-17 10:14:59 with bare make (gfortran 16.2.0 conda-forge, OpenBLAS of that prefix, -O3 -fopenmp); HEAD 43bc28c (READ from .git) + uncommitted work
+# md5 of every source file at build time; this is the FINAL binary of the 2026-09-16/17 series, the successor of BINARY_MANIFEST_c2e9c9990b9f.txt (the 2026-09-13..16 series)
+#
+# WHAT THIS BINARY CARRIES BEYOND c2e9c9990b9f:
+#   L7g model   the molecular network's energy recipients and its three-body rate: R5 and R16 leave one hydrogen atom in n = 2 (0.749 and 1.554 eV to the gas, 10.199 eV to the H(n=2) population or to radiation); R6 leaves its H2 fragment at v = 5-6 (2.480 eV of 9.250 internal); the R12/R15 pair runs on the collider sum k1(H2) n(H2) + k1(H) n(H) + k1(Ar) n(He); the heat fraction's radiative rate is the all-level maximum of the code's own 302-level ladder, 5.5939e-06 s^-1; its collisional side is Lique (2015) for H, Jozwiak et al. (2024) for He and Le Bourlot et al. (1999) for H2
+#   L7g follow-up (L7h)  the collider sum formed inside the composition balance rows as well as in the energy ledger, so the H2 abundance and its heat run at one rate; the ground-singlet helium collider passed at the three call sites that dropped it; the Le Bourlot et al. (1999) H2-H2 coefficient taken from the paper's own para-H2 (J = 0) file
+#   L9          "Restart intent: stationary evaluate" produces every output of a run from the state it measured, with no time step; the _adv files carry a "# derived_from:" provenance header in place of the copied "# coupling:" one
+#   L12         the acceptance suite src/tests/ionization_stage_flux/ for the ionization-stage face flux (no module under src/modules/ changed by it)
+#   L15         the JFNK thread-reproducibility instrumentation of steady_newton.f90, all off unless set
+#   L22 step 1  the progress measures of the stationary solve, named, with "unavailable" an outcome of the carrier relaxation's ending
+#   L22 step 2c one outer ghost rule for the carrier column in carrier_face_mass_fraction and carrier_outflow_ghost, with no diffusive, eddy or settling flux across either end of the column
+#   L22 step 3  I1/I2 the coupled block's matrix-free action measured against a central difference, and "Coupled carrier solve" made three-valued; I3-I5 the carrier_newton token of a state file read as the ROUTE and not the equation set, admissible at a reload and written as a "# route_change" line
+#   L23         cert_reason restored on a reload, so the certification pair of a restart header round-trips (the round trip's second half passes on this binary and failed on c2e9c9990b9f)
+#   L25 step 2  the Rieper (2011) velocity-jump factor on the ROE branch of Num_Fluxes.f90, behind a key, default off
+#   L26         the base face's wind weight as an amplitude times a shape, s_wind = A(M_wind) C(d_window), with d_window the relative standard deviation of rho v r^2 over the window and A a cubic smoothstep vanishing at a zero window flux; the threshold recalibrated to 2e-3
+#
+# KEYS AND DEFAULTS (input.inp keys and environment keys):
+#   Coupled carrier solve: False | True | "On stall"      DEFAULT False (a word the key has no meaning for stops the run; "On stall" hands the state to the block at the pass the alternation gives up on)
+#   Low Mach velocity jump: True | False                  DEFAULT False (ROE branch only; the setup report warns when "Numerical flux:" is not ROE)
+#   EXHALE_COUPLED_JAC_ACTION=<file>                      off unless set, with EXHALE_COUPLED_JAC_CELLS and EXHALE_COUPLED_JAC_DIR; writes the coupled block's Jacobian action and stops the run without a step
+#   EXHALE_REACTION_HEAT_RECIPIENTS=0                     control key: restores the old energy recipients and the total-density third body in the ledger AND in the chemistry; it does not restore the collider coefficients
+#   EXHALE_BASE_WIND_AMPLITUDE=<value>                    overrides the amplitude weight of the base face's wind say (added by L26)
+#   EXHALE_L15_TRACE=<path>, EXHALE_L15_DUMP_AT=<k>, EXHALE_L15_REPEAT=<k>   off unless set; with none of them set no statement of the instrumented block is entered
+#
+# KEYS REMOVED:
+#   EXHALE_BASE_WIND_SAY_ON_MACH   (L26: the amplitude weight is that statement, at its own scale)
+#   EXHALE_L22B_OUTER_DIFF, EXHALE_L22B_OUTER_ADV   (L22 step 2c: the unified ghost rule makes them meaningless)
+#
+# REGRESSION: the sixteen DEFAULT_CASES and roundtrip were re-snapshotted against this binary on 2026-09-17; the eleven cases that run the molecular network and roundtrip moved (L7g and its follow-up), the five without it are byte-identical to the 2026-09-16 goldens. The previous goldens are backup/regression/golden_L7g_20260917/.
+3e26176f564914d0e726e9c5c231aa95  Makefile
+3384fa8449fb98e99de7a7e4563f93a1  src/EXHALE_main.f90
+4a83de2faac95be1ad7f8cb504036410  src/modules/files_IO/input_read.f90
+ff9e2773a4dcfad41b8c6e7e1eb2e004  src/modules/files_IO/load_IC.f90
+bc74e47649ef1eebe54cdfee87eece27  src/modules/files_IO/lower_atmosphere_profile.f90
+2a087b5c3a18f94d4d39482c2a18814e  src/modules/files_IO/metals_input_read.f90
+061f4f363fe542761d2c5a233bfa3fe9  src/modules/files_IO/opacity_input_read.f90
+847631c696a5ad3716f9b4ae0d29a0b1  src/modules/files_IO/write_output.f90
+961965f370d67984ce17601df439b41a  src/modules/files_IO/write_setup_report.f90
+1505c05daee784dbcdd114cade43bd47  src/modules/flux/low_mach_dissipation.f90
+735a4b45e7be59317838978d63561908  src/modules/flux/Num_Fluxes.f90
+41e1bb3ffd459705713cba64bb1074d4  src/modules/flux/species_face_flux.f90
+29c6c63df0df6dd760d30d198a1c2506  src/modules/flux/speed_estimate_ROE.f90
+b8bc19ca9c6a1b531ddd16e7ac593213  src/modules/functions/binary_element_diffusion.f90
+f13cdef78589e5a7bc6c04b58214bb11  src/modules/functions/composition.f90
+1562c43d0c01e526ce7c04643eefde76  src/modules/functions/cross_sec.f90
+ece1d27ae435ac125c390143943fe6a3  src/modules/functions/element_census.f90
+e97a004fd058648fbc77f6e7aa09f72f  src/modules/functions/grav_field.f90
+ac57417e2e9b7b7439da7d06c0097ba0  src/modules/functions/h2_photo_channels.f90
+f3a121fbc4732ab0fe5d1541b0097a55  src/modules/functions/utilities.f90
+1ffc97a8002ff7b5b255b131eec7f9b8  src/modules/functions/UW_conversions.f90
+e203906c6d645de04cb2b7dbca7f2b1b  src/modules/init/blas_thread_policy.f90
+ed1c27029c86dc80fb4fcab05ffd6ade  src/modules/init/define_grid.f90
+ad357ef72be195c833f91dd88e2cede7  src/modules/init/init.f90
+df6257a54f44c144463594535ad0cd1b  src/modules/init/molecular_seed_from_atomic_state.f90
+a979837b42e09f57297518e6e2155468  src/modules/init/parameters.f90
+584a76d1cd860e1fbd60161f7eccbe2b  src/modules/init/set_energy_vectors.f90
+638fa1ce823d6a29eb785542f756528f  src/modules/init/set_gravity_grid.f90
+4948294d7708b45574a035257e2c9d01  src/modules/init/set_IC.f90
+393731a4cc8ddc0de7efc16921761b03  src/modules/init/species_table.f90
+8786c641423d219aa8787c515ee86a05  src/modules/lower_atmosphere/co_photodissociation.f90
+823327854f2ec2858357f41aba2e7222  src/modules/lower_atmosphere/co_self_shielding_table.f90
+52f6cafa08f634efa3ad72e2e99fbf37  src/modules/lower_atmosphere/diffusive_photochemistry.f90
+a0d34e1f6e66f5798c45dd2c280b91c9  src/modules/lower_atmosphere/element_inventory.f90
+61bf5140c669c740c345115c282086e8  src/modules/lower_atmosphere/h2_self_shielding_table.f90
+8455f31afa4d9bd0788147b989e94ec7  src/modules/lower_atmosphere/h2_vibrational_relaxation.f90
+a0095be5c0a7d30c46453937a45e1ad1  src/modules/lower_atmosphere/h3p_cooling.f90
+a3a6a5a3c8f8dc818f92411af01677a0  src/modules/lower_atmosphere/lower_column.f90
+f57b278bdc120cbe42d2dde0d3494ee5  src/modules/lower_atmosphere/lyman_werner.f90
+59fd748ea883e284ca66c2a6311776d8  src/modules/lower_atmosphere/molecular_infrared_cooling.f90
+f280fa245592e7e5cab7f04565883b15  src/modules/lower_atmosphere/molecular_infrared_data.f90
+836b8cca2dd4f88ac12f2cad8043ed26  src/modules/lower_atmosphere/molecular_reaction_heat.f90
+06c7bf1a88df688a0d0b72b88b98aba8  src/modules/lower_atmosphere/mol_rates.f90
+01b5e6c2cb3be087034479010ce642d6  src/modules/lower_atmosphere/oxygen_rates.f90
+995972616123d0b6e280eab329fdd90f  src/modules/lower_atmosphere/water_photolysis.f90
+0cc0afff29584ea101239ec290978f54  src/modules/nonlinear_system_solver/constrained_chemical_equilibrium.f90
+3741996c920fed6b9959ce595b0b8e59  src/modules/nonlinear_system_solver/constrained_equilibrium_probe.f90
+004238b11de892dad0ffd9fbb0de5588  src/modules/nonlinear_system_solver/dogleg.f90
+7c851b74d7dd5bfad43eb732da273142  src/modules/nonlinear_system_solver/dpmpar.f90
+45b4d707130423c181d63b0039e3787d  src/modules/nonlinear_system_solver/enorm.f90
+27145768e94900e759eff3d5f7c6ff05  src/modules/nonlinear_system_solver/fdjac1.f90
+47d20911b6681667552aea7a0e4fe6d3  src/modules/nonlinear_system_solver/hybrd1.f90
+6c45da69e53c28ca085603e7aed5627a  src/modules/nonlinear_system_solver/hybrd.f90
+6b894392859c3016cc686acea8ea7b19  src/modules/nonlinear_system_solver/ion_cell_state.f90
+1f3f3e07e9e2f7879d24971642d2b006  src/modules/nonlinear_system_solver/ion_residual_core.f90
+255b1b4ce461aacfabbc50c26fecc026  src/modules/nonlinear_system_solver/newton_solver.f90
+5820a35b69931b82550b759863ab38e1  src/modules/nonlinear_system_solver/qform.f90
+eea877ba344b0058081d28dfaa7c2f65  src/modules/nonlinear_system_solver/qrfac.f90
+2b1e18fdf9cd194d8967b50c3998528b  src/modules/nonlinear_system_solver/r1mpyq.f90
+09624c0f4920240d1064e82d7259a3be  src/modules/nonlinear_system_solver/r1updt.f90
+f8d6c0d6c7f8d9085aff3463b42c376a  src/modules/nonlinear_system_solver/System_HeH.f90
+74702558c1d5af281d594e14183a9892  src/modules/nonlinear_system_solver/System_HeH_metals.f90
+b139406962bb941040a7fd652f572ba6  src/modules/nonlinear_system_solver/System_HeH_mol.f90
+796b37248254afd5a6839effefe8cfeb  src/modules/nonlinear_system_solver/System_HeH_mol_metals.f90
+91edfdbf9abe087952a919953f751e28  src/modules/nonlinear_system_solver/System_HeH_TR.f90
+05d96d706c74d9ff4588fdc676886d32  src/modules/nonlinear_system_solver/System_HeH_TR_metals.f90
+772f82f483ce1018345eafe23d569d0b  src/modules/nonlinear_system_solver/System_H.f90
+f685c8a17e886ea71e6e2f35d9a0b2b2  src/modules/nonlinear_system_solver/System_implicit_adv_HeH.f90
+6e1107554284310135e0800f99a60bb0  src/modules/nonlinear_system_solver/System_implicit_adv_HeH_TR.f90
+0b513366dd11ce05d188ca6a5f810cb1  src/modules/nonlinear_system_solver/System_implicit_adv_H.f90
+e1d100fffee0cfffd8f33d93d6aca383  src/modules/nonlinear_system_solver/T_equation.f90
+9cdeb55592b85989b971433060c7d2b5  src/modules/post_process/post_process_adv.f90
+a3d811f459a127592f9d253b737a1e77  src/modules/radiation/charge_exchange.f90
+d40890cf4be98f5fd56269e0e4bfff63  src/modules/radiation/Cool_coeff.f90
+6b639f425fa5d77b546637dbf80e6306  src/modules/radiation/electron_energy_degradation.f90
+802264972a740e279d9bf94099a8d944  src/modules/radiation/excited_hydrogen.f90
+a825d3ffb02dd714e466c929f9a1ce3c  src/modules/radiation/hydrogen_n2_rates.f90
+0fab71eda1831844f62d41fa560066ac  src/modules/radiation/ionization_equilibrium.f90
+a4be8f44fa3c3957924497a35b19953e  src/modules/radiation/J_inc.f90
+19ae3df26e737a6b5e88210b55742296  src/modules/radiation/lya_rt.f90
+d2c42e4190121a403a6d7f3a9de10e90  src/modules/radiation/opacity_models.f90
+b58fbebc26f507684eaf7cd50e77bd12  src/modules/radiation/sed_read.f90
+e33902c21e5994268ff84b9fc438c19c  src/modules/radiation/util_ion_eq.f90
+9cc57b676a387d8a4b40352174c08cae  src/modules/states/Apply_BC.f90
+f45f122684229beb1390809d81c03d84  src/modules/states/base_boundary.f90
+ee61fcee9d9fe6a3ca48781cfb5d74e3  src/modules/states/caloric_eos.f90
+f2410e4e8493fe8f90547f70de99bffd  src/modules/states/PLM_rec.f90
+0d39c4a2ee85cce12fa14144a1f48ea6  src/modules/states/Reconstruction.f90
+bd13c2ebf66333aa7cdd8fb362b65f93  src/modules/states/Source.f90
+0b484f7cc0cf42e5fdb8d070b3cf3ef8  src/modules/time_step/attempted_step.f90
+a661bcc7773e9e4c58cdd1ef2ae1c653  src/modules/time_step/certification.f90
+27210173b2126a2f020ee5a64cf8beb5  src/modules/time_step/energy_semi_implicit.f90
+591265e737b3207f090dbcb2c161a71d  src/modules/time_step/eval_dt.f90
+62fb26c292cc20e40c1de12ef37fd4c9  src/modules/time_step/hydrodynamic_rows.f90
+a23aa04289a6c67a7b3e26571593c04d  src/modules/time_step/RK_rhs.f90
+2f0ca95722aaa7ed3eae7f20469c66fb  src/modules/time_step/steady_newton.f90
+76290de9b22f58d231618fc054b8602a  src/modules/time_step/steady_residual.f90
+a951b0214a907d8e8ed8a0e58390f5d3  src/modules/time_step/viscous_conduction.f90
+b603d5c9df50f0770a4c2ff75a17a9bb  src/modules/wind_ae/base_bcs_test.f90
+e0a5e0d33454cdecbc98695c09d1a458  src/modules/wind_ae/eqn_trace_f.f90
+0b5459755fb41a87abb4fe5f80f74452  src/modules/wind_ae/glq_trace_f.f90
+c02529b48eaa8b52b1f191e17799aaef  src/modules/wind_ae/ic_writer_test.f90
+02b508e87f7be949a51de6a113e90935  src/modules/wind_ae/ncol_test.f90
+71f34c3d82f170b7913a2c90f71cd638  src/modules/wind_ae/ramp2_test.f90
+ae70ea5e557617f05478fbb116045332  src/modules/wind_ae/ramp_test.f90
+c890e5b782effa674605cb48511a0855  src/modules/wind_ae/relax_ae_f.f90
+9775baf8fe9cbf6a0567844af9e94266  src/modules/wind_ae/soe_trace_f.f90
+f680ef170912f5a003a6ce615f4d5065  src/modules/wind_ae/wae_config.f90
+c03652fe7943997da5bb23528d5b9563  src/modules/wind_ae/wae_continuation.f90
+6ad0ae8be5d52300d9a35ea7552a06e8  src/modules/wind_ae/wae_difeq.f90
+811ec14c832190c65ef91b37a25657cf  src/modules/wind_ae/wae_eqns.f90
+469dd437d5ceaaac706b897594ea5817  src/modules/wind_ae/wae_exhale_bridge.f90
+f50eaf58211b9102c8fe17e3a2cec0e4  src/modules/wind_ae/wae_exhale_input.f90
+bf0d18e8f619c98ffe43be7f623c320d  src/modules/wind_ae/wae_fe.f90
+1dea9c69dc2835ed0d15d457fc294ab4  src/modules/wind_ae/wae_glq_rates.f90
+7feab6599356660f3858ea65ba6bf501  src/modules/wind_ae/wae_grid.f90
+508f6f0adcd2d4807ec9a7496307882f  src/modules/wind_ae/wae_ic_writer.f90
+b38a4c5e0009b7d810f22ed4cde82ce1  src/modules/wind_ae/wae_intode.f90
+7d9ecf080668209e2b385252bff60eb4  src/modules/wind_ae/wae_ion_pots.f90
+330fcacf189b607d4bb95577f87ba1ea  src/modules/wind_ae/wae_lc_cii.f90
+2d6844c445026385f3a110f216a7be0d  src/modules/wind_ae/wae_lc_ciii.f90
+9d5d11988cb01fd156c7230e9a509e3e  src/modules/wind_ae/wae_lc_oii.f90
+7ca4434e1cc6002df8878cbd21098d83  src/modules/wind_ae/wae_lc_oiii.f90
+5c24c25cbd9ef7c936296434b0bbc81c  src/modules/wind_ae/wae_nr.f90
+f24f4f716d10fa3df893a8f477aa1322  src/modules/wind_ae/wae_params.f90
+4b78c72438bb254f987eb90b9b05d103  src/modules/wind_ae/wae_rate_coeffs.f90
+212525d081aa7d7b9d57808ee6870ca1  src/modules/wind_ae/wae_rnew.f90
+29b6098f8c3b2fc46c9d513096cd26f2  src/modules/wind_ae/wae_rrec.f90
+a920e2cefcc1868da52777043d6635ee  src/modules/wind_ae/wae_soe.f90
+feefc50d9522de32c240c045f6282c30  src/modules/wind_ae/wae_spectrum.f90
+7e82c760bf788837b881712e0d2eea95  src/modules/wind_ae/wae_status.f90
+e5d4b4413d6002220d2cd21ef3fea99b  src/modules/wind_ae/wae_types.f90
+9a32e7266ae286fdd28e84a364bd3419  src/modules/wind_ae/wind_ae_full.f90
+8da4e717540d10ac321a154cf6b141a1  src/modules/wind_ae/wind_ae_ic.f90
+4ec1c8fb23d16a858be14ed733742689  src/tests/a2_m1/a2_m1_rate_check.f90
+32619d32260c9d7556b82e4de2bbcea4  src/tests/a2_m1/a2_m1_thermo_xcheck.py
+d739b0af12d3101939e74839b0382184  src/tests/a2_m2/a2_m2_g3_run_check.f90
+f846d3a25cf46237452dc8384c00ecfc  src/tests/a2_m2/a2_m2_kinetics_check.f90
+e86af529b26ae8bf0ed2094ec4660dae  src/tests/acceptance_classes/acceptance_class_contract.f90
+2e0129f09cc810ede95de95ad62f1c8c  src/tests/adv_static_limit/enthalpy_flux_of_mass_divergence.f90
+9e70bd0e37d856561bfa94c21a05e94e  src/tests/adv_static_limit/stationarity_by_the_mass_row.f90
+5f2ec9c3f319d56aae3a9ff37f93efee  src/tests/adv_static_limit/stationary_flux_refusal.f90
+13a7612b583770555a0fe96bfb45696f  src/tests/adv_static_limit/thermal_damkohler_limit.f90
+2c0c60af66d1728d155f9b916f077966  src/tests/adv_static_limit/upstream_caloric_energy.f90
+6fb882c9629fecfa79f535404161ab77  src/tests/attempted_step/attempted_step_tests.f90
+cf126e11093589487731f22fc2fcdc5b  src/tests/carrier_boundary_jacobian/carrier_boundary_jacobian.f90
+0924c97c4c59671e8e690d8e12d79e95  src/tests/carrier_constraint_attribution/carrier_constraint_attribution.f90
+c8bea2d3b69125c715c320dba90d7189  src/tests/carrier_outer_boundary/carrier_outer_boundary.f90
+bf79e99d8698ef91491bdfb39b5a86ae  src/tests/carrier_reference_scales/carrier_reference_scales.f90
+519ba1502e289b7bd41f883a3b7bdd61  src/tests/carrier_retry/carrier_retry.f90
+7a480454feb3c496fa34a052f6ab6551  src/tests/carrier_returned_state_acceptance/carrier_returned_state_acceptance.f90
+5f852ddfb552d6c9b6d5cab5a5b2e012  src/tests/certification/certification_contexts.f90
+fb9e617c4c65a3fb578da90e90f3bf21  src/tests/constrained_network_layout/transported_proton_constraint_layout.f90
+684cece4f09b1931346a344246b7edc7  src/tests/coupled_source_step/coupled_source_tests.f90
+8800db30755abe0b742529f9b4c6eb51  src/tests/diffusion_tests.f90
+5b26c37ff0e10dd0a9976c08f199d2ae  src/tests/e1_h2/e1_h2_channel_check.f90
+2d3961c3e8caa40357f7815748b2e3aa  src/tests/element_census_tests.f90
+55bd030d94aff66a5f242c2d63b3079a  src/tests/element_operator/element_operator_tests.f90
+a626b8b1e7958bc9c011f4a28c4ba7bf  src/tests/energy_update/conduction_floor_tests.f90
+f8bfb1cde2531d19fc8ba998a3268f59  src/tests/energy_update/cooling_models.f90
+deb7cdbb5bd0134e8f82c0474717cb9a  src/tests/energy_update/energy_update_tests.f90
+9dca2bdbc8614b30bb0f99bcff2d2fd1  src/tests/grid_and_gates/base_boundary_continuity_probe.f90
+f09c1ab3551a47cc05a0f759d64036df  src/tests/grid_and_gates/base_branch_discriminant.f90
+4fc2e04e653ee56ad62633afb9be9bdf  src/tests/grid_and_gates/free_outflow_boundary.f90
+8610cda51a32d2caa6796223e17808cd  src/tests/grid_and_gates/grid_width_identity.f90
+a372f6a280ee9dd870effba732cc71cd  src/tests/grid_and_gates/grid_window_indices.f90
+da696db8b91a771ba27026d4f12ccdcc  src/tests/grid_and_gates/hydrostatic_residual.f90
+11e32c8c2091280d778039e6d4f72115  src/tests/grid_and_gates/mass_flux_spread_functional.py
+8ca814444c0a66507932a0cb4351bdac  src/tests/grid_and_gates/photon_grid_quadrature.f90
+dd5aff32a386e0a7f13ef0923939f893  src/tests/grid_and_gates/photon_grid_threshold_edges.f90
+fceb1dc725d5b21378e86c4f9ba1aac1  src/tests/ionization_imposed_fractions/imposed_ionization_rows.f90
+43c17517c67878fb49df95c0a79f6c88  src/tests/ionization_stage_flux/ionization_stage_flux_tests.f90
+3d458c4846839a0316258e969ea2a091  src/tests/krylov_and_dogleg/krylov_and_dogleg_tests.f90
+d948db297b47de44338078a392df92dd  src/tests/low_mach_stress_energy/low_mach_stress_energy_form.f90
+ac87c6fc9bbe185a554e8fa828164023  src/tests/molecular_seed/compare_columns.py
+59ab3fe8d6c5001c889127102e893a07  src/tests/physics_probe/absorbed_fraction_switch.f90
+3f5b67d2ed0721aea7623189699f66a7  src/tests/physics_probe/assertion_report.f90
+6d3188f830f610e4eae831576ab6c9cb  src/tests/physics_probe/atomic_mass_and_radius_constants.f90
+dddab39b155ed3428e061e88707ee7a4  src/tests/physics_probe/co_destruction.f90
+c6d72c030e6328239fcc93f4da335c29  src/tests/physics_probe/co_helium_ion_sink.f90
+0db71da9d7c0f430c657646e150aff75  src/tests/physics_probe/fine_structure_escape_probability.f90
+599df1b87a321b0ba1c4d546fd6355ae  src/tests/physics_probe/h2_channel_detector_ratio.f90
+36610ce67195c5fd89b45530d55d7447  src/tests/physics_probe/h2_infrared_line_populations.f90
+7fb5ce72bfcaeb1ef035aca8955a7bd5  src/tests/physics_probe/h2_partition_sum_uniqueness.py
+c2ac2af2c17c0685a272a12fba12d76e  src/tests/physics_probe/h2_rovibrational_identity.f90
+6b19d679a578d8893f1cae66a04fab45  src/tests/physics_probe/h3p_cooling_limits.f90
+649549fc3b2f9e6cecaf18c512a9c085  src/tests/physics_probe/h3p_recombination_branching.f90
+04e8f54917984e368732180e7df2689d  src/tests/physics_probe/heating_channel_closure.f90
+071608a9cfda37d48d97fb8fb00bab83  src/tests/physics_probe/heating_sum_uniqueness.py
+426b2914ca78ed1b6ec5a776bc44f9e6  src/tests/physics_probe/helium_level_cooling_ledger.f90
+2246b36b469b821fa316cd91210bc80a  src/tests/physics_probe/ionization_threshold_turn_on.f90
+fff9437e1170595d1d71e9d8926f3595  src/tests/physics_probe/jupiter_radius_python_tools.py
+61479458b9efb05969762e89b4fa87ef  src/tests/physics_probe/lya_band_transmission.f90
+06ef175763b2656cff8cc79785ae7f24  src/tests/physics_probe/lya_beam_cell_mean.f90
+2fa39207f7272a019b8c2454d60a920f  src/tests/physics_probe/lya_escape_probability.f90
+17fed6a513cb6cb1b6aa20222d1d0d58  src/tests/physics_probe/lyman_werner_cell_mean.f90
+c0da9b9029023918b5436c185372b40c  src/tests/physics_probe/metal_photoionization_fits.f90
+15c2cc8ff1bc4b42cb2d3d6b253d747c  src/tests/physics_probe/metal_photoion_table_transcription.py
+880b6a4e54dfc2f6dffe1af7b3455fab  src/tests/physics_probe/molecular_energy_recipients.f90
+1e0cea4f6800772e675fa81f6323defe  src/tests/physics_probe/molecular_third_body_in_the_chemistry.f90
+986e4e13fd089dc668d09758e1452ebe  src/tests/physics_probe/opacity_model_p_ledger.f90
+bea84de82e32cfafd9141cbe3fd0f464  src/tests/physics_probe/photoevent_energy_ledger.f90
+5182347bc18ab03d693d7f2464f9f844  src/tests/physics_probe/photoionization_field_self_consistency.f90
+2846c93bccf146c0dda8e4883e405013  src/tests/physics_probe/photoionization_field_substitution.f90
+b6ef03eb482354db6652535b682a1097  src/tests/physics_probe/positivity_limiter_scaling.f90
+0a06a178114b676dea03a6e719f5c343  src/tests/physics_probe/radiation_exchange_ledger.py
+4fa7858ae65eac9e89e7afadc9c8bf37  src/tests/physics_probe/recombination_coefficient_fits.f90
+ae088e720389ec950229aa2a4fbd2623  src/tests/physics_probe/riemann_wave_speeds.f90
+049d31fc43a181ce97db721d43dae26a  src/tests/physics_probe/roe_low_mach_velocity_jump.f90
+6462a674f9a7cb9c61d3e37f44b372f7  src/tests/physics_probe/source_closure.py
+4be0f7a29117c6b5d280565c6958b632  src/tests/physics_probe/species_formation_energy_python_table.py
+28c4209ed73765fda7e413aa915734d2  src/tests/physics_probe/species_formation_energy_table.f90
+4b6369a7d886a655fe04e94a62eaa26f  src/tests/physics_probe/threshold_literal_uniqueness.py
+4df9626fea19bea2419144de89a114db  src/tests/physics_probe/voronov_carbon_ionization.f90
+1299723c7fd8cf9d55a8b9d8b3a593f6  src/tests/physics_probe/water_photolysis_lyman_alpha_yields.f90
+80f3b1573fad736dd68664fcf3779ae6  src/tests/physics_probe/weno3_reconstruction_order.f90
+8cab7d8d426a6ae9c586b34eadd9bcaa  src/tests/physics_probe/wind_ae_bridge_composition.f90
+9490dfa305d9e7b401660d627610ea29  src/tests/physics_probe/xuv_cell_mean_attenuation.f90
+1d81aba9fd53f531966b24068c85569f  src/tests/species_face_flux/species_face_flux_tests.f90
+b636c6cdfcb598555840a76a7cb62be7  src/tests/species_masses/carrier_background_masses.f90
+5a72300de31f7e87659266095eb1c62d  src/tests/spectrum_type/balmer_band_quadrature.f90
+cb6d85063cc80812f4a71b09f7be5e0c  src/tests/spectrum_type/balmer_continuum_field.f90
+078bdffd779bd6b18046c496b4e7fa8e  src/tests/spectrum_type/fuv_band_quadrature.f90
+af7ce66a9c1fe1c60795fd9291d8a977  src/tests/spectrum_type/loaded_sed_table_semantics.f90
+9f72fbcfe487c41e6d45496bd05c71fe  src/tests/spectrum_type/loaded_sed_threshold_edges.f90
+7500a6a4a45dc62af7006ba82f3190d5  src/tests/spectrum_type/photon_grid_n2_floor.f90
+4559b3f1cc35936d52d2ea994d754bb6  src/tests/spectrum_type/planck_photon_field.f90
+5d8efcdbb6ca6accc2d993abf8508910  src/tests/spectrum_type/wasp121b_sed_sensitivity.f90
+ba3bf406e7fdd1e9faf6fddb3027e557  src/tests/state_mapper/state_mapper_tests.py
+22b9e55a04095f680a7ac4e2f00e0f13  src/tests/steady_species_rows/steady_species_rows_tests.f90
+75a8272078f9cb6baf192c9db09e4d67  src/tests/test_columns.f90
+8ad1608f7caf52391bd07532ecc80988  src/tests/transit_census/adv_validity_and_metadata.py
+53794b14bd0dc0cc6866a00955d62460  src/tests/transit_census/chord_shell_geometry.py
+28c4a52db214b0187c1af9d7967de347  src/utils/codesize.py
+72255683fd780cc533477cf399d343ae  src/utils/collisional_validity.py
+2515b4beb25d2e293d090ae5557c1e22  src/utils/element_budget.py
+44b0ef4353ed395bcf70cd7e5393af3b  src/utils/element_flux_closure.py
+431c9f643ef7878dea37a8423932c0e7  src/utils/EXHALE_interface_functions.py
+b71d6d4caff8dd19265abe8ecc6071dd  src/utils/EXHALE_interface_main.py
+b3d8c14f75c71e7dff1ea4c501f94b3c  src/utils/EXHALE_interface_state.py
+2d01624534b4b787e3356c4699a91d11  src/utils/formation_energy_flux_diagnostic.py
+24c15fac538700b127076198f22b6a15  src/utils/fortdep.py
+556ce0583f5775fb9db900ed3c887037  src/utils/gen_file.py
+e0bc1f8ae4d5a81c5221a0b43677186f  src/utils/h2_shielding_lbl/grid_lbl.py
+eef0ef891734e72053702cc09fcd7128  src/utils/h2_shielding_lbl/lbl.py
+71606fe1c5fc832a0084ed1f69894bd1  src/utils/h2_shielding_lbl/lbl_table.py
+e596ada7b45a9e4705b1c0624b383987  src/utils/h2_shielding_lbl/meudon_extract.py
+020faf12ba465997eb1885542b207d48  src/utils/h2_shielding_lbl/p38_lib.py
+41e056c5dba28d0a7c177cc0ff602942  src/utils/h2_shielding_lbl/run_abs.py
+7f53017eaf7883c4d60fe63afdab106a  src/utils/h2_shielding_table_from_cloudy.py
+548b0709974f526d5def829a643cb6ee  src/utils/h2_shielding_table_line_by_line.py
+ef5eaaacfb978fc1109e65fda3006ff8  src/utils/lower_profile_schema.py
+558c46f2b32d8faec8ede1b013d94989  src/utils/map_state_to_grid.py
+c28e7dcdeb6742300d03f5e382826443  src/utils/metal_photoion_table.py
+90ffd821b03249fd2b7874e1cb993e8c  src/utils/photochem_to_lower_profile.py
+cf5f23140c902eb40599871b8b965cd7  src/utils/profile_match_level.py
+5043cf36bc6e935da50c3192e0c344fb  src/utils/radiative_convective_column.py
+5f871d29fdf5c5caf782b9ff8d961ce7  src/utils/run_lower.py
+edb674820883159408966e18b2196ef4  src/utils/update_log_to_tex.py
+0c699eba4ff998d20f086695a89c3fa9  src/utils/vulcan_driver.py
+af432af93c594ded7b78e233d462652a  src/utils/vulcan_to_base.py
+37abb3a79ebad12a227c9d96aeade1be  src/utils/vulcan_to_lower_profile.py
+a3e2f8fcd9750c6f17b04a01f0f980cf  src/utils/windae_to_exhale_ic.py

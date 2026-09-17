@@ -1,0 +1,1 @@
+Molecular chemistry plus `He_diffusion: True` on the Tier-2 hot-Uranus gate: the widest single guard on `binary_element_diffusion`, covering the molecular-carrier closure, the stage-resolved friction pairs, the projection back onto `f_sp`, and the Coulomb friction of the ionized region in one run (12000-step snapshot).

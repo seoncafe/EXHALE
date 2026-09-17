@@ -1,0 +1,5 @@
+[lower_profile/C]      final: count=12000  du= 4.1694E+00  dtu= 7.7040E-02
+     PASS Hydro_ioniz.txt (data identical)
+     PASS Ion_species.txt (data identical)
+     PASS Hydro_ioniz_adv.txt (data identical)
+     PASS Ion_species_adv.txt (data identical)

@@ -1,0 +1,167 @@
+--- /nfs/mocafe/kiseon/RT_Codes/ExoAtmosphere/EXHALE_v1.00/src/modules/time_step/steady_residual.f90	2026-09-11 21:59:42.680967713 +0900
++++ src/modules/time_step/steady_residual.f90	2026-09-13 20:24:02.476702829 +0900
+@@ -1037,8 +1037,141 @@
+       write(*,'(A,ES14.6,A,ES14.6,A,ES14.6)')                                &
+            '     scale =', residual_row_scale(k, j, u),                      &
+            '   rho =', u(1,j), '   rho v =', u(2,j)
++
++      ! DIAGNOSTIC INSTRUMENT OF ITEM L4f, PRESENT ONLY IN THE ISOLATED
++      ! MEASUREMENT TREE: the signed terms of the three rows of the outer
++      ! cells and the states the outer face flux is built from. Nothing
++      ! reads it and nothing branches on it.
++      call outer_cell_row_terms(Res, u, heat, cool)
+       end subroutine write_residual_breakdown
+ 
++      subroutine outer_cell_row_terms(Res, u, heat, cool)
++      real*8, dimension(3,1-Ng:N+Ng), intent(in) :: Res, u
++      real*8, dimension(1-Ng:N+Ng),   intent(in) :: heat, cool
++      character(len=8) :: l4f_env
++      real*8, dimension(3,1-Ng:N+Ng) :: WL, WR, dF, S, Wp
++      real*8  :: dV, dAp, dAm, dF3p, e3p, e3m
++      integer :: j, k, n_lim
++      call get_environment_variable('EXHALE_L4F', l4f_env)
++      if (trim(l4f_env) .ne. '1') return
++      n_lim = n_faces_positivity_limited
++      call reconstruction_continuation_rhs(u, WL, WR, dF, S)
++      n_faces_positivity_limited = n_lim
++      call U_to_W(u, Wp)
++      block
++        integer :: uu, jj, kk
++        real*8  :: dAp2, dAm2, dV2, g3
++        open(newunit=uu, file='output/row_measures.txt', status='replace', &
++             action='write')
++        write(uu,'(A)') '# r  rho v p  R1 R2 R3  s1 s2 s3  m1 m2 m3'//     &
++             '  eflux_out eflux_in egrav heat cool'
++        do jj = 1, N
++           dAp2 = r_edg(jj)*r_edg(jj)
++           dAm2 = r_edg(jj-1)*r_edg(jj-1)
++           dV2  = (dAp2*r_edg(jj) - dAm2*r_edg(jj-1))/3.0d0
++           g3 = (dAp2*face_flux(1,jj)*(Gphi_i(jj) - Gphi_c(jj))            &
++               - dAm2*face_flux(1,jj-1)*(Gphi_i(jj-1) - Gphi_c(jj)))/dV2
++           write(uu,'(1X,19(ES16.8,1X))') r(jj), Wp(1,jj), Wp(2,jj),       &
++              Wp(3,jj), (Res(kk,jj), kk=1,3),                              &
++              (residual_row_scale(kk,jj,u), kk=1,3),                       &
++              (abs(Res(kk,jj))/max(residual_row_scale(kk,jj,u),1.0d-300),  &
++               kk=1,3),                                                    &
++              dAp2*face_flux(3,jj)/dV2, dAm2*face_flux(3,jj-1)/dV2, g3,    &
++              heat(jj), cool(jj)
++        enddo
++        close(uu)
++        write(*,'(A)') ' [L4f] wrote output/row_measures.txt'
++      end block
++      write(*,'(A)') ' [L4f] outer cells: state, ghosts and row terms'
++      do j = N-4, N+2
++         write(*,'(A,I4,A,F10.5,A,ES13.6,A,ES13.6,A,ES13.6,A,ES13.6)')      &
++            ' [L4f] cell ', j, ' r=', r(j), ' rho=', Wp(1,j),               &
++            ' v=', Wp(2,j), ' p=', Wp(3,j), ' p/rho=', Wp(3,j)/Wp(1,j)
++      enddo
++      do j = N-4, N
++         dAp = r_edg(j)*r_edg(j)
++         dAm = r_edg(j-1)*r_edg(j-1)
++         dV  = (dAp*r_edg(j) - dAm*r_edg(j-1))/3.0d0
++         dF3p = dAp*face_flux(1,j)*(Gphi_i(j) - Gphi_c(j))                  &
++              - dAm*face_flux(1,j-1)*(Gphi_i(j-1) - Gphi_c(j))
++         e3p = dAp*face_flux(3,j)/dV
++         e3m = dAm*face_flux(3,j-1)/dV
++         do k = 1,3
++            write(*,'(A,I4,A,I2,A,ES13.6,A,ES13.6,A,ES13.6,A,ES13.6,A,ES13.6)') &
++               ' [L4f] row  ', j, ' k=', k, ' R=', Res(k,j),                &
++               ' dF=', dF(k,j), ' S=', S(k,j),                              &
++               ' scale=', residual_row_scale(k, j, u),                      &
++               ' meas=', abs(Res(k,j))/max(residual_row_scale(k,j,u),1.0d-300)
++         enddo
++         write(*,'(A,I4,A,ES13.6,A,ES13.6,A,ES13.6,A,ES13.6,A,ES13.6)')     &
++            ' [L4f] enrg ', j, ' out=', e3p, ' in=', e3m,                   &
++            ' grav=', dF3p/dV, ' heat=', heat(j), ' cool=', cool(j)
++         write(*,'(A,I4,A,ES13.6,A,ES13.6,A,ES13.6,A,ES13.6)')              &
++            ' [L4f] face ', j, ' Fm1=', face_flux(1,j-1),                   &
++            ' Fp1=', face_flux(1,j), ' Fm3=', face_flux(3,j-1),             &
++            ' Fp3=', face_flux(3,j)
++      enddo
++      do j = N-1, N+1
++         write(*,'(A,I4,A,ES13.6,A,ES13.6,A,ES13.6,A,ES13.6,A,ES13.6,A,ES13.6)') &
++            ' [L4f] faceW', j, ' WL1=', WL(1,j), ' WL2=', WL(2,j),          &
++            ' WL3=', WL(3,j), ' WR1=', WR(1,j), ' WR2=', WR(2,j),           &
++            ' WR3=', WR(3,j)
++      enddo
++      call outer_cell_ghost_sensitivity(u, heat, cool)
++      end subroutine outer_cell_row_terms
++
++      subroutine outer_cell_ghost_sensitivity(u, heat, cool)
++      ! The finite-difference column of the outermost cell's energy row with
++      ! respect to its own three conserved variables and to those of the cell
++      ! below it, taken twice: with the outer ghosts recomputed from the
++      ! perturbed cell -- the operator the stationary solve linearizes, since
++      ! its residual calls Apply_BC on every unpacked iterate -- and with the
++      ! ghosts held at the reference state. The radiative terms are held
++      ! fixed, so this is the hydrodynamic part of the column alone, and it is
++      ! only assembled where the operator-split transport is inactive.
++      use BC_Apply, only: Apply_BC
++      real*8, dimension(3,1-Ng:N+Ng), intent(in) :: u
++      real*8, dimension(1-Ng:N+Ng),   intent(in) :: heat, cool
++      real*8, dimension(3,1-Ng:N+Ng) :: up, WL, WR, dF, S
++      real*8  :: R0(3), R1(3), R2(3), dx, dfollow, dfrozen
++      integer :: k, j0, n_lim, kk
++      if (transport_active()) then
++         write(*,'(A)') ' [L4f] transport active: column not assembled'
++         return
++      endif
++      n_lim = n_faces_positivity_limited
++      call reconstruction_continuation_rhs(u, WL, WR, dF, S)
++      do kk = 1,3
++         R0(kk) = dF(kk,N) - S(kk,N)
++      enddo
++      R0(3) = R0(3) - (heat(N) - cool(N))
++      do j0 = N-1, N
++         do k = 1,3
++            dx = 1.0d-6*abs(u(k,j0))
++            if (dx .le. 0.0d0) cycle
++            up = u;  up(k,j0) = u(k,j0) + dx
++            call reconstruction_continuation_rhs(up, WL, WR, dF, S)
++            R1(3) = dF(3,N) - S(3,N) - (heat(N) - cool(N))
++            up = u;  up(k,j0) = u(k,j0) + dx
++            call Apply_BC(up)
++            call reconstruction_continuation_rhs(up, WL, WR, dF, S)
++            R2(3) = dF(3,N) - S(3,N) - (heat(N) - cool(N))
++            dfrozen = (R1(3) - R0(3))/dx
++            dfollow = (R2(3) - R0(3))/dx
++            write(*,'(A,I4,A,I2,A,ES13.6,A,ES13.6,A,ES13.6,A,F9.4)')       &
++               ' [L4f] dR3(N)/du cell ', j0, ' k=', k,                     &
++               ' u=', u(k,j0), ' ghost-follows=', dfollow,                 &
++               ' ghost-frozen=', dfrozen, ' ratio=',                       &
++               dfollow/sign(max(abs(dfrozen),1.0d-300),dfrozen)
++         enddo
++      enddo
++      call reconstruction_continuation_rhs(u, WL, WR, dF, S)
++      n_faces_positivity_limited = n_lim
++      write(*,'(A,ES13.6,A,ES13.6,A,ES13.6)')                              &
++         ' [L4f] reference rows of cell N: mass=', R0(1),                  &
++         ' momentum=', R0(2), ' energy=', R0(3)
++      end subroutine outer_cell_ghost_sensitivity
++
+       subroutine flux_spread_of_state(u, spread, fmean)
+       ! THE FLUX GATE: the radial spread of the mass flux the scheme
+       ! CONSERVES, over the wind window [j_flux:N], i.e. over r >= r_flux:
+--- /nfs/mocafe/kiseon/RT_Codes/ExoAtmosphere/EXHALE_v1.00/src/modules/time_step/steady_newton.f90	2026-09-13 20:01:44.918093436 +0900
++++ src/modules/time_step/steady_newton.f90	2026-09-13 20:25:58.112950982 +0900
+@@ -15986,6 +15986,20 @@
+                     lin_row(1)/max(f_row(1),1.0d-300),                     &
+                     lin_row(2)/max(f_row(2),1.0d-300),                     &
+                     lin_row(3)/max(f_row(3),1.0d-300)
++               ! ITEM L4f, ISOLATED MEASUREMENT TREE ONLY: the same three
++               ! quantities of the OUTERMOST cell alone, with the step the
++               ! cycle proposes for that cell.
++               block
++                 integer :: i0
++                 i0 = nvar_jac*(N-1)
++                 write(*,'(A,3ES12.4,A,3ES12.4,A,3ES12.4)')                &
++                      ' (JFNK) [L4f] cell N: F=', F(i0+1), F(i0+2),        &
++                      F(i0+3), '  linres=', r_lin(i0+1), r_lin(i0+2),      &
++                      r_lin(i0+3), '  dY/u=',                              &
++                      dY(i0+1)/max(abs(Y(i0+1)),1.0d-300),                 &
++                      dY(i0+2)/max(abs(Y(i0+2)),1.0d-300),                 &
++                      dY(i0+3)/max(abs(Y(i0+3)),1.0d-300)
++               end block
+             else
+                write(*,'(A)') ' (JFNK) linear residual left: the action'//  &
+                     ' has no admissible sample along the step'

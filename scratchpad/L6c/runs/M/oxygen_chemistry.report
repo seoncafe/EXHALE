@@ -1,0 +1,5 @@
+[oxygen_chemistry/M]      final: count=1000  du= 4.4960E+00  dtu= 4.0540E-01
+     FAIL Hydro_ioniz.txt (EXCEEDS 1.0e-03  max rel 1.947e+00 at row 15 col 6 (-0.0032425094892062256 vs 0.0034236423351498776))
+     FAIL Ion_species.txt (EXCEEDS 1.0e-03  max rel 1.000e+00 at row 173 col 37 (30845.653587123532 vs 0.019180993313483569))
+     FAIL Hydro_ioniz_adv.txt (EXCEEDS 1.0e-03  max rel 1.206e+00 at row 431 col 3 (293.6468126637032 vs -1428.3740021052536))
+     FAIL Ion_species_adv.txt (EXCEEDS 1.0e-03  max rel 1.000e+00 at row 3 col 42 (1 vs 0))

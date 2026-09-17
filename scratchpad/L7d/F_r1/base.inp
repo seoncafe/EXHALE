@@ -1,0 +1,23 @@
+# base.inp -- the molecular lower boundary of MODELS.md section 4.
+#
+# The inflowing gas keeps the hydrogen-nucleus fraction bound
+# into H2 that the photochemical column carries at 1 microbar,
+# f = 0.9999831600354949, so
+#
+#     q_H2_base = (f/2) / ((1 - f) + f/2 + He/H)
+#             = 0.190110258 at He/H = 2.13,
+#
+# just below the ceiling 0.5/(0.5 + He/H) = 0.190114068 that
+# input_read.f90 enforces.  The base state is the scalar
+# family's, so the only change against the atomic scalar case
+# at the same He/H is the chemistry.
+#
+# p_base is the level of the run; "Base BC: pressure 1.0" in
+# input.inp names the same level, and the density key is left
+# out beside it.
+T_base    226.0
+r_base    0.157692
+HeH_base  2.13
+Kzz_base  1.0e9
+q_H2_base 0.19011025828621544
+p_base    1.0e-6
