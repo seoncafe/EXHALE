@@ -99,7 +99,13 @@
                                           element_step_mass_closure_failed,&
                                           element_relaxation_converged,   &
                                           element_mass_closure_departure, &
+                                          element_transport_residual_norm,&
+                                          element_row_scale_floor,        &
                                           element_step_last_status
+      ! The certification's own reduction of a row, so that the number the
+      ! progress control reads and the number the certification reports for
+      ! the same rows are asserted to be one measure and not two.
+      use certification, only: certification_row_measure, cert_scale_floor
       use test_columns, only: column_carrying_its_own_density,            &
                               column_mass_closure
       use, intrinsic :: ieee_arithmetic, only: ieee_value, ieee_quiet_nan
@@ -112,6 +118,7 @@
       call the_advective_write_back_returns_the_mass_it_was_given(nf)
       call an_inadmissible_composition_is_not_handed_back(nf)
       call the_enforcement_does_not_read_the_caller(nf)
+      call the_progress_measures_of_one_element_pass(nf)
       write(*,'(A)') ''
       if (nf .gt. 0) then
          write(*,'(A,I0,A)') 'element_operator: ', nf, ' row(s) failed'
@@ -226,6 +233,118 @@
       if (.not. allocated(melem_ab)) allocate(melem_ab(n_melem))
       melem_ab = 1.0d-4
       end subroutine synthetic_element_column
+
+      ! ================================================================= !
+
+      subroutine the_progress_measures_of_one_element_pass(nf)
+      ! THE THREE QUANTITIES ONE ELEMENT PASS RETURNS ARE THREE DIFFERENT
+      ! QUANTITIES (docs/PLAN_20260916_rev3.md section 3 step 1).
+      !
+      !   * the residual of the elemental transport balance at the
+      !     composition the pass hands back, which is what the outer
+      !     iteration reads as the composition's distance from the fixed
+      !     point of its own operator.  The row below states that it is the
+      !     certification's own measure of the same rows: the reduction
+      !     certification_row_measure forms, on the rows
+      !     element_transport_residual returns for the same state.  Neither
+      !     spelling may drift from the other, because the outer iteration
+      !     judges progress by one of them and the acceptance by the other.
+      !   * the distance to the endpoint of the relaxation's inner map,
+      !     formed before the damping.
+      !   * the displacement the pass actually applied, which the damping
+      !     shortens: with omega = 1 the two coincide exactly, and with
+      !     omega = 1/2 on a column whose only transported element is
+      !     helium the displacement is half the map distance, because the
+      !     damping is the only thing standing between the two.
+      integer, intent(inout) :: nf
+      integer, parameter :: nc = 40
+      real*8, dimension(:),   allocatable :: rho_c, v_c, T_c, Frho
+      real*8, dimension(:,:), allocatable :: f_c
+      real*8, dimension(:),   allocatable :: res_he_a, sc_he_a
+      real*8, dimension(:,:), allocatable :: res_tr, sc_tr
+      logical, dimension(n_melem) :: carried
+      real*8  :: famp, map_d, disp, rnorm, res_abs, sc_abs
+      real*8  :: rmax_cert, rmax_one, ratio
+      logical :: ok_he, ok_tr, ok_fin, measured
+      integer :: j, im, nstep, jworst, ielem, jw
+
+      call synthetic_element_column(nc)
+      allocate(rho_c(1-Ng:N+Ng), v_c(1-Ng:N+Ng), T_c(1-Ng:N+Ng),          &
+               Frho(1-Ng:N+Ng), f_c(1-Ng:N+Ng,n_species))
+      allocate(res_he_a(1:N), sc_he_a(1:N))
+      allocate(res_tr(1:N,n_melem), sc_tr(1:N,n_melem))
+
+      famp = 1.0d-4
+      do j = 1-Ng, N+Ng
+         rho_c(j) = exp(-3.0d0*(r(j) - 1.0d0))
+         v_c(j)   = 0.0d0
+         T_c(j)   = 1.0d0
+         Frho(j)  = famp/(r_edg(j)*r_edg(j))
+      enddo
+      call column_carrying_its_own_density(f_c, 0.0d0, .true., 0.0d0)
+
+      ! ONE UNDAMPED PASS, and the state it hands back.
+      call relax_element_composition(rho_c, v_c, T_c, f_c, Frho, 1.0d0,   &
+                                     map_d, nstep, displacement = disp)
+      write(*,'(A,I0,A,ES12.5,A,ES12.5)')                                 &
+           '  DIAGNOSTIC undamped pass: steps = ', nstep,                 &
+           ', map distance = ', map_d, ', displacement = ', disp
+      call bound_row('an_undamped_pass_displacement_equals_its_map_'//    &
+           'distance', abs(disp - map_d)/max(map_d, 1.0d-300), 1.0d-14, nf)
+
+      ! THE RESIDUAL OF THAT STATE, BOTH WAYS.  The reference is the
+      ! certification's reduction of the same rows, element by element.
+      call element_transport_residual_norm(rho_c, T_c, f_c, Frho, rnorm,  &
+               jworst, ielem, res_abs, sc_abs, measured)
+      call element_transport_residual(rho_c, T_c, f_c, Frho, res_he_a,    &
+               sc_he_a, ok_he, res_tr, sc_tr, ok_tr, tr_carried = carried)
+      call certification_row_measure(N, j_min, res_he_a, sc_he_a,         &
+                                     rmax_cert, jw, ok_fin)
+      do im = 1, n_melem
+         if (.not. carried(im)) cycle
+         call certification_row_measure(N, j_min, res_tr(:,im),           &
+                                        sc_tr(:,im), rmax_one, jw, ok_fin)
+         rmax_cert = max(rmax_cert, rmax_one)
+      enddo
+      write(*,'(A,ES12.5,A,ES12.5,A,I0,A,I0)')                            &
+           '  DIAGNOSTIC element residual norm = ', rnorm,                &
+           ', certification row measure = ', rmax_cert, ' at cell ',      &
+           jworst, ', element ', ielem
+      call outcome_row('the_element_residual_of_this_state_is_measured',  &
+           merge(1, 0, measured), 1, nf)
+      call bound_row('element_residual_norm_is_the_certification_row_'//  &
+           'measure', abs(rnorm - rmax_cert)/max(rmax_cert, 1.0d-300),    &
+           1.0d-14, nf)
+      ! The two floors are one floor: the certification divides by
+      ! cert_scale_floor and this module by element_row_scale_floor, and a
+      ! row whose terms vanish must read the same number in both.
+      call bound_row('the_two_row_scale_floors_are_one_number',           &
+           abs(element_row_scale_floor - cert_scale_floor)                &
+           /cert_scale_floor, 0.0d0, nf)
+      ! The row above is not vacuous: the state carries a residual the
+      ! measure can tell from zero.
+      call exceeds_row('the_relaxed_state_still_carries_an_element_row',  &
+           rnorm, 0.0d0, nf)
+
+      ! A DAMPED PASS, on a column whose only transported element is
+      ! helium, so the measure runs over the one element the damping acts
+      ! on.  The relaxation is entered again from the state above, which is
+      ! not its own fixed point at the boundary the caller left.
+      he_metal_diffusion = .false.
+      call column_carrying_its_own_density(f_c, 0.0d0, .true., 0.0d0)
+      call relax_element_composition(rho_c, v_c, T_c, f_c, Frho, 5.0d-1,  &
+                                     map_d, nstep, displacement = disp)
+      ratio = disp/max(map_d, 1.0d-300)
+      write(*,'(A,ES12.5,A,ES12.5,A,F10.6)')                              &
+           '  DIAGNOSTIC damped pass: map distance = ', map_d,            &
+           ', displacement = ', disp, ', ratio = ', ratio
+      call bound_row('a_damped_pass_displacement_is_omega_times_its_'//   &
+           'map_distance', abs(ratio - 5.0d-1)/5.0d-1, 1.0d-10, nf)
+      he_metal_diffusion = .true.
+
+      deallocate(rho_c, v_c, T_c, Frho, f_c, res_he_a, sc_he_a, res_tr,   &
+                 sc_tr)
+      end subroutine the_progress_measures_of_one_element_pass
 
       ! ================================================================= !
 

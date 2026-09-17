@@ -19,10 +19,10 @@
       !
       ! An element the file DOES carry, and whose reservoir a lower-atmosphere
       ! handoff states, has its loaded column renormalized onto that reservoir
-      ! by one factor common to every ionization stage, so a closure iteration
-      ! restarts on the El/H it just moved to. Everything else about the
-      ! restart -- including an element the handoff is silent about -- is
-      ! unchanged.
+      ! by one factor common to every ionization stage. A file with the
+      ! metadata block arrives already within heh_dev_tol of the handoff, its
+      ! "reservoir" field compared first, so that factor bites on a
+      ! provenance-unknown file. Everything else is unchanged.
 
       use global_parameters
       use species_table, only: isp_HI, isp_HII, isp_HeI, isp_HeII,    &
@@ -32,7 +32,15 @@
                                mion_elem, melem_i0, melem_top,         &
                                melem_name, isp_OH, isp_H2O, isp_CO,     &
                                iel_O, iel_C
-      use utils, only: calc_rho
+      use utils, only: calc_rho, state_certification_reason
+      ! WHERE THE RESTART PAIR IS READ FROM, and which option tokens a
+      ! molecular seed conversion is allowed to find different (item L7 of
+      ! docs/PLAN_20260913_lhs_stationary.md). Both are no-ops for an
+      ! ordinary restart: the path is 'output/..._IC.txt' and no token may
+      ! differ that the input did not name.
+      use molecular_seed, only: molecular_seed_state_file,                &
+                                molecular_seed_option_may_differ,         &
+                                molecular_seed_on
       ! Which build produced a state file: the source revision stamped into
       ! the executable (the run never calls git).
       use build_stamp, only: build_git, build_dirty
@@ -55,6 +63,32 @@
       ! element ratio, and the answer is the producing path or an explicit
       ! conservative mapping, not a larger number here.
       real*8, parameter :: heh_dev_tol = 1.0d-6
+
+      ! How far the mass the file's species columns carry may stand from its
+      ! own density column and still be the same state (see the density
+      ! reconstruction in load_IC). Below it the density is taken from its
+      ! column and the composition projected onto it; above it the loader has
+      ! itself changed the composition and the density follows.
+      !
+      ! The two scales it separates are measured, not chosen: the mass-closure
+      ! drift a solved state carries is 1e-15 to 6e-13 (item L18, growing
+      ! about 1e-14 per outer pass), and the smallest deliberate change the
+      ! blocks above make -- rebuilding one trace element at its abundance --
+      ! moves the mass by 1e-3. Anything between them separates the two, and
+      ! 1e-8 sits five decades above the largest drift measured and five
+      ! below the smallest deliberate change.
+      real*8, parameter :: restart_density_agreement_tol = 1.0d-8
+   ! Below this the loader's own rescaling factors are round-off and the
+   ! composition it hands on is the file's; above it the loader has put a
+   ! different composition in and says which block did
+   ! (composition_changed_here).
+   real*8, parameter :: restart_composition_move_tol = 1.0d-12
+   ! The departure of the two halves that a restart of the SAME equations is
+   ! allowed to carry silently. It is the rounding of the writer and of the
+   ! projection the sweep applies (item L19), measured at 4e-16 on a state
+   ! this code writes and at 6e-13 on the longest solve before L19; anything
+   ! between this and restart_density_agreement_tol is reported.
+   real*8, parameter :: restart_density_rounding_tol = 1.0d-10
 
       ! Elements whose density had to be built from the abundance because the
       ! restart file did not carry it (see the metals block below). Allocated
@@ -91,11 +125,40 @@
    ! without the time it reached is not one a continuation can be started
    ! from; this separates "the field was read" from "the field defaulted".
    logical :: ic_t_phys_present   = .false.
+   ! The length a 'cert_reason=' token is held to. Its destination is
+   ! state_certification_reason (utilities.f90), which is what the writer
+   ! emits from, so the length is that variable's own and is stated once: a
+   ! token longer than this cannot be carried and the load is refused rather
+   ! than the token silently cut.
+   integer, parameter :: cert_reason_len = len(state_certification_reason)
+
    ! Was the state in the restart file certified as a stationary solution by
    ! the run that wrote it ('certified=' of the same line)?  An evaluation of
    ! that state re-answers exactly that question, so the claim the file makes
    ! is what its re-evaluation is held to.
    logical :: ic_certified          = .false.
+   ! WHY the file says what it says: the reason of a refused claim
+   ! ('no_stationary_claim' for a run that made none, 'failing_entries' for
+   ! one the inventory refused) or the qualification token of a TRUE
+   ! certification (species rows judged in the wind alone). It is provenance
+   ! text of the IMPORTED state and never a verdict of this run: the Boolean
+   ! above comes from 'certified=' alone, so a token this version does not
+   ! know cannot promote an uncertified state to a certified one.
+   character(len=cert_reason_len) :: ic_cert_reason = ''
+
+   ! THE CERTIFICATION PAIR AS ONE FILE STATES IT. The two halves of a state
+   ! are two files, and a claim about the state is a claim about both of
+   ! them, so each half's pair is read on its own and the two are compared
+   ! before either is adopted. The presence flags separate "the file states
+   ! F" from "the file states nothing", which is what makes a legacy header
+   ! (no field) distinguishable from a disagreement.
+   type :: file_certification_claim
+      logical :: header_present    = .false.
+      logical :: certified_present = .false.
+      logical :: certified         = .false.
+      logical :: reason_present    = .false.
+      character(len=cert_reason_len) :: reason = ''
+   end type file_certification_claim
 
    ! ------------------------------------------------------------------ !
    ! THE RESTART METADATA BLOCK (docs/restart_contract_design_20260909.md
@@ -181,19 +244,38 @@
         'carrier', 'carrier_newton', 'iontrans', 'he_diff',                 &
         'he_metal_diff', 'sec_ion', 'caloric_mono', 'excH', 'base_ir',      &
         'mol_ir', 'mol_heat', 'visc', 'cond', 'jlya', 'wellbal' ]
-   ! WHICH TOKENS MAY NEVER BE NAMED, and why: these six decide HOW MANY
+   ! WHICH TOKENS MAY NEVER BE NAMED, and why: these five decide HOW MANY
    ! UNKNOWNS the state has and which rows the state files carry. metals
    ! adds the metal ionization stages, mol the four molecular carriers,
    ! oxychem the three oxygen carriers; carrier makes the carriers
-   ! transported and carrier_newton puts their rows in the Newton unknown
-   ! vector; iontrans carries the hydrogen ionization state as a
-   ! transported row. A state whose rows are not this run's rows is not
-   ! this run's state, so such a change is a cold start and not a restart,
-   ! whatever the input names. The grid is not a token of this field at all
-   ! (it is the 'grid' field, N included) and is refused the same way.
+   ! transported, which gives each of them a continuity equation and a
+   ! column in the state files; iontrans carries the hydrogen ionization
+   ! state as a transported row. A state whose rows are not this run's rows
+   ! is not this run's state, so such a change is a cold start and not a
+   ! restart, whatever the input names. The grid is not a token of this
+   ! field at all (it is the 'grid' field, N included) and is refused the
+   ! same way.
    logical, parameter :: opt_changes_layout(n_opt) = [                      &
         .false., .true.,  .false., .true.,  .false., .true.,                &
-        .true.,  .true.,  .true.,  .false.,                                 &
+        .true.,  .false., .true.,  .false.,                                 &
+        .false., .false., .false., .false., .false.,                        &
+        .false., .false., .false., .false., .false., .false. ]
+   ! A ROUTE TOKEN: the same equations, solved by another algorithm.
+   ! carrier_newton says whether the transported balances are unknowns of
+   ! the Newton vector, solved together with the wind as one block, or are
+   ! relaxed at a held wind in alternation with it. Both routes carry the
+   ! same rows in the same state files with the same columns: the balances
+   ! whose residual must vanish are the same balances, and a state that is
+   ! stationary is stationary under either. Under the metadata contract of
+   ! docs/lhs1140b_stationary_L23_20260916.md the route that produced a
+   ! state is metadata OF the state and not a statement of which equations
+   ! it solves, so a difference in this token is admissible without being
+   ! named: the loaded state is a starting point of the same system. The
+   ! difference is still reported, and written into the new state's history
+   ! as a route_change line, so a state states which route reached it.
+   logical, parameter :: opt_is_route(n_opt) = [                            &
+        .false., .false., .false., .false., .false., .false.,               &
+        .false., .true.,  .false., .false.,                                 &
         .false., .false., .false., .false., .false.,                        &
         .false., .false., .false., .false., .false., .false. ]
    ! The tokens the input named as allowed to differ, set by input_read
@@ -216,6 +298,17 @@
    ! token that does not differ? Reported by the setup report.
    logical :: ic_option_change_applied = .false.
    logical :: ic_option_change_inert   = .false.
+   ! Did the load change the ROUTE, that is the carrier_newton token?
+   logical :: ic_route_change_applied  = .false.
+   ! THE ROUTE THAT PRODUCED THE STATE THIS RUN WRITES. True once the
+   ! transported balances are unknowns of the Newton vector: from the first
+   ! pass under "Coupled carrier solve: True" (carrier_in_newton), or from
+   ! the pass at which "On stall" hands the state to the block, which sets
+   ! this and leaves carrier_in_newton at what the input said. The written
+   ! carrier_newton token states which map the state came out of, so a
+   ! state produced by the block after a handover does not record itself as
+   ! a state of the alternation.
+   logical :: carrier_rows_entered_newton = .false.
 
       contains
 
@@ -238,6 +331,18 @@
       real*8  :: T_K_l, nOtot, nCtot, nCO_l, nOfam, nOH_l, nH2O_l
       real*8  :: f_oh_l, f_h2o_l, sO_l, sC_l, dH_l
       real*8, dimension(1-Ng:N+Ng)        :: rho_dim
+      ! The mass density column of the state file, and how far the mass the
+      ! file's own species columns carry stands from it (see the block that
+      ! reconstructs the density below).
+      real*8, dimension(1-Ng:N+Ng)        :: rho_file
+      real*8  :: mass_dev, mass_dev_j, s_close
+      integer :: j_mass
+      ! DID THIS LOADER CHANGE THE COMPOSITION ITSELF?  Set at each block
+      ! that does, and it is what decides which half of the file states the
+      ! density (see the reconstruction below).  `why' names the first such
+      ! block for the message.
+      logical            :: composition_changed_here
+      character(len=120) :: composition_changed_why
       ! Cell centers the restart file carries. The grid is a property of the
       ! run: define_grid builds r, r_edg, dr_j, j_min and j_flux from
       ! "Grid type", "Base grid", "Grid cells" and "Outer radius", and only
@@ -265,12 +370,18 @@
       ! loaded metal column onto a handoff reservoir (metals block below)
       real*8 :: elh_l, r_el
       real*8 :: vals(80)
+      ! The two state files this call reads, named once (see the use
+      ! statement above).
+      character(len=640) :: f_hyd, f_ion
 
       character(len=8192) :: line
       ! The restart metadata block of each of the two state files, stored by
       ! field name as it is read (parse_restart_metadata_line) and compared
       ! with this run's own configuration afterwards.
       character(len=meta_len) :: meta_h(n_meta), meta_i(n_meta)
+      ! The stationary claim each half of the state states about itself,
+      ! read before either is adopted (adopt_certification_claim).
+      type(file_certification_claim) :: claim_h, claim_i
       character(len=16)   :: labels(80)
       integer :: col2fsp(80)
       logical :: has_header
@@ -291,17 +402,41 @@
       ic_coupling_present = .false.
       meta_h = ''
       meta_i = ''
+      claim_h = file_certification_claim(.false., .false., .false.,        &
+                                         .false., '')
+      claim_i = file_certification_claim(.false., .false., .false.,        &
+                                         .false., '')
       ! The loaded state's own option-change history starts empty and is
       ! filled from the file, so this run's line is appended after it.
       ic_option_change        = ''
       n_ic_option_change      = 0
       n_option_change_dropped = 0
-      open(unit = 1, file = 'output/Hydro_ioniz_IC.txt')
+      f_hyd = molecular_seed_state_file('Hydro_ioniz')
+      f_ion = molecular_seed_state_file('Ion_species')
+      if (molecular_seed_on()) then
+         write(*,'(A)') ' (load_IC) molecular seed: the state being read'//&
+              ' is the ATOMIC state in'
+         write(*,'(A)') '   '//trim(f_hyd)
+         write(*,'(A)') '   '//trim(f_ion)
+      endif
+      open(unit = 1, file = trim(f_hyd))
       do
          read(1,'(A)',iostat=ios) line
          if (ios .ne. 0) exit
          if (is_comment(line)) then
-            if (index(line,'coupling:') .gt. 0) call parse_coupling_header(line)
+            ! THE LINE'S OWN LABEL, not a substring of it. A mapped seed
+            ! carries '# mapped-from-coupling:' beside its own
+            ! '# coupling:' line: that one states what the SOURCE state was
+            ! produced under, which is provenance of the mapping and not a
+            ! statement about the state in this file (map_state_to_grid.py
+            ! writes the state's own line as an initialization seed,
+            ! mode=init t_phys=0 certified=F). Matched by substring, the
+            ! provenance line was read as a second coupling header and its
+            ! fields replaced the state's own.
+            if (comment_field_is(line, 'coupling:')) then
+               call parse_coupling_header(line)
+               call parse_certification_claim(line, claim_h, trim(f_hyd))
+            endif
             call parse_restart_metadata_line(line, meta_h)
             call collect_option_change_line(line)
          else
@@ -332,7 +467,7 @@
       endif
       if (nrec .ne. N + 2*Ng) then
          write(*,'(A,I0,A,I0,A)')                                            &
-            ' (load_IC) ERROR: output/Hydro_ioniz_IC.txt has ', nrec,        &
+            ' (load_IC) ERROR: '//trim(f_hyd)//' has ', nrec,                &
             ' data rows, but the grid needs N + 2*Ng = ', N + 2*Ng,          &
             ' (the IC was written at a different "Grid cells:" N,'//         &
             ' or the file is truncated).'
@@ -340,18 +475,18 @@
       endif
 
       ! Load thermodynamic variables (skip any '#' header lines)
-      open(unit = 1, file = 'output/Hydro_ioniz_IC.txt')
+      open(unit = 1, file = trim(f_hyd))
          read(1,'(A)') line
          do while (is_comment(line))
             read(1,'(A)') line
          enddo
-         read(line,*) r_file(1-Ng), tmp, v(1-Ng), p(1-Ng), T(1-Ng),      &
-                      tmp, tmp
+         read(line,*) r_file(1-Ng), rho_file(1-Ng), v(1-Ng), p(1-Ng),    &
+                      T(1-Ng), tmp, tmp
          do j = 2-Ng,N+Ng
-            read(1,*) r_file(j), tmp, v(j), p(j), T(j), tmp, tmp
+            read(1,*) r_file(j), rho_file(j), v(j), p(j), T(j), tmp, tmp
          enddo
       close(1)
-      call verify_restart_radii(r_file, 'output/Hydro_ioniz_IC.txt')
+      call verify_restart_radii(r_file, trim(f_hyd))
 
       ! Adimensionalize
       v = v/v0
@@ -362,7 +497,7 @@
       nsp_l       = 0.0d0
       col_present = .false.
 
-      open(unit = 2, file = 'output/Ion_species_IC.txt')
+      open(unit = 2, file = trim(f_ion))
       read(2,'(A)') line
       has_header = is_comment(line)
 
@@ -378,6 +513,12 @@
             ! block, which carries such a field name.)
             if (comment_field_is(line, 'columns'))                        &
                call parse_labels(line, labels, nlab)
+            ! The stationary claim is a claim about the STATE, and this file
+            ! is half of it: a pair whose halves claim different things is
+            ! not one state, so this half is read even though the writer
+            ! states the claim on Hydro_ioniz alone.
+            if (comment_field_is(line, 'coupling:'))                      &
+               call parse_certification_claim(line, claim_i, trim(f_ion))
             call parse_restart_metadata_line(line, meta_i)
             read(2,'(A)',iostat=ios) line
             if (ios .ne. 0) exit
@@ -414,11 +555,18 @@
          col_present(isp_HI:isp_HeTR) = .true.
       endif
       close(2)
-      call verify_restart_radii(r_file, 'output/Ion_species_IC.txt')
+      call verify_restart_radii(r_file, trim(f_ion))
 
       ! THE CONFIGURATION THE STATE IS A STATE OF, before anything is done
       ! with the state itself.
       call verify_restart_metadata(meta_h, meta_i)
+
+      ! WHAT THE STATE CLAIMS ABOUT ITSELF: the one pair the two halves
+      ! state, into the imported metadata (see the routine).
+      call adopt_certification_claim(claim_h, claim_i)
+
+      composition_changed_here = .false.
+      composition_changed_why  = ''
 
       ! Zero the whole f_sp before any assignment so columns not restored
       ! below -- in particular the molecular columns, absent from most IC
@@ -526,6 +674,21 @@
                   sH_l(j)  = 1.0d0
                   sHe_l(j) = 1.0d0
                enddo
+            endif
+            ! The factors this branch applies are 1 to round-off for a
+            ! state written at the input's He/H; under He_diffusion only the
+            ! base cells are touched at all.  What matters below is whether
+            ! the composition MOVED, so the flag is set on the factors and
+            ! not on the fact that the branch was entered.
+            if (max(maxval(abs(sH_l(1:N)  - 1.0d0)),                      &
+                    maxval(abs(sHe_l(1:N) - 1.0d0)),                      &
+                    maxval(abs(sH_l(1-Ng:0)  - 1.0d0)),                   &
+                    maxval(abs(sHe_l(1-Ng:0) - 1.0d0)))                   &
+                .gt. restart_composition_move_tol) then
+               composition_changed_here = .true.
+               if (len_trim(composition_changed_why) .eq. 0)              &
+                  composition_changed_why = 'the loaded H/He was'//       &
+                     ' rescaled onto the input He/H'
             endif
             nsp_l(:,isp_HI)    = nsp_l(:,isp_HI)   *sH_l
             nsp_l(:,isp_HII)   = nsp_l(:,isp_HII)  *sH_l
@@ -641,6 +804,10 @@
          enddo
          if (melem_ab(e) .gt. 0.0d0) then
             melem_from_abundance(e) = .true.
+            composition_changed_here = .true.
+            if (len_trim(composition_changed_why) .eq. 0)                 &
+               composition_changed_why = 'element '//trim(melem_name(e))//&
+                  ' was rebuilt at its abundance'
             write(*,'(A)') ' (load_IC) WARNING: the restart file carries no'// &
                  ' density for element '//trim(melem_name(e))//               &
                  '; initializing it as neutral at the input abundance.'
@@ -650,11 +817,11 @@
       ! ---- elements the handoff states: carry the loaded column onto that
       ! reservoir --------------------------------------------------------
       ! A restart file carries the metal densities of the state it was written
-      ! from. When the reservoir itself has moved since -- which is what a
-      ! flux-closure iteration does to the elemental ratios of the lower
-      ! atmosphere -- the base boundary condition uses the new El/H while the
-      ! loaded column above the base still holds the old one, and the elemental
-      ! budget n_El/n_H = (El/H)_resolved cannot close above the first cell.
+      ! from. When the reservoir has moved since, the base boundary condition
+      ! uses the new El/H while the column above still holds the old one, and
+      ! the elemental budget n_El/n_H = (El/H)_resolved cannot close above the
+      ! first cell. A file with the metadata block arrives within heh_dev_tol,
+      ! its "reservoir" field compared first, so the factor below is 1 for it.
       !
       ! Only an element the handoff itself states is touched: melem_from_handoff
       ! is set by set_element_abundance, the one door the "<El>_H_base" keys of
@@ -671,9 +838,9 @@
       ! nuclei, summing the element over its stages against the hydrogen nuclei
       ! of nH_l (free plus the H bound in H2, H2+, H3+ and HeH+), which is the
       ! convention of element_ratio_HeH and of src/utils/element_budget.py.
-      ! Helium keeps its own convention -- the base cells are set to the input
-      ! He/H, the column above may carry a diffused split -- and is not touched
-      ! here.
+      ! Helium keeps its own convention: the base cells are set to the input
+      ! He/H, the column above may carry a diffused split. A state bound for
+      ! ANOTHER reservoir goes through map_state_to_grid.py --reservoir first.
       ! (the flag is allocated by input_read; the test keeps the unit tests of
       !  src/tests, which build a state without it, on the untouched path)
       do e = 1, n_melem
@@ -698,6 +865,12 @@
          ! Enough digits that the factor can be compared with the reservoir
          ! change it is supposed to equal: a closure iteration moves El/H by
          ! parts in 1e4, which ES10.3 would print as 1.000E+00.
+         if (abs(r_el - 1.0d0) .gt. restart_composition_move_tol) then
+            composition_changed_here = .true.
+            if (len_trim(composition_changed_why) .eq. 0)                 &
+               composition_changed_why = 'the '//trim(melem_name(e))//    &
+                  ' column was carried onto the handoff reservoir'
+         endif
          write(*,'(A,ES13.6,A,ES13.6,A,ES13.6)')                           &
             ' (load_IC) '//trim(melem_name(e))//'/H at the base cell:'//   &
             ' restart file ', elh_l, ', handoff ', melem_ab(e),            &
@@ -767,6 +940,9 @@
                nsp_l(j,isp_H2O) = nH2O_l
                nsp_l(j,isp_CO)  = nCO_l
             enddo
+            composition_changed_here = .true.
+            if (len_trim(composition_changed_why) .eq. 0)                 &
+               composition_changed_why = 'the oxygen carriers were seeded'
             write(*,'(A)') ' (load_IC) the restart file carries no OH /'// &
                ' H2O / CO columns; seeding them from the chemical'
             write(*,'(A)') '   equilibrium of the loaded (T, H2/H) and'//  &
@@ -774,13 +950,12 @@
          endif
       endif
 
-      ! Reconstruct the mass density (adimensional) from the LOADED densities
-      ! with the SAME mass policy as the run (calc_rho): the trace-metal mass
-      ! under the eos_metals policy and the molecular mass are included,
-      ! exactly as calc_rho does in the main loop. He 2^3S is NOT a separate
-      ! mass term -- it is an excited level of He I, whose density (nheiTR)
-      ! is already inside the He I column calc_rho sums (bsp_is_excited_level,
-      ! section 75). A restart therefore preserves the conserved mass exactly.
+      ! Weigh the LOADED densities with the SAME mass policy as the run
+      ! (calc_rho): the trace-metal mass under the eos_metals policy and the
+      ! molecular mass are included, exactly as calc_rho does in the main
+      ! loop. He 2^3S is NOT a separate mass term -- it is an excited level
+      ! of He I, whose density (nheiTR) is already inside the He I column
+      ! calc_rho sums (bsp_is_excited_level, section 75).
       ! The old H/He-only formula (rho = (nHI+nHII+4*(nHeI+nHeII+nHeIII))/n0)
       ! is gone deliberately: it dropped the metal/molecular mass and left a
       ! mass discontinuity on reload. Columns absent from the file are zero in
@@ -800,6 +975,147 @@
       call calc_rho(nsp_l(:,isp_HI),  nsp_l(:,isp_HII),   nsp_l(:,isp_HeI),   &
                     nsp_l(:,isp_HeII), nsp_l(:,isp_HeIII),                    &
                     rho_dim, nm_l, nmol_l, nox_l)
+
+      ! WHICH OF THE TWO HALVES OF THE FILE IS THE MASS DENSITY.
+      !
+      ! The pair states the density twice: the rho column of Hydro_ioniz, and
+      ! the species densities of Ion_species, which weigh sum_i m_i n_i. They
+      ! are the same number only while the composition closes its own mass,
+      ! sum_i f_i A_i = 1, which is the DEFINITION of f_sp and not a tolerance.
+      ! Where the two disagree the loader has to choose, and until now it chose
+      ! the species and silently moved the conserved density onto them.
+      !
+      ! MEASURED (item L18, 2026-09-15). The composition of a state written at
+      ! the end of a stationary solve does not close its own mass: the
+      ! departure grows by about 1e-14 per outer pass, monotonically, reaching
+      ! 5.1e-13 after the 19 passes of LHS1140b/models/.L14/x003_HeH2.13 and
+      ! 6.2e-13 after the 24 of x003_HeH9.7 (the element operator's own test
+      ! compares a step's closure with the ENTRY closure of that step, so a
+      ! monotone ratchet is never refused). Rebuilding the density from the
+      ! species therefore hands the restart a state whose conserved mass is
+      ! some 2000 ulp from the one that was certified -- and the hydrodynamic rows
+      ! of a subsonic base cancel their largest term by 1e+6, so that is not a
+      ! small difference to them: the mass row of that state re-read at
+      ! 3.444e-08 (cell 20) against the 3.764e-08 (cell 7) it was written at,
+      ! and the momentum row at 4.495e-13 against 1.960e-14.
+      !
+      ! THE CONSERVED VARIABLE IS THE AUTHORITY. rho is what the hydrodynamics
+      ! advances and what the residual is a function of; the composition is an
+      ! eliminated variable that the first sweep re-solves anyway. So the
+      ! density is taken from its own column and the loaded species are
+      ! projected onto it by one factor per cell, which leaves every element
+      ! ratio and every ionization split exactly where the file put them and
+      ! makes the composition close the density it is a composition of. With
+      ! that, rho round-trips to the last bit and the mass row of the state
+      ! above re-reads at 3.764e-08 at cell 7, the value it was written at.
+      !
+      ! WHEN THE SPECIES ARE THE AUTHORITY INSTEAD, AND IT IS DECIDED BY WHAT
+      ! THIS LOADER DID AND NOT BY HOW BIG THE DISAGREEMENT IS.  The blocks
+      ! above change the composition on purpose -- the loaded H/He is carried
+      ! onto the input's He/H, an element the file does not carry is rebuilt
+      ! at its abundance, a reservoir the handoff moved is rescaled, the
+      ! oxygen carriers of a pre-oxygen-chemistry file are seeded -- and each
+      ! of them SAYS SO (composition_changed_here).  A molecular seed is not
+      ! in this list on purpose: it reads an ATOMIC pair here, which is
+      ! self-consistent, and builds the molecular state afterwards.  The loader knows its own
+      ! intent, so the intent decides: where it changed the composition the
+      ! file's rho describes a gas this run is not loading and the density
+      ! follows the composition; where it did not, the state is a restart of
+      ! the same equations and the conserved density is the authority.
+      !
+      ! (This replaces a test on the size of the departure, which was the
+      ! Codex review's point of 2026-09-15: a magnitude cannot tell a
+      ! deliberate change from a damaged file, and a damaged file would have
+      ! been accepted as a deliberate one.)
+      !
+      ! AND A RESTART OF THE SAME EQUATIONS IS ALLOWED ONLY ROUNDING.  Below
+      ! restart_density_rounding_tol the two halves agree to what the writer
+      ! and the sweep's projection leave (item L19: 4e-16 on a state this
+      ! code writes, 6e-13 on the longest solve before that projection
+      ! existed).  Between that and restart_density_agreement_tol the pair is
+      ! loaded and the departure reported.
+      !
+      ! ABOVE IT, AND ONLY FOR A PAIR THAT CLAIMS TO BE THIS CODE'S OWN, THE
+      ! PAIR IS REFUSED: two halves of one state that disagree by more than a
+      ! part in 1e8, with no block of this loader having touched either, is a
+      ! damaged or mismatched pair, and loading it would be choosing silently
+      ! between two different gases.
+      !
+      ! A FILE WITH NO RESTART METADATA BLOCK MAKES NO SUCH CLAIM and is not
+      ! refused.  It was written before the block existed, under a mass policy
+      ! this loader cannot check, and the run already marks everything it
+      ! writes `restart_input=provenance_unknown` for exactly that reason.
+      ! MEASURED (2026-09-15): every one of the forty archived pairs of
+      ! LHS1140b/archive_20260830 sampled disagrees by 1.4e-03 to 7.1e-03, and
+      ! so do the pinned fixtures backup/regression/atomic_elem_newton/IC
+      ! (1.288e-03) and wasp_full_newton/IC -- all written on 2026-09-08/09 by
+      ! git 35d9dd5d3ca7.  Those are seeds the campaign is entitled to use.
+      ! For them the density cannot be the authority either: it is another
+      ! generation's number under another mass policy, so the composition is,
+      ! which is what this loader did before, and the departure is reported.
+      mass_dev = 0.0d0
+      j_mass   = 0
+      do j = 1, N
+         if (rho_file(j) .le. 0.0d0) cycle
+         mass_dev_j = abs(rho_dim(j) - rho_file(j))/rho_file(j)
+         if (mass_dev_j .gt. mass_dev) then
+            mass_dev   = mass_dev_j
+            j_mass     = j
+         endif
+      enddo
+      if (composition_changed_here) then
+         write(*,'(A,ES10.3,A,I0,A)') ' (load_IC) the species columns'//   &
+              ' weigh the density column of the restart to ', mass_dev,   &
+              ' (worst at cell ', j_mass, ');'
+         write(*,'(A)') '   this run holds a composition this loader'//   &
+              ' changed -- '//trim(composition_changed_why)//' -- so'//   &
+              ' the density follows the composition.'
+      else if (mass_dev .gt. restart_density_agreement_tol .and.          &
+               .not. ic_restart_schema_present) then
+         write(*,'(A,ES10.3,A,I0,A)') ' (load_IC) the species columns'//  &
+              ' weigh the density column of this restart to ', mass_dev,  &
+              ' (worst at cell ', j_mass, '), and the pair carries no'//  &
+              ' restart metadata block:'
+         write(*,'(A)') '   it was written under a mass policy this'//    &
+              ' loader cannot check, so its density column is not the'//  &
+              ' authority and the density'
+         write(*,'(A)') '   follows the composition, as it did before'//  &
+              ' the block existed.  Everything this run writes is'//      &
+              ' marked provenance_unknown.'
+      else
+         if (mass_dev .gt. restart_density_agreement_tol) then
+            write(*,'(A)') ' (load_IC) ERROR: the two halves of this'//   &
+                 ' restart describe two different gases.'
+            write(*,'(A,ES10.3,A,I0,A,ES10.3)') '   The species columns'//&
+                 ' weigh the density column to ', mass_dev,               &
+                 ' (worst at cell ', j_mass, '), above ',                 &
+                 restart_density_agreement_tol
+            write(*,'(A)') '   and no block of this loader changed the'// &
+                 ' composition, so the pair is damaged or mismatched:'//  &
+                 ' one file is not'
+            write(*,'(A)') '   the other''s.  Loading it would choose'//  &
+                 ' silently between the two.  Restart from a matching'//  &
+                 ' pair.  Aborting.'
+            error stop 1
+         endif
+         do j = 1-Ng, N+Ng
+            if (rho_dim(j) .le. 0.0d0 .or. rho_file(j) .le. 0.0d0) cycle
+            s_close    = rho_file(j)/rho_dim(j)
+            nsp_l(j,:) = nsp_l(j,:)*s_close
+            rho_dim(j) = rho_file(j)
+         enddo
+         write(*,'(A,ES10.3,A,I0,A)') ' (load_IC) the species columns'//  &
+              ' weigh the density column of the restart to ', mass_dev,   &
+              ' (worst at cell ', j_mass, '); the conserved density is'// &
+              ' taken from its own column'
+         write(*,'(A)') '   and the composition is projected onto it.'
+         if (mass_dev .gt. restart_density_rounding_tol)                  &
+            write(*,'(A,ES10.3,A)') '   NOTE: that is above the'//        &
+                 ' rounding this loader expects of a restart of the'//    &
+                 ' same equations (', restart_density_rounding_tol,       &
+                 '); the state was written by a run whose composition'//  &
+                 ' drifted from its density.'
+      endif
       rho = rho_dim/n0
 
       ! H/He(+HeITR) and molecular fractions (f = n/(rho*n0)).
@@ -1004,7 +1320,8 @@
       case ('molbase');        opt_value = tf(molecular_base)
       case ('oxychem');        opt_value = tf(thereis_oxychem)
       case ('carrier');        opt_value = tf(carrier_transport)
-      case ('carrier_newton'); opt_value = tf(carrier_in_newton)
+      case ('carrier_newton'); opt_value = tf(carrier_in_newton .or.       &
+                                              carrier_rows_entered_newton)
       case ('iontrans');       opt_value = tf(ionization_transport)
       case ('he_diff');        opt_value = tf(he_diffusion)
       case ('he_metal_diff');  opt_value = tf(he_metal_diffusion)
@@ -1075,15 +1392,17 @@
       !-------------------------------------!
 
       subroutine collect_option_change_line(line)
-      ! An 'option_change' line the loaded state already carried: the
-      ! changes ITS restarts were allowed, kept in the order the file
-      ! carries them and ahead of the line this restart adds, so the
-      ! history travels with the state (decision 21).
+      ! An 'option_change' or 'route_change' line the loaded state already
+      ! carried: the changes ITS restarts were allowed and the routes they
+      ! were reached by, kept in the order the file carries them and ahead
+      ! of the line this restart adds, so the history travels with the
+      ! state (decision 21).
       character(len=*), intent(in) :: line
       character(len=len(line)+1) :: t
       t = adjustl(line)
       if (t(1:1) .eq. '#') t = adjustl(t(2:))
-      if (index(t, 'option_change ') .ne. 1) return
+      if (index(t, 'option_change ') .ne. 1 .and.                         &
+          index(t, 'route_change ')  .ne. 1) return
       call append_option_change(trim(t))
       end subroutine collect_option_change_line
 
@@ -1277,16 +1596,23 @@
       ! thing the block exists to prevent.
       character(len=*), intent(in) :: s_file, s_run, s_source
       character(len=16) :: vf, vr
-      character(len=meta_len) :: chg_from, chg_to, refused
-      integer :: i, nch, nref, nsame, nef, ner
+      character(len=meta_len) :: chg_from, chg_to, refused, seeded
+      character(len=meta_len) :: rte_from, rte_to
+      integer :: i, nch, nref, nsame, nef, ner, nseed, nrte
       ic_option_change_applied = .false.
       ic_option_change_inert   = .false.
+      ic_route_change_applied  = .false.
       nch   = 0
       nref  = 0
       nsame = 0
+      nseed = 0
+      nrte  = 0
+      seeded   = ''
       chg_from = ''
       chg_to   = ''
       refused  = ''
+      rte_from = ''
+      rte_to   = ''
       ! One token carries one '=' sign, so the count of them is the count of
       ! tokens: two fields of the same schema version with different counts
       ! do not carry the same vocabulary.
@@ -1310,7 +1636,23 @@
             if (restart_option_change_named(i)) nsame = nsame + 1
             cycle
          endif
-         if (restart_option_change_named(i)) then
+         if (molecular_seed_option_may_differ(opt_name(i))) then
+            ! A seed conversion ADDS the molecular rows; it writes an
+            ! uncertified initialization file and stops, so no state is
+            ! ever integrated under an equation set its file does not
+            ! carry (molecular_seed_option_may_differ states the whole
+            ! argument). Every other token is compared as it always is.
+            nseed = nseed + 1
+            seeded = trim(seeded)//' '//trim(opt_name(i))//': '//          &
+                 trim(vf)//' -> '//trim(vr)//';'
+         else if (opt_is_route(i)) then
+            ! Same equations, another algorithm (opt_is_route above). The
+            ! state is a starting point of this run's own system, so the
+            ! load is admissible with nothing named.
+            nrte = nrte + 1
+            rte_from = trim(rte_from)//' '//trim(opt_name(i))//'='//trim(vf)
+            rte_to   = trim(rte_to)//' '//trim(opt_name(i))//'='//trim(vr)
+         else if (restart_option_change_named(i)) then
             nch = nch + 1
             chg_from = trim(chg_from)//' '//trim(opt_name(i))//'='//trim(vf)
             chg_to   = trim(chg_to)//' '//trim(opt_name(i))//'='//trim(vr)
@@ -1334,6 +1676,36 @@
          write(*,'(A)') '   "Restart option change:" line, which allows'// &
               ' exactly the tokens it names to differ.'
          error stop 1
+      endif
+
+      if (nseed .gt. 0) then
+         write(*,'(A,I0,A)') ' (load_IC) molecular seed: ', nseed,        &
+              ' option token(s) differ between the atomic state and this'
+         write(*,'(A)') '   run, which is what the conversion exists'//   &
+              ' to repair:'
+         write(*,'(A)') '  '//trim(seeded)
+         write(*,'(A)') '   The state read here is NOT loaded as a'//     &
+              ' solution of this run''s equations. It is converted and'
+         write(*,'(A)') '   written out as an uncertified'//              &
+              ' initialization file, and the run stops there.'
+      endif
+
+      if (nrte .gt. 0) then
+         ic_route_change_applied = .true.
+         write(*,'(A)') ' (load_IC) the restart changes the ROUTE and'//   &
+              ' not the equations:'
+         write(*,'(A)') '  '//trim(adjustl(rte_from))//' ->'//trim(rte_to)
+         write(*,'(A)') '   The transported balances move between the'//   &
+              ' Newton unknown vector and the relaxation at a held'
+         write(*,'(A)') '   wind. The rows, the columns and the'//         &
+              ' tolerances are the same, so the loaded state is a'
+         write(*,'(A)') '   starting point of this run''s own system'//    &
+              ' and not a state of another equation set. A state that'
+         write(*,'(A)') '   is stationary stays stationary; one that'//    &
+              ' is not is approached by the other algorithm.'
+         call append_option_change('route_change '//                       &
+              trim(adjustl(rte_from))//' ->'//trim(rte_to)//              &
+              ' at restart of '//trim(source_body(s_source)))
       endif
 
       if (nsame .gt. 0) then
@@ -1516,20 +1888,19 @@
 
       !-------------------------------------!
 
-      subroutine parse_coupling_header(line)
-      ! Read the '# coupling: key=value ...' line of a restart file. Unknown
-      ! keys are skipped, so a file written by a later version that carries
-      ! more of them is still readable; a key this version knows but the file
-      ! omits keeps its "not stated" default.
-      character(len=*), intent(in) :: line
-      character(len=len(line)) :: rest
+      subroutine next_coupling_field(rest, key, val, got)
+      ! Take the next 'key=value' field off what is left of a '# coupling:'
+      ! line. A token without an '=' (the 'coupling:' label itself) is not a
+      ! field and is stepped over; got is .false. when the line is spent.
+      character(len=*), intent(inout) :: rest
+      character(len=64), intent(out)  :: key, val
+      logical, intent(out)            :: got
       character(len=64) :: tok
-      character(len=64) :: key, val
       integer :: pos, l, ieq
-      rest = adjustl(line)
+      got = .false.
       do
          l = len_trim(rest)
-         if (l .eq. 0) exit
+         if (l .eq. 0) return
          pos = index(rest, ' ')
          if (pos .le. 1) then
             tok = rest(1:min(l,len(tok)));  rest = ''
@@ -1540,6 +1911,152 @@
          if (ieq .le. 1) cycle
          key = tok(1:ieq-1)
          val = tok(ieq+1:)
+         got = .true.
+         return
+      enddo
+      end subroutine next_coupling_field
+
+      !-------------------------------------!
+
+      subroutine parse_certification_claim(line, claim, fname)
+      ! THE STATIONARY CLAIM ONE STATE FILE MAKES ABOUT THE STATE IT CARRIES,
+      ! read as a pair: the Boolean of 'certified=' and the reason or
+      ! qualification token of 'cert_reason='. Nothing is adopted here and no
+      ! state variable is set; the pair is recorded as the file states it, so
+      ! that the two halves of a state can be compared first.
+      !
+      ! Three ways a header is refused rather than read. A key stated twice
+      ! is a header that says two things about one state. A reason longer
+      ! than the destination is a token from another writer, and it is
+      ! measured BEFORE it is copied, so what is refused is the token the
+      ! file carries and not a cut version of it. Both print the line.
+      ! An unrecognized token is neither: it is provenance text and is kept.
+      character(len=*), intent(in) :: line, fname
+      type(file_certification_claim), intent(inout) :: claim
+      character(len=len(line)) :: rest
+      character(len=64) :: key, val
+      logical :: got
+      claim%header_present = .true.
+      rest = adjustl(line)
+      do
+         call next_coupling_field(rest, key, val, got)
+         if (.not. got) exit
+         select case (trim(key))
+         case ('certified')
+            ! The stationary claim the writing run made ABOUT THIS STATE. A
+            ! re-evaluation of the state answers the same question, so this
+            ! is what the answer is held to: a state written as certified
+            ! and re-evaluated as uncertified is a refused claim.
+            if (claim%certified_present)                                  &
+               call refuse_coupling_header(fname, line,                   &
+                    'the key "certified" is stated twice')
+            claim%certified_present = .true.
+            claim%certified         = (trim(val) .eq. 'T')
+         case ('cert_reason')
+            if (claim%reason_present)                                     &
+               call refuse_coupling_header(fname, line,                   &
+                    'the key "cert_reason" is stated twice')
+            if (len_trim(val) .gt. cert_reason_len)                       &
+               call refuse_coupling_header(fname, line,                   &
+                    'the "cert_reason" token is longer than the field')
+            claim%reason_present = .true.
+            claim%reason         = trim(val)
+         end select
+      enddo
+      end subroutine parse_certification_claim
+
+      !-------------------------------------!
+
+      subroutine refuse_coupling_header(fname, line, why)
+      ! A '# coupling:' header that cannot be read as one statement about one
+      ! state. The offending line is printed with it, because the reader of
+      ! the message has the file and not this source.
+      character(len=*), intent(in) :: fname, line, why
+      write(*,'(A)') ' (load_IC) ERROR: '//trim(fname)//': '//trim(why)//'.'
+      write(*,'(A)') '   '//trim(adjustl(line))
+      error stop 1
+      end subroutine refuse_coupling_header
+
+      !-------------------------------------!
+
+      subroutine adopt_certification_claim(claim_h, claim_i)
+      ! THE ONE PAIR THE TWO HALVES OF THE STATE STATE, into the imported
+      ! metadata the reload carries (ic_certified, ic_cert_reason). It is
+      ! NOT this run's verdict: a run that evaluates the state overwrites
+      ! both fields with what it measured (certification_evaluate), and a run
+      ! that writes the state back without evaluating it carries these
+      ! through, which is what makes the restart round trip the identity.
+      !
+      ! A field one half states and the other omits is a legacy header and
+      ! not a disagreement: the stated value is taken and the asymmetry is
+      ! printed. A field both halves state differently is two claims about
+      ! one state and is refused, never merged.
+      type(file_certification_claim), intent(in) :: claim_h, claim_i
+      ic_certified   = .false.
+      ic_cert_reason = ''
+      if (claim_h%certified_present .and. claim_i%certified_present .and.  &
+          (claim_h%certified .neqv. claim_i%certified)) then
+         write(*,'(A)') ' (load_IC) ERROR: the two restart files state'//  &
+              ' different stationary claims about one state:'
+         write(*,'(A,L1)') '   Hydro_ioniz_IC.txt: certified=',            &
+              claim_h%certified
+         write(*,'(A,L1)') '   Ion_species_IC.txt: certified=',            &
+              claim_i%certified
+         error stop 1
+      endif
+      if (claim_h%reason_present .and. claim_i%reason_present .and.        &
+          (trim(claim_h%reason) .ne. trim(claim_i%reason))) then
+         write(*,'(A)') ' (load_IC) ERROR: the two restart files state'//  &
+              ' different certification reasons about one state:'
+         write(*,'(A)') '   Hydro_ioniz_IC.txt: cert_reason='//            &
+              trim(claim_h%reason)
+         write(*,'(A)') '   Ion_species_IC.txt: cert_reason='//            &
+              trim(claim_i%reason)
+         error stop 1
+      endif
+      ! The writer states the claim on Hydro_ioniz alone, so a pair whose
+      ! Ion_species half carries no '# coupling:' line at all is the ordinary
+      ! layout and is silent. Within two headers that both exist, a field one
+      ! states and the other omits is an older writer on one side, and that
+      ! is said out loud.
+      if (claim_h%header_present .and. claim_i%header_present) then
+         if (claim_h%certified_present .neqv. claim_i%certified_present)   &
+            write(*,'(A)') ' (load_IC) NOTE: only one of the two restart'//&
+                 ' files states "certified"; the stated value is taken.'
+         if (claim_h%reason_present .neqv. claim_i%reason_present)         &
+            write(*,'(A)') ' (load_IC) NOTE: only one of the two restart'//&
+                 ' files states "cert_reason"; the stated value is taken.'
+      endif
+      if (claim_h%certified_present) then
+         ic_certified = claim_h%certified
+      else if (claim_i%certified_present) then
+         ic_certified = claim_i%certified
+      endif
+      if (claim_h%reason_present) then
+         ic_cert_reason = claim_h%reason
+      else if (claim_i%reason_present) then
+         ic_cert_reason = claim_i%reason
+      endif
+      end subroutine adopt_certification_claim
+
+      !-------------------------------------!
+
+      subroutine parse_coupling_header(line)
+      ! Read the '# coupling: key=value ...' line of a restart file. Unknown
+      ! keys are skipped, so a file written by a later version that carries
+      ! more of them is still readable; a key this version knows but the file
+      ! omits keeps its "not stated" default. The certification pair of the
+      ! same line is read by parse_certification_claim, which holds it as a
+      ! statement of ONE file until both halves have been read.
+      character(len=*), intent(in) :: line
+      character(len=len(line)) :: rest
+      character(len=64) :: key, val
+      logical :: got
+      integer :: pos
+      rest = adjustl(line)
+      do
+         call next_coupling_field(rest, key, val, got)
+         if (.not. got) exit
          select case (trim(key))
          case ('sec_ion')
             ic_sec_ion_active   = (trim(val) .eq. 'T')
@@ -1552,12 +2069,6 @@
             ic_rec_method = trim(val)
          case ('iontrans')
             ic_ionization_transport = (trim(val) .eq. 'T')
-         case ('certified')
-            ! The stationary claim the writing run made ABOUT THIS STATE. A
-            ! re-evaluation of the state answers the same question, so this
-            ! is what the answer is held to: a state written as certified
-            ! and re-evaluated as uncertified is a refused claim.
-            ic_certified = (trim(val) .eq. 'T')
          case ('mode')
             ic_run_mode_present = .true.
             if (trim(val) .eq. 'phys') then

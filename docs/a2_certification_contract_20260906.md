@@ -588,7 +588,7 @@ relaxation, so this is a transient and not the operator's floor;
 `cert_tol_carrier` is still unconfirmed by any run, exactly as section 9.5 said.
 
 **Four cases are BLOCKED and could not be started**: `jfnk_hd189`,
-`jfnk_hd189_tight`, `ptc_warm` and `armD_D2_newton`, all four `Load IC? True`.
+`jfnk_hd189_tight`, `ptc_warm` and `heh_1_newton` (renamed 2026-09-16 from `armD_D2_newton`; mapping in `docs/named_case_audit.md` section 6), all four `Load IC? True`.
 `load_IC` refuses each with the same message: the stored
 `output/Hydro_ioniz_IC.txt` holds cell centers of a different grid from the one
 the run builds, worst relative difference 2.22e-02 to 2.25e-02 against a
@@ -600,8 +600,8 @@ What regenerating them needs, stated so it can be scheduled: for each case, a
 run of the SAME configuration with `Load IC? False` on the current grid, marched
 to the state the stored `_IC` represented, whose `_IC` files then replace the
 stored ones. For `jfnk_hd189` / `jfnk_hd189_tight` (HD 189733 b) and `ptc_warm`
-(WASP-121b) that is a full marching relaxation each; `armD_D2_newton` restarts
-from the 12000-step state of `armD_D2`, so its regeneration is that case
+(WASP-121b) that is a full marching relaxation each; `heh_1_newton` restarts
+from the 12000-step state of `heh_1_12k` (renamed 2026-09-16 from `armD_D2`), so its regeneration is that case
 re-run under its own step cap. The alternative the error message names is a
 state-mapping step that interpolates a stored state onto the grid the run
 builds, which does not exist today
@@ -611,8 +611,8 @@ section 144, so even regenerated they will not reproduce their stored logs.
 
 The remaining cases carrying `Solver: Newton` -- `mol_base_handoff`,
 `mol_carrier`, `mol_diffusion`, `mol_ir_bands`, `mol_lyman_werner`,
-`mol_metals`, `mol_sec_ion`, `lower_profile`, `armA_*`, `armHeH_*`, `armD_D2`,
-`armD_D2_LW` -- stop at their step cap long before `du` reaches the 1e-2
+`mol_metals`, `mol_sec_ion`, `lower_profile`, `heh_1_40k`/`heh_1_lw_40k`, `heh_0p3`/`heh_3`/`heh_10`/`heh_30`, `heh_1_12k`,
+`heh_1_lw_12k` (renamed 2026-09-16 from `armD_D2_LW`) -- stop at their step cap long before `du` reaches the 1e-2
 hand-off, so they never enter the steady route. Sections 9.1 and 9.3 measured
 their rows (order one on the hydrodynamic rows, 6e-05 to 1.1e-04 on the He/H
 partition), and B5a measured `mol_base_handoff` byte-identical across the
@@ -713,7 +713,7 @@ recommended values of section 10.5:
 | `wasp_he23off_newton`, `newton_rsw01`, `newton_rsw05` (target 1e-5) | 1.5e-10 to 3.1e-10 ABOVE | 1.0e-06 to 2.1e-06 ABOVE | 1.1e-08 to 1.2e-07 within | no |
 | `roundtrip`, `oxygen_chemistry` (step-capped, no JFNK) | order 1 ABOVE | order 1 ABOVE | order 1 ABOVE | no |
 | `EXHALE_PTC=1` on the `wasp_full_newton` configuration | stalled at `\|\|R\|\| = 1.958`, no certification record | | | no |
-| `jfnk_hd189`, `jfnk_hd189_tight`, `ptc_warm`, `armD_D2_newton` | blocked: stored `_IC` on the pre-`RJ` grid | | | not started |
+| `jfnk_hd189`, `jfnk_hd189_tight`, `ptc_warm`, `heh_1_newton` | blocked: stored `_IC` on the pre-`RJ` grid | | | not started |
 
 One case certifies, by one input line, and the two recommendations section 9.6
 closed with are both now answered: the `info` handling is repaired (section

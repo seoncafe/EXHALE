@@ -603,3 +603,37 @@ eliminate H2, because the local-equilibrium elimination does not determine the
 shielded layer's H2 content and the stationary residual is then not a function
 of its unknowns. Its five assertions are green with the refusal in
 `input_read.f90` and the first two are red without it.
+
+**L26 (2026-09-16).** `base_boundary_continuity_probe.f90` -> `base_continuity`
+was added as the frozen-state DIAGNOSTIC of `docs/PLAN_20260916_rev3.md`
+section 6. It calls `input_read` and `init` on the run directory named by
+`EXHALE_L26_STATE` and then calls `base_boundary_states` on copies of that
+state along the seven paths of the plan, printing `rho_b`, the two ghost
+densities, `M_i`, `M_wind`, `w_i`, `s_wind`, `w_rev`, `d_window`, `have_F`,
+`rho_res` and `rho_rev` at each sampled point, plus one-sided directional
+derivatives at three step sizes. Those lines are measurements and carry no
+verdict.
+
+**L26 repair (2026-09-17).** The entry is no longer a diagnostic with one
+invariant: it is the suite of the repaired boundary, **32 `PASS|FAIL` rows**.
+Seven are zero-window limit rows, the face density at the smallest sampled
+amplitude of a path against its value at amplitude zero, tolerance 1e-12 of
+`rho_b`; sixteen are derivative rows, asserting that the difference quotient
+does not GROW as the step shrinks, which is the one thing a jump does; one is
+the extremal-cell row, asserting that the two one-sided derivatives at the
+argmax switch agree to 1e-3; four are static rows; and four are the R48
+identities the entry already had, that the boundary is a function of its
+argument (ten repeated evaluations, an evaluation of another state in between,
+a complete `W_to_U` / `Reconstruct` / `RK_rhs` evaluation in between, a changed
+call order). It also prints the group `local readings of the base mass flux`,
+which is a measurement and carries no verdict: every reading of the base flux
+that is a function of the base cells alone, beside the Riemann flux through the
+base face on the same state.
+
+All 32 are green at HEAD on five states (the three of the item plus the
+certified `atomic_scalar_gj1132x0.10_kzz1e9/HeH2.13` and the fiducial
+`atomic_scalar_gj1132_kzz1e9/HeH2.13`), and the limit and extremal-cell rows
+are RED against the entry text of that item by 3.7e11 and 1.9e4 respectively.
+The measurements are in `docs/lhs1140b_stationary_L26_20260916.md`, section
+"Repair". Without `EXHALE_L26_STATE` the entry prints one DIAGNOSTIC line and
+skips, since it has no state to probe.

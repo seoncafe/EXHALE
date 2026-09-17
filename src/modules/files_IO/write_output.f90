@@ -11,6 +11,11 @@
       ! built and parsed in one place, the module that reads a restart file,
       ! so the writer and the loader cannot disagree about its fields.
       use IC_load, only: write_restart_metadata_header
+      ! A molecular seed run writes the pair a restart READS, not the pair a
+      ! solution leaves behind, and records the partition it was built with
+      ! in both halves (docs/input_schema.md appendix D.3).
+      use molecular_seed, only: molecular_seed_on,                        &
+                                write_molecular_seed_header
       use species_table, only: n_mion, mion_name, im_OI, melem_i0,       &
                                iel_O, iel_C
       use ionization_equilibrium, only: nmol_eq,   &  ! molecular columns
@@ -57,10 +62,18 @@
                               ith_H, ith_H2, ith_O, ith_OH, ith_H2O
       use mol_rates, only: rk_R12_H2_thdis, rk_R10_Hp_H2v4,               &
                            rk_R13_Hp_H2_M, rk_R14_H2_edis, rk_R8_H2p_H2,  &
-                           rk_R17_Hep_H2_diss, rk_R20_Hep_H2_HeHp,        &
+                           rk_R17_Hep_H2_diss,                           &
                            rk_R23_H2_Hep_cx, rk_R18_HeHp_H2,              &
                            rk_R15_3body_H2, rk_R6_H3p_dr_H2,              &
-                           rk_R9_H2p_H, rk_R11_H3p_H
+                           rk_R9_H2p_H, rk_R11_H3p_H,                     &
+                           h2_association_collider_density
+      ! The control key of the collider-resolved third body, from the one
+      ! accessor that owns it, so that the R15/R12 rate this file reports is
+      ! the rate the run was solved at whichever way the key is set.
+      use molecular_reaction_heat, only: reaction_heat_recipients_corrected
+      ! n(He 1^1S), the neutral helium of the H2 vibrational cascade and of
+      ! the R12/R15 third body, from the one routine that owns the floor.
+      use composition, only: he_ground_singlet_density
       use Cooling_Coefficients, only: ioniz_HeI23S_H2
       use diffusive_photochemistry, only: carrier_diffusion_coefficient,   &
                                           carrier_transport_diagnostics,   &
@@ -140,6 +153,40 @@
 
       contains
 
+      subroutine write_derived_provenance_header(unit)
+      ! WHOSE CERTIFICATE THE LINE BESIDE A DERIVED PRODUCT IS.
+      !
+      ! The rows of the advection-corrected files are a composition computed
+      ! FROM the state written beside them, and the certification inventory
+      ! was evaluated on that state and on no other.  A 'certified=' field
+      ! here would attach the verdict of one composition to another one, so
+      ! this file carries no coupling header at all; what it carries is the
+      ! pair of the state it was derived from, under a key that says it is
+      ! provenance, with the sentence that fixes what the key means.
+      !
+      ! The same pair is stated in words in the adv_input_certified line of
+      ! write_adv_validity_header, which the transit tool reads; this line is
+      ! the machine-readable form of it, and the two are one statement.
+      integer, intent(in) :: unit
+      character(len=1)  :: c
+      character(len=48) :: why
+      c = 'F';  if (state_is_certified) c = 'T'
+      why = ''
+      if (len_trim(state_certification_reason) .gt. 0)                     &
+         why = ' cert_reason='//trim(state_certification_reason)
+      write(unit,'(A,A1,A)') '# derived_from: certified=', c, trim(why)
+      write(unit,'(A)') '# derived_from is PROVENANCE: the certification'// &
+                     ' pair of the state these rows were derived'
+      write(unit,'(A)') '#   from, which is the state written beside'//     &
+                     ' this file. It is a statement about that state'
+      write(unit,'(A)') '#   and not about these rows: the'//               &
+                     ' advection-corrected composition is another'
+      write(unit,'(A)') '#   composition, and no entry of the'//            &
+                     ' certification inventory was evaluated on it.'
+      write(unit,'(A)') '#   This file carries no coupling header and'//    &
+                     ' makes no certification claim of its own.'
+      end subroutine write_derived_provenance_header
+
       subroutine write_output(rho,v,p,T,heat,cool,eta,                &
                               nhi,nhii,nhei,nheii,nheiii,nheiTR,      &
                               nm,flag,adv_T_status,adv_comp_status,        &
@@ -190,7 +237,14 @@
       !---- Write thermodynamic profiles ----!
 
       if (flag.eq.'eq') then
+         if (molecular_seed_on()) then
+            ! The product of a seed run IS the restart input: it is written
+            ! under the name a restart reads, so that nothing has to be
+            ! renamed between the conversion and the run it seeds.
+            open(unit = 2, file = './output/Hydro_ioniz_IC.txt')
+         else
       	open(unit = 2, file = './output/Hydro_ioniz.txt')
+         endif
 	   else	! Change output file after postprocessing
 		   open(unit = 2, file = './output/Hydro_ioniz_adv.txt')
 	   endif
@@ -220,11 +274,17 @@
       ! '#' comment, so no reader's numeric parse and no golden changes.
 
          call write_row_layout_header(2)
-         ! What the state in this file was produced under (see the routine).
-         ! Hydro_ioniz.txt is what a restart is fed as Hydro_ioniz_IC.txt, so
-         ! this is the file the line has to travel in.
-         call write_coupling_state_header(2)
+         if (flag .eq. 'eq') then
+            ! What the state in this file was produced under (see the
+            ! routine). Hydro_ioniz.txt is what a restart is fed as
+            ! Hydro_ioniz_IC.txt, so this is the file the line has to
+            ! travel in.
+            call write_coupling_state_header(2)
+         else
+            call write_derived_provenance_header(2)
+         endif
          call write_provenance_header(2)
+         call write_molecular_seed_header(2)
          ! The reservoir, species schema, physical grid, constants, options
          ! and clock the state was produced under: what a restart of this
          ! file is compared against (see the routine).
@@ -260,7 +320,11 @@
       
       !---- Write ionization profiles ----!  
       if (flag.eq.'eq') then
+         if (molecular_seed_on()) then
+            open(unit = 3, file = './output/Ion_species_IC.txt')
+         else
       	open(unit = 3, file = './output/Ion_species.txt')
+         endif
 	   else	! Change output file after postprocessing
 		   open(unit = 3, file = './output/Ion_species_adv.txt')
 	   endif
@@ -301,6 +365,7 @@
       write(3,'(A)') ''
 
       call write_row_layout_header(3)
+      call write_molecular_seed_header(3)
       ! Both state files carry the block: they are two halves of one state,
       ! and a restart reads both, so a pair whose halves state different
       ! configurations is refused rather than half-loaded.
@@ -667,7 +732,7 @@
       ! H2 loss budget at the base cell: which channel runs the partition.
       integer :: jb
       character(len=400) :: colhdr
-      real*8  :: nH2b, Tb, nOb, nHIb, h2loss(11), h2tot
+      real*8  :: nH2b, Tb, nOb, nHIb, h2loss(11), h2tot, n3b
       real*8  :: ok1b, ok2b, ok1rb, ok2rb
       character(len=22), parameter :: h2ch_name(11) = (/                  &
            'thermal H2 + M net R15', 'Lyman-Werner photodiss', &
@@ -891,16 +956,31 @@
       ok2rb = rate_from_detailed_balance(ok2b, (/ ith_O, ith_H2 /),       &
                                                 (/ ith_OH, ith_H /), Tb)
       h2loss    = 0.0d0
-      ! (1) thermal dissociation net of the three-body association R15
-      h2loss(1) = rk_R12_H2_thdis(Tb)*n_tot_ox(jb)*nH2b                   &
-                - rk_R15_3body_H2(Tb, n_tot_ox(jb))*nHIb*nHIb
+      ! (1) thermal dissociation net of the three-body association R15.
+      ! THE THIRD BODY IS THE COLLIDER SUM, k1(H2) n(H2) + k1(H) n(H) +
+      ! k1(Ar) n(He) (Cohen & Westberg 1983, p. 559), formed by the one
+      ! routine that owns it and carried by BOTH directions, so the pair
+      ! stays an exact detailed balance and this diagnostic reports the
+      ! rate the composition solver and the energy ledger both ran at.  The
+      ! helium collider is the ground-singlet neutral.
+      if (reaction_heat_recipients_corrected()) then
+         n3b = h2_association_collider_density(Tb, nH2b, nHIb,            &
+                          he_ground_singlet_density(nhei(jb), nheiTR(jb))*n0)
+      else
+         n3b = n_tot_ox(jb)
+      endif
+      h2loss(1) = rk_R12_H2_thdis(Tb)*n3b*nH2b                            &
+                - rk_R15_3body_H2(Tb, n3b)*nHIb*nHIb
       h2loss(2) = k_lw_diss(jb)*nH2b
       h2loss(3) = P_H2_eq(jb)*nH2b
       h2loss(4) = (rk_R10_Hp_H2v4(Tb)                                      &
                  + rk_R13_Hp_H2_M(n_tot_ox(jb)))*nhii(jb)*n0*nH2b
       h2loss(5) = rk_R14_H2_edis(Tb)*ne_ox(jb)*nH2b
       h2loss(6) = rk_R8_H2p_H2()*nmol_eq(jb,2)*nH2b
-      h2loss(7) = (rk_R17_Hep_H2_diss(Tb) + rk_R20_Hep_H2_HeHp()          &
+      ! R17 and R23 only: the HeH+ channel of He+ + H2 (Koskinen R20) was
+      ! retired by item L7f, its cited measurement having bounded it 42
+      ! times below the value Table 1 gave it (mol_rates).
+      h2loss(7) = (rk_R17_Hep_H2_diss(Tb)                                  &
                  + rk_R23_H2_Hep_cx())*nheii(jb)*n0*nH2b
       h2loss(8) = rk_R18_HeHp_H2()*nmol_eq(jb,4)*nH2b
       h2loss(9) = ioniz_HeI23S_H2(Tb)*nheiTR(jb)*n0*nH2b
@@ -1097,7 +1177,7 @@
       ! absorption event is the same energy the energy equation is charged.
       ! This file writes what that routine returns and forms none of it.
       call fuv_band_absorption_ledger(T*T0, nhi*n0, nmol_eq(:,1),          &
-               nox_eq(:,2),                                               &
+               nox_eq(:,2), he_ground_singlet_density(nhei, nheiTR)*n0,   &
                (nhi + nhii)*n0 + 2.0d0*(nmol_eq(:,1) + nmol_eq(:,2))      &
                                + 3.0d0*nmol_eq(:,3) + nmol_eq(:,4),       &
                NH2_col_lw, NH2O_col, NOH_col, NCO_col, tau_fuv,           &

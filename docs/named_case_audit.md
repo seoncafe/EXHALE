@@ -1,5 +1,9 @@
 # Audit of the named cases in `backup/regression/`
 
+**Sixteen of the case directories named below were renamed on 2026-09-16.**
+This document uses the NEW names throughout; section 6 is the old-to-new
+mapping, so a citation of an old name elsewhere still resolves.
+
 Date: 2026-09-03.  Read-only: nothing under
 `/nfs/mocafe/kiseon/RT_Codes/ExoAtmosphere/EXHALE_v1.00` was modified, and every
 row below is read from the case directories as they stand.
@@ -22,7 +26,7 @@ deleted, and no decision is implied.**
 ## 0. What is in the directory
 
 46 case directories (a directory with an `input.inp`), plus
-`_quarantined/armD_D1`.  Ten of them are `DEFAULT_CASES`; the other 36 are named
+`_quarantined/molecular_base_no_chemistry`.  Ten of them are `DEFAULT_CASES`; the other 36 are named
 cases that only run when passed as arguments.
 
 Directories that are not cases: `golden/` and the ten dated `golden_*/`
@@ -101,11 +105,11 @@ Currently all four keys are ACCEPTED (`input_read.f90:659, 664, 706, 779`).
 | case | key | name says |
 |---|---|---|
 | `jfnk_cold`, `jfnk_hd189`, `jfnk_hd189_tight`, `tpm_hd189` | `Valve eps: 1.0e-4` | nothing about the valve |
-| `armD_D4b` | `Hydrostatic base: True` | case D, variant 4b |
-| `armD_D4a` | `Base ghost temperature: continuous` | case D, variant 4a |
-| `armD_D3` | `Base velocity: massflux` | case D, variant 3 |
+| `hydrostatic_base` | `Hydrostatic base: True` | case D, variant 4b |
+| `base_ghost_T_continuous` | `Base ghost temperature: continuous` | case D, variant 4a |
+| `base_velocity_massflux` | `Base velocity: massflux` | case D, variant 3 |
 
-`armD_D3`, `armD_D4a` and `armD_D4b` are the *point* of those three cases: each
+`base_velocity_massflux`, `base_ghost_T_continuous` and `hydrostatic_base` are the *point* of those three cases: each
 exists to exercise one base-boundary variant, and the key IS the variant.  When
 Phase C replaces the lower boundary with a characteristic face solve, those
 three cases stop being runnable in their present form.  The four `Valve eps`
@@ -113,17 +117,17 @@ cases are different: there the key is incidental to the name, and three of them
 already adopt the valve implicitly (the JFNK hand-off sets `valve_eps = 1e-4`
 when the input leaves it off), so dropping the line would leave them equivalent.
 
-*Proposal (decision: user).*  For `armD_D3` / `armD_D4a` / `armD_D4b`: quarantine
+*Proposal (decision: user).*  For `base_velocity_massflux` / `base_ghost_T_continuous` / `hydrostatic_base`: quarantine
 them together with a `NOTE.txt` when Phase C lands, the way
-`_quarantined/armD_D1` is handled, and record in the note which base variant
+`_quarantined/molecular_base_no_chemistry` is handled, and record in the note which base variant
 each one measured -- they are the only record of that comparison.  For the four
 `Valve eps` cases: drop the line, or keep it and expect a startup refusal.
 Neither should be decided before Phase C fixes what the replacement key is.
 
 ### 1.4 Fourteen cases restart, and not one of their `_IC` files carries a coupling header
 
-`Load IC? True`: `armD_D2_LW_newton`, `armD_D2_newton`,
-`armD_D2_newton_bigstack`, `jfnk_hd189`, `jfnk_hd189_tight`, `ptc_warm`,
+`Load IC? True`: `heh_1_lw_newton`, `heh_1_newton`,
+`heh_1_newton_bigstack`, `jfnk_hd189`, `jfnk_hd189_tight`, `ptc_warm`,
 `resid_cold_13p707`, `resid_golden`, `resid_warm_13p716`, `roundtrip`,
 `tpm_hd189`, `tpm_wasp`, `wasp_hybrid_finish`, `wasp_localdt_cont`.
 
@@ -193,14 +197,14 @@ stored numbers are historical.
 
 ### 1.7 Four cases have no runnable stored result
 
-`arm_heh1_x2matched` has an empty `output/` and no `run.log`.
+`heh_1_x2matched` has an empty `output/` and no `run.log`.
 `resid_cold_13p707`, `resid_golden` and `resid_warm_13p716` hold only their
 `_IC` pair -- no `run.log`, no `Hydro_ioniz.txt`.  The three `resid_*` are
 inputs to an `EXHALE_RESIDUAL=1` measurement whose result was never stored
-beside them; `arm_heh1_x2matched` has neither input state nor result.
+beside them; `heh_1_x2matched` has neither input state nor result.
 
-*Proposal (decision: user).*  `arm_heh1_x2matched` is the natural candidate for
-retirement (nothing distinguishes it from `armHeH_*` except a name).  The three
+*Proposal (decision: user).*  `heh_1_x2matched` is the natural candidate for
+retirement (nothing distinguishes it from `heh_0p3`/`heh_3`/`heh_10`/`heh_30` except a name).  The three
 `resid_*` are usable as they stand IF the environment they need is recorded
 (1.2 proposal (b)).
 
@@ -236,18 +240,18 @@ has.
 ### 1.9 Most `arm*` cases already carry a `NOTE.txt`; most others do not
 
 20 directories carry a `NOTE.txt` or `README.md`: every `arm*` case, plus
-`lower_profile`, `mol_diffusion`, `_quarantined/armD_D1`, and the three that
+`lower_profile`, `mol_diffusion`, `_quarantined/molecular_base_no_chemistry`, and the three that
 record a deleted byte-identical duplicate (`resid_on` <- `ptc_wasp`,
 `wasp_full_newton` <- `solver_newton_cold`, `wasp_hybrid_finish` <-
 `crit_warm`).  Those notes are good and they already answer several of the
-questions above -- `armD_D2_newton/NOTE.txt` states both configuration changes
-it makes and why, and `armD_D2_newton_bigstack/NOTE.txt` states the environment
+questions above -- `heh_1_newton/NOTE.txt` states both configuration changes
+it makes and why, and `heh_1_newton_bigstack/NOTE.txt` states the environment
 it needs and that it has no result to read.
 
 The cases that carry no note are exactly the ones this audit had the most
 trouble with: `crit_cold`, `jfnk_*`, `ptc_warm`, `resid_cold_13p707`,
 `resid_golden`, `resid_warm_13p716`, `tpm_*`, `wasp_cno_*`, `wasp_localdt*`,
-`roundtrip`, `arm_heh1_x2matched`.
+`roundtrip`, `heh_1_x2matched`.
 
 *Proposal (decision: user).*  A one-paragraph `NOTE.txt` in each of those --
 what it measures, what environment it needs, and whether its stored result is
@@ -280,28 +284,28 @@ one (`blockG_20260903`), which is simply their age.
 
 ## 3. The 36 named cases outside the matrix
 
-The table has 37 rows: the 36 named cases plus `_quarantined/armD_D1`.
+The table has 37 rows: the 36 named cases plus `_quarantined/molecular_base_no_chemistry`.
 "Name says" is read from the directory name; "input does" from `input.inp`;
 "mismatch" lists only what the two disagree about, or a key at risk.  Blank
 means the two agree.
 
 | case | name says | input does | mismatch / at-risk | proposal |
 |---|---|---|---|---|
-| `armA_LW` | case A, Lyman-Werner on | hotUranus_d, `Solver: Newton`, `maxsteps 40000` | | keep |
-| `armA_noLW` | case A, no LW | same without the LW flux | | keep |
-| `armD_D2` | case D variant 2 | `Solver: Newton`, `maxsteps 12000` | | keep |
-| `armD_D2_LW` | D2 + LW | same + LW flux | | keep |
-| `armD_D2_LW_newton` | D2 + LW, Newton finish | `Solver: Newton 100.`, `Load IC? True`, `maxsteps 2100` | `_IC` has no `# coupling:` (1.4) | regenerate the `_IC` pair |
-| `armD_D2_newton` | D2, Newton finish | `Solver: Newton 100.`, `Load IC? True`, no `maxsteps` | same | same |
-| `armD_D2_newton_bigstack` | the same, larger stack | `input.inp` byte-identical to `armD_D2_newton`; the difference is the environment | none: `NOTE.txt` states it -- `OMP_NUM_THREADS=8`, `OMP_STACKSIZE=1G`, crash reproduction only, and its log ends at the segfault so there is deliberately no result | keep; it is the model for the `env` proposal of 1.2 |
-| `armD_D3` | case D variant 3 | + **`Base velocity: massflux`** | Phase C is expected to refuse the key (1.3) | quarantine with a `NOTE.txt` when Phase C lands |
-| `armD_D4a` | case D variant 4a | + **`Base ghost temperature: continuous`** | same | same |
-| `armD_D4b` | case D variant 4b | + **`Hydrostatic base: True`** | same | same |
-| `armHeH_0p3` | the He/H = 0.3 rung | `He/H number ratio: 0.3` | | keep |
-| `armHeH_3` | He/H = 3 | matches | | keep |
-| `armHeH_10` | He/H = 10 | matches | | keep |
-| `armHeH_30` | He/H = 30 | matches | | keep |
-| `arm_heh1_x2matched` | He/H = 1, x2 matched | input present, **no output, no `run.log`** (1.7) | nothing distinguishes it from the `armHeH_*` rungs | retire, or run it and say what it measures |
+| `heh_1_lw_40k` | case A, Lyman-Werner on | hotUranus_d, `Solver: Newton`, `maxsteps 40000` | | keep |
+| `heh_1_40k` | case A, no LW | same without the LW flux | | keep |
+| `heh_1_12k` | case D variant 2 | `Solver: Newton`, `maxsteps 12000` | | keep |
+| `heh_1_lw_12k` | D2 + LW | same + LW flux | | keep |
+| `heh_1_lw_newton` | D2 + LW, Newton finish | `Solver: Newton 100.`, `Load IC? True`, `maxsteps 2100` | `_IC` has no `# coupling:` (1.4) | regenerate the `_IC` pair |
+| `heh_1_newton` | D2, Newton finish | `Solver: Newton 100.`, `Load IC? True`, no `maxsteps` | same | same |
+| `heh_1_newton_bigstack` | the same, larger stack | `input.inp` byte-identical to `heh_1_newton`; the difference is the environment | none: `NOTE.txt` states it -- `OMP_NUM_THREADS=8`, `OMP_STACKSIZE=1G`, crash reproduction only, and its log ends at the segfault so there is deliberately no result | keep; it is the model for the `env` proposal of 1.2 |
+| `base_velocity_massflux` | case D variant 3 | + **`Base velocity: massflux`** | Phase C is expected to refuse the key (1.3) | quarantine with a `NOTE.txt` when Phase C lands |
+| `base_ghost_T_continuous` | case D variant 4a | + **`Base ghost temperature: continuous`** | same | same |
+| `hydrostatic_base` | case D variant 4b | + **`Hydrostatic base: True`** | same | same |
+| `heh_0p3` | the He/H = 0.3 rung | `He/H number ratio: 0.3` | | keep |
+| `heh_3` | He/H = 3 | matches | | keep |
+| `heh_10` | He/H = 10 | matches | | keep |
+| `heh_30` | He/H = 30 | matches | | keep |
+| `heh_1_x2matched` | He/H = 1, x2 matched | input present, **no output, no `run.log`** (1.7) | nothing distinguishes it from the `heh_0p3`/`heh_3`/`heh_10`/`heh_30` rungs | retire, or run it and say what it measures |
 | `crit_cold` | critical point, cold start | WASP-121b, `Solver:` absent, plain marching, ATES-era log | the name refers to a stored quantity, not to a solver | rename for the quantity, or record the environment |
 | `jfnk_cold` | JFNK from a cold start | `Solver:` **absent**; log shows `(JFNK)` under `EXHALE_PTC=1`; **`Valve eps`**; `Resid tol` 1.0e-5 against a logged 1.00E-03 | 1.2, 1.3, 1.5, 1.6 | record the environment (`env` file); re-run or mark the stored numbers |
 | `jfnk_hd189` | JFNK on HD 189733 b | `Solver:` **absent**; `Load IC? True` with a **headerless** `_IC`; **`Valve eps`**; tol mismatch; `Reconstruction: PLM` | 1.2, 1.3, 1.4 (metals rebuilt from abundance), 1.5 | the P55 case; regenerate the `_IC` pair AND record the environment |
@@ -323,7 +327,7 @@ means the two agree.
 | `wasp_hybrid_finish` | the hybrid stop | `Load IC? True`, `_IC` without a coupling header; ATES-era log; stopped on `du plateau` | 1.4, 1.6 | regenerate the `_IC`; the name is accurate |
 | `wasp_localdt` | local time stepping | `Time stepping:` key present, ATES-era log | 1.6 | keep; re-run or mark |
 | `wasp_localdt_cont` | its continuation | `Load IC? True`, `_IC` without a coupling header; ATES-era log | 1.4, 1.6 | same |
-| `_quarantined/armD_D1` | case D variant 1 | already quarantined: refused at startup by the P35 check (`Molecular base: True` with `Molecular chemistry: False`) | | leave as is |
+| `_quarantined/molecular_base_no_chemistry` | case D variant 1 | already quarantined: refused at startup by the P35 check (`Molecular base: True` with `Molecular chemistry: False`) | | leave as is |
 
 ## 4. What this audit did not do
 
@@ -364,8 +368,8 @@ case or was the case:
   `Valve eps: 1.0e-4` incidentally. The line is deleted and each `NOTE.txt`
   records that the deletion is equivalent either way, the JFNK hand-off having
   adopted that same value of its own accord.
-* `armD_D3`, `armD_D4a`, `armD_D4b` exist *to exercise* their key. They are
-  moved to `_quarantined/` beside `armD_D1`, with their inputs untouched and a
+* `base_velocity_massflux`, `base_ghost_T_continuous`, `hydrostatic_base` exist *to exercise* their key. They are
+  moved to `_quarantined/` beside `molecular_base_no_chemistry`, with their inputs untouched and a
   `NOTE.txt` saying that their stored results are from a boundary condition the
   code no longer has, and that whether the case was testing the option or the
   physics the option stood in for is not inferable from the input. That is the
@@ -401,3 +405,69 @@ the outputs beside them), 1.6 (12 cases whose logs predate the ATES to EXHALE
 rename), and 1.7 (four cases with no results at all). Each is a naming or
 provenance question rather than a code defect, and renaming a case discards the
 only record of what it once measured.
+
+---
+
+## 6. The renaming of 2026-09-16
+
+Sixteen case directories carried the noun "arm", which the naming rule of
+`~/.claude/CLAUDE.md` forbids, and none of the names said what the case is.
+They were renamed on 2026-09-16 (PLAN_20260916_rev3 section 10, the user's
+decision). **No number was regenerated and no golden was refreshed**: none of
+the sixteen is in `DEFAULT_CASES` and none has an entry in `golden/` or in any
+dated `golden_*/`, so the rename moved directories and citations only. The
+`input.inp`, `base.inp`, `output/` and `run.log` of every case were left
+untouched; only `NOTE.txt` was edited, to follow the sibling names and to
+record the old name.
+
+The twelve active directories are all the same planet and base state (the
+Tier-2 gate hot Uranus, `hotUranus_diffusion`, molecular chemistry on,
+`He_diffusion: True`, `p_base` 1 microbar, `T_base` 1140 K) and differ only in
+the He/H number ratio, in whether the stellar Lyman-Werner field is on, and in
+what the stored state is. The new names say exactly that: `heh_<ratio>` for the
+ladder rung, `_lw_` for the Lyman-Werner field, then the stored state.
+
+| old | new | what the case is |
+|---|---|---|
+| `armHeH_0p3` | `heh_0p3` | ladder rung He/H = 0.3, `q_H2_base` 0.610353658, 12000-step marching state |
+| `armHeH_3` | `heh_3` | He/H = 3, `q_H2_base` 0.140486207, 12000-step state |
+| `armHeH_10` | `heh_10` | He/H = 10, `q_H2_base` 0.046893592, 12000-step state |
+| `armHeH_30` | `heh_30` | He/H = 30, `q_H2_base` 0.016151029, 12000-step state |
+| `arm_heh1_x2matched` | `heh_1_x2matched` | the He/H = 1 rung, `q_H2_base` 0.326896922; input only, no stored output |
+| `armD_D2` | `heh_1_12k` | the same input, 12000-step marching state |
+| `armA_noLW` | `heh_1_40k` | the same input, 40000-step marching state |
+| `armD_D2_LW` | `heh_1_lw_12k` | He/H = 1 with the stellar Lyman-Werner field, 12000-step state |
+| `armA_LW` | `heh_1_lw_40k` | the same with the field, 40000-step state |
+| `armD_D2_newton` | `heh_1_newton` | JFNK steady solve restarted from `heh_1_12k` (`Solver: Newton 100.`, PLM threshold 1e9) |
+| `armD_D2_LW_newton` | `heh_1_lw_newton` | the same with the field, restarted from `heh_1_lw_12k`, 2100-step cap |
+| `armD_D2_newton_bigstack` | `heh_1_newton_bigstack` | `heh_1_newton`'s input at `OMP_NUM_THREADS=8`, `OMP_STACKSIZE=1G`; segfault reproduction, no result |
+
+The four quarantined directories are named for the key each one exercises, or
+for the combination that refuses it:
+
+| old | new | what the case is |
+|---|---|---|
+| `_quarantined/armD_D1` | `_quarantined/molecular_base_no_chemistry` | `Molecular base: True` with `Molecular chemistry: False`; refused at startup by the P35 check |
+| `_quarantined/armD_D3` | `_quarantined/base_velocity_massflux` | exercises `Base velocity: massflux`, retired by section 152 |
+| `_quarantined/armD_D4a` | `_quarantined/base_ghost_T_continuous` | exercises `Base ghost temperature: continuous`, retired by section 152 |
+| `_quarantined/armD_D4b` | `_quarantined/hydrostatic_base` | exercises `Hydrostatic base: True`, retired by section 152 |
+
+The brief of the item listed twelve directories plus `_quarantined/armD_D1`.
+`armD_D3`, `armD_D4a` and `armD_D4b` moved to `_quarantined/` on 2026-09-04,
+after section 3 of this document was written, and carry the same forbidden
+noun, so they were renamed in the same change rather than left as the only
+remaining occurrences.
+
+Read from the directories while renaming them, and corrected in the `NOTE.txt`
+it stands in rather than left stale:
+
+* `heh_1_40k`'s note said the case was "run to Newton convergence (no
+  EXHALE_MAXSTEPS)". Its stored `run.log` ends at the 40000-step cap of its own
+  `maxsteps` file with `du = 3.8E+08` (READ), so the stored state is a marching
+  state, not a converged one. The same holds for `heh_1_lw_40k` (`du =
+  2.8E+08`, READ).
+* The notes of `heh_1_lw_40k` and `heh_1_lw_12k` gave the stellar Lyman-Werner
+  flux as 343.0 erg/cm2/s, which is what their stored logs echo (READ). Both
+  `input.inp` files now carry 480.9, the value `mol_lyman_werner` was raised to
+  (`Update_EXHALE_stage2.md`), so re-running will not reproduce the stored log.
+  Each note now says so; the inputs were not touched.

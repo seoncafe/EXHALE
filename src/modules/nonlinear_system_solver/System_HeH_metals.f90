@@ -37,7 +37,8 @@
 	use ion_cell_state, only: ieq_cell
 	use ion_residual_core, only: heh_rows, heh_crow, heh_jac_local,       &
 	                             metal_fractions, metal_electron_sum,     &
-	                             metal_rows
+	                             metal_rows,                             &
+	                             impose_transported_ionization_fractions
 	use charge_exchange, only: cx_add_to_fvec, cx_add_to_jac,             &
 	                           he_h_cx_fvec, he_h_cx_jac
 
@@ -165,6 +166,10 @@
 	! (HeI->HeII positive), so he_row_sign = +1.
 	call he_h_cx_fvec(fvec, ieq_cell%kcx_He0_Hp, ieq_cell%kcx_Hep_H0,  &
 	                  n_hi, n_hii, n_hei, n_heii, 1.0d0)
+
+	! The transported ionization fractions, where the flow carries them
+	! and not this cell's local balance (ion_residual_core).
+	call impose_transported_ionization_fractions(ieq_cell, x, fvec)
 
 	return
 

@@ -3,6 +3,7 @@
 	
 	use global_parameters
 	use ion_cell_state, only: ieq_cell
+	use ion_residual_core, only: impose_transported_ionization_fractions
 
 	implicit none
 	
@@ -35,6 +36,10 @@
       
     ! System of equations      
   	fvec(1) = n_hi*g_hi + (n_hi*b_hi - a_hii*n_hii)*n_e
+
+	! The transported ionization fractions, where the flow carries them
+	! and not this cell's local balance (ion_residual_core).
+	call impose_transported_ionization_fractions(ieq_cell, x, fvec)
 
 	! End of subroutine
 	end subroutine ion_system_H

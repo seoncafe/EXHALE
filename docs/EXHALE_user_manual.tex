@@ -498,7 +498,7 @@ answer. The associated diagnostic hooks (\texttt{EXHALE\_RESIDUAL},
 \texttt{EXHALE\_JAC\_TEST}, \texttt{EXHALE\_NEWTON\_TEST}, \ldots) are environment
 variables, collected in \S\ref{sec:envvars} (Table~\ref{tab:env}). Full
 development record and validation: \texttt{steady\_solver\_memo.pdf}.
-Figure~\ref{fig:newton} shows the production pipeline end-to-end on WASP-121b
+Figure~\ref{fig:newton} shows the whole route end-to-end on WASP-121b
 (Roche): the monitored residual during the marching warm-up (left; note that the
 $du$-based stop would have fired long before the residual is actually small) and
 the JFNK finish (right).
@@ -537,7 +537,7 @@ exits~0. The regression harness never tests the status.
 
 \begin{figure}[htbp]\centering
 \includegraphics[width=0.95\textwidth]{figures/newton_convergence.pdf}
-\caption{The \texttt{Solver: Newton} pipeline from a cold IC (WASP-121b, Roche).
+\caption{The \texttt{Solver: Newton} route from a cold IC (WASP-121b, Roche).
 Left: maximum steady residual $\max\|R\|_\infty$ over the mass, momentum, and
 energy equations during the two-stage (\texttt{Reconstruction scheme:
 PLM+WENO3}) marching warm-up; the dashed line is the
@@ -866,7 +866,25 @@ $(\ast)$ \texttt{Log10 of X-ray luminosity [erg/s]:} & real (log$_{10}$) & Only
 \texttt{Numerical flux:} & \texttt{HLLC} $|$ \texttt{ROE} $|$ \texttt{LLF} &
   Riemann solver for the hydrodynamic fluxes (\texttt{Num\_Fluxes.f90}).
   \texttt{HLLC} is the usual choice; \texttt{LLF} (local Lax--Friedrichs) is
-  the most diffusive and is kept for solver-isolation tests. \\
+  the most diffusive and is kept for solver-isolation tests. MEASURED
+  2026-09-17 (item L25): on a wind whose base is subsonic to $M\sim10^{-7}$
+  the HLLC flux can fail to reach the stationary root on a 500-cell grid where
+  it reaches it on 1000 cells, and \texttt{ROE} reaches it on 500; where both
+  fluxes solve the same case they differ by $-0.3$ to $-0.6$ percent in
+  $\dot M$ and by 6 to 8 percent of opposite sign in the first cell's $T$ and
+  $\rho$. Record:
+  \texttt{docs/lhs1140b\_stationary\_L25\_20260916.md}. \\
+\texttt{Low Mach velocity jump:} & logical (def.\ \texttt{False}) &
+  Scale the normal velocity jump of the \texttt{ROE} branch by
+  $\min(\mathrm{Ma},1)$ after Rieper (2011, J. Comput. Phys., 230, 5263);
+  no effect under
+  \texttt{HLLC} or \texttt{LLF}. Delivered off and NOT recommended on a
+  near-hydrostatic column: the factor vanishes exactly where two neighbouring
+  velocities cancel in the Roe average, so it removes the damping of the
+  odd-even velocity mode at the faces that mode lives on, and it was measured
+  to prevent a solve that unmodified \texttt{ROE} completes. Rieper's premise,
+  that the local and the global Mach number are comparable, is violated by
+  eight decades on such a column. \\
 \texttt{Reconstruction scheme:} & \texttt{PLM} $|$ \texttt{WENO3} $|$
   \texttt{PLM+WENO3} & Spatial reconstruction order and staging.
   \texttt{PLM} or \texttt{WENO3} runs a single stage (only the first
@@ -886,7 +904,14 @@ $(\ast)$ \texttt{Log10 of X-ray luminosity [erg/s]:} & real (log$_{10}$) & Only
   (\texttt{docs/input\_schema.md} appendix D.2), unless the differing options
   are named by \texttt{Restart option change:} below. \\
 \texttt{Do only PP:} & logical & Skip the time loop and only run the
-  post-processing on existing output. \\
+  post-processing on existing output. It still takes one time step before it
+  stops, so it is not an identity on the state it reads, it reconstructs with
+  whatever \texttt{Reconstruction scheme:} states rather than with the scheme
+  the solution was reached under, and it writes the stepped state back over
+  \texttt{Hydro\_ioniz.txt}. For the advection-corrected products of a
+  \emph{solved} state use \texttt{Restart intent: stationary evaluate}
+  instead, which takes no step at all (item L9, 2026-09-17;
+  \texttt{docs/lhs1140b\_stationary\_L9\_20260916.md}). \\
 \texttt{Force start:} & logical & Force the first 1000 iterations regardless of
   the convergence test (useful when the IC is close to a fixed point). \\
 \end{longtable}
@@ -1270,13 +1295,26 @@ defaults restore the standard behavior).}\label{tab:inp-opt}\\
   loaded composition on its own fixed point before the measurement (a change
   of the state, reported when taken). This is the route that certifies a
   written state without the two CFL steps a marching hand-off takes first.
+  Since 2026-09-17 (item L9) \texttt{evaluate} also names the three states it
+  handles apart (the state as loaded, the work state whose pressure and
+  temperature are derived from the loaded conserved state, and the
+  advection-derived one) and writes every product a solved case is read for
+  from the work state with no time update: the two state files, the heating and
+  cooling breakdowns, the \texttt{*\_adv} profiles and the mass-loss line.
+  The \texttt{*\_adv} files carry a \texttt{\# derived\_from:} provenance
+  line rather than a \texttt{\# coupling:} header, because they describe a
+  composition the certification was not made on.
   Refused: the key with \texttt{Load IC?\ False}, \texttt{trajectory} with
   \texttt{Run mode: init}, \texttt{stationary} without \texttt{Solver:
   Newton}. Design: \texttt{docs/restart\_contract\_design\_20260909.md}. \\
 \texttt{Restart option change:} & token list, separated by commas or blanks
   (def.: no option may differ) & Which switches of the state file's
   \texttt{\# options} line are \emph{allowed} to differ between the loaded
-  state and this run. The restart contract otherwise refuses any option
+  state and this run. \texttt{carrier\_newton} is not among the tokens that
+  have to be named: it states the ROUTE and not the equation set, the rows,
+  columns and tolerances being the same either way, so a difference in it is
+  admissible with nothing named, the load says so and the change is recorded as
+  a \texttt{\# route\_change} line (item L22 increment I3, 2026-09-17). The restart contract otherwise refuses any option
   difference, which forbids the ladder of settings this code is converged with:
   converge without an option, restart with it on, converge again. Naming a
   token (\texttt{sec\_ion}, \texttt{He23S}, \texttt{mol\_heat},
@@ -1477,8 +1515,10 @@ defaults restore the standard behavior).}\label{tab:inp-opt}\\
   there are no carriers and the key changes nothing; \texttt{input\_read}
   reports that at startup rather than refusing the run, the state produced
   being the correct atomic one (\S\ref{sec:oxychem}). \\
-\texttt{Coupled carrier solve:} & \texttt{True}/\texttt{False}
-  (def.\ \texttt{False}) & Solve the transported balances as unknowns of the
+\texttt{Coupled carrier solve:} & \texttt{False} $|$ \texttt{True} $|$
+  \texttt{On stall} (def.\ \texttt{False}; a word the key has no meaning for
+  stops the run rather than falling through to \texttt{False}) & Solve the
+  transported balances as unknowns of the
   stationary system itself, $(\rho, \rho v, E, n(\mathrm{H_2})/n_0, \ldots)$
   per cell, instead of alternating a wind solve with a fixed-wind carrier
   relaxation. The alternation was measured not to converge: the two halves

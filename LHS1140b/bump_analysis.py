@@ -27,6 +27,12 @@ import sys
 
 import numpy as np
 
+# The EXHALE profile files carry two GHOST rows at each end -- a fixed base
+# state below, a zero-gradient / WENO3 extrapolation above -- and they are not
+# solution cells; exhale_io.loadtxt_cells drops them.
+sys.path.insert(0, os.path.join('..', 'examples'))
+from exhale_io import loadtxt_cells                          # noqa: E402
+
 KB_EV = 8.617333262e-05          # parameters.f90:380
 ERG2EV = 6.241509075e11          # parameters.f90:387
 E_TH_HETR = 4.80                 # eV, parameters.f90:414
@@ -92,11 +98,11 @@ def load(tag, adv):
     advection-corrected files that EXHALE_transit.py uses."""
     sfx = '_adv' if adv else ''
     base = os.path.join(RUNDIR, tag, 'output')
-    hy = np.loadtxt(os.path.join(base, 'Hydro_ioniz%s.txt' % sfx))
+    hy = loadtxt_cells(os.path.join(base, 'Hydro_ioniz%s.txt' % sfx))
     fi = os.path.join(base, 'Ion_species%s.txt' % sfx)
     cols = [l for l in open(fi) if l.startswith('# columns')][0].split()[2:]
     k = {n: j for j, n in enumerate(cols)}
-    io = np.loadtxt(fi)
+    io = loadtxt_cells(fi)
     d = dict(r=hy[:, 0], v=hy[:, 2], T=hy[:, 4])
     for s in ('HI', 'HII', 'HeI', 'HeII', 'HeIII', 'HeITR'):
         d[s] = io[:, k[s]]
@@ -175,22 +181,24 @@ def velocity_distribution(d, rmin=1.0, rmax=25.0):
                 vmax=float(v.max()))
 
 
-# The six arms re-solved on the current He 2^3S + H ionization coefficient
-# (Update_EXHALE_stage1.md Sect. 87) and re-post-processed with the current
-# advection correction (Sect. 88); see exhale/bump_gm25/results.txt.
-RUNDIR = os.path.join('exhale', 'refresh_j96', 'bump')
+# The well-mixed cases of the model tree of record (MODELS.md), read as
+# `<group>/HeH<value>` under `models/`.
+RUNDIR = 'models'
 
-CASES = [('heh0p55', 'GJ 1132 SED, He/H = 0.55 (EW-matched)'),
-         ('solar', 'GJ 1132 SED, solar He/H'),
-         ('heh1000', 'GJ 1132 SED, He/H = 1000'),
-         ('heh0p06_gj699', 'GJ 699 SED, He/H = 0.06 (EW-matched)'),
-         ('solar_gj699', 'GJ 699 SED, solar He/H'),
-         ('heh1000_gj699', 'GJ 699 SED, He/H = 1000')]
+_WM = 'atomic_scalar_gj1132_wellmixed'
+_G699 = 'atomic_scalar_gj699_wellmixed'
+
+CASES = [(_WM + '/HeH0.55', 'GJ 1132 SED, He/H = 0.55'),
+         (_WM + '/HeH0.083', 'GJ 1132 SED, solar He/H'),
+         (_WM + '/HeH1000', 'GJ 1132 SED, He/H = 1000'),
+         (_G699 + '/HeH0.050', 'GJ 699 SED, He/H = 0.050'),
+         (_G699 + '/HeH0.083', 'GJ 699 SED, solar He/H'),
+         (_G699 + '/HeH1000', 'GJ 699 SED, He/H = 1000')]
 
 
 def main():
     out = {}
-    hdr = ('%-16s %-4s %7s %8s %7s %7s %7s %7s %7s %7s %7s %7s %7s %7s'
+    hdr = ('%-40s %-4s %7s %8s %7s %7s %7s %7s %7s %7s %7s %7s %7s %7s'
            % ('case', 'prof', 'r_n23', 'n_peak', 'T_n23', 'v_n23',
               'r_f3', 'T_f3', 'v_f3', 'T_max', '<|v|>', '>2', '>5', '>10'))
     print(hdr)
@@ -201,7 +209,7 @@ def main():
             b = bump_metrics(d)
             vd = velocity_distribution(d)
             g = gamma_tr(d) if not adv else None
-            print('%-16s %-4s %7.2f %8.3g %7.0f %7.2f %7.2f %7.0f %7.2f '
+            print('%-40s %-4s %7.2f %8.3g %7.0f %7.2f %7.2f %7.0f %7.2f '
                   '%7.0f %7.2f %6.1f%% %6.1f%% %6.1f%%'
                   % (tag, 'adv' if adv else 'eq', b['r_peak'], b['n_peak'],
                      b['T_peak'], b['v_peak'], b['r_f3'], b['T_f3'],
@@ -220,7 +228,7 @@ def main():
             i = b['i']
             outer = (r > b['r_peak']) & (r <= 25.0)
             drop = (mdot[outer].min()/mdot[i]) if mdot[i] > 0 else np.nan
-            print('  %-16s %-3s  f3(peak)/f3(T_max) = %6.2f  '
+            print('  %-40s %-3s  f3(peak)/f3(T_max) = %6.2f  '
                   'monotonic rise: %-5s  mdot_23S(min past peak)/mdot(peak) '
                   '= %6.3f' % (tag, 'adv' if adv else 'eq', b['f3_rise_j'],
                                b['f3_monotonic'], drop))
@@ -230,7 +238,7 @@ def main():
     for tag, _ in CASES:
         for adv in (True, False):
             d, b, vd, g = out['%s_%s' % (tag, 'adv' if adv else 'eq')]
-            print('  %-16s %-3s  median %5.2f  90%% %5.2f  99%% %5.2f  '
+            print('  %-40s %-3s  median %5.2f  90%% %5.2f  99%% %5.2f  '
                   'max %5.2f  rms %5.2f'
                   % (tag, 'adv' if adv else 'eq', vd['q'][0.5], vd['q'][0.9],
                      vd['q'][0.99], vd['vmax'], vd['vrms']))
@@ -243,7 +251,7 @@ def main():
         n_const = n23_reference(d, g, np.full_like(d['T'], b['T_max']))
         n_loc = n23_reference(d, g, d['T'])
         m = (d['r'] > b['r_Tmax']) & (d['r'] <= 25.0)
-        print('  %-16s local-T reference reproduces solved n23 to %.2e '
+        print('  %-40s local-T reference reproduces solved n23 to %.2e '
               '(max rel. dev.);  n_var/n_const at 2^3S peak = %6.2f, '
               'max over r > r(T_max) = %6.2f; gamma_TR(peak) = %.3e s^-1'
               % (tag,

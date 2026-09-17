@@ -26,6 +26,7 @@
    use oxygen_rates, only: fuv_band_lo_A, fuv_band_hi_A
    use diffusive_photochemistry, only: carrier_set_init
    use base_boundary, only: set_base_reservoir
+   use Numerical_Fluxes, only: low_mach_velocity_jump
    ! The vocabulary of the restart metadata block's 'options' field, defined
    ! once where that field is written, so a token this file accepts on a
    ! "Restart option change:" line is a token the comparison knows.
@@ -44,6 +45,14 @@
    ! follows from it; otherwise the legacy density key states it. These two
    ! record which of them spoke, so the pair can be checked against each
    ! other instead of one silently winning.
+   ! WHERE THE COUPLED BLOCK IS ENTERED FROM. "Coupled carrier solve" is
+   ! three-valued: False, the alternation of a hydrodynamic solve with the
+   ! fixed-wind transport relaxations; True, the block from the first pass;
+   ! "On stall", the alternation first and the block from the pass at which
+   ! the alternation stops approaching a joint fixed point. The third value
+   ! sets this and leaves carrier_in_newton false, because the route of the
+   ! first pass is the alternation.
+   logical, save, public :: carrier_newton_on_stall = .false.
    logical, save, public :: base_level_from_handoff  = .false.
    logical, save, public :: base_density_key_given   = .false.
    ! Which input stated the level, named once here so the setup report and
@@ -93,6 +102,8 @@
    !    to global constants
 
       character(len = :), allocatable :: str
+      ! The second word of a two-word value ("On stall").
+      character(len = :), allocatable :: str2
       character(len = 250)            :: line
       character(len = 250), allocatable :: filelines(:)
       integer                         :: ios
@@ -152,6 +163,7 @@
       'He_metal_diffusion', 'He_diffusion', 'Stall', 'Energy solver',        &
       'Time stepping', 'Level tol', 'Solver', 'Valve eps', 'Hydrostatic base',&
       'Shapiro filter', 'Low-Mach damping', 'Well balanced',                 &
+      'Low Mach velocity jump',                                              &
       'Base BC', 'Base velocity', 'Viscosity',                               &
       'Base ghost temperature', 'Max steps', 'Coronal cutoff width',         &
       'Base IR field', 'Molecular IR bands', 'Molecular reaction heat',       &
@@ -679,8 +691,34 @@
 				! requires "Molecular carrier transport: True", because H2
 				! must be an unknown and not an eliminated variable;
 				! checked below, after every key is parsed.
+				! THREE VALUES, AND A WORD THAT IS NONE OF THEM STOPS THE
+				! RUN. "On stall" is two words, so the value is read as the
+				! pair (word 4, word 5); a silent fall-through to False
+				! would leave an input file asking for the block and a run
+				! that never enters it.
 				str = get_word(line, 4)
-				carrier_in_newton = (str .eq. 'True' .or. str .eq. 'true')
+				str2 = get_word(line, 5)
+				if (str .eq. 'True' .or. str .eq. 'true') then
+					carrier_in_newton = .true.
+				else if (str .eq. 'False' .or. str .eq. 'false') then
+					carrier_in_newton = .false.
+				else if ((str .eq. 'On' .or. str .eq. 'on') .and.        &
+				         (str2 .eq. 'stall' .or. str2 .eq. 'Stall')) then
+					carrier_newton_on_stall = .true.
+				else
+					write(*,*) '(input_read) ERROR: "Coupled carrier'
+					write(*,*) '  solve: '//trim(str)//' '//trim(str2)//'"'
+					write(*,*) '  is not a value this key takes. It takes'
+					write(*,*) '  False (the alternation of a hydrodynamic'
+					write(*,*) '  solve with the fixed-wind transport'
+					write(*,*) '  relaxations, the default), True (the'
+					write(*,*) '  coupled block from the first pass), or'
+					write(*,*) '  "On stall" (the alternation first, the'
+					write(*,*) '  block from the pass at which the'
+					write(*,*) '  alternation stops approaching a joint'
+					write(*,*) '  fixed point). Aborting.'
+					error stop 1
+				endif
 			else if (lbl_match(line, 'Oxygen transport')) then
 				! RETIRED 2026-09-02. The operator this key switched was
 				! never about oxygen: H2 is its first carrier and is
@@ -939,6 +977,19 @@
 				! contact, which ROE and HLLC do and LLF does not.
 				str = get_word(line, 3)
 				well_balanced = (str .eq. 'True' .or. str .eq. 'true')
+			else if (lbl_match(line, 'Low Mach velocity jump')) then
+				! "Low Mach velocity jump: True|False" (default False) --
+				! on the ROE branch, scale the normal velocity jump of the
+				! Roe dissipation by min(|U_Roe|/a_Roe, 1), so that the
+				! artificial viscosity of the momentum is of the order of
+				! the momentum update instead of one order in the Mach
+				! number larger (Rieper 2011, J. Comput. Phys. 230, 5263,
+				! his eq. 3.15-3.16).  An accuracy correction for the
+				! low-Mach regime, not a stiffness one, and derived for the
+				! Roe flux alone; it has no effect under HLLC or LLF.
+				! The value is word 5: the key itself is four words.
+				str = get_word(line, 5)
+				low_mach_velocity_jump = (str .eq. 'True' .or. str .eq. 'true')
 			else if (lbl_match(line, 'Shapiro filter')) then
 				str = get_word(line, 3);  read(str,*) shapiro_eps
 				str = get_word(line, 4)
@@ -2200,9 +2251,13 @@
    ! measurement reads 9.7e-10, below "Resid tol" = 1e-8. That is the
    ! configuration this refusal names. The marching path is not affected:
    ! it never eliminates a quantity it also has to determine.
-   if (carrier_in_newton .and. thereis_mol .and. .not. carrier_transport)  &
-      then
+   ! "On stall" reaches the same block, one pass later, so the same
+   ! statement holds for it.
+   if ((carrier_in_newton .or. carrier_newton_on_stall) .and. thereis_mol &
+       .and. .not. carrier_transport) then
       write(*,*) '(input_read) ERROR: "Coupled carrier solve: True" on a'
+      write(*,*) '  (and "Coupled carrier solve: On stall", which'
+      write(*,*) '  reaches the same block one pass later) on a'
       write(*,*) '  molecular configuration ("Molecular chemistry: True")'
       write(*,*) '  needs the molecular carriers transported. With them'
       write(*,*) '  eliminated, n(H2) is not an unknown of the stationary'

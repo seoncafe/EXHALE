@@ -1201,13 +1201,13 @@ corrected that is harmless.
 
 ### 12.3 The controlled runs
 
-All rows are `backup/regression/armD_D2` (the hot Uranus at He/H = 1 with
+All rows are `backup/regression/heh_1_12k` (renamed 2026-09-16 from `armD_D2`; mapping in `docs/named_case_audit.md` section 6) (the hot Uranus at He/H = 1 with
 `q_H2_base 0.300861`, i.e. the x2-matched run of section 117), 12000 steps,
 `OMP_NUM_THREADS=1`.
 
 | run | change | max base Mach | energy-floor activations | log10 Mdot |
 |---|---|---:|---:|---:|
-| baseline (stored `armD_D2/run.log`) | as it stood | 73.09, supersonic on 11994 of 12000 steps, first at step 6 | 224494 in 335 cells | 8.88 |
+| baseline (stored `heh_1_12k/run.log`) | as it stood | 73.09, supersonic on 11994 of 12000 steps, first at step 6 | 224494 in 335 cells | 8.88 |
 | control A | `He_rec_coupling: False` (defect 1 disabled) | 0.0876 | 0 | 10.89 |
 | control B | IC cap moved to the ceiling (defect 2 fixed) | 0.0864 | 0 | 10.91 |
 | both corrected | the code as it now stands | 0.0864 | 0 | 10.91 |
@@ -1256,13 +1256,13 @@ mismatch between that EOS state and the species state used at the same ghost"*
 `Molecular chemistry: False` the base particle count was molecular while the
 species state stayed atomic, and the `ntot_bc` recomputation that reconciles
 them is gated on `thereis_mol`, so the isothermal base boundary silently sat at
-`ntot_bc x T0`. Measured on `backup/regression/armD_D1`: 876.34 K where
+`ntot_bc x T0`. Measured on `backup/regression/molecular_base_no_chemistry` (renamed 2026-09-16 from `armD_D1`): 876.34 K where
 `Equilibrium temperature: 1140.0` was asked for, exactly `0.768722 x 1140`.
 `input_read` now stops on the combination and prints `q_H2`, `x2`, `ntot_bc`,
 the implied ghost temperature and the two ways to fix it.
 
 The refusal invalidates 31 existing run directories, which is why it was put to
-the user before being written: `armD_D1` itself, and 30 HD 209458 b VULCAN
+the user before being written: `molecular_base_no_chemistry` itself, and 30 HD 209458 b VULCAN
 handoff runs under `vulcan_work/` whose base ghosts sat between 0.555 and 0.994
 of their requested 1450 K. None of them has been re-run. Each carries an
 `INVALID_BASE_TEMPERATURE.md` with its own `ntot_bc` and ghost temperature, the
@@ -1276,7 +1276,7 @@ one cell.
 
 ### 12.6 The run converges: the first quotable He/H = 1 rate
 
-`backup/regression/arm_heh1_x2matched` -- the same configuration without the
+`backup/regression/heh_1_x2matched` (renamed 2026-09-16 from `arm_heh1_x2matched`) -- the same configuration without the
 12000-step cap, PLM+WENO3, `du_th 0.5 1e-3`, `Solver: Newton`,
 `OMP_NUM_THREADS=1` -- was run to see whether the corrected run would reach the
 `du` threshold on its own and hand over to the JFNK Newton finish. Marching
@@ -1362,7 +1362,7 @@ over the domain, and the outflow leaves the outer boundary at 7.34 km/s.
 
 **The marching run is still going, as a cross-check** that the state the JFNK
 solved is the one marching was descending towards; its output is at
-`.../scratchpad/hrcfix/runs/arm_heh1_x2matched/`. Note that the restart was
+`.../scratchpad/hrcfix/runs/heh_1_x2matched/`. Note that the restart was
 taken at step 168,550, i.e. **before** the turnaround above, so the JFNK solved
 the state on the descending branch; what the branch after step 251,287 settles
 to is a separate question and is not answered here.
@@ -1411,7 +1411,7 @@ change touched. The runs are in the campaign scratch directory under
 
 ### 13.1 How each rung was converged
 
-Each rung is `arm_heh1_x2matched` with `He/H number ratio` and the `base.inp`
+Each rung is `heh_1_x2matched` with `He/H number ratio` and the `base.inp`
 `HeH_base` / `q_H2_base` changed, and nothing else. `q_H2_base` is fixed by
 holding the H2 nucleus fraction at `x2 = 0.9251143` -- the value the molecular
 matrix cases carry -- so that the ladder varies He/H alone:
@@ -2156,8 +2156,8 @@ default for the cold start.
 
 Each rung is the corresponding retargeted input of section 136 taken as it
 stands: the He/H = 0.0793 rung is `backup/regression/mol_base_handoff` with its
-`maxsteps` pin removed, and the other five are `armHeH_0p3`,
-`arm_heh1_x2matched`, `armHeH_3`, `armHeH_10` and `armHeH_30`. All six carry
+`maxsteps` pin removed, and the other five are `heh_0p3` (renamed 2026-09-16 from `armHeH_0p3`),
+`heh_1_x2matched`, `heh_3` (renamed 2026-09-16 from `armHeH_3`), `heh_10` (renamed 2026-09-16 from `armHeH_10`) and `heh_30` (renamed 2026-09-16 from `armHeH_30`). All six carry
 `p_base 1.000e-06` and no `Log10 lower boundary number density`, so the base
 level comes from the handoff, and their `q_H2_base` values hold the H2 nucleus
 fraction at `x2 = 0.985447826` while He/H alone varies. The startup report

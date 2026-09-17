@@ -63,13 +63,22 @@ def read_input_inp(run_dir):
 
 
 def q_h2_equilibrium(p_bar, T):
-    """Koskinen+2022 Eq. 11 (Visscher) mixture H2 mixing ratio."""
+    """Koskinen+2022 Eq. 11 (Visscher) mixture H2 mixing ratio.
+
+    The same function and the same form as `q_h2_equilibrium` of
+    `src/modules/lower_atmosphere/lower_column.f90`, which states the
+    reasoning: written as the fit states it, (A + t - sqrt(t(2A + t)))/B
+    differences two terms that both grow like t while their difference falls
+    like A^2/(2t), so above t = A/sqrt(2 eps) = 9.4e7 it returns the rounding
+    of t; multiplying by the conjugate gives the same number with no
+    cancellation at any t.  The cold limit A/B = 0.8384 and the hot limit 0
+    are reached by the expression itself, so no asymptotic branch is taken.
+    """
     u = -23672.0 / T - math.log10(max(p_bar, 1e-30)) + 6.2645
-    if u > 30:  return 1.0
-    if u < -30: return 0.0
-    tenu = 10.0 ** u
-    q = (1.9845 + tenu - math.sqrt(tenu * (3.9690 + tenu))) / 2.3670
-    return min(max(q, 0.0), 1.0)
+    tenu = 10.0 ** min(u, 300.0)
+    q = 1.9845 ** 2 / (2.3670 * ((1.9845 + tenu)
+                                 + math.sqrt(tenu) * math.sqrt(3.9690 + tenu)))
+    return min(q, 1.0)
 
 
 def mu_of(p_bar, T, fhe):

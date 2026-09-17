@@ -1351,13 +1351,15 @@ and are inside the same rule, and the rest state it through the density key.
 **Of the 52 that do carry `p_base`, all 52 disagreed** -- the key had
 never actually located the base level anywhere:
 
+Case directories renamed 2026-09-16: `heh_0p3` (was `armHeH_0p3`), `heh_3` (was `armHeH_3`), `heh_1_x2matched` (was `arm_heh1_x2matched`); mapping in `docs/named_case_audit.md` section 6.
+
 | group | files | `p_base` | `p` from the density key | ratio |
 |---|---|---|---|---|
 | `mol_*` gate cases (metals off) | 4 | 1.0e-5 bar | 8.994e-6 | 0.899 |
 | `mol_metals`, `mol_ir_bands` (metals on) | 2 | 1.0e-5 | 9.007e-6 | 0.901 |
-| `armHeH_0p3` | 1 | 1.0e-5 | 1.014e-5 | 1.014 |
-| `armA_*`, `armD_*`, `arm_heh1_x2matched` (He/H = 1) | 12 | 1.0e-5 | 1.210e-5 | 1.210 |
-| `armHeH_3` / `_10` / `_30` | 3 | 1.0e-5 | 1.392e-5 / 1.508e-5 / 1.551e-5 | 1.39-1.55 |
+| `heh_0p3` | 1 | 1.0e-5 | 1.014e-5 | 1.014 |
+| `heh_1_*` (the He/H = 1 family, `heh_1_x2matched` included) | 12 | 1.0e-5 | 1.210e-5 | 1.210 |
+| `heh_3` / `_10` / `_30` | 3 | 1.0e-5 | 1.392e-5 / 1.508e-5 / 1.551e-5 | 1.39-1.55 |
 | `vulcan_work/**` HD 209458 b runs | 30 | 1.0e-6 or 1.0e-4 | 1.4e-5 to 3.2e-5 | **0.14-32.2** |
 
 The 22 `backup/regression` cases were retargeted (section 10.3). The 30

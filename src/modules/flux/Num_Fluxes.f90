@@ -29,6 +29,42 @@
       ! the repairs it needed.
       integer :: n_faces_llf = 0
 
+      ! ---- low-Mach scaling of the normal velocity jump -------------- !
+      ! "Low Mach velocity jump: True|False" (default False), acting on the
+      ! ROE branch only.  The normal velocity jump that enters the acoustic
+      ! expansion coefficients of the Roe dissipation is replaced by
+      !     dvel -> min(Ma_Roe, 1) dvel,   Ma_Roe = |U_Roe| / a_Roe
+      ! (Rieper 2011, J. Comput. Phys. 230, 5263, his eq. 3.15 with the
+      ! local Mach number 3.16, Ma = (|U|+|V|)/a from the Roe-averaged
+      ! velocities; in one dimension the tangential component V is absent,
+      ! so the factor is |U_Roe|/a_Roe).  Without it the upwind velocity
+      ! jump carries an artificial viscosity of the momentum that is one
+      ! order in the Mach number LARGER than the momentum update it damps
+      ! (his eq. 2.14), and the discrete solution does not follow the
+      ! incompressible limit of the continuous equations; with it the
+      ! viscosity is returned to the order of the update (his eq. 3.17).
+      ! The eigenvalues, the eigenvectors, the central flux, the
+      ! well-balanced pressure departure and the admissibility test are
+      ! untouched, and for Ma_Roe >= 1 the factor is exactly 1, so a
+      ! supersonic face is the unmodified Roe flux.
+      !
+      ! Validity.  The asymptotic sorting of his section 3.2 assumes the
+      ! local Mach number 3.16 and the global Mach number used as the
+      ! expansion parameter do not deviate substantially; where they do,
+      ! the factor is applied outside the regime it was derived in.  It is
+      ! an ACCURACY correction, not a stiffness one: his section 5 states
+      ! that the stiffness of the equations is not removed, explicit steps
+      ! keeping dt = O(Ma) and implicit solves remaining slowly convergent.
+      ! The same section says HLL, Rusanov and van Leer flux splitting are
+      ! not suited to the correction (too much diffusion on the shear and
+      ! entropy waves) and that an HLLC adaptation is possible but needs
+      ! its own derivation, which is why this option exists on the ROE
+      ! branch alone.
+      !
+      ! Default .false.: with it off every arithmetic operation of the
+      ! branch is the one the goldens were taken with.
+      logical :: low_mach_velocity_jump = .false.
+
       contains
       
       ! Subroutine for the numerical flux.
@@ -324,6 +360,15 @@
             dvel = vR - vL
             dp   = pR - PL
             if (wb) dp = dp_wb
+
+            ! Low-Mach scaling of the normal velocity jump, Rieper (2011)
+            ! eq. 3.15 with the local Mach number 3.16 of the Roe averages
+            ! (one dimension: no tangential component, so Ma = |U|/a).  It
+            ! enters a1 and a3, the two acoustic expansion coefficients, and
+            ! nothing else: a2 carries drho and dp only.  See the module
+            ! header for the validity of the correction.
+            if (low_mach_velocity_jump)                                  &
+               dvel = min(abs(v_avg)/a_avg, 1.0d0)*dvel
 
             ! Evaluate the expansion coefficients
             a1 = 0.5/a_avg**2.0*(dp - rho_avg*a_avg*dvel)

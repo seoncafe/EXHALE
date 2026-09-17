@@ -94,7 +94,13 @@
       use base_boundary,             only: set_base_reservoir
       use BC_Apply,                  only: Apply_BC
       use steady_residual_mod,       only: assemble_residual
+      ! The admissibility test the outer iteration puts every progress
+      ! measure through before it reads one.
+      use binary_element_diffusion,  only: residual_norm_is_admissible
       use assertion_report
+      use, intrinsic :: ieee_arithmetic, only: ieee_value,                &
+                               ieee_quiet_nan, ieee_positive_inf,         &
+                               ieee_negative_inf
       implicit none
 
       integer, parameter :: ncell = 12
@@ -165,6 +171,12 @@
       real*8  :: dr_wide, dr_tight, dr_none, dr_zero, dr_ref
       integer :: ns_wide, ns_tight, ns_none, ns_zero, ns_ref
       integer :: oc_wide, oc_tight, oc_none, oc_zero, oc_ref
+      ! The cell particle count (n_tot + n_e) of the pass entry and of the
+      ! state a pass hands back: since item L7e the movement bound is
+      ! written on its relative change, because that is what the fixed wind
+      ! responds to.
+      real*8, allocatable :: nsum_in(:), nsum_out(:)
+      real*8  :: dsum_wide, dsum_tight
       real*8, allocatable :: nnuc0(:,:), nnuc1(:,:)
       real*8, allocatable :: nchg0(:), nchg1(:), rcomp0(:), rcomp1(:)
       real*8, allocatable :: v_relax(:), v_fast(:)
@@ -876,14 +888,19 @@
 
       ! ---- (10) the movement bound of a relaxation pass -------------- !
       !
-      ! A RELAXATION PASS ADVERTISES A BOUND ON THE STATE IT HANDS BACK:
-      ! the largest change of any solved carrier column anywhere on the
-      ! grid, divided by the largest H2 mixing ratio of the entry state, is
-      ! at most `trust`.  A displacement tested only after the step has
-      ! been applied bounds nothing, which is what was MEASURED in
+      ! A RELAXATION PASS ADVERTISES A BOUND ON THE STATE IT HANDS BACK,
+      ! and since item L7e the quantity it is written on is the one the
+      ! FIXED WIND RESPONDS TO: the relative change of each cell's particle
+      ! count n_tot + n_e, at most `trust`.  The wind is held while the
+      ! carriers relax, and what a composition change does to the wind is
+      ! done through the particle count and the mean molecular mass, not
+      ! through how much a carrier moved relative to another cell's
+      ! abundance (carrier_particle_count_change states the measurement that
+      ! retired the old measure).  A displacement tested only after the step
+      ! has been applied bounds nothing, which is what was MEASURED in
       ! docs/solver_partition_experiment_20260911.md sec. 7.2 (trust 0.01
       ! returning 0.0281).  The rows below are that statement on this
-      ! column, on the same measure the routine enforces and reports.
+      ! column, on the same measure the routine enforces.
       !
       ! THE WIND OF THIS SECTION IS ITS OWN.  The pass builds its step from
       ! the cell crossing time of the wind it is handed, and it rides the
@@ -891,6 +908,15 @@
       ! given an outflow whose crossing time is the interval the earlier
       ! sections measured this operator on, and its mass row is assembled
       ! before any pass runs.
+      allocate(nsum_in(1-Ng:N+Ng), nsum_out(1-Ng:N+Ng))
+      ! The density scratch the movement-bound rows and the consistency
+      ! section both read; allocated here because the bound is measured
+      ! first.
+      allocate(nhi_r(1-Ng:N+Ng), nhii_r(1-Ng:N+Ng))
+      allocate(nhei_r(1-Ng:N+Ng), nheii_r(1-Ng:N+Ng))
+      allocate(nheiii_r(1-Ng:N+Ng), nheiTR_r(1-Ng:N+Ng))
+      allocate(ne_r(1-Ng:N+Ng), ntot_r(1-Ng:N+Ng), T_ret(1-Ng:N+Ng))
+      allocate(nm_r(1-Ng:N+Ng,n_mion))
       allocate(nnuc0(1-Ng:N+Ng,n_element), nnuc1(1-Ng:N+Ng,n_element))
       allocate(nchg0(1-Ng:N+Ng), nchg1(1-Ng:N+Ng))
       allocate(rcomp0(1-Ng:N+Ng), rcomp1(1-Ng:N+Ng))
@@ -915,15 +941,27 @@
       call carrier_checkpoint_restore(chk0)
       call restore_frozen_background()
       call conserved_of(v_relax)
+      call get_species_densities(rho, f_sp, nhi_r, nhii_r, nhei_r,        &
+                                 nheii_r, nheiii_r, nheiTR_r, nm_r,       &
+                                 ne_r, ntot_r)
+      nsum_in = ntot_r + ne_r
       call relax_photochemical_composition(u_col, v_relax, f_sp, p_col,     &
                                            T_col, heat_col, cool_col,    &
                                            eta_col, 1.0d-2, dr_wide,      &
                                            ns_wide, oc_wide)
-      write(*,'(a,es10.2,a,es12.4,a,i0,a,a)') ' (carrier_retry) trust ',  &
-           1.0d-2, ': drift ', dr_wide, ' in ', ns_wide, ' kept steps,'// &
-           ' ending on '//trim(carrier_relax_outcome_text(oc_wide))
+      call get_species_densities(rho, f_sp, nhi_r, nhii_r, nhei_r,        &
+                                 nheii_r, nheiii_r, nheiTR_r, nm_r,       &
+                                 ne_r, ntot_r)
+      nsum_out  = ntot_r + ne_r
+      dsum_wide = maxval(abs(nsum_out(1:N) - nsum_in(1:N))                &
+                         /max(nsum_in(1:N), 1.0d-300))
+      write(*,'(a,es10.2,a,es12.4,a,es12.4,a,i0,a,a)')                    &
+           ' (carrier_retry) trust ', 1.0d-2, ': particle-count change ',  &
+           dsum_wide, ', carrier drift ', dr_wide, ' in ', ns_wide,        &
+           ' kept steps, ending on '//                                     &
+           trim(carrier_relax_outcome_text(oc_wide))
       call check_absolute('a_pass_returns_a_state_inside_its_bound',      &
-           logical_as_double(dr_wide .le. 1.0d-2*(1.0d0 + 1.0d-12)),      &
+           logical_as_double(dsum_wide .le. 1.0d-2*(1.0d0 + 1.0d-12)),     &
            1.0d0, 0.0d0)
       call check_positive('and_a_shortened_trial_advanced_the_carriers',  &
            dr_wide)
@@ -948,18 +986,40 @@
       call carrier_checkpoint_restore(chk0)
       call restore_frozen_background()
       call conserved_of(v_relax)
+      call get_species_densities(rho, f_sp, nhi_r, nhii_r, nhei_r,        &
+                                 nheii_r, nheiii_r, nheiTR_r, nm_r,       &
+                                 ne_r, ntot_r)
+      nsum_in = ntot_r + ne_r
       call relax_photochemical_composition(u_col, v_relax, f_sp, p_col,     &
                                            T_col, heat_col, cool_col,    &
                                            eta_col, 1.0d-3, dr_tight,     &
                                            ns_tight, oc_tight)
-      write(*,'(a,es10.2,a,es12.4,a,i0,a,a)') ' (carrier_retry) trust ',  &
-           1.0d-3, ': drift ', dr_tight, ' in ', ns_tight,               &
-           ' kept steps, ending on '//                                    &
+      call get_species_densities(rho, f_sp, nhi_r, nhii_r, nhei_r,        &
+                                 nheii_r, nheiii_r, nheiTR_r, nm_r,       &
+                                 ne_r, ntot_r)
+      nsum_out   = ntot_r + ne_r
+      dsum_tight = maxval(abs(nsum_out(1:N) - nsum_in(1:N))               &
+                          /max(nsum_in(1:N), 1.0d-300))
+      write(*,'(a,es10.2,a,es12.4,a,es12.4,a,i0,a,a)')                    &
+           ' (carrier_retry) trust ', 1.0d-3, ': particle-count change ',  &
+           dsum_tight, ', carrier drift ', dr_tight, ' in ', ns_tight,     &
+           ' kept steps, ending on '//                                     &
            trim(carrier_relax_outcome_text(oc_tight))
       call check_absolute('a_tenfold_tighter_bound_also_holds',           &
-           logical_as_double(dr_tight .le. 1.0d-3*(1.0d0 + 1.0d-12)),      &
+           logical_as_double(dsum_tight .le. 1.0d-3*(1.0d0 + 1.0d-12)),    &
            1.0d0, 0.0d0)
       call check_positive('and_it_too_advanced_the_carriers', dr_tight)
+      ! THE BOUND ANSWERS TO ITS SETTING, and that is what an outer
+      ! controller needs of it: at a tenfold tighter setting the pass moves
+      ! the particle count less AND advances the carriers less.  MEASURED on
+      ! this column: particle-count change 9.9238e-03 -> 7.7835e-04 and
+      ! carrier drift 1.6874e-02 -> 1.3440e-03, four kept steps against one
+      ! -- both fall by about 12.7 when the setting falls by 10.  (The
+      ! e-fold clause item L7e tried and withdrew failed exactly here: it
+      ! left the setting inert over three decades.)
+      call check_absolute('and_the_particle_count_change_falls_with'//    &
+           '_the_bound',                                                  &
+           logical_as_double(dsum_tight .lt. dsum_wide), 1.0d0, 0.0d0)
       call check_absolute('and_the_returned_movement_falls_with_the'//    &
            '_bound', logical_as_double(dr_tight .lt. dr_wide), 1.0d0,     &
            0.0d0)
@@ -1098,11 +1158,6 @@
       ! of the background that the carrier rows read directly, and by one
       ! further sweep taken on the returned state.
       allocate(f_swept(1-Ng:N+Ng,n_species))
-      allocate(nhi_r(1-Ng:N+Ng), nhii_r(1-Ng:N+Ng))
-      allocate(nhei_r(1-Ng:N+Ng), nheii_r(1-Ng:N+Ng))
-      allocate(nheiii_r(1-Ng:N+Ng), nheiTR_r(1-Ng:N+Ng))
-      allocate(ne_r(1-Ng:N+Ng), ntot_r(1-Ng:N+Ng), T_ret(1-Ng:N+Ng))
-      allocate(nm_r(1-Ng:N+Ng,n_mion))
 
       call seed_mass_row_of_the_column(v_relax)
       call seed_background_at_the_entry_composition()
@@ -1251,10 +1306,10 @@
       ! What the refused trials must not have done is refuse THIS pass at
       ! the interval or mark the history: the pass is judged by the
       ! chemistry on its own (on this synthetic column the closure of the
-      ! first trial leaves one cell off the element simplex, a verdict of
-      ! the chemistry contract of 2026-09-13, S2, and not of the history;
-      ! the pass of section 11, prepared on the background of the
-      ! composition it relaxes from, keeps its steps).
+      ! first trial leaves one cell off the element simplex; since item
+      ! L7e that count is reported and does not refuse the closure, because
+      ! it describes the root search and not the composition handed back,
+      ! so the pass keeps its steps here as the pass of section 11 does).
       call check_absolute('a_pass_after_the_refusals_is_not_refused_at'// &
            '_the_interval', logical_as_double(oc_hist .ne.                &
            carrier_relax_interval_refused), 1.0d0, 0.0d0)
@@ -1303,6 +1358,43 @@
            '_for_bit', maxval(abs(f_sp - f_sp0)), 0.0d0, 0.0d0)
       write(*,'(A,A)') '  DIAGNOSTIC closure reason text: ',              &
            trim(chem_closure_reason_text(n_chem_last_reason))
+
+      ! ---- (8) WHAT MAY BE READ AS A PROGRESS MEASURE AT ALL ----
+      ! A progress measure is the residual of an operator, so it is a
+      ! FINITE NONNEGATIVE number.  The guard it used to be read through,
+      ! transcribed here, is `x .eq. x`: that rejects a NaN and nothing
+      ! else, so an infinity passed it and was read as a measurement of a
+      ! balance, and nothing at all asked for a sign.  The rows below are
+      ! that guard beside the one that replaces it, on the same values.
+      call check_absolute('superseded_guard_accepts_an_infinite_'//       &
+           'residual', merge(1.0d0, 0.0d0,                                &
+           ieee_value(1.0d0, ieee_positive_inf) .eq.                      &
+           ieee_value(1.0d0, ieee_positive_inf)), 1.0d0, 0.0d0)
+      call check_absolute('superseded_guard_accepts_a_negative_'//        &
+           'residual', merge(1.0d0, 0.0d0, (-1.0d0) .eq. (-1.0d0)),       &
+           1.0d0, 0.0d0)
+      call check_absolute('an_infinite_residual_norm_is_not_admissible',  &
+           merge(1.0d0, 0.0d0, residual_norm_is_admissible(               &
+           ieee_value(1.0d0, ieee_positive_inf))), 0.0d0, 0.0d0)
+      call check_absolute('a_negative_infinite_residual_norm_is_not_'//   &
+           'admissible', merge(1.0d0, 0.0d0,                              &
+           residual_norm_is_admissible(                                   &
+           ieee_value(1.0d0, ieee_negative_inf))), 0.0d0, 0.0d0)
+      call check_absolute('a_nan_residual_norm_is_not_admissible',        &
+           merge(1.0d0, 0.0d0, residual_norm_is_admissible(               &
+           ieee_value(1.0d0, ieee_quiet_nan))), 0.0d0, 0.0d0)
+      call check_absolute('a_negative_residual_norm_is_not_admissible',   &
+           merge(1.0d0, 0.0d0,                                            &
+           residual_norm_is_admissible(-1.0d-30)), 0.0d0, 0.0d0)
+      call check_absolute('a_zero_residual_norm_is_admissible',           &
+           merge(1.0d0, 0.0d0, residual_norm_is_admissible(0.0d0)),       &
+           1.0d0, 0.0d0)
+      call check_absolute('a_finite_positive_residual_norm_is_'//         &
+           'admissible', merge(1.0d0, 0.0d0,                              &
+           residual_norm_is_admissible(1.0d-7)), 1.0d0, 0.0d0)
+      call check_absolute('the_largest_finite_residual_norm_is_'//        &
+           'admissible', merge(1.0d0, 0.0d0,                              &
+           residual_norm_is_admissible(huge(1.0d0))), 1.0d0, 0.0d0)
 
       if (assertion_failures .gt. 0) then
          write(*,'(a)') 'carrier_retry: FAILED'

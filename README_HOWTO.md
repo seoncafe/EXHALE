@@ -1045,7 +1045,7 @@ the permitted changes.
 
 One practical consequence: **states written before the Jupiter-radius
 unification cannot be reloaded at all** (every cell center moved, so the grid
-guard refuses them). That covers the stored `arm*` case directories, the planet
+guard refuses them). That covers the stored `heh_*` case directories (renamed 2026-09-16), the planet
 folders and `benchmarks/`; regenerating them is user-gated.
 -> `docs/input_schema.md` K43, K44 and appendix D.2; manual §2.
 
@@ -1070,6 +1070,13 @@ can be measured instead of argued. Read the exact behavior at the
 | `EXHALE_CAUCHY_LEG_BY_IMAGE=1` | admit the approximate-gradient leg by its share of the model image alone, without the length test against the radius (fires zero times on the present trajectories) | `steady_newton.f90` |
 | `EXHALE_TR_RESTART_AT=<n>`, `EXHALE_TR_RESTART_STALL=<n>`, `EXHALE_TR_RESTART_WHAT=<letters>` | force a trust-region restart after outer iteration `n`, or after `n` iterations without improvement (0 disarms, and is the default), and choose which of the five resets it takes: `r` radius and ceiling, `t` pseudo-transient shift, `c` closure map at the base, `a` acceptance memory, `b` return to the best iterate | `steady_newton.f90` |
 | `EXHALE_MAXSTEPS=<n>` | cap the marching steps; this is how the regression harness pins a relaxation snapshot | `EXHALE_main.f90` |
+| `EXHALE_CARRIER_DRIFT_IS_DISPLACEMENT=1` | the carrier half of the stationary outer iteration's progress measure reads the DISPLACEMENT the pass kept instead of the carrier residual of the composition it hands back. The displacement is bounded by the movement bound the same loop shortens, so it falls when the loop stops letting the composition move; the key exists to compare the two measures without a rebuild | `EXHALE_main.f90` |
+| `EXHALE_ELEMENT_DRIFT_IS_MAP_DISTANCE=1` | the element half of the same measure reads the distance to the endpoint of the element relaxation's inner map instead of the elemental transport residual of the composition the pass hands back. The inner map can exit on its step budget, so its endpoint is not always a solved fixed point; the key is the same kind of comparison as the one above | `EXHALE_main.f90` |
+| `EXHALE_CARRIER_ROW_TERMS=1` | write `output/carrier_row_terms.txt`, the term-by-term dump of the carrier rows of the last assembly: the diffusive and advective terms, the production, loss and photolysis of each row, the residual and the two row scales | `diffusive_photochemistry.f90` |
+| `EXHALE_L22B_JAC_RECON=1` | assemble the advective entries of the carrier Jacobian as a central difference of the face-flux divergence itself, limiter and reconstruction included, restricted to the tridiagonal band, instead of the first-order donor-cell linearization | `diffusive_photochemistry.f90` |
+| `EXHALE_L22B_JAC_ACTION=<file>` | write, at the first Jacobian assembly of the run, the action of the assembled matrix on a direction against a central difference of the full carrier residual along the same direction, row by row | `diffusive_photochemistry.f90` |
+| `EXHALE_L22B_JAC_CELLS=<lo>,<hi>` | the cells the probe direction of `EXHALE_L22B_JAC_ACTION` is carried on (the whole column by default) | `diffusive_photochemistry.f90` |
+| `EXHALE_L22B_DISPLACEMENT=1` | report what the composition a relaxation pass hands back did to the state the wind reads: the largest relative movement of the pressure, the temperature, the mean mass per particle and the particle count, each with the cell that carries it | `diffusive_photochemistry.f90` |
 
 ## Output files
 
@@ -1376,7 +1383,7 @@ review).
 `element_census_tests`, `diffusion_tests`, `residual_determinism` and every
 executable `src/tests/*/run.sh`, runs every one of them even after a failure,
 prints one `PASS|FAIL <name> measured= reference= tol=` line per assertion,
-and exits nonzero if any suite failed. There are 25 such suites:
+and exits nonzero if any suite failed. There are 28 such suites:
 
 ```
 acceptance_classes          adv_static_limit          attempted_step
@@ -1384,15 +1391,20 @@ carrier_constraint_attribution                        carrier_reference_scales
 carrier_retry               carrier_returned_state_acceptance
 certification               constrained_network_layout
 coupled_source_step         element_operator          energy_update
-fuv_band_ledger             grid_and_gates            krylov_and_dogleg
-physics_probe               residual_determinism      run_mode
-species_face_flux           species_masses            spectrum_type
+fuv_band_ledger             grid_and_gates            ionization_imposed_fractions
+krylov_and_dogleg           molecular_seed            physics_probe
+residual_determinism        run_mode                  species_face_flux
+species_masses              spectrum_type             state_mapper
 steady_completion_flag      steady_selfconsistent_residual
 steady_species_rows         transit_census
 ```
 
+`ionization_imposed_fractions` measures the one substitution that replaces an
+ionization balance row by the fraction the flow carries, in each of the seven
+systems that can reach that row.
+
 A suite can also be run on its own, for instance
-`src/tests/physics_probe/run.sh`. Eight of them carry a `README.md` saying what
+`src/tests/physics_probe/run.sh`. Nine of them carry a `README.md` saying what
 their assertions compare and which are red on purpose; for the rest that
 statement is in the driver's header. A few rows are FAIL by design and say so
 (the `closure_spread_within_the_row_tolerance_*` rows of

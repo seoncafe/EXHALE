@@ -539,7 +539,7 @@ UNCONFIRMED until N8b.
 The restart contract (decision 15 a) refuses a state whose `options` block
 differs from the run's, exactly. That is right for a stationary state and it
 forbids the restart-ladder workflow this project uses (converge without an
-option, restart with it on, converge again: `armA_noLW -> armA_LW`, the He/H
+option, restart with it on, converge again: `heh_1_40k -> heh_1_lw_40k` (renamed 2026-09-16 from `armA_noLW -> armA_LW`; mapping in `docs/named_case_audit.md` section 6), the He/H
 rungs, the H2 channel rungs). Legacy pairs (no block) are unaffected; every
 rung produced from now on would be refused. Options:
 

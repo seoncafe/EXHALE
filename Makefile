@@ -197,6 +197,7 @@ SRC := \
   src/modules/init/set_energy_vectors.f90 \
   src/modules/init/set_gravity_grid.f90 \
   src/modules/init/set_IC.f90 \
+  src/modules/init/molecular_seed_from_atomic_state.f90 \
   src/modules/init/blas_thread_policy.f90 \
   src/modules/init/init.f90 \
   $(wildcard src/modules/wind_ae/wae_*.f90) \

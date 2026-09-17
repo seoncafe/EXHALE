@@ -80,10 +80,10 @@ are listed for completeness of the balance check.
 | R14 | H<sub>2</sub> + e &rarr; H + H + e | 1.33e-6 (300/T)<sup>0.91</sup> exp(-55800/T) | same | ok | |
 | R15 | H + H + M &rarr; H<sub>2</sub> + M | 8e-33 (300/T)<sup>0.6</sup> n<sub>M</sub> | **changed 2026-09-01**: 2.8e-31 T<sup>-0.6</sup> n<sub>M</sub>, the Cohen &amp; Westberg (1983) recommendation (50-5000 K), 14% above the Ham et al. value the table carries | ok | a neutral three-body recombination has no electron in it; the heavy-particle T is used, and the two readings coincide in EXHALE. Ham et al. measured 77-300 K only, so the Table-1 value is extrapolated across the molecular layer; see the R15 comment in `mol_rates.f90` |
 | R16 | HeH<sup>+</sup> + e &rarr; He + H | 1e-8 (300/T)<sup>0.6</sup> | same | transcription ok | 3.4x below Garc&iacute;a Mu&ntilde;oz Table A.6 at 500 K and 8.6x below at 10<sup>4</sup> K (both fall with T, this one faster): sec. 4.2 |
-| R17 | He<sup>+</sup> + H<sub>2</sub> &rarr; H<sup>+</sup> + H + He | 1e-9 exp(-5700/T) | same | transcription ok | up to 1.9e4 above Garc&iacute;a Mu&ntilde;oz Table A.7: sec. 4.2. Dominant H<sub>2</sub> sink and H<sup>+</sup> source once He<sup>+</sup> exists |
+| R17 | He<sup>+</sup> + H<sub>2</sub> &rarr; H<sup>+</sup> + H + He | 1e-9 exp(-5700/T) | same | transcription ok, **form CORRECTED 2026-09-15** | the Table-1 Arrhenius alone is 2e4 below the measured thermal rate at 300 K; the code now adds the measured two-body total less the radiative branch (B&ouml;hringer &amp; Arnold 1986; Johnsen et al. 1980): sec. 4.2 |
 | R18 | HeH<sup>+</sup> + H<sub>2</sub> &rarr; H<sub>3</sub><sup>+</sup> + He | 1.5e-9 | same | ok | 1.2x above Table A.6 (Orient 1977) |
 | R19 | HeH<sup>+</sup> + H &rarr; H<sub>2</sub><sup>+</sup> + He | 9.1e-10 | same | ok | 1.4-2.6x below Table A.6 (De Fazio 2014) |
-| R20 | He<sup>+</sup> + H<sub>2</sub> &rarr; HeH<sup>+</sup> + H | 4.2e-13 | same | transcription ok | 14x above the Schauer et al. (1989) total Garc&iacute;a Mu&ntilde;oz adopts; the only HeH<sup>+</sup> source in the network: sec. 4.2 |
+| R20 | He<sup>+</sup> + H<sub>2</sub> &rarr; HeH<sup>+</sup> + H | 4.2e-13 | same | transcription ok, **channel RETIRED 2026-09-15** | the cited measurement bounds this channel at &le; 1.0e-14 and states it does not open below ~9 eV of collision energy: sec. 4.2. Replaced by H<sub>2</sub><sup>+</sup> + He &rarr; HeH<sup>+</sup> + H, 3.0e-10 exp(-6717/T) (Black 1978) |
 | R21 | H + He<sup>+</sup> &rarr; H<sup>+</sup> + He | 1.2e-15 (T/300)<sup>0.25</sup> | same | transcribed, **not used** | superseded by Huang B2, 4% away: sec. 4.3 |
 | R22 | H<sup>+</sup> + He &rarr; H + He<sup>+</sup> | 1.75e-11 (300/T)<sup>0.75</sup> exp(-128000/T) | same | transcribed, **not used** | superseded by Huang B1: sec. 4.3 |
 | R23 | H<sub>2</sub> + He<sup>+</sup> &rarr; H<sub>2</sub><sup>+</sup> + He | 7.2e-15 | same | ok | |
@@ -247,11 +247,82 @@ He<sup>+</sup> + H<sub>2</sub> process.
 
 Both compilations are published and internally consistent; picking between
 them is a modelling decision, not a bug fix, and it would replace a
-Koskinen Table-1 entry with a rate from another network.  The measured
-HeH<sup>+</sup> abundance in this configuration is at most 1e-10 of the helium at any
-He/H tested, so nothing observable rests on it today.  **If HeH<sup>+</sup> or the
-He<sup>+</sup> + H<sub>2</sub> branching is ever quoted as a result, this paragraph is the
-thing to resolve first.**
+Koskinen Table-1 entry with a rate from another network.
+
+**RESOLVED 2026-09-15 (item L7f): the paper was obtained and R20 is
+retired.** Schauer et al. (1989) is now
+`references/Schauer_1989JCP_91_4593.pdf`. It measures the radiative and the
+dissociative charge transfer over 15 &lt; T &lt; 40 K and no HeH<sup>+</sup> channel; it
+states that reaction (3), He<sup>+</sup> + H<sub>2</sub> &rarr; H + HeH<sup>+</sup>, "apparently does not
+become allowed until the collision energy approaches 9 eV", and that its
+H<sub>3</sub><sup>+</sup> signal is the SUM of the radiative channel and the HeH<sup>+</sup> channel, which
+bounds the latter at &le; 1.0e-14 &mdash; 42 times below the 4.2e-13 Koskinen
+Table 1 assigns to it. R20 is therefore gone from `mol_rates.f90`, and the
+HeH<sup>+</sup> source the network now carries is the one Table 1 omitted,
+H<sub>2</sub><sup>+</sup> + He &rarr; HeH<sup>+</sup> + H at 3.0e-10 exp(-6717/T), read from the primary
+source (Black 1978, ApJ 222, 125, his Eq. 12 and rate table, from the Chupka
+et al. 1969 cross sections). MEASURED effect at the first cell, with the
+ionization re-solved on both sides: at 1023 K n(He<sup>+</sup>) &times; 1.11, n(HeH<sup>+</sup>)
+&divide; 487, total H<sub>2</sub> loss 1.916e+03 &rarr; 1.904e+03 cm<sup>-3</sup> s<sup>-1</sup>; at 629 K
+n(He<sup>+</sup>) &times; 4.4, n(HeH<sup>+</sup>) &divide; 8.0e4, n(H<sup>+</sup>) &times; 3.9, loss
+4.455e+03 &rarr; 4.443e+03. The helium ions of that layer are sink-limited, so
+removing one He<sup>+</sup> sink raises n(He<sup>+</sup>) until the others carry the same flux:
+the repair rewires the HeH<sup>+</sup> and H<sup>+</sup> budgets by decades and leaves the net
+H<sub>2</sub> destruction where it was. What follows is kept as the record of how the
+entry was found, with its share statement corrected.
+
+**How it was found (2026-09-15, item L7f).** The
+sentence this paragraph used to end with -- that the HeH<sup>+</sup> abundance is at
+most 1e-10 of the helium in every configuration tested, so nothing
+observable rests on the choice -- was written before a helium-rich molecular
+base was solved.  MEASURED on `molecular_scalar_gj1132_kzz1e9/HeH2.13`
+(LHS 1140 b, He/H = 2.13, `docs/lhs1140b_stationary_L7f_20260915.md`
+section 3), with the H<sub>2</sub> row written out reaction by reaction through the
+base layer: **R20 alone carried 25 to 30 percent of the H<sub>2</sub> destruction
+there, and R20 with R18 -- which consumes the HeH<sup>+</sup> R20 makes -- about half
+of it.** Those are SHARES at a frozen composition; what removing the channel
+actually does, with the ionization re-solved, is in the resolution above and
+is far smaller.  The helium-ion channels, not the thermal dissociation and not
+the photons, are what sets the H<sub>2</sub> content of a helium-rich base in this
+network.  That is why it was the entry resolved first.
+
+What pointed at it: Koskinen et al. (2022) Table 1 cites Schauer, Jefferts,
+Barlow &amp; Dunn (1989), J. Chem. Phys. 91, 4593 for the HeH<sup>+</sup> channel at
+4.2e-13, while Garc&iacute;a Mu&ntilde;oz (2025) cites the same paper for the DISSOCIATIVE
+channel at 3.0e-14 and carries no HeH<sup>+</sup> channel from He<sup>+</sup> + H<sub>2</sub> at all.
+Reading the paper settled it, as above.
+
+**The other entry of this pair, R17, was RESOLVED the same day.** Both
+drift-tube papers were supplied and read
+(`references/Johnsen_1980JCP_72_3085.pdf`,
+`references/Bohringer_1986JCP_84_1459.pdf`):
+
+| source | range | two-body | three-body |
+|---|---|---|---|
+| B&ouml;hringer &amp; Arnold (1986) | 18-408 K | k<sub>2</sub> = 1.1e-13 (300/T)<sup>0.24&plusmn;0.04</sup> | k<sub>3</sub> = 1.6e-30 (100/T)<sup>1.27&plusmn;0.4</sup> |
+| Johnsen, Chen &amp; Biondi (1980), Table I | 78-330 K | (1.1&plusmn;0.1)e-13 at 330 K, (1.5&plusmn;0.15)e-13 at 78 K | (4.4&plusmn;2.0)e-31 at 330 K, (1.8&plusmn;0.4)e-30 at 78 K |
+| Johnsen et al. Fig. 3, whose title IS this reaction (READ) | to T<sub>eff</sub> = 700 K | ~1.45e-13 at 100 K, minimum ~1.05e-13 at 300 K, ~1.35e-13 at 400 K, ~2.0e-13 at 500 K, ~2.5e-13 at 600 K, ~3.0e-13 at 700 K | |
+| Schauer et al. (1989) | 15-40 K | 3.0e-14 to 4.9e-14 | |
+
+The coded Koskinen form alone, 1e-9 exp(-5700/T) (Moses &amp; Bass 2000), gives
+5.6e-18 at 300 K and 6.5e-16 at 400 K against those, i.e. it was wrong by 2e4
+and 200 at the cold end of every molecular base layer. The reason the
+measurements do not switch off is in the papers: the reactants and products
+do not correlate adiabatically, and what carries the reaction at thermal
+energy is tunnelling through a small barrier out of a long-lived He<sup>+</sup>-H<sub>2</sub>
+complex. The code now carries the two mechanisms as the sum they are,
+
+&nbsp;&nbsp;&nbsp;&nbsp;`k(R17) = [ 1.1e-13 (300/T)^0.24 - k(R23) ] + 1e-9 exp(-5700/T)`,
+
+the bracket being the measured two-body TOTAL less the radiative branch this
+network carries separately as R23, so the coded channels sum to the measured
+total and the branching is stated once. Against Johnsen et al.'s Fig. 3 the
+sum is inside a factor 2 from 300 to 700 K. Measured 18-408 K; above 408 K
+the bracket is carried up with its own weak exponent and, above ~625 K where
+the Arrhenius branch passes it, no longer controls the rate; above ~700 K
+nothing is measured. The three-body channel both papers measure is left out
+and the reason is at the code site: k<sub>3</sub>n = 6.0e-19 cm<sup>3</sup> s<sup>-1</sup> at 1000 K and
+n = 7e12 cm<sup>-3</sup>, five decades below the two-body rate.
 
 One HeH<sup>+</sup> formation path the network does not carry, recorded so that its
 absence is a choice rather than an oversight: **radiative association**,
@@ -480,7 +551,7 @@ mol_lyman_werner mol_diffusion`), and `make check` re-run afterwards.
 | `src/modules/radiation/ionization_equilibrium.f90` | `n_tot` from `calc_ntot` replaces `n_in_dim` as the third body M and as the seed pressure (*the R13/R15 half of this, the argument of `set_mol_coeffs`, was missed and corrected on 2026-08-29; see section 7*); HeH<sup>+</sup> nucleus added to the He row of `ionization_fractions_physical`, `element_budget_violation`, `clamp_fractions_to_element_budget` |
 | `src/modules/nonlinear_system_solver/ion_cell_state.f90` | `ntot` documented as the electron-free gas-particle density, not &rho;/m<sub>H</sub> |
 | `src/modules/nonlinear_system_solver/System_HeH_mol.f90` | header: the H-He exchange is carried (Huang B1/B2), R21/R22 unused; params slot 21 described correctly |
-| `src/modules/lower_atmosphere/mol_rates.f90` | header notes on the third body M and the He-dominated limit; per-reaction notes on R12/R13/R15, R16, R17, R21/R22 |
+| `src/modules/lower_atmosphere/mol_rates.f90` | header notes on the third body M and the He-dominated limit; notes at R12/R13/R15, R16, R17, R21/R22, the retired R20 and the H<sub>2</sub><sup>+</sup> + He channel that replaces it |
 | `src/modules/radiation/Cool_coeff.f90` | both Penning fits: the tabulated value is the Penning + associative total, the 0.9:0.1 split is from the Appendix (not Fig. 4), and the 4000 K step is the published fit. *Superseded 2026-08-28*: both rates replaced by the Garc&iacute;a Mu&ntilde;oz (2025) continuous forms, renamed `ioniz_HeI23S_H` / `ioniz_HeI23S_H2` because they return the total, and the 0.9:0.1 split applied through `f_penning_HeI23S` |
 
 ## 6. What was not checked

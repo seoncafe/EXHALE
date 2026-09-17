@@ -114,9 +114,14 @@ CONFIG_TEMPLATE = """{
   "p_top_bar": null,
 
   "exhale_bin": "<EXHALE>/EXHALE.x",
-  "input_template": "<EXHALE>/LHS1140b/exhale/input.inp",
+  "input_template": "<EXHALE>/LHS1140b/archive_20260830/exhale/flux_closure/input_template.inp",
   "omp_num_threads": 4,
   "resid_tol": "1.0e-4",
+
+  "input_keys_comment": "Optional. Whole input.inp lines added to every iteration's input, overriding the line already there and the driver's own defaults. This is how a rung is solved by a route other than the coupled JFNK below, e.g. [\"Well balanced: True\", \"Restart intent: stationary\", \"Solver: Newton\"] for the partitioned stationary route.",
+  "input_drop_comment": "Optional. Replaces the keys dropped from the template (by default du_th, Solver and IC mode); name only what this route must not inherit.",
+  "input_keys": [],
+
   "exhale_env": {"EXHALE_PTC": "1", "EXHALE_PTC_JFNK": "1",
                  "EXHALE_PTC_DTAU0": "1.0"}
 }
@@ -137,6 +142,11 @@ CONFIG_DEFAULTS = {
     'profile_name': 'lower_atmosphere_profile.dat',
     'resid_tol': '1.0e-4',
     'python_named_by_config': False,
+    # Whole input.inp lines this rung adds to every iteration, and the keys
+    # it drops from the template.  Empty and None leave the route below
+    # exactly as it was.
+    'input_keys': [],
+    'input_drop': None,
 }
 
 
@@ -434,10 +444,15 @@ def solve_photochemical_lower_profile(cfg, iter_dir, k, phi_H, phi_He, log):
     return profile
 
 
-INPUT_DROP = ('du_th', 'Solver', 'IC mode')
+# `Valve eps` is dropped and no longer written: the lower boundary is the
+# characteristic face condition, and `input_read` stops on the retired key
+# (docs/phaseC_characteristic_base_bc.md), so a template that still carries
+# it would fail at startup.
+INPUT_DROP = ('du_th', 'Solver', 'IC mode', 'Valve eps')
 
-# The solver configuration of `LHS1140b/exhale/finish_case.sh`: load the
-# seed, PLM, the valve and residual tolerances, marching keys removed.
+# The solver configuration of
+# `LHS1140b/archive_20260830/exhale/finish_case.sh`: load the seed, PLM, the
+# residual tolerance, marching keys removed.
 #
 # `resid_tol` defaults to 1.0e-4 and not the 1.0e-3 that script uses, and
 # the reason is measured rather than cautionary.  The closure compares an
@@ -460,8 +475,21 @@ INPUT_DROP = ('du_th', 'Solver', 'IC mode')
 # the acceptance test, which is the window spread and is checked separately.
 INPUT_JFNK = (('Load IC?', 'True'),
               ('Reconstruction scheme:', 'PLM'),
-              ('Valve eps:', '1.0e-4'),
               ('Do only PP:', 'False'))
+
+
+def input_line_as_update(line):
+    """One whole `input.inp` line as the (key, value) pair the writer takes.
+
+    `Well balanced: True` -> `('Well balanced:', 'True')`, and a key that
+    carries no colon (`Load IC? True`) splits at its first blank.
+    """
+    text = line.strip()
+    if ':' in text:
+        key, value = text.split(':', 1)
+        return key.strip() + ':', value.strip()
+    word = text.split(None, 1)
+    return word[0], (word[1].strip() if len(word) > 1 else '')
 
 
 def write_input_keys(path, updates, drop=(), append_missing=True):
@@ -492,11 +520,41 @@ def write_input_keys(path, updates, drop=(), append_missing=True):
         fh.write('\n'.join(out) + '\n')
 
 
+def wind_solve_info(text):
+    """The verdict of the wind solve, whichever route wrote it.
+
+    The partitioned stationary route states its own outcome once, at the end
+    (`the stationary solve returned info = 0`), while each of its outer
+    passes writes a `done info=` line of its own, so reading the last
+    `done info=` would report the last hydrodynamic pass and not the solve.
+    The coupled JFNK route writes only the `done info=` line.
+    """
+    stationary = re.findall(r'stationary solve returned info\s*=\s*(-?\d+)',
+                            text)
+    if stationary:
+        return int(stationary[-1])
+    done = re.findall(r'done info=(-?\d+)', text)
+    return int(done[-1]) if done else None
+
+
+# R0, the matching level and the metadata number format live in ONE place,
+# src/utils/profile_match_level.py, because LHS1140b/models/run_case.sh needs
+# the same R0 for the same reason: `load_IC` compares the `grid` field as text
+# and refuses a state whose R0 is not the run's.
+from profile_match_level import (RJ_CM, profile_values_at_match, meta_num,
+                                 grid_R0_cm, write_target_grid_header,
+                                 profile_match_ratios, reservoir_moves)
+
+
 def solve_escape_wind(cfg, iter_dir, seed_output, log):
-    """The wind, driven exactly as `LHS1140b/exhale/finish_case.sh` drives
-    it: the seed solution becomes the IC, JFNK under EXHALE_PTC, then a
-    post-processing pass on the solved state.  `output/` must exist before
-    EXHALE starts."""
+    """The wind: the seed solution becomes the initial condition, the solver
+    runs, then a post-processing pass on the solved state.  `output/` must
+    exist before EXHALE starts.
+
+    The default route is the coupled JFNK under `EXHALE_PTC`, which is how
+    `archive_20260830/exhale/finish_case.sh` drove it; a configuration that
+    states `input_keys` names another one.
+    """
     out_dir = os.path.join(iter_dir, 'output')
     os.makedirs(out_dir, exist_ok=True)
 
@@ -504,27 +562,120 @@ def solve_escape_wind(cfg, iter_dir, seed_output, log):
         src = os.path.join(seed_output, name)
         if not os.path.isfile(src):
             raise ClosureStop('seed %s has no %s' % (seed_output, name))
-        shutil.copyfile(src, os.path.join(
-            out_dir, name.replace('.txt', '_IC.txt')))
+    # THE SEED IS CARRIED ONTO THIS ITERATION'S RESERVOIR.  Every iteration's
+    # column carries its own elemental ratios at the matching level -- the
+    # relaxation moves He/H by 1e-5 to 1e-2 and C/H, N/H and O/H by parts in
+    # 1e5 -- and the restart contract refuses a state whose reservoir differs
+    # from the run's by more than 1e-6 IN ANY ELEMENT of the `# reservoir`
+    # line (load_IC, metadata field "reservoir"; that check comes before the
+    # loader's own renormalization of a handoff element, which therefore
+    # never sees a file with a metadata block).  So the previous iterate is
+    # not reloaded as it stands: src/utils/map_state_to_grid.py carries every
+    # element that moved onto the new ratio in one call (an initialization
+    # seed, `mode=init certified=F`, the diffused He/H profile's shape kept),
+    # on the same cell centers.  A seed with no reservoir line (an archived
+    # state) is copied as it is; so is one already at these ratios.
+    #
+    # AND ONTO THIS ITERATION'S R0.  The `grid` metadata field is compared as
+    # TEXT, and its R0 is the profile's radius at the matching level times
+    # R_J, so it moves with the profile exactly as the reservoirs do (1.6e-9
+    # from one iteration to the next, the cell centers in R_p unchanged). The
+    # mapper copies the `# grid` line of its TARGET into the state it writes,
+    # so the target is not the seed's own file but a copy of its header with
+    # R0 rewritten. A move in R0 alone is reason enough to call the mapper.
+    seed_state = os.path.join(seed_output, 'Hydro_ioniz.txt')
+    profile = os.path.join(iter_dir, cfg['profile_name'])
+    prof_vals = profile_values_at_match(profile)
+    moved = reservoir_moves(seed_state, profile_match_ratios(profile))
+    R0_run = prof_vals['r']*RJ_CM if (prof_vals and 'r' in prof_vals) else None
+    R0_seed = grid_R0_cm(seed_state)
+    grid_moved = (R0_run is not None and R0_seed is not None
+                  and meta_num(R0_run) != meta_num(R0_seed))
+    if moved or grid_moved:
+        mapper = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                              'map_state_to_grid.py')
+        target = seed_state
+        if R0_run is not None:
+            written = os.path.join(iter_dir, 'target_grid_Hydro_ioniz.txt')
+            # None when the seed carries no "# grid" line at all (an archived
+            # state): nothing is written and the seed's own file is the target,
+            # which is what such a state is mapped against anyway.
+            if write_target_grid_header(seed_state, written, R0_run):
+                target = written
+        cmd = [sys.executable, mapper, seed_output, target, out_dir, '--ic']
+        for key, (old, new) in moved.items():
+            cmd += ['--reservoir', key, '%.17g' % new]
+        if moved:
+            log('  seed: reservoir %s' % ', '.join(
+                '%s %.9g -> %.9g' % (key, old, new)
+                for key, (old, new) in moved.items()))
+        if grid_moved:
+            log('  seed: grid R0[cm] %s -> %s (the profile radius at the '
+                'matching level times R_J)'
+                % (meta_num(R0_seed), meta_num(R0_run)))
+        log('  seed: %s' % ' '.join(cmd))
+        with open(os.path.join(iter_dir, 'seed.log'), 'w') as fh:
+            rc = subprocess.call(cmd, stdout=fh, stderr=subprocess.STDOUT)
+        if rc != 0:
+            log(tail_of(os.path.join(iter_dir, 'seed.log')))
+            raise ClosureStop('the seed could not be carried onto this '
+                              'iteration (%s; mapper exited %d)'
+                              % (', '.join(['%s %.9g' % (key, new)
+                                            for key, (_, new) in moved.items()]
+                                           + (['grid R0 ' + meta_num(R0_run)]
+                                              if grid_moved else [])), rc))
+    else:
+        for name in ('Hydro_ioniz.txt', 'Ion_species.txt'):
+            shutil.copyfile(os.path.join(seed_output, name), os.path.join(
+                out_dir, name.replace('.txt', '_IC.txt')))
 
     inp = os.path.join(iter_dir, 'input.inp')
     shutil.copyfile(cfg['input_template'], inp)
-    write_input_keys(inp, INPUT_JFNK + (
+    # The rung's own lines come first, so a configuration that states a
+    # different route (`input_keys`) overrides the coupled JFNK defaults
+    # rather than being overridden by them.
+    extra = tuple(input_line_as_update(line) for line in cfg['input_keys'])
+    drop = INPUT_DROP if cfg['input_drop'] is None else tuple(cfg['input_drop'])
+    write_input_keys(inp, extra + INPUT_JFNK + (
         ('Resid tol:', str(cfg['resid_tol'])),
-        ('Lower atmosphere profile:', cfg['profile_name']),), drop=INPUT_DROP)
+        ('Lower atmosphere profile:', cfg['profile_name']),), drop=drop)
 
     env = dict(os.environ)
     env.update({k: str(v) for k, v in cfg['exhale_env'].items()})
     env['OMP_NUM_THREADS'] = str(cfg['omp_num_threads'])
 
     runlog = os.path.join(iter_dir, 'run.log')
-    log('  wind: JFNK start %s' % time.strftime('%H:%M:%S'))
+    log('  wind: solve start %s' % time.strftime('%H:%M:%S'))
     with open(runlog, 'w') as fh:
         rc = subprocess.call([cfg['exhale_bin']], cwd=iter_dir, env=env,
                              stdout=fh, stderr=subprocess.STDOUT)
-    info = re.findall(r'done info=(\d+)', tail_of(runlog, 10**7))
-    info = int(info[-1]) if info else None
-    log('  wind: JFNK done rc=%d info=%s' % (rc, info))
+    info = wind_solve_info(tail_of(runlog, 10**7))
+    log('  wind: solve done rc=%d info=%s' % (rc, info))
+    # THE CONTINUATION IN THE PSEUDO-TIME START (the same rule as
+    # LHS1140b/models/run_case.sh; docs/lhs1140b_stationary_L4e_20260914.md):
+    # a stationary solve that ends refused from a state already close leaves
+    # the pseudo-time at its start value, and the same state restarted at
+    # PTC_DTAU0_CONTINUATION certifies in a few iterations, while a raw seed
+    # at that value fails.  So when the solve did not return info = 0 and a
+    # state was written, that state is reloaded and solved once more with
+    # the start raised; both logs are kept.
+    if info != 0 and all(os.path.isfile(os.path.join(out_dir, name))
+                         for name in ('Hydro_ioniz.txt', 'Ion_species.txt')):
+        dtau0 = str(cfg.get('dtau0_continuation', '1.0e8'))
+        log('  wind: info=%s at EXHALE_PTC_DTAU0=%s; continuing from the '
+            'written state at EXHALE_PTC_DTAU0=%s'
+            % (info, env.get('EXHALE_PTC_DTAU0', '(unset)'), dtau0))
+        for name in ('Hydro_ioniz.txt', 'Ion_species.txt'):
+            shutil.copyfile(os.path.join(out_dir, name), os.path.join(
+                out_dir, name.replace('.txt', '_IC.txt')))
+        shutil.move(runlog, os.path.join(iter_dir, 'run_dtau0_first.log'))
+        env2 = dict(env)
+        env2['EXHALE_PTC_DTAU0'] = dtau0
+        with open(runlog, 'w') as fh:
+            rc = subprocess.call([cfg['exhale_bin']], cwd=iter_dir, env=env2,
+                                 stdout=fh, stderr=subprocess.STDOUT)
+        info = wind_solve_info(tail_of(runlog, 10**7))
+        log('  wind: continuation done rc=%d info=%s' % (rc, info))
     if info != 0:
         log(tail_of(runlog))
         raise ClosureStop('EXHALE did not report `done info=0` (rc=%d, '
@@ -534,7 +685,12 @@ def solve_escape_wind(cfg, iter_dir, seed_output, log):
     for name in ('Hydro_ioniz.txt', 'Ion_species.txt'):
         shutil.copyfile(os.path.join(out_dir, name),
                         os.path.join(out_dir, name.replace('.txt', '_IC.txt')))
-    write_input_keys(inp, (('Do only PP:', 'True'),))
+    # The advection-corrected profiles are wanted, not another solve: a
+    # stationary restart intent would take the run back into the solver and
+    # never reach them, and the marching hand-off would polish the state the
+    # solve just wrote.
+    write_input_keys(inp, (('Do only PP:', 'True'),),
+                     drop=('Restart intent', 'Solver'))
     # The post-processing pass runs WITHOUT the PTC variables, exactly as
     # `finish_case.sh` does (there they are set inline on the JFNK command
     # alone).  With EXHALE_PTC=1 still set the binary re-enters the steady

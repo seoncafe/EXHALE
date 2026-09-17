@@ -18,11 +18,26 @@
 # is skipped, because the objects then need not match the default build/.
 # EXHALE_TEST_OUT selects where the test executables are written.
 #
+# base_continuity is a DIAGNOSTIC that needs a run directory: it calls
+# input_read and init on the input.inp and the restart pair that directory
+# holds, so that the boundary it probes carries that case's grid, reservoir
+# and options.  EXHALE_L26_STATE names it, and the probe writes
+# EXHALE_setup.out and an ./output directory into it, so name a scratch copy
+# of a run and not the run itself.  Without that variable the probe is
+# skipped and the suite says so.  Its two printed groups differ in kind: the
+# ROW, DERIV and JUMP lines are measurements for the memo, and the four
+# PASS|FAIL rows are the invariant that the boundary is a function of its
+# argument (repeated evaluation, an evaluation of another state in between, a
+# complete flux evaluation in between, a changed call order).
+#
 # Usage: src/tests/grid_and_gates/run.sh [test ...]
 #        names: grid_width grid_window photon_quadrature threshold_edges
-#               hydrostatic_residual free_outflow_boundary flux_spread
+#               hydrostatic_residual base_branch base_continuity
+#               free_outflow_boundary
+#               flux_spread
 #               output_state base_level restart_grid restart_round_trip
-#               restart_intent restart_option_change direct_steady_setup
+#               restart_intent evaluate_products restart_option_change
+#               direct_steady_setup
 #               sed_coverage coupled_carrier_h2 carrier_transport_inert
 #               momentum_row fpe_traps
 set -u
@@ -63,7 +78,7 @@ fi
 # Every object but the main program: the drivers bring their own.
 PROD_OBJ="$(ls "$OBJDIR"/*.o | grep -vE '(EXHALE_main|_tests|_probe)\.o$' | tr '\n' ' ')"
 
-WANT="${*:-grid_width grid_window photon_quadrature threshold_edges hydrostatic_residual free_outflow_boundary flux_spread output_state base_level restart_grid restart_round_trip restart_intent restart_option_change direct_steady_setup sed_coverage coupled_carrier_h2 carrier_transport_inert momentum_row fpe_traps}"
+WANT="${*:-grid_width grid_window photon_quadrature threshold_edges hydrostatic_residual base_branch base_continuity free_outflow_boundary flux_spread output_state base_level restart_grid restart_round_trip restart_intent evaluate_products restart_option_change direct_steady_setup sed_coverage coupled_carrier_h2 carrier_transport_inert momentum_row fpe_traps}"
 n_fail=0
 
 want() { case " $WANT " in *" $1 "*) return 0;; *) return 1;; esac; }
@@ -154,6 +169,40 @@ if want hydrostatic_residual; then
                      '$OUT/hydrostatic_residual.x'"
 fi
 
+if want base_branch; then
+   $FC $FFLAGS_TEST -J"$OUT" -I"$OBJDIR" \
+       -o "$OUT/base_branch_discriminant.x" \
+       "$HERE/base_branch_discriminant.f90" $PROD_OBJ $LAPACK || {
+      echo "FAIL base_branch_build measured=compile_error reference=ok tol=0"
+      n_fail=$((n_fail+1)); }
+   [ -x "$OUT/base_branch_discriminant.x" ] && \
+      run_one base_branch env OMP_NUM_THREADS=1 \
+              "$OUT/base_branch_discriminant.x"
+fi
+
+if want base_continuity; then
+   $FC $FFLAGS_TEST -J"$OUT" -I"$OBJDIR" \
+       -o "$OUT/base_boundary_continuity_probe.x" \
+       "$HERE/base_boundary_continuity_probe.f90" $PROD_OBJ $LAPACK || {
+      echo "FAIL base_continuity_build measured=compile_error reference=ok tol=0"
+      n_fail=$((n_fail+1)); }
+   if [ -z "${EXHALE_L26_STATE:-}" ]; then
+      echo ""
+      echo "---- base_continuity ----"
+      echo "DIAGNOSTIC base_continuity skipped: set EXHALE_L26_STATE to a"
+      echo "  scratch copy of a run directory (input.inp plus"
+      echo "  output/Hydro_ioniz_IC.txt and output/Ion_species_IC.txt)"
+   elif [ ! -f "$EXHALE_L26_STATE/input.inp" ]; then
+      echo "FAIL base_continuity_state measured=no_input_inp reference=$EXHALE_L26_STATE tol=0"
+      n_fail=$((n_fail+1))
+   elif [ -x "$OUT/base_boundary_continuity_probe.x" ]; then
+      run_one base_continuity env OMP_NUM_THREADS=1 \
+              sh -c "cd '$EXHALE_L26_STATE' &&
+                     '$OUT/base_boundary_continuity_probe.x' \
+                     '$(basename "$EXHALE_L26_STATE")'"
+   fi
+fi
+
 if want free_outflow_boundary; then
    $FC $FFLAGS_TEST -J"$OUT" -I"$OBJDIR" \
        -o "$OUT/free_outflow_boundary.x" \
@@ -198,6 +247,12 @@ if want restart_intent; then
    run_one restart_intent_and_metadata env EXHALE_EXE="$EXE" \
            EXHALE_TEST_OUT="$OUT" \
            bash "$HERE/restart_intent_and_metadata.sh"
+fi
+
+if want evaluate_products; then
+   run_one stationary_evaluate_products env EXHALE_EXE="$EXE" \
+           EXHALE_TEST_OUT="$OUT" \
+           bash "$HERE/stationary_evaluate_products.sh"
 fi
 
 if want restart_option_change; then

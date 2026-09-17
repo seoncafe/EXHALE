@@ -242,6 +242,14 @@ $F(W_L)$ and never forms an expression in the right state.  The face pressure
 $p_{\rm out}$ that the momentum assembly of \eqref{eq:dF2} needs is the
 pressure of whichever side the branch took.  HLLC is the flux every shipped configuration under \texttt{examples/} and
 \texttt{backup/regression/} states; the key is mandatory and has no default.
+It is not the flux of every run: the seven lowest-XUV cases of the LHS 1140 b
+catalog state \texttt{ROE}, because on a 500-cell grid whose base is subsonic
+to $M\sim10^{-7}$ the HLLC flux does not reach the stationary root there. That
+is a resolution statement about the flux and not about the wind: the same
+unmodified HLLC flux certifies the same case on 1000 cells, and the state it
+reaches is the 500-cell Roe state to 0.1--3 per cent above $1.005\,R_p$
+(item L25, 2026-09-17,
+\texttt{docs/lhs1140b\_stationary\_L25\_20260916.md}).
 
 \paragraph{Roe.}
 The linearized solver of \citet{Roe1981}, with the averages
@@ -265,7 +273,19 @@ $\tilde a = \sqrt{(\bar\gamma-1)(\tilde H - \tilde v^2/2)}$, and the flux
 %
 with the wave strengths
 $\tilde\alpha_{1,3} = (\Delta p \mp \tilde\rho\tilde a\,\Delta v)/2\tilde a^2$
-and $\tilde\alpha_2 = \Delta\rho - \Delta p/\tilde a^2$.  The single index
+and $\tilde\alpha_2 = \Delta\rho - \Delta p/\tilde a^2$.  The acoustic
+strengths $\tilde\alpha_{1,3}$ may be formed with the velocity jump scaled by
+$\min(\mathrm{Ma},1)$ after \citet{Rieper2011}, which is the published
+low-Mach cure for a flux whose dissipation does not vanish with the Mach
+number; the option is \texttt{Low Mach velocity jump:}, it is off by default,
+and it is not recommended on a near-hydrostatic column. The factor is exactly
+zero where two neighbouring velocities cancel in the Roe average, so it removes
+the damping of the odd-even ($2\Delta r$) velocity mode at precisely the faces
+that mode lives on; measured on the LHS 1140 b low-XUV base it turned a solve
+unmodified Roe completes into a nearly pure odd-even mode. Rieper's premise,
+that the local and the global Mach number are comparable, does not hold on a
+column running from $M\sim10^{-8}$ at the base to $10^{-2}$ at the top
+(item L25, 2026-09-17).  The single index
 $\bar\gamma$ is the arithmetic mean of the two face gammas, exact wherever
 the two sides agree; a run whose caloric equation of state makes the index
 vary across the front, that is molecular chemistry with the ladder heat

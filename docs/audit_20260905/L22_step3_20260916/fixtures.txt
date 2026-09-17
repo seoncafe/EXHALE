@@ -1,0 +1,25 @@
+# The three Newton fixtures with the new key value absent (MEASURED 2026-09-17 KST)
+
+Each fixture was run on a scratch copy with the private binary and with the
+control built out of tree from the same snapshot with this increment's two
+source files at their entry text, single-threaded, both started together and
+both stopped after 25 minutes; what is compared is the whole printed
+trajectory over the lines both had printed, exactly as increment I2 compared
+its own. None of the three names the key, so none of them enters the route
+branch of the loader or the handover of the outer loop.
+
+== the printed trajectory, line for line, over the lines both had printed
+LOG carrier_elem_newton lines_compared=1036 differing=0
+LOG carrier_model_a_newton lines_compared=3310 differing=40
+<  (EXHALE_main) outer pass 1: hydro info=0, worst gated species row  2.16E-01 of  1.0E-05 at cell 248 (carrier balance H+), mass  3.03E-11, momentum  4.15E-12, energy  3.75E-09, omega 0.500, trust 1.0E-02,   23.77 s
+>  (EXHALE_main) outer pass 1: hydro info=0, worst gated species row  2.16E-01 of  1.0E-05 at cell 248 (carrier balance H+), mass  3.03E-11, momentum  4.15E-12, energy  3.75E-09, omega 0.500, trust 1.0E-02,   23.69 s
+<  (EXHALE_main) outer pass 2: hydro info=0, worst gated species row  3.04E-02 of  1.0E-05 at cell 248 (carrier balance H+), mass  2.13E-11, momentum  3.06E-12, energy  3.38E-09, omega 0.500, trust 1.0E-02,   21.58 s
+>  (EXHALE_main) outer pass 2: hydro info=0, worst gated species row  3.04E-02 of  1.0E-05 at cell 248 (carrier balance H+), mass  2.13E-11, momentum  3.06E-12, energy  3.38E-09, omega 0.500, trust 1.0E-02,   21.49 s
+<  (EXHALE_main) outer pass 3: hydro info=0, worst gated species row  1.24E-02 of  1.0E-05 at cell 248 (carrier balance H+), mass  3.08E-11, momentum  5.78E-13, energy  3.62E-09, omega 0.500, trust 1.0E-02,   21.38 s
+>  (EXHALE_main) outer pass 3: hydro info=0, worst gated species row  1.24E-02 of  1.0E-05 at cell 248 (carrier balance H+), mass  3.08E-11, momentum  5.78E-13, energy  3.62E-09, omega 0.500, trust 1.0E-02,   21.31 s
+LOG atomic_elem_newton lines_compared=4782 differing=0
+
+The forty differing lines of carrier_model_a_newton are outer-pass lines and
+differ in the trailing wall-clock seconds field alone (23.77 s against
+23.69 s). With that field cut the two trajectories differ in 0 lines:
+every number the two binaries printed is the same number.

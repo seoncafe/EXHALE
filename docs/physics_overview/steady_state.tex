@@ -312,7 +312,14 @@ hydrodynamic solve touches; a single steady solve would freeze it at whatever
 state it was handed.  \texttt{steady\_wind\_with\_element\_diffusion} in
 \texttt{EXHALE\_main.f90} alternates the two: solve the wind at fixed
 composition, relax the composition to its own steady state in that wind,
-solve again.  The composition relaxations are the fixed-wind element
+solve again. ``Fixed composition'' means the \emph{transported} part of it:
+the element fractions the diffusion operator moves and the carrier densities.
+The local part, the ionization state of every cell and the molecular
+reaction balance at the carriers' densities, is re-solved inside every
+evaluation of the hydrodynamic residual (Sec.~\ref{sec:steady:residual}),
+so the wind solve carries its own chemistry and only the transport of
+composition is alternated. A run with neither element diffusion nor carrier
+transport therefore has one outer pass: the wind solve alone.  The composition relaxations are the fixed-wind element
 relaxation of \texttt{binary\_element\_diffusion.f90}
 (Sec.~\ref{sec:mol:diffusion}), under-relaxed with a factor $\omega$ starting
 at $0.5$, and the fixed-wind carrier relaxation of
@@ -353,7 +360,29 @@ configuration.
 With \texttt{Coupled carrier solve: True} the alternation does not arise for
 the carriers at all: $n(\mathrm{H_2})$ becomes a fourth Newton unknown per
 cell, one solve returns a wind and a carrier partition that are steady states
-of each other, and the outer loop runs once.  With no alternated species at
+of each other, and the outer loop runs once.  A third value,
+\texttt{On stall} (2026-09-17), runs the alternation and hands the state to
+that block at the pass where the alternation gives up: the joint distance has
+not fallen in three consecutive passes AND the carrier relaxation of this pass
+and of the two before it ended on the movement bound.  What is known about the
+two routes where they have been compared: on a certified molecular state the
+alternation certifies at outer pass 12 while the block moves its residual by
+0.6 per cent in the same wall clock, every one of its linear solves ending with
+the Krylov subspace exhausted, so the block as it stands is limited by its
+preconditioner and not by the species box
+(\texttt{docs/lhs1140b\_stationary\_L22\_20260916.md}).
+
+\paragraph{What the alternation cannot do, measured.}
+The movement bound on the carrier relaxation is not what holds the refusing
+molecular states: relocating the cells that control it only moves the control
+to the edge of whatever region is exempted, and the refusing row is worse
+afterwards.  What the measurements point at is the splitting itself. The bound
+exists because the wind is held while the carriers relax, and a composition
+good enough for the carrier rows is already outside the range in which holding
+the wind is admissible: the one relaxation that reached the carriers' own fixed
+point moved the base particle count almost seven times the bound, and the
+hydrodynamic solve that had to follow it did not converge, its mass rows
+outside tolerance in every cell over a hundred iterations.  With no alternated species at
 all, which is what an atomic run and a fully coupled run both give, the body
 is one steady solve followed by the state refresh and the flag is the solve's
 own.

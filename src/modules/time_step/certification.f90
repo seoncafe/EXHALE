@@ -89,7 +89,9 @@
                                           restore_carrier_module_state,   &
                                           carrier_module_state_matches,   &
                                           carrier_roundoff_limited_record,&
-                                          carrier_history_certifiable
+                                          carrier_history_certifiable,   &
+                                          carrier_row_terms_on,          &
+                                          carrier_row_terms_write
       use ionization_equilibrium,   only: bg_ready, ieq_nonroot_streak,   &
                                           finite_real, ieq_res_tol,       &
                                           ieq_triplet_row,                &
@@ -98,7 +100,12 @@
       use binary_element_diffusion, only: element_transport_residual
       use composition,              only: get_species_densities,          &
                                           comp_T_from_p
-      use species_table,            only: n_mion, n_melem, melem_name
+      use species_table,            only: n_mion, n_melem, melem_name,  &
+                                          mion_fsp, isp_HI, isp_HII,    &
+                                          isp_HeI, isp_HeII, isp_HeIII, &
+                                          isp_H2, isp_H2p, isp_H3p,     &
+                                          isp_HeHp, isp_OH, isp_H2O,    &
+                                          isp_CO
       ! The H3+ cooling model's own domain records (B3b-H3): four counters
       ! of the cells at which a collider density or a temperature left the
       ! range the published fits cover. Category (2) of B1a section 4.
@@ -122,7 +129,7 @@
                                           conduction_last_status,         &
                                           conduction_last_cell,           &
                                           CONDUCTION_OK
-      use utils,                    only: set_state_certified
+      use utils,                    only: set_state_certified, calc_rho
 
       implicit none
       private
@@ -386,6 +393,14 @@
          ! solve did not resolve from a row it got wrong; it can never
          ! invalidate a state.
          integer           :: n_roundoff_limited = -1
+         ! CELLS IN WHICH THE SPECIES OF THIS ROW IS ABSOLUTELY ABSENT, and
+         ! which therefore report and do not gate (carrier_row_entry). A
+         ! carrier below carrier_absent_fraction of the free reservoir of
+         ! its own element is not a species of the state: it carries no
+         ! mass, no charge, no opacity and no energy any reported quantity
+         ! depends on, and its balance is a statement about round-off.
+         integer           :: n_absent = 0
+         integer           :: j_first_absent = 0
          ! THE SAME MEASURE OVER THE TWO REGIMES, and at one probe radius.
          ! Reported, never decisive: row_max above is the whole column and
          ! remains the only number the verdict reads. These say WHERE the
@@ -455,6 +470,16 @@
          integer          :: n_no_chem_root       = 0
          logical          :: chem_root_known      = .false.
          integer          :: first_no_chem_cell   = 0
+         ! THE MASS CLOSURE OF THE COMPOSITION, max_j |sum_i f_i A_i - 1|
+         ! over the physical cells, and the cell it attains. The mass
+         ! fractions are defined by f_i = n_i m_i / rho, so this sum is one
+         ! identically and any departure is the arithmetic the state was
+         ! built by. REPORTED AND NEVER GATED: it is a statement about the
+         ! consistency of the two halves of the state, not an equation the
+         ! state has to satisfy, and its natural scale (1e-16) is nine
+         ! decades below every tolerance in the inventory. Item L19.
+         real*8           :: mass_closure         = 0.0d0
+         integer          :: j_mass_closure       = 0
          ! THE FIVE VALIDITY STATES of B1a section 4, in its order. A
          ! negative number is "not produced": no counter exists in the code
          ! for that state, and inventing one here would be reporting a
@@ -904,7 +929,7 @@
 
       subroutine certification_species_row_gate(nc, is_carrier, res,      &
                                                 scale, dgate, rgate,      &
-                                                jgate)
+                                                jgate, absent)
       ! THE PART OF A SPECIES ROW THAT DECIDES, in one reduction and one
       ! place: over the physical cells, the largest of
       !
@@ -924,10 +949,18 @@
       real*8,  intent(in)  :: res(nc), scale(nc)
       real*8,  intent(out) :: dgate, rgate
       integer, intent(out) :: jgate
+      ! THE SECOND WAY A CELL LEAVES THE GATE: the species of this row is
+      ! absolutely absent there. The radius accessor above excludes a cell
+      ! because the DISCRETIZATION cannot be judged there; this excludes it
+      ! because there is no species to judge. Both leave the cell reported.
+      logical, optional, intent(in) :: absent(nc)
       real*8  :: q, tol, d
       integer :: j
       dgate = 0.0d0;  rgate = 0.0d0;  jgate = 0
       do j = 1, nc
+         if (present(absent)) then
+            if (absent(j)) cycle
+         endif
          if (is_carrier) then
             tol = cert_tol_carrier_at(r(j))
          else
@@ -1003,7 +1036,7 @@
 
       ! ------------------------------------------------------!
 
-      subroutine gate_species_row(ent, is_carrier, res, scale)
+      subroutine gate_species_row(ent, is_carrier, res, scale, absent)
       ! THE VERDICT OF A ROW WHOSE TOLERANCE IS A FUNCTION OF THE RADIUS.
       ! The entry keeps its whole-column measure, and what decides is the
       ! gated part of it (certification_species_row_gate). A column with
@@ -1013,13 +1046,25 @@
       type(cert_entry), intent(inout) :: ent
       logical,          intent(in)    :: is_carrier
       real*8,           intent(in)    :: res(1:N), scale(1:N)
+      logical, optional, intent(in)   :: absent(1:N)
       real*8  :: dgate
-      call certification_species_row_gate(N, is_carrier, res, scale,      &
-               dgate, ent%row_max_gate, ent%jworst_gate)
+      if (present(absent)) then
+         call certification_species_row_gate(N, is_carrier, res, scale,   &
+                  dgate, ent%row_max_gate, ent%jworst_gate,               &
+                  absent = absent)
+      else
+         call certification_species_row_gate(N, is_carrier, res, scale,   &
+                  dgate, ent%row_max_gate, ent%jworst_gate)
+      endif
       if (ent%jworst_gate .eq. 0) then
-         ent%status     = cert_unavailable
-         ent%reason     = 'no cell at or above the wind radius to '//     &
-                          'gate this row'
+         ent%status = cert_unavailable
+         if (ent%n_absent .gt. 0) then
+            ent%reason = 'every cell at or above the wind radius is '//   &
+                         'empty of this species'
+         else
+            ent%reason = 'no cell at or above the wind radius to '//      &
+                         'gate this row'
+         endif
          ent%within_tol = .false.
          return
       endif
@@ -1101,6 +1146,7 @@
 
       integer :: k, ic, i, j, itr, imel
       real*8, dimension(1:N,n_carrier_max) :: cres, cterms
+      logical, dimension(1:N,n_carrier_max) :: cabsent
       real*8, dimension(3,1-Ng:N+Ng)       :: Wcert
       real*8, dimension(1-Ng:N+Ng) :: Tcert, cn_hi, cn_hii, cn_hei
       real*8, dimension(1-Ng:N+Ng) :: cn_heii, cn_heiii, cn_heitr
@@ -1138,6 +1184,14 @@
                                  cn_e, cn_tot)
       call comp_T_from_p(Wcert(3,:), cn_tot, cn_e, Tcert)
 
+      ! ---- the mass closure of the composition (reported, item L19) ----
+      ! sum_i f_i A_i - 1, from the same (u, f_sp) every row above is
+      ! measured on: calc_rho weighs the species of this state with the
+      ! run's own mass policy, and the density it returns is rho times that
+      ! sum. Reported with its worst cell and gating nothing.
+      call mass_closure_of_state(Wcert(1,:), f_sp, rep%mass_closure,      &
+                                 rep%j_mass_closure)
+
       ! ---- the hydrodynamic rows: always present (B1a section 2.1) ----
       call hydro_row_entry(rep, 1, 'hydrodynamic mass row',      u, Res)
       call hydro_row_entry(rep, 2, 'hydrodynamic momentum row',  u, Res)
@@ -1147,9 +1201,10 @@
       ! The set is carrier_set_init's, fixed once after the keys are parsed;
       ! a carrier the run does not solve carries no equation.
       carriers_measured = .false.
+      cabsent = .false.
       if (thereis_mol .and. carrier_transport .and. bg_ready) then
          call carrier_rows_of_state(Wcert(1,:), Wcert(2,:), f_sp,         &
-                                    cres, cterms)
+                                    cres, cterms, cabsent)
          carriers_measured = .true.
       endif
       do ic = 1, n_carrier_max
@@ -1166,7 +1221,7 @@
                            'the frozen background is not ready (bg_ready)')
             cycle
          endif
-         call carrier_row_entry(rep, ic, cres, cterms)
+         call carrier_row_entry(rep, ic, cres, cterms, cabsent)
       enddo
 
       ! ---- the elemental transport balances (B1a section 2.3) ----
@@ -1320,7 +1375,7 @@
 
       ! ------------------------------------------------------!
 
-      subroutine carrier_rows_of_state(rho, v, f_sp, cres, cterms)
+      subroutine carrier_rows_of_state(rho, v, f_sp, cres, cterms, cabsent)
       ! The carrier balance of a state, measured INSIDE AN ISOLATED
       ! WORKSPACE. carrier_steady_residual refreshes the frozen background,
       ! the photolysis rates, the advection correction, the row terms, the
@@ -1330,13 +1385,24 @@
       real*8, dimension(1-Ng:N+Ng),           intent(in)  :: rho, v
       real*8, dimension(1-Ng:N+Ng,n_species), intent(in)  :: f_sp
       real*8, dimension(1:N,n_carrier_max),   intent(out) :: cres, cterms
+      ! Where each carrier is absolutely absent, measured inside the same
+      ! isolated evaluation that forms the rows, so the mark and the row
+      ! describe one state (carrier_absent_fraction, carrier_residual).
+      logical, dimension(1:N,n_carrier_max),  intent(out) :: cabsent
       type(carrier_module_state) :: ws
       real*8  :: rcmax, rvol
       integer :: jworst, icworst
       call save_carrier_module_state(ws)
       call carrier_steady_residual(rho, v, f_sp, rcmax, jworst, icworst,  &
                                    rvol=rvol, res_out=cres,              &
-                                   terms_out=cterms)
+                                   terms_out=cterms, absent_out=cabsent)
+      ! The terms of the rows just measured, on request
+      ! (EXHALE_CARRIER_ROW_TERMS=1, default off): the record belongs to
+      ! THIS evaluation, so it is written here and not left for a later
+      ! assembly to overwrite.  It is a file, not module state, so it is
+      ! outside the round trip asserted below.
+      if (carrier_row_terms_on())                                        &
+         call carrier_row_terms_write('output/carrier_row_terms.txt')
       call restore_carrier_module_state(ws)
       ! The round trip is ASSERTED, not assumed: a measurement that changed
       ! the state it measured would move the next transport step, and the
@@ -1466,7 +1532,7 @@
 
       ! ------------------------------------------------------!
 
-      subroutine carrier_row_entry(rep, ic, cres, cterms)
+      subroutine carrier_row_entry(rep, ic, cres, cterms, cabsent)
       ! The steady balance of one transported carrier, transport minus
       ! reaction, on the row's own terms.
       !
@@ -1478,7 +1544,9 @@
       type(cert_report), intent(inout) :: rep
       integer,           intent(in)    :: ic
       real*8, dimension(1:N,n_carrier_max), intent(in) :: cres, cterms
+      logical, dimension(1:N,n_carrier_max), intent(in) :: cabsent
       real*8, dimension(1:N) :: rr, ss, ww
+      logical, dimension(1:N) :: aa
       integer :: j, idx, nro_last, nro_total, nro_sub
       call add_entry(rep, 'carrier balance '//trim(carrier_name(ic)),      &
                      cert_evaluated, '')
@@ -1491,18 +1559,37 @@
       rep%e(idx)%n_roundoff_limited = nro_total
       rep%e(idx)%units_floor = 'row_terms [cm^-3 s^-1], the sum of the '// &
            'row''s own terms with the 1e-20 free-element floor inside it'
+      ! AND AN ABSOLUTE FLOOR UNDER THE SPECIES ITSELF, on the same footing
+      ! as the element rows' 1e-20 rho X_base: a carrier below
+      ! carrier_absent_fraction of the free reservoir of its own element is
+      ! reported and does not gate. Without it a relative row measure gates
+      ! on a species that is not there -- MEASURED on the LHS 1140 b
+      ! molecular wind, n(H2) = 5.6e-27 cm^-3 against a gas of 1e6 cm^-3 at
+      ! 2.7 R_p, whose row read exactly 1.000 and refused every state.
+      rep%e(idx)%n_absent       = 0
+      rep%e(idx)%j_first_absent = 0
       do j = 1, N
          rr(j) = cres(j,ic)
          ss(j) = cterms(j,ic)
+         aa(j) = cabsent(j,ic)
          ww(j) = r(j)*r(j)*dr_j(j)
+         if (aa(j)) then
+            rep%e(idx)%n_absent = rep%e(idx)%n_absent + 1
+            if (rep%e(idx)%j_first_absent .eq. 0)                         &
+               rep%e(idx)%j_first_absent = j
+         endif
       enddo
+      ! THE WHOLE-COLUMN MEASURE KEEPS EVERY CELL. What the absence changes
+      ! is the VERDICT, not the measurement: a reader still sees the row
+      ! measure of the empty cells, and the count below says how many of
+      ! them there were.
       call certification_row_measure(N, j_min, rr, ss,                    &
                                      rep%e(idx)%row_max,                  &
                                      rep%e(idx)%jworst,                   &
                                      rep%e(idx)%finite,                   &
                                      wvol = ww, rvol = rep%e(idx)%row_vol)
       call fill_regime_measures(rep%e(idx), rr, ss)
-      call gate_species_row(rep%e(idx), .true., rr, ss)
+      call gate_species_row(rep%e(idx), .true., rr, ss, absent = aa)
       end subroutine carrier_row_entry
 
       ! ------------------------------------------------------!
@@ -1603,6 +1690,57 @@
       rep%e(idx)%within_tol = rep%e(idx)%finite .and.                      &
                               (rep%e(idx)%row_max .le. rep%e(idx)%tol)
       end subroutine unit_scale_entry
+
+      ! ------------------------------------------------------!
+
+      subroutine mass_closure_of_state(rho, f_sp, dev, jworst)
+      ! max_j |sum_i f_i A_i - 1| over the physical cells, and where it sits.
+      !
+      ! The mass fractions of a state are f_i = n_i m_i / rho by definition,
+      ! so the sum is one and this number is zero for a state whose two
+      ! halves describe one gas. It is not zero: the composition returned by
+      ! a sweep is normalized by the density the sweep was given and is only
+      ! that density's composition to the arithmetic of the sweep, and
+      ! without the projection of item L19 that departure ratchets by about
+      ! 1e-14 per outer pass of a stationary solve.
+      !
+      ! calc_rho is the run's own mass policy term for term (the trace-metal
+      ! mass under eos_metals, the molecular and oxygen-carrier masses, He
+      ! 2^3S inside the He I column), so the ratio it gives is exactly the
+      ! sum above and no second mass table exists here to drift from it.
+      real*8, dimension(1-Ng:N+Ng),           intent(in)  :: rho
+      real*8, dimension(1-Ng:N+Ng,n_species), intent(in)  :: f_sp
+      real*8,                                 intent(out) :: dev
+      integer,                                intent(out) :: jworst
+      real*8, dimension(1-Ng:N+Ng)         :: rho_of_comp
+      real*8, dimension(1-Ng:N+Ng,n_mion)  :: nm_c
+      real*8, dimension(1-Ng:N+Ng,4)       :: nmol_c
+      real*8, dimension(1-Ng:N+Ng,3)       :: nox_c
+      real*8  :: d
+      integer :: j, im
+      dev = 0.0d0;  jworst = 0
+      do im = 1, n_mion
+         nm_c(:,im) = rho*f_sp(:,mion_fsp(im))
+      enddo
+      nmol_c(:,1) = rho*f_sp(:,isp_H2)
+      nmol_c(:,2) = rho*f_sp(:,isp_H2p)
+      nmol_c(:,3) = rho*f_sp(:,isp_H3p)
+      nmol_c(:,4) = rho*f_sp(:,isp_HeHp)
+      nox_c(:,1)  = rho*f_sp(:,isp_OH)
+      nox_c(:,2)  = rho*f_sp(:,isp_H2O)
+      nox_c(:,3)  = rho*f_sp(:,isp_CO)
+      call calc_rho(rho*f_sp(:,isp_HI),   rho*f_sp(:,isp_HII),            &
+                    rho*f_sp(:,isp_HeI),  rho*f_sp(:,isp_HeII),           &
+                    rho*f_sp(:,isp_HeIII), rho_of_comp,                   &
+                    nm_c, nmol_c, nox_c)
+      do j = 1, N
+         if (rho(j) .le. 0.0d0) cycle
+         d = abs(rho_of_comp(j) - rho(j))/rho(j)
+         if (d .gt. dev) then
+            dev = d;  jworst = j
+         endif
+      enddo
+      end subroutine mass_closure_of_state
 
       ! ------------------------------------------------------!
 
@@ -1853,6 +1991,13 @@
                     rep%e(i)%j_first_mass_unresolved,                      &
                     ' (', rep%e(i)%n_mass_unresolved,                      &
                     ' cell(s) of the column)'
+            if (rep%e(i)%n_absent .gt. 0)                                  &
+               write(*,'(A,I0,A,I0,A)')                                    &
+                    '        the species is absent (below 1e-20 of the'//  &
+                    ' free reservoir of its element) in ',                 &
+                    rep%e(i)%n_absent, ' cell(s), first cell ',            &
+                    rep%e(i)%j_first_absent,                               &
+                    '; those cells are reported and do not gate'
             if (rep%e(i)%n_roundoff_limited .gt. 0)                        &
                write(*,'(A,I0,A)') '        round-off limited rows over'// &
                     ' the run: ', rep%e(i)%n_roundoff_limited,             &
@@ -1914,6 +2059,18 @@
       else
          write(*,'(A)') '   cells without a chemical root: NOT STATED'//   &
               ' by this caller'
+      endif
+      ! The mass closure of the composition this state carries: reported
+      ! beside the equations and gating nothing (item L19). A state whose
+      ! two halves describe one gas reads a few units in the last place.
+      if (rep%j_mass_closure .gt. 0) then
+         write(*,'(A,ES10.3,A,I0,A,F10.5)') '   mass closure of the'//    &
+              ' composition, max |sum_i f_i A_i - 1| = ',                 &
+              rep%mass_closure, ' at cell ', rep%j_mass_closure,          &
+              ', r =', r(rep%j_mass_closure)
+         write(*,'(A)') '     reported only: the sum is one by the'//     &
+              ' definition of the mass fractions, so this is the'//       &
+              ' arithmetic of the state and no equation of it'
       endif
       write(*,'(A)') '   validity states (B1a section 4):'
       call write_validity('active unvalidated physics',                    &

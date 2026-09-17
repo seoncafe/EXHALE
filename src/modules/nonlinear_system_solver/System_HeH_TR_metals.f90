@@ -38,7 +38,8 @@
 	use ion_cell_state, only: ieq_cell
 	use charge_exchange,    only: cx_add_to_fvec, he_h_cx_fvec
 	use ion_residual_core,  only: metal_fractions, metal_electron_sum,    &
-	                              metal_rows, heh_tr_rows
+	                              metal_rows, heh_tr_rows,             &
+	                              impose_transported_ionization_fractions
 	use System_HeH_metals,  only: met_nelem, met_ntot, met_g0, met_g1,    &
 	                              met_b0, met_b1, met_a1, met_a2, met_top
 
@@ -130,6 +131,10 @@
 	! only here (no double counting with cx_add_to_fvec).
 	call he_h_cx_fvec(fvec, ieq_cell%kcx_He0_Hp, ieq_cell%kcx_Hep_H0,    &
 	                  n_hi, n_hii, n_hei, n_heii, -1.0d0)
+
+	! The transported ionization fractions, where the flow carries them
+	! and not this cell's local balance (ion_residual_core).
+	call impose_transported_ionization_fractions(ieq_cell, x, fvec)
 
 	return
 

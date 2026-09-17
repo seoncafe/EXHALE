@@ -76,7 +76,10 @@ ATES model.
   CO are transported by default (`Molecular carrier transport`), an
   implicit diffusion-advection solve coupled to their chemistry. A stationary
   solve can take those balances as its own unknowns (`Coupled carrier solve`,
-  default off); on a molecular configuration that needs
+  three-valued: `False` by default, `True`, or `On stall`, which runs the
+  alternation and hands the state to the coupled block at the pass where the
+  alternation gives up; a word the key has no meaning for stops the run); on a
+  molecular configuration that needs
   `Molecular carrier transport: True` and is refused at startup without it,
   because an eliminated H2 content is one the local equilibrium cannot
   determine and the stationary residual is then not a function of its
@@ -103,7 +106,17 @@ ATES model.
   a photon spends comes back to the GAS through the dissociative recombination
   of H3+ and H2+, not out of it as the Lyman photon of a radiative
   recombination, and the code now deposits it -- 81 percent of the total
-  heating rate at the base of a converged hot Uranus
+  heating rate at the base of a converged hot Uranus. Each channel deposits
+  what its measured product state leaves to translation and no more: the
+  dissociative recombinations of H2+ and HeH+ put one H atom in n = 2 and
+  return 0.749 and 1.554 eV to the gas, the H3+ recombination leaves 2.4795 eV
+  as internal energy of the H2 fragment, and the three-body association's
+  4.478 eV branches through the vibrational quench fraction, which is formed
+  from the all-level radiative rate of the 302-level ladder against published
+  collisional rates for each of the three colliders H, H2 and He. The
+  association itself uses the collider-resolved rate coefficient, not the
+  M = H2 coefficient on the total density. `EXHALE_REACTION_HEAT_RECIPIENTS=0`
+  restores the older prompt-deposit behavior for comparison
 - Diffusive separation of helium and metals: hydrogen and helium are
   transported as a two-component mixture, with bulk advection, binary
   diffusive settling in the computed ambipolar field, and an optional eddy
@@ -113,8 +126,14 @@ ATES model.
 
 **Hydrodynamics and solvers**
 
-- Second-order marching with PLM or WENO3 reconstruction and HLLC fluxes,
-  usable as a two-stage PLM -> WENO3 sequence
+- Second-order marching with PLM or WENO3 reconstruction and a stated
+  interface flux (`Numerical flux:` is mandatory; `HLLC`, `ROE` or `LLF`),
+  usable as a two-stage PLM -> WENO3 sequence. `Low Mach velocity jump:`
+  (default off) scales the Roe branch's velocity jump by `min(Ma, 1)` after
+  Rieper (2011); it is kept for study and is NOT recommended on a
+  near-hydrostatic column, where it was measured to remove the damping of the
+  odd-even velocity mode at exactly the faces that mode lives on and to prevent
+  a solve unmodified Roe completes
 - Jacobian-free Newton-Krylov steady-state solver with PTC warm-up, SER ramp,
   a non-monotone (Grippo) line search and a scaled trust region. The
   stationary system carries a row and an unknown for every transported
@@ -173,7 +192,7 @@ ATES model.
   `EXHALE_TRANSIT_*` overrides in effect, so a curve says what it stands on
 - Python loaders (`examples/exhale_io.py`) driven by the `# columns` schema
   header every output file carries; a bitwise regression harness over a
-  sixteen-case physics matrix (`make check`); and 25 assertion suites under
+  sixteen-case physics matrix (`make check`); and 33 assertion suites under
   `src/tests/` plus three standalone test programs (`make test`), which print
   one `PASS|FAIL <name> measured= reference= tol=` line per assertion
 - A restart is a contract, not a file copy. Both state files carry a
@@ -181,11 +200,18 @@ ATES model.
   constants, twenty option switches, physical time, source), and a load whose
   grid, reservoir, constants or options disagree with the input is refused by
   name rather than silently accepted. `Restart intent:` says what the loaded
-  state is (`trajectory`, `relaxation`, or `stationary`, the last entering the
-  steady solver with no time step), and `Restart option change:` names the
+  state is (`trajectory`, `relaxation`, `stationary`, which enters the steady
+  solver with no time step, or `stationary evaluate`, which measures the state
+  and takes no step at all and writes the advection-corrected profiles and the
+  mass-loss line from that measurement), and `Restart option change:` names the
   option tokens a deliberate ladder is allowed to differ in. A file with no
   block is legacy, loaded as before and marked `provenance unknown`, and that
-  mark is inherited by everything the run writes
+  mark is inherited by everything the run writes. The two files state the mass
+  density twice -- the `rho` column, and the species densities that weigh it --
+  and the conserved variable is the authority: the density is read from its own
+  column and the loaded species are projected onto it, so the state a restart
+  evaluates is the state the file names to the last bit, whatever mass closure
+  the written composition carries. The departure is reported on every restart
 - The advection-corrected `_adv` profiles the analysis and transit tools read
   say row by row what they are: two validity fields, `adv_T_status` and
   `adv_comp_status`, for the temperature and the composition separately, and
@@ -403,4 +429,4 @@ schemas, convergence recipes, post-processing) is in
 
 Kwang-Il Seon (KASI / UST)
 
-Last updated: 2026-09-13 08:23
+Last updated: 2026-09-17 15:06 KST

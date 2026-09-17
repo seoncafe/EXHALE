@@ -143,7 +143,7 @@
 	                             ! that owns them, and rebuilds them through
 	                             ! the routine that owns that
 	                             set_mol_coeffs,                           &
-	                             mk9, mk10, mk13, mk17, mk20, mk23
+	                             mk9, mk10, mk13, mk17, mk23
 	use Cooling_Coefficients, only: f_penning_HeI23S
 	use System_HeH_mol_metals, only: set_mol_metal_turnover_rates
 	use System_HeH_metals, only: met_nelem, met_ntot, met_g0, met_g1,      &
@@ -878,7 +878,7 @@
 	! The transported ionization state owns the H+ partition of the cell:
 	! the fraction system this continuation is judged against replaces the
 	! H+ balance row by the constraint x(1) = x_hp_fix
-	! (System_HeH_mol_metals.f90 282-290), so solving that row here as a
+	! (impose_transported_ionization_fractions), so solving that row as a
 	! reaction row would return the LOCAL photoionization/recombination root
 	! and be measured against a row it was never asked to satisfy.
 	if (hp_is_fixed) species_fixed(is_HII) = .true.
@@ -1882,8 +1882,8 @@
 			-lam*ieq_cell%P_HeII*sden(is_HeII))
 		call add_term(lbl, val, nt, 'collion He+',                     &
 			-ieq_cell%a_ion_HeII*n_e*sden(is_HeII))
-		call add_term(lbl, val, nt, 'R17+R20+R23 He+ + H2',            &
-			-(mk17 + mk20 + mk23)*sden(is_HeII)*sden(is_H2))
+		call add_term(lbl, val, nt, 'R17+R23 He+ + H2',                &
+			-(mk17 + mk23)*sden(is_HeII)*sden(is_H2))
 		! D1 He+ + CO -> C+ + O + He (RATE22 4068), the He+ loss the row
 		! of mol_heh_rows carries since B3b-CO2; n_co is the cell's CO
 		! background density (zero unless the oxygen chemistry is on).

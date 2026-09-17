@@ -1,5 +1,8 @@
 #!/bin/bash
 # ONE STATE PER OUTPUT FILE.  Two statements, each with its own run:
+#   0. the cool column of Hydro_ioniz.txt is the cooling of the state written
+#      beside it, recomputed channel by channel from (T, rho, f_sp) into
+#      Cooling_breakdown.txt (item L20);
 #   1. the heat column of Hydro_ioniz.txt is the heat the channel breakdown
 #      of the same run adds up to (the '# coupling:' header names the physics
 #      that produced it);
@@ -90,7 +93,8 @@ if [ $rc -ne 0 ] && [ $rc -ne 2 ]; then
    echo "     see $WORK/run.log"
    exit 1
 fi
-for f in output/Hydro_ioniz.txt output/Heating_breakdown.txt; do
+for f in output/Hydro_ioniz.txt output/Heating_breakdown.txt \
+         output/Cooling_breakdown.txt; do
    if [ ! -s "$WORK/$f" ]; then
       echo "FAIL output_state_consistency_files measured=missing_$f reference=written tol=0"
       exit 1
@@ -150,7 +154,47 @@ tol = 1.0e-6
 ok = worst <= tol
 print("%s heat_column_matches_breakdown_total measured=%.6e reference=%.6e "
       "tol=%.2e" % ("PASS" if ok else "FAIL", worst, 0.0, tol))
-sys.exit(0 if ok else 1)
+
+# THE SAME STATEMENT FOR THE COOLING, which nothing asserted until item L20.
+#
+# The two columns are not guarded the same way by construction, and that is
+# why this row exists.  Heating_breakdown.txt is WRITTEN FROM the channel
+# array the sweep filled (heat_channel_state), so the heat column and that
+# file cannot disagree by more than the copy; Cooling_breakdown.txt RECOMPUTES
+# every channel from the written (T, rho, f_sp) through eval_cool, so the
+# comparison below is a real statement about the state: it says that the cool
+# column of the file is the cooling of the state written beside it.
+#
+# It caught a stale fixture the first time it was applied: the pinned pair
+# backup/regression/wasp_full_newton/IC/, written on 2026-09-08 by an earlier
+# code generation, carries a cool column standing at 1.3 to 2.9 times the
+# cooling of its own state while its heat column reproduces exactly
+# (docs/lhs1140b_stationary_L19_L20_20260915.md).  Every state the current
+# code writes agrees to between 3.4e-15 and 3.0e-10, the documented one-sweep
+# lag of the temperature; the tolerance is the same 1e-6 the heating row uses.
+cbrk = work + "/output/Cooling_breakdown.txt"
+c = np.loadtxt(cbrk, comments="#")
+if c.shape[0] != h.shape[0]:
+    print("FAIL cool_column_rows measured=%d reference=%d tol=0"
+          % (c.shape[0], h.shape[0]))
+    sys.exit(1)
+cool = h[lo:hi, 6]
+cool_total = c[lo:hi, 3]
+cscale = np.maximum(np.abs(cool), np.abs(cool_total))
+cgood = cscale > 0.0
+crel = np.zeros_like(cscale)
+crel[cgood] = np.abs(cool[cgood] - cool_total[cgood]) / cscale[cgood]
+cratio = np.full_like(cscale, np.nan)
+cnz = cool != 0.0
+cratio[cnz] = cool_total[cnz] / cool[cnz]
+print("  cool_total/cool over the %d physical cells: median %.6f  min %.6f"
+      "  max %.6f" % (hi - lo, np.nanmedian(cratio), np.nanmin(cratio),
+                      np.nanmax(cratio)))
+cworst = float(np.max(crel))
+cok = cworst <= tol
+print("%s cool_column_matches_breakdown_total measured=%.6e reference=%.6e "
+      "tol=%.2e" % ("PASS" if cok else "FAIL", cworst, 0.0, tol))
+sys.exit(0 if (ok and cok) else 1)
 PY
 rc1=$?
 

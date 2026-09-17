@@ -560,9 +560,16 @@
       ! The inner ghosts of a carrier no handoff states carry the base
       ! cell's own partition, which is what carrier_mass_fractions writes
       ! for the stages and what carrier_face_mass_fraction writes for the
-      ! row.  Writing it here is what makes the two comparable.
+      ! row.  The outer ghosts carry the outflow continuation of cell N,
+      ! which is the boundary rule carrier_face_mass_fraction states for
+      ! the row.  Writing both here is what makes the two comparable: what
+      ! this row compares is the two forms of the TERM, on one state with
+      ! one boundary rule, and not the boundary rule itself.
       do j = 1-Ng, 0
          Ycar(j,1) = Ycar(1,1)
+      enddo
+      do j = N+1, N+Ng
+         Ycar(j,1) = Ycar(N,1)
       enddo
 
       call carrier_advective_divergence(fc, msum, Frho, adv, advmag)

@@ -16015,8 +16015,8 @@ soon as the steady solver was entered, at the first residual evaluation
 after the `(JFNK) below r_esc` line, whenever `OMP_NUM_THREADS` was greater
 than one. The identical run on one thread did not crash.
 `OMP_STACKSIZE=1G` changed nothing, so it was not the size of a thread
-stack. Reproduced on `backup/regression/armD_D2_newton` (8 threads), on the
-same case with the large stack, and on `armD_D2_LW_newton` (6 threads).
+stack. Reproduced on `backup/regression/heh_1_newton` (renamed 2026-09-16 from `armD_D2_newton`; mapping in `docs/named_case_audit.md` section 6) (8 threads), on the
+same case with the large stack, and on `heh_1_lw_newton` (renamed 2026-09-16 from `armD_D2_LW_newton`) (6 threads).
 
 **The cause is one bin selector: `src/modules/radiation/ionization_equilibrium.f90`,
 the `residual_decade` expression at line 2195 as it stood.** Rebuilt with
@@ -16078,7 +16078,7 @@ diagnostic counters; no physics reads them.
 
 **Verification, three things.**
 
-1. *The reproduction, 8 threads.* `armD_D2_newton` now enters the steady
+1. *The reproduction, 8 threads.* `heh_1_newton` now enters the steady
    solver, runs its JFNK iterations to the no-descent abort, exits
    `info=2` (this case does not converge; the criterion here is the absence
    of the crash) and finishes the run.
@@ -16106,14 +16106,14 @@ increment it and reset it. The acceptance statistics (`ieq_acc_n`,
 `ieq_acc_resmax`, `ieq_hist_conv` / `ieq_hist_uncv`, the constrained-solve
 totals and the print budget, lines 203-210 and 1655-1664) are accumulated
 the same way, so the end-of-run report is dominated by states the run never
-adopted. Measured on `armD_D2_newton`: not one non-root
+adopted. Measured on `heh_1_newton`: not one non-root
 acceptance in the 2002 marching steps before the hand-off, and 18339 over
 the JFNK phase and the eight marching steps that followed it, largest
 residual 1.74e+97, with 18373 cells promoted to the constrained
 continuation solve of which 34 were accepted.
 
 *The pathological case is not serial-versus-parallel byte-identical in its
-marching phase either.* `armD_D2_newton` at 1 and at 8 threads diverges in
+marching phase either.* `heh_1_newton` at 1 and at 8 threads diverges in
 the last bit at step 1267, well before the steady solver is reached. It is
 reproducible at each thread count and it is present in the code as it stood
 before this section (built with the same default flags), so it is not
@@ -16271,7 +16271,7 @@ recomputation at the end of `ioniz_eq` that reconciles the two is gated on the
 network being solved, so with the network off it never fires and the base ghost
 pressure `(ntot_bc + dp_bc) T0` sits on gas that counts one particle per
 nucleus. **The isothermal lower boundary is then not isothermal: it sits at
-`ntot_bc x T0`.** Measured on `backup/regression/armD_D1`, `ntot_bc = 0.768722`
+`ntot_bc x T0`.** Measured on `backup/regression/molecular_base_no_chemistry` (renamed 2026-09-16 from `armD_D1`), `ntot_bc = 0.768722`
 and the ghost is at 876.34 K where `Equilibrium temperature: 1140.0` was asked
 for. Section 11.5-C of `docs/supersonic_molecular_base.md` had already written
 down the required response -- *"the code must instead refuse a mismatch between
@@ -16285,7 +16285,7 @@ requested `T0`, and the two ways out: turn the network on so the H2 the particle
 count assumes is actually carried, or drop `Molecular base: True` and
 `q_H2_base` if the base is meant to be atomic.
 
-**What the refusal invalidates.** `backup/regression/armD_D1` (a diagnostic case,
+**What the refusal invalidates.** `backup/regression/molecular_base_no_chemistry` (a diagnostic case,
 input deliberately left as it was so the refusal reproduces there) and 30
 HD 209458 b VULCAN handoff runs under `vulcan_work/`, all at `T0 = 1450` K:
 
@@ -16322,7 +16322,7 @@ counters, and it is zero on every case measured here.
    `wasp_full` (He 2^3S on, the TR branch of the routine), `wasp_he23off` (the
    atomic branch) and `lower_profile`. `Hydro_ioniz.txt` and `Ion_species.txt`
    identical to the goldens in all three.
-2. **The case, 12000 steps** (`backup/regression/armD_D2`, the hot Uranus at
+2. **The case, 12000 steps** (`backup/regression/heh_1_12k` (renamed 2026-09-16 from `armD_D2`), the hot Uranus at
    He/H = 1 with `q_H2_base 0.300861`, `OMP_NUM_THREADS=1`): base inflow
    subsonic throughout at max Mach 8.64e-2, zero energy-floor activations, zero
    activations of the new counter, `log10 Mdot = 10.91`. The first physical cell
@@ -16383,7 +16383,7 @@ marching loop.
 The species fractions did *not* leak -- `jv_product` and
 `build_banded_jac_full` restore `f_sp` from a base copy before every probe,
 and the line search adopts `f_sp_j` only for an accepted trial. The counters
-did. Measured on `backup/regression/armD_D2_newton` at 8 threads: not one
+did. Measured on `backup/regression/heh_1_newton` at 8 threads: not one
 non-root acceptance in the 2002 marching steps before the hand-off, and
 18,339 over the JFNK phase and the eight marching steps after it, largest
 residual 1.74e+97 -- an end-of-run report dominated by states the run never
@@ -16500,7 +16500,7 @@ invented:
   iteration. This is not cosmetic: the non-monotone test compares a trial
   against the *worst* merit of the last five iterates, so `Ytry = Y` passes it
   whenever the current iterate is not that worst one -- measured on
-  `armD_D2_newton`, consecutive outer iterations with `gm = 0` were being
+  `heh_1_newton`, consecutive outer iterations with `gm = 0` were being
   recorded as accepted steps at `lam = 1`, resetting the no-descent counter and
   letting the solve spin to `maxit` instead of aborting. With the zero step
   rejected the solve reaches its stagnation abort, which is the honest
@@ -16586,7 +16586,7 @@ in all six and the largest relative profile change is 2.0e-2. Their goldens are
 refreshed at the end of the block, not here.
 
 **The contamination itself, measured on the old pathological restart.** The
-`backup/regression/armD_D2_newton` state -- the pre-section-120 pathology, a
+`backup/regression/heh_1_newton` state -- the pre-section-120 pathology, a
 state that the code no longer produces -- is what defect (a) was measured on,
 at 8 threads. Old code, one report for the whole run: 20,704 non-root
 acceptances under the relaxation amnesty, largest residual 1.01e+02, longest
@@ -16642,7 +16642,7 @@ on it.
   He/H = 1 solve the repair is a no-op: all three JFNK phases end on an
   accepted trial with no best-iterate restore, so the background the solver was
   already leaving matched the adopted state in all 504 cells. On the failing
-  path it is not: restarted on the old `armD_D2_newton` state, which ends
+  path it is not: restarted on the old `heh_1_newton` state, which ends
   `info = 2` after the twelve no-descent iterations, the background the old
   code left differed from the adopted state in **all 504 cells, by up to a
   factor 4 in temperature** (largest relative `T_K` difference 3.01, sum over
@@ -18880,7 +18880,7 @@ with `use_plm`/`use_weno3` flipped with it. Nothing else in any dump is this
 section's. Sixteen dumps are new cases that post-date the previous snapshot,
 and none was lost.
 **One thing the re-snapshot exposes and does not fix**: the corpus skip list
-grows from 2 to 33. The 31 added cases (`backup/regression/armD_D1` and 30
+grows from 2 to 33. The 31 added cases (`backup/regression/molecular_base_no_chemistry` and 30
 `vulcan_work/` directories) all stop in the parser with `ERROR: a molecular
 base particle count with an atomic species state` -- the section 117
 validation, reached because their `input.inp` carries a molecular base with
@@ -21814,7 +21814,7 @@ before. No repository value is renormalized -- the states that pass the new
 measure pass at the existing 1e-5 -- but **every golden that runs a steady solve
 or a residual gate moves**, and that is a deliberate refresh, not a byte-identical
 change. A run that stops on `du` alone is byte-identical: verified on
-`wasp_full`, `wasp_he23off` and every `armD_*`/`armHeH_*` snapshot case.
+`wasp_full`, `wasp_he23off` and every `heh_*` snapshot case.
 
 ### 143.4 What it does to the cases
 
@@ -21826,10 +21826,12 @@ matrix, every `backup/regression/` case carrying `Solver: Newton`, and the three
 
 **Seven goldens move; twenty-seven are byte-identical.**
 
+Case directories renamed 2026-09-16: `heh_1_x2matched` (was `arm_heh1_x2matched`); mapping in `docs/named_case_audit.md` section 6.
+
 | | cases |
 |---|---|
-| output moves | `arm_heh1_x2matched`, `newton_rsw01`, `newton_rsw05`, `ptc_warm`, `wasp_full_newton` (recorded then under both its names, `solver_newton_cold` and `wasp_full_newton`; the first was deleted 2026-09-03), `wasp_he23off_newton` |
-| byte-identical | the other 27, including every `armA_*`/`armD_*`/`armHeH_*`/`mol_*` snapshot, `lower_profile`, `wasp_full`, `wasp_he23off`, `jfnk_hd189`, `jfnk_hd189_tight` |
+| output moves | `heh_1_x2matched`, `newton_rsw01`, `newton_rsw05`, `ptc_warm`, `wasp_full_newton` (recorded then under both its names, `solver_newton_cold` and `wasp_full_newton`; the first was deleted 2026-09-03), `wasp_he23off_newton` |
+| byte-identical | the other 27, including every `heh_*`/`mol_*` snapshot, `lower_profile`, `wasp_full`, `wasp_he23off`, `jfnk_hd189`, `jfnk_hd189_tight` |
 
 The seven are exactly the cases that reach their answer through a steady solve
 or the residual gate. A run that stops on `du`, on `maxsteps`, or on a JFNK that
@@ -21837,7 +21839,7 @@ aborts before its first accepted step never reads a row scale, and is
 unchanged: that is the check on the patch.
 
 **The rate does not move.** `|d log10 Mdot| <= 0.01` on every case that
-converged under both. The single exception is `arm_heh1_x2matched` at -0.19,
+converged under both. The single exception is `heh_1_x2matched` at -0.19,
 and it is an improvement, not a discrepancy: **that case does not converge at
 all under the old measure** -- 60000 steps and no acceptance -- and under this
 one it converges, in 106 iterations against 40 and at 89 residual evaluations
@@ -21845,7 +21847,7 @@ against 1127, i.e. **twelve times cheaper**. Its A number was an unconverged
 state's rate.
 
 **No case that converged stops converging.** Three cases fail under this
-measure -- `armD_D2_LW_newton`, `armD_D2_newton`, `armD_D2_newton_bigstack` --
+measure -- `heh_1_lw_newton`, `heh_1_newton`, `heh_1_newton_bigstack` (renamed 2026-09-16 from `armD_D2_newton_bigstack`) --
 and all three fail under the old one too, at the same iteration and for the
 same reason (`no descent direction exists for the banded model at this state`,
 at flux spreads of 21 to 34, i.e. states nowhere near steady). The failure list
@@ -21860,7 +21862,7 @@ row and which cell blocks each.
 | `newton_rsw05` | 20 -> 71 | 471 -> 1594 | 3.4 |
 | `wasp_full_newton` (same case as the deleted `solver_newton_cold`) | 14 -> 44 | 338 -> 1000 | 3.0 |
 | `wasp_he23off_newton` | 11 -> 31 | 281 -> 722 | 2.6 |
-| `arm_heh1_x2matched` | did not converge -> 106 | 1127 -> 89 | **0.08** |
+| `heh_1_x2matched` | did not converge -> 106 | 1127 -> 89 | **0.08** |
 | the hot-Uranus gate rung | 5 -> 14 | 115 -> 321 | 2.8 |
 
 Two and a half to eight times the residual evaluations where the old measure
@@ -21938,7 +21940,7 @@ P51's transport-on hot Uranus stopped the same way at 4.4e-2.
 
 The census makes the same point on the other side: `du(r >= r_esc)` and the
 gate's `sp(r >= 1.2)` are uncorrelated on the states these cases stop at. Every
-`armD_*`/`armHeH_*` snapshot ends with `du` between 1.1 and 28 and a gate spread
+`heh_*` snapshot ends with `du` between 1.1 and 28 and a gate spread
 between 0.77 and 35; `wasp_full` ends at `du = 1.0e-3` and gate spread
 `3.1e-2`. Both columns are in `docs/p54g23_census.md`.
 
@@ -22132,14 +22134,14 @@ equilibrium of its own state, and two start far further:
 
 | restart file | mismatch the first sweep removes |
 |---|---|
-| `armD_D2_newton` | **7.127e-01** |
-| `armD_D2_LW_newton` | **5.000e-01** (contracts at only 0.69 per sweep; needs 54) |
+| `heh_1_newton` | **7.127e-01** |
+| `heh_1_lw_newton` | **5.000e-01** (contracts at only 0.69 per sweep; needs 54) |
 | `tpm_wasp`, `resid_golden` | 1.400e-02, 9.268e-03 |
 | `wasp_hybrid_finish` (then also recorded as `crit_warm`, the same case; deleted 2026-09-03), `ptc_warm`, `resid_*`, `tpm_hd189`, `wasp_localdt_cont`, `jfnk_hd189(_tight)` | 4.1e-03 to 6.9e-03 |
 
-The bytes move; the answer does not. `armD_D2_LW_newton` at its 2100-step cap,
+The bytes move; the answer does not. `heh_1_lw_newton` at its 2100-step cap,
 after a 50 percent composition correction: `du` 1.5463e+01 -> 1.5493e+01,
-`log10 Mdot` 8.88 both. At a matched step 40000, `armD_D2_newton` is 1.2 percent
+`log10 Mdot` 8.88 both. At a matched step 40000, `heh_1_newton` is 1.2 percent
 apart and `jfnk_hd189` 0.34 percent.
 
 ### 144.4 The temperature column belonged to a composition one sweep behind it
@@ -22289,7 +22291,7 @@ needed editing. A value `>= 1e-3` now draws a warning, not a refusal: it is a
 pre-145 number and admits states the gate exists to refuse.
 
 One case is refused that used to be accepted, and it is meant to be:
-`arm_heh1_x2matched` sits at `1.14e-04` on the conserved flux.
+`heh_1_x2matched` sits at `1.14e-04` on the conserved flux.
 
 ### 145.3 The residual norm is the maximum over cells of a cell's own scaled residual
 

@@ -155,9 +155,17 @@ the collision count per flow time.  Both are reported.
 
 ## 3. Data read
 
-`output/Hydro_ioniz_adv.txt` and `output/Ion_species_adv.txt` -- the
-**advection-corrected** profiles, the ones the post-processing and the
-transit tool consume (`--eq` selects the equilibrium pair instead).  The
+`output/Hydro_ioniz.txt` and `output/Ion_species.txt` -- the **solution**,
+because the sound speed, the Mach number, the critical point and the
+structure scale are properties of the state that satisfies the momentum
+equation, and the `_adv` pair carries that state's density and velocity
+beside a temperature from a closure the momentum equation was never
+re-solved for (`docs/lhs1140b_stationary_L10_20260913.md` section 6).
+`--adv` reads the `_adv` pair instead, which is the question to ask of the
+COMPOSITION, since the mean free path is set by how much of the gas is
+neutral.  Until 2026-09-13 the default was the `_adv` pair and the flag was
+`--eq` with the opposite sense; every table below states which pair it was
+measured on.  The
 loaders are `examples/exhale_io.py`; no second column parser was written.
 The `Ng = 2` ghost cells at each end (`parameters.f90:15`) are dropped.
 `log10 Mdot` is `exhale_io.mdot_log10`, i.e. `4 pi rho v r^2` twenty cells
@@ -234,10 +242,10 @@ one expects from the two winds' scales, not a marginal call.
 
 ### Sensitivity to which profile pair is read
 
-The `_adv` and the equilibrium profiles differ in more than the ionization
+The `_adv` and the solution profiles differ in more than the ionization
 split -- `post_process_adv` also corrects the temperature, hence the
 pressure and the sound speed -- so the diagnostic is not indifferent to the
-choice. Read on the equilibrium pair (`--eq`) instead:
+choice. Read on the solution, which is the default since 2026-09-13:
 
 | case | critical point | exobase | `Kn = 0.1` at | `Kn_bulk` at the top | max Kn |
 |---|---|---|---|---|---|
@@ -252,7 +260,8 @@ its flux, HD 209458 b is collisional through its critical point on both. The
 exobase radius does move -- the equilibrium profiles keep the far field more
 ionized, and Coulomb collisions there are far stronger than the neutral ones
 -- so an exobase radius quoted from this tool must state which pair it came
-from. The tables above are the `_adv` pair unless marked otherwise.
+from. The tables above are the `_adv` pair (`--adv`) unless marked
+otherwise.
 
 ### Kinetic scale
 

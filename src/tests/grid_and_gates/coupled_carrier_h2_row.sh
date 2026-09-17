@@ -44,6 +44,18 @@
 #      of a molecular layer, not on the coupled route itself: an element
 #      row carried in the same Newton is untouched.  Must not print the
 #      refusal.
+#   D  examples/15_molecular plus "Molecular carrier transport: True" and
+#      "Coupled carrier solve: On stall".  The third value of the key: the
+#      alternation runs first and the block takes the state from the pass
+#      at which the alternation stops approaching a joint fixed point.  It
+#      must not be refused and it must be echoed as itself, since a value
+#      silently read as False leaves an input file asking for the block and
+#      a run that never enters it.
+#   E  the same plus "Coupled carrier solve: Sometimes", a word the key has
+#      no meaning for.  Must exit 1 and name the three values.
+#   F  examples/15_molecular (H2 eliminated) plus "Coupled carrier solve:
+#      On stall".  "On stall" reaches the same block one pass later, so the
+#      eliminated-H2 refusal holds for it too.
 #
 # ASSERTIONS (five)
 #   coupled_carrier_eliminated_h2_stops      A exits 1
@@ -55,6 +67,23 @@
 #   coupled_carrier_transported_h2_ran       B took its step and wrote a
 #                                            profile
 #   coupled_carrier_element_row_starts       C does not print the refusal
+#   coupled_carrier_on_stall_starts          D is not refused
+#   coupled_carrier_on_stall_echoed          D's resolved report carries
+#                                            carrier_newton_on_stall T with
+#                                            carrier_in_newton F
+#   coupled_carrier_unknown_value_stops      E exits 1 and names the three
+#                                            values
+#   coupled_carrier_on_stall_eliminated_h2_stops
+#                                            F exits 1 on the same refusal
+#   coupled_carrier_handover_message_present the handover the outer loop
+#                                            prints is in the binary's text
+#                                            (that it FIRES is measured in a
+#                                            stalling solve, not here)
+#
+# EXPECTED BEFORE THE I2 CHANGE: RED on the five rows above.  The entry-text
+# parser reads word 4 alone and tests it against True, so "On stall" falls
+# through to False: D is not refused but is echoed as the alternation, E is
+# accepted silently, and F runs the alternation instead of refusing.
 #
 # EXPECTED BEFORE THE B5i CHANGE: RED on the first two assertions (A ran to
 # completion and printed nothing, exit 0).
@@ -84,7 +113,7 @@ for f in "$MOL/input.inp" "$ELEM/input.inp"; do
    fi
 done
 
-for d in ccA ccB ccC; do
+for d in ccA ccB ccC ccD ccE ccF; do
    rm -rf "$WORK/$d"
    mkdir -p "$WORK/$d/output"
 done
@@ -96,6 +125,14 @@ echo 'Coupled carrier solve: True'      >> "$WORK/ccA/input.inp"
 echo 'Coupled carrier solve: True'      >> "$WORK/ccB/input.inp"
 echo 'Molecular carrier transport: True'>> "$WORK/ccB/input.inp"
 echo 'Coupled carrier solve: True'      >> "$WORK/ccC/input.inp"
+cp "$MOL/input.inp"  "$WORK/ccD/input.inp"
+cp "$MOL/input.inp"  "$WORK/ccE/input.inp"
+cp "$MOL/input.inp"  "$WORK/ccF/input.inp"
+echo 'Molecular carrier transport: True'>> "$WORK/ccD/input.inp"
+echo 'Coupled carrier solve: On stall'  >> "$WORK/ccD/input.inp"
+echo 'Molecular carrier transport: True'>> "$WORK/ccE/input.inp"
+echo 'Coupled carrier solve: Sometimes' >> "$WORK/ccE/input.inp"
+echo 'Coupled carrier solve: On stall'  >> "$WORK/ccF/input.inp"
 
 run_stage() {  # run_stage <dir>; echoes the exit status
    ( cd "$WORK/$1" && OMP_NUM_THREADS=1 EXHALE_MAXSTEPS=1 "$EXE" \
@@ -106,8 +143,13 @@ run_stage() {  # run_stage <dir>; echoes the exit status
 rcA=$(run_stage ccA)
 rcB=$(run_stage ccB)
 rcC=$(run_stage ccC)
+rcD=$(run_stage ccD)
+rcE=$(run_stage ccE)
+rcF=$(run_stage ccF)
 echo "  exit status: A(H2 eliminated)=$rcA  B(H2 carried)=$rcB" \
      " C(element row, atomic)=$rcC"
+echo "  exit status: D(On stall)=$rcD  E(unknown value)=$rcE" \
+     " F(On stall, H2 eliminated)=$rcF"
 
 # ---- stage A: the refusal ----
 if [ "$rcA" -eq 1 ]; then
@@ -153,6 +195,67 @@ if [ "$nC" -eq 0 ]; then
    verdict PASS coupled_carrier_element_row_starts not_refused not_refused 0
 else
    verdict FAIL coupled_carrier_element_row_starts refused not_refused 0
+fi
+
+# ---- stage D: the third value of the key ----
+nD=$(grep -c 'is not a value this key takes' "$WORK/ccD/run.log")
+if [ "$nD" -eq 0 ] && [ "$rcD" -ne 1 ]; then
+   verdict PASS coupled_carrier_on_stall_starts not_refused not_refused 0
+else
+   verdict FAIL coupled_carrier_on_stall_starts refused not_refused 0
+   tail -n 5 "$WORK/ccD/run.log" | sed 's/^/     /'
+fi
+# The value has to be echoed as ITSELF: the block from the first pass and
+# the handover on a stall are different runs, and a report that shows only
+# carrier_in_newton cannot tell them apart.
+onstall=$(awk '/^carrier_newton_on_stall/ { print $2 }' \
+          "$WORK/ccD/EXHALE_resolved.out" 2>/dev/null)
+innewton=$(awk '/^carrier_in_newton/ { print $2 }' \
+          "$WORK/ccD/EXHALE_resolved.out" 2>/dev/null)
+if [ "${onstall:-}" = T ] && [ "${innewton:-}" = F ]; then
+   verdict PASS coupled_carrier_on_stall_echoed "on_stall=T,in_newton=F" \
+           "on_stall=T,in_newton=F" 0
+else
+   verdict FAIL coupled_carrier_on_stall_echoed \
+           "on_stall=${onstall:-unread},in_newton=${innewton:-unread}" \
+           "on_stall=T,in_newton=F" 0
+fi
+
+# ---- stage E: a word the key has no meaning for ----
+missE=""
+grep -q 'is not a value this key takes' "$WORK/ccE/run.log" || missE="$missE reason"
+grep -q 'False'    "$WORK/ccE/run.log" || missE="$missE false"
+grep -q 'True'     "$WORK/ccE/run.log" || missE="$missE true"
+grep -q 'On stall' "$WORK/ccE/run.log" || missE="$missE on_stall"
+if [ "$rcE" -eq 1 ] && [ -z "$missE" ]; then
+   verdict PASS coupled_carrier_unknown_value_stops "exit_${rcE}_all_named" \
+           "exit_1,false,true,on_stall" 0
+else
+   verdict FAIL coupled_carrier_unknown_value_stops \
+           "exit_${rcE}_missing:${missE# }" "exit_1,false,true,on_stall" 0
+   tail -n 5 "$WORK/ccE/run.log" | sed 's/^/     /'
+fi
+
+# ---- stage F: "On stall" reaches the same block, so the same refusal ----
+if [ "$rcF" -eq 1 ] && \
+   grep -q 'needs the molecular carriers transported' "$WORK/ccF/run.log"; then
+   verdict PASS coupled_carrier_on_stall_eliminated_h2_stops "exit_$rcF" \
+           exit_1 0
+else
+   verdict FAIL coupled_carrier_on_stall_eliminated_h2_stops "exit_$rcF" \
+           exit_1 0
+   tail -n 5 "$WORK/ccF/run.log" | sed 's/^/     /'
+fi
+
+# ---- the handover the outer loop prints ----
+# WHAT THIS ROW IS AND IS NOT.  It asserts that the sentence the outer loop
+# prints at the handover exists in the binary; whether it FIRES is a
+# property of a solve that stalls, which takes tens of outer passes and is
+# measured in the item's own runs, not in a startup gate.
+if strings "$EXE" | grep -q 'HANDOVER to the coupled block'; then
+   verdict PASS coupled_carrier_handover_message_present present present 0
+else
+   verdict FAIL coupled_carrier_handover_message_present absent present 0
 fi
 
 exit $(( n_fail > 0 ))

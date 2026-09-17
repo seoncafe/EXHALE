@@ -55,7 +55,8 @@ of them the same statement has to hold: the species is handed its density, is
 therefore not an unknown, and its own balance row is not a row of the system.
 For H+ the reason is sharp: the fraction system the continuation's candidate
 is judged against replaces the H+ balance row by the constraint
-`x(1) = x_hp_fix` (`System_HeH_mol_metals.f90` 282-290), so a continuation
+`x(1) = x_hp_fix` (`impose_transported_ionization_fractions`,
+`ion_residual_core.f90`), so a continuation
 that solves the local H+ balance instead returns a composition measured
 against a row it was never asked to satisfy.
 

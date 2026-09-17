@@ -70,8 +70,8 @@
       ! (Koskinen et al. 2022, ApJ 929, 52, Eq. 11, quoting Visscher et al.
       ! 2006; read from the published paper). p in bar, T in K.
       !
-      ! THE LIMITS OF THE FIT ITSELF, which the asymptotic guards must agree
-      ! with. u = -23672/T - log10(p) + 6.2645 runs to -infinity as the gas
+      ! THE LIMITS OF THE FIT ITSELF, which the expression must reach on its
+      ! own. u = -23672/T - log10(p) + 6.2645 runs to -infinity as the gas
       ! gets COLD and to +infinity as it gets HOT, and the expression
       !     q = (1.9845 + 10^u - sqrt(10^u (3.9690 + 10^u)))/2.3670
       ! therefore tends to
@@ -98,33 +98,55 @@
       ! than capping it (section 117 of docs/Update_EXHALE.*, which is where
       ! the silent cap that used to hide this was removed).
       !
-      ! Until 2026-08-31 both guards were INVERTED against those limits:
-      ! u > 30 returned 1.0 ("fully H2") where the fit gives 0, and u < -30
-      ! returned 0.0 ("fully atomic") where the fit gives 0.8384 -- a
-      ! discontinuity of 0.84 in mixing ratio at the guard's own threshold.
-      ! Only the cold branch is reachable (u < -30 is T <~ 529 K at
-      ! 1e-6 bar; u > 30 needs p < 1e-24 bar), and there it handed every
-      ! sub-529 K cell a fully ATOMIC "dense molecular limit" -- the seed of
-      ! the constrained continuation solve and of the molecular-basin retry
-      ! of ioniz_eq, i.e. the two places that choose which basin a cold cell
-      ! is solved from.
+      ! AN ASYMPTOTIC BRANCH ON EITHER SIDE IS A DISCONTINUITY AT ITS OWN
+      ! THRESHOLD AND THERE IS NONE HERE. A cold cut at u < -30 (T <~ 529 K at
+      ! 1e-6 bar, the reachable side) would hand the gas the fully ATOMIC
+      ! value where the fit gives 0.8384, a step of 0.84 in mixing ratio, and
+      ! it would hand it to the two places that choose which basin a cold cell
+      ! is solved from: the seed of the constrained continuation solve and the
+      ! molecular-basin retry of ioniz_eq. A hot cut at u > 30 (p < 1e-24 bar)
+      ! would return 0 where the fit gives 8.3e-31.
       !
-      ! The cold branch is now left to the expression, which reaches the
-      ! limit on its own: 10^u underflows to zero far below the threshold and
-      ! the formula returns 1.9845/2.3670 exactly. Only the overflow side
-      ! needs a guard, and it returns the fit's hot limit.
+      ! The cold side is left to the expression, which reaches the limit on
+      ! its own: 10^u underflows to zero far below any threshold and the
+      ! formula returns 1.9845/2.3670 exactly.
+      !
+      ! THE FORM THE FIT IS EVALUATED IN. Written as the fit states it,
+      !     q = (A + t - sqrt(t (2A + t)))/B,   A = 1.9845, B = 2.3670,
+      ! the two differenced terms both grow like t while their difference
+      ! falls like A^2/(2t), so the difference drops below ulp(t) = t eps at
+      !     t = A/sqrt(2 eps) = 9.4e7,
+      ! and above that the value returned is the rounding of t, quantized in
+      ! units of ulp(t)/B. On the LHS 1140 b column (T 418 to 5838 K,
+      ! p 1.6e-15 to 9.5e-7 bar) that form is wrong by more than 1 percent in
+      ! 186 of 500 cells, returns exactly zero in 164 of them where the fit is
+      ! positive, and is 1.3e4 times the fit's value at its worst (MEASURED,
+      ! docs/lhs1140b_stationary_L7d_20260914.md section 2).
+      !
+      ! Multiplying by the conjugate,
+      !     A + t - sqrt(t (2A + t)) = A^2/((A + t) + sqrt(t (2A + t)))
+      ! exactly, and the right-hand side sums two positive terms instead of
+      ! differencing two large ones. It is the same function: the cold limit
+      ! is A/B = 0.83840304182509... to the last bit, it agrees with the form
+      ! above wherever that form is not cancelling, and it carries the fit's
+      ! own A^2/(2Bt) hot tail down to underflow. No asymptotic branch is
+      ! needed on either side. The square root is taken as sqrt(t) sqrt(2A+t)
+      ! so that the product under it cannot overflow at the largest t the
+      ! exponent allows, and min(u, 300) keeps t itself finite; q there is
+      ! 6.6e-301 and the fit is long since zero to any use it is put to.
+      ! The form is positive and falls monotonically from A/B = 0.8384, so
+      ! the ceiling below is a statement of the range and never fires, and no
+      ! floor at 0 is needed at all. The ceiling the ELEMENT ratio imposes,
+      ! 0.5/(0.5 + He/H), is a different statement and is the callers'.
       double precision function q_h2_equilibrium(p_bar, T) result(qh2)
       real*8, intent(in) :: p_bar, T
       real*8 :: u, tenu
-      u = -23672.0d0/T - log10(max(p_bar, 1.0d-30)) + 6.2645d0
-      if (u .gt. 30.0d0) then
-         qh2 = 0.0d0                                          ! hot -> atomic
-      else
-         tenu = 10.0d0**u
-         qh2  = (1.9845d0 + tenu - sqrt(tenu*(3.9690d0 + tenu)))/2.3670d0
-         if (qh2 .lt. 0.0d0) qh2 = 0.0d0
-         if (qh2 .gt. 1.0d0) qh2 = 1.0d0
-      endif
+      u    = -23672.0d0/T - log10(max(p_bar, 1.0d-30)) + 6.2645d0
+      tenu = 10.0d0**min(u, 300.0d0)
+      qh2  = 1.9845d0**2                                                 &
+           / (2.3670d0*((1.9845d0 + tenu)                                &
+              + sqrt(tenu)*sqrt(3.9690d0 + tenu)))
+      if (qh2 .gt. 1.0d0) qh2 = 1.0d0
       end function q_h2_equilibrium
 
       ! ------------------------------------------------------------------ !

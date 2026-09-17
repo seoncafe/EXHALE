@@ -1,6 +1,11 @@
-# LHS 1140 b: the two solutions of record
+# LHS 1140 b: the three solutions of record
 
-The two converged winds that carry the memo's headline result
+**2026-09-13: the runs these three cases were drawn from moved to
+`../archive_20260830/exhale/...` and the paths below follow them. They
+predate the code changes listed in `../MODELS.md` section 5 and are
+superseded by `../models/`; read `../MODELS.md` for the tree of record.**
+
+The three converged winds that carry the memo's headline result
 (`docs/lhs1140b_exhale_vs_pwinds.pdf`): the He I 10830 equivalent width of
 LHS 1140 b is reproduced at a very different helium abundance depending on
 what is placed at the lower boundary. The two crossing cases are solved **at
@@ -13,7 +18,7 @@ composition-resolved secondary-ionization branching of
 `docs/Update_EXHALE_stage1.md` sections 94-96, adopted after the crossings were
 solved, and at these helium-rich compositions it deepens the line by 0.7-1.2
 per cent. All five crossings have since been re-solved on it
-(`../exhale/crossings_j96/results.txt`), and how far each moved depends on
+(`../archive_20260830/exhale/crossings_j96/results.txt`), and how far each moved depends on
 how steep its own ladder is: the scalar-base one goes from 1.6261 to 1.6108,
 0.9 per cent, while the flux-closure one goes from 9.048 to 8.212, 9.2 per
 cent -- not because the closed solution feels the branching more strongly,
@@ -87,5 +92,5 @@ re-synthesizes the spectra. For the equivalent width quoted above, set
 
 These two directories are the kept representatives of the full run set
 (ladders, crossings, diagnosis runs), which is local-only
-(`LHS1140b/exhale/`, gitignored) and reproduces from the scripts and
+(`LHS1140b/archive_20260830/exhale/`, gitignored) and reproduces from the scripts and
 `results.txt` files it carries.

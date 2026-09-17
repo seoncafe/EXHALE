@@ -1,0 +1,370 @@
+%% EXHALE: how the well-balanced reconstruction is tied to the hydrostatic
+%% condition, and why it is what makes the LHS 1140 b base layer solvable.
+%% Written 2026-09-13 from src/modules/states/Reconstruction.f90, the design
+%% memo docs/well_balanced_flux_difference_design_20260910.md and the
+%% measurements of docs/lhs1140b_stationary_L5c_20260913.md.
+%% Author: Kwang-Il Seon
+\documentclass[english,a4paper]{my_memo}
+\synctex=1
+\usepackage{booktabs}
+\usepackage{amsmath}
+\usepackage[authoryear,round]{natbib}
+\usepackage{babel}
+\emergencystretch=3em
+
+\title{The well-balanced reconstruction and the hydrostatic condition}
+\author{Kwang-Il Seon}
+\date{Last updated: \docmoddate}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+The \texttt{Well balanced:\ True} option of EXHALE is the reconstruction of
+\citet{Kappeli2016}: every cell carries its own hydrostatic equilibrium, the
+reconstruction and the Riemann solver act on the departure from it, and the
+momentum source is the face-pressure difference of that same equilibrium, so
+that at a discrete hydrostatic equilibrium the flux difference and the source
+cancel in the algebra and not in floating point. This memo states the
+connection term by term, maps it onto the code, and records why it is the one
+change that lets the LHS\,1140\,b base layer (Mach $2.7\times10^{-7}$) reach a
+certified stationary state: the ordinary reconstruction's truncation error in
+the face pressure enters the HLLC contact speed as a spurious velocity one to
+three decades above the physical one, and no solver can remove a residual the
+scheme itself manufactures. Every number is measured on the tree of
+2026-09-13 unless marked otherwise.
+\end{abstract}
+
+\section{Background: well-balanced schemes}
+
+A scheme is called well balanced for a given steady state when its discrete
+operator vanishes exactly on the discrete counterpart of that state, so that
+the state is preserved to rounding and small departures from it are resolved
+at the scheme's accuracy instead of being buried under the truncation error
+of two large cancelling terms. The idea entered Godunov-type methods with
+\citet{LeVeque1998}, who noted that a high-resolution method applied to a
+balance law with a source term produces spurious waves near a quasi-steady
+state unless the flux gradient and the source are discretized so as to cancel,
+and proposed a quasi-steady wave-propagation algorithm that splits the cell
+so that the source balances the flux difference inside it.
+\citet{Botta2004} treated the case that matters here, nearly hydrostatic
+flows of an atmosphere, where the pressure gradient and gravity are each many
+orders larger than their difference: they showed that the standard
+finite-volume discretization loses its accuracy in that regime and built a
+well-balanced method around a local hydrostatic reconstruction of the pressure.
+
+\citet{Kappeli2014} gave a well-balanced finite-volume scheme for the Euler
+equations with a general gravitational potential by defining, inside each
+cell, a local equilibrium at the cell's own specific entropy and integrating
+the mechanical balance $h + \phi = {\rm const}$ (their eq.\ 2.7); density and
+pressure are both extrapolated to the faces from that isentropic equilibrium
+and the momentum source is the face-pressure difference of the same
+equilibrium (their eqs.\ 2.14 and 2.26), which their theorem 1 shows to be a
+second-order consistent discretization of $-\rho\,d\phi/dx$. Its limitation
+is that the equilibrium preserved exactly is the isentropic one.
+\citet{Kappeli2016} removed that limitation: the equilibrium is again the
+mechanical balance, but the subcell integral is taken with a constant density
+inside the cell, so no thermodynamic variable other than the cell's own
+pressure and density enters, and ``the reconstruction preserves discrete
+hydrostatic equilibria with arbitrary temperature or entropy stratification''
+(their section 2.1.1). Density and velocity keep the standard reconstruction,
+the pressure is reconstructed as a departure from the local equilibrium, and
+the only requirement on the numerical flux is that it resolve a stationary
+contact discontinuity exactly. That is the variant EXHALE implements
+(decision 23 of 2026-09-10; \texttt{docs/well\_balanced\_flux\_difference\_design\_20260910.md}).
+Provenance: the design memo of 2026-09-10 read the authors' ETH SAM
+research reports (2015-40 and 2013-05, the submitted texts); the published
+articles (\texttt{references/Kappeli\_2016A\&A\_587\_A94.pdf},
+\texttt{references/Kappeli\_2014JCP\_259\_199.pdf}) were obtained on
+2026-09-13 and every equation number quoted here and in the design memo was
+checked against them: eqs.\ (10), (11), (13) to (18) and (24) to (27) of the
+2016 article, eqs.\ (2.7), (2.9) to (2.14), (2.23), (2.25), (2.26) and
+theorem 1 of the 2014 article carry the same numbers and the same content
+as in the reports, and the sentence quoted from section 2.1.1 is verbatim.
+The two papers were read in full; the other references of this section were
+consulted for their scope and are cited for it.
+
+Related constructions exist. \citet{Chandrashekar2015} give a second-order
+well-balanced finite-volume scheme for the Euler equations with gravity that
+preserves isothermal and polytropic hydrostatic states exactly with any
+consistent numerical flux, by reconstructing the pressure and density as
+departures from those particular equilibria. \citet{Edelmann2021} compare
+well-balanced treatments of gravity in astrophysical (stellar) hydrodynamics,
+where the same near-hydrostatic cancellation limits the accessible Mach
+number, and show on stellar models that without such a treatment the spurious
+velocities exceed the physical convective ones at low Mach number. The two
+ingredients of the EXHALE scheme that the well-balanced reconstruction leans
+on are older: the HLLC approximate Riemann solver of \citet{Toro1994}, which
+restores the contact wave the HLL solver averages out and therefore resolves a
+stationary contact exactly, and the WENO reconstruction in the efficient form
+of \citet{Jiang1996}, whose third-order variant is the production
+reconstruction of EXHALE (\texttt{Reconstruction scheme:\ WENO3}).
+
+\section{The hydrostatic condition in a finite-volume scheme}
+
+The stationary momentum equation of the wind is
+\begin{equation}
+  \frac{d}{dr}\!\left(\rho v^{2}\right) + \frac{dp}{dr}
+  = -\rho\,\frac{d\phi}{dr} - \frac{2\rho v^{2}}{r},
+  \label{eq:mom}
+\end{equation}
+and in the base layer of LHS\,1140\,b, where the flow is at Mach
+$2.7\times10^{-7}$, it reduces to the hydrostatic balance
+$dp/dr = -\rho\,d\phi/dr$ to one part in $10^{-13}$. The two terms of that
+balance are each $4.4\times10^{5}$ times the wind's momentum flux in the same
+layer (\emph{Update\_EXHALE} stage 1, section 143); the wind is their
+difference.
+
+A finite-volume scheme forms the two terms in different places. The pressure
+enters through the numerical flux at the faces, $F_{j+1/2}$, built from face
+states that a reconstruction (PLM or WENO3) extrapolates from the cell
+averages; gravity enters as a cell-centered source, $-\rho_j\,\phi'(r_j)$. The
+update of the momentum row is
+\begin{equation}
+  R_{2,j} = \frac{A_{j+1/2}F_{2,j+1/2} - A_{j-1/2}F_{2,j-1/2}}{V_j}
+            + \rho_j\,\phi'(r_j),
+\end{equation}
+and at a hydrostatic column the two contributions cancel only up to the
+truncation error of the reconstruction, of order $(\Delta r/H)^{p}$ times the
+$O(1)$ terms, $p$ being the order of the reconstruction and $H$ the pressure
+scale height. That residual is not small against the wind: on the LHS\,1140\,b
+column the WENO3 face pressure differs from the cell pressure by
+$5.7\times10^{-5}$ relative at $r = 1.001\,R_p$ (measured on the archived
+state; $7.3\times10^{-6}$ after eight $1$-$2$-$1$ smoothings of the column
+and $1.2\times10^{-7}$ on a ninth-order polynomial fit, converging at order
+$2.97$ to $3.00$ under refinement), while the stationary velocity is
+$2.7\times10^{-7}$ of the sound speed.
+
+Where that error does its damage is the HLLC flux. Its contact speed is
+\begin{equation}
+  S^{*} = \frac{p_R - p_L + \rho_L v_L (S_L - v_L) - \rho_R v_R (S_R - v_R)}
+               {\rho_L (S_L - v_L) - \rho_R (S_R - v_R)}
+        \equiv S^{*}_{\rm vel} + S^{*}_{\rm pres},
+  \qquad
+  S^{*}_{\rm pres} = \frac{p_R - p_L}{\phi_L - \phi_R},
+  \label{eq:sstar}
+\end{equation}
+and the face energy flux is $F_3 = S^{*}(E^{*} + p^{*})$. In the base cells
+of LHS\,1140\,b, $S^{*}_{\rm vel}/c_s$ is $3.4\times10^{-7}$ to
+$1.1\times10^{-6}$, the Mach number of the gas, while $S^{*}_{\rm pres}/c_s$ is
+$5\times10^{-6}$ to $9\times10^{-4}$: the pressure-jump part is one to three
+decades larger. The energy flux divergence of the base cells is then the
+divergence of a spurious velocity, and the energy row reads $O(1)$ of its own
+largest term in every cell below $1.05\,R_p$ (measured $-4.6\times10^{4}$
+times the net heating at cell 2, $+2.7\times10^{3}$ at cell 5, $-52$ at cell
+20, $+1.7$ at cell 41, where the velocity part alone is $+3.4$, $+1.1$, $+1.2$,
+$+1.5$, i.e.\ within a factor two of the stationary balance). The seed does
+not matter: three seeds whose base velocity differed by a factor $10^{4}$
+gave the same energy maximum to every printed digit. A Newton solver cannot
+remove a residual that the scheme manufactures from the pressure field alone.
+
+\section{The well-balanced reconstruction}
+
+\subsection{Each cell carries its own hydrostatic equilibrium}
+
+Within cell $j$, hold the density at the cell value $\rho_j$ and integrate the
+mechanical balance from the cell's own pressure:
+\begin{equation}
+  p_{{\rm eq},j}(r) = p_j - \rho_j\left[\phi(r) - \phi(r_j)\right].
+  \label{eq:peq}
+\end{equation}
+This is eq.\ (16) of \citet{Kappeli2016}. It states nothing about the
+temperature or the entropy, which is why it preserves an arbitrary
+stratification, and it is second-order consistent with $dp/dr = -\rho\phi'$
+in the cell width. Its two face values are the arrays \texttt{wb\_P\_up}(j)
+and \texttt{wb\_P\_dn}(j) of \texttt{hydrostatic\_equilibrium\_of\_each\_cell}
+(\texttt{src/modules/states/Reconstruction.f90}):
+\begin{align}
+  P_{\rm up}(j) &= p_j - \rho_j\left[\phi(r_{j+1/2}) - \phi(r_j)\right], \\
+  P_{\rm dn}(j) &= p_j + \rho_j\left[\phi(r_j) - \phi(r_{j-1/2})\right].
+\end{align}
+The potential is the analytic function of $r$ the code already evaluates at
+faces and centers (\texttt{Gphi\_i}, \texttt{Gphi\_c}), so the staggered
+interpolation of the paper's eq.\ (15) is not needed.
+
+\subsection{The reconstruction carries the departure}
+
+The perturbation data of cell $j$ is the neighbor's pressure measured against
+cell $j$'s equilibrium continued \emph{through the face} to the neighbor's
+center, with cell $j$'s density up to the face and the neighbor's beyond it:
+\begin{align}
+  d_{+}(j) &= (p_{j+1} - p_j) + \rho_j\,\phi_{\rm up}(j) + \rho_{j+1}\,\phi_{\rm dn}(j+1), \\
+  d_{-}(j) &= (p_{j-1} - p_j) - \rho_j\,\phi_{\rm dn}(j) - \rho_{j-1}\,\phi_{\rm up}(j-1),
+\end{align}
+with $\phi_{\rm up}(j) = \phi(r_{j+1/2}) - \phi(r_j)$ and
+$\phi_{\rm dn}(j) = \phi(r_j) - \phi(r_{j-1/2})$, and the value at the cell's
+own center identically zero. The limited slope (PLM) or the WENO3 stencil is
+applied to the triple $(d_{-}, 0, d_{+})$ exactly as it is applied to
+$(p_{j-1}, p_j, p_{j+1})$ otherwise, with the same limiter, the same smoothness
+indicators and the same volume-share coefficients, and returns two face
+departures. The face pressures handed to the Riemann solver are
+$P_{\rm up}(j) + q_L(j)$ and $P_{\rm dn}(j+1) + q_R(j)$; density and velocity
+keep their ordinary reconstruction.
+
+The discrete hydrostatic equilibrium this preserves is eq.\ (18) of the paper,
+\begin{equation}
+  \frac{p_{j+1} - p_j}{\Delta r} = -\frac{\rho_j + \rho_{j+1}}{2}\,
+  \frac{\phi_{j+1} - \phi_j}{\Delta r},
+  \label{eq:discrete_eq}
+\end{equation}
+which is exactly the statement that the two neighboring extrapolations agree
+at the shared face, $P_{\rm up}(j) = P_{\rm dn}(j+1)$: the face mismatch
+\begin{equation}
+  \delta p_{{\rm eq}}(j+1/2) = P_{\rm dn}(j+1) - P_{\rm up}(j) = d_{+}(j)
+\end{equation}
+(\texttt{wb\_dp\_eq} in \texttt{well\_balanced\_face\_departures}) vanishes on
+it. On the discrete equilibrium the perturbation data is therefore
+identically zero, the reconstruction returns the equilibrium itself, and the
+face is a stationary contact discontinuity: equal pressure on both sides and
+zero velocity. The only requirement on the flux is that it resolves one
+exactly, $F([\rho_L, 0, p], [\rho_R, 0, p]) = [0, p, 0]$, which HLLC and Roe
+do and LLF does not (the reason the key warns under \texttt{Numerical flux:\
+LLF}). Continuing cell $j$'s own density over the whole gap to the neighboring
+center instead of switching to the neighbor's beyond the face leaves data of
+size $(\rho_j - \rho_{j+1})$ times the potential difference across half a
+cell, which does not vanish on eq.\ \eqref{eq:discrete_eq}: measured, that
+form leaves $2.5\times10^{-5}$ of the momentum weight on the discrete column
+at $N = 250$ where the form above leaves $3.9\times10^{-14}$.
+
+\subsection{The source is the same equilibrium}
+
+The momentum source is no longer the cell-centered $-\rho_j\phi'(r_j)$ but
+the face-pressure difference of the cell's own equilibrium,
+\begin{equation}
+  S_{2,j} = \frac{A_{j+1/2}P_{\rm up}(j) - A_{j-1/2}P_{\rm dn}(j)}{V_j}
+  \quad\text{measured against the face pressures},
+\end{equation}
+which is a second-order consistent discretization of $-\rho\,d\phi/dr$
+\citep[theorem 1]{Kappeli2014}; in the code \texttt{Source} returns
+$S(2,j) = 0$ and the momentum row is assembled from the face pressures
+measured against the equilibrium. At the discrete equilibrium the flux
+difference and the source are then the same expression and cancel in the
+algebra; away from it the departure carries the ordinary second-order
+accuracy of the reconstruction, so the wind region is discretized as before.
+
+\subsection{What is and is not preserved}
+
+The equilibrium of eq.\ \eqref{eq:peq} holds the density constant inside a
+cell. What the scheme preserves exactly is therefore the \emph{discrete}
+equilibrium \eqref{eq:discrete_eq}, not the continuous hydrostatic solution
+$p(r)$ with its own $\rho(r)$; the two agree to second order in the cell width.
+The consequence is that the base layer of a well-balanced solution converges
+with the grid at the same order as before, and the grid convergence of the
+LHS\,1140\,b solution has not yet been measured (open in
+\texttt{docs/PLAN\_20260913\_lhs\_stationary.md}, item L5c). Nothing thermal
+is assumed: the temperature stratification of the base layer is whatever the
+energy equation returns.
+
+\section{What it did on LHS\,1140\,b}
+
+The measurements are those of
+\texttt{docs/lhs1140b\_stationary\_L5c\_20260913.md} on the reference case
+(GJ\,1132 proxy spectrum, He/H $= 1.6261$, $K_{zz} = 10^{9}$\,cm$^2$\,s$^{-1}$,
+scalar base at 226\,K and 1\,$\mu$bar), the archived 2026-08-30 solution
+mapped onto the current grid as the seed, the partitioned stationary route
+(\texttt{Restart intent:\ stationary}, \texttt{EXHALE\_PTC\_DTAU0=1.0}),
+16 threads.
+
+\begin{table}[h]
+\centering
+\caption{The hydrodynamic rows of outer pass 1 (cellwise maximum of
+$|R|$ over the row's own largest term) and the outcome of the stationary
+solve, same seed, input and binary.}
+\begin{tabular}{lcccccl}
+\toprule
+option & hydro & mass & momentum & energy & s & outcome \\
+\midrule
+none & info$=2$ & $1.08$ & $3.2\times10^{-2}$ & $0.63$ & 1325 & pass refused \\
+\texttt{Low-Mach damping:\ 2.0e-2} & info$=2$ & $1.32$ & $1.4\times10^{-2}$ & $1.24$ & 1232 & pass refused \\
+\texttt{Well balanced:\ True} & info$=0$ & $2.6\times10^{-10}$ & $1.8\times10^{-14}$ & $4.6\times10^{-9}$ & 85 & CERTIFIED at pass 8 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+With the key on, the LHS\,1140\,b atomic wind with binary H/He element
+diffusion is certified at outer pass 8 in about ten minutes (mass
+$4.5\times10^{-10}$, momentum $2.3\times10^{-13}$, energy $5.1\times10^{-9}$,
+gated element row $8.8\times10^{-6}$ of $10^{-5}$, face mass-flux spread
+$1.5\times10^{-11}$). Three seeds whose base velocities differed by a factor
+$10^{4}$ (the mapped archived state, the same with the stationary velocity
+imposed below $1.27\,R_p$, and a Bernoulli-consistent temperature) reach one
+solution: $\rho$ to $3.4\times10^{-10}$, $v$ to $2.5\times10^{-8}$, $\dot M$
+to seven digits. The element relaxation, which refused every pass without the
+key (\texttt{element\_step\_out\_of\_bounds} after 24 to 26 steps, the helium
+fraction driven to unity by a hydrodynamic state whose mass flux fell 27
+percent across the wind), reaches its fixed point in 32 steps in every pass
+with it. \texttt{Low-Mach damping} does nothing to the energy row because it
+is a fourth difference of the \emph{velocity} and does not touch the pressure
+truncation error. On the HD\,209458\,b element-diffusion reload the key
+changes nothing that matters: certified at the same outer pass 12, $\dot M$
+moved by $1.3\times10^{-4}$, profiles beyond $2\,R_p$ by $2$ to
+$3\times10^{-4}$, the base cells by 12 to 14 percent.
+
+The solution itself differs from the archived one: $\log_{10}\dot M = 8.29$
+against $7.80$, the base cell at 405\,K against 252\,K, wind densities three
+to ten times higher. Part of that is the physics that moved since 2026-08-30
+(a heating 3.4 times larger in the first cells after the photon-grid
+quadrature correction, the Jupiter radius, the spectrum below 13.6\,eV), part
+the base condition, and part the fact that the archived state was never
+stationary below $1.1\,R_p$ under the present residual (the old gates began
+at $1.2\,R_p$). Which part is which is the comparison of item L4 of the plan
+and is not settled here.
+
+\section{Why the key is off by default}
+
+Turning it on changes the discretization of the pressure/gravity pair in
+every run, not only in the base layer: the two discretizations are both
+second-order consistent and neither is a subset of the other, so every golden
+of the regression matrix would move (\texttt{docs/input\_schema.md} K46). The
+decision of 2026-09-10 (decision 23 of
+\texttt{docs/To\_be\_determined\_by\_user\_20260906.md}) made it an option,
+stated in \texttt{EXHALE\_setup.out}, carried as the option token
+\texttt{wellbal} in every state file, and left off. For LHS\,1140\,b it is
+required: without it there is no certifiable state of the wind on the current
+code, with any seed and by any route (plan items L1 to L5c). The decision of
+2026-09-13 is to run every LHS\,1140\,b model of \texttt{LHS1140b/MODELS.md}
+with the key on and to say so in each case's \texttt{REPRODUCE.md}. Whether
+it should become the default for every planet is a separate question, to be
+decided on the regression matrix and the Model A comparison, not here.
+
+\bibliographystyle{aa}
+\begin{thebibliography}{}
+\bibitem[Botta et al.(2004)]{Botta2004}
+Botta, N., Klein, R., Langenberg, S., \& L\"utzenkirchen, S.\ 2004, Journal of
+Computational Physics, 196, 539, ``Well balanced finite volume methods for
+nearly hydrostatic flows'' (ADS 2004JCoPh.196..539B)
+\bibitem[Chandrashekar \& Klingenberg(2015)]{Chandrashekar2015}
+Chandrashekar, P., \& Klingenberg, C.\ 2015, SIAM Journal on Scientific
+Computing, 37, B382, ``A second order well-balanced finite volume scheme for
+Euler equations with gravity'' (ADS 2015SJSC...37B.382C)
+\bibitem[Edelmann et al.(2021)]{Edelmann2021}
+Edelmann, P.~V.~F., Horst, L., Berberich, J.~P., Andrassy, R., Higl, J.,
+Leidi, G., Klingenberg, C., \& R\"opke, F.~K.\ 2021, A\&A, 652, A53,
+``Well-balanced treatment of gravity in astrophysical fluid dynamics
+simulations at low Mach numbers'' (ADS 2021A\&A...652A..53E)
+\bibitem[Jiang \& Shu(1996)]{Jiang1996}
+Jiang, G.-S., \& Shu, C.-W.\ 1996, Journal of Computational Physics, 126,
+202, ``Efficient implementation of weighted ENO schemes''
+(ADS 1996JCoPh.126..202J)
+\bibitem[K\"appeli \& Mishra(2014)]{Kappeli2014}
+K\"appeli, R., \& Mishra, S.\ 2014, Journal of Computational Physics, 259,
+199, ``Well-balanced schemes for the Euler equations with gravitation''
+(ADS 2014JCoPh.259..199K; \texttt{references/Kappeli\_2014JCP\_259\_199.pdf},
+and the submitted text ETH SAM Research Report 2013-05 beside it)
+\bibitem[K\"appeli \& Mishra(2016)]{Kappeli2016}
+K\"appeli, R., \& Mishra, S.\ 2016, A\&A, 587, A94, ``A well-balanced finite
+volume scheme for the Euler equations with gravitation. The exact
+preservation of hydrostatic equilibrium with arbitrary entropy
+stratification'' (ADS 2016A\&A...587A..94K; \texttt{references/Kappeli\_2016A\&A\_587\_A94.pdf},
+and the submitted text ETH SAM Research Report 2015-40 beside it)
+\bibitem[LeVeque(1998)]{LeVeque1998}
+LeVeque, R.~J.\ 1998, Journal of Computational Physics, 146, 346, ``Balancing
+source terms and flux gradients in high-resolution Godunov methods: the
+quasi-steady wave-propagation algorithm'' (ADS 1998JCoPh.146..346L)
+\bibitem[Toro et al.(1994)]{Toro1994}
+Toro, E.~F., Spruce, M., \& Speares, W.\ 1994, Shock Waves, 4, 25,
+``Restoration of the contact surface in the HLL-Riemann solver''
+(ADS 1994ShWav...4...25T)
+\end{thebibliography}
+
+\end{document}

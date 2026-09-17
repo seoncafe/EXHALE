@@ -19,7 +19,14 @@
 #   5. The change is written into the state the run produces as one
 #      '# option_change' line, and a rung inherits the lines of the rung it
 #      was restarted from, so a ladder can be read back from its last state.
-#   6. EXHALE_setup.out states what was known about the loaded state's
+#   6. The ROUTE token carrier_newton is not an equation-set token. An
+#      alternation state (the transported balances relaxed at a held wind)
+#      loads under "Coupled carrier solve: True" and under "On stall" with
+#      nothing named, because the rows, the columns and the tolerances are
+#      the same and only the algorithm differs; the difference is reported,
+#      written as a '# route_change' line, and the state the run writes
+#      records the route it came out of.
+#   7. EXHALE_setup.out states what was known about the loaded state's
 #      configuration and what this run was allowed to change about it. A pair
 #      that carries no block at all and a pair whose state DESCENDS from one
 #      are both provenance-unknown and are distinguished there: rung 0 loads
@@ -314,5 +321,112 @@ if grep -q 'Restart option change: allowed for sec_ion' \
    ok=yes
 fi
 verdict option_change_setup_report_states_the_change "$ok" yes
+
+# ---- the route token: the same equations, another algorithm ----------
+# THE FIXTURE here is backup/regression/carrier_model_a_newton, a molecular
+# case with the H2 carrier transported and "Coupled carrier solve: False",
+# which is what makes an ALTERNATION state: the carrier balance is relaxed
+# at a held wind instead of standing in the Newton unknown vector. Every
+# run takes "Restart intent: stationary evaluate", so what is under test is
+# the load and no solve is needed to reach it.
+CCASE="$ROOT/backup/regression/carrier_model_a_newton"
+
+cmake_run() {   # cmake_run <dir> <hydro state> <ion state> [extra input lines]
+   local d="$1"; local hf="$2"; local nf="$3"; shift 3
+   mkdir -p "$WORK/$d/output"
+   cp "$CCASE/input.inp" "$CCASE/base.inp" "$WORK/$d/"
+   cp "$hf" "$WORK/$d/output/Hydro_ioniz_IC.txt"
+   cp "$nf" "$WORK/$d/output/Ion_species_IC.txt"
+   sed -i -e '/^Coupled carrier solve:/d' -e '/^Restart intent:/d' \
+          "$WORK/$d/input.inp"
+   local line
+   for line in "$@"; do printf '%s\n' "$line" >> "$WORK/$d/input.inp"; done
+}
+
+route_ok=yes
+for f in "$CCASE/IC/Hydro_ioniz_IC.txt" "$CCASE/IC/Ion_species_IC.txt"; do
+   [ -s "$f" ] || route_ok=no
+done
+
+if [ "$route_ok" = no ]; then
+   echo "FAIL route_change_fixture measured=no_fixture reference=$CCASE/IC tol=0"
+   n_fail=$((n_fail+1))
+else
+   # rung A: the alternation writes a state, which carries carrier_newton=F
+   cmake_run routeA "$CCASE/IC/Hydro_ioniz_IC.txt" "$CCASE/IC/Ion_species_IC.txt" \
+            'Coupled carrier solve: False' 'Restart intent: stationary evaluate'
+   run_it routeA
+   rc_rA=$RC_LAST
+   HA="$WORK/routeA/output/Hydro_ioniz.txt"
+   IA="$WORK/routeA/output/Ion_species.txt"
+
+   # rung B: the same state under the block, with nothing named
+   if [ -s "$HA" ]; then
+      cmake_run routeB "$HA" "$IA" \
+               'Coupled carrier solve: True' 'Restart intent: stationary evaluate'
+      run_it routeB
+      rc_rB=$RC_LAST
+      cmake_run routeC "$HA" "$IA" \
+               'Coupled carrier solve: On stall' \
+               'Restart intent: stationary evaluate'
+      run_it routeC
+      rc_rC=$RC_LAST
+   else
+      rc_rB=-1; rc_rC=-1
+   fi
+
+   # rung D: back to the alternation from the block's state, so the history
+   # carries both route lines
+   HB="$WORK/routeB/output/Hydro_ioniz.txt"
+   if [ -s "$HB" ]; then
+      cmake_run routeD "$HB" "$WORK/routeB/output/Ion_species.txt" \
+               'Coupled carrier solve: False' 'Restart intent: stationary evaluate'
+      run_it routeD
+      rc_rD=$RC_LAST
+   else
+      rc_rD=-1
+   fi
+
+   echo "---- the route token, with nothing named ----"
+   grep -E 'changes the ROUTE|load_IC\) ERROR' "$WORK/routeB/run.log" 2>/dev/null \
+      | sed 's/^/    /' || true
+   ok=no
+   if { [ $rc_rB -eq 0 ] || [ $rc_rB -eq 2 ]; } && \
+      grep -q 'changes the ROUTE and not the equations' \
+           "$WORK/routeB/run.log" && \
+      ! grep -q 'load_IC) ERROR' "$WORK/routeB/run.log"; then ok=yes; fi
+   verdict route_change_block_loads_an_alternation_state "$ok" yes
+
+   ok=no
+   if grep -q '^# route_change carrier_newton=F -> carrier_newton=T at restart of ' \
+           "$WORK/routeB/output/Hydro_ioniz.txt" 2>/dev/null && \
+      grep -q '^# route_change carrier_newton=F -> carrier_newton=T at restart of ' \
+           "$WORK/routeB/output/Ion_species.txt" 2>/dev/null; then ok=yes; fi
+   verdict route_change_line_written_in_both_halves "$ok" yes
+
+   ok=no
+   if grep -m1 '^# options ' "$WORK/routeB/output/Hydro_ioniz.txt" 2>/dev/null \
+        | grep -q ' carrier_newton=T' && \
+      grep -m1 '^# options ' "$HA" 2>/dev/null | grep -q ' carrier_newton=F'; then
+      ok=yes
+   fi
+   verdict route_change_written_state_records_its_own_route "$ok" yes
+
+   echo "---- the route token under On stall ----"
+   ok=no
+   if { [ $rc_rC -eq 0 ] || [ $rc_rC -eq 2 ]; } && \
+      ! grep -q 'load_IC) ERROR' "$WORK/routeC/run.log" && \
+      grep -m1 '^# options ' "$WORK/routeC/output/Hydro_ioniz.txt" 2>/dev/null \
+        | grep -q ' carrier_newton=F'; then ok=yes; fi
+   verdict route_change_on_stall_loads_an_alternation_state "$ok" yes
+
+   echo "---- the route history a ladder can be read back from ----"
+   grep '^# route_change ' "$WORK/routeD/output/Hydro_ioniz.txt" 2>/dev/null \
+      | sed 's/^/    /' || true
+   nr=$(grep -c '^# route_change ' "$WORK/routeD/output/Hydro_ioniz.txt" 2>/dev/null || true)
+   ok=no
+   if [ "$nr" = "2" ]; then ok=yes; fi
+   verdict route_change_history_inherited_by_the_next_rung "$ok" yes
+fi
 
 exit $(( n_fail > 0 ? 1 : 0 ))

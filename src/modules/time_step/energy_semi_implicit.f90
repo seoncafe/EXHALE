@@ -75,7 +75,7 @@ module energy_semi_implicit
                             isp_OH, isp_H2O, isp_CO
    use utils
    use utils_ion_eq
-   use caloric_eos, only: caloric_mixture_active, molecular_cell,      &
+   use caloric_eos, only: caloric_mixture_active,                      &
                           internal_energy_per_particle,                &
                           heat_capacity_per_particle,                  &
                           temperature_from_energy_per_particle,        &
@@ -142,14 +142,30 @@ module energy_semi_implicit
    !   than replaced by a new number; the larger of the two is taken.
    real*8, parameter :: T_eos_floor_K    = 1.0d0
    real*8, parameter :: T_floor_code_min = 0.01d0
-   !   The upper end. For a cell holding H2 it is the top of that same
-   !   rovibrational table (caloric_eos); for a cell without molecules the
-   !   caloric equation of state is exact at any temperature and the ceiling
-   !   only has to be far above anything a photoionized wind reaches, so that
-   !   "no bracket" reports a heating rate no physical cooling can balance
-   !   rather than a bracket set too tight.
-   real*8, parameter :: T_ceiling_mol_K    = 5.0d4
-   real*8, parameter :: T_ceiling_atomic_K = 1.0d7
+   !   The upper end, ONE CEILING FOR EVERY CELL. It has only to stand far
+   !   above anything a photoionized wind reaches, so that "no bracket"
+   !   reports a heating rate no physical cooling can balance rather than a
+   !   bracket set too tight.
+   !
+   !   VALIDITY WHERE H2 IS PRESENT. The caloric equation of state does not
+   !   end at the 5e4 K top of the H2 rovibrational table: above it
+   !   h2_rovibrational_energy_and_heat_capacity continues linearly in T with
+   !   the end-point heat capacity, so (u_rv, c_rv) stay a consistent pair
+   !   (du_rv/dT = c_rv exactly) and u_rv stays monotone, which is the
+   !   property the energy -> temperature inverse relies on; the continuation
+   !   carries no dissociation energy, so extending it double counts none.
+   !   What it IS above the table is an extrapolation of the bound
+   !   rovibrational ladder into a region where H2 does not survive, and its
+   !   weight in the energy of a cell is bounded: the mean energy of a bound
+   !   ladder cannot exceed the dissociation energy, D0/k = 5.20e4 K, so
+   !   against the (3/2) T of the translational term the molecular term is at
+   !   most x2 D0/k/(1.5 T) of the internal energy, with x2 = n(H2)/(n_tot +
+   !   n_e). At 7e4 K and x2 = 4e-4, the LHS 1140 b cells that used to be
+   !   refused here, that bound is 1.9e-4. A ceiling selected by the boolean
+   !   n(H2) > 0 refused the whole step for a term of that size; what has to
+   !   remove H2 from a cell the wind has heated past the table is the
+   !   chemistry, not the temperature bracket.
+   real*8, parameter :: T_ceiling_K = 1.0d7
 
    ! TEST HOOK, default off, named for what it does. It makes the update
    ! REPORT a failure at one step count, for a given number of leading
@@ -690,7 +706,6 @@ contains
       real*8, dimension(1-Ng:N+Ng) :: ne_ad, n_tot_ad
       real*8  :: nk
       integer :: j, im, j_bad, n_fail, verdict
-      logical :: is_mol_cell
       type(energy_balance_state) :: s
       character(len=64) :: reason_text
 
@@ -787,16 +802,8 @@ contains
          else
             a_coef(j) = -1.0d0        ! rejected by the admissibility test
          endif
-         is_mol_cell = .false.
-         if (caloric_mixture_active .and. allocated(molecular_cell))       &
-            is_mol_cell = molecular_cell(j)
          T_floor(j) = max(T_floor_code_min, T_eos_floor_K/T0)
-         if (is_mol_cell) then
-            T_ceil(j) = T_ceiling_mol_K/T0
-         else
-            T_ceil(j) = T_ceiling_atomic_K/T0
-         endif
-         T_ceil(j) = max(T_ceil(j), T_floor(j))
+         T_ceil(j)  = max(T_ceiling_K/T0, T_floor(j))
          if (coupled) then
             if (nk .gt. 0.0d0) then
                u_old_pp(j) = u_th_old(j)/nk

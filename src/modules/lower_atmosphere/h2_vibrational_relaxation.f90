@@ -24,42 +24,90 @@
    ! ---------------------------------------------------------------------
    !  VALIDITY
    ! ---------------------------------------------------------------------
-   !  * COLLISION PARTNERS. Hollenbach & McKee's eq. (6.29) gives rate
-   !    coefficients for atomic H and for H2 only, and Burton et al.'s
-   !    Table 7 adds electrons; NEITHER SOURCE GIVES A HELIUM RATE. A
-   !    helium-dominated gas is therefore outside both, and helium is left
-   !    out of the collider sum below rather than given a borrowed rate.
-   !    That understates the de-excitation rate, so it errs towards
-   !    radiating the energy away rather than towards claiming it as heat.
-   !    Electrons are also left out: their rate coefficient is about two
-   !    orders above the H2 one (Burton et al. Table 7), but the molecular
-   !    layer runs at an electron fraction of 1e-16 to 5e-5, so they
-   !    contribute a part in 1e3 or less of the collider sum there.
-   !  * TEMPERATURE. The fits of eq. (6.29) are stated "good to 20% for
-   !    T >~ 500 K and to 50% for T >~ 300 K". The molecular layer runs
-   !    900-1350 K, inside the tighter of the two.
-   !  * A SINGLE LEVEL. n_cr is built from v = 1, the level the energy ends
-   !    up in after the cascade. Burton et al. use a pseudolevel at v = 6
-   !    with A_(6->0) = 2e-7 s^-1 and gamma taken as gamma_(1->0); using
-   !    v = 1 with its own A of 8.3e-7 s^-1 gives a critical density four
-   !    times higher, i.e. the more conservative of the two.
+   !  * COLLISION PARTNERS. Three are carried, and none of them is a fit any
+   !    longer: atomic hydrogen from Lique (2015), helium from Jozwiak et
+   !    al. (2024) and H2 from Le Bourlot, Pineau des Forets & Flower
+   !    (1999), each reduced to the thermal v = 1 -> v' = 0 relaxation and
+   !    tabulated at its own coefficient below. Helium used to be absent for
+   !    want of a rate and is now present with its own.
+   !    Electrons are left out: their rate coefficient is about two
+   !    orders above the H2 one of Hollenbach & McKee (Burton et al.
+   !    Table 7), but the molecular layer runs at an electron fraction of
+   !    1e-16 to 5e-5, so they contribute a part in 1e3 or less of the
+   !    collider sum there.
+   !  * THE ORDERING OF THE THREE, MEASURED AT 1000 K: atomic hydrogen
+   !    7.51e-12, helium 7.01e-15, H2 2.63e-15 cm^3 s^-1. Atomic hydrogen is
+   !    three orders above the other two, its exchange channel being what
+   !    makes it efficient, and H2 is a poor quencher of H2. The Hollenbach
+   !    & McKee (1979) eq. (6.29) fits this module carried before had the
+   !    atomic rate 1.14 to 3.47 times too large over 200-1000 K and the H2
+   !    rate 27 to 500 times too large over 300-1527 K, i.e. they overstated
+   !    the thermalized share, the H2 one grossly.
+   !  * TEMPERATURE. The three tables cover 100-5000 K (H), 20-8000 K (He)
+   !    and 100-6000 K (H2), each held at its end values rather than
+   !    extrapolated. The molecular layer runs 200-1600 K, inside all three.
+   !  * EVERY LEVEL OF THE CASCADE, NOT ONLY v = 1. The radiative rate in
+   !    n_cr is the LARGEST total spontaneous decay rate over the whole
+   !    bound X ladder, reduced at initialization from the same line list
+   !    the infrared cooling uses (Roueff et al. 2019, A&A 630, A58,
+   !    table 2, through molecular_infrared_data): 302 levels, 1833
+   !    electric-quadrupole and magnetic-dipole lines. That is what makes
+   !    the consumers' validity claim -- that the collider density stands
+   !    far above n_cr of EVERY level a nascent molecule cascades through --
+   !    a condition the code evaluates rather than one asserted from v = 1.
+   !    MEASURED on that ladder, the maximum is 5.594e-06 s^-1, 6.6 times
+   !    the v = 1, J = 0 total of 8.532e-07 s^-1 (itself within 3 per cent
+   !    of the 8.3e-07 s^-1 Hollenbach & McKee adopt). Burton et al. instead
+   !    use a pseudolevel at v = 6 with A_(6->0) = 2e-7 s^-1; the all-level
+   !    maximum is 28 times that, i.e. the most conservative of the three.
+   !    CROSS-CHECKED AGAINST THE COMPLETE QUADRUPOLE SET. The tree's line
+   !    list leaves fifteen near-dissociation levels with no downward
+   !    transition, so the maximum it gives could in principle be the
+   !    maximum of an incomplete network. It is not: the complete set of
+   !    Wolniewicz, Simbotin & Dalgarno (1998), ApJS 115, 293, which
+   !    connects ALL bound rovibrational levels (4661 lines, read from the
+   !    copy the Cloudy c25.00 distribution carries) gives 5.5945e-06 s^-1,
+   !    agreeing to 1.1e-04 relative, and locates it at the same level,
+   !    (v = 1, J = 28) -- a high-J rotational level of low v, not a
+   !    near-dissociation one. Against the complete set only three levels of
+   !    the code's ladder have no downward transition at all, (0,0), (0,1)
+   !    and (14,4), and none of them can raise a maximum.
    !
-   !  The distinction only matters where n is comparable to n_cr. At
-   !  900-1350 K, n_cr(v=1) is 2e6-6e6 cm^-3 against H2 and 5e4-8e4 cm^-3
-   !  against atomic H, while the molecular layer carries
-   !  n(H2) = 4e9 to 5e13 cm^-3: the fraction below is 1 to within a part in
-   !  1e3 everywhere in it. It is written out rather than assumed because a
-   !  shallower base, or the top of a thinner layer, would not be.
+   !  The distinction only matters where n is comparable to n_cr. Carrying
+   !  the all-level maximum through the collisional coefficients below,
+   !  n_cr is 1.27e6 cm^-3 at 808 K and 2.97e5 cm^-3 at 1527 K against the
+   !  atomic hydrogen that dominates this layer's collider sum. MEASURED on
+   !  the certified LHS 1140 b molecular base, that sum is 99.80 per cent
+   !  atomic hydrogen, 0.20 per cent helium and 0.006 per cent H2 at cell 1,
+   !  and 1 - f is 6.8e-07 there and 3.8e-07 at cell 25. It is
+   !  written out rather than assumed because a shallower base, or the top
+   !  of a thinner layer, would not be: against an H2 collider ALONE n_cr is
+   !  2.1e9 cm^-3 at 1000 K, and at 1527 K with n(H2) = 4e9 cm^-3 and no
+   !  atomic hydrogen the fraction would be 0.947, not 1. That is why the H2
+   !  coefficient has to be the calculation and not the fit, which would
+   !  have claimed 0.999 there.
    !
    !  Energies in eV where marked, otherwise cgs.
+
+   ! The H2 line list, the same table the infrared cooling sums: the
+   ! all-level radiative rate is reduced from it here rather than written
+   ! down, so the two cannot describe different molecules. Only the lines
+   ! are read, never the level ladder, which has one consumer
+   ! (h2_partition_function of caloric_eos).
+   use molecular_infrared_data, only: n_h2_line, h2_line_A, h2_line_Tu
 
    implicit none
    private
 
    public :: h2_energy_per_bound_fluorescence_eV,                         &
              h2_energy_per_bound_fluorescence_erg
-   public :: e_vib_v1_eV, e_vib_v2_eV
+   public :: e_vib_v1_eV, e_vib_v2_eV, e_vib_v5_eV, e_vib_v6_eV
    public :: h2_vibrational_heat_fraction, h2_vibrational_critical_density
+   public :: h2_vibrational_relaxation_init, h2_total_decay_rate_max,     &
+             h2_vibrational_relaxation_ready
+   ! The three collider coefficients, for the assertions that hold each
+   ! table to the value its own paper publishes.
+   public :: gamma_10_H, gamma_10_H2, gamma_10_He
 
    ! ----- Energy left in the ground state per bound fluorescence ----- !
    ! An H2 molecule lifted into B or C either dissociates into the X
@@ -123,6 +171,11 @@
    ! anharmonicity puts v = 2 at 1.0027 eV, 2.8% below twice v = 1.
    real*8, parameter :: e_vib_v1_eV = 0.515920d0
    real*8, parameter :: e_vib_v2_eV = 1.002661d0
+   ! The two levels the H3+ dissociative-recombination product distribution
+   ! peaks between (R6 of molecular_reaction_heat), from the same table:
+   ! (v=5,J=0) lies 26605.762 K and (v=6,J=0) 30942.019 K above (v=0,J=0).
+   real*8, parameter :: e_vib_v5_eV = 2.292710d0
+   real*8, parameter :: e_vib_v6_eV = 2.666380d0
 
    ! ----- Radiative and collisional rates of v = 1 ----- !
    ! Hollenbach & McKee (1979), p. 583, section VI b: "A_10 = 8.3 x 10^-7
@@ -140,23 +193,224 @@
    ! not as a bound: the branch sum at J = 0 is 8.54e-7 s^-1, well above it.
    real*8, parameter :: a10_h2 = 8.3d-7
 
-   ! Collisional de-excitation rate coefficients, Hollenbach & McKee (1979)
-   ! eq. (6.29) [cm^3 s^-1]:
-   !    gamma_10^H  = 1.0e-12 T^1/2 exp[-(1000/T)]
-   !    gamma_10^H2 = 1.4e-12 T^1/2 exp{-[12000/(T + 1200)]}
+   ! ----- The all-level radiative rate of the cascade ----- !
+   ! The largest total spontaneous decay rate over the 302 bound
+   ! rovibrational levels of X^1 Sigma_g^+ [s^-1], reduced from the Roueff
+   ! et al. (2019) line list by h2_vibrational_relaxation_init. This is the
+   ! rate n_cr is built from, so that the fraction states the condition of
+   ! the EVERY-LEVEL cascade and not of v = 1 alone (module header).
    !
-   ! A DISCREPANCY BETWEEN THE TWO SOURCES, NOT RESOLVED HERE. Burton et al.'s
-   ! Table 7 reprints the same H2-H2 coefficient with 18100 in the exponent
-   ! where Hollenbach & McKee's eq. (6.29) has 12000; their three H-H2 rows
-   ! match eq. (6.29) exactly, so only this one row differs. Hollenbach &
-   ! McKee is followed here because it is the primary of the two and because
-   ! its H rows are the ones Burton et al. reproduce. Which is right has NOT
-   ! been checked against the original rate source (Chu 1977; Shull &
-   ! Hollenbach 1978). It changes n_cr by a factor of 16 at 1000 K -- 4.4e6
-   ! against 7e7 cm^-3 -- and neither reading comes within three decades of
-   ! the layer's own density, so the heat fraction below is 1 either way.
-   real*8, parameter :: g10_h_pre  = 1.0d-12
-   real*8, parameter :: g10_h2_pre = 1.4d-12
+   ! Until that initializer has run the value is Hollenbach & McKee's
+   ! adopted v = 1 rate, which is what the fraction reduces to and which is
+   ! the published number the consumers used before the reduction existed;
+   ! it is never a sentinel, so a caller that has skipped the prologue gets
+   ! the older published bound and not a meaningless one.
+   ! h2_thermochemistry_init (mol_rates) calls the initializer in the serial
+   ! prologue every molecular configuration passes through, before the first
+   ! parallel region opens.
+   real*8,  save :: a_cascade_max     = a10_h2
+   logical, save :: a_cascade_ready   = .false.
+
+   ! ----- Collisional de-excitation by H2 ----- !
+   ! Le Bourlot, Pineau des Forets & Flower (1999), MNRAS 305, 802,
+   ! state-to-state H2 + H2 rate coefficients, read from the tables the
+   ! Cloudy c25.00 distribution carries (coll_rates_H2para_LeBourlot.dat,
+   ! 627 de-excitation rows over 51 levels to (v = 3, j = 8), on the grid
+   ! T = 100, 300, 500, 1000, 1500, 2000, 3000, 4500, 6000 K).
+   !
+   ! WHICH OF THE TWO DISTRIBUTED H2 FILES, AND WHY ONLY ONE.  Cloudy
+   ! carries two, named for an ortho-H2 and for a para-H2 PERTURBER
+   ! (parse_atom_h2.cpp fills two separate collider slots from them).  THE
+   ! PAPER ITSELF SAYS THERE IS ONLY ONE SET.  Section 2.1, published text:
+   ! Flower & Roueff (1998a) computed the rovibrational excitation of
+   ! ortho- and para-H2 "by para-H2 in its rotational ground state
+   ! (J = 0)"; test calculations with ground-state ortho-H2 as the
+   ! perturber "showed that the rate of v = 1 -> 0 vibrational relaxation
+   ! was insensitive to the rotational state of the perturber"; and "we
+   ! have, therefore, adopted the rate coefficients calculated by Flower &
+   ! Roueff (1998a) for the excitation of ortho- and para-H2 by para-H2
+   ! (J = 0), and applied them also to the case of excitation by ortho-H2".
+   ! The para file is that set: it carries the level list the paper states,
+   ! "A total of 51 rovibrational energy levels ... (v = 0, J <= 16; v = 1,
+   ! J <= 13; v = 2, J <= 10; v = 3, J <= 8)", while the file named for the
+   ! ortho perturber holds 39 levels reaching only (1,13) and its rates
+   ! stand a median 1.74 above the para file's on the 361 rows they share
+   ! (MEASURED at 1000 K).  A perturber-resolved pair is therefore not what
+   ! the paper published, and the para file alone is used for an H2
+   ! collider of either form.
+   !
+   ! CHECKED AGAINST THE PAPER'S OWN TABLE, which is the only place it
+   ! prints numbers: Table 1 gives the critical density of the 1-0 S(1)
+   ! transition, n_cr = A/q, for each of the three perturbers at 500, 1000
+   ! and 2000 K.  With A(1-0 S(1)) = 3.470e-07 s^-1 from the tree's own line
+   ! list and q the (v = 1, j = 3) -> (v = 0, j = 1) row of the file,
+   ! MEASURED: the para file gives 2.33e+11, 1.65e+10 and 5.80e+08 cm^-3
+   ! against the published 3.7e+11, 1.8e+10 and 4.2e+08, i.e. ratios 1.59,
+   ! 1.09 and 0.72, scattered about one; the file named for the ortho
+   ! perturber gives 1.13e+11, 7.5e+09 and 2.94e+08, low by 3.3, 2.4 and
+   ! 1.4 throughout.  The SAME procedure on the helium file of the same
+   ! paper returns 5.59e+10, 1.56e+09 and 5.50e+07 against the published
+   ! 4.2e+10, 1.5e+09 and 6.8e+07, ratios 0.75, 0.96 and 1.24, which is what
+   ! establishes that the procedure and not the data is being tested.
+   !
+   ! The published paper is references/LeBourlot_1999_MNRAS_305_802.pdf;
+   ! what the file itself was checked for is that every row is a
+   ! DE-EXCITATION, upper (v', j') to lower (v, j), which is what its header
+   ! states and what the low-temperature behavior confirms (a rate that is
+   ! finite at 100 K has no threshold). The file distributes only that
+   ! direction, so no detailed-balance identity can be formed from it; the
+   ! helium set does distribute both and is checked in
+   ! src/tests/physics_probe/molecular_energy_recipients.f90.
+   !
+   ! WHAT IS TABULATED is the same quantity as for the other two colliders:
+   ! the thermal v = 1 -> v' = 0 relaxation, summed over final j' and
+   ! Boltzmann averaged over the initial j of v = 1 with the weights
+   ! g_I (2j+1) exp(-E(1,j)/kT) of the code's own ladder.
+   !
+   ! WHAT IT CHANGES, AND IT IS LARGE.  Hollenbach & McKee's (1979)
+   ! eq. (6.29) fit, gamma_10^H2 = 1.4e-12 T^1/2 exp[-12000/(T + 1200)],
+   ! which this module carried before, is 500 times this calculation at
+   ! 300 K, 147 at 808 K, 72 at 1000 K and 27 at 1527 K (MEASURED). This
+   ! also settles the discrepancy the module used to record as unchecked:
+   ! Burton, Hollenbach & Tielens (1990) Table 7 reprint the same
+   ! coefficient with 18100 in the exponent where eq. (6.29) has 12000, and
+   ! against the calculation that reading is 8.57, 7.04, 4.50 and 2.89 times
+   ! too large at the same four temperatures (MEASURED). Burton et al. are
+   ! therefore the closer of the two readings and both are too large; the
+   ! question of which fit is right is retired, because neither is used.
+   ! The fit is a 1979 V-T estimate and the calculation is a scattering
+   ! result; H2
+   ! is in fact a POOR vibrational quencher of H2, comparable to helium
+   ! (7.0e-15 against 2.6e-15 cm^3 s^-1 at 1000 K) and three orders below
+   ! atomic hydrogen, whose exchange channel is what makes it efficient.
+   ! The ordering gamma_H >> gamma_H2 ~ gamma_He is therefore the one the
+   ! three sources give, and the fit had the H2 collider three orders too
+   ! close to the atomic one.
+   !
+   ! WHERE IT MATTERS.  Not in this layer: at the certified base the
+   ! collider sum is 99.7 per cent atomic hydrogen, so the fraction is
+   ! unchanged. It matters in a cold H2 base with no atomic hydrogen, where
+   ! this coefficient alone sets n_cr, and there the fit was claiming
+   ! fifty times too much thermalization.
+   !
+   ! RANGE. 100-6000 K, with the end values held outside rather than
+   ! extrapolated; the molecular layer runs 200-1600 K, inside.
+   !
+   ! WHAT IS NOT USED, AND WHY. The Cloudy distribution also carries
+   ! coll_rates_H2ortho_ORNL.dat and coll_rates_H2para_ORNL.dat (Wan et al.
+   ! 2018, ApJ 862, 132), a newer H2-H2 set on a finer temperature grid.
+   ! MEASURED: all 240 of their rows are PURELY ROTATIONAL, v = 0 to v = 0,
+   ! so that set contains no vibrational transition and cannot give this
+   ! coefficient.
+   integer, parameter :: n_g10_h2 = 9
+   real*8,  parameter :: t_g10_h2(n_g10_h2) = (/                         &
+        100.0d0, 300.0d0, 500.0d0, 1000.0d0, 1500.0d0, 2000.0d0,         &
+        3000.0d0, 4500.0d0, 6000.0d0 /)
+   real*8,  parameter :: g10_h2_tab(n_g10_h2) = (/                       &
+        5.9364d-18, 1.6258d-17, 7.9918d-17, 2.6310d-15, 2.3015d-14,      &
+        9.5076d-14, 5.1397d-13, 1.8230d-12, 3.5736d-12 /)
+
+   ! ----- Collisional de-excitation by atomic H, from the accurate
+   !       quantum calculation rather than from a fit ----- !
+   ! Lique (2015), MNRAS 453, 810, "Revisited study of the ro-vibrational
+   ! excitation of H2 by H": nearly exact time-independent quantum scattering
+   ! with the hydrogen exchange channels treated rigorously, state-to-state
+   ! k(v, j -> v', j'; T) distributed as supplementary data to the article
+   ! (references/Lique_2015MNRAS_453_810_data/Rates_H_H2.dat, 1431
+   ! transitions, T = 100 to 5000 K in steps of 100 K, READ).
+   !
+   ! WHAT IS TABULATED BELOW is the THERMAL v = 1 -> v' = 0 vibrational
+   ! relaxation: for each temperature of the file's own grid, the rates out
+   ! of the fifteen initial levels j = 0 to 14 of v = 1 are summed over
+   ! every final j' of v' = 0 and averaged over the initial j with the
+   ! Boltzmann weights g_I (2j+1) exp(-E(1,j)/kT) of the code's own ladder.
+   ! That is the quantity Lique's Table 2 quotes and it validates against
+   ! it: 1.781e-13 cm^3 s^-1 at 300 K here (MEASURED) against his 1.8e-13,
+   ! a measured 3.0 +/- 1.5e-13 (Heidner & Kasper 1972), 0.7e-13 for
+   ! Wrathmall et al. (2007) and 0.8e-13 for Martin & Mandy (1995).
+   !
+   ! WHY IT REPLACES THE FIT.  Hollenbach & McKee's eq. (6.29),
+   ! gamma_10^H = 1.0e-12 T^1/2 exp(-1000/T), is 1.14 times this at 200 K,
+   ! 3.47 at 300 K, 1.89 at 800 K, 1.55 at 1000 K and 1.05 at 1600 K, and
+   ! crosses 1 near 1750 K (MEASURED).  It therefore overstated the
+   ! de-excitation, and so the heated share, everywhere in this layer.
+   ! Atomic hydrogen is not a detail here: at the certified base (808 K,
+   ! x2 = 0.355, He/H = 2.13) the collider sum below is 99.7 per cent
+   ! atomic hydrogen and 0.3 per cent H2 (MEASURED), so this coefficient is
+   ! what sets n_cr numerically.
+   !
+   ! RANGE AND WHAT IS OUTSIDE IT.  100-5000 K, with the end values held
+   ! outside rather than extrapolated; the molecular layer runs 200-1600 K,
+   ! inside.  The calculation covers internal energies below 22000 K, which
+   ! is 55 of the code's 302 bound levels (v = 0 to 4), so it gives the
+   ! v = 1 rate this module uses and says nothing about the
+   ! near-dissociation levels a nascent molecule is born in; using the v = 1
+   ! coefficient for those is the same approximation as before and still
+   ! understates their de-excitation, which errs towards radiating rather
+   ! than heating.
+   integer, parameter :: n_g10_h = 50
+   real*8,  parameter :: t_g10_h_lo = 100.0d0, t_g10_h_step = 100.0d0
+   real*8,  parameter :: g10_h_tab(n_g10_h) = (/                         &
+        6.7952d-14, 8.3919d-14, 1.7809d-13, 4.8006d-13, 1.0502d-12,      &
+        1.8889d-12, 2.9765d-12, 4.2899d-12, 5.8071d-12, 7.5097d-12,      &
+        9.3787d-12, 1.1398d-11, 1.3554d-11, 1.5830d-11, 1.8215d-11,      &
+        2.0696d-11, 2.3260d-11, 2.5897d-11, 2.8595d-11, 3.1346d-11,      &
+        3.4138d-11, 3.6963d-11, 3.9813d-11, 4.2680d-11, 4.5557d-11,      &
+        4.8435d-11, 5.1313d-11, 5.4179d-11, 5.7034d-11, 5.9872d-11,      &
+        6.2686d-11, 6.5476d-11, 6.8238d-11, 7.0965d-11, 7.3659d-11,      &
+        7.6323d-11, 7.8947d-11, 8.1529d-11, 8.4077d-11, 8.6582d-11,      &
+        8.9044d-11, 9.1463d-11, 9.3840d-11, 9.6175d-11, 9.8469d-11,      &
+        1.0071d-10, 1.0292d-10, 1.0508d-10, 1.0720d-10, 1.0928d-10 /)
+
+   ! ----- Collisional de-excitation by helium ----- !
+   ! Jozwiak, Thibault, Viel, Wcislo & Lique (2024), A&A 685, A113,
+   ! "Revisiting the rovibrational (de-)excitation of molecular hydrogen by
+   ! helium": quantum scattering on a state-of-the-art surface,
+   ! state-to-state rate coefficients for 1059 transitions between
+   ! rovibrational levels of H2 with internal energies up to 15000 cm^-1,
+   ! T = 20 to 8000 K (READ, their abstract and the VizieR ReadMe of
+   ! references/Jozwiak_2024J_A+A_685_A113/, 26 ortho and 27 para levels,
+   ! 520 + 539 converged transitions on a 43-point temperature grid).
+   !
+   ! WHAT IS TABULATED is the same quantity as for atomic hydrogen, reduced
+   ! the same way: the thermal v = 1 -> v' = 0 relaxation, summed over final
+   ! j' within each nuclear-spin symmetry (helium does not convert ortho to
+   ! para) and Boltzmann averaged over the initial j of v = 1.  MEASURED
+   ! here, 2.654e-15 cm^3 s^-1 at 808 K and 7.015e-15 at 1000 K.
+   !
+   ! WHAT IT CHANGES.  Helium used to be left out of the collider sum for
+   ! want of a rate.  It is now in it, with its own coefficient, and the
+   ! statement that used to stand here -- that leaving it out understated
+   ! the de-excitation by an unknown amount -- is replaced by the size of
+   ! the term: helium is 9.3e-04 of the atomic-hydrogen coefficient at
+   ! 1000 K and 5.9e-04 at 800 K (MEASURED), so at the base helium density
+   ! of this configuration it carries about a part in a thousand of the
+   ! sum.  It is carried because it is physically present, not because it
+   ! moves a number here.
+   !
+   ! RANGE.  20-8000 K, wider than this layer at both ends, with the end
+   ! values held outside rather than extrapolated.  The set reaches v <= 3,
+   ! so like the atomic-hydrogen one it gives the v = 1 rate and not the
+   ! near-dissociation levels.
+   integer, parameter :: n_g10_he = 43
+   real*8,  parameter :: t_g10_he(n_g10_he) = (/                         &
+        20.0d0, 30.0d0, 40.0d0, 50.0d0, 60.0d0, 70.0d0, 80.0d0, 90.0d0,  &
+        100.0d0, 120.0d0, 140.0d0, 160.0d0, 180.0d0, 200.0d0, 250.0d0,   &
+        300.0d0, 350.0d0, 400.0d0, 450.0d0, 500.0d0, 550.0d0, 600.0d0,   &
+        650.0d0, 700.0d0, 750.0d0, 800.0d0, 850.0d0, 900.0d0, 950.0d0,   &
+        1000.0d0, 1100.0d0, 1200.0d0, 1300.0d0, 1400.0d0, 1500.0d0,      &
+        1750.0d0, 2000.0d0, 3000.0d0, 4000.0d0, 5000.0d0, 6000.0d0,      &
+        7000.0d0, 8000.0d0 /)
+   real*8,  parameter :: g10_he_tab(n_g10_he) = (/                       &
+        6.4077d-20, 8.6066d-20, 1.2051d-19, 1.6964d-19, 2.3360d-19,      &
+        3.1271d-19, 4.0773d-19, 5.1973d-19, 6.5002d-19, 9.7228d-19,      &
+        1.3918d-18, 1.9327d-18, 2.6295d-18, 3.5332d-18, 7.3118d-18,      &
+        1.5542d-17, 3.3338d-17, 6.8729d-17, 1.3232d-16, 2.3659d-16,      &
+        3.9512d-16, 6.2209d-16, 9.3222d-16, 1.3410d-15, 1.8651d-15,      &
+        2.5238d-15, 3.3391d-15, 4.3375d-15, 5.5502d-15, 7.0146d-15,      &
+        1.0881d-14, 1.6372d-14, 2.4044d-14, 3.4561d-14, 4.8682d-14,      &
+        1.0527d-13, 2.0308d-13, 1.2074d-12, 3.3057d-12, 6.2460d-12,      &
+        9.6318d-12, 1.3111d-11, 1.6433d-11 /)
 
    ! Quadratic fit to the nine computed points (see the block above).
    real*8, parameter :: eb_c0 =  2.0247811011d0
@@ -166,6 +420,54 @@
    real*8, parameter :: ev2erg = 1.602176634d-12
 
    contains
+
+   ! Reduce the line list to the largest TOTAL spontaneous decay rate over
+   ! the bound ladder: for each level, the sum of the A values of every line
+   ! that leaves it downward; the maximum of those sums is what n_cr is
+   ! built from. Idempotent, and serial by construction: called from
+   ! h2_thermochemistry_init (mol_rates), the prologue that runs before any
+   ! parallel region opens.
+   !
+   ! Lines are grouped by the UPPER TERM ENERGY the list carries with each
+   ! of them, which is the level's own energy: two lines leave the same
+   ! level exactly when their h2_line_Tu agree. The level ladder itself is
+   ! not read here, so the one Boltzmann sum over it stays the one place
+   ! that touches it. The closest pair of levels in this molecule is
+   ! 0.199 K apart (MEASURED on the same table), so the 0.05 K window below
+   ! separates every pair and is far above the rounding of the table.
+   !
+   ! Seventeen levels have no downward line and contribute zero: (0,0) and
+   ! (0,1), which cannot decay, and fifteen near-dissociation levels of
+   ! v = 10 to v = 14 the list does not reach. Those fifteen would trap
+   ! population in a level-resolved cascade; they cannot raise this maximum,
+   ! which belongs to a high-J level of low v.
+   subroutine h2_vibrational_relaxation_init
+      integer :: il, jl
+      real*8  :: a_tot
+      real*8, parameter :: dT_same_level = 0.05d0   ! [K]
+      if (a_cascade_ready) return
+      a_cascade_max = 0.0d0
+      do il = 1, n_h2_line
+         a_tot = 0.0d0
+         do jl = 1, n_h2_line
+            if (abs(h2_line_Tu(jl) - h2_line_Tu(il))                     &
+                .le. dT_same_level) a_tot = a_tot + h2_line_A(jl)
+         enddo
+         if (a_tot .gt. a_cascade_max) a_cascade_max = a_tot
+      enddo
+      a_cascade_ready = .true.
+   end subroutine h2_vibrational_relaxation_init
+
+   ! The reduced rate [s^-1], for the consumers that state the bound and for
+   ! the assertion that holds it to the ladder.
+   double precision function h2_total_decay_rate_max() result(a_max)
+      a_max = a_cascade_max
+   end function h2_total_decay_rate_max
+
+   ! Whether the reduction above has run.
+   logical function h2_vibrational_relaxation_ready() result(is_ready)
+      is_ready = a_cascade_ready
+   end function h2_vibrational_relaxation_ready
 
    ! Mean internal energy of the X(v'', J'') level a Lyman-Werner
    ! fluorescence lands on, at gas temperature T [K], in eV. Per excitation
@@ -184,32 +486,79 @@
       e = ev2erg*h2_energy_per_bound_fluorescence_eV(T)
    end function h2_energy_per_bound_fluorescence_erg
 
-   ! Rate coefficient for collisional de-excitation of H2 v = 1 by atomic
-   ! hydrogen and by H2, at temperature T [K].
+   ! Rate coefficient for thermal collisional de-excitation of H2 v = 1 into
+   ! v' = 0 by atomic hydrogen, at temperature T [K]: interpolation of
+   ! log k, linear in T, on Lique's (2015) own 100 K grid, with the end
+   ! values held at 100 and 5000 K rather than extrapolated (see the table
+   ! above for the source, the reduction and the range).
+   !
+   ! THE INTERPOLATION IS OF log k, NOT OF k, for all three colliders. A
+   ! vibrational de-excitation rate is thermally activated and rises by
+   ! orders across a grid interval at the low end; interpolating k itself
+   ! between 500 and 1000 K on the H2 table, whose grid is the coarsest of
+   ! the three, reads 2.3 times high at 808 K (MEASURED).
    elemental function gamma_10_H(T) result(gamma_deex)
       real*8, intent(in) :: T
-      real*8 :: gamma_deex
-      gamma_deex = g10_h_pre*sqrt(max(T, 1.0d0))*exp(-1000.0d0/max(T, 1.0d0))
+      real*8  :: gamma_deex, x, frac
+      integer :: i
+      x = (min(max(T, t_g10_h_lo),                                       &
+               t_g10_h_lo + t_g10_h_step*dble(n_g10_h - 1))              &
+           - t_g10_h_lo)/t_g10_h_step
+      i = min(int(x) + 1, n_g10_h - 1)
+      frac = x - dble(i - 1)
+      gamma_deex = exp( log(g10_h_tab(i))                                &
+                      + frac*(log(g10_h_tab(i + 1))                      &
+                              - log(g10_h_tab(i))) )
    end function gamma_10_H
 
+   ! The same quantity for a helium collider, on Jozwiak et al.'s (2024)
+   ! own 43-point grid, which is not uniform, so the interval is found by
+   ! search; log k is interpolated, and the end values are held outside
+   ! 20-8000 K rather than extrapolated.
+   elemental function gamma_10_He(T) result(gamma_deex)
+      real*8, intent(in) :: T
+      real*8  :: gamma_deex, tc, frac
+      integer :: i, k
+      tc = min(max(T, t_g10_he(1)), t_g10_he(n_g10_he))
+      i  = 1
+      do k = 1, n_g10_he - 1
+         if (tc .ge. t_g10_he(k)) i = k
+      enddo
+      frac = (tc - t_g10_he(i))/(t_g10_he(i + 1) - t_g10_he(i))
+      gamma_deex = exp( log(g10_he_tab(i))                               &
+                      + frac*(log(g10_he_tab(i + 1))                     &
+                              - log(g10_he_tab(i))) )
+   end function gamma_10_He
+
+   ! The same quantity for an H2 collider, on Le Bourlot et al.'s (1999)
+   ! own nine-point grid, which is not uniform, so the interval is found by
+   ! search; log k is interpolated, and the end values are held outside
+   ! 100-6000 K rather than extrapolated.
    elemental function gamma_10_H2(T) result(gamma_deex)
       real*8, intent(in) :: T
-      real*8 :: gamma_deex
-      gamma_deex = g10_h2_pre*sqrt(max(T, 1.0d0))                                 &
-          *exp(-12000.0d0/(max(T, 1.0d0) + 1200.0d0))
+      real*8  :: gamma_deex, tc, frac
+      integer :: i, k
+      tc = min(max(T, t_g10_h2(1)), t_g10_h2(n_g10_h2))
+      i  = 1
+      do k = 1, n_g10_h2 - 1
+         if (tc .ge. t_g10_h2(k)) i = k
+      enddo
+      frac = (tc - t_g10_h2(i))/(t_g10_h2(i + 1) - t_g10_h2(i))
+      gamma_deex = exp( log(g10_h2_tab(i))                               &
+                      + frac*(log(g10_h2_tab(i + 1))                     &
+                              - log(g10_h2_tab(i))) )
    end function gamma_10_H2
 
-   ! Critical density of H2 v = 1 against a given collider mix,
-   ! n_cr = A/gamma_deex
-   ! (Hollenbach & McKee 1979, p. 576) [cm^-3]. Diagnostic: the heat fraction
-   ! below does not go through it, so that it stays finite when the collider
-   ! density vanishes.
+   ! Critical density against a given collider mix, n_cr = A/gamma_deex
+   ! (Hollenbach & McKee 1979, p. 576) [cm^-3], with A the all-level maximum
+   ! of the cascade. Diagnostic: the heat fraction below does not go through
+   ! it, so that it stays finite when the collider density vanishes.
    elemental function h2_vibrational_critical_density(T, f_HI) result(ncr)
       real*8, intent(in) :: T      ! [K]
       real*8, intent(in) :: f_HI   ! atomic-H share of the collider density
       real*8 :: ncr, gamma_deex
       gamma_deex = f_HI*gamma_10_H(T) + (1.0d0 - f_HI)*gamma_10_H2(T)
-      ncr = a10_h2/max(gamma_deex, 1.0d-99)
+      ncr = a_cascade_max/max(gamma_deex, 1.0d-99)
    end function h2_vibrational_critical_density
 
    ! Fraction of the vibrational excitation energy that becomes HEAT rather
@@ -218,15 +567,69 @@
    ! either end,
    !
    !     f = (gamma_H n_HI + gamma_H2 n_H2) / (gamma_H n_HI + gamma_H2 n_H2
-   !                                           + A_10) .
+   !                                           + A_max) .
    !
-   ! Helium is deliberately absent: see the module header.
-   elemental function h2_vibrational_heat_fraction(T, n_HI, n_H2) result(f)
+   ! with the helium term carried whenever the caller has a helium density,
+   !
+   !     f = (gamma_H n_HI + gamma_H2 n_H2 + gamma_He n_He)
+   !         / (same + A_max) .
+   !
+   ! A_max is the largest total spontaneous decay rate over the whole bound
+   ! ladder, so the fraction is the one the "every level of the cascade"
+   ! condition is stated for; the collisional side is still the v = 1
+   ! coefficient of each collider, which understates de-excitation of the
+   ! closely spaced high levels and therefore errs towards radiating rather
+   ! than heating.
+   !
+   ! WHERE THE FORM COMES FROM: Burton, Hollenbach & Tielens (1990)
+   ! eq. (A1), whose structure and counting unit are set out in
+   ! docs/p39_lw_cross_section_sources.md section 5.2 and are not restated
+   ! here; this function is their quenched share n gamma/(A + n gamma).
+   !
+   ! WHAT THIS FRACTION APPROXIMATES, written down so that the
+   ! approximation has a target and not only a caveat. The exact statement
+   ! of the same physics is the NET COLLISIONAL HEAT of the ladder,
+   !
+   !     Q = sum over level pairs (u, l) and colliders M of
+   !         [ n_u C_ul(M) - n_l C_lu(M) ] n_M (E_u - E_l) ,
+   !
+   ! with the upward coefficients from the downward ones by detailed
+   ! balance and the populations n_u from a statistical equilibrium of the
+   ! whole X ladder. That form carries no n_cr, no single level standing in
+   ! for the cascade and no fraction at all, and it is exact in both the
+   ! collisionally starved and the thermalized limit. It is what Cloudy
+   ! c25.00 evaluates over its 303-level model of the same state
+   ! (docs/cloudy_h2_model_reference_20260916.md section 5.1).
+   !
+   ! IT IS NOT BUILDABLE HERE, and the reason is data, not effort: the
+   ! H2-H rate coefficients stop at v = 3 in everything that distributes
+   ! numbers, while the molecules this fraction is applied to are born at
+   ! v = 10 to 14 (R15) and v = 5 to 6 (R6). Until that gap closes there
+   ! are no level populations to put in the expression above.
+   !
+   ! HOW FAR THIS LAYER IS FROM THE DISTINCTION MATTERING: 1 - f = 7.0e-09
+   ! at the certified base with the collider sum this module now carries
+   ! (MEASURED, docs/lhs1140b_stationary_L7g_inventory_20260916.md), so the
+   ! two forms differ there by less than any quantity the run reports.
+   !
+   ! n_He IS OPTIONAL, AND WHY.  The three photoelectric and Lyman-Werner
+   ! sites that call this function are handed the neutral hydrogen and the
+   ! H2 of their own cell and no helium density, so they cannot state one;
+   ! the chemical-heat ledger can and does. Omitting it drops a term that
+   ! carries about a part in a thousand of the sum at this base (MEASURED),
+   ! which is why the two readings agree to 1e-3 of the collider sum and to
+   ! nothing at all in f where f is 1 to a part in 1e6. Passing n(He) at
+   ! those three sites is a one-line change in files this item does not
+   ! own and is recorded rather than made.
+   elemental function h2_vibrational_heat_fraction(T, n_HI, n_H2, n_He)   &
+                      result(f)
       real*8, intent(in) :: T          ! [K]
       real*8, intent(in) :: n_HI, n_H2 ! [cm^-3]
+      real*8, intent(in), optional :: n_He ! [cm^-3]
       real*8 :: f, q
       q = gamma_10_H(T)*max(n_HI, 0.0d0) + gamma_10_H2(T)*max(n_H2, 0.0d0)
-      f = q/(q + a10_h2)
+      if (present(n_He)) q = q + gamma_10_He(T)*max(n_He, 0.0d0)
+      f = q/(q + a_cascade_max)
    end function h2_vibrational_heat_fraction
 
    ! End of module

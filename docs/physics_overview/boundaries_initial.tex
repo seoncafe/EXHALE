@@ -97,6 +97,37 @@ velocity.  A compatibility relation is linear and far from a solution can ask
 for any velocity, so the face state is capped at Mach 5 and the events are
 counted.
 
+\paragraph{Which Mach number the branch reads (2026-09-17).}
+The face Mach number of a near-hydrostatic base is not a reliable statement of
+the direction the gas moves: on a planet whose base is subsonic to
+$M\sim10^{-6}$ the cell-1 velocity carries the odd-even mode of the base and
+can alternate in sign from cell to cell while the column as a whole is a
+steady outflow.  The branch weight is therefore a blend of the local face
+discriminant and a nonlocal one read from the wind itself,
+\begin{equation}
+  s_{\rm wind} = A(M_{\rm wind})\,C(d_{\rm window}) ,\qquad
+  d_{\rm window} = \frac{\sqrt{\langle F^2\rangle-\langle F\rangle^2}}
+                        {|\langle F\rangle|} ,\qquad F = \rho v r^2 ,
+  \label{eq:wind_window_say}
+\end{equation}
+the moments taken over the cells above the flux-window radius.  $C$ is a cubic
+smoothstep that is one where the window's relative standard deviation is at or
+below $2\times10^{-3}$ and zero at twice that, so a column whose mass flux is
+constant to that fraction is a wind and says so; $A$ is a cubic smoothstep in
+the window Mach number that is one above $10^{-12}$ and vanishes at a zero
+window flux.  Two properties are required of \eqref{eq:wind_window_say} and
+were measured: the influence of the nonlocal diagnostic goes to zero smoothly
+and uniformly along every direction of approach to a zero window flux, so the
+boundary density has one limit there and not two; and the spread is a standard
+deviation rather than a range, so no cell's becoming the extremal one puts a
+slope jump in the residual.  The threshold was calibrated on the measured gap
+between 302 certified states, whose $d_{\rm window}$ runs from
+$4.06\times10^{-5}$ to $1.82\times10^{-4}$, and the tightest state that is not
+a wind, at $1.39\times10^{-2}$.  Three purely local closures were measured
+first and all three are refused by the states: every reading of the base mass
+flux built from the first few cells is negative on the wind states whose branch
+is inflow.  Record: \texttt{docs/lhs1140b\_stationary\_L26\_20260916.md}.
+
 Holding the incoming acoustic invariant $p_b + \rho c v_b = p_{\rm res}$
 instead of the static pressure is present in the source as a weight that is
 zero.  Both forms are exactly well balanced at rest; on a moving solution the

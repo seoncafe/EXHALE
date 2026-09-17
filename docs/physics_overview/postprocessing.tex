@@ -84,6 +84,22 @@ regression matrix uses.
 \subsection{Output files}
 \label{sec:postprocessing:files}
 
+\paragraph{Which state the products are built from (2026-09-17).} A solved
+state's advection-corrected products are made by \texttt{Restart intent:
+stationary evaluate}, which loads the state, derives its pressure and
+temperature from the loaded conserved state, runs the ionization sweep,
+evaluates the certification and writes every product from that work state
+without entering the time integration. The route this replaced took one time
+step at \texttt{CFL:\ 1.0e-12} with \texttt{Do only PP:\ True}, which
+suppressed the movement but did not remove it, reconstructed with whatever
+\texttt{Reconstruction scheme:} stated rather than with the scheme the
+solution was reached under, and wrote the stepped state back over
+\texttt{Hydro\_ioniz.txt}. The difference is largest where the advection
+operator is weakest: the operator's own weighting measure
+\texttt{adv\_mass\_row} falls from $1.57$ to $1.7\times10^{-9}$ at the first
+cell and from $3.1\times10^{-5}$ to $4.0\times10^{-14}$ at the last, while the
+He\,I 10830 equivalent width moves by $5\times10^{-6}$ of itself.
+
 Every file written to \texttt{output/} carries a schema header, so a reader
 adapts instead of counting columns. \texttt{Hydro\_ioniz.txt} opens with
 \texttt{\# EXHALE schema 2} and then
@@ -103,7 +119,12 @@ energy equation itself used, so the channel sum and the \texttt{heat} or
 \texttt{cool} column of \texttt{Hydro\_ioniz.txt} are the same number to
 round-off; \texttt{Excited\_H.txt}, \texttt{Lyman\_Werner.txt},
 \texttt{FUV\_bands.txt}, \texttt{Oxygen\_chemistry.txt} and
-\texttt{OI\_levels.txt} carry the optional physics. The Python loader
+\texttt{OI\_levels.txt} carry the optional physics. The two \texttt{\_adv} files carry a
+\texttt{\# derived\_from:} line rather than the \texttt{\# coupling:} header
+of a state file (item L9, 2026-09-17): they describe an advection-corrected
+composition, which is not the composition any certification was made on, so the
+input state's certification pair is carried there as provenance and not as a
+claim about the numbers in the file. The Python loader
 \texttt{examples/exhale\_io.py} reads all of them through those headers
 (\texttt{exhale\_io.Run('output/')} gives \texttt{.r}, \texttt{.T},
 \texttt{.Mdot} and the rest), and it should be used in place of any new

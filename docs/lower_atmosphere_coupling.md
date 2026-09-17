@@ -816,6 +816,14 @@ Lyman-Werner *is* the largest single H2 loss term at the base after the change:
 partition is a formation-destruction balance in which the three-body reaction
 R15 (H + H + M) sets n_H2 ∝ n_H², so
 
+*(Note added 2026-09-17: R15's third body is no longer the total
+heavy-particle density with the M = H2 coefficient but the collider sum over
+H2, H and He with the published coefficients of Cohen & Westberg 1983, which at
+this base lowers the association rate by 22 per cent; the balance argument
+below is unchanged in form. Item L7g,
+`docs/lhs1140b_stationary_L7g_model_20260916.md`.)*
+
+
     n_H / n_H2  ∝  (total H2 destruction rate)^(1/2) ,
 
 and the square root is brutal: the measured 2.3× rise in the destruction rate

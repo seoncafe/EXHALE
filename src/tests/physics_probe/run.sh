@@ -33,6 +33,7 @@ flags=(-O0 -g -fcheck=all -fbacktrace -fopenmp -J"$work" -I"$work")
 
 drivers=(
   riemann_wave_speeds.f90
+  roe_low_mach_velocity_jump.f90
   weno3_reconstruction_order.f90
   positivity_limiter_scaling.f90
   h2_channel_detector_ratio.f90
@@ -63,6 +64,8 @@ drivers=(
   water_photolysis_lyman_alpha_yields.f90
   metal_photoionization_fits.f90
   recombination_coefficient_fits.f90
+  molecular_energy_recipients.f90
+  molecular_third_body_in_the_chemistry.f90
 )
 
 # utilities.f90 reads the revision strings of the build_stamp.f90 that the

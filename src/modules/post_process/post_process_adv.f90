@@ -211,6 +211,10 @@
 	! feeds the upwind cascade of that pass and has to be reported even if the
 	! last pass converges everywhere.
 	integer :: n_adv_noconv, n_metal_noconv, n_T_noconv
+	! Energy cell solves whose iterate was kept although the iteration
+	! reported no further progress, because its residual was already at
+	! the cancellation floor of the terms of the equation (see the solve).
+	integer :: n_T_res_root
 	integer :: Neq_adv,lwa_adv   ! advection system size (metal-independent)
 	integer :: Neq_mpp,lwa_mpp   ! metal re-solve system size (pp_metals=2)
 	 
@@ -421,6 +425,9 @@
       
 	real*8 :: rhop,rhom,vp,mum,mup,vm
 	real*8 :: sys_sol_T(1), sys_x_T(1)
+	! Largest term the energy equation holds in the current cell, the
+	! scale its residual is read against (see the solve below).
+	real*8 :: energy_residual_scale
    real*8 :: wa_T(8)
    logical :: brent_ok                       ! Task 1: Brent T-solve status
    ! The cell energy solve kept the run's own temperature: it did not
@@ -544,6 +551,7 @@
 	n_adv_noconv   = 0
 	n_metal_noconv = 0
 	n_T_noconv     = 0
+	n_T_res_root   = 0
 
 	! Iterate the post processing
 	do k = 1,10	! Usually 10 gives a good convergence
@@ -1563,10 +1571,50 @@
 	 		! A non-converged solve leaves an iterate that balances neither
 	 		! the advected energy equation nor the equilibrium one; the
 	 		! converged equilibrium temperature is the state to keep.
+	 		!
+	 		! WHAT info MEANS AND WHAT THE ROOT IS. MINPACK's info states how
+	 		! its ITERATION ended, not whether the iterate is a root: info = 4
+	 		! and 5 are returned when the steps stop improving the residual,
+	 		! which is what a stalled search and an ARRIVED one look like
+	 		! alike. At the root the residual sits at the cancellation floor
+	 		! of the terms it is assembled from and no step can lower it, so
+	 		! a solve that arrives to full precision is reported exactly as
+	 		! one that never got there. The root of a scalar equation is
+	 		! defined by its residual, so the iterate is kept whenever that
+	 		! residual is negligible against the largest term the equation
+	 		! holds, and only an iterate that is not a root falls back.
+	 		!
+	 		! THE SCALE. The terms of (E) as T_equation assembles them: the
+	 		! advected internal energy of this cell and of its upwind
+	 		! neighbor, the compression work, and the photoheating. A sum of
+	 		! terms of size s cannot be formed to better than a few machine
+	 		! epsilons of s, so 1e2*epsilon(s) is the level at which the
+	 		! equation is an identity in double precision; an iterate that is
+	 		! not a root stands orders of magnitude above it. MEASURED on the
+	 		! three cells of the LHS 1140 b 45 Rp wind that reach this branch:
+	 		! |R|/s = 1.5e-17, 2.8e-17 and 5.2e-17, against a fallback that
+	 		! discarded roots good to every digit and, because the correction
+	 		! is an upwind recursion, restarted the profile above them
+	 		! (docs/lhs1140b_stationary_L10_20260913.md).
+	 		!
+	 		! WHY IT MATTERS MORE THAN ONE CELL. The corrected temperature of
+	 		! a cell is differenced against the corrected temperature of the
+	 		! cell below, so a discarded root is not a local blemish: every
+	 		! row above it is integrated from a different starting value.
 	 		if (info /= 1) then
-	 			sys_x_T(1) = T_in(j)
-	 			n_T_noconv = n_T_noconv + 1
-	 			T_solve_fell_back = .true.
+	 			energy_residual_scale =                                        &
+	 			   max(abs(mum*teq_cell%rhov*sys_x_T(1)),                      &
+	 			       abs(mup*teq_cell%rhov*teq_cell%Told),                   &
+	 			       abs((gamma_ad - 1.0d0)*teq_cell%coeff*sys_x_T(1)),      &
+	 			       abs((gamma_ad - 1.0d0)*mup*mum*dr*theat(j)))
+	 			if (abs(sys_sol_T(1)) <=                                       &
+	 			    1.0d2*epsilon(1.0d0)*energy_residual_scale) then
+	 				n_T_res_root = n_T_res_root + 1
+	 			else
+	 				sys_x_T(1) = T_in(j)
+	 				n_T_noconv = n_T_noconv + 1
+	 				T_solve_fell_back = .true.
+	 			endif
 	 		endif
 	 		! A non-positive root is not a temperature, whatever else is in the
 	 		! gas, so this test is not conditional on the metals. It matters
@@ -1715,6 +1763,11 @@
 		write(*,'(a,i0,a)') ' (post_process_adv) energy equation: ',          &
 		   n_T_noconv, ' cell solves did not converge and kept the'           &
 		   //' equilibrium temperature.'
+	if (n_T_res_root > 0)                                                   &
+		write(*,'(a,i0,a)') ' (post_process_adv) energy equation: ',          &
+		   n_T_res_root, ' cell solves stopped improving at a residual'       &
+		   //' already at the cancellation floor of their own terms; the'     &
+		   //' iterate is the root and was kept.'
 
    ! ---------------------------- !
       

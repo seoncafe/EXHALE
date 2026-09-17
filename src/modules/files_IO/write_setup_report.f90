@@ -10,6 +10,7 @@
 	use J_incident,      only: spectrum_is_planck, loaded_table_floor_eV
 	use sed_reader,      only: photon_grid_floor_eV
 	use caloric_eos,     only: caloric_eos_state_line
+	use Numerical_Fluxes, only: low_mach_velocity_jump
 	use species_table,   only: melem_name
 	use IC_load,         only: melem_from_abundance,                    &
 	                     ic_coupling_present, ic_sec_ion_active,        &
@@ -18,7 +19,7 @@
 	                     restart_option_change_named,                   &
 	                     restart_option_change_given,                   &
 	                     ic_option_change_applied, ic_option_change_inert
-	use Read_input,      only: base_level_source
+	use Read_input,      only: base_level_source, carrier_newton_on_stall
 	use composition,     only: h2_mixing_ratio_base, h2_mixing_ratio_ceiling
 	use diffusive_photochemistry, only: carrier_co_domain_record,        &
 	                     carrier_co_domain_f_dom
@@ -212,6 +213,19 @@
 				write(outfile,*) &
       '  and n(H2) is a FOURTH NEWTON UNKNOWN per cell: the wind and'//    &
       ' the carriers are solved together, not alternated (sec. 139)'
+			endif
+			if (carrier_newton_on_stall) then
+				write(outfile,*) &
+      '  and "Coupled carrier solve: On stall": the alternation runs'//    &
+      ' first, and n(H2) becomes a FOURTH NEWTON UNKNOWN per cell from'
+				write(outfile,*) &
+      '  the pass at which the joint distance of the state has not'//      &
+      ' fallen in three consecutive passes whose carrier relaxation'
+				write(outfile,*) &
+      '  ended on the composition movement bound. The handover is'//       &
+      ' printed when it fires; the acceptance is the certification'
+				write(outfile,*) &
+      '  of the refreshed state either way.'
 			endif
 			if (maxval(kzz_cell) .le. 0.0d0) write(outfile,*) &
       '  WARNING K_zz = 0 everywhere, so the transport is pure molecular'//&
@@ -503,6 +517,23 @@
 	else
 		write(outfile,*) '- Well balanced: off (opt-in key "Well balanced")'
 	endif
+	! Rieper (2011) low-Mach correction of the Roe dissipation: the normal
+	! velocity jump entering the two acoustic expansion coefficients is
+	! scaled by min(|U_Roe|/a_Roe, 1).  It is defined on the ROE branch only.
+	if (low_mach_velocity_jump) then
+		write(outfile,*) '- Low Mach velocity jump: on (the normal'//     &
+			' velocity jump of the Roe dissipation is scaled by'
+		write(outfile,*) '    min(|U_Roe|/a_Roe, 1), Rieper 2011 J.'//    &
+			' Comput. Phys. 230, 5263, eq. 3.15-3.16; an accuracy'
+		write(outfile,*) '    correction of the low-Mach regime, not a'//&
+			' stiffness one, and exactly 1 at a supersonic face.'
+		if (trim(flux) .ne. 'ROE') write(outfile,*) '    WARNING: the'//  &
+			' correction is derived for the Roe flux and this run'//        &
+			' selects '//trim(flux)//', so the key has NO effect.'
+	else
+		write(outfile,*) '- Low Mach velocity jump: off (opt-in key'//    &
+			' "Low Mach velocity jump", ROE branch only)'
+	endif
 	! Artificial dissipation of the 2*dr contact/entropy mode that the
 	! contact-resolving upwind flux stops damping as v -> 0. It enters the
 	! numerical flux, so the marching loop and the steady residual see the
@@ -725,6 +756,7 @@
 	call put_l('thereis_oxychem', thereis_oxychem)
 	call put_l('carrier_transport', carrier_transport)
 	call put_l('carrier_in_newton', carrier_in_newton)
+	call put_l('carrier_newton_on_stall', carrier_newton_on_stall)
 	call put_l('ionization_transport', ionization_transport)
 	call put_r('F_FUV_B3', F_FUV_B3)
 	call put_r('F_FUV_B4', F_FUV_B4)
@@ -888,6 +920,7 @@
 	write(u,'(A,L1)')     'mol_ir_bands              ', mol_ir_bands
 	write(u,'(A,L1)')     'carrier_transport         ', carrier_transport
 	write(u,'(A,L1)')     'carrier_in_newton         ', carrier_in_newton
+	write(u,'(A,L1)')     'carrier_newton_on_stall   ', carrier_newton_on_stall
 	write(u,'(A,L1)')     'ionization_transport      ', ionization_transport
 	write(u,'(A,L1)')     'oxygen_chemistry          ', thereis_oxychem
 	if (thereis_oxychem) then

@@ -55,6 +55,7 @@
                                 set_mol_turnover_rates, mol_inv_turnover
       use oxygen_rates, only: rk_D1_Hep_CO
       use molecular_reaction_heat, only: oxygen_reaction_energy_eV, ir_D1
+      use mol_rates, only: h2_thermochemistry_init
 
       implicit none
       real*8, parameter :: eV_to_erg = 1.602176634d-12
@@ -82,6 +83,11 @@
       integer :: i
       real*8  :: others_move
 
+      ! The H2 equilibrium-constant table, which the reverse of the thermal
+      ! dissociation reads inside set_mol_coeffs. keq_H_H_to_H2 refuses to
+      ! build it itself so that no parallel region ever does; EXHALE_main
+      ! calls this in the same serial prologue.
+      call h2_thermochemistry_init
       k_d1 = rk_D1_Hep_CO()
       call fill_cell()
       call set_mol_coeffs(T_K, ntot)

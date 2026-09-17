@@ -15,8 +15,11 @@ as `../references/Kappeli2016_AA587_A94_SAMreport2015-40.pdf` (ETH SAM Research
 Report 2015-40, November 2015, the A&A submission text) and
 `../references/Kappeli2014_JCP259_199_SAMreport2013-05.pdf` (ETH SAM Research
 Report 2013-05). Section and equation numbers below are those of the reports;
-the published articles are still to be obtained and the numbers checked
-against them.
+the published articles were obtained on 2026-09-13
+(`../references/Kappeli_2016A&A_587_A94.pdf`, `../references/Kappeli_2014JCP_259_199.pdf`)
+and every equation number cited here (2016: 10, 11, 13 to 18, 24 to 27, A.4;
+2014: 2.7, 2.9 to 2.14, 2.23, 2.25, 2.26, theorem 1) is the same in print, with
+the same content; the section 2.1.1 sentence is verbatim.
 
 **Käppeli and Mishra 2014 (JCP 259, 199), the isentropic local equilibrium.**
 Within cell i the equilibrium is defined by holding the cell's own specific

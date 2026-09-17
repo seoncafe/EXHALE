@@ -350,6 +350,14 @@
       ! per atom pair, but it varies slightly with depth."  We adopt the
       ! 0.4 eV, held constant with depth.
       !
+      ! CONFIRMED against the level-resolved values: Abgrall, Roueff &
+      ! Drira (2000), A&AS 141, 297, give the mean kinetic energy of the
+      ! dissociating products for every rovibronic level of the B, C, B' and
+      ! D states, and weighting those by this module's own rate weights
+      ! gives 0.397 eV at 100 K, 0.406 at 1300 K and 0.429 at 2700 K
+      ! (MEASURED, docs/p39_lw_cross_section_sources.md section 4.1), so the
+      ! constant is right to 2 per cent over the layer.
+      !
       ! The 4.48 eV H-H bond energy is paid by the absorbed photon, not by
       ! the gas, so it is NOT a thermal sink of this channel.  (A thermal
       ! dissociation-energy sink for R12/R14 is a separate open item.)
@@ -403,7 +411,9 @@
       real*8, parameter :: e_lw_photon_erg = 1.88021d-11
 
       ! Kinetic energy released to the H + H pair, 0.4 eV in erg
-      ! (Black & Dalgarno 1977, p. 418).
+      ! (Black & Dalgarno 1977, p. 418; confirmed to 2 per cent against the
+      ! level-resolved values of Abgrall, Roueff & Drira 2000, section 5 of
+      ! the header).
       real*8, parameter :: e_lw_fragment_erg = 6.40871d-13
 
       ! Boltzmann constant and the H2 mass: the global definitions of

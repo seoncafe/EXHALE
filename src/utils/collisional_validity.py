@@ -211,12 +211,46 @@ in hydrodynamic blow-off, the Jeans form is not applicable at all, and that
 is reported instead of a number.
 
 --------------------------------------------------------------------------
+Which state this reads
+--------------------------------------------------------------------------
+
+The default is the SOLUTION, `output/Hydro_ioniz.txt` and
+`output/Ion_species.txt`, and the reason is that every quantity here that
+decides the verdict is built on the momentum equation: the sound speed, the
+Mach number, the critical point, the structure scale L that the Knudsen
+number is divided by, and the mass flux.  Those are properties of the state
+that satisfies that equation, which is the solution and only the solution.
+
+The `_adv` pair is a different state.  It carries the solution's own density
+and velocity beside a temperature and a composition obtained from a second
+closure -- the steady ionization balance with advection, in place of the
+local photoionization equilibrium the wind was solved with -- for which the
+momentum equation was never re-solved.  A sound speed formed from its
+pressure and the solution's density, and a Mach number formed from that and
+the solution's velocity, therefore belong to no single state.  Measured on
+the LHS 1140 b 45 R_p wind (`docs/lhs1140b_stationary_L10_20260913.md`): the
+solution crosses its critical point at 40.06 R_p, and the `_adv` pair, whose
+temperature in the outer wind is 3.5 to 4 times the solution's, reports no
+critical point in the domain at all.
+
+`--adv` reads the `_adv` pair anyway, which is the right question to ask of
+the COMPOSITION: the mean free path is set by how much of the gas is
+neutral, and in a wind whose ionization cannot relax over a flow time the
+advected composition is the physical one while the equilibrium composition
+the solution carries is not.  The two answers bracket the exobase rather
+than agreeing: on that same wind the solution puts Kn_bulk = 1 above the
+outer boundary and the `_adv` composition puts it at 29.0 R_p.  The report
+names which state it read; neither is a self-consistent state above the
+radius where the ionization stops relaxing, and that is a limitation of the
+run, not of this diagnostic.
+
+--------------------------------------------------------------------------
 Usage
 --------------------------------------------------------------------------
 
     python3 collisional_validity.py <case_dir> [<case_dir> ...]
-        [--eq]        read Hydro_ioniz.txt / Ion_species.txt instead of the
-                      advection-corrected _adv files (the default)
+        [--adv]       read the advection-corrected _adv profiles instead of
+                      the solution (see "Which state this reads", below)
         [--kn-threshold 0.1]
         [--json FILE] write the full diagnosis of every case as JSON
         [--profile FILE] write the radial profile of the FIRST case
@@ -496,12 +530,13 @@ def jeans_escape(r_exo_cm, TK, dens, Mp_g):
 # One case
 # --------------------------------------------------------------------------
 
-def collisional_diagnosis(case_dir, adv=True, kn_threshold=0.1,
+def collisional_diagnosis(case_dir, adv=False, kn_threshold=0.1,
                           outdir='output'):
     """Everything above, on one EXHALE run directory.  Reads
     output/Hydro_ioniz{_adv}.txt and output/Ion_species{_adv}.txt; the
-    _adv (advection-corrected) pair is the default, because that is the
-    ionization state the post-processing and the transit tool consume."""
+    solution is the default, because the sound speed, the Mach number, the
+    critical point and the structure scale are properties of the state that
+    satisfies the momentum equation ("Which state this reads", above)."""
     inp_path = os.path.join(case_dir, 'input.inp')
     run = eio.load_run(os.path.join(case_dir, outdir), inp_path, adv=adv)
 
@@ -733,8 +768,14 @@ _SCALAR_KEYS = ['r_sonic', 'r_exobase', 'r_heat_peak', 'r_Tmax', 'T_max',
 
 def report(res):
     print('=' * 74)
-    print('case: %s   (%s profiles)'
-          % (res['case'], '_adv' if res['adv'] else 'eq'))
+    print('case: %s   (%s)'
+          % (res['case'],
+             'advection-corrected _adv profiles: the solution\'s density and'
+             ' velocity with a temperature and composition from a closure the'
+             ' momentum equation was not re-solved for'
+             if res['adv'] else
+             'the solution; its composition is the local photoionization'
+             ' equilibrium, which the mean free path inherits'))
     print('=' * 74)
     print('  peak heating at        %8.3f R_p' % res['r_heat_peak'])
     print('  T max                  %8.3f R_p   %.0f K'
@@ -788,8 +829,9 @@ def write_profile(res, path):
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split('\n')[0])
     ap.add_argument('case', nargs='+', help='EXHALE run directory')
-    ap.add_argument('--eq', action='store_true',
-                    help='use the equilibrium profiles instead of _adv')
+    ap.add_argument('--adv', action='store_true',
+                    help='read the advection-corrected _adv profiles instead'
+                         ' of the solution')
     ap.add_argument('--outdir', default='output',
                     help='output subdirectory of the case (default output)')
     ap.add_argument('--kn-threshold', type=float, default=0.1)
@@ -800,7 +842,7 @@ def main(argv=None):
 
     out = []
     for c in a.case:
-        res = collisional_diagnosis(c, adv=not a.eq,
+        res = collisional_diagnosis(c, adv=a.adv,
                                     kn_threshold=a.kn_threshold,
                                     outdir=a.outdir)
         report(res)

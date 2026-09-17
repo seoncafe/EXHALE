@@ -28,6 +28,7 @@
       use global_parameters
       use species_table,   only: n_mion, im_OI, mion_fsp
       use water_photolysis, only: n_fuv_band, water_photolysis_init
+      use mol_rates,       only: h2_thermochemistry_init
       use utils_ion_eq,    only: heating_of_composition, n_heat_channel,   &
                                  heat_channel_name
       use assertion_report, only: check_absolute, assertion_failures
@@ -81,6 +82,12 @@
       ! The FUV band thresholds, without which one photolysis event deposits
       ! nothing (the guard in heat_per_water_dissociation).
       call water_photolysis_init
+      ! The H2 equilibrium-constant table, which the reverse of the thermal
+      ! dissociation reads. keq_H_H_to_H2 refuses to build it itself so that
+      ! no parallel region ever does; EXHALE_main calls this in the same
+      ! serial prologue, and a driver that assembles the heating has to do
+      ! the same.
+      call h2_thermochemistry_init
 
       jlo = 1 - Ng
       jhi = N + Ng

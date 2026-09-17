@@ -370,7 +370,7 @@
 	! derivative samples and carry no physical meaning of their own; and the
 	! line-search trials, which are candidates until one is adopted. A single
 	! set of run-wide counters records all of them as if the run had accepted
-	! them: measured on backup/regression/armD_D2_newton, the marching phase
+	! them: measured on backup/regression/heh_1_newton, the marching phase
 	! reported not one non-root acceptance in 2002 steps and the JFNK phase
 	! then added 18,339, largest residual 1.7e+97, none of which the run ever
 	! adopted. The same mixing gave ieq_nonroot_streak -- whose limit stops
@@ -385,6 +385,19 @@
 	integer, parameter :: ieq_state_steady_iterate    = 2
 	integer, parameter :: ieq_state_steady_candidate  = 3
 	integer, save :: ieq_sweep_state_kind = ieq_state_marching
+	! EXHALE_MASS_PROJECTION, read once (mass_projection_of_the_sweep)
+	logical, save :: mass_projection_on    = .true.
+	logical, save :: mass_projection_known = .false.
+	! The two thresholds of the projection (see the block that applies it)
+	! and what it has done over the run: the largest |s - 1| seen and the
+	! number of sweeps at which it was refused.  Read by the run's own
+	! reports; nothing branches on them.
+	real*8, parameter :: ieq_mass_projection_report  = 1.0d-12
+	real*8, parameter :: ieq_mass_projection_refuse  = 1.0d-8
+	real*8, save      :: ieq_mass_projection_worst   = 0.0d0
+	integer, save     :: n_ieq_mass_projection_refused = 0
+	public :: ieq_mass_projection_worst, n_ieq_mass_projection_refused
+	public :: ieq_mass_projection_report, ieq_mass_projection_refuse
 
 	! One ledger per sweep tag. The fields are the run-wide totals that used
 	! to be separate module variables:
@@ -956,6 +969,10 @@
    integer :: it_self
    logical :: last_self
    real*8  :: self_moved, nheiS_it, nh2_it
+   ! Ionized hydrogen-nucleus fraction of a lower-boundary ghost, against
+   ! which the base handoff's molecular partition is stated (see the ghost
+   ! reservoir block of the sweep).
+   real*8  :: x_ion_ghost
    real*8, dimension(n_x_max) :: x_self
 
    ! Promotion of a molecular cell with no root to the constrained
@@ -1236,7 +1253,15 @@
 	f_vib_quench = 0.0d0
 	e_vib_bound  = 0.0d0
 	if (thereis_He .and. thereis_mol) then
-		f_vib_quench = h2_vibrational_heat_fraction(T_K, nhi, nmol_eq(:,1))
+		! The three colliders of the cascade are atomic hydrogen, helium and
+		! H2, each with its own published coefficient
+		! (h2_vibrational_relaxation).  The helium one is the GROUND-SINGLET
+		! neutral: the quantum calculation behind that coefficient is for
+		! neutral He + H2, and a helium ion interacts with the molecule
+		! through a different potential and carries no coefficient here.
+		f_vib_quench = h2_vibrational_heat_fraction(T_K, nhi,             &
+		                   nmol_eq(:,1),                                  &
+		                   he_ground_singlet_density(nhei, nheiTR))
 		e_vib_bound  = h2_energy_per_bound_fluorescence_eV(T_K)
 	endif
 
@@ -1680,7 +1705,7 @@
 		!$omp           x_cce, cce_full, cce_root, n_cce_fs, res_cce,                &
 		!$omp           clk_beg, clk_end, clk_rate,                                  &
 		!$omp           it_self, last_self, self_moved, x_self,                      &
-		!$omp           nheiS_it, nh2_it,                                            &
+		!$omp           nheiS_it, nh2_it, x_ion_ghost,                               &
 		!$omp           Pm_row, h1m_row, chan_row, heat_row, q_abs_row)              &
 		!$omp   reduction(+:n_mol_clamped,n_mol_info,n_ieq_reseed,n_ieq_retry, &
 		!$omp               n_ieq_unphys,n_ieq_fail,n_acc,hist_conv,hist_uncv, &
@@ -1948,9 +1973,74 @@
 				! which is this cell's own local estimate rather than
 				! upstream information -- imposing it would be imposing the
 				! solver's own answer on the solver.
+				!
+				! WHAT THE HANDOFF PRESCRIBES IS THE PARTITION OF THE
+				! NON-IONIZED HYDROGEN. The lower-atmosphere model states
+				! q_H2 for gas that its own field acts on, and that gas is
+				! neutral; the ionization of this reservoir is produced by
+				! the wind's field, which that model never saw, so the
+				! reservoir's H+ is determined here by the ionization
+				! balance and the handoff fraction x2 applies to the
+				! hydrogen nuclei that are left. The row this sweep solves
+				! is x(4) = 2 n(H2)/n_H over ALL the hydrogen nuclei, so
+				! what is imposed on it is x2 (1 - x_ion).
+				!
+				! x2 OF EVERY NUCLEUS IS AN OVER-PRESCRIPTION, and one that
+				! nothing checked. It leaves 1 - x2 of the hydrogen for H+,
+				! H2+, H3+ and HeH+ together -- 1.7e-5 at the Koskinen 2022
+				! handoff x2 = 0.99998 -- while the ionization balance of a
+				! reservoir the wind has warmed asks for its own x(H+),
+				! measured at 3.2e-4 there, 19 times the room. The system
+				! is then infeasible: the solve breaks the pinned row to
+				! pay for the ionization and the sweep reports the cell as
+				! resting on a non-root. x2 (1 - x_ion) instead leaves
+				! (1 - x2)(1 - x_ion) + x_ion, which is never less than the
+				! ionized fraction itself, so the prescription and the
+				! ionization always fit in the hydrogen the cell has.
+				!
+				! x_ion is the ionized hydrogen-nucleus fraction of the
+				! state this sweep was handed, so the pair (partition,
+				! ionization) is reached by the alternation and is exact at
+				! a stationary state. The molecular ions carry hydrogen
+				! nuclei too -- two in H2+, three in H3+, one in HeH+ --
+				! and they are ionized, so they count here with the same
+				! multiplicities the unknowns x(5), x(6), x(7) carry.
 				if (base_h2_composition_imposed() .and. j .le. 0) then
+					x_ion_ghost = (nhii(j) + 2.0d0*nmol_eq(j,2)           &
+					            + 3.0d0*nmol_eq(j,3) + nmol_eq(j,4))      &
+					            /nh(j)
+					if (.not. (x_ion_ghost .ge. 0.0d0)) x_ion_ghost = 0.0d0
+					if (x_ion_ghost .gt. 1.0d0) x_ion_ghost = 1.0d0
 					ieq_cell%x_h2_fixed = .true.
-					ieq_cell%x_h2_fix   = base_h2_nuclei_fraction()
+					ieq_cell%x_h2_fix   = base_h2_nuclei_fraction()       &
+					                    *(1.0d0 - x_ion_ghost)
+					! AND THE PRESCRIPTION IS CHECKED AGAINST THE CELL'S
+					! OWN HYDROGEN, which is what the over-prescription
+					! above never was. The room the pinned row leaves is
+					! 1 - x_h2_fix and the hydrogen already held in ions is
+					! x_ion; a prescription that leaves less room than that
+					! cannot be satisfied by any composition, and is
+					! refused here by name instead of reaching the solver
+					! and being reported as a streak of non-roots.
+					if (ieq_cell%x_h2_fix + x_ion_ghost .gt. 1.0d0) then
+						!$omp critical (ieq_acc_report)
+						write(*,'(A)') ' (ioniz_eq) STOP: the base '//    &
+							'handoff prescribes more H2 than the '//      &
+							'reservoir has non-ionized hydrogen'
+						write(*,'(A,I0,A,ES12.5)') '   ghost cell ', j,   &
+							'   imposed 2 n(H2)/n_H ', ieq_cell%x_h2_fix
+						write(*,'(A,ES12.5,A,ES12.5)')                    &
+							'   ionized hydrogen fraction it must make '//&
+							'room for ', x_ion_ghost,                     &
+							'   room left by the prescription ',          &
+							1.0d0 - ieq_cell%x_h2_fix
+						write(*,'(A,ES12.5)')                             &
+							'   handoff x2 = base_h2_nuclei_fraction() ', &
+							base_h2_nuclei_fraction()
+						flush(6)
+						!$omp end critical (ieq_acc_report)
+						error stop 'ioniz_eq: infeasible base H2 handoff'
+					endif
 				endif
 				! Keep this cell's coefficient state for the carrier
 				! transport operator, which evaluates the same rows on the
@@ -2760,6 +2850,160 @@
 
 	!----------------------------------!
 
+	! THE COMPOSITION THIS SWEEP RETURNS WEIGHS THE DENSITY IT WAS GIVEN.
+	!
+	! The mass fractions of a state are f_i = n_i m_i / rho, so
+	! sum_i f_i A_i = 1 is the DEFINITION of f_sp and not a tolerance. The
+	! sweep holds the density fixed (T2.1: it is an input the sweep may not
+	! write) and solves the chemistry cell by cell, and what it returns
+	! weighs that density only to the arithmetic of the cell solves: the
+	! element totals come back conserved to about 4e-16 and the mass is a
+	! weighted sum of them, so the closure leaves 1 by a few units in the
+	! last place at every sweep and in the same direction.
+	!
+	! MEASURED (item L19, 2026-09-15,
+	! docs/lhs1140b_stationary_L19_L20_20260915.md): without this
+	! projection the departure RATCHETS, about 1e-14 per outer pass of a
+	! stationary solve, reaching 5.1e-13 after nineteen passes and 6.2e-13
+	! after twenty-four. Nothing bounded it -- the element operator's own
+	! test compares a step's closure with the ENTRY closure of that step
+	! and is blind to a monotone drift by construction -- and a state that
+	! carries it is a state whose two halves describe two gases, which is
+	! what a restart then has to choose between (item L18).
+	!
+	! THE DENSITY IS THE CONSERVED QUANTITY AND THE COMPOSITION IS THE
+	! PARTITION ON IT, so the composition is put on the density and never
+	! the other way round: one factor per cell over every species, which
+	! leaves every element ratio, every ionization split and every
+	! metal-to-hydrogen ratio exactly where the cell solve put them and
+	! moves only the normalization. It is the same rule load_IC applies to
+	! a restart file, so a state written, read back and re-measured passes
+	! through one projection and not two different ones.
+	!
+	! It runs before the heating and the cooling below, so those are
+	! contracted with the composition that is returned and written, and
+	! before the calc_rho that normalizes f_sp_io, which then reads one to
+	! the last bit. EXHALE_MASS_PROJECTION=0 restores the old behaviour for
+	! a control experiment; nothing else reads that variable.
+	!
+	! THE PROJECTION IS BOUNDED, AND IT REFUSES RATHER THAN HIDES.  A
+	! renormalization that is allowed to be any size is a way of making a
+	! broken closure invisible: whatever the cell solve did to the mass, the
+	! composition would come back weighing the density exactly and nothing
+	! would say it had been moved.  So the factor is MEASURED and reported,
+	! and it has two thresholds (Codex review, 2026-09-15):
+	!
+	!   |s - 1| <= 1e-12   the rounding of the cell solves, which is what
+	!                      this projection exists to remove; silent.
+	!   1e-12 < |s-1| <= 1e-8   reported, loudly, with the cell: the sweep
+	!                      is moving mass by more than its own arithmetic.
+	!   |s - 1| > 1e-8     NOT PROJECTED.  A closure error of that size is a
+	!                      failure of the sweep and is reported as one; the
+	!                      composition is handed back as the solve left it,
+	!                      so the certification's own mass-closure line
+	!                      (item L19) shows the failure instead of a
+	!                      projection hiding it.
+	!
+	! The factor is also refused where it is not a usable number at all: a
+	! non-finite or non-positive mixture mass is not a composition and
+	! multiplying by it would put the NaN into every species column.
+	!
+	! WHAT THE PROJECTION MOVES, reported with it: every element total moves
+	! by exactly |s - 1| in ABSOLUTE nucleus density, because the factor is
+	! common to every species -- which is why no element RATIO moves at all,
+	! and why the ratio is the wrong thing to report here.
+	if (mass_projection_of_the_sweep()) then
+		block
+		real*8, dimension(1-Ng:N+Ng) :: m_of_comp, s_close
+		real*8  :: s_worst
+		integer :: im_p, j_worst
+		logical :: s_ok
+		if (thereis_mol) then
+			if (thereis_oxychem) then
+				call calc_rho(nhi,nhii,nhei,nheii,nheiii,m_of_comp,   &
+				              nm,nmol_eq,nox_eq)
+			else
+				call calc_rho(nhi,nhii,nhei,nheii,nheiii,m_of_comp,   &
+				              nm,nmol_eq)
+			endif
+		else
+			call calc_rho(nhi,nhii,nhei,nheii,nheiii,m_of_comp,nm)
+		endif
+		s_ok    = .true.
+		s_worst = 0.0d0
+		j_worst = 0
+		do im_p = 1-Ng, N+Ng
+			if (m_of_comp(im_p) .gt. 0.0d0 .and.                      &
+			    m_of_comp(im_p) .eq. m_of_comp(im_p) .and.            &
+			    n_in_dim(im_p)  .gt. 0.0d0 .and.                      &
+			    n_in_dim(im_p)  .eq. n_in_dim(im_p)) then
+				s_close(im_p) = n_in_dim(im_p)/m_of_comp(im_p)
+			else
+				s_close(im_p) = 1.0d0
+			endif
+			if (s_close(im_p) .ne. s_close(im_p) .or.                 &
+			    s_close(im_p) .le. 0.0d0) then
+				s_close(im_p) = 1.0d0
+				s_ok = .false.
+			endif
+		enddo
+		do im_p = 1, N
+			if (abs(s_close(im_p) - 1.0d0) .gt. s_worst) then
+				s_worst = abs(s_close(im_p) - 1.0d0)
+				j_worst = im_p
+			endif
+		enddo
+		ieq_mass_projection_worst = max(ieq_mass_projection_worst,        &
+		                                s_worst)
+		if (.not. s_ok) then
+			n_ieq_mass_projection_refused =                           &
+			   n_ieq_mass_projection_refused + 1
+			write(*,'(A)') ' (ioniz_eq) mass projection REFUSED: the'//&
+			   ' mixture mass of a cell is not a usable number, so'// &
+			   ' the composition is handed back unprojected.'
+			s_close = 1.0d0
+		else if (s_worst .gt. ieq_mass_projection_refuse) then
+			n_ieq_mass_projection_refused =                           &
+			   n_ieq_mass_projection_refused + 1
+			write(*,'(A,ES10.3,A,I0,A,ES10.3,A)')                     &
+			   ' (ioniz_eq) mass projection REFUSED: the composition'//&
+			   ' this sweep returns weighs its own density to ',      &
+			   s_worst, ' at cell ', j_worst, ', above ',             &
+			   ieq_mass_projection_refuse, '.'
+			write(*,'(A)') '   That is a failure of the cell solve'// &
+			   ' and not the rounding this projection removes, so'//  &
+			   ' the composition is handed'
+			write(*,'(A)') '   back as the solve left it and the'//   &
+			   ' certification''s mass-closure line reports it.'
+			s_close = 1.0d0
+		else if (s_worst .gt. ieq_mass_projection_report) then
+			write(*,'(A,ES10.3,A,I0,A)') ' (ioniz_eq) mass'//         &
+			   ' projection: the composition this sweep returns'//    &
+			   ' weighs its own density to ', s_worst, ' at cell ',   &
+			   j_worst, '; every element total is moved by that'//    &
+			   ' much in absolute'
+			write(*,'(A)') '   nucleus density, and no element ratio'//&
+			   ' by anything (the factor is common to every species).'
+		endif
+		nhi    = nhi   *s_close
+		nhii   = nhii  *s_close
+		nhei   = nhei  *s_close
+		nheii  = nheii *s_close
+		nheiii = nheiii*s_close
+		nheiTR = nheiTR*s_close
+		do im_p = 1, n_mion
+			nm(:,im_p) = nm(:,im_p)*s_close
+		enddo
+		nmol_eq(:,1) = nmol_eq(:,1)*s_close
+		nmol_eq(:,2) = nmol_eq(:,2)*s_close
+		nmol_eq(:,3) = nmol_eq(:,3)*s_close
+		nmol_eq(:,4) = nmol_eq(:,4)*s_close
+		nox_eq(:,1)  = nox_eq(:,1) *s_close
+		nox_eq(:,2)  = nox_eq(:,2) *s_close
+		nox_eq(:,3)  = nox_eq(:,3) *s_close
+		end block
+	endif
+
 	! HEATING AND COOLING OF THE STATE THIS SWEEP RETURNS.
 	!
 	! Everything above the sweep is a RATE or a COEFFICIENT: the attenuated
@@ -3412,6 +3656,27 @@
 	real*8, intent(in) :: x
 	finite_real = (x .eq. x) .and. (abs(x) .le. huge(x))
 	end function finite_real
+
+	!----------------------------------!
+
+	logical function mass_projection_of_the_sweep() result(on)
+	! Whether the composition a sweep returns is put on the density the
+	! sweep was given (item L19). Default ON, because the mass fractions
+	! are defined by that density; EXHALE_MASS_PROJECTION=0 is the control
+	! experiment that restores the unprojected composition.
+	!
+	! Read once and kept: ioniz_eq is the hot path of every route in the
+	! code and is entered thousands of times per solve, so the environment
+	! is not re-read per sweep.
+	character(len=8) :: env
+	if (.not. mass_projection_known) then
+		env = ' '
+		call get_environment_variable('EXHALE_MASS_PROJECTION', env)
+		mass_projection_on    = (trim(env) .ne. '0')
+		mass_projection_known = .true.
+	endif
+	on = mass_projection_on
+	end function mass_projection_of_the_sweep
 
 	!----------------------------------!
 
@@ -4356,7 +4621,7 @@
 	! order is the declaration order of that module.
 	real*8 :: c(27)
 	c = [ mk5, mk6, mk7, mk8, mk9, mk10, mk11, mk12, mk13, mk14, mk15,   &
-	      mk16, mk17, mk18, mk19, mk20, mk23, mk_ion_H2,                 &
+	      mk16, mk17, mk18, mk19, mk_h2p_he, mk23, mk_ion_H2,            &
 	      ok1, ok1r, ok2, ok2r, ok6, oj3, oj4, oj5, oj7 ]
 	end function pack_mol_coefficients
 
@@ -4367,7 +4632,7 @@
 	mk5  = c(1);  mk6  = c(2);  mk7  = c(3);  mk8  = c(4)
 	mk9  = c(5);  mk10 = c(6);  mk11 = c(7);  mk12 = c(8)
 	mk13 = c(9);  mk14 = c(10); mk15 = c(11); mk16 = c(12)
-	mk17 = c(13); mk18 = c(14); mk19 = c(15); mk20 = c(16)
+	mk17 = c(13); mk18 = c(14); mk19 = c(15); mk_h2p_he = c(16)
 	mk23 = c(17); mk_ion_H2 = c(18)
 	ok1  = c(19); ok1r = c(20); ok2  = c(21); ok2r = c(22)
 	ok6  = c(23); oj3  = c(24); oj4  = c(25); oj5  = c(26)

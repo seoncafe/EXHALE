@@ -50,7 +50,7 @@ each. `make check` runs the cases eight at a time. COST3 measured the lever
   (-84 percent at 1.18 Rp on `wasp_full` 300). He 10830 is not affected
   through those routes.
 - `Load IC` cases (`jfnk_hd189`, `jfnk_hd189_tight`, `ptc_warm`,
-  `armD_D2_newton`, the planet folders, `benchmarks/koskinen2022_model_a/*`)
+  `heh_1_newton` (renamed 2026-09-16 from `armD_D2_newton`; mapping in `docs/named_case_audit.md` section 6), the planet folders, `benchmarks/koskinen2022_model_a/*`)
   need their IC regenerated on the current grid (grid guard).
 - A converged run reaching 3000 K to check the CO domain nesting.
 - Paper/poster re-convergence, LHS 1140 b write-up, GitHub public switch:

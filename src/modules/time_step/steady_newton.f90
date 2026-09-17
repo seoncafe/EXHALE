@@ -36,7 +36,7 @@
       use excited_hydrogen,       only: excited_H_update
       ! The face states and interface fluxes the flux assembly last built,
       ! and the count of reconstructions the positivity limiter scaled back.
-      ! Read by the jump scan only, to say WHICH operator of the pipeline
+      ! Read by the jump scan only, to say WHICH operator of the evaluation
       ! state -> ghosts -> face states -> flux -> row is the first that
       ! jumps; the counter is saved and restored around the scan's own
       ! reconstruction so a measurement never enters the run's ledger.
@@ -53,6 +53,7 @@
       ! MINPACK hybrd1. Read by the additivity hook only, to say what a
       ! stopping tolerance costs the inner solve.
       use newton_solver,          only: nt_calls, nt_fallback
+      use eval_time_step,         only: eval_dt
       use steady_residual_mod,    only: assemble_residual,             &
                                         reconstruction_continuation_rhs, &
                                         face_mass_flux_of_state,       &
@@ -117,6 +118,7 @@
                                         cert_tol_element_at,             &
                                         cert_tol_carrier_at,             &
                                         mass_row_cell_verdict,           &
+                                        cert_tol_mass_at,                &
                                         cert_tol_momentum,               &
                                         cert_tol_energy,                 &
                                         cert_regime_wind_r,              &
@@ -127,6 +129,8 @@
       public :: neq_newton, pack_U, unpack_U, newton_residual,         &
                 pack_species_rows, write_species_rows_into_composition, &
                 cell_state_scales, cell_row_scales,                     &
+                judged_size_of_the_hydrodynamic_rows,                   &
+                row_scaling_of_the_linear_model,                        &
                 merit_row_scale_from_certification,                     &
                 eval_residual, frozen_residual, build_banded_jac,      &
                 band_matvec, band_matvec_transpose, kl_jac, ku_jac,    &
@@ -135,6 +139,7 @@
                 gate_rnorm_accepted, gate_fspread_accepted,            &
                 set_transported_species_rows,                          &
                 carrier_unknown_on, n_species_rows,                    &
+                coupled_block_jacobian_action_requested,               &
                 species_row_carrier_index,                             &
                 distance_from_certification, resid_tol_of_solve,        &
                 hydrodynamic_distance_from_certification_by_cell,        &
@@ -474,10 +479,10 @@
       ! OPERATOR BREAKS IT (EXHALE_RESID_JUMP_SCAN=1). A second difference
       ! that does not fall with the square of the spacing but sits on a
       ! floor says F itself steps somewhere inside the arc; where the step
-      ! is, and which piece of the pipeline
+      ! is, and which operator of the evaluation
       !     unknowns -> ghosts -> face states -> interface flux -> row
       ! takes it, is a matter of sampling F densely along one direction and
-      ! reading the pipeline on either side of the step. Default off; the
+      ! reading those terms on either side of the step. Default off; the
       ! scan takes about seventy residual evaluations at the one outer
       ! iteration it speaks at and decides nothing.
       logical :: resid_jump_scan_on   = .false.
@@ -1361,6 +1366,385 @@
       ! The extremes of E at the last outer iteration, for the diagnostic.
       real*8  :: model_row_equil_min = 1.0d0, model_row_equil_max = 1.0d0
 
+      ! THE ROWS OF THE LINEAR SYSTEM ON THE SIZE THE CERTIFICATION JUDGES
+      ! THEM AT, on the three-unknown route (judged_row_scaling_on,
+      ! EXHALE_JUDGED_ROWS=0 restores the state column scales there).
+      !
+      ! WHAT IT REPAIRS. The Krylov cycle minimizes ONE 2-norm of the scaled
+      ! residual and stops at a relative tolerance of it. With the rows
+      ! divided by the state column scales that norm is the energy rows: on
+      ! the LHS 1140 b wind with the C, N and O reservoirs the cycle reached
+      ! 7.9e-4 of its right-hand side in one product and left 2.6e+05 of the
+      ! mass row and 2.0e+05 of the momentum row of the same state, whose
+      ! measures stood at 5.0e-9 and 4.2e-13 against tolerances of 3e-12 and
+      ! 1e-8; the step then raised the mass row to 1.2e-2
+      ! (docs/lhs1140b_stationary_L4d_20260913.md section 5, MEASURED).
+      !
+      ! WHAT THE SCALE IS. Row k of cell j is divided by tol_k(j) s_k(j),
+      ! s_k the scale the certification divides that row by
+      ! (residual_row_scale) and tol_k the tolerance it gates that row with
+      ! there (cert_tol_mass_at cell by cell, cert_tol_momentum,
+      ! cert_tol_energy). A component of F/Dj IS that row's distance from
+      ! its own tolerance, the quantity
+      ! hydrodynamic_distance_from_certification_by_cell takes the maximum
+      ! of, so the cycle's relative tolerance means the same thing in all
+      ! three rows and a residual left in the continuity row is paid for in
+      ! the norm the cycle reduces.
+      !
+      ! WHAT IT DOES NOT TOUCH. The column scaling, the merit the line
+      ! search descends (|| F/D ||_2, cell_state_scales) and the ledger that
+      ! chooses the returned state are all as they were: this is the row
+      ! scaling of the LINEAR MODEL and of the band that preconditions it,
+      ! the freedom decision 20 a leaves open and the same freedom
+      ! model_row_equilibration takes with the band's infinity norm.
+      ! The four-unknown route keeps the certification row scales
+      ! (cell_row_scales), which already carry s_k there.
+      !
+      ! IT IS OFF BY DEFAULT, and the measurement that put it there is that
+      ! it does not do what it was proposed for. The linear residual left in
+      ! the continuity row of the LHS 1140 b C/N/O pass-2 state falls from
+      ! 2.6e+05 of that row to 4.3e+03 with it, and the step that direction
+      ! produces still raises the same row from 5.0e-09 to 1.095e-02 against
+      ! the 1.169e-02 the state column scales produced: the excursion is the
+      ! Newton direction and not the residual left beside it. What it does
+      ! cost is measured too: the HD 209458 b element reload certifies at
+      ! outer pass 12 instead of 11, its second pass ending on "no descent
+      ! direction exists" at ||R|| 6.3e-01 and the element relaxation
+      ! halving omega for the rest of the solve
+      ! (docs/lhs1140b_stationary_L4e_20260914.md sections 4 and 6).
+      logical :: judged_row_scaling_on = .false.
+      ! AND WHETHER THE KRYLOV CYCLE IS ASKED TO STOP INSIDE THE
+      ! TOLERANCES RATHER THAN AT A FRACTION OF THE RESIDUAL IT STARTED
+      ! FROM (krylov_stops_inside_the_tolerances, EXHALE_KRYLOV_TOL_ABS=0
+      ! to ask only for the forcing term). In the judged rows the
+      ! right-hand side IS the vector of distances from the tolerances, so
+      ! "the linear residual is inside the tolerances" is the statement
+      ! ||r||_2 < 1, and it is the statement the certification makes of the
+      ! state the step produces. It has no meaning without the judged row
+      ! scaling and is not applied without it.
+      !
+      ! IT IS OFF BY DEFAULT, and the measurement that put it there is the
+      ! one that refuted the whole route: with the target reached to
+      ! 8.2e-10 of the judged right-hand side in four products, the step
+      ! still raised the continuity row of the LHS 1140 b C/N/O pass-2
+      ! state from 5.0e-9 to 1.09e-2, within seven percent of what the
+      ! entry text's 1e-1 produced, so the excursion is the direction and
+      ! not the tolerance. What the target does cost is real: 1/||b||_2 is
+      ! 1e-10 on these states, which is below the accuracy of a
+      ! finite-difference Jacobian action, and the cycle then reports a
+      ! subspace exhausted at one product and the solve stops on "no
+      ! descent direction exists" at the sixth iteration of the pass-8
+      ! state where the entry text ground sixty and returned the same
+      ! state (docs/lhs1140b_stationary_L4e_20260914.md sections 4 and 5).
+      logical :: krylov_stops_inside_the_tolerances = .false.
+
+      ! WHETHER THE MERIT OF THE THREE-UNKNOWN ROUTE IS READ ON THE ROW
+      ! SCALING OF THE LINEAR MODEL (merit_reads_the_model_row_scaling,
+      ! EXHALE_JUDGED_MERIT=1), as it already is wherever the system carries
+      ! a species row.
+      !
+      ! WHAT THE TWO ROUTES DO. With a species row the merit, the linear
+      ! model and the gate are one scaling (cell_row_scales,
+      ! merit_row_scale_from_certification), so descending the merit is
+      ! descending the gate. Without one the merit is || F/D ||_2 on the
+      ! state column scales (cell_state_scales) while the gate is
+      ! max_k,j |F| / (tol_k s_k): two functionals, and a rule that bounds
+      ! the first bounds nothing about the second. MEASURED on the LHS 1140 b
+      ! 0.02-XUV state (docs/lhs1140b_stationary_L17_20260915.md section 3):
+      ! the linear cycle reaches its forcing term and leaves the continuity
+      ! row of the base cell at 1.7 and the energy row at 21 times the value
+      ! each entered the step with, while the 2-norm it minimizes falls.
+      !
+      ! IT IS ALSO WHAT THE SCALED TRUST REGION NEEDS. That step control
+      ! forms its model residual as F/Drow and compares the reduction it
+      ! predicts with the reduction of the merit; the two must be the same
+      ! functional or the ratio test compares two different ones, so
+      ! trust_region_on_the_hydrodynamic_rows implies this.
+      !
+      ! With judged_row_scaling_on off, Drow IS D on this route and the
+      ! merit is the number it always was.
+      logical :: merit_reads_the_model_row_scaling = .false.
+      ! AND WHETHER THE SCALED TRUST REGION IS THE STEP CONTROL OF THE
+      ! THREE-UNKNOWN ROUTE AS WELL (trust_region_on_the_hydrodynamic_rows,
+      ! EXHALE_TRUST_REGION=1). The route's own step control is the
+      ! pseudo-transient backtracking line search, and the failure that
+      ! ends its solves -- "no descent direction exists for the banded
+      ! model at this state" -- is the one the trust region was made the
+      ! default for on the coupled route (the measurement at use_tr).
+      logical :: trust_region_on_the_hydrodynamic_rows = .false.
+
+      ! THE PSEUDO-TIME AND THE TWO NUMBERS THAT MOVE IT
+      ! (pseudo_time_doubles_on_an_accepted_step,
+      ! EXHALE_PTC_RAMP_DOUBLE=0 restores the line-search merit's ratio and
+      ! the floor at dtau0, which is the arithmetic of every result before
+      ! 2026-09-14).
+      !
+      ! Pseudo-transient continuation solves (I/dtau + J) dY = -F and carries
+      ! dtau from a value at which the shift dominates the operator, where
+      ! the iteration follows the transient, to infinity, where it is Newton
+      ! (Kelley and Keyes 1998, SIAM J. Numer. Anal. 35, 508). The timestep
+      ! rule of the literature is SER, named "switched evolution relaxation"
+      ! in Kelley and Keyes 1998 section 1.2 ("so named in [21]") and
+      ! "successive evolution-relaxation" in Gropp et al. section 2.1; both
+      ! point to Mulder and van Leer 1985, J. Comput. Phys. 59, 232, and
+      ! NEITHER NAME IS IN THAT PAPER -- it states the rule and the later
+      ! literature named it.
+      !
+      ! WHAT THE PRIMARY SOURCE PRESCRIBES IS A TARGET ON THE CHANGE OF THE
+      ! STATE, not a residual ratio. Mulder and van Leer section 2 monitors
+      ! convergence with a scaled max-norm residual, their (3)
+      ! RES^n = max_{k,i} |g_ki|/(|w_ki| + h_ki), and then, verbatim, "The
+      ! time-step is derived from this quantity according to" their (4),
+      ! dt^n = epsilon/RES^n, whose purpose they state as "Equation (4)
+      ! guarantees that in the explicit case (alpha = 0) the relative change
+      ! of the state quantities per time-step will nowhere exceed epsilon".
+      ! The residual-RATIO form is a reading of (4) between two steps: the
+      ! cumulative one is Kelley and Keyes (1.5), delta_n =
+      ! delta_0 ||F(x_0)||/||F(x_n)||, and Coffey, Kelley and Keyes (1.3)
+      ! writes both and shows them equal.
+      !
+      ! THE CLIP ON THE GROWTH IS THE PART OF THIS RAMP THE PAPERS SUPPORT.
+      ! Coffey, Kelley and Keyes (1.5) admits phi(xi) = xi below a threshold
+      ! and delta_max above it -- a cap and nothing else -- and their section
+      ! 3 says of their own run, verbatim: "In this implementation, the
+      ! maximum increase of delta_n from one time step to the next is limited
+      ! to a factor of 2". Gropp, Keyes, McInnes and Tidriri
+      ! NASA CR-1998-208435 (ICASE 98-24) section 2.1 states it of the
+      ! timestep devices generally, verbatim: "All such devices are "clipped"
+      ! into a range about the current timestep in practice. Typically, the
+      ! timestep is not allowed to more than double in a favorably converging
+      ! situation, or to be reduced by more than a factor of ten in an
+      ! unfavorable one, unless feasibility is at stake, in which case the
+      ! timestep may be drastically cut".
+      !
+      ! WHAT NONE OF THE THREE PAPERS CONTAINS is the situation this ramp is
+      ! about. The SIAM algorithm takes the FULL step -- Kelley and Keyes
+      ! Algorithm 1.1 step 2(b) is "Set x = x + s" -- and has no line search;
+      ! Gropp section 2.1 says so in as many words, that the continuation
+      ! "does not require reduction in ... at each step, as do typical
+      ! linesearch or trust region globalization strategies ...; it can climb
+      ! hills"; and their phi caps the growth and never reduces delta below
+      ! what SER gives.
+      !
+      ! THE PRIMARY SOURCE DOES CARRY AN UNDER-RELAXATION, AND IT IS NOT
+      ! COUPLED TO THE TIMESTEP. Mulder and van Leer's scheme is (2),
+      ! [I/dt^n + alpha M^n] Delta_t W = G^n, in which "For alpha = 1 and
+      ! M = dG/dW (the Jacobian of G with respect to W), we have the backward
+      ! Euler or implicit Euler scheme"; against a limit cycle in one test
+      ! they write "The most obvious remedy is to make alpha > 1, implying
+      ! under-relaxation. It turned out that for alpha >= 1.2 the scheme
+      ! converged: the convergence slowed down with increasing alpha." That
+      ! under-relaxation is applied to the OPERATOR, by over-weighting the
+      ! implicit term, and their (4) for the timestep is untouched by it: the
+      ! timestep is never reduced on account of the iteration being damped.
+      !
+      ! So the quantity lam below has NO counterpart in any of the three, and
+      ! neither does a cut of the pseudo-time keyed on it. The citations name
+      ! where the continuation and the growth clip come from. They do not
+      ! support the rules that read lam, which are ours and are justified by
+      ! the measurements in the memo and nowhere else.
+      !
+      ! THE GROWTH IS THAT CLIP ITSELF, TAKEN ON A STEP THE LINE SEARCH DID
+      ! NOT HAVE TO CUT: the pseudo-time doubles on an accepted step of
+      ! lam >= 0.5 and is multiplied by lam on a shorter one. The shift
+      ! I/dtau is what makes the linear model of a step trustworthy, so a
+      ! step the search had to cut to a fraction lam is a statement that the
+      ! model was good over that fraction and no further, and the pseudo-time
+      ! the step represents falls in the same proportion. Growth on every
+      ! accepted step whatever its length was measured to remove its own
+      ! shift: on the molecular seed at 1.2 R_p the accepted steps are
+      ! lam = 2e-3 and dtau doubles through them to its 1e14 ceiling in about
+      ! forty iterations, after which the solve is the unshifted Newton on a
+      ! state it is not near and the residual stands at 1.77
+      ! (docs/lhs1140b_stationary_L7d_20260914.md section 3). The ratio form
+      ! was implemented on the line-search merit (it is what the entry text
+      ! ran on) and on the judged distance from certification, and MEASURED
+      ! on the LHS 1140 b wind with the C, N and O reservoirs neither ramps. The merit falls by a few percent an
+      ! iteration on these states and carries dtau from 1.00 to 1.42 over
+      ! twelve iterations while the state returns unchanged. The judged
+      ! distance RISES on the first Newton step at every pseudo-time -- from
+      ! 1.03e+03 to 2.94e+06 at dtau0 = 1.0, and at 1e+08 to a continuity row
+      ! of 3.3e-02 that the step after it removes and certifies -- so its
+      ! rise is not a statement about dtau: read unclipped it takes dtau to
+      ! 1.8e-04 on that one step, and read clipped it is 1.00 as soon as the
+      ! distance is flat, which is what these states are.
+      !
+      ! AND THE FLOOR OF THE CUT is the explicit-stable interval of the
+      ! state, CFL min_j dr_j/(|v_j| + c_j), the interval eval_dt returns,
+      ! and not dtau0, which is a START and not a stable scale. MEASURED on
+      ! that column: the 1.0 the stationary restart starts from is 1.4e+04
+      ! times the explicit-stable interval (6.9e-05 in code time units) and
+      ! ONE THIRTY-SIXTH of the flow time r/v through the column, so the
+      ! shift I/dtau stands above the rate of every advective mode the
+      ! stationary state is made of. The states this route is asked to solve
+      ! take 1e1 to 1e8 and certify there in four to nineteen Newton
+      ! iterations. With the floor at the start, a start above the scale a
+      ! state can take is unrecoverable; with the floor below it, the cut
+      ! reaches the march the pseudo-transient is supposed to begin as.
+      logical :: pseudo_time_doubles_on_an_accepted_step = .true.
+
+      ! THE STEP LENGTH AT WHICH AN ACCEPTED STEP STILL COUNTS AS A FULL ONE
+      ! for the ramp above. The line search halves, so 0.5 is "the full step,
+      ! or one backtrack": MEASURED on the two regimes this rule has to serve
+      ! (docs/lhs1140b_stationary_L7d_20260914.md section 3), the LHS 1140 b
+      ! C/N/O pass-8 state takes lam = 0.5 on its first six accepted steps
+      ! and lam = 1 on every one after, while the molecular seed 1.2 R_p
+      ! state runs lam down through 0.25, 0.125, 6.3e-2 to 2.0e-3 once the
+      ! pseudo-time has passed the state, and the merit-ratio ramp that
+      ! solves the same state never goes below 0.25.
+      real*8, parameter :: lam_of_a_full_step = 0.5d0
+
+      ! THE GUARD ON BOTH ENDS OF THAT RAMP (ptc_ramp_guard_on,
+      ! EXHALE_PTC_RAMP_GUARD=0 restores the unguarded arithmetic above).
+      !
+      ! The ramp as written is ASYMMETRIC AND UNBOUNDED DOWNWARD: an accepted
+      ! step of length lam multiplies the pseudo-time by lam, which the line
+      ! search can make as small as 2^-20, while the growth of a full step is
+      ! clipped at two. One short accepted step therefore undoes up to twenty
+      ! doublings. MEASURED on the 0.02-XUV rung of the LHS 1140 b He/H = 2.13
+      ! column (docs/lhs1140b_stationary_L4h_20260915.md section 3): outer
+      ! pass 39 enters at dtau = 1e+08 and reaches the explicit-stable floor
+      ! 7.93e-05, twelve decades below, in 59 iterations through a run of
+      ! accepted steps of lam = 3.1e-2, 7.8e-3 and 2.4e-4; the merit falls by
+      ! 24 percent over the whole pass and the state handed back is the state
+      ! the pass was given. WHAT WAS MEASURED AT THAT FLOOR: the shift
+      ! 1/dtau = 1.3e+04 stands above every entry of the assembled band, the
+      ! Krylov cycle reaches its requested tolerance in ONE product at every
+      ! one of those iterations, and the state does not move. Read as a step
+      ! of an explicit march at the CFL interval that is what it looks like,
+      ! and such a march needs O(t_flow/dt_CFL) ~ 1e+05 steps to move this
+      ! column while the cap is 200. THE READING IS NOT A THEOREM: the system
+      ! is (M/dtau + J) dY = -F and an explicit-Euler limit dY -> -dtau F
+      ! needs dtau M^-1 J small in an OPERATOR sense, which a hydrodynamic
+      ! CFL estimate does not establish for a J that also holds the source,
+      ! radiation and chemistry couplings. The measurement is the ground: at
+      ! that floor the iteration buys nothing, whatever the right name for
+      ! the limit is, and the residual is pinned by the step-length rule and
+      ! not by the direction.
+      !
+      ! THE THREE STATEMENTS OF THE GUARD, each of them a statement the
+      ! pseudo-transient literature already makes.
+      !
+      ! (1) THE CUT OF AN ACCEPTED STEP IS BOUNDED. Switched evolution
+      ! relaxation carries the pseudo-time by the ratio of successive
+      ! residual norms (Mulder and van Leer 1985, J. Comput. Phys. 59, 232),
+      ! and the practice reported in the implicit CFD literature bounds the
+      ! timestep devices from below: "the timestep is not allowed to more
+      ! than double in a favorably converging situation, or to be reduced by
+      ! more than a factor of ten in an unfavorable one, unless feasibility
+      ! is at stake, in which case the timestep may be drastically cut"
+      ! (Gropp, Keyes, McInnes and Tidriri, NASA CR-1998-208435 section 2.1,
+      ! verbatim). That factor of ten is the ONLY published counterpart this
+      ! clip has, and it is a statement of practice in a contractor report,
+      ! not a hypothesis of the convergence theorems: the phi of Kelley and
+      ! Keyes Assumption 1.1 and of Coffey, Kelley and Keyes (1.5) caps the
+      ! growth and never cuts. A step the search ACCEPTED lowered the merit,
+      ! and neither paper's update would have cut the pseudo-time on it at
+      ! all: an unbounded fall on a step that succeeded is not something the
+      ! theory asks for, because the theory has no such step in it. So the
+      ! factor of a damped accepted step is max(lam, ptc_shrink_clip), and
+      ! that choice is this item's, resting on section 5 of the memo.
+      !
+      ! (2) AND IT IS TAKEN ONLY WHERE THE STEP BOUGHT SOMETHING. A DAMPED
+      ! STEP MEANS TWO DIFFERENT THINGS and no fixed floor can tell them
+      ! apart -- one was implemented, at a fixed span below the largest
+      ! pseudo-time the solve had taken a whole step at, and MEASURED to
+      ! serve one fixture and cost on the other. On the HD 209458 b element
+      ! reload the damped steps at small dtau move NOTHING: the merit and the
+      ! state stand at the printed digits while the pseudo-time falls twelve
+      ! decades, and the cut is simply wrong there. On the LHS 1140 b 0.02
+      ! rung the damped steps keep REDUCING the residual the whole way down
+      ! to dtau ~ 1e+02, and the cut is right there -- it is the fall back to
+      ! the march that the continuation is for, and forbidding it cost that
+      ! case a factor 3.2 on its first pass.
+      !
+      ! So the test is not how far the pseudo-time has come but whether THIS
+      ! step bought anything: the cut proceeds where the accepted damped step
+      ! lowered the merit by at least ptc_damped_progress_min, and the
+      ! pseudo-time is HELD where it did not, because then the pseudo-time is
+      ! not what is wrong. The explicit-stable interval is the floor of every
+      ! cut, as it has always been.
+      !
+      ! (3) THE GROWTH IS ALLOWED ONLY WHILE THE SOLVE IS STILL GOING
+      ! SOMEWHERE. Reading the step length only, the ramp doubles through
+      ! states whose residual is standing still: MEASURED on the 0.01-XUV
+      ! columns (section 3.3 of the same memo) dtau runs from 1e+00 to its
+      ! 1e+14 ceiling while ||R|| stays at 1.9, after which the shift is gone
+      ! and the solve is the unshifted Newton on a state it is not near. The
+      ! test taken is the one the stagnation counter already carries -- the
+      ! merit in the FIXED scale of the solve against the value that norm had
+      ! n_stall_best iterations ago, with the margin merit_fall_min -- and a
+      ! window that bought nothing holds the pseudo-time where it is. The
+      ! PER-STEP residual ratio of switched evolution relaxation was tried
+      ! first and MEASURED not to separate the two regimes: the near states
+      ! the ramp exists for also move their merit by only a few percent an
+      ! iteration, and the ratio form leaves their pseudo-time at 1.13 where
+      ! the plain doubling solves them.
+      logical :: ptc_ramp_guard_on = .true.
+      ! AND THE GROWTH GATE OF STATEMENT (3), WHICH IS OFF
+      ! (ptc_growth_gate_on, EXHALE_PTC_RAMP_GROWTH_GATE=1 turns it on).
+      ! MEASURED on the LHS 1140 b C/N/O column
+      ! (docs/lhs1140b_stationary_L4h_20260915.md section 5.5): a residual
+      ! progress test cannot separate the two regimes of this ramp. The near
+      ! states the doubling exists for carry a merit that hovers within a
+      ! tenth of its entry value for the first iterations while ||R|| halves,
+      ! so a gate at a tenth over the stagnation window holds their
+      ! pseudo-time at 2 where the plain doubling has it at 4, 8, 16 -- and a
+      ! gate loose enough not to touch them does not fire on the flat states
+      ! either. The flat end is not what the three 0.02 rungs of this item
+      ! are blocked on; the collapse is, and statements (1), (2) and (4)
+      ! answer it. The gate is kept, off, with the measurement that says why.
+      logical :: ptc_growth_gate_on = .false.
+      ! The largest factor a damped accepted step may divide the pseudo-time
+      ! by, as its reciprocal.
+      real*8, parameter :: ptc_shrink_clip = 0.1d0
+      ! THE FRACTION OF THE MERIT A DAMPED ACCEPTED STEP MUST REMOVE for its
+      ! cut of the pseudo-time to be taken (EXHALE_PTC_DAMPED_PROGRESS_MIN
+      ! replaces it, for the sensitivity this number is chosen by). A step
+      ! that bought this much is a transient the pseudo-time should follow
+      ! down; a step that bought less is telling us the pseudo-time is not
+      ! what is wrong, and it is held. MEASURED at 1e-3, 1e-2 and 1e-1 on
+      ! both fixtures (docs/lhs1140b_stationary_L4h_20260915.md section 5.7).
+      real*8 :: ptc_damped_progress_min = 1.0d-2
+
+      ! THE MULTIPLE OF THE EXPLICIT-STABLE INTERVAL BELOW WHICH A FURTHER
+      ! CUT OF THE PSEUDO-TIME WAS MEASURED TO BUY NOTHING
+      ! (EXHALE_PTC_EXPLICIT_MARCH_FACTOR replaces it). Above it a cut still
+      ! changes the step and is the continuation doing its work; at or below
+      ! it, on the fixture this was measured on, the Krylov cycle reaches its
+      ! tolerance in one product and sixty iterations leave the merit and the
+      ! state at the printed digits.
+      !
+      ! IT IS AN EMPIRICAL CONTROL, not a limit anything here proves. The
+      ! shifted system is (M/dtau + J) dY = -F; an explicit-Euler limit needs
+      ! dtau M^-1 J small in an operator sense, a hydrodynamic CFL estimate
+      ! does not establish that for a J carrying the source, radiation and
+      ! chemistry couplings, and a finite multiple of a stability limit is
+      ! not an asymptotically small parameter. The threshold is a knob so
+      ! that a state where the measurement comes out otherwise can be met
+      ! without a rebuild. MEASURED at 3, 10 and 100 on the element reload
+      ! (section 5.7), where all three give the same pass because the count
+      ! never fires on it.
+      real*8 :: ptc_explicit_march_factor = 1.0d1
+
+      ! WHETHER EVERY ITERATION IN THE EXPLICIT-MARCH REGIME COUNTS toward
+      ! the return of statement (4), or only the ones that took no full and
+      ! no progressing step (march_counts_every_iteration,
+      ! EXHALE_PTC_MARCH_COUNT_ALL=1). See the block at the counter for what
+      ! each form is and what each was measured to do.
+      logical :: march_counts_every_iteration = .false.
+      ! HOW MANY CONSECUTIVE ITERATIONS MAY FAIL TO TAKE A FULL STEP before
+      ! the solve is returned to its best iterate and the pseudo-time is cut
+      ! by ten, and how many such returns it may make before it stops. A run
+      ! of damped steps is the shape both ends of the pathology take -- the
+      ! collapse walks down through them, and the unshifted Newton at the
+      ! ceiling circles through them -- and neither is repaired by more of
+      ! the same iterations. MEASURED on the pass-39 collapse above, the run
+      ! of damped steps that carries dtau over its last nine decades is
+      ! unbroken and 11 iterations long.
+      integer, parameter :: ptc_damped_run_max      = 8
+      integer, parameter :: ptc_damped_restarts_max = 2
+
       ! THE STEP THE CYCLE RETURNS CHOSEN BY ITS TRUE RESIDUAL
       ! (gm_step_by_its_true_residual, EXHALE_GM_TRUE_RESIDUAL=1, off by
       ! default).
@@ -1497,7 +1881,9 @@
       ! what keeps a band whose rows span eleven decades factorizable.
       logical :: column_equilibration_on = .false.
       ! TWO-SIDED EQUILIBRATION OF THE BAND THAT IS FACTORIZED
-      ! (EXHALE_PRECON_EQUIL=0 turns it off). Species-row route only.
+      ! (EXHALE_PRECON_EQUIL=0 turns it off). The species-row route always,
+      ! and the three-unknown route wherever judged_row_scaling_on, whose
+      ! rows carry the tolerances and so span them.
       !
       ! It is the PRECONDITIONER that is rescaled and not the model: ab, the
       ! merit, the trust-region coordinates and the radius are all left
@@ -1812,6 +2198,47 @@
       ! (hydrodynamic_distance_from_certification_by_cell). Set at the top of a
       ! solve; negative means no solve is running.
       real*8  :: resid_tol_of_solve = -1.0d0
+
+      ! WHETHER THE SOLVE PATH IS REPRODUCIBLE AT MORE THAN ONE OPENMP
+      ! THREAD, and where it stops being so. Diagnostic only: every switch
+      ! below is off unless its environment key is set, and with none of
+      ! them set no statement of this block is entered, so the expression
+      ! sequence the solve evaluates is unchanged.
+      !
+      !   EXHALE_L15_TRACE=<path>  one record per outer iteration and one
+      !     per Krylov product, each carrying FNV-1a 64 hashes of the BIT
+      !     PATTERNS of the arrays the next evaluation reads (the state, the
+      !     composition, the residual, the model base point, the column and
+      !     row scales, the active bound set) and the pseudo-time. A hash of
+      !     the bits and never a floating sum, so the record cannot itself
+      !     carry an order of addition.
+      !   EXHALE_L15_DUMP_AT=<k>  at outer iteration k write those same
+      !     arrays themselves, in stream access, to <path>.dump<k>, so that
+      !     two runs can be compared on the values and not only on a hash.
+      !   EXHALE_L15_REPEAT=<k>  at outer iteration k repeat, inside this
+      !     one process and at the same state, the model base residual and
+      !     one action of the Jacobian along a reproducible admissible
+      !     direction, holding and putting back the evaluation products
+      !     around each repeat, and record whether the repeats are bitwise
+      !     equal. A repeat that differs inside one
+      !     process is a shared write or a mutable cache; a repeat that
+      !     agrees while two runs differ is a schedule-dependent order of
+      !     accumulation.
+      !
+      ! Every record is written AFTER the quantity it records is complete
+      ! and outside every loop and reduction of the solve.
+      logical            :: l15_ready      = .false.
+      logical            :: l15_trace_on   = .false.
+      integer            :: l15_unit       = 0
+      integer            :: l15_dump_at    = 0
+      integer            :: l15_repeat_at  = 0
+      integer            :: l15_iter_now   = 0
+      character(len=256) :: l15_path       = ' '
+      ! The FNV-1a 64 constants (Fowler, Noll and Vo), written as signed
+      ! 64-bit integers: the offset basis 14695981039346656037 and the
+      ! prime 1099511628211.
+      integer*8, parameter :: l15_fnv_basis = -3750763034362895579_8
+      integer*8, parameter :: l15_fnv_prime = 1099511628211_8
 
       ! Explicit interfaces for the external LAPACK banded-LU routines used by
       ! the direct/preconditioned Newton solves below (double-precision,
@@ -2165,6 +2592,20 @@
 
       ! ------------------------------------------------------!
 
+      logical function merit_is_on_the_model_row_scaling() result(on)
+      ! WHICH OF THE TWO ARRAYS THE MERIT IS READ THROUGH, in one place, so
+      ! that every expression of || F/. ||_2 in this module asks the same
+      ! question. True: Drow, the row scaling the linear model and its band
+      ! are divided by. False: D, the state column scales.
+      !
+      ! It is true wherever the system carries a species row -- there the
+      ! two are one array (cell_row_scales) -- and on the three-unknown
+      ! route only when it is asked for.
+      on = (nspec_row .gt. 0) .or. merit_reads_the_model_row_scaling
+      end function merit_is_on_the_model_row_scaling
+
+      ! ------------------------------------------------------!
+
       subroutine cell_row_scales(Y, D, Dr, u)
       ! ROW scaling of the Newton system, beside the column scaling D.
       !
@@ -2279,6 +2720,80 @@
          enddo
       enddo
       end subroutine cell_row_scales
+
+      ! ------------------------------------------------------!
+
+      subroutine judged_size_of_the_hydrodynamic_rows(u, Dj)
+      ! THE SIZE EACH HYDRODYNAMIC ROW IS JUDGED AT, cell by cell:
+      !
+      !    Dj(k,j) = tol_k(j) * s_k(j)
+      !
+      ! with s_k(j) = residual_row_scale(k,j,u), the largest term row k of
+      ! cell j itself holds, which is what the certification divides that
+      ! row by, and tol_k(j) the tolerance it is gated with there:
+      ! cert_tol_mass_at(j,u) for the continuity row, whose tolerance is a
+      ! function of the cell because the row is a difference formed at
+      ! eps/Mach of the flux in a nearly hydrostatic layer, and the two
+      ! fixed numbers cert_tol_momentum and cert_tol_energy for the others.
+      !
+      ! |F(k,j)|/Dj(k,j) IS the distance of that row of that cell from its
+      ! own tolerance -- the quantity
+      ! hydrodynamic_distance_from_certification_by_cell takes the maximum
+      ! of, and the quantity that is below one in a certified state. A
+      ! linear system whose rows are divided by this is therefore one in
+      ! which a relative residual means the same thing in the continuity,
+      ! the momentum and the energy rows, which stand ten decades apart on
+      ! the state column scales.
+      !
+      ! ONLY THE THREE HYDRODYNAMIC SLOTS ARE WRITTEN. A species slot, on
+      ! the routes that carry one, keeps whatever the caller put there;
+      ! this routine is the three-unknown route's, where there is none.
+      real*8, dimension(3,1-Ng:N+Ng), intent(in)  :: u
+      real*8, dimension(nvar_jac*N),  intent(inout) :: Dj
+      real*8  :: tolk
+      integer :: j, k, i1
+      do j = 1, N
+         i1 = nvar_jac*(j-1)
+         do k = 1, 3
+            select case (k)
+               case (1);     tolk = cert_tol_mass_at(j, u)
+               case (2);     tolk = cert_tol_momentum
+               case default; tolk = cert_tol_energy
+            end select
+            Dj(i1+k) = tolk*max(residual_row_scale(k, j, u),             &
+                                cert_scale_floor)
+         enddo
+      enddo
+      end subroutine judged_size_of_the_hydrodynamic_rows
+
+      ! ------------------------------------------------------!
+
+      subroutine row_scaling_of_the_linear_model(Y, D, Dr, u)
+      ! THE ROW SCALING THE NEWTON SYSTEM AND ITS BAND ARE DIVIDED BY, one
+      ! statement of it for both routes.
+      !
+      ! FOUR-UNKNOWN ROUTE: the certification row scales (cell_row_scales),
+      ! which are also the merit's there, so that descending the merit is
+      ! descending the gate.
+      !
+      ! THREE-UNKNOWN ROUTE: the size each hydrodynamic row is JUDGED at,
+      ! tol_k(j) s_k(j) (judged_size_of_the_hydrodynamic_rows), so that the
+      ! relative tolerance the Krylov cycle stops at means the same thing in
+      ! rows whose tolerances stand ten decades apart. The merit and the
+      ! ledger of that route are untouched and keep the state column scales.
+      ! With judged_row_scaling_on off the array is D, which is what the
+      ! route divided its rows by before.
+      real*8, dimension(nvar_jac*N),  intent(in)    :: Y, D
+      real*8, dimension(nvar_jac*N),  intent(inout) :: Dr
+      real*8, dimension(3,1-Ng:N+Ng), intent(in)    :: u
+      if (nspec_row .gt. 0) then
+         call cell_row_scales(Y, D, Dr, u)
+      else if (judged_row_scaling_on) then
+         call judged_size_of_the_hydrodynamic_rows(u, Dr)
+      else
+         Dr = D
+      endif
+      end subroutine row_scaling_of_the_linear_model
 
       ! ------------------------------------------------------!
 
@@ -2588,6 +3103,293 @@
       n_no_chem_root_last  = p%n_no_chem_root_last
       call restore_carrier_module_state(p%carrier)
       end subroutine put_back_residual_evaluation_products
+
+      ! ------------------------------------------------------!
+
+      subroutine l15_setup
+      ! Read the three environment keys of the thread-reproducibility trace
+      ! once, and open the record file. Called from the places that write;
+      ! with EXHALE_L15_TRACE unset it leaves every switch off and returns.
+      character(len=256) :: env
+      integer :: ios
+      if (l15_ready) return
+      l15_ready = .true.
+      call get_environment_variable('EXHALE_L15_TRACE', env)
+      if (len_trim(env) .eq. 0) return
+      l15_path = env
+      l15_unit = 7315
+      open(unit=l15_unit, file=trim(l15_path), status='replace',          &
+           action='write', iostat=ios)
+      if (ios .ne. 0) then
+         write(*,'(A)') ' (L15) the trace file could not be opened: '//   &
+                        trim(l15_path)
+         return
+      endif
+      l15_trace_on = .true.
+      call get_environment_variable('EXHALE_L15_DUMP_AT', env)
+      if (len_trim(env) .gt. 0) read(env,*,iostat=ios) l15_dump_at
+      if (ios .ne. 0) l15_dump_at = 0
+      call get_environment_variable('EXHALE_L15_REPEAT', env)
+      if (len_trim(env) .gt. 0) read(env,*,iostat=ios) l15_repeat_at
+      if (ios .ne. 0) l15_repeat_at = 0
+      write(l15_unit,'(A,I0,A,I0)') '# L15 trace  dump_at ', l15_dump_at, &
+                                    '  repeat_at ', l15_repeat_at
+      end subroutine l15_setup
+
+      ! ------------------------------------------------------!
+
+      integer*8 function l15_hash_r8(a) result(h)
+      ! FNV-1a over the BIT PATTERNS of a double-precision array, taken
+      ! eight bytes at a time (the 64-bit word is the unit instead of the
+      ! byte, which costs nothing here and is what makes the record cheap
+      ! enough to take at every Krylov product). The bits are hashed and
+      ! never summed, so the record of a quantity cannot depend on an order
+      ! of accumulation of its own.
+      real*8, dimension(:), intent(in) :: a
+      integer*8, allocatable :: w(:)
+      integer :: i
+      h = l15_fnv_basis
+      if (size(a) .le. 0) return
+      allocate(w(size(a)))
+      w = transfer(a, w)
+      do i = 1, size(w)
+         h = ieor(h, w(i))
+         h = h*l15_fnv_prime
+      enddo
+      deallocate(w)
+      end function l15_hash_r8
+
+      ! ------------------------------------------------------!
+
+      integer*8 function l15_hash_logical(a) result(h)
+      ! The same hash of a set of flags, one 64-bit word per element.
+      logical, dimension(:), intent(in) :: a
+      integer :: i
+      h = l15_fnv_basis
+      do i = 1, size(a)
+         if (a(i)) then
+            h = ieor(h, 1_8)
+         else
+            h = ieor(h, 0_8)
+         endif
+         h = h*l15_fnv_prime
+      enddo
+      end function l15_hash_logical
+
+      ! ------------------------------------------------------!
+
+      integer*8 function l15_hash_scalar(x) result(h)
+      ! The hash of one double, so that a scalar the next evaluation reads
+      ! (the pseudo-time, the merit) enters the record by its bits and not
+      ! by a printed decimal.
+      real*8, intent(in) :: x
+      real*8 :: a(1)
+      a(1) = x
+      h = l15_hash_r8(a)
+      end function l15_hash_scalar
+
+      ! ------------------------------------------------------!
+
+      integer function l15_number_of_active_bounds() result(nact)
+      ! How many species unknowns the step may not move. Written as a loop
+      ! because the intrinsic COUNT is shadowed by the integer of the same
+      ! name in global_parameters.
+      integer :: i
+      nact = 0
+      if (.not. allocated(species_bound_is_active)) return
+      do i = 1, size(species_bound_is_active)
+         if (species_bound_is_active(i)) nact = nact + 1
+      enddo
+      end function l15_number_of_active_bounds
+
+      ! ------------------------------------------------------!
+
+      subroutine l15_iteration_record(iter, dtau, Y, f_sp, F, F_jac, D,   &
+                                      Drow, f2, rnorm)
+      ! One record of the state the next evaluation of this outer iteration
+      ! reads. Written after every one of those quantities is complete.
+      integer, intent(in) :: iter
+      real*8,  intent(in) :: dtau, f2, rnorm
+      real*8, dimension(:), intent(in) :: Y, F, F_jac, D, Drow
+      real*8, dimension(1-Ng:N+Ng,n_species), intent(in) :: f_sp
+      integer*8 :: hact
+      integer   :: nact
+      call l15_setup
+      l15_iter_now = iter
+      if (.not. l15_trace_on) return
+      hact = l15_fnv_basis
+      nact = 0
+      if (allocated(species_bound_is_active)) then
+         hact = l15_hash_logical(species_bound_is_active)
+         nact = l15_number_of_active_bounds()
+      endif
+      write(l15_unit,'(A,I5,8(A,Z16.16),A,I0)')                           &
+           'iter ', iter,                                                 &
+           ' Y ',    l15_hash_r8(Y),                                      &
+           ' comp ', l15_hash_r8(reshape(f_sp,(/size(f_sp)/))),           &
+           ' F ',    l15_hash_r8(F),                                      &
+           ' Fjac ', l15_hash_r8(F_jac),                                  &
+           ' D ',    l15_hash_r8(D),                                      &
+           ' Drow ', l15_hash_r8(Drow),                                   &
+           ' act ',  hact,                                                &
+           ' dtau ', l15_hash_scalar(dtau),                               &
+           ' nact ', nact
+      write(l15_unit,'(A,I5,A,ES24.16,A,ES24.16,A,ES24.16)')              &
+           'meri ', iter, ' f2 ', f2, ' rnorm ', rnorm, ' dtau ', dtau
+      flush(l15_unit)
+      end subroutine l15_iteration_record
+
+      ! ------------------------------------------------------!
+
+      subroutine l15_krylov_record(iter, jprod, tag, v1, v2)
+      ! One record of a quantity of the linear cycle: the right-hand side,
+      ! the preconditioned direction, the raw action of the operator, the
+      ! scaled image, or an Arnoldi column. Two vectors so that the input
+      ! and the output of one map enter the same record.
+      integer,          intent(in) :: iter, jprod
+      character(len=*), intent(in) :: tag
+      real*8, dimension(:), intent(in) :: v1
+      real*8, dimension(:), intent(in), optional :: v2
+      call l15_setup
+      if (.not. l15_trace_on) return
+      if (present(v2)) then
+         write(l15_unit,'(A,I5,A,I4,A,A8,2(A,Z16.16))')                   &
+              'kry  ', iter, ' j ', jprod, ' ', tag,                      &
+              ' in ',  l15_hash_r8(v1), ' out ', l15_hash_r8(v2)
+      else
+         write(l15_unit,'(A,I5,A,I4,A,A8,A,Z16.16)')                      &
+              'kry  ', iter, ' j ', jprod, ' ', tag,                      &
+              ' val ', l15_hash_r8(v1)
+      endif
+      end subroutine l15_krylov_record
+
+      ! ------------------------------------------------------!
+
+      subroutine l15_dump_state(iter, Y, f_sp, F, F_jac, D, Drow, dtau)
+      ! The arrays themselves, in stream access, at the outer iteration the
+      ! key names. WHAT IS NOT IN IT: the module caches of the residual
+      ! assembly that live outside this module (the radiation and chemistry
+      ! state of ionization_equilibrium, util_ion_eq,
+      ! constrained_chemical_equilibrium and diffusive_photochemistry). They
+      ! have no accessor this module may read, so a fresh process cannot be
+      ! put back into this state from the file; the comparison that does not
+      ! need them is the repeated evaluation inside one process
+      ! (l15_repeat_check).
+      integer, intent(in) :: iter
+      real*8,  intent(in) :: dtau
+      real*8, dimension(:), intent(in) :: Y, F, F_jac, D, Drow
+      real*8, dimension(1-Ng:N+Ng,n_species), intent(in) :: f_sp
+      character(len=300) :: fn
+      integer :: iu, ios, nact(1)
+      if (.not. l15_trace_on) return
+      if (iter .ne. l15_dump_at) return
+      write(fn,'(A,A,I0)') trim(l15_path), '.dump', iter
+      iu = 7316
+      open(unit=iu, file=trim(fn), status='replace', action='write',      &
+           access='stream', form='unformatted', iostat=ios)
+      if (ios .ne. 0) return
+      write(iu) size(Y), size(f_sp,1), size(f_sp,2), N, Ng, nvar_jac
+      write(iu) dtau
+      write(iu) Y
+      write(iu) f_sp
+      write(iu) F
+      write(iu) F_jac
+      write(iu) D
+      write(iu) Drow
+      if (allocated(species_box_lo)) write(iu) species_box_lo
+      if (allocated(species_box_hi)) write(iu) species_box_hi
+      if (allocated(species_bound_is_active)) then
+         nact(1) = l15_number_of_active_bounds()
+         write(iu) nact(1)
+         write(iu) species_bound_is_active
+      endif
+      close(iu)
+      write(l15_unit,'(A,I0,A,A)') 'dump ', iter, ' ', trim(fn)
+      end subroutine l15_dump_state
+
+      ! ------------------------------------------------------!
+
+      subroutine l15_repeat_check(iter, Y, f_sp, F_jac, D)
+      ! IS ONE PROCESS REPEATABLE AT THIS STATE? The model base residual and
+      ! one action of the Jacobian are evaluated again, twice, at the state
+      ! this outer iteration holds, with the evaluation products held and
+      ! put back around each repeat so that nothing the solve reads later is
+      ! moved. A difference here is a shared write or a cache carried
+      ! between evaluations; agreement here with a difference between two
+      ! runs is an order of accumulation that follows the thread schedule.
+      integer, intent(in) :: iter
+      real*8, dimension(:), intent(in) :: Y, F_jac, D
+      real*8, dimension(1-Ng:N+Ng,n_species), intent(in) :: f_sp
+      type(residual_evaluation_products) :: products_at_entry
+      type(solve_refusal_statistics)     :: statistics_at_entry
+      real*8, dimension(1-Ng:N+Ng,n_species) :: f_sp_r
+      real*8, dimension(1-Ng:N+Ng) :: heat_r, cool_r
+      real*8, allocatable :: Fr(:,:), v(:), Jv(:,:)
+      integer :: neq, k, idiff
+      real*8  :: dmax
+      logical :: ok
+      if (.not. l15_trace_on) return
+      if (iter .ne. l15_repeat_at) return
+      neq = nvar_jac*N
+      allocate(Fr(neq,2), v(neq), Jv(neq,2))
+      call hold_residual_evaluation_products(products_at_entry)
+      call hold_solve_refusal_statistics(statistics_at_entry)
+      do k = 1, 2
+         call eval_residual(Y, f_sp, f_sp_r, Fr(:,k), heat_r, cool_r,     &
+                            n_eq_sweeps_fixed=n_eq_sweeps_model)
+      enddo
+      call put_back_residual_evaluation_products(products_at_entry)
+      call put_back_solve_refusal_statistics(statistics_at_entry)
+      call l15_first_difference(Fr(:,1), Fr(:,2), idiff, dmax)
+      write(l15_unit,'(A,I5,A,I0,A,ES12.4)')                              &
+           'rep  ', iter, ' residual repeat: first differing index ',     &
+           idiff, ', largest |difference| ', dmax
+      call l15_first_difference(Fr(:,1), F_jac, idiff, dmax)
+      write(l15_unit,'(A,I5,A,I0,A,ES12.4)')                              &
+           'rep  ', iter, ' residual against the model base point:'//     &
+           ' first differing index ', idiff, ', largest |difference| ', dmax
+      ! The same question for the action of the Jacobian, along one
+      ! reproducible direction that is admissible for the active bounds.
+      call deterministic_unit_direction(20260916, v)
+      call hold_the_active_bounds_of(v)
+      call hold_residual_evaluation_products(products_at_entry)
+      call hold_solve_refusal_statistics(statistics_at_entry)
+      do k = 1, 2
+         call jacobian_action_of_direction(Y, F_jac, f_sp, D*v, Jv(:,k), ok)
+      enddo
+      call put_back_residual_evaluation_products(products_at_entry)
+      call put_back_solve_refusal_statistics(statistics_at_entry)
+      call l15_first_difference(Jv(:,1), Jv(:,2), idiff, dmax)
+      write(l15_unit,'(A,I5,A,L1,A,I0,A,ES12.4)')                         &
+           'rep  ', iter, ' jacobian action repeat: admissible ', ok,     &
+           ', first differing index ', idiff,                             &
+           ', largest |difference| ', dmax
+      write(l15_unit,'(A,I5,3(A,Z16.16))')                                &
+           'rep  ', iter, ' F1 ', l15_hash_r8(Fr(:,1)),                   &
+           ' F2 ', l15_hash_r8(Fr(:,2)), ' Jv1 ', l15_hash_r8(Jv(:,1))
+      flush(l15_unit)
+      deallocate(Fr, v, Jv)
+      end subroutine l15_repeat_check
+
+      ! ------------------------------------------------------!
+
+      subroutine l15_first_difference(a, b, idiff, dmax)
+      ! The first index at which two vectors differ in any bit, and the
+      ! largest absolute difference. idiff is zero where they are equal
+      ! everywhere.
+      real*8, dimension(:), intent(in)  :: a, b
+      integer,              intent(out) :: idiff
+      real*8,               intent(out) :: dmax
+      integer :: i
+      idiff = 0
+      dmax  = 0.0d0
+      do i = 1, min(size(a), size(b))
+         if (a(i) .ne. b(i)) then
+            if (idiff .eq. 0) idiff = i
+            dmax = max(dmax, abs(a(i) - b(i)))
+         endif
+      enddo
+      end subroutine l15_first_difference
 
       ! ------------------------------------------------------!
 
@@ -3015,7 +3817,8 @@
                                admissible, may_be_adopted, n_eq_sweeps_fixed,&
                                rows_judged, resid_relnorm_judged,           &
                                state_is_discarded,                          &
-                               rowmax_judged, cells_judged, which_judged)
+                               rowmax_judged, cells_judged, which_judged, &
+                               cells_outside_judged, cell_outside_judged)
       ! Full steady residual F(Y) with local ionization-equilibrium
       ! elimination, AND the heat/cool it used (so the caller can FREEZE the
       ! radiation when building the banded Jacobian).
@@ -3116,6 +3919,11 @@
       real*8,  dimension(3), optional,         intent(out)   :: rowmax_judged
       integer, dimension(3), optional,         intent(out)   :: cells_judged
       integer, dimension(3), optional,         intent(out)   :: which_judged
+      ! The count of cells outside each hydrodynamic row's tolerance and the
+      ! cell furthest outside, formed by certified_row_measures from the
+      ! quantities it already holds.
+      integer, dimension(3), optional,         intent(out)   ::          &
+                                cells_outside_judged, cell_outside_judged
 
       real*8, dimension(3)           :: rmx_j
       integer, dimension(3)          :: jcl_j, iwh_j
@@ -3484,7 +4292,7 @@
                                  nheiii,nheiTR,nm,ne,n_tot)
 
       if (resid_capture_operator_state) then
-         ! The pipeline's own inputs, kept for the jump scan before the
+         ! The inputs of the evaluation, kept for the jump scan before the
          ! flux assembly consumes them.
          if (.not. allocated(captured_state_with_ghosts))                &
             allocate(captured_state_with_ghosts(3,1-Ng:N+Ng),            &
@@ -3672,7 +4480,9 @@
       endif
 
       if (present(rows_judged)) call certified_row_measures(Fvec, u,     &
-                                        rows_judged, resid_relnorm_judged)
+                                        rows_judged, resid_relnorm_judged, &
+                                        cells_outside_judged,              &
+                                        cell_outside_judged)
       if (present(rowmax_judged) .or. present(cells_judged) .or.         &
           present(which_judged)) then
          call row_maxima_of_the_certification(Fvec, u, rmx_j, jcl_j, iwh_j)
@@ -4827,12 +5637,21 @@
       dY = 0.0d0;  f2_new = f2;  mu_used = 0.0d0;  found = .false.
       saved_mode = weno_mode
       allocate(bn(ldab_normal, nvar_jac*N))
-      if (nspec_row .gt. 0) then
+      ! THE GRADIENT OF THE MERIT THIS ROUTINE DESCENDS, in the coordinates
+      ! ab is stored in. ab holds A = Drow^-1 J D and the merit is
+      ! 1/2||F/Dm||^2 with Dm the scaling that merit is taken on -- Drow on
+      ! the four-unknown route, where the two are one thing, and the state
+      ! column scales D on the three-unknown route, where the rows of the
+      ! model are the judged sizes. The gradient in the scaled unknowns is
+      ! (Dm^-1 J D)^T (F/Dm) = A^T ((Drow/Dm) F/Dm), which is the line below
+      ! and reduces to A^T (F/D) wherever Drow and Dm are the same array.
+      if (merit_is_on_the_model_row_scaling()) then
          s = F/Drow
+         call band_matvec_transpose(ab, s, grad_merit)
       else
          s = F/D
+         call band_matvec_transpose(ab, (Drow/D)*s, grad_merit)
       endif
-      call band_matvec_transpose(ab, s, grad_merit)
       gnorm = sqrt(sum(grad_merit*grad_merit))
       call normal_equations_band(ab, bn)
       f2prev = huge(1.0d0)
@@ -4854,7 +5673,7 @@
                                   cool,                                   &
                                   admissible=okres,                       &
                                   state_is_discarded=.true.)
-               if (nspec_row .gt. 0) then
+               if (merit_is_on_the_model_row_scaling()) then
                   f2t = sqrt(sum((Ftry/Drow)**2))
                else
                   f2t = sqrt(sum((Ftry/D)**2))
@@ -4880,7 +5699,8 @@
 
       ! ------------------------------------------------------!
 
-      subroutine certified_row_measures(Fvec, u, rows, rnorm)
+      subroutine certified_row_measures(Fvec, u, rows, rnorm,          &
+                                        n_outside, cell_outside)
       ! THE MEASURES THE RETURNED STATE IS JUDGED BY, formed on one state
       ! (Fvec, u) exactly as the certification forms them:
       !
@@ -4929,7 +5749,21 @@
       ! rows(1), and the two are different functionals, so a caller that
       ! prints both asks for both here rather than re-deriving either.
       real*8, optional,               intent(out) :: rnorm
+      ! HOW MANY CELLS EACH HYDRODYNAMIC ROW STANDS OUTSIDE ITS OWN
+      ! TOLERANCE IN, and the cell furthest outside it, when they are asked
+      ! for. The worst-row line and the certification entry name ONE cell,
+      ! and a row that refuses in one cell and a row that refuses in 499 are
+      ! different states behind the same line: on the pass-8 entry state of
+      ! the LHS 1140 b C/N/O case the energy row named cell 500 and stood
+      ! outside 1e-6 in 499 of the 500 cells
+      ! (docs/lhs1140b_stationary_L4f_20260913.md section 4). They are taken
+      ! from the quantities this routine has already formed, so that no
+      ! state is assembled twice to count what one sweep can count.
+      integer, dimension(3), optional, intent(out) :: n_outside, cell_outside
       real*8  :: rc(3), q, dg, rn
+      real*8  :: tolj, distj, dj_row(3), dmax_row(3)
+      logical :: withinj, anchoredj
+      integer :: k2
       ! The three hydrodynamic rows of EVERY cell, and the continuity row's
       ! rounding floor at each of them: the tolerance of that row is a
       ! function of the cell, so the distance is not a functional of the
@@ -4951,6 +5785,30 @@
       enddo
       rows(1) = hydrodynamic_distance_from_certification_by_cell(N,       &
                                                      qhyd, floor_mass)
+      if (present(n_outside) .or. present(cell_outside)) then
+         ! The same rule, cell by cell: the continuity row's verdict from
+         ! mass_row_cell_verdict, the one expression of its cell-dependent
+         ! tolerance, and the other two rows over the single tolerance each
+         ! carries.
+         dmax_row = 0.0d0
+         if (present(n_outside))    n_outside    = 0
+         if (present(cell_outside)) cell_outside = 0
+         do j = 1, N
+            call mass_row_cell_verdict(qhyd(1,j), floor_mass(j), tolj,   &
+                                       distj, withinj, anchoredj)
+            dj_row(1) = distj
+            dj_row(2) = qhyd(2,j)/cert_tol_momentum
+            dj_row(3) = qhyd(3,j)/cert_tol_energy
+            do k2 = 1, 3
+               if (present(n_outside) .and. dj_row(k2) .ge. 1.0d0)       &
+                  n_outside(k2) = n_outside(k2) + 1
+               if (dj_row(k2) .gt. dmax_row(k2)) then
+                  dmax_row(k2) = dj_row(k2)
+                  if (present(cell_outside)) cell_outside(k2) = j
+               endif
+            enddo
+         enddo
+      endif
       ! |R| of the same evaluation, when it is asked for: the plain maximum
       ! of the same measures with no tolerance in it, of which resid_relnorm
       ! stays the definition.
@@ -5697,6 +6555,398 @@
 
       ! ------------------------------------------------------!
 
+      logical function coupled_block_jacobian_action_requested()         &
+               result(on)
+      ! Whether this run is the I1 measurement. The registry that decides
+      ! which balances are unknowns is set before the solve is entered, so
+      ! the caller has to know there that the block is the system to be
+      ! measured; the measurement itself is below, and it stops the run.
+      character(len=512) :: env
+      call get_environment_variable('EXHALE_COUPLED_JAC_ACTION', env)
+      on = (len_trim(env) .gt. 0)
+      end function coupled_block_jacobian_action_requested
+
+      ! ------------------------------------------------------!
+
+      subroutine coupled_block_jacobian_action_report(Y, f_sp_base)
+      ! THE COUPLING OF THE COUPLED BLOCK, MEASURED ON THE STATE THE SOLVE
+      ! IS ENTERED AT, against a central difference of the same map.
+      !
+      ! The block's unknowns are the three conserved hydrodynamic variables
+      ! and every registered transported species balance of the same cell,
+      ! nvar_jac = 3 + nspec_row per cell. A hydrodynamic row depends on the
+      ! composition through the pressure and the temperature at the
+      ! conserved state (the molecular caloric equation of state moves the
+      ! heat capacity with the composition, so both move when the
+      ! composition does), through the mean particle mass and the particle
+      ! count, through the heating and the cooling of the sweep this
+      ! evaluation ran, and through the optical depth, which is an integral
+      ! over the cells below. A carrier row depends on the hydrodynamic
+      ! state through the advective face flux, through the temperature and
+      ! the density of every rate, through the diffusion and settling
+      ! coefficients and through the photolysis. None of those derivatives
+      ! is written down anywhere: the Krylov direction is built from
+      ! jv_product, a directional finite difference of the FULL residual, so
+      ! what has to be measured is whether that difference quotient is a
+      ! usable one. That is what this writes.
+      !
+      ! WHAT IS WRITTEN, row by row, over the cells named, for every
+      ! unknown kind of the block (mass, momentum, energy, each species
+      ! row):
+      !   jv     the action the solve uses, jacobian_action_of_direction,
+      !          a forward difference at the probe length the route sets;
+      !   cd1    a CENTRAL difference of the full residual at that same
+      !          length, and cd2 at a tenth of it: one quotient at one
+      !          length cannot separate the truncation of the difference
+      !          from the error of the closure, and the pair can;
+      !   band   the row of the banded preconditioner, build_banded_jac_full
+      !          by graph coloring, on the same direction.
+      !
+      ! AND THREE NUMBERS THE HEADER CARRIES, because the coupled route was
+      ! set aside once for each of them: the fraction-to-the-boundary length
+      ! of the direction and the number of species components with no room
+      ! at any step length (largest_step_inside_the_species_box), and the
+      ! probe length itself.
+      !
+      ! THE TWO-CELL RECONSTRUCTION ENTRY. The carrier relaxation's own
+      ! matrix is block tridiagonal and cannot hold d res_c(j+2)/d f_c(j),
+      ! which the limited reconstruction of the face at r_{j+3/2} reaches.
+      ! In the block's ordering that entry stands at a flat distance of
+      ! 2*nvar_jac, inside a band of kl_jac = 3*nvar_jac - 1, so the band
+      ! holds it by construction. The header states the entry at the cells
+      ! named rather than assuming it.
+      !
+      ! THE OUTER GHOST RULE. The last lines compare the carrier row of
+      ! eval_residual, divided by the code time scale it was converted by,
+      ! against carrier_steady_residual called on the state that evaluation
+      ! returned, the way the certification calls it. At the outermost cells
+      ! the two agree only if one ghost rule is in force.
+      !
+      ! IT IS A DIAGNOSTIC AND NOTHING ELSE: with
+      ! EXHALE_COUPLED_JAC_ACTION unset nothing here runs, and with it set
+      ! the run writes the file and stops, having taken no step.
+      real*8, dimension(nvar_jac*N),          intent(in) :: Y
+      real*8, dimension(1-Ng:N+Ng,n_species), intent(in) :: f_sp_base
+      real*8, allocatable :: abj(:,:), F0(:), Fp(:), Fm(:), vdir(:)
+      real*8, allocatable :: Jv(:), Jb(:), cd1(:), cd2(:), Dsc(:)
+      real*8, dimension(1-Ng:N+Ng,n_species) :: fwork
+      real*8, dimension(1-Ng:N+Ng) :: heatw, coolw
+      real*8, dimension(3,1-Ng:N+Ng) :: uloc
+      real*8, dimension(3,1-Ng:N+Ng) :: Wloc
+      real*8, dimension(1-Ng:N+Ng) :: rho_w, vel_w
+      real*8, dimension(1:N,n_carrier_max) :: cres_again, cterms_again
+      real*8  :: eps1, eps2, vn, tmax, tscale_code, e1, e2, den
+      real*8  :: sum_rel, worst_rel, entry_recon, rcmax_again, rvol_again
+      real*8  :: resp_max, sum_moved, worst_moved
+      integer :: n_moved, j_moved, k_moved
+      ! A row counts as moved by the direction when its response reaches
+      ! this fraction of the largest response in the support.
+      real*8, parameter :: moved_floor = 1.0d-3
+      integer :: neq, i, j, k, ios, jlo, jhi, nunres, saved_wmode
+      integer :: n_blocked, n_sup, u_out, islot, icar, irow, jcol
+      integer :: jworst_again, icworst_again, kind_wanted, nzero
+      logical :: okp, ok_jv
+      character(len=512) :: fname
+      character(len=64)  :: env, dirspec
+      character(len=48)  :: what
+      type(residual_evaluation_products) :: products_at_entry
+      type(solve_refusal_statistics)     :: statistics_at_entry
+      call get_environment_variable('EXHALE_COUPLED_JAC_ACTION', fname)
+      if (len_trim(fname) .eq. 0) return
+      if (nspec_row .le. 0) then
+         write(*,'(A)') ' (coupled_jac) THIS RUN IS A DIAGNOSTIC and'//   &
+              ' the system carries no transported species row, so there'//&
+              ' is no coupling to measure. Nothing was written.'
+         stop
+      endif
+      jlo = 1
+      jhi = N
+      call get_environment_variable('EXHALE_COUPLED_JAC_CELLS', env)
+      if (len_trim(env) .gt. 0) then
+         read(env,*,iostat=ios) jlo, jhi
+         if (ios .ne. 0) then
+            jlo = 1;  jhi = N
+         endif
+      endif
+      jlo = max(1, min(N, jlo))
+      jhi = max(jlo, min(N, jhi))
+      ! WHICH UNKNOWN THE DIRECTION SITS ON. One direction per run, because
+      ! the cross terms are read off the rows of the OTHER kinds and a
+      ! direction that excites everything cannot say which row moved with
+      ! which unknown.
+      dirspec = 'carrier'
+      call get_environment_variable('EXHALE_COUPLED_JAC_DIR', env)
+      if (len_trim(env) .gt. 0) dirspec = trim(env)
+      select case (trim(dirspec))
+      case ('mass');      kind_wanted = 1
+      case ('momentum');  kind_wanted = 2
+      case ('energy');    kind_wanted = 3
+      case ('carrier')
+         kind_wanted = 0
+         do i = 1, nspec_row
+            if (srow_kind(i) .eq. srow_carrier .and. kind_wanted .eq. 0)  &
+               kind_wanted = 3 + i
+         enddo
+         if (kind_wanted .eq. 0) then
+            write(*,'(A)') ' (coupled_jac) no carrier row is registered'//&
+                 ' in this configuration, so a carrier direction does'//  &
+                 ' not exist. Nothing was written.'
+            stop
+         endif
+      case default
+         write(*,'(A,A,A)') ' (coupled_jac) EXHALE_COUPLED_JAC_DIR="',    &
+              trim(dirspec), '" is not one of mass, momentum, energy,'//  &
+              ' carrier. Nothing was written.'
+         stop
+      end select
+      write(*,'(A)') ' (coupled_jac) THIS RUN IS A DIAGNOSTIC: the'//     &
+           ' Jacobian action of the coupled block is measured on the'//   &
+           ' state the solve was entered at and the run stops there.'
+      ! A MEASUREMENT MAY NOT CHANGE THE RUN IT MEASURES. Its evaluations
+      ! are probes, so their sweeps belong to the candidate ledger and the
+      ! products they leave in the modules are put back.
+      call hold_residual_evaluation_products(products_at_entry)
+      call hold_solve_refusal_statistics(statistics_at_entry)
+      call set_ioniz_eq_sweep_state_kind(ieq_state_steady_candidate)
+      neq = nvar_jac*N
+      allocate(abj(2*kl_jac+ku_jac+1, neq))
+      allocate(F0(neq), Fp(neq), Fm(neq), vdir(neq), Jv(neq), Jb(neq))
+      allocate(cd1(neq), cd2(neq), Dsc(neq))
+      call cell_state_scales(Y, Dsc)
+      ! THE ITERATE'S OWN REFERENCES FIRST, in the mode that declares this
+      ! state to be the iterate, so that the element budget a probe is
+      ! compared against is this state's and not whatever the caller left.
+      saved_wmode = weno_mode
+      weno_mode   = 1
+      call eval_residual(Y, f_sp_base, fwork, F0, heatw, coolw)
+      weno_mode   = 2
+      call build_banded_jac_full(Y, f_sp_base, abj, nunres)
+      call eval_residual(Y, f_sp_base, fwork, F0, heatw, coolw,           &
+                         admissible=okp, may_be_adopted=.false.,          &
+                         state_is_discarded=.true.,                       &
+                         n_eq_sweeps_fixed=n_eq_sweeps_model)
+      ! The direction: the named unknown's own column scale in the cells
+      ! named and zero everywhere else, so the perturbation of a species
+      ! slot is a perturbation of that species and not of the hydrodynamic
+      ! magnitude that shares the vector.
+      vdir = 0.0d0
+      do j = jlo, jhi
+         i = nvar_jac*(j-1) + kind_wanted
+         vdir(i) = Dsc(i)
+      enddo
+      vn = sqrt(sum(vdir*vdir))
+      tmax = largest_step_inside_the_species_box(Y, vdir, n_blocked)
+      if (jv_probe_on_the_column_scales) then
+         eps1 = probe_step_on_the_column_scales(Y, vdir)
+      else
+         eps1 = probe_length_of_the_jacobian_action(Y)/max(vn, 1.0d-300)
+      endif
+      eps2 = 0.1d0*eps1
+      ! The action the solve itself uses.
+      call jacobian_action_of_direction(Y, F0, f_sp_base, vdir, Jv, ok_jv)
+      ! The central differences of the same map at two lengths.
+      call eval_residual(Y + eps1*vdir, f_sp_base, fwork, Fp, heatw,      &
+                         coolw, admissible=okp, may_be_adopted=.false.,   &
+                         state_is_discarded=.true.,                       &
+                         n_eq_sweeps_fixed=n_eq_sweeps_model)
+      call eval_residual(Y - eps1*vdir, f_sp_base, fwork, Fm, heatw,      &
+                         coolw, admissible=okp, may_be_adopted=.false.,   &
+                         state_is_discarded=.true.,                       &
+                         n_eq_sweeps_fixed=n_eq_sweeps_model)
+      cd1 = (Fp - Fm)/(2.0d0*eps1)
+      call eval_residual(Y + eps2*vdir, f_sp_base, fwork, Fp, heatw,      &
+                         coolw, admissible=okp, may_be_adopted=.false.,   &
+                         state_is_discarded=.true.,                       &
+                         n_eq_sweeps_fixed=n_eq_sweeps_model)
+      call eval_residual(Y - eps2*vdir, f_sp_base, fwork, Fm, heatw,      &
+                         coolw, admissible=okp, may_be_adopted=.false.,   &
+                         state_is_discarded=.true.,                       &
+                         n_eq_sweeps_fixed=n_eq_sweeps_model)
+      cd2 = (Fp - Fm)/(2.0d0*eps2)
+      ! The preconditioner's row of the same direction.
+      call band_matvec(abj, vdir, Jb)
+      ! THE OUTER GHOST RULE, both evaluations. The composition is the one
+      ! the last full evaluation of THIS state produced; the state is the
+      ! one the rows above were assembled on.
+      call eval_residual(Y, f_sp_base, fwork, F0, heatw, coolw,           &
+                         admissible=okp, may_be_adopted=.false.,          &
+                         state_is_discarded=.true.,                       &
+                         n_eq_sweeps_fixed=n_eq_sweeps_model)
+      uloc = 0.0d0
+      call unpack_U(Y, uloc)
+      call Apply_BC(uloc)
+      call U_to_W(uloc, Wloc)
+      rho_w = Wloc(1,:)
+      vel_w = Wloc(2,:)
+      cres_again = 0.0d0
+      call carrier_steady_residual(rho_w, vel_w, fwork, rcmax_again,      &
+                                   jworst_again, icworst_again,           &
+                                   rvol=rvol_again, res_out=cres_again,   &
+                                   terms_out=cterms_again)
+      tscale_code = R0/(v0*n0)
+      icar = 0
+      do i = 1, nspec_row
+         if (srow_kind(i) .eq. srow_carrier .and. icar .eq. 0) icar = i
+      enddo
+      open(newunit=u_out, file=trim(fname), status='replace',             &
+           action='write')
+      write(u_out,'(A)') '# L22 step 3, increment I1: the Jacobian'//     &
+           ' action of the coupled block against a central difference'//  &
+           ' of the full residual'
+      write(u_out,'(A,I0,A,I0,A,I0,A,I0)') '# nvar_jac ', nvar_jac,       &
+           '  species rows ', nspec_row, '  kl = ku ', kl_jac,            &
+           '  colors ', ncolor_jac
+      write(u_out,'(A,A,A,I0,A,I0)') '# direction: ', trim(dirspec),      &
+           ' of cells ', jlo, ' to ', jhi
+      write(u_out,'(A,ES14.7,A,ES14.7)') '# probe length ', eps1,         &
+           '  second length ', eps2
+      write(u_out,'(A,ES14.7,A,I0)') '# fraction to the boundary of'//    &
+           ' the species box ', tmax, '  blocked components ', n_blocked
+      write(u_out,'(A,L1,A,I0)') '# the action was sampled: ', ok_jv,     &
+           '  unresolved preconditioner colors ', nunres
+      write(u_out,'(A,ES14.7)') '# tscale_code ', tscale_code
+      ! The two-cell reconstruction entry of the band, stated and not
+      ! assumed: row of the carrier of cell j+2, column of the carrier of
+      ! cell j, at a flat distance of 2*nvar_jac inside kl_jac.
+      if (icar .gt. 0) then
+         nzero = 0
+         do j = jlo, min(jhi, N-2)
+            irow = nvar_jac*(j+1) + 3 + icar
+            jcol = nvar_jac*(j-1) + 3 + icar
+            entry_recon = abj(kl_jac+ku_jac+1 + irow - jcol, jcol)
+            write(u_out,'(A,I0,A,I0,A,ES14.7)') '# two-cell'//            &
+                 ' reconstruction entry d res_c(', j+2, ')/d f_c(', j,    &
+                 ') ', entry_recon
+            if (entry_recon .eq. 0.0d0) nzero = nzero + 1
+         enddo
+         write(u_out,'(A,I0,A,I0)') '# two-cell reconstruction entries'// &
+              ' that are exactly zero ', nzero, ' of ',                   &
+              max(0, min(jhi, N-2) - jlo + 1)
+      endif
+      ! The outer ghost rule, at the two outermost cells.
+      if (icar .gt. 0) then
+         do j = N-1, N
+            i = nvar_jac*(j-1) + 3 + icar
+            write(u_out,'(A,I0,2(1X,ES22.15),1X,L1)') '# outer ghost'//   &
+                 ' rule, cell ', j, F0(i)/tscale_code,                    &
+                 cres_again(j,srow_idx(icar)),                            &
+                 (F0(i)/tscale_code .eq. cres_again(j,srow_idx(icar)))
+         enddo
+         ! And the same comparison at the cells the direction sits on, so
+         ! that a difference confined to the outermost cells can be told
+         ! from one the whole column carries.
+         do j = jlo, jhi
+            i = nvar_jac*(j-1) + 3 + icar
+            write(u_out,'(A,I0,2(1X,ES22.15),1X,L1)') '# species row'//   &
+                 ' scale, cell ', j, F0(i)/tscale_code,                   &
+                 cres_again(j,srow_idx(icar)),                            &
+                 (F0(i)/tscale_code .eq. cres_again(j,srow_idx(icar)))
+         enddo
+      endif
+      write(u_out,'(A)') '# columns: cell kind jv cd1 cd2 band'//         &
+                         ' rel_jv_cd1 rel_cd1_cd2'
+      ! THE LARGEST RESPONSE THE DIRECTION PRODUCES IN THE SUPPORT, which
+      ! is what a row has to be measured against. A row whose two sides both
+      ! stand at the rounding floor of the residual carries no derivative to
+      ! compare: the mass row of a cell is a statement about the total
+      ! density at a fixed conserved state and does not move with the
+      ! composition at all, so its quotient is a ratio of two round-off
+      ! numbers and reads 1 whatever the action is. The means below are
+      ! reported twice, over every row of the support and over the rows the
+      ! direction MOVES, a row counting as moved when its response reaches
+      ! moved_floor of the largest one.
+      resp_max = 0.0d0
+      do j = jlo, jhi
+         do k = 1, nvar_jac
+            i = nvar_jac*(j-1) + k
+            resp_max = max(resp_max, abs(cd1(i)), abs(Jv(i)))
+         enddo
+      enddo
+      sum_rel   = 0.0d0
+      worst_rel = 0.0d0
+      n_sup     = 0
+      sum_moved   = 0.0d0
+      worst_moved = 0.0d0
+      n_moved     = 0
+      j_moved     = 0
+      k_moved     = 0
+      do j = 1, N
+         do k = 1, nvar_jac
+            i = nvar_jac*(j-1) + k
+            call name_of_unknown(i, what)
+            den = max(abs(cd1(i)), abs(Jv(i)))
+            e1  = 0.0d0
+            if (den .gt. 0.0d0) e1 = abs(Jv(i) - cd1(i))/den
+            den = max(abs(cd1(i)), abs(cd2(i)))
+            e2  = 0.0d0
+            if (den .gt. 0.0d0) e2 = abs(cd1(i) - cd2(i))/den
+            write(u_out,'(I6,1X,A24,6(1X,ES14.7))') j, adjustl(what),     &
+                 Jv(i), cd1(i), cd2(i), Jb(i), e1, e2
+            ! THE DIRECTION'S SUPPORT is where the quotient is read: a row
+            ! whose two sides are both zero says nothing about the action.
+            if (j .ge. jlo .and. j .le. jhi .and.                         &
+                max(abs(cd1(i)), abs(Jv(i))) .gt. 0.0d0) then
+               n_sup   = n_sup + 1
+               sum_rel = sum_rel + e1
+               if (e1 .gt. worst_rel) worst_rel = e1
+               if (max(abs(cd1(i)), abs(Jv(i))) .ge.                      &
+                   moved_floor*resp_max) then
+                  n_moved   = n_moved + 1
+                  sum_moved = sum_moved + e1
+                  if (e1 .gt. worst_moved) then
+                     worst_moved = e1
+                     j_moved     = j
+                     k_moved     = k
+                  endif
+               endif
+            endif
+         enddo
+      enddo
+      if (n_sup .gt. 0) then
+         write(u_out,'(A,ES14.7,A,ES14.7,A,I0)') '# mean relative'//      &
+              ' error of the action against the central difference'//     &
+              ' over every row of the support ', sum_rel/dble(n_sup),     &
+              '  worst ', worst_rel, '  rows ', n_sup
+      else
+         write(u_out,'(A)') '# the direction moved no row: there is'//    &
+              ' no support to average over'
+      endif
+      if (n_moved .gt. 0) then
+         i = nvar_jac*(j_moved-1) + k_moved
+         call name_of_unknown(i, what)
+         write(u_out,'(A,ES14.7,A,ES14.7,A,I0)') '# mean relative'//      &
+              ' error over the rows the direction moves ',                &
+              sum_moved/dble(n_moved), '  worst ', worst_moved,           &
+              '  rows ', n_moved
+         write(u_out,'(A,A)') '# the worst moved row is the ',            &
+              trim(adjustl(what))
+         write(u_out,'(A,ES14.7,A,ES14.7)') '# largest response in the'// &
+              ' support ', resp_max, '  a row counts as moved at ',       &
+              moved_floor*resp_max
+      endif
+      close(u_out)
+      write(*,'(A,A)') ' (coupled_jac) written: ', trim(fname)
+      if (n_sup .gt. 0)                                                   &
+         write(*,'(A,ES11.3,A,ES11.3)') ' (coupled_jac) mean relative'//  &
+              ' error over every row of the support ',                    &
+              sum_rel/dble(n_sup), ', worst ', worst_rel
+      if (n_moved .gt. 0)                                                 &
+         write(*,'(A,ES11.3,A,ES11.3,A,I0,A)') ' (coupled_jac) mean'//    &
+              ' relative error over the rows the direction moves ',       &
+              sum_moved/dble(n_moved), ', worst ', worst_moved, ' over ', &
+              n_moved, ' rows'
+      weno_mode = saved_wmode
+      call set_ioniz_eq_sweep_state_kind(ieq_state_steady_iterate)
+      call put_back_residual_evaluation_products(products_at_entry)
+      call put_back_solve_refusal_statistics(statistics_at_entry)
+      deallocate(abj, F0, Fp, Fm, vdir, Jv, Jb, cd1, cd2, Dsc)
+      write(*,'(A)') ' (coupled_jac) the diagnostic has been written'//   &
+           ' and the run stops here, having taken no step.'
+      stop
+      end subroutine coupled_block_jacobian_action_report
+
+      ! ------------------------------------------------------!
+
       subroutine stationary_rows_of_the_returned_state(rep, ok, iworst,   &
                                                        none_measured,     &
                                                        n_rows_read)
@@ -6416,7 +7666,7 @@
       !                                  one direction and say where it
       !                                  JUMPS, in which term of the row
       !                                  and in which operator of the flux
-      !                                  pipeline (resid_jump_scan_on).
+      !                                  evaluation (resid_jump_scan_on).
       !                                  About seventy residual
       !                                  evaluations at one outer
       !                                  iteration.
@@ -6444,6 +7694,97 @@
       call get_environment_variable('EXHALE_MODEL_ROW_EQUIL', env)
       if (trim(env) .eq. '1') model_row_equilibration_on = .true.
       model_rows_equilibrated = .false.
+      !   EXHALE_JUDGED_ROWS=1           divide the rows of the linear
+      !                                  system and of the band that
+      !                                  preconditions it by the size each
+      !                                  row is judged at on the
+      !                                  three-unknown route, in place of
+      !                                  the state column scales
+      !                                  (judged_row_scaling_on).
+      judged_row_scaling_on = .false.
+      call get_environment_variable('EXHALE_JUDGED_ROWS', env)
+      if (trim(env) .eq. '1') judged_row_scaling_on = .true.
+      !   EXHALE_JUDGED_MERIT=1          read the merit of the three-unknown
+      !                                  route on the row scaling of the
+      !                                  linear model in place of the state
+      !                                  column scales
+      !                                  (merit_reads_the_model_row_scaling).
+      merit_reads_the_model_row_scaling = .false.
+      call get_environment_variable('EXHALE_JUDGED_MERIT', env)
+      if (trim(env) .eq. '1') merit_reads_the_model_row_scaling = .true.
+      !   EXHALE_TRUST_REGION=1          make the scaled trust region the
+      !                                  step control of the three-unknown
+      !                                  route as well
+      !                                  (trust_region_on_the_hydrodynamic_rows);
+      !                                  it carries the merit with it.
+      trust_region_on_the_hydrodynamic_rows = .false.
+      call get_environment_variable('EXHALE_TRUST_REGION', env)
+      if (trim(env) .eq. '1') then
+         trust_region_on_the_hydrodynamic_rows = .true.
+         merit_reads_the_model_row_scaling     = .true.
+      endif
+      !   EXHALE_PTC_RAMP_DOUBLE=0       read the pseudo-time ramp from the
+      !                                  line-search merit's ratio and floor
+      !                                  it at dtau0
+      !                                  (pseudo_time_doubles_on_an_accepted_step).
+      pseudo_time_doubles_on_an_accepted_step = .true.
+      call get_environment_variable('EXHALE_PTC_RAMP_DOUBLE', env)
+      if (trim(env) .eq. '0')                                            &
+         pseudo_time_doubles_on_an_accepted_step = .false.
+      !   EXHALE_PTC_RAMP_GUARD=0       take the pseudo-time ramp unguarded:
+      !                                  no bound on the cut of an accepted
+      !                                  step, no floor at a fixed span below
+      !                                  the pseudo-time the solve was entered
+      !                                  at, growth on step length alone, and
+      !                                  no cap on a run of damped steps
+      !                                  (ptc_ramp_guard_on).
+      ptc_ramp_guard_on = .true.
+      call get_environment_variable('EXHALE_PTC_RAMP_GUARD', env)
+      if (trim(env) .eq. '0') ptc_ramp_guard_on = .false.
+      !   EXHALE_PTC_RAMP_GROWTH_GATE=1  hold the pseudo-time where it is on a
+      !                                  full step whose stagnation window
+      !                                  bought less than merit_fall_min
+      !                                  (ptc_growth_gate_on). Off by
+      !                                  default: MEASURED to hold the near
+      !                                  states the doubling exists for.
+      ptc_growth_gate_on = .false.
+      call get_environment_variable('EXHALE_PTC_RAMP_GROWTH_GATE', env)
+      if (trim(env) .eq. '1') ptc_growth_gate_on = .true.
+      !   EXHALE_PTC_DAMPED_PROGRESS_MIN=<x>  the fraction of the merit a
+      !                                  damped accepted step must remove for
+      !                                  its cut of the pseudo-time to be
+      !                                  taken; below it the pseudo-time is
+      !                                  held (ptc_damped_progress_min,
+      !                                  default 1e-2).
+      ptc_damped_progress_min = 1.0d-2
+      call get_environment_variable('EXHALE_PTC_DAMPED_PROGRESS_MIN', env)
+      if (len_trim(env) .gt. 0) read(env,*) ptc_damped_progress_min
+      !   EXHALE_PTC_EXPLICIT_MARCH_FACTOR=<x>  the multiple of the
+      !                                  explicit-stable interval below which
+      !                                  the iteration counts as the explicit
+      !                                  march, where the damped-step count
+      !                                  of statement (4) runs
+      !                                  (ptc_explicit_march_factor,
+      !                                  default 10).
+      ptc_explicit_march_factor = 1.0d1
+      call get_environment_variable('EXHALE_PTC_EXPLICIT_MARCH_FACTOR', env)
+      if (len_trim(env) .gt. 0) read(env,*) ptc_explicit_march_factor
+      !   EXHALE_PTC_MARCH_COUNT_ALL=1   every iteration spent at
+      !                                  dtau <= K dt_CFL counts toward the
+      !                                  return of statement (4), the count
+      !                                  resetting only when dtau climbs back
+      !                                  above it
+      !                                  (march_counts_every_iteration).
+      march_counts_every_iteration = .false.
+      call get_environment_variable('EXHALE_PTC_MARCH_COUNT_ALL', env)
+      if (trim(env) .eq. '1') march_counts_every_iteration = .true.
+      !   EXHALE_KRYLOV_TOL_ABS=1        ask the Krylov cycle for a linear
+      !                                  residual inside the tolerances and
+      !                                  not only for the forcing term
+      !                                  (krylov_stops_inside_the_tolerances).
+      krylov_stops_inside_the_tolerances = .false.
+      call get_environment_variable('EXHALE_KRYLOV_TOL_ABS', env)
+      if (trim(env) .eq. '1') krylov_stops_inside_the_tolerances = .true.
       !   EXHALE_GM_TRUE_RESIDUAL=1      let the Krylov cycle return the
       !                                  step its TRUE residual chooses
       !                                  and stop where that residual
@@ -6662,9 +8003,10 @@
       ! state can be compared with continuing from it.
       !
       ! The trigger is the stagnation detector's own statistic taken
-      ! earlier. That detector stops the solve when the best iterate has not
-      ! improved for 2*n_stall_best consecutive iterations, and goes back to
-      ! the best iterate with a monotone acceptance at n_stall_best; the
+      ! earlier. That detector stops the solve when neither the best judged
+      ! iterate nor the smallest merit has improved for 2*n_stall_best
+      ! consecutive iterations, and goes back to the best iterate with a
+      ! monotone acceptance at n_stall_best; the
       ! same count read at tr_restart_without_improvement is a precursor of
       ! both. It is a count of iterations without improvement and NOT a
       ! count of refusals: a solve whose steps are all accepted and all
@@ -10407,7 +11749,7 @@
 
       ! ------------------------------------------------------!
 
-      subroutine pipeline_of_the_residual_at_a_point(Y, f_sp_base, jcell, &
+      subroutine residual_terms_in_evaluation_order(Y, f_sp_base, jcell, &
                      q, qname, nq, ok)
       ! EVERY QUANTITY THE ROW OF ONE CELL IS BUILT FROM, in the order the
       ! evaluation builds them:
@@ -10560,7 +11902,7 @@
       ! counts of its own updates.
       n_faces_positivity_limited = n_limited_at_entry
       n_faces_roe_hlle           = n_roe_hlle_at_entry
-      end subroutine pipeline_of_the_residual_at_a_point
+      end subroutine residual_terms_in_evaluation_order
 
       ! ------------------------------------------------------!
 
@@ -10669,9 +12011,9 @@
       !   once the window is narrow enough to hold few of them.
       !
       ! At the largest isolated step the row is split by TERM and by
-      ! OPERATOR (pipeline_of_the_residual_at_a_point) over three
+      ! OPERATOR (residual_terms_in_evaluation_order) over three
       ! consecutive intervals, the middle one holding the step: the
-      ! earliest quantity of the pipeline whose change over the stepping
+      ! earliest quantity of the evaluation whose change over the stepping
       ! interval stands far above its change over the two neighboring
       ! intervals is the one that steps, and it names the operator.
       !
@@ -10856,7 +12198,7 @@
                     trim(what), ' rows step ', n_by_kind(kk), ' times'
             enddo
             ! keep the FINEST window that isolates a step: that is where
-            ! the pipeline on either side of it differs by the step alone.
+            ! the terms on either side of it differ by the step alone.
             kstep_at = kbig;  iw_step = iw
             hw_step  = hw;    dt_step = dt
             jbig     = (ibig-1)/nvar_jac + 1
@@ -10876,7 +12218,7 @@
       ! assembly cannot go below, and it is the number to compare the
       ! measured floor against; epsilon times the row itself is not.
       j_track = (i_track-1)/nvar_jac + 1
-      call pipeline_of_the_residual_at_a_point(Y, f_sp_base, j_track,     &
+      call residual_terms_in_evaluation_order(Y, f_sp_base, j_track,     &
                q_at(1,:), qname, nqk, okr)
       if (okr) then
          geo  = 0.0d0
@@ -10991,7 +12333,7 @@
       do ib = 1, 4
          k  = min(max(kstep_at - 1 + ib - 1, 1), n_scan)
          tk = -hw_step + real(k-1,8)*dt_step
-         call pipeline_of_the_residual_at_a_point(Y + tk*v, f_sp_base,    &
+         call residual_terms_in_evaluation_order(Y + tk*v, f_sp_base,    &
                   jbig, q_at(ib,:), qname, nqk, ok4(ib))
          if (ib .eq. 1) nq_at = nqk
       enddo
@@ -11001,7 +12343,7 @@
          deallocate(Fs, Fv, heat, cool, n_steps_at_k)
          return
       endif
-      write(*,'(A)') ' (JFNK) [diag 14]   the pipeline across the'//      &
+      write(*,'(A)') ' (JFNK) [diag 14]   the residual terms across the'//      &
            ' step, in the order the row is built (value, then the'//      &
            ' change over the interval before the step, over the'//        &
            ' stepping interval, and over the one after):'
@@ -11206,6 +12548,7 @@
       endif
       ! The residual of the empty subspace is the right-hand side itself.
       res_now = beta
+      call l15_krylov_record(l15_iter_now, 0, 'rhs', b)
       if (row_equil_here) then
          V(:,1) = b*model_row_equilibration/beta
       else
@@ -11217,7 +12560,9 @@
          gm_iters = j
          ! z = M^{-1} V(:,j)   (right preconditioning)
          z = V(:,j)
+         call l15_krylov_record(l15_iter_now, j, 'precin', z)
          call banded_preconditioner_solve(abf, ipiv, neq, z, lpinfo)
+         call l15_krylov_record(l15_iter_now, j, 'precout', z)
          if (lpinfo .ne. 0 .or. .not. every_component_is_finite(z)) then
             ! THE PRECONDITIONER IS NOT A MAP HERE. A nonzero LAPACK status
             ! or a nonfinite result means the triangular solution did not
@@ -11239,6 +12584,7 @@
          call project_out_of_the_active_element_constraints(z)
          ! w = A_z z = z*idtau + D^-1 * J*(D z)
          call jacobian_action_of_direction(Y, F0, f_sp_base, D*z, w, jv_ok)
+         call l15_krylov_record(l15_iter_now, j, 'jv', z, w)
          if (.not. jv_ok) then
             ! No admissible sample of the residual along this direction:
             ! stop the cycle here rather than feed the Arnoldi recursion a
@@ -11254,17 +12600,13 @@
             endif
             exit
          endif
-         ! THE THREE-UNKNOWN BRANCH IS THE ORIGINAL EXPRESSION, CHARACTER
-         ! FOR CHARACTER. Drow holds exactly D's values when there is no
-         ! carrier row, so the two branches are the same arithmetic -- but
-         ! not the same instruction sequence, and a reduction summed in a
-         ! different order differs in its last bits. A change with no
-         ! intended effect has to be byte-identical (section 139.9).
-         if (nspec_row .gt. 0) then
-            w = w/Drow + idtau*(D/Drow)*z
-         else
-            w = w/D + idtau*z
-         endif
+         ! ONE EXPRESSION FOR BOTH ROUTES. Drow is the row scaling of the
+         ! linear model (row_scaling_of_the_linear_model): the
+         ! certification scales where a species row is carried, the judged
+         ! size tol_k(j) s_k(j) on the three-unknown route, and D itself
+         ! where the judged scaling is off, in which case D/Drow is one and
+         ! this is the expression that route carried before.
+         w = w/Drow + idtau*(D/Drow)*z
          ! AND THE ROW SCALING OF THE LINEAR MODEL, where it is on:
          ! the operator the cycle works with is E A_z and the band it is
          ! preconditioned by is E times the same band, so the two agree
@@ -11329,6 +12671,7 @@
          endif
          ! The Arnoldi column as built, kept before the rotations overwrite it.
          Hb(1:j+1,j) = Hs(1:j+1,j)
+         call l15_krylov_record(l15_iter_now, j, 'hcol', Hb(1:j+1,j))
          ! Apply previous Givens rotations to column j
          do i = 1, j-1
             tmp       =  cs(i)*Hs(i,j) + sn(i)*Hs(i+1,j)
@@ -11396,11 +12739,7 @@
                      call jacobian_action_of_direction(Y, F0, f_sp_base, &
                                                        D*xh, u, jv_ok)
                      if (jv_ok) then
-                        if (nspec_row .gt. 0) then
-                           u = u/Drow + idtau*(D/Drow)*xh
-                        else
-                           u = u/D + idtau*xh
-                        endif
+                        u = u/Drow + idtau*(D/Drow)*xh
                         ! AND THE ROW SCALING OF THE LINEAR MODEL, where it is on:
                         ! the operator the cycle works with is E A_z and the band it is
                         ! preconditioned by is E times the same band, so the two agree
@@ -11488,11 +12827,7 @@
                      call jacobian_action_of_direction(Y, F0, f_sp_base, &
                                                        D*z, w, jv_ok)
                      if (jv_ok) then
-                        if (nspec_row .gt. 0) then
-                           w = w/Drow + idtau*(D/Drow)*z
-                        else
-                           w = w/D + idtau*z
-                        endif
+                        w = w/Drow + idtau*(D/Drow)*z
                         if (row_equil_here)                              &
                            w = w*model_row_equilibration
                         if (every_component_is_finite(w)) then
@@ -11639,11 +12974,7 @@
             call jacobian_action_of_direction(Y, F0, f_sp_base, D*z, w,   &
                                               jv_ok)
             if (.not. jv_ok) cycle
-            if (nspec_row .gt. 0) then
-               w = w/Drow + idtau*(D/Drow)*z
-            else
-               w = w/D + idtau*z
-            endif
+            w = w/Drow + idtau*(D/Drow)*z
             ! AND THE ROW SCALING OF THE LINEAR MODEL, where it is on:
             ! the operator the cycle works with is E A_z and the band it is
             ! preconditioned by is E times the same band, so the two agree
@@ -11666,11 +12997,7 @@
                call jacobian_action_of_direction(Y, F0, f_sp_base, D*z, u, &
                                                  jv_ok)
                if (jv_ok) then
-                  if (nspec_row .gt. 0) then
-                     u = u/Drow + idtau*(D/Drow)*z
-                  else
-                     u = u/D + idtau*z
-                  endif
+                  u = u/Drow + idtau*(D/Drow)*z
                   ! AND THE ROW SCALING OF THE LINEAR MODEL, where it is on:
                   ! the operator the cycle works with is E A_z and the band it is
                   ! preconditioned by is E times the same band, so the two agree
@@ -11706,11 +13033,7 @@
                call jacobian_action_of_direction(Y, F0, f_sp_base, D*u, w, &
                                                  jv_ok)
                if (jv_ok) then
-                  if (nspec_row .gt. 0) then
-                     w = w/Drow + idtau*(D/Drow)*u
-                  else
-                     w = w/D + idtau*u
-                  endif
+                  w = w/Drow + idtau*(D/Drow)*u
                   ! AND THE ROW SCALING OF THE LINEAR MODEL, where it is on:
                   ! the operator the cycle works with is E A_z and the band it is
                   ! preconditioned by is E times the same band, so the two agree
@@ -11968,11 +13291,7 @@
       if (verify_true_residual) then
          call jacobian_action_of_direction(Y, F0, f_sp_base, D*x, w, jv_ok)
          if (jv_ok) then
-            if (nspec_row .gt. 0) then
-               w = w/Drow + idtau*(D/Drow)*x
-            else
-               w = w/D + idtau*x
-            endif
+            w = w/Drow + idtau*(D/Drow)*x
             ! AND THE ROW SCALING OF THE LINEAR MODEL, where it is on:
             ! the operator the cycle works with is E A_z and the band it is
             ! preconditioned by is E times the same band, so the two agree
@@ -12197,11 +13516,7 @@
                call jacobian_action_of_direction(Y, F0, f_sp_base, D*xs, &
                                                  w, jv_ok)
                if (jv_ok) then
-                  if (nspec_row .gt. 0) then
-                     w = w/Drow + idtau*(D/Drow)*xs
-                  else
-                     w = w/D + idtau*xs
-                  endif
+                  w = w/Drow + idtau*(D/Drow)*xs
                   if (every_component_is_finite(w))                      &
                      resid_true = sqrt(sum((b - w)**2))                  &
                                 / max(sqrt(sum(b*b)), 1.0d-300)
@@ -12355,11 +13670,7 @@
          call jacobian_action_of_direction(Y, F0, f_sp_base, D*z, w,     &
                                            jv_ok)
          if (.not. jv_ok) exit
-         if (nspec_row .gt. 0) then
-            w = w/Drow + idtau*(D/Drow)*z
-         else
-            w = w/D + idtau*z
-         endif
+         w = w/Drow + idtau*(D/Drow)*z
          ! AND THE ROW SCALING OF THE LINEAR MODEL, where it is on:
          ! the operator the cycle works with is E A_z and the band it is
          ! preconditioned by is E times the same band, so the two agree
@@ -12665,11 +13976,7 @@
                call jacobian_action_of_direction(Y, F0, f_sp_base, D*z,  &
                                                  w, jv_ok)
                if (.not. jv_ok) cycle
-               if (nspec_row .gt. 0) then
-                  w = w/Drow + idtau*(D/Drow)*z
-               else
-                  w = w/D + idtau*z
-               endif
+               w = w/Drow + idtau*(D/Drow)*z
                w = w - sum(w*v)*v
                tmp = sqrt(sum(w*w))
                if (tmp .le. 0.0d0) cycle
@@ -14972,6 +16279,24 @@
       real*8, dimension(3,1-Ng:N+Ng)          :: utry, Wtry
       real*8, dimension(1-Ng:N+Ng,n_species)  :: f_sp_j, f_sp_best
       real*8  :: rnorm, rc(3), dtau, lam, f2, f2_try, idtau, amx0
+      ! The floor the cut of an unfavorable step stops at, and the factor
+      ! an accepted step multiplies the pseudo-time by
+      ! (pseudo_time_doubles_on_an_accepted_step).
+      real*8  :: dtau_floor, dtau_ramp
+      ! WHETHER THE DAMPED STEP THIS ITERATION TOOK BOUGHT ANYTHING, which
+      ! is what decides whether the pseudo-time is cut or held, and the run
+      ! of consecutive iterations that bought nothing, with the number of
+      ! returns to the best iterate it has cost (ptc_ramp_guard_on).
+      logical :: damped_step_progressed
+      ! The pseudo-time the best iterate was reached at, which a return to it
+      ! restarts from.
+      real*8  :: dtau_best
+      integer :: n_damped_run, n_damped_restarts
+      ! The merit of the state an accepted step reached, in the fixed scale
+      ! the stagnation window is kept in, read by the growth rule above.
+      real*8  :: f2_fixed_of_the_step
+      real*8, dimension(3,1-Ng:N+Ng) :: W_cfl
+      real*8, dimension(1-Ng:N+Ng)   :: dt_cfl_of_cell
       real*8  :: f2hist(5), f2ref, rnorm_best
       ! Flux gate: the spread of rho v r^2 over r >= r_flux, of the current
       ! iterate and of the best one kept, and whether each meets BOTH gates.
@@ -14980,6 +16305,54 @@
       logical :: gates_now, gates_best
       integer :: n_no_descent, n_nonmonotone_accepts
       integer :: n_since_best
+      ! THE MERIT THE STAGNATION COUNTER READS, IN A SCALE THAT DOES NOT
+      ! MOVE. The merit the line search descends on is || F/D ||_2 with D
+      ! rebuilt from every iterate, so two of its values are two norms and
+      ! their ratio carries the change of scale as well as the change of
+      ! state: MEASURED on the reproduction of
+      ! docs/lhs1140b_stationary_L4d_20260913.md, one re-evaluation of the
+      ! SAME state reported 3.18e-2 and 1.97e-2 across a rebuild of the
+      ! scales, a factor 1.6 with the state untouched. Dfix is the column
+      ! scale of the state this solve was entered at, held for the life of
+      ! the solve, and f2_fixed is the merit in it; the history below is kept
+      ! in that one norm.
+      real*8, allocatable :: Dfix(:)
+      real*8  :: f2_fixed
+      logical :: merit_improved
+      ! THE SMALLEST FALL THAT COUNTS AS PROGRESS, relative, over the window
+      ! the counter looks back over. Two measurements set it and neither is
+      ! a pass count: the residual assembly is bit-reproducible on this case
+      ! (three runs at 8 threads and one each at 4 and 16 wrote the same
+      ! state to the last digit), so its own rounding is the only noise
+      ! floor and stands near sqrt(3 N) times the double-precision epsilon,
+      ! 4e-15 DERIVED at N = 500; and a window of n_stall_best iterations
+      ! that IS descending falls by 20 to 30 percent in this reproduction.
+      ! The default stands three decades above the first and two below the
+      ! second.
+      real*8  :: merit_fall_min
+      ! ROW BY ROW, WHAT THE LINEAR SOLVE LEFT AND WHAT THE NONLINEAR STEP
+      ! DID (EXHALE_LINEAR_ROWS=1). The Krylov cycle reports one number, the
+      ! 2-norm of the whole scaled residual, and in a subsonic base layer
+      ! that norm is the energy rows: it cannot say whether a continuity row
+      ! that moves is the tolerance the cycle was given or the step the
+      ! nonlinear model took. These two are the separation -- the
+      ! unpreconditioned linear residual of the PTC system, row by row,
+      ! against the same rows of F, and the judged rows of the state and of
+      ! the trial beside them.
+      logical :: linear_rows_on, jv_ok_diag
+      real*8, allocatable :: Jv_diag(:), r_lin(:)
+      real*8  :: lin_row(3), f_row(3), rc_diag(3), rnorm_diag
+      character(len=8) :: lin_env
+      ! HOW MANY CELLS EACH HYDRODYNAMIC ROW REFUSES IN, and which cell is
+      ! furthest outside, at the iterate the outer loop holds.
+      integer :: n_out_row(3), j_out_row(3)
+      ! The 2-norm of the state's distances from the tolerances, which is
+      ! what the Krylov cycle's absolute target is stated against.
+      real*8  :: beta_judged
+      ! THE FORCING TERM of the inexact Newton step: the relative tolerance
+      ! the Krylov cycle of this outer iteration is asked for, the merit the
+      ! previous cycle was formed at, and the term that cycle used.
+      real*8  :: eta_forcing, eta_forcing_prev, eta_safeguard, f2_at_last_cycle
       logical :: monotone_search
       ! Stagnation limit: consecutive outer iterations in which the line
       ! search found NO acceptable step at all. Measured on the HD 209458 b
@@ -14997,12 +16370,22 @@
       ! iterations produce no improvement of ||R|| at all while the search
       ! accepts 61 sideways steps.
       !
-      ! So when the best iterate has not improved for n_stall_best
-      ! iterations the solve GOES BACK TO IT and switches the acceptance to
-      ! monotone Armijo -- descent against the current merit rather than
-      ! against the worst of five. If that still buys nothing in another
-      ! n_stall_best iterations, the solve stops and says it STAGNATED,
-      ! which is a different statement from "no descent direction exists".
+      ! So when NEITHER the best judged iterate NOR the smallest merit has
+      ! improved for n_stall_best iterations the solve GOES BACK TO THE BEST
+      ! ITERATE and switches the acceptance to monotone Armijo -- descent
+      ! against the current merit rather than against the worst of five. If
+      ! that still buys nothing in another n_stall_best iterations, the solve
+      ! stops and says it STAGNATED, which is a different statement from "no
+      ! descent direction exists".
+      !
+      ! WHY BOTH FUNCTIONALS AND NOT THE JUDGED DISTANCE ALONE: a solve
+      ! entered from a state whose continuity and momentum rows already sit
+      ! at their rounding floors has the entry state as its best judged
+      ! iterate by construction, because a Newton transient raises the
+      ! continuity row five to seven decades against a 3e-12 tolerance before
+      ! it comes back down. The count would then fire on a solve that is
+      ! descending; it is the merit that says whether it is (see the reset
+      ! below, and docs/lhs1140b_stationary_L4b_20260913.md section 4).
       !
       ! WHERE 20 COMES FROM. Over every solve of the P50 campaign that ended
       ! info = 0 on a configuration that survived measurement, the largest
@@ -15014,6 +16397,41 @@
       ! the point at which the solve gives up -- stands a factor 6.7 above
       ! it and below every stall observed (tails of 278 to 729).
       integer, parameter :: n_stall_best = 20
+      ! The window of that same length the stagnation counter reads the
+      ! fixed-scale merit over. Declared here so that its length follows
+      ! n_stall_best and cannot drift from it.
+      real*8  :: f2_fixed_hist(n_stall_best)
+      ! THE FORCING TERM OF THE INEXACT NEWTON STEP: Eisenstat & Walker
+      ! (1996), SIAM J. Sci. Comput. 17, 16 (doi 10.1137/0917003, ADS
+      ! 1996SJSC...17...16E), their choice 2,
+      !
+      !     eta_k = gamma * ( ||F_k|| / ||F_{k-1}|| )**alpha,
+      !
+      ! with gamma = 0.9 and alpha = (1+sqrt(5))/2, the constants that paper
+      ! recommends, and the safeguard that keeps the term from falling faster
+      ! than its own previous value to that power,
+      !
+      !     eta_k <- max( eta_k, gamma*eta_{k-1}**alpha ).
+      !
+      ! THE SAFEGUARD IS APPLIED WITHOUT THE PAPER'S GATE, and this is the
+      ! one departure from the published form. The paper applies it only
+      ! where gamma*eta_{k-1}**alpha stands above a tenth, which its own
+      ! ceiling of one leaves reachable; under the ceiling of a tenth this
+      ! route carries, that quantity is at most
+      ! 0.9*0.1**1.618 = 0.0217 (DERIVED), so the gate would make the
+      ! safeguard unreachable for every iterate and the term could collapse
+      ! from the ceiling to the floor in one step. Ungated, the safeguard
+      ! does what it is for: it bounds how fast the term falls.
+      real*8,  parameter :: ew_gamma = 0.9d0
+      real*8,  parameter :: ew_alpha = 1.6180339887498949d0
+      ! The ceiling is the fixed tolerance this route carried before, so the
+      ! first cycle of a solve is the one it always was and no iteration is
+      ! ever asked for less than that. The floor is NOT Eisenstat and
+      ! Walker's: the operator of the cycle is a finite difference of the
+      ! residual about the iterate, so a tolerance below the accuracy of that
+      ! difference asks for a reduction the action does not represent.
+      real*8,  parameter :: gm_rtol_ceiling = 1.0d-1
+      real*8,  parameter :: gm_rtol_floor   = 1.0d-4
       ! THE ACCEPTANCE BOUNDS THE QUANTITY THE STATE IS JUDGED BY, beside
       ! the merit it descends on.
       !
@@ -15160,12 +16578,35 @@
       allocate(Y(neq), F(neq), Ftry(neq), dY(neq), Ytry(neq))
       allocate(F_jac(neq))
       allocate(dZ(neq), D(neq), Ybest(neq), dY_lm(neq))
+      allocate(Dfix(neq))
       allocate(ab(ldab,neq), abf(ldab,neq), ipiv(neq))
       ! Allocated last and on its own, so that every array the three-unknown
       ! solve has always had keeps the address it has always had.
       allocate(Drow(neq))
       dtau = dtau0;  info = 1
       resid_tol_of_solve = resid_tol
+      ! THE FLOOR OF THE PSEUDO-TIME, the explicit-stable interval of the
+      ! state the solve is entered at: the same CFL minimum the marching
+      ! route takes its step from, formed once so that the floor is a
+      ! property of the solve and not a moving target. It is taken at the
+      ! entry state because the floor is what the cut of an unfavorable step
+      ! is allowed to reach, and a floor that follows the iterate would be a
+      ! bound the iterate can move. Never above the start: where dtau0 is
+      ! already inside the explicit-stable interval, as it is on the direct
+      ! route that starts from this same number, the floor is the start and
+      ! the arithmetic is the one that route has always had.
+      call U_to_W(u, W_cfl)
+      call eval_dt(W_cfl, dtau_floor, dt_cfl_of_cell)
+      ! A state whose ghosts the caller has not filled yet would give an
+      ! interval of zero or a non-number, and a floor of zero is no floor at
+      ! all. The start is the statement that is always available.
+      if ((.not. finite_real(dtau_floor)) .or. dtau_floor .le. 0.0d0)    &
+         dtau_floor = dtau0
+      dtau_floor = min(dtau_floor, dtau0)
+      if (.not. pseudo_time_doubles_on_an_accepted_step)              &
+         dtau_floor = dtau0
+      damped_step_progressed = .false.;  dtau_best = dtau0
+      n_damped_run = 0;  n_damped_restarts = 0
       gm_m_used = gm_m
       call get_environment_variable('EXHALE_GM_M', gm_env)
       if (len_trim(gm_env) .gt. 0) read(gm_env,*) gm_m_used
@@ -15176,9 +16617,6 @@
       n_rows_at_stop = 0;  n_gate_met_row_refused = 0
       i_row_refused_last = -1
       gm_outcome = gm_tolerance_reached;  gm_snorm_last = 0.0d0
-      use_tr = (nspec_row .gt. 0)
-      call get_environment_variable('EXHALE_TRUST_REGION', tr_env)
-      if (trim(tr_env) .eq. '0') use_tr = .false.
       n_tr_accept = 0;  n_tr_reject = 0;  n_tr_model_bad = 0
       n_tr_exit = 0;  tr_refuse = tr_step_taken
       n_tr_cauchy_dropped = 0;  tr_cauchy_ascends = .false.
@@ -15194,6 +16632,16 @@
       call read_composition_elimination_controls
       call read_species_unknown_space_controls
       call read_trust_region_restart_controls
+      ! WHICH STEP CONTROL THIS SOLVE CARRIES, read after the switches the
+      ! answer depends on: the scaled trust region wherever the system
+      ! carries a species row, and on the three-unknown route where it was
+      ! asked for (EXHALE_TRUST_REGION=1, which also puts the merit on the
+      ! model's row scaling, since the region compares the two).
+      ! EXHALE_TRUST_REGION=0 leaves the pseudo-transient line search
+      ! everywhere.
+      use_tr = (nspec_row .gt. 0) .or. trust_region_on_the_hydrodynamic_rows
+      call get_environment_variable('EXHALE_TRUST_REGION', tr_env)
+      if (trim(tr_env) .eq. '0') use_tr = .false.
       closure_map_due = .false.;  acceptance_window_due = .false.
       maxit_used = jfnk_outer_iteration_cap(maxit)
 
@@ -15268,7 +16716,7 @@
       call row_cancellation_and_the_rounding_floor(f_sp, u)
       call resid_relnorm(F, u, rc, rnorm)
       call cell_state_scales(Y, D)
-      if (nspec_row .gt. 0) call cell_row_scales(Y, D, Drow, u)
+      call row_scaling_of_the_linear_model(Y, D, Drow, u)
       ! AND THE SHARED ELEMENT BUDGET AS ROWS OF THE FIRST STEP. They are
       ! formed after the scales because the projection acts in the
       ! coordinates the linear algebra works in, and after the iterate's own
@@ -15305,7 +16753,7 @@
       ! -- handled at the end of this routine, not by changing the merit
       ! (docs/newton_scaling_and_base_wall.md section 4,
       ! docs/hd209_metal_stagnation.md).
-      if (nspec_row .gt. 0) then
+      if (merit_is_on_the_model_row_scaling()) then
          f2 = sqrt(sum((F/Drow)**2))  ! merit in the SCALED space
       else
          f2 = sqrt(sum((F/D)**2))     ! merit in the SCALED space
@@ -15319,6 +16767,23 @@
       jhist = dj;  dj_best = dj
       rnorm_best = rnorm;  Ybest = Y;  f_sp_best = f_sp;  n_no_descent = 0
       n_since_best = 0;  monotone_search = .false.
+      ! The fixed scale of this solve, and the history the stagnation counter
+      ! reads, both taken at the state the solve was entered at.
+      if (merit_is_on_the_model_row_scaling()) then
+         Dfix = Drow
+      else
+         Dfix = D
+      endif
+      f2_fixed = sqrt(sum((F/Dfix)**2))
+      f2_fixed_hist = f2_fixed;  merit_improved = .false.
+      merit_fall_min = 1.0d-1
+      call get_environment_variable('EXHALE_MERIT_FALL_MIN', tr_env)
+      if (len_trim(tr_env) .gt. 0) read(tr_env,*) merit_fall_min
+      call get_environment_variable('EXHALE_LINEAR_ROWS', lin_env)
+      linear_rows_on = (trim(lin_env) .eq. '1')
+      if (linear_rows_on) allocate(Jv_diag(neq), r_lin(neq))
+      eta_forcing = gm_rtol_ceiling;  eta_forcing_prev = gm_rtol_ceiling
+      f2_at_last_cycle = -1.0d0
       carrier_relnorm_best = carrier_relnorm_state
       carrier_cellmax_best = carrier_cellmax_state
       carrier_cell_best    = carrier_cell_state
@@ -15357,6 +16822,13 @@
       ! the damped Gauss-Newton model, so what it cannot hold is what those
       ! two do not see.
       call jacobian_column_reach_beyond_the_band(Y, f_sp)
+      ! AND THE COUPLING OF THE BLOCK ITSELF, measured on the same state
+      ! (EXHALE_COUPLED_JAC_ACTION=<file>): the action the Krylov direction
+      ! is built from, a central difference of the full residual at two
+      ! lengths, and the banded preconditioner's row of one direction. With
+      ! the key unset this returns at its first statement; with it set the
+      ! file is written and the run stops, having taken no step.
+      call coupled_block_jacobian_action_report(Y, f_sp)
 
       do iter = 1, maxit_used
          ! THE STOP TEST OF THE ITERATION, WHICH IS THE ACCEPTANCE TEST OF
@@ -15440,7 +16912,9 @@
          call set_ioniz_eq_sweep_state_kind(ieq_state_steady_iterate)
          call eval_residual(Y, f_sp, f_sp_j, F, heat0, cool0,             &
                             rows_judged=rows_j,                          &
-                            resid_relnorm_judged=rnorm_j)
+                            resid_relnorm_judged=rnorm_j,                &
+                            cells_outside_judged=n_out_row,              &
+                            cell_outside_judged=j_out_row)
          dj = distance_from_certification(rows_j)
          ! The reference the trial admissibility test compares against: how
          ! many cells THIS iterate's own chemistry left without a root.
@@ -15498,7 +16972,7 @@
          ! iteration evaluated last -- a refused trial, or a point on a
          ! trust-region ray.
          call cell_state_scales(Y, D)
-         if (nspec_row .gt. 0) call cell_row_scales(Y, D, Drow, u)
+         call row_scaling_of_the_linear_model(Y, D, Drow, u)
          ! AND THE FACES OF THE SPECIES BOX FOR THIS STEP, taken after the
          ! iterate's own evaluation for the same reason the scales are: the
          ! element budget one of the faces is is a product of that
@@ -15514,7 +16988,7 @@
             call measure_the_closure_map_at_the_base(Y, f_sp, Drow)
             closure_map_due = .false.
          endif
-         if (nspec_row .gt. 0) then
+         if (merit_is_on_the_model_row_scaling()) then
             f2 = sqrt(sum((F/Drow)**2)) ! TRUE merit of the current iterate
          else
             f2 = sqrt(sum((F/D)**2))    ! TRUE merit of the current iterate
@@ -15532,6 +17006,13 @@
          ! different maps is not a derivative of either.
          call eval_residual(Y, f_sp, f_sp_j, F_jac, heat0, cool0,          &
                             n_eq_sweeps_fixed=n_eq_sweeps_model)
+         ! The record of this outer iteration's state, and the two
+         ! comparisons that separate a shared write from an order of
+         ! accumulation. Off unless EXHALE_L15_TRACE names a file.
+         call l15_iteration_record(iter, dtau, Y, f_sp, F, F_jac, D, Drow, &
+                                   f2, rnorm)
+         call l15_dump_state(iter, Y, f_sp, F, F_jac, D, Drow, dtau)
+         call l15_repeat_check(iter, Y, f_sp, F_jac, D)
 
          ! Grippo non-monotone reference: the worst true merit of the last 5
          ! outer iterates, the current one included. Recording it here, and not
@@ -15549,6 +17030,15 @@
               maxval(jhist), '   ||R||', rnorm_j, '  hydrodynamic',       &
               rows_j(1), '  element',                                     &
               rows_j(2), '  carrier', rows_j(3)
+         ! AND HOW MUCH OF THE COLUMN EACH ROW REFUSES IN, beside the cell
+         ! that is furthest outside. One named cell is a row's worst place,
+         ! not its extent. The counts come from the evaluation above, which
+         ! has the row measures and the rounding floors in hand.
+         write(*,'(A,I0,A,I0,A,I0,A,I0,A,I0,A,I0,A,I0,A)')                &
+              ' (JFNK) cells outside the tolerance of their row, of ', N, &
+              ': mass ', n_out_row(1), ' (worst cell ', j_out_row(1),     &
+              '), momentum ', n_out_row(2), ' (', j_out_row(2),           &
+              '), energy ', n_out_row(3), ' (', j_out_row(3), ')'
          f2hist = (/ f2hist(2:5), f2 /)
          ! And the same window on the quantity the state is judged by.
          jhist  = (/ jhist(2:5),  dj /)
@@ -15624,17 +17114,31 @@
             if (preconditioner_equilibration_on)                         &
                call equilibrate_the_preconditioner(abf)
          else
+            ! THE ROWS ARE THE LINEAR MODEL'S SCALING (Drow), which on this
+            ! route is the judged size tol_k(j) s_k(j) where
+            ! judged_row_scaling_on and the state column scales where it is
+            ! not; with the latter D(jc)/Drow(irow) is the column scaling
+            ! this branch carried before and idtau*D(jc)/Drow(jc) is idtau,
+            ! exactly, x/x being one in binary floating point for every
+            ! finite scale. Both sides of the system carry the same
+            ! diagonal E = D/Drow, so the step it solves for is unchanged
+            ! and what E changes is the norm the truncated Krylov cycle
+            ! minimizes, which is the point of the scaling.
             do jc = 1, neq
                ilo = max(1,   jc - ku_jac)
                ihi = min(neq, jc + kl_jac)
                do irow = ilo, ihi
                   ab(kl_jac+ku_jac+1 + irow - jc, jc) =                  &
-                       ab(kl_jac+ku_jac+1 + irow - jc, jc)*D(jc)/D(irow)
+                       ab(kl_jac+ku_jac+1 + irow - jc, jc)*D(jc)/Drow(irow)
                enddo
             enddo
             abf = ab
             do jc = 1, neq
-               abf(kl_jac+ku_jac+1, jc) = abf(kl_jac+ku_jac+1, jc) + idtau
+               ! THE RATIO IS FORMED FIRST so that a row whose two scalings
+               ! are one array contributes idtau exactly: (idtau*D)/D
+               ! rounds twice and idtau*(D/D) does not.
+               abf(kl_jac+ku_jac+1, jc) = abf(kl_jac+ku_jac+1, jc)       &
+                                        + idtau*(D(jc)/Drow(jc))
             enddo
             preconditioner_equilibrated = .false.
             model_rows_equilibrated = .false.
@@ -15650,6 +17154,17 @@
                   enddo
                enddo
             endif
+            ! AND THE BAND THAT IS FACTORIZED IS EQUILIBRATED WHERE ITS
+            ! ROWS SPAN THE TOLERANCES. Partial pivoting compares entries
+            ! across rows, so a band whose rows carry factors 1/tol_k(j)
+            ! twelve decades apart is factored by a pivot sequence chosen
+            ! by the scaling rather than by the operator. The two
+            ! rescalings are undone inside the preconditioner solve, so the
+            ! cycle sees the same approximate inverse of the same operator
+            ! (equilibrate_the_preconditioner, banded_preconditioner_solve).
+            if (judged_row_scaling_on .and.                              &
+                preconditioner_equilibration_on)                         &
+               call equilibrate_the_preconditioner(abf)
          endif
          call dgbtrf(neq, neq, kl_jac, ku_jac, abf, ldab, ipiv, lpinfo)
          call banded_model_conditioning(ab, abf, D, Drow, ' (JFNK)')
@@ -15657,7 +17172,7 @@
             call write_scales_columns_and_pivots(D, Drow, ab, abf, ipiv,  &
                       idtau, lpinfo, n_jac_unresolved, ' (JFNK)')
          if (lpinfo .ne. 0) then
-            dtau = max(dtau*0.25d0, dtau0);  cycle
+            dtau = max(dtau*0.25d0, dtau_floor);  cycle
          endif
 
          ! The window on the judged quantity, formed here because both step
@@ -15810,18 +17325,96 @@
                  tr_gm_resid, ' against ', tr_gm_rtol,                     &
                  '; ', trim(gm_why_txt)
          else
-         ! GMRES solve of the scaled PTC system; unscale the step.
-         if (nspec_row .gt. 0) then
-            call pgmres(Y, F_jac, f_sp, D, Drow, abf, ipiv, idtau, -F/Drow, &
-                        dZ, gm_m_used, 1.0d-1, gmit, gm_outcome,           &
-                        tr_gm_resid, gm_snorm_last)
+         ! HOW MUCH OF THE LINEAR RESIDUAL THIS ITERATION MAY LEAVE BEHIND.
+         !
+         ! A FIXED TENTH IS NOT ADMISSIBLE ONCE ONE SET OF ROWS IS ALREADY AT
+         ! ITS FLOOR. The cycle minimizes the 2-norm of the SCALED residual,
+         ! and where the rows stand decades apart in that one vector -- energy
+         ! rows at 3.7e-2 with continuity rows at 2.1e-9, MEASURED on the
+         ! LHS 1140 b wind with the C, N, O reservoirs
+         ! (docs/lhs1140b_stationary_L4b_20260913.md section 4) -- the tenth
+         ! the cycle is allowed to leave costs nothing in the norm it is
+         ! measured in and everything in the continuity rows the
+         ! certification then reads against 3e-12. The excursion is first
+         ! order in the step, and a solve entered with those rows at their
+         ! floors cannot come back inside the distance it entered at.
+         !
+         ! The ratio is formed on the merit, which is the 2-norm of the same
+         ! scaled residual the cycle reduces, so it is the quantity the
+         ! Eisenstat-Walker analysis is written in. The column scales are
+         ! rebuilt at every iterate, so a change of scale enters the ratio;
+         ! the ceiling and the floor bound what that can do.
+         if (f2_at_last_cycle .gt. 0.0d0 .and. f2 .gt. 0.0d0) then
+            eta_forcing = ew_gamma*(f2/f2_at_last_cycle)**ew_alpha
+            eta_safeguard = ew_gamma*eta_forcing_prev**ew_alpha
+            eta_forcing = max(eta_forcing, eta_safeguard)
+            eta_forcing = min(gm_rtol_ceiling,                            &
+                              max(gm_rtol_floor, eta_forcing))
          else
-         call pgmres(Y, F_jac, f_sp, D, Drow, abf, ipiv, idtau, -F/D, dZ, &
-                     gm_m_used, 1.0d-1, gmit, gm_outcome, tr_gm_resid,    &
-                     gm_snorm_last)
+            eta_forcing = gm_rtol_ceiling
          endif
+         eta_forcing_prev = eta_forcing
+         f2_at_last_cycle = f2
+         ! AND THE ONE ABSOLUTE STATEMENT THE JUDGED ROWS MAKE POSSIBLE.
+         ! With the rows divided by tol_k(j) s_k(j) the right-hand side is
+         ! the state's distances from the tolerances, so a linear residual
+         ! whose 2-norm is below ONE is inside every row's tolerance in
+         ! every cell -- the infinity norm is bounded by the 2-norm -- and
+         ! the step cannot carry a row that entered at its floor outside
+         ! it. A RELATIVE tolerance cannot say this: MEASURED on the pass-2
+         ! entry state of the LHS 1140 b C/N/O case, the judged residual is
+         ! 1.1e+05 and the tenth the cycle is allowed to leave is 1.1e+04
+         ! in the same units, four decades above the tolerances, so the
+         ! step raised the continuity row from 5.0e-9 to 1.1e-2 with the
+         ! row scaling alone. The target is the certification's own unit
+         ! and not a number chosen here; the cycle is still bounded by its
+         ! subspace, and what it reached is reported beside what it was
+         ! asked for.
+         if (krylov_stops_inside_the_tolerances .and.                    &
+             judged_row_scaling_on .and. nspec_row .le. 0) then
+            beta_judged = sqrt(sum((F/Drow)**2))
+            eta_forcing = min(eta_forcing,                               &
+                              1.0d0/max(beta_judged, 1.0d0))
+         endif
+         ! GMRES solve of the scaled PTC system; unscale the step.
+         call pgmres(Y, F_jac, f_sp, D, Drow, abf, ipiv, idtau, -F/Drow,  &
+                     dZ, gm_m_used, eta_forcing, gmit, gm_outcome,        &
+                     tr_gm_resid, gm_snorm_last)
          n_gm_outcome(gm_outcome) = n_gm_outcome(gm_outcome) + 1
+         call gm_outcome_text(gm_outcome, gm_why_txt)
+         write(*,'(A,ES9.2,A,ES10.3,A,I0,A,I0,A,A)')                      &
+              ' (JFNK) forcing term', eta_forcing,                        &
+              ': the cycle reached ', tr_gm_resid, ' in ', gmit,          &
+              ' product(s) of ', gm_m_used, '; ', trim(gm_why_txt)
          dY = D*dZ
+         ! WHAT THE CYCLE LEFT IN EACH ROW, unpreconditioned and in the row's
+         ! own units. The system the step solves is (J + I/dtau) dY = -F, so
+         ! its residual is -F - J dY - dY/dtau; jacobian_action_of_direction
+         ! returns J times a direction in those units.
+         if (linear_rows_on) then
+            call jacobian_action_of_direction(Y, F_jac, f_sp, dY,          &
+                                              Jv_diag, jv_ok_diag)
+            if (jv_ok_diag) then
+               r_lin = -F - Jv_diag - idtau*dY
+               do kk = 1, 3
+                  lin_row(kk) = maxval(abs(r_lin(kk::nvar_jac)))
+                  f_row(kk)   = maxval(abs(F(kk::nvar_jac)))
+               enddo
+               call resid_relnorm(F, u, rc_diag, rnorm_diag)
+               write(*,'(A,3ES11.3)')                                      &
+                    ' (JFNK) hydrodynamic rows entering the step'//         &
+                    ' (mass, momentum, energy): ', rc_diag
+               write(*,'(A,3ES11.3)')                                      &
+                    ' (JFNK) linear residual left, over the row of F'//     &
+                    ' (mass, momentum, energy): ',                         &
+                    lin_row(1)/max(f_row(1),1.0d-300),                     &
+                    lin_row(2)/max(f_row(2),1.0d-300),                     &
+                    lin_row(3)/max(f_row(3),1.0d-300)
+            else
+               write(*,'(A)') ' (JFNK) linear residual left: the action'//  &
+                    ' has no admissible sample along the step'
+            endif
+         endif
          endif
 
          ! Scaled ||F/D||_2 backtracking line search with positivity, tested
@@ -15887,7 +17480,7 @@
                call eval_residual(Ytry, f_sp, f_sp_j, Ftry, heat0, cool0, &
                                   admissible=try_ok, rows_judged=rows_try)
                dj_try = distance_from_certification(rows_try)
-               if (nspec_row .gt. 0) then
+               if (merit_is_on_the_model_row_scaling()) then
                   f2_try = sqrt(sum((Ftry/Drow)**2))
                else
                   f2_try = sqrt(sum((Ftry/D)**2))
@@ -15942,7 +17535,8 @@
          ! controls the step by model agreement before the fact. Running both
          ! would make the reduction ratio meaningless, so it is skipped.
          lm_tried = .false.;  lm_found = .false.
-         if ((.not. use_tr) .and. dtau .le. dtau0*(1.0d0 + 1.0d-12)) then
+         if ((.not. use_tr) .and.                                        &
+             dtau .le. dtau_floor*(1.0d0 + 1.0d-12)) then
             ! Two ways for the Newton/PTC direction to leave the iterate where
             ! it is, both of them repeatable bit for bit at this dtau: the
             ! backtracking search rejects every step, or it accepts one that
@@ -15978,7 +17572,11 @@
                call eval_residual(Ytry, f_sp, f_sp_j, Ftry, heat0, cool0, &
                                   admissible=try_ok, rows_judged=rows_try)
                dj_try = distance_from_certification(rows_try)
-               f2_try = sqrt(sum((Ftry/D)**2))
+               if (merit_is_on_the_model_row_scaling()) then
+                  f2_try = sqrt(sum((Ftry/Drow)**2))
+               else
+                  f2_try = sqrt(sum((Ftry/D)**2))
+               endif
                ok  = try_ok
                lam = 1.0d0
                else
@@ -16043,11 +17641,180 @@
             ! The judged distance of the state just adopted, from the rows
             ! the evaluation that accepted it measured.
             dj = dj_try
-            dtau = min(dtau*max(lam,0.1d0)*(f2/max(f2_try,1.0d-30)),     &
-                       1.0d14*dtau0)
+            ! THE RAMP. The pseudo-time DOUBLES on a step the line search
+            ! did not have to cut (lam >= lam_of_a_full_step), which is the
+            ! growth the published practice allows a favorably converging
+            ! step, and is multiplied by lam on a shorter one. The progress
+            ! of either functional does not enter: it is read by the
+            ! acceptance and by the stagnation counter, and reading it here
+            ! as well was implemented and measured to close the loop the
+            ! ramp exists to open. The statement of the block above is why.
+            ! The cut of a step admitted nowhere is separate and is below.
+            !
+            ! MEASURED, what the rule is for and what it costs: the
+            ! LHS 1140 b C/N/O pass-8 state at dtau0 = 1.0 runs 263
+            ! iterations on the entry text and returns the state it was
+            ! given, and certifies here with dtau running 2, 4, 8 up to
+            ! 2.6e+05 (its accepted steps are lam = 0.5 and then lam = 1, so
+            ! the step-length condition holds throughout and this state is
+            ! solved exactly as the plain doubling solved it); the
+            ! HD 209458 b element reload's first pass ends at a mass row of
+            ! 2.2e-09 and an energy row of 1.6e-08 where the entry text
+            ! leaves 2.9e-02 and 4.1e-01.
+            if (pseudo_time_doubles_on_an_accepted_step) then
+               if (lam .ge. lam_of_a_full_step) then
+                  dtau_ramp = 2.0d0
+                  ! THE GATE OF STATEMENT (3), WHICH IS OFF
+                  ! (ptc_growth_gate_on). The doubling reads the step LENGTH
+                  ! alone, so it runs through states whose residual is
+                  ! standing still and removes its own shift: MEASURED on the
+                  ! 0.01-XUV columns of LHS 1140 b the pseudo-time reaches its
+                  ! 1e14 ceiling while ||R|| stands at 1.9
+                  ! (docs/lhs1140b_stationary_L4h_20260915.md section 3.3).
+                  ! The gate below is the test the stagnation counter reads,
+                  ! taken on the state just adopted: the merit in the FIXED
+                  ! scale of this solve, against the value that same norm had
+                  ! n_stall_best iterations ago, with merit_fall_min as the
+                  ! margin. A window that bought less holds the pseudo-time
+                  ! where it is; the gate never lowers it.
+                  !
+                  ! IT IS OFF BECAUSE NO RESIDUAL-PROGRESS TEST SEPARATES THE
+                  ! TWO REGIMES, MEASURED (section 5.5 of the same memo). The
+                  ! near states this ramp exists for move their merit as
+                  ! little per iteration as the flat ones do: on the
+                  ! LHS 1140 b C/N/O column the per-step ratio form leaves
+                  ! dtau at 1.13 where the plain doubling is at 2 and 4 --
+                  ! which is L4g's own measurement of the
+                  ! EXHALE_PTC_RAMP_DOUBLE=0 branch -- and this window gate
+                  ! leaves it at 2 where the doubling is at 4, because that
+                  ! state's merit hovers within a tenth of its entry value
+                  ! while ||R|| halves. The flat end is not what the 0.02
+                  ! rungs this item delivers are blocked on.
+                  if (ptc_ramp_guard_on .and. ptc_growth_gate_on) then
+                     f2_fixed_of_the_step = sqrt(sum((F/Dfix)**2))
+                     if (f2_fixed_of_the_step .ge.                        &
+                         (1.0d0 - merit_fall_min)*f2_fixed_hist(1))       &
+                        dtau_ramp = 1.0d0
+                  endif
+               else
+                  dtau_ramp = lam
+                  ! THE CUT OF AN ACCEPTED STEP IS BOUNDED AT TEN
+                  ! (statement 1): the model was good over the fraction lam
+                  ! and no further, which is why the pseudo-time falls at
+                  ! all, but the step SUCCEEDED and an unbounded fall on a
+                  ! successful step is what drives the collapse.
+                  !
+                  ! AND IT IS TAKEN ONLY WHERE THE STEP BOUGHT SOMETHING
+                  ! (statement 2). A DAMPED STEP MEANS TWO DIFFERENT THINGS
+                  ! and a fixed floor cannot tell them apart, MEASURED on the
+                  ! two fixtures of this item
+                  ! (docs/lhs1140b_stationary_L4h_20260915.md sections 5.2
+                  ! and 5.3): on the HD 209458 b element reload the damped
+                  ! steps at small dtau move nothing -- the merit and the
+                  ! state stand at the printed digits while the pseudo-time
+                  ! falls twelve decades -- and the cut is simply wrong
+                  ! there; on the LHS 1140 b 0.02 rung the damped steps keep
+                  ! reducing the residual the whole way down to dtau ~ 1e+02,
+                  ! and the cut is right there, a legitimate fall back to the
+                  ! march. What separates them is not how far the pseudo-time
+                  ! has come but whether THIS step bought anything: the cut
+                  ! proceeds when the step lowered the merit by at least
+                  ! ptc_damped_progress_min, and the pseudo-time is HELD when
+                  ! it did not, because then the pseudo-time is not what is
+                  ! wrong.
+                  if (ptc_ramp_guard_on) then
+                     dtau_ramp = max(lam, ptc_shrink_clip)
+                     damped_step_progressed =                             &
+                          (f2_try .lt. (1.0d0 - ptc_damped_progress_min)  &
+                                       *f2)
+                  endif
+               endif
+               ! The explicit-stable interval is the floor of every cut.
+               dtau = min(max(dtau*dtau_ramp, dtau_floor), 1.0d14*dtau0)
+            else
+               dtau_ramp = f2/max(f2_try, 1.0d-30)
+               dtau = min(dtau*max(lam,0.1d0)*dtau_ramp, 1.0d14*dtau0)
+            endif
             f2 = f2_try
          else
-            dtau = max(dtau*0.25d0, dtau0)
+            ! Cut the pseudo-time when no step along the direction was
+            ! admitted: more implicit-Euler-like, down to the interval an
+            ! explicit march of this state is stable at.
+            dtau = max(dtau*0.25d0, dtau_floor)
+            damped_step_progressed = .false.
+         endif
+
+         ! THE RUN OF ITERATIONS THAT CANNOT BUY ANYTHING, AND WHERE THAT IS
+         ! DECIDED. What separates the two things a damped step can mean is
+         ! not whether it progressed and not how far the pseudo-time has
+         ! come, but WHERE dtau STANDS RELATIVE TO THE EXPLICIT-STABLE
+         ! INTERVAL, both MEASURED on the fixtures of this item
+         ! (docs/lhs1140b_stationary_L4h_20260915.md sections 5.2, 5.3 and
+         ! 5.7):
+         !
+         !   dtau >> dt_CFL: the shift still shapes the step, so a damped
+         !     step that bought nothing is the statement that dtau is too
+         !     large and the cut is the right answer -- it is what
+         !     pseudo-transient continuation IS. The LHS 1140 b 0.02 rung's
+         !     useful march from 1e+08 down to 1e+02 lives here, and a rule
+         !     that forbids it costs that case a factor 3.2 on its first
+         !     pass. Nothing is counted here.
+         !
+         !   dtau <= ptc_explicit_march_factor * dt_CFL: cutting further is
+         !     MEASURED to be inert. THIS is what the count is for: on the
+         !     HD 209458 b element reload the solve spends sixty iterations
+         !     here with the merit and the state unchanged at the printed
+         !     digits while dtau falls twelve decades, and at dtau = 7.93e-05
+         !     the Krylov cycle reaches its tolerance in ONE product.
+         !
+         !     THAT IS AN EMPIRICAL CONTROL AND NOT A THEOREM, and the
+         !     threshold is a knob for that reason. The shifted system is
+         !     (M/dtau + J) dY = -F, so an explicit-Euler limit dY -> -dtau F
+         !     would need dtau M^-1 J small in an OPERATOR sense. A
+         !     hydrodynamic CFL estimate does not establish that for the
+         !     coupled operator carried here -- J holds the source, radiation
+         !     and chemistry couplings as well as the advective ones -- and a
+         !     finite multiple of a stability limit is not an asymptotically
+         !     small parameter in any case. What is claimed is what was
+         !     measured on that fixture: below this threshold the cut buys
+         !     nothing there. K = 3, 10 and 100 were run on it and give the
+         !     same pass, because the count never fires on it at all;
+         !     ptc_explicit_march_factor is the place to move if a state is
+         !     found where it does.
+         !
+         ! A full accepted step ends the run wherever it is taken, and so
+         ! does a damped step that lowered the merit by
+         ! ptc_damped_progress_min.
+         ! WHAT COUNTS AS AN ITERATION THAT CANNOT BUY ANYTHING, in the two
+         ! forms this was measured in (march_counts_every_iteration,
+         ! EXHALE_PTC_MARCH_COUNT_ALL=1).
+         !
+         ! The first form asks whether the STEP bought anything and lets a
+         ! full step or a progressing damped step end the run wherever it is
+         ! taken. MEASURED on the HD 209458 b element reload it never fires
+         ! at all: once the pseudo-time is at the explicit-stable interval
+         ! the steps alternate lam = 1 and damped, and every lam = 1 resets
+         ! the count.
+         !
+         ! The second form was written on the reading that below K dt_CFL
+         ! there is no Newton progress to have, so that a "full step" there
+         ! is a full step of whatever the shifted system has become and not a
+         ! full Newton step, and every iteration in the regime should count.
+         ! It was MEASURED to be worse (memo section 5.7.3) and is off.
+         if (ptc_ramp_guard_on .and. march_counts_every_iteration) then
+            if (dtau .le. ptc_explicit_march_factor*dtau_floor) then
+               n_damped_run = n_damped_run + 1
+            else
+               n_damped_run = 0
+            endif
+         else if (ok .and. (lam .ge. lam_of_a_full_step .or.              &
+                            damped_step_progressed)) then
+            n_damped_run = 0
+         else if (ptc_ramp_guard_on .and.                                 &
+                  dtau .gt. ptc_explicit_march_factor*dtau_floor) then
+            n_damped_run = 0
+         else
+            n_damped_run = n_damped_run + 1
          endif
 
          ! Keep the best iterate seen so that a failed solve returns it
@@ -16074,26 +17841,100 @@
          ! measured to stall the element solve (report B5e section 3.3): the
          ! merit is a smooth 2-norm and can be globalized, the judged measure
          ! is a maximum over cells and over rows and is a stopping test.
+         if (linear_rows_on) then
+            ! THE NONLINEAR SIDE OF THE SAME STEP: the three hydrodynamic
+            ! rows of the state this iteration ends at, and the judged slots
+            ! (hydrodynamic, element, carrier) of the state and of the trial
+            ! the line search last measured. Read against the linear
+            ! residuals printed above, this is what separates a Krylov
+            ! tolerance that was not reached from a step the nonlinear model
+            ! got wrong.
+            call resid_relnorm(F, u, rc_diag, rnorm_diag)
+            write(*,'(A,3ES11.3)')                                         &
+                 ' (JFNK) hydrodynamic rows now (mass, momentum,'//        &
+                 ' energy): ', rc_diag
+            write(*,'(A,3ES11.3,A,3ES11.3)')                               &
+                 ' (JFNK) judged slots (hydrodynamic, element, carrier)'// &
+                 ' of the state: ', rows_j, '   of the trial: ', rows_try
+         endif
          gates_now = steady_gates_met(rnorm, u, resid_tol, fspread,        &
                           nspec_row .gt. 0, carrier_relnorm_state)
          keep_this_iterate = (dj .lt. dj_best)
+         ! THE STAGNATION COUNTER READS BOTH FUNCTIONALS THE SOLVE CARRIES,
+         ! and the ledger keeps reading only one.
+         !
+         ! The ledger above ranks iterates on the judged distance, which is
+         ! the quantity the certification is taken in, and that is where the
+         ! judgement belongs. The counter under it is a different question --
+         ! is this solve still going anywhere -- and a solve entered from a
+         ! state whose continuity and momentum rows already sit at their
+         ! rounding floors answers it in the merit alone: the judged distance
+         ! is then held by one Newton transient in the continuity row, five to
+         ! seven decades above a 3e-12 tolerance, so the ENTRY state is the
+         ! best judged iterate by construction and no trial can improve on it
+         ! however far the merit falls. MEASURED on the LHS 1140 b wind with
+         ! the C, N, O reservoirs, the state the partitioned outer loop hands
+         ! its second pass (docs/lhs1140b_stationary_L4b_20260913.md section
+         ! 4): over the 40 iterations the count stopped the solve after, the
+         ! judged distance never improved on its 3.685e+04 entry while the
+         ! merit fell from 1.50e-2 to 3.15e-3 and was still falling.
+         !
+         ! So the count is reset by an improvement of EITHER functional, and
+         ! the solve stops only where neither has improved for the count. A
+         ! merit that falls with the judged distance pinned is an inexact
+         ! Newton working through a transient; a merit that has also stopped
+         ! falling is the circling n_stall_best was written for.
+         !
+         ! WHAT COUNTS AS AN IMPROVEMENT OF THE MERIT, and it is neither the
+         ! merit the line search reads nor any strict decrease of it. It is
+         ! the merit in the FIXED scale Dfix, so that a rebuild of the column
+         ! scales cannot be read as progress, and it is compared with the
+         ! value that same norm had n_stall_best iterations ago, which is
+         ! f2_fixed_hist(1): the question the counter asks is whether THIS
+         ! WINDOW bought anything, and a window of the counter's own length
+         ! is the window that asks it. Comparing against the running minimum
+         ! instead makes the test a fall per ITERATION, because a descending
+         ! merit's minimum is its previous value, and the length of the
+         ! window then does not enter at all.
+         !
+         ! The margin merit_fall_min separates two MEASURED regimes of this
+         ! route (docs/lhs1140b_stationary_L4d_20260913.md section 3): a
+         ! window of a solve that goes on to certify falls by 25 to 35
+         ! percent, and a window of the grind that the same loop's later
+         ! passes fall into falls by 6 percent while the state is four
+         ! decades from certification. It stands between them.
+         f2_fixed = sqrt(sum((F/Dfix)**2))
+         merit_improved = (f2_fixed .lt. (1.0d0 - merit_fall_min)          &
+                                         *f2_fixed_hist(1))
+         f2_fixed_hist(1:n_stall_best-1) = f2_fixed_hist(2:n_stall_best)
+         f2_fixed_hist(n_stall_best)     = f2_fixed
          if ((gates_now .and. .not. gates_best) .or.                      &
              ((gates_now .eqv. gates_best) .and. keep_this_iterate)) then
             dj_best = dj
             rnorm_best = rnorm;  Ybest = Y;  f_sp_best = f_sp
             fspread_best = fspread;  gates_best = gates_now
+            ! AND THE PSEUDO-TIME IT WAS REACHED AT, which is what a return
+            ! to it restarts from: a return that puts the best iterate back
+            ! at the explicit-stable floor makes the step after it an
+            ! explicit one, and the step after a return is the whole point
+            ! of the return (MEASURED: a factor 21 in ||R|| in one
+            ! iteration, section 5.2).
+            dtau_best = dtau
             call keep_background_of_best_iterate
             n_since_best = 0
             carrier_relnorm_best = carrier_relnorm_state
             carrier_cellmax_best = carrier_cellmax_state
             carrier_cell_best    = carrier_cell_state
             n_no_chem_root_best  = n_no_chem_root_state
+         else if (merit_improved) then
+            n_since_best = 0
          else
             n_since_best = n_since_best + 1
          endif
 
-         ! P51: the best iterate has stopped moving. Go back to it and stop
-         ! accepting sideways steps; if that buys nothing either, stop.
+         ! P51: neither functional is moving. Go back to the best iterate
+         ! and stop accepting sideways steps; if that buys nothing either,
+         ! stop.
          if (n_since_best .ge. n_stall_best) then
             if (.not. monotone_search) then
                Y = Ybest;  f_sp = f_sp_best;  rnorm = rnorm_best
@@ -16112,22 +17953,81 @@
                ! iterates on the judged distance from certification, not on
                ! ||R||, so a stop explained by ||R|| alone quotes a
                ! functional the decision was not taken in.
-               write(*,'(A,I0,A,ES11.3,A,ES11.3,A,ES11.3,A)')            &
-                    ' (JFNK) best iterate has not improved in ',          &
-                    n_stall_best, ' iterations; restarting from it'//      &
-                    ' (judged distance ', dj, ', best ', dj_best,         &
+               write(*,'(A,I0,A,ES11.3,A,ES11.3,A,ES11.3,A,ES11.3,A)')   &
+                    ' (JFNK) neither the judged distance nor the merit'// &
+                    ' has improved in ',                                  &
+                    n_stall_best, ' iterations; restarting from the'//    &
+                    ' best iterate (judged distance ', dj, ', best ',     &
+                    dj_best, ', merit over the window ',                  &
+                    minval(f2_fixed_hist),                                &
                     ', ||R||=', rnorm_best,                               &
                     ') with a monotone line search'
             else
                info = 2
-               write(*,'(A,I0,A,ES11.3,A,ES11.3,A,ES11.3)')             &
-                    ' (JFNK) STAGNATED: no improvement of the best'//     &
-                    ' iterate in ', 2*n_stall_best, ' iterations,'//      &
-                    ' monotone search included -- stopping at a judged'// &
-                    ' distance ', dj, ', best ', dj_best, ', ||R||=',     &
+               write(*,'(A,I0,A,ES11.3,A,ES11.3,A,ES11.3,A,ES11.3)')    &
+                    ' (JFNK) STAGNATED: neither the judged distance nor'// &
+                    ' the merit improved in ', 2*n_stall_best,            &
+                    ' iterations, monotone search included -- stopping'// &
+                    ' at a judged distance ', dj, ', best ', dj_best,     &
+                    ', merit over the window ', minval(f2_fixed_hist),   &
+                    ', ||R||=', rnorm_best
+               exit
+            endif
+         endif
+
+         ! A RUN OF DAMPED STEPS THE PSEUDO-TIME CANNOT BE CARRIED THROUGH
+         ! (ptc_ramp_guard_on). The two bounds above keep one step from
+         ! throwing the pseudo-time away; this is the statement about a RUN
+         ! of them, which neither bound can end on its own. The solve goes
+         ! back to the best iterate it has seen, cuts the pseudo-time by ten
+         ! -- the standard cut of the pseudo-transient literature, taken here
+         ! because a run of damped steps is the same evidence a rejected step
+         ! is: the model is trusted over less than it is being asked for --
+         ! and goes on. After ptc_damped_restarts_max such returns without a
+         ! full step in between, more iterations of the same kind are not
+         ! what this state needs and the solve stops and hands back its best
+         ! iterate, with info = 2: the flag says the solve did not certify,
+         ! which is what it did, and the reason is named in the line below.
+         ! (A separate info value was considered and not taken: every caller
+         ! of this routine branches on info == 0 alone, so a new code would
+         ! be read exactly as 2 is and would only be a second name for it.)
+         if (ptc_ramp_guard_on .and.                                      &
+             n_damped_run .ge. ptc_damped_run_max) then
+            if (n_damped_restarts .ge. ptc_damped_restarts_max) then
+               info = 2
+               write(*,'(A,I0,A,I0,A,ES10.2,A,ES11.3)')                   &
+                    ' (JFNK) the pseudo-time ramp found no full step in ', &
+                    ptc_damped_run_max, ' consecutive iterations after ',  &
+                    n_damped_restarts, ' return(s) to the best iterate'//  &
+                    ' -- stopping at dtau=', dtau, ', best ||R||=',        &
                     rnorm_best
                exit
             endif
+            Y = Ybest;  f_sp = f_sp_best;  rnorm = rnorm_best
+            n_no_chem_root_state  = n_no_chem_root_best
+            carrier_relnorm_state = carrier_relnorm_best
+            carrier_cellmax_state = carrier_cellmax_best
+            carrier_cell_state    = carrier_cell_best
+            call adopt_background_of_best_iterate
+            call unpack_U(Y, u)
+            call unpack_species_rows(Y, u, f_sp)
+            call Apply_BC(u)
+            dj = dj_best
+            ! A TENTH OF THE PSEUDO-TIME THE BEST ITERATE WAS REACHED AT,
+            ! and not a tenth of where the grind ended: the return exists
+            ! for the step AFTER it, and a step taken at the explicit-stable
+            ! floor is an explicit one. MEASURED on the element reload, the
+            ! full step after a return at dtau 2.05e-01 took ||R|| from 1.62
+            ! to 3.899e-02 in one iteration (section 5.2).
+            dtau = max(0.1d0*dtau_best, dtau_floor)
+            n_damped_run      = 0
+            n_damped_restarts = n_damped_restarts + 1
+            n_since_best      = 0
+            write(*,'(A,I0,A,I0,A,ES10.2,A,ES11.3)')                      &
+                 ' (JFNK) no full step in ', ptc_damped_run_max,          &
+                 ' consecutive iterations; return ', n_damped_restarts,   &
+                 ' to the best iterate with dtau=', dtau, ', ||R||=',     &
+                 rnorm_best
          endif
 
          ! Stagnation: the failure mode of the non-monotone search is that it
@@ -16231,9 +18131,11 @@
          ! turned into a cell and a quantity.
          call name_of_unknown(nvar_jac*(jworst-1)+kworst,              &
                               what_worst_row)
-         write(*,'(A,I4,A,ES11.3,A,ES10.2,A,ES9.2,A,I3,A,F7.3,A,A)')      &
+         write(*,'(A,I4,A,ES11.3,A,ES10.2,A,ES9.2,A,ES9.2,A,I3,A,F7.3,'// &
+                 'A,A)')                                                  &
               ' (JFNK) it',iter,'  ||R||=',rnorm,'  ||Fs||2=',f2,        &
-              '  lam=',lam,'  gm=',gmit,'  worst r=',r(jworst),          &
+              '  lam=',lam,'  dtau=',dtau,'  gm=',gmit,                  &
+              '  worst r=',r(jworst),                                    &
               '  worst row: ',trim(what_worst_row)
       enddo
 

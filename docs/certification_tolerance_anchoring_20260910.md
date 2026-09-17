@@ -923,7 +923,7 @@ closed this by giving `mass_row_cell_verdict` a third, optional output,
   `distance = 1.0`, `within = F`.
 
 The column routine, `mass_row_column_verdict` (the pure aggregator
-`mass_row_verdict` now hands its per-cell floors to), counts the unresolved
+`mass_row_verdict` now hands the floor of each cell to), counts the unresolved
 cells of the column and names the first one (`n_mass_unresolved`,
 `j_first_mass_unresolved` of the report entry); the report and the
 refusing-entry text name that cell even when a different, worse-refusing
@@ -945,3 +945,79 @@ outcome exists for exactly the regime the three fixtures do not reach; the
 cell-level and column-level tests below exercise its logic directly on
 synthetic floors rather than presenting the ceiling as measured on such a
 state.
+
+## Anchor (7), 2026-09-15: how closely a row measure comes back when the state is re-read from its own files
+
+Item L18, `docs/lhs1140b_stationary_L18_20260915.md`. The anchors above ask
+what a tolerance has to stand above. This one asks the other question a
+certification raises: a state written as certified is a claim about itself, and
+what a second measurement of the SAME state, re-entered through its own two
+files with `Restart intent: stationary evaluate`, reads.
+
+**The state comes back exactly.** The radius, velocity and pressure columns are
+carried in 17 significant figures and read as written; since L18 the mass
+density is read from its own column instead of being rebuilt from the species,
+so it too is bitwise. The composition is projected onto that density and moves
+by the file's own mass closure, 1e-15 to 6e-13, nine decades below any
+tolerance in the inventory.
+
+**The row measures do not.** Two things move them, and neither is a defect:
+the first equilibrium sweep of the re-entry is one Picard step of a nonlocal
+coupling taken from a state that is not exactly its own fixed point, and it
+moves the composition by 1e-14 to 1e-11; and the flux assembly of a subsonic
+base is at its rounding floor. MEASURED on `LHS1140b/models/.L14/x003_HeH2.13`,
+whose energy row cancels its largest term by 6.2e+05: five evaluations chained,
+each of the state the previous wrote, differ from one another by three to ten
+units in the last place of the density and read the energy row at 1.6232e-06,
+1.4586e-06, 1.6215e-06, 1.4586e-06 and 1.3175e-06. **One ulp of the density is
+about 11 per cent of that row.**
+
+Over the 120 certified states of `LHS1140b/models/`, the ratio of the
+re-measured cell-wise maximum to the in-run one:
+
+| row | median | 10th | 90th | worst |
+|---|---|---|---|---|
+| mass | 1.12 | 0.78 | 1.71 | 3.45 |
+| energy | 1.22 | 0.89 | 1.93 | 3.34 |
+| momentum | 9.2 | 1.80 | 134 | 4.5e+03 |
+
+The momentum column is the floor seen bare: those rows stand at 1e-14 to 1e-12
+against a tolerance of 1e-08, so the ratio of two draws from the floor carries
+no information about the state.
+
+**What this anchors.** A tolerance is a statement about a state, and the
+measurement that decides it is reproducible only to the factor above. A state
+whose binding row is certified at more than about half of its tolerance can be
+refused when the same state is measured again -- of the 127 certified states
+re-evaluated for L18, one is (`.L14/x003_HeH9.7`, certified at 0.87 of its
+tolerance, re-reading at 1.18). That is not an argument for a looser tolerance:
+it is the reason a certification is recorded as the verdict of the run that
+produced the state, and a re-evaluation is reported as a second measurement
+with its own rounding rather than as a refusal of the first.
+
+
+## What is reported and not anchored: the mass closure (item L19, 2026-09-15)
+
+`max_j |sum_i f_i A_i - 1|` of the composition a state carries is printed by
+every certification report and gates nothing, and it has no anchor because it
+needs none: the sum is one by the definition of the mass fractions, so the
+number is the arithmetic the state was built by and not an equation it has to
+satisfy. Since the sweep projects its composition onto the density it was given
+(item L19) the number is the rounding of that projection -- 3.6e-16 to 4.4e-16
+on the states measured -- where before it ratcheted with the number of sweeps,
+to 4.2e-14 over 100 marching steps and to 6.2e-13 over twenty-four outer passes
+of a stationary solve. It is reported because a state whose two halves describe
+two gases is a finding about that state, and because a restart has to choose
+between them when it does (`docs/restart_contract_design_20260909.md` section
+6).
+
+## The golden refresh these anchors were last measured across (2026-09-16)
+
+`backup/regression/golden/` was re-snapshotted on 2026-09-16 against `EXHALE.x`
+md5 `c2e9c9990b9f14f1be8cd77abca68945`, all sixteen `DEFAULT_CASES`; the
+2026-09-10 00:30 reference it replaces is kept entire as
+`backup/regression/golden_blockJ_20260910/`, and the case-by-case attribution
+of what moved is in `docs/Update_EXHALE_stage2.md` section 11, "The golden
+refresh of 2026-09-16". No anchor of this document was re-measured for it:
+the anchors are properties of the residual assembly and its rounding, and the
+refresh moved the states the matrix marches to, not the way a row is measured.

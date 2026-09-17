@@ -1958,6 +1958,9 @@
 
 	! Scratch of the He recombination coupling: only its heating is kept
 	! here, the rate corrections belong to the sweep that solved with them.
+	! Ground-singlet neutral helium of this composition, formed here for
+	! the one chemical-heat channel that has a neutral-helium reactant.
+	real*8, dimension(1-Ng:N+Ng) :: nheiS_chem
 	real*8, dimension(1-Ng:N+Ng) :: rcheiiB_hrc,dP_HI_hrc,dP_H2_hrc
 	real*8, dimension(1-Ng:N+Ng,n_mion) :: dP_m_hrc
 	! Production of O(1D) [cm^-3 s^-1] through the H2O + hv -> H2 + O(1D)
@@ -2093,12 +2096,22 @@
 	! removes the strongest pumping lines first, and the lines that survive
 	! to depth have a different branching, measured as p_lw
 	! (docs/p39_lw_cross_section_sources.md).
+	! THE GROUND-SINGLET NEUTRAL HELIUM, formed once for every molecular
+	! channel of this assembly that needs it.  It is the third collider of
+	! the H2 vibrational cascade (Jozwiak et al. 2024) and the neutral
+	! reactant of H2+ + He -> HeH+ + H; a helium ION quenches an H2
+	! vibration through a different interaction and carries no coefficient
+	! here, and the metastable's own channels are the He(2^3S) ones.
+	nheiS_chem = nhei
+	if (thereis_HeITR) nheiS_chem = he_ground_singlet_density(nhei, nheiTR)
+
 	if (with_molecules .and. F_LW_star .gt. 0.0d0) then
 		heat_chan(:,14) = k_lw*(1.0d0 - p_lw)                              &
 		                  /max(p_lw, 1.0d-30)                              &
 		                  *nmol(:,1)                                       &
 		                  *h2_energy_per_bound_fluorescence_erg(T_K)       &
-		                  *h2_vibrational_heat_fraction(T_K, nhi, nmol(:,1))
+		                  *h2_vibrational_heat_fraction(T_K, nhi,          &
+		                                       nmol(:,1), nheiS_chem)
 		heat = heat + heat_chan(:,14)
 	endif
 
@@ -2108,8 +2121,11 @@
 	! twice; see molecular_reaction_heat.f90 for the exclusion list and for
 	! why an atomic gas has no such term. Default off.
 	if (with_molecules .and. mol_reaction_heat) then
-		call molecular_chemical_heating(T_K, nhi, nhii, nheii, nmol,       &
-		                                ne, n_tot, heat_chan(:,15))
+		! nheiS_chem, the ground-singlet neutral helium, is formed above:
+		! it is the collision partner of H2+ + He -> HeH+ + H and the
+		! monatomic third body of the R12/R15 pair.
+		call molecular_chemical_heating(T_K, nhi, nhii, nheii, nheiS_chem, &
+		                                nmol, ne, n_tot, heat_chan(:,15))
 		heat = heat + heat_chan(:,15)
 	endif
 
@@ -2195,7 +2211,8 @@
 
 	!----------------------------------!
 
-	subroutine fuv_band_absorption_ledger(T_K, nhi, nh2, nh2o, nH_nuc,   &
+	subroutine fuv_band_absorption_ledger(T_K, nhi, nh2, nh2o, nheiS,    &
+	         nH_nuc,                                                     &
 	         NH2col, NH2Ocol, NOHcol, NCOcol, tau_b, j_h2o, j_oh,        &
 	         k_lw, p_lw_single, k_co,                                    &
 	         absph, absen, heat_col, bond_col, cont_ph, cont_beam,       &
@@ -2230,6 +2247,11 @@
 	! is the caller's to choose. drift_worst reports how far the H2O density
 	! written has moved from the one the photon field was built on.
 	real*8, dimension(1-Ng:N+Ng), intent(in) :: T_K, nhi, nh2, nh2o
+	! Ground-singlet neutral helium, the third collider of the H2
+	! vibrational cascade in the fluorescence heat of the Lyman-Werner band
+	! (Jozwiak et al. 2024).  The same collider the heating assembly and the
+	! chemistry pass, so one collider sum decides the thermalized share.
+	real*8, dimension(1-Ng:N+Ng), intent(in) :: nheiS
 	! Total hydrogen NUCLEUS density, the density axis of the H2
 	! self-shielding table the pump cross section is read from.
 	real*8, dimension(1-Ng:N+Ng), intent(in) :: nH_nuc
@@ -2361,7 +2383,7 @@
                               /max(p_lw_single(j), 1.0d-30)                &
                               *h2_energy_per_bound_fluorescence_erg(T_K(j))&
                               *h2_vibrational_heat_fraction(T_K(j),        &
-                                       nhi(j), nh2(j))
+                                       nhi(j), nh2(j), nheiS(j))
             ! CO IS THE FOURTH ABSORBER OF THIS BEAM AND IT IS RATED,
             ! but it is accumulated on its OWN row and not into
             ! rated_ph.  The reason is the beam it would be compared
@@ -2966,22 +2988,31 @@
 	!$ endif
 
 	! Density-dependent override for the ground-term fine-structure floors
-	! of C I, C II, N II and O I (CHIANTI mode only; the legacy AIOLOS fits
-	! keep their own constant floors). Same Lambda_eff = W_FS/ne +
-	! remainder convention as Fe II above; the statistical-equilibrium
-	! solution saturates the floor (n_crit,e([C II] 158um) ~ 20 cm^-3!) and
-	! adds the H-collision excitation channel the electron-only coronal
-	! curve misses. beta enters as A_ul -> beta*A_ul inside that solution.
-	! See cool_CI_ne_func / cooling_data/fit_fs_saturation.py.
+	! of C I, C II, N II and O I, and for the METASTABLE terms of all six
+	! C/N/O fits (CHIANTI mode only; the legacy AIOLOS fits keep their own
+	! constant floors). Same Lambda_eff = W_FS/ne + remainder convention as
+	! Fe II above; the statistical-equilibrium solution saturates the floor
+	! (n_crit,e([C II] 158um) ~ 20 cm^-3!) and adds the H-collision
+	! excitation channel the electron-only coronal curve misses. beta
+	! enters as A_ul -> beta*A_ul inside that solution. The metastable
+	! terms of the remainder are saturated against their LTE ceiling in the
+	! same coefficients (n_crit,e is 1e4-1e9 cm^-3 for those levels). N I
+	! and O II have a single-level 4S* ground term, so their coefficients
+	! carry the metastable saturation alone and take no line-trapping
+	! argument. See cool_CI_ne_func / cooling_data/fit_fs_saturation.py.
 	if (cno_chianti) then
 		call cool_CI_ne_range(T_K, ne, nhi, beta_fs, nbar_fs, metal_col,j_lo,j_hi)
 		c_metal(j_lo:j_hi,im_CI)  = metal_col(j_lo:j_hi)
 		call cool_CII_ne_range(T_K, ne, nhi, beta_fs, nbar_fs, metal_col,j_lo,j_hi)
 		c_metal(j_lo:j_hi,im_CII) = metal_col(j_lo:j_hi)
+		call cool_NI_ne_range(T_K, ne, metal_col,j_lo,j_hi)
+		c_metal(j_lo:j_hi,im_NI)  = metal_col(j_lo:j_hi)
 		call cool_NII_ne_range(T_K, ne, nhi, beta_fs, nbar_fs, metal_col,j_lo,j_hi)
 		c_metal(j_lo:j_hi,im_NII) = metal_col(j_lo:j_hi)
 		call cool_OI_ne_range(T_K, ne, nhi, beta_fs, nbar_fs, metal_col,j_lo,j_hi)
 		c_metal(j_lo:j_hi,im_OI)  = metal_col(j_lo:j_hi)
+		call cool_OII_ne_range(T_K, ne, metal_col,j_lo,j_hi)
+		c_metal(j_lo:j_hi,im_OII) = metal_col(j_lo:j_hi)
 	endif
 
 	if (use_2lev_cool) then

@@ -390,6 +390,14 @@ with CLOUDY is not a cancellation of two errors** -- it holds because
 trapping-free. It is therefore left exactly as it was, and so is the 0.4 eV
 fragment energy, which section 4.1 confirms to 2 per cent.
 
+**NOTE ADDED 2026-09-17.** The 0.4 eV is a single number where the published
+statement is a range: Abgrall et al. (2000) give 0.25 to 0.5 eV for the kinetic
+energy the Lyman-Werner fragments carry, and Cloudy c25.00 samples that range
+rather than a constant. Nothing in this code changed for it and nothing here is
+withdrawn; the range is recorded so that a later item can decide whether the
+constant is worth keeping. Record:
+`docs/cloudy_h2_model_reference_20260916.md`.
+
 One consequence to note: with the rate and both branchings on the table,
 `sigma_lw`, `p_diss_lw` and `sigma_lw_pump` no longer enter any number the
 code produces. They stay in `lyman_werner.f90` as the stated normalization of

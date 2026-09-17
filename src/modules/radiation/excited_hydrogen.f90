@@ -3,7 +3,11 @@
    !
    ! Solves the 2s/2p rate-equilibrium of Christie, Arras & Li (2013, ApJ
    ! 772, 144; their Eqs. 12-13) -- collisional 1s<->2s/2p, 2s<->2p l-mixing,
-   ! recombination cascade, two-photon decay, and Ly-alpha radiative pumping --
+   ! recombination cascade, two-photon decay, Ly-alpha radiative pumping, and
+   ! in a molecular run the dissociative recombinations H2+ + e and HeH+ + e,
+   ! which leave one of their hydrogen fragments in n = 2 rather than in the
+   ! ground state (the term is formed by molecular_reaction_heat, which
+   ! subtracts the same excitation energy from the chemical heat) --
    ! with the Ly-alpha mean intensity J_lya either (a) estimated as in Huang
    ! et al. (2017, ApJ 851, 150) Eq. (6), J_lya ~ 0.1 F_LyC/Dnu_D, attenuated
    ! by 1/(1+tau_lya) below the Ly-alpha photosphere, or (b) read from an
@@ -28,8 +32,15 @@
    ! ionization and the Balmer feedback together.
 
    use global_parameters
-   use species_table, only: n_mion, mion_fsp
+   use species_table, only: n_mion, mion_fsp, isp_H2p, isp_HeHp
    use utils, only: calc_ne, write_row_layout_header
+   ! The two dissociative recombinations of the molecular network that leave
+   ! one hydrogen atom in n = 2, and the excitation energy the heat ledger
+   ! subtracts for them. Reading the source from the module that owns the
+   ! subtraction is what keeps the level production and the energy that left
+   ! the gas the same event counted once.
+   use molecular_reaction_heat, only:                                        &
+                     dissociative_recombination_n2_source
    use lya_rt, only: jlya_escape_prob, jint_arr, jstar_arr,                  &
                      lya_line_center_optical_depth,                         &
                      lya_photosphere_attenuation_cell_mean
@@ -119,6 +130,10 @@
    real*8, dimension(1-Ng:N+Ng) :: taulya_d, taulya_out
    real*8 :: F_LyC, F_inc, xi, abs_frac, N_HI_tot, a_cm
    real*8 :: Dnu_D, n2s, n2p, n2tot, relc
+   ! The two molecular ions whose dissociative recombination leaves an H
+   ! atom in n = 2, and the production that follows from them.
+   real*8, dimension(1-Ng:N+Ng) :: n_h2p_mol, n_hehp_mol
+   real*8 :: chem_n2
 
    ! Remember the previous heating for the outer-iteration convergence test.
    heat_prev = heat_balmer
@@ -141,6 +156,18 @@
    ! Molecular ions are deliberately omitted as trace electron donors
    ! (negligible in the hot, atomic n=2 layer this module models).
    call calc_ne(nhii, nheii, nheiii, ne, nm)
+
+   ! H2+ and HeH+, the two carriers whose dissociative recombination leaves
+   ! one hydrogen atom in n = 2. They exist only in a molecular run; in an
+   ! atomic one the columns are absent and the term is identically zero, so
+   ! nothing an atomic configuration computes is touched.
+   if (thereis_mol) then
+      n_h2p_mol  = f_sp_in(:,isp_H2p)*n_dim
+      n_hehp_mol = f_sp_in(:,isp_HeHp)*n_dim
+   else
+      n_h2p_mol  = 0.0d0
+      n_hehp_mol = 0.0d0
+   endif
 
    ! ----- Day-night / 2D dilution factor xi ----- !
    ! global_parameters' dayside_dilution(), the single definition the ATES
@@ -207,9 +234,11 @@
 
    ! ----- Cell-by-cell n=2 populations + feedback ----- !
    do j = 1-Ng, N+Ng
+      chem_n2 = dissociative_recombination_n2_source(T_K(j),               &
+                       n_h2p_mol(j), n_hehp_mol(j), max(ne(j),0.0d0))
       call n2_populations(T_K(j), max(nhi(j),0.0d0), max(nhii(j),0.0d0),    &
                           max(ne(j),0.0d0), Jlya_arr(j),                    &
-                          gamma2_bal, gamma2_bal, n2s, n2p)
+                          gamma2_bal, gamma2_bal, chem_n2, n2s, n2p)
       n2tot = n2s + n2p
 
       ! Diagnostics
@@ -256,7 +285,7 @@
    ! --------------------------------------------------------------- !
 
    subroutine n2_populations(T, n1s, nHII_l, ne_l, Jlya,                     &
-                             gam_ion_2s, gam_ion_2p, n2s, n2p)
+                             gam_ion_2s, gam_ion_2p, chem_n2, n2s, n2p)
    ! Christie+2013 Eqs. 12-13: solve the 2x2 2s/2p rate equilibrium for the
    ! H(n=2) populations [cm^-3]. T in K, densities in cm^-3, Jlya in cgs
    ! (erg s^-1 cm^-2 Hz^-1 sr^-1). gam_ion_2s/gam_ion_2p = photoionization
@@ -266,14 +295,19 @@
    ! weights g1s/g2s/g2p are evaluated once, at module scope, and cannot be
    ! shadowed by a dummy argument of this routine (Fortran is case-insensitive,
    ! and the dummies used to be called G2s/G2p).
+   !
+   ! chem_n2 is the chemical H(n=2) production of the molecular network
+   ! [cm^-3 s^-1]; see n2_rate_matrix for what it is and how it is split
+   ! between the two levels.
 
    real*8, intent(in)  :: T, n1s, nHII_l, ne_l, Jlya, gam_ion_2s, gam_ion_2p
+   real*8, intent(in)  :: chem_n2
    real*8, intent(out) :: n2s, n2p
 
    real*8 :: L2p, L2s, S2p, S2s, M12, M21, det
 
    call n2_rate_matrix(T, n1s, nHII_l, ne_l, Jlya, gam_ion_2s,            &
-                       gam_ion_2p, L2p, L2s, S2p, S2s, M12, M21)
+                       gam_ion_2p, chem_n2, L2p, L2s, S2p, S2s, M12, M21)
 
    det = L2p*L2s - M12*M21
    if (abs(det) .le. 0.0d0) det = 1.0d0
@@ -286,7 +320,8 @@
    ! --------------------------------------------------------------- !
 
    subroutine n2_rate_matrix(T, n1s, nHII_l, ne_l, Jlya, gam_ion_2s,      &
-                             gam_ion_2p, L2p, L2s, S2p, S2s, M12, M21)
+                             gam_ion_2p, chem_n2, L2p, L2s, S2p, S2s,     &
+                             M12, M21)
    ! The 2x2 rate matrix and source vector of the 2s/2p statistical
    ! equilibrium (Christie+2013 Eqs. 12-13), the ONE definition of the
    ! coefficients: n2_populations solves the system with them and
@@ -297,8 +332,31 @@
    !
    ! L is the total destruction rate of a level [s^-1], M the l-mixing
    ! transfer from the other one [s^-1] and S its production [cm^-3 s^-1].
+   !
+   ! chem_n2 is the CHEMICAL production of H(n=2) [cm^-3 s^-1]: the two
+   ! dissociative recombinations of the molecular network, H2+ + e and
+   ! HeH+ + e, which leave one of their hydrogen fragments in n = 2 rather
+   ! than in the ground state (Takagi 2002, Phys. Scr. T96, 52; Guberman
+   ! 1994, Phys. Rev. A 49, R4277; sources and ranges at the site that
+   ! forms the term, molecular_reaction_heat). It is zero in an atomic run,
+   ! where the network does not exist.
+   !
+   ! WHICH OF THE TWO LEVELS RECEIVES IT is not resolved by the sources and
+   ! is assigned by statistical weight, g2s : g2p = 1 : 3. Takagi states the
+   ! product as "n = 2" without an l, and Guberman's HeH+ C state likewise
+   ! dissociates to "an excited n = 2 H atom". Giusti-Suzor, Bardsley &
+   ! Derkits (1983), Phys. Rev. A 28, 682, do name the H(1s) + H(2s) limit,
+   ! but for H2+ in its lowest three vibrational states and electron
+   ! energies below 0.5 eV, and this code's H2+ is vibrationally hot (its
+   ! lifetime against R5, R8 and R9 is about 1e-3 s against a radiative
+   ! vibrational relaxation of about 1 s), so that condition does not hold
+   ! here. THE SPLIT IS NOT NEUTRAL and is recorded as open: 2p decays by
+   ! Lyman-alpha at A_2p1s, 2s only by the two-photon continuum, so an
+   ! all-2s assignment would route the same energy out of the gas by a
+   ! different channel and leave a larger n = 2 population behind.
 
    real*8, intent(in)  :: T, n1s, nHII_l, ne_l, Jlya, gam_ion_2s, gam_ion_2p
+   real*8, intent(in)  :: chem_n2
    real*8, intent(out) :: L2p, L2s, S2p, S2s, M12, M21
 
    real*8 :: Tl, a2s, a2p
@@ -331,8 +389,10 @@
    ! which is the case through the base.
    L2p = A_2p1s + Pstim + (C2p1s + C2p2s)*ne_l + gam_ion_2p
    L2s = (C2s1s + C2s2p)*ne_l + gam_ion_2s + A_2s1s
-   S2p = (Ppump + C1s2p*ne_l)*n1s + a2p*ne_l*nHII_l
-   S2s = (C1s2s*ne_l)*n1s + a2s*ne_l*nHII_l
+   S2p = (Ppump + C1s2p*ne_l)*n1s + a2p*ne_l*nHII_l                      &
+       + max(chem_n2, 0.0d0)*g2p/(g2s + g2p)
+   S2s = (C1s2s*ne_l)*n1s + a2s*ne_l*nHII_l                              &
+       + max(chem_n2, 0.0d0)*g2s/(g2s + g2p)
    M12 = C2s2p*ne_l
    M21 = C2p2s*ne_l
 
@@ -380,8 +440,9 @@
    real*8, dimension(1-Ng:N+Ng) :: T_K, n_dim, nhi, nhii
    real*8, dimension(1-Ng:N+Ng) :: nhei, nheii, nheiii, ne
    real*8, dimension(1-Ng:N+Ng,n_mion) :: nm
+   real*8, dimension(1-Ng:N+Ng) :: n_h2p_mol, n_hehp_mol
    real*8 :: L2p, L2s, S2p, S2s, M12, M21
-   real*8 :: r2p, r2s, s2pd, s2sd, q2p, q2s
+   real*8 :: r2p, r2s, s2pd, s2sd, q2p, q2s, chem_n2
 
    res = 0.0d0;  scale = 1.0d0;  ok = .false.;  why = ''
    if (.not. use_excited_H) then
@@ -410,12 +471,23 @@
       nm(:,im) = f_sp_in(:,mion_fsp(im))*n_dim
    enddo
    call calc_ne(nhii, nheii, nheiii, ne, nm)
+   ! The chemical n = 2 source of the same state, so that the residual
+   ! measures the balance the closure solved and not one without that term.
+   if (thereis_mol) then
+      n_h2p_mol  = f_sp_in(:,isp_H2p)*n_dim
+      n_hehp_mol = f_sp_in(:,isp_HeHp)*n_dim
+   else
+      n_h2p_mol  = 0.0d0
+      n_hehp_mol = 0.0d0
+   endif
 
    do j = 1, N
+      chem_n2 = dissociative_recombination_n2_source(T_K(j),              &
+                      n_h2p_mol(j), n_hehp_mol(j), max(ne(j),0.0d0))
       call n2_rate_matrix(T_K(j), max(nhi(j),0.0d0), max(nhii(j),0.0d0),  &
                           max(ne(j),0.0d0), Jlya_arr(j),                  &
-                          gamma2_bal, gamma2_bal, L2p, L2s, S2p, S2s,     &
-                          M12, M21)
+                          gamma2_bal, gamma2_bal, chem_n2,                &
+                          L2p, L2s, S2p, S2s, M12, M21)
       r2p  = L2p*n2p_arr(j) - M12*n2s_arr(j) - S2p
       r2s  = L2s*n2s_arr(j) - M21*n2p_arr(j) - S2s
       s2pd = abs(L2p*n2p_arr(j)) + abs(M12*n2s_arr(j)) + abs(S2p)

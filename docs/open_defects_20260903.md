@@ -1337,7 +1337,7 @@ against this. That rule applies to one kind of quantity; these are three kinds.
 on `du = 9.999e-4 < 1e-3` at an `r >= 1.2` spread of **3.13e-2**, six times the
 flux gate's own threshold, and 1.37 at `r >= 1.01`. P51's transport-on hot Uranus
 stopped the same way at 4.4e-2. The two numbers are uncorrelated on the states
-these cases stop at: every `armD_*`/`armHeH_*` snapshot ends with `du` between
+these cases stop at: every `heh_*` snapshot ends with `du` between
 1.1 and 28 and a gate spread between 0.77 and 35.
 
 A build with the `du` window moved to `[j_flux:N]` was prepared and a 13-case
@@ -1351,7 +1351,7 @@ recorded under both its names, the duplicate `solver_newton_cold` having since
 been deleted) and `wasp_he23off_newton` the hand-off arms at step ~4242 under
 the present window
 and at ~55,950 under the wider one, a factor 13.2. And one case gets worse:
-`arm_heh1_x2matched` reaches a JFNK finish at a flux spread of 2.7e-4 today, and
+`heh_1_x2matched` (renamed 2026-09-16 from `arm_heh1_x2matched`; mapping in `docs/named_case_audit.md` section 6) reaches a JFNK finish at a flux spread of 2.7e-4 today, and
 under the wider window never arms the hand-off, ending at the cap 218 times less
 flat and 0.23 dex higher in the rate. So widening the window without also
 re-deriving `newton_du_switch` turns a converged case into an unconverged one.
@@ -1374,7 +1374,7 @@ pre-143 mass-flux row scale, not on the measure now in the tree.
    "converged".
 2. **Recalibrate the handoff separately, and only for solver robustness.** The
    census shows the handoff is what actually breaks under a window change:
-   `arm_heh1_x2matched` reaches a JFNK finish at a flux spread of 2.7e-4 today
+   `heh_1_x2matched` reaches a JFNK finish at a flux spread of 2.7e-4 today
    and under a wider window never arms the handoff at all, ending at the cap
    218 times less flat and 0.23 dex higher in the rate. That is a solver
    question, to be tuned against solver success, not against a physical
@@ -2074,9 +2074,9 @@ decades of `dt`, four identical values, i.e. a projection) and -3.2041e-06,
 -3.2067e-07, -3.2070e-08, -3.2072e-09 after (one factor of ten per decade, i.e.
 a rate). The first-step magnitude falls by 1944 on WASP-121b and by 93 on the hot
 Uranus. Every named Load-IC case starts more than four parts in a thousand from
-the equilibrium of its own state, and `armD_D2_newton` and `armD_D2_LW_newton`
+the equilibrium of its own state, and `heh_1_newton` (renamed 2026-09-16 from `armD_D2_newton`) and `heh_1_lw_newton` (renamed 2026-09-16 from `armD_D2_LW_newton`)
 start 71 and 50 percent away. **The bytes move; the answer does not**:
-`armD_D2_LW_newton` gives `log10 Mdot` 8.88 either way, `armD_D2_newton` is
+`heh_1_lw_newton` gives `log10 Mdot` 8.88 either way, `heh_1_newton` is
 1.2 percent apart at a matched step 40,000 and `jfnk_hd189` 0.34 percent. Writing
 more digits would not have helped: the files are already full double precision
 and the gap is four to five orders above anything the format could cause.
@@ -2266,12 +2266,12 @@ a state the code wrote and add the case to the matrix, or retire it.
 ### 12.5 A stored ladder case is refused at startup by the base-composition check (AE)
 
 **QUARANTINED 2026-09-03 (user decision):** moved to
-`backup/regression/_quarantined/armD_D1`, inputs untouched so the refusal stays
+`backup/regression/_quarantined/molecular_base_no_chemistry` (renamed 2026-09-16 from `armD_D1`), inputs untouched so the refusal stays
 reproducible, with a `NOTE.txt` recording why and preserving the note the
 directory already carried. `run_check.sh`'s header now says `_quarantined/` is
 not a case directory. Paths in the rest of this section are the pre-move ones.
 
-`backup/regression/armD_D1` carries `Molecular chemistry: False` together with
+`backup/regression/molecular_base_no_chemistry` carries `Molecular chemistry: False` together with
 `Molecular base: True` and a `base.inp` with `q_H2_base 0.326896922`. The P35
 refusal in `src/modules/files_IO/input_read.f90` stops it with `ERROR STOP 1`,
 and **the refusal is correct**: the ghost the case would have run with sits at
@@ -2417,7 +2417,7 @@ Stored outputs without those fields should not be used as regression references.
 |---|---|---|
 | 12.1-12.3 H2 photochannels | Approximations documented in code; channel stoichiometry incomplete for double ionization and neutral dissociation. Introduce explicit cross sections for mutually exclusive final states and derive every species and electron source from their stoichiometric vectors. | **Agree**, and this is a better design than the three separate patches the first edition proposed. See Phase E1. |
 | 12.4 round-trip case | Confirmed. Rebuild the fixture from a deliberately short deterministic run, not from an expensive converged product. Test write/read/write identity and one-step continuity. | **Agree**, and adopted -- the first edition proposed regenerating from a converged run, which is both expensive and the wrong kind of fixture. |
-| 12.5 stale ladder case | Confirmed configuration conflict; intent cannot be inferred from code. Quarantine it from active regression and label the historical result invalid. | **Agree**, and executed 2026-09-03: the case is moved to `backup/regression/_quarantined/armD_D1` with a `NOTE.txt` recording why. |
+| 12.5 stale ladder case | Confirmed configuration conflict; intent cannot be inferred from code. Quarantine it from active regression and label the historical result invalid. | **Agree**, and executed 2026-09-03: the case is moved to `backup/regression/_quarantined/molecular_base_no_chemistry` with a `NOTE.txt` recording why. |
 | 12.6 base-H2 fit coverage | Confirmed by path analysis; not rerun. Add a small setup/equilibrium test that omits the handoff and asserts the fitted base H2 fraction and the resulting ghost composition. | **Agree.** A setup-level test is cheaper than the run-level case the first edition implied. |
 | 12.7 PLM to WENO3 | Open path verified; diagnosis historical. Treat PLM and WENO3 as separate discretizations: use PLM to form an initial guess, then continue in the residual or flux blend before solving the WENO3 system. | **Agree**, and it reframes the item -- the first edition recorded it as a `du` floor, which is a symptom of switching the discrete operator in one step. See Phase F. |
 | 12.8 oxygen-carrier double count | Critical reported conservation failure; the exact offending refresh was not isolated. Add element-budget assertions around every ionization sweep, carrier write-back, and outer steady pass. Fix before any coupled A2 result is accepted. | **Agree, and this item is under-ranked in the first edition.** It is a prerequisite for item 2, not a smaller item. See Phase A1. |

@@ -783,7 +783,9 @@ else
    echo "FAIL species_rows_reload_declares_a_stationary_state measured=$n reference=>=1 tol=0"
    rc=1
 fi
-n=$(grep -c 'carrier balance H2: row measure' "$WORK/b/run.log" || true)
+# The refusal names the row as "gated row measure" since the carrier rows
+# gained the absent-carrier floor (2026-09-14, L7b); both spellings count.
+n=$(grep -cE 'carrier balance H2: (gated )?row measure' "$WORK/b/run.log" || true)
 if [ "$n" -ge 1 ]; then
    echo "PASS species_rows_reload_names_the_refused_row measured=$n reference=>=1 tol=0"
 else

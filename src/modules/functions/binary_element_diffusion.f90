@@ -334,6 +334,20 @@
       public :: project_element_mass_fractions
       public :: mixture_mass_sum
       public :: element_transport_residual
+      ! The elemental transport balance of a state reduced to ONE number,
+      ! and the admissibility test a residual norm has to meet before a
+      ! progress control may read it.
+      public :: element_transport_residual_norm
+      public :: residual_norm_is_admissible
+      ! The floor a row measure divides by, so that a cell in which every
+      ! term of a row vanishes reads zero instead of dividing by zero.  It
+      ! is the value certification_row_measure uses (cert_scale_floor),
+      ! repeated here because the certification stands above this module and
+      ! the two must give one number for one row.
+      real*8, parameter, public :: element_row_scale_floor = 1.0d-300
+      ! Whether a species vector is a vector of ordinary reals: the outer
+      ! iteration asks it of the composition a relaxation hands back.
+      public :: every_species_is_finite
       ! THE TERMS OF ONE TRACE-ELEMENT ROW AT THE OUTERMOST CELLS, printed
       ! and nothing else: a row that stands away from zero is read by the
       ! sizes of the two fluxes it balances, and those sizes exist only
@@ -858,7 +872,7 @@
       ! --- elemental census of the metals.  These equations have no sink for a
       ! metal nucleus: an element that is present in the reservoir and absent
       ! from a cell that holds hydrogen cannot have got there by physics.  It is
-      ! checked on every step because nothing else in the pipeline can see it --
+      ! checked on every step because nothing else in the run can see it --
       ! the steady residual is a residual of the hydro and energy equations,
       ! whose solution with the metals removed is a perfectly good solution of
       ! the equations as posed, and the elemental-flux closure measures a window
@@ -1007,7 +1021,8 @@
       ! ------------------------------------------------------------------ !
 
       subroutine relax_element_composition(rho, v, Tcode, f_sp, Frho,      &
-                                           omega, drift, nstep, status)
+                                           omega, map_distance, nstep,     &
+                                           status, displacement)
       ! Relax the element composition to its steady state in a FIXED wind.
       !
       ! The step size is the COMPOSITION time scale, not the hydro CFL step.
@@ -1079,10 +1094,14 @@
       ! composition at fixed wind -- has no damping of its own and the two can
       ! chase each other instead of converging (measured on the HD 209458 b
       ! Kzz = 0 wind: a limit cycle at 0.15-0.17 over twenty passes).  The
-      ! caller owns the schedule.  The returned drift is the UNDAMPED distance
-      ! max|X_relaxed - X_old|/X_base, not the damped step actually applied:
-      ! it is the distance to the fixed point, so omega cannot buy a false
-      ! convergence by making the applied step small.
+      ! caller owns the schedule.  The returned map_distance is the UNDAMPED
+      ! distance max|X_relaxed - X_old|/X_base, not the damped step actually
+      ! applied, so omega cannot make it small by moving less; the applied
+      ! step is returned separately as displacement.  Neither of the two is
+      ! the residual of the returned state: the endpoint of this map is the
+      ! fixed point only when the relaxation reached it, and
+      ! element_transport_residual_norm measures the elemental transport
+      ! balance of the composition that leaves here.
       !
       ! ONLY ADMISSIBLE STEPS ARE KEPT, AND A SMALL MOVEMENT IS NOT A
       ! CONVERGENCE PROOF.  Each transport step is taken on a copy and asked
@@ -1106,9 +1125,22 @@
       ! belongs to is.
       real*8, dimension(1-Ng:N+Ng),           intent(in)    :: Frho
       real*8,                                 intent(in)    :: omega
-      real*8,                                 intent(out)   :: drift
+      ! THE DISTANCE TO THE ENDPOINT OF THIS INNER MAP, undamped:
+      ! max|X_relaxed - X_entry| in each element's own reservoir value,
+      ! formed before omega damps the update that is applied.  It is the
+      ! distance to the endpoint of a FINITE relaxation, which may exit on
+      ! its step budget, so it is not the residual of the state handed back;
+      ! element_transport_residual_norm measures that residual.
+      real*8,                                 intent(out)   :: map_distance
       integer,                                intent(out)   :: nstep
       integer, optional,                      intent(out)   :: status
+      ! WHAT THIS PASS ACTUALLY CHANGED, in the same norm: the distance from
+      ! the composition the pass was entered with to the one it hands back,
+      ! after the damping and the projection.  It is zero when the entry
+      ! composition was restored, and equals omega times the map distance
+      ! where the damping is the only thing between the two (helium; a trace
+      ! element is not damped).
+      real*8, optional,                       intent(out)   :: displacement
 
       real*8, dimension(:,:), allocatable :: f_pass, f_try
       real*8, dimension(1-Ng:N+Ng) :: dt_code, nucH, nucHe, Xmix
@@ -1126,8 +1158,9 @@
       integer :: im, j, k, st, outcome, nreject, nkept
       logical, save :: warned_refusal = .false.
 
-      drift = 0.0d0
-      nstep = 0
+      map_distance = 0.0d0
+      nstep        = 0
+      if (present(displacement)) displacement = 0.0d0
       if (present(status)) status = element_relaxation_converged
       if (.not. he_diffusion) return
       if (.not. thereis_He)   return
@@ -1225,9 +1258,9 @@
          ! Nothing this pass did is part of the state handed back, so no step
          ! is reported as taken and the distance to the fixed point is not
          ! measured from a state the caller never receives.
-         f_sp  = f_pass
-         drift = 0.0d0
-         nkept = nstep
+         f_sp         = f_pass
+         map_distance = 0.0d0
+         nkept        = nstep
          nstep = 0
          deallocate(f_pass, f_try)
          if (present(status)) status = outcome
@@ -1246,7 +1279,7 @@
          return
       endif
       deallocate(f_try)
-      drift = element_composition_distance(Ynow, Ypass, Yres)
+      map_distance = element_composition_distance(Ynow, Ypass, Yres)
 
       ! Damped update: blend the relaxed composition with the one this pass
       ! started from and project the blend back into the species vector.  The
@@ -1280,10 +1313,10 @@
       if (element_mass_closure_departure - maxval(abs(msum_ret(1:N)        &
           - 1.0d0)) .gt. element_mass_closure_tol                          &
           .or. .not. every_species_is_finite(f_sp)) then
-         f_sp    = f_pass
-         outcome = element_relaxation_failed
-         drift   = 0.0d0
-         nstep   = 0
+         f_sp         = f_pass
+         outcome      = element_relaxation_failed
+         map_distance = 0.0d0
+         nstep        = 0
          if (.not. warned_refusal) then
             warned_refusal = .true.
             write(*,'(A,ES10.3,A)') ' (element diffusion) WARNING: the'//  &
@@ -1293,6 +1326,14 @@
                  '); the composition this pass was given is what is'//    &
                  ' handed back.'
          endif
+      endif
+      ! WHAT LEAVES THE ROUTINE, MEASURED ON WHAT LEAVES THE ROUTINE.  The
+      ! composition here is the one the caller receives: the damped blend
+      ! where the damping applied, the relaxed one where it did not, and the
+      ! entry composition where the closure above put it back.
+      if (present(displacement)) then
+         call element_mass_fractions(f_sp, Ynow)
+         displacement = element_composition_distance(Ynow, Ypass, Yres)
       endif
       deallocate(f_pass)
       if (present(status)) status = outcome
@@ -1338,6 +1379,115 @@
          d = max(d, maxval(abs(Ya(1:N,ie) - Yb(1:N,ie)))/Yres(ie))
       enddo
       end function element_composition_distance
+
+      ! ------------------------------------------------------------------ !
+
+      logical function residual_norm_is_admissible(x) result(ok)
+      ! A RESIDUAL NORM IS A FINITE NONNEGATIVE NUMBER, and a progress
+      ! control may read it only when it is one.
+      !
+      ! x .eq. x rejects a NaN and nothing else: an infinity compares equal
+      ! to itself and would be read as a measurement of a balance, and a
+      ! negative value is not a norm of anything.  Both are refusals of the
+      ! MEASUREMENT and say nothing about the state, so a caller that meets
+      ! one reports the measure unavailable rather than substituting another
+      ! quantity for it.  The two tests are written out rather than taken
+      ! from ieee_arithmetic, for the reason every_species_is_finite gives.
+      real*8, intent(in) :: x
+      ok = (x .eq. x) .and. (abs(x) .le. huge(1.0d0)) .and. (x .ge. 0.0d0)
+      end function residual_norm_is_admissible
+
+      ! ------------------------------------------------------------------ !
+
+      subroutine element_transport_residual_norm(rho, Tcode, f_sp, Frho,  &
+                                 rnorm, jworst, ielem, res_abs, scale_abs,&
+                                 measured)
+      ! THE ELEMENTAL TRANSPORT BALANCE OF A STATE, AS ONE NUMBER:
+      !
+      !    rnorm = max_j |res_j| / max(scale_j, floor)
+      !
+      ! over the helium partition row and over every trace element row the
+      ! state carries an equation for, with res and scale exactly those of
+      ! element_transport_residual (transport against transport at an
+      ! infinite step length, the scale the sum of the row's own terms).
+      ! The reduction is the one certification_row_measure forms for the
+      ! same rows, so the number read here and the elemental entries of the
+      ! certification of the same state are one measure and not two
+      ! spellings of it; src/tests/element_operator states that as a row.
+      !
+      ! WHY A RESIDUAL AND NOT THE INNER MAP'S DISTANCE.  The distance
+      ! relax_element_composition returns is the distance to the endpoint of
+      ! a finite relaxation, which may exit on its step budget, so it can be
+      ! small at a state whose elemental rows are not satisfied.  The
+      ! residual is a property of the state handed back and of nothing else.
+      !
+      ! The measurement is stationary and side-effect free: the operator
+      ! below holds its own last-solve diagnostics aside and puts them back,
+      ! so no isolated workspace is needed around this call.
+      real*8, dimension(1-Ng:N+Ng),           intent(in)  :: rho, Tcode
+      real*8, dimension(1-Ng:N+Ng,n_species), intent(in)  :: f_sp
+      ! The face mass flux of the state the balance rides on, the one its
+      ! own mass row returned (face_mass_flux_of_state).
+      real*8, dimension(1-Ng:N+Ng),           intent(in)  :: Frho
+      real*8,                                 intent(out) :: rnorm
+      ! Where the maximum stands, and in which element's row: 0 is the
+      ! helium partition, a positive value the trace element's index.
+      integer,                                intent(out) :: jworst, ielem
+      ! The two absolute terms behind the ratio at that cell, so a movement
+      ! of the scale is visible beside the ratio it divides.
+      real*8,                                 intent(out) :: res_abs
+      real*8,                                 intent(out) :: scale_abs
+      ! False where the state carries no elemental equation at all, or where
+      ! the operator could not measure one: the caller then has no element
+      ! measure for this state and says so, rather than reading another
+      ! quantity in its place.
+      logical,                                intent(out) :: measured
+
+      real*8, dimension(1:N)         :: rhe, she
+      real*8, dimension(1:N,n_melem) :: rtr, str
+      logical, dimension(n_melem)    :: carried
+      logical :: ok_he, ok_tr
+      real*8  :: q
+      integer :: j, im
+
+      rnorm     = 0.0d0
+      jworst    = 0
+      ielem     = 0
+      res_abs   = 0.0d0
+      scale_abs = 0.0d0
+      measured  = .false.
+      if (.not. he_diffusion) return
+      if (.not. thereis_He)   return
+
+      call element_transport_residual(rho, Tcode, f_sp, Frho, rhe, she,   &
+               ok_he, rtr, str, ok_tr, tr_carried = carried)
+      if (.not. ok_he) return
+      do j = 1, N
+         q = abs(rhe(j))/max(she(j), element_row_scale_floor)
+         if (q .gt. rnorm) then
+            rnorm     = q
+            jworst    = j
+            ielem     = 0
+            res_abs   = abs(rhe(j))
+            scale_abs = she(j)
+         endif
+      enddo
+      measured = .true.
+      if (.not. ok_tr) return
+      do im = 1, n_melem
+         if (.not. carried(im)) cycle
+         do j = 1, N
+            q = abs(rtr(j,im))/max(str(j,im), element_row_scale_floor)
+            if (q .gt. rnorm) then
+               rnorm     = q
+               jworst    = j
+               ielem     = im
+               res_abs   = abs(rtr(j,im))
+               scale_abs = str(j,im)
+            endif
+         enddo
+      enddo
+      end subroutine element_transport_residual_norm
 
       ! ------------------------------------------------------------------ !
 
@@ -3527,7 +3677,14 @@
       subroutine carrier_mass_fractions(f_sp, Y)
       ! The declared carriers as mass fractions of the mixture, with the
       ! inflow composition of the inner ghosts: the handoff value where one
-      ! is stated, the base cell's own partition where none is.
+      ! is stated, the base cell's own partition where none is; and the
+      ! outer ghosts continuing cell N's own value, the outflow rule the
+      ! stationary carrier operator states in carrier_face_mass_fraction
+      ! (diffusive_photochemistry): the outer face is an outflow face of a
+      ! transported scalar, its characteristics leave, and the equilibrium
+      ! composition the sweep solves in the ghost cell is not what the wind
+      ! carried out of cell N. One rule for the stage path and the
+      ! stationary path, so the two evaluations of a carrier row agree.
       real*8, dimension(1-Ng:N+Ng,n_species), intent(in)  :: f_sp
       real*8, dimension(1-Ng:N+Ng,n_car),     intent(out) :: Y
 
@@ -3542,6 +3699,9 @@
                Y(j,k) = Y(1,k)
             enddo
          endif
+         do j = N+1, N+Ng
+            Y(j,k) = Y(N,k)
+         enddo
       enddo
       where (Y .lt. 0.0d0) Y = 0.0d0
 

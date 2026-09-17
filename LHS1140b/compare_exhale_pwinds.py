@@ -12,7 +12,7 @@ two models is the physics, and that is the point:
            photoionization heating and radiative cooling -- so Mdot and T(r)
            are outputs, not inputs.
 
-Run from LHS1140b/ after the exhale/ scan has converged.
+Run from LHS1140b/ after the archive_20260830/exhale/ scan has converged.
 """
 import os, re, glob, sys
 import numpy as np
@@ -53,13 +53,13 @@ def observed():
     return m
 
 def rp_rstar():
-    t = open('exhale/heh1000/input.inp').read()
+    t = open('archive_20260830/exhale/heh1000/input.inp').read()
     rp = float(re.search(r'^Planet radius.*$', t, re.M).group(0).split()[3])
     rs = float(re.search(r'^Stellar radius.*$', t, re.M).group(0).split()[3])
     return rp*RJ, rs*RSUN
 
 def exhale_case(tag):
-    d = f'exhale/{tag}'
+    d = f'archive_20260830/exhale/{tag}'
     out = dict(tag=tag)
     lg = f'{d}/run.log'
     if os.path.isfile(lg):

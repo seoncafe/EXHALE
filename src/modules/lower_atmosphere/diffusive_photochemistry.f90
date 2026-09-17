@@ -348,6 +348,18 @@
       ! acceptance test measures it against the Runge-Kutta stage's own
       ! update of the same state and not against a transcription of it.
       public :: carrier_advective_divergence, carrier_mass_amu
+      ! The two face coefficients of the advective term and the predicate
+      ! that says whether the base ghosts are data or a copy: public so that
+      ! src/tests/carrier_boundary_jacobian/ can state the boundary
+      ! derivative the block-tridiagonal assembly uses and compare it with a
+      ! central difference of the divergence itself.
+      public :: carrier_advective_face_coefficients
+      public :: carrier_base_composition_imposed
+      ! The L22 step 2b interventions, so that a test driver can state what
+      ! each of them does to the operator without running the binary.
+      public :: carrier_face_coefficients
+      public :: l22b_setup, carrier_outflow_ghost
+      public :: l22b_advective_band_derivative
       ! Save and restore of the module arrays carrier_steady_residual
       ! overwrites, so that the balance of a state can be MEASURED without
       ! the measurement being an operation on the state.
@@ -355,6 +367,14 @@
       public :: save_carrier_module_state, restore_carrier_module_state
       public :: carrier_module_state_matches
       public :: carrier_steady_residual
+      ! The terms of every carrier row of the last assembly, written on
+      ! request (EXHALE_CARRIER_ROW_TERMS=1) by the certification that
+      ! measured them.  A record of a measurement; nothing reads it back.
+      public :: carrier_row_terms_on, carrier_row_terms_write
+      ! The H2 content each cell's own carrier row would settle at, for the
+      ! molecular seed: the row's chemistry alone, taken from the routine
+      ! that assembles the row.
+      public :: carrier_h2_chemical_root
       public :: carrier_drift_location
       ! The two row scales of the last assembly side by side, so that
       ! src/tests/carrier_retry/ can state on the production arrays what
@@ -455,6 +475,17 @@
       public :: carrier_transport_stops_suppressed
 
       integer, parameter :: dp = kind(1.0d0)
+      ! ABSOLUTE SMALLNESS OF A CARRIER, one number for the whole module:
+      ! the fraction of the free reservoir of its own element below which a
+      ! carrier density carries no mass, no charge, no opacity and no energy
+      ! that any quantity the code reports depends on.  Twenty decades is
+      ! the same statement the elemental transport rows make about an
+      ! element (1e-20 rho X_base, binary_element_diffusion), and it is four
+      ! decades below the round-off of a double against the reservoir, so
+      ! nothing at or under it is a resolved density at all.  It carries the
+      ! row-scale floor of carrier_residual and the absolute floor under the
+      ! certification's carrier row.
+      real(dp), parameter, public :: carrier_absent_fraction = 1.0d-20
 
       ! HOW A CARRIER NEWTON ENDED.  A solve that stopped short returns a
       ! state that satisfies no equation, so the outcome is a value the
@@ -704,18 +735,136 @@
       ! report prints (item S2 of PLAN_20260913: the cost of the closure is
       ! measured, not guessed). chem_cycles_cap_for_test, when nonnegative,
       ! replaces the budget so that a test can force exhaustion.
-      integer,  parameter, public :: chem_cycles_max = 5
-      real(dp), parameter, public :: chem_cycle_tol  = 1.0d-6
+      ! THE BUDGET AND THE TOLERANCE, BOTH MEASURED (item L7e, on
+      ! LHS 1140 b molecular_scalar_gj1132_kzz1e9/HeH2.13 with the closure
+      ! traced cycle by cycle, EXHALE_CARRIER_DEBUG=1).  The cycle
+      ! contracts hard for two or three cycles and then STOPS: the
+      ! increments of six consecutive closures of that run are
+      !
+      !   7.6e-05 -> 1.1e-05 -> 2.8e-06, and from there a band
+      !   1.7e-06 to 3.4e-06 that does not narrow over thirty more cycles,
+      !
+      ! and the cell carrying it is not the molecular layer but the far
+      ! wind at r = 10 to 11 R_p, where it is the equilibrium sweep's own
+      ! acceptance noise and not a state still moving.  So 1e-6 is BELOW
+      ! the floor the sweep defines: the closure then converges only when
+      ! the band happens to dip, which took 8, 22 and 28 cycles in three
+      ! calls of that run and did not happen within 31 in a fourth.  The
+      ! tolerance is set above that floor with a factor of three margin,
+      ! and the budget at twice the 6 cycles the slowest of those calls
+      ! needed to reach it.  With 5 and 1e-6 every call spent its budget,
+      ! every trial of relax_photochemical_composition was undone for it,
+      ! and the H2 carrier of that case took no transport step at all.
+      integer,  parameter, public :: chem_cycles_max = 12
+      real(dp), parameter, public :: chem_cycle_tol  = 1.0d-5
       integer,  parameter, public :: chem_closure_converged      = 0
       integer,  parameter, public :: chem_closure_exhausted      = 1
       integer,  parameter, public :: chem_closure_nonfinite      = 2
-      integer,  parameter, public :: chem_closure_off_simplex    = 3
+      ! 3 was "a cell left the element simplex", retired by item L7e: the
+      ! count it read is a property of the root search and not of the state
+      ! the closure hands back (the closure body says why), so no closure
+      ! can return it and the value is left unused rather than reassigned.
       integer,  parameter, public :: chem_closure_not_admissible = 4
       integer, public :: chem_cycles_cap_for_test = -1
       integer, public :: n_chem_closure_cycles   = 0
       integer, public :: n_chem_closures_reached = 0
       integer, public :: n_chem_closures_refused = 0
       integer, public :: n_chem_last_reason      = chem_closure_converged
+      ! The cell, carrier and absolute change that attained the movement
+      ! bound when the last trial was refused on it:
+      ! a bound that refuses a pass says which cell refused it
+      ! (carrier_worst_composition_change).  Diagnostic only.
+      integer,  public :: bound_last_j = 0, bound_last_ic = 1
+      ! The measure the bound was refused on -- a relative particle-count
+      ! change by default, the retired carrier-fraction ratio under
+      ! EXHALE_CARRIER_BOUND_FRACTION=1 -- and the entry value it is
+      ! relative to.
+      real(dp), public :: bound_last_dabs = 0.0d0
+      real(dp), public :: bound_last_entry = 0.0d0
+      logical,  public :: bound_last_fraction = .false.
+      ! ---------------------------------------------------------------- !
+      ! A DIAGNOSTIC EXPERIMENT, DEFAULT OFF (plan PLAN_20260916_rev3
+      ! section 3 step 2).  WHAT IT MEASURES: the movement bound is one
+      ! scalar over a column that holds a slow H2 front and a far wind, and
+      ! the cell that attains it is the front while the cell whose carrier
+      ! row refuses the certification sits decades inside the allowance.
+      ! The experiment asks whether the refusing cell descends when the
+      ! front's cells no longer choose the trial length.  It is NOT a
+      ! candidate for production and certifies nothing: no cell is ever
+      ! excluded from the certification, only from the choice of the trial
+      ! interval.
+      !
+      ! EXHALE_L22_MASK=<file> lists, one integer per line (blank lines and
+      ! lines opening with # ignored), the physical cells OMITTED FROM THE
+      ! INTERVAL SELECTION.  EXHALE_L22_MASK_MODE selects what the omission
+      ! means:
+      !   veto  -- the particle-count bound is still evaluated on the
+      !            omitted cells and still refuses the trial, so the
+      !            feasible set and therefore the accepted interval are the
+      !            ones of the unmasked run; only the naming of the
+      !            controlling cell changes.  This is the null comparison.
+      !   waive -- the bound is not evaluated on the omitted cells, so the
+      !            interval is chosen by the selection set alone.  What
+      !            still holds the trial then: the transport step's own
+      !            interval coverage, the positivity and element and charge
+      !            feasibility of the chemistry closure, the finiteness and
+      !            gas conditions of thermal_state_admissible, the element
+      !            census of the pass, and the safety stop below.
+      ! SAFETY STOP (waive only): a trial in which any omitted cell's
+      ! particle count (n_tot + n_e) changes by more than a factor two ends
+      ! the relaxation at the last accepted state with
+      ! carrier_relax_mask_safety_stop.  An empty selection set is not a
+      ! comparison and ends the relaxation the same way with its own
+      ! message.
+      integer, parameter, public :: l22_mask_off   = 0
+      integer, parameter, public :: l22_mask_veto  = 1
+      integer, parameter, public :: l22_mask_waive = 2
+      integer, public :: l22_mask_mode = l22_mask_off
+      logical, save   :: l22_mask_ready = .false.
+      logical, dimension(:), allocatable, save :: l22_mask_omit
+      integer, public :: l22_mask_n_omit = 0, l22_mask_n_select = 0
+      ! What the last trial measured on each of the two sets, for the log:
+      ! the largest relative particle-count change of the selection set and
+      ! of the omitted set, with the cells attaining them.
+      integer,  public :: l22_last_j_select = 0, l22_last_j_omit = 0
+      real(dp), public :: l22_last_d_select = 0.0d0
+      real(dp), public :: l22_last_d_omit   = 0.0d0
+
+      ! ---- Measurements of the carrier Jacobian and of what a relaxation
+      ! pass hands back, each switched on by an environment key and OFF by
+      ! default, so that a run with none of them set integrates the operator
+      ! this module states.  The boundary of the carrier column is not among
+      ! them: it is one rule, stated at carrier_face_mass_fraction and
+      ! carrier_face_coefficients, and no key decides it.
+      !
+      ! (B) THE DEFERRED RECONSTRUCTION TERMS.  The advective entries of the
+      ! block-tridiagonal Jacobian are the FIRST-ORDER donor-cell
+      ! linearization (see the assembly in solve_carriers); the limited
+      ! slopes of species_face_fraction are not differentiated.
+      ! EXHALE_L22B_JAC_RECON=1 replaces those entries by a central
+      ! difference of carrier_advective_divergence itself, restricted to the
+      ! tridiagonal band, and reports the weight the band cannot hold.
+      ! EXHALE_L22B_JAC_ACTION=<file> writes, at the first Jacobian assembly
+      ! of the run, the action of the assembled matrix on a direction
+      ! concentrated on the cells EXHALE_L22B_JAC_CELLS=lo,hi beside a
+      ! central difference of the full residual along the same direction.
+      !
+      ! (C) EXHALE_L22B_DISPLACEMENT=1 reports what the composition the
+      ! relaxation hands back did to the primitive state the wind reads:
+      ! the largest relative change of p, T, the mean mass per particle and
+      ! the particle count over the column, with the cells attaining them.
+      logical, public :: l22b_jac_recon        = .false.
+      logical, public :: l22b_jac_action       = .false.
+      logical, public :: l22b_displacement     = .false.
+      integer, public :: l22b_jac_lo = 0, l22b_jac_hi = 0
+      character(len=512), save :: l22b_jac_file = ' '
+      logical, save   :: l22b_ready = .false.
+      logical, save   :: l22b_jac_action_done = .false.
+      ! The largest advective Jacobian entry the tridiagonal band cannot
+      ! hold, relative to the band of the same row, over the last assembly
+      ! that formed the reconstruction terms.
+      real(dp), public :: l22b_recon_dropped = 0.0d0
+
       ! The ledger counts of the last closure's last sweep (diagnostics).
       integer, public :: chem_last_offsimplex = 0, chem_last_nonfinite = 0
       integer, public :: chem_last_mol_clamped = 0
@@ -728,6 +877,10 @@
       ! left a cell non-finite), and the shortest admissible trial did no
       ! better: the entry state is handed back.
       integer, parameter, public :: carrier_relax_chemistry_refused = 5
+      ! The diagnostic interval mask waived the bound on a cell that then
+      ! moved by more than a factor two in one trial, or its selection set
+      ! was empty.  Only reachable with EXHALE_L22_MASK set.
+      integer, parameter, public :: carrier_relax_mask_safety_stop = 6
 
       ! The background this step holds frozen: the ion stages, the molecular
       ! ions and the free electrons (sec. 4).  Filled once per step by
@@ -949,6 +1102,62 @@
       ! the scale the returned-state acceptance and the stationary
       ! certification read; the Newton keeps row_terms for its own iterate.
       real(dp), dimension(:,:), allocatable :: row_terms_phys
+      ! ---- THE TERMS OF EACH ROW, CELL BY CELL, FOR READING ONLY -------
+      ! EXHALE_CARRIER_ROW_TERMS=1 records the individual terms of every
+      ! carrier row of the last assembly, so that a row that refuses a
+      ! certification can be read term by term instead of being inferred
+      ! from its measure.  Default off, nothing in the solution reads these
+      ! arrays, and they are not part of carrier_module_state: they are a
+      ! record of a measurement, not a state the measurement may leave
+      ! behind.
+      real(dp), dimension(:,:), allocatable :: rowdump_dif   ! diffusive+drift divergence
+      real(dp), dimension(:,:), allocatable :: rowdump_adv   ! material advective divergence
+      real(dp), dimension(:,:), allocatable :: rowdump_prod  ! chemical production
+      real(dp), dimension(:,:), allocatable :: rowdump_loss  ! chemical loss
+      real(dp), dimension(:,:), allocatable :: rowdump_phot  ! the radiative part of the loss
+      real(dp), dimension(:,:), allocatable :: rowdump_res   ! the row itself
+      real(dp), dimension(:,:), allocatable :: rowdump_nc    ! the carrier density [cm^-3]
+      real(dp), dimension(:,:), allocatable :: rowdump_floor ! the absolute floor of the scale
+      ! ---- THE H2 ROW, REACTION BY REACTION ---------------------------
+      ! The H2 production and loss above are each a sum of a handful of
+      ! reactions, and which of them carries the row is a physics question
+      ! a net production and a net loss cannot answer: the base layer of a
+      ! molecular case stands at a third of the lower-atmosphere handoff,
+      ! and naming the channel that puts it there is what decides whether
+      ! the network or the handoff is wrong (plan item L7f).  These are the
+      ! individual terms, each a volumetric rate [cm^-3 s^-1], written
+      ! beside the H2 row of carrier_row_terms.txt.  The order is fixed
+      ! here and mol_heh_rows fills 1 to n_h2chan_mol in it.
+      integer, parameter :: n_h2chan_mol      = 13
+      integer, parameter :: n_h2chan_oxy_prod = 14  ! OH + H -> H2 + O, H2O + H -> H2 + OH
+      integer, parameter :: n_h2chan_oxy_loss = 15  ! H2 + O -> OH + H, H2 + OH -> H2O + H
+      integer, parameter :: n_h2chan          = 15
+      ! The names, in that order, for the header of the record.
+      character(len=12), parameter :: h2chan_name(n_h2chan) =            &
+         [ character(len=12) ::                                         &
+           'R15_3body', 'R9_H2p_H', 'R6_H3p_e', 'R11_H3p_H',            &
+           'P_H2_photo', 'LW_photdis', 'R10R13_Hp', 'R12_thermal',      &
+           'R14_edis', 'R8_H2p_H2', 'R17R23_Hep', 'R18_HeHp',           &
+           'HeI23S_H2', 'oxy_prod', 'oxy_loss' ]
+      real(dp), dimension(:,:), allocatable :: rowdump_h2ch
+      ! ---- THE FOUR FACE FLUXES OF EACH ROW, SEPARATELY AND SIGNED -----
+      ! The divergences above answer "how much did transport move"; they
+      ! cannot answer "which face, and in which direction", and that is the
+      ! question a residual sitting at a boundary cell asks.  These are the
+      ! diffusive and the advective flux at the INNER face (j-1) and at the
+      ! OUTER face (j) of the cell, in the row's own units, so that an
+      ! advective flux DIFFERENCE, a diffusive flux that CHANGES SIGN across
+      ! the cell and a chemical imbalance are told apart by reading them
+      ! rather than by inference.  Diagnostic only, filled with the rest of
+      ! the record and written beside it.
+      real(dp), dimension(:,:), allocatable :: rowdump_fdif_in
+      real(dp), dimension(:,:), allocatable :: rowdump_fdif_out
+      real(dp), dimension(:,:), allocatable :: rowdump_fadv_in
+      real(dp), dimension(:,:), allocatable :: rowdump_fadv_out
+      real(dp), dimension(:),   allocatable :: rowdump_frho_in
+      real(dp), dimension(:),   allocatable :: rowdump_frho_out
+      logical, save :: rowdump_on     = .false.
+      logical, save :: rowdump_asked  = .false.
       ! Scale of the carrier ROW, and separately of its UNKNOWN, from that
       ! same assembly.  The ROW scale is row_terms over one code time unit,
       ! so that the residual divided by it is the dimensionless imbalance
@@ -2305,6 +2514,102 @@
       ! EXHALE_CARRIER_DEBUG=1 turns on one line per step from the transport
       ! operator: Newton iterations, the relative residual, how many cells
       ! the element limiter touched, and how far the base partition moved.
+      ! EXHALE_CARRIER_ROW_TERMS=1 records the terms of every carrier row
+      ! and writes them once per certification to
+      ! output/carrier_row_terms.txt.  Default off; nothing in the solution
+      ! reads the record, so the run it is switched on in is the run it is
+      ! switched off in.
+      logical function carrier_row_terms_on()
+      character(len=8) :: env
+      call get_environment_variable('EXHALE_CARRIER_ROW_TERMS', env)
+      carrier_row_terms_on = (trim(env) .eq. '1')
+      end function carrier_row_terms_on
+
+      ! ------------------------------------------------------------- !
+
+      ! THE CARRIER ROWS OF THE LAST ASSEMBLY, TERM BY TERM.  One line per
+      ! (cell, solved carrier): the transport terms, the chemical
+      ! production and loss separately, the radiative part of the loss, the
+      ! row itself, and the row measured on two scales --
+      !
+      !   scale_net    |transport| + |production - loss| + floor, and
+      !   scale_terms  |transport| + production + loss + floor,
+      !
+      ! the second being the sum of the magnitudes of the terms the row
+      ! actually contains.  Both are printed so that a reader can see what
+      ! the difference does where the chemistry is fast.
+      subroutine carrier_row_terms_write(fname)
+      character(len=*), intent(in) :: fname
+      integer :: u, j, ic, k
+      real(dp) :: dif, advj, pr, ls, fl, rr, snet, sterm
+      if (.not. rowdump_on)            return
+      if (.not. allocated(rowdump_res)) return
+      open(newunit=u, file=trim(fname), status='replace', action='write')
+      write(u,'(A)') '# carrier row terms of the last assembly '//       &
+                     '(EXHALE_CARRIER_ROW_TERMS=1)'
+      write(u,'(A)') '# every rate is a volumetric rate [cm^-3 s^-1]; '//&
+                     'the row is transport - (production - loss)'
+      write(u,'(A)') '# columns: cell r[R_p] T[K] carrier n_c[cm^-3] '// &
+                     'x_c diffusive advective production loss '//        &
+                     'photo_loss net_source residual floor '//           &
+                     'scale_net measure_net scale_terms measure_terms'
+      ! The H2 row carries its chemistry reaction by reaction as well, in
+      ! the fixed order of h2chan_name; every other carrier writes zeros
+      ! there.  Channels 1 to 4 are formation, 5 to 13 destruction, and the
+      ! last two the oxygen chemistry's two sides when it is on.
+      write(u,'(A)') '# and for the H2 row, the same production and '//  &
+                     'loss reaction by reaction [cm^-3 s^-1]:'
+      write(u,'(A)') '# '//trim(h2chan_header())
+      write(u,'(A)') '# and, for every row, the TWO FACES separately: '// &
+                     'each term already carries its area and the cell '// &
+                     'volume, so fdif_in + fdif_out = diffusive and '//   &
+                     'fadv_in + fadv_out = advective.'
+      write(u,'(A)') '# face cell carrier fdif_in fdif_out fadv_in '//    &
+                     'fadv_out Frho_in Frho_out'
+      do j = 1, N
+         do ic = 1, n_carrier
+            if (.not. carrier_solved(ic)) cycle
+            dif  = rowdump_dif(j,ic)
+            advj = rowdump_adv(j,ic)
+            pr   = rowdump_prod(j,ic)
+            ls   = rowdump_loss(j,ic)
+            fl   = rowdump_floor(j,ic)
+            rr   = rowdump_res(j,ic)
+            snet  = abs(dif) + abs(advj) + abs(pr - ls) + fl
+            sterm = abs(dif) + abs(advj) + pr + ls + fl
+            write(u,'(I6,1X,ES14.7,1X,ES12.5,1X,A8,14(1X,ES14.7))')      &
+                 j, r(j), bg_cell(j)%T_K, trim(carrier_name(ic)),        &
+                 rowdump_nc(j,ic),                                       &
+                 rowdump_nc(j,ic)/max(bg_cell(j)%ntot, 1.0d-300),        &
+                 dif, advj, pr, ls, rowdump_phot(j,ic), pr - ls, rr, fl, &
+                 snet, abs(rr)/max(snet, 1.0d-300),                      &
+                 sterm, abs(rr)/max(sterm, 1.0d-300)
+            write(u,'(A,I6,1X,A8,6(1X,ES14.7))') '  face', j,          &
+                 trim(carrier_name(ic)),                                 &
+                 rowdump_fdif_in(j,ic), rowdump_fdif_out(j,ic),          &
+                 rowdump_fadv_in(j,ic), rowdump_fadv_out(j,ic),          &
+                 rowdump_frho_in(j), rowdump_frho_out(j)
+            if (ic .eq. ic_H2) then
+               write(u,'(A,I6,15(1X,ES14.7))') '  chan', j,              &
+                    (rowdump_h2ch(j,k), k = 1, n_h2chan)
+            endif
+         enddo
+      enddo
+      close(u)
+      end subroutine carrier_row_terms_write
+
+      ! The channel names of the H2 record as one line, for its header.
+      function h2chan_header() result(hdr)
+      character(len=16*n_h2chan+8) :: hdr
+      integer :: k
+      hdr = 'chan cell'
+      do k = 1, n_h2chan
+         hdr = trim(hdr)//' '//trim(h2chan_name(k))
+      enddo
+      end function h2chan_header
+
+      ! ------------------------------------------------------------- !
+
       logical function carrier_debug_on()
       character(len=8) :: env
       call get_environment_variable('EXHALE_CARRIER_DEBUG', env)
@@ -2909,7 +3214,7 @@
       ! are not transported.
       subroutine carrier_steady_residual(rho, v, f_sp, rcmax,            &
                                          jworst, icworst, rvol, rlegacy, &
-                                         res_out, terms_out)
+                                         res_out, terms_out, absent_out)
       real(dp), dimension(1-Ng:N+Ng),           intent(in) :: rho, v
       real(dp), dimension(1-Ng:N+Ng,n_species), intent(in) :: f_sp
       real(dp), intent(out) :: rcmax
@@ -2923,6 +3228,11 @@
       real(dp), intent(out), optional :: rlegacy
       real(dp), dimension(1:N,n_carrier_max), intent(out), optional ::   &
                                                  res_out, terms_out
+      ! The cells in which a carrier stands below carrier_absent_fraction of
+      ! its own element's free reservoir (carrier_residual): a row the
+      ! certification reports and does not gate.
+      logical,  dimension(1:N,n_carrier_max), intent(out), optional ::   &
+                                                 absent_out
 
       real(dp), dimension(1-Ng:N+Ng,n_carrier_max) :: fc, Dco
       real(dp), dimension(1-Ng:N+Ng) :: ntot, TK, mbar, gphys
@@ -2943,6 +3253,9 @@
       if (present(rlegacy))   rlegacy   = 0.0d0
       if (present(res_out))   res_out   = 0.0d0
       if (present(terms_out)) terms_out = 0.0d0
+      ! A carrier a run does not solve, or a run that reaches none of this,
+      ! leaves every cell judged: absence is asserted, never assumed.
+      if (present(absent_out)) absent_out = .false.
       if (.not. thereis_mol)       return
       if (.not. carrier_transport) return
       if (.not. bg_ready)          return
@@ -2963,11 +3276,19 @@
                                      Agrd, Bdrf, updrf)
       call carrier_photolysis(rho, TK, f_sp)
       call carrier_signal_rate(v, TK, mbar, sigrate)
-      call carrier_residual(fc, fc, nrho, wfac, dt_big, rp, rep, msum,   &
-                            Frho, .true.,                                &
-                            Agrd, Bdrf, updrf, nH_free, nO_free,         &
-                            nC_free, sigrate, res, Jf, dJl, dJr,         &
-                            rnorm_unused)
+      if (present(absent_out)) then
+         call carrier_residual(fc, fc, nrho, wfac, dt_big, rp, rep, msum, &
+                               Frho, .true.,                              &
+                               Agrd, Bdrf, updrf, nH_free, nO_free,       &
+                               nC_free, sigrate, res, Jf, dJl, dJr,       &
+                               rnorm_unused, absent_out = absent_out)
+      else
+         call carrier_residual(fc, fc, nrho, wfac, dt_big, rp, rep, msum, &
+                               Frho, .true.,                              &
+                               Agrd, Bdrf, updrf, nH_free, nO_free,       &
+                               nC_free, sigrate, res, Jf, dJl, dJr,       &
+                               rnorm_unused)
+      endif
 
       ! THE SCALE IS THE ROW'S OWN LARGEST TERMS, and that is a change.
       ! It used to be carrier_row_scale, n_H(|v|+c_s)/dr -- the flux
@@ -3254,19 +3575,31 @@
       ! flows inward the face composition is reconstructed from the ghosts,
       ! which hold the handoff partition where a handoff states one and the
       ! base cell's own where none does (carrier_mass_fractions).
-      subroutine carrier_advective_divergence(fc, msum, Frho, adv, advmag)
+      subroutine carrier_advective_divergence(fc, msum, Frho, adv, advmag, &
+                                              advin, advout)
       real(dp), dimension(1-Ng:N+Ng,n_carrier_max), intent(in)  :: fc
       real(dp), dimension(1-Ng:N+Ng),               intent(in)  :: msum
       real(dp), dimension(1-Ng:N+Ng),               intent(in)  :: Frho
       real(dp), dimension(1:N,n_carrier_max),       intent(out) :: adv
       real(dp), dimension(1:N,n_carrier_max),       intent(out) :: advmag
+      ! THE TWO FACES SEPARATELY, each already carrying its area and the
+      ! cell volume, so advin + advout = adv exactly.  The divergence says
+      ! how much transport moved; these say through WHICH face and in which
+      ! direction, which is the question a residual sitting at a boundary
+      ! cell asks.  Diagnostic and optional; nothing in the solution asks
+      ! for them.
+      real(dp), dimension(1:N,n_carrier_max), optional, intent(out) :: advin
+      real(dp), dimension(1:N,n_carrier_max), optional, intent(out) :: advout
 
       real(dp), dimension(1-Ng:N+Ng) :: Y, Yf, Fs, dvF, dvM
-      real(dp) :: mc, tconv
+      real(dp) :: mc, tconv, rpf, rmf, dV
       integer  :: j, ic
 
       adv    = 0.0d0
       advmag = 0.0d0
+      if (present(advin))  advin  = 0.0d0
+      if (present(advout)) advout = 0.0d0
+      call l22b_setup()
       ! Code density times code velocity over code length is a rate in units
       ! of v0/R0, and f_sp counts n0 particles per unit density, so this is
       ! the factor that puts the divergence in cm^-3 s^-1 -- the same factor
@@ -3277,11 +3610,27 @@
          mc = carrier_mass_amu(ic)
          call carrier_face_mass_fraction(fc, msum, ic, Y)
          call species_face_fraction(Y, Frho, Yf)
+         ! Y already carries the stated ghosts at both ends
+         ! (carrier_face_mass_fraction), so the reconstruction below reads
+         ! one boundary rule wherever this term is evaluated.  With the
+         ! outflow continuation X_ghost = X_N the forward difference
+         ! entering the MC limiter of PLM is exactly zero, the limited slope
+         ! of cell N is zero and the outflow face is the donor cell average
+         ! by itself.
          call species_face_flux(Frho, Yf, Fs)
          call species_flux_divergence(Fs, dvF, dvM)
          do j = 1, N
             adv(j,ic)    = dvF(j)*msum(j)/mc*tconv
             advmag(j,ic) = dvM(j)*msum(j)/mc*tconv
+            if (present(advin) .or. present(advout)) then
+               rpf = r_edg(j)
+               rmf = r_edg(j-1)
+               dV  = (rpf*rpf*rpf - rmf*rmf*rmf)/3.0d0
+               if (present(advin))                                       &
+                  advin(j,ic)  = -rmf*rmf*Fs(j-1)/dV*msum(j)/mc*tconv
+               if (present(advout))                                      &
+                  advout(j,ic) =  rpf*rpf*Fs(j)  /dV*msum(j)/mc*tconv
+            endif
          enddo
       enddo
 
@@ -3319,13 +3668,39 @@
 
       ! ------------------------------------------------------------- !
 
-      ! One carrier as a mass fraction of the mixture, with the inflow
-      ! composition of the inner ghosts: the handoff value where a handoff
-      ! states one, the base cell's own where none does.  It is the same
-      ! rule and the same expression carrier_mass_fractions applies to the
-      ! declared set at the start of a marching step, written here on the
-      ! carrier index this module solves in, so that the stationary rows and
-      ! the stages put the same quantity on the faces.
+      ! One carrier as a mass fraction of the mixture, WITH BOTH GHOST
+      ! RULES OF THE CARRIER COLUMN APPLIED HERE AND NOWHERE ELSE, so that
+      ! every evaluation of the advective term -- the stationary rows the
+      ! certification measures, the trials of the fixed-wind relaxation and
+      ! the derivative probes -- reads one ghost and returns one row for one
+      ! interior state.
+      !
+      ! THE INNER GHOSTS carry the inflow composition: the handoff value
+      ! where a handoff states one, the base cell's own where none does.  It
+      ! is the same rule and the same expression carrier_mass_fractions
+      ! applies to the declared set at the start of a marching step, written
+      ! here on the carrier index this module solves in, so that the
+      ! stationary rows and the stages put the same quantity on the faces.
+      !
+      ! THE OUTER GHOSTS carry the interior continued, X_ghost = X_N.  The
+      ! outer face of this domain is an outflow face of a transported
+      ! scalar: its characteristics leave the domain, so the boundary states
+      ! no composition of its own and the ghost is the interior's own value
+      ! continued.  The equilibrium composition the ionization sweep solves
+      ! in a ghost cell (ionization_equilibrium loops 1-Ng to N+Ng) is not a
+      ! transported quantity and may not stand here: it is the composition a
+      ! cell of that density and temperature would relax to, not the
+      ! composition the wind carried out of cell N.
+      !
+      ! WHERE THE FACE MASS FLUX REVERSES, F_rho(N) < 0, the rule does not
+      ! change, because this boundary has no reservoir to state one with:
+      ! the hydrodynamic closure at the same face (free_outflow_ghost in
+      ! Apply_BC) continues cell N's own state outward -- the isothermal
+      ! hydrostatic density at cell N's temperature, with the velocity
+      ! copied -- and holds no composition of its own.  The material an
+      ! inflowing outer face returns is therefore the material the domain
+      ! released, which is cell N's composition, and the carrier rows are
+      ! closed with the same ghost the hydrodynamic rows are closed with.
       subroutine carrier_face_mass_fraction(fc, msum, ic, Y)
       real(dp), dimension(1-Ng:N+Ng,n_carrier_max), intent(in)  :: fc
       real(dp), dimension(1-Ng:N+Ng),               intent(in)  :: msum
@@ -3338,8 +3713,28 @@
             Y(j) = Y(1)
          enddo
       endif
+      do j = N+1, N+Ng
+         Y(j) = Y(N)
+      enddo
       where (Y .lt. 0.0d0) Y = 0.0d0
       end subroutine carrier_face_mass_fraction
+
+      ! ------------------------------------------------------------- !
+
+      ! THE SAME OUTFLOW CONTINUATION ON THE CARRIER STATE ITSELF, for the
+      ! places that need a ghost VALUE and not a face fraction: the element
+      ! budget, whose limiter reads the ghost cells because a ghost carries
+      ! its own density, and the derivative probes, which perturb a column
+      ! and must leave it closed the way the residual finds it.  One rule,
+      ! stated in carrier_face_mass_fraction above.
+      subroutine carrier_outflow_ghost(fc)
+      real(dp), dimension(1-Ng:N+Ng,n_carrier_max), intent(inout) :: fc
+      integer :: ic
+      do ic = 1, n_carrier
+         if (.not. carrier_solved(ic)) cycle
+         fc(N+1:N+Ng,ic) = fc(N,ic)
+      enddo
+      end subroutine carrier_outflow_ghost
 
       ! ------------------------------------------------------------- !
 
@@ -3549,11 +3944,50 @@
       integer,  dimension(0:N,n_carrier_max),       intent(out) :: updrf
       real(dp), dimension(1-Ng:N+Ng) :: Gco
       real(dp) :: dr_f, ntf, Df, Gf, Kf
-      integer  :: j, ic
+      integer  :: j, ic, jlast
 
       Agrd  = 0.0d0
       Bdrf  = 0.0d0
       updrf = 0
+      call l22b_setup()
+      ! NO DIFFUSIVE, EDDY OR SETTLING FLUX CROSSES EITHER END OF THE
+      ! CARRIER COLUMN.  The loop below runs over the interior faces
+      ! j = 1 .. N-1 alone, so Agrd and Bdrf stay zero at r_{1/2} and at
+      ! r_{N+1/2} and the column is a closed box for that flux.  The rule is
+      ! one rule for the operator, for the certification that measures its
+      ! rows and for the fixed-wind relaxation that drives them to zero.
+      !
+      ! THE OUTER FACE.  Molecular diffusion and the settling drift
+      ! G = (m_c - mbar) g/(kT) are Chapman-Enskog coefficients of a
+      ! COLLISIONAL mixture, and the outermost cells of these domains are
+      ! not collisional.  READ from docs/collisional_validity.md: on
+      ! LHS 1140 b the bulk Knudsen number is 0.13-0.30 at 8-9.5 R_p,
+      ! 0.66-1.11 at 20 R_p and 1.4-2.4 at the domain top of 30 R_p, with
+      ! the exobase at 18.8-25.4 R_p.  A flux built from a diffusion
+      ! coefficient at Kn > 1 is not a fluid flux, so the face carries none.
+      ! The composition still leaves through that face, by advection, which
+      ! is a statement about the bulk motion and not about the collisions.
+      !
+      ! The alternative -- forming the outer face from the ghost the way an
+      ! interior face is formed -- was measured and is not defensible.  With
+      ! the stated outflow ghost X_ghost = X_N the gradient part of the flux
+      ! vanishes identically and only the settling drift crosses the face;
+      ! H2 is heavier than the mean particle of an ionized hydrogen wind, so
+      ! G > 0 and the drift is INWARD, and the domain would gain carriers
+      ! through its outer boundary out of nothing.  MEASURED on the frozen
+      ! LHS 1140 b state `wellmixed/HeH0.083` at cell 500, r = 29.0 R_p:
+      ! that inward flux is -2.9471e-02 cm^-3 s^-1 against an interior
+      ! influx of +9.7857e-04, thirty times the largest term of the row,
+      ! and the row measure of the cell goes from 2.4619e-02 to 5.0629e-01
+      ! (docs/lhs1140b_stationary_L22_20260916.md, step 2b).
+      !
+      ! THE INNER FACE is closed for the reason the base handoff states:
+      ! what the layer below hands over is a COMPOSITION on the inflowing
+      ! base face, carried by the base mass flux, and
+      ! carrier_face_mass_fraction puts it on that face.  A diffusive flux
+      ! through the same face would add a second, independent statement of
+      ! the same handoff.
+      jlast = N - 1
 
       do ic = 1, n_carrier
          if (.not. carrier_solved(ic)) cycle
@@ -3562,7 +3996,7 @@
             Gco(j) = (carrier_mass_amu(ic)*mu - mbar(j))*gphys(j)   &
                      /(kb_erg*max(TK(j), 1.0d0))
          enddo
-         do j = 1, N-1
+         do j = 1, jlast
             dr_f = max(rp(j+1) - rp(j), 1.0d0)
             ntf  = 0.5d0*(ntot(j) + ntot(j+1))
             Df   = 0.5d0*(Dco(j,ic) + Dco(j+1,ic))
@@ -3736,13 +4170,33 @@
       ! Chemical production minus loss of the four carriers in cell j, at the
       ! trial densities nc(1..4) [cm^-3].  The rows are the SAME rows the
       ! local equilibrium solve uses (sec. 4); nothing is rewritten here.
-      subroutine carrier_source(j, nc, nH_free, nO_free, src)
+      subroutine carrier_source(j, nc, nH_free, nO_free, src,             &
+                                sprod, sloss, sphot, sh2chan)
       integer,  intent(in)  :: j
       real(dp), intent(in)  :: nc(n_carrier_max), nH_free, nO_free
       real(dp), intent(out) :: src(n_carrier_max)
+      ! THE TERMS OF EACH ROW, NOT THEIR NET.  src is production minus loss;
+      ! sprod and sloss are the two separately, both positive, and sphot is
+      ! the radiative part of the loss.  Where the chemistry is fast the two
+      ! cancel to many digits and |src| stands orders below either, so a row
+      ! that reads as one term is not a row with one term; the record of
+      ! EXHALE_CARRIER_ROW_TERMS exists to tell those apart.  Diagnostic
+      ! only: nothing in the solution reads them, and the row scale is
+      ! formed from src as it always was (carrier_residual).
+      real(dp), optional, intent(out) :: sprod(n_carrier_max)
+      real(dp), optional, intent(out) :: sloss(n_carrier_max)
+      real(dp), optional, intent(out) :: sphot(n_carrier_max)
+      ! THE H2 ROW CHANNEL BY CHANNEL, in the order of the n_h2chan_*
+      ! parameters of this module: the individual reactions the H2
+      ! production and loss are sums of, each a volumetric rate
+      ! [cm^-3 s^-1].  Diagnostic only, like sprod/sloss/sphot.
+      real(dp), optional, intent(out) :: sh2chan(n_h2chan)
       real(dp) :: fv(10)
+      real(dp) :: pHp, lHp, pH2, lH2, lH2ph
+      real(dp) :: pOH, lOH, pH2O, lH2O, pH2ox, lH2ox
       real(dp) :: n_hi, n_hii, n_h2p, n_h3p, n_hehp
       real(dp) :: n_hei, n_heii, n_heiii, n_heiTR, n_heiSI, n_e, n_o0
+      real(dp) :: h2chan(n_h2chan)
 
       ! THE PROTON IS EITHER FROZEN BACKGROUND OR THE TRIAL UNKNOWN.
       ! With the ionization state carried, n(H+) is what this Newton is
@@ -3805,7 +4259,8 @@
       call set_mol_coeffs(ieq_cell%T_K, ieq_cell%ntot)
       call set_oxygen_coeffs(ieq_cell%T_K, cph_jh2o(j,:), cph_joh(j,:))
 
-      fv = 0.0d0
+      fv     = 0.0d0
+      h2chan = 0.0d0
       call mol_heh_rows(fv, n_hi, n_hii, nc(ic_H2), n_h2p, n_h3p,        &
                         n_hehp, n_heiSI, n_heiTR, n_heii, n_heiii, n_e,  &
                         ieq_cell%ntot,                                   &
@@ -3818,12 +4273,18 @@
                         ieq_cell%a_ion_HI, ieq_cell%a_ion_HeI,           &
                         ieq_cell%a_ion_HeII, ieq_cell%a_ion_HeITR,       &
                         ieq_cell%q13, ieq_cell%q31a, ieq_cell%q31b,      &
-                        ieq_cell%Q31, ieq_cell%A31)
+                        ieq_cell%Q31, ieq_cell%A31,                      &
+                        p_Hp = pHp, l_Hp = lHp, p_H2 = pH2,              &
+                        l_H2 = lH2, l_H2_phot = lH2ph,               &
+                        h2_chan = h2chan)
       ! The photolysis channels set_oxygen_coeffs built for this cell: the
       ! transport operator evaluates the chemistry at the cell's own,
       ! unscaled radiation field.
       call oxygen_carrier_rows(fv, 9, n_hi, nc(ic_H2), nc(ic_OH),        &
-                               nc(ic_H2O), n_o0, oj3, oj4, oj5, oj7)
+                               nc(ic_H2O), n_o0, oj3, oj4, oj5, oj7,     &
+                               p_OH = pOH, l_OH = lOH, p_H2O = pH2O,     &
+                               l_H2O = lH2O, p_H2_oxy = pH2ox,           &
+                               l_H2_oxy = lH2ox)
 
       src(ic_H2)  = fv(4)
       src(ic_OH)  = fv(9)
@@ -3885,6 +4346,43 @@
       src(ic_Hp)  = 0.0d0
       if (ionization_transport) src(ic_Hp) = fv(1)
 
+      ! THE SAME ROWS AS SUMS OF MAGNITUDES.  Every term of a row is
+      ! sign-definite in the trial densities, so the sum of the magnitudes
+      ! of the individual terms is the production plus the loss; grouping
+      ! the like-signed terms therefore loses nothing.  CO has no formation
+      ! channel in the one-sided model above, so its two loss channels are
+      ! its whole scale.
+      if (present(sprod)) then
+         sprod        = 0.0d0
+         sprod(ic_H2) = pH2 + pH2ox
+         sprod(ic_OH) = pOH
+         sprod(ic_H2O)= pH2O
+         sprod(ic_CO) = 0.0d0
+         if (ionization_transport) sprod(ic_Hp) = pHp
+      endif
+      if (present(sloss)) then
+         sloss        = 0.0d0
+         sloss(ic_H2) = lH2 + lH2ox
+         sloss(ic_OH) = lOH
+         sloss(ic_H2O)= lH2O
+         sloss(ic_CO) = abs(src(ic_CO))
+         if (ionization_transport) sloss(ic_Hp) = lHp
+      endif
+      if (present(sh2chan)) then
+         sh2chan = 0.0d0
+         sh2chan(1:n_h2chan_mol) = h2chan(1:n_h2chan_mol)
+         sh2chan(n_h2chan_oxy_prod) = pH2ox
+         sh2chan(n_h2chan_oxy_loss) = lH2ox
+      endif
+      if (present(sphot)) then
+         sphot        = 0.0d0
+         sphot(ic_H2) = lH2ph
+         sphot(ic_OH) = oj7*nc(ic_OH)
+         sphot(ic_H2O)= (oj3 + oj4 + oj5)*nc(ic_H2O)
+         sphot(ic_CO) = cph_kco(j)*nc(ic_CO)
+         if (ionization_transport) sphot(ic_Hp) = 0.0d0
+      endif
+
       end subroutine carrier_source
 
       ! ------------------------------------------------------------- !
@@ -3927,7 +4425,8 @@
                                   rep, msum, Frho, advect, Agrd, Bdrf,   &
                                   updrf,                                 &
                                   nH_free, nO_free, nC_free, sigrate,    &
-                                  res, Jf, dJl, dJr, rnorm, rnorm_phys)
+                                  res, Jf, dJl, dJr, rnorm, rnorm_phys,   &
+                                  absent_out)
       ! advect: whether the row carries the material advective term.  The
       ! MARCHING rows do not, because the advection of a carrier is the
       ! divergence of the hydrodynamic face mass flux and is taken with the
@@ -3965,9 +4464,24 @@
       ! short substep, a state the acceptance refuses
       ! (declaration of row_terms_phys).
       real(dp),                       optional, intent(out) :: rnorm_phys
+      ! WHERE THE CARRIER IS ABSENT: the cells in which this carrier stands
+      ! below carrier_absent_fraction of the free reservoir of its own
+      ! element.  The row is still assembled and still measured there -- it
+      ! is the GATE that reads this, and only in the certification, which
+      ! reports such a row and does not let it decide a verdict.  Formed
+      ! here because this is the one place that holds the carrier density
+      ! and the reference density of its element together.
+      logical, dimension(1:N,n_carrier_max), optional, intent(out) ::     &
+                                                             absent_out
       ! Cell and species carrying the worst relative row imbalance, for the
       ! debug line: a Newton that stops short says WHERE it stopped.
       real(dp) :: nc(n_carrier_max), src(n_carrier_max)
+      ! The production and the loss of each row separately, and the
+      ! radiative part of the loss: the scale below is their sum and the
+      ! dump reports them one by one.
+      real(dp) :: srcp(n_carrier_max), srcl(n_carrier_max)
+      real(dp) :: srcph(n_carrier_max)
+      real(dp) :: srch2c(n_h2chan)
       real(dp) :: Kj, sL, sR, dsc, dph, rr, nfl
       real(dp) :: rnormp
       integer  :: j, ic
@@ -3979,16 +4493,64 @@
       ! face fluxes before the cell loop: the face reconstruction is an
       ! operation on the whole column and not on a cell.
       real(dp) :: adv(1:N,n_carrier_max), advmag(1:N,n_carrier_max)
+      ! The two advective face terms, filled only for the record.
+      real(dp) :: advfin(1:N,n_carrier_max), advfout(1:N,n_carrier_max)
 
-      adv    = 0.0d0
-      advmag = 0.0d0
+      call l22b_setup()
+      adv     = 0.0d0
+      advmag  = 0.0d0
+      advfin  = 0.0d0
+      advfout = 0.0d0
       if (advect) call carrier_advective_divergence(fc, msum, Frho,      &
-                                                    adv, advmag)
+                                                    adv, advmag,         &
+                                                    advin = advfin,      &
+                                                    advout = advfout)
+
+      ! The row dump of this assembly (EXHALE_CARRIER_ROW_TERMS=1, default
+      ! off).  The environment is read once for the run.
+      if (.not. rowdump_asked) then
+         rowdump_on    = carrier_row_terms_on()
+         rowdump_asked = .true.
+      endif
+      if (rowdump_on .and. .not. allocated(rowdump_res)) then
+         allocate(rowdump_dif(1:N,n_carrier_max),                        &
+                  rowdump_adv(1:N,n_carrier_max),                        &
+                  rowdump_prod(1:N,n_carrier_max),                       &
+                  rowdump_loss(1:N,n_carrier_max),                       &
+                  rowdump_phot(1:N,n_carrier_max),                       &
+                  rowdump_res(1:N,n_carrier_max),                        &
+                  rowdump_nc(1:N,n_carrier_max),                         &
+                  rowdump_floor(1:N,n_carrier_max),                      &
+                  rowdump_h2ch(1:N,n_h2chan),                            &
+                  rowdump_fdif_in(1:N,n_carrier_max),                    &
+                  rowdump_fdif_out(1:N,n_carrier_max),                   &
+                  rowdump_fadv_in(1:N,n_carrier_max),                    &
+                  rowdump_fadv_out(1:N,n_carrier_max),                   &
+                  rowdump_frho_in(1:N), rowdump_frho_out(1:N))
+      endif
+      if (rowdump_on) then
+         rowdump_dif  = 0.0d0
+         rowdump_adv  = 0.0d0
+         rowdump_prod = 0.0d0
+         rowdump_loss = 0.0d0
+         rowdump_phot = 0.0d0
+         rowdump_res  = 0.0d0
+         rowdump_nc   = 0.0d0
+         rowdump_floor= 0.0d0
+         rowdump_h2ch = 0.0d0
+         rowdump_fdif_in  = 0.0d0
+         rowdump_fdif_out = 0.0d0
+         rowdump_fadv_in  = 0.0d0
+         rowdump_fadv_out = 0.0d0
+         rowdump_frho_in  = 0.0d0
+         rowdump_frho_out = 0.0d0
+      endif
 
       res = 0.0d0
       Jf  = 0.0d0
       dJl = 0.0d0
       dJr = 0.0d0
+      if (present(absent_out)) absent_out = .false.
       do ic = 1, n_carrier
          if (.not. carrier_solved(ic)) cycle
          do j = 1, N-1
@@ -3997,6 +4559,9 @@
                                    Bdrf(j,ic), updrf(j,ic),              &
                                    Jf(j,ic), dJl(j,ic), dJr(j,ic))
          enddo
+         ! Jf(0) and Jf(N) stay at their initialized zero: the two end
+         ! faces of the column carry no diffusive, eddy or settling flux
+         ! (carrier_face_coefficients states why).
       enddo
 
       ! CELL-LOCAL, AND THE ONE THING THAT WAS NOT.  Every term of a carrier
@@ -4023,11 +4588,15 @@
       rnormp = 0.0d0
       rsc    = 0.0d0
       !$omp parallel do default(shared) schedule(static)                 &
-      !$omp   private(j,ic,nc,src,Kj,sL,sR,dsc,dph,rr,nfl)               &
+      !$omp   private(j,ic,nc,src,srcp,srcl,srcph,srch2c,Kj,sL,sR,dsc,   &
+      !$omp           dph,rr,nfl)                                       &
       !$omp   reduction(max:rnorm,rnormp)
       do j = 1, N
          nc = fc(j,:)*nrho(j)
-         call carrier_source(j, nc, nH_free(j), nO_free(j), src)
+         call carrier_source(j, nc, nH_free(j), nO_free(j), src,         &
+                             sprod = srcp, sloss = srcl, sphot = srcph,  &
+                             sh2chan = srch2c)
+         if (rowdump_on) rowdump_h2ch(j,:) = srch2c
          Kj = 1.0d0/(rp(j)**2*max(rep(j) - rep(j-1), 1.0d0))
          sL = rep(j-1)**2
          sR = rep(j)**2
@@ -4099,14 +4668,45 @@
             nfl = carrier_element_reference_density(ic, nH_free(j),      &
                                                     nO_free(j),         &
                                                     nC_free(j))
-            dsc = dsc + 1.0d-20*nfl*max(1.0d0/dt_phys(j), sigrate(j))
+            ! AND THE SAME NUMBER SAYS WHETHER THE SPECIES IS THERE AT ALL.
+            ! The floor above is a floor on the row's SCALE and answers "is
+            ! this row's imbalance resolvable"; it does not answer "is there
+            ! a species here".  A carrier at 1e-27 cm^-3 in a gas of 1e6
+            ! whose own production term is a real rate reads a relative
+            ! imbalance of exactly 1 with both terms 30 decades below
+            ! anything: the row is then a statement about round-off, and
+            ! what tells the two apart is the abundance, not the terms.
+            if (present(absent_out))                                     &
+               absent_out(j,ic) = (nc(ic) .lt. carrier_absent_fraction*nfl)
+            dsc = dsc + carrier_absent_fraction*nfl                      &
+                       *max(1.0d0/dt_phys(j), sigrate(j))
             ! THE PHYSICAL SCALE TAKES THE SIGNAL RATE ALONE.  The step form
             ! of the same floor grows without bound as the step shrinks, and
             ! a scale that grows like 1/dt is exactly what a statement about
             ! the returned state must not have; the cell's signal-crossing
             ! rate is the same floor written without a step (declaration of
             ! row_terms_phys).
-            dph = dph + 1.0d-20*nfl*sigrate(j)
+            dph = dph + carrier_absent_fraction*nfl*sigrate(j)
+            if (rowdump_on) then
+               rowdump_dif(j,ic)  = Kj*(sR*Jf(j,ic) - sL*Jf(j-1,ic))
+               rowdump_adv(j,ic)  = adv(j,ic)
+               ! The two faces separately, each already carrying its area
+               ! and the cell volume, so the two sum to the divergence
+               ! above and a reader can see WHICH face and which sign.
+               rowdump_fdif_in(j,ic)  = -Kj*sL*Jf(j-1,ic)
+               rowdump_fdif_out(j,ic) =  Kj*sR*Jf(j,ic)
+               rowdump_fadv_in(j,ic)  = advfin(j,ic)
+               rowdump_fadv_out(j,ic) = advfout(j,ic)
+               rowdump_frho_in(j)     = Frho(j-1)
+               rowdump_frho_out(j)    = Frho(j)
+               rowdump_prod(j,ic) = srcp(ic)
+               rowdump_loss(j,ic) = srcl(ic)
+               rowdump_phot(j,ic) = srcph(ic)
+               rowdump_res(j,ic)  = rr
+               rowdump_nc(j,ic)   = nc(ic)
+               rowdump_floor(j,ic)= carrier_absent_fraction*nfl          &
+                                   *sigrate(j)
+            endif
             res(j,ic)  = rr
             rsc(j,ic)  = dsc
             if (allocated(row_terms)) row_terms(j,ic) = dsc
@@ -4181,6 +4781,9 @@
       ! The two face coefficients of the advective term, frozen with the
       ! wind over this solve.
       real(dp), dimension(1:N) :: advj, advm
+      ! L22 step 2b: the banded derivative of the whole advective term,
+      ! formed only when EXHALE_L22B_JAC_RECON is set.
+      real(dp), dimension(1:N,n_carrier_max,-1:1) :: dadv
       real(dp) :: rnorm, rprev, rstart, rtry, damp
       ! The same residual on the scale the returned state is judged on.
       real(dp) :: rnormp, rtryp
@@ -4244,6 +4847,8 @@
          aa = 0.0d0
          bb = 0.0d0
          cc = 0.0d0
+         if (carrier_rows_advect .and. l22b_jac_recon)                    &
+            call l22b_advective_band_derivative(fc, msum, Frho, dadv)
          ! CELL-LOCAL ASSEMBLY.  Row j of the block-tridiagonal system is
          ! built from cell j's own geometry, its two stored face-flux
          ! derivatives and n_carrier + 1 evaluations of carrier_source at
@@ -4270,6 +4875,8 @@
                   bb(j,ic,ic) = bb(j,ic,ic) + Kj*sR*dJl(j,ic)
                   cc(j,ic,ic) = cc(j,ic,ic) + Kj*sR*dJr(j,ic)
                endif
+               ! j = N carries no diffusive entry: the outer face of the
+               ! column carries no such flux (carrier_face_coefficients).
                if (j .gt. 1) then
                   bb(j,ic,ic) = bb(j,ic,ic) - Kj*sL*dJr(j-1,ic)
                   aa(j,ic,ic) = aa(j,ic,ic) - Kj*sL*dJl(j-1,ic)
@@ -4283,8 +4890,16 @@
                !              - A_- F_rho(j-1) Y(don(j-1)) ] / dV_j
                !            x msum(j)/m_c ,   Y = m_c f_c/msum ,
                !
-               ! so d adv(j)/d f_c(k) is the same coefficient divided by the
-               ! mixture mass of the DONOR cell.  The limiter of
+               ! so d adv(j)/d f_c(k) is the face coefficient times
+               ! msum(j)/msum(don): **the carrier mass cancels**, between
+               ! the msum/m_c the row carries and the m_c/msum of Y.  It was
+               ! being divided by m_c here as well, which made every
+               ! advective entry a factor m_c too small -- 2 for H2.  The
+               ! expression is now the one
+               ! src/tests/carrier_boundary_jacobian/ measures against a
+               ! central difference of carrier_advective_divergence itself,
+               ! to 1e-8 on a state whose mass fraction is constant so that
+               ! the reconstruction contributes nothing.  The limiter of
                ! species_face_fraction and the second-order part of the
                ! reconstruction are left out of the Jacobian, as the deferred
                ! correction of the cell-velocity form was: they are the
@@ -4297,21 +4912,70 @@
                ! term, which is the fixed-wind relaxation; in the marching
                ! loop that transport is the mass row's and is not
                ! differentiated here.
-               if (carrier_rows_advect) then
-                  cadv = advj(j)*msum(j)/carrier_mass_amu(ic)
+               ! WHICH GHOSTS ARE DATA AND WHICH ARE COPIES, and the
+               ! boundary derivatives that follow.  A ghost the residual
+               ! IMPOSES is a constant of the row and contributes no
+               ! derivative; a ghost the residual COPIES from an interior
+               ! cell contributes the derivative of that cell.  The rule is
+               ! read off carrier_face_mass_fraction, which is what the
+               ! residual uses, so the two cannot disagree:
+               !
+               !   outer ghosts   fc(N+1:) = fc(N)          -- a COPY, always
+               !                  (set beside every trial, and by the
+               !                   returned-state fill), so where the outer
+               !                  face flows INWARD its donor is that copy
+               !                  and d adv(N)/d f_c(N) is not zero.  It was
+               !                  being dropped: the old test was
+               !                  "j .lt. N", which wrote the neighbour entry
+               !                  for every interior face and nothing at all
+               !                  at j = N.
+               !   inner ghosts   Y(1-Ng:0) = Y(1) unless the handoff states
+               !                  this carrier's partition -- a COPY in the
+               !                  first case and DATA in the second.  So an
+               !                  INFLOWING base face contributes
+               !                  d adv(1)/d f_c(1) exactly when the
+               !                  composition is NOT imposed.  It was being
+               !                  dropped in that case too.
+               !
+               ! Both entries land on the diagonal, which is where a copy of
+               ! the cell's own unknown belongs.  The limiter of
+               ! species_face_fraction and the second-order reconstruction
+               ! stay out of the Jacobian as before; these are the FIRST
+               ! ORDER donor-cell terms and nothing else.
+               if (carrier_rows_advect .and. l22b_jac_recon) then
+                  ! L22 step 2b, intervention (B): the advective entries are
+                  ! a central difference of the face-flux divergence itself,
+                  ! limiter and reconstruction included, restricted to the
+                  ! band a block-tridiagonal matrix can hold.  What falls
+                  ! outside the band is measured in l22b_recon_dropped.
+                  if (j .gt. 1) aa(j,ic,ic) = aa(j,ic,ic) + dadv(j,ic,-1)
+                  bb(j,ic,ic) = bb(j,ic,ic) + dadv(j,ic,0)
+                  if (j .lt. N) cc(j,ic,ic) = cc(j,ic,ic) + dadv(j,ic,1)
+               else if (carrier_rows_advect) then
+                  cadv = advj(j)*msum(j)
                   if (Frho(j) .ge. 0.0d0) then
                      bb(j,ic,ic) = bb(j,ic,ic) + cadv/msum(j)
                   else if (j .lt. N) then
                      cc(j,ic,ic) = cc(j,ic,ic) + cadv/msum(j+1)
+                  else
+                     ! j = N and the outer face flows inward: the donor is
+                     ! the outer ghost, which is a copy of cell N.
+                     bb(N,ic,ic) = bb(N,ic,ic) + cadv/msum(N+1)
                   endif
-                  cadv = advm(j)*msum(j)/carrier_mass_amu(ic)
+                  cadv = advm(j)*msum(j)
                   if (j .eq. 1) then
-                     ! The inner ghost is data, not an unknown: where the
-                     ! base face flows inward the term it carries is a
-                     ! constant of the row.  Where it flows outward the
-                     ! donor is cell 1 itself.
-                     if (Frho(0) .lt. 0.0d0)                             &
+                     if (Frho(0) .lt. 0.0d0) then
+                        ! The base face flows outward: the donor is cell 1.
                         bb(1,ic,ic) = bb(1,ic,ic) + cadv/msum(1)
+                     else if (.not. carrier_base_composition_imposed(ic)) &
+                        then
+                        ! It flows inward and nothing states the partition,
+                        ! so the ghost carries cell 1's own mass fraction.
+                        bb(1,ic,ic) = bb(1,ic,ic) + cadv/msum(1)
+                     endif
+                     ! (the remaining case -- inflow with the handoff
+                     !  imposing the partition -- is genuine data and has no
+                     !  derivative)
                   else if (Frho(j-1) .ge. 0.0d0) then
                      aa(j,ic,ic) = aa(j,ic,ic) + cadv/msum(j-1)
                   else
@@ -4345,6 +5009,17 @@
          enddo
          !$omp end parallel do
 
+         ! L22 step 2b: the action of the assembled matrix against a central
+         ! difference of the full residual, once per run, on the direction
+         ! the keys name.  It reassembles the residual into arrays of its
+         ! own, so res and the step below are the ones this iteration built.
+         if (l22b_jac_action .and. .not. l22b_jac_action_done) then
+            l22b_jac_action_done = .true.
+            call l22b_jacobian_action_report(fc, fc_old, nrho, wfac,      &
+                       dt_phys, rp, rep, msum, Frho, Agrd, Bdrf, updrf,   &
+                       nH_free, nO_free, nC_free, sigrate, aa, bb, cc)
+         endif
+
          rhs = -res
          call block_thomas(aa, bb, cc, rhs, dfc)
 
@@ -4358,18 +5033,19 @@
                do j = 1, N
                   ftry(j,ic) = max(fc(j,ic) + damp*dfc(j,ic), 0.0d0)
                enddo
-               ! Only the OUTER ghosts mirror the interior.  The lower
-               ! ghost is the inflow reservoir, not a copy of the base
-               ! cell: it carries the composition the handoff states, and
-               ! the advective term reconstructs the base face from it.
-               ! Writing the base cell into it made the base condition
-               ! degenerate into a zero-gradient one from the second
-               ! relaxation pass on -- the marching loop hid that because
-               ! its ionization sweep re-pins the ghost every step, and
-               ! relax_photochemical_composition, which takes many
-               ! transport steps between two sweeps, did not (sec. 158).
-               ftry(N+1:N+Ng,ic) = ftry(N,ic)
             enddo
+            ! Only the OUTER ghosts mirror the interior, by the stated
+            ! outflow continuation.  The lower ghost is the inflow
+            ! reservoir, not a copy of the base cell: it carries the
+            ! composition the handoff states, and the advective term
+            ! reconstructs the base face from it.  Writing the base cell
+            ! into it made the base condition degenerate into a
+            ! zero-gradient one from the second relaxation pass on -- the
+            ! marching loop hid that because its ionization sweep re-pins
+            ! the ghost every step, and relax_photochemical_composition,
+            ! which takes many transport steps between two sweeps, did not
+            ! (sec. 158).
+            call carrier_outflow_ghost(ftry)
             call carrier_residual(ftry, fc_old, nrho, wfac, dt_phys, rp, &
                                   rep, msum, Frho, carrier_rows_advect,  &
                                   Agrd, Bdrf, updrf, nH_free,            &
@@ -4617,10 +5293,7 @@
       ! budgets by 2% in a 400-step run while every interior cell closed at
       ! round-off.  The LOWER ghosts are not mirrored and not limited: this
       ! operator does not own them (see solve_carriers).
-      do ic = 1, n_carrier
-         if (.not. carrier_solved(ic)) cycle
-         fc(N+1:N+Ng,ic) = fc(N,ic)
-      enddo
+      call carrier_outflow_ghost(fc)
       do j = 1, N+Ng
          nc  = max(fc(j,:)*nrho(j), 0.0d0)
          hit = .false.
@@ -4806,10 +5479,599 @@
 
       ! ------------------------------------------------------------- !
 
+      ! THE H2 CONTENT EACH CELL'S OWN ROW WOULD SETTLE AT, at this state,
+      ! with transport left out: the density at which the row's chemical
+      ! production equals its chemical loss, both taken from carrier_source,
+      ! so this is the row's own chemistry and not a second statement of it
+      ! -- photodissociation, photoionization, the ion channels and the
+      ! thermal pair all included.
+      !
+      ! THE ROOT IS SOLVED FOR AND NOT DIVIDED OUT, and that is a physics
+      ! statement about this row, not a numerical preference.  The loss of
+      ! H2 is proportional to n(H2); its PRODUCTION is not independent of
+      ! n(H2), because the dominant formation channel is the three-body
+      ! association R15, k15 n(H I)^2, and carrier_source closes atomic
+      ! hydrogen out of the element budget as n(H I) = n_H,avail - 2 n(H2)
+      ! - ... .  The production therefore FALLS as n(H2) rises and vanishes
+      ! where every hydrogen nucleus is already bound, so the row is
+      ! quadratic in the unknown and P/(L/n) evaluated at the trial is not
+      ! its root.  Evaluated at a fully molecular trial -- which is exactly
+      ! what the thermochemical fit hands this routine in a cold base layer
+      ! -- P/(L/n) collapses with n(H I)^2 and returns a value decades
+      ! below the root.  MEASURED on LHS 1140 b (item L7f): at the base of
+      ! molecular_scalar_gj1132_kzz1e9/HeH2.13, P/(L/n) read x2 = 0.089 to
+      ! 0.14 where the row's own root is x2 = 0.9 or above, and the whole
+      ! "the handoff is 7 to 21 times the network's root" finding of item
+      ! L7e was that division and not a disagreement between the two
+      ! chemistries.
+      !
+      ! HOW.  g(n2) = production(n2) - loss(n2) is evaluated through
+      ! carrier_source itself, so the chemistry is stated once.  It is
+      ! strictly decreasing -- every production term is non-increasing in
+      ! n(H2) and every loss term is proportional to it -- and it changes
+      ! sign between n2 = 0 and the element ceiling, so a bisection on that
+      ! bracket converges to the one root.  The state is otherwise frozen:
+      ! the ion stages, the molecular ions and the temperature are the
+      ! sweep's, so this is the root of the carrier half of the
+      ! alternation and not of the fully coupled system.
+      !
+      ! It is evaluated at the state it is handed, so the molecular ions
+      ! that carry part of the production must already be in that state; an
+      ! atomic state, whose H2+ and HeH+ are zero, returns the
+      ! thermochemical association alone.
+      !
+      ! WHAT IT IS FOR: the molecular seed (item L7e).  The thermochemical
+      ! fit q_H2(p, T) is the balance of the three-body association against
+      ! the thermal dissociation and knows nothing of the radiation field or
+      ! of the ionized gas, so in an irradiated outer wind it asserts an
+      ! equilibrium that does not hold there; MEASURED on LHS 1140 b it put
+      ! 13 to 21 percent of the gas into H2 from 5.9 R_p out to 29 R_p, 80
+      ! to 360 times this root, with atomic H four decades BELOW the
+      ! molecule it is made from.  The seed takes the smaller of the two.
+      !
+      ! Zero is returned where the loss rate is zero, where the carrier is
+      ! not solved, and on every cell if no sweep has filled the background.
+      subroutine carrier_h2_chemical_root(rho, f_sp, n_root, row_imbalance)
+      real(dp), dimension(1-Ng:N+Ng),           intent(in)  :: rho
+      real(dp), dimension(1-Ng:N+Ng,n_species), intent(in)  :: f_sp
+      real(dp), dimension(1-Ng:N+Ng),           intent(out) :: n_root
+      ! HOW WELL THE RETURNED DENSITY BALANCES THE ROW, |P - L|/(P + L) at
+      ! it: zero says the number handed back IS the root of the chemistry
+      ! and not an estimate of it.  It is the one measurement that tells a
+      ! solved root from a divided one, so the seed report carries it.
+      real(dp), dimension(1-Ng:N+Ng), optional, intent(out) :: row_imbalance
+      real(dp), dimension(1-Ng:N+Ng,n_carrier_max) :: fc
+      real(dp), dimension(1-Ng:N+Ng) :: ntot, nrho, wfac, TK, mbar
+      real(dp), dimension(1-Ng:N+Ng) :: nH_free, nO_free, nC_free
+      real(dp) :: nc(n_carrier_max), src(n_carrier_max)
+      real(dp) :: sprod(n_carrier_max), sloss(n_carrier_max)
+      real(dp) :: nlo, nhi, nmid, glo, ghi, gmid, ncap
+      integer  :: j, it
+      ! Bisection budget.  The bracket closes on a RELATIVE width, because
+      ! a root far below the element ceiling -- the far wind, where x(H2)
+      ! reaches 1e-15 of the hydrogen -- is not resolved at all by an
+      ! absolute fraction of that ceiling.  Reaching 1e-12 of a root 1e-16
+      ! of the ceiling takes about 93 halvings, so the count below is well
+      ! clear of it and the loop always exits on the width.
+      integer, parameter :: n_bisect = 200
+      n_root = 0.0d0
+      if (present(row_imbalance)) row_imbalance = 0.0d0
+      if (.not. thereis_mol) return
+      if (.not. bg_ready)    return
+      call carrier_state(rho, f_sp, fc, ntot, nrho, wfac, TK, mbar,       &
+                         nH_free, nO_free, nC_free)
+      call carrier_photolysis(rho, TK, f_sp)
+      do j = 1, N
+         nc = fc(j,:)*nrho(j)
+         ! The element ceiling of this cell's H2: every hydrogen nucleus
+         ! the carriers may hold, less the nuclei the other carriers hold,
+         ! divided by the two nuclei an H2 molecule takes.  It is the same
+         ! budget carrier_source closes atomic hydrogen with, so the
+         ! production is exactly zero at the ceiling.
+         ncap = hydrogen_available_to_carriers(j, nH_free(j))             &
+                - nc(ic_OH) - 2.0d0*nc(ic_H2O)
+         ! With the ionization state carried the proton is a carrier too and
+         ! holds one nucleus each, subtracted by the caller rather than by
+         ! the budget above -- the same subtraction carrier_source makes.
+         if (ionization_transport) ncap = ncap - nc(ic_Hp)
+         ncap = 0.5d0*max(ncap, 0.0d0)
+         if (ncap .le. 0.0d0) cycle
+         nlo = 0.0d0
+         nhi = ncap
+         nc(ic_H2) = nlo
+         call carrier_source(j, nc, nH_free(j), nO_free(j), src,          &
+                             sprod = sprod, sloss = sloss)
+         glo = sprod(ic_H2) - sloss(ic_H2)
+         ! No production at all with every nucleus free: the row has no
+         ! root above zero and the cell carries no H2 chemically.
+         if (glo .le. 0.0d0) cycle
+         nc(ic_H2) = nhi
+         call carrier_source(j, nc, nH_free(j), nO_free(j), src,          &
+                             sprod = sprod, sloss = sloss)
+         ghi = sprod(ic_H2) - sloss(ic_H2)
+         ! The ceiling itself balances or still produces: the row wants
+         ! every nucleus it can have, which is the ceiling.
+         if (ghi .ge. 0.0d0) then
+            n_root(j) = ncap
+            if (present(row_imbalance))                                   &
+               row_imbalance(j) = abs(sprod(ic_H2) - sloss(ic_H2))        &
+                                 /max(sprod(ic_H2) + sloss(ic_H2),        &
+                                      1.0d-300)
+            cycle
+         endif
+         do it = 1, n_bisect
+            nmid = 0.5d0*(nlo + nhi)
+            nc(ic_H2) = nmid
+            call carrier_source(j, nc, nH_free(j), nO_free(j), src,       &
+                                sprod = sprod, sloss = sloss)
+            gmid = sprod(ic_H2) - sloss(ic_H2)
+            if (gmid .gt. 0.0d0) then
+               nlo = nmid
+               glo = gmid
+            else
+               nhi = nmid
+               ghi = gmid
+            endif
+            if (nhi - nlo .le. 1.0d-12*max(nhi, 1.0d-300)) exit
+         enddo
+         n_root(j) = 0.5d0*(nlo + nhi)
+         if (present(row_imbalance)) then
+            nc(ic_H2) = n_root(j)
+            call carrier_source(j, nc, nH_free(j), nO_free(j), src,       &
+                                sprod = sprod, sloss = sloss)
+            row_imbalance(j) = abs(sprod(ic_H2) - sloss(ic_H2))           &
+                              /max(sprod(ic_H2) + sloss(ic_H2), 1.0d-300)
+         endif
+      enddo
+      n_root(1-Ng:0)   = n_root(1)
+      n_root(N+1:N+Ng) = n_root(N)
+      if (present(row_imbalance)) then
+         row_imbalance(1-Ng:0)   = row_imbalance(1)
+         row_imbalance(N+1:N+Ng) = row_imbalance(N)
+      endif
+      end subroutine carrier_h2_chemical_root
+
+      ! ------------------------------------------------------------- !
+
+      ! WHAT THE FIXED WIND FEELS OF A TRIAL, cell by cell: the relative
+      ! change of the cell's PARTICLE COUNT, (n_tot + n_e), which at a fixed
+      ! conserved state is the same statement as the relative change of
+      ! 1/mu.  This is the quantity the movement bound is written on.
+      !
+      ! WHY THIS QUANTITY AND NOT THE CARRIER'S OWN FRACTION.  The bound
+      ! exists because the wind is held fixed while the carriers relax, so
+      ! one pass may move the composition only as far as the wind's response
+      ! to it stays linear.  What the wind responds to is the particle count
+      ! and the mean molecular mass of the cell -- they are what set the
+      ! pressure at the conserved thermal energy -- and not how much a
+      ! carrier changed relative to some other cell's abundance.  An H2 at
+      ! 1e-08 of the gas moves neither and is nothing the wind can feel; an
+      ! H2 at tens of percent moves both.  A bound on (n_tot + n_e) is
+      ! therefore loose exactly where the carrier is negligible and tight
+      ! exactly where it is not, with no threshold beyond `trust` itself.
+      !
+      ! WHAT THE OLD MEASURE DID, MEASURED (item L7e).  It compared the
+      ! largest ABSOLUTE change of any carrier column against the largest H2
+      ! mixing ratio of the entry state, one number for the whole grid.  On
+      ! LHS 1140 b that reference is the base value, so the allowance was an
+      ! absolute 1.9e-03 anywhere, and the bound was refused on every pass at
+      ! a cell of the base or the front and NEVER at the cells the
+      ! certification is about: cell 3 (r = 1.0006, change 7.4e-05 of an
+      ! entry 6.8e-03) on the seed whose base is the row's own root, cell 143
+      ! (r = 1.0543, change 5.97e-04 of an entry 4.73e-03) on the seed whose
+      ! base is the handoff's.  The wind cells that carry the refusing row
+      ! changed by 1.4e-08 a pass, four decades inside the allowance, and
+      ! were passengers on whatever trial length the saturating cell left.
+      ! EXHALE_CARRIER_BOUND_FRACTION=1 restores that measure.
+      subroutine carrier_particle_count_change(nsum_now, nsum_entry, jw, dw)
+      real(dp), dimension(1-Ng:N+Ng), intent(in)  :: nsum_now, nsum_entry
+      integer,  intent(out) :: jw
+      real(dp), intent(out) :: dw
+      real(dp) :: d
+      integer  :: j
+      dw = 0.0d0
+      jw = 0
+      do j = 1, N
+         if (nsum_entry(j) .le. 0.0d0) cycle
+         d = abs(nsum_now(j) - nsum_entry(j))/nsum_entry(j)
+         if (d .gt. dw) then
+            dw = d
+            jw = j
+         endif
+      enddo
+      end subroutine carrier_particle_count_change
+
+      ! ------------------------------------------------------------- !
+
+      ! EXHALE_CARRIER_BOUND_FRACTION=1 puts the movement bound back on the
+      ! carrier fraction against the column's largest H2 mixing ratio, the
+      ! measure used until item L7e.  Default off; the reasoning is at
+      ! carrier_particle_count_change.
+      logical function carrier_bound_on_fraction()
+      character(len=8) :: env
+      call get_environment_variable('EXHALE_CARRIER_BOUND_FRACTION', env)
+      carrier_bound_on_fraction = (trim(env) .eq. '1')
+      end function carrier_bound_on_fraction
+
+      ! ------------------------------------------------------------- !
+
+      ! READ THE DIAGNOSTIC INTERVAL MASK ONCE, AND SAY WHAT IT IS.
+      ! The declaration of l22_mask_mode carries what this mask measures and
+      ! what it does not certify.  Called at the head of every relaxation;
+      ! the file is read on the first call only, so the mask is frozen for
+      ! the whole comparison, which is the condition the experiment is read
+      ! under.  With EXHALE_L22_MASK unset the mask is off and every path
+      ! below is the unmasked one.
+      subroutine l22_interval_mask_setup()
+      character(len=512) :: fname
+      character(len=16)  :: mode
+      character(len=256) :: line
+      integer :: u_msk, ios, jc, j
+      if (l22_mask_ready) return
+      l22_mask_ready = .true.
+      l22_mask_mode  = l22_mask_off
+      call get_environment_variable('EXHALE_L22_MASK', fname)
+      if (len_trim(fname) .eq. 0) return
+      call get_environment_variable('EXHALE_L22_MASK_MODE', mode)
+      select case (trim(mode))
+      case ('veto');  l22_mask_mode = l22_mask_veto
+      case ('waive'); l22_mask_mode = l22_mask_waive
+      case default
+         write(*,'(A)') '    (L22 interval mask) EXHALE_L22_MASK_MODE'//  &
+              ' must be veto or waive; the mask is off'
+         return
+      end select
+      if (.not. allocated(l22_mask_omit)) allocate(l22_mask_omit(1:N))
+      l22_mask_omit = .false.
+      open(newunit = u_msk, file = trim(fname), status = 'old',           &
+           action = 'read', iostat = ios)
+      if (ios .ne. 0) then
+         write(*,'(A,A)') '    (L22 interval mask) cannot read ',         &
+              trim(fname)
+         l22_mask_mode = l22_mask_off
+         return
+      endif
+      do
+         read(u_msk,'(A)',iostat = ios) line
+         if (ios .ne. 0) exit
+         line = adjustl(line)
+         if (len_trim(line) .eq. 0) cycle
+         if (line(1:1) .eq. '#') cycle
+         read(line,*,iostat = ios) jc
+         if (ios .ne. 0) cycle
+         if (jc .ge. 1 .and. jc .le. N) l22_mask_omit(jc) = .true.
+      enddo
+      close(u_msk)
+      l22_mask_n_omit = 0
+      do j = 1, N
+         if (l22_mask_omit(j)) l22_mask_n_omit = l22_mask_n_omit + 1
+      enddo
+      l22_mask_n_select = N - l22_mask_n_omit
+      write(*,'(A)') '    (L22 interval mask) THIS RUN IS A DIAGNOSTIC'// &
+           ' EXPERIMENT: the trial interval of the carrier relaxation is'
+      write(*,'(A,A)') '      chosen on a subset of the column.  Mask '// &
+           'file ', trim(fname)
+      write(*,'(A,A,A,I0,A,I0,A)') '      mode ', trim(mode),             &
+           ', omitted from the interval selection ', l22_mask_n_omit,     &
+           ' cell(s), selection set ', l22_mask_n_select, ' cell(s)'
+      if (l22_mask_mode .eq. l22_mask_veto)                               &
+         write(*,'(A)') '      veto: the particle-count bound is still'// &
+              ' checked on the omitted cells, so the accepted interval'// &
+              ' is the unmasked one'
+      if (l22_mask_mode .eq. l22_mask_waive)                              &
+         write(*,'(A)') '      waive: the particle-count bound is NOT'//  &
+              ' checked on the omitted cells; positivity, element and'//  &
+              ' charge feasibility, finite thermodynamics and the'//      &
+              ' factor-two safety stop hold the trial'
+      write(*,'(A)') '      no cell is excluded from the certification'
+      end subroutine l22_interval_mask_setup
+
+      ! ------------------------------------------------------------- !
+
+      ! THE RELATIVE PARTICLE-COUNT CHANGE OF A TRIAL ON THE TWO SETS THE
+      ! DIAGNOSTIC MASK DEFINES: the selection set, which chooses the
+      ! interval, and the omitted set, which does not.  Same quantity as
+      ! carrier_particle_count_change, split by the mask.
+      subroutine l22_particle_count_change_by_set(nsum_now, nsum_entry,   &
+                                        jsel, dsel, jomit, domit)
+      real(dp), dimension(1-Ng:N+Ng), intent(in)  :: nsum_now, nsum_entry
+      integer,  intent(out) :: jsel, jomit
+      real(dp), intent(out) :: dsel, domit
+      real(dp) :: d
+      integer  :: j
+      jsel  = 0;  dsel  = 0.0d0
+      jomit = 0;  domit = 0.0d0
+      do j = 1, N
+         if (nsum_entry(j) .le. 0.0d0) cycle
+         d = abs(nsum_now(j) - nsum_entry(j))/nsum_entry(j)
+         if (l22_mask_omit(j)) then
+            if (d .gt. domit) then
+               domit = d;  jomit = j
+            endif
+         else
+            if (d .gt. dsel) then
+               dsel = d;  jsel = j
+            endif
+         endif
+      enddo
+      end subroutine l22_particle_count_change_by_set
+
+      ! ------------------------------------------------------------- !
+
+      ! The L22 step 2b keys, read once for the run.  With none of them set
+      ! every switch below stays at the value it is declared with and the
+      ! operator is unchanged; the declarations carry what each one states.
+      subroutine l22b_setup()
+      character(len=512) :: env
+      integer :: ios, lo, hi
+      if (l22b_ready) return
+      l22b_ready = .true.
+      call get_environment_variable('EXHALE_L22B_JAC_RECON', env)
+      l22b_jac_recon = (trim(env) .eq. '1')
+      call get_environment_variable('EXHALE_L22B_DISPLACEMENT', env)
+      l22b_displacement = (trim(env) .eq. '1')
+      call get_environment_variable('EXHALE_L22B_JAC_ACTION', env)
+      l22b_jac_file = trim(env)
+      l22b_jac_action = (len_trim(env) .gt. 0)
+      if (l22b_jac_action) then
+         l22b_jac_lo = 1
+         l22b_jac_hi = N
+         call get_environment_variable('EXHALE_L22B_JAC_CELLS', env)
+         if (len_trim(env) .gt. 0) then
+            read(env,*,iostat=ios) lo, hi
+            if (ios .eq. 0) then
+               l22b_jac_lo = max(1, min(N, lo))
+               l22b_jac_hi = max(l22b_jac_lo, min(N, hi))
+            endif
+         endif
+      endif
+      if (l22b_jac_recon .or. l22b_jac_action) then
+         write(*,'(A)') '    (L22b) THIS RUN IS A DIAGNOSTIC'//           &
+              ' EXPERIMENT: the carrier operator or its Jacobian is not'
+         write(*,'(A)') '      the one the tree integrates.'
+         if (l22b_jac_recon)                                              &
+            write(*,'(A)') '      advective Jacobian: a central'//        &
+                 ' difference of the full face-flux divergence,'//        &
+                 ' restricted to the tridiagonal band'
+         if (l22b_jac_action)                                             &
+            write(*,'(A,I0,A,I0,A,A)') '      Jacobian action probe on'// &
+                 ' cells ', l22b_jac_lo, ' to ', l22b_jac_hi, ' -> ',     &
+                 trim(l22b_jac_file)
+      endif
+      end subroutine l22b_setup
+
+      ! ------------------------------------------------------------- !
+
+      ! d adv(j,ic) / d f_c(k,ic) for k = j-1, j, j+1, by a central
+      ! difference of carrier_advective_divergence, which is the FULL
+      ! operator: the limited slopes of species_face_fraction and the
+      ! composition bound it imposes are inside it.  The advective term of
+      ! carrier ic reads only that carrier's own column, so one perturbed
+      ! column gives every carrier's entries at once.
+      !
+      ! The reconstruction stencil reaches cell j-2 as well, and a
+      ! block-tridiagonal matrix cannot hold that entry.  Its largest size
+      ! relative to the band of the same row is recorded in
+      ! l22b_recon_dropped, so the omission is measured and not assumed
+      ! small.  The outer ghosts follow cell N in every perturbed column,
+      ! which is the rule the residual uses.
+      subroutine l22b_advective_band_derivative(fc, msum, Frho, dadv)
+      real(dp), dimension(1-Ng:N+Ng,n_carrier_max), intent(in)  :: fc
+      real(dp), dimension(1-Ng:N+Ng),               intent(in)  :: msum
+      real(dp), dimension(1-Ng:N+Ng),               intent(in)  :: Frho
+      real(dp), dimension(1:N,n_carrier_max,-1:1),  intent(out) :: dadv
+      real(dp), dimension(1-Ng:N+Ng,n_carrier_max) :: fp, fm
+      real(dp), dimension(1:N,n_carrier_max) :: ap, am, dmag
+      ! The sum of the magnitudes of the entries of each row that fall
+      ! inside the tridiagonal band and outside it, so that what the band
+      ! cannot hold is measured against what it does hold.
+      real(dp), dimension(1:N,n_carrier_max) :: bandsum, outsum
+      real(dp), dimension(n_carrier_max) :: h, fref
+      real(dp) :: d
+      integer  :: j, k, ic, jd
+      dadv = 0.0d0
+      bandsum = 0.0d0
+      outsum  = 0.0d0
+      l22b_recon_dropped = 0.0d0
+      do ic = 1, n_carrier
+         fref(ic) = 0.0d0
+         if (.not. carrier_solved(ic)) cycle
+         fref(ic) = maxval(fc(1:N,ic))
+      enddo
+      do k = 1, N
+         fp = fc
+         fm = fc
+         do ic = 1, n_carrier
+            if (.not. carrier_solved(ic)) cycle
+            h(ic) = 1.0d-6*max(fc(k,ic), 1.0d-12*fref(ic))
+            if (h(ic) .le. 0.0d0) h(ic) = 1.0d-30
+            fp(k,ic) = fc(k,ic) + h(ic)
+            fm(k,ic) = max(fc(k,ic) - h(ic), 0.0d0)
+         enddo
+         call carrier_outflow_ghost(fp)
+         call carrier_outflow_ghost(fm)
+         call carrier_advective_divergence(fp, msum, Frho, ap, dmag)
+         call carrier_advective_divergence(fm, msum, Frho, am, dmag)
+         do ic = 1, n_carrier
+            if (.not. carrier_solved(ic)) cycle
+            do j = 1, N
+               d = (ap(j,ic) - am(j,ic))                                  &
+                  /max(fp(k,ic) - fm(k,ic), 1.0d-300)
+               jd = k - j
+               if (jd .ge. -1 .and. jd .le. 1) then
+                  dadv(j,ic,jd) = d
+                  bandsum(j,ic) = bandsum(j,ic) + abs(d)
+               else
+                  outsum(j,ic) = outsum(j,ic) + abs(d)
+               endif
+            enddo
+         enddo
+      enddo
+      do ic = 1, n_carrier
+         if (.not. carrier_solved(ic)) cycle
+         do j = 1, N
+            if (bandsum(j,ic) .gt. 0.0d0) l22b_recon_dropped =            &
+               max(l22b_recon_dropped, outsum(j,ic)/bandsum(j,ic))
+         enddo
+      enddo
+      end subroutine l22b_advective_band_derivative
+
+      ! ------------------------------------------------------------- !
+
+      ! THE ACTION OF THE ASSEMBLED JACOBIAN AGAINST THE ACTION OF THE
+      ! OPERATOR, row by row, on a direction concentrated on the cells the
+      ! keys name.  The direction is each cell's own carrier fraction there
+      ! and zero elsewhere, and the outer ghosts follow cell N, which is
+      ! how the line search fills them, so the two actions are taken on one
+      ! rule.  Nothing here changes the solve: the report writes a file and
+      ! returns.  The row scales row_terms are left describing the probe's
+      ! own evaluation rather than the iterate's, which is one reason the
+      ! key is a diagnostic one.
+      subroutine l22b_jacobian_action_report(fc, fc_old, nrho, wfac,      &
+                 dt_phys, rp, rep, msum, Frho, Agrd, Bdrf, updrf,         &
+                 nH_free, nO_free, nC_free, sigrate, aa, bb, cc)
+      real(dp), dimension(1-Ng:N+Ng,n_carrier_max), intent(in) :: fc, fc_old
+      real(dp), dimension(1-Ng:N+Ng), intent(in) :: nrho, wfac, dt_phys
+      real(dp), dimension(1-Ng:N+Ng), intent(in) :: rp, rep, msum, Frho
+      real(dp), dimension(0:N,n_carrier_max), intent(in) :: Agrd, Bdrf
+      integer,  dimension(0:N,n_carrier_max), intent(in) :: updrf
+      real(dp), dimension(1-Ng:N+Ng), intent(in) :: nH_free, nO_free
+      real(dp), dimension(1-Ng:N+Ng), intent(in) :: nC_free, sigrate
+      real(dp), dimension(1:N,n_carrier_max,n_carrier_max), intent(in) :: &
+                                                             aa, bb, cc
+      real(dp), dimension(1-Ng:N+Ng,n_carrier_max) :: vdir, fp, fm
+      real(dp), dimension(1:N,n_carrier_max) :: resp, resm, Jv, Fd
+      real(dp), dimension(0:N,n_carrier_max)  :: Jfl, dJll, dJrl
+      real(dp) :: rl, rlp, hstep, num, den, relerr, worst
+      integer  :: j, ic, kc, u, jworst, icworst
+      vdir = 0.0d0
+      do ic = 1, n_carrier
+         if (.not. carrier_solved(ic)) cycle
+         do j = l22b_jac_lo, l22b_jac_hi
+            vdir(j,ic) = fc(j,ic)
+         enddo
+         vdir(N+1:N+Ng,ic) = vdir(N,ic)
+      enddo
+      hstep = 1.0d-6
+      fp = fc
+      fm = fc
+      do ic = 1, n_carrier
+         if (.not. carrier_solved(ic)) cycle
+         do j = 1, N
+            fp(j,ic) = fc(j,ic) + hstep*vdir(j,ic)
+            fm(j,ic) = fc(j,ic) - hstep*vdir(j,ic)
+         enddo
+      enddo
+      call carrier_outflow_ghost(fp)
+      call carrier_outflow_ghost(fm)
+      call carrier_residual(fp, fc_old, nrho, wfac, dt_phys, rp, rep,     &
+                            msum, Frho, carrier_rows_advect, Agrd, Bdrf,  &
+                            updrf, nH_free, nO_free, nC_free, sigrate,    &
+                            resp, Jfl, dJll, dJrl, rl, rlp)
+      call carrier_residual(fm, fc_old, nrho, wfac, dt_phys, rp, rep,     &
+                            msum, Frho, carrier_rows_advect, Agrd, Bdrf,  &
+                            updrf, nH_free, nO_free, nC_free, sigrate,    &
+                            resm, Jfl, dJll, dJrl, rl, rlp)
+      Fd = (resp - resm)/(2.0d0*hstep)
+      Jv = 0.0d0
+      do j = 1, N
+         do ic = 1, n_carrier
+            if (.not. carrier_solved(ic)) cycle
+            do kc = 1, n_carrier
+               if (.not. carrier_solved(kc)) cycle
+               ! The ghost's own derivative is already on the diagonal of
+               ! row N, so the superdiagonal is read only for j < N.
+               if (j .gt. 1) Jv(j,ic) = Jv(j,ic)                          &
+                                      + aa(j,ic,kc)*vdir(j-1,kc)
+               Jv(j,ic) = Jv(j,ic) + bb(j,ic,kc)*vdir(j,kc)
+               if (j .lt. N) Jv(j,ic) = Jv(j,ic)                          &
+                                      + cc(j,ic,kc)*vdir(j+1,kc)
+            enddo
+         enddo
+      enddo
+      worst = 0.0d0;  jworst = 0;  icworst = 1
+      open(newunit=u, file=trim(l22b_jac_file), status='replace',         &
+           action='write')
+      write(u,'(A)') '# L22 step 2b: the assembled Jacobian action'//     &
+                     ' against a central difference of the full residual'
+      write(u,'(A,I0,A,I0,A,ES12.5)') '# direction: the carrier'//        &
+           ' fraction of cells ', l22b_jac_lo, ' to ', l22b_jac_hi,       &
+           ', step ', hstep
+      write(u,'(A,I0)') '# advective Jacobian with the reconstruction'//  &
+           ' terms: ', merge(1, 0, l22b_jac_recon)
+      write(u,'(A)') '# columns: cell carrier J_action fd_action'//       &
+                     ' abs_diff rel_error'
+      do j = 1, N
+         do ic = 1, n_carrier
+            if (.not. carrier_solved(ic)) cycle
+            num = abs(Jv(j,ic) - Fd(j,ic))
+            den = max(abs(Fd(j,ic)), abs(Jv(j,ic)))
+            relerr = 0.0d0
+            if (den .gt. 0.0d0) relerr = num/den
+            write(u,'(I6,1X,A8,4(1X,ES14.7))') j,                         &
+                 trim(carrier_name(ic)), Jv(j,ic), Fd(j,ic), num, relerr
+            if (den .gt. 0.0d0 .and. relerr .gt. worst) then
+               worst = relerr;  jworst = j;  icworst = ic
+            endif
+         enddo
+      enddo
+      close(u)
+      write(*,'(A,ES10.3,A,I0,A,A)') '    (L22b) Jacobian action:'//      &
+           ' worst relative error ', worst, ' at cell ', jworst,          &
+           ' carrier ', trim(carrier_name(icworst))
+      if (l22b_jac_recon) write(*,'(A,ES10.3)') '    (L22b) largest'//    &
+           ' advective entry outside the tridiagonal band, relative to'// &
+           ' the band of its row: ', l22b_recon_dropped
+      end subroutine l22b_jacobian_action_report
+
+      ! ------------------------------------------------------------- !
+
+      ! THE LARGEST COMPOSITION CHANGE OF A TRIAL AND WHERE IT STANDS.
+      ! The movement bound itself is unchanged and is the absolute one: a
+      ! trial is refused when this change, divided by the largest H2 mixing
+      ! ratio of the entry state, exceeds trust.  What the wind responds to
+      ! is the ABSOLUTE composition change -- it is what moves the mean
+      ! molecular mass, the particle count and the equation of state -- and
+      ! an absolute bound is therefore already vacuous for a cell whose
+      ! carrier is decades below the column maximum: such a cell is not what
+      ! the bound holds.  (Item L7e tried admitting every cell an e-fold of
+      ! its own value on top of it and MEASURED the result: the extra clause
+      ! is looser exactly where x_j is LARGE, so it freed the base and the
+      ! front, which is the opposite of what a bound on the wind's linear
+      ! response is for, and it made trust inert over three decades on the
+      ! carrier_retry column.  It was removed.)
+      !
+      ! WHAT IS RETURNED BESIDE IT: the cell and the carrier that attain the
+      ! change, so that a pass refused on the bound can say which cell
+      ! refused it instead of only that one did.
+      subroutine carrier_worst_composition_change(fa, fb, jw, icw, dmax)
+      real(dp), dimension(1-Ng:N+Ng,n_carrier_max), intent(in) :: fa, fb
+      integer,  intent(out) :: jw, icw
+      real(dp), intent(out) :: dmax
+      real(dp) :: d
+      integer  :: j, ic
+      dmax = 0.0d0
+      jw   = 0
+      icw  = 1
+      do ic = 1, n_carrier
+         if (.not. carrier_solved(ic)) cycle
+         do j = 1, N
+            d = abs(fa(j,ic) - fb(j,ic))
+            if (d .gt. dmax) then
+               dmax = d
+               jw   = j
+               icw  = ic
+            endif
+         enddo
+      enddo
+      end subroutine carrier_worst_composition_change
+
+      ! ------------------------------------------------------------- !
+
       ! The largest change of a solved carrier column between two carrier
-      ! states, over the physical cells.  ONE number for the whole grid, so
-      ! that a bound written on it is a statement about the state and not
-      ! about the cell that happens to hold the least of the gas.
+      ! states, over the physical cells.  ONE number for the whole grid: the
+      ! drift a pass reports and the test that the carriers have stopped
+      ! moving, neither of which is the movement bound above.
       real(dp) function carrier_composition_displacement(fa, fb)
       real(dp), dimension(1-Ng:N+Ng,n_carrier_max), intent(in) :: fa, fb
       real(dp) :: d
@@ -4843,10 +6105,29 @@
          txt = 'nothing to advance: no carrier, or no frozen background'
       case (carrier_relax_chemistry_refused)
          txt = 'the chemistry of the shortest admissible trial did not close'
+      case (carrier_relax_mask_safety_stop)
+         txt = 'the diagnostic interval mask hit its safety stop'
       case default
          txt = 'undefined'
       end select
       end function carrier_relax_outcome_text
+
+      ! ------------------------------------------------------------- !
+
+      ! Why one trial of the relaxation was undone, in words, for the
+      ! trial-by-trial log of a pass (EXHALE_CARRIER_DEBUG=1).  The codes
+      ! are the local refused_* parameters of
+      ! relax_photochemical_composition.
+      function carrier_trial_refusal_text(refusal) result(txt)
+      integer, intent(in) :: refusal
+      character(len=40) :: txt
+      select case (refusal)
+      case (1);    txt = 'the interval was not covered'
+      case (2);    txt = 'the movement bound'
+      case (3);    txt = 'the chemistry did not close'
+      case default; txt = 'unrecognized'
+      end select
+      end function carrier_trial_refusal_text
 
       ! ------------------------------------------------------------- !
 
@@ -4920,16 +6201,16 @@
       ! the temperature stops moving. The closure is reported as reached,
       ! ok = .true., ONLY when all of the following hold on the last cycle:
       ! the relative temperature increment is below chem_cycle_tol; the
-      ! sweep's ledger reports no nonfinite cell and no cell left off the
-      ! element simplex (n_offsimplex counts the molecular clamps and the
-      ! atomic handback failures of the sweep, the sweep's own statement
-      ! that a cell did not close); and p, T, heat, cool and eta are finite
-      ! on the physical cells with p > 0 and T > 0. Anything else -- the
-      ! cycle budget spent, a nonfinite composition, an off-simplex cell, a
-      ! state that is not admissible -- is ok = .false. with the reason
-      ! named, and the caller restores the trial. Until 2026-09-13 ok
-      ! started true and the exhausted loop fell through with it, and the
-      ! off-simplex count was not read (findings B3 and B4 of the review of
+      ! sweep's ledger reports no nonfinite cell; the composition is a set
+      ! of numbers; and p, T, heat, cool and eta are finite on the physical
+      ! cells with p > 0 and T > 0. Anything else -- the cycle budget spent,
+      ! a nonfinite composition, a state that is not admissible -- is
+      ! ok = .false. with the reason named, and the caller restores the
+      ! trial. EVERY ONE OF THOSE IS A STATEMENT ABOUT THE STATE HANDED
+      ! BACK, which is what the closure is asked about; the count of cells
+      ! whose ROOT SEARCH left the element simplex is reported and decides
+      ! nothing (item L7e, the body). Until 2026-09-13 ok started true and
+      ! the exhausted loop fell through with it (finding B3 of the review of
       ! 2026-09-12): an algebraically consistent (p, T) beside a chemistry
       ! evaluated at an earlier temperature was handed back as closed.
       real(dp), dimension(3,1-Ng:N+Ng),         intent(in)    :: u
@@ -4945,7 +6226,7 @@
       real(dp), dimension(1-Ng:N+Ng) :: ntot, ne, T_prev
       type(ioniz_eq_ledger) :: ledger
       real(dp) :: dT
-      integer  :: k, why, cap
+      integer  :: k, why, cap, j_dT
 
       ok       = .false.
       n_cycles = 0
@@ -4968,15 +6249,52 @@
              .not. all(abs(f_sp(1:N,:)) .le. huge(1.0d0))) then
             why = chem_closure_nonfinite;  exit
          endif
-         if (ledger%n_offsimplex .gt. 0) then
-            why = chem_closure_off_simplex;  exit
-         endif
+         ! n_offsimplex IS A PROPERTY OF THE ROOT SEARCH AND NOT OF THE
+         ! STATE HANDED BACK, so it is reported and does not refuse the
+         ! closure.  It counts the cells at which no starting point stayed
+         ! inside the element simplex, and BOTH branches that raise it end
+         ! in an admissible composition: the molecular branch projects the
+         ! closest root onto the element budget and rechecks its reaction
+         ! residual, the atomic branch hands back the uncoupled ionization
+         ! balance, "admissible by construction", and rechecks the same
+         ! residual (ionization_equilibrium.f90, the two clamp sites).  A
+         ! cell whose root sits ON A FACE of the simplex raises it by
+         ! construction, and a fully dissociated H2 in a 6000 K wind cell
+         ! is exactly such a root -- so reading the count as a closure
+         ! failure refuses the carrier operator in the regime it exists
+         ! for.  MEASURED on LHS 1140 b
+         ! molecular_scalar_gj1132_kzz1e9/HeH2.13 (item L7e): 12 cells, all
+         ! of them molecular clamps, worst element-budget excursion
+         ! 6.5e-04, refused every trial of relax_photochemical_composition
+         ! down to the shortest admissible one on every outer pass, so the
+         ! H2 carrier never took a single transport step and the state the
+         ! route certified was its seed.
+         !
+         ! WHAT STILL REFUSES: a cell whose accepted state broke a balance
+         ! row out of the reals (n_nonfinite, above), a composition that is
+         ! not a number, a thermal state that is not a gas (below), and a
+         ! temperature that has not stopped moving.  Those are statements
+         ! about the state this routine hands back, which is what the
+         ! closure is asked about.
          call pressure_and_temperature_at_fixed_conserved_state(u, f_sp,  &
                                                              p, T, ntot, ne)
          if (.not. thermal_state_admissible(p, T, heat, cool, eta)) then
             why = chem_closure_not_admissible;  exit
          endif
          dT = maxval(abs(T(1:N) - T_prev(1:N))/max(T(1:N), 1.0d-300))
+         ! The increment of every cycle, so that a closure that spends its
+         ! budget can be read as contracting or as stalled: one number per
+         ! cycle says which, and the exhausted verdict alone does not
+         ! (EXHALE_CARRIER_DEBUG=1, default off).
+         if (carrier_debug_on()) then
+            j_dT = maxloc(abs(T(1:N) - T_prev(1:N))/max(T(1:N), 1.0d-300),&
+                          dim = 1)
+            write(*,'(A,I0,A,ES11.4,A,I0,A,ES10.3,A,I0,A,I0)')            &
+                 '    (chemistry closure) cycle ', k, ': max |dT|/T ', dT, &
+                 ' at cell ', j_dT, ', r ', r(j_dT),                       &
+                 ', cells off the element simplex ', ledger%n_offsimplex,  &
+                 ', nonfinite ', ledger%n_nonfinite
+         endif
          if (dT .lt. chem_cycle_tol) then
             ok = .true.;  why = chem_closure_converged;  exit
          endif
@@ -5017,7 +6335,6 @@
       case (chem_closure_converged);      txt = 'converged'
       case (chem_closure_exhausted);      txt = 'cycle budget spent'
       case (chem_closure_nonfinite);      txt = 'nonfinite composition'
-      case (chem_closure_off_simplex);    txt = 'a cell left the element simplex'
       case (chem_closure_not_admissible); txt = 'p, T, heat, cool or eta not admissible'
       case default;                       txt = 'unrecognized reason'
       end select
@@ -5074,17 +6391,42 @@
       integer, intent(out), optional :: outcome
 
       real(dp), dimension(1-Ng:N+Ng) :: rho, dt_code, ntot_e, ne_e
+      ! The particle count (n_tot + n_e) of the pass entry and of a trial,
+      ! which is what the movement bound is written on
+      ! (carrier_particle_count_change).
+      real(dp), dimension(1-Ng:N+Ng) :: nsum0, nsum1
+      real(dp), dimension(1-Ng:N+Ng) :: p_try, T_try, ntot_t, ne_t
+      logical  :: bound_on_fraction
       real(dp), dimension(1-Ng:N+Ng,n_carrier_max) :: fprev, fnow, fentry
       real(dp), dimension(1-Ng:N+Ng,n_carrier_max) :: Dco
       real(dp), dimension(1-Ng:N+Ng,n_species) :: f_held
       real(dp), dimension(1-Ng:N+Ng) :: ntot, TK, mbar, nrho, wfac
       real(dp), dimension(1-Ng:N+Ng) :: nH_free, nO_free, nC_free
+      real(dp), dimension(1-Ng:N+Ng) :: p_entry, T_entry, mbar_entry
+      real(dp), dimension(1-Ng:N+Ng) :: nsum_end, ntot_x, ne_x
+      real(dp) :: dp_max, dT_max, dmb_max, dns_max
+      integer  :: jp_max, jT_max, jmb_max, jns_max
+      real(dp) :: drel
       real(dp), dimension(1-Ng:N+Ng) :: p_held, T_held, heat_held
       real(dp), dimension(1-Ng:N+Ng) :: cool_held, eta_held
       type(ion_rates), dimension(:), allocatable :: bg_held
       real(dp) :: drj, tdiff, tadv, grow, tscale, dmax, x_ref
+      ! The cell that stands furthest outside the movement bound, and by
+      ! how much, when a trial is refused on it.
+      integer  :: jbnd, icbnd
+      real(dp) :: dbnd
+      ! HOW FAR THE PASS GOT, AND IN WHAT TIME (EXHALE_CARRIER_DEBUG=1).
+      ! The physical interval the kept steps of this pass cover, cell by
+      ! cell, so that the advance of a wind cell can be read against its own
+      ! chemical time instead of against a step count.
+      real(dp), dimension(1-Ng:N+Ng) :: dt_kept
+      integer  :: jp, kp, jprobe(3)
+      real(dp), parameter :: r_probe(3) = [1.20d0, 1.36d0, 1.60d0]
       integer  :: j, k, ic, ending, step_status, refusal, n_cycles
       logical  :: refused, chem_ok
+      ! The diagnostic interval mask's safety stop (default unreachable:
+      ! only a waived omitted set can set it).
+      logical  :: l22_safety_tripped
       type(element_census_state) :: cen_relax
       ! Why the last trial was undone; the ending names it when the
       ! shortest admissible trial is refused for that reason.
@@ -5104,6 +6446,8 @@
       endif
       call element_census_take('relax_photochemical_composition',         &
                                rho, f_sp, cen_relax)
+      call l22_interval_mask_setup()
+      l22_safety_tripped = .false.
       tscale = R0/v0
       call carrier_state(rho, f_sp, fprev, ntot, nrho, wfac, TK,        &
                          mbar, nH_free, nO_free, nC_free)
@@ -5123,9 +6467,33 @@
       ! back when no step is kept.
       call pressure_and_temperature_at_fixed_conserved_state(u, f_sp,     &
                                                           p, T, ntot_e, ne_e)
-      grow   = 1.0d0
-      ending = carrier_relax_step_budget
-      fnow   = fentry
+      ! The entry particle count, the quantity the movement bound compares a
+      ! trial against, and which measure this run uses.
+      nsum0             = ntot_e + ne_e
+      ! L22 step 2b (C): the primitive state the wind reads at the entry
+      ! composition, kept so that what the pass hands back can be reported
+      ! against it.  mbar = rho n0 mu / n_tot is the mean mass per particle,
+      ! the quantity of the composition the momentum and energy rows see.
+      p_entry    = p
+      T_entry    = T
+      mbar_entry = mbar
+      bound_on_fraction = carrier_bound_on_fraction()
+      ! An empty selection set is not a comparison: no cell is left to
+      ! choose the interval, so the experiment has no reading and the
+      ! relaxation says so instead of advancing on an undefined multiplier.
+      if (l22_mask_mode .ne. l22_mask_off .and. l22_mask_n_select .eq. 0) &
+      then
+         write(*,'(A)') '    (L22 interval mask) the selection set is'//  &
+              ' empty: no cell is left to choose the interval'
+         if (present(outcome)) outcome = carrier_relax_mask_safety_stop
+         call element_census_verify(cen_relax, rho, f_sp,                 &
+                                    rho_is_fixed = .true.)
+         return
+      endif
+      grow    = 1.0d0
+      ending  = carrier_relax_step_budget
+      fnow    = fentry
+      dt_kept = 0.0d0
       allocate(bg_held(lbound(bg_cell,1):ubound(bg_cell,1)))
       carrier_rows_advect = .true.
       do k = 1, relax_maxstep
@@ -5135,6 +6503,12 @@
          heat_held = heat;  cool_held = cool;  eta_held = eta
          refused   = .false.
          refusal   = 0
+         ! The bound measure of THIS trial: zero until the bound block runs,
+         ! so a trial refused before it reports no bound measure.
+         dbnd      = 0.0d0
+         jbnd      = 0
+         l22_last_d_select = 0.0d0;  l22_last_j_select = 0
+         l22_last_d_omit   = 0.0d0;  l22_last_j_omit   = 0
          call photochemical_transport_step(rho, v, f_sp, dt_code*grow,    &
                                            step_status, trial = .true.)
          if (step_status .ne. carrier_interval_covered) then
@@ -5153,9 +6527,62 @@
          if (.not. refused) then
             call carrier_state(rho, f_sp, fnow, ntot, nrho, wfac,        &
                                TK, mbar, nH_free, nO_free, nC_free)
-            if (carrier_composition_displacement(fnow, fentry)/x_ref      &
-                .gt. trust) then
+            ! THE MOVEMENT BOUND, on the particle count of each cell --
+            ! what the fixed wind responds to -- unless the run asks for the
+            ! retired carrier-fraction measure
+            ! (carrier_particle_count_change states both and why).
+            if (bound_on_fraction) then
+               call carrier_worst_composition_change(fnow, fentry, jbnd,  &
+                                                     icbnd, dbnd)
+               dbnd = dbnd/x_ref
+            else
+               call pressure_and_temperature_at_fixed_conserved_state(u,  &
+                          f_sp, p_try, T_try, ntot_t, ne_t)
+               nsum1 = ntot_t + ne_t
+               if (l22_mask_mode .eq. l22_mask_off) then
+                  call carrier_particle_count_change(nsum1, nsum0, jbnd,  &
+                                                     dbnd)
+               else
+                  ! The diagnostic interval mask: the selection set chooses
+                  ! the interval, the omitted set only vetoes it in veto
+                  ! mode.  Both measures are kept for the log.
+                  call l22_particle_count_change_by_set(nsum1, nsum0,     &
+                       l22_last_j_select, l22_last_d_select,             &
+                       l22_last_j_omit,   l22_last_d_omit)
+                  if (l22_mask_mode .eq. l22_mask_veto .and.             &
+                      l22_last_d_omit .gt. l22_last_d_select) then
+                     jbnd = l22_last_j_omit;    dbnd = l22_last_d_omit
+                  else
+                     jbnd = l22_last_j_select;  dbnd = l22_last_d_select
+                  endif
+                  ! The safety stop of the waived set: a factor two in the
+                  ! particle count of one cell in one trial is outside any
+                  ! regime this experiment can be read in.
+                  if (l22_mask_mode .eq. l22_mask_waive .and.            &
+                      l22_last_d_omit .gt. 1.0d0) l22_safety_tripped =   &
+                      .true.
+               endif
+               icbnd = ic_H2
+            endif
+            if (l22_safety_tripped) then
                refused = .true.;  refusal = refused_bound
+               write(*,'(A,I0,A,ES10.3)') '    (L22 interval mask)'//     &
+                    ' SAFETY STOP: omitted cell ', l22_last_j_omit,       &
+                    ' moved its particle count by a relative ',           &
+                    l22_last_d_omit
+            else if (dbnd .gt. trust) then
+               refused = .true.;  refusal = refused_bound
+               bound_last_j        = jbnd
+               bound_last_ic       = icbnd
+               bound_last_dabs     = dbnd
+               bound_last_fraction = bound_on_fraction
+               if (jbnd .ge. 1) then
+                  if (bound_on_fraction) then
+                     bound_last_entry = fentry(jbnd,icbnd)
+                  else
+                     bound_last_entry = nsum0(jbnd)
+                  endif
+               endif
             endif
          endif
          if (refused) then
@@ -5166,6 +6593,26 @@
             p = p_held;  T = T_held
             heat = heat_held;  cool = cool_held;  eta = eta_held
             fnow = fprev
+            ! EVERY REJECTED TRIAL, WITH ITS REASON AND THE CELL THAT
+            ! CARRIED IT (EXHALE_CARRIER_DEBUG=1, default off): the mask
+            ! experiment is read off the sequence of trials of one pass, not
+            ! off the last one alone.
+            if (carrier_debug_on()) then
+               write(*,'(A,I0,A,ES10.3,A,A,A,ES10.3,A,I0)')               &
+                    '      trial ', k, ': grow ', grow, ', REFUSED on ',  &
+                    trim(carrier_trial_refusal_text(refusal)),            &
+                    ', measure ', dbnd, ' at cell ', jbnd
+               if (l22_mask_mode .ne. l22_mask_off)                       &
+                  write(*,'(A,ES10.3,A,I0,A,ES10.3,A,I0)')                &
+                       '        selection set ', l22_last_d_select,       &
+                       ' at cell ', l22_last_j_select,                    &
+                       ', omitted set ', l22_last_d_omit, ' at cell ',    &
+                       l22_last_j_omit
+            endif
+            if (l22_safety_tripped) then
+               ending = carrier_relax_mask_safety_stop
+               exit
+            endif
             if (grow .le. relax_grow_min) then
                select case (refusal)
                case (refused_interval)
@@ -5180,7 +6627,25 @@
             grow = max(0.5d0*grow, relax_grow_min)
             cycle
          endif
-         nstep = nstep + 1
+         nstep   = nstep + 1
+         dt_kept = dt_kept + dt_code*grow
+         ! EVERY ACCEPTED TRIAL (EXHALE_CARRIER_DEBUG=1, default off): the
+         ! multiplier it was accepted at, the bound measure it stood at, and
+         ! the physical interval the shortest cell of the column then
+         ! covered.
+         if (carrier_debug_on()) then
+            write(*,'(A,I0,A,ES10.3,A,ES10.3,A,I0,A,ES10.3,A)')           &
+                 '      trial ', k, ': grow ', grow, ' ACCEPTED, '//      &
+                 'measure ', dbnd, ' at cell ', jbnd,                     &
+                 ', shortest cell interval ',                             &
+                 minval(dt_code(1:N))*grow*tscale, ' s'
+            if (l22_mask_mode .ne. l22_mask_off)                          &
+               write(*,'(A,ES10.3,A,I0,A,ES10.3,A,I0)')                   &
+                    '        selection set ', l22_last_d_select,          &
+                    ' at cell ', l22_last_j_select,                       &
+                    ', omitted set ', l22_last_d_omit, ' at cell ',       &
+                    l22_last_j_omit
+         endif
          dmax  = carrier_composition_displacement(fnow, fprev)
          if (dmax/x_ref .lt. relax_tol .and. grow .ge. 1.0d0) then
             ending = carrier_relax_fixed_point
@@ -5207,6 +6672,85 @@
          enddo
       enddo
       drift = drift/x_ref
+      ! WHAT THE PASS DID TO THE CELLS THAT CARRY THE REFUSING ROW
+      ! (EXHALE_CARRIER_DEBUG=1, default off).  Three probe radii in the
+      ! wind, each reported as the H2 fraction it entered the pass with, the
+      ! one it leaves with, their ratio, and the physical interval the kept
+      ! steps covered there -- the last being what a reader compares against
+      ! the cell's own chemical time to say whether the advance is limited
+      ! by the interval or by the bound.
+      if (carrier_debug_on()) then
+         do kp = 1, 3
+            jprobe(kp) = 1
+            do j = 1, N
+               if (abs(r(j) - r_probe(kp)) .lt.                          &
+                   abs(r(jprobe(kp)) - r_probe(kp))) jprobe(kp) = j
+            enddo
+         enddo
+         write(*,'(A,I0,A,ES10.3)') '    (carrier relaxation) kept ',     &
+              nstep, ' step(s); drift ', drift
+         do kp = 1, 3
+            jp = jprobe(kp)
+            write(*,'(A,I0,A,F7.4,A,ES12.5,A,ES12.5,A,ES10.3,A,ES10.3,A)')&
+                 '      probe cell ', jp, ' r ', r(jp), ': x(H2) ',        &
+                 fentry(jp,ic_H2), ' -> ', fnow(jp,ic_H2), ', ratio ',     &
+                 fnow(jp,ic_H2)/max(fentry(jp,ic_H2), 1.0d-300),           &
+                 ', kept interval ', dt_kept(jp)*tscale, ' s'
+         enddo
+      endif
+      ! L22 step 2b (C): WHAT THE RETURNED COMPOSITION DID TO THE STATE THE
+      ! WIND READS (EXHALE_L22B_DISPLACEMENT=1, default off).  A carrier
+      ! relaxation at a FIXED wind may close on its own rows and still hand
+      ! back a composition whose pressure, temperature and mean mass per
+      ! particle are far from the ones the hydrodynamic rows were last
+      ! solved at; those three are what the momentum and energy rows carry,
+      ! so their displacement is what says whether the coupled solve that
+      ! follows starts inside a regime it can follow.
+      if (l22b_displacement) then
+         call pressure_and_temperature_at_fixed_conserved_state(u, f_sp,  &
+                                             p, T, ntot_x, ne_x)
+         nsum_end = ntot_x + ne_x
+         dp_max = 0.0d0;  jp_max = 0
+         dT_max = 0.0d0;  jT_max = 0
+         dmb_max = 0.0d0; jmb_max = 0
+         dns_max = 0.0d0; jns_max = 0
+         do j = 1, N
+            if (p_entry(j) .gt. 0.0d0) then
+               drel = abs(p(j) - p_entry(j))/p_entry(j)
+               if (drel .gt. dp_max) then
+                  dp_max = drel;  jp_max = j
+               endif
+            endif
+            if (T_entry(j) .gt. 0.0d0) then
+               drel = abs(T(j) - T_entry(j))/T_entry(j)
+               if (drel .gt. dT_max) then
+                  dT_max = drel;  jT_max = j
+               endif
+            endif
+            if (mbar_entry(j) .gt. 0.0d0) then
+               drel = abs(mbar(j) - mbar_entry(j))/mbar_entry(j)
+               if (drel .gt. dmb_max) then
+                  dmb_max = drel;  jmb_max = j
+               endif
+            endif
+            if (nsum0(j) .gt. 0.0d0) then
+               drel = abs(nsum_end(j) - nsum0(j))/nsum0(j)
+               if (drel .gt. dns_max) then
+                  dns_max = drel;  jns_max = j
+               endif
+            endif
+         enddo
+         write(*,'(A)') '    (L22b) displacement of the primitive state'//&
+              ' between the pass entry and the composition returned:'
+         write(*,'(A,ES10.3,A,I0,A,F8.4,A,ES10.3,A,I0,A,F8.4)')           &
+              '      |dp|/p  ', dp_max, ' at cell ', jp_max, ' r ',       &
+              r(max(jp_max,1)), ';  |dT|/T  ', dT_max, ' at cell ',       &
+              jT_max, ' r ', r(max(jT_max,1))
+         write(*,'(A,ES10.3,A,I0,A,F8.4,A,ES10.3,A,I0,A,F8.4)')           &
+              '      |dmbar|/mbar  ', dmb_max, ' at cell ', jmb_max,      &
+              ' r ', r(max(jmb_max,1)), ';  |d(n_tot+n_e)|/(n_tot+n_e) ', &
+              dns_max, ' at cell ', jns_max, ' r ', r(max(jns_max,1))
+      endif
       call element_census_verify(cen_relax, rho, f_sp, rho_is_fixed=.true.)
       if (present(outcome)) outcome = ending
       end subroutine relax_photochemical_composition

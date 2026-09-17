@@ -84,16 +84,64 @@
       !     its rate lives, not because it is a different kind of energy.
       !   * H <-> He charge exchange (R21, R22): handled by charge_exchange.
       !
-      ! WHERE THE ENERGY IS DEPOSITED.  A reaction that leaves H2 in a
-      ! vibrationally excited level can radiate that part away instead of
-      ! thermalizing it.  The three-body association H + H + M -> H2 + M is
-      ! the channel where the whole 4.48 eV goes into one new molecule, so it
-      ! carries Hollenbach & McKee's (1979, ApJS 41, 555, p. 586) collisional
-      ! branching (1 + n_cr/n)^-1, evaluated by the module that owns n_cr
-      ! (h2_vibrational_relaxation).  In this layer that factor is 1 to a part
-      ! in 1e3 -- n(H2) = 4e9 to 5e13 cm^-3 against n_cr ~ 1e6 -- so it is
-      ! carried for correctness at the top of a thinner layer, not because it
-      ! changes the number here.  The other channels deposit in full.
+      ! WHERE THE ENERGY IS DEPOSITED.  A reaction enthalpy says how much
+      ! energy the reaction releases; it does not say which degree of
+      ! freedom receives it, and four channels of this network leave a
+      ! product in an excited state instead of giving the gas kinetic
+      ! energy.  The enthalpy is the same in every case -- the formation
+      ! table is untouched and the reaction-energy identity of
+      ! src/tests/physics_probe holds -- and what changes is only the
+      ! RECIPIENT.
+      !
+      !   * R5, H2+ + e -> H + H, and R16, HeH+ + e -> He + H, leave ONE
+      !     HYDROGEN ATOM IN n = 2.  Takagi (2002), Phys. Scr. T96, 52,
+      !     sec. 3, on H2+: "One of the hydrogen atoms of the dissociative
+      !     product is in the ground electronic state, but another is in the
+      !     excited state, whose principle quantum number is n = 2".
+      !     Giusti-Suzor, Bardsley & Derkits (1983), Phys. Rev. A 28, 682,
+      !     sec. IV A, build the dissociating curve so that "the final
+      !     segment is used to ensure dissociation to the limit
+      !     H(1s)+H(2s)".  Guberman (1994), Phys. Rev. A 49, R4277, on
+      !     HeH+: "the dissociation products will nearly always include an
+      !     excited n = 2 H atom".  So 10.199 eV of each event is electronic
+      !     excitation and only the remainder, 0.749 eV for R5 and 1.554 eV
+      !     for R16, is kinetic energy of the fragments.  The 10.199 eV is
+      !     handed to the H(n=2) population when the run carries one
+      !     (use_excited_H), where the existing Lyman-alpha and collisional
+      !     channels dispose of it; without one it leaves as radiation, the
+      !     way R23's 153 nm photon does.
+      !   * R6, H3+ + e -> H2 + H, leaves the H2 fragment VIBRATIONALLY HOT.
+      !     Kokoouline, Greene & Esry (2001), Nature 412, 891: the
+      !     distribution "peaks at v ~ 5-6"; Strasser et al. (2001), Phys.
+      !     Rev. Lett. 86, 779, measured it "wide with a peak around v = 5".
+      !     That share is internal energy and is subject to the same
+      !     radiate-or-thermalize branching as R15's.
+      !   * R15, H + H + M -> H2 + M, puts the whole 4.478 eV into one new
+      !     molecule, born within 0.02 eV of the dissociation limit, so all
+      !     of it is internal.  Depositing that internal share as heat
+      !     wherever the ladder is thermalized, with no prompt translational
+      !     part, is the same assumption a code that solves the ladder makes
+      !     without a nascent distribution: Cloudy c25.00 spreads a newly
+      !     formed molecule over the levels in their LTE proportions, which
+      !     leaves the net collisional heat of the formation exactly zero and
+      !     the whole bond energy in the thermal pool
+      !     (docs/cloudy_h2_model_reference_20260916.md section 5.1).
+      !
+      ! The internal shares of R6 and R15 carry Hollenbach & McKee's (1979,
+      ! ApJS 41, 555, p. 586) collisional branching (1 + n_cr/n)^-1,
+      ! evaluated by the module that owns n_cr (h2_vibrational_relaxation)
+      ! with the all-level radiative rate of the cascade.  In this layer
+      ! that factor is 1 to 7e-07, the collider sum being 99.8 per cent
+      ! atomic hydrogen at the base and n_cr against atomic hydrogen
+      ! 1.27e6 cm^-3 at 808 K, so the branching is carried for
+      ! correctness at the top of a thinner layer, not because it changes
+      ! the number here.  The other
+      ! channels deposit in full.
+      !
+      ! EXHALE_REACTION_HEAT_RECIPIENTS=0 puts every one of these back where
+      ! the ledger had it before, and restores the total density as the
+      ! third body of R12 and R15, so that a control run measures the whole
+      ! correction at once.  It changes no enthalpy.
 
       use global_parameters
       use species_table, only: isp_HI, isp_HII, isp_HeI, isp_HeII,      &
@@ -113,9 +161,12 @@
                            rk_R13_Hp_H2_M, rk_R14_H2_edis,              &
                            rk_R15_3body_H2, rk_R16_HeHp_dr,             &
                            rk_R17_Hep_H2_diss, rk_R18_HeHp_H2,          &
-                           rk_R19_HeHp_H,  rk_R20_Hep_H2_HeHp,          &
-                           rk_R23_H2_Hep_cx, h2_dissociation_energy_eV
-      use h2_vibrational_relaxation, only: h2_vibrational_heat_fraction
+                           rk_R19_HeHp_H,  rk_H2p_He_HeHp,              &
+                           rk_R23_H2_Hep_cx, h2_dissociation_energy_eV,  &
+                           rct_photon_energy_eV,                         &
+                           h2_association_collider_density
+      use h2_vibrational_relaxation, only: h2_vibrational_heat_fraction, &
+                           e_vib_v5_eV, e_vib_v6_eV
 
       implicit none
       private
@@ -128,6 +179,12 @@
       public :: ir_O1, ir_O1r, ir_O2, ir_O2r, ir_O6, ir_assoc_HeTR,   &
                 ir_D1
       public :: formation_energy_density
+      ! Which recipients the ledger and the H(n=2) source use, and the
+      ! excitation energy one dissociative recombination hands to the n = 2
+      ! level, so that the heat ledger and the level source read one number.
+      public :: reaction_heat_recipients_corrected
+      public :: dissociative_recombination_n2_eV
+      public :: dissociative_recombination_n2_source
 
       ! ------------------------------------------------------------------ !
       ! THE SPECIES FORMATION-ENERGY TABLE eps_s [eV].
@@ -217,6 +274,11 @@
       real*8, parameter :: cm_to_eV  = 1.239841984d-4
       real*8, parameter :: eV_to_erg = 1.602176634d-12
 
+      ! The control key of the recipients, read once (see
+      ! reaction_heat_recipients_corrected).
+      logical, save :: recipients_key_read  = .false.
+      logical, save :: recipients_corrected = .true.
+
       ! The three ionization potentials this module returns to the gas are
       ! the global thresholds, the same energies the photoionization channels
       ! are charged: one definition of each potential in the code.
@@ -256,7 +318,7 @@
                             ir_R11 =  7, ir_R12 =  8, ir_R13 =  9,        &
                             ir_R14 = 10, ir_R15 = 11, ir_R16 = 12,        &
                             ir_R17 = 13, ir_R18 = 14, ir_R19 = 15,        &
-                            ir_R20 = 16, ir_R23 = 17
+                            ir_h2p_he = 16, ir_R23 = 17
       character(len=26), parameter :: mreac_name(n_mreac) = (/            &
         'R5  H2+ + e  -> H + H     ', 'R6  H3+ + e  -> H2 + H    ',       &
         'R7  H3+ + e  -> H + H + H ', 'R8  H2+ + H2 -> H3+ + H   ',       &
@@ -265,7 +327,7 @@
         'R13 H+ +H2+M -> H3+ + M   ', 'R14 H2 + e   -> H + H + e ',       &
         'R15 H + H +M -> H2 + M    ', 'R16 HeH+ + e -> He + H    ',       &
         'R17 He+ + H2 -> H+ + H +He', 'R18 HeH+ +H2 -> H3+ + He  ',       &
-        'R19 HeH+ + H -> H2+ + He  ', 'R20 He+ + H2 -> HeH+ + H  ',       &
+        'R19 HeH+ + H -> H2+ + He  ', 'H2+ + He  -> HeH+ + H     ',       &
         'R23 H2 + He+ -> H2+ + He  ' /)
       integer, parameter :: mreac_react(3, n_mreac) = reshape( (/         &
         isp_H2p,  isp_eps_electron, 0,                                    &
@@ -283,7 +345,7 @@
         isp_HeII, isp_H2,           0,                                    &
         isp_HeHp, isp_H2,           0,                                    &
         isp_HeHp, isp_HI,           0,                                    &
-        isp_HeII, isp_H2,           0,                                    &
+        isp_H2p,  isp_HeI,          0,                                    &
         isp_H2,   isp_HeII,         0 /), (/ 3, n_mreac /) )
       integer, parameter :: mreac_prod(3, n_mreac) = reshape( (/          &
         isp_HI,   isp_HI,           0,                                    &
@@ -385,20 +447,33 @@
 
       ! ------------------------------------------------------!
 
-      subroutine molecular_chemical_heating(T_K, nhi, nhii, nheii, nmol,   &
-                                            ne, ntot, gamma_chem)
+      subroutine molecular_chemical_heating(T_K, nhi, nhii, nheii, nheiS,  &
+                                            nmol, ne, ntot, gamma_chem)
       ! Volumetric chemical heating rate [erg cm^-3 s^-1] of every cell.
       ! nmol(:,1:4) are n(H2), n(H2+), n(H3+), n(HeH+) in cm^-3, the same
       ! columns ionization_equilibrium already carries; everything else is
       ! cgs as well.  Positive is heating.
       real*8, dimension(1-Ng:N+Ng),   intent(in)  :: T_K, nhi, nhii, nheii
+      ! Ground-singlet neutral helium, the collision partner of
+      ! H2+ + He -> HeH+ + H.
+      real*8, dimension(1-Ng:N+Ng),   intent(in)  :: nheiS
       real*8, dimension(1-Ng:N+Ng),   intent(in)  :: ne, ntot
       real*8, dimension(1-Ng:N+Ng,4), intent(in)  :: nmol
       real*8, dimension(1-Ng:N+Ng),   intent(out) :: gamma_chem
       real*8 :: q(n_mreac)
-      real*8 :: T, nh2, nh2p, nh3p, nhehp, f_heat
+      ! The part of R23's enthalpy that stays with the gas: the reaction
+      ! energy less the photon it emits (see where it is formed below).
+      real*8 :: q_R23_to_gas
+      ! The two dissociative recombinations that leave an H atom in n = 2,
+      ! less that excitation energy: what the gas gets as kinetic energy.
+      real*8 :: q_R5_to_gas, q_R16_to_gas
+      ! The internal energy R6 leaves in its H2 fragment, and the part of
+      ! R6's enthalpy that is prompt kinetic energy whatever the density.
+      real*8 :: e_int_R6, q_R6_prompt
+      logical :: recipients_on
+      real*8 :: T, nh2, nh2p, nh3p, nhehp, f_heat, n_third
       real*8 :: k5,k6,k7,k8,k9,k10,k11,k12,k13,k14,k15,k16,k17,k18,k19
-      real*8 :: k20,k23
+      real*8 :: k_h2p_he,k23
       real*8 :: g_eV
       integer :: j, ir
 
@@ -408,6 +483,95 @@
       do ir = 1, n_mreac
          q(ir) = molecular_reaction_energy_eV(ir)
       enddo
+      ! R23 IS RADIATIVE AND MOST OF ITS ENTHALPY LEAVES AS A PHOTON.
+      ! H2 + He+ -> H2+ + He + hv releases 9.161 eV by the formation table,
+      ! but Boehringer & Arnold (1986) p. 1461 quote Hopper's mechanism for
+      ! it -- a radiative transition of the (He+.H2) complex to the ground
+      ! state -- with an emitted photon "about 153 nm", 8.103 eV, and H2+
+      ! left "preferentially ... in a vibrationally excited state (v = 2)".
+      ! At 1530 A that photon is longward of the Lyman-Werner bands and of
+      ! the Lyman continuum, so nothing in this layer absorbs it where it is
+      ! made and it does not become heat there.  What the gas keeps is the
+      ! remaining 1.058 eV.
+      !
+      ! THE APPROXIMATION AND ITS RANGE.  No re-absorption is modelled, this
+      ! code carrying no transfer for a 1530 A line; and the v = 2 the ion
+      ! is born in, about 0.55 eV, is deposited here rather than followed,
+      ! this code carrying no v-resolved H2+.  So this term OVERSTATES the
+      ! deposit by at most that 0.55 eV -- half of what is left after the
+      ! photon -- and understates nothing.  The reaction ENTHALPY itself is
+      ! untouched: q(ir_R23) is still the formation-table difference, which
+      ! is what the reaction-energy identity of src/tests/physics_probe
+      ! asserts; what is subtracted here is the part of it that leaves the
+      ! gas as light.
+      !
+      ! THIS IS THE ONLY CHANNEL OF THE TABLE THAT EMITS A PHOTON PROMPTLY.
+      ! Of the seventeen, R5, R6, R7 and R16 are DISSOCIATIVE recombinations
+      ! (no photon: what the energy does is set by the state the fragments
+      ! are left in, and for R5, R6 and R16 that is settled just below),
+      ! R8, R9, R17, R18, R19 and the H2+ + He channel are ion-neutral
+      ! rearrangements, R10, R11, R12 and R14 are endothermic, R13 and R15
+      ! are three-body associations whose energy goes to the third body, and
+      ! R23 alone emits a photon.
+      q_R23_to_gas = q(ir_R23) - rct_photon_energy_eV()
+
+      recipients_on = reaction_heat_recipients_corrected()
+
+      ! R5 AND R16 LEAVE ONE H ATOM IN n = 2, so the gas gets the enthalpy
+      ! less that excitation energy and the 10.199 eV goes to the level.
+      ! The excitation energy is not written here: it is
+      ! species_formation_energy(isp_eps_H_n2), the one entry of the
+      ! formation table that holds it, the same number the H(n=2)
+      ! photoionization and the Lyman-alpha channel are charged.
+      !
+      ! SOURCES AND THEIR RANGES.  Takagi (2002), Phys. Scr. T96, 52,
+      ! sec. 3, states the n = 2 product for H2+ and states its condition in
+      ! the same sentence: it holds "only for the low vibrational molecular
+      ! ion and at low collision energies", and "except for this condition,
+      ! the halves of product atoms are distributed to the highly excited
+      ! states".  Giusti-Suzor, Bardsley & Derkits (1983), Phys. Rev. A 28,
+      ! 682, sec. IV A, give the same H(1s) + H(2s) limit for electron
+      ! energies below 0.5 eV and H2+ in its lowest three vibrational
+      ! states.  Guberman (1994), Phys. Rev. A 49, R4277, computed 3HeH+ in
+      ! its ground vibrational state at electron energies 0.001 to 0.33 eV
+      ! and calls the cross sections isotopomer sensitive.
+      !
+      ! THE CODE'S H2+ IS OUTSIDE TAKAGI'S LOW-v CONDITION: its lifetime
+      ! against R5, R8 and R9 is about 1e-3 s against a radiative
+      ! vibrational relaxation of about 1 s, so it is born vibrationally hot
+      ! and stays so.  A vibrationally hot ion opens n >= 3, which takes
+      ! MORE of the enthalpy out of the kinetic channel, not less.  The
+      ! share written here is therefore an UPPER BOUND on the heat and a
+      ! lower bound on the excitation.
+      if (recipients_on) then
+         q_R5_to_gas  = q(ir_R5)  - species_formation_energy(isp_eps_H_n2)
+         q_R16_to_gas = q(ir_R16) - species_formation_energy(isp_eps_H_n2)
+      else
+         q_R5_to_gas  = q(ir_R5)
+         q_R16_to_gas = q(ir_R16)
+      endif
+
+      ! R6 LEAVES ITS H2 FRAGMENT VIBRATIONALLY HOT, and that share branches
+      ! between the infrared lines and the gas exactly as R15's does.
+      ! Kokoouline, Greene & Esry (2001), Nature 412, 891, calculate a
+      ! distribution "that peaks at v ~ 5-6"; Strasser et al. (2001), Phys.
+      ! Rev. Lett. 86, 779, measured it in a storage ring, "wide with a peak
+      ! around v = 5".  The central value used is the midpoint of the two
+      ! levels the peak is quoted between, taken from the code's own H2
+      ! ladder (e_vib_v5_eV = 2.2927 eV, e_vib_v6_eV = 2.6664 eV), i.e.
+      ! 2.480 eV, 26.8 per cent of q(R6).
+      !
+      ! UNCERTAINTY, STATED BECAUSE IT IS NOT SMALL.  This is the POSITION
+      ! OF THE PEAK, not the mean of the distribution: both papers describe
+      ! the distribution as broad, neither tabulates it, and Strasser et
+      ! al. quote "an uncertainty of about one level" on the fit.  One level
+      ! near v = 5 is 0.37 to 0.40 eV, i.e. +/-15 per cent of this share.
+      ! Where the fraction below is 1 the share is deposited in full either
+      ! way and the uncertainty does not reach the gas at all; it reaches it
+      ! only at a base thin enough for the branching to bite.
+      e_int_R6 = 0.5d0*(e_vib_v5_eV + e_vib_v6_eV)
+      if (.not. recipients_on) e_int_R6 = 0.0d0
+      q_R6_prompt = q(ir_R6) - e_int_R6
 
       do j = 1-Ng, N+Ng
          T     = max(T_K(j), 1.0d0)
@@ -418,41 +582,145 @@
          k9  = rk_R9_H2p_H();          k10 = rk_R10_Hp_H2v4(T)
          k11 = rk_R11_H3p_H(T);        k12 = rk_R12_H2_thdis(T)
          k13 = rk_R13_Hp_H2_M(ntot(j));k14 = rk_R14_H2_edis(T)
-         k15 = rk_R15_3body_H2(T, ntot(j))
-         k16 = rk_R16_HeHp_dr(T);      k17 = rk_R17_Hep_H2_diss(T)
+         ! THE THIRD BODY OF THE R12/R15 PAIR, resolved by collider.  Cohen
+         ! & Westberg (1983) recommend a separate coefficient for M = H2,
+         ! M = H and a monatomic inert M, and atomic hydrogen is 2.0 times
+         ! as efficient as H2 at 1000 K while a monatomic atom is 0.43
+         ! times; h2_association_collider_density turns that into the
+         ! H2-equivalent density both directions are multiplied by, so the
+         ! pair stays an exact detailed balance collider by collider.  The
+         ! helium here is the ground singlet, the only helium population
+         ! that is not a trace in this layer.
+         if (recipients_on) then
+            n_third = h2_association_collider_density(T, nh2, nhi(j),      &
+                                                      nheiS(j))
+         else
+            n_third = ntot(j)
+         endif
+         k15 = rk_R15_3body_H2(T, n_third)
+         k16 = rk_R16_HeHp_dr(T);      k17 = rk_R17_Hep_H2_diss(T,ntot(j))
          k18 = rk_R18_HeHp_H2();       k19 = rk_R19_HeHp_H()
-         k20 = rk_R20_Hep_H2_HeHp();   k23 = rk_R23_H2_Hep_cx()
-         ! Share of the association energy that thermalizes rather than being
-         ! radiated in the infrared quadrupole lines.
-         f_heat = h2_vibrational_heat_fraction(T, nhi(j), nh2)
+         k_h2p_he = rk_H2p_He_HeHp(T); k23 = rk_R23_H2_Hep_cx()
+         ! THE THERMALIZED SHARE OF AN INTERNAL EXCITATION, and only that.
+         ! The function is Hollenbach & McKee's (1 + n_cr/n)^-1 with the
+         ! ALL-LEVEL maximum of the total spontaneous decay rate over the
+         ! code's own 302-level ladder, so the condition it is valid under
+         ! -- that the collider density stands far above n_cr of EVERY level
+         ! the cascade passes through -- is the one the code evaluates.
+         ! Both users of it here are molecules born high in the ladder and
+         ! not in v = 1: R15's nascent molecule lies within 0.02 eV of the
+         ! dissociation limit and R6's H2 fragment peaks at v = 5-6, so the
+         ! fraction is an effective one either way. The condition holds in
+         ! this layer, where the collider sum is 99.8 per cent atomic
+         ! hydrogen and n_cr against it is 1.27e6 cm^-3 at 808 K and
+         ! 2.97e5 at 1527 K, orders below the densities the layer carries,
+         ! and 1 - f is 6.8e-07 at cell 1 (MEASURED). It is NOT established
+         ! for a shallower base or for the top of a thinner layer, where the
+         ! level-resolved cascade would have to be carried, and there the
+         ! collisional side is the remaining approximation: the v = 1
+         ! coefficients understate de-excitation of the closely spaced high
+         ! levels, which errs towards radiating rather than heating.
+         f_heat = h2_vibrational_heat_fraction(T, nhi(j), nh2, nheiS(j))
          ! The heat of each channel is q(ir) above; what is written here is
-         ! only which densities and which rate coefficient multiply it.
+         ! only which densities and which rate coefficient multiply it, and
+         ! which share of the enthalpy the GAS receives.
          ! R10 is endothermic and consumes vibrational energy that came from
          ! the thermal bath, so its sink is the ground-state difference like
-         ! every other channel; R15 deposits only the share f_heat that
-         ! thermalizes rather than leaving in the infrared quadrupole lines.
+         ! every other channel.  R15 deposits only the share f_heat that
+         ! thermalizes rather than leaving in the infrared quadrupole lines;
+         ! R6 deposits its prompt share in full and its internal share times
+         ! the same f_heat; R5 and R16 deposit their enthalpy less the
+         ! n = 2 excitation one of their hydrogen atoms carries off.
          g_eV =                                                            &
-              k5 *nh2p*ne(j)          *q(ir_R5)                            &
-            + k6 *nh3p*ne(j)          *q(ir_R6)                            &
+              k5 *nh2p*ne(j)          *q_R5_to_gas                         &
+            + k6 *nh3p*ne(j)          *(q_R6_prompt + e_int_R6*f_heat)     &
             + k7 *nh3p*ne(j)          *q(ir_R7)                            &
             + k8 *nh2p*nh2            *q(ir_R8)                            &
             + k9 *nh2p*nhi(j)         *q(ir_R9)                            &
             + k10*nhii(j)*nh2         *q(ir_R10)                           &
             + k11*nh3p*nhi(j)         *q(ir_R11)                           &
-            + k12*ntot(j)*nh2         *q(ir_R12)                           &
+            + k12*n_third*nh2         *q(ir_R12)                           &
             + k13*nhii(j)*nh2         *q(ir_R13)                           &
             + k14*ne(j)*nh2           *q(ir_R14)                           &
             + k15*nhi(j)*nhi(j)       *q(ir_R15)*f_heat                    &
-            + k16*nhehp*ne(j)         *q(ir_R16)                           &
+            + k16*nhehp*ne(j)         *q_R16_to_gas                        &
             + k17*nheii(j)*nh2        *q(ir_R17)                           &
             + k18*nhehp*nh2           *q(ir_R18)                           &
             + k19*nhehp*nhi(j)        *q(ir_R19)                           &
-            + k20*nheii(j)*nh2        *q(ir_R20)                           &
-            + k23*nh2*nheii(j)        *q(ir_R23)
+            + k_h2p_he*nh2p*nheiS(j)  *q(ir_h2p_he)                        &
+            + k23*nh2*nheii(j)        *q_R23_to_gas
          gamma_chem(j) = g_eV*eV_to_erg
       enddo
 
       end subroutine molecular_chemical_heating
+
+      ! ------------------------------------------------------!
+
+      logical function reaction_heat_recipients_corrected() result(on)
+      ! Whether the published product states of R5, R6 and R16 and the
+      ! collider-resolved third body of the R12/R15 pair are in force.
+      !
+      ! EXHALE_REACTION_HEAT_RECIPIENTS=0 turns all four back to what the
+      ! ledger did before them, TOGETHER, so that one control run measures
+      ! the whole correction: R5 and R16 deposit their full enthalpy and
+      ! send nothing to n = 2, R6 deposits its full enthalpy promptly, and
+      ! R12 and R15 take the total heavy-particle density as their third
+      ! body.  No enthalpy changes either way; the formation table is not
+      ! reachable from here.
+      !
+      ! The key is read once and held.  Both callers -- the heating
+      ! assembly and the H(n=2) update -- run serially, outside any parallel
+      ! region, so the first read cannot race.
+      character(len=8) :: env
+      if (.not. recipients_key_read) then
+         env = ''
+         call get_environment_variable('EXHALE_REACTION_HEAT_RECIPIENTS',  &
+                                       env)
+         recipients_corrected = (trim(adjustl(env)) .ne. '0')
+         recipients_key_read  = .true.
+      endif
+      on = recipients_corrected
+
+      end function reaction_heat_recipients_corrected
+
+      ! ------------------------------------------------------!
+
+      double precision function dissociative_recombination_n2_eV()        &
+                               result(e)
+      ! The electronic excitation energy one event of R5 or of R16 hands to
+      ! the H(n=2) population [eV], from the one formation-energy table.
+      ! The heat ledger subtracts it and the level source receives it, so
+      ! the two cannot disagree about how much energy left the gas.
+      e = species_formation_energy(isp_eps_H_n2)
+
+      end function dissociative_recombination_n2_eV
+
+      ! ------------------------------------------------------!
+
+      double precision function dissociative_recombination_n2_source      &
+                               (T, n_H2p, n_HeHp, n_e) result(s)
+      ! Volumetric production of H(n=2) by the two dissociative
+      ! recombinations that leave one hydrogen atom excited [cm^-3 s^-1]:
+      !
+      !     S = k5 n(H2+) n_e  +  k16 n(HeH+) n_e .
+      !
+      ! Sources and ranges are at the subtraction inside
+      ! molecular_chemical_heating; the rate coefficients are the SAME
+      ! rk_R5_H2p_dr and rk_R16_HeHp_dr the ledger and the chemistry use, so
+      ! one event cannot be counted at two rates.  Zero when the corrected
+      ! recipients are off, in which case the 10.199 eV stays in the heat
+      ! ledger and no atom is excited.
+      real*8, intent(in) :: T, n_H2p, n_HeHp, n_e
+
+      if (.not. reaction_heat_recipients_corrected()) then
+         s = 0.0d0
+         return
+      endif
+      s = ( rk_R5_H2p_dr(max(T, 1.0d0))*max(n_H2p, 0.0d0)                  &
+          + rk_R16_HeHp_dr(max(T, 1.0d0))*max(n_HeHp, 0.0d0) )             &
+          *max(n_e, 0.0d0)
+
+      end function dissociative_recombination_n2_source
 
       ! ------------------------------------------------------!
 

@@ -15,7 +15,8 @@ code described here.
 \texttt{mol\_rates.f90} carries the reaction rate coefficients of
 \citet{Koskinen2022} Table 1 as published, in cgs
 (cm$^{3}$\,s$^{-1}$, and cm$^{6}$\,s$^{-1}$ for the two three-body entries
-R13 and R15, which the code multiplies by the total heavy-particle density).
+R13 and R15; R13 is multiplied by the total heavy-particle density and R15 by
+a collider-resolved one, below).
 EXHALE carries one temperature, so the heavy-particle and the electron
 temperature of that table are the same variable. The photorates P1--P5 of
 the paper are marked ``SC'' there, computed from cross sections, stellar
@@ -34,15 +35,78 @@ equilibrium constant built from the same internal partition function
 $Q_{\rm H_2}(T)$ the caloric equation of state uses
 (Sec.~\ref{sec:mol:caloric}), because the two Table-1 entries are the same
 channel in opposite directions and their source measurements do not overlap
-in temperature. The third body of R12, R13 and R15 is the total gas-particle
-density excluding electrons, so every heavy particle is an equally efficient
-third body; a monatomic third body has no internal modes to take up the
-released energy, so these three rates with He as $M$ are upper bounds. Two
-further limits in a helium-dominated gas, the missing
-${\rm H_2^+}+{\rm He}\to{\rm HeH^+}+{\rm H}$ channel and the R16--R20
-disagreements with \citet{GarciaMunoz2025}, are recorded at the code site
-rather than patched, since fixing either would replace a Table-1 entry with a
-rate from another compilation.
+in temperature. The third body of R13 is the total gas-particle density
+excluding electrons, its source (Miller et al.\ 1968) being a single
+coefficient with no collider dependence measured. R12 and R15 are
+collider-resolved (corrected 2026-09-17, item L7g): the association rate is
+the sum $\sum_M k_1(M)\,n_M$ over $M = {\rm H_2}$, H and He with the
+published coefficients of \citet{CohenWestberg1983}, carried in the code as
+an H$_2$-equivalent third-body density so that R12 keeps following R15 by
+\eqref{eq:mol:r12}.  Applying the $M={\rm H_2}$ coefficient to the total
+density, which is what the code did before, over-counts the association: at
+the base of the LHS 1140 b hot-Uranus column it made the R15 rate 22 per cent
+too large and the molecular chemical heat 21.6 per cent too large.  No
+measurement of He as a third body for this reaction exists, so He is given
+argon's coefficient, and that entry remains an upper bound: a monatomic third
+body has no internal modes to take up the released energy. Two
+further limits in a helium-dominated gas, the R16, R18 and R19 differences
+of order unity to ten with \citet{GarciaMunoz2025}, are recorded at the code
+site rather than patched.
+
+\textbf{Two entries of Table~1 are not transcribed as printed.} The first is
+R17, ${\rm He^+}+{\rm H_2}\to{\rm H^+}+{\rm H}+{\rm He}$, the dissociative
+charge transfer. Table~1 gives it as $10^{-9}\exp(-5700/T)$
+\citep{Moses2000}, an Arrhenius form with a $0.49$~eV barrier, and that form
+alone is $2\times10^{4}$ below the directly measured rate at 300~K and 200
+below it at 400~K. The reaction has two mechanisms: at thermal energy it
+proceeds by tunnelling out of a long-lived ${\rm He^+}$--${\rm H_2}$ complex,
+because reactants and products do not correlate adiabatically, and only above
+$\sim400$~K does an over-barrier branch take over
+\citep{Boehringer1986}. The drift-tube measurements give the two-body total
+as $k_2=1.1\times10^{-13}(300/T)^{0.24}$~cm$^3$\,s$^{-1}$ over 18--408~K
+\citep{Boehringer1986}, consistent with $(1.1\pm0.1)\times10^{-13}$ at 330~K
+and $(1.5\pm0.15)\times10^{-13}$ at 78~K \citep{Johnsen1980}. The code
+therefore carries the sum of the two mechanisms, with the tunnelling branch
+taken as the measured total less the radiative branch the network carries
+separately as R23, so that the coded channels sum to the measured total:
+\[
+   k_{\rm R17}(T)=\Bigl[1.1\times10^{-13}\,(300/T)^{0.24}-k_{\rm R23}\Bigr]
+                  +10^{-9}\exp(-5700/T).
+\]
+Against the only measurement of the rising branch \citep[][their Fig.~3,
+carried to an effective temperature of 700~K]{Johnsen1980} the sum is inside
+a factor two from 300 to 700~K. The three-body channel both papers measure,
+$k_3=1.6\times10^{-30}(100/T)^{1.27}$~cm$^6$\,s$^{-1}$, is omitted because
+$k_3n=6\times10^{-19}$~cm$^3$\,s$^{-1}$ at 1000~K and $n=7\times10^{12}$~cm$^{-3}$,
+five decades below the two-body rate.
+
+\textbf{The second is R20.}
+Table~1 gives ${\rm He^+}+{\rm H_2}\to{\rm HeH^+}+{\rm H}$ as
+$4.2\times10^{-13}$~cm$^3$\,s$^{-1}$, citing \citet{Schauer1989}. That paper
+measures the radiative
+(${\rm He^+}+{\rm H_2}\to{\rm He}+{\rm H_2^+}+h\nu$, Table~1's R23) and the
+dissociative (${\rm He^+}+{\rm H_2}\to{\rm He}+{\rm H}+{\rm H^+}$, R17)
+charge transfer over $15\le T\le40$~K and no HeH$^+$ channel; it states that
+the HeH$^+$ channel ``apparently does not become allowed until the collision
+energy approaches 9~eV'', and its H$_3^+$ signal is the \emph{sum} of the
+radiative and the HeH$^+$ channels, which bounds the latter at
+$\le1.0\times10^{-14}$ -- 42 times below the value Table~1 assigns it. R20 is
+therefore not carried. The HeH$^+$ source the network uses instead is the one
+Table~1 omits, ${\rm H_2^+}+{\rm He}\to{\rm HeH^+}+{\rm H}$ at
+$3.0\times10^{-10}\exp(-6717/T)$ \citep{Black1978}, whose coefficient is a
+Maxwellian average over a thermal population of H$_2^+$ vibrational levels.
+
+Measured on LHS~1140~b at ${\rm He/H}=2.13$ with the H$_2$ row written out
+reaction by reaction, the repair rewires the base layer's HeH$^+$ and H$^+$
+budgets -- at the first cell $n({\rm HeH^+})$ falls by a factor $487$ at
+1023~K and $8\times10^4$ at 629~K, and $n({\rm He^+})$ rises by $1.11$ and
+$4.4$ -- and leaves the net H$_2$ destruction there within a per cent,
+because the helium ions of that layer are sink-limited. The same measurement
+shows what sets the H$_2$ of a helium-rich base: the helium-ion and proton
+channels, with the thermal dissociation R12 nine decades below the first
+cell's total H$_2$ loss at 1023~K and twenty-two decades below it at 629~K,
+and nowhere in that layer reaching 0.4 per cent of the loss. The helium-ion channels, not the temperature and not the photons, set
+the H$_2$ content of a helium-rich base in this network.
 
 The eight balance rows the network makes are
 \eqref{eq:ion:h2row}--\eqref{eq:ion:hehprow} together with the H$^+$,
@@ -156,8 +220,12 @@ speeds.
 \label{sec:mol:carrier}
 
 Everywhere else in the code the composition of a cell is the root of a local
-algebraic system. \texttt{diffusive\_photochemistry.f90} solves, instead,
-the continuity equation of the neutral carriers H$_2$, OH, H$_2$O and CO,
+algebraic system. A \emph{carrier} is a species the code does not fix that
+way: one whose chemical time can exceed the flow time, so that its density
+in a cell is what the flow brought there and not what the cell's own
+equilibrium would give. \texttt{diffusive\_photochemistry.f90} solves, for
+the carriers, the continuity equation of the neutral carriers H$_2$, OH,
+H$_2$O and CO (and, with \texttt{Ionization transport}, the proton),
 \begin{equation}
 \frac{\partial n_i}{\partial t}
  + \frac{1}{r^{2}}\frac{\partial}{\partial r}

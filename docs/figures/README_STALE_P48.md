@@ -3,6 +3,11 @@
 **stale: computed with ghost rows included (P48, Update_EXHALE_stage1 section 137);
 depths move 0.2-3.8%; regeneration awaits instruction.**
 
+**The `lhs1140b_*.pdf` set is no longer on this list: it was regenerated
+2026-09-16 from `LHS1140b/models/`, the model tree of record on the binary
+`c2e9c9990b9f`, by a `make_memo_figures.py` that reads every profile through
+`exhale_io.loadtxt_cells`.** Everything else below is unchanged.
+
 Until 2026-09-03 every Python reader of an EXHALE profile returned the file's
 **ghost rows** -- the two boundary rows at each end of every
 `Hydro_ioniz*.txt` / `Ion_species*.txt`, a fixed base state below and a
@@ -22,11 +27,10 @@ cent (measured tables: section 137.2).
   `docs/transmission_spectrum.tex` (Fig. `metalspec`), marked there.
 - `tpm_spectra.png`, `transmission_metals.pdf/.png` -- written by
   `examples/make_figures.py`, which drives `EXHALE_transit.py`.
-- `lhs1140b_bestfit.pdf`, `lhs1140b_broadened.pdf`,
-  `lhs1140b_diff_broadened.pdf`, `lhs1140b_pwinds_broadened.pdf`,
-  `lhs1140b_bump.pdf`, `lhs1140b_ew_vs_heh.pdf`, `lhs1140b_fig4style.pdf`,
-  `lhs1140b_gj699.pdf` -- He 10830 spectra and equivalent widths from
-  `LHS1140b/make_memo_figures.py`.
+- the `lhs1140b_*.pdf` set -- **regenerated 2026-09-14** and no longer on
+  this list; `LHS1140b/make_memo_figures.py` reads through
+  `exhale_io.loadtxt_cells` and draws the model tree of record,
+  `LHS1140b/models/`.
 
 ## Radial profiles: the plotted range, not the physics
 
@@ -39,13 +43,6 @@ is a boundary value, not a solution.
 - `tutorial_overview.pdf/.png`, `metals_on_off.pdf/.png`,
   `cooling_breakdown.pdf/.png`, `spherical_vs_roche.pdf/.png`,
   `newton_convergence.pdf/.png` -- `examples/make_figures.py`.
-- `lhs1140b_structure.pdf`, `lhs1140b_structure_rho_ion.pdf`,
-  `lhs1140b_bestfit_structure.pdf`, `lhs1140b_composition_profiles.pdf`,
-  `lhs1140b_kzz_profiles.pdf`, `lhs1140b_knudsen.pdf`,
-  `lhs1140b_photochem_column.pdf`, `lhs1140b_photochem_column_2.pdf`,
-  `lhs1140b_closure.pdf`, `lhs1140b_closure_ladder.pdf`,
-  `lhs1140b_thermostat.pdf`, `lhs1140b_heh_vs_kzz.pdf` --
-  `LHS1140b/make_memo_figures.py`.
 
 ## Not affected
 

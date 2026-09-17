@@ -141,8 +141,14 @@
       ! R19 HeH+ + H -> H2+ + He
       tr_react(:,15) = (/ isp_HeHp, isp_HI,          0 /)
       tr_prod (:,15) = (/ isp_H2p, isp_HeI,          0 /)
-      ! R20 He+ + H2 -> HeH+ + H
-      tr_react(:,16) = (/ isp_HeII, isp_H2,          0 /)
+      ! H2+ + He -> HeH+ + H, the HeH+ source that replaced Koskinen R20
+      ! (item L7f; the paper R20 cites bounds that channel 42 times below
+      ! the value Table 1 gave it).  The reaction is ENDOTHERMIC, by 0.80 eV
+      ! from this table, which is the published endothermicity of the
+      ! ground-state channel; the 6717 K in its rate coefficient is the
+      ! effective barrier of a vibrationally averaged cross section and is
+      ! deliberately smaller.
+      tr_react(:,16) = (/ isp_H2p,  isp_HeI,         0 /)
       tr_prod (:,16) = (/ isp_HeHp, isp_HI,          0 /)
       ! R23 H2 + He+ -> H2+ + He
       tr_react(:,17) = (/ isp_H2,  isp_HeII,         0 /)

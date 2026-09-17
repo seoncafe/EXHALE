@@ -1,5 +1,32 @@
 # EXHALE: state of the code, what physics is in and verified, what is certified, where the problems begin, and what comes next (2026-09-10)
 
+**2026-09-16: see `docs/Update_EXHALE_stage2.md` section 11 for the LHS 1140 b
+stationary series (2026-09-13 to 2026-09-16); the solver state described below
+predates it.**
+
+**2026-09-17: the series of `docs/PLAN_20260916_rev3.md` (2026-09-16/17)
+changed four things this document describes, and the account of all of them is
+`docs/session_handoff_20260917.md`.** (i) The molecular layer's physics: five
+corrected statements of the reaction-heat recipients, the collider-resolved
+three-body association and the vibrational quenching, which take the base
+chemical heat down 21.6 per cent and leave the archived certified molecular
+states no longer roots of the equations (item L7g). (ii) The base boundary: the
+window's say on the entropy branch is now a smooth product of a Mach-number
+amplitude and a relative-standard-deviation spread, with no zero-flux
+discontinuity and no argmax kink, and nothing the code meets moves (item L26).
+(iii) The restart metadata: the certification pair is imported-state metadata
+and the route token is distinguished from the equation set (items L23, L22).
+(iv) The post-processing route: `Restart intent: stationary evaluate` writes
+every product from the held state with no time step, replacing the `Do only PP`
+pass at `CFL 1e-12` that was reconstructing with PLM and overwriting the solved
+state (item L9). Two further statements in this tree were settled by the same
+series and are not rewritten below: the JFNK stationary solve shows **no**
+thread dependence on the catalog binary or on the 2026-09-16 tree, atomic or
+molecular, at 1, 8 or 16 threads (item L15, so the 2026-09-15 divergence is not
+reproducible and is attributed to nothing); and the low-XUV stalls were a
+resolution failure of the HLLC flux on the 500-cell grid rather than a property
+of those winds (item L25). The rows below are not rewritten for any of this.
+
 Written to restart from in a fresh session. Read this first; then
 `docs/ISSUES_20260909.md` (the problem-centered account of stage 2: what was
 done, every problem resolved, every problem open with its evidence),

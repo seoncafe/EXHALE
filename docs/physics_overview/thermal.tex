@@ -64,6 +64,40 @@ $1.02\,r_{\rm base}$. \texttt{Molecular reaction heat} is therefore
 \emph{on} by default; it is unreachable in an atomic run, so no non-molecular
 result moves.
 
+\paragraph{Where each channel's energy goes (corrected 2026-09-17).}
+That the energy stays in the gas does not make all of it translational, and
+until item L7g the ledger deposited each dissociative recombination's whole
+enthalpy as heat. Each channel now deposits what its measured product state
+leaves to translation:
+\begin{itemize}
+\item ${\rm H_2^+}+e$ and ${\rm HeH^+}+e$ leave one H atom in $n=2$ at the
+  collision energies of this layer \citep{Takagi2002,GiustiSuzor1983,Guberman1994},
+  so 10.199\,eV goes to the H($n=2$) population (or radiates, when that
+  population is not tracked) and the gas receives 0.749 and 1.554\,eV instead
+  of 10.948 and 11.753.
+\item ${\rm H_3^+}+e \to {\rm H_2}+{\rm H}$ leaves the H$_2$ fragment
+  vibrationally excited around $v=5$--6 \citep{Kokoouline2001,Strasser2001}, so
+  2.4795\,eV of the 9.250 is internal energy and branches through the
+  vibrational quench fraction rather than being deposited promptly.
+\item The three-body association ${\rm H}+{\rm H}+M$ releases 4.478\,eV into
+  a nascent vibrational distribution, and the same quench fraction decides how
+  much of it is collisionally thermalized before it radiates.
+\end{itemize}
+The quench fraction itself (\texttt{h2\_vibrational\_relaxation.f90}) is the
+collisional rate against the radiative one. The radiative side is the
+\emph{all-level} maximum spontaneous rate over the code's own 302-level
+H$_2$ ladder, $5.5939\times10^{-6}$\,s$^{-1}$, which is 6.56 times the $v=1$
+total decay rate the earlier form used and agrees with the independent
+\citet{Wolniewicz1998} set to $1.1\times10^{-4}$; the collisional side is one
+published quantum calculation per collider, \citet{Lique2015} for H,
+\citet{Jozwiak2024} for He and \citet{LeBourlot1999} for H$_2$, in place of
+two 1979 fits with helium absent. In the LHS 1140 b layer the fraction is one
+to a part in $10^{6}$--$10^{7}$, so the layer is in the thermalized limit and
+these corrections act mainly through the recipients and the association rate;
+a shallower or cooler layer is not, and the form is stated with that validity
+where it is used. \texttt{EXHALE\_REACTION\_HEAT\_RECIPIENTS=0} restores the
+prompt-deposit behavior for comparison.
+
 \subsection{The cooling channels}
 \label{sec:thermal:cool}
 

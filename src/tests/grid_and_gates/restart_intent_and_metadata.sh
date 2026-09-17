@@ -24,6 +24,15 @@
 #      evaluation prints, the residual the EXHALE_RESIDUAL diagnostic prints
 #      for the same state, and the first residual the stationary solve
 #      judges are the same number.
+#   7. The certification pair of the '# coupling:' header, (certified=,
+#      cert_reason=), is metadata OF THE IMPORTED STATE: a reload that writes
+#      the state back without measuring it carries the pair through
+#      unchanged, whatever the reason says, while a run that measures the
+#      state writes the verdict it measured and no earlier token.  A reason
+#      longer than the field, a pair whose two halves disagree and a key
+#      stated twice refuse the load; a field one half omits is taken from the
+#      other with a note, and a token this version does not know is kept as
+#      provenance text without certifying anything.
 #
 # THE BUDGETS
 #   The stored fields (r, v, p) are text in the file and are read back
@@ -87,6 +96,7 @@ run_it() {   # run_it <dir> [env assignments...]
    local d="$1"; shift
    ( cd "$WORK/$d" && env OMP_NUM_THREADS=1 "$@" "$EXE" > run.log 2>&1 )
    RC_LAST=$?
+   printf '%s\n' "$RC_LAST" > "$WORK/$d/rc"
    return 0
 }
 
@@ -196,6 +206,75 @@ run_it x_resid EXHALE_RESIDUAL=1 EXHALE_RELOAD_EQ=0
    kill "$pid" 2>/dev/null
    wait "$pid" 2>/dev/null
 )
+
+# ---- P: the certification pair the two halves of a state state ----------
+# The pair is metadata OF THE IMPORTED STATE. Each row below hands the same
+# written state back with its '# coupling:' header edited and reloads it with
+# EXHALE_DUMP_IC=1, which writes the state as it was loaded, before the first
+# equilibrium sweep, and stops: what the run writes is therefore what the
+# loader restored and nothing else. The rows that must be REFUSED never reach
+# that write, and their exit status and message are what is read.
+CERT_H="$CASE/IC/Hydro_ioniz_IC.txt"
+CERT_I="$CASE/IC/Ion_species_IC.txt"
+# The destination is 32 characters (state_certification_reason, utilities.f90),
+# so one token of exactly that length must be carried and one of 33 refused.
+LIMIT32='reason_at_the_field_length_32chr'
+OVER33='reason_one_character_over_the_32c'
+
+cert_row() {   # cert_row <dir> <sed program for Hydro> [<sed program for Ion>]
+   local d="$1"; local sh="$2"; local si="${3:-}"
+   make_run "$d" "$CERT_H" "$CERT_I"
+   if [ -n "$sh" ]; then sed -i -E "$sh" "$WORK/$d/output/Hydro_ioniz_IC.txt"; fi
+   if [ -n "$si" ]; then sed -i -E "$si" "$WORK/$d/output/Ion_species_IC.txt"; fi
+   run_it "$d" EXHALE_DUMP_IC=1
+}
+
+# The fixture states certified=T with no token, which is the second row as it
+# stands; every other row edits that field.
+cert_row p_true_token  's/certified=T/certified=T cert_reason=certified_in_wind/'
+cert_row p_true_plain  ''
+cert_row p_false_claim 's/certified=T/certified=F cert_reason=no_stationary_claim/'
+cert_row p_false_entry 's/certified=T/certified=F cert_reason=failing_entries/'
+cert_row p_false_plain 's/certified=T/certified=F/'
+# The header is a set of key=value fields, so its order carries no meaning.
+cert_row p_reordered \
+   's|^# coupling: .*|# coupling: cert_reason=failing_entries certified=F mode=init recon=WENO3 sec_ion=T sec_ion_step=2429|'
+cert_row p_limit32     "s/certified=T/certified=T cert_reason=$LIMIT32/"
+cert_row p_over32      "s/certified=T/certified=T cert_reason=$OVER33/"
+# A token this version does not know: provenance text, and the Boolean stays
+# the file's own.
+cert_row p_unknown     's/certified=T/certified=F cert_reason=foreign_token_x/'
+# One key stated twice: a header that says two things about one state.
+cert_row p_duplicate   's/certified=T/certified=T certified=T/'
+# The two halves of one state, disagreeing and agreeing about the same field.
+# Ion_species carries no '# coupling:' line of its own, so these rows write
+# one into it after its first header line.
+cert_row p_conflict    '' '1a # coupling: certified=F cert_reason=failing_entries'
+cert_row p_legacy      's/certified=T/certified=T cert_reason=certified_in_wind/' \
+                       '1a # coupling: certified=T'
+
+# A mapped seed: 'map_state_to_grid.py' writes the state's own '# coupling:'
+# line as an initialization seed and keeps what the SOURCE state was produced
+# under on a '# mapped-from-coupling:' provenance line beside it. That line is
+# not a statement about the state in this file, and the pair and the fields of
+# the state's own line are the ones that count. The one written here differs
+# from the state's line in both the pair and the armed step.
+cert_row p_mapped_from \
+   '/^# coupling:/a # mapped-from-coupling: sec_ion=T sec_ion_step=99 recon=WENO3 certified=F cert_reason=mapper_source_token mode=init'
+
+# The verdict of a run that MEASURES the state is that run's own. A's output
+# is handed back with a certified claim and a token on it, under a stellar EUV
+# luminosity twice the one the state was solved at: the state is not
+# stationary for that heating, and the evaluation has to answer with what it
+# measured instead of carrying the claim through.
+make_run p_reeval "$WORK/A/output/Hydro_ioniz.txt" \
+                  "$WORK/A/output/Ion_species.txt" \
+         'Restart intent: stationary evaluate'
+sed -i -E 's/certified=[TF]( cert_reason=[^ ]+)?/certified=T cert_reason=certified_in_wind/' \
+   "$WORK/p_reeval/output/Hydro_ioniz_IC.txt"
+sed -i -E 's|^Log10 of EUV luminosity \[erg/s\]:.*|Log10 of EUV luminosity [erg/s]: 30.72|' \
+   "$WORK/p_reeval/input.inp"
+run_it p_reeval
 
 python3 - "$WORK" "$rcA" "$rcB" "$rc_reservoir" "$rc_grid" "$rc_constants" \
           "$rc_options" "$rc_elements" "$rc_pair" "$rc_noload" "$rc_traj" \
@@ -452,4 +531,143 @@ verdict('stationary_solve_first_rows_are_the_loaded_state',
 
 sys.exit(1 if n_fail else 0)
 PY
-exit $?
+rc_block1=$?
+
+python3 - "$WORK" <<'PY'
+# The certification pair of the '# coupling:' header.
+import os
+import sys
+
+work = sys.argv[1]
+n_fail = 0
+
+
+def verdict(name, ok, measured, reference):
+    global n_fail
+    if not ok:
+        n_fail += 1
+    print('%s %s measured=%s reference=%s tol=0'
+          % ('PASS' if ok else 'FAIL', name, measured, reference))
+
+
+def rc(d):
+    return int(open('%s/%s/rc' % (work, d)).read().strip())
+
+
+def log(d):
+    return open('%s/%s/run.log' % (work, d)).read()
+
+
+def coupling(path):
+    if not os.path.exists(path):
+        return ''
+    for line in open(path):
+        if line.startswith('# coupling:'):
+            return line.strip()
+    return ''
+
+
+def pair(path):
+    # (certified, cert_reason) as the line states them; '-' for a field the
+    # line does not carry, which is not the same statement as an empty one.
+    line = coupling(path)
+    out = {'certified': '-', 'cert_reason': '-'}
+    for tok in line.split():
+        k, _, v = tok.partition('=')
+        if k in out and _:
+            out[k] = v
+    return out['certified'], out['cert_reason']
+
+
+def written(d):
+    return pair('%s/%s/output/Hydro_ioniz.txt' % (work, d))
+
+
+def imported(d):
+    return pair('%s/%s/output/Hydro_ioniz_IC.txt' % (work, d))
+
+
+print('---- the pair a reload carries through, unmeasured ----')
+for d, name in (('p_true_token', 'cert_pair_true_with_token'),
+                ('p_true_plain', 'cert_pair_true_without_token'),
+                ('p_false_claim', 'cert_pair_false_no_stationary_claim'),
+                ('p_false_entry', 'cert_pair_false_failing_entries'),
+                ('p_false_plain', 'cert_pair_false_without_reason'),
+                ('p_reordered', 'cert_pair_independent_of_field_order'),
+                ('p_limit32', 'cert_pair_reason_at_the_field_length'),
+                ('p_unknown', 'cert_pair_unknown_token_kept')):
+    imp, wrt = imported(d), written(d)
+    print('  %-14s imported %-40s written %s'
+          % (d, '%s / %s' % imp, '%s / %s' % wrt))
+    verdict(name, rc(d) == 0 and wrt == imp,
+            'certified=%s cert_reason=%s' % wrt,
+            'certified=%s cert_reason=%s' % imp)
+
+# The Boolean is the 'certified=' field alone: a token this version does not
+# know is provenance text and certifies nothing by itself.
+c_unknown, r_unknown = written('p_unknown')
+verdict('cert_unknown_token_does_not_certify', c_unknown == 'F',
+        'certified=%s cert_reason=%s' % (c_unknown, r_unknown), 'certified=F')
+
+print('---- the headers that are refused ----')
+for d, name, needle in (
+        ('p_over32', 'cert_reason_longer_than_the_field_refused',
+         'longer than the field'),
+        ('p_duplicate', 'cert_duplicate_key_refused', 'stated twice'),
+        ('p_conflict', 'cert_conflicting_pair_refused',
+         'different stationary claims')):
+    txt = log(d)
+    for line in txt.splitlines():
+        if 'load_IC) ERROR' in line:
+            print('  %-12s %s' % (d, line.strip()))
+    verdict(name, rc(d) != 0 and needle in txt,
+            'exit=%d named=%s' % (rc(d), needle in txt), 'exit!=0 named=True')
+
+print('---- a field one half of the state omits ----')
+imp, wrt = imported('p_legacy'), written('p_legacy')
+noted = 'only one of the two restart files states "cert_reason"' \
+        in log('p_legacy')
+print('  imported %s / %s, written %s / %s, note printed %s'
+      % (imp[0], imp[1], wrt[0], wrt[1], noted))
+verdict('cert_omitted_field_taken_from_the_other_half',
+        rc('p_legacy') == 0 and wrt == imp and noted,
+        'certified=%s cert_reason=%s note=%s' % (wrt[0], wrt[1], noted),
+        'certified=%s cert_reason=%s note=True' % imp)
+
+print('---- a mapped seed, whose provenance line is not its header ----')
+imp, wrt = imported('p_mapped_from'), written('p_mapped_from')
+step_w = ''
+for tok in coupling('%s/p_mapped_from/output/Hydro_ioniz.txt' % work).split():
+    if tok.startswith('sec_ion_step='):
+        step_w = tok.split('=', 1)[1]
+print('  the state\'s own line   certified=%s cert_reason=%s' % imp)
+print('  the mapped-from line   certified=F cert_reason=mapper_source_token'
+      ' sec_ion_step=99')
+print('  written                certified=%s cert_reason=%s sec_ion_step=%s'
+      % (wrt[0], wrt[1], step_w))
+verdict('mapped_from_provenance_is_not_a_coupling_header',
+        rc('p_mapped_from') == 0 and wrt == imp and step_w == '2429',
+        'exit=%d certified=%s cert_reason=%s sec_ion_step=%s'
+        % (rc('p_mapped_from'), wrt[0], wrt[1], step_w),
+        'exit=0 certified=%s cert_reason=%s sec_ion_step=2429' % imp)
+
+print('---- the verdict of a run that measures the state ----')
+imp, wrt = imported('p_reeval'), written('p_reeval')
+print('  the file claimed   certified=%s cert_reason=%s' % imp)
+print('  the evaluation put certified=%s cert_reason=%s' % wrt)
+# Exit 2 is a claim the certification refused; the state is written in full.
+verdict('reevaluation_writes_its_own_pair',
+        rc('p_reeval') in (0, 2) and wrt != imp
+        and wrt[1] in ('failing_entries', 'no_stationary_claim', '-',
+                       'certified_in_wind'),
+        'certified=%s cert_reason=%s' % wrt,
+        'the pair this run measured, not certified=%s cert_reason=%s' % imp)
+
+sys.exit(1 if n_fail else 0)
+PY
+rc_block2=$?
+
+if [ $rc_block1 -ne 0 ] || [ $rc_block2 -ne 0 ]; then
+   exit 1
+fi
+exit 0

@@ -46,7 +46,8 @@
 	use global_parameters, only: thereis_HeITR, thereis_oxychem
 	use ion_cell_state,    only: ieq_cell
 	use ion_residual_core, only: metal_fractions, metal_electron_sum,     &
-	                             metal_rows
+	                             metal_rows,                              &
+	                             impose_transported_ionization_fractions
 	use System_HeH_mol,    only: mol_heh_rows, mol_inv_turnover,          &
 	                             oxygen_carrier_rows,                     &
 	                             oj3, oj4, oj5, oj7
@@ -279,15 +280,11 @@
 	! carrier transport OR by the lower-boundary reservoir composition, the
 	! oxygen carriers only by carrier transport.
 	if (ieq_cell%x_h2_fixed) fvec(4) = x(4) - ieq_cell%x_h2_fix
-	! THE TRANSPORTED PROTON. Same construction, same reason: where the
-	! ionization state is carried with the flow, the H+ fraction of this cell
-	! is not a local root and the balance row that would have computed it is
-	! replaced by the transported value, AFTER the turnover scaling so the
-	! row is exactly x - x_fix with an identity Jacobian. Every other row --
-	! helium, the molecular ions, the metals -- keeps its balance and is
-	! solved against it, which is what keeps those stages consistent with the
-	! ionization fraction the transport produced.
-	if (ieq_cell%x_hp_fixed) fvec(1) = x(1) - ieq_cell%x_hp_fix
+	! The transported ionization fractions, where the flow carries them
+	! and not this cell's local balance (ion_residual_core). The H2
+	! partition just above is imposed for its own reasons and keeps its
+	! own flag.
+	call impose_transported_ionization_fractions(ieq_cell, x, fvec)
 	if (ieq_cell%x_ox_fixed .and. thereis_oxychem) then
 		fvec(iox)   = x(iox)   - ieq_cell%x_oh_fix
 		fvec(iox+1) = x(iox+1) - ieq_cell%x_h2o_fix

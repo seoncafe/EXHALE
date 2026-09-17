@@ -1,5 +1,10 @@
 # Choosing `He_Kzz` for LHS 1140 b — material for a user decision
 
+**2026-09-13: every `exhale/...` path in this file now lives under
+`archive_20260830/exhale/...`. The solutions it describes predate the code
+changes listed in `MODELS.md` section 5 and are superseded by `models/`;
+read `MODELS.md` for the tree of record.**
+
 **Status: settled. Sections 1-4 lay the two halves of the evidence side by
 side, section 5 makes the recommendation, and the user adopted it on
 2026-08-25 (section 0). Section 6 is what that value does to the composition
@@ -874,13 +879,13 @@ closed system: **what reservoir `He/H` makes the flux-closed solution
 reproduce the measured line?** The ladder below runs the closure driver
 (`../src/utils/element_flux_closure.py`) at eight further reservoirs, each
 started from the converged flux and converged wind of the point below it, so
-every arm begins near its own fixed point. Everything else is the section-7
+every rung begins near its own fixed point. Everything else is the section-7
 configuration: Photochem `clima` + chemistry, `K_zz = 1e9`, `p_match = 1e-6`
 bar, the GJ 1132 proxy SED, `tol = 0.05`, `k_max = 8`. Runs:
 `exhale/flux_closure/heh{3,5,8,9p7,10p3,10p7,11p1,12_ctl}/`, table
-`exhale/flux_closure/closure_heh_table.py`. A ninth arm,
+`exhale/flux_closure/closure_heh_table.py`. A ninth rung,
 `exhale/flux_closure/heh12/`, reaches the same 12.01 reservoir in one 1.50x
-jump from the 8.0 arm instead of one step from 11.11; it is a convergence
+jump from the 8.0 rung instead of one step from 11.11; it is a convergence
 artifact and is recorded separately in section 8.3.
 
 | reservoir `He/H` | k | `F_H` [g/s] | `F_He` [g/s] | `He/H` at match | `log10 Mdot` | red depth [%] | blue [%] | FWHM [A] | red EW [%A] | EW / measured | cold-trap `O/H` |
@@ -897,7 +902,7 @@ artifact and is recorded separately in section 8.3.
 | *12.0, discarded (sec. 8.3)* | 4 | 3.910e6 | 2.238e7 | 12.0135 | 7.420 | 4.630 | 0.663 | 0.2654 | 1.3126 | 1.185 | 1.066e-6 |
 | *measurement* | | | | | | 1.254 | | 0.841 | **1.108 +/- 0.030** | 1 | |
 
-Every arm returns a matching-level `He/H` equal to its reservoir to four
+Every rung returns a matching-level `He/H` equal to its reservoir to four
 digits, the same result section 7 reported at 2.09 and for the same reason:
 at `K_zz = 1e9` the eddy-mixed column reaches the microbar match, so the
 escape flux does not set the composition there.
@@ -933,7 +938,7 @@ C/N/O rather than with a bare H/He base. The price is a helium fraction of
 92 per cent by number.
 
 **How firmly the crossing is bracketed.** The center is still an
-interpolation -- no arm was run at 11.73 -- but the bracket around it is
+interpolation -- no rung was run at 11.73 -- but the bracket around it is
 measured and the local slope no longer jumps across it. The equivalent width
 grows sublinearly with the reservoir along the whole ladder, at
 `d ln EW / d ln (He/H)` = 0.688 (2.09-3.00), 0.630, 0.508, 0.506, 0.254,
@@ -945,13 +950,13 @@ equivalent width does *not* saturate before the measurement is reached,
 which is what the He-rich end of the scalar ladder (section 6) had made a
 live possibility.
 
-**Convergence quality, arm by arm.** The wind residual the JFNK finish can
+**Convergence quality, rung by rung.** The wind residual the JFNK finish can
 reach degrades as the reservoir grows: the line search stalls on the base
 contact mode and returns its best iterate rather than converging. The target
-was therefore raised per arm, and the achieved values are recorded rather
+was therefore raised rung by rung, and the achieved values are recorded rather
 than smoothed over:
 
-| arm | wind `Resid tol` | achieved `\|\|R\|\|` | `info` | steady-window `F_H` spread |
+| rung | wind `Resid tol` | achieved `\|\|R\|\|` | `info` | steady-window `F_H` spread |
 |---|---|---|---|---|
 | 2.09 | 1.0e-4 | 9.81e-5 | 0 | 0.44 % |
 | 3.0 | 2.0e-4 | 1.40e-4 | 0 | 0.64 % |
@@ -1027,7 +1032,7 @@ lowest closed-model point (0.01) is not monotonic with the 0.10 one
 
 ### 8.3 The outer region a converged wind inherits (2026-08-27)
 
-The 12.01 rung was first reached in one step from the 8.0 arm, a 1.50x jump
+The 12.01 rung was first reached in one step from the 8.0 rung, a 1.50x jump
 in reservoir (`exhale/flux_closure/heh12/`, converged at k = 4). The rung
 kept in the table above reaches the same reservoir from 11.11, a 1.08x step
 (`exhale/flux_closure/heh12_ctl/`, k = 2). The two agree on everything the
@@ -1094,8 +1099,8 @@ the metastable column, but it is not zero.
 `He/H` = 3.0, from a seed 3.7x away in composition and in the downward
 direction the ladder never takes: it returns the same `r_drop` to the digit,
 with everything else inside the closure tolerance. The 5.0, 8.0 and 2.09
-arms were not checked this way. Separately, `exhale/flux_closure/heh10p3_ctl/`
-re-runs the 10.31 arm from the same seed and reproduces
+rungs were not checked this way. Separately, `exhale/flux_closure/heh10p3_ctl/`
+re-runs the 10.31 rung from the same seed and reproduces
 `Hydro_ioniz_adv.txt` and `Ion_species_adv.txt` bitwise, which fixes
 determinism but says nothing about seed dependence.
 
@@ -1127,7 +1132,7 @@ file describes. Implied values: **1.05e8 at the 1 microbar match**, 1.05e5 at
 1 bar, 2.56e4 at the 16.73 bar deep boundary — a factor 9.5 under the constant
 at the match and four decades under it at the bottom.
 
-Two arms, because the profile hands over both the composition and the eddy
+Two tests, because the profile hands over both the composition and the eddy
 coefficient:
 
 - **A, chemistry only.** The column is solved on `K_zz(p)`, then its `Kzz`
@@ -1157,7 +1162,7 @@ Runs and the measurement script: `exhale/kzz_power/`.
 
 At the 1 microbar match, the ratio `K_zz(p)` / constant:
 
-| quantity | 11.11 arm | 2.09 arm |
+| quantity | 11.11 rung | 2.09 rung |
 |---|---|---|
 | **consumed by the wind** | | |
 | `X_He` | 0.9985 | 0.9985 |
@@ -1184,7 +1189,7 @@ coefficient entering it and hands the photochemistry a (P, T) pair with the
 does not move at all; the elemental ratios agree to 1.2% or better.
 
 **What did move: the carriers, by up to four decades.** Nitrogen changes
-carrier outright — on the 11.11 arm `q_NH3` at the match falls 6.32e-6 ->
+carrier outright — on the 11.11 rung `q_NH3` at the match falls 6.32e-6 ->
 2.43e-8 while `q_N2` rises 1.21e-7 -> 3.46e-6, so an NH3-dominated column
 becomes N2-dominated. Carbon partly follows (CH4 down 2.3x, CO up 55x, CO2 up
 nearly four decades from a negligible base). Deeper it is worse: at 1 bar the
@@ -1195,11 +1200,11 @@ nuclei are what the handoff transmits.
 **The crossing, against the path spread.** Converted with the local slope
 `d ln EW / d ln(He/H)` = 0.382 over the 11.11-12.01 interval (section 8.1),
 the four equivalent widths move the crossing 11.73 -> 11.64 / 11.70 (11.11
-arm) and 11.54 / 11.77 (2.09 arm): **-0.19 to +0.05 in He/H, under a tenth of
+rung) and 11.54 / 11.77 (2.09 rung): **-0.19 to +0.05 in He/H, under a tenth of
 the 10.92-12.58 the measurement's own 1 sigma band allows**. It is also
 smaller than the workflow's own path spread: re-solving the *same* profile
-from a different seed moves the equivalent width by 1.5% (11.11 arm) and 0.31%
-(2.09 arm), against the 0.10-0.61% the eddy form produces.
+from a different seed moves the equivalent width by 1.5% (11.11 rung) and 0.31%
+(2.09 rung), against the 0.10-0.61% the eddy form produces.
 
 ### Two limits on what this tested
 
@@ -1219,12 +1224,12 @@ from a different seed moves the equivalent width by 1.5% (11.11 arm) and 0.31%
    0.1-10 bar interval is the one that fixes where CH4 and NH3 quench. **The
    defect does not reach the verdict**: a form this wrong in the deep column
    still failed to move an elemental ratio at the match by more than 1.2%.
-2. **Arm B is a bounded test of the wind side.** The column reaches only
+2. **Test B, chemistry and wind, is a bounded test of the wind side.** The column reaches only
    1.0091 R_p above the match, and every cell above that takes the top level's
    value, so the wind saw a changed coefficient in a shell nine thousandths of
    a radius deep — 9.5x lower at the base, equal at the top — while the
    homopause under the constant sits at 1.056 R_p (section 3), outside it.
-   Arm B is not a test of lowering `K_zz` where helium settles; the unbounded
+   Test B is not a test of lowering `K_zz` where helium settles; the unbounded
    version of that is the magnitude scan of section 3. Anchoring the same law
    at 1 microbar instead would raise the inherited value by 9.5x over the whole
    domain — a change of magnitude, a separate test, not run.

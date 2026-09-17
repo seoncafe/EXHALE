@@ -6,7 +6,10 @@
 	! The standard blocks are verbatim-shared by System_HeH and
 	! System_HeH_metals (§5.2 Inc 1); the TR-form rows and the He 2^3S triplet
 	! row are shared by System_HeH_TR, System_HeH_TR_metals and System_HeH_mol
-	! (§5.2 Inc 3, docs/refactor_plan_system_composition_parser.md). Only
+	! (§5.2 Inc 3, docs/refactor_plan_system_composition_parser.md). It also
+	! holds impose_transported_ionization_fractions, the substitution that
+	! replaces an ionization balance row by the fraction the flow carries;
+	! every system that can reach those rows calls that one routine. Only
 	! explicit-shape / assumed-size dummies are used here: assumed-shape (:)
 	! dummies can change gfortran -O3 code generation and break the
 	! byte-identical regression (review item 4.1). The arithmetic order is
@@ -16,6 +19,10 @@
 	! He(2^3S) + H total ionization rate, kept in Cool_coeff.f90 next to the
 	! rate coefficient itself so it has a single definition.
 	use Cooling_Coefficients, only: f_penning_HeI23S
+	! The cell state is READ, never written: the imposed-fraction routine
+	! below takes the cell as an argument, so this module holds no state of
+	! its own and stays safe to call from the OpenMP cell sweep.
+	use ion_cell_state, only: ion_rates
 
 	implicit none
 
@@ -220,6 +227,48 @@
 		endif
 	enddo
 	end subroutine metal_rows
+
+	! Impose the ionization fractions the flow carries.
+	!
+	! Where an ionization stage is transported, its fraction in a cell is
+	! not a root of that cell's photoionization balance: the ionization
+	! time exceeds the flow time and the composition of the gas is the one
+	! the flow brought. The balance row that would have computed the
+	! fraction is then replaced by the carried value,
+	!
+	!       fvec(i) = x(i) - x_fix(i) ,
+	!
+	! whose Jacobian row is the identity. Every other row of the system
+	! keeps its balance and is solved against it, which is what keeps the
+	! remaining stages -- helium, the molecular ions, the metals, and the
+	! electron density they all share -- consistent with the transported
+	! composition.
+	!
+	! Rows 1 to 3 hold the same three stages in every system that reaches
+	! them: x(1) = n(H II)/n(H nuclei), x(2) = n(He II)/n(He) and
+	! x(3) = n(He III)/n(He). System_H offers row 1 alone. One flag and one
+	! value per stage live in the cell state, and only a stage whose flag is
+	! set is written, so a system may call this whether or not anything is
+	! imposed on it.
+	!
+	! CALL IT LAST, after every term of the rows has been written and after
+	! any scaling of them, so that the row is exactly x - x_fix.
+	!
+	! This is the one place the substitution is written. Seven systems reach
+	! these rows, and seven transcriptions of one substitution is the drift
+	! the g2s/G2s shadowing of 2026-08-12 stands as the warning about.
+	subroutine impose_transported_ionization_fractions(cell, x, fvec)
+	type(ion_rates), intent(in) :: cell
+	real*8, intent(in) :: x(*)
+	real*8 :: fvec(*)
+
+	! H II per H nucleus, carried by the transported proton
+	! (the key Ionization transport).
+	if (cell%x_hp_fixed) fvec(1) = x(1) - cell%x_hp_fix
+	! He II and He III per He nucleus are rows 2 and 3 and enter here when
+	! the helium stages are carried as well. The cell state states no
+	! imposed helium fraction, so neither row is written.
+	end subroutine impose_transported_ionization_fractions
 
 	! End of module
 	end module ion_residual_core

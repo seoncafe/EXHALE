@@ -154,12 +154,23 @@ chk the_handoff_clock_starts_at_zero "$v" from_zero
 # What IS refused: a header that claims a trajectory and carries no time on it.
 mkcase r4c hydrostatic_column "Run mode: phys"
 sed -i 's/^Load IC?.*/Load IC? True/' "$WORK/r4c/input.inp"
-sed 's/ t_phys=[^ ]*//' "$WORK/r2/output/Hydro_ioniz.txt" \
-    > "$WORK/r4c/output/Hydro_ioniz_IC.txt"
-cp "$WORK/r2/output/Ion_species.txt" "$WORK/r4c/output/Ion_species_IC.txt"
+# The clock is written TWICE, as a ' t_phys=' token of the '# coupling:' line
+# and as the '# t_phys[s]' line of the restart metadata block, and the loader
+# reads the second where the first is absent. Both go, and the metadata line
+# goes from BOTH halves of the pair: the two files are two halves of one state
+# and a block present in one and absent in the other is refused on that ground
+# instead, which would make this assertion pass while testing something else.
+# (It used to strip the coupling token alone, so the clock reached the binary
+# through the metadata block and the state was accepted.)
+sed -e 's/ t_phys=[^ ]*//' -e '/^# t_phys\[s\]/d' \
+    "$WORK/r2/output/Hydro_ioniz.txt" > "$WORK/r4c/output/Hydro_ioniz_IC.txt"
+sed '/^# t_phys\[s\]/d' "$WORK/r2/output/Ion_species.txt" \
+    > "$WORK/r4c/output/Ion_species_IC.txt"
 ( cd "$WORK/r4c" && OMP_NUM_THREADS=1 EXHALE_MAXSTEPS=2 "$EXE" > run.log 2>&1 )
 [ $? -ne 0 ] && v=refused || v=accepted
 chk a_phys_header_without_its_clock_is_refused "$v" refused
+n=$(grep -c 'its t_phys field is missing' "$WORK/r4c/run.log")
+chk a_phys_header_without_its_clock_names_the_clock "$n" 1
 
 # ---------------------------------------------------------------------------
 # 5. A physical state restarted as a physical run continues its clock.
