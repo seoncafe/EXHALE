@@ -1,5 +1,0 @@
-[lower_profile/M]      final: count=12000  du= 3.1666E+00  dtu= 2.3256E-02
-     FAIL Hydro_ioniz.txt (EXCEEDS 1.0e-03  max rel 1.269e+00 at row 474 col 3 (518500.78714196314 vs -139260.56102646154))
-     FAIL Ion_species.txt (EXCEEDS 1.0e-03  max rel 9.942e-01 at row 475 col 11 (1.1596363741378348 vs 0.0067510842177437918))
-     FAIL Hydro_ioniz_adv.txt (EXCEEDS 1.0e-03  max rel 1.269e+00 at row 474 col 3 (518500.78714196314 vs -139260.56102646154))
-     FAIL Ion_species_adv.txt (EXCEEDS 1.0e-03  max rel 1.000e+00 at row 94 col 35 (1 vs 0))

@@ -1,5 +1,0 @@
-[mol_metals/C]      final: count=12000  du= 7.9064E-01  dtu= 5.9033E-03
-     PASS Hydro_ioniz.txt (WITHIN 1.0e-03  max rel 3.562e-08 at row 165 col 3 (419.36584791653405 vs 419.36586285375421))
-     PASS Ion_species.txt (WITHIN 1.0e-03  max rel 5.148e-09 at row 119 col 7 (1.1239178923046041e-06 vs 1.1239178980908196e-06))
-     PASS Hydro_ioniz_adv.txt (WITHIN 1.0e-03  max rel 2.374e-06 at row 167 col 10 (0.0053185555034571128 vs 0.0053185681319070305))
-     PASS Ion_species_adv.txt (WITHIN 1.0e-03  max rel 2.114e-08 at row 258 col 7 (3.2371931443098791 vs 3.2371932127405345))

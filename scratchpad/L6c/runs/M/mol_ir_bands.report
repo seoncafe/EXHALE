@@ -1,5 +1,0 @@
-[mol_ir_bands/M]      final: count=12000  du= 7.9161E-01  dtu= 5.7877E-03
-     FAIL Hydro_ioniz.txt (EXCEEDS 1.0e-03  max rel 3.381e-01 at row 32 col 7 (2.5290919970338123e-08 vs 3.8210228260050195e-08))
-     FAIL Ion_species.txt (EXCEEDS 1.0e-03  max rel 2.605e-02 at row 491 col 7 (543.53222518139057 vs 558.07249067318344))
-     FAIL Hydro_ioniz_adv.txt (EXCEEDS 1.0e-03  max rel 9.117e-01 at row 436 col 10 (3.9262949726317119e-05 vs 0.00044479535065276111))
-     FAIL Ion_species_adv.txt (EXCEEDS 1.0e-03  max rel 2.605e-02 at row 491 col 7 (543.53222518139057 vs 558.07249067318344))

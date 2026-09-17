@@ -1,5 +1,0 @@
-[oxygen_chemistry/C]      final: count=1000  du= 4.5171E+00  dtu= 1.6472E-01
-     PASS Hydro_ioniz.txt (data identical)
-     PASS Ion_species.txt (data identical)
-     PASS Hydro_ioniz_adv.txt (data identical)
-     PASS Ion_species_adv.txt (data identical)

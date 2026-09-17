@@ -1,5 +1,0 @@
-[mol_ir_bands/C]      final: count=12000  du= 7.9062E-01  dtu= 5.8911E-03
-     PASS Hydro_ioniz.txt (WITHIN 1.0e-03  max rel 3.125e-08 at row 165 col 3 (418.00993095230876 vs 418.00991788867492))
-     PASS Ion_species.txt (WITHIN 1.0e-03  max rel 3.351e-09 at row 123 col 7 (1.2898252566743732e-06 vs 1.2898252523522304e-06))
-     PASS Hydro_ioniz_adv.txt (WITHIN 1.0e-03  max rel 2.470e-06 at row 168 col 10 (0.0053736172119761335 vs 0.0053736039379498396))
-     PASS Ion_species_adv.txt (WITHIN 1.0e-03  max rel 3.599e-08 at row 218 col 7 (0.22205004741903381 vs 0.2220500394277137))
