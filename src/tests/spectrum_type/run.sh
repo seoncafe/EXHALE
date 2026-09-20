@@ -24,7 +24,12 @@ set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$HERE/../../.." && pwd)"
 OBJDIR="${EXHALE_OBJDIR:-$ROOT/build}"
-EXE="${EXHALE_EXE:-$ROOT/EXHALE.x}"
+# The binary is selected and its identity stated in one place;
+# src/tests/exhale_exe.sh carries the policy.
+. "$HERE/../exhale_exe.sh"
+exhale_select_exe "$ROOT" spectrum_type
+EXE="$EXHALE_RUN_EXE"
+exhale_announce_exe
 OUT="$ROOT/build/tests/spectrum_type"
 FC="${FC:-gfortran}"
 FFLAGS_TEST="${FFLAGS_TEST:--O0 -g -fbacktrace -fopenmp}"

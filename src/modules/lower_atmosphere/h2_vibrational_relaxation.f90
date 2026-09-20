@@ -51,10 +51,12 @@
    !    bound X ladder, reduced at initialization from the same line list
    !    the infrared cooling uses (Roueff et al. 2019, A&A 630, A58,
    !    table 2, through molecular_infrared_data): 302 levels, 1833
-   !    electric-quadrupole and magnetic-dipole lines. That is what makes
-   !    the consumers' validity claim -- that the collider density stands
-   !    far above n_cr of EVERY level a nascent molecule cascades through --
-   !    a condition the code evaluates rather than one asserted from v = 1.
+   !    electric-quadrupole and magnetic-dipole lines. So the RADIATIVE side
+   !    of the branching is the whole ladder's and not v = 1's. THE
+   !    COLLISIONAL SIDE IS STILL v = 1's, one coefficient per collider, so
+   !    the fraction is a first-event branching model and not a bound over
+   !    the ladder; what it approximates, and what brackets it, are at
+   !    h2_vibrational_heat_fraction below.
    !    MEASURED on that ladder, the maximum is 5.594e-06 s^-1, 6.6 times
    !    the v = 1, J = 0 total of 8.532e-07 s^-1 (itself within 3 per cent
    !    of the 8.3e-07 s^-1 Hollenbach & McKee adopt). Burton et al. instead
@@ -574,12 +576,38 @@
    !     f = (gamma_H n_HI + gamma_H2 n_H2 + gamma_He n_He)
    !         / (same + A_max) .
    !
-   ! A_max is the largest total spontaneous decay rate over the whole bound
-   ! ladder, so the fraction is the one the "every level of the cascade"
-   ! condition is stated for; the collisional side is still the v = 1
-   ! coefficient of each collider, which understates de-excitation of the
-   ! closely spaced high levels and therefore errs towards radiating rather
-   ! than heating.
+   ! WHAT THIS FORM IS: A FIRST-EVENT BRANCHING MODEL, and it is not a
+   ! bound. It asks what becomes of ONE excited molecule at its FIRST
+   ! disposal, with A_max the largest total spontaneous decay rate over the
+   ! whole bound ladder and the collisional side the v = 1 coefficient of
+   ! each collider. Two things follow, and both are stated because the
+   ! comment that stood here asserted the opposite:
+   !
+   !  * A FIRST-EVENT FRACTION IS NOT THE ENERGY FRACTION OF A CASCADE. A
+   !    molecule born at v = 10 reaches v = 0 through many steps, each with
+   !    its own branching, and the share of its energy that ends as heat is
+   !    a product over the path and not this single ratio.
+   !  * THE ALL-LEVEL RADIATIVE MAXIMUM DOES NOT MAKE THE RATIO A LOWER
+   !    BOUND. A_max bounds every level's radiative loss from above, but the
+   !    v = 1 collisional coefficient does not bound every level's
+   !    collisional loss from below: a level with C_u < C_1 would have a
+   !    collisional branching fraction below this one even though its
+   !    A_u <= A_max. The argument from closely spaced high levels that used
+   !    to be made here is not a proof -- selection rules, the collider's
+   !    identity, rotational redistribution, reactive destruction of the
+   !    excited molecule and upward thermal transitions all enter, and
+   !    Lique's (2015) section 3.2, which reports a modest increase with
+   !    initial vibrational state for a fixed vibrational change in the
+   !    H-collision transitions he studied, is supporting evidence inside
+   !    that data set and not a minimum for every level, rotational state
+   !    and collider a nascent molecule reaches.
+   !
+   ! WHAT BRACKETS IT. The reduced statistical-equilibrium model of
+   ! src/tests/h2_level_ladder solves the levels the published collision
+   ! data cover, carries the levels above them as one explicitly uncertain
+   ! group, and evaluates the exact form below on its solution; the bracket
+   ! it gives on three representative cells of the certified molecular base
+   ! is in docs/lhs1140b_stationary_L31_energy_cycles_20260917.md.
    !
    ! WHERE THE FORM COMES FROM: Burton, Hollenbach & Tielens (1990)
    ! eq. (A1), whose structure and counting unit are set out in
@@ -609,18 +637,26 @@
    !
    ! HOW FAR THIS LAYER IS FROM THE DISTINCTION MATTERING: 1 - f = 7.0e-09
    ! at the certified base with the collider sum this module now carries
-   ! (MEASURED, docs/lhs1140b_stationary_L7g_inventory_20260916.md), so the
-   ! two forms differ there by less than any quantity the run reports.
+   ! (MEASURED, docs/lhs1140b_stationary_L7g_inventory_20260916.md). That
+   ! number is a property of THIS model, not a bound on its distance from a
+   ! level-population one; what makes the two agree at this base is that
+   ! every level of the ladder is collisionally dominated there by orders,
+   ! so both forms return the thermalized limit whatever their branching
+   ! details.
    !
-   ! n_He IS OPTIONAL, AND WHY.  The three photoelectric and Lyman-Werner
-   ! sites that call this function are handed the neutral hydrogen and the
-   ! H2 of their own cell and no helium density, so they cannot state one;
-   ! the chemical-heat ledger can and does. Omitting it drops a term that
-   ! carries about a part in a thousand of the sum at this base (MEASURED),
-   ! which is why the two readings agree to 1e-3 of the collider sum and to
-   ! nothing at all in f where f is 1 to a part in 1e6. Passing n(He) at
-   ! those three sites is a one-line change in files this item does not
-   ! own and is recorded rather than made.
+   ! n_He IS OPTIONAL, AND WHY.  The argument is the interface's and not the
+   ! callers': a caller that has no helium density to hand can omit it and
+   ! still get the two-collider sum. EVERY PRODUCTION CALL SITE PASSES ONE.
+   ! The chemical-heat ledger passes the ground-singlet neutral
+   ! (molecular_reaction_heat), and so do the three photoelectric and
+   ! Lyman-Werner sites: ionization_equilibrium.f90 line 1262 passes
+   ! he_ground_singlet_density(nhei, nheiTR) into f_vib_quench, and
+   ! util_ion_eq.f90 lines 2113 and 2385 pass the same ground-singlet
+   ! density into the Lyman-Werner fluorescence channel of the heating
+   ! assembly and of the band ledger (READ). The helium collider carries
+   ! about a part in a thousand of the collider sum at this base
+   ! (MEASURED) and nothing at all in f where f is 1 to a part in 1e6,
+   ! which is why the reading was the same before those sites passed it.
    elemental function h2_vibrational_heat_fraction(T, n_HI, n_H2, n_He)   &
                       result(f)
       real*8, intent(in) :: T          ! [K]

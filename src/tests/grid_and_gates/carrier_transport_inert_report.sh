@@ -9,12 +9,14 @@
 #   it also sees the default the key takes from the oxygen chemistry.
 #
 # WHY IT IS REPORTED AND NOT REFUSED
-#   The transported carriers are species of the molecular network (H2, and
-#   OH/H2O/CO under the oxygen chemistry, and H+ under the ionization
-#   transport), and every consumer of carrier_transport in the code is
-#   guarded by thereis_mol.  With the network off the key therefore changes
-#   nothing: the state the run produces is the atomic one it would have
-#   produced without the line.  What is wrong is the input file, not the
+#   The carriers this key transports are species of the molecular network
+#   (H2, and OH/H2O/CO under the oxygen chemistry), and every consumer of
+#   carrier_transport in the code is guarded by thereis_mol.  With the
+#   network off the key therefore changes nothing: the state the run
+#   produces is the atomic one it would have produced without the line.
+#   The three ionization stages are NOT among them: they are stages of an
+#   element and are carried on their own key, "Ionization transport", in
+#   any gas.  What is wrong is the input file, not the
 #   result, so the run continues and the reader is told -- the same
 #   treatment "Molecular IR bands" and "Stellar LW flux" get when the
 #   network they act on is absent.  A refusal would reject a run whose
@@ -45,7 +47,12 @@
 set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$HERE/../../.." && pwd)"
-EXE="${EXHALE_EXE:-$ROOT/EXHALE.x}"
+# The binary is selected and its identity stated in one place;
+# src/tests/exhale_exe.sh carries the policy.
+. "$HERE/../exhale_exe.sh"
+exhale_select_exe "$ROOT" carrier_transport_inert_report
+EXE="$EXHALE_RUN_EXE"
+exhale_announce_exe
 WORK="${EXHALE_TEST_OUT:-$ROOT/build/tests/grid_and_gates}"
 ATOMIC="$ROOT/examples/14_diffusion"
 MOL="$ROOT/examples/15_molecular"

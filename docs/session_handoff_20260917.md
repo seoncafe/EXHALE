@@ -93,7 +93,7 @@ internal energy of the H2 fragment and branches through the quench fraction
 (Kokoouline et al. 2001; Strasser et al. 2001). (iii) R12 and R15, the
 three-body association and its reverse, applied the M = H2 rate coefficient to
 the TOTAL heavy-particle density; the collider sum is now formed with the
-published per-collider coefficients, helium given argon's as an upper bound
+published coefficient of each collider, helium given argon's as an upper bound
 (Cohen & Westberg 1983). (iv) the quench fraction's radiative rate used the
 v = 1 total decay rate 8.3e-07 s^-1 while the code's own validity claim
 asserted all levels; the all-level maximum over the 302-level ladder is

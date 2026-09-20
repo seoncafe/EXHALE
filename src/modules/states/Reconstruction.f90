@@ -2,6 +2,7 @@
       ! Collection of reconstruction procedure subroutine
       
       use global_parameters
+      use grid_construction, only: spherical_cell_volume
       use BC_Apply
       use PLM_reconstruction
       use Conversion
@@ -413,14 +414,18 @@
       ! disagree about the grid.
       real*8, dimension(1-Ng:N+Ng), intent(out) :: C1,C2,D1,D2
       real*8, dimension(1-Ng:N+Ng) :: dV
-      real*8  :: rm,rp
       integer :: j
 
-      ! Calculate cell volumes
+      ! The shell volumes, from the one expression for them
+      ! (grid_construction), over the range the weights below read: the
+      ! stencils reach one cell past the physical column at each end, and
+      ! the two outermost ghost cells have no stencil of their own and take
+      ! the volume of their neighbour.  Only ratios enter the weights below,
+      ! so the factor 3 between the shell volume and the difference of cubes
+      ! is immaterial here; the volume is what the divergence rows divide by,
+      ! and one grid has one volume.
       do j = 0, N+1			
-         rp = r_edg(j)
-         rm = r_edg(j-1)
-         dV(j) = (rp*rp*rp - rm*rm*rm)
+         dV(j) = spherical_cell_volume(j)
       enddo
       dV(1-Ng) = dV(2-Ng)
       dV(N+Ng) = dV(N+Ng-1)

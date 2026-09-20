@@ -38,13 +38,19 @@
 #     PASS|FAIL <name> measured=<v> reference=<r> tol=<t>
 # line. Exit status is nonzero if any row fails.
 #
-# EXHALE_RESID_EXE selects the binary (default $ROOT/EXHALE.x).
+# EXHALE_EXE selects the binary (default $ROOT/EXHALE.x); EXHALE_RESID_EXE
+# is its accepted alias and a conflicting pair is refused. The policy, and
+# the identity block this suite prints before it runs anything, are in
+# src/tests/exhale_exe.sh.
 #
 # Usage: src/tests/residual_determinism/run.sh
 set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$HERE/../../.." && pwd)"
-EXE="${EXHALE_RESID_EXE:-$ROOT/EXHALE.x}"
+. "$HERE/../exhale_exe.sh"
+exhale_select_exe "$ROOT" residual_determinism
+EXE="$EXHALE_RUN_EXE"
+exhale_announce_exe
 OUT="${EXHALE_TEST_OUT:-$ROOT/build/tests/residual_determinism}"
 mkdir -p "$OUT"
 rc=0
@@ -74,7 +80,7 @@ fi
 for CASE in $CASES; do
    name="$(basename "$CASE")"
    log="$OUT/replay_$name.log"
-   EXHALE_RESID_EXE="$EXE" "$HERE/run_residual_determinism.sh" "$CASE" replay \
+   EXHALE_EXE="$EXE" "$HERE/run_residual_determinism.sh" "$CASE" replay \
        > "$log" 2>&1 || true
    verdict="$(grep -c 'VERDICT: the residual is a state function' "$log" || true)"
    nvar="$(sed -n 's/.*system replayed: \([0-9]*\) unknowns per cell.*/\1/p' "$log" | head -n 1)"
@@ -87,6 +93,19 @@ for CASE in $CASES; do
       rc=1
    fi
    echo "     $name replays $nvar unknowns per cell"
+   # The binary the case actually executed is the copy the per-case script
+   # made in its working directory, and the row it printed there names that
+   # copy's md5. This is the evidence of which build produced the numbers
+   # above; a passing replay row is not.
+   ranmd5="$(sed -n 's/^PASS residual_determinism_binary_identity measured=\([0-9a-f]*\) .*/\1/p' \
+             "$log" | head -n 1)"
+   [ -z "$ranmd5" ] && ranmd5=not_reported
+   if [ "$ranmd5" = "$EXHALE_RUN_EXE_MD5" ]; then
+      echo "PASS the_binary_that_ran_is_the_one_requested_$name measured=$ranmd5 reference=$EXHALE_RUN_EXE_MD5 tol=0"
+   else
+      echo "FAIL the_binary_that_ran_is_the_one_requested_$name measured=$ranmd5 reference=$EXHALE_RUN_EXE_MD5 tol=0"
+      rc=1
+   fi
 done
 
 # The atomic element reload is the case whose registry the replay used to
@@ -117,7 +136,7 @@ for CASE in $CASES; do
    [ -z "$nvar" ] && nvar=0
    [ "$nvar" -le 3 ] && continue
    log="$OUT/branch_$name.log"
-   EXHALE_RESID_EXE="$EXE" "$HERE/run_residual_determinism.sh" "$CASE" branch \
+   EXHALE_EXE="$EXE" "$HERE/run_residual_determinism.sh" "$CASE" branch \
        > "$log" 2>&1 || true
    if ! grep -q 'resid_branch) VERDICT' "$log"; then
       echo "FAIL seed_family_is_evaluated_$name measured=no_report reference=report tol=0"

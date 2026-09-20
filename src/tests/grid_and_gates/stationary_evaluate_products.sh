@@ -16,7 +16,10 @@
 #      made on, is not moved by the post-process that reads it; the
 #      ADVECTION-DERIVED product carries the work state's certificate as
 #      provenance and makes no certification claim of its own.
-#   3. The two answers are reported apart: whether the file's own stationary
+#   3. A PLM-requesting restart input is still evaluated under the
+#      stationary operator, and the report names the operator it measured
+#      and the mass flux that operator puts through every face.
+#   4. The two answers are reported apart: whether the file's own stationary
 #      claim reproduces, and what verdict the work state gets.  A state whose
 #      file claims a certification, evaluated under a different stellar EUV
 #      luminosity from the one it was solved at, must say that the claim did
@@ -47,7 +50,12 @@
 set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$HERE/../../.." && pwd)"
-EXE="${EXHALE_EXE:-$ROOT/EXHALE.x}"
+# The binary is selected and its identity stated in one place;
+# src/tests/exhale_exe.sh carries the policy.
+. "$HERE/../exhale_exe.sh"
+exhale_select_exe "$ROOT" stationary_evaluate_products
+EXE="$EXHALE_RUN_EXE"
+exhale_announce_exe
 OUT="${EXHALE_TEST_OUT:-$ROOT/build/tests/grid_and_gates}"
 WORK="$OUT/stationary_evaluate_products"
 CASE="$ROOT/backup/regression/wasp_full_newton"
@@ -221,5 +229,24 @@ check_eq changed_option_products_written \
    "$(test -s "$WORK/B/output/Hydro_ioniz_adv.txt" && \
       ! grep -q 'STALE SENTINEL' "$WORK/B/output/Hydro_ioniz_adv.txt" && \
       echo written || echo missing)" written
+
+# ---- C: a PLM-requesting input evaluates the stationary operator --------
+# A stationary state of this code is a state the WENO3 residual vanishes on,
+# and every stationary route selects that reconstruction before it evaluates
+# anything.  An input that asks for PLM must therefore still be measured
+# under WENO3, and the report must SAY which operator it measured: the
+# reading that accused the base face of carrying tens of times the wind's
+# mass flux was a PLM evaluation of a WENO3 state (item L27 of
+# docs/PLAN_20260917.md, review of the 2026-09-17 handoff section 3.1).
+stage C
+sed -i -E 's/^Reconstruction scheme:.*/Reconstruction scheme: PLM/' \
+   "$WORK/C/input.inp"
+run_it C
+check_eq plm_input_asks_for_plm \
+   "$(grep -c '^Reconstruction scheme: PLM$' "$WORK/C/input.inp")" 1
+check_eq plm_input_evaluates_the_stationary_operator \
+   "$(grep -c 'operator: WENO3' "$WORK/C/run.log")" 1
+check_eq plm_input_face_flux_budget_printed \
+   "$(grep -c 'face mass flux r_f\^2 (rho v)_f' "$WORK/C/run.log")" 1
 
 exit $((n_fail > 0))

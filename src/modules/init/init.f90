@@ -115,7 +115,7 @@
       call blas_threads_report(6)
       
       ! Loop parameters
-      count = 0  
+      marching_step = 0  
       du  = 1.0
 	   dtu = 1.0
       
@@ -157,7 +157,7 @@
          call wae_generate_ic()
          write(*,*) '    - Loading the generated Wind-AE IC..'
          call load_IC(rho,v,p,T,f_sp,W)
-         count = 1
+         marching_step = 1
 
       else if (.not. do_load_IC) then
 
@@ -172,7 +172,7 @@
 	      call load_IC(rho,v,p,T,f_sp,W)
 
 	      ! Change starting loop counting index
-	      count = 1
+	      marching_step = 1
     	endif
       
       !------------------------------------------------!

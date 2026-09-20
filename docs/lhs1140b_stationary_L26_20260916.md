@@ -478,6 +478,14 @@ reproduces the catalog profile to 2e-12 in velocity and 2e-16 in density.
 
 ## R3. The local readings, measured, and why each is refused
 
+> **The face-flux rows of this section are PLM evaluations of WENO3 states.**
+> The probe reconstructed with whatever scheme the input left, and the catalog
+> inputs say PLM, while every stationary route selects WENO3 before it
+> evaluates. Under the stationary operator the same states carry the wind's own
+> mass flux at every face, including the base face. See
+> `docs/session_handoff_20260917_rev1.md` section 4.3 and
+> `docs/PLAN_20260917.md` item L27.
+
 `src/tests/grid_and_gates/base_boundary_continuity_probe.f90` gained the group
 `local readings of the base mass flux`, which prints every candidate beside the
 mass flux the Riemann solve puts through the base face on the same state. All
@@ -738,6 +746,13 @@ environment controls for measurements and that file documents no environment
 control.
 
 ## R9. Noticed outside the item, reported and not fixed
+
+> **The base face flux paragraph below is withdrawn: it reads PLM evaluations
+> of WENO3 states.** Under the stationary operator the base face carries the
+> wind's own mass flux to 1.6e-5 on the fiducial and 2.5e-5 on the certified
+> 0.10 state, so it neither refutes L21 nor shows the mass row admitting an
+> imbalance. See `docs/session_handoff_20260917_rev1.md` section 4.3 and
+> `docs/PLAN_20260917.md` item L27.
 
 **The base face flux the Riemann solve produces is not the wind's flux on any
 of the four LHS 1140 b wind states**, MEASURED in section R3: +32.4, +336.6,

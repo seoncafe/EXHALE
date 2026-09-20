@@ -8,7 +8,10 @@
 !  instantiated at kind(1.0d0) and at the quadruple kind by the two modules
 !  that include this file.  The double instantiation reproduces
 !  Reconstruction_step/Numerical_Fluxes/source_func/RK_integration bit for bit
-!  (asserted by the suite row generic_double_pipeline_equals_the_operator);
+!  (asserted by the suite rows generic_double_flux_difference_is_the_operator_
+!  bitwise, generic_double_source_is_the_operator_bitwise,
+!  generic_double_face_states_are_the_operator_bitwise and
+!  generic_double_is_the_operator_bitwise_with_the_key);
 !  the quadruple instantiation is the control experiment of the residual's
 !  non-smoothness floor.
 !
@@ -393,10 +396,19 @@
       real(fv) :: rm, rp
       integer  :: j
 
+      ! THE SHELL VOLUME IS SPELLED OUT HERE INSTEAD OF READ FROM
+      ! grid_construction, and this is the one place in the code where that
+      ! is so.  spherical_cell_volume is a double, and the quadruple
+      ! instantiation of this text exists to put the arithmetic of the
+      ! operator eighteen decades below the row; taking one factor of it in
+      ! double would leave that factor rounded at 1e-16 and the measurement
+      ! would be of that rounding.  It is the same expression, in the kind
+      ! this text is instantiated in, and in double it reproduces the
+      ! production routine bit for bit, which is what the suite row asserts.
       do j = 0, N+1
          rp = real(r_edg(j),   fv)
          rm = real(r_edg(j-1), fv)
-         dV(j) = (rp*rp*rp - rm*rm*rm)
+         dV(j) = (rp - rm)*(rp*rp + rp*rm + rm*rm)/3.0_fv
       enddo
       dV(1-Ng) = dV(2-Ng)
       dV(N+Ng) = dV(N+Ng-1)
@@ -1349,7 +1361,10 @@
          rm = real(r_edg(j-1), fv)
          dAp = rp*rp
          dAm = rm*rm
-         dV = (dAp*rp - dAm*rm)/3.0_fv
+         ! The shell volume of grid_construction's spherical_cell_volume, in
+         ! the kind of this text; see the note at
+         ! weno3_geometry_coefficients_fv for why it is spelled out.
+         dV = (rp - rm)*(rp*rp + rp*rm + rm*rm)/3.0_fv
 
          Fm = ff(:,j-1)
          pL = fpr(j-1)

@@ -38,6 +38,9 @@
                                mion_fsp, melem_A,                        &
                                bsp_charge, isp_H2
       use composition,   only: mass_per_H_nucleus_without_He
+      ! The one spherical geometry of the grid, so that a budget is weighed
+      ! with the volume the operator divides by.
+      use grid_construction, only: spherical_face_area_and_cell_volume
       use lower_atmosphere_profile, only: eddy_diffusion_on_grid
       use binary_element_diffusion, only: element_diffusion_step,         &
                                           species_advection_begin_step,   &
@@ -238,19 +241,26 @@
       ! ----------------------------------------------------------------- !
 
       function helium_mass_in_column(f_sp, jlo) result(mtot)
-      ! sum rho X r^2 dr over cells jlo..N, the discrete form of the integral
-      ! the conservation tests quote (same volume weight r^2 (r_edg(j) -
-      ! r_edg(j-1)) the operator's finite volumes use).
+      ! sum rho X V_j over cells jlo..N, on the EXACT spherical shell volumes
+      ! V_j = (r_+^3 - r_-^3)/3 the operator's divergence divides by
+      ! (spherical_face_area_and_cell_volume).  A conservation test has to
+      ! weigh the column with the operator's own volume: any other weight
+      ! makes the drift it measures the difference between two volumes and
+      ! not the drift of the operator.  The 4 pi of the shell is left out of
+      ! both sides of every budget below.
       real*8, dimension(1-Ng:N+Ng,n_species), intent(in) :: f_sp
       integer,                                intent(in) :: jlo
       real*8  :: mtot
       real*8, dimension(1-Ng:N+Ng) :: nH_l, nHe_l
+      real*8, dimension(0:N) :: fa
+      real*8, dimension(1:N) :: cv
       integer :: j
       call nucleus_counts(f_sp, nH_l, nHe_l)
+      call spherical_face_area_and_cell_volume(fa, cv)
       mtot = 0.0d0
       do j = jlo, N
          mtot = mtot + rho_a(j)*n0*mu*m_He_over_m_H*nHe_l(j)                &
-                      *(r(j)*R0)**2*(r_edg(j)-r_edg(j-1))*R0
+                      *cv(j)*R0**3
       enddo
       end function helium_mass_in_column
 
@@ -649,7 +659,8 @@
       real*8, allocatable :: heh_l(:), nH_l(:), nHe_l(:)
       real*8, allocatable :: Frho(:), rho_new(:)
       real*8  :: m_1, X_base, X2, famp, dr_phys, dev
-      real*8  :: rp, rm, dAp, dAm, dV
+      real*8, dimension(0:N) :: fa_t
+      real*8, dimension(1:N) :: cv_t
       integer :: it, j
 
       write(*,'(A)') ' --- T11: cell-to-cell alternating face mass flux --'//&
@@ -678,11 +689,10 @@
       do it = 1, 200
          ! The mass row of this stage, on the faces the composition rides on.
          rho_new = rho_a
+         call spherical_face_area_and_cell_volume(fa_t, cv_t)
          do j = 2, N
-            rp = r_edg(j);  rm = r_edg(j-1)
-            dAp = rp*rp;    dAm = rm*rm
-            dV  = (dAp*rp - dAm*rm)/3.0
-            rho_new(j) = rho_a(j) - dt_a(j)*(dAp*Frho(j) - dAm*Frho(j-1))/dV
+            rho_new(j) = rho_a(j) - dt_a(j)*(fa_t(j)*Frho(j)               &
+                                     - fa_t(j-1)*Frho(j-1))/cv_t(j)
          enddo
          call species_advection_begin_step(f_a)
          call species_advection_stage(1, rho_a, rho_a, rho_new, Frho, dt_a)

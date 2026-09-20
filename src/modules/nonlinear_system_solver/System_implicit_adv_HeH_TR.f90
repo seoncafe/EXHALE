@@ -47,7 +47,7 @@
 	real*8  :: xhi_old,xheiS_old,xheiii_old,xheiTR_old
 	real*8  :: ghi,ghei,gheii,gheiTR
 	real*8  :: xhi,xhii
-	real*8  :: xhei,xheii,xheiii
+	real*8  :: xheii,xheiii
 	real*8  :: xheiTR, xheiS
 	real*8  :: xe
 	real*8  :: c1
@@ -88,13 +88,13 @@
 	heh_loc    = adv_cell%heh_loc   ! = He/H (local when he_diffusion)
 
 	! Substitutions. The two neutral-He populations are solved for directly
-	! and the summed He I is their SUM (see the module header).
+	! (see the module header), so the once-ionized fraction is what is left
+	! of the He nucleus after both of them.
 	xhi    = x(1)
 	xhii   = 1.0 - x(1)
 	xheiS  = x(2)
 	xheiii = x(3)
 	xheiTR = x(4)
-	xhei   = xheiS + xheiTR
    xheii  = 1.0 - xheiS - xheiTR - xheiii
 
  	! Electron density, per H nucleus. The metal electrons (adv_cell%xe_metal,
@@ -146,13 +146,19 @@
 		     - xheiTR*(A31 + xhi*Q31*n_h))
 
 	! He <-> H charge exchange (Huang Table 4 group B) on the H (row 1) and
-	! He (row 2) rows, both written neutral-gain positive here. xhei is the
-	! summed He I fraction (n_HeI/n_he), the reactant density of He0 + H+.
-	! Row 2 is the ground-singlet balance, so the whole pair is charged to the
-	! singlet -- the same accounting the summed-He I form carried, and the same
-	! one the equilibrium systems make, neither of which gives the metastable
-	! a charge-exchange channel of its own.
-	call he_h_cx_fvec_adv(fvec, c1, xhi, xhii, xhei, xheii, heh_loc, n_h, &
+	! He (row 2) rows, both written neutral-gain positive here. The helium
+	! reactant of He + H+ -> He+ + H is the GROUND SINGLET, xheiS: the rate
+	! Table 4 lists for it, from Glover & Jappsen (2007), carries the barrier
+	! exp(-12.75/T4), and 12.75e4 K = 10.99 eV is the ionization-potential
+	! difference 24.587 - 13.598 eV of ground-state helium against hydrogen.
+	! He(2^3S) lies 19.82 eV above the singlet, so its own charge exchange
+	! with H+ is exothermic and has no such barrier; it is a different
+	! reaction with a different rate, and it is carried neither here nor in
+	! row 4, which gives the metastable no charge-exchange term at all.
+	! Row 2 is the ground-singlet balance, so the singlet loss the pair
+	! reports is charged to the row that owns the singlet, exactly as the
+	! equilibrium systems charge it.
+	call he_h_cx_fvec_adv(fvec, c1, xhi, xhii, xheiS, xheii, heh_loc, n_h, &
 	                      adv_cell%kcx_He0_Hp, adv_cell%kcx_Hep_H0)
 
 	! End of subroutine

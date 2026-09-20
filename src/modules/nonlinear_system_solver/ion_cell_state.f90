@@ -137,13 +137,35 @@
 		!                runs, and tying it to x_h2_fixed would impose an
 		!                ionization fraction on every run that carries H2.
 		!                x_hp_fix = n_H+ / n_H(nuclei)        -> x(1)
+		!   x_heii_fixed, x_heiii_fixed
+		!                the two ionized stages of helium, owned by the
+		!                same transported partition and measured per
+		!                helium NUCLEUS:
+		!                x_heii_fix  = n_He+  / n_He(nuclei)  -> x(2)
+		!                x_heiii_fix = n_He++ / n_He(nuclei)  -> x(3)
+		!                They carry their own flags rather than riding on
+		!                x_hp_fixed because a run may transport the proton
+		!                while the helium stages stay local: which stages
+		!                are carried is the set the transport operator
+		!                registered, and a flag per stage is what states
+		!                that set to the residual.
+		!
+		!                Rows 2 and 3 exist in every system solved where
+		!                helium is in the mixture; the one system that
+		!                offers row 1 alone (System_H) is solved only where
+		!                there is no helium, which "Ionization transport"
+		!                refuses.
 		logical :: x_h2_fixed = .false.
 		logical :: x_ox_fixed = .false.
 		logical :: x_hp_fixed = .false.
+		logical :: x_heii_fixed = .false.
+		logical :: x_heiii_fixed = .false.
 		real*8 :: x_h2_fix = 0.0d0
 		real*8 :: x_oh_fix = 0.0d0
 		real*8 :: x_h2o_fix = 0.0d0
 		real*8 :: x_hp_fix = 0.0d0
+		real*8 :: x_heii_fix = 0.0d0
+		real*8 :: x_heiii_fix = 0.0d0
 	end type ion_rates
 
 	type(ion_rates), save :: ieq_cell

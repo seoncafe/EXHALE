@@ -14,6 +14,8 @@ Use only EUV? False
 Log10 of X-ray luminosity [erg/s]: 27.20
 Log10 of EUV luminosity [erg/s]: 27.93
 Grid type: Mixed
+# Base grid of the stored results: the Mixed-grid default before 2026-09-19 (docs/lhs1140b_stationary_D1b_20260919.md)
+Base grid [dr,cells]: 1.9999999494757503e-4 50
 Numerical flux: HLLC
 Reconstruction scheme: PLM+WENO3
 Include He23S? True

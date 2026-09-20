@@ -124,6 +124,7 @@ SRC := \
   src/modules/functions/composition.f90 \
   src/modules/functions/element_census.f90 \
   src/modules/functions/binary_element_diffusion.f90 \
+  src/modules/functions/ionization_stage_transport.f90 \
   src/modules/lower_atmosphere/lower_column.f90 \
   src/modules/lower_atmosphere/h3p_cooling.f90 \
   src/modules/lower_atmosphere/molecular_infrared_data.f90 \
@@ -183,9 +184,11 @@ SRC := \
   src/modules/states/caloric_eos.f90 \
   src/modules/states/base_boundary.f90 \
   src/modules/states/Apply_BC.f90 \
+  src/modules/states/boundary_state_trace.f90 \
   src/modules/states/PLM_rec.f90 \
   src/modules/states/Source.f90 \
   src/modules/states/Reconstruction.f90 \
+  src/modules/states/stationary_operator.f90 \
   src/modules/flux/speed_estimate_ROE.f90 \
   src/modules/flux/Num_Fluxes.f90 \
   src/modules/flux/low_mach_dissipation.f90 \
@@ -246,6 +249,7 @@ DIFT_SRC := \
   src/modules/states/PLM_rec.f90 \
   src/modules/states/Reconstruction.f90 \
   src/modules/flux/species_face_flux.f90 \
+  src/modules/init/define_grid.f90 \
   src/modules/functions/binary_element_diffusion.f90 \
   src/tests/diffusion_tests.f90
 DIFT_OBJ := $(addprefix $(OBJDIR)/,$(notdir $(DIFT_SRC:.f90=.o)))

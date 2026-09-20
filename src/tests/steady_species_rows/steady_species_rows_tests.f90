@@ -37,6 +37,7 @@
       use diffusive_photochemistry, only: carrier_set_init, n_carrier,   &
                                           carrier_solved, ic_H2, ic_OH,  &
                                           ic_H2O, ic_CO, ic_Hp,          &
+                                          ic_HeII, ic_HeIII,             &
                                           carrier_species_index,         &
                                           carrier_element_headroom,      &
                                           carrier_headroom_known,        &
@@ -238,20 +239,36 @@
       ! mis-scaling: in a hydrogen and helium atmosphere the oxygen free
       ! density is zero.
       call real_row('headroom_H2_is_half_H',                             &
-                    carrier_element_headroom(ic_H2, 8.0d0, 3.0d0, 5.0d0), &
-                    4.0d0, nfail)
-      call real_row('headroom_Hp_is_H',                                  &
-                    carrier_element_headroom(ic_Hp, 8.0d0, 3.0d0, 5.0d0), &
-                    8.0d0, nfail)
+                    carrier_element_headroom(ic_H2, 8.0d0, 3.0d0, 5.0d0,  &
+                                             9.0d0, 7.0d0), 4.0d0, nfail)
+      ! The proton is an IONIZATION STAGE: its bound is the simplex, so it
+      ! is the element's whole nucleus density (every nucleus in H II) and
+      ! not the smaller reservoir the molecular carriers share.  The two
+      ! arguments differ here (8 against 9) so that the row states which
+      ! one the stage reads.
+      call real_row('headroom_Hp_is_the_H_nucleus_density',              &
+                    carrier_element_headroom(ic_Hp, 8.0d0, 3.0d0, 5.0d0,  &
+                                             9.0d0, 7.0d0), 9.0d0, nfail)
+      ! The two helium stages read the HELIUM nucleus density, sixth
+      ! argument, which differs from every other number in the call so
+      ! that a stage charged to the wrong element cannot pass.
+      call real_row('headroom_HeII_is_the_He_nucleus_density',           &
+                    carrier_element_headroom(ic_HeII, 8.0d0, 3.0d0,       &
+                                             5.0d0, 9.0d0, 7.0d0),       &
+                    7.0d0, nfail)
+      call real_row('headroom_HeIII_is_the_He_nucleus_density',          &
+                    carrier_element_headroom(ic_HeIII, 8.0d0, 3.0d0,      &
+                                             5.0d0, 9.0d0, 7.0d0),       &
+                    7.0d0, nfail)
       call real_row('headroom_OH_is_O',                                  &
-                    carrier_element_headroom(ic_OH, 8.0d0, 3.0d0, 5.0d0), &
-                    3.0d0, nfail)
+                    carrier_element_headroom(ic_OH, 8.0d0, 3.0d0, 5.0d0,  &
+                                             9.0d0, 7.0d0), 3.0d0, nfail)
       call real_row('headroom_H2O_is_O',                                 &
-                    carrier_element_headroom(ic_H2O, 8.0d0, 3.0d0, 5.0d0),&
-                    3.0d0, nfail)
+                    carrier_element_headroom(ic_H2O, 8.0d0, 3.0d0, 5.0d0, &
+                                             9.0d0, 7.0d0), 3.0d0, nfail)
       call real_row('headroom_CO_is_min_O_C',                            &
-                    carrier_element_headroom(ic_CO, 8.0d0, 5.0d0, 3.0d0), &
-                    3.0d0, nfail)
+                    carrier_element_headroom(ic_CO, 8.0d0, 5.0d0, 3.0d0,  &
+                                             9.0d0, 7.0d0), 3.0d0, nfail)
 
       call element_row_scale_is_the_certification_scale(nfail)
       call judged_distance_is_the_worst_row_over_its_tolerance(nfail)
@@ -1840,10 +1857,12 @@
       call real_row('inventory_H2_is_on_its_own_side',                    &
                     f_cell(isp_H2),                                       &
                     carrier_element_headroom(ic_H2, free(ien_H), 0.0d0,   &
+                                             0.0d0, free(ien_H),          &
                                              0.0d0), nf)
       call real_row('inventory_Hp_is_on_its_own_side',                    &
                     f_cell(isp_HII),                                      &
                     carrier_element_headroom(ic_Hp, free(ien_H), 0.0d0,   &
+                                             0.0d0, free(ien_H),          &
                                              0.0d0), nf)
       call real_row('inventory_separate_ceilings_breach_is_one',          &
                     inv%violation(ien_H), 1.0d0, nf)
@@ -1865,11 +1884,15 @@
       call bound_row('inventory_H2_is_inside_its_own_side',               &
                      f_cell(isp_H2)                                       &
                      - carrier_element_headroom(ic_H2, free(ien_H),       &
-                                                0.0d0, 0.0d0), 0.0d0, nf)
+                                                0.0d0, 0.0d0,             &
+                                                free(ien_H), 0.0d0),      &
+                     0.0d0, nf)
       call bound_row('inventory_Hp_is_inside_its_own_side',               &
                      f_cell(isp_HII)                                      &
                      - carrier_element_headroom(ic_Hp, free(ien_H),       &
-                                                0.0d0, 0.0d0), 0.0d0, nf)
+                                                0.0d0, 0.0d0,             &
+                                                free(ien_H), 0.0d0),      &
+                     0.0d0, nf)
       call bound_row('inventory_hydrogen_remainder_is_negative',          &
                      inv%remainder(ien_H), -1.0d-30, nf)
       call log_row('inventory_negative_remainder_is_infeasible',          &
@@ -1891,12 +1914,14 @@
       call bound_row('inventory_OH_is_inside_its_own_side',               &
                      f_cell(isp_OH)                                       &
                      - carrier_element_headroom(ic_OH, 0.0d0,             &
-                                       free(ien_O), free(ien_C)),         &
+                                       free(ien_O), free(ien_C), 0.0d0,   &
+                                       0.0d0),                            &
                      0.0d0, nf)
       call bound_row('inventory_CO_is_inside_its_own_side',               &
                      f_cell(isp_CO)                                       &
                      - carrier_element_headroom(ic_CO, 0.0d0,             &
-                                       free(ien_O), free(ien_C)),         &
+                                       free(ien_O), free(ien_C), 0.0d0,   &
+                                       0.0d0),                            &
                      0.0d0, nf)
       call real_row('inventory_oxygen_carriers_hold_more_than_the_element',&
                     inv%n_carried(ien_O), 1.125d0, nf)

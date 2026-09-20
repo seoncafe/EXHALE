@@ -37,6 +37,30 @@
 # Assertions 1 and 2 hold on a lagged build too and are not the item's RED:
 # they are what must not break. Assertion 3 is the one the lag fails.
 #
+# ALL THREE READ ONE SOLVE. A run writes the records of every stationary
+# solve it makes into one log, so a reader that selects the iteration line,
+# the best-iterate restore, the certification block and the completion line
+# by four independent searches over the whole file can take them from four
+# different solves; the ratio it then forms measures nothing. The scope
+# below is the LAST COMPLETED solve, and every record is taken from that
+# solve alone:
+#   * the solve is named by the last `done info=` line;
+#   * a record carrying a `solve=<n>` token belongs to the solve with that
+#     n, and nothing else does;
+#   * a log written before that token existed is delimited instead: the
+#     solve spans from the previous completion line to its own, and the
+#     records inside that span are its records. Every archived log is in
+#     that form, so this path is not a compatibility detail but the one
+#     that reads the record;
+#   * the certification block carries no token of its own, and is matched
+#     positionally: the solver prints the block and then the completion
+#     line, so the block of the chosen solve is the last block whose header
+#     stands before that line with no other completion line between them;
+#   * a record printed AFTER the last completion line belongs to a solve
+#     that did not complete, and a chosen solve with no iterate record or no
+#     certification block has no evidence to read. Both print
+#     `incomplete_evidence` and fail. A ratio is never built across solves.
+#
 # Every assertion prints one
 #     PASS|FAIL <name> measured=<v> reference=<r> tol=<t>
 # line; the exit status is nonzero if any of them fails.
@@ -62,13 +86,104 @@ for L in ${_logs[@]+"${_logs[@]}"}; do
       echo "FAIL selfconsistent_residual_of_$nm measured=no_log reference=$L tol=0"
       n_fail=$((n_fail+1)); continue
    fi
-   blk=$(awk '/\(certification\) \((JFNK|PTC)\) state /{n=NR} {l[NR]=$0} \
-              END{if(n) for(i=n;i<=NR;i++){print l[i]; if(l[i] ~ /CERTIFIED/) exit}}' "$L")
-   done_line=$(grep -E '^ \((JFNK|PTC)\) done info=' "$L" | tail -n 1)
-   if [ -z "$blk" ] || [ -z "$done_line" ]; then
+   # THE SCOPE: the records of the last completed stationary solve, and of
+   # no other. The scalars come out prefixed `scope `, the certification
+   # block after the marker line, so that a block line can never be read as
+   # a scalar.
+   scoped=$(awk '
+      function solve_id(s,   t) {
+         t = s
+         if (match(t, /(^|[ \t])solve=[0-9]+([ \t]|$)/)) {
+            t = substr(t, RSTART, RLENGTH); gsub(/[^0-9]/, "", t); return t
+         }
+         return ""
+      }
+      function norm_of(s,   t) {
+         t = s
+         sub(/^.*\|\|R\|\|=[ \t]*/, "", t)
+         sub(/[ \t].*$/, "", t)
+         return t
+      }
+      # A record of the chosen solve stands between the previous completion
+      # line and this one, and, where the records carry the token, names
+      # this solve. Neither test alone is enough: the span alone would take
+      # in a solve that printed records and no completion line of its own,
+      # and the token alone would take in a same-numbered solve of another
+      # run whose log was appended to this one.
+      function in_solve(n) {
+         if (n <= lo || n >= d) return 0
+         if (fmt == "identified") return (solve_id(l[n]) == id)
+         return 1
+      }
+      { l[NR] = $0 }
+      /^ \((JFNK|PTC)\) done info=/             { nd++; dl[nd] = NR }
+      /^ \((JFNK|PTC)\) returning best iterate/  { nb++; bl[nb] = NR }
+      /^ \((JFNK|PTC)\) it +[0-9]+ +\|\|R\|\|=/  { ni++; il[ni] = NR }
+      /\(certification\) \((JFNK|PTC)\) state /  { nc++; cl[nc] = NR }
+      END {
+         if (nd == 0) { print "scope status=no_steady_solve"; exit }
+         d = dl[nd]
+         id = solve_id(l[d])
+         fmt = (id == "") ? "legacy" : "identified"
+         lo = 0
+         if (nd > 1) lo = dl[nd-1]
+         # A solve whose records stand after the last completion line never
+         # completed: its evidence is a fragment.
+         if ((nb > 0 && bl[nb] > d) || (ni > 0 && il[ni] > d)) {
+            print "scope status=incomplete_evidence"
+            print "scope reason=records_after_the_last_completion_line"
+            exit
+         }
+         ib = 0; for (k = 1; k <= nb; k++) if (in_solve(bl[k])) ib = bl[k]
+         ii = 0; for (k = 1; k <= ni; k++) if (in_solve(il[k])) ii = il[k]
+         if (ib > 0)      { kind = "best_iterate"; iline = ib }
+         else if (ii > 0) { kind = "iteration";    iline = ii }
+         else {
+            print "scope status=incomplete_evidence"
+            print "scope reason=no_iterate_record_in_that_solve"
+            exit
+         }
+         cb = 0; for (k = 1; k <= nc; k++) if (cl[k] < d) cb = cl[k]
+         if (cb == 0) {
+            print "scope status=incomplete_evidence"
+            print "scope reason=no_certification_block_before_that_completion_line"
+            exit
+         }
+         for (k = 1; k <= nd; k++) if (dl[k] > cb && dl[k] < d) {
+            print "scope status=incomplete_evidence"
+            print "scope reason=a_completion_line_stands_between_the_block_and_the_solve"
+            exit
+         }
+         print "scope status=ok"
+         print "scope format=" fmt
+         print "scope solve=" (fmt == "identified" ? id : "-")
+         print "scope done_line=" d
+         print "scope iterate_kind=" kind
+         print "scope iterate_line=" iline
+         print "scope iterate_norm=" norm_of(l[iline])
+         print "scope done_text=" l[d]
+         print "--- certification block"
+         for (i = cb; i <= d; i++) { print l[i]; if (l[i] ~ /CERTIFIED/) break }
+      }' "$L")
+   status=$(printf '%s\n' "$scoped" | sed -n 's/^scope status=//p')
+   if [ "$status" = "no_steady_solve" ] || [ -z "$status" ]; then
       echo "FAIL selfconsistent_residual_of_$nm measured=no_steady_solve reference=one_solve tol=0"
       n_fail=$((n_fail+1)); continue
    fi
+   if [ "$status" = "incomplete_evidence" ]; then
+      reason=$(printf '%s\n' "$scoped" | sed -n 's/^scope reason=//p')
+      echo "FAIL selfconsistent_residual_of_$nm measured=incomplete_evidence reference=one_completed_solve tol=0"
+      echo "     $reason"
+      echo "     the records of one solve are not all present, and the rows of"
+      echo "     this suite are not built from records of different solves"
+      n_fail=$((n_fail+1)); continue
+   fi
+   fmt=$(printf '%s\n' "$scoped" | sed -n 's/^scope format=//p')
+   sid=$(printf '%s\n' "$scoped" | sed -n 's/^scope solve=//p')
+   it_kind=$(printf '%s\n' "$scoped" | sed -n 's/^scope iterate_kind=//p')
+   it_r=$(printf '%s\n' "$scoped" | sed -n 's/^scope iterate_norm=//p')
+   done_line=$(printf '%s\n' "$scoped" | sed -n 's/^scope done_text=//p')
+   blk=$(printf '%s\n' "$scoped" | sed -n '/^--- certification block$/,$p' | tail -n +2)
    info=$(echo "$done_line" | sed -n 's/.*done info=\([0-9-]*\).*/\1/p')
    gate=$(echo "$done_line" | sed -n 's/.*||R||= *\([^ ]*\).*/\1/p')
 
@@ -115,27 +230,23 @@ for L in ${_logs[@]+"${_logs[@]}"}; do
    fi
 
    # 3. the accepted iterate's number and the state it became.
-   #    The accepted iterate's own ||R|| is the last one the solve printed
-   #    for an iterate (the best-iterate restore line when there is one, else
-   #    the last iteration line); the state's own is the one on the done
-   #    line. Read from the log in both cases, so the assertion does not
-   #    depend on a line only the self-consistent build prints.
-   it_r=$(grep -E '^ \((JFNK|PTC)\) returning best iterate' "$L" | tail -n 1 \
-          | sed -n 's/.*||R||= *\([^ ]*\).*/\1/p')
+   #    The accepted iterate's own ||R|| is the last one THAT SOLVE printed
+   #    for an iterate (its best-iterate restore line when it has one, else
+   #    its last iteration line); the state's own is the one on that solve's
+   #    completion line. Read from the log in both cases, so the assertion
+   #    does not depend on a line only the self-consistent build prints.
    if [ -z "$it_r" ]; then
-      it_r=$(grep -E '^ \((JFNK|PTC)\) it +[0-9]+ +\|\|R\|\|=' "$L" | tail -n 1 \
-             | sed -n 's/.*||R||= *\([^ ]*\).*/\1/p')
-   fi
-   if [ -z "$it_r" ]; then
-      echo "FAIL handback_matches_the_accepted_iterate_of_$nm measured=no_iterate_norm reference=1 tol=2"
+      echo "FAIL handback_matches_the_accepted_iterate_of_$nm measured=incomplete_evidence reference=1 tol=2"
       n_fail=$((n_fail+1))
    else
       ratio=$(awk -v a="$gate" -v b="$it_r" 'BEGIN{ if(b+0==0){print 0; exit} print (a+0)/(b+0)}')
       ok=$(awk -v r="$ratio" 'BEGIN{if(r<0)r=-r; print (r<=2.0 && r>=0.5)?1:0}')
       if [ "$ok" = "1" ]; then
          echo "PASS handback_matches_the_accepted_iterate_of_$nm measured=$ratio reference=1 tol=2"
+         echo "     read from the $fmt scope of solve $sid, iterate record $it_kind"
       else
          echo "FAIL handback_matches_the_accepted_iterate_of_$nm measured=$ratio reference=1 tol=2"
+         echo "     read from the $fmt scope of solve $sid, iterate record $it_kind"
          echo "     the accepted iterate scored $it_r and the state it became scores $gate:"
          echo "     the composition elimination is lagged, so the Newton drove a"
          echo "     different system to zero than the one the state is judged on"
@@ -286,6 +397,74 @@ if [ -n "$EQ_LOGS" ]; then
          echo "PASS eq_measure_last_pass_is_within_the_tolerance_for_$nm measured=$worst reference=0 tol=$etol"
       else
          echo "FAIL eq_measure_last_pass_is_within_the_tolerance_for_$nm measured=$worst reference=0 tol=$etol"
+         n_fail=$((n_fail+1))
+      fi
+   done
+fi
+
+# ------------------------------------------------------------------ #
+# 6. THE READER TAKES THE RECORDS OF ONE SOLVE, on logs whose records are
+#    known.
+#
+# Each fixture under fixtures/ is a written-out log; its numbers are chosen
+# to be read and are not physical. The solvable three all carry the same two
+# numbers, a final completion at ||R|| = 1.208E-08 and an accepted iterate at
+# 1.433E-08, so the row must read 1.208E-08 / 1.433E-08 = 0.842987 on each of
+# them; what differs is WHICH record carries the second number and how the
+# reader has to find it:
+#   multiple_solves_identified        three complete solves, the last with
+#                                     its own best-iterate restore;
+#   restore_only_in_an_earlier_solve  the only restore of the run is an
+#                                     earlier solve's, and the final solve's
+#                                     last iteration line is the record;
+#   no_restore_in_the_final_solve     the same, written without the solve
+#                                     token, so the span between completion
+#                                     lines is the only delimiter;
+#   truncated_final_solve             a solve's records with no completion
+#                                     line of their own: no ratio exists and
+#                                     the evidence is incomplete.
+# An unscoped reader takes the earlier restore, 4.267E-01, on the middle two
+# and reports 2.83E-08.
+FIXTURES="$(cd "$(dirname "$0")" && pwd)/fixtures"
+if [ -z "${EXHALE_STEADY_FIXTURE_CHILD:-}" ] && [ -d "$FIXTURES" ]; then
+   for spec in \
+      "multiple_solves_identified|0.842987|identified scope of solve 3, iterate record best_iterate" \
+      "restore_only_in_an_earlier_solve|0.842987|identified scope of solve 2, iterate record iteration" \
+      "no_restore_in_the_final_solve|0.842987|legacy scope of solve -, iterate record iteration" \
+      "truncated_final_solve|incomplete_evidence|records_after_the_last_completion_line"
+   do
+      fx="${spec%%|*}";  rest="${spec#*|}"
+      want="${rest%%|*}";  scope_txt="${rest#*|}"
+      out=$(EXHALE_STEADY_FIXTURE_CHILD=1 \
+            EXHALE_STEADY_RUNLOGS="$FIXTURES/$fx/run.log" \
+            EXHALE_SEED_PROBE_LOGS= EXHALE_EQ_MEASURE_LOGS= \
+            bash "$0" 2>&1)
+      if [ "$want" = "incomplete_evidence" ]; then
+         if printf '%s\n' "$out" | grep -q "measured=incomplete_evidence" \
+            && printf '%s\n' "$out" | grep -q -- "$scope_txt"; then
+            echo "PASS reader_reports_incomplete_evidence_on_$fx measured=incomplete_evidence reference=incomplete_evidence tol=0"
+         else
+            echo "FAIL reader_reports_incomplete_evidence_on_$fx measured=a_verdict reference=incomplete_evidence tol=0"
+            printf '%s\n' "$out" | sed 's/^/     /'
+            n_fail=$((n_fail+1))
+         fi
+         continue
+      fi
+      got=$(printf '%s\n' "$out" \
+            | sed -n "s/^PASS handback_matches_the_accepted_iterate_of_$fx measured=\([^ ]*\).*/\1/p")
+      scope_seen=$(printf '%s\n' "$out" | grep -c -- "$scope_txt")
+      if [ -z "$got" ]; then
+         echo "FAIL reader_reads_one_solve_of_$fx measured=no_row reference=$want tol=1e-5"
+         printf '%s\n' "$out" | sed 's/^/     /'
+         n_fail=$((n_fail+1)); continue
+      fi
+      ok=$(awk -v a="$got" -v b="$want" 'BEGIN{ d=(a-b); if(d<0)d=-d;
+                                                print (d/(b+0)<=1e-5)?1:0}')
+      if [ "$ok" = "1" ] && [ "$scope_seen" -ge 1 ]; then
+         echo "PASS reader_reads_one_solve_of_$fx measured=$got reference=$want tol=1e-5"
+      else
+         echo "FAIL reader_reads_one_solve_of_$fx measured=$got reference=$want tol=1e-5"
+         [ "$scope_seen" -ge 1 ] || echo "     the records came from another scope than: $scope_txt"
          n_fail=$((n_fail+1))
       fi
    done

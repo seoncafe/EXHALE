@@ -111,10 +111,24 @@ is not ready is indistinguishable at the call site from a balanced equation,
 and an active equation with no evaluator returns nothing at all.  Both now say
 so, and a state carrying either is written and not certified.
 
-The inventory covers the three hydrodynamic rows, each transported carrier
-balance, the He/H partition and the trace elemental transport balances, the
+The inventory covers the three hydrodynamic rows, one balance for each
+transported carrier, the ionization stage nucleus sums of H and He, the He/H
+partition and the trace elemental transport balances, the
 $\mathrm{He}\,2^3S$ and $\mathrm{H}(n{=}2)$ level balances, and the
-eliminated-species closure of the coupled cell system.  Every row measure is
+eliminated-species closure of the coupled cell system.  The stage sums are
+the identity $\sum_k F_k(f) + F_{\rm close}(f) = N_{\rm el}(f)$ at every
+face, summed over all stages of one element, read from the stationary
+evaluation that formed the stage fluxes rather than re-formed, so the number
+the report carries is the one the rows were built with; one entry per
+element, because the identity is a statement about one element's own nucleus
+flux.  It gates, at the floating-point bound of the identity: the identity is
+algebraic and has no truncation error, so the whole of what a tolerance on it
+can clear is the rounding of the sums, $2(5n_k+2)\epsilon g$ with $g$ the
+ratio of magnitude sums measured at the face the measure was taken at, and at
+its algebraic ceiling ($3/2$ for one carried stage, $2$ for two) where the
+operator reports no $g$.  Constructions that break the identity on purpose
+stand ten decades above that bound and the states this code produces at 0.07
+to 0.08 of it.  Every row measure is
 the \emph{maximum} over physical cells of $|{\rm res}|/\max({\rm scale},
 {\rm floor})$, never a volume average: a front or a thin layer must not be
 averaged away by the wind that carries most of the volume.  The volume average
@@ -122,6 +136,25 @@ is reported beside it and is never decisive.  The measurement has no side
 effects; every module array the carrier evaluator writes is held aside around
 the call, allocation status included, because a certification is a measurement
 of a state and not an operation on it.
+
+\paragraph{The capacity of a report is the size of the inventory.}
+A report holds \texttt{cert\_max\_entries} entries, and that number is not a
+round constant: it is formed from the counts that set it, three hydrodynamic
+rows plus one entry for each transported carrier, two stage nucleus sums, the
+He/H partition, one for each trace element, two level balances and one for
+each coupled cell system, which is 32 today.  It follows the inventory when a
+carrier, a trace element or a cell system is added.  The capacity is exactly
+consumed: MEASURED over the regression logs of the binary of record, a
+configuration with the ionization stages transported and metals on prints
+\texttt{active equations 11 of 32 in the inventory}, so no free slot is left.
+The entry writers therefore address only the entry their own call created,
+and an entry that does not fit stops the run before any field is written,
+naming the equation that did not fit, the capacity and the entry that stands
+last and unchanged.  Both halves matter.  What an overfilled report costs is
+that a new equation's measure, tolerance and verdict are attached to the name
+of the equation before it, and a certification then states a verdict about a
+set of equations it does not name; raising the constant would leave that
+available one equation later.
 
 The tolerances are one per kind of row, so that the report says which number
 refused a state:

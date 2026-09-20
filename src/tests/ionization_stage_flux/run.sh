@@ -6,8 +6,9 @@
 # The driver links the PRODUCTION objects and states, on synthetic columns,
 # that the stage flux of the derivation memo sums over ALL stages of an
 # element -- neutral and ionized -- to the element flux at every face, and
-# that the stage eddy term telescopes to zero.  It tests the FORMULA and the
-# face-fraction rule, not stage B, which does not exist yet.  See the header
+# that the stage eddy term telescopes to zero.  It tests the formula, the
+# face-fraction rule, the production module's own rows and the two end rows
+# the transport operator folds the ghost onto.  See the header
 # of ionization_stage_flux_tests.f90 for what each row asserts and for the
 # one thing the rows cannot reach (the operator's own diffusive face
 # coefficients are private).
@@ -58,9 +59,13 @@ if [ -z "${EXHALE_OBJDIR:-}" ]; then
 fi
 PROD_OBJ="$(ls "$OBJDIR"/*.o | grep -vE '(EXHALE_main|_tests|_probe)\.o$' | tr '\n' ' ')"
 
+# src/tests/test_columns.f90 builds the synthetic column whose species
+# carry their own density; it belongs to no production object, so it is
+# compiled here beside the driver.
 rm -f "$OUT/ionization_stage_flux_tests.x"
 $FC $FFLAGS_TEST -J"$OUT" -I"$OBJDIR" \
     -o "$OUT/ionization_stage_flux_tests.x" \
+    "$ROOT/src/tests/test_columns.f90" \
     "$HERE/ionization_stage_flux_tests.f90" \
     $PROD_OBJ $LAPACK || {
    echo "FAIL ionization_stage_flux_build measured=compile_error reference=ok tol=0"

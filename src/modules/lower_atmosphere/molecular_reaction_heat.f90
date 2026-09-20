@@ -110,12 +110,21 @@
       !     (use_excited_H), where the existing Lyman-alpha and collisional
       !     channels dispose of it; without one it leaves as radiation, the
       !     way R23's 153 nm photon does.
+      !     THIS IS A LOW-STATE RECIPIENT APPROXIMATION and not a universal
+      !     branching: the three sources state the n = 2 product for LOW
+      !     vibrational states of the ion and LOW collision energies, and
+      !     the validity block at the subtraction inside
+      !     molecular_chemical_heating gives their conditions and the
+      !     population this code actually carries.
       !   * R6, H3+ + e -> H2 + H, leaves the H2 fragment VIBRATIONALLY HOT.
       !     Kokoouline, Greene & Esry (2001), Nature 412, 891: the
       !     distribution "peaks at v ~ 5-6"; Strasser et al. (2001), Phys.
       !     Rev. Lett. 86, 779, measured it "wide with a peak around v = 5".
       !     That share is internal energy and is subject to the same
-      !     radiate-or-thermalize branching as R15's.
+      !     radiate-or-thermalize branching as R15's.  THE NUMBER IS A MODEL
+      !     ESTIMATE FROM THE PEAK'S POSITION: the ledger needs the mean of
+      !     the normalized product distribution and neither source tabulates
+      !     one, as the block at the assignment of e_int_R6 sets out.
       !   * R15, H + H + M -> H2 + M, puts the whole 4.478 eV into one new
       !     molecule, born within 0.02 eV of the dissociation limit, so all
       !     of it is internal.  Depositing that internal share as heat
@@ -278,6 +287,21 @@
       ! reaction_heat_recipients_corrected).
       logical, save :: recipients_key_read  = .false.
       logical, save :: recipients_corrected = .true.
+
+      ! Whether the validity line of the n = 2 recipient has been written
+      ! (reaction_heat_recipient_validity_report); one line per run.
+      logical, save :: recipient_validity_said = .false.
+
+      ! THE H2+ LIFETIME ARGUMENT THIS MODULE MAKES ABOUT ITS OWN RECIPIENT,
+      ! written down as the two numbers it compares so that the line the run
+      ! prints is the module's own statement and not a second one.
+      ! Chemical lifetime of H2+ against R5, R8 and R9 in the molecular base
+      ! [s], and the radiative vibrational relaxation time of H2+ [s].  An
+      ! ion whose chemical lifetime is the shorter of the two keeps the
+      ! vibrational distribution it is born with, which is the population
+      ! Takagi's n = 2 limit is NOT stated for.
+      real*8, parameter :: t_chem_H2p_s = 1.0d-3
+      real*8, parameter :: t_vib_H2p_s  = 1.0d0
 
       ! The three ionization potentials this module returns to the gas are
       ! the global thresholds, the same energies the photoionization channels
@@ -539,10 +563,37 @@
       ! THE CODE'S H2+ IS OUTSIDE TAKAGI'S LOW-v CONDITION: its lifetime
       ! against R5, R8 and R9 is about 1e-3 s against a radiative
       ! vibrational relaxation of about 1 s, so it is born vibrationally hot
-      ! and stays so.  A vibrationally hot ion opens n >= 3, which takes
-      ! MORE of the enthalpy out of the kinetic channel, not less.  The
-      ! share written here is therefore an UPPER BOUND on the heat and a
-      ! lower bound on the excitation.
+      ! and stays so.
+      !
+      ! WHAT THE SUBTRACTION IS, THEREFORE: A LOW-STATE RECIPIENT
+      ! APPROXIMATION, applied to a population the argument just above
+      ! places outside the condition its sources state.  IT IS NOT AN UPPER
+      ! BOUND ON THE HEAT.  The translational energy one dissociative
+      ! recombination releases is
+      !
+      !     E_kin = Q_ground + E_int(reactants) - E_int(products) ,
+      !
+      ! so the reactant's vibrational energy ENTERS the released energy with
+      ! a plus sign at the same time as a product above n = 2 subtracts more
+      ! than 10.199 eV.  The two move the kinetic share in opposite
+      ! directions, and neither the sign nor the size of their sum follows
+      ! from the sources in hand: a bound on the product principal quantum
+      ! number alone does not bound E_kin when the initial vibrational
+      ! energy is free as well.  The n = 2 limit itself is what is
+      ! established, and that is what is applied.
+      !
+      ! WHERE THE UNCERTAINTY IS CARRIED.  As a recipient fraction of the
+      ! 10.199 eV, varied on three representative cells of the certified
+      ! molecular base by
+      ! src/tests/physics_probe/molecular_energy_recipients.f90 and
+      ! tabulated in docs/lhs1140b_stationary_L31_energy_cycles_20260917.md
+      ! together with the complete energy cycles that show the excitation is
+      ! deposited once and only once.
+      !
+      ! A run whose H2+ is vibrationally hot prints the validity line of
+      ! reaction_heat_recipient_validity_report below, once, at its first
+      ! evaluation of this sum.
+      call reaction_heat_recipient_validity_report()
       if (recipients_on) then
          q_R5_to_gas  = q(ir_R5)  - species_formation_energy(isp_eps_H_n2)
          q_R16_to_gas = q(ir_R16) - species_formation_energy(isp_eps_H_n2)
@@ -561,11 +612,35 @@
       ! ladder (e_vib_v5_eV = 2.2927 eV, e_vib_v6_eV = 2.6664 eV), i.e.
       ! 2.480 eV, 26.8 per cent of q(R6).
       !
-      ! UNCERTAINTY, STATED BECAUSE IT IS NOT SMALL.  This is the POSITION
-      ! OF THE PEAK, not the mean of the distribution: both papers describe
-      ! the distribution as broad, neither tabulates it, and Strasser et
-      ! al. quote "an uncertainty of about one level" on the fit.  One level
-      ! near v = 5 is 0.37 to 0.40 eV, i.e. +/-15 per cent of this share.
+      ! WHAT THIS NUMBER IS: A MODEL ESTIMATE BUILT FROM THE POSITION OF THE
+      ! PUBLISHED PEAK, and not a measured mean.  The quantity the ledger
+      ! needs is the mean of the normalized product distribution,
+      !
+      !     E_int = sum over (v, J) of  P(v, J) E(v, J) ,
+      !
+      ! and neither source tabulates P.  Kokoouline et al. quote the peak of
+      ! their DIRECT-pathway calculation, which is not a complete treatment
+      ! of the indirect pathways; Strasser et al. measure a distribution
+      ! they describe as wide and discuss rotational excitation of both the
+      ! incident ions and the products.  A peak location, and an uncertainty
+      ! on that location, do not fix the mean of a broad, asymmetric
+      ! distribution: a distribution peaked at v = 5 with a tail towards
+      ! v = 0 has a mean below the peak, one with a tail towards the
+      ! dissociation limit a mean above it, and nothing in hand says which.
+      !
+      ! THE UNCERTAINTY THAT IS ESTABLISHED IS THE PEAK'S, NOT THE MEAN'S.
+      ! Strasser et al. quote "an uncertainty of about one level" on the
+      ! fit; one level near v = 5 is 0.37 to 0.40 eV, i.e. 15 per cent of
+      ! this share.  That is the uncertainty of the peak position and is
+      ! carried here as the smallest of the two, with the distance from peak
+      ! to mean unquantified.  Both are varied, separately from the
+      ! branching, on three representative cells by
+      ! src/tests/physics_probe/molecular_energy_recipients.f90, and the
+      ! bracket is in
+      ! docs/lhs1140b_stationary_L31_energy_cycles_20260917.md.  No figure
+      ! of either paper has been digitized; if one ever is, the memo records
+      ! the digitization and the population assumptions it rests on.
+      !
       ! Where the fraction below is 1 the share is deposited in full either
       ! way and the uncertainty does not reach the gas at all; it reaches it
       ! only at a base thin enough for the branching to bite.
@@ -604,22 +679,22 @@
          ! THE THERMALIZED SHARE OF AN INTERNAL EXCITATION, and only that.
          ! The function is Hollenbach & McKee's (1 + n_cr/n)^-1 with the
          ! ALL-LEVEL maximum of the total spontaneous decay rate over the
-         ! code's own 302-level ladder, so the condition it is valid under
-         ! -- that the collider density stands far above n_cr of EVERY level
-         ! the cascade passes through -- is the one the code evaluates.
+         ! code's own 302-level ladder and the v = 1 collisional coefficient
+         ! of each of the three colliders: a FIRST-EVENT BRANCHING MODEL,
+         ! whose form and whose distance from the exact net collisional heat
+         ! of a solved ladder are stated at h2_vibrational_heat_fraction.
          ! Both users of it here are molecules born high in the ladder and
          ! not in v = 1: R15's nascent molecule lies within 0.02 eV of the
          ! dissociation limit and R6's H2 fragment peaks at v = 5-6, so the
-         ! fraction is an effective one either way. The condition holds in
-         ! this layer, where the collider sum is 99.8 per cent atomic
-         ! hydrogen and n_cr against it is 1.27e6 cm^-3 at 808 K and
-         ! 2.97e5 at 1527 K, orders below the densities the layer carries,
-         ! and 1 - f is 6.8e-07 at cell 1 (MEASURED). It is NOT established
-         ! for a shallower base or for the top of a thinner layer, where the
-         ! level-resolved cascade would have to be carried, and there the
-         ! collisional side is the remaining approximation: the v = 1
-         ! coefficients understate de-excitation of the closely spaced high
-         ! levels, which errs towards radiating rather than heating.
+         ! fraction is an effective one either way. In this layer the
+         ! collider sum is 99.8 per cent atomic hydrogen and n_cr against it
+         ! is 1.27e6 cm^-3 at 808 K and 2.97e5 at 1527 K, orders below the
+         ! densities the layer carries, and 1 - f is 6.8e-07 at cell 1
+         ! (MEASURED), so the model and the exact form cannot differ here by
+         ! anything the run reports. At a shallower base or at the top of a
+         ! thinner layer they can, and the size of the difference there is
+         ! what the reduced statistical-equilibrium model of
+         ! src/tests/h2_level_ladder brackets.
          f_heat = h2_vibrational_heat_fraction(T, nhi(j), nh2, nheiS(j))
          ! The heat of each channel is q(ir) above; what is written here is
          ! only which densities and which rate coefficient multiply it, and
@@ -685,6 +760,44 @@
 
       ! ------------------------------------------------------!
 
+      subroutine reaction_heat_recipient_validity_report()
+      ! State once, on the run's own output, that the unit n = 2 recipient
+      ! of R5 and R16 is being applied to an H2+ population that lies
+      ! outside the condition its sources state.
+      !
+      ! THE CONDITION.  Takagi (2002) gives the n = 2 product "only for the
+      ! low vibrational molecular ion and at low collision energies";
+      ! Giusti-Suzor et al. (1983) compute the H(1s) + H(2s) limit for the
+      ! three lowest vibrational states below 0.5 eV; Guberman (1994)
+      ! computes ground-vibrational HeH+.
+      !
+      ! THE POPULATION THIS CODE CARRIES.  H2+ is destroyed by R5, R8 and R9
+      ! in about t_chem_H2p_s, three orders below the radiative vibrational
+      ! relaxation time t_vib_H2p_s, so it recombines in the distribution it
+      ! was born in and not in v = 0.  The comparison is a property of the
+      ! network and not of the cell, so the line is unconditional whenever
+      ! the recipients are in force; what varies from run to run is the
+      ! recipient's weight in the heat budget, which the uncertainty rows of
+      ! src/tests/physics_probe/molecular_energy_recipients.f90 measure.
+      if (recipient_validity_said) return
+      recipient_validity_said = .true.
+      if (.not. reaction_heat_recipients_corrected()) return
+      write(*,'(a)') ' (molecular_reaction_heat) VALIDITY: the n = 2'//    &
+         ' product of R5 and R16 is applied to every event.'
+      write(*,'(a,es8.1,a,es8.1,a)')                                      &
+         ' (molecular_reaction_heat) VALIDITY: H2+ lives '//              &
+         'about ', t_chem_H2p_s, ' s against R5/R8/R9 and relaxes'//      &
+         ' vibrationally in about ', t_vib_H2p_s, ' s, so it is'//        &
+         ' vibrationally hot.'
+      write(*,'(a)') ' (molecular_reaction_heat) VALIDITY: the unit'//     &
+         ' branching is the LOW-v, low-energy limit of Takagi (2002),'//  &
+         ' Giusti-Suzor et al. (1983) and Guberman (1994); it is a'//     &
+         ' low-state recipient approximation and not a bound on the heat.'
+
+      end subroutine reaction_heat_recipient_validity_report
+
+      ! ------------------------------------------------------!
+
       double precision function dissociative_recombination_n2_eV()        &
                                result(e)
       ! The electronic excitation energy one event of R5 or of R16 hands to
@@ -710,6 +823,21 @@
       ! one event cannot be counted at two rates.  Zero when the corrected
       ! recipients are off, in which case the 10.199 eV stays in the heat
       ! ledger and no atom is excited.
+      !
+      ! WITH THE EXCITED LEVEL OFF (use_excited_H false) NOTHING CONSUMES
+      ! THIS SOURCE, and the assumption that then stands in its place is an
+      ! explicit one: the 10.199 eV the ledger has already withheld from the
+      ! gas LEAVES THE CELL AS RADIATION.  Two things it could instead do
+      ! are not modelled there, and both would return part of it to the gas.
+      ! One is collisional de-excitation of the n = 2 atom, which the
+      ! excited-level route does carry (excited_hydrogen, the
+      ! de-excitation-heating term) and which is the faster of the two at
+      ! the electron densities of an ionized wind.  The other is
+      ! reabsorption of the Lyman-alpha photon followed by de-excitation,
+      ! which needs the transfer the excited-level route also carries.  So
+      ! with the level off this ledger is a LOWER bound on the gas heat of
+      ! R5 and R16, by at most the full 10.199 eV of each event; with the
+      ! level on, the disposal is computed rather than assumed.
       real*8, intent(in) :: T, n_H2p, n_HeHp, n_e
 
       if (.not. reaction_heat_recipients_corrected()) then

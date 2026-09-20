@@ -44,6 +44,70 @@
       ! contribution is assembled generically in cx_add_to_fvec, so the
       ! zero-abundance guard is preserved automatically: the rate
       ! R = k * n(donor) * n(acceptor) vanishes when either reactant is absent.
+      !
+      ! THE EQUATION BASIS OF THE HELIUM ROW IS THE CALLER'S, NOT THIS
+      ! MODULE'S. cx_add_to_fvec and cx_add_to_jac write the ionization-
+      ! positive form: a reaction is +R on the donor's lower-stage boundary
+      ! row and -R on the acceptor's. The one row whose orientation differs
+      ! between the solvers is the He I <-> He II boundary (row 2): it is
+      ! written He I-gain positive in the summed He I balance of the
+      ! He 2^3S systems (ion_residual_core, heh_tr_rows) and ionization
+      ! positive everywhere else. The caller therefore passes he_row_sign,
+      ! +1 for an ionization-positive He I <-> He II row and -1 for a
+      ! He I-gain one, and it multiplies the increments of THAT row alone;
+      ! the H row, the He II <-> He III row and the metal rows are
+      ! ionization positive in every system and never carry it. The only
+      ! reactions that reach the helium row are the metal + He / He+ pairs
+      ! of Huang et al. (2023) Table 4 (group C, Si/C/O with He and He+),
+      ! active only when cx_full = .true.; none of them touches He2+.
+      !
+      ! THE HELIUM REACTANT OF GROUP C IS THE GROUND SINGLET He(1^1S), NOT
+      ! THE SUM OVER He I, so n_hei of cx_add_to_fvec and cx_add_to_jac is
+      ! the singlet density. Table 4 writes those reactants as the bare
+      ! element, and their barriers say which state it is: the reverse rates
+      ! Si+ + He, C+ + He and O+ + He carry exp(-19.1/T4), exp(-15.5/T4) and
+      ! exp(-12.7/T4), against ionization-potential differences of
+      ! ground-state helium of 24.587 - 8.152 = 16.436 eV = 19.07e4 K,
+      ! 24.587 - 11.260 = 13.327 eV = 15.47e4 K and
+      ! 24.587 - 13.618 = 10.969 eV = 12.73e4 K. He(2^3S) lies 19.82 eV
+      ! above the singlet and its ionization potential is 4.77 eV, so every
+      ! one of those collisions is exothermic for it and runs at a rate this
+      ! code carries nowhere; charging the metastable to a ground-state rate
+      ! would be a reaction that is not in the set. The three metal systems
+      ! and the constrained equilibrium therefore all pass the singlet.
+      !
+      ! TWO EQUATION BASES, ONE RATE. A reaction is one event with one
+      ! volumetric rate R = k n(donor) n(acceptor) [cm^-3 s^-1], and the
+      ! solvers differ only in what they write it into. The local
+      ! ionization systems carry BOUNDARY FLOWS as their rows (the net
+      ! upward flow across the boundary between two stages of an element),
+      ! and cx_add_to_fvec adds R to them. The transported ionization
+      ! stages carry the STAGE DENSITIES themselves, and
+      ! charge_exchange_stage_sources returns the stoichiometric source of
+      ! each stage, -R on the donor's own stage and +R on the stage above
+      ! it, -R on the acceptor's and +R on the stage below. Both read the
+      ! rates from cx_reaction_rates, so the rate and the reaction table
+      ! are written once and a source assembled in either basis describes
+      ! the same events. The two are equivalent term by term: for an
+      ! element whose boundary flows are u_0 and u_1, the stage sources are
+      ! S_0 = -u_0, S_1 = u_0 - u_1 and S_2 = u_1, which is the conversion
+      ! src/tests/charge_exchange_rows asserts reaction by reaction.
+      !
+      ! WHO OWNS THE RATE COEFFICIENTS. cx_kc and cx_metal_base are
+      ! thread-local and hold ONE cell: cx_set_cell(T) fills cx_kc for that
+      ! cell's temperature and records it in cx_cell_T. Every caller of
+      ! cx_add_to_fvec, cx_add_to_jac or cx_add_to_turnover must have called
+      ! cx_set_cell for the cell it is assembling, on the same thread. The
+      ! ionization cell sweep does (ionization_equilibrium), and so must any
+      ! other evaluator of these rows, for instance a transported stage
+      ! source. cx_add_to_fvec, cx_add_to_jac and cx_add_to_turnover take
+      ! the cell temperature and stop the run if it is not the one cx_kc was
+      ! filled at, so a stale set of rates inherited from whatever cell the
+      ! thread handled last cannot be used silently. The turnover's cell is
+      ! optional in the interface while two of its call sites still do not
+      ! state one; a call that states none is refused when the thread holds
+      ! no cell at all, since then there is no rate set to bound a row
+      ! with.
 
       use species_table, only: iel_C, iel_O, iel_N, iel_Mg, iel_Si,        &
                                iel_Ca, iel_Na, iel_K, iel_S, iel_Fe,       &
@@ -54,6 +118,10 @@
 
       public :: cx_init, cx_set_cell, cx_add_to_fvec, cx_add_to_jac, cx_full
       public :: cx_metal_base, cx_add_to_turnover
+      ! The reaction set as stoichiometric number-density sources, for a
+      ! solver whose unknowns ARE stage densities rather than boundary
+      ! flows (the transported ionization stages).
+      public :: charge_exchange_stage_sources
       ! Dedicated He <-> H charge-exchange pair (Group B), available in every
       ! system with He, independent of cx_full.
       public :: he_h_charge_exchange, he_h_cx_rates
@@ -205,7 +273,15 @@
       integer, save :: cx_nact = 0
       integer, allocatable, save :: cx_act(:)
       real*8,  allocatable, save :: cx_kc(:)
-      !$omp threadprivate(cx_kc, cx_metal_base)
+      ! Temperature [K] the thread's cx_kc was filled at by cx_set_cell. The
+      ! negative initial value is "this thread holds no cell", which no
+      ! temperature can match, so an assembly that skipped cx_set_cell is
+      ! refused rather than run on another cell's rates. It is threadprivate
+      ! with cx_kc because it labels cx_kc, and it is deliberately NOT in the
+      ! copyin list of the cell sweep: a worker entering the region holds no
+      ! cell until it loads one.
+      real*8, save :: cx_cell_T = -1.0d0
+      !$omp threadprivate(cx_kc, cx_metal_base, cx_cell_T)
 
       ! Upper clamp on any evaluated rate [cm^3 s^-1]; guards the lnT-
       ! polynomial fits (N/S/Na/K), which diverge as T -> 1 K (never reached
@@ -327,22 +403,85 @@
          kc = cx_rate(cx_act(i), T)
          cx_kc(i) = min(max(kc, 0.0d0), cx_kc_max)
       enddo
+      ! The rates now belong to this temperature; the assembly routines
+      ! check that the cell they are handed is this one.
+      cx_cell_T = T
       end subroutine cx_set_cell
+
+      ! Refuse an assembly whose rate coefficients belong to another cell.
+      ! cx_kc holds one cell at a time on each thread, so a caller that did
+      ! not run cx_set_cell for the cell it is assembling would use whichever
+      ! temperature that thread happened to load last, and the source it
+      ! built would depend on the order the cells were handed out.
+      subroutine cx_require_cell(T_cell, caller)
+      real*8,           intent(in) :: T_cell
+      character(len=*), intent(in) :: caller
+      if (cx_cell_T .ne. T_cell) then
+         write(*,*) '(charge_exchange) ERROR: ', trim(caller),            &
+                    ' was called for a cell at T =', T_cell, ' K,'
+         write(*,*) '  but the charge-exchange rate coefficients of this', &
+                    ' thread were last filled at T =', cx_cell_T, ' K.'
+         write(*,*) '  cx_kc holds one cell; call cx_set_cell(T) for the', &
+                    ' cell being assembled, on this thread, first.'
+         write(*,*) '  Aborting.'
+         error stop 1
+      endif
+      end subroutine cx_require_cell
 
       ! Add the charge-exchange source terms to an already-built residual
       ! vector. dens(el,stage) is assembled from each species's densities;
       ! each reaction moves R from the donor's lower boundary (+R) to the
-      ! acceptor's lower boundary (-R), reproducing the previous hard-coded
-      ! C/N/O terms exactly while scaling to all metals.
+      ! acceptor's lower boundary (-R).
+      !
+      ! he_row_sign is the orientation of the caller's He I <-> He II row
+      ! (row 2): +1 when that row is written He I -> He II positive, -1 when
+      ! it is written He I-gain positive, as the summed He I balance of the
+      ! He 2^3S systems is. It multiplies the increments of that row alone,
+      ! so a reaction that destroys He II and makes He I enters a He I-gain
+      ! row with the positive sign its physics requires. Every other row of
+      ! every caller is ionization positive and keeps the sign written here.
+      ! T_cell is the temperature of the cell being assembled, checked
+      ! against the one cx_set_cell filled cx_kc at.
       subroutine cx_add_to_fvec(N_eq, fvec, nm0, nm1, nm2,                 &
-                                n_hi, n_hii, n_hei, n_heii, n_heiii)
+                                n_hi, n_hii, n_hei, n_heii, n_heiii,       &
+                                he_row_sign, T_cell)
       integer, intent(in)    :: N_eq
       real*8,  intent(inout) :: fvec(N_eq)
       real*8,  intent(in)    :: nm0(:), nm1(:), nm2(:)
       real*8,  intent(in)    :: n_hi, n_hii, n_hei, n_heii, n_heiii
-      real*8  :: dens(12,0:2), rrate
+      real*8,  intent(in)    :: he_row_sign, T_cell
+      real*8  :: dens(12,0:2), rrate(cx_nact), sdon, sacc
       integer :: i, r, de, ds, ae, as, idon, iacc
 
+      call cx_reactant_densities(nm0, nm1, nm2, n_hi, n_hii, n_hei,       &
+                                 n_heii, n_heiii, dens)
+      call cx_reaction_rates(dens, T_cell, 'cx_add_to_fvec', rrate)
+
+      do i = 1, cx_nact
+         r  = cx_act(i)
+         de = cx_don_el(r);  ds = cx_don_stg(r)
+         ae = cx_acc_el(r);  as = cx_acc_stg(r)
+         idon  = cx_fvidx(de, ds)       ! donor's lower-stage boundary
+         iacc  = cx_fvidx(ae, as-1)     ! acceptor's lower-stage boundary
+         ! The He I <-> He II boundary is the one row whose orientation is
+         ! the caller's; everything else is ionization positive.
+         sdon = cx_he_i_boundary_sign(de, ds,   he_row_sign)
+         sacc = cx_he_i_boundary_sign(ae, as-1, he_row_sign)
+         fvec(idon) = fvec(idon) + sdon*rrate(i)
+         fvec(iacc) = fvec(iacc) - sacc*rrate(i)
+      enddo
+      end subroutine cx_add_to_fvec
+
+      ! The reactant densities of one cell, by element code and ionization
+      ! stage: canonical metals 1..n_melem, then cx_H = 11 and cx_He = 12.
+      ! The helium entry at stage 0 is the GROUND SINGLET He(1^1S), which
+      ! is the reactant of the group C reactions (module header).
+      subroutine cx_reactant_densities(nm0, nm1, nm2, n_hi, n_hii,        &
+                                       n_hei, n_heii, n_heiii, dens)
+      real*8, intent(in)  :: nm0(:), nm1(:), nm2(:)
+      real*8, intent(in)  :: n_hi, n_hii, n_hei, n_heii, n_heiii
+      real*8, intent(out) :: dens(12,0:2)
+      integer :: i
       dens = 0.0d0
       do i = 1, n_melem
          dens(i,0) = nm0(i)
@@ -354,21 +493,132 @@
       dens(cx_He,0) = n_hei
       dens(cx_He,1) = n_heii
       dens(cx_He,2) = n_heiii
+      end subroutine cx_reactant_densities
 
+      ! The volumetric rate of every active reaction, R = k n(donor)
+      ! n(acceptor) [cm^-3 s^-1], at the cell whose rate coefficients this
+      ! thread holds. THE ONE PLACE A CHARGE-EXCHANGE RATE IS FORMED: both
+      ! equation bases read this array (module header), so a reaction
+      ! cannot acquire a second spelling in a second solver. The rate
+      ! vanishes when either reactant is absent, which is the zero-
+      ! abundance guard of the whole set.
+      subroutine cx_reaction_rates(dens, T_cell, caller, rrate)
+      real*8,           intent(in)  :: dens(12,0:2)
+      real*8,           intent(in)  :: T_cell
+      character(len=*), intent(in)  :: caller
+      real*8,           intent(out) :: rrate(cx_nact)
+      integer :: i, r
+      call cx_require_cell(T_cell, caller)
+      do i = 1, cx_nact
+         r = cx_act(i)
+         rrate(i) = cx_kc(i)*dens(cx_don_el(r), cx_don_stg(r))            &
+                            *dens(cx_acc_el(r), cx_acc_stg(r))
+      enddo
+      end subroutine cx_reaction_rates
+
+      ! THE REACTION SET AS STOICHIOMETRIC NUMBER-DENSITY SOURCES
+      ! [cm^-3 s^-1], stage by stage: one electron leaves the donor, so the
+      ! donor's stage loses R and the stage above it gains R, and one
+      ! electron arrives at the acceptor, so the acceptor's stage loses R
+      ! and the stage below it gains R. This is the form a solver whose
+      ! unknowns are the stage densities themselves needs; the local
+      ! ionization systems, whose rows are boundary flows, take the same
+      ! rates through cx_add_to_fvec (module header states the conversion).
+      !
+      ! s_H and s_He are the sources of the hydrogen and helium stages, and
+      ! s_metal those of the metals, indexed by the canonical element order.
+      ! The optional p_* and l_* are the GROSS production and loss of each
+      ! stage, both positive, whose difference is the source: a stage whose
+      ! charge exchange is fast carries production and loss orders above
+      ! their difference, and a reader of the net cannot recover them.
+      !
+      ! Group B, the He <-> H pair, is NOT in this set (cx_init leaves it
+      ! out): it is applied by he_h_cx_fvec in every system with helium,
+      ! so counting it here would count it twice. Groups C and D enter only
+      ! with cx_full, group E under cx_o2p_h_scale, exactly as they do in
+      ! the residual assembly, because both read one active set.
+      !
+      ! T_cell is the temperature of the cell being evaluated, checked
+      ! against the one cx_set_cell filled the rate coefficients at.
+      subroutine charge_exchange_stage_sources(nm0, nm1, nm2,             &
+                                n_hi, n_hii, n_hei, n_heii, n_heiii,      &
+                                T_cell, s_H, s_He, s_metal,               &
+                                p_H, l_H, p_He, l_He)
+      real*8, intent(in)  :: nm0(:), nm1(:), nm2(:)
+      real*8, intent(in)  :: n_hi, n_hii, n_hei, n_heii, n_heiii
+      real*8, intent(in)  :: T_cell
+      real*8, intent(out) :: s_H(0:1), s_He(0:2)
+      real*8, optional, intent(out) :: s_metal(n_melem,0:2)
+      real*8, optional, intent(out) :: p_H(0:1), l_H(0:1)
+      real*8, optional, intent(out) :: p_He(0:2), l_He(0:2)
+      ! The working arrays carry one stage above the highest the reaction
+      ! table reaches. Every donor of Table 4 and of group E is a NEUTRAL
+      ! and every acceptor is singly or doubly ionized, so a reaction
+      ! writes stages 0 to 2 only; the extra row exists so that a future
+      ! table row promoting an already ionized donor is caught here by
+      ! name instead of writing past the metal arrays.
+      real*8  :: dens(12,0:2), rrate(cx_nact)
+      real*8  :: ssrc(12,0:3), gprod(12,0:3), gloss(12,0:3)
+      integer :: i, r, de, ds, ae, as, e
+
+      call cx_reactant_densities(nm0, nm1, nm2, n_hi, n_hii, n_hei,       &
+                                 n_heii, n_heiii, dens)
+      call cx_reaction_rates(dens, T_cell,                                &
+                             'charge_exchange_stage_sources', rrate)
+
+      ssrc  = 0.0d0
+      gprod = 0.0d0
+      gloss = 0.0d0
       do i = 1, cx_nact
          r  = cx_act(i)
          de = cx_don_el(r);  ds = cx_don_stg(r)
          ae = cx_acc_el(r);  as = cx_acc_stg(r)
-         rrate = cx_kc(i)*dens(de,ds)*dens(ae,as)
-         idon  = cx_fvidx(de, ds)       ! donor's lower-stage boundary
-         iacc  = cx_fvidx(ae, as-1)     ! acceptor's lower-stage boundary
-         fvec(idon) = fvec(idon) + rrate
-         fvec(iacc) = fvec(iacc) - rrate
+         ssrc(de,ds)    = ssrc(de,ds)    - rrate(i)
+         ssrc(de,ds+1)  = ssrc(de,ds+1)  + rrate(i)
+         ssrc(ae,as)    = ssrc(ae,as)    - rrate(i)
+         ssrc(ae,as-1)  = ssrc(ae,as-1)  + rrate(i)
+         gloss(de,ds)   = gloss(de,ds)   + rrate(i)
+         gprod(de,ds+1) = gprod(de,ds+1) + rrate(i)
+         gloss(ae,as)   = gloss(ae,as)   + rrate(i)
+         gprod(ae,as-1) = gprod(ae,as-1) + rrate(i)
       enddo
-      end subroutine cx_add_to_fvec
+      if (maxval(abs(ssrc(:,3))) .gt. 0.0d0) then
+         write(*,*) '(charge_exchange) ERROR: a reaction of the active',  &
+                    ' set promotes a donor above ionization stage 2,'
+         write(*,*) '  which the three-stage element layout of this',     &
+                    ' module and of the metal systems cannot hold.'
+         write(*,*) '  Aborting.'
+         error stop 1
+      endif
+
+      s_H(0:1)  = ssrc(cx_H,0:1)
+      s_He(0:2) = ssrc(cx_He,0:2)
+      if (present(s_metal)) then
+         do e = 1, n_melem
+            s_metal(e,0:2) = ssrc(e,0:2)
+         enddo
+      endif
+      if (present(p_H))  p_H(0:1)  = gprod(cx_H,0:1)
+      if (present(l_H))  l_H(0:1)  = gloss(cx_H,0:1)
+      if (present(p_He)) p_He(0:2) = gprod(cx_He,0:2)
+      if (present(l_He)) l_He(0:2) = gloss(cx_He,0:2)
+      end subroutine charge_exchange_stage_sources
+
+      ! Orientation factor of the row that (element, lower stage) addresses:
+      ! he_row_sign for the He I <-> He II boundary, whose equation basis
+      ! differs between the solvers, and 1 for every other row.
+      real*8 function cx_he_i_boundary_sign(el, lower, he_row_sign)
+      integer, intent(in) :: el, lower
+      real*8,  intent(in) :: he_row_sign
+      if (el .eq. cx_He .and. lower .eq. 0) then
+         cx_he_i_boundary_sign = he_row_sign
+      else
+         cx_he_i_boundary_sign = 1.0d0
+      endif
+      end function cx_he_i_boundary_sign
 
       ! Upper bound of the charge-exchange rate each residual row can carry,
-      ! added onto a per-row turnover scale (the acceptance normalization of
+      ! added onto the turnover scale of each row (the acceptance normalization of
       ! ioniz_eq). The convention is that of set_mol_turnover_rates
       ! (System_HeH_mol): every reactant is set to the WHOLE of its element,
       ! so each active reaction contributes kc * N(donor element) *
@@ -378,11 +628,29 @@
       ! el_tot = 0 and contributes nothing, exactly as its rate does. The
       ! rows are addressed through cx_fvidx, so cx_metal_base must hold the
       ! layout of the system being judged, as it must for cx_add_to_fvec.
-      subroutine cx_add_to_turnover(srow, el_tot)
+      ! T_cell is the temperature of the cell whose turnover is being
+      ! bounded, checked against the one cx_set_cell filled the rate
+      ! coefficients at: the bound is kc(T) times two element counts, so
+      ! rates belonging to another cell would normalize this cell's residual
+      ! by another cell's turnover, and the acceptance verdict a caller then
+      ! reads would depend on the order the cells were handed out.
+      subroutine cx_add_to_turnover(srow, el_tot, T_cell)
       real*8, intent(inout) :: srow(*)
       real*8, intent(in)    :: el_tot(12)
+      real*8, optional, intent(in) :: T_cell
       integer :: i, r, idon, iacc
       real*8  :: bound
+
+      if (present(T_cell)) then
+         call cx_require_cell(T_cell, 'cx_add_to_turnover')
+      else if (cx_cell_T .lt. 0.0d0) then
+         write(*,*) '(charge_exchange) ERROR: cx_add_to_turnover was',    &
+                    ' called on a thread that holds no cell.'
+         write(*,*) '  cx_kc is filled cell by cell; call cx_set_cell(T)', &
+                    ' for the cell being judged, on this thread, first.'
+         write(*,*) '  Aborting.'
+         error stop 1
+      endif
 
       do i = 1, cx_nact
          r     = cx_act(i)
@@ -659,29 +927,28 @@
       !   dR/dx_k = kc*(dD/dx_k * A + D * dA/dx_k),
       ! added to row idon (+) and row iacc (-), exactly mirroring the
       ! fvec(idon)+=R, fvec(iacc)-=R bookkeeping. n_X (= met_ntot), n_h, n_he
-      ! supply the linear-derivative coefficients.
+      ! supply the linear-derivative coefficients. he_row_sign and T_cell
+      ! carry the same meaning as in cx_add_to_fvec, and the derivative rows
+      ! are oriented exactly as the residual rows are, so this stays the
+      ! derivative of what that routine assembles.
       subroutine cx_add_to_jac(N_eq, fjac, nm0, nm1, nm2,                 &
                                n_hi, n_hii, n_hei, n_heii, n_heiii,       &
-                               n_X, n_h, n_he)
+                               n_X, n_h, n_he, he_row_sign, T_cell)
       integer, intent(in)    :: N_eq
       real*8,  intent(inout) :: fjac(N_eq,N_eq)
       real*8,  intent(in)    :: nm0(:), nm1(:), nm2(:)
       real*8,  intent(in)    :: n_hi, n_hii, n_hei, n_heii, n_heiii
       real*8,  intent(in)    :: n_X(:), n_h, n_he
-      real*8  :: dens(12,0:2), D, A, kc, dR_dn
+      real*8,  intent(in)    :: he_row_sign, T_cell
+      real*8  :: dens(12,0:2), D, A, kc, dR_dn, sdon, sacc
       integer :: i, r, de, ds, ae, as, idon, iacc, m
       integer :: nD, nA, kD(2), kA(2)
       real*8  :: cD(2), cA(2)
 
-      dens = 0.0d0
-      do i = 1, n_melem
-         dens(i,0) = nm0(i); dens(i,1) = nm1(i); dens(i,2) = nm2(i)
-      enddo
-      dens(cx_H,0)  = n_hi
-      dens(cx_H,1)  = n_hii
-      dens(cx_He,0) = n_hei
-      dens(cx_He,1) = n_heii
-      dens(cx_He,2) = n_heiii
+      call cx_require_cell(T_cell, 'cx_add_to_jac')
+
+      call cx_reactant_densities(nm0, nm1, nm2, n_hi, n_hii, n_hei,       &
+                                 n_heii, n_heiii, dens)
 
       do i = 1, cx_nact
          r  = cx_act(i)
@@ -690,19 +957,21 @@
          D  = dens(de,ds);  A  = dens(ae,as);  kc = cx_kc(i)
          idon = cx_fvidx(de, ds)
          iacc = cx_fvidx(ae, as-1)
+         sdon = cx_he_i_boundary_sign(de, ds,   he_row_sign)
+         sacc = cx_he_i_boundary_sign(ae, as-1, he_row_sign)
          ! donor-density derivatives: dR = kc * (dD) * A
          call cx_dens_lin(de, ds, n_X, n_h, n_he, nD, kD, cD)
          do m = 1, nD
             dR_dn = kc*cD(m)*A
-            fjac(idon,kD(m)) = fjac(idon,kD(m)) + dR_dn
-            fjac(iacc,kD(m)) = fjac(iacc,kD(m)) - dR_dn
+            fjac(idon,kD(m)) = fjac(idon,kD(m)) + sdon*dR_dn
+            fjac(iacc,kD(m)) = fjac(iacc,kD(m)) - sacc*dR_dn
          enddo
          ! acceptor-density derivatives: dR = kc * D * (dA)
          call cx_dens_lin(ae, as, n_X, n_h, n_he, nA, kA, cA)
          do m = 1, nA
             dR_dn = kc*D*cA(m)
-            fjac(idon,kA(m)) = fjac(idon,kA(m)) + dR_dn
-            fjac(iacc,kA(m)) = fjac(iacc,kA(m)) - dR_dn
+            fjac(idon,kA(m)) = fjac(idon,kA(m)) + sdon*dR_dn
+            fjac(iacc,kA(m)) = fjac(iacc,kA(m)) - sacc*dR_dn
          enddo
       enddo
       end subroutine cx_add_to_jac
@@ -878,7 +1147,19 @@
 
       ! Residual terms for the systems whose H row (fvec(1)) is written
       ! HI->HII (ionization) positive and He row (fvec(2)) carries the
-      ! HeI<->HeII balance. he_row_sign = +1 when that He row is written
+      ! HeI<->HeII balance.
+      ! THE HELIUM REACTANT n_hei IS THE GROUND SINGLET He(1^1S), NOT THE
+      ! SUM OVER He I. The Table 4 rate for He + H+ -> He+ + H (Glover &
+      ! Jappsen 2007) carries the barrier exp(-12.75/T4), and 12.75e4 K =
+      ! 10.99 eV is the ionization-potential difference 24.587 - 13.598 eV
+      ! of ground-state helium against hydrogen. He(2^3S) sits 19.82 eV
+      ! above the singlet, so the same collision is exothermic for it and
+      ! runs at a different rate; that reaction is not carried anywhere in
+      ! the code, and passing the summed He I here would charge it to this
+      ! rate. Every caller therefore passes the singlet: the systems
+      ! without a metastable have no other helium, and the two He 2^3S
+      ! systems and the molecular ones pass n_heiSI.
+      ! he_row_sign = +1 when that He row is written
       ! HeI->HeII (ionization) positive (System_HeH / System_HeH_metals, and
       ! the He+-production row of System_HeH_mol); he_row_sign = -1 when it is
       ! written HeI-gain positive (the summed HeI row of the TR systems). The
@@ -932,6 +1213,14 @@
       ! (per n_H), fvec(2) tracks n_HeI (per n_He = heh_loc*n_H). c1 = dr/v.
       ! xhi/xhii = HI/HII fractions of H; xhei/xheii = HeI/HeII fractions of
       ! He. k1 = He0+H+, k2 = He++H0.
+      ! THE HELIUM REACTANT xhei IS THE GROUND SINGLET He(1^1S), as it is in
+      ! he_h_cx_fvec and for the same reason: the Table 4 rate carries the
+      ! barrier exp(-12.75/T4) = 10.99 eV, the ionization-potential
+      ! difference of ground-state helium against hydrogen, and the
+      ! metastable's own charge exchange is a different reaction that this
+      ! code does not carry. System_implicit_adv_HeH has no metastable and
+      ! its neutral helium is the singlet; System_implicit_adv_HeH_TR passes
+      ! x(2), the singlet unknown of its row 2.
       subroutine he_h_cx_fvec_adv(fvec, c1, xhi, xhii, xhei, xheii,       &
                                   heh_loc, n_h, k1, k2)
       real*8              :: fvec(*)

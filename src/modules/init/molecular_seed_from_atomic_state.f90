@@ -139,8 +139,7 @@
       ! Item L7 of docs/PLAN_20260913_lhs_stationary.md.
 
       use global_parameters
-      use species_table, only: isp_HI, isp_HII, isp_H2, isp_H2p,          &
-                               isp_H3p, isp_HeHp, n_mion
+      use species_table, only: isp_HI, isp_HII, isp_H2, n_mion
       use element_census, only: element_nuclei_and_charge, n_element,     &
                                 ie_H, ie_He
       use composition, only: get_species_densities, comp_T_from_p,        &
@@ -705,7 +704,7 @@
       subroutine transfer_h2(x2_of_cell)
       real*8, dimension(1-Ng:N+Ng), intent(in) :: x2_of_cell
       integer :: jc
-      real*8  :: x2c, fHc, dfc, x2e
+      real*8  :: x2c, fHc, dfc, x2e, f_pool
       f_sp = f_atomic
       n_capped       = 0
       rec_x2         = 0.0d0
@@ -722,17 +721,25 @@
             if (seed_x2_mode .eq. 'local')                               &
                q = x2c/(2.0d0*(1.0d0 + HeH) - x2c)
          endif
-         fHc = nnuc0(jc,ie_H)/(rho(jc)*n0)
-         dfc = x2c*fHc
-         if (dfc .gt. f_sp(jc,isp_HI)) then
-            dfc = f_sp(jc,isp_HI)
+         ! THE NEUTRAL HYDROGEN THE PARTITION ACTS ON is H I plus the
+         ! nuclei already bound in H2. In a cell of the atomic state the
+         ! second term is zero and this is H I alone; the lower ghosts are
+         ! not atomic, because load_IC does not read the ghost rows of the
+         ! pair and fills them with this run's molecular reservoir, which
+         ! already carries H2 (f_H2 = 5.3e-2 against f_HI = 1.8e-6 on the
+         ! LHS 1140 b ghost at He/H = 2.13). Partitioning H I alone there
+         ! and overwriting f_H2 would destroy those nuclei. The molecular
+         ! ions are left as they are for the same reason: zero in every
+         ! atomic cell, and part of the reservoir's budget in a ghost.
+         fHc    = nnuc0(jc,ie_H)/(rho(jc)*n0)
+         f_pool = f_sp(jc,isp_HI) + 2.0d0*f_sp(jc,isp_H2)
+         dfc    = x2c*fHc
+         if (dfc .gt. f_pool) then
+            dfc = f_pool
             n_capped = n_capped + 1
          endif
          f_sp(jc,isp_H2)   = 0.5d0*dfc
-         f_sp(jc,isp_HI)   = f_sp(jc,isp_HI) - dfc
-         f_sp(jc,isp_H2p)  = 0.0d0
-         f_sp(jc,isp_H3p)  = 0.0d0
-         f_sp(jc,isp_HeHp) = 0.0d0
+         f_sp(jc,isp_HI)   = f_pool - dfc
          if (fHc .gt. 0.0d0) then
             x2e = dfc/fHc
             if (x2e .gt. rec_x2_eff_max) rec_x2_eff_max = x2e

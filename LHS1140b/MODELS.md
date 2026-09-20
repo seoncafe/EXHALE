@@ -13,7 +13,9 @@ LHS1140b/
   models/                   the model tree of record, solved on the current code
     <group>/HeH<value>/     one case: input.inp (+ base.inp or
                             lower_atmosphere_profile.dat), output/, tpm_*.txt,
-                            REPRODUCE.md (how that case was reached)
+                            REPRODUCE.md (how that case was reached),
+                            state_index.json and states/<generation_id>/
+                            (which state a reader gets, section 9)
     <group>/HeH<value>/tpm_turb/
                             where it exists, the same solution synthesized a
                             second time with EXHALE_TRANSIT_TURB=1, so that a
@@ -29,6 +31,13 @@ LHS1140b/
     run_case.sh             one prescribed-composition case, start to line
     run_closure.sh          one flux-closure rung (Photochem + EXHALE)
     pick_seed.py            the solved state a case is seeded from
+    publish_state.py        the one publisher of a state generation, and the
+                            resolver every reader takes a state through
+                            (section 9)
+    import_legacy_states.py enters the states this tree already held into
+                            that contract, with the provenance they have
+    legacy_state_map.txt    a state of another directory that belongs to a
+                            case, one line each, with the reason
     current_grid_Hydro_ioniz.txt
                             the cell centers every case is solved on, the
                             target grid of src/utils/map_state_to_grid.py
@@ -103,14 +112,71 @@ step on each side because the code has moved since (section 5).
 | `atomic_photochem_gj1132_kzzprofile` | 2.09, 3, 5, 7, 8, 9, 9.7, 10, 12 | the flux-closure reservoir ladder (crossing was 8.212); the 9.7 rung is the column the XUV photochem grid holds fixed |
 | `atomic_scalar_gj1132x{0.01,0.10,0.15,0.20,0.25,0.30,0.33}_kzz1e9` | 2.13, 9.7 | the XUV grid against the 2025 non-detection, scalar base |
 | `atomic_photochem_gj1132x{0.01,0.10,0.15,0.20,0.25,0.30,0.33}_kzzprofile` | 9.7 | the XUV grid above the photochemical column: the column of the FIDUCIAL He/H = 9.7 closure rung held fixed (its converged iterate's `lower_atmosphere_profile.dat`), the wind re-solved on the scaled spectrum, no closure (as the 2026-08-30 grid did: a Photochem climate solve on a spectrum scaled as a whole freezes the deep atmosphere, 136 K at 17 bar, and its chemistry fails elemental closure) |
-| `molecular_scalar_gj1132_wellmixed` | 0.083, 0.55, 2.13 | NEW: the molecular layer solved in EXHALE above the scalar base (`base.inp` with `q_H2_base` from the photochemical column's H2 fraction, `p_base` 1 microbar) **None of the three is solved** (2026-09-16). 0.083 and 0.55: *one scalar movement bound over a column holding a slow H2 front and a far wind* -- every carrier relaxation of every pass ended on the composition movement bound and none on its own residual, the bound was cut to its floor 1.0e-03 with the movement of a pass falling in proportion, and the cell that attains the bound is not the cell that refuses (`docs/lhs1140b_stationary_L7e_20260915.md` section 23; item L22, a proposal only). 2.13: no certified molecular wellmixed state to seed it from, the two that would have been being the other two. `molecular_scalar_gj1132_kzz1e9/HeH0.083`, continued from 0.083, ran the one allowed continuation of forty passes and did not descend either. Sections 7 and 8 are written by `status.py` from the case directories and carry the verdict alone, so the reason is here and in each case's own `not_solved.md`. |
+| `molecular_scalar_gj1132_wellmixed` | 0.083, 0.55, 2.13 | NEW: the molecular layer solved in EXHALE above the scalar base (`base.inp` with `q_H2_base` from the photochemical column's H2 fraction, `p_base` 1 microbar) **None of the three is solved** (all three re-tried 2026-09-18, item L34 step (c)). **A well-mixed molecular case can be entered only through the atomic-to-molecular conversion of its own certified atomic pair**: the run rescales the whole column onto its own He/H, and that rescale is refused outright when the state carries HeH+, which holds one nucleus of each element (`load_IC.f90` lines 650 to 663). Neither the element-treatment step from a certified `kzz1e9` state nor a composition step inside this group is therefore admissible, and 2.13, which has no atomic rung at its composition, was given one solved for the purpose in `models/.L34/atomic_wm2.13`. From those seeds the wind converges (`hydro info = 0` from pass 3 to 5) and the H2 carrier balance does not: 0.55 reaches 3.76e-02 at pass 11 of 31 and rises again as its front walks outward, 0.083 reaches 4.13e-02 over forty passes and rises over forty more, 2.13 flattens at 4.3e-01 after seven. Every relaxation of every pass ends on the composition movement bound and none on its own residual (`docs/lhs1140b_stationary_L34c_20260918.md`). Sections 7 and 8 are written by `status.py` from the case directories and carry the verdict alone, so the reason is here and in each case's own `not_solved.md`. |
 | `molecular_scalar_gj1132_kzz1e9` | 0.083, 0.55, 2.13, 9.7 | NEW: the same with element diffusion |
-| `molecular_photochem_gj1132_kzzprofile` | 2.09, 9 | NEW: the molecular layer above the converged column of ITS OWN atomic closure rung (`atomic_photochem_gj1132_kzzprofile/HeH2.09/k<last>/lower_atmosphere_profile.dat` and `HeH9/k<last>/...`), held fixed, no closure. **Why the rung's column and not a stored one** (changed 2026-09-16): a molecular case of this group is solved from the certified wind of its atomic pair, and `load_IC` admits a seed only when the two states agree on the column and on the reservoir to a part in 1e6. The 2026-08-30 stored columns carry He/H = 2.092388551 and 9.010268395 at the matching level only by coincidence of their own history; measured on 2026-09-16, the stored 2.09 column and the re-run 2.09 rung differ by 1.2e-04 in He/H, twenty times the threshold, and the seed was refused. The case name is now the rung's name and the He/H line carries the value that column actually holds, so the pair cannot drift apart again. (The former `HeH9.05` directory named the stored column's value and has been removed; it held no result.) |
+| `molecular_photochem_gj1132_kzzprofile` | 2.09, 9 | NEW: the molecular layer above the converged column of ITS OWN atomic closure rung (`atomic_photochem_gj1132_kzzprofile/HeH2.09/k<last>/lower_atmosphere_profile.dat` and `HeH9/k<last>/...`), held fixed, no closure. **Why the rung's column and not a stored one** (changed 2026-09-16): a molecular case of this group is solved from the certified wind of its atomic pair, and `load_IC` admits a seed only when the two states agree on the column and on the reservoir to a part in 1e6. The 2026-08-30 stored columns carry He/H = 2.092388551 and 9.010268395 at the matching level only by coincidence of their own history; measured on 2026-09-16, the stored 2.09 column and the re-run 2.09 rung differ by 1.2e-04 in He/H, twenty times the threshold, and the seed was refused. The case name is now the rung's name and the He/H line carries the value that column actually holds, so the pair cannot drift apart again. (The former `HeH9.05` directory named the stored column's value and has been removed; it held no result.) **Neither case is solved** (re-tried 2026-09-18 from the certified wind of its own atomic pair, item L34 step (c)): a molecular SCALAR state cannot stand in for that seed, because this group's cases carry C/H, N/H and O/H reservoirs at the matching level and a metal-free scalar state carries none, which `load_IC` refuses on the carbon ratio. From the conversion seed, 9 is refused at outer pass 1 with its hydrodynamic rows at 2.8e-01 and 3.2e-01 (the element relaxation finds no admissible advance and restores its entry composition, which ends the outer loop by construction) and 2.09 bands between 1.9e-01 and 4.4e-01 over twelve passes (`docs/lhs1140b_stationary_L34c_20260918.md`). |
 
 The `He/H = 0.55` case of each `kzz*` group is the K_zz sensitivity scan
 of `kzz_decision.md` section 3 at one composition.
 
+**How long a case of each group is given** (item D9 of
+`docs/PLAN_20260918_rev2.md`, 2026-09-18). `models/run_campaign.sh` gives a
+case a pass ceiling and a wall-clock ceiling, and both are EMPIRICAL
+ALLOWANCES read off recorded solves of the same configuration class, not a
+rule derived from a residual or a front speed. The `atomic_*` groups are
+`atomic_prescribed`, 40 passes and 30 m; a rung of the elemental-flux closure
+is `atomic_closure_rung`, 20 passes for each EXHALE solve of the rung and 45 m
+for the series; the `molecular_*` groups are `molecular_alternation`, 40
+passes and 6 h; a case that turns `Ionization transport` on is
+`transported_ionization`, 90 passes and 6 h. Where each number comes from is
+written beside the table in `run_campaign.sh`, and the one number of it that
+is not a measurement of its own class says so: no wall clock was recorded for
+a transported-ionization solve, so its six hours are the limit carried over
+from the molecular runs. `models/budget_overrides.txt` gives one case another
+budget and must name the authorization in the same line;
+`EXHALE_OUTER_PASSES` or `CAMPAIGN_WALL` in the environment replaces the table
+for a whole run. **A case that reaches either ceiling is UNCERTIFIED and
+INCOMPLETE and is never a solution**: `campaign_status.txt` records
+`ceiling=passes` or `ceiling=wall` beside it, and the case's own
+`not_solved.md` carries the residual profile, the binding row and cell, the
+solver verdict and the seed.
+
 ## 4. The molecular base
+
+### What the base level is
+
+The base level is the level at which the lower-atmosphere model hands the
+column over, and `p_base`, `T_base`, `q_H2_base` and the elemental ratios
+are that model's statement ABOUT THE LEVEL, not only about gas that happens
+to be moving upward through it. The lower boundary reads them that way: the
+interior state and the reservoir are matched acoustically first, the
+direction of the contact is read off the matched face velocity, and the
+face then carries the reservoir's density, temperature and composition
+wherever gas enters the domain AND at a pressure-balanced contact at rest.
+Only a reverse flow carries the interior's own entropy and composition out
+through the level, and the reservoir then states the single condition its
+one entering characteristic allows, the pressure. The physical assumption
+is that the lower atmosphere below the level is dense and radiatively
+controlled, so on the time scales of a stationary solution it is a heat
+bath and a column at rest above it takes the level's temperature; its
+validity is a subsonic base at a level inside the radiatively controlled
+lower atmosphere, which is what 1 microbar is for these planets.
+
+Each enabled transport operator carries its own base condition beside that
+one, and none of them follows the direction the contact is upwinded on:
+thermal conduction holds the level's own temperature, the element diffusion
+holds the reservoir's composition as a Dirichlet value and reports the
+diffusive flux it drives, and the molecular carrier transport carries no
+diffusive flux across the base face and upwinds its advective term on the
+face mass flux.
+
+States carry the boundary model they were solved under in their header
+(`# boundary_model`). The model above is
+`characteristic_face_ps_reservoir_C_minus_contact_upwind_v2`; a state
+written under `..._smoothstep_v1` differs in what the face carries at and
+near zero flow, and its certificate is that model's and does not transfer.
+
+### The H2 partition
 
 `q_H2_base` is the H2 volume mixing ratio of the inflowing gas. The
 photochemical column at 1 microbar (`lower_profile/lower_atmosphere_profile.dat`,
@@ -265,10 +331,46 @@ quadratically and certify (`docs/lhs1140b_stationary_L5c_20260913.md`).
 
 | pass | what it does |
 |---|---|
-| 0, the seed | `models/pick_seed.py` names the solved state of the same physics (spectrum, boundary kind, diffusion, `K_zz`) nearest in log He/H: a CERTIFIED case of the same group first, then a certified case of another group with the same physics, then the archive, newest generation first. `src/utils/map_state_to_grid.py` interpolates it onto `models/current_grid_Hydro_ioniz.txt`, the cell centers of the current code, and writes it as the case's `*_IC.txt`; where the seed was solved at another He/H, `--reservoir He/H` carries its helium onto this case's before it is written, so that the base rows arrive at this composition and a diffused He/H profile keeps its shape. Skipped where the case states `Load IC? False`. Where nothing carries the case's XUV normalization (the 0.30-scaled closure rung is the one such point) the nearest scaling of the same star and the same spectral shape is taken instead, and the line says so. Which tier the seed came from is on the line, and in `REPRODUCE.md` |
+| 0, the seed | `models/pick_seed.py` names the solved state of the same physics nearest in log He/H. COMPATIBILITY COMES FIRST, in every tier including the case's own directory (item D9, 2026-09-18): a candidate is put against the restart contract of `load_IC.f90` before any distance is taken, and what is compared is the spectrum and its normalization, `K_zz`, the boundary kind, the elemental reservoir INVENTORY (which elements the state's `# reservoir` line names, the ratios themselves being carried across by the mapper), the four option tokens that decide which species the state files carry (`metals`, `mol`, `oxychem`, `carrier`), `he_diff`, and `iontrans`. The candidate's configuration is read from the STATE, out of the restart metadata block the binary wrote into it, falling back to `EXHALE_resolved.out` beside it and then to the directory's `input.inp`; the case's own is read from its `input.inp`, which is what the next run asks for. A state written without `Ionization transport` may still seed a run with it, but only as an explicit MODEL-OPTION TRANSITION: the case must name `iontrans` on its own `Restart option change:` line, the seed line says so in as many words, the candidate ranks after every candidate of the case's own system whatever its distance, and no certificate of the source problem transfers to the target. `--why` names every candidate that was refused and why. The tiers: a CERTIFIED case of the same group first, then a certified case of another group with the same physics, then the archive, newest generation first. `src/utils/map_state_to_grid.py` interpolates it onto `models/current_grid_Hydro_ioniz.txt`, the cell centers of the current code, and writes it as the case's `*_IC.txt`; where the seed was solved at another He/H, `--reservoir He/H` carries its helium onto this case's before it is written, so that the base rows arrive at this composition and a diffused He/H profile keeps its shape. Skipped where the case states `Load IC? False`. Where nothing carries the case's XUV normalization (the 0.30-scaled closure rung is the one such point) the nearest scaling of the same star and the same spectral shape is taken instead, and the line says so. Which tier the seed came from is on the line, and in `REPRODUCE.md` |
 | 1, the wind | the binary, with `EXHALE_PTC_DTAU0=1.0` and `OMP_NUM_THREADS` (8 by default). The verdict is `the stationary solve returned info = 0` and the last certification block; `info = 2` is a state written but not certified |
 | 2, the profiles | the same binary on its own solved state through `Restart intent: stationary evaluate`, which evaluates the held state with NO time step and writes the `*_adv.txt` files, the heating and cooling breakdowns, the steady-state `Mdot` and the certification from that evaluation (item L9, 2026-09-17). The route this replaced, `Do only PP: True` with `CFL: 1.0e-12`, is what every case on disk today was post-processed with, and the block below records what was wrong with it |
 | 3, the line | `EXHALE_transit.py` through the WINERED HIRES-Y kernel of the measurement (`LHS1140b/winered_hires_y.sh`) |
+
+**What a case directory holds, and when a second solve is taken (2026-09-18,
+item D8 of `docs/PLAN_20260918_rev2.md`).** A case directory publishes ONE
+solve, in `output/`, and it is the LATEST COMPLETED SOLVE: the runner compares
+no two solves and claims none is the best. `ENDING` beside it says in one line
+how that solve ended, every solve the runner superseded is kept whole in
+`solve_<n>/` with an `ENDING` of its own, every seed attempt in `attempt_<n>/`
+likewise, and `REPRODUCE.md` lists them all. Before anything is decided the
+runner CLASSIFIES the ending out of the log and the state on disk, as `solved`,
+`composition_refusal` (every hydrodynamic row within its own tolerance, so what
+refuses is the composition), `hydrodynamic_refusal`, `nonfinite_state`,
+`state_missing`, `no_verdict` or `no_row_measures`, and records whether the
+outer loop spent its pass budget. The pseudo-time continuation of item L4e is
+taken for `hydrodynamic_refusal` ALONE, because that is the ending it
+addresses; every other refusal ends the case with its reason in the case's own
+`not_solved.md`, which is the `reason` column of section 7. Until 2026-09-18
+the continuation was taken on any nonzero `info`, and on
+`molecular_scalar_gj1132_wellmixed/HeH0.083` (item L34c) it took the gated
+carrier row from 4.13e-02 back to 7.37e-02 and published that state over the
+better one. The evaluate pass of pass 2 runs in `eval/`, with its own copy of
+the case's inputs, so the case's `input.inp` is never opened for writing and is
+always the file the solution was started from. `run_campaign.sh` records the
+exit status of each case and its ending class in `campaign_status.txt`, adds
+the budget that case was given and whether it reached a ceiling, and exits
+nonzero when any case failed.
+
+**The closure rungs follow the same rule** (item D9, 2026-09-18).
+`src/utils/element_flux_closure.py` used to restart a refused solve at the
+raised pseudo-time start whenever `info != 0` and a state was written, with no
+classification at all, so a rung continued on a composition-only refusal just
+as the runner did. It now SOURCES the policy block of `models/run_case.sh`
+(`RUN_CASE_POLICY_ONLY=1` defines it and returns) and takes the continuation
+for the one ending that block addresses, keeping the first solve whole in the
+iteration's own `solve_<n>/` with its `ENDING`; the rule is written once and
+read once. `RUN_CASE_POLICY` names the file where it is elsewhere, and a
+checkout without it takes no continuation and says so.
 
 The keys `make_models.py` writes for an atomic case, beyond the physics of
 its group:
@@ -547,224 +649,921 @@ of those carries its own `not_solved.md` with the row that holds it.
 
 Written by `models/status.py`; every number is read from the case directory.
 
-| group | He/H | flux | state | reason | log10 Mdot | red EW [%A] | red depth [%] | FWHM [A] | \|\|R\|\| |
-|---|---|---|---|---|---|---|---|---|---|
-| atomic_scalar_gj1132_wellmixed | 0.083 | HLLC | info=0 certified | -- | 7.840 | 0.3797 | 1.533 | 0.2331 | 2.54E-08 |
-| atomic_scalar_gj1132_wellmixed | 0.40 | HLLC | info=0 certified | -- | 7.850 | 1.1011 | 4.085 | 0.2533 | 2.64E-08 |
-| atomic_scalar_gj1132_wellmixed | 0.42 | HLLC | info=0 certified | -- | 7.850 | 1.1324 | 4.185 | 0.2543 | 1.82E-08 |
-| atomic_scalar_gj1132_wellmixed | 0.44 | HLLC | info=0 certified | -- | 7.850 | 1.1626 | 4.281 | 0.2553 | 1.72E-08 |
-| atomic_scalar_gj1132_wellmixed | 0.55 | HLLC | info=0 certified | -- | 7.850 | 1.3118 | 4.742 | 0.2598 | 1.93E-08 |
-| atomic_scalar_gj1132_wellmixed | 1 | HLLC | info=0 certified | -- | 7.860 | 1.6959 | 5.821 | 0.2734 | 1.49E-08 |
-| atomic_scalar_gj1132_wellmixed | 10 | HLLC | info=0 certified | -- | 7.850 | 1.9347 | 5.818 | 0.3113 | 1.28E-08 |
-| atomic_scalar_gj1132_wellmixed | 100 | HLLC | info=0 certified | -- | 7.860 | 1.9645 | 5.757 | 0.3193 | 1.08E-08 |
-| atomic_scalar_gj1132_wellmixed | 1000 | HLLC | info=0 certified | -- | 7.850 | 1.9197 | 5.590 | 0.3214 | 1.57E-08 |
-| **atomic_scalar_gj1132_wellmixed** | crossing He/H = 0.4044  (log-log chord between the rungs 0.4 and 0.42) |  |  |  |  |  |  |  |  |
-| atomic_scalar_gj699_wellmixed | 0.042 | HLLC | info=0 certified | -- | 8.570 | 0.9091 | 3.035 | 0.2815 | 1.34E-07 |
-| atomic_scalar_gj699_wellmixed | 0.046 | HLLC | info=0 certified | -- | 8.570 | 0.9858 | 3.289 | 0.2815 | 9.50E-08 |
-| atomic_scalar_gj699_wellmixed | 0.050 | HLLC | info=0 certified | -- | 8.570 | 1.0609 | 3.538 | 0.2820 | 1.41E-07 |
-| atomic_scalar_gj699_wellmixed | 0.083 | HLLC | info=0 certified | -- | 8.570 | 1.6271 | 5.398 | 0.2835 | 1.32E-07 |
-| atomic_scalar_gj699_wellmixed | 1 | HLLC | info=0 certified | -- | 8.550 | 4.5250 | 13.597 | 0.3133 | 8.37E-08 |
-| atomic_scalar_gj699_wellmixed | 1000 | HLLC | info=0 certified | -- | 8.420 | 2.8725 | 7.510 | 0.3587 | 7.48E-09 |
-| **atomic_scalar_gj699_wellmixed** | crossing He/H = 0.0526  (log-log chord between the rungs 0.05 and 0.083) |  |  |  |  |  |  |  |  |
-| atomic_scalar_gj1132_kzz0 | 0.55 | HLLC | info=0 certified | -- | 7.840 | 0.0305 | 0.127 | 0.2270 | 1.71E-08 |
-| atomic_scalar_gj1132_kzz0 | 2.6 | HLLC | info=0 certified | -- | 7.860 | 0.9549 | 3.611 | 0.2487 | 1.34E-08 |
-| atomic_scalar_gj1132_kzz0 | 3.0 | HLLC | info=0 certified | -- | 7.870 | 1.0798 | 4.026 | 0.2517 | 2.21E-08 |
-| atomic_scalar_gj1132_kzz0 | 3.5 | HLLC | info=0 certified | -- | 7.870 | 1.2175 | 4.470 | 0.2558 | 1.46E-08 |
-| atomic_scalar_gj1132_kzz0 | 3.7 | HLLC | info=0 certified | -- | 7.870 | 1.2698 | 4.635 | 0.2573 | 1.78E-08 |
-| atomic_scalar_gj1132_kzz0 | 3.9 | HLLC | info=0 certified | -- | 7.870 | 1.3168 | 4.781 | 0.2583 | 2.82E-08 |
-| **atomic_scalar_gj1132_kzz0** | crossing He/H = 3.1010  (log-log chord between the rungs 3 and 3.5) |  |  |  |  |  |  |  |  |
-| atomic_scalar_gj1132_kzz1e5 | 2.6 | HLLC | info=0 certified | -- | 7.870 | 0.9631 | 3.639 | 0.2487 | 1.39E-08 |
-| atomic_scalar_gj1132_kzz1e5 | 3.0 | HLLC | info=0 certified | -- | 7.870 | 1.0880 | 4.053 | 0.2522 | 1.53E-08 |
-| atomic_scalar_gj1132_kzz1e5 | 3.35 | HLLC | info=0 certified | -- | 7.870 | 1.1862 | 4.371 | 0.2548 | 1.51E-08 |
-| atomic_scalar_gj1132_kzz1e5 | 3.64 | HLLC | info=0 certified | -- | 7.870 | 1.2627 | 4.613 | 0.2568 | 1.76E-08 |
-| atomic_scalar_gj1132_kzz1e5 | 3.93 | HLLC | info=0 certified | -- | 7.870 | 1.3314 | 4.826 | 0.2588 | 1.55E-08 |
-| **atomic_scalar_gj1132_kzz1e5** | crossing He/H = 3.0706  (log-log chord between the rungs 3 and 3.35) |  |  |  |  |  |  |  |  |
-| atomic_scalar_gj1132_kzz1e6 | 0.55 | HLLC | info=0 certified | -- | 7.840 | 0.0591 | 0.245 | 0.2270 | 2.05E-08 |
-| atomic_scalar_gj1132_kzz1e6 | 2.4 | HLLC | info=0 certified | -- | 7.860 | 0.9465 | 3.583 | 0.2482 | 1.57E-08 |
-| atomic_scalar_gj1132_kzz1e6 | 2.8 | HLLC | info=0 certified | -- | 7.870 | 1.0804 | 4.028 | 0.2517 | 1.41E-08 |
-| atomic_scalar_gj1132_kzz1e6 | 3.19 | HLLC | info=0 certified | -- | 7.870 | 1.1949 | 4.398 | 0.2553 | 2.37E-08 |
-| atomic_scalar_gj1132_kzz1e6 | 3.46 | HLLC | info=0 certified | -- | 7.870 | 1.2669 | 4.626 | 0.2573 | 1.74E-08 |
-| atomic_scalar_gj1132_kzz1e6 | 3.74 | HLLC | info=0 certified | -- | 7.870 | 1.3388 | 4.849 | 0.2593 | 2.39E-08 |
-| **atomic_scalar_gj1132_kzz1e6** | crossing He/H = 2.8930  (log-log chord between the rungs 2.8 and 3.19) |  |  |  |  |  |  |  |  |
-| atomic_scalar_gj1132_kzz1e7 | 0.55 | HLLC | info=0 certified | -- | 7.850 | 0.1585 | 0.652 | 0.2290 | 2.12E-08 |
-| atomic_scalar_gj1132_kzz1e7 | 2.70 | HLLC | info=0 certified | -- | 7.870 | 1.1996 | 4.414 | 0.2553 | 1.50E-08 |
-| atomic_scalar_gj1132_kzz1e7 | 2.94 | HLLC | info=0 certified | -- | 7.870 | 1.2724 | 4.643 | 0.2573 | 1.42E-08 |
-| atomic_scalar_gj1132_kzz1e7 | 3.18 | HLLC | info=0 certified | -- | 7.870 | 1.3265 | 4.811 | 0.2588 | 3.91E-08 |
-| **atomic_scalar_gj1132_kzz1e7** | crossing He/H = 2.5365  (log-log chord between the rungs 0.55 and 2.7) |  |  |  |  |  |  |  |  |
-| atomic_scalar_gj1132_kzz1e8 | 0.55 | HLLC | info=0 certified | -- | 7.850 | 0.3089 | 1.252 | 0.2321 | 2.16E-08 |
-| atomic_scalar_gj1132_kzz1e8 | 2.05 | HLLC | info=0 certified | -- | 7.870 | 1.1513 | 4.259 | 0.2538 | 1.43E-08 |
-| atomic_scalar_gj1132_kzz1e8 | 2.23 | HLLC | info=0 certified | -- | 7.870 | 1.2206 | 4.480 | 0.2558 | 1.90E-08 |
-| atomic_scalar_gj1132_kzz1e8 | 2.41 | HLLC | info=0 certified | -- | 7.870 | 1.2826 | 4.675 | 0.2573 | 1.62E-08 |
-| **atomic_scalar_gj1132_kzz1e8** | crossing He/H = 1.9729  (log-log chord between the rungs 0.55 and 2.05) |  |  |  |  |  |  |  |  |
-| atomic_scalar_gj1132_kzz1e9 | 0.55 | HLLC | info=0 certified | -- | 7.850 | 0.4793 | 1.910 | 0.2361 | 1.52E-08 |
-| atomic_scalar_gj1132_kzz1e9 | 1.50 | HLLC | info=0 certified | -- | 7.870 | 1.0996 | 4.091 | 0.2522 | 1.65E-08 |
-| atomic_scalar_gj1132_kzz1e9 | 1.60 | HLLC | info=0 certified | -- | 7.870 | 1.1511 | 4.257 | 0.2538 | 1.31E-08 |
-| atomic_scalar_gj1132_kzz1e9 | 1.70 | HLLC | info=0 certified | -- | 7.870 | 1.1970 | 4.404 | 0.2553 | 2.34E-08 |
-| atomic_scalar_gj1132_kzz1e9 | 2.13 | HLLC | info=0 certified | -- | 7.870 | 1.3749 | 4.958 | 0.2603 | 1.70E-08 |
-| atomic_scalar_gj1132_kzz1e9 | 4.0 | HLLC | info=0 certified | -- | 7.870 | 1.8229 | 6.209 | 0.2754 | 1.47E-08 |
-| atomic_scalar_gj1132_kzz1e9 | 9.7 | HLLC | info=0 certified | -- | 7.860 | 2.0592 | 6.548 | 0.2946 | 2.01E-08 |
-| **atomic_scalar_gj1132_kzz1e9** | crossing He/H = 1.5161  (log-log chord between the rungs 1.5 and 1.6) |  |  |  |  |  |  |  |  |
-| atomic_scalar_gj1132_kzz1e10 | 0.55 | HLLC | info=0 certified | -- | 7.860 | 0.6463 | 2.529 | 0.2406 | 1.87E-08 |
-| atomic_scalar_gj1132_kzz1e10 | 1.06 | HLLC | info=0 certified | -- | 7.860 | 1.0456 | 3.912 | 0.2512 | 2.28E-08 |
-| atomic_scalar_gj1132_kzz1e10 | 1.15 | HLLC | info=0 certified | -- | 7.860 | 1.1032 | 4.100 | 0.2527 | 1.46E-08 |
-| atomic_scalar_gj1132_kzz1e10 | 1.29 | HLLC | info=0 certified | -- | 7.860 | 1.1867 | 4.369 | 0.2548 | 1.34E-08 |
-| **atomic_scalar_gj1132_kzz1e10** | crossing He/H = 1.1579  (log-log chord between the rungs 1.15 and 1.29) |  |  |  |  |  |  |  |  |
-| atomic_scalar_gj1132_kzz1e11 | 0.55 | HLLC | info=0 certified | -- | 7.860 | 0.8065 | 3.099 | 0.2447 | 2.55E-08 |
-| atomic_scalar_gj1132_kzz1e11 | 0.795 | HLLC | info=0 certified | -- | 7.860 | 1.0302 | 3.859 | 0.2507 | 1.65E-08 |
-| atomic_scalar_gj1132_kzz1e11 | 0.865 | HLLC | info=0 certified | -- | 7.860 | 1.0866 | 4.044 | 0.2522 | 1.95E-08 |
-| atomic_scalar_gj1132_kzz1e11 | 0.93 | HLLC | info=0 certified | -- | 7.860 | 1.1364 | 4.206 | 0.2538 | 2.10E-08 |
-| **atomic_scalar_gj1132_kzz1e11** | crossing He/H = 0.8927  (log-log chord between the rungs 0.865 and 0.93) |  |  |  |  |  |  |  |  |
-| atomic_scalarCNO_gj1132_kzz1e9 | 2.13 | HLLC | info=0 certified | -- | 7.870 | 1.3721 | 4.948 | 0.2603 | 1.35E-08 |
-| **atomic_scalarCNO_gj1132_kzz1e9** | crossing He/H = no bracket (EW = 1.108 %A not spanned) |  |  |  |  |  |  |  |  |
-| atomic_photochem_gj1132_kzzprofile | 2.09 -> 2.0924 | HLLC | info=0 certified | -- | 7.910 | 1.4765 | 5.321 | 0.2603 | 1.36E-08 |
-| atomic_photochem_gj1132_kzzprofile | 3 -> 3.0034 | HLLC | info=0 certified | -- | 7.900 | 1.7640 | 6.156 | 0.2684 | 1.32E-08 |
-| atomic_photochem_gj1132_kzzprofile | 5 -> 5.0057 | HLLC | info=0 certified | -- | 7.900 | 2.0746 | 6.933 | 0.2805 | 1.34E-08 |
-| atomic_photochem_gj1132_kzzprofile | 7 -> 7.0080 | HLLC | info=0 certified | -- | 7.900 | 2.1768 | 7.102 | 0.2871 | 9.02E-09 |
-| atomic_photochem_gj1132_kzzprofile | 8 -> 8.0091 | HLLC | info=0 certified | -- | 7.900 | 2.2004 | 7.115 | 0.2896 | 1.24E-08 |
-| atomic_photochem_gj1132_kzzprofile | 9 -> 9.0103 | HLLC | info=0 certified | -- | 7.900 | 2.2137 | 7.111 | 0.2916 | 1.17E-08 |
-| atomic_photochem_gj1132_kzzprofile | 9.7 -> 9.7111 | HLLC | info=0 certified | -- | 7.900 | 2.2206 | 7.101 | 0.2931 | 1.37E-08 |
-| atomic_photochem_gj1132_kzzprofile | 10 -> 10.0114 | HLLC | info=0 certified | -- | 7.900 | 2.2224 | 7.094 | 0.2936 | 3.47E-08 |
-| atomic_photochem_gj1132_kzzprofile | 12 -> 12.0137 | HLLC | info=0 certified | -- | 7.900 | 2.2289 | 7.037 | 0.2966 | 1.75E-08 |
-| **atomic_photochem_gj1132_kzzprofile** | crossing He/H = no bracket (EW = 1.108 %A not spanned) |  |  |  |  |  |  |  |  |
-| atomic_scalar_gj1132x0.01_kzz1e9 | 2.13 | ROE | none | -- | -- | -- | -- | -- | -- |
-| atomic_scalar_gj1132x0.01_kzz1e9 | 9.7 | ROE | none | -- | -- | -- | -- | -- | -- |
-| **atomic_scalar_gj1132x0.01_kzz1e9** | crossing He/H = no bracket (EW = 1.108 %A not spanned) |  |  |  |  |  |  |  |  |
-| atomic_scalar_gj1132x0.10_kzz1e9 | 2.13 | HLLC | info=0 certified | -- | 6.820 | 0.0001 | 0.000 | 0.2815 | 3.89E-07 |
-| atomic_scalar_gj1132x0.10_kzz1e9 | 9.7 | ROE | none | -- | -- | -- | -- | -- | -- |
-| **atomic_scalar_gj1132x0.10_kzz1e9** | crossing He/H = no bracket (EW = 1.108 %A not spanned) |  |  |  |  |  |  |  |  |
-| atomic_scalar_gj1132x0.15_kzz1e9 | 2.13 | HLLC | info=0 certified | -- | 7.000 | 0.0003 | 0.001 | 0.2865 | 1.24E-07 |
-| atomic_scalar_gj1132x0.15_kzz1e9 | 9.7 | HLLC | info=0 certified | -- | 7.000 | 0.4514 | 1.671 | 0.2517 | 1.16E-07 |
-| **atomic_scalar_gj1132x0.15_kzz1e9** | crossing He/H = no bracket (EW = 1.108 %A not spanned) |  |  |  |  |  |  |  |  |
-| atomic_scalar_gj1132x0.20_kzz1e9 | 2.13 | HLLC | info=0 certified | -- | 7.130 | 0.0022 | 0.007 | 0.2785 | 1.17E-07 |
-| atomic_scalar_gj1132x0.20_kzz1e9 | 9.7 | HLLC | info=0 certified | -- | 7.130 | 0.6294 | 2.285 | 0.2573 | 8.11E-08 |
-| **atomic_scalar_gj1132x0.20_kzz1e9** | crossing He/H = no bracket (EW = 1.108 %A not spanned) |  |  |  |  |  |  |  |  |
-| atomic_scalar_gj1132x0.25_kzz1e9 | 2.13 | HLLC | info=0 certified | -- | 7.240 | 0.0700 | 0.279 | 0.2351 | 1.81E-07 |
-| atomic_scalar_gj1132x0.25_kzz1e9 | 9.7 | HLLC | info=0 certified | -- | 7.230 | 0.7913 | 2.823 | 0.2618 | 1.04E-07 |
-| **atomic_scalar_gj1132x0.25_kzz1e9** | crossing He/H = no bracket (EW = 1.108 %A not spanned) |  |  |  |  |  |  |  |  |
-| atomic_scalar_gj1132x0.30_kzz1e9 | 2.13 | HLLC | info=0 certified | -- | 7.320 | 0.1894 | 0.760 | 0.2341 | 6.85E-08 |
-| atomic_scalar_gj1132x0.30_kzz1e9 | 9.7 | HLLC | info=0 certified | -- | 7.310 | 0.9395 | 3.301 | 0.2664 | 6.70E-08 |
-| **atomic_scalar_gj1132x0.30_kzz1e9** | crossing He/H = no bracket (EW = 1.108 %A not spanned) |  |  |  |  |  |  |  |  |
-| atomic_scalar_gj1132x0.33_kzz1e9 | 2.13 | HLLC | info=0 certified | -- | 7.360 | 0.2555 | 1.020 | 0.2351 | 4.57E-08 |
-| atomic_scalar_gj1132x0.33_kzz1e9 | 9.7 | HLLC | info=0 certified | -- | 7.360 | 1.0231 | 3.566 | 0.2684 | 9.90E-08 |
-| **atomic_scalar_gj1132x0.33_kzz1e9** | crossing He/H = no bracket (EW = 1.108 %A not spanned) |  |  |  |  |  |  |  |  |
-| atomic_photochem_gj1132x0.01_kzzprofile | 9.7 | ROE | none | -- | -- | -- | -- | -- | -- |
-| **atomic_photochem_gj1132x0.01_kzzprofile** | crossing He/H = no bracket (EW = 1.108 %A not spanned) |  |  |  |  |  |  |  |  |
-| atomic_photochem_gj1132x0.10_kzzprofile | 9.7 | HLLC | info=0 certified | -- | 6.840 | 0.2674 | 1.001 | 0.2487 | 1.02E-07 |
-| **atomic_photochem_gj1132x0.10_kzzprofile** | crossing He/H = no bracket (EW = 1.108 %A not spanned) |  |  |  |  |  |  |  |  |
-| atomic_photochem_gj1132x0.15_kzzprofile | 9.7 | ROE | none | -- | -- | -- | -- | -- | -- |
-| **atomic_photochem_gj1132x0.15_kzzprofile** | crossing He/H = no bracket (EW = 1.108 %A not spanned) |  |  |  |  |  |  |  |  |
-| atomic_photochem_gj1132x0.20_kzzprofile | 9.7 | ROE | none | -- | -- | -- | -- | -- | -- |
-| **atomic_photochem_gj1132x0.20_kzzprofile** | crossing He/H = no bracket (EW = 1.108 %A not spanned) |  |  |  |  |  |  |  |  |
-| atomic_photochem_gj1132x0.25_kzzprofile | 9.7 | ROE | none | -- | -- | -- | -- | -- | -- |
-| **atomic_photochem_gj1132x0.25_kzzprofile** | crossing He/H = no bracket (EW = 1.108 %A not spanned) |  |  |  |  |  |  |  |  |
-| atomic_photochem_gj1132x0.30_kzzprofile | 9.7 | HLLC | info=0 certified | -- | 7.350 | 1.0097 | 3.542 | 0.2664 | 3.19E-08 |
-| **atomic_photochem_gj1132x0.30_kzzprofile** | crossing He/H = no bracket (EW = 1.108 %A not spanned) |  |  |  |  |  |  |  |  |
-| atomic_photochem_gj1132x0.33_kzzprofile | 9.7 | HLLC | info=0 certified | -- | 7.390 | 1.0979 | 3.821 | 0.2689 | 3.46E-08 |
-| **atomic_photochem_gj1132x0.33_kzzprofile** | crossing He/H = no bracket (EW = 1.108 %A not spanned) |  |  |  |  |  |  |  |  |
-| molecular_scalar_gj1132_wellmixed | 0.083 | HLLC | info=1 uncertified | one scalar movement bound over a column holding a slow H2 front and a far wind | -- | -- | -- | -- | 2.03E-08 |
-| molecular_scalar_gj1132_wellmixed | 0.55 | HLLC | info=1 uncertified | one scalar movement bound over a column holding a slow H2 front and a far wind | -- | -- | -- | -- | 3.48E-08 |
-| molecular_scalar_gj1132_wellmixed | 2.13 | HLLC | running | no certified molecular wellmixed state to seed it from | -- | -- | -- | -- | -- |
-| **molecular_scalar_gj1132_wellmixed** | crossing He/H = no bracket (EW = 1.108 %A not spanned) |  |  |  |  |  |  |  |  |
-| molecular_scalar_gj1132_kzz1e9 | 0.083 | HLLC | info=1 uncertified | one scalar movement bound over a column holding a slow H2 front and a far wind | -- | -- | -- | -- | 1.37E-08 |
-| molecular_scalar_gj1132_kzz1e9 | 0.55 | HLLC | info=0 certified | -- | 7.640 | 0.1591 | 0.631 | 0.2366 | 9.71E-09 |
-| molecular_scalar_gj1132_kzz1e9 | 2.13 | HLLC | info=0 certified | -- | 7.910 | 1.5758 | 5.628 | 0.2628 | 1.45E-08 |
-| molecular_scalar_gj1132_kzz1e9 | 9.7 | HLLC | info=0 certified | -- | 7.950 | 2.4212 | 7.683 | 0.2951 | 2.44E-08 |
-| **molecular_scalar_gj1132_kzz1e9** | crossing He/H = 1.7300  (log-log chord between the rungs 0.55 and 2.13) |  |  |  |  |  |  |  |  |
-| molecular_photochem_gj1132_kzzprofile | 2.09 | HLLC | info=2 uncertified | 21 outer passes on the catalog binary c2e9c9990b9f without an accepted state; stopped 2026-09-17 because that binary carries the molecular physics of before item L7g | -- | -- | -- | -- | 4.95E-07 |
-| molecular_photochem_gj1132_kzzprofile | 9 | HLLC | info=1 uncertified | the run on the catalog binary c2e9c9990b9f ended after 2 outer passes with no stationary claim (a relaxation snapshot written certified=F) | -- | -- | -- | -- | 2.74E-01 |
-| **molecular_photochem_gj1132_kzzprofile** | crossing He/H = no bracket (EW = 1.108 %A not spanned) |  |  |  |  |  |  |  |  |
+The `archived claim on 59bfdb3f` column states what the no-step evaluate route answered when the stationary claim each ARCHIVED state file carried was re-measured with `EXHALE.x` md5 `59bfdb3fc4d0104fc2e9c3734596d2f6` (`models/CLAIMS_59bfdb3fc4d0.md`, PLAN_20260917 item L29): of its 119 states, 101 reproduced, 4 refused, 6 no_claim, 7 no_state, 1 not_evaluable. An archived `certified=T` header is a claim made by the executable that wrote it and is not a current acceptance. A row reads `superseded` where the state in the case directory has been written since that table was made, so that the archived verdict is about a file that is no longer there: the comparison is the `run=` stamp in the provenance header of the very file the table read, named in its own "claim file" column, against the modification time of `models/CLAIMS_59bfdb3fc4d0.md`, and that file's modification time where the header carries no stamp.
+
+| group | He/H | flux | state | archived claim on 59bfdb3f | reason | log10 Mdot | red EW [%A] | red depth [%] | FWHM [A] | \|\|R\|\| |
+|---|---|---|---|---|---|---|---|---|---|---|
+| atomic_scalar_gj1132_wellmixed | 0.083 | HLLC | evaluated certified | superseded | -- | 7.840 | 0.3797 | 1.533 | 0.2331 | -- |
+| atomic_scalar_gj1132_wellmixed | 0.40 | HLLC | evaluated certified | superseded | -- | 7.850 | 1.1011 | 4.085 | 0.2533 | -- |
+| atomic_scalar_gj1132_wellmixed | 0.42 | HLLC | evaluated certified | superseded | -- | 7.850 | 1.1324 | 4.185 | 0.2543 | -- |
+| atomic_scalar_gj1132_wellmixed | 0.44 | HLLC | evaluated certified | superseded | -- | 7.850 | 1.1626 | 4.281 | 0.2553 | -- |
+| atomic_scalar_gj1132_wellmixed | 0.55 | HLLC | evaluated certified | superseded | -- | 7.850 | 1.3118 | 4.741 | 0.2598 | -- |
+| atomic_scalar_gj1132_wellmixed | 1 | HLLC | evaluated certified | superseded | -- | 7.860 | 1.6959 | 5.821 | 0.2734 | -- |
+| atomic_scalar_gj1132_wellmixed | 10 | HLLC | evaluated certified | superseded | -- | 7.850 | 1.9347 | 5.818 | 0.3113 | -- |
+| atomic_scalar_gj1132_wellmixed | 100 | HLLC | evaluated certified | superseded | -- | 7.860 | 1.9644 | 5.756 | 0.3193 | -- |
+| atomic_scalar_gj1132_wellmixed | 1000 | HLLC | evaluated certified | superseded | -- | 7.850 | 1.9197 | 5.590 | 0.3214 | -- |
+| **atomic_scalar_gj1132_wellmixed** | crossing He/H = 0.4044  (log-log chord between the rungs 0.4 and 0.42) |  |  |  |  |  |  |  |  |  |
+| atomic_scalar_gj699_wellmixed | 0.042 | HLLC | evaluated certified | superseded | -- | 8.570 | 0.9091 | 3.035 | 0.2815 | -- |
+| atomic_scalar_gj699_wellmixed | 0.046 | HLLC | evaluated certified | superseded | -- | 8.570 | 0.9857 | 3.289 | 0.2815 | -- |
+| atomic_scalar_gj699_wellmixed | 0.050 | HLLC | evaluated certified | superseded | -- | 8.570 | 1.0608 | 3.538 | 0.2820 | -- |
+| atomic_scalar_gj699_wellmixed | 0.083 | HLLC | evaluated certified | superseded | -- | 8.570 | 1.6271 | 5.398 | 0.2835 | -- |
+| atomic_scalar_gj699_wellmixed | 1 | HLLC | evaluated certified | superseded | -- | 8.550 | 4.5250 | 13.597 | 0.3133 | -- |
+| atomic_scalar_gj699_wellmixed | 1000 | HLLC | evaluated certified | superseded | -- | 8.420 | 2.8725 | 7.510 | 0.3587 | -- |
+| **atomic_scalar_gj699_wellmixed** | crossing He/H = 0.0526  (log-log chord between the rungs 0.05 and 0.083) |  |  |  |  |  |  |  |  |  |
+| atomic_scalar_gj1132_kzz0 | 0.55 | HLLC | evaluated certified | superseded | -- | 7.840 | 0.0305 | 0.127 | 0.2270 | -- |
+| atomic_scalar_gj1132_kzz0 | 2.6 | HLLC | evaluated certified | superseded | -- | 7.860 | 0.9549 | 3.611 | 0.2487 | -- |
+| atomic_scalar_gj1132_kzz0 | 3.0 | HLLC | evaluated certified | superseded | -- | 7.870 | 1.0798 | 4.026 | 0.2517 | -- |
+| atomic_scalar_gj1132_kzz0 | 3.5 | HLLC | evaluated certified | superseded | -- | 7.870 | 1.2175 | 4.470 | 0.2558 | -- |
+| atomic_scalar_gj1132_kzz0 | 3.7 | HLLC | evaluated certified | superseded | -- | 7.870 | 1.2698 | 4.635 | 0.2573 | -- |
+| atomic_scalar_gj1132_kzz0 | 3.9 | HLLC | evaluated certified | superseded | -- | 7.870 | 1.3168 | 4.781 | 0.2583 | -- |
+| **atomic_scalar_gj1132_kzz0** | crossing He/H = 3.1011  (log-log chord between the rungs 3 and 3.5) |  |  |  |  |  |  |  |  |  |
+| atomic_scalar_gj1132_kzz1e5 | 2.6 | HLLC | evaluated certified | superseded | -- | 7.870 | 0.9631 | 3.639 | 0.2487 | -- |
+| atomic_scalar_gj1132_kzz1e5 | 3.0 | HLLC | evaluated certified | superseded | -- | 7.870 | 1.0880 | 4.053 | 0.2522 | -- |
+| atomic_scalar_gj1132_kzz1e5 | 3.35 | HLLC | evaluated certified | superseded | -- | 7.870 | 1.1862 | 4.371 | 0.2548 | -- |
+| atomic_scalar_gj1132_kzz1e5 | 3.64 | HLLC | evaluated certified | superseded | -- | 7.870 | 1.2627 | 4.613 | 0.2568 | -- |
+| atomic_scalar_gj1132_kzz1e5 | 3.93 | HLLC | evaluated certified | superseded | -- | 7.870 | 1.3314 | 4.826 | 0.2588 | -- |
+| **atomic_scalar_gj1132_kzz1e5** | crossing He/H = 3.0706  (log-log chord between the rungs 3 and 3.35) |  |  |  |  |  |  |  |  |  |
+| atomic_scalar_gj1132_kzz1e6 | 0.55 | HLLC | evaluated certified | superseded | -- | 7.840 | 0.0591 | 0.245 | 0.2270 | -- |
+| atomic_scalar_gj1132_kzz1e6 | 2.4 | HLLC | evaluated certified | superseded | -- | 7.860 | 0.9465 | 3.583 | 0.2482 | -- |
+| atomic_scalar_gj1132_kzz1e6 | 2.8 | HLLC | evaluated certified | superseded | -- | 7.870 | 1.0804 | 4.028 | 0.2517 | -- |
+| atomic_scalar_gj1132_kzz1e6 | 3.19 | HLLC | evaluated certified | superseded | -- | 7.870 | 1.1949 | 4.398 | 0.2553 | -- |
+| atomic_scalar_gj1132_kzz1e6 | 3.46 | HLLC | evaluated certified | superseded | -- | 7.870 | 1.2669 | 4.626 | 0.2573 | -- |
+| atomic_scalar_gj1132_kzz1e6 | 3.74 | HLLC | evaluated certified | superseded | -- | 7.870 | 1.3388 | 4.849 | 0.2593 | -- |
+| **atomic_scalar_gj1132_kzz1e6** | crossing He/H = 2.8930  (log-log chord between the rungs 2.8 and 3.19) |  |  |  |  |  |  |  |  |  |
+| atomic_scalar_gj1132_kzz1e7 | 0.55 | HLLC | evaluated certified | superseded | -- | 7.850 | 0.1585 | 0.652 | 0.2290 | -- |
+| atomic_scalar_gj1132_kzz1e7 | 2.70 | HLLC | evaluated certified | superseded | -- | 7.870 | 1.1996 | 4.414 | 0.2553 | -- |
+| atomic_scalar_gj1132_kzz1e7 | 2.94 | HLLC | evaluated certified | superseded | -- | 7.870 | 1.2724 | 4.643 | 0.2573 | -- |
+| atomic_scalar_gj1132_kzz1e7 | 3.18 | HLLC | evaluated certified | superseded | -- | 7.870 | 1.3265 | 4.811 | 0.2588 | -- |
+| **atomic_scalar_gj1132_kzz1e7** | crossing He/H = 2.5365  (log-log chord between the rungs 0.55 and 2.7) |  |  |  |  |  |  |  |  |  |
+| atomic_scalar_gj1132_kzz1e8 | 0.55 | HLLC | evaluated certified | superseded | -- | 7.850 | 0.3089 | 1.252 | 0.2321 | -- |
+| atomic_scalar_gj1132_kzz1e8 | 2.05 | HLLC | evaluated certified | superseded | -- | 7.870 | 1.1513 | 4.259 | 0.2538 | -- |
+| atomic_scalar_gj1132_kzz1e8 | 2.23 | HLLC | evaluated certified | superseded | -- | 7.870 | 1.2206 | 4.480 | 0.2558 | -- |
+| atomic_scalar_gj1132_kzz1e8 | 2.41 | HLLC | evaluated certified | superseded | -- | 7.870 | 1.2826 | 4.675 | 0.2573 | -- |
+| **atomic_scalar_gj1132_kzz1e8** | crossing He/H = 1.9729  (log-log chord between the rungs 0.55 and 2.05) |  |  |  |  |  |  |  |  |  |
+| atomic_scalar_gj1132_kzz1e9 | 0.55 | HLLC | evaluated certified | superseded | -- | 7.850 | 0.4793 | 1.910 | 0.2361 | -- |
+| atomic_scalar_gj1132_kzz1e9 | 1.50 | HLLC | evaluated certified | superseded | -- | 7.870 | 1.0996 | 4.091 | 0.2522 | -- |
+| atomic_scalar_gj1132_kzz1e9 | 1.60 | HLLC | evaluated certified | superseded | -- | 7.870 | 1.1511 | 4.257 | 0.2538 | -- |
+| atomic_scalar_gj1132_kzz1e9 | 1.70 | HLLC | evaluated certified | superseded | -- | 7.870 | 1.1970 | 4.404 | 0.2553 | -- |
+| atomic_scalar_gj1132_kzz1e9 | 2.13 | HLLC | evaluated certified | superseded | -- | 7.870 | 1.3749 | 4.958 | 0.2603 | -- |
+| atomic_scalar_gj1132_kzz1e9 | 4.0 | HLLC | evaluated certified | superseded | -- | 7.870 | 1.8229 | 6.209 | 0.2754 | -- |
+| atomic_scalar_gj1132_kzz1e9 | 9.7 | HLLC | evaluated certified | superseded | -- | 7.860 | 2.0592 | 6.548 | 0.2946 | -- |
+| **atomic_scalar_gj1132_kzz1e9** | crossing He/H = 1.5161  (log-log chord between the rungs 1.5 and 1.6) |  |  |  |  |  |  |  |  |  |
+| atomic_scalar_gj1132_kzz1e10 | 0.55 | HLLC | evaluated certified | superseded | -- | 7.860 | 0.6463 | 2.529 | 0.2406 | -- |
+| atomic_scalar_gj1132_kzz1e10 | 1.06 | HLLC | evaluated certified | superseded | -- | 7.860 | 1.0456 | 3.912 | 0.2512 | -- |
+| atomic_scalar_gj1132_kzz1e10 | 1.15 | HLLC | evaluated certified | superseded | -- | 7.860 | 1.1032 | 4.100 | 0.2527 | -- |
+| atomic_scalar_gj1132_kzz1e10 | 1.29 | HLLC | evaluated certified | superseded | -- | 7.860 | 1.1867 | 4.369 | 0.2548 | -- |
+| **atomic_scalar_gj1132_kzz1e10** | crossing He/H = 1.1580  (log-log chord between the rungs 1.15 and 1.29) |  |  |  |  |  |  |  |  |  |
+| atomic_scalar_gj1132_kzz1e11 | 0.55 | HLLC | evaluated certified | superseded | -- | 7.860 | 0.8065 | 3.099 | 0.2447 | -- |
+| atomic_scalar_gj1132_kzz1e11 | 0.795 | HLLC | evaluated certified | superseded | -- | 7.860 | 1.0302 | 3.859 | 0.2507 | -- |
+| atomic_scalar_gj1132_kzz1e11 | 0.865 | HLLC | evaluated certified | superseded | -- | 7.860 | 1.0866 | 4.044 | 0.2522 | -- |
+| atomic_scalar_gj1132_kzz1e11 | 0.93 | HLLC | evaluated certified | superseded | -- | 7.860 | 1.1364 | 4.206 | 0.2538 | -- |
+| **atomic_scalar_gj1132_kzz1e11** | crossing He/H = 0.8927  (log-log chord between the rungs 0.865 and 0.93) |  |  |  |  |  |  |  |  |  |
+| atomic_scalarCNO_gj1132_kzz1e9 | 2.13 | HLLC | evaluated certified | superseded | -- | 7.870 | 1.3721 | 4.948 | 0.2603 | -- |
+| **atomic_scalarCNO_gj1132_kzz1e9** | crossing He/H = no bracket (EW = 1.108 %A not spanned) |  |  |  |  |  |  |  |  |  |
+| atomic_photochem_gj1132_kzzprofile | 2.09 -> 2.0924 | HLLC | evaluated certified | superseded | -- | 7.910 | 1.4765 | 5.321 | 0.2603 | -- |
+| atomic_photochem_gj1132_kzzprofile | 3 -> 3.0034 | HLLC | evaluated certified | superseded | -- | 7.900 | 1.7640 | 6.156 | 0.2684 | -- |
+| atomic_photochem_gj1132_kzzprofile | 5 -> 5.0057 | HLLC | evaluated certified | superseded | -- | 7.900 | 2.0746 | 6.933 | 0.2805 | -- |
+| atomic_photochem_gj1132_kzzprofile | 7 -> 7.0080 | HLLC | evaluated certified | superseded | -- | 7.900 | 2.1768 | 7.102 | 0.2871 | -- |
+| atomic_photochem_gj1132_kzzprofile | 8 -> 8.0091 | HLLC | evaluated certified | superseded | -- | 7.900 | 2.2004 | 7.115 | 0.2896 | -- |
+| atomic_photochem_gj1132_kzzprofile | 9 -> 9.0103 | HLLC | evaluated certified | superseded | -- | 7.900 | 2.2137 | 7.111 | 0.2916 | -- |
+| atomic_photochem_gj1132_kzzprofile | 9.7 -> 9.7111 | HLLC | evaluated certified | superseded | -- | 7.900 | 2.2206 | 7.101 | 0.2931 | -- |
+| atomic_photochem_gj1132_kzzprofile | 10 -> 10.0114 | HLLC | evaluated certified | superseded | -- | 7.900 | 2.2224 | 7.094 | 0.2936 | -- |
+| atomic_photochem_gj1132_kzzprofile | 12 -> 12.0137 | HLLC | evaluated certified | superseded | -- | 7.900 | 2.2289 | 7.037 | 0.2966 | -- |
+| **atomic_photochem_gj1132_kzzprofile** | crossing He/H = no bracket (EW = 1.108 %A not spanned) |  |  |  |  |  |  |  |  |  |
+| atomic_scalar_gj1132x0.01_kzz1e9 | 2.13 | ROE | evaluated uncertified | superseded | stopped by the wall ceiling of 30m that models/run_campaign.sh applies (SIGTERM 1800 s after the campaign started the case), in the wind pass after outer pass 5 had completed; that pass had written no complete state of its own, so nothing new is published | 5.790 | 0.0000 | 0.000 | 0.2699 | -- |
+| atomic_scalar_gj1132x0.01_kzz1e9 | 9.7 | ROE | evaluated uncertified | superseded | stopped by the wall ceiling of 30m that models/run_campaign.sh applies (SIGTERM 1800 s after the campaign started the case), in the wind pass after outer pass 4 had completed; that pass had written no complete state of its own, so nothing new is published | 5.780 | 0.0000 | 0.000 | 0.3461 | -- |
+| **atomic_scalar_gj1132x0.01_kzz1e9** | crossing He/H = no bracket (EW = 1.108 %A not spanned) |  |  |  |  |  |  |  |  |  |
+| atomic_scalar_gj1132x0.10_kzz1e9 | 2.13 | HLLC | evaluated certified | superseded | -- | 6.820 | 0.0001 | 0.000 | 0.2815 | -- |
+| atomic_scalar_gj1132x0.10_kzz1e9 | 9.7 | ROE | evaluated certified | superseded | -- | 6.810 | 0.2353 | 0.879 | 0.2487 | -- |
+| **atomic_scalar_gj1132x0.10_kzz1e9** | crossing He/H = no bracket (EW = 1.108 %A not spanned) |  |  |  |  |  |  |  |  |  |
+| atomic_scalar_gj1132x0.15_kzz1e9 | 2.13 | HLLC | evaluated certified | superseded | -- | 7.000 | 0.0003 | 0.001 | 0.2865 | -- |
+| atomic_scalar_gj1132x0.15_kzz1e9 | 9.7 | HLLC | evaluated certified | superseded | -- | 7.000 | 0.4514 | 1.671 | 0.2517 | -- |
+| **atomic_scalar_gj1132x0.15_kzz1e9** | crossing He/H = no bracket (EW = 1.108 %A not spanned) |  |  |  |  |  |  |  |  |  |
+| atomic_scalar_gj1132x0.20_kzz1e9 | 2.13 | HLLC | evaluated certified | superseded | -- | 7.130 | 0.0022 | 0.007 | 0.2785 | -- |
+| atomic_scalar_gj1132x0.20_kzz1e9 | 9.7 | HLLC | evaluated certified | superseded | -- | 7.130 | 0.6294 | 2.285 | 0.2573 | -- |
+| **atomic_scalar_gj1132x0.20_kzz1e9** | crossing He/H = no bracket (EW = 1.108 %A not spanned) |  |  |  |  |  |  |  |  |  |
+| atomic_scalar_gj1132x0.25_kzz1e9 | 2.13 | HLLC | evaluated certified | superseded | -- | 7.240 | 0.0700 | 0.279 | 0.2351 | -- |
+| atomic_scalar_gj1132x0.25_kzz1e9 | 9.7 | HLLC | evaluated certified | superseded | -- | 7.230 | 0.7913 | 2.823 | 0.2618 | -- |
+| **atomic_scalar_gj1132x0.25_kzz1e9** | crossing He/H = no bracket (EW = 1.108 %A not spanned) |  |  |  |  |  |  |  |  |  |
+| atomic_scalar_gj1132x0.30_kzz1e9 | 2.13 | HLLC | evaluated certified | superseded | -- | 7.320 | 0.1894 | 0.760 | 0.2341 | -- |
+| atomic_scalar_gj1132x0.30_kzz1e9 | 9.7 | HLLC | evaluated certified | superseded | -- | 7.310 | 0.9395 | 3.301 | 0.2664 | -- |
+| **atomic_scalar_gj1132x0.30_kzz1e9** | crossing He/H = no bracket (EW = 1.108 %A not spanned) |  |  |  |  |  |  |  |  |  |
+| atomic_scalar_gj1132x0.33_kzz1e9 | 2.13 | HLLC | evaluated certified | superseded | -- | 7.360 | 0.2555 | 1.020 | 0.2351 | -- |
+| atomic_scalar_gj1132x0.33_kzz1e9 | 9.7 | HLLC | evaluated certified | superseded | -- | 7.360 | 1.0231 | 3.566 | 0.2684 | -- |
+| **atomic_scalar_gj1132x0.33_kzz1e9** | crossing He/H = no bracket (EW = 1.108 %A not spanned) |  |  |  |  |  |  |  |  |  |
+| atomic_photochem_gj1132x0.01_kzzprofile | 9.7 | ROE | info=1 uncertified hydrodynamic_refusal | superseded | stopped by the wall ceiling of 30m that models/run_campaign.sh applies (SIGTERM 1800 s after the campaign started the case), in the wind pass after outer pass 4 had completed; that pass had written no complete state of its own, so nothing new is published | 5.770 | 0.0000 | 0.000 | 0.2987 | 1.95E+00 |
+| **atomic_photochem_gj1132x0.01_kzzprofile** | crossing He/H = no bracket (EW = 1.108 %A not spanned) |  |  |  |  |  |  |  |  |  |
+| atomic_photochem_gj1132x0.10_kzzprofile | 9.7 | HLLC | evaluated certified | superseded | -- | 6.840 | 0.2674 | 1.001 | 0.2487 | -- |
+| **atomic_photochem_gj1132x0.10_kzzprofile** | crossing He/H = no bracket (EW = 1.108 %A not spanned) |  |  |  |  |  |  |  |  |  |
+| atomic_photochem_gj1132x0.15_kzzprofile | 9.7 | ROE | evaluated certified | superseded | -- | 7.020 | 0.4822 | 1.783 | 0.2527 | -- |
+| **atomic_photochem_gj1132x0.15_kzzprofile** | crossing He/H = no bracket (EW = 1.108 %A not spanned) |  |  |  |  |  |  |  |  |  |
+| atomic_photochem_gj1132x0.20_kzzprofile | 9.7 | ROE | evaluated certified | superseded | -- | 7.160 | 0.6711 | 2.433 | 0.2578 | -- |
+| **atomic_photochem_gj1132x0.20_kzzprofile** | crossing He/H = no bracket (EW = 1.108 %A not spanned) |  |  |  |  |  |  |  |  |  |
+| atomic_photochem_gj1132x0.25_kzzprofile | 9.7 | ROE | evaluated certified | superseded | -- | 7.260 | 0.8429 | 3.002 | 0.2623 | -- |
+| **atomic_photochem_gj1132x0.25_kzzprofile** | crossing He/H = no bracket (EW = 1.108 %A not spanned) |  |  |  |  |  |  |  |  |  |
+| atomic_photochem_gj1132x0.30_kzzprofile | 9.7 | HLLC | evaluated certified | superseded | -- | 7.350 | 1.0097 | 3.542 | 0.2664 | -- |
+| **atomic_photochem_gj1132x0.30_kzzprofile** | crossing He/H = no bracket (EW = 1.108 %A not spanned) |  |  |  |  |  |  |  |  |  |
+| atomic_photochem_gj1132x0.33_kzzprofile | 9.7 | HLLC | evaluated certified | superseded | -- | 7.390 | 1.0979 | 3.821 | 0.2689 | -- |
+| **atomic_photochem_gj1132x0.33_kzzprofile** | crossing He/H = no bracket (EW = 1.108 %A not spanned) |  |  |  |  |  |  |  |  |  |
+| molecular_scalar_gj1132_wellmixed | 0.083 | HLLC | evaluated uncertified | superseded | eighty outer passes reach a converged wind whose carrier H2 balance does not close, the row falling to 4.1e-02 over the first forty and rising again over the second forty, with the movement bound attained in every relaxation | 6.980 | 0.1164 | 0.450 | 0.2427 | -- |
+| molecular_scalar_gj1132_wellmixed | 0.55 | HLLC | evaluated uncertified | superseded | thirty-one outer passes on a converged wind, the carrier H2 row falling to 3.8e-02, rising to 1.6e-01 and falling again to 6.5e-02 while its refusing cell walks outward, and the run was stopped at the six-hour ceiling | 7.410 | 0.6807 | 2.388 | 0.2674 | -- |
+| molecular_scalar_gj1132_wellmixed | 2.13 | HLLC | not solved [no index] | superseded | the case was started for the first time, from an atomic well-mixed wind solved for it at this composition, and its carrier H2 row flattened at 4.3e-01 after seven outer passes; the run was stopped at the six-hour ceiling | -- | -- | -- | -- | 1.57E-08 |
+| **molecular_scalar_gj1132_wellmixed** | crossing He/H = no bracket (EW = 1.108 %A not spanned) |  |  |  |  |  |  |  |  |  |
+| molecular_scalar_gj1132_kzz1e9 | 0.083 | HLLC | evaluated uncertified | superseded | one scalar movement bound over a column holding a slow H2 front and a far wind | 7.390 | 0.0003 | 0.001 | 0.3304 | -- |
+| molecular_scalar_gj1132_kzz1e9 | 0.55 | HLLC | evaluated uncertified | refused | from the certified reference solution of its own group the carrier H2 row fell by a factor 12 over five outer passes and then rose again, with the hydrodynamic solve refusing every pass, and the run was stopped at the six-hour ceiling | 7.640 | 0.1591 | 0.631 | 0.2366 | -- |
+| molecular_scalar_gj1132_kzz1e9 | 2.13 | HLLC | evaluated certified | superseded | stopped by the wall ceiling of 6h that models/run_campaign.sh applies (SIGTERM 21600 s after the campaign started the case), in the continuation pass after outer pass 2 had completed; that pass had written no complete state of its own, so nothing new is published | 7.900 | 1.5603 | 5.571 | 0.2628 | -- |
+| molecular_scalar_gj1132_kzz1e9 | 9.7 | HLLC | evaluated certified | superseded | the stationary route ended info=1 with the three hydrodynamic rows inside their own tolerances, so what refuses is the composition: carrier balance H2: gated row measure  5.130E-04 above  1.0E-05 at cell 262 (a wind cell), and the outer loop spent its whole budget of 40 passes | 7.940 | 2.4061 | 7.629 | 0.2956 | -- |
+| **molecular_scalar_gj1132_kzz1e9** | crossing He/H = 1.7386  (log-log chord between the rungs 0.55 and 2.13) |  |  |  |  |  |  |  |  |  |
+| molecular_photochem_gj1132_kzzprofile | 2.09 | HLLC | not solved [no index] | superseded | from the certified wind of its own atomic pair the carrier H2 row bands between 1.9e-01 and 4.4e-01 over twelve outer passes without a trend, and the run was stopped at the six-hour ceiling | -- | -- | -- | -- | 3.27E-07 |
+| molecular_photochem_gj1132_kzzprofile | 9 | HLLC | evaluated uncertified | superseded | the atomic-to-molecular conversion of this case's own certified atomic wind leaves the hydrodynamic rows at the base two decades outside their tolerances, and the element composition relaxation of outer pass 1 then found no admissible advance and restored its entry composition | 7.930 | 2.3332 | 7.505 | 0.2911 | -- |
+| **molecular_photochem_gj1132_kzzprofile** | crossing He/H = no bracket (EW = 1.108 %A not spanned) |  |  |  |  |  |  |  |  |  |
 
 ## 8. How each model was reached
 
-One row per case that has been run, read from the `REPRODUCE.md` its own run wrote: which state seeded it, how many outer passes the stationary solve took, what the solver and the certification said, what came out, and how long it took. The linked file carries the commands themselves.
+One row per case that has been run. The `record` column says what the published generation (`latest_complete`) is: a solve, or an evaluation of an earlier state (`evaluate-only`, with the wall clock of the evaluation). The seed, the outer passes, the verdict and the wall clock are those of the SOLVE behind the published state, the generation its parent chain reaches, READ from that solve's run record (`runs/<run_id>/run.json`), its log, or its own `REPRODUCE.md`; a fact none of them records reads `not recorded`. The wall clock of a solve is measured from the start of the run to the publication of that generation, so for a continuation it includes the solve it continued. The certification and the line measures are those of the published generation. The linked file carries the commands themselves.
 
-| case | seed | outer passes | verdict | certification | log10 Mdot | EW [%A] | wall clock | record | why not solved |
-|---|---|---|---|---|---|---|---|---|---|
-| `atomic_scalar_gj1132_wellmixed/HeH0.083` | cold start | 0 | info=0 | certified | 7.84 | 0.3797 | 0m26s at 8 thread(s) | [REPRODUCE.md](models/atomic_scalar_gj1132_wellmixed/HeH0.083/REPRODUCE.md) | -- |
-| `atomic_scalar_gj1132_wellmixed/HeH0.40` | cold start | 0 | info=0 | certified | 7.85 | 1.1011 | 0m26s at 8 thread(s) | [REPRODUCE.md](models/atomic_scalar_gj1132_wellmixed/HeH0.40/REPRODUCE.md) | -- |
-| `atomic_scalar_gj1132_wellmixed/HeH0.42` | cold start | 0 | info=0 | certified | 7.85 | 1.1324 | 0m26s at 8 thread(s) | [REPRODUCE.md](models/atomic_scalar_gj1132_wellmixed/HeH0.42/REPRODUCE.md) | -- |
-| `atomic_scalar_gj1132_wellmixed/HeH0.44` | cold start | 0 | info=0 | certified | 7.85 | 1.1626 | 0m26s at 8 thread(s) | [REPRODUCE.md](models/atomic_scalar_gj1132_wellmixed/HeH0.44/REPRODUCE.md) | -- |
-| `atomic_scalar_gj1132_wellmixed/HeH0.55` | cold start | 0 | info=0 | certified | 7.85 | 1.3118 | 0m26s at 8 thread(s) | [REPRODUCE.md](models/atomic_scalar_gj1132_wellmixed/HeH0.55/REPRODUCE.md) | -- |
-| `atomic_scalar_gj1132_wellmixed/HeH1` | cold start | 0 | info=0 | certified | 7.86 | 1.6959 | 0m26s at 8 thread(s) | [REPRODUCE.md](models/atomic_scalar_gj1132_wellmixed/HeH1/REPRODUCE.md) | -- |
-| `atomic_scalar_gj1132_wellmixed/HeH10` | cold start | 0 | info=0 | certified | 7.85 | 1.9347 | 0m36s at 8 thread(s) | [REPRODUCE.md](models/atomic_scalar_gj1132_wellmixed/HeH10/REPRODUCE.md) | -- |
-| `atomic_scalar_gj1132_wellmixed/HeH100` | cold start | 0 | info=0 | certified | 7.86 | 1.9645 | 0m28s at 8 thread(s) | [REPRODUCE.md](models/atomic_scalar_gj1132_wellmixed/HeH100/REPRODUCE.md) | -- |
-| `atomic_scalar_gj1132_wellmixed/HeH1000` | cold start | 0 | info=0 | certified | 7.85 | 1.9197 | 0m29s at 8 thread(s) | [REPRODUCE.md](models/atomic_scalar_gj1132_wellmixed/HeH1000/REPRODUCE.md) | -- |
-| `atomic_scalar_gj699_wellmixed/HeH0.042` | cold start | 0 | info=0 | certified | 8.57 | 0.9091 | 0m28s at 8 thread(s) | [REPRODUCE.md](models/atomic_scalar_gj699_wellmixed/HeH0.042/REPRODUCE.md) | -- |
-| `atomic_scalar_gj699_wellmixed/HeH0.046` | cold start | 0 | info=0 | certified | 8.57 | 0.9858 | 0m27s at 8 thread(s) | [REPRODUCE.md](models/atomic_scalar_gj699_wellmixed/HeH0.046/REPRODUCE.md) | -- |
-| `atomic_scalar_gj699_wellmixed/HeH0.050` | cold start | 0 | info=0 | certified | 8.57 | 1.0609 | 0m27s at 8 thread(s) | [REPRODUCE.md](models/atomic_scalar_gj699_wellmixed/HeH0.050/REPRODUCE.md) | -- |
-| `atomic_scalar_gj699_wellmixed/HeH0.083` | cold start | 0 | info=0 | certified | 8.57 | 1.6271 | 0m27s at 8 thread(s) | [REPRODUCE.md](models/atomic_scalar_gj699_wellmixed/HeH0.083/REPRODUCE.md) | -- |
-| `atomic_scalar_gj699_wellmixed/HeH1` | cold start | 0 | info=0 | certified | 8.55 | 4.5250 | 0m26s at 8 thread(s) | [REPRODUCE.md](models/atomic_scalar_gj699_wellmixed/HeH1/REPRODUCE.md) | -- |
-| `atomic_scalar_gj699_wellmixed/HeH1000` | cold start | 0 | info=0 | certified | 8.42 | 2.8725 | 0m28s at 8 thread(s) | [REPRODUCE.md](models/atomic_scalar_gj699_wellmixed/HeH1000/REPRODUCE.md) | -- |
-| `atomic_scalar_gj1132_kzz0/HeH0.55` | cold start | 1 | info=0 | certified | 7.84 | 0.0305 | 0m24s at 8 thread(s) | [REPRODUCE.md](models/atomic_scalar_gj1132_kzz0/HeH0.55/REPRODUCE.md) | -- |
-| `atomic_scalar_gj1132_kzz0/HeH2.6` | cold start | 1 | info=0 | certified | 7.86 | 0.9549 | 0m24s at 8 thread(s) | [REPRODUCE.md](models/atomic_scalar_gj1132_kzz0/HeH2.6/REPRODUCE.md) | -- |
-| `atomic_scalar_gj1132_kzz0/HeH3.0` | cold start | 1 | info=0 | certified | 7.87 | 1.0798 | 0m24s at 8 thread(s) | [REPRODUCE.md](models/atomic_scalar_gj1132_kzz0/HeH3.0/REPRODUCE.md) | -- |
-| `atomic_scalar_gj1132_kzz0/HeH3.5` | cold start | 1 | info=0 | certified | 7.87 | 1.2175 | 0m25s at 8 thread(s) | [REPRODUCE.md](models/atomic_scalar_gj1132_kzz0/HeH3.5/REPRODUCE.md) | -- |
-| `atomic_scalar_gj1132_kzz0/HeH3.7` | cold start | 1 | info=0 | certified | 7.87 | 1.2698 | 0m25s at 8 thread(s) | [REPRODUCE.md](models/atomic_scalar_gj1132_kzz0/HeH3.7/REPRODUCE.md) | -- |
-| `atomic_scalar_gj1132_kzz0/HeH3.9` | cold start | 1 | info=0 | certified | 7.87 | 1.3168 | 0m24s at 8 thread(s) | [REPRODUCE.md](models/atomic_scalar_gj1132_kzz0/HeH3.9/REPRODUCE.md) | -- |
-| `atomic_scalar_gj1132_kzz1e5/HeH2.6` | cold start | 1 | info=0 | certified | 7.87 | 0.9631 | 0m25s at 8 thread(s) | [REPRODUCE.md](models/atomic_scalar_gj1132_kzz1e5/HeH2.6/REPRODUCE.md) | -- |
-| `atomic_scalar_gj1132_kzz1e5/HeH3.0` | cold start | 1 | info=0 | certified | 7.87 | 1.0880 | 0m24s at 8 thread(s) | [REPRODUCE.md](models/atomic_scalar_gj1132_kzz1e5/HeH3.0/REPRODUCE.md) | -- |
-| `atomic_scalar_gj1132_kzz1e5/HeH3.35` | cold start | 1 | info=0 | certified | 7.87 | 1.1862 | 0m24s at 8 thread(s) | [REPRODUCE.md](models/atomic_scalar_gj1132_kzz1e5/HeH3.35/REPRODUCE.md) | -- |
-| `atomic_scalar_gj1132_kzz1e5/HeH3.64` | cold start | 1 | info=0 | certified | 7.87 | 1.2627 | 0m24s at 8 thread(s) | [REPRODUCE.md](models/atomic_scalar_gj1132_kzz1e5/HeH3.64/REPRODUCE.md) | -- |
-| `atomic_scalar_gj1132_kzz1e5/HeH3.93` | cold start | 1 | info=0 | certified | 7.87 | 1.3314 | 0m25s at 8 thread(s) | [REPRODUCE.md](models/atomic_scalar_gj1132_kzz1e5/HeH3.93/REPRODUCE.md) | -- |
-| `atomic_scalar_gj1132_kzz1e6/HeH0.55` | cold start | 1 | info=0 | certified | 7.84 | 0.0591 | 0m24s at 8 thread(s) | [REPRODUCE.md](models/atomic_scalar_gj1132_kzz1e6/HeH0.55/REPRODUCE.md) | -- |
-| `atomic_scalar_gj1132_kzz1e6/HeH2.4` | cold start | 1 | info=0 | certified | 7.86 | 0.9465 | 0m24s at 8 thread(s) | [REPRODUCE.md](models/atomic_scalar_gj1132_kzz1e6/HeH2.4/REPRODUCE.md) | -- |
-| `atomic_scalar_gj1132_kzz1e6/HeH2.8` | cold start | 1 | info=0 | certified | 7.87 | 1.0804 | 0m24s at 8 thread(s) | [REPRODUCE.md](models/atomic_scalar_gj1132_kzz1e6/HeH2.8/REPRODUCE.md) | -- |
-| `atomic_scalar_gj1132_kzz1e6/HeH3.19` | cold start | 1 | info=0 | certified | 7.87 | 1.1949 | 0m24s at 8 thread(s) | [REPRODUCE.md](models/atomic_scalar_gj1132_kzz1e6/HeH3.19/REPRODUCE.md) | -- |
-| `atomic_scalar_gj1132_kzz1e6/HeH3.46` | cold start | 1 | info=0 | certified | 7.87 | 1.2669 | 0m24s at 8 thread(s) | [REPRODUCE.md](models/atomic_scalar_gj1132_kzz1e6/HeH3.46/REPRODUCE.md) | -- |
-| `atomic_scalar_gj1132_kzz1e6/HeH3.74` | cold start | 1 | info=0 | certified | 7.87 | 1.3388 | 0m25s at 8 thread(s) | [REPRODUCE.md](models/atomic_scalar_gj1132_kzz1e6/HeH3.74/REPRODUCE.md) | -- |
-| `atomic_scalar_gj1132_kzz1e7/HeH0.55` | cold start | 1 | info=0 | certified | 7.85 | 0.1585 | 0m24s at 8 thread(s) | [REPRODUCE.md](models/atomic_scalar_gj1132_kzz1e7/HeH0.55/REPRODUCE.md) | -- |
-| `atomic_scalar_gj1132_kzz1e7/HeH2.70` | cold start | 1 | info=0 | certified | 7.87 | 1.1996 | 0m24s at 8 thread(s) | [REPRODUCE.md](models/atomic_scalar_gj1132_kzz1e7/HeH2.70/REPRODUCE.md) | -- |
-| `atomic_scalar_gj1132_kzz1e7/HeH2.94` | cold start | 1 | info=0 | certified | 7.87 | 1.2724 | 0m25s at 8 thread(s) | [REPRODUCE.md](models/atomic_scalar_gj1132_kzz1e7/HeH2.94/REPRODUCE.md) | -- |
-| `atomic_scalar_gj1132_kzz1e7/HeH3.18` | cold start | 1 | info=0 | certified | 7.87 | 1.3265 | 0m24s at 8 thread(s) | [REPRODUCE.md](models/atomic_scalar_gj1132_kzz1e7/HeH3.18/REPRODUCE.md) | -- |
-| `atomic_scalar_gj1132_kzz1e8/HeH0.55` | cold start | 1 | info=0 | certified | 7.85 | 0.3089 | 0m23s at 8 thread(s) | [REPRODUCE.md](models/atomic_scalar_gj1132_kzz1e8/HeH0.55/REPRODUCE.md) | -- |
-| `atomic_scalar_gj1132_kzz1e8/HeH2.05` | cold start | 1 | info=0 | certified | 7.87 | 1.1513 | 0m25s at 8 thread(s) | [REPRODUCE.md](models/atomic_scalar_gj1132_kzz1e8/HeH2.05/REPRODUCE.md) | -- |
-| `atomic_scalar_gj1132_kzz1e8/HeH2.23` | cold start | 1 | info=0 | certified | 7.87 | 1.2206 | 0m26s at 8 thread(s) | [REPRODUCE.md](models/atomic_scalar_gj1132_kzz1e8/HeH2.23/REPRODUCE.md) | -- |
-| `atomic_scalar_gj1132_kzz1e8/HeH2.41` | cold start | 1 | info=0 | certified | 7.87 | 1.2826 | 0m25s at 8 thread(s) | [REPRODUCE.md](models/atomic_scalar_gj1132_kzz1e8/HeH2.41/REPRODUCE.md) | -- |
-| `atomic_scalar_gj1132_kzz1e9/HeH0.55` | cold start | 1 | info=0 | certified | 7.85 | 0.4793 | 0m25s at 8 thread(s) | [REPRODUCE.md](models/atomic_scalar_gj1132_kzz1e9/HeH0.55/REPRODUCE.md) | -- |
-| `atomic_scalar_gj1132_kzz1e9/HeH1.50` | cold start | 1 | info=0 | certified | 7.87 | 1.0996 | 0m23s at 8 thread(s) | [REPRODUCE.md](models/atomic_scalar_gj1132_kzz1e9/HeH1.50/REPRODUCE.md) | -- |
-| `atomic_scalar_gj1132_kzz1e9/HeH1.60` | cold start | 1 | info=0 | certified | 7.87 | 1.1511 | 0m24s at 8 thread(s) | [REPRODUCE.md](models/atomic_scalar_gj1132_kzz1e9/HeH1.60/REPRODUCE.md) | -- |
-| `atomic_scalar_gj1132_kzz1e9/HeH1.70` | cold start | 1 | info=0 | certified | 7.87 | 1.1970 | 0m25s at 8 thread(s) | [REPRODUCE.md](models/atomic_scalar_gj1132_kzz1e9/HeH1.70/REPRODUCE.md) | -- |
-| `atomic_scalar_gj1132_kzz1e9/HeH2.13` | cold start | 1 | info=0 | certified | 7.87 | 1.3749 | 0m25s at 8 thread(s) | [REPRODUCE.md](models/atomic_scalar_gj1132_kzz1e9/HeH2.13/REPRODUCE.md) | -- |
-| `atomic_scalar_gj1132_kzz1e9/HeH4.0` | cold start | 1 | info=0 | certified | 7.87 | 1.8229 | 0m26s at 8 thread(s) | [REPRODUCE.md](models/atomic_scalar_gj1132_kzz1e9/HeH4.0/REPRODUCE.md) | -- |
-| `atomic_scalar_gj1132_kzz1e9/HeH9.7` | cold start | 1 | info=0 | certified | 7.86 | 2.0592 | 0m27s at 8 thread(s) | [REPRODUCE.md](models/atomic_scalar_gj1132_kzz1e9/HeH9.7/REPRODUCE.md) | -- |
-| `atomic_scalar_gj1132_kzz1e10/HeH0.55` | cold start | 1 | info=0 | certified | 7.86 | 0.6463 | 0m24s at 8 thread(s) | [REPRODUCE.md](models/atomic_scalar_gj1132_kzz1e10/HeH0.55/REPRODUCE.md) | -- |
-| `atomic_scalar_gj1132_kzz1e10/HeH1.06` | cold start | 1 | info=0 | certified | 7.86 | 1.0456 | 0m24s at 8 thread(s) | [REPRODUCE.md](models/atomic_scalar_gj1132_kzz1e10/HeH1.06/REPRODUCE.md) | -- |
-| `atomic_scalar_gj1132_kzz1e10/HeH1.15` | cold start | 1 | info=0 | certified | 7.86 | 1.1032 | 0m23s at 8 thread(s) | [REPRODUCE.md](models/atomic_scalar_gj1132_kzz1e10/HeH1.15/REPRODUCE.md) | -- |
-| `atomic_scalar_gj1132_kzz1e10/HeH1.29` | cold start | 1 | info=0 | certified | 7.86 | 1.1867 | 0m25s at 8 thread(s) | [REPRODUCE.md](models/atomic_scalar_gj1132_kzz1e10/HeH1.29/REPRODUCE.md) | -- |
-| `atomic_scalar_gj1132_kzz1e11/HeH0.55` | cold start | 1 | info=0 | certified | 7.86 | 0.8065 | 0m25s at 8 thread(s) | [REPRODUCE.md](models/atomic_scalar_gj1132_kzz1e11/HeH0.55/REPRODUCE.md) | -- |
-| `atomic_scalar_gj1132_kzz1e11/HeH0.795` | cold start | 1 | info=0 | certified | 7.86 | 1.0302 | 0m25s at 8 thread(s) | [REPRODUCE.md](models/atomic_scalar_gj1132_kzz1e11/HeH0.795/REPRODUCE.md) | -- |
-| `atomic_scalar_gj1132_kzz1e11/HeH0.865` | cold start | 1 | info=0 | certified | 7.86 | 1.0866 | 0m24s at 8 thread(s) | [REPRODUCE.md](models/atomic_scalar_gj1132_kzz1e11/HeH0.865/REPRODUCE.md) | -- |
-| `atomic_scalar_gj1132_kzz1e11/HeH0.93` | cold start | 1 | info=0 | certified | 7.86 | 1.1364 | 0m33s at 8 thread(s) | [REPRODUCE.md](models/atomic_scalar_gj1132_kzz1e11/HeH0.93/REPRODUCE.md) | -- |
-| `atomic_scalarCNO_gj1132_kzz1e9/HeH2.13` | cold start | 1 | info=0 | certified | 7.87 | 1.3721 | 0m36s at 8 thread(s) | [REPRODUCE.md](models/atomic_scalarCNO_gj1132_kzz1e9/HeH2.13/REPRODUCE.md) | -- |
-| `atomic_photochem_gj1132_kzzprofile/HeH2.09` | cold start | 1 | info=0 | certified | 7.91 | 1.4765 | 19m34s at 8 thread(s) | [REPRODUCE.md](models/atomic_photochem_gj1132_kzzprofile/HeH2.09/REPRODUCE.md) | -- |
-| `atomic_photochem_gj1132_kzzprofile/HeH3` | cold start | 1 | info=0 | certified | 7.90 | 1.7640 | 16m04s at 8 thread(s) | [REPRODUCE.md](models/atomic_photochem_gj1132_kzzprofile/HeH3/REPRODUCE.md) | -- |
-| `atomic_photochem_gj1132_kzzprofile/HeH5` | cold start | 1 | info=0 | certified | 7.90 | 2.0746 | 13m54s at 8 thread(s) | [REPRODUCE.md](models/atomic_photochem_gj1132_kzzprofile/HeH5/REPRODUCE.md) | -- |
-| `atomic_photochem_gj1132_kzzprofile/HeH7` | cold start | 1 | info=0 | certified | 7.90 | 2.1768 | 16m18s at 8 thread(s) | [REPRODUCE.md](models/atomic_photochem_gj1132_kzzprofile/HeH7/REPRODUCE.md) | -- |
-| `atomic_photochem_gj1132_kzzprofile/HeH8` | cold start | 1 | info=0 | certified | 7.90 | 2.2004 | 14m40s at 8 thread(s) | [REPRODUCE.md](models/atomic_photochem_gj1132_kzzprofile/HeH8/REPRODUCE.md) | -- |
-| `atomic_photochem_gj1132_kzzprofile/HeH9` | cold start | 1 | info=0 | certified | 7.90 | 2.2137 | 14m11s at 8 thread(s) | [REPRODUCE.md](models/atomic_photochem_gj1132_kzzprofile/HeH9/REPRODUCE.md) | -- |
-| `atomic_photochem_gj1132_kzzprofile/HeH9.7` | cold start | 1 | info=0 | certified | 7.90 | 2.2206 | 12m06s at 8 thread(s) | [REPRODUCE.md](models/atomic_photochem_gj1132_kzzprofile/HeH9.7/REPRODUCE.md) | -- |
-| `atomic_photochem_gj1132_kzzprofile/HeH10` | cold start | 1 | info=0 | certified | 7.90 | 2.2224 | 12m42s at 8 thread(s) | [REPRODUCE.md](models/atomic_photochem_gj1132_kzzprofile/HeH10/REPRODUCE.md) | -- |
-| `atomic_photochem_gj1132_kzzprofile/HeH12` | cold start | 1 | info=0 | certified | 7.90 | 2.2289 | 12m20s at 8 thread(s) | [REPRODUCE.md](models/atomic_photochem_gj1132_kzzprofile/HeH12/REPRODUCE.md) | -- |
-| `atomic_scalar_gj1132x0.10_kzz1e9/HeH2.13` | cold start | 1 | info=0 | certified | 6.82 | 0.0001 | 0m24s at 8 thread(s) | [REPRODUCE.md](models/atomic_scalar_gj1132x0.10_kzz1e9/HeH2.13/REPRODUCE.md) | -- |
-| `atomic_scalar_gj1132x0.15_kzz1e9/HeH2.13` | cold start | 1 | info=0 | certified | 7.00 | 0.0003 | 0m24s at 8 thread(s) | [REPRODUCE.md](models/atomic_scalar_gj1132x0.15_kzz1e9/HeH2.13/REPRODUCE.md) | -- |
-| `atomic_scalar_gj1132x0.15_kzz1e9/HeH9.7` | cold start | 1 | info=0 | certified | 7.00 | 0.4514 | 0m25s at 8 thread(s) | [REPRODUCE.md](models/atomic_scalar_gj1132x0.15_kzz1e9/HeH9.7/REPRODUCE.md) | -- |
-| `atomic_scalar_gj1132x0.20_kzz1e9/HeH2.13` | cold start | 1 | info=0 | certified | 7.13 | 0.0022 | 0m23s at 8 thread(s) | [REPRODUCE.md](models/atomic_scalar_gj1132x0.20_kzz1e9/HeH2.13/REPRODUCE.md) | -- |
-| `atomic_scalar_gj1132x0.20_kzz1e9/HeH9.7` | cold start | 1 | info=0 | certified | 7.13 | 0.6294 | 0m25s at 8 thread(s) | [REPRODUCE.md](models/atomic_scalar_gj1132x0.20_kzz1e9/HeH9.7/REPRODUCE.md) | -- |
-| `atomic_scalar_gj1132x0.25_kzz1e9/HeH2.13` | cold start | 1 | info=0 | certified | 7.24 | 0.0700 | 0m24s at 8 thread(s) | [REPRODUCE.md](models/atomic_scalar_gj1132x0.25_kzz1e9/HeH2.13/REPRODUCE.md) | -- |
-| `atomic_scalar_gj1132x0.25_kzz1e9/HeH9.7` | cold start | 1 | info=0 | certified | 7.23 | 0.7913 | 0m25s at 8 thread(s) | [REPRODUCE.md](models/atomic_scalar_gj1132x0.25_kzz1e9/HeH9.7/REPRODUCE.md) | -- |
-| `atomic_scalar_gj1132x0.30_kzz1e9/HeH2.13` | cold start | 1 | info=0 | certified | 7.32 | 0.1894 | 0m24s at 8 thread(s) | [REPRODUCE.md](models/atomic_scalar_gj1132x0.30_kzz1e9/HeH2.13/REPRODUCE.md) | -- |
-| `atomic_scalar_gj1132x0.30_kzz1e9/HeH9.7` | cold start | 1 | info=0 | certified | 7.31 | 0.9395 | 0m25s at 8 thread(s) | [REPRODUCE.md](models/atomic_scalar_gj1132x0.30_kzz1e9/HeH9.7/REPRODUCE.md) | -- |
-| `atomic_scalar_gj1132x0.33_kzz1e9/HeH2.13` | cold start | 1 | info=0 | certified | 7.36 | 0.2555 | 0m23s at 8 thread(s) | [REPRODUCE.md](models/atomic_scalar_gj1132x0.33_kzz1e9/HeH2.13/REPRODUCE.md) | -- |
-| `atomic_scalar_gj1132x0.33_kzz1e9/HeH9.7` | cold start | 1 | info=0 | certified | 7.36 | 1.0231 | 0m24s at 8 thread(s) | [REPRODUCE.md](models/atomic_scalar_gj1132x0.33_kzz1e9/HeH9.7/REPRODUCE.md) | -- |
-| `atomic_photochem_gj1132x0.10_kzzprofile/HeH9.7` | cold start | 1 | info=0 | certified | 6.84 | 0.2674 | 0m43s at 8 thread(s) | [REPRODUCE.md](models/atomic_photochem_gj1132x0.10_kzzprofile/HeH9.7/REPRODUCE.md) | -- |
-| `atomic_photochem_gj1132x0.30_kzzprofile/HeH9.7` | cold start | 1 | info=0 | certified | 7.35 | 1.0097 | 0m42s at 8 thread(s) | [REPRODUCE.md](models/atomic_photochem_gj1132x0.30_kzzprofile/HeH9.7/REPRODUCE.md) | -- |
-| `atomic_photochem_gj1132x0.33_kzzprofile/HeH9.7` | cold start | 1 | info=0 | certified | 7.39 | 1.0979 | 0m40s at 8 thread(s) | [REPRODUCE.md](models/atomic_photochem_gj1132x0.33_kzzprofile/HeH9.7/REPRODUCE.md) | -- |
-| `molecular_scalar_gj1132_wellmixed/HeH0.083` | cold start | 24 | info=1 | not certified | -- | -- | 318m09s at 8 thread(s) | [REPRODUCE.md](models/molecular_scalar_gj1132_wellmixed/HeH0.083/REPRODUCE.md) | [not_solved.md](models/molecular_scalar_gj1132_wellmixed/HeH0.083/not_solved.md) |
-| `molecular_scalar_gj1132_wellmixed/HeH0.55` | cold start | 40 | info=1 | not certified | -- | -- | 506m01s at 8 thread(s) | [REPRODUCE.md](models/molecular_scalar_gj1132_wellmixed/HeH0.55/REPRODUCE.md) | [not_solved.md](models/molecular_scalar_gj1132_wellmixed/HeH0.55/not_solved.md) |
-| `molecular_scalar_gj1132_wellmixed/HeH2.13` | cold start | 0 | -- | -- | -- | -- | 0m00s at 8 thread(s) | [REPRODUCE.md](models/molecular_scalar_gj1132_wellmixed/HeH2.13/REPRODUCE.md) | [not_solved.md](models/molecular_scalar_gj1132_wellmixed/HeH2.13/not_solved.md) |
-| `molecular_scalar_gj1132_kzz1e9/HeH0.083` | cold start | 40 | info=1 | not certified | -- | -- | 233m16s at 8 thread(s) | [REPRODUCE.md](models/molecular_scalar_gj1132_kzz1e9/HeH0.083/REPRODUCE.md) | [not_solved.md](models/molecular_scalar_gj1132_kzz1e9/HeH0.083/not_solved.md) |
-| `molecular_scalar_gj1132_kzz1e9/HeH0.55` | cold start | 3 | info=0 | certified | 7.64 | 0.1591 | 67m32s at 8 thread(s) | [REPRODUCE.md](models/molecular_scalar_gj1132_kzz1e9/HeH0.55/REPRODUCE.md) | -- |
-| `molecular_scalar_gj1132_kzz1e9/HeH2.13` | cold start | 2 | info=0 | certified | 7.91 | 1.5758 | 0m55s at 8 thread(s) | [REPRODUCE.md](models/molecular_scalar_gj1132_kzz1e9/HeH2.13/REPRODUCE.md) | -- |
-| `molecular_scalar_gj1132_kzz1e9/HeH9.7` | cold start | 2 | info=0 | certified | 7.95 | 2.4212 | 0m59s at 8 thread(s) | [REPRODUCE.md](models/molecular_scalar_gj1132_kzz1e9/HeH9.7/REPRODUCE.md) | -- |
-| `molecular_photochem_gj1132_kzzprofile/HeH2.09` | cold start | 21 | info=2 | not certified | -- | -- | 1375m18s at 8 thread(s) | [REPRODUCE.md](models/molecular_photochem_gj1132_kzzprofile/HeH2.09/REPRODUCE.md) | [not_solved.md](models/molecular_photochem_gj1132_kzzprofile/HeH2.09/not_solved.md) |
-| `molecular_photochem_gj1132_kzzprofile/HeH9` | cold start | 1 | info=1 | not certified | -- | -- | 815m17s at 8 thread(s) | [REPRODUCE.md](models/molecular_photochem_gj1132_kzzprofile/HeH9/REPRODUCE.md) | [not_solved.md](models/molecular_photochem_gj1132_kzzprofile/HeH9/not_solved.md) |
+| case | record | seed of the solve | outer passes of the solve | solve verdict | certification (published) | log10 Mdot | EW [%A] | wall clock of the solve | record | why not solved |
+|---|---|---|---|---|---|---|---|---|---|---|
+| `atomic_scalar_gj1132_wellmixed/HeH0.083` | evaluate-only, of `g0005` (0m22s) | not recorded: the chain ends at the evaluate generation g0002_20260917T172348Z_563cd549, which names no parent generation (it was imported by models/import_legacy_states.py, and the run that solved the state it measured predates the index) | not recorded | not recorded | certified | 7.84 | 0.3797 | not recorded | [REPRODUCE.md](models/atomic_scalar_gj1132_wellmixed/HeH0.083/REPRODUCE.md) | -- |
+| `atomic_scalar_gj1132_wellmixed/HeH0.40` | evaluate-only, of `g0005` (0m22s) | not recorded: the chain ends at the evaluate generation g0002_20260917T172358Z_3dc43708, which names no parent generation (it was imported by models/import_legacy_states.py, and the run that solved the state it measured predates the index) | not recorded | not recorded | certified | 7.85 | 1.1011 | not recorded | [REPRODUCE.md](models/atomic_scalar_gj1132_wellmixed/HeH0.40/REPRODUCE.md) | -- |
+| `atomic_scalar_gj1132_wellmixed/HeH0.42` | evaluate-only, of `g0005` (0m22s) | not recorded: the chain ends at the evaluate generation g0002_20260917T172358Z_b138473d, which names no parent generation (it was imported by models/import_legacy_states.py, and the run that solved the state it measured predates the index) | not recorded | not recorded | certified | 7.85 | 1.1324 | not recorded | [REPRODUCE.md](models/atomic_scalar_gj1132_wellmixed/HeH0.42/REPRODUCE.md) | -- |
+| `atomic_scalar_gj1132_wellmixed/HeH0.44` | evaluate-only, of `g0005` (0m22s) | not recorded: the chain ends at the evaluate generation g0002_20260917T172401Z_6bb13986, which names no parent generation (it was imported by models/import_legacy_states.py, and the run that solved the state it measured predates the index) | not recorded | not recorded | certified | 7.85 | 1.1626 | not recorded | [REPRODUCE.md](models/atomic_scalar_gj1132_wellmixed/HeH0.44/REPRODUCE.md) | -- |
+| `atomic_scalar_gj1132_wellmixed/HeH0.55` | evaluate-only, of `g0005` (0m22s) | not recorded: the chain ends at the evaluate generation g0002_20260917T172402Z_e564aecb, which names no parent generation (it was imported by models/import_legacy_states.py, and the run that solved the state it measured predates the index) | not recorded | not recorded | certified | 7.85 | 1.3118 | not recorded | [REPRODUCE.md](models/atomic_scalar_gj1132_wellmixed/HeH0.55/REPRODUCE.md) | -- |
+| `atomic_scalar_gj1132_wellmixed/HeH1` | evaluate-only, of `g0005` (0m21s) | not recorded: the chain ends at the evaluate generation g0002_20260917T172425Z_86e2eb16, which names no parent generation (it was imported by models/import_legacy_states.py, and the run that solved the state it measured predates the index) | not recorded | not recorded | certified | 7.86 | 1.6959 | not recorded | [REPRODUCE.md](models/atomic_scalar_gj1132_wellmixed/HeH1/REPRODUCE.md) | -- |
+| `atomic_scalar_gj1132_wellmixed/HeH10` | evaluate-only, of `g0005` (0m23s) | not recorded: the chain ends at the evaluate generation g0002_20260917T172428Z_2945aaa6, which names no parent generation (it was imported by models/import_legacy_states.py, and the run that solved the state it measured predates the index) | not recorded | not recorded | certified | 7.85 | 1.9347 | not recorded | [REPRODUCE.md](models/atomic_scalar_gj1132_wellmixed/HeH10/REPRODUCE.md) | -- |
+| `atomic_scalar_gj1132_wellmixed/HeH100` | evaluate-only, of `g0005` (0m23s) | not recorded: the chain ends at the evaluate generation g0002_20260917T172429Z_fffea24a, which names no parent generation (it was imported by models/import_legacy_states.py, and the run that solved the state it measured predates the index) | not recorded | not recorded | certified | 7.86 | 1.9644 | not recorded | [REPRODUCE.md](models/atomic_scalar_gj1132_wellmixed/HeH100/REPRODUCE.md) | -- |
+| `atomic_scalar_gj1132_wellmixed/HeH1000` | evaluate-only, of `g0005` (0m23s) | not recorded: the chain ends at the evaluate generation g0002_20260917T172430Z_29caa5c3, which names no parent generation (it was imported by models/import_legacy_states.py, and the run that solved the state it measured predates the index) | not recorded | not recorded | certified | 7.85 | 1.9197 | not recorded | [REPRODUCE.md](models/atomic_scalar_gj1132_wellmixed/HeH1000/REPRODUCE.md) | -- |
+| `atomic_scalar_gj699_wellmixed/HeH0.042` | evaluate-only, of `g0005` (0m23s) | not recorded: the chain ends at the evaluate generation g0002_20260917T172522Z_09b39c54, which names no parent generation (it was imported by models/import_legacy_states.py, and the run that solved the state it measured predates the index) | not recorded | not recorded | certified | 8.57 | 0.9091 | not recorded | [REPRODUCE.md](models/atomic_scalar_gj699_wellmixed/HeH0.042/REPRODUCE.md) | -- |
+| `atomic_scalar_gj699_wellmixed/HeH0.046` | evaluate-only, of `g0005` (0m23s) | not recorded: the chain ends at the evaluate generation g0002_20260917T172546Z_52e3280c, which names no parent generation (it was imported by models/import_legacy_states.py, and the run that solved the state it measured predates the index) | not recorded | not recorded | certified | 8.57 | 0.9857 | not recorded | [REPRODUCE.md](models/atomic_scalar_gj699_wellmixed/HeH0.046/REPRODUCE.md) | -- |
+| `atomic_scalar_gj699_wellmixed/HeH0.050` | evaluate-only, of `g0005` (0m23s) | not recorded: the chain ends at the evaluate generation g0002_20260917T172550Z_2e9c8c05, which names no parent generation (it was imported by models/import_legacy_states.py, and the run that solved the state it measured predates the index) | not recorded | not recorded | certified | 8.57 | 1.0608 | not recorded | [REPRODUCE.md](models/atomic_scalar_gj699_wellmixed/HeH0.050/REPRODUCE.md) | -- |
+| `atomic_scalar_gj699_wellmixed/HeH0.083` | evaluate-only, of `g0005` (0m23s) | not recorded: the chain ends at the evaluate generation g0002_20260917T172552Z_583adbd7, which names no parent generation (it was imported by models/import_legacy_states.py, and the run that solved the state it measured predates the index) | not recorded | not recorded | certified | 8.57 | 1.6271 | not recorded | [REPRODUCE.md](models/atomic_scalar_gj699_wellmixed/HeH0.083/REPRODUCE.md) | -- |
+| `atomic_scalar_gj699_wellmixed/HeH1` | evaluate-only, of `g0005` (0m22s) | not recorded: the chain ends at the evaluate generation g0002_20260917T172553Z_802e4c06, which names no parent generation (it was imported by models/import_legacy_states.py, and the run that solved the state it measured predates the index) | not recorded | not recorded | certified | 8.55 | 4.5250 | not recorded | [REPRODUCE.md](models/atomic_scalar_gj699_wellmixed/HeH1/REPRODUCE.md) | -- |
+| `atomic_scalar_gj699_wellmixed/HeH1000` | evaluate-only, of `g0005` (0m24s) | not recorded: the chain ends at the evaluate generation g0002_20260917T172555Z_a71277dd, which names no parent generation (it was imported by models/import_legacy_states.py, and the run that solved the state it measured predates the index) | not recorded | not recorded | certified | 8.42 | 2.8725 | not recorded | [REPRODUCE.md](models/atomic_scalar_gj699_wellmixed/HeH1000/REPRODUCE.md) | -- |
+| `atomic_scalar_gj1132_kzz0/HeH0.55` | evaluate-only, of `g0005` (0m21s) | not recorded: the chain ends at the evaluate generation g0002_20260917T172023Z_dd1eb3a9, which names no parent generation (it was imported by models/import_legacy_states.py, and the run that solved the state it measured predates the index) | not recorded | not recorded | certified | 7.84 | 0.0305 | not recorded | [REPRODUCE.md](models/atomic_scalar_gj1132_kzz0/HeH0.55/REPRODUCE.md) | -- |
+| `atomic_scalar_gj1132_kzz0/HeH2.6` | evaluate-only, of `g0005` (0m21s) | not recorded: the chain ends at the evaluate generation g0002_20260917T172023Z_81e1e6bf, which names no parent generation (it was imported by models/import_legacy_states.py, and the run that solved the state it measured predates the index) | not recorded | not recorded | certified | 7.86 | 0.9549 | not recorded | [REPRODUCE.md](models/atomic_scalar_gj1132_kzz0/HeH2.6/REPRODUCE.md) | -- |
+| `atomic_scalar_gj1132_kzz0/HeH3.0` | evaluate-only, of `g0005` (0m21s) | not recorded: the chain ends at the evaluate generation g0002_20260917T172024Z_12be6c0c, which names no parent generation (it was imported by models/import_legacy_states.py, and the run that solved the state it measured predates the index) | not recorded | not recorded | certified | 7.87 | 1.0798 | not recorded | [REPRODUCE.md](models/atomic_scalar_gj1132_kzz0/HeH3.0/REPRODUCE.md) | -- |
+| `atomic_scalar_gj1132_kzz0/HeH3.5` | evaluate-only, of `g0005` (0m22s) | not recorded: the chain ends at the evaluate generation g0002_20260917T172024Z_ecce5ecd, which names no parent generation (it was imported by models/import_legacy_states.py, and the run that solved the state it measured predates the index) | not recorded | not recorded | certified | 7.87 | 1.2175 | not recorded | [REPRODUCE.md](models/atomic_scalar_gj1132_kzz0/HeH3.5/REPRODUCE.md) | -- |
+| `atomic_scalar_gj1132_kzz0/HeH3.7` | evaluate-only, of `g0005` (0m21s) | not recorded: the chain ends at the evaluate generation g0002_20260917T172102Z_b4ccab06, which names no parent generation (it was imported by models/import_legacy_states.py, and the run that solved the state it measured predates the index) | not recorded | not recorded | certified | 7.87 | 1.2698 | not recorded | [REPRODUCE.md](models/atomic_scalar_gj1132_kzz0/HeH3.7/REPRODUCE.md) | -- |
+| `atomic_scalar_gj1132_kzz0/HeH3.9` | evaluate-only, of `g0005` (0m22s) | not recorded: the chain ends at the evaluate generation g0002_20260917T172102Z_86298bf1, which names no parent generation (it was imported by models/import_legacy_states.py, and the run that solved the state it measured predates the index) | not recorded | not recorded | certified | 7.87 | 1.3168 | not recorded | [REPRODUCE.md](models/atomic_scalar_gj1132_kzz0/HeH3.9/REPRODUCE.md) | -- |
+| `atomic_scalar_gj1132_kzz1e5/HeH2.6` | evaluate-only, of `g0005` (0m21s) | not recorded: the chain ends at the evaluate generation g0002_20260917T172144Z_b78ce7bd, which names no parent generation (it was imported by models/import_legacy_states.py, and the run that solved the state it measured predates the index) | not recorded | not recorded | certified | 7.87 | 0.9631 | not recorded | [REPRODUCE.md](models/atomic_scalar_gj1132_kzz1e5/HeH2.6/REPRODUCE.md) | -- |
+| `atomic_scalar_gj1132_kzz1e5/HeH3.0` | evaluate-only, of `g0005` (0m21s) | not recorded: the chain ends at the evaluate generation g0002_20260917T172145Z_157b092e, which names no parent generation (it was imported by models/import_legacy_states.py, and the run that solved the state it measured predates the index) | not recorded | not recorded | certified | 7.87 | 1.0880 | not recorded | [REPRODUCE.md](models/atomic_scalar_gj1132_kzz1e5/HeH3.0/REPRODUCE.md) | -- |
+| `atomic_scalar_gj1132_kzz1e5/HeH3.35` | evaluate-only, of `g0005` (0m21s) | not recorded: the chain ends at the evaluate generation g0002_20260917T172156Z_52c3eb10, which names no parent generation (it was imported by models/import_legacy_states.py, and the run that solved the state it measured predates the index) | not recorded | not recorded | certified | 7.87 | 1.1862 | not recorded | [REPRODUCE.md](models/atomic_scalar_gj1132_kzz1e5/HeH3.35/REPRODUCE.md) | -- |
+| `atomic_scalar_gj1132_kzz1e5/HeH3.64` | evaluate-only, of `g0005` (0m21s) | not recorded: the chain ends at the evaluate generation g0002_20260917T172157Z_6061f00d, which names no parent generation (it was imported by models/import_legacy_states.py, and the run that solved the state it measured predates the index) | not recorded | not recorded | certified | 7.87 | 1.2627 | not recorded | [REPRODUCE.md](models/atomic_scalar_gj1132_kzz1e5/HeH3.64/REPRODUCE.md) | -- |
+| `atomic_scalar_gj1132_kzz1e5/HeH3.93` | evaluate-only, of `g0005` (0m21s) | not recorded: the chain ends at the evaluate generation g0002_20260917T172158Z_7e55e593, which names no parent generation (it was imported by models/import_legacy_states.py, and the run that solved the state it measured predates the index) | not recorded | not recorded | certified | 7.87 | 1.3314 | not recorded | [REPRODUCE.md](models/atomic_scalar_gj1132_kzz1e5/HeH3.93/REPRODUCE.md) | -- |
+| `atomic_scalar_gj1132_kzz1e6/HeH0.55` | evaluate-only, of `g0005` (0m21s) | not recorded: the chain ends at the evaluate generation g0002_20260917T172200Z_73a43ada, which names no parent generation (it was imported by models/import_legacy_states.py, and the run that solved the state it measured predates the index) | not recorded | not recorded | certified | 7.84 | 0.0591 | not recorded | [REPRODUCE.md](models/atomic_scalar_gj1132_kzz1e6/HeH0.55/REPRODUCE.md) | -- |
+| `atomic_scalar_gj1132_kzz1e6/HeH2.4` | evaluate-only, of `g0005` (0m21s) | not recorded: the chain ends at the evaluate generation g0002_20260917T172222Z_554a5c53, which names no parent generation (it was imported by models/import_legacy_states.py, and the run that solved the state it measured predates the index) | not recorded | not recorded | certified | 7.86 | 0.9465 | not recorded | [REPRODUCE.md](models/atomic_scalar_gj1132_kzz1e6/HeH2.4/REPRODUCE.md) | -- |
+| `atomic_scalar_gj1132_kzz1e6/HeH2.8` | evaluate-only, of `g0005` (0m22s) | not recorded: the chain ends at the evaluate generation g0002_20260917T172224Z_0631bee4, which names no parent generation (it was imported by models/import_legacy_states.py, and the run that solved the state it measured predates the index) | not recorded | not recorded | certified | 7.87 | 1.0804 | not recorded | [REPRODUCE.md](models/atomic_scalar_gj1132_kzz1e6/HeH2.8/REPRODUCE.md) | -- |
+| `atomic_scalar_gj1132_kzz1e6/HeH3.19` | evaluate-only, of `g0005` (0m22s) | not recorded: the chain ends at the evaluate generation g0002_20260917T172224Z_b5780692, which names no parent generation (it was imported by models/import_legacy_states.py, and the run that solved the state it measured predates the index) | not recorded | not recorded | certified | 7.87 | 1.1949 | not recorded | [REPRODUCE.md](models/atomic_scalar_gj1132_kzz1e6/HeH3.19/REPRODUCE.md) | -- |
+| `atomic_scalar_gj1132_kzz1e6/HeH3.46` | evaluate-only, of `g0005` (0m22s) | not recorded: the chain ends at the evaluate generation g0002_20260917T172225Z_623a52f4, which names no parent generation (it was imported by models/import_legacy_states.py, and the run that solved the state it measured predates the index) | not recorded | not recorded | certified | 7.87 | 1.2669 | not recorded | [REPRODUCE.md](models/atomic_scalar_gj1132_kzz1e6/HeH3.46/REPRODUCE.md) | -- |
+| `atomic_scalar_gj1132_kzz1e6/HeH3.74` | evaluate-only, of `g0005` (0m22s) | not recorded: the chain ends at the evaluate generation g0002_20260917T172237Z_632e42c9, which names no parent generation (it was imported by models/import_legacy_states.py, and the run that solved the state it measured predates the index) | not recorded | not recorded | certified | 7.87 | 1.3388 | not recorded | [REPRODUCE.md](models/atomic_scalar_gj1132_kzz1e6/HeH3.74/REPRODUCE.md) | -- |
+| `atomic_scalar_gj1132_kzz1e7/HeH0.55` | evaluate-only, of `g0005` (0m21s) | not recorded: the chain ends at the evaluate generation g0002_20260917T172238Z_2549c2a8, which names no parent generation (it was imported by models/import_legacy_states.py, and the run that solved the state it measured predates the index) | not recorded | not recorded | certified | 7.85 | 0.1585 | not recorded | [REPRODUCE.md](models/atomic_scalar_gj1132_kzz1e7/HeH0.55/REPRODUCE.md) | -- |
+| `atomic_scalar_gj1132_kzz1e7/HeH2.70` | evaluate-only, of `g0005` (0m21s) | not recorded: the chain ends at the evaluate generation g0002_20260917T172239Z_5ef87d54, which names no parent generation (it was imported by models/import_legacy_states.py, and the run that solved the state it measured predates the index) | not recorded | not recorded | certified | 7.87 | 1.1996 | not recorded | [REPRODUCE.md](models/atomic_scalar_gj1132_kzz1e7/HeH2.70/REPRODUCE.md) | -- |
+| `atomic_scalar_gj1132_kzz1e7/HeH2.94` | evaluate-only, of `g0005` (0m21s) | not recorded: the chain ends at the evaluate generation g0002_20260917T172240Z_6d50b19c, which names no parent generation (it was imported by models/import_legacy_states.py, and the run that solved the state it measured predates the index) | not recorded | not recorded | certified | 7.87 | 1.2724 | not recorded | [REPRODUCE.md](models/atomic_scalar_gj1132_kzz1e7/HeH2.94/REPRODUCE.md) | -- |
+| `atomic_scalar_gj1132_kzz1e7/HeH3.18` | evaluate-only, of `g0005` (0m21s) | not recorded: the chain ends at the evaluate generation g0002_20260917T172303Z_d319938d, which names no parent generation (it was imported by models/import_legacy_states.py, and the run that solved the state it measured predates the index) | not recorded | not recorded | certified | 7.87 | 1.3265 | not recorded | [REPRODUCE.md](models/atomic_scalar_gj1132_kzz1e7/HeH3.18/REPRODUCE.md) | -- |
+| `atomic_scalar_gj1132_kzz1e8/HeH0.55` | evaluate-only, of `g0005` (0m21s) | not recorded: the chain ends at the evaluate generation g0002_20260917T172306Z_f3e22e12, which names no parent generation (it was imported by models/import_legacy_states.py, and the run that solved the state it measured predates the index) | not recorded | not recorded | certified | 7.85 | 0.3089 | not recorded | [REPRODUCE.md](models/atomic_scalar_gj1132_kzz1e8/HeH0.55/REPRODUCE.md) | -- |
+| `atomic_scalar_gj1132_kzz1e8/HeH2.05` | evaluate-only, of `g0005` (0m21s) | not recorded: the chain ends at the evaluate generation g0002_20260917T172306Z_527a7f3f, which names no parent generation (it was imported by models/import_legacy_states.py, and the run that solved the state it measured predates the index) | not recorded | not recorded | certified | 7.87 | 1.1513 | not recorded | [REPRODUCE.md](models/atomic_scalar_gj1132_kzz1e8/HeH2.05/REPRODUCE.md) | -- |
+| `atomic_scalar_gj1132_kzz1e8/HeH2.23` | evaluate-only, of `g0005` (0m21s) | not recorded: the chain ends at the evaluate generation g0002_20260917T172307Z_303be6fe, which names no parent generation (it was imported by models/import_legacy_states.py, and the run that solved the state it measured predates the index) | not recorded | not recorded | certified | 7.87 | 1.2206 | not recorded | [REPRODUCE.md](models/atomic_scalar_gj1132_kzz1e8/HeH2.23/REPRODUCE.md) | -- |
+| `atomic_scalar_gj1132_kzz1e8/HeH2.41` | evaluate-only, of `g0005` (0m21s) | not recorded: the chain ends at the evaluate generation g0002_20260917T172317Z_3631af5d, which names no parent generation (it was imported by models/import_legacy_states.py, and the run that solved the state it measured predates the index) | not recorded | not recorded | certified | 7.87 | 1.2826 | not recorded | [REPRODUCE.md](models/atomic_scalar_gj1132_kzz1e8/HeH2.41/REPRODUCE.md) | -- |
+| `atomic_scalar_gj1132_kzz1e9/HeH0.55` | evaluate-only, of `g0005` (0m21s) | not recorded: the chain ends at the evaluate generation g0002_20260917T172319Z_5be1b90b, which names no parent generation (it was imported by models/import_legacy_states.py, and the run that solved the state it measured predates the index) | not recorded | not recorded | certified | 7.85 | 0.4793 | not recorded | [REPRODUCE.md](models/atomic_scalar_gj1132_kzz1e9/HeH0.55/REPRODUCE.md) | -- |
+| `atomic_scalar_gj1132_kzz1e9/HeH1.50` | evaluate-only, of `g0005` (0m21s) | not recorded: the chain ends at the evaluate generation g0002_20260917T172320Z_703d936d, which names no parent generation (it was imported by models/import_legacy_states.py, and the run that solved the state it measured predates the index) | not recorded | not recorded | certified | 7.87 | 1.0996 | not recorded | [REPRODUCE.md](models/atomic_scalar_gj1132_kzz1e9/HeH1.50/REPRODUCE.md) | -- |
+| `atomic_scalar_gj1132_kzz1e9/HeH1.60` | evaluate-only, of `g0005` (0m22s) | not recorded: the chain ends at the evaluate generation g0002_20260917T172321Z_6f049297, which names no parent generation (it was imported by models/import_legacy_states.py, and the run that solved the state it measured predates the index) | not recorded | not recorded | certified | 7.87 | 1.1511 | not recorded | [REPRODUCE.md](models/atomic_scalar_gj1132_kzz1e9/HeH1.60/REPRODUCE.md) | -- |
+| `atomic_scalar_gj1132_kzz1e9/HeH1.70` | evaluate-only, of `g0005` (0m21s) | not recorded: the chain ends at the evaluate generation g0002_20260917T172345Z_f9303f17, which names no parent generation (it was imported by models/import_legacy_states.py, and the run that solved the state it measured predates the index) | not recorded | not recorded | certified | 7.87 | 1.1970 | not recorded | [REPRODUCE.md](models/atomic_scalar_gj1132_kzz1e9/HeH1.70/REPRODUCE.md) | -- |
+| `atomic_scalar_gj1132_kzz1e9/HeH2.13` | evaluate-only, of `g0005` (0m21s) | not recorded: the chain ends at the evaluate generation g0002_20260917T171710Z_4148d706, which names no parent generation (it was imported by models/import_legacy_states.py, and the run that solved the state it measured predates the index) | not recorded | not recorded | certified | 7.87 | 1.3749 | not recorded | [REPRODUCE.md](models/atomic_scalar_gj1132_kzz1e9/HeH2.13/REPRODUCE.md) | -- |
+| `atomic_scalar_gj1132_kzz1e9/HeH4.0` | evaluate-only, of `g0005` (0m22s) | not recorded: the chain ends at the evaluate generation g0002_20260917T172346Z_f6bc8d35, which names no parent generation (it was imported by models/import_legacy_states.py, and the run that solved the state it measured predates the index) | not recorded | not recorded | certified | 7.87 | 1.8229 | not recorded | [REPRODUCE.md](models/atomic_scalar_gj1132_kzz1e9/HeH4.0/REPRODUCE.md) | -- |
+| `atomic_scalar_gj1132_kzz1e9/HeH9.7` | evaluate-only, of `g0005` (0m23s) | not recorded: the chain ends at the evaluate generation g0002_20260917T172347Z_affaa41f, which names no parent generation (it was imported by models/import_legacy_states.py, and the run that solved the state it measured predates the index) | not recorded | not recorded | certified | 7.86 | 2.0592 | not recorded | [REPRODUCE.md](models/atomic_scalar_gj1132_kzz1e9/HeH9.7/REPRODUCE.md) | -- |
+| `atomic_scalar_gj1132_kzz1e10/HeH0.55` | evaluate-only, of `g0005` (0m21s) | not recorded: the chain ends at the evaluate generation g0002_20260917T172104Z_67190c7f, which names no parent generation (it was imported by models/import_legacy_states.py, and the run that solved the state it measured predates the index) | not recorded | not recorded | certified | 7.86 | 0.6463 | not recorded | [REPRODUCE.md](models/atomic_scalar_gj1132_kzz1e10/HeH0.55/REPRODUCE.md) | -- |
+| `atomic_scalar_gj1132_kzz1e10/HeH1.06` | evaluate-only, of `g0005` (0m21s) | not recorded: the chain ends at the evaluate generation g0002_20260917T172104Z_f3251a6a, which names no parent generation (it was imported by models/import_legacy_states.py, and the run that solved the state it measured predates the index) | not recorded | not recorded | certified | 7.86 | 1.0456 | not recorded | [REPRODUCE.md](models/atomic_scalar_gj1132_kzz1e10/HeH1.06/REPRODUCE.md) | -- |
+| `atomic_scalar_gj1132_kzz1e10/HeH1.15` | evaluate-only, of `g0005` (0m21s) | not recorded: the chain ends at the evaluate generation g0002_20260917T172114Z_2dc94d98, which names no parent generation (it was imported by models/import_legacy_states.py, and the run that solved the state it measured predates the index) | not recorded | not recorded | certified | 7.86 | 1.1032 | not recorded | [REPRODUCE.md](models/atomic_scalar_gj1132_kzz1e10/HeH1.15/REPRODUCE.md) | -- |
+| `atomic_scalar_gj1132_kzz1e10/HeH1.29` | evaluate-only, of `g0005` (0m21s) | not recorded: the chain ends at the evaluate generation g0002_20260917T172116Z_9d0023c8, which names no parent generation (it was imported by models/import_legacy_states.py, and the run that solved the state it measured predates the index) | not recorded | not recorded | certified | 7.86 | 1.1867 | not recorded | [REPRODUCE.md](models/atomic_scalar_gj1132_kzz1e10/HeH1.29/REPRODUCE.md) | -- |
+| `atomic_scalar_gj1132_kzz1e11/HeH0.55` | evaluate-only, of `g0005` (0m21s) | not recorded: the chain ends at the evaluate generation g0002_20260917T172116Z_d7233a7b, which names no parent generation (it was imported by models/import_legacy_states.py, and the run that solved the state it measured predates the index) | not recorded | not recorded | certified | 7.86 | 0.8065 | not recorded | [REPRODUCE.md](models/atomic_scalar_gj1132_kzz1e11/HeH0.55/REPRODUCE.md) | -- |
+| `atomic_scalar_gj1132_kzz1e11/HeH0.795` | evaluate-only, of `g0005` (0m21s) | not recorded: the chain ends at the evaluate generation g0002_20260917T172119Z_44da648e, which names no parent generation (it was imported by models/import_legacy_states.py, and the run that solved the state it measured predates the index) | not recorded | not recorded | certified | 7.86 | 1.0302 | not recorded | [REPRODUCE.md](models/atomic_scalar_gj1132_kzz1e11/HeH0.795/REPRODUCE.md) | -- |
+| `atomic_scalar_gj1132_kzz1e11/HeH0.865` | evaluate-only, of `g0005` (0m22s) | not recorded: the chain ends at the evaluate generation g0002_20260917T172143Z_a0cb6b6f, which names no parent generation (it was imported by models/import_legacy_states.py, and the run that solved the state it measured predates the index) | not recorded | not recorded | certified | 7.86 | 1.0866 | not recorded | [REPRODUCE.md](models/atomic_scalar_gj1132_kzz1e11/HeH0.865/REPRODUCE.md) | -- |
+| `atomic_scalar_gj1132_kzz1e11/HeH0.93` | evaluate-only, of `g0005` (0m22s) | not recorded: the chain ends at the evaluate generation g0002_20260917T172143Z_3d4e7a3c, which names no parent generation (it was imported by models/import_legacy_states.py, and the run that solved the state it measured predates the index) | not recorded | not recorded | certified | 7.86 | 1.1364 | not recorded | [REPRODUCE.md](models/atomic_scalar_gj1132_kzz1e11/HeH0.93/REPRODUCE.md) | -- |
+| `atomic_scalarCNO_gj1132_kzz1e9/HeH2.13` | evaluate-only, of `g0005` (0m33s) | not recorded: the chain ends at the evaluate generation g0002_20260917T172023Z_d06b2880, which names no parent generation (it was imported by models/import_legacy_states.py, and the run that solved the state it measured predates the index) | not recorded | not recorded | certified | 7.87 | 1.3721 | not recorded | [REPRODUCE.md](models/atomic_scalarCNO_gj1132_kzz1e9/HeH2.13/REPRODUCE.md) | -- |
+| `atomic_photochem_gj1132_kzzprofile/HeH2.09` | solve and its evaluation `g0005` | not recorded: the chain ends at the evaluate generation g0002_20260917T171925Z_85d9e44c, which names no parent generation (it was imported by models/import_legacy_states.py, and the run that solved the state it measured predates the index) | not recorded | not recorded | certified | 7.91 | 1.4765 | not recorded | [REPRODUCE.md](models/atomic_photochem_gj1132_kzzprofile/HeH2.09/REPRODUCE.md) | -- |
+| `atomic_photochem_gj1132_kzzprofile/HeH3` | solve and its evaluation `g0005` | not recorded: the chain ends at the evaluate generation g0002_20260917T171824Z_dceeca4c, which names no parent generation (it was imported by models/import_legacy_states.py, and the run that solved the state it measured predates the index) | not recorded | not recorded | certified | 7.90 | 1.7640 | not recorded | [REPRODUCE.md](models/atomic_photochem_gj1132_kzzprofile/HeH3/REPRODUCE.md) | -- |
+| `atomic_photochem_gj1132_kzzprofile/HeH5` | solve and its evaluation `g0005` | not recorded: the chain ends at the evaluate generation g0002_20260917T171925Z_e2f996ad, which names no parent generation (it was imported by models/import_legacy_states.py, and the run that solved the state it measured predates the index) | not recorded | not recorded | certified | 7.90 | 2.0746 | not recorded | [REPRODUCE.md](models/atomic_photochem_gj1132_kzzprofile/HeH5/REPRODUCE.md) | -- |
+| `atomic_photochem_gj1132_kzzprofile/HeH7` | solve and its evaluation `g0005` | not recorded: the chain ends at the evaluate generation g0002_20260917T171925Z_4d42a042, which names no parent generation (it was imported by models/import_legacy_states.py, and the run that solved the state it measured predates the index) | not recorded | not recorded | certified | 7.90 | 2.1768 | not recorded | [REPRODUCE.md](models/atomic_photochem_gj1132_kzzprofile/HeH7/REPRODUCE.md) | -- |
+| `atomic_photochem_gj1132_kzzprofile/HeH8` | solve and its evaluation `g0005` | not recorded: the chain ends at the evaluate generation g0002_20260917T171925Z_37190131, which names no parent generation (it was imported by models/import_legacy_states.py, and the run that solved the state it measured predates the index) | not recorded | not recorded | certified | 7.90 | 2.2004 | not recorded | [REPRODUCE.md](models/atomic_photochem_gj1132_kzzprofile/HeH8/REPRODUCE.md) | -- |
+| `atomic_photochem_gj1132_kzzprofile/HeH9` | solve and its evaluation `g0005` | not recorded: the chain ends at the evaluate generation g0002_20260917T171925Z_10a40b7f, which names no parent generation (it was imported by models/import_legacy_states.py, and the run that solved the state it measured predates the index) | not recorded | not recorded | certified | 7.90 | 2.2137 | not recorded | [REPRODUCE.md](models/atomic_photochem_gj1132_kzzprofile/HeH9/REPRODUCE.md) | -- |
+| `atomic_photochem_gj1132_kzzprofile/HeH9.7` | solve and its evaluation `g0005` | not recorded: the chain ends at the evaluate generation g0002_20260917T171925Z_22279af2, which names no parent generation (it was imported by models/import_legacy_states.py, and the run that solved the state it measured predates the index) | not recorded | not recorded | certified | 7.90 | 2.2206 | not recorded | [REPRODUCE.md](models/atomic_photochem_gj1132_kzzprofile/HeH9.7/REPRODUCE.md) | -- |
+| `atomic_photochem_gj1132_kzzprofile/HeH10` | solve and its evaluation `g0005` | not recorded: the chain ends at the evaluate generation g0002_20260917T171925Z_5ba13fd3, which names no parent generation (it was imported by models/import_legacy_states.py, and the run that solved the state it measured predates the index) | not recorded | not recorded | certified | 7.90 | 2.2224 | not recorded | [REPRODUCE.md](models/atomic_photochem_gj1132_kzzprofile/HeH10/REPRODUCE.md) | -- |
+| `atomic_photochem_gj1132_kzzprofile/HeH12` | solve and its evaluation `g0005` | not recorded: the chain ends at the evaluate generation g0002_20260917T171925Z_7f4dd973, which names no parent generation (it was imported by models/import_legacy_states.py, and the run that solved the state it measured predates the index) | not recorded | not recorded | certified | 7.90 | 2.2289 | not recorded | [REPRODUCE.md](models/atomic_photochem_gj1132_kzzprofile/HeH12/REPRODUCE.md) | -- |
+| `atomic_scalar_gj1132x0.01_kzz1e9/HeH2.13` | solve and its evaluation `g0002` | not established; a candidate is in `provenance/g0001_20260917T172702Z_f98147ad/` | 1 | info=0 | uncertified | -- | -- | 0m31s at 8 thread(s) | [REPRODUCE.md](models/atomic_scalar_gj1132x0.01_kzz1e9/HeH2.13/REPRODUCE.md) | [not_solved.md](models/atomic_scalar_gj1132x0.01_kzz1e9/HeH2.13/not_solved.md) |
+| `atomic_scalar_gj1132x0.01_kzz1e9/HeH9.7` | solve and its evaluation `g0002` | not established; a candidate is in `provenance/g0001_20260917T172820Z_3a57917b/` | 1 | info=0 | uncertified | -- | -- | 0m33s at 8 thread(s) | [REPRODUCE.md](models/atomic_scalar_gj1132x0.01_kzz1e9/HeH9.7/REPRODUCE.md) | [not_solved.md](models/atomic_scalar_gj1132x0.01_kzz1e9/HeH9.7/not_solved.md) |
+| `atomic_scalar_gj1132x0.10_kzz1e9/HeH2.13` | evaluate-only, of `g0005` (0m20s) | not recorded: the chain ends at the evaluate generation g0002_20260917T172438Z_42d68318, which names no parent generation (it was imported by models/import_legacy_states.py, and the run that solved the state it measured predates the index) | not recorded | not recorded | certified | 6.82 | 0.0001 | not recorded | [REPRODUCE.md](models/atomic_scalar_gj1132x0.10_kzz1e9/HeH2.13/REPRODUCE.md) | -- |
+| `atomic_scalar_gj1132x0.10_kzz1e9/HeH9.7` | evaluate-only, of `g0004` (0m21s) | not established; a candidate is in `provenance/g0001_20260917T172701Z_c89bc6ea/` | 1 | info=0 | certified | 6.81 | 0.2353 | 0m32s at 8 thread(s) | [REPRODUCE.md](models/atomic_scalar_gj1132x0.10_kzz1e9/HeH9.7/REPRODUCE.md) | -- |
+| `atomic_scalar_gj1132x0.15_kzz1e9/HeH2.13` | evaluate-only, of `g0005` (0m20s) | not recorded: the chain ends at the evaluate generation g0002_20260917T172439Z_a27641f9, which names no parent generation (it was imported by models/import_legacy_states.py, and the run that solved the state it measured predates the index) | not recorded | not recorded | certified | 7.00 | 0.0003 | not recorded | [REPRODUCE.md](models/atomic_scalar_gj1132x0.15_kzz1e9/HeH2.13/REPRODUCE.md) | -- |
+| `atomic_scalar_gj1132x0.15_kzz1e9/HeH9.7` | evaluate-only, of `g0005` (0m21s) | not recorded: the chain ends at the evaluate generation g0002_20260917T172441Z_966e33f8, which names no parent generation (it was imported by models/import_legacy_states.py, and the run that solved the state it measured predates the index) | not recorded | not recorded | certified | 7.00 | 0.4514 | not recorded | [REPRODUCE.md](models/atomic_scalar_gj1132x0.15_kzz1e9/HeH9.7/REPRODUCE.md) | -- |
+| `atomic_scalar_gj1132x0.20_kzz1e9/HeH2.13` | evaluate-only, of `g0005` (0m20s) | not recorded: the chain ends at the evaluate generation g0002_20260917T172442Z_c3f4d7d6, which names no parent generation (it was imported by models/import_legacy_states.py, and the run that solved the state it measured predates the index) | not recorded | not recorded | certified | 7.13 | 0.0022 | not recorded | [REPRODUCE.md](models/atomic_scalar_gj1132x0.20_kzz1e9/HeH2.13/REPRODUCE.md) | -- |
+| `atomic_scalar_gj1132x0.20_kzz1e9/HeH9.7` | evaluate-only, of `g0005` (0m22s) | not recorded: the chain ends at the evaluate generation g0002_20260917T172505Z_b01f9ba9, which names no parent generation (it was imported by models/import_legacy_states.py, and the run that solved the state it measured predates the index) | not recorded | not recorded | certified | 7.13 | 0.6294 | not recorded | [REPRODUCE.md](models/atomic_scalar_gj1132x0.20_kzz1e9/HeH9.7/REPRODUCE.md) | -- |
+| `atomic_scalar_gj1132x0.25_kzz1e9/HeH2.13` | evaluate-only, of `g0005` (0m21s) | not recorded: the chain ends at the evaluate generation g0002_20260917T172511Z_cadde2d9, which names no parent generation (it was imported by models/import_legacy_states.py, and the run that solved the state it measured predates the index) | not recorded | not recorded | certified | 7.24 | 0.0700 | not recorded | [REPRODUCE.md](models/atomic_scalar_gj1132x0.25_kzz1e9/HeH2.13/REPRODUCE.md) | -- |
+| `atomic_scalar_gj1132x0.25_kzz1e9/HeH9.7` | evaluate-only, of `g0005` (0m22s) | not recorded: the chain ends at the evaluate generation g0002_20260917T172513Z_0178f44b, which names no parent generation (it was imported by models/import_legacy_states.py, and the run that solved the state it measured predates the index) | not recorded | not recorded | certified | 7.23 | 0.7913 | not recorded | [REPRODUCE.md](models/atomic_scalar_gj1132x0.25_kzz1e9/HeH9.7/REPRODUCE.md) | -- |
+| `atomic_scalar_gj1132x0.30_kzz1e9/HeH2.13` | evaluate-only, of `g0005` (0m21s) | not recorded: the chain ends at the evaluate generation g0002_20260917T172513Z_db70ffa4, which names no parent generation (it was imported by models/import_legacy_states.py, and the run that solved the state it measured predates the index) | not recorded | not recorded | certified | 7.32 | 0.1894 | not recorded | [REPRODUCE.md](models/atomic_scalar_gj1132x0.30_kzz1e9/HeH2.13/REPRODUCE.md) | -- |
+| `atomic_scalar_gj1132x0.30_kzz1e9/HeH9.7` | evaluate-only, of `g0005` (0m22s) | not recorded: the chain ends at the evaluate generation g0002_20260917T172516Z_be8e7118, which names no parent generation (it was imported by models/import_legacy_states.py, and the run that solved the state it measured predates the index) | not recorded | not recorded | certified | 7.31 | 0.9395 | not recorded | [REPRODUCE.md](models/atomic_scalar_gj1132x0.30_kzz1e9/HeH9.7/REPRODUCE.md) | -- |
+| `atomic_scalar_gj1132x0.33_kzz1e9/HeH2.13` | evaluate-only, of `g0005` (0m21s) | not recorded: the chain ends at the evaluate generation g0002_20260917T172517Z_17179424, which names no parent generation (it was imported by models/import_legacy_states.py, and the run that solved the state it measured predates the index) | not recorded | not recorded | certified | 7.36 | 0.2555 | not recorded | [REPRODUCE.md](models/atomic_scalar_gj1132x0.33_kzz1e9/HeH2.13/REPRODUCE.md) | -- |
+| `atomic_scalar_gj1132x0.33_kzz1e9/HeH9.7` | evaluate-only, of `g0005` (0m22s) | not recorded: the chain ends at the evaluate generation g0002_20260917T172520Z_5b983ec7, which names no parent generation (it was imported by models/import_legacy_states.py, and the run that solved the state it measured predates the index) | not recorded | not recorded | certified | 7.36 | 1.0231 | not recorded | [REPRODUCE.md](models/atomic_scalar_gj1132x0.33_kzz1e9/HeH9.7/REPRODUCE.md) | -- |
+| `atomic_photochem_gj1132x0.01_kzzprofile/HeH9.7` | solve `g0004` | atomic_photochem_gj1132x0.10_kzzprofile/HeH9.7 g0004 (tier3, He/H 9.71107), then a continuation | 14 | info=1 | uncertified | -- | -- | 160m29s to the publication of `g0004` at 8 thread(s) | [REPRODUCE.md](models/atomic_photochem_gj1132x0.01_kzzprofile/HeH9.7/REPRODUCE.md) | [not_solved.md](models/atomic_photochem_gj1132x0.01_kzzprofile/HeH9.7/not_solved.md) |
+| `atomic_photochem_gj1132x0.10_kzzprofile/HeH9.7` | evaluate-only, of `g0005` (0m32s) | not recorded: the chain ends at the evaluate generation g0002_20260917T172021Z_6d7b27c7, which names no parent generation (it was imported by models/import_legacy_states.py, and the run that solved the state it measured predates the index) | not recorded | not recorded | certified | 6.84 | 0.2674 | not recorded | [REPRODUCE.md](models/atomic_photochem_gj1132x0.10_kzzprofile/HeH9.7/REPRODUCE.md) | -- |
+| `atomic_photochem_gj1132x0.15_kzzprofile/HeH9.7` | evaluate-only, of `g0004` (0m33s) | not established; a candidate is in `provenance/g0001_20260917T172820Z_3203da7b/` | 1 | info=0 | certified | 7.02 | 0.4822 | 0m49s at 8 thread(s) | [REPRODUCE.md](models/atomic_photochem_gj1132x0.15_kzzprofile/HeH9.7/REPRODUCE.md) | -- |
+| `atomic_photochem_gj1132x0.20_kzzprofile/HeH9.7` | evaluate-only, of `g0004` (0m33s) | not established; a candidate is in `provenance/g0001_20260917T172703Z_4dbda7ca/` | 1 | info=0 | certified | 7.16 | 0.6711 | 0m47s at 8 thread(s) | [REPRODUCE.md](models/atomic_photochem_gj1132x0.20_kzzprofile/HeH9.7/REPRODUCE.md) | -- |
+| `atomic_photochem_gj1132x0.25_kzzprofile/HeH9.7` | evaluate-only, of `g0004` (0m33s) | not established; a candidate is in `provenance/g0001_20260917T172820Z_e33bb9ad/` | 1 | info=0 | certified | 7.26 | 0.8429 | 0m48s at 8 thread(s) | [REPRODUCE.md](models/atomic_photochem_gj1132x0.25_kzzprofile/HeH9.7/REPRODUCE.md) | -- |
+| `atomic_photochem_gj1132x0.30_kzzprofile/HeH9.7` | evaluate-only, of `g0005` (0m34s) | not recorded: the chain ends at the evaluate generation g0002_20260917T172021Z_03b0446c, which names no parent generation (it was imported by models/import_legacy_states.py, and the run that solved the state it measured predates the index) | not recorded | not recorded | certified | 7.35 | 1.0097 | not recorded | [REPRODUCE.md](models/atomic_photochem_gj1132x0.30_kzzprofile/HeH9.7/REPRODUCE.md) | -- |
+| `atomic_photochem_gj1132x0.33_kzzprofile/HeH9.7` | evaluate-only, of `g0005` (0m34s) | not recorded: the chain ends at the evaluate generation g0002_20260917T172022Z_4f04b0e9, which names no parent generation (it was imported by models/import_legacy_states.py, and the run that solved the state it measured predates the index) | not recorded | not recorded | certified | 7.39 | 1.0979 | not recorded | [REPRODUCE.md](models/atomic_photochem_gj1132x0.33_kzzprofile/HeH9.7/REPRODUCE.md) | -- |
+| `molecular_scalar_gj1132_wellmixed/HeH0.083` | evaluate-only, of `g0004` (0m21s) | not established; a candidate is in `provenance/g0002_20260918T034603Z_258bc5d7/` | 40 | info=1 | uncertified | 6.98 | 0.1164 | 319m25s at 8 thread(s) | [REPRODUCE.md](models/molecular_scalar_gj1132_wellmixed/HeH0.083/REPRODUCE.md) | [not_solved.md](models/molecular_scalar_gj1132_wellmixed/HeH0.083/not_solved.md) |
+| `molecular_scalar_gj1132_wellmixed/HeH0.55` | evaluate-only, of `g0004` (0m23s) | not recorded: the chain ends at g0002_20260915T221824Z_d7347336, whose phase is 'unknown' and not a solve | not recorded | not recorded | uncertified | 7.41 | 0.6807 | not recorded | [REPRODUCE.md](models/molecular_scalar_gj1132_wellmixed/HeH0.55/REPRODUCE.md) | [not_solved.md](models/molecular_scalar_gj1132_wellmixed/HeH0.55/not_solved.md) |
+| `molecular_scalar_gj1132_wellmixed/HeH2.13` | no index | not recorded | not recorded | not recorded | uncertified | -- | -- | not recorded | [REPRODUCE.md](models/molecular_scalar_gj1132_wellmixed/HeH2.13/REPRODUCE.md) | [not_solved.md](models/molecular_scalar_gj1132_wellmixed/HeH2.13/not_solved.md) |
+| `molecular_scalar_gj1132_kzz1e9/HeH0.083` | evaluate-only, of `g0004` (0m19s) | recorded in the manifest: generation g0001_20260916T023329Z_32b34e57 of this same case | not recorded | info=1 | uncertified | 7.39 | 0.0003 | not recorded | [REPRODUCE.md](models/molecular_scalar_gj1132_kzz1e9/HeH0.083/REPRODUCE.md) | [not_solved.md](models/molecular_scalar_gj1132_kzz1e9/HeH0.083/not_solved.md) |
+| `molecular_scalar_gj1132_kzz1e9/HeH0.55` | evaluate-only, of `g0005` (0m20s) | not recorded | not recorded | not recorded | uncertified | 7.64 | 0.1591 | not recorded | [REPRODUCE.md](models/molecular_scalar_gj1132_kzz1e9/HeH0.55/REPRODUCE.md) | [not_solved.md](models/molecular_scalar_gj1132_kzz1e9/HeH0.55/not_solved.md) |
+| `molecular_scalar_gj1132_kzz1e9/HeH2.13` | evaluate-only, of `g0008` (0m23s) | not recorded: the chain ends at the evaluate generation g0002_20260917T174914Z_19d7ee4d, which names no parent generation (it was imported by models/import_legacy_states.py, and the run that solved the state it measured predates the index) | not recorded | not recorded | certified | 7.90 | 1.5603 | not recorded | [REPRODUCE.md](models/molecular_scalar_gj1132_kzz1e9/HeH2.13/REPRODUCE.md) | [not_solved.md](models/molecular_scalar_gj1132_kzz1e9/HeH2.13/not_solved.md) |
+| `molecular_scalar_gj1132_kzz1e9/HeH9.7` | evaluate-only, of `g0008` (0m23s) | molecular_scalar_gj1132_kzz1e9/HeH9.7 g0003 (given) | 9 | info=0 | certified | 7.94 | 2.4061 | 6m45s to the publication of `g0004` at 8 thread(s) | [REPRODUCE.md](models/molecular_scalar_gj1132_kzz1e9/HeH9.7/REPRODUCE.md) | [not_solved.md](models/molecular_scalar_gj1132_kzz1e9/HeH9.7/not_solved.md) |
+| `molecular_photochem_gj1132_kzzprofile/HeH2.09` | no index | not recorded | not recorded | not recorded | uncertified | -- | -- | not recorded | [REPRODUCE.md](models/molecular_photochem_gj1132_kzzprofile/HeH2.09/REPRODUCE.md) | [not_solved.md](models/molecular_photochem_gj1132_kzzprofile/HeH2.09/not_solved.md) |
+| `molecular_photochem_gj1132_kzzprofile/HeH9` | evaluate-only, of `g0005` (0m34s) | not established; a candidate is in `provenance/g0003_20260917T222518Z_c55563e3/` | 1 | info=1 | uncertified | 7.93 | 2.3332 | 37m41s at 8 thread(s) | [REPRODUCE.md](models/molecular_photochem_gj1132_kzzprofile/HeH9/REPRODUCE.md) | [not_solved.md](models/molecular_photochem_gj1132_kzzprofile/HeH9/not_solved.md) |
+## 9. What a case publishes, and which state a reader gets
+
+Written 2026-09-18 with item D8 steps 3 to 7 of `docs/PLAN_20260918_rev2.md`,
+in the shape approved that day (`docs/DECISION_D2a_D8_review.md` sections 3
+and 4). Item D8a, section 6 above, is its first increment and is unchanged by
+this: `output/` still holds the products, `solve_<n>/` still holds a
+superseded solve whole, `ENDING` still says in one line how the published
+solve ended.
+
+### 9.1 The directories
+
+A STATE DIRECTORY is one that carries an `input.inp` and an `output/`: a
+case, a flux-closure iterate `k<NN>/`, or any other run directory of this
+tree. It publishes its states like this:
+
+```
+<state directory>/
+  output/                        the latest products, as before
+  state_index.json               which generation a reader gets
+  states/<generation_id>/        immutable once published
+      Hydro_ioniz.txt  Ion_species.txt
+      [Lyman_Werner.txt  OI_levels.txt  carrier_row_terms.txt]
+      certification.txt          the certification block the certificate is
+      manifest.json              section 9.2
+  runs/<run_id>/                 one attempt: the `*.inp` files as the binary
+                                 read them, `run.json`, which names the logs
+                                 and the generations that attempt left, and
+                                 `seed_identity.json`, the state that attempt
+                                 was seeded with (section 9.12)
+  provenance/<generation_id>/    what a LATER reading of the tree established
+      provenance_recovered.json  about a generation whose manifest does not
+      [provenance_recovered_v2.json ...]   carry it, beside the generation and
+                                 never inside it (section 9.14)
+```
+
+`<generation_id>` is `g<NNNN>_<UTC of the moment the state was written>_<8
+hex of the two halves>`: the counter orders the generations of one case, the
+stamp is the state's own `# provenance: ... run=` field, and the hash makes
+the name unique across retries and across two publishers that raced.
+
+A published generation is immutable: its files and its directory are
+read-only. NOTHING IS EVER DELETED, here or anywhere in this contract; a
+retention policy is a separate decision and does not exist.
+
+A generation holds the STATE, not the products derived from it. The
+advection-corrected profiles, the heating and cooling breakdowns and the
+transit curves are derived from a state and do not define one, so they stay
+in `output/` and the manifest lists them by name and md5 under
+`products_beside_the_state`. The logs stay where they are too: one run has
+one log, and a copy of it beside every generation would be two records of one
+thing. What the generation does carry of a log is the certification block,
+copied into `certification.txt`, because that block IS the certificate.
+
+The generations are copies and not hard links: the binary opens
+`output/Hydro_ioniz.txt` with a truncating open, and a link to that file
+would be truncated with it, so a link is not an immutable generation.
+MEASURED 2026-09-18 after the import of section 9.6: the 134 `states/`
+directories of the catalog take 132 MB together (`du -c`), against 565 MB in
+the `output*` directories they were read from.
+
+### 9.2 What the manifest records
+
+Schema `exhale_state_generation/1`. Every field is READ from the state, from
+the configuration beside it or from the log that wrote it, and nothing in it
+is inferred:
+
+| field | what it is |
+|---|---|
+| `generation_id`, `case_id`, `published_at`, `published_by` | the identity of this generation and of the publication |
+| `state_written` | the `run=` stamp of the state's own header, which is part of the bytes and survives a copy while a file mtime does not |
+| `parent` | the generation of THIS case the state descends from: the generation a continuation continued, or the generation the seed was taken from where the seed is one of this case's. Null where the seed came from another case or from no generation at all, and then the field says so and `seed` carries the identity |
+| `seed` | what this generation was started from (section 9.12): which case and which generation, or which file pair where the directory publishes none, with the md5 of both halves; who chose it; and what was done to it before the binary read it. Never silently null: a publication whose seed could not be established carries `established: false` and the reason |
+| `iteration_phase` | marching, stationary alternation, coupled block, evaluate, legacy import, or unknown; READ from the run's own `(input_read) Restart intent:` echo |
+| `run_id` | the attempt that wrote the state, `runs/<run_id>/`, whose `run.json` carries its seed, its budget and the wall clock to each solve it published; null for a publication no runner made and for every generation published before 2026-09-19 (the publisher accepted the option and did not store it until then) |
+| `source_identity` | the binary, its md5 and its `BINARY_MANIFEST_*` where one is beside it |
+| `configuration_identity` | md5 of `input.inp`, `base.inp`, `metals.inp`, `opacity.inp`, the lower-atmosphere profile and the spectrum the input names |
+| `grid` | rows, cells, ghost cells, `R0`, the radius range, the grid mode, and the width of the first physical cell MEASURED from this state |
+| `units`, `species_schema` | the `# constants` line and the `# columns` and `# species_columns` lines of both halves |
+| `model_identity` | the `# options` field (which is the equation of state and the reaction network as `load_IC` compares them), the `# reservoir` field, and `# boundary_model` and `# boundary_reservoir` where the state carries them (null for every state written before D5b-2, 2026-09-18) |
+| `components` | name, md5, bytes, rows and columns of each file the generation holds |
+| `storage_complete`, `storage_checks` | both halves present, one row count, one radius column to 1e-12, every value finite |
+| `admissible` | what was checked of the state itself |
+| `ending` | the ending class and its reason, from the `ENDING` file where there is one and otherwise from `classify_ending` of `models/run_case.sh`, with the source named and that file's md5 (`source_md5`) as it stood at the publication; and `solver`, the `info` and `||R||` the log states |
+| `certification` | the verdict of the certification block, the entries that refuse, the log it was read from AND THAT LOG'S md5 AND BYTE COUNT AS THEY STOOD AT THE PUBLICATION (`source_md5`, `source_bytes`: a path is reused by the next run of the case and bytes are not, so the record is bound to the bytes it quotes), the md5 pair the certificate is attached to, how that attachment was established, and `stale_under` where a model change has made it historical |
+| `state_claim` | `certified=`, `cert_reason=` and `mode=` of the state's own header |
+
+### 9.3 The index, and completion against certification
+
+`state_index.json`, schema `exhale_state_index/1`, carries two references and
+they are NOT the same statement:
+
+- `latest_complete`: the newest generation whose storage checks pass. It says
+  the snapshot is whole, and nothing about the solve.
+- `latest_certified`: the newest generation that ALSO carries a certificate
+  for its own bytes. A CERTIFICATE IS A PROPERTY OF THE STATE, MEASURED:
+  every active equation of the certification inventory evaluated on those
+  bytes and within its tolerance, under a named binary (section 9.15). The
+  index, the generations, the parentage and the ending classes RECORD that
+  measurement and never confer it. A null reference means that no measurement
+  of this case has been recorded, and says nothing about whether the state
+  solves the equations. Two things must hold and both are about the published
+  bytes: the state's own header claims `certified=T`, and a certification
+  block says CERTIFIED. An uncertified publication moves `latest_complete`
+  and never `latest_certified`, so a continuation that ends worse than the
+  solve it continued cannot take the certified reference with it (the L34c
+  finding). A certificate marked `stale_under` certifies nothing, and
+  neither does a generation whose INDEX ENTRY carries `stale_under`: an
+  evaluate pass of that binary refused it (section 9.8).
+
+There is no `best` reference. Ranking two states needs a rule for which is
+better, and that rule is not written yet.
+
+### 9.4 One publisher, and what atomic means here
+
+`models/publish_state.py` is the only thing that writes a generation or the
+index. It publishes in this order: every component into an unpublished
+directory, `fsync`ed; a re-measurement of what arrived against the source;
+the manifest; the directory synchronized and renamed under its generation
+name and made read-only; and only then a replacement index written to a
+temporary file in the same directory and moved into place with `os.replace`.
+
+`states/.publishing.lock` is held for the whole of it and a second publisher
+on the same case is refused by name. ATOMIC VISIBILITY IS NOT CRASH
+DURABILITY: a reader sees the old index or the new one, which is tested on
+this filesystem (`models/tests/state_generations.sh`, check S1, stops the
+publisher by PID between the temporary write and the rename); what a server
+failure would leave is NOT tested and is not claimed.
+
+### 9.5 The reader rule
+
+Every reader resolves the index ONCE and takes every component of a state
+from the one generation it names: `run_case.sh` (the evaluate pass reads the
+generation the solve published, or `latest_certified` under `--evaluate`),
+`pick_seed.py` (a candidate's metadata, its certification and the path it
+prints, all from the `latest_certified` generation where the index names one,
+since every tier ranks a case of this tree as certified; tier 0 labels its
+line with the generation it handed over), `status.py`, `write_reproduce.py`,
+`src/utils/map_state_to_grid.py` and `src/utils/element_flux_closure.py`.
+
+An incomplete generation is refused. An older generation can be read only by
+naming it (`EXHALE_STATE_GENERATION` for the mapper, `--generation` for the
+publisher's own resolver), and the reader then says it was named.
+
+A directory that publishes no index is read as it stands, and both halves
+must carry the SAME suffix: `Hydro_ioniz.txt` with `Ion_species.txt`, or
+`Hydro_ioniz_IC.txt` with `Ion_species_IC.txt`, never one of each. The
+search for each half on its own that preceded this rule could map the product
+of one generation beside the seed of another.
+
+WHERE THE INDEX NAMES NO CERTIFIED GENERATION, a reader reads the absence of
+a measurement and not a verdict on the state. `status.py` says `not measured
+under binary <md5>` in the inventory's own column for such a case, and
+`certified by measurement on <date>, binary <md5>` where a certificate is on
+record; `pick_seed.py` says of such a case that the index records no
+certifying measurement for it. `run_case.sh --evaluate` measures it: it takes
+`latest_complete` where the index names no certified generation, and says so
+in those words.
+
+`status.py` reads the index and nothing else for a case that has one: the
+solver verdict, the ending and the certification of its row are the published
+generation's. An EVALUATION carries no solver verdict of its own, so such a
+row reads `evaluated certified` rather than an `info` that belongs to the
+solve. A case with no index says `[no index]` in the same column.
+
+### 9.6 The warm restart this contract supports
+
+A restart from a generation is a WARM restart: it preserves the physical
+state and restarts the solver controls. It is not an exact algorithmic
+continuation, and this contract does not offer one.
+
+**Authoritative**: the conserved primitives and the species of the two data
+files. The conserved energy is NOT stored separately, because D5a MEASURED
+the physical column to round trip through the file at 1e-16 on `u(1)`,
+`u(2)`, `u(3)`, the species fractions, `p` and `T`
+(`docs/lhs1140b_stationary_D5b2_20260918.md` section 4), so the stored
+primitives reconstruct it.
+
+**Re-derived**: the two lower ghost rows, which `load_IC` no longer reads
+under boundary model v1 (D5b-2): the ghost takes the reservoir's elemental
+abundances with the first physical cell's partition, and its molecular
+partition is solved. The face states, the caloric state and the derived
+thermodynamics are rebuilt from the physical column and this run's own
+reservoir.
+
+**Restarted, not continued**: `dtau`, the trust bounds, the relaxation
+parameters, the progress history and every counter. A continuation therefore
+takes a different trajectory from an uninterrupted solve, which is one reason
+the continuation of D8a is a decision about an ENDING and not about a number.
+
+**What is a restart and what is a new initialization**, from the refusals of
+`src/modules/files_IO/load_IC.f90` (the table of the D9 memo, section 2):
+`metals`, `mol`, `oxychem` and `carrier` decide which species the files
+carry, so a state whose columns are not this run's columns is a cold start
+and never a restart; `he_diff` changes what the column's helium fraction
+means; `iontrans` is a change of the equations that `load_IC` takes only when
+the run names the token on a `Restart option change:` line, and a candidate
+offered under it is a model-option transition whose certificate does not
+transfer; the grid field is compared as text; and an element present in one
+reservoir and absent from the other is a different composition whatever the
+tolerance.
+
+### 9.7 The states this tree already held
+
+`models/import_legacy_states.py` entered them into the contract without
+recomputing anything. MEASURED 2026-09-18: 136 state directories, 222
+generations published, 134 indexes, 86 of them with a `latest_certified` and
+48 with none.
+
+A certificate is READ, never manufactured. No run of this tree recorded the
+md5 of the pair it certified, so an imported certificate is attached by WRITE
+ORDER and by agreement: the log that finished nearest the second the state
+states it was written in, and whose verdict is the verdict the state's own
+header carries, is the log of the pass that wrote it. That is a surrogate for
+the md5 the contract asks for; every manifest that carries it says so in
+`certification.identity_basis`, and where no log agrees the generation is
+complete, uncertified, and says that no log of its directory states a verdict
+about it. MEASURED, 87 of the 222 are in that position and 84 of those 87
+are `output_pre_L34/` states, which the old post-processing route wrote with
+one CFL step and `certified=F` over a solve that had certified; the log of
+that pass was overwritten by the run that moved the state aside.
+
+A state of another directory becomes a generation of a case only where
+`models/legacy_state_map.txt` names it for that case, with the reason. A run
+that was merely SEEDED from a case's state is not a generation of that case.
+
+Two defects of the catalog the import exposed, both of them D8's own subject:
+
+- `molecular_scalar_gj1132_kzz1e9/HeH0.083` published the state that the
+  forty passes of item L33 STARTED from: its `output/Hydro_ioniz.txt` is byte
+  for byte `models/.L22/i4_kz0083/output/Hydro_ioniz_IC.txt`, md5
+  `1229b961323d7ac710146650da72454a`. The state those passes LEFT is on disk
+  in that same directory, md5 `1ee5430a3c8560c40f017bc5eb618a8b`, and is now
+  the case's second generation and its `latest_complete`, with the first as
+  its parent; the manifest of the first says whose seed it is.
+- `molecular_scalar_gj1132_wellmixed/HeH0.083` has no `ENDING` file: its
+  ending was classified from its log by `classify_ending` of `run_case.sh`,
+  and the manifest says that is where it came from. No case of the catalog
+  carries an `ENDING` yet, because none has been run since item D8a; the
+  field names the log for every one of them.
+
+### 9.8 The evaluate-only entry, and a refused re-evaluation
+
+Added 2026-09-19 after the D9 step 3 catalog refresh
+(`docs/lhs1140b_catalog_refresh_20260919.md`), which had to reproduce the
+runner's evaluate block in a scratch driver because the runner had no entry
+for it.
+
+    models/run_case.sh --evaluate <group>/<case>
+
+solves nothing. It resolves the case's `latest_certified` generation (and
+stops if the index names none), copies it as the `_IC` pair into
+`runs/<run_id>/eval/output/`, writes `runs/<run_id>/eval/input.inp` from the
+case's input with the relative paths made absolute, `Load IC? True` and
+`Restart intent: stationary evaluate`, runs the binary there with its log in
+`runs/<run_id>/pp.log`, and publishes the state the pass writes back as a
+child `evaluate` generation whose parent is that `latest_certified`. Then the
+products are installed in the case directory and the transit synthesis and
+`REPRODUCE.md` follow as after a solve. `FORCE` is not needed.
+
+BOTH ROUTES now run the evaluate pass in `runs/<run_id>/eval/`. The solve
+route used `<case>/eval/`, which it emptied with `rm -rf` at every run; that
+removal is gone, and a directory an earlier runner left at `<case>/eval/` is
+no longer touched. Every case-level file the pass or the transit synthesis is
+about to replace, and that differs from its replacement, is first copied into
+`runs/<run_id>/superseded_case_products/` (the files of `output/` under
+`output/`, and `pp.log`, `tpm_*.txt`, `transit.log`).
+
+The `_IC` pair copied out of a generation is made writable (`chmod u+w`):
+`cp` carries the read-only mode of a published generation, and the next seeded
+run of the case opens `output/*_IC.txt` for writing in
+`src/utils/map_state_to_grid.py`, which stopped with `PermissionError` in the
+refresh. The same is done to the atomic pair the molecular seed conversion is
+handed.
+
+A REFUSED RE-EVALUATION TAKES THE CERTIFIED REFERENCE AWAY. When
+`publish_state.py` publishes an `evaluate` generation whose certificate says
+NOT CERTIFIED over a parent that is certified, it records on the PARENT'S
+INDEX ENTRY `stale_under: <md5 of the binary that refused it>` and
+`stale_evidence: <the evaluate generation>`; the parent's manifest is
+immutable and is not touched. Where that parent is `latest_certified`, the
+reference moves to the newest other generation certified under the same
+binary, meaning an `evaluate` generation that binary certified or a
+generation whose `evaluate` child it certified, and to null where no such
+generation was evaluated. A solve's own certificate does not count as an
+evaluation here. `publish_state.py reassess <case> <evaluate generation>`
+applies the same rule, through the same locked index replacement, to an
+`evaluate` generation published before the rule existed, and `verify` now
+also refuses a `latest_certified` whose entry carries `stale_under`. The
+symmetric half, an evaluation that CERTIFIES the state it was handed, is
+section 9.15, and `reassess` applies that half too.
+
+Applied 2026-09-19 with `reassess` to the three cases the refresh's binary
+(`EXHALE_7670f310.x`, md5 `7670f31031fb4db91d27b44cb0da6f70`) refused; in
+each the parent is the only certified generation, so `latest_certified` is
+now null (MEASURED, `verify` passes on each):
+
+| case | parent, now `stale_under` 7670f310... | refusing `evaluate` generation |
+|---|---|---|
+| `atomic_scalar_gj1132x0.01_kzz1e9/HeH2.13` | `g0001_20260917T172702Z_f98147ad` | `g0002_20260919T004834Z_d59ec9ff` |
+| `atomic_scalar_gj1132x0.01_kzz1e9/HeH9.7` | `g0001_20260917T172820Z_3a57917b` | `g0002_20260919T004843Z_f7485b14` |
+| `atomic_photochem_gj1132x0.01_kzzprofile/HeH9.7` | `g0001_20260917T172820Z_7e745859` | `g0002_20260919T004137Z_b2a43801` |
+
+Sections 7 and 8 were regenerated by `models/status.py --write` afterwards and
+came out byte for byte as before: their rows read the published generation,
+`latest_complete`, which was already the refusing evaluation. What changed is
+what a seed reader gets: `pick_seed.py` no longer offers these three as
+certified states.
+
+Tests: `models/tests/evaluate_entry.sh`, 18 checks on a synthetic tree with a
+stand-in binary (E1 the writable `_IC` pair, E2 tier 0 and the certified
+generation, E3 the evaluate-only entry and nothing removed, E4 the demotion
+and `reassess`, E5 the record).
+
+### 9.9 A run stopped from outside, the seed attempts, and what section 8 reads
+
+Added 2026-09-19 (D9 step 3c, `docs/lhs1140b_catalog_refresh_20260919.md`,
+section "Runner records and the HeH9.7 continuation").
+
+A STOP FROM OUTSIDE IS RECORDED. `run_case.sh` runs every binary it starts in
+the background and waits for it, and traps TERM, INT and HUP
+(`stopped_from_outside`). The trap stops the binary by the PID it holds,
+publishes a complete state the interrupted pass wrote itself (both halves,
+newer than the pass, finite) and writes `ENDING`, `not_solved.md`,
+`run.json` and `REPRODUCE.md` with the ending class
+`stopped_by_wall_ceiling` when `run_campaign.sh` told it the ceiling
+(`RUN_CASE_WALL`, `RUN_CASE_WALL_S`, `RUN_CASE_T0`) and the ceiling has been
+reached, and `stopped_by_signal` otherwise. The campaign's own status line
+uses the same class name. A record that replaces an earlier one keeps the
+earlier one in `runs/<run_id>/superseded_case_products/REPRODUCE.md`; the
+line measures of a record are quoted only from products the run itself
+wrote.
+
+ONE BUDGETED RE-SOLVE IS ONE SOLVE. `SEED_ATTEMPTS` (default 3) is a
+ceiling, and an attempt after the first is taken only when the attempt
+before it ended before its first outer pass (`another_seed_allowed`). The
+campaign status line states `seeds=<used>/<allowed>` and its header states
+the rule.
+
+SECTION 8 IS ABOUT THE SOLVE. Its `record` column says whether the published
+generation is a solve or an evaluation (`evaluate-only`, with the
+evaluation's wall clock). Seed, outer passes, verdict and wall clock are those
+of the solve generation the published generation's parent chain reaches
+(`publish_state.solve_ancestor`), READ from that solve's `run.json`, from the
+log whose certification block the generation carries verbatim, or from a
+`REPRODUCE.md` of a solve whose run window holds the state's write time.
+Where the chain ends at an imported evaluation with no parent, as for the
+evaluated atomic catalog, the row says `not recorded` and why: the solve
+records of those states were overwritten on 2026-09-18 before the index
+existed.
+
+
+### 9.10 How a run ended: four facts, one rule, two readers
+
+Added 2026-09-19 (PLAN_20260919_rev1 item P4a, review section 6.1).
+
+An ending is FOUR statements and any of them can hold while another fails:
+the PROCESS ended, and by which of the binary's own end markers; the ROUTE
+the run took stated its own outcome, and what it stated; a COMPLETE FINITE
+state of that pass is on disk; and the state as written was CERTIFIED. They
+are recorded separately, in `ending.class`, `ending.solver` and
+`ending.evidence` of the manifest, and none of them is read off another.
+
+THE ROUTE IS DETERMINED FIRST AND ONLY ITS OWN TERMINAL EVENT IS ITS VERDICT.
+The binary echoes what it was asked to do (`Restart intent:`) and each route
+states its outcome in its own line: the stationary route in
+`the stationary solve returned info = N`, the evaluate route in
+`the loaded state was measured ...` (it solves nothing and states no solver
+verdict at all), and the marching route in its own stop line,
+`-> converged:` (a stationary claim) or `-> stopped:` (no claim, a relaxation
+snapshot). ONE STOP LINE COVERS SIX ENDINGS (`EXHALE_main.f90` near line
+4192), so the binary's own reason is read with it: a run that asked for no
+time integration at all is `no_integration`, a stop on a NaN in the conserved
+state is `nonfinite_state`, and the rest are `marching_stop` with the reason
+carried into the record. An inner ` (JFNK|PTC) done info=` line belongs to ONE PASS of the
+route: the partitioned route writes one per outer pass and the marching route
+one per hand-off attempt, marching on when the attempt fails. It is recorded
+as `inner_info`, as evidence, and it is never the route's verdict. Reading it
+as one let a run killed after a successful pass read as `solved`.
+
+A STORED SOLVE IS NOT CALLED SUCCESSFUL WITHOUT A COMPLETE FINITE STATE. The
+state on disk is tested before any verdict is honored, so `state_missing`,
+`nonfinite_state` and `stale_state` are reached from `info = 0` as well as
+from a refusal. `stale_state` is the state that is OLDER than the pass this
+log records, which the runner can tell because it touches a mark when the
+pass begins and hands `classify_ending` that mark; without a mark the
+freshness is `unknown` and is never assumed.
+
+CONFLICTING EVIDENCE IS REPORTED, NOT RECONCILED. `conflicting_evidence` is
+the class of a run whose route claims a stationary solution and whose
+certification of the state as written refuses it, `info = 0` with a refusing
+certificate being that case; the conflict is stated in the reason and in
+`ending.evidence.conflicts`. A certificate is taken as this state's only
+where the block is the block of the state AS WRITTEN: a block a pass left
+behind is a verdict on a state the run then moved away from.
+
+ONE RULE, AND BOTH READERS CALL IT. `classify_ending` and `solver_verdict` of
+`models/run_case.sh` are the rule; `models/publish_state.py` reaches them
+through `report_ending` with `RUN_CASE_POLICY_ONLY=1` (`run_case_policy`,
+`solver_from_log`, `ending_evidence`, `classify_with_run_case`) and carries no
+reading of its own, and `models/status.py` reads the same answer through the
+publisher. Until this item the publisher had a second reading that fell back
+to the last inner line, so a manifest could carry a verdict the runner never
+gave.
+
+Tests: `models/tests/termination_classification.sh`, 14 checks on synthetic
+logs built from the lines this catalog's logs carry, with no binary run: a
+truncated log, a timeout after a successful inner pass, a missing output, a
+nonfinite output, a stale output, `info = 0` with a refusing certificate, an
+ordinary success, and three checks that the publisher answers what the runner
+answers. MEASURED against the text before the item: 13 of the 14 fail.
+
+WHAT THIS DOES NOT DO. No stored record is re-classified. MEASURED 2026-09-19
+over the 398 generation records of the catalog, read only: 311 name a log
+that is on disk, 306 of those are still the record's own log (the block the
+generation carries verbatim is in it), and 44 of the 306 would be classified
+differently, all of them `no_verdict` becoming `no_integration` (37 closure
+rungs, 4 `diffusion_check` cases, 3 generations of
+`molecular_scalar_gj1132_kzz1e9/HeH0.55`): every one of those runs printed
+`-> stopped: "Do only PP" -- no time integration was requested`, so its state
+is the state it was given and no march stands behind it. No record stored as
+`solved` moves.
+The remaining 5 comparable-looking records name a case-level `run.log` that a
+later run has since overwritten, so they cannot be re-read at all: a record
+that names a path and not a copy is bound to a file that is reused.
+
+### 9.11 The case inventory: the list the counts are of
+
+Added 2026-09-19 (PLAN_20260919_rev1 item P0).
+
+    models/status.py inventory [--write]
+
+writes `models/CASE_INVENTORY.md` and `models/CASE_INVENTORY.json`: the list
+the catalog counts are OF, so a later count is reproduced by running the
+command and not recalled. It reads the tree and touches no state.
+
+THE SELECTION RULE. One row per state index: every `state_index.json` under
+`models/`, found by walking the directory recursively, hidden directories
+included. An index is what a reader resolves to get a state (section 9.5), so
+the count of indexes is the count of states a reader can be handed. Nothing
+is excluded: flux-closure rungs `k<NN>/`, `.L*` study directories,
+`diffusion_check/`, preserved trees (`.stopped/`, `.ab/`) and archives
+(`pre_*/`) each carry their own index and each is one row, with the `kind`
+column saying which it is. A narrower count is taken by reading that column,
+never by walking the tree again with another rule.
+
+THE CRITERION FOR CERTIFIED. The index names a `latest_certified` generation
+AND that generation's index entry carries no `stale_under` (nor
+`certificate_stale_under`): a refused re-evaluation takes the certified
+reference away from a state (section 9.8). A non-null reference is not a
+fresh revalidation under every current option; it says the state certified
+under the binary that evaluated it, which the inventory's `certified under`
+column names.
+
+MEASURED 2026-09-19 21:52 KST, binary of record `EXHALE_2c3b0acc.x`, md5
+`2c3b0acc9983aec03bb4f844294fed18`: 137 state indexes, 83 certified. By kind:
+84 ladder cases (74 certified), 46 closure rungs (9), 4 `diffusion_check` (0),
+2 archives (0), 1 study directory (0). The plan's recursive count of the same
+day reads 136 with 83 certified and the review's reads 137 with 83: the tree
+gained one index during that day, `.L22/i3_alt`, published at
+2026-09-19T09:53:59 and the only index of the catalog born on that date, so a
+walk taken before that instant reads 136 and one taken after reads 137. The
+certified count is the same in all three.
+
+### 9.12 The seed a solve was given
+
+Added 2026-09-19 (PLAN_20260919_rev1 item P4b). A state solved from another
+state has a starting point, and that starting point is part of what the state
+is: two solves of the same input from two different seeds are two different
+histories, and a Newton solve reaches the fixed point of the basin it was
+started in. Before this item the runner passed the publisher only
+`FIRST_GENERATION`, the generation an internal continuation continued, so a
+first solve from a chosen or a named seed published `parent.generation_id:
+null` with "not recorded by the run that wrote this state". The solve
+`g0004_20260919T103629Z_9b8394a3` of `molecular_scalar_gj1132_kzz1e9/HeH9.7`
+is that case: its own run record names `g0003` of the same case as the state
+it was handed, and its manifest names nothing.
+
+THE SEED IS RESOLVED ONCE, BY THE RUNNER, AND BOTH RECORDS READ THAT ONE
+RESOLUTION. `models/run_case.sh` writes it into
+`runs/<run id>/seed_identity.json` (`record_seed_identity`, with
+`seed_selection_note` for who chose it and `seed_transformation` for what was
+done to it), and hands that same file to `models/publish_state.py`, which puts
+it in the manifest of every generation the run publishes, and to
+`models/write_reproduce.py`, which states it in `REPRODUCE.md`. The two
+cannot name different seeds: there is one file, and neither tool forms a
+reading of its own.
+
+WHAT THE RECORD HOLDS, schema `exhale_seed_identity/1`:
+
+| field | what it is |
+|---|---|
+| `established` | whether the seed is a fact this publication could read. False carries the reason in `note` and is never left a silent null |
+| `kind` | a published generation, a file pair with no generation published for it, an internal continuation, a cold start, or not established |
+| `case_id`, `case_directory` | the case the seed came from, which is not this case where the seed is an external one |
+| `generation_id` | the generation, where the directory IS one. `generation_by_md5` instead where the pair matches a published generation of that case without being read from it, which is state identity and does not say which run wrote it |
+| `path`, `components` | the directory the pair was read from and the md5 of both halves as they stood when the runner read them |
+| `selected_by` | the tier of `models/pick_seed.py` that chose it, `SEED=` where the caller named it, `NOSEED=1`, or the runner continuing a generation |
+| `transformation` | used as it stands, interpolated onto this case's cell centers by `src/utils/map_state_to_grid.py`, or converted from an atomic state to a molecular one by the binary. These are three different starting states, and the conversion is not an interpolation: it changes which species the state carries |
+| `transformation_changed` | what that transformation changed: the grid header the pair was written onto, the elemental reservoir carried onto this case's composition, the base partition extension the molecular carriers were formed at |
+| `initial_seed_of_the_run` | for an internal continuation, the seed the RUN itself was given, so the chain is not lost at the first continuation |
+
+AND THE PARENT FOLLOWS FROM IT. Where the seed is a generation of THIS case,
+that generation is the `parent`: a continuation records the generation it
+continued, and a first solve from this case's own certified state records that
+state. Where the seed is a generation of another case the parent stays null
+and says why, because the parent chain is the chain this case's index can
+resolve (section 9.8 follows it for a refused re-evaluation) and a foreign id
+is not in it; the identity is in `seed`, with its case and its md5 pair.
+Where the run was given no seed at all, a cold start is an established fact
+and is recorded as one.
+
+WHAT THE OLDER RECORDS HOLD, MEASURED 2026-09-19 and changed in nothing: of
+398 published manifests, 226 carry a null parent. Six of them carry evidence
+of their seed anywhere in the tree: one in its own run record (the `HeH9.7`
+`g0004` above, an external seed of its own case, which the rule above would
+have recorded as the parent) and five in the `REPRODUCE.md` of their case,
+which speaks for the last run of that case (four molecular conversions and
+one `SEED=`, each of another case). The remaining 220 name no run record at
+all. Recovering them is item P4c and is not this item: an immutable manifest
+is not rewritten to pretend the fact was there.
+
+### 9.13 The seed of a flux-closure rung
+
+Added 2026-09-20 (PLAN_20260919_rev1 item P4b-2). A rung `k<NN>/` is a state
+directory (section 9.1), and a ladder is a chain: iteration 0 is started from
+the state `models/run_closure.sh` mapped onto the current cell centers, and
+every iteration after it from the iterate before it. Item P4b gave the
+catalog runner the seed resolution of section 9.12 and left this one without
+it.
+
+THE RUNG IS PUBLISHED BY THE ONE PUBLISHER, WITH THE SEED IT WAS GIVEN.
+After the closure driver returns, `models/run_closure.sh` publishes every
+rung it left through `models/publish_state.py`, in the order the ladder ran
+them, and resolves each rung's seed ONCE into
+`k<NN>/runs/<run id>/seed_identity.json`, the same `exhale_seed_identity/1`
+record section 9.12 defines:
+
+| the rung | its seed | who chose it | what was done to it |
+|---|---|---|---|
+| `k00` | the directory this script mapped onto the current cell centers | the tier of `models/pick_seed.py` that named it, or `SEED=` | interpolated onto the cell centers of this tree by `src/utils/map_state_to_grid.py` |
+| `k<NN>`, NN > 0 | the rung before it, as the published generation its index names | the runner, continuing the ladder | interpolated again where the driver carried the moved elemental reservoir or the moved R0 onto it (it leaves a `seed.log`, and `target_grid_Hydro_ioniz.txt` where R0 moved), used as it stands where neither had moved |
+
+A RUNG'S PARENT STAYS NULL AND SAYS WHY. The rung before it is a state
+directory of its own, so its generation is not in the chain this rung's index
+resolves; the identity is in `seed`, with its case, its generation and the
+md5 of both halves, by the same rule section 9.12 states for a seed of
+another case.
+
+The publication is idempotent: a rung whose index already names a generation
+holding exactly these two halves is not published again, so a resumed or
+re-run ladder adds a generation only where the bytes are new. Where
+`models/run_case.sh` cannot be read, no rung is published and the runner says
+so: the ending of a solve is classified by that one rule and by no other.
+
+Tests: `models/tests/closure_seed_provenance.sh`, 22 checks on a synthetic
+ladder with no binary and no closure driver run (`RUN_CLOSURE_PUBLISH_ONLY=1`
+defines the publication and runs nothing, as `RUN_CASE_POLICY_ONLY=1` does for
+the catalog runner).
+
+### 9.14 Provenance recovered after the fact
+
+Added 2026-09-20 (PLAN_20260919_rev1 item P4c). A manifest is IMMUTABLE and is
+never rewritten to pretend a fact was in it. What a later reading of the tree
+establishes about a generation published before the publisher carried a seed
+goes BESIDE the generation:
+
+    <state directory>/provenance/<generation_id>/provenance_recovered.json
+
+written by `models/recover_provenance.py` and by nothing else. Nothing is
+deleted: a later recovery that says something different writes
+`provenance_recovered_v2.json` beside the first and names what it supersedes,
+and the readers take the newest.
+
+EVERY ATTACHMENT CARRIES: what was recovered, the file it was read from with
+that file's md5 and byte count, the rule that was applied, the date, and one
+of three confidences.
+
+| confidence | when |
+|---|---|
+| `established` | the evidence names THIS generation and states the seed: the manifest's own `parent` (which is RECORDED there, and the attachment says so), or a run record of the directory whose `solve_generation`, `solve_generations` or `evaluate_generation` names this generation and whose `seed` field is not empty |
+| `inferred from a single match` | exactly one `REPRODUCE.md` of the case describes a run whose window holds the moment this state was written, and it states a seed. A window is not a name |
+| `not established` | no evidence, or several candidates that the run, the configuration and the time do not separate. THE AMBIGUITY IS KEPT: every candidate is listed, because an identical state pair is evidence of state identity and does not identify a run |
+
+A READER MAY USE A RECOVERED FACT ONLY WHERE IT IS `established`, AND SAYS IT
+IS RECOVERED. `publish_state.recovered_provenance` is the one entry and
+returns nothing for a weaker confidence unless the caller is reporting ON the
+recovery (`whatever_the_confidence=True`). `models/status.py` prints such a
+seed as `recovered: ...` in section 8, or as `recorded in the manifest: ...`
+where the attachment restates the manifest's own parent, and where the
+attachment is weaker it
+says `not established; a candidate is in provenance/<generation>/` instead of
+stating a seed from a window match. `models/pick_seed.py
+--seed-provenance` appends to each candidate what that state was itself
+started from, marked `recorded:` where the manifest carries it and
+`recovered (...)` where the attachment does; without the option its lines are
+unchanged.
+
+THE LOG A RECORD NAMES. A record that names a case-level `run.log` or
+`pp.log` is bound to a path the next run of that directory reuses. Every
+attachment states, MEASURED when it is written, whether the file at that path
+still carries the certification block the generation holds verbatim, and says
+in as many words where it does not. A publication made from now on records
+the md5 of that log at the moment it publishes (section 9.2), so the
+statement no longer depends on the file surviving.
+
+MEASURED 2026-09-20 over the 398 published generations of 137 state
+directories, and NOTHING WAS REWRITTEN: 176 established (172 of them the
+manifest's own parent, and 4 a run record naming the generation), 10 inferred
+from a single match, 212 not established. Of the 85 records whose named log
+no longer carries their block, 5 name a case-level `run.log` and 80 name a
+`pp.log`; each of the 85 says so in its attachment.
+
+Tests: `models/tests/provenance_recovery.sh`, 34 checks, no binary run.
+
+
+### 9.15 A state that passes the certificate is certified
+
+Added 2026-09-20 after the user's rule of that day, over the three molecular
+states of section 9.8's own subject: a state is certified because it
+satisfies the equations of the model to the stated tolerances, MEASURED, and
+never because a procedure was or was not followed.
+
+THE STATEMENT. A certificate is a measurement of the state AS WRITTEN under a
+named binary: every active equation of the certification inventory evaluated
+on those bytes and within its tolerance. It is not a statement about a run.
+The generations, the index, the parentage and the ending classes are
+bookkeeping: they record the measurement, and they are never its criterion.
+
+THE RULE HAS TWO HALVES and `publish_state.apply_evaluation_verdict` holds
+both, beside the solve path of `update_index`:
+
+- **The solve path.** A generation a solve published, whose own block
+  certifies the bytes it wrote, is `latest_certified`, whatever the runner's
+  ending class for that run was: a pass ceiling, a wall ceiling, a stop from
+  outside, or a continuation refused afterwards. `certified_here` reads the
+  certificate, the state's own `certified=` claim and the storage checks, and
+  reads no ending. MEASURED 2026-09-20: this was already what the publisher
+  did, and the check `C7` of `models/tests/certified_evaluation.sh` passes
+  on the text as it stood before this section was written.
+- **The evaluate path**, the symmetric half of the demotion rule of section
+  9.8. An `evaluate` generation whose certificate says CERTIFIED, over a
+  parent that is complete, becomes `latest_certified` itself. The parent's
+  index entry records `certified_under: <md5 of the binary that measured it>`
+  and `certified_evidence: <the evaluate generation>`; the child's entry
+  records `certificate_from: an evaluation of <parent>` and
+  `certificate_binary_md5`. THE PARENT'S OWN ENDING IS NOT CHANGED AND ITS
+  MANIFEST IS NOT REWRITTEN: a manifest is immutable, and the index is where
+  the statement is recorded, exactly as for a refusal.
+
+THE ENDING AND THE CERTIFICATE STAY TWO FACTS (item P4a). The ending says how
+the run ended, the certificate says what the state is; both are recorded and
+neither overrides the other.
+
+THE GUARD RAILS, each of them tested:
+
+- the certificate must be of the bytes the generation carries
+  (`certification.assessed_state`, the md5 pair published);
+- the state must be complete and finite (`storage_complete`): an incomplete
+  or nonfinite state is never promoted, whatever its block says;
+- an `evaluate` generation must be an evaluation OF ITS PARENT. The pair the
+  pass was handed is the `_IC` pair the runner leaves beside the state it
+  wrote; its md5 pair is recorded in the manifest as `evaluated_state`, and
+  it must be the parent's two halves BITWISE
+  (`evaluated_pair_is_the_parent`);
+- a refused evaluation still demotes, by section 9.8.
+
+WHICH STATE `--evaluate` MEASURES. Until this section the entry resolved
+`latest_certified` and stopped where the index named none, so a case whose
+solve ended uncertified could not have its state measured through the runner
+at all, and a measurement made outside the runner published nothing. That
+was a defect of the procedure and not of the states. The entry now reads:
+
+    models/run_case.sh --evaluate [--generation <id>] <group>/<case>
+
+`--generation <id>` measures that generation of the case. With neither, the
+entry takes `latest_certified` where the index names one and `latest_complete`
+where it does not, and says in its output which reference it took and why.
+The rest is unchanged: the pass runs in `runs/<run_id>/eval/`, the state it
+writes back is published as an `evaluate` child of the generation it
+measured, and the products, the transit synthesis and `REPRODUCE.md` follow.
+
+Tests: `models/tests/certified_evaluation.sh`, 17 checks on a synthetic tree
+with a stand-in binary (C1 the named generation, C2 the fallback and its
+words, C3 the promotion and the untouched parent, C4 the evaluation-of-its-
+parent guard, C5 the nonfinite state, C6 the refusal still demoting, C7 the
+solve path under a wall ceiling, C8 `--generation` refused without
+`--evaluate`). MEASURED 2026-09-20: 3 of 17 pass on the text before this
+section, 17 of 17 after, and the eleven existing fixtures pass unchanged.

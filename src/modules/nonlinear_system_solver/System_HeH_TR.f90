@@ -22,7 +22,7 @@
    real*8  :: params(40)
 	real*8  :: n_h,n_he,n_e
 	real*8  :: n_hi,n_hii
-	real*8  :: n_hei,n_heii,n_heiii,n_heiTR,n_heiSI
+	real*8  :: n_heii,n_heiii,n_heiTR,n_heiSI
 	
 	! Coefficients of the system
 
@@ -52,7 +52,6 @@
  	! Species densities
  	n_hi    = (1.0-x(1))*n_h
  	n_hii   = x(1)*n_h
- 	n_hei   = (1.0 - x(2) - x(3))*n_he 
  	n_heii  = x(2)*n_he
  	n_heiii = x(3)*n_he
  	n_heiSI = (1.0 - x(2) - x(3) - x(4))*n_he
@@ -69,10 +68,19 @@
 	                 b_hi, b_hei, b_heii, b_heiTR,                           &
 	                 q13, q31a, q31b, Q31, A31)
 
-	! He <-> H charge exchange (Huang Table 4 group B). The summed He I row
-	! (fvec 2) is written HeI-gain positive here, so he_row_sign = -1.
+	! He <-> H charge exchange (Huang Table 4 group B). The He reactant of
+	! He + H+ -> He+ + H is the GROUND SINGLET He(1^1S), n_heiSI: the rate
+	! Table 4 lists for it, from Glover & Jappsen (2007), carries the barrier
+	! exp(-12.75/T4), and 12.75e4 K = 10.99 eV is the ionization-potential
+	! difference 24.587 - 13.598 eV of ground-state helium against hydrogen.
+	! He(2^3S) lies 19.82 eV above the singlet, so its own charge exchange
+	! with H+ is exothermic and has no such barrier; it is a different
+	! reaction with a different rate, and neither this system nor the
+	! metastable balance tr_triplet_row carries it.
+	! The summed He I row (fvec 2) is written HeI-gain positive here, so
+	! he_row_sign = -1, and the singlet loss it reports is a loss of the sum.
 	call he_h_cx_fvec(fvec, ieq_cell%kcx_He0_Hp, ieq_cell%kcx_Hep_H0,  &
-	                  n_hi, n_hii, n_hei, n_heii, -1.0d0)
+	                  n_hi, n_hii, n_heiSI, n_heii, -1.0d0)
 
 	! The transported ionization fractions, where the flow carries them
 	! and not this cell's local balance (ion_residual_core).

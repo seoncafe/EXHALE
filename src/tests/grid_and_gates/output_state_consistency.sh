@@ -66,7 +66,12 @@
 set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$HERE/../../.." && pwd)"
-EXE="${EXHALE_EXE:-$ROOT/EXHALE.x}"
+# The binary is selected and its identity stated in one place;
+# src/tests/exhale_exe.sh carries the policy.
+. "$HERE/../exhale_exe.sh"
+exhale_select_exe "$ROOT" output_state_consistency
+EXE="$EXHALE_RUN_EXE"
+exhale_announce_exe
 OUT="${EXHALE_TEST_OUT:-$ROOT/build/tests/grid_and_gates}"
 WORK="$OUT/mbh"
 CASE="$ROOT/backup/regression/mol_base_handoff"
@@ -214,23 +219,45 @@ rc1=$?
 #   the stagnation ending, the one whose composition update stood between the
 #   certification and the return.
 #
-# WHAT IS RUN (two short runs; nothing in backup/regression is written to)
+# WHAT IS RUN (two runs; nothing in backup/regression is written to)
 #   S  a copy of backup/regression/carrier_elem_newton, the hot-Uranus carrier
 #      reload, partitioned (`Coupled carrier solve: False`) with
-#      `Restart intent: stationary`, forced to stagnate: at
-#      EXHALE_JFNK_MAXIT=40 each hydrodynamic solve reaches its root
+#      `Restart intent: stationary`, run until it stagnates: at
+#      EXHALE_JFNK_MAXIT=40 the hydrodynamic solve reaches its root
 #      (info = 0, the three hydrodynamic rows inside their tolerances) and
-#      EXHALE_CARRIER_TRUST=1e-6 bounds the carrier pass so tightly that the
-#      H2 row, the entry the joint distance is then set by, does not fall
-#      from one pass to the next, so outer_no_fall_max = 3 passes without a
-#      fall end the iteration at pass 4 (MEASURED 2026-09-12 on the joint
-#      progress metric of item Q1: H2 row 7.38E-02 at passes 1 to 4, hydro
-#      rows 1e-11 to 6e-9, the ending announced at pass 4).  The earlier
-#      setting, EXHALE_JFNK_MAXIT=5 with EXHALE_CARRIER_TRUST=1e-4, reached
-#      the ending only while the progress measure was the worst species row
-#      alone: on the joint measure the starved hydrodynamic rows (energy
-#      4.9E-01 falling to 3.9E-02 over 8 passes) keep falling and that
-#      configuration runs out its budget (MEASURED 2026-09-12).
+#      EXHALE_CARRIER_TRUST=1e-6 bounds the carrier pass so tightly that it
+#      keeps no transport step at all, so the H2 row, the entry the joint
+#      distance is then set by, stands at 7.397E-02 of 1.0E-05 from pass 2
+#      to the end.
+#
+#      The ending asks for outer_no_fall_max = 3 CONSECUTIVE passes in which
+#      neither the joint distance nor the composition residual falls, and the
+#      budget has to outlast the one thing that is still moving: the
+#      composition elimination sweep the handed-back state carries, which
+#      moves the composition a little every pass and therefore moves the H2
+#      row in a digit below the four the log prints.  The budget is the
+#      setting that has moved with the tree, not the assertion: a budget of 8
+#      reached the ending at pass 4 when this row was written (READ,
+#      2026-09-12), 50 reached it at pass 44 (MEASURED 2026-09-18), and since
+#      the joint test of the outer iteration derives the lower boundary from
+#      the composition it is taken at (item D5b-2, boundary model v1) the
+#      joint distance carries one more digit of movement per pass and the
+#      ending comes later still: MEASURED 2026-09-18, single-threaded, pass 89
+#      announces it, so the budget here is 100.  If a future change pushes it
+#      past that, RAISE THE BUDGET or pick a state that stagnates sooner; do
+#      not let the row accept `pass_budget`, which is the ending it exists to
+#      tell apart.
+#
+#      Loosening the movement bound does not substitute for the budget:
+#      at EXHALE_CARRIER_TRUST=1e-4 the carrier does take steps and the joint
+#      distance creeps down monotonically, 7.40E+03 to 7.36E+03 over 12
+#      passes, without one pass that fails to fall (MEASURED 2026-09-18,
+#      with and without the JFNK cap).  The still earlier setting,
+#      EXHALE_JFNK_MAXIT=5 with EXHALE_CARRIER_TRUST=1e-4, reached the ending
+#      only while the progress measure was the worst species row alone: on
+#      the joint measure the starved hydrodynamic rows (energy 4.9E-01
+#      falling to 3.9E-02 over 8 passes) keep falling and that configuration
+#      runs out its budget (MEASURED 2026-09-12).
 #   R  the state S wrote, handed back as the _IC pair with
 #      `Restart intent: stationary evaluate`, the route that measures a loaded
 #      state and writes it back unchanged.  No step and no solve are taken, so
@@ -242,12 +269,11 @@ rc1=$?
 #
 # REFERENCE AND TOLERANCE
 #   reference = 0: the largest relative difference of the T column over the
-#   physical cells must be at most 1e-12.  MEASURED on states handed back by
-#   an ending that takes no composition update: 6.5e-14 on this run and
-#   5.9e-16 on the same fixture ending on its pass budget at
-#   EXHALE_JFNK_MAXIT=40, the decimal round trip of the file's own digits.
-#   MEASURED where the ending stood after the update instead: 1.3e-8, four
-#   decades above the allowance.
+#   physical cells must be at most 1e-12.  MEASURED on the state this fixture
+#   hands back at the stagnation ending: 6.4e-16 (2026-09-18), the decimal
+#   round trip of the file's own digits, with the worst species column of the
+#   same two files moving by 1.5e-14 (HI).  MEASURED where the ending stood
+#   after the update instead: 1.3e-8, four decades above the allowance.
 if [ ! -f "$CASE2/input.inp" ]; then
    echo "FAIL outer_iteration_ending_case measured=no_case reference=$CASE2 tol=0"
    exit 1
@@ -260,7 +286,7 @@ sed 's/^Coupled carrier solve:.*/Coupled carrier solve: False/' \
 printf 'Restart intent: stationary\n' >> "$STAG/solve/input.inp"
 cp "$CASE2"/IC/*.txt "$STAG/solve/output/"
 ( cd "$STAG/solve" && env OMP_NUM_THREADS=1 EXHALE_CARRIER_TRUST=1e-6 \
-  EXHALE_OUTER_PASSES=8 EXHALE_JFNK_MAXIT=40 "$EXE" > run.log 2>&1 )
+  EXHALE_OUTER_PASSES=100 EXHALE_JFNK_MAXIT=40 "$EXE" > run.log 2>&1 )
 rc=$?
 if [ $rc -ne 0 ] && [ $rc -ne 2 ]; then
    echo "FAIL outer_iteration_ending_run measured=exit_$rc reference=exit_0 tol=0"
@@ -278,6 +304,13 @@ elif grep -q 'ACCEPTED -- every active equation' "$STAG/solve/run.log"; then
 else
    ending=unrecognized
 fi
+# WHAT THIS ROW IS FOR. It is not a statement about the solve: it names the
+# ENDING the row below is about. The stagnation ending is the one whose
+# composition update stood between the certification and the return, so only
+# on that ending does the next row measure anything; reaching the pass budget
+# or certifying instead means the fixture no longer exercises it, and the
+# answer is a fixture that stagnates again, not a row that accepts another
+# ending.
 if [ "$ending" = no_progress ]; then
    echo "PASS outer_iteration_ending_is_the_stagnation_one measured=$ending"\
         "reference=no_progress tol=0"

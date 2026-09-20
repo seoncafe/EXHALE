@@ -373,22 +373,75 @@ rides on the face mass fluxes that stage built.  A stage that cannot be
 repaired causes the whole step to be discarded and retaken from $u^n$ at half
 $\Delta t$, up to a bounded number of bisections.
 
-The time step is the CFL condition \texttt{eval\_dt.f90},
+The time step is the explicit-stable interval of the scheme actually in use,
+derived at \texttt{eval\_dt.f90} for the spherical finite-volume divergence
+the right-hand side assembles,
 %
 \begin{equation}
-  \Delta t = C_{\rm CFL}\,\min_j \frac{\Delta r_j}{|v_j| + c_{s,j}},
+  dF_j = \frac{A_{j+1/2}F_{j+1/2} - A_{j-1/2}F_{j-1/2}}{V_j},
+  \qquad A = r^2, \qquad
+  V_j = \frac{r_{j+1/2}^3 - r_{j-1/2}^3}{3}.
+  \label{eq:fvdiv}
+\end{equation}
+%
+Every stage of \eqref{eq:ssprk3} is a convex combination of forward-Euler
+steps of the same length (the SSP coefficient is 1), so the restriction is
+the forward-Euler one of \eqref{eq:fvdiv}.  Each face flux is a Riemann flux
+of the two states bounding that face, and the fastest signal of that face's
+Riemann problem is bounded by
+$S_{j+1/2} = \max(|v|+c_s)$ over the two cell averages bounding it.  Godunov's
+condition is that the fan opened at a face has not left the cell it enters
+when the step ends; written with the geometry \eqref{eq:fvdiv} uses, the face
+carries signal into cell $j$ at the rate $A_fS_f$ per unit volume $V_j$, so
+%
+\begin{equation}
+  \Delta t = C_{\rm CFL}\,\min_{1\le j\le N}
+  \frac{V_j}{\max\bigl(A_{j-1/2}S_{j-1/2},\ A_{j+1/2}S_{j+1/2}\bigr)},
   \qquad C_{\rm CFL} = 0.6 \ \text{by default},
   \label{eq:cfl}
 \end{equation}
 %
-with $c_s = \sqrt{\gamma_{\rm eff} p/\rho}$ from the cell's own composition.
+with $c_s = \sqrt{\gamma_{\rm eff}p/\rho}$ from the cell's own composition.
+In the Cartesian uniform limit $A_{j-1/2}=A_{j+1/2}$ and $V_j = A\,\Delta r$,
+and \eqref{eq:cfl} returns $C_{\rm CFL}\Delta r/(|v|+c_s)$, so the number the
+\texttt{CFL:} key carries keeps its usual meaning and nothing is
+recalibrated.  The stricter condition that the two fans of one cell may not
+meet inside it replaces the maximum by the sum of the two face terms, which
+is the same restriction at $C_{\rm CFL}/2$.
+
+Two properties of \eqref{eq:cfl} are worth stating, because the cell-centered
+form $\Delta r_j/(|v_j|+c_{s,j})$ has neither.  In spherical geometry
+$V_j/A_{j+1/2} < \Delta r_j < V_j/A_{j-1/2}$, so the cell-centered width is
+not an upper bound of the interval on either face; on the production base
+grid the two differ by $\Delta r/r = 1.96\times10^{-4}$ (MEASURED, item P6b).
+And the minimum is taken over the evolved cells $1\le j\le N$ alone.  A ghost
+row is overwritten by the boundary condition after every stage, so its own
+width is not a stability requirement, and the lowest ghost does not even
+carry a width of its own; the ghosts nevertheless bound the two boundary
+faces $r_{\rm edg}(0)$ and $r_{\rm edg}(N)$, which are faces of cells 1 and
+$N$, so the base Riemann problem restricts cell~1 with the reservoir's own
+signal speed although no ghost cell is evolved.  Letting the ghosts carry
+widths of their own is not conservative in the other direction either: an
+outer ghost given a sound speed a thousand times the column's shortened the
+step of a 500-cell domain by 89.7 per cent (MEASURED, item P6b).
+
+$S_f$ is formed from the cell averages bounding the face and not from the
+reconstructed face states, which inside a steep cell can carry a larger
+$|v|+c_s$; that margin is the one a Godunov number below unity leaves.
 With \texttt{Time stepping: Local} each cell instead takes its own
-$\Delta t_j = C_{\rm CFL}\Delta r_j/(|v_j|+c_{s,j})$; since the fixed point
+$\Delta t_j$, the same expression without the minimum; since the fixed point
 $dF = S$, $\mathcal{H} = \Lambda$ is independent of the step, this is a
 legitimate acceleration toward a steady state, and it makes the trajectory
 meaningless as a time history.  In the global mode the local array is
 uniformly the global step, which keeps the update arithmetic identical to the
-scalar form.
+scalar form.  A ghost row, which is not evolved, is given the interval of the
+evolved cell it borders so that a stage formed over the padded range is
+arithmetic on a physical interval.
+
+\eqref{eq:cfl} is not only a marching quantity: it supplies the stationary
+route's initial pseudo-time and the floor of the JFNK pseudo-transient
+continuation (Sec.~\ref{sec:steady:ptc}), so its value moves solver behavior
+as well as a time step.  The no-step evaluation route does not call it.
 
 \subsection{Operator splitting of one step}
 \label{sec:numerics:split}

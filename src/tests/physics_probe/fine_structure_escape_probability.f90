@@ -43,18 +43,18 @@
       !    same function: 2 beta_dJ(sqrt(pi) tau) and eps_HM(tau) agree to
       !    better than 5% for tau >= 3 and to five digits at tau >= 1e3.
       !    That agreement is asserted here and is what fixes the convention.
-      !  * OPEN DEFECT, recorded and not fixed: the production routine is fed
-      !    the LINE-CENTRE column (fine_structure_line_transfer integrates
-      !    line_center_opacity_lte), so its argument is short of the one
-      !    (B-7) defines by sqrt(pi) and the beta it returns is too large --
-      !    by a factor rising from 1 in the thin limit to 1.77 asymptotically,
-      !    with a maximum of 2.11 at the branch point.  The last block of
-      !    assertions measures that departure, so this probe fails the day the
-      !    argument is corrected and has to be rewritten with it.  On the
-      !    profiles the shipped cases reach the lines stay thin (largest
-      !    line-centre depth 0.14, [O I] 63um at the base of the hot Uranus
-      !    gate), where the departure is 12%; the bound asserted here is the
-      !    one that holds over that whole range.
+      !  * THE PRODUCTION ARGUMENT IS THE (B-7) ONE: fine_structure_line_transfer
+      !    multiplies each cell's line-centre depth by sqrt(pi) before any
+      !    argument is formed (Cool_coeff.f90, the dl = dr R0 sqrt(pi) line
+      !    of that routine; since 2026-09-07, docs/resonance_line_trapping.md
+      !    section 10).  Block (3) below therefore measures what the
+      !    departure WOULD be if the line-centre depth were passed uncorrected
+      !    (a property of the function, beta(tau)/beta(sqrt(pi) tau)): a
+      !    factor rising from 1 in the thin limit to 1.77 asymptotically with
+      !    a maximum of 2.11 at the branch point, and 12% at the largest
+      !    line-centre depth any shipped case reaches (0.14, [O I] 63um at
+      !    the base of the hot Uranus gate).  It is the record of the size of
+      !    the defect the 2026-09-07 correction removed, not an open one.
       !
       ! Tolerances: the identity with (B-7) is an exact relation between the
       ! production routine and an expression written out here and is tested at
@@ -148,10 +148,10 @@
       ! ------------------------------------------------------------------ !
       ! (3) The departure of the production argument from the published one.
       ! ------------------------------------------------------------------ !
-      ! fine_structure_line_transfer passes the LINE-CENTRE column.  These
-      ! assertions record how much larger the returned beta is than the
-      ! published value at the same physical depth; they are a measurement of
-      ! an open defect, not a specification, and go red when it is fixed.
+      ! The size the departure would have if the LINE-CENTRE column were
+      ! passed instead of sqrt(pi) times it (the production passes the
+      ! corrected one, see the header): the ratio of the function at the two
+      ! arguments, a record of the defect the 2026-09-07 correction removed.
       do i = 1, ncmp
          ratio = line_escape_probability_one_face(tau_cmp(i))             &
                / line_escape_probability_one_face(sqrt(pi_l)*tau_cmp(i))

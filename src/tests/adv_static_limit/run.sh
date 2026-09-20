@@ -76,7 +76,12 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$HERE/../../.." && pwd)"
 OBJDIR="${EXHALE_OBJDIR:-$ROOT/build}"
 OUT="${EXHALE_TEST_OUT:-$ROOT/build/tests/adv_static_limit}"
-EXE="${EXHALE_EXE:-$ROOT/EXHALE.x}"
+# The binary is selected and its identity stated in one place;
+# src/tests/exhale_exe.sh carries the policy.
+. "$HERE/../exhale_exe.sh"
+exhale_select_exe "$ROOT" adv_static_limit
+EXE="$EXHALE_RUN_EXE"
+exhale_announce_exe
 REG="$ROOT/backup/regression"
 FC="${FC:-gfortran}"
 FFLAGS_TEST="${FFLAGS_TEST:--O0 -g -fbacktrace -fopenmp}"

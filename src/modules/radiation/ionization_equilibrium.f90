@@ -6,6 +6,7 @@
    use ion_cell_state, only: ieq_cell, ion_rates
    use species_table, only: n_mion, mion_fsp, n_melem, melem_i0,        &
                             melem_top, mion_stage,                       &
+                            isp_HII, isp_HeII, isp_HeIII,                &
                             isp_H2, isp_H2p, isp_H3p, isp_HeHp,          &
                             isp_OH, isp_H2O, isp_CO, iel_O, iel_C
    use utils
@@ -16,6 +17,16 @@
 	use System_HeH_mol            ! molecular network
 	use System_HeH_mol_metals     ! merged molecular network + metals
 	use lower_column, only: q_h2_equilibrium
+	! The lower boundary's own module, for the two quantities this sweep
+	! MEASURES in the ghost it solves: the ghost's particle counts and the
+	! closure of its imposed molecular partition. Both are statements about
+	! the state; the prescribed reservoir is not written from here.
+	use base_boundary, only: set_base_ghost_counts, set_base_ghost_closure, &
+	                         set_base_ghost_state_record,                 &
+	                         set_base_ghost_fixed_point,                  &
+	                         set_previous_sweep_ghost_rows,               &
+	                         ghost_composition_seed_armed,                &
+	                         lower_ghost_seed_rows, write_ghost_seed_rows
 	use composition, only: base_h2_nuclei_fraction,                       &
 	                       base_h2_composition_imposed
 	use element_census, only: element_census_state, element_census_take,  &
@@ -195,6 +206,136 @@
 	! so the inner loop is never what stops the outer one short.
 	real*8,  parameter :: xuv_self_field_tol    = 1.0d-9
 
+	! ---- THE BASE HANDOFF'S OWN CLOSURE, IN A LOWER GHOST CELL ----
+	!
+	! The handoff states the molecular partition of the NON-IONIZED
+	! hydrogen, so what it imposes on a ghost is x_H2 = x2 (1 - x_ion), and
+	! x_ion is the ionization the wind's field produces in that same ghost:
+	! the two are one system and neither is data for the other. Closed here
+	! by the cell's own passes -- impose, solve the ghost's ionization
+	! balance against it, impose again at the ionization the solve returned
+	! -- and NOT by alternation across sweeps, which is what left the ghost
+	! carrying an iteration history of the composition the state was entered
+	! with (9.06 rounding floors of the base continuity row on the hot-Uranus
+	! molecular state, docs/lhs1140b_stationary_D5a_20260918.md section 8).
+	!
+	! THE TOLERANCE IS ON THE STATED EQUATION and is absolute in x_H2, a
+	! fraction of the cell's hydrogen nuclei: the pair is closed when
+	! |x_H2 - x2 (1 - x_ion)| at the state the pass returned is below this.
+	! The passes reach the root by a secant step on that scalar equation
+	! (the ghost reservoir block of the sweep). What the solve underneath
+	! resolves is MEASURED on the LHS 1140 b molecular seed ghosts: the
+	! secant takes the residual to 2e-16 to 6e-16 in 10 or 11 passes, so the
+	! tolerance asks nothing the ionization solve cannot deliver.
+	!
+	! A FAILURE IS A REFUSED BOUNDARY. Exhausting the passes without reaching
+	! the tolerance means the pair has no fixed point the sweep can reach,
+	! and the ghost composition would then be an arbitrary iterate; the run
+	! stops and says so rather than handing the boundary a state nothing
+	! stands behind.
+	real*8,  parameter :: base_ghost_closure_tol    = 1.0d-10
+	integer, parameter :: base_ghost_closure_passes = 30
+	! What the closure reached in this sweep: the largest residual of
+	! x_H2 - x2 (1 - x_ion) left in a lower ghost, and the most passes any
+	! of them took. Reduced over the cell loop and handed to base_boundary,
+	! which reports them with the reservoir.
+	real*8,  save :: ghost_closure_res_sweep  = 0.0d0
+	integer, save :: ghost_closure_pass_sweep = 0
+
+	! ---- THE GHOST COMPOSITION IS A FIXED POINT OF THE SOLVE THAT RETURNS IT ----
+	!
+	! THE INVARIANT. The composition the two lower ghost cells leave a sweep
+	! with is the composition that same sweep returns when it is entered at
+	! it. The lower boundary is built on the ghost, and a ghost that still
+	! remembers what it was seeded with is a boundary that is a function of
+	! the entry state as well as of the physical column and the declared
+	! inputs.
+	!
+	! WHY IT NEEDS ITS OWN STATEMENT. Every measure the sweep already applies
+	! is satisfied at ghosts 5 per cent apart in their trace ions: on one
+	! frozen physical column, reservoir, spectrum and executable, two entry
+	! compositions return ghosts 4.7e-3 (H II, He II) to 5.5e-2 (H2+) apart,
+	! both accepted at reaction residuals of about 3e-26, both with the
+	! imposed H2 partition closed to 0.0, both with hybrd1 answering info = 1,
+	! and the difference does not close over six decades of the inner stopping
+	! accuracy (READ, docs/lhs1140b_p1_step1b_20260919.md sections 1 and 3).
+	! The acceptance tests are blind in the direction the base mass row reads.
+	!
+	! WHAT IS COMPARED, AND IN WHICH UNITS. Each species of the two lower
+	! ghost cells, in the f_sp layout, which is the species' number density
+	! per unit mass of the cell: that is the weight with which the species
+	! enters the cell's particle count, and, times its own mass, the cell's
+	! mass and the base face flux built on it. The move is therefore taken in
+	! the composition's own units and NOT as each species against its own
+	! value: no quantity the lower boundary builds -- the mass flux, the
+	! charge, the particle count, the opacity, the caloric energy -- reads a
+	! stage at 1e-10 of the cell with the weight it reads one carrying a
+	! third of it, and the composition solve underneath pins the ghost
+	! ABSOLUTELY and not stage by stage (below). The ghost's heavy-particle
+	! plus electron count is the second leg, taken against its own value
+	! because it is an O(1) quantity: that sum is what turns the ghost's
+	! temperature into its pressure and its caloric energy, so the contract
+	! is not closed until the rates the ghost was solved with belong to the
+	! ghost's own count.
+	!
+	! THE ACCURACY, AND WHY THIS NUMBER. It is bracketed from above by what
+	! the base continuity row can resolve and from below by what the
+	! composition solve delivers, and one decade satisfies both.
+	!   Above: that row is a near-cancellation of two face fluxes, so it reads
+	! the ghost with a large gain. MEASURED on the LHS 1140 b hot-Uranus
+	! molecular state, a ghost that moves by 4.1e-9 in its hydrogen partition
+	! (x_HII 8.848e-7 against 8.888e-7, x_H2 by 3.9e-9) takes that row from
+	! 3.90 to 111.3 of its own rounding floors, i.e. 107.4 floors per 4.1e-9
+	! of composition, so ONE rounding floor of the row is bought by 3.8e-11
+	! (READ, docs/lhs1140b_p1_step1_20260919.md sections 5.1 and 5.2; the
+	! f_sp layout and that partition differ by the hydrogen nuclei per unit
+	! mass, 0.75 there, which is an O(1) factor). A move of 1e-11 is a quarter
+	! of one rounding floor of the row that reads it.
+	!   Below: the composition solve stops at sqrt(dpmpar(1)) = 1.49e-8 and
+	! pins the returned ghost to a plateau in the composition's own units.
+	! MEASURED on examples/15_molecular with the carriers transported, where
+	! the map's gain in the H3+ direction is close to one, the sweep settles
+	! into an exact two-cycle whose largest move is 6.5e-12 (H I) and whose
+	! H3+ leg is 2.2e-12; tightening the inner stop to 1e-12 takes the whole
+	! sweep under this accuracy in two applications
+	! (docs/lhs1140b_p1_step2b_20260920.md).
+	!   A relative statement per species cannot be made at all there: 2.2e-12
+	! of composition is 5.1e-3 OF H3+'s own value at 4.2e-10 of the cell, and
+	! 1.5e-2 of H2+'s at 4.7e-18, while the same move is 0.06 of one rounding
+	! floor of the base row.
+	!
+	! THE PASS BOUND. The furthest seed the boundary can present is the
+	! reservoir row, 9.7e-1 from the ghost in H II, and the map's MEASURED
+	! gain from seed to returned ghost is 4.9e-3 (the same memo, section 6.1),
+	! so four applications carry that seed to 5e-10. Twenty passes is five
+	! times what the measured contraction needs from the worst seed.
+	!
+	! A BOUNDARY THAT CANNOT REACH IT FAILS LOUDLY, with the numbers, exactly
+	! as the ghost's H2 partition closure does: a ghost that is not a fixed
+	! point of its own solve is an iterate, and nothing stands behind a
+	! boundary built on one.
+	!
+	! VALIDITY: the lower ghost cells of a run whose network is molecular and
+	! carries helium, where the boundary's composition holds the trace ions
+	! the base row reads and where every measurement above was made. The
+	! atomic ghost is not under the contract and its seed dependence is not
+	! measured.
+	real*8,  parameter :: ghost_composition_fixed_point_move   = 1.0d-11
+	real*8,  parameter :: ghost_count_fixed_point_move         = 1.0d-6
+	integer, parameter :: ghost_composition_fixed_point_passes = 20
+	! What the last sweep reached: the largest move of a ghost species
+	! density over the last application of the map, in the composition's own
+	! units, the relative move of the ghost's particle plus electron count
+	! over the same application, and how many applications the sweep took.
+	! Handed to base_boundary for the boundary report.
+	real*8,  save :: ghost_fixed_point_move_sweep    = 0.0d0
+	real*8,  save :: ghost_thermal_move_sweep        = 0.0d0
+	integer, save :: ghost_fixed_point_passes_sweep  = 0
+	! Whether this application of the composition map is the one that
+	! advances the non-root streak, which counts consecutive SWEEPS and not
+	! applications. True on the first application of every sweep.
+	logical, save :: sweep_advances_the_streak = .true.
+
 	! molecular species densities (cols 1 H2, 2 H2+, 3 H3+, 4 HeH+;
 	! zero unless thereis_mol).  Module state: written by the equilibrium
 	! solve, read by write_output for the extra output columns.
@@ -316,6 +457,30 @@
 	integer :: ieq_neq_stored    = 0
 	integer :: ieq_mbase_stored  = 0
 	integer :: ieq_iox_stored    = 0
+
+	! THE RATE STATE OF EVERY CELL AS THE LAST SWEEP LEFT IT, held aside
+	! and put back. The arrays above are what the closure evaluators
+	! measure a composition against, so the composition and the rates
+	! beside it are ONE state: an operation that is undone has to put the
+	! rates back together with the composition, or the closure of the
+	! reinstated composition is read against the rates of the state that
+	! was discarded (MEASURED on the carrier_retry column: 5.3e-4 against
+	! 1.6e-16, twelve decades, docs/lhs1140b_stationary_D4a_20260918.md
+	! table 2). The enumeration stands here, beside the declarations, so
+	! that an array added to the rate state is added to the snapshot in
+	! the same place. Allocation status is part of the state: an array
+	! that was not allocated when the snapshot was taken is deallocated
+	! again.
+	type :: ieq_rate_state
+		type(ion_rates), allocatable :: rate_cell(:)
+		real*8,  allocatable :: ne_cell(:), TK_cell(:), ntot_cell(:)
+		real*8,  allocatable :: met_coef(:,:,:)
+		integer, allocatable :: nonroot_streak(:)
+		logical :: rates_ready  = .false.
+		integer :: neq_stored   = 0
+		integer :: mbase_stored = 0
+		integer :: iox_stored   = 0
+	end type ieq_rate_state
 
 	! The scratch of one cell that the closure evaluator has to install,
 	! held aside and put back around every measurement (see the
@@ -508,6 +673,35 @@
 	! as a non-root rather than stretching the root band to cover it.
 	real*8, parameter :: ieq_res_tol = 1.0d-6
 
+	! THE LOWER GHOST CELLS' OWN ACCEPTANCE, cell by cell, for the ghost
+	! record (boundary_state_trace.f90). A measurement: nothing in the
+	! solve, the boundary or the energy update reads any of it. The
+	! reaction residual is the one the cell was ACCEPTED at, the partition
+	! residual is that of x_H2 - q_H2,base (1 - x_ion) at the returned
+	! state, and the pass count is the pass the closure ended on.
+	real*8,  save :: ghost_acc_res_cell(1-Ng:0)      = 0.0d0
+	real*8,  save :: ghost_closure_res_cell(1-Ng:0)  = 0.0d0
+	integer, save :: ghost_closure_pass_cell(1-Ng:0) = 0
+
+	! Said once for the run, where the ghost seed key is set, so that a run
+	! without the key is the run without the code.
+	logical, save :: ghost_seed_announced = .false.
+
+	! THE COMPOSITION OF THE CELLS ABOVE THE LOWER GHOSTS, HELD AT THE ONE
+	! THE SWEEP WAS GIVEN (EXHALE_INTERIOR_COMPOSITION_HELD, default off).
+	! A MEASUREMENT: with the key set the sweep returns the composition it
+	! was handed on every cell above the two lower ghosts and the
+	! composition it solved on the ghosts themselves, so that a base row
+	! measured after the call carries the ghost's own refresh and nothing
+	! else. VALIDITY: a diagnostic of the base row, and of nothing else.
+	! The heating and cooling the sweep returns are those of the
+	! composition it SOLVED on every cell, so a run with the key set is not
+	! a state anything may be certified on. With the key unset not one
+	! number moves: the branch is not entered.
+	logical, save :: interior_held_on   = .false.
+	logical, save :: interior_held_read = .false.
+	real*8, allocatable, save :: f_sp_interior_entry(:,:)
+
 	! THE STOPPING TOLERANCE OF THE COMPOSITION'S INNER SOLVE, and the hook
 	! that replaces it for a whole run (EXHALE_IEQ_TOL=<x>, default off).
 	! The value the sweep uses is sqrt(dpmpar(1)) = 1.49e-8, MINPACK's own
@@ -625,6 +819,25 @@
   971	continue
 	if (tol_asked .gt. 0.0d0) composition_solve_tolerance = tol_asked
 	end function composition_solve_tolerance
+
+
+	! WHETHER THE CELLS ABOVE THE LOWER GHOSTS ARE HANDED BACK AS THEY CAME.
+	! EXHALE_INTERIOR_COMPOSITION_HELD, read once for the run and announced
+	! only when it is set, so that a run without the key is the run without
+	! the code.
+	logical function interior_composition_is_held()
+	character(len=32) :: env_held
+	if (.not. interior_held_read) then
+		call get_environment_variable('EXHALE_INTERIOR_COMPOSITION_HELD',   &
+		                              env_held)
+		interior_held_on   = (len_trim(env_held) .gt. 0)
+		interior_held_read = .true.
+		if (interior_held_on) write(*,'(A)') ' (ioniz_eq) EXHALE_'//        &
+		     'INTERIOR_COMPOSITION_HELD: the sweep returns the composition'//&
+		     ' it was given on every cell above the two lower ghosts'
+	endif
+	interior_composition_is_held = interior_held_on
+	end function interior_composition_is_held
 
 
 	subroutine ioniz_eq_allocate_arrays
@@ -746,6 +959,27 @@
       	 		  
 	integer :: j,im
 	logical :: usednt                     ! Task 2: Newton-vs-fallback flag
+	! Electron count of the lower ghost at the composition this sweep
+	! returns: a measurement handed to base_boundary, not a boundary input.
+	real*8  :: ghost_ne_solved
+	! The ghost record's own scratch: the charge the written composition
+	! carries, its distance from the electron count, and the ghost's
+	! elemental ratios against the first physical cell's.
+	integer :: jg
+	real*8  :: f_ghost_seed(1-Ng:0,n_species)
+	character(len=256) :: ghost_seed_used
+	real*8  :: q_written, chg_gap, elem_gap, ratio_g, ratio_1
+	real*8  :: xg_h2, xg_h2p, xg_h3p, xg_hehp
+	! The ghost composition fixed point (ghost_composition_fixed_point_tol):
+	! whether the contract covers this run, whether it has been reached, how
+	! many applications of the composition map have run, the state this sweep
+	! was entered at, the ghost's particle plus electron count entering and
+	! leaving an application, and the two moves they give.
+	logical :: ghost_contract_on, ghost_fp_reached, bg_ready_entry
+	integer :: ghost_fp_pass
+	real*8  :: ghost_fp_move, ghost_thermal_move
+	real*8  :: f_sp_sweep_entry(1-Ng:N+Ng,n_species)
+	real*8  :: np_ghost_entry(1-Ng:0), np_ghost_return(1-Ng:0)
 
 	real*8, dimension(1-Ng:N+Ng),   intent(in) :: T_in
 	! CHEMISTRY PRESERVES THE DENSITY IT IS GIVEN
@@ -968,11 +1202,27 @@
    ! stage densities of their own.
    integer :: it_self
    logical :: last_self
+   ! Whether the state this pass accepted advances the non-root streak
+   ! (sweep_advances_the_streak).
+   logical :: state_is_recorded
    real*8  :: self_moved, nheiS_it, nh2_it
+   ! Passes this cell may take: the self-field passes for every cell, and
+   ! the closure passes of the base handoff for a lower ghost that carries
+   ! one (see the ghost reservoir block of the sweep).
+   integer :: n_self_max
    ! Ionized hydrogen-nucleus fraction of a lower-boundary ghost, against
-   ! which the base handoff's molecular partition is stated (see the ghost
-   ! reservoir block of the sweep).
-   real*8  :: x_ion_ghost
+   ! which the base handoff's molecular partition is stated, the partition
+   ! imposed from it, and the residual of the pair at the state the cell
+   ! returned (see the ghost reservoir block of the sweep).
+   real*8  :: x_ion_ghost, x_h2_imposed, ghost_closure_move
+   ! The fixed-point map of that closure at the previous pass, for the
+   ! secant step on it: the partition imposed then and the residual
+   ! x2 (1 - x_ion) - x_H2 it returned (see the ghost reservoir block).
+   real*8  :: x_h2_secant_prev, f_h2_secant_prev, x_h2_map, f_h2_map
+   real*8  :: x_h2_secant
+   logical :: have_h2_secant_prev
+   real*8  :: ghost_closure_res
+   logical :: ghost_closed, ghost_cell_closure
    real*8, dimension(n_x_max) :: x_self
 
    ! Promotion of a molecular cell with no root to the constrained
@@ -1033,6 +1283,43 @@
    endif
    tol = ieq_inner_tol
 
+	! ---- THE COMPOSITION THE LOWER GHOST CELLS ENTER THIS SWEEP WITH ----
+	!
+	! Default: the rows the caller installed, which for a restart are the
+	! composition of the gas the reservoir holds at the base level, with the
+	! partition within each element taken from the first physical cell
+	! (docs/lhs1140b_stationary_D5b2_20260918.md section 7). With
+	! EXHALE_GHOST_COMPOSITION_SEED set they are replaced by the stated
+	! composition, so that the same ghost system is solved from a different
+	! starting point and the seed dependence of the ghost it returns can be
+	! measured. VALIDITY: a measurement of the ghost solve; a run with the
+	! key set is entered at a composition the boundary model does not state.
+	! With the key unset lower_ghost_seed_rows returns the rows it was given
+	! and the branch is not entered, so no number moves.
+	!
+	! It stands before the element census because it changes the ghost's
+	! elemental ratios, which the census asserts are invariant ACROSS the
+	! sweep and not across a seeding.
+	if (ghost_composition_seed_armed()) then
+		call lower_ghost_seed_rows(f_sp_io(1-Ng:0,:), f_ghost_seed,       &
+		                           ghost_seed_used)
+		f_sp_io(1-Ng:0,:) = f_ghost_seed
+		if (.not. ghost_seed_announced) then
+			write(*,'(A)') ' (ioniz_eq) the lower ghost cells enter the'//&
+			     ' composition sweep at '//trim(ghost_seed_used)
+			ghost_seed_announced = .true.
+		endif
+	endif
+	call write_ghost_seed_rows(f_sp_io(1-Ng:0,:))
+
+	! The composition the cells above the two lower ghosts were handed, kept
+	! where the diagnostic policy above asks for it to be returned.
+	if (interior_composition_is_held()) then
+		if (.not. allocated(f_sp_interior_entry))                           &
+			allocate(f_sp_interior_entry(1:N+Ng,n_species))
+		f_sp_interior_entry = f_sp_io(1:N+Ng,:)
+	endif
+
 	! A1 element-budget assertion around the whole sweep.  The sweep moves
 	! nuclei between stages and carriers and creates none, so every ratio
 	! n_El/n_H is invariant across it.  Since T2.1 the density is an input
@@ -1051,6 +1338,55 @@
 		call element_census_take('ioniz_eq [steady candidate]', n_io,     &
 		                         f_sp_io, cen_ieq)
 	endif
+
+	! ---- THE GHOST COMPOSITION IS A FIXED POINT OF THIS SWEEP ----
+	!
+	! The contract (ghost_composition_fixed_point_tol). A sweep is a map from
+	! the composition it is entered at to the composition it returns: the
+	! entry composition sets the columns, the cells' own depths, the electron
+	! and particle counts, the secondary-ionization partition, the shielding
+	! and the ionization the base handoff's partition is stated against, and
+	! the cells are then solved in that context. The lower boundary is built
+	! on the two lower ghost cells, so a ghost that is not a fixed point of
+	! this map is a boundary that is a function of the composition the run was
+	! entered at, and MEASURED it is: two entry compositions return ghosts
+	! 4.7e-3 to 5.5e-2 apart in their trace ions, both accepted by every test
+	! the sweep applies (READ, docs/lhs1140b_p1_step1b_20260919.md section 1).
+	!
+	! The map is therefore applied again, at the ghost it returned and at the
+	! composition the cells above the ghosts were HANDED, until the ghost and
+	! its particle plus electron count stop moving within the accuracy. The
+	! interior is restored at each application, so the composition this
+	! routine returns for the physical cells is ONE application of the map,
+	! as it has always been, and the steady residual built on it is one
+	! application of one operator.
+	!
+	! A run whose ghost is already at its fixed point -- the usual case, since
+	! the ghost a sweep is entered at is the one the previous sweep returned
+	! -- takes ONE application and costs nothing.
+	!
+	! THE APPLICATIONS ARE ONE SWEEP, so nothing that separates one sweep from
+	! the next may advance between them. The frozen background's readiness is
+	! such a thing: it is false until a sweep has filled it, and it is what
+	! turns the transported carriers from something this sweep INITIALIZES
+	! into something handed to it (the imposed-fraction block of the cell
+	! loop). Letting it turn over inside one sweep would make the second
+	! application a later sweep: MEASURED on mol_carrier at step 0, 185 cells
+	! then leave the physical simplex and every cell of the wind rests on a
+	! non-root. It is held at the value the sweep was entered with and takes
+	! the sweep's own value when the sweep ends.
+	ghost_contract_on = thereis_mol .and. thereis_He
+	bg_ready_entry    = bg_ready
+	ghost_fp_pass     = 0
+	ghost_fp_move     = 0.0d0
+	ghost_thermal_move = 0.0d0
+	ghost_fp_reached  = .not. ghost_contract_on
+	if (ghost_contract_on) f_sp_sweep_entry = f_sp_io
+
+	ghost_fixed_point: do
+	ghost_fp_pass            = ghost_fp_pass + 1
+	sweep_advances_the_streak = (ghost_fp_pass .eq. 1)
+	bg_ready                 = bg_ready_entry
 
 	!----------------------------------!
 	
@@ -1184,16 +1520,23 @@
 	! each species by bsp_mass), so it over-counts the particles by the mean
 	! particle mass -- 2.3x at an H2-rich base, up to 4x in a He-dominated
 	! one.  Only the molecular path reads it, so an atomic run is unchanged.
-	if (thereis_mol) then
-		if (thereis_oxychem) then
-			call calc_ntot(nhi,nhii,nhei,nheii,nheiii,n_tot,nm,nmol_eq,   &
-			               nox_eq)
-		else
-			call calc_ntot(nhi,nhii,nhei,nheii,nheiii,n_tot,nm,nmol_eq)
-		endif
+	! The GAS PARTICLE DENSITY of every cell, from the one stoichiometric
+	! sum of utilities.  It is a property of the gas and not of the
+	! molecular option: an atomic mixture has a particle density too, the
+	! pressure the retries below form is (n_tot + n_e) kB T in any gas, and
+	! the frozen background the transport-chemistry operator reads carries
+	! it cell by cell.  The molecular and oxygen densities enter the sum
+	! where they exist and are zero where they do not.
+	if (thereis_oxychem) then
+		call calc_ntot(nhi,nhii,nhei,nheii,nheiii,n_tot,nm,nmol_eq,      &
+		               nox_eq)
 	else
-		n_tot = 0.0d0
+		call calc_ntot(nhi,nhii,nhei,nheii,nheiii,n_tot,nm,nmol_eq)
 	endif
+	! The ghost's heavy-particle plus electron count at the composition this
+	! application was ENTERED at, against which the count it returns is
+	! measured (the thermodynamic leg of the ghost composition contract).
+	if (ghost_contract_on) np_ghost_entry = n_tot(1-Ng:0) + ne(1-Ng:0)
 
 	! Cell-by-cell pressure-broadening factor for the opacity ('P' model).
 	! opacity_pT_factor returns 1.0 for all other models, so opa_pf=1
@@ -1436,7 +1779,7 @@
 	if (thereis_mol .and. .not. h2_thermochemistry_ready())               &
 		call h2_thermochemistry_init
 		!$omp parallel do default(shared) schedule(static)                 &
-		!$omp   private(j, heat_row) if(count > 0)
+		!$omp   private(j, heat_row) if(marching_step > 0)
 		do j = jb_hi, jb_lo, -1
 			call photoionization_field_at_cell_H(j, N1_face(j), nhi(j),    &
 			         xion(j), sec_on_xuv, P_HI(j), h1_HI(j), heat_row,     &
@@ -1458,14 +1801,14 @@
 			enddo
 		endif
 
-		! Ionization solves in each cell are independent (the count>0 warm-start uses
+		! Ionization solves in each cell are independent (the marching_step>0 warm-start uses
 		! this cell's own previous-step value), so the sweep is OpenMP-parallel
 		! over cells. sys_x/wa/info are threadprivate (global_parameters); only
-		! the subroutine-local scratch is private. count==0 runs serial (the if
+		! the subroutine-local scratch is private. marching_step==0 runs serial (the
 		! clause) because its first-step warm-start reads the neighbor cell.
 		!$omp parallel do default(shared) schedule(dynamic,8)                  &
 		!$omp   private(params, usednt, it_self, last_self, self_moved,        &
-		!$omp           x_self, heat_row) if(count > 0)
+		!$omp           x_self, heat_row) if(marching_step > 0)
 		do j = jb_hi, jb_lo, -1
 
 			! Lazily allocate this thread's threadprivate NL scratch.
@@ -1497,7 +1840,7 @@
 			ieq_cell%a_ion_HI = a_ion_HI(j)
 
 			 ! Initial guess
-			if (count.le.0) then
+			if (marching_step.le.0) then
 				if(r(j).le.(1.5))then
 					sys_x(1) = r(j)-0.5
 				else
@@ -1576,7 +1919,7 @@
 		! metal coefficients (met_*, System_HeH_metals) and charge-exchange rates
 		! (cx_kc, cx_metal_base) are threadprivate, so each thread keeps its own;
 		! cx_metal_base is broadcast (copyin) and toggled 4<->5 per cell. All the
-		! subroutine-local scratch is private. count==0 stays serial (neighbor
+		! subroutine-local scratch is private. marching_step==0 stays serial (neighbor
 		! warm-start).
 		! Failed-cell counters (combined via the reduction below); reset once
 		! per equilibrium sweep. n_mol_clamped counts molecular cells whose roots
@@ -1598,6 +1941,10 @@
 		cce_seconds   = 0.0d0
 		n_res_nonfinite  = 0
 		viol_sweep_worst = 0.0d0
+		! What the base handoff's closure reaches in this sweep, reduced
+		! over the cells of every block.
+		ghost_closure_res_sweep  = 0.0d0
+		ghost_closure_pass_sweep = 0
 
 		xuv_block_HHe: do while (jb_hi .ge. 1-Ng)
 
@@ -1632,7 +1979,7 @@
 
 		!$omp parallel do default(shared) schedule(static)                 &
 		!$omp   private(j, Pm_row, h1m_row, chan_row, heat_row, q_abs_row) &
-		!$omp   if(count > 0)
+		!$omp   if(marching_step > 0)
 		do j = jb_hi, jb_lo, -1
 			call photoionization_field_at_cell_HHe(j,                      &
 			         N1_face(j),N15_face(j),N2_face(j),NTR_face(j),        &
@@ -1672,7 +2019,11 @@
 				! Count where the coupling out-ionizes the stellar field by
 				! three decades, before P_HI absorbs it (diagnostic; silent
 				! when zero).
-				if (j .ge. 1 .and. j .le. N) then
+				! Counted once per sweep, at the first application of the
+				! composition map: the count is of cells in a sweep, not of
+				! cells in an application (sweep_advances_the_streak).
+				if (j .ge. 1 .and. j .le. N .and.                          &
+				    sweep_advances_the_streak) then
 					if (dP_HI_hrc(j) .gt.                                  &
 					    he_rec_dominant_ratio*P_HI(j)) then
 						n_cells_he_rec_photoionization_dominant =          &
@@ -1704,14 +2055,19 @@
 		!$omp           have_nonroot, have_clamp,                                    &
 		!$omp           x_cce, cce_full, cce_root, n_cce_fs, res_cce,                &
 		!$omp           clk_beg, clk_end, clk_rate,                                  &
-		!$omp           it_self, last_self, self_moved, x_self,                      &
-		!$omp           nheiS_it, nh2_it, x_ion_ghost,                               &
+		!$omp           it_self, last_self, state_is_recorded, self_moved,           &
+		!$omp           x_self, n_self_max,                                         &
+		!$omp           nheiS_it, nh2_it, x_ion_ghost, x_h2_imposed,                 &
+		!$omp           ghost_closure_move, ghost_closure_res, ghost_closed,         &
+		!$omp           ghost_cell_closure, x_h2_secant_prev, f_h2_secant_prev,      &
+		!$omp           x_h2_map, f_h2_map, x_h2_secant, have_h2_secant_prev,        &
 		!$omp           Pm_row, h1m_row, chan_row, heat_row, q_abs_row)              &
 		!$omp   reduction(+:n_mol_clamped,n_mol_info,n_ieq_reseed,n_ieq_retry, &
 		!$omp               n_ieq_unphys,n_ieq_fail,n_acc,hist_conv,hist_uncv, &
 		!$omp               n_cce_attempt,n_cce_root,n_cce_solve,cce_seconds,  &
 		!$omp               n_res_nonfinite)                                   &
-		!$omp   reduction(max:acc_resmax,viol_sweep_worst) if(count > 0)
+		!$omp   reduction(max:acc_resmax,viol_sweep_worst,ghost_closure_res_sweep,  &
+		!$omp               ghost_closure_pass_sweep) if(marching_step > 0)
 		do j = jb_hi, jb_lo, -1
 
 			! Lazily allocate this thread's threadprivate NL scratch.
@@ -1762,7 +2118,29 @@
 				enddo
 			endif
 
-			self_field_HHe: do it_self = 1, xuv_self_field_passes
+			! THE PASSES THIS CELL MAY TAKE. Every cell takes the
+			! self-field passes the run asked for. A lower ghost whose
+			! molecular partition is stated by the base handoff takes as
+			! many more as its closure needs: the imposed partition and the
+			! ghost's own ionization balance are one system (see the ghost
+			! reservoir block below and base_ghost_closure_tol), and a cell
+			! that leaves after one pass leaves it unclosed. The radiation
+			! field is recomputed on the self-field passes alone, so the
+			! closure passes solve the same cell against the same field.
+			ghost_cell_closure = thereis_mol .and. j .le. 0 .and.         &
+			                     base_h2_composition_imposed()
+			n_self_max = xuv_self_field_passes
+			if (ghost_cell_closure) n_self_max =                          &
+			     max(n_self_max, base_ghost_closure_passes)
+			ghost_closed       = .not. ghost_cell_closure
+			ghost_closure_move = 0.0d0
+			ghost_closure_res  = 0.0d0
+			x_h2_imposed       = 0.0d0
+			have_h2_secant_prev = .false.
+			x_h2_secant_prev    = 0.0d0
+			f_h2_secant_prev    = 0.0d0
+
+			self_field_HHe: do it_self = 1, n_self_max
 
 			! THE CELL'S OWN ATTENUATION AT THE COMPOSITION IT RETURNED.
 			! The column outside the cell is the block's and does not move
@@ -1775,7 +2153,15 @@
 			! the same order the first pass added them.  Their diagnostic
 			! counters are taken on the first pass alone, where the serial
 			! loop above took them.
-			if (it_self .gt. 1) then
+			!
+			! ON A SELF-FIELD PASS ALONE. The further passes a base ghost
+			! takes to close its imposed molecular partition are passes of
+			! the same cell against the SAME field: the quantity they close
+			! is the pair (partition, ionization), and letting the field
+			! move with them would make the closure a different iteration
+			! from the one the run asked for. A run whose self-field passes
+			! are the default one therefore sees exactly the field it saw.
+			if (it_self .gt. 1 .and. it_self .le. xuv_self_field_passes) then
 				nheiS_it = nhei(j)
 				if (thereis_HeITR) nheiS_it =                                  &
 				         he_ground_singlet_density(nhei(j), nheiTR(j))
@@ -1831,7 +2217,12 @@
 			call he_h_cx_rates(T_K(j), ieq_cell%kcx_He0_Hp,               &
 			                           ieq_cell%kcx_Hep_H0)
 
-			! Add more if HeITR is present
+			! The He 2^3S channels: the cell's rates where the level is
+			! tracked, and zero where it is not, so that every system and
+			! every operator that reads them describes the same gas. The
+			! rows of the transport-chemistry operator read them out of the
+			! frozen background of the step, which is kept for an atomic run
+			! as well as for a molecular one.
 			if (thereis_HeITR) then
 				ieq_cell%rcheiTR = rcheiTR(j)
 				ieq_cell%A31     = A31
@@ -1841,28 +2232,32 @@
 				ieq_cell%q31b    = q31b(j)
 				ieq_cell%Q31     = Q31(j)
 				ieq_cell%a_ion_HeITR = a_ion_HeITR(j)
+			else
+				ieq_cell%rcheiTR = 0.0d0     ! no triplet channels
+				ieq_cell%A31     = 0.0d0
+				ieq_cell%P_HeITR = 0.0d0
+				ieq_cell%q13     = 0.0d0
+				ieq_cell%q31a    = 0.0d0
+				ieq_cell%q31b    = 0.0d0
+				ieq_cell%Q31     = 0.0d0
+				ieq_cell%a_ion_HeITR = 0.0d0
 			endif
+
+			! The temperature and the gas particle density of the cell. Both
+			! are read by every operator that evaluates a chemistry row on
+			! the frozen background of a step, so they belong to the cell
+			! state of any gas and not to the molecular layout alone.
+			ieq_cell%T_K  = T_K(j)
+			ieq_cell%ntot = n_tot(j)        ! M for the 3-body rates
 
 			! molecular cell state (System_HeH_mol layout)
 			if (thereis_mol) then
-				if (.not. thereis_HeITR) then
-					ieq_cell%rcheiTR = 0.0d0     ! no triplet channels
-					ieq_cell%A31     = 0.0d0
-					ieq_cell%P_HeITR = 0.0d0
-					ieq_cell%q13     = 0.0d0
-					ieq_cell%q31a    = 0.0d0
-					ieq_cell%q31b    = 0.0d0
-					ieq_cell%Q31     = 0.0d0
-					ieq_cell%a_ion_HeITR = 0.0d0
-				endif
 				ieq_cell%P_H2    = P_H2(j)
 				ieq_cell%P_H2_di = P_H2_di(j)
 				ieq_cell%P_H2_dd = P_H2_dd(j)
 				ieq_cell%P_H2_nd = P_H2_nd(j)
 				P_H2_eq(j)    = P_H2(j)
 				ieq_cell%k_LW = k_lw_diss(j)   ! 0 without a LW band flux
-				ieq_cell%T_K  = T_K(j)
-				ieq_cell%ntot = n_tot(j)        ! M for the 3-body rates
 				! Compute the molecular rate coefficients that are invariant
 				! across this cell's Newton solve (they depend only on T and
 				! n_tot); the residual then reads them, like set_metal_coeffs.
@@ -1897,15 +2292,13 @@
 				! adds the oxygen terms to the H2 row's bound.
 				if (thereis_oxychem)                                  &
 					call set_oxygen_turnover_rates(iox, 1.0d0)
-				! Carrier partitions this cell does not own. Default: it
+				! Molecular partitions this cell does not own. Default: it
 				! owns all of them and every row is a balance.
 				ieq_cell%x_h2_fixed     = .false.
 				ieq_cell%x_ox_fixed     = .false.
-				ieq_cell%x_hp_fixed     = .false.
 				ieq_cell%x_h2_fix       = 0.0d0
 				ieq_cell%x_oh_fix       = 0.0d0
 				ieq_cell%x_h2o_fix      = 0.0d0
-				ieq_cell%x_hp_fix       = 0.0d0
 				! With the carriers transported, their partition is not a
 				! local root any more: the transport-chemistry solve owns
 				! H2, OH and H2O and this sweep is handed the answer. The
@@ -1931,25 +2324,6 @@
 						                   /max(nm_tot(j,iel_O),1.0d-30)
 						ieq_cell%x_h2o_fix = nox_eq(j,2)                  &
 						                   /max(nm_tot(j,iel_O),1.0d-30)
-					endif
-					! And the ionization state, when it too is carried.
-					! nhii here is f_sp*n as this sweep was handed it,
-					! i.e. what the transport operator's write-back left,
-					! so the fraction imposed is the transported one.
-					! ONLY THE CELLS THE OPERATOR OWNS. The transport
-					! write-back fills 1..N+Ng and leaves the two lower
-					! ghosts alone -- they are the inflow reservoir, and
-					! the only carrier anything below the base states a
-					! partition for there is H2, through the molecular
-					! handoff (carrier_base_composition_imposed); the
-					! ionized fraction is not one of them, so this operator
-					! states none for the reservoir. Imposing the
-					! transported value there would pin the ghosts at
-					! whatever the last sweep left and never let them be
-					! re-solved again.
-					if (ionization_transport .and. j .ge. 1) then
-						ieq_cell%x_hp_fixed = .true.
-						ieq_cell%x_hp_fix   = nhii(j)/nh(j)
 					endif
 				endif
 				! THE LOWER-BOUNDARY RESERVOIR. The ghost cells below the
@@ -2012,8 +2386,60 @@
 					if (.not. (x_ion_ghost .ge. 0.0d0)) x_ion_ghost = 0.0d0
 					if (x_ion_ghost .gt. 1.0d0) x_ion_ghost = 1.0d0
 					ieq_cell%x_h2_fixed = .true.
-					ieq_cell%x_h2_fix   = base_h2_nuclei_fraction()       &
-					                    *(1.0d0 - x_ion_ghost)
+					! THE FIXED POINT IS REACHED BY A SECANT STEP, NOT BY
+					! SUBSTITUTION. Imposing x2 (1 - x_ion) at the x_ion
+					! the previous pass returned is the map
+					! x -> g(x) = x2 (1 - x_ion(x)), and its slope
+					! g' = -x2 dx_ion/dx is positive (more H2 at fixed T
+					! leaves less ionized hydrogen): measured 0.74 on
+					! the ghost of the LHS 1140 b molecular seed at
+					! He/H = 2.13 and 0.90 at He/H = 9.7, a monotone
+					! contraction that substitution would need about 60
+					! and 180 passes to take to 1e-10 (extrapolated
+					! from those ratios at pass 30). The root of
+					! F(x) = g(x) - x is a scalar equation, and the
+					! secant through the last two evaluations solves it
+					! superlinearly. It is used only when both
+					! evaluations were made in the same radiation field
+					! (it_self - 1 past the self-field passes), only
+					! where F falls through the pair (the slope of F is
+					! g' - 1 < 0, so the root is on the side the two
+					! residuals point to) and only when its point is a
+					! partition the prescription can take, 0 <= x <= x2;
+					! otherwise the pass substitutes. The room the
+					! solve needs is not checked against the x_ion of
+					! the previous pass: at the secant point the linear
+					! model of g gives x_ion = 1 - x/x2, and x plus that
+					! is 1 - x (1 - x2)/x2 <= 1 for every x2 <= 1.
+					x_h2_map = base_h2_nuclei_fraction()                  &
+					         *(1.0d0 - x_ion_ghost)
+					ieq_cell%x_h2_fix = x_h2_map
+					if (it_self .gt. 1) then
+						f_h2_map = x_h2_map - x_h2_imposed
+						if (have_h2_secant_prev .and.                     &
+						    (f_h2_map - f_h2_secant_prev)                 &
+						    *(x_h2_imposed - x_h2_secant_prev)            &
+						    .lt. 0.0d0) then
+							x_h2_secant = x_h2_imposed - f_h2_map         &
+							     *(x_h2_imposed - x_h2_secant_prev)       &
+							     /(f_h2_map - f_h2_secant_prev)
+							if (x_h2_secant .ge. 0.0d0 .and.              &
+							    x_h2_secant .le.                          &
+							         base_h2_nuclei_fraction())           &
+								ieq_cell%x_h2_fix = x_h2_secant
+						endif
+						if (it_self - 1 .ge. xuv_self_field_passes) then
+							have_h2_secant_prev = .true.
+							x_h2_secant_prev    = x_h2_imposed
+							f_h2_secant_prev    = f_h2_map
+						endif
+					endif
+					! The partition this pass imposes, kept so that the
+					! closure below can measure what the solve made of it
+					! and how far one more pass would move it.
+					ghost_closure_move = abs(ieq_cell%x_h2_fix            &
+					                         - x_h2_imposed)
+					x_h2_imposed       = ieq_cell%x_h2_fix
 					! AND THE PRESCRIPTION IS CHECKED AGAINST THE CELL'S
 					! OWN HYDROGEN, which is what the over-prescription
 					! above never was. The room the pinned row leaves is
@@ -2022,18 +2448,18 @@
 					! cannot be satisfied by any composition, and is
 					! refused here by name instead of reaching the solver
 					! and being reported as a streak of non-roots.
-					if (ieq_cell%x_h2_fix + x_ion_ghost .gt. 1.0d0) then
+					if (x_h2_map + x_ion_ghost .gt. 1.0d0) then
 						!$omp critical (ieq_acc_report)
 						write(*,'(A)') ' (ioniz_eq) STOP: the base '//    &
 							'handoff prescribes more H2 than the '//      &
 							'reservoir has non-ionized hydrogen'
 						write(*,'(A,I0,A,ES12.5)') '   ghost cell ', j,   &
-							'   imposed 2 n(H2)/n_H ', ieq_cell%x_h2_fix
+							'   imposed 2 n(H2)/n_H ', x_h2_map
 						write(*,'(A,ES12.5,A,ES12.5)')                    &
 							'   ionized hydrogen fraction it must make '//&
 							'room for ', x_ion_ghost,                     &
 							'   room left by the prescription ',          &
-							1.0d0 - ieq_cell%x_h2_fix
+							1.0d0 - x_h2_map
 						write(*,'(A,ES12.5)')                             &
 							'   handoff x2 = base_h2_nuclei_fraction() ', &
 							base_h2_nuclei_fraction()
@@ -2042,12 +2468,64 @@
 						error stop 'ioniz_eq: infeasible base H2 handoff'
 					endif
 				endif
-				! Keep this cell's coefficient state for the carrier
-				! transport operator, which evaluates the same rows on the
-				! same background between sweeps. Each iteration writes its
-				! own element, so the parallel sweep needs no guard.
-				bg_cell(j) = ieq_cell
 			endif
+
+			! Ionization stages this cell does not own. Default: it owns
+			! all three and every stage row is a balance.
+			ieq_cell%x_hp_fixed     = .false.
+			ieq_cell%x_heii_fixed   = .false.
+			ieq_cell%x_heiii_fixed  = .false.
+			ieq_cell%x_hp_fix       = 0.0d0
+			ieq_cell%x_heii_fix     = 0.0d0
+			ieq_cell%x_heiii_fix    = 0.0d0
+			! THE IONIZATION STAGES THE FLOW CARRIES, on their own
+			! gate. They are stages of an element, not molecular
+			! carriers: their transport is the element nucleus flux of
+			! hydrogen and of helium, and the condition for imposing
+			! them is the key and the availability of a transported
+			! state, not the molecular carrier configuration they
+			! share an operator with, and the same statement holds
+			! of the gas: a hydrogen and helium mixture has these
+			! stages whether or not it has molecules, so the block
+			! stands beside the molecular cell state and not
+			! inside it.
+			! nhii, nheii and nheiii here are f_sp*n as this sweep was
+			! handed them, i.e. what the transport operator's
+			! write-back left, so the fractions imposed are the
+			! transported ones.
+			! ONLY THE CELLS THE OPERATOR OWNS. The transport
+			! write-back fills 1..N+Ng and leaves the two lower
+			! ghosts alone -- they are the inflow reservoir, and
+			! the only carrier anything below the base states a
+			! partition for there is H2, through the molecular
+			! handoff (carrier_base_composition_imposed); no
+			! ionized fraction is one of them, so this operator
+			! states none for the reservoir. Imposing the
+			! transported value there would pin the ghosts at
+			! whatever the last sweep left and never let them be
+			! re-solved again.
+			if (ionization_transport .and. j .ge. 1                   &
+			    .and. (bg_ready .or. do_load_IC)) then
+				ieq_cell%x_hp_fixed = .true.
+				ieq_cell%x_hp_fix   = nhii(j)/nh(j)
+				! The two ionized helium stages, per helium NUCLEUS,
+				! which is the variable their rows are written in
+				! (rows 2 and 3 of every system that reaches them).
+				if (thereis_He) then
+					ieq_cell%x_heii_fixed  = .true.
+					ieq_cell%x_heiii_fixed = .true.
+					ieq_cell%x_heii_fix    = nheii(j) /nhe(j)
+					ieq_cell%x_heiii_fix   = nheiii(j)/nhe(j)
+				endif
+			endif
+
+			! Keep this cell's coefficient state for the transport-chemistry
+			! operator, which evaluates the same rows on the same background
+			! between sweeps. Each iteration writes its own element, so the
+			! parallel sweep needs no guard. It is kept wherever that
+			! operator has a row to solve, which in an atomic gas is the
+			! three ionization stages alone.
+			if (transported_rows_exist()) bg_cell(j) = ieq_cell
 
 			! Each element's metal coefficients are handed to
 			! ion_system_HeH_metals via set_metal_coeffs; the charge-
@@ -2111,7 +2589,7 @@
 			! the composition their field was built from.
 			if (it_self .gt. 1) then
 				sys_x(1:N_eq) = x_self(1:N_eq)
-			else if (count .eq. 0) then
+			else if (marching_step .eq. 0) then
 				if (j .eq. N+Ng) then
 					sys_x(1) = 1.0
 					sys_x(2) = 1.0
@@ -2420,7 +2898,7 @@
 					! cost is in the end-of-run constrained-solve line).
 					call report_acceptance_event(                      &
 						'constrained-continuation root accepted',      &
-						j,count,r(j),T_K(j),info,viol_best,acc_res)
+						j,marching_step,r(j),T_K(j),info,viol_best,acc_res)
 				else if (have_nonroot) then
 					sys_x(1:N_eq) = x_nonroot(1:N_eq)
 					acc_class = 4
@@ -2475,8 +2953,67 @@
 					self_moved = maxval(abs(sys_x(1:N_eq)                  &
 					                        - x_self(1:N_eq)))
 				x_self(1:N_eq) = sys_x(1:N_eq)
-				last_self = (it_self .ge. xuv_self_field_passes)            &
-				            .or. (self_moved .le. xuv_self_field_tol)
+				! THE BASE HANDOFF'S OWN EQUATION, AT THE STATE THIS PASS
+				! RETURNED. The ghost owes x_H2 = x2 (1 - x_ion) with the
+				! x_ion of its own ionization balance, and the residual of
+				! that equation is measured on the solved state: x(4) is
+				! the solved partition and x(1), x(5), x(6), x(7) hold the
+				! hydrogen nuclei that are ionized, with the multiplicities
+				! their rows carry. The pair is closed when that residual
+				! is below the tolerance.
+				if (ghost_cell_closure) then
+					x_ion_ghost = sys_x(1) + sys_x(5) + sys_x(6)          &
+					            + sys_x(7)
+					if (.not. (x_ion_ghost .ge. 0.0d0)) x_ion_ghost = 0.0d0
+					if (x_ion_ghost .gt. 1.0d0) x_ion_ghost = 1.0d0
+					ghost_closure_res = abs(sys_x(4)                      &
+					     - base_h2_nuclei_fraction()*(1.0d0 - x_ion_ghost))
+					ghost_closed = (ghost_closure_res .le.                &
+					                base_ghost_closure_tol)
+				endif
+				last_self = (it_self .ge. n_self_max)                      &
+				            .or. (self_moved .le. xuv_self_field_tol       &
+				                  .and. ghost_closed)
+				! WHICH PASS ADVANCES THE NON-ROOT STREAK. The streak
+				! counts CONSECUTIVE SWEEPS a cell rests on a non-root, and
+				! a sweep under the ghost composition fixed point applies
+				! the composition map more than once
+				! (ghost_composition_fixed_point_tol), so it is advanced by
+				! the first application alone. Every other ledger row is
+				! reset at each application and therefore describes the
+				! application whose state the sweep returns.
+				state_is_recorded = last_self .and. sweep_advances_the_streak
+				! A BOUNDARY NOTHING STANDS BEHIND IS REFUSED. The ghost
+				! composition is the state the lower boundary is built on,
+				! and an unclosed pair leaves it an arbitrary iterate of
+				! the alternation rather than the solution of a stated
+				! equation.
+				if (ghost_cell_closure .and. .not. ghost_closed .and.     &
+				    it_self .ge. n_self_max) then
+					!$omp critical (ieq_acc_report)
+					write(*,'(A)') ' (ioniz_eq) STOP: the base handoff'// &
+						' partition of a lower ghost did not close'//     &
+						' against its own ionization balance'
+					write(*,'(A,I0,A,I0,A)') '   ghost cell ', j,         &
+						'   passes ', it_self, ''
+					write(*,'(A,ES12.5,A,ES12.5)') '   last move of the'//&
+						' imposed 2 n(H2)/n_H ', ghost_closure_move,      &
+						'   tolerance ', base_ghost_closure_tol
+					write(*,'(A,ES12.5)') '   residual of x_H2 -'//       &
+						' x2 (1 - x_ion) at the returned state ',         &
+						ghost_closure_res
+					flush(6)
+					!$omp end critical (ieq_acc_report)
+					error stop 'ioniz_eq: base ghost H2 closure failed'
+				endif
+				if (ghost_cell_closure .and. last_self) then
+					ghost_closure_res_sweep =                             &
+					     max(ghost_closure_res_sweep, ghost_closure_res)
+					ghost_closure_pass_sweep =                            &
+					     max(ghost_closure_pass_sweep, it_self)
+					ghost_closure_res_cell(j)  = ghost_closure_res
+					ghost_closure_pass_cell(j) = it_self
+				endif
 
 				! THE LEDGER RECORDS THE STATE THE CELL ACCEPTED, and not
 				! every iterate on the way to it: the acceptance class, its
@@ -2492,10 +3029,12 @@
 						acc_resmax(acc_class) =                            &
 							max(acc_resmax(acc_class),acc_res)
 					viol_sweep_worst = max(viol_sweep_worst, viol_best)
-					call nonroot_streak_update(acc_class,j,count,r(j),      &
+					if (state_is_recorded)                                 &
+					call nonroot_streak_update(acc_class,j,marching_step,r(j),      &
 					                           T_K(j),n_in_dim(j),ne(j),    &
 					                           info,viol_best,acc_res,      &
 					                           sys_x,N_eq)
+					if (j .le. 0) ghost_acc_res_cell(j) = acc_res
 				endif
 				if (last_self .and. j .eq. ieq_report_cell)                &
 					call report_accepted_cell_state(j, acc_class, acc_res, &
@@ -2669,8 +3208,11 @@
 					self_moved = maxval(abs(sys_x(1:N_eq)                  &
 					                        - x_self(1:N_eq)))
 				x_self(1:N_eq) = sys_x(1:N_eq)
-				last_self = (it_self .ge. xuv_self_field_passes)            &
+				last_self = (it_self .ge. n_self_max)                      &
 				            .or. (self_moved .le. xuv_self_field_tol)
+				! Which pass advances the non-root streak, as in the
+				! molecular branch above.
+				state_is_recorded = last_self .and. sweep_advances_the_streak
 
 				! THE LEDGER RECORDS THE STATE THE CELL ACCEPTED, and not
 				! every iterate on the way to it: the acceptance class, its
@@ -2686,10 +3228,12 @@
 						acc_resmax(acc_class) =                            &
 							max(acc_resmax(acc_class),acc_res)
 					viol_sweep_worst = max(viol_sweep_worst, viol_best)
-					call nonroot_streak_update(acc_class,j,count,r(j),      &
+					if (state_is_recorded)                                 &
+					call nonroot_streak_update(acc_class,j,marching_step,r(j),      &
 					                           T_K(j),n_in_dim(j),ne(j),    &
 					                           info_ieq,viol_best,acc_res,  &
 					                           sys_x,N_eq)
+					if (j .le. 0) ghost_acc_res_cell(j) = acc_res
 				endif
 				if (last_self .and. j .eq. ieq_report_cell)                &
 					call report_accepted_cell_state(j, acc_class, acc_res, &
@@ -2780,8 +3324,15 @@
 		ieq_rates_ready  = .true.
 
 		! The frozen background is now a complete sweep old at worst, so the
-		! carrier transport operator may run.
-		if (thereis_mol) bg_ready = .true.
+		! transport-chemistry operator may run. It is filled wherever the
+		! molecular network is on, whether or not its carriers are
+		! transported: the local chemical root of the H2 row
+		! (carrier_h2_chemical_root) reads it to seed a molecular run from an
+		! atomic state, and a molecular run without carrier transport is
+		! exactly such a run. The ionization stages add the atomic runs that
+		! transport them. Every site that IMPOSES a transported fraction
+		! tests its own transport key as well, so readiness imposes nothing.
+		if (thereis_mol .or. transported_rows_exist()) bg_ready = .true.
 
 		! One summary line per sweep when a molecular cell's roots were all
 		! outside the physical simplex, so the closest one was clamped onto the
@@ -2801,7 +3352,7 @@
 		! here; it is counted in the run-wide totals reported at the end.
 		if (n_ieq_reseed + n_ieq_unphys + n_ieq_fail .gt. 0) then
 			write(*,'(A,I0,A,I0,A,I0,A,I0,A)')                             &
-				' (ioniz_eq) step ', count,                                &
+				' (ioniz_eq) step ', marching_step,                                &
 				': ionization roots - ', n_ieq_reseed,                     &
 				' stored state(s) rejected, ', n_ieq_unphys,               &
 				' root(s) outside the simplex, no admissible root at ',    &
@@ -3025,16 +3576,18 @@
 	! Electron and gas-particle densities of the post-sweep composition. The
 	! heating channels below and the cooling need these, not the entry ones.
 	call calc_ne(nhii,nheii,nheiii,ne,nm,nmol_eq)
-	if (thereis_mol) then
-		if (thereis_oxychem) then
-			call calc_ntot(nhi,nhii,nhei,nheii,nheiii,n_tot,nm,nmol_eq,   &
-			               nox_eq)
-		else
-			call calc_ntot(nhi,nhii,nhei,nheii,nheiii,n_tot,nm,nmol_eq)
-		endif
+	if (thereis_oxychem) then
+		call calc_ntot(nhi,nhii,nhei,nheii,nheiii,n_tot,nm,nmol_eq,      &
+		               nox_eq)
 	else
-		n_tot = 0.0d0
+		call calc_ntot(nhi,nhii,nhei,nheii,nheiii,n_tot,nm,nmol_eq)
 	endif
+	! The ghost's heavy-particle plus electron count at the composition this
+	! application RETURNED: the thermodynamic leg of the contract. It is what
+	! turns the ghost's temperature into the pressure and the internal energy
+	! the boundary reads, so the contract is not closed until it has stopped
+	! moving with the composition.
+	if (ghost_contract_on) np_ghost_return = n_tot(1-Ng:0) + ne(1-Ng:0)
 
 	! The heating of the post-sweep composition, channel by channel, from
 	! the ONE assembly in utils_ion_eq. The rates it contracts are the
@@ -3116,50 +3669,264 @@
       f_sp_io(:,mion_fsp(im)) = nm(:,im)/n_in_dim
    enddo
 
+   ! THE DECLARED DIAGNOSTIC POLICY OF THE CELLS ABOVE THE LOWER GHOSTS:
+   ! they are handed back as they came (interior_composition_is_held, default
+   ! off). The two lower ghost cells keep the composition the sweep solved,
+   ! so a base row measured after this call carries the ghost's refresh and
+   ! not the interior's.
+   if (interior_composition_is_held())                                    &
+      f_sp_io(1:N+Ng,:) = f_sp_interior_entry
+
+   ! ---- HAS THE GHOST STOPPED MOVING UNDER ITS OWN MAP? ----
+   !
+   ! The composition the two lower ghost cells were handed against the one
+   ! this application returned, and the same for their particle plus
+   ! electron count. WHAT IS MEASURED is the move the map made,
+   ! |S(g) - g| <= the accuracy, which is the stopping statement of a fixed
+   ! point: the returned state's own move, |S(S(g)) - S(g)|, is that move
+   ! times the map's gain, MEASURED at 4.9e-3 in the direction the seed
+   ! spans (READ, docs/lhs1140b_p1_step1b_20260919.md section 6.1), so a
+   ! ghost accepted here is three decades better than the accuracy as a
+   ! fixed point of its own solve. The composition leg is taken in the
+   ! composition's own units and the count leg against its own value, for
+   ! the reasons stated at the two accuracies.
+   ! Above the accuracy the map is applied again at the ghost just returned,
+   ! with the cells above the ghosts restored to the composition they were
+   ! handed, so that what this routine returns for them stays one
+   ! application of one map.
+   if (.not. ghost_fp_reached) then
+      ghost_fp_move = ghost_composition_distance(                         &
+                           f_sp_sweep_entry(1-Ng:0,:), f_sp_io(1-Ng:0,:))
+      ghost_thermal_move = ghost_count_distance(np_ghost_entry,           &
+                                                np_ghost_return)
+      if (ghost_fp_move    .le. ghost_composition_fixed_point_move .and. &
+          ghost_thermal_move .le. ghost_count_fixed_point_move) then
+         ghost_fp_reached = .true.
+      else if (ghost_fp_pass .ge. ghost_composition_fixed_point_passes)   &
+      then
+         call ghost_fixed_point_refused(ghost_fp_pass, ghost_fp_move,     &
+              ghost_thermal_move,                                         &
+              'the ghost composition did not reach a fixed point of'//    &
+              ' the sweep that returns it')
+      else
+         f_sp_sweep_entry(1-Ng:0,:) = f_sp_io(1-Ng:0,:)
+         f_sp_io = f_sp_sweep_entry
+      endif
+   endif
+   if (ghost_fp_reached) exit ghost_fixed_point
+   enddo ghost_fixed_point
+   if (ghost_contract_on) then
+      ghost_fixed_point_move_sweep   = ghost_fp_move
+      ghost_thermal_move_sweep       = ghost_thermal_move
+      ghost_fixed_point_passes_sweep = ghost_fp_pass
+   endif
+
    ! Adimensional heating and cooling rates
    heat_out = heat/q0
    cool_out = cool/q0
       
-   ! Adjust value of pressure boundary condition (the base electron
-   ! density in units of n0; with eos_metals the metal electrons are
-   ! included, consistently with calc_ne). Molecular ions are deliberately
-   ! omitted as trace electron donors: the base is nearly neutral, so the
-   ! molecular-ion electrons are negligible in dp_bc.
-   dp_bc = (nhii(1-Ng) + nheii(1-Ng) + 2.0*nheiii(1-Ng))/n0
-   if (eos_include_metals .and. thereis_metals) then
-      do im = 1,n_mion
-         if (mion_stage(im) .gt. 0)                                     &
-            dp_bc = dp_bc + dble(mion_stage(im))*nm(1-Ng,im)/n0
-      enddo
-   endif
+   ! ---- THE SOLVED GHOST'S COUNTS, WHICH ARE NOT THE RESERVOIR'S ----
+   !
+   ! The electron and heavy-particle counts of the lower ghost at the
+   ! composition this sweep returned. They are a MEASUREMENT of the state and
+   ! are handed to base_boundary as such; the PRESCRIBED reservoir
+   ! (ntot_bc + dp_bc as input_read resolved them, and the p, T, particles
+   ! per unit mass and level radius set_base_reservoir was called with) keeps
+   ! its own names and is not written from here.
+   !
+   ! WHY THEY MUST STAY APART. The sweep used to overwrite ntot_bc and dp_bc
+   ! with these two numbers, and the comment that justified it described a
+   ! base pressure boundary condition p = (ntot_bc + dp_bc) T0 at a pinned
+   ! density -- the closure base_boundary replaced. Under the present
+   ! boundary nothing downstream reads them back, and where the two are fed
+   ! into one another the base ceases to be the base the state was solved at:
+   ! restating the reservoir at the solved count moves the base pressure by
+   ! 4.45 per cent and the cell-1 continuity row of a certified hot-Uranus
+   ! state from 1.2e-08 to 1.0 (MEASURED,
+   ! docs/lhs1140b_stationary_D5a_20260918.md section 6.2).
+   !
+   ! WHAT THE ELECTRON COUNT IS OF. It is the free electron density of the
+   ! composition this sweep returned, counted by calc_ne and by nothing else:
+   ! the array ne was filled by that routine from the post-sweep densities
+   ! just above, so every charge carrier the equation of state and the sweep
+   ! count is counted here with the same charge -- H II, He II, He III, the
+   ! molecular ions H2+, H3+ and HeH+, and, under eos_metals, each metal
+   ! stage. A second sum written out here would be a second policy: on the
+   ! LHS 1140 b hot-Uranus ghosts the three molecular ions carry 1.02 and
+   ! 0.78 per cent of the electron density of the two ghost cells (MEASURED,
+   ! docs/PLAN_20260919_review.md section 4), which is not a rounding
+   ! difference. VALIDITY: any network the sweep solves, molecular or
+   ! atomic; in an atomic gas the molecular terms of calc_ne are absent and
+   ! the value is the H/He (and metal) count it always was. ne is in cm^-3
+   ! and n0 is the density scale, so the count handed on is in units of n0,
+   ! as the heavy-particle count beside it is.
+   !
+   ! The heavy-particle count is taken from calc_ntot's n_tot rather than
+   ! summed here, so the particle-count policy keeps its single definition;
+   ! with an atomic network every nucleus is its own particle and n_tot is
+   ! that count either way.
+   ghost_ne_solved = ne(1-Ng)/n0
+   call set_base_ghost_counts(n_tot(1-Ng)/n0, ghost_ne_solved)
 
-   ! ...and the heavy-particle count of the same ghost, so that the pressure
-   ! boundary condition and the species state are one description of one gas.
+   ! ---- THE GHOST THE SWEEP RETURNED, cell by cell, for the record ----
    !
-   ! ntot_bc was resolved once at startup from the base H2 mixing ratio.
-   ! That is a count of nuclei corrected for H2 binding; the species state is
-   ! a count of actual particles, and with the molecular network solved they
-   ! are not the same number -- the ghost also carries H2+, H3+ and HeH+, and
-   ! any hydrogen the imposed partition leaves atomic. Measured before this
-   ! was closed, on the molecular regression cases: the startup value was 6.4%
-   ! above the species one, and since the ghost pressure is (ntot_bc+dp_bc)T0
-   ! at the pinned density, the base the run actually marched on sat at
-   ! 1213.3 K where T0 = 1140 K had been asked for. The isothermal base
-   ! boundary condition was not isothermal.
+   ! A MEASUREMENT. Nothing in the solve, the boundary or the energy update
+   ! reads any of it; the ghost record (boundary_state_trace.f90) writes it
+   ! where EXHALE_GHOST_RECORD asks for it, and with the key unset it is
+   ! stored and never read.
    !
-   ! Taken from calc_ntot rather than summed here, so the particle-count
-   ! policy (what counts as one particle, and whether metal nuclei are in
-   ! the budget) keeps its single definition. n_tot already holds that count
-   ! for the post-sweep composition -- the heating assembly above built it.
+   ! THE CHARGE BUDGET is the charge the composition this sweep WROTE OUT
+   ! carries, read back through the mass fractions f_sp_io and the charges
+   ! of the species table, against the electron count calc_ne made of the
+   ! same state. It closes the round trip every consumer of the state takes,
+   ! so it is zero to the rounding of that trip and a nonzero value means the
+   ! written composition and the reported electron count are two gases.
    !
-   ! Molecular runs only. With an atomic network every nucleus is its own
-   ! particle and the two counts agree identically, so recomputing would only
-   ! move the value by round-off; and a passive molecular base (EOS-only,
-   ! species left atomic) states its H2 binding through ntot_bc alone, so
-   ! taking the count from the atomic species there would silently undo it.
-   if (thereis_mol) ntot_bc = n_tot(1-Ng)/n0
+   ! THE ELEMENTAL BUDGET is the largest relative departure, over helium and
+   ! each trace element, of the ghost's nucleus ratio n_El/n_H from the first
+   ! physical cell's. The reservoir row states those ratios, so it is the
+   ! distance between the gas below the base and the gas above it.
+   do jg = 1-Ng, 0
+      q_written = f_sp_io(jg,isp_HII)
+      if (thereis_He) q_written = q_written + f_sp_io(jg,isp_HeII)        &
+                                + 2.0d0*f_sp_io(jg,isp_HeIII)
+      if (thereis_mol) q_written = q_written + f_sp_io(jg,isp_H2p)        &
+                                 + f_sp_io(jg,isp_H3p)                    &
+                                 + f_sp_io(jg,isp_HeHp)
+      if (eos_include_metals .and. thereis_metals) then
+         do im = 1,n_mion
+            if (mion_stage(im) .gt. 0)                                    &
+               q_written = q_written                                      &
+                         + dble(mion_stage(im))*f_sp_io(jg,mion_fsp(im))
+         enddo
+      endif
+      q_written = q_written*n_in_dim(jg)
+      chg_gap = 0.0d0
+      if (ne(jg) .gt. 0.0d0) chg_gap = (q_written - ne(jg))/ne(jg)
+
+      elem_gap = 0.0d0
+      if (thereis_He .and. nh(jg) .gt. 0.0d0 .and. nh(1) .gt. 0.0d0) then
+         ratio_g = nhe(jg)/nh(jg)
+         ratio_1 = nhe(1) /nh(1)
+         if (ratio_1 .gt. 0.0d0)                                          &
+            elem_gap = max(elem_gap, abs(ratio_g - ratio_1)/ratio_1)
+      endif
+      if (thereis_metals .and. nh(jg) .gt. 0.0d0 .and. nh(1) .gt. 0.0d0)  &
+      then
+         do im = 1,n_melem
+            ratio_g = nm_tot(jg,im)/nh(jg)
+            ratio_1 = nm_tot(1,im) /nh(1)
+            if (ratio_1 .gt. 0.0d0)                                       &
+               elem_gap = max(elem_gap, abs(ratio_g - ratio_1)/ratio_1)
+         enddo
+      endif
+
+      xg_h2   = 0.0d0
+      xg_h2p  = 0.0d0
+      xg_h3p  = 0.0d0
+      xg_hehp = 0.0d0
+      if (thereis_mol .and. nh(jg) .gt. 0.0d0) then
+         xg_h2   = 2.0d0*nmol_eq(jg,1)/nh(jg)
+         xg_h2p  = 2.0d0*nmol_eq(jg,2)/nh(jg)
+         xg_h3p  = 3.0d0*nmol_eq(jg,3)/nh(jg)
+         xg_hehp =       nmol_eq(jg,4)/nh(jg)
+      endif
+      call set_base_ghost_state_record(jg, n_tot(jg), ne(jg),             &
+           xg_h2, xg_h2p, xg_h3p, xg_hehp,                                &
+           nhii(jg)/max(nh(jg),1.0d-99),                                  &
+           nheii(jg)/max(nhe(jg),1.0d-99),                                &
+           nheiii(jg)/max(nhe(jg),1.0d-99),                               &
+           chg_gap, elem_gap, ghost_acc_res_cell(jg),                     &
+           ghost_closure_res_cell(jg), ghost_closure_pass_cell(jg))
+   enddo
+
+   ! The ghost this sweep returned, kept so that a later sweep of the same
+   ! run can be seeded with it (EXHALE_GHOST_COMPOSITION_SEED, default off).
+   call set_previous_sweep_ghost_rows(f_sp_io(1-Ng:0,:))
+
+   ! And what the ghost's own molecular partition closed to, where the base
+   ! handoff states one.
+   if (base_h2_composition_imposed())                                   &
+      call set_base_ghost_closure(ghost_closure_res_sweep,              &
+                                  ghost_closure_pass_sweep)
+
+	! What the ghost composition fixed point reached in this sweep, for the
+	! boundary report: the last application's move in the ghost's species
+	! densities and in its particle plus electron count, the applications it
+	! took, and the accuracy they were held to.
+	if (ghost_contract_on)                                               &
+		call set_base_ghost_fixed_point(ghost_fixed_point_move_sweep,     &
+		     ghost_thermal_move_sweep, ghost_fixed_point_passes_sweep,    &
+		     ghost_composition_fixed_point_move,                          &
+		     ghost_count_fixed_point_move)
 
 	call element_census_verify(cen_ieq, n_io, f_sp_io, rho_is_fixed=.true.)
+
+	contains
+
+
+	!----------------------------------!
+
+	real*8 function ghost_composition_distance(f_a, f_b) result(d)
+	! HOW FAR TWO GHOST COMPOSITIONS STAND APART, in the units the
+	! composition is carried and read in: the arguments are the f_sp layout,
+	! the species' number density per unit mass of the cell, and the largest
+	! move over both ghost cells and every species is taken. A species is not
+	! divided by its own value: that weight belongs to no quantity the
+	! boundary builds, and the solve that returns the composition pins it
+	! absolutely, so a stage at 1e-10 of the cell has no resolved value of
+	! its own to be measured against (see the accuracy above). It also needs
+	! no floor: the metal columns of a run without metals sit at a value of
+	! order 1e-301 and move by at most that.
+	real*8, intent(in) :: f_a(1-Ng:0,n_species), f_b(1-Ng:0,n_species)
+	integer :: jc, kc
+	d = 0.0d0
+	do jc = 1-Ng, 0
+		do kc = 1, n_species
+			d = max(d, abs(f_b(jc,kc) - f_a(jc,kc)))
+		enddo
+	enddo
+	end function ghost_composition_distance
+
+	!----------------------------------!
+
+	real*8 function ghost_count_distance(np_a, np_b) result(d)
+	! The same comparison for the ghost's heavy-particle plus electron count.
+	real*8, intent(in) :: np_a(1-Ng:0), np_b(1-Ng:0)
+	integer :: jc
+	real*8  :: scale_c
+	d = 0.0d0
+	do jc = 1-Ng, 0
+		scale_c = max(abs(np_a(jc)), abs(np_b(jc)))
+		if (scale_c .le. 0.0d0) cycle
+		d = max(d, abs(np_b(jc) - np_a(jc))/scale_c)
+	enddo
+	end function ghost_count_distance
+
+	!----------------------------------!
+
+	subroutine ghost_fixed_point_refused(npass, move, thermal_move, what)
+	! A BOUNDARY NOTHING STANDS BEHIND IS REFUSED, with the numbers, as the
+	! ghost's H2 partition closure is refused: a ghost composition that is
+	! not a fixed point of the solve that returned it is an iterate of that
+	! solve, and the base face state, the base continuity row and every
+	! certificate taken from them would be functions of the composition the
+	! run was entered at.
+	integer, intent(in) :: npass
+	real*8,  intent(in) :: move, thermal_move
+	character(len=*), intent(in) :: what
+	write(*,'(A)') ' (ioniz_eq) STOP: '//trim(what)
+	write(*,'(A,I0,A,I0)') '   applications of the ghost composition'//   &
+	     ' map ', npass, '   bound ', ghost_composition_fixed_point_passes
+	write(*,'(A,ES12.5,A,ES12.5)') '   last move of the ghost species'//  &
+	     ' densities ', move, '   of its particle plus electron count ',  &
+	     thermal_move
+	write(*,'(A,ES12.5,A,ES12.5)') '   accuracy the boundary states:'//   &
+	     ' composition ', ghost_composition_fixed_point_move,             &
+	     '   count ', ghost_count_fixed_point_move
+	flush(6)
+	error stop 'ioniz_eq: the ghost composition is not a fixed point'
+	end subroutine ghost_fixed_point_refused
 
 	! End of subroutine
 	end subroutine ioniz_eq
@@ -3604,7 +4371,7 @@
 	! has evaluated the residual at a state it HOLDS (its current iterate, or
 	! a trial the line search has just accepted), so that the background of
 	! that state survives the probe sweeps that follow.
-	if (.not. thereis_mol) return
+	if (.not. transported_rows_exist()) return
 	if (.not. allocated(bg_cell_adopted)) allocate(bg_cell_adopted(1-Ng:N+Ng))
 	bg_cell_adopted = bg_cell
 	end subroutine keep_background_of_adopted_state
@@ -3614,7 +4381,7 @@
 	subroutine keep_background_of_best_iterate
 	! bg_cell_best <- bg_cell_adopted. Called where the steady solver records
 	! a new best iterate, alongside Ybest and f_sp_best.
-	if (.not. thereis_mol) return
+	if (.not. transported_rows_exist()) return
 	if (.not. allocated(bg_cell_adopted)) return
 	if (.not. allocated(bg_cell_best)) allocate(bg_cell_best(1-Ng:N+Ng))
 	bg_cell_best = bg_cell_adopted
@@ -3625,7 +4392,7 @@
 	subroutine adopt_background_of_best_iterate
 	! bg_cell_adopted <- bg_cell_best. Called where the steady solver returns
 	! the best iterate rather than the last one visited.
-	if (.not. thereis_mol) return
+	if (.not. transported_rows_exist()) return
 	if (.not. allocated(bg_cell_best)) return
 	if (.not. allocated(bg_cell_adopted)) allocate(bg_cell_adopted(1-Ng:N+Ng))
 	bg_cell_adopted = bg_cell_best
@@ -3637,10 +4404,32 @@
 	! bg_cell <- bg_cell_adopted. The last thing the steady solver does, so
 	! that the background the carrier transport reads describes the state the
 	! solver hands back and not the last state it happened to evaluate.
-	if (.not. thereis_mol) return
+	if (.not. transported_rows_exist()) return
 	if (.not. allocated(bg_cell_adopted)) return
 	bg_cell = bg_cell_adopted
 	end subroutine install_background_of_adopted_state
+
+	!----------------------------------!
+
+	logical function transported_rows_exist() result(any_row)
+	! Does the transport-chemistry operator have a row to solve in this run?
+	!
+	! Two independent sets of rows reach that operator. The molecular
+	! carriers -- H2, and OH, H2O, CO with the oxygen cycle -- exist where
+	! the molecular network is on and its transport is selected. The three
+	! ionization stages x(H II), x(He II) and x(He III) are rows on their
+	! own key and in ANY gas: they are stages of an element, transported on
+	! that element's own nucleus face flux, and a hydrogen and helium
+	! mixture has those stages whether or not it has molecules.
+	!
+	! Everything that follows from "the operator runs" is conditioned on
+	! this and not on the molecular configuration alone: its two entry
+	! points, the frozen background the rows are evaluated on, the pass cap
+	! and alternation of the stationary outer iteration, and the rows the
+	! certification measures.
+	any_row = (thereis_mol .and. carrier_transport) .or.                  &
+	          ionization_transport
+	end function transported_rows_exist
 
 	!----------------------------------!
 
@@ -4837,6 +5626,66 @@
 		     'was NOT reinstated after the isolated evaluation'
 	ok = .true.
 	end subroutine ionization_closure_residual_profile
+
+	!----------------------------------!
+
+	subroutine save_ieq_rate_state(s)
+	! Hold aside the rate state of every cell, allocation status included.
+	type(ieq_rate_state), intent(out) :: s
+	if (allocated(ieq_rate_cell))      s%rate_cell      = ieq_rate_cell
+	if (allocated(ieq_ne_cell))        s%ne_cell        = ieq_ne_cell
+	if (allocated(ieq_TK_cell))        s%TK_cell        = ieq_TK_cell
+	if (allocated(ieq_ntot_cell))      s%ntot_cell      = ieq_ntot_cell
+	if (allocated(ieq_met_coef))       s%met_coef       = ieq_met_coef
+	if (allocated(ieq_nonroot_streak)) s%nonroot_streak =                 &
+	                                              ieq_nonroot_streak
+	s%rates_ready  = ieq_rates_ready
+	s%neq_stored   = ieq_neq_stored
+	s%mbase_stored = ieq_mbase_stored
+	s%iox_stored   = ieq_iox_stored
+	end subroutine save_ieq_rate_state
+
+	!----------------------------------!
+
+	subroutine restore_ieq_rate_state(s)
+	! Put back what save_ieq_rate_state held: the module comes back to the
+	! state it was in and not merely to the same numbers.
+	type(ieq_rate_state), intent(in) :: s
+	if (allocated(s%rate_cell)) then
+		ieq_rate_cell = s%rate_cell
+	else if (allocated(ieq_rate_cell)) then
+		deallocate(ieq_rate_cell)
+	endif
+	call put_back_ieq_1d(s%ne_cell,   ieq_ne_cell)
+	call put_back_ieq_1d(s%TK_cell,   ieq_TK_cell)
+	call put_back_ieq_1d(s%ntot_cell, ieq_ntot_cell)
+	if (allocated(s%met_coef)) then
+		ieq_met_coef = s%met_coef
+	else if (allocated(ieq_met_coef)) then
+		deallocate(ieq_met_coef)
+	endif
+	if (allocated(s%nonroot_streak)) then
+		ieq_nonroot_streak = s%nonroot_streak
+	else if (allocated(ieq_nonroot_streak)) then
+		deallocate(ieq_nonroot_streak)
+	endif
+	ieq_rates_ready  = s%rates_ready
+	ieq_neq_stored   = s%neq_stored
+	ieq_mbase_stored = s%mbase_stored
+	ieq_iox_stored   = s%iox_stored
+	end subroutine restore_ieq_rate_state
+
+	!----------------------------------!
+
+	subroutine put_back_ieq_1d(kept, live)
+	real*8, allocatable, intent(in)    :: kept(:)
+	real*8, allocatable, intent(inout) :: live(:)
+	if (allocated(kept)) then
+		live = kept
+	else if (allocated(live)) then
+		deallocate(live)
+	endif
+	end subroutine put_back_ieq_1d
 
 	!----------------------------------!
 

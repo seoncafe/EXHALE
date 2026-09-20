@@ -35,8 +35,11 @@
 # restart, i.e. a molecular state where the caloric EOS makes the ghost
 # conversion composition-dependent and the invariant is hardest.
 #
-# EXHALE_RESID_EXE selects the binary (default $ROOT/EXHALE.x), which is what
-# a concurrent item's private build needs.
+# EXHALE_EXE selects the binary (default $ROOT/EXHALE.x), which is what a
+# concurrent item's private build needs; EXHALE_RESID_EXE is its accepted
+# alias and a conflicting pair is refused. The script states the path and
+# md5 of the binary before it runs it, and asserts the same md5 on the copy
+# it executes. The policy is in src/tests/exhale_exe.sh.
 #
 # Exit status 0 if the residual is bitwise reproducible, 1 otherwise.
 set -e
@@ -44,7 +47,10 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$HERE/../../.." && pwd)"
 CASE="${1:-$ROOT/backup/regression/mol_base_handoff}"
 WHAT="${2:-replay}"
-EXE="${EXHALE_RESID_EXE:-$ROOT/EXHALE.x}"
+. "$HERE/../exhale_exe.sh"
+exhale_select_exe "$ROOT" residual_determinism
+EXE="$EXHALE_RUN_EXE"
+exhale_announce_exe
 WORK="$(mktemp -d /tmp/exhale_determinism.XXXX)"
 trap 'rm -rf "$WORK"' EXIT
 
@@ -67,6 +73,9 @@ if [ "$nic" -eq 0 ]; then
     fi
 fi
 cp -f "$EXE" "$WORK/EXHALE.x"
+# The copy is the file that executes, so it is the file whose identity is
+# asserted.
+exhale_assert_exe_identity "$WORK/EXHALE.x" || exit 1
 
 if [ "$WHAT" = "branch" ]; then
     ( cd "$WORK" && OMP_NUM_THREADS=1 EXHALE_RESID_BRANCH_REPORT=1 \

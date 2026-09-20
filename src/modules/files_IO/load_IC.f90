@@ -33,6 +33,15 @@
                                melem_name, isp_OH, isp_H2O, isp_CO,     &
                                iel_O, iel_C
       use utils, only: calc_rho, state_certification_reason
+      ! How molecular the base is, the single definition the equation of
+      ! state and the inflowing ghost share (composition.f90).
+      use composition, only: base_h2_nuclei_fraction,                     &
+                             base_h2_composition_imposed
+      ! The lower boundary model this build solves, for the provenance line
+      ! a state carries and the one a restart is read against.
+      use base_boundary, only: base_boundary_model_id,                    &
+                               base_ghost_composition_seed_id,            &
+                               set_state_file_ghost_rows
       ! WHERE THE RESTART PAIR IS READ FROM, and which option tokens a
       ! molecular seed conversion is allowed to find different (item L7 of
       ! docs/PLAN_20260913_lhs_stationary.md). Both are no-ops for an
@@ -224,6 +233,9 @@
    ! before it existed, whose configuration is unknown.
    logical :: ic_restart_schema_present = .false.
    logical :: ic_provenance_unknown     = .false.
+   ! The lower boundary model the restart states, as read from its
+   ! provenance line; empty where the file states none.
+   character(len=meta_len) :: ic_boundary_model = ''
 
    ! ------------------------------------------------------------------ !
    ! THE TOKENS OF THE 'options' FIELD, AND WHICH OF THEM A RESTART MAY BE
@@ -244,20 +256,30 @@
         'carrier', 'carrier_newton', 'iontrans', 'he_diff',                 &
         'he_metal_diff', 'sec_ion', 'caloric_mono', 'excH', 'base_ir',      &
         'mol_ir', 'mol_heat', 'visc', 'cond', 'jlya', 'wellbal' ]
-   ! WHICH TOKENS MAY NEVER BE NAMED, and why: these five decide HOW MANY
-   ! UNKNOWNS the state has and which rows the state files carry. metals
-   ! adds the metal ionization stages, mol the four molecular carriers,
-   ! oxychem the three oxygen carriers; carrier makes the carriers
-   ! transported, which gives each of them a continuity equation and a
-   ! column in the state files; iontrans carries the hydrogen ionization
-   ! state as a transported row. A state whose rows are not this run's rows
-   ! is not this run's state, so such a change is a cold start and not a
-   ! restart, whatever the input names. The grid is not a token of this
-   ! field at all (it is the 'grid' field, N included) and is refused the
-   ! same way.
+   ! WHICH TOKENS MAY NEVER BE NAMED, and why: these four decide WHICH
+   ! SPECIES THE STATE FILES CARRY. metals adds the metal ionization
+   ! stages, mol the four molecular carriers, oxychem the three oxygen
+   ! carriers; carrier gives each transported carrier a continuity equation
+   ! and a column of its own. A state whose columns are not this run's
+   ! columns is not this run's state, so such a change is a cold start and
+   ! not a restart, whatever the input names. The grid is not a token of
+   ! this field at all (it is the 'grid' field, N included) and is refused
+   ! the same way.
+   !
+   ! iontrans is NOT one of them. The three ionization stages have a column
+   ! in every state file this code writes -- n(H II), n(He II), n(He III)
+   ! are species of the atomic mixture -- and what the key changes is
+   ! whether those columns are the local root of each cell or a partition
+   ! the flow carried. So a state produced without the key is an admissible
+   ! STARTING POINT for a run with it, and the other way round, which is
+   ! what the two notes beside the option ladder below already say happens
+   ! ("the transport starts from it and relaxes over the ionization
+   ! time"). It is a change of the equations, so it must still be named on
+   ! a "Restart option change:" line and is written into the new state's
+   ! block; it is not a change of what the file holds.
    logical, parameter :: opt_changes_layout(n_opt) = [                      &
         .false., .true.,  .false., .true.,  .false., .true.,                &
-        .true.,  .false., .true.,  .false.,                                 &
+        .true.,  .false., .false., .false.,                                 &
         .false., .false., .false., .false., .false.,                        &
         .false., .false., .false., .false., .false., .false. ]
    ! A ROUTE TOKEN: the same equations, solved by another algorithm.
@@ -319,6 +341,10 @@
 
       ! Loaded number densities for every f_sp column (zero = not in file)
       real*8, dimension(1-Ng:N+Ng,n_species) :: nsp_l
+      ! The composition of the gas the reservoir holds at the base level,
+      ! which is what the lower ghost rows of the state carry (see the block
+      ! near the end of load_IC).
+      real*8, dimension(n_species)        :: f_sp_base_row
       ! Metal and molecular densities assembled for the calc_rho mass policy
       real*8, dimension(1-Ng:N+Ng,n_mion) :: nm_l
       real*8, dimension(1-Ng:N+Ng,4)      :: nmol_l
@@ -438,6 +464,7 @@
                call parse_certification_claim(line, claim_h, trim(f_hyd))
             endif
             call parse_restart_metadata_line(line, meta_h)
+            call parse_boundary_model_line(line)
             call collect_option_change_line(line)
          else
             nrec = nrec + 1
@@ -680,10 +707,18 @@
             ! base cells are touched at all.  What matters below is whether
             ! the composition MOVED, so the flag is set on the factors and
             ! not on the fact that the branch was entered.
+            !
+            ! OVER THE PHYSICAL CELLS ONLY, for the reason the block above
+            ! states: the ghost rows are boundary data and are not read, so
+            ! their factors say nothing about the state.  Measured with them
+            ! in: scaling the H2 column of the two lower ghost rows of one
+            ! restart by 1 + 1e-6 -- rows this loader now replaces -- carried
+            ! the ghosts' own factors past this tolerance, turned the flag
+            ! on and sent the density branch below the other way, moving the
+            ! physical column at 1e-13 and the cell-1 continuity row from
+            ! 8.86e-09 to 8.26e-09.
             if (max(maxval(abs(sH_l(1:N)  - 1.0d0)),                      &
-                    maxval(abs(sHe_l(1:N) - 1.0d0)),                      &
-                    maxval(abs(sH_l(1-Ng:0)  - 1.0d0)),                   &
-                    maxval(abs(sHe_l(1-Ng:0) - 1.0d0)))                   &
+                    maxval(abs(sHe_l(1:N) - 1.0d0)))                      &
                 .gt. restart_composition_move_tol) then
                composition_changed_here = .true.
                if (len_trim(composition_changed_why) .eq. 0)              &
@@ -1146,6 +1181,55 @@
          enddo
       enddo
 
+      ! ---- THE LOWER GHOST ROWS OF THE FILE ARE NOT READ ----
+      !
+      ! The two rows below the base are BOUNDARY DATA, not part of the state:
+      ! the boundary-state operation derives them from the physical column
+      ! and the prescribed reservoir at the first Apply_BC of the run, and a
+      ! file cannot state them. Reading them made the reconstructed boundary
+      ! a function of the file as well as of the state: with the physical
+      ! cells and every declared input held fixed and only these two species
+      ! rows exchanged for another admissible ghost, the cell-1 continuity
+      ! row of one hot-Uranus molecular state reads 9.06, 15.98, 425 or
+      ! 7.4e8 of its own rounding floors, and one of those ghosts reverses
+      ! the sign of the base face mass flux (MEASURED,
+      ! docs/lhs1140b_stationary_D5a_20260918.md section 4).
+      !
+      ! WHAT REPLACES THEM. The composition of the gas the reservoir holds at
+      ! the base level (base_reservoir_composition_row below), and, for the
+      ! thermodynamic row, the first physical cell -- a placeholder that the
+      ! first Apply_BC overwrites with the ghost cell averages of the
+      ! boundary's own hydrostatic isentrope. Both are functions of the
+      ! physical column and the declared inputs alone, so two files that
+      ! differ only in these rows now load as one state.
+      !
+      ! THE UPPER GHOSTS ARE STILL READ: they are the free-outflow
+      ! continuation's, the composition sweep starts its columns there, and
+      ! nothing in this item changes that boundary.
+      ! The rows the file carried are kept before they are replaced. They
+      ! are the ghost the solve that wrote the state returned, and the
+      ! measurement key EXHALE_GHOST_COMPOSITION_SEED can hand them back to
+      ! the composition sweep; nothing else reads them.
+      call set_state_file_ghost_rows(f_sp(1-Ng:0,:))
+
+      call base_reservoir_composition_row(f_sp(1,:), f_sp_base_row)
+      do j = 1-Ng, 0
+         f_sp(j,:) = f_sp_base_row
+         rho(j)    = rho(1)
+         v(j)      = v(1)
+         p(j)      = p(1)
+         T(j)      = T(1)
+      enddo
+      write(*,'(A)') ' (load_IC) the lower ghost rows of the restart'//   &
+           ' pair are boundary data and are not read: the boundary is'
+      write(*,'(A)') '   derived from the physical column and the'//      &
+           ' prescribed reservoir. WHICH composition the ghost solve'
+      write(*,'(A)') '   starts from is the boundary model''s own'//      &
+           ' statement, '//base_ghost_composition_seed_id//', and the'
+      write(*,'(A)') '   composition it returns is held to a fixed'//     &
+           ' point of that solve, so the rows dropped here select'//      &
+           ' nothing.'
+
       ! Construct matrix of primitive profiles
       W(1,:) = rho
       W(2,:) = v
@@ -1155,6 +1239,252 @@
       end subroutine load_IC
 
       !-------------------------------------!
+
+      !-------------------------------------!
+
+      subroutine parse_boundary_model_line(line)
+      ! WHICH LOWER BOUNDARY MODEL THE STATE WAS PRODUCED UNDER, from the
+      ! provenance line write_output writes. Informational: the boundary is
+      ! rebuilt from the physical column and this run's own reservoir
+      ! whatever the file says, and a state written before the line existed
+      ! carries none. It is read so that a state produced under another
+      ! boundary model can be recognized as such instead of being taken for
+      ! one of this model's.
+      character(len=*), intent(in) :: line
+      character(len=len(line)) :: t
+      integer :: pos
+      t = adjustl(line)
+      if (t(1:1) .eq. '#') t = adjustl(t(2:))
+      pos = index(trim(t), ' ')
+      if (pos .le. 1) return
+      if (t(1:pos-1) .ne. 'boundary_model') return
+      ic_boundary_model = adjustl(t(pos+1:))
+      end subroutine parse_boundary_model_line
+
+      !-------------------------------------!
+
+      subroutine report_boundary_model_of_the_restart
+      ! One line on what the state says about its lower boundary.
+      integer :: pos
+      character(len=meta_len) :: idf
+      if (len_trim(ic_boundary_model) .eq. 0) then
+         write(*,'(A)') ' (load_IC) the restart states no boundary'//     &
+              ' model: it was written before the identity was recorded.'
+         return
+      endif
+      idf = ic_boundary_model
+      pos = index(trim(idf), ' ')
+      if (pos .gt. 1) idf = idf(1:pos-1)
+      if (trim(idf) .eq. base_boundary_model_id) then
+         write(*,'(A)') ' (load_IC) boundary model of the restart: '//    &
+              trim(idf)//' (this run''s).'
+      else
+         write(*,'(A)') ' (load_IC) NOTE: the restart was produced'//     &
+              ' under boundary model '//trim(idf)
+         write(*,'(A)') '   and this run solves '//                       &
+              base_boundary_model_id//'. The boundary is rebuilt from'//  &
+              ' the physical column'
+         write(*,'(A)') '   and this run''s reservoir, and its ghost'//   &
+              ' composition is solved to this model''s own seed and'//    &
+              ' fixed point,'
+         write(*,'(A)') '   so the state is loaded; its residual is'//    &
+              ' not the residual it was written with.'
+      endif
+      end subroutine report_boundary_model_of_the_restart
+
+      !-------------------------------------!
+
+      subroutine base_reservoir_composition_row(f_cell1, f_row)
+      ! THE COMPOSITION OF THE GAS THE RESERVOIR HOLDS AT THE BASE LEVEL,
+      ! per unit mass, in the layout of f_sp: what the lower ghost cells of a
+      ! restart carry instead of the rows the file wrote there.
+      !
+      ! TWO STATEMENTS MAKE IT, and both are declared inputs of the boundary.
+      !
+      !   THE ELEMENTAL ABUNDANCES ARE THE RESERVOIR'S: He/H and each trace
+      !   element's El/H, the numbers the input states and the restart
+      !   metadata block carries as its reservoir field. That is the rule
+      !   this loader already applies to the base cells of a diffused state,
+      !   where the column keeps its own separation and cells 1-Ng to 1 are
+      !   carried onto the input's He/H (the He_diffusion branch above): the
+      !   gas below the base is the inflow, and the lower atmosphere states
+      !   what it is made of.
+      !
+      !   THE PARTITION WITHIN EACH ELEMENT IS THE FIRST PHYSICAL CELL'S:
+      !   the ionization stages, the molecular ions and the oxygen carriers,
+      !   as fractions of their own element's nuclei. The lower-atmosphere
+      !   model never saw the wind's field, so it states no ionization; the
+      !   ghost's own balance does, and the sweep solves it. What is needed
+      !   here is a starting point in the right basin, and the cell half a
+      !   grid spacing above the ghost is one. MEASURED without it, with the
+      !   gas seeded neutral instead: on the hot WASP-121b base (T = 2358 K
+      !   at the ghost) the ghost's ionization solve returned a non-root
+      !   above the amnesty cap at both lower cells and the cells kept the
+      !   neutral seed, which is not a state of the network.
+      !
+      !   The one partition the first cell does NOT state is the molecular
+      !   one: the handoff states x2 for the inflowing gas
+      !   (base_h2_nuclei_fraction, the single definition the equation of
+      !   state shares), and the sweep closes it against the ghost's own
+      !   ionization. Without a handoff the first cell's own H2 share is the
+      !   seed, since there is then nothing upstream to impose.
+      !
+      ! MASS. Every species below is a density per unit mass whose nuclei are
+      ! counted exactly once, and each element's neutral ground species takes
+      ! the remainder of that element's nuclei, so the row weighs
+      ! (1 + m_He He/H + sum El/H m_El)/mass_per_H = 1 exactly, under either
+      ! metal policy, as the cold start's own base row does (set_IC builds the
+      ! same composition for a whole column).
+      !
+      ! HeH+ carries one nucleus of each element, so no single factor
+      ! rescales it: it takes the smaller of the two element factors and the
+      ! nuclei that leaves short stay in the neutral ground species, which is
+      ! how the He/H rescale of this loader treats it too.
+      real*8, intent(in)  :: f_cell1(n_species)
+      real*8, intent(out) :: f_row(n_species)
+      real*8  :: nH_1, nHe_1, nH_r, nHe_r, s_he, x2
+      real*8  :: n_hehp, n_h2, n_h2p, n_h3p, n_hii, n_oh, n_h2o, n_co
+      real*8  :: nE_1, s_E, sO, sC, x_ion_seed
+      integer :: e, k, c, i0
+
+      f_row = 0.0d0
+
+      ! Element nuclei of the first physical cell, over every species that
+      ! carries them, and the reservoir's own counts per unit mass.
+      nH_1 = f_cell1(isp_HI) + f_cell1(isp_HII)                           &
+           + 2.0d0*(f_cell1(isp_H2) + f_cell1(isp_H2p))                   &
+           + 3.0d0*f_cell1(isp_H3p) + f_cell1(isp_HeHp)                   &
+           + f_cell1(isp_OH) + 2.0d0*f_cell1(isp_H2O)
+      nHe_1 = f_cell1(isp_HeI) + f_cell1(isp_HeII)                        &
+            + f_cell1(isp_HeIII) + f_cell1(isp_HeHp)
+      nH_r  = 1.0d0/mass_per_H
+      nHe_r = HeH/mass_per_H
+
+      ! A first cell with no hydrogen states no partition; the reservoir is
+      ! then neutral and the sweep starts from that.
+      if (.not. (nH_1 .gt. 0.0d0)) then
+         f_row(isp_HI) = nH_r
+         if (thereis_He) f_row(isp_HeI) = nHe_r
+         do e = 1, n_melem
+            f_row(mion_fsp(melem_i0(e))) = melem_ab(e)/mass_per_H
+         enddo
+         return
+      endif
+
+      s_he = 0.0d0
+      if (thereis_He .and. nHe_1 .gt. 0.0d0) s_he = nHe_r/nHe_1
+
+      ! ---- helium, and the molecule that carries a nucleus of each -------
+      n_hehp = 0.0d0
+      if (thereis_mol .and. f_cell1(isp_HeHp) .gt. 0.0d0)                 &
+         n_hehp = min(f_cell1(isp_HeHp)*nH_r/nH_1,                        &
+                      f_cell1(isp_HeHp)*s_he)
+      if (thereis_He) then
+         f_row(isp_HeII)  = f_cell1(isp_HeII) *s_he
+         f_row(isp_HeIII) = f_cell1(isp_HeIII)*s_he
+         f_row(isp_HeTR)  = f_cell1(isp_HeTR) *s_he
+         ! He I is the TOTAL neutral helium, the 2^3S level included, so the
+         ! triplet is a share of it and not a further nucleus.
+         f_row(isp_HeI)   = max(nHe_r - f_row(isp_HeII)                   &
+                                - f_row(isp_HeIII) - n_hehp, 0.0d0)
+      endif
+      if (thereis_mol) f_row(isp_HeHp) = n_hehp
+
+      ! ---- the trace elements, stage by stage ----------------------------
+      do e = 1, n_melem
+         i0   = melem_i0(e)
+         nE_1 = 0.0d0
+         do k = 0, melem_top(e)
+            nE_1 = nE_1 + f_cell1(mion_fsp(i0+k))
+         enddo
+         if (thereis_oxychem .and. e .eq. iel_O)                          &
+            nE_1 = nE_1 + f_cell1(isp_OH) + f_cell1(isp_H2O)              &
+                 + f_cell1(isp_CO)
+         if (thereis_oxychem .and. e .eq. iel_C)                          &
+            nE_1 = nE_1 + f_cell1(isp_CO)
+         if (nE_1 .gt. 0.0d0) then
+            s_E = (melem_ab(e)/mass_per_H)/nE_1
+            do k = 1, melem_top(e)
+               f_row(mion_fsp(i0+k)) = f_cell1(mion_fsp(i0+k))*s_E
+            enddo
+         else
+            s_E = 0.0d0
+         endif
+         ! The neutral stage takes the remainder of this element's nuclei;
+         ! the oxygen and carbon carriers are removed from it below.
+         f_row(mion_fsp(i0)) = melem_ab(e)/mass_per_H
+         do k = 1, melem_top(e)
+            f_row(mion_fsp(i0)) = f_row(mion_fsp(i0))                     &
+                                - f_row(mion_fsp(i0+k))
+         enddo
+         f_row(mion_fsp(i0)) = max(f_row(mion_fsp(i0)), 0.0d0)
+      enddo
+
+      ! ---- the oxygen carriers, on the same rule --------------------------
+      n_oh = 0.0d0;  n_h2o = 0.0d0;  n_co = 0.0d0
+      if (thereis_oxychem) then
+         sO = 0.0d0;  sC = 0.0d0
+         nE_1 = f_cell1(isp_OH) + f_cell1(isp_H2O) + f_cell1(isp_CO)
+         do k = 0, melem_top(iel_O)
+            nE_1 = nE_1 + f_cell1(mion_fsp(melem_i0(iel_O)+k))
+         enddo
+         if (nE_1 .gt. 0.0d0) sO = (melem_ab(iel_O)/mass_per_H)/nE_1
+         nE_1 = f_cell1(isp_CO)
+         do k = 0, melem_top(iel_C)
+            nE_1 = nE_1 + f_cell1(mion_fsp(melem_i0(iel_C)+k))
+         enddo
+         if (nE_1 .gt. 0.0d0) sC = (melem_ab(iel_C)/mass_per_H)/nE_1
+         n_oh  = f_cell1(isp_OH) *sO
+         n_h2o = f_cell1(isp_H2O)*sO
+         ! CO holds a nucleus of each, and takes the smaller share.
+         n_co  = f_cell1(isp_CO)*min(sO, sC)
+         f_row(isp_OH)  = n_oh
+         f_row(isp_H2O) = n_h2o
+         f_row(isp_CO)  = n_co
+         f_row(mion_fsp(melem_i0(iel_O))) =                               &
+              max(f_row(mion_fsp(melem_i0(iel_O)))                        &
+                  - n_oh - n_h2o - n_co, 0.0d0)
+         f_row(mion_fsp(melem_i0(iel_C))) =                               &
+              max(f_row(mion_fsp(melem_i0(iel_C))) - n_co, 0.0d0)
+      endif
+
+      ! ---- hydrogen: the handoff's molecular partition, the first cell's
+      !      ionization, and the neutral remainder -------------------------
+      !
+      ! WHAT THE HANDOFF STATES IS THE PARTITION OF THE NON-IONIZED
+      ! HYDROGEN, x_H2 = x2 (1 - x_ion), which is the prescription the sweep
+      ! imposes on this cell and closes against its own balance. Taking x2 of
+      ! EVERY nucleus instead over-subscribes the budget wherever the base is
+      ! fully molecular: at the element-ratio ceiling x2 = 1 and the ionized
+      ! hydrogen the first cell contributes would be hydrogen the cell does
+      ! not have. Here x_ion is the H nuclei the seed puts into ionized
+      ! species, and the neutral atomic hydrogen is what the molecular
+      ! partition and the oxygen carriers leave of the rest.
+      n_hii = f_cell1(isp_HII)*nH_r/nH_1
+      n_h2  = 0.0d0;  n_h2p = 0.0d0;  n_h3p = 0.0d0
+      if (thereis_mol) then
+         n_h2p = f_cell1(isp_H2p)*nH_r/nH_1
+         n_h3p = f_cell1(isp_H3p)*nH_r/nH_1
+      endif
+      x_ion_seed = (n_hii + 2.0d0*n_h2p + 3.0d0*n_h3p + n_hehp)/nH_r
+      if (x_ion_seed .gt. 1.0d0) x_ion_seed = 1.0d0
+      if (thereis_mol) then
+         if (base_h2_composition_imposed()) then
+            x2 = base_h2_nuclei_fraction()
+         else
+            x2 = 2.0d0*f_cell1(isp_H2)/nH_1
+         endif
+         n_h2 = 0.5d0*x2*(1.0d0 - x_ion_seed)*nH_r
+      endif
+      f_row(isp_HII) = n_hii
+      f_row(isp_H2)  = n_h2
+      f_row(isp_H2p) = n_h2p
+      f_row(isp_H3p) = n_h3p
+      f_row(isp_HI)  = max(nH_r - n_hii - 2.0d0*(n_h2 + n_h2p)            &
+                           - 3.0d0*n_h3p - n_hehp - n_oh - 2.0d0*n_h2o,   &
+                           0.0d0)
+
+      end subroutine base_reservoir_composition_row
 
       !-------------------------------------!
 
@@ -1454,6 +1784,8 @@
 
       ic_restart_schema_present = (len_trim(meta_h(imeta_schema)) .gt. 0)
       ic_provenance_unknown     = .not. ic_restart_schema_present
+
+      call report_boundary_model_of_the_restart
 
       ! The two files are two halves of ONE state, so a pair whose halves
       ! state different configurations is not a state at all.
@@ -2236,6 +2568,26 @@
             ' centers of a different grid from the one this run built.'
          write(*,'(A,A,A,I0,A)') '   this run: "Grid type: ',                &
             trim(grid_type), '" with ', N, ' cells;'
+         ! On the Mixed grid the base cell width is the value that moves
+         ! the centers, and a difference of 2.5e-8 in it (the width of an
+         ! input written before 2026-09-19 without the key, against the
+         ! present default) exceeds the tolerance; so the width is stated
+         ! at round-trip precision with where it came from.
+         if (grid_type .eq. 'Mixed') then
+            if (dr_base_from_key) then
+               write(*,'(A,ES26.17E3,A,I0,A)') '   base grid: width',         &
+                  dr_base, ' R_p x ', N_low_cells,                           &
+                  ' uniform cells, from the "Base grid [dr,cells]:" key;'
+            else
+               write(*,'(A,ES26.17E3,A,I0,A)') '   base grid: width',         &
+                  dr_base, ' R_p x ', N_low_cells,                           &
+                  ' uniform cells, the default (no "Base grid" key);'
+            endif
+            write(*,'(A)') '   a state written before 2026-09-19 on an'//     &
+               ' input without that key needs'
+            write(*,'(A)') '   "Base grid [dr,cells]:'//                     &
+               ' 1.9999999494757503e-4 50" (src/utils/pin_base_grid.py).'
+         endif
          write(*,'(A,I0,A,ES23.16)') '   cell ', j_worst,                    &
             ': the run has r = ', r(j_worst)
          write(*,'(A,ES23.16)') '                    the file has r = ',     &

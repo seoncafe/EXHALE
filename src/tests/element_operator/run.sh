@@ -7,7 +7,10 @@
 # zero-gradient condition the fixed-wind relaxation writes on its working
 # arrays, so that the two spellings of the element balance are one operator
 # whatever the caller left in the composition ghosts.  See the header of
-# element_operator_tests.f90 for what each row asserts.
+# element_operator_tests.f90 for what each row asserts.  It also states the
+# base budget entry of the operator: which evaluation the base element flux
+# record belongs to, and both halves of that flux at the base face and at the
+# first solved face.
 #
 # Every row prints one
 #     PASS|FAIL <name> measured=<v> reference=<r> tol=<t>

@@ -60,7 +60,9 @@ from exhale_transit_lib import (
     chord_shell_indices, refused_line_center_tau_share,
     first_data_row_ncol,
     read_adv_validity, transit_metadata_block, transit_tool_identity,
-    transit_environment_overrides,
+    transit_environment_overrides, transit_state_files,
+    state_pair_difference, file_identity, state_provenance_statements,
+    transit_state_oi_levels,
 )
 
 start = time.time()
@@ -73,11 +75,61 @@ start = time.time()
 # Input_file = EXHALE's auto-generated input file
 # Hydro_file = EXHALE's hydro output (with path)
 # Ioniz_file = EXHALE's ionization output (with path)
+#
+# WHICH STATE OF THE RUN THE LINE IS SYNTHESIZED FROM, selectable through
+# EXHALE_TRANSIT_STATE:
+#
+#   adv       (default) the advection-corrected profile, Hydro_ioniz_adv.txt
+#             and Ion_species_adv.txt.  This is what the tool has always
+#             read and what every published curve of this code stands on.
+#   solution  the state the wind solver converged and the certification
+#             judged, Hydro_ioniz.txt and Ion_species.txt.  With the
+#             ionization stages transported (Ionization transport) the
+#             composition of that state is the transported partition, and a
+#             second, differently discretized answer for the same fractions
+#             in the file the line reads would mix two states.
+#
+# What the two selections MEAN, since they are two answers for one column
+# and not two formats of one answer:
+#
+#   the `_adv` profile is a POST-PROCESS of a marching state.  It takes the
+#   marched temperature and composition and applies a steady advective
+#   correction cell by cell, first-order upwind at the bulk velocity, with
+#   no eddy term and no element drift, and it refuses that correction where
+#   an assumption of the steady equations fails in a cell.  It is an
+#   independent discretization of the same column, and it is not what any
+#   equation of the run was solved for.
+#
+#   the solved pair is the state the solver produced and the certification
+#   judged: the state whose residuals were measured against a tolerance.
+#   Where the ionization stages are transported, its composition is what the
+#   stage transport itself produced, so applying the advective correction on
+#   top of it would be a SECOND and different transport approximation of the
+#   same stages, laid over the one that was solved.
+#
+# A stationary route therefore writes no `_adv` products, and none are to be
+# manufactured for one: a run without them is read with
+# EXHALE_TRANSIT_STATE=solution, and the default selection refuses by name
+# when the `_adv` pair is absent rather than reading the other state.
+#
+# The pair is a PAIR: the temperature of one state and the composition of
+# the other solve neither set of equations, so both files come from the same
+# selection and the selection is named in the header of every product, with
+# the md5 of each file read and the state's own provenance and boundary
+# model beside it.  Where the post-process exists it is kept either way, as
+# the independent discretization the solution is measured against, and the
+# measured distance between the two states travels into the same header.
 
 path = _tenv('PATH', '.')  # EXHALE's files destination folder (env override)
 Input_file = path + '/input.inp'
-Hydro_file = path + '/output/Hydro_ioniz_adv.txt'
-Ioniz_file = path + '/output/Ion_species_adv.txt'
+# A selection whose files are not there is refused with the reason, not with
+# a traceback: the usual case is a stationary run, which writes no `_adv`
+# products because there was no marching state to correct.
+try:
+	Hydro_file, Ioniz_file, _state_selection = transit_state_files(
+	    path, _tenv('STATE', 'adv'))
+except (FileNotFoundError, ValueError) as _exc:
+	sys.exit(str(_exc))
 
 # ----- Output naming: one rule for every product of this script ----- #
 # Every line computed here is identified by the same key -- He10830, Lya,
@@ -313,6 +365,40 @@ r,rho,v,p,T,heat,cool = loadtxt_cells(Hydro_file, usecols = range(7),
 # rows carry, is printed once the chord arrays and every line's lower-level
 # density exist (search for CONTRIBUTION diagnostic).
 _adv          = read_adv_validity(Hydro_file)
+# How far the run's other state stands from the one this curve is built on,
+# measured on the three quantities a He I 10830 or a Balmer curve integrates.
+# The other state is only being located here, so it is not required to
+# exist: a stationary run has no `_adv` products and that is not an error.
+_state_other  = transit_state_files(
+    path, 'solution' if _state_selection == 'adv' else 'adv', require=False)
+_state_record = {
+    'selection': _state_selection,
+    'hydro': Hydro_file, 'ioniz': Ioniz_file,
+    # A spectrum is traceable to the numbers it was built from only through
+    # the digest of the files: the path is reused by the next run.
+    'identity': [file_identity(Hydro_file), file_identity(Ioniz_file)],
+    # What the state says about itself, copied out of its own header.
+    'provenance': (state_provenance_statements(Hydro_file)
+                   + [q for q in state_provenance_statements(Ioniz_file)
+                      if q not in state_provenance_statements(Hydro_file)]),
+    'difference': state_pair_difference(Hydro_file, Ioniz_file,
+                                        _state_other[0], _state_other[1])}
+print('(TPM) state read: %s (%s, %s)'
+      % (_state_selection, os.path.basename(Hydro_file),
+         os.path.basename(Ioniz_file)))
+for _q in _state_record['identity']:
+    print('(TPM)   %s' % _q)
+for _q in _state_record['provenance']:
+    print('(TPM)   state %s' % _q)
+if _state_record['difference'] is not None:
+    _d = _state_record['difference']
+    print('(TPM) distance to the %s state over %d rows, largest relative: '
+          'T %.3e, n(H I) %.3e, n(He 2^3S) %.3e'
+          % (_state_other[2], _d['rows'], _d['T'], _d['HI'],
+             _d['HeI_2_3S']))
+else:
+    print('(TPM) the %s state of this run was not read; how far the two '
+          'stand apart is UNKNOWN' % _state_other[2])
 _adv_refused  = _adv['refused']
 _adv_T_status = _adv['T_status']
 _adv_comp     = _adv['comp_status']
@@ -918,10 +1004,14 @@ data_nNaI  = np.concatenate((np.flip(nNaI_cm),  nNaI_cm ))*1.0e6
 # total column and a factor 1.8 / 3.1 / 9.3 in the three components.
 # So the populations are read from the wind solver, which writes them out of
 # the same three-level statistical equilibrium its [O I] 63/145/44um cooling
-# is built on (OI_levels_adv.txt, Cool_coeff.f90).  A run whose output
+# is built on (the OI_levels file of the selected state, Cool_coeff.f90).
+# A run whose output
 # predates that file, or a metals-off run that never wrote it, simply skips
 # the line the way the other metal lines are skipped.
-OI_file = path + '/output/OI_levels_adv.txt'
+# It follows the state selection: the level populations a line integrates
+# and the density and temperature it integrates them with come from one
+# state, never from two.
+OI_file = transit_state_oi_levels(path, _state_selection)
 do_OI = do_metals and os.path.exists(OI_file)
 if do_OI:
 	# cols 8,9,10 (0-indexed) = n(3P2), n(3P1), n(3P0) in cm^-3
@@ -995,7 +1085,7 @@ print('')
 
 # --------------------------------------------------------------------- #
 # Full doublet transmission spectra for the metal resonance lines.
-# Same spherical pipeline as resonance_depth, but with BOTH doublet
+# The same spherical chord integration as resonance_depth, but with BOTH doublet
 # components summed in one wavelength window, and with the instrument
 # and planet-rotation convolutions applied exactly as for the H/He
 # lines, so the metal lines are first-class TPM outputs, written under
@@ -1470,7 +1560,8 @@ _overrides     = transit_environment_overrides()
 for _key, _lbl, _lam, _t0, _t1, _t2 in _curves:
 	_meta = transit_metadata_block(_adv, _tool_identity, _overrides,
 	                               _census_summary,
-	                               _transit_census.get(_key))
+	                               _transit_census.get(_key),
+	                               state=_state_record)
 	np.savetxt(_save_prefix + 'tpm_%s.txt' % _key,
 	           np.c_[_lam, _t0, _t1, _t2],
 	           header='\n'.join(
@@ -1486,12 +1577,13 @@ if 'OI' in metal_spec and len(oi_result) > 0:
 	with open(_save_prefix + 'tpm_OI_band_depths.txt', 'w') as _fh:
 		for _ml in transit_metadata_block(_adv, _tool_identity, _overrides,
 		                                  _census_summary,
-		                                  _transit_census.get('OI')):
+		                                  _transit_census.get('OI'),
+		                                  state=_state_record):
 			_fh.write('# %s\n' % _ml)
 		_fh.write('# O I 1302.168/1304.858/1306.029 A band-integrated transit '
 		          'depths, HD 209458 b comparison\n')
 		_fh.write('# Lower levels: the 3P2/3P1/3P0 ground-term fine-structure '
-		          'populations from OI_levels_adv.txt,\n')
+		          'populations from %s,\n' % os.path.basename(OI_file))
 		_fh.write('#   i.e. the same three-level statistical equilibrium the '
 		          '[O I] 63/145/44um cooling uses.\n')
 		_fh.write('# Atomic data: NIST ASD (accuracy A), vacuum wavelengths.\n')
@@ -1549,7 +1641,8 @@ try:
 	with open(_save_prefix + 'tpm_He10830_metrics.txt', 'w') as _fh:
 		for _ml in transit_metadata_block(_adv, _tool_identity, _overrides,
 		                                  _census_summary,
-		                                  _transit_census.get('He10830')):
+		                                  _transit_census.get('He10830'),
+		                                  state=_state_record):
 			_fh.write('# %s\n' % _ml)
 		_fh.write('# He 10830 line metrics (three-Gaussian fit, air frame,\n'
 		          '# instrument-convolved curve; he_line_metrics.py)\n')

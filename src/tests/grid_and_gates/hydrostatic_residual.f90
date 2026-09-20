@@ -118,7 +118,8 @@
       !   two O(2 p/r) halves cancel between them.
 
       use global_parameters
-      use grid_construction,          only: define_grid
+      use grid_construction,          only: define_grid,                 &
+                                            spherical_cell_volume
       use gravity_grid_construction,  only: set_gravity_grid
       use grav_func,                  only: phi, Dphi
       use base_boundary,              only: set_base_reservoir
@@ -376,7 +377,7 @@
          flat_err = 0.0d0
          do j = 1,N
             sc = (r_edg(j)*r_edg(j) + r_edg(j-1)*r_edg(j-1))              &
-                 /((r_edg(j)**3 - r_edg(j-1)**3)/3.0d0)
+                 /spherical_cell_volume(j)
             flat_err = max(flat_err, abs(dF(2,j) - S(2,j))/sc)
          enddo
 
@@ -584,7 +585,7 @@
          mass_mx  = 0.0d0
          ene_mx   = 0.0d0
          do j = 3,N-2
-            dVj = (r_edg(j)**3 - r_edg(j-1)**3)/3.0d0
+            dVj = spherical_cell_volume(j)
             sc  = (r_edg(j)*r_edg(j) + r_edg(j-1)*r_edg(j-1))/dVj
             cs  = sqrt(gamma_ad*u(3,j)*(gamma_ad - 1.0d0)/u(1,j))
             mom_ref  = max(mom_ref,  u(1,j)*Dphi(r(j)))
@@ -780,7 +781,7 @@
          do j = 3,N-2
             dAp = r_edg(j)*r_edg(j)
             dAm = r_edg(j-1)*r_edg(j-1)
-            dV  = (dAp*r_edg(j) - dAm*r_edg(j-1))/3.0d0
+            dV  = spherical_cell_volume(j)
             ram = (dAp*face_flux(2,j) - dAm*face_flux(2,j-1))/dV
             if (use_plm) then
                pgr = (dAp*face_q_up(j) - dAm*face_q_dn(j-1))/dV
@@ -929,7 +930,7 @@
          do j = 3,N-2
             dAp = r_edg(j)*r_edg(j)
             dAm = r_edg(j-1)*r_edg(j-1)
-            dV  = (dAp*r_edg(j) - dAm*r_edg(j-1))/3.0d0
+            dV  = spherical_cell_volume(j)
             geo = (dAp - dAm)*1.0d0/dV
             sc  = residual_row_scale(2, j, u)
             z_frac  = max(z_frac,  sc/geo)
@@ -991,7 +992,7 @@
          do j = 3,N-2
             dAp = r_edg(j)*r_edg(j)
             dAm = r_edg(j-1)*r_edg(j-1)
-            dV  = (dAp*r_edg(j) - dAm*r_edg(j-1))/3.0d0
+            dV  = spherical_cell_volume(j)
             if (use_plm) then
                epf = abs(u(1,j)*(dAp*(Gphi_i(j)   - Gphi_c(j))           &
                                + dAm*(Gphi_c(j)   - Gphi_i(j-1))))/dV
@@ -1078,7 +1079,7 @@
          do j = 3,N-2
             dAp  = r_edg(j)*r_edg(j)
             dAm  = r_edg(j-1)*r_edg(j-1)
-            dV   = (dAp*r_edg(j) - dAm*r_edg(j-1))/3.0d0
+            dV   = spherical_cell_volume(j)
             ramr = (dAp - dAm)*v_u*v_u/dV
             sc   = residual_row_scale(2, j, u)
             u_ram = max(u_ram, abs(sc - ramr)/ramr)
@@ -1267,7 +1268,11 @@
       ! zero-gravity statement is an identity and not a bound: with no
       ! gravity the equilibrium pressure force is zero, so the scale is the
       ! max of the same two numbers the row's own terms give and the
-      ! departure is exactly zero.
+      ! departure is exactly zero.  It is exactly zero only while this
+      ! fixture divides by the shell volume the rows divide by, which is why
+      ! it reads spherical_cell_volume and does not spell the volume out:
+      ! the two spellings of it differ by up to 6e-13 at the base of a
+      ! refined grid, which this row reads as a broken identity.
       do is = 1,n_scheme
          weq  = 0.0d0
          wp   = 0.0d0
@@ -1310,8 +1315,9 @@
       ! ------------------------------------------------------------------ !
 
       subroutine report_ladder(nfail)
-      ! Read every record written by the per-grid invocations, print the
-      ! ladder with its observed orders, and give the verdicts.
+      ! Read every record written by the invocations that measured one grid
+      ! each, print the ladder with its observed orders, and give the
+      ! verdicts.
       integer, intent(inout) :: nfail
 
       integer, parameter :: mx = 64
@@ -1428,8 +1434,128 @@
       call report_well_balanced(nfail)
       call report_momentum_row_scale(nfail)
       call report_momentum_physical_terms(nfail)
+      call report_cfl_restriction(nfail)
 
       end subroutine report_ladder
+
+      ! ------------------------------------------------------------------ !
+
+      subroutine report_cfl_restriction(nfail)
+      ! WHICH CELLS AND WHICH FACES THE EXPLICIT-STABLE INTERVAL IS TAKEN
+      ! OVER, on the analytic column of this program at rest.
+      !
+      ! The restriction eval_dt returns belongs to the EVOLVED cells: each
+      ! one is bounded by its own shell volume, its two face areas and the
+      ! fastest signal of each face's Riemann problem,
+      !
+      !   dt_j = CFL V_j / max( A_{j-1/2} S_{j-1/2}, A_{j+1/2} S_{j+1/2} ),
+      !   S_{j+1/2} = max(|v| + c) over the two states bounding the face.
+      !
+      ! Three things are asserted, and each one separates that statement
+      ! from a plausible neighbor:
+      !
+      !   the value itself, against the expression above formed here, which
+      !   pins the geometry (a cell-centered dr_j/(|v| + c) misses it by
+      !   dr/r, 2e-4 on this base grid);
+      !
+      !   that a cell which bounds NO face of an evolved cell cannot
+      !   restrict the interval, asserted by giving the outermost ghost a
+      !   sound speed far above every other cell's and requiring the
+      !   interval not to move at all;
+      !
+      !   that the base face's own Riemann problem DOES restrict cell 1,
+      !   asserted by giving the base ghost that sound speed and requiring
+      !   the interval to become CFL V_1/(A_1/2 S_1/2) with it. This is the
+      !   half a "take the minimum over 1..N" would drop: no ghost cell is
+      !   evolved, but the reservoir can carry the fastest wave into the
+      !   first cell.
+      integer, intent(inout) :: nfail
+
+      real*8, dimension(:,:), allocatable :: W
+      real*8, dimension(:),   allocatable :: dt_loc
+      real*8  :: dt, dt_expect, dt_ghost, dt_base, s_lo, s_hi, s_big
+      real*8  :: dtj, b0_case
+      integer :: j, jbind
+
+      N  = 500
+      T0 = Teq
+      R0 = Rp_RJ*RJ
+      Mp = Mp_MJ*MJ
+      v0 = sqrt(kb_erg*T0/mu)
+      b0_case = (Gc*Mp*mu)/(kb_erg*T0*R0)
+
+      call allocate_grid_arrays
+      call define_grid
+      b0 = b0_case
+      call set_gravity_grid
+
+      allocate(W(3,1-Ng:N+Ng), dt_loc(1-Ng:N+Ng))
+      do j = 1-Ng,N+Ng
+         W(1,j) = rho_column(r(j))
+         W(2,j) = 0.0d0
+         W(3,j) = p_column(r(j))
+      enddo
+
+      ! The column is at rest and isothermal, so every signal speed is the
+      ! adiabatic sound speed of the same temperature and the binding cell
+      ! is the one with the smallest V_j/A_{j+1/2}: cell 1 on this grid.
+      call eval_dt(W, dt, dt_loc)
+
+      dt_expect = huge(1.0d0)
+      jbind     = 1
+      do j = 1,N
+         s_lo = max(signal_speed_of(W(:,j-1)), signal_speed_of(W(:,j)))
+         s_hi = max(signal_speed_of(W(:,j)),   signal_speed_of(W(:,j+1)))
+         dtj  = CFL*spherical_cell_volume(j)                              &
+                /max(r_edg(j-1)*r_edg(j-1)*s_lo, r_edg(j)*r_edg(j)*s_hi)
+         if (dtj .lt. dt_expect) then
+            dt_expect = dtj
+            jbind     = j
+         endif
+      enddo
+      write(*,'(A,I5,A,ES13.6,A,ES13.6)')                                 &
+           '  cfl: binding cell ', jbind, '  dt=', dt,                     &
+           '  cell-centred CFL dr/(|v|+c) of that cell=',                  &
+           CFL*dr_j(jbind)/signal_speed_of(W(:,jbind))
+      call verdict_below('cfl_is_the_face_restriction_of_its_own_volume',  &
+           abs(dt - dt_expect)/dt_expect, 1.0d-14, nfail)
+
+      ! A cell beyond every face of an evolved cell: the outermost ghost.
+      ! Ng is at least 2 here, so r_edg(N) is bounded by cells N and N+1
+      ! and cell N+Ng bounds no face of cell N.
+      s_big  = 1.0d3*signal_speed_of(W(:,1))
+      W(3,N+Ng) = W(1,N+Ng)*s_big*s_big/gamma_ad
+      call eval_dt(W, dt_ghost, dt_loc)
+      call verdict_below('cfl_ignores_a_cell_bounding_no_evolved_face',    &
+           abs(dt_ghost - dt)/dt, 1.0d-15, nfail)
+      W(3,N+Ng) = p_column(r(N+Ng))
+
+      ! The base face. Its Riemann problem is between the lowest ghost and
+      ! cell 1, and its wave restricts cell 1 through the face area of that
+      ! face and the volume of that cell.
+      W(3,0) = W(1,0)*s_big*s_big/gamma_ad
+      call eval_dt(W, dt_base, dt_loc)
+      dt_expect = CFL*spherical_cell_volume(1)                            &
+                  /(r_edg(0)*r_edg(0)*max(signal_speed_of(W(:,0)),         &
+                                          signal_speed_of(W(:,1))))
+      call verdict_below('cfl_reads_the_base_face_riemann_problem',        &
+           abs(dt_base - dt_expect)/dt_expect, 1.0d-14, nfail)
+      W(3,0) = p_column(r(0))
+
+      deallocate(W, dt_loc)
+
+      end subroutine report_cfl_restriction
+
+      ! ------------------------------------------------------------------ !
+
+      real*8 function signal_speed_of(Wj) result(c)
+      ! |v| + c of one primitive state, the bound on the fastest wave of a
+      ! Riemann problem it takes part in, with the adiabatic sound speed of
+      ! the atomic column this program builds (no caloric mixture is
+      ! installed here, so gamma_ad is the index eval_dt uses too).
+      real*8, intent(in) :: Wj(3)
+      c = abs(Wj(2)) + sqrt(gamma_ad*Wj(3)/Wj(1))
+      end function signal_speed_of
 
       ! ------------------------------------------------------------------ !
 

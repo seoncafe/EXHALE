@@ -1,6 +1,6 @@
 # Grid and gate tests
 
-Nineteen tests of the discretization and of the run's own record of itself. Six
+Twenty-one tests of the discretization and of the run's own record of itself. Six
 were built for Phase 0 of `docs/development_plan_20260905_rev3.md` (section
 10.4, "Phase 0 gains tests"); `grid_window` and `sed_coverage` came with
 Phase 1 batch 2a, items 2a-GUARDS and 2a-SED; `momentum_row`,
@@ -20,12 +20,15 @@ src/tests/grid_and_gates/run.sh                 # every test
 src/tests/grid_and_gates/run.sh grid_width      # one of them
 ```
 
-Names: `grid_width`, `grid_window`, `photon_quadrature`,
+Names: `grid_width`, `grid_window`, `base_cell_width`, `base_grid_key`,
+`base_grid_pinned`, `base_grid_restart`,
+`photon_quadrature`,
 `threshold_edges`, `hydrostatic_residual`, `free_outflow_boundary`,
 `flux_spread`, `output_state`, `base_level`, `restart_grid`,
 `restart_round_trip`, `restart_intent`, `restart_option_change`,
 `direct_steady_setup`, `sed_coverage`, `coupled_carrier_h2`,
-`carrier_transport_inert`, `momentum_row`, `fpe_traps`.
+`carrier_transport_inert`, `iontrans_atomic`, `momentum_row`,
+`fpe_traps`.
 
 `run.sh` builds into `build/tests/grid_and_gates/`, prints one
 `PASS|FAIL <name> measured=<v> reference=<r> tol=<t>` line per assertion, and
@@ -48,8 +51,9 @@ either of the first two set the `make -q` staleness check is skipped, because
 the objects then need not match the default `build/`. With none of them set
 the suite behaves exactly as described above, staleness check included. The
 shell tests place their copies of the regression cases under
-`build/tests/grid_and_gates/` whatever `EXHALE_TEST_OUT` says, since each of
-them resolves that path itself.
+`EXHALE_TEST_OUT` too (each resolves `${EXHALE_TEST_OUT:-build/tests/grid_and_gates}`
+itself and `run.sh` passes the variable on), so two builds tested at once
+with two values do not share a working directory.
 
 Nothing here re-implements the quantity it tests. The Fortran drivers
 link the **production objects** in `build/` (`run.sh` refuses to run if
@@ -148,10 +152,13 @@ recomputed 2.826589937536.
 Two checks since 2026-09-11 (item P14): the heat-column consistency below, and
 `outer_iteration_ending_hands_back_one_state`, which forces the stationary
 outer iteration's stagnation ending on the hot-Uranus carrier reload
-(`EXHALE_CARRIER_TRUST=1e-6`, `EXHALE_JFNK_MAXIT=40`, since the joint
-progress measure of 2026-09-12) and asserts that the
-written state re-evaluates to itself (relative temperature movement below
-1e-12; MEASURED 6.5e-14 after P14 against 1.3e-8 before).
+(`EXHALE_CARRIER_TRUST=1e-6`, `EXHALE_JFNK_MAXIT=40`, `EXHALE_OUTER_PASSES=50`;
+the pass budget decides whether the ending is reached at all, since the
+composition elimination sweep of the handed-back state keeps the joint
+distance falling at full precision through about forty passes on this
+fixture, the ending arriving at pass 44, MEASURED 2026-09-18) and asserts
+that the written state re-evaluates to itself (relative temperature movement
+below 1e-12; MEASURED 6.4e-16 on 2026-09-18 against 1.3e-8 before P14).
 
 | | |
 |---|---|
@@ -160,11 +167,12 @@ written state re-evaluates to itself (relative temperature movement below
 | Reference | 0 relative difference. The breakdown file's own header states the relation ("Channel sum reproduces the heat_total column (and the Hydro_ioniz.txt heat column up to convergence)"): on one state the two columns are one number |
 | Tolerance | 1e-6 relative |
 | What is run | a copy of `backup/regression/mol_base_handoff` (its `input.inp` and `base.inp`) capped at 200 steps |
-| Expected at HEAD | **RED** |
+| Expected at HEAD | **GREEN**: 1.68e-16 (MEASURED 2026-09-18), the one assembly having replaced the two hand-maintained copies |
 
-Measured at 200 steps: the header says `sec_ion=F`, and `heat_total/heat` has
-median 1.000000, minimum 0.999992, maximum 1.000012 over the 500 physical
-cells; the largest relative difference is 1.19e-5.
+Measured at 200 steps before that assembly, kept as the record of what the
+row caught: the header said `sec_ion=F`, and `heat_total/heat` had median
+1.000000, minimum 0.999992, maximum 1.000012 over the 500 physical cells,
+the largest relative difference 1.19e-5.
 
 What remains is a rate lag of one sweep, not a coupling mismatch. The `heat`
 column is what the ionization sweep returned: the post-sweep composition
@@ -306,7 +314,22 @@ After: 0.999996, 0.999994, 1.000024, 0.997527, 1.000506, 0.997368, 0.997523,
 
 The driver carries three further groups of assertions on the momentum row's
 reference scale, on the same ladder and the same four scheme/solver pairs, so
-the whole program is 60 assertions.
+the whole program is 60 assertions, and three more on the explicit-stable
+interval (below), 63 in all.
+
+**Which cells and which faces the CFL restriction is taken over (3, item
+P6b).** On the same analytic column at rest, `eval_dt` must return
+`CFL V_j / max(A_{j-1/2} S_{j-1/2}, A_{j+1/2} S_{j+1/2})` minimized over the
+EVOLVED cells, with `S` the fastest signal of each face's Riemann problem.
+Asserted as the value itself against that expression formed in the test
+(1e-14 relative), as an outermost ghost given a sound speed a thousand times
+the column's leaving the interval untouched (a cell bounding no face of an
+evolved cell), and as the same sound speed in the BASE ghost taking the
+interval to `CFL V_1/(A_{1/2} S_{1/2})` (the base Riemann problem restricts
+cell 1 although no ghost cell is evolved). MEASURED: all three are exactly
+0 at HEAD; under the cell-centered minimum over `1-Ng:N+Ng` they are
+1.96e-4 (the geometry, which is `dr/r` on this base grid), 8.97e-1 (the
+outer ghost dictating the step) and 1.96e-4.
 
 **The well-balanced key on its own discrete equilibrium (12, item N37).** The state whose
 two neighboring equilibrium extrapolations agree at every shared face,
@@ -457,6 +480,18 @@ upwinding.
 | Configurations | copies of `examples/14_diffusion` and `examples/15_molecular`, each with the key appended and capped at one step, in `ctiA/`, `ctiB/` |
 | Expected before HYG-CHECKED | **RED** on the first two assertions: the atomic run with the key set ran to completion and printed nothing about it |
 
+### 14b. `ionization_transport_atomic.sh` -> `iontrans_atomic`
+
+| | |
+|---|---|
+| Origin | PLAN_20260917 item L36, increment L36e: the stage rows of `Ionization transport: True` were rows of the transport-chemistry operator, and that operator was entered, given a frozen background and given a row source only in a molecular gas, so the key was refused in an atomic one |
+| Quantity | five statements about an ATOMIC run with the key on and about a molecular run whose carriers are not transported: that the atomic run is accepted and exits 0; that its setup report names the three carried fractions and the atomic row source; that its certification carries both `ionization stage nucleus sum` entries; that it evaluates all three `carrier balance` rows; and that the molecular configuration with `Molecular carrier transport: False` is still refused by name |
+| Reference | exit 0 with no `(input_read) ERROR` for the atomic run, two stage-sum entries and three evaluated stage rows in its certification; a nonzero exit naming `Molecular carrier transport: True` for the molecular one |
+| Why | the stages are stages of an ELEMENT, transported on that element's own nucleus face flux, and a hydrogen and helium mixture has them whether or not it has molecules; what the rows need from the gas is an ionization balance to be their source, and in an atomic gas that is `heh_tr_rows`, the rows the local sweep of the same gas solves. The kept refusal is the one configuration in which the two halves of one network would be evaluated at different molecular compositions of one cell |
+| Tolerance | 0 (an exit status, the presence of strings, and two counts) |
+| Configurations | copies of `examples/14_diffusion` capped at five steps and of `examples/15_molecular` capped at one, in `iontrans_atomic/`, `iontrans_mol_local/` |
+| Expected before L36e | **RED** on the first four rows, MEASURED with the entry-text binary: the atomic run aborts in `input_read`, which refused the key without `Molecular chemistry: True`, so it writes no setup report block and no certification. The fifth row was green then as now |
+
 ### 15. `restart_round_trip.sh` -> `restart_round_trip`
 
 | | |
@@ -506,6 +541,59 @@ upwinding.
 | Configurations | one short run on a copy of `backup/regression/roundtrip` with `EXHALE_PTC=1`, its JFNK solve bounded to one outer iteration (`EXHALE_PTC_JFNK=1`, `EXHALE_JFNK_MAXIT=1`). The report is written before the solve, so one iteration reaches the point under test. Nothing in `backup/` is written to |
 | Expected before N28 | **RED**, MEASURED with the entry binary `EXHALE_lwv.x`: `EXHALE_setup.out` has 0 lines; with the call on this route it has 66 |
 
+### 19. `base_cell_width_provenance.f90` -> `base_cell_width`
+
+| | |
+|---|---|
+| Origin | PLAN_20260918_rev2 item D1a, from the L35 finding that the stored default base cell width is the single-precision neighbor of 2e-4 |
+| Quantity | the decimal string `round_trip_decimal` (module `setup_report`, the writer of `base_cell_width_Rp`) produces, and the bits `dr_base_default` holds |
+| Reference | the bit pattern of the value written: a list-directed read of the string must return the same `integer*8` transfer, for zero, for both signs and at 1e-300, 1e-4, 2e-4, 1 and 1e300; and (from D1b) `dr_base_default` must carry the bits a list-directed read of `2.0e-4` returns, `3F2A36E2EB1C432D`, while the pinned width `1.9999999494757503e-4` must read back to the bits of the default-real literal `2.0e-4`, `3F2A36E2E0000000`, the width of every run made before 2026-09-19 without the key |
+| Why | the resolved record is a reproduction instruction, so its width must parse back to the width that built the grid. `ES24.17E3`, the first candidate, fills a negative value with asterisks; the diagnostic line prints that failure so the field width is a measured requirement. Each of the two widths is the intended value only if the read rounds correctly, which is checked and not assumed |
+| Tolerance | 0: the comparison is on bits, not on a relative difference |
+| Configurations | none, the driver reads no input file |
+| Expected before D1a | **RED**, MEASURED against a build of the entry text: the driver does not compile, neither `dr_base_default` nor `round_trip_decimal` existing |
+| Expected before D1b | **RED**, MEASURED against a build of the D1b entry text: `dr_base_default_is_the_read_of_2.0e-4` fails, `3F2A36E2E0000000` against `3F2A36E2EB1C432D`; the pinned-width assertion passes on both builds (it states the pin, not the default) |
+
+### 20. `base_grid_key_reproduces_default.sh` -> `base_grid_key`
+
+| | |
+|---|---|
+| Origin | PLAN_20260918_rev2 item D1a |
+| Quantity | the cell centers `r(j)`, column 1 of `output/Hydro_ioniz.txt`, of four one-step runs: A with no `Base grid [dr,cells]:` key, B with the key stating the width A's `EXHALE_resolved.out` records, C with the key stating `2.0e-4`, P with the pinned line `Base grid [dr,cells]: 1.9999999494757503e-4 50` |
+| Reference | A, B and C byte-identical, A and P not (from D1b; before it A and C were not identical); `base_cell_width_source` `default` in A and `key` in B |
+| Why | two inputs a reader would call identical build two grids whose states do not load into each other (`load_IC` requires the centers to agree to 1e-10 relative), so the run has to state which width built its grid and state it to a precision that reproduces it. Provenance is a flag and not a comparison of values: B states the default's own digits and is still a key |
+| Tolerance | 0 for every comparison. The A-to-P displacement is REPORTED, not gated: how far a width difference moves the centers depends on the grid it is rescaled onto |
+| Configurations | four copies of `backup/regression/roundtrip` with its `Base grid` line removed, one step each. Nothing in `backup/` is written to |
+| Expected before D1a | **RED**, MEASURED against a build of the entry text: `EXHALE_resolved.out` carries no `base_cell_width_Rp` row, so the width the test would state cannot be read at all |
+| MEASURED with D1a | A vs C, max relative difference of the cell centers 3.818119e-09 at row 366 of 504 on this grid. L35 measured 6.58e-09 on the 500-cell LHS 1140 b catalog grid |
+| Expected before D1b | **RED**, MEASURED against a build of the D1b entry text: `base_grid_spelled_default_is_the_default` fails (A and C differ) and `base_grid_pinned_width_keeps_its_own_grid` fails (A and P identical, the entry default being the pinned width) |
+| MEASURED with D1b | A vs P, max relative difference of the cell centers 3.818119e-09 at row 366 of 504 |
+
+### 21. `base_grid_pinned_width.f90` -> `base_grid_pinned`
+
+| | |
+|---|---|
+| Origin | PLAN_20260918_rev2 item D1b |
+| Quantity | the cell centers `r(j)`, `j = 1-Ng..N+Ng`, that the production `define_grid` builds for `Grid type: Mixed`, 500 cells, 50 uniform base cells, at `r_max` 30 R_p (the LHS 1140 b catalog domain) and 10 R_p, for four widths: `dr_base_default`, the read of `2.0e-4`, the default-real literal `2.0e-4` widened to double (the width before 2026-09-19) and the read of the pinned `1.9999999494757503e-4` |
+| Reference | default and `2.0e-4` grids identical, pinned and pre-2026-09-19 grids identical, default and pre-2026-09-19 grids different |
+| Why | the pin is correct only if it rebuilds the grid the stored results of a pinned input were written on, which is asserted on the coordinates themselves rather than inferred from the width |
+| Tolerance | 0: every coordinate is compared on its bits |
+| Configurations | none, the driver sets the globals `input_read` would set |
+| Expected before D1b | **RED**, MEASURED against a build of the D1b entry text: the default grid differs from the `2.0e-4` grid in 502 of 504 coordinates, and equals the pre-2026-09-19 grid, at both radii |
+| MEASURED with D1b | default against pre-2026-09-19 grid, max relative displacement 6.57934e-09 at physical cell 342 (r_max 30) and 5.02042e-09 at cell 357 (r_max 10) |
+
+### 22. `base_grid_restart_contract.sh` -> `base_grid_restart`
+
+| | |
+|---|---|
+| Origin | PLAN_20260918_rev2 item D1b |
+| Quantity | whether `load_IC` accepts a state pair, and the text of its refusal |
+| Reference | a state written on a pinned input (W, 40 steps) loads into a run of the same pinned input (L, exit 0 or 2, no refusal) and is refused by a run with no `Base grid` line (D, exit 1, "holds cell centers of a different grid"), and the refusal states the run's width at round-trip precision, that it is the default, and the line that restores the old grid |
+| Why | a change of default must not change which grid a pinned input builds, and where a state and a run disagree the refusal must say which width the run used, so the contract is visible where it acts |
+| Tolerance | 0: exit codes and message text |
+| Configurations | three copies of `backup/regression/roundtrip`. Nothing in `backup/` is written to |
+| Expected before D1b | **RED**, MEASURED against a build of the D1b entry text: D loads the state (exit 0), and no refusal names a width |
+
 ## Working directories
 
 `run.sh` creates these under `build/tests/grid_and_gates/`, and every one of
@@ -528,6 +616,8 @@ them is removed and rebuilt on each run:
 | `hydrostatic_run/` | the four grid invocations of test 11 and their `hydrostatic_ladder.dat` |
 | `outflow_run/` | test 12, which reads no input file and writes none |
 | `threshold_run/` | the threshold-edge driver runs here so that no `opacity.inp` is in reach |
+| `bgA/`, `bgB/`, `bgC/`, `bgP/` | the four runs of test 20 |
+| `base_grid_restart/W`, `L`, `D` | the three runs of test 22 |
 
 ## Summary
 
@@ -637,3 +727,20 @@ are RED against the entry text of that item by 3.7e11 and 1.9e4 respectively.
 The measurements are in `docs/lhs1140b_stationary_L26_20260916.md`, section
 "Repair". Without `EXHALE_L26_STATE` the entry prints one DIAGNOSTIC line and
 skips, since it has no state to probe.
+
+**D8 step 8 (2026-09-18).** `carrier_bound_hold` was added with the
+diagnostic key `EXHALE_CARRIER_TRUST_HOLD`, which holds the composition
+movement bound of the stationary outer iteration at one value instead of
+letting the progress control halve it. Its five assertions run
+`backup/regression/carrier_model_a_newton` from the pinned IC pair: one
+outer pass with the key unset against one with it empty (the two states
+bitwise equal after the provenance line, and neither log announcing a held
+bound), and fourteen outer passes with the key unset against fourteen with
+it held at 1.0e-2. MEASURED: the control's bound is halved to 5.0e-3 at pass
+14 and the held run's is not, and the thirteen passes before that print the
+same measures. Four assertions are green against the entry text of that
+item and `carrier_bound_key_holds` is red there, since without the key the
+held run halves with the control. The entry costs about four minutes at one
+thread, the two fourteen-pass runs in parallel;
+`EXHALE_BOUND_HOLD_PASSES` moves the pass count. The measurement the key
+was written for is `docs/lhs1140b_stationary_D8bound_20260918.md`.

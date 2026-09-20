@@ -50,10 +50,11 @@
       ! the fixed-wind relaxation of relax_element_composition, a steady solve
       ! that has no Runge-Kutta stages to ride on; the marching path omits it,
       ! and the stages carry the advection instead.  When it does advect it
-      ! forms the term from that face mass flux through the same three
-      ! routines the stages use (species_face_fraction, species_face_flux,
-      ! species_flux_divergence), so the relaxation's fixed point is the zero
-      ! of the stationary elemental row and not of a second discretization.
+      ! forms the term from that face mass flux through the same face
+      ! routines the stages use (species_face_fraction, species_face_flux)
+      ! and the same spherical geometry, so the relaxation's fixed point is
+      ! the zero of the stationary elemental row and not of a second
+      ! discretization.
       !
       ! THIS MODULE KNOWS NOTHING OF THE STEADY RESIDUAL: IT IS GIVEN THE
       ! FLUX.  F_rho is a required argument of the fixed-wind relaxation and
@@ -204,6 +205,29 @@
       ! the atomic-region behavior is recovered identically.
       !
       ! DISCRETIZATION (memo section 3).  Finite volume on the existing grid,
+      ! with ONE geometry for every term of one row: the face areas
+      ! A(f) = r_edg(f)^2 and the exact shell volumes
+      ! V(j) = (r_+^3 - r_-^3)/3 of spherical_face_area_and_cell_volume
+      ! (grid_construction), which this module forms no copy of.  Both halves
+      ! of the row -- the diffusive divergence and the divergence of the face
+      ! mass flux -- are [A_+ F_+ - A_- F_-]/V_j on those faces, so an
+      ! internal face cancels between the two cells that share it and the
+      ! column sum of V_j times the row is the difference of the two boundary
+      ! face fluxes.  A term weighted by r_j^2 (r_+ - r_-) instead carries the
+      ! extra factor V_j/(r_j^2 dr_j), which differs between neighbours on a
+      ! stretched grid, and the mixed operator is then the divergence of no
+      ! single flux.
+      !
+      ! BOUNDARY NUCLEUS FLUX.  The column's two ends carry no diffusive
+      ! flux: faces 0 and N are left at Agrd = Bdrf = 0, so an element
+      ! crosses them only with the gas.  At the base the advective face flux
+      ! is F_rho(1) times the reservoir composition wherever the face mass
+      ! flux flows inward, which is what makes the Dirichlet cell a
+      ! reservoir; at the outer face the ghost continues the interior,
+      ! X_ghost = X_N, in BOTH directions of the face mass flux, so gas
+      ! leaving carries the column's own composition and gas entering brings
+      ! back the same, and no element flux is imposed at the outflow that the
+      ! elemental face flux does not already carry.
       ! faces carrying r^2 areas, one implicit (backward-Euler) step per call
       ! with the transport COEFFICIENTS frozen within the step.  The step is
       ! nonlinear in X because the drift flux carries the product X(1-X), and
@@ -282,6 +306,11 @@
 
       use global_parameters
       use grav_func,     only: Dphi
+      ! The one spherical geometry of this grid: face areas r_edg^2 and the
+      ! exact shell volumes.  Every divergence below divides by these, so
+      ! the advective and the diffusive halves of one element row are the
+      ! divergence of one flux (see DISCRETIZATION in the header).
+      use grid_construction, only: spherical_face_area_and_cell_volume
       use species_table, only: n_bsp, bsp_fsp, bsp_nH, bsp_nHe,           &
                                bsp_is_excited_level, bsp_mass,            &
                                bsp_charge, isp_HI, isp_HeI,               &
@@ -295,7 +324,8 @@
       use species_advective_transport, only: species_advective_update,   &
                                     species_face_fraction,              &
                                     species_face_flux,                  &
-                                    species_flux_divergence
+                                    n_species_faces_bounded,            &
+                                    species_face_excursion
       use lower_atmosphere_profile, only: lap_in_use, lap_r_top_RJ,       &
                           lap_flux_measured, lap_flux_window_empty,       &
                           lap_flux_nface, lap_FH_median, lap_FH_spread,   &
@@ -334,6 +364,58 @@
       public :: project_element_mass_fractions
       public :: mixture_mass_sum
       public :: element_transport_residual
+      ! THE ELEMENT NUCLEUS FLUX THROUGH THE FACES, the single object the
+      ! element row is the divergence of: the advective face element mass
+      ! flux, the diffusive face flux, and the face element nucleus density
+      ! and mass per nucleus a stage row is written against.  Exposed so
+      ! that a caller reads the operator's own flux instead of rebuilding
+      ! it, which would make an identity between two operators out of an
+      ! identity within one.
+      public :: element_nucleus_face_flux
+
+      ! THE BUDGET ENTRY OF THIS OPERATOR'S BASE BOUNDARY CONDITION: the
+      ! helium element mass flux [g cm^-2 s^-1] the base carries, ADVECTIVE
+      ! AND DIFFUSIVE HALF SEPARATELY, positive OUTWARD (toward increasing
+      ! r), at the two faces the boundary condition is written between.
+      !
+      !   the base face, r_edg(0), the contact with the reservoir and the
+      !   level the lower atmosphere hands the column over at.  Its
+      !   diffusive half is zero BY CONSTRUCTION and not by the state: the
+      !   gradient and drift coefficients of faces 0 and N are left at zero
+      !   (drift_and_gradient_face_coefficients), so an element crosses
+      !   either end of the column with the gas alone.  It is carried in the
+      !   record as its own number rather than left to be assumed.
+      !
+      !   the first solved face, r_edg(first_solved_face), which bounds the
+      !   region the operator actually solves (rows 2..N against the
+      !   Dirichlet reservoir, so face 1; face 0 when a closed base makes
+      !   cell 1 an unknown).  This is the face through which the reservoir
+      !   composition feeds the solved column, and the diffusive half here
+      !   is the flux the Dirichlet condition drives.
+      !
+      ! A REPORT READS THE EVALUATION THE NUMBERS BELONG TO.  evaluation
+      ! counts the operator evaluations that produced a composition, so a
+      ! caller that notes the count before its own step can tell this
+      ! record from an older one, and evaluation = 0 means NO OPERATOR HAS
+      ! RUN, which is not a flux of zero.  element_base_flux_report writes
+      ! the record with that distinction made.
+      type, public :: base_element_flux_record
+         integer :: evaluation = 0
+         integer :: first_solved_face = 0
+         real*8  :: advective_base_face = 0.0d0
+         real*8  :: diffusive_base_face = 0.0d0
+         real*8  :: advective_solved_face = 0.0d0
+         real*8  :: diffusive_solved_face = 0.0d0
+      end type base_element_flux_record
+      type(base_element_flux_record), public, save :: element_base_flux
+      public :: element_base_flux_report
+      ! The nucleus counts per unit mass of the two elements, from the one
+      ! stoichiometric map of the species table.  A row written per nucleus
+      ! of an element divides by that element's nucleus DENSITY, and the
+      ! face density the flux above returns is the arithmetic mean of that
+      ! same cell quantity, so the cell and the face value have to come
+      ! from one count.
+      public :: element_nucleus_counts
       ! The elemental transport balance of a state reduced to ONE number,
       ! and the admissibility test a residual norm has to meet before a
       ! progress control may read it.
@@ -661,6 +743,11 @@
       integer, dimension(1-Ng:N+Ng):: idom
       real*8, dimension(0:N)       :: Agrd, Bdrf, Jf
       integer, dimension(0:N)      :: updrf
+      ! The face mass flux of the state and the face helium mass fraction it
+      ! carries, for the advective half of the base budget entry below.
+      real*8, dimension(1-Ng:N+Ng) :: Frho_face, Yface
+      real*8  :: sv_face_excursion
+      integer :: sv_faces_bounded, jup
       ! NB: local scalars are checked against global_parameters case-
       ! insensitively.  In particular the time scale is tscale, NOT t0 (a local
       ! t0 would alias the global temperature normalization T0), and nothing
@@ -730,7 +817,19 @@
       call settling_coefficient(rho, Tcode, f_sp, Gco, dmeff, zb1, eEf,   &
                                 dlnpsi)
 
-      ! --- base reservoir composition (Dirichlet), X at the input He/H
+      ! --- THE BASE BOUNDARY CONDITION OF THIS OPERATOR, stated here and
+      ! independent of what the advective boundary does with the contact.
+      !
+      ! The elemental composition of the lower atmosphere at the base level
+      ! is prescribed data (the He/H of the input, or of the lower-atmosphere
+      ! profile at the matching level), so the base cell and the inner ghosts
+      ! carry it as a DIRICHLET value and the operator solves rows 2..N
+      ! against it.  It is not an inflow condition: a Dirichlet value drives
+      ! a diffusive flux through the base face whichever way the bulk gas
+      ! moves and whether or not it moves at all, and the flux it drives is
+      ! recorded below as this boundary condition's budget entry.  The
+      ! closed-column tests set closed_base and get a zero-flux inner
+      ! boundary instead; production runs never do.
       X_base = m_He_amu*HeH/(m_1 + m_He_amu*HeH)
 
       ! --- implicit step.  The face coefficients do not depend on X (the
@@ -739,7 +838,7 @@
       ! one Newton solve of the nonlinear step is the whole update.
       call drift_and_gradient_face_coefficients(rho_phys, Dco, Gco, rp,   &
                                                 Agrd, Bdrf, updrf)
-      call solve_mass_fraction(Xold, Xhe, rho_phys, dt_phys, rp, rep, Frho,&
+      call solve_mass_fraction(Xold, Xhe, rho_phys, dt_phys, Frho,        &
                                cadvf, Agrd, Bdrf, updrf, X_base, jlo,      &
                                advect, solved)
 
@@ -780,25 +879,62 @@
       if (.not. shut_base) Xhe(1-Ng:1) = X_base    ! base + inner ghosts
       Xhe(N+1:N+Ng) = Xhe(N)                       ! zero-gradient outer ghost
 
-      ! --- diffusive face flux actually carried by the step (diagnostic)
-      if (present(Jface_out) .or. diffusion_check_on() .or. lap_in_use) then
-         do j = 0, N
-            call element_face_flux(Xhe(j), Xhe(j+1), Agrd(j), Bdrf(j),    &
-                                   updrf(j), Jf(j), dJl, dJr)
-         enddo
-         if (present(Jface_out)) Jface_out = Jf
-      endif
-      ! Written on demand (EXHALE_DIFFUSION_CHECK=1) and unconditionally
-      ! whenever a lower-atmosphere profile is in use: there the elemental
-      ! fluxes are not a diagnostic but the quantity the two models have to
-      ! agree on, so the run must always leave them behind.
-      if (diffusion_check_on() .or. lap_in_use) then
-         call write_element_flux_profile(rep, Jf, Xhe, rho_phys, v, dmeff, &
-                                         Dco, Dneut, idom)
-      endif
+      ! --- diffusive face flux actually carried by the step, with the
+      ! coefficients of the matrix that was solved and the new X (test T1b).
+      ! Face 0 is always evaluated: it is the flux the base boundary
+      ! condition above drives, the budget entry that says how much helium
+      ! the lower atmosphere put through the level in this step, and a
+      ! quantity a zero bulk velocity does not make zero.
+      do j = 0, N
+         call element_face_flux(Xhe(j), Xhe(j+1), Agrd(j), Bdrf(j),       &
+                                updrf(j), Jf(j), dJl, dJr)
+      enddo
+      ! --- the budget entry of the base boundary condition, both halves at
+      ! both of the faces the condition is written between (declaration
+      ! above), in g cm^-2 s^-1 and positive outward.  The advective half is
+      ! the state's own face mass flux, the face mean of rho and of v, times
+      ! the reconstructed upwinded face helium mass fraction, which is the
+      ! face composition the Runge-Kutta stages put on the same face; it is
+      ! therefore the flux the column carries whether this operator was
+      ! handed the face mass flux or the stages carried the advection.
+      ! species_face_fraction counts the face states it scales back onto
+      ! [0,1], and those counters are statements about the trajectory, so a
+      ! budget entry evaluated on a state already in hand must not add to
+      ! them.
+      do j = 1-Ng, N+Ng
+         jup = min(j+1, N+Ng)
+         Frho_face(j) = 0.5d0*(rho_phys(j) + rho_phys(jup))               &
+                       *0.5d0*(v(j) + v(jup))*v0
+      enddo
+      sv_faces_bounded  = n_species_faces_bounded
+      sv_face_excursion = species_face_excursion
+      call species_face_fraction(Xhe, Frho_face, Yface)
+      n_species_faces_bounded = sv_faces_bounded
+      species_face_excursion  = sv_face_excursion
+
+      element_base_flux%evaluation = element_base_flux%evaluation + 1
+      element_base_flux%first_solved_face   = jlo - 1
+      element_base_flux%advective_base_face = Frho_face(0)*Yface(0)
+      element_base_flux%diffusive_base_face = Jf(0)
+      element_base_flux%advective_solved_face =                           &
+                             Frho_face(jlo-1)*Yface(jlo-1)
+      element_base_flux%diffusive_solved_face = Jf(jlo-1)
+      if (present(Jface_out)) Jface_out = Jf
 
       ! --- project the new element totals back into the species vector
       call project_elements(f_sp, Xhe, msum, .true.)
+
+      ! The elemental face fluxes of the composition just projected, written
+      ! on demand (EXHALE_DIFFUSION_CHECK=1) and unconditionally whenever a
+      ! lower-atmosphere profile is in use: there the elemental fluxes are
+      ! not a diagnostic but the quantity the two models have to agree on,
+      ! so the run must always leave them behind.  It is written AFTER the
+      ! projection because the routine that evaluates the fluxes reads the
+      ! species vector, so the file is the flux of a state that exists.
+      if (diffusion_check_on() .or. lap_in_use) then
+         call write_element_flux_profile(rho, Tcode, f_sp, rep, rho_phys,  &
+                                         v, dmeff, Dco, Dneut, idom)
+      endif
 
       ! --- trace metals: each element diffuses against the (post-projection)
       ! hydrogen background with its own mass and mean charge.  Carried over
@@ -832,7 +968,7 @@
             wYtr  = melem_A(im)*nucH/msum
             cadvX = n0*msum*v0/R0/melem_A(im)/max(nH_phys, 1.0d-30)
             call solve_trace_element_in_hydrogen(nX, nH_phys, DcoX, GcoX,  &
-                                                 fXbase, dt_phys, rp, rep,  &
+                                                 fXbase, dt_phys, rp,       &
                                                  Frho, wYtr, cadvX, advect)
             do j = 1-Ng, N+Ng
                ! Target density from the solved mixing ratio.  There is no
@@ -906,12 +1042,52 @@
 
       if (diffusion_check_on()) then
          call mixture_mass_split(f_sp, nucH, nucHe, mass1, msum_out)
-         call report_step(Xhe, rho_phys, rp, rep,                          &
+         call report_step(Xhe, rho_phys,                                  &
               maxval(abs(msum_out(1:N) - msum(1:N))/msum(1:N)),           &
               Xover, Xunder, qdep, n_vanished)
       endif
 
       end subroutine element_diffusion_step
+
+      ! ------------------------------------------------------------------ !
+
+      subroutine element_base_flux_report(line, evaluation_expected)
+      ! The base budget entry written as one line, with the evaluation it
+      ! belongs to named in it.  A report is a statement about a state, so
+      ! a record no operator has written is said to be absent instead of
+      ! being printed as a flux of zero, and a record written by another
+      ! evaluation than the one the caller is reporting on is said to be
+      ! that one: evaluation_expected (optional) is the count the caller
+      ! read before its own operator call, and the line says whether the
+      ! record moved past it.
+      !
+      ! Both halves are helium element mass fluxes in g cm^-2 s^-1, positive
+      ! outward.  The advective half is rho_f v_f X_f of the state; the
+      ! diffusive half at the base face is zero by the discretization (the
+      ! declaration of the record says why), and the one at the first solved
+      ! face is the flux the Dirichlet reservoir composition drives.
+      character(len=*), intent(out) :: line
+      integer, optional, intent(in) :: evaluation_expected
+
+      if (element_base_flux%evaluation .eq. 0) then
+         line = 'base element flux: no element operator evaluation has '// &
+                'written a record'
+         return
+      endif
+      write(line,'(A,I0,A,ES15.7,A,ES15.7,A,I0,A,ES15.7,A,ES15.7)')       &
+         'base element flux [g/cm2/s, positive outward] of evaluation ',   &
+         element_base_flux%evaluation,                                    &
+         ': base face 0 advective ',                                      &
+         element_base_flux%advective_base_face,                           &
+         ' diffusive ', element_base_flux%diffusive_base_face,            &
+         ' ; first solved face ', element_base_flux%first_solved_face,    &
+         ' advective ', element_base_flux%advective_solved_face,          &
+         ' diffusive ', element_base_flux%diffusive_solved_face
+      if (present(evaluation_expected)) then
+         if (evaluation_expected .ne. element_base_flux%evaluation)        &
+            line = trim(line)//' (NOT the evaluation asked for)'
+      endif
+      end subroutine element_base_flux_report
 
       ! ------------------------------------------------------------------ !
 
@@ -2215,17 +2391,16 @@
       ! species fluxes the hydrodynamic stages carry:
       !
       !     F_Y(j) = F_rho(j) Y^face(j),
-      !     dvF(j) = ( A_+ F_Y(j) - A_- F_Y(j-1) ) / dV_j ,
+      !     dvF(j) = ( A_+ F_Y(j) - A_- F_Y(j-1) ) / V_j ,
       !
       ! with F_rho the face mass flux of the mass row of this state, Y^face
       ! the reconstructed and upwinded face mass fraction of
-      ! species_face_fraction, and the divergence that of
-      ! species_flux_divergence: the same three routines, on the same faces,
-      ! areas and volumes, that species_advective_update calls inside a
-      ! Runge-Kutta stage.  dvM is the same expression with both fluxes in
-      ! magnitude, for a row scale.  Both are in code units; the caller
-      ! multiplies by the factor that returns them to the units of its own
-      ! row.
+      ! species_face_fraction, and A, V the face area and the exact shell
+      ! volume of spherical_face_area_and_cell_volume, which the diffusive
+      ! half of the same row divides by as well.  dvM is the same expression
+      ! with both fluxes in magnitude, for a row scale.  Both are in code
+      ! units; the caller multiplies by the factor that returns them to the
+      ! units of its own row.
       !
       ! THERE IS ONE OF THESE IN THE ELEMENT OPERATOR, and the backward-Euler
       ! step, the fixed-wind relaxation and the stationary elemental row all
@@ -2236,10 +2411,20 @@
       real*8, dimension(1-Ng:N+Ng), intent(out) :: dvF, dvM
 
       real*8, dimension(1-Ng:N+Ng) :: Yf, Fs
+      real*8, dimension(0:N)       :: fa
+      real*8, dimension(1:N)       :: cv
+      integer :: j
 
       call species_face_fraction(Y, Frho, Yf)
       call species_face_flux(Frho, Yf, Fs)
-      call species_flux_divergence(Fs, dvF, dvM)
+      call spherical_face_area_and_cell_volume(fa, cv)
+
+      dvF = 0.0d0
+      dvM = 0.0d0
+      do j = 1, N
+         dvF(j) = (fa(j)*Fs(j) - fa(j-1)*Fs(j-1))/cv(j)
+         dvM(j) = (fa(j)*abs(Fs(j)) + fa(j-1)*abs(Fs(j-1)))/cv(j)
+      enddo
 
       end subroutine element_advective_divergence
 
@@ -2249,10 +2434,10 @@
       ! The two face coefficients of that divergence, in code units per unit
       ! of the face MASS fraction:
       !
-      !     advj(j) =  A_+ F_rho(j)  /dV_j ,
-      !     advm(j) = -A_- F_rho(j-1)/dV_j ,
+      !     advj(j) =  A_+ F_rho(j)  /V_j ,
+      !     advm(j) = -A_- F_rho(j-1)/V_j ,
       !
-      ! the same A_+, A_- and dV_j species_flux_divergence uses.  They are
+      ! the same A_+, A_- and V_j the residual divides by.  They are
       ! what the tridiagonal Newton of the implicit step differentiates the
       ! term with, taking the face composition at its donor cell's own value:
       ! the limiter and the second-order part of the reconstruction are left
@@ -2267,22 +2452,19 @@
       ! way round, so no off-diagonal entry is positive.
       real*8, dimension(1-Ng:N+Ng), intent(in)  :: Frho
       real*8, dimension(1:N),       intent(out) :: advj, advm
-      real*8  :: rpf, rmf, dAp, dAm, dV
+      real*8, dimension(0:N) :: fa
+      real*8, dimension(1:N) :: cv
       integer :: j
+      call spherical_face_area_and_cell_volume(fa, cv)
       do j = 1, N
-         rpf = r_edg(j)
-         rmf = r_edg(j-1)
-         dAp = rpf*rpf
-         dAm = rmf*rmf
-         dV  = (dAp*rpf - dAm*rmf)/3.0
-         advj(j) =  dAp*Frho(j)  /dV
-         advm(j) = -dAm*Frho(j-1)/dV
+         advj(j) =  fa(j)  *Frho(j)  /cv(j)
+         advm(j) = -fa(j-1)*Frho(j-1)/cv(j)
       enddo
       end subroutine element_advective_face_coefficients
 
       ! ------------------------------------------------------------------ !
 
-      subroutine solve_mass_fraction(Xold, Xhe, rho_phys, dt_phys, rp, rep, &
+      subroutine solve_mass_fraction(Xold, Xhe, rho_phys, dt_phys,          &
                                      Frho, cadvf, Agrd, Bdrf, updrf,        &
                                      X_base, jlo, advect, solved)
       ! One implicit (backward-Euler) step of
@@ -2317,7 +2499,7 @@
       ! iterate stands, and solved is false.  A NaN or an infinity anywhere in
       ! a trial fails the same comparison and is discarded by the same rule.
       real*8, dimension(1-Ng:N+Ng), intent(in)    :: Xold, rho_phys, dt_phys
-      real*8, dimension(1-Ng:N+Ng), intent(in)    :: rp, rep, Frho, cadvf
+      real*8, dimension(1-Ng:N+Ng), intent(in)    :: Frho, cadvf
       real*8, dimension(1-Ng:N+Ng), intent(inout) :: Xhe
       real*8, dimension(0:N),       intent(in)    :: Agrd, Bdrf
       integer, dimension(0:N),      intent(in)    :: updrf
@@ -2329,6 +2511,10 @@
       real*8, dimension(1-Ng:N+Ng) :: aa, bb, cc, dd, cpv, dpv, dX, Xtry
       real*8, dimension(0:N)       :: Jf, dJl, dJr
       real*8, dimension(1:N)       :: advj, advm
+      ! The one geometry of the grid, in cm: A(f) R0^2 and V(j) R0^3.
+      real*8, dimension(0:N)       :: fa
+      real*8, dimension(1:N)       :: cv
+      real*8  :: R0sq, R0cb
       real*8  :: Kj, mden, sL, sR, cadv, rnorm, rprev, rtry, damp, rstart
       integer :: j, it, ihalf, nit
       logical :: descended
@@ -2374,11 +2560,15 @@
       if (jlo .eq. 2) Xhe(1-Ng:1) = X_base
       Xhe(N+1:N+Ng) = Xhe(N)
 
+      call spherical_face_area_and_cell_volume(fa, cv)
+      R0sq = R0*R0
+      R0cb = R0sq*R0
+
       advj = 0.0d0
       advm = 0.0d0
       if (advect) call element_advective_face_coefficients(Frho, advj, advm)
 
-      call composition_residual(Xold, Xhe, rho_phys, dt_phys, rp, rep,    &
+      call composition_residual(Xold, Xhe, rho_phys, dt_phys,             &
                                 Frho, cadvf, Agrd, Bdrf, updrf, jlo,      &
                                 advect, dd, Jf, dJl, dJr, rnorm)
 
@@ -2392,9 +2582,9 @@
          endif
          ! --- Jacobian of the residual, tridiagonal by construction
          do j = jlo, N
-            Kj    = 1.0d0/(rp(j)**2*max(rep(j)-rep(j-1), 1.0d0))
-            sL    = rep(j-1)**2
-            sR    = rep(j)**2
+            Kj    = 1.0d0/(cv(j)*R0cb)
+            sL    = fa(j-1)*R0sq
+            sR    = fa(j)*R0sq
             aa(j) = -Kj*sL*dJl(j-1)
             bb(j) =  rho_phys(j)/dt_phys(j)                               &
                    + Kj*(sR*dJl(j) - sL*dJr(j-1))
@@ -2403,7 +2593,7 @@
             ! of cell j is
             !
             !   adv(j) = [ A_+ F_rho(j) X(don(j))
-            !              - A_- F_rho(j-1) X(don(j-1)) ] / dV_j x cadvf(j),
+            !              - A_- F_rho(j-1) X(don(j-1)) ] / V_j x cadvf(j),
             !
             ! with don(f) = f where F_rho(f) >= 0 and f+1 where it is
             ! negative, so each face contributes one entry, on the diagonal
@@ -2462,8 +2652,8 @@
             Xtry(jlo:N) = Xhe(jlo:N) + damp*dX(jlo:N)
             if (jlo .eq. 2) Xtry(1-Ng:1) = X_base
             Xtry(N+1:N+Ng) = Xtry(N)
-            call composition_residual(Xold, Xtry, rho_phys, dt_phys, rp,  &
-                                      rep, Frho, cadvf, Agrd, Bdrf,       &
+            call composition_residual(Xold, Xtry, rho_phys, dt_phys,      &
+                                      Frho, cadvf, Agrd, Bdrf,            &
                                       updrf, jlo, advect, dd,             &
                                       Jf, dJl, dJr, rtry)
             if (rtry .lt. rnorm) then
@@ -2533,8 +2723,8 @@
 
       ! ------------------------------------------------------------------ !
 
-      subroutine composition_residual(Xold, Xhe, rho_phys, dt_phys, rp,   &
-                                      rep, Frho, cadvf, Agrd, Bdrf,       &
+      subroutine composition_residual(Xold, Xhe, rho_phys, dt_phys,       &
+                                      Frho, cadvf, Agrd, Bdrf,            &
                                       updrf, jlo, advect,                 &
                                       mres, Jf, dJl, dJr, rnorm,          &
                                       res_out, dsc_out)
@@ -2546,7 +2736,7 @@
       ! cell diffusion time, so an absolute residual is a measure of their
       ! round-off and not of convergence.
       real*8, dimension(1-Ng:N+Ng), intent(in)  :: Xold, Xhe, rho_phys
-      real*8, dimension(1-Ng:N+Ng), intent(in)  :: dt_phys, rp, rep
+      real*8, dimension(1-Ng:N+Ng), intent(in)  :: dt_phys
       ! The face mass flux the element rides on, and the factor that returns
       ! the code divergence of its face element flux to the [g cm^-3 s^-1]
       ! this row is written in.
@@ -2569,8 +2759,16 @@
       real*8, dimension(1-Ng:N+Ng), intent(out), optional :: res_out, dsc_out
 
       real*8, dimension(1-Ng:N+Ng) :: dvF, dvM
+      ! The one geometry of the grid, in cm: A(f) R0^2 and V(j) R0^3.
+      real*8, dimension(0:N)       :: fa
+      real*8, dimension(1:N)       :: cv
+      real*8  :: R0sq, R0cb
       real*8  :: Kj, sL, sR, res, dsc
       integer :: j
+
+      call spherical_face_area_and_cell_volume(fa, cv)
+      R0sq = R0*R0
+      R0cb = R0sq*R0
 
       do j = 0, N
          call element_face_flux(Xhe(j), Xhe(j+1), Agrd(j), Bdrf(j),       &
@@ -2586,9 +2784,9 @@
       if (present(res_out)) res_out = 0.0d0
       if (present(dsc_out)) dsc_out = 0.0d0
       do j = jlo, N
-         Kj  = 1.0d0/(rp(j)**2*max(rep(j)-rep(j-1), 1.0d0))
-         sL  = rep(j-1)**2
-         sR  = rep(j)**2
+         Kj  = 1.0d0/(cv(j)*R0cb)
+         sL  = fa(j-1)*R0sq
+         sR  = fa(j)*R0sq
          res = rho_phys(j)*(Xhe(j) - Xold(j))/dt_phys(j)                  &
              + Kj*(sR*Jf(j) - sL*Jf(j-1))
          dsc = rho_phys(j)*max(abs(Xhe(j)), abs(Xold(j)))/dt_phys(j)      &
@@ -2928,7 +3126,7 @@
       ! carries, so the two factors put the divergence in the row's own
       ! [g cm^-3 s^-1].
       cadvf = n0*mu*msum*v0/R0
-      call composition_residual(Xhe, Xhe, rho_phys, dt_stat, rp, rep,     &
+      call composition_residual(Xhe, Xhe, rho_phys, dt_stat,              &
                                 Frho, cadvf, Agrd, Bdrf, updrf, 2,        &
                                 .true., mres, Jf, dJl, dJr, rnorm, resc,  &
                                 dscc)
@@ -2980,8 +3178,8 @@
          if (trace_row_terms_diag)                                        &
             write(*,'(A,A)') ' (element row terms) element ',             &
                  trim(melem_name(im))
-         call trace_composition_residual(fXold, fX, nH_phys, dt_stat, rp,  &
-                                         rep, PL, PR, Frho, wYtr, cadvX,   &
+         call trace_composition_residual(fXold, fX, nH_phys, dt_stat,      &
+                                         PL, PR, Frho, wYtr, cadvX,        &
                                          .true., mres, rnorm, resc, dscc)
          do j = 2, N
             res_tr(j,im) = resc(j)
@@ -2994,6 +3192,173 @@
                                            sv_resid, sv_trace)
 
       end subroutine element_transport_residual
+
+      ! ------------------------------------------------------------------ !
+
+      subroutine element_nucleus_face_flux(rho, Tcode, f_sp, Frho,        &
+                                           Fadv, Jdif, n_el, m_one, n_one)
+      ! THE HELIUM NUCLEUS FLUX THROUGH EVERY FACE OF THE COLUMN, the one
+      ! object the element row is the divergence of.  For the state
+      ! (rho, Tcode, f_sp) and the face mass flux Frho of that state's own
+      ! mass row it returns, at the faces f = 0 ... N:
+      !
+      !   Fadv(f) = F_rho(f) Y_He(f)   the advective face element mass flux,
+      !             IN THE UNITS OF THE Frho THE CALLER PASSES.  Y_He(f) is
+      !             the reconstructed and upwinded face helium mass fraction
+      !             of species_face_fraction, the same one the Runge-Kutta
+      !             stages put on the face, and it is dimensionless, so this
+      !             routine neither scales nor rescales the flux it is given.
+      !             With the code face mass flux of the mass row (rho v in
+      !             units of n0 mu and v0, the mixture mass msum(j) still
+      !             outside it) Fadv is in those code units and
+      !             n0 mu msum v0 Fadv is g cm^-2 s^-1; with a face mass flux
+      !             already in g cm^-2 s^-1, which the element flux profile
+      !             writer below passes, Fadv is in g cm^-2 s^-1 directly.
+      !             Jdif below is in g cm^-2 s^-1 either way, so a caller
+      !             that adds the two halves converts the advective one
+      !             first.
+      !   Jdif(f) = -A_grd (X_r - X_l) - B_drf [X(1-X)](f)   [g cm^-2 s^-1],
+      !             the diffusive (gradient, eddy and settling drift) face
+      !             flux of element_face_flux.  Faces 0 and N carry none:
+      !             their gradient and drift coefficients are zero
+      !             (drift_and_gradient_face_coefficients), the base being
+      !             the Dirichlet reservoir and the outer face an outflow,
+      !             so an element crosses either end only with the gas.
+      !             The face is evaluated all the same, so the zero is the
+      !             operator's own and is not asserted here.
+      !   n_el(f) = the helium NUCLEUS density at the face [cm^-3], the
+      !             arithmetic mean of its two cells, which is the face rule
+      !             every other coefficient of this operator uses.
+      !   m_one(f)= the mass of component 1 per hydrogen nucleus at the face
+      !             [g], the same mean.  In the atomic region it is the
+      !             reservoir m_1 = mass_per_H_nucleus_without_He(); where
+      !             the metals or the molecules have moved it is the cell's
+      !             own.
+      !   n_one(f)= the HYDROGEN nucleus density at the face [cm^-3],
+      !             optional and the same mean, the quantity n_el is for
+      !             helium.  A row written per hydrogen nucleus -- the
+      !             ionization stages of hydrogen are -- needs it and it is
+      !             the same face rule, so it is returned here rather than
+      !             rebuilt by the caller.
+      !
+      ! THE ROW IS WRITTEN FROM THESE ARRAYS.  With A(f) and V(j) the face
+      ! area and shell volume of spherical_face_area_and_cell_volume, the
+      ! helium row of cell j is, term for term,
+      !
+      !   res(j) = rho(j) [X(j) - X^old(j)]/dt
+      !          + [ A_+ R0^2 Jdif(j) - A_- R0^2 Jdif(j-1) ]/(V_j R0^3)
+      !          + cadvf(j) [ A_+ Fadv(j) - A_- Fadv(j-1) ]/V_j ,
+      !          cadvf(j) = n0 mu msum(j) v0/R0 ,
+      !
+      ! which is what composition_residual evaluates; the acceptance row
+      ! element_row_is_the_divergence_of_the_exposed_flux holds the two to
+      ! the last bit.  There is therefore ONE spelling of the element flux,
+      ! and a caller that needs the flux itself (the ionization-stage rows
+      ! of L12 stage B, the boundary budget of a diagnostic) reads it here
+      ! instead of rebuilding it.
+      !
+      ! The unit factor cadvf carries the cell's own mixture mass msum(j),
+      ! so the column sum telescopes to the two boundary face fluxes up to
+      ! the variation of msum between neighbours, which is the state's mass
+      ! closure (1e-15 on a closed state) and not a property of the grid.
+      real*8, dimension(1-Ng:N+Ng),           intent(in)  :: rho, Tcode
+      real*8, dimension(1-Ng:N+Ng,n_species), intent(in)  :: f_sp
+      real*8, dimension(1-Ng:N+Ng),           intent(in)  :: Frho
+      real*8, dimension(0:N),                 intent(out) :: Fadv, Jdif
+      real*8, dimension(0:N),                 intent(out) :: n_el, m_one
+      real*8, dimension(0:N),       optional, intent(out) :: n_one
+
+      real*8, dimension(1-Ng:N+Ng) :: nucH, nucHe, msum, mass1, Xhe
+      real*8, dimension(1-Ng:N+Ng) :: carH, carHe, mcarH, dlnpsi
+      real*8, dimension(1-Ng:N+Ng) :: rho_phys, TK, Dco, Gco, rp
+      real*8, dimension(1-Ng:N+Ng) :: ntot_phys, dmeff, zb1, eEf, Dneut
+      real*8, dimension(1-Ng:N+Ng) :: Yf, Fs, nHe_cell, m1_cell, nH_cell
+      real*8, dimension(0:N)       :: Agrd, Bdrf
+      integer, dimension(0:N)      :: updrf
+      integer, dimension(1-Ng:N+Ng):: idom
+      real*8  :: sv_over, sv_under, sv_resid, sv_trace, dJl, dJr
+      real*8  :: sv_exc
+      integer :: sv_steps, sv_bnd
+      integer :: j
+
+      Fadv  = 0.0d0
+      Jdif  = 0.0d0
+      n_el  = 0.0d0
+      m_one = 0.0d0
+      if (present(n_one)) n_one = 0.0d0
+      if (.not. thereis_He) return
+
+      ! THE FACE COUNTERS OF THE RUN COUNT THE RUN'S OWN FACES.  The
+      ! advective half below reconstructs a face composition, and
+      ! species_face_fraction counts every face state it has to scale back
+      ! onto [0,1] and keeps the largest excursion it saw.  Those are
+      ! statements about the trajectory the run took, so an evaluation of
+      ! the flux of a state that is already in hand -- a diagnostic, a
+      ! stage row, an acceptance row -- must not add to them.  The restore
+      ! belongs here rather than at each call site, because every caller of
+      ! this routine has the same obligation.
+      sv_bnd   = n_species_faces_bounded
+      sv_exc   = species_face_excursion
+
+      sv_over  = he_fraction_over_one
+      sv_under = he_fraction_under_zero
+      sv_steps = he_fraction_newton_steps
+      sv_resid = he_fraction_newton_resid
+      sv_trace = trace_ratio_under_zero
+
+      call mixture_mass_split(f_sp, nucH, nucHe, mass1, msum)
+      Xhe = m_He_amu*nucHe/msum
+
+      TK       = Tcode*T0
+      where (TK .lt. 1.0d0) TK = 1.0d0
+      rp       = r*R0
+      rho_phys = rho*n0*mu*msum
+      call carrier_counts(f_sp, carH, carHe, mcarH)
+      ntot_phys = (carH + carHe)*rho*n0
+      where (ntot_phys .lt. 1.0d0) ntot_phys = 1.0d0
+      call helium_hydrogen_diffusion(rho, Tcode, f_sp, Dco, Dneut, idom)
+      call settling_coefficient(rho, Tcode, f_sp, Gco, dmeff, zb1, eEf,   &
+                                dlnpsi)
+      call drift_and_gradient_face_coefficients(rho_phys, Dco, Gco, rp,   &
+                                                Agrd, Bdrf, updrf)
+
+      ! The diffusive half, face by face, in the branch the Peclet switch
+      ! selected -- the same call composition_residual makes.
+      do j = 0, N
+         call element_face_flux(Xhe(j), Xhe(j+1), Agrd(j), Bdrf(j),       &
+                                updrf(j), Jdif(j), dJl, dJr)
+      enddo
+
+      ! The advective half: the face mass flux of the mass row carrying the
+      ! reconstructed face mass fraction, the same two routines the stages
+      ! and element_advective_divergence call.
+      call species_face_fraction(Xhe, Frho, Yf)
+      call species_face_flux(Frho, Yf, Fs)
+      do j = 0, N
+         Fadv(j) = Fs(j)
+      enddo
+
+      ! The two face state quantities the stage rows are written against.
+      nHe_cell = nucHe*rho*n0
+      nH_cell  = nucH *rho*n0
+      m1_cell  = mass1*mu/max(nucH, 1.0d-300)
+      do j = 0, N
+         n_el(j)  = 0.5d0*(nHe_cell(j) + nHe_cell(j+1))
+         m_one(j) = 0.5d0*(m1_cell(j)  + m1_cell(j+1))
+      enddo
+      if (present(n_one)) then
+         do j = 0, N
+            n_one(j) = 0.5d0*(nH_cell(j) + nH_cell(j+1))
+         enddo
+      endif
+
+      n_species_faces_bounded = sv_bnd
+      species_face_excursion  = sv_exc
+
+      call reinstate_diffusion_diagnostics(sv_over, sv_under, sv_steps,   &
+                                           sv_resid, sv_trace)
+
+      end subroutine element_nucleus_face_flux
 
       ! ------------------------------------------------------------------ !
 
@@ -3151,8 +3516,8 @@
 
       ! ------------------------------------------------------------------ !
 
-      subroutine trace_composition_residual(fXold, fX, nHl, dt_phys, rp, &
-                                            rep, PL, PR, Frho, wY, cadvX, &
+      subroutine trace_composition_residual(fXold, fX, nHl, dt_phys,     &
+                                            PL, PR, Frho, wY, cadvX,      &
                                             advect, mres, rnorm,          &
                                             res_out, dsc_out)
       ! Residual of the implicit trace-element step in the MIXING RATIO
@@ -3160,7 +3525,7 @@
       ! Newton system):
       !
       !   res(j) = (fX(j) - fXold(j))/dt
-      !          + [ r_+^2 F(j) - r_-^2 F(j-1) ] / (n_H r^2 dr)
+      !          + [ A_+ F(j) - A_- F(j-1) ] / (n_H V_j)
       !          + advect  div(F_rho Y_X)(j) cadvX(j) ,   Y_X = wY fX .
       !
       ! The diffusive face flux is the two-point form of
@@ -3178,7 +3543,7 @@
       !
       ! There is no equation at cell 1: it is the Dirichlet reservoir.
       real*8, dimension(1-Ng:N+Ng), intent(in)  :: fXold, fX, nHl, dt_phys
-      real*8, dimension(1-Ng:N+Ng), intent(in)  :: rp, rep, Frho, wY, cadvX
+      real*8, dimension(1-Ng:N+Ng), intent(in)  :: Frho, wY, cadvX
       real*8, dimension(0:N),       intent(in)  :: PL, PR
       logical,                      intent(in)  :: advect
       real*8, dimension(1-Ng:N+Ng), intent(out) :: mres
@@ -3186,8 +3551,16 @@
       real*8, dimension(1-Ng:N+Ng), intent(out), optional :: res_out, dsc_out
 
       real*8, dimension(1-Ng:N+Ng) :: Y, dvF, dvM
+      ! The one geometry of the grid, in cm: A(f) R0^2 and V(j) R0^3.
+      real*8, dimension(0:N)       :: fa
+      real*8, dimension(1:N)       :: cv
+      real*8  :: R0sq, R0cb
       real*8  :: Kj, sL, sR, Fl, Fr, res, dsc
       integer :: j
+
+      call spherical_face_area_and_cell_volume(fa, cv)
+      R0sq = R0*R0
+      R0cb = R0sq*R0
 
       dvF = 0.0d0
       dvM = 0.0d0
@@ -3201,10 +3574,9 @@
       if (present(res_out)) res_out = 0.0d0
       if (present(dsc_out)) dsc_out = 0.0d0
       do j = 2, N
-         Kj  = 1.0d0/(max(nHl(j), 1.0d-30)*rp(j)**2                       &
-                      *max(rep(j)-rep(j-1), 1.0d0))
-         sL  = rep(j-1)**2
-         sR  = rep(j)**2
+         Kj  = 1.0d0/(max(nHl(j), 1.0d-30)*cv(j)*R0cb)
+         sL  = fa(j-1)*R0sq
+         sR  = fa(j)*R0sq
          Fr  = PL(j)*fX(j)     + PR(j)*fX(j+1)
          Fl  = PL(j-1)*fX(j-1) + PR(j-1)*fX(j)
          res = (fX(j) - fXold(j))/dt_phys(j) + Kj*(sR*Fr - sL*Fl)
@@ -3242,7 +3614,7 @@
       ! ------------------------------------------------------------------ !
 
       subroutine solve_trace_element_in_hydrogen(nX, nHl, Dco, Gco, fbase,  &
-                                                 dt_phys, rp, rep, Frho,   &
+                                                 dt_phys, rp, Frho,        &
                                                  wY, cadvX, advect)
       ! One backward-Euler step for a TRACE element diffusing relative to a
       ! hydrogen background nHl, with element diffusion coefficient Dco,
@@ -3279,7 +3651,7 @@
       ! nX is intent(inout): supply the current density, receive the solved one.
       real*8, dimension(1-Ng:N+Ng), intent(inout) :: nX
       real*8, dimension(1-Ng:N+Ng), intent(in)    :: nHl, Dco, Gco, dt_phys
-      real*8, dimension(1-Ng:N+Ng), intent(in)    :: rp, rep
+      real*8, dimension(1-Ng:N+Ng), intent(in)    :: rp
       real*8, dimension(1-Ng:N+Ng), intent(in)    :: Frho, wY, cadvX
       real*8,                       intent(in)    :: fbase
       logical,                      intent(in)    :: advect
@@ -3288,6 +3660,10 @@
       real*8, dimension(1:N)       :: advj, advm
       real*8, dimension(1-Ng:N+Ng) :: aa, bb, cc, dd, cpv, dpv, fX, fXold
       real*8, dimension(1-Ng:N+Ng) :: mres, dvD, dvFull, Y, dvFa, dvMa
+      ! The one geometry of the grid, in cm: A(f) R0^2 and V(j) R0^3.
+      real*8, dimension(0:N)       :: fa
+      real*8, dimension(1:N)       :: cv
+      real*8 :: R0sq, R0cb
       real*8 :: Kj, mden, sL, sR, cadv, rnorm, rprev
       integer :: j, jd, it
       ! The deferred part is a bounded second-order correction to a term the
@@ -3302,6 +3678,9 @@
       fX(N+1:N+Ng) = fX(N)
 
       call trace_face_coefficients(nHl, Dco, Gco, rp, PL, PR)
+      call spherical_face_area_and_cell_volume(fa, cv)
+      R0sq = R0*R0
+      R0cb = R0sq*R0
       advj = 0.0d0
       advm = 0.0d0
       if (advect) call element_advective_face_coefficients(Frho, advj, advm)
@@ -3329,15 +3708,14 @@
             enddo
          endif
 
-         call trace_composition_residual(fXold, fX, nHl, dt_phys, rp, rep, &
+         call trace_composition_residual(fXold, fX, nHl, dt_phys,          &
                                          PL, PR, Frho, wY, cadvX, advect,  &
                                          mres, rnorm)
 
          do j = 2, N
-            Kj    = 1.0d0/(max(nHl(j), 1.0d-30)*rp(j)**2                   &
-                           *max(rep(j)-rep(j-1), 1.0d0))
-            sL    = rep(j-1)**2
-            sR    = rep(j)**2
+            Kj    = 1.0d0/(max(nHl(j), 1.0d-30)*cv(j)*R0cb)
+            sL    = fa(j-1)*R0sq
+            sR    = fa(j)*R0sq
             aa(j) = -Kj*sL*PL(j-1)
             bb(j) =  1.0d0/dt_phys(j) + Kj*(sR*PL(j) - sL*PR(j-1))
             cc(j) =  Kj*sR*PR(j)
@@ -3685,6 +4063,15 @@
       ! composition the sweep solves in the ghost cell is not what the wind
       ! carried out of cell N. One rule for the stage path and the
       ! stationary path, so the two evaluations of a carrier row agree.
+      !
+      ! X_ghost = X_N HOLDS IN BOTH DIRECTIONS OF THE FACE MASS FLUX. Where
+      ! F_rho(N) reverses there is no reservoir at this end to state an
+      ! inflow composition with: the hydrodynamic closure at the same face
+      ! continues cell N's own state outward and holds no composition of its
+      ! own, so the gas that comes back carries what left. With the ghost
+      ! equal to cell N the forward difference of the MC limiter vanishes,
+      ! the limited slope of cell N is zero, and the outer face is the donor
+      ! cell average itself whichever way the flux points.
       real*8, dimension(1-Ng:N+Ng,n_species), intent(in)  :: f_sp
       real*8, dimension(1-Ng:N+Ng,n_car),     intent(out) :: Y
 
@@ -3866,29 +4253,43 @@
 
       ! ------------------------------------------------------------------ !
 
-      subroutine write_element_flux_profile(rep, Jf, Xhe, rho_phys, v,     &
-                                            dmeff, Dco, Dneut, idom)
-      ! Radial profile of the elemental face fluxes carried by the step,
-      ! written to ./output/element_flux_profile.txt and replaced at every
-      ! call, so that after a run the file holds the state the run ended on.
-      ! This is the T8 diagnostic of docs/binary_diffusion_design.md
-      ! section 6, and the measurement the Phase-E flux closure reads
+      subroutine write_element_flux_profile(rho, Tcode, f_sp, rep,         &
+                                            rho_phys, v, dmeff, Dco,       &
+                                            Dneut, idom)
+      ! Radial profile of the elemental face fluxes of the composition the
+      ! step hands back, written to ./output/element_flux_profile.txt and
+      ! replaced at every call, so that after a run the file holds the state
+      ! the run ended on.  This is the T8 diagnostic of
+      ! docs/binary_diffusion_design.md section 6, and the measurement the
+      ! Phase-E flux closure reads
       ! (docs/phase_e_flux_closure_design.md section 3.4):
       !
-      !   F_He(r_f) = 4 pi r_f^2 ( rho X v + J )         [g/s]
-      !   F_H (r_f) = 4 pi r_f^2 ( rho (1-X) v - J )     [g/s]
+      !   F_He(r_f) = 4 pi r_f^2 ( F_rho Y_He + J )         [g/s]
+      !   F_H (r_f) = 4 pi r_f^2 ( F_rho (1 - Y_He) - J )   [g/s]
       !
       ! A binary mixture has ONE independent diffusive flux, so the hydrogen
-      ! element carries -J against the helium element's +J; the two elemental
-      ! fluxes are written from the same X and the same J the step used, and
-      ! neither is reconstructed anywhere else.  The advective part is
-      ! rho_f v_f X_upwind (the physical face flux -- the operator carries the
-      ! advection as a cell-velocity upwind difference, which has no face
-      ! representation).  The total mass flux 4 pi r_f^2 rho_f v_f is written
-      ! beside them: at a steady state all three are constant with radius, and
-      ! the comparison of their radial spreads is the pass criterion.  dmeff
-      ! is the face-averaged relative settling mass of the ambipolar
-      ! diagnostic (3 neutral, 2.5 H+ plasma, 5/3 He++ plasma).
+      ! element carries -J against the helium element's +J, and the two
+      ! advective parts add up to the face mass flux.  Both halves come from
+      ! element_nucleus_face_flux, the one public spelling of the element
+      ! flux: Y_He(f) is therefore the reconstructed, limited and upwinded
+      ! face mass fraction the transport rows put on the face, and not a
+      ! one-sided pick of a cell value.  The total mass flux
+      ! 4 pi r_f^2 F_rho is written beside them: at a steady state all three
+      ! are constant with radius, and the comparison of their radial spreads
+      ! is the pass criterion.  dmeff is the face-averaged relative settling
+      ! mass of the ambipolar diagnostic (3 neutral, 2.5 H+ plasma,
+      ! 5/3 He++ plasma).
+      !
+      ! THE FACE MASS FLUX THE PROFILE IS WRITTEN ON is rho_f v_f, the face
+      ! mean of the state's own density and velocity, in g cm^-2 s^-1.  The
+      ! element operator is handed the Riemann face mass flux only where it
+      ! carries the advection itself (the relaxation at a fixed wind); on
+      ! the marching path the elements ride on the Runge-Kutta stages and
+      ! this operator is given none, so the flux the file reports has to be
+      ! built from the state here.  It is the same quantity the Mdot_face
+      ! column has always carried, and only the SIGN of it selects the
+      ! upwind side, so the face composition is the operator's whichever
+      ! path the run took.
       !
       ! With a lower-atmosphere profile in use the routine also reduces each
       ! elemental flux to ONE number -- its median and its relative radial
@@ -3920,25 +4321,68 @@
       ! hard-sphere coefficient of the same cell, their ratio (which is the
       ! Coulomb suppression where both elements are ionized), and the name of
       ! the stage pair carrying the largest share of the friction.
-      real*8, dimension(1-Ng:N+Ng), intent(in) :: rep, Xhe, rho_phys, v
+      real*8, dimension(1-Ng:N+Ng),           intent(in) :: rho, Tcode
+      real*8, dimension(1-Ng:N+Ng,n_species), intent(in) :: f_sp
+      real*8, dimension(1-Ng:N+Ng), intent(in) :: rep, rho_phys, v
       real*8, dimension(1-Ng:N+Ng), intent(in) :: dmeff, Dco, Dneut
       integer, dimension(1-Ng:N+Ng),intent(in) :: idom
-      real*8, dimension(0:N),       intent(in) :: Jf
-      real*8  :: area, adv, adv_H, rhof, vf, dmf, Df, Dnf, Xf
+      real*8, dimension(1-Ng:N+Ng) :: Frho_f, nucH, nucHe, mass1, msum, Xhe
+      real*8, dimension(1-Ng:N+Ng) :: Yf
+      real*8, dimension(0:N)       :: Fadv, Jdif, n_el, m_one
+      real*8  :: area, adv, adv_H, dmf, Df, Dnf, sv_exc
       real*8, dimension(1:N) :: FH_win, FHe_win, M_win, r_win
-      integer :: j, uu, is, it, nwin
+      integer :: j, uu, is, it, nwin, jn, sv_bnd
 
       nwin = 0
+
+      ! THE FACE COUNTERS OF THE RUN COUNT THE RUN'S OWN FACES.  The two
+      ! evaluations below reconstruct a face composition, and
+      ! species_face_fraction counts every face state it has to scale back
+      ! onto [0,1] and keeps the largest excursion it saw.  Those are
+      ! statements about the trajectory, so a diagnostic that reads the same
+      ! state a second time must not add to them.
+      sv_bnd = n_species_faces_bounded
+      sv_exc = species_face_excursion
+
+      ! The face mass flux of the state, in g cm^-2 s^-1: the face mean of
+      ! rho and of v, the outermost face continuing its own cell.
+      do j = 1-Ng, N+Ng
+         jn = min(j+1, N+Ng)
+         Frho_f(j) = 0.5d0*(rho_phys(j) + rho_phys(jn))                   &
+                    *0.5d0*(v(j) + v(jn))*v0
+      enddo
+
+      ! Both halves of the element flux, from the one routine that spells
+      ! them: the advective half is Frho_f times the face mass fraction, so
+      ! it comes back in the units Frho_f was given in.
+      call element_nucleus_face_flux(rho, Tcode, f_sp, Frho_f,            &
+                                     Fadv, Jdif, n_el, m_one)
+
+      ! The face mass fraction the advective half carries, for the column
+      ! that reports it: the same rule, from the same routine the flux above
+      ! was built with.
+      call mixture_mass_split(f_sp, nucH, nucHe, mass1, msum)
+      Xhe = m_He_amu*nucHe/msum
+      call species_face_fraction(Xhe, Frho_f, Yf)
+
+      n_species_faces_bounded = sv_bnd
+      species_face_excursion  = sv_exc
 
       uu = 771
       open(unit=uu, file='./output/element_flux_profile.txt',             &
            status='replace')
-      write(uu,'(A)') '# elemental face fluxes carried by '//             &
-         'binary_element_diffusion (T8 / Phase-E closure measurement)'
-      write(uu,'(A)') '#   F_He   = 4 pi r^2 (rho X v + J)      [g/s]'
-      write(uu,'(A)') '#   F_H    = 4 pi r^2 (rho (1-X) v - J)  [g/s]'
-      write(uu,'(A)') '#   Mdot_f = 4 pi r^2 rho v              [g/s]'//  &
-         '   (= F_H + F_He identically)'
+      write(uu,'(A)') '# elemental face fluxes of the composition '//     &
+         'binary_element_diffusion hands back'
+      write(uu,'(A)') '# (T8 / Phase-E closure measurement; both halves '//&
+         'from element_nucleus_face_flux)'
+      write(uu,'(A)') '#   F_rho  = rho_f v_f                    '//      &
+         '[g/cm2/s]  face mean of rho and v'
+      write(uu,'(A)') '#   X_face = face mass fraction of helium '//      &
+         '           reconstructed, limited, upwind on F_rho'
+      write(uu,'(A)') '#   F_He   = 4 pi r^2 (F_rho X_face + J)      [g/s]'
+      write(uu,'(A)') '#   F_H    = 4 pi r^2 (F_rho (1-X_face) - J)  [g/s]'
+      write(uu,'(A)') '#   Mdot_f = 4 pi r^2 F_rho                   '//  &
+         '[g/s]   (= F_H + F_He identically)'
       ! One whitespace-free token per column, so the schema line can be read
       ! the way every other EXHALE product's is.
       write(uu,'(A)') '# columns: j r_face[R_p] X_face J_diff'//           &
@@ -3946,33 +4390,27 @@
          ' Mdot_face[g/s] dmeff_face'//                                   &
          ' D_eff[cm2/s] D_neutral[cm2/s] D_eff/D_neutral dominant_pair'
       do j = 1, N-1
-         area = 4.0d0*pi*rep(j)**2
-         rhof = 0.5d0*(rho_phys(j) + rho_phys(j+1))
-         vf   = 0.5d0*(v(j) + v(j+1))*v0
-         if (vf .ge. 0.0d0) then
-            Xf = Xhe(j)
-         else
-            Xf = Xhe(j+1)
-         endif
-         adv   = rhof*vf*Xf
-         adv_H = rhof*vf*(1.0d0 - Xf)
+         area  = 4.0d0*pi*rep(j)**2
+         adv   = Fadv(j)
+         ! The hydrogen element carries the rest of the face mass flux, so
+         ! that F_H + F_He is the mass flux to the last bit.
+         adv_H = Frho_f(j) - adv
          dmf  = 0.5d0*(dmeff(j) + dmeff(j+1))
          Df   = 0.5d0*(Dco(j)   + Dco(j+1))
          Dnf  = 0.5d0*(Dneut(j) + Dneut(j+1))
          is   = (idom(j) - 1)/n_hcar + 1
          it   = idom(j) - (is-1)*n_hcar
-         write(uu,'(I6,11ES16.7,2X,A)') j, rep(j)/R0,                     &
-              0.5d0*(Xhe(j)+Xhe(j+1)),                                    &
-              Jf(j), adv, area*(adv + Jf(j)),                             &
-              area*(adv_H - Jf(j)), area*rhof*vf, dmf,                    &
+         write(uu,'(I6,11ES16.7,2X,A)') j, rep(j)/R0, Yf(j),              &
+              Jdif(j), adv, area*(adv + Jdif(j)),                         &
+              area*(adv_H - Jdif(j)), area*Frho_f(j), dmf,                &
               Df, Dnf, Df/max(Dnf, 1.0d-99),                              &
               trim(hecar_name(is))//'-'//trim(hcar_name(it))
          if (lap_in_use) then
             nwin = nwin + 1
             r_win(nwin)   = rep(j)
-            FHe_win(nwin) = area*(adv + Jf(j))
-            FH_win(nwin)  = area*(adv_H - Jf(j))
-            M_win(nwin)   = area*rhof*vf
+            FHe_win(nwin) = area*(adv + Jdif(j))
+            FH_win(nwin)  = area*(adv_H - Jdif(j))
+            M_win(nwin)   = area*Frho_f(j)
          endif
       enddo
       close(uu)
@@ -4086,7 +4524,7 @@
 
       ! ------------------------------------------------------------------ !
 
-      subroutine report_step(Xhe, rho_phys, rp, rep, mass_resid,           &
+      subroutine report_step(Xhe, rho_phys, mass_resid,                    &
                              Xover, Xunder, qdep, n_vanished)
       ! Diagnostic written each step (EXHALE_DIFFUSION_CHECK=1): the range of X, the
       ! largest |J_He + J_1| over the faces, the largest relative change of the
@@ -4114,17 +4552,21 @@
       ! actually guards the discretization is the mass closure: it is what keeps rho -- owned by the hydro -- consistent with
       ! the composition the operator hands back, and it is nonzero the moment
       ! the write-back stops meeting both element totals exactly.
-      real*8, dimension(1-Ng:N+Ng), intent(in) :: Xhe, rho_phys, rp, rep
+      real*8, dimension(1-Ng:N+Ng), intent(in) :: Xhe, rho_phys
       real*8,                       intent(in) :: mass_resid
       real*8,                       intent(in) :: Xover, Xunder, qdep
       integer,                      intent(in) :: n_vanished
+      real*8, dimension(0:N) :: fa
+      real*8, dimension(1:N) :: cv
       real*8  :: mHe_tot
       integer :: j
 
+      ! The helium mass of the column, on the same exact shell volumes the
+      ! transport rows divide by.
+      call spherical_face_area_and_cell_volume(fa, cv)
       mHe_tot = 0.0d0
       do j = 1, N
-         mHe_tot = mHe_tot                                                &
-                 + rho_phys(j)*Xhe(j)*rp(j)**2*(rep(j)-rep(j-1))
+         mHe_tot = mHe_tot + rho_phys(j)*Xhe(j)*cv(j)*R0**3
       enddo
       write(0,'(A,ES13.6,A,ES13.6,A,ES9.2,A,ES16.9)')                     &
          ' (diffusion) X min ', minval(Xhe(1:N)), ' max ',                &

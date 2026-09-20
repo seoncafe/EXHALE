@@ -1527,11 +1527,11 @@
       fire = .false.
       if (reject_after_operation .le. 0) return
       if (op .ne. reject_after_operation) return
-      if (reject_at_step .ge. 0 .and. count .ne. reject_at_step) return
+      if (reject_at_step .ge. 0 .and. marching_step .ne. reject_at_step) return
       if (reject_in_pass .gt. 0 .and. err_pass_index .ne. reject_in_pass) &
          return
-      if (count .ne. injected_at_count) then
-         injected_at_count = count
+      if (marching_step .ne. injected_at_count) then
+         injected_at_count = marching_step
          injected_served   = 0
       endif
       if (injected_served .ge. reject_leading_attempts) return
@@ -1788,7 +1788,7 @@
       last_error_estimate = est%e_resolved
       if (est%deciding_class .gt. 0)                                       &
          last_error_order_p = err_order_p(est%deciding_class)
-      last_error_step     = count
+      last_error_step     = marching_step
       last_error_cell     = est%jworst
       last_error_row      = est%kworst
       n_error_estimates   = n_error_estimates + 1

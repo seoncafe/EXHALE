@@ -52,14 +52,14 @@
                                     species_face_identity_residual,       &
                                     species_face_identity_injection,      &
                                     n_species_faces_bounded
-      use Reconstruction_step, only: Reconstruct_scalar
       use binary_element_diffusion, only: species_advection_active,       &
                                     species_advection_begin_step,         &
                                     species_advection_stage,              &
                                     species_advection_project,            &
                                     advected_carrier_reset,               &
                                     advected_carrier_register,            &
-                                    advected_carrier_fractions
+                                    advected_carrier_fractions,           &
+                                    carrier_mass_fractions
 
       implicit none
 
@@ -595,8 +595,8 @@
       !     because the base face carries the ghost composition in and the
       !     base cell has an advective term like every other cell.
       real*8, dimension(:),   allocatable :: rho0, rho1, Frho, dt_loc
-      real*8, dimension(:),   allocatable :: Yf, YL, YR
-      real*8, dimension(:,:), allocatable :: f_sp, fcadv
+      real*8, dimension(:),   allocatable :: Yf
+      real*8, dimension(:,:), allocatable :: f_sp, fcadv, Ycar0
       real*8  :: q, tot0, tot1, bnd, rp, rm, dV, rel, worst
       integer :: j
 
@@ -608,9 +608,9 @@
       call advected_carrier_register(isp_H2, .false.)
 
       allocate(rho0(1-Ng:N+Ng), rho1(1-Ng:N+Ng), Frho(1-Ng:N+Ng),         &
-               dt_loc(1-Ng:N+Ng), Yf(1-Ng:N+Ng), YL(1-Ng:N+Ng),           &
-               YR(1-Ng:N+Ng))
-      allocate(f_sp(1-Ng:N+Ng,n_species), fcadv(1-Ng:N+Ng,1))
+               dt_loc(1-Ng:N+Ng), Yf(1-Ng:N+Ng))
+      allocate(f_sp(1-Ng:N+Ng,n_species), fcadv(1-Ng:N+Ng,1),             &
+               Ycar0(1-Ng:N+Ng,1))
 
       dt_loc = 1.0d-4
 
@@ -656,21 +656,28 @@
          tot0 = tot0 + dV*rho0(j)*2.0d0*f_sp(j,isp_H2)
       enddo
 
-      ! The face fractions this stage will carry, from the composition it
-      ! begins with: the same reconstruction, on the side the face mass flux
-      ! selects, of the H2 mass fraction, which is 2 f_H2 on this mixture.
-      ! The inner ghosts hold the base cell's own partition, which is the
-      ! inflow condition of a carrier no handoff states.
-      Yf = 2.0d0*f_sp(:,isp_H2)
-      Yf(1-Ng:0) = Yf(1)
-      call Reconstruct_scalar(Yf, YL, YR)
-      do j = 1-Ng, N+Ng
-         if (Frho(j) .ge. 0.0d0) then
-            Yf(j) = YL(j)
-         else
-            Yf(j) = YR(j)
-         endif
-      enddo
+      ! The face fractions this stage will carry, taken from the composition
+      ! it begins with THROUGH THE OPERATOR'S OWN TWO ROUTINES: the carrier
+      ! mass fraction of every cell and ghost (carrier_mass_fractions, which
+      ! is where the inflow and the outflow ghost values are stated) and the
+      ! face composition on the side the face mass flux selects
+      ! (species_face_fraction, which is where the reconstruction and the
+      ! scaling back onto [0,1] are).  On this mixture the H2 mass fraction
+      ! is 2 f_H2: the hydrogen nucleus count is one per unit mass by
+      ! construction, so the mixture mass the fraction is taken against is
+      ! m_H and the carrier mass is 2 m_H.
+      !
+      ! RESTATING EITHER RULE HERE MEASURES THE WRONG THING.  The budget
+      ! below is exact only against the face flux the operator carried, so a
+      ! face composition built beside it turns the row into a comparison of
+      ! two reconstructions.  A fixture that continues its own cell N+1
+      ! value past the outflow face, instead of the ghost rule X_ghost = X_N
+      ! that carrier_mass_fractions states, puts a slope on that face which
+      ! the operator's limiter has flattened to zero, and leaves the budget
+      ! at 9.9e-9 of the total on an operator whose column sum telescopes to
+      ! 1.4e-15 of it (MEASURED).
+      call carrier_mass_fractions(f_sp, Ycar0)
+      call species_face_fraction(Ycar0(:,1), Frho, Yf)
 
       call species_advection_begin_step(f_sp)
       call carrier_mass_row(rho0, Frho, dt_loc, rho1)
@@ -692,7 +699,7 @@
                    rel .le. 1.0d-12, rel, 0.0d0, 1.0d-12)
 
       call advected_carrier_reset()
-      deallocate(rho0, rho1, Frho, dt_loc, Yf, YL, YR, f_sp, fcadv)
+      deallocate(rho0, rho1, Frho, dt_loc, Yf, f_sp, fcadv, Ycar0)
 
       end subroutine test_carrier_nucleus_budget
 

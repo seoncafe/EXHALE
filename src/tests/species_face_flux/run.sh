@@ -24,13 +24,22 @@
 # EXHALE_OBJDIR selects another build (a private OBJDIR, as a concurrent
 # item's build uses); with it set the staleness check is skipped.
 # EXHALE_TEST_OUT selects where the test executable is written.
-# EXHALE_SPECIES_EXE selects the binary the whole-binary rows run; without
-# it those rows are skipped rather than building the production binary here.
+# EXHALE_EXE selects the binary the whole-binary rows run, and EXHALE_SPECIES_EXE
+# is its accepted alias here; with neither set those rows are skipped
+# rather than building the production binary here. A conflicting pair is
+# refused, and the identity of the binary is stated before it is run; the
+# policy is in src/tests/exhale_exe.sh.
 #
 # Usage: src/tests/species_face_flux/run.sh
 set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$HERE/../../.." && pwd)"
+# The binary is selected and its identity stated in one place;
+# src/tests/exhale_exe.sh carries the policy. The whole-binary rows at
+# the end of this suite run only when a binary was asked for.
+. "$HERE/../exhale_exe.sh"
+exhale_select_exe "$ROOT" species_face_flux EXHALE_SPECIES_EXE
+if [ "$EXHALE_RUN_EXE_REQUESTED" = "1" ]; then exhale_announce_exe; fi
 OBJDIR="${EXHALE_OBJDIR:-$ROOT/build}"
 OUT="${EXHALE_TEST_OUT:-$ROOT/build/tests/species_face_flux}"
 FC="${FC:-gfortran}"
@@ -97,11 +106,12 @@ fi
 # with that operation named and go on, which is the checkpoint restoring the
 # composition the attempt started from.
 # ------------------------------------------------------------------ #
-EXE="${EXHALE_SPECIES_EXE:-}"
-if [ -z "$EXE" ]; then
-   echo "  whole-binary rows skipped: set EXHALE_SPECIES_EXE to a built binary"
+if [ "$EXHALE_RUN_EXE_REQUESTED" != "1" ]; then
+   echo "  whole-binary rows skipped: set EXHALE_EXE (or its alias EXHALE_SPECIES_EXE)"
+   echo "  to a built binary"
    exit $rc
 fi
+EXE="$EXHALE_RUN_EXE"
 if [ ! -x "$EXE" ]; then
    echo "FAIL species_face_flux_binary measured=not_executable reference=$EXE tol=0"
    exit 1

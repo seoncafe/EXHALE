@@ -253,11 +253,19 @@
 
 	! Charge exchange (Huang Table 4) on the H, He and metal rows. The
 	! driver sets cx_metal_base = mbase before this solve. Rows 1 and 2 are
-	! the H+ and He+ balances written production positive, the convention
-	! cx_add_to_fvec assumes. Absent reactants contribute zero, preserving
-	! the identity rows of absent elements.
+	! the H+ and He+ balances of mol_heh_rows, written production positive,
+	! so the He I <-> He II row is ionization positive and he_row_sign = +1,
+	! the orientation cx_add_to_fvec writes anyway. Absent reactants
+	! contribute zero, preserving the identity rows of absent elements. The
+	! rate coefficients are this cell's, at ieq_cell%T_K.
+	! The helium reactant of the group C metal + He reactions is the GROUND
+	! SINGLET n_heiSI: those rates are ground-state rates (see the group C
+	! paragraph of charge_exchange), so the metastable is not charged to
+	! them; n_hei, the free neutral helium, is here only the intermediate
+	! that the singlet is formed from.
 	call cx_add_to_fvec(N_eq, fvec, nm0, nm1, nm2,                       &
-	                    n_hi, n_hii, n_hei, n_heii, n_heiii)
+	                    n_hi, n_hii, n_heiSI, n_heii, n_heiii,           &
+	                    1.0d0, ieq_cell%T_K)
 
 	! He <-> H charge exchange (Huang Table 4 group B); rows 1 and 2 are
 	! production positive here, so he_row_sign = +1. Group B is excluded

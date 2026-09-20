@@ -25,13 +25,19 @@
 # EXHALE_setup.out and an ./output directory into it, so name a scratch copy
 # of a run and not the run itself.  Without that variable the probe is
 # skipped and the suite says so.  Its two printed groups differ in kind: the
-# ROW, DERIV and JUMP lines are measurements for the memo, and the four
-# PASS|FAIL rows are the invariant that the boundary is a function of its
-# argument (repeated evaluation, an evaluation of another state in between, a
-# complete flux evaluation in between, a changed call order).
+# ROW, DERIV and JUMP lines are measurements for the memo, and the PASS|FAIL
+# rows are invariants: that the boundary is a function of its argument
+# (repeated evaluation, an evaluation of another state in between, a complete
+# flux evaluation in between, a changed call order), and that the stationary
+# operator puts the wind's own mass flux through the base face and through
+# every face of a stationary state.  The base-face bound is 3e-5 of the
+# window mean, the offset a resolved wind carries between a face value and
+# the mean of a cell-centered product; EXHALE_L26_BASE_FLUX_TOL moves it for
+# a state whose wind is resolved differently.
 #
 # Usage: src/tests/grid_and_gates/run.sh [test ...]
 #        names: grid_width grid_window photon_quadrature threshold_edges
+#               base_cell_width base_grid_key base_grid_pinned base_grid_restart
 #               hydrostatic_residual base_branch base_continuity
 #               free_outflow_boundary
 #               flux_spread
@@ -39,12 +45,17 @@
 #               restart_intent evaluate_products restart_option_change
 #               direct_steady_setup
 #               sed_coverage coupled_carrier_h2 carrier_transport_inert
-#               momentum_row fpe_traps
+#               iontrans_atomic momentum_row fpe_traps carrier_bound_hold
 set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$HERE/../../.." && pwd)"
 OBJDIR="${EXHALE_OBJDIR:-$ROOT/build}"
-EXE="${EXHALE_EXE:-$ROOT/EXHALE.x}"
+# The binary is selected and its identity stated in one place;
+# src/tests/exhale_exe.sh carries the policy.
+. "$HERE/../exhale_exe.sh"
+exhale_select_exe "$ROOT" grid_and_gates
+EXE="$EXHALE_RUN_EXE"
+exhale_announce_exe
 OUT="${EXHALE_TEST_OUT:-$ROOT/build/tests/grid_and_gates}"
 FC="${FC:-gfortran}"
 FFLAGS_TEST="${FFLAGS_TEST:--O0 -g -fbacktrace -fopenmp}"
@@ -78,7 +89,7 @@ fi
 # Every object but the main program: the drivers bring their own.
 PROD_OBJ="$(ls "$OBJDIR"/*.o | grep -vE '(EXHALE_main|_tests|_probe)\.o$' | tr '\n' ' ')"
 
-WANT="${*:-grid_width grid_window photon_quadrature threshold_edges hydrostatic_residual base_branch base_continuity free_outflow_boundary flux_spread output_state base_level restart_grid restart_round_trip restart_intent evaluate_products restart_option_change direct_steady_setup sed_coverage coupled_carrier_h2 carrier_transport_inert momentum_row fpe_traps}"
+WANT="${*:-grid_width grid_window base_cell_width base_grid_key base_grid_pinned base_grid_restart photon_quadrature threshold_edges hydrostatic_residual base_branch base_continuity free_outflow_boundary flux_spread output_state base_level restart_grid restart_round_trip restart_intent evaluate_products restart_option_change direct_steady_setup sed_coverage coupled_carrier_h2 carrier_transport_inert iontrans_atomic momentum_row fpe_traps carrier_bound_hold}"
 n_fail=0
 
 want() { case " $WANT " in *" $1 "*) return 0;; *) return 1;; esac; }
@@ -115,6 +126,43 @@ if want grid_window; then
    [ -x "$OUT/grid_window_indices.x" ] && \
       run_one grid_window_indices env OMP_NUM_THREADS=1 \
               "$OUT/grid_window_indices.x"
+fi
+
+if want base_cell_width; then
+   # The serializer lives in setup_report, which pulls in the rest of the
+   # production objects; parameters.o alone would not link it.
+   $FC $FFLAGS_TEST -J"$OUT" -I"$OBJDIR" \
+       -o "$OUT/base_cell_width_provenance.x" \
+       "$HERE/base_cell_width_provenance.f90" $PROD_OBJ $LAPACK || {
+      echo "FAIL base_cell_width_provenance_build measured=compile_error reference=ok tol=0"
+      n_fail=$((n_fail+1)); }
+   [ -x "$OUT/base_cell_width_provenance.x" ] && \
+      run_one base_cell_width_provenance env OMP_NUM_THREADS=1 \
+              "$OUT/base_cell_width_provenance.x"
+fi
+
+if want base_grid_key; then
+   run_one base_grid_key_reproduces_default env EXHALE_EXE="$EXE" \
+           EXHALE_TEST_OUT="$OUT" \
+           bash "$HERE/base_grid_key_reproduces_default.sh"
+fi
+
+if want base_grid_pinned; then
+   $FC $FFLAGS_TEST -J"$OUT" -I"$OBJDIR" \
+       -o "$OUT/base_grid_pinned_width.x" \
+       "$HERE/base_grid_pinned_width.f90" \
+       "$OBJDIR/parameters.o" "$OBJDIR/define_grid.o" || {
+      echo "FAIL base_grid_pinned_width_build measured=compile_error reference=ok tol=0"
+      n_fail=$((n_fail+1)); }
+   [ -x "$OUT/base_grid_pinned_width.x" ] && \
+      run_one base_grid_pinned_width env OMP_NUM_THREADS=1 \
+              "$OUT/base_grid_pinned_width.x"
+fi
+
+if want base_grid_restart; then
+   run_one base_grid_restart_contract env EXHALE_EXE="$EXE" \
+           EXHALE_TEST_OUT="$OUT" \
+           bash "$HERE/base_grid_restart_contract.sh"
 fi
 
 if want photon_quadrature; then
@@ -223,7 +271,11 @@ if want flux_spread; then
 fi
 
 if want output_state; then
+   # EXHALE_TEST_OUT as well: this program runs the binary in work
+   # directories of its own, and without it they are written under the
+   # tree's build/tests/ even when the caller named a scratch directory.
    run_one output_state_consistency env EXHALE_EXE="$EXE" \
+           EXHALE_TEST_OUT="$OUT" \
            bash "$HERE/output_state_consistency.sh"
 fi
 
@@ -284,9 +336,21 @@ if want carrier_transport_inert; then
            bash "$HERE/carrier_transport_inert_report.sh"
 fi
 
+if want iontrans_atomic; then
+   run_one ionization_transport_atomic env EXHALE_EXE="$EXE" \
+           EXHALE_TEST_OUT="$OUT" \
+           bash "$HERE/ionization_transport_atomic.sh"
+fi
+
 if want momentum_row; then
    run_one momentum_row_from_fluxes_only env EXHALE_EXE="$EXE" \
            bash "$HERE/momentum_row_from_fluxes_only.sh"
+fi
+
+if want carrier_bound_hold; then
+   run_one carrier_movement_bound_hold env EXHALE_EXE="$EXE" \
+           EXHALE_TEST_OUT="$OUT" \
+           bash "$HERE/carrier_movement_bound_hold.sh"
 fi
 
 if want fpe_traps; then

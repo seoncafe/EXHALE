@@ -26,7 +26,14 @@
 # Default tolerance 1.0e-7, one hundredth of the 1e-5 `Resid tol` the steady
 # solves are accepted on.
 set -u
+HERE="$(cd "$(dirname "$0")" && pwd)"
 BIN="${1:?give the EXHALE binary}"
+# The binary is selected and its identity stated in one place;
+# src/tests/exhale_exe.sh carries the policy.
+. "$HERE/../exhale_exe.sh"
+exhale_use_exe "$BIN" seed_independence
+BIN="$EXHALE_RUN_EXE"
+exhale_announce_exe
 CASE="${2:?give a case directory whose run reaches the steady solver}"
 TOL="${3:-1.0e-7}"
 WORK="$(mktemp -d /tmp/exhale_seedindep.XXXX)"
@@ -36,6 +43,9 @@ for f in "$CASE"/*.inp "$CASE"/*.dat; do [ -e "$f" ] && cp -f "$f" "$WORK/"; don
 mkdir -p "$WORK/output"
 for f in "$CASE/output"/*_IC.txt; do [ -e "$f" ] && cp -f "$f" "$WORK/output/"; done
 cp -f "$BIN" "$WORK/EXHALE.x"
+# The copy is the file that executes, so it is the file whose identity is
+# asserted.
+exhale_assert_exe_identity "$WORK/EXHALE.x" || exit 1
 
 # The probe runs at the ENTRY of the steady solve and stops the run there, so
 # the marching before it is only the way to a real hand-off state and the case

@@ -387,7 +387,27 @@ at the price of proportionally more work in every sweep. In practice the
 $2\times$ step
 (\texttt{1.0e-4 100}) is the one to try first: it is where the mode goes, and
 $4\times$ is not reachable to convergence on HD\,189733\,b within the
-step cap (\texttt{Max steps:}) because its time step is $4\times$ smaller. That $2\times$
+step cap (\texttt{Max steps:}) because its time step is $4\times$ smaller.
+
+\paragraph{The exact default width, and inputs written before it was pinned.}
+The default \texttt{dr} is the double $2.0\times10^{-4}$ written in the
+source with a \texttt{d} exponent, so the value is the one a reader of the
+key would spell: an \texttt{input.inp} without the key and one stating
+\texttt{Base grid [dr,cells]: 2.0e-4 50} build the same grid to the bit, the
+list-directed read of \texttt{2.0e-4} into a \texttt{real*8} being that
+double.  This matters because the grid is part of a stored state: a restart
+is refused when the file's cell centers differ from the run's by more than
+$10^{-10}$ relative.  An input written before 2026-09-19 was run on the
+default-real literal, the width $1.9999999494757503\times10^{-4}$, whose
+centers differ from the present grid's by $3.8\times10^{-9}$ to
+$6.6\times10^{-9}$ relative, which exceeds that tolerance.  Every such input
+standing beside stored results carries that width explicitly as
+\texttt{Base grid [dr,cells]: 1.9999999494757503e-4 50}
+(\texttt{src/utils/pin\_base\_grid.py}), and each preserved tree whose
+inputs were not edited has a \texttt{GRID\_DEFAULT\_NOTE.md} at its root
+stating the same line.  The width a run used is recorded at round-trip
+precision in the resolved-configuration record, and the refusal itself prints
+it with where it came from, the key or the default. That $2\times$
 setting is what \texttt{HD189733b/input.inp} carries; the other three production
 planets run on the default. The full investigation is
 \texttt{docs/hd189\_base\_checkerboard.md}.
@@ -424,11 +444,42 @@ weight of cell~1.
 
 Where the flow reverses ($-c<v<0$) only one characteristic enters, so the
 reservoir states the pressure alone and the entropy at the face is the
-interior's, advected out. The handover between the two is a smooth blend of
-width $10^{-6}$ in face Mach number, far below the $\sim\!10^{-5}$ a wind's own
-base carries. Supersonic outflow prescribes nothing. Supersonic \emph{inflow}
+interior's, advected out. That choice is discrete and has no width: a contact
+carrying different entropies on its two sides has direction-dependent traces,
+and a face density between them is an interpolation rather than a law of
+thermal contact. The side that owns the face is the side the level's mass flux
+comes from, read from the wind window $r\ge r_{\rm flux}$ where that window
+carries one flux (its relative standard deviation at or below
+$2\times10^{-3}$ and its face-mapped Mach number at or above $10^{-12}$), and
+from the matched face velocity where it does not, a velocity below the
+rounding of the cancellation it is formed from counting as zero. At rest and
+at inflow the reservoir owns the level, the physical assumption being that the
+lower atmosphere below it is a radiatively controlled heat bath. Supersonic
+outflow prescribes nothing, and that transition alone carries a declared
+numerical width, a smoothstep of half width $10^{-8}$ in $M_i$ about $-1$,
+where the number of outgoing characteristics changes. Supersonic \emph{inflow}
 would need three reservoir conditions and a $(p,s)$ reservoir has two, so it is
 reported as a configuration outside the model rather than repaired.
+
+The composition of the two lower ghost cells is part of the boundary model as
+well, and is what distinguishes model v3 from v2 in the state file's
+\texttt{\# boundary\_model} line. The ghost composition is not prescribed but
+solved by the ionization sweep, and the sweep is a map from the composition it
+is entered at to the one it returns, so under v2 two entry compositions could
+return ghosts $4.7\times10^{-3}$ to $5.5\times10^{-2}$ apart in their trace
+ions, both accepted by every test the sweep applies, and the base continuity
+row of cell~1 read $8.335\times10^{-8}$ in one and $2.923\times10^{-9}$ in
+the other against the same tolerance. v3 states both halves of the fix: the
+ghost solve starts from the reservoir row at the first sweep and from the
+ghost the previous sweep returned after it, and the ghost it returns is held
+to a fixed point of that same map, the largest absolute change of any ghost
+species density in the cell's own units at most $10^{-11}$ and the ghost's
+heavy-particle plus electron count moving by at most $10^{-6}$ of itself. A
+boundary that cannot reach that in twenty applications stops the run by name
+with both moves. Nothing here is a key: the seed and what the fixed point
+reached are printed in the boundary report, and the diagnostics that replace
+the seed for a measurement are the \texttt{EXHALE\_GHOST\_*} variables of
+Table~\ref{tab:env}, all default off.
 
 Nothing in this is selectable. There is no ghost velocity, pressure or
 temperature closure to choose, and the four keys that used to choose them
@@ -443,8 +494,8 @@ The finite-volume steady state can be solved directly ($F(Y)=0$ for the hydro
 state, with the ionization equilibrium eliminated locally inside the residual)
 by a preconditioned Jacobian-free Newton--Krylov method (banded LAPACK
 preconditioner, frozen WENO weights, diagonal scaling, non-monotone line search;
-the boundary is differentiable of its own accord, the branch handover being a
-blend rather than a kink, so nothing has to be smoothed for it). Each
+the boundary's one branch of nonzero width, the supersonic-outflow transition,
+sits decades from any operating point, so nothing has to be smoothed for it). Each
 unknown is scaled by its own cell's state ($\rho$, $\rho(|v|+c_s)$, $E$),
 so that no cell sets another's scale; the momentum scale uses the fastest
 signal speed because $\rho v$ itself vanishes wherever the flow reverses. This
@@ -696,6 +747,58 @@ Variable & Effect \\
   report is byte-identical without it. \\
 \texttt{EXHALE\_ELEM\_DIAG} & The diagnostic line the species-row step prints
   at every trial. \\
+\multicolumn{2}{@{}p{\dimexpr\linewidth-2\tabcolsep}@{}}{\emph{The lower
+  boundary's composition. All default off; with none of them set the seed is
+  the boundary model's own (\S\ref{sec:basebc}) and not one number of the
+  run moves.}} \\
+\texttt{EXHALE\_GHOST\_COMPOSITION\_SEED=}$\langle s\rangle$ & Enter the
+  two lower ghost cells into the composition sweep at a stated composition
+  instead of the model's seed. \texttt{the\_state\_file\_ghost\_rows} takes
+  the ghost rows the restart pair carries, which the loader otherwise drops;
+  \texttt{the\_previous\_sweep\_ghost} takes the ghost the previous sweep of
+  this run returned; a path takes a file of rows in the format
+  \texttt{EXHALE\_GHOST\_SEED\_WRITE} writes. A run with it set is entered
+  at a composition the boundary model does not state, so its result is a
+  measurement and never a certificate, and the boundary report says so. \\
+\texttt{EXHALE\_GHOST\_SEED\_WRITE=}$\langle$path$\rangle$ & Write the
+  lower ghost composition as it was installed, in the format the seed key
+  reads back, so that a perturbed seed is made from a measured one rather
+  than assembled by hand. \\
+\texttt{EXHALE\_GHOST\_RECORD=1} & Append one record per evaluation to
+  \path{output/ghost_record.txt}: per lower ghost cell the thermodynamic row
+  the boundary left there, the heavy-particle and electron counts of the
+  returned composition, its molecular and ionization fractions, the charge and
+  elemental budgets, the reaction residual the cell was accepted at, the
+  residual of its imposed molecular partition and the pass the closure ended
+  on; and, in the same record, the base cell's continuity row with the two
+  face mass fluxes it is built from, their signed difference, the row scale
+  and the row's rounding floor. \\
+\texttt{EXHALE\_INTERIOR\_COMPOSITION\_HELD=1} & Return the composition the
+  sweep was handed on every cell above the two lower ghosts, and the solved
+  composition on the ghosts themselves, so that a base row measured after the
+  call carries the ghost's own refresh and nothing else. The heating and
+  cooling returned are those of the composition the sweep solved on every
+  cell, so a run with the key set is not a state anything may be certified
+  on. \\
+\texttt{EXHALE\_BOUNDARY\_TRACE=1} & Write the lower boundary at named
+  points of an evaluation to \path{output/boundary_trace.txt}, so that the
+  order in which the boundary and the composition are built can be read off a
+  run instead of argued. \\
+\midrule
+\texttt{EXHALE\_CARRIER\_TRUST\_HOLD=}$\langle v\rangle$ & Hold the bound
+  on how far one outer pass may move the molecular carriers at $v$ for every
+  pass, taking the progress control's halving out. It separates a relaxation
+  the bound throttles, which decays at a rate proportional to the bound, from
+  a mode the alternation cannot damp, which decays at the same rate whatever
+  the bound. \\
+\texttt{EXHALE\_STAGE\_CHANNELS=}$\langle$list$\rangle$ & Up to eight grid
+  cell indices, comma separated (\texttt{107,248}). Every evaluation of the
+  ionization stage rows at one of those cells appends one line to
+  \path{output/stage_channels.txt} carrying the gas branch, the cell, a call
+  counter, the kernel's own arguments and the channels, so the rows can be
+  re-evaluated afterwards at the very state the run gave them. The rows run
+  inside the cell sweep, so the order of the lines is deterministic only with
+  one thread. \\
 \end{longtable}
 }
 
@@ -2592,7 +2695,10 @@ cell, in \emph{cgs} units. Two flavors exist: the equilibrium files
 (\texttt{*.txt}, written during the run) and the advection-corrected files
 (\texttt{*\_adv.txt}, written once at the end by the post-processor, which
 re-solves the ionization balance including advection of the wind). The
-\texttt{*\_adv.txt} files are the ones the analysis tools read.
+\texttt{*\_adv.txt} files are what the analysis tools read by default, and
+the equilibrium files are what they read when the solved state is asked for
+(\texttt{EXHALE\_TRANSIT\_STATE=solution}, \S\ref{sec:tpm}) or when a
+stationary solve wrote no advection-corrected pair.
 
 \paragraph{Caveat: the \texttt{\_adv} profile at a ``breathing'' base.}
 The advection-corrected (\texttt{*\_adv.txt}) \emph{temperature and ionization}
@@ -2843,6 +2949,34 @@ input files as they were read ($-1$ means the file was absent), and the last lin
 records the discretization, the lower boundary model, the molecular carrier
 model, the version of the restart layout, the version of the residual definition
 the acceptance gates used, and the grid size.
+
+\paragraph{The lower boundary the state was written with.} Two further
+\texttt{\#} lines carry the boundary itself, because a state read back a year
+later has to say which boundary it is a solution of:
+
+\begin{quote}\ttfamily\small
+\# boundary\_model characteristic\_face\_ps\_reservoir\_C\_minus\_contact\_upwind\_ghost\_fixed\_point\_seed\_reservoir\_row\_v3\\
+\# boundary\_reservoir version 1 p[p0] T[T0] nhat[n0/rho0] r\_level[Rp] \ldots
+\end{quote}
+
+\noindent The first names the model that built the face state
+(\S\ref{sec:basebc}); the identity changes when the model does, v2 being the
+contact upwind without a stated ghost composition and v3 adding the ghost
+seed and the fixed point the ghost composition is held to.  The second states
+the prescribed reservoir with the version of its prescription: the pressure
+and temperature at the base level, the particles per unit mass of the
+reservoir gas and the radius the three are stated at, each written at
+round-trip precision, so the four numbers on the line are the numbers the run
+held and not a rendering of them.  The entropy is not among them: it is
+carried implicitly, as the isentrope through $(p, T)$ at the base
+composition.  The reservoir travels with the state because it is the only
+boundary input the physical column cannot reconstruct; the ghost rows the
+file holds are the boundary's own output and are rebuilt at the read from the
+column and this run's reservoir.  A restart written under an older boundary
+model is reported and loaded, not refused: the loader names both models and
+says that the state's residual is not the residual it was written with.  Both
+lines are \texttt{\#} comments, so no numeric parse and no regression
+comparison changes.
 
 \subsection{\texttt{Ion\_species.txt} / \texttt{Ion\_species\_adv.txt}}
 Ion number densities [cm$^{-3}$] (34 columns). Column~1 is $r$; columns 2--7 are
@@ -3115,8 +3249,8 @@ converge). If the \texttt{*\_adv.txt} files exist they are overplotted (dashed)
 against the equilibrium profiles (solid). It also prints $\log_{10}\dot M$.
 
 \subsection{\texttt{EXHALE\_transit.py}: transmission spectra}\label{sec:tpm}
-\texttt{EXHALE\_transit.py} post-processes a converged run (\texttt{*\_adv.txt} +
-\texttt{input.inp}) into transit transmission spectra and reports the line-center
+\texttt{EXHALE\_transit.py} post-processes a converged run into transit
+transmission spectra and reports the line-center
 absorption depths (theoretical, instrument-convolved, and
 instrument+rotation-convolved) for \textbf{He\,10830}, \textbf{Ly$\alpha$},
 \textbf{H$\alpha$/H$\beta$} (from the non-LTE $n{=}2$ population, Christie+2013,
@@ -3129,14 +3263,53 @@ $+$rotation spectra, written under the same \texttt{tpm\_<line>} names), plus
 the validated single-component line-center and 4\,\AA-band depth table; a
 metals-off run skips them automatically.
 
+\paragraph{Which state the spectrum is built from
+(\texttt{EXHALE\_TRANSIT\_STATE}).}
+The tool reads one of two state pairs, and the selection is a physical choice
+rather than a filename convenience.  \texttt{adv}, the default, reads
+\texttt{Hydro\_ioniz\_adv.txt} and \texttt{Ion\_species\_adv.txt}: a
+post-process of a marching state, a steady advective correction cell by cell,
+first-order upwind at the bulk velocity, with no eddy term and no element
+drift, refused in a cell where an assumption of the steady equations fails.
+It is an independent discretization of the same column and no equation of the
+run was solved for it.  \texttt{EXHALE\_TRANSIT\_STATE=solution} reads
+\texttt{Hydro\_ioniz.txt} and \texttt{Ion\_species.txt}: the state the
+solver produced and the certification judged.  With \texttt{Ionization
+transport} on, the composition of that state is the partition the stage
+transport itself produced, so an advective correction laid on top of it would
+be a second and different transport approximation of the same stages.
+
+A stationary run writes no \texttt{\_adv} products, and none are to be
+manufactured for one: the default selection then refuses by name, says why,
+and names the other selection instead of quietly reading it.  The two files
+of a selection are read together, including the O\,{\sc i} ground-term level
+populations below, because the temperature of one state with the composition
+of the other solves neither set of equations.  Every saved curve carries the
+selection, the path, md5 and size of each file it read, and the state's own
+provenance, coupling, boundary model and reservoir lines.
+
+On a marching case that carries both states the choice is small but not
+negligible.  MEASURED on the \texttt{wasp\_full} configuration, as the peak
+transit depth relative to itself: He\,{\sc i} 10830 $-0.64$ per cent,
+H$\alpha$ $-1.28$, H$\beta$ $-3.48$, Ly$\alpha$ unchanged at its saturated
+ceiling, and the optically thin metal lines $+0.1$ to $+0.8$.  The metastable
+helium column is 12 per cent \emph{larger} in the solved state while its line
+is shallower, because the advection correction moves that column outward
+(column-weighted mean radius $1.2941$ against $1.3112\,R_p$) and a saturated
+line's disk-averaged depth follows how far the absorbing shell reaches;
+H$\beta$ moves most because it is the line still on the linear part of the
+curve of growth.
+
 \paragraph{O\,I 1302: the one line whose components do not share a lower level.}
 The three components of the O\,I resonance triplet absorb out of the three
 \emph{different} fine-structure levels of the $2p^4\,^3P$ ground term, so the
-script reads their populations from \texttt{output/OI\_levels\_adv.txt}
-(\S\ref{sec:oilevels}) rather than applying the total O\,I density three times
-over, which at the near-statistical populations of these winds would triple
-the column. A run whose output predates that file, like a metals-off run, simply
-skips the line. Because each absorption component owns its own lower-level
+script reads their populations from the \texttt{OI\_levels} file of the
+selected state (\S\ref{sec:oilevels}), \texttt{OI\_levels\_adv.txt} under
+\texttt{adv} and \texttt{OI\_levels.txt} under \texttt{solution}, rather
+than applying the total O\,I density three times over, which at the
+near-statistical populations of these winds would triple the column. A run
+whose output carries no such file, like a metals-off run, simply skips the
+line. Because each absorption component owns its own lower-level
 density, the component descriptor is
 \texttt{(lambda0, f, A21, n\_lower)} for every line, not only for this one.
 
@@ -3239,18 +3412,26 @@ writes no metal curves. \texttt{EXHALE\_TRANSIT\_SAVE\_PREFIX} decorates the
 curve name in the same way the figure prefix decorates the figure name; both
 are resolved against the run directory, so an absolute prefix writes elsewhere.
 
-\paragraph{Step-by-step usage.} \texttt{EXHALE\_transit.py} reads
-\texttt{output/Hydro\_ioniz\_adv.txt} and \texttt{output/Ion\_species\_adv.txt}
-from \texttt{path}, which is the current directory unless
-\texttt{EXHALE\_TRANSIT\_PATH} names the run directory:
+\paragraph{Step-by-step usage.} \texttt{EXHALE\_transit.py} reads the state
+pair of the selection in force from \texttt{path}, which is the current
+directory unless \texttt{EXHALE\_TRANSIT\_PATH} names the run directory:
+\texttt{output/Hydro\_ioniz\_adv.txt} and
+\texttt{output/Ion\_species\_adv.txt} by default, or
+\texttt{output/Hydro\_ioniz.txt} and \texttt{output/Ion\_species.txt} under
+\texttt{EXHALE\_TRANSIT\_STATE=solution}:
 \begin{enumerate}
-\item \emph{Ensure the \texttt{*\_adv.txt} files exist.} A normal converged run
-  writes them automatically. To post-process an existing state (e.g.\ a Newton
-  solution produced by the \texttt{EXHALE\_PTC} hook, which writes only the
-  \texttt{eq} files): copy \texttt{Hydro\_ioniz.txt} $\to$
-  \texttt{Hydro\_ioniz\_IC.txt} and likewise for \texttt{Ion\_species}, set
-  \texttt{Load IC?\ True} and \texttt{Do only PP:\ True} in \texttt{input.inp},
-  and run \texttt{./EXHALE.x} once (seconds).
+\item \emph{Choose the state, and make sure its two files are there.} A
+  stationary solve writes no \texttt{\_adv} products, and the solution
+  selection is how such a run is read; do not manufacture \texttt{\_adv}
+  files for one. A marching run writes both pairs automatically. To give an
+  existing state the advection-corrected pair as well, copy
+  \texttt{Hydro\_ioniz.txt} $\to$ \texttt{Hydro\_ioniz\_IC.txt} and likewise
+  for \texttt{Ion\_species}, set \texttt{Load IC?\ True} and
+  \texttt{Restart intent: stationary evaluate} in \texttt{input.inp}, and run
+  \texttt{./EXHALE.x} once (seconds): that route loads the state, derives its
+  pressure and temperature from the loaded conserved state, runs the
+  ionization sweep, evaluates the certification and writes every product from
+  that work state without entering the time integration.
 \item \emph{Set what describes the observation}, if the defaults do not: the
   instrument resolutions and wavelength windows
   (\texttt{EXHALE\_TRANSIT\_RES\_*}, \texttt{\_HE\_LMIN/LMAX/N}), the azimuthal
@@ -3380,7 +3561,8 @@ al.\ 2022). \texttt{examples/exhale\_to\_lart.py} builds a complete LaRT
 spherical-illumination input set directly from an EXHALE run.
 
 Given a run directory it loads the \texttt{\_adv} profiles (via
-\texttt{exhale\_io.py}) and \texttt{input.inp}, and writes
+\texttt{exhale\_io.py}; \texttt{-{}-eq} takes the equilibrium pair instead,
+which is what a stationary solve leaves) and \texttt{input.inp}, and writes
 \begin{itemize}\setlength{\itemsep}{0pt}
   \item \texttt{dens\_profile.txt}: $r\,[\Rp]$, $n_{\rm HI}\,[\mathrm{cm^{-3}}]$
         (the Ly$\alpha$ scatterer is ground-state H);

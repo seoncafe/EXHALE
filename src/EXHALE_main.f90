@@ -86,7 +86,8 @@
                                element_census_verify,                     &
                                element_census_reservoir
       use lower_column, only: lower_column_solve
-      use base_boundary, only: report_base_face_state
+      use base_boundary, only: report_base_face_state,                    &
+                               report_base_boundary_model
       use molecular_infrared_cooling, only: molecular_infrared_init
       use mol_rates, only: h2_thermochemistry_init
       use steady_residual_mod, only: assemble_residual, residual_norms,  &
@@ -96,7 +97,15 @@
                                      reconstruction_continuation_rhs,   &
                                      residual_row_scale,                &
                                      face_mass_flux_of_state,           &
+                                     mass_row_rounding_floor,           &
                                      n_cells_without_chemical_root
+      ! MEASUREMENT ONLY, default off (EXHALE_BOUNDARY_TRACE,
+      ! EXHALE_TRACE_EXPERIMENT).
+      use boundary_state_trace_mod, only: boundary_trace_armed,          &
+                                     boundary_rebuild_suppressed,       &
+                                     base_mass_row_trace,               &
+                                     report_base_face_state_consistency,&
+                                     ghost_record_armed, write_ghost_record
       ! The stationary certification of the state the marching route would
       ! declare solved (docs/a2_certification_contract_20260906.md).
       ! THE ATTEMPTED-STEP CONTROLLER (B3a): the checkpoint of the whole
@@ -150,6 +159,9 @@
                                certification_entry_index,                &
                                certification_note_stationarity_claim,    &
                                certification_stop_uncertified
+      use stationary_operator, only: select_stationary_reconstruction,   &
+                               stationary_face_mass_flux,                &
+                               face_mass_flux_budget
       use viscous_conduction, only: transport_active, viscous_conduction_step,&
                                     n_conduction_floor_hits,                &
                                     n_conduction_floor_cells,               &
@@ -612,7 +624,7 @@
       ! checked against the sum of the steps it took.
       logical :: trace_step_clock = .false.
       ! EXHALE_REJECT_STEP=<n>: refuse the first attempt of the step taken at
-      ! count = n through the positivity retry path, so that the rejection
+      ! marching_step = n through the positivity retry path, so that the
       ! branch can be exercised on demand. -1 (the default) never fires.
       integer :: reject_step_probe = -1
 
@@ -1059,6 +1071,22 @@
       ! Read planetary parameters from file
       call input_read
 
+      ! Optional parse-dump mode (env EXHALE_PARSE_DUMP=1): write every variable
+      ! input_read derived from input.inp (and any base.inp override) to
+      ! parse_dump.txt and stop cleanly, BEFORE any grid/IC/init or output work,
+      ! and before EXHALE_setup.out is opened: the corpus runs the binary in
+      ! the directories of live cases, and an open here would truncate the
+      ! setup report stored beside the case's results. write_parse_dump reads
+      ! only what input_read set.
+      ! Feeds the parser-refactor regression corpus
+      ! (backup/regression/run_parse_corpus.sh). Env unset => run unchanged.
+      call get_environment_variable('EXHALE_PARSE_DUMP', diag_env)
+      if (trim(diag_env) .eq. '1') then
+         call write_parse_dump
+         write(*,*) '(EXHALE_main) EXHALE_PARSE_DUMP=1: parse dump written, stopping.'
+         stop
+      endif
+
       ! Open the setup report only once the input has been accepted:
       ! input_read refuses a configuration with error stop, and an open
       ! placed before it truncated whatever EXHALE_setup.out a previous run
@@ -1095,18 +1123,6 @@
       ! under OpenMP, so it must be finished before the first parallel
       ! region opens.
       call h2_thermochemistry_init
-
-      ! Optional parse-dump mode (env EXHALE_PARSE_DUMP=1): write every variable
-      ! input_read derived from input.inp (and any base.inp override) to
-      ! parse_dump.txt and stop cleanly, BEFORE any grid/IC/init or output work.
-      ! Feeds the parser-refactor regression corpus
-      ! (backup/regression/run_parse_corpus.sh). Env unset => run unchanged.
-      call get_environment_variable('EXHALE_PARSE_DUMP', diag_env)
-      if (trim(diag_env) .eq. '1') then
-         call write_parse_dump
-         write(*,*) '(EXHALE_main) EXHALE_PARSE_DUMP=1: parse dump written, stopping.'
-         stop
-      endif
 
       ! analytic lower column (opt-in "Lower column: <R_1bar in R_J>"):
       ! integrate the isothermal-Teq hypsometric column (Koskinen+2022) from
@@ -1228,7 +1244,7 @@
       if (trim(diag_env) .eq. '0') reload_equilibrate = .false.
       call get_environment_variable('EXHALE_RESIDUAL', diag_env)
       if (trim(diag_env) .eq. '1') then
-         rec_method = 'WENO3';  use_weno3 = .true.;  use_plm = .false.
+         call select_stationary_reconstruction
          sec_ion_active = use_sec_ion   ! bypass mode skips the time loop
          if (sec_ion_active) sec_ion_armed_step = 0
          ! Same treatment the marching path gets: a state read from a file is
@@ -1257,6 +1273,13 @@
          call ioniz_eq(T,rho,f_sp,heat,cool,eta,last_sweep)
          call get_species_densities(rho,f_sp,nhi,nhii,nhei,nheii,      &
                                     nheiii,nheiTR,nm,ne,n_tot)
+         ! ONE COMPOSITION, ONE BOUNDARY, ONE RESIDUAL: the boundary derived
+         ! again from the composition this residual is assembled with. The
+         ! statement is at the evaluate route's assembly
+         ! (stationary_state_of_the_loaded_restart).
+         if (.not. boundary_rebuild_suppressed()) call Apply_BC(u)
+         call report_base_face_state_consistency(                       &
+              'EXHALE_RESIDUAL_at_assemble_residual', u)
          call assemble_residual(u, n_tot + ne, heat, cool, Rres)
          call residual_norms(Rres, u, resid_c)
          ! cell-by-cell residual profile (localize the momentum imbalance)
@@ -1354,7 +1377,7 @@
       ! after one needs a hook in the loop, which is not this item's.
       call get_environment_variable('EXHALE_RESID_DETERMINISM', diag_env)
       if (trim(diag_env) .eq. '1') then
-         rec_method = 'WENO3';  use_weno3 = .true.;  use_plm = .false.
+         call select_stationary_reconstruction
          sec_ion_active = use_sec_ion
          if (sec_ion_active) sec_ion_armed_step = 0
          call set_transported_species_rows(carrier_in_newton)
@@ -1494,7 +1517,7 @@
 
       call get_environment_variable('EXHALE_NEWTON_TEST', diag_env)
       if (trim(diag_env) .eq. '1') then
-         rec_method = 'WENO3';  use_weno3 = .true.;  use_plm = .false.
+         call select_stationary_reconstruction
          sec_ion_active = use_sec_ion   ! bypass mode skips the time loop
          if (sec_ion_active) sec_ion_armed_step = 0
          allocate(Yvec(neq_newton()), Fvec(neq_newton()))
@@ -1528,7 +1551,7 @@
       ! band layout gives an O(1) mismatch; a correct one matches to ~1e-6.
       call get_environment_variable('EXHALE_JAC_TEST', diag_env)
       if (trim(diag_env) .eq. '1') then
-         rec_method = 'WENO3';  use_weno3 = .true.;  use_plm = .false.
+         call select_stationary_reconstruction
          sec_ion_active = use_sec_ion   ! bypass mode skips the time loop
          if (sec_ion_active) sec_ion_armed_step = 0
          ! THE SYSTEM THIS TEST MEASURES IS THE ONE A SOLVE WOULD CARRY.
@@ -1586,13 +1609,17 @@
       ! reference (WASP-121b ~13.71).
       call get_environment_variable('EXHALE_PTC', diag_env)
       if (trim(diag_env) .eq. '1' .and. ionization_transport) then
-         ! THE SECOND ENTRANCE TO THE STEADY SOLVE, refused for the reason
-         ! input_read refuses "Solver: Newton" with the ionization state
-         ! carried: this route solves F(Y) = 0 with the composition on its
-         ! own local root, so its last iteration would put back exactly the
-         ! local equilibrium that transporting H+ exists to leave. Refusing
-         ! is the honest outcome; silently solving it would return a state
-         ! labelled "ionization transport" that is the local answer.
+         ! THE SECOND ENTRANCE TO THE STEADY SOLVE, and the one route with
+         ! the ionization state carried that is refused: it solves
+         ! F(Y) = 0 with the composition on its own local root, so its last
+         ! iteration would put back exactly the local equilibrium that
+         ! transporting H+ exists to leave. The partitioned route
+         ! ("Solver: Newton" without a coupled carrier solve) is not
+         ! refused, because every sweep it makes is handed the transported
+         ! fraction and the carrier relaxation between the hydrodynamic
+         ! solves transports it. Refusing here is the honest outcome;
+         ! silently solving it would return a state labelled "ionization
+         ! transport" that is the local answer.
          write(*,*) '(EXHALE_main) ERROR: EXHALE_PTC=1 with "Ionization'
          write(*,*) '  transport: True". The steady PTC route holds'
          write(*,*) '  the composition at its own local root and would'
@@ -1601,7 +1628,7 @@
          error stop 1
       endif
       if (trim(diag_env) .eq. '1') then
-         rec_method = 'WENO3';  use_weno3 = .true.;  use_plm = .false.
+         call select_stationary_reconstruction
          sec_ion_active = use_sec_ion   ! bypass mode skips the time loop
          if (sec_ion_active) sec_ion_armed_step = 0
          ! THE RESOLVED CONFIGURATION OF THIS RUN, written where the
@@ -1672,6 +1699,11 @@
       ! Generate report of the current setup
       call write_setup_report
       call write_resolved_config
+      ! WHICH LOWER BOUNDARY THIS RUN SOLVES, beside the rest of the
+      ! resolved configuration: the model's identity and the prescribed
+      ! reservoir with its version, which is what a state file carries and
+      ! what a restart is read against.
+      call report_base_boundary_model('resolved configuration')
 
 	!---------------------------------------------------!
 
@@ -1935,9 +1967,7 @@
          ! reason alone (measured: |G_dt| 1.08 -> 11.05 from the switch, not
          ! from dt). WENO3 is the production scheme every steady state in the
          ! code is converged under.
-         rec_method   = 'WENO3'
-         use_weno3    = .true.
-         use_plm      = .false.
+         call select_stationary_reconstruction
          in_plm_stage = .false.
          du_th_plm    = -1.0d0
          write(*,'(A,I0,A)') ' (EXHALE_main) EXHALE_UPDATE_MAP: ',         &
@@ -1973,7 +2003,7 @@
                   .not.du_plateaued           .and.                          &
                   .not.steady_gates_converged .and.                          &
                   .not.newton_finished        .and.                          &
-                  count < count_max ) .or. force_start )
+                  marching_step < marching_step_max ) .or. force_start )
 
             !---- Time step evaluation ----!
             ! dt_loc = cell-by-cell pseudo-dt ("Time stepping: Local"), or
@@ -2059,8 +2089,8 @@
             ! same value the short-circuited chain did.
             n_err_passes = 1
             if (n_err_every .gt. 0 .and. run_mode .eq. run_mode_phys .and.&
-                count .gt. 0) then
-               if (mod(count, n_err_every) .eq. 0) n_err_passes = 3
+                marching_step .gt. 0) then
+               if (mod(marching_step, n_err_every) .eq. 0) n_err_passes = 3
             endif
             dt_macro    = dt
             dtloc_macro = dt_loc
@@ -2128,7 +2158,7 @@
             ! difference is a temporal error there.
             if (n_err_passes .eq. 3 .and. trace_step_clock)               &
                write(*,'(A,I0,A,A,A,ES23.16,A,ES23.16)')                 &
-                    '   err-pass: step=', count, ' pass=',               &
+                    '   err-pass: step=', marching_step, ' pass=',               &
                     trim(err_pass_name), ' dt=', dt*R0/v0,               &
                     ' H=', dt_macro*R0/v0
 
@@ -2214,6 +2244,21 @@
             ! composition a discarded attempt advected.
             call species_advection_begin_step(f_sp)
             n_faces_positivity_at_attempt = n_faces_flux_positivity_limited
+
+            ! ONE COMPOSITION, ONE BOUNDARY, ONE FLUX. The boundary this
+            ! attempt's first reconstruction reads was last derived inside
+            ! the PREVIOUS step, before that step's own closing composition
+            ! refresh moved the density and the composition the ghost
+            ! continuation and the caloric map are evaluated at; Rec_BC puts
+            ! the cached base face state straight into the left slot of the
+            ! base face. The boundary is therefore derived here, from the
+            ! state this attempt begins from, which is also the state the
+            ! checkpoint holds. It writes the ghosts and returns the
+            ! interior bit for bit, so it changes no attempt's starting
+            ! point. On an atomic mixture the ghost continuation carries no
+            ! composition and this call reproduces the standing boundary
+            ! exactly.
+            call Apply_BC(u)
 
             ! FIRST RK STEP
 
@@ -2341,14 +2386,14 @@
             ! the run's own rejections depend on the state. Unset, the probe
             ! is -1 and the branch is never entered, so a run without it is
             ! the run an unguarded build gives.
-            if (count .eq. reject_step_probe .and. n_dt_halve .eq. 0) then
+            if (marching_step .eq. reject_step_probe .and. n_dt_halve .eq. 0) then
                n_steps_dt_halved = n_steps_dt_halved + 1
                n_dt_halve    = n_dt_halve + 1
                n_dt_halvings = n_dt_halvings + 1
                dt     = 0.5d0*dt
                dt_loc = 0.5d0*dt_loc
                write(*,'(A,I0,A)') '   EXHALE_REJECT_STEP: attempt at '//  &
-                    'step ', count, ' refused; retaken at half dt'
+                    'step ', marching_step, ' refused; retaken at half dt'
                cycle retry_step
             endif
 
@@ -2635,7 +2680,7 @@
                                        /max(rho(1:N), 1.0d-99))
                if (csm_mass_resid .gt. csm_mass_resid_run) then
                   csm_mass_resid_run  = csm_mass_resid
-                  csm_mass_resid_step = count
+                  csm_mass_resid_step = marching_step
                endif
 
                ! The formation/excitation reservoir of the composition just
@@ -2649,7 +2694,7 @@
                ! Step 0 is excluded: there the composition jumps from the
                ! initial condition to its equilibrium, which is not a step of
                ! the trajectory and would set this record for the whole run.
-               if (count .gt. 0 .and. csm_uform_frac .gt. csm_uform_frac_run)&
+               if (marching_step .gt. 0 .and. csm_uform_frac .gt. csm_uform_frac_run)&
                   csm_uform_frac_run = csm_uform_frac
 
                ! (b) the temperature that closes the energy row at this
@@ -2712,7 +2757,7 @@
                if (use_semi_implicit_energy) then
                   if (do_profile) tp_b = omp_get_wtime()
                   call solve_energy_semi_implicit(u,W,dt_loc,heat,cool,    &
-                          f_sp,count,status=csm_energy_status,             &
+                          f_sp,marching_step,status=csm_energy_status,             &
                           T_start=T, u_th_old=u_th_old_csm)
                   if (do_profile)                                          &
                      tp_energy = tp_energy + (omp_get_wtime() - tp_b)
@@ -2759,8 +2804,6 @@
                   ! one is: the pass count of the whole grid is set by that
                   ! cell alone, so a global maximum on its own does not say
                   ! what the iteration is waiting for.
-                  ! (the intrinsic COUNT is shadowed here: `count` is the
-                  ! marching step index of this program)
                   csm_n_moving = sum(merge(1, 0,                           &
                                      csm_dT_cell(1:N) .gt. csm_T_tol       &
                                 .or. csm_dc_cell(1:N) .gt. csm_comp_tol))
@@ -2782,7 +2825,7 @@
                   ! moving and not which are still in error.
                   write(*,'(a,i0,a,i0,a,es10.3,a,es10.3,a,es10.3,a,'//    &
                         'es10.3,a,l1,a,i0,a,i0,a,i0,a,i0)')                &
-                     ' CSMDBG step ', count, ' pass ', i_csm, ' dT= ',     &
+                     ' CSMDBG step ', marching_step, ' pass ', i_csm, ' dT= ',     &
                      csm_dT, ' dC= ', csm_dcomp, ' errT= ', csm_err_T,     &
                      ' errC= ', csm_err_c, ' est= ', csm_err_ok,           &
                      ' moving= ', csm_n_moving, ' worstT= ',               &
@@ -2943,14 +2986,14 @@
             n_csm_calls = n_csm_calls + 1
             if (csm_passes .gt. n_csm_passes_worst) then
                n_csm_passes_worst = csm_passes
-               n_csm_worst_step   = count
+               n_csm_worst_step   = marching_step
             endif
             if (.not. csm_ok) then
                n_csm_iter_cap = n_csm_iter_cap + 1
                if (n_csm_iter_cap .le. 5)                                  &
                   write(*,'(a,i0,a,i0,a,es10.3,a,es10.3)')                 &
                     ' (coupled source step) pass cap reached at step ',    &
-                    count, ' after ', csm_passes,                          &
+                    marching_step, ' after ', csm_passes,                          &
                     ' passes: dT/T= ', csm_dT, '  dcomp= ', csm_dcomp
             endif
 
@@ -3024,7 +3067,7 @@
                call U_to_W(u,W)
                rho = W(1,:);  v = W(2,:);  p = W(3,:)
                call comp_T_from_p(p,n_tot,ne,T)
-               call viscous_conduction_step(u,W,T,n_tot+ne,dt_loc,count)
+               call viscous_conduction_step(u,W,T,n_tot+ne,dt_loc,marching_step)
                call Apply_BC(u)
             endif
 
@@ -3037,7 +3080,7 @@
             ! Periodic Shapiro low-pass filter to damp the gravity-unbalanced
             ! sound waves (base breathing), as in CETIMB (Koskinen et al. 2013a).
             if (shapiro_eps .gt. 0.0d0 .and.                             &
-                mod(count, shapiro_every) .eq. 0) then
+                mod(marching_step, shapiro_every) .eq. 0) then
                call shapiro_filter(u)
                call Apply_BC(u)
                ! B6 CATEGORY 4, RECORDED (advisor decision 8). The filter
@@ -3145,7 +3188,7 @@
                 run_mode .eq. run_mode_phys)                              &
                write(*,'(A,I0,A,ES12.5,A,ES12.5,A,ES12.5,A,ES12.5,'//     &
                      'A,ES12.5)')                                         &
-                    '   energy-identity: step=', count,                   &
+                    '   energy-identity: step=', marching_step,                   &
                     ' d_u_th=', as_verd%d_u_th,                           &
                     ' d_u_form=', as_verd%d_u_form,                       &
                     ' Q_ext_dt=', as_verd%q_ext_dt,                       &
@@ -3155,7 +3198,7 @@
             if (as_verd%identity_evaluated .and.                          &
                 run_mode .eq. run_mode_phys)                              &
                write(*,'(A,I0,A,ES12.5,A,I0,A,I0,A,L1)')                  &
-                    '   hydro-time-row: step=', count,                    &
+                    '   hydro-time-row: step=', marching_step,                    &
                     ' max=', as_verd%hydro_row_max,                       &
                     ' cell=', as_verd%hydro_jworst,                       &
                     ' row=', as_verd%hydro_kworst,                        &
@@ -3193,7 +3236,7 @@
                as_hist_reason(n_retry_now) = as_verd%reason
                as_hist_op(n_retry_now)     = as_verd%operation
             endif
-            write(*,'(A,I0,A,A,A,A)') '   step ', count,                  &
+            write(*,'(A,I0,A,A,A,A)') '   step ', marching_step,                  &
                  ' REFUSED at ', trim(attempted_step_operation_text(      &
                  as_verd%operation)), ': ',                               &
                  trim(attempted_step_reason_text(as_verd%reason))
@@ -3232,7 +3275,7 @@
                ! the interval refused and the interval the clock later
                ! accepts are the same kind of number.
                write(*,'(A,I0,A,A,A,A,A,ES23.16,A,ES23.16)')              &
-                    '   macrostep-reject: step=', count, ' pass=',        &
+                    '   macrostep-reject: step=', marching_step, ' pass=',        &
                     trim(err_pass_name), ' reason=',                      &
                     trim(attempted_step_reason_text(as_verd%reason)),     &
                     ' H=', dt_macro*R0/v0,                                &
@@ -3286,7 +3329,7 @@
                ke_err = as_est%kworst
                write(*,'(A,I0,A,ES12.5,A,ES12.5,A,ES12.5,A,A,A,I0,'//    &
                      'A,I0,A,L1,A,A,A,I0)')                               &
-                    '   integration-error estimate: step=', count,        &
+                    '   integration-error estimate: step=', marching_step,        &
                     ' e=', as_est%e, ' e_lower=', as_est%e_lower,         &
                     ' e_upper=', as_est%e_upper,                          &
                     ' class=', trim(err_class_name(max(1,                 &
@@ -3326,7 +3369,7 @@
                ! error-controlled trajectory.
                if (.not. as_est%resolved) then
                   write(*,'(A,I0,A,A,A,ES12.5,A,ES12.5,A,ES12.5)')        &
-                       '   integration-error UNRESOLVED: step=', count,   &
+                       '   integration-error UNRESOLVED: step=', marching_step,   &
                        ' first unresolved class=',                        &
                        trim(err_class_name(max(1,                         &
                             as_est%unresolved_class))),                   &
@@ -3383,7 +3426,7 @@
                   dt_reduced = attempted_step_reduced_dt(dt_macro,        &
                                                     as_reject_int_error)
                   write(*,'(A,I0,A,A,A,A,A,ES23.16,A,ES23.16)')           &
-                       '   macrostep-reject: step=', count, ' pass=',     &
+                       '   macrostep-reject: step=', marching_step, ' pass=',     &
                        trim(err_pass_name), ' reason=',                   &
                        trim(attempted_step_reason_text(                   &
                             as_reject_int_error)),                        &
@@ -3430,7 +3473,7 @@
             if (trace_step_clock)                                         &
                write(*,'(A,I0,A,I0,A,I0,A,I0,A,ES23.16,A,ES23.16,'//      &
                      'A,ES23.16)')                                        &
-                    '   step-clock: count=', count,                       &
+                    '   step-clock: count=', marching_step,                       &
                     ' outer_attempts=', n_outer_attempts,                 &
                     ' attempted=', n_steps_attempted,                     &
                     ' accepted=', n_steps_accepted,                       &
@@ -3450,13 +3493,13 @@
             ! has finished writing. Diagnostic only: it reads W and changes
             ! nothing, so a run that never crosses is the run an unguarded
             ! build produces.
-            call check_base_inflow_is_subsonic(W,count)
+            call check_base_inflow_is_subsonic(W,marching_step)
             
             ! Base-cell startup diagnostic (first 500 steps): trace r, n, v, T,
             ! heat, cool for the lowest cells to expose IC-startup transients.
-            if (diag_base .and. count .le. 500) then
+            if (diag_base .and. marching_step .le. 500) then
                do j = 1,6
-                  write(778,'(I7,I4,1X,F10.6,5(1X,ES13.6))') count, j, r(j), &
+                  write(778,'(I7,I4,1X,F10.6,5(1X,ES13.6))') marching_step, j, r(j), &
                        W(1,j)*n0, W(2,j)*v0, T(j)*T0, heat(j), cool(j)
                enddo
             endif
@@ -3469,7 +3512,7 @@
             !--- Loop counters and escape condition ---!
             
             ! Update counter
-            count = count + 1
+            marching_step = marching_step + 1
             
             ! The convergence measure of the marching: the radial spread of
             ! the mass flux rho v r^2 over the window r >= r_esc, evaluated
@@ -3483,12 +3526,12 @@
             if (du .ge. du_th .and. .not.du_stop_armed) then
                du_stop_armed = .true.
                write(*,'(A,ES12.4,A,I0)') '    -> du stop armed at du =',   &
-                                          du, ', step ', count
+                                          du, ', step ', marching_step
             endif
             if (du .ge. newton_du_switch .and. .not.du_newton_armed) then
                du_newton_armed = .true.
                write(*,'(A,ES12.4,A,I0)') '    -> Newton hand-off armed '// &
-                                          'at du =', du, ', step ', count
+                                          'at du =', du, ', step ', marching_step
             endif
 
             ! RELATIVE CHANGE OF THE CONSERVED STATE OVER THE STEP, as an
@@ -3545,7 +3588,20 @@
             ! marching loop accepted a WASP-121b state at a flux spread of
             ! 9.9e-2, twenty times the default threshold the JFNK was
             ! rejecting 1.9e-2 on.
-            if (mod(count, N_resid) .eq. 0) then
+            if (mod(marching_step, N_resid) .eq. 0) then
+               ! ONE COMPOSITION, ONE BOUNDARY, ONE RESIDUAL, here as at the
+               ! five evaluation sites. The step's last Apply_BC ran before
+               ! the composition refresh that closes the step (the
+               ! get_species_densities at the adoption boundary), so the
+               ! ghost conserved state and the cached base face state left
+               ! standing are those of the composition BEFORE that refresh,
+               ! while the residual below takes its sources, its pressure map
+               ! and its sound speeds from the composition this state is
+               ! certified with. The boundary is therefore derived again
+               ! here. It writes the ghosts and returns the interior bit for
+               ! bit, so the marched state is untouched; on an atomic mixture
+               ! it reproduces the standing boundary exactly.
+               call Apply_BC(u)
                call assemble_residual(u, n_tot + ne, heat, cool, Rres)
                call residual_norms(Rres, u, resid_c)
                resid_max   = maxval(resid_c)
@@ -3578,7 +3634,7 @@
                if (cert_first .or.                                          &
                    (cert_now%certified .neqv. cert_was_certified)) then
                   write(cert_label,'(A,I0)') 'marching state at step ',      &
-                        count
+                        marching_step
                   call certification_report_write(cert_now, cert_label)
                   cert_first         = .false.
                   cert_was_certified = cert_now%certified
@@ -3588,7 +3644,7 @@
                call flux_spread_above_radius(u, 1.03d0, fspread_103, dum)
                call flux_spread_above_radius(u, 1.10d0, fspread_110, dum)
                write(*,'(A,I0,A,ES10.3,A,ES10.3,A,ES10.3,A,ES10.3,A,ES10.3)') &
-                    '   [diag] step ', count,                                 &
+                    '   [diag] step ', marching_step,                                 &
                     '  flux rho*v*r^2 spread=', flux_spread,                  &
                     ' (gate window ', fspread_gate,                           &
                     '; r>=1.03 ', fspread_103,                                &
@@ -3600,7 +3656,7 @@
             ! (env gate; assemble_residual first so face_flux belongs to
             ! the current u).
             if (p54_ts_every .gt. 0) then
-               if (mod(count, p54_ts_every) .eq. 0) then
+               if (mod(marching_step, p54_ts_every) .eq. 0) then
                   call assemble_residual(u, n_tot + ne, heat, cool, Rres)
                   call p54_flux_timeseries_append
                endif
@@ -3654,17 +3710,15 @@
                   recon_lambda    = 1.0d0
                   in_lambda_ramp  = .false.
                   recon_lambda_on = .false.
-                  rec_method      = 'WENO3'
-                  use_plm         = .false.
-                  use_weno3       = .true.
+                  call select_stationary_reconstruction
                   write(*,'(A,I0,A,I0,A,I0,A,ES12.4)')                    &
                      '    -> PLM -> WENO3 continuation reached lambda = '//&
-                     '1 at step ', count, ' (', lam_step_count,           &
+                     '1 at step ', marching_step, ' (', lam_step_count,           &
                      ' ramp steps, ', n_lambda_backoff,                   &
                      ' back-offs), du =', du
                else if (mod(lam_step_count, 25) .eq. 0) then
                   write(*,'(A,I0,A,F8.5,A,ES10.3,A,ES10.3)')              &
-                     '    [lambda] step ', count, '  lambda=',            &
+                     '    [lambda] step ', marching_step, '  lambda=',            &
                      recon_lambda, '  du=', du, '  dtu=', dtu
                endif
             endif
@@ -3673,7 +3727,7 @@
             if (in_plm_stage) then
                ! Stage 1 (PLM): do not converge; hand off to WENO3 once du has
                ! dropped below du_th_plm OR the PLM du has plateaued (stall).
-               if (count .gt. 1) then
+               if (marching_step .gt. 1) then
                   ! THE SENTINEL IS KEPT OUT OF THE ARITHMETIC. du_prev
                   ! starts at huge(1.0d0) and is re-set to it at each stage
                   ! switch, so the first evaluation after either forms
@@ -3701,7 +3755,7 @@
                   ! state it is about to be applied to, before any step is
                   ! taken with it.
                   if (opdiff_mode .gt. 0)                                  &
-                     call write_operator_difference(count, du)
+                     call write_operator_difference(marching_step, du)
                   if (recon_lambda_step0 .gt. 0.0d0) then
                      ! Walk the hand-off. The flags stay on PLM:
                      ! reconstruction_continuation_rhs supplies both
@@ -3723,20 +3777,19 @@
                      write(*,'(A,F8.5,A,ES12.4,A,I0)')                     &
                         '    -> started PLM -> WENO3 continuation at '//   &
                         'lambda =', recon_lambda, ', du =', du,            &
-                        ', step ', count
+                        ', step ', marching_step
                   else
-                     rec_method   = 'WENO3'
-                     ! Flip the discretization flags too (Source/Num_Fluxes/
-                     ! RK_rhs/Apply_BC read these, not rec_method); without
-                     ! this the WENO3 stage ran with PLM-style pressure
-                     ! flux/source terms.
-                     use_plm      = .false.
-                     use_weno3    = .true.
+                     ! The discretization flags carry the scheme with
+                     ! rec_method: Source, Num_Fluxes, RK_rhs and Apply_BC
+                     ! read them and not the string, and a WENO3 stage
+                     ! under PLM-style pressure flux and source terms is
+                     ! neither scheme.
+                     call select_stationary_reconstruction
                      in_plm_stage = .false.
                      stall_count  = 0
                      du_prev      = huge(1.0d0)
                      write(*,'(A,ES12.4,A,I0)') '    -> switched PLM -> WENO3 at du =', &
-                                                du, ', step ', count
+                                                du, ', step ', marching_step
                   endif
                   if (opdiff_mode .ge. 2) then
                      write(*,*) '(EXHALE_main) EXHALE_OPDIFF>=2: '//       &
@@ -3755,7 +3808,7 @@
                ! DO track the du plateau: runs whose flux metric stalls just
                ! above newton_du_switch (seen with He_diffusion: du frozen at
                ! ~1.08e-2 vs the 1e-2 switch for 1e6 steps) hand off on stall.
-               if (count .gt. 1) then
+               if (marching_step .gt. 1) then
                   ! THE SENTINEL IS KEPT OUT OF THE ARITHMETIC. du_prev
                   ! starts at huge(1.0d0) and is re-set to it at each stage
                   ! switch, so the first evaluation after either forms
@@ -3795,7 +3848,7 @@
                ! more stop condition, not a licence to switch the others off:
                ! a run whose du has stopped moving will not reach the gate by
                ! marching further, and with every other stop disabled it ran
-               ! to count_max = 1e6. Measured: jfnk_cold reaches du = 1.5e-4
+               ! to marching_step_max = 1e6. Measured: jfnk_cold reaches du = 1.5e-4
                ! and ptc_warm du = 5.5e-5 -- both flux-converged by any
                ! ordinary standard -- and neither crossed its residual gate in
                ! 40,000 steps. So the plateau detector stays live here, and
@@ -3804,7 +3857,7 @@
                mass_flux_converged    = .false.
                step_change_converged  = .false.
                steady_gates_converged = gates_met_now
-               if (count .gt. 1) then
+               if (marching_step .gt. 1) then
                   ! THE SENTINEL IS KEPT OUT OF THE ARITHMETIC. du_prev
                   ! starts at huge(1.0d0) and is re-set to it at each stage
                   ! switch, so the first evaluation after either forms
@@ -3836,7 +3889,7 @@
                step_change_converged = (dtu .lt. dtu_th) .and. is_level_stable
                steady_gates_converged = .false.
                ! Stall detection: du settled on a plateau
-               if (count .gt. 1) then
+               if (marching_step .gt. 1) then
                   ! THE SENTINEL IS KEPT OUT OF THE ARITHMETIC. du_prev
                   ! starts at huge(1.0d0) and is re-set to it at each stage
                   ! switch, so the first evaluation after either forms
@@ -3871,8 +3924,8 @@
                 (mass_flux_converged .or. step_change_converged .or.          &
                  du_plateaued .or. steady_gates_converged)) then
                sec_ion_active = .true.
-               sec_flip_step  = count
-               sec_ion_armed_step = count
+               sec_flip_step  = marching_step
+               sec_ion_armed_step = marching_step
                mass_flux_converged = .false.;  step_change_converged = .false.
                du_plateaued = .false.;  steady_gates_converged = .false.
                stall_count  = 0
@@ -3881,9 +3934,9 @@
                lev_count    = 0
                is_level_stable = (lev_th .le. 0.0d0)   ! gate disabled => always pass
                write(*,'(A,I0,A,ES10.2)') '    -> secondary ionization activated at step ', &
-                                          count, ', du =', du
+                                          marching_step, ', du =', du
             else if (sec_flip_step .ge. 0 .and.                               &
-                     count - sec_flip_step .lt. N_stall) then
+                     marching_step - sec_flip_step .lt. N_stall) then
                ! Hold any stop for N_stall steps after the flip: du reacts only
                ! once the base adjustment wave driven by the new coupling has
                ! formed, so an immediate stop would freeze a state that has not
@@ -3904,7 +3957,7 @@
             if (use_newton_solver .and. .not.in_plm_stage .and.          &
                 du_newton_armed .and.                                     &
                 (newton_fail_step .lt. 0 .or.                             &
-                 count - newton_fail_step .ge. N_stall) .and.             &
+                 marching_step - newton_fail_step .ge. N_stall) .and.             &
                 (du .lt. newton_du_switch .or.                            &
                  (stall_count .ge. N_stall .and.                          &
                   du .lt. 5.0d0*newton_du_switch))) then
@@ -3920,8 +3973,8 @@
                ! full physics; the JFNK hand-off re-fires once du crosses
                ! the switch again after the N_stall hold.
                   sec_ion_active = .true.
-                  sec_flip_step  = count
-                  sec_ion_armed_step = count
+                  sec_flip_step  = marching_step
+                  sec_ion_armed_step = marching_step
                   mass_flux_converged = .false.;  step_change_converged = .false.
                   du_plateaued = .false.;  steady_gates_converged = .false.
                   stall_count  = 0
@@ -3930,9 +3983,9 @@
                   is_level_stable = (lev_th .le. 0.0d0)
                   write(*,'(A,I0,A,ES10.2)') '    -> secondary ionization '// &
                        'activated ahead of the Newton finish at step ',       &
-                       count, ', du =', du
+                       marching_step, ', du =', du
                else if (sec_flip_step .lt. 0 .or.                         &
-                        count - sec_flip_step .ge. N_stall) then
+                        marching_step - sec_flip_step .ge. N_stall) then
                if (du .ge. newton_du_switch)                              &
                   write(*,'(A,ES10.2)') ' (EXHALE_main) du plateaued '//  &
                        'near the hand-off threshold; engaging JFNK at '// &
@@ -3940,7 +3993,7 @@
                resid_max = resid_th
                if (resid_max .le. 0.0d0) resid_max = 1.0d-5
                write(*,'(A,I0,A,ES10.2)') ' (EXHALE_main) Newton finish '// &
-                    'at step ', count, ', target ||R|| <', resid_max
+                    'at step ', marching_step, ', target ||R|| <', resid_max
                ! A STATIONARY SOLVE IS CONTINUATION, WHATEVER MODE THE RUN
                ! IS IN (contract section 4). Its trials and iterates are
                ! numerical states, not states the flow passed through, so
@@ -4001,7 +4054,7 @@
                   ! such attempts is the finish given up, because by then the
                   ! marching is not producing states the solver can use.
                   newton_attempts = newton_attempts + 1
-                  newton_fail_step = count
+                  newton_fail_step = marching_step
                   use_newton_solver = (newton_attempts .lt. n_newton_attempt_max)
                   if (use_newton_solver) then
                      write(*,'(A,I0,A,I0,A,I0,A)') ' (EXHALE_main) JFNK '//  &
@@ -4020,7 +4073,7 @@
 
             ! Write to standard output (4th column: relative mass-flux level
             ! change over the last N_stall steps; -1 until the window fills)
-            write(*,*) count,du,dtu,lev_rel
+            write(*,*) marching_step,du,dtu,lev_rel
 				
             !---------------------------------------------------!
             
@@ -4050,7 +4103,7 @@
             !---------------------------------------------------!
             
             !--- Write to files every 1000th iteration---! 
-            if (mod(count,1000).eq.1) then
+            if (mod(marching_step,1000).eq.1) then
                   
                   ! Write thermodynamic and ionization profiles
                   ! The molecular columns are read from the sweep arrays: refresh
@@ -4067,18 +4120,18 @@
 	      if (do_only_pp) exit
 
             ! Force continue for the first 1000 loops if force_start is enabled
-            if (force_start) force_start = count .le. 1000
+            if (force_start) force_start = marching_step .le. 1000
 
             ! Deterministic step cap for serial-vs-parallel verification.
-            if (max_steps .gt. 0 .and. count .ge. max_steps) then
+            if (max_steps .gt. 0 .and. marching_step .ge. max_steps) then
                hit_max_steps = .true.
                exit
             endif
 
             if (do_profile) then
                tp_tot = tp_tot + (omp_get_wtime() - tp_step0)
-               if (mod(count, 500) .eq. 0 .and. tp_tot .gt. 0.0d0)          &
-                  write(*,'(A,I7,A,F6.1,A)') ' (profile) count=', count,     &
+               if (mod(marching_step, 500) .eq. 0 .and. tp_tot .gt. 0.0d0)          &
+                  write(*,'(A,I7,A,F6.1,A)') ' (profile) count=', marching_step,     &
                      '  ioniz_eq fraction=', 100.0d0*tp_ion/tp_tot, ' %'
             endif
 
@@ -4180,12 +4233,12 @@
          write(*,'(A,I0,A)') '     -> stopped: reached EXHALE_MAXSTEPS = ',  &
               max_steps, ' steps WITHOUT convergence'
          call report_marching_stop
-      else if (count .ge. count_max) then
+      else if (marching_step .ge. marching_step_max) then
          write(*,'(A,I0,A)') '     -> stopped: reached count_max = ',          &
-                             count_max, ' iterations WITHOUT convergence'
+                             marching_step_max, ' iterations WITHOUT convergence'
          call report_marching_stop
       endif
-      write(*,'(A,I0,A,ES11.4,A,ES11.4)') '     final: count=', count,         &
+      write(*,'(A,I0,A,ES11.4,A,ES11.4)') '     final: count=', marching_step,         &
                              '  du=', du, '  dtu=', dtu
       ! The value of the convergence functional the run actually used at its
       ! last step, with the window it was taken over, so that it can be
@@ -4196,6 +4249,9 @@
            '  value=', du
 
       call write_run_counter_report
+      ! Whether any flux assembly of this run stood on a base face state
+      ! built from another composition (zero is the invariant holding).
+      call report_base_face_cache_reads('marching run')
 
       !---------------------------------------------------!
 
@@ -4546,6 +4602,67 @@
 
       ! ------------------------------------------------------!
 
+      subroutine base_mass_rows_of_this_evaluation(label, u_in, R_in)
+      ! MEASUREMENT ONLY, default off. The signed continuity row of the base
+      ! cells, the two face mass fluxes it differences, its own scale and its
+      ! rounding floor, as the evaluation that has just assembled R_in holds
+      ! them. Two evaluations of one state are compared cell by cell through
+      ! these, as dimensional quantities over a common recorded scale.
+      character(len=*), intent(in) :: label
+      real*8, dimension(3,1-Ng:N+Ng), intent(in) :: u_in, R_in
+      integer, parameter :: jl = 12
+      real*8 :: R1(1:jl), Ffac(0:jl), sc(1:jl), fl(1:jl)
+      real*8, dimension(1-Ng:N+Ng) :: Frho
+      integer :: j
+      if (.not. boundary_trace_armed()) return
+      call face_mass_flux_of_state(u_in(1,:), Frho)
+      do j = 0, jl
+         Ffac(j) = Frho(j)
+      enddo
+      do j = 1, jl
+         R1(j) = R_in(1,j)
+         sc(j) = residual_row_scale(1, j, u_in)
+         fl(j) = mass_row_rounding_floor(j, u_in)
+      enddo
+      call base_mass_row_trace(label, jl, R1, Ffac, sc, fl)
+      end subroutine base_mass_rows_of_this_evaluation
+
+      ! ------------------------------------------------------!
+
+      subroutine ghost_record_of_this_evaluation(label, u_in, R_in)
+      ! MEASUREMENT ONLY, default off (EXHALE_GHOST_RECORD). One record of
+      ! the lower ghost this evaluation stands on, with the base continuity
+      ! row it produces, written where the residual has just been assembled.
+      !
+      ! The three thermodynamic numbers are taken from the conserved ghost
+      ! rows the boundary LEFT, through the same caloric map the work state
+      ! was built with, so the record describes the ghost the residual read
+      ! and not the one the file was loaded with. The composition numbers and
+      ! the residuals beside them are the sweep's own, stored cell by cell.
+      character(len=*), intent(in) :: label
+      real*8, dimension(3,1-Ng:N+Ng), intent(in) :: u_in, R_in
+      real*8, dimension(1-Ng:N+Ng) :: Frho, p_now, T_now
+      real*8 :: pg(1-Ng:0), rg(1-Ng:0), Tg(1-Ng:0)
+      integer :: j
+      if (.not. ghost_record_armed()) return
+      do j = 1-Ng, N+Ng
+         p_now(j) = pressure_from_energy_density(j, u_in(1,j),            &
+                       u_in(3,j) - 0.5d0*u_in(2,j)*u_in(2,j)/u_in(1,j))
+      enddo
+      call comp_T_from_p(p_now, n_tot, ne, T_now)
+      call face_mass_flux_of_state(u_in(1,:), Frho)
+      do j = 1-Ng, 0
+         pg(j) = p_now(j)
+         rg(j) = u_in(1,j)
+         Tg(j) = T_now(j)
+      enddo
+      call write_ghost_record(label, pg, rg, Tg, R_in(1,1), Frho(0),      &
+                              Frho(1), residual_row_scale(1, 1, u_in),    &
+                              mass_row_rounding_floor(1, u_in))
+      end subroutine ghost_record_of_this_evaluation
+
+      ! ------------------------------------------------------!
+
       real*8 function mass_flux_spread(mom_in)
       ! THE RADIAL SPREAD OF THE MASS FLUX rho v r^2 over the convergence
       ! window r >= "Escape radius [R_p]" (cells j_min..N):
@@ -4699,7 +4816,7 @@
          write(*,'(A,I0,A)') '     element steps refused inside the'//    &
               ' initialization march: ', n_element_refused_init,          &
               ' (the march went on from the entry composition each time)'
-      if (thereis_mol .and. carrier_transport) then
+      if (transported_rows_exist()) then
          call carrier_roundoff_limited_record(nro_last, nro_total, nro_sub)
          if (nro_total .gt. 0)                                            &
             write(*,'(A,I0,A,I0,A)') '     carrier rows accepted at'//    &
@@ -4947,7 +5064,7 @@
       ! convention (the electron mass is carried with its ion) the bound
       ! implied by what is left out is n_e m_e / rho, at most m_e/m_H = 5.4e-4
       ! in a fully ionized hydrogen gas and smaller everywhere else.
-      if (count .gt. 0) then
+      if (marching_step .gt. 0) then
          write(*,'(A,F6.2,A,I0,A,I0,A,I0,A)')                            &
             '     coupled source step: ', dble(n_csm_passes_total)/       &
             dble(max(n_csm_calls,1)), ' passes per coupled step on'//     &
@@ -5121,7 +5238,7 @@
       ! it.
       if (csm_geom_debug .and. p22 .gt. 0.0d0 .and. q22 .gt. 0.0d0)     &
          write(*,'(a,i0,a,i0,a,f8.4,a,f8.4,a,f8.4,a,f8.4)')             &
-            ' CSMXSEQ step ', count, ' pass ', i_csm, ' ratioT= ',      &
+            ' CSMXSEQ step ', marching_step, ' pass ', i_csm, ' ratioT= ',      &
             sqrt(p11/p22), ' cosT= ', p12/sqrt(max(p11*p22,1.0d-99)),   &
             ' ratioC= ', sqrt(q11/q22), ' cosC= ',                      &
             q12/sqrt(max(q11*q22,1.0d-99))
@@ -5187,7 +5304,7 @@
       csm_probe_worst_T = max(csm_probe_worst_T, dist_T)
       csm_probe_worst_c = max(csm_probe_worst_c, dist_c)
       write(*,'(a,i0,a,i0,a,i0,a,es11.4,a,es11.4,a,es11.4,a,es11.4)')     &
-         ' CSMERR step ', count, ' accepted at pass ',                    &
+         ' CSMERR step ', marching_step, ' accepted at pass ',                    &
          csm_probe_pass_accepted, ' fixed point at pass ', i_csm,         &
          ' distT= ', dist_T, ' distC= ', dist_c, ' dT= ', csm_dT,        &
          ' dC= ', csm_dcomp
@@ -5333,7 +5450,7 @@
          if (csm_geom_debug)                                              &
             write(*,'(a,i0,a,i0,a,f6.3,a,f6.3,a,f6.3,a,es10.3,a,'//       &
                   'es10.3)')                                              &
-               ' CSMXTR step ', count, ' pass ', i_csm, ' thetaT= ',      &
+               ' CSMXTR step ', marching_step, ' pass ', i_csm, ' thetaT= ',      &
                csm_geom_theta_T, ' thetaC= ', csm_geom_theta_c,           &
                ' damp= ', sdamp, ' predT= ', csm_x_pred_dT, ' predC= ',   &
                csm_x_pred_dc
@@ -5361,7 +5478,7 @@
          n_csm_x_kept = n_csm_x_kept + 1
          if (csm_geom_debug)                                            &
             write(*,'(a,i0,a,i0,a,es10.3,a,es10.3)')                      &
-               ' CSMXTR step ', count, ' pass ', i_csm, ' KEPT dT= ',     &
+               ' CSMXTR step ', marching_step, ' pass ', i_csm, ' KEPT dT= ',     &
                csm_dT, ' dC= ', csm_dcomp
       elseif (.not. csm_extrap_strict .and.                               &
               csm_dT .le. csm_x_at_dT .and.                               &
@@ -5380,7 +5497,7 @@
          csm_x_blocked = .true.
          if (csm_geom_debug)                                            &
             write(*,'(a,i0,a,i0,a,es10.3,a,es10.3)')                      &
-               ' CSMXTR step ', count, ' pass ', i_csm, ' SLACK dT= ',    &
+               ' CSMXTR step ', marching_step, ' pass ', i_csm, ' SLACK dT= ',    &
                csm_dT, ' dC= ', csm_dcomp
       else
          ! The candidate's own pass moved the pair further than the
@@ -5399,7 +5516,7 @@
          csm_geom_seq_broken = .true.
          if (csm_geom_debug)                                            &
             write(*,'(a,i0,a,i0,a,es10.3,a,es10.3)')                      &
-               ' CSMXTR step ', count, ' pass ', i_csm, ' UNDONE dT= ',   &
+               ' CSMXTR step ', marching_step, ' pass ', i_csm, ' UNDONE dT= ',   &
                csm_dT, ' dC= ', csm_dcomp
       endif
       end subroutine coupled_pair_extrapolation_verdict
@@ -5452,6 +5569,8 @@
       real*8, dimension(1-Ng:N+Ng) :: T_sweep
       real*8  :: dnp, dp_fixed_u, dT_fixed_u, dT_closure, chem_closure
       integer :: jj, info_jfnk, kk
+      ! r_f^2 (rho v)_f of the work state under the stationary operator.
+      type(face_mass_flux_budget) :: face_budget
 
       write(*,'(A)') ' (EXHALE_main) Restart intent: stationary -- the'//   &
            ' loaded state is measured as it stands; no CFL step is taken.'
@@ -5461,9 +5580,7 @@
       ! one a stationary state is a state of: a PLM+WENO3 run starts its
       ! marching in PLM and switches later, so without this the residual of
       ! a WENO3 solution would be assembled by the other operator.
-      rec_method   = 'WENO3'
-      use_weno3    = .true.
-      use_plm      = .false.
+      call select_stationary_reconstruction
       in_plm_stage = .false.
 
       if (stationary_equilibrate_loaded) then
@@ -5589,7 +5706,42 @@
       resid_max = resid_th
       if (resid_max .le. 0.0d0) resid_max = 1.0d-5
 
+      ! ONE COMPOSITION, ONE BOUNDARY, ONE RESIDUAL.
+      !
+      ! The Apply_BC above ran before the sweep, because U_to_W needs a ghost
+      ! density to divide by and ioniz_eq needs a ghost pressure, so the ghost
+      ! conserved state it left and the base face state it cached in BC_Apply
+      ! carry the composition the state was LOADED with. The residual below
+      ! takes its sources, its pressure map and its sound speeds from the
+      ! composition the sweep RETURNED, and Rec_BC puts the cached face state
+      ! straight into the left slot of the base face. Under the caloric
+      ! equation of state those are two different gases, and a residual
+      ! assembled across them is the residual of neither.
+      !
+      ! The boundary is therefore derived once more, from the composition the
+      ! residual is assembled with. It is the same call the JFNK residual
+      ! makes for the same reason (steady_newton.f90, the second Apply_BC of
+      ! eval_residual) and the same order the marching loop has always had.
+      ! It costs nothing but the call: Apply_BC writes the ghosts and returns
+      ! the interior bit for bit unchanged.
+      !
+      ! MEASURED on the cell-1 continuity row of the loaded restarts, in
+      ! floors of that row's own rounding floor (gate ten): the hot-Uranus
+      ! molecular states of LHS 1140 b go from 15.98 to 9.06 (He/H 2.13),
+      ! 31.24 to 3.09 (He/H 9.7) and 19.04 to 0.08 (the L22 state), and the
+      ! atomic states of the same planet and grid do not move
+      ! (docs/lhs1140b_stationary_D5b1_20260918.md).
+      if (.not. boundary_rebuild_suppressed()) call Apply_BC(u)
+      call report_base_face_state_consistency(                            &
+           'evaluate_route_at_assemble_residual', u)
+      ! The boundary this evaluation stands on, as it was built: the model,
+      ! the prescribed reservoir, the ghost's own counts beside it and the
+      ! closure of the ghost's molecular partition.
+      call report_base_boundary_model('the boundary of this evaluation')
+      call report_base_face_cache_reads('evaluate route')
       call assemble_residual(u, n_tot + ne, heat, cool, Rres)
+      call base_mass_rows_of_this_evaluation('C_residual_rows', u, Rres)
+      call ghost_record_of_this_evaluation('C_residual_rows', u, Rres)
       call residual_norms(Rres, u, resid_c)
       write(*,'(A)') '   stationary residual of the work state'//           &
            ' (conserved variables as loaded, sources of the refreshed'//    &
@@ -5610,8 +5762,14 @@
       call certification_evaluate(cert_context_stationary, u, Rres, f_sp,   &
                resid_th, n_cells_without_chemical_root(last_sweep%acc_n),   &
                .true., cert_now)
+      ! THE MASS FLUX THE SAME OPERATOR PUTS THROUGH EVERY FACE OF THE SAME
+      ! STATE. On a stationary state r_f^2 (rho v)_f is the wind's own flux
+      ! at every face; the budget is reported beside the hydrodynamic rows
+      ! and gates nothing.
+      call stationary_face_mass_flux(u, f_sp, face_budget)
       call certification_report_write(cert_now,                             &
-           'work state of the loaded restart (Restart intent: stationary)')
+           'work state of the loaded restart (Restart intent: stationary)', &
+           face_budget)
 
       call stationary_claim_and_work_state_verdict
 
@@ -5663,6 +5821,20 @@
 
          call steady_mass_loss_rate
 
+         ! MEASUREMENT ONLY, default off, and LAST so that nothing a run
+         ! writes stands downstream of it: the residual re-assembled on the
+         ! SAME conserved array after the face-flux report has installed a
+         ! boundary of its own. The cached face state carries no validity, so
+         ! the rows below need not reproduce the rows above; what they do
+         ! reproduce is recorded (docs/lhs1140b_stationary_D5b1_20260918.md).
+         if (boundary_trace_armed()) then
+            call assemble_residual(u, n_tot + ne, heat, cool, Rres)
+            call base_mass_rows_of_this_evaluation(                        &
+                 'F_residual_rows_after_report', u, Rres)
+            call report_base_face_state_consistency(                       &
+                 'evaluate_route_after_the_face_flux_report', u)
+         endif
+
          write(*,'(A)') ' (EXHALE_main) Restart intent: stationary'//       &
               ' evaluate -- the loaded state was measured, the work'//      &
               ' state and'
@@ -5696,10 +5868,23 @@
       call steady_wind_with_element_diffusion(                            &
               jfnk_outer_iterations_default, dt, .true., info_jfnk)
       call write_run_counter_report
+      ! Whether any flux assembly of this run stood on a base face state
+      ! built from another composition (zero is the invariant holding).
+      call report_base_face_cache_reads('stationary restart')
       call element_census_reservoir('output (stationary restart)',          &
                                     rho, f_sp)
       call molecular_carrier_densities_from_state(rho,f_sp)
       call certification_note_stationarity_claim(info_jfnk .eq. 0)
+      ! ONE COMPOSITION, ONE BOUNDARY, ONE RESIDUAL. The solve returned a
+      ! state and a composition, and the sweep inside its last pass moved
+      ! the composition after the boundary that pass stood on was derived;
+      ! the residual below reads the cached base face state through Rec_BC.
+      ! The boundary is therefore derived from the composition this
+      ! certification is taken at, as the three evaluation routes and the
+      ! JFNK residual already do.
+      if (.not. boundary_rebuild_suppressed()) call Apply_BC(u)
+      call report_base_face_state_consistency(                            &
+           'stationary_restart_final_certification', u)
       call assemble_residual(u, n_tot + ne, heat, cool, Rres)
       call certification_evaluate(cert_context_stationary, u, Rres, f_sp,   &
                resid_th, n_cells_without_chemical_root(last_sweep%acc_n),   &
@@ -5942,7 +6127,7 @@
       endif
 
       ! 3. Carrier backgrounds.
-      if (thereis_mol .and. carrier_transport .and. .not. bg_ready) then
+      if (transported_rows_exist() .and. .not. bg_ready) then
          ok = .false.
          write(*,'(A)') '   REFUSED: the molecular carriers are'//         &
               ' transported but their frozen background is not'
@@ -6012,10 +6197,16 @@
       if (upmap_done .eq. 0) then
          u_umSave    = u
          f_sp_umSave = f_sp
+         ! The record below follows the H2 ROW alone, cell by cell, so it
+         ! exists where H2 is a transported row and nowhere else. The two
+         ! row arrays are handed to carrier_steady_residual, which fills a
+         ! column for every carrier the module can carry, so they are
+         ! dimensioned by that count and not by the four molecular ones.
          if (thereis_mol .and. carrier_transport) then
             upmap_carrier = .true.
             allocate(nH2_um0(1:N), R_carr_um(1:N), T_carr_um(1:N))
-            allocate(res_um_all(1:N,4), terms_um_all(1:N,4))
+            allocate(res_um_all(1:N,n_carrier_max),                       &
+                     terms_um_all(1:N,n_carrier_max))
             allocate(y_um0(1:N), nrho_um0(1:N))
          endif
          ! The residual of the state, by the same route eval_residual takes.
@@ -6053,6 +6244,13 @@
          call ioniz_eq(T,rho,f_sp,heat,cool,eta)
          call get_species_densities(rho,f_sp,nhi,nhii,nhei,nheii,          &
                                     nheiii,nheiTR,nm,ne,n_tot)
+         ! ONE COMPOSITION, ONE BOUNDARY, ONE RESIDUAL: the boundary derived
+         ! again from the composition this residual is assembled with. The
+         ! statement is at the evaluate route's assembly
+         ! (stationary_state_of_the_loaded_restart).
+         if (.not. boundary_rebuild_suppressed()) call Apply_BC(u)
+         call report_base_face_state_consistency(                          &
+              'update_map_at_the_steady_residual', u)
          call assemble_residual(u, n_tot + ne, heat, cool, R_um)
          ! The carrier row's steady residual of the SAME state, per cell,
          ! with the row's own terms beside it.
@@ -6142,7 +6340,7 @@
       call rebuild_state_from_checkpoint
       write(*,*)
       write(*,'(A,I0,A,I0,A)') ' ATTEMPTED STEP EXHAUSTED at'//  &
-           ' step ', count, ' after ', n_retry_now + 1,          &
+           ' step ', marching_step, ' after ', n_retry_now + 1,          &
            ' attempts.'
       if (n_err_passes .eq. 3)                                   &
          write(*,'(A,A,A)') '   the pass that refused it: ',     &
@@ -6308,7 +6506,7 @@
            ' in the step:', upmap_dfsp
       if (upmap_carrier) call update_map_carrier_row
       upmap_done = upmap_done + 1
-      if (upmap_done .ge. upmap_n) max_steps = count
+      if (upmap_done .ge. upmap_n) max_steps = marching_step
       end subroutine update_map_end_step
 
       ! ------------------------------------------------!
@@ -6411,7 +6609,7 @@
               '          flux spread over r >= r_flux             ',         &
               fsp_now, '   the flux gate is disabled in this run'
       endif
-      if (thereis_mol .and. carrier_transport) then
+      if (transported_rows_exist()) then
          ! Measured here, on this state. The marching's carriers are moved by
          ! the operator-split transport step and are not solved for, so no
          ! carrier residual OF A SOLVE exists for a marched state; this is the
@@ -6617,6 +6815,18 @@
       ! this floor a pass would move the composition by less than a tenth of
       ! what the front covers in one cell crossing time.
       real*8, parameter  :: carrier_trust_floor = 1.0d-3
+      ! HOLDING THE MOVEMENT BOUND AT ONE VALUE, a diagnostic and not an
+      ! input key.  EXHALE_CARRIER_TRUST_HOLD=<value> sets the bound to
+      ! that value and takes the halving below out of the pass, so the
+      ! composition may move by the same fraction at every pass; unset,
+      ! which is every run by default, nothing here is reached and the
+      ! bound is the one the progress control leaves.  It exists to
+      ! separate a relaxation the bound throttles from a mode the
+      ! alternation cannot damp: the first decays at a rate proportional
+      ! to the bound, the second at the same rate whatever the bound
+      ! (docs/lhs1140b_stationary_L33_20260917.md section 6.3).
+      logical :: carrier_trust_held
+      real*8  :: carrier_trust_hold
 
       integer :: hydro_info, elem_status, carrier_outcome, outer_ending
       integer :: n_no_fall, icert, sp_cell, ref_cell, cell_here, pass_cap
@@ -6742,6 +6952,19 @@
       ! progress control below; the run's own setting is left where a later
       ! entry can read it.
       trust_pass = carrier_trust
+      carrier_trust_held = .false.
+      carrier_trust_hold = 0.0d0
+      call get_environment_variable('EXHALE_CARRIER_TRUST_HOLD', diag_env)
+      if (len_trim(diag_env) .gt. 0) then
+         read(diag_env,*) carrier_trust_hold
+         if (carrier_trust_hold .gt. 0.0d0) then
+            carrier_trust_held = .true.
+            trust_pass = carrier_trust_hold
+            write(*,'(A,ES9.2,A)') ' (EXHALE_main) the carrier movement'// &
+                 ' bound is HELD at', trust_pass,                          &
+                 ' for every pass (EXHALE_CARRIER_TRUST_HOLD)'
+         endif
+      endif
       ! Transport steps the previous pass's carrier relaxation kept. The
       ! shortening of the movement bound below reads it, so it must exist
       ! before the first pass, where no relaxation has run.
@@ -6751,8 +6974,8 @@
       handed_over     = .false.
       n_bound_endings = 0
       n_no_fall_at_handover = 0
-      species_alternated = he_diffusion .or. (thereis_mol .and.           &
-                           carrier_transport .and. .not. block_now)
+      species_alternated = he_diffusion .or.                              &
+                           (transported_rows_exist() .and. .not. block_now)
       pass_cap      = merge(outer_pass_cap, 1, species_alternated)
       outer_ending  = outer_running
       hydro_info    = 0
@@ -6843,6 +7066,14 @@
          ! on, which store_row_terms leaves behind for them -- belongs to
          ! the refreshed state and not to the last state the solver happened
          ! to evaluate inside its iteration.
+         ! ONE COMPOSITION, ONE BOUNDARY, ONE RESIDUAL: the boundary
+         ! derived from the composition the sweep above returned, which is
+         ! the composition this residual and every row measured on it are
+         ! taken at. The statement is at the evaluate route's assembly
+         ! (stationary_state_of_the_loaded_restart).
+         if (.not. boundary_rebuild_suppressed()) call Apply_BC(u)
+         call report_base_face_state_consistency(                         &
+              'steady_wind_joint_test_at_assemble_residual', u)
          call assemble_residual(u, n_tot + ne, heat, cool, Rres)
          call certification_evaluate(cert_context_stationary, u, Rres,     &
                   f_sp, resid_th,                                         &
@@ -7068,7 +7299,12 @@
                ! relaxation kept no transport step therefore leaves the
                ! bound where it is; it is still counted as a pass without a
                ! fall, so the loop still ends on outer_no_fall_max of them.
-               if (thereis_mol .and. carrier_transport .and.              &
+               if (carrier_trust_held) then
+                  write(*,'(A,ES9.2)') '    -> neither the joint'//        &
+                       ' distance nor the composition distance fell;'//   &
+                       ' the carrier movement bound is held at',          &
+                       trust_pass
+               else if (transported_rows_exist() .and.                    &
                    .not. block_now .and.                          &
                    carrier_steps_last .gt. 0 .and.                        &
                    trust_pass .gt. carrier_trust_floor) then
@@ -7076,7 +7312,7 @@
                   write(*,'(A,ES9.2)') '    -> neither the joint'//        &
                        ' distance nor the composition distance fell;'//   &
                        ' carrier movement bound =', trust_pass
-               else if (thereis_mol .and. carrier_transport .and.         &
+               else if (transported_rows_exist() .and.                    &
                         .not. block_now .and.                     &
                         carrier_steps_last .le. 0) then
                   write(*,'(A,ES9.2)') '    -> the carrier kept no'//      &
@@ -7191,8 +7427,8 @@
             ! stand here would re-solve its own answer. What is left is to
             ! fill the density columns this routine keeps beside the
             ! composition.
-            if (outer_ending .eq. outer_running .and. thereis_mol .and.   &
-                carrier_transport .and. .not. block_now) then
+            if (outer_ending .eq. outer_running .and.                     &
+                transported_rows_exist() .and. .not. block_now) then
                ! The conserved state u is what the relaxation holds; the
                ! pressure and temperature it returns are those of the
                ! composition it hands back at that u, and U_to_W below
@@ -7290,7 +7526,7 @@
             ! endpoint of the element relaxation's inner map.
             if (outer_ending .eq. outer_running .or. outer_ending .eq.     &
                 outer_state_not_finite) then
-               if (thereis_mol .and. carrier_transport .and.               &
+               if (transported_rows_exist() .and.                          &
                    .not. block_now) then
                   call get_environment_variable(                           &
                        'EXHALE_CARRIER_DRIFT_IS_DISPLACEMENT', diag_env)
@@ -7414,8 +7650,8 @@
                  ', displacement applied', element_displacement_pass,     &
                  ' in ', kd, ' steps'
          if (update_taken .and. outer_ending .ne.                         &
-             outer_element_update_refused .and. thereis_mol .and.         &
-             carrier_transport .and. .not. block_now) then
+             outer_element_update_refused .and.                           &
+             transported_rows_exist() .and. .not. block_now) then
             write(*,'(A,A,A,ES10.2,A,I0,A)') '    carrier relaxation'//   &
                  ' ended on ', trim(carrier_relax_outcome_text(           &
                  carrier_outcome)), '; displacement kept',                &
@@ -7476,7 +7712,7 @@
          ! the closure names a reason and counts the cells that carry it,
          ! and without them a carrier that never advances cannot be told
          ! from one that advances and is undone.
-         if (update_taken .and. thereis_mol .and. carrier_transport .and. &
+         if (update_taken .and. transported_rows_exist() .and.           &
              .not. block_now .and.                                &
              carrier_outcome .eq. carrier_relax_chemistry_refused)        &
             write(*,'(A,A,A,I0,A,I0,A,I0,A,ES9.2,A,ES9.2)')              &
@@ -7490,7 +7726,7 @@
          ! WHICH CELL REFUSED IT, when the movement bound did: the bound is
          ! a statement about a cell, so the pass names the cell it was made
          ! about (carrier_worst_composition_change).
-         if (update_taken .and. thereis_mol .and. carrier_transport .and. &
+         if (update_taken .and. transported_rows_exist() .and.           &
              .not. block_now .and.                                &
              carrier_outcome .eq. carrier_relax_movement_bound .and.       &
              bound_last_j .gt. 0) then
@@ -7515,7 +7751,7 @@
          ! is what ended it: the interval is refused because no substep of
          ! it produced a state its own acceptance would take, and the row
          ! that refused is the statement of why.
-         if (update_taken .and. thereis_mol .and. carrier_transport .and. &
+         if (update_taken .and. transported_rows_exist() .and.           &
              .not. block_now .and.                                &
              carrier_outcome .eq. carrier_relax_interval_refused) then
             call carrier_exhausted_record(exh_n, exh_first, exh_last,      &
@@ -7544,7 +7780,7 @@
          ! it least so? The gated carrier row of the certification is the
          ! acceptance; these numbers say how the refusal is distributed over
          ! the column and where the front now stands.
-         if (thereis_mol .and. carrier_transport .and. rows_finite) then
+         if (transported_rows_exist() .and. rows_finite) then
             call carrier_steady_residual(rho, v, f_sp, crc_max,       &
                                          crc_j, crc_ic, rvol=crc_vol,    &
                                          rlegacy=crc_leg)
@@ -7640,7 +7876,7 @@
          ! the ending below is the refusal it is today.
          if (carrier_newton_on_stall .and. .not. handed_over .and.        &
              outer_ending .eq. outer_no_progress .and.                    &
-             .not. block_now .and. thereis_mol .and. carrier_transport    &
+             .not. block_now .and. transported_rows_exist()               &
              .and.                                                        &
              carrier_outcome .eq. carrier_relax_movement_bound .and.      &
              n_bound_endings .ge. outer_no_fall_max) then
@@ -7985,7 +8221,7 @@
       enddo
       call p54_cell_spread(p54_ts_face(2), sp103)
       call p54_cell_spread(p54_ts_face(3), sp110)
-      write(p54_ts_unit,'(1X,I8,1X,10(ES20.12,1X))') count,                &
+      write(p54_ts_unit,'(1X,I8,1X,10(ES20.12,1X))') marching_step,                &
            ff(1), ff(2), ff(3), ff(4), fc(1), fc(2), fc(3), fc(4),         &
            sp103, sp110
       flush(p54_ts_unit)

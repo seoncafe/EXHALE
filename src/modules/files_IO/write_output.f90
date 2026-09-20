@@ -11,6 +11,12 @@
       ! built and parsed in one place, the module that reads a restart file,
       ! so the writer and the loader cannot disagree about its fields.
       use IC_load, only: write_restart_metadata_header
+      ! The lower boundary model the state was produced under, and the
+      ! prescribed reservoir it stands on (write_base_boundary_header).
+      use base_boundary, only: base_boundary_model_id,                     &
+                               base_reservoir_prescription_version,        &
+                               base_reservoir_p, base_reservoir_T,         &
+                               base_reservoir_nhat, r_base_level
       ! A molecular seed run writes the pair a restart READS, not the pair a
       ! solution leaves behind, and records the partition it was built with
       ! in both halves (docs/input_schema.md appendix D.3).
@@ -187,6 +193,39 @@
                      ' makes no certification claim of its own.'
       end subroutine write_derived_provenance_header
 
+      subroutine write_base_boundary_header(unit)
+      ! THE LOWER BOUNDARY THIS STATE WAS PRODUCED UNDER, and the reservoir
+      ! that boundary was prescribed with.
+      !
+      ! WHY THE RESERVOIR TRAVELS WITH THE STATE AND THE GHOST ROWS DO NOT.
+      ! The boundary is a function of the physical column, the prescribed
+      ! reservoir, the radiation context and the model options; of those the
+      ! reservoir is the only one the column cannot reconstruct, so it is
+      ! what a file has to carry. The ghost rows this file writes are the
+      ! boundary's own output and a reader rebuilds them from the column and
+      ! the reservoir instead of reading them (load_IC states the same
+      ! contract at the read).
+      !
+      ! THE MEANING AND THE VERSION ARE ON THE LINE: p and T are the pressure
+      ! and temperature at the level, in the code's own units; nhat is the
+      ! particle count per unit mass of the reservoir gas; r_level is the
+      ! radius the three are stated at; and the entropy is not a number but
+      ! the isentrope through (p, T) at the base composition. The version
+      ! rises when any of those meanings changes.
+      !
+      ! Both are '#' comments, so no numeric parse and no golden changes.
+      integer, intent(in) :: unit
+      write(unit,'(A)') '# boundary_model '//base_boundary_model_id
+      ! ES23.16E3 round trips a double exactly, so the four numbers on the
+      ! line are the numbers the run held and not a rendering of them.
+      write(unit,'(A,I0,A,4(1X,ES23.16E3))')                              &
+           '# boundary_reservoir version ',                               &
+           base_reservoir_prescription_version,                           &
+           ' p[p0] T[T0] nhat[n0/rho0] r_level[Rp]',                      &
+           base_reservoir_p, base_reservoir_T, base_reservoir_nhat,       &
+           r_base_level
+      end subroutine write_base_boundary_header
+
       subroutine write_output(rho,v,p,T,heat,cool,eta,                &
                               nhi,nhii,nhei,nheii,nheiii,nheiTR,      &
                               nm,flag,adv_T_status,adv_comp_status,        &
@@ -284,6 +323,7 @@
             call write_derived_provenance_header(2)
          endif
          call write_provenance_header(2)
+         call write_base_boundary_header(2)
          call write_molecular_seed_header(2)
          ! The reservoir, species schema, physical grid, constants, options
          ! and clock the state was produced under: what a restart of this
@@ -365,6 +405,7 @@
       write(3,'(A)') ''
 
       call write_row_layout_header(3)
+      call write_base_boundary_header(3)
       call write_molecular_seed_header(3)
       ! Both state files carry the block: they are two halves of one state,
       ! and a restart reads both, so a pair whose halves state different

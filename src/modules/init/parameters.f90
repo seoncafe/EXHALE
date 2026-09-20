@@ -35,7 +35,13 @@
       ! over which the flux gate measures the spread of the face mass flux
       ! (flux_spread_of_state, steady_residual.f90). Set in define_grid.
       integer :: j_flux
-      integer :: count
+      ! Index of the marching step the run is on: set to 0 or 1 in init and
+      ! raised by one per pass of the marching loop in EXHALE_main. It counts
+      ! passes, not accepted steps; n_steps_attempted and n_steps_accepted
+      ! below are the two step ledgers. The run prints it as "count=" and
+      ! write_setup_report keys the cap below as "count_max", the labels the
+      ! log readers under src/tests match on.
+      integer :: marching_step
 
       ! ----- WHAT A RUN IS DOING, AND THE CLOCK THAT GOES WITH IT -----
       ! docs/a0_run_mode_contract_20260906.md sections 2, 4 and 5.
@@ -72,8 +78,8 @@
       ! dt*R0/v0.
       real*8 :: t_phys = 0.0d0
 
-      ! THE THREE COUNTERS OF CONTRACT SECTION 5, never conflated. `count`
-      ! above is the marching-loop index. These two separate the steps the
+      ! THE THREE COUNTERS OF CONTRACT SECTION 5, never conflated.
+      ! `marching_step` above is the marching-loop index. These two separate the steps the
       ! run tried from the steps it kept: a step re-taken at half dt after a
       ! positivity violation is one more attempt and not one more accepted
       ! step, and the difference is what tells a plateau of accepted steps
@@ -131,17 +137,33 @@
       ! gravity planets have the least margin: on the default grid the value
       ! write_setup_report echoes is 26.9 cells per H at T_eq for
       ! HD 189733 b against 102.3 for WASP-121 b.
-      ! The default is written with a DEFAULT-REAL literal (2.0e-4, not 2.0d-4)
-      ! because that is what the hardcoded local in define_grid.f90 was: the
-      ! value stored is the single-precision neighbor of 2e-4, 2.5e-8 relative
-      ! below it. Writing 2.0d-4 here moves every base cell by that amount and
-      ! changes the last few digits of a converged solution. The literal is kept
-      ! as-is so that an input.inp without the key reproduces earlier runs
-      ! bit-for-bit; note that spelling the default out in input.inp
-      ! ("Base grid [dr,cells]: 2.0e-4 50") does NOT reproduce it, because the
-      ! list-directed read into a real*8 gives the exact double 2e-4.
-      real*8  :: dr_base     = 2.0e-4   ! uniform base cell size [R_p]
-      integer :: N_low_cells = 50       ! number of uniform base cells
+      !
+      ! The default width is the double 2.0d-4 written with a d exponent, so
+      ! the value is the one a reader of the key would spell: an input.inp
+      ! WITHOUT the key and one stating "Base grid [dr,cells]: 2.0e-4 50"
+      ! build the same grid to the bit (the list-directed read of 2.0e-4 into
+      ! a real*8 is this double; asserted by
+      ! src/tests/grid_and_gates/base_cell_width_provenance.f90 and
+      ! base_grid_key_reproduces_default.sh). The grid is part of a stored
+      ! state: load_IC refuses a state whose cell centers differ from the
+      ! run's by more than 1e-10 relative. An input written before 2026-09-19
+      ! was run on the width 1.9999999494757503d-4 (the default-real literal
+      ! 2.0e-4), whose centers differ from this grid's by 3.8e-9 to 6.6e-9
+      ! relative; every such input beside stored results carries that width
+      ! as "Base grid [dr,cells]: 1.9999999494757503e-4 50"
+      ! (src/utils/pin_base_grid.py), and each preserved tree whose inputs
+      ! were not edited has a GRID_DEFAULT_NOTE.md at its root stating the
+      ! same line (docs/lhs1140b_stationary_D1b_20260919.md). The width a run
+      ! used is recorded at round-trip precision by write_resolved_config.
+      real*8, parameter :: dr_base_default = 2.0d-4
+      real*8  :: dr_base     = dr_base_default  ! uniform base cell size [R_p]
+      integer, parameter :: N_low_cells_default = 50
+      integer :: N_low_cells = N_low_cells_default ! number of uniform base cells
+      ! Provenance of dr_base: .true. when "Base grid [dr,cells]:" supplied
+      ! the width, .false. when it still holds dr_base_default. Value
+      ! equality cannot answer this, because a key may state the default's
+      ! own digits; the resolved-configuration record reports the flag.
+      logical :: dr_base_from_key = .false.
 
       character(len = :), allocatable :: flux
       character(len = :), allocatable :: rec_method 
@@ -941,7 +963,7 @@
       ! (The env variable EXHALE_MAXSTEPS is a separate, lower deterministic
       ! cap used by the regression harness; it exits the loop without the
       ! "reached count_max" message and never raises this one.)
-      integer :: count_max = 1000000
+      integer :: marching_step_max = 1000000   ! printed as "count_max"
       integer :: N_stall   = 2000     ! window of stalled steps; settable via
                                       !   input line "Stall [tol,N]: <tol> <N>"
       real*8  :: stall_tol = 1.0d-6   ! rel. du change defining a stall (same line)

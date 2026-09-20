@@ -93,7 +93,10 @@
 	                        n_fuv_band, qy_H2O_OH_H, qy_H2O_H2_O1D,       &
 	                        qy_H2O_O_H_H, rk_D1_Hep_CO
 	use ion_residual_core, only: tr_triplet_row,                        &
-	                            impose_transported_ionization_fractions
+	                            impose_transported_ionization_fractions, &
+	                            n_stage_chan, n_stage_state_mol,         &
+	                            stage_chan_ncell, stage_chan_asked,      &
+	                            stage_channels_watch, stage_channels_append
 	use ion_cell_state, only: ieq_cell
 	use charge_exchange, only: he_h_cx_fvec
 	use Cooling_Coefficients, only: ioniz_HeI23S_H2,      &
@@ -683,7 +686,8 @@
 	                        a_hii, a_heii, a_heiii, a_heiTR,                 &
 	                        b_hi, b_hei, b_heii, b_heiTR,                    &
 	                        q13, q31a, q31b, Q31, A31,                       &
-	                        p_Hp, l_Hp, p_H2, l_H2, l_H2_phot, h2_chan)
+	                        p_Hp, l_Hp, p_H2, l_H2, l_H2_phot, h2_chan,    &
+	                        chan)
 
 	real*8 :: fvec(*)
 	real*8, intent(in) :: n_hi,n_hii,n_h2,n_h2p,n_h3p,n_hehp
@@ -721,6 +725,15 @@
 	! to the production and the loss the row is built from.  Diagnostic
 	! only (EXHALE_CARRIER_ROW_TERMS=1); nothing in the solution reads it.
 	real*8, optional, intent(out) :: h2_chan(*)
+	! THE THREE ION-STAGE ROWS CHANNEL BY CHANNEL (declaration of
+	! n_stage_chan in ion_residual_core), each a single term of rows (1),
+	! (2) and (3) and written from the same factors.  In molecular gas the
+	! stage sources are the rows themselves, src(H II) = fvec(1),
+	! src(He II) = fvec(2), src(He III) = fvec(3), and the signed channel
+	! sums reproduce them.  Diagnostic only.
+	real*8, optional, intent(out) :: chan(*)
+	real*8  :: cloc(n_stage_chan), stt(n_stage_state_mol)
+	logical :: wrec
 	real*8  :: k5,k6,k7,k8,k9,k10,k11,k12,k13,k14,k15
 	real*8  :: k16,k17,k18,k19,k_h2p_he,k23,k_ion_H2
 	! Rate at which one He+ ion is destroyed by the cell's CO, k_D1 n_CO
@@ -919,6 +932,76 @@
 		! associative branch: both quench the metastable, and neither makes
 		! He+, so there is no He+ row term. Garcia Munoz (2025) Table A.5.
 		fvec(8) = fvec(8) - k_ion_H2*n_heiTR*n_h2
+	endif
+
+	! The three ion-stage rows term by term, and the record of them when
+	! this cell was named.  The rows above are untouched by either.
+	wrec = .false.
+	if (stage_chan_ncell .gt. 0 .or. .not. stage_chan_asked)              &
+		wrec = stage_channels_watch(ieq_cell%jcell)
+	if (present(chan) .or. wrec) then
+		cloc     = 0.0d0
+		cloc(1)  = g_hi*n_hi
+		cloc(2)  = b_hi*n_e*n_hi
+		cloc(3)  = f_penning_HeI23S*Q31*n_heiTR*n_hi
+		cloc(4)  = g_h2_di*n_h2
+		cloc(5)  = 2.0d0*g_h2_dd*n_h2
+		cloc(6)  = k9*n_h2p*n_hi
+		cloc(7)  = k17*n_heii*n_h2
+		cloc(8)  = a_hii*n_e*n_hii
+		cloc(9)  = (k10 + k13)*n_hii*n_h2
+		cloc(12) = g_hei*n_heiSI
+		cloc(13) = g_heiTR*n_heiTR
+		cloc(14) = b_hei*n_e*n_heiSI
+		cloc(15) = b_heiTR*n_e*n_heiTR
+		cloc(16) = a_heiii*n_e*n_heiii
+		cloc(17) = (a_heii + a_heiTR)*n_e*n_heii
+		cloc(18) = g_heii*n_heii
+		cloc(19) = b_heii*n_e*n_heii
+		cloc(20) = (k17 + k23)*n_heii*n_h2
+		cloc(21) = k_co_hep*n_heii
+		cloc(24) = g_heii*n_heii
+		cloc(25) = b_heii*n_e*n_heii
+		cloc(26) = a_heiii*n_e*n_heiii
+		if (present(chan)) chan(1:n_stage_chan) = cloc
+		if (wrec) then
+			stt( 1) = ieq_cell%T_K
+			stt( 2) = n_hi;     stt( 3) = n_hii
+			stt( 4) = n_heiSI;  stt( 5) = n_heiTR
+			stt( 6) = n_heii;   stt( 7) = n_heiii;  stt( 8) = n_e
+			stt( 9) = g_hi;     stt(10) = g_hei
+			stt(11) = g_heii;   stt(12) = g_heiTR
+			stt(13) = a_hii;    stt(14) = a_heii
+			stt(15) = a_heiii;  stt(16) = a_heiTR
+			stt(17) = b_hi;     stt(18) = b_hei
+			stt(19) = b_heii;   stt(20) = b_heiTR
+			stt(21) = q13;      stt(22) = q31a;     stt(23) = q31b
+			stt(24) = Q31;      stt(25) = A31
+			stt(26) = ieq_cell%kcx_He0_Hp
+			stt(27) = ieq_cell%kcx_Hep_H0
+			stt(28) = ntot
+			stt(29) = n_h2;     stt(30) = n_h2p
+			stt(31) = n_h3p;    stt(32) = n_hehp
+			stt(33) = g_h2;     stt(34) = g_h2_di
+			stt(35) = g_h2_dd;  stt(36) = g_h2_nd;  stt(37) = g_lw
+			stt(38) = k5;       stt(39) = k6;       stt(40) = k7
+			stt(41) = k8;       stt(42) = k9;       stt(43) = k10
+			stt(44) = k11;      stt(45) = k12;      stt(46) = k13
+			stt(47) = k14;      stt(48) = k15;      stt(49) = k16
+			stt(50) = k17;      stt(51) = k18;      stt(52) = k19
+			stt(53) = k_h2p_he; stt(54) = k23;      stt(55) = k_ion_H2
+			stt(56) = k_co_hep; stt(57) = n_third
+			! The transport operator is the only caller that asks for the
+			! production/loss split, so its evaluations are told apart from
+			! the local sweep's here and nowhere else.
+			if (present(p_Hp)) then
+				call stage_channels_append('MC', ieq_cell%jcell, stt,       &
+				                           n_stage_state_mol, cloc)
+			else
+				call stage_channels_append('MS', ieq_cell%jcell, stt,       &
+				                           n_stage_state_mol, cloc)
+			endif
+		endif
 	endif
 
 	end subroutine mol_heh_rows

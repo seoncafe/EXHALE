@@ -56,6 +56,7 @@
 
       use global_parameters
       use Reconstruction_step, only: Reconstruct_scalar
+      use grid_construction, only: spherical_cell_volume
 
       implicit none
       private
@@ -180,13 +181,19 @@
       !     A_+ = r_{j+1/2}^2,  A_- = r_{j-1/2}^2,
       !     dV_j = ( r_{j+1/2}^3 - r_{j-1/2}^3 ) / 3 .
       !
-      ! THERE IS ONE OF THESE EXPRESSIONS IN THE CODE, and every equation
+      ! THERE IS ONE OF THESE DIVERGENCES IN THE CODE, and every equation
       ! that transports a species on the mass flux reads it here: the
       ! Runge-Kutta stages below, the stationary carrier rows and the
       ! stationary elemental rows.  Two spellings of one term give a marched
       ! state and a Newton state that are different objects, which is what
       ! the stationary rows carried until the cell-velocity upwind
       ! difference was replaced by this call.
+      !
+      ! The volume itself is grid_construction's spherical_cell_volume, the
+      ! one expression for it: the hydrodynamic rows that drain the same cell
+      ! of mass divide by that value, and a species row that divided by a
+      ! second spelling of it would take a cell's composition away from the
+      ! mass it rides on at the size of the difference between the two.
       !
       ! divmag is the same expression with both fluxes taken in magnitude,
       ! A_+|F_s(j)| + A_-|F_s(j-1)| over dV_j: the size of the term, for a
@@ -207,7 +214,7 @@
          rm  = r_edg(j-1)
          dAp = rp*rp
          dAm = rm*rm
-         dV  = (dAp*rp - dAm*rm)/3.0
+         dV  = spherical_cell_volume(j)
          divF(j) = (dAp*Fs(j) - dAm*Fs(j-1))/dV
          if (present(divmag))                                             &
             divmag(j) = (dAp*abs(Fs(j)) + dAm*abs(Fs(j-1)))/dV

@@ -48,6 +48,12 @@
 set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$HERE/../../.." && pwd)"
+# The binary is selected and its identity stated in one place;
+# src/tests/exhale_exe.sh carries the policy.  The reload rows at the end
+# of this suite run only when a binary was asked for.
+. "$HERE/../exhale_exe.sh"
+exhale_select_exe "$ROOT" steady_species_rows EXHALE_SPECIES_EXE
+if [ "$EXHALE_RUN_EXE_REQUESTED" = "1" ]; then exhale_announce_exe; fi
 OBJDIR="${EXHALE_OBJDIR:-$ROOT/build}"
 OUT="${EXHALE_TEST_OUT:-$ROOT/build/tests/steady_species_rows}"
 # The reference states the elemental map classifies (N4a): the golden
@@ -731,14 +737,16 @@ fi
 # fires at the first evaluation and the claim is made on a relaxation
 # snapshot the carrier balance is nowhere near.
 #
-# EXHALE_SPECIES_EXE gives the binary; without it these rows are skipped
-# rather than building one here.
+# EXHALE_EXE gives the binary, EXHALE_SPECIES_EXE being its alias here;
+# without either of them these rows are skipped rather than building one
+# here.  The selection is made at the head of this file.
 # ------------------------------------------------------------------ #
-EXE_RUN="${EXHALE_SPECIES_EXE:-}"
-if [ -z "$EXE_RUN" ]; then
-   echo "  reload rows skipped: set EXHALE_SPECIES_EXE to the binary to test"
+if [ "$EXHALE_RUN_EXE_REQUESTED" != "1" ]; then
+   echo "  reload rows skipped: set EXHALE_EXE (or its alias EXHALE_SPECIES_EXE)"
+   echo "  to the binary to test"
    exit $rc
 fi
+EXE_RUN="$EXHALE_RUN_EXE"
 if [ ! -x "$EXE_RUN" ]; then
    echo "FAIL species_rows_reload_binary measured=no_binary reference=$EXE_RUN tol=0"
    exit 1

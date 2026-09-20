@@ -59,7 +59,12 @@
 set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$HERE/../../.." && pwd)"
-EXE="${EXHALE_EXE:-$ROOT/EXHALE.x}"
+# The binary is selected and its identity stated in one place;
+# src/tests/exhale_exe.sh carries the policy.
+. "$HERE/../exhale_exe.sh"
+exhale_select_exe "$ROOT" coupled_block_jacobian
+EXE="$EXHALE_RUN_EXE"
+exhale_announce_exe
 OUT="${EXHALE_TEST_OUT:-$ROOT/build/tests/coupled_block_jacobian}"
 CASE="${EXHALE_JAC_CASE:-$ROOT/LHS1140b/models/molecular_scalar_gj1132_wellmixed/HeH0.55}"
 SED="${EXHALE_JAC_SED:-$ROOT/LHS1140b/sed/lhs1140_sed_gj1132_at_b.txt}"

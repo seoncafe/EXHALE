@@ -3,8 +3,11 @@
 
    use global_parameters
    use Conversion
-   use caloric_eos, only: adiabatic_index_from_state
-   use base_boundary, only: base_boundary_states
+   use caloric_eos, only: adiabatic_index_from_state, caloric_cell_mixture
+   use base_boundary, only: base_boundary_states, base_reservoir_p,       &
+                            base_reservoir_T, base_reservoir_nhat,        &
+                            r_base_level,                                 &
+                            base_reservoir_prescription_version
 
    implicit none
 
@@ -57,6 +60,43 @@
    real*8 :: base_face_W(3)        = 0.0d0
    real*8 :: base_ghost_W(3,1-Ng:0) = 0.0d0
    real*8 :: base_face_lower_W(3)  = 0.0d0
+
+   ! ---- WHICH STATE THE THREE ARRAYS ABOVE WERE BUILT FROM ----
+   !
+   ! The boundary state is a function of a stated input set, and these hold
+   ! that input set as it stood at the derivation, so that a consumer can ask
+   ! whether the cache belongs to the state it is about to use it on instead
+   ! of assuming it (docs/lhs1140b_stationary_D5a_20260918.md sections 5 and
+   ! 9, where the cache of one composition read by the residual of another is
+   ! measured at 6.92 to 28.15 rounding floors of the base continuity row).
+   !
+   ! THE INPUT SET, and nothing else: the interior conserved state, the
+   ! composition-derived state the ghost continuation and the caloric map
+   ! read (the two ghost cells and the first interior cell of
+   ! caloric_cell_mixture, and the cell-1 particle count), and the prescribed
+   ! reservoir with its version. The ghost rows of a restart file are not in
+   ! it: a restart rebuilds the boundary from the physical column.
+   !
+   ! bc_W_hold is the primitive array the derivation ran on, kept so that a
+   ! read which finds the composition moved can recompute the face states
+   ! with their own inputs rather than insert a state of another gas.
+   logical :: base_boundary_installed = .false.
+   real*8, allocatable :: bc_u_hold(:,:)   ! interior conserved, 1..N
+   real*8, allocatable :: bc_W_hold(:,:)   ! the primitive array derived from
+   real*8  :: bc_nk_hold(1-Ng:1)  = 0.0d0
+   real*8  :: bc_xh2_hold(1-Ng:1) = 0.0d0
+   logical :: bc_mol_hold(1-Ng:1) = .false.
+   real*8  :: bc_npart1_hold      = 0.0d0
+   real*8  :: bc_res_hold(4)      = 0.0d0
+   integer :: bc_res_version_hold = -1
+
+   ! Reads at which the cached face state did not belong to the composition
+   ! installed at the read, and was recomputed from its own inputs before it
+   ! was used. A nonzero count means a caller refreshed the composition and
+   ! did not derive the boundary again; it is a statement about the call
+   ! order, reported at the end of a run.
+   integer :: n_base_face_state_recomputed = 0
+   logical :: base_face_recompute_announced = .false.
 
    contains
 
@@ -111,7 +151,28 @@
    end subroutine check_base_inflow_is_subsonic
 
    subroutine Apply_BC(u)
-   ! Boundary conditions for conservative variables (in place).
+   ! THE BOUNDARY-STATE OPERATION. One call derives everything the two
+   ! boundaries state, from one stated input set, and tags the result with
+   ! the state it was built from.
+   !
+   !   INPUT   the physical conserved state u(:,1:N) and the composition
+   !           installed for it (through the composition-derived state
+   !           caloric_cell_mixture and n_part_cell1 carry), the PRESCRIBED
+   !           reservoir of base_boundary with its version, the model
+   !           options. The ghost rows of a restart file are NOT an input:
+   !           a restart rebuilds the boundary from the physical column
+   !           (load_IC states the same contract at the read).
+   !   OUTPUT  the ghost conserved state u(:,1-Ng:0) and u(:,N+1:N+Ng), and
+   !           the cached face states base_face_W, base_ghost_W and
+   !           base_face_lower_W, all of ONE composition, tagged with the
+   !           input set they were built from so that a stale cache is
+   !           detectable and not merely improbable.
+   !
+   ! The ghost COMPOSITION is not written here: it is solved, with the
+   ! ghost's own ionization balance, by the composition sweep
+   ! (ionization_equilibrium, the base handoff block), and this routine turns
+   ! the composition installed for the ghost into its conserved state through
+   ! the caloric map. The two together are the boundary state.
    !
    ! WRITES THE GHOSTS AND NOTHING ELSE. A boundary condition states the cells
    ! outside the domain; the interior is the caller's, and this routine hands
@@ -152,8 +213,101 @@
       call W_to_U_comp(W(:,N+k), u(:,N+k), N+k)
    enddo
 
+   ! The input set this boundary state belongs to.
+   call hold_boundary_state_inputs(u, W)
+
    ! End of subroutine
    end subroutine Apply_BC
+
+   !------------------------------------------!
+
+   subroutine hold_boundary_state_inputs(u, W)
+   ! Record the input set the boundary was just derived from: the interior
+   ! conserved state, the primitive array the derivation ran on, the
+   ! composition-derived state of the cells the boundary reads, and the
+   ! prescribed reservoir with its version.
+   real*8, intent(in) :: u(3,1-Ng:N+Ng), W(3,1-Ng:N+Ng)
+   if (.not. allocated(bc_u_hold)) allocate(bc_u_hold(3,1:N))
+   if (.not. allocated(bc_W_hold)) allocate(bc_W_hold(3,1-Ng:N+Ng))
+   bc_u_hold = u(:,1:N)
+   bc_W_hold = W
+   call hold_boundary_closure_inputs()
+   base_boundary_installed = .true.
+   end subroutine hold_boundary_state_inputs
+
+   !------------------------------------------!
+
+   subroutine hold_boundary_closure_inputs()
+   ! The half of the input set that is reachable without an argument: the
+   ! composition-derived state of the two lower ghosts and the first interior
+   ! cell, the cell-1 particle count, and the prescribed reservoir.
+   integer :: j
+   do j = 1-Ng, 1
+      call caloric_cell_mixture(j, bc_nk_hold(j), bc_xh2_hold(j),         &
+                                bc_mol_hold(j))
+   enddo
+   bc_npart1_hold      = n_part_cell1
+   bc_res_hold(1)      = base_reservoir_p
+   bc_res_hold(2)      = base_reservoir_T
+   bc_res_hold(3)      = base_reservoir_nhat
+   bc_res_hold(4)      = r_base_level
+   bc_res_version_hold = base_reservoir_prescription_version
+   end subroutine hold_boundary_closure_inputs
+
+   !------------------------------------------!
+
+   logical function base_boundary_closure_is_current() result(ok)
+   ! Is the composition (and reservoir) the cached boundary was built from
+   ! the one installed now? Compared value by value, so equality is the
+   ! equality of the numbers and not of a digest of them.
+   integer :: j
+   real*8  :: nk, x2
+   logical :: ismol
+   ok = base_boundary_installed
+   if (.not. ok) return
+   do j = 1-Ng, 1
+      call caloric_cell_mixture(j, nk, x2, ismol)
+      ok = ok .and. (nk .eq. bc_nk_hold(j))                               &
+              .and. (x2 .eq. bc_xh2_hold(j))                              &
+              .and. (ismol .eqv. bc_mol_hold(j))
+   enddo
+   ok = ok .and. (n_part_cell1        .eq. bc_npart1_hold)                &
+           .and. (base_reservoir_p    .eq. bc_res_hold(1))                &
+           .and. (base_reservoir_T    .eq. bc_res_hold(2))                &
+           .and. (base_reservoir_nhat .eq. bc_res_hold(3))                &
+           .and. (r_base_level        .eq. bc_res_hold(4))                &
+           .and. (base_reservoir_prescription_version                     &
+                  .eq. bc_res_version_hold)
+   end function base_boundary_closure_is_current
+
+   !------------------------------------------!
+
+   logical function base_boundary_cache_is_current(u) result(ok)
+   ! The whole input set: the composition and reservoir above AND the
+   ! interior conserved state. A consumer that holds the state can ask this;
+   ! Rec_BC, which is handed reconstructed face states and not cell averages,
+   ! can ask only the first half, and recomputes on it.
+   real*8, intent(in) :: u(3,1-Ng:N+Ng)
+   ok = base_boundary_closure_is_current()
+   if (.not. ok) return
+   if (.not. allocated(bc_u_hold)) then
+      ok = .false.
+      return
+   endif
+   ok = all(u(:,1:N) .eq. bc_u_hold)
+   end function base_boundary_cache_is_current
+
+   !------------------------------------------!
+
+   subroutine report_base_face_cache_reads(tag)
+   ! How many reads found the cache built from another composition and
+   ! recomputed it. Zero is the statement that every flux assembly of this
+   ! run stood on the boundary of the state it was assembling.
+   character(len=*), intent(in) :: tag
+   write(*,'(A,I0)') ' [base boundary] '//trim(tag)//': face states'//    &
+        ' recomputed at a read because the composition had moved since'// &
+        ' the boundary was derived: ', n_base_face_state_recomputed
+   end subroutine report_base_face_cache_reads
    
 
    !------------------------------------------!
@@ -323,7 +477,21 @@
    
    WL_out = WL_in
    WR_out = WR_in
-   
+
+   ! THE FACE STATE INSERTED BELOW IS THE ONE OF THE COMPOSITION INSTALLED
+   ! NOW. The cache carries the input set it was derived from; where the
+   ! composition-derived state has moved since, the three face states are
+   ! derived again here, from the interior primitive array the boundary was
+   ! derived from and the composition installed at this read, which is the
+   ! same arithmetic Apply_BC performs. Nothing of another gas reaches the
+   ! Riemann solve.
+   !
+   ! A recompute means the caller refreshed the composition and did not
+   ! derive the boundary again, so the GHOST CELL AVERAGES it holds are still
+   ! the old composition's; only the face states are repaired here, and the
+   ! count says how often a call order left that repair to be done.
+   if (.not. base_boundary_closure_is_current()) call recompute_base_face_states
+
    ! Lower boundary. The left state of the base face IS the boundary
    ! condition, and it is read here from the same call that wrote the ghost
    ! cell averages -- Apply_BC_W always runs on this state first, in the
@@ -359,6 +527,31 @@
 
    ! End of subroutine
    end subroutine Rec_BC
+
+   !------------------------------------------!
+
+   subroutine recompute_base_face_states
+   ! Derive the three cached face states again, from the interior primitive
+   ! array the boundary was derived from and the composition installed now.
+   ! Called from the read when the two no longer belong together; it does
+   ! nothing when no boundary has been derived yet, since there is then no
+   ! interior state to derive one from and the first Apply_BC of the run is
+   ! still ahead.
+   if (.not. base_boundary_installed) return
+   if (.not. allocated(bc_W_hold)) return
+   call base_boundary_states(bc_W_hold, base_face_W, base_ghost_W,        &
+                             base_face_lower_W)
+   call hold_boundary_closure_inputs()
+   n_base_face_state_recomputed = n_base_face_state_recomputed + 1
+   if (.not. base_face_recompute_announced) then
+      base_face_recompute_announced = .true.
+      write(*,'(A)') ' [base boundary] the cached base face state'//      &
+           ' belonged to another composition at a read and was'//         &
+           ' recomputed'
+      write(*,'(A)') '   (a caller refreshed the composition without'//   &
+           ' deriving the boundary again; counted for the run)'
+   endif
+   end subroutine recompute_base_face_states
 
    !------------------------------------------!
 

@@ -797,8 +797,162 @@ def transit_environment_overrides():
 	              if k.startswith('EXHALE_TRANSIT_') or k.startswith('TPM_'))
 
 
+def transit_state_files(path, selection, require=True):
+	"""The (hydro, ioniz) pair a transit spectrum is synthesized from.
+
+	Two states of one run describe the same column and are NOT the same
+	numbers, so which one a curve stands on is part of the curve:
+
+	``solution``  ``output/Hydro_ioniz.txt`` and ``output/Ion_species.txt``,
+	              the state the wind solver converged and the certification
+	              judged.  Its composition is the one the solve carries: with
+	              the ionization stages transported it is the transported
+	              partition, and with them at local equilibrium it is that
+	              equilibrium.
+	``adv``       ``output/Hydro_ioniz_adv.txt`` and
+	              ``output/Ion_species_adv.txt``, the advection-corrected
+	              profile, an INDEPENDENT discretization of the same column
+	              (first-order upwind marching at the bulk velocity, no eddy
+	              term, no element drift).  It is what this tool has always
+	              read, and it stays the default.
+
+	The two are kept apart on purpose: reading one for the temperature and
+	the other for the composition would synthesize a line from a state that
+	solves neither set of equations.
+
+	A stationary route writes no `_adv` products at all: the advection
+	correction is a post-process of a marching state, so a run that was
+	solved rather than marched simply has no `adv` state.  With
+	``require`` the pair a selection names must be on disk, and a missing
+	one is refused by name; the other state is never read in its place,
+	because a curve carrying the name of one state and the numbers of the
+	other says something false about both.  ``require=False`` is for a
+	caller that is only asking where the other state would be.
+
+	Returns (hydro_path, ioniz_path, selection); an unknown selection raises
+	ValueError and a missing required pair raises FileNotFoundError.
+	"""
+	sel = (selection or 'adv').strip().lower()
+	if sel in ('adv', 'post_process', 'corrected'):
+		pair = (os.path.join(path, 'output', 'Hydro_ioniz_adv.txt'),
+		        os.path.join(path, 'output', 'Ion_species_adv.txt'), 'adv')
+	elif sel in ('solution', 'solved', 'state'):
+		pair = (os.path.join(path, 'output', 'Hydro_ioniz.txt'),
+		        os.path.join(path, 'output', 'Ion_species.txt'), 'solution')
+	else:
+		raise ValueError('(EXHALE_transit) EXHALE_TRANSIT_STATE = %r is '
+		                 'neither "adv" nor "solution"' % (selection,))
+	if require:
+		missing = [q for q in pair[:2] if not os.path.exists(q)]
+		if missing:
+			other = ('solution' if pair[2] == 'adv' else 'adv')
+			raise FileNotFoundError(
+			    '(EXHALE_transit) EXHALE_TRANSIT_STATE = %s names the %s '
+			    'state of this run, and these files of it are not there: '
+			    '%s. The advection-corrected profile is a post-process of a '
+			    'marching state and a stationary solve writes none, so a '
+			    'solved run has no "adv" state to read; nothing here reads '
+			    'the %s state in its place. Set EXHALE_TRANSIT_STATE=%s to '
+			    'synthesize the line from the state the solver certified, '
+			    'and do not create `_adv` files to satisfy a file name.'
+			    % (pair[2], pair[2], ', '.join(missing), other, other))
+	return pair
+
+
+def file_identity(path):
+	"""What file a number came from: its path, its md5 and its size.
+
+	A run directory is written again by the next run, so a path alone does
+	not identify the numbers a spectrum was built from.  The digest does.
+	"""
+	import hashlib
+	try:
+		h = hashlib.md5()
+		with open(path, 'rb') as fh:
+			for chunk in iter(lambda: fh.read(1 << 20), b''):
+				h.update(chunk)
+		return '%s md5=%s bytes=%d' % (path, h.hexdigest(),
+		                               os.path.getsize(path))
+	except OSError:
+		return '%s absent' % path
+
+
+# The header keys by which a profile states which state it holds: where the
+# numbers came from (`provenance`, `source`), which boundary the solve stood
+# on (`boundary_model`, `boundary_reservoir`), which physics was active and
+# whether the state was certified (`coupling`), and which option was changed
+# at a restart (`option_change`).
+STATE_PROVENANCE_KEYS = ('provenance', 'source', 'boundary_model',
+                         'boundary_reservoir', 'coupling', 'option_change')
+
+
+def state_provenance_statements(path):
+	"""The statements a profile makes about the state it holds.
+
+	Read from the file's own header and copied out unchanged, so a spectrum
+	carries the identity of the state it was synthesized from whichever
+	selection was made.  An unreadable file gives an empty list.
+	"""
+	out = []
+	try:
+		head = header_comment_statements(path)
+	except OSError:
+		return out
+	for cont, line in head:
+		if cont:
+			continue
+		w = line.split()
+		if w and w[0].rstrip(':') in STATE_PROVENANCE_KEYS:
+			out.append(line)
+	return out
+
+
+def transit_state_oi_levels(path, selection):
+	"""The O I ground-term level file belonging to a state selection.
+
+	The three-level statistical equilibrium behind the O I 1302 triplet is
+	written for both states, and the level populations a line integrates
+	must come from the same state as the density and the temperature it
+	integrates them with.
+	"""
+	name = ('OI_levels_adv.txt' if selection == 'adv' else 'OI_levels.txt')
+	return os.path.join(path, 'output', name)
+
+
+def state_pair_difference(hydro_a, ioniz_a, hydro_b, ioniz_b):
+	"""How far the two states of one run stand apart, measured.
+
+	The largest relative difference, over the rows both files carry, of the
+	temperature, the neutral hydrogen density and the He 2^3S density -- the
+	three quantities a He I 10830 or a Balmer curve is built from.  Returns
+	None when either file is missing or the two are not on one grid, so a
+	caller can state that the comparison was not available rather than a zero.
+	"""
+	for q in (hydro_a, ioniz_a, hydro_b, ioniz_b):
+		if not os.path.exists(q):
+			return None
+	try:
+		Ta = loadtxt_cells(hydro_a, usecols=(4,))
+		Tb = loadtxt_cells(hydro_b, usecols=(4,))
+		ia = loadtxt_cells(ioniz_a, usecols=(1, 6), unpack=True)
+		ib = loadtxt_cells(ioniz_b, usecols=(1, 6), unpack=True)
+	except Exception:
+		return None
+	Ta = np.asarray(Ta); Tb = np.asarray(Tb)
+	if Ta.size != Tb.size or np.asarray(ia[0]).size != np.asarray(ib[0]).size:
+		return None
+
+	def rel(x, y):
+		x = np.asarray(x, dtype=float); y = np.asarray(y, dtype=float)
+		d = np.abs(x - y)/np.maximum(np.maximum(np.abs(x), np.abs(y)), 1.0e-99)
+		return float(np.nanmax(d)) if d.size else float('nan')
+
+	return {'T': rel(Ta, Tb), 'HI': rel(ia[0], ib[0]),
+	        'HeI_2_3S': rel(ia[1], ib[1]), 'rows': int(Ta.size)}
+
+
 def transit_metadata_block(adv, tool_identity, overrides, census,
-                           line_census=None):
+                           line_census=None, state=None):
 	"""Comment lines that travel with a saved transit curve.
 
 	Comments only: every line returned here is written behind a '#', so
@@ -813,10 +967,42 @@ def transit_metadata_block(adv, tool_identity, overrides, census,
 	line_census   (b [Rp], share, max share, b of the maximum) for THIS line:
 	              the share of the line-center optical depth each ray takes
 	              from refused rows.  None when there is nothing to report.
+	state         {'selection', 'hydro', 'ioniz', 'difference', 'identity',
+	              'provenance'}: WHICH of the run's two states this curve
+	              stands on, named here so a curve always says so, how far
+	              the other one stands from it, the md5 and size of each
+	              file actually read, and the statements that state makes
+	              about itself (its `provenance` lines, the boundary model
+	              and reservoir it stood on, the physics that was active and
+	              whether it was certified).  None when the caller states no
+	              selection.
 	"""
 	L = ['transit_schema %d' % TRANSIT_SCHEMA,
 	     'transit_product: a one-way transmission of the profile named below; '
 	     'this block adds comments only, and the columns are the spectrum']
+	if state is not None:
+		L.append('state_selection %s' % state['selection'])
+		L.append('state_files %s %s' % (state['hydro'], state['ioniz']))
+		# The identity of the numbers, not of a name: a run directory is
+		# overwritten by the next run, so the digest is what ties this
+		# spectrum to the state it was synthesized from.
+		for q in state.get('identity') or []:
+			L.append('state_file_identity %s' % q)
+		# Copied out of the state's own header, unchanged.
+		for q in state.get('provenance') or []:
+			L.append('state_%s' % q)
+		d = state.get('difference')
+		if d is None:
+			L.append('state_difference: the other state of this run was not '
+			         'read (absent, or not on this grid), so how far the two '
+			         'stand apart is UNKNOWN, which is not zero')
+		else:
+			L.append('state_difference over %d rows, largest relative: '
+			         'T %.3e, n(H I) %.3e, n(He 2^3S) %.3e -- the '
+			         'advection-corrected profile is an INDEPENDENT '
+			         'discretization of this column and these are its '
+			         'distances from the state named above'
+			         % (d['rows'], d['T'], d['HI'], d['HeI_2_3S']))
 	if adv is None:
 		L.append('adv_input: none read; row validity UNKNOWN')
 	else:
@@ -884,7 +1070,8 @@ def resonance_depth(lam0_A, f_osc, A21, mass, n_lower, instr_res,
                     half_A=4.0, nlam=401, band_A=4.0):
 	"""Spherical transit depth for a single resonance line.
 
-	Mirrors the He/Lya pipeline exactly: spherical chord sqrt(r^2-b^2),
+	The same integration as the He and Lya lines: spherical chord
+	sqrt(r^2-b^2),
 	LOS velocity v_los = v*x/r, Voigt profile via wofz, trapezoid optical
 	depth, projected-area disk average, instrument convolution.
 
@@ -963,7 +1150,7 @@ def resonance_spectrum(components, mass, instr_res, window_A, nlam,
 	"""Disk-averaged transmission spectrum of a multi-component resonance
 	line: spherical chords, Voigt tau summed over the components, instrument
 	convolution, and planet rotation via the exact projected-disk integral
-	(rotate_disk_average), matching the He/Lya/Balmer pipeline.
+	(rotate_disk_average), as for the He, Lya and Balmer lines.
 
 	Each component carries its OWN lower-level density along the chord,
 	   components = [(lam0_A, f_osc, A21, n_lower), ...]   n_lower in m^-3,

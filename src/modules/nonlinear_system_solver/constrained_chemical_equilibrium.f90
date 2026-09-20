@@ -164,11 +164,15 @@
 	! cce_probe_from_dump is the entry the standalone driver calls; it is not
 	! reached by any production path.
 	public :: cce_probe_from_dump
-	! The layout of the cell's network, and the species slots and array
-	! length that index it. Read by the structural assertions of
-	! src/tests/constrained_network_layout/; no production path calls them.
+	! The layout of the cell's network, its balance rows, and the species
+	! slots and array lengths that index both. Read by the structural
+	! assertions of src/tests/constrained_network_layout/ and by the
+	! reaction assertions of src/tests/charge_exchange_rows/; no production
+	! path calls them.
 	public :: constrained_network_layout_of_cell
-	public :: is_HII, is_H2, n_species_max
+	public :: constrained_network_balance_rows_of_cell
+	public :: is_HI, is_HII, is_H2, is_HeI_SI, is_HeII, is_HeIII, is_HeITR
+	public :: is_met0, n_species_max, n_fraction_rows_max
 
 	! ---------------------------------------------------------------
 	! Species slots. Every species the network can carry has a fixed slot in
@@ -411,6 +415,7 @@
 	integer, save :: metal_base, oxygen_base
 	real*8,  save :: field_scale            ! lambda of the rung being solved
 	logical, save :: h2_is_fixed, oxygen_carriers_are_fixed, hp_is_fixed
+	logical, save :: heii_is_fixed, heiii_is_fixed
 	real*8,  save :: nuclei_H, nuclei_He, nuclei_O
 	logical, save :: element_carried(n_melem)
 	! Does the cell carry this species at all (an absent element, the pinned
@@ -472,7 +477,7 @@
 	!$omp               n_conservation_row,                                &
 	!$omp               metal_base, oxygen_base, field_scale,              &
 	!$omp               h2_is_fixed, oxygen_carriers_are_fixed,            &
-	!$omp               hp_is_fixed,                                       &
+	!$omp               hp_is_fixed, heii_is_fixed, heiii_is_fixed,        &
 	!$omp               nuclei_H, nuclei_He, nuclei_O,                     &
 	!$omp               species_exists, species_fixed, row_of_species,     &
 	!$omp               species_held,                                      &
@@ -831,6 +836,8 @@
 	h2_is_fixed               = ieq_cell%x_h2_fixed
 	oxygen_carriers_are_fixed = ieq_cell%x_ox_fixed
 	hp_is_fixed               = ieq_cell%x_hp_fixed
+	heii_is_fixed             = ieq_cell%x_heii_fixed
+	heiii_is_fixed            = ieq_cell%x_heiii_fixed
 	nuclei_H  = ieq_cell%nh
 	nuclei_He = ieq_cell%nhe
 	nuclei_O  = ieq_cell%n_ofam
@@ -882,6 +889,13 @@
 	! reaction row would return the LOCAL photoionization/recombination root
 	! and be measured against a row it was never asked to satisfy.
 	if (hp_is_fixed) species_fixed(is_HII) = .true.
+	! The two ionized helium stages are owned by the same transported
+	! partition, for the same reason: rows 2 and 3 of the fraction system
+	! are replaced by x(2) = x_heii_fix and x(3) = x_heiii_fix, so solving
+	! them here as reaction rows would return the local helium ionization
+	! root and be measured against rows that were never asked for it.
+	if (heii_is_fixed)  species_fixed(is_HeII)  = .true.
+	if (heiii_is_fixed) species_fixed(is_HeIII) = .true.
 	if (oxygen_carriers_are_fixed .and. thereis_oxychem) then
 		species_fixed(is_OH)  = .true.
 		species_fixed(is_H2O) = .true.
@@ -1021,6 +1035,30 @@
 
 	!----------------------------------!
 
+	subroutine constrained_network_balance_rows_of_cell(sden, fvec)
+	! The balance rows this network assembles for the cell standing in
+	! ieq_cell, at the species densities sden, at the unattenuated radiation
+	! field and in their own units of cm^-3 s^-1 (no turnover scaling), so
+	! that a row can be compared with the same row of the fraction systems
+	! and with the reaction rates it is built from.
+	!
+	! It exists so that the reactions this network writes into its rows can
+	! be asserted without relaxing a wind; no production path calls it. The
+	! layout must have been set first by constrained_network_layout_of_cell.
+	! It writes only field_scale and row_scale, which every solve resets for
+	! its own rung before using.
+
+	real*8, intent(in)  :: sden(n_species_max)
+	real*8, intent(out) :: fvec(n_fraction_rows_max)
+
+	field_scale = 1.0d0
+	row_scale(:) = 1.0d0
+	call network_balance_rows(sden, fvec)
+
+	end subroutine constrained_network_balance_rows_of_cell
+
+	!----------------------------------!
+
 	subroutine constrained_equilibrium_residual(nu, u, fres, iflag, params)
 	! Residual of the constrained system at log-densities u, at the current
 	! continuation field field_scale. The first n_reaction_row entries are
@@ -1109,7 +1147,7 @@
 	real*8  :: nm0(n_melem), nm1(n_melem), nm2(n_melem)
 	real*8  :: gm0(n_melem), gm1(n_melem)
 	real*8  :: xzero(n_fraction_rows_max)
-	real*8  :: n_e, n_hei, lam
+	real*8  :: n_e, lam
 	integer :: i, e
 
 	lam = field_scale
@@ -1134,12 +1172,6 @@
 	n_e = sden(is_HII) + sden(is_H2p) + sden(is_H3p) + sden(is_HeHp)      &
 	    + sden(is_HeII) + 2.0d0*sden(is_HeIII)
 	if (thereis_metals) call metal_electron_sum(n_e, met_nelem, nm1, nm2)
-
-	! Free neutral helium, singlet plus metastable: the He I reservoir the
-	! metal charge exchange reacts with (the metastable is a level inside
-	! the neutral stage). The He <-> H pair below takes the ground singlet
-	! alone, exactly as in the fraction systems.
-	n_hei = sden(is_HeI_SI) + sden(is_HeITR)
 
 	! --- reaction rows, in the fraction layout ---
 	fvec(1:n_fraction_row) = 0.0d0
@@ -1185,9 +1217,21 @@
 		                gm0, gm1, met_b0, met_b1, met_a1, met_a2,         &
 		                met_top, nm0, nm1, nm2, n_e)
 		cx_metal_base = metal_base
+		! The rows are mol_heh_rows', so the He I <-> He II row is
+		! ionization positive and he_row_sign = +1. Only the radiation
+		! rates carry the continuation factor lambda; the charge-exchange
+		! coefficients are the cell's own, stored by cx_set_cell at
+		! ieq_cell%T_K.
+		! The helium reactant of the group C metal + He reactions is the
+		! GROUND SINGLET sden(is_HeI_SI): those rates are ground-state
+		! rates (see the group C paragraph of charge_exchange), so the
+		! metastable is not charged to them, and this network reacts the
+		! group C rows and the He <-> H pair below from one reservoir, as
+		! the fraction systems do.
 		call cx_add_to_fvec(n_fraction_row, fvec, nm0, nm1, nm2,          &
-		                    sden(is_HI), sden(is_HII), n_hei,             &
-		                    sden(is_HeII), sden(is_HeIII))
+		                    sden(is_HI), sden(is_HII), sden(is_HeI_SI),   &
+		                    sden(is_HeII), sden(is_HeIII),                &
+		                    1.0d0, ieq_cell%T_K)
 		cx_metal_base = 4
 	endif
 
@@ -1545,6 +1589,20 @@
 	u1 = photo_scale*ieq_cell%P_HeII + ieq_cell%a_ion_HeII*n_e
 	d2 = ieq_cell%rcheiiiB*n_e
 	call ionization_stage_fractions(u0, u1, d1, d2, 2, f0, f1, f2)
+	! WHERE THE HELIUM IONIZATION STATE IS TRANSPORTED THE SEED USES IT,
+	! for the reason stated at the proton above: the rows that will be
+	! solved for x(2) and x(3) are the constraints and not balances, so a
+	! seed placed on the local balance starts the solve off its own
+	! constraint surface.  The neutral fraction closes the three stages.
+	if (heii_is_fixed .or. heiii_is_fixed) then
+		f1 = min(max(ieq_cell%x_heii_fix,  0.0d0), 1.0d0)
+		f2 = min(max(ieq_cell%x_heiii_fix, 0.0d0), 1.0d0)
+		if (f1 + f2 .gt. 1.0d0) then
+			f1 = f1/(f1 + f2)
+			f2 = 1.0d0 - f1
+		endif
+		f0 = 1.0d0 - f1 - f2
+	endif
 	sden(is_HeII)  = f1*nuclei_He
 	sden(is_HeIII) = f2*nuclei_He
 
@@ -1775,6 +1833,10 @@
 			            ieq_cell%x_h2_fix,                          &
 			            ieq_cell%x_oh_fix, ieq_cell%x_h2o_fix
 			write(iu,*) ieq_cell%x_hp_fixed, ieq_cell%x_hp_fix
+			write(iu,*) ieq_cell%x_heii_fixed,             &
+			            ieq_cell%x_heiii_fixed,            &
+			            ieq_cell%x_heii_fix,               &
+			            ieq_cell%x_heiii_fix
 			write(iu,*) met_nelem
 			do e = 1,met_nelem
 				write(iu,*) met_ntot(e), met_g0(e), met_g1(e),     &
@@ -1814,7 +1876,7 @@
 	integer, intent(out) :: nt
 	integer, intent(in)  :: irow
 
-	real*8 :: n_e, n_hei, lam, r1, r2
+	real*8 :: n_e, lam, r1, r2
 	real*8 :: nm0(n_melem), nm1(n_melem), nm2(n_melem)
 	integer :: e, i
 
@@ -1835,7 +1897,6 @@
 	n_e = sden(is_HII) + sden(is_H2p) + sden(is_H3p) + sden(is_HeHp)      &
 	    + sden(is_HeII) + 2.0d0*sden(is_HeIII)
 	if (thereis_metals) call metal_electron_sum(n_e, met_nelem, nm1, nm2)
-	n_hei = sden(is_HeI_SI) + sden(is_HeITR)
 
 	! The H <-> He pair, the two gross rates the review is about.
 	r1 = ieq_cell%kcx_He0_Hp*sden(is_HeI_SI)*sden(is_HII)
@@ -2047,6 +2108,9 @@
 	! only this one fails -- the dump is a debug artifact of one cell, not a
 	! restart format, so it is versioned by being appended to.
 	read(iu,*) ieq_cell%x_hp_fixed, ieq_cell%x_hp_fix
+	! The two transported helium stages, appended for the same reason.
+	read(iu,*) ieq_cell%x_heii_fixed, ieq_cell%x_heiii_fixed,             &
+	           ieq_cell%x_heii_fix, ieq_cell%x_heiii_fix
 	read(iu,*) nel
 	do e = 1,nel
 		read(iu,*) mg_ntot(e), mg_g0(e), mg_g1(e), mg_b0(e), mg_b1(e), &

@@ -17,9 +17,9 @@
       !
       ! The globals are set the way input_read sets them: grid_type from the
       ! "Grid type:" key, N from "Grid cells:" (default 500), dr_base and
-      ! N_low_cells from "Base grid [dr,cells]:" (defaults 2.0e-4 and 50),
-      ! r_max from the Roche/Hill radius or "Outer radius [R_p]:", r_esc from
-      ! "Escape radius [R_p]:" and r_flux from "Flux spread tol:".
+      ! N_low_cells from "Base grid [dr,cells]:" (defaults dr_base_default
+      ! and 50), r_max from the Roche/Hill radius or "Outer radius [R_p]:",
+      ! r_esc from "Escape radius [R_p]:" and r_flux from "Flux spread tol:".
       !
       ! Reported for every configuration: the largest relative violation, the
       ! cell where it sits, and the ratio dr_j(j)/(r_edg(j)-r_edg(j-1)) there.
@@ -41,7 +41,7 @@
       ! it and define_grid overwrites them for each configuration.
       N           = 500
       call allocate_grid_arrays
-      dr_base     = 2.0e-4          ! same default-real literal input_read uses
+      dr_base     = dr_base_default ! the width an absent key resolves to
       N_low_cells = 50
       r_esc       = 1.50d0
       r_flux      = 1.20d0

@@ -15,21 +15,26 @@
       ! balance row that would have computed it is replaced by the carried
       ! value:
       !
-      !       fvec(1) = x(1) - x_hp_fix ,   x(1) = n(H II)/n(H nuclei).
+      !       fvec(1) = x(1) - x_hp_fix ,   x(1) = n(H II)/n(H nuclei),
+      !       fvec(2) = x(2) - x_heii_fix ,  x(2) = n(He II)/n(He nuclei),
+      !       fvec(3) = x(3) - x_heiii_fix , x(3) = n(He III)/n(He nuclei).
       !
       ! Three statements follow, and each is measured here for every system:
       !
-      !   (a) with the fraction imposed, row 1 IS that expression, to the
+      !   (a) with a fraction imposed, its row IS that expression, to the
       !       last bit -- an identity row whose Jacobian row is the identity;
       !   (b) with nothing imposed, the residual does not depend on the
-      !       carried value at all, so a cell the operator does not own is
+      !       carried values at all, so a cell the operator does not own is
       !       solved by the same rows as before the substitution existed;
-      !   (c) the imposed row is one number, the same in every system, since
+      !   (c) an imposed row is one number, the same in every system, since
       !       the substitution is written once and shared.
       !
-      ! Rows 2 and 3 are He II and He III per He nucleus. The cell state
-      ! states no imposed helium fraction, so the routine writes neither,
-      ! and (a) covers row 1 alone.
+      ! Rows 2 and 3 are He II and He III per helium nucleus, and each stage
+      ! carries its OWN flag: a run may transport the proton while the
+      ! helium stages stay local, so a row is written only where its flag
+      ! is set.  System_H offers row 1 alone and is solved only in a mixture
+      ! with no helium, which the key refuses; the loop below therefore
+      ! imposes the helium fractions on the six systems that have the rows.
       !
       ! The tolerances are exact: an imposed row is an assignment, not an
       ! arithmetic result, and a row the substitution does not touch is the
@@ -48,6 +53,7 @@
       use System_HeH_mol_metals, only: ion_system_HeH_mol_metals,         &
                                     set_mol_metal_turnover_rates
       use mol_rates,          only: h2_thermochemistry_init
+      use charge_exchange,    only: cx_set_cell
       use species_table,      only: n_melem
       use assertion_report
       implicit none
@@ -64,17 +70,26 @@
       ! residual at the two with nothing imposed, where neither may be read.
       real*8, parameter  :: x_fix_a = 0.77d0
       real*8, parameter  :: x_fix_b = 0.11d0
+      ! The two carried helium fractions, and second values of them, all
+      ! different from each other and from the hydrogen pair so that a row
+      ! written with the wrong value cannot read as correct.
+      real*8, parameter  :: x_he2_a = 0.41d0
+      real*8, parameter  :: x_he2_b = 0.07d0
+      real*8, parameter  :: x_he3_a = 0.23d0
+      real*8, parameter  :: x_he3_b = 0.02d0
 
       integer, parameter :: nsys = 7
       character(len=24)  :: sysname(nsys)
       integer :: nrow(nsys)
-      real*8  :: row1_imposed(nsys)
+      real*8  :: row1_imposed(nsys), row2_imposed(nsys), row3_imposed(nsys)
+      real*8  :: constraint2, constraint3
       real*8  :: x(nmax), fvec_off(nmax), fvec_alt(nmax), fvec_on(nmax)
       real*8  :: mtot(nelem), mg0(nelem), mg1(nelem)
       real*8  :: mb0(nelem), mb1(nelem), ma1(nelem), ma2(nelem)
       integer :: mtop(nelem)
       real*8  :: probe(nmax), probe_in(nmax)
       real*8  :: dmax, constraint
+      logical :: has_he
       integer :: is, i
 
       sysname(1) = 'H'
@@ -121,6 +136,11 @@
       ! equilibrium-constant table is built serially first, as the sweep
       ! does before it enters its parallel region.
       call h2_thermochemistry_init()
+      ! The metal charge-exchange rate coefficients of THIS cell.  They are
+      ! held one cell at a time on each thread and the assembly refuses a
+      ! set that belongs to another temperature, so the sweep loads them
+      ! for the cell it is about to assemble and so does this suite.
+      call cx_set_cell(ieq_cell%T_K)
       call set_mol_coeffs(ieq_cell%T_K, ieq_cell%ntot)
       call set_mol_turnover_rates(3.0d7, 1.0d0)
       call set_mol_metal_turnover_rates(3.0d7, 1.0d0)
@@ -140,11 +160,17 @@
          x(i) = 0.30d0
          if (mod(i,2) .eq. 1) x(i) = 0.10d0
       enddo
-      constraint = x(1) - x_fix_a
+      constraint  = x(1) - x_fix_a
+      constraint2 = x(2) - x_he2_a
+      constraint3 = x(3) - x_he3_a
 
       ! --- the routine itself, with nothing imposed ---
-      ieq_cell%x_hp_fixed = .false.
-      ieq_cell%x_hp_fix   = x_fix_a
+      ieq_cell%x_hp_fixed    = .false.
+      ieq_cell%x_heii_fixed  = .false.
+      ieq_cell%x_heiii_fixed = .false.
+      ieq_cell%x_hp_fix      = x_fix_a
+      ieq_cell%x_heii_fix    = x_he2_a
+      ieq_cell%x_heiii_fix   = x_he3_a
       do i = 1,nmax
          probe_in(i) = dble(i)*1.5d0 - 4.0d0
       enddo
@@ -153,14 +179,43 @@
       call check_absolute('routine_writes_nothing_when_unset',            &
            spread_of(probe, probe_in, 1, nmax), 0.0d0, 0.0d0)
 
-      ! --- the routine itself, with the H+ fraction imposed ---
+      ! --- the routine itself, with the H+ fraction imposed alone ---
+      ! ONE FLAG PER STAGE: the hydrogen stage is carried and the helium
+      ! stages are not, which is the configuration the separate flags exist
+      ! for, and rows 2 and 3 must keep whatever the system wrote in them.
       ieq_cell%x_hp_fixed = .true.
       probe = probe_in
       call impose_transported_ionization_fractions(ieq_cell, x, probe)
       call check_absolute('routine_writes_the_constraint_in_row_one',     &
            probe(1) - constraint, 0.0d0, 0.0d0)
-      call check_absolute('routine_leaves_the_helium_rows_alone',         &
+      call check_absolute('routine_leaves_the_unflagged_helium_rows',     &
            spread_of(probe, probe_in, 2, nmax), 0.0d0, 0.0d0)
+
+      ! --- and with all three stages imposed ---
+      ieq_cell%x_heii_fixed  = .true.
+      ieq_cell%x_heiii_fixed = .true.
+      probe = probe_in
+      call impose_transported_ionization_fractions(ieq_cell, x, probe)
+      call check_absolute('routine_writes_the_constraint_in_row_two',     &
+           probe(2) - constraint2, 0.0d0, 0.0d0)
+      call check_absolute('routine_writes_the_constraint_in_row_three',   &
+           probe(3) - constraint3, 0.0d0, 0.0d0)
+      call check_absolute('routine_writes_no_row_beyond_the_third',       &
+           spread_of(probe, probe_in, 4, nmax), 0.0d0, 0.0d0)
+
+      ! --- the helium stages carried while the proton is not ------------
+      ! The other half of the same statement: three independent flags, so
+      ! the helium rows are written and row 1 keeps its balance.
+      ieq_cell%x_hp_fixed = .false.
+      probe = probe_in
+      call impose_transported_ionization_fractions(ieq_cell, x, probe)
+      call check_absolute('routine_leaves_the_unflagged_proton_row',      &
+           probe(1) - probe_in(1), 0.0d0, 0.0d0)
+      call check_absolute('routine_writes_row_two_without_row_one',       &
+           probe(2) - constraint2, 0.0d0, 0.0d0)
+      ieq_cell%x_hp_fixed    = .false.
+      ieq_cell%x_heii_fixed  = .false.
+      ieq_cell%x_heiii_fixed = .false.
 
       ! --- the same three statements inside each system ---
       do is = 1,nsys
@@ -168,25 +223,61 @@
          fvec_alt = 0.0d0
          fvec_on  = 0.0d0
 
-         ieq_cell%x_hp_fixed = .false.
-         ieq_cell%x_hp_fix   = x_fix_a
+         ! System_H offers row 1 alone, and it is the system of a mixture
+         ! with no helium, where no helium fraction exists to be carried.
+         has_he = (nrow(is) .ge. 3)
+
+         ieq_cell%x_hp_fixed    = .false.
+         ieq_cell%x_heii_fixed  = .false.
+         ieq_cell%x_heiii_fixed = .false.
+         ieq_cell%x_hp_fix      = x_fix_a
+         ieq_cell%x_heii_fix    = x_he2_a
+         ieq_cell%x_heiii_fix   = x_he3_a
          call residual_of(is, nrow(is), x, fvec_off)
 
-         ieq_cell%x_hp_fix   = x_fix_b
+         ieq_cell%x_hp_fix    = x_fix_b
+         ieq_cell%x_heii_fix  = x_he2_b
+         ieq_cell%x_heiii_fix = x_he3_b
          call residual_of(is, nrow(is), x, fvec_alt)
 
-         ieq_cell%x_hp_fixed = .true.
-         ieq_cell%x_hp_fix   = x_fix_a
+         ieq_cell%x_hp_fixed  = .true.
+         ieq_cell%x_hp_fix    = x_fix_a
+         ieq_cell%x_heii_fix  = x_he2_a
+         ieq_cell%x_heiii_fix = x_he3_a
+         if (has_he) then
+            ieq_cell%x_heii_fixed  = .true.
+            ieq_cell%x_heiii_fixed = .true.
+         endif
          call residual_of(is, nrow(is), x, fvec_on)
 
          row1_imposed(is) = fvec_on(1)
+         row2_imposed(is) = 0.0d0
+         row3_imposed(is) = 0.0d0
+         if (has_he) then
+            row2_imposed(is) = fvec_on(2)
+            row3_imposed(is) = fvec_on(3)
+         endif
 
-         ! (a) the imposed row is the constraint, exactly.
+         ! (a) each imposed row is its own constraint, exactly.
          call check_absolute(trim(sysname(is))//'_imposed_row_is_the_'    &
               //'constraint', fvec_on(1) - constraint, 0.0d0, 0.0d0)
+         if (has_he) then
+            call check_absolute(trim(sysname(is))//'_imposed_HeII_row_'   &
+                 //'is_the_constraint', fvec_on(2) - constraint2,         &
+                 0.0d0, 0.0d0)
+            call check_absolute(trim(sysname(is))//'_imposed_HeIII_row_'  &
+                 //'is_the_constraint', fvec_on(3) - constraint3,         &
+                 0.0d0, 0.0d0)
+         endif
 
-         ! (a) and it is the ONLY row the substitution moved.
-         if (nrow(is) .ge. 2) then
+         ! (a) and those are the ONLY rows the substitution moved.
+         if (has_he) then
+            if (nrow(is) .ge. 4)                                         &
+               call check_absolute(trim(sysname(is))//'_imposed_moves_'   &
+                    //'no_other_row',                                     &
+                    spread_of(fvec_on, fvec_off, 4, nrow(is)),            &
+                    0.0d0, 0.0d0)
+         else if (nrow(is) .ge. 2) then
             call check_absolute(trim(sysname(is))//'_imposed_moves_no_'   &
                  //'other_row', spread_of(fvec_on, fvec_off, 2, nrow(is)),&
                  0.0d0, 0.0d0)
@@ -213,6 +304,15 @@
          dmax = max(dmax, abs(row1_imposed(is) - row1_imposed(1)))
       enddo
       call check_absolute('imposed_row_agrees_across_the_seven_systems',  &
+           dmax, 0.0d0, 0.0d0)
+      ! The same for the two helium rows, over the six systems that have
+      ! them (System_H, index 1, offers row 1 alone).
+      dmax = 0.0d0
+      do is = 3,nsys
+         dmax = max(dmax, abs(row2_imposed(is) - row2_imposed(2)))
+         dmax = max(dmax, abs(row3_imposed(is) - row3_imposed(2)))
+      enddo
+      call check_absolute('imposed_helium_rows_agree_across_the_six',     &
            dmax, 0.0d0, 0.0d0)
 
       if (assertion_failures .gt. 0) then

@@ -50,7 +50,12 @@
 set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$HERE/../../.." && pwd)"
-EXE="${EXHALE_EXE:-$ROOT/EXHALE.x}"
+# The binary is selected and its identity stated in one place;
+# src/tests/exhale_exe.sh carries the policy.
+. "$HERE/../exhale_exe.sh"
+exhale_select_exe "$ROOT" restart_option_change
+EXE="$EXHALE_RUN_EXE"
+exhale_announce_exe
 OUT="${EXHALE_TEST_OUT:-$ROOT/build/tests/grid_and_gates}"
 WORK="$OUT/restart_option_change"
 CASE="$ROOT/backup/regression/atomic_elem_newton"
@@ -323,13 +328,22 @@ fi
 verdict option_change_setup_report_states_the_change "$ok" yes
 
 # ---- the route token: the same equations, another algorithm ----------
-# THE FIXTURE here is backup/regression/carrier_model_a_newton, a molecular
-# case with the H2 carrier transported and "Coupled carrier solve: False",
-# which is what makes an ALTERNATION state: the carrier balance is relaxed
-# at a held wind instead of standing in the Newton unknown vector. Every
-# run takes "Restart intent: stationary evaluate", so what is under test is
-# the load and no solve is needed to reach it.
-CCASE="$ROOT/backup/regression/carrier_model_a_newton"
+# THE FIXTURE here is backup/regression/carrier_elem_newton, a molecular
+# case with the H2 carrier transported, whose rungs below set
+# "Coupled carrier solve:" themselves: with it False the carrier balance is
+# relaxed at a held wind, which is what makes an ALTERNATION state, and with
+# it True the same balance stands in the Newton unknown vector. Every run
+# takes "Restart intent: stationary evaluate", so what is under test is the
+# load and no solve is needed to reach it.
+#
+# WHY NOT carrier_model_a_newton, which this block used before: that case
+# carries "Ionization transport: True", and the coupled solve is refused
+# with it, because the coupled row registry carries every carrier unknown as
+# the species mass fraction of its f_sp column while an ionization stage
+# unknown is a fraction per element nucleus. The rungs below are about the
+# ROUTE token and nothing about the ionization stages, so they are run on a
+# case that admits both routes; the refusal is not lifted for them.
+CCASE="$ROOT/backup/regression/carrier_elem_newton"
 
 cmake_run() {   # cmake_run <dir> <hydro state> <ion state> [extra input lines]
    local d="$1"; local hf="$2"; local nf="$3"; shift 3

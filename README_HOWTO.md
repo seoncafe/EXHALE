@@ -195,7 +195,13 @@ With `Grid type: Mixed` the grid is `cells` uniform cells of size `dr` (in
 R_p) stacked on the lower boundary, followed by `N - cells` stretched cells out
 to `r_max`. The total cell count is the optional key `Grid cells: <N>`
 (default 500, the value that used to be compiled in, no key, no change).
-The default reproduces the historical hardcoded grid:
+The default is `2.0e-4 50`, and stating it builds the same grid as leaving the
+key out. Runs made before 2026-09-19 without the key used the width
+`1.9999999494757503e-4` (the single-precision neighbor of 2e-4), whose grid
+differs by a few 1e-9 relative, enough for a restart to be refused; the inputs
+of those runs that have results beside them state
+`Base grid [dr,cells]: 1.9999999494757503e-4 50`
+(`docs/lhs1140b_stationary_D1b_20260919.md`):
 
 ```
 # input.inp -- optional; the first line IS the default

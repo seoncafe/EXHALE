@@ -188,6 +188,9 @@
       ! rate fits are defined, declared once for the whole code by the
       ! implicit energy source step and used here as the same floor.
       use energy_semi_implicit, only: T_eos_floor_K, T_floor_code_min
+      ! The lower atmosphere's own temperature at a radius, which is the
+      ! base boundary condition of this operator (conduction_base_level_T).
+      use base_boundary, only: base_reservoir_temperature_at
 
       implicit none
       private
@@ -196,6 +199,14 @@
       public :: viscous_momentum_source, viscous_dissipation
       public :: thermal_conduction_source, viscous_conduction_sources
       public :: viscous_conduction_step
+      public :: conduction_base_level_T, conduction_base_heat_flux
+
+      ! THE BUDGET ENTRY OF THE BASE BOUNDARY CONDITION of this operator:
+      ! the conductive heat flux through the base face at the last
+      ! evaluation of thermal_conduction_source, code units, positive
+      ! inward.  Zero bulk velocity does not make it zero, which is why it
+      ! is measured and not assumed.
+      real*8 :: conduction_base_heat_flux = 0.0d0
       public :: n_conduction_floor_hits, n_conduction_floor_cells
       public :: n_conduction_floor_hits_family
       public :: conduction_floor_first_step, conduction_floor_last_step
@@ -443,16 +454,64 @@
 
       ! ------------------------------------------------------!
 
+      real*8 function conduction_base_level_T(Tcell) result(Tb)
+      ! THE BASE BOUNDARY CONDITION OF THERMAL CONDUCTION, stated here and
+      ! not inherited from the advective ghost: a prescribed temperature at
+      ! the base ghost cell, equal to the lower atmosphere's own temperature
+      ! at that radius on the reservoir's hydrostatic isentrope.
+      !
+      ! WHY THE RESERVOIR AND NOT THE GHOST THE ADVECTION LEAVES.  The lower
+      ! atmosphere below the base level is a heat bath on the time scales of
+      ! a stationary solution (base_boundary.f90, "WHO OWNS THE LEVEL"), and
+      ! a bath does not stop existing when the gas above it drains: the
+      ! temperature it holds at the level is the same whichever way the
+      ! contact is upwinded.  Reading the advective ghost instead would make
+      ! this operator's boundary condition a silent function of the
+      ! direction of the flow, and a reverse flow would leave the base
+      ! adiabatic, which is not a statement anything in this model makes.
+      !
+      ! WHAT IT COSTS.  The ghost's own p/n_part and the reservoir's T at the
+      ! level are not the same number, and the distance is small: the
+      ! prescribed particles per unit mass and the count the composition
+      ! sweep solves in the ghost differ by 2.7e-08 on the hot-Uranus
+      ! carrier state and 1.3e-07 on the LHS 1140 b molecular state, and the
+      ! ghost's temperature stands 9.1e-07 and 1.3e-04 from the level's at
+      ! the level's own radius (MEASURED,
+      ! docs/lhs1140b_p6b_p6c_20260920.md, which located every quantity at
+      ! its own radius; the 4.7 per cent this comment once carried compared
+      ! the count prescribed AT THE LEVEL with the count solved one cell
+      ! below it, a difference of location that follows the grid).  Both
+      ! counts are reported at base_boundary's report_base_boundary_model.
+      ! This operator takes the reservoir's, because it is the bath's temperature
+      ! that drives the heat flux across the level.
+      !
+      ! FALLBACK: a reservoir that returns no positive temperature leaves the
+      ! ghost's own value standing, so a configuration without a stated base
+      ! level conducts against the state it holds and not against a zero.
+      real*8, dimension(1-Ng:N+Ng), intent(in) :: Tcell
+      Tb = base_reservoir_temperature_at(r(0))
+      if (.not. (Tb .gt. 0.0d0)) Tb = Tcell(0)
+      end function conduction_base_level_T
+
+      ! ------------------------------------------------------!
+
       subroutine thermal_conduction_coeffs(Tcell, blo, bdi, bup)
       ! Tridiagonal coefficients of (1/r^2) d/dr(r^2 kappa dT/dr):
       !   Q(j) = blo(j) T(j-1) + bdi(j) T(j) + bup(j) T(j+1) .
+      !
+      ! The conductivity at the base ghost is evaluated at the base level's
+      ! own temperature (conduction_base_level_T), the same value the
+      ! callers multiply blo(1) by, so the coefficient and the temperature
+      ! it acts on belong to one boundary condition.
       real*8, dimension(1-Ng:N+Ng), intent(in)  :: Tcell
       real*8, dimension(N),         intent(out) :: blo, bdi, bup
-      real*8, dimension(1-Ng:N+Ng) :: kap
+      real*8, dimension(1-Ng:N+Ng) :: kap, Tb
       real*8 :: Ap, Am, dV, rp, rm, kp, km, wp, wm, dp, dm
       integer :: j
 
-      call thermal_conductivity(Tcell, kap)
+      Tb = Tcell
+      Tb(1-Ng:0) = conduction_base_level_T(Tcell)
+      call thermal_conductivity(Tb, kap)
       blo = 0.0d0;  bdi = 0.0d0;  bup = 0.0d0
 
       do j = 1, N
@@ -520,13 +579,29 @@
       real*8, dimension(1-Ng:N+Ng), intent(in)  :: Tcell
       real*8, dimension(1-Ng:N+Ng), intent(out) :: Qc
       real*8, dimension(N) :: blo, bdi, bup
+      real*8  :: Tb
       integer :: j
       Qc = 0.0d0
+      conduction_base_heat_flux = 0.0d0
       if (.not. conduction_active()) return
       call thermal_conduction_coeffs(Tcell, blo, bdi, bup)
+      Tb = conduction_base_level_T(Tcell)
       do j = 1, N
-         Qc(j) = blo(j)*Tcell(j-1) + bdi(j)*Tcell(j) + bup(j)*Tcell(j+1)
+         if (j .eq. 1) then
+            Qc(j) = blo(j)*Tb + bdi(j)*Tcell(j) + bup(j)*Tcell(j+1)
+         else
+            Qc(j) = blo(j)*Tcell(j-1) + bdi(j)*Tcell(j) + bup(j)*Tcell(j+1)
+         endif
       enddo
+      ! The heat the lower atmosphere puts through the base face, per unit
+      ! area and time, in code units: the budget entry of this operator's
+      ! own boundary condition.  Positive is heat entering the domain.  It
+      ! is the base face's own term of the row above, blo(1) (T_base - T_1),
+      ! multiplied back by the cell volume and divided by the face area, so
+      ! it is exactly the flux the row differences and not a second estimate
+      ! of it.
+      conduction_base_heat_flux = blo(1)*(Tb - Tcell(1))                  &
+           *((r_edg(1)**3 - r_edg(0)**3)/3.0d0)/(r_edg(0)*r_edg(0))
       end subroutine thermal_conduction_source
 
       ! ------------------------------------------------------!
@@ -815,7 +890,13 @@
             blo = 0.0d0;  bdi = 0.0d0;  bup = 0.0d0
          endif
          do j = 1, N
-            Lold   = blo(j)*Tcell(j-1) + bdi(j)*Tcell(j) + bup(j)*Tcell(j+1)
+            if (j .eq. 1) then
+               Lold = blo(j)*conduction_base_level_T(Tcell)              &
+                      + bdi(j)*Tcell(j) + bup(j)*Tcell(j+1)
+            else
+               Lold = blo(j)*Tcell(j-1) + bdi(j)*Tcell(j)                &
+                      + bup(j)*Tcell(j+1)
+            endif
             ! Heat capacity of the cell, frozen at the stage temperature
             ! exactly as the conductivity above it is.  This is a
             ! linearization of the implicit step, not of the answer: at the
@@ -833,7 +914,9 @@
             dup(j) = -half*bup(j)
             rhs(j) = cap*Tcell(j) + half*Lold + qv(j)
          enddo
-         rhs(1) = rhs(1) - dlo(1)*Tcell(0)
+         ! The base row's Dirichlet value is this operator's own boundary
+         ! condition (conduction_base_level_T), not the advective ghost.
+         rhs(1) = rhs(1) - dlo(1)*conduction_base_level_T(Tcell)
          dlo(1) = 0.0d0
          dup(N) = 0.0d0
          call solve_tridiagonal(dlo, ddi, dup, rhs, sol, ok)

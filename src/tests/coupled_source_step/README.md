@@ -6,8 +6,10 @@ T1.9, T2.1 and T2.2 of `docs/b1_target_system_20260906.md`.
 Run: `src/tests/coupled_source_step/run.sh`
 
 `EXHALE_OBJDIR` selects another build, `EXHALE_TEST_OUT` where the driver is
-written, `EXHALE_COUPLED_EXE` the binary the whole-binary rows use (without it
-those rows are skipped).
+written, and `EXHALE_EXE` the binary the whole-binary rows use (without it,
+or without its alias here `EXHALE_COUPLED_EXE`, those rows are skipped). The
+selection policy, the refusal of a conflicting pair and the identity block
+the suite prints before it runs the binary are in `src/tests/exhale_exe.sh`.
 
 ## What each row asserts
 

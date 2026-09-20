@@ -17,7 +17,7 @@ Usage:
 
 THE OUTPUT IS AN INITIALIZATION SEED, not a continuation of the source
 trajectory: the `# coupling` line of the output says `mode=init t_phys=0
-certified=F` whatever the source said (the source line is kept as
+certified=F cert_reason=mapped_seed` whatever the source said (the source line is kept as
 `# mapped-from-coupling:` provenance), because a nonconservative
 interpolation is neither the certified state nor the physical clock of the
 run that wrote it (finding B6 of the review of 2026-09-12). The `# grid`
@@ -463,8 +463,12 @@ def rewrite_coupling(header, tgt_path, src_path, shift, n_new, n_ghost_extrap,
             out.append(f'# rows {n_new}: 2 ghost cells at each end; physical cells are rows 3 to {n_new-2}')
         elif h.startswith('# coupling:'):
             toks = h.split()[2:]
-            kept = [t for t in toks if not (t.startswith('mode=') or t.startswith('t_phys=') or t.startswith('certified='))]
-            out.append('# coupling: mode=init t_phys=0 certified=F ' + ' '.join(kept))
+            # cert_reason= is dropped with certified=: a seed that kept the
+            # source's 'certified_in_wind' beside its own 'certified=F' would
+            # state both that it makes no claim and that it was certified.
+            kept = [t for t in toks if not (t.startswith('mode=') or t.startswith('t_phys=')
+                                            or t.startswith('certified=') or t.startswith('cert_reason='))]
+            out.append('# coupling: mode=init t_phys=0 certified=F cert_reason=mapped_seed ' + ' '.join(kept))
             out.append('# mapped-from-coupling: ' + ' '.join(toks))
         else:
             out.append(h)
@@ -473,6 +477,90 @@ def rewrite_coupling(header, tgt_path, src_path, shift, n_new, n_ghost_extrap,
                f'{n_ghost_extrap} ghost row(s) extrapolated linearly in ln r; an initialization seed, not a continuation'
                + ext_note)
     return out
+
+
+# ---------------------------------------------------------------------------
+# WHICH GENERATION A STATE IS READ FROM (D8, 2026-09-18)
+# ---------------------------------------------------------------------------
+# A directory that publishes its states carries `state_index.json` beside
+# them and one immutable directory for each of them under `states/`.  A
+# reader resolves that index ONCE and takes BOTH halves from the one
+# generation it names; it never searches for each half on its own, which is
+# how a product of one generation came to be mapped beside the seed of
+# another.
+#
+# Where no index governs the directory the pair is read as it stands, and
+# both halves must carry the SAME suffix: `Hydro_ioniz.txt` with
+# `Ion_species.txt`, or `Hydro_ioniz_IC.txt` with `Ion_species_IC.txt`, never
+# one of each.
+#
+# EXHALE_STATE_GENERATION names an older generation explicitly; the source
+# line then says it was named rather than resolved.
+INDEX_NAME = 'state_index.json'
+PAIR = ('Hydro_ioniz', 'Ion_species')
+
+
+def resolve_state_source(src):
+    """(directory, suffix, what it is) for the state this run is to read."""
+    import json
+    src = os.path.abspath(src)
+    manifest = os.path.join(src, 'manifest.json')
+    if os.path.isfile(manifest):
+        with open(manifest) as fh:
+            m = json.load(fh)
+        if not m.get('storage_complete'):
+            refuse('%s is not a complete generation: %s'
+                   % (src, '; '.join((m.get('storage_checks') or {})
+                                     .get('refusals', []))))
+        return src, '.txt', ('generation %s, named directly'
+                             % m.get('generation_id'))
+    owner = None
+    for candidate in (src, os.path.dirname(src)):
+        if os.path.isfile(os.path.join(candidate, INDEX_NAME)):
+            owner = candidate
+            break
+    if owner is None:
+        for name in PAIR:
+            if not os.path.isfile(os.path.join(src, name + '.txt')):
+                break
+        else:
+            return src, '.txt', '%s, which publishes no state index' % src
+        for name in PAIR:
+            if not os.path.isfile(os.path.join(src, name + '_IC.txt')):
+                refuse('%s carries neither half of one generation: the '
+                       '`%s` of one generation beside the `%s` of another is '
+                       'not a state' % (src, PAIR[0], PAIR[1]))
+        return src, '_IC.txt', ('%s, which publishes no state index; the '
+                                'loaded (`_IC`) pair' % src)
+    with open(os.path.join(owner, INDEX_NAME)) as fh:
+        index = json.load(fh)
+    wanted = os.environ.get('EXHALE_STATE_GENERATION')
+    named = wanted is not None
+    if not named:
+        wanted = index.get('latest_complete')
+    if wanted is None:
+        refuse('%s has a state index whose latest_complete is null: it has '
+               'published no complete state' % owner)
+    entry = None
+    for g in index.get('generations', []):
+        if g.get('generation_id') == wanted:
+            entry = g
+    if entry is None:
+        refuse('%s names no generation %s'
+               % (os.path.join(owner, INDEX_NAME), wanted))
+    if not entry.get('storage_complete'):
+        refuse('generation %s of %s is not complete; a reader may not take a '
+               'state from it' % (wanted, owner))
+    gdir = os.path.join(owner, entry.get('path') or os.path.join('states',
+                                                                 wanted))
+    for name in PAIR:
+        if not os.path.isfile(os.path.join(gdir, name + '.txt')):
+            refuse('generation %s of %s carries no %s.txt'
+                   % (wanted, owner, name))
+    return gdir, '.txt', ('generation %s, %s of %s'
+                  % (wanted, 'NAMED by EXHALE_STATE_GENERATION' if named
+                     else 'the latest_complete', os.path.join(owner,
+                                                              INDEX_NAME)))
 
 
 def main():
@@ -513,9 +601,11 @@ def main():
         sys.exit(__doc__)
     src, tgt, out = args
 
+    src, src_suffix, src_note = resolve_state_source(src)
+    print('source: %s' % src_note)
+
     def src_file(n):
-        p = os.path.join(src, n + '.txt')
-        return p if os.path.exists(p) else os.path.join(src, n + '_IC.txt')
+        return os.path.join(src, n + src_suffix)
 
     # ---- read and validate ----
     hdr_t, t = read(tgt)

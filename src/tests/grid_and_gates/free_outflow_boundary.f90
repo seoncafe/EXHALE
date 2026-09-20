@@ -24,8 +24,10 @@
       !      opposite sign would make the boundary an INFLOW, which carries
       !      characteristics into the domain that only a reservoir may state,
       !      and this closure has none), and must leave the temperature of the
-      !      last physical cell alone, since the ionization sweep, the column
-      !      integral and `eval_dt` all read the ghosts as cells.
+      !      last physical cell alone, since the ionization sweep and the
+      !      column integral read the ghosts as cells, and `eval_dt` reads
+      !      the outer ghost as one of the two states bounding the last face
+      !      of cell N.
       !
       !   4. The outermost physical cell must carry a pressure slope of its
       !      own.  A zero-gradient outflow ghost makes the forward difference

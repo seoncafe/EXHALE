@@ -11557,3 +11557,3962 @@ with the same binary, single-threaded: **REGRESSION PASS, all sixteen cases
 byte-identical**, 64 of 64 files `data identical`, and `check roundtrip`
 byte-identical in all four of its files as well. No pinned fixture was
 refreshed with this snapshot.
+
+## 12. PLAN_20260917: the corrections that follow the review of the 2026-09-17 handoff (2026-09-17 to 2026-09-18)
+
+Plan of record: `docs/PLAN_20260917.md`, items L27 to L36, written after
+`docs/session_handoff_20260917_review.md` (the Codex review of the first
+handoff text) and the revised handoff
+`docs/session_handoff_20260917_rev1.md`, whose sections 0 and 4 carry what
+the review established and what was verified in the source before the plan
+was written. The item numbers continue
+`docs/PLAN_20260913_lhs_stationary.md`, whose last item is L26. The code the
+plan stands on is `EXHALE.x` md5 `59bfdb3fc4d0104fc2e9c3734596d2f6`,
+repository HEAD `3c73905ca8a7fe2af92a5c2b014c225b2feedff3`, with the
+seventeen regression goldens as the 2026-09-17 refresh of section 11 left
+them. Every number below is READ from the item's own report or from the memo
+named with it; nothing was measured for this section.
+
+What the series is. Three items repair diagnostics the review found unsound:
+a probe that evaluated PLM on states solved under WENO3 (L27), a log reader
+that joined the records of two different solves (L28), and a set of archived
+`certified=T` headers that had never been re-measured under the current
+evaluate route (L29). Two items correct a real conservation defect of the
+transport operators, where diffusion and advection divided by two different
+cell volumes (L30, L30b). One gives the molecular approximations a validity
+contract, an energy audit and an uncertainty record (L31). Two are read-only
+verdicts on states that refuse to converge (L32, L33). One re-runs the atomic
+half of the LHS 1140 b catalog on the binary of record and closes the seven
+low-XUV cases (L34a). Two build ionization stage transport and put the H II
+row of a run on the element operator's own nucleus flux (L36, L36c). Items
+L27, L28, L29, L30 and L30b wrote no separate memo under `docs/`; their
+record is named with each below.
+
+### L27: the diagnostics evaluate the production stationary operator, and the certification report prints a face-flux budget
+
+**What changed.** New `src/modules/states/stationary_operator.f90` (200
+lines) holds `select_stationary_reconstruction`,
+`restore_reconstruction_selection` and `stationary_face_mass_flux`, with one
+line added to `SRC`. `EXHALE_main.f90` (+48/-33) replaces the nine literal
+`WENO3` assignments of the stationary and residual routes by one call, and
+the evaluate route passes the budget to the report; the marching `PLM` and
+the residual probe's save and restore are untouched. `certification.f90`
+(+59/-3) gains an OPTIONAL third argument on `certification_report_write`
+and prints one block from it: no tolerance was given a number, no entry of
+the inventory reads it, and `rep%certified` is formed before the block.
+`base_boundary_continuity_probe.f90` (+118/-33) is rewritten on the new
+entry point; `stationary_evaluate_products.sh` (+24/-3) gains a stage that
+starts a `Reconstruction scheme: PLM` input under
+`Restart intent: stationary evaluate`. The budget travels as an argument
+rather than as saved module state, so no report can print a budget measured
+on a different state. The selection also disarms the `recon_lambda_on`
+blend, which was already disarmed at all nine sites.
+
+**Tests.** On `LHS1140b/models/.L26/fid_resolve/output/` the probe was RED at
+32 PASS, 0 FAIL with a base face flux of 32.376280 of the window mean and no
+operator identity printed; GREEN at 35 PASS, 0 FAIL with the base face at
+0.9999843726323676, the spread over the faces 1.78e-09 and the offset from
+the window mean 1.56e-05. On the catalog state
+`atomic_scalar_gj1132x0.10_kzz1e9/HeH2.13` the RED reading was 336.551906
+and the GREEN one 0.9999748281788378, spread 5.04e-08, offset 2.52e-05. The
+new stage of `stationary_evaluate_products.sh` was RED at 21 PASS, 2 FAIL
+(`plm_input_evaluates_the_stationary_operator`,
+`plm_input_face_flux_budget_printed`) and GREEN at 23 PASS, 0 FAIL. The
+production report and the probe return the SAME BITS for the base face, the
+minimum, the maximum and the face indices on both states.
+
+**Movement.** Byte-identical on the data lines of `wasp_full` (12251 steps),
+`mol_base_handoff` and `lower_profile` (12000 steps each), with the same
+final `du` on both builds; the whole-file difference is the two provenance
+lines. The 32.376 and 336.552 readings survive only on an explicitly labeled
+row that asserts nothing.
+
+**Record.** Two head notes in `docs/lhs1140b_stationary_L26_20260916.md`
+sections R3 and R9 saying that the face-flux readings there are PLM
+evaluations of WENO3 states, pointing at the revised handoff's section 4.3
+and at this item; the rest of that memo is left as the record it was.
+
+### L28: a stationary record names its solve, and the reader reads one completed solve
+
+**What changed.** `steady_newton.f90` (+26/-8, print statements only): a
+module counter incremented on entry to `solve_steady_ptc` and to
+`solve_steady_jfnk` and appended as `solve=<n>` to the five records the
+module prints. `src/tests/steady_selfconsistent_residual/run.sh` (+204/-25)
+takes the iterate record, the certification block and the completion line of
+the LAST COMPLETED solve and of no other, by the token where the records
+carry it and by the span between completion lines where they do not, and
+prints `incomplete_evidence` where the records of that solve are not all
+present. Four synthetic fixture logs were added beside it.
+
+**Tests.** On the real log `LHS1140b/models/.L22/i3_alt/run.log` the
+entry-text reader was RED, `handback_matches_the_accepted_iterate` at
+2.83103e-08 and exit 1; the delivered reader is GREEN at 0.842987, which is
+1.208E-08 over 1.433E-08 from that log's own lines. On the four fixtures the
+entry-text reader gave PASS, FAIL, FAIL, PASS and the delivered reader gives
+PASS, PASS, PASS and one deliberate FAIL on `incomplete_evidence` with the
+reason `records_after_the_last_completion_line`. Full suite on the real log:
+7 PASS, 0 FAIL. `steady_species_rows` 195 PASS, 0 FAIL. No interval or
+tolerance was changed.
+
+**Movement.** All 437 archived `run.log` files under `LHS1140b/models/` were
+re-read with both readers: 156 carry no stationary solve, 142 keep the same
+ratio, 7 change, 41 are runs stopped inside a solve whose old ratio was built
+from the PREVIOUS solve and are now refused, 16 name a solve with no iterate
+record and are now refused, and 75 carry no iterate record anywhere. Of the
+seven that change, five move from failing to passing the existing [0.5, 2]
+interval: `.L22/i3_alt` 2.83103e-08 to 0.842987, `.L22/i4_kz0083` 4.21785e-08
+to 0.796117, `.L25/roe_s010_HeH9.7` 2.67982e-07 to 1, `.L7f/HeH2.13_ir`
+1.88841e-07 to 1.10715, `molecular_scalar_gj1132_kzz1e9/HeH0.55` 1.10606e-04
+to 1.25829; `.L14/x003_HeH2.13` moves 0.770056 to 1 and `.L8/r45` 0.661335 to
+1.00047. Against a control built with only `steady_newton.f90` at its entry
+text, `carrier_model_a_newton` gives byte-identical data lines in all four
+output files and run logs that differ only in the wall clock once the token
+is removed; `wasp_full` carried to its own end gives byte-identical data
+lines in all ten output files.
+
+**The record L32 added to this reader.** A solve accepted at its loop top
+printed a completion line and no iterate record at all, because the iteration
+line is printed at the END of the iteration body while the acceptance test
+sits at the top; on 16 archived logs the last completed solve is of that
+kind, and the entry-text reader had answered the assertion from an earlier
+solve. Item L32 step 0 adds one record at the loop-top stop, in the iteration
+line's format and carrying this item's `solve=<n>` token. RED, a control-format
+log: `FAIL ... measured=incomplete_evidence`, reason
+`no_iterate_record_in_that_solve`; GREEN with the record: PASS at
+measured=1, read from the identified scope of that solve. Print only;
+`carrier_model_a_newton` byte-identical on the data lines of
+`Hydro_ioniz.txt` and `Ion_species.txt`.
+
+**Record.** A head note at "Step 3, increments I3 to I5" of
+`docs/lhs1140b_stationary_L22_20260916.md` saying that its 2.83103e-08
+reading was a reader defect and that the records of the one completed solve
+give 0.843.
+
+### L29: every archived certification claim reclassified under the binary of record
+
+**What was done.** 119 archived states were re-measured with `EXHALE.x` md5
+`59bfdb3fc4d0104fc2e9c3734596d2f6` through the no-step evaluate route, on
+scratch copies, single-threaded, nothing written into any case directory.
+The counts:
+
+| group | states | reproduced | refused | no claim | no state | not evaluable |
+|---|---:|---:|---:|---:|---:|---:|
+| catalog, prescribed-composition atomic | 77 | 70 | 0 | 0 | 7 | 0 |
+| catalog, flux-closure rungs (last rung of each) | 9 | 9 | 0 | 0 | 0 | 0 |
+| catalog, molecular | 9 | 0 | 3 | 5 | 0 | 1 |
+| memo `.L14` | 2 | 0 | 1 | 1 | 0 | 0 |
+| memo `.L25` ladder rungs | 18 | 18 | 0 | 0 | 0 | 0 |
+| memo `.L25` direct solves | 3 | 3 | 0 | 0 | 0 | 0 |
+| memo `.L26/fid_resolve` | 1 | 1 | 0 | 0 | 0 | 0 |
+| **total** | **119** | **101** | **4** | **6** | **7** | **1** |
+
+`no claim` is a file that states none (`certified=F`), `not evaluable` a run
+that never reached the evaluation and said why. The operator identity column
+is empty in every row because that binary prints none; item L27 adds it.
+
+**The four refused claims**, with the worst entry and the binary each names
+in its own `REPRODUCE.md`: `.L14/x003_HeH2.13`, hydrodynamic mass row
+9.984E-01 at cell 2 against 3.2E-10, on `a11038c245050d4f11852af829e13fc7`;
+`molecular_scalar_gj1132_kzz1e9/HeH0.55`, energy row 4.634E-01 at cell 257
+against 1.0E-06; `/HeH2.13`, energy row 4.267E-01 at cell 203; `/HeH9.7`,
+energy row 3.597E-01 at cell 1, the three molecular ones on
+`c2e9c9990b9f14f1be8cd77abca68945`, which carries the molecular physics of
+before item L7g. No cause is attributed to any of them. The one state the
+route could not evaluate is
+`molecular_scalar_gj1132_wellmixed/HeH2.13`, whose mapped seed carries
+`he_diff: T` into a run that does not diffuse elements.
+
+The `x003` check was run first: the residual block of this item's log and of
+the review's retained
+`docs/audit_20260905/handoff_20260917_x003_evaluate.log` are line-identical,
+`original claim: NOT REPRODUCED`, `certified=F cert_reason=failing_entries`,
+exit status 2. Of the 95 catalog rows, 79 reproduced, 5 no claim, 7 no state,
+3 refused and 1 not evaluable.
+
+**Record.** `LHS1140b/models/CLAIMS_59bfdb3fc4d0.md` (the head and the 119-row
+table), the script `LHS1140b/models/reclassify_claims.sh`, which refuses to
+run on any other binary, and one new column in `LHS1140b/MODELS.md` section
+7, whose removal reproduces the old section line for line so that no other
+value moved.
+
+### L30: one spherical geometry for all transport, and the element face flux exposed
+
+**The defect and the correction.** Diffusion and advection divided by two
+different cell volumes in both the elemental and the carrier transport: the
+advective half used the exact shell `(r_+^3 - r_-^3)/3` and the diffusive
+half `r_j^2 max(dr_j, 1 cm)`, which agree only to O(dr^2) because `r_edg` is
+the arithmetic midpoint of the centers. The element and carrier operators now
+divide every term of one row by the same exact shell volume and multiply
+every face term by the same face area `A(f) = r_edg(f)^2`, both defined once
+in `grid_construction` as `spherical_face_area_and_cell_volume`. The element
+row is the divergence of a single face flux, and that flux is one public
+object, `element_nucleus_face_flux`.
+
+**What changed.** `define_grid.f90` (+79/-6): the new routine, evaluated in
+the factored form `(r_+ - r_-)(r_+^2 + r_+ r_- + r_-^2)/3` because the
+difference of cubes loses about three decimal digits at the `dr/r` of 2e-4 of
+the production base cells; filled from the current `r_edg` at every call
+rather than stored, because several acceptance drivers write `r_edg` without
+calling `define_grid`; a cell of nonpositive volume and a non-ordered face
+pair are refused, and the 1 cm floor on the cell width is gone.
+`binary_element_diffusion.f90` (+341): the four diffusion sites, the
+advective divergence, the new public `element_nucleus_face_flux`, the
+diagnostic helium mass on the same volumes, the dead geometry dummies
+removed, and the DISCRETIZATION and BOUNDARY NUCLEUS FLUX paragraphs of the
+header. `diffusive_photochemistry.f90` (+85): the carrier advective
+divergence and face coefficients, the carrier diffusive residual and the
+block-tridiagonal assembly, the geometry filled before the OpenMP regions so
+the assembled blocks stay bitwise the sequential ones. `carrier_mass_fractions`
+now states the outer ghost rule in both directions of the face mass flux
+(`X_ghost = X_N`) and what it does to the limiter, which is the section 11
+bookkeeping item of the plan folded into this one. One line was added to
+`DIFT_SRC` in the `Makefile`, a file the item does not own, because
+`diffusion_tests.x` could otherwise no longer link.
+
+**Tests.** The RED numbers were measured on a build in which ONLY the six
+diffusion denominators were reverted, so they isolate the geometry:
+
+| row | RED | GREEN | tolerance |
+|---|---|---|---|
+| `element_row_is_the_divergence_of_the_exposed_flux` | 2.40865e-11 FAIL | 0.00000e+00 PASS | 1e-14 |
+| `element_column_sum_is_the_boundary_flux_difference` | 1.38185e-09 FAIL | 2.03150e-19 PASS | 1e-13 |
+
+Both are relative to the operator's own summed row scale, the measure every
+other relative row of this operator uses. The second is the conservation
+defect itself: under the entry geometry the column sum of `V_j R_j` misses
+the difference of the two boundary face fluxes by 1.4e-9 of the size of the
+terms, and after the correction by 2e-19, which is the state's own mass
+closure and not a property of the grid. The rows that CANNOT be RED are
+reported as such: a manufactured smooth profile cannot separate two weights
+that are both second-order accurate (the refinement rows hold at order 2.0058
+and 2.0029), and a constant-flux or static column gives a zero row under any
+single volume weight. Three existing conservation rows of
+`src/tests/diffusion_tests.f90` had to follow the operator, because
+`helium_mass_in_column` summed with the old diffusive weight; after that,
+`diffusion_tests` is 35 passed, 0 failed on both builds. Every suite whose
+driver links the changed objects was run on an isolated build and passes. Not
+delivered as written: the carrier DIFFUSIVE weight has no unit row, because
+the only public route to `carrier_residual` needs a full molecular state that
+no light driver builds; it is established by reading the two sites and by the
+regression movement below.
+
+**Movement.** Zero-step `Restart intent: stationary evaluate` on three
+catalog states, control against measured: `.L26/fid_resolve` elemental
+transport row 6.671e-06 to 6.679e-06 at cell 217 against a 1e-5 tolerance,
+CERTIFIED both ways; `atomic_scalar_gj1132x0.10_kzz1e9/HeH2.13` 8.378e-06 at
+cell 258 to 7.496e-06 at cell 257, CERTIFIED both ways;
+`molecular_scalar_gj1132_kzz1e9/HeH2.13` 5.725e-09 at cell 217 to 7.245e-08
+at cell 315, refused on both builds for the same three rows, none of which
+moved. **No certification verdict flips.** On the regression cases,
+`mol_base_handoff` and `wasp_full` are byte-identical in their data rows
+because neither enters a changed routine, `mol_diffusion` moves by 1.566e-05
+(`v`) and 1.026e-04 (`H3p`), `mol_carrier` by 8.658e-08 and 8.039e-06, and
+`lower_profile` by 1.247e-07 and 4.421e-07, with log10 Mdot unchanged at
+10.57, 10.57 and 8.82.
+
+**Record.** No separate memo; the statement of record is the DISCRETIZATION
+and BOUNDARY NUCLEUS FLUX text of `binary_element_diffusion.f90`'s header,
+the header of `spherical_face_area_and_cell_volume`, and the two new rows of
+`src/tests/element_operator/`.
+
+### L30b: one spelling of the spherical volume, the failing carrier budget row, and the element flux writer
+
+The follow-up of the three findings L30 reported outside its own scope.
+
+**The volume is now one expression.** The eleven sites that still formed the
+shell volume themselves (`species_face_flux.f90`, four in `RK_rhs.f90`, two
+in `hydrodynamic_rows_body.inc`, `Reconstruction.f90`, three in
+`steady_residual.f90`) read `grid_construction`'s
+`spherical_cell_volume(j)`, a new public scalar function (+51/-6 in
+`define_grid.f90`) that the array form now fills its `cell_volume` from, so
+there is one expression and the array form is that expression over the
+physical column. A scalar function was needed because seven of the eleven
+sites assemble rows over the padded ghost range the array does not cover and
+two more are scalar functions called once for each cell. The one place the
+expression is still written out is the kind-generic
+`hydrodynamic_rows_body.inc`, where taking one factor of a quadruple-precision
+row from a double routine would leave that factor rounded at 1e-16; in double
+it still reproduces the production routines bit for bit, which the four
+`generic_double_*_is_the_operator_bitwise` rows read as exactly 0.000000E+00.
+The face AREA was already one spelling and was left alone.
+
+**The failing carrier budget row was the fixture.**
+`h2_nucleus_total_changes_only_by_boundary_flux` built its own face
+composition beside the operator and got the outer ghost rule wrong: it
+continued its own cell N+1 value past the outflow face where
+`carrier_mass_fractions` states `X_ghost = X_N`, so the boundary term carried
+half a limited slope the operator's limiter had already flattened. The
+arithmetic of the fixture's own profile gives 8.6e-9 against the 9.9166e-9
+the row reported. With the fixture reading `carrier_mass_fractions` and
+`species_face_fraction`, and on the UNCHANGED production objects, the row is
+RED at 9.9166E-09 and GREEN at 1.3739E-15 against a 1.0E-12 tolerance. **No
+production operator was changed for it**: the Runge-Kutta species advection
+telescopes. The row beside it,
+`helium_nucleus_total_changes_only_by_boundary_flux`, passed all along at
+4.9361E-17 because it already called the production face routine, and that
+contrast is what identifies the defect.
+
+**The element flux writer.** `write_element_flux_profile` now takes the state
+and calls `element_nucleus_face_flux` for both halves, so the advective half
+carries the reconstructed, limited, upwinded face mass fraction instead of a
+one-sided pick of a cell value; the call moved to after `project_elements`,
+so the file is the flux of a state that exists; `F_H` is `F_rho - F_adv`, so
+`F_H + F_He = Mdot_face` holds to the last bit; `X_face` is the face mass
+fraction that carries the flux. On `mol_diffusion` the columns move by
+1.30e-05 (`X_face`) to 5.65e-05 (`F_He`). How much of that is the writer and
+how much the state cannot be separated on that case, and the report says why:
+the helium mass fraction of that column is uniform to 1.39e-3 across all 499
+faces, so the writer's change is a change of the RULE whose size on a column
+with a real helium gradient is not measured there.
+
+**One fixture outside the item's list had to follow the operator.**
+`src/tests/grid_and_gates/hydrostatic_residual.f90` spelled the volume out at
+six places: `zero_gravity_momentum_scale_is_the_rows_own_terms` was RED at
+6.44697E-13 against 1e-15 on two grids and is GREEN at exactly 0.00000E+00
+with the fixture reading the shared function. 6.4e-13 is the measured size of
+the two spellings' difference at the base of that refined grid.
+
+**Movement.** Two measures are given for each file, because the largest
+`|a-b|/max(|a|,|b|)` over a file is dominated by a species that is a
+numerical zero in a given configuration: `hydrostatic_column` (300 steps)
+moves by 8.46e-15 of the column scale in `T`, `wasp_full` carried to its own
+du gate at 12251 steps on both builds by 4.57e-13 in `v` and 7.75e-12 in
+`CaI`, `mol_base_handoff` by 1.19e-05 and 4.68e-06, and `mol_diffusion` by
+1.60e-05 and 6.05e-06, with 1.07e-04 entry-relative on `H2`. Every compared
+column of every case is below the 1e-3 harness tolerance and not below 1e-6.
+The two molecular gates are 12000-step relaxation snapshots of a breathing
+base, so a 4e-13 seed at the base cells is carried for 12000 steps;
+`hydrostatic_column` and `wasp_full` are the cases that show the movement
+without that amplification. Over all 12251 matched steps of `wasp_full` the
+two builds' `du` agrees between 1.1e-15 and 1.7e-11, so the trajectory does
+not amplify the change at all. Cost, measured on alternating runs:
+`hydrostatic_column` 5000 steps at a ratio of 0.998 and `lower_profile` 400
+steps at 0.999, both inside the run-to-run scatter.
+
+**Reported from this item and repaired under bookkeeping.**
+`src/utils/fortdep.py` scanned `module` and `use` and not `include`, so
+`hydrodynamic_rows.o` did not depend on the file whose text it is compiled
+from and editing the kind-generic rows alone did not trigger a rebuild.
+
+**Record.** No separate memo; the statements of record are the corrected
+headers of `species_face_flux.f90` and `hydrodynamic_rows_body.inc`, the
+header of `spherical_cell_volume`, and the comment of the repaired fixture
+row, which now says that its exactness holds only while the fixture divides
+by the same volume.
+
+### L31: the molecular approximations get a validity contract, a reaction-cycle energy audit and an uncertainty record
+
+**Verdict: nothing is proposed for change, and no molecular energy share is
+counted twice.** Files: `molecular_reaction_heat.f90` (+151/-23, comments
+plus one new module procedure and its call), `h2_vibrational_relaxation.f90`
+(+58/-22, comments only), `mol_rates.f90` (+57/-25, comments only),
+`src/tests/physics_probe/molecular_energy_recipients.f90` (+433/-12, 62
+assertions to 81), the new suite `src/tests/h2_level_ladder/` (an 818-line
+model, a 32-assertion driver, `run.sh` and a README), and one row of
+`docs/input_schema.md`.
+
+**The energy audit.** Five closed cycles, with the gas share of every step
+measured from the production `molecular_chemical_heating` rather than
+restated, close to 2.20e-13 eV or better; the one the review named, the
+nascent H2+ vibrational excitation of R23, is deposited once, at R23, and R5
+is charged the ground-state enthalpy and adds none of it back. RED: a
+deliberate +0.55 eV on R5's gas share, exactly the v = 2 energy the R23
+comment names, is caught by three rows at 5.500000000000007E-01,
+5.500000000002210E-01 and 5.500000000000007E-01 against a 1e-9 tolerance;
+GREEN on the revert. The audit followed the excitation into files the item
+does not own and found no double count there either.
+
+**The four prescriptions now carry validity and uncertainty text**, and every
+claim the review called unsupported is removed. The R5/R16 n = 2 recipient is
+a low-state recipient approximation, with the released-energy identity in place
+of the withdrawn claim that the share is an upper bound, and a new
+`reaction_heat_recipient_validity_report` prints three lines once a run when
+the recipients are in force, including that this code's H2+ lives about
+1.0E-03 s against R5/R8/R9 and relaxes vibrationally in about 1.0E+00 s, so
+it is vibrationally hot. The R6 internal energy is a model estimate from the
+position of a published peak, with the peak-to-mean distance unquantified and
+no figure digitized. The quench fraction is a first-event branching model,
+not a bound over the ladder. The helium third body is an argon-based estimate
+over 77 to 5000 K with an uncertainty of +/-0.3 in log, the distance from
+argon to helium explicitly outside it. The stale paragraph claiming the
+photoelectric and Lyman-Werner callers omit helium is corrected against the
+three call sites that do pass it, which is the section 11 bookkeeping item of
+the plan folded into this one.
+
+**The reduced ladder and its bracket.** The new suite solves the statistical
+equilibrium of 54 rovibrational levels of X with v <= 3 (H2-H from Lique
+2015, H2-He from Jozwiak et al. 2024, energies, weights and A values from
+Roueff et al. 2019, everything above v = 3 as ONE explicitly uncertain
+group), 32 of 32 assertions GREEN: the all-level `A_max` agrees with the
+production module to 9.4e-06 relative, the collision-only bath departs from
+Boltzmann by 2.97e-14, 2.92e-15 and 6.12e-15 at 808, 2128 and 5083 K, the
+steady injection closes to 3.7e-13 and one backward-Euler step to 3.4e-16.
+RED, two deliberate faults each reverted from a copy: dropping the degeneracy
+ratio from the detailed-balance factor takes the Boltzmann departure to 6.61
+and fails 9 rows; counting the group's collisional disposal in both the heat
+and the radiation fails 8 rows. The bracket on the radiated share:
+
+| cell | T [K] | `1 - f` scalar | `1 - f` ladder bracket | ratio |
+|---|---|---|---|---|
+| molecular depth | 808.32 | 6.793198e-07 | 1.20e-08 to 5.140654e-08 | 13.21 |
+| H2 front | 2128.37 | 1.006850e-05 | 2.76e-07 to 2.004984e-06 | 5.02 |
+| dilute upper column | 5083.44 | 5.963722e-04 | 6.99e-06 to 2.146044e-04 | 2.78 |
+
+The scalar form radiates 2.8 to 13.2 times what the most radiative member of
+the bracket does, so it keeps more energy out of the gas than any member and
+replacing it could only add heat: **the scalar form stays the default.**
+
+**The argon-helium extrapolation is negligible, measured.** R15 forms H2 out
+of ATOMIC hydrogen, so the H2 abundance does not bound it. On the certified
+molecular fiducial `molecular_scalar_gj1132_kzz1e9/HeH2.13`, 76 of 504 cells
+lie above 5000 K (5007.83 to 5870.73 K); the largest R15 source there is
+1.6465e-05 cm^-3 s^-1 against 4.6848e+00 from the other three H2 formation
+channels at the same cell, a ratio of 2.3404e-08 to 3.5145e-06 over the 76
+cells, and the balance the pair holds is at most 3.9053e-11 in `2 n(H2)/n_H`.
+On the hottest atomic wind of the catalog,
+`atomic_scalar_gj699_wellmixed/HeH1000` at a maximum 9517.55 K, 184 of 504
+cells are outside the range, the largest R15 source is 1.3357e-10 cm^-3 s^-1
+and the largest balance 1.6745e-13. Because R12 and R15 carry ONE collider
+sum, their ratio is `K_eq(T)` with no rate coefficient in it, so the
+extrapolation can move the rate of relaxation towards the balance but never
+the balance.
+
+**The uncertainty record.** Five quantities varied separately at three cells
+of the certified fiducial, each as an exact difference against the production
+assembly, as fractions of the nominal molecular chemical heat:
+
+| cell | T [K] | recipient | R6 branch | R6 `E_int` | quench | helium efficiency |
+|---|---|---|---|---|---|---|
+| molecular depth | 808.32 | 2.1e-07 | 1.3e-09 | 1.9e-10 | 6.6e-07 | **+41% / -21%** |
+| H2 front | 2128.37 | **+4.6%** | 4.5e-07 | 6.8e-08 | 4.5e-07 | -0.20% / +0.10% |
+| dilute upper | 5083.44 | **+130%** | 5.0e-10 | 7.5e-11 | 5.0e-10 | -0.065% / +0.032% |
+
+The ordering is the result: at the base the uncertainty of the heat is the
+helium third body and nothing else, four to six orders above every other
+approximation, because the base heat is dominated by the R15 and R12 terms
+the collider sum multiplies; higher up the recipient takes over, and the two
+internal shares carry no uncertainty in this layer at all, because they reach
+the gas only through `1 - f` = 6.8e-07. The collider sum was checked bitwise
+in the three places that form it: the chemistry against
+`h2_association_collider_density` exactly 0.0, the carrier row's R15 channel
+exactly 0.0, and the heat ledger to 1e-14 relative on a cell whose only open
+channels are R12 and R15.
+
+**Movement.** Byte-identical. Against a control built from the entry text of
+the three source files, every output file of `mol_base_handoff` at 400 steps
+is identical with the provenance line excluded; the only difference in
+standard output is the three validity lines. `physics_probe` moves from 1585
+PASS, 0 FAIL to 1604 PASS, 0 FAIL.
+
+**Left as a request, not a change.** A published helium three-body
+recombination coefficient for `H + H + He -> H2 + He` over 200 to 5000 K.
+The only helium calculation in hand, Paolini, Ohlinger & Forrey (2011), Phys.
+Rev. A 83, 042713, plots a total over 0 to 350 K and tabulates nothing, and
+the table above makes this the largest single uncertainty in the molecular
+base heat.
+
+**Record.** `docs/lhs1140b_stationary_L31_energy_cycles_20260917.md`.
+
+### L32: one frozen rejected coupled Newton system, measured before any preconditioner is designed
+
+**Verdict: the directional Jacobian action is not a linear map of its
+direction, so the Krylov solve has no theory to stand on**, and neither a
+wider subspace nor a preconditioner can repair it. That a wider subspace does
+not repair it is measured; that no preconditioner does is an argument from
+what a preconditioner is, since right preconditioning replaces `A x = b` by
+`A M^-1 y = b` and where `A` is not linear neither system is one a Krylov
+method has a theory for. The checkpoint is the block route's ENTRY state on
+the certified `molecular_scalar_gj1132_kzz1e9/HeH2.13` state, 500 cells, 5
+unknowns in each cell, 2500 rows, `||R|| = 4.2666e-01`, arc
+`sqrt(eps)(1+||Y||) = 3.1541e-07`, the pseudo-time shift of the leg zero. Two
+corrections to the text the plan and the handoff carry: the `2.597e-01` is
+the FIRST linear solve's reduced residual and the largest of the seventeen
+legs, and trust-region iteration 14 was an ACCEPTED step at `1.337e-01`, the
+rejected ones being 13 and 16.
+
+The seven measurements:
+
+1. **One operator is being sampled.** `F(Y)` twice, `F(Y)` with an unrelated
+   state evaluated in between, `A(v)` twice and `A(v)` with a state in
+   between are all bitwise identical, against a noise floor of 1.6e-12 in
+   row-scale units. Nothing that follows is a reproducibility defect.
+2. **The perturbation ladder, by row family.** Along the scaled right-hand
+   side, four of the five families behave as a difference quotient should,
+   the error falling to 3.5e-07 to 3.6e-07 at the route's own arc and rising
+   at ten times it; the momentum rows do not, standing at 8.16e-02 at that
+   arc on 131 of the moved rows, and the elemental rows do not along the
+   carrier and the energy directions (4.71e+00 and 3.55e+01). The mean
+   relative error of 3.692e-04 measured on another state does not bound
+   these. Worst cells 11 to 14, 42, 123 to 130 and 216 to 223.
+3. **Additivity fails and homogeneity holds.** On the first two Arnoldi
+   directions `||A(v1+v2) - A(v1) - A(v2)||` is 1.867e+02 of
+   `||A(v1)+A(v2)||`, and on two directions off the basis 1.871e-03; the
+   defect scales as the arc to the power 2.291 and 1.958, so it is curvature
+   and not a floor, and no component is blocked by the feasible set. Nine
+   tenths of the squared defect sits in cells 1 and 2 and 87 per cent of it
+   in the momentum rows. Meanwhile `A(3v)` against `3A(v)` is 1.400e-14, the
+   worst Arnoldi image column gap over 40 columns is 3.523e-16 and the loss
+   of orthogonality 2.164e-13: each column is a correct product on its own
+   direction, and the sum over the columns is not the product on the sum.
+4. **The reported residual is not the residual of the step.** The default
+   cycle reports 2.589e-01 while the true `||b - Ax||/||b||` of its own
+   iterate is 5.113e-01, and the Arnoldi image the trust region reads its
+   predicted decrease from is 4.210e-01 away from the operator's image of
+   that step; choosing the step by its true residual gives 3.189e-01 with a
+   zero image gap. Factor 1.98 between the two, the same shape as N27's 15
+   per cent.
+5. **Orthogonality and the chemistry tolerance are not it.** Orthogonality
+   3.269e-12, four decades below the level at which a second pass is worth
+   its inner products, and orthogonalizing twice moves the fifth digit.
+   `EXHALE_RESID_EQ_TOL` from 1e-6 to 1e-12 leaves the attainable floor at
+   3.189e-01 to four digits.
+6. **Eight times the subspace buys nothing.** On one operator and one
+   right-hand side, a subspace of 40 spends 40 products and reaches
+   3.18872e-01, and 80, 160 and 320 all stop at 70 products at 2.81563e-01,
+   returning the same step to six digits. The cycle stops because the true
+   residual of its iterate has risen at two consecutive checks: 3.730e-01 at
+   product 20, 3.189e-01 at 30, 5.113e-01 at 40, 2.816e-01 at 50, 3.454e-01
+   at 60, which a GMRES iterate on a linear operator cannot do.
+7. **An assembled Jacobian and a direct solve on 50 cells.** The direct solve
+   solves what it was given to 9.408e-12, and the map it was assembled from
+   does not agree with it: `||A(x) - (assembled A) x||/||(assembled A) x||`
+   is 1.196e+04, the same at unit step length, with additivity 1.719e-01 and
+   homogeneity 1.170e-16 on that grid. The memo states the caveat that a
+   column probe displaces one unknown in its own units while a combined
+   direction spreads the arc over every unknown, so this measures the
+   departure from ANY single linear map.
+
+**The banded model omits no long-range coupling**, so the third hypothesis is
+refuted: over six sampled carrier columns the part lying outside the band is
+exactly zero and the band's own entries are 0.09 to 3.5 per cent off, which
+is all of the 2.8e-02 to 3.9e-02 difference. **A base-only block is not a
+cure**: the modes that break the linear model are confined to cells 1 and 2,
+but the modes the solve is held by are carrier rows spread over cells 223 to
+287 beside 1 and 2, and the refusing row is carrier H2 of cell 243 at
+r = 1.317. Every "relative residual reached X" in the L22 and L24 records is
+a reduced least-squares residual, not the residual of a step.
+
+No production numerical change, no default moved, no preconditioner designed;
+the one source change is the print-only loop-top iterate record reported under
+L28 above.
+
+**Record.** `docs/lhs1140b_stationary_L32_20260917.md`, with the frozen
+checkpoint, the identities and every run log under
+`docs/audit_20260905/L32_20260917/`.
+
+### L33: slow outer relaxation or a stalled mode, read from the existing logs
+
+Read-only; no solve was run and no source file was edited. The three runs
+stopped on 2026-09-17 are classified:
+
+| run | case | classification |
+|---|---|---|
+| `i4_wm0083` | `wellmixed/HeH0.083` | front relaxation. The x2 = 1e-2 contour entered the domain at pass 7 and walked inward from 28.5489 to 9.1312 R_p, the x2 = 0.5 contour outward from 1.2565 to 1.7719 R_p and the movement-bound cell outward from 221 to 304; the refusing cell is fixed at 500 only because 500 is the last cell. |
+| `i4_wm055` | `wellmixed/HeH0.55` | front relaxation, unambiguous: the refusing cell walks outward through 315 to 445, that is 2.1136 to 11.7471 R_p, and the row decays from pass 5. |
+| `i4_kz0083` | `kzz1e9/HeH0.083` | neither. The cell is fixed at 499 from pass 9 to 40 and both H2 contours stand still, which reads as a mode, but the decay rate is set by the composition movement bound and not by the alternation map. |
+
+**The corrected progress factors.** The revised handoff's three figures are
+confirmed: 0.95273 a pass over passes 26 to 37 of `i4_wm0083` (4.73 per cent),
+0.91232 over passes 13 to 16 of `i4_wm055` (8.77 per cent), and 1.14, 1.04 and
+0.88 per cent a pass over passes 20 to 40, 23 to 40 and 30 to 40 of
+`i4_kz0083`; the conditional extrapolations to 1.0e-05 are 175.0 and 86.7
+further passes and 384, 420 and 497. What the single-window figures leave out
+changes the reading: `i4_wm0083` ROSE from 2.65e-02 to 9.20e-02 over passes 1
+to 22 at a factor 1.0611 a pass, so 0.953 is the second half of a curve with a
+maximum; and the rate follows the movement bound, `i4_kz0083` falling 2.49 per
+cent a pass at a bound of 2.5e-03 and 1.04 per cent at 1.25e-03, so halving the
+bound took the decrement to 0.42 of itself against 0.50 for the bound. The
+bound is near its floor of 1.0e-3 and only ever ratchets down within a run.
+
+**The control that makes the reading possible** is `i3_alt`, the run that
+certified `kzz1e9/HeH2.13` at outer pass 12 and the only one of the four in
+which the carrier relaxation reached the fixed point of its own operator
+(carrier residual 2.87e-09 to 4.70e-09 at every pass, 11 of 11 passes ending
+"the carriers stopped moving at the fixed wind"). In the three refusing runs
+every relaxation of every pass was cut off by the movement bound, 37 of 37,
+16 of 16 and 39 of 39, and the composition handed on stood 6.6e-02 to
+2.0e-01, 1.6e-01 to 3.0e-01 and 1.72e-02 to 1.86e-02 from that fixed point.
+None of the three entered the coupled block, so L32's verdict applies to none
+of them.
+
+**The handover was never exercised.** It needs `outer_no_progress`, three
+CONSECUTIVE passes without progress, together with three carrier relaxations
+ending on the movement bound. The second was met in every pass of all three
+runs; the longest consecutive run of no-progress passes is 1, 2 and 1, so the
+criterion was never reached. This corrects the wording "neither of the
+handover's two counts reached three": the bound-ending count reached three in
+all three runs. The handover is an unexercised route and nothing more.
+
+One bounded continuation experiment was designed and NOT run: five rungs
+uniform in `q_H2_base` from 0.190110258 to 0.476178639 (He/H 2.1300 to
+0.5500) seeded from `i3_alt`'s certified state, because the base H2 fraction
+and not `K_zz` is what sets the front (at the same base fraction the eddy
+coefficient moves the x2 = 0.5 front only from 1.2565 to 1.3705 R_p, while
+`q_H2_base` moves the x2 = 1e-2 contour from 1.1626 R_p to beyond the 30 R_p
+boundary).
+
+**Record.** `docs/lhs1140b_stationary_L33_20260917.md` and the reader
+`LHS1140b/models/.L22/outer_pass_history.py`.
+
+### L34a: the atomic catalog re-run, 79 reproduced and the seven low-XUV Roe cases
+
+**Verdict: 79 reproduced, 0 refused, 0 re-solved, and all seven low-XUV Roe
+cases certified.** Every archived atomic state of the catalog, the 70
+prescribed-composition cases that carry a state and the 9 last rungs of the
+flux-closure ladders, reproduces its own stationary claim under
+`EXHALE_3146d11b.x` through the no-step evaluate route, so the re-solve
+branch never ran and no pass was spent on one. The verdicts match L29's on
+`59bfdb3fc4d0` in all 79 rows.
+
+**The states did not move.** Mass density bit-identical in every cell of
+every state; velocity moves in 32 of 79 by at most 2.219e-16 relative;
+temperature by a median 5.836e-14 and at most 3.807e-12, which is the
+composition refresh of the work state. `4 pi rho v r^2` of the outermost
+physical cell is unchanged to the last bit in all 79, and the
+`Log10 of steady-state Mdot` line is unchanged to its two decimals in all 79.
+The He I 10830 equivalent width moves by a median 5.4e-06 and at most
+3.6e-05, which is the size item L9 measured on the fiducial for the change of
+post-processing route (5.1e-06) and comes from the `_adv` profiles. The gated
+elemental He/H partition row of the 64 states that run element diffusion
+moved by a median 0.9 per cent and at most 16.2 per cent between the value
+each case's own solve accepted on `c2e9c9990b9f` and the value this
+evaluation measures, with the same refusing cell in 56 of the 64; every state
+still certifies, and the movement is NOT attributed to L30 alone, because the
+two numbers come from two binaries and two operations and the intermediate
+binary is not on disk. The L27 face-flux budget over the 79: base face within
+3.5e-05 of the wind-window mean of `rho v r^2` (0.9999650 to 1.0000210), face
+to face spread at most 5.05e-08 with a median 1.96e-09, operator identity
+`WENO3, numerical flux: HLLC, well balanced: T` on all 79.
+
+**The seven Roe cases**, each seeded from its L25 state, each `info = 0`,
+CERTIFIED and ACCEPTED at outer pass 1:
+
+| case | seed | `\|\|R\|\|` | log10 Mdot | Mdot now / L25 [g/s] | EW now / L25 [percent A] |
+|---|---|---|---|---|---|
+| `atomic_scalar_gj1132x0.01_kzz1e9/HeH2.13` | `.L25/roe_s001_HeH2.13` | 5.767E-07 | 5.79 | 6.1644e+05 / 6.1609e+05 | 1.3699e-06 / 1.370e-06 |
+| `atomic_scalar_gj1132x0.01_kzz1e9/HeH9.7` | `.L25/ladder/L3/x0p01` | 8.546E-07 | 5.78 | 6.0017e+05 / 6.0016e+05 | 3.2459e-05 / 3.2456e-05 |
+| `atomic_scalar_gj1132x0.10_kzz1e9/HeH9.7` | `.L25/roe_s010_HeH9.7` | 4.362E-07 | 6.81 | 6.4138e+06 / 6.4102e+06 | 0.23532 / 0.23532 |
+| `atomic_photochem_gj1132x0.01_kzzprofile/HeH9.7` | `.L25/ladder/L4/x0p01` | 3.698E-07 | 5.77 | 5.8235e+05 / 5.8235e+05 | 3.3576e-05 / 3.3576e-05 |
+| `atomic_photochem_gj1132x0.15_kzzprofile/HeH9.7` | `.L25/ladder/L1/x0p15` | 6.210E-08 | 7.02 | 1.0543e+07 / 1.0543e+07 | 0.48218 / 0.48218 |
+| `atomic_photochem_gj1132x0.20_kzzprofile/HeH9.7` | `.L25/roe_p020_HeH9.7` | 6.628E-08 | 7.16 | 1.4347e+07 / 1.4347e+07 | 0.67111 / 0.67112 |
+| `atomic_photochem_gj1132x0.25_kzzprofile/HeH9.7` | `.L25/ladder/L2/x0p25` | 6.245E-08 | 7.26 | 1.8194e+07 / 1.8194e+07 | 0.84287 / 0.84287 |
+
+The mass-loss rate agrees with L25 to at most 5.6e-04 relative and the
+equivalent width to at most 8.3e-05, over states re-solved on a binary
+carrying L27, L28, L30, L30b and L31 from mapped seeds; the face-flux budget
+of the seven puts the base face at 0.9999710 to 0.9999793 of the window mean
+with a spread of at most 2.25e-07, operator identity `WENO3, numerical flux:
+ROE, well balanced: T`. Both 0.01 cases keep an equivalent width of a few
+times 1e-05 percent A, so L25's statement that the line is gone at 0.01 of
+the fiducial spectrum stands on the catalog states too.
+`atomic_photochem_gj1132x0.01_kzzprofile/HeH9.7` is the one whose history
+moves: its direct Roe solve was refused by L25 on the gated elemental He/H
+row (2.234e-04 against 1.0e-05 at cell 440), the L4 ladder certified the same
+wind by continuation, and seeded from that ladder state the catalog case
+certifies at pass 1.
+
+**What was written.** Each of the 86 case and rung directories carries its
+previous `output/` as `output_pre_L34/`, created once and never overwritten,
+with that case's previous `pp.log` and He 10830 products inside it; the seven
+Roe cases had no `output/` and so have no backup. Nine `input.inp` were
+repaired, the last rung of each flux-closure ladder, where the old
+post-processing pass had left `Do only PP: True` and no `Solver` line so that
+the file did not reproduce its own state; `Solver: Newton` and
+`Restart intent: stationary` are back and `Do only PP` is `False`, each
+recorded in that rung's `REPRODUCE.md`. 86 `REPRODUCE.md` name md5
+`3146d11b4090306dcea75bb9718edd22`, and `LHS1140b/MODELS.md` sections 7 and 8
+were regenerated. Nothing under `backup/regression/`, `src/` or any molecular
+case directory was touched.
+
+**Record.** `docs/lhs1140b_stationary_L34a_20260918.md`.
+
+### L36 and L36c: ionization stage transport
+
+**L36, stage B: the module exists, tested, with no caller in a run.** New
+`src/modules/functions/ionization_stage_transport.f90` (518 lines) holds the
+stage face flux on the element operator's own `element_nucleus_face_flux`,
+its divergence on the L30 geometry, its tridiagonal Jacobian rows and the
+simplex projection, with one line in `SRC`. The suite
+`src/tests/ionization_stage_flux/` grew from 15 rows to 25, **25 passed, 0
+failed**, the 15 rows of L12b reproducing their values exactly. The seven new
+GREEN rows include `production_stage_flux_sums_to_the_element_flux` at
+2.0245e-16, `stage_divergence_sums_to_the_element_nucleus_divergence` at
+4.4998e-16, `stage_divergence_column_sum_is_the_boundary_flux_difference` at
+1.2421e-17 against 1e-13, and `stage_row_jacobian_matches_a_central_difference`
+at 1.8490e-11 against 1e-7. Three rows are RED by construction and must exceed
+their floor: a cell-centered volume breaks the column sum at 8.0694e-08, a
+full mixing-ratio eddy term in every stage breaks the identity at 1.4761e-04
+(which is the derivation's central point measured directly, the sum left off
+the element flux by exactly one copy of the element's own eddy flux), and
+bounding the closing face value breaks it at 3.6208e-04. Stages C and E were
+NOT built: the ionization rows are solved inside
+`diffusive_photochemistry.f90` and the configuration is refused in
+`input_read.f90`, neither of which the item owned, so the module was linked
+and exercised by the suite with no caller in a run. Stage D's promotion rule
+has no precondition for the same reason; the systematic it would be judged
+against was measured, the He 2^3S radial column being 4.9292e11 cm^-2 from
+the solved state against 8.0114e10 from the `_adv` profile, a factor 6.15.
+
+**The one-velocity approximation is narrow, and the number is now at the
+site.** On the certified atomic fiducial, `|w/v|` crosses 0.1 at 1.220 R_p
+for hydrogen and 1.243 R_p for helium with no resonant charge exchange, at
+1.231 and 1.273 R_p with it, and the largest `|w/v|` outside 1.2 R_p is 0.625
+and 0.430 without it and 0.518 and 0.336 with it. The momentum transfer is
+fast, `t_coll/t_flow` crossing 0.1 only at 14.51 and 8.25 R_p, and the stages
+nonetheless drift, because the drift is set by the ambipolar field against
+the friction and not by the friction alone.
+
+**Stage F, the transit side.** `EXHALE_TRANSIT_STATE` selects the input PAIR,
+`adv` (the unchanged default) or `solution`, both files always from one
+selection, and every saved product carries `state_selection`, `state_files`
+and `state_difference` in its header. On the certified atomic fiducial the He
+I 10830 equivalent width is 1.5544 percent A from the `_adv` pair and 20.3950
+percent A from the solution pair, a **ratio of 13.12** (L10 reported 13.3 on
+a different model), with the measured distance between the two states over
+the 500 rows 7.366e-1 in T, 6.313e-1 in n(H I) and 9.862e-1 in n(He 2^3S).
+That factor is the size of the thing stages C and D move, not the answer they
+give: on this run the solve's composition is still the local ionization
+equilibrium. `post_process_adv` is not retired; it stays the independent
+discretization the solution is measured against.
+
+**L36c: the H II row of a run is now the stage row.** The unknown is
+`x(H II) = n(H II)/n(H nuclei)`, a fraction per hydrogen nucleus, solved as a
+row of the transport-chemistry operator with the face flux
+`F(f) = x(f) N_H(f) - n_H(f) K(f) [x(j+1) - x(j)]/dr(f)`, where `N_H(f)` is
+the hydrogen nucleus face flux of the element operator; nothing rebuilds a
+face coefficient of that operator. The bulk-mass `ic_Hp` spelling is retired.
+`diffusive_photochemistry.f90` (+492/-31) carries the row, its time term,
+block-Jacobian diagonal, chemistry-column chain rule, limiter and write-back;
+`binary_element_diffusion.f90` exports `element_nucleus_counts` so that the
+cell density a row divides by and the face density its flux divides by come
+from one count; `input_read.f90` (+40/-19) restates the two existing refusals
+with the real reason and adds two (a mixture with no helium, and
+`Coupled carrier solve: True`, whose row registry carries every carrier as a
+species mass fraction while a stage unknown is a fraction per element
+nucleus); `certification.f90` (+42/-1) gains the entry
+`ionization stage nucleus sum`, reported and not gating;
+`write_setup_report.f90` echoes the carried set. Which halves of `N_H` a run
+carries is stated in the header: the advective half exactly where the row
+itself carries the material advection, the element's diffusive half only
+where the run transports the elements against each other, and the stage's own
+eddy term in every configuration.
+
+**Tests.** `ionization_stage_flux` 27 passed, 0 failed, with two new rows:
+`boundary_stage_rows_fold_the_ghost_onto_the_diagonal` GREEN at 1.8552e-15
+against 1e-7, and `dropping_the_end_face_entry_changes_the_end_rows` RED by
+construction at 9.0722e-01, which is the whole material advection through the
+boundary face that a purely diffusive end-face rule would drop. A private
+build with `-fcheck=bounds,do,mem -ffpe-trap=invalid,zero,overflow` runs the
+two key-on configurations for 40 steps with no runtime trap. Every suite whose
+driver links a changed object passes, with one RED row, section below.
+
+**Movement.** Key off, byte-identical: `wasp_full` (400 steps),
+`mol_diffusion` and `mol_carrier` (12000 steps each) give byte-identical data
+rows in `Hydro_ioniz.txt` and `Ion_species.txt` against a control built from
+the entry text, and the two builds agree on every printed step line. Key on,
+on the three `hp_*` cases the largest movement is 4.2160e-03 and 5.2914e-03
+(`hp_zero_seed`), 3.0318e-03 and 3.5450e-03 (`hp_trace_seed`) and 3.0201e-05
+and 4.1478e-05 (`hp_front`); `x(H II)` itself moves by 1.2851e-10 to
+1.4259e-07, and what moves is the helium partition and the neutral hydrogen
+at the one or two cells that carry the H2 and ionization front. Those goldens
+were ALREADY stale against the entry text by 3.2967e-03 and 3.9439e-03
+(`hp_zero_seed`) and 2.7650e-03 and 3.3068e-03 (`hp_trace_seed`), so the
+refresh those cases need is one refresh and not two.
+
+**The key-on stationary solve.** `carrier_model_a_newton` is the one fixture
+that carries `Ionization transport: True` with `Restart intent: stationary`,
+`Solver: Newton` and `Coupled carrier solve: False`. **The stage sum identity
+holds to the rounding of the sums on its solved states, 2.268e-16 on the
+loaded restart and 2.196e-16 on the state the first JFNK handed back**,
+against 2.0245e-16 on the suite's synthetic column and against the
+1.4761e-04 to 3.6208e-04 the RED rows read when the construction is broken.
+The state is NOT certified, and it was not on the control either: the
+`carrier balance H+` row stands at 6.432e-03 on the measured build against
+6.392e-03 on the control, two and a half decades above its 1e-5 gate in both
+spellings. No tolerance was changed. The proposed anchor for the new
+certification entry is 1e-13, about 500 times the largest rounding measured
+and nine decades below the smallest break the RED rows produce; proposed, not
+set.
+
+**What remains blocked.** `x(He II)` and `x(He III)` are not carried and an
+atomic gas is still refused, both for one reason in three files the item did
+not own: two flags beside `x_hp_fixed` in `ion_cell_state.f90`, two lines in
+`impose_transported_ionization_fractions` of `ion_residual_core.f90`, and the
+gate of the imposed-fraction block in `ionization_equilibrium.f90`. Without
+the third, the next equilibrium sweep of an atomic run puts the proton back
+on its local root and the transport leaves no trace, which is why the refusal
+is correct today and was kept. With those three in place the carrier operator
+takes the helium rows by adding two indices and three lines, the module
+already carrying an arbitrary number of stages. Consequently a solve of the
+atomic fiducial with the key on was not possible, so the He I 10830
+equivalent width from a certified transported composition could not be
+measured and stage D's promotion rule still has no precondition. One RED row
+is left standing in `src/tests/carrier_retry/`:
+`one_further_sweep_leaves_the_returned_composition_within_the_sweep_tolerance`
+reads 1.034627e-06 against 1e-6 on the measured build and 2.685237e-07 on the
+control, bound by HeH+ at 1.33e-12 of the gas in the base cell, which the
+fixture counts as present because its threshold is 1e-20. A diagnostic line
+naming the species and the cell was added; the tolerance was not touched, and
+the choice between raising the fixture's threshold and accepting the row as a
+statement about the sweep's own noise is open.
+
+**Record.** `docs/lhs1140b_stationary_L36_20260918.md` and
+`docs/lhs1140b_stationary_L36c_20260918.md`; the key's documentation is the
+rewritten K15f row of `docs/input_schema.md`.
+
+### L36d: both elements' ionization stages carried, and the anchor the stage rows already had
+
+**What changed.** The carried set becomes `x(H II)` per hydrogen nucleus and
+`x(He II)`, `x(He III)` per helium nucleus, the three fractions of L12a. Each
+is a transported row of the transport-chemistry operator on its own element's
+nucleus face flux, each is handed to every ionization sweep, the two helium
+stages share one simplex and one closing stage, and the certification carries
+one stage-sum entry per element. `ion_cell_state.f90` (+22/-0) gains
+`x_heii_fixed`, `x_heiii_fixed`, `x_heii_fix` and `x_heiii_fix` beside the
+proton's; `ion_residual_core.f90` (+6/-3) writes rows 2 and 3 of
+`impose_transported_ionization_fractions`;
+`constrained_chemical_equilibrium.f90` (+32/-1) fixes the two helium species
+and puts the continuation's seed on the constraint surface instead of on the
+local root, so that the system it solves is the system it is judged against;
+`ionization_equilibrium.f90` (+43/-18) moves the imposed-stage block out of
+the molecular carrier condition onto
+`ionization_transport .and. (bg_ready .or. do_load_IC)`.
+`diffusive_photochemistry.f90` takes `n_carrier_max` from 5 to 7 with
+`ic_HeII` and `ic_HeIII`, gives every stage routine its element
+(`carrier_stage_element`, `carrier_stage_nucleus_density`), writes
+`ionization_stage_nucleus_sum` per element with all that element's stages
+together, and projects the two helium stages in one simplex;
+`certification.f90` gains `ionization stage nucleus sum H` and `... He`, both
+reported and not gating; `input_read.f90` restates the three kept refusals and
+`write_setup_report.f90` echoes the carried set, the flux each rides on and
+the closing stage of each element. K15f of `docs/input_schema.md` was
+rewritten in the five places this item makes false. `src/EXHALE_main.f90`,
+`steady_newton.f90` and `binary_element_diffusion.f90` were not touched.
+
+**Tests.** `ionization_stage_flux` **38 passed, 0 failed** (27 on the entry
+text) and `ionization_imposed_fractions` **48 passed, 0 failed** (31 on the
+entry text). None of the new rows can be run against the entry text at all,
+where `ic_HeII`, `ic_HeIII`, `x_heii_fixed` and `x_heiii_fixed` do not exist
+and both suites fail to compile; what stands in their place are the two rows
+that are RED by construction and keep measuring the two mistakes the
+construction avoids. `operator_stage_rows_ride_on_their_own_element_flux`
+0.0000 bitwise against 1e-14,
+`operator_stage_sum_is_the_hydrogen_nucleus_flux` 2.2113e-16 and
+`operator_stage_sum_is_the_helium_nucleus_flux` 3.3525e-16 against 1e-13,
+`helium_stages_are_returned_to_one_shared_simplex` 0.0000 against 1e-15;
+against them `charging_helium_to_the_hydrogen_flux_breaks_the_sum` reads
+1.2614e+00 and `projecting_each_helium_stage_alone_leaves_the_sum` 4.0000e-01,
+both of which must exceed 1e-3, the second being a cell holding 1.4 of its
+helium nuclei in ionized stages. Every other suite that links a changed
+object passes: `carrier_reference_scales` 16, `steady_species_rows` 197,
+`element_operator` 40, `carrier_returned_state_acceptance` 36,
+`certification` 84, `attempted_step` 70, `physics_probe` 1604,
+`krylov_and_dogleg` 334, `state_mapper` 76, each with 0 failures.
+`carrier_retry` keeps one RED row, below; four `grid_and_gates`
+`route_change_*` rows fail on the ENTRY TEXT's refusal and not on anything
+this item changed (item L36e repairs the fixture), and
+`residual_determinism`'s `closure_spread_within_the_row_tolerance_atomic_elem_newton`
+reads the same 1.715e+04 on the measured and on the control build.
+
+**The anchoring measurement L12a section 2.4 and L36c owed, and what it
+returns.** It is made as a row of the stage-flux suite, so it is repeated
+whenever the suite runs: a manufactured ionization column over [1, 2] whose
+faces are the same two radii at every resolution, with
+`n_el(r) = 1e10 exp[-4(r-1)]` cm^-3, a divergence-free nucleus flux
+`N_el(r) = 1e13/r^2` nuclei cm^-2 s^-1, `K(r) = 1e12 r^2` cm^2 s^-1 and a
+monotone quintic `x(r)` with `x' = x'' = 0` at both ends, so the limiter never
+fires and the operator's own zero-eddy boundary rule is exact there. The row
+measure over the interior cells reads 7.2833e-06 at 250 cells
+(dr = 4.000e-3 R_p), 1.0135e-06 at 500 and 1.3327e-07 at 1000, observed order
+2.845 / 2.927 / 2.886, the reconstruction's own order, with the advective and
+eddy halves of the source within a factor 2.38 of each other. Extrapolated
+with that order to the 1.8447e-3 R_p spacing on which
+`cert_tol_carrier_wind = 1e-5` was anchored for a smooth ELEMENT column
+(`docs/certification_tolerance_anchoring_20260910.md` section 2 (3)) the stage
+column reads 7.80e-7, and a decade above it is 7.8e-6. **The rule of the
+anchoring memo, applied to a measurement of an IONIZATION row, returns the
+number the stage rows already carry, so 1e-5 is anchored for them and no
+tolerance was set or changed.** Two readings belong beside it: on the
+fixture's own Mixed grid the spacing at the gating radius
+(`cert_regime_wind_r = 1.20`) is 3.5215e-3 R_p, where the same column
+extrapolates to 5.04e-6 and the rule would give 5e-5, LOOSER than the gate in
+place, so the tighter reading stands; and a smooth column is a lower bound on
+the production discretization, as the anchoring memo says of its own. The
+stage-sum entry takes no tolerance and is left non-gating, the identity being
+exact in exact arithmetic: 2.21e-16 (H) and 3.35e-16 (He) on the suite's
+synthetic 500-cell column and 2.218e-16 and 4.266e-16 on the solved state,
+against 1.48e-4 to 3.62e-4 when the construction is broken. L36c's proposal
+of 1e-13 stands as a proposal.
+
+**Movement.** Against a control built from the entry text of every file of
+this item (md5 `91a0dca3daa3e72cf6ea5b61a16c52d6`, the binary L36c delivered;
+measured build `cf3d2941d1ebe7864f14bd411d5bdfb9`), key off and
+single-threaded: `wasp_full` at 400 steps, `mol_diffusion` and `mol_carrier`
+at 12000 steps each give byte-identical data rows in both output files.
+`hp_front` carries the key and moves by 1.600e-02 in `Hydro_ioniz.txt` and
+1.561e-01 in `Ion_species.txt` over 100 steps, and the movement is this item's
+physics: He III 1.561e-01 at cell 205 (2.471972e+00 to 2.086097e+00 cm^-3),
+He 2^3S and HeH+ 4.368e-02, He II 4.271e-02, H2+ 4.025e-02, H3+ 3.201e-02,
+He I 2.563e-02, cooling 1.600e-02, heating 3.341e-03, and every other column,
+H I and H II among them, below 1e-3. The helium ionization partition is what
+the flow accumulated instead of the local root, and the molecular ions that
+are functions of it follow. The state stays inside the simplex on the final
+`hp_front` state: no species column negative anywhere, `x(He II)` spanning
+5.10e-12 to 0.6500, `x(He III)` 4.88e-16 to 0.02451 with their sum at most
+0.6745, and `x(H II)` 1.53e-08 to 0.7716. The write-back moves charge and not
+nuclei: over the 500 physical cells n(He)/n(H) is 0.0793000000 with a spread
+of 2.945e-12 on the measured build against 2.895e-12 on the control.
+
+**The refusals that were kept, and why.** The atomic gas is still refused, and
+the blocker is NOT the imposition gate L36c named, which this item lifts.
+What remains, all read from the source, is that the operator has no caller in
+an atomic run (fourteen gate sites on `thereis_mol .and. carrier_transport` in
+`src/EXHALE_main.f90`, the marching operator-split step, the fixed-wind
+relaxation of the stationary route, the pass cap and eleven diagnostics and
+progress-control sites), no frozen background (`bg_cell` and `bg_ready` are
+filled only inside the molecular cell state, while `carrier_state` reads
+`bg_cell(j)%ntot` and `%T_K` for every cell), and no source outside the
+molecular network (`carrier_source` takes every stage's chemistry from
+`mol_heh_rows`). The refusal message now states the first of the three. Item
+L36e removes all three.
+
+**The one key-on solve, and the row that refuses it.**
+`backup/regression/carrier_model_a_newton` is the only fixture that admits the
+key with `Restart intent: stationary`, `Solver: Newton` and
+`Coupled carrier solve: False`. The state is NOT certified on either build,
+and the refusing row is `carrier balance He+`, at 9.99e-1 on pass 1 falling to
+5.09e-1 by pass 20 and standing at 7.74e-1 at pass 25, while the control
+build's `carrier balance H+` falls 2.17e-01 to 5.71e-04 over the same passes,
+every pass `hydro info=0` and every pass binding at cell 248, r = 1.2013, the
+first gated cell. The final certification of the measured build reads
+`carrier balance H2` 5.334e-06 (within), `carrier balance H+` 1.172e-02 at
+cell 124 and 2.256e-04 gated, `carrier balance He+` 1.000e+00 at cell 107 and
+7.736e-01 gated, `carrier balance He++` 5.767e-03 and 1.795e-04 gated,
+`ionization stage nucleus sum H` 2.218e-16 and `... He` 4.266e-16, and every
+hydrodynamic row within (4.617e-11 / 5.442e-13 / 3.355e-09); the control's
+`carrier balance H+` is 5.165e-02 with 5.708e-04 gated, so **the proton row is
+BETTER on the measured build at the gated cell and the He+ row alone refuses**.
+Read term by term from the row record, the He+ row is carried entirely by its
+chemistry, whose net source is 68 times the stage flux divergence at the gated
+cell and 5.0e4 times it in the shielded layer, while the two builds' helium
+compositions agree to 0.20 per cent at cell 248 (1.2951e+03 against
+1.2977e+03 cm^-3) and 0.23 per cent at cell 107. The same operator evaluating
+the same rows on the CONTROL's own state, so that only the state differs,
+gives `carrier balance He+` 4.151e-02 against 7.736e-01, a factor 19 lower and
+still three and a half decades above its 1e-5 gate: the row is not broken, and
+on this fixture no composition either route produces certifies it. The scale
+`carrier_residual` divides by is built from the NET source, and for a stage
+whose production and loss cancel to three decades the net is the same size as
+the residual. That is the one thing that decides whether the He+ row can ever
+certify, it is a change to a shared acceptance interface with its own
+anchoring, and it was not made here. **It is item D3 of
+`docs/PLAN_20260918_rev1.md`.**
+
+**The `carrier_retry` RED row, diagnosed.**
+`one_further_sweep_leaves_the_returned_composition_within_the_sweep_tolerance`
+reads 1.044879e-06 against `ieq_res_tol` = 1e-6 on the measured build,
+1.034627e-06 on the entry text and 2.685237e-07 one increment before it, the
+binding species being HeH+ at 1.33e-12 of the gas in the base cell. The
+verdict is **a seed that has not settled, in a self-coupled trace-ion chain,
+not the imposition of the transported fractions and not the sweep's own
+noise**, from four diagnostic measurements added to the fixture with no
+assertion and no tolerance touched. (1) At the binding cell the further sweep
+moves H I by 1.32e-11, H II by 1.39e-16, He I by 2.30e-16, He II by 2.13e-16
+and H2 by 1.86e-16, while H2+ moves 1.47e-08, H3+ 1.05e-07 and HeH+ 1.04e-06,
+a chain with a factor 7 to 10 per link whose every parent moves at 1e-11 or
+below. (2) The chain closes on itself: with n_e = 1.197e+05, H+ = 5.636e+04,
+H2+ = 3.450e+01, H3+ = 6.312e+04 and HeH+ = 1.226e-02 cm^-3, H3+ carries 53
+per cent of the electrons and the imposed proton the rest, so re-solving the
+trace molecular ions moves the electron density their own balances read.
+(3) It settles: a THIRD sweep moves the composition by 1.0085e-10, four
+decades below the second, where arithmetic noise would repeat. (4) It is not
+the imposition: the same sweep with the transported fractions NOT imposed
+moves the composition by 1.5067e+08, its worst being He III at cell 4, the
+local root of the helium ionization there being eight decades from the
+transported value. The tolerance and the 1e-20 presence threshold were not
+touched; the returned-state closure contract this row reads on is item **D4**
+of `docs/PLAN_20260918_rev1.md`.
+
+**One defect fixed beside the stage work.**
+`carrier_ionization_stage_projection` wrote into an unallocated cell record
+(`pct_cell_constrained`, which only `limit_to_element_budget` allocated), so a
+caller that projected on its own segfaulted; the routine now allocates it.
+Found by the new acceptance row that calls it directly.
+
+**Record.** `docs/lhs1140b_stationary_L36d_20260918.md`. Goldens were not
+refreshed and `EXHALE.x` was not written; `hp_front`'s golden is now stale by
+1.6e-1 in the helium columns and joins the two L36c reported.
+
+### L36e: the atomic run carries the three stages, and the certified state answers stages D and F
+
+**Verdict: the atomic run carries the three ionization stages, and the state
+it converges is CERTIFIED.** On the certified atomic fiducial
+`LHS1140b/models/.L26/fid_resolve` with `Ionization transport: True` through
+the partitioned stationary route, the outer iteration accepted at **pass 56**
+with `info = 0`, the three stage rows at 8.620e-07 (H+), 7.147e-07 (He+) and
+2.360e-06 (He++) against 1e-5 and the two stage-sum entries at 2.161e-16 and
+3.078e-16.
+
+**What changed.** `ionization_equilibrium.f90` (+124/-88) gains the public
+predicate `transported_rows_exist()`, "the transport-chemistry operator has a
+row to solve", and puts the frozen background `bg_cell(j) = ieq_cell` and
+`bg_ready` on it instead of on `thereis_mol`, with the four keep, adopt and
+install routines of the stationary background; the cell temperature and gas
+particle density are set for any gas and the ionization-stage flags and
+imposed fractions move out of the molecular cell state. `src/EXHALE_main.f90`
+(+24/-18) replaces thirteen gate sites on `thereis_mol .and. carrier_transport`
+by that predicate, two sites keeping the molecular condition and now saying
+why. `diffusive_photochemistry.f90` (+135/-31) states the split in
+`carrier_set_init` (molecular carriers where the network exists AND is
+transported, the three stages on their own key), puts the operator's three
+entry conditions on the predicate, takes the atomic H and He rows from
+`heh_tr_rows`, adds the He/H charge exchange in both gases, and makes the row
+record print the scale the acceptance divides by. `input_read.f90` (+42/-33)
+lifts the atomic refusal and keeps, with its real reason, the refusal for a
+molecular gas whose carriers are not transported;
+`write_setup_report.f90` (+34/-20) moves the ionization-transport block out of
+the molecular one and names the source of a stage row in each gas. Four files
+outside the item's list were required and are reported as their own item:
+`certification.f90` (+6/-5, four gate sites, without which an atomic key-on
+run's certification would print the three `carrier balance` entries as "the
+run does not carry this species", skip both stage-sum entries, and let the
+progress control call a state certified on the hydrodynamic rows alone),
+`load_IC.f90` (+21/-13, `iontrans` removed from `opt_changes_layout`),
+`carrier_retry/carrier_retry.f90` (+26/-6) and the
+`carrier_returned_state_acceptance` fixture (+9/-2).
+
+**Tests.** The new `src/tests/grid_and_gates/ionization_transport_atomic.sh`,
+registered as `iontrans_atomic`, is GREEN on the measured build and RED on the
+control on its first four rows: `ionization_transport_atomic_runs` PASS at
+rc = 0 with no refusal against FAIL at rc = 1 refused in `input_read`;
+`..._setup_names_rows`, `..._stage_sum` (2 entries against 0) and
+`..._rows_measured` (3 rows evaluated against 0) likewise. The fifth row,
+`ionization_transport_molecular_local_refused`, passes on both builds, which
+is the refusal that is KEPT. **The four `grid_and_gates` `route_change_*`
+rows L36d left failing are GREEN on BOTH builds**: their block tests the route
+token and nothing about the ionization stages, and it built its rungs from
+`carrier_model_a_newton`, which carries `Ionization transport: True`, so rung
+B's `Coupled carrier solve: True` hit L36c's refusal; the block now runs on
+`carrier_elem_newton`, which admits both routes and carries no ionization key.
+That the rows pass on the control build too is how one can tell the fixture
+was the defect; the refusal was not lifted. Every suite whose driver links a
+changed object passes: `ionization_stage_flux` 38, `ionization_imposed_fractions`
+48, `steady_species_rows` 201, `element_operator` 40, `certification` 84,
+`attempted_step` 70, `state_mapper` 76, `grid_and_gates`
+(`restart_option_change` + `iontrans_atomic` + `carrier_transport_inert`) 29,
+`steady_completion_flag` 3 and `steady_selfconsistent_residual` 7 on the
+certified run's own log, each 0 failed. `carrier_retry` keeps its one RED row
+and `coupled_block_jacobian` two, both on the measured and on the control
+build.
+
+**Movement.** Control `cf3d2941d1ebe7864f14bd411d5bdfb9` (the binary L36d
+delivered), measured `6a36529386102b37a38cb40fde0a611c`. Key off,
+byte-identical: `wasp_full` at 400 steps and `mol_diffusion` and
+`mol_carrier` at 12000 each give byte-identical data rows in both output files
+and identical step lines. The one key-on fixture,
+`carrier_model_a_newton`, moves by 4.2725e-05 in `Hydro_ioniz.txt` and
+1.2479e-04 in `Ion_species.txt`, and that movement is the He/H charge exchange
+(Huang et al. 2023 Table 4 group B) now entering rows (1) and (2) of the stage
+sources: the largest movers are n(He II) 1.2479e-04, n(H I) 2.5916e-05,
+n(He III) 1.6337e-05 and n(HeH+) 1.1289e-05, exactly the species that pair
+couples.
+
+**The 25-pass front.** Twenty-five outer passes, the bound the brief named,
+are not enough, and the reason is a relaxation front and not a refusing row.
+Over passes 1 to 25 the worst gated species row falls only 3.51e-02 to
+1.76e-02 while the cell that binds it marches OUTWARD from 217 to 491, about
+3.3 cells a pass: the restart's local-equilibrium ionization is being replaced
+by the transported partition and the front has to cross the column first. It
+reaches the outer boundary at pass 26, and from there the measure falls
+monotonically, 1.75e-02 at 26, 1.27e-02 at 40, 8.73e-03 at 45, 2.03e-03 at 50
+and 8.68e-06 at 56, where the state is accepted. At 25 passes the refusing
+rows are `carrier balance H+` 9.209e-03 at cell 445, `He+` 6.622e-03 at 464,
+`He++` 1.760e-02 at 491 and `elemental transport He/H partition` 2.256e-05 at
+339; the transport divergence stands 13 to 29 times the net chemical source at
+those cells and the residual IS that divergence, while on the certified state
+the two balance to eight digits. **A campaign that judges this configuration
+at 25 passes reads a front and not a solution.** On this configuration the
+row scale that refuses L36d's hot Uranus does not bite: the He+ row certifies
+four decades under its gate.
+
+**The certified state.** `carrier balance H+` 8.620e-07 at cell 150, `He+`
+7.147e-07 at 177, `He++` 2.360e-06 at 183, `ionization stage nucleus sum H`
+2.161e-16 at 294 and `... He` 3.078e-16 at 166,
+`elemental transport He/H partition` 8.679e-06 at 500, `level balance He 2^3S`
+7.263e-21 at 442, `eliminated-species closure System_HeH_TR` 5.043e-15 at 495,
+and the hydrodynamic rows at 5.670e-10 / 9.788e-12 / 1.045e-08. The
+stage-sum identity holds to roundoff on a solved state, against the 1.5e-4 to
+3.6e-4 the suite's RED rows read when the construction is broken.
+
+**Stage D is closed, on the negative side.** On the certified state, the first
+state whose three ionization fractions meet their own gate, the He 2^3S radial
+column over 1 to 29.03 R_p reads 8.0846e+10 cm^-2 from the solution against
+8.0949e+10 from its `_adv` profile, a difference of **0.127 per cent**, twenty
+times below the 5 per cent promotion rule of L12a section 3: **the He 2^3S
+level is NOT promoted to the carried set.** For contrast the same column of
+the local-equilibrium closure reads 4.9257e+11 against its `_adv` 8.0109e+10,
+the factor 6.15 L36 measured, reproduced here.
+
+**Stage F, and what the factor 13.12 was.** The He I 10830 equivalent width,
+by the definition that reproduces L36's two numbers to four figures:
+
+| state | EW [percent A] | max depth |
+|---|---:|---:|
+| local-equilibrium solution (key off) | 20.3950 | 66.1194 |
+| its `_adv` profile | 1.5544 | 5.1959 |
+| transported solution at 25 passes (not certified) | 2.9823 | 10.4172 |
+| **transported solution, certified** | **1.3678** | **4.5745** |
+| its own `_adv` profile | 1.4053 | 4.7338 |
+
+Behind them, `x(H II)` reaches 0.0583 on the certified transported state
+against 0.6657 on the local-equilibrium one, and `x(He II) + x(He III)`
+reaches 0.1888 against 0.9117. **L36's factor 13.12 between the solution and
+its `_adv` profile is a property of the local-equilibrium closure, and
+carrying the stages removes it**: the transported solution and its own `_adv`
+profile differ by 2.7 per cent.
+
+**The validity range, restated beside the result.** The ambipolar drift of an
+ion against its own neutral stays below 0.1 of the bulk velocity only inside
+1.220 R_p (H) and 1.243 R_p (He) without the resonant charge-exchange channel
+and 1.231 and 1.273 R_p with it; over r >= 1.2 R_p it reaches 0.625 and 0.430,
+and 0.518 and 0.336 with the resonant channel. The momentum transfer is fast
+(`t_coll/t_flow < 0.1` inside 14.51 R_p for H and 8.25 R_p for He), so the
+stages are collisionally locked in TIME SCALE and still drift; above about
+13 R_p the continuum equation is itself unvalidated by the run's own Knudsen
+measure (max Kn 0.88). The certified state therefore solves an equation whose
+one-velocity closure is exact only inside about 1.2 R_p, with a neglected
+drift of order 0.02 to 0.6 of the advective stage flux over the range the
+stages are carried.
+
+**Six defects found and fixed, a separate item from the stage work.**
+
+1. **An out-of-bounds write in the update-map diagnostic**
+   (`EXHALE_main.f90`): `res_um_all` and `terms_um_all` were allocated
+   `(1:N,4)` and handed to a dummy of `(1:N,n_carrier_max=7)` whose first
+   statement zeroes the whole dummy, 3N doubles past the end of both arrays,
+   wrong since the carrier set grew past four. Allocated by `n_carrier_max`.
+2. **The gas particle density was zero in every atomic run**
+   (`ionization_equilibrium.f90`): `calc_ntot` was called only under
+   `thereis_mol`, so an atomic run's frozen background carried `ntot = 0`, the
+   pressure its sweep retry forms was the electron pressure alone, and the
+   operator's `wfac = rho n0/max(n_tot,1e-99)` would be of order 1e99 for any
+   row that read it. The stage rows do not read it, which is why nothing
+   measured here moves. The particle density is now formed in every gas from
+   the one stoichiometric sum, and `wasp_full` (atomic, helium, He 2^3S and
+   metals) is BYTE-IDENTICAL across the change, so no existing run moves.
+3. **The carrier row record did not print the scale the acceptance divides
+   by**: the writer rebuilt a scale from the flux DIVERGENCE while
+   `carrier_residual` builds it from the two face fluxes by their magnitudes.
+   At the H+ binding cell of the 25-pass state the record read 0.934 where the
+   certification read 9.209e-03 for the same row of the same state, a factor
+   101 from the cancellation of the two faces. The record now carries
+   `row_terms_phys` itself and reproduces the certification's three gated
+   numbers exactly. (L36d's diagnosis table quotes that record's old,
+   divergence-based measure; its gated numbers from the certification are
+   unaffected.)
+4. **The proton's record invented no split and printed none**: in an atomic
+   gas `heh_tr_rows` returns the rows and not their halves, so the H+
+   production and loss were both written as zero while the row's source was
+   not. The proton now carries its split where `mol_heh_rows` hands one out
+   and its net on the side its own sign falls where none exists.
+5. **`iontrans` was classified as a layout-changing restart token**
+   (`load_IC.f90`), which refused the restart in both directions and made the
+   two notes printed beside it unreachable. It is not one: n(H II), n(He II)
+   and n(He III) have a column in every state file this code writes. The four
+   tokens that DO change the columns (`metals`, `mol`, `oxychem`, `carrier`)
+   are unchanged. Without this the fiducial could not have been restarted with
+   the key on at all.
+6. **The He/H charge exchange was missing from the stage row sources**, while
+   every ionization system carrying helium adds it to rows (1) and (2) and it
+   is on by default. Fixed in both gases; this is the 1.2479e-04 movement of
+   `carrier_model_a_newton`. Three statements naming the proton a molecular
+   carrier were corrected in place with it.
+
+**What is still absent, and where it belongs.** The metal charge exchange is
+absent from the stage row sources: `cx_add_to_fvec` writes group A
+(metal + H/H+) into row 1 and groups C and D into rows 2 and 3 of every metals
+system, and `carrier_source` does not call it, so in a run WITH metals the
+stage sources and the sweep's rows differ by those terms. The fiducial is
+metal-free, so nothing measured here is affected; adding it needs the frozen
+metal densities per stage and the `cx_metal_base` layout of the system being
+judged, neither of which the transport operator holds. **It is item D7 of
+`docs/PLAN_20260918_rev1.md`.**
+
+**Four key-on goldens are stale**: `hp_front`, `hp_zero_seed` and
+`hp_trace_seed` from L36c and L36d, and now `carrier_model_a_newton` by
+1.2e-04. One refresh at the close of the series; none taken here.
+
+**Record.** `docs/lhs1140b_stationary_L36e_20260918.md`; the key's
+documentation is the K15f row of `docs/input_schema.md`, rewritten again
+around the atomic configuration, the row source in each gas, the refusal that
+is kept and `iontrans` as a nameable restart token.
+
+### L37: the round trip of the molecular base mass row, and the probe that can be pointed at a state
+
+**Verdict: the molecular base's re-entry band is a decade above the atomic
+one, and it is a transient of the re-entry and not a property of the state.**
+On the six certified molecular states in hand the cell-1 hydrodynamic mass row
+comes back from a single no-step re-entry at **2.39 to 10.09 times** the value
+the run printed for the same cell, and at 16.0 to 31.2 times that cell's own
+rounding floor, where the tolerance is ten floors. On three certified ATOMIC
+states of the same planet, the same grid and the same `K_zz` the ratio is
+**0.68 to 1.35** and the row stands at 0.21 to 1.52 floors, which is L18's
+0.78 to 1.71 band met again. Every measurement was taken with
+`LHS1140b/models/EXHALE_3146d11b.x`, md5
+`3146d11b4090306dcea75bb9718edd22`, single-threaded on scratch copies; no
+tolerance, anchor or key default was changed.
+
+| state | cell | in-run | E1, one re-entry | E4, settled | floor | E1/in-run | E1/floor | E4/floor |
+|---|---|---|---|---|---|---|---|---|
+| `heh213_new` | 1 | 5.213e-09 | 1.2475e-08 | 5.5734e-09 | 7.8046e-10 | **2.39** | 15.98 | 7.14 |
+| `heh213_pre` | 1 | 3.616e-09 | 1.7031e-08 | 3.0823e-09 | 7.6854e-10 | **4.71** | 22.16 | 4.01 |
+| `heh97_new` | 1 | 2.319e-09 | 2.3398e-08 | 1.7066e-09 | 7.4894e-10 | **10.09** | 31.24 | 2.28 |
+| `heh97_pre` | 1 | 2.330e-09 | 1.6456e-08 | 3.7884e-09 | 7.4264e-10 | **7.06** | 22.16 | 5.10 |
+| `heh055_new` | 1 | 1.065e-08 | 2.5454e-08 | 5.0843e-09 | 1.2867e-09 | **2.39** | 19.78 | 3.95 |
+| `i3_alt` | 1 | 3.249e-09 | 1.4863e-08 | 6.3734e-11 | 7.8046e-10 | **4.57** | 19.04 | 0.08 |
+| `at213` | 1 | 1.189e-09 | 1.2016e-09 | 1.1852e-09 | 7.9044e-10 | **1.01** | 1.52 | 1.50 |
+| `at97` | 2 | 1.481e-09 | 1.9924e-09 | 1.9924e-09 | 7.9345e-10 | **1.35** | 2.51 | 2.51 |
+| `at055` | 1 | 7.414e-10 | 5.0212e-10 | 5.0212e-10 | 6.7147e-10 | **0.68** | 0.75 | 0.75 |
+
+**The settled readings.** Feeding the evaluation its own written state again
+and again, the row settles: four of the six molecular states reach a reading
+that repeats exactly by the third or fourth re-entry, and at that reading cell
+1 stands at 0.08 to 7.5 floors, **inside the existing anchor on every one of
+the six**. `heh213_new` goes 1.2475e-08, 7.0724e-09, 5.5734e-09, 5.5734e-09;
+`heh97_new` 2.3398e-08, 2.3132e-09, 1.7066e-09, 1.7066e-09; `i3_alt`
+1.4863e-08, 1.1231e-09, 6.3734e-11, 6.3734e-11. Two do not settle at cells
+the verdict does not take, `heh213_pre` and `heh055_new`. The atomic states
+are at their settled reading on the FIRST re-entry, `at97` and `at055`
+reproducing their own output exactly at every one of the ten cells and `at213`
+alternating between two values 1.4 per cent apart. The settled molecular
+reading also agrees with what the run itself printed, 5.5734e-09 against
+5.213e-09 on the reference solution, a factor 1.07. The measurement also
+identifies what L34b's third reading was: `EXHALE_RESIDUAL=1` equilibrates the
+loaded composition before measuring, so with `EXHALE_RELOAD_EQ=0` it is the
+evaluate route to every printed digit and with the default it is the SECOND
+re-entry, 7.0724e-09 on `heh213_new`, the 7.072e-09 L34b reported. Anything
+quoting the residual diagnostic beside the evaluate route should say which of
+the two it ran.
+
+**The mechanism: the base ghost composition and the caloric equation of
+state.** The physical cells round-trip exactly, `rho`, `v` and `p` of cells 1
+and 2 coming back to all 17 digits and the composition of cell 1 to 1.7e-16.
+What does not come back is the pair of inner GHOST rows: ghost -1 moves by
+2.90e-11 in `v`, 1.82e-11 in `p` and 9.89e-12 in T, ghost 0 by 2.90e-11 in
+`v`, and in the composition file ghost -1 by 9.139e-06 (the He 2^3S column)
+and ghost 0 by 4.835e-08 (H I). Exchanging the two halves shows they are the
+carrier: giving the settled state the ARCHIVED ghost composition rows
+reproduces the archived reading 1.2475e-08 exactly, and giving the archived
+state the settled ghost composition gives 7.0724e-09. Scaling one ghost
+column by `1 + eps` makes the response linear with **slope 0.30 to 0.33** of
+the row's own scale per relative unit of the ghost H2 (3.3171e-07 at
+eps = 1e-06 and 3.5562e-08 at 1e-07, against 5.5734e-09 unperturbed), so a
+ghost H2 count off by 1e-08 is four rounding floors of the cell-1 mass row and
+the measured ghost drift is of that size. The atomic response is unmoved at
+the printed precision up to eps = 1e-06, a hundred times the molecular
+perturbation that matters, and the ghost pressure and velocity columns are
+inert in both, the base boundary rebuilding them. The reason is in the
+pressure map: where `caloric_mixture_active` is false the map is
+`(gamma_ad - 1) rho e` and carries no composition, while the inner ghost of
+these molecular columns is `2 n(H2)/n_H = 0.99998`, so its pressure, its sound
+speed and therefore the base face flux of the HLLC solve are functions of its
+H2 count; at a base Mach number of 3e-05 a part in 1e8 of the face state is a
+part in 1e3 of the difference of two face fluxes. The Mach number is not what
+separates the two groups (molecular base cells run at 2.7e-05 to 3.1e-05 and
+atomic ones at 1.8e-06 to 1.1e-05, so `eps/Mach` is if anything smaller in the
+molecular base, and the rounding floors agree within a factor 2 across all
+nine states); what differs is what a base face flux is a function of. The
+composition refresh of the physical cells is innocent: no key skips the one
+equilibrium sweep, and the sweep moves the physical particle count by
+1.295e-13, which at the amplification above is 4e-14 of the row, five decades
+below the 6.9e-09 the re-entry moves it.
+
+**`c_round = 100`, proposed for the record and not adopted.** Applying anchor
+(6) of `docs/certification_tolerance_anchoring_20260910.md` with the re-entry
+as the perturbation, the largest ratio is 31.24 and P16's own margin of 3.7
+above it gives 116, a round **100** where the code carries 10. **The rule does
+not make that choice unambiguous**, because it fixes the margin above a
+measured ratio but not which perturbation the ratio is measured under: one ulp
+of the density is a perturbation the arithmetic forces on any evaluation and
+no re-evaluation removes it (P16 measured 1.5931, 1.8857, 2.6806 and 1.7733 on
+four states), while the restart round trip is not forced and two further
+re-entries of the same state remove it. Anchoring on the second would widen a
+gate to admit a restart that does not reproduce its own base ghost, which the
+standing rule forbids, so the number is reported and NOT proposed for
+adoption. The three ways out stated for the user are to make the restart carry
+its base ghost (at which the existing `c_round = 10` passes every molecular
+state measured here with a margin of 1.3 to 125), to make the certification's
+input the route's own fixed point (a contract change, two extra no-step
+evaluations at about 7 s each), or to re-derive `c_round` on the round-trip
+perturbation. The contract question the measurement leaves is not about the
+sweep but **what a restart pair must carry so that the base face flux of a
+molecular column is the same flux after a write and a read**, and it is item
+**D5** of `docs/PLAN_20260918_rev1.md`. Two certifications inside one run, of
+one conserved state, already differ by a factor 4.3 at the base cells while
+agreeing to four digits at the verdict cell, so the re-entry is where the
+movement is measured and not where it begins.
+
+**The probe can now be pointed at a state.**
+`src/tests/physics_probe/molecular_energy_recipients.f90` (+745/-2 against the
+last commit, of which the reader is this item's) held its three representative
+cells as `real*8, parameter` arrays transcribed by hand, so every re-solve of
+the molecular fiducial made the L31 uncertainty bracket stale. It now reads
+them: `EXHALE_PROBE_STATE` names a directory and the pair read is
+`{Hydro_ioniz_IC.txt, Ion_species_IC.txt}`, the state a run hands back; unset,
+the compiled values stand and nothing is read, so the suite runs with no state
+in the tree. The species columns are taken BY NAME from the file's own
+`# columns` header, and the electron density and particle count are formed as
+the code's mass policy forms them. The three cells are a rule: molecular depth
+is physical cell 1, the H2 front is the first cell where `2 n(H2)/n_H` has
+fallen to half its value at cell 1 (L31 section 5.4's own definition), and the
+dilute upper column is the cell nearest
+`r_dilute_upper_column = 1.8422600916216840` R_p, which is the choice
+itself, no threshold on the profile picking that cell because `2 n(H2)/n_H` is
+flat and rising outward there (3.43e-06 at cell 296 to 3.88e-06 at cell 303).
+Pointed at `HeH2.13/output_pre_L34` the reader reproduces the compiled values
+at **0.00000E+00 over all 33 numbers**, cells 1, 178, 299 at 808.319,
+2128.367 and 5083.438 K; pointed at the L34b solution it gives cells 1, 177,
+299 at 778.79, 2116.61 and 5061.59 K, a distance of 3.41525E-01 from the
+compiled values, and reproduces L34b block G (the helium third body at the
+depth +42.05 / -21.07 per cent of a nominal heat of 1.04863e-06, against
+L34b's +42.0 / -21.1; the R5/R16 recipient at the front +4.37 per cent of
+8.60218e-09, against +4.4). Pointed at an atomic state the driver stops with
+`FAIL probe_state_has_no_column_H2` and at a directory with no state pair with
+`FAIL probe_state_file_unreadable`, rather than reading a zero. Suite with the
+variable unset: `src/tests/physics_probe/run.sh` **1604 PASS, 0 FAIL**, this
+driver contributing the 81 assertions L34b counted; the driver alone, pointed
+at each of the two molecular states, 81 PASS, 0 FAIL. No control run of the
+entry text was taken, because the file in the tree already stood ahead of the
+last commit through other items' work.
+
+**Record.** `docs/lhs1140b_stationary_L37_20260918.md`, which carries every
+table in full. `docs/lhs1140b_stationary_L31_energy_cycles_20260917.md`
+section 5.4 now states that no rule drawn from the profile picks the dilute
+upper column and that the radius is the choice.
+
+### L34b: the molecular reference solution, certified at pass 12
+
+**Verdict: `molecular_scalar_gj1132_kzz1e9/HeH2.13` CERTIFIED at outer pass
+12**, `info = 0`, `\|\|R\|\| = 1.417e-08`, in 40 m 35 s at 8 threads, seeded
+from its own archived certified state, which the current binary refuses on the
+energy row at 4.267e-01 at cell 203 exactly as L29 records. `HeH9.7`
+certified the same way at **pass 10** in 25 m 35 s. Binary
+`3146d11b4090306dcea75bb9718edd22` for every run; no source file was edited,
+no tolerance weakened, nothing under `backup/regression/` touched. Of the
+other four cases of the step, `kzz1e9/HeH0.55` ran 6 passes in 3 h 35 m and
+did not solve, `photochem/HeH9` one pass at each of two pseudo-time starts in
+1 h 04 m, `photochem/HeH2.09` no completed pass in 1 h 55 m, and the three
+`molecular_scalar_gj1132_wellmixed` cases were not started, the L33 ladder
+they need being five rungs at 25 passes each. Each case that did not solve
+carries a `not_solved.md` in the catalog's form.
+
+**The acceptance table of the reference solution.**
+
+| acceptance item | answer |
+|---|---|
+| `info = 0` | yes, `\|\|R\|\| = 1.417e-08` at pass 12 |
+| CERTIFIED on every gated row at the existing tolerances | yes: mass at binding cell 188, 0.919 of its anchor; momentum 5.588e-12 of 1e-08; energy 1.417e-08 of 1e-06; carrier balance H2 8.172e-06 of 1e-05; elemental transport He/H 6.379e-08 of 1e-05 in the gated window; He 2^3S level 1.824e-19 of 1e-06; eliminated-species closure 1.665e-16 of 1e-06; 0 cells without a chemical root, 0 unbudgeted accepted corrections, no active unvalidated physics |
+| the L27 face-flux budget | printed on the solved state: WENO3, HLLC, well balanced; window mean 5.73832e-07; minimum 0.9999733285494139 at face 0, maximum 0.9999733424100231 at face 92, base face 0.9999733285494139, offset -2.66715e-05. One number across the whole column, base face included, to 1.39e-08 of the wind's |
+| the energy balance closed cell by cell | yes, by the code's own operator with no step taken: cell-wise maximum 1.4464e-08 at cell 31 against 1.0e-06, column integral 7.0167e-10, and by window 3.48e-09 / 9.39e-10 / 1.27e-10 / 4.54e-11 |
+| the same balance assembled outside the binary | from `Heating_breakdown.txt`, `Cooling_breakdown.txt` and the hydro columns through `examples/exhale_io.py`, closing to 1.6e-03 in the far wind and a median 4.5e-05 in the layer, **which is that assembly's own floor and not the state's**: the same assembly on the REFUSED seed state gives the same six numbers to two digits. Two causes identified (the run's face flux is the HLLC upwind state of a WENO3 reconstruction while this one is a centered interpolant, and the base terms cancel to twelve digits). The code's own operator is the gate |
+| the L31 collider sum on the solved state | yes: chemistry against the routine 0.0 exactly, the carrier row's R15 channel 0.0 exactly, the heat ledger 1.015357541515134e-06 measured and expected to 1e-14 relative |
+| the L31 uncertainty bracket on three of its cells | yes, on the solved state's molecular depth (778.79 K), H2 front (2116.61 K) and dilute upper column (5061.59 K): helium third body +42.0 / -21.1 per cent at the depth, the R5/R16 recipient +4.4 per cent at the front and +130 per cent in the dilute column, every other term 1e-07 or smaller; all 81 assertions pass |
+| the probe taking a state | **it does not.** The three cells were compile-time arrays, so the blocks were run through a scratch COPY of the suite with those eleven arrays replaced and the tree was not edited; the same copy built from the ARCHIVED values reproduces the L31 memo's sections 5.3 and 5.5 exactly, which is the control. Item L37 gives the probe its state reader |
+| the He I 10830 EW through `run_case.sh` | 1.5603 percent A over 10832.60 to 10834.20 A (air), R = 68 000 WINERED HIRES-Y |
+| passes and wall clock | 12 outer passes, 40 m 35 s at 8 threads |
+
+**The comparison, archived against new, with the L31 uncertainty beside it.**
+
+`molecular_scalar_gj1132_kzz1e9/HeH2.13`:
+
+| quantity | archived (`c2e9c9990b9f`) | this item (`3146d11b4090`) | change | L31 uncertainty |
+|---|---|---|---|---|
+| log10 Mdot [g s^-1] | 7.90907 | 7.90239 | -1.53 per cent in Mdot | -- |
+| He I 10830 red-pair EW [percent A] | 1.57583 | 1.56032 | -0.99 per cent | -- |
+| red-pair depth [per cent] | 5.62817 | 5.57130 | -1.01 per cent | -- |
+| FWHM [A] | 0.262836 | 0.262836 | 0.00 per cent | -- |
+| base T [K] | 808.319 | 778.792 | -3.65 per cent | set by the base heat below |
+| base heating rate [erg cm^-3 s^-1] | 1.12791e-06 | 1.06477e-06 | -5.60 per cent | **+42.0 / -21.1 per cent** (helium third body) |
+| `2 n(H2)/n_H` at cell 1 | 0.355303 | 0.335357 | -5.61 per cent | the same |
+| H2 front, `x2 = 1e-2` [R_p] | 1.16256 (cell 205) | 1.15973 (cell 204) | one cell | -- |
+
+`molecular_scalar_gj1132_kzz1e9/HeH9.7`:
+
+| quantity | archived | this item | change | L31 uncertainty |
+|---|---|---|---|---|
+| log10 Mdot [g s^-1] | 7.94648 | 7.94282 | -0.84 per cent in Mdot | -- |
+| He I 10830 red-pair EW [percent A] | 2.42118 | 2.40606 | -0.62 per cent | -- |
+| red-pair depth [per cent] | 7.68280 | 7.62903 | -0.70 per cent | -- |
+| FWHM [A] | 0.295123 | 0.295627 | +0.17 per cent | -- |
+| base T [K] | 567.526 | 522.193 | -7.99 per cent | set by the base heat below |
+| base heating rate [erg cm^-3 s^-1] | 6.31976e-07 | 5.51060e-07 | -12.80 per cent | **+42.0 / -21.1 per cent** |
+| `2 n(H2)/n_H` at cell 1 | 0.0779932 | 0.0675867 | -13.34 per cent | the same |
+| H2 front [R_p] | 1.05626 (cell 145) | 1.05333 (cell 142) | three cells | -- |
+
+Two readings of the pair. **The L7g corrections land in the base and the
+colder the base the larger they are**, -3.7 per cent in base temperature at
+He/H = 2.13 and -8.0 per cent at 9.7, against -1.5 and -0.8 per cent in the
+mass-loss rate and -1.0 and -0.6 per cent in the equivalent width: the line
+forms far above the layer that moved. And **the uncertainty of the base
+chemical heat is eight times the change the re-solve made in it**, the helium
+third body's +/-0.3 dex moving that heat by +42 and -21 per cent against the
+re-solve's -5.6 per cent; that is what the memo quotes beside every molecular
+number. The reference solution also reproduces the L22 I3 solution on the
+predecessor binary to four digits (base T 778.79 against 778.792, front
+1.1597 R_p at cell 204 against 1.15973 at cell 204, log10 Mdot 7.9024 against
+7.90239, EW 1.5599 against 1.56032), the largest difference being 0.03 per
+cent in the equivalent width.
+
+**The one acceptance item that does not come back clean.** The no-step
+evaluate route `run_case.sh` runs after the solve REFUSES the state on one
+entry of the seven: the hydrodynamic mass row at cell 1, 1.248e-08 against
+that cell's own rounding anchor 7.8e-09, the accepted pass having printed
+5.213e-09 there, a factor 2.39 across the re-entry against the 0.78 to 1.71
+band L18 measured over 120 certified ATOMIC states. Six of the seven come
+back where they were, and `HeH9.7` behaves the same way (2.340e-08 against
+7.5e-09). Cell 1 carries `v = -1.9 cm s^-1` against a wind of 1.2e+05
+cm s^-1 and lies far below the r >= 1.20 window every gated species row is
+judged in, so this is the cancellation of the base and not a second opinion
+about the wind. Item L37 measures the band and its mechanism; the contract
+question is item **D5** of `docs/PLAN_20260918_rev1.md`.
+
+**What was written.** `models/status.py --write` regenerated `MODELS.md`
+sections 7 and 8; `LHS1140b/make_memo_figures.py` regenerated the twenty
+`docs/figures/lhs1140b_*.pdf`, of which twelve changed when compared page by
+page, most of them drawing ATOMIC cases whose state files were rewritten in
+the same hours by the L34 steps 1 and 2 worker, so those changes are not
+claimed here; `latexmk -pdf docs/lhs1140b_exhale_vs_pwinds.tex` built cleanly
+at 80 pages, the same count as before. Also written: three `not_solved.md`
+files, two `REPRODUCE.md` written by their own runs and naming md5
+`3146d11b4090306dcea75bb9718edd22`, `output_pre_L34/` beside each of the five
+cases touched, and `docs/figures/lhs1140b_L34b_reference.png`.
+
+**Record.** `docs/lhs1140b_stationary_L34b_20260918.md`.
+
+### L34c: the remaining molecular cases, and the two seeding routes the restart contract refuses
+
+**Verdict: none of the six cases certified, one new certified solution was
+produced as a seed, and two of the three seeding routes the item was offered
+are inadmissible by the restart contract, which is the substantive finding.**
+Binary `3146d11b4090306dcea75bb9718edd22`, verified before the first run; the
+only source file changed is `models/status.py`.
+
+| case | seed | passes | wall clock | verdict and where it stopped |
+|---|---|---|---|---|
+| `molecular_scalar_gj1132_kzz1e9/HeH0.55` | the certified reference `kzz1e9/HeH2.13`, `--reservoir He/H 0.55` | 6 | 6 h 01 m | not solved; carrier row 8.40e-01 to 7.09e-02 at pass 5 and back to 1.19e-01, hydrodynamic solve `info = 2` at every pass; stopped at the ceiling |
+| `molecular_photochem_gj1132_kzzprofile/HeH9` | the certified wind of its atomic pair, `atomic_photochem_.../HeH9/k04` | 1 at each of two pseudo-time starts | 37 m 41 s | not solved; REFUSED, the element relaxation found no admissible advance and restored its entry composition; mass row 2.848e-01 at cell 2, energy 3.167e-01 at cell 43 |
+| `molecular_photochem_gj1132_kzzprofile/HeH2.09` | the certified wind of its atomic pair, `.../HeH2.09/k05` | 12 | 6 h 00 m | not solved; carrier row a band, 1.85e-01 to 4.42e-01, ending 3.07e-01; stopped at the ceiling |
+| `molecular_scalar_gj1132_wellmixed/HeH2.13` | the atomic-to-molecular conversion of `.L34/atomic_wm2.13` | 7 | 6 h 01 m | not solved; wind converged from pass 3, carrier row flat at 4.29e-01 from pass 5; stopped at the ceiling |
+| `molecular_scalar_gj1132_wellmixed/HeH0.55` | the conversion of its certified atomic pair | 31 | 6 h 01 m | not solved; wind converged from pass 5, carrier row to 3.76e-02 at pass 11, up to 1.56e-01 at 21, down to 6.48e-02 at 31; stopped at the ceiling |
+| `molecular_scalar_gj1132_wellmixed/HeH0.083` | the conversion of its certified atomic pair | 40 + 40 | 5 h 19 m | not solved; REFUSED on its own terms, both budgets spent. Wind within every tolerance (mass 2.005e-08 of 2.8e-08, momentum 5.509e-13, energy 3.110e-08 of 1.0e-06), carrier balance H2 9.264e-02 of 1.0e-05 |
+| `.L34/rung1`, rung 1 of the L33 ladder | the certified reference, `--reservoir He/H 1.411074554655` | 2 + 4 | 6 h 00 m | did not certify, which ENDS the ladder by its own acceptance; rungs 2 to 4 were created and not run |
+| `.L34/atomic_wm2.13` | `atomic_scalar_gj1132_wellmixed/HeH1`, reservoir carried | 0 | 2 m 44 s | **CERTIFIED**, `info = 0`, `\|\|R\|\| = 2.476e-08`, log10 Mdot 7.86, He I 10830 red-pair EW 1.9533 percent A |
+
+**The two routes that are not admissible.** (1) **A metal-free scalar
+molecular state cannot seed a `photochem` case.** `load_IC` refuses it:
+"metadata field `reservoir`: this run carries a reservoir for C/H
+(2.778025321E-04) and the restart files do not". A `scalar` case is metal-free
+and states one ratio, a `photochem` case states He/H, C/H, N/H and O/H at the
+matching level, and no factor makes a carbon reservoir out of a state that has
+none; both profile cases were therefore seeded the way `MODELS.md` section 3
+defines for that group, from the certified wind of their own atomic closure
+rung. (2) **A diffused molecular state cannot seed a well-mixed run**, so the
+L33 ladder's element-treatment step is impossible on a molecular state. With
+`Restart option change: he_diff` in place, so that the option difference
+itself was admitted, `load_IC` still refuses: "the restart file does not carry
+the He/H the input asks for, and the state carries HeH+, whose nucleus of each
+element cannot be rescaled by one factor", the reference state's He/H running
+from 2.13 at the base to 6.042513123E-01 at cell 500. The same clause forbids
+a composition step INSIDE the well-mixed family, so the only entry to a
+molecular well-mixed case is the atomic-to-molecular conversion of an atomic
+well-mixed wind at that composition. The catalog's atomic ladder has no
+He/H = 2.13 rung, so **one was solved for the purpose, `.L34/atomic_wm2.13`,
+certified**, and `wellmixed/HeH2.13`, which `MODELS.md` recorded as never
+started, was started for the first time. The measured bound on how far a
+well-mixed molecular state can be carried at all:
+`map_state_to_grid.py --reservoir He/H` accepts the 2026-09-16
+`wellmixed/HeH0.55` state carried to He/H = 1.0, and the mapped column then
+holds He/H between 0.999997254 and 1.000000000, a worst departure of 2.746e-06
+against the loader's 1.0e-06 threshold.
+
+**What the six runs measure that earlier attempts could not.** In the three
+well-mixed cases the stationary WIND is found and held, `hydro info = 0` from
+pass 3 to 5 onward with every hydrodynamic row inside its tolerance, and the
+H2 carrier balance alone refuses, every relaxation of every pass ending on the
+composition movement bound and none on its own residual: that isolates the
+carrier transport as the single obstruction there, and it is neither a seed
+question nor the hydrodynamics. In the two photochemical cases and in the
+diffused `HeH0.55` the wind is not found either. `wellmixed/HeH0.55` reached
+3.76e-02 on the gated carrier row, the nearest any molecular well-mixed case
+has come to the 1.0e-05 tolerance. The L33 ladder's rung 1, a 0.179 dex
+composition step from the certified reference, ended its first solve at outer
+pass 2 of a budget of 25 and not on the budget: the element composition
+relaxation took 28 steps, found no admissible 29th (outcome 3 at a step length
+8.127e-02 of the composition time scale, mass-closure departure 1.332e-15) and
+restored its entry composition, which makes every later pass a copy of that
+one.
+
+**The `status.py` change.** (a) `running` is no longer inferred from the
+absence of a state file: a case with no solver verdict now prints **`not
+solved`** when `not_solved.md` is beside it, **`not started`** when neither a
+state nor that file is there, and `marching-stop` unchanged for a state with
+no verdict, which removes the standing false `running` on
+`molecular_scalar_gj1132_wellmixed/HeH2.13` and on
+`molecular_photochem_gj1132_kzzprofile/HeH2.09`. (b) The column
+`claim on 59bfdb3f` is renamed **`archived claim on 59bfdb3f`**, and a row
+reads `superseded` where the state in the case directory has been written
+since the L29 table was made; the comparison, stated in the table's own note,
+is the `run=` stamp in the provenance header of the very file the L29 table
+read against the modification time of `models/CLAIMS_59bfdb3fc4d0.md`,
+2026-09-17 23:27:50 KST. 14 of the catalog's 95 rows read `superseded`, the
+seven low-XUV atomic cases the L34 steps 1 and 2 worker solved and seven
+molecular cases; every other row's archived verdict is still a true statement
+about the file on disk, because the atomic re-evaluation rewrote
+`Hydro_ioniz.txt` and not the `_IC` copy the table read.
+
+**Also written or corrected.** Six `not_solved.md` files, one per case, each
+with its full pass table; `MODELS.md` section 3, which was stale, now states
+the seeding rule the restart contract imposes on the well-mixed molecular
+group and why a scalar molecular state cannot seed the photochemical one;
+`output_pre_L34/` beside the three well-mixed cases and
+`output_L34b_stopped/` beside the three whose `output/` held L34b's stopped
+state. `status.py --write` regenerated `MODELS.md` sections 7 and 8,
+`make_memo_figures.py` the 25 `docs/figures/lhs1140b_*.pdf`, and
+`latexmk -pdf docs/lhs1140b_exhale_vs_pwinds.tex` built cleanly at 80 pages,
+the same count as before.
+
+**Reported and not fixed.** The pseudo-time continuation can undo a solve's
+progress and overwrite its best state: on `wellmixed/HeH0.083` the first
+solve's forty passes reached a gated carrier row of 4.13e-02 and the
+continuation's forty took it back to 7.37e-02, and the state on disk is the
+continuation's, the rule continuing whenever the first solve does not return
+`info = 0` even when the hydrodynamic rows are already inside their
+tolerances. The composition movement bound never recovers within a run, only
+halves: 1.0e-02 to 5.0e-03 at pass 14 of that case's first solve, held for its
+remaining 27 passes, while the continuation starts at 1.0e-02 again and the
+row rises there, so restoring the bound is not by itself the remedy. Two case
+directories now hold a state pair whose halves are from different runs, a
+solve writing `Hydro_ioniz.txt` only when it ends.
+
+**Record.** `docs/lhs1140b_stationary_L34c_20260918.md`.
+
+### L35: the matched-domain flux and grid comparison, and the local base closure
+
+**The two recommendations, recommended and not decided. (1) Keep the seven
+low-XUV Roe cases, and do NOT make the grid the catalog's answer. (2) One
+bounded source item on the base closure is warranted, on the zero-window
+limit and not on the closure family.** No production source was changed; the
+one source added is `src/tests/grid_and_gates/base_closure_candidates_probe.f90`,
+which is not registered in that suite's `run.sh`. The study was built on a
+snapshot of the tree taken at 2026-09-18T01:39:21+0900 (HEAD `3c73905`, the
+tree dirty by 32 files and 13 untracked paths), binary md5
+`16f5345d07ce70cdac09227839d5188b`; the snapshot carries item L30's work in
+progress in the residual assembly, which the memo states as a caveat, and the
+500-cell Roe control reproduces the L25 certified state (T(1) 221.776 against
+221.78, certified at 4.233e-07 against 4.143e-07).
+
+**The grids, matched to the bit.** The `Mixed` generator ties the inner
+physical face to the first cell width and puts `r_max` at the outermost ghost
+center, so two keys were solved on an exact Python replica of `define_grid`
+that reproduces the binary's radius column with a maximum relative difference
+of 0.0: 500 cells with `Base grid [dr,cells]: 0.00019999999494757503 50` and
+`Outer radius [R_p]: 30.0`, 1000 cells with `0.00019615093524286384 50` and
+`29.582942490104671`, 2000 cells with `0.00019453512202014908 50` and
+`29.406628764578247`. All three carry `r_edg(0) = 1.0000966593889191` and
+`r_edg(N) = 29.2734180458963`, agreeing to 0.0 and not merely to 1e-10.
+Holding `r_edg(0)` fixed holds the FIRST CELL WIDTH fixed (`dr_1` is
+1.933188e-04 in all three), so a matched-domain refinement cannot refine the
+base: the refinement is a clean factor 2 above about 1.05 R_p and nothing
+inside the 50-cell uniform block.
+
+**The six runs.**
+
+| run | outcome | passes | `\|\|R\|\|` | rows that refuse the written state | wall, threads |
+|---|---|---:|---:|---|---|
+| HLLC 500 | NOT CERTIFIED | 2 of 2 | 2.406e-01 | mass 1.801e-01 at cell 1 (1.2e-07); momentum 7.988e-08 at cell 500 (1.0e-08); energy 2.406e-01 at cell 1 (1.0e-06) | 7 m, 8 |
+| HLLC 1000 | NOT CERTIFIED | 8 of 8 | 8.215e-04 | energy 8.215e-04 at cell 734, r = 4.98; elemental He/H 3.075e-05 at cell 635 | 70 m, 16 |
+| HLLC 2000 | NOT CERTIFIED | 8 of 8 | 7.767e-04 | energy 7.767e-04 at cell 1375, r = 4.91; elemental He/H 4.388e-05 at cell 1152 | 77 m, 24 |
+| **ROE 500** | **CERTIFIED** | 1 of 40 | 4.233e-07 | none | 31 s, 8 |
+| ROE 1000 | NOT CERTIFIED | 8 of 8 | 3.831e-04 | energy 3.831e-04 at cell 707, r = 4.26; elemental He/H 3.092e-05 at cell 635 | 99 m, 16 |
+| ROE 2000 | NOT CERTIFIED | 8 of 8 | 2.689e-04 | energy 2.689e-04 at cell 1345, r = 4.55; elemental He/H 4.386e-05 at cell 1152 | 73 m, 24 |
+
+The L27 face mass flux budget, in units of the wind-window mean of
+`rho v r^2`, puts five of the six at one flux through every face to between
+5e-09 and 1.3e-07 of the wind's; the sixth is HLLC 500, whose base face
+carries **0.700465914** of the wind's mass flux with a face spread of
+3.639e-01. **The stall, read in the conserved quantity, is a base-face
+statement.** The grid does relieve it: at 1000 and 2000 cells the same
+unmodified HLLC flux brings mass to 2e-08, momentum to 3e-14 and the base face
+to 1.000000 of the wind's flux at the FIRST outer pass.
+
+**The flux difference is converged, and refining does not remove it.**
+Between 1000 and 2000 cells each flux is converged to a few parts in 1e5 in
+its first cell and in Mdot (Roe T(1) moves by 1.2e-06 and Mdot by 3.5e-05 at
+the doubling; HLLC 3.9e-05 and 1.3e-05), while the difference BETWEEN them is
+the same at both resolutions to three digits: (ROE - HLLC)/HLLC reads
+-1.032e-01 in T(1), +1.108e-01 in rho(1), -9.96e-03 against -9.94e-03 in Mdot
+and -1.79e-02 against -1.78e-02 in the He I 10830 equivalent width. Profile
+against profile the difference is 10 to 24 per cent below 1.01 R_p, 3.1 per
+cent in density at 1.2 R_p and 0.5 to 0.8 per cent out to the top of the
+domain, so it is not confined to two or three cells. **The two fluxes are two
+converged discrete answers to one continuous problem.** What this adds to the
+open Roe question, and what was missing when the handoff recommended against a
+wider Roe adoption, is the Roe flux's OWN grid convergence: it is converged at
+the catalog's 500 cells, moving by 2.5e-06 in T(1) and 1.1e-04 in Mdot at a
+doubling. The equivalent width is the one quantity still moving at 2000
+cells, by -8e-03 per doubling at both fluxes, which is the size of its own
+flux-family difference, so no statement about the line is supported at better
+than about 2 per cent by this study.
+
+**The refined runs' energy-row plateau.** None of the four refined runs
+certifies: all four carry a hydrodynamic energy row of 2.7e-04 to 8.2e-04
+against 1.0e-06 at r = 4.3 to 5.0 R_p. It appears as the elemental partition
+relaxes and then stops falling, at both fluxes: from the 40-pass attempt's
+pass records, HLLC 1000 reads 1.08e-07, 1.60e-07, 4.10e-04, 7.35e-04 and
+8.215e-04 at passes 1, 3, 4, 6 and 8, ROE 1000 4.69e-08, 2.97e-04, 3.44e-04,
+3.76e-04 and 3.831e-04, HLLC 2000 3.86e-07 to 7.767e-04 and ROE 2000
+6.32e-08 to 2.689e-04. The 500-cell Roe run does not do this (4.2e-07).
+**Whether that is a property of the refined grids, of the coupled solve or of
+this binary is NOT isolated, and it is the first thing a follow-up should
+separate.**
+
+**The closure comparison, and the rest fixture's 1/2.** The probe calls the
+production `characteristic_base_face_state` twice on one installed state,
+changing only the discriminant it is handed: the remote window's
+(`wind_window_mass_flux`) against the production base face flux
+(`stationary_face_mass_flux`, L27's entry point). The L26 section R3
+exclusion does not survive the production face flux: on both certified states,
+on a base whose velocity is cut by a hundred, on a base whose velocity is
+reversed, on a perturbation confined to the remote window and on the
+`hydrostatic_column` fixture the two install a BIT-IDENTICAL ghost in all
+three primitive components, and the local one is a fixed point of its own map
+in one iteration. They are not, however, being told apart on those states:
+the branch weight is saturated at both discriminants. They differ on exactly
+two kinds of state, and both are states no converged run holds. **The one
+worth a source item is the state at REST**: there the window carries exactly
+zero flux, the amplitude weight vanishes, the first interior cell's face Mach
+number is also exactly zero, and the smoothstep returns **1/2**, so the base
+density becomes the average of the reservoir isentrope and the interior
+isentrope. On the fiducial those differ by 7.3 per cent, so the boundary
+states a face density 3.79 per cent below the reservoir on a state where
+nothing is flowing (ghosts 3.86 and 4.00 per cent); on the hydrostatic column
+the same 1/2 costs 3.07e-07, which is why it has not been visible. The item
+is "state what the boundary does when the wind says nothing", with the
+smoothstep's value at zero written at the place it is used, which it is not
+now. **It is item D2 of `docs/PLAN_20260918_rev1.md`.** Not a reason for an
+item: the remote closure's nonlocality, `r_flux` moving over a factor ten on a
+converged wind changing the window mean by 1.3e-05 and the face state not at
+all, and a 1.5x extended domain moving the discriminant by 1e-04 and the face
+density by 3.8e-05. Two readings belong with the comparison: the production
+base face flux is not the sign of the face velocity, since at a base Mach
+number of 1e-06 the HLLC mass flux there is dominated by its dissipation term,
+so the local Mach number reads the density jump the boundary itself makes (it
+reads the right SIGN on every state tested, which is what a branch
+discriminant needs); and on the six states where the two agree they agree only
+because the branch weight is saturated at both discriminants.
+
+**The `dr_base` literal.** `src/modules/init/parameters.f90` line 143 reads
+`real*8 :: dr_base = 2.0e-4`. Without a `d` exponent that is a DEFAULT REAL
+literal, so the stored default is `1.9999999494757503e-04`, while
+`input_read.f90` reads the key list-directed into the same `real*8`, so
+`Base grid [dr,cells]: 2.0e-4 50` gives `2.0000000000000001e-04`. **Stating
+the default explicitly therefore produces a different grid from omitting the
+key**: the cell centers differ by up to 6.58e-09 relative, the 2.53e-08
+difference in `dr_base` damped by a factor 3.8 by the rescale, and that is how
+the Python replica was validated, an exact match holding only with the
+single-precision value. The correction (`2.0d-4`) moves every Mixed grid built
+from the default, which is a golden refresh, so it was not made. **It is item
+D1 of `docs/PLAN_20260918_rev1.md`**, whose D1a is the disclosure and
+provenance and whose D1b is the default change on new configurations only.
+Reported with it: the `hydrostatic_column` regression fixture is not a column
+at rest, its recorded output being a 300-step relaxation snapshot whose first
+cell carries an inflow of 8.09e+04 cm/s at a face Mach number of +0.2257 and
+whose wind window has a relative flux spread of 2.40, the largest in the tree,
+so a future well-balancedness test should build its own state at rest rather
+than load this one.
+
+**Record.** `docs/lhs1140b_stationary_L35_20260918.md` and
+`docs/figures/lhs1140b_L35_flux_grid.png`.
+
+### L30c: what moves `oxygen_chemistry` by order unity
+
+**Verdict: case (i), a discrete branch selection amplifying a rounding-level
+seed on a snapshot that is not a solution.** Case (ii) is refused by a bitwise
+experiment: the carrier diffusion geometry of L30 is NOT the seed, and the
+oxygen carrier rows do not respond to the shell geometry by order unity. No
+production source was changed and no golden was touched.
+
+**The seed.** It is the restatement of the spherical shell volume that L30b
+carried into the hydrodynamic rows, `dV = (r_+^3 - r_-^3)/3` against
+`dV = (r_+ - r_-)(r_+^2 + r_+ r_- + r_-^2)/3`, whose two spellings differ by at
+most **5.7707e-13** relative on this case's own 500-cell Mixed grid, the
+maximum sitting in the 50 uniform base cells where `dr/r = 1.94e-4` and the
+median over the column being 1.1853e-14. That confirms by measurement the
+"about 4e-13" the L30 and L30b reports gave from error analysis.
+
+**The branch.** It is the root ladder of the constrained molecular ionization
+solve. On the FIRST ionization sweep of step 0 both logs open with the
+identical line "the star-ward H2 column reaches 6.38E+21 cm^-2" and then
+diverge: 64 cells are reported on the control and 48 on the measured build, 43
+on both, and at those 43 the printed temperature is identical at all 43 while
+the accepted iterate's residual differs at all 43, the simplex violation at 39
+and the solver status flips at one. The sweep's own summary for that step
+reads "11 root(s) outside the simplex" on the control and "5" on the measured
+build, and over the full 1000 steps the ladder's outcomes stand apart by a
+factor of ten: `no admissible root` 102 against 983, `stored state(s)
+rejected` 105 against 986, `constrained-continuation root accepted` 632
+against 1701. The first number the run prints, `du` at step 1, is already
+apart by 6.445e-04 and 1000 steps later by 2.648e-02, a factor 41 over 1000
+steps and not a factor per step, so this is a jump and not a growth: a seed of
+5.8e-13 does not reach 6.4e-04 in one step by any linear response. The
+movement is macroscopic at one step already, the profile-scale difference
+reading 5.09e-02 in rho, 2.67e-02 in v, 2.14e-01 in T and 9.99e-01 in the heat
+column after a single step, and the count of numbers differing above 1e-12
+does not move with the cap: after ONE step every column of `Hydro_ioniz.txt`
+except the radius already differs at every cell.
+
+**The two bitwise experiments.** Build A is the current tree with ONLY the two
+carrier diffusion denominators of `diffusive_photochemistry.f90` reverted to
+`r_j^2 max(dr_j, 1 cm)` and the two face areas to `r_edg^2`: it is **bit for
+bit the MEASURED build** in all four files. Build C is the current tree with
+ONLY the shell-volume restatement reverted in the five files that carry it: it
+is **bit for bit the CONTROL** in all four files. Both statements hold at a
+cap of one step as well. `oxygen_chemistry` sets neither `He_diffusion` nor
+`Molecular carrier transport`, so it enters neither the element diffusion
+operator nor the carrier transport operator, which is why build A can be
+bitwise the measured build; of the five files build C reverts, only
+`species_face_flux.f90`, `RK_rhs.f90` and `Reconstruction.f90` are reachable
+in this configuration, and those three carry one and the same respelling, so
+the seed is named by the expression and not by the file. The control tree was
+`git archive HEAD` unpacked and built with bare `make`, and all 263 source
+files of `LHS1140b/models/BINARY_MANIFEST_59bfdb3fc4d0.txt` match it, 263 of
+263 by `md5sum -c`; it reproduces the 2026-09-17 golden exactly at the three
+cells the matrix log names.
+
+**The other class, for contrast.** `mol_sec_ion` carries the same rounding
+difference smoothly and with no branch: its first step is bitwise identical,
+the second is apart by 9.122e-12, and the separation rises smoothly by three
+decades over 1000 steps. At its own 12000 steps both builds stop at the same
+step with the same printed line and the matrix movement is reproduced exactly,
+`Hydro_ioniz.txt` 3.2102e-04 at row 192 in `v` (6.34034658e-01 against
+6.34238260e-01), which is 6.31e-07 of that column's own scale. The decisive
+difference is that the root ladder does not fire at all in that case: over
+1000 steps and over the full 12000 alike both builds report `no admissible
+root` at zero cells, no constrained-continuation acceptance and one
+stored-state rejection each.
+
+**What the comparison can mean, now written beside the golden.** A bitwise or
+tolerance verdict on `oxygen_chemistry` certifies that the same binary
+reproduces itself and nothing else: it cannot tell a physics change from a
+last-bit change, because the root ladder turns either into an order-unity
+difference within one step. The integral it does pin is stable, `log10 Mdot`
+= 9.61 on both builds at 1000 steps and agreeing to the two printed decimals
+at every cap. `backup/regression/oxygen_chemistry/NOTE.txt` now carries that
+statement with the two bitwise experiments, so the next refresh does not spend
+a session apportioning the movement again; a gate on the oxygen network that
+could fail for a physics reason needs a settled state or a row that reads the
+network directly, a rate, a branching ratio or a conservation identity, and
+the present case gives the oxygen path the reproducibility golden it was
+opened for.
+
+**Record.** `docs/lhs1140b_stationary_L30c_20260918.md`.
+
+### The `count` rename of the plan's section 11
+
+**What changed.** `global_parameters`' `integer :: count` is now
+`integer :: marching_step` and its cap `count_max` is `marching_step_max`.
+The name is read from the entry text: `init.f90` sets it to 0 or 1,
+`EXHALE_main.f90` raises it by one per pass of the marching loop, and every
+place that prints it calls it a step, so it is the index of the marching step
+and not a tally. The tree already names a step index `<what>_step`
+(`sec_flip_step`, `newton_fail_step`, `reject_at_step` and six more), and
+`marching_step` does not collide with the two step ledgers beside it,
+`n_steps_attempted` and `n_steps_accepted`, which count attempts and accepted
+steps rather than loop passes. Eleven files under `src/` were edited.
+
+**The hit table.** Occurrences of the whole word `count` in `src/**/*.f90` and
+`src/**/*.inc` on the entry text, classified by what the token is at that
+place, with `count_max` counted separately:
+
+| what the token is | occurrences |
+|---|---:|
+| this variable | **95** |
+| the `system_clock` keyword | 3 |
+| a genuine intrinsic call | 1 |
+| plain English in a comment or a printed string | 442 |
+
+**No local is named `count`**: the only declaration of the name in all of
+`src/` is `parameters.f90` line 38, so every one of the 95 variable
+occurrences is the global. **Four of the 95 are live OpenMP text and not
+comments**, `if(count > 0)` clauses on `!$omp` sentinel lines at
+`ionization_equilibrium.f90` lines 1442, 1471, 1638 and 1717; a scan that
+treats a line beginning with `!` as a comment misses them, and missing them
+would have left the parallel sweep referring to a name that no longer exists.
+The four non-variable hits are left exactly as they were, among them
+`count(species_held)` at `constrained_chemical_equilibrium.f90` line 2126,
+which compiled on the entry text only because that unit writes
+`use global_parameters, only: ...`, the hazard the item names seen from the
+other side. `count_max` had 8 identifier occurrences and one in a comment,
+all renamed.
+
+**The printed labels are deliberately kept.** `'     final: count='`,
+`'   step-clock: count='`, `' (profile) count='`, the diagnostic header
+`'# count  j  r[Rp]  ...'`, `'     -> stopped: reached count_max = '` and the
+report key `count_max` in `EXHALE_setup.out` are unchanged, because
+`src/tests/attempted_step/run.sh` parses the log with
+`re.search(r"step-clock: count=(\d+) ...")` and `docs/input_schema.md`
+documents `count_max` as that report key; moving the labels would move the
+logs the control compares line for line. The declaration now carries a
+comment naming the printed label and the report key so the two can be found
+from the code. Four notes in `EXHALE_main.f90`, `write_setup_report.f90`,
+`steady_newton.f90` and `sed_read.f90` saying that the intrinsic was shadowed
+were true of the entry text and are false now; they were removed and the loops
+they explained were left as they are.
+
+**Tests, RED and GREEN.** A program that writes `use global_parameters` with
+no `only` list and then calls `count(mask)` on a 5-element logical mask:
+compiled against the entry text's `parameters.o` it is **RED**, the name
+resolving to the integer so that `count(mask)` is read as an array element
+with a logical subscript and the `write` statement does not parse; against the
+delivered source it is **GREEN** and prints `true elements = 3`.
+
+**Movement: byte-identical.** Control `6a36529386102b37a38cb40fde0a611c` (a
+private build of the entry text) against measured
+`74b96cdcf887dcfee301ec547f012d88`. `wasp_full` ran to its own stop at 12251
+steps, `mol_base_handoff` at 12000 and `hydrostatic_column` at 300, all three
+ending on an identical printed line on the two builds, with **0 data-line
+differences in all 10, 7 and 7 output files**; the files that are not
+identical byte for byte differ in exactly one line, the `# provenance:` header
+whose timestamp is the wall clock at which the run wrote the file, and
+`EXHALE_setup.out` and `EXHALE_resolved.out` are identical in all three cases,
+which is the check that the `count_max` report key still reads as before. All
+34 test suites were run twice, once against each build: **3459 `PASS|FAIL`
+verdict lines, 0 of 34 suites differing in any verdict line**, exit status,
+pass count and fail count identical suite by suite, the only differences
+anywhere being the `secs=` wall-clock fields. Six suites exit nonzero on both
+builds alike on the same assertions, which is the entry text's state and not
+an effect of the rename. The three cases and the suites were measured twice,
+because a comment refined in `parameters.f90` after the first pass changes the
+object's line tables; every number above is from the rebuilt binary.
+
+**Record.** The declaration comment in `src/modules/init/parameters.f90` and
+the K32c row of `docs/input_schema.md`, below.
+
+### Further corrections made while the series landed
+
+Four of the items the workers reported outside their own scope were corrected
+by the advisor as they came in. Two more were already recorded in the
+bookkeeping subsection below and are named here only so the list is complete.
+
+- **`src/tests/grid_and_gates/README.md` section 4** now states the pass
+  budget as part of the row rather than leaving it implicit:
+  `outer_iteration_ending_hands_back_one_state` runs at
+  `EXHALE_CARRIER_TRUST=1e-6`, `EXHALE_JFNK_MAXIT=40` and
+  `EXHALE_OUTER_PASSES=50`, and the budget decides whether the stagnation
+  ending is reached at all, since the composition elimination sweep of the
+  handed-back state keeps the joint distance falling at full precision through
+  about forty passes on this fixture and the ending arrives at pass 44. The
+  re-evaluation figure is restated as 6.4e-16, measured 2026-09-18, against
+  1.3e-8 before P14. The heat-column consistency row of the same section,
+  whose expectation at HEAD was recorded as RED, is **GREEN at 1.68e-16**, the
+  one assembly having replaced the two hand-maintained copies, and the 200-step
+  reading it used to catch (median 1.000000, minimum 0.999992, maximum
+  1.000012, largest relative difference 1.19e-5) is kept as the record of what
+  the row caught. Section 1's name list gains `iontrans_atomic`, and section
+  14b describes that suite, its five statements, its configurations and its
+  RED expectation before L36e.
+- **`docs/input_schema.md` K32c**, the `Max steps` row, gave `count_max` in
+  both its "default" and its "variable" column. The report key is still
+  `count_max`, and the variable behind it is now `marching_step_max`; the
+  variable column reads `marching_step_max (report key count_max)`.
+- **`docs/lhs1140b_stationary_L31_energy_cycles_20260917.md` section 5.4**
+  stated a rule for the H2 front and none for the dilute upper column, and
+  none exists to state: at that radius `2 n(H2)/n_H` is flat and rising
+  outward, 3.43e-06 at cell 296 to 3.88e-06 at cell 303. The memo now says so
+  and names the probe's state reader, so the chosen radius is recorded as the
+  choice it is.
+- **`LHS1140b/models/run_case.sh`'s header** (the advisor, 2026-09-18
+  06:35): its description of pass 2 still said the post-processing pass
+  "takes one time step before it stops ... so it runs at CFL 1e-12", the
+  route item L9 replaced; it now says the pass loads the solved state under
+  `Restart intent: stationary evaluate`, takes no step, measures the state,
+  writes the same conserved state back with the certification it just made
+  and produces the `_adv` files and the mass-loss line from that
+  measurement, pointing at the block below it that already said so. Comment
+  only; `bash -n` clean; the runner's statements unchanged.
+- Already recorded below: **`docs/code_status_20260910.md`'s transport row**,
+  whose sense was inverted, and **`LHS1140b/models/write_reproduce.py`'s seed
+  and cold-start paragraphs**, both corrected with the bookkeeping items of
+  the plan's section 11.
+
+### The bookkeeping items of the plan's section 11
+
+**`low_mach_dissipation.f90`'s header claimed a nonnegative dissipation, and
+the claim is false.** The integration by parts that produced it drops the
+variation of the face coefficient, and the gate makes that variation a step.
+The header now carries the discrete kinetic-energy rate at frozen density,
+`E' = d^T W L d` with `L` negative semidefinite, so `E' <= 0` only for a
+uniform weight and where `E' > 0` the pair takes energy out of the internal
+energy and puts it into the velocity field; the measured smallest eigenvalues
+of the symmetric part are +7.2e-17 on a uniform grid at constant coefficient,
+-1.1e-12 for a coefficient falling four decades over 500 cells, -6.9e-03 with
+the gate closing at one face and -1.1e-10 on the LHS 1140 b 0.02-XUV state,
+whose negative mode sits on cells 372 to 390, r = 4.01 to 5.12 R_p. The
+correctly signed form is written out as the conservative flux of the cell
+second difference, `dv/dt = -M^-1 B^T K B v`, with its measured
+`lambda_min/lambda_max` of -4.5e-17 at the closing gate and -5.9e-18 on the
+LHS 1140 b state, and the header says that it is derived in
+`docs/lhs1140b_stationary_L25_20260916.md` step 1 and **is not adopted here**,
+so a run that turns the option on carries the indefinite form. Section 4's
+"there is no secular source" was part of the same claim and was corrected in
+place. Comment lines only, 63 insertions and 11 deletions, no executable line
+moved.
+
+**The stagnation-ending row reaches its ending again.**
+`src/tests/grid_and_gates/output_state_consistency.sh` row
+`outer_iteration_ending_is_the_stagnation_one` was RED on the committed
+script at `measured=pass_budget`, and the assertion was NOT loosened. The
+cause: the carrier relaxation of that fixture keeps no transport step at all,
+so the H2 row stands at 7.397E-02 of 1.0E-05 from pass 2 onward, while the
+composition elimination sweep the handed-back state carries nudges the
+composition every pass, so at full precision the joint distance keeps falling
+and a budget of 8 never accumulates three consecutive passes without a fall.
+At `EXHALE_OUTER_PASSES=50` the first pass at which neither measure falls is
+17, the first two in a row are 42 and 43, and pass 44 announces the
+`no_progress` ending: GREEN at `measured=no_progress`, with the state handed
+back re-evaluating to itself at 6.396825e-16 against a 1e-12 allowance. Two
+other settings were measured and rejected and are recorded in the row's
+comment: a budget of 40 never reaches two in a row, and
+`EXHALE_CARRIER_TRUST=1e-4` lets the carrier take steps and makes every pass
+fall. The solve leg goes from 58 s to 103 s. One executable line changed.
+
+**`docs/TO_BE_DONE.md`, the L7g cascade entry** keeps its blocking statement
+(the Bossion et al. 2018 H2-H state-to-state rates extended to all bound
+states, as used by Nesterenok et al. 2019, and a modern H2-He set above
+v = 3) and gains L31's reduced ladder as the bounded substitute, with the
+three cells' bracket re-measured and the conclusion that the scalar form
+stays the default.
+
+**`src/utils/fortdep.py` now scans `include`.** It scanned `module` and `use`
+only, so no `.inc` file appeared in `build/.deps.mk` and
+`hydrodynamic_rows.o` did not depend on the file whose text it is compiled
+from: editing the kind-generic rows alone left `make` reporting nothing to be
+done, and the next link took an object built from the previous text. An
+`include 'file'` line now makes the object depend on that file, resolved
+beside the including source where gfortran looks first, and the included text
+is scanned for its own `use` statements.
+
+**`src/utils/map_state_to_grid.py` no longer writes a contradictory coupling
+line.** It stripped `mode=`, `t_phys=` and `certified=` from the source's
+`# coupling:` line and wrote `certified=F` in front of what was left, but not
+`cert_reason=`, so a seed mapped from a certified state carried
+`certified=F ... cert_reason=certified_in_wind` and stated both that it makes
+no claim and that it was certified in the wind. `cert_reason=` is now dropped
+with `certified=` and the line reads
+`mode=init t_phys=0 certified=F cert_reason=mapped_seed`; the module docstring
+says so.
+
+**`LHS1140b/models/write_reproduce.py` describes the run it wrote.** Two
+sentences were false. With an empty seed line it wrote "None: this case
+starts from the code's own initial condition (`Load IC? False`). The archive
+holds no state of its physics." for cases whose `input.inp` says
+`Load IC? True` and which were re-measured in place; the branch now reads the
+case's own `Load IC?` and says that the run loaded the state already in
+`output/`. With a seed named on the command line (`SEED=`) it attributed the
+choice to `models/pick_seed.py` and printed that tool's tier columns, none of
+which applies; that branch now says the seed was named on the command line
+and that `pick_seed.py` chose nothing. Both defects reach every record ever
+written with `SEED=`, the molecular campaign included.
+
+**The documents.** `docs/code_status_20260910.md`'s transport row stated the
+`Ionization transport` requirement with the sense inverted, that
+`Coupled carrier solve: True` is needed and the run refused without it; the
+opposite is true after L36c, and the row now says that the partitioned route
+runs it and the coupled route is refused, with the reason and the date.
+`docs/input_schema.md` K15f was rewritten by L36c around the new unknown, the
+flux it rides on, the simplex, the validity range and the four refusals, and
+K32g now states ONE counting convention for
+`EXHALE_REACTION_HEAT_RECIPIENTS`, three grouped corrections spanning four
+reactions, which is the count the L7g memo uses. The head notes of the L26
+and L22 memos are described under L27 and L28 above.
+
+### The golden refresh of 2026-09-18: deferred by decision
+
+The matrix was run at `REGRESSION_REL_TOL=0` on `EXHALE.x` md5
+`3146d11b4090306dcea75bb9718edd22`, single-threaded by the script itself,
+with `make -q` clean after the build, and **every one of the sixteen cases
+moved against the goldens of 2026-09-17**. That is expected: L30b put the
+hydrodynamic rows of every case on the shared spherical volume, so no case of
+the matrix is byte-identical through the series, and L36c moved the three
+`hp_*` cases, whose goldens were already stale against the entry text by
+3.3e-03 to 3.9e-03 before it touched them.
+
+The table is the harness's own measure, `|a-b|/max(|a|,|b|)` with no floor,
+for the two files the verdict is taken on; the column is the one it names.
+
+| case | `Hydro_ioniz.txt` | column | `Ion_species.txt` | column |
+|---|---:|---|---:|---|
+| `wasp_full` | 1.086e-10 | `v` | 9.933e-11 | `CaI` |
+| `wasp_he23off` | 2.404e-08 | `v` | 1.264e-09 | `FeIII` |
+| `wasp_full_newton` | 2.754e-11 | `cool` | 1.394e-10 | `CaI` |
+| `mol_base_handoff` | 1.338e-05 | `v` | 7.955e-05 | `H2` |
+| `mol_metals` | 1.208e-09 | `cool` | 1.051e-07 | `HeHp` |
+| `mol_lyman_werner` | 1.279e-11 | `v` | 7.776e-13 | `H3p` |
+| `mol_diffusion` | 1.712e-06 | `v` | 8.987e-06 | `H2` |
+| `mol_ir_bands` | 2.545e-09 | `v` | 6.229e-08 | `HeHp` |
+| `mol_sec_ion` | 3.210e-04 | `v` | 1.268e-05 | `H2` |
+| `mol_carrier` | 8.658e-08 | `cool` | 8.039e-06 | `H3p` |
+| `lower_profile` | 1.245e-07 | `v` | 4.421e-07 | `OIII` |
+| `hydrostatic_column` | 9.952e-08 | `cool` | 8.319e-01 | `HeIII` |
+| `oxygen_chemistry` | 1.867e+00 | `heat` | 1.000e+00 | `H2O` |
+| `hp_zero_seed` | 3.297e-03 | `cool` | 3.944e-03 | `HII` |
+| `hp_trace_seed` | 2.765e-03 | `cool` | 3.307e-03 | `HII` |
+| `hp_front` | 8.856e-09 | `v` | 1.754e-07 | `H3p` |
+
+Two entries are the comparator's floorless ratio and not a movement of the
+physics. `hydrostatic_column`'s 8.319e-01 is `HeIII` at row 1 reading
+2.1246769169722978e-181 against 1.2640208720415364e-180 in a column with no
+ionizing radiation, beside a `cool` entry of 9.952e-08 at 1.18e-98; that case
+moves by 8.46e-15 of its own column scale, which is the rounding of the two
+volume spellings and nothing else (item L30b). `wasp_full_newton`'s
+`Hydro_ioniz_adv.txt` reads exactly 1.000e+00 at `adv_mass_row` against an
+exact zero, which is the missing absolute floor in that column reported under
+item L6c of section 11 and still open.
+
+**`oxygen_chemistry` moved by order unity in every column, and item L30c has
+since resolved it.** It reads 1.867e+00 in `heat` at row 16, where the two
+builds carry -0.0012423798076531957 against +0.0010765621115482848, a sign
+change, and 1.000e+00 in `H2O` at row 285, 3.1776303939581693e-14 against
+542.13312076325178. It is a 1000-step relaxation snapshot stopped at
+`du` = 4.3884 that carries the molecular and the oxygen carriers together, so
+as in the two refreshes before this one its movement cannot be apportioned
+from the matrix alone. Item L30c's two bitwise experiments name the seed as
+the shell-volume spelling of L30b, 5.7707e-13 relative on this case's own
+grid, amplified within one step by the root ladder of the constrained
+molecular ionization solve; the subsection above carries the measurement, and
+`backup/regression/oxygen_chemistry/NOTE.txt` now carries the statement of
+what a byte comparison of this case can and cannot mean.
+
+**A second matrix is being measured, on the binary this series ends on.** The
+table above was taken on `3146d11b4090306dcea75bb9718edd22`, and the tree has
+moved past it through items L36c, L36d and L36e and the `count` rename, none
+of which the sixteen cases above were run under. Three of those cases,
+`hp_zero_seed`, `hp_trace_seed` and `hp_front`, carry
+`Ionization transport: True` and are moved again by the helium stages
+(`hp_front` by 1.6e-01 in the helium columns, item L36d), and
+`carrier_model_a_newton`, which is not a matrix case, is stale by 1.2e-04
+through the He/H charge exchange item L36e added to the stage sources; the
+`count` rename is byte-identical on `wasp_full`, `mol_base_handoff` and
+`hydrostatic_column` and changes no case. The second matrix was running at
+the time of writing; it was then stopped before it finished, on the user's
+instruction of 2026-09-18 14:10, and no movement table was taken from it
+(READ, `docs/session_handoff_20260918.md` section 2.3; corrected 2026-09-19).
+Section 13 carries the refresh forward.
+
+**The refresh itself is not taken here.** It is the advisor's, after the
+second matrix, and it is one refresh for the whole series: the goldens were
+read and never written by any item, each item measured its own movement
+against a control build of its own entry text instead.
+
+> **DEFERRED.** On 2026-09-18 at 14:10 the user instructed that no golden is refreshed and no further movement table is kept while the corrections of `docs/PLAN_20260918_rev2.md` continue on the same tree: a refresh now would be repeated within days. The closing binary of the L27 to L37 series is `74b96cdcf887dcfee301ec547f012d88` (manifest `LHS1140b/models/BINARY_MANIFEST_74b96cdcf887.txt`); the goldens stay the 2026-09-17 set; every item's control is its own entry-text build, so the stale goldens do not enter any verification; one refresh follows when the rev2 items have landed, with its movement table then.
+
+## 13. PLAN_20260918_rev2: the corrections that follow the two reviews of PLAN_20260918 (2026-09-18 to 2026-09-19)
+
+Plan of record: `docs/PLAN_20260918_rev2.md`, which replaced
+`docs/PLAN_20260918_rev1.md` and the first text `docs/PLAN_20260918.md`
+after two reviews (`docs/PLAN_20260918_review.md` and
+`docs/PLAN_20260918_review1.md`); its sections 0 and 0.4 record which of the
+reviews' source findings were read in the working tree before they were
+adopted. The plan holds nine items, D1 to D9, raised by the L35, L36 and L37
+measurements of section 12 and by the reviews; its table "Decisions made on
+2026-09-18" carries the outcome of every decided item. The tree the series
+worked on is repository HEAD `3c73905` plus the uncommitted L27 to L37
+series of section 12, whose closing binary is
+`74b96cdcf887dcfee301ec547f012d88`
+(`LHS1140b/models/BINARY_MANIFEST_74b96cdcf887.txt`). Every number below is
+READ from the item memo `docs/lhs1140b_stationary_<item>_<date>.md`, from the
+item report named with it or from the plan; nothing was measured for this
+section. Where a memo labels a number MEASURED, the measurement is that item's.
+
+What shaped the series, all decisions of the user on 2026-09-18. The strict
+regression matrix on the closing binary of section 12 was started and
+stopped, and none is run on the closing binary of this series either. No
+running table of movement against the goldens is kept from item to item:
+each item measures its own movement against a control build of its own entry
+text, on scratch copies. No golden is refreshed while the corrections
+continue; one refresh follows when they have landed. On
+`docs/DECISION_D2a_D8_review.md` the user chose, for D2a, choice **A** at the
+pressure-balanced stationary contact (the reservoir owns the thermodynamic
+state of the level, including at rest), with the rest of the Codex D2a text
+of `docs/DECISION_D2a_D8_codex.md` kept; for D8, the Codex generation
+structure as reviewed, with legacy import of the existing products and item
+D8a as the first increment. On the D3a memo the user approved D3b as
+recommended: the He II gate and its denominator stay, the stage-sum entries
+become gates at their executed bound, and the candidate solver defect is
+opened as one bounded experiment under the rule that closed the stage-2
+solver program. On the D5a memo the user approved the shape of the
+boundary-state operation (D5b-2) as D5a proposed it. D4b was decided by
+D4a's own measurement.
+
+### D1a: the base cell width a run resolved, disclosed and reproducible
+
+**What was wrong.** The default base cell width was written twice, as the
+default-real literal `2.0e-4` in `parameters.f90` and again in
+`input_read.f90`, stored as `1.99999994947575033E-004` (bits
+`3F2A36E2E0000000`), while `2.0e-4` stated in `Base grid [dr,cells]:` gives
+the double `2.00000000000000010E-004` (bits `3F2A36E2EB1C432D`), 2.52621e-08
+relative above it. Two inputs a reader would call identical build two
+`Mixed` grids whose states refuse to load into each other (the 1e-10
+center tolerance of `load_IC.f90` lines 2221 to 2244, READ), nothing recorded
+whether the width came from the key or the code, and no output stated it to
+round-trip precision (`put_r` prints `ES23.15E3`). The defect is the
+contract, not the physics.
+
+**What changed.** One named constant `dr_base_default` in `parameters.f90`,
+written as the exact decimal `1.9999999494757503d-4`; a logical
+`dr_base_from_key` set only by the key's own branch of the reader in
+`input_read.f90`; `round_trip_decimal` in module `setup_report`
+(`write_setup_report.f90`), a 26-character field `ES26.17E3` (the first
+candidate, `ES24.17E3`, prints 24 asterisks for a negative value, MEASURED).
+`EXHALE_resolved.out` gains `grid_type`, `grid_cells`, `outer_radius_Rp`,
+`base_cell_width_Rp`, `base_uniform_cells`, `base_cell_width_source`
+(`default` or `key`) and `base_grid_in_effect`; `EXHALE_setup.out` states
+`dr_base = <round-trip value> (the default)` or `(from the key)`;
+`LHS1140b/models/write_reproduce.py` writes a `## The grid` section from the
+run's resolved record; `docs/input_schema.md` row K33b states the stored
+default and the trap. No value moved.
+
+**How it was verified.** `src/tests/grid_and_gates/base_cell_width_provenance.f90`
+round-trips 0, plus and minus 1, 1e-4, 2e-4, 1e-300, 1e300 and the default,
+each with the bits written equal to the bits read, and asserts that the
+exact decimal carries the bits of the default-real literal.
+`base_grid_key_reproduces_default.sh`, three one-step runs of
+`backup/regression/roundtrip`: the key stating the resolved value gives an
+`r` column byte-identical to the absent key's, and the key stating `2.0e-4`
+differs by 3.818119e-09 at row 366 of 504 on that grid (6.58e-09 on the
+500-cell catalog grid, READ from L35). RED: the driver does not compile on
+the entry text and the shell test stops at `base_grid_resolved_record_present`.
+Byte identity: `wasp_full` (400 steps) and `hydrostatic_column` (300 steps)
+identical in every data line between the entry-text build
+`4e02c6807587f0d88cdacb944a65ed25` and the D1a build
+`45d0aa6a4a8196be47c5e3d0b608747d`.
+
+**What it left open.** D1b, moving the default to `2.0d-4`, waits for every
+historical omitted-key input to be pinned. The `Mixed` construction ties the
+inner physical face to the first cell width, so a refinement moves the
+numerical boundary against the reservoir level; that is a separate item and
+nothing here addresses it.
+
+### D3a: the transported He II row measured, source channel by channel
+
+**What was open.** On `carrier_model_a_newton` with `Ionization transport:
+True` the `carrier balance He+` row stood three decades above its gate
+(L36d). The first text had claimed that no composition could certify it and
+had offered two candidate denominators that the reviews showed to be
+misreadings of `row_terms_phys`. The balance, its cancellation floor and its
+conditioning had to be measured before any norm was discussed.
+
+**What changed.** `ion_residual_core.f90` declares a channel layout of 26
+channels (each a single term of the H II, He II or He III balance, with its
+stage, sign and name) and the readers `stage_source_from_channels` and
+`stage_gross_of_channels`; `mol_heh_rows` (`System_HeH_mol.f90`),
+`heh_tr_rows` and `heh_rows` fill them from the same factors as the rows. The
+environment key `EXHALE_STAGE_CHANNELS` (default unset, nothing reached)
+names up to eight cells whose evaluations are appended with every kernel
+argument to `output/stage_channels.txt`. New suite
+`src/tests/stage_row_balance/`; two diagnostics beside the manufactured
+column in `ionization_stage_flux_tests.f90`, and a new stiff manufactured
+column.
+
+**How it was verified.** The signed channel sum of each stage reproduces
+the assembled source after the He <-> H pair to 3.0e-16 of the larger gross
+side in both gas branches, and a re-call of the kernel with the recorded
+arguments returns the recorded channels bitwise. MEASURED on the hot-Uranus
+transported state at cell 248: P = 7.6156e2, L = 7.6034e2, net 1.2153
+cm^-3 s^-1, `|P - L|/max(P, L)` = 1.60e-3; the cancellation floor 3.717e-12,
+so the net stands 3.3e11 above it, and a quadruple-precision re-summation of
+the channels departs by 0. The row is linear in x(He II) over six decades of
+budget-respecting steps (d(P-L)/dx = -1.4472e9 at every step from 1e-2 to
+1e-8); the residual -1.2007 is an abundance correction of 1.58e-3 of x(He II)
+at cell 248 and 1.34e-3 at cell 107, against 2.35e-5 and 3.33e-8 on the
+locally equilibrated state through the same operator. The certified atomic
+fiducial's cell 150 is as stiff (1.5e-3) and certifies with four decades to
+spare because the state is the root. At a tolerance of 1e-5 the present
+scale admits an abundance error from 6.0e-13 to 2.1e-2 of the stage fraction
+over one column; the gross (turnover) scale admits 2.0e-5 at every stiff cell
+on both fixtures and coincides with the present one where the stage is not
+stiff (3.7822e-1 against 3.7825e-1 at cell 500). The recorded normalized
+order 2.886 of the manufactured column is a dimensional order of 1.923
+(3.7493e-2, 1.0076e-2, 2.6089e-3 cm^-3 s^-1 at 250, 500 and 1000 cells), the
+stiff column 1.928, the boundary rows 0.93. The stage-sum entry's
+floating-point bound is `2 (5 nk + 2) eps g`: 3.109e-15 (H) and 5.329e-15
+(He) at g = 1, validated by execution at 0.0703 and 0.0580 of the bound; the
+production states read at most 2.203e-16 (H) and 4.195e-16 (He). The sweep
+and the transport operator read one radiation field, bitwise. Suites:
+`stage_row_balance` 0 failed on every record; `ionization_stage_flux` 45
+rows (42 before), 0 failed. Key-off and key-on byte identity: `wasp_full`
+(400 steps) and `carrier_model_a_newton` (25 outer passes), data rows
+identical.
+
+**What it left open.** The decision (D3b). The candidate solver defect, the
+transported state lying farther from the row's root than the locally
+equilibrated one after 25 bounded passes, was reported and not acted on (the
+bounded experiment below answered it). The atomic kernel's call site was not
+resolvable inside the kernel (D7b added the argument). L36d's reading of
+2.886 as the WENO3 order was corrected in that memo, one sentence.
+
+### D3b: the stage-sum entries made gates at their floating-point bound
+
+**What was open.** The two stage-sum entries of the certification were
+`evaluated` with `tol = 0` and `within_tol = .true.` written unconditionally,
+a row that could refuse nothing whatever it measured. The user's decision
+kept the He II gate and its denominator and made these entries gates.
+
+**What changed.** `ionization_stage_sum_rounding_bound(nk [, g])` and
+`ionization_stage_sum_scale_ratio_limit(nk)` in
+`ionization_stage_transport.f90`, beside the face flux they bound, with an
+optional `Ek_out` on `ionization_stage_face_flux`;
+`ionization_stage_nucleus_sum` in `diffusive_photochemistry.f90` returns
+`g = S/S'` at the face that carries the measure; `certification.f90` moves
+the entry into the public `ionization_stage_sum_entry`, which takes the
+measured `g`, sets `finite`, gates on both, and names `g` in the entry's
+`scale:` line; anchor (8) in `docs/certification_tolerance_anchoring_20260910.md`.
+The tolerance is 3.1086244689504383e-15 (H) and 5.3290705182007514e-15 (He)
+at the measured `g = 1`; the algebraic ceiling of `g` (3/2 and 2) is used
+only where the operator reports none.
+
+**How it was verified.** `certification` 103 assertions, 0 failed (84 before),
+the nineteen new rows including a transcribed entry text that accepts a
+broken construction of 1.5e-4 and a non-finite measure refused. The three
+production states of D3a certify on these rows at 0.057 to 0.079 of their own
+tolerance, every one of the six worst faces carrying `g = 1` to five decimals,
+and their run logs differ from the control only in the two `tol=` fields.
+Broken constructions stand ten decades above (1.5e-4 against 5.329e-15 is
+2.8e10). Suites linking the changed modules all pass (`stage_row_balance` 10,
+`ionization_stage_flux` 45, `element_operator` 40, `adv_static_limit` 53,
+`krylov_and_dogleg` 334, `steady_species_rows` 197, `carrier_helium_inventory`
+15, `charge_exchange_rows` 250). Key-off byte identity on `wasp_full` (400)
+and `mol_carrier` (12000); the three `hp_*` cases, which transport the stages,
+data-row identical and within at 0.066 to 0.072 of the bound. The local
+`entry_index` of `certification_contexts.f90`, which returned the first entry
+for an absent name, was replaced by the module's accessor.
+
+**What it left open.** The He II row itself (D3a's candidate defect), taken
+to the bounded experiment. An entry's `reason` text prints only when it
+refuses.
+
+### D4a: what the thermochemical closure hands back, measured
+
+**What was open.** `carrier_retry`'s row
+`one_further_sweep_leaves_the_returned_composition_within_the_sweep_tolerance`
+read 1.100521341448987e-06 against `ieq_res_tol` = 1e-6, bound by HeH+ at
+cell 1. Either production's closure exits before its promise is met, or the
+test assumes a bound the residual contract does not give.
+
+**What changed.** No production source. A new driver
+`src/tests/carrier_retry/closure_returned_state.f90` with its runner, which
+saves the production return and measures on isolated copies, the module state
+saved and restored.
+
+**How it was verified.** The returned composition is a root of its network at
+the returned temperature: largest normalized residual over the column
+2.593e-14, 1.611e-16 at the binding cell, 5.99e-19 on the HeH+ row. Restarted
+from it, the closure reports `converged` in one cycle with a temperature
+increment of 1.2574e-11. The HeH+ row's sensitivity to its own unknown is
+`|R|/eps` = 5.456e-13, so `ieq_res_tol` bounds its relative abundance only at
+1.8328e+6: the assertion compared a movement of 1.11e-6 with a tolerance
+twelve decades looser, and the movement is the inner solve's repeatability
+(it contracts by about four decades a step; the chain's response to its
+transported parent is of order one). The row's value also varies by about 10
+per cent with the pressure the sequence is entered with (1.084e-6 to
+1.293e-6). Three findings beside the verdict: the refusal branch of
+`relax_photochemical_composition` leaves the rate state (`ieq_rate_cell` and
+its companions), the caloric maps (1.5e-3 relative in `p` from the unchanged
+`rho e`), `dp_bc`, `n_part_cell1` and the carrier checkpoint as the refused
+trial wrote them, so the certification's chemical residual of the returned
+state reads 5.33e-4 where the state's own is 1.61e-16; the closure's header
+names `ieq_res_tol` where the code tests `chem_cycle_tol = 1e-5`; and its
+claim that a temperature change below the tolerance cannot move the
+composition beyond it is false for abundance (4.76e-6 at dT/T = 1e-6) and true
+for the residual.
+
+**What it left open.** The decision, taken by the measurement: D4b.
+
+### D4b: the returned-state contract, and what a refused trial puts back
+
+**What was wrong.** The three findings of D4a: a refused trial left the rate
+state, caloric maps, base ghost pair and carrier checkpoint behind; the
+failing row compared an abundance movement with a residual tolerance; the
+closure's header stated a tolerance the code does not use.
+
+**What changed.** `ieq_rate_state` with `save_ieq_rate_state` and
+`restore_ieq_rate_state` in `ionization_equilibrium.f90`, beside the arrays
+they hold; `thermochemical_state` with `save_thermochemical_state` and
+`restore_thermochemical_state` in `diffusive_photochemistry.f90` (composition,
+`p`, `T`, `heat`, `cool`, `eta`, `bg_cell`, the rate state, `dp_bc`,
+`n_part_cell1`, the carrier checkpoint), the caloric maps rebuilt through
+`get_species_densities` rather than copied. In `carrier_retry.f90` the row is
+replaced by
+`every_species_row_of_the_returned_state_is_a_root_at_the_returned_temperature`
+with a companion row asserting the profile is available; the abundance
+movement stays as a line that gates nothing, printed with its conditioning.
+The closure's header states the exit test and what D4a measured. No tolerance
+moved.
+
+**How it was verified.** Nine restore rows RED on the entry text (the D4a
+table 4 numbers to every digit) and GREEN at 0. The new gate reads 5.3323e-4
+on a control whose restore is reduced to the entry text's and
+4.440892098500626e-16 on the delivered text; a sensitivity row built from
+production routines reads 7.80e-5 against the rate state a trial leaves. The
+printed movement: 1.1005e-06 on HeH+ at cell 1, `|R|/eps` 5.6749e-13,
+admitted relative abundance 1.7621e+06. Key-off byte identity on `wasp_full`
+(400), `mol_diffusion` and `mol_carrier` (12000); on `carrier_model_a_newton`
+(3 outer passes, 31 refused trials, the third pass ending on one) the outputs
+are identical, so the leftover was inert on that configuration. Every suite
+linking the two modules passes (18 suites and the D4a driver,
+`carrier_retry` 156, `grid_and_gates` 279).
+
+**What it left open.** `grid_and_gates` fails
+`base_grid_resolved_record_present` against the tree's own `EXHALE.x`, which
+is behind the sources; with `EXHALE_EXE` pointing at a build of the sources it
+passes. Restoring `ieq_nonroot_streak` is a stated choice that no fixture
+separates.
+
+### D5a: where the boundary of an evaluated state comes from, and which of it the residual reads
+
+**What was open.** Six certified molecular states did not reproduce their
+cell-1 mass row from their own restart pair (L37); two certifications inside
+one run disagreed at the base cells; the first text's two-file repair had
+named the printed precision of the ghost rows as the cause without isolating
+it.
+
+**What changed.** No production source. The diagnostics
+(`EXHALE_BOUNDARY_TRACE`, `EXHALE_TRACE_EXPERIMENT`, `EXHALE_TRACE_STATE_B`,
+a new `boundary_state_trace.f90`) were built in a frozen snapshot only; the
+measured build with every key unset reproduced the control's products byte
+for byte.
+
+**How it was verified.** Six measurements on scratch copies, single threaded.
+(1) The evaluate route assembles the residual on a boundary built from the
+LOADED composition while its sources, pressure map and sound speeds are those
+of the composition one sweep later; rebuilding the boundary after the sweep
+takes the cell-1 row from 15.98 rounding floors to 9.06 (`HeH2.13`
+molecular), 31.24 to 3.09 (`HeH9.7`) and 20.93 to 0.08 (`.L22/i3_alt`), 0 and
+0.35 floors on the atomic states. (2) Serialization of the physical column is
+innocent: 0, 2.19e-16, 4.03e-16 and 6.07e-16 relative on the conserved
+density, momentum, energy and species. (3) With the physical cells held and
+only the two inner ghost rows replaced, the molecular row reads 9.06, 15.98,
+425 or 7.4e8 floors, and the first cell's composition as ghost reverses the
+sign of the base face mass flux: the boundary is determined by the supplied
+ghost. (4) `Apply_BC` is idempotent; what a report leaves behind is the face
+cache, worth up to 3.2 floors to the next residual of the same array. (5)
+`ntot_bc + dp_bc` is two quantities under one name: the prescribed reservoir
+at startup and the solved ghost's counts after a sweep (+4.66 per cent on the
+molecular state), never fed back, and restating the reservoir at the solved
+count takes the row to 1.0. (6) No physical cell drifts when a diagnostic is
+requested, and two processes agree bitwise. From the third re-entry the row
+alternates between 7.14 and 9.06 floors on states differing by about 1e-13:
+the row's conditioning bounds what any boundary operation can deliver.
+
+**What it left open.** The design of D5b, proposed in the memo's section 9
+and approved by the user as the D5b-2 shape.
+
+### D5b-1: the evaluation routes derive the boundary after the composition sweep
+
+**What was wrong.** The largest cause D5a isolated: three routes of
+`EXHALE_main.f90` (the evaluate route of
+`stationary_state_of_the_loaded_restart`, the steady residual of
+`update_map_begin_step`, the `EXHALE_RESIDUAL` block) assembled their residual
+on the boundary of the loaded composition.
+
+**What changed.** `Apply_BC(u)` after the composition sweep and the pressure
+refresh and before `assemble_residual` at those three sites (the order the JFNK
+residual and the marching loop already had); `src/modules/states/boundary_state_trace.f90`
+(new, behind `EXHALE_BOUNDARY_TRACE`, with
+`EXHALE_TRACE_EXPERIMENT=boundary_from_the_entry_composition` reproducing the
+entry text's order from the same binary); one `SRC` line in the `Makefile`;
+new suite `src/tests/boundary_state/`.
+
+**How it was verified.** Cell-1 continuity row in floors, entry text to this
+item: `HeH2.13` molecular 15.98 to 9.06, `HeH9.7` 31.24 to 3.09,
+`.L22/i3_alt` 19.04 to 0.08, the atomic `.L26/fid_resolve` 1.52 unchanged;
+all three molecular states pass from NOT CERTIFIED to CERTIFIED. The gap
+between the cached boundary and the boundary of the installed state at
+`assemble_residual` is 0 on all four (4.3504e-11, 5.9572e-12, 1.4504e-11 on
+the molecular states in the entry order). Byte identity: `carrier_model_a_newton`
+(3 outer passes) and `wasp_full` (400 steps). `boundary_state` 2 assertions,
+`steady_species_rows` 201, `certification` 84, `grid_and_gates` 260, 0
+failing.
+
+**What it left open.** Two further sites of the same order inside a solve's
+own certification (the joint test of `steady_wind_with_element_diffusion` and
+the final certification of a stationary restart), the ghost composition read
+from the file, the reservoir name and the cache validity: D5b-2.
+
+### D5b-2: one boundary-state operation, with a stated input set
+
+**What was wrong.** The lower boundary was a function of the ghost rows of a
+restart file and of the ghost's iteration history, the prescribed reservoir
+and the solved ghost counts shared one name, the face cache carried no
+validity, and two evaluation sites of a solve still assembled on a boundary of
+another composition.
+
+**What changed.** `Apply_BC.f90` is the operation with its contract stated:
+input the physical conserved state, the installed composition, the prescribed
+reservoir with its version and the model options; output the ghost conserved
+state and the three cached face states of one composition, tagged by
+`hold_boundary_state_inputs`; `Rec_BC` recomputes a face state whose
+composition has moved (`recompute_base_face_states`, counted and reported).
+`base_boundary.f90`: `base_reservoir_prescription_version = 1`, the model
+identity `characteristic_face_ps_reservoir_C_minus_smoothstep_v1`, the solved
+ghost counts and closure as named quantities, `report_base_boundary_model`.
+`ionization_equilibrium.f90`: the ghost's `x_H2 = x2 (1 - x_ion)` closed
+against its own ionization balance to `base_ghost_closure_tol` = 1.0e-10 in
+at most 30 passes, with `error stop 'ioniz_eq: base ghost H2 closure failed'`
+and no fallback; the reservoir write-back removed. `load_IC.f90`: the lower
+ghost rows are not read; `base_reservoir_composition_row` seeds them with the
+reservoir's elements and the first physical cell's partition (the handoff's
+`x_H2 = x2 (1 - x_ion)` form); the composition-moved test reads the physical
+cells alone. `write_output.f90` writes `# boundary_model` and
+`# boundary_reservoir` on both halves. `EXHALE_main.f90`: the two remaining
+evaluation sites install the boundary after the sweep, and the boundary is
+derived at the top of each marching attempt. `docs/input_schema.md` appendix D.
+
+**How it was verified.** Acceptance all bitwise: the four ghost variants of D5a
+give one boundary and one first residual (1.5582E-08 in all four), a
+re-assembly after the face-flux report moves nothing, E1 = E2 = E3 = E4 on
+the re-entry ladder, and the physical column round-trips at 0, 2.19e-16,
+4.03e-16 and 6.07e-16. The closure reports 0.00000E+00 in 4 passes on
+`HeH2.13` and `.L22/i3_alt` and 1.11022E-16 in 3 on `HeH9.7`; the failure
+path was exercised on a throwaway build. `boundary_state` 13 of 13 GREEN and
+11 of 11 RED on the entry text; ten further suites pass whole.
+**Consequence, reported and not absorbed**: the three molecular states go
+from 9.06, 3.09 and 0.08 floors to 19.97, 110.0 and 27.13 and are NOT
+CERTIFIED on the cell-1 continuity row, the physical cells unchanged; the
+ghost's neutral columns and element budget are reproduced to 1e-10 and its
+He/H exactly, while its trace ions move by 3e-3 to 5e-2, the band the sweep's
+own acceptance admits in a ghost cell, and the row carries a gain of order
+1e9 floors per relative unit of the ghost composition. The atomic state is
+unchanged. Movement: `wasp_full` (400) and `lower_profile` (12000) identical;
+`mol_base_handoff` 6.19e-09 (`cool`) and 1.05e-08 (`H3p`); `mol_carrier`
+1.33e-11 (`v`) and 1.29e-12 (`HeI`).
+
+**What it left open.** The certificates of `kzz1e9/HeH2.13`, `kzz1e9/HeH9.7`
+and `.L22/i3_alt` are stale and are to be re-solved under the corrected
+boundary (D9 step 3). Four `grid_and_gates` rows compared ghost rows (279 PASS,
+4 FAIL against 284 and 0 on the control); the periodic certification of a
+marching state recomputed 19 and 21 face states on the two molecular cases:
+D5b-3. The ghost's ionization is defined only to the sweep's acceptance band;
+closing the temperature leg of the ghost closure is a later increment.
+
+### D5b-3: the four rows, the fourth mixing site, and the prescribed-count labels
+
+**What was wrong.** Three `grid_and_gates` round-trip rows compared the lower
+ghost rows, which D5b-2 made derived, and the stagnation fixture no longer
+reached its ending under the derived boundary; the periodic certification of
+a marching state read a face state of the composition before the step's
+closing refresh; `EXHALE_resolved.out` printed `ntot_bc` and `dp_bc` without
+saying which count they are.
+
+**What changed.** `EXHALE_main.f90`: `Apply_BC(u)` before the periodic
+certification's `assemble_residual`, with the invariant stated.
+`write_setup_report.f90`: `EXHALE_resolved.out` labels `ntot_bc_per_H` as the
+prescribed count and adds `base_reservoir_version`, `base_ghost_count_solved`
+and `base_ghost_electrons_solved` (the `parse_dump.txt` record untouched).
+`restart_round_trip.sh`: the three rows compare the physical cells, and a new
+row `restart_lower_ghost_is_the_derived_boundary`; `output_state_consistency.sh`:
+the stagnation budget raised from 50 to 100 passes, the ending announced at
+pass 89; `run.sh` passes `EXHALE_TEST_OUT` to that program.
+
+**How it was verified.** `grid_and_gates` 285 PASS, 0 FAIL. The recompute
+counts of `mol_base_handoff` and `mol_carrier` fall from 19 and 21 to 0; their
+physical cells move by 1.2629e-11 and 1.4985e-11 (`v`) because `eval_dt` takes
+the CFL minimum over the ghost cells too; `wasp_full` and `lower_profile`
+identical.
+
+**What it left open.** Fourteen invocations of `grid_and_gates/run.sh` still
+ignore `EXHALE_TEST_OUT`. The new row's exact zero was later found to be a
+coincidence of equal seeds; see "Corrections made while the series landed".
+
+### D6: the helium held outside the atomic stages is reserved from the stage simplex
+
+**What was wrong.** Three defects in the expressions. The helium ion-stage
+projection bounded `x_HeII + x_HeIII` by one while the fractions are
+normalized by the total helium nucleus count, which includes HeH+, so the
+review's counterexample (HeH+ 0.10, x(He II) 0.60, x(He III) 0.35) passed at
+0.95 and was written back as a cell holding 1.05 of its helium. The ground
+singlet was formed as `max(n_HeI - n_He(2^3S), 0)`, so a trial leaving less
+neutral helium than the frozen metastable holds was clipped rather than
+refused. The molecular proton ledger kept `sprod(H+) - sloss(H+)` from before
+the He <-> H charge-exchange pair while `src(H+)` was taken after it.
+Reachability in a production run was not tested; conservation of helium
+nuclei is an invariant the operator claims.
+
+**What changed.** The admissible set is
+`n(He II) + n(He III) <= n_He,avail = n_He,nuc - n_He(in molecules) - n_He(2^3S)`,
+the molecular part read from the species table. In
+`ionization_stage_transport.f90` `stage_simplex_projection` takes an optional
+bound `xsum_max` and its diagnostic is renamed `stage_simplex_sum_over_limit`;
+in `diffusive_photochemistry.f90` the frozen `cbg_nHemol`,
+`carrier_helium_available_to_stages` and
+`carrier_helium_neutral_of_partition` (no clip), the bound applied in the
+projection, the element limiter, every Newton trial, an inward difference
+step at the bound, the source evaluation and the write-back, and the proton
+ledger taking the pair's measured net on its own side. The normalization
+(fractions of the nucleus count) is unchanged.
+
+**How it was verified.** New suite `src/tests/carrier_helium_inventory/`
+measuring the returned species: the stage sum over the available helium
++7.000e-2 on the entry text and -1.110e-16 after; the written helium inventory
+5.000e-2 and 1.110e-16; the mass 1.618e-2 and 0; the molecular proton ledger
+6.489e-1 and 0. `ionization_stage_flux` gains case 4b (40 of 40). Every suite
+linking the changed objects passes except the rows that fail identically on
+the entry text (`carrier_retry`'s D4 row and `coupled_block_jacobian`'s L22
+rows); `ionization_imposed_fractions` needed a `cx_set_cell` in its driver's
+setup and then passes 49. Key-off byte identity on `wasp_full` (400),
+`mol_diffusion` and `mol_carrier` (12000). Key-on: `hp_front` moves by
+1.2e-14; `carrier_model_a_newton` (3 passes) by up to 4.100e-5 (`v`). The
+constraint does not bind on either state (the stage sum stands 0.55 and 0.32
+below its bound); builds with the trial projection or the inward step removed
+are byte-identical to the delivered one, so the movement is the different
+association of the neutral helium closure, amplified over three passes.
+
+**What it left open.** A diagnostic row in `steady_newton.f90` near line 14313
+builds carrier densities with the mass-row density for every carrier, wrong
+by the nucleus ratio for a stage row; `element_inventory_report` skips helium;
+the hydrogen and oxygen closures of `carrier_source` still clip a negative
+remainder.
+
+### D7a: the equation basis of the generic charge-exchange helium row
+
+**What was wrong.** `cx_add_to_fvec` and `cx_add_to_jac` write the He I <-> He II
+row ionization-positive, while `System_HeH_TR_metals` inserts them after
+`heh_tr_rows`, whose row 2 is the summed He I balance written He I-gain
+positive. A metal + He/He+ reaction (Huang et al. 2023, Table 4 group C)
+entered that row with the wrong sign: on the review's counterexample (Si I +
+He II at 10000 K) the He II source read `+7.561e-11` where `-7.561e-11` is
+required and the ionic charge source `+1.5122e-10` where zero is required.
+Separately, the transported stage sources lacked the metal charge exchange
+the sweep's rows carry, and the thread-local rate coefficients had no
+cell-ownership guard.
+
+**What changed.** A mandatory `he_row_sign` on both routines, applied to the
+He I <-> He II increments alone (`cx_he_i_boundary_sign`): `-1` at
+`System_HeH_TR_metals.f90`, `+1` at `System_HeH_metals.f90`,
+`System_HeH_mol_metals.f90` and `constrained_chemical_equilibrium.f90` (a
+fourth caller the plan did not list). `cx_cell_T` joins the threadprivate
+state and `cx_require_cell` refuses an assembly at another cell's
+temperature. `input_read.f90` refuses `Ionization transport: True` with
+metals, naming item D7. New suite `src/tests/charge_exchange_rows/`;
+`ionization_transport_atomic.sh` case A now drops the `metals.inp` that
+`examples/14_diffusion` carries.
+
+**How it was verified.** `charge_exchange_rows` 102 PASS: eight reactions in
+three equation bases with stoichiometry, nucleus balance and charge exactly 0,
+group B absent from the generic set, group E under its own switch, the
+Jacobian against a central difference at 2.79e-13, cell order independence
+exactly 0, the stale-cell and metals refusals. RED reproduces the review's
+table to every printed digit. Key-off byte identity on `wasp_full` (400) and
+`mol_metals` (12000). With `cx_full 1` on `wasp_full` the correction moves He II
+by 1.817e-3, He(2^3S) by 1.957e-3, He I by 1.413e-4, H II by 1.040e-3 and T by
+5.263e-5; log10(Mdot) 7.20 both ways. No golden carries `cx_full`.
+
+**What it left open.** The He <-> H pair given the summed He I by the triplet
+systems (D7c); `cx_add_to_turnover` reads `cx_kc` without a cell guard; the
+retained review probe `docs/audit_20260905/plan_20260918_rev1_source_probe.f90`
+no longer compiles against the new signature and is left as the dated record
+it is.
+
+### D7b: the metal charge exchange of a transported ionization stage
+
+**What was wrong.** The transported stages took their source from the H/He
+rows alone while the local sweep adds the metal charge exchange to the same
+rows: on a metal-bearing cell at 8000 K the missing term was 1.813e-3 of the
+H II source and 2.380e-6 of the He II source (MEASURED).
+
+**What changed.** One reaction-source interface in `charge_exchange.f90`:
+`cx_reaction_rates` forms every rate once, `charge_exchange_stage_sources`
+returns the stoichiometric source of each H, He and metal stage with the gross
+production and loss, and `cx_add_to_fvec` reads the same rate vector (its
+addition order kept, for byte identity). `diffusive_photochemistry.f90`: the
+frozen metal stage densities `cbg_nm0/nm1/nm2`, `cx_set_cell` for the cell
+being assembled, the stage sources added in `carrier_source`, and the atomic
+branch's He <-> H pair given the ground singlet. `ion_residual_core.f90`: the
+channel layout grows from 26 to 32 (`ich_metal_*`), and `heh_tr_rows` takes an
+optional `transport_operator` so the record reads `AC` or `AS`.
+`input_read.f90`: D7a's interim refusal lifted.
+
+**How it was verified.** The transported and the row-implied sources agree to
+2.178e-16 (H II) and exactly 0 (He II) on the test cell, and exactly 0 at every
+one of the 500 cells of the solved `wasp_full` column. `charge_exchange_rows`
+250, `stage_row_balance` 10 and fifteen further suites pass; a bounds-checked
+build runs a metal-bearing key-on case with no trap; four thread and order
+arrangements bitwise equal. Key-off byte identity on `wasp_full` (400),
+`mol_metals` and `mol_carrier` (12000).
+
+**What it left open.** The key-on `wasp_full` solve does not certify, with or
+without metals (refused at outer pass 6, and at pass 5 metal-free, on the same
+seven entries): a 400-step relaxation snapshot of WASP-121b is not a
+near-stationary seed, so no certified metal-bearing transported reference
+exists yet.
+
+### D7c: the helium state the He <-> H charge-exchange pair reacts from
+
+**What was wrong.** The two He 2^3S systems (`System_HeH_TR.f90`,
+`System_HeH_TR_metals.f90`) handed the Table 4 group B pair the summed He I,
+singlet plus metastable. The tabulated barrier exp(-12.75/T4) is the 10.989 eV
+difference of the ground-state ionization potentials; He(2^3S) + H+ is
+exothermic, a different reaction this code carries nowhere. Charging the
+metastable at the ground-state rate is the wrong reaction, not an
+approximation.
+
+**What changed.** Both systems pass the ground singlet `n_heiSI`, so all four
+helium systems and the constrained chemical equilibrium react the pair from
+one reservoir; neither triplet system has an analytic Jacobian to match.
+
+**How it was verified.** New row `he_h_pair_reservoir.f90` of
+`charge_exchange_rows`: RED 16 of 30 assertions on the entry text (the two
+triplet systems 1.22e-2 cm^-3 s^-1 away, exactly k1 n(He 2^3S) n(H+)); GREEN
+132 of 132. `wasp_he23off` byte-identical. `wasp_full` (400 steps) moves: He I
+3.98e-6 at most (at 1.2705 Rp where n(He I) is 3.4e-7 cm^-3), about 1e-11 in the
+dense launch region, log10(Mdot) 7.20 both. The certified atomic fiducial's
+evaluate route keeps every certification line; its files move at 3.46e-15 and
+below.
+
+**What it left open.** Two further sites: the advection-corrected system and
+the group C reactions (D7d).
+
+### D7d: the helium state the metal + He and the advected He <-> H reactions react from
+
+**What was wrong.** `System_implicit_adv_HeH_TR` gave the group B pair the
+summed He I fraction; the three metal systems gave the group C reactions the
+summed He I. The group C barriers (19.1, 15.5, 12.7 in units of 1e4 K) match
+the ground-state ionization-potential differences to the two digits the fits
+carry.
+
+**What changed.** `xheiS` at the advection site; `n_heiSI` (or
+`sden(is_HeI_SI)`) at the three group C sites, changed together; the header of
+`charge_exchange.f90`; a dead summed-reservoir assignment removed from
+`hydrogen_helium_row_terms`; a public diagnostic
+`constrained_network_balance_rows_of_cell`.
+
+**How it was verified.** Two new rows (`advection_pair_reservoir.f90`, RED 6 of
+6; `metal_helium_reservoir.f90`, RED 6 of 13 at 1.2903e-1); the suite GREEN at
+151 of 151. `wasp_full` and `mol_metals` at 400 steps with `cx_full` off:
+byte-identical in all output files, the `_adv` profiles included (the corrected
+cells carry a negligible metastable). On the certified
+`atomic_scalar_gj1132_kzz1e9/HeH2.13` evaluate route the equilibrium files are
+byte-identical and `Hydro_ioniz_adv.txt` moves by 2.43e-13 (`cool`). With
+`cx_full 1` on `wasp_full` the neutral metals move by up to 9.579e-5 (`FeI` at
+1.8e-12 cm^-3), the bulk state at 1e-13.
+
+**What it left open.** The real He(2^3S) + H+ reaction needs a published rate
+and is a separate physics item.
+
+### D8a: what a case directory publishes, and when a second solve is taken
+
+**What was wrong.** `run_case.sh` launched the continuation on any nonzero
+`info` before classifying the hydrodynamic rows, so a composition-only refusal
+continued (L34c: 4.13e-2 then 7.37e-2 on `wellmixed/HeH0.083`, the worse state
+published); the evaluate pass edited the case's `input.inp` in place;
+`run_campaign.sh` read `run_case.sh` through `tail -n 1` without `pipefail`.
+
+**What changed.** `LHS1140b/models/run_case.sh`: `classify_ending` (seven
+classes: `solved`, `no_verdict`, `state_missing`, `nonfinite_state`,
+`composition_refusal`, `hydrodynamic_refusal`, `no_row_measures`) before any
+decision; the continuation taken for `hydrodynamic_refusal` alone; a
+superseded solve kept in `solve_<n>/`, each ending recorded in `ENDING`; the
+evaluate pass in `eval/`. `run_campaign.sh`: `pipefail`, one status line for
+each case in `campaign_status.txt`, a nonzero exit when any case fails.
+`LHS1140b/MODELS.md` section 6. No source under `src/` changed.
+
+**How it was verified.** `LHS1140b/models/tests/run_case_policy.sh` 16 of 16: a
+real hydrodynamic refusal continued with the first solve kept unchanged; a
+synthetic, labeled composition-only log not continued; a stopped evaluate pass
+leaving the case's `input.inp` transformed on the superseded sequence (RED) and
+byte-identical on the new one (GREEN); a failed campaign case giving a
+nonzero aggregate.
+
+**What it left open.** A previous run's `output/` is still overwritten by a new
+run's seed (the generations of D8b); `element_flux_closure.py` carried the same
+continuation rule (D9 repaired it).
+
+### D8b: the generations a case publishes, the index a reader resolves, and the states this tree already held
+
+**What was wrong.** A run directory could hold products and seeds of different
+generations, readers could combine them, a certificate could be attached to a
+state it did not judge, and nothing named which state a case publishes.
+
+**What changed.** The contract in `LHS1140b/MODELS.md` section 9: immutable
+`states/<generation_id>/` with the state files, `certification.txt` and
+`manifest.json`; `runs/<run_id>/`; `state_index.json` with `latest_complete`
+and `latest_certified` apart; one publisher `LHS1140b/models/publish_state.py`
+(lock, validation, read-only, atomic rename on one filesystem);
+`import_legacy_states.py` and `legacy_state_map.txt`. Readers resolve the index
+once (`run_case.sh`, `run_campaign.sh`, `pick_seed.py`, `status.py`,
+`write_reproduce.py`, `src/utils/map_state_to_grid.py`,
+`src/utils/element_flux_closure.py`). The generations are copies because the
+binary truncates `output/` in place. `latest_certified` moves only when the
+header claims `certified=T`, a block says CERTIFIED and the attachment is
+established. A defect of `certification_block` (the second heading
+`FINAL STATE AS WRITTEN ...` of an exit-2 run not recognized, so the log was
+classified `no_row_measures`) was fixed.
+
+**How it was verified.** Legacy import, after a dry run: 136 state directories,
+222 generations, 134 indexes, 86 with `latest_certified` and 48 with none,
++132 MB; a second run publishes nothing. The certificate attachment is a
+surrogate (the header's second plus agreement of verdicts) and every manifest
+says so: 135 of 222 attached, 84 of the 87 others being `output_pre_L34/` states
+with no log of their own. `kzz1e9/HeH2.13` and `HeH9.7` lose the certified
+status their `REPRODUCE.md` states (the pair on disk is the L34 evaluate pass's
+`certified=F`) and carry `stale_under: boundary_model_v1`. The two catalog
+defects of the bounded experiment are exposed: `kzz1e9/HeH0.083`'s first
+generation is the seed its forty passes started from (md5
+`1229b961323d7ac710146650da72454a`) and the second, the state they left, is now
+`latest_complete`; `wellmixed/HeH0.083` has its ending classified from the log.
+`tests/state_generations.sh` 27 of 27 (a publisher stopped by PID before the
+rename leaves the previous index; a mixed pair refused by every reader); the
+four D8a and D9 fixtures pass (16, 12, 10, 11).
+
+**What it left open.** The retention policy for the 84 `output_pre_L34/`
+generations with no verdict (the user's). No crash durability across a server
+failure is claimed, no exact algorithmic continuation, no `best` reference. 81
+of the 134 published states were written by the evaluate pass over a solve not
+on disk. `atomic_scalar_gj1132_kzz1e9/HeH2.13`'s `_IC` file is the earlier
+run's seed, not its solved state; which state L34 was handed is worth checking.
+
+### The bounded experiment of D8 step 8: the movement bound held at 1e-2
+
+**What was open.** D3a's candidate solver defect (25 bounded passes leaving the
+transported state 1.58e-3 of x(He II) from the row's root) and L33's reading of
+the monotone halving of the composition movement bound as a throttle. The
+user's D3b decision opened one bounded experiment under the rule that closed the
+stage-2 solver program: its result decides whether an item exists.
+
+**What changed.** The diagnostic environment key `EXHALE_CARRIER_TRUST_HOLD`
+(default unset; a positive value holds the bound and takes the halving branch
+out) in `EXHALE_main.f90`, and the row `carrier_bound_hold`
+(`src/tests/grid_and_gates/carrier_movement_bound_hold.sh`). Nothing in the
+acceptance interface moved.
+
+**How it was verified.** Key absent: `carrier_model_a_newton` byte-identical to
+its entry text. The row: 5 PASS on the delivered build,
+`carrier_bound_key_holds` failing on the entry text. The three cases:
+- `carrier_model_a_newton`, ten passes from the 25-pass transported state: held
+  and halved runs **bitwise equal**; every relaxation ends on "the carriers
+  stopped moving" with displacements 9.43e-4 to 4.71e-4, a decade below either
+  bound; the He II distance from the row's root goes from 1.579137e-3 to
+  -7.222846e-4, falling 7.52 per cent a pass and crossing zero, while the gated
+  measure falls 1.87 per cent a pass. D3a's "moved away" was one side of a
+  crossing.
+- `molecular_scalar_gj1132_wellmixed/HeH0.083`: the bound binds at every pass,
+  and held at 1.0e-2 the gated H2 row RISES monotonically, 7.37e-2 to 9.35e-2;
+  in the one pass the runs differ, the halved step makes it fall (to 8.30e-2).
+- `molecular_scalar_gj1132_kzz1e9/HeH0.083`, from `.L22/i4_kz0083`'s exit state
+  (the catalog publishes that run's seed): with the bound held at 1.0e-2 the row
+  goes 8.15e-04, 6.29e-03, 1.93e-03 and pass 3 returns `info = 2`; the ten
+  passes were not reached (a JFNK line-search collapse, `lam` near 1e-6, a pass
+  costing 3660 s). The monotone descent L33 saw is a property of the small
+  bound.
+
+**Result: no item** on the movement bound, and no default recommended for
+change.
+
+**What it left open.** The two catalog defects (taken by D8b). A JFNK
+line-search collapse costs the whole iteration cap before the outer loop can
+judge the pass. On a stiff stage the gated measure and the distance from the
+root move at different rates.
+
+### D9, steps 1 and 2: the budget of a solve by configuration, and seed compatibility before distance
+
+**What was wrong.** Rev1 had turned one recorded history into a rule (3.3 cells
+a pass, 40 passes before a row could fall), which the second review withdrew;
+`pick_seed.py`'s `Physics.matches` accepted two inputs differing only in the
+ionization-transport key, and tier 0 took the case's own state with no
+comparison; `element_flux_closure.py` continued on any nonzero `info`.
+
+**What changed.** `run_campaign.sh`: a pass and a wall-clock ceiling for each
+configuration class, each an empirical allowance with its source
+(`atomic_prescribed` 40 passes and 30 min, `atomic_closure_rung` 20 for each
+EXHALE solve and 45 min for the rung, `molecular_alternation` 40 and 6 h,
+`transported_ionization` 90 and 6 h, the last wall clock not a measurement of
+its class); overrides in `models/budget_overrides.txt` refused without an
+`authorized:` sentence; a case at a ceiling recorded UNCERTIFIED INCOMPLETE.
+`pick_seed.py`: compatibility before distance in every tier (spectrum, `K_zz`,
+lower boundary, reservoir inventory, `metals`, `mol`, `oxychem`, `carrier`,
+`he_diff`, `iontrans`), the configuration read in three layers, an `iontrans`
+transition offered only when the case names it and ranked last, no certificate
+transferred. `element_flux_closure.py` sources the policy block of `run_case.sh`
+(`RUN_CASE_POLICY_ONLY=1`) instead of restating it; `run_dtau0_first.log` is
+gone. `LHS1140b/MODELS.md` sections 3 and 6.
+
+**How it was verified.** `tests/campaign_budget.sh` 12 of 12 (stub runner),
+`tests/seed_compatibility.sh` 10 of 10 (RED on the tool before the item: the
+local-equilibrium state offered as `tier1`; six real cases choose the seeds they
+chose before), `tests/closure_continuation.sh` 10 of 10, and D8a's fixture 16
+of 16 again. A first draft that compared only the tokens both sides stated
+readmitted 262 archived states to a molecular case; the layering is the repair.
+
+**What it left open.** Step 3, the reference refresh; no declared matrix of
+seeds, resolutions and regimes was run; no bounded repeat of the L36e fiducial.
+
+### D2b: the lower boundary as a contact, upwinded after the acoustic matching
+
+**What was wrong.** At zero and reversed flow the base face density was the
+midpoint of a smoothstep blend of the reservoir and interior isentropes, a
+model choice with no stated physics (L35); the user's decision A asked for a
+stated contact law, the direction decided after the acoustic matching, the
+transport operators with their own base conditions and any width a declared
+regularization with a convergence test.
+
+**What changed.** `base_boundary.f90`, `characteristic_base_face_state`:
+acoustic matching by C- with the reservoir's pressure first
+(`v_b = v_i + (p_b - p_i)/(rho_i c_i)`, moved ahead of the branch); the
+contact's direction read after it; entropy and composition upwinded with
+`w_rev` in {0,1} and no width. The reservoir owns the level at inflow and at a
+pressure-balanced contact at rest (the lower atmosphere as a heat bath on the
+time scales of a stationary solution, stated with its validity range at the
+head of the module); a reverse flow carries the interior's trace out with only
+the pressure imposed. The smoothstep keeps one use, the supersonic-outflow
+transition at `M_i = -1`, as the declared regularization `base_face_mach_blend`
+(default 1e-8). `EXHALE_BASE_BRANCH_ON_CELL1` is removed. Model identity
+`characteristic_face_ps_reservoir_C_minus_contact_upwind_v2`, reservoir
+prescription version 1. `viscous_conduction.f90`: `conduction_base_level_T`,
+the level's own temperature (`base_reservoir_temperature_at`), with the budget
+entry `conduction_base_heat_flux`. `binary_element_diffusion.f90`: the Dirichlet
+reservoir composition stated as a condition that drives a flux either way, and
+`element_base_diffusive_flux` recording face 0. `diffusive_photochemistry.f90`
+(comment): the carrier carries zero diffusive flux across the base face and its
+advection is upwinded on the face mass flux. `docs/input_schema.md` (`T_base`
+is the temperature of the level; the two model identities) and
+`LHS1140b/MODELS.md` section 4.
+
+**The one departure from the decision text, for the user.** The direction is
+read from the wind window's mass flux where the window has standing (the
+existing thresholds `|M_wind| >= 1e-12` and `d_window <= 2e-3`, now thresholds
+rather than blend weights) and from the matched face velocity `v_b` elsewhere,
+with a rounding floor `v_floor = 4 eps_mach [ (|p_i| + |p_b|)/(rho_i c_i) + |v_i| ]`,
+about 1e-15 of the sound speed, at which the reservoir owns the contact. The
+reason is MEASURED: on the three certified catalog states `v_b` is -7.254,
+-2.098 and -3.415 cm/s while the base face carries +0.9995324 to +0.9999844 of
+the window flux; `v_b` there is set by the 1e-4 pressure residual a converged
+state leaves at the base, two orders of magnitude above the flow's own velocity,
+so a bare sign of `v_b` would put every certified state on the reverse branch.
+The decision text said the window must not override a local reverse flow; on
+these states the window and the local face flux agree, and no state has been
+measured where the window has standing and the local face flux reverses.
+
+**How it was verified.** `boundary_state` `contact_law` 22 assertions (seven
+FAIL on the entry text, three rows not compiling there), the face state
+bit-identical when the width moves from 1e-10 to 1e-6 (1.50e-06 and 1.80e-06 on
+the entry text); `grid_and_gates` `base_branch` 11 (five FAIL on the entry text);
+`boundary_state` 35 of 35; the `grid_and_gates` rows 39, `hydrostatic_residual`
+60 and `base_continuity` 35 all pass; the whole `grid_and_gates` 290 of 290 on
+the advisor's verification (READ, the plan's D2a row). Movement: `wasp_full`
+identical in every number; `mol_base_handoff` 1.185e-05 (`v`, cell 203) and
+2.403e-06 (H2); `mol_carrier` 5.226e-06 and 5.595e-06; `lower_profile` 3.312e-04
+(`cool`, cell 495 near the outer edge); on the two molecular marching cases and
+`lower_profile` the window is silent and `v_b` reads reverse where the first cell
+read inflow. `carrier_model_a_newton` (30 marching steps, conduction on)
+2.596e-05, the conduction operator now reading the level's temperature, 4.7 per
+cent from the ghost's p/n_part. The three catalog states' evaluate routes are
+identical, with the same verdicts. On L35's rest fixture the midpoint is gone:
+three states take the reservoir and the atomic fiducial at rest takes the
+interior's trace (`v_b` = -6.667 cm/s, a resolved reverse flow).
+
+**What it left open.** `write_setup_report.f90`'s label for
+`base_face_mach_blend` (corrected by the advisor; see below).
+`element_base_diffusive_flux` is recorded and not printed, because face 0 in
+`element_flux_profile.txt` would change a gated product. The ghost's
+`p/n_part` and the level's temperature remain two numbers 4.7 per cent apart on
+a molecular base.
+
+### What the user decides next
+
+- **The direction rule of D2b.** Whether the one departure stated in the D2b
+  subsection stands: the direction read from the wind window where it has
+  standing, because a bare sign of `v_b` on a converged state is the sign of the
+  base's 1e-4 pressure residual (-7.3, -2.1 and -3.4 cm/s on the three certified
+  states against +0.9995 to +0.99998 of the window flux through the face).
+- **D1b**, the default base cell width `2.0d-4`, only after every historical
+  omitted-key input is pinned from the D1a record.
+- **The D8 retention policy** for the 84 `output_pre_L34/` generations that carry
+  no verdict (nothing deletes them today).
+- **D9 step 3**: re-solving the reference states under boundary model v2,
+  including the three molecular states whose certificates are stale since D5b-2
+  (`molecular_scalar_gj1132_kzz1e9/HeH2.13`, `HeH9.7` and `.L22/i3_alt`), and
+  then the one golden refresh that follows.
+
+### Corrections made while the series landed
+
+Corrected by the advisor as the items came in.
+
+- **`src/tests/stage_row_balance/stage_row_balance_tests.f90`**, the header of
+  `stage_sum_rounding_bound`, gave the bound at `g = 1` as 1.55e-15 and 2.66e-15,
+  which is `(5 nk + 2) eps` without the factor 2 of its own derivation; it now
+  reads 3.109e-15 and 5.329e-15, which the routine's DIAGNOSTIC line prints (READ,
+  D3b section 8). The executed rows always used the correct expression.
+- **`src/modules/time_step/certification.f90`**: the element-inventory comment
+  named the statement made cell by cell with a hyphenated "per" compound,
+  which this tree's wording rules forbid; it now reads "the cell-by-cell
+  statement".
+- **`src/modules/files_IO/write_setup_report.f90`** printed
+  `entropy-branch blend window, face Mach =` before `base_face_mach_blend`, which
+  after D2b no longer sets an entropy-branch window; the label is now
+  `supersonic-outflow regularization width, face Mach =`.
+- **`src/tests/grid_and_gates/restart_round_trip.sh`**, the row
+  `restart_lower_ghost_is_the_derived_boundary` that D5b-3 added at an exact
+  zero: the zero was a coincidence of equal seeds, since the ghost's solve closes
+  to `base_ghost_closure_tol` and its last bits follow the seed the loader takes
+  from the file's first cell; after D2b the seeds differ and the row reads
+  4.0e-16, so it now asserts the round-trip rounding band 1e-14, and whether the
+  file's ghost rows are read is decided by the four ghost variants of
+  `src/tests/boundary_state/` (reason in `docs/lhs1140b_stationary_D5b2_20260918.md`
+  section 11).
+- **`docs/lhs1140b_stationary_L33_20260917.md`** section 6.3 gained an "Executed
+  2026-09-18" paragraph stating the bounded experiment's result on the case it
+  designed.
+- **The `EXHALE.x` in `backup/regression/wasp_full/`**, dated 13:27 on
+  2026-09-18 (md5 `74b96cdcf887dcfee301ec547f012d88`, the closing binary of
+  section 12), was first reported as a stray. It is not one: `run_check.sh`
+  copies the binary under test into every case directory before running it,
+  so each case directory holds the binary of its last check (corrected
+  2026-09-19).
+
+### The golden refresh: still deferred by decision
+
+No golden was refreshed in this series and no item wrote under
+`backup/regression/golden/`. The goldens are the 2026-09-17 set, and they no
+longer match the tree on the `hp_*` cases and on every case D7c, D5b-2, D5b-3
+and D2b moved. The movements the memos measured, each against the item's own
+entry-text control (not against the goldens):
+
+| item | case | largest relative movement |
+|---|---|---|
+| before this series (L36c to L36e, READ from D9) | `hp_front`, `hp_zero_seed`, `hp_trace_seed`, `carrier_model_a_newton` | 1.6e-1 (helium columns), 3.9e-3, 3.3e-3, 1.2e-4 against the goldens |
+| D6 | `hp_front` (100 steps) | 1.2e-14 |
+| D6 | `carrier_model_a_newton` (3 passes) | 4.100e-5 (`v`) |
+| D7c | `wasp_full` (400 steps) | 3.98e-6 (`HeI` where n(He I) is 3.4e-7 cm^-3); about 1e-11 in the dense launch region |
+| D5b-2 | `mol_base_handoff` (12000) | 6.19e-09 (`cool`), 1.05e-08 (`H3p`) |
+| D5b-2 | `mol_carrier` (12000) | 1.33e-11 (`v`), 1.29e-12 (`HeI`) |
+| D5b-3 | `mol_base_handoff` | 1.2629e-11 (`v`), 1.8050e-11 (`HeHp`) |
+| D5b-3 | `mol_carrier` | 1.4985e-11 (`v`), 5.6496e-13 (`HeHp`) |
+| D2b | `mol_base_handoff` | 1.185e-05 (`v`), 2.403e-06 (H2) |
+| D2b | `mol_carrier` | 5.226e-06 (`v`), 5.595e-06 (H2) |
+| D2b | `lower_profile` (12000) | 3.312e-04 (`cool`), 2.568e-04 (`Ion_species.txt`) |
+| D2b | `carrier_model_a_newton` (30 marching steps) | 2.596e-05 (`v`), 5.212e-06 (`Ion_species.txt`) |
+
+Measured identical by every item that ran it: `wasp_full` under D1a, D3a, D3b,
+D4b, D5b-1, D5b-2, D5b-3, D6, D7a, D7b, D7d and D2b (moved by D7c only);
+`wasp_he23off` under D7c; `mol_metals` under D7a, D7b, D7d; `mol_diffusion` under
+D6 and D4b; `hydrostatic_column` under D1a; the three `hp_*` data rows under D3b.
+`lower_profile` was identical under D5b-2 and D5b-3 and moved under D2b. The
+matrix cases `wasp_full_newton`, `mol_lyman_werner`, `mol_ir_bands`,
+`mol_sec_ion` and `oxygen_chemistry` were not run by any item of this series,
+so their movement is not known; the molecular ones carry a molecular base and
+are expected to move with D5b-2 and D2b, which is an expectation and not a
+measurement.
+
+The refresh is one refresh, after the reference states are re-solved under
+boundary model v2 (D9 step 3), with the movement against the 2026-09-17 set
+measured and reported at that time.
+
+### D9 step 3 and the golden refresh of 2026-09-19
+
+Approved by the user on 2026-09-19 ("남은 것도 전부 진행"). Before the
+refresh the series closed four further code defects that the catalog
+re-evaluation exposed (`docs/lhs1140b_stationary_D9fix_20260919.md`): the
+ghost H2 closure of D5b-2 contracted linearly (slope 0.74 to 0.90 per pass)
+and now takes a secant step on its scalar equation and tests the residual at
+the returned state; `transfer_h2` of the atomic-to-molecular seed overwrote
+the H2 that the molecular reservoir's ghost already carries and now
+partitions the neutral pool, conserving H nuclei to 4e-16; `bg_ready`, which
+item L36e had narrowed to `transported_rows_exist()`, again holds for every
+molecular run, since the molecular seed's local chemical root reads the
+background (`src/tests/molecular_seed` 25/0); the parse-dump mode now stops
+before `EXHALE_setup.out` is opened, so the parse corpus no longer truncates
+the setup report stored beside a case's results. The rounding-dependent
+`carrier_bound_default_halves` row became a DIAGNOSTIC. The catalog runner
+gained `run_case.sh --evaluate`, writable `_IC` copies, `pick_seed.py` tier 0
+on `latest_certified`, and the demotion of a parent that the current binary
+refuses (`docs/lhs1140b_stationary_D8b_20260918.md`, addendum).
+
+The three x0.01-XUV atomic catalog states are refused on the final binary and
+the refusal is physical: they were solved on the pre-D2b blended base face,
+and under the accepted contact law their base face flux is 38 to 178 times
+the window mean. They are demoted in their indexes and re-solved as a
+catalog item.
+
+A metal-bearing transported-ionization reference now exists: WASP-121b with
+He 2^3S and solar trace metals, `Ionization transport: True`, certified at
+outer pass 29 from the certified `wasp_full_newton` state
+(`docs/iontrans_metals_reference_20260919.md`); the transported stage
+sources equal the sweep's rows at every cell exactly. It is the regression
+case `iontrans_metals`, in the default list, with its outer-pass cap pinned
+in the new one-line file `outer_passes` (read by `run_check.sh` as
+`EXHALE_OUTER_PASSES`). `run_check.sh golden` snapshots the two `*_adv.txt`
+products only where the case's route writes them.
+
+**The goldens were refreshed once**, on EXHALE.x md5
+`2c3b0acc9983aec03bb4f844294fed18` (`make -q` clean), after a strict check
+of all eighteen cases on that binary. The previous set is kept as
+`backup/regression/golden_20260917/`. Movement against it, largest relative
+change of any value in the two state files, MEASURED:
+
+| case | `Hydro_ioniz.txt` | `Ion_species.txt` | nature of the case |
+|---|---|---|---|
+| `wasp_full_newton` | 5.5e-11 | 1.4e-10 | converged, certified |
+| `wasp_full` | 3.9e-4 | 2.0e-6 | fixed-step snapshot |
+| `wasp_he23off` | 7.4e-5 | 5.0e-6 | fixed-step snapshot |
+| `mol_base_handoff` | 1.2e-5 | 8.0e-5 | fixed-step snapshot |
+| `mol_carrier` | 5.2e-6 | 8.0e-6 | fixed-step snapshot |
+| `mol_diffusion` | 1.3e-5 | 9.0e-6 | fixed-step snapshot |
+| `mol_ir_bands` | 1.9e-5 | 2.5e-6 | fixed-step snapshot |
+| `mol_lyman_werner` | 4.2e-5 | 2.9e-6 | fixed-step snapshot |
+| `mol_metals` | 1.3e-5 | 2.5e-6 | fixed-step snapshot |
+| `mol_sec_ion` | 4.9e-2 | 1.8e-5 | fixed-step snapshot |
+| `lower_profile` | 3.3e-4 | 2.6e-4 | fixed-step snapshot |
+| `roundtrip` | 4.1e-3 | 1.8e-3 | fixed-step snapshot |
+| `hp_front` | 1.6e-2 | 1.6e-1 | fixed-step snapshot, transported stages |
+| `hp_trace_seed` | 9.0e-1 | 1.0e0 | fixed-step snapshot, transported stages |
+| `hp_zero_seed` | 9.0e-1 | 1.0e0 | fixed-step snapshot, transported stages |
+| `hydrostatic_column` | 1.0e-7 | 8.3e-1 (on values of order 1e-180) | static column |
+| `oxygen_chemistry` | 1.9e0 | 1.0e0 | fixed-step snapshot, oxygen network |
+| `iontrans_metals` | new | new | converged, certified |
+
+The one converged state that existed before moved by 1e-10. The large
+movements are all fixed-step snapshots of runs that are not stationary, whose
+trajectory any change of the physics moves; the transported-stage cases
+carry D6, D7a to D7d and D3 corrections to their sources, and the oxygen
+case was already known to move by order unity (item L30c). `parse_golden/`
+was refreshed the same day on 882 live inputs, its previous copy having been
+out of date since the Jupiter-radius constant became the IAU equatorial
+value.
+
+## 14. PLAN_20260919_rev1: the review folded in, the boundary composition closed (2026-09-19 to 2026-09-20)
+
+Plan of record: `docs/PLAN_20260919_rev1.md`, which folds
+`docs/PLAN_20260919_review.md` into the first text `docs/PLAN_20260919.md`
+after checking each of the review's ten findings against the source and,
+where a finding was about behavior, against an execution on this tree. Nine
+were confirmed and one (R2, the solved ghost electron count) was confirmed
+with a narrower reading, as a defect of a diagnostic and not of the equation
+of state. The plan's section 1b re-ran the review's central case twice here
+rather than quoting it.
+
+Every number below is READ from the item memo named beside it, from the plan,
+or from the file named; where a memo labels a number MEASURED, the
+measurement is that item's. Three things were measured for this section and
+are said to be: the md5 of the tree's `EXHALE.x`, that `make -q` finds it
+current, and the movement table of the golden refresh, read from the strict
+check that preceded it.
+
+The order of work changed from the first text: measurement and record
+correctness came before the boundary investigation, because the
+investigation's evidence is read through them.
+
+### P0: the case list the counts are of
+
+**What was wrong.** The catalog counts quoted in the plans were enumerations
+nobody could repeat: 88 indexes with 74 certified in the first text, 137 with
+83 in the review, 136 with 83 in the advisor's check of the same day. None of
+the three stated which directories it counted or what "certified" meant.
+
+**What changed** (`docs/lhs1140b_p0_p4a_20260919.md`). `models/status.py
+inventory [--write]` publishes `LHS1140b/models/CASE_INVENTORY.{md,json}`:
+the selection rule in words and the name of the function that IS the rule,
+the instant it was taken, the binary of record with its md5 and its source
+list, the criterion for certified (the index names a `latest_certified` whose
+entry carries no `stale_under`), the totals by kind of directory, and one row
+per state index. The rule is one row per `state_index.json` under `models/`,
+walked recursively, hidden directories included, with a `kind` column; a
+narrower count is taken by reading that column and never by walking the tree
+again with another rule.
+
+**How it was verified.** MEASURED by running it, 2026-09-19: 137 state
+indexes, 83 certified, of which 84 ladder cases (74), 46 closure rungs (9),
+4 `diffusion_check` (0), 2 archives and 1 study directory. The advisor's 136
+differs by the tree and not by the rule: `.L22/i3_alt` published its first
+generation that day, and it is the only index of the catalog whose oldest
+generation was published then. The review's 93 with 83 is the same table read
+narrowly, the 84 ladder cases plus the last iterate of each of the nine
+closure ladders.
+
+**What it left open.** Nothing of the rule. The count itself moved twice more
+in this series, to 85 certified, by the measurements of the fourth catalog
+pass.
+
+### P4a: the four facts of how a run ended
+
+**What was wrong.** `classify_ending` of `models/run_case.sh` returned
+`solved` on `INFO = 0` before it tested that a complete finite state existed,
+and it took `INFO` from the last inner `(JFNK|PTC) done info=` line when the
+outer route printed no verdict. `solver_from_log` of `publish_state.py`
+repeated the same fallback in its own code, so a manifest could carry a
+verdict no route gave.
+
+**What changed.** The route is determined first, from the run's own `Restart
+intent:` echo, and only that route's terminal event is its verdict; an inner
+solver line is carried as evidence and never promoted. Four facts are kept
+apart and all recorded: the process ended, the route stated its outcome, a
+complete finite state of that pass is on disk, and the state as written
+certified. `state_missing`, `nonfinite_state` and the new `stale_state` are
+reachable from `info = 0` as well, and conflicting evidence has its own class
+(`conflicting_evidence`, which is `info = 0` with a refusing certificate).
+`run_case.sh` and `publish_state.py` now read ONE rule
+(`RUN_CASE_POLICY_ONLY=1`) and `status.py` delegates to it.
+
+One correction the advisor made to the item: the marching route prints six
+different endings on one `-> stopped:` line, and calling all six a relaxation
+snapshot is wrong in two, since a run that requested no time integration
+never advanced the state it wrote and a stop on a NaN is not a state to carry
+forward. The rule now reads the binary's own reason and gives
+`no_integration` and `nonfinite_state` their own classes.
+
+**How it was verified.** New fixture `tests/termination_classification.sh`,
+14 checks on synthetic logs: RED 1 of 14 against the previous text, GREEN 14
+of 14 after. Every existing catalog fixture passes (27, 16, 12, 11, 10, 18,
+18). Read only, over the 398 stored generation records: 311 name a log on
+disk, 306 are still the record's own log, and 44 of the 306 would be
+classified differently, all of them `no_verdict` becoming `no_integration`
+(37 closure rungs of `atomic_photochem_gj1132_kzzprofile`, the 4
+`diffusion_check` cases, 3 generations of
+`molecular_scalar_gj1132_kzz1e9/HeH0.55`). No record stored as `solved`
+moves.
+
+**What it left open.** Nothing was re-classified in place: the 44 are
+evidence for P4c. A record binds its log by PATH, and that path is reused,
+which P4d then closed by binding the bytes.
+
+### P5a: the capacity contract of a certification report
+
+**What was wrong** (`docs/lhs1140b_p5a_20260919.md`). `add_entry` in
+`certification.f90` returned silently when the report already held
+`cert_max_entries` entries, and every entry writer then assigned into
+`rep%e(rep%n)`, which in that state is the PREVIOUS entry. MEASURED through
+the public entry writer on the entry text: the hydrogen entry keeps its name
+and carries the helium equation's measure, `silent_overwrite=T`.
+
+**What changed.** `add_entry` returns the index of the entry it created and
+every writer assigns through that index, so no `rep%e(rep%n)` remains in the
+module (MEASURED). An entry that does not fit stops the run before any field
+is written, naming the equation, the capacity and the entry that stands last.
+`cert_max_entries` is no longer a literal: it is the sum of the inventory the
+builder writes (3 hydrodynamic rows, 7 carrier balances, 2 stage nucleus
+sums, 1 He/H partition, 10 trace element balances, 2 level balances, 7
+eliminated-species closures) and stays 32.
+
+**Why it mattered more than it looked.** The capacity was exactly consumed:
+READ from the run logs of the binary of record, a transported-stage
+configuration prints `active equations 11 of 32 in the inventory`, so ONE
+added equation of any kind would have overwritten the last entry silently.
+
+**How it was verified.** RED on the entry text for the three new rows, GREEN
+after; `certification` 123 of 123 (109 before the item),
+`ionization_stage_flux` 45, `element_operator` 40, `adv_static_limit` 53,
+`krylov_and_dogleg` 334, `steady_species_rows` 197, all passing. `wasp_full`
+at 400 steps and `mol_carrier` at its pinned 12000 are byte-identical in
+their data rows between a control build of the entry text and the measured
+build, as they must be, since no present configuration reaches the capacity.
+
+**What it left open.** Nothing. Raising 32 to another constant was refused as
+a repair: the number is the size of the inventory and is now derived from it.
+
+### P4b: the seed of a new solve, resolved once
+
+**What was wrong** (`docs/lhs1140b_p4b_20260919.md`). The manifest of
+`molecular_scalar_gj1132_kzz1e9/HeH9.7` `g0004_20260919T103629Z_9b8394a3`
+carried a null parent with "not recorded by the run that wrote this state",
+while the run record it names carries the seed `g0003_...ffa78b36` of its own
+case. The runner knew the seed and the manifest did not, because
+`run_case.sh` passed the publisher the generation an internal continuation
+continued, which is empty for a first solve however it was seeded.
+
+**What changed.** The runner resolves the seed ONCE into
+`runs/<run id>/seed_identity.json` (schema `exhale_seed_identity/1`) and hands
+that one file to the publisher and to `write_reproduce.py`, so the manifest
+and `REPRODUCE.md` cannot name different seeds. The record carries whether
+the seed was established, its kind, the case and generation it came from or
+the md5 of both halves where no generation exists, who chose it (the
+`pick_seed.py` tier, an explicit `SEED=`, a listed candidate, `NOSEED=1`, or
+the runner continuing its own generation), and what was done to it: used as
+it stands, interpolated onto this case's cell centers, or converted from an
+atomic state with what the conversion changed. A seed of the case being
+solved becomes the `parent`; a seed of another case does not, and says in
+words where it came from. The contract is `LHS1140b/MODELS.md` section 9.12.
+
+**How it was verified.** `tests/seed_provenance.sh` 33 of 33, against 5 of 33
+on the reconstructed entry text; the eight existing catalog fixtures pass;
+`status.py inventory` still reads 137 indexes with 83 certified. A bounded
+solve was run end to end through `run_case.sh` on a scratch copy of
+`carrier_model_a_newton` and published two generations, the first carrying
+the `SEED=` record and the second the continuation with the first as parent.
+
+**What it left open.** Read only, of the 398 published manifests 226 carry a
+null parent: one has its own run record and is R9's case, five more can be
+read from a `REPRODUCE.md` and are each of ANOTHER case, and the remaining
+220 predate the publisher storing a run id. Nothing was rewritten: that is
+P4c. The closure runner was believed to publish without a seed, which P4b-2
+then found to be wrong in a different way.
+
+**Fixed in passing.** `tests/termination_classification.sh` set its pass mark
+in the same second in which it wrote the state, so check T7 read
+`stale_state` about once in two runs; the mark is now set a minute into the
+past. The rule itself is not at fault: a solve never writes its state within
+a second of the mark.
+
+### P5b: the executable a test selects, and the one it says it ran
+
+**What was wrong** (`docs/lhs1140b_p5b_20260919.md`). No suite under
+`src/tests/` printed or checked the identity of the binary it ran (READ: the
+string `md5` occurs in no pre-change suite script except where an OUTPUT file
+is hashed), and the selection was made by four different names. MEASURED: a
+run that set `EXHALE_EXE` to a missing file and reached `residual_determinism`
+was answered by the tree's own build, with no refusal and no statement.
+
+**What changed.** One policy, stated once in `src/tests/exhale_exe.sh` and
+sourced by every suite that runs the binary: `EXHALE_EXE` selects it;
+`EXHALE_RESID_EXE`, `EXHALE_SPECIES_EXE` and `EXHALE_COUPLED_EXE` are
+accepted aliases; several names resolving to one file are one request, and
+names resolving to different files are refused rather than silently chosen.
+Every such suite prints the path, the md5 and which name selected it before
+anything runs, asserts that the file about to run carries the requested md5,
+and, where it copies the binary into a working directory, asserts the md5 of
+the copy. `EXHALE_EXE_IDENTITY_ONLY=1` states the identity and runs nothing.
+
+**How it was verified.** The new sentinel suite `src/tests/executable_identity`
+runs 21 rows, none failing, in under a second, by pointing `EXHALE_EXE` at a
+copy of the binary whose md5 differs and requiring each suite to report the
+COPY. RED and GREEN are both executed on the same request: the pre-change
+scripts do not refuse a missing file named in `EXHALE_EXE` and never name the
+file that ran; the delivered ones refuse it by name and exit 1.
+`run_mode` 32, `boundary_state` 38, `charge_exchange_rows` 251,
+`spectrum_type` 171, `molecular_seed` 26 and `fuv_band_ledger` 25 all pass.
+
+**What it left open.** A standing failure the item exposed and did not touch:
+`residual_determinism`'s
+`closure_spread_within_the_row_tolerance_atomic_elem_newton` measures
+1.715E+04 against a bound of 1, identically before and after the item on the
+binary of record. It belongs to the residual contract and joins the open list
+with the two `coupled_block_jacobian` rows of R5.
+
+### R2 and P1 step 1, experiments 1 and 2: the ghost's seed decides the certificate
+
+**What was wrong** (`docs/lhs1140b_p1_step1_20260919.md`). R2: the solved
+ghost electron count summed H II, He II, He III and the metal stages and
+declared the molecular ions negligible, while `calc_ne`, which the production
+electron density comes from, counts H2+, H3+ and HeH+ with their charges. The
+defect is a diagnostic's, not the equation of state's, and 1 per cent is not
+a rounding argument for leaving the charges out.
+
+**What changed for R2.** The count is now `calc_ne`'s own count of the
+composition the sweep returned; the second sum is gone, and the comment at
+the assignment states what the count is of, its charge carriers, its units
+and its validity range. MEASURED: the reported count moves by 1.022e-2
+relative, which is the molecular share the review measured, and nothing
+numerical moves with it (`mol_carrier` at its pinned 12000 steps
+byte-identical in both files between a control build and the measured one).
+
+**The instrumentation, all default off.**
+`EXHALE_GHOST_COMPOSITION_SEED` (the ghost enters the sweep from the state
+file's ghost rows, the previous sweep's ghost, or a named file, instead of
+the reservoir row whose partition is the first physical cell's),
+`EXHALE_GHOST_SEED_WRITE` (the installed ghost rows written in that format),
+and `EXHALE_GHOST_RECORD` (one record per evaluation: the ghost's
+thermodynamic state, counts, fractions, charge and elemental budgets, the
+residual it was accepted at, the partition residual, the closure passes, and
+the base row with both face fluxes, their signed difference, the row scale
+and its rounding floor).
+
+**The decisive measurement.** At one frozen physical column, reservoir,
+spectrum, options, executable and thread count, on the refused generation
+`molecular_scalar_gj1132_kzz1e9/HeH9.7` `g0004_...9b8394a3`:
+
+| ghost seed | cell-1 mass row | in floors of that row | verdict |
+|---|---|---|---|
+| the first physical cell's partition (the rule then in force) | 8.3353e-08 | 111.29 | REFUSED at cell 1 against 7.5e-9 |
+| the ghost rows the state file carries | 2.9229e-09 | 3.903 | CERTIFIED, the stored verdict reproduced at cell 210 |
+| the same rows with 1e-3 of the H2 moved into H I | 2.9248e-09 | 3.905 | CERTIFIED, same verdict cell and measure |
+
+The two ghosts differ by 4.7e-3 (H II, He II) to 5.5e-2 (H2+) in the trace
+ions while `p`, `rho`, `T` and the particle count agree to 1e-14 to 1e-10,
+and BOTH are accepted at reaction residuals of about 3e-26 with their imposed
+partition closed to 0. The exact replay is byte-identical in both state files
+and in the ghost record. Between the first two seeds the base face mass flux
+moves by 7.8e-8 relative and the signed difference of the two face fluxes by
+2.1e-4, while the row moves by a factor 28.5: the row is not the difference
+of the two fluxes the record prints, the face areas and the cell volume stand
+between them, and both rows are above their own rounding floor.
+
+**How it was verified.** New fixture
+`boundary_state/ghost_seed_and_ghost_record.sh` 9 of 9 (3 of 9 failing on the
+control build), `boundary_state` 38 of 38, `carrier_retry` 137 of 137,
+`grid_and_gates` 295 of 295.
+
+**What it left open.** Whether the two accepted states are two roots of the
+ghost's system or one root the cell solver stops short of, which experiments
+3 to 6 then answered.
+
+### P1 step 1, experiments 3 to 6: one root, and the sweep does not reach it
+
+**What the experiments found** (`docs/lhs1140b_p1_step1b_20260919.md`). There
+is ONE root, and the composition sweep does not reach it: the ghost it
+returns keeps a measured fraction of the composition it was seeded with.
+Three measurements decide it.
+
+1. It is not unresolved iteration. Over six decades of `EXHALE_IEQ_TOL` (the
+   default 1.49e-8 down to 1e-14) the two states do not approach each other
+   at all: each stays put to 1e-15 while they remain 4.7e-3 to 5.5e-2 apart,
+   and the cell-1 row reads 8.33528e-08 and 2.92293e-09 at EVERY rung. The
+   ladder does reach the solver: at 1e-14 `hybrd1` answers info = 3 on 225 of
+   508 cells, so the returned iterate is already pinned far better than the
+   difference.
+2. Neither state is a fixed point. Seeded with the refused ghost, in the
+   refused ghost's own column, the solve LEAVES it, returns a ghost 5.5e-2
+   away in H2+ and certifies.
+3. The seed-to-ghost map has a gain: seeds 9.7e-1 apart return ghosts 4.7e-3
+   apart, and a seed perturbed by 9.8e-1 in H I returns a ghost 5.3e-5 away.
+   A converged root does not remember its start.
+
+No present control names the shortfall: at both states the network residual
+is 3e-26, `hybrd1` returns info = 1, the imposed partition closes to 0.0, and
+the cell is accepted as a converged root. Both also satisfy
+`x_H2 = x2 (1 - x_ion)` exactly, so the handoff closure is not what separates
+them.
+
+The other three experiments: the temperature closure removes most of the
+difference (the two branches' H2+ fractions go from 5.5e-2 apart to 4.3e-6,
+the rows from a factor 28.5 to 1.34, and both certify); holding the interior's
+eliminated species changes the base row in no printed digit, so the interior
+refresh is not a term in the base row; and the reload ladder settles, the
+ordinary reload giving the refused state three times from either start and
+the file-seeded reload giving the certified state in at most two reloads.
+Nothing drifts and nothing cycles.
+
+**How it was verified.** New fixture `interior_composition_held` 4 of 4 (1 of
+4 failing on the control build), `ghost_seed_and_ghost_record` 9 of 9,
+`boundary_state` 38 of 38, `carrier_retry` 156 of 156.
+
+**What it left open, and what it decided.** P1 step 2 is therefore an
+accuracy contract, not a branch statement (there is one root) and not a
+reformulated base row first (a row that hid this would hide a ghost 5 per
+cent wrong in its ionization). Two standing failures were reported and not
+changed: `coupled_source_step` fails 2 of its 44 rows on the entry text as
+well, which reads as a suite that no longer reaches the events it measures;
+and a metals-off run writes its metal columns at a floor of order 1e-301 that
+does not survive a load and a write exactly.
+
+### P1 step 2: the boundary composition is a fixed point of the sweep
+
+**What changed** (`docs/lhs1140b_p1_step2_20260920.md`). The sweep is a map
+from the composition it is entered at to the one it returns, and `ioniz_eq`
+now applies that map again at the ghost it returned, with the interior
+restored at each application, until the ghost's composition and its
+heavy-particle plus electron count have both stopped moving; at twenty
+applications it stops the run by name with both moves. What the routine
+returns for the physical cells is still one application of one map, so the
+steady residual is still one application of one operator. The seed is now the
+boundary model's own statement, "the reservoir row at the first sweep, the
+ghost the previous sweep returned after it", the model identity moves to v3,
+and `load_IC` reports a v2 state instead of refusing it.
+
+**Why the accuracy is what it is.** From step 1's measurements, 4.7e-3 of
+ghost composition moves the base continuity row from 3.90 to 111.3 of its own
+rounding floors, so one floor of that row costs 4.4e-5 of ghost composition;
+the inner composition solve is at the resolution of the arithmetic by 1e-13,
+and the map reaches 1.5e-5 after one application and 4e-13 after two. The
+temperature leg is inside the contract: the ghost's particle plus electron
+count is what turns its temperature into the pressure the hydrostatic
+continuation builds, so it is held to the same accuracy (MEASURED: it closes
+to 3.7e-16, 2.4e-16 and 4.8e-15 for the three seeds).
+
+**How it was verified.** The refused generation CERTIFIES with the cell-1 row
+2.923E-09, reproducing the stored verdict at cell 210 from all three seeds;
+`boundary_state` 38 of 38 and the new fixture
+`ghost_composition_fixed_point` 11 of 11 (4 of 11 failing on the control
+build). Against the goldens, strict: `wasp_full`, `wasp_he23off` and
+`lower_profile` IDENTICAL, `hp_front` moving by 9.7e-12. Movement carried to
+the golden refresh, nothing refreshed at the time: `mol_base_handoff`
+9.9e-12, `mol_diffusion` 4.4e-9 and 7.4e-9, `mol_carrier` 1.6e-11 at 400
+steps, `mol_metals` 4.2e-4 in one trace column at 400 steps, with log10 Mdot
+unchanged in each; cost 1.18 times the wall clock on `mol_carrier` at 200
+steps.
+
+**A rule the item found.** Nothing that separates one sweep from the next may
+turn over between the applications. Letting `bg_ready` turn over broke
+`mol_carrier` outright (185 cells clamped at step 0); it is held across them.
+
+**What it left open.** The base row still rests on a near cancellation; the
+reservoir's prescribed particle count and the ghost's own are still two
+quantities (P6c then measured the distance); six molecular catalog states
+still refuse for reasons the ghost composition does not reach; the atomic
+ghost is outside the contract; and no full stationary solve had yet run under
+it.
+
+### P1 step 2b: the accuracy belonged in the composition's own units
+
+**What was wrong** (`docs/lhs1140b_p1_step2b_20260920.md`). The contract
+introduced a regression: `grid_and_gates coupled_carrier_h2` failed 2 of its
+11 rows, both runs stopping with `ERROR STOP ioniz_eq: the ghost composition
+is not a fixed point` after twenty applications. The cause is none of the four
+candidates the item listed, each of which was tested and refuted. The
+contract asked an accuracy in a norm the sweep cannot deliver in and no
+quantity the boundary builds reads: each ghost species against its OWN value.
+MEASURED, the ghost settles into an exact two-cycle in which H I moves by
+6.5e-12 of the cell's composition and H3+ by 2.2e-12, while against their own
+values those same moves read 4.1e-9 and 5.1e-3; the same cycle moves the
+ghost's particle plus electron count by 4.9e-12 and the base row by 0.06 of
+that row's own rounding floor. A deterministic map on a revisited point
+cycles for ever, so the twenty-application bound was reached with certainty.
+
+**What changed.** The move is now the largest absolute change of any species
+of the two lower ghost cells in the composition's own units, held to 1e-11,
+and the count leg keeps 1e-6 against its own value. The compare floor is
+gone, since in those units nothing needs keeping out. 1e-11 is a quarter of
+the base row's rounding floor (one floor is bought by 3.8e-11 of composition)
+and above every plateau measured (6.8e-12 on the failing case, 3.5e-12 on the
+hot-Uranus carrier state, 1.3e-14 to 3.3e-13 on the LHS 1140 b generation).
+The reason the earlier states closed is measured: their trace ions sit three
+decades higher.
+
+**How it was verified.** RED and GREEN on the fixture that carries the
+regression, exit status 1 then 0; `grid_and_gates` 305 of 305 including the
+two rows, `boundary_state` and `ghost_composition_fixed_point` passing, the
+refused generation still CERTIFYING with the cell-1 row 2.923E-09 and the
+contract reaching 6.84E-14 in three applications, and `wasp_full` (400) and
+`lower_profile` (pinned) byte-identical to the control. Movement of the
+molecular cases against the control, with log10 Mdot unchanged in all four:
+`mol_carrier` 8.5e-12 and 4.1e-11 at 400 steps, `mol_metals` 3.6e-11 and
+1.9e-05 in one trace column, `mol_base_handoff` 5.0e-09 and 8.4e-09,
+`mol_diffusion` 3.3e-09 and 6.1e-09.
+
+**What it left open.** The accuracy sits a factor 1.5 above the lowest
+plateau measured, so a configuration whose composition solve plateaus higher
+will stop the run; the bracket is stated in the code and the memo, and the
+answer if another case meets it is to measure that plateau and not to widen
+the number. The atomic ghost is still outside the contract, the base row
+still rests on a cancellation, and no full stationary solve had run under the
+contract when the item closed.
+
+### P6d: the charge-exchange turnover says which cell it answers for
+
+**What was wrong** (`docs/lhs1140b_p6d_p6e_20260919.md`).
+`cx_add_to_turnover` read the thread-local rate coefficients and the metal
+base without the cell guard its neighbors carry, and the turnover sets a
+normalization that chemical acceptance reads.
+
+**What changed.** The entry point takes the temperature of the cell whose
+turnover it is bounding and goes through `cx_require_cell`. The cell is
+optional in the interface, because two of the three call sites sit in a file
+another item owned this session; a call that states no cell is refused when
+the thread holds none at all.
+
+**How it was verified.** Whether a production call ever ran on another cell's
+rates was MEASURED before the guard was added, with an instrumented build
+that counted and logged instead of stopping: on `wasp_full` (400),
+`mol_metals` and `mol_carrier` (12000), `hp_front` (100) and
+`iontrans_metals` (90 outer passes) the entry point was not reached at all,
+and a positive control shows the instrument would have seen it. READ from the
+source, the reason is structural: the branches that reach the turnover are
+entered only when a cell solve is rechecked, and the entry points that
+evaluate the measure on a finished state install the cell first. So the
+defect was a missing contract and not a wrong number in these runs. RED on
+the entry text is a compile refusal (the entry point has no cell to state);
+GREEN gives the four new rows, and `charge_exchange_rows` runs 255
+assertions, all passing.
+
+**What it left open.** The three call sites, one line each: two in
+`ionization_equilibrium.f90`, and the one in
+`constrained_chemical_equilibrium.f90` which sits on the molecular rung path
+that none of the five runs entered, so making it a stated cell without that
+measurement would turn an unexercised path into an abort.
+
+### P6e: the elemental base flux record belongs to an evaluation
+
+**What was wrong.** `element_base_diffusive_flux` was assigned from `Jf(0)`
+of the last operator call, so printing it after a different evaluation could
+describe a different state. The item found more than that: the old record was
+IDENTICALLY ZERO, not small, because the gradient and drift coefficients are
+built on faces 1 to N-1 and faces 0 and N are left at zero, so `Jf(0)` was
+zero whatever the state. The flux the Dirichlet reservoir composition drives
+sits at face 1, and the plan's earlier figure of -5.57e-13 on `lower_profile`
+was that face's number, not the base face's.
+
+**What changed.** The record is now `element_base_flux`: the evaluation that
+wrote it, the first solved face, and the advective and diffusive halves at
+the base face and at that face, in g cm^-2 s^-1 positive outward, with a
+reporter that says no evaluation has written one rather than printing an
+uninitialized number.
+
+**How it was verified.** MEASURED at the last evaluation of two runs, the
+diffusive half at face 1 reading -5.5826627E-13 on `lower_profile` and
+-3.0298600E-13 on `mol_diffusion` while the base face's is a signed zero; and
+the second reason the record needs its evaluation, the advective half at the
+base is not steady on `lower_profile`, reading +4.47e-8 at evaluation 1079,
+-3.35e-10 at 11220 and +6.29e-10 at 12000 as the base sound wave turns the
+face flux over in sign. Report only, and it shows: `wasp_full` (400),
+`mol_metals`, `lower_profile` and `mol_diffusion` (12000 each) are
+byte-identical in both state files between a control build of the entry text
+and the measured one. `element_operator` 50 of 50 (RED is a link failure on
+the entry text), `stage_row_balance` 10 of 10.
+
+**What it left open.** `element_flux_profile.txt` keeps its columns: adding
+the base face would add a row that `reduce_element_flux_windows` feeds into a
+reported product, so it waits for a golden-refresh decision.
+`element_base_flux` still has no reader; the stationary route's budget is
+where it belongs.
+
+**Corrected by the advisor while the item landed.**
+`backup/regression/iontrans_metals/NOTE.txt` said "No golden yet", which
+stopped being true when the matrix was snapshot on 2026-09-19.
+
+### P6f: the transit spectrum of a solved state
+
+**What was wrong.** The first text said the transit tool reads only the
+advection-corrected profiles. It does not: `EXHALE_TRANSIT_STATE=solution`
+selects the solved state pair (READ). What the item found instead were three
+defects of the tool (`docs/lhs1140b_p6f_20260919.md`): the default selection
+on a run with no `_adv` products died inside `numpy.loadtxt` with a bare
+`FileNotFoundError`; a saved curve named its inputs by path only, so a number
+could not be traced to the state that produced it; and the O I ground-term
+populations were read from `OI_levels_adv.txt` whatever the selection, so a
+solution-state O I line would have used post-processed level populations, and
+on a stationary state that file is absent and the line was skipped silently.
+
+**What changed.** The refusal now names every missing file, says that a
+stationary solve writes no such products and names the other selection; every
+saved curve carries the path, md5 and size of each file read and the state's
+own provenance, coupling, boundary model and reservoir lines; the O I level
+file follows the selection; and the tool states what the two selections mean,
+that the `_adv` pair is a post-process of a marching state (a steady
+advective correction, first-order upwind at the bulk velocity, no eddy term,
+refused where the steady assumption fails) and the solved pair is the state
+the solver produced and the certification judged. No `_adv` file is
+manufactured for a stationary route.
+
+**What the choice costs, MEASURED on `wasp_full`**, which has both states:
+He I 10830 peak depth -0.64 per cent of itself, H-alpha -1.28, H-beta -3.48,
+Ly-alpha unchanged at its saturated ceiling, and the optically thin metal
+lines +0.1 to +0.8. The cause is stated rather than guessed: the metastable
+helium column is 12 per cent LARGER in the solved state, and its line is
+nonetheless shallower because the advection correction moves that column
+outward (column-weighted mean radius 1.2941 against 1.3112 R_p), and a
+saturated line's disk-averaged depth follows how far the absorbing shell
+reaches. H-beta moves most because it is the line still on the linear part of
+the curve of growth.
+
+**How it was verified.** `src/tests/transit_state` 12 of 12 (5 of 12 failing
+against the entry text), `src/tests/transit_census` 21 of 21, and the default
+path's ten products on `wasp_full` identical outside their comment headers.
+The certified stationary state `iontrans_metals`, which has no `_adv`
+products, now produces a full spectrum including the O I 1302 line.
+
+**What it left open.** Nothing of the item. A run directory is written again
+by the next run, so the digest and not the path is what ties a curve to its
+numbers, and reading a resolved generation is preferred over a moving
+`output/`.
+
+### P6b: the time-step restriction of the cells that are evolved
+
+**What was wrong** (`docs/lhs1140b_p6b_p6c_20260920.md`). `eval_dt` took
+`CFL min_j dr_j/(|v_j| + c_j)` over `1-Ng:N+Ng`, and two things are wrong
+with that for the scheme in use. The cell-centered width `dr_j` is not the
+width the spherical finite-volume divergence gives a cell at its outer face,
+`V_j/A_{j+1/2} < dr_j`, so the restriction was too LONG by `dr/r` (1.96e-4 on
+the production base grid, MEASURED). And the minimum ran over cells that are
+never evolved: MEASURED, an outermost ghost given a sound speed a thousand
+times the column's shortened the entry text's step by 89.7 per cent, although
+`Apply_BC` overwrites that row after every stage.
+
+**What changed.** Each evolved cell now gets
+`CFL V_j / max(A_{j-1/2} S_{j-1/2}, A_{j+1/2} S_{j+1/2})` with `S_f` the
+fastest signal bounding that face, minimized over cells 1 to N, derived at the
+routine for the divergence `RK_rhs` assembles, the Riemann fluxes it uses and
+the SSP-RK3 that integrates it. R6 is kept: the base and outer faces are faces
+of cells 1 and N and their Riemann problems do restrict them, through the
+ghost states that bound those faces. In the Cartesian uniform limit the
+expression returns `CFL dr/(|v| + c)`, so the `CFL:` key keeps its meaning and
+nothing is recalibrated.
+
+**How it was verified.** Three assertions were added to
+`grid_and_gates/hydrostatic_residual`, reading 1.96e-04, 8.97e-01 and
+1.96e-04 under the entry text and exactly 0 now. MEASURED movement: the first
+step shortens by 2.8e-4 to 3.2e-4 on every regression case. The case that
+reaches a solved steady state, `wasp_full_newton`, gives the same state to
+5.7e-12 over `rho`, `v`, `p`, `T` and the same `Log10 Mdot = 13.33`, from
+4709 and 4712 marching steps. `wasp_full` and `wasp_he23off` reach their `du`
+stop in 12251/12261 and 12236/12246 steps with the same `Log10 Mdot = 13.36`,
+and every column is inside 1e-3 except the velocity of rows 226 to 230,
+`r` = 1.074 to 1.077, where it alternates in sign from cell to cell and moves
+by 18 to 26 cm/s (the median velocity row moves 1.3e-3, and cell 226 is the
+cell whose mass row the certification already refuses). The fixtures pinned at
+a step count on a state still moving move with their trajectories, as a
+fixed-step snapshot of a run that is not stationary must. The stationary
+restart route is untouched: `carrier_model_a_newton` is byte-identical over
+three outer passes, because that route sets `dtau0 = 1` and the JFNK floor
+does not bind.
+
+**What it left open.** Nothing of the derivation. `eval_dt` also supplies the
+direct steady route's initial pseudo-time, which prints `PTC dtau0 = 1.47E-04`
+under both binaries, unchanged at the precision that line carries.
+
+### P6c: there is no 4.7 per cent inconsistency
+
+**What was claimed, and what is measured.** The first text carried a "4.7 per
+cent inconsistency" between the ghost's temperature and the level's. The item
+evaluated the four relations separately, each quantity at its own radius, on
+`carrier_model_a_newton` and on the LHS 1140 b He/H 9.7 generation P1 closed.
+The equation of state closes at 6.7e-16 and 2.2e-16 against a census summed
+from `Ion_species.txt` independently of the code, and the census agrees with
+the code's own counts bitwise; the two ghost cells lie on one isentrope whose
+index is the same from the pressure and from the temperature to 2.9e-07 and
+1.2e-06; the ghost's own particles per unit mass and the reservoir's
+prescribed value stand at 2.7e-08 and 1.3e-07; and the composition and its
+count are fixed points of their own solve to 1.2e-07 and 4.0e-12.
+
+**Where the number came from.** It is a distance between a particle count
+PRESCRIBED AT THE BASE LEVEL and a count SOLVED IN THE LOWER GHOST CELL one
+cell below it, which is a difference of location together with a difference
+of quantity. MEASURED, that ratio is 4.87e-02 on the LHS 1140 b state, whose
+base cells are 7.8e-02 pressure scale heights, and 5.50e-03 on the hot-Uranus
+grid of `carrier_model_a_newton`, the state D2b attributed it to: it follows
+the GRID. The ghost offsets are the cell average of a convex profile against
+the point value at its centre, and the two pressure offsets stand in the
+ratio 97.3 against the 104.2 of `(dr/H)^2`. The ghost's temperature and the
+level's own stand at 9.1e-07 at the radius where both are defined, which is
+the size of the movement D2b itself measured when the conduction operator
+changed from one to the other (2.6e-05 in one velocity).
+
+**What changed.** The code was left alone and three wordings were corrected,
+in `base_boundary.f90`'s comment, in the D2b memo and in the P1 step 2 memo;
+`hydrostatic_column` rerun with the rebuilt binary reproduces the data rows
+of both state files byte for byte. The comment at `conduction_base_level_T`
+of `viscous_conduction.f90`, whose file belonged to another item that day,
+was corrected afterwards by the advisor and now states the measured distances
+and why the old number compared two locations.
+
+**What it left open.** The real seam is smaller and is named: the ghost's `p`
+and `rho` are built with the reservoir's particles per unit mass while the
+caloric map uses the composition's own count, 2.7e-08 and 1.3e-07 apart on
+these two states, and both counts are printed every run so that a state where
+it opens is visible.
+
+### P4b-2: a flux-closure rung publishes, with its seed
+
+**What was wrong** (`docs/lhs1140b_p4cd_20260920.md`). The item as written
+said `run_closure.sh` publishes the rungs through the same publisher and hands
+it no seed. READ, the delivered text of `run_closure.sh` and of
+`src/utils/element_flux_closure.py`: neither names `publish_state.py` at all,
+so the rungs were publishing nothing, and their 46 indexes came from the
+legacy import. A rung's state was whatever `k<NN>/output/` happened to hold.
+
+**What changed.** The closure runner publishes each rung through the one
+publisher and resolves its seed first: `k00`'s seed is the state the driver
+mapped onto the current cell centers, with the directory it was read from and
+the md5 of both halves; `k<NN>`'s is the rung before it; and the
+transformation is read from what the driver left, a rung carrying a `seed.log`
+having been mapped again and one with none copied as it stands. The
+publication is idempotent, and the ending rule is sourced from `run_case.sh`
+and never restated. The contract is `MODELS.md` section 9.13.
+
+**How it was verified.** `tests/closure_seed_provenance.sh` 22 of 22, against
+4 of 22 on the reconstructed entry text, with no binary and no closure driver
+run.
+
+**What it left open.** The rung before is a state directory of its own, so its
+generation is not in the chain this rung's index resolves: `parent` stays
+null and says why, and the identity is in `seed`.
+
+### P4c: the provenance recovered without rewriting anything
+
+**What changed.** `models/recover_provenance.py` writes
+`<state directory>/provenance/<generation id>/provenance_recovered.json`
+beside each generation and never inside it: what was recovered, the file it
+came from with that file's md5 and size, the rule, the date and one of three
+confidences, with every candidate kept where several match. A later recovery
+writes the next version and names what it supersedes; nothing is rewritten or
+deleted. A reader gets a recovered fact ONLY when it is labeled established,
+and says "recovered" rather than "recorded": `status.py`'s seed cell, and
+`pick_seed.py --seed-provenance`, which is off by default so every existing
+caller sees the same lines. The contract is `MODELS.md` section 9.14.
+
+**How it was verified.** MEASURED over 398 published generations in 137 state
+directories, all of which gained an attachment: 176 established (172 the
+manifest's own parent, 4 a run record naming the generation), 10 inferred
+from a single `REPRODUCE.md` window, 212 not established, and 4 + 10 + 212 is
+exactly the 226 null-parent population P4b measured. That recovers more than
+P4b's 1 and 5, because a run record names the generations it published
+whether or not the manifest names the run, and because a case keeps the
+records it superseded. MEASURED, not one of the 398 manifests has a
+modification time inside that day's work. `tests/provenance_recovery.sh` 34
+of 34, against 6 of 34 on the entry text.
+
+**What it left open.** The ten inferred facts stay inferred and no reader
+uses them: a run window is not a name.
+
+### P4d: the records bound to their logs, and the four that were wrong
+
+**What was wrong.** A record named its log by a path the next run of the
+directory reuses, and six `REPRODUCE.md` files carried a superseded seed
+sentence.
+
+**What changed.** At publication a record is bound to the log BYTES
+(`certification.source_md5` and `_bytes`, `ending.source_md5`), and for what
+is already published each attachment states whether the file at that path
+still carries the generation's block.
+
+**How it was verified.** MEASURED over the 398 records: 1 names no log, 86
+name a log that is gone, and of the 311 that name one on disk, 226 still
+carry the block and 85 do not. The five P4d named are in those 85, and so are
+80 more that name a `pp.log` a later evaluate pass overwrote, which the
+earlier count did not look at. The four `.L35/` study records were rewritten
+with their old records kept whole beside them, and the rewrite exposed a
+second defect in the same four: their pass table and verdict belonged to the
+run that was STOPPED and not to the state in `output/` (`g1000_hllc` stated
+11 passes and `info = 2` where its `run.log` ends `info = 1` after 8).
+
+**What it left open.** The two `pre_D9s3/` copies were deliberately not
+rewritten, since a rewritten copy of a record is a record of nothing; each
+carries a `NOTE.md` stating, measured there, that its `input.inp` resolves
+the spectrum one directory short and that its index names generations it does
+not hold.
+
+**Two stale things this item found.** `MODELS.md` sections 7 and 8 had been
+stale since P4a (two rows move to `not solved`, MEASURED to be P4a's
+classification and not this item's), and `status.py`'s seed cell had been an
+unlabeled inference, printing a seed read from a run window as though it were
+recorded; its wall-clock and outer-pass cells still are.
+
+### The certification rule of 2026-09-20: a state that passes the certificate is certified
+
+**What was wrong.** The three molecular states that PASS certification under
+the binary of record carried no certified generation, because `run_case.sh
+--evaluate` resolved `latest_certified` and refused where the index named
+none, and an evaluation made outside the runner publishes nothing. On the
+user's instruction this is backwards: a certificate is a measurement of the
+state as written, so a state that passes it is certified whatever the run
+that produced it ended as, and the procedure must not decide otherwise. The
+old refusals were the boundary and not the states: they were made under
+boundary model v2, whose ghost composition was seed dependent.
+
+**What changed.** The rule is stated in one place in code
+(`publish_state.apply_evaluation_verdict`, with its halves
+`demote_refused_parent` and `promote_certified_evaluation`) and one place in
+prose (`MODELS.md` section 9.15): a certificate is a property OF THE STATE,
+measured, and the generations, the index, the parentage and the ending
+classes record the measurement and never confer it. `--evaluate` measures a
+named generation, or `latest_certified` where the index names one, or
+`latest_complete` where it does not, and says which it took and why; an
+evaluate child whose certificate says CERTIFIED makes that child
+`latest_certified`, with the index recording that the certificate came from
+an evaluation and under which binary. The guard rails, each tested: the
+certificate must be of the bytes the generation carries; the state must be
+complete and finite; an evaluate generation must be an evaluation of its
+parent's own two halves bitwise; and a refused child still demotes.
+
+**Four bookkeeping defects the instruction exposed**, each fixed with the
+rule. (1) `--evaluate` refused to run where the index named no
+`latest_certified`, which is the defect the instruction names. (2)
+`certified_here` did not require `storage_complete`, so an incomplete or
+nonfinite state carrying a CERTIFIED block could have taken the reference
+(MEASURED: none of the 83 certified generations is affected). (3) A refusal
+was recorded as `unknown`: the evaluate route adds a further
+`(certification)` heading at the end of a refusing run saying how the pair
+was written, which measures nothing, and `certification_from_log` took the
+LAST heading, so `demote_refused_parent`, which fires on `NOT CERTIFIED`,
+would not have taken a certified reference away; the reader now takes the
+last heading whose own block states a verdict. (4) Wording that read as a
+verdict on the state: `status.py` and `pick_seed.py` said the index does not
+certify a case, where what is true is that no measurement has been recorded,
+which says nothing about whether its state solves the equations.
+
+**How it was verified.** `models/tests/certified_evaluation.sh`, 18 checks:
+RED 3 of 18 on the entry text, GREEN 18 of 18 after. The three that pass on
+the entry text are the parent's manifest not being rewritten, a refused
+evaluation demoting, and the solve path under a wall ceiling, which is the
+measurement behind the statement that the solve path already did this. Every
+existing catalog fixture passes, eleven of them. `publish_state.py verify`
+passes on 135 of the 137 indexes, the two refusals being the `pre_D9s3`
+copies, which refuse identically on the entry text.
+
+**What it left open.** `molecular_scalar_gj1132_kzz1e9/HeH9.7` `g0004` now
+carries both `stale_under` from the 2026-09-19 refusal by the previous binary
+and `certified_under` from this pass: two measurements by two binaries, both
+kept, with the reference sitting on this pass's child.
+
+### The catalog under the contract: the third and fourth passes
+
+**The third pass** (`docs/lhs1140b_catalog_refresh_20260919.md`, third pass),
+on the binary of record `EXHALE_75d55d9d.x`, md5
+`75d55d9d4fd0e748cd01d6e35713e34c`, which differs from the previous catalog
+binary in nine of its 169 production sources, each named with the item that
+changed it.
+
+- **83 of 83 re-evaluations CERTIFY.** Every case whose index named a
+  `latest_certified` generation was handed to `run_case.sh --evaluate`, none
+  refused, the wind-window mean of `rho v r^2` is character for character the
+  parent's in all 83, the two-decimal log10 Mdot line is unchanged in all 83,
+  and the largest change of the He 10830 red-pair equivalent width is
+  2.6e-14 per cent A. The boundary composition contract applies to none of
+  them and prints no line in their logs, its condition being a molecular
+  network with helium: that is applicability and not a missing measurement.
+- **The nine molecular states, evaluated read only: 3 CERTIFY, 6 refused.**
+  All nine reach the ghost fixed point in two or three applications at 6e-15
+  to 5e-12 against 1e-11, so the contract is not what separates them: the six
+  are refused by rows the ghost does not reach, a carrier balance H2 in the
+  wind in all six, an interior energy row in three, and in the photochemical
+  HeH9 the base rows at order one.
+- **Five re-solves were run and none certified.**
+  `kzz1e9/HeH9.7` converges and does not arrive: its gated carrier row falls
+  monotonically to 5.13e-4 against 1e-5 when the 40 passes are spent, a factor
+  1.2 from where the previous pass left it. `kzz1e9/HeH2.13` does not
+  converge, its carrier row banding between 5e-2 and 2e-1 with no trend. The
+  three x0.01-XUV atomic cases stop as before, with the composition relaxing
+  and the hydrodynamic rows not moving between passes. Nothing was deleted
+  and every replaced case-level file is kept.
+
+**The fourth pass** measured the nine molecular states again, this time
+through the runner and the publisher, under the certification rule above. The
+same three certify, and the catalog goes from 83 certified cases of 137 state
+indexes to 85: `molecular_scalar_gj1132_kzz1e9/HeH2.13` and
+`.../HeH9.7` are the first certified molecular cases of the catalog. The two
+`pre_D9s3` archival copies were not run and not repaired, their states being
+by md5 the generations of the two cases one level up, which is where they
+were measured. The verdicts, the refusing entries and the ghost numbers
+reproduce the third pass case for case.
+
+**Corrected by the advisor.** `status.py` carried the binary of record as a
+literal, so the inventory it wrote named the previous binary although every
+run used the new one; it now takes `EXHALE_BIN` where a caller states one and
+otherwise the newest installed copy.
+
+**The typeset documents** (`docs/EXHALE_physics_and_algorithms.pdf` 62 to 67
+pages, `docs/EXHALE_user_manual.pdf` 91 to 94, `docs/EXHALE_BC_and_IC.pdf` 29
+to 31, all rebuilt clean) carry what the code now does: the time step
+restriction with its derivation, the contact law of boundary model v2 and the
+composition contract of v3 with the accuracy and why it is that number, the
+certification inventory including the stage-sum entries and the report's
+capacity contract, the elemental base flux record, the transit state
+selection and what each selection means, the grid default and the pinning of
+older inputs, the diagnostics this series added, and the state file's new
+header lines. Two statements were wrong and are corrected in place: the
+branch handover was described as a smoothstep of half width 1e-6, where the
+code makes a discrete choice with no width and the only declared width is the
+supersonic-outflow transition at 1e-8; and the transit tool was described as
+reading only the advection-corrected profiles.
+
+### What a state that satisfies the flux criterion and not the certification costs
+
+`docs/du_stop_vs_stationary_20260920.md`, with
+`docs/lhs1140b_catalog_state_20260920.tex` as the document it answers a
+question of. On one certified case,
+`atomic_scalar_gj1132_kzz1e9/HeH2.13`, a state that meets the flux-spread
+criterion the literature converges on (`du < 1e-3`, ATES and CETIMB, the
+latter asking that `rho v r^2` be constant with altitude) but is refused by
+this code's row-by-row certification differs from the certified stationary
+solution by at most 1.9 per cent in any profile, and that difference DOES
+reach a measured quantity: the He I 10830 red-pair equivalent width moves by
+1.3 per cent and its depth by 1.1 per cent, while log10 Mdot does not move at
+the two decimals the code reports.
+
+Where it sits is the point. Both states meet the flux criterion by four to
+eight decades, and `rho v r^2` is the one quantity that agrees between them
+to 0.055 per cent everywhere; what differs is the composition and the
+temperature of the emitting layer between 1.7 and 17 R_p, driven by the one
+row the certification refuses, the He/H elemental transport in the wind
+(5.209E-05 against 1.0E-05 at cell 288, `r` = 1.6951 R_p). The criterion is
+blind by construction to the physics that sets the line. Against the
+observational side the shift is small; against the differences the catalog
+resolves between neighboring models it is not, the He/H rungs of this group
+standing 0.178 per cent A apart in the equivalent width where the shift is
+0.018 per cent A, a tenth of one rung.
+
+**What was not measured, and why.** The marching route does not reach
+`du < 1e-3` on this case at all: MEASURED, a cold march is still three and a
+half decades above the threshold after 2106 steps and descending, and a
+seeded march starts one step from the threshold, turns around and climbs to
+218 before oscillating between 45 and 190. The compared state was therefore
+produced by the route the catalog uses, the partitioned stationary route
+stopped at one outer pass. A state reached by a different route, in
+particular one whose hydrodynamic rows are far from stationary while its flux
+happens to be flat, is not represented by this comparison and would be
+further away. Figures: `docs/figures/du_stop_vs_stationary_profiles.pdf`,
+`_differences.pdf` and `_he10830.pdf`.
+
+### What the user decided
+
+- **The D2b direction rule**, carried over from the previous series, was
+  accepted with the agreement check: the certification report states whether
+  the base contact's direction, where the wind window decided it, agrees with
+  the base face mass flux.
+- **D1b was executed** on 2026-09-19: the Mixed-grid default base cell width
+  is now exactly `2.0d-4` R_p, and every live input with stored results
+  carries `Base grid [dr,cells]: 1.9999999494757503e-4 50`, 770 files under
+  `LHS1140b/models`, 51 under `backup/regression` and the rest across the
+  planet, benchmark and example directories, with the frozen trees carrying a
+  `GRID_DEFAULT_NOTE.md`. An input without the key and one stating the pinned
+  width build one grid bit for bit.
+- **Retention is kept**: every generation stays, a state whose certificate is
+  now invalid or whose solve failed being a control for P1 and P2.
+- **The instruction of 2026-09-20**: a state that satisfies the equations is
+  certified, whatever the run that produced it ended as. Its four bookkeeping
+  defects are the four above (the evaluate entry, the completeness guard, the
+  refusal recorded as `unknown`, and the wording that read as a verdict on
+  the state), and its result is the two first certified molecular cases of
+  the catalog.
+- **P2 stays closed unless the user opens it.** No solver control was changed
+  by anything in this series.
+
+### The golden refresh of 2026-09-20
+
+**The binary of record** is the tree's `EXHALE.x`, md5
+`f89569405648f9ef8ff8dc78b1ab6810` (MEASURED here), with `make -q` clean
+(MEASURED here). It carries one file beyond the catalog copy
+`EXHALE_75d55d9d.x`: the comment at `conduction_base_level_T` of
+`viscous_conduction.f90`, corrected on 2026-09-20 after P6c (MEASURED, the
+md5 of every other file of the 75d55d9d source list is the file's md5 in the
+tree now).
+
+**The goldens were refreshed once on that binary**, over eighteen cases,
+the same list as the 2026-09-19 refresh, after a strict check of all
+eighteen on it. Movement
+against the 2026-09-19 set, READ from that strict check (`REGRESSION_REL_TOL=0`,
+`OMP_NUM_THREADS=1`), as the largest relative difference of any value in each
+file:
+
+| case | `Hydro_ioniz.txt` | `Ion_species.txt` | nature of the case |
+|---|---|---|---|
+| `wasp_full_newton` | 1.4e-11 | 1.1e-10 | converged, certified |
+| `wasp_full` | 1.9e-1 (velocity, row 226) | 9.0e-4 | `du` stop, 12261 steps |
+| `wasp_he23off` | 1.9e-1 (velocity, row 228) | 6.6e-4 | `du` stop, 12246 steps |
+| `hp_front` | 9.0e-5 | 6.2e-5 | fixed-step snapshot, transported stages |
+| `hp_trace_seed` | 1.8e-4 | 2.3e-4 | fixed-step snapshot, transported stages |
+| `hp_zero_seed` | 1.8e-4 | 2.3e-4 | fixed-step snapshot, transported stages |
+| `hydrostatic_column` | 2.7e-2 (on values of order 1e-146) | 9.998e-1 (on values of order 1e-181) | static column |
+| `lower_profile` | 1.3e-1 | 3.3e-2 | fixed-step snapshot |
+| `mol_base_handoff` | 2.2e-2 | 1.6e-2 | fixed-step snapshot |
+| `mol_carrier` | 2.2e-2 | 1.5e-2 | fixed-step snapshot |
+| `mol_diffusion` | 2.2e-2 | 1.6e-2 | fixed-step snapshot |
+| `mol_ir_bands` | 2.3e-2 | 1.5e-2 | fixed-step snapshot |
+| `mol_lyman_werner` | 3.8e-2 | 2.6e-2 | fixed-step snapshot |
+| `mol_metals` | 2.3e-2 | 1.5e-2 | fixed-step snapshot |
+| `mol_sec_ion` | 1.9e0 (a velocity changing sign, row 192) | 1.7e-2 | fixed-step snapshot |
+| `oxygen_chemistry` | 1.9e0 | 1.0e0 | fixed-step snapshot, oxygen network |
+| `roundtrip` | 7.6e-2 | 1.4e-3 | fixed-step snapshot, 40 steps |
+| `iontrans_metals` | identical | identical | converged, certified |
+
+The one converged marching case moved by 1.4e-11 and the one certified
+stationary case did not move at all. Everything above 1e-3 is a fixed-step
+snapshot of a run that is not stationary, whose trajectory the shorter time
+step of P6b moves by construction, or the velocity of the base region of the
+two `du`-stop cases, where the velocity alternates in sign from cell to cell
+and the absolute movement is 18 to 26 cm/s. The molecular cases carry the
+boundary composition contract as well.
+
+After the refresh a strict re-check was run on the same binary and it
+finished: `REGRESSION PASS (all cases byte-identical)` over all eighteen
+cases (MEASURED, `REGRESSION_REL_TOL=0`, `OMP_NUM_THREADS=1`), in both state
+files and in the two `_adv` products where the case writes them
+(`iontrans_metals` writes none, so its two `_adv` files have no reference and
+are not compared). The refreshed set therefore reproduces on the binary of
+record.

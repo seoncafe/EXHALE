@@ -77,3 +77,50 @@ The outer ghost row was expected to FAIL while two ghost rules were in force
 
 The entry text has no `EXHALE_COUPLED_JAC_ACTION`: no file is written and no
 row of this suite can be stated against it.
+
+---
+
+# `coupled_block_linear_system.f90`: the linear system of one frozen iterate
+
+Added for item L32 of `docs/PLAN_20260917.md`. A program, not a key of the
+production binary: it links the production objects and calls the same
+`eval_residual` and `jacobian_action_of_direction` the solve calls, so that
+several samples of ONE operator can be taken between one initialization and
+one exit. That is necessary because the radiation and chemistry caches the
+residual assembly keeps outside `steady_newton` have no accessor a second
+process could be restored through, which is what `l15_dump_state` says in
+its own comment.
+
+Run it with `run_linear_system.sh`. `EXHALE_OBJDIR` names the build whose
+objects are linked, `EXHALE_TEST_OBJDIR` where this program's objects go,
+`EXHALE_L32_CASE` the run directory of the state (`input.inp`, `base.inp`,
+`output/` with the state). With `EXHALE_L32_CASE` unset it builds and stops.
+
+What it measures, all at the state the run directory holds:
+
+- repeated residual and directional-action evaluations, and the same again
+  after an unrelated state has been evaluated through the caches in
+  between. The reference is the control of `src/tests/residual_determinism`,
+  `1.6e-12` in row-scale units;
+- a perturbation ladder for the action at four arcs, the maximum and the
+  RMS of the error of the forward difference against a central difference
+  over the same arc, reported separately for the mass, momentum, energy,
+  elemental and carrier rows, with the cell of each maximum and the room
+  the species box leaves along the direction. Three directions: the scaled
+  right-hand side, the carrier unknowns, the energy unknowns;
+- homogeneity, `A(3v)` against `3 A(v)`, and additivity,
+  `A(v1+v2) - A(v1) - A(v2)`;
+- with `EXHALE_L32_ASSEMBLE=1` and a small grid, the Jacobian assembled
+  column by column from the same action, a direct solve by `dgesv`, and the
+  two residuals of that step: against the assembled matrix, which says
+  whether the direct solve solved what it was given, and against one fresh
+  product of the matrix-free action, which says whether the assembled
+  matrix is that action at all. `EXHALE_L32_IDTAU` sets the pseudo-time
+  shift; the default 0 is the shift the trust-region Krylov leg uses
+  (`steady_newton.f90` line 15328).
+
+The rows it asserts are that the residual and the action are one map
+(against the noise floor) and that the action is homogeneous; the ladder
+and the additivity defect are printed to be read, not gated, because no
+tolerance for them was stated before they were measured. The verdict of the
+first measurement is `docs/lhs1140b_stationary_L32_20260917.md`.

@@ -67,13 +67,44 @@ import numpy as np
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.abspath(os.path.join(HERE, "..", "..", ".."))
-EXE = os.environ.get("EXHALE_EXE", os.path.join(ROOT, "EXHALE.x"))
+# The binary is selected in one place, src/tests/exhale_exe.sh, which the
+# suite's run.sh sources; EXHALE_RUN_EXE is the file that selection resolved
+# to and EXHALE_RUN_EXE_MD5 its md5. Run on its own, this test falls back to
+# the same names the policy states.
+EXE = (os.environ.get("EXHALE_RUN_EXE")
+       or os.environ.get("EXHALE_EXE")
+       or os.path.join(ROOT, "EXHALE.x"))
 CASE = os.path.join(ROOT, "backup", "regression", "mol_base_handoff")
 WORK = os.path.join(ROOT, "build", "tests", "grid_and_gates", "flux_spread")
 MAXSTEPS = "200"
 
 TINY = 1.0e-30
 n_fail = 0
+
+
+def exe_md5(path):
+    import hashlib
+    h = hashlib.md5()
+    try:
+        with open(path, "rb") as fh:
+            for chunk in iter(lambda: fh.read(1 << 20), b""):
+                h.update(chunk)
+    except OSError:
+        return "missing"
+    return h.hexdigest()
+
+
+_md5 = exe_md5(EXE)
+print("  binary: %s" % EXE)
+print("  binary md5: %s" % _md5)
+_want = os.environ.get("EXHALE_RUN_EXE_MD5", _md5)
+if _md5 != "missing" and _md5 == _want:
+    print("PASS mass_flux_spread_binary_identity measured=%s reference=%s tol=0"
+          % (_md5, _want))
+else:
+    print("FAIL mass_flux_spread_binary_identity measured=%s reference=%s tol=0"
+          % (_md5, _want))
+    sys.exit(1)
 
 
 def verdict(name, measured, reference, tol):

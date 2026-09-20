@@ -64,6 +64,44 @@ $FC $FFLAGS_TEST -J"$OUT" -I"$OBJDIR" \
 n_fail=0
 env OMP_NUM_THREADS=1 "$OUT/certification_contexts.x" || n_fail=$((n_fail+1))
 
+# THE CAPACITY CONTRACT OF A REPORT (PLAN_20260919_rev1, item P5a).
+# One equation past a full report stops the run: the refusal names the
+# equation that did not fit and the capacity, and it happens before any
+# field is written, so the entry that stands last is untouched. A driver
+# cannot assert a stop from inside the process it stops, so the assertions
+# are made here on the driver's exit status and its text.
+rm -f "$OUT/certification_capacity.x"
+$FC $FFLAGS_TEST -J"$OUT" -I"$OBJDIR" \
+    -o "$OUT/certification_capacity.x" \
+    "$HERE/certification_capacity.f90" $PROD_OBJ $LAPACK || {
+   echo "FAIL certification_capacity_build measured=compile_error reference=ok tol=0"
+   exit 1; }
+cap_out="$(env OMP_NUM_THREADS=1 "$OUT/certification_capacity.x" 2>&1)"
+cap_st=$?
+cap_cap=$(echo "$cap_out" | sed -n 's/^filled entry_count=\([0-9]*\)$/\1/p')
+if [ "$cap_st" -ne 0 ]; then
+   echo "PASS one_equation_past_a_full_report_stops_the_run measured=$cap_st reference=nonzero tol=0"
+else
+   echo "FAIL one_equation_past_a_full_report_stops_the_run measured=$cap_st reference=nonzero tol=0"
+   echo "     $(echo "$cap_out" | grep -E 'after |silent_overwrite=' | tr '\n' ' ')"
+   n_fail=$((n_fail+1))
+fi
+if echo "$cap_out" | grep -q 'REPORT FULL: the equation "ionization stage nucleus sum He" does not fit' \
+   && echo "$cap_out" | grep -q "capacity cert_max_entries = ${cap_cap:-0} entries"; then
+   echo "PASS the_refusal_names_the_equation_and_the_capacity measured=named reference=named tol=0"
+else
+   echo "FAIL the_refusal_names_the_equation_and_the_capacity measured=not_named reference=named tol=0"
+   n_fail=$((n_fail+1))
+fi
+# Nothing the report already holds moved: the entry that stands last is the
+# sentinel the driver put there, with its own name and its own measure.
+if echo "$cap_out" | grep -q 'last entry unchanged: ionization stage nucleus sum H  max= 4.200000E+01'; then
+   echo "PASS a_refused_entry_overwrites_nothing measured=sentinel_intact reference=sentinel_intact tol=0"
+else
+   echo "FAIL a_refused_entry_overwrites_nothing measured=$(echo "$cap_out" | grep -c 'last entry unchanged') reference=sentinel_intact tol=0"
+   n_fail=$((n_fail+1))
+fi
+
 # The isolated evaluation of the carrier balance asserts its own round trip
 # at every call (certification.f90, carrier_rows_of_state): a run in which
 # the module state was not reinstated prints a WARNING line.  A molecular run

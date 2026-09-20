@@ -283,6 +283,18 @@
       real*8 :: gate_rnorm_accepted   = -1.0d0
       real*8 :: gate_fspread_accepted = -1.0d0
 
+      ! WHICH SOLVE A PRINTED STATIONARY RECORD BELONGS TO. A run makes many
+      ! stationary solves and writes their records into one log. A reader
+      ! that selects the iteration line, the best-iterate restore and the
+      ! completion line by three independent searches over that log can take
+      ! them from three different solves, and the ratio it then forms is not
+      ! a measurement of any state. Every record a stationary solve prints
+      ! carries the same solve=<n> token, n counting the stationary solves of
+      ! the run from 1, so records of two solves cannot be matched to each
+      ! other. The counter is written only where a solve is entered and read
+      ! only by write statements: it enters no numerical path.
+      integer :: n_stationary_solve = 0
+
       ! THE SPECIES ROWS OF THE STATIONARY SYSTEM (B5).
       !
       ! Every transported balance the configuration activates is a ROW of
@@ -3191,9 +3203,7 @@
       ! ------------------------------------------------------!
 
       integer function l15_number_of_active_bounds() result(nact)
-      ! How many species unknowns the step may not move. Written as a loop
-      ! because the intrinsic COUNT is shadowed by the integer of the same
-      ! name in global_parameters.
+      ! How many species unknowns the step may not move.
       integer :: i
       nact = 0
       if (.not. allocated(species_bound_is_active)) return
@@ -10610,6 +10620,9 @@
       ! while one of those rows refused.
       integer :: n_rows_at_stop, n_gate_met_row_refused, i_row_refused_last
 
+      ! The identifier every record of THIS solve carries.
+      n_stationary_solve = n_stationary_solve + 1
+
       if (nspec_row .gt. 0) then
          write(*,'(A)') ' (PTC) the carrier unknown is a JFNK-only'//&
               ' route; this solve is not attempted'
@@ -10752,8 +10765,10 @@
             dtau = max(dtau*0.25d0, dtau0)
          endif
 
-         write(*,'(A,I4,A,ES11.3,A,ES10.2,A,ES10.2,A,ES9.2)') ' (PTC) it', &
-              iter,'  ||R||=',rnorm,'  ||F||2=',f2,'  dtau=',dtau,'  lam=',lam
+         write(*,'(A,I4,A,ES11.3,A,ES10.2,A,ES10.2,A,ES9.2,A,I0)')       &
+              ' (PTC) it',                                                &
+              iter,'  ||R||=',rnorm,'  ||F||2=',f2,'  dtau=',dtau,        &
+              '  lam=',lam,'  solve=',n_stationary_solve
       enddo
 
       call unpack_U(Y, u);  call Apply_BC(u)
@@ -10780,7 +10795,8 @@
                               cert_out, i_row, rows_unmeasured)
          endif
       endif
-      write(*,'(A,I0,A,ES11.3)') ' (PTC) done info=',info,' ||R||=',rnorm
+      write(*,'(A,I0,A,ES11.3,A,I0)') ' (PTC) done info=',info,          &
+           ' ||R||=',rnorm,'  solve=',n_stationary_solve
       ! Iterates at which the acceptance gate was met while a row of the
       ! certification refused: the iterations this solve spent on a row the
       ! gate does not see.
@@ -16573,6 +16589,9 @@
       integer :: i_reset
       character(len=64) :: reset_txt
 
+      ! The identifier every record of THIS solve carries.
+      n_stationary_solve = n_stationary_solve + 1
+
       neq  = nvar_jac*N
       ldab = 2*kl_jac + ku_jac + 1
       allocate(Y(neq), F(neq), Ftry(neq), dY(neq), Ytry(neq))
@@ -16861,6 +16880,17 @@
                     ' acceptance gate is met and every one of the ',      &
                     n_rows_at_stop, ' certified row(s) of the system'//   &
                     ' this solve carries is within its own tolerance'
+               ! THE ACCEPTED ITERATE HAS AN ITERATE RECORD OF ITS OWN.
+               ! The iteration line of the loop body is printed after the
+               ! step, so a solve that stops at this test leaves a
+               ! completion line and no record naming the ||R|| the test
+               ! was taken on, and a reader scoped to one solve then has
+               ! no iterate to compare the hand-back measurement with.
+               ! Same format and same solve token as the iteration line;
+               ! rnorm is the norm of the state this test accepted.
+               write(*,'(A,I4,A,ES11.3,A,I0)')                           &
+                    ' (JFNK) it',iter,'  ||R||=',rnorm,                  &
+                    '  solve=',n_stationary_solve
                exit
             endif
             n_gate_met_row_refused = n_gate_met_row_refused + 1
@@ -18132,11 +18162,12 @@
          call name_of_unknown(nvar_jac*(jworst-1)+kworst,              &
                               what_worst_row)
          write(*,'(A,I4,A,ES11.3,A,ES10.2,A,ES9.2,A,ES9.2,A,I3,A,F7.3,'// &
-                 'A,A)')                                                  &
+                 'A,A,A,I0)')                                             &
               ' (JFNK) it',iter,'  ||R||=',rnorm,'  ||Fs||2=',f2,        &
               '  lam=',lam,'  dtau=',dtau,'  gm=',gmit,                  &
               '  worst r=',r(jworst),                                    &
-              '  worst row: ',trim(what_worst_row)
+              '  worst row: ',trim(what_worst_row),                      &
+              '  solve=',n_stationary_solve
       enddo
 
       weno_mode = 0                 ! restore default reconstruction
@@ -18222,8 +18253,8 @@
          carrier_cellmax_state = carrier_cellmax_best
          carrier_cell_state    = carrier_cell_best
          call adopt_background_of_best_iterate
-         write(*,'(A,ES11.3)') ' (JFNK) returning best iterate, '//      &
-              '||R||=', rnorm
+         write(*,'(A,ES11.3,A,I0)') ' (JFNK) returning best iterate, '// &
+              '||R||=', rnorm, '  solve=', n_stationary_solve
       endif
       call unpack_U(Y, u)
       call unpack_species_rows(Y, u, f_sp)
@@ -18321,9 +18352,11 @@
       ! (docs/Update_EXHALE_stage1.md section 121).
       call install_background_of_adopted_state
       gate_rnorm_accepted = rnorm;  gate_fspread_accepted = fspread
-      write(*,'(A,I0,A,ES11.3,A,ES10.3,A,I0)') ' (JFNK) done info=',info, &
+      write(*,'(A,I0,A,ES11.3,A,ES10.3,A,I0,A,I0)')                      &
+           ' (JFNK) done info=',info,                                     &
            ' ||R||=',rnorm,'  flux spread=',fspread,                      &
-           '  non-monotone accepts=', n_nonmonotone_accepts
+           '  non-monotone accepts=', n_nonmonotone_accepts,              &
+           '  solve=', n_stationary_solve
       ! HOW MANY ITERATIONS WERE SPENT ON A ROW THE GATE DOES NOT SEE:
       ! iterates at which the acceptance gate was met while a row of the
       ! certification refused. A solve that ends without a certified state

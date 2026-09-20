@@ -46,7 +46,10 @@
       use species_table
       use ionization_equilibrium, only: bg_cell, bg_ready,                &
                                         ioniz_eq_allocate_arrays, ioniz_eq,&
-                                        ieq_res_tol
+                                        ieq_res_tol, ieq_state_vector,    &
+                                        ieq_iox_stored,                   &
+                                        ionization_closure_residual_cell, &
+                                        ionization_closure_residual_profile
       use diffusive_photochemistry, only:                                 &
            carrier_set_init, carrier_transport_interval,                  &
            carrier_checkpoint, carrier_checkpoint_take,                   &
@@ -80,7 +83,10 @@
            chem_cycles_cap_for_test, n_chem_last_reason,                  &
            chem_closure_exhausted, chem_closure_reason_text,               &
            chem_last_increment, chem_last_offsimplex, chem_last_mol_clamped, &
-           chem_last_viol_worst
+           chem_last_viol_worst,                                          &
+           equilibrate_chemistry_at_fixed_conserved_state,                &
+           thermochemical_state, save_thermochemical_state,               &
+           restore_thermochemical_state
       use test_columns,  only: column_carrying_its_own_density,           &
                                column_mass_closure
       use Conversion,     only: W_to_U
@@ -190,22 +196,66 @@
       ! (11) the chemistry the pass carries with it: the densities of the
       ! composition a pass hands back, the temperature they imply at the
       ! fixed pressure, and one further sweep taken on that state.
-      real*8, allocatable :: f_swept(:,:)
+      real*8, allocatable :: f_swept(:,:), f_third(:,:), f_noimp(:,:)
+      ! Which quantity of the HeH+ balance the further sweep moved, and
+      ! whether what is left settles (a seed) or repeats (the sweep's own
+      ! arithmetic).  Section (11), the diagnostic block after the row.
+      real*8  :: mv_third, mv_noimp, mv_ne
+      integer :: jthird, ispthird, jnoimp, ispnoimp, nprobe, iprobe
+      integer :: probe_isp(8)
+      real*8  :: probe_mv(8)
+      real*8, allocatable :: ne_sw(:), ntot_sw(:), nhi_sw(:), nhii_sw(:)
+      real*8, allocatable :: nhei_sw(:), nheii_sw(:), nheiii_sw(:)
+      real*8, allocatable :: nheiTR_sw(:), nm_sw(:,:)
       real*8, allocatable :: nhi_r(:), nhii_r(:), nhei_r(:), nheii_r(:)
       real*8, allocatable :: nheiii_r(:), nheiTR_r(:), ne_r(:), ntot_r(:)
       real*8, allocatable :: nm_r(:,:), T_ret(:)
       real*8, allocatable :: ntot0_c(:), T_ent(:)
       real*8  :: move_pass, move_sweep, dev_ntot, dev_TK
       integer :: jj
+      ! (11) THE RETURNED-STATE CONTRACT: the normalized reaction residual
+      ! of every physical cell at the returned temperature, the same
+      ! profile re-read after the diagnostics, and the same profile read
+      ! against the rate state one further trial leaves.
+      real*8, allocatable :: res_ret(:), res_ret_tr(:)
+      real*8, allocatable :: res_back(:), res_back_tr(:)
+      real*8, allocatable :: res_stale(:), res_stale_tr(:)
+      logical :: res_avail, res_back_avail, res_stale_avail
+      character(len=160) :: res_why
+      real*8  :: res_worst, res_stale_worst
+      integer :: jres, jres_stale
+      ! The conditioning of the row that binds the further sweep: the
+      ! sensitivity of its normalized residual to its own unknown, and the
+      ! relative abundance a residual of ieq_res_tol therefore admits.
+      real*8  :: xv_bind(10+2*n_melem), rowres_bind(10+2*n_melem)
+      real*8  :: rescell_bind, sens_bind, admitted_bind
+      integer :: nx_bind, irow_bind
+      real*8, parameter :: bind_eps = 1.0d-2
+      ! The state one trial writes, held aside so that the diagnostics of
+      ! this section are measurements and not operations on the state.
+      type(thermochemical_state) :: held_11
+      real*8, allocatable :: f_trial(:,:)
+      real*8, allocatable :: p_trial(:), T_trial(:)
+      real*8, allocatable :: heat_trial(:), cool_trial(:), eta_trial(:)
+      logical :: ok_trial
+      integer :: ncyc_trial, status_trial
       ! The conserved state the relaxation holds (rho, rho v, E) formed
       ! from the column's density, the wind of the section and the entry
       ! pressure by the code's own equation of state.
       real*8, allocatable :: u_col(:,:), W_col(:,:)
       real*8  :: closure_entry, dev_p, dev_T, move_rel, fref
+      ! HOW SHORT THE SHORT STEP OF SECTION (6) IS.  The demonstration needs
+      ! the full-term scale of EVERY row to have grown past the fixed 1e-8
+      ! floor, and the row that sets it is the one whose time term is the
+      ! smallest share of its own scale (the paragraph in section (6)).
+      real*8, parameter :: short_step_divisor = 64.0d0
       ! (12) a rejected stationary trial leaves the carrier history alone.
       real*8  :: dr_hist
-      integer :: ns_hist, oc_hist, st_trial, run_mode_held, isp
+      integer :: ns_hist, oc_hist, st_trial, run_mode_held, isp, jmove, ispmove
       logical :: hist_before, hist_after
+      ! The key held while a row states what a configuration with nothing
+      ! to transport does.
+      logical :: iontrans_save
 
       call setup_globals()
       call build_molecular_hydrogen_column()
@@ -403,14 +453,17 @@
       ! relative measure taken against the row's FULL terms falls like dt
       ! for one fixed physical defect, and shortening the substep enough
       ! times brings any bounded defect under any fixed floor.  Below, the
-      ! same column is integrated at dt and at dt/16, and in each case a
-      ! residual of exactly 1e-7 of that row's PHYSICAL terms is put to the
-      ! acceptance on each of the two scales in turn.  Sixteen is enough on
-      ! this column because two thirds of its full row scale is already the
-      ! time term at dt (MEASURED: a 1e-7 physical imbalance reads 3.34e-8
-      ! on the full scale at dt and 5.58e-9 at dt/16, so the superseded
-      ! measure has crossed the 1e-8 floor while the state's defect has not
-      ! moved).
+      ! same column is integrated at dt and at a short step, and in each
+      ! case a residual of exactly 1e-7 of that row's PHYSICAL terms is put
+      ! to the acceptance on each of the two scales in turn.  The
+      ! acceptance reads the WORST row of the system, and how short a step
+      ! the demonstration needs is set by the row whose time term is the
+      ! smallest share of its own full scale.  With the ionization stages
+      ! carried that row is a stage of helium, whose time term is n_He/dt
+      ! against a flux divergence of the same element: MEASURED, a 1e-7
+      ! physical imbalance reads 4.10e-8 on the full scale at dt and
+      ! 1.31e-8 at dt/16, so sixteen no longer crosses the 1e-8 floor and
+      ! the step below is shorter.
       !
       ! THE SHORT STEP ALSO HAS A FLOOR, and it is the point of the change.
       ! The absolute residual an exact solve can leave is round-off times
@@ -436,7 +489,7 @@
       call carrier_row_scales(tfull_dt, tphys_dt)
 
       f_sp     = f_sp0
-      dt_short = dt_code/16.0d0
+      dt_short = dt_code/short_step_divisor
       call carrier_checkpoint_restore(chk0)
       call carrier_transport_interval(rho, v, f_sp, dt_short, completed,  &
                                       frac_done, nsub, verdict)
@@ -488,10 +541,10 @@
            '_steps', vd_short_new%rworst, vd_full_new%rworst, 1.0d-12)
       call check_relative('the_physical_measure_is_the_imbalance'//       &
            '_itself', vd_full_new%rworst, 1.0d-7, 1.0d-12)
-      write(*,'(a,es12.4,a,es12.4)')                                      &
+      write(*,'(a,es12.4,a,es12.4,a,f8.1)')                               &
            ' (carrier_retry) a 1e-7 physical imbalance measures, on the'// &
            ' full-term scale, ', vd_full_old%rworst, ' at dt and ',       &
-           vd_short_old%rworst, ' at dt/16'
+           vd_short_old%rworst, ' at dt divided by ', short_step_divisor
 
       ! ---- (7) the shortest substep that can be certified ------------- !
       !
@@ -687,7 +740,7 @@
       ! branch is suppressed so that both branches can be read in one run;
       ! carrier_transport_stops_suppressed counts the times it was reached,
       ! which is the only statement a test can make about a stop.
-      count = 77
+      marching_step = 77
       carrier_transport_stop_on_failure = .false.
 
       ! PHYSICAL INTEGRATION: the status says exhausted and the run ends.
@@ -750,9 +803,9 @@
       call check_absolute('the_attempts_ledger_counts_the_exhausted'//    &
            '_interval', dble(nex_init - nex_phys), 1.0d0, 0.0d0)
       call check_absolute('the_ledger_names_the_step',                    &
-           dble(ex_last), dble(count), 0.0d0)
+           dble(ex_last), dble(marching_step), 0.0d0)
       call check_absolute('the_ledger_keeps_the_first_step_it_saw',       &
-           dble(ex_first), dble(count), 0.0d0)
+           dble(ex_first), dble(marching_step), 0.0d0)
       call check_absolute('the_ledger_names_a_row',                       &
            logical_as_double(ex_j .ge. 1 .and. ex_ic .ge. 1), 1.0d0,      &
            0.0d0)
@@ -809,6 +862,11 @@
            logical_as_double(reason_before .ne. carrier_no_interval),     &
            1.0d0, 0.0d0)
 
+      ! NOTHING TO TRANSPORT is a statement about every set of rows the
+      ! operator can carry, not about the molecular network alone: the
+      ! three ionization stages are rows on their own key and in any gas.
+      iontrans_save        = ionization_transport
+      ionization_transport = .false.
       thereis_mol = .false.
       st_nothing  = -999
       call photochemical_transport_step(rho, v, f_sp, dt_code, st_nothing)
@@ -840,7 +898,8 @@
            dble(carrier_interval_covered), 0.0d0)
       call check_absolute('and_its_step_verdict_is_no_interval_too',      &
            dble(vd_step%reason), dble(carrier_no_interval), 0.0d0)
-      carrier_transport = .true.
+      carrier_transport    = .true.
+      ionization_transport = iontrans_save
 
       ! THE CO DOMAIN RECORD IS INDEXED BY THE LEDGER FAMILY, and the two
       ! readings compose by two different rules.  A cell first out of
@@ -1116,6 +1175,11 @@
 
       ! A CONFIGURATION THAT TRANSPORTS NO CARRIER HAS NOTHING TO ADVANCE,
       ! and that is its own ending and neither a bound nor a fixed point.
+      ! Every set of rows the operator can carry is off here, the three
+      ! ionization stages among them: a gas whose stages the flow carries
+      ! has something to advance whether or not it has molecules.
+      iontrans_save        = ionization_transport
+      ionization_transport = .false.
       carrier_transport = .false.
       f_sp = f_sp0
       call restore_frozen_background()
@@ -1124,7 +1188,8 @@
                                            T_col, heat_col, cool_col,    &
                                            eta_col, 1.0d0, dr_zero,       &
                                            ns_zero, oc_zero)
-      carrier_transport = .true.
+      carrier_transport    = .true.
+      ionization_transport = iontrans_save
       carrier_transport_stop_on_failure = .true.
       call check_absolute('a_pass_with_no_transported_carrier_says_so',   &
            dble(oc_zero), dble(carrier_relax_nothing_to_advance), 0.0d0)
@@ -1158,6 +1223,14 @@
       ! of the background that the carrier rows read directly, and by one
       ! further sweep taken on the returned state.
       allocate(f_swept(1-Ng:N+Ng,n_species))
+      allocate(f_third(1-Ng:N+Ng,n_species), f_noimp(1-Ng:N+Ng,n_species))
+      allocate(res_ret(1:N), res_ret_tr(1:N))
+      allocate(res_back(1:N), res_back_tr(1:N))
+      allocate(res_stale(1:N), res_stale_tr(1:N))
+      allocate(f_trial(1-Ng:N+Ng,n_species))
+      allocate(p_trial(1-Ng:N+Ng), T_trial(1-Ng:N+Ng))
+      allocate(heat_trial(1-Ng:N+Ng), cool_trial(1-Ng:N+Ng))
+      allocate(eta_trial(1-Ng:N+Ng))
 
       call seed_mass_row_of_the_column(v_relax)
       call seed_background_at_the_entry_composition()
@@ -1225,27 +1298,283 @@
            '_unchanged_thermal_energy', dev_p, 0.0d0, 1.0d-13)
       call check_absolute('and_the_returned_temperature_is_that_of'//     &
            '_the_returned_composition', dev_T, 0.0d0, 1.0d-13)
-      ! THE CHEMICAL RESIDUAL OF THE RETURNED STATE: a further sweep at
-      ! the returned temperature moves the composition by no more than the
-      ! sweep's own convergence tolerance, relative to each species that
-      ! is present, which is what a closed chemical state means.
+      ! THE CHEMICAL RESIDUAL OF THE RETURNED STATE.  The composition
+      ! handed back is a root of its own network at the temperature it is
+      ! handed back with: every species' normalized reaction residual,
+      ! evaluated at the returned temperature and electron density with the
+      ! transported fractions held by their ownership, is below
+      ! ieq_res_tol.  The carried rows are identities there
+      ! (impose_transported_ionization_fractions puts x - x_fix in them),
+      ! so what the profile measures is the locally eliminated balances,
+      ! which are the ones the sweep solves.
+      !
+      ! THE ABUNDANCE MOVEMENT OF ONE FURTHER SWEEP IS A DIFFERENT
+      ! QUANTITY and gates nothing below.  A row's normalized residual is
+      ! proportional to the abundance that row is written on, so a residual
+      ! tolerance bounds a relative abundance only through the row's own
+      ! conditioning.  MEASURED at the row that binds this column
+      ! (HeH+, 1.3e-12 of the gas; docs/lhs1140b_stationary_D4a_20260918.md
+      ! table 5): the sensitivity of the residual to its own unknown is
+      ! |R|/eps = 5.5e-13, so ieq_res_tol = 1e-6 admits a RELATIVE HeH+
+      ! error of 1.8e+6, twelve decades above the 1.1e-6 one further sweep
+      ! moves.  The conditioning of the binding row is measured below and
+      ! printed beside the movement, so the two are never read as one
+      ! number.
+      call ionization_closure_residual_profile(rho, f_sp, res_ret,        &
+                                        res_ret_tr, res_avail, res_why)
+      res_worst = 0.0d0
+      jres      = 0
+      if (res_avail) then
+         do jj = 1, N
+            if (abs(res_ret(jj)) .gt. res_worst) then
+               res_worst = abs(res_ret(jj))
+               jres      = jj
+            endif
+         enddo
+      else
+         write(*,'(a,a)') ' (carrier_retry) the closure residual of the'//&
+              ' returned state is unavailable: ', trim(res_why)
+      endif
+      write(*,'(a,es12.4,a,i0)') ' (carrier_retry) the largest reaction'//&
+           ' residual of the returned state at its own temperature is ',  &
+           res_worst, ' at cell ', jres
+      call check_absolute('the_closure_residual_of_the_returned_state'//  &
+           '_is_available', logical_as_double(res_avail), 1.0d0, 0.0d0)
+      call check_at_most('every_species_row_of_the_returned_state_is'//   &
+           '_a_root_at_the_returned_temperature', res_worst, ieq_res_tol)
+
+      ! The diagnostics that follow advance the state; everything they are
+      ! measured against is held aside here and put back at the end of the
+      ! section, so that a measurement is not an operation on the state.
+      call save_thermochemical_state(held_11, f_sp, p_col, T_col,         &
+                                     heat_col, cool_col, eta_col)
       move_pass = maxval(abs(f_sp(1:N,:) - f_sp0(1:N,:)))
       f_swept   = f_sp
       call ioniz_eq(T_col, rho, f_swept, heat_col, cool_col, eta_col)
       move_rel = 0.0d0
+      jmove    = 0
+      ispmove  = 0
       do jj = 1, N
          do isp = 1, n_species
             fref = f_sp(jj,isp)
-            if (fref .gt. 1.0d-20)                                        &
-               move_rel = max(move_rel, abs(f_swept(jj,isp) - fref)/fref)
+            if (fref .le. 1.0d-20) cycle
+            if (abs(f_swept(jj,isp) - fref)/fref .gt. move_rel) then
+               move_rel = abs(f_swept(jj,isp) - fref)/fref
+               jmove    = jj
+               ispmove  = isp
+            endif
          enddo
       enddo
       write(*,'(a,es12.4,a,es12.4)') ' (carrier_retry) the pass moved'//   &
            ' the composition by ', move_pass, ' and one further sweep'//  &
            ' moves it by (relative, present species) ', move_rel
-      call check_absolute('one_further_sweep_leaves_the_returned'//       &
-           '_composition_within_the_sweep_tolerance', move_rel, 0.0d0,   &
+      ! WHICH SPECIES AND WHICH CELL carry that movement, so a row above
+      ! the sweep tolerance says what is not closed and not only that
+      ! something is not.
+      if (ispmove .gt. 0)                                                 &
+         write(*,'(a,i0,a,i0,a,2es14.6)') ' (carrier_retry) the largest'//&
+            ' further movement is f_sp column ', ispmove, ' at cell ',    &
+            jmove, ', from and to ', f_sp(jmove,ispmove),                 &
+            f_swept(jmove,ispmove)
+
+      ! ---- (11b) WHAT THE FURTHER SWEEP MOVED, and whether it settles --
+      !
+      ! DIAGNOSTIC ONLY: no assertion is added here and no tolerance is
+      ! touched.  HeH+ is formed by H2+ + He -> HeH+ + H and destroyed by
+      ! HeH+ + H2 and by dissociative recombination, so its local root is
+      ! set by the H2+, H2, He and electron densities of the cell.  Three
+      ! readings say which of the three candidate causes the movement of
+      ! the row above belongs to:
+      !
+      !   (i)  the species of the balance, cell by cell: if HeH+ moves and
+      !        the densities it is a ratio of do not, the movement is the
+      !        sweep's own arithmetic on a species thirteen decades below
+      !        the gas, not a state that has not closed;
+      !   (ii) a THIRD sweep: a seed that has not settled moves less the
+      !        second time, and arithmetic noise repeats;
+      !   (iii) the same further sweep with the transported fractions NOT
+      !        imposed, which is the electron budget of a locally solved
+      !        ionization state.
+      probe_isp(1) = isp_HI
+      probe_isp(2) = isp_HII
+      probe_isp(3) = isp_HeI
+      probe_isp(4) = isp_HeII
+      probe_isp(5) = isp_H2
+      probe_isp(6) = isp_H2p
+      probe_isp(7) = isp_H3p
+      probe_isp(8) = isp_HeHp
+      nprobe = 8
+      if (jmove .gt. 0) then
+         do iprobe = 1, nprobe
+            fref = f_sp(jmove,probe_isp(iprobe))
+            probe_mv(iprobe) = 0.0d0
+            if (fref .gt. 0.0d0)                                          &
+               probe_mv(iprobe) = abs(f_swept(jmove,probe_isp(iprobe))    &
+                                      - fref)/fref
+         enddo
+         write(*,'(a,i0,a,8es10.2)') ' (carrier_retry) the further'//     &
+              ' sweep moves, at cell ', jmove, ', HI HII HeI HeII H2'//   &
+              ' H2+ H3+ HeH+ by ', (probe_mv(iprobe), iprobe = 1, nprobe)
+         allocate(ne_sw(1-Ng:N+Ng), ntot_sw(1-Ng:N+Ng),                   &
+                  nhi_sw(1-Ng:N+Ng), nhii_sw(1-Ng:N+Ng),                  &
+                  nhei_sw(1-Ng:N+Ng), nheii_sw(1-Ng:N+Ng),                &
+                  nheiii_sw(1-Ng:N+Ng), nheiTR_sw(1-Ng:N+Ng),             &
+                  nm_sw(1-Ng:N+Ng,n_mion))
+         nhei_sw = 0.0d0;  nheii_sw = 0.0d0
+         nheiii_sw = 0.0d0;  nheiTR_sw = 0.0d0
+         call get_species_densities(rho, f_swept, nhi_sw, nhii_sw,        &
+                  nhei_sw, nheii_sw, nheiii_sw, nheiTR_sw, nm_sw,         &
+                  ne_sw, ntot_sw)
+         mv_ne = abs(ne_sw(jmove) - ne_r(jmove))/max(ne_r(jmove),1.0d-300)
+         write(*,'(a,es12.4)') ' (carrier_retry) and it moves the'//      &
+              ' electron density of that cell by ', mv_ne
+         ! WHO CARRIES THE ELECTRONS OF THAT CELL, which is what says
+         ! whether the chain closes on itself: in a shielded molecular base
+         ! the dominant ion is not the proton.
+         write(*,'(a,i0,a,5es11.3)') ' (carrier_retry) at cell ', jmove,  &
+              ' the densities n_e, H+, H2+, H3+, HeH+ [cm^-3] are ',      &
+              ne_r(jmove)*n0, nhii_r(jmove)*n0,                           &
+              f_sp(jmove,isp_H2p)*rho(jmove)*n0,                          &
+              f_sp(jmove,isp_H3p)*rho(jmove)*n0,                          &
+              f_sp(jmove,isp_HeHp)*rho(jmove)*n0
+         deallocate(ne_sw, ntot_sw, nhi_sw, nhii_sw, nhei_sw, nheii_sw,   &
+                    nheiii_sw, nheiTR_sw, nm_sw)
+      endif
+      ! (ii) the third sweep, from the state the second one left.
+      f_third = f_swept
+      call ioniz_eq(T_col, rho, f_third, heat_col, cool_col, eta_col)
+      mv_third = 0.0d0
+      jthird   = 0
+      ispthird = 0
+      do jj = 1, N
+         do isp = 1, n_species
+            fref = f_swept(jj,isp)
+            if (fref .le. 1.0d-20) cycle
+            if (abs(f_third(jj,isp) - fref)/fref .gt. mv_third) then
+               mv_third = abs(f_third(jj,isp) - fref)/fref
+               jthird   = jj
+               ispthird = isp
+            endif
+         enddo
+      enddo
+      write(*,'(a,es12.4,a,i0,a,i0)') ' (carrier_retry) a THIRD sweep'//  &
+           ' moves the composition by ', mv_third, ', f_sp column ',      &
+           ispthird, ' at cell ', jthird
+      ! (iii) the same further sweep with nothing imposed.
+      f_noimp = f_sp
+      ionization_transport = .false.
+      call ioniz_eq(T_col, rho, f_noimp, heat_col, cool_col, eta_col)
+      ionization_transport = .true.
+      mv_noimp = 0.0d0
+      jnoimp   = 0
+      ispnoimp = 0
+      do jj = 1, N
+         do isp = 1, n_species
+            fref = f_sp(jj,isp)
+            if (fref .le. 1.0d-20) cycle
+            if (abs(f_noimp(jj,isp) - fref)/fref .gt. mv_noimp) then
+               mv_noimp = abs(f_noimp(jj,isp) - fref)/fref
+               jnoimp   = jj
+               ispnoimp = isp
+            endif
+         enddo
+      enddo
+      write(*,'(a,es12.4,a,i0,a,i0)') ' (carrier_retry) the same'//       &
+           ' further sweep with the transported fractions NOT imposed'//  &
+           ' moves it by ', mv_noimp, ', f_sp column ', ispnoimp,         &
+           ' at cell ', jnoimp
+      ! The state the section-11 rows above were taken on is put back
+      ! exactly: the composition, the rate state the residual above was
+      ! read against, the caloric maps and the base ghost.  That the extra
+      ! sweeps were a measurement and not a state change is then MEASURED,
+      ! by re-reading the same residual profile and requiring the same
+      ! bits, which is a statement about the rate state and the composition
+      ! together.
+      call restore_thermochemical_state(held_11, rho, f_sp, p_col, T_col, &
+                                        heat_col, cool_col, eta_col)
+      call ionization_closure_residual_profile(rho, f_sp, res_back,       &
+                                res_back_tr, res_back_avail, res_why)
+      call check_absolute('the_diagnostic_sweeps_left_the_returned'//     &
+           '_state_as_they_found_it', maxval(abs(res_back - res_ret)),    &
+           0.0d0, 0.0d0)
+
+      ! ---- (11c) WHAT THE MOVEMENT AND THE RESIDUAL EACH BOUND --------- !
+      !
+      ! DIAGNOSTIC, and the sensitivity of the gate above.
+      !
+      ! First the conditioning of the row that carries the movement: its
+      ! normalized residual is displaced by raising its own unknown by
+      ! bind_eps, one-sided because the code reports |R| and a central
+      ! difference would be taken through the kink at the root.  |R|/eps is
+      ! the sensitivity of the row to its own unknown, and ieq_res_tol
+      ! divided by it is the relative abundance error that residual
+      ! tolerance admits for that species at that cell.
+      sens_bind     = 0.0d0
+      admitted_bind = 0.0d0
+      irow_bind     = closure_row_of_species(ispmove)
+      if (jmove .ge. 1 .and. irow_bind .ge. 1) then
+         call ieq_state_vector(jmove, rho, f_sp, xv_bind, nx_bind)
+         if (irow_bind .le. nx_bind) then
+            xv_bind(irow_bind) = xv_bind(irow_bind)*(1.0d0 + bind_eps)
+            call ionization_closure_residual_cell(jmove,                  &
+                      xv_bind(1:nx_bind), nx_bind, rescell_bind,          &
+                      rowres_bind(1:nx_bind))
+            sens_bind = abs(rowres_bind(irow_bind))/bind_eps
+            if (sens_bind .gt. 0.0d0)                                     &
+               admitted_bind = ieq_res_tol/sens_bind
+         endif
+      endif
+      write(*,'(a,i0,a,i0,a,es12.4,a,es12.4,a,es12.4)')                   &
+           ' (carrier_retry) NON-GATING: one further sweep moves f_sp'//  &
+           ' column ', ispmove, ' at cell ', jmove, ' by ', move_rel,     &
+           '; the sensitivity of that row to its own unknown is |R|/eps', &
+           sens_bind, ', so the sweep tolerance admits a relative'//      &
+           ' abundance of ', admitted_bind
+
+      ! Then the teeth of the gate.  A trial of the relaxation takes one
+      ! transport interval and closes the chemistry on the composition it
+      ! reaches, which leaves the rate state of THAT composition; the
+      ! residual of the returned state read against it is one state
+      ! measured against another state's rates and stands above
+      ! ieq_res_tol.  A trial that is undone must therefore put the rate
+      ! state back with the composition, which is what the row above then
+      ! reads.
+      call save_thermochemical_state(held_11, f_sp, p_col, T_col,         &
+                                     heat_col, cool_col, eta_col)
+      f_trial = f_sp
+      call photochemical_transport_step(rho, v_relax, f_trial, dt_code,   &
+                                        status_trial, trial = .true.)
+      call equilibrate_chemistry_at_fixed_conserved_state(u_col, f_trial, &
+                      p_trial, T_trial, heat_trial, cool_trial,           &
+                      eta_trial, ok_trial, ncyc_trial)
+      call ionization_closure_residual_profile(rho, f_sp, res_stale,      &
+                           res_stale_tr, res_stale_avail, res_why)
+      res_stale_worst = 0.0d0
+      jres_stale      = 0
+      if (res_stale_avail) then
+         do jj = 1, N
+            if (abs(res_stale(jj)) .gt. res_stale_worst) then
+               res_stale_worst = abs(res_stale(jj))
+               jres_stale      = jj
+            endif
+         enddo
+      else
+         write(*,'(a,a)') ' (carrier_retry) the residual against the'//   &
+              ' rate state of a further trial is unavailable: ',          &
+              trim(res_why)
+      endif
+      write(*,'(a,es12.4,a,i0)') ' (carrier_retry) the same residual'//   &
+           ' read against the rate state a further trial leaves is ',     &
+           res_stale_worst, ' at cell ', jres_stale
+      call check_at_least('the_returned_state_residual_row_fails_on'//    &
+           '_the_rate_state_of_another_trial', res_stale_worst,           &
            ieq_res_tol)
+      call restore_thermochemical_state(held_11, rho, f_sp, p_col, T_col, &
+                                        heat_col, cool_col, eta_col)
+      call ionization_closure_residual_profile(rho, f_sp, res_back,       &
+                                res_back_tr, res_back_avail, res_why)
+      call check_absolute('and_that_trial_is_undone_bit_for_bit',         &
+           maxval(abs(res_back - res_ret)), 0.0d0, 0.0d0)
 
       ! ---- (12) a rejected stationary trial leaves the history alone --- !
       !
@@ -1403,6 +1732,34 @@
       write(*,'(a)') 'carrier_retry: every assertion passed'
 
       contains
+
+      !--------------!
+
+      integer function closure_row_of_species(isp) result(irow)
+      ! Row of one species in the fraction layout the sweep solves
+      ! (ieq_state_vector): the ionized stages of hydrogen and helium, the
+      ! molecular ions, the He 2^3S level and the two oxygen carriers.
+      ! Zero for a species that is not an unknown of that system.
+      integer, intent(in) :: isp
+      irow = 0
+      if (isp .eq. isp_HII)   irow = 1
+      if (.not. thereis_He) return
+      if (isp .eq. isp_HeII)  irow = 2
+      if (isp .eq. isp_HeIII) irow = 3
+      if (thereis_mol) then
+         if (isp .eq. isp_H2)   irow = 4
+         if (isp .eq. isp_H2p)  irow = 5
+         if (isp .eq. isp_H3p)  irow = 6
+         if (isp .eq. isp_HeHp) irow = 7
+         if (thereis_oxychem) then
+            if (isp .eq. isp_OH)  irow = ieq_iox_stored
+            if (isp .eq. isp_H2O) irow = ieq_iox_stored + 1
+         endif
+         if (isp .eq. isp_HeTR .and. thereis_HeITR) irow = 8
+      else
+         if (isp .eq. isp_HeTR .and. thereis_HeITR) irow = 4
+      endif
+      end function closure_row_of_species
 
       !--------------!
 

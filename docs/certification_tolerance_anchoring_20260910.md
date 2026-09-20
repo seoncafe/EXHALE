@@ -996,6 +996,135 @@ produced the state, and a re-evaluation is reported as a second measurement
 with its own rounding rather than as a refusal of the first.
 
 
+## Anchor (8), 2026-09-18: what the ionization stage nucleus sum can stand at
+
+Item D3b, `docs/lhs1140b_stationary_D3b_20260918.md`, on the measurement of
+`docs/lhs1140b_stationary_D3a_20260918.md` section 6. The anchors above ask what
+a tolerance has to stand above when the equation under it carries a
+discretization error. This one is the other kind: the row it gates is an
+ALGEBRAIC identity, so it has no discretization error at all and the whole of
+what a tolerance on it can clear is the rounding of the sums.
+
+### What is anchored
+
+The two entries `ionization stage nucleus sum H` and
+`ionization stage nucleus sum He`, which measure
+
+```
+   sum_k F_k(f) + F_close(f) = N_el(f)         at every face f,
+```
+
+the stage fluxes of one element summing over all of its stages to that
+element's own nucleus flux (`ionization_stage_transport`, equation 2), relative
+to `max(|N_el(f)|, |F_close(f)| + sum_k |F_k(f)|)`. They were reported and did
+not gate. They now gate, at
+
+```
+   tolerance  =  2 (5 nk + 2) eps g ,
+```
+
+with `nk` the element's carried stages (1 for hydrogen, 2 for helium) and `g`
+the ratio of magnitude sums MEASURED at the face the measure was taken at, so
+the row is held to the rounding of its OWN face. The number is formed in one
+place, `ionization_stage_sum_rounding_bound` in
+`ionization_stage_transport.f90`, and read from there by the entry;
+`ionization_stage_nucleus_sum` returns `g` beside the measure and
+`ionization_stage_sum_measure` carries it to the certification.
+
+| element | nk | tolerance at the measured `g = 1` | ceiling of `g` | tolerance at the ceiling |
+|---|---|---|---|---|
+| hydrogen | 1 | **3.109e-15** | 3/2 | 4.663e-15 |
+| helium | 2 | **5.329e-15** | 2 | 1.066e-14 |
+
+The ceiling is what the bound falls back on when the operator reports no `g`,
+which is a column no face of which carried a nonzero scale.
+
+### The derivation
+
+The identity holds by construction: one element flux multiplies every stage,
+the closing face fraction is one minus the others and the closing eddy term is
+minus the sum of the others'. Counting the rounding events on the path from the
+carried cell fractions to the measured difference (`ionization_stage_face_fractions` and `ionization_stage_face_flux`, READ), with nk carried stages,
+
+```
+   nk   forming x_close = 1 - sum_k x_k
+    1   the product x_close N
+   nk   subtracting each eddy term from the closing flux
+   2nk  each carried stage's product and its sum with its eddy term
+   nk   summing the nk + 1 fluxes in the measure
+    1   the final difference
+```
+
+that is `5 nk + 2` events, each bounded by eps times a quantity no larger than
+
+```
+   S  = |N| + |F_close| + sum_k |F_k| + sum_k |E_k| ,
+```
+
+the stage eddy terms `E_k` appearing because the same `E_k` is added to a
+carried stage and subtracted from the closing one, so its own rounding cancels
+in the sum and only its magnitude leaks. The measure divides by
+`max(|N|, S' - |N|) >= S'/2` with `S' = |N| + |F_close| + sum_k |F_k|`, so
+
+```
+   d  <=  2 (5 nk + 2) eps g ,        g = S/S' >= 1 .
+```
+
+`eps = epsilon(1.0d0) = 2.220446e-16` is conservative by two, one rounding being
+bounded by the unit roundoff eps/2. With the face fractions in the simplex,
+`|x_close| + sum_k x_k(f) = 1`, so `S' >= |sum_k E_k| + sum_k |E_k|` and
+
+```
+   g  <=  1 + sum_k |E_k| / ( sum_k |E_k| + |sum_k E_k| ) ,
+```
+
+which one carried stage attains at 3/2 and two or more reach 2 when their eddy
+terms cancel against one another. The tolerances above are the bound at that
+limit, so they are a property of the element and not of the state; the bound at
+`g = 1` is 3.109e-15 and 5.329e-15, which is the number D3a's table is written
+against.
+
+### The executed validation
+
+**Manufactured columns.** `the_stage_sum_identity_is_within_its_rounding_bound_*`
+(`src/tests/stage_row_balance/`) runs the production face-flux routine on
+columns whose eddy coefficient spans `K_0 = 0` to `1e15` cm^2 s^-1 and checks
+every face against that face's own bound. MEASURED (2026-09-18, this item):
+the largest ratio is **0.0703** for hydrogen and **0.0580** for helium, with `g`
+running 1.00 to 1.50 over the five columns. The hydrogen ceiling 3/2 is attained
+at `K_0 = 1e15`, so it is tight and not a guess.
+
+**Production states.** Each measured through `Restart intent: stationary
+evaluate` (D3b sections 3 and 9), with the `g` the operator returned at the
+face that carries each measure:
+
+| state | `... sum H` | `g` | of its tolerance | `... sum He` | `g` | of its tolerance |
+|---|---|---|---|---|---|---|
+| hot Uranus, transported (`carrier_model_a_newton`, 25 passes) | 2.203e-16 | 1.00000 | 0.071 | 4.195e-16 | 1.00000 | 0.079 |
+| hot Uranus, its local root | 2.144e-16 | 1.00000 | 0.069 | 3.049e-16 | 1.00000 | 0.057 |
+| atomic fiducial, certified (`.L26/fid_resolve`, L36e) | 2.161e-16 | 1.00000 | 0.069 | 4.106e-16 | 1.00009 | 0.077 |
+
+Every one of these worst faces sits where the advective nucleus flux carries the
+stage and the eddy term is negligible beside it, which is why `g` is 1 to five
+decimals there and the tolerance is the `g = 1` column above.
+
+**The other side.** The constructions that break the identity on purpose
+(`src/tests/ionization_stage_flux/`: stages reconstructed independently of one
+another, a second element's face flux under one element's stages, a full
+mixing-ratio eddy term in every stage, the closing face value bounded) stand at
+1.5e-4 to 3.6e-4 (READ, D3a section 6). The helium tolerance separates them from
+the rounding by **ten decades** (1.5e-4 / 5.329e-15 = 2.8e10 at the measured
+`g` of the states above, 1.4e10 at the ceiling).
+
+### Why the number is not a choice
+
+A tolerance on a row with a discretization error is a judgement about what the
+equation can be resolved to. This one is not: above the bound the identity has
+not been solved badly, it has been assembled wrongly, and no state the solver
+could produce sits between the two. Nothing here was selected to make a
+snapshot pass, and the states measured stand at 0.06 to 0.08 of the number,
+where a state chosen to fit would sit just below 1.
+
 ## What is reported and not anchored: the mass closure (item L19, 2026-09-15)
 
 `max_j |sum_i f_i A_i - 1|` of the composition a state carries is printed by

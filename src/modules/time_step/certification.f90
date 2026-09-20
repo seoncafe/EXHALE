@@ -91,13 +91,22 @@
                                           carrier_roundoff_limited_record,&
                                           carrier_history_certifiable,   &
                                           carrier_row_terms_on,          &
-                                          carrier_row_terms_write
+                                          carrier_row_terms_write,       &
+                                          ionization_stage_sum_measure
       use ionization_equilibrium,   only: bg_ready, ieq_nonroot_streak,   &
                                           finite_real, ieq_res_tol,       &
                                           ieq_triplet_row,                &
+                                          transported_rows_exist,         &
                                     ionization_closure_residual_profile
       use excited_hydrogen,         only: excited_hydrogen_level_residual
       use binary_element_diffusion, only: element_transport_residual
+      use element_inventory,        only: ien_H, ien_He
+      ! What identity (2) of ionization_stage_transport can stand at in
+      ! floating point. The identity is algebraic, so this is the whole of
+      ! what the stage sum entry can clear, and it is formed there and not
+      ! here.
+      use ionization_stage_transport, only:                               &
+                                    ionization_stage_sum_rounding_bound
       use composition,              only: get_species_densities,          &
                                           comp_T_from_p
       use species_table,            only: n_mion, n_melem, melem_name,  &
@@ -130,6 +139,12 @@
                                           conduction_last_cell,           &
                                           CONDUCTION_OK
       use utils,                    only: set_state_certified, calc_rho
+      use stationary_operator,      only: face_mass_flux_budget
+      ! The direction the base contact was upwinded on at its last
+      ! evaluation, and what decided it (item D2b).
+      use base_boundary,            only: base_face_swind_last,           &
+                                          base_face_Mwind_last,           &
+                                          base_face_blend_last
 
       implicit none
       private
@@ -155,7 +170,35 @@
       ! to zero -- but the row measure and the floors are the same.
       integer, parameter, public :: cert_context_physical_step = 4
 
-      integer, parameter, public :: cert_max_entries = 32
+      ! THE NUMBER OF COUPLED CELL SYSTEMS of B1a section 2.4. Exactly one
+      ! of them is active in a run; the report carries an entry for each so
+      ! that it says which one was measured and which were not the run's.
+      ! active_system_variant selects the active one and
+      ! system_variant_name names them.
+      integer, parameter, public :: n_system_variant = 7
+
+      ! THE CAPACITY OF A REPORT IS THE SIZE OF THE INVENTORY. It is not a
+      ! round number: it is the count of equations the configuration can
+      ! make independent at once, summed over the kinds of section 2 above,
+      ! so that a report has room for every equation of the largest
+      ! configuration and for nothing the inventory does not have.
+      !
+      ! RAISING THE NUMBER IS NOT THE REPAIR. What an overfilled report
+      ! costs is that an entry writer attaches a new equation's measure,
+      ! tolerance and verdict to the name of the equation before it, and a
+      ! certification then states a verdict about a set of equations it does
+      ! not name. A larger constant leaves that available one equation
+      ! later. The contract is add_entry's, which refuses to overfill at
+      ! all, and this count, which follows the inventory when a carrier, a
+      ! trace element or a cell system is added to it.
+      integer, parameter, public :: cert_max_entries =                    &
+             3                &  ! hydrodynamic mass, momentum, energy rows
+           + n_carrier_max    &  ! one balance for each transported carrier
+           + 2                &  ! the stage nucleus sums, H and He
+           + 1                &  ! the He/H partition transport balance
+           + n_melem          &  ! one transport balance for each trace element
+           + 2                &  ! the He 2^3S and H(n=2) level balances
+           + n_system_variant    ! the eliminated-species closures
 
       ! TOLERANCES, one per kind of row, named so that the report says which
       ! number refused a state. THE CONVERGENCE STUDY OF CONTRACT SECTION 9
@@ -609,6 +652,17 @@
       public :: cert_mass_gate_name
       public :: certification_species_row_gate
       public :: certification_entry_index
+      ! The stage sum entry, so that src/tests/certification/ can state its
+      ! verdict on a measure it chooses rather than on one a solve happens
+      ! to produce.
+      public :: ionization_stage_sum_entry
+      ! What decided the direction of the base contact and whether the
+      ! base face flux agrees with it (base_contact_direction_agreement).
+      public :: base_contact_direction_agreement
+      integer, parameter, public :: contact_direction_from_face_velocity    = 0
+      integer, parameter, public :: contact_direction_window_agrees         = 1
+      integer, parameter, public :: contact_direction_face_flux_at_rounding = 2
+      integer, parameter, public :: contact_direction_window_disagrees      = 3
       public :: certification_last_report, certification_stop_uncertified
       public :: certification_note_stationarity_claim
       public :: trial_state_is_admissible, probe_direction_is_usable
@@ -1158,6 +1212,16 @@
       logical, dimension(n_melem)    :: etr_carried
       real*8, dimension(1:N) :: clo_res, clo_tr, n2_res, n2_sc
       logical :: carriers_measured, he_ok, tr_ok, clo_ok, n2_ok
+      ! The stage sum identity of this state, its face and whether it was
+      ! measured at all (ionization_stage_sum_measure), ONE PER ELEMENT
+      ! whose stages are carried.
+      real*8  :: ssum_max, ssum_g
+      integer :: ssum_j, iestg
+      ! The index add_entry returns. The short carrier entries of the loop
+      ! below write no field through it; it is taken because the index is
+      ! the only thing that says which entry a call created.
+      integer :: ient
+      logical :: ssum_known
       character(len=76) :: clo_why, n2_why
 
       rep%context         = context
@@ -1202,27 +1266,50 @@
       ! a carrier the run does not solve carries no equation.
       carriers_measured = .false.
       cabsent = .false.
-      if (thereis_mol .and. carrier_transport .and. bg_ready) then
+      if (transported_rows_exist() .and. bg_ready) then
          call carrier_rows_of_state(Wcert(1,:), Wcert(2,:), f_sp,         &
                                     cres, cterms, cabsent)
          carriers_measured = .true.
       endif
       do ic = 1, n_carrier_max
          if (ic .gt. n_carrier .or. .not. carrier_solved(ic)               &
-             .or. .not. thereis_mol .or. .not. carrier_transport) then
+             .or. .not. transported_rows_exist()) then
             call add_entry(rep, 'carrier balance '//trim(carrier_name(ic)),&
                            cert_not_applicable,                           &
-                           'the run does not carry this species')
+                           'the run does not carry this species', ient)
             cycle
          endif
          if (.not. carriers_measured) then
             call add_entry(rep, 'carrier balance '//trim(carrier_name(ic)),&
                            cert_unavailable,                              &
-                           'the frozen background is not ready (bg_ready)')
+                           'the frozen background is not ready (bg_ready)',&
+                           ient)
             cycle
          endif
          call carrier_row_entry(rep, ic, cres, cterms, cabsent)
       enddo
+
+      ! ---- the ionization stage sum: moving charge moves no nucleus ----
+      ! With the ionization state transported, the stage fluxes of an
+      ! element must sum, face by face and over ALL its stages, to that
+      ! element's own nucleus flux (ionization_stage_transport, equation
+      ! 2). The identity is structural, so what stands in it is the
+      ! rounding of the sums, and a measure above that says the
+      ! construction has been broken.
+      !
+      ! IT GATES, at the floating-point bound of the identity: the tolerance
+      ! and the verdict are ionization_stage_sum_entry's, one entry per
+      ! element, and the bound is read from the one place that forms it
+      ! (ionization_stage_sum_rounding_bound). Where no stage of an element
+      ! is transported at all there is no entry.
+      if (ionization_transport .and. carriers_measured) then
+         do iestg = ien_H, ien_He
+            call ionization_stage_sum_measure(iestg, ssum_max, ssum_j,    &
+                                              ssum_known, ssum_g)
+            call ionization_stage_sum_entry(rep, iestg, ssum_max, ssum_j, &
+                                            ssum_known, ssum_g)
+         enddo
+      endif
 
       ! ---- the elemental transport balances (B1a section 2.3) ----
       ! Stationary: transport against transport, the time term removed the
@@ -1292,7 +1379,7 @@
       ! of its eliminated species without solving, so the active variant is
       ! unavailable and every run therefore stands uncertified until the
       ! evaluator of contract step 4 exists.
-      do i = 1, 7
+      do i = 1, n_system_variant
          call unit_scale_entry(rep,                                        &
               'eliminated-species closure '//trim(system_variant_name(i)),  &
               i .eq. active_system_variant(), clo_ok, clo_res,              &
@@ -1310,7 +1397,7 @@
       ! of the state's own rows, so no row measure can see it and it is
       ! read here (A3b, carrier_history_certifiable).
       rep%carrier_history_ok = .true.
-      if (thereis_mol .and. carrier_transport)                             &
+      if (transported_rows_exist())                                        &
          rep%carrier_history_ok = carrier_history_certifiable()
 
       ! ---- the verdict ----
@@ -1430,11 +1517,10 @@
       integer :: j, idx
       if (.not. row_terms_describe_state(u)) then
          call add_entry(rep, name, cert_unavailable,                       &
-              'no residual terms assembled from this state')
+              'no residual terms assembled from this state', idx)
          return
       endif
-      call add_entry(rep, name, cert_evaluated, '')
-      idx = rep%n
+      call add_entry(rep, name, cert_evaluated, '', idx)
       select case (k)
          case (1);    rep%e(idx)%tol = cert_tol_mass
          case (2);    rep%e(idx)%tol = cert_tol_momentum
@@ -1549,8 +1635,7 @@
       logical, dimension(1:N) :: aa
       integer :: j, idx, nro_last, nro_total, nro_sub
       call add_entry(rep, 'carrier balance '//trim(carrier_name(ic)),      &
-                     cert_evaluated, '')
-      idx = rep%n
+                     cert_evaluated, '', idx)
       rep%e(idx)%regime_gated = .true.
       rep%e(idx)%tol = cert_tol_carrier_at(cert_regime_wind_r)
       ! The round-off limited rows of the transport steps this run has
@@ -1615,16 +1700,16 @@
       integer :: j, idx
       if (.not. active) then
          call add_entry(rep, name, cert_not_applicable,                    &
-                        'the run does not carry this unknown')
+                        'the run does not carry this unknown', idx)
          return
       endif
       if (.not. measured) then
          call add_entry(rep, name, cert_unavailable,                       &
-                        'no state-consistent measurement of this equation')
+                        'no state-consistent measurement of this equation',&
+                        idx)
          return
       endif
-      call add_entry(rep, name, cert_evaluated, '')
-      idx = rep%n
+      call add_entry(rep, name, cert_evaluated, '', idx)
       rep%e(idx)%regime_gated = .not. present(tol_whole_column)
       if (present(tol_whole_column)) then
          rep%e(idx)%tol = tol_whole_column
@@ -1666,15 +1751,14 @@
       integer :: j, idx
       if (.not. active) then
          call add_entry(rep, name, cert_not_applicable,                    &
-                        'the run does not carry this unknown')
+                        'the run does not carry this unknown', idx)
          return
       endif
       if (.not. measured) then
-         call add_entry(rep, name, cert_unavailable, why)
+         call add_entry(rep, name, cert_unavailable, why, idx)
          return
       endif
-      call add_entry(rep, name, cert_evaluated, '')
-      idx = rep%n
+      call add_entry(rep, name, cert_evaluated, '', idx)
       rep%e(idx)%tol         = tol
       rep%e(idx)%units_floor = units_floor
       do j = 1, N
@@ -1744,16 +1828,168 @@
 
       ! ------------------------------------------------------!
 
-      subroutine add_entry(rep, name, status, reason)
+      integer function base_contact_direction_agreement(s_wind, M_wind,  &
+                        flux_base, window_mean, window_available)
+      ! Which quantity decided the direction of the base contact at the last
+      ! boundary evaluation, and, where the wind window decided it, whether
+      ! the base face mass flux the Riemann solve assembled for the same
+      ! state carries the flux in the same direction. The comment at the
+      ! report that prints it gives the reason (item D2b). A base face flux
+      ! at or below 1e-12 of the window mean is at the rounding of the flux
+      ! and carries no direction.
+      real*8,  intent(in) :: s_wind, M_wind, flux_base, window_mean
+      logical, intent(in) :: window_available
+      if (.not. (s_wind .gt. 0.0d0 .and. window_available .and.            &
+                 window_mean .ne. 0.0d0)) then
+         base_contact_direction_agreement =                                &
+              contact_direction_from_face_velocity
+      else if (abs(flux_base) .le. 1.0d-12*abs(window_mean)) then
+         base_contact_direction_agreement =                                &
+              contact_direction_face_flux_at_rounding
+      else if ((M_wind .gt. 0.0d0) .eqv. (flux_base .gt. 0.0d0)) then
+         base_contact_direction_agreement = contact_direction_window_agrees
+      else
+         base_contact_direction_agreement =                                &
+              contact_direction_window_disagrees
+      endif
+      end function base_contact_direction_agreement
+
+      ! ------------------------------------------------------!
+
+      subroutine ionization_stage_sum_entry(rep, ien, dmax, jworst,       &
+                                            known, g)
+      ! THE STAGE SUM IDENTITY OF ONE ELEMENT AS AN ENTRY OF THE REPORT.
+      !
+      !    sum_k F_k(f) + F_close(f) = N_el(f)   at every face,
+      !
+      ! the sum over ALL stages of that element (ionization_stage_transport,
+      ! equation 2), measured by the stationary evaluation that formed the
+      ! stage fluxes and read here rather than re-formed, so the number the
+      ! report carries is the one the rows were built with.
+      !
+      ! IT GATES, at the floating-point bound of the identity. The identity
+      ! is algebraic and has no truncation error, so the whole of what a
+      ! tolerance on it can clear is the rounding of the sums, which
+      ! ionization_stage_sum_rounding_bound states and this entry reads from
+      ! that one place. The bound is 2 (5 nk + 2) eps g, and g is the ratio
+      ! of magnitude sums MEASURED at the face the measure was taken at, so
+      ! the row is gated at the rounding of its own face and not at the
+      ! largest rounding any face could carry. Where the operator reports no
+      ! g (no face of the column carried a nonzero scale) the bound falls
+      ! back on the algebraic ceiling of g, 3/2 for one carried stage and 2
+      ! for two.
+      !
+      ! A measure above the bound is a broken construction and not a state
+      ! the solver could have done better on; the constructions that break
+      ! the identity on purpose stand at 1.5e-4 to 3.6e-4 (MEASURED,
+      ! src/tests/ionization_stage_flux/), ten decades above it, and the
+      ! states this code produces at 0.07 to 0.08 of it. The derivation, the
+      ! executed validation and the production readings are anchor (8) of
+      ! docs/certification_tolerance_anchoring_20260910.md.
+      !
+      ! ONE ENTRY PER ELEMENT. The identity is a statement about one
+      ! element's own nucleus flux, so a single entry over both elements
+      ! could not say which element's construction it belongs to; that is
+      ! the same reason each trace element's transport balance is its own
+      ! entry.
+      !
+      ! The number of carried stages is the element's own and not a free
+      ! parameter: hydrogen carries x(H II) and helium x(He II) and
+      ! x(He III), and the measure is known only when every one of them is
+      ! solved (ionization_stage_nucleus_sum).
+      type(cert_report), intent(inout) :: rep
+      integer,           intent(in)    :: ien
+      real*8,            intent(in)    :: dmax
+      integer,           intent(in)    :: jworst
+      logical,           intent(in)    :: known
+      ! The measured ratio of magnitude sums at that face. Absent, or
+      ! negative, means the operator measured none and the bound is taken at
+      ! its ceiling.
+      real*8, optional,  intent(in)    :: g
+      character(len=2)  :: estg_name(2)
+      character(len=76) :: scale_text
+      integer :: nk, idx
+      real*8  :: gm
+      estg_name(ien_H)  = 'H '
+      estg_name(ien_He) = 'He'
+      if (.not. known) then
+         call add_entry(rep, 'ionization stage nucleus sum '//            &
+                        trim(estg_name(ien)), cert_unavailable,           &
+                        'this element carries no transported'//           &
+                        ' stage, or no stationary evaluation has'//       &
+                        ' formed its stage fluxes yet', idx)
+         return
+      endif
+      nk = 1
+      if (ien .eq. ien_He) nk = 2
+      gm = -1.0d0
+      if (present(g)) gm = g
+      call add_entry(rep, 'ionization stage nucleus sum '//               &
+                     trim(estg_name(ien)), cert_evaluated,                &
+                     'gating at the floating-point bound of an'//         &
+                     ' algebraic identity (anchor 8)', idx)
+      rep%e(idx)%row_max     = dmax
+      rep%e(idx)%jworst      = jworst
+      if (gm .gt. 0.0d0) then
+         rep%e(idx)%tol = ionization_stage_sum_rounding_bound(nk, gm)
+         write(scale_text,'(A,F9.5,A)')                                   &
+              'relative to max(|N_el|, sum_k |F_k|) at the face; g =',    &
+              gm, ' there'
+      else
+         rep%e(idx)%tol = ionization_stage_sum_rounding_bound(nk)
+         scale_text =                                                     &
+           'relative to max(|N_el|, sum_k |F_k|); g at its ceiling'
+      endif
+      rep%e(idx)%finite      = finite_real(dmax)
+      rep%e(idx)%within_tol  = rep%e(idx)%finite .and.                    &
+                               (dmax .le. rep%e(idx)%tol)
+      rep%e(idx)%units_floor = scale_text
+      end subroutine ionization_stage_sum_entry
+
+      ! ------------------------------------------------------!
+
+      subroutine add_entry(rep, name, status, reason, ient)
+      ! THE ONE PLACE A REPORT GAINS AN ENTRY, AND THE ONLY PLACE AN ENTRY
+      ! INDEX COMES FROM. ient is the index of the entry this call created,
+      ! and every field of that entry is written through it. THE INVARIANT:
+      ! an entry writer only ever addresses the entry its own call created.
+      ! A writer that addressed rep%n instead would address whatever entry
+      ! stood last when its own was not created, and the report would carry
+      ! one equation's name over another equation's measure, tolerance and
+      ! verdict.
+      !
+      ! AN ENTRY THAT DOES NOT FIT STOPS THE RUN, before any field is
+      ! written, so the entries the report already holds stand as they were.
+      ! cert_max_entries is the size of the inventory itself (its
+      ! declaration says how it is formed), so no configuration reaches
+      ! this; a configuration that did would have grown an equation past the
+      ! count that declares the inventory, and a certification written from
+      ! a report that cannot hold all of its equations is not a statement
+      ! about the equations the run solves. The refusal names the equation
+      ! that did not fit, the capacity, and the entry that stands last and
+      ! unchanged.
       type(cert_report), intent(inout) :: rep
       character(len=*),  intent(in)    :: name, reason
       integer,           intent(in)    :: status
-      if (rep%n .ge. cert_max_entries) return
+      integer,           intent(out)   :: ient
+      if (rep%n .ge. cert_max_entries) then
+         write(*,'(A,A,A)') ' (certification) REPORT FULL: the equation "',&
+              trim(name), '" does not fit'
+         write(*,'(A,I0,A)') ' (certification)   capacity '//             &
+              'cert_max_entries = ', cert_max_entries,                    &
+              ' entries, all of them in use'
+         write(*,'(A,A,A,ES13.6)') ' (certification)   last entry '//     &
+              'unchanged: ', trim(rep%e(cert_max_entries)%name),          &
+              '  max=', rep%e(cert_max_entries)%row_max
+         flush(6)
+         error stop 1
+      endif
       rep%n = rep%n + 1
-      rep%e(rep%n)             = cert_entry()
-      rep%e(rep%n)%name        = name
-      rep%e(rep%n)%status      = status
-      rep%e(rep%n)%reason      = reason
+      ient  = rep%n
+      rep%e(ient)             = cert_entry()
+      rep%e(ient)%name        = name
+      rep%e(ient)%status      = status
+      rep%e(ient)%reason      = reason
       end subroutine add_entry
 
       ! ------------------------------------------------------!
@@ -1887,13 +2123,20 @@
 
       ! ------------------------------------------------------!
 
-      subroutine certification_report_write(rep, label)
+      subroutine certification_report_write(rep, label, face_budget)
       ! One block per certification, with every entry of the inventory, its
       ! status, its measure and the scale that measure is taken in.
-      type(cert_report), intent(in) :: rep
-      character(len=*),  intent(in) :: label
+      !
+      ! face_budget, when the caller measured one, is the mass flux the same
+      ! operator puts through every face of the same state (stationary_
+      ! operator). It is REPORTED ONLY: no entry of the inventory reads it
+      ! and no verdict of this report depends on it.
+      type(cert_report),           intent(in) :: rep
+      character(len=*),            intent(in) :: label
+      type(face_mass_flux_budget), intent(in), optional :: face_budget
       integer :: i
       character(len=14) :: st
+      real*8 :: fb_scale
       write(*,'(A)') ' '
       write(*,'(A,A)') ' (certification) ', trim(label)
       write(*,'(A,I0,A,I0,A)') '   active equations ',                     &
@@ -2008,6 +2251,90 @@
                  '  ', trim(rep%e(i)%reason)
          endif
       enddo
+      ! THE MASS FLUX THROUGH EVERY FACE, on the state the rows above were
+      ! measured on and under the operator they were measured with. In
+      ! spherical symmetry the mass equation transports r_f^2 (rho v)_f
+      ! across face f, so on a stationary state that number is the wind's
+      ! own mass flux at every face, and the base face carries it too.
+      ! REPORTED ONLY: no entry of the inventory reads it, no tolerance
+      ! judges it, and the verdict below does not depend on it.
+      if (present(face_budget)) then
+      if (face_budget%available) then
+         write(*,'(A)') '   face mass flux r_f^2 (rho v)_f of this'//      &
+              ' state (reported beside the rows above; it gates nothing):'
+         write(*,'(A,A,A,A,A,L1)') '     operator: ',                      &
+              trim(face_budget%operator_name), ', numerical flux: ',       &
+              trim(face_budget%flux_name), ', well balanced: ',            &
+              face_budget%well_balanced
+         if (face_budget%window_available .and.                            &
+             face_budget%window_mean .ne. 0.0d0) then
+            fb_scale = face_budget%window_mean
+            write(*,'(A,ES12.5)') '     in units of the wind-window mean'//&
+                 ' of rho v r^2, which is ', fb_scale
+            write(*,'(A,ES22.15,A,I0)') '       minimum over the faces ',  &
+                 face_budget%flux_min/fb_scale, ' at face ',               &
+                 face_budget%j_min
+            write(*,'(A,ES22.15,A,I0)') '       maximum over the faces ',  &
+                 face_budget%flux_max/fb_scale, ' at face ',               &
+                 face_budget%j_max
+            write(*,'(A,ES22.15,A,ES12.5)') '       base face ',           &
+                 face_budget%flux_base/fb_scale,                           &
+                 ', offset from the window mean ',                         &
+                 face_budget%flux_base/fb_scale - 1.0d0
+            write(*,'(A)') '       a face value and the mean of a'//       &
+                 ' cell-centered product are not the same quantity, so'//  &
+                 ' an offset of the size of the'
+            write(*,'(A)') '       wind''s own discretization is not a'//  &
+                 ' mass leak'
+         else
+            write(*,'(A)') '     the wind window carries no usable mean'// &
+                 ' flux on this state, so the faces are reported in code'//&
+                 ' units'
+            write(*,'(A,ES22.15,A,I0,A,ES22.15,A,I0)')                     &
+                 '       minimum ', face_budget%flux_min, ' at face ',     &
+                 face_budget%j_min, ', maximum ', face_budget%flux_max,    &
+                 ' at face ', face_budget%j_max
+            write(*,'(A,ES22.15)') '       base face ',                    &
+                 face_budget%flux_base
+         endif
+         ! THE DIRECTION OF THE BASE CONTACT AGAINST THE FLUX IT CARRIES.
+         ! Where the wind window has standing, the base boundary upwinds
+         ! the contact on the sign of the window's mass flux and not on the
+         ! matched face velocity, whose sign on a converged state is set by
+         ! the boundary's own pressure residual (item D2b, user decision of
+         ! 2026-09-19). That choice presumes the window and the base face
+         ! carry the flux in one direction; the base face mass flux the
+         ! Riemann solve assembled for this same state is the local
+         ! measure, so a disagreement is stated here instead of assumed
+         ! absent. A base face flux below 1e-12 of the window mean is at
+         ! the rounding of the flux and carries no direction.
+         select case (base_contact_direction_agreement(                    &
+                          base_face_swind_last, base_face_Mwind_last,      &
+                          face_budget%flux_base, face_budget%window_mean,  &
+                          face_budget%window_available))
+         case (contact_direction_from_face_velocity)
+            write(*,'(A,F4.1,A)') '     base contact direction: read'//   &
+                 ' from the matched face velocity (the window has no'//    &
+                 ' standing; w_rev =', base_face_blend_last, ')'
+         case (contact_direction_face_flux_at_rounding)
+            write(*,'(A)') '     base contact direction: read from'//     &
+                 ' the wind window; the base face flux is at its'//        &
+                 ' rounding and carries no direction'
+         case (contact_direction_window_agrees)
+            write(*,'(A,F4.1,A)') '     base contact direction:'//        &
+                 ' read from the wind window, which agrees with the'//     &
+                 ' base face flux (w_rev =', base_face_blend_last, ')'
+         case default
+            write(*,'(A,F4.1,A)') '     base contact direction:'//        &
+                 ' DISAGREEMENT, the wind window and the base face'//      &
+                 ' flux carry opposite signs (w_rev =',                    &
+                 base_face_blend_last, ')'
+            write(*,'(A)') '       the contact was upwinded on the'//     &
+                 ' window; the local flux reverses, which is the case'//   &
+                 ' the boundary''s direction rule does not cover'
+         end select
+      endif
+      endif
       ! THE ANCHORING BLOCK (EXHALE_CERT_ANCHOR=1), off by default.
       ! The same measures at full double precision and split by regime, so
       ! that two evaluations of one state, two grids, or a perturbed state
@@ -2351,7 +2678,7 @@
       !
       ! The two operations that DO change a cell's element totals are the
       ! element diffusion of row 4 and the carrier transport of row 5:
-      ! both move nuclei between cells. Where either is active the per-cell
+      ! both move nuclei between cells. Where either is active the cell-by-cell
       ! statement is not an invariant of the step and is not made; the
       ! global statement that would replace it needs the transport across
       ! the two faces of the domain, which no operator reports today, so it
@@ -2362,7 +2689,7 @@
       ! carries the electron count that budget implies and there is no
       ! second statement to make.
       if (.not. he_diffusion .and.                                        &
-          .not. (thereis_mol .and. carrier_transport)) then
+          .not. transported_rows_exist()) then
          etol = 100.0d0*dble(n_species)*epsilon(1.0d0)
          dmax = 0.0d0;  jbad = 0;  ibad = 0
          do j = 1, N
@@ -2395,7 +2722,7 @@
       ! to "no interval" at the entry of every transport step.
       ! MEASURED: reading it here refused step 0 of mol_carrier, where the
       ! operator itself covered the interval and printed nothing.
-      if (thereis_mol .and. carrier_transport) then
+      if (transported_rows_exist()) then
          if (.not. carrier_completed) then
             call step_refuse(verd, cert_step_carrier, 5, 0, 0, 0.0d0,      &
                  0.0d0, 'the carrier transport interval was not covered')

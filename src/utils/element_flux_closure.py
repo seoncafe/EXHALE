@@ -545,6 +545,82 @@ from profile_match_level import (RJ_CM, profile_values_at_match, meta_num,
                                  grid_R0_cm, write_target_grid_header,
                                  profile_match_ratios, reservoir_moves)
 
+# WHICH GENERATION A STATE IS READ FROM lives in ONE place too,
+# src/utils/map_state_to_grid.py, because the mapper is the tool that reads a
+# state pair and must not take one half from one generation and the other
+# from another.  This driver hands it a directory, so it resolves the same
+# way before it does.
+from map_state_to_grid import resolve_state_source
+
+
+# THE ONE RULE THAT SAYS HOW A SOLVE ENDED, AND WHAT IS DONE ABOUT IT.
+# `LHS1140b/models/run_case.sh` carries it in one block at its head and
+# defines nothing else when RUN_CASE_POLICY_ONLY is set, so the two drivers
+# of this code that solve a wind and may restart it -- the catalog runner and
+# this closure -- read one classification and take the continuation for one
+# ending.  RUN_CASE_POLICY names the file where it is not in its usual place.
+# LHS1140b/models/ is outside the git remote, so a checkout that does not
+# carry it gets NO continuation at all and says so: an unclassified
+# continuation is the defect this replaces, and the safe direction is not to
+# take one.
+RUN_CASE_POLICY = os.environ.get(
+    'RUN_CASE_POLICY',
+    os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(
+        os.path.abspath(__file__)))), 'LHS1140b', 'models', 'run_case.sh'))
+
+_POLICY_CLASSIFY = '''
+. "$1" >/dev/null 2>&1
+classify_ending "$2" "$3"
+printf "%s\\n%s\\n" "$ENDING_CLASS" "$ENDING_REASON"
+if continuation_addresses "$ENDING_CLASS"; then echo yes; else echo no; fi
+'''
+
+_POLICY_KEEP = '''
+. "$1" >/dev/null 2>&1
+cd "$2" || exit 1
+keep_solve "$3"
+'''
+
+
+def run_case_policy(script, args, env, log):
+    """One call into the policy block, with its output as lines.
+
+    None when the block is not reachable, which the caller treats as "no
+    continuation": the classification is what authorizes one.
+    """
+    if not os.path.isfile(RUN_CASE_POLICY):
+        log('  wind: the ending was not classified: no %s' % RUN_CASE_POLICY)
+        return None
+    e = dict(env)
+    e['RUN_CASE_POLICY_ONLY'] = '1'
+    try:
+        out = subprocess.check_output(
+            ['bash', '-c', script, '_', RUN_CASE_POLICY] + list(args),
+            env=e, stderr=subprocess.STDOUT)
+    except (subprocess.CalledProcessError, OSError) as exc:
+        log('  wind: the ending was not classified (%s)' % exc)
+        return None
+    return out.decode('utf-8', 'replace').splitlines()
+
+
+def classify_solve_ending(runlog, out_dir, env, log):
+    """(ending class, reason, whether the continuation addresses it)."""
+    lines = run_case_policy(_POLICY_CLASSIFY, [runlog, out_dir], env, log)
+    if not lines or len(lines) < 3:
+        return ('unclassified',
+                'the run_case.sh policy block did not answer, so no'
+                ' continuation is authorized', False)
+    return (lines[0], lines[1], lines[-1].strip() == 'yes')
+
+
+def keep_solve_generation(iter_dir, ending, log):
+    """Move the solve now in `iter_dir` into its own `solve_<n>/` with its
+    one-line ENDING, as the catalog runner does, and return that directory."""
+    lines = run_case_policy(_POLICY_KEEP, [iter_dir, ending],
+                            dict(os.environ), log)
+    kept = lines[-1].strip() if lines else ''
+    return os.path.join(iter_dir, kept) if kept else iter_dir
+
 
 def solve_escape_wind(cfg, iter_dir, seed_output, log):
     """The wind: the seed solution becomes the initial condition, the solver
@@ -558,10 +634,17 @@ def solve_escape_wind(cfg, iter_dir, seed_output, log):
     out_dir = os.path.join(iter_dir, 'output')
     os.makedirs(out_dir, exist_ok=True)
 
-    for name in ('Hydro_ioniz.txt', 'Ion_species.txt'):
-        src = os.path.join(seed_output, name)
+    # WHICH GENERATION THE SEED IS (D8).  Where the seed directory publishes
+    # a state index, it is resolved ONCE here and both halves of the seed
+    # come from the one generation it names; the mapper is then handed that
+    # immutable directory.  A directory with no index is read as it stands,
+    # and both halves must carry the same suffix.
+    seed_output, seed_suffix, seed_note = resolve_state_source(seed_output)
+    log('  seed generation: %s' % seed_note)
+    for name in ('Hydro_ioniz', 'Ion_species'):
+        src = os.path.join(seed_output, name + seed_suffix)
         if not os.path.isfile(src):
-            raise ClosureStop('seed %s has no %s' % (seed_output, name))
+            raise ClosureStop('seed %s has no %s' % (seed_output, src))
     # THE SEED IS CARRIED ONTO THIS ITERATION'S RESERVOIR.  Every iteration's
     # column carries its own elemental ratios at the matching level -- the
     # relaxation moves He/H by 1e-5 to 1e-2 and C/H, N/H and O/H by parts in
@@ -583,7 +666,7 @@ def solve_escape_wind(cfg, iter_dir, seed_output, log):
     # mapper copies the `# grid` line of its TARGET into the state it writes,
     # so the target is not the seed's own file but a copy of its header with
     # R0 rewritten. A move in R0 alone is reason enough to call the mapper.
-    seed_state = os.path.join(seed_output, 'Hydro_ioniz.txt')
+    seed_state = os.path.join(seed_output, 'Hydro_ioniz' + seed_suffix)
     profile = os.path.join(iter_dir, cfg['profile_name'])
     prof_vals = profile_values_at_match(profile)
     moved = reservoir_moves(seed_state, profile_match_ratios(profile))
@@ -625,9 +708,9 @@ def solve_escape_wind(cfg, iter_dir, seed_output, log):
                                            + (['grid R0 ' + meta_num(R0_run)]
                                               if grid_moved else [])), rc))
     else:
-        for name in ('Hydro_ioniz.txt', 'Ion_species.txt'):
-            shutil.copyfile(os.path.join(seed_output, name), os.path.join(
-                out_dir, name.replace('.txt', '_IC.txt')))
+        for name in ('Hydro_ioniz', 'Ion_species'):
+            shutil.copyfile(os.path.join(seed_output, name + seed_suffix),
+                            os.path.join(out_dir, name + '_IC.txt'))
 
     inp = os.path.join(iter_dir, 'input.inp')
     shutil.copyfile(cfg['input_template'], inp)
@@ -651,31 +734,56 @@ def solve_escape_wind(cfg, iter_dir, seed_output, log):
                              stdout=fh, stderr=subprocess.STDOUT)
     info = wind_solve_info(tail_of(runlog, 10**7))
     log('  wind: solve done rc=%d info=%s' % (rc, info))
-    # THE CONTINUATION IN THE PSEUDO-TIME START (the same rule as
-    # LHS1140b/models/run_case.sh; docs/lhs1140b_stationary_L4e_20260914.md):
-    # a stationary solve that ends refused from a state already close leaves
-    # the pseudo-time at its start value, and the same state restarted at
-    # PTC_DTAU0_CONTINUATION certifies in a few iterations, while a raw seed
-    # at that value fails.  So when the solve did not return info = 0 and a
-    # state was written, that state is reloaded and solved once more with
-    # the start raised; both logs are kept.
-    if info != 0 and all(os.path.isfile(os.path.join(out_dir, name))
-                         for name in ('Hydro_ioniz.txt', 'Ion_species.txt')):
+    # HOW THE SOLVE ENDED, CLASSIFIED BEFORE ANYTHING IS DECIDED ON IT, BY
+    # THE SAME RULE THE CATALOG RUNNER USES.  That rule is written once, in
+    # the policy block of LHS1140b/models/run_case.sh, and is SOURCED here
+    # (RUN_CASE_POLICY_ONLY=1 defines it and returns) rather than restated in
+    # Python: two readings of the same log lines would be two rules, and the
+    # one thing item D8 established is that the ending decides the
+    # continuation, so the ending cannot be read two ways.
+    #
+    # THE CONTINUATION IN THE PSEUDO-TIME START addresses ONE ending,
+    # `hydrodynamic_refusal` (item L4e,
+    # docs/lhs1140b_stationary_L4e_20260914.md): a stationary solve that ends
+    # refused from a state already close leaves the pseudo-time at its start
+    # value, and the same state restarted at PTC_DTAU0_CONTINUATION reaches
+    # its root in a few Newton iterations, while a raw seed at that value
+    # fails.  It addresses no other: a composition refusal already has the
+    # stationary wind the solve found, and raising the pseudo-time start
+    # cannot move the element relaxation (MEASURED in item L34c on
+    # molecular_scalar_gj1132_wellmixed/HeH0.083, where the continuation took
+    # the gated carrier row from 4.13e-02 back to 7.37e-02); a state that is
+    # absent or not finite is not a state to restart from.
+    #
+    # The first solve is kept whole, as the runner keeps it: `solve_<n>/` with
+    # its own `output/`, its log and a one-line `ENDING`.
+    ending, reason, addressed = classify_solve_ending(
+        runlog, out_dir, env, log)
+    log('  wind: the solve ended %s: %s' % (ending, reason))
+    if info != 0 and addressed:
         dtau0 = str(cfg.get('dtau0_continuation', '1.0e8'))
-        log('  wind: info=%s at EXHALE_PTC_DTAU0=%s; continuing from the '
-            'written state at EXHALE_PTC_DTAU0=%s'
-            % (info, env.get('EXHALE_PTC_DTAU0', '(unset)'), dtau0))
+        kept = keep_solve_generation(
+            iter_dir, '%s at dtau0=%s: %s'
+            % (ending, env.get('EXHALE_PTC_DTAU0', '(unset)'), reason), log)
+        log('  wind: the pseudo-time continuation addresses this ending; the '
+            'written state of %s is reloaded at EXHALE_PTC_DTAU0=%s'
+            % (os.path.basename(kept), dtau0))
+        os.makedirs(out_dir, exist_ok=True)
         for name in ('Hydro_ioniz.txt', 'Ion_species.txt'):
-            shutil.copyfile(os.path.join(out_dir, name), os.path.join(
+            shutil.copyfile(os.path.join(kept, 'output', name), os.path.join(
                 out_dir, name.replace('.txt', '_IC.txt')))
-        shutil.move(runlog, os.path.join(iter_dir, 'run_dtau0_first.log'))
         env2 = dict(env)
         env2['EXHALE_PTC_DTAU0'] = dtau0
         with open(runlog, 'w') as fh:
             rc = subprocess.call([cfg['exhale_bin']], cwd=iter_dir, env=env2,
                                  stdout=fh, stderr=subprocess.STDOUT)
         info = wind_solve_info(tail_of(runlog, 10**7))
-        log('  wind: continuation done rc=%d info=%s' % (rc, info))
+        ending, reason, _ = classify_solve_ending(runlog, out_dir, env, log)
+        log('  wind: continuation done rc=%d info=%s, ended %s: %s'
+            % (rc, info, ending, reason))
+    elif info != 0:
+        log('  wind: the pseudo-time continuation addresses '
+            'hydrodynamic_refusal and nothing else, so none is taken')
     if info != 0:
         log(tail_of(runlog))
         raise ClosureStop('EXHALE did not report `done info=0` (rc=%d, '

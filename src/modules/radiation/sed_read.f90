@@ -464,9 +464,6 @@
 	! the bands of the analytic types -- and write_setup_report reads it to
 	! state what the run's field below 13.6 eV is built from. e_th_HI is a
 	! bin edge here, so no bin straddles it and the centre test decides.
-	! (Counted in a loop: global_parameters carries an integer named
-	! `count`, the marching step counter, which shadows the intrinsic of
-	! that name in every scope that uses the module.)
 	NlTR = 0
 	do j = 1,Nl
 		if (e_v(j) .lt. e_th_HI) NlTR = NlTR + 1

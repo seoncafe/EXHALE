@@ -1307,6 +1307,12 @@ here, in a file this increment may not edit.
 
 ## Step 3, increments I3 to I5
 
+**Head note.** The 2.83103e-08 that section 4 below reports for
+`handback_matches_the_accepted_iterate` is a defect of the log reader, which
+joined the records of two different solves; the records of the one completed
+solve give 0.843 (`docs/session_handoff_20260917_rev1.md` section 5,
+`docs/PLAN_20260917.md` item L28).
+
 Written 2026-09-17 (KST). The design is
 `docs/lhs1140b_stationary_L22_step3_design_20260916.md`; I1 and I2 are the
 section above. Increments I3 (T2, the block on a state that already has an

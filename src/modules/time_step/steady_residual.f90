@@ -29,6 +29,7 @@
       ! currently select; callers set WENO3 for a production residual.
 
       use global_parameters
+      use grid_construction, only: spherical_cell_volume
       use Conversion, only: U_to_W
       use caloric_eos, only: pressure_from_energy_density,          &
                              adiabatic_index_from_state
@@ -508,11 +509,9 @@
       ! cell-centred rho v r^2 does at the base (section 2).
       integer,                        intent(in) :: j
       real*8, dimension(3,1-Ng:N+Ng), intent(in) :: u
-      real*8 :: rp, rm
       call refresh_row_terms(u)
-      rp = r_edg(j);  rm = r_edg(j-1)
       s = max(abs(face_mass_flux_r2(j)), abs(face_mass_flux_r2(j-1)))    &
-          /((rp*rp*rp - rm*rm*rm)/3.0d0)
+          /spherical_cell_volume(j)
       s = max(s, tiny(1.0d0))
       end function mass_flux_row_scale
 
@@ -565,7 +564,7 @@
       ap = r_edg(j)*r_edg(j);  am = r_edg(j-1)*r_edg(j-1)
       sc = mass_flux_row_scale(j, u)
       f  = epsilon(1.0d0)*max(dm*am, dp*ap)                              &
-           /((r_edg(j)**3 - r_edg(j-1)**3)/3.0d0)/max(sc, tiny(1.0d0))
+           /spherical_cell_volume(j)/max(sc, tiny(1.0d0))
       end function mass_row_rounding_floor
 
       ! ------------------------------------------------------!
@@ -616,7 +615,7 @@
       do j = 1, N
          sc(j)  = mass_flux_row_scale(j, u)
          fsg(j) = mass_row_rounding_floor(j, u)
-         dV     = (r_edg(j)**3 - r_edg(j-1)**3)/3.0d0
+         dV     = spherical_cell_volume(j)
          ffl(j) = epsilon(1.0d0)                                          &
                   *(abs(face_mass_flux_r2(j)) + abs(face_mass_flux_r2(j-1)))&
                   /dV/max(sc(j), tiny(1.0d0))

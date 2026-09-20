@@ -1,5 +1,7 @@
       module grid_construction
-      ! Constructs radial grid, edges and sized of grids
+      ! Constructs the radial grid, its faces and its cell sizes, and holds
+      ! the one spherical-shell geometry every transport operator on this
+      ! grid divides by (spherical_face_area_and_cell_volume below).
 
       use global_parameters
       
@@ -266,8 +268,128 @@
       endif
       j_flux = max(j_flux, 1)
 
+      ! The faces of every physical cell are strictly ordered, which is what
+      ! makes the shell between them a body with a positive volume.  A grid
+      ! that does not meet it carries no finite-volume divergence at all, so
+      ! it is refused here instead of being floored downstream.
+      do j = 1, N
+         if (r_edg(j) .le. r_edg(j-1)) then
+            write(*,'(A,I0,A,ES13.6,A,ES13.6,A)')                        &
+               ' (define_grid.f90) ERROR: cell ', j, ' has faces ',       &
+               r_edg(j-1), ' and ', r_edg(j),                             &
+               ' R_p, so it has no positive volume.'
+            error stop 1
+         endif
+      enddo
+
       ! End of subroutine
       end subroutine define_grid
+
+      ! ---------------------------------------------------------------- !
+
+      subroutine spherical_face_area_and_cell_volume(face_area,          &
+                                                     cell_volume)
+      ! THE ONE SPHERICAL GEOMETRY EVERY TRANSPORT OPERATOR ON THIS GRID
+      ! DIVIDES BY.  For the shell between the faces r_- = r_edg(j-1) and
+      ! r_+ = r_edg(j),
+      !
+      !    A(f) = r_edg(f)^2
+      !    V(j) = (r_+^3 - r_-^3)/3 = (r_+ - r_-)(r_+^2 + r_+ r_- + r_-^2)/3
+      !
+      ! so that the conservative divergence
+      !
+      !    D(F)_j = [ A_+ F_+ - A_- F_- ] / V_j
+      !
+      ! telescopes exactly down the column: an internal face leaves cell j
+      ! carrying the same A F it enters cell j+1 with, and the sum over the
+      ! column is the difference of the two boundary face fluxes alone.
+      ! Every contribution to one conserved quantity therefore has to divide
+      ! by THIS V(j).  Replacing it in one term by r_j^2 (r_+ - r_-) leaves
+      ! that term weighted by V_j/(r_j^2 dr_j), a factor that differs
+      ! between neighbours on a stretched grid, and the internal faces stop
+      ! cancelling: the mixed operator is then the divergence of no single
+      ! flux.
+      !
+      ! The factored second form of V is the one evaluated.  The difference
+      ! of cubes cancels its leading digits when the cell is thin against
+      ! its radius, and the base cells of the production grids here are
+      ! dr/r ~ 2e-4, where it loses about three decimal digits that the
+      ! factored form keeps.
+      !
+      ! UNITS.  Both arrays are dimensionless, in the radius unit of r and
+      ! r_edg (the planetary radius R_p).  A module working in cm multiplies
+      ! the area by R0^2 and the volume by R0^3.
+      !
+      ! It is filled from the CURRENT r_edg at every call rather than stored,
+      ! so that a caller that built a grid of its own by writing r_edg -- the
+      ! refinement rows of the acceptance suites do -- gets the geometry of
+      ! the grid it built and not of a previous one.
+      !
+      ! It covers the PHYSICAL column, faces 0..N and cells 1..N, which is
+      ! the range the element and carrier transport operators assemble their
+      ! rows on.  A row assembled over the padded range as well -- the
+      ! hydrodynamic rows and the species flux divergence are -- reads the
+      ! volume of one cell at a time from spherical_cell_volume below, which
+      ! is the expression this fills the array with.
+      real*8, dimension(0:N), intent(out) :: face_area
+      real*8, dimension(1:N), intent(out) :: cell_volume
+      integer :: j
+
+      do j = 0, N
+         face_area(j) = r_edg(j)*r_edg(j)
+      enddo
+      do j = 1, N
+         cell_volume(j) = spherical_cell_volume(j)
+         if (cell_volume(j) .le. 0.0d0) then
+            write(*,'(A,I0,A,ES13.6,A,ES13.6,A)')                        &
+               ' (define_grid.f90) ERROR: cell ', j, ' has faces ',       &
+               r_edg(j-1), ' and ', r_edg(j),                             &
+               ' R_p, so its volume is not positive.'
+            error stop 1
+         endif
+      enddo
+
+      end subroutine spherical_face_area_and_cell_volume
+
+      ! ---------------------------------------------------------------- !
+
+      real*8 function spherical_cell_volume(j)
+      ! THE ONE EXPRESSION FOR THE SHELL VOLUME OF ONE CELL, the value the
+      ! array above is filled with and the value every operator that
+      ! transports anything through this grid divides its row by:
+      !
+      !    V(j) = (r_+^3 - r_-^3)/3 = (r_+ - r_-)(r_+^2 + r_+ r_- + r_-^2)/3
+      !
+      ! between the faces r_- = r_edg(j-1) and r_+ = r_edg(j).  The factored
+      ! second form is the one evaluated: the difference of cubes cancels its
+      ! leading digits when the cell is thin against its radius, and the base
+      ! cells of the production grids here are dr/r ~ 2e-4, where it loses
+      ! about three decimal digits that the factored form keeps.  Two
+      ! spellings of this volume leave two operators on the same column
+      ! disagreeing at that size about what a cell holds, which is why there
+      ! is one.
+      !
+      ! It takes the cell index rather than an array so that a row assembled
+      ! over the padded index range 2-Ng..N+Ng can read it: the ghost cells
+      ! lie outside the physical column the array form covers.  It reads the
+      ! CURRENT r_edg, for the same reason the array form is filled and not
+      ! stored.
+      !
+      ! UNITS.  Dimensionless, in the radius unit of r and r_edg (the
+      ! planetary radius R_p).  A module working in cm multiplies by R0^3.
+      !
+      ! The positivity of the volume is asserted by the array form over the
+      ! physical column and by define_grid over the faces it builds; it is
+      ! not restated per call, which would put a branch in the innermost
+      ! loop of every flux difference.
+      integer, intent(in) :: j
+      real*8 :: rm, rpl
+
+      rm  = r_edg(j-1)
+      rpl = r_edg(j)
+      spherical_cell_volume = (rpl - rm)*(rpl*rpl + rpl*rm + rm*rm)/3.0d0
+
+      end function spherical_cell_volume
 
       ! ---------------------------------------------------------------- !
 

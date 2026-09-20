@@ -448,9 +448,10 @@
 		use_brent_tsolve = .true.
 		windae_seed_file = 'inputdata/windae_seed.csv'
 		windae_seed_out  = ''
-		dr_base          = 2.0e-4     ! uniform base cell size [R_p] (Mixed grid);
-		                              ! default-real literal on purpose, see parameters.f90
-		N_low_cells      = 50         ! number of uniform base cells
+		dr_base          = dr_base_default  ! uniform base cell size [R_p]
+		                                   ! (Mixed grid), see parameters.f90
+		dr_base_from_key = .false.    ! set by the "Base grid" key below
+		N_low_cells      = N_low_cells_default ! number of uniform base cells
 		base_bc_mode     = 0          ! density-anchored base (legacy) by default
 		ates_photoion_rate = .false.  ! default: Verner+1996 He I (1^1S) photoion.
 		legacy_hhe_rates   = .false.  ! default: Badnell/Mao + Voronov H/He rates
@@ -651,26 +652,33 @@
 				! "Molecular carrier transport: True|False" -- vertical
 				! transport of the molecular carriers, solved implicitly
 				! with their chemistry (diffusive_photochemistry). The set
-				! is fixed by carrier_set_init: H2 alone, H2 with OH, H2O
-				! and CO when the oxygen cycle is on, and H+ as well under
-				! "Ionization transport: True". False restores the
+				! this key fixes is H2 alone, or H2 with OH, H2O and CO when
+				! the oxygen cycle is on; the three ionization stages are
+				! carried on "Ionization transport" instead, which is a
+				! separate set of rows of the same operator and exists in an
+				! atomic gas too (carrier_set_init). False restores the
 				! local-kinetics limit of milestone M2, which isolates the
 				! chemistry for testing and is not a model of a base. Left
 				! unstated, the default is resolved below from the chemistry
-				! the run carries. Every consumer of carrier_transport is
-				! guarded by thereis_mol, so with the molecular network off
-				! there is nothing to transport; that is reported below, not
-				! refused.
+				! the run carries. This key means nothing with the molecular
+				! network off, because there is no molecular carrier to
+				! transport; that is reported below, not refused.
 				str = get_word(line, 4)
 				carrier_transport_stated = .true.
 				carrier_transport = (str .eq. 'True' .or. str .eq. 'true')
 			else if (lbl_match(line, 'Ionization transport')) then
-				! "Ionization transport: True|False" -- carry the hydrogen
-				! ionization state with the flow, H+ as a transported
-				! species of the same operator that carries H2, instead of
-				! re-solving the H/H+ partition as a local equilibrium every
-				! step. Default False. The requirements are checked below,
-				! after every key is parsed.
+				! "Ionization transport: True|False" -- carry the
+				! ionization state of hydrogen and helium with the flow
+				! instead of re-solving each cell's partition as a local
+				! equilibrium every step. The carried set is x(H II) per
+				! hydrogen nucleus and x(He II), x(He III) per helium
+				! nucleus, each transported on its own element's nucleus
+				! face flux by the transport-chemistry operator; the neutral
+				! stage of each element closes its simplex and is not a row.
+				! It applies to an atomic gas as well as a molecular one,
+				! and each stage's source is the ionization balance the
+				! local sweep of that gas solves. Default False. The
+				! requirements are checked below, after every key is parsed.
 				str = get_word(line, 3)
 				ionization_transport = (str .eq. 'True' .or. str .eq. 'true')
 			else if (lbl_match(line, 'Coupled carrier solve')) then
@@ -1032,8 +1040,8 @@
 			else if (lbl_match(line, 'Max steps')) then
 				! "Max steps: <N>" overrides the hard cap on marching
 				! iterations (default 1000000).
-				str = get_word(line, 3);  read(str,*) count_max
-				write(*,'(A,I0)') ' (input_read) Max marching steps =', count_max
+				str = get_word(line, 3);  read(str,*) marching_step_max
+				write(*,'(A,I0)') ' (input_read) Max marching steps =', marching_step_max
 			else if (lbl_match(line, 'Coronal cutoff width')) then
 				! "Coronal cutoff width: <w>" sets the roll-off width of the
 				! coronal-excitation guard below the 1e3 K CHIANTI fit floor
@@ -1171,7 +1179,12 @@
 				! warns below 10; the undamped stationary 2 dr entropy mode
 				! sets in near 5 (docs/hd189_base_checkerboard.md). Ignored
 				! by the Uniform and Stretched grid types.
+				! The key is the only writer of dr_base_from_key: the
+				! resolved-configuration record says "key" or "default"
+				! from it, and the two cannot be told apart by value (a
+				! key may state the default's own digits).
 				str = get_word(line, 4);  read(str,*) dr_base
+				dr_base_from_key = .true.
 				str = get_word(line, 5)
 				if (len_trim(str) .gt. 0) read(str,*) N_low_cells
 				write(*,'(A,ES9.2,A,I0,A,ES9.2,A)')                       &
@@ -2183,46 +2196,86 @@
    ! Each of these is a configuration in which the option would silently
    ! mean something other than what it says.
    if (ionization_transport) then
-      if (.not. thereis_mol) then
+      ! WHAT THE KEY CARRIES.  The ionized stages of an element as
+      ! fractions of that element's NUCLEI, transported on that element's
+      ! own nucleus face flux (ionization_stage_transport, equation 1).
+      ! The carried set is x(H II) per hydrogen nucleus and x(He II),
+      ! x(He III) per helium nucleus; the neutral stage of each element
+      ! closes its simplex and is not a row.
+      if (.not. thereis_He) then
          write(*,*) '(input_read) ERROR: "Ionization transport: True" needs'
-         write(*,*) '  "Molecular chemistry: True". The operator that'
-         write(*,*) '  carries the proton is the molecular carrier solve,'
-         write(*,*) '  which does not run in an atomic gas. Aborting.'
+         write(*,*) '  helium in the mixture. The flux a stage rides on is'
+         write(*,*) '  the element nucleus flux of the binary H/He'
+         write(*,*) '  transport operator, which returns nothing for a'
+         write(*,*) '  mixture with one element, and the carried set'
+         write(*,*) '  includes the two ionized stages of helium.'
+         write(*,*) '  Aborting.'
          error stop 1
       endif
-      if (.not. carrier_transport) then
-         write(*,*) '(input_read) ERROR: "Ionization transport: True" needs'
-         write(*,*) '  "Molecular carrier transport: True". The proton is'
-         write(*,*) '  a carrier of that operator; with the operator off'
-         write(*,*) '  there is nothing to transport it. Set both keys,'
-         write(*,*) '  or neither. Aborting.'
+      ! AN ATOMIC GAS CARRIES THEM TOO.  The stages are stages of an
+      ! element, not molecular carriers: their unknowns are fractions per
+      ! element nucleus, their flux is the element's own nucleus face flux,
+      ! and their source in an atomic gas is the H/He ionization balance the
+      ! local sweep of that gas solves (ion_residual_core, through
+      ! diffusive_photochemistry's carrier_source).  The entry points of the
+      ! transport-chemistry operator, the frozen background its rows are
+      ! evaluated on and the alternation of the stationary outer iteration
+      ! are all conditioned on "a transported row exists"
+      ! (ionization_equilibrium, transported_rows_exist), so the molecular
+      ! network is no longer what lets them run.
+      if (thereis_mol .and. .not. carrier_transport) then
+         write(*,*) '(input_read) ERROR: "Ionization transport: True" in a'
+         write(*,*) '  molecular gas ("Molecular chemistry: True") needs'
+         write(*,*) '  "Molecular carrier transport: True". The stage'
+         write(*,*) '  sources are then rows (1), (2) and (3) of the'
+         write(*,*) '  molecular H/He network, whose molecular sinks are'
+         write(*,*) '  written at the molecular densities of the same'
+         write(*,*) '  transported composition; with the molecular'
+         write(*,*) '  carriers left on their local root the two halves of'
+         write(*,*) '  that network would describe different states of the'
+         write(*,*) '  same cell. Set both keys, or neither. Aborting.'
+         error stop 1
+      endif
+      ! METALS IN THE MIXTURE ARE SUPPORTED. The transported stage sources
+      ! carry the metal charge exchange of Huang et al. (2023) Table 4 --
+      ! group A, metal + H and H+, active whenever metals are present;
+      ! group C, metal + He and He+, under "cx_full 1"; and the group E
+      ! electron capture O2+ + H0 -> O+ + H+ under its own scale -- through
+      ! charge_exchange::charge_exchange_stage_sources, the same reaction
+      ! set and the same rate coefficients the local sweep's rows take
+      ! through cx_add_to_fvec. The stage the flow carries and the
+      ! composition the sweep returns therefore answer one H+ and He+
+      ! balance of a cell, which is what the refusal that stood here
+      ! protected while the terms were missing.
+      if (carrier_in_newton) then
+         write(*,*) '(input_read) ERROR: "Ionization transport: True" with'
+         write(*,*) '  "Coupled carrier solve: True" is refused. The'
+         write(*,*) '  coupled row registry carries every carrier unknown'
+         write(*,*) '  as the species mass fraction of its f_sp column,'
+         write(*,*) '  and a stage unknown is a fraction per element'
+         write(*,*) '  nucleus; the two are different variables and the'
+         write(*,*) '  bound the coupled solve puts on the unknown would'
+         write(*,*) '  be the bound of the other one. Use the partitioned'
+         write(*,*) '  stationary route. Aborting.'
          error stop 1
       endif
       ! THE STATIONARY SOLVE AND THE TRANSPORTED PROTON.
       !
-      ! Both stationary routes are supported. With "Coupled carrier solve"
-      ! the proton is an unknown of the Newton system: the sweep is HANDED
-      ! the proton fraction (x_hp_fixed, imposed from the Newton unknown)
-      ! and solves the other stages against it, while the proton's own
-      ! equation is the stationary balance the Newton drives to zero.
-      ! Without that key the stationary route is the partitioned
+      ! The stationary route is the partitioned
       ! alternation (steady_wind_with_element_diffusion, item P6 of
       ! 2026-09-11): the hydrodynamic solve holds the composition, and
-      ! every equilibrium sweep it makes is handed the transported proton
-      ! fraction of that composition (ionization_equilibrium, the
-      ! x_hp_fixed block: imposed whenever the carriers are transported and
-      ! the state is a restart or carries a background), so the proton is
-      ! never put back on its local root; the carrier relaxation between the
-      ! hydrodynamic solves then transports it. Until 2026-09-12 this
-      ! combination was refused on the premise that the last sweep would
-      ! re-solve the proton locally, which was true of the plain JFNK finish
-      ! the refusal was written for (2026-09-10) and is not true of the
-      ! alternation that replaced it. Marching is unaffected either way.
-      if (use_newton_solver .and. .not. carrier_in_newton)                &
+      ! every equilibrium sweep it makes is handed the transported stage
+      ! fractions of that composition (ionization_equilibrium, the imposed
+      ! block: written whenever the key is on and the state is a restart or
+      ! carries a background), so no stage is put back on its local root;
+      ! the carrier relaxation between the hydrodynamic solves then
+      ! transports them. Marching is unaffected.
+      if (use_newton_solver)                                              &
          write(*,'(A)') ' (input_read) Ionization transport with the'//    &
             ' partitioned stationary route: the sweeps of the'//          &
-            ' hydrodynamic solve are handed the transported proton'//     &
-            ' fraction; the carrier relaxation transports it.'
+            ' hydrodynamic solve are handed the transported x(H II),'//   &
+            ' x(He II) and x(He III); the carrier relaxation'//           &
+            ' transports them.'
    endif
 
    ! A COUPLED STEADY SOLVE MAY NOT ELIMINATE H2.

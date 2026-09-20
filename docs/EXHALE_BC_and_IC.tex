@@ -313,26 +313,59 @@ p_b = p_{\rm res} ,
 and the velocity then follows from (\ref{eq:cminus}),
 $v_b = v_i + (p_b - p_i)/(\rho_i c_i)$. The entropy is a reservoir
 condition only while gas enters: on reversal the entropy at the face is the
-interior's, advected out, and the reservoir has nothing to say about it.
-The handover is a $C^1$ cubic smoothstep in the face Mach number,
-\texttt{characteristic\_branch\_weight}, of width
-\texttt{base\_face\_mach\_blend} $=10^{-6}$:
+interior's, advected out, and the reservoir has nothing to say about it. The
+contact is upwinded on that direction,
 \begin{equation}
 \rho_b = (1 - w_{\rm rev})\,\rho_{\rm res}
        + w_{\rm rev}\,\rho\big(s_i, p_b\big),
-\qquad
-w_{\rm rev} = W\!\left(\frac{M_i}{10^{-6}}\right) .
+\qquad w_{\rm rev}\in\{0,1\},
 \end{equation}
-The branch is a genuine change in the number of conditions, hence a kink in
-the residual, and the steady Newton solver needs a differentiable one. The
-width is far below the physical operating point: on the hot-Uranus gate the
-base carries the wind's own mass flux, $\rho_b v_b r^2 = F_{\rm wind}$,
-which at the base density is $v_b \approx 1.6$\,cm\,s$^{-1}$ against
-$c \approx 2.6\times10^{5}$\,cm\,s$^{-1}$, a face Mach number of
-$6\times10^{-6}$ (READ, module header); a hot Jupiter's is larger. So every
-intended operating point lies entirely inside the inflow branch, and the
-residual jump the blend smooths is the difference between two isentropes
-that coincide at a converged state.
+and \textbf{the choice is discrete and has no width}. A contact carrying
+different entropies on its two sides has direction-dependent traces; a face
+density between them is an interpolation and not a law of thermal contact,
+and the average of the two isentropes that a symmetric handover returns at
+zero has no physics behind it. This is what boundary model v2 changed from
+v1, whose entropy source was handed over by a cubic smoothstep in the face
+Mach number.
+
+The order of the three steps is what keeps the choice from being circular.
+The acoustic matching comes first, so $v_b$ is a result of
+(\ref{eq:cminus}) and does not depend on $\rho_b$; the direction of the
+contact is read off the matched state next; the contact is upwinded last.
+The direction is read from the mass flux at the level, and the quantity that
+carries it is the wind window $r\ge r_{\rm flux}$, not the first interior
+cell's own product $\rho_1v_1r_1^2$ and not the matched face velocity. At a
+base carrying a collocated odd-even mode the cell-centered product is not a
+flux at all: MEASURED on the certified LHS\,1140\,b atomic state the Riemann
+face flux is $+1.00000\,F_{\rm wind}$ at every face while the cell-centered
+product reads $-2.00\,F_{\rm wind}$ at cell 1, and the hot-Uranus base reads
+$-196\,F_{\rm wind}$ against a face flux of $+0.98$. The matched face
+velocity carries $(p_{\rm res}-p_i)/(\rho_ic_i)$, and a converged state
+leaves that pressure difference at about $10^{-4}$ of $p$, which at a base
+Mach number of $3\times10^{-7}$ is a velocity two orders above the flow's
+own. The window has standing where it carries a flux at all
+($|M_{\rm wind}|\ge10^{-12}$) and carries one flux (its relative standard
+deviation over the physical cells of the window at or below
+$2\times10^{-3}$); otherwise the matched face velocity decides, with a
+velocity below the rounding of the cancellation it is formed from,
+$4\epsilon[(|p_i|+|p_b|)/(\rho_ic_i)+|v_i|]$, counted as zero and the level
+given to the reservoir. The spread threshold is the geometric middle of the
+measured gap: 302 certified stationary states run from $4.06\times10^{-5}$ to
+$1.82\times10^{-4}$, and the tightest state that is not a wind reads
+$1.39\times10^{-2}$.
+
+At rest and at inflow the reservoir owns the level, and the physical
+assumption behind that is stated rather than carried implicitly: the lower
+atmosphere below the base level is dense and radiatively controlled, so on
+the time scales of a stationary solution it is a heat bath and a column
+standing at rest above it takes the level's own temperature by radiation and
+conduction. Its validity is a subsonic base at a level inside the radiatively
+controlled lower atmosphere; it says nothing about a supersonic base, and
+nothing about a level above that region. The one branch that does carry a
+declared width is the supersonic-outflow transition at $M_i=-1$, where the
+number of outgoing characteristics changes from two to three: a $C^1$ cubic
+smoothstep of half width \texttt{base\_face\_mach\_blend} $=10^{-8}$, which
+acts on the whole face state and never on the entropy source.
 
 \paragraph{Why the reservoir holds the static pressure.}
 The module carries a second admissible pair, in which the reservoir states
@@ -438,6 +471,113 @@ so whoever replaces the interior owes the next \texttt{Reconstruct} an
 update of its own is the restore of the attempted-step checkpoint, and
 \texttt{rebuild\_state\_from\_checkpoint} calls \texttt{Apply\_BC} for
 exactly this reason (\S\ref{sec:loadic}).
+
+\subsection{The ghost composition: the seed and the fixed point (model v3)}
+\label{sec:ghostfixedpoint}
+
+The boundary is built on the two lower ghost cells, and their composition is
+not prescribed: it is solved by the ionization sweep like any other cell's.
+That makes the sweep a map from the composition it is entered at to the one
+it returns, because the entry state sets the columns, the cell depths, the
+electron and particle counts, the secondary-ionization partition, the
+shielding and the ionization the base handoff's partition is stated against.
+A ghost that is one application of that map is therefore a boundary that
+depends on the composition the run happened to be entered at.
+
+\paragraph{It was measured, and it was not small.} On one frozen physical
+column, reservoir, spectrum, option set and executable, two entry
+compositions returned ghosts $4.7\times10^{-3}$ (H\,{\sc ii}, He\,{\sc ii})
+to $5.5\times10^{-2}$ (H$_2^+$) apart in their trace ions while $p$, $\rho$,
+$T$ and the particle count agreed to $10^{-14}$ to $10^{-10}$. Both were
+accepted by every test the sweep applies, at reaction residuals of about
+$3\times10^{-26}$ with their imposed partition closed to zero. The base
+continuity row of the first physical cell, a near-cancellation of two face
+fluxes, read $8.335\times10^{-8}$ in one and $2.923\times10^{-9}$ in the
+other, against the same tolerance $7.5\times10^{-9}$: one certified and one
+refused. The difference is not unresolved iteration. Over six decades of the
+cell solver's stopping accuracy the two states do not approach each other at
+all, each staying put to $10^{-15}$; neither is a fixed point, since a solve
+seeded with the refused ghost in that ghost's own column leaves it; and the
+seed-to-ghost map has a measured gain, seeds $9.7\times10^{-1}$ apart
+returning ghosts $4.7\times10^{-3}$ apart. A converged root does not remember
+its start.
+
+\paragraph{The seed is part of the model.} It is stated at the boundary and
+not left to the loader's handling of rows it drops: the reservoir row at the
+first sweep of a run, and the ghost the previous sweep returned at every
+sweep after it. The first is the only seed that is a function of the physical
+column and the declared inputs alone, which is why \texttt{load\_IC}
+installs it in place of the ghost rows a restart pair carries; the second is
+the state's own ghost. The two are far apart as seeds, the reservoir row
+carrying 31 times the ghost's own H\,{\sc ii} and 26 times less H$_3^+$.
+
+\paragraph{The returned ghost is a fixed point of the map that produced it.}
+\texttt{ioniz\_eq} applies its own map again at the ghost it returned,
+restoring the cells above the ghosts to the composition they were handed at
+each application, until both legs close: the largest absolute change of any
+species density of the two lower ghost cells, in the cell's own units, at
+most $10^{-11}$, and the relative change of the ghost's heavy-particle plus
+electron count at most $10^{-6}$. A boundary that cannot reach that in twenty
+applications stops the run by name, with both moves and the accuracy, exactly
+as the ghost's imposed H$_2$ partition closure does. What the routine returns
+for the physical cells is still one application of one map, so the stationary
+residual is still one application of one operator, and a ghost already at its
+fixed point, which is the ordinary case, costs one application.
+
+The accuracy is set by the base row, not chosen: a ghost difference of
+$4.7\times10^{-3}$ takes that row from $3.90$ to $111.3$ of its own rounding
+floors, so one floor of the row is bought by $4.4\times10^{-5}$ of ghost
+composition and $10^{-11}$ is a quarter of one floor. \textbf{The norm is
+absolute and not per species}, because the sweep pins the composition
+absolutely, in the cell's own units, and not stage by stage, and no quantity
+the boundary builds reads a trace stage against its own value. MEASURED on a
+molecular carrier configuration, a ghost settled into an exact two-cycle
+whose H\,{\sc i} moved by $6.5\times10^{-12}$ and whose H$_3^+$ moved by
+$2.2\times10^{-12}$ of the cell's composition, worth $0.06$ of one rounding
+floor of the base row, while against their own values those same moves read
+$4.1\times10^{-9}$ and $5.1\times10^{-3}$; a relative statement cannot be
+made for a stage sitting at $4\times10^{-10}$ of the cell. Species below
+$10^{-18}$ of the cell's own density are left out. The bracket is stated
+rather than tuned: $10^{-11}$ sits a factor $1.5$ above the lowest plateau
+measured, so a configuration whose composition solve plateaus higher stops
+the run, and the answer there is to measure that plateau.
+
+The temperature leg is inside the contract. The ghost's heavy-particle plus
+electron count is what turns its temperature into the pressure
+\texttt{base\_ghost\_averages} builds and into the internal energy and sound
+speed the caloric map returns, so a ghost whose composition has stopped
+moving but whose count has not is a ghost whose rates belong to one gas and
+whose thermodynamic state to another; the count is measured across every
+application and the temperature-dependent rates are rebuilt from the
+composition each application is entered at. Because the applications are
+\emph{one} sweep, nothing that separates one sweep from the next may turn
+over between them: the frozen background's readiness is held at the value the
+sweep was entered with and takes the sweep's own value only when the sweep
+ends.
+
+The contract covers the lower ghosts of a run whose network is molecular and
+carries helium, which is where the boundary's composition holds the trace
+ions the base row reads. A run outside it is marked reached before the first
+traversal and leaves after it, so not one number of such a run moves; the
+atomic ghost is not under the contract and its seed dependence is not
+measured. On the state that motivated it, three seeds $9.7\times10^{-1}$
+apart now certify with the same cell-1 row $2.923\times10^{-9}$ and stand at
+most $8.0\times10^{-11}$ apart over every column of both state files.
+
+\paragraph{The model identity, and an older one.} The two statements above
+are what the identity
+\texttt{characteristic\_face\_ps\_reservoir\_C\_minus\_contact\_upwind\_\allowbreak
+ghost\_fixed\_point\_seed\_reservoir\_row\_v3} adds to v2. It is written into
+every state file, together with the prescribed reservoir and the version of
+its prescription. A state written under an older model is \emph{reported} and
+loaded, not refused: \texttt{load\_IC} names the model that wrote it, names
+the model this run solves, and says that the boundary is rebuilt from the
+physical column and this run's reservoir and that its ghost composition is
+solved to this model's own seed and fixed point, so the state's residual is
+not the residual it was written with. A file written before the identity was
+recorded says that instead. The seed of record, whether a diagnostic has
+replaced it, and what the fixed point reached are all printed in the boundary
+report.
 
 \subsection{What fixes the reservoir pressure}
 \label{sec:dpbc}
@@ -680,11 +820,16 @@ region unchanged; the paired settings are
 \bottomrule
 \end{tabular}
 \end{center}
-Note that spelling the default out explicitly
-(\texttt{Base grid [dr,cells]: 2.0e-4 50}) does \emph{not} reproduce a
-run made without the key: the compiled-in default is a default-real
-literal, $2.5\times10^{-8}$ relative below the exact double the
-list-directed read produces, which moves every base cell by that amount.
+The default width is the double $2\times10^{-4}$, so spelling it out
+(\texttt{Base grid [dr,cells]: 2.0e-4 50}) builds the same grid as leaving
+the key out. Runs made before 2026-09-19 without the key used the
+single-precision neighbor $1.9999999494757503\times10^{-4}$,
+$2.5\times10^{-8}$ relative below it, which moves the cell centers by
+$3.8$--$6.6\times10^{-9}$ relative on the grids measured, enough for \texttt{load\_IC} (tolerance
+$10^{-10}$) to refuse their states on the present default grid. Every such
+input that has stored results beside it carries the line
+\texttt{Base grid [dr,cells]: 1.9999999494757503e-4 50}, which rebuilds that
+grid to the bit (\texttt{docs/lhs1140b\_stationary\_D1b\_20260919.md}).
 The full measurement (what sets the mode, which remedies were tried,
 and what each grid step bought) is
 \texttt{docs/hd189\_base\_checkerboard.md}.

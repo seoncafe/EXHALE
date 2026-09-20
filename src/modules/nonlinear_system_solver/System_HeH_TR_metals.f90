@@ -60,7 +60,7 @@
 	real*8  :: A31,q13,q31a,q31b,Q31            ! triplet kinetics
 	real*8  :: n_h,n_he,n_e
 	real*8  :: n_hi,n_hii
-	real*8  :: n_hei,n_heii,n_heiii,n_heiTR,n_heiSI
+	real*8  :: n_heii,n_heiii,n_heiTR,n_heiSI
 	! Each element's metal densities (neutral/+/++); charge exchange added later.
 	real*8  :: nm0(met_nelem),nm1(met_nelem),nm2(met_nelem)
 	real*8  :: n_X
@@ -92,7 +92,6 @@
 	! H/He densities from fractions
 	n_hi    = (1.0 - x(1))*n_h
 	n_hii   = x(1)*n_h
-	n_hei   = (1.0 - x(2) - x(3))*n_he          ! total HeI (singlet + triplet)
 	n_heii  = x(2)*n_he
 	n_heiii = x(3)*n_he
 	n_heiSI = (1.0 - x(2) - x(3) - x(4))*n_he   ! singlet ground only
@@ -122,15 +121,36 @@
 	! Charge exchange (Huang Table 4) on the H, He and metal rows. The metal
 	! rows are at base 5 here; the driver sets cx_metal_base = 5 before this
 	! solve. Absent reactants contribute zero, preserving the identity rows.
+	! fvec(2) is the SUMMED He I balance of heh_tr_rows, written He I-gain
+	! positive, so he_row_sign = -1: the group C reactions metal + He / He+
+	! destroy He II and make He I, which is a gain of this row. The H row,
+	! the He II <-> He III row and the metal rows are ionization positive and
+	! take the generic sign. The rate coefficients are the ones cx_set_cell
+	! stored for this cell, whose temperature ieq_cell%T_K is.
+	! The helium reactant of the group C metal + He reactions is the GROUND
+	! SINGLET n_heiSI: those rates are ground-state rates (see the group C
+	! paragraph of charge_exchange), so the metastable must not be charged
+	! to them, and the singlet loss they report is a loss of the summed
+	! He I this row balances.
 	call cx_add_to_fvec(N_eq, fvec, nm0, nm1, nm2,                       &
-	                    n_hi, n_hii, n_hei, n_heii, n_heiii)
+	                    n_hi, n_hii, n_heiSI, n_heii, n_heiii,           &
+	                    -1.0d0, ieq_cell%T_K)
 
-	! He <-> H charge exchange (Huang Table 4 group B). The summed He I row
-	! (fvec 2) is written HeI-gain positive here (verbatim System_HeH_TR),
-	! so he_row_sign = -1. Group B is excluded from cx_act, so it is applied
-	! only here (no double counting with cx_add_to_fvec).
+	! He <-> H charge exchange (Huang Table 4 group B). The He reactant of
+	! He + H+ -> He+ + H is the GROUND SINGLET He(1^1S), n_heiSI: the rate
+	! Table 4 lists for it, from Glover & Jappsen (2007), carries the barrier
+	! exp(-12.75/T4), and 12.75e4 K = 10.99 eV is the ionization-potential
+	! difference 24.587 - 13.598 eV of ground-state helium against hydrogen.
+	! He(2^3S) lies 19.82 eV above the singlet, so its own charge exchange
+	! with H+ is exothermic and has no such barrier; it is a different
+	! reaction with a different rate, and neither this system nor the
+	! metastable balance tr_triplet_row carries it.
+	! The summed He I row (fvec 2) is written HeI-gain positive here, so
+	! he_row_sign = -1, and the singlet loss it reports is a loss of the sum.
+	! Group B is excluded from cx_act, so it is applied only here (no double
+	! counting with cx_add_to_fvec).
 	call he_h_cx_fvec(fvec, ieq_cell%kcx_He0_Hp, ieq_cell%kcx_Hep_H0,    &
-	                  n_hi, n_hii, n_hei, n_heii, -1.0d0)
+	                  n_hi, n_hii, n_heiSI, n_heii, -1.0d0)
 
 	! The transported ionization fractions, where the flow carries them
 	! and not this cell's local balance (ion_residual_core).

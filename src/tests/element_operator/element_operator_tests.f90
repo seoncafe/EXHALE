@@ -89,7 +89,11 @@
       use diffusive_photochemistry, only: carrier_set_init
       use composition, only: mass_per_H_nucleus_without_He
       use lower_atmosphere_profile, only: eddy_diffusion_on_grid
+      use grid_construction, only: define_grid,                          &
+                                   spherical_face_area_and_cell_volume
       use binary_element_diffusion, only: element_transport_residual,     &
+                                          element_nucleus_face_flux,      &
+                                          mixture_mass_sum,               &
                                           relax_element_composition,      &
                                           element_diffusion_step,         &
                                           element_mass_fractions,         &
@@ -101,7 +105,9 @@
                                           element_mass_closure_departure, &
                                           element_transport_residual_norm,&
                                           element_row_scale_floor,        &
-                                          element_step_last_status
+                                          element_step_last_status,       &
+                                          element_base_flux,              &
+                                          element_base_flux_report
       ! The certification's own reduction of a row, so that the number the
       ! progress control reads and the number the certification reports for
       ! the same rows are asserted to be one measure and not two.
@@ -112,6 +118,9 @@
       implicit none
       integer :: nf
       nf = 0
+      ! First, because one of its rows is the state of the base flux record
+      ! before any operator of this program has written one.
+      call the_base_flux_record_belongs_to_its_evaluation(nf)
       call the_upper_ghost_of_the_residual_is_the_callers(nf)
       call the_relaxation_fixed_point_under_a_callers_ghost(nf)
       call the_element_transport_returns_the_mass_it_was_given(nf)
@@ -119,6 +128,8 @@
       call an_inadmissible_composition_is_not_handed_back(nf)
       call the_enforcement_does_not_read_the_caller(nf)
       call the_progress_measures_of_one_element_pass(nf)
+      call the_element_row_is_the_divergence_of_one_flux(nf)
+      call the_spherical_divergence_is_second_order(nf)
       write(*,'(A)') ''
       if (nf .gt. 0) then
          write(*,'(A,I0,A)') 'element_operator: ', nf, ' row(s) failed'
@@ -233,6 +244,267 @@
       if (.not. allocated(melem_ab)) allocate(melem_ab(n_melem))
       melem_ab = 1.0d-4
       end subroutine synthetic_element_column
+
+      ! ================================================================= !
+
+      subroutine production_grid_element_column(nc)
+      ! The same configuration as synthetic_element_column, on the grid the
+      ! PRODUCTION constructor builds: the Mixed grid of the LHS 1140 b
+      ! catalog, nc cells with 50 uniform base cells of 2e-4 R_p under a
+      ! geometric stretch out to 30 R_p.  The cell width then varies by four
+      ! decades down the column, which is where a divergence weighted by
+      ! r_j^2 dr_j and one weighted by the exact shell volume stop agreeing
+      ! from one cell to the next.
+      !
+      ! A temperature gradient and a thermal-diffusion coefficient are put
+      ! in so that the settling drift B is not identically zero and the
+      ! Peclet switch has both branches to choose between; gravity and the
+      ! ambipolar field stay off, so G is the thermal term alone.
+      integer, intent(in) :: nc
+
+      N  = nc
+      T0 = 1.0d3
+      R0 = 1.0d10
+      n0 = 1.0d10
+      v0 = sqrt(kb_erg*T0/mu)
+      t_s = R0/v0
+      p0 = n0*mu*v0*v0
+      b0 = 0.0d0
+      spherical_domain     = .true.
+      thereis_He           = .true.
+      thereis_HeITR        = .false.
+      thereis_mol          = .false.
+      carrier_transport    = .false.
+      thereis_oxychem      = .false.
+      ionization_transport = .false.
+      thereis_metals       = .true.
+      eos_include_metals   = .true.
+      he_diffusion         = .true.
+      he_metal_diffusion   = .true.
+      he_ambipolar         = .false.
+      he_alphaT            = 3.0d-1
+      he_kzz               = 1.0d11
+      HeH                  = 0.0833333333333333d0
+      use_plm = .false.;  use_weno3 = .true.;  rec_method = 'WENO3'
+      recon_lambda_on = .false.
+      call carrier_set_init()
+
+      grid_type   = 'Mixed'
+      N_low_cells = 50
+      dr_base     = 2.0d-4
+      r_max       = 30.0d0
+      r_esc       = 2.0d0
+      r_flux      = 1.2d0
+      if (allocated(r))     deallocate(r)
+      if (allocated(r_edg)) deallocate(r_edg)
+      if (allocated(dr_j))  deallocate(dr_j)
+      allocate(r(1-Ng:N+Ng), r_edg(1-Ng:N+Ng), dr_j(1-Ng:N+Ng))
+      call define_grid
+      call eddy_diffusion_on_grid
+      if (.not. allocated(melem_ab)) allocate(melem_ab(n_melem))
+      melem_ab = 1.0d-4
+      end subroutine production_grid_element_column
+
+      ! ================================================================= !
+
+      subroutine the_element_row_is_the_divergence_of_one_flux(nf)
+      ! WHETHER THE ELEMENT ROW IS THE DIVERGENCE OF A SINGLE FACE FLUX
+      ! (docs/PLAN_20260917.md item L30).
+      !
+      ! The conservative spherical divergence is
+      ! [A_+ F_+ - A_- F_-]/V_j with A = r_edg^2 and V = (r_+^3 - r_-^3)/3,
+      ! and every contribution to one conserved quantity has to divide by
+      ! that same V_j.  When one half of the row divides by r_j^2 dr_j
+      ! instead, its face terms carry the extra factor V_j/(r_j^2 dr_j),
+      ! which differs between neighbours on a stretched grid: the internal
+      ! faces stop cancelling and V_j times the row is no longer a
+      ! difference of two face quantities at all.
+      !
+      ! ROWS.
+      !  * element_row_is_the_divergence_of_the_exposed_flux: cell by cell,
+      !    V_j R_j equals A_+ Phi_+ - A_- Phi_- built from the arrays
+      !    element_nucleus_face_flux returns, so there is one spelling of
+      !    the flux and a caller that needs it reads the operator's own.
+      !  * element_column_sum_is_the_boundary_flux_difference: summed down
+      !    the column the internal faces cancel and what is left is the
+      !    difference of the two boundary face fluxes, measured against the
+      !    size of the terms the rows balance (the operator's own row
+      !    scale), which is the relative measure every other row of this
+      !    operator is read on.
+      !  * a_column_at_rest_with_uniform_composition_has_a_zero_element_row
+      !    and a_constant_nucleus_flux_column_has_a_zero_element_row: the
+      !    two states whose exact row is zero, so that the rows above are
+      !    not measuring an operator that returns zero for everything.
+      integer, intent(inout) :: nf
+      integer, parameter :: nc = 500
+      real*8, dimension(:),   allocatable :: rho_c, T_c, Frho, msum
+      real*8, dimension(:,:), allocatable :: f_c
+      real*8, dimension(:),   allocatable :: res_he_a, sc_he_a
+      real*8, dimension(:,:), allocatable :: res_tr, sc_tr
+      real*8, dimension(:),   allocatable :: Fadv, Jdif, n_el, m_one
+      real*8, dimension(:),   allocatable :: fa, cv
+      real*8  :: famp, Kj, sL, sR, cadv, R0sq, R0cb
+      real*8  :: rr, worst, wscale, csum, cscale, bnd, dvj
+      logical :: ok_he, ok_tr
+      integer :: j
+
+      call production_grid_element_column(nc)
+      allocate(rho_c(1-Ng:N+Ng), T_c(1-Ng:N+Ng), Frho(1-Ng:N+Ng),         &
+               msum(1-Ng:N+Ng), f_c(1-Ng:N+Ng,n_species))
+      allocate(res_he_a(1:N), sc_he_a(1:N))
+      allocate(res_tr(1:N,n_melem), sc_tr(1:N,n_melem))
+      allocate(Fadv(0:N), Jdif(0:N), n_el(0:N), m_one(0:N))
+      allocate(fa(0:N), cv(1:N))
+
+      famp = 1.0d-4
+      do j = 1-Ng, N+Ng
+         rho_c(j) = exp(-3.0d0*(r(j) - 1.0d0))
+         T_c(j)   = 1.0d0 + 2.0d0*(r(j) - 1.0d0)/max(r(N) - 1.0d0, 1.0d-30)
+         Frho(j)  = famp/(r_edg(j)*r_edg(j))
+      enddo
+      call column_carrying_its_own_density(f_c, 0.0d0, .true., 1.0d-1)
+
+      call element_transport_residual(rho_c, T_c, f_c, Frho, res_he_a,    &
+               sc_he_a, ok_he, res_tr, sc_tr, ok_tr)
+      call element_nucleus_face_flux(rho_c, T_c, f_c, Frho, Fadv, Jdif,   &
+               n_el, m_one)
+      call mixture_mass_sum(f_c, msum)
+      call spherical_face_area_and_cell_volume(fa, cv)
+      R0sq = R0*R0
+      R0cb = R0sq*R0
+
+      ! Cell by cell: the row rebuilt from the exposed face flux, in the
+      ! order composition_residual assembles it.
+      worst  = 0.0d0
+      wscale = 0.0d0
+      csum   = 0.0d0
+      cscale = 0.0d0
+      do j = 2, N
+         Kj   = 1.0d0/(cv(j)*R0cb)
+         sL   = fa(j-1)*R0sq
+         sR   = fa(j)*R0sq
+         cadv = n0*mu*msum(j)*v0/R0
+         dvj  = (fa(j)*Fadv(j) - fa(j-1)*Fadv(j-1))/cv(j)
+         rr   = Kj*(sR*Jdif(j) - sL*Jdif(j-1))
+         rr   = rr + dvj*cadv
+         worst  = max(worst, abs(rr - res_he_a(j)))
+         wscale = max(wscale, sc_he_a(j))
+         csum   = csum   + cv(j)*res_he_a(j)
+         cscale = cscale + cv(j)*sc_he_a(j)
+      enddo
+      write(*,'(A,ES12.5,A,ES12.5)')                                      &
+           '  DIAGNOSTIC largest |row - divergence of the exposed flux| ', &
+           worst, ', largest row scale ', wscale
+      call bound_row('element_row_is_the_divergence_of_the_exposed_'//    &
+           'flux', worst/max(wscale, 1.0d-300), 1.0d-14, nf)
+
+      ! Down the column: the internal faces cancel and the two boundary
+      ! face fluxes are left.  The unit factor of the advective half is the
+      ! cell's own mixture mass, so the cancellation is exact up to the
+      ! variation of that mass between neighbours, which is the state's
+      ! mass closure and not a property of the grid.
+      bnd = (fa(N)*Jdif(N) - fa(1)*Jdif(1))/R0                            &
+          + n0*mu*msum(N)*v0/R0*(fa(N)*Fadv(N) - fa(1)*Fadv(1))
+      write(*,'(A,ES16.9,A,ES16.9)')                                      &
+           '  DIAGNOSTIC column sum ', csum, ', boundary difference ', bnd
+      write(*,'(A,ES12.5)')                                               &
+           '  DIAGNOSTIC summed row scale ', cscale
+      call bound_row('element_column_sum_is_the_boundary_flux_'//         &
+           'difference', abs(csum - bnd)/max(cscale, 1.0d-300),           &
+           1.0d-13, nf)
+
+      ! A column at rest with no composition gradient: no face carries a
+      ! flux of either kind, so every row is zero.
+      Frho = 0.0d0
+      do j = 1-Ng, N+Ng
+         T_c(j) = 1.0d0
+      enddo
+      call column_carrying_its_own_density(f_c, 0.0d0, .false., 0.0d0)
+      call element_transport_residual(rho_c, T_c, f_c, Frho, res_he_a,    &
+               sc_he_a, ok_he, res_tr, sc_tr, ok_tr)
+      worst  = 0.0d0
+      wscale = 0.0d0
+      do j = 2, N
+         worst  = max(worst, abs(res_he_a(j)))
+         wscale = max(wscale, sc_he_a(j))
+      enddo
+      call bound_row('a_column_at_rest_with_uniform_composition_has_a_'// &
+           'zero_element_row', worst/max(wscale, 1.0d-300), 1.0d-14, nf)
+
+      ! A wind whose nucleus flux A F_rho is the same through every face,
+      ! at a uniform composition: each cell gains through one face exactly
+      ! what it loses through the other, so the row is zero again -- and
+      ! this time the advective term of every row is large.
+      do j = 1-Ng, N+Ng
+         Frho(j) = famp/(r_edg(j)*r_edg(j))
+      enddo
+      call element_transport_residual(rho_c, T_c, f_c, Frho, res_he_a,    &
+               sc_he_a, ok_he, res_tr, sc_tr, ok_tr)
+      worst  = 0.0d0
+      wscale = 0.0d0
+      do j = 2, N
+         worst  = max(worst, abs(res_he_a(j)))
+         wscale = max(wscale, sc_he_a(j))
+      enddo
+      write(*,'(A,ES12.5,A,ES12.5)')                                      &
+           '  DIAGNOSTIC constant-flux column: largest row ', worst,      &
+           ', largest row scale ', wscale
+      call bound_row('a_constant_nucleus_flux_column_has_a_zero_'//       &
+           'element_row', worst/max(wscale, 1.0d-300), 1.0d-12, nf)
+
+      deallocate(rho_c, T_c, Frho, msum, f_c, res_he_a, sc_he_a, res_tr,  &
+                 sc_tr, Fadv, Jdif, n_el, m_one, fa, cv)
+      end subroutine the_element_row_is_the_divergence_of_one_flux
+
+      ! ================================================================= !
+
+      subroutine the_spherical_divergence_is_second_order(nf)
+      ! THE ORDER OF THE DISCRETE SPHERICAL DIVERGENCE the transport
+      ! operators divide by.  For the analytic face flux
+      !
+      !    F(r) = sin(3 r)/r^2 ,   (1/r^2) d(r^2 F)/dr = 3 cos(3 r)/r^2 ,
+      !
+      ! the finite-volume divergence [A_+ F_+ - A_- F_-]/V_j is a
+      ! second-order approximation of the right-hand side at the cell
+      ! centre on a uniform grid.  Measured at 250, 500 and 1000 cells.
+      !
+      ! This row does not separate the two volume weights: they differ at
+      ! O(dr^2) themselves, so an accuracy test cannot see the difference.
+      ! It is the guard that the exact volume did not cost the order.
+      integer, intent(inout) :: nf
+      integer, parameter :: nres = 3
+      integer, dimension(nres) :: ncell = (/ 250, 500, 1000 /)
+      real*8, dimension(nres)  :: emax
+      real*8, dimension(:), allocatable :: fa, cv
+      real*8  :: dvr, ex, order_lo, order_hi
+      integer :: k, j
+
+      do k = 1, nres
+         call synthetic_element_column(ncell(k))
+         allocate(fa(0:N), cv(1:N))
+         call spherical_face_area_and_cell_volume(fa, cv)
+         emax(k) = 0.0d0
+         do j = 1, N
+            dvr = (fa(j)*sin(3.0d0*r_edg(j))/(r_edg(j)*r_edg(j))          &
+                 - fa(j-1)*sin(3.0d0*r_edg(j-1))                          &
+                   /(r_edg(j-1)*r_edg(j-1)))/cv(j)
+            ex  = 3.0d0*cos(3.0d0*r(j))/(r(j)*r(j))
+            emax(k) = max(emax(k), abs(dvr - ex))
+         enddo
+         deallocate(fa, cv)
+      enddo
+      order_lo = log(emax(1)/emax(2))/log(2.0d0)
+      order_hi = log(emax(2)/emax(3))/log(2.0d0)
+      write(*,'(A,3ES12.5)') '  DIAGNOSTIC max error at 250/500/1000: ',  &
+           emax(1), emax(2), emax(3)
+      write(*,'(A,2F8.4)') '  DIAGNOSTIC observed orders: ',              &
+           order_lo, order_hi
+      call bound_row('spherical_divergence_order_250_to_500',             &
+           max(0.0d0, 2.0d0 - order_lo), 2.0d-1, nf)
+      call bound_row('spherical_divergence_order_500_to_1000',            &
+           max(0.0d0, 2.0d0 - order_hi), 2.0d-1, nf)
+      end subroutine the_spherical_divergence_is_second_order
+
 
       ! ================================================================= !
 
@@ -590,6 +862,113 @@
       deallocate(rho_c, v_c, T_c, Frho, f_c, Y0, Y1, res_he_a, sc_he_a,   &
                  res_tr, sc_tr)
       end subroutine the_relaxation_fixed_point_under_a_callers_ghost
+
+      ! ================================================================= !
+
+      subroutine the_base_flux_record_belongs_to_its_evaluation(nf)
+      ! THE BASE BUDGET ENTRY IS A STATEMENT ABOUT ONE EVALUATION.  The
+      ! operator leaves the helium element mass flux the base carries in
+      ! element_base_flux, and a report written later is about the state
+      ! that wrote it and no other, so the record carries the evaluation it
+      ! came from and says so when none has run.
+      !
+      ! What the rows assert, on a column with a nonzero bulk velocity so
+      ! that the advective half is not trivially zero:
+      !   * before any evaluation the record is absent, and the report says
+      !     so instead of printing a flux of zero;
+      !   * one step later the record is that step's, and a second step
+      !     moves the count, so a caller can tell the two apart;
+      !   * the diffusive half at the base face is exactly zero, which is a
+      !     property of the discretization (the gradient and drift
+      !     coefficients of faces 0 and N are zero) and not of the state,
+      !     while at the first solved face it is the flux the operator's own
+      !     face loop returned there;
+      !   * the advective half is the face mass flux of the state carrying
+      !     the face helium mass fraction, the same number the one public
+      !     spelling of the element flux returns for that face.
+      integer, intent(inout) :: nf
+      integer, parameter :: nc = 40
+      real*8, dimension(:),   allocatable :: rho_c, v_c, T_c, dt_c
+      real*8, dimension(:),   allocatable :: Frho_f, rho_phys
+      real*8, dimension(:,:), allocatable :: f_c
+      real*8, dimension(:),   allocatable :: Jf_out, Fadv, Jdif, n_el, m_one
+      real*8, dimension(:),   allocatable :: msum
+      character(len=300) :: line
+      real*8  :: dev, adv_ref
+      integer :: j, jup, ev0
+
+      call synthetic_element_column(nc)
+      allocate(rho_c(1-Ng:N+Ng), v_c(1-Ng:N+Ng), T_c(1-Ng:N+Ng),          &
+               dt_c(1-Ng:N+Ng), f_c(1-Ng:N+Ng,n_species))
+      allocate(Frho_f(1-Ng:N+Ng), rho_phys(1-Ng:N+Ng))
+      allocate(msum(1-Ng:N+Ng))
+      allocate(Jf_out(0:N), Fadv(0:N), Jdif(0:N), n_el(0:N), m_one(0:N))
+
+      do j = 1-Ng, N+Ng
+         rho_c(j) = exp(-3.0d0*(r(j) - 1.0d0))
+         v_c(j)   = 1.0d-1
+         T_c(j)   = 1.0d0
+         dt_c(j)  = 1.0d-3
+      enddo
+      call column_carrying_its_own_density(f_c, 0.0d0, .true., 0.0d0)
+
+      ! Before any evaluation of this program.
+      ev0 = element_base_flux%evaluation
+      call outcome_row('the_base_flux_record_starts_absent', ev0, 0, nf)
+      call element_base_flux_report(line)
+      call outcome_row('an_absent_base_flux_record_is_reported_as_absent',&
+           min(index(line, 'no element operator evaluation'), 1), 1, nf)
+
+      call element_diffusion_step(rho_c, v_c, T_c, f_c, dt_c,             &
+                                  Jface_out=Jf_out)
+      call outcome_row('the_base_flux_record_is_this_evaluations',        &
+                       element_base_flux%evaluation, ev0 + 1, nf)
+      call element_base_flux_report(line, ev0 + 1)
+      call outcome_row('the_record_of_the_evaluation_asked_for_is_not'//  &
+           '_flagged', index(line, 'NOT the evaluation asked for'), 0, nf)
+
+      ! The base face carries no diffusive flux in this discretization, and
+      ! the first solved face carries the operator's own.
+      call bound_row('the_base_face_diffusive_half_is_zero',              &
+                     abs(element_base_flux%diffusive_base_face),          &
+                     0.0d0, nf)
+      dev = abs(element_base_flux%diffusive_solved_face                   &
+                - Jf_out(element_base_flux%first_solved_face))
+      call bound_row('the_solved_face_diffusive_half_is_the_operators',   &
+                     dev, 0.0d0, nf)
+
+      ! The advective half against the one public spelling of the element
+      ! flux, evaluated on the composition the step handed back.
+      call mixture_mass_sum(f_c, msum)
+      rho_phys = rho_c*n0*mu*msum
+      do j = 1-Ng, N+Ng
+         jup = min(j+1, N+Ng)
+         Frho_f(j) = 0.5d0*(rho_phys(j) + rho_phys(jup))                  &
+                    *0.5d0*(v_c(j) + v_c(jup))*v0
+      enddo
+      call element_nucleus_face_flux(rho_c, T_c, f_c, Frho_f,             &
+                                     Fadv, Jdif, n_el, m_one)
+      adv_ref = Fadv(0)
+      call exceeds_row('the_base_face_advective_half_is_not_zero',        &
+                       abs(element_base_flux%advective_base_face),        &
+                       0.0d0, nf)
+      dev = abs(element_base_flux%advective_base_face - adv_ref)          &
+            /max(abs(adv_ref), 1.0d-300)
+      call bound_row('the_base_face_advective_half_is_the_exposed_flux',  &
+                     dev, 1.0d-12, nf)
+
+      ! A second evaluation, and a report asked for the first one.
+      call element_diffusion_step(rho_c, v_c, T_c, f_c, dt_c,             &
+                                  Jface_out=Jf_out)
+      call outcome_row('a_second_evaluation_moves_the_record',            &
+                       element_base_flux%evaluation, ev0 + 2, nf)
+      call element_base_flux_report(line, ev0 + 1)
+      call outcome_row('a_record_of_another_evaluation_is_flagged',       &
+           min(index(line, 'NOT the evaluation asked for'), 1), 1, nf)
+
+      deallocate(rho_c, v_c, T_c, dt_c, f_c, Frho_f, rho_phys, msum,      &
+                 Jf_out, Fadv, Jdif, n_el, m_one)
+      end subroutine the_base_flux_record_belongs_to_its_evaluation
 
       ! ================================================================= !
 

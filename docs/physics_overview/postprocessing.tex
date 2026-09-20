@@ -135,7 +135,12 @@ column parser.
 
 \texttt{EXHALE\_transit.py}, with the library
 \texttt{exhale\_transit\_lib.py}, builds transit transmission spectra from
-the \texttt{\_adv} profiles: the He\,{\sc i} 10830\,\AA{} triplet,
+either of the two states a run can leave, selected by
+\texttt{EXHALE\_TRANSIT\_STATE}: the \texttt{\_adv} profiles by default,
+or the solved state pair \texttt{Hydro\_ioniz.txt} and
+\texttt{Ion\_species.txt} with \texttt{EXHALE\_TRANSIT\_STATE=solution},
+which is how a stationary run is read.  The lines are the same either way:
+the He\,{\sc i} 10830\,\AA{} triplet,
 Ly$\alpha$, H$\alpha$ and H$\beta$, and the metal doublets Mg\,{\sc ii}
 h\&k, Ca\,{\sc ii} H\&K and Na\,{\sc i} D, the metal lines being skipped
 automatically for a metals-off run. It integrates the Voigt line opacity
@@ -150,3 +155,34 @@ the historical \texttt{tpm\_*.txt} names, each with its own
 \texttt{\# transit\_schema 1} metadata block. The physics of that tool is
 documented separately in \texttt{docs/transmission\_spectrum.pdf} and is not
 repeated here.
+
+\paragraph{Which state the spectrum is built from.}
+The two selections are two answers for one column and not two formats of one
+answer.  The \texttt{\_adv} pair is a post-process of a marching state: a
+steady advective correction cell by cell, first-order upwind at the bulk
+velocity, with no eddy term and no element drift, refused in a cell where an
+assumption of the steady equations fails.  It is an independent
+discretization of the same column and no equation of the run was solved for
+it.  The solved pair is the state the solver produced and the certification
+judged; where the ionization stages are transported its composition is the
+partition the stage transport itself produced, so an advective correction on
+top of it would be a second and different transport approximation of the same
+stages.  A stationary route therefore writes no \texttt{\_adv} products,
+none are manufactured for one, and the default selection refuses by name and
+names the other selection rather than reading it.  The two files of a
+selection are read together, the O\,{\sc i} ground-term populations
+included: the temperature of one state with the composition of the other
+solves neither set of equations.  Every saved curve carries the selection,
+the path, md5 and size of each file read, and the state's own provenance,
+coupling, boundary model and reservoir lines.
+
+What the choice costs was MEASURED on \texttt{wasp\_full}, which carries
+both states, as the peak transit depth relative to itself: He\,{\sc i} 10830
+$-0.64$ per cent, H$\alpha$ $-1.28$, H$\beta$ $-3.48$, Ly$\alpha$ unchanged
+at its saturated ceiling, and the optically thin metal lines $+0.1$ to $+0.8$.
+The metastable helium column is 12 per cent \emph{larger} in the solved
+state and its line is nonetheless shallower, because the advection correction
+moves that column outward (column-weighted mean radius $1.2941$ against
+$1.3112\,R_p$) and a saturated line's disk-averaged depth follows how far
+the absorbing shell reaches; H$\beta$ moves most because it is the line still
+on the linear part of the curve of growth (item P6f).

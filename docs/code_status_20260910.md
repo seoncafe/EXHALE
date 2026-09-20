@@ -27,6 +27,18 @@ reproducible and is attributed to nothing); and the low-XUV stalls were a
 resolution failure of the HLLC flux on the 500-cell grid rather than a property
 of those winds (item L25). The rows below are not rewritten for any of this.
 
+**2026-09-18: the series of `docs/PLAN_20260917.md` (items L27 to L37) changed
+the rows named here, and only those; the account is
+`docs/session_handoff_20260918.md`, the dated record
+`docs/Update_EXHALE_stage2.md` section 12.** Section 1, the regression bullet
+(the matrix moved and the goldens are not current; the suite count). Section
+2.1, the lower-boundary row (items L35 and L37) and the restart-contract row
+(item L36e). Section 2.3, the molecular network row (item L31). Section 2.4,
+the element-diffusion row (items L30 and L30b), the `Ionization transport` row
+and the two rows below it (items L36, L36c, L36d, L36e). Section 3.3, what
+certifies (items L34b, L34c and L36e). Section 4, problems 1 and 3. Every
+number added below is READ from the item report or the memo named beside it.
+
 Written to restart from in a fresh session. Read this first; then
 `docs/ISSUES_20260909.md` (the problem-centered account of stage 2: what was
 done, every problem resolved, every problem open with its evidence),
@@ -80,11 +92,27 @@ exactly there (section 4).
   `mol_sec_ion`, `mol_carrier`, `lower_profile`, `hydrostatic_column`,
   `oxygen_chemistry`, `hp_zero_seed`, `hp_trace_seed`, `hp_front`; READ,
   `DEFAULT_CASES`), plus the `roundtrip` golden. Bitwise first, else within
-  `REGRESSION_REL_TOL` (1e-3). **The goldens are current**: fifteen cases
+  `REGRESSION_REL_TOL` (1e-3). ~~**The goldens are current**~~: fifteen cases
   re-snapshotted at the Stage D gate and `roundtrip` with them (MEASURED file
   times 2026-09-10 00:30 and 00:15; previous set
   `golden_pre_stageD_20260910/`), and `lower_profile` re-snapshotted after
   N29 (MEASURED 2026-09-10 11:06; previous set `golden_pre_n29_20260910/`).
+  **SUPERSEDED 2026-09-17 and again 2026-09-18**: the set was refreshed on
+  2026-09-17 for the L7g molecular change (previous set kept as
+  `golden_L7g_20260917/`), and the PLAN_20260917 series moved every one of the
+  sixteen cases again, at `REGRESSION_REL_TOL=0` on binary
+  `3146d11b4090306dcea75bb9718edd22` (READ, the update-log report). The
+  refresh is the advisor's, once, at the close of the series;
+  `docs/Update_EXHALE_stage2.md` section 12 carries the movement table and the
+  placeholder for the refresh date and the final md5. Four key-on cases are
+  stale for a reason of their own (`hp_zero_seed` and `hp_trace_seed` by
+  3.9e-03 and 3.3e-03 before item L36c touched them, `hp_front` by 1.6e-01 in
+  the helium columns after L36d, `carrier_model_a_newton` by 1.2e-04 after
+  L36e), and `oxygen_chemistry` moves by order unity for the reason item L30c
+  gives: a discrete branch selection of the constrained ionization solve
+  amplifying a rounding-level seed on a 1000-step snapshot that is not a
+  solution, so its comparison against a golden is a reproducibility statement
+  and nothing else.
 * Two pinned reload fixtures live outside the matrix and are not goldens:
   `backup/regression/wasp_full_newton/IC/` (the certified atomic state, read
   by the `restart_intent` rows of `src/tests/grid_and_gates/`) and
@@ -93,7 +121,9 @@ exactly there (section 4).
   `IC/` reload pair).
 * Assertion suites: `make test` builds and runs `element_census_tests`,
   `diffusion_tests`, `residual_determinism` and **every executable
-  `src/tests/*/run.sh`, of which there are 25** (MEASURED): `acceptance_classes`,
+  `src/tests/*/run.sh`, of which there were 25** (MEASURED 2026-09-10; **34 on
+  2026-09-18**, READ from the rename report, which ran all of them twice and
+  compared 3459 verdict lines): `acceptance_classes`,
   `adv_static_limit`, `attempted_step`, `carrier_constraint_attribution`,
   `carrier_reference_scales`, `carrier_retry`,
   `carrier_returned_state_acceptance`, `certification`,
@@ -126,14 +156,14 @@ row; **X** not implemented.
 |---|---|---|
 | Godunov (HLLC) + RK3, PLM and WENO3 reconstruction, Mixed grid, runtime cell count | V | ATES heritage; the regression matrix. The WENO3 stencil coefficients were swapped until item WENO3-ORDER (`C2(j)` on `dWp` in WL, `C1(j-1)` on `dWm` in WR); the measured convergence rate moved 2.991 to 3.000. The positivity limiter clamps to `epsilon*W_avg` and can no longer return a zero density or pressure |
 | gravity: Roche potential truncated at L1 (default) or spherical to a stated radius (`Domain mode: Spherical`, `Outer radius [R_p]`) | V | Huang 2023 Case B (Roche, per the earlier record); Koskinen 2022 Model A velocity and neutral densities (spherical) |
-| lower boundary: fixed rho or p at the base, isothermal ghost, base velocity from the mass flux; characteristic face condition | L | the molecular base "breathes": a marching limit cycle at the default CFL (absent below CFL 0.15-0.3). It keeps `du` from converging in molecular runs and distorts fixed-step snapshots. Separately, the base cell amplifies any composition inaccuracy by about 4e3 through `Apply_BC`'s continuous-temperature ghost (ISSUES 3.3) |
+| lower boundary: fixed rho or p at the base, isothermal ghost, base velocity from the mass flux; characteristic face condition | L | the molecular base "breathes": a marching limit cycle at the default CFL (absent below CFL 0.15-0.3). It keeps `du` from converging in molecular runs and distorts fixed-step snapshots. Separately, the base cell amplifies any composition inaccuracy by about 4e3 through `Apply_BC`'s continuous-temperature ghost (ISSUES 3.3). **2026-09-18**: two further limitations are measured. (i) At exactly zero window flux the branch weight is 1/2, so the boundary states a base density that is the average of the reservoir and interior isentropes, 3.79 per cent below the reservoir on the fiducial at rest and 3.07e-07 on the hydrostatic column; away from rest the local characteristic closure built on the production face flux and the retained remote-window closure install a bit-identical ghost on every state tried (item L35). (ii) The base ghost of a MOLECULAR column is not reproduced by a write and a read: the file does not carry the ghost composition to the precision the cell-1 mass row needs, the row comes back at 2.39 to 10.09 times the run's own value on a single re-entry and settles inside the anchor after two more, and the sensitivity is 0.30 to 0.33 of the row's scale per relative unit of the ghost H2 count against nothing measurable in an atomic base (item L37) |
 | outer boundary: outflow. The upper ghost of a transported element or carrier column follows the iterate (zero gradient), the marching path's own rule | I | N26. Before it the ghost was frozen at the pre-solve composition and the outermost element row was unconstrained from outward; the change moved the atomic element reload from `\|\|R\|\|` 1.36e-2 to 3.7e-4 (LOGGED) |
 | viscosity, conduction (Watson et al. 1981 kappa) | I | keys `Viscosity`, `Conduction`; conduction negligible on Model A, as they state |
 | caloric EOS: H2 rovibrational ladder, atoms/ions/electrons 3/2 k; `Caloric EOS: monatomic` (comparison option) | I | the Koskinen gate's outer temperature is insensitive to it (20 K) |
 | the material advective term: ONE discretization shared by the RK stages, the stationary rows and both relaxations | I | B4-1, B4-1c |
 | convergence: two-stage `du` (flux spread) hand-off, JFNK Newton finish with the scaled trust region, PTC | L | see section 3.3. The atomic three-unknown solve converges and certifies (`wasp_full_newton`: info 0, `\|\|R\|\|` 4.3e-9). A `du` stop alone leaves Mdot path-dependent at the percent level: **always Newton-finish an atomic run before quoting Mdot** |
 | the physical step's integration error | L | one transaction over one macro-interval, the step-doubling estimate rejects, the clock moves only at adoption (N16a); the order of the complete split update is MEASURED as 1. Still open: `err_rtol` 1e-3 and `err_atol` 1e-12 are flat and unvalidated and cover no transported species, and a retried macrostep's accepted state depends on which pass was rejected (up to 9.1e-5 relative in the base cell's velocity). Until that is closed, no physical-mode trajectory is quoted as error-controlled for its species (ISSUES 3.8) |
-| restart contract: `Restart intent: trajectory \| relaxation \| stationary [evaluate\|equilibrate]`, an eight-line `restart_schema 1` metadata block in both state files, refusal on a disagreeing grid, reservoir, constants or options, `Restart option change: <token>[, ...]` to permit named option differences | I | N10, N10b. A file with no block is legacy, loaded as before and marked `provenance unknown`, and the mark is inherited by everything the run writes. Six layout tokens (`metals`, `mol`, `oxychem`, `carrier`, `carrier_newton`, `iontrans`) may never be named: they decide the rows the state carries, so changing one is a cold start, not a restart |
+| restart contract: `Restart intent: trajectory \| relaxation \| stationary [evaluate\|equilibrate]`, an eight-line `restart_schema 1` metadata block in both state files, refusal on a disagreeing grid, reservoir, constants or options, `Restart option change: <token>[, ...]` to permit named option differences | I | N10, N10b. A file with no block is legacy, loaded as before and marked `provenance unknown`, and the mark is inherited by everything the run writes. ~~Six layout tokens (`metals`, `mol`, `oxychem`, `carrier`, `carrier_newton`, `iontrans`) may never be named~~ **corrected 2026-09-18, READ from `load_IC.f90` lines 247 to 272: FOUR tokens may never be named** (`metals`, `mol`, `oxychem`, `carrier`), because they decide which species the state files carry, so changing one is a cold start and not a restart. `carrier_newton` is a ROUTE token (the same equations by another algorithm; admissible without being named and reported as a `route_change` line, item L22 step 3). `iontrans` was reclassified by item L36e: n(H II), n(He II) and n(He III) have a column in every state file this code writes, and what the key changes is whether those columns are each cell's local root or a partition the flow carried, so it is a change of the equations that must be NAMED on a `Restart option change:` line and is not a change of what the file holds. Before that correction the classification refused every restart across the key in both directions |
 | OpenMP over cells (ionization sweep, cooling, hydro stages, carrier Jacobian) | V | one binary gives the same bits at every thread count (THREAD-DET; the 6.6e-14 difference between 1 and 16 threads is gone, fixed block length 32) |
 
 ### 2.2 Radiation and heating
@@ -160,7 +190,7 @@ row; **X** not implemented.
 | rates: Badnell case B recombination, Voronov collisional ionization; `Atomic rate set: Koskinen2022` | V | the switch moved the Koskinen gate by less than 5 percent. The Ca I radiative recombination row was 6x off until REF-METALS |
 | metals C, N, O, Mg, Si, Ca, Na, K, S, Fe; closed-form CHIANTI cooling; `eos_metals` in the mass/electron/particle budget | V | Huang 2023 WASP-121 b Fe II / Mg II cooling and Mg II, Na I, Ca II transit depths, per the earlier record. An element `metals.inp` does not carry is no longer registered as a stationary unknown (N1) |
 | He 2^3S: Penning ionization (Taylor 2025 fit), triplet cooling in the energy solver, charge exchange, He 10830 transit | V | Falorca 2026 review items closed, per the earlier record |
-| molecular network H2, H2+, H3+, HeH+ (Koskinen 2022 Table 1 R1-R23); collisional reaction heat (default on); H2 caloric EOS | I | the Koskinen gate; the H2 loss rate of one molecule at 1.5 r_base agrees with Model A (1.0e-5 against 1.2e-5 s^-1) |
+| molecular network H2, H2+, H3+, HeH+ (Koskinen 2022 Table 1 R1-R23); collisional reaction heat (default on); H2 caloric EOS | I | the Koskinen gate; the H2 loss rate of one molecule at 1.5 r_base agrees with Model A (1.0e-5 against 1.2e-5 s^-1). **2026-09-18 (item L31): established data plus recorded approximations.** Established: the collider-resolved three-body association (one published coefficient per collider), the all-level radiative rate of the vibrational quench, and three published quantum collisional calculations (Lique 2015 for H, Jozwiak et al. 2024 for He, Le Bourlot et al. 1999 for H2). Recorded as approximations with their validity stated in the code and in `docs/lhs1140b_stationary_L31_energy_cycles_20260917.md`: the unit n = 2 recipient of R5 and R16 (a low-state recipient approximation, not a bound on the heat), the R6 internal energy (a model estimate from the position of a published peak), the scalar quench fraction (a first-event branching model, bracketed by a reduced 54-level statistical-equilibrium model that shows it radiates 2.8 to 13.2 times what the most radiative member of the bracket does, so it never overstates the heat), and the helium third body (an argon-based estimate, Cohen and Westberg 1983, with that paper's +/-0.3 in log). Five complete energy cycles close to 2.2e-13 eV with no share counted twice. The uncertainty of the molecular base heat is the helium third body and nothing else, +41 / -21 per cent for +/-0.3 dex, four to six orders above every other approximation of the layer |
 | oxygen cycle OH, H2O, CO, four FUV photolysis bands, CO reservoir, `Oxygen_chemistry.txt` | I | no external check. CO now has destruction channels (`He+ + CO` 1.6e-9, UMIST RATE22 4068, with its He+ sink; shielded photodissociation on the LW beam, Visser et al. 2009 Table 6) and the thermodynamic ceiling that stood above the layer is deleted |
 | cooling: recombination, collisional excitation (Ly-alpha and He), bremsstrahlung, H3+ (Miller 2013), H2/H2O/CO infrared bands, the infrared field of the atmosphere below | I/L | H3+ per molecule is about 3x what Model A's Figure 9 implies at 3 r_base. The fine-structure line escape argument was off by sqrt(pi) until REF-LODI (de Jong 1980 eq. B-7, frequency-integrated depth), and the infrared tabulation grid ended below the wind temperatures until it was extended to about 30100 K |
 | the sweep returns the heating and cooling OF THE COMPOSITION IT RETURNS | V | fixed 2026-09-05 |
@@ -174,10 +204,10 @@ row; **X** not implemented.
 |---|---|---|
 | advection correction of the ionization state and the temperature in post-processing (`_adv` profiles) | V/L | see 2.6 and section 4. The energy equation is now the exact steady one with the enthalpy flux term restored (ADV-STATIC, ADV-ENERGY), and each row says whether its temperature and its composition were corrected or retained |
 | carrier transport operator in the hydro: implicit advection-diffusion of H2 (and OH, H2O, CO), 2nd-order limited, base inflow, Blanc's-law molecular diffusion, eddy `Kzz` | I | Picard alternation with the wind |
-| `Ionization transport: True`: H+ as a fifth carrier, the sweep handed the transported fraction | V | reproduces the advected estimate where P r/v < 1; the Koskinen gate's n_e excess fell from 5-10x to 1.5x. **Molecular branch only** (requires `Molecular chemistry` and `Molecular carrier transport`, refused otherwise) |
-| He/H binary element diffusion (`He_diffusion`); trace metals diffusing independently | I | the element projection took the mixture mass from the RESERVOIR metal/H rather than the cell's and created mass at every call (6.4e-3 on the atomic candidate) until N29; with the cell's own mass the closure is round-off (1.9e-9, the file's precision) and the writer-to-loader round trip returns the state. `lower_profile` moved (T 1.3 percent, H I 6.3 percent at 1.6 R_p) and its golden was refreshed |
-| **He+, H2+, H3+, HeH+ (and every metal stage) are local equilibrium in the hydro** | X | where the Koskinen comparison's remaining ionization excess sits: He+ 3x theirs above 1.5 r_base. A local root overstates an ion where P r/v < 1, as it did for H+ |
-| **a stationary solve that keeps a transported H+, or any other transported balance** | L | the row EXISTS: the stationary Newton carries a row and an unknown for every transported balance (B5, B5b, B5c), and `Ionization transport` with `Solver: Newton` is supported when `Coupled carrier solve: True` is set and refused without it. What does not exist is a CONVERGED one: no species-row solve converges on any route (section 4.1) |
+| `Ionization transport: True`: ~~H+ as a fifth carrier~~ **the three ionization stages x(H II), x(He II) and x(He III) as fractions per element nucleus, each transported on its own element's nucleus face flux**, the sweep handed the transported fractions | V | reproduces the advected estimate where P r/v < 1; the Koskinen gate's n_e excess fell from 5-10x to 1.5x. ~~**Molecular branch only**~~ **REWRITTEN 2026-09-18 (items L36, L36c, L36d, L36e).** The bulk-mass `ic_Hp` spelling is retired: the stage face flux is `F(f) = x(f) N_el(f) - n_el(f) K(f) [x(j+1)-x(j)]/dr(f)` on the element operator's exposed nucleus flux, and `sum_k F_k(f) = N_el(f)` holds to 2.0e-16 on the production grid and to 2.2e-16 (H) and 3.1e-16 (He) on solved states, against 1.5e-04 to 3.6e-04 when the construction is broken. The two helium stages share one simplex and one closing stage, the certification carries one stage-sum entry per element (reported, not gating), and the key is now ACCEPTED in an atomic gas and REFUSED with `Coupled carrier solve: True` and in a molecular gas whose carriers are not transported. Anchoring: a manufactured ionization column gives observed order 2.886 and, extrapolated by the rule of `docs/certification_tolerance_anchoring_20260910.md`, re-derives the 1e-5 the stage rows already carry, so no tolerance was set or changed. Validity: the one-velocity closure holds at the 10 per cent level only inside about 1.22 R_p (H) and 1.24 R_p (He), the neglected ambipolar drift reaching 0.63 and 0.43 of the bulk velocity over r >= 1.2 R_p, and above about 13 R_p the continuum stage equation is itself unvalidated by the run's own Knudsen measure. Metal charge exchange is still absent from the stage sources (plan item D7) |
+| He/H binary element diffusion (`He_diffusion`); trace metals diffusing independently | I | the element projection took the mixture mass from the RESERVOIR metal/H rather than the cell's and created mass at every call (6.4e-3 on the atomic candidate) until N29; with the cell's own mass the closure is round-off (1.9e-9, the file's precision) and the writer-to-loader round trip returns the state. `lower_profile` moved (T 1.3 percent, H I 6.3 percent at 1.6 R_p) and its golden was refreshed. **2026-09-18 (items L30, L30b): one geometry, conserving to roundoff.** Advection and diffusion had divided by two different discrete weights, the exact shell volume and `r_j^2 (r_+ - r_-)` with a 1 cm floor, so the mixed operator was the divergence of no single flux; `grid_construction` now owns one face area and one shell volume, which the element and the carrier transport, the Runge-Kutta stages and the hydrodynamic rows all read. Measured on the production 500-cell grid with only the six denominators reverted: the element row against the divergence of the exposed flux 2.409e-11 to 0.0 bitwise, and the column sum against the boundary face-flux difference 1.382e-09 to 2.032e-19, both relative to the operator's own row scale. `element_nucleus_face_flux` is now one public object, which the stage transport and the `element_flux_profile.txt` writer read. No certification verdict flipped on the three states evaluated; the largest movement of a gated row was the molecular fiducial's elemental transport row, 5.7e-09 to 7.2e-08, 138 times below its tolerance on both builds |
+| ~~**He+, H2+, H3+, HeH+ (and every metal stage) are local equilibrium in the hydro**~~ **He+ and He++ are transported since 2026-09-18 (item L36d); H2+, H3+, HeH+ and every metal stage remain local equilibrium** | X for the molecular ions and the metals; I for the helium stages | where the Koskinen comparison's remaining ionization excess sits: He+ 3x theirs above 1.5 r_base. A local root overstates an ion where P r/v < 1, as it did for H+. The helium stages now ride on the helium nucleus face flux under `Ionization transport: True`, and what they change is measurable: on the certified atomic fiducial x(He II) + x(He III) reaches 0.1888 against 0.9117 for the local root, and the He I 10830 equivalent width falls from 20.3950 to 1.3678 per cent A (item L36e) |
+| **a stationary solve that keeps a transported H+, or any other transported balance** | L | the row EXISTS: the stationary Newton carries a row and an unknown for every transported balance (B5, B5b, B5c), and `Ionization transport` with `Solver: Newton` runs on the partitioned route (`Coupled carrier solve: False`) and is REFUSED with `Coupled carrier solve: True`, whose row registry carries every carrier as a species mass fraction while a stage unknown is a fraction per element nucleus (corrected 2026-09-18 after item L36c; the sentence previously stated the opposite). ~~What does not exist is a CONVERGED one: no species-row solve converges on any route~~ **SUPERSEDED 2026-09-18 (item L36e): a converged and CERTIFIED one exists.** On the certified atomic fiducial with `Ionization transport: True` the partitioned outer iteration accepted at outer pass 56, `info = 0`, with the three stage rows at 8.620e-07 (H+), 7.147e-07 (He+) and 2.360e-06 (He++) against 1e-05, the two stage-sum entries at 2.161e-16 and 3.078e-16, the elemental He/H partition at 8.679e-06 and every hydrodynamic row inside. Twenty-five passes read a front and not a solution: the transported partition replaces the restart's local root from the inside outward at about 3.3 cells a pass, so the worst gated row falls only 3.51e-02 to 1.76e-02 over passes 1 to 25 while its binding cell marches 217 to 491, and it falls monotonically only after the front reaches the outer boundary at pass 26. The row that does NOT certify is `carrier balance He+` on the hot-Uranus fixture `carrier_model_a_newton`, and section 4 problem 1 says why |
 
 ### 2.5 Lower atmosphere and hand-off
 
@@ -283,6 +313,24 @@ at 2e-3 in the wind and 9.8 in the layer".]
 * **The atomic three-unknown stationary solve.** `wasp_full_newton`: info 0,
   `||R||` 4.3e-9, CERTIFIED, log Mdot 13.30 (LOGGED). It is in the regression
   matrix and its state is pinned as a reload fixture.
+* **[added 2026-09-18]** **The molecular alternation, twice.**
+  `molecular_scalar_gj1132_kzz1e9/HeH2.13` at outer pass 12, `info = 0`,
+  `||R|| = 1.417e-08`, CERTIFIED on all seven active entries (carrier balance
+  H2 8.172e-06 of 1e-05, elemental transport He/H 6.379e-08 of 1e-05, energy
+  1.417e-08 of 1e-06), with the face mass flux one number across the whole
+  column to 1.39e-08 of the wind's and the energy balance closed cell by cell
+  at 1.4464e-08 of 1e-06; and `HeH9.7` at pass 10 (READ, item L34b). On the
+  corrected L7g physics these move `log10 Mdot` by -1.53 and -0.84 per cent,
+  the He I 10830 equivalent width by -0.99 and -0.62 per cent, and the base
+  temperature by -3.65 and -7.99 per cent against their archived states, with
+  the base chemical heat carrying the +42.0 / -21.1 per cent helium third-body
+  uncertainty of item L31, eight times the change the re-solve made in it.
+* **[added 2026-09-18]** **The atomic wind with the three ionization stages
+  transported**, at outer pass 56 on the certified fiducial (READ, item L36e;
+  the rows are in section 2.4).
+* **[added 2026-09-18]** **79 archived atomic catalog states and the seven
+  low-XUV Roe cases**, the first reproducing their own claim in place with no
+  refusal, the second certifying at outer pass 1 each (READ, item L34a).
 
 **What does not certify:**
 
@@ -403,6 +451,40 @@ The full account of each, with its evidence and its next item, is
    converged Model A comparison, a converged hot-Uranus Mdot, any molecular
    case that is not a fixed-step snapshot, and any element-transport state of
    HD 209458 b, which has never been obtained on any route.
+   **[rewritten 2026-09-18]** The heading is no longer true as written and what
+   replaces it is narrower. Species-row solves DO converge and certify on the
+   partitioned route: the HD 209458 b element reload (P16), two molecular
+   alternations and an atomic wind with the three ionization stages
+   transported (section 3.3). Three statements stand in its place.
+   (a) **The coupled block is not a route, and the reason is now measured.**
+   Item L32 froze the block's entry state on the certified `kzz1e9/HeH2.13`
+   case and found the directional Jacobian action is NOT a linear map of its
+   direction: `A(3v) = 3A(v)` to 1.4e-14 and every Arnoldi column correct on
+   its own direction to 3.5e-16, but the additivity defect is 1.87e+02 of
+   `||A(v1)+A(v2)||` on the first two Arnoldi directions, scaling as the arc to
+   the power 2.29 (curvature, not a floor), 87 per cent of it in the momentum
+   rows and nine tenths in cells 1 and 2. The cycle reports 2.589e-01 at
+   product 40 where the step's true residual is 5.113e-01, a factor 1.98;
+   subspaces of 80, 160 and 320 vectors all stop at 70 products at the same
+   2.8156e-01; the banded model omits no long-range coupling. So no
+   preconditioner and no wider subspace is the item, the directional action is,
+   and every "relative residual reached X" in the L22 and L24 records is a
+   reduced least-squares residual and not the residual of a step.
+   (b) **What refuses the molecular well-mixed cases is the H2 carrier balance
+   alone**, with the stationary wind found and held from pass 3 to 5 onward and
+   every relaxation of every pass ending on the composition movement bound
+   (item L34c); the nearest any of them came to the 1e-05 gate is 3.76e-02.
+   Item L33 classifies the earlier runs: two are front relaxation, the third is
+   throttled by a bound that only ratchets down, and the handover route the
+   design provides has never fired.
+   (c) **`carrier balance He+` refuses a composition a fifth of a per cent from
+   the local root** on the hot-Uranus fixture, at 7.74e-01 of its scale, while
+   the same operator reads 4.151e-02 on the locally solved state and 3.4e-08 on
+   the atomic fiducial (items L36d, L36e). The denominator is the reason: the
+   carrier scale contains the absolute NET chemical source, and for a stage
+   whose production and loss cancel to three decades the net is the size of the
+   residual. That is plan item D3 and it is an acceptance question, not a
+   solver one.
 2. **The advection post-process on a state that is not stationary** (ISSUES
    3.2). No matrix case has a stationary mass flux by the cell-to-cell
    measure: `rho v r^2` over outflowing cells spans 1.27x its median in
@@ -415,7 +497,18 @@ The full account of each, with its evidence and its next item, is
    layer).
 3. **Local-equilibrium ions in a transported wind** (He+, the molecular ions;
    for the atomic line every stage): the same error H+ had before the carrier
-   route existed, fixable with the existing operator.
+   route existed, fixable with the existing operator. **[partly closed
+   2026-09-18]** He+ and He++ are carried, in a molecular and in an atomic gas,
+   and the atomic fiducial certifies with all three stages transported (item
+   L36e). What is left of this problem is H2+, H3+, HeH+ and every metal stage;
+   what it cost to close the helium part is measured, the He I 10830 equivalent
+   width moving from 20.3950 to 1.3678 per cent A on the certified fiducial, so
+   the factor 13.12 between the solved composition and its `_adv` profile is a
+   property of the local-equilibrium closure rather than of the post-process.
+   The He 2^3S level is NOT promoted to the carried set: on the first state
+   whose three ionization fractions meet their own gate the post-process moves
+   its radial column by 0.127 per cent, twenty times below the 5 per cent
+   promotion rule.
 4. **The base cell amplifies any composition inaccuracy by about 4e3**
    (ISSUES 3.3), so any acceptance measure taken as a maximum over cells
    reports cell 1 on a molecular configuration. Whether the base cell's

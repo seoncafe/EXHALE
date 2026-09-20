@@ -36,6 +36,22 @@
       !       difference is admitted and a row above that floor is not. The
       !       superseded rule -- one number for every cell -- is transcribed
       !       and run on the same pairs.
+      !   (i) the ionization stage nucleus sum GATES at the floating-point
+      !       bound of the identity it measures: an exact identity and one
+      !       at half the bound are within it, one at one and a half times
+      !       the bound and a broken construction of the identity (1.5e-4,
+      !       the size those constructions reach) are above it, and a
+      !       non-finite measure is refused. The bound is taken at the
+      !       ratio of magnitude sums MEASURED at the face the measure came
+      !       from, and at the algebraic ceiling of that ratio only when the
+      !       operator reports none. The entry text is transcribed and
+      !       accepts all of them. Where no stage is transported the entry
+      !       is absent, as before.
+      !   (j) a report holds the whole inventory and no more: the last
+      !       equation that fits is complete, and the name, measure, cell,
+      !       tolerance and verdict of every entry belong to one equation.
+      !       One equation past full stops the run and is asserted by
+      !       certification_capacity.f90.
       !
       ! Each assertion prints
       !     PASS|FAIL <name> measured=<v> reference=<r> tol=<t>
@@ -65,6 +81,9 @@
                                           relax_element_composition
       use utils, only: calc_rho
       use certification
+      use ionization_stage_transport, only:                               &
+                                    ionization_stage_sum_rounding_bound
+      use, intrinsic :: ieee_arithmetic, only: ieee_value, ieee_quiet_nan
       implicit none
 
       integer :: n_fail
@@ -86,6 +105,10 @@
       call the_mass_row_tolerance_is_anchored_on_its_rounding_floor()
       call a_mass_row_at_the_ceiling_is_unresolved_not_passed()
       call a_column_with_one_unresolved_cell_is_not_certified()
+      call the_stage_sum_entry_gates_at_its_rounding_bound()
+      call the_stage_sum_entry_is_absent_without_a_stage()
+      call the_base_contact_direction_is_checked_against_the_face_flux()
+      call a_report_holds_exactly_the_equations_of_the_inventory()
 
       if (n_fail .gt. 0) then
          write(*,'(A,I0,A)') 'certification_contexts: ', n_fail,          &
@@ -143,9 +166,9 @@
       u = 1.0d0;  Res = 0.0d0
       call certification_evaluate(cert_context_stationary, u, Res,        &
                                   f_sp_none(), 1.0d-5, 0, .true., rep)
-      i = entry_index(rep, 'carrier balance H2')
       call check_int('active_carrier_without_background_is_unavailable',  &
-                     rep%e(i)%status, cert_unavailable)
+                     entry_status(rep, 'carrier balance H2'),             &
+                     cert_unavailable)
       call check_log('no_certification_without_the_background',           &
                      rep%certified, .false.)
       ! THE PREDICATE THIS REPLACES, transcribed: carrier_steady_residual
@@ -169,9 +192,9 @@
       u = 1.0d0;  Res = 0.0d0
       call certification_evaluate(cert_context_stationary, u, Res,        &
                                   f_sp_none(), 1.0d-5, 0, .true., rep)
-      i = entry_index(rep, 'carrier balance H2')
       call check_int('inactive_carrier_is_not_applicable',                &
-                     rep%e(i)%status, cert_not_applicable)
+                     entry_status(rep, 'carrier balance H2'),             &
+                     cert_not_applicable)
       ! One equation of the inventory is active in every configuration: the
       ! closure that eliminates the neutral stages and the electron density.
       call check_log('an_inactive_entry_is_not_a_refusal',                &
@@ -372,20 +395,20 @@
       use_excited_H = .false.
       call certification_evaluate(cert_context_stationary, u, Res,        &
                                   f_sp_none(), 1.0d-5, 0, .true., rep)
-      i = entry_index(rep, 'level balance He 2^3S')
       call check_int('triplet_row_without_the_metastable_is_absent',      &
-                     rep%e(i)%status, cert_not_applicable)
-      i = entry_index(rep, 'level balance H(n=2)')
+                     entry_status(rep, 'level balance He 2^3S'),          &
+                     cert_not_applicable)
       call check_int('excited_H_row_when_off_is_absent',                  &
-                     rep%e(i)%status, cert_not_applicable)
+                     entry_status(rep, 'level balance H(n=2)'),           &
+                     cert_not_applicable)
 
       thereis_HeITR   = .true.
       ieq_rates_ready = .false.
       call certification_evaluate(cert_context_stationary, u, Res,        &
                                   f_sp_none(), 1.0d-5, 0, .true., rep)
-      i = entry_index(rep, 'level balance He 2^3S')
       call check_int('triplet_row_with_no_sweep_is_unavailable',          &
-                     rep%e(i)%status, cert_unavailable)
+                     entry_status(rep, 'level balance He 2^3S'),          &
+                     cert_unavailable)
       call check_log('an_unavailable_level_row_refuses_certification',    &
                      rep%certified, .false.)
       thereis_He = he_was;  thereis_HeITR = tr_was
@@ -1157,6 +1180,250 @@
 
       ! ------------------------------------------------------!
 
+      subroutine the_stage_sum_entry_gates_at_its_rounding_bound()
+      ! (i) THE VERDICT OF THE STAGE SUM ENTRY, on measures chosen here.
+      !
+      ! sum_k F_k(f) + F_close(f) = N_el(f) is algebraic, so the whole of
+      ! what a tolerance on it can clear is the rounding of the sums:
+      ! 2 (5 nk + 2) eps g for nk carried stages, with g the ratio of the
+      ! magnitude sum that bounds the rounding to the magnitude sum the
+      ! measure divides by, taken at its algebraic limit (3/2 for one
+      ! carried stage, 2 for two). The entry reads that number from
+      ! ionization_stage_sum_rounding_bound; the formula is transcribed here
+      ! so the two are independent statements of the same derivation.
+      type(cert_report) :: rep
+      real*8  :: bH, bHe, eps, tol_was
+      logical :: within_was
+      integer :: i
+      eps = epsilon(1.0d0)
+      bH  = ionization_stage_sum_rounding_bound(1)
+      bHe = ionization_stage_sum_rounding_bound(2)
+      call check_rel('the_hydrogen_bound_is_the_rounding_of_its_own'//    &
+                     '_sums', bH, 2.0d0*dble(5*1 + 2)*eps*1.5d0, 0.0d0)
+      call check_rel('the_helium_bound_carries_its_second_stage',         &
+                     bHe, 2.0d0*dble(5*2 + 2)*eps*2.0d0, 0.0d0)
+      ! An exact identity, and one at half the bound.
+      rep%n = 0
+      call ionization_stage_sum_entry(rep, ien_H, 0.0d0, 17, .true.)
+      i = certification_entry_index(rep, 'ionization stage nucleus sum H')
+      call check_int('an_exact_identity_is_evaluated', rep%e(i)%status,   &
+                     cert_evaluated)
+      call check_rel('and_it_is_gated_against_the_bound', rep%e(i)%tol,   &
+                     bH, 0.0d0)
+      call check_log('an_exact_identity_is_within_the_bound',             &
+                     rep%e(i)%within_tol, .true.)
+      rep%n = 0
+      call ionization_stage_sum_entry(rep, ien_H, 0.5d0*bH, 17, .true.)
+      i = certification_entry_index(rep, 'ionization stage nucleus sum H')
+      call check_log('half_the_bound_is_within_it',                       &
+                     rep%e(i)%within_tol, .true.)
+      ! One and a half times the bound, and a broken construction.
+      rep%n = 0
+      call ionization_stage_sum_entry(rep, ien_H, 1.5d0*bH, 17, .true.)
+      i = certification_entry_index(rep, 'ionization stage nucleus sum H')
+      call check_log('one_and_a_half_times_the_bound_is_above_it',        &
+                     rep%e(i)%within_tol, .false.)
+      rep%n = 0
+      call ionization_stage_sum_entry(rep, ien_He, 1.5d-4, 330, .true.)
+      i = certification_entry_index(rep, 'ionization stage nucleus sum He')
+      call check_rel('the_helium_entry_is_gated_against_its_own_bound',   &
+                     rep%e(i)%tol, bHe, 0.0d0)
+      call check_log('a_broken_construction_is_above_the_bound',          &
+                     rep%e(i)%within_tol, .false.)
+      ! THE ENTRY TEXT, transcribed: it wrote tol = 0 and
+      ! within_tol = .true. whatever the measure was, so nothing it
+      ! reported could refuse a state and the same broken construction
+      ! certifies under it.
+      tol_was    = 0.0d0
+      within_was = .true.
+      call check_log('the_entry_text_accepts_the_broken_construction',    &
+                     within_was .and. (tol_was .eq. 0.0d0), .true.)
+      ! A measure that is not a number is not a state either.
+      rep%n = 0
+      call ionization_stage_sum_entry(rep, ien_H,                         &
+              ieee_value(1.0d0, ieee_quiet_nan), 17, .true.)
+      i = certification_entry_index(rep, 'ionization stage nucleus sum H')
+      call check_log('a_non_finite_measure_is_not_within_the_bound',      &
+                     rep%e(i)%within_tol, .false.)
+      ! An element none of whose stages is solved has no measure at all,
+      ! and an entry with no measurement is never reported as a zero.
+      rep%n = 0
+      call ionization_stage_sum_entry(rep, ien_He, 0.0d0, 0, .false.)
+      i = certification_entry_index(rep, 'ionization stage nucleus sum He')
+      call check_int('an_unmeasured_identity_is_unavailable',             &
+                     rep%e(i)%status, cert_unavailable)
+      ! THE TOLERANCE IS THE BOUND AT THE MEASURED g, NOT AT ITS CEILING.
+      ! The operator returns g = S/S' at the face the measure was taken at
+      ! (ionization_stage_nucleus_sum); the entry gates that face's own
+      ! rounding. A face with no eddy term at all carries g = 1, which is
+      ! two thirds of the ceiling for hydrogen and half of it for helium, so
+      ! the two numbers cannot be confused for one another.
+      rep%n = 0
+      call ionization_stage_sum_entry(rep, ien_H, 0.0d0, 17, .true.,      &
+                                      g = 1.0d0)
+      i = certification_entry_index(rep, 'ionization stage nucleus sum H')
+      call check_rel('the_tolerance_is_the_bound_at_the_measured_g',      &
+                     rep%e(i)%tol,                                        &
+                     2.0d0*dble(5*1 + 2)*eps*1.0d0, 0.0d0)
+      call check_log('and_not_the_bound_at_the_ceiling',                  &
+                     rep%e(i)%tol .lt. bH, .true.)
+      ! A measure that the ceiling would admit and this face's own bound
+      ! does not is refused, which is what gating at the measured g buys.
+      rep%n = 0
+      call ionization_stage_sum_entry(rep, ien_H, 0.9d0*bH, 17, .true.,   &
+                                      g = 1.0d0)
+      i = certification_entry_index(rep, 'ionization stage nucleus sum H')
+      call check_log('a_measure_the_ceiling_admits_is_refused_at_its'//   &
+                     '_own_face', rep%e(i)%within_tol, .false.)
+      rep%n = 0
+      call ionization_stage_sum_entry(rep, ien_H, 0.9d0*bH, 17, .true.)
+      i = certification_entry_index(rep, 'ionization stage nucleus sum H')
+      call check_log('while_the_same_measure_without_a_g_is_admitted',    &
+                     rep%e(i)%within_tol, .true.)
+      ! An operator that measured no face reports a negative g, and the
+      ! bound then falls back on the ceiling rather than on that number.
+      rep%n = 0
+      call ionization_stage_sum_entry(rep, ien_He, 0.0d0, 0, .true.,      &
+                                      g = -1.0d0)
+      i = certification_entry_index(rep, 'ionization stage nucleus sum He')
+      call check_rel('an_unmeasured_g_falls_back_on_the_ceiling',         &
+                     rep%e(i)%tol, bHe, 0.0d0)
+      end subroutine the_stage_sum_entry_gates_at_its_rounding_bound
+
+      ! ------------------------------------------------------!
+
+      subroutine a_report_holds_exactly_the_equations_of_the_inventory()
+      ! (j) THE CAPACITY CONTRACT OF A REPORT (PLAN_20260919_rev1, item
+      ! P5a). A report holds cert_max_entries equations, the size of the
+      ! inventory itself, and every field of an entry is written through the
+      ! index add_entry returned for it.
+      !
+      ! WHAT IS ASSERTED HERE: an exactly full report. The last equation
+      ! that fits is complete and correct, and the name, the measure, the
+      ! cell, the tolerance and the verdict of every entry belong to ONE
+      ! equation. The entries are built through the public writer and each
+      ! one is given a cell of its own, so an entry carrying another
+      ! entry's measure is visible as a cell that is not its index.
+      !
+      ! One equation past full is the other half of the contract and cannot
+      ! be asserted in this process: it stops the run by design. Its driver
+      ! is certification_capacity.f90 and run.sh reads its refusal.
+      type(cert_report) :: rep
+      real*8  :: bH, bHe, want_max
+      integer :: i, ien_of_i, n_wrong_cell, n_wrong_name, n_wrong_tol
+      integer :: n_wrong_verdict
+      logical :: want_within
+      character(len=40) :: want_name
+      bH  = ionization_stage_sum_rounding_bound(1)
+      bHe = ionization_stage_sum_rounding_bound(2)
+      rep%n = 0
+      ! Hydrogen on the odd indices with half its bound (within), helium on
+      ! the even ones with one and a half times its own (above it): the two
+      ! elements carry different names, different tolerances and different
+      ! verdicts, so no field of one entry can pass for a field of its
+      ! neighbour.
+      do i = 1, cert_max_entries
+         if (mod(i,2) .eq. 1) then
+            call ionization_stage_sum_entry(rep, ien_H, 0.5d0*bH, i,      &
+                                            .true.)
+         else
+            call ionization_stage_sum_entry(rep, ien_He, 1.5d0*bHe, i,    &
+                                            .true.)
+         endif
+      enddo
+      call check_int('a_full_report_holds_the_whole_inventory', rep%n,    &
+                     cert_max_entries)
+      ! The last equation that fits is complete: it is the equation that was
+      ! asked for, with its own measure, its own cell, its own tolerance and
+      ! a verdict taken on them.
+      i = cert_max_entries
+      if (mod(i,2) .eq. 1) then
+         want_name = 'ionization stage nucleus sum H'
+         want_max  = 0.5d0*bH
+      else
+         want_name = 'ionization stage nucleus sum He'
+         want_max  = 1.5d0*bHe
+      endif
+      call check_log('the_last_entry_that_fits_carries_its_own_name',     &
+                     trim(rep%e(i)%name) .eq. trim(want_name), .true.)
+      call check_int('the_last_entry_that_fits_is_evaluated',             &
+                     rep%e(i)%status, cert_evaluated)
+      call check_rel('the_last_entry_that_fits_carries_its_own_measure',  &
+                     rep%e(i)%row_max, want_max, 0.0d0)
+      call check_int('the_last_entry_that_fits_carries_its_own_cell',     &
+                     rep%e(i)%jworst, i)
+      call check_rel('the_last_entry_that_fits_carries_its_own'//         &
+                     '_tolerance', rep%e(i)%tol, bHe, 0.0d0)
+      call check_log('the_last_entry_that_fits_carries_its_own_verdict',  &
+                     rep%e(i)%within_tol, .false.)
+      ! AND EVERY ENTRY IS ONE EQUATION. Name, measure, cell, tolerance and
+      ! verdict are read together, entry by entry.
+      n_wrong_name = 0;  n_wrong_cell = 0
+      n_wrong_tol  = 0;  n_wrong_verdict = 0
+      do i = 1, rep%n
+         ien_of_i = ien_He
+         if (mod(i,2) .eq. 1) ien_of_i = ien_H
+         if (ien_of_i .eq. ien_H) then
+            want_name   = 'ionization stage nucleus sum H'
+            want_max    = 0.5d0*bH
+            want_within = .true.
+            if (rep%e(i)%tol .ne. bH) n_wrong_tol = n_wrong_tol + 1
+         else
+            want_name   = 'ionization stage nucleus sum He'
+            want_max    = 1.5d0*bHe
+            want_within = .false.
+            if (rep%e(i)%tol .ne. bHe) n_wrong_tol = n_wrong_tol + 1
+         endif
+         if (trim(rep%e(i)%name) .ne. trim(want_name))                    &
+            n_wrong_name = n_wrong_name + 1
+         if (rep%e(i)%jworst .ne. i .or. rep%e(i)%row_max .ne. want_max)  &
+            n_wrong_cell = n_wrong_cell + 1
+         if (rep%e(i)%within_tol .neqv. want_within)                      &
+            n_wrong_verdict = n_wrong_verdict + 1
+      enddo
+      call check_int('every_entry_carries_its_own_name', n_wrong_name, 0)
+      call check_int('every_entry_carries_its_own_measure_and_cell',      &
+                     n_wrong_cell, 0)
+      call check_int('every_entry_carries_its_own_tolerance',             &
+                     n_wrong_tol, 0)
+      call check_int('every_entry_carries_its_own_verdict',               &
+                     n_wrong_verdict, 0)
+      end subroutine a_report_holds_exactly_the_equations_of_the_inventory
+
+      ! ------------------------------------------------------!
+
+      subroutine the_stage_sum_entry_is_absent_without_a_stage()
+      ! (i), second part: a run that transports no ionization stage carries
+      ! no such identity, so the inventory holds no entry for it and its
+      ! absence refuses nothing.
+      type(cert_report) :: rep
+      real*8, dimension(3,1-Ng:N+Ng) :: u, Res
+      ! The configuration set_up_a_grid establishes, restated here because
+      ! the cases above leave their own keys behind: no helium, no metals,
+      ! no diffusion and no excited hydrogen, so the inventory carries the
+      ! hydrodynamic rows, the carriers and one closure.
+      thereis_He           = .false.
+      thereis_HeITR        = .false.
+      thereis_metals       = .false.
+      he_diffusion         = .false.
+      he_metal_diffusion   = .false.
+      use_excited_H        = .false.
+      thereis_mol          = .false.
+      carrier_transport    = .false.
+      ionization_transport = .false.
+      u = 1.0d0;  Res = 0.0d0
+      call certification_evaluate(cert_context_stationary, u, Res,        &
+                                  f_sp_none(), 1.0d-5, 0, .true., rep)
+      call check_int('no_transported_stage_leaves_no_hydrogen_entry',     &
+           certification_entry_index(rep,                                 &
+                                   'ionization stage nucleus sum H'), 0)
+      call check_int('nor_a_helium_one',                                  &
+           certification_entry_index(rep,                                 &
+                                   'ionization stage nucleus sum He'), 0)
+      end subroutine the_stage_sum_entry_is_absent_without_a_stage
+
+      ! ------------------------------------------------------!
+
       function f_sp_none() result(fs)
       ! A composition array of the right shape. The cases above never reach
       ! the carrier evaluation, which is the only consumer of it.
@@ -1164,22 +1431,16 @@
       fs = 0.0d0
       end function f_sp_none
 
-      integer function entry_index(rep, name) result(i)
-      type(cert_report), intent(in) :: rep
-      character(len=*),  intent(in) :: name
-      integer :: k
-      i = 1
-      do k = 1, rep%n
-         if (trim(rep%e(k)%name) .eq. name) then
-            i = k;  return
-         endif
-      enddo
-      end function entry_index
-
       integer function entry_status(rep, name) result(st)
+      ! The status of the entry of that name, and -1 when the inventory
+      ! holds no such entry: an assertion about a row that is not there
+      ! must fail and not read a different row's status.
       type(cert_report), intent(in) :: rep
       character(len=*),  intent(in) :: name
-      st = rep%e(entry_index(rep, name))%status
+      integer :: i
+      st = -1
+      i  = certification_entry_index(rep, name)
+      if (i .gt. 0) st = rep%e(i)%status
       end function entry_status
 
       subroutine check_rel(name, measured, reference, tol)
@@ -1206,6 +1467,38 @@
            ' tol=0'
       if (.not. ok) n_fail = n_fail + 1
       end subroutine check_str
+
+      subroutine the_base_contact_direction_is_checked_against_the_face_flux()
+      ! Item D2b, user decision of 2026-09-19: where the wind window has
+      ! standing the base contact is upwinded on the window's mass flux,
+      ! and the report compares that direction with the base face mass flux
+      ! of the same state. The four outcomes, on numbers chosen for each.
+      ! The window mean is 1 in every case, an outward wind.
+      call check_int('contact_direction_from_the_face_velocity_without_a_window', &
+           base_contact_direction_agreement(0.0d0, 3.0d-7, 1.0d0, 1.0d0,  &
+                                            .true.),                      &
+           contact_direction_from_face_velocity)
+      call check_int('contact_direction_from_the_face_velocity_without_a_window_mean', &
+           base_contact_direction_agreement(1.0d0, 3.0d-7, 1.0d0, 0.0d0,  &
+                                            .true.),                      &
+           contact_direction_from_face_velocity)
+      call check_int('contact_direction_window_agrees_with_an_outward_face_flux', &
+           base_contact_direction_agreement(1.0d0, 3.0d-7, 0.9995d0,      &
+                                            1.0d0, .true.),               &
+           contact_direction_window_agrees)
+      call check_int('contact_direction_window_agrees_with_an_inward_face_flux', &
+           base_contact_direction_agreement(1.0d0, -3.0d-7, -0.9995d0,    &
+                                            -1.0d0, .true.),              &
+           contact_direction_window_agrees)
+      call check_int('contact_direction_face_flux_at_its_rounding',       &
+           base_contact_direction_agreement(1.0d0, 3.0d-7, -1.0d-13,      &
+                                            1.0d0, .true.),               &
+           contact_direction_face_flux_at_rounding)
+      call check_int('contact_direction_disagreement_is_reported',        &
+           base_contact_direction_agreement(1.0d0, 3.0d-7, -1.0d-3,       &
+                                            1.0d0, .true.),               &
+           contact_direction_window_disagrees)
+      end subroutine the_base_contact_direction_is_checked_against_the_face_flux
 
       subroutine check_int(name, measured, reference)
       character(*), intent(in) :: name

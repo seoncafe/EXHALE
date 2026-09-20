@@ -47,7 +47,12 @@
 set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$HERE/../../.." && pwd)"
-EXE="${EXHALE_EXE:-$ROOT/EXHALE.x}"
+# The binary is selected and its identity stated in one place;
+# src/tests/exhale_exe.sh carries the policy.
+. "$HERE/../exhale_exe.sh"
+exhale_select_exe "$ROOT" momentum_row_from_fluxes_only
+EXE="$EXHALE_RUN_EXE"
+exhale_announce_exe
 SRC="$ROOT/src/EXHALE_main.f90"
 WORK="${EXHALE_TEST_OUT:-$ROOT/build/tests/grid_and_gates}/momentum_row"
 CASE="$ROOT/backup/regression/mol_base_handoff"

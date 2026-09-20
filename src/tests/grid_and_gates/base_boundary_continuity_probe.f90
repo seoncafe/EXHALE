@@ -4,15 +4,26 @@
       !
       ! The base face state is
       !
-      !     rho_b = (1 - w_rev) rho_res + w_rev rho_rev ,
-      !     w_rev = s_wind w_wind(M_wind) + (1 - s_wind) w_i ,
-      !     s_wind = A(M_wind) C(d_window) ,
+      !     rho_b = (1 - w_rev) rho_res + w_rev rho_rev ,   w_rev in {0,1},
       !     d_window = sqrt(<F^2> - <F>^2)/|<F>| over r >= r_flux ,
       !
-      ! with w_i the local branch weight of the first interior cell and
-      ! F = rho v r^2.  A is the amplitude weight, 0 at M_wind = 0 and 1 at
-      ! |M_wind| >= base_wind_window_amplitude; C is the shape weight, 1 at
-      ! d_window <= base_wind_window_spread and 0 at twice it.
+      ! with F = rho v r^2.  w_rev is 1 where the level's mass flux leaves
+      ! the domain and 0 where it enters or stands still, and the wind window
+      ! states that direction where it carries a flux (|M_wind| >=
+      ! base_wind_window_amplitude) and carries ONE flux (d_window <=
+      ! base_wind_window_spread); elsewhere the matched face velocity does.
+      !
+      ! WHAT THESE ROWS NOW MEASURE.  They were written when the branch was
+      ! handed over by a weight built on those two conditions, and the
+      ! quantity they read -- the derivative of the face density along a
+      ! perturbation of the window -- was then a test that the handover was
+      ! C1.  The branch is discrete now, so on a state that sits away from
+      ! the two thresholds the face density does not move along any of these
+      ! perturbations at all and every derivative row reads exactly zero
+      ! (MEASURED on the certified LHS 1140 b atomic state, item D2b).  The
+      ! rows are kept because that is the stronger statement and the same
+      ! measurement: a state whose base is decades inside one branch cannot
+      ! be moved by a perturbation of the window.
       !
       ! THE ZERO WINDOW IS THE POINT THIS PROGRAM IS ABOUT.  C is scale free,
       ! so on its own it has no limit there: along a uniform flux eps F it is
@@ -62,6 +73,8 @@
       use Conversion,     only: W_to_U
       use Reconstruction_step, only: Reconstruct
       use RK_integration, only: RK_rhs, face_flux
+      use stationary_operator, only: stationary_face_mass_flux,            &
+                                face_mass_flux_budget
       use base_boundary,  only: base_boundary_states,                      &
                                 read_base_branch_options,                  &
                                 wind_window_mass_flux,                     &
@@ -78,6 +91,12 @@
       implicit none
 
       real*8, allocatable :: W0(:,:), Wq(:,:), u(:,:), f_sp(:,:)
+      ! THE CONSERVED STATE AS init LEFT IT, ghosts included.  init applies
+      ! the boundary to the conserved array and does not copy the refreshed
+      ! ghosts into the primitive array it returns, so this copy and not W0
+      ! is the state whose boundary is the boundary's.  u itself is scratch
+      ! for the rows below, which is why the copy is kept.
+      real*8, allocatable :: u_init(:,:)
       real*8, allocatable :: WLr(:,:), WRr(:,:), dFr(:,:), Sr(:,:)
       real*8  :: Wface(3), Wface_lower(3)
       real*8, allocatable :: Wghost(:,:)
@@ -115,11 +134,13 @@
       call h2_thermochemistry_init
 
       allocate(W0(3,1-Ng:N+Ng), Wq(3,1-Ng:N+Ng), u(3,1-Ng:N+Ng))
+      allocate(u_init(3,1-Ng:N+Ng))
       allocate(f_sp(1-Ng:N+Ng,n_species))
       allocate(Wghost(3,1-Ng:0))
       allocate(WLr(3,1-Ng:N+Ng), WRr(3,1-Ng:N+Ng),                        &
                dFr(3,1-Ng:N+Ng), Sr(3,1-Ng:N+Ng))
       call init(W0,u,f_sp)
+      u_init = u
 
       j0 = max(j_flux,1)
       nw = N - j0 + 1
@@ -455,6 +476,10 @@
       call build_state(path, t)
       call wind_window_mass_flux(Wq, Fw, duw, hv)
       call base_boundary_states(Wq, Wface, Wghost, Wface_lower)
+      ! The smoothstep of the interior Mach number: the local branch weight
+      ! of the model this row was written under, kept in the printed row so
+      ! that a reading of an old log and a reading of a new one can be put
+      ! side by side.  It decides nothing now.
       w_i = characteristic_branch_weight(base_face_Mi_last                &
                                          /base_face_mach_blend)
       write(*,fmt_row)                                                    &
@@ -464,7 +489,7 @@
            ' gh1=', Wghost(1,1-Ng),                                       &
            ' M_i=', base_face_Mi_last,                                    &
            ' M_wind=', base_face_Mwind_last,                               &
-           ' w_i=', w_i,                                                  &
+           ' smoothstep(M_i)=', w_i,                                                  &
            ' s=', base_face_swind_last,                                   &
            ' w_rev=', base_face_blend_last,                               &
            ' du=', duw,                                                   &
@@ -606,58 +631,123 @@
       subroutine jump_report(what, path)
       ! The size of the gap between the limit of a path at t -> 0 and the
       ! value the boundary returns at t = 0 exactly, in the units the memo
-      ! quotes: relative to rho_b itself, and against the bound
-      ! |w_i - 1/2| |rho_res - rho_rev|, which is what the gap has to be if
-      ! the whole of it comes from the branch weight jumping from 1/2 to w_i.
+      ! quotes: relative to rho_b itself, and against the distance between
+      ! the two isentropes |rho_res - rho_rev|, which is the largest gap the
+      ! branch can open now that it takes only its two values.
       character(len=*), intent(in) :: what
       integer,          intent(in) :: path
-      real*8 :: r_at_zero, r_limit, w_i, bound
+      real*8 :: r_at_zero, r_limit, bound
       r_limit   = rho_b_of(path, 1.0d-14)
       r_at_zero = rho_b_of(path, 0.0d0)
-      w_i   = characteristic_branch_weight(base_face_Mi_last              &
-                                           /base_face_mach_blend)
-      bound = abs(w_i - 0.5d0)*abs(base_face_rho_res_last                 &
-                                   - base_face_rho_rev_last)
+      bound = abs(base_face_rho_res_last - base_face_rho_rev_last)
       write(*,'(A,A)') ' JUMP ', what
       write(*,'(A,ES22.15,A,ES22.15)') '   rho_b(t -> 0) =', r_limit,     &
            '   rho_b(t = 0) =', r_at_zero
       write(*,'(A,ES16.9,A,F12.8,A)') '   gap =',                         &
            r_limit - r_at_zero, '  =', 1.0d2*abs(r_limit - r_at_zero)     &
            /max(abs(r_limit),1.0d-99), ' per cent of rho_b(t -> 0)'
-      write(*,'(A,ES16.9,A,ES13.6)') '   |w_i - 1/2| |rho_res - rho_rev|' &
-           //' =', bound, '   w_i =', w_i
+      write(*,'(A,ES16.9)') '   |rho_res - rho_rev| =', bound
       end subroutine jump_report
 
       !------------------------------------------!
 
       subroutine local_flux_candidates
-      ! CAN THE DIRECTION AT THE BASE FACE BE READ LOCALLY?  Every reading
-      ! that is a function of the base cells alone, printed in units of the
-      ! wind window's mean flux, beside the mass flux the Riemann solve
-      ! actually puts through the base face on the same state.
+      ! WHAT MASS FLUX DOES THE BASE FACE CARRY, AND CAN ITS DIRECTION BE
+      ! READ FROM THE BASE CELLS ALONE?
       !
-      ! The readings are (a) the cell-centred product of cell 1, which is the
-      ! discriminant w_i is built from; (b) its mean over cells 1..k, the
-      ! local average that annihilates a Nyquist component of the velocity;
-      ! (c) a least-squares linear extrapolation of the same product to
-      ! r_edg(0) over cells 1..n; (d) the face state's own rho_b v_b r_b^2.
-      ! A reading is admissible as a discriminant only if its SIGN is the
-      ! sign of the flux the face carries.
+      ! THE OPERATOR IS PART OF THE QUESTION.  A stationary state of this
+      ! code is a state the WENO3 residual vanishes on; the catalog inputs
+      ! ask for PLM, and a state that solves one discretization is not
+      ! required to solve another.  Reconstructing with whatever scheme the
+      ! input left therefore measures the input, not the solution.  The rows
+      ! below measure the stationary operator through the one production
+      ! entry point (stationary_face_mass_flux, which installs the
+      ! composition and caloric state, the boundary and the reconstruction
+      ! before it reconstructs), print the identity of the operator they
+      ! measured, and then measure the input's own scheme once, labeled, so
+      ! that the difference is attributed to the operator and not the state.
+      !
+      ! MEASURED on the two stationary states of the review of the 2026-09-17
+      ! handoff (its section 3.1), in units of the wind-window mean F0 of the
+      ! cell-centered product rho v r^2:
+      !
+      !   state                                PLM base   WENO3 base
+      !   LHS1140b .L26/fid_resolve/output       32.376   0.999984374
+      !   atomic_scalar_gj1132x0.10_kzz1e9       336.552  0.999974828
+      !
+      ! The WENO3 face flux is the wind's at every face; the 1.6e-5 and
+      ! 2.5e-5 offsets from unity are the difference between a face value and
+      ! the mean of a CELL-CENTERED product and are not a mass leak.  The
+      ! bound the row below asserts covers both and can be moved for a state
+      ! whose wind is resolved differently (EXHALE_L26_BASE_FLUX_TOL).
+      !
+      ! The local readings are (a) the cell-centered product of cell 1, which
+      ! is the discriminant w_i is built from; (b) its mean over cells 1..k,
+      ! the local average that annihilates a Nyquist component of the
+      ! velocity; (c) a least-squares linear extrapolation of the same
+      ! product to r_edg(0) over cells 1..n; (d) the face state's own
+      ! rho_b v_b r_b^2.  A reading is admissible as a discriminant only if
+      ! its SIGN is the sign of the flux the face carries.
       real*8  :: Fbase, ssum, sx, sy, sxx, sxy, aa, bb, xx
+      real*8  :: base_tol, offset, width
+      real*8, allocatable :: Fstat(:)
+      type(face_mass_flux_budget) :: budget
+      character(len=64) :: tol_text
       integer :: j, k
+
+      base_tol = 3.0d-5
+      call get_environment_variable('EXHALE_L26_BASE_FLUX_TOL', tol_text)
+      if (len_trim(tol_text) .gt. 0) read(tol_text,*) base_tol
+
+      ! Wq is the loaded state itself for the local readings below.
       call build_state(0, 0.0d0)
-      call base_boundary_states(Wq, Wface, Wghost, Wface_lower)
+
+      allocate(Fstat(1-Ng:N+Ng))
+      call stationary_face_mass_flux(u_init, f_sp, budget, Fstat)
+
+      write(*,'(A,A,A,A,A,L1)') '   OPERATOR of the rows below: ',        &
+           trim(budget%operator_name), ', numerical flux ',               &
+           trim(budget%flux_name), ', well balanced ',                    &
+           budget%well_balanced
+      write(*,'(A,ES22.15,A,L1)') '   window mean flux F0 =',             &
+           budget%window_mean, '   have_F=', budget%window_available
+      write(*,'(A,ES22.15)') '   STATIONARY base face flux /F0 =',        &
+           budget%flux_base/budget%window_mean
+      write(*,'(A,ES22.15,A,I0)') '   STATIONARY min over faces /F0 =',   &
+           budget%flux_min/budget%window_mean, '  at face ', budget%j_min
+      write(*,'(A,ES22.15,A,I0)') '   STATIONARY max over faces /F0 =',   &
+           budget%flux_max/budget%window_mean, '  at face ', budget%j_max
+      do j = 0, 6
+         write(*,'(A,I2,A,ES22.15)') '   face ', j,                        &
+              '  stationary flux /F0 =', Fstat(j)/budget%window_mean
+      enddo
+
+      ! THE TWO ROWS THE REVIEW'S MEASUREMENT ESTABLISHES: the base face
+      ! carries the wind's own mass flux, and it carries it at every face.
+      offset = abs(budget%flux_base/budget%window_mean - 1.0d0)
+      call verdict_le('stationary_base_face_flux_is_the_window_mean',      &
+                      offset, base_tol)
+      width = abs(budget%flux_max - budget%flux_min)/abs(budget%window_mean)
+      call verdict_le('stationary_face_flux_constant_over_the_faces',      &
+                      width, base_tol)
+      call verdict_int('stationary_operator_is_weno3',                     &
+                       index(trim(budget%operator_name), 'WENO3'), 1)
+
+      ! THE NON-STATIONARY OPERATOR, once, for the comparison: the scheme the
+      ! input asks for, on the same installed state.  On the two states above
+      ! this row reads 32.376 and 336.552 F0 where the stationary operator
+      ! reads one, which is the whole of the difference the review isolated.
+      ! It asserts nothing: a state is not obliged to solve this operator.
       call W_to_U(Wq, u)
       call Reconstruct(u, WLr, WRr)
       call RK_rhs(u, WLr, WRr, dFr, Sr)
       Fbase = face_flux(1,0)*r_edg(0)*r_edg(0)
-      write(*,'(A,ES16.9)') '   window mean flux F0 =', F0
-      write(*,'(A,F16.6)') '   CAND face_flux_at_the_base_face /F0 =',    &
-           Fbase/F0
-      do j = 0, 6
-         write(*,'(A,I2,A,F16.6)') '   face ', j,                          &
-              '  Riemann flux /F0 =', face_flux(1,j)*r_edg(j)*r_edg(j)/F0
-      enddo
+      write(*,'(A,A,A)') '   NON-STATIONARY operator (the input''s ',      &
+           trim(rec_method), '), reported and asserting nothing:'
+      write(*,'(A,F16.6)') '     base face flux /F0 =',                    &
+           Fbase/budget%window_mean
+
+      call base_boundary_states(Wq, Wface, Wghost, Wface_lower)
       do j = 1, 6
          write(*,'(A,I2,A,F16.6,A,ES13.6)') '   cell ', j,                 &
               '  rho v r^2 /F0 =',                                         &
@@ -686,6 +776,7 @@
       enddo
       write(*,'(A,F16.6)') '   CAND face_state_rho_b_v_b_rb2      /F0 =', &
            Wface(1)*Wface(2)*r_edg(0)*r_edg(0)/F0
+      deallocate(Fstat)
       end subroutine local_flux_candidates
 
       !------------------------------------------!

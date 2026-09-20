@@ -55,13 +55,62 @@
       ! physical Navier-Stokes stress.  Without (4) the kinetic energy the
       ! stress removes would be taken out of the INTERNAL energy instead of
       ! being converted into it, which is a spurious heat source of
-      ! indefinite sign.  With (4) the pair conserves total energy exactly
-      ! and the internal-energy change is -D_p dv/dr.  Like any
-      ! hyper-viscosity that change has either sign cell by cell, but summed
-      ! over the domain it is +int mu_4 (d^2v/dr^2)^2 dr >= 0 (integrate
-      ! -int v mu_4 d^4v/dr^4 by parts; the boundary terms vanish because the
-      ! flux is set to zero at both boundary faces).  The pair therefore
-      ! converts kinetic energy into heat and never the reverse.
+      ! indefinite sign.  With (4) the pair conserves total energy exactly,
+      ! so the internal-energy change is exactly minus the kinetic-energy
+      ! change.
+      !
+      ! THE SIGN OF THAT EXCHANGE IS INDEFINITE for the stress (1).  It is
+      ! a dissipation only where the face coefficient
+      !
+      !   w_j = r_edg(j)^2 eps4 g_j rho_f,j lambda_f,j >= 0
+      !
+      ! is constant.  At frozen density, on the spherical weights RK_rhs
+      ! forms the cell update with, the discrete kinetic-energy rate of (1)
+      ! is the quadratic form
+      !
+      !   E' = sum_{j=1}^{N-1} w_j d_j (L d)_j = d^T W L d ,            (E)
+      !   d_j = v_{j+1} - v_j ,   (L d)_j = d_{j+1} - 2 d_j + d_{j-1} ,
+      !
+      ! and it carries no boundary term, because D_p is set to zero at the
+      ! faces j = 0 and j = N.  L is negative semidefinite, so E' <= 0 when
+      ! W = w I; for a varying W the form is governed by the symmetric part
+      ! of W L, which is not sign definite, and the gate (5) below makes W
+      ! vary by a STEP wherever the Mach number crosses M_th.  Where E' > 0
+      ! the pair takes energy out of the internal energy and puts it into
+      ! the velocity field.
+      !
+      ! MEASURED (src/tests/low_mach_stress_energy/; the smallest eigenvalue
+      ! of the symmetric part of the operator of E' over its largest, against
+      ! the eigensolver's own rounding): +7.2e-17 on a uniform grid at
+      ! constant coefficient, -1.1e-12 for a coefficient falling four decades
+      ! smoothly over 500 cells, -6.9e-03 with the gate closing at one face,
+      ! and -1.1e-10 on an LHS 1140 b wind, where lambda_min = -4.147e+02
+      ! against a rounding of 8.0e-02 and the negative mode sits on the cells
+      ! astride the gate edge at r = 4.0-5.1 R_p.  The same lambda_min comes
+      ! out of the interior block that no ghost value reaches, so the sign
+      ! failure is interior and no boundary closure produces it.
+      !
+      ! THE FORM THAT IS DISSIPATIVE ON EVERY GRID writes the same stencil as
+      ! a conservative flux of the CELL second difference,
+      !
+      !   q_j = 2 v_j - v_{j+1} - v_{j-1} ,
+      !   A_j D_p{j+1/2} = k_j q_j - k_{j+1} q_{j+1} ,  k_1 = k_N = 0 ,  (G)
+      !
+      ! with k_j = eps4 g(M_j^2) rho_j lambda_j A^c_j >= 0 read at the cell,
+      ! which is where M_j^2 is defined.  In matrix form (G) is
+      ! dv/dt = -M^-1 B^T K B v with M = diag(rho_j dV_j) the mass matrix,
+      ! (B v)_j = q_j and K = diag(k_j), so
+      ! d(v^T M v/2)/dt = -(B v)^T K (B v) <= 0 for every velocity field and
+      ! every nonuniform grid, and no ghost value enters (G) at all.  For
+      ! constant k, (G) IS (1), so the order of accuracy, the 2 dr decay rate
+      ! and the explicit-stability bound of sections 4 and 6 carry over
+      ! unchanged.  MEASURED with the same driver: -4.5e-17 with the gate
+      ! closing at one face and -5.9e-18 on the LHS 1140 b wind.
+      !
+      ! (G) IS NOT WHAT THIS MODULE APPLIES.  The executable form is (1) with
+      ! the pair (4); (G) is derived and measured in
+      ! docs/lhs1140b_stationary_L25_20260916.md step 1 and is not adopted
+      ! here, so a run that turns this option on carries the indefinite form.
       !
       ! THE MASS FLUX IS NOT TOUCHED, and neither is the energy flux other
       ! than through (4).  MEASURED on this configuration, a fourth-difference
@@ -103,13 +152,16 @@
       ! Shapiro filter, by contrast, is a SECOND difference: it damps the
       ! 2 dr mode at the same order at which it smooths everything else.
       !
-      ! The energy the pair (1)+(4) can move is bounded by the KINETIC energy
-      ! of the oscillation it removes, and there is no secular source: at
-      ! Mach number M the kinetic energy density is g(g-1)/2 M^2 times the
+      ! Where the pair (1)+(4) removes kinetic energy, what it can move is
+      ! bounded by the KINETIC energy of the oscillation it removes: at Mach
+      ! number M the kinetic energy density is g(g-1)/2 M^2 times the
       ! internal one, and it is consumed as the oscillation dies.  MEASURED
       ! over the region where the gate is open in the HD 209458 b molecular
       ! runs, M = 2e-5 to 5e-4, so that ratio is 2e-10 to 1e-7: whatever the
-      ! pair moves, it cannot be a thermally significant amount of energy.
+      ! pair moves that way, it cannot be a thermally significant amount of
+      ! energy.  On the modes for which E' > 0 (section 2) the transfer runs
+      ! the other way and this bound does not apply to it, which is why the
+      ! size of the term is reported for any run that uses it (VALIDITY).
       !
       ! -------------------------------------------------------------------
       ! 5. Discrete consistency and conservation

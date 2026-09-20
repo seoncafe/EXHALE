@@ -40,7 +40,8 @@
       ! residuals ARE the floored relative imbalances and no assertion
       ! depends on a scale this suite invents.
 
-      use global_parameters, only: thereis_oxychem, ionization_transport
+      use global_parameters, only: thereis_oxychem, ionization_transport, &
+                                   thereis_mol, carrier_transport
       use diffusive_photochemistry, only:                                 &
               carrier_returned_state_verdict, carrier_stall_class,        &
               carrier_verdict, carrier_set_init,                          &
@@ -69,7 +70,13 @@
       nan = transfer(int(z'7FF8000000000000', kind=8), 1.0d0)
       inf = transfer(int(z'7FF0000000000000', kind=8), 1.0d0)
 
-      ! The oxygen cycle on, so H2, OH, H2O and CO all carry an equation.
+      ! The molecular network with its carriers transported and the oxygen
+      ! cycle on, so H2, OH, H2O and CO all carry an equation.  A carrier
+      ! is a row of the transport-chemistry operator where the gas has it
+      ! AND the run transports it, so the configuration is stated in full
+      ! and not through the oxygen cycle alone.
+      thereis_mol          = .true.
+      carrier_transport    = .true.
       thereis_oxychem      = .true.
       ionization_transport = .false.
       call carrier_set_init()

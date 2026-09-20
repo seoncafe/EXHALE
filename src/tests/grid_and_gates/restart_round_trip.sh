@@ -12,9 +12,20 @@
 #   survive the reconstruction to a round-off budget; the mass density the
 #   loader hands on IS the mass policy of the species columns it read (the
 #   writer's own rho column is not read, and the distance between the two is
-#   the writer state's mass-closure defect, measured and printed here); no
-#   chemistry, remap, boundary reinitialization or clock advance happens on
-#   load; a second round trip adds no drift.
+#   the writer state's mass-closure defect, measured and printed here); the
+#   lower ghost rows of a written state ARE the boundary the loader derives
+#   from the physical column of that same file; no chemistry, remap, boundary
+#   reinitialization or clock advance happens on load; a second round trip
+#   adds no drift.
+#
+#   OVER THE PHYSICAL CELLS.  The first three rows compare the physical cells
+#   alone.  Since D5b-2 the two rows below the base are not read by the loader
+#   at all: the boundary-state operation derives them from the physical column
+#   and the prescribed reservoir (boundary model
+#   characteristic_face_ps_reservoir_C_minus_smoothstep_v1), so they are not
+#   part of the state being serialized and a distance between the writer's
+#   ghost rows and the loader's is the boundary rebuild, not a round-trip
+#   loss.  It is printed as a diagnostic and asserted by the ghost row below.
 #
 # WHAT IS RUN (six short runs; nothing in backup/regression is written to)
 #   A  the hot-Uranus molecular gate of backup/regression/roundtrip, 40 steps,
@@ -45,7 +56,12 @@
 set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$HERE/../../.." && pwd)"
-EXE="${EXHALE_EXE:-$ROOT/EXHALE.x}"
+# The binary is selected and its identity stated in one place;
+# src/tests/exhale_exe.sh carries the policy.
+. "$HERE/../exhale_exe.sh"
+exhale_select_exe "$ROOT" restart_round_trip
+EXE="$EXHALE_RUN_EXE"
+exhale_announce_exe
 OUT="${EXHALE_TEST_OUT:-$ROOT/build/tests/grid_and_gates}"
 WORK="$OUT/restart_round_trip"
 CASE="$ROOT/backup/regression/roundtrip"
@@ -150,7 +166,28 @@ M_HE = 6.6464790722e-24 / 1.67353284e-24
 n_fail = 0
 
 
-def read(path):
+# WHICH ROWS ARE THE STATE AND WHICH ARE THE BOUNDARY.  The writer emits
+# N + 2*Ng rows and says so on its own '# rows' line; the first Ng and the
+# last Ng are GHOST cells.  Since D5b-2 the LOWER ghost rows are not read by
+# the loader at all: they are the output of the boundary-state operation,
+# derived from the physical column and the prescribed reservoir (boundary
+# model v1, docs/lhs1140b_stationary_D5b2_20260918.md), so a round trip of the
+# STATE is a round trip of the physical cells and the lower ghost rows are
+# asserted separately, by the row that checks they are that derived boundary.
+PHYS = [0, 0]           # filled by read(): first and last physical row index
+
+
+def row_layout(path):
+    for line in open(path):
+        s = line.strip()
+        if s.startswith('# rows'):
+            m = re.search(r'physical cells are rows (\d+) to (\d+)', s)
+            if m:
+                return int(m.group(1)) - 1, int(m.group(2))
+    return None
+
+
+def read(path, physical_only=True):
     labels, rows = None, []
     for line in open(path):
         s = line.strip()
@@ -160,7 +197,19 @@ def read(path):
             continue
         if s:
             rows.append([float(x) for x in s.split()])
-    return labels, np.array(rows)
+    a = np.array(rows)
+    lay = row_layout(path)
+    if lay is None:
+        raise SystemExit('%s: no "# rows" layout header' % path)
+    PHYS[0], PHYS[1] = lay
+    return labels, (a[lay[0]:lay[1]] if physical_only else a)
+
+
+def read_lower_ghosts(path):
+    """The rows below the base: the boundary's own output."""
+    labels, a = read(path, physical_only=False)
+    lay = row_layout(path)
+    return labels, a[:lay[0]]
 
 
 def col(labels, a, name):
@@ -223,7 +272,9 @@ def metals_present(labels, a):
 
 
 def trip(ref_dir, dump_dir, tag):
-    """One round trip: the worst distance over every compared quantity."""
+    """One round trip of the STATE: the worst distance over every compared
+    quantity, over the physical cells alone (the lower ghost rows are the
+    boundary's output and have their own row below)."""
     lh_a, HA = read('%s/output/Hydro_ioniz.txt' % ref_dir)
     lh_b, HB = read('%s/output/Hydro_ioniz.txt' % dump_dir)
     li_a, IA = read('%s/output/Ion_species.txt' % ref_dir)
@@ -235,11 +286,12 @@ def trip(ref_dir, dump_dir, tag):
     stored, derived, inv_worst = 0.0, 0.0, 0.0
     for name in ('r[Rp]', 'v[cm/s]', 'p[cgs]'):
         d, j = maxrel(col(lh_a, HA, name), col(lh_b, HB, name))
-        print('  %-6s %-12s max_rel %.3e at row %d' % (tag, name, d, j))
+        print('  %-6s %-12s max_rel %.3e at physical cell %d'
+              % (tag, name, d, j))
         stored = max(stored, d)
     d, j = maxrel(col(lh_a, HA, 'T[K]'), col(lh_b, HB, 'T[K]'))
-    print('  %-6s %-12s max_rel %.3e at row %d  (rebuilt from p and the '
-          'particle count)' % (tag, 'T[K]', d, j))
+    print('  %-6s %-12s max_rel %.3e at physical cell %d  (rebuilt from p '
+          'and the particle count)' % (tag, 'T[K]', d, j))
     derived = max(derived, d)
     for name in li_a:
         if name == 'r[Rp]':
@@ -249,21 +301,48 @@ def trip(ref_dir, dump_dir, tag):
     ia, ib = inventories(li_a, IA), inventories(li_b, IB)
     for k in ia:
         d, j = maxrel(ia[k], ib[k])
-        print('  %-6s inventory %-8s max_rel %.3e at row %d' % (tag, k, d, j))
+        print('  %-6s inventory %-8s max_rel %.3e at physical cell %d'
+              % (tag, k, d, j))
         inv_worst = max(inv_worst, d)
     return {'stored': stored, 'derived': max(derived, inv_worst),
             'H_ref': HA, 'lh_ref': lh_a, 'I_ref': IA, 'li_ref': li_a,
             'H_dump': HB, 'lh_dump': lh_b, 'I_dump': IB}
 
 
+def lower_ghost_distance(ref_dir, dump_dir):
+    """The largest relative distance between the two files' lower ghost
+    rows, over both halves of the pair."""
+    worst = 0.0
+    for f in ('Hydro_ioniz.txt', 'Ion_species.txt'):
+        la, GA = read_lower_ghosts('%s/output/%s' % (ref_dir, f))
+        lb, GB = read_lower_ghosts('%s/output/%s' % (dump_dir, f))
+        if GA.shape != GB.shape or la != lb:
+            return None
+        d, _ = maxrel(GA.ravel(), GB.ravel())
+        worst = max(worst, d)
+    return worst
+
+
 # ---- rows 1 and 2: serialization and reconstruction, one round trip -------
-print('---- one round trip: A written, B loaded and re-written ----')
+# Over the PHYSICAL cells: since D5b-2 the two rows below the base are not
+# read by the loader, and what stands there after a load is the boundary the
+# boundary-state operation derives from the physical column and the prescribed
+# reservoir (boundary model v1). They are the subject of the ghost row below.
+print('---- one round trip of the state: A written, B loaded and '
+      're-written (physical cells) ----')
 t1 = trip(work + '/A', work + '/B', 'trip1')
 if t1 is None:
     sys.exit(1)
 verdict('restart_stored_scalar_fields_round_trip', t1['stored'], 0.0, 0.0)
 verdict('restart_state_and_inventories_within_budget', t1['derived'], 0.0,
         ulp_tol)
+g_ab = lower_ghost_distance(work + '/A', work + '/B')
+print('  DIAGNOSTIC the lower ghost rows of A against B: %.3e -- the '
+      'boundary rebuild,' % (g_ab if g_ab is not None else float('nan')))
+print('  not a round-trip loss: A\'s were derived from A\'s own composition '
+      'inside the march,')
+print('  B\'s from the physical column B read and the prescribed '
+      'reservoir.')
 
 # ---- row 3: the loader's mass density IS the mass policy of the species --
 lh_a, HA, li_a, IA = t1['lh_ref'], t1['H_ref'], t1['li_ref'], t1['I_ref']
@@ -339,6 +418,39 @@ if t2 is None:
 verdict('restart_second_trip_stored_fields', t2['stored'], 0.0, 0.0)
 verdict('restart_second_trip_no_drift',
         max(t2['derived'] - t1['derived'], 0.0), 0.0, ulp_tol)
+
+# ---- row 6: the lower ghost rows of a written state ARE the boundary the
+#      loader derives from the physical column of that same file ------------
+# B wrote a state whose lower ghost rows are the boundary derived from the
+# column B had read; C read that file and derived them again from the same
+# column and the same prescribed reservoir. The rows carry no information of
+# their own: they are a function of the physical cells and the declared
+# inputs, TO THE PRECISION OF THE GHOST'S OWN SOLVE. The ghost composition is
+# the root of the ghost's ionization balance with the handoff partition
+# x_H2 = x2 (1 - x_ion) closed by a fixed-point iteration that stops at a move
+# of base_ghost_closure_tol (ionization_equilibrium.f90), so its last bits
+# depend on where that iteration started, and the start is the composition
+# the loader seeds the ghost with from the file's first physical cell before
+# the sweep. B and C have bitwise equal physical columns but not equal seeds
+# (B's seed is A's cell 1, C's is B's), and the trace ions of the two ghosts
+# differ by rounding: MEASURED 4.0e-16 on He II, He III, He 2^3S and H2+
+# after item D2b (2026-09-19), 0 before it only because the two seeds
+# happened to coincide. The tolerance is therefore the round-trip rounding
+# band of this file. Whether the loader READS the file's ghost rows is not
+# decided here, where the two alternatives differ by the same rounding: it is
+# decided by src/tests/boundary_state/ (item D5b-2), whose four ghost
+# variants perturb those rows by up to 1e-6 and 1e-2 and find the boundary
+# bitwise unchanged.
+g_bc = lower_ghost_distance(work + '/B', work + '/C')
+if g_bc is None:
+    print('FAIL restart_lower_ghost_is_the_derived_boundary '
+          'measured=schema_change reference=same tol=0')
+    n_fail += 1
+else:
+    print('  the lower ghost rows of B against C, both halves of the pair: '
+          '%.3e' % g_bc)
+    verdict('restart_lower_ghost_is_the_derived_boundary', g_bc, 0.0,
+            ulp_tol)
 
 # ---- row 6: the refusal names the cell that decided the comparison -------
 print('---- the refusal message ----')

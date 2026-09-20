@@ -157,10 +157,14 @@
 	                nm0, nm1, nm2, n_e)
 
 	! Add charge exchange (Huang Table 4) to the H, He and metal balance
-	! rows. Rates were stored per cell by cx_set_cell; absent reactants
-	! contribute zero, preserving the zero-abundance identity rows above.
+	! rows. Rates were stored per cell by cx_set_cell, at the temperature
+	! ieq_cell%T_K; absent reactants contribute zero, preserving the
+	! zero-abundance identity rows above. fvec(2) is the He I <-> He II row
+	! of heh_rows, written He I -> He II (ionization) positive, so
+	! he_row_sign = +1 and every row takes the generic orientation.
 	call cx_add_to_fvec(N_eq, fvec, nm0, nm1, nm2,                  &
-	                    n_hi, n_hii, n_hei, n_heii, n_heiii)
+	                    n_hi, n_hii, n_hei, n_heii, n_heiii,        &
+	                    1.0d0, ieq_cell%T_K)
 
 	! He <-> H charge exchange (Huang Table 4 group B). Standard He row
 	! (HeI->HeII positive), so he_row_sign = +1.
@@ -251,10 +255,12 @@
       endif
    enddo
 
-   ! Charge exchange (Huang Table 4) -- mirror of cx_add_to_fvec.
+   ! Charge exchange (Huang Table 4) -- mirror of cx_add_to_fvec, and the
+   ! same He-row orientation (+1, the ionization-positive He I <-> He II row
+   ! of heh_rows) and the same cell.
    call cx_add_to_jac(N_eq, fjac, nm0, nm1, nm2,                       &
                       n_hi, n_hii, n_hei, n_heii, n_heiii,             &
-                      met_ntot, n_h, n_he)
+                      met_ntot, n_h, n_he, 1.0d0, ieq_cell%T_K)
 
    ! He <-> H charge-exchange Jacobian (rows 1,2; cols 1,2,3), mirror of
    ! the he_h_cx_fvec call in the residual (standard He row, +1).

@@ -49,10 +49,12 @@
       ! (READ, their Figs. 6 and 7), which neither reaches this layer's
       ! 200-1600 K nor gives a temperature dependence.  Helium is therefore
       ! given Cohen & Westberg's argon coefficient, the nearest tabulated
-      ! monatomic inert third body of the same evaluation, and that is an
-      ! UPPER BOUND on the helium efficiency: argon is heavier and more
-      ! polarizable, so it forms the longer-lived collision complex.  The
-      ! substitution is stated at the coefficient and is not a fit.
+      ! monatomic inert third body of the same evaluation.  That is an
+      ! ARGON-BASED ESTIMATE FOR HELIUM and not a bound on the helium
+      ! efficiency; its range (77-5000 K), its stated uncertainty (+/-0.3 in
+      ! log) and the reason the two atoms are not ordered by mass and
+      ! polarizability are at the coefficient.  The substitution is stated
+      ! there and is not a fit.
       ! The audit of the earlier treatment, with the size of the affected
       ! terms, is docs/molecular_chemistry_audit_he_rich.md.
       !
@@ -571,26 +573,51 @@
       ! k(298) = 6.4e-33, uncertainty +/-0.3 in log throughout (READ, the
       ! argon data sheet, printed there in cm^6 molecule^-2 s^-1).
       !
-      ! WHAT IT IS USED FOR HERE, AND THE VALIDITY OF THAT USE.  Helium is
-      ! the dominant third body of a helium-rich base and no evaluation in
-      ! hand gives a helium coefficient: the only published helium
-      ! calculation, Paolini, Ohlinger & Forrey (2011), Phys. Rev. A 83,
-      ! 042713, plots its total over 0-350 K and tabulates nothing (READ).
-      ! Argon is the nearest tabulated monatomic inert third body and it
-      ! bounds helium from ABOVE: a heavier, more polarizable atom forms the
-      ! longer-lived collision complex the resonance mechanism needs, so
-      ! k1(He) <= k1(Ar).  Against the H2 coefficient this is 0.43 at
-      ! 1000 K and 0.86 at 200 K, i.e. it removes the factor ~2 by which
-      ! applying k1(H2) to helium overstated the monatomic colliders, and it
-      ! does not claim to be the helium number.
+      ! WHAT IT IS USED FOR HERE: AN ARGON-BASED ESTIMATE FOR HELIUM.
+      ! Helium is the dominant third body of a helium-rich base and no
+      ! evaluation in hand gives a helium coefficient: the only published
+      ! helium calculation, Paolini, Ohlinger & Forrey (2011), Phys. Rev.
+      ! A 83, 042713, plots its total over 0-350 K and tabulates nothing
+      ! (READ).  Argon is the nearest tabulated monatomic inert third body
+      ! of the same evaluation, and its coefficient is used for helium.
+      !
+      ! IT IS AN ESTIMATE AND NOT A BOUND.  Mass and polarizability order
+      ! the two atoms, but they do not order thermally averaged quantum
+      ! three-body recombination rates over 77-5000 K: Paolini et al. treat
+      ! He and Ar with different interaction potentials and different
+      ! resonance and continuum contributions, discuss the sensitivity to
+      ! the potential energy surface, distinguish equilibrium from
+      ! steady-state populations of the intermediate complex, and find an
+      ! additional exchange contribution that matters for Ar at low
+      ! temperature and not for He (READ).  No claim k1(He) <= k1(Ar) is
+      ! made here.
+      !
+      ! RANGE AND UNCERTAINTY OF THE NUMBER ITSELF: 77-5000 K, +/-0.3 in
+      ! log k1(Ar) throughout, which is Cohen & Westberg's own statement for
+      ! argon and is the only uncertainty this coefficient carries; the
+      ! distance from argon to helium is not inside it.  Against the H2
+      ! coefficient this is 0.43 at 1000 K and 0.86 at 200 K, i.e. it
+      ! removes the factor ~2 by which applying k1(H2) to helium overstated
+      ! the monatomic colliders.
+      !
+      ! THE SAME CHOICE IS MADE IN BOTH DIRECTIONS.  R15 and R12 multiply
+      ! one collider sum built from this coefficient
+      ! (h2_association_collider_density), so whatever the helium estimate
+      ! is, the pair stays an exact detailed balance collider by collider
+      ! and the estimate cannot displace the equilibrium constant.
       !
       ! IT IS NOT CLAMPED to its stated 77-5000 K range, and neither is
       ! k1(H2), because the grid reaches both ends of the wind and clamping
-      ! one direction of the R12/R15 pair without the other would break the
-      ! detailed balance the pair is built on.  Where the H2 these rates act
-      ! on exists, 200 to 1600 K, both are inside their ranges; above the H2
-      ! front they are extrapolated and the H2 density they multiply has
-      ! gone.
+      ! one direction of the R12/R15 pair without the other would break that
+      ! detailed balance.  WHAT THE OUT-OF-RANGE EXTRAPOLATION COSTS IS
+      ! MEASURED AND NOT ARGUED FROM THE H2 ABUNDANCE: R15 forms H2 out of
+      ! ATOMIC hydrogen at n(H)^2 sum_M k1(M) n_M, so the disappearance of
+      ! H2 above the front does not make it vanish.  Measured on the
+      ! certified molecular base of LHS 1140 b and on the hottest atomic
+      ! wind of the catalog, the association source at every cell with T
+      ! outside 77-5000 K stands far below the other H2 formation channels
+      ! there; the two profiles and the numbers are in
+      ! docs/lhs1140b_stationary_L31_energy_cycles_20260917.md.
       double precision function k3b_H_H_to_H2_monatomic(T) result(k)
       real*8, intent(in) :: T
       k = 1.9d-30/max(T, 1.0d0)
@@ -610,12 +637,17 @@
       ! Three colliders are carried, the three Cohen & Westberg (1983)
       ! recommend a coefficient for on the sheets of this reaction: H2, H
       ! and a monatomic inert atom standing for helium (see THIRD BODY M in
-      ! the module header for the substitution and its bound).  Every other
-      ! heavy particle is left out rather than counted at the H2
+      ! the module header for the substitution and its uncertainty).  Every
+      ! other heavy particle is left out rather than counted at the H2
       ! efficiency: no evaluation in hand gives a coefficient for H+, for
       ! the molecular ions or for a metal atom, and in the molecular layer
-      ! they are together below 1e-4 of this sum.  Above the H2 front they
-      ! are not, but there the H2 both reactions act on has gone.
+      ! they are together below 1e-4 of this sum.  Above the H2 front the
+      ! ionized colliders are not a small share of the heavy particles, and
+      ! leaving them out then understates the R15 association rate there;
+      ! what that association rate is worth against the other H2 sources
+      ! above the front is measured in
+      ! docs/lhs1140b_stationary_L31_energy_cycles_20260917.md, not argued
+      ! from the H2 abundance, because R15 runs on atomic hydrogen.
       double precision function h2_association_collider_density           &
                                   (T, n_H2, n_HI, n_He) result(n_eff)
       real*8, intent(in) :: T, n_H2, n_HI, n_He

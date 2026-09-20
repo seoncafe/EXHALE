@@ -2,6 +2,7 @@
       ! Evaluate RK right hand side (convection + source)
 
       use global_parameters
+      use grid_construction, only: spherical_cell_volume
       use Numerical_Fluxes
       use Conversion
       use source_func
@@ -213,7 +214,7 @@
          rm = r_edg(j-1)
          dAp = rp*rp
          dAm = rm*rm
-         dV = (dAp*rp - dAm*rm)/3.0
+         dV = spherical_cell_volume(j)
 
          ! The two interface fluxes of this cell, as the face loop assembled
          ! them
@@ -333,7 +334,7 @@
             equilibrium_pressure_force(j) =                              &
                abs(u_in(1,j)*(rp*rp*(Gphi_i(j)   - Gphi_c(j))            &
                             + rm*rm*(Gphi_c(j)   - Gphi_i(j-1))))        &
-               /((rp*rp*rp - rm*rm*rm)/3.0)
+               /spherical_cell_volume(j)
          enddo
       else
          do j = 2-Ng,N+Ng
@@ -455,7 +456,7 @@
          rm  = r_edg(j-1)
          dAp = rp*rp
          dAm = rm*rm
-         dV  = (dAp*rp - dAm*rm)/3.0
+         dV  = spherical_cell_volume(j)
          if (well_balanced) then
             wgt = equilibrium_pressure_force(j)
          else
@@ -631,7 +632,7 @@
             rm = r_edg(j-1)
             dAp = rp*rp
             dAm = rm*rm
-            dV = (dAp*rp - dAm*rm)/3.0
+            dV = spherical_cell_volume(j)
 
             if (is_first_order(j-1)) then
                Fm = flux_lo(:,j-1)

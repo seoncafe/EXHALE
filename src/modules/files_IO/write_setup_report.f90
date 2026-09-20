@@ -3,7 +3,11 @@
 	!	simulation to file
 	
 	use global_parameters
-	use base_boundary, only: r_base_level, base_reservoir_p,           &
+	use base_boundary, only: base_reservoir_prescription_version,       &
+	                         base_ghost_counts_measured,                &
+	                         base_ghost_particle_count,                 &
+	                         base_ghost_electron_count,                 &
+	                         r_base_level, base_reservoir_p,            &
                             base_reservoir_T, base_face_mach_blend
 	use charge_exchange, only: he_h_charge_exchange, cx_o2p_h_scale
 	! Which spectrum built the grid; the single record of the choice.
@@ -43,9 +47,7 @@
 	subroutine write_setup_report
 	! Write summary of the current simulation setup to file
 
-	! Number of metal elements with a non-zero abundance. NOTE: the intrinsic
-	! COUNT cannot be used here -- `count` is the global step counter in
-	! global_parameters, so the name is shadowed module-wide.
+	! Number of metal elements with a non-zero abundance.
 	integer :: imet, n_met_active
 	! The flux the photon grid actually carries, and the nominal
 	! (10^LX + 10^LEUV)/(4 pi a^2) at the same dayside dilution.
@@ -200,15 +202,6 @@
       '- The molecular carrier H2 is TRANSPORTED: implicit diffusion'//    &
       '-advection solved with the H2 balance of the same network'
 			endif
-			if (ionization_transport) then
-				write(outfile,*) &
-      '- The HYDROGEN IONIZATION STATE is TRANSPORTED too: H+ is'//        &
-      ' carried by the same operator, so the H/H+ partition is what'//     &
-      ' the flow accumulated and not the local equilibrium'
-				write(outfile,*) &
-      '  (for a wind in which P r/|v| < 1 the local root over-ionizes;'//  &
-      ' docs/k22_electron_density_excess.md sec. 7)'
-			endif
 			if (carrier_in_newton) then
 				write(outfile,*) &
       '  and n(H2) is a FOURTH NEWTON UNKNOWN per cell: the wind and'//    &
@@ -237,6 +230,40 @@
 			write(outfile,*) &
       '- Molecular carriers are a LOCAL steady state ("Molecular carrier'//&
       ' transport: False"): the chemistry alone, not a model of a base'
+		endif
+	endif
+	if (ionization_transport) then
+		write(outfile,*) &
+      '- The IONIZATION STATE of hydrogen and helium is TRANSPORTED'//     &
+      ' too: the carried set is x(H II) = n(H II)/n(H nuclei),'//         &
+      ' x(He II) = n(He II)/n(He nuclei) and x(He III) ='//               &
+      ' n(He III)/n(He nuclei), each a fraction per element NUCLEUS,'//   &
+      ' so the ionization partition is what the flow accumulated and'//   &
+      ' not the local equilibrium'
+		write(outfile,*) &
+      '  a stage flux is x N_el - n_el K_zz dx/dr with N_el that'//        &
+      ' element''s nucleus flux from the element operator, so the'//      &
+      ' stage fluxes of an element sum to its element flux face by face'
+		write(outfile,*) &
+      '  the neutral stage of each element closes its simplex and is'//    &
+      ' not a row: H I with the hydrogen the molecules hold, He I with'// &
+      ' the helium of HeH+'
+		write(outfile,*) &
+      '  (for a wind in which P r/|v| < 1 the local root over-ionizes;'//  &
+      ' docs/k22_electron_density_excess.md sec. 7)'
+		if (thereis_mol) then
+			write(outfile,*) &
+      '  the source of each stage row is rows (1), (2) and (3) of the'//   &
+      ' molecular H/He network, the same rows the equilibrium sweep of'// &
+      ' this gas solves'
+		else
+			write(outfile,*) &
+      '  the source of each stage row is the H/He ionization balance of'//&
+      ' an atomic gas -- photoionization with its secondaries,'//         &
+      ' collisional ionization, radiative and dielectronic'//             &
+      ' recombination, He <-> H charge exchange and the He 2^3S'//        &
+      ' channels where the level is tracked -- the same rows the'//       &
+      ' equilibrium sweep of this gas solves'
 		endif
 	endif
 	if (thereis_oxychem) then
@@ -456,6 +483,18 @@
 		write(outfile,16) '- Base grid: ', N_low_cells,                    &
 			' uniform cells of ', dr_base, ' R_p (uniform region ',        &
 			dr_base*N_low_cells, ' R_p)'
+		! The width to all its digits, and where it came from. Two inputs
+		! that read alike build two grids whose states do not load into
+		! each other (load_IC compares cell centers to 1e-10), so the
+		! report states the value that reproduces this grid, not a
+		! rounded spelling of it.
+		if (dr_base_from_key) then
+			write(outfile,'(A,A,A)') '   dr_base = ',                      &
+				trim(round_trip_decimal(dr_base)), ' (from the key)'
+		else
+			write(outfile,'(A,A,A)') '   dr_base = ',                      &
+				trim(round_trip_decimal(dr_base)), ' (the default)'
+		endif
 	else
 		write(outfile,*) '- Base grid: "Base grid [dr,cells]" is ignored'//&
 			' by grid type '//trim(grid_type)//' (Mixed only)'
@@ -554,7 +593,7 @@
 		' face r_edg(0)'
 	write(outfile,23) '    reservoir (p, s) at r = ', r_base_level,         &
 		': p = ', base_reservoir_p, ' p0, T = ', base_reservoir_T, ' T0'
-	write(outfile,21) '    entropy-branch blend window, face Mach = ',      &
+	write(outfile,21) '    supersonic-outflow regularization width, face Mach = ',      &
 		base_face_mach_blend
 	if (shapiro_eps .gt. 0.0d0) then
 		write(outfile,22) '- Shapiro filter: on, eps = ', shapiro_eps,       &
@@ -580,7 +619,7 @@
 		write(outfile,*) '- Molecular IR bands: off (no H2, H2O or CO '//     &
 			'infrared channel below the H2 -> H front)'
 	endif
-	write(outfile,19) '- Max marching steps: ', count_max
+	write(outfile,19) '- Max marching steps: ', marching_step_max
 	write(outfile,*) 
 	if (.not.do_load_IC) &
 		write(outfile,*) '----- Starting a new simulation ----- '
@@ -782,7 +821,7 @@
 	call put_i('shapiro_every', shapiro_every)
 	call put_r('lowmach_damp_eps', lowmach_damp_eps)
 	call put_r('lowmach_damp_mach_th', lowmach_damp_mach_th)
-	call put_i('count_max', count_max)
+	call put_i('count_max', marching_step_max)
 	call put_r('coronal_cutoff_width', coronal_cutoff_width)
 	call put_l('base_ir_field', base_ir_field)
 	call put_l('mol_ir_bands', mol_ir_bands)
@@ -811,6 +850,15 @@
 	call put_r('atilde', atilde)
 	call put_r('r_max', r_max)
 	call put_r('mass_per_H', mass_per_H)
+	! WHICH COUNT THIS IS. ntot_bc and dp_bc below are the PRESCRIBED base
+	! reservoir's counts, version 1 of that prescription: the base nuclei
+	! count per unit n0 corrected for H2 binding, and the electron term of
+	! the same level. They are resolved once at startup and no sweep writes
+	! them back. What a composition sweep MEASURES in the lower ghost is a
+	! different quantity under a similar name, and it is written beside them
+	! in EXHALE_resolved.out (base_ghost_count_solved); this dump is a
+	! parse record compared line by line, so the statement is made here and
+	! not in it.
 	call put_r('ntot_bc', ntot_bc)
 	call put_r('rho_bc', rho_bc)
 	call put_r('v0', v0)
@@ -893,6 +941,31 @@
 	! The discretization of the pressure/gravity pair, which decides what a
 	! profile written by this run is a steady state OF.
 	write(u,'(A,L1)')     'well_balanced             ', well_balanced
+	! THE GRID THIS RUN IS SOLVED ON, stated so that it can be rebuilt from
+	! this record alone. The width is written at round-trip precision
+	! because a grid is not reproduced by a rounded width: two widths that
+	! read alike to a human build two grids whose states do not load into
+	! each other (load_IC compares cell centers to 1e-10 relative), and a
+	! reproduction input must carry the digits, not the spelling of the key
+	! that was typed. base_cell_width_source says whether the width came
+	! from "Base grid [dr,cells]:" or from the code's default; value
+	! equality cannot answer that, because a key may state the default's own
+	! digits. base_grid_in_effect is F for the Uniform and Stretched grid
+	! types, which ignore the width and the cell count.
+	write(u,'(A,A)')      'grid_type                 ', trim(grid_type)
+	write(u,'(A,I0)')     'grid_cells                ', N
+	write(u,'(A,A)')      'outer_radius_Rp           ',                  &
+		trim(round_trip_decimal(r_max))
+	write(u,'(A,A)')      'base_cell_width_Rp        ',                  &
+		trim(round_trip_decimal(dr_base))
+	write(u,'(A,I0)')     'base_uniform_cells        ', N_low_cells
+	if (dr_base_from_key) then
+		write(u,'(A)')     'base_cell_width_source    key'
+	else
+		write(u,'(A)')     'base_cell_width_source    default'
+	endif
+	write(u,'(A,L1)')     'base_grid_in_effect       ',                  &
+		grid_type .eq. 'Mixed'
 	! Which set of atomic H/He rate coefficients the run used: 'K22' = the
 	! four Koskinen et al. (2022) Table 1 entries R1-R4 selected by "Atomic
 	! rate set:", 'default' = EXHALE's own (Badnell/Mao case B, or the
@@ -940,7 +1013,25 @@
 	! solved profiles against the abundances the run actually used, whether
 	! they came from metals.inp or from the "<El>_H_base" handoff keys.
 	write(u,'(A,ES23.15E3)') 'mass_per_H_amu            ', mass_per_H
+	! THE PRESCRIBED RESERVOIR COUNT, and not what a sweep measured in the
+	! ghost. ntot_bc is the base nuclei count per unit n0 corrected for H2
+	! binding, resolved once at startup from the base mixing ratio; version 1
+	! of the reservoir prescription (base_boundary). The ghost's own counts,
+	! where a sweep has measured them, are the two lines below it: they are a
+	! statement about the state and are never fed back into the reservoir.
+	write(u,'(A)') '# ntot_bc_per_H is the PRESCRIBED base reservoir'//   &
+	     ' count (reservoir prescription version 1);'
+	write(u,'(A)') '#   base_ghost_count_solved is what the composition'//&
+	     ' sweep measured in the lower ghost.'
 	write(u,'(A,ES23.15E3)') 'ntot_bc_per_H             ', ntot_bc
+	write(u,'(A,I0)')        'base_reservoir_version    ',               &
+	     base_reservoir_prescription_version
+	if (base_ghost_counts_measured) then
+		write(u,'(A,ES23.15E3)') 'base_ghost_count_solved   ',            &
+		     base_ghost_particle_count
+		write(u,'(A,ES23.15E3)') 'base_ghost_electrons_solved',           &
+		     base_ghost_electron_count
+	endif
 	! The base H2 fraction the run resolved, the ceiling the element ratio
 	! allows, and what the pair implies for the hydrogen nuclei. The mixing
 	! ratio alone does not say how molecular the base is -- the same q_H2
@@ -1065,6 +1156,23 @@
 	endif
 	close(u)
 	end subroutine write_resolved_config
+
+	! ------------------------------ !
+
+	function round_trip_decimal(val) result(s)
+	! The decimal spelling of a binary64 value that a list-directed read
+	! returns to the same bits. 17 significant decimal digits suffice for
+	! binary64; the 18 printed here are within the field, and the field is
+	! wide enough for the sign of the value and a three-digit exponent of
+	! either sign (ES24.17E3 is not: it fills with asterisks for a negative
+	! value). Both signs, zero, the exponent range and the parse back to the
+	! same bits are asserted by
+	! src/tests/grid_and_gates/base_cell_width_provenance.f90.
+	real*8, intent(in) :: val
+	character(len=26)  :: s
+	write(s,'(ES26.17E3)') val
+	s = adjustl(s)
+	end function round_trip_decimal
 
 	! End of module
 	end module setup_report

@@ -63,6 +63,7 @@
       use diffusive_photochemistry, only: carrier_set_init, carrier_state, &
                                           carrier_source,                  &
                                           carrier_element_reference_density,&
+                                          ic_HeII, ic_HeIII,                &
                                           carrier_source_derivative_step,   &
                                           n_carrier_max,                    &
                                           ic_H2, ic_OH, ic_H2O, ic_CO, ic_Hp
@@ -74,6 +75,10 @@
       real*8, parameter :: nH_tab = 3.0d10
       real*8, parameter :: nO_tab = 7.0d6
       real*8, parameter :: nC_tab = 2.0d6
+      ! The helium nucleus density an ionization stage of helium is
+      ! charged to, distinct from every other number above so that a row
+      ! naming the wrong element cannot pass.
+      real*8, parameter :: nHe_tab = 4.0d9
       ! The cell the derivative is taken in, and the reference step of the
       ! central difference as a fraction of the free hydrogen density.
       integer, parameter :: jcell = 3
@@ -93,20 +98,32 @@
       ! ---- (1) the element table ------------------------------------- !
       call check_relative('carrier_reference_H2_is_hydrogen',             &
            carrier_element_reference_density(ic_H2, nH_tab, nO_tab,       &
-                                             nC_tab), nH_tab, 1.0d-12)
+                                             nC_tab, nHe_tab), nH_tab, 1.0d-12)
       call check_relative('carrier_reference_Hp_is_hydrogen',             &
            carrier_element_reference_density(ic_Hp, nH_tab, nO_tab,       &
-                                             nC_tab), nH_tab, 1.0d-12)
+                                             nC_tab, nHe_tab), nH_tab, 1.0d-12)
       call check_relative('carrier_reference_OH_is_oxygen',               &
            carrier_element_reference_density(ic_OH, nH_tab, nO_tab,       &
-                                             nC_tab), nO_tab, 1.0d-12)
+                                             nC_tab, nHe_tab), nO_tab, 1.0d-12)
       call check_relative('carrier_reference_H2O_is_oxygen',              &
            carrier_element_reference_density(ic_H2O, nH_tab, nO_tab,      &
-                                             nC_tab), nO_tab, 1.0d-12)
+                                             nC_tab, nHe_tab), nO_tab, 1.0d-12)
+      ! The two ionized stages of helium are charged to the helium nucleus
+      ! density: a stage re-partitions its own element and takes nothing
+      ! from any other, so the largest density it can reach is every
+      ! nucleus of that element.
+      call check_relative('carrier_reference_HeII_is_helium',             &
+           carrier_element_reference_density(ic_HeII, nH_tab, nO_tab,     &
+                                             nC_tab, nHe_tab),           &
+           nHe_tab, 1.0d-12)
+      call check_relative('carrier_reference_HeIII_is_helium',            &
+           carrier_element_reference_density(ic_HeIII, nH_tab, nO_tab,    &
+                                             nC_tab, nHe_tab),           &
+           nHe_tab, 1.0d-12)
       ! CO needs one nucleus of each, so the scarcer element bounds it.
       call check_relative('carrier_reference_CO_is_scarcer_of_O_and_C',   &
            carrier_element_reference_density(ic_CO, nH_tab, nO_tab,       &
-                                             nC_tab), nC_tab, 1.0d-12)
+                                             nC_tab, nHe_tab), nC_tab, 1.0d-12)
 
       ! ---- the column the derivatives are taken on -------------------- !
       call build_molecular_hydrogen_column()
@@ -135,7 +152,7 @@
 
          dn = carrier_source_derivative_step(ic_Hp, nhp, nH_free(jcell),  &
                                              nO_free(jcell),             &
-                                             nC_free(jcell))
+                                             nC_free(jcell), nHe_tab)
          ! (3) the step itself.  Below 1e-6 of the free hydrogen density the
          ! proton's own value cannot set a resolvable step and the element
          ! floor has to; above it the step follows the carrier.

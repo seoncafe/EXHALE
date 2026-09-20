@@ -29,7 +29,12 @@
 set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$HERE/../../.." && pwd)"
-EXE="${EXHALE_EXE:-$ROOT/EXHALE.x}"
+# The binary is selected and its identity stated in one place;
+# src/tests/exhale_exe.sh carries the policy.
+. "$HERE/../exhale_exe.sh"
+exhale_select_exe "$ROOT" base_level_single_statement
+EXE="$EXHALE_RUN_EXE"
+exhale_announce_exe
 WORK="${EXHALE_TEST_OUT:-$ROOT/build/tests/grid_and_gates}/lp"
 CASE="$ROOT/backup/regression/lower_profile"
 

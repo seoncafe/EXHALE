@@ -30,15 +30,20 @@
            carrier_advective_face_coefficients,                           &
            carrier_base_composition_imposed,                              &
            carrier_mass_amu, n_carrier_max, ic_H2
+      use grid_construction, only: spherical_face_area_and_cell_volume
+      use species_advective_transport, only: species_face_fraction,       &
+                                             species_face_flux
       use assertion_report, only: check_relative, check_positive,         &
-                                  assertion_failures
+                                  check_absolute, assertion_failures
       implicit none
 
       real*8, allocatable :: fc(:,:), msum(:), Frho(:)
       real*8, allocatable :: adv_p(:,:), adv_m(:,:)
       real*8, allocatable :: advj(:), advm(:)
+      real*8, allocatable :: fa(:), cv(:), Y(:), Yf(:), Fs(:)
       real*8  :: h, dnum, dana, mc
-      integer :: ic, kase
+      real*8  :: tconv, dvj, worst, wscale, csum, cscale, bnd
+      integer :: ic, kase, j
       character(len=72) :: nm
       logical :: linear, outward
 
@@ -96,6 +101,44 @@
             call check_positive(trim(nm), abs(dnum))
          endif
       enddo
+
+      ! THE CARRIER ADVECTION IS THE EXACT SPHERICAL DIVERGENCE OF ONE
+      ! FACE FLUX (docs/PLAN_20260917.md item L30).  The divergence the
+      ! operator returns is rebuilt here from the face areas A = r_edg^2 and
+      ! the exact shell volumes V = (r_+^3 - r_-^3)/3 that
+      ! spherical_face_area_and_cell_volume defines once for the whole code,
+      ! and summed down the column, where the internal faces cancel and the
+      ! two boundary face fluxes are left.  The carrier row's diffusive half
+      ! divides by the same V, which is what makes the row the divergence of
+      ! a single flux; these rows hold the half that is reachable from
+      ! outside the module.
+      allocate(fa(0:N), cv(1:N), Y(1-Ng:N+Ng), Yf(1-Ng:N+Ng),             &
+               Fs(1-Ng:N+Ng))
+      call fill_state(fc, msum, Frho, .true., .true., ic)
+      call carrier_advective_divergence(fc, msum, Frho, adv_p, adv_m)
+      call spherical_face_area_and_cell_volume(fa, cv)
+      Y = mc*fc(:,ic)/msum
+      call species_face_fraction(Y, Frho, Yf)
+      call species_face_flux(Frho, Yf, Fs)
+      tconv  = n0*v0/R0
+      worst  = 0.0d0
+      wscale = 0.0d0
+      csum   = 0.0d0
+      cscale = 0.0d0
+      do j = 1, N
+         dvj    = (fa(j)*Fs(j) - fa(j-1)*Fs(j-1))/cv(j)
+         worst  = max(worst, abs(dvj*msum(j)/mc*tconv - adv_p(j,ic)))
+         wscale = max(wscale, abs(adv_m(j,ic)))
+         csum   = csum   + cv(j)*adv_p(j,ic)*mc/(msum(j)*tconv)
+         cscale = cscale + cv(j)*adv_m(j,ic)*mc/(msum(j)*tconv)
+      enddo
+      bnd = fa(N)*Fs(N) - fa(0)*Fs(0)
+      call check_absolute('carrier_advection_is_the_exact_shell_'//       &
+           'divergence', worst/max(wscale, 1.0d-300), 0.0d0, 1.0d-14)
+      call check_absolute('carrier_advection_telescopes_to_the_'//        &
+           'boundary_face_flux', abs(csum - bnd)/max(cscale, 1.0d-300),   &
+           0.0d0, 1.0d-13)
+      deallocate(fa, cv, Y, Yf, Fs)
 
       if (assertion_failures .gt. 0) stop 1
 

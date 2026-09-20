@@ -511,6 +511,27 @@ of the two component-1 \emph{masses} read from the cell. The result is the
 initial guess for \texttt{ioniz\_eq}, which owns the split \emph{within} an
 element while this step owns the element totals.
 
+\paragraph{The base of the operator, and what crosses it.}
+The gradient and drift coefficients are built on the faces 1 to $N-1$, and
+faces 0 and $N$ are left at zero, so \textbf{the diffusive flux at the base
+face is zero by construction and not by the state}: an element crosses either
+end of the column with the gas alone.  The flux the Dirichlet reservoir
+composition drives sits at the first solved face, which is face 1 while the
+operator solves rows 2 to $N$ against the reservoir, and face 0 where a
+closed base makes cell 1 an unknown.  The record
+\texttt{element\_base\_flux} carries both faces rather than leaving either
+to be assumed: the advective and the diffusive half at the base face and at
+the first solved face, in ${\rm g\,cm^{-2}\,s^{-1}}$ positive outward
+(toward increasing $r$), together with the index of the first solved face and
+a count of the operator evaluations that produced a composition.  A report
+reads the evaluation the numbers belong to, and a count of zero means no
+operator has run, which is not a flux of zero.  The evaluation matters
+because the base entry is not steady while the base is: MEASURED on the
+\texttt{lower\_profile} configuration, the advective half at the base face
+reads $+4.47\times10^{-8}$ at evaluation 1079, $-3.35\times10^{-10}$ at
+11220 and $+6.29\times10^{-10}$ at 12000, as the base sound wave turns the
+face flux over in sign (item P6e).
+
 The whole operator is gated by \texttt{He\_diffusion}, default off. With
 \texttt{he\_metal\_diffusion} (default off) each trace element additionally
 carries its own mass fraction and its own binary coefficient; otherwise the
