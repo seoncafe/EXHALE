@@ -86,7 +86,7 @@ COOL_GAS_CHANNELS = ['rec', 'coll_ion', 'coex_HI', 'coex_HeI', 'coex_HeII',
 # r >= 1.2 R_p of one converged HD 189733 b state is 1.05e-2 with the ghost
 # rows and 4.65e-3 without, a factor 2.3, and the factor is state-dependent
 # (1.25 on WASP-121b, 1.00 on a hot Uranus), so a consumer cannot assume it
-# is small.  Section 133.6 / 137 of docs/Update_EXHALE_stage1.md.
+# is small.  Section 133.6 / 137 of docs/Update_EXHALE_stage1.pdf.
 NGHOST = 2
 
 _ROWS_HEADER = re.compile(r'physical cells are rows\s+(\d+)\s+to\s+(\d+)')

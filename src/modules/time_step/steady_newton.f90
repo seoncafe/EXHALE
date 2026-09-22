@@ -73,7 +73,7 @@
                                         trace_row_terms_diag,           &
                                         trace_row_terms_from
       use species_table,          only: n_melem, melem_name
-      ! THE ONE STOICHIOMETRIC MAP OF THE NUCLEI OF A CELL (item N4a). The
+      ! THE ONE STOICHIOMETRIC MAP OF THE NUCLEI OF A CELL. The
       ! shared element constraint of the step, its derivatives and the
       ! element totals the write-back restores are all read from here, so
       ! that the step, the feasibility screen and the composition it writes
@@ -297,7 +297,7 @@
       ! only by write statements: it enters no numerical path.
       integer :: n_stationary_solve = 0
 
-      ! THE SPECIES ROWS OF THE STATIONARY SYSTEM (B5).
+      ! THE SPECIES ROWS OF THE STATIONARY SYSTEM.
       !
       ! Every transported balance the configuration activates is a ROW of
       ! this system and its transported quantity is an UNKNOWN of the cell:
@@ -472,7 +472,7 @@
       ! A STANDING MULTIPLIER OF THE PROBE ARC (EXHALE_JV_PROBE_ARC=<x>,
       ! default 1). The arc sqrt(epsilon)(1 + ||Y||) balances the rounding
       ! of the residual against the curvature of it only where the
-      ! residual's spread is its own last bit. MEASURED (item N31, atomic
+      ! residual's spread is its own last bit. MEASURED (atomic
       ! element reload): along the PRECONDITIONED Krylov directions the
       ! residual carries a floor five to seven decades above that, the
       ! additivity defect is that floor divided by the increment the probe
@@ -665,7 +665,7 @@
       ! It is applied only where `admissible` is asked for, so the marching
       ! path and the current iterate are untouched.
       !
-      ! Grounds (docs/Update_EXHALE_stage1.pdf section 138; measurement P49). On the
+      ! Grounds (docs/Update_EXHALE_stage1.pdf section 138). On the
       ! hot Uranus hand-off the solve spent 66 iterations driving the layer at
       ! 1.19-1.23 R_p from 3.5e-14 to 7.7e-16 g cm^-3 and from 900 K to
       ! 65,000 K while ||R|| improved from 8.2e-2 to 2.8e-2. What held that
@@ -780,12 +780,11 @@
       ! describe. It is the SUM over those screens; n_eval_refusal is the
       ! census that separates them, and it had to be written because the
       ! single count was read as an element-budget count for a solve whose
-      ! 514 refusals were all the positivity of one carrier unknown
-      ! (report B5g section 6.3).
+      ! 514 refusals were all the positivity of one carrier unknown.
       integer :: n_trial_headroom  = 0
       integer :: n_headroom_last    = 0
-      ! WHAT A CANDIDATE'S BREACH IS COMPARED WITH, and it is a MAGNITUDE
-      ! (item N4b): the worst relative violation of a shared element row
+      ! WHAT A CANDIDATE'S BREACH IS COMPARED WITH, and it is a MAGNITUDE:
+      ! the worst relative violation of a shared element row
       ! that the iterate the rows were frozen at itself carries.
       !
       ! It is set where the rows are frozen and nowhere else
@@ -887,7 +886,7 @@
       ! He I and H2+ fractions are ~1e-20, eight decades below that floor,
       ! so their denominator is the floor and the quotient reports their
       ! round-off rather than a change of the state. MEASURED on the
-      ! molecular hot Uranus (report B5h section 2): the increment plateaus
+      ! molecular hot Uranus: the increment plateaus
       ! at 6e-11 wandering among cells 439-461 in He I and H2+ and stays
       ! there for sixty passes at a fixed count, so `eq_sweep_reltol` below
       ! about 1e-10 is unreachable by construction and the passes a tighter
@@ -974,11 +973,11 @@
       ! applied to r0, and its length tau ||g|| = (r0.Ag)||g||/||Ag||^2
       ! collapses where the band's row scales make ||Ag|| stand decades
       ! above r0 . A g: MEASURED on the atomic element reload, ||sU||/delta
-      ! was 3.3e-4 at entry and 1.7e-6 at outer iteration 60 (N7 report,
-      ! proposal P3). A leg that short moves the step by less than the
+      ! was 3.3e-4 at entry and 1.7e-6 at outer iteration 60.
+      ! A leg that short moves the step by less than the
       ! radius resolves, while A sU is not small at all and dominates the
       ! model slope r0 . A s -- so the slope described a leg that was not in
-      ! the step, and the ray test rightly refused it (N7b). Dropping the
+      ! the step, and the ray test rightly refused it. Dropping the
       ! leg makes the model slope the slope of the step actually taken; the
       ! dogleg is then the Krylov leg cut to the ball, which does predict a
       ! reduction whenever the cycle reduced the model residual.
@@ -994,7 +993,7 @@
       ! so a leg that supplies the image while supplying no length makes
       ! that slope a statement about a direction the step does not contain,
       ! and the predicted decrease 0.5 (r0.Ag)^2/||Ag||^2 it then carries
-      ! has no radius in it at all (N7b; N22 report, noticed item 1).
+      ! has no radius in it at all.
       ! MEASURED at outer iteration 145 of the atomic element reload:
       ! ||sU||/delta was 6.856e-3, which the length test above keeps
       ! because it stands above cauchy_leg_min_fraction, and the step being
@@ -1020,7 +1019,7 @@
       ! slope a statement about the step, the leg's image share being
       ! small.
       ! OFF BY DEFAULT BECAUSE IT IS MEASURED TO BE WORSE, not because it
-      ! is untried (N24). The two rules select different legs from the
+      ! is untried. The two rules select different legs from the
       ! seventh outer iteration of the atomic element reload onward, and
       ! there the image rule alone hands back ||R|| 2.296e-2 against the
       ! length rule's 1.356e-2 (71 legs dropped on their image, none on
@@ -1081,7 +1080,7 @@
       ! WHICH DIRECTION THE TRUST REGION'S FIRST RADIUS WAS MEASURED ON,
       ! and whether there was one. A radius is a length, so it can only be
       ! set from a direction the step may actually take: an arbitrary
-      ! positive number does not create a direction that is missing (R1).
+      ! positive number does not create a direction that is missing.
       integer, parameter :: tr_radius_from_the_krylov_step = 1
       integer, parameter :: tr_radius_from_the_gradient    = 2
       integer, parameter :: tr_radius_no_feasible_descent  = 3
@@ -1102,7 +1101,7 @@
       ! below the scale of the state and cannot mask a genuinely tiny valid
       ! direction, while it does stop a radius of exactly zero from being an
       ! absorbing state. MEASURED against the radius the two species-row
-      ! fixtures actually take (item N1 report), which is far above it.
+      ! fixtures actually take, which is far above it.
       real*8,  parameter :: tr_delta_min_dimensionless = 1.0d-6
 
       ! --- THE STATE A STATIONARY SOLVE CARRIES BESIDE ITS ITERATE, AND
@@ -1132,7 +1131,7 @@
       integer, parameter :: n_tr_reset_kind             = 5
       ! WHICH OF THE FIVE A RESTART OF THIS SOLVE TAKES
       ! (read_trust_region_restart_controls). All five is what a re-entry
-      ! does; a single one is how the measurements of item N21 separate them.
+      ! does; a single one is how the measurements separate them.
       logical :: tr_reset_wanted(n_tr_reset_kind) = .true.
       ! The outer iteration at which one restart is forced whatever the
       ! trigger says, 0 for none (EXHALE_TR_RESTART_AT). It exists so that
@@ -1149,7 +1148,7 @@
       integer :: tr_restart_without_improvement = 0
       ! THE DEFAULT OF THAT TRIGGER. It is 0 -- disarmed -- until the
       ! restart is measured to help on both species-row fixtures; the
-      ! measurement of item N21 is what may change it, and the settings are
+      ! measurement is what may change it, and the settings are
       ! reached through EXHALE_TR_RESTART_STALL.
       integer, parameter :: tr_restart_stall_default = 0
       ! How many restarts this solve has taken, and of which kind.
@@ -1195,8 +1194,7 @@
       ! worth its inner products: the model residual is read to a relative
       ! 1e-1 and the predicted decrease to a few digits, so a basis whose
       ! worst inner product is below 1e-8 cannot be what makes either of
-      ! them wrong (the condition item N3 stated, where the carrier fixture
-      ! measured 6.9e-13).
+      ! them wrong (the carrier fixture measured 6.9e-13).
       real*8,  parameter :: gm_reorthogonalization_loss_level = 1.0d-8
       ! WHETHER THE IMAGE THE ARNOLDI RELATION RETURNS IS CHECKED AGAINST
       ! THE OPERATOR, basis vector by basis vector (EXHALE_GM_IMAGE_CHECK=1,
@@ -1349,8 +1347,8 @@
       !
       ! WHAT IS FREE AND WHAT IS NOT. The merit, the gate, the trust
       ! region's predicted decrease and the certification all read the
-      ! residual on the certification row scales (decision 20 a,
-      ! merit_row_scale_from_certification), and that fixes r0 = F/Drow.
+      ! residual on the certification row scales
+      ! (merit_row_scale_from_certification), and that fixes r0 = F/Drow.
       ! It does not fix the row scaling of the LINEAR MODEL: solving
       ! (E A) s = E r0 with E diagonal and positive is the same linear
       ! system, and its exact solution is the same step. What E changes is
@@ -1365,7 +1363,7 @@
       ! E IS UNIT INFINITY NORM PER ROW OF THE BANDED MODEL, not unit
       ! diagonal. The row that binds on the carrier fixture carries a
       ! diagonal 3.3e3 below its coupling to the hydrodynamic unknowns of
-      ! its own stencil (section N35), so a scaling to unit diagonal would
+      ! its own stencil, so a scaling to unit diagonal would
       ! multiply that row by three decades against the rest of the system
       ! and equilibrate nothing; and a row scaling of either kind leaves
       ! the diagonal-to-off-diagonal ratio WITHIN a row exactly where it
@@ -1408,7 +1406,7 @@
       ! search descends (|| F/D ||_2, cell_state_scales) and the ledger that
       ! chooses the returned state are all as they were: this is the row
       ! scaling of the LINEAR MODEL and of the band that preconditions it,
-      ! the freedom decision 20 a leaves open and the same freedom
+      ! the freedom that is left open and the same freedom
       ! model_row_equilibration takes with the band's infinity norm.
       ! The four-unknown route keeps the certification row scales
       ! (cell_row_scales), which already carry s_k there.
@@ -1763,7 +1761,7 @@
       ! step only while the Arnoldi relation is a statement about the
       ! operator. The action here is the secant of a NONLINEAR residual
       ! over a fixed probe arc, and MEASURED at the binding iterate of both
-      ! fixtures (section N35) the reduced residual falls monotonically
+      ! fixtures the reduced residual falls monotonically
       ! with the subspace size while the residual the returned step reaches
       ! against the operator stops falling at 60 to 80 products and rises.
       ! With this option the cycle forms its candidate step every
@@ -1807,7 +1805,7 @@
       ! (A + c (k - lin_test_drift_after) I) v with k the number of
       ! products taken. It states, in the small, what the matrix-free
       ! action does in the large -- the secant of a nonlinear residual is
-      ! not one operator over a whole cycle (section N35) -- so that a
+      ! not one operator over a whole cycle -- so that a
       ! cycle whose reduced residual keeps falling while the residual its
       ! step reaches against the current action rises can be exercised
       ! without a reload.
@@ -1937,7 +1935,7 @@
       ! along a direction with an outward component leaves the admissible set
       ! on both sides. In ln n positivity is a property of the
       ! parametrization -- exp of any real is positive -- so the face is not
-      ! there to be negotiated with. MEASURED on `mol_carrier` (item B5j),
+      ! there to be negotiated with. MEASURED on `mol_carrier`,
       ! the same case and the same tolerance: ||R|| 1.415 with the density
       ! unknown and its bound-aware region against 0.9972 with ln n, the
       ! merit 7.51 against 0.924, 28 of 64 steps the Cauchy point alone
@@ -2047,7 +2045,7 @@
       ! no species unknown and every reader returns before asking.
       real*8, allocatable :: species_box_lo(:), species_box_hi(:)
       ! WHETHER THE SHARED ELEMENT BUDGET IS A ROW OF THE STEP OR A FACE
-      ! OF THIS BOX (item N4b, decision 14 route (i)).
+      ! OF THIS BOX.
       !
       ! A BUDGET IS NOT A COORDINATE BOUND. Two carriers of one element
       ! spend one budget, so the feasible set of the carriers of a cell is
@@ -2057,7 +2055,7 @@
       ! a half-space of the cell's unknowns and not a product of intervals.
       ! Each carrier's own ceiling budget/nuclei is one CORNER of it, and
       ! the conjunction of those corners admits a cell holding two hydrogen
-      ! nuclei where the cell has one (item N4a, measured breach 1.0 of the
+      ! nuclei where the cell has one (measured breach 1.0 of the
       ! available hydrogen). The corners are also what cost the step whole
       ! directions: a component with no room between its value and its own
       ! ceiling makes the fraction-to-the-boundary rule return zero for the
@@ -2075,16 +2073,16 @@
       !
       ! EXHALE_ELEMENT_CONSTRAINT_ROWS=0 is the control it is measured
       ! against: the budget goes back under a coordinate face and no row is
-      ! formed, which is the box the B5j to B5l measurements were made in.
+      ! formed, which is the box the measurements were made in.
       logical :: element_constraint_rows_on = .true.
       ! WHETHER THE WRITE-BACK RESTORES THE ELEMENT TOTALS OF THE CELL IT
-      ! WRITES (item N4b deliverable 4). It is a conservation statement and
+      ! WRITES. It is a conservation statement and
       ! not an option: an operator that moves one element of a cell without
       ! the other changes the composition the run was given.
       ! EXHALE_ELEMENT_WRITE_BACK=0 is the control it is measured against, in
       ! which the carrier column is written and nothing puts the element
       ! total back, and the He/H of the state then leaves its reservoir
-      ! along the solve (item N4a section 6b).
+      ! along the solve.
       logical :: element_write_back_conserves = .true.
       ! ONE FLOATING-POINT STEP INSIDE THE ELEMENT BUDGET, and it is a
       ! representability guard rather than a margin.  The face is stored in
@@ -2101,7 +2099,7 @@
       ! freeze_species_unknown_box), so this is how often that had to happen.
       integer :: n_budget_face_at_the_iterate = 0
 
-      ! ---- THE SHARED ELEMENT CONSTRAINT AS ROWS OF THE STEP (N4b) ----
+      ! ---- THE SHARED ELEMENT CONSTRAINT AS ROWS OF THE STEP ----
       ! One row for each element a carrier of the cell holds: hydrogen,
       ! oxygen and carbon. Helium is held by no carrier and has no row.
       integer, parameter :: n_element_constraint_rows = 3
@@ -2353,7 +2351,7 @@
                ! put 1500 of the unknowns on a bound, the first Krylov cycle
                ! managed 0 products of 40, the initial radius came out zero
                ! and eleven outer iterations reported a zero dogleg step at
-               ! ||R|| 1.888 (report B5m; item N1). The same test that the
+               ! ||R|| 1.888. The same test that the
                ! energy grid and the restart reader already use for "this
                ! element is not in this atmosphere" (set_energy_vectors,
                ! load_IC).
@@ -2627,14 +2625,13 @@
       ! bounded nothing about the second: MEASURED on the atomic element
       ! reload at outer iteration 60, the eight element rows held 0.437 of
       ! the squared merit and nothing of ||R||, and accepted steps swung
-      ! ||R|| by 40 percent while the merit moved 1e-4 of itself
-      ! (N7 report, item 7).
+      ! ||R|| by 40 percent while the merit moved 1e-4 of itself.
       !
       ! THE PRICE IS THAT THE SCALED OPERATOR CHANGES WITH IT. Dr divides
       ! the rows of the banded Jacobian and of the matrix-free product as
       ! well as the residual, so the preconditioner, its condition estimate
-      ! and the trust-region model are all built on this scaling. MEASURED,
-      ! item N20: the carrier reload's best ||R|| falls 1.151 -> 0.446, and
+      ! and the trust-region model are all built on this scaling. MEASURED:
+      ! the carrier reload's best ||R|| falls 1.151 -> 0.446, and
       ! the ATOMIC ELEMENT reload stops with no descent at ||R|| = 1.777
       ! against the 7.4e-2 the state scaling reaches, its row scales
       ! spanning 3.7e-10 to 92.7 and dgbcon 7.3e-8 -> 8.9e-10 -- the failure
@@ -3509,7 +3506,7 @@
       ! carrier the Newton set is not rescaled by the element projection.
       !
       ! AND THE ELEMENT TOTALS OF THE WRITTEN CELL ARE THE TOTALS THE
-      ! ELEMENT ROWS CARRY (item N4b deliverable 4). A carrier holds nuclei
+      ! ELEMENT ROWS CARRY. A carrier holds nuclei
       ! of an element that other species of the same cell hold as well, so
       ! writing a carrier column moves that element's total; with the
       ! carrier written after the element projection nothing put it back,
@@ -3517,7 +3514,7 @@
       ! inside one coupled carrier JFNK: the He/H nucleus ratio of the state
       ! left its reservoir by 1.4e-11 at the first iterate and 1.1e-1 at the
       ! thirteenth, monotonically from the third on, while every carrier
-      ! budget stood at breach zero (item N4a section 6b) -- the carriers
+      ! budget stood at breach zero -- the carriers
       ! took hydrogen nuclei that no species gave up, so the cell held more
       ! hydrogen than it was formed with and its helium did not follow.
       !
@@ -3644,8 +3641,7 @@
             ! at -7.4e-19 of the code density unit, and the fraction formed
             ! from it reached f_sp unclamped while the element fractions
             ! beside it were clamped -- one kind of bound enforced and the
-            ! other not, for the same kind of quantity (report B5g
-            ! section 8).
+            ! other not, for the same kind of quantity.
             f_sp(j,srow_isp(i)) =                                        &
                min(max(carrier_density_from_unknown(                     &
                           Y(nvar_jac*(j-1)+3+i), j), 0.0d0), u(1,j))     &
@@ -4075,8 +4071,8 @@
          enddo
          enddo
          call write_species_rows_into_composition(Y, u, f_sp)
-         ! THE SHARED ELEMENT CONSTRAINT AT THE CANDIDATE, BY MAGNITUDE
-         ! (item N4b deliverable 3). What decides feasibility is how far a
+         ! THE SHARED ELEMENT CONSTRAINT AT THE CANDIDATE, BY MAGNITUDE.
+         ! What decides feasibility is how far a
          ! candidate stands outside the budget of a cell, not how many cells
          ! stand outside it: one cell outside by a factor of two and twenty
          ! cells outside by a part in 1e12 are not the same state, and a
@@ -5493,7 +5489,7 @@
       ! the cell and its logarithmic radial gradient, and the neutral
       ! hydrogen fraction, because the front the carrier row binds at is also
       ! where the H I partition of the eliminated closure has more than one
-      ! root (item N5).
+      ! root.
       !
       ! Diagnostic only (element_row_terms_diag).  It evaluates nothing.
       real*8, dimension(1-Ng:N+Ng,n_species), intent(in) :: f_sp
@@ -5748,7 +5744,7 @@
       !
       ! THE TWO SPECIES ROWS ARE THE GATED PART OF THEIR COLUMN, r >=
       ! cert_regime_wind_r, because that is the part their tolerance is a
-      ! statement about (decision 22 (a); the declaration of the two radii
+      ! statement about (the declaration of the two radii
       ! in certification.f90 says why the rest is reported and does not
       ! gate). The hydrodynamic row is the whole column, which is what its
       ! own tolerances are anchored on.
@@ -5760,7 +5756,7 @@
       ! on different scalings, so a rule that bounds the first bounds nothing
       ! about the second: MEASURED on the hot Uranus reload with an element
       ! row, the default route drove the merit from 1.44e+02 to 3.86e+01
-      ! while ||R|| went 1.72, 6.44, 1.82, 25.2, 1.93 (B5d section 2.7).
+      ! while ||R|| went 1.72, 6.44, 1.82, 25.2, 1.93.
       real*8, dimension(nvar_jac*N),  intent(in)  :: Fvec
       real*8, dimension(3,1-Ng:N+Ng), intent(in)  :: u
       real*8, dimension(3),           intent(out) :: rows
@@ -6146,7 +6142,7 @@
       subroutine certify_returned_state(F, u, f_sp, resid_tol,            &
                                         n_no_chem_root, label)
       ! THE STATIONARY CERTIFICATION CONTEXT at a point where this solver
-      ! declares a state solved (contract section 3, row 4). It measures
+      ! declares a state solved. It measures
       ! every equation the configuration makes independent on the state
       ! about to be handed back, and it decides nothing about the solve: the
       ! merit rule, the step control and info are untouched. A state that
@@ -7760,7 +7756,7 @@
       !
       ! WHICH ROWS THOSE ARE. The three hydrodynamic rows always, and one
       ! species row for every transported balance the registry carried
-      ! (B5, B5b: the carriers and the elemental partitions): a solve whose
+      ! (the carriers and the elemental partitions): a solve whose
       ! unknown vector held n(H2), n(H+) or an element fraction and whose
       ! residual drove that balance to zero has not delivered a stationary
       ! state until that balance is within cert_tol_carrier_at, and reading
@@ -8049,7 +8045,7 @@
             ! wants to move it. It is a measurement and not the default: an
             ! unknown the model wants to bring back INTO the set is then
             ! held there for every subsequent step as well, because nothing
-            ! else can move it, and what that costs is item B5j's rung (a5).
+            ! else can move it.
             ! AN UNKNOWN WHOSE BOX IS A POINT CANNOT MOVE AT ALL, whichever
             ! way the model wants to move it, so it is held without asking
             ! the gradient. It happens where a carrier's element has no free
@@ -8308,19 +8304,17 @@
       !   EXHALE_ELEMENT_WRITE_BACK=0      write the carrier column without
       !                                    restoring the element totals of
       !                                    the cell, which is what the
-      !                                    conservation is measured against
-      !                                    (item N4b).
+      !                                    conservation is measured against.
       !   EXHALE_ELEMENT_CONSTRAINT_ROWS=0 carry the shared element budget
       !                                    as a coordinate face of the box
       !                                    instead of as a row of the step,
-      !                                    which is the box the B5j to B5l
-      !                                    measurements were made in and is
-      !                                    what the rows are measured
-      !                                    against (item N4b).
+      !                                    which is the box the measurements
+      !                                    were made in and is what the rows
+      !                                    are measured against.
       !   EXHALE_CARRIER_LOG_UNKNOWN=0     carry the carrier DENSITY as the
       !                                    unknown instead of ln n, which is
       !                                    what the logarithm was measured
-      !                                    against (item B5j) and is not the
+      !                                    against, and is not the
       !                                    default (user decision,
       !                                    2026-09-08).
       character(len=32) :: env
@@ -9769,7 +9763,7 @@
       ! THE RETENTION of a scaled seed at the front: how much of the seed
       ! perturbation the closure leaves in the accepted composition there.
       ! One is a perturbation retained in full, zero a closure that forgets
-      ! its seed; above one the front amplifies it. It is the quantity B5h
+      ! its seed; above one the front amplifies it. It is the quantity
       ! measured on the H2 partition of the eliminated-H2 configuration
       ! (0.77 at the base) and is measured here on the partition this
       ! configuration eliminates.
@@ -10306,8 +10300,8 @@
       ! fraction-to-the-boundary rule return zero for the whole direction.
       !
       ! With EXHALE_ELEMENT_CONSTRAINT_ROWS=0 the budget comes back under a
-      ! coordinate face, which is the box the B5j to B5l
-      ! measurements were made in, and it is then RAISED to the iterate
+      ! coordinate face, which is the box the measurements were made in,
+      ! and it is then RAISED to the iterate
       ! wherever the iterate already stands outside it: the budget is frozen
       ! at the iterate and depends on the very unknown it constrains, so a
       ! face cutting through the point the step starts from would leave that
@@ -10471,7 +10465,7 @@
       subroutine freeze_element_constraint_rows(Y, f_sp, D)
       ! THE SHARED ELEMENT BUDGET OF EVERY CELL AS A LINEARIZED ROW OF THIS
       ! STEP, formed once from the iterate and from the budget the carrier
-      ! operator froze at that same iterate (item N4b, decision 14 route (i)).
+      ! operator froze at that same iterate.
       !
       ! WHAT THE ROW IS. For each element a carrier of the cell holds,
       !
@@ -10876,8 +10870,8 @@
       subroutine restore_the_element_budget(Yv, project, ncell, nrow,     &
                                             worst_before, worst_after)
       ! A CANDIDATE THAT SPENDS NUCLEI THE CELL DOES NOT HAVE IS STEPPED
-      ! BACK ONTO THE CONSTRAINT BEFORE ITS MERIT IS JUDGED (item N4b
-      ! deliverable 3): the restoration phase of the constrained step.
+      ! BACK ONTO THE CONSTRAINT BEFORE ITS MERIT IS JUDGED: the
+      ! restoration phase of the constrained step.
       !
       ! The measure is the map's own violation magnitude, relative to what
       ! the row allows, and the step is the one the marching path's limiter
@@ -11023,7 +11017,7 @@
                                         jworst, kworst, ncell)
       ! THE NONLINEAR SHARED CONSTRAINT AT A CANDIDATE, evaluated on the
       ! composition that candidate actually formed and not on the linearized
-      ! row (item N4b deliverable 3).
+      ! row.
       !
       ! The demand is the map's own sum over the species vector the
       ! write-back wrote, so it carries the write-back's rescaling of the
@@ -11111,8 +11105,8 @@
       ! projection existed: n(H2) of cell 500 is zero, and the dogleg cut
       ! its trial back by 2^-25 to 2^-49 against that one unknown at
       ! iterations 18 to 23, taking steps of ||s|| = 2.4e-07 against a
-      ! radius of 5.0e-04, so 49 iterations moved ||R|| from 1.873 to 1.873
-      ! (report B5g section 6.5). Projecting keeps the other 1999 components
+      ! radius of 5.0e-04, so 49 iterations moved ||R|| from 1.873 to 1.873.
+      ! Projecting keeps the other 1999 components
       ! of the step at their full length and gives up only the component
       ! that has nowhere to go.
       !
@@ -11158,7 +11152,7 @@
       ! contains, and the reduction ratio then compares the promise made
       ! about one step with the reduction of another.
       !
-      ! MEASURED on the atomic element reload (item N22), outer iterations
+      ! MEASURED on the atomic element reload, outer iterations
       ! 140 to 160 of the entry text: exactly the trials with one unknown
       ! written onto its face are refused (11 of 11) and exactly the trials
       ! with none are accepted at a reduction ratio of 1.000 (10 of 10).
@@ -11450,7 +11444,7 @@
          ! sweep, so a state resting on a cell without a chemical root
          ! cannot be declared solved here -- AND every row the
          ! certification judges this system by, each against its own
-         ! tolerance. The gate alone is not the acceptance (D3): it
+         ! tolerance. The gate alone is not the acceptance: it
          ! reads one number against the run's "Resid tol" while the mass
          ! row is certified against 3e-12. When the gate is met and a
          ! certified row is not, the state is not a solution of the
@@ -11618,7 +11612,7 @@
       ! curvature of the residual over the interval contribute equally to
       ! the error of the quotient at this length.
       !
-      ! CONSEQUENCE, MEASURED (item N22, atomic element reload): the arc is
+      ! CONSEQUENCE, MEASURED (atomic element reload): the arc is
       ! 1.845e-7 with ||Y|| = 11.4, nine decades above the reproducibility
       ! of the residual, so the action is not noise; and at outer iteration
       ! 151 the step itself is ||D s|| = 5.0e-10, which is 2.7e-3 of the
@@ -11659,7 +11653,7 @@
       ! MIXED vector, so the length is set by whichever unknowns are
       ! largest and every unknown below them is displaced by a smaller
       ! fraction of itself. MEASURED on the atomic element reload at outer
-      ! iteration 1 (item N31, EXHALE_JV_ADDITIVITY): ||Y|| = 11.4 is
+      ! iteration 1 (EXHALE_JV_ADDITIVITY): ||Y|| = 11.4 is
       ! carried by the innermost cells, whose mass unknown is then
       ! displaced by 2.2e-8 of itself, about sqrt(epsilon); the unknowns of
       ! the outer cells are displaced by 2e-10 to 6e-10 of themselves, one
@@ -11879,8 +11873,7 @@
       ! zero, the probe puts it at -7.444e-19 of the code density unit, that
       ! is the ONLY species unknown of the state on its bound, the sample is
       ! refused at every halving, GMRES returns no direction, and 18 of the
-      ! 49 outer iterations took no step for that reason (report B5g
-      ! section 6.3).
+      ! 49 outer iterations took no step for that reason.
       !
       ! [F(Y) - F(Y - eps v)]/eps is a sample of the SAME directional
       ! derivative, first-order accurate in eps exactly as the forward
@@ -12783,7 +12776,7 @@
       ! WHICH OPERATOR.
       !
       ! A second difference of F that stands on a FLOOR instead of falling
-      ! with the square of the spacing (N31, N32) says F is not smooth on
+      ! with the square of the spacing says F is not smooth on
       ! the probe arc: a kink gives a second difference proportional to the
       ! spacing, curvature gives its square, and a floor is what a map that
       ! STEPS somewhere inside the arc gives. This routine finds the steps.
@@ -13577,7 +13570,7 @@
          ! reduced problem's. The cycle stops where that residual has risen
          ! at gm_true_residual_rises consecutive checks, which is where the
          ! subspace has stopped buying anything the nonlinear action can
-         ! deliver (section N35: the optimum lies at 60 to 80 products
+         ! deliver (the optimum lies at 60 to 80 products
          ! while the reduced residual keeps falling to 320).
          reduced_tolerance_stops = .true.
          if (true_resid_here) then
@@ -15485,7 +15478,7 @@
       ! zero contains a single point, so an iteration handed one can report
       ! nothing but a zero step, and the state is absorbing unless the
       ! initialization is guarded by "is this a positive finite length"
-      ! rather than by a sign test (R1).
+      ! rather than by a sign test.
       !
       ! Where the Krylov step is not available the PROJECTED GRADIENT is:
       ! it has been zeroed on every unknown held at a bound
@@ -15548,8 +15541,8 @@
       ! ratio exceeded three quarters and had nothing above it: MEASURED on
       ! the atomic element reload, it reached delta = 2.684e8 against a step
       ! of ||s|| = 1.018e-5, eleven decades apart, and the dogleg was
-      ! returning the interior Krylov point throughout (N7b, noticed item
-      ! 4). A radius eleven decades above the step it bounds bounds nothing
+      ! returning the interior Krylov point throughout. A radius eleven
+      ! decades above the step it bounds bounds nothing
       ! -- the admissibility cuts and the species box are what limit the
       ! step there -- and it makes the printed radius useless as a
       ! diagnostic. The feasible set is still what bounds the step; this
@@ -15615,8 +15608,8 @@
       ! increase and the region is shrunk again. MEASURED on the hot Uranus
       ! element solve: eleven consecutive outer iterations exiting on "the
       ! model promises no reduction", pred falling exactly by 4 at each
-      ! factor-4 shrink of the radius, down to a radius of 1.1e-16 (report
-      ! B5e section 3.4). The caller drops the leg rather than shortening
+      ! factor-4 shrink of the radius, down to a radius of 1.1e-16. The
+      ! caller drops the leg rather than shortening
       ! it, and the dogleg reduces to the Krylov leg cut to the ball.
       ascends = (nAg .le. 0.0d0 .or. rAg .le. 0.0d0)
       if (ascends) return
@@ -15630,7 +15623,7 @@
       ! numbers, and the old length does not minimize the model and need not
       ! even decrease it: with r0 = 1, A = 1 and a band of 10 the merit at
       ! the point it returns is 40.5 against 0.5 at the iterate, while the
-      ! minimizer reaches 0 (R2).
+      ! minimizer reaches 0.
       !
       ! The point is therefore an APPROXIMATE DESCENT POINT of the model
       ! along a direction the band supplies, and not the Cauchy point of an
@@ -15825,7 +15818,7 @@
       ! evaluation leaves behind for the next.
       !
       ! WHICH OF THE TWO GOVERNS IS A MEASUREMENT, and on the atomic element
-      ! reload it is the assumed one (N7b, 20 outer iterations): two
+      ! reload it is the assumed one (20 outer iterations): two
       ! evaluations of one state differ by 1.78e-15 while the merit is 14.95
       ! and by 0 to 4.3e-19 while it is 2.7e-5, which is one to a few tens
       ! of units in the last place of the merit itself, four to seven
@@ -15888,8 +15881,8 @@
       ! eta_accept the step is refused whatever the quotient says. The
       ! ledger then records the informative name: MEASURED on the atomic
       ! element reload, iterations at ratio -533 and -1493 (actual reduction
-      ! NEGATIVE) exited as "the model and the true slope differ in sign"
-      ! (N7b, noticed item 1). model_ok stays false, so the region is cut on
+      ! NEGATIVE) exited as "the model and the true slope differ in sign".
+      ! model_ok stays false, so the region is cut on
       ! the same rule as before and no step changes; only the name does.
       !
       ! An inadmissible probe is not covered: there the neighborhood of the
@@ -16465,7 +16458,7 @@
       ! ||r0 + A sN|| < ||r0||. Where the cycle's own achieved relative
       ! residual is one or more that is not true, and building a dogleg on
       ! it would be building it on an assumption the cycle has already
-      ! contradicted (R2).
+      ! contradicted.
       if (cauchy_ascends .and. gm_resid_rel .ge. 1.0d0) then
          model_ok   = .false.
          refuse     = tr_no_direction_reduces_model
@@ -16510,7 +16503,7 @@
          ! than the radius resolves, while its image A sU need not be small
          ! at all: dropping it from the step and keeping it in the model
          ! slope is what made the model slope describe a direction the step
-         ! did not take (N7b). It is dropped from both, and the dogleg
+         ! did not take. It is dropped from both, and the dogleg
          ! reduces to the Krylov leg cut to the ball. The test is taken at
          ! the CURRENT radius, which shrinks inside this loop, so a leg that
          ! is short beside a large region is used again beside a small one.
@@ -16931,7 +16924,7 @@
             ! rows -- was implemented and MEASURED on the hot Uranus
             ! element solve: the region was shrunk by 13 such refusals and
             ! the solve stalled at ||R|| = 1.92 against the 4.345e-09 it
-            ! reaches without them (report B5e section 3.3). A step control
+            ! reaches without them. A step control
             ! bounds a smooth merit; the judged measure is a maximum over
             ! cells and over rows, and it belongs to the ledger that
             ! chooses the returned state.
@@ -17157,7 +17150,7 @@
       ! to converge never string more than 4 such iterations together, runs
       ! that are truly stuck string 34 or more.
       integer, parameter :: n_no_descent_max = 12
-      ! P51. STAGNATION OF THE BEST ITERATE, and what to do about it.
+      ! STAGNATION OF THE BEST ITERATE, and what to do about it.
       !
       ! The non-monotone (Grippo) line search compares a trial against the
       ! WORST merit of the last five iterates, so it accepts sideways steps.
@@ -17184,7 +17177,7 @@
       ! descending; it is the merit that says whether it is (see the reset
       ! below).
       !
-      ! WHERE 20 COMES FROM. Over every solve of the P50 campaign that ended
+      ! WHERE 20 COMES FROM. Over every solve of the campaign that ended
       ! info = 0 on a configuration that survived measurement, the largest
       ! gap between two improvements of the best iterate is 6 outer
       ! iterations (both WASP-121b Newton cases); on the coupled hot Uranus
@@ -17232,7 +17225,7 @@
       ! THE ACCEPTANCE BOUNDS THE QUANTITY THE STATE IS JUDGED BY, beside
       ! the merit it descends on.
       !
-      ! The two are different functionals, and until B5e only the first was
+      ! The two are different functionals, and only the first used to be
       ! bounded: the merit is || F/Drow ||_2, a 2-norm on the Newton's own
       ! column scales, while info = 0 rests on a MAXIMUM over cells of each
       ! row against its own largest term (resid_relnorm and the
@@ -17242,7 +17235,7 @@
       ! default route drove the merit from 1.44e+02 down to 3.86e+01 while
       ! ||R|| ran 1.72, 6.44, 1.82, 25.2, 1.93, 5.09 -- fifteenfold
       ! excursions of the judged quantity, every one of them an accepted
-      ! step (B5d section 2.7).
+      ! step.
       !
       ! WHERE THE BOUND IS, AND WHERE IT IS NOT. Making it a condition of
       ! the STEP -- a trial refused when it leaves the state further from
@@ -17250,7 +17243,7 @@
       ! own window applied to the judged rows -- was implemented and
       ! MEASURED: on the element solve above it shrank the trust region 13
       ! times and left the solve stalled at ||R|| = 1.92 against the
-      ! 4.345e-09 the same text reaches without it (report B5e section 3.3).
+      ! 4.345e-09 the same text reaches without it.
       ! A step control bounds a SMOOTH merit; the judged measure is a
       ! maximum over cells and over rows, and a solve legitimately trades one
       ! row against the others on its way down.
@@ -17288,7 +17281,7 @@
       !   line search   ||R|| 1.986 -> 1.723, aborted at outer iteration 18
       !                 on "no descent direction exists for the banded
       !                 model", the accepted steps running ||R|| 1.72, 6.44,
-      !                 1.82, 25.2 (B5d section 2.7);
+      !                 1.82, 25.2;
       !   trust region  ||R|| 1.986 -> 4.345e-09 against a target of 1e-08,
       !                 54 accepted steps in 66 outer iterations, and the
       !                 elemental transport row of the returned state
@@ -17637,7 +17630,7 @@
          ! tolerance. The gate alone is not the acceptance: it reads one
          ! number against the run's "Resid tol" while the certification
          ! reads the mass row against 3e-12, so a solve stopping on the
-         ! gate stops at states the return then refuses (D3). When
+         ! gate stops at states the return then refuses. When
          ! the gate is met and a certified row is not, the state is not a
          ! solution and the iteration goes on.
          !
@@ -17697,7 +17690,7 @@
                               (iter .eq. 1 .or. iter .eq. 20 .or.        &
                                iter .eq. maxit_used)
          ! AND WHETHER THIS ONE IS THE ITERATION THE JUMP SCAN SPEAKS AT:
-         ! the first, the state at which the floor was measured (N31, N32).
+         ! the first, the state at which the floor was measured.
          if (iter .eq. 1) resid_jump_scan_here = resid_jump_scan_on
          ! AND WHETHER EVERY TRIAL OF IT STATES ITS OWN MODEL: from the
          ! selected iteration onward, so that consecutive iterations at one
@@ -17888,8 +17881,8 @@
             ! coordinates. The merit is not touched: it holds no D.
             if (column_equilibration_on)                                 &
                call equilibrate_the_scaled_columns(ab, D)
-            ! AND THE ROW SCALING OF THE LINEAR MODEL, which decision 20 a
-            ! left free: formed from ab and applied to the band that is
+            ! AND THE ROW SCALING OF THE LINEAR MODEL, which is left
+            ! free: formed from ab and applied to the band that is
             ! factored and, inside the cycle, to the right-hand side and
             ! the action. ab itself is untouched, so the merit's gradient
             ! and the trust-region model stay on the certification scales
@@ -17991,13 +17984,13 @@
             jref = maxval(jhist)
          endif
 
-         ! ---- D2: the scaled trust region, four-unknown branch only ----
+         ! ---- the scaled trust region, four-unknown branch only ----
          if (use_tr) then
             ! THE RADIUS IS RE-INITIALIZED WHENEVER IT IS NOT A POSITIVE
             ! FINITE LENGTH. A hundredth of a zero Krylov step is zero, and
             ! a ball of radius zero contains a single point: an iteration
             ! handed one can report nothing but a zero step, so a sign test
-            ! leaves it absorbing (R1).
+            ! leaves it absorbing.
             if (.not. (tr_delta .gt. 0.0d0) .or.                          &
                 .not. finite_real(tr_delta)) then
                ! THE BOUNDS THIS ITERATE HOLDS ARE FIXED BEFORE THE CYCLE
@@ -18301,7 +18294,7 @@
                ! HOW OFTEN THE STEP CONTROL AND THE JUDGEMENT DISAGREE,
                ! counted and reported and NOT acted on. Making this a
                ! condition of the step was tried and MEASURED to stop a
-               ! solve that otherwise converges (report B5e section 3.3):
+               ! solve that otherwise converges:
                ! the judged measure is a maximum over cells and over rows
                ! and is far less smooth than the merit, so the merit's own
                ! five-iterate window pins a solve that is legitimately
@@ -18490,7 +18483,7 @@
                   ! little per iteration as the flat ones do: on the
                   ! LHS 1140 b C/N/O column the ratio form leaves
                   ! dtau at 1.13 where the plain doubling is at 2 and 4 --
-                  ! which is L4g's own measurement of the
+                  ! which is the measurement of the
                   ! EXHALE_PTC_RAMP_DOUBLE=0 branch -- and this window gate
                   ! leaves it at 2 where the doubling is at 4, because that
                   ! state's merit hovers within a tenth of its entry value
@@ -18641,7 +18634,7 @@
          !
          ! THIS IS WHERE THE JUDGED MEASURE BELONGS AND THE STEP CONTROL IS
          ! NOT. Bounding the STEP by this quantity was implemented and
-         ! measured to stall the element solve (report B5e section 3.3): the
+         ! measured to stall the element solve: the
          ! merit is a smooth 2-norm and can be globalized, the judged measure
          ! is a maximum over cells and over rows and is a stopping test.
          if (linear_rows_on) then
@@ -18735,7 +18728,7 @@
             n_since_best = n_since_best + 1
          endif
 
-         ! P51: neither functional is moving. Go back to the best iterate
+         ! Neither functional is moving. Go back to the best iterate
          ! and stop accepting sideways steps; if that buys nothing either,
          ! stop.
          if (n_since_best .ge. n_stall_best) then
@@ -18928,8 +18921,8 @@
          ! WHICH ROW CARRIES THAT MAXIMUM, BY NAME. A species row's slot
          ! number says the cell but not the element or the carrier, and an
          ! integer field cannot hold a slot of two digits at all -- the
-         ! sodium row of cell 500 printed as k=* for fifty iterations
-         ! (item N24). name_of_unknown is the one place the flat index is
+         ! sodium row of cell 500 printed as k=* for fifty iterations.
+         ! name_of_unknown is the one place the flat index is
          ! turned into a cell and a quantity.
          call name_of_unknown(nvar_jac*(jworst-1)+kworst,              &
                               what_worst_row)

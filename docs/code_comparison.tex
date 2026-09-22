@@ -38,9 +38,7 @@ scheme from Erkaev et al.\ 2016), and the steady-state boundary-value
 archetype of Murray-Clay et al.\ (2009). The aim is to place EXHALE's
 design choices in context: what it inherited from ATES, what it
 added, which choices are field-standard, and which capabilities the
-other codes have that EXHALE lacks. A companion design sketch
-(\texttt{auto\_ic\_design.md}) follows up on the main actionable
-finding: a Kubyshkina-style automatic IC selector. Full BC/IC details
+other codes have that EXHALE lacks. Full BC/IC details
 of EXHALE itself are in \texttt{EXHALE\_BC\_and\_IC.tex}.
 \end{quote}
 
@@ -239,8 +237,7 @@ transonic and hot-Parker IC families exist precisely for ``won't launch
 from hydrostatic'' cases. This was written when the choice was still
 \emph{manual} (input keys); it is now automated by \texttt{IC mode: auto}
 (\texttt{select\_IC\_auto} in \texttt{set\_IC.f90}), which probes the cold
-sonic point and picks the family: the design is in
-\texttt{auto\_ic\_design.md}.
+sonic point and picks the family.
 
 EXHALE's IC behavior is, however, the best-documented of the three: the
 benchmark
@@ -323,8 +320,7 @@ written.} EXHALE now selects the IC family automatically
 molecular base (\texttt{Molecular chemistry:}, \texttt{Molecular base:};
 default off, and the molecular base is auto-coupled whenever the chemistry
 is on).  HD~189733\,b itself converges to Newton grade since the JFNK
-line-search fix of 2026-08-11: \texttt{docs/newton\_scaling\_and\_base\_wall.md}
-\S10 and \texttt{docs/hd189\_base\_checkerboard.md} \S10.  What remains is
+line-search fix of 2026-08-11.  What remains is
 the cost per case, not the convergence.
 
 The underlying scheme (Erkaev+2016) is a two-step MacCormack
@@ -370,9 +366,7 @@ Two lessons for EXHALE:
   proven recipe for reaching a transonic solution. EXHALE's main loop does
   not use it, but the same scheme now runs in-tree in the Wind-AE
   initial-condition path
-  (\texttt{src/modules/wind\_ae/wae\_continuation.f90}, \S\ref{sec:windae});
-  it is also noted as an alternative IC/continuation strategy in
-  \texttt{auto\_ic\_design.md}.
+  (\texttt{src/modules/wind\_ae/wae\_continuation.f90}, \S\ref{sec:windae}).
 \end{itemize}
 
 The trade-off: a steady-state BVP solver like Murray-Clay's is elegant
@@ -422,8 +416,7 @@ heating geometry: factor-of-a-few agreement is the realistic target):
   independent method.
 \item \textbf{HD\,189733b} (at the time of writing, the planet where
   EXHALE's time marching limit-cycled at $du\sim2$ and never converged; it
-  converges to Newton grade since 2026-08-11:
-  \texttt{docs/newton\_scaling\_and\_base\_wall.md} \S10): the BVP relaxation
+  converges to Newton grade since 2026-08-11): the BVP relaxation
   \emph{converges cleanly} ($T_{\rm max}=11\,300$\,K,
   $r_s=3.83\,R_{\rm pl}$, global $\dot M = 10^{10.2}$ with their 0.33
   substellar-to-global factor). \textbf{A steady transonic solution
@@ -456,8 +449,7 @@ pl}$, two-stage PLM$\to$WENO3, $du_{\rm th}=10^{-3}$):
   \emph{by construction} ($du=2.5\times10^{-4}$ at load); the state is
   still Wind-AE's solution, not EXHALE's fixed point. Any Wind-AE-seeded
   run must use \texttt{Solver: Newton} (or an $R$-based gate; the same
-  trap as the $\sim$5\% $du$-stop spread documented in
-  \texttt{auto\_ic\_design.md} \S6.1, in its most extreme form).
+  trap as the $\sim$5\% $du$-stop spread, in its most extreme form).
 \item \emph{Genuine value second:} under Newton-mode marching (no $du$
   stop) the loaded state evolves smoothly toward EXHALE's own attractor,
   flux level $10^{10.78}\to10^{10.68}$, spread
@@ -487,20 +479,18 @@ its solution must never be accepted through the bare $du$ stop.
   low-\Mdot\ / low-gravity cases. \emph{(This item originally read ``the
   real limitation is not the solver but the breathing base''. On the cases
   measured it was the solver: the JFNK residual floor came from its diagonal
-  scaling and stagnation watchdog, both replaced 2026-08-10,
-  \texttt{docs/newton\_scaling\_and\_base\_wall.md}.)}
+  scaling and stagnation watchdog, both replaced 2026-08-10.)}
 \item \textbf{The most worthwhile idea to adopt is Kubyshkina's
   automatic IC selection} (and, relatedly, a deeper / molecular base for
   boil-off). EXHALE already has the transonic and hot-Parker IC families
   and computes the escape parameter $b_0\equiv\Lambda = GM_{\rm pl}\,
   m_{\rm H}/(k_BT_0R_{\rm pl})$. The automatic rule this item asked for
   (pick the IC family from a cold sonic-point probe) was implemented as
-  \texttt{IC mode: auto}; see \texttt{auto\_ic\_design.md}. A deeper /
+  \texttt{IC mode: auto}. A deeper /
   molecular base for boil-off is separate, and is the lower-atmosphere work.
 \item \textbf{The microphysics ceiling is Salz/CLOUDY.} The known
   limitations of EXHALE's equilibrium + fitted cooling (the
-  \texttt{use\_2lev\_cool} branch, fine-structure floors, etc.\ in
-  \texttt{TO\_BE\_DONE.md}) are exactly what a non-equilibrium RT
+  \texttt{use\_2lev\_cool} branch, fine-structure floors, etc.) are exactly what a non-equilibrium RT
   treatment like TPCI would resolve: a long-term direction, not a
   near-term change.
 \item \textbf{Tune the base \emph{radius}, not the base values}

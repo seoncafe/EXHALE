@@ -13,8 +13,6 @@ overestimate.  Which way a collisionless critical region moves the answer is
 not decided by the continuum solution that assumed it away; it takes a
 kinetic or transitional-flow calculation, and the Jeans estimate below is
 only a scale against which the continuum number is read.
-(`docs/lhs1140b_lower_atmosphere_plan_new.md` section 1 row 11 and Phase F
-item 4.)
 
 --------------------------------------------------------------------------
 1. Collision model
@@ -228,7 +226,7 @@ local photoionization equilibrium the wind was solved with -- for which the
 momentum equation was never re-solved.  A sound speed formed from its
 pressure and the solution's density, and a Mach number formed from that and
 the solution's velocity, therefore belong to no single state.  Measured on
-the LHS 1140 b 45 R_p wind (`docs/lhs1140b_stationary_L10_20260913.md`): the
+the LHS 1140 b 45 R_p wind: the
 solution crosses its critical point at 40.06 R_p, and the `_adv` pair, whose
 temperature in the outer wind is 3.5 to 4 times the solution's, reports no
 critical point in the domain at all.

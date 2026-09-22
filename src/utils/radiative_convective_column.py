@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Radiative-convective equilibrium column of the lower atmosphere.
 
-Milestone E3 of `docs/phase_e_flux_closure_design.md` section 5: the step
+Milestone E3: the step
 that makes T(p) a solution rather than an input, and with it fixes the
 tropopause the water cold trap sits at.  Photochem's chemistry API takes
 `T(p)` and `K_zz(p)` as inputs, so the climate solution has to be computed

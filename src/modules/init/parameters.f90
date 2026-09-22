@@ -86,7 +86,7 @@
       integer :: n_steps_accepted  = 0
 
 
-      ! WHICH FAMILY OF LEDGERS A DIAGNOSTIC BELONGS TO (contract section 5).
+      ! WHICH FAMILY OF LEDGERS A DIAGNOSTIC BELONGS TO.
       ! The same fields are kept twice: once for initialization and
       ! continuation, where they are diagnostics of a relaxation, and once
       ! for physical integration, where they are the history of accepted
@@ -96,14 +96,13 @@
       ! counters by this value; it is set by the marching loop and by the
       ! entry and exit of the stationary solver, which is continuation
       ! whatever mode the run is in.
-      ! B6 CATEGORY 4, THE UNBUDGETED ACCEPTED CORRECTIONS THAT ARE STILL
-      ! INSIDE THE ATTEMPTED STEP (b1 section 7.4).
+      ! CATEGORY 4, THE UNBUDGETED ACCEPTED CORRECTIONS THAT ARE STILL
+      ! INSIDE THE ATTEMPTED STEP.
       ! Row 12's Shapiro filter alters the adopted state with no source term
-      ! behind the change. It is carried until B3b reaches it, and is
-      ! counted here so that the certification can refuse a state whose
-      ! history contains one. It lives in this module rather than in
-      ! attempted_step because certification.f90 must read it and
-      ! attempted_step already uses certification.
+      ! behind the change. It is counted here so that the certification
+      ! can refuse a state whose history contains one. It lives in this
+      ! module rather than in attempted_step because certification.f90
+      ! must read it and attempted_step already uses certification.
       integer :: n_shapiro_applied    = 0
 
       integer, parameter :: ledger_family_init = 1
@@ -231,7 +230,7 @@
       logical :: atomic_rate_set_k22 = .false.
       ! "Caloric EOS: monatomic" -- every particle, H2 included, stores
       ! (3/2) k T (gamma = 5/3 everywhere), the state of the code before the
-      ! H2 rovibrational ladder of section P53. A COMPARISON option: a model
+      ! H2 rovibrational ladder. A COMPARISON option: a model
       ! whose energy equation is u = c_v T with a monatomic c_v cannot be
       ! matched with the ladder on. Default .false. = the ladder.
       logical :: caloric_eos_monatomic = .false.
@@ -281,7 +280,8 @@
       !   In TR mode this also restores the singlet-excited capture channel
       !   (0.25 alpha_B) that the alpha_1-only network omits -- with the
       !   coupling off, the TR singlet recombination is neither case A nor
-      !   case B. The photons are real; default on (2026-07-23, Update §39).
+      !   case B. The photons are real; default on (2026-07-23, Update
+      !   section 39).
       !  .false. = He II -> He I recombination photons are all lost locally
       !   (pure case B, y=0), the legacy path.
       logical :: use_he_rec_coupling = .true.
@@ -310,13 +310,13 @@
       ! is given, and from he_kzz in every cell otherwise.  The uniform case
       ! is exactly the old scalar: 0.5*(a+a) = a in IEEE double.
       real*8, dimension(:), allocatable :: kzz_cell
-      ! P2b: ambipolar-corrected effective settling mass (ionized wind lifts
+      ! Ambipolar-corrected effective settling mass (ionized wind lifts
       !  He ions, reducing settling).  Default .true.; .false. = neutral Dm=3.
       logical :: he_ambipolar = .true.
-      ! P2c: thermal-diffusion factor alpha_T for He (settling ~ (1+alpha_T)).
+      ! Thermal-diffusion factor alpha_T for He (settling ~ (1+alpha_T)).
       !  Default 0 (off).  Runtime key "He_alphaT: <value>".
       real*8  :: he_alphaT = 0.0d0
-      ! P2d: also diffuse the trace metals (each element with its own mass and
+      ! Also diffuse the trace metals (each element with its own mass and
       !  binary diffusion coefficient); default .false. = metals frozen to H.
       logical :: he_metal_diffusion = .false.
       ! analytic lower column (Koskinen+2022; docs/lower_atmosphere_
@@ -410,7 +410,7 @@
       ! the Ly-alpha line and is always stated ("Stellar Lya flux").
       logical :: fuv_b3_flux_stated = .false., fuv_b4_flux_stated = .false.
       logical :: fuv_b3_from_spectrum = .false., fuv_b4_from_spectrum = .false.
-      ! Oxygen chemistry (the A2 option):
+      ! Oxygen chemistry:
       ! OH / H2O / CO added to the coupled molecular ionization equilibrium,
       ! with the H2O and OH photolysis of the FUV bands.  It is what lets
       ! EXHALE compute its own base H2/H partition instead of importing it
@@ -432,7 +432,7 @@
       ! the run said so itself, so the default can change without silently
       ! overriding a stated value.
       !
-      ! False restores the local-kinetics limit of milestone M2, which is a
+      ! False restores the local-kinetics limit, which is a
       ! test of the chemistry alone and not a model of a base.
       logical :: carrier_transport = .false.
       ! Solve the carrier continuity equation TOGETHER with the wind, as a
@@ -493,7 +493,7 @@
       ! planetary base and a band edge there normalized the pumping per
       ! photon of a band narrower than the one the lines drink from. The key
       ! is retired and input_read stops a run that states it. Separate keys
-      ! rather than one flux plus an assumed shape: decision D1 of the
+      ! rather than one flux plus an assumed shape: a decision of the
       ! design, taken because the single-key form is weakest exactly on the
       ! line-dominated FUV of an M dwarf. The band edges are fixed by the H2O
       ! branching ratios and by the Ly-alpha line, not chosen; see
@@ -1030,7 +1030,7 @@
       ! not depend on the composition at all.
       logical :: resid_at_own_composition = .true.
       ! Cap on the fixed-Y sweep iteration, and A WORKING LIMIT rather than a
-      ! guard. MEASURED by B5a on wasp_full_newton (2026-09-06): the sweep
+      ! guard. MEASURED on wasp_full_newton (2026-09-06): the sweep
       ! takes 13 to 15 passes from the marching hand-off and 14.09 on
       ! average per residual evaluation over the whole solve, so the margin
       ! to this cap is under a factor of two, not the factor of three to

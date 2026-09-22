@@ -95,7 +95,7 @@
 	! property of the absorbers (their thresholds and the resolution the
 	! quadrature needs), not of the spectrum. Which of the two fills F_XUV
 	! is decided below, where the flux is put on the grid. One spectrum type
-	! builds every band (development plan rev 3, section 10.5 decision 13).
+	! builds every band.
 	if (is_PL_sed .or. spectrum_is_planck()) then
 
 		! Points below 13.6 eV. Three absorbers need them, and they can be
@@ -131,7 +131,7 @@
 		! on, and every photo-ionizable stage of an active metal -- and e_v
 		! holds the bin CENTRES, which then lie strictly inside one interval
 		! of continuity of every cross section the sum contracts with
-		! (development plan rev 3, section 10.1 item 2; the audit of
+		! (the audit of
 		! 2026-09-05 measured the old grid, whose points sat ON the H and He
 		! thresholds with central-difference widths, at P_HI 1.095x, P_HeI
 		! 1.016x and P_HeII 1.030x the exact integral).
@@ -372,7 +372,7 @@
 
 		! The photospheric field pi B_nu(T_eff) (R_star/a)^2 per unit
 		! photon energy, on every point of the grid -- the XUV and the
-		! sub-13.6 eV band alike (decision 13). Its absolute scale comes
+		! sub-13.6 eV band alike. Its absolute scale comes
 		! from T_eff and R_star, not from LX/LEUV, so the integrated grid
 		! flux differs from the nominal J_XUV; write_setup_report states
 		! both. a_orb is in cm here (input_read), as R_star is.

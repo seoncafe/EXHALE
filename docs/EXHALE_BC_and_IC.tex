@@ -197,9 +197,7 @@ module header, which records the measurement: $0.2514$, $0.2507$, $0.2503$
 and $0.2502$ of $\rho g$ at cell~1 over an eightfold refinement of the
 hot-Uranus base grid, against an interior truncation error of
 $4.9\times10^{-6}$, driving a first-order velocity artifact of $-247.1$,
-$-123.2$, $-61.3$ and $-30.5$\,cm\,s$^{-1}$ over the same ladder. The design
-note and every measurement behind the present condition are in
-\texttt{docs/phaseC\_characteristic\_base\_bc.md}.
+$-123.2$, $-61.3$ and $-30.5$\,cm\,s$^{-1}$ over the same ladder.
 
 \subsection{How many conditions, and which}
 \label{sec:charbranches}
@@ -725,7 +723,7 @@ retired valve closure, where the asymmetry of the boundary (an open pipe
 outward, a wall inward) drove it; the characteristic condition has no valve,
 and what remains is the O($\Delta t$) kick of a marching start together with
 a limit cycle that switches off below a CFL of about $0.15$--$0.3$, with the
-steady state at its root (\texttt{docs/Update\_EXHALE\_stage1.md} \S161; READ, not
+steady state at its root (\texttt{docs/Update\_EXHALE\_stage1.pdf} \S161; READ, not
 re-measured here).
 
 Two regimes are still worth distinguishing (see
@@ -791,8 +789,8 @@ entropy (contact) mode that nothing in the scheme damps: HLLC resolves
 a contact of zero speed exactly, the gravity source is cell-local, and
 the WENO3 pressure gradient sees only interface pressures. The measured
 dependence is an alternating amplitude in $\ln\rho$ of ${\sim}10^{-2}$
-for $H/\Delta r < 5$ against ${\sim}10^{-4}$ for $H/\Delta r > 100$
-(\texttt{docs/hd189\_base\_checkerboard.md}). High-gravity planets have
+for $H/\Delta r < 5$ against ${\sim}10^{-4}$ for $H/\Delta r > 100$.
+High-gravity planets have
 the least margin: on the default grid \texttt{write\_setup\_report}
 echoes 26.9 cells per $H$ at $T_{\rm eq}$ for HD\,189733\,b against
 102.3 for WASP-121\,b.
@@ -829,10 +827,7 @@ $3.8$--$6.6\times10^{-9}$ relative on the grids measured, enough for \texttt{loa
 $10^{-10}$) to refuse their states on the present default grid. Every such
 input that has stored results beside it carries the line
 \texttt{Base grid [dr,cells]: 1.9999999494757503e-4 50}, which rebuilds that
-grid to the bit (\texttt{docs/lhs1140b\_stationary\_D1b\_20260919.md}).
-The full measurement (what sets the mode, which remedies were tried,
-and what each grid step bought) is
-\texttt{docs/hd189\_base\_checkerboard.md}.
+grid to the bit.
 
 \subsection{The three remaining opt-in controls}
 \label{sec:stabilizers}
@@ -884,8 +879,7 @@ the retired ghost closure, are tabulated in \S\ref{sec:bc-matrix}.
   \texttt{RK\_rhs}, the one routine the steady residual assembly also calls,
   so the marching loop and the Newton residual see the \emph{same} equation.
   Off by default ($\varepsilon_4 \le 0$ skips the code path entirely).
-  \emph{Caveats, both measured}
-  (\texttt{docs/hd209\_metal\_stagnation.md}, \S\S8--9): the coefficient has
+  \emph{Caveats, both measured}: the coefficient has
   an operating window, \texttt{input\_read} warns above the explicit
   stability bound $\varepsilon_4 < 1/(16\,\mathrm{CFL})$, on the
   \texttt{examples/16} warm restart only $5\times10^{-3}$ and $10^{-2}$ gave
@@ -897,8 +891,7 @@ the retired ghost closure, are tabulated in \S\ref{sec:bc-matrix}.
 The cell-by-cell ionization-equilibrium sweep is OpenMP-parallel over cells
 (the metal and charge-exchange coefficients in each cell are kept
 thread-private); the parallel result is bit-identical to the serial one, so
-none of the BC/IC behavior below is affected. See
-\texttt{docs/openmp\_parallelization.md}.
+none of the BC/IC behavior below is affected.
 
 \subsection{Temperature, ionization, and metals at the lower boundary}
 \label{sec:metals-bc}
@@ -967,9 +960,8 @@ $1 + 2\times10^{-16}$, posing no boundary at all, moves $\|R\|$ at iteration
 40 from $3.212\times10^{-2}$ (the caller's ghosts) to $1.125$, against
 $1.199$ for the refill. The reading that matters beyond this item is that
 $\|R\|$ at a fixed iteration count is not a reproducible quantity for that
-solve; the suite \texttt{src/tests/element\_operator} therefore asserts the
-size of the caller dependence ($1.19\times10^{-2}$ on a stale caller)
-rather than assuming it away.
+solve; the size of the caller dependence ($1.19\times10^{-2}$ on a stale
+caller) is therefore asserted rather than assumed away.
 
 \paragraph{At the base: two different equations.}
 The lower ghosts of the transported columns are never rewritten by the
@@ -1041,8 +1033,7 @@ face, which is a hydrostatic imbalance of the order of the local weight
 $\rho g$ that no resolution removes. Under PLM it is worse: the forward
 difference entering the MC limiter is then exactly zero, so the limited
 slope of cell~$N$ is exactly zero and that cell carries no pressure gradient
-at all. MEASURED on the analytic hydrostatic column by
-\texttt{src/tests/grid\_and\_gates/hydrostatic\_residual}, the momentum
+at all. MEASURED on the analytic hydrostatic column, the momentum
 residual of cell~$N$ in units of its own weight at
 \texttt{Grid cells} $=250/500/1000/2000$ and its order in $1/N$ (READ from
 the routine's recorded measurement):
@@ -1202,8 +1193,7 @@ energy rows keep the $|u|$ scale and print separately.
 Widening the acceptance window to include the layer was considered and is
 \emph{rejected by measurement}: on the old $|u|$ scale a converged state
 carries $0.2$--$10$ there, four to six orders above \texttt{Resid tol}, so
-the widened window would reject solutions that are correct. Both
-measurements: \texttt{docs/hd209\_metal\_stagnation.md}, \S\S9.4 and 10.
+the widened window would reject solutions that are correct.
 
 \subsection{Domain truncation (where the upper boundary sits)}
 
@@ -1290,8 +1280,7 @@ winds: HD\,209458\,b has $r_c\sim54\,R_p$, far outside the domain).
 There is no tunable threshold; $b_0$ (= the escape parameter $\Lambda$)
 is logged as a regime diagnostic, the warm seed is never auto-selected
 (the benchmark showed it buys nothing when the cold start works), and
-the explicit keys override \texttt{auto}. Design rationale and
-validation: \texttt{docs/auto\_ic\_design.md}.
+the explicit keys override \texttt{auto}.
 
 \paragraph{Wind-AE warm start (\texttt{IC mode: windae}).}
 With this key, \texttt{init.f90} builds the initial condition by running
@@ -1688,9 +1677,8 @@ worth stating plainly where it landed and why.
   produced with a diagonal scaling whose momentum floor was set by the base cell,
   and with a watchdog that aborted after 15 iterations without a new best
   $\lVert R\rVert$, before the opening pseudo-transient has finished raising
-  it. Both have since been replaced and the same configurations converge; see
-  \texttt{docs/newton\_scaling\_and\_base\_wall.md}. The residual-vs-flux
-  \emph{decision} below is unaffected, but the ``held up by the near-base
+  it. Both have since been replaced and the same configurations converge.
+  The residual-vs-flux \emph{decision} below is unaffected, but the ``held up by the near-base
   momentum'' attribution attached to individual rows is withdrawn.)}
 \item \textbf{The reference codes use only the flux criterion.} Neither ATES
   (Caldiroli 2021: $\Delta\dot M/\dot M < 10^{-3}$) nor CETIMB (Koskinen 2013a:
@@ -1724,7 +1712,7 @@ worth stating plainly where it landed and why.
   relaxed by the marching loop that wrote it, so its $du$ is meaningful and both
   triggers start armed. Cold hydrostatic starts arm on step~1 anyway
   (measured $du(1) = 0.37$ for the WASP regression cases), so their behavior is
-  unchanged. Details: \texttt{docs/newton\_scaling\_and\_base\_wall.md}, \S9.
+  unchanged.
 \item \textbf{2026-08-15: the Wind-AE IC measured under that guard.} The
   arming guard had been measured on the transonic and cold-hydrostatic ICs but
   not on \texttt{IC mode: windae}, whose ${\sim}3$-step false $du$ stop is what

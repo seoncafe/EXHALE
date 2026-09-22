@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Elemental-flux closure between the photochemical lower atmosphere and the
-EXHALE escape wind (`docs/phase_e_flux_closure_design.md` section 6).
+EXHALE escape wind.
 
 The physics.  The two models are joined at the microbar match, and the
 handoff is one-way in each direction: the chemistry is told an elemental
@@ -445,9 +445,8 @@ def solve_photochemical_lower_profile(cfg, iter_dir, k, phi_H, phi_He, log):
 
 
 # `Valve eps` is dropped and no longer written: the lower boundary is the
-# characteristic face condition, and `input_read` stops on the retired key
-# (docs/phaseC_characteristic_base_bc.md), so a template that still carries
-# it would fail at startup.
+# characteristic face condition, and `input_read` stops on the retired key,
+# so a template that still carries it would fail at startup.
 INPUT_DROP = ('du_th', 'Solver', 'IC mode', 'Valve eps')
 
 # The solver configuration of
@@ -743,8 +742,7 @@ def solve_escape_wind(cfg, iter_dir, seed_output, log):
     # continuation, so the ending cannot be read two ways.
     #
     # THE CONTINUATION IN THE PSEUDO-TIME START addresses ONE ending,
-    # `hydrodynamic_refusal` (item L4e,
-    # docs/lhs1140b_stationary_L4e_20260914.md): a stationary solve that ends
+    # `hydrodynamic_refusal` (item L4e): a stationary solve that ends
     # refused from a state already close leaves the pseudo-time at its start
     # value, and the same state restarted at PTC_DTAU0_CONTINUATION reaches
     # its root in a few Newton iterations, while a raw seed at that value
@@ -843,8 +841,7 @@ HISTORY_COLUMNS = ('k trial_F_H trial_F_He meas_F_H meas_F_He eps_H eps_He'
                    ' HeH_match log10_Mdot solution_id exhale_info')
 
 HISTORY_HEADER = (
-    '# EXHALE elemental-flux closure history'
-    ' (docs/phase_e_flux_closure_design.md section 6)\n'
+    '# EXHALE elemental-flux closure history\n'
     '# fluxes [g/s], eps and spreads [-], HeH_match = He/H number ratio at'
     ' the match\n'
     '# window_used: overlap = the match window; steady = the far field,'

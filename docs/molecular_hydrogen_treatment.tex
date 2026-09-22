@@ -358,8 +358,8 @@ that the premise holds where the rate is evaluated.
 working tree and \emph{not} in the last commit: \texttt{git show
 HEAD:src/modules/lower\_atmosphere/mol\_rates.f90} still carries the
 independent Baulch et al.\ (1992) fit $1.5\times10^{-9}e^{-48350/T}$, and
-\texttt{docs/Update\_EXHALE.md} ends at section 114 with no entry for the
-change. The changelog is therefore behind the code on this point.
+the changelog carried no entry for the
+change. It is therefore behind the code on this point.
 
 \subsection{Lyman--Werner self-shielding: no longer an imported fit}
 \label{sec:lw}
@@ -640,7 +640,7 @@ gas is fully atomic only above $\sim 2400$~K, while photochemistry plus the
 hotter actual base temperature dissociate H$_2$ well below that. Using it as a
 \emph{seed} for a solve that then applies the full radiation field is exactly
 the use it supports; using it as a discriminant for whether a cell should be
-molecular is not. Section 114 of \texttt{docs/Update\_EXHALE.md} records an
+molecular is not. The changelog records an
 attempt in that direction being withdrawn, together with the repair of an
 asymptotic guard in the same function that had been inverted since
 transcription and handed every cell below about $529$~K a fully atomic state
@@ -783,9 +783,8 @@ their paper only as a shock-driver gas and in ``helium--neon laser''. None of
 the sources behind R12, R13 or R15 supplies a helium efficiency, and none is
 applied. On general grounds a monatomic third body has no internal modes to
 take up the released energy and should be \emph{less} efficient than H$_2$, so
-in a helium-dominated base these three rates are upper bounds;
-\texttt{docs/molecular\_chemistry\_audit\_he\_rich.md} \S4.1 puts the size of
-a plausible factor at order $0.5$ and records it as a guess rather than a
+in a helium-dominated base these three rates are upper bounds; the size of
+a plausible factor is of order $0.5$, a guess rather than a
 measurement. Nothing in this repository supports a helium efficiency near
 unity, and no such number should be quoted from it.
 
@@ -938,8 +937,6 @@ the reservoir specifies and what the closure supplies, together with the
 budget each side spends; \texttt{element\_inventory\_of\_candidate} does the
 same for a trial state of the Newton against frozen element densities;
 \texttt{EXHALE\_INVENTORY\_REPORT=1} prints either at the operator's entry.
-Which species belong to which group in which context is tabulated in
-\texttt{docs/element\_inventory\_contexts\_20260909.md}.
 
 The map exists because the coordinate box the carrier solve used to be
 limited by was the wrong feasible set. Five separate box sides, one per
@@ -965,7 +962,7 @@ constraint surface is gained). A nonlinear feasibility screen runs at every
 candidate, and an infeasible start is repaired by a restoration phase before
 the step is taken (on the coupled element-and-carrier fixture, $52$ trials
 restored over $1165$ cell-steps, worst violation $1.630 \rightarrow
-2\times10^{-16}$; READ from \texttt{Update\_EXHALE.md} section~7, item N4b).
+2\times10^{-16}$; READ from the changelog).
 Two switches expose the change for measurement:
 \texttt{EXHALE\_ELEMENT\_CONSTRAINT\_ROWS=0} restores the five corners and
 \texttt{EXHALE\_ELEMENT\_WRITE\_BACK} governs the element-conserving
@@ -1007,8 +1004,7 @@ resolved gradient length of the hot-Uranus state the product of the advection
 time and the chemical decay rate, $t_{\rm adv}\lambda$, is $3.68$ at the
 base, $4.0\times10^{-3}$ at the front and $0.82$ in the wind for H$_2$, while
 H$_2^+$, H$_3^+$ and HeH$^+$ decay three to twelve decades faster than
-transport everywhere (READ from \texttt{Update\_EXHALE.md} section~7, item
-N5). H$_2$ is therefore the only molecular species whose local balance the
+transport everywhere (READ from the changelog). H$_2$ is therefore the only molecular species whose local balance the
 flow can break on this grid, and none of the three ions is proposed for
 promotion. The parameterization removes the conservation modes by itself: the
 neutral stage closes each element.
@@ -1055,7 +1051,7 @@ $504$ rows on \texttt{mol\_base\_handoff} and \texttt{mol\_carrier}, by up to
 $94.2\%$ ($218 \rightarrow 424$~K at $r = 1.094$) and $103.2\%$
 ($169 \rightarrow 343$~K), in both cases a warming of the molecular layer,
 which is what carrying $\tfrac52 kT$ per H$_2$ instead of $\tfrac32 kT$ does
-(numbers READ from \texttt{Update\_EXHALE.md} section~7, item N12). The
+(numbers READ from the changelog). The
 molecular \texttt{\_adv} goldens were refreshed at the 2026-09-10 gate. The
 product is still not a molecular stationary solution, and the writer says so
 in its own header.
@@ -1073,11 +1069,9 @@ local algebraic balance, recomputed from scratch in each cell by
 the network: it holds where the chemistry is fast against the flow and nowhere
 else. Evaluated on our own converged solution it does not hold across the
 H$_2$ front: the term the closure drops is two decades larger than the whole
-net chemical rate there (\texttt{docs/supersonic\_molecular\_base.md}
-section~13.6), so the front position and the H$_3^+$ extent that follow from
+net chemical rate there, so the front position and the H$_3^+$ extent that follow from
 it are properties of the closure as much as of the chemistry. The transported
-alternative exists and is described in \texttt{Update\_EXHALE.md}
-sections~128 and~134; it is off by default while the question of whether the
+alternative exists; it is off by default while the question of whether the
 transported problem has a steady state on that planet is still open.
 
 \textbf{The transported operator has a validity range of its own, and it is
@@ -1090,8 +1084,7 @@ as a deferred correction), which on the coarse grid reproduces what doubling
 the grid gave. The residual front motion after that fix is grid-converged, so
 it is the state relaxing and not the discretization; but the state is not
 steady, the steady solver stalls on the energy row inside the front, and no
-number from a transported run is a converged one yet
-(\texttt{TO\_BE\_DONE.md} item~(Y)).
+number from a transported run is a converged one yet.
 
 \textbf{And the way the transported problem was being closed against the wind
 was itself wrong, in sign.} Until 2026-09-03 the steady route alternated a wind
@@ -1110,8 +1103,8 @@ the wind's own pressure means a hotter cell, and a hotter cell destroys H$_2$.
 A fixed wind cannot see that feedback. The carrier row now carries the same
 convergence statement as every other row (its own largest terms), and
 \texttt{Coupled carrier solve} puts $n({\rm H_2})$ among the Newton unknowns
-so that the two halves are solved at once
-(\texttt{Update\_EXHALE.md} section~139). The coupled solve improves the
+so that the two halves are solved at once.
+The coupled solve improves the
 residual by a factor three and the front's own carrier imbalance by four, and
 then stagnates with the molecular layer 0.6 to 4\% out of carrier balance, so
 the closure question above stands: the transported problem still has no

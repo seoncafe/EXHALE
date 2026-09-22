@@ -409,8 +409,7 @@ stating the same line.  The width a run used is recorded at round-trip
 precision in the resolved-configuration record, and the refusal itself prints
 it with where it came from, the key or the default. That $2\times$
 setting is what \texttt{HD189733b/input.inp} carries; the other three production
-planets run on the default. The full investigation is
-\texttt{docs/hd189\_base\_checkerboard.md}.
+planets run on the default.
 
 \subsection{The lower boundary: a characteristic condition at the face}
 \label{sec:basebc}
@@ -577,9 +576,7 @@ them yet. The band $1.10 \le r < 1.20$ is likewise reported and does not
 gate. A state that passes with species rows present reports that it is
 certified \emph{in the wind}, and its state file records
 \texttt{cert\_reason=certified\_in\_wind}. The two radii are properties of
-the flow and are constants of \texttt{certification.f90}, not input keys; the
-five measurements behind the number are in
-\texttt{docs/certification\_tolerance\_anchoring\_20260910.md}.
+the flow and are constants of \texttt{certification.f90}, not input keys.
 
 A run that DECLARED a stationary state and then failed certification exits
 with status~2; a run that ended on a cap makes no such claim, writes
@@ -975,8 +972,7 @@ $(\ast)$ \texttt{Log10 of X-ray luminosity [erg/s]:} & real (log$_{10}$) & Only
   it reaches it on 1000 cells, and \texttt{ROE} reaches it on 500; where both
   fluxes solve the same case they differ by $-0.3$ to $-0.6$ percent in
   $\dot M$ and by 6 to 8 percent of opposite sign in the first cell's $T$ and
-  $\rho$. Record:
-  \texttt{docs/lhs1140b\_stationary\_L25\_20260916.md}. \\
+  $\rho$. \\
 \texttt{Low Mach velocity jump:} & logical (def.\ \texttt{False}) &
   Scale the normal velocity jump of the \texttt{ROE} branch by
   $\min(\mathrm{Ma},1)$ after Rieper (2011, J. Comput. Phys., 230, 5263);
@@ -1013,8 +1009,7 @@ $(\ast)$ \texttt{Log10 of X-ray luminosity [erg/s]:} & real (log$_{10}$) & Only
   the solution was reached under, and it writes the stepped state back over
   \texttt{Hydro\_ioniz.txt}. For the advection-corrected products of a
   \emph{solved} state use \texttt{Restart intent: stationary evaluate}
-  instead, which takes no step at all (item L9, 2026-09-17;
-  \texttt{docs/lhs1140b\_stationary\_L9\_20260916.md}). \\
+  instead, which takes no step at all (item L9, 2026-09-17). \\
 \texttt{Force start:} & logical & Force the first 1000 iterations regardless of
   the convergence test (useful when the IC is close to a fixed point). \\
 \end{longtable}
@@ -1308,8 +1303,7 @@ defaults restore the standard behavior).}\label{tab:inp-opt}\\
   \texttt{Reconstruction scheme: PLM+WENO3} with a non-empty PLM stage,
   otherwise a warning is printed and the key is ignored. Once $\lambda$ reaches
   1 the continuation disarms and the run continues in pure WENO3, so the JFNK
-  finish and every acceptance gate see the production operator
-  (\texttt{docs/f\_plm\_weno\_continuation.md}). \\
+  finish and every acceptance gate see the production operator. \\
 \texttt{Stall [tol,N]:} & real, int & Stall-detector override (relative $du$
   change and window; defaults $10^{-6}$, 2000). \\
 \texttt{CFL:} & real (def.\ 0.6) & CFL-number override. \\
@@ -1326,7 +1320,7 @@ defaults restore the standard behavior).}\label{tab:inp-opt}\\
   steady-wind solver (\S\ref{sec:windae}). No tunable threshold for
   \texttt{auto}; the choice and the escape parameter $b_0$ are
   logged. Explicit \texttt{Transonic IC}/\texttt{Hot Parker IC} keys
-  override \texttt{auto}. See \texttt{docs/auto\_ic\_design.md} and, for
+  override \texttt{auto}. See, for
   \texttt{windae}, \texttt{docs/wind\_ae\_solver.tex}. \\
 \texttt{Level tol:} & real & Mass-flux \emph{level}-stability gate: a
   converged/stalled stop additionally requires the mean $|\rho v r^2|$ over the
@@ -1409,7 +1403,7 @@ defaults restore the standard behavior).}\label{tab:inp-opt}\\
   composition the certification was not made on.
   Refused: the key with \texttt{Load IC?\ False}, \texttt{trajectory} with
   \texttt{Run mode: init}, \texttt{stationary} without \texttt{Solver:
-  Newton}. Design: \texttt{docs/restart\_contract\_design\_20260909.md}. \\
+  Newton}. \\
 \texttt{Restart option change:} & token list, separated by commas or blanks
   (def.: no option may differ) & Which switches of the state file's
   \texttt{\# options} line are \emph{allowed} to differ between the loaded
@@ -2101,10 +2095,9 @@ suppressed by fast escape and is stronger for heavier species. On a gentle
 escaper (HD\,209458b) helium itself separates and the He\,10830 line weakens; on
 a furious escaper (WASP-121b) helium is dragged out almost unfractionated while
 the heavy metals still settle strongly. Full physics, derivation, and a
-two-planet before/after comparison: \texttt{docs/design\_hehe\_diffusion.md} and
-\texttt{docs/version\_compare.\{md,tex,pdf\}}; the binary formulation and the
-stage-resolved coefficient are derived and measured in
-\texttt{docs/binary\_diffusion\_design.md} and
+two-planet before/after comparison:
+\texttt{docs/version\_compare.\{md,tex,pdf\}}; the stage-resolved coefficient
+is derived and measured in
 \texttt{docs/Update\_EXHALE.\{md,pdf\}} \S68 and \S71. The flags are
 \textbf{default off}, so standard runs are byte-identical to before.
 
@@ -2175,7 +2168,7 @@ optional. The converged layer is much colder than the relaxation snapshot
 (${\sim}400$\,K on HD\,209458\,b, 190--300\,K on a hot Uranus) and, without
 \texttt{Base IR field}, that collapse is the model's own steady state rather
 than a prediction; see \path{docs/lower_atmosphere_coupling.pdf} \S7--\S9
-and item (G) of \texttt{TO\_BE\_DONE.md}.
+and open item (G).
 
 \paragraph{Tier 2b: oxygen chemistry.}\label{sec:oxychem}
 \begin{verbatim}
@@ -2213,8 +2206,7 @@ range at the code site, and the reverse of each two-body pair is generated by
 detailed balance against a NIST-JANAF Shomate table rather than transcribed
 independently: the pairs run close to cancellation on a hot base, where an
 inconsistent pair gives an arbitrary net rather than a small error. The audit
-behind the numbers is \texttt{docs/a2\_reaction\_audit.md}; the design is
-\texttt{docs/a2\_oxygen\_option\_design.md}.
+behind the numbers is a separate audit.
 
 \textbf{O($^1D$) is closed by a local steady state}, not carried as a
 transported species: its only sink in this set is
@@ -2339,8 +2331,8 @@ C\,\textsc{i}/C\,\textsc{ii} line cooling correctly stop (those atoms are not
 there), but EXHALE carries no H$_2$O or CO infrared bands to put in their
 place, and H$_3^+$ is its only molecular coolant. Measured on the hot-Uranus
 molecular gate, the layer just above the base cools $15\times$ more slowly with
-the option on than with it off, at comparable heating. That is item~(G) of
-\texttt{TO\_BE\_DONE.md} arriving through the composition instead of through the
+the option on than with it off, at comparable heating. That is open item~(G)
+arriving through the composition instead of through the
 temperature, and it is why the resulting molecular-layer temperature is not a
 prediction. Every oxygen-chemistry run reports how much of its oxygen and
 carbon is molecular, where, and that those nuclei no longer cool.
@@ -2637,9 +2629,7 @@ problem instead of an input to it.
 \paragraph{See also.} \texttt{examples/17\_lower\_profile/} is a ready-to-run
 HD209458b case whose \texttt{make\_example\_profile.py} regenerates the
 synthetic column it ships (\S\ref{sec:exinputs}). The authoritative
-column-by-column schema is \texttt{docs/input\_schema.md} section~2d, and the
-design of the handoff and of the closure is
-\path{docs/phase_e_flux_closure_design.md}.
+column-by-column schema is \texttt{docs/input\_schema.md} section~2d.
 
 % ===================================================================== %
 \subsection{Obtaining VULCAN and FastChem}\label{sec:vulcan-obtain}

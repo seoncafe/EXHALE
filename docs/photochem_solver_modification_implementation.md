@@ -265,7 +265,7 @@ He/H = 9.30 to 420.61128 K at 9.60). Setting `epsfcn = 1e-4`, which requires
 `hybrd` in place of `hybrd1`, takes the 61-point grid from 54/61 to 61/61 in
 replication and does the same on 0.8.4's parameterization. That change is being
 applied to the clima patch and verified separately; nothing here is measured on
-a rebuilt build. Item (M) of `TO_BE_DONE.md`. A composition that refuses can be
+a rebuilt build. A composition that refuses can be
 recovered today by passing `--climate-t-deep-guess` anything other than its
 default 400.0.
 

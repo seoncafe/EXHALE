@@ -231,8 +231,7 @@ vpath %.f90 $(WAE_DIR)
 
 # ---- diffusion unit tests (standalone; not built by `all`) -----------
 # diffusion_tests.x exercises binary_element_diffusion on synthetic columns
-# (acceptance tests T1a/T1b/T3-T7/T9/T10/T11/T12 of
-# docs/binary_diffusion_design.md).
+# (acceptance tests T1a/T1b/T3-T7/T9/T10/T11/T12).
 # It links only the module and what it uses, so it needs no LAPACK.
 DIFT_SRC := \
   $(BUILDSTAMP) \
@@ -261,8 +260,7 @@ vpath %.f90 src/tests
 
 # ---- element census / conservation tests (standalone) ----------------
 # element_census_tests.x exercises the elemental and charge invariants of
-# item A3 of docs/open_defects_20260903_review.md section 6: the
-# stoichiometry table, the closure of one carrier write-back, the H2
+# item A3: the stoichiometry table, the closure of one carrier write-back, the H2
 # photoevent ledger, and the chemical-equilibrium base H2 branch. It links
 # every module the production binary does (bar the main program), because
 # the carrier write-back reads the ionization sweep's cell state, so it
@@ -276,7 +274,7 @@ ECT_DEPFILE := $(OBJDIR)/.deps_ect.mk
 # ---------------------------------------------------------------------
 # cce_probe.x re-evaluates ONE saved constrained-equilibrium cell state
 # without the hydrodynamics, for the derivative and conditioning diagnostics
-# of docs/charge_exchange_cancellation_limit.md. The state is written by a
+# of the charge-exchange cancellation limit. The state is written by a
 # normal run with EXHALE_CCE_DUMP set to a file name. Not part of the
 # default build; build it with:  make cce_probe
 # It links the same modules the equilibrium sweep uses (everything but the
@@ -336,9 +334,8 @@ check: $(EXE)
 #
 # EVERY suite runs even after one has failed, and the target exits nonzero if
 # any of them did. A test set whose job is to say which defects are still open
-# -- which is exactly what it is asked to do in Phase 0 of
-# docs/development_plan_20260905_rev3.md -- is useless if the first red suite
-# hides the state of the rest.
+# -- which is exactly what it is asked to do in Phase 0 -- is useless if the
+# first red suite hides the state of the rest.
 #
 # The two Fortran suites are built through a recursive $(MAKE) naming the
 # suite as the goal, because their generated module dependency file is

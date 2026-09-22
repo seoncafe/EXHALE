@@ -53,9 +53,8 @@ transmitted.
 goes to a profile file. The scalar \path{base.inp} is not retired: it stays
 as the single-layer route, and its behavior with no profile beside it is
 unchanged. What the decision left to the implementation (the schema, and
-what happens when both files are present) is now written: the schema is
-\path{docs/phase_e_flux_closure_design.md} \S2, and a scalar physics key
-beside a profile is refused rather than merged
+what happens when both files are present) is now written, and a scalar
+physics key beside a profile is refused rather than merged
 (\path{src/modules/files_IO/input_read.f90:1371-1386}).
 
 \bigskip
@@ -174,7 +173,7 @@ formula that can drift away from this one. That the triplet had to be
 excluded was measured, not assumed: it was being added a second time in all
 three places and in four more, and the mass, particle, nucleus and
 collision-partner sums were each wrong by that amount until 2026-08-27
-(\path{docs/Update_EXHALE_stage1.md} \S75).
+(\path{docs/Update_EXHALE_stage1.pdf} \S75).
 
 \subsection{The redistribution}
 
@@ -316,7 +315,7 @@ changes the elemental ratios of the lower atmosphere from one iteration to
 the next), so the base boundary condition would use the new $\mathrm{El/H}$
 while every cell above the base still held the old one, and the elemental
 budget $n_{\rm El}/n_{\rm H} = (\mathrm{El/H})$ could not close above the
-first cell (\path{docs/Update_EXHALE_stage1.md} \S79--80).
+first cell (\path{docs/Update_EXHALE_stage1.pdf} \S79--80).
 
 The rule is a single factor on the whole column
 (\path{load_IC.f90:650-705}):
@@ -367,8 +366,7 @@ Everything above is what the loader does to the numbers. This section is
 what the loader checks before it does any of it. A state is a solution of an
 equation set on a grid at a composition, so a file and a run that do not
 agree on those three things are not a restart pair at all, and since
-2026-09-09 the disagreement is named rather than absorbed
-(\path{docs/restart_contract_design_20260909.md}).
+2026-09-09 the disagreement is named rather than absorbed.
 
 \subsection{What a restart is for: \texttt{Restart intent}}
 
@@ -645,7 +643,7 @@ stored \path{examples/14_diffusion} output under \verb|EXHALE_DUMP_IC=1|,
 which writes the state as loaded, before the first ionization-equilibrium
 solve: the loaded He/H profile reproduces the file's to
 $3.3\times10^{-16}$ relative, worst cell, over all 504 cells
-(\path{docs/Update_EXHALE_stage1.md} \S67). That is round-off, i.e.\ the
+(\path{docs/Update_EXHALE_stage1.pdf} \S67). That is round-off, i.e.\ the
 \verb|He_diffusion| branch of section~\ref{sec:redistribute} leaves the
 column it is meant to leave alone.
 
@@ -669,7 +667,7 @@ echoed the input one.
 byte-identical output on every case of the matrix as it stood on 2026-08-25,
 which is the evidence that confining the rescale to the base cells changed
 nothing outside the \verb|He_diffusion| branch
-(\path{docs/Update_EXHALE_stage1.md} \S67, quoted; the matrix has since grown
+(\path{docs/Update_EXHALE_stage1.pdf} \S67, quoted; the matrix has since grown
 from five cases to sixteen, and was not re-run for this memo).
 
 \bigskip
@@ -769,8 +767,7 @@ scalar contract is pinned by the golden comparison and cannot be changed
 silently. Those four goldens were re-snapshotted on 2026-08-27, but for a
 reason that has nothing to do with the handoff: a molecular-network audit
 found the three-body term using a mass density where a number density
-belongs (\path{docs/molecular_chemistry_audit_he_rich.md},
-\path{docs/Update_EXHALE_stage1.md} \S82). The scalar contract itself is unchanged.
+belongs (\path{docs/Update_EXHALE_stage1.pdf} \S82). The scalar contract itself is unchanged.
 
 \section{The profile handoff}
 \label{sec:profile}
@@ -877,7 +874,7 @@ flux continuity
    over two radial windows and written to \path{EXHALE_resolved.out}
    whenever a profile is in use
    (\path{binary_element_diffusion.f90:1784-1872}); the criterion is the
-   same radial invariance as T8 (\path{docs/Update_EXHALE_stage1.md} \S69) \\[2pt]
+   same radial invariance as T8 (\path{docs/Update_EXHALE_stage1.pdf} \S69) \\[2pt]
 eddy coefficient
  & one constant, \verb|Kzz_base| $\to$ \verb|he_kzz|
  & the \verb|Kzz| column, interpolated onto every cell as \verb|kzz_cell|
@@ -911,8 +908,7 @@ Three rows carried the decision.
 lower-atmosphere chemistry solution cannot determine the hydrogen supply
 independently of its upper-boundary flux. Without a flux-continuity
 condition at a matching surface, \verb|HeH_base| remains prescribed and the
-composition is an input wearing the clothes of an output
-(\path{docs/lhs1140b_lower_atmosphere_plan_new.md} \S2). A scalar file
+composition is an input wearing the clothes of an output. A scalar file
 cannot express the condition, because a single level has no gradient and
 carries no flux. This is not a convenience argument; it is the difference
 between a coupling and an assumption.
@@ -947,8 +943,7 @@ molecular ions (section~\ref{sec:carries}).
 \item \textbf{Phase\,E goes to a profile file.} The interface decision the
   plan left open (``whether this stays a scalar file or becomes a profile
   file is an interface decision to confirm with the user before
-  implementation'', \path{docs/lhs1140b_lower_atmosphere_plan_new.md}
-  Phase\,E part 1) is settled in favor of profiles, on the flux-continuity
+  implementation'') is settled in favor of profiles, on the flux-continuity
   row of section~\ref{sec:compare} above all. The plan itself now records
   the phase as done (milestones E1--E5, 2026-08-27) with its three
   acceptance criteria and the numbers behind them.
@@ -973,7 +968,7 @@ the diffusion-off and scalar-handoff paths are untouched by any of it. The
 qualification is that the four molecular goldens are \emph{not} the ones
 they were at the time of the decision: they were re-snapshotted at the end
 of the same day for the three-body density fix of
-\path{docs/Update_EXHALE_stage1.md} \S82, which is a different change with a
+\path{docs/Update_EXHALE_stage1.pdf} \S82, which is a different change with a
 different reason. The Phase\,E work did not move them.
 
 What the decision left open, and where it now lives:
@@ -985,8 +980,7 @@ What the decision left open, and where it now lives:
 piece & where it is \\
 \midrule
 the schema
- & \path{docs/phase_e_flux_closure_design.md} \S2;
-   \path{docs/input_schema.md} \S2d; user manual \S3.8 \\
+ & \path{docs/input_schema.md} \S2d; user manual \S3.8 \\
 the reader
  & \path{src/modules/files_IO/lower_atmosphere_profile.f90} \\
 the run key
@@ -1099,8 +1093,7 @@ The two further requirements the plan states are both met:
   LHS\,1140\,b and rejected there: it is $\sim\!0.003\,R_p$ thick and the
   flux across it spreads by a factor of 13--35, so the driver falls back on
   the steady-flux window $r \ge r_{\rm esc}$ and records that it did
-  (\path{src/utils/element_flux_closure.py}, header;
-  \path{docs/phase_e_flux_closure_design.md} \S3.4). The fallback is
+  (\path{src/utils/element_flux_closure.py}, header). The fallback is
   reported rather than silent, but the window the design was written around
   is not the window the number comes from.
 \item \verb|q_H2_base| and the profile's \verb|q_H2| are the composition of

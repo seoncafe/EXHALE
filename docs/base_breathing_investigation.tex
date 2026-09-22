@@ -40,7 +40,7 @@ every momentum scale at $10^{-6}$ of the \emph{base} $|\rho v|$, and with a
 watchdog that aborted after 15 outer iterations without a new best
 $\lVert R\rVert$, before the opening pseudo-transient has finished raising
 it. Both have since been replaced, and configurations that stalled this way now
-converge; see \code{docs/newton\_scaling\_and\_base\_wall.md}. The
+converge. The
 \emph{marching-time} breathing this memo localizes is a separate observation and
 is not affected. The stall diagnoses have not been re-run under the new solver.
 \end{quote}
@@ -183,13 +183,11 @@ PTC / JFNK from the IC &
 of option~1 below have since been carried out and HD~189733\,b converges: the
 JFNK globalization was repaired (cell-local diagonal scaling, a watchdog on
 consecutive failed line searches, and a line search tested against the true
-residual rather than the frozen-weight model,
-\code{docs/newton\_scaling\_and\_base\_wall.md} \S\S3, 4, 10), and the residual
+residual rather than the frozen-weight model), and the residual
 normalization was replaced: the default convergence norm is now the
 volume-weighted one, \code{Resid norm: vol}, which is not inflated by cells
 where $\rho v$ is tiny (\code{Resid norm: Linf} selects the old
-max-over-cells measure).  The base cooling was also repaired the same week
-(\code{docs/hd189\_base\_checkerboard.md} \S10).  The conclusion as written
+max-over-cells measure).  The base cooling was also repaired the same week.  The conclusion as written
 below is kept as the record of the 2026-06-14 state.
 
 \medskip

@@ -178,7 +178,7 @@ def main():
     # The El/H ratios VULCAN was given are a property of its own
     # configuration, not of this file, so there is no input vector to check
     # the deepest level against here; what the two producers are compared on is
-    # the matching level (docs/phase_e_flux_closure_design.md test T-E9).
+    # the matching level (test T-E9).
     sch.write_handoff(args, cols, header, order)
 
 

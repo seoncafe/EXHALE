@@ -107,7 +107,7 @@
    subroutine write_provenance_header(unit)
    ! WHAT PRODUCED THIS FILE, so that a profile found on disk in a year can
    ! be tied to an executable, an input and a set of physics options without
-   ! asking anyone. The external review of 2026-09-03 (section 5, item 12.11)
+   ! asking anyone. The external review of 2026-09-03
    ! asks for exactly this: scientific products marked with the executable
    ! and source revision and the physics options they were made under.
    !
@@ -261,7 +261,7 @@
 	! order of species_table, each species weighted by its net charge
 	! (bsp_charge = free electrons released); neutral species (charge 0) are
 	! skipped as no-ops.  Accumulating in bsp order deliberately fixes the FP
-	! add order (a golden re-snapshot decision, section 5.3 Inc 1).
+	! add order (a golden re-snapshot decision).
 
 	integer :: im
 	real*8, dimension(1-Ng:N+Ng), intent(in) :: nhii
@@ -315,7 +315,7 @@
 	! contribution is accumulated with unit weight in the canonical bsp order
 	! of species_table; the optional nm adds the metal nuclei (all stages)
 	! when the eos_metals policy is on.  bsp-order accumulation deliberately
-	! fixes the FP add order (a golden re-snapshot decision, section 5.3 Inc 1).
+	! fixes the FP add order (a golden re-snapshot decision).
 	! The He 2^3S column is NOT an argument: it is an excited level of He I
 	! (bsp_is_excited_level), so its gas particle is already the He I particle
 	! counted through nhei, and adding it counted the triplet twice.
@@ -428,8 +428,8 @@
 	! The base H/He/molecular mass is accumulated in the canonical bsp order
 	! of species_table, each species weighted by bsp_mass [m_H units]; this
 	! bsp-order weighted accumulation deliberately reorders the FP adds versus
-	! the old factored 4.0*(nhei+...) form (a golden re-snapshot decision,
-	! section 5.3 Inc 1).  The optional nm adds the metal mass (melem_A per
+	! the old factored 4.0*(nhei+...) form (a golden re-snapshot
+	! decision).  The optional nm adds the metal mass (melem_A per
 	! nucleus, all stages) when the eos_metals policy is on.  (HeH+ carries
 	! 4.9715 m_H: its He nucleus is NOT in the nhei..nheiii free-He arrays.)
 	! The He 2^3S column is NOT an argument: it is an excited level of He I

@@ -3,8 +3,7 @@
 %% refactor (summary), the convergence-criterion study (premature-dip
 %% discovery, level gate, residual diagnostic, residual-based stop), and the
 %% development of the steady-state JFNK solver up to its first converged
-%% solution. Companion design notes: steady_solver_design.md,
-%% refactor_stage1_log.md.
+%% solution.
 %% Author: Kwang-Il Seon
 \documentclass[english,a4paper]{my_memo}
 \synctex=1
@@ -76,7 +75,7 @@ a no-physics-change refactor gated by a deterministic regression harness
 (\code{backup/regression/run\_check.sh}: single-threaded WASP-121b runs, golden
 outputs compared byte-wise excluding \code{\#} header lines; matrix cases
 \code{wasp\_full} = He\,$2^3$S + metals and \code{wasp\_he23off}).
-Details: \code{docs/refactor\_stage1\_log.md}. The same harness gates every
+The same harness gates every
 solver-related change in this memo.
 
 %====================================================================
@@ -584,7 +583,7 @@ are gated in the wind, and the XUV continuation of 2026-09-21 certified seven
 more, one of them the case that catalog had carried with no certified
 generation at all; on its first rung the elemental transport He/H row
 certifies at $9.924\times10^{-6}$ against its $10^{-5}$ tolerance at cell 351
-(READ, \code{docs/lhs1140b\_xuv\_continuation\_20260921.md}). The catalog
+(READ). The catalog
 inventory taken at 2026-09-21 21:10 KST reads 143 state indexes with 92
 certified (MEASURED, \code{LHS1140b/models/CASE\_INVENTORY.json}).
 
@@ -613,9 +612,6 @@ file & content\\
 \code{src/EXHALE\_main.f90} & level/residual monitors and stops; env hooks\\
 \code{backup/regression/} & harness, goldens, and all probe run directories
  (\code{ptc\_warm}, \code{crit\_cold}, \code{resid\_*}, \dots)\\
-\code{docs/steady\_solver\_design.md} & incremental design notes
- (\S\S4--11) with the raw probe logs\\
-\code{docs/refactor\_stage1\_log.md} & Stage-I extensibility change log\\
 \bottomrule
 \end{tabular}
 \end{center}
@@ -658,7 +654,7 @@ Four things recorded above are no longer what the code does.
   at $\lambda=1$, and 7 of the 14 steps the frozen test accepted \emph{raised}
   the true residual, by up to $9\times$. This is the change that attacks the
   HD~189733\,b residual floor of item~1 of \S\ref{sec:next} from the other
-  side. Numbers: \code{docs/newton\_scaling\_and\_base\_wall.md} \S10.
+  side.
 \end{enumerate}
 
 The consequence for this memo is that its recurring diagnosis (that every
@@ -669,8 +665,7 @@ $6.5\times10^{-5}$ of the gravity term, and a 2.9\,ppm change of the ghost
 pressure drives it to zero. What actually dominated the line-search merit were
 the momentum rows around the stagnation point, mis-scaled by the floor above.
 Configurations that this memo records as stalling now converge with
-\code{info}$=0$. Full account and numbers:
-\code{docs/newton\_scaling\_and\_base\_wall.md}.
+\code{info}$=0$.
 
 %====================================================================
 \section{The stationary solve as it stands (2026-09)}
@@ -1042,7 +1037,6 @@ row is discretization. And the element flux spread is $9.79$ in the layer
 against $2.7\times10^{-2}$ in the wind. The gate is set a decade above the
 manufactured column's discretization at the production spacing, and the
 layer's rows do not gate until the layer's flux conservation is repaired.
-Full account: \code{docs/certification\_tolerance\_anchoring\_20260910.md}.
 
 \textbf{No candidate is certified.} The atomic reload binds on the He/H row of
 a WIND cell at $2.896\times10^{-4}$ against $10^{-5}$; the carrier reload on
@@ -1052,8 +1046,8 @@ carries no species row, is certified as before.
 \subsection{Numbers in this section}
 
 Every number above is either MEASURED in the item that produced it or READ
-from the stage-2 record, \code{docs/Update\_EXHALE.md} section~7, items N0
-through N30, and \code{docs/ISSUES\_20260909.md}. None of them was
+from the stage-2 record, section~7, items N0
+through N30. None of them was
 re-measured for this memo; the fixtures are the two reload directories under
 \code{backup/regression/} that those items name, and the element reload's own
 irreproducibility (\S\ref{sec:limit}) is the reason a re-measurement would

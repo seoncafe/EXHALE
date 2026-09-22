@@ -1,9 +1,0 @@
-# L15 trace  dump_at 1  repeat_at 0
-iter     1 Y 1B75B5AB91B05F7D comp 37C52467DF120579 F 23989D9F4D429AF1 Fjac 23989D9F4D429AF1 D 93E32CCA029F9940 Drow 93E32CCA029F9940 act CBF29CE484222325 dtau C293BD4C8601B7DF nact 0
-meri     1 f2   1.6898687476565493E-03 rnorm   1.0711469865312231E+00 dtau   1.0000000000000000E+00
-dump 1 ./l15_trace.txt.dump1
-kry      1 j    0      rhs val 8B8DD58870A14B6F
-kry      1 j    1   precin val F350625FB0E1D330
-kry      1 j    1  precout val FA0AEF4DE18C0DBA
-kry      1 j    1       jv in FA0AEF4DE18C0DBA out 833872402D145D3C
-kry      1 j    1     hcol val 3B1C9F8D681E8129

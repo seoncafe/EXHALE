@@ -80,7 +80,7 @@
       ! itself changed the composition and the density follows.
       !
       ! The two scales it separates are measured, not chosen: the mass-closure
-      ! drift a solved state carries is 1e-15 to 6e-13 (item L18, growing
+      ! drift a solved state carries is 1e-15 to 6e-13 (growing
       ! about 1e-14 per outer pass), and the smallest deliberate change the
       ! blocks above make -- rebuilding one trace element at its abundance --
       ! moves the mass by 1e-3. Anything between them separates the two, and
@@ -94,9 +94,10 @@
    real*8, parameter :: restart_composition_move_tol = 1.0d-12
    ! The departure of the two halves that a restart of the SAME equations is
    ! allowed to carry silently. It is the rounding of the writer and of the
-   ! projection the sweep applies (item L19), measured at 4e-16 on a state
-   ! this code writes and at 6e-13 on the longest solve before L19; anything
-   ! between this and restart_density_agreement_tol is reported.
+   ! projection the sweep applies, measured at 4e-16 on a state this code
+   ! writes and at 6e-13 on the longest solve before that projection
+   ! existed; anything between this and restart_density_agreement_tol is
+   ! reported.
    real*8, parameter :: restart_density_rounding_tol = 1.0d-10
 
       ! Elements whose density had to be built from the abundance because the
@@ -1024,7 +1025,7 @@
       ! Where the two disagree the loader has to choose, and until now it chose
       ! the species and silently moved the conserved density onto them.
       !
-      ! MEASURED (item L18, 2026-09-15). The composition of a state written at
+      ! MEASURED (2026-09-15). The composition of a state written at
       ! the end of a stationary solve does not close its own mass: the
       ! departure grows by about 1e-14 per outer pass, monotonically, reaching
       ! 5.1e-13 after the 19 passes of LHS1140b/models/.L14/x003_HeH2.13 and
@@ -1069,7 +1070,7 @@
       !
       ! AND A RESTART OF THE SAME EQUATIONS IS ALLOWED ONLY ROUNDING.  Below
       ! restart_density_rounding_tol the two halves agree to what the writer
-      ! and the sweep's projection leave (item L19: 4e-16 on a state this
+      ! and the sweep's projection leave (4e-16 on a state this
       ! code writes, 6e-13 on the longest solve before that projection
       ! existed).  Between that and restart_density_agreement_tol the pair is
       ! loaded and the departure reported.
@@ -1609,7 +1610,7 @@
          if (len_trim(blk(i)) .eq. 0) cycle
          write(unit,'(A)') '# '//trim(blk(i))
       enddo
-      ! The state's option-change history (decision 21): one line per
+      ! The state's option-change history: one line per
       ! restart at which a named physics option was allowed to differ,
       ! oldest first. Informational and not compared, like the source
       ! field: it says what the state was reached from.
@@ -1729,7 +1730,7 @@
       ! carried: the changes ITS restarts were allowed and the routes they
       ! were reached by, kept in the order the file carries them and ahead
       ! of the line this restart adds, so the history travels with the
-      ! state (decision 21).
+      ! state.
       character(len=*), intent(in) :: line
       character(len=len(line)+1) :: t
       t = adjustl(line)
@@ -1846,7 +1847,7 @@
       call refuse_unequal_field(imeta_const,   meta_h, blk)
       ! The options field is compared TOKEN BY TOKEN, so that the tokens
       ! the input named as allowed to differ can differ and every other
-      ! difference is still refused by its own name (decision 21).
+      ! difference is still refused by its own name.
       call compare_options_field(meta_h(imeta_options), blk(imeta_options), &
                                  meta_h(imeta_source))
 

@@ -11,15 +11,15 @@ would therefore build a grid on which its own stored results do not load.
 
 This script writes the old resolved grid into those inputs:
 
-    # Base grid of the stored results: the Mixed-grid default before 2026-09-19 (docs/lhs1140b_stationary_D1b_20260919.md)
+    # Base grid of the stored results: the Mixed-grid default before 2026-09-19
     Base grid [dr,cells]: 1.9999999494757503e-4 50
 
 immediately after the `Grid type:` line. The decimal
 1.9999999494757503e-4 is read by gfortran's list-directed read into a real*8
 as the bits 3F2A36E2E0000000, the bits of the default-real literal 2.0e-4
-widened to double (MEASURED, docs/lhs1140b_stationary_D1b_20260919.md
-section 2). 50 is the only value `N_low_cells` resolves to without the key:
-`input_read` sets it to 50 and only the `Base grid` key changes it.
+widened to double (MEASURED). 50 is the only value `N_low_cells` resolves to
+without the key: `input_read` sets it to 50 and only the `Base grid` key
+changes it.
 
 WHICH INPUTS. A file is a candidate when it is named `input.inp` (or
 `input_template.inp`, from which a flux-closure rung writes the `input.inp`
@@ -56,7 +56,7 @@ PIN_WIDTH = '1.9999999494757503e-4'
 PIN_CELLS = 50
 PIN_LINE = 'Base grid [dr,cells]: %s %d' % (PIN_WIDTH, PIN_CELLS)
 PIN_COMMENT = ('# Base grid of the stored results: the Mixed-grid default'
-               ' before 2026-09-19 (docs/lhs1140b_stationary_D1b_20260919.md)')
+               ' before 2026-09-19')
 
 NAMES = ('input.inp', 'input_template.inp')
 

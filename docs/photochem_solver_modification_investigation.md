@@ -22,7 +22,7 @@ Date: 2026-08-29
 
 ## Executive conclusion
 
-The two failures recorded in `deep_level_elemental_check.md` are real, but
+The two recorded failures are real, but
 they do not have the same owner.
 
 1. **The deep elemental residual can be fixed through the Photochem path.**

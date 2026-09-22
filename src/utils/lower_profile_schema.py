@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """The lower-atmosphere profile schema, shared by the two adapters.
 
-`docs/phase_e_flux_closure_design.md` section 2 fixes one file format and one
-fingerprint for the handoff, and section 4 asks for two producers of it:
+The schema fixes one file format and one fingerprint for the handoff, and
+asks for two producers of it:
 `photochem_to_lower_profile.py` (production) and `vulcan_to_lower_profile.py`
 (the cross-check), behind the same command line.  Everything that is a
 property of the FORMAT rather than of either chemistry code lives here, so
@@ -371,8 +371,7 @@ def write_profile(path, cols, header, column_order=None):
                          % ', '.join(missing))
     n = len(cols[names[0]])
     with open(path, 'w') as f:
-        f.write('# EXHALE lower-atmosphere profile'
-                ' (docs/phase_e_flux_closure_design.md section 2)\n')
+        f.write('# EXHALE lower-atmosphere profile\n')
         for key in ('solution_id', 'source_code', 'source_version',
                     'mechanism', 'stellar_flux'):
             f.write('# %s %s\n' % (key, header[key]))
@@ -420,8 +419,7 @@ def write_base_inp(path, header, extra_comments=()):
         f.write('# The lower-atmosphere PROFILE is the single source of the'
                 ' base state and the\n')
         f.write('# elemental reservoirs; every scalar physics key is refused'
-                ' beside it\n')
-        f.write('# (docs/phase_e_flux_closure_design.md section 2.4).\n')
+                ' beside it.\n')
         f.write('# solution_id %s\n' % header['solution_id'])
         f.write('# source_code %s\n' % header['source_code'])
         f.write('# source_version %s\n' % header['source_version'])
@@ -509,9 +507,7 @@ def add_common_arguments(ap):
                          ' against it is the intended signal that the'
                          ' equilibrium solve was never converged element by'
                          ' element. Reproducing a result made with such a'
-                         ' build needs an explicit --abundance-tol. See'
-                         ' docs/deep_level_elemental_check.md for the'
-                         ' diagnosis.')
+                         ' build needs an explicit --abundance-tol.')
     ap.add_argument('--profile-name', default='lower_atmosphere_profile.dat')
     ap.add_argument('--no-base-inp', action='store_true',
                     help='do not write the paired provenance base.inp')
@@ -569,8 +565,7 @@ def write_handoff(args, cols, header, column_order, element_input=None,
     # visible in N than in He, C or O because deep nitrogen sits in NH3 alone
     # and one excess N rides on three excess H; a refusal then reports that
     # solver rather than a fault here, and reproducing such a run needs an
-    # explicit --abundance-tol.  docs/deep_level_elemental_check.md is the
-    # diagnosis.
+    # explicit --abundance-tol.
     if element_input and element_measured:
         worst, worst_el = 0.0, ''
         for el, want in element_input.items():

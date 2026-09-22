@@ -3,8 +3,7 @@
 %% EXHALE's binary H/He element-diffusion operator sits on.
 %% Companion documents: LHS1140b/kzz_literature.md (the survey and the
 %% verification status of every published number), LHS1140b/kzz_decision.md
-%% (the D_eff structure, the He_Kzz scan and the adopted value),
-%% docs/binary_diffusion_design.md (the operator itself).
+%% (the D_eff structure, the He_Kzz scan and the adopted value).
 %% Author: Kwang-Il Seon
 \documentclass[english,a4paper]{my_memo}
 \synctex=1
@@ -28,8 +27,7 @@
 \section{Why this memo exists, and the answer up front}
 
 EXHALE's binary H/He element-diffusion operator
-(\path{src/modules/functions/binary_element_diffusion.f90},
-formulated in \path{docs/binary_diffusion_design.md}) carries one number
+(\path{src/modules/functions/binary_element_diffusion.f90}) carries one number
 that the code cannot derive from anything it solves: the eddy diffusion
 coefficient \texttt{He\_Kzz}. On LHS\,1140\,b that number moves the
 He\,\textsc{i}\,$10830$ equivalent width by four orders of magnitude and the
@@ -79,9 +77,7 @@ reported alongside the $10^{8}$--$10^{10}$ bracket, not instead of it.
 every published number quoted here is in
 \path{LHS1140b/kzz_literature.md}; the $D_{\rm eff}$ structure, the
 \texttt{He\_Kzz} scan and the adopted value are in
-\path{LHS1140b/kzz_decision.md}; the operator and its
-$(D+K)$ form are in \path{docs/binary_diffusion_design.md},
-sections~2.3 and~9.4. What is new here is the physics behind the numbers,
+\path{LHS1140b/kzz_decision.md}. What is new here is the physics behind the numbers,
 four newly verified primary citations (Sect.~\ref{sec:verif}), and an
 assessment of what a principled determination would require.
 
@@ -119,7 +115,7 @@ mixed atmosphere. Eddy mixing transports the mixture as a whole; molecular
 diffusion separates it. This is why the aeronomical transport equation
 (Banks \& Kockarts 1973) carries $D+K_{zz}$ on the gradient term and $D$
 alone on the settling term, which is exactly the form EXHALE implements
-(\texttt{binary\_diffusion\_design.md}, eq.~4):
+(eq.~4):
 %
 \begin{equation}
   J_{\rm total} \;=\; J_{\rm mol} \;-\; \rho\,K_{zz}\,\frac{dX}{dr},
@@ -1068,8 +1064,7 @@ Mixing in Planetary Atmospheres. II. Tidally Locked Planets'',
 status of every published number);
 \path{LHS1140b/kzz_decision.md} (base conditions, the $D_{\rm eff}$
 structure, the \texttt{He\_Kzz} scan, the adopted value and the
-alternatives); \path{docs/binary_diffusion_design.md} (the operator,
-sections~2.3 and~9.4); \path{docs/lhs1140b_exhale_vs_pwinds.tex}
+alternatives); \path{docs/lhs1140b_exhale_vs_pwinds.tex}
 (the He\,$10830$ comparison the composition was fitted against).
 
 \end{document}

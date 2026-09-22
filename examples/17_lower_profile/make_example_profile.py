@@ -3,8 +3,7 @@
 
 The file this writes is NOT a photochemistry result: it is a hand-built,
 hydrostatically integrated column with a smooth H2 -> H front, whose only
-purpose is to exercise and document the schema of
-docs/phase_e_flux_closure_design.md section 2 (the reader, the K_zz profile
+purpose is to exercise and document the schema (the reader, the K_zz profile
 path, the elemental reservoirs and the refusal rules).  The production
 producer is the Photochem adapter of milestone E2.
 
@@ -167,8 +166,7 @@ def main():
     sid = solution_id(cols)
     imatch = int(np.argmin(np.abs(cols['p'] - CFG['p_match_bar'])))
     with open('lower_atmosphere_profile.dat', 'w') as f:
-        f.write('# EXHALE lower-atmosphere profile'
-                ' (docs/phase_e_flux_closure_design.md section 2)\n')
+        f.write('# EXHALE lower-atmosphere profile\n')
         f.write('# solution_id %s\n' % sid)
         f.write('# source_code analytic\n')
         f.write('# source_version examples/17_lower_profile/'

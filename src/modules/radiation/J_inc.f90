@@ -38,7 +38,7 @@
    ! set_energy_vectors (the analytic types), whenever the excited-hydrogen
    ! coupling is armed. H(n=2) is an absorber like the metastable helium and
    ! the low-IP metals, and its threshold enters the grid floor the same way
-   ! theirs do (development plan rev 3, section 10.5 decisions 13 and 17).
+   ! theirs do.
    real*8, parameter :: e_th_HI_n2 = e_th_HI/4.0d0
 
    contains
@@ -109,7 +109,7 @@
    ! run states a field at one
    ! energy and nowhere else. A band of the code that needs a field outside
    ! the covered range has to stop the run rather than fill the band from a
-   ! type the input did not select (decision 13).
+   ! type the input did not select.
    real*8, intent(in) :: E
 
    spectrum_covers_eV = .false.
@@ -151,7 +151,7 @@
    ! The incident stellar flux per unit photon energy [erg cm^-2 s^-1 eV^-1]
    ! at the planet's orbit, from the run's spectrum type, at ANY photon
    ! energy: the single statement of what field the run has at E, which
-   ! every band of the code reads (decision 13). Undiluted, as J_inc and
+   ! every band of the code reads. Undiluted, as J_inc and
    ! planck_stellar_flux_eV are: the caller applies dayside_dilution() where
    ! the beam is used.
    !   Power-law   the power law of PLind, normalized on [e_low, e_mid] and

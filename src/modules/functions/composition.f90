@@ -215,7 +215,7 @@
       ! Base composition scalars. These functions are the SINGLE
       ! SOURCE of the base composition policy: mass_per_H, ntot_bc, rho_bc
       ! (set in input_read) all flow from here, so the policy cannot
-      ! disagree between code paths (the §3.4 root cause).  The molecular
+      ! disagree between code paths.  The molecular
       ! base belongs here for the same reason: it is part of the base
       ! particle count, not a separate correction applied afterwards.
       !

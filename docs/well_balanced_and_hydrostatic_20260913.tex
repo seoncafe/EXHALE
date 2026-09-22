@@ -1,8 +1,6 @@
 %% EXHALE: how the well-balanced reconstruction is tied to the hydrostatic
 %% condition, and why it is what makes the LHS 1140 b base layer solvable.
-%% Written 2026-09-13 from src/modules/states/Reconstruction.f90, the design
-%% memo docs/well_balanced_flux_difference_design_20260910.md and the
-%% measurements of docs/lhs1140b_stationary_L5c_20260913.md.
+%% Written 2026-09-13 from src/modules/states/Reconstruction.f90.
 %% Author: Kwang-Il Seon
 \documentclass[english,a4paper]{my_memo}
 \synctex=1
@@ -71,7 +69,7 @@ hydrostatic equilibria with arbitrary temperature or entropy stratification''
 the pressure is reconstructed as a departure from the local equilibrium, and
 the only requirement on the numerical flux is that it resolve a stationary
 contact discontinuity exactly. That is the variant EXHALE implements
-(decision 23 of 2026-09-10; \texttt{docs/well\_balanced\_flux\_difference\_design\_20260910.md}).
+(decision 23 of 2026-09-10).
 Provenance: the design memo of 2026-09-10 read the authors' ETH SAM
 research reports (2015-40 and 2013-05, the submitted texts); the published
 articles (\texttt{references/Kappeli\_2016A\&A\_587\_A94.pdf},
@@ -250,15 +248,13 @@ equilibrium \eqref{eq:discrete_eq}, not the continuous hydrostatic solution
 $p(r)$ with its own $\rho(r)$; the two agree to second order in the cell width.
 The consequence is that the base layer of a well-balanced solution converges
 with the grid at the same order as before, and the grid convergence of the
-LHS\,1140\,b solution has not yet been measured (open in
-\texttt{docs/PLAN\_20260913\_lhs\_stationary.md}, item L5c). Nothing thermal
+LHS\,1140\,b solution has not yet been measured (open item L5c). Nothing thermal
 is assumed: the temperature stratification of the base layer is whatever the
 energy equation returns.
 
 \section{What it did on LHS\,1140\,b}
 
-The measurements are those of
-\texttt{docs/lhs1140b\_stationary\_L5c\_20260913.md} on the reference case
+The measurements are those of item L5c on the reference case
 (GJ\,1132 proxy spectrum, He/H $= 1.6261$, $K_{zz} = 10^{9}$\,cm$^2$\,s$^{-1}$,
 scalar base at 226\,K and 1\,$\mu$bar), the archived 2026-08-30 solution
 mapped onto the current grid as the seed, the partitioned stationary route
@@ -316,13 +312,12 @@ Turning it on changes the discretization of the pressure/gravity pair in
 every run, not only in the base layer: the two discretizations are both
 second-order consistent and neither is a subset of the other, so every golden
 of the regression matrix would move (\texttt{docs/input\_schema.md} K46). The
-decision of 2026-09-10 (decision 23 of
-\texttt{docs/To\_be\_determined\_by\_user\_20260906.md}) made it an option,
+decision of 2026-09-10 (decision 23) made it an option,
 stated in \texttt{EXHALE\_setup.out}, carried as the option token
 \texttt{wellbal} in every state file, and left off. For LHS\,1140\,b it is
 required: without it there is no certifiable state of the wind on the current
 code, with any seed and by any route (plan items L1 to L5c). The decision of
-2026-09-13 is to run every LHS\,1140\,b model of \texttt{LHS1140b/MODELS.md}
+2026-09-13 is to run every LHS\,1140\,b model
 with the key on and to say so in each case's \texttt{REPRODUCE.md}. Whether
 it should become the default for every planet is a separate question, to be
 decided on the regression matrix and the Model A comparison, not here.

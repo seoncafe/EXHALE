@@ -9,8 +9,7 @@ STALE (P48; Update_EXHALE_stage1 section 137): the figures currently in docs/fig
 were made while exhale_io returned the profile files' GHOST rows as solution
 cells. The reader now drops them, so re-running this script moves the transit
 depths by 0.2-3.8 per cent and trims one point from each end of every radial
-curve. Nothing was regenerated; regeneration awaits instruction. The affected
-files are listed in docs/figures/README_STALE_P48.md.
+curve. Nothing was regenerated; regeneration awaits instruction.
 """
 import os
 import sys

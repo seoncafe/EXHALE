@@ -19,7 +19,7 @@ so this file says it explicitly):
   truncated, top 4.81 R_p) with the Gueymard-shaped spectrum, the final
   state after 2e5 marching steps (16 threads) continued from
   `output/*_IC.txt`, the 1e5-step transported state of
-  `Update_EXHALE_stage1.md` section 169.1 (itself continued from the
+  `Update_EXHALE_stage1.pdf` section 169.1 (itself continued from the
   1e6-step `Rate/4` state of section 168); `run.log`,
   `EXHALE_resolved.out`. Made before the gravity and the spectrum were
   matched (memo section "What the matching found"); kept as the record of

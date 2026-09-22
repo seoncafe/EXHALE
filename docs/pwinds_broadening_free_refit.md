@@ -4,9 +4,7 @@ Cherubim et al. (2026) retrieved the mass-loss rate, outflow temperature and
 H:He ratio of LHS 1140 b from the WINERED He I 10830 line with p-winds, with
 the line broadening set by the model rather than fitted: thermal broadening at
 the retrieved temperature, plus the Lampon et al. (2020) turbulence term, which
-is a fixed function of that same temperature. The width memos in this
-directory (`lhs1140b_width_measurement_audit.md`,
-`lhs1140b_width_nonthermal_candidates.md`) find that the measured line is about
+is a fixed function of that same temperature. The width measurements find that the measured line is about
 22 km/s FWHM wider than any 1-D steady-state model produces, and that the
 measurement side accounts for at most 0.4 km/s of it.
 
@@ -238,8 +236,8 @@ directly, before any refitting:
 
 - **the model line carries 25 % less red-component equivalent width than the
   measurement** (13 % less over the whole triplet window; our full-window
-  observed value, 0.01302 A, reproduces the 0.01304 A that
-  `lhs1140b_width_nonthermal_candidates.md` obtained by direct integration);
+  observed value, 0.01302 A, reproduces the 0.01304 A obtained by direct
+  integration);
 - and it is 1.5x too narrow, 15.9 against 23.3 km/s FWHM, which is the
   discrepancy the width memos describe.
 

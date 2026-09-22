@@ -1,4 +1,0 @@
-# columns r HI HII
-# mapped: onto the cell centers of /nfs/mocafe/kiseon/RT_Codes/ExoAtmosphere/EXHALE_v1.00/docs/audit_20260905/bug_optimization_review_20260912/target.txt from /nfs/mocafe/kiseon/RT_Codes/ExoAtmosphere/EXHALE_v1.00/docs/audit_20260905/bug_optimization_review_20260912/mismatched_source/Ion_species.txt by map_state_to_grid.py; largest relative center shift 3.33e-01
-  1.0000000000000000E+00   9.0000000000000000E+00   1.0000000000000000E+00
-  3.0000000000000000E+00   2.5000000000000000E+00   2.5000000000000000E+00

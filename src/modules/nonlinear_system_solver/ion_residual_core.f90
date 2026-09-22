@@ -4,15 +4,15 @@
 	! the TR-form H/He/triplet rows (Oklopcic form; electron-impact ionization
 	! of H0/He(1^1S)/He+ and of the He 2^3S metastable is included).
 	! The standard blocks are verbatim-shared by System_HeH and
-	! System_HeH_metals (§5.2 Inc 1); the TR-form rows and the He 2^3S triplet
-	! row are shared by System_HeH_TR, System_HeH_TR_metals and System_HeH_mol
-	! (§5.2 Inc 3). It also
+	! System_HeH_metals; the TR-form rows and the He 2^3S triplet
+	! row are shared by System_HeH_TR, System_HeH_TR_metals and System_HeH_mol.
+	! It also
 	! holds impose_transported_ionization_fractions, the substitution that
 	! replaces an ionization balance row by the fraction the flow carries;
 	! every system that can reach those rows calls that one routine. Only
 	! explicit-shape / assumed-size dummies are used here: assumed-shape (:)
 	! dummies can change gfortran -O3 code generation and break the
-	! byte-identical regression (review item 4.1). The arithmetic order is
+	! byte-identical regression. The arithmetic order is
 	! kept exactly as in the original inline statements.
 
 	! The one imported quantity is the Penning : associative branching of the

@@ -303,11 +303,11 @@
       case ('Planck')
          ! The whole photon grid is the photospheric blackbody
          ! pi B_nu(T_eff) (R_star/a)^2, built from "Stellar Teff [K]:" and
-         ! "Stellar radius [R_sun]:" (development plan rev 3, section 10.5
-         ! decision 13: one spectrum type builds every band). Those two
-         ! lines belong to the optional keyword block below, which has not
-         ! been scanned yet; that they are present is checked once it has
-         ! been ("Spectrum type: Planck needs both stellar quantities").
+         ! "Stellar radius [R_sun]:" (one spectrum type builds every band).
+         ! Those two lines belong to the optional keyword block below,
+         ! which has not been scanned yet; that they are present is checked
+         ! once it has been ("Spectrum type: Planck needs both stellar
+         ! quantities").
          ! No property line of its own, so nothing is consumed here.
 
       case ('Monochromatic')
@@ -662,7 +662,7 @@
 				! carried on "Ionization transport" instead, which is a
 				! separate set of rows of the same operator and exists in an
 				! atomic gas too (carrier_set_init). False restores the
-				! local-kinetics limit of milestone M2, which isolates the
+				! local-kinetics limit, which isolates the
 				! chemistry for testing and is not a model of a base. Left
 				! unstated, the default is resolved below from the chemistry
 				! the run carries. This key means nothing with the molecular
@@ -698,8 +698,8 @@
 				! brings every elemental wind
 				! row of the HD 209458 b reload inside 1e-5 in 12 passes
 				! and the hot-Uranus H2 wind row from 7.4e-2 to 2.2e-2 in
-				! 40 passes, while the coupled solve certifies neither
-				! (stage 2, items N0 to N38). True keeps the coupled solve
+				! 40 passes, while the coupled solve certifies neither.
+				! True keeps the coupled solve
 				! as a control to measure against. On a molecular configuration it
 				! requires "Molecular carrier transport: True", because H2
 				! must be an unknown and not an eliminated variable;
@@ -825,14 +825,14 @@
 				! when neither of those runs. "He_Kzz: 1.0e9"
 				str = get_word(line, 2);  read(str,*) he_kzz
 			else if (lbl_match(line, 'He_alphaT')) then
-				! Thermal-diffusion factor alpha_T for He (P2c). "He_alphaT: 0.0"
+				! Thermal-diffusion factor alpha_T for He. "He_alphaT: 0.0"
 				str = get_word(line, 2);  read(str,*) he_alphaT
 			else if (lbl_match(line, 'He_ambipolar')) then
-				! Ambipolar-corrected settling mass (P2b). "He_ambipolar: False"
+				! Ambipolar-corrected settling mass. "He_ambipolar: False"
 				str = get_word(line, 2)
 				if (str .eq. 'False' .or. str .eq. 'false') he_ambipolar = .false.
 			else if (lbl_match(line, 'He_metal_diffusion')) then
-				! Diffuse trace metals too (P2d). "He_metal_diffusion: True"
+				! Diffuse trace metals too. "He_metal_diffusion: True"
 				str = get_word(line, 2)
 				if (str .eq. 'True' .or. str .eq. 'true') he_metal_diffusion = .true.
 			else if (lbl_match(line, 'He_diffusion')) then
@@ -916,7 +916,7 @@
 				endif
 			else if (lbl_match(line, 'Restart option change')) then
 				! "Restart option change: <token>[, <token> ...]"
-				! (decision 21). The tokens are separated by commas, blanks
+				! The tokens are separated by commas, blanks
 				! or tabs; each one is checked against the vocabulary of
 				! the state file's '# options' line, and a token that
 				! decides how many unknowns the state has is refused there
@@ -1613,7 +1613,7 @@
       error stop 1
    endif
 
-   ! ---- oxygen chemistry (the A2 option) ----
+   ! ---- oxygen chemistry ----
    ! Name the key, name the other owner of the quantity, name the fix, stop.
    ! The option is a third
    ! producer of the base H2/H partition, so it joins the single-source rule
@@ -1642,7 +1642,7 @@
    ! the oxygen chemistry, the only consumer of those two.
    ! Serial, once, before any parallel sweep: the opt-in cell-dump paths of
    ! the constrained chemical equilibrium and the Newton validation switch
-   ! (review P1/P2, 2026-09-12: both used to be read lazily inside the sweep).
+   ! (2026-09-12: both used to be read lazily inside the sweep).
    call cce_dump_paths_read()
    call newton_solver_read_environment()
 
@@ -1962,7 +1962,7 @@
    ! This refusal was asked for in exactly these terms ("If the intended
    ! quantity remains EOS-only, the code must instead refuse a mismatch
    ! between that EOS state and the species state used at the same ghost");
-   ! it is item P35, decided 2026-09-02 and recorded in section 120 of
+   ! it was decided 2026-09-02 and recorded in section 120 of
    ! docs/Update_EXHALE_stage1.pdf. Measured before the refusal existed: the
    ! HD 209458 b VULCAN handoff runs ran at ntot_bc = 0.555-0.994, i.e. base
    ! ghosts from 0.555 to 0.994 of the temperature their input.inp asked for.
@@ -2317,8 +2317,8 @@
       ! THE STATIONARY SOLVE AND THE TRANSPORTED PROTON.
       !
       ! The stationary route is the partitioned
-      ! alternation (steady_wind_with_element_diffusion, item P6 of
-      ! 2026-09-11): the hydrodynamic solve holds the composition, and
+      ! alternation (steady_wind_with_element_diffusion): the
+      ! hydrodynamic solve holds the composition, and
       ! every equilibrium sweep it makes is handed the transported stage
       ! fractions of that composition (ionization_equilibrium, the imposed
       ! block: written whenever the key is on and the state is a restart or

@@ -4,13 +4,13 @@
 Run from LHS1140b/. Writes PDF (vector) into ../docs/figures/.
 
 Every EXHALE curve and profile is read from the model tree of record,
-`models/<group>/HeH<value>/`, whose catalog is `MODELS.md`: the solutions of
+`models/<group>/HeH<value>/`: the solutions of
 2026-09-13/14, solved on the current code by the partitioned stationary route
 of `models/run_case.sh`. A flux-closure rung is read from its last iterate
 `kNN/`, located by `rung()` below.
 
 A run that exists only in `archive_20260830/` -- the 2026-08-30 solutions,
-which the current code does not reproduce (`MODELS.md` section 5) -- is
+which the current code does not reproduce -- is
 addressed by a tag that starts with `archive_20260830` and is labelled
 "archived 2026-08-30" wherever it is drawn.
 
@@ -147,7 +147,7 @@ LADDER_WM = [(WM + '/HeH0.40', 0.400),
              (WM + '/HeH0.44', 0.440)]
 
 # The run the memo calls the EW-matched solution: the solved rung nearest the
-# well-mixed crossing (section 7 of MODELS.md).
+# well-mixed crossing.
 EWMATCH_TAG = WM + '/HeH0.40'
 EWMATCH_HEH = 0.400
 
@@ -506,7 +506,7 @@ print('wrote lhs1140b_broadened.pdf')
 
 # ====== Figure 6b: the same demand, with diffusion and the adopted K_zz ====
 # The EW crossing moves once binary H/He element diffusion is on at the
-# adopted He_Kzz = 1e9 (MODELS.md section 7).  Repeat the kernel measurement
+# adopted He_Kzz = 1e9.  Repeat the kernel measurement
 # on the diffusive solution nearest that crossing and compare the matched
 # kernel with the diffusion-off one; both are solved rungs of their own
 # ladder.
@@ -824,8 +824,7 @@ print('wrote lhs1140b_bump.pdf')
 # Four converged runs that differ only in the He_Kzz line: same GJ 1132 SED,
 # same He/H = 0.55 reservoir, He_diffusion on throughout.  The question the
 # figure answers is which parts of the solution the eddy coefficient acts on.
-# Rows and provenance: kzz_decision.md sections 3 and 6.1; the operator
-# itself: ../docs/binary_diffusion_design.md.
+# Rows and provenance: kzz_decision.md sections 3 and 6.1.
 # The four runs are the He/H = 0.55 case of four `K_zz` groups of the model
 # tree; they differ only in the `He_Kzz` line.  The face-flux table the
 # homopause is read from is written only under EXHALE_DIFFUSION_CHECK=1, so it
@@ -995,7 +994,7 @@ print('wrote lhs1140b_kzz_profiles.pdf')
 # own ladder in the model tree by log-log interpolation, on this file's own
 # red_ew() so that the figure and the memo's other panels measure the line the
 # same way.  The ladders are the `atomic_scalar_gj1132_kzz*` groups of
-# MODELS.md section 3; every rung of each is used.
+# the model tree; every rung of each is used.
 CROSS_SCANS = [
     (0.0,    'atomic_scalar_gj1132_kzz0',
      ['HeH0.55', 'HeH2.6', 'HeH3.0', 'HeH3.5', 'HeH3.7', 'HeH3.9']),
@@ -1136,10 +1135,9 @@ print('wrote lhs1140b_heh_vs_kzz.pdf')
 
 
 # ====== Figure: the flux-closed solution, and the column it stands on =======
-# The elemental-flux closure of ../docs/phase_e_flux_closure_design.md
-# section 6: the lower atmosphere is a photochemical column (Photochem, with
-# the climate step solved) handed over as a profile, and the elemental fluxes
-# are iterated to continuity across the matching level, so He/H at the match
+# The elemental-flux closure: the lower atmosphere is a photochemical column
+# (Photochem, with the climate step solved) handed over as a profile, and the
+# elemental fluxes are iterated to continuity across the matching level, so He/H at the match
 # is a solution and not an input.  Runs: the
 # `atomic_photochem_gj1132_kzzprofile` rungs of the model tree, each read at
 # its last iterate; three of them here, the lowest and highest reservoirs the
@@ -1250,7 +1248,7 @@ print('wrote lhs1140b_closure.pdf')
 # ====== Figure: the Knudsen number of the solutions, and where it bites =====
 # Collisional validity of a continuum wind solution: ../docs/collisional_
 # validity.md, tool ../src/utils/collisional_validity.py (it reads existing
-# run directories and changes nothing).  Record: ../docs/Update_EXHALE_stage1.md
+# run directories and changes nothing).  Record: ../docs/Update_EXHALE_stage1.pdf
 # section 81.  The three representative LHS 1140 b solutions against the
 # HD 209458 b control, on the advection-corrected profiles.
 sys.path.insert(0, '../src/utils')

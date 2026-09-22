@@ -42,7 +42,7 @@
       ! used for all three.  A face with F_rho = 0 carries no species flux and
       ! its side is immaterial.
       !
-      ! NO LOW-MACH DISSIPATION TERM (design decision 4).  The dissipation the
+      ! NO LOW-MACH DISSIPATION TERM.  The dissipation the
       ! momentum and energy rows carry has an identically zero mass component,
       ! so the species rows, which ride on the mass flux, carry none either.
       !
@@ -285,7 +285,7 @@
          Fs(inject_face,1) = Fs(inject_face,1)                            &
                            + 1.0d-6*max(abs(Frho(inject_face)),1.0d-30)
 
-      ! THE FACE IDENTITY, ASSERTED HERE AND NOT IN A TEST (design row B4-j).
+      ! THE FACE IDENTITY, ASSERTED HERE AND NOT IN A TEST.
       ! It is a statement about every face of every stage of every step, so
       ! it is checked where it is built.  The faces checked are the ones the
       ! update below uses, jlo-1 to N: the outer ghost faces bound no updated

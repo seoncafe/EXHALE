@@ -40,7 +40,7 @@
       ! composition, the heating and the cooling remain double: what is
       ! evaluated here is the arithmetic of the finite-volume operator on a
       ! given composition, which is where the residual's non-smoothness
-      ! floor is (docs/Update_EXHALE_stage2.pdf item N33: the Roe flux of a face in
+      ! floor is (docs/Update_EXHALE_stage2.pdf: the Roe flux of a face in
       ! the near-hydrostatic base layer is built from state jumps 3e5 to
       ! 6e6 times smaller than the states, so it carries the last bit of
       ! O(1) quantities, and the row divides the flux difference by the cell
@@ -93,12 +93,12 @@
       ! WHAT IT IS FOR.  The stationary residual carries a non-smoothness
       ! floor of 1.0e-11 to 1.6e-11 along a preconditioned Krylov direction,
       ! flat over 5.4 decades of sampling spacing, and that floor is the
-      ! ROUNDING of the flux assembly (item N33): the base-layer face states
+      ! ROUNDING of the flux assembly: the base-layer face states
       ! cancel to 3e5 to 6e6, so the interface flux carries the last bit of
       ! O(1) quantities, and the row multiplies it by r^2/dV.  Divided by
       ! the small increment a preconditioned direction produces, that floor
-      ! IS the additivity defect of the finite-difference Jacobian action
-      ! (item N31), which is why the Krylov cycle spends every product at a
+      ! IS the additivity defect of the finite-difference Jacobian action,
+      ! which is why the Krylov cycle spends every product at a
       ! true relative residual near one.  If the same residual with the
       ! floor eighteen decades lower lets the Krylov cycle converge, the
       ! diagnosis is confirmed before any discretization is changed.

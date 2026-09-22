@@ -173,7 +173,7 @@
       ! of both carrier lists, and the metal nuclei are left out of n and of
       ! the reduced mass, both as trace approximations.
       !
-      ! CARRIERS, AND THE MOLECULAR REGION (memo section 5, milestone M4).
+      ! CARRIERS, AND THE MOLECULAR REGION (memo section 5).
       ! Equation (1) transports ELEMENTS, and the chemistry moves hydrogen
       ! between H, H+, H2, H2+, H3+ and helium between its stages without
       ! changing either element's mass, so the transport equation is the same
@@ -2968,8 +2968,8 @@
       subroutine element_transport_residual(rho, Tcode, f_sp, Frho,       &
                                  res_he, sc_he, ok_he,                    &
                                  res_tr, sc_tr, ok_tr, tr_carried)
-      ! THE ELEMENTAL TRANSPORT BALANCES, MEASURED ON A STATE (B1a section
-      ! 2.3), stationary and side-effect free.
+      ! THE ELEMENTAL TRANSPORT BALANCES, MEASURED ON A STATE, stationary
+      ! and side-effect free.
       !
       ! What the operator solves is a backward-Euler step of
       !   rho (X^new - X^old)/dt + div(r^2 J)/r^2 + div(F_rho X) = 0

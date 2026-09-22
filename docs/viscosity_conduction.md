@@ -4,7 +4,7 @@ Molecular transport in the bulk (single-fluid) radial equations: the viscous
 momentum force, its dissipation, and thermal conduction. This is the
 Navier-Stokes level that CETIMB (Koskinen et al. 2013a, Icarus 226, 1678;
 Koskinen et al. 2022, ApJ 929, 52) carries and that EXHALE's inviscid HLLC
-scheme lacks. The motivation is item (A) of `TO_BE_DONE.md`: the near-base
+scheme lacks. The motivation is the near-base
 momentum residual that floors the JFNK steady solve at `||R|| ~ 1e-3` in
 full-physics runs.
 
@@ -368,8 +368,7 @@ a diagnostic that normalized momentum by the base cell's own `|rho v|`.
 > base ghost sat at `ntot_bc x T0` -- between 0.555 and 0.994 of the
 > requested `T0`, depending on the directory -- and startup now refuses the
 > combination. The numbers below are kept as recorded but stand on that
-> base; see `INVALID_BASE_TEMPERATURE.md` in each run directory and item
-> P35 of `TO_BE_DONE.md`.
+> base; see `INVALID_BASE_TEMPERATURE.md` in each run directory.
 
 **G3: the full-physics continuation**
 (`vulcan_work/hd209_wind_response/photo_deep_secion_cont/`, HD 209458 b with a

@@ -28,7 +28,7 @@ closure runs through `mass_per_H`, which is built from the base He/H, so it
 is a base-cell statement under diffusion for the same reason. The trace
 elements are unaffected -- nothing diffuses them -- and stay column-wide.
 
-This is the gate of P2 in docs/oxygen_chemistry_new_plan.md: it says that a
+This is the gate of P2: it says that a
 handoff which changes an elemental reservoir changes the whole column and
 nothing else.
 
@@ -63,9 +63,8 @@ MOLECULES = {           # species: (H nuclei, He nuclei)
 # Nuclei of a METAL element carried by a molecule, by element symbol. With
 # the oxygen chemistry on, the O I column means FREE ATOMIC oxygen and the
 # C I column the carbon not locked in CO, so the element totals are the ion
-# stages PLUS these carriers -- the total-oxygen closure of section 4.1 of
-# docs/a2_oxygen_option_design.md. Without the option the columns are
-# absent and every element is its ion stages alone, as before.
+# stages PLUS these carriers -- the total-oxygen closure. Without the option
+# the columns are absent and every element is its ion stages alone, as before.
 METAL_CARRIERS = {
     'O':  {'OH': 1, 'H2O': 1, 'CO': 1},
     'C':  {'CO': 1},

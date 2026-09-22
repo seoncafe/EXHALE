@@ -142,9 +142,8 @@ in `base.inp`.
 This did not resolve anything, for a reason worth recording. HD 189733 b does
 not reach a steady state: over 87000 steps `du` wandered between 0.77 and 1.86
 and never approached 1e-3, the marching-time base breathing that HD 189733 b
-has shown since ATES. (This originally cited `TO_BE_DONE.md` item (A); note
-that item is now closed, and its diagnosis of the *JFNK* residual floor as a
-base-momentum wall was refuted. The
+has shown since ATES. (This was originally read as a base-momentum wall in the
+*JFNK* residual floor; that diagnosis was refuted. The
 marching oscillation described here is a separate observation and stands.)
 Cutting both runs at a fixed 20000 steps
 (`EXHALE_MAXSTEPS`) and comparing on common physical radii gives median
@@ -443,7 +442,7 @@ further out.
 > their base ghost sat at `ntot_bc x T0` -- between 0.555 and 0.994 of the
 > requested `T0` -- and startup now refuses the combination. The values are
 > kept as recorded but stand on that base; see `INVALID_BASE_TEMPERATURE.md`
-> in each run directory and item P35 of `TO_BE_DONE.md`.
+> in each run directory.
 
 *Corrected and extended 2026-08-30 (phase P3):* the scale height quoted here was
 `H = 1.27e8` cm and the advection time `2.4e8` s. Re-measured from
@@ -483,7 +482,7 @@ H2.
 > their base ghost sat at `ntot_bc x T0` -- between 0.555 and 0.994 of the
 > requested `T0` -- and startup now refuses the combination. The values are
 > kept as recorded but stand on that base; see `INVALID_BASE_TEMPERATURE.md`
-> in each run directory and item P35 of `TO_BE_DONE.md`.
+> in each run directory.
 
 Run directories `vulcan_work/pc_compare_p1/exhale_hd209/p1e-6_seed/<network>/`. All
 five runs are the same `HD209458b/input.inp` with `Molecular base: True`,

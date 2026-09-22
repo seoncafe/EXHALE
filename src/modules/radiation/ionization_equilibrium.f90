@@ -423,7 +423,7 @@
 	! THE CELL STATE OF THE SWEEP, KEPT SO THE ELIMINATED-SPECIES CLOSURE
 	! CAN BE MEASURED WITHOUT SOLVING IT AGAIN.
 	!
-	! The closure of B1a section 2.4 -- the neutral stage of every element
+	! The closure -- the neutral stage of every element
 	! and the electron density eliminated by the element totals and by
 	! charge neutrality -- is a residual of the SAME system rows the cell
 	! solve used, and until now it existed only inside the sweep, which also
@@ -709,7 +709,7 @@
 	! therefore a PIECEWISE map of the state and the residual assembled from
 	! it carries a non-smoothness floor far above its own rounding, which is
 	! what the finite-difference Jacobian action of the stationary solve
-	! divides by its probe arc (item N31). The hook exists to measure which
+	! divides by its probe arc. The hook exists to measure which
 	! tolerance that floor follows; a non-positive or unreadable value
 	! leaves the sweep at sqrt(dpmpar(1)).
 	real*8,  save :: ieq_inner_tol      = 0.0d0
@@ -998,7 +998,7 @@
 	! DIAGNOSTIC ONLY (T2.2, T2.3): the mass density reconstructed from the
 	! species the sweep returns, in the same adimensional units as n_io.  The
 	! declared mass convention is that the electron mass is carried with its
-	! ion (decision 2), so an ionization moves no mass between species and
+	! ion, so an ionization moves no mass between species and
 	! this sum reproduces n_io whenever the element totals are conserved.
 	! The caller compares the two; nothing here uses the reconstruction.
 	real*8, dimension(1-Ng:N+Ng), optional, intent(out) :: rho_recon
@@ -1099,7 +1099,7 @@
    ! (use_he_rec_coupling; zero-effect when off).
    real*8, dimension(1-Ng:N+Ng) ::  rcheiiB_hrc,dP_HI_hrc,dheat_hrc
    real*8, dimension(1-Ng:N+Ng) ::  dP_H2_hrc
-   ! Metal share of the He recombination photons (item P34), added to P_m
+   ! Metal share of the He recombination photons, added to P_m
    real*8, dimension(1-Ng:N+Ng,n_mion) ::  dP_m_hrc
 
 	real*8, dimension(1-Ng:N+Ng) :: q13,q31a,q31b,Q31
@@ -1768,7 +1768,7 @@
 	! built it yet (the main program does at startup; a test driver may
 	! not): the sweep below is the first parallel region that reads it,
 	! and the lazy build inside keq_H_H_to_H2 was removed on 2026-09-13
-	! (review P2) because its readiness read outside the critical region
+	! because its readiness read outside the critical region
 	! was a data race.
 	if (thereis_mol .and. .not. h2_thermochemistry_ready())               &
 		call h2_thermochemistry_init
@@ -1824,8 +1824,8 @@
 				endif
 			endif
 
-			! Ionization equilibrium system setup: named-field cell state
-			! (Inc 4). System_H reads these; params is now only the MINPACK
+			! Ionization equilibrium system setup: named-field cell state.
+			! System_H reads these; params is now only the MINPACK
 			! transport argument (unread by the converted system).
 			ieq_cell%P_HI     = P_HI(j)
 			ieq_cell%rchiiB   = rchiiB(j)
@@ -2033,7 +2033,7 @@
 				! and the H2+ formation row of the molecular system.
 				if (thereis_mol) P_H2(j) = P_H2(j) + dP_H2_hrc(j)
 				! And the share each metal ion takes of the same photons,
-				! an addition to its photoionization rate (item P34).
+				! an addition to its photoionization rate.
 				if (thereis_metals) P_m(j,:) = P_m(j,:) + dP_m_hrc(j,:)
 			endif
 
@@ -2187,7 +2187,7 @@
 				endif
 			endif
 
-			! System coefficients: named-field cell state (Inc 4). The He
+			! System coefficients: named-field cell state. The He
 			! equilibrium systems read these; params is now only the MINPACK
 			! transport argument (unread by the converted systems).
 			ieq_cell%P_HI       = P_HI(j)
@@ -3411,7 +3411,7 @@
 	! test compares a step's closure with the ENTRY closure of that step
 	! and is blind to a monotone drift by construction -- and a state that
 	! carries it is a state whose two halves describe two gases, which is
-	! what a restart then has to choose between (item L18).
+	! what a restart then has to choose between.
 	!
 	! THE DENSITY IS THE CONSERVED QUANTITY AND THE COMPOSITION IS THE
 	! PARTITION ON IT, so the composition is put on the density and never
@@ -3443,7 +3443,7 @@
 	!                      failure of the sweep and is reported as one; the
 	!                      composition is handed back as the solve left it,
 	!                      so the certification's own mass-closure line
-	!                      (item L19) shows the failure instead of a
+	!                      shows the failure instead of a
 	!                      projection hiding it.
 	!
 	! The factor is also refused where it is not a usable number at all: a
@@ -4439,7 +4439,7 @@
 
 	logical function mass_projection_of_the_sweep() result(on)
 	! Whether the composition a sweep returns is put on the density the
-	! sweep was given (item L19). Default ON, because the mass fractions
+	! sweep was given. Default ON, because the mass fractions
 	! are defined by that density; EXHALE_MASS_PROJECTION=0 is the control
 	! experiment that restores the unprojected composition.
 	!
@@ -5276,7 +5276,7 @@
 	!----------------------------------!
 	! THE ELIMINATED-SPECIES CLOSURE, MEASURED ON A STATE
 	!
-	! B1a section 2.4: every run eliminates the neutral stage of each
+	! Every run eliminates the neutral stage of each
 	! element and the electron density by a closure, and until now that
 	! closure was evaluated only inside the sweep that also rewrites f_sp
 	! and rho. What follows measures it WITHOUT solving. The rate state of
@@ -5535,7 +5535,7 @@
 	subroutine ionization_closure_residual_profile(rho, f_sp, res,       &
 	                                               res_triplet, ok, why)
 	! The closure residual of every physical cell of a state, and the He
-	! 2^3S level row of the same evaluation (B1a section 2.5: the
+	! 2^3S level row of the same evaluation (the
 	! metastable is an unknown of this system, so its balance is one row of
 	! it). res_triplet is zero where the level is not carried.
 	!

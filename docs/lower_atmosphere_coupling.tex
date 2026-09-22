@@ -91,8 +91,7 @@ Taylor et al.\ (2025, 2026) & full Lavvas \& Arfaux (2021) model (RC temperature
   ($\sim$$10^{8}$\,cm$^{-3}$, 100$\times$ Saha); radical/haze heating of $\pm$100--400\,K
   right at the handoff level. \emph{(2026-08-19: EXHALE carries no O/OH/H$_2$O
   species of its own, so this chemistry reaches the code only through the
-  handoff. The directions open to us, with their costs and validation gates, are
-  in \texttt{docs/oxygen\_chemistry\_options.md}.)}
+  handoff.)}
 \item \textbf{The published coupling is loose, not monolithic:} Lavvas et al.\ (2014) take
   $T(p<1\,\ubar)$ \emph{from} the Koskinen thermosphere and use ``species $<3$ amu escape
   at the wind velocity'' as their upper BC; Taylor et al.\ tolerate a composition
@@ -470,8 +469,7 @@ when it is present and from the fit otherwise, so a \texttt{base.inp} without th
 behaves exactly as before. For HD\,189733\,b the VULCAN value $\qHH=0.6181$ against
 the fit's $0.8384$ moves the subtraction from $\texttt{ntot\_bc}$ by $0.074$ per
 nucleus ($\sim$7\%), which the base density inherits in
-\texttt{Base BC: pressure} mode. Design and validation:
-\texttt{docs/base\_composition\_handoff\_plan.md}.
+\texttt{Base BC: pressure} mode.
 
 \begin{figure}[htb]\centering
 \includegraphics[width=0.62\textwidth]{fig_vulcan_vs_eq.pdf}
@@ -664,7 +662,7 @@ buy a false convergence, and a residual smaller than the spread of the window it
 was measured on is reported \texttt{UNRESOLVED} rather than converged. The driver
 reads the overlap window first and falls back on the steady window $r\ge r_{\rm esc}$
 when the overlap is unmeasurable or too ragged, recording which window supplied
-the number. Design: \texttt{docs/phase\_e\_flux\_closure\_design.md} \S6.
+the number.
 
 \paragraph{Still one-way.} The radiation half of the loop is not implemented.
 EXHALE already computes the attenuated stellar spectrum on its energy grid, so the
@@ -734,9 +732,9 @@ no boundary at all moves them just as far. The amplifier is the Krylov leg
 at its one-digit tolerance, which crosses that tolerance on a different
 vector and sends the acceptance test down a different branch a few
 iterations later. The asymmetry therefore stays in the tree, documented at
-the routine and measured by \texttt{src/tests/element\_operator/}, which
-asserts the size of the caller dependence ($1.19\times10^{-2}$ of the row's
-scale on a stale caller) rather than assuming it away.
+the routine, which records the size of the caller dependence
+($1.19\times10^{-2}$ of the row's scale on a stale caller) rather than
+assuming it away.
 
 \paragraph{The open item: the layer does not conserve the element flux.} The
 window reduction of the flux closure above is also the honest statement of
@@ -767,8 +765,8 @@ and the standing base wave is the suspect. The consequence has been taken:
 the certification gates the element and carrier rows only at $r \ge 1.20$,
 and the layer's rows are reported and do not gate until this number is
 repaired; \texttt{certification.f90} states that reason at the declaration of
-its two regime radii. Numbers here are READ from
-\texttt{docs/certification\_tolerance\_anchoring\_20260910.md} section~5.
+its two regime radii. Numbers here are READ from the certification
+tolerance anchoring measurement, not re-measured here.
 
 \subsection{Consistency cautions}
 \begin{itemize}
@@ -924,7 +922,7 @@ then stalls: $\|R\|$ falls from $2.338\times10^{-2}$ to $3.6\times10^{-4}$ over
 iterations (\texttt{info = 2}, worst cell $j=93$, $r=1.021$, momentum), after
 which the run reverts to marching. This is the reverse of the hot-Uranus gate,
 where the metals-on case converged as readily as the metals-off one, and it is the
-base-adjacent momentum stall recorded as item (A) of \texttt{TO\_BE\_DONE.md},
+base-adjacent momentum stall recorded as open item (A),
 displaced outward to the front. \texttt{16\_molecular\_metals} therefore carries
 the plain \texttt{Solver: Newton} line and has no converged solution.
 
@@ -1112,7 +1110,7 @@ continuum infrared coupling to the deep atmosphere (H$_2$ collision-induced
 absorption and the H$_2$O/CH$_4$/CO bands), which the model does not have: the
 whole radiative budget between the base and the front is line channels with a
 radiative time of $3\times10^{8}$\,s against a flow time of $5\times10^{6}$\,s.
-Item (G) of \texttt{TO\_BE\_DONE.md} is therefore narrowed, not closed.
+Open item (G) is therefore narrowed, not closed.
 
 % ===================================================================== %
 \section{H$_2$ photodissociation in the Lyman--Werner bands
@@ -1125,8 +1123,7 @@ photoionization edge, so below that the only H$_2$ losses are thermal (R12),
 electron impact (R14) and ion chemistry. Their own note says the omission is
 deliberate and that adding it (Backx et al.\ 1976 cross section, dissociation
 probability 0.125) moved their $\Mdot$ by $\le1.4\times$.
-\texttt{docs/base\_composition\_handoff\_plan.md} \S5 records the consequence for
-us: the network wants a base more molecular than any photochemical code gives, and
+The consequence for us is recorded: the network wants a base more molecular than any photochemical code gives, and
 pinning $\qHH$ at the base (Route 1) patches over the missing physics rather than
 supplying it. This section supplies it.
 
@@ -1375,7 +1372,7 @@ configuration (metals off, \texttt{Base IR field: True} added, both runs restart
 from its converged solution) reproduces the pattern on a real planet. Here the
 JFNK finish would not reach \texttt{Resid tol: 1.0e-5} with the band on: it
 stalled three times at $\|R\|=1.5$--$6.8\times10^{-5}$ on the base-adjacent
-momentum row, item (A) of \texttt{TO\_BE\_DONE.md}, so \emph{both} members of
+momentum row, open item (A), so \emph{both} members of
 the pair were run at \texttt{Resid tol: 2.0e-5}, where both return
 \texttt{info = 0} and both mass fluxes are flat to $4.1\times10^{-3}$ over
 $r>1.2$.
@@ -1413,8 +1410,8 @@ coolants the code already had (the eight ground-term fine-structure lines and
 the H$_3^+$ bands) the field they sit in, and stopped there. Its own closing
 paragraph named what was left: past the H$_2\to$H front there are no molecular
 coolants in the model at all, and holding that gas needs the coolants a real
-H$_2$ atmosphere carries. This section supplies three of them. Item~(G) of
-\texttt{TO\_BE\_DONE.md}.
+H$_2$ atmosphere carries. This section supplies three of them, and addresses
+open item~(G).
 
 \paragraph{Which coolants, and why these three.}
 \textbf{H$_2$ quadrupole and magnetic dipole lines} (Roueff et al.\ 2019, table 2,

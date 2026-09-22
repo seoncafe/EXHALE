@@ -17,9 +17,6 @@ a sink of the thermal energy.  The target system writes it as
     d_t u_th + div(F_E) = Q_local - (1/r^2) d_r ( r^2 F_form ) - d_t u_form|_chem
     u_form = sum_s n_s eps_s ,      F_form = u_form v
 
-(docs/b1_target_system_20260906.md section 1, T1.2 and T1.5;
-docs/b4_spatial_operator_design_20260906.md section 2.2, T-B4.4).
-
 This script MEASURES `div(F_form)` on saved output directories and compares it
 with the heating and cooling rates those same states carry.  It changes
 nothing in the code: it is the pre-measurement increment B4-2 is required to

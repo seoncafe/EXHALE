@@ -24,7 +24,7 @@
       ! the stage's own eddy term and nothing else: the element's eddy flux
       ! is already inside N_el(f), and adding the whole mixing-ratio eddy
       ! flux -n_tot K d(x_k n_el/n_tot)/dr inside every stage would carry
-      ! x_k J_el,eddy twice (L12b section 2.1).
+      ! x_k J_el,eddy twice.
       !
       ! THE IDENTITY.  Summed over ALL stages, neutral included,
       !
@@ -47,12 +47,12 @@
       !       the others'.  Forming it from the closing stage's own cell
       !       values is exact in exact arithmetic and loses the gradient to
       !       the rounding of 1 - sum wherever the carried stages are trace
-      !       (MEASURED at 2.9e-3 of the term, L12b section 4).
+      !       (MEASURED at 2.9e-3 of the term).
       !
       ! THE BOUNDARY FACES.  The element operator carries no diffusive flux
       ! through f = 0 or f = N: cell 1 is the Dirichlet reservoir the gas
       ! enters from and the top face is an outflow whose ghost repeats cell
-      ! N (L22 step 2c).  A stage eddy term at either face would move charge
+      ! N.  A stage eddy term at either face would move charge
       ! through a face the element itself cannot cross, so the second term of
       ! (1) is zero there and the boundary face carries x_k(f) N_el(f) alone.
       ! Which cell that x_k(f) comes from is the sign of N_el(f) and nothing
@@ -62,7 +62,7 @@
       ! N_el(N) < 0 brings the outermost cell's own composition back in.
       !
       ! THE DIVERGENCE.  On the one spherical geometry of this grid
-      ! (grid_construction spherical_face_area_and_cell_volume, item L30),
+      ! (grid_construction spherical_face_area_and_cell_volume),
       !
       !    D_k(j) = [ A_+ F_k(j) - A_- F_k(j-1) ] / V_j                  (3)
       !
@@ -111,8 +111,8 @@
       ! face mass flux, with the whole mixing-ratio eddy flux inside it.
       ! That is correct exactly while the bulk mass flux carries no eddy term
       ! of its own, and it stops being correct the moment the advective half
-      ! becomes the element nucleus flux, which does (L12b section 1, last
-      ! paragraph).  This module is the replacement, not a second transport:
+      ! becomes the element nucleus flux, which does.  This module is the
+      ! replacement, not a second transport:
       ! there is to be ONE spelling of the stage flux, and the carrier
       ! operator's ionization rows are to be formed from (1) here.
 
@@ -144,7 +144,7 @@
       public :: ionization_stage_row_jacobian
       ! The admissible set of the carried fractions is the simplex, not a
       ! box: an ionization fraction is bounded by the sum rule and not by a
-      ! free nucleus density (L12a section 2.2, L12b section 3).
+      ! free nucleus density.
       public :: stage_simplex_projection
       ! The nucleus face flux of both elements, their face nucleus densities
       ! and the face eddy coefficient and spacing the stage rows are written
@@ -175,7 +175,7 @@
       ! one stage cannot be donated from one side of a face while another is
       ! donated from the other.  The closing stage is then one minus their
       ! sum, which makes sum_k x_k(f) = 1 to one subtraction's rounding
-      ! (MEASURED 2.2e-16, L12b section 4).
+      ! (MEASURED 2.2e-16).
       !
       ! What this rule buys is the SUM and nothing else.  The carried stages
       ! come back inside [0,1] because species_face_fraction scales them
@@ -222,7 +222,7 @@
       !
       ! The eddy term is zero at f = 0 and f = N (the header's boundary
       ! paragraph).  No width floor is applied to drf: a zero-width cell is
-      ! a grid error the grid constructor refuses (item L30).
+      ! a grid error the grid constructor refuses.
       !
       ! donor_value = .true. replaces the reconstruction by the donor cell's
       ! own value, which is the face the Jacobian below differentiates.  The
@@ -393,7 +393,7 @@
       ! radius unit of r and r_edg; they are put into cm here by R0^2 and
       ! R0^3.  Every contribution to one conserved quantity divides by THIS
       ! volume, which is what makes the internal faces cancel in the column
-      ! sum (item L30).
+      ! sum.
       real*8, dimension(:,0:), intent(in)  :: Fk
       real*8, dimension(0:N),  intent(in)  :: Fclose
       real*8, dimension(:,1:), intent(out) :: Dk

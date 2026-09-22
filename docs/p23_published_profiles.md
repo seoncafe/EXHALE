@@ -2,7 +2,7 @@
 
 **What this file is.** Gate P23 compares the three-layer structure of our
 converged hot-Uranus solution against two published models. Up to now that
-comparison (`supersonic_molecular_base.md` sections 13.5 and 13.6) rested only
+comparison rested only
 on *sentences* from the two papers; no number was taken from their figures.
 This file supplies the missing quantitative side: the model inputs, the method
 each paper uses for H2, the relevant passages quoted from the published text,
@@ -26,8 +26,7 @@ Both papers were read from the publisher PDFs in `references/`:
   (`references/Frelikh_2026_ApJ_996_96.pdf`). The run used here is the
   **fiducial super-Earth of section 4**, parameters in their Table 3.
 
-Our side is the converged `He/H = 0.0793` rung of
-`supersonic_molecular_base.md` section 13.2 (run directory `heh0p0793c_r1`,
+Our side is the converged `He/H = 0.0793` rung (run directory `heh0p0793c_r1`,
 `Molecular chemistry: True`, metals off, `info = 0`,
 `log10 Mdot = 10.42` g/s as printed by the run itself).
 
@@ -70,13 +69,12 @@ normalize alike:
    against 3.4249e9 cm there, a ratio of 1.0002. Every joint table and the
    figure below therefore use `r/r_base`, r_base being each model's own lower
    boundary; for Koskinen that is `(r/R_p)/1.34`.
-2. Section 13.5 of `supersonic_molecular_base.md` quotes our radius as
+2. Our radius is elsewhere quoted as
    `0.49 R_J = 5.49 R_E` and the base gravity as 473 cm s^-2. Those follow from
    R_J = 7.1492e9 cm (the equatorial radius); the code's constant is
    R_J = 6.9911e9 cm (`parameters.f90` line 454), which gives 5.38 R_E and
    493 cm s^-2. The values in the table above are the ones the run actually
-   used. (That section is left as it stands; this is only a note that the two
-   numbers differ and why.)
+   used. This is only a note that the two numbers differ and why.
 
 ---
 
@@ -161,8 +159,7 @@ coupled system is
 
 which is production minus loss set to zero in the cell: there is no
 `d(n_H2 u r^2)/dr` term in the row, and no species diffusion velocity enters
-it. This is the closure difference `supersonic_molecular_base.md` section 13.6
-measured from the other direction (the omitted advection term is 4 to 500 times
+it. This is the closure difference measured from the other direction (the omitted advection term is 4 to 500 times
 the net chemical rate in the region where `f(H2)` falls).
 
 So of the three, two solve H2 with transport and one solves it locally. That
@@ -509,7 +506,7 @@ Landmarks of the same three profiles, in the same normalization:
 Section 2 established that both published models carry transport in their
 species equations and that ours does not. This section reads the terms
 themselves off the three budget figures, so that the comparison with the
-EXHALE budget of `supersonic_molecular_base.md` section 13.6 is numerical
+EXHALE budget is numerical
 rather than verbal.
 
 ### 7.1 Which curve is which, and how that was decided
@@ -655,7 +652,7 @@ their Figure 21).
 
 ### 7.5 The EXHALE budget beside them
 
-From `supersonic_molecular_base.md` section 13.6, with `n(H2)` taken from the
+With `n(H2)` taken from the
 same converged run:
 
 | r/r_base | n(H2) [cm^-3] | net chemical H2 loss | \|advection term\| | ratio | n(H2)/\|adv\| [s] | n(H2)/net [s] |

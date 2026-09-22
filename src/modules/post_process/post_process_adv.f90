@@ -256,7 +256,7 @@
    ! zero here and the coupling reduces to the H I / He I competition; the H2
    ! rate it returns is discarded for the same reason.
    real*8, dimension(1-Ng:N+Ng) ::  nh2_pp, dP_H2_hrc
-   ! Metal share of the He recombination photons (item P34), added to P_m
+   ! Metal share of the He recombination photons, added to P_m
    real*8, dimension(1-Ng:N+Ng,n_mion) ::  dP_m_hrc
    ! Metal recombination/ionization rates for each ion returned by eval_cool.
    ! In the re-solve mode (pp_metals=2) they feed the cell-by-cell metal

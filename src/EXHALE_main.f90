@@ -125,7 +125,7 @@
                                coupled_entry_residual_rel_tol
       ! The stationary certification of the state the marching route would
       ! declare solved.
-      ! THE ATTEMPTED-STEP CONTROLLER (B3a): the checkpoint of the whole
+      ! THE ATTEMPTED-STEP CONTROLLER: the checkpoint of the whole
       ! step, the acceptance predicate at the adoption boundary, the
       ! step-size policy of a rejection and the integration-error estimate.
       use attempted_step, only: attempted_step_checkpoint,               &
@@ -551,7 +551,7 @@
       ! is 8 (n_step_retry_max), deliberately: the inner criterion is the
       ! admissibility of one Runge-Kutta stage and its cost is one stage,
       ! not a whole step, and the two counts are reported separately and
-      ! never added (advisor decision 2).
+      ! never added.
       integer :: n_dt_halve, n_dt_halvings, n_steps_dt_halved
       integer, parameter :: n_dt_halve_max = 20
 
@@ -564,7 +564,7 @@
       ! and from a step abandoned after n_dt_halve_max bisections.
       logical :: step_accepted
 
-      ! ---- THE ATTEMPTED-STEP CONTROLLER (B3a) ----
+      ! ---- THE ATTEMPTED-STEP CONTROLLER ----
       ! as_chk is the checkpoint one outer attempt is taken from and
       ! restored to; as_entry and as_full are the two the step-doubling
       ! estimate needs (the state the step began at, and the result of the
@@ -678,7 +678,7 @@
       real*8, dimension(:,:), allocatable :: dF,S
 
       !------------------------------------------------!
-      ! THE COUPLED SOURCE STEP (rows 7 to 9; b1 T1.4 to T1.9, T2.1).
+      ! THE COUPLED SOURCE STEP (rows 7 to 9).
       !
       ! csm_T_tol / csm_comp_tol are the fixed-point tolerances of the
       ! composition-temperature pair, NOT accuracy tolerances of either
@@ -711,7 +711,7 @@
       ! THE ANCHOR IS THE TIGHTEST TEST THE ADOPTED STATE HAS TO PASS, and
       ! that is the certification's composition rows: cert_tol_carrier_at(r)
       ! and cert_tol_element_at(r), 1.0e-5 in the wind and reported below it
-      ! (certification.f90, decision 22), measured on the composition this
+      ! (certification.f90), measured on the composition this
       ! step returns.  A pair that has stopped moving only
       ! to 1e-7 carries a composition error of that size into rows whose
       ! tolerance is 1e-8, so no state could certify however long it
@@ -730,8 +730,8 @@
       ! solve, and the sweep is the expensive one, so this is the cost knob
       ! of the whole step.  Exhaustion is a status, never a clamp.
       !
-      ! WHAT THE COUNT IS.  MEASURED across items COST2 to COST5, in order
-      ! of what was learned: the attenuated field is the largest single term
+      ! WHAT THE COUNT IS.  MEASURED, in order of what was learned: the
+      ! attenuated field is the largest single term
       ! of the sweep and is built from the composition the pass was HANDED,
       ! so the front walks inward one cell a pass; carrying the solved
       ! column forward removes the walk (10.10 to 7.13 passes) but costs
@@ -805,7 +805,7 @@
       logical :: csm_debug = .false.
       character(len=32) :: csm_dbg_env
       ! Run-level records of the coupled step. All three are attempt
-      ! statistics (b1 T7.2 class 2): they count what the solver did, not
+      ! statistics (class 2): they count what the solver did, not
       ! what the adopted state is, and a rejected trial keeps its entry.
       integer :: n_csm_passes_total = 0, n_csm_passes_worst = 0
       integer :: n_csm_worst_step = 0, n_csm_iter_cap = 0
@@ -838,7 +838,7 @@
       !
       ! THE OBJECT IS THE WHOLE STATE'S DOMINANT MODE, NOT A CELL'S RATIO.
       ! A ratio taken component by component was MEASURED WORSE (12.00
-      ! against 11.05 passes, items B3c and COST2) because the contraction
+      ! against 11.05 passes) because the contraction
       ! ratio spreads 200 percent from cell to cell while the front walks
       ! through the grid and theta/(1 - theta) is unbounded as theta goes to
       ! one.  What is stable is the Rayleigh quotient of the whole increment
@@ -1103,7 +1103,7 @@
       ! input_read refuses a configuration with error stop, and an open
       ! placed before it truncated whatever EXHALE_setup.out a previous run
       ! in the same directory had left, so a refused run erased the last
-      ! accepted run's report (found by item B5i). input_read writes nothing
+      ! accepted run's report. input_read writes nothing
       ! to this unit, so nothing is lost by opening it here.
       open(unit = outfile, file = 'EXHALE_setup.out')
 
@@ -1800,7 +1800,7 @@
       stall_count  = 0
       n_dt_halvings     = 0
       n_steps_dt_halved = 0
-      ! The controller's step-size memory (advisor decision 3): a dt reduced
+      ! The controller's step-size memory: a dt reduced
       ! by a rejection bounds the next step. Nothing bounds the first one,
       ! and a run that rejects nothing never enters the branch.
       dt_last_accepted        = -1.0d0
@@ -2007,7 +2007,7 @@
       if ((do_load_IC .or. ic_mode .eq. 4) .and. reload_equilibrate)       &
          call equilibrate_loaded_composition
 
-      ! THE HANDOFF INTO PHYSICAL INTEGRATION (contract section 3). A
+      ! THE HANDOFF INTO PHYSICAL INTEGRATION. A
       ! trajectory can only start from a state the equations describe, so the
       ! state the first step is taken from is tested before any step is taken.
       if (run_mode .eq. run_mode_phys) call physical_handoff_check
@@ -2109,7 +2109,7 @@
 
             !-------------------------------------------------!
 
-            ! ============ THE ATTEMPTED STEP (B3a) ============
+            ! ============ THE ATTEMPTED STEP ============
             ! The fourteen operations of the enumerated step are one trial:
             ! rows 1 to 12 change the physical state, and the adoption
             ! boundary is immediately before
@@ -2118,7 +2118,7 @@
             ! retaken at half dt, and leaves no contribution to any
             ! physical accumulation.
             !
-            ! THE STEP-DOUBLING ESTIMATE (advisor decision 4) wraps the
+            ! THE STEP-DOUBLING ESTIMATE wraps the
             ! whole thing: every n_err_every accepted steps of a physical
             ! run the step is taken once at dt and then, from the same
             ! checkpoint, as two of dt/2, and the difference is the
@@ -2554,7 +2554,7 @@
             if (he_diffusion)                                         &
                call element_diffusion_step(rho,v,T,f_sp,dt_loc)
 
-            ! A REFUSED ELEMENT STEP (review R4, item Q4). The step judges
+            ! A REFUSED ELEMENT STEP. The step judges
             ! its candidate on every call and hands back the entry
             ! composition when the candidate is not a state of the gas
             ! (element_step_last_status names which test refused it). THE
@@ -2587,7 +2587,7 @@
             ! carrier_transport_interval reports an uncovered interval
             ! instead of stopping, and the step controller turns that into
             ! a rejection of the whole attempted step with the operation
-            ! named (design section 4.4). A3's own substep retries are
+            ! named. The operator's own substep retries are
             ! unchanged and stay inside the operator, which is the right
             ! granularity for them: forcing them up to the outer boundary
             ! would discard rows 1 to 4 for a failure the operator fixes at
@@ -2758,9 +2758,9 @@
                ! composition.
                !
                ! WHY du_form IS NOT PASSED HERE, AND WHAT IT WOULD TAKE.
-               ! The energy row of b1 T1.6 reads
+               ! The energy row reads
                !   u_th(T,c) - u_th_old + sum_s eps_s dn_s = dt [Q_ext] ,
-               ! and T1.6 states that Q_ext carries ONLY the exchange with
+               ! and it states that Q_ext carries ONLY the exchange with
                ! the radiation field, every collisional reaction heat being
                ! in the reservoir term instead.  This code's `heat` and
                ! `cool` are not that quantity.  They are the NET THERMAL
@@ -3088,7 +3088,7 @@
             ! whose composition and temperature do not belong to each other.
             ! In phys mode that refuses the attempt, and the controller
             ! retakes it at half dt; in init mode the state is a numerical
-            ! iterate (contract section 2), the exhaustion is recorded above
+            ! iterate, the exhaustion is recorded above
             ! and the march goes on. Unlike the energy failure above, the
             ! pair the loop returns IS a state: both halves were solved, and
             ! what the cap says is that they have not stopped moving.
@@ -3139,11 +3139,11 @@
                 mod(marching_step, shapiro_every) .eq. 0) then
                call shapiro_filter(u)
                call Apply_BC(u)
-               ! B6 CATEGORY 4, RECORDED (advisor decision 8). The filter
+               ! THE FILTER IS RECORDED AS A VALIDITY STATE. The filter
                ! alters the adopted state with no source term behind it, so
                ! an active filter is a validity state of every step it runs
-               ! on. It is carried inside the trial until B3b budgets the
-               ! energy it removes.
+               ! on. It is carried inside the trial until the energy it
+               ! removes is budgeted.
                n_shapiro_applied = n_shapiro_applied + 1
             endif
 
@@ -3158,8 +3158,8 @@
             ! ============ THE ADOPTION BOUNDARY ============
             ! The first point at which the physical state of the step is
             ! complete: row 12 is the last operation that writes u, and
-            ! everything below only reads it. The acceptance predicate of
-            ! design section 3.3 is evaluated here, on the trial state.
+            ! everything below only reads it. The acceptance predicate is
+            ! evaluated here, on the trial state.
             ! ONE evaluation of the primitive state, not two. The
             ! post-adoption block below reads exactly these arrays: calling
             ! U_to_W, get_species_densities and comp_T_from_p a second time
@@ -3225,7 +3225,7 @@
                         as_carrier_ok, as_verd)
             endif
 
-            ! THE ENERGY IDENTITY T1.5 (design section 9 decision 7): a
+            ! THE ENERGY IDENTITY: a
             ! sum over cells of the thermal energy change of the COUPLED
             ! SOURCE STEP ALONE against the source that step carries,
             ! printed every step in phys mode and a GATE there -- a failed
@@ -3348,7 +3348,7 @@
                                                    cool, eta)
             ! THE ROUND TRIP IS NOT ASSUMED. A restore that missed an item
             ! is a silent corruption of the next attempt, so it is checked
-            ! here and it is loud (b1 AT-7 (i)).
+            ! here and it is loud.
             if (.not. attempted_step_checkpoint_matches(as_chk, u, f_sp,  &
                      heat, cool, eta, as_bad_item)) then
                write(*,'(A,A)') ' ATTEMPTED-STEP RESTORE INCOMPLETE:'//   &
@@ -4050,7 +4050,7 @@
                write(*,'(A,I0,A,ES10.2)') ' (EXHALE_main) Newton finish '// &
                     'at step ', marching_step, ', target ||R|| <', resid_max
                ! A STATIONARY SOLVE IS CONTINUATION, WHATEVER MODE THE RUN
-               ! IS IN (contract section 4). Its trials and iterates are
+               ! IS IN. Its trials and iterates are
                ! numerical states, not states the flow passed through, so
                ! what they leave in the ledgers belongs to the
                ! initialization family and not to the history of accepted
@@ -4310,7 +4310,7 @@
       !---------------------------------------------------!
 
       ! THE FINAL STATE IS THE ONE THE LAST ACCEPTED STEP PRODUCED, and no
-      ! part of it is recomputed here (b1 T1.8: one consistent instantaneous
+      ! part of it is recomputed here (one consistent instantaneous
       ! evaluation feeds certification, the endpoint checks and every output
       ! file).  There used to be an excited_H_update on this line, refreshing
       ! the H(n=2) populations, the Balmer proton source and heat_balmer from
@@ -4320,9 +4320,9 @@
       ! sum that Heating_breakdown.txt reconstructs on the same state were
       ! two different numbers.
       !
-      ! What is left is the documented lag of the closure itself (b1 T1.7:
+      ! What is left is the documented lag of the closure itself:
       ! H(n=2) is a 2x2 statistical equilibrium solved one outer pass before
-      ! the state it closes), and that lag is a property of the accepted
+      ! the state it closes, and that lag is a property of the accepted
       ! state, carried by every file that describes it.  Refreshing it after
       ! the adoption boundary does not remove the lag; it moves it into the
       ! gap between two files.
@@ -4349,7 +4349,7 @@
       ! residual gate met while marching, and the steady finish returning
       ! info = 0. A stall, a du plateau, a step cap, a NaN and "Do only PP"
       ! declare nothing, and the state such a run writes is a relaxation
-      ! snapshot (A0 run-mode contract section 2): it is written certified=F
+      ! snapshot: it is written certified=F
       ! with that as the reason, and the run exits 0, because there was no
       ! claim to refuse.
       call certification_note_stationarity_claim(newton_finished .or.     &
@@ -4740,7 +4740,6 @@
       ! flux vanishes (equal inflow and outflow) from returning Inf; that
       ! state is as far from steady as the window can be, and the floor
       ! makes the measure large rather than undefined.
-      ! (Development plan rev 3, section 10.2 item 5, decision 15.)
       real*8, dimension(1-Ng:N+Ng), intent(in) :: mom_in
       mass_flux_spread = (maxval(mom_in(j_min:N))                         &
                           - minval(mom_in(j_min:N)))                      &
@@ -4846,7 +4845,7 @@
       integer :: co_dom_out, co_dom_hot, co_dom_hep
       real*8  :: co_dom_ratio, co_dom_r, co_dom_form
 
-      ! THE THREE COUNTERS OF THE RUN MODE (A0 contract section 5), which are
+      ! THE THREE COUNTERS OF THE RUN MODE, which are
       ! not one number: the steps tried, the steps kept, and, for a physical
       ! integration, the elapsed time those kept steps add up to. The gap
       ! between the first two is what a run spends in bisections; it is not
@@ -4863,7 +4862,7 @@
       call attempted_step_report(n_dt_halvings)
       ! The rows the carrier solve left at the arithmetic round-off of
       ! their own full terms: accepted and flagged, informational, never a
-      ! statement that a state is wrong (A1scale3; review 2 section 5.3).
+      ! statement that a state is wrong.
       if (he_diffusion .and. n_element_refused_init .gt. 0)               &
          write(*,'(A,I0,A)') '     element steps refused inside the'//    &
               ' initialization march: ', n_element_refused_init,          &
@@ -5106,7 +5105,7 @@
             ' with He+ + CO the leading He+ loss of the cell'
       endif
 
-      ! THE COUPLED SOURCE STEP, OVER THE WHOLE RUN (b1 T1.4 to T1.9, T2.1).
+      ! THE COUPLED SOURCE STEP, OVER THE WHOLE RUN.
       ! Three attempt statistics and one measured invariant. The pass count
       ! is the cost of the coupling; the cap count is the number of steps
       ! whose composition and temperature did not reach their fixed point,
@@ -5806,7 +5805,7 @@
       ! THE CLAIM THIS EVALUATION ANSWERS IS THE FILE'S OWN. A state written
       ! as certified is a stationary claim about itself, and re-measuring it
       ! either confirms the claim or refuses it, which is what the exit
-      ! status says (contract section 8). A relaxation snapshot claimed
+      ! status says. A relaxation snapshot claimed
       ! nothing, and measuring it refuses nothing.
       call certification_note_stationarity_claim(ic_certified)
       call certification_evaluate(cert_context_stationary, u, Rres, f_sp,   &
@@ -6099,7 +6098,7 @@
       logical :: ok
 
       write(*,'(A)') ' (EXHALE_main) physical integration: testing the'//  &
-           ' handoff state (A0 contract section 3)'
+           ' handoff state'
 
       ! 4 first: the caches are rebuilt, and the tests below then measure the
       ! state as the first step will see it. f_sp is this state's here for
@@ -6191,7 +6190,7 @@
       endif
 
       ! The handoff is made. From here the ledgers of accepted steps are the
-      ! ones being written (contract section 5): what was counted while the
+      ! ones being written: what was counted while the
       ! state was being reached is a diagnostic of a relaxation and is kept
       ! under the initialization family.
       ledger_family = ledger_family_phys
@@ -6235,7 +6234,7 @@
       subroutine update_map_begin_step
       ! Restore the state, and (once) measure the steady residual of it.
       !
-      ! The comparison the review's B2 asks for is between the STEADY
+      ! The comparison the review asks for is between the STEADY
       ! RESIDUAL of a state and the PRODUCTION UPDATE MAP applied to the same
       ! state. The production map here is the marching loop's own body -- the
       ! step that follows this call is the step the run takes, with stop
@@ -6625,7 +6624,7 @@
       ! the state it is stopping at.
       !
       ! The three are different concepts and the external review of
-      ! 2026-09-03 (section 5, item 7) is explicit that they should not be
+      ! 2026-09-03 is explicit that they should not be
       ! forced onto one threshold: du terminates the marching, the du
       ! hand-off threshold decides when the JFNK is offered a state, and the
       ! gates of steady_gates_met decide what may be called steady. This
@@ -7977,8 +7976,8 @@
                      ', trust', trust_pass, ')'
               end block
             end block
-            ! THREE CELLS, AND THEY ARE THREE DIFFERENT QUESTIONS (item
-            ! R3 of the review of 2026-09-15).  Where the composition MOVED
+            ! THREE CELLS, AND THEY ARE THREE DIFFERENT QUESTIONS (the
+            ! review of 2026-09-15).  Where the composition MOVED
             ! most, where the movement bound was HELD, and where the
             ! carrier's own balance is WORST are not the same cell, and a
             ! pass that names only one of them cannot say whether the bound

@@ -428,12 +428,11 @@ is spherical and open outward, and the size of the enhancement depends on the
 column behind the point -- a property of the run, not of H2. The measured
 sensitivity: at fixed `T = 1300 K` the converged face cross section moves 13
 per cent between `n_H = 1e12` and `1e14` while the untrapped value is identical
-to five digits. `p_single` is free of this. **This is item (P47) of
-`TO_BE_DONE.md`**: the trapping is the one ingredient of the table still read
-from the CLOUDY runs, and it is the one carrying a geometry our layer does not
-have. (The sentence that stood here, that everything above
+to five digits. `p_single` is free of this. The trapping is the one ingredient of the table
+still read from the CLOUDY runs, and it is the one carrying a geometry our
+layer does not have. (The sentence that stood here, that everything above
 `h2_shielding_overlap_column` remains an upper bound, is no longer true:
-`Update_EXHALE_stage1.md` section 135 rebuilt the table from a calculation in which
+`Update_EXHALE_stage1.pdf` section 135 rebuilt the table from a calculation in which
 the lines absorb each other's beam and removed that function.)
 
 ---

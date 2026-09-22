@@ -1,6 +1,6 @@
       module wae_exhale_input
       ! Front-end that maps an EXHALE input.inp to the Wind-AE planet
-      ! parameters (port plan §3). Fills the planet/star/flux/composition
+      ! parameters. Fills the planet/star/flux/composition
       ! fields of wae_par; the base BCs (Rmin, rho_rmin, Ncol_sp, ...) are
       ! NOT set here -- those are inherited from the continuation seed and
       ! ramped, exactly as the Python wrapper does.

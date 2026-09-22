@@ -3,7 +3,7 @@
       ! adoption boundary.
       !
       ! The marching loop of EXHALE_main takes one step as fourteen
-      ! operations in a fixed order (b1 section 7.1). Rows 1 through 12
+      ! operations in a fixed order. Rows 1 through 12
       ! change the physical state; the adoption boundary sits immediately
       ! before update_map_end_step, which is the first point at which the
       ! state of the step is complete. This module owns
@@ -22,11 +22,11 @@
       ! with no source behind it, so a step the controller adopts while the
       ! filter is active is a step that was RESTORABLE AND ADMISSIBLE, not
       ! a step whose sources balance. That is the remaining part of the
-      ! interim contract of the design document section 6 (b1 T7.3), and it
-      ! ends when B3b budgets the energy the filter removes. No tolerance
+      ! interim contract of the design document, and it
+      ! ends when the energy the filter removes is budgeted. No tolerance
       ! anywhere is loosened to make it pass.
       !
-      ! THE THREE COUNTER CLASSES (b1 T7.2, decision 10 of 2026-09-06).
+      ! THE THREE COUNTER CLASSES.
       !   1 physical accumulations   restored on a rejected attempt, so a
       !                              rejected trial leaves no contribution:
       !                              the CO ceiling record, t_phys,
@@ -100,7 +100,7 @@
       ! second copy of that table with no entry for OH, H2O and CO, so an
       ! oxygen-network run reported a reservoir with three species missing.
       use molecular_reaction_heat, only: species_formation_energy
-      ! ONE EVALUATOR, ONE SET OF TOLERANCES (advisor decision 5). The
+      ! ONE EVALUATOR, ONE SET OF TOLERANCES. The
       ! equations a physical step is judged by live in certification.f90 as
       ! its physical-step context; this module owns the checkpoint, the
       ! step-size policy, the energy identity and the integration-error
@@ -114,8 +114,7 @@
       private
 
       ! ---------------------------------------------------------------- !
-      ! THE FOURTEEN OPERATIONS, in the numbering of b1 section 7.1, so
-      ! that this module and that document index the same things. A
+      ! THE FOURTEEN OPERATIONS, in a fixed numbering. A
       ! rejection names the operation it came from with these.
       integer, parameter, public :: as_op_dt          =  0
       integer, parameter, public :: as_op_checkpoint  =  1
@@ -125,8 +124,8 @@
       integer, parameter, public :: as_op_carriers    =  5
       integer, parameter, public :: as_op_excited_H   =  6
       integer, parameter, public :: as_op_ioniz_eq    =  7
-      ! Row 8 held the composition projection until B3c removed it; the
-      ! number is kept because b1 section 7.1 indexes by it, and it now
+      ! Row 8 held the composition projection until it was removed; the
+      ! number is kept because the numbering indexes by it, and it now
       ! names the point at which the composition and the energy of the
       ! coupled source step have become one state.
       integer, parameter, public :: as_op_composition =  8
@@ -138,8 +137,7 @@
       integer, parameter, public :: as_op_last        = 13
 
       ! ---------------------------------------------------------------- !
-      ! THE RETRY CAP AND THE STEP-SIZE POLICY (advisor decisions 2 and 3
-      ! of the design document section 9).
+      ! THE RETRY CAP AND THE STEP-SIZE POLICY.
       !
       ! n_step_retry_max = 8 gives the outer controller a floor of dt/2^8,
       ! the same depth at which a carrier interval gives up
@@ -370,8 +368,8 @@
          !   d_u_form        the formation reservoir's change over the step.
          !                   REPORTED as the reservoir's change and NEVER
          !                   added to the row: with this code's net thermal
-         !                   heat and cool it is already accounted for
-         !                   (B3c), and adding it would count every
+         !                   heat and cool it is already accounted for,
+         !                   and adding it would count every
          !                   collisional transfer twice.
          logical :: identity_evaluated = .false.
          ! .true. when the two thermal-energy marks of the source step were
@@ -389,7 +387,7 @@
 
       ! ---------------------------------------------------------------- !
       ! OUTER-LOOP COUNTERS, kept apart from the nested hydrodynamic
-      ! retry's (b1 T7.2 class 2: attempt statistics, never restored).
+      ! retry's (class 2: attempt statistics, never restored).
       ! EACH LOOP COUNTS ITS OWN ATTEMPTS AND NOTHING ELSE: an outer
       ! attempt that contains three inner halvings contributes 1 here and 3
       ! to n_steps_attempted. The two are printed with their definitions
@@ -491,16 +489,16 @@
       logical, save :: marked_after_sources  = .false.
 
       ! ---------------------------------------------------------------- !
-      ! THE STEP-DOUBLING INTEGRATION-ERROR ESTIMATE (design section 3.4,
-      ! advisor decision 4). Every n_err_every accepted steps the same step
+      ! THE STEP-DOUBLING INTEGRATION-ERROR ESTIMATE. Every
+      ! n_err_every accepted steps the same step
       ! is retaken from the same checkpoint as two of dt/2, and
       !
       !   e = max over cells and rows of
       !         |u(dt) - u(dt/2 twice)| / (atol + rtol |u|)
       !
       ! is formed. The two half steps run the WHOLE operator split, so the
-      ! estimate is of the split and not of one operator: A3 MEASURED the
-      ! carrier operator to be first order in its substep, so an estimator
+      ! estimate is of the split and not of one operator: the carrier
+      ! operator was MEASURED to be first order in its substep, so an estimator
       ! that ignored the source operators would report the accuracy of the
       ! one stage that is third order.
       !
@@ -893,7 +891,7 @@
                                                    cool, eta)
       ! Restores class 1 and NOTHING ELSE. Class 2 (attempt statistics) and
       ! class 3 (diagnostic extrema) are deliberately left where the
-      ! rejected attempt put them (b1 T7.2, decision 10): they are the only
+      ! rejected attempt put them: they are the only
       ! trace of what the refused direction did, and they can never
       ! invalidate the adopted state because a rejected trial contributes
       ! nothing to the physical history.
@@ -1253,8 +1251,8 @@
       verd%hydro_row_above = cv%hydro_row_above
       if (.not. verd%accepted) return
 
-      ! THE THERMAL-ENERGY IDENTITY of the step (design section 3.3 entry
-      ! 5), evaluated and gated there.
+      ! THE THERMAL-ENERGY IDENTITY of the step, evaluated and gated
+      ! there.
       call attempted_step_energy_identity(chk, u, W, T, f_sp, heat, cool,  &
                                           dt_g, verd)
       end subroutine attempted_step_evaluate
@@ -1331,7 +1329,7 @@
       ! and the residual reported and gated is the difference of the two
       ! sides, which is the closure of the SOURCE STEP alone.
       !
-      ! WHY THE RESERVOIR IS NOT ON THE LEFT (B3c, advisor 2026-09-06).
+      ! WHY THE RESERVOIR IS NOT ON THE LEFT.
       ! The target thermal-energy closure is written as
       ! Delta u_th + Delta u_form = integral Q_ext, with Q_ext carrying
       ! only exchanges with the radiation field. THIS CODE'S heat AND cool
@@ -1723,7 +1721,7 @@
          if (est%d_class(k) .gt. 0.0d0) then
             est%inner_over_difference = max(est%inner_over_difference,      &
                                             inner/est%d_class(k))
-            ! THE STATED FRACTION (review F3): a class whose three inner
+            ! THE STATED FRACTION: a class whose three inner
             ! errors are below a tenth of the difference it carries has an
             ! interval narrow enough that the point value describes it.
             if (inner .gt. err_inner_fraction*est%d_class(k)) then
@@ -1983,7 +1981,7 @@
 
       subroutine attempted_step_read_environment()
       ! The probes and the duty cycle, all off unless asked. The duty cycle
-      ! defaults to 20 in phys mode (advisor decision 4) and to off in
+      ! defaults to 20 in phys mode and to off in
       ! init, where a run makes no statement about a trajectory and
       ! therefore has no integration error to bound.
       character(len=64) :: env

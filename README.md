@@ -365,8 +365,7 @@ schemas, convergence recipes, post-processing) is in
   [`docs/methodology_comparison.pdf`](docs/methodology_comparison.pdf):
   comparison with ATES, Salz, Kubyshkina, Murray-Clay, AIOLOS, Taylor, Xing
 
-`docs/` holds roughly forty further memos on individual investigations;
-[`docs/TO_BE_DONE.md`](docs/TO_BE_DONE.md) is the open-items list.
+`docs/` holds roughly forty further memos on individual investigations.
 
 ---
 
@@ -424,4 +423,4 @@ schemas, convergence recipes, post-processing) is in
 
 Kwang-Il Seon (KASI / UST)
 
-Last updated: 2026-09-22 22:41
+Last updated: 2026-09-22 23:23

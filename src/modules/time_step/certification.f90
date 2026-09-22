@@ -26,13 +26,13 @@
       ! WHAT IS EVALUATED. Every equation of the inventory that the
       ! configuration makes independent:
       !
-      !   the three hydrodynamic rows          (B1a 2.1)
-      !   each transported carrier balance     (B1a 2.2)
-      !   the He/H partition and the trace     (B1a 2.3)
+      !   the three hydrodynamic rows
+      !   each transported carrier balance
+      !   the He/H partition and the trace
       !     elemental transport balances
-      !   the He 2^3S and H(n=2) level         (B1a 2.5)
+      !   the He 2^3S and H(n=2) level
       !     balances
-      !   the eliminated-species closure of    (B1a 2.4)
+      !   the eliminated-species closure of
       !     the coupled cell system
       !
       ! The last three kinds are the state-consistent evaluators of step 4
@@ -53,8 +53,8 @@
       ! |res| / max(scale, floor), never a volume average: a front or a thin
       ! layer must not be averaged away by the wind that carries most of the
       ! volume. The volume average is reported beside it, and is never
-      ! decisive (contract section 4; the carrier `rvol` is the case review
-      ! R7 raised). The scales are the ones the residual code already
+      ! decisive; the carrier `rvol` is the case it was raised for.
+      ! The scales are the ones the residual code already
       ! defines: residual_row_scale for the hydrodynamic rows (the largest
       ! term the row itself contains) and row_terms for a carrier row (the
       ! sum of the magnitudes of the terms that row balances, with the
@@ -109,7 +109,7 @@
                                           isp_H2, isp_H2p, isp_H3p,     &
                                           isp_HeHp, isp_OH, isp_H2O,    &
                                           isp_CO
-      ! The H3+ cooling model's own domain records (B3b-H3). The counters
+      ! The H3+ cooling model's own domain records. The counters
       ! are the EVALUATIONS of the whole run whose collider density or
       ! temperature left the range the published fits and tables cover;
       ! the three classifying functions beside them answer the same
@@ -132,7 +132,7 @@
       ! The domain record of the Ly-alpha damping-wing closure (LYA-BETA):
       ! cell visits whose (a tau)^(1/3) fell below the published limit of
       ! the slab solution (Neufeld 1990 section Va); there the closure is
-      ! carried by its thin limit. Category (2) of B1a section 4.
+      ! carried by its thin limit. Validity-state category (2).
       use lya_rt,                   only: lya_wing_domain_record
       use energy_semi_implicit,     only: n_energy_floor_hits,            &
                                           n_energy_floor_cells,           &
@@ -148,7 +148,7 @@
       use utils,                    only: set_state_certified, calc_rho
       use stationary_operator,      only: face_mass_flux_budget
       ! The direction the base contact was upwinded on at its last
-      ! evaluation, and what decided it (item D2b).
+      ! evaluation, and what decided it.
       use base_boundary,            only: base_face_swind_last,           &
                                           base_face_Mwind_last,           &
                                           base_face_blend_last
@@ -161,12 +161,12 @@
       integer, parameter, public :: cert_evaluated      = 1
       integer, parameter, public :: cert_unavailable    = 2
 
-      ! The contexts of contract section 3 that this step installs.
+      ! The contexts that this step installs.
       integer, parameter, public :: cert_context_probe      = 1
       integer, parameter, public :: cert_context_trial      = 2
       integer, parameter, public :: cert_context_stationary = 3
-      ! THE PHYSICAL-STEP CONTEXT of contract section 3, row "Physical time
-      ! step": the adoption boundary of the marching step (B3a). It is a
+      ! THE PHYSICAL-STEP CONTEXT: the adoption boundary of the marching
+      ! step, where the acceptance predicate is evaluated. It is a
       ! context of THIS evaluator and not a second implementation, so the
       ! tolerances a physical step is judged by and the tolerances a
       ! stationary state is certified by are one set of numbers. What it
@@ -176,7 +176,7 @@
       ! to zero -- but the row measure and the floors are the same.
       integer, parameter, public :: cert_context_physical_step = 4
 
-      ! THE NUMBER OF COUPLED CELL SYSTEMS of B1a section 2.4. Exactly one
+      ! THE NUMBER OF COUPLED CELL SYSTEMS. Exactly one
       ! of them is active in a run; the report carries an entry for each so
       ! that it says which one was measured and which were not the run's.
       ! active_system_variant selects the active one and
@@ -230,7 +230,7 @@
       ! re-measured. An inherited resid_th was therefore a condition the
       ! solver could not meet whatever the state was.
       !
-      ! RE-ANCHORED AFTER B5a (contract section 10, A2tol2, 2026-09-06).
+      ! RE-ANCHORED (2026-09-06).
       ! With the self-consistent residual the returned row is 0.36 to 0.93
       ! of the solve's target, and wasp_full_newton at "Resid tol" 1e-8
       ! reaches mass 2.6e-13, momentum 1.3e-9, energy 6.275e-10. Mass and
@@ -283,7 +283,7 @@
       ! branch on any state measured: it would need a base Mach number
       ! below 1e-15.
       real*8, parameter, public :: cert_tol_mass_ceiling = 1.0d0
-      ! THE TWO OUTCOMES OF THE MASS ROW AT ONE CELL (review R5, item Q3).
+      ! THE TWO OUTCOMES OF THE MASS ROW AT ONE CELL.
       ! `cert_tol_mass_ceiling` above says a cell whose estimated floor
       ! reaches it cannot be judged, not that it passes; mass_row_cell_
       ! verdict below returns one of these through its optional `status`,
@@ -329,7 +329,7 @@
       ! ADMISSIBILITY STATEMENT about the update and NOT a convergence
       ! statement. What carries the integration error of the step is the
       ! step-doubling estimate of the controller, not this row. A
-      ! convergence study (contract section 4) replaces it; nothing was
+      ! convergence study replaces it; nothing was
       ! chosen to make a snapshot pass.
       real*8, parameter, public :: cert_tol_hydro_step = 1.0d0
       !
@@ -350,7 +350,7 @@
       ! one that admits the measured startup would be choosing a tolerance
       ! to make a snapshot pass. The row is measured every step and
       ! reported with its worst cell; it becomes a gate when the
-      ! convergence study of contract section 4 fixes the number. The value
+      ! convergence study fixes the number. The value
       ! above is the order-one bound a naive reading of the measure
       ! suggests, kept so that the report says what the row is being
       ! compared against.
@@ -382,7 +382,7 @@
       real*8, parameter, public :: cert_regime_wind_r  = 1.20d0
 
       ! WHICH CELLS A SPECIES ROW IS GATED IN, and what the number is
-      ! (decision 22 (a), user 2026-09-10; the five anchors are MEASURED).
+      ! (user decision of 2026-09-10; the five anchors are MEASURED).
       !
       ! GATING, at r >= cert_regime_wind_r: 1e-5. It is the coarser of the
       ! two floors the element operator states for itself (about 1e-12 in a
@@ -434,8 +434,7 @@
          character(len=76) :: units_floor = ''
          ! INFORMATIONAL, NEVER DECISIVE. Rows whose residual already sits
          ! at the arithmetic round-off of their own full terms, which is
-         ! what an exact solve leaves there: they are accepted and flagged
-         ! (A1scale3; review 2 section 5.3 calls them informational).
+         ! what an exact solve leaves there: they are accepted and flagged.
          ! Reported beside the measure so that a reader can tell a row the
          ! solve did not resolve from a row it got wrong; it can never
          ! invalidate a state.
@@ -497,7 +496,7 @@
          ! or from the fixed floor, so a reader can tell which gate
          ! refused or admitted the state.
          logical           :: tol_anchored = .false.
-         ! MASS ROW ONLY (review R5, item Q3): how many cells of the column
+         ! MASS ROW ONLY: how many cells of the column
          ! carry an estimated rounding floor that reaches the ceiling, and
          ! the first such cell in cell order, so the report can name a cell
          ! whose balance was never judged even when a different cell binds
@@ -524,10 +523,10 @@
          ! built by. REPORTED AND NEVER GATED: it is a statement about the
          ! consistency of the two halves of the state, not an equation the
          ! state has to satisfy, and its natural scale (1e-16) is nine
-         ! decades below every tolerance in the inventory. Item L19.
+         ! decades below every tolerance in the inventory.
          real*8           :: mass_closure         = 0.0d0
          integer          :: j_mass_closure       = 0
-         ! THE FIVE VALIDITY STATES of B1a section 4, in its order. A
+         ! THE FIVE VALIDITY STATES, in order. A
          ! negative number is "not produced": no counter exists in the code
          ! for that state, and inventing one here would be reporting a
          ! measurement the run never made.
@@ -552,7 +551,7 @@
          ! activation is a FAILURE that stops the run, not an accepted
          ! state. So these are ATTEMPTS diagnostics and not validity
          ! states, and neither invalidates: a rejected attempt leaves no
-         ! contribution to the state being judged (review 2 section 5.3).
+         ! contribution to the state being judged.
          ! The H3+ cooling domain records, reported one by one under the
          ! out-of-domain category so that a count says WHICH edge was left.
          ! Evaluations over the run, like the field above.
@@ -598,7 +597,7 @@
          real*8  :: lya_wing_limit                     =  0.0d0
          ! Whether the run's carrier history is certifiable at all: false
          ! once an interval was left uncovered and the march went on from
-         ! the entry carriers (A3b). It is a property of the HISTORY, not
+         ! the entry carriers. It is a property of the HISTORY, not
          ! of the state's own rows, and it refuses certification on its own.
          logical :: carrier_history_ok                 = .true.
          integer :: n_energy_floor_attempts            =  0
@@ -608,7 +607,7 @@
       end type cert_report
 
       ! WHAT ONE RESIDUAL EVALUATION FOUND ABOUT THE STATE IT WAS GIVEN, as
-      ! the probe and trial contexts of contract section 3 read it. It is
+      ! the probe and trial contexts read it. It is
       ! filled by the residual evaluation itself (eval_residual,
       ! steady_newton.f90) because that is where the sweep and the packed
       ! rows are; the two decisions below are then functions of this record
@@ -640,7 +639,7 @@
       !
       ! What it is NOT. This is not a stationary certification, and a
       ! nonzero stationary residual is not a failure of it: a valid
-      ! finite-time state of a physical integration has one (review 2, F1).
+      ! finite-time state of a physical integration has one.
       integer, parameter, public :: cert_step_ok            = 0
       integer, parameter, public :: cert_step_nonfinite     = 1
       integer, parameter, public :: cert_step_positivity    = 2
@@ -654,8 +653,8 @@
       type :: cert_step_verdict
          logical :: accepted  = .true.
          integer :: reason    = cert_step_ok
-         ! The operation of the fourteen (b1 section 7.1) whose returned
-         ! state refused, so a rejection names a row of that table.
+         ! The operation of the fourteen whose returned
+         ! state refused, so a rejection names one of them.
          integer :: operation = 13
          integer :: jworst    = 0
          integer :: kworst    = 0
@@ -717,13 +716,13 @@
       ! ------------------------------------------------------!
 
       logical function trial_state_is_admissible(f) result(ok)
-      ! THE STATIONARY NEWTON TRIAL CONTEXT (contract section 3, row 2): a
+      ! THE STATIONARY NEWTON TRIAL CONTEXT: a
       ! trial is admissible if it is a state at all -- finite rows, a finite
       ! sweep, inside the element headroom -- and if its eliminated chemistry
       ! is locally valid, which here means it leaves no MORE cells without a
       ! chemical root than the iterate it is compared against. The solver's
       ! own merit-decrease and trust-region rules then decide the step; no
-      ! stationary tolerance enters this decision (review 2, F1).
+      ! stationary tolerance enters this decision.
       type(cert_evaluation_facts), intent(in) :: f
       ok = (f%n_sweep_nonfinite .eq. 0) .and. f%headroom_ok                &
            .and. f%rows_finite
@@ -734,7 +733,7 @@
       ! ------------------------------------------------------!
 
       logical function probe_direction_is_usable(f) result(ok)
-      ! THE PROBE CONTEXT (contract section 3, row 1): a residual sample
+      ! THE PROBE CONTEXT: a residual sample
       ! taken to build a Jacobian column or a Jacobian-vector product is
       ! usable when every row it produced is a finite number and the sweep
       ! that produced them found none. Convergence is not asked of it, and
@@ -786,7 +785,7 @@
       ! A RUN WHOSE FINAL STATE IS NOT CERTIFIED EXITS NONZERO, after its
       ! outputs are written and after the failing entries are named, so that
       ! a script can tell a certified stationary solution from a state that
-      ! was merely written (user decision, contract section 8). The status is
+      ! was merely written (a user decision). The status is
       ! 2, chosen to be distinct from the 1 that a Fortran error stop leaves.
       ! It belongs ONLY to a run that declared a stationary state and then
       ! failed the certification; a run that made no such claim exits 0.
@@ -828,7 +827,7 @@
       ! sum r^2 dr, so a single sum averages the inner column away). It is
       ! REPORTED and is never the condition -- a species whose rates are
       ! small beside a balanced dominant one can be out by any factor of its
-      ! own terms and move a ratio of sums by nothing at all (review R7).
+      ! own terms and move a ratio of sums by nothing at all.
       !
       ! THE COMPANION IS OPTIONAL, and so is the cell volume it needs: a
       ! caller that reads only rmax -- the convergence gate of the Newton
@@ -931,7 +930,7 @@
       ! reader that ranks cells by distance still sees a refusal rather than
       ! a zero.
       !
-      ! RESOLVED: raw < ceiling. The rule is the one anchored by item P16,
+      ! RESOLVED: raw < ceiling. The rule is the anchored one,
       !
       !   tol = max( cert_tol_mass, raw )
       !
@@ -1277,7 +1276,7 @@
                                  cn_e, cn_tot)
       call comp_T_from_p(Wcert(3,:), cn_tot, cn_e, Tcert)
 
-      ! ---- the mass closure of the composition (reported, item L19) ----
+      ! ---- the mass closure of the composition (reported) ----
       ! sum_i f_i A_i - 1, from the same (u, f_sp) every row above is
       ! measured on: calc_rho weighs the species of this state with the
       ! run's own mass policy, and the density it returns is rho times that
@@ -1285,12 +1284,12 @@
       call mass_closure_of_state(Wcert(1,:), f_sp, rep%mass_closure,      &
                                  rep%j_mass_closure)
 
-      ! ---- the hydrodynamic rows: always present (B1a section 2.1) ----
+      ! ---- the hydrodynamic rows: always present ----
       call hydro_row_entry(rep, 1, 'hydrodynamic mass row',      u, Res)
       call hydro_row_entry(rep, 2, 'hydrodynamic momentum row',  u, Res)
       call hydro_row_entry(rep, 3, 'hydrodynamic energy row',    u, Res)
 
-      ! ---- the transported carrier balances (B1a section 2.2) ----
+      ! ---- the transported carrier balances ----
       ! The set is carrier_set_init's, fixed once after the keys are parsed;
       ! a carrier the run does not solve carries no equation.
       carriers_measured = .false.
@@ -1340,7 +1339,7 @@
          enddo
       endif
 
-      ! ---- the elemental transport balances (B1a section 2.3) ----
+      ! ---- the elemental transport balances ----
       ! Stationary: transport against transport, the time term removed the
       ! way the carrier balance removes it. Measured on this state's own
       ! composition inside the operator's own coefficients, with the five
@@ -1375,7 +1374,7 @@
       enddo
 
       ! ---- the eliminated-species closure and the He 2^3S level row ----
-      ! One evaluation answers both (B1a sections 2.4 and 2.5): the
+      ! One evaluation answers both: the
       ! metastable is an unknown of the same coupled cell system, so its
       ! balance is one row of the vector the closure measure takes the
       ! maximum of. The closure entry is that maximum, which is exactly the
@@ -1391,7 +1390,7 @@
                clo_tr, cert_tol_level, clo_why,                             &
                'the row''s own turnover rate; dimensionless, scale 1')
 
-      ! ---- the H(n=2) level balance (B1a section 2.5) ----
+      ! ---- the H(n=2) level balance ----
       call excited_hydrogen_level_residual(Tcert, Wcert(1,:), f_sp,        &
                                            n2_res, n2_sc, n2_ok, n2_why)
       call transport_row_entry(rep, 'level balance H(n=2)', use_excited_H,  &
@@ -1401,13 +1400,13 @@
                tol_whole_column = cert_tol_level)
 
       ! ---- the eliminated-species closure, one entry per system variant ----
-      ! (B1a section 2.4). Exactly one of these is active in a run: the
+      ! Exactly one of these is active in a run: the
       ! variant the configuration selects. Its residual is re-evaluated for
       ! acceptance INSIDE the sweep that also rewrites f_sp and rho, and
       ! there is no entry point that takes a state and returns the residual
       ! of its eliminated species without solving, so the active variant is
-      ! unavailable and every run therefore stands uncertified until the
-      ! evaluator of contract step 4 exists.
+      ! unavailable and every run therefore stands uncertified until
+      ! that evaluator exists.
       do i = 1, n_system_variant
          call unit_scale_entry(rep,                                        &
               'eliminated-species closure '//trim(system_variant_name(i)),  &
@@ -1416,7 +1415,7 @@
               'the row''s own turnover rate; dimensionless, scale 1')
       enddo
 
-      ! ---- the validity states (B1a section 4) ----
+      ! ---- the validity states ----
       call read_validity_states(rep)
 
       ! ---- the H3+ domain map of THIS state ----
@@ -1456,7 +1455,7 @@
       if (n_no_chem_root .ne. 0) rep%certified = .false.
       ! An unbudgeted accepted correction is a change of a conserved
       ! quantity with no source term behind it, and it stands in the history
-      ! of the state being judged (B1a section 4.4). The energy and
+      ! of the state being judged. The energy and
       ! conduction temperature floors are the two of them that have a
       ! counter today.
       if (rep%n_unbudgeted_accepted_correction .gt. 0)                     &
@@ -1619,7 +1618,7 @@
       ! asserted against them (gate_equals_certification, steady_newton.f90).
       ! What this routine decides is the verdict and which number took it.
       !
-      ! REVIEW R5 (item Q3): a cell whose floor makes the row UNRESOLVED
+      ! A cell whose floor makes the row UNRESOLVED
       ! (mass_row_cell_verdict) is counted and the first one is named
       ! (n_mass_unresolved, j_first_mass_unresolved), whether or not it is
       ! also the binding cell.
@@ -1661,7 +1660,7 @@
       ! WHY PER CARRIER AND PER CELL. carrier_steady_residual also forms a
       ! ratio of SUMS over all carriers of a region; a species whose rates
       ! are small next to a balanced dominant one can be out by any factor
-      ! of its own terms and move that ratio by nothing at all (review R7).
+      ! of its own terms and move that ratio by nothing at all.
       ! The row measure below is that species' own equation.
       type(cert_report), intent(inout) :: rep
       integer,           intent(in)    :: ic
@@ -1821,7 +1820,7 @@
       ! halves describe one gas. It is not zero: the composition returned by
       ! a sweep is normalized by the density the sweep was given and is only
       ! that density's composition to the arithmetic of the sweep, and
-      ! without the projection of item L19 that departure ratchets by about
+      ! without the mass projection that departure ratchets by about
       ! 1e-14 per outer pass of a stationary solve.
       !
       ! calc_rho is the run's own mass policy term for term (the trace-metal
@@ -1937,7 +1936,7 @@
       ! boundary evaluation, and, where the wind window decided it, whether
       ! the base face mass flux the Riemann solve assembled for the same
       ! state carries the flux in the same direction. The comment at the
-      ! report that prints it gives the reason (item D2b). A base face flux
+      ! report that prints it gives the reason. A base face flux
       ! at or below 1e-12 of the window mean is at the rounding of the flux
       ! and carries no direction.
       real*8,  intent(in) :: s_wind, M_wind, flux_base, window_mean
@@ -2096,7 +2095,7 @@
       ! ------------------------------------------------------!
 
       integer function active_system_variant() result(iv)
-      ! Which of the seven coupled cell systems (B1a section 2.4) the
+      ! Which of the seven coupled cell systems the
       ! configuration selects. One of them is always active: every run
       ! eliminates the neutral stage of each element and the electron
       ! density by a closure.
@@ -2132,7 +2131,7 @@
       ! ------------------------------------------------------!
 
       subroutine read_validity_states(rep)
-      ! The five validity states of B1a section 4, read from the producers
+      ! The five validity states, read from the producers
       ! that exist. A state with no producer is left negative and reported
       ! as "not produced": the report says what the run measured and does
       ! not invent the rest.
@@ -2146,7 +2145,7 @@
       ! counted under 4.2 as a closure with a domain.
       rep%n_active_unvalidated_physics = -1
       ! 4.2 OUT-OF-DOMAIN CLOSURE. The H3+ cooling model is the first
-      ! closure in the code that records its own domain (B3b-H3): the
+      ! closure in the code that records its own domain: the
       ! evaluations at which the collider density fell below the tabulated
       ! range, at which it rose above it, at which the temperature left the
       ! published fits or the tabulated non-LTE rows, and at which an
@@ -2161,7 +2160,7 @@
       ! one pass over its own cells (h3p_cooling_domain_map_of_state).
       !
       ! THEY ARE INFORMATIONAL AND DO NOT INVALIDATE BY THEMSELVES
-      ! (decision 8, 2026-09-06): the extrapolating branch below the
+      ! (2026-09-06): the extrapolating branch below the
       ! tabulated collider range is the exact collisional limit of the same
       ! model, not a guess outside it, so a cell counted there is described
       ! by the model and not merely clamped to its edge. The count is
@@ -2169,8 +2168,8 @@
       ! outside the table; a closure whose out-of-domain branch is NOT a
       ! limit of its own model has to say so where it is counted.
       !
-      ! THE CO DESTRUCTION MODEL IS THE SECOND SUCH CLOSURE (decision 10,
-      ! 2026-09-06). Its row destroys CO and never forms it, which holds
+      ! THE CO DESTRUCTION MODEL IS THE SECOND SUCH CLOSURE
+      ! (2026-09-06). Its row destroys CO and never forms it, which holds
       ! where tau_dest << tau_res << tau_form; the cells where that ordering
       ! fails are counted here. They are informational for the same reason:
       ! where the destruction is too slow to matter the omitted formation is
@@ -2227,17 +2226,17 @@
       ! the conduction stage are both bracketed and residual-controlled,
       ! and reaching the lower bracket end is a FAILURE that stops the run
       ! rather than a state the run adopts; a rejected attempt contributes
-      ! nothing to the state being judged (review 2 section 5.3). Both
+      ! nothing to the state being judged. Both
       ! counters are therefore reported as attempts beside the validity
       ! states and neither invalidates. The category itself stays: a
       ! producer of a genuine unbudgeted correction reaches it here.
       ! Row 12 of the attempted step is one of them: the Shapiro filter
       ! alters the adopted state with no source term behind the change.
-      ! Advisor decision 8 (design section 9): it is carried until B3b
-      ! reaches it, is recorded when it fires, and NO STATE CERTIFIES WHILE
+      ! It is carried until the energy it removes is budgeted,
+      ! is recorded when it fires, and NO STATE CERTIFIES WHILE
       ! IT IS ACTIVE. That is the interim contract made visible where it
       ! decides something, rather than left in a comment. Row 8's
-      ! composition projection was the other one; B3c removed its producer,
+      ! composition projection was the other one; its producer was removed,
       ! so it can no longer contribute here.
       rep%n_unbudgeted_accepted_correction = n_shapiro_applied
       rep%n_energy_floor_attempts          = n_energy_floor_hits
@@ -2427,7 +2426,7 @@
          ! Where the wind window has standing, the base boundary upwinds
          ! the contact on the sign of the window's mass flux and not on the
          ! matched face velocity, whose sign on a converged state is set by
-         ! the boundary's own pressure residual (item D2b, user decision of
+         ! the boundary's own pressure residual (user decision of
          ! 2026-09-19). That choice presumes the window and the base face
          ! carry the flux in one direction; the base face mass flux the
          ! Riemann solve assembled for this same state is the local
@@ -2514,7 +2513,7 @@
               ' by this caller'
       endif
       ! The mass closure of the composition this state carries: reported
-      ! beside the equations and gating nothing (item L19). A state whose
+      ! beside the equations and gating nothing. A state whose
       ! two halves describe one gas reads a few units in the last place.
       if (rep%j_mass_closure .gt. 0) then
          write(*,'(A,ES10.3,A,I0,A,F10.5)') '   mass closure of the'//    &
@@ -2525,7 +2524,7 @@
               ' definition of the mass fractions, so this is the'//       &
               ' arithmetic of the state and no equation of it'
       endif
-      write(*,'(A)') '   validity states (B1a section 4):'
+      write(*,'(A)') '   validity states:'
       call write_validity('active unvalidated physics',                    &
            rep%n_active_unvalidated_physics)
       call write_validity('out-of-domain closure evaluations, summed'//   &
@@ -2755,15 +2754,15 @@
       !   1 finiteness and positivity of u, T and f_sp;
       !   2 the element and charge invariants to round-off;
       !   3 every active returned-state verdict that exists today: the
-      !     carriers (A1, through the interval status A3b reports), the
-      !     energy update (B2), the conduction stage (B2b), and the
+      !     carriers (through the interval status reported), the
+      !     energy update, the conduction stage, and the
       !     chemical-root count,
       !     a class-4 or class-6 cell being a non-root and therefore not a
-      !     root (contract section 3);
-      !   4 the time-discrete hydrodynamic residual, the measure B3a
-      !     introduces, against cert_tol_hydro_step.
+      !     root;
+      !   4 the time-discrete hydrodynamic residual, the measure the
+      !     controller introduces, against cert_tol_hydro_step.
       !
-      ! Entries 5 and 6 of that list -- the energy identity T1.5 and the
+      ! Entries 5 and 6 of that list -- the energy identity and the
       ! integration-error estimate -- are the controller's, for the reason
       ! stated at the type above.
       !

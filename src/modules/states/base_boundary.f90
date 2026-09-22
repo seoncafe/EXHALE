@@ -373,7 +373,7 @@
    ! THE VALUE IS SET SO THAT IT ACTS ON NO STATE THE CODE MEETS.  MEASURED
    ! face-mapped window Mach numbers: 1.13e-08 on the certified 0.03
    ! LHS 1140 b state, 7.49e-09 on the stalled 0.02 transient, 3.75e-06 on a
-   ! cold start of the same case, and READ from item L21, 3.7e-09 at the
+   ! cold start of the same case, and 3.7e-09 at the
    ! cold start of the wasp_full regression case, which is the smallest any
    ! state has been measured at.  1e-12 stands 3700 times below that and 1e4
    ! below the certified operating point, and the rounding floor of M_wind on
@@ -444,7 +444,7 @@
    real*8  :: base_face_blend_last       = 0.0d0
    ! The quantities the branch is decided by, kept from the last evaluation
    ! so that a run can be asked WHICH branch its base is on and WHY
-   ! (report_base_face_state).  Item L21.
+   ! (report_base_face_state).
    real*8  :: base_face_Mi_last          = 0.0d0
    real*8  :: base_face_Mwind_last       = 0.0d0
    real*8  :: base_face_swind_last       = 0.0d0

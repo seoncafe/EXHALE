@@ -4,8 +4,7 @@
 Solves a gas-giant photochemistry model to steady state on a T(p), K_zz(p)
 column -- prescribed (`--tp-file`, milestone E2) or solved for by the
 radiative-convective climate model (`--climate`, milestone E3,
-`radiative_convective_column.py`) -- and writes the handoff of
-`docs/phase_e_flux_closure_design.md` section 2: one
+`radiative_convective_column.py`) -- and writes the handoff: one
 `lower_atmosphere_profile.dat` and the minimal `base.inp` that carries the
 same `solution_id`.  The EXHALE key that consumes it is
 
@@ -29,7 +28,7 @@ step fixes the tropopause, and with it the water cold trap, which the
 chemistry solver then applies through the mechanism's H2O condensate
 particle.  Two elemental sums are reported in that case, one over the gas
 phase and one including the condensed carriers; their difference IS the cold
-trap (`docs/phase_e_flux_closure_design.md` section 5).
+trap.
 
 THE GRID THE COLUMN IS WRITTEN ON is the solution's own, not the one the
 stepper happened to stop on.  Photochem accepts a steady state on any grid
@@ -37,7 +36,7 @@ whose top is within a factor 3 of the requested one, so an unpinned run comes
 back on one of several grids and the converged column differs with the grid.
 `steady_state_at_stated_model_top` re-pins the grid at `--toa` and re-converges
 the chemistry on it, iterating to the fixed point, and refuses if that will not
-settle (`docs/lower_profile_deep_boundary_sensitivity.md` section 8).
+settle.
 
 The driving pattern is the one `docs/p1_matched_comparison.py` validated on
 2026-08-26 and is not re-derived here: dilution-only stellar flux, the Zahnle
@@ -459,8 +458,7 @@ def steady_state_at_stated_model_top(pc, toa, blocks,
     leave: measured on LHS 1140 b, two runs of the same problem come back on
     tops 2.5 % apart, and the converged column differs with the grid -- 2.5 %
     in pressure at fixed level index and 5.2e-03 in the elemental O/H handed
-    over at the matching level
-    (`docs/lower_profile_deep_boundary_sensitivity.md`).
+    over at the matching level.
 
     The grid is therefore re-pinned here, from the converged solution, and the
     chemistry re-converged on it.  The two steps are ITERATED: re-pinning

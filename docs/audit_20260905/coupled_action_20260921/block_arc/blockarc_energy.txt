@@ -1,8 +1,0 @@
-dir=energy arc=1.0e-4 rc=0 wall=18s probe_length=6.8675961E-06 moved(mean worst n)=1.2389870E-06 4.4404497E-06 21 support(mean worst n)=3.2076982E-05 3.5877050E-04 52 largest_response=2.4963237E-03
-dir=energy arc=1.0e-3 rc=0 wall=17s probe_length=6.8675961E-05 moved(mean worst n)=1.2388497E-05 4.4406300E-05 21 support(mean worst n)=2.0297269E-05 1.0719771E-04 52 largest_response=2.4963820E-03
-dir=energy arc=1.0e-2 rc=0 wall=17s probe_length=6.8675961E-04 moved(mean worst n)=1.2396216E-04 4.2221201E-04 21 support(mean worst n)=2.1632761E-04 1.1520858E-03 52 largest_response=2.4968180E-03
-dir=energy arc=1.0e-1 rc=0 wall=17s probe_length=6.8675961E-03 moved(mean worst n)=1.2381487E-03 4.1291063E-03 21 support(mean worst n)=2.1564315E-03 1.1726514E-02 52 largest_response=2.5010350E-03
-dir=energy arc=3.0e-1 rc=0 wall=17s probe_length=2.0602788E-02 moved(mean worst n)=3.7033519E-03 1.2353034E-02 21 support(mean worst n)=6.4599422E-03 3.5347356E-02 52 largest_response=2.5103733E-03
-dir=energy arc=1.0 rc=0 wall=17s probe_length=6.8675961E-02 moved(mean worst n)=1.2378866E-02 4.1032325E-02 21 support(mean worst n)=2.1526659E-02 1.1999490E-01 52 largest_response=2.5428167E-03
-dir=energy arc=3.0 rc=0 wall=17s probe_length=2.0602788E-01 moved(mean worst n)=3.4545647E-02 1.1440300E-01 21 support(mean worst n)=6.4016100E-02 4.2280245E-01 52 largest_response=2.6340399E-03
-dir=energy arc=1.0e1 rc=0 wall=17s probe_length=6.8675961E-01 moved(mean worst n)=1.1897242E-01 3.7854799E-01 21 support(mean worst n)=2.2728417E-01 1.9306279E+00 52 largest_response=2.9339171E-03

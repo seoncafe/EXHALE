@@ -27,8 +27,7 @@ mixture, carries molecular carriers and stage-resolved friction, and has no cap
 and no base pile-up limiter (its M-matrix keeps $0\le X\le1$ per step without
 clipping).  The measurements below are kept as a record of what the trace kernel
 gave; they have not been re-run under the binary operator, so read the two
-regimes and the sign of each effect, not the digits.  Design of the current
-operator: \texttt{docs/binary\_diffusion\_design.md}.  The trace treatment of
+regimes and the sign of each effect, not the digits.  The trace treatment of
 the metals is carried over unchanged into the new module.
 \end{quote}
 
@@ -166,7 +165,7 @@ is not strongly separated in the line-forming region.}
     discretization (a Peclet-hybrid central/upwind scheme: central where well-resolved, upwind
     for the stiff heavy-metal settling).
   \item \textbf{Phase-1/2 numerics.} Mild non-monotonic structure from the He/H cap and the
-    not-fully-developed wind; see \texttt{design\_hehe\_diffusion.md} \S7d--\S7e. Diffusion
+    not-fully-developed wind. Diffusion
     flags \textbf{default OFF}. \emph{The cap is gone in the current operator (status
     note); the scalar \texttt{He\_Kzz} now defaults to 0 rather than
     $10^{9}$\,cm$^{2}$\,s$^{-1}$, and a \texttt{Lower atmosphere profile} may supply

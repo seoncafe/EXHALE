@@ -685,10 +685,9 @@ ran with the coupling *off* and the post-process with it *on*, because
 
 Both are fixed (2026-08-30). The branching is now resolved on the cell's own
 neutral He/H ratio and returned per target atom, so nothing divides by a
-vanishing density (`svs85_secondary_branching`;
-`TO_BE_DONE.md` item (J)), and `sec_ion_active` is armed before the loop when
+vanishing density (`svs85_secondary_branching`), and `sec_ion_active` is armed before the loop when
 `do_only_pp` is set, so the one equilibrium solve of a PP-only run uses the same
-physics as the post-process beside it (`TO_BE_DONE.md` item (K)). On the control run the cells above 1.5 R_p with a
+physics as the post-process beside it. On the control run the cells above 1.5 R_p with a
 collapsed ground singlet go from 171 of 233 to none.
 
 Fixed in passing, outside the post-process: `LHS1140b/make_memo_figures.py` and

@@ -52,9 +52,9 @@
    ! one-electronvolt photon: the single definitions of all three, shared
    ! with the photon grid (J_inc.f90). stellar_flux_eV is the field of
    ! the RUN'S spectrum type, so the Balmer band is built from the same
-   ! spectrum as every other band (decision 13), and e_th_HI_n2 is the same
+   ! spectrum as every other band, and e_th_HI_n2 is the same
    ! threshold that floors that grid whenever this coupling is armed
-   ! (sed_read's photon_grid_floor_eV, decision 17).
+   ! (sed_read's photon_grid_floor_eV).
    use J_incident, only: stellar_flux_eV, spectrum_covers_eV, eV2Hz,        &
                          e_th_HI_n2
 
@@ -402,7 +402,7 @@
 
    subroutine excited_hydrogen_level_residual(T_in, n_in, f_sp_in,        &
                                               res, scale, ok, why)
-   ! THE H(n=2) LEVEL BALANCE, MEASURED ON A STATE (B1a section 2.5).
+   ! THE H(n=2) LEVEL BALANCE, MEASURED ON A STATE.
    !
    ! The n=2 populations are not unknowns of any solve: n2_populations
    ! closes them one outer pass BEHIND the composition they are a closure
@@ -518,8 +518,7 @@
    ! written as h nu = hp_erg (E eV2Hz) [erg] from the two exact CODATA
    ! constants, and dE in eV.
    !
-   ! THE FIELD IS THE RUN'S OWN SPECTRUM (development plan rev 3, section
-   ! 10.5 decision 13): stellar_flux_eV is the power law for
+   ! THE FIELD IS THE RUN'S OWN SPECTRUM: stellar_flux_eV is the power law for
    ! "Spectrum type: Power-law", the photospheric blackbody for "Planck" and
    ! the loaded table for "Load". No band is built from a type the input did
    ! not select, so this integral is no longer a blackbody in a power-law
@@ -540,7 +539,7 @@
    ! Photoelectric heating per H(n=2) atom [erg s^-1]: the integrand of
    ! gamma_n2_balmer weighted by the photoelectron excess energy
    ! h(nu - nu_2) = (E - e_th_HI_n2), in the same band and from the same
-   ! field, the run's own spectrum type (decision 13),
+   ! field, the run's own spectrum type,
    !
    !   heat_2 = INT F_E(E) sigma_2(E) (1 - e_th_HI_n2/E) dE ,
    !
@@ -790,8 +789,8 @@
    subroutine stop_if_balmer_band_unstated
    ! The Balmer continuum can only be integrated over a band the run's
    ! spectrum states a field on. A monochromatic run states nothing there,
-   ! and filling the band from another type is what decision 13 forbids;
-   ! the run therefore stops, with the message of decision 17 in the same
+   ! and filling the band from another type is forbidden;
+   ! the run therefore stops, with its message in the same
    ! form as the SED coverage stop of sed_read.f90.
    !
    ! THE LAST LINE OF DEFENCE, not the first. e_th_HI_n2 floors the photon

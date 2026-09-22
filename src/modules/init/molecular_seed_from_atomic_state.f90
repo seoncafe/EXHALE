@@ -91,8 +91,7 @@
       !             star dissociates its H2, and half its hydrogen is
       !             ionized -- and the fit knows none of that and returns a
       !             large H2 because the temperature alone is low. MEASURED
-      !             on LHS 1140 b (item L7e, docs/lhs1140b_stationary_L7e_
-      !             20260915.md section 13): the fit alone put 13 to 21
+      !             on LHS 1140 b: the fit alone put 13 to 21
       !             percent of the gas into H2 from 5.9 R_p out to 29 R_p,
       !             80 to 360 times the root of its own row, with atomic H
       !             four decades BELOW the molecule it is made from, and no
@@ -336,7 +335,7 @@
       ! atomic file and this run, and no others.
       !
       ! These six decide how many unknowns a state has, which is exactly why
-      ! an ordinary restart may never name them (load_IC, decision 21): a
+      ! an ordinary restart may never name them (load_IC): a
       ! state whose rows are not this run's rows is not this run's state.
       ! A seed conversion is the one operation whose whole purpose is to
       ! ADD those rows, and it does not integrate the state it built: it
@@ -530,16 +529,16 @@
          ! of the layer are free, and the fixed point of the solve puts
          ! their x2 at 0.33 on LHS 1140 b against the handoff's 0.99998 --
          ! not because the network's chemistry wants it there (its own root
-         ! is 0.98 at the base, item L7f) but because the layer is eddy-mixed
+         ! is 0.98 at the base) but because the layer is eddy-mixed
          ! with the dissociation region above it, and the base face carries
          ! no diffusive flux to feed it from below.  A seed that imposes the
          ! handoff there is therefore not seeding the fixed point; it is
          ! adding a transient the relaxation must then undo, and MEASURED
-         ! (item L7e) that transient is a 50 percent change of the particle
+         ! that transient is a 50 percent change of the particle
          ! count of those cells, taken at one percent a pass by the movement
          ! bound, which holds the whole column while it runs.
          !
-         ! WHAT IS LEFT IS A COMPARISON, and item L7f has settled it.  The
+         ! WHAT IS LEFT IS A COMPARISON, and it is settled.  The
          ! ratio this block reports was 7 to 21 while the "root" was
          ! production over loss RATE at the trial; with the root SOLVED for
          ! (carrier_h2_chemical_root, which the row's quadratic dependence on
@@ -829,17 +828,17 @@
                  ' network''s own root)'
             ! WHAT THE TWO CHEMISTRIES SAY ABOUT THIS LAYER, reported and
             ! not acted on: the handoff against the root of the wind
-            ! network's own H2 row, cell by cell, as a ratio.  Item L7f
-            ! measured it at 1.02 at the first cell of LHS 1140 b and 5.87
+            ! network's own H2 row, cell by cell, as a ratio.  It was
+            ! measured at 1.02 at the first cell of LHS 1140 b and 5.87
             ! at the top of the layer, i.e. the two agree at the bottom and
             ! part company as the temperature rises through it; a ratio far
-            ! from 1 at the FIRST cell would be the disagreement that item
-            ! looked for and did not find.
+            ! from 1 at the FIRST cell would be the disagreement that
+            ! measurement looked for and did not find.
             if (rec_base_ratio_max .gt. 0.0d0)                            &
                write(*,'(A,F7.2,A,F7.2,A)') '   the handoff stands ',     &
                  rec_base_ratio_min, ' to ', rec_base_ratio_max,          &
                  ' times the root of the wind network''s own H2 row'//    &
-                 ' through that layer (item L7f)'
+                 ' through that layer'
          else
             write(*,'(A)') '   no handoff states a base layer; the'//     &
                  ' partition is the fit against the root everywhere'

@@ -48,8 +48,8 @@ ROOT = os.path.abspath(os.path.join(HERE, '..'))
 R_SUN, AU, R_JUP_E, R_JUP_V, GRAV = 6.957e10, 1.495979e13, 7.1492e9, 6.9911e9, 6.67430e-8
 
 # Planet configurations.  Every entry repeats what the two codes were actually
-# given in the runs being compared; the sources are docs/vulcan_photochem_comparison.md
-# (HD 189733 b) and docs/base_composition_handoff_plan.md section 11.1 (HD 209458 b).
+# given in the runs being compared; the source is docs/vulcan_photochem_comparison.md
+# (HD 189733 b).
 PLANETS = {
     'hd189': dict(
         vulcan_dir=os.path.join(ROOT, 'VULCAN'),

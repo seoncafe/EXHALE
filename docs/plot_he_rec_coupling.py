@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Comparison figures for the He recombination radiation -> H I ionization
 coupling (input key He_rec_coupling, flag use_he_rec_coupling; Draine 2011
-y/z on-the-spot treatment; see docs/QUESTIONS_2026-07-17.md).
+y/z on-the-spot treatment).
 
 Run protocol (2026-07-17, figures docs/figures/he_rec_coupling_{atomic,heitr}.pdf):
   - HD209458b/input.inp + metals.inp, converged HD209458b/output profiles

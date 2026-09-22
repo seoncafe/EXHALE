@@ -59,7 +59,7 @@
       ! HE-DOMINATED LIMIT.  Two further limits of this network are noted
       ! rather than patched here, because both would replace a
       ! Koskinen Table-1 entry with a rate from another compilation:
-      !   * HeH+ formation.  REPAIRED 2026-09-15 (item L7f), and the
+      !   * HeH+ formation.  REPAIRED 2026-09-15, and the
       !     paragraph is kept because the repair is the point.  Table 1
       !     forms HeH+ only through R20, He+ + H2 -> HeH+ + H at 4.2e-13,
       !     citing Schauer et al. (1989) -- a measurement that neither made
@@ -784,7 +784,7 @@
       ! The table is built ONCE, serially, by h2_thermochemistry_init (the
       ! main program calls it before any parallel sweep; a test driver that
       ! uses this function calls it first). A lazy build here was removed on
-      ! 2026-09-13 (review P2): the readiness flag was read outside the
+      ! 2026-09-13: the readiness flag was read outside the
       ! critical region that built the table, which is a data race for any
       ! caller that reaches this function concurrently before the build.
       if (.not. keq_table_ready) then
@@ -1014,8 +1014,8 @@
       ! carried; a coefficient that is identically zero over the whole
       ! domain is not a rate.
       !
-      ! WHAT REMOVING IT DOES, measured rather than argued (item L7f,
-      ! molecular_scalar_gj1132_kzz1e9 at He/H = 2.13, first cell, with the
+      ! WHAT REMOVING IT DOES, measured rather than argued
+      ! (molecular_scalar_gj1132_kzz1e9 at He/H = 2.13, first cell, with the
       ! ionization re-solved on both sides).  At the SHARE level R20 looked
       ! decisive: it carried 25 to 30 percent of the H2 loss and, with R18
       ! consuming the HeH+ it made, about half of it.  With the balance
@@ -1116,7 +1116,7 @@
       !        and adopting an unmeasured 1978 estimate into a channel is
       !        what put R20 in this network in the first place.
       !        WHAT IT WOULD DO, measured so the omission is bounded and not
-      !        merely noted (item L7f, first cell at 1023 K): 1e-18 n(H+)
+      !        merely noted (first cell at 1023 K): 1e-18 n(H+)
       !        n(He) = 55 cm^-3 s^-1 against 0.15 for reaction (12), so it
       !        would be the dominant HeH+ source and would raise n(HeH+)
       !        from 7.7e-05 to ~3e-02 cm^-3.  It changes nothing observable:

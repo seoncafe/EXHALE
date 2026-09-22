@@ -181,7 +181,7 @@ def velocity_distribution(d, rmin=1.0, rmax=25.0):
                 vmax=float(v.max()))
 
 
-# The well-mixed cases of the model tree of record (MODELS.md), read as
+# The well-mixed cases of the model tree of record, read as
 # `<group>/HeH<value>` under `models/`.
 RUNDIR = 'models'
 

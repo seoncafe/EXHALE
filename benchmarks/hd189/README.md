@@ -66,8 +66,7 @@ the result, splitting the two bands at `e_mid`. A comment line above them says
 so (the parser skips blank and `#` lines).
 
 **Which file, and why this one.** The Salz-normalized file is the run of
-record for HD 189733 b (decision 5 of `PLAN_20260906_rev2.md` section 2),
-because this wind is compared with the Salz et al. (2016) simulation. The
+record for HD 189733 b, because this wind is compared with the Salz et al. (2016) simulation. The
 observed-star alternative is
 `../../inputdata/sed/hd189733b_bourrier2020.txt` (SHA-256
 `da76f1fd69920f6aba33fb4f5503ebec04459eca19a34dcb981d5bee2bf3a1af`), the

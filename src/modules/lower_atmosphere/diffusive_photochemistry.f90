@@ -7,9 +7,8 @@
       !   Phi_i = - n_tot (D_i + K_zz) d f_i/dr
       !           - n_i D_i [ 1/H_i - 1/H_atm ]        (f_i = n_i/n_tot)
       !
-      ! for i = H2, OH, H2O, CO.  This is milestone M3 of the A2 oxygen
-      ! option.  This header states what was built and what was measured,
-      ! not what was intended.
+      ! for i = H2, OH, H2O, CO.  This header states what was built and what
+      ! was measured, not what was intended.
       !
       ! ---------------------------------------------------------------
       ! 1. WHY THE CARRIERS CANNOT BE A LOCAL STEADY STATE
@@ -25,7 +24,7 @@
       ! level tau_chem(H2)/tau_adv is 0.20 to 1.67 on H/v, and 16.4 when the
       ! two are compared at the same pressure, against 1e-3 on HD 209458 b.
       !
-      ! WHAT M3 THEN MEASURED IN EXHALE'S OWN STRUCTURE, AND IT IS NOT THE
+      ! WHAT WAS THEN MEASURED IN EXHALE'S OWN STRUCTURE, AND IT IS NOT THE
       ! SAME NUMBER.  That ratio was built from the PHOTOCHEMICAL model's
       ! scale height and velocity at that pressure.  In an EXHALE run of the
       ! same planet the base cell has v = 0 EXACTLY -- the lower boundary
@@ -35,9 +34,7 @@
       ! and 634 s with K_zz = 1e9, i.e. 3.6.  So in this code's structure the
       ! base partition is a LOCAL quantity, and transport is not the term
       ! that decides it; what transport does decide is the profile of a
-      ! species with no chemistry of its own, which here is CO.  The M3
-      ! result block of the design document carries the numbers and what
-      ! follows from them.
+      ! species with no chemistry of its own, which here is CO.
       !
       ! That is why every run writes tau_chem, tau_adv AND the diffusive time
       ! of each cell to output/Oxygen_chemistry.txt: the regime is a
@@ -135,7 +132,7 @@
       ! coefficient do (the R16-R20 lesson recorded in mol_rates.f90).
       ! The Jacobian is a forward difference of those same calls.
       !
-      ! CO has no chemical source: it is frozen chemically by decision D4 and
+      ! CO has no chemical source: it is frozen chemically, and
       ! only its transport moves it.  What that decision MEANS changes when
       ! CO is transported, and the change is not cosmetic.  In the local
       ! solve "inert" meant "at its own CO <-> C + O chemical equilibrium",
@@ -155,7 +152,7 @@
       ! passes.
       !
       ! ---------------------------------------------------------------
-      ! 5. BOUNDARY CONDITIONS (design decision D6)
+      ! 5. BOUNDARY CONDITIONS
       !
       ! WHETHER THE BASE FACE IS AN INFLOW is decided by the wind's mass
       ! flux and not by the base cell's velocity.  Measured on the converged
@@ -391,7 +388,7 @@
       ! boundary derivative the block-tridiagonal assembly uses.
       public :: carrier_advective_face_coefficients
       public :: carrier_base_composition_imposed
-      ! The L22 step 2b interventions, so that a test driver can state what
+      ! The diagnostic interventions, so that a test driver can state what
       ! each of them does to the operator without running the binary.
       public :: carrier_face_coefficients
       public :: l22b_setup, carrier_outflow_ghost
@@ -504,8 +501,8 @@
       public :: carrier_checkpoint_matches
       public :: carrier_transport_interval
       ! WHETHER THE INTERVAL WAS COVERED, as a value the caller reads
-      ! instead of inferring it from a stop (PLAN 20260906 rev 2, step
-      ! A3b).  photochemical_transport_step returns it, so the step
+      ! instead of inferring it from a stop.  photochemical_transport_step
+      ! returns it, so the step
       ! controller around this operator can reject the whole attempted
       ! step on an exhausted carrier interval rather than the run ending
       ! inside the operator.
@@ -605,7 +602,7 @@
       ! the write-back puts into the run.  It is decided on that state's own
       ! rows and not on how the iteration ended: the raw status and the
       ! stall class are carried along for diagnosis only.  A rejection and
-      ! its retry (rev 3 sec. 4.1, A3 increment (b)) consume this type.
+      ! its retry consume this type.
       type, public :: carrier_verdict
          logical  :: accepted   = .false.
          integer  :: reason     = carrier_reject_row_residual
@@ -806,10 +803,10 @@
       ! THE THERMOCHEMICAL CLOSURE (equilibrate_chemistry_at_fixed_
       ! conserved_state): its cycle budget, its temperature tolerance, the
       ! named reasons it returns, and the run-wide counts the relaxation
-      ! report prints (item S2 of PLAN_20260913: the cost of the closure is
-      ! measured, not guessed). chem_cycles_cap_for_test, when nonnegative,
+      ! report prints (the cost of the closure is measured, not guessed).
+      ! chem_cycles_cap_for_test, when nonnegative,
       ! replaces the budget so that a test can force exhaustion.
-      ! THE BUDGET AND THE TOLERANCE, BOTH MEASURED (item L7e, on
+      ! THE BUDGET AND THE TOLERANCE, BOTH MEASURED (on
       ! LHS 1140 b molecular_scalar_gj1132_kzz1e9/HeH2.13 with the closure
       ! traced cycle by cycle, EXHALE_CARRIER_DEBUG=1).  The cycle
       ! contracts hard for two or three cycles and then STOPS: the
@@ -834,7 +831,7 @@
       integer,  parameter, public :: chem_closure_converged      = 0
       integer,  parameter, public :: chem_closure_exhausted      = 1
       integer,  parameter, public :: chem_closure_nonfinite      = 2
-      ! 3 was "a cell left the element simplex", retired by item L7e: the
+      ! 3 was "a cell left the element simplex", retired: the
       ! count it read is a property of the root search and not of the state
       ! the closure hands back (the closure body says why), so no closure
       ! can return it and the value is left unused rather than reassigned.
@@ -857,8 +854,8 @@
       real(dp), public :: bound_last_entry = 0.0d0
       logical,  public :: bound_last_fraction = .false.
       ! ---------------------------------------------------------------- !
-      ! A DIAGNOSTIC EXPERIMENT, DEFAULT OFF (plan PLAN_20260916_rev3
-      ! section 3 step 2).  WHAT IT MEASURES: the movement bound is one
+      ! A DIAGNOSTIC EXPERIMENT, DEFAULT OFF.  WHAT IT MEASURES: the
+      ! movement bound is one
       ! scalar over a column that holds a slow H2 front and a far wind, and
       ! the cell that attains it is the front while the cell whose carrier
       ! row refuses the certification sits decades inside the allowance.
@@ -1031,14 +1028,14 @@
       ! as cph_klw is.
       real(dp), dimension(:),   allocatable :: cph_kco
 
-      ! THE BASE FACE OF AN INFLOWING CARRIER (design decision D6, amended).
+      ! THE BASE FACE OF AN INFLOWING CARRIER.
       !
-      ! D6 gave the carrier partition a ZERO-FLUX base: the element totals
-      ! are boundary data the handoff supplies, but the split of an element
-      ! among its carriers is what the oxygen option exists to COMPUTE, so
-      ! imposing it at the boundary would have made that option's own A/B
-      ! gate circular.  That argument holds exactly when nothing upstream
-      ! states the partition.
+      ! The original design gave the carrier partition a ZERO-FLUX base: the
+      ! element totals are boundary data the handoff supplies, but the split
+      ! of an element among its carriers is what the oxygen option exists to
+      ! COMPUTE, so imposing it at the boundary would have made that option's
+      ! own A/B gate circular.  That argument holds exactly when nothing
+      ! upstream states the partition.
       !
       ! When a lower-atmosphere handoff DOES state it -- base.inp's
       ! q_H2_base, or the profile's value at the matching level -- the
@@ -1050,10 +1047,10 @@
       ! describe different gas across one face.  So where the handoff speaks,
       ! the advective inflow at the base face carries ITS composition.
       !
-      ! The two branches cannot both apply.  Decision D7 refuses q_H2_base
+      ! The two branches cannot both apply.  The code refuses q_H2_base
       ! while the oxygen chemistry is on, so a run either has a handoff
       ! partition (H2 only -- nothing states OH, H2O or CO) or computes its
-      ! own (zero flux, as D6 wrote it).
+      ! own (zero flux).
       !
       ! THE BASE BOUNDARY CONDITION OF CARRIER TRANSPORT, in one statement:
       ! ZERO DIFFUSIVE FLUX at face 0, and an advective flux whose
@@ -1276,7 +1273,7 @@
       ! a net production and a net loss cannot answer: the base layer of a
       ! molecular case stands at a third of the lower-atmosphere handoff,
       ! and naming the channel that puts it there is what decides whether
-      ! the network or the handoff is wrong (plan item L7f).  These are the
+      ! the network or the handoff is wrong.  These are the
       ! individual terms, each a volumetric rate [cm^-3 s^-1], written
       ! beside the H2 row of carrier_row_terms.txt.  The order is fixed
       ! here and mol_heh_rows fills 1 to n_h2chan_mol in it.
@@ -1505,7 +1502,7 @@
       type, public :: carrier_checkpoint
          real(dp), allocatable :: fc(:,:)
          ! The arrays a residual assembly overwrites, in the enumeration
-         ! save_carrier_module_state already keeps (A2), reused rather than
+         ! save_carrier_module_state already keeps, reused rather than
          ! written a second time so the two cannot drift apart.
          type(carrier_module_state) :: bg
          real(dp), allocatable :: pct_Dco(:,:)
@@ -1610,8 +1607,8 @@
 
       ! The H2 thermochemistry table is built here, serially, if no caller
       ! built it yet: the carrier source terms read it inside parallel
-      ! regions, and a lazy build there was removed on 2026-09-13
-      ! (review P2). The main program initializes it at startup; this
+      ! regions, and a lazy build there was removed on 2026-09-13.
+      ! The main program initializes it at startup; this
       ! covers a test driver that enters through the carriers.
       if (thereis_mol .and. .not. h2_thermochemistry_ready())             &
          call h2_thermochemistry_init
@@ -1628,7 +1625,7 @@
       ! the profile's value at the matching level -- the inner ghosts hold it
       ! and the inflowing base face carries it in.  Where nothing states it
       ! the ghosts take the base cell's own partition, which is the
-      ! zero-gradient condition of design decision D6 written on the face the
+      ! zero-gradient condition written on the face the
       ! gas crosses.  The proton is never stated: no key gives an ionization
       ! fraction below the base, so it keeps the zero-gradient condition in
       ! every configuration.
@@ -3347,7 +3344,7 @@
 
       ! HOLD ASIDE EVERYTHING ONE CARRIER TRANSPORT ATTEMPT WRITES, and put
       ! it back.  The list is the module's own state, item by item: the
-      ! arrays a residual assembly overwrites (through the pair A2 wrote,
+      ! arrays a residual assembly overwrites (through the same pair,
       ! so that one enumeration serves both), the diffusion coefficients of
       ! the step, and the last call's constraint diagnostics and verdict.
       ! Allocation status is part of the state: an array that was not allocated before the
@@ -3984,8 +3981,8 @@
       ! time [cm^-3 s^-1], and it is the inverse of the conversion
       ! carrier_mass_fractions applies on the way in.
       !
-      ! WHY IT IS NOT A CELL-VELOCITY UPWIND DIFFERENCE ANY MORE.  Until
-      ! item B5b the stationary rows and the fixed-wind relaxation carried
+      ! WHY IT IS NOT A CELL-VELOCITY UPWIND DIFFERENCE ANY MORE.  Earlier
+      ! the stationary rows and the fixed-wind relaxation carried
       ! n_tot v df/dr plus a deferred van Leer correction while the marching
       ! stages carried this divergence.  Two discretizations of one term have
       ! two fixed points, so the state a Newton converges on and the state
@@ -4171,7 +4168,7 @@
       ! Only the molecular handoff does -- base.inp's q_H2_base, or the
       ! profile's value at the matching level -- and it states the H2
       ! partition alone; every other carrier keeps the zero-gradient
-      ! condition of design decision D6.  It is the same predicate
+      ! condition.  It is the same predicate
       ! carrier_set_init registers the transported set with.
       logical function carrier_base_composition_imposed(ic) result(imposed)
       integer, intent(in) :: ic
@@ -5923,7 +5920,7 @@
       ! The two face coefficients of the advective term, frozen with the
       ! wind over this solve.
       real(dp), dimension(1:N) :: advj, advm
-      ! L22 step 2b: the banded derivative of the whole advective term,
+      ! The banded derivative of the whole advective term,
       ! formed only when EXHALE_L22B_JAC_RECON is set.
       real(dp), dimension(1:N,n_carrier_max,-1:1) :: dadv
       real(dp) :: rnorm, rprev, rstart, rtry, damp
@@ -6123,7 +6120,7 @@
                ! stay out of the Jacobian as before; these are the FIRST
                ! ORDER donor-cell terms and nothing else.
                if (carrier_rows_advect .and. l22b_jac_recon) then
-                  ! L22 step 2b, intervention (B): the advective entries are
+                  ! The reconstructed banded Jacobian: the advective entries are
                   ! a central difference of the face-flux divergence itself,
                   ! limiter and reconstruction included, restricted to the
                   ! band a block-tridiagonal matrix can hold.  What falls
@@ -6208,7 +6205,7 @@
          enddo
          !$omp end parallel do
 
-         ! L22 step 2b: the action of the assembled matrix against a central
+         ! The action of the assembled matrix against a central
          ! difference of the full residual, once per run, on the direction
          ! the keys name.  It reassembles the residual into arrays of its
          ! own, so res and the step below are the ones this iteration built.
@@ -6268,8 +6265,8 @@
                ! Every halving down to 2^-8 of the Newton step left the
                ! residual where it was or above it: the direction is not a
                ! descent direction of the measure this solve minimizes.  The
-               ! last trial is still taken -- rejection and retry are A3
-               ! increment (b) and do not exist -- so the outcome has to be
+               ! last trial is still taken -- rejection and retry do not
+               ! exist -- so the outcome has to be
                ! carried out in the status instead.
                line_search_failed = .true.
                exit
@@ -6870,11 +6867,11 @@
       ! its root.  Evaluated at a fully molecular trial -- which is exactly
       ! what the thermochemical fit hands this routine in a cold base layer
       ! -- P/(L/n) collapses with n(H I)^2 and returns a value decades
-      ! below the root.  MEASURED on LHS 1140 b (item L7f): at the base of
+      ! below the root.  MEASURED on LHS 1140 b: at the base of
       ! molecular_scalar_gj1132_kzz1e9/HeH2.13, P/(L/n) read x2 = 0.089 to
       ! 0.14 where the row's own root is x2 = 0.9 or above, and the whole
-      ! "the handoff is 7 to 21 times the network's root" finding of item
-      ! L7e was that division and not a disagreement between the two
+      ! "the handoff is 7 to 21 times the network's root" finding was that
+      ! division and not a disagreement between the two
       ! chemistries.
       !
       ! HOW.  g(n2) = production(n2) - loss(n2) is evaluated through
@@ -6892,7 +6889,7 @@
       ! atomic state, whose H2+ and HeH+ are zero, returns the
       ! thermochemical association alone.
       !
-      ! WHAT IT IS FOR: the molecular seed (item L7e).  The thermochemical
+      ! WHAT IT IS FOR: the molecular seed.  The thermochemical
       ! fit q_H2(p, T) is the balance of the three-body association against
       ! the thermal dissociation and knows nothing of the radiation field or
       ! of the ionized gas, so in an irradiated outer wind it asserts an
@@ -7022,7 +7019,7 @@
       ! therefore loose exactly where the carrier is negligible and tight
       ! exactly where it is not, with no threshold beyond `trust` itself.
       !
-      ! WHAT THE OLD MEASURE DID, MEASURED (item L7e).  It compared the
+      ! WHAT THE OLD MEASURE DID, MEASURED.  It compared the
       ! largest ABSOLUTE change of any carrier column against the largest H2
       ! mixing ratio of the entry state, one number for the whole grid.  On
       ! LHS 1140 b that reference is the base value, so the allowance was an
@@ -7057,7 +7054,7 @@
 
       ! EXHALE_CARRIER_BOUND_FRACTION=1 puts the movement bound back on the
       ! carrier fraction against the column's largest H2 mixing ratio, the
-      ! measure used until item L7e.  Default off; the reasoning is at
+      ! measure used earlier.  Default off; the reasoning is at
       ! carrier_particle_count_change.
       logical function carrier_bound_on_fraction()
       character(len=8) :: env
@@ -7170,7 +7167,7 @@
 
       ! ------------------------------------------------------------- !
 
-      ! The L22 step 2b keys, read once for the run.  With none of them set
+      ! The diagnostic keys, read once for the run.  With none of them set
       ! every switch below stays at the value it is declared with and the
       ! operator is unchanged; the declarations carry what each one states.
       subroutine l22b_setup()
@@ -7406,8 +7403,8 @@
       ! molecular mass, the particle count and the equation of state -- and
       ! an absolute bound is therefore already vacuous for a cell whose
       ! carrier is decades below the column maximum: such a cell is not what
-      ! the bound holds.  (Item L7e tried admitting every cell an e-fold of
-      ! its own value on top of it and MEASURED the result: the extra clause
+      ! the bound holds.  (Admitting every cell an e-fold of its own value
+      ! on top of it was tried and MEASURED: the extra clause
       ! is looser exactly where x_j is LARGE, so it freed the base and the
       ! front, which is the opposite of what a bound on the wind's linear
       ! response is for, and it made trust inert over three decades on the
@@ -7605,8 +7602,8 @@
       ! trial. EVERY ONE OF THOSE IS A STATEMENT ABOUT THE STATE HANDED
       ! BACK, which is what the closure is asked about; the count of cells
       ! whose ROOT SEARCH left the element simplex is reported and decides
-      ! nothing (item L7e, the body). Until 2026-09-13 ok started true and
-      ! the exhausted loop fell through with it (finding B3 of the review of
+      ! nothing. Until 2026-09-13 ok started true and
+      ! the exhausted loop fell through with it (the review of
       ! 2026-09-12): an algebraically consistent (p, T) beside a chemistry
       ! evaluated at an earlier temperature was handed back as closed.
       real(dp), dimension(3,1-Ng:N+Ng),         intent(in)    :: u
@@ -7659,7 +7656,7 @@
          ! is exactly such a root -- so reading the count as a closure
          ! failure refuses the carrier operator in the regime it exists
          ! for.  MEASURED on LHS 1140 b
-         ! molecular_scalar_gj1132_kzz1e9/HeH2.13 (item L7e): 12 cells, all
+         ! molecular_scalar_gj1132_kzz1e9/HeH2.13: 12 cells, all
          ! of them molecular clamps, worst element-budget excursion
          ! 6.5e-04, refused every trial of relax_photochemical_composition
          ! down to the shortest admissible one on every outer pass, so the
@@ -7762,7 +7759,7 @@
       ! state lies outside `trust`, whose interval the operator did not
       ! cover, whose chemistry did not close, or which left a species
       ! non-finite, is undone (composition and background) and retried at
-      ! half the length down to relax_grow_min.  MEASURED (P2, hot-Uranus
+      ! half the length down to relax_grow_min.  MEASURED (hot-Uranus
       ! carrier reload): the shortest admissible trial still moves 6.5e-4 of
       ! the entry H2 maximum, so at a bound below that nothing is kept.
       !
@@ -7867,7 +7864,7 @@
       ! The entry particle count, the quantity the movement bound compares a
       ! trial against, and which measure this run uses.
       nsum0             = ntot_e + ne_e
-      ! L22 step 2b (C): the primitive state the wind reads at the entry
+      ! The primitive state the wind reads at the entry
       ! composition, kept so that what the pass hands back can be reported
       ! against it.  mbar = rho n0 mu / n_tot is the mean mass per particle,
       ! the quantity of the composition the momentum and energy rows see.
@@ -8093,7 +8090,7 @@
                  ', kept interval ', dt_kept(jp)*tscale, ' s'
          enddo
       endif
-      ! L22 step 2b (C): WHAT THE RETURNED COMPOSITION DID TO THE STATE THE
+      ! WHAT THE RETURNED COMPOSITION DID TO THE STATE THE
       ! WIND READS (EXHALE_L22B_DISPLACEMENT=1, default off).  A carrier
       ! relaxation at a FIXED wind may close on its own rows and still hand
       ! back a composition whose pressure, temperature and mean mass per

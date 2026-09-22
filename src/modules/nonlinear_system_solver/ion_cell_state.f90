@@ -116,7 +116,7 @@
 		!
 		!   x_h2_fixed   the H2 partition is owned by something other than
 		!                this cell's local balance -- the transported
-		!                carriers (milestone M3, diffusive_photochemistry),
+		!                carriers (diffusive_photochemistry),
 		!                or the lower-boundary reservoir, whose composition
 		!                is incoming data the shielded base cell cannot
 		!                derive for itself (base_h2_composition_imposed).

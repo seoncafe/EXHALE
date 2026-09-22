@@ -112,7 +112,7 @@ not strongly separated in the line-forming region.
   central where well-resolved, upwind for the stiff heavy-metal settling); the qualitative
   trends are robust.
 - **Phase-1/2 numerics.** The He/H cap and the not-fully-developed wind leave mild
-  non-monotonic structure; see `design_hehe_diffusion.md` §7d-§7e. Diffusion flags are
+  non-monotonic structure. Diffusion flags are
   **default OFF**, so standard runs are unaffected.
 
 ---

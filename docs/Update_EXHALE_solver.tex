@@ -523,8 +523,7 @@ semi-implicit energy solver (\S\ref{sec:semi}). Raw numbers in
 \paragraph{2026-08-15 note.} The \texttt{ioniz\_eq} cell loop is no longer
 serial: the cell sweep was parallelized in 2026-06 (an \verb|!$omp parallel do|
 over the cell loop in
-\texttt{src/modules/radiation/ionization\_equilibrium.f90}; see
-\texttt{docs/openmp\_parallelization.md}), so the ``grows with the thread
+\texttt{src/modules/radiation/ionization\_equilibrium.f90}), so the ``grows with the thread
 count'' argument no longer holds. The measured $\times1.25$ speedup per step is
 unaffected: it was taken step-for-step at a fixed
 \texttt{OMP\_NUM\_THREADS=4}.
@@ -628,8 +627,7 @@ later changes.
   $\rho(|v|+c_s)$, $E$). The WENO weights are still frozen for the Newton
   model (\texttt{weno\_mode = 1/2} around the Jacobian build), but the
   line-search trials are evaluated with \texttt{weno\_mode = 0}, i.e.\
-  against the true residual the solve is driving to zero; see
-  \texttt{docs/newton\_scaling\_and\_base\_wall.md}~\S\S3 and 10.
+  against the true residual the solve is driving to zero.
 \item \emph{Production wiring.} The hand-off criterion is the flux metric
   $du$, not $\|R\|$. \texttt{EXHALE\_main.f90} hands over once the warm-up
   has flattened the wind to $du < $ \texttt{newton\_du\_switch}, default
@@ -639,8 +637,7 @@ later changes.
 \item \emph{Failure containment.} The watchdog was replaced on 2026-08-10. It
   now fires on \texttt{n\_no\_descent\_max = 12} consecutive failed line
   searches (\texttt{steady\_newton.f90}), not on 15 outer iterations without a
-  new best residual; see
-  \texttt{docs/newton\_scaling\_and\_base\_wall.md}~\S4. The rest of the
+  new best residual. The rest of the
   containment is unchanged.
 \end{itemize}
 

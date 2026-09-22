@@ -61,7 +61,7 @@
 	! population out of the stellar field there. So its threshold floors the
 	! grid exactly as the metastable's and the low-IP metals' do: a loaded
 	! table is read down to it, and the analytic types are evaluated down to
-	! it (development plan rev 3, section 10.5 decisions 13 and 17).
+	! it.
 	!
 	! e_th_HI when no absorber below the H I edge is active.
 
@@ -88,7 +88,7 @@
 	! cross section, read at the bin centre, over the part of the bin lying
 	! BELOW the threshold as well, where the absorber cannot absorb at all.
 	! This is the same reasoning the analytic types' grid is built on
-	! (set_energy_vectors; development plan rev 3 section 10.1 item 2), where
+	! (set_energy_vectors), where
 	! the audit of 2026-09-05 measured the straddling error at P_HI 1.095x,
 	! P_HeI 1.016x and P_HeII 1.030x the exact integral.
 	!
@@ -239,8 +239,7 @@
 		! above it leaves that absorber with no field over part of its own
 		! band, so its photoionization rate is not the rate of the stated
 		! spectrum but of a truncation of it. The run therefore stops; the
-		! composition of the run, not the reader, decides the floor
-		! (development plan 2026-09-05 rev 3, section 10.5 decision 17).
+		! composition of the run, not the reader, decides the floor.
 		if (hit_eof .and. e_min_seen .gt. e_low) then
 			write(*,*) '(sed_read.f90) ERROR: the loaded SED stops above '// &
 			           'the photon-grid floor the active absorbers need.'
@@ -524,7 +523,7 @@
       ! interpolation -- 0.8 percent low on a linear spectrum over a band
       ! whose edges fall inside the segments -- and a band covered by one
       ! segment was returned as zero because segments were counted instead
-      ! of coverage: findings B1 and B2 of the 2026-09-12 review.)
+      ! of coverage.)
       !
       ! covered(b) is true only when the table reaches BOTH edges of band b
       ! (first node <= w_lo, last node >= w_hi). A band the table does not

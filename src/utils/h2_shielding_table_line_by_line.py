@@ -20,7 +20,7 @@ a planetary molecular base reaches that is not a correction but the dominant
 term: at T = 1300 K, n_H = 1e13 cm^-3, letting the lines absorb each other's
 beam lowers the surviving pumping by a factor 24 at N_H2 = 1e21 cm^-2 and 630
 at 4.4e21.  docs/p38_line_overlap_shielding.md is the measurement, and
-Update_EXHALE_stage1.md section 135 the changelog entry.
+docs/Update_EXHALE_stage1.pdf section 135 the changelog entry.
 
 WHAT IS COMPUTED HERE AND WHAT IS NOT.  Everything line overlap touches is
 computed here: the pumping rate of every line in the attenuated beam, hence
@@ -34,7 +34,7 @@ multiplied in.  Its geometry is plane-parallel, illuminated on one face and
 closed on the other, while the layer is spherical and open outward, so the
 trapping is the one ingredient of this table computed in a geometry the layer
 does not have; its provenance name is slab_surrogate.  Measured, from a matched
-slab/sphere calculation on the same line data (docs/e2_lw_geometry.md): the
+slab/sphere calculation on the same line data: the
 plane-parallel trapping over-predicts p_eff by 0.2 per cent at r/H = 41 and by
 up to 20 per cent at r/H = 16, one-signed, 6.5 per cent weighted by the
 dissociation rate over a hot-Uranus molecular layer -- smaller than the 20-40
@@ -257,7 +257,7 @@ HEADER = """      module h2_self_shielding_table
       ! this same line list, these same LTE populations and this same
       ! frequency integral, with a single-flight escape probability under
       ! complete redistribution, so that only the set of ray columns over
-      ! solid angle differs (docs/e2_lw_geometry.md).  The plane-parallel
+      ! solid angle differs.  The plane-parallel
       ! trapping OVER-PREDICTS p_eff, by 0.2 per cent at r/H = 41 and by up
       ! to 20 per cent at r/H = 16, one-signed everywhere, and by 6.5 per
       ! cent weighted by the dissociation rate over a hot-Uranus molecular

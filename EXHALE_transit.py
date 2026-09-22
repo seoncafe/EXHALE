@@ -215,8 +215,8 @@ Instr_res_HeTR = float(_tenv('RES_HETR', '8e4'))  # He I 10830: CARMENES 8e4 / G
 # NOTE: the 8e4 default is CARMENES. It is not universal: the LHS 1140 b
 # He 10830 transit was taken with WINERED in HIRES-Y mode, R = 68,000
 # (Cherubim et al. 2026, Supplement). Runs for that target set
-# EXHALE_TRANSIT_RES_HETR=68000 by sourcing LHS1140b/winered_hires_y.sh;
-# see docs/lhs1140b_width_measurement_audit.md. Leave the default alone --
+# EXHALE_TRANSIT_RES_HETR=68000 by sourcing LHS1140b/winered_hires_y.sh.
+# Leave the default alone --
 # the stored results for the other planets were produced at 8e4.
 Instr_res_HI   = float(_tenv('RES_HI',   '5e4'))  # Ly-alpha 1215.67: HST-STIS ~ 1e4-1e5
 Instr_res_Ha   = float(_tenv('RES_HA',   '1.15e5'))  # H-alpha 6562.8: HARPS/CARMENES-VIS ~ 1.1e5

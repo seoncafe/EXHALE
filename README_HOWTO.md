@@ -1378,7 +1378,7 @@ prints one `PASS|FAIL <name> measured= reference= tol=` line per assertion,
 and exits nonzero if any suite failed.
 
 **The suites are not part of this repository.** They live in the development
-tree under `src/tests/`, which is not published, so `make test`,
+tree, which is not published, so `make test`,
 `make diffusion_tests` and `make element_census_tests` do not run from a clone
 of this repository; `make` and `make check` are unaffected. What follows
 describes the gate as it runs in the development tree. There are 41 suites:
@@ -1405,7 +1405,7 @@ systems that can reach that row.
 
 A suite can also be run on its own. Fourteen of them carry a `README.md` saying what
 their assertions compare and which are red on purpose; for the rest that
-statement is in the driver's header. Both live under `src/tests/` and are
+statement is in the driver's header. Both live in the development tree and are
 therefore outside this repository. A few rows are FAIL by design and say so
 (the `closure_spread_within_the_row_tolerance_*` rows of
 `residual_determinism` are a standing measurement, not a regression). Run every suite whose driver links a module
@@ -1483,4 +1483,3 @@ while keeping `EXHALE.x`. The planet directories `HD209458b/`, `HD189733b/`,
 - `docs/wind_ae_solver.pdf`: the included Wind-AE solver
 - `docs/code_comparison.pdf`, `docs/methodology_comparison.pdf`:
   comparison with other escape codes
-- `docs/TO_BE_DONE.md`: open items

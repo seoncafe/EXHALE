@@ -66,7 +66,7 @@ should become nearly `w`-independent. `w` is a stopgap, and this note only
 bounds it.
 [2026-08-15: that fix is implemented, the ground terms of C I, C II, N II and
 O I are solved in statistical equilibrium at the local `(ne, nHI)`
-(section 7; `TO_BE_DONE.md` item (C), RESOLVED 2026-08-12). The base result is
+(section 7, resolved 2026-08-12). The base result is
 `w`-independent to every printed digit (section 7.2).]
 
 ---

@@ -15,7 +15,7 @@ Reads the VULCAN output (T(p), composition mixing ratios vs pressure) and
 3. writes base.inp: the keys run_lower.py also writes (T_base, r_base,
    HeH_base, Kzz_base) plus the photochemical H2 mixing ratio q_H2_base and
    the handoff level p_base, which EXHALE uses in place of its
-   chemical-equilibrium H2 fit (docs/base_composition_handoff_plan.md), and
+   chemical-equilibrium H2 fit, and
    the elemental reservoirs `HeH_base` and `<El>_H_base` for the elements
    VULCAN's networks carry (C, N, O, S), summed over every carrier.
    The molecular mixing ratios stay comments: nothing in EXHALE consumes

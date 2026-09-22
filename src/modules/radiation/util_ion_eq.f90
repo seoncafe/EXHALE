@@ -3508,7 +3508,7 @@
 	! at 16 eV and 3.5-3.7 from 20 to 25 eV, so where H2 outnumbers H I the He
 	! recombination photons go to H2, not to H I.
 	!
-	! THE METALS ARE NOT NEGLIGIBLE EITHER (item P34). Their abundance is
+	! THE METALS ARE NOT NEGLIGIBLE EITHER. Their abundance is
 	! 1e-4 to 1e-3, but their cross sections in this band are large: at
 	! 24.6 eV sigma is 4.9 (C II), 5.1 (Fe II) and 11.9 (O I) against 1.24
 	! for H I, and at 16.11 eV 13.4 (C I) and 6.6 (O I) against 4.0. Measured
@@ -3546,8 +3546,8 @@
 	! f_abs, because f_abs is exactly 1.0 in double precision for tau > 37 and
 	! the expression then reduces bit for bit to the optically thick limit
 	! (which is what a molecular base and a dense atomic base are). The
-	! vanishing-absorber divergence this replaces is item (P40): with n_HI = 0
-	! and n_H2 a 1e-151 numerical residue the thick-limit expression alone
+	! vanishing-absorber divergence this replaces appeared with n_HI = 0
+	! and n_H2 a 1e-151 numerical residue: the thick-limit expression alone
 	! returns 1e100 s^-1, while tau_c = 1e-160 and the photon has in fact left.
 	!
 	! An escaped photon does not re-ionize He either, so the He I share is
@@ -3623,7 +3623,7 @@
 	real*8 :: fs_HI, fs_R2, Ees_HI, Ees_H2, nhig, n2
 	logical :: absorb_low, absorb_gnd
 	integer :: j
-	! --- metal absorbers (item P34) ---
+	! --- metal absorbers ---
 	! Channel index: 1 ground capture (24.6 eV), 2 the 584 A resonance
 	! (21.2), 3 the 2^3S line (19.8), 4 the 2^1S two-photon continuum
 	! (16.110), 5 the case-B cascade average (19.741) used by the atomic
@@ -3663,7 +3663,7 @@
 	R2_2q   = s2_2q  /max(s_2q  , 1.0d-99)
 	R2_casc = s2_casc/max(s_casc, 1.0d-99)
 
-	! Metal absorbers of the same photons (item P34), evaluated once here.
+	! Metal absorbers of the same photons, evaluated once here.
 	! metal_photoion_sigma returns zero below the ion's own threshold, so an
 	! ion that cannot absorb a channel carries Rm = 0 for it and drops out of
 	! that channel's competition without a test. Em is the photoelectron
@@ -3702,7 +3702,7 @@
 			n2   = nh2(j)
 			nhig = max(nhi(j),1.0d-99)
 			! Metal opacity (tm) and metal/H I absorption ratio (um) of the
-			! two channels this branch uses, item P34. Both are untouched
+			! two channels this branch uses. Both are untouched
 			! zeros without metals, so every expression below reduces to the
 			! H I / H2 / He I form bit for bit.
 			nmtot   = 0.0d0
@@ -3785,8 +3785,8 @@
 			           + y*alpha1(j)*R2_gnd*f_gnd)/nhig
 			! The same two channels absorbed by each metal ion: a rate per
 			! ion of that stage, added to its photoionization rate by the
-			! caller, and its photoelectron heating at E_c - E_th of that ion
-			! (item P34). Hm_add stays 0.0 without metals.
+			! caller, and its photoelectron heating at E_c - E_th of that ion.
+			! Hm_add stays 0.0 without metals.
 			Hm_add = 0.0d0
 			do ii = 1,n_mabs
 				im = mabs(ii)
@@ -3814,7 +3814,7 @@
 			n2   = nh2(j)
 			nhig = max(nhi(j),1.0d-99)
 			! Metal opacity and metal/H I absorption ratio of the four
-			! channels this branch resolves (item P34); untouched zeros
+			! channels this branch resolves; untouched zeros
 			! without metals.
 			nmtot  = 0.0d0
 			tm_gnd = 0.0d0
@@ -3922,7 +3922,7 @@
 			           + q31b(j)*w584*R2_584*f_584)
 			dP_H2(j) = P2_add/nhig
 			! (2c) the same four channels absorbed by each metal ion, as a
-			! rate per ion of that stage (item P34). Same structure as (2b):
+			! rate per ion of that stage. Same structure as (2b):
 			! the metal density of the share cancels, leaving Rm/n_HI.
 			do ii = 1,n_mabs
 				im = mabs(ii)
@@ -3954,7 +3954,7 @@
 			           + q31b(j)*EeH2_584_HeI*w584_2*f_584)
 			! and in each metal ion, E_c - E_th of that ion per photon; the
 			! shares carry the metal density, as the H2 ones carry n_H2.
-			! Hm_add stays 0.0 without metals (item P34).
+			! Hm_add stays 0.0 without metals.
 			Hm_add = 0.0d0
 			do ii = 1,n_mabs
 				im    = mabs(ii)

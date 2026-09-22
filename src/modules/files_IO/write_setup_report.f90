@@ -165,7 +165,7 @@
       ' 51.4 eV, two protons per event'
 		else
 			write(outfile,*) &
-      '- WARNING H2 double ionization NOT resolved (P31b): the protons'//  &
+      '- WARNING H2 double ionization NOT resolved: the protons'//        &
       ' it would release stay inside the single dissociative channel,'
 			write(outfile,*) &
       '  which counts one proton per event instead of two above 51.4 eV'//&
@@ -179,7 +179,7 @@
       ' 33-41 eV window, no ion and no photoelectron'
 		else
 			write(outfile,*) &
-      '- WARNING H2 neutral dissociation NOT resolved (P31c): the'//       &
+      '- WARNING H2 neutral dissociation NOT resolved: the'//              &
       ' 33-41 eV photoionization yield is taken to be unity, as before,'
 			write(outfile,*) &
       '  so up to 7.4 percent of the absorptions at 37.5 eV are counted'//&
@@ -418,12 +418,12 @@
 	if (is_monochr) &
 		write(outfile,13)  &
          ' - Using monochromatic radiation with energy ', e_low
-	! ONE SPECTRUM TYPE BUILDS EVERY BAND (development plan rev 3, section
-	! 10.5 decision 13). Stated for every run: which type filled the photon
-	! grid, what the band BELOW 13.6 eV was built from -- the band where the
-	! He 2^3S metastable (4.80 eV) and the low-IP metals absorb, and the one
-	! band a reader is most likely to assume came from somewhere else -- and
-	! what the grid integrates to against the nominal XUV flux.
+	! ONE SPECTRUM TYPE BUILDS EVERY BAND. Stated for every run: which type
+	! filled the photon grid, what the band BELOW 13.6 eV was built from --
+	! the band where the He 2^3S metastable (4.80 eV) and the low-IP metals
+	! absorb, and the one band a reader is most likely to assume came from
+	! somewhere else -- and what the grid integrates to against the nominal
+	! XUV flux.
 	write(outfile,*) '- Spectrum type: '//trim(sp_type)//                  &
       ', and it builds every band of the photon grid'
 	! The floor is the lower EDGE of the first bin (e_v(1) is its center):

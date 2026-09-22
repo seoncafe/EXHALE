@@ -59,8 +59,7 @@ Key quantitative facts:
   (~10⁸ cm⁻³, 100× Saha) between 10 μbar and 1 bar; radical/haze heating of ±100-400 K
   right at the 1 μbar handoff level. *(2026-08-19: EXHALE still has no
   O/OH/H₂O species of its own, so the OH-catalyzed destruction reaches the code
-  only through the handoff. The blocker itself is
-  `TO_BE_DONE.md` item (H).)*
+  only through the handoff.)*
 - **The published coupling is loose, not monolithic:** Lavvas 2014 takes T(p>1 μbar…top)
   *from* the Koskinen thermosphere and uses "species < 3 amu escape at the wind
   velocity" as its upper BC; Taylor tolerates a composition discontinuity at 1 μbar.
@@ -379,8 +378,7 @@ radiative-convective profile. The converged Tier-2 thermal structure should
 therefore be read as **the steady state of the model as written, and as a
 quantitative statement that the model is missing an infrared escape probability
 (or a radiative-equilibrium floor) below the H₂→H front**, not as a prediction of
-the temperature of a warm Neptune's lower thermosphere. It is carried as open item
-(G) of `TO_BE_DONE.md`. The wind above the front is much less affected: Ṁ moves by
+the temperature of a warm Neptune's lower thermosphere. The wind above the front is much less affected: Ṁ moves by
 0.085 dex (metals off) and 0.043 dex (metals on) between the `1e-3` and `1e-5`
 solutions, because it is launched above the collapsed layer.
 
@@ -428,7 +426,7 @@ reading is the hot-Uranus reading, on a hot Jupiter: the molecular layer between
 the base and the front collapses to ~400 K, H₃⁺ carries **100%** of the radiative
 cooling from the base out to r ≈ 1.005 (10⁴ times the local photoheating at the
 base, 14 times it at r = 1.002), and the same optically-thin treatment and
-missing radiative-equilibrium floor apply, open item (G) of `TO_BE_DONE.md`. The
+missing radiative-equilibrium floor apply. The
 front moves inward by 0.011 R_p and Ṁ falls by 0.34 dex relative to the snapshot,
 so for HD 209458 b the relaxation-snapshot Ṁ is not a substitute for the
 converged one.
@@ -440,16 +438,15 @@ then stalls: `||R||` falls from 2.338e-2 to 3.6e-4 over 281 iterations and the l
 search finds no descent step for 12 consecutive iterations (`info = 2`, worst cell
 `j = 93`, `r = 1.021`, momentum), after which the run reverts to marching. This is
 the reverse of the hot-Uranus gate, where the metals-on case converged as readily as
-the metals-off one, and it is the same base-adjacent momentum stall recorded as item
-(A) of `TO_BE_DONE.md`, displaced outward to the front. `16` is therefore left with
+the metals-off one, and it is the same base-adjacent momentum stall, displaced outward to the front. `16` is therefore left with
 the plain `Solver: Newton` line and no converged solution.
 
 ---
 
 ## The infrared field of the lower atmosphere (`Base IR field`, 2026-08-13)
 
-Item (G) of `TO_BE_DONE.md` asked why the converged Tier-2 molecular layer sits at
-190-300 K and named the optically thin line cooling as the suspect. The
+Why the converged Tier-2 molecular layer sits at 190-300 K was left open, with
+the optically thin line cooling named as the suspect. The
 measurement below says the suspect is the right one for the metals-off case and
 the wrong one for the metals-on case, and the fix follows the measurement.
 
@@ -601,7 +598,8 @@ molecular coolants left. Holding that gas requires a continuum infrared coupling
 to the deep atmosphere (H₂ collision-induced absorption and the H₂O/CH₄/CO
 bands), which the model does not have: the whole radiative budget between the
 base and the front is line channels with a radiative time of 3e8 s against a flow
-time of 5e6 s. Item (G) of `TO_BE_DONE.md` is therefore narrowed, not closed.
+time of 5e6 s. The missing molecular infrared cooling of the layer below the
+front is therefore narrowed, not closed.
 
 ## H2 photodissociation in the Lyman-Werner bands (`Stellar LW flux`, 2026-08-13)
 
@@ -852,7 +850,7 @@ The `examples/15_molecular` configuration (metals off, `Base IR field: True`
 added, both runs restarted from its converged solution) reproduces the pattern on
 a real planet. Here the JFNK finish would not reach `Resid tol: 1.0e-5` with the
 band on (it stalled three times at ‖R‖ = 1.5e-5 to 6.8e-5 on the base-adjacent
-momentum row, item (A), of `TO_BE_DONE.md`) so **both** members of the pair were
+momentum row) so **both** members of the pair were
 run at `Resid tol: 2.0e-5`, where both return `info = 0` and both mass fluxes are
 flat to 4.1e-3 over r > 1.2. The pair still differs only in `Stellar LW flux`.
 
@@ -880,8 +878,7 @@ code already had (the eight ground-term fine-structure lines and the H₃⁺ ban
 the field they sit in, and it stopped there. Its own closing paragraph named
 what was left: past the H₂→H front there are no molecular coolants in the model
 at all, and holding that gas needs the coolants a real H₂ atmosphere carries.
-This section supplies three of them and measures what they do. Item (G) of
-`TO_BE_DONE.md`.
+This section supplies three of them and measures what they do.
 
 ### Which coolants, and why these three
 

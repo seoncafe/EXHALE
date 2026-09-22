@@ -883,7 +883,7 @@
 	! branch of He(2^3S)+H2 ionization. The associative branch of the same
 	! collision gives H + HeH+ + e- and appears in row (7) instead.
 	! k_h2p_he*n_heiSI: H2+ + He -> HeH+ + H, the HeH+ source the network
-	! carries since item L7f retired Koskinen R20 (mol_rates: the paper R20
+	! carries since Koskinen R20 was retired (mol_rates: the paper R20
 	! cites measures no HeH+ channel and bounds it 42 times below the value
 	! Table 1 gives). The collision partner is GROUND-STATE helium; the
 	! metastable's own two channels are the associative branch below.
@@ -902,7 +902,7 @@
 	! k_h2p_he*n_heiSI*n_h2p: H2+ + He -> HeH+ + H (Black 1978, from the
 	! Chupka et al. 1969 cross sections; see mol_rates). It is the network's
 	! only HeH+ source that does not need the metastable, and it replaces
-	! Koskinen R20, which item L7f retired because the paper Table 1 cites
+	! Koskinen R20, which was retired because the paper Table 1 cites
 	! for it measures no HeH+ channel and bounds it at <= 1.0e-14 against
 	! the 4.2e-13 it was given. A helium NUCLEUS moves from free neutral He
 	! into HeH+ here and the helium closure of this system, free neutral

@@ -655,7 +655,7 @@
       if (state_is_certified) then
          ! The reason survives a certified state too: 'certified_in_wind'
          ! says the species rows below the wind radius were reported and
-         ! did not gate (decision 22).
+         ! did not gate.
          write(unit,'(A)') '# adv_input_certified T the input state'//      &
                      ' passed the stationary certification '//             &
                      trim(state_certification_reason)
@@ -1015,8 +1015,8 @@
       h2loss(5) = rk_R14_H2_edis(Tb)*ne_ox(jb)*nH2b
       h2loss(6) = rk_R8_H2p_H2()*nmol_eq(jb,2)*nH2b
       ! R17 and R23 only: the HeH+ channel of He+ + H2 (Koskinen R20) was
-      ! retired by item L7f, its cited measurement having bounded it 42
-      ! times below the value Table 1 gave it (mol_rates).
+      ! retired, its cited measurement having bounded it 42 times below the
+      ! value Table 1 gave it (mol_rates).
       h2loss(7) = (rk_R17_Hep_H2_diss(Tb)                                  &
                  + rk_R23_H2_Hep_cx())*nheii(jb)*n0*nH2b
       h2loss(8) = rk_R18_HeHp_H2()*nmol_eq(jb,4)*nH2b

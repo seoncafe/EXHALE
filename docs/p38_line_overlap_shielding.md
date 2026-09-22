@@ -1,7 +1,6 @@
 # H2 Lyman-Werner self-shielding with overlapping lines
 
-*2026-09-03. `TO_BE_DONE.md` item P38, the open question left by
-`docs/h2_self_shielding_cloudy.md`
+*2026-09-03. The open question left by `docs/h2_self_shielding_cloudy.md`
 section 11.2.*
 
 
@@ -715,7 +714,7 @@ and only the fluorescent trapping, `p_eff/p_single`, is still read from the
 CLOUDY runs, node by node. That one ingredient carries CLOUDY's
 plane-parallel, one-face-illuminated geometry, which our spherical and
 outward-open layer does not have; the thick-inward side, which dominates, is
-the same. It is a new item of `TO_BE_DONE.md`.
+the same.
 `src/utils/h2_shielding_table_line_by_line.py` is the generator.
 
 **`h2_shielding_overlap_column` was removed**, and with it the
