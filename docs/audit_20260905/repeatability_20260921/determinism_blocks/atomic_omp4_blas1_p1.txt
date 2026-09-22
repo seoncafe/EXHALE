@@ -1,0 +1,9 @@
+ (resid_determinism) system replayed: 3 unknowns per cell over 500 cells = 1500 entries, of which species rows 0
+ (resid_determinism) control, F(Y0) twice with nothing between: 0 of 1500 entries differ; row-scale max (hydrodynamic, species) with cell and slot   0.000E+00    0  0  0.000E+00    0  0
+ (resid_determinism) F(Y0) re-evaluated, one workspace reused throughout:
+   after three trials: 0 of 1500 entries differ
+   after a discarded trust-region trial and a Jacobian-vector probe: 0 of 1500 entries differ; the probe sampled: T
+   hydrodynamic rows, row-scale distance (control, after trials, after probes) with cell and slot   0.000E+00    0  0  0.000E+00    0  0  0.000E+00    0  0
+   species rows, row-scale distance (control, after trials, after probes) with cell and slot   0.000E+00    0  0  0.000E+00    0  0  0.000E+00    0  0
+   VERDICT: the residual is a state function (bitwise identical).
+ (EXHALE_main) EXHALE_RESID_DETERMINISM=1: stopping.

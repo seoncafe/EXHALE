@@ -1,0 +1,255 @@
+---- identity ----
+ ---- the identity of the grid ----
+ system: 4 unknowns per cell over 500 cells = 2000 entries, species rows 1
+ ieq_sweep_state_kind 1, is the marching kind: T, active species bounds held 0
+ reconstruction WENO3, PLM to WENO3 continuation armed: F, judged row scaling: F
+ seed composition digest 732802108C90B266, state digest 0420A853A4E34B83
+ closure policy of the run: sweep to the fixed point T, at most 25 pass(es), cap -1, increment asked for   1.000E-08
+ BASE closure policy: swept 1 pass(es), exit increment   1.129E-13, asked for   1.000E-08, reached: T
+ BASE admissible T, cells without a chemical root 0, refusal screen 0
+ BASE ||Dr^-1 F||_2 by class (mass mom energy species all)   2.0174E-08  6.5984E-13  5.1070E+00  4.2886E-01  5.1250E+00
+ BASE ||Dj^-1 F||_2 by class (mass mom energy species all)   1.9775E+00  6.5984E-05  5.1070E+06  1.4728E+04  5.1070E+06
+ BASE largest |F|/Dj with its cell, mass momentum energy   9.7330E-01    2  5.1903E-05    1  1.0004E+06  246
+ BASE largest |F|/Dj over the species rows   2.3629E+03 at cell 306, row carrier H2 of cell 306
+ banded step: colors unresolved 0, LAPACK info 0, ||D^-1 s||_2 of the proposed step   2.1276E+02
+ the named direction sits on the energy of cell 300 unknown of cells 300 to 312
+ DIR 1 banded_step: ||D^-1 v||_2   1.0000E+00, ||v||_2   9.7242E-01, nonzero entries 2000
+ DIR 2 cell_mass: ||D^-1 v||_2   1.0000E+00, ||v||_2   8.7893E-01, nonzero entries 3
+ DIR 3 cell_energy: ||D^-1 v||_2   1.0000E+00, ||v||_2   1.7012E-04, nonzero entries 3
+ DIR 4 smooth: ||D^-1 v||_2   1.0000E+00, ||v||_2   5.3533E-01, nonzero entries 2000
+ DIR 5 cell_species: ||D^-1 v||_2   1.0000E+00, ||v||_2   1.0000E+00, nonzero entries 1
+ DIR 6 named_block: ||D^-1 v||_2   1.0000E+00, ||v||_2   2.6270E-05, nonzero entries 13
+ the localized directions sit at cell 2 (mass row) and cell 246 (energy row)
+ ---- the grid ----
+ ---- end of the grid ----
+
+---- the closure count at the state ----
+ K k=0 completed 1 increment   1.129E-13 reached T admissible T roots_missing 0 refusal 0
+ CLOSURE k=0 increment against the converged closure   0.000E+00 at cell 0, channel particle count n_tot+n_e
+ DIFF k=0 ||Dr^-1 (F - F_jac)||_2 by class   0.0000E+00  0.0000E+00  0.0000E+00  0.0000E+00  0.0000E+00
+ DIFFJ k=0 ||Dj^-1 (F - F_jac)||_2 by class   0.0000E+00  0.0000E+00  0.0000E+00  0.0000E+00  0.0000E+00
+ K k=1 completed 1 increment not taken at a fixed count, and neither is the test admissible T roots_missing 0 refusal 0
+ CLOSURE k=1 increment against the converged closure   0.000E+00 at cell 0, channel particle count n_tot+n_e
+ DIFF k=1 ||Dr^-1 (F - F_jac)||_2 by class   0.0000E+00  0.0000E+00  0.0000E+00  0.0000E+00  0.0000E+00
+ DIFFJ k=1 ||Dj^-1 (F - F_jac)||_2 by class   0.0000E+00  0.0000E+00  0.0000E+00  0.0000E+00  0.0000E+00
+ K k=2 completed 2 increment not taken at a fixed count, and neither is the test admissible T roots_missing 0 refusal 0
+ CLOSURE k=2 increment against the converged closure   3.508E-12 at cell 490, channel heat - cool
+ DIFF k=2 ||Dr^-1 (F - F_jac)||_2 by class   2.2333E-09  7.3448E-14  1.5313E-08  2.4185E-10  1.5477E-08
+ DIFFJ k=2 ||Dj^-1 (F - F_jac)||_2 by class   6.4009E-01  7.3448E-06  1.5313E-02  2.1134E-08  6.4028E-01
+ K k=3 completed 3 increment not taken at a fixed count, and neither is the test admissible T roots_missing 0 refusal 0
+ CLOSURE k=3 increment against the converged closure   5.793E-13 at cell 493, channel heat - cool
+ DIFF k=3 ||Dr^-1 (F - F_jac)||_2 by class   2.1670E-09  6.8139E-14  1.7547E-08  2.4706E-10  1.7682E-08
+ DIFFJ k=3 ||Dj^-1 (F - F_jac)||_2 by class   5.7280E-01  6.8139E-06  1.7547E-02  1.8643E-08  5.7307E-01
+ K k=4 completed 4 increment not taken at a fixed count, and neither is the test admissible T roots_missing 0 refusal 0
+ CLOSURE k=4 increment against the converged closure   3.520E-12 at cell 490, channel heat - cool
+ DIFF k=4 ||Dr^-1 (F - F_jac)||_2 by class   2.2546E-09  8.5935E-14  1.6214E-08  2.4626E-10  1.6372E-08
+ DIFFJ k=4 ||Dj^-1 (F - F_jac)||_2 by class   6.8830E-01  8.5935E-06  1.6214E-02  2.2564E-08  6.8850E-01
+ K k=6 completed 6 increment not taken at a fixed count, and neither is the test admissible T roots_missing 0 refusal 0
+ CLOSURE k=6 increment against the converged closure   3.521E-12 at cell 490, channel heat - cool
+ DIFF k=6 ||Dr^-1 (F - F_jac)||_2 by class   2.3748E-09  1.0223E-13  1.6207E-08  2.4771E-10  1.6382E-08
+ DIFFJ k=6 ||Dj^-1 (F - F_jac)||_2 by class   7.5773E-01  1.0223E-05  1.6207E-02  2.5828E-08  7.5791E-01
+ K k=8 completed 8 increment not taken at a fixed count, and neither is the test admissible T roots_missing 0 refusal 0
+ CLOSURE k=8 increment against the converged closure   3.521E-12 at cell 490, channel heat - cool
+ DIFF k=8 ||Dr^-1 (F - F_jac)||_2 by class   3.0114E-09  1.1463E-13  2.0364E-08  2.6573E-10  2.0587E-08
+ DIFFJ k=8 ||Dj^-1 (F - F_jac)||_2 by class   8.3223E-01  1.1463E-05  2.0364E-02  2.9914E-08  8.3248E-01
+
+---- action (central) ||Dr^-1 J v||_2, whole vector ----
+banded_step  k=0   2.9870e+00  3.5856e-01  1.2805e-01  1.3070e-01  1.3003e-01  1.3233e-01  1.3231e-01  1.3230e-01  1.3230e-01
+banded_step  k=1   2.9870e+00  3.5856e-01  1.2805e-01  1.3070e-01  1.3003e-01  1.3005e-01  1.3020e-01  1.3018e-01  1.3018e-01
+banded_step  k=2   2.9221e+00  2.8052e-01  1.3412e-01  1.3315e-01  1.3225e-01  1.3235e-01  1.3229e-01  1.3231e-01  1.3230e-01
+banded_step  k=3   3.5228e+00  2.8554e-01  1.3065e-01  1.3290e-01  1.3259e-01  1.3233e-01  1.3231e-01  1.3230e-01  1.3230e-01
+banded_step  k=4   3.2637e+00  2.8404e-01  1.3304e-01  1.3291e-01  1.3258e-01  1.3236e-01  1.3227e-01  1.3230e-01  1.3230e-01
+banded_step  k=6   3.3026e+00  2.7450e-01  1.3361e-01  1.3314e-01  1.3259e-01  1.3241e-01  1.3227e-01  1.3230e-01  1.3230e-01
+banded_step  k=8   3.7160e+00  2.8427e-01  1.3367e-01  1.3309e-01  1.3250e-01  1.3232e-01  1.3229e-01  1.3230e-01  1.3230e-01
+cell_mass    k=0   1.3486e+07  1.3486e+07  1.3485e+07  1.3484e+07  1.3483e+07  1.3477e+07  1.3440e+07  1.1917e+07  1.2563e+07
+cell_mass    k=1   1.3486e+07  1.3486e+07  1.3485e+07  1.3484e+07  1.3483e+07  1.3477e+07  1.3440e+07  1.1917e+07  1.2563e+07
+cell_mass    k=2   1.3486e+07  1.3486e+07  1.3485e+07  1.3484e+07  1.3483e+07  1.3477e+07  1.3440e+07  1.1917e+07  1.2563e+07
+cell_mass    k=3   1.3486e+07  1.3486e+07  1.3485e+07  1.3484e+07  1.3483e+07  1.3477e+07  1.3440e+07  1.1917e+07  1.2563e+07
+cell_mass    k=4   1.3486e+07  1.3486e+07  1.3485e+07  1.3484e+07  1.3483e+07  1.3477e+07  1.3440e+07  1.1917e+07  1.2563e+07
+cell_mass    k=6   1.3486e+07  1.3486e+07  1.3485e+07  1.3484e+07  1.3483e+07  1.3477e+07  1.3440e+07  1.1917e+07  1.2563e+07
+cell_mass    k=8   1.3486e+07  1.3486e+07  1.3485e+07  1.3484e+07  1.3483e+07  1.3477e+07  1.3440e+07  1.1917e+07  1.2563e+07
+cell_energy  k=0   2.0706e+04  2.0705e+04  1.9049e+04  1.5823e+04  1.4632e+04  1.4393e+04  1.3822e+04         inf         nan
+cell_energy  k=1   2.0706e+04  2.0705e+04  1.9049e+04  1.5823e+04  1.4632e+04  1.4393e+04  1.3822e+04         inf         nan
+cell_energy  k=2   2.0706e+04  2.0705e+04  1.9049e+04  1.5823e+04  1.4632e+04  1.4393e+04  1.3822e+04         inf         nan
+cell_energy  k=3   2.0706e+04  2.0705e+04  1.9049e+04  1.5823e+04  1.4632e+04  1.4393e+04  1.3822e+04         inf         nan
+cell_energy  k=4   2.0706e+04  2.0705e+04  1.9049e+04  1.5823e+04  1.4632e+04  1.4393e+04  1.3822e+04         inf         nan
+cell_energy  k=6   2.0706e+04  2.0705e+04  1.9049e+04  1.5823e+04  1.4632e+04  1.4393e+04  1.3822e+04         inf         nan
+cell_energy  k=8   2.0706e+04  2.0705e+04  1.9049e+04  1.5823e+04  1.4632e+04  1.4393e+04  1.3822e+04         inf         nan
+smooth       k=0   1.8390e+06  1.8390e+06  1.8390e+06  1.8390e+06  1.8390e+06  1.8390e+06  1.8395e+06  1.8395e+06  1.8384e+06
+smooth       k=1   1.8390e+06  1.8390e+06  1.8390e+06  1.8390e+06  1.8390e+06  1.8390e+06  1.8395e+06  1.8395e+06  1.8384e+06
+smooth       k=2   1.8390e+06  1.8390e+06  1.8390e+06  1.8390e+06  1.8390e+06  1.8390e+06  1.8395e+06  1.8395e+06  1.8384e+06
+smooth       k=3   1.8390e+06  1.8390e+06  1.8390e+06  1.8390e+06  1.8390e+06  1.8390e+06  1.8395e+06  1.8395e+06  1.8384e+06
+smooth       k=4   1.8390e+06  1.8390e+06  1.8390e+06  1.8390e+06  1.8390e+06  1.8390e+06  1.8395e+06  1.8395e+06  1.8384e+06
+smooth       k=6   1.8390e+06  1.8390e+06  1.8390e+06  1.8390e+06  1.8390e+06  1.8390e+06  1.8395e+06  1.8395e+06  1.8384e+06
+smooth       k=8   1.8390e+06  1.8390e+06  1.8390e+06  1.8390e+06  1.8390e+06  1.8390e+06  1.8395e+06  1.8395e+06  1.8384e+06
+cell_species k=0   9.5086e+00  9.5086e+00  9.5086e+00  9.5086e+00  9.5086e+00  9.5086e+00  9.5086e+00  9.5086e+00  9.5087e+00
+cell_species k=1   9.5086e+00  9.5086e+00  9.5086e+00  9.5086e+00  9.5086e+00  9.5086e+00  9.5086e+00  9.5086e+00  9.5087e+00
+cell_species k=2   9.5086e+00  9.5086e+00  9.5086e+00  9.5086e+00  9.5086e+00  9.5086e+00  9.5086e+00  9.5086e+00  9.5087e+00
+cell_species k=3   9.5086e+00  9.5086e+00  9.5086e+00  9.5086e+00  9.5086e+00  9.5086e+00  9.5086e+00  9.5086e+00  9.5087e+00
+cell_species k=4   9.5086e+00  9.5086e+00  9.5086e+00  9.5086e+00  9.5086e+00  9.5086e+00  9.5086e+00  9.5086e+00  9.5087e+00
+cell_species k=6   9.5086e+00  9.5086e+00  9.5086e+00  9.5086e+00  9.5086e+00  9.5086e+00  9.5086e+00  9.5086e+00  9.5087e+00
+cell_species k=8   9.5086e+00  9.5086e+00  9.5086e+00  9.5086e+00  9.5086e+00  9.5086e+00  9.5086e+00  9.5086e+00  9.5087e+00
+named_block  k=0   1.2540e+03  1.2540e+03  1.2535e+03  1.2523e+03  1.2481e+03  1.2350e+03  1.1708e+03         nan         nan
+named_block  k=1   1.2540e+03  1.2540e+03  1.2535e+03  1.2523e+03  1.2481e+03  1.2350e+03  1.1708e+03         nan         nan
+named_block  k=2   1.2540e+03  1.2540e+03  1.2535e+03  1.2523e+03  1.2481e+03  1.2350e+03  1.1708e+03         nan         nan
+named_block  k=3   1.2540e+03  1.2540e+03  1.2535e+03  1.2523e+03  1.2481e+03  1.2350e+03  1.1708e+03         nan         nan
+named_block  k=4   1.2540e+03  1.2540e+03  1.2535e+03  1.2523e+03  1.2481e+03  1.2350e+03  1.1708e+03         nan         nan
+named_block  k=6   1.2540e+03  1.2540e+03  1.2535e+03  1.2523e+03  1.2481e+03  1.2350e+03  1.1708e+03         nan         nan
+named_block  k=8   1.2540e+03  1.2540e+03  1.2535e+03  1.2523e+03  1.2481e+03  1.2350e+03  1.1708e+03         nan         nan
+h list: 1e-03 1e-02 1e-01 3e-01 1e+00 3e+00 1e+01 1e+02 1e+03
+
+---- plateau in h: ||J(h)-J(1)|| / ||J(1)|| ----
+banded_step  k=0    2.290e+01   2.677e+00   1.992e-01   8.923e-02   0.000e+00   7.892e-02   7.830e-02   7.821e-02   7.821e-02
+banded_step  k=1    2.290e+01   2.677e+00   1.992e-01   8.923e-02   0.000e+00   2.549e-02   2.688e-02   2.621e-02   2.621e-02
+banded_step  k=2    2.189e+01   2.113e+00   2.306e-01   8.899e-02   0.000e+00   2.347e-02   2.291e-02   2.287e-02   2.294e-02
+banded_step  k=3    2.636e+01   2.209e+00   2.554e-01   8.571e-02   0.000e+00   2.363e-02   2.284e-02   2.244e-02   2.248e-02
+banded_step  k=4    2.438e+01   2.197e+00   2.436e-01   8.023e-02   0.000e+00   2.112e-02   2.040e-02   2.000e-02   2.005e-02
+banded_step  k=6    2.473e+01   2.068e+00   2.687e-01   9.699e-02   0.000e+00   2.420e-02   2.497e-02   2.534e-02   2.541e-02
+banded_step  k=8    2.779e+01   2.131e+00   2.696e-01   8.151e-02   0.000e+00   2.222e-02   2.275e-02   2.255e-02   2.266e-02
+cell_mass    k=0    2.561e-03   2.561e-03   2.616e-03   7.769e-04   0.000e+00   1.710e-03   3.910e-03   2.001e-01   3.551e-01
+cell_mass    k=1    2.561e-03   2.561e-03   2.616e-03   7.769e-04   0.000e+00   1.710e-03   3.910e-03   2.001e-01   3.551e-01
+cell_mass    k=2    2.561e-03   2.561e-03   2.616e-03   7.769e-04   0.000e+00   1.710e-03   3.910e-03   2.001e-01   3.551e-01
+cell_mass    k=3    2.561e-03   2.561e-03   2.616e-03   7.769e-04   0.000e+00   1.710e-03   3.910e-03   2.001e-01   3.551e-01
+cell_mass    k=4    2.561e-03   2.561e-03   2.616e-03   7.769e-04   0.000e+00   1.710e-03   3.910e-03   2.001e-01   3.551e-01
+cell_mass    k=6    2.561e-03   2.561e-03   2.616e-03   7.769e-04   0.000e+00   1.710e-03   3.910e-03   2.001e-01   3.551e-01
+cell_mass    k=8    2.561e-03   2.561e-03   2.616e-03   7.769e-04   0.000e+00   1.710e-03   3.910e-03   2.001e-01   3.551e-01
+cell_energy  k=0    4.903e-01   4.902e-01   3.552e-01   9.416e-02   0.000e+00   1.746e-02   8.406e-02         inf         nan
+cell_energy  k=1    4.903e-01   4.902e-01   3.552e-01   9.416e-02   0.000e+00   1.746e-02   8.406e-02         inf         nan
+cell_energy  k=2    4.903e-01   4.902e-01   3.552e-01   9.416e-02   0.000e+00   1.746e-02   8.406e-02         inf         nan
+cell_energy  k=3    4.903e-01   4.902e-01   3.552e-01   9.416e-02   0.000e+00   1.746e-02   8.406e-02         inf         nan
+cell_energy  k=4    4.903e-01   4.902e-01   3.552e-01   9.416e-02   0.000e+00   1.746e-02   8.406e-02         inf         nan
+cell_energy  k=6    4.903e-01   4.902e-01   3.552e-01   9.416e-02   0.000e+00   1.746e-02   8.406e-02         inf         nan
+cell_energy  k=8    4.903e-01   4.902e-01   3.552e-01   9.416e-02   0.000e+00   1.746e-02   8.406e-02         inf         nan
+smooth       k=0    5.490e-05   5.485e-05   5.485e-05   5.485e-05   0.000e+00   5.502e-04   9.268e-03   9.875e-03   5.042e-03
+smooth       k=1    5.490e-05   5.485e-05   5.485e-05   5.485e-05   0.000e+00   5.502e-04   9.268e-03   9.875e-03   5.042e-03
+smooth       k=2    5.488e-05   5.485e-05   5.485e-05   5.485e-05   0.000e+00   5.502e-04   9.268e-03   9.875e-03   5.042e-03
+smooth       k=3    5.485e-05   5.485e-05   5.485e-05   5.485e-05   0.000e+00   5.502e-04   9.268e-03   9.875e-03   5.042e-03
+smooth       k=4    5.485e-05   5.485e-05   5.485e-05   5.485e-05   0.000e+00   5.502e-04   9.268e-03   9.875e-03   5.042e-03
+smooth       k=6    5.488e-05   5.485e-05   5.485e-05   5.485e-05   0.000e+00   5.502e-04   9.268e-03   9.875e-03   5.042e-03
+smooth       k=8    5.487e-05   5.485e-05   5.485e-05   5.485e-05   0.000e+00   5.502e-04   9.268e-03   9.875e-03   5.042e-03
+cell_species k=0    1.934e-05   3.394e-06   8.221e-07   4.519e-07   0.000e+00   2.010e-07   1.985e-07   4.129e-06   6.045e-06
+cell_species k=1    1.934e-05   3.394e-06   8.221e-07   4.519e-07   0.000e+00   2.010e-07   1.985e-07   2.073e-07   7.048e-06
+cell_species k=2    2.157e-04   2.725e-05   5.435e-06   4.445e-06   0.000e+00   2.745e-06   1.696e-06   1.739e-06   7.237e-06
+cell_species k=3    2.216e-04   4.877e-05   8.246e-06   3.959e-06   0.000e+00   2.042e-06   2.141e-06   1.721e-06   7.214e-06
+cell_species k=4    2.402e-04   3.166e-05   9.459e-06   3.604e-06   0.000e+00   4.527e-06   2.921e-06   2.153e-06   7.311e-06
+cell_species k=6    3.411e-04   3.806e-05   1.072e-05   5.279e-06   0.000e+00   3.843e-06   3.025e-06   2.488e-06   7.422e-06
+cell_species k=8    2.371e-04   3.219e-05   1.109e-05   5.302e-06   0.000e+00   3.059e-06   3.717e-06   3.147e-06   7.679e-06
+named_block  k=0    4.766e-03   4.731e-03   4.316e-03   3.384e-03   0.000e+00   1.058e-02   6.563e-02         nan         nan
+named_block  k=1    4.766e-03   4.731e-03   4.316e-03   3.384e-03   0.000e+00   1.058e-02   6.562e-02         nan         nan
+named_block  k=2    4.766e-03   4.731e-03   4.316e-03   3.384e-03   0.000e+00   1.058e-02   6.563e-02         nan         nan
+named_block  k=3    4.766e-03   4.731e-03   4.316e-03   3.384e-03   0.000e+00   1.058e-02   6.563e-02         nan         nan
+named_block  k=4    4.766e-03   4.731e-03   4.316e-03   3.384e-03   0.000e+00   1.058e-02   6.563e-02         nan         nan
+named_block  k=6    4.766e-03   4.731e-03   4.316e-03   3.384e-03   0.000e+00   1.058e-02   6.563e-02         nan         nan
+named_block  k=8    4.766e-03   4.731e-03   4.316e-03   3.384e-03   0.000e+00   1.058e-02   6.563e-02         nan         nan
+
+---- movement with k: ||J(k)-J(conv)|| / ||J(conv)|| ----
+banded_step  k=0    0.000e+00   0.000e+00   0.000e+00   0.000e+00   0.000e+00   0.000e+00   0.000e+00   0.000e+00   0.000e+00
+banded_step  k=1    0.000e+00   0.000e+00   0.000e+00   0.000e+00   0.000e+00   7.286e-02   7.241e-02   7.240e-02   7.240e-02
+banded_step  k=2    8.759e-01   8.441e-01   2.449e-01   1.020e-01   7.901e-02   6.149e-03   2.488e-03   1.564e-03   1.551e-03
+banded_step  k=3    8.835e-01   8.621e-01   2.499e-01   1.093e-01   7.842e-02   0.000e+00   0.000e+00   2.165e-04   9.820e-05
+banded_step  k=4    1.048e+00   7.534e-01   2.572e-01   1.004e-01   7.780e-02   5.275e-03   1.778e-03   0.000e+00   0.000e+00
+banded_step  k=6    9.899e-01   1.024e+00   2.816e-01   1.162e-01   7.920e-02   6.124e-03   2.050e-03   1.311e-04   1.806e-05
+banded_step  k=8    1.093e+00   1.070e+00   2.853e-01   1.083e-01   7.943e-02   7.082e-03   2.182e-03   1.799e-04   1.731e-05
+cell_mass    k=0    0.000e+00   0.000e+00   0.000e+00   0.000e+00   0.000e+00   0.000e+00   0.000e+00   0.000e+00   0.000e+00
+cell_mass    k=1    0.000e+00   0.000e+00   0.000e+00   0.000e+00   0.000e+00   0.000e+00   0.000e+00   0.000e+00   0.000e+00
+cell_mass    k=2    1.791e-08   2.635e-09   8.994e-10   9.440e-10   9.180e-10   9.029e-10   9.054e-10   1.042e-09   1.895e-09
+cell_mass    k=3    2.793e-08   2.651e-09   9.270e-10   9.460e-10   9.165e-10   9.030e-10   9.058e-10   1.042e-09   1.894e-09
+cell_mass    k=4    2.793e-08   2.724e-09   8.958e-10   9.480e-10   9.091e-10   9.008e-10   9.049e-10   1.042e-09   1.894e-09
+cell_mass    k=6    1.790e-08   2.724e-09   8.941e-10   9.435e-10   9.106e-10   9.026e-10   9.051e-10   1.042e-09   1.894e-09
+cell_mass    k=8    1.790e-08   2.724e-09   8.934e-10   9.435e-10   9.176e-10   9.048e-10   9.050e-10   1.042e-09   1.894e-09
+cell_energy  k=0    0.000e+00   0.000e+00   0.000e+00   0.000e+00   0.000e+00   0.000e+00   0.000e+00   0.000e+00         nan
+cell_energy  k=1    3.149e-07   3.145e-07   3.419e-07   4.114e-07   4.407e-07   4.024e-07   1.844e-07         nan         nan
+cell_energy  k=2    1.350e-08   2.324e-09   1.698e-09   2.025e-09   2.159e-09   1.894e-09   2.710e-09   0.000e+00         nan
+cell_energy  k=3    0.000e+00   2.120e-09   1.945e-10   7.185e-11   2.551e-11   1.211e-11   3.550e-11   0.000e+00         nan
+cell_energy  k=4    1.482e-08   0.000e+00   0.000e+00   0.000e+00   2.429e-11   8.696e-12   2.807e-12   0.000e+00         nan
+cell_energy  k=6    1.707e-08   1.094e-09   1.958e-10   7.566e-11   2.387e-11   7.425e-12   2.930e-12   0.000e+00         nan
+cell_energy  k=8    2.372e-08   1.686e-09   2.097e-10   8.179e-11   3.544e-11   8.879e-12   2.897e-12   0.000e+00         nan
+smooth       k=0    0.000e+00   0.000e+00   0.000e+00   0.000e+00   0.000e+00   0.000e+00   0.000e+00   0.000e+00   0.000e+00
+smooth       k=1    0.000e+00   0.000e+00   0.000e+00   1.454e-08   1.417e-08   1.414e-08   1.414e-08   1.414e-08   1.417e-08
+smooth       k=2    7.543e-07   7.402e-08   1.716e-08   1.904e-09   6.480e-10   4.465e-10   3.595e-10   3.508e-10   3.524e-10
+smooth       k=3    6.761e-07   8.143e-08   1.671e-08   0.000e+00   0.000e+00   0.000e+00   7.136e-11   2.633e-11   2.292e-11
+smooth       k=4    7.101e-07   6.892e-08   1.678e-08   1.972e-09   6.925e-10   2.175e-10   0.000e+00   0.000e+00   1.852e-12
+smooth       k=6    7.099e-07   7.834e-08   1.745e-08   2.034e-09   8.365e-10   2.730e-10   6.313e-11   9.416e-12   6.245e-13
+smooth       k=8    9.175e-07   7.600e-08   1.768e-08   2.438e-09   1.011e-09   2.829e-10   8.277e-11   1.028e-11   6.685e-13
+cell_species k=0    0.000e+00   0.000e+00   0.000e+00   0.000e+00   0.000e+00   0.000e+00   0.000e+00   0.000e+00   0.000e+00
+cell_species k=1    0.000e+00   0.000e+00   0.000e+00   0.000e+00   0.000e+00   0.000e+00   0.000e+00   4.162e-06   4.101e-06
+cell_species k=2    2.146e-04   2.743e-05   6.595e-06   6.579e-06   4.474e-06   4.665e-06   4.205e-06   8.033e-07   1.742e-07
+cell_species k=3    2.206e-04   4.913e-05   9.592e-06   5.786e-06   4.393e-06   4.323e-06   4.393e-06   0.000e+00   0.000e+00
+cell_species k=4    2.393e-04   3.201e-05   1.046e-05   6.098e-06   4.528e-06   5.796e-06   4.582e-06   1.093e-06   1.187e-07
+cell_species k=6    3.398e-04   3.832e-05   1.133e-05   6.473e-06   4.729e-06   4.973e-06   4.585e-06   1.054e-06   1.705e-07
+cell_species k=8    2.352e-04   3.254e-05   1.173e-05   6.388e-06   5.123e-06   4.407e-06   4.813e-06   1.070e-06   1.905e-07
+named_block  k=0    0.000e+00   0.000e+00   0.000e+00   0.000e+00   0.000e+00   0.000e+00   0.000e+00         nan         nan
+named_block  k=1    1.209e-05   1.209e-05   1.209e-05   1.211e-05   1.219e-05   1.276e-05   2.303e-05         nan         nan
+named_block  k=2    3.177e-07   3.153e-07   3.156e-07   3.160e-07   3.184e-07   3.356e-07   7.523e-07         nan         nan
+named_block  k=3    4.242e-08   9.342e-09   7.990e-09   7.994e-09   8.072e-09   8.669e-09   2.418e-08         nan         nan
+named_block  k=4    0.000e+00   0.000e+00   4.479e-10   2.890e-10   2.119e-10   2.291e-10   7.925e-10         nan         nan
+named_block  k=6    3.898e-08   4.217e-09   4.302e-10   1.425e-10   0.000e+00   0.000e+00   3.472e-12         nan         nan
+named_block  k=8    3.994e-08   6.187e-09   4.694e-10   1.934e-10   3.494e-11   1.220e-11   5.019e-12         nan         nan
+
+---- forward against central over the rows the direction MOVES (mean / worst / n) ----
+banded_step  k=0  7.559e-01/501  6.784e-01/566  4.003e-01/495  1.843e-01/469  6.464e-02/462  2.742e-02/460  3.932e-02/454  1.927e-01/430  6.539e-01/231 
+banded_step  k=1  7.559e-01/501  6.784e-01/566  4.003e-01/495  1.843e-01/469  6.464e-02/462  2.858e-02/460  3.885e-02/453  1.972e-01/427  7.124e-01/212 
+banded_step  k=2  7.475e-01/541  6.613e-01/586  3.865e-01/507  1.950e-01/483  6.156e-02/465  2.769e-02/461  3.959e-02/452  1.928e-01/430  6.539e-01/231 
+banded_step  k=3  7.597e-01/476  6.866e-01/586  3.904e-01/502  1.762e-01/482  6.560e-02/469  2.820e-02/461  3.940e-02/454  1.928e-01/430  6.539e-01/231 
+banded_step  k=4  7.270e-01/506  6.902e-01/592  3.915e-01/501  1.577e-01/477  5.930e-02/463  2.695e-02/460  3.918e-02/453  1.927e-01/430  6.539e-01/231 
+banded_step  k=6  7.710e-01/508  6.783e-01/594  3.638e-01/504  1.869e-01/490  6.151e-02/470  2.900e-02/460  3.922e-02/453  1.927e-01/430  6.539e-01/231 
+banded_step  k=8  7.476e-01/520  7.034e-01/602  3.791e-01/505  1.812e-01/491  6.881e-02/471  2.902e-02/461  3.937e-02/453  1.927e-01/430  6.539e-01/231 
+cell_mass    k=0  9.271e-07/4    9.526e-06/4    1.283e-03/4    1.022e-02/4    1.458e-02/4    1.755e-02/4    2.684e-02/4    5.807e-02/4    9.777e-03/4   
+cell_mass    k=1  9.271e-07/4    9.526e-06/4    1.283e-03/4    1.022e-02/4    1.458e-02/4    1.755e-02/4    2.684e-02/4    5.807e-02/4    9.777e-03/4   
+cell_mass    k=2  8.787e-07/4    9.518e-06/4    1.283e-03/4    1.022e-02/4    1.458e-02/4    1.755e-02/4    2.684e-02/4    5.807e-02/4    9.777e-03/4   
+cell_mass    k=3  8.778e-07/4    9.517e-06/4    1.283e-03/4    1.022e-02/4    1.458e-02/4    1.755e-02/4    2.684e-02/4    5.807e-02/4    9.777e-03/4   
+cell_mass    k=4  8.778e-07/4    9.518e-06/4    1.283e-03/4    1.022e-02/4    1.458e-02/4    1.755e-02/4    2.684e-02/4    5.807e-02/4    9.777e-03/4   
+cell_mass    k=6  8.778e-07/4    9.518e-06/4    1.283e-03/4    1.022e-02/4    1.458e-02/4    1.755e-02/4    2.684e-02/4    5.807e-02/4    9.777e-03/4   
+cell_mass    k=8  8.778e-07/4    9.518e-06/4    1.283e-03/4    1.022e-02/4    1.458e-02/4    1.755e-02/4    2.684e-02/4    5.807e-02/4    9.777e-03/4   
+cell_energy  k=0  1.553e-05/3    4.331e-04/3    1.499e-02/3    4.542e-03/3    1.302e-02/3    4.635e-02/3    1.633e-01/3    1.000e+00/1    0.000e+00/0   
+cell_energy  k=1  1.553e-05/3    4.331e-04/3    1.499e-02/3    4.542e-03/3    1.302e-02/3    4.635e-02/3    1.633e-01/3    1.000e+00/1    0.000e+00/0   
+cell_energy  k=2  1.553e-05/3    4.331e-04/3    1.499e-02/3    4.542e-03/3    1.302e-02/3    4.635e-02/3    1.633e-01/3    1.000e+00/1    0.000e+00/0   
+cell_energy  k=3  1.553e-05/3    4.331e-04/3    1.499e-02/3    4.542e-03/3    1.302e-02/3    4.635e-02/3    1.633e-01/3    1.000e+00/1    0.000e+00/0   
+cell_energy  k=4  1.553e-05/3    4.331e-04/3    1.499e-02/3    4.542e-03/3    1.302e-02/3    4.635e-02/3    1.633e-01/3    1.000e+00/1    0.000e+00/0   
+cell_energy  k=6  1.553e-05/3    4.331e-04/3    1.499e-02/3    4.542e-03/3    1.302e-02/3    4.635e-02/3    1.633e-01/3    1.000e+00/1    0.000e+00/0   
+cell_energy  k=8  1.553e-05/3    4.331e-04/3    1.499e-02/3    4.542e-03/3    1.302e-02/3    4.635e-02/3    1.633e-01/3    1.000e+00/1    0.000e+00/0   
+smooth       k=0  1.967e-06/571  2.227e-07/571  4.961e-08/571  1.149e-07/571  6.230e-05/571  2.795e-04/571  2.551e-02/375  7.246e-03/538  2.010e-03/570 
+smooth       k=1  1.967e-06/571  2.227e-07/571  4.961e-08/571  1.139e-07/571  6.229e-05/571  2.795e-04/571  2.551e-02/375  7.246e-03/538  2.010e-03/570 
+smooth       k=2  2.244e-06/571  2.179e-07/571  4.874e-08/571  1.152e-07/571  6.229e-05/571  2.795e-04/571  2.551e-02/375  7.246e-03/538  2.010e-03/570 
+smooth       k=3  2.116e-06/571  2.374e-07/571  4.945e-08/571  1.146e-07/571  6.230e-05/571  2.795e-04/571  2.551e-02/375  7.246e-03/538  2.010e-03/570 
+smooth       k=4  2.220e-06/571  2.413e-07/571  4.782e-08/571  1.144e-07/571  6.229e-05/571  2.795e-04/571  2.551e-02/375  7.246e-03/538  2.010e-03/570 
+smooth       k=6  2.392e-06/571  2.498e-07/571  4.719e-08/571  1.144e-07/571  6.229e-05/571  2.795e-04/571  2.551e-02/375  7.246e-03/538  2.010e-03/570 
+smooth       k=8  2.553e-06/571  2.759e-07/571  4.898e-08/571  1.141e-07/571  6.229e-05/571  2.795e-04/571  2.551e-02/375  7.246e-03/538  2.010e-03/570 
+cell_species k=0  3.142e-03/4    6.213e-04/4    1.703e-05/4    1.426e-04/4    6.463e-05/4    1.267e-05/4    3.272e-05/4    3.241e-04/4    3.237e-03/4   
+cell_species k=1  3.142e-03/4    6.213e-04/4    1.703e-05/4    1.426e-04/4    6.463e-05/4    1.267e-05/4    3.272e-05/4    3.243e-04/4    3.237e-03/4   
+cell_species k=2  3.601e-02/4    4.736e-03/4    4.027e-04/4    1.604e-04/4    3.838e-05/4    2.342e-05/4    3.114e-05/4    3.245e-04/4    3.237e-03/4   
+cell_species k=3  2.436e-02/4    2.823e-03/4    3.134e-04/4    4.162e-05/4    6.140e-06/4    1.706e-05/4    3.286e-05/4    3.247e-04/4    3.237e-03/4   
+cell_species k=4  2.191e-02/4    3.853e-03/4    6.247e-04/4    2.801e-05/4    4.544e-05/4    5.619e-06/4    3.329e-05/4    3.251e-04/4    3.237e-03/4   
+cell_species k=6  5.897e-03/4    3.492e-03/4    6.247e-04/4    2.801e-05/4    3.142e-05/4    5.614e-06/4    3.097e-05/4    3.249e-04/4    3.237e-03/4   
+cell_species k=8  1.688e-03/4    3.492e-03/4    6.247e-04/4    3.073e-05/4    3.142e-05/4    5.614e-06/4    2.780e-05/4    3.248e-04/4    3.237e-03/4   
+named_block  k=0  1.239e-05/21   1.240e-04/21   1.238e-03/21   3.703e-03/21   1.238e-02/21   3.454e-02/21   1.190e-01/21   0.000e+00/0    0.000e+00/0   
+named_block  k=1  1.239e-05/21   1.240e-04/21   1.238e-03/21   3.703e-03/21   1.238e-02/21   3.455e-02/21   1.190e-01/21   0.000e+00/0    0.000e+00/0   
+named_block  k=2  1.239e-05/21   1.240e-04/21   1.238e-03/21   3.703e-03/21   1.238e-02/21   3.454e-02/21   1.190e-01/21   0.000e+00/0    0.000e+00/0   
+named_block  k=3  1.239e-05/21   1.240e-04/21   1.238e-03/21   3.703e-03/21   1.238e-02/21   3.454e-02/21   1.190e-01/21   0.000e+00/0    0.000e+00/0   
+named_block  k=4  1.239e-05/21   1.240e-04/21   1.238e-03/21   3.703e-03/21   1.238e-02/21   3.454e-02/21   1.190e-01/21   0.000e+00/0    0.000e+00/0   
+named_block  k=6  1.239e-05/21   1.240e-04/21   1.238e-03/21   3.703e-03/21   1.238e-02/21   3.454e-02/21   1.190e-01/21   0.000e+00/0    0.000e+00/0   
+named_block  k=8  1.239e-05/21   1.240e-04/21   1.238e-03/21   3.703e-03/21   1.238e-02/21   3.454e-02/21   1.190e-01/21   0.000e+00/0    0.000e+00/0   
+
+---- admissibility and the endpoint record (ACT) ----
+NOT CLEAN: ACT k=0 h= 1.00E+02 dir=named_block ok=TTF eps 2.476E+01 2.476E+01 disp 6.505E-04 2.476E+01 swept 22 1 roots 0 13 blocked 0 F
+NOT CLEAN: ACT k=0 h= 1.00E+03 dir=cell_energy ok=TTF eps 3.824E+01 3.824E+01 disp 6.505E-03 3.824E+01 swept 6 25 roots 0 1 blocked 0 F
+NOT CLEAN: ACT k=0 h= 1.00E+03 dir=named_block ok=TTF eps 2.476E+02 2.476E+02 disp 6.505E-03 2.476E+02 swept 7 1 roots 0 13 blocked 0 F
+NOT CLEAN: ACT k=1 h= 1.00E+02 dir=named_block ok=TTF eps 2.476E+01 2.476E+01 disp 6.505E-04 2.476E+01 swept 1 1 roots 0 13 blocked 0 F
+NOT CLEAN: ACT k=1 h= 1.00E+03 dir=cell_energy ok=TTF eps 3.824E+01 3.824E+01 disp 6.505E-03 3.824E+01 swept 1 1 roots 0 1 blocked 0 F
+NOT CLEAN: ACT k=1 h= 1.00E+03 dir=named_block ok=TTF eps 2.476E+02 2.476E+02 disp 6.505E-03 2.476E+02 swept 1 1 roots 0 13 blocked 0 F
+NOT CLEAN: ACT k=2 h= 1.00E+02 dir=named_block ok=TTF eps 2.476E+01 2.476E+01 disp 6.505E-04 2.476E+01 swept 2 2 roots 0 13 blocked 0 F
+NOT CLEAN: ACT k=2 h= 1.00E+03 dir=cell_energy ok=TTF eps 3.824E+01 3.824E+01 disp 6.505E-03 3.824E+01 swept 2 2 roots 0 1 blocked 0 F
+NOT CLEAN: ACT k=2 h= 1.00E+03 dir=named_block ok=TTF eps 2.476E+02 2.476E+02 disp 6.505E-03 2.476E+02 swept 2 2 roots 0 13 blocked 0 F
+NOT CLEAN: ACT k=3 h= 1.00E+02 dir=named_block ok=TTF eps 2.476E+01 2.476E+01 disp 6.505E-04 2.476E+01 swept 3 3 roots 0 13 blocked 0 F
+NOT CLEAN: ACT k=3 h= 1.00E+03 dir=cell_energy ok=TTF eps 3.824E+01 3.824E+01 disp 6.505E-03 3.824E+01 swept 3 3 roots 0 1 blocked 0 F
+NOT CLEAN: ACT k=3 h= 1.00E+03 dir=named_block ok=TTF eps 2.476E+02 2.476E+02 disp 6.505E-03 2.476E+02 swept 3 3 roots 0 13 blocked 0 F
+NOT CLEAN: ACT k=4 h= 1.00E+02 dir=named_block ok=TTF eps 2.476E+01 2.476E+01 disp 6.505E-04 2.476E+01 swept 4 4 roots 0 13 blocked 0 F
+NOT CLEAN: ACT k=4 h= 1.00E+03 dir=cell_energy ok=TTF eps 3.824E+01 3.824E+01 disp 6.505E-03 3.824E+01 swept 4 4 roots 0 1 blocked 0 F
+NOT CLEAN: ACT k=4 h= 1.00E+03 dir=named_block ok=TTF eps 2.476E+02 2.476E+02 disp 6.505E-03 2.476E+02 swept 4 4 roots 0 13 blocked 0 F
+NOT CLEAN: ACT k=6 h= 1.00E+02 dir=named_block ok=TTF eps 2.476E+01 2.476E+01 disp 6.505E-04 2.476E+01 swept 6 6 roots 0 13 blocked 0 F
+NOT CLEAN: ACT k=6 h= 1.00E+03 dir=cell_energy ok=TTF eps 3.824E+01 3.824E+01 disp 6.505E-03 3.824E+01 swept 6 6 roots 0 1 blocked 0 F
+NOT CLEAN: ACT k=6 h= 1.00E+03 dir=named_block ok=TTF eps 2.476E+02 2.476E+02 disp 6.505E-03 2.476E+02 swept 6 6 roots 0 13 blocked 0 F
+NOT CLEAN: ACT k=8 h= 1.00E+02 dir=named_block ok=TTF eps 2.476E+01 2.476E+01 disp 6.505E-04 2.476E+01 swept 8 8 roots 0 13 blocked 0 F
+NOT CLEAN: ACT k=8 h= 1.00E+03 dir=cell_energy ok=TTF eps 3.824E+01 3.824E+01 disp 6.505E-03 3.824E+01 swept 8 8 roots 0 1 blocked 0 F
+NOT CLEAN: ACT k=8 h= 1.00E+03 dir=named_block ok=TTF eps 2.476E+02 2.476E+02 disp 6.505E-03 2.476E+02 swept 8 8 roots 0 13 blocked 0 F
+points with a non-clean endpoint record: 21 of 378

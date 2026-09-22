@@ -1,0 +1,28 @@
+invocation        C2_kzz1e9_coupled_p2
+mode              R (current operator on an immutable stored state; no physical step taken, nothing published)
+case              kzz1e9   /nfs/mocafe/kiseon/RT_Codes/ExoAtmosphere/EXHALE_v1.00/LHS1140b/models/molecular_scalar_gj1132_kzz1e9/HeH0.083
+state             g0004_20260920T053734Z_79b42a03
+coupled           Coupled carrier solve: T
+named direction   none
+run directory     /tmp/claude-1000/-nfs-mocafe-kiseon-RT-Codes-ExoAtmosphere/59a81fec-9ef0-4992-9a57-6494f229e6bb/scratchpad/coupled_stageB/runs/C2_kzz1e9_coupled_p2/work
+executable        /tmp/claude-1000/-nfs-mocafe-kiseon-RT-Codes-ExoAtmosphere/59a81fec-9ef0-4992-9a57-6494f229e6bb/scratchpad/coupled_stageB/runs/C2_kzz1e9_coupled_p2/work/EXHALE.x  md5 d4065fc49b9351f6c762d6ffccfff608
+environment in force (env -i, so this is the complete set):
+  PATH=/usr/bin:/bin  HOME=/home/kiseon
+  OMP_NUM_THREADS=8  OPENBLAS_NUM_THREADS=1  OMP_DYNAMIC=FALSE  OMP_MAX_ACTIVE_LEVELS=1
+  EXHALE_CLOSURE_PROBE=1  EXHALE_RESID_QUAD=0  EXHALE_UNUSED_MARKER=0  EXHALE_UNUSED_MARKER2=0
+input state (md5 MEASURED):
+  1e33d197ead9269661dc6bb0d88c0e26  base.inp
+  f7a1a59d295e30e0826a56fc87922303  input.inp
+  fd882d8918052069f8ed229dd376f8c4  output/Hydro_ioniz_IC.txt
+  87288b03ad88a92b7b8b8b6c2b1bdd66  output/Ion_species_IC.txt
+started           2026-09-21T08:28:02Z
+ended             2026-09-21T08:32:45Z
+wall seconds      283.15
+exit status       0
+evaluation stage reached:
+  the grid completed
+files this invocation left (size, path, md5 MEASURED):
+  442931  /tmp/claude-1000/-nfs-mocafe-kiseon-RT-Codes-ExoAtmosphere/59a81fec-9ef0-4992-9a57-6494f229e6bb/scratchpad/coupled_stageB/runs/C2_kzz1e9_coupled_p2/stdout.log  1c9f9993743432c890dc86a954513341
+  96  /tmp/claude-1000/-nfs-mocafe-kiseon-RT-Codes-ExoAtmosphere/59a81fec-9ef0-4992-9a57-6494f229e6bb/scratchpad/coupled_stageB/runs/C2_kzz1e9_coupled_p2/stderr.log  1a7557113e9fcd41d3fbf3ac15a49df8
+  93830  /tmp/claude-1000/-nfs-mocafe-kiseon-RT-Codes-ExoAtmosphere/59a81fec-9ef0-4992-9a57-6494f229e6bb/scratchpad/coupled_stageB/runs/C2_kzz1e9_coupled_p2/work/output/Hydro_ioniz_IC.txt  fd882d8918052069f8ed229dd376f8c4
+  499794  /tmp/claude-1000/-nfs-mocafe-kiseon-RT-Codes-ExoAtmosphere/59a81fec-9ef0-4992-9a57-6494f229e6bb/scratchpad/coupled_stageB/runs/C2_kzz1e9_coupled_p2/work/output/Ion_species_IC.txt  87288b03ad88a92b7b8b8b6c2b1bdd66

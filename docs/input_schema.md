@@ -976,10 +976,24 @@ What the written files say about themselves. Both halves carry, beside the
 D.1 and D.2 blocks,
 
 ```
+# molecular_seed converted from <the atomic output directory>; invariant p; x2_source handoff
 # molecular-seed-from: <the atomic output directory>
 # molecular_partition: q_H2 ... q_max ... x2 ... capped_cells ... invariant p x2_source handoff
 # molecular_partition_rule: H2 from min(x2 n_H,nuclei, n_HI) of each cell, its own element census; H2+ H3+ HeH+ start at zero
 ```
+
+The first of those four lines, and only that one, is written by every state
+file of every run. A run that solves builds no seed, so it restates the
+sentence of the state it was started from, and a solved molecular state
+therefore says which `EXHALE_MOLECULAR_SEED_X2` mode and which
+`EXHALE_MOLECULAR_SEED_INVARIANT` produced its seed (2026-09-21; before that
+the mode could be recovered only from the log of the run that converted). A
+state that came out of no conversion carries `# molecular_seed none: this
+state was not produced by an atomic-to-molecular conversion`, and one
+restarted from a state written before the line existed says that instead of
+claiming either. The other three lines are written by the converting run
+alone, which is what separates the run that did the conversion from the
+states that descend from it.
 
 and the `# coupling:` line reads `certified=F cert_reason=molecular_seed
 mode=init`, with `t_phys[s] 0` in the metadata block. The state is an

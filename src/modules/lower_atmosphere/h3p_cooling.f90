@@ -42,13 +42,15 @@
       !
       !   s(T, n_H2 < 1e6) = s(T, 1e6) * n_H2/1e6,
       !
-      ! and records the cell as evaluated below the tabulated collider range
-      ! (h3p_n_below_collider below).  The record is informational: the
-      ! coolant stays defined where the model has a known analytic limit.
+      ! and records the evaluation as made below the tabulated collider
+      ! range (h3p_evaluations_below_collider below).  The record is
+      ! informational: the coolant stays defined where the model has a known
+      ! analytic limit.
       ! Above 1e14 cm^-3 the table edge is held (s = s(T,1e14), which is
       ! 0.9985 to 1.0000, so the residual departure from LTE at and above the
       ! last tabulated column is at most 0.15 per cent); no extrapolation is
-      ! made above the table.
+      ! made above the table, and the evaluation is recorded there too
+      ! (h3p_evaluations_above_collider).
       !
       ! TEMPERATURE DOMAIN AND THE JOINS.  The four Table 5 segments cover
       ! 30-300, 300-800, 800-1800 and 1800-5000 K.  Quoted fit errors: up to
@@ -56,9 +58,13 @@
       ! "all but nonexistent" over 800-1800 K, a few tenths of a per cent
       ! over 1800-5000 K; above 5000 K the paper does not report values.
       ! Outside 30-5000 K the evaluation is clamped to the end of the fit and
-      ! the cell is recorded (h3p_n_below_fit_T, h3p_n_above_fit_T); H3+ and
-      ! its feedstock H2 are thermally destroyed well below 5000 K, so the
-      ! frozen tail only guards transients.
+      ! recorded (h3p_evaluations_below_fit_T, h3p_evaluations_above_fit_T);
+      ! H3+ and its feedstock H2 are thermally destroyed well below 5000 K,
+      ! so the frozen tail only guards transients.  30 K and 5000 K are ON
+      ! the fit and are inside it: the records below count STRICT excursions
+      ! only, and the clamp, which is written NaN-safely and sends a
+      ! nonfinite temperature to an end of the fit, is a separate statement
+      ! from the record.
       !
       ! The published segments do NOT join, and the mismatch is theirs, not a
       ! transcription error.  MEASURED here with the Table 5 coefficients,
@@ -95,17 +101,50 @@
       private
       public :: h3p_emission_lte, h3p_nonlte_factor, h3p_cooling_rate,   &
                 h3p_net_cooling_rate, h3p_reset_domain_records
-      public :: h3p_n_below_collider, h3p_n_below_fit_T, h3p_n_above_fit_T, &
-                h3p_n_outside_nonlte_T
+      public :: h3p_evaluations_below_collider,                           &
+                h3p_evaluations_above_collider,                           &
+                h3p_evaluations_below_fit_T,                              &
+                h3p_evaluations_above_fit_T,                              &
+                h3p_evaluations_outside_nonlte_T,                         &
+                h3p_evaluations_nonfinite_T,                              &
+                h3p_evaluations_nonfinite_collider
+      ! Where one argument stands relative to a published range, for a
+      ! caller that maps a STATE rather than counting the evaluations of a
+      ! run: the same three tests the records below are taken with, with no
+      ! side effect of their own.
+      public :: h3p_fit_temperature_domain,                               &
+                h3p_nonlte_row_temperature_domain, h3p_collider_domain
+      public :: H3P_DOMAIN_INSIDE, H3P_DOMAIN_BELOW, H3P_DOMAIN_ABOVE,    &
+                H3P_DOMAIN_NONFINITE
 
       real*8, parameter :: fourpi = 12.566370614359172d0
 
-      ! Informational domain records: how many evaluations fell outside a
-      ! published range.  Counters only; none of them changes a rate.
-      integer, save :: h3p_n_below_collider   = 0   ! n_H2 < 1e6 cm^-3 (linear limit used)
-      integer, save :: h3p_n_below_fit_T      = 0   ! T < 30 K   (emission clamped)
-      integer, save :: h3p_n_above_fit_T      = 0   ! T > 5000 K (emission clamped)
-      integer, save :: h3p_n_outside_nonlte_T = 0   ! T outside 300-5000 K (Table 6 row clamped)
+      ! WHAT THESE COUNT.  Each is the number of EVALUATIONS, accumulated
+      ! over the whole run, whose argument met the stated condition.  A cell
+      ! visited many times contributes many times, one cell can meet several
+      ! conditions, and an evaluation made inside a trial that was then
+      ! rejected contributes like one inside an accepted state.  They are
+      ! therefore the history of the run and are not a property of any one
+      ! state; the domain map of a single state is a separate measurement
+      ! (certification.f90, h3p_cooling_domain_map_of_state), taken with the
+      ! three classifying functions below.  Informational either way: none
+      ! of them changes a rate.
+      integer, save :: h3p_evaluations_below_collider     = 0  ! n_H2 < 1e6 cm^-3 (collisional limit used)
+      integer, save :: h3p_evaluations_above_collider     = 0  ! n_H2 > 1e14 cm^-3 (table edge held)
+      integer, save :: h3p_evaluations_below_fit_T        = 0  ! T < 30 K   (emission clamped)
+      integer, save :: h3p_evaluations_above_fit_T        = 0  ! T > 5000 K (emission clamped)
+      integer, save :: h3p_evaluations_outside_nonlte_T   = 0  ! T outside 300-5000 K (Table 6 row clamped)
+      integer, save :: h3p_evaluations_nonfinite_T        = 0  ! T not an ordinary real
+      integer, save :: h3p_evaluations_nonfinite_collider = 0  ! n_H2 not an ordinary real
+
+      ! Where an argument stands relative to a published range.  BELOW and
+      ! ABOVE are strict excursions, so an argument sitting exactly on an
+      ! endpoint is INSIDE: the fit is defined there and the table has a row
+      ! there.  NONFINITE is its own answer and is never folded into BELOW.
+      integer, parameter :: H3P_DOMAIN_INSIDE    = 0
+      integer, parameter :: H3P_DOMAIN_BELOW     = 1
+      integer, parameter :: H3P_DOMAIN_ABOVE     = 2
+      integer, parameter :: H3P_DOMAIN_NONFINITE = 3
 
       ! --- Table 5 coefficients: log_e E = sum C_n T^n  [W/molecule/sr] ---
       ! 30-300 K (n = 0..9)
@@ -138,6 +177,7 @@
            2000.d0, 2500.d0, 3000.d0, 3500.d0, 4000.d0, 4500.d0, 5000.d0 ]
       real*8, parameter :: sLogN(nNs) = [ 6.d0, 8.d0, 10.d0, 12.d0, 14.d0 ]
       real*8, parameter :: n_tab_lo = 1.0d6   ! lowest tabulated collider density [cm^-3]
+      real*8, parameter :: n_tab_hi = 1.0d14  ! highest, 10**sLogN(nNs) [cm^-3]
       real*8, parameter :: sTab(nTs,nNs) = reshape( [                    &
       ! log n_H2=6      (T = 300..5000)
         0.0067d0, 0.0011d0, 0.0013d0, 0.0013d0, 0.0011d0, 0.0010d0,      &
@@ -160,13 +200,76 @@
 
       ! ------------------------------------------------------------------ !
 
-      ! Zero the informational domain records.
+      ! Zero the evaluation history above, so that what follows is counted
+      ! on its own.
       subroutine h3p_reset_domain_records()
-      h3p_n_below_collider   = 0
-      h3p_n_below_fit_T      = 0
-      h3p_n_above_fit_T      = 0
-      h3p_n_outside_nonlte_T = 0
+      h3p_evaluations_below_collider     = 0
+      h3p_evaluations_above_collider     = 0
+      h3p_evaluations_below_fit_T        = 0
+      h3p_evaluations_above_fit_T        = 0
+      h3p_evaluations_outside_nonlte_T   = 0
+      h3p_evaluations_nonfinite_T        = 0
+      h3p_evaluations_nonfinite_collider = 0
       end subroutine h3p_reset_domain_records
+
+      ! ------------------------------------------------------------------ !
+
+      ! Whether x is an ordinary real: no NaN and no infinity.  NaN fails
+      ! every comparison including with itself and an infinity exceeds the
+      ! largest representable finite value, so the two tests together cover
+      ! both.  Written out rather than taken from ieee_arithmetic so that the
+      ! generated module dependency graph stays over the source tree, as
+      ! finite_real (ionization_equilibrium.f90) is.
+      pure logical function ordinary_real(x) result(ok)
+      real*8, intent(in) :: x
+      ok = (x .eq. x) .and. (abs(x) .le. huge(1.0d0))
+      end function ordinary_real
+
+      ! Where T stands relative to the 30-5000 K range of the Table 5 fits.
+      pure integer function h3p_fit_temperature_domain(T) result(code)
+      real*8, intent(in) :: T
+      if (.not. ordinary_real(T)) then
+         code = H3P_DOMAIN_NONFINITE
+      else if (T .lt. T_fit_lo) then
+         code = H3P_DOMAIN_BELOW
+      else if (T .gt. T_fit_hi) then
+         code = H3P_DOMAIN_ABOVE
+      else
+         code = H3P_DOMAIN_INSIDE
+      endif
+      end function h3p_fit_temperature_domain
+
+      ! Where T stands relative to the 300-5000 K rows of Table 6.
+      pure integer function h3p_nonlte_row_temperature_domain(T)          &
+                            result(code)
+      real*8, intent(in) :: T
+      if (.not. ordinary_real(T)) then
+         code = H3P_DOMAIN_NONFINITE
+      else if (T .lt. sT(1)) then
+         code = H3P_DOMAIN_BELOW
+      else if (T .gt. sT(nTs)) then
+         code = H3P_DOMAIN_ABOVE
+      else
+         code = H3P_DOMAIN_INSIDE
+      endif
+      end function h3p_nonlte_row_temperature_domain
+
+      ! Where the collider density stands relative to the 1e6-1e14 cm^-3
+      ! columns of Table 6.  BELOW is the analytic collisional limit of the
+      ! module header, which is a statement of the model and not an
+      ! extrapolation outside it; ABOVE is the held table edge.
+      pure integer function h3p_collider_domain(nH2) result(code)
+      real*8, intent(in) :: nH2
+      if (.not. ordinary_real(nH2)) then
+         code = H3P_DOMAIN_NONFINITE
+      else if (nH2 .lt. n_tab_lo) then
+         code = H3P_DOMAIN_BELOW
+      else if (nH2 .gt. n_tab_hi) then
+         code = H3P_DOMAIN_ABOVE
+      else
+         code = H3P_DOMAIN_INSIDE
+      endif
+      end function h3p_collider_domain
 
       ! ------------------------------------------------------------------ !
 
@@ -176,16 +279,27 @@
       real*8, intent(in) :: T
       real*8 :: tt, lnE, t_ramp, f
       integer :: k
+      ! THE CLAMP, which a nonfinite temperature also has to land on: the
+      ! .not.(x .gt. y) form sends a NaN to the lower end of the fit.
       tt = T
       if (.not. (tt .gt. T_fit_lo)) then            ! NaN-safe lower clamp
          tt = T_fit_lo
-!$omp atomic update
-         h3p_n_below_fit_T = h3p_n_below_fit_T + 1
       else if (tt .gt. T_fit_hi) then               ! frozen high-T tail
          tt = T_fit_hi
-!$omp atomic update
-         h3p_n_above_fit_T = h3p_n_above_fit_T + 1
       endif
+      ! THE RECORD, which is interval membership and not the clamp: T = 30 K
+      ! and T = 5000 K are on the fit and count as nothing.
+      select case (h3p_fit_temperature_domain(T))
+      case (H3P_DOMAIN_BELOW)
+!$omp atomic update
+         h3p_evaluations_below_fit_T = h3p_evaluations_below_fit_T + 1
+      case (H3P_DOMAIN_ABOVE)
+!$omp atomic update
+         h3p_evaluations_above_fit_T = h3p_evaluations_above_fit_T + 1
+      case (H3P_DOMAIN_NONFINITE)
+!$omp atomic update
+         h3p_evaluations_nonfinite_T = h3p_evaluations_nonfinite_T + 1
+      end select
       ! The segment whose published range contains tt; at a join the upper
       ! segment owns the point (see JOIN RULE).
       k = 1
@@ -237,22 +351,46 @@
       ! the collisional limit of the module header is used, so s and the
       ! cooling vanish linearly with n_H2; above the highest tabulated one the
       ! table edge is held; outside 300-5000 K the nearest tabulated row is
-      ! used.  Each of those three is recorded.
+      ! used.  Each of those three is recorded, and so is a nonfinite
+      ! argument.
       double precision function h3p_nonlte_factor(T, nH2) result(s)
       real*8, intent(in) :: T, nH2
       real*8 :: tt, nn, ln
-      tt = T
-      if (.not. (tt .gt. sT(1)) .or. tt .gt. sT(nTs)) then
+      ! The records first, taken on the arguments as given: 300 K and
+      ! 5000 K are tabulated rows and 1e6 and 1e14 cm^-3 tabulated columns,
+      ! so an argument sitting on one of them counts as nothing.
+      select case (h3p_nonlte_row_temperature_domain(T))
+      case (H3P_DOMAIN_BELOW, H3P_DOMAIN_ABOVE)
 !$omp atomic update
-         h3p_n_outside_nonlte_T = h3p_n_outside_nonlte_T + 1
-      endif
+         h3p_evaluations_outside_nonlte_T =                               &
+              h3p_evaluations_outside_nonlte_T + 1
+      case (H3P_DOMAIN_NONFINITE)
+!$omp atomic update
+         h3p_evaluations_nonfinite_T = h3p_evaluations_nonfinite_T + 1
+      end select
+      select case (h3p_collider_domain(nH2))
+      case (H3P_DOMAIN_BELOW)
+!$omp atomic update
+         h3p_evaluations_below_collider =                                 &
+              h3p_evaluations_below_collider + 1
+      case (H3P_DOMAIN_ABOVE)
+!$omp atomic update
+         h3p_evaluations_above_collider =                                 &
+              h3p_evaluations_above_collider + 1
+      case (H3P_DOMAIN_NONFINITE)
+!$omp atomic update
+         h3p_evaluations_nonfinite_collider =                             &
+              h3p_evaluations_nonfinite_collider + 1
+      end select
+      ! The evaluation, with the clamps as they are: a nonfinite argument
+      ! lands on the low end of the rows and on a zero collider density,
+      ! where the collisional limit returns zero.
+      tt = T
       if (.not. (tt .gt. sT(1))) tt = sT(1)         ! NaN-safe
       if (tt .gt. sT(nTs))       tt = sT(nTs)
       nn = nH2
       if (.not. (nn .gt. 0.0d0)) nn = 0.0d0         ! NaN-safe
       if (nn .lt. n_tab_lo) then
-!$omp atomic update
-         h3p_n_below_collider = h3p_n_below_collider + 1
          s = s_table(tt, sLogN(1))*(nn/n_tab_lo)    ! collisional limit
          return
       endif

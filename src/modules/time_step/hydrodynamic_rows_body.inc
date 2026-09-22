@@ -1461,17 +1461,23 @@
       u = real(u8, fv)
       n_scaled = 0;  n_hlle = 0;  n_llf = 0
 
+      ! WHICH SCHEME ONE ASSEMBLY IS BUILT WITH is stated in exactly one
+      ! place, assembled_reconstruction_is_plm, and the terms the row is read
+      ! against (equilibrium_pressure_force_of_state and
+      ! momentum_row_terms_of_state, called by assemble_residual after a row
+      ! of this text) select on that same rule.  They disagreed while this
+      ! text read lambda and they read the flag pair.
       if (.not. recon_lambda_on) then
-         call flux_difference_and_source_of_scheme_fv(use_plm,u,WL,WR,   &
+         call flux_difference_and_source_of_scheme_fv(                   &
+                 assembled_reconstruction_is_plm(),u,WL,WR,              &
                  dF,S,ff,fpr,fqu,fqd,n_scaled,n_hlle,n_llf)
       else
          lam = real(recon_lambda, fv)
          om  = 1.0_fv - lam
-         if (lam .le. 0.0_fv) then
-            call flux_difference_and_source_of_scheme_fv(.true.,u,WL,WR, &
-                    dF,S,ff,fpr,fqu,fqd,n_scaled,n_hlle,n_llf)
-         else if (lam .ge. 1.0_fv) then
-            call flux_difference_and_source_of_scheme_fv(.false.,u,WL,WR,&
+         if (recon_lambda .le. 0.0d0 .or. recon_lambda .ge. 1.0d0) then
+            ! An endpoint is a single scheme, whichever the flag pair holds.
+            call flux_difference_and_source_of_scheme_fv(                &
+                    assembled_reconstruction_is_plm(),u,WL,WR,           &
                     dF,S,ff,fpr,fqu,fqd,n_scaled,n_hlle,n_llf)
          else
             call flux_difference_and_source_of_scheme_fv(.true.,u,WL,WR, &

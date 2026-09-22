@@ -1513,7 +1513,68 @@ end of the series:
 The atomic three-unknown solve converges and certifies
 (`wasp_full_newton`: info 0, `||R||` 4.3e-9, log Mdot 13.30).
 
-No solve carrying a species row certifies. The two candidates:
+~~No solve carrying a species row certifies.~~ **True on 2026-09-10, when this
+section was written, and false today; corrected 2026-09-22, and the rest of
+this section is left as it stood.** Three things have to be said in its place,
+and the first is that THIS SECTION DESCRIBES THE COUPLED ROUTE ONLY. The
+production route is no longer that one: `Coupled carrier solve` defaults to
+False and the outer loop alternates a three-unknown hydrodynamic solve with a
+composition relaxation, adopted on 2026-09-11 because it reaches a strictly
+lower joint residual in no more wall time on both fixtures
+(`docs/PLAN_20260911_partitioned_solver.md`,
+`docs/Update_EXHALE_stage2.md` section 8).
+
+(i) **Species-row solves certify on that alternated route.** The HD 209458 b
+element reload certifies at pass 12 once the continuity row is judged at
+`max(3e-12, min(1, 10 * floor(j)))` with the cell's own measured rounding floor
+(item P16, 2026-09-11); two molecular alternations and an atomic wind carrying
+the three ionization stages certify from 2026-09-18 (items L34b, L36e); and
+seven LHS 1140 b states carrying `He_diffusion: True`, and therefore an element
+row, were certified on 2026-09-21 by a continuation in XUV, the bottom rung
+being `atomic_scalar_gj1132x0.01_kzz1e9/HeH2.13` at `||R|| = 3.154e-07` with
+the elemental transport He/H partition at 8.011E-06 against 1.0E-05 (READ, that
+case's `state_index.json`; `docs/lhs1140b_xuv_continuation_20260921.md`
+section 6.1). The path was the instrument: the same case from its own stored
+state does not get there.
+
+(ii) **The linear-solve verdict below is a property of the COUPLED route and
+not of the solver.** MEASURED 2026-09-21 on the LHS 1140 b atomic checkpoint,
+default three-unknown route: the Krylov cycle reaches its tolerance in one to
+four products, the JFNK returns `info = 0` at iteration 26 in 55 seconds with
+25 accepted steps at full step length and no unknown ever held at a bound, and
+the trust-region diagnostics, run as a named variant with its own control, give
+a Ritz spectrum ratio of 3.96E+03 with nothing below 1E-4, a band omitting 0.26
+per cent of the action, a subspace scan identical at 40, 80, 160 and 320
+products, and observed reduction equal to the prediction to 1.000 at eight
+consecutive iterations (`docs/lhs1140b_p2_base_stage_cd_20260921.md`). With the
+species rows registered, on `molecular_scalar_gj1132_kzz1e9/HeH0.083` with
+`Coupled carrier solve: True`, every one of those four inverts: the cycle used
+its whole 40-product subspace at each of 100 outer iterations and returned
+5.836E-01 to 8.782E-01 against the 1.00E-01 asked for, the preconditioned
+operator carries a ratio of 2.6E+04 to 1.4E+05 with its smallest value at
+3.0E-04 to 5.8E-04, the smallest Ritz vector carries 0.96 of itself in the
+carrier rows of cells 1 and 2, and on those directions the band misses 2.33 to
+2.39 of the WHOLE action against 0.07 to 0.7 per cent on the Arnoldi directions
+of the right-hand side. That solve stagnated (`info = 2`) after 41
+trust-region iterations and 6632 residual evaluations and handed back the
+iterate it had started from
+(`docs/lhs1140b_coupled_trial_20260921.md` sections 1 and 8.3). **So giving the
+solver the species rows is not the remedy for that case as it stands.**
+
+(iii) **What refuses on the alternated route is the alternation itself.** On
+the atomic checkpoint one outer pass certifies every hydrodynamic row and takes
+the base face mass flux from 82.1824 to 1.0000 wind means; what then stands is
+the elemental transport He/H partition in the wind, 7.218E-05 against 1.0E-05
+at cell 295, after which the composition update lifts the energy row to
+6.512E-06 and the second hydrodynamic solve stagnates with predicted and
+observed reductions of 1E-21 to 1E-24 against a merit of 3.58E-09, the
+arithmetic floor. Two by-products of the same measurement settle assumptions
+this section rests on: `Drow` and `D` are bitwise one array on that route, and
+`F` and `F_jac` are bitwise one array at the iterate, so the merit, the norm
+the Krylov tolerance is stated in and the fixed scale of the stagnation counter
+are one norm, and the model base point equals the state.
+
+The two candidates of 2026-09-10, on the coupled route:
 
 | reload | `\|\|R\|\|` handed back | binding row in the gated window | verdict |
 |---|---|---|---|
@@ -1573,11 +1634,28 @@ gating, because the same balance is a cancellation of advective terms in the
 wind and of eddy and settling terms in the layer and reads 2 to 11 times
 smaller in the wind on the same state. The band 1.10 to 1.20 is reported and
 does not gate: it holds the candidates' binding cell at r = 1.153, where the
-element operator's own discretization error is 4.6e-4, so a 1e-5 gate there
+element operator's own discretization error is 4.6e-4, ~~so a 1e-5 gate there
 would ask the residual to fall 1.5 decades below the error of its own
-discrete equation. One reduction, `certification_species_row_gate`, decides a
+discrete equation~~. One reduction, `certification_species_row_gate`, decides a
 species row over the gated cells; no gated cell means refused, never a
 satisfied row.
+
+**[the struck inference is WITHDRAWN; recorded here 2026-09-22, having been
+withdrawn on 2026-09-11 in `docs/code_status_20260910.md` section 3.3 and
+`docs/ISSUES_20260909.md` 3.1 (e) and left standing here.]** The algebraic
+residual of the discrete equations and the truncation error of those equations
+against the continuum are different quantities, and the first is not bounded
+below by the second (review section 3.1 of
+`docs/solver_approach_analysis_20260910_review.md`); an algebraic error well
+below the discretization error is what makes a grid-convergence study readable
+at all. MEASURED 2026-09-11 on this same 500-cell grid: the existing H2
+transport routine took the wind H2 row from 7.380744e-2 to 2.449021e-13 on a
+held background (`docs/solver_partition_experiment_20260911.md` section 4),
+nine decades below the 4.6e-4 the struck clause treated as a floor. Decision
+22 (a) stands unchanged in every value; only its justification changes, from
+"the discretization forbids it" to "no state this implementation produces
+reaches it there, and the rows below 1.20 are a cancellation of terms whose
+conservation is itself measured at 2e-3 in the wind and 9.8 in the layer".
 
 What is left of the anchoring: the element flux is conserved to 2.6e-2 in
 the wind and not at all in the layer (a factor 39), and the operator's

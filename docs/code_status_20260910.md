@@ -65,33 +65,102 @@ transit depths, per the earlier record), and its three-unknown stationary
 solve is the one route in the code that converges and CERTIFIES. **The
 molecular line, H2, H2+, H3+, HeH+, the oxygen cycle, the molecular carriers
 and the transported ionization state, is implemented, regression-guarded and
-only partly validated.** **No stationary solve that carries a species row,
+only partly validated.** ~~**No stationary solve that carries a species row,
 an element row from `He_diffusion` or a carrier row from the molecular
-carriers, converges on any route**, and both species-row certification
+carriers, converges on any route**~~ (true when written on 2026-09-10 and
+**SUPERSEDED**, in three steps; the corrected statement is the dated
+paragraph below), and both species-row certification
 tolerances were anchored by measurement only on 2026-09-10 (decision 22 a,
 item N30): 1e-5 gating at r >= 1.20, the rows below reported. The two
 candidate states stand at 2.9e-4 (atomic element reload, wind) and 7.3e-2
 (carrier reload) against that gate, so neither is certified. The problems begin
 exactly there (section 4).
 
+**The headline verdict corrected, 2026-09-22.** The struck sentence was true
+of the code on 2026-09-10 and is false today. It was overturned for the
+ELEMENT ROW first on 2026-09-11, when the continuity row's tolerance became
+`max(3e-12, min(1, 10 * floor(j)))` and the HD 209458 b element reload
+CERTIFIED at pass 12 on the partitioned route (item P16, section 3.3), and
+again on 2026-09-18 for two molecular alternations and for an atomic wind
+carrying the three ionization stages (items L34b, L36e). The measurement
+campaign of 2026-09-21 adds the case this document's section 4 was ordered
+around: `LHS1140b/models/atomic_scalar_gj1132x0.01_kzz1e9/HeH2.13`, whose
+`input.inp` carries `He_diffusion: True` and whose system therefore carries
+an element row, was SOLVED on the stationary alternation route
+(generation `g0003_20260921T111246Z_dc5e1c32`, `iteration_phase: stationary
+alternation`, ending class `solved`, `info = 0`, `||R|| = 3.154e-07`) and
+CERTIFIED by the evaluation of it (generation
+`g0004_20260921T111247Z_0aebdf49`, all six active equations within tolerance,
+the elemental transport He/H partition at 8.011E-06 against 1.0E-05;
+READ, that case's `state_index.json`). **How it was reached is the result, not
+the solver**: a continuation in XUV, six rungs from the certified x0.10 state
+of the same composition down to x0.01, every rung certified with no refusal
+and no halved step (`docs/lhs1140b_xuv_continuation_20260921.md` section 6.1);
+the same case from its own stored state does not get there. Seven such states
+were published into the catalog on 2026-09-21 (`LHS1140b/MODELS.md` section
+3.1). **For the CARRIER ROW of the molecular carriers the struck sentence
+still holds on the LHS 1140 b molecular cases**: phase 7 ran
+`molecular_scalar_gj1132_kzz1e9/HeH0.083` with `Coupled carrier solve: True`
+and no pass certified, the first solve stagnating (`info = 2`) after 41
+trust-region iterations and 6632 residual evaluations and handing back the
+iterate it started from, with the carrier balance H2 at 8.150E-04 and the
+elemental transport He/H at 2.503E-04, the two entries the entry state
+already carried (`docs/lhs1140b_coupled_trial_20260921.md` section 1).
+
+**Added 2026-09-21, and it narrows section 4 item 1 for the LHS 1140 b cases.**
+A measurement campaign carried out under `docs/PLAN_20260920_rev9.md`
+(phases 1 to 5 and 8; the records are the `docs/lhs1140b_*_20260921.md` set)
+established, on the checkpoints of the three states whose hydrodynamic Newton
+makes no progress: the residual is a state function, bitwise, at every thread
+configuration and in a fresh process; the evaluation routes agree term for
+term, with two named exceptions; the discrete ledger closes exactly and the
+energy-plus-potential identity to 23 units in the last place; the directional
+derivative is resolved, so a difference at the production arc measures the
+operator; and the imbalance of the STORED states, written under the
+superseded boundary model, is in cells 1 and 2 at the base, where 98.8 per
+cent of the mass entering the base face does not reach the wind. **The current
+operator resolves that base in one outer pass of 55 seconds** (`info = 0`,
+every hydrodynamic row certified), so the base was far from its fixed point
+and not incompatible with it; what then refuses the atomic case is the
+elemental transport He/H row in the wind and an alternation between the
+composition update and the energy row, the same question the molecular cases
+raise. A column that is bitwise a CERTIFIED atomic wind refuses in the
+molecular configuration with nothing converted, because the molecular base
+carries a smaller `ntot_bc`; ~~whether the current operator resolves that too is
+being measured~~ **answered the same day**: the base reservoir probe held the
+interior of that checkpoint and varied only what the reservoir states, and over
+a 14-point scan in `ntot_bc` no point of the family brings any row into
+tolerance, the minima being 5.28E-01 and 1.04E-01 (mass, cells 1 and 2) and
+4.75E-01 and 6.27E-01 (energy) at four different points, all at least five
+decades above tolerance, so that base too is far from a fixed point the
+reservoir does not determine, and the instrument is a continuation rather than
+a boundary repair (`docs/lhs1140b_base_reservoir_probe_20260921.md`).
+`PLAN_20260920_rev9.md` section 17 is the account, and its section 17.5
+(2026-09-22) is the closing synthesis: every phase of its section 15 is done.
+
 ## 1. The tree
 
-* Branch `v1.00`, HEAD `35d9dd5` ("Heating and cooling assembled from the
-  post-sweep composition"). **367 paths are uncommitted** (274 modified, 88
-  untracked, 5 deleted; MEASURED `git status --porcelain`); nothing since HEAD
-  has been committed or pushed. `backup/` (regression harness, goldens) is not
-  in the git remote.
+* Branch `v1.00`, HEAD `93eed86` ("Base ghost composition fixed point",
+  2026-09-20). **82 paths are uncommitted** (33 modified, 49 untracked;
+  MEASURED `git status --porcelain` 2026-09-22, before the LHS 1140 b campaign
+  of sections 15 and 16 of the update log was committed). `backup/`
+  (regression harness, goldens) is not in the git remote.
+  ~~HEAD `35d9dd5` ("Heating and cooling assembled from the post-sweep
+  composition"), 367 paths uncommitted~~ was the 2026-09-10 reading, fourteen
+  commits back.
 * Toolchain: plain `make` builds with the conda-forge gfortran 16.2.0 on PATH
   (MEASURED, `/opt/miniconda3/bin/gfortran`) and the OpenBLAS of the same
   prefix (rpath'd); the compiler's path and version are part of the rebuild
   stamp. `make FC=ifx OBJDIR=build_ifx EXE=EXHALE_ifx.x` builds with ifx
   2026.1 + MKL. Do not prepend `/usr/bin` to PATH.
-* Regression: `backup/regression/run_check.sh check`, **sixteen default cases**
-  (`wasp_full`, `wasp_he23off`, `wasp_full_newton`, `mol_base_handoff`,
+* Regression: `backup/regression/run_check.sh check`, **seventeen default
+  cases** (`wasp_full`, `wasp_he23off`, `wasp_full_newton`, `mol_base_handoff`,
   `mol_metals`, `mol_lyman_werner`, `mol_diffusion`, `mol_ir_bands`,
   `mol_sec_ion`, `mol_carrier`, `lower_profile`, `hydrostatic_column`,
-  `oxygen_chemistry`, `hp_zero_seed`, `hp_trace_seed`, `hp_front`; READ,
-  `DEFAULT_CASES`), plus the `roundtrip` golden. Bitwise first, else within
+  `oxygen_chemistry`, `hp_zero_seed`, `hp_trace_seed`, `hp_front`,
+  `iontrans_metals`; READ, `DEFAULT_CASES` at `run_check.sh:231`, 2026-09-22;
+  `iontrans_metals` joined after the sixteen this line first listed), plus the
+  `roundtrip` golden, so a full matrix runs eighteen cases. Bitwise first, else within
   `REGRESSION_REL_TOL` (1e-3). ~~**The goldens are current**~~: fifteen cases
   re-snapshotted at the Stage D gate and `roundtrip` with them (MEASURED file
   times 2026-09-10 00:30 and 00:15; previous set
@@ -331,6 +400,22 @@ at 2e-3 in the wind and 9.8 in the layer".]
 * **[added 2026-09-18]** **79 archived atomic catalog states and the seven
   low-XUV Roe cases**, the first reproducing their own claim in place with no
   refusal, the second certifying at outer pass 1 each (READ, item L34a).
+* **[added 2026-09-22]** **Seven LHS 1140 b states reached by a continuation
+  in XUV**, published into the catalog on 2026-09-21 (`LHS1140b/MODELS.md`
+  section 3.1). Six are the He/H = 2.13 ladder, from the certified x0.10 state
+  down to x0.01 at 17 to 19 outer passes a rung, every rung `solved` with
+  `info = 0` and CERTIFIED, no refusal and no halved step; the seventh is
+  He/H = 9.7 at x0.07. Each carries `He_diffusion: True` and therefore an
+  ELEMENT ROW, and the bottom rung
+  `atomic_scalar_gj1132x0.01_kzz1e9/HeH2.13` is the case this catalog had
+  carried with no certified generation at all: solved as
+  `g0003_20260921T111246Z_dc5e1c32` (`||R|| = 3.154e-07`) and certified by the
+  evaluation `g0004_20260921T111247Z_0aebdf49`, elemental transport He/H
+  8.011E-06 against 1.0E-05 (READ, that case's `state_index.json`;
+  `docs/lhs1140b_xuv_continuation_20260921.md` section 6.1). The route is the
+  result: the same case from its own stored state does not certify, and
+  0.07 is the lowest certified XUV on the He/H = 9.7 branch with this grid,
+  boundary law and numerical method.
 
 **What does not certify:**
 
@@ -341,7 +426,30 @@ at 2e-3 in the wind and 9.8 in the layer".]
 * **The molecular carrier reload** (the hot-Uranus column with H2 transported).
   Handed back at `||R||` 0.25; the H2 row of the binding cell reads 7.3e-2
   against 1e-5 (LOGGED, N30). NOT certified.
-* **No other configuration with a species row** has converged on any route.
+* ~~**No other configuration with a species row** has converged on any route.~~
+  **SUPERSEDED 2026-09-22**: see the four entries above, the last of which is
+  the XUV continuation. What stands in its place, and is the carrier-row
+  statement, is the bullet below.
+* **[added 2026-09-22]** **The four LHS 1140 b molecular models whose
+  chemistry rows refuse** still do not certify on any route measured. Phase 6
+  of the campaign advanced six outer passes on each and returned four verdicts:
+  one case approaching a joint fixed point and stopped by its budget
+  (`kzz1e9/HeH0.55`, joint residual 4.63E+05 to 9.72E+01 in six passes, still
+  97 and 74 times tolerance at the ending), and three failing in three
+  different ways (`docs/lhs1140b_alternation_audit_20260921.md`). Phase 7 then
+  gave the solver the species rows on `kzz1e9/HeH0.083` with
+  `Coupled carrier solve: True`: the first solve spent 41 trust-region
+  iterations and 6632 residual evaluations, STAGNATED (`info = 2`) and handed
+  back the iterate it had started from, so the pass-1 certificate reads the
+  entry values to four digits (carrier balance H2 8.150E-04, elemental
+  transport He/H 2.503E-04) where the control reached exactly those two
+  numbers with `info = 0` in 8.6 s. On that route the Krylov cycle used its
+  whole 40-product subspace at every one of the 100 outer iterations and
+  returned 5.836E-01 to 8.782E-01 against the 1.00E-01 asked for, and the
+  banded preconditioner misses 2.33 to 2.39 of the WHOLE action on the
+  smallest Ritz direction (`docs/lhs1140b_coupled_trial_20260921.md` sections
+  1 and 8.3). **The coupled route is not the remedy for this case as it
+  stands.**
 
 **What limits them**, in one sentence each, all MEASURED by the items named:
 the linear solve, which cannot reach 0.1 of its right-hand side in 40 Krylov
@@ -485,6 +593,35 @@ The full account of each, with its evidence and its next item, is
    whose production and loss cancel to three decades the net is the size of the
    residual. That is plan item D3 and it is an acceptance question, not a
    solver one.
+   **[added 2026-09-22, and it reorders what is left of this item]** The
+   measurement campaign of `docs/PLAN_20260920_rev9.md` section 15, all ten
+   phases DONE on 2026-09-21, splits this item in two along the row it carries.
+   (d) **The ELEMENT ROW is off this list for the cases it was written about.**
+   `atomic_scalar_gj1132x0.01_kzz1e9/HeH2.13`, which carries
+   `He_diffusion: True`, is solved and certified (generations
+   `g0003_20260921T111246Z_dc5e1c32` and `g0004_20260921T111247Z_0aebdf49`,
+   section 3.3), reached by the XUV continuation and not by a better solver.
+   And the obstruction that was the premise of this ordering is named: on the
+   atomic checkpoint the current operator certifies every hydrodynamic row in
+   ONE outer pass of 55 seconds, `info = 0`, taking the base face mass flux
+   from 82.1824 to 1.0000 wind means, and what refuses afterward is the
+   elemental transport He/H partition in the WIND, 7.218E-05 against 1.0E-05
+   at cell 295, with the composition update then lifting the energy row to
+   6.512E-06 and the second hydrodynamic solve stagnating at the arithmetic
+   floor (`docs/lhs1140b_p2_base_stage_cd_20260921.md`). **So what is left of
+   this item is the ALTERNATION between the composition and the
+   hydrodynamics, in the wind, and it is neither the linear solve nor the
+   base.** (e) **The CARRIER ROW is where the item still stands**, on the four
+   molecular models (section 3.3, and phase 7's stagnating coupled solve).
+   Three things that had been candidates are refuted as causes by the same
+   campaign: the arithmetic (the residual is a state function bitwise, the
+   evaluation routes agree term for term, the discrete ledger closes exactly,
+   and the directional derivative is resolved in both the probe arc and the
+   closure count, phases 2 to 5), the base condition on either side (phase 9
+   and the base reservoir probe, section 0), and the seed of the
+   atomic-to-molecular conversion (phase 8: converting NOTHING still refuses in
+   the molecular configuration while the same column certifies in the atomic
+   one, `docs/lhs1140b_m2_conversion_audit_20260921.md`).
 2. **The advection post-process on a state that is not stationary** (ISSUES
    3.2). No matrix case has a stationary mass flux by the cell-to-cell
    measure: `rho v r^2` over outflowing cells spans 1.27x its median in

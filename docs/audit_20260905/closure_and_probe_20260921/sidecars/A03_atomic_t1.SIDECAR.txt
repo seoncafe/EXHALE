@@ -1,0 +1,26 @@
+invocation        A03_atomic_t1
+mode              R (current operator on a stored generation; no physical step taken, nothing published)
+case              atomic
+generation        g0002_20260919T004843Z_f7485b14
+stage             EXHALE_CLOSURE_PROBE=1
+run directory     /tmp/claude-1000/-nfs-mocafe-kiseon-RT-Codes-ExoAtmosphere/59a81fec-9ef0-4992-9a57-6494f229e6bb/scratchpad/closure_probe/runs/A03_atomic_t1/models/atomic/work
+executable        /tmp/claude-1000/-nfs-mocafe-kiseon-RT-Codes-ExoAtmosphere/59a81fec-9ef0-4992-9a57-6494f229e6bb/scratchpad/closure_probe/runs/A03_atomic_t1/models/atomic/work/EXHALE.x  md5 55e3bf7bb89166072ff867fc7b2a24db
+environment in force (env -i, so this is the complete set):
+  PATH=/usr/bin:/bin  HOME=/home/kiseon
+  OMP_NUM_THREADS=1  OPENBLAS_NUM_THREADS=1  OMP_DYNAMIC=FALSE  OMP_MAX_ACTIVE_LEVELS=1
+  EXHALE_CLOSURE_PROBE=1  EXHALE_RESID_QUAD=0
+input state (md5 MEASURED):
+  e43c6697786711fb916d3b8eb3c113aa  input.inp
+  25e11562ec3cd1f6d204bf36f8e503eb  output/Hydro_ioniz_IC.txt
+  78ac49d7e1ce90a3a4f271785400efda  output/Ion_species_IC.txt
+started           2026-09-21T04:33:50Z
+ended             2026-09-21T04:47:03Z
+wall seconds      793.33
+exit status       0
+evaluation stage reached (the block the stage prints):
+  the grid completed
+files this invocation left (size, path, md5 MEASURED):
+  304774  /tmp/claude-1000/-nfs-mocafe-kiseon-RT-Codes-ExoAtmosphere/59a81fec-9ef0-4992-9a57-6494f229e6bb/scratchpad/closure_probe/runs/A03_atomic_t1/stdout.log  5ad357bd0af9bf326da226f7bfc7945c  rows=2110
+  0  /tmp/claude-1000/-nfs-mocafe-kiseon-RT-Codes-ExoAtmosphere/59a81fec-9ef0-4992-9a57-6494f229e6bb/scratchpad/closure_probe/runs/A03_atomic_t1/stderr.log  d41d8cd98f00b204e9800998ecf8427e  rows=0
+  93749  /tmp/claude-1000/-nfs-mocafe-kiseon-RT-Codes-ExoAtmosphere/59a81fec-9ef0-4992-9a57-6494f229e6bb/scratchpad/closure_probe/runs/A03_atomic_t1/models/atomic/work/output/Hydro_ioniz_IC.txt  25e11562ec3cd1f6d204bf36f8e503eb  rows=521
+  447309  /tmp/claude-1000/-nfs-mocafe-kiseon-RT-Codes-ExoAtmosphere/59a81fec-9ef0-4992-9a57-6494f229e6bb/scratchpad/closure_probe/runs/A03_atomic_t1/models/atomic/work/output/Ion_species_IC.txt  78ac49d7e1ce90a3a4f271785400efda  rows=517

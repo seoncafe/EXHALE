@@ -574,7 +574,7 @@
       call residual_step_detector_rows(nfail)
       call extended_precision_rows(nfail)
       call well_balanced_operator_rows(nfail)
-      call generic_arm_face_departure_rows(nfail)
+      call face_departures_of_the_generic_rows(nfail)
 
       ! ---- the restart of the trust-region state (N21) ----
       call restart_trigger_rows(nfail)
@@ -3431,7 +3431,7 @@
 
       ! ------------------------------------------------------!
 
-      subroutine generic_arm_face_departure_rows(nf)
+      subroutine face_departures_of_the_generic_rows(nf)
       ! WHAT THE KIND-GENERIC ROWS HAND BACK BESIDE THE ROW (item P15).
       !
       ! Under the well-balanced key the momentum row's pressure-gradient
@@ -3482,8 +3482,12 @@
       real*8  :: d_pg, d_sc, d_row, ref_pg, ref_sc, ref_row, row_q
       real*8  :: x_dr, x_rp, x_rm, x_dAp, x_dAm, x_dV
       integer :: xj, xs, xa, x_status
+      integer :: xe, xm
+      logical :: plm_here
+      real*8  :: sv_lam
       character(len=8)  :: sch
       character(len=10) :: kind_name
+      character(len=12) :: flag_name
       integer :: sv_N, sv_wmode
       logical :: sv_plm, sv_weno, sv_lam_on, sv_wb, sv_visc, sv_cond
       real*8  :: sv_mu0
@@ -3658,6 +3662,101 @@
          enddo
       enddo
 
+      ! ---- THE SCHEME A GENERIC ROW IS READ AGAINST ----
+      ! With the continuation armed at an endpoint the assembly selects the
+      ! scheme from lambda and leaves the flag pair alone, while the terms
+      ! the row is read against, the equilibrium pressure force and the
+      ! three momentum terms, are evaluated afterwards in assemble_residual.
+      ! The guard accepts any internally consistent flag pair, so a caller
+      ! whose flags name the OTHER endpoint once scaled a row of one scheme
+      ! by the terms of the other.  One rule now answers which scheme a row
+      ! is built with (assembled_reconstruction_is_plm), and these rows
+      ! state that the terms follow the endpoint and not the flags: the
+      ! reference is the production row of that endpoint, and the caller's
+      ! flags are set both ways against it.
+      sv_lam = recon_lambda
+      do xe = 1, 2
+         recon_lambda_on = .true.
+         if (xe .eq. 1) then
+            recon_lambda = 0.0d0;  sch = '[lam=0]'
+         else
+            recon_lambda = 1.0d0;  sch = '[lam=1]'
+         endif
+
+         ! ---- the production row of that endpoint: the reference ----
+         x_status = c_unsetenv('EXHALE_RESID_QUAD'//c_null_char)
+         call set_ioniz_eq_sweep_state_kind(ieq_state_marching)
+         call assemble_residual(uB, np1, zz, zz, Rp)
+         ref_pg = 0.0d0;  ref_sc = 0.0d0
+         do xj = 1, xn
+            pg_ref(xj) = momentum_pressure_gradient(xj)
+            sc_ref(xj) = residual_row_scale(2, xj, uB)
+            ref_pg = max(ref_pg, abs(pg_ref(xj)))
+            ref_sc = max(ref_sc, abs(sc_ref(xj)))
+         enddo
+
+         do xm = 1, 2
+            plm_here = (xe .eq. 1)
+            if (xm .eq. 2) plm_here = .not. plm_here
+            if (plm_here) then
+               rec_method = 'PLM';   use_plm = .true.;  use_weno3 = .false.
+            else
+               rec_method = 'WENO3'; use_plm = .false.; use_weno3 = .true.
+            endif
+            if (xm .eq. 1) then
+               flag_name = '[flags=end]'
+            else
+               flag_name = '[flags=oth]'
+            endif
+
+            ! a right-hand side on the OTHER state, so that a term left
+            ! over from it would show
+            x_status = c_unsetenv('EXHALE_RESID_QUAD'//c_null_char)
+            call set_ioniz_eq_sweep_state_kind(ieq_state_marching)
+            call assemble_residual(uA, np1, zz, zz, Rp)
+
+            x_status = c_setenv('EXHALE_RESID_QUAD'//c_null_char,         &
+                                '2'//c_null_char, 1)
+            call set_ioniz_eq_sweep_state_kind(ieq_state_steady_iterate)
+            call assemble_residual(uB, np1, zz, zz, Rq)
+            x_status = c_unsetenv('EXHALE_RESID_QUAD'//c_null_char)
+            call set_ioniz_eq_sweep_state_kind(ieq_state_marching)
+
+            d_pg = 0.0d0;  d_sc = 0.0d0
+            do xj = 1, xn
+               d_pg = max(d_pg,                                          &
+                          abs(momentum_pressure_gradient(xj) - pg_ref(xj)))
+               d_sc = max(d_sc,                                          &
+                          abs(residual_row_scale(2, xj, uB) - sc_ref(xj)))
+            enddo
+            if (ref_pg .gt. 0.0d0) d_pg = d_pg/ref_pg
+            if (ref_sc .gt. 0.0d0) d_sc = d_sc/ref_sc
+
+            call rel_row('generic_rows_endpoint_pressure_gradient_is_'//  &
+                 'the_endpoint_term'//trim(sch)//trim(flag_name),          &
+                 d_pg, 0.0d0, 0.0d0, nf)
+            call rel_row('generic_rows_endpoint_momentum_scale_is_the_'// &
+                 'endpoint_scale'//trim(sch)//trim(flag_name),             &
+                 d_sc, 0.0d0, 0.0d0, nf)
+
+            ! the caller's own selection is given back untouched
+            if (plm_here) then
+               call rel_row('generic_rows_endpoint_restores_the_'//       &
+                    'caller_selection'//trim(sch)//trim(flag_name),        &
+                    merge(0.0d0, 1.0d0,                                   &
+                          use_plm .and. (.not. use_weno3) .and.           &
+                          rec_method .eq. 'PLM'), 0.0d0, 0.0d0, nf)
+            else
+               call rel_row('generic_rows_endpoint_restores_the_'//       &
+                    'caller_selection'//trim(sch)//trim(flag_name),        &
+                    merge(0.0d0, 1.0d0,                                   &
+                          use_weno3 .and. (.not. use_plm) .and.           &
+                          rec_method .eq. 'WENO3'), 0.0d0, 0.0d0, nf)
+            endif
+         enddo
+      enddo
+      recon_lambda = sv_lam
+
       ! ---- put the globals back ----
       x_status = c_unsetenv('EXHALE_RESID_QUAD'//c_null_char)
       call set_ioniz_eq_sweep_state_kind(ieq_state_marching)
@@ -3680,7 +3779,7 @@
       rec_method = sv_rec;  flux = sv_flux
       base_face_W = sv_bfW;  base_face_lower_W = sv_bflW
 
-      end subroutine generic_arm_face_departure_rows
+      end subroutine face_departures_of_the_generic_rows
 
       ! ------------------------------------------------------!
 

@@ -1,0 +1,15 @@
+== checkpoint g0002 (entry) ==
+wind-window median of r^2*face_mass (lower faces, r>=1.2) = 5.147205E-09
+  row j=0 phys=0 r=1.000000 : r^2*Phi_lo=-2.879546E-04 (-55943.8734 x wind)  R_mass=1.491721E+00  R_mom=-9.944178E-01  R_ene=1.009178E+00
+  row j=1 phys=1 r=1.000193 : r^2*Phi_lo=4.230098E-07 (82.1824 x wind)  R_mass=-8.143560E-04  R_mom=3.231763E-03  R_ene=-6.551809E-05
+      dF_mass=-8.143560E-04 dF_energy=-6.116629E-05 grav_work=3.653793E-05 heat=4.366900E-06 cool=1.510249E-08
+  row j=2 phys=1 r=1.000387 : r^2*Phi_lo=2.655186E-07 (51.5850 x wind)  R_mass=-1.345809E-03  R_mom=-9.187373E-04  R_ene=-9.132226E-04
+      dF_mass=-1.345809E-03 dF_energy=-9.087079E-04 grav_work=1.435326E-05 heat=4.530452E-06 cool=1.567824E-08
+  row j=3 phys=1 r=1.000580 : r^2*Phi_lo=5.147205E-09 (1.0000 x wind)  R_mass=-1.110857E-13  R_mom=3.835127E-13  R_ene=-8.395330E-14
+      dF_mass=-1.110857E-13 dF_energy=4.527425E-06 grav_work=5.454344E-07 heat=4.543663E-06 cool=1.623801E-08
+  row j=4 phys=1 r=1.000773 : r^2*Phi_lo=5.147205E-09 (1.0000 x wind)  R_mass=5.149047E-13  R_mom=-6.140609E-13  R_ene=3.865397E-13
+      dF_mass=5.149047E-13 dF_energy=4.365889E-06 grav_work=5.450131E-07 heat=4.382655E-06 cool=1.676654E-08
+  row j=5 phys=1 r=1.000967 : r^2*Phi_lo=5.147205E-09 (1.0000 x wind)  R_mass=-7.405917E-13  R_mom=-1.515563E-13  R_ene=-6.113983E-13
+      dF_mass=-7.405917E-13 dF_energy=3.995739E-06 grav_work=5.445922E-07 heat=4.012990E-06 cool=1.725054E-08
+  r^2*Phi through cell 1 upper face = 2.655186E-07 (51.5850 x wind)
+  r^2*Phi through cell 2 upper face = 5.147205E-09 (1.0000 x wind)

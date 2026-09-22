@@ -106,6 +106,23 @@
                                      base_mass_row_trace,               &
                                      report_base_face_state_consistency,&
                                      ghost_record_armed, write_ghost_record
+      ! THE STATE THE WIND-COMPOSITION ALTERNATION STOPS AT, and the
+      ! transition that lets the coupled carrier block be entered from it
+      ! ("Coupled carrier solve: On stall").
+      use coupled_block_handover, only: coupled_entry_snapshot,          &
+                               alternation_stall_evidence,               &
+                               record_coupled_entry_state,               &
+                               coupled_entry_stall_transition,           &
+                               accept_coupled_block_entry,               &
+                               restore_coupled_entry_state,              &
+                               coupled_entry_state_fits,                 &
+                               coupled_entry_refusal_text,               &
+                               n_coupled_block_entries,                  &
+                               alternation_running,                      &
+                               entry_refused_option_off,                 &
+                               alternation_stalled_at_bound,             &
+                               coupled_block_entry,                      &
+                               coupled_entry_residual_rel_tol
       ! The stationary certification of the state the marching route would
       ! declare solved (docs/a2_certification_contract_20260906.md).
       ! THE ATTEMPTED-STEP CONTROLLER (B3a): the checkpoint of the whole
@@ -179,7 +196,8 @@
                                freeze_species_unknown_box, jv_product,    &
                                replay_distance,                           &
                                gate_rnorm_accepted, gate_fspread_accepted, &
-                               coupled_block_jacobian_action_requested
+                               coupled_block_jacobian_action_requested, &
+                               jacobian_action_against_closure_count_and_probe_arc
       use Conversion
       use ionization_equilibrium
       use utils_ion_eq, only: ec_prof_on, ec_t, ec_name
@@ -1512,6 +1530,55 @@
          endif
          call set_transported_species_rows(.false.)
          write(*,*) '(EXHALE_main) EXHALE_RESID_DETERMINISM=1: stopping.'
+         stop
+      endif
+
+      ! ---- Does the directional derivative depend on the closure count? ----
+      ! (env EXHALE_CLOSURE_PROBE=1, default off and diagnostic only.)
+      !
+      ! The residual eliminates the composition by sweeps, and the number of
+      ! sweeps is not a constant of the operator: eval_residual runs to a
+      ! convergence test or, when the caller names n_eq_sweeps_fixed, for
+      ! exactly that many passes, and the Newton loop differences its model
+      ! about a base point taken at n_eq_sweeps_model, which the solve sets
+      ! from the state's own elimination and raises along the run.  Each
+      ! count is a different smooth map, so a finite difference resolves the
+      ! derivative of the map it samples and not of the map the merit is
+      ! read on.  This hook measures the action over a grid of that count
+      ! against a grid of the probe arc, on ONE frozen state, with the same
+      ! count at both endpoints of every difference, and stops.
+      !
+      ! It cannot alter a production route: it runs before the marching loop
+      ! and ends the run, as the residual hooks above it do, and the count it
+      ! imposes is the argument of eval_residual, not a new control.
+      !
+      ! The stationary reconstruction is installed first, for the reason
+      ! EXHALE_RESID_DETERMINISM installs it: the kind-generic assembly
+      ! refuses a reconstruction continuation, and the stored states this is
+      ! run on carry WENO3.
+      !
+      ! IT COVERS THE COUPLED CONFIGURATION TOO. The rows are registered
+      ! from carrier_in_newton, so with "Coupled carrier solve: True" the
+      ! grid is taken on the system that solve carries, the carrier and
+      ! the diffused element unknowns included, and two further directions
+      ! then exist: one on the species unknowns of the cell whose species
+      ! row stands furthest outside its certification, and one named by
+      ! EXHALE_CLOSURE_PROBE_DIRECTION as "<kind>,<first cell>,<last
+      ! cell>", with kind one of mass, momentum, energy, carrier or
+      ! element, which is the direction the coupled-block measurement of
+      ! steady_newton builds. That second key is read only from inside this
+      ! diagnostic and does nothing without it.
+      call get_environment_variable('EXHALE_CLOSURE_PROBE', diag_env)
+      if (trim(diag_env) .eq. '1') then
+         call select_stationary_reconstruction
+         sec_ion_active = use_sec_ion
+         if (sec_ion_active) sec_ion_armed_step = 0
+         call set_transported_species_rows(carrier_in_newton)
+         call read_species_unknown_space_controls
+         call jacobian_action_against_closure_count_and_probe_arc(u,   &
+                                                                  f_sp)
+         call set_transported_species_rows(.false.)
+         write(*,*) '(EXHALE_main) EXHALE_CLOSURE_PROBE=1: stopping.'
          stop
       endif
 
@@ -6445,12 +6512,19 @@
       ! by cell, and by operator-split stage.
       !
       !   hydro      the SSP-RK3 of (dF - S) with Apply_BC after each stage
-      !   chem       the composition sweep and the pressure re-derived from T
-      !              at the post-sweep particle count (this stage also carries
-      !              whatever the element-diffusion and carrier-transport
-      !              steps did to f_sp, since those change no conserved
-      !              variable directly)
-      !   energy     the semi-implicit heating-cooling step
+      !   chem       the composition sweep, the pressure re-derived from T at
+      !              the post-sweep particle count, AND the semi-implicit
+      !              heating-cooling step, which stands inside this interval
+      !              (solve_energy_semi_implicit is called before the snapshot
+      !              that closes it).  It also carries whatever the
+      !              element-diffusion and carrier-transport steps did to
+      !              f_sp, since those change no conserved variable directly
+      !   boundary   the boundary update alone: the snapshots that bracket
+      !              this column enclose `call Apply_BC(u)` and nothing else.
+      !              Until 2026-09-21 this column was labeled `energy` and the
+      !              heating-cooling step was attributed to it, which MEASURED
+      !              read exactly zero in every row of eleven invocations
+      !              while the radiative source stood in `chem`
       !   transport  viscosity and conduction (no-op unless asked for)
       !   filter     the Shapiro filter (no-op unless asked for)
       !
@@ -6494,7 +6568,7 @@
            '  (', upmap_scale, ' x CFL)   dt_loc(1) =', dt_loc(1)
       write(*,'(A)') '   max over cells, code units 1/t_s'
       write(*,'(A)') '   row       |R|        |G_dt|     |G_dt+R|   '//    &
-           'hydro      chem       energy     transport  filter     '//     &
+           'hydro      chem       boundary   transport  filter     '//     &
            'Apply_BC interior movement (relative, measured once)'
       do k = 1, 3
          write(*,'(A,A,A,9(ES11.3))') '   ', rname(k), ' ', rmax(k),       &
@@ -6892,6 +6966,25 @@
       ! outer_no_fall_max asks of the joint progress rule, because the two
       ! statements are the same stall seen from the two halves.
       integer :: n_bound_endings, n_no_fall_at_handover
+      ! THE ENTRY STATE OF THE COUPLED BLOCK. One immutable record, written
+      ! by the last pass in which a relaxation actually ran and read at the
+      ! transition; the pass that declares the stall runs no relaxation, so
+      ! the live outcome token of that pass says nothing about the bound and
+      ! the transition is taken on this record instead (module
+      ! coupled_block_handover).
+      type(coupled_entry_snapshot)     :: entry_snapshot
+      type(alternation_stall_evidence) :: stall_evidence
+      integer :: entry_state, entry_why, entry_generation
+      logical :: entry_written, entry_restored, carrier_relaxation_ran
+      ! The two balances RE-EVALUATED on the entry state at the transition,
+      ! on the snapshot's own arrays, so that a recorded number cannot
+      ! authorize a state that is no longer the one the stall was declared
+      ! on.
+      real*8  :: cres_entry, eres_entry, cgap_entry, egap_entry
+      logical :: cres_entry_ok, eres_entry_ok
+      integer :: cres_entry_j, cres_entry_ic
+      integer :: eres_entry_j, eres_entry_ielem
+      real*8  :: eres_entry_abs, eres_entry_scale
       ! The elemental transport residual of the returned composition, before
       ! it is judged admissible.
       real*8  :: etr_norm
@@ -6974,6 +7067,9 @@
       handed_over     = .false.
       n_bound_endings = 0
       n_no_fall_at_handover = 0
+      carrier_relaxation_ran = .false.
+      entry_state = alternation_running
+      entry_why   = 0
       species_alternated = he_diffusion .or.                              &
                            (transported_rows_exist() .and. .not. block_now)
       pass_cap      = merge(outer_pass_cap, 1, species_alternated)
@@ -7136,7 +7232,16 @@
             ! at, in the same units as prog_worst, so the progress control
             ! below can ask which half of the alternation carries the
             ! state's distance from certification.
-            if (cert_now%e(icert)%name(1:14) .eq. 'hydrodynamic ')        &
+            ! The test is on the PREFIX, by index, not on a fixed slice:
+            ! `name(1:14) .eq. 'hydrodynamic '` compared fourteen characters
+            ! against a thirteen-character literal, which Fortran pads with a
+            ! blank, so it asked for 'hydrodynamic  ' and could never match
+            ! 'hydrodynamic mass row' or its two companions. hydro_worst_dist
+            ! was identically zero and the progress control below could not
+            ! see that the hydrodynamic half carried the state's distance
+            ! (defect 10.7 of PLAN_20260920_rev9, MEASURED on the two scalar
+            ! x0.01 cases over twelve passes).
+            if (index(cert_now%e(icert)%name, 'hydrodynamic ') .eq. 1)     &
                hydro_worst_dist = max(hydro_worst_dist, dist_here)
             if (cert_now%e(icert)%regime_gated .and.                      &
                 dist_here .gt. sp_worst) then
@@ -7353,6 +7458,12 @@
          ! which no relaxation runs cannot be read as one that ended on
          ! the movement bound.
          carrier_outcome     = carrier_relax_nothing_to_advance
+         ! WHETHER A CARRIER RELAXATION RAN ON THIS PASS AT ALL. The pass
+         ! that ends the iteration reaches no update, so on it the token
+         ! above is the reset value and not an ending; only a pass in
+         ! which the relaxation actually ran may write the entry state the
+         ! handover below is judged on.
+         carrier_relaxation_ran = .false.
          if (outer_ending .eq. outer_running .and. it_diff .lt. pass_cap) &
              then
             update_taken = .true.
@@ -7447,6 +7558,7 @@
                call comp_T_from_p(p,n_tot,ne,T)
                kd = max(kd, kc)
                carrier_steps_last = kc
+               carrier_relaxation_ran = .true.
                ! THE COMPOSITION HALF ON ITS BOUND, counted: a pass whose
                ! relaxation ended on the movement bound moved the
                ! composition as far as a held wind admits and no further,
@@ -7618,6 +7730,69 @@
                composition_displacement_pass =                             &
                     max(element_displacement_pass,                         &
                         carrier_displacement_pass)
+            endif
+
+            ! ---- THE ENTRY STATE OF THE COUPLED BLOCK, RECORDED ----
+            ! Written by every pass in which a carrier relaxation actually
+            ! ran, so that the pass which later declares the stall -- and
+            ! which runs no relaxation of its own -- has a complete state
+            ! and the evidence measured on it to be judged by.
+            !
+            ! ONE COHERENT STATE. Both relaxations hold the conserved
+            ! state: the element relaxation is given rho and v and does
+            ! not write them, and the carrier relaxation is given u and
+            ! does not write it. So (u, f_sp) here is one state and not
+            ! two stages, and p, T, rho, v were re-formed from that pair
+            ! above. Frho_elem is the face mass flux of the same rho. The
+            ! two residuals recorded beside them were measured on that
+            ! same pair.
+            !
+            ! Nothing here is reached unless "Coupled carrier solve: On
+            ! stall" is set, so the default route neither records nor
+            ! reads any of it.
+            if (carrier_newton_on_stall .and. .not. handed_over .and.     &
+                carrier_relaxation_ran) then
+               stall_evidence%pass = it_diff
+               stall_evidence%carrier_outcome = carrier_outcome
+               stall_evidence%carrier_outcome_text =                      &
+                    carrier_relax_outcome_text(carrier_outcome)
+               stall_evidence%ended_on_movement_bound =                   &
+                    (carrier_outcome .eq. carrier_relax_movement_bound)
+               stall_evidence%movement_bound    = trust_pass
+               stall_evidence%bound_cell        = bound_last_j
+               stall_evidence%bound_carrier     = bound_last_ic
+               stall_evidence%bound_measure     = bound_last_dabs
+               stall_evidence%bound_entry       = bound_last_entry
+               stall_evidence%bound_is_fraction = bound_last_fraction
+               stall_evidence%carrier_residual_available =                &
+                    carrier_measure_available
+               stall_evidence%carrier_residual   = carrier_residual_returned
+               stall_evidence%carrier_res_abs    = carrier_res_abs
+               stall_evidence%carrier_scale_abs  = carrier_scale_abs
+               stall_evidence%carrier_worst_cell = crc_j
+               stall_evidence%carrier_worst_carrier = crc_ic
+               stall_evidence%element_residual_available =                &
+                    element_measure_available
+               stall_evidence%element_residual   = element_residual_returned
+               stall_evidence%element_res_abs    = element_res_abs
+               stall_evidence%element_scale_abs  = element_scale_abs
+               stall_evidence%element_worst_cell = element_res_j
+               stall_evidence%element_worst_element = element_res_ielem
+               stall_evidence%progress_reference = prog_worst
+               stall_evidence%n_no_fall          = n_no_fall
+               stall_evidence%n_bound_endings    = n_bound_endings
+               stall_evidence%boundary_rebuild_suppressed =               &
+                    boundary_rebuild_suppressed()
+               stall_evidence%reconstruction_operator =                   &
+                    reconstruction_operator_label()
+               stall_evidence%reconstruction_is_plm =                     &
+                    assembled_reconstruction_is_plm()
+               call record_coupled_entry_state(entry_snapshot,            &
+                    stall_evidence, u, f_sp, rho, v, p, T, Frho_elem,     &
+                    entry_written)
+               if (.not. entry_written) write(*,'(A)') '    the entry'//  &
+                    ' state of the coupled block is sealed; this pass'//  &
+                    ' did not rewrite it'
             endif
          endif
 
@@ -7871,15 +8046,104 @@
          ! states: the pass did not count as progress under the joint rule,
          ! on outer_no_fall_max consecutive passes, which is what
          ! outer_no_progress already says, AND the carrier relaxation of
-         ! this pass and of the two before it ended on the movement bound.
+         ! the recorded pass and of the two before it ended on the movement
+         ! bound.
+         !
+         ! WHY THE SECOND CONDITION IS READ FROM A RECORD AND NOT FROM THE
+         ! PASS THAT ASKS. This pass took no composition update -- the
+         ! progress control stands ahead of the update, so the pass that
+         ! declares the stall runs no relaxation -- and its outcome token
+         ! therefore reads "nothing to advance" whatever the relaxations
+         ! before it did. The two statements are read from the entry
+         ! snapshot of the last pass in which a relaxation actually ran.
+         !
+         ! AND THE STATE IS RE-MEASURED BEFORE IT IS HANDED OVER. The
+         ! carrier balance, and the elemental one where the recorded pass
+         ! had it, are evaluated again on the snapshot's OWN arrays and
+         ! compared with the numbers recorded beside them, so a recorded
+         ! number cannot authorize a state that is no longer the one the
+         ! stall was declared on. The evaluation carries the snapshot
+         ! generation and the acceptance refuses a generation that moved,
+         ! so no re-evaluated residual can combine fields of two passes.
+         !
+         ! WHAT FIRES HERE CHANGES TWO THINGS AT ONCE. Registering the
+         ! transported balances as rows puts them in the Newton vector AND
+         ! switches the step control to the scaled trust region, because
+         ! use_tr is (nspec_row > 0) at the solve's own reading of the
+         ! switches (steady_newton.f90). A comparison against the
+         ! alternation therefore compares two solves that differ in the
+         ! unknown space and in the globalization together, and neither
+         ! difference can be attributed alone.
+         !
          ! Without "Coupled carrier solve: On stall" nothing here fires and
          ! the ending below is the refusal it is today.
-         if (carrier_newton_on_stall .and. .not. handed_over .and.        &
-             outer_ending .eq. outer_no_progress .and.                    &
-             .not. block_now .and. transported_rows_exist()               &
-             .and.                                                        &
-             carrier_outcome .eq. carrier_relax_movement_bound .and.      &
-             n_bound_endings .ge. outer_no_fall_max) then
+         if (carrier_newton_on_stall .and. .not. block_now) then
+            call coupled_entry_stall_transition(entry_snapshot,           &
+                 carrier_newton_on_stall, handed_over,                    &
+                 transported_rows_exist(),                                &
+                 outer_ending .eq. outer_no_progress,                     &
+                 outer_no_fall_max, entry_state, entry_why)
+         else
+            entry_state = alternation_running
+            entry_why   = entry_refused_option_off
+         endif
+         if (entry_state .eq. alternation_stalled_at_bound) then
+            ! The two balances of the ENTRY STATE, evaluated now, on the
+            ! snapshot's own arrays. The carrier module's own workspace is
+            ! held and put back, so a refused handover leaves this pass as
+            ! it found it.
+            entry_generation = entry_snapshot%generation
+            cres_entry    = 0.0d0;  cres_entry_ok = .false.
+            cres_entry_j  = 0;      cres_entry_ic = 0
+            eres_entry    = 0.0d0;  eres_entry_ok = .false.
+            eres_entry_j  = 0;      eres_entry_ielem = 0
+            eres_entry_abs = 0.0d0; eres_entry_scale = 0.0d0
+            call save_carrier_module_state(cms_hold)
+            call carrier_steady_residual(entry_snapshot%rho,              &
+                 entry_snapshot%v, entry_snapshot%f_sp, cres_entry,       &
+                 cres_entry_j, cres_entry_ic)
+            call restore_carrier_module_state(cms_hold)
+            cres_entry_ok = residual_norm_is_admissible(cres_entry)
+            if (he_diffusion .and. thereis_He) then
+               call element_transport_residual_norm(entry_snapshot%rho,   &
+                    entry_snapshot%T, entry_snapshot%f_sp,                &
+                    entry_snapshot%Frho_elem, eres_entry, eres_entry_j,   &
+                    eres_entry_ielem, eres_entry_abs, eres_entry_scale,   &
+                    eres_entry_ok)
+               eres_entry_ok = eres_entry_ok .and.                        &
+                    residual_norm_is_admissible(eres_entry)
+            endif
+            call accept_coupled_block_entry(entry_snapshot,               &
+                 entry_generation,                                        &
+                 coupled_entry_state_fits(entry_snapshot, u, f_sp, rho,   &
+                                          v, p, T, Frho_elem),            &
+                 cres_entry, cres_entry_ok,                               &
+                 eres_entry, eres_entry_ok, entry_state, entry_why,       &
+                 cgap_entry, egap_entry)
+         endif
+         if (entry_state .eq. coupled_block_entry) then
+            ! THE STATE THE COUPLED SOLVE CONSUMES IS THE ENTRY SNAPSHOT,
+            ! whole: the conserved state and the composition it was
+            ! recorded with, and the primitive arrays re-formed from that
+            ! pair below so that nothing the next assembly reads comes
+            ! from another pass.
+            call restore_coupled_entry_state(entry_snapshot, u, f_sp,     &
+                 rho, v, p, T, Frho_elem, entry_restored)
+            if (.not. entry_restored) then
+               write(*,'(A)') ' (EXHALE_main) the entry state of the'//   &
+                    ' coupled block does not match the arrays of this'//  &
+                    ' run and was not restored; the alternation keeps'//  &
+                    ' its refusal.'
+               entry_state = alternation_running
+            endif
+         endif
+         if (entry_state .eq. coupled_block_entry) then
+            call U_to_W(u,W)
+            rho = W(1,:);  v = W(2,:);  p = W(3,:);  E = u(3,:)
+            call get_species_densities(rho,f_sp,nhi,nhii,nhei,nheii,      &
+                                       nheiii,nheiTR,nm,ne,n_tot)
+            call comp_T_from_p(p,n_tot,ne,T)
+            if (.not. boundary_rebuild_suppressed()) call Apply_BC(u)
             handed_over  = .true.
             block_now    = .true.
             ! From here the transported balances are unknowns of the
@@ -7887,24 +8151,57 @@
             ! block and its carrier_newton token must say so.
             carrier_rows_entered_newton = .true.
             outer_ending = outer_running
+            ! The count of consecutive passes without a fall is the one
+            ! of the pass that DECLARES the stall; the count of
+            ! consecutive bound endings is the one of the pass that
+            ! produced the entry state, which is where a relaxation last
+            ! ran. The two are counted on different passes because they
+            ! are statements about different halves of the alternation.
             n_no_fall_at_handover = n_no_fall
             n_no_fall    = 0
-            write(*,'(A,I0,A)') ' (EXHALE_main) outer pass ', it_diff,   &
-                 ': HANDOVER to the coupled block. The joint distance'// &
-                 ' of the state has not fallen in'
-            write(*,'(A,I0,A,I0,A)') '    ', n_no_fall_at_handover,      &
-                 ' consecutive passes and the carrier relaxation ended'//&
-                 ' on the composition movement bound in ',               &
-                 n_bound_endings, ' consecutive passes, so the'//        &
+            n_bound_endings = entry_snapshot%evidence%n_bound_endings
+            write(*,'(A,I0,A,I0,A)') ' (EXHALE_main) outer pass ',        &
+                 it_diff, ': HANDOVER to the coupled block, from the'//   &
+                 ' state of pass ', entry_snapshot%evidence%pass,         &
+                 '. The joint distance of the state has not fallen in'
+            write(*,'(A,I0,A,I0,A)') '    ', n_no_fall_at_handover,       &
+                 ' consecutive passes and the carrier relaxation ended'// &
+                 ' on the composition movement bound in ',                &
+                 n_bound_endings, ' consecutive passes, so the'//         &
                  ' composition the carrier rows need is outside the'
-            write(*,'(A,ES10.3,A)') '    range in which holding the'//   &
-                 ' wind is admissible. The remaining passes solve the'// &
-                 ' wind and the transported balances as one block at a'//&
-                 ' movement bound of ', trust_pass, ' no longer read.'
-            write(*,'(A,A,A,ES10.3,A,ES10.3,A,I0)') '    the entry'//    &
-                 ' that refuses the state is ', trim(sp_name),           &
-                 ', measure ', sp_meas, ' against ', sp_tol,             &
+            write(*,'(A,ES10.3,A)') '    range in which holding the'//    &
+                 ' wind is admissible. The remaining passes solve the'//  &
+                 ' wind and the transported balances as one block, on'//  &
+                 ' the scaled trust region, at a movement bound of ',     &
+                 entry_snapshot%evidence%movement_bound,                  &
+                 ' no longer read.'
+            write(*,'(A,A)') '    the relaxation of that pass ended on ', &
+                 trim(entry_snapshot%evidence%carrier_outcome_text)
+            write(*,'(A,ES10.3,A,ES10.3,A,ES9.2)') '    the carrier'//    &
+                 ' balance of the entry state, re-evaluated here, reads', &
+                 cres_entry, ' against the recorded ',                    &
+                 entry_snapshot%evidence%carrier_residual,                &
+                 ', a relative distance of ', cgap_entry
+            write(*,'(A,ES9.2)') '    the two agree within the bound'//   &
+                 ' one operator at one state is held to,',                &
+                 coupled_entry_residual_rel_tol
+            if (entry_snapshot%evidence%element_residual_available)       &
+               write(*,'(A,ES10.3,A,ES10.3,A,ES9.2)') '    the'//         &
+                    ' elemental transport balance reads', eres_entry,     &
+                    ' against the recorded ',                             &
+                    entry_snapshot%evidence%element_residual,             &
+                    ', a relative distance of ', egap_entry
+            write(*,'(A,A,A,ES10.3,A,ES10.3,A,I0)') '    the entry'//     &
+                 ' that refuses the state is ', trim(sp_name),            &
+                 ', measure ', sp_meas, ' against ', sp_tol,              &
                  ' at cell ', sp_cell
+         else if (carrier_newton_on_stall .and. .not. handed_over .and.   &
+                  outer_ending .eq. outer_no_progress) then
+            ! The alternation stopped and the block was NOT entered: the
+            ! reason is named, so a refusal is never read as an option
+            ! that did not exist.
+            write(*,'(A,A)') '    the coupled block was not entered: ',   &
+                 trim(coupled_entry_refusal_text(entry_why))
          endif
 
          ! ---- THE ENDING OF THIS PASS, NAMED ----

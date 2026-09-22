@@ -1,0 +1,122 @@
+==============================================================================
+CONSERVATION BUDGET AUDIT  /tmp/claude-1000/-nfs-mocafe-kiseon-RT-Codes-ExoAtmosphere/59a81fec-9ef0-4992-9a57-6494f229e6bb/scratchpad/cbudget/plm_wb/output/conservation_budget_0001.txt
+==============================================================================
+# EXHALE conservation_budget schema 1
+# export index in this process: 1
+# provenance: git=93eed8667483 tree=dirty run=2026-09-21T13:22:11
+# provenance: ck_input=1304355384051708520 ck_base=579698832458720949 ck_metals=-1
+# provenance: recon=PLM base_bc=characteristic carrier=transported restart_schema=3 resid_def=145 N=500
+# coupling: sec_ion=F sec_ion_step=-1 recon=PLM iontrans=T certified=F mode=init
+# rows 503: 1 lower ghost cells and 2 upper ghost cells; physical cells are rows 2 to 501
+# assembly rows_kind=production_double ieq_sweep_state_kind=marching reconstruction=PLM momentum_branch=plm_well_balanced
+# flags well_balanced=T transport_active=F use_plm=T use_weno3=F recon_lambda_on=F
+# rec_method PLM (the flag pair does not name the branch while the continuation is armed; the branch above does)
+# state restart_ck_hydro=2743375952736182128 restart_ck_species=2701530027600576401
+
+physical cells        500, j = 1 to 500
+momentum branch       plm_well_balanced
+transport subtracted  no (both sources are zero)
+
+------------------------------------------------------------------------------
+CHECK 1  ASSEMBLY CONSISTENCY
+  the row rebuilt from the exported faces, geometry, potential
+  and sources, against the row the assembly returned.
+  'ulp' is the defect divided by eps times the largest term the
+  row differences: 1 means one last bit of that term.
+------------------------------------------------------------------------------
+row mass                           n= 500  signed +0.000000E+00  sum|.| 0.000000E+00  max|.| 0.000000E+00 at cell None  max ulp 0.000E+00 at cell None
+row momentum                       n= 500  signed +0.000000E+00  sum|.| 0.000000E+00  max|.| 0.000000E+00 at cell None  max ulp 0.000E+00 at cell None
+row energy                         n= 500  signed +0.000000E+00  sum|.| 0.000000E+00  max|.| 0.000000E+00 at cell None  max ulp 0.000E+00 at cell None
+
+  the arithmetic floor of each rebuild: eps times the largest
+  term the row differences, which is the smallest defect a
+  binary64 difference of those terms can resolve.
+    row mass      floor  min 1.127E-20  median 9.047E-18  max 2.192E-16
+    row momentum  floor  min 2.753E-20  median 1.350E-19  max 5.392E-19
+    row energy    floor  min 9.141E-20  median 1.724E-17  max 3.273E-16
+
+dF_energy gravitational work       n= 500  signed +0.000000E+00  sum|.| 0.000000E+00  max|.| 0.000000E+00 at cell None  max ulp 0.000E+00 at cell None
+flux difference dF_mass            n= 500  signed +0.000000E+00  sum|.| 0.000000E+00  max|.| 0.000000E+00 at cell None  max ulp 0.000E+00 at cell None
+flux difference dF_momentum        n= 500  signed +0.000000E+00  sum|.| 0.000000E+00  max|.| 0.000000E+00 at cell None  max ulp 0.000E+00 at cell None
+flux difference dF_energy          n= 500  signed +0.000000E+00  sum|.| 0.000000E+00  max|.| 0.000000E+00 at cell None  max ulp 0.000E+00 at cell None
+
+  the identity of PLAN_20260920_rev9 section 13.4, kept BESIDE
+  the gas-energy row above and never in place of it:
+    R_E + phi_cell R_mass = [A_R (F_E + phi F_m)_R
+                            - A_L (F_E + phi F_m)_L]/V - Q
+energy + potential identity        n= 500  signed -7.931581E-13  sum|.| 4.744885E-11  max|.| 1.254108E-12 at cell 65  max ulp 2.468E+00 at cell 65
+
+  internal-face agreement of the SHARED CONSERVATIVE fluxes.
+  It does not cover the equilibrium pressure departures: the two
+  values of one face are measured from two different cells'
+  equilibria and differ by construction (Num_Fluxes.f90).
+shared face area                   n= 499  signed +0.000000E+00  sum|.| 0.000000E+00  max|.| 0.000000E+00 at cell None  max ulp 0.000E+00 at cell None
+shared face mass flux              n= 499  signed +0.000000E+00  sum|.| 0.000000E+00  max|.| 0.000000E+00 at cell None  max ulp 0.000E+00 at cell None
+shared face momentum flux          n= 499  signed +0.000000E+00  sum|.| 0.000000E+00  max|.| 0.000000E+00 at cell None  max ulp 0.000E+00 at cell None
+shared face energy flux            n= 499  signed +0.000000E+00  sum|.| 0.000000E+00  max|.| 0.000000E+00 at cell None  max ulp 0.000E+00 at cell None
+shared face potential              n= 499  signed +0.000000E+00  sum|.| 0.000000E+00  max|.| 0.000000E+00 at cell None  max ulp 0.000E+00 at cell None
+
+  volume-weighted telescoping over subdomains: the sum of V R
+  over a window against the flux the window's two end faces
+  carry.  For the mass row and for the energy row augmented by
+  the potential energy transport, both of which are exact sums
+  of one conservative flux.
+  the whole physical column                      cells    1.. 500
+      mass    sum V R  -1.4456612584E-04   faces -1.4456612584E-04   defect +2.711E-20
+      energy  sum V(R+phi R_m) +5.1284048719E-01   faces - sources +5.1284048719E-01   defect -2.220E-16
+  below the certification gate r = 1.20          cells    1.. 261
+      mass    sum V R  -7.2759129172E-05   faces -7.2759129172E-05   defect +0.000E+00
+      energy  sum V(R+phi R_m) +2.5872529756E-01   faces - sources +2.5872529756E-01   defect -2.220E-16
+  above the certification gate r = 1.20          cells  262.. 500
+      mass    sum V R  -7.1806996673E-05   faces -7.1806996673E-05   defect +1.355E-20
+      energy  sum V(R+phi R_m) +2.5411518963E-01   faces - sources +2.5411518963E-01   defect +5.551E-17
+  to the worst mass cell, j = 27                 cells    1..  27
+      mass    sum V R  -1.7502096849E-05   faces -1.7502096849E-05   defect +0.000E+00
+      energy  sum V(R+phi R_m) +6.2220725149E-02   faces - sources +6.2220725149E-02   defect -9.021E-17
+  to the worst momentum cell, j = 82             cells    1..  82
+      mass    sum V R  -4.3221793046E-05   faces -4.3221793046E-05   defect +0.000E+00
+      energy  sum V(R+phi R_m) +1.5365317788E-01   faces - sources +1.5365317788E-01   defect -1.388E-16
+  to the worst energy cell, j = 31               cells    1..  31
+      mass    sum V R  -3.0282808144E-05   faces -3.0282808144E-05   defect +0.000E+00
+      energy  sum V(R+phi R_m) +1.0764935180E-01   faces - sources +1.0764935180E-01   defect -1.527E-16
+
+------------------------------------------------------------------------------
+CHECK 2  STATIONARITY
+  the reconstructed row against the certification's own measure,
+  |R| divided by the largest term of that row, and against the
+  certification's tolerance.  The continuity row's tolerance is
+  the FIXED FLOOR only: the binary raises it cell by cell to the
+  cell's rounding floor, which needs the caloric sound speed and
+  is not rebuilt here, so a refusal below is a lower bound.
+------------------------------------------------------------------------------
+  mass      row measure 1.797877E-01 at cell 496   tolerance 3.0E-12   REFUSES
+            the same measure of the EXPORTED row: 1.797877E-01
+  momentum  row measure 1.989336E+00 at cell 498   tolerance 1.0E-08   REFUSES
+            the same measure of the EXPORTED row: 1.989336E+00
+  energy    row measure 1.911871E+00 at cell 447   tolerance 1.0E-06   REFUSES
+            the same measure of the EXPORTED row: 1.911871E+00
+
+------------------------------------------------------------------------------
+THE LARGEST LOCAL ASSEMBLY DEFECTS, 6 cells per row
+------------------------------------------------------------------------------
+  row mass
+    j    1  r   1.000195  R exported +3.5868981033E-03  rebuilt +3.5868981033E-03  defect +0.000E+00  0.00 ulp
+    j    2  r   1.000391  R exported +5.6870440361E-04  rebuilt +5.6870440361E-04  defect +0.000E+00  0.00 ulp
+    j    3  r   1.000586  R exported -2.9378853224E-04  rebuilt -2.9378853224E-04  defect +0.000E+00  0.00 ulp
+    j    4  r   1.000781  R exported -3.3023111567E-04  rebuilt -3.3023111567E-04  defect +0.000E+00  0.00 ulp
+    j    5  r   1.000977  R exported -4.9998949184E-04  rebuilt -4.9998949184E-04  defect +0.000E+00  0.00 ulp
+    j    6  r   1.001172  R exported -5.0717173651E-04  rebuilt -5.0717173651E-04  defect +0.000E+00  0.00 ulp
+  row momentum
+    j    1  r   1.000195  R exported +1.9938240191E-03  rebuilt +1.9938240191E-03  defect +0.000E+00  0.00 ulp
+    j    2  r   1.000391  R exported +1.0503846198E-03  rebuilt +1.0503846198E-03  defect +0.000E+00  0.00 ulp
+    j    3  r   1.000586  R exported +1.3377027446E-03  rebuilt +1.3377027446E-03  defect +0.000E+00  0.00 ulp
+    j    4  r   1.000781  R exported +1.5640551393E-03  rebuilt +1.5640551393E-03  defect +0.000E+00  0.00 ulp
+    j    5  r   1.000977  R exported +1.4751911276E-03  rebuilt +1.4751911276E-03  defect +0.000E+00  0.00 ulp
+    j    6  r   1.001172  R exported +1.5035088615E-03  rebuilt +1.5035088615E-03  defect +0.000E+00  0.00 ulp
+  row energy
+    j    1  r   1.000195  R exported +5.3070436161E-03  rebuilt +5.3070436161E-03  defect +0.000E+00  0.00 ulp
+    j    2  r   1.000391  R exported +1.4642662521E-03  rebuilt +1.4642662521E-03  defect +0.000E+00  0.00 ulp
+    j    3  r   1.000586  R exported +3.7856977150E-04  rebuilt +3.7856977150E-04  defect +0.000E+00  0.00 ulp
+    j    4  r   1.000781  R exported +1.8594282770E-04  rebuilt +1.8594282770E-04  defect +0.000E+00  0.00 ulp
+    j    5  r   1.000977  R exported -1.2550757766E-04  rebuilt -1.2550757766E-04  defect +0.000E+00  0.00 ulp
+    j    6  r   1.001172  R exported -9.5804220318E-05  rebuilt -9.5804220318E-05  defect +0.000E+00  0.00 ulp

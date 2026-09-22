@@ -1389,20 +1389,22 @@ review).
 `element_census_tests`, `diffusion_tests`, `residual_determinism` and every
 executable `src/tests/*/run.sh`, runs every one of them even after a failure,
 prints one `PASS|FAIL <name> measured= reference= tol=` line per assertion,
-and exits nonzero if any suite failed. There are 28 such suites:
+and exits nonzero if any suite failed. There are 41 such suites:
 
 ```
-acceptance_classes          adv_static_limit          attempted_step
-carrier_constraint_attribution                        carrier_reference_scales
-carrier_retry               carrier_returned_state_acceptance
-certification               constrained_network_layout
-coupled_source_step         element_operator          energy_update
-fuv_band_ledger             grid_and_gates            ionization_imposed_fractions
-krylov_and_dogleg           molecular_seed            physics_probe
-residual_determinism        run_mode                  species_face_flux
-species_masses              spectrum_type             state_mapper
-steady_completion_flag      steady_selfconsistent_residual
-steady_species_rows         transit_census
+acceptance_classes  adv_static_limit  attempted_step  boundary_state
+carrier_boundary_jacobian  carrier_constraint_attribution
+carrier_helium_inventory  carrier_outer_boundary  carrier_reference_scales
+carrier_retry  carrier_returned_state_acceptance  certification
+charge_exchange_rows  constrained_network_layout  coupled_block_handover
+coupled_block_jacobian  coupled_source_step  element_operator
+energy_update  executable_identity  fuv_band_ledger  grid_and_gates
+h2_level_ladder  ionization_imposed_fractions  ionization_stage_flux
+krylov_and_dogleg  low_mach_stress_energy  molecular_seed  physics_probe
+residual_determinism  run_mode  species_face_flux  species_masses
+spectrum_type  stage_row_balance  state_mapper  steady_completion_flag
+steady_selfconsistent_residual  steady_species_rows  transit_census
+transit_state
 ```
 
 `ionization_imposed_fractions` measures the one substitution that replaces an
@@ -1410,7 +1412,7 @@ ionization balance row by the fraction the flow carries, in each of the seven
 systems that can reach that row.
 
 A suite can also be run on its own, for instance
-`src/tests/physics_probe/run.sh`. Nine of them carry a `README.md` saying what
+`src/tests/physics_probe/run.sh`. Fourteen of them carry a `README.md` saying what
 their assertions compare and which are red on purpose; for the rest that
 statement is in the driver's header. A few rows are FAIL by design and say so
 (the `closure_spread_within_the_row_tolerance_*` rows of

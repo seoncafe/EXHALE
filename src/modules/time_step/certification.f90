@@ -115,13 +115,26 @@
                                           isp_H2, isp_H2p, isp_H3p,     &
                                           isp_HeHp, isp_OH, isp_H2O,    &
                                           isp_CO
-      ! The H3+ cooling model's own domain records (B3b-H3): four counters
-      ! of the cells at which a collider density or a temperature left the
-      ! range the published fits cover. Category (2) of B1a section 4.
-      use h3p_cooling,              only: h3p_n_below_collider,          &
-                                          h3p_n_below_fit_T,            &
-                                          h3p_n_above_fit_T,            &
-                                          h3p_n_outside_nonlte_T
+      ! The H3+ cooling model's own domain records (B3b-H3). The counters
+      ! are the EVALUATIONS of the whole run whose collider density or
+      ! temperature left the range the published fits and tables cover;
+      ! the three classifying functions beside them answer the same
+      ! question for one argument, with no counter behind them, and are
+      ! what the map of a single state is taken with. Category (2) of B1a
+      ! section 4.
+      use h3p_cooling,              only:                                &
+                                    h3p_evaluations_below_collider,      &
+                                    h3p_evaluations_above_collider,      &
+                                    h3p_evaluations_below_fit_T,         &
+                                    h3p_evaluations_above_fit_T,         &
+                                    h3p_evaluations_outside_nonlte_T,    &
+                                    h3p_evaluations_nonfinite_T,         &
+                                    h3p_evaluations_nonfinite_collider,  &
+                                    h3p_fit_temperature_domain,          &
+                                    h3p_nonlte_row_temperature_domain,   &
+                                    h3p_collider_domain,                 &
+                                    H3P_DOMAIN_BELOW, H3P_DOMAIN_ABOVE,  &
+                                    H3P_DOMAIN_NONFINITE
       ! The domain record of the Ly-alpha damping-wing closure (LYA-BETA):
       ! cell visits whose (a tau)^(1/3) fell below the published limit of
       ! the slab solution (Neufeld 1990 section Va); there the closure is
@@ -533,7 +546,12 @@
          ! unvalidated physics is now a closure with a measured domain and
          ! is counted under 4.2. A count is not invented here to replace it.
          integer :: n_active_unvalidated_physics       = -1
-         integer :: n_out_of_domain_closure            = -1
+         ! EVALUATIONS OVER THE RUN, not cells of this state: the domain
+         ! records of the closures below are cumulative call counts, and a
+         ! cell visited many times, or visited inside a trial that was then
+         ! rejected, contributes to every one of them. The map of the state
+         ! that is being certified is the separate block further down.
+         integer :: n_out_of_domain_evaluations        = -1
          integer :: n_rejected_trial                   = -1
          integer :: n_unbudgeted_accepted_correction   =  0
          integer :: n_specified_external_reservoir     = -1
@@ -546,10 +564,31 @@
          ! contribution to the state being judged (review 2 section 5.3).
          ! The H3+ cooling domain records, reported one by one under the
          ! out-of-domain category so that a count says WHICH edge was left.
-         integer :: n_h3p_below_collider               =  0
-         integer :: n_h3p_below_fit_T                  =  0
-         integer :: n_h3p_above_fit_T                  =  0
-         integer :: n_h3p_outside_nonlte_T             =  0
+         ! Evaluations over the run, like the field above.
+         integer :: n_h3p_evaluations_below_collider     = 0
+         integer :: n_h3p_evaluations_above_collider     = 0
+         integer :: n_h3p_evaluations_below_fit_T        = 0
+         integer :: n_h3p_evaluations_above_fit_T        = 0
+         integer :: n_h3p_evaluations_outside_nonlte_T   = 0
+         integer :: n_h3p_evaluations_nonfinite_T        = 0
+         integer :: n_h3p_evaluations_nonfinite_collider = 0
+         ! THE H3+ DOMAIN MAP OF THE STATE BEING CERTIFIED: unique CELLS of
+         ! this one state, counted in one evaluation of the model over it,
+         ! and therefore a property of the state and not of the run that
+         ! produced it. The cells evaluated are those that carry H3+, the
+         ! rate being exactly proportional to n_H3+. The collisional limit
+         ! below the tabulated collider range is kept apart from the rest:
+         ! it is an analytic limit of the same model (module header of
+         ! h3p_cooling.f90) and a cell on it is described by the model,
+         ! while the others are a published domain left behind.
+         logical :: h3p_cell_map_known                 = .false.
+         integer :: n_h3p_cells_evaluated              =  0
+         integer :: n_h3p_cells_collisional_limit      =  0
+         integer :: n_h3p_cells_above_collider         =  0
+         integer :: n_h3p_cells_below_fit_T            =  0
+         integer :: n_h3p_cells_above_fit_T            =  0
+         integer :: n_h3p_cells_outside_nonlte_T       =  0
+         integer :: n_h3p_cells_nonfinite              =  0
          ! The domain record of the one-sided CO destruction model, reported
          ! beside the H3+ records for the same reason: a count says WHICH
          ! edge of the model's domain the run left. Cell visits summed over
@@ -1390,6 +1429,13 @@
       ! ---- the validity states (B1a section 4) ----
       call read_validity_states(rep)
 
+      ! ---- the H3+ domain map of THIS state ----
+      ! The records read above are the run's history. What the model's
+      ! domain looks like ON the state being certified is a different
+      ! measurement and is made here, over this state's own cells.
+      if (thereis_mol) call h3p_cooling_domain_map_of_state(Wcert(1,:),   &
+                                                    f_sp, Tcert, rep)
+
       ! THE CARRIER HISTORY. An interval the carrier retry could not cover,
       ! from which the march went on with the entry carriers, means the
       ! transported composition of this run is not the one the equation
@@ -1828,6 +1874,73 @@
 
       ! ------------------------------------------------------!
 
+      subroutine h3p_cooling_domain_map_of_state(rho, f_sp, T, rep)
+      ! WHERE THE H3+ COOLING MODEL STANDS ON THIS STATE: the cells of the
+      ! state that carry H3+, and, of those, the ones whose temperature or
+      ! collider density lies outside a published domain of the model.
+      !
+      ! It is counted in CELLS, in one pass over the state, and is
+      ! therefore a property of the state. The cumulative records of the
+      ! module count evaluations over the whole run instead, so the two
+      ! numbers are not comparable and are reported apart.
+      !
+      ! The cells passed over are the ones the cooling is evaluated in:
+      ! the rate is exactly proportional to n_H3+ (util_ion_eq.f90), so a
+      ! cell with no H3+ carries no coolant and no domain question. The
+      ! tests are the module's own classifying functions, so there is one
+      ! definition of each edge and the map cannot drift from the records.
+      !
+      ! UNITS. The published domains are in kelvin and cm^-3, while the
+      ! state carries the adimensional temperature and density, so the
+      ! arguments are put in physical units first, exactly as the sweep
+      ! forms them for the cooling itself: n = f_sp rho n0 and T_K = T T0.
+      !
+      ! Informational, like the records: no entry of the inventory reads
+      ! these counts and no verdict of this report depends on them.
+      real*8, dimension(1-Ng:N+Ng),           intent(in)    :: rho, T
+      real*8, dimension(1-Ng:N+Ng,n_species), intent(in)    :: f_sp
+      type(cert_report),                      intent(inout) :: rep
+      real*8  :: nH3p, nH2, T_K
+      integer :: j, ct, cn, crow
+      rep%n_h3p_cells_evaluated         = 0
+      rep%n_h3p_cells_collisional_limit = 0
+      rep%n_h3p_cells_above_collider    = 0
+      rep%n_h3p_cells_below_fit_T       = 0
+      rep%n_h3p_cells_above_fit_T       = 0
+      rep%n_h3p_cells_outside_nonlte_T  = 0
+      rep%n_h3p_cells_nonfinite         = 0
+      do j = 1, N
+         nH3p = rho(j)*f_sp(j,isp_H3p)*n0
+         if (nH3p .eq. 0.0d0) cycle
+         nH2  = rho(j)*f_sp(j,isp_H2)*n0
+         T_K  = T(j)*T0
+         rep%n_h3p_cells_evaluated = rep%n_h3p_cells_evaluated + 1
+         ct   = h3p_fit_temperature_domain(T_K)
+         crow = h3p_nonlte_row_temperature_domain(T_K)
+         cn   = h3p_collider_domain(nH2)
+         if (ct .eq. H3P_DOMAIN_NONFINITE .or.                            &
+             cn .eq. H3P_DOMAIN_NONFINITE) then
+            rep%n_h3p_cells_nonfinite = rep%n_h3p_cells_nonfinite + 1
+         endif
+         if (ct .eq. H3P_DOMAIN_BELOW)                                    &
+            rep%n_h3p_cells_below_fit_T = rep%n_h3p_cells_below_fit_T + 1
+         if (ct .eq. H3P_DOMAIN_ABOVE)                                    &
+            rep%n_h3p_cells_above_fit_T = rep%n_h3p_cells_above_fit_T + 1
+         if (crow .eq. H3P_DOMAIN_BELOW .or. crow .eq. H3P_DOMAIN_ABOVE)  &
+            rep%n_h3p_cells_outside_nonlte_T =                            &
+                 rep%n_h3p_cells_outside_nonlte_T + 1
+         if (cn .eq. H3P_DOMAIN_BELOW)                                    &
+            rep%n_h3p_cells_collisional_limit =                           &
+                 rep%n_h3p_cells_collisional_limit + 1
+         if (cn .eq. H3P_DOMAIN_ABOVE)                                    &
+            rep%n_h3p_cells_above_collider =                              &
+                 rep%n_h3p_cells_above_collider + 1
+      enddo
+      rep%h3p_cell_map_known = .true.
+      end subroutine h3p_cooling_domain_map_of_state
+
+      ! ------------------------------------------------------!
+
       integer function base_contact_direction_agreement(s_wind, M_wind,  &
                         flux_base, window_mean, window_available)
       ! Which quantity decided the direction of the base contact at the last
@@ -2045,10 +2158,19 @@
       ! counted under 4.2 as a closure with a domain.
       rep%n_active_unvalidated_physics = -1
       ! 4.2 OUT-OF-DOMAIN CLOSURE. The H3+ cooling model is the first
-      ! closure in the code that records its own domain (B3b-H3): the cells
-      ! at which the collider density fell below the tabulated range, at
-      ! which it rose above it, and at which the temperature was clamped to
-      ! the low or the high end of the published fits.
+      ! closure in the code that records its own domain (B3b-H3): the
+      ! evaluations at which the collider density fell below the tabulated
+      ! range, at which it rose above it, at which the temperature left the
+      ! published fits or the tabulated non-LTE rows, and at which an
+      ! argument was not an ordinary real.
+      !
+      ! THEY COUNT EVALUATIONS OVER THE RUN. Every one of the records read
+      ! here is a cumulative call count: a cell contributes once for each
+      ! visit and to each category it meets, and a trial that was rejected
+      ! contributes like an accepted state. So this number describes the
+      ! history of the run and says nothing on its own about the state
+      ! being certified; the map of that state is measured separately, in
+      ! one pass over its own cells (h3p_cooling_domain_map_of_state).
       !
       ! THEY ARE INFORMATIONAL AND DO NOT INVALIDATE BY THEMSELVES
       ! (decision 8, 2026-09-06): the extrapolating branch below the
@@ -2066,20 +2188,35 @@
       ! where the destruction is too slow to matter the omitted formation is
       ! too, so the transported value stands, which is what a transport
       ! operator should do in a quenched layer.
-      rep%n_out_of_domain_closure = 0
-      if (thereis_mol) rep%n_out_of_domain_closure =                      &
-           h3p_n_below_collider + h3p_n_below_fit_T                        &
-           + h3p_n_above_fit_T + h3p_n_outside_nonlte_T
-      rep%n_h3p_below_collider   = h3p_n_below_collider
-      rep%n_h3p_below_fit_T      = h3p_n_below_fit_T
-      rep%n_h3p_above_fit_T      = h3p_n_above_fit_T
-      rep%n_h3p_outside_nonlte_T = h3p_n_outside_nonlte_T
+      rep%n_out_of_domain_evaluations = 0
+      if (thereis_mol) rep%n_out_of_domain_evaluations =                  &
+           h3p_evaluations_below_collider                                 &
+           + h3p_evaluations_above_collider                               &
+           + h3p_evaluations_below_fit_T                                  &
+           + h3p_evaluations_above_fit_T                                  &
+           + h3p_evaluations_outside_nonlte_T                             &
+           + h3p_evaluations_nonfinite_T                                  &
+           + h3p_evaluations_nonfinite_collider
+      rep%n_h3p_evaluations_below_collider     =                          &
+           h3p_evaluations_below_collider
+      rep%n_h3p_evaluations_above_collider     =                          &
+           h3p_evaluations_above_collider
+      rep%n_h3p_evaluations_below_fit_T        =                          &
+           h3p_evaluations_below_fit_T
+      rep%n_h3p_evaluations_above_fit_T        =                          &
+           h3p_evaluations_above_fit_T
+      rep%n_h3p_evaluations_outside_nonlte_T   =                          &
+           h3p_evaluations_outside_nonlte_T
+      rep%n_h3p_evaluations_nonfinite_T        =                          &
+           h3p_evaluations_nonfinite_T
+      rep%n_h3p_evaluations_nonfinite_collider =                          &
+           h3p_evaluations_nonfinite_collider
       ! The Ly-alpha record is zero unless jlya_escape_prob ran (the
       ! accessor reports 0 seen); it joins the out-of-domain count like
       ! the H3+ and CO records, and like them it does not invalidate.
       call lya_wing_domain_record(rep%n_lya_wing_out, rep%n_lya_wing_seen, &
                                   rep%lya_wing_worst, rep%lya_wing_limit)
-      rep%n_out_of_domain_closure = rep%n_out_of_domain_closure           &
+      rep%n_out_of_domain_evaluations = rep%n_out_of_domain_evaluations   &
                                     + rep%n_lya_wing_out
       if (thereis_oxychem .and. carrier_transport) then
          call carrier_co_domain_record(nco_out, nco_hot, nco_hep,         &
@@ -2088,7 +2225,8 @@
          rep%n_co_above_shield_T     = nco_hot
          rep%n_co_HeII_led           = nco_hep
          rep%co_worst_dest_over_res  = co_ratio
-         rep%n_out_of_domain_closure = rep%n_out_of_domain_closure        &
+         rep%n_out_of_domain_evaluations =                                &
+                                       rep%n_out_of_domain_evaluations    &
                                        + nco_out
       endif
       ! 4.3 rejected numerical trial with no adopted contribution: counted,
@@ -2402,17 +2540,27 @@
       write(*,'(A)') '   validity states (B1a section 4):'
       call write_validity('active unvalidated physics',                    &
            rep%n_active_unvalidated_physics)
-      call write_validity('out-of-domain closure activations',             &
-           rep%n_out_of_domain_closure)
-      if (rep%n_out_of_domain_closure .gt. 0) then
-         write(*,'(A)') '       H3+ cooling domain records'//              &
-              ' (informational; they do not invalidate):'
+      call write_validity('out-of-domain closure evaluations, summed'//   &
+           ' over the run (history, not this state)',                      &
+           rep%n_out_of_domain_evaluations)
+      if (rep%n_out_of_domain_evaluations .gt. 0) then
+         write(*,'(A)') '       H3+ cooling, EVALUATIONS OVER THE RUN'//   &
+              ' (one for each visit, rejected trials included;'//          &
+              ' informational, and they refuse no state):'
          write(*,'(A,I0,A,I0,A,I0,A,I0)')                                  &
               '         collider below the table: ',                       &
-              rep%n_h3p_below_collider,                                    &
-              ', temperature below the fits: ', rep%n_h3p_below_fit_T,     &
-              ', above them: ', rep%n_h3p_above_fit_T,                     &
-              ', outside the non-LTE range: ', rep%n_h3p_outside_nonlte_T
+              rep%n_h3p_evaluations_below_collider,                        &
+              ', above it: ', rep%n_h3p_evaluations_above_collider,        &
+              ', temperature below the fits: ',                            &
+              rep%n_h3p_evaluations_below_fit_T,                           &
+              ', above them: ', rep%n_h3p_evaluations_above_fit_T
+         write(*,'(A,I0,A,I0,A,I0)')                                       &
+              '         outside the non-LTE range: ',                      &
+              rep%n_h3p_evaluations_outside_nonlte_T,                      &
+              ', nonfinite temperature: ',                                 &
+              rep%n_h3p_evaluations_nonfinite_T,                           &
+              ', nonfinite collider density: ',                            &
+              rep%n_h3p_evaluations_nonfinite_collider
          if (rep%n_co_out_of_domain .gt. 0) then
             write(*,'(A)') '       one-sided CO destruction domain'//     &
                  ' (informational; it does not invalidate):'
@@ -2434,6 +2582,31 @@
                  ', smallest (a tau)^(1/3) ', rep%lya_wing_worst,         &
                  ', limit ', rep%lya_wing_limit
          endif
+      endif
+      ! THE MAP OF THIS STATE, in cells, beside the history above. The two
+      ! are different measurements and are never one number: the line above
+      ! counts evaluations of the whole run, this one the cells of the
+      ! state that was certified. Informational as well: nothing here
+      ! refuses a state by itself.
+      if (rep%h3p_cell_map_known) then
+         write(*,'(A,I0,A,I0,A)') '       H3+ cooling, THE MAP OF THIS'//  &
+              ' STATE (informational; it refuses no state): ',             &
+              rep%n_h3p_cells_evaluated, ' of ', N,                        &
+              ' cell(s) carry H3+ and are evaluated'
+         write(*,'(A,I0,A)')                                               &
+              '         of them, on the analytic collisional limit below'//&
+              ' the tabulated collider range: ',                           &
+              rep%n_h3p_cells_collisional_limit,                           &
+              ' (a stated limit of the model, not an excursion)'
+         write(*,'(A,I0,A,I0,A,I0,A,I0,A,I0)')                             &
+              '         outside a tabulated domain: collider above the'//  &
+              ' table ', rep%n_h3p_cells_above_collider,                   &
+              ', temperature below the fits ',                             &
+              rep%n_h3p_cells_below_fit_T,                                 &
+              ', above them ', rep%n_h3p_cells_above_fit_T,                &
+              ', outside the non-LTE rows ',                               &
+              rep%n_h3p_cells_outside_nonlte_T,                            &
+              ', nonfinite argument ', rep%n_h3p_cells_nonfinite
       endif
       call write_validity('rejected trials with no adopted contribution',  &
            rep%n_rejected_trial)

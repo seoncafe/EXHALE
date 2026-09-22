@@ -114,10 +114,17 @@
       !             and the partition is re-applied to the ATOMIC state, so
       !             the ionization state the seed writes is the one it was
       !             handed and not one this module solved.
-      !   a number in [0,1]  that fraction, for every cell. 0 is the
-      !             conversion identity (nothing is transferred, so every
-      !             species column, the nuclei and the chosen primitive
-      !             invariants come back unchanged).
+      !   a number in [0,1]  that fraction, for every cell. 0 transfers
+      !             nothing, so in the PHYSICAL COLUMN every species column,
+      !             the nuclei and the chosen primitive invariants come back
+      !             unchanged. It is not the identity on the two lower
+      !             ghosts: load_IC fills those from the molecular reservoir
+      !             row, which carries H2, and the transfer then empties that
+      !             H2 into H I there. MEASURED 2026-09-21 on
+      !             molecular_photochem_gj1132_kzzprofile/HeH9: the 500
+      !             physical cells stand 1.3e-15 from the atomic wind they
+      !             came from, and the whole temperature displacement the
+      !             conversion reports, 4.9884e-02, lives in those two rows.
       !
       ! A zero H2 column is a legitimate test and a poor seed: with the
       ! carrier transported, a LOADED state's H2 column is the authority and
@@ -135,6 +142,16 @@
       ! output/Ion_species_IC.txt and stops. EXHALE_MOLECULAR_SEED_INVARIANT
       ! selects p (default) or T. Documented in docs/input_schema.md
       ! appendix D.
+      !
+      ! WHICH CONVERSION PRODUCED A STATE'S SEED travels with the state.
+      ! Every state file carries one '# molecular_seed' line: the converting
+      ! run states the directory it read, the invariant it kept and the x2
+      ! source it used, a run that only solves restates the sentence of the
+      ! state it was handed (load_IC calls
+      ! molecular_seed_statement_from_line), and a state that came out of no
+      ! conversion says so. Without it the mode and the invariant are lost at
+      ! the first solve, and the only record left is the log of the run that
+      ! converted (PLAN_20260920_rev9 section 16).
       !
       ! Item L7 of docs/PLAN_20260913_lhs_stationary.md.
 
@@ -175,6 +192,15 @@
       ! Was the state now in memory built by this module? Only then do the
       ! two record lines belong in a state file.
       logical            :: seed_built = .false.
+      ! WHICH CONVERSION PRODUCED THE SEED OF THE STATE THIS RUN WAS HANDED,
+      ! as that state's own '# molecular_seed' line states it. A run that
+      ! only solves builds no seed here, so without this sentence the mode
+      ! and the invariant of the conversion are lost at the first solve and
+      ! can be recovered only from the logs of the run that did it. Filled
+      ! by molecular_seed_statement_from_line, which load_IC calls on every
+      ! header line of the state it reads, and written again unchanged, so
+      ! it holds along a chain of restarts.
+      character(len=1024) :: seed_statement_of_the_initial_state = ''
 
       ! WHAT THE PARTITION DID, for the record lines of the written files.
       real*8 :: rec_q = 0.0d0, rec_qmax = 0.0d0, rec_x2 = 0.0d0
@@ -210,6 +236,7 @@
       public :: molecular_seed_option_may_differ
       public :: molecular_seed_from_atomic_state
       public :: write_molecular_seed_header
+      public :: molecular_seed_statement_from_line
 
       contains
 
@@ -846,6 +873,28 @@
       ! cannot describe different constructions. '#' comments, read by no
       ! parser and compared by nothing.
       integer, intent(in) :: unit
+      ! WHICH CONVERSION PRODUCED THE SEED OF THIS STATE, on every state
+      ! file whether or not this run built one. A run that only solves
+      ! carries the sentence of the state it was handed, so a solved state
+      ! still states the x2 source and the thermodynamic invariant its seed
+      ! came out of; a state that came out of no conversion says so in as
+      ! many words, and a state whose initial state predates the line says
+      ! that instead of claiming either.
+      if (seed_built) then
+         write(unit,'(A)') '# molecular_seed converted from '//           &
+              trim(seed_dir)//'; invariant '//seed_invariant//            &
+              '; x2_source '//trim(rec_x2_source)//trim(stated_x2_phrase())
+      else if (len_trim(seed_statement_of_the_initial_state) .gt. 0) then
+         write(unit,'(A)') '# molecular_seed '//                          &
+              trim(seed_statement_of_the_initial_state)
+      else if (do_load_IC) then
+         write(unit,'(A)') '# molecular_seed not stated by the state'//   &
+              ' this run was started from, which was written before'//    &
+              ' this line existed'
+      else
+         write(unit,'(A)') '# molecular_seed none: this state was not'//  &
+              ' produced by an atomic-to-molecular conversion'
+      endif
       if (.not. seed_built) return
       write(unit,'(A)') '# molecular-seed-from: '//trim(seed_dir)
       write(unit,'(A,ES23.16,A,ES23.16,A,ES23.16,A,I0,A,A1,A,A)')         &
@@ -870,5 +919,36 @@
            '; x2_source local means min(thermochemical fit, root of'//  &
            ' the cell''s own H2 row) in every cell'
       end subroutine write_molecular_seed_header
+
+      ! ------------------------------------------------------!
+
+      character(len=40) function stated_x2_phrase()
+      ! The requested hydrogen-nuclei fraction, which is a number only when
+      ! the mode is the stated one: in the other two modes the fraction is
+      ! the handoff's or each cell's own root and stands on the
+      ! molecular_partition line beside it.
+      stated_x2_phrase = ''
+      if (rec_x2_source .eq. 'stated')                                    &
+         write(stated_x2_phrase,'(A,ES14.7)') '; x2 ', seed_x2_stated
+      end function stated_x2_phrase
+
+      ! ------------------------------------------------------!
+
+      subroutine molecular_seed_statement_from_line(line)
+      ! The '# molecular_seed ...' sentence of a state file this run reads,
+      ! kept so that the state this run writes states the same conversion.
+      ! The field is the FIRST token of the comment line, as every header
+      ! record of a state file is.
+      character(len=*), intent(in) :: line
+      character(len=len(line)) :: t
+      integer :: pos
+      t = adjustl(line)
+      if (len_trim(t) .eq. 0) return
+      if (t(1:1) .eq. '#') t = adjustl(t(2:))
+      pos = index(trim(t), ' ')
+      if (pos .le. 1) return
+      if (t(1:pos-1) .ne. 'molecular_seed') return
+      seed_statement_of_the_initial_state = adjustl(t(pos+1:))
+      end subroutine molecular_seed_statement_from_line
 
       end module molecular_seed

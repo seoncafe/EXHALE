@@ -1,0 +1,5 @@
+dir=carrier arc=1.0e-3 rc=0 wall=17s probe_length=1.8041485E-09 moved(mean worst n)=2.9312501E-01 2.0000000E+00 35 support(mean worst n)=2.8376782E-01 2.0000000E+00 52 largest_response=2.9300163E-08
+dir=carrier arc=1.0e-2 rc=0 wall=17s probe_length=1.8041485E-08 moved(mean worst n)=1.8569736E-02 5.9538691E-02 30 support(mean worst n)=1.8545218E-01 1.9959514E+00 52 largest_response=2.8011678E-08
+dir=carrier arc=1.0e-1 rc=0 wall=17s probe_length=1.8041485E-07 moved(mean worst n)=2.3835770E-03 9.6814432E-03 30 support(mean worst n)=9.4051946E-02 1.8120301E+00 52 largest_response=2.8041696E-08
+dir=carrier arc=1.0 rc=0 wall=17s probe_length=1.8041485E-06 moved(mean worst n)=4.6313904E-04 8.9552239E-03 30 support(mean worst n)=2.8150786E-02 4.4954128E-01 52 largest_response=2.8031307E-08
+dir=carrier arc=1.0e1 rc=0 wall=17s probe_length=1.8041485E-05 moved(mean worst n)=5.0222275E-05 9.7253379E-04 30 support(mean worst n)=1.8003258E-03 1.8960069E-02 52 largest_response=2.8031370E-08

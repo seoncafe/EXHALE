@@ -190,6 +190,20 @@ ATES model.
   schema, certification verdict and provenance, the census of rows the line
   took its depth from that were refused a correction, and the
   `EXHALE_TRANSIT_*` overrides in effect, so a curve says what it stands on
+- An independent conservation audit of the discrete rows, off by default.
+  `EXHALE_CONSERVATION_BUDGET=<n>` exports the next `n` stationary residual
+  assemblies to `output/conservation_budget_<nnnn>.txt`: per cell the face
+  areas, the cell volume, both faces of all three conserved variables, the
+  face potentials and the cell potential, the gravitational work the energy
+  flux difference carries inside it, the face pressures or the equilibrium
+  pressure departures the momentum branch in force uses, the explicit and
+  transport sources, the radiative heating and cooling, and the assembled
+  rows, every real at seventeen significant decimal digits. Absent or `0`
+  nothing is written and no file is opened.
+  `EXHALE_conservation_budget.py` reads that file, rebuilds each row from
+  the exported terms alone, and reports two things separately: assembly
+  consistency, whose tolerance is arithmetic, and stationarity, whose
+  tolerance is the certification's
 - Python loaders (`examples/exhale_io.py`) driven by the `# columns` schema
   header every output file carries; a bitwise regression harness over a
   sixteen-case physics matrix (`make check`); and 33 assertion suites under
@@ -429,4 +443,4 @@ schemas, convergence recipes, post-processing) is in
 
 Kwang-Il Seon (KASI / UST)
 
-Last updated: 2026-09-20 16:17
+Last updated: 2026-09-22 09:56

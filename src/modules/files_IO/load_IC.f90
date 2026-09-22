@@ -49,7 +49,8 @@
       ! differ that the input did not name.
       use molecular_seed, only: molecular_seed_state_file,                &
                                 molecular_seed_option_may_differ,         &
-                                molecular_seed_on
+                                molecular_seed_on,                        &
+                                molecular_seed_statement_from_line
       ! Which build produced a state file: the source revision stamped into
       ! the executable (the run never calls git).
       use build_stamp, only: build_git, build_dirty
@@ -465,6 +466,12 @@
             endif
             call parse_restart_metadata_line(line, meta_h)
             call parse_boundary_model_line(line)
+            ! WHICH CONVERSION PRODUCED THE SEED OF THIS STATE. The run
+            ! that solves builds no seed of its own, so the sentence the
+            ! state carries is what says which x2 source and which
+            ! thermodynamic invariant the molecular state it descends from
+            ! came out of; write_output writes it again unchanged.
+            call molecular_seed_statement_from_line(line)
             call collect_option_change_line(line)
          else
             nrec = nrec + 1

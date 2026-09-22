@@ -1451,6 +1451,29 @@
       endif
       end function reconstruction_operator_label
 
+      logical function assembled_reconstruction_is_plm() result(is_plm)
+      ! WHICH RECONSTRUCTION THE ROW OF ONE EVALUATION IS BUILT WITH.
+      !
+      ! The flag pair is not that answer while the continuation is armed: its
+      ! endpoints are PLM at lambda <= 0 and WENO3 at lambda >= 1 whatever
+      ! use_plm holds, because every assembly selects on lambda there
+      ! (reconstruction_continuation_rhs and the kind-generic text of
+      ! hydrodynamic_rows).  An intermediate lambda is neither scheme, and the
+      ! callers that cannot carry the blend refuse it before they ask.
+      !
+      ! It is defined here, beside reconstruction_operator_label, because the
+      ! assembly of a row and the terms that row is read against must state
+      ! this once: the kind-generic assembly selected the endpoint while
+      ! equilibrium_pressure_force_of_state and momentum_row_terms_of_state
+      ! read the flags, and the two disagreed silently when the flags named
+      ! the other endpoint.
+      if (recon_lambda_on) then
+         is_plm = (recon_lambda .le. 0.0d0)
+      else
+         is_plm = use_plm
+      endif
+      end function assembled_reconstruction_is_plm
+
       subroutine allocate_grid_arrays
       ! Allocate the grid-sized module arrays once N is known (called from
       ! input_read, right after the "Grid cells" key has been resolved and

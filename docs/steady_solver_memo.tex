@@ -33,7 +33,7 @@
 \title{EXHALE: Convergence Reliability and the\\ Steady-State Newton
 (JFNK) Solver\\ \large(work log, 2026-06-10/11)}
 \author{Kwang-Il Seon}
-\date{Last updated: 2026-09-10}
+\date{Last updated: 2026-09-22}
 \maketitle
 
 \begin{quote}\small\itshape
@@ -573,8 +573,20 @@ where they arose: the linear model and its Arnoldi gap
 same section, the conditional closure convergence left FAIL by design
 (\S\ref{sec:rescontract}), and the layer's element flux conservation, which
 is what keeps the certification from gating below $r = 1.20$
-(\S\ref{sec:certtol}). No species-row configuration converges today, and
-none is certified.
+(\S\ref{sec:certtol}).
+
+\paragraph{Corrected 2026-09-22.} The sentence that stood here, that no
+species-row configuration converges and that none is certified, is false as a
+statement about the route. It holds of the two reload fixtures of
+\S\ref{sec:certtol}, which still bind, and of nothing wider. The
+LHS\,1140\,b catalog carries certified states whose element and carrier rows
+are gated in the wind, and the XUV continuation of 2026-09-21 certified seven
+more, one of them the case that catalog had carried with no certified
+generation at all; on its first rung the elemental transport He/H row
+certifies at $9.924\times10^{-6}$ against its $10^{-5}$ tolerance at cell 351
+(READ, \code{docs/lhs1140b\_xuv\_continuation\_20260921.md}). The catalog
+inventory taken at 2026-09-21 21:10 KST reads 143 state indexes with 92
+certified (MEASURED, \code{LHS1140b/models/CASE\_INVENTORY.json}).
 
 %====================================================================
 \section{File inventory}\label{sec:files}

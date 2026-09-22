@@ -1,0 +1,27 @@
+invocation        ic_atomic_omp1_blas1_p2
+mode              R (current operator on a stored generation; no physical step taken, nothing published)
+case              atomic
+stage             EXHALE_DUMP_IC=1
+route change      no
+run directory     /tmp/claude-1000/-nfs-mocafe-kiseon-RT-Codes-ExoAtmosphere/59a81fec-9ef0-4992-9a57-6494f229e6bb/scratchpad/stageA_repeat/runs/ic_atomic_omp1_blas1_p2/models/atomic/work
+executable        /tmp/claude-1000/-nfs-mocafe-kiseon-RT-Codes-ExoAtmosphere/59a81fec-9ef0-4992-9a57-6494f229e6bb/scratchpad/stageA_repeat/runs/ic_atomic_omp1_blas1_p2/models/atomic/work/EXHALE.x  md5 b51164071cc21f89f1c4412a8838b5a3
+environment in force (env -i, so this is the complete set):
+  PATH=/usr/bin:/bin  HOME=/home/kiseon
+  OMP_NUM_THREADS=1  OPENBLAS_NUM_THREADS=1  OMP_DYNAMIC=FALSE  OMP_MAX_ACTIVE_LEVELS=1
+  EXHALE_DUMP_IC=1  EXHALE_RESID_QUAD=0
+input state (md5 MEASURED):
+  e43c6697786711fb916d3b8eb3c113aa  input.inp
+  25e11562ec3cd1f6d204bf36f8e503eb  output/Hydro_ioniz_IC.txt
+  78ac49d7e1ce90a3a4f271785400efda  output/Ion_species_IC.txt
+started           2026-09-20T23:52:50Z
+ended             2026-09-20T23:52:50Z
+wall seconds      0.08
+exit status       0
+files this invocation left (size, path, md5 MEASURED):
+  2608  /tmp/claude-1000/-nfs-mocafe-kiseon-RT-Codes-ExoAtmosphere/59a81fec-9ef0-4992-9a57-6494f229e6bb/scratchpad/stageA_repeat/runs/ic_atomic_omp1_blas1_p2/stdout.log  26b97efa56887e7313666f7e377c6c5e  rows=33
+  0  /tmp/claude-1000/-nfs-mocafe-kiseon-RT-Codes-ExoAtmosphere/59a81fec-9ef0-4992-9a57-6494f229e6bb/scratchpad/stageA_repeat/runs/ic_atomic_omp1_blas1_p2/stderr.log  d41d8cd98f00b204e9800998ecf8427e  rows=0
+  93749  /tmp/claude-1000/-nfs-mocafe-kiseon-RT-Codes-ExoAtmosphere/59a81fec-9ef0-4992-9a57-6494f229e6bb/scratchpad/stageA_repeat/runs/ic_atomic_omp1_blas1_p2/models/atomic/work/output/Hydro_ioniz_IC.txt  25e11562ec3cd1f6d204bf36f8e503eb  rows=521
+  93782  /tmp/claude-1000/-nfs-mocafe-kiseon-RT-Codes-ExoAtmosphere/59a81fec-9ef0-4992-9a57-6494f229e6bb/scratchpad/stageA_repeat/runs/ic_atomic_omp1_blas1_p2/models/atomic/work/output/Hydro_ioniz.txt  a71eb320c895a077392d9559134095a7  rows=521
+  447309  /tmp/claude-1000/-nfs-mocafe-kiseon-RT-Codes-ExoAtmosphere/59a81fec-9ef0-4992-9a57-6494f229e6bb/scratchpad/stageA_repeat/runs/ic_atomic_omp1_blas1_p2/models/atomic/work/output/Ion_species_IC.txt  78ac49d7e1ce90a3a4f271785400efda  rows=517
+  447346  /tmp/claude-1000/-nfs-mocafe-kiseon-RT-Codes-ExoAtmosphere/59a81fec-9ef0-4992-9a57-6494f229e6bb/scratchpad/stageA_repeat/runs/ic_atomic_omp1_blas1_p2/models/atomic/work/output/Ion_species.txt  ee1e83d75ce5781bdead117e898337a2  rows=517
+verdict line printed:

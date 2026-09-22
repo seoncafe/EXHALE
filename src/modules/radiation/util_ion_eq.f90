@@ -2119,7 +2119,14 @@
 	! photon-driven reactions, the radiative recombinations and the
 	! collisional ionizations are excluded there, so nothing above is counted
 	! twice; see molecular_reaction_heat.f90 for the exclusion list and for
-	! why an atomic gas has no such term. Default off.
+	! why an atomic gas has no such term. Default ON (mol_reaction_heat in
+	! parameters.f90; the key "Molecular reaction heat: False" turns it off).
+	! On a column that carries no H2 where the network would form it, this
+	! term is the three-body formation heat of that out-of-equilibrium
+	! composition and it is large by construction: MEASURED 2026-09-21 on
+	! molecular_photochem_gj1132_kzzprofile/HeH9 evaluated with an H2-free
+	! column, the energy row of cells 3 to 5 stands at 0.98 of its own scale
+	! with this term and at 7.3e-03 without it.
 	if (with_molecules .and. mol_reaction_heat) then
 		! nheiS_chem, the ground-singlet neutral helium, is formed above:
 		! it is the collision partner of H2+ + He -> HeH+ + H and the

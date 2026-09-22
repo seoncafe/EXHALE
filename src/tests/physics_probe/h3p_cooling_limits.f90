@@ -53,7 +53,13 @@
       !    decision 8: a cell below the tabulated collider range is
       !    evaluated on the linear collisional limit and carries an
       !    informational record; a cell outside 30-5000 K is clamped and
-      !    recorded.
+      !    recorded.  The records count EVALUATIONS, and they count only
+      !    STRICT excursions: the Table 5 fit is defined at 30 and at
+      !    5000 K and the Table 6 rows run from 300 to 5000 K with columns
+      !    from 1e6 to 1e14 cm^-3, so an argument sitting exactly on one of
+      !    those endpoints is inside the published domain.  An argument
+      !    that is not an ordinary real is no statement about an interval
+      !    at all and carries its own record.
       !
       ! At 35d9dd5 the density argument was clamped at the lowest tabulated
       ! density (log n_H2 = 6), so the rate was constant below it and
@@ -62,8 +68,12 @@
       ! as published and their steps stood in the evaluated emission.
       use h3p_cooling, only: h3p_cooling_rate, h3p_emission_lte,          &
                              h3p_nonlte_factor, h3p_reset_domain_records, &
-                             h3p_n_below_collider, h3p_n_below_fit_T,     &
-                             h3p_n_above_fit_T, h3p_n_outside_nonlte_T
+                             h3p_evaluations_below_collider,              &
+                             h3p_evaluations_below_fit_T,                 &
+                             h3p_evaluations_above_fit_T,                 &
+                             h3p_evaluations_outside_nonlte_T,            &
+                             h3p_evaluations_nonfinite_T,                 &
+                             h3p_evaluations_nonfinite_collider
       use assertion_report
       implicit none
 
@@ -89,8 +99,14 @@
            -0.0264611d0, +0.000462693d0, -4.70108d-6, +2.84979d-8,        &
            -1.03090d-10, +2.13794d-13, -2.26029d-16, +8.66357d-20 /)
 
+      ! The IEEE-754 binary64 patterns of a quiet NaN and of +infinity,
+      ! written out so that neither has to be produced by an arithmetic
+      ! operation the compiler may fold or trap on.
+      integer*8, parameter :: nan_bits = int(z'7FF8000000000000', 8)
+      integer*8, parameter :: inf_bits = int(z'7FF0000000000000', 8)
+
       real*8 :: lam0, lam1, lam2, jump, tk, ssum, dummy
-      real*8 :: below, at
+      real*8 :: below, at, qnan, pinf
       character(len=48) :: label
       integer :: i, n
 
@@ -143,17 +159,90 @@
       call h3p_reset_domain_records()
       dummy = h3p_cooling_rate(1000.0d0, 1.0d0, 1.0d3)
       call check_absolute('h3p_record_below_collider',                    &
-                          dble(h3p_n_below_collider), 1.0d0, 0.5d0)
+                          dble(h3p_evaluations_below_collider),           &
+                          1.0d0, 0.5d0)
       call h3p_reset_domain_records()
       dummy = h3p_emission_lte(20.0d0)
       dummy = h3p_emission_lte(6000.0d0)
       call check_absolute('h3p_record_outside_fit_temperature',           &
-                          dble(h3p_n_below_fit_T + h3p_n_above_fit_T),    &
+                          dble(h3p_evaluations_below_fit_T                &
+                               + h3p_evaluations_above_fit_T),            &
                           2.0d0, 0.5d0)
       call h3p_reset_domain_records()
       dummy = h3p_nonlte_factor(6000.0d0, 1.0d12)
       call check_absolute('h3p_record_outside_nonlte_temperature',        &
-                          dble(h3p_n_outside_nonlte_T), 1.0d0, 0.5d0)
+                          dble(h3p_evaluations_outside_nonlte_T),         &
+                          1.0d0, 0.5d0)
+
+      ! THE ENDPOINTS ARE INSIDE, AND ONE UNIT IN THE LAST PLACE OUTSIDE
+      ! THEM IS OUT.  nearest() moves by the smallest representable step,
+      ! so each pair brackets the endpoint as tightly as the arithmetic
+      ! allows and no tolerance on the temperature is involved.
+      call h3p_reset_domain_records()
+      dummy = h3p_emission_lte(30.0d0)
+      call check_absolute('h3p_record_fit_temperature_30_is_inside',      &
+                          dble(h3p_evaluations_below_fit_T), 0.0d0, 0.5d0)
+      call h3p_reset_domain_records()
+      dummy = h3p_emission_lte(nearest(30.0d0, -1.0d0))
+      call check_absolute('h3p_record_fit_temperature_below_30',          &
+                          dble(h3p_evaluations_below_fit_T), 1.0d0, 0.5d0)
+      call h3p_reset_domain_records()
+      dummy = h3p_emission_lte(5000.0d0)
+      call check_absolute('h3p_record_fit_temperature_5000_is_inside',    &
+                          dble(h3p_evaluations_above_fit_T), 0.0d0, 0.5d0)
+      call h3p_reset_domain_records()
+      dummy = h3p_emission_lte(nearest(5000.0d0, 1.0d0))
+      call check_absolute('h3p_record_fit_temperature_above_5000',        &
+                          dble(h3p_evaluations_above_fit_T), 1.0d0, 0.5d0)
+      call h3p_reset_domain_records()
+      dummy = h3p_nonlte_factor(300.0d0, 1.0d12)
+      dummy = h3p_nonlte_factor(5000.0d0, 1.0d12)
+      call check_absolute('h3p_record_nonlte_row_endpoints_are_inside',   &
+                          dble(h3p_evaluations_outside_nonlte_T),         &
+                          0.0d0, 0.5d0)
+      call h3p_reset_domain_records()
+      dummy = h3p_nonlte_factor(nearest(300.0d0, -1.0d0), 1.0d12)
+      call check_absolute('h3p_record_nonlte_row_below_300',              &
+                          dble(h3p_evaluations_outside_nonlte_T),         &
+                          1.0d0, 0.5d0)
+      call h3p_reset_domain_records()
+      dummy = h3p_nonlte_factor(1000.0d0, 1.0d6)
+      call check_absolute('h3p_record_collider_1e6_is_inside',            &
+                          dble(h3p_evaluations_below_collider),           &
+                          0.0d0, 0.5d0)
+      call h3p_reset_domain_records()
+      dummy = h3p_nonlte_factor(1000.0d0, nearest(1.0d6, -1.0d0))
+      call check_absolute('h3p_record_collider_below_1e6',                &
+                          dble(h3p_evaluations_below_collider),           &
+                          1.0d0, 0.5d0)
+
+      ! AN ARGUMENT THAT IS NOT AN ORDINARY REAL IS ITS OWN CATEGORY.  The
+      ! evaluation still lands on an end of the fit and on a zero collider
+      ! density, which is what the clamps are for, but calling that an
+      ! excursion below the published range would be a statement about an
+      ! interval that a NaN or an infinity never made.
+      qnan = transfer(nan_bits, 1.0d0)
+      pinf = transfer(inf_bits, 1.0d0)
+      call h3p_reset_domain_records()
+      dummy = h3p_emission_lte(qnan)
+      call check_absolute('h3p_record_nonfinite_temperature',             &
+                          dble(h3p_evaluations_nonfinite_T), 1.0d0, 0.5d0)
+      call check_absolute('h3p_record_nonfinite_temperature_not_below',   &
+                          dble(h3p_evaluations_below_fit_T), 0.0d0, 0.5d0)
+      call h3p_reset_domain_records()
+      dummy = h3p_emission_lte(pinf)
+      call check_absolute('h3p_record_infinite_temperature',              &
+                          dble(h3p_evaluations_nonfinite_T), 1.0d0, 0.5d0)
+      call check_absolute('h3p_record_infinite_temperature_not_above',    &
+                          dble(h3p_evaluations_above_fit_T), 0.0d0, 0.5d0)
+      call h3p_reset_domain_records()
+      dummy = h3p_nonlte_factor(1000.0d0, qnan)
+      call check_absolute('h3p_record_nonfinite_collider',                &
+                          dble(h3p_evaluations_nonfinite_collider),       &
+                          1.0d0, 0.5d0)
+      call check_absolute('h3p_record_nonfinite_collider_not_below',      &
+                          dble(h3p_evaluations_below_collider),           &
+                          0.0d0, 0.5d0)
 
       if (assertion_failures .gt. 0) then
          write(*,'(a,i0,a)') 'h3p_cooling_limits: ', assertion_failures,  &

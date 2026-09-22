@@ -1,0 +1,21 @@
+md5 of EXHALE.x for each strict-matrix log in this directory.
+Each log names its own binary by the first twelve digits on its
+"[build] skipped: REGRESSION_EXE=..." line; the full digests are
+
+5d678393ede60fcf52338dfebecc02a2  full_matrix_5d678393.log
+    the five defect repairs of section 15 of docs/Update_EXHALE_stage2.md
+89ec67149aa452eea3deeb19052f83d1  full_matrix_89ec6714.log
+    the same source plus the three diagnostic keys of the campaign
+    (EXHALE_CLOSURE_PROBE, EXHALE_CONSERVATION_BUDGET,
+     EXHALE_BASE_PARTICLE_COUNT), every one of them default off
+891ed5307c8b8aad0d615b974af7e313  full_matrix_891ed530.log
+    the same source plus the defect 10.7 repair in src/EXHALE_main.f90
+
+Each of the three ran the eighteen default cases and ended
+"==> REGRESSION PASS (all cases byte-identical)" with exit=0. No golden
+was refreshed for any of them.
+
+Read the verdict with the log's own qualification: the golden directory of
+case iontrans_metals holds no reference for Hydro_ioniz_adv.txt or
+Ion_species_adv.txt, so those two files are reported MISS and are outside
+the verdict. Each matrix therefore compared 71 files over 18 cases, not 72.

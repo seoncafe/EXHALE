@@ -15,6 +15,20 @@
 \begin{document}
 \maketitle
 
+\paragraph{Note added 2026-09-22.}
+The tables below record the catalog as it stood on 2026-09-20 and are not
+rewritten. On 2026-09-21 an XUV continuation certified seven states. The
+atomic case \case{scalar\_x0.01\_kzz1e9/HeH2.13}, which section 3 lists among
+the models that are not certified, now carries a certified generation; and six
+cases that did not exist when these tables were written stand beside it, the
+rungs at 0.015, 0.02, 0.03, 0.05 and 0.07 of the fiducial XUV on the
+He/H~=~2.13 branch and the 0.07 rung on the He/H~=~9.7 branch.
+\texttt{CASE\_INVENTORY.json} taken at 2026-09-21 21:10 KST reads 143 state
+indexes with 92 certified, where the inventory these tables count read 137 with
+85. The current state of the catalog is in
+\texttt{docs/lhs1140b\_xuv\_continuation\_20260921.md} and in section 3.1 of
+\texttt{LHS1140b/MODELS.md}.
+
 \noindent
 Every model of the catalog is LHS 1140 b on 500 cells, solved by the
 partitioned stationary route with \texttt{Well balanced: True}, from the
@@ -128,10 +142,10 @@ scalar\_x0.33\_kzz1e9 & atomic & 2.13, 9.7 & 0.33 & 1.0e9 & on & 2.8E-12 to 3.4E
 scalar\_gj699\_wellmixed & atomic & 0.042 to 1000 & 1 & none & off & 1.8E-13 to 1.6E-11 & 6 & 6\\
 diffusion\_check & atomic & 0.55 & 1 & 0.0 to 1.0e9 & on & -- & 4 & 0\\
 photochem\_kzzprofile & molecular & 9 & 1 & profile & on & 1.4E-02 & 1 & 0\\
-scalar\_kzz1e9 & molecular & 0.083 to 9.7 & 1 & 1.0e9 & on & 9.3E-13 to 1.4E-02 & 4 & 0\\
+scalar\_kzz1e9 & molecular & 0.083 to 9.7 & 1 & 1.0e9 & on & 9.3E-13 to 1.4E-02 & 4 & 2\\
 scalar\_wellmixed & molecular & 0.083, 0.55 & 1 & none & off & 9.1E-13 to 6.6E-12 & 2 & 0\\
 \midrule
-\multicolumn{7}{l}{total} & 88 & 74\\
+\multicolumn{7}{l}{total} & 88 & 76\\
 \bottomrule
 \end{longtable}\normalsize
 
@@ -154,8 +168,6 @@ case & wind chemistry & He/H & XUV & $K_{zz}$ & diff. & $du$ & $\lVert R\rVert$ 
 photochem\_kzzprofile/HeH9 & molecular & 9 & 1 & profile & on & 1.406E-02 & 3.167E-01 & mass row 2.25e-1 at cell 2\\
 scalar\_kzz1e9/HeH0.083 & molecular & 0.083 & 1 & 1.0e9 & on & 4.879E-12 & 1.369E-08 & H2 carrier row 8.15e-4 at cell 499\\
 scalar\_kzz1e9/HeH0.55 & molecular & 0.55 & 1 & 1.0e9 & on & 1.408E-02 & 1.954E-01 & energy row 4.63e-1 at cell 257, H2 8.92e-3\\
-scalar\_kzz1e9/HeH2.13 & molecular & 2.13 & 1 & 1.0e9 & on & 9.272E-13 & 1.170E+00 & H2 carrier row 2.07e-1 at cell 224, wall ceiling\\
-scalar\_kzz1e9/HeH9.7 & molecular & 9.7 & 1 & 1.0e9 & on & 3.491E-11 & 2.580E-08 & H2 carrier row 5.13e-4 of 1e-5, pass budget spent\\
 scalar\_wellmixed/HeH0.083 & molecular & 0.083 & 1 & none & off & 6.592E-12 & 2.701E-08 & H2 carrier row 7.37e-2 at cell 500\\
 scalar\_wellmixed/HeH0.55 & molecular & 0.55 & 1 & none & off & 9.086E-13 & 2.893E-04 & energy row 1.00 at cell 246, H2 2.36e-2\\
 photochem\_x0.01\_kzzprofile/HeH9.7 & atomic & 9.7 & 0.01 & profile & on & 9.356E-03 & 1.171E+00 & mass row 1.16 at cell 1, wall ceiling\\
@@ -169,18 +181,14 @@ diffusion\_check/scalar\_kzz1e9\_HeH0.55 & atomic & 0.55 & 1 & 1.0e9 & on & -- &
 \end{longtable}\normalsize
 
 \noindent
-Read by mechanism, the fourteen fall into four kinds.
+Read by mechanism, the twelve fall into three kinds.
 \begin{itemize}
 \item \textbf{The hydrodynamic Newton makes no progress} on the three models
-      at 0.01 of the fiducial XUV and on the molecular \texttt{kzz1e9/HeH2.13}.
-      The composition relaxes while the hydrodynamic rows stand still between
-      passes, and six times the budget changed nothing. These are the models
-      of the open solver item.
-\item \textbf{The budget is spent before the gate} on the molecular
-      \texttt{kzz1e9/HeH9.7}: its gated carrier row falls monotonically and
-      stands a factor 51 above its tolerance when the 40 passes are spent.
-\item \textbf{A carrier or energy row in the wind refuses} the remaining five
-      molecular models, at cells 246 to 500.
+      at 0.01 of the fiducial XUV. The composition relaxes while the
+      hydrodynamic rows stand still between passes, and six times the budget
+      changed nothing. These are the models of the open solver item.
+\item \textbf{A mass, carrier or energy row refuses} the five molecular
+      models, at cells 2 to 500.
 \item \textbf{Nothing was solved} in the four \texttt{diffusion\_check} models:
       they were post-processed without a time integration.
 \end{itemize}
@@ -190,17 +198,17 @@ mass flux $\rho v r^2$ over the wind window, the quantity a marching run stops
 on, and $\lVert R\rVert$ is the stationary operator's residual norm. Both are
 the last value the case reached, whether or not it certified. The recipe of
 this code, and the practice of the literature it follows, calls a wind
-converged at $du < 10^{-3}$. MEASURED on the models that carry no certificate:
-\texttt{scalar\_kzz1e9/HeH0.083} reaches $du = 4.9\times10^{-12}$ with
-$\lVert R\rVert = 1.4\times10^{-8}$, \texttt{scalar\_kzz1e9/HeH9.7}
-$3.5\times10^{-11}$ and $2.6\times10^{-8}$,
-\texttt{scalar\_wellmixed/HeH0.083} $6.6\times10^{-12}$ and
-$2.7\times10^{-8}$, \texttt{scalar\_wellmixed/HeH0.55} $9.1\times10^{-13}$ and
-$2.9\times10^{-4}$, \texttt{scalar\_kzz1e9/HeH2.13} $9.3\times10^{-13}$ with
-$\lVert R\rVert = 1.2$, and \texttt{scalar\_x0.01\_kzz1e9/HeH9.7}
-$4.4\times10^{-12}$ with $\lVert R\rVert = 1.0$. By the flux-spread criterion
-these are converged winds, and four of them also sit at a residual norm of
-$10^{-8}$ to $10^{-4}$.
+converged at $du < 10^{-3}$. MEASURED on the models that carry no certificate,
+naming the wind chemistry because the same short name occurs in both families:
+the molecular \texttt{scalar\_kzz1e9/HeH0.083} reaches
+$du = 4.9\times10^{-12}$ with $\lVert R\rVert = 1.4\times10^{-8}$, the
+molecular \texttt{scalar\_wellmixed/HeH0.083} $6.6\times10^{-12}$ and
+$2.7\times10^{-8}$, the molecular \texttt{scalar\_wellmixed/HeH0.55}
+$9.1\times10^{-13}$ and $2.9\times10^{-4}$, and the atomic
+\texttt{scalar\_x0.01\_kzz1e9/HeH9.7} $4.4\times10^{-12}$ with
+$\lVert R\rVert = 1.0$. By the flux-spread criterion these are converged
+winds, and three of them also sit at a residual norm of $10^{-8}$ to
+$10^{-4}$.
 
 What refuses them is this code's own row-by-row certification, which is
 stricter: it measures every equation of the inventory cell by cell and names
@@ -212,7 +220,12 @@ says which row keeps it from this one.
 \section{The models that are certified}
 
 The table lists every certified model with the mass-loss rate and the He~I
-10830 equivalent width the catalog reports for it.
+10830 equivalent width the catalog reports for it. The two molecular rows at
+its foot certified on 2026-09-20, when every active equation of the inventory
+was measured on their states and found within tolerance; their $du$ and
+$\lVert R\rVert$ are, as everywhere in this memo, the last values the case
+printed, and for these two the measured state is an earlier generation of the
+case.
 
 \scriptsize\linespread{1.0}\selectfont\begin{longtable}{@{}l >{\raggedright\arraybackslash}p{1.5cm} l l l l l l r r@{}}
 \toprule
@@ -293,6 +306,8 @@ scalar\_gj699\_wellmixed/HeH0.050 & atomic & 0.050 & 1 & none & off & 1.587E-11 
 scalar\_gj699\_wellmixed/HeH0.083 & atomic & 0.083 & 1 & none & off & 7.470E-13 & 1.320E-07 & 8.570 & 1.6271\\
 scalar\_gj699\_wellmixed/HeH1 & atomic & 1 & 1 & none & off & 5.765E-13 & 8.372E-08 & 8.550 & 4.5250\\
 scalar\_gj699\_wellmixed/HeH1000 & atomic & 1000 & 1 & none & off & 8.965E-13 & 7.482E-09 & 8.420 & 2.8725\\
+scalar\_kzz1e9/HeH2.13 & molecular & 2.13 & 1 & 1.0e9 & on & 9.272E-13 & 1.170E+00 & 7.900 & 1.5603\\
+scalar\_kzz1e9/HeH9.7 & molecular & 9.7 & 1 & 1.0e9 & on & 3.491E-11 & 2.580E-08 & 7.940 & 2.4061\\
 \bottomrule
 \end{longtable}\normalsize
 
@@ -300,7 +315,7 @@ scalar\_gj699\_wellmixed/HeH1000 & atomic & 1000 & 1 & none & off & 8.965E-13 & 
 
 The question the columns above raise is what a state that meets $du < 10^{-3}$
 but fails this code's certification differs from the certified stationary
-solution BY. Measured on \texttt{scalar\_kzz1e9/HeH2.13}, which is certified,
+solution BY. Measured on the atomic \texttt{scalar\_kzz1e9/HeH2.13}, which is certified,
 against a state of the same case stopped after one outer pass of the same
 route (\texttt{docs/du\_stop\_vs\_stationary\_20260920.md}):
 
@@ -350,7 +365,7 @@ which is what lets a later measurement, or a ladder that resolves 0.178
 \centering
 \includegraphics[width=\textwidth]{figures/du_stop_vs_stationary_profiles.pdf}
 \caption{The certified stationary solution and the flux-converged refused
-state of \texttt{scalar\_kzz1e9/HeH2.13}, as functions of radius.}
+state of the atomic \texttt{scalar\_kzz1e9/HeH2.13}, as functions of radius.}
 \end{figure}
 
 \begin{figure}[htbp]

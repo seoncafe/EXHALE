@@ -44,6 +44,8 @@
                                    hydrodynamic_rows_in_double_precision
       use ionization_equilibrium, only: ieq_sweep_state_kind,           &
                                         ieq_state_marching
+      use conservation_budget, only: conservation_budget_exports_left,  &
+                                     write_conservation_budget_terms
 
       implicit none
       private
@@ -224,6 +226,11 @@
       real*8, dimension(3,1-Ng:N+Ng) :: WL, WR, dF, S, W
       real*8, dimension(1-Ng:N+Ng)   :: Tc, Smom, Sene
       integer :: rows_kind
+      ! The reconstruction in force at entry, restored after the terms of a
+      ! kind-generic row have been evaluated under the scheme that row was
+      ! actually assembled with.
+      logical :: sav_plm, sav_weno
+      character(len=:), allocatable :: sav_method
 
       ! THE ARITHMETIC THE HYDRODYNAMIC ROWS ARE ASSEMBLED IN.  Normally the
       ! production routines, in double.  EXHALE_RESID_QUAD=1 sends the
@@ -261,8 +268,28 @@
       ! are the rounding control experiment of module hydrodynamic_rows and
       ! are default off.
       if (rows_kind .ne. ROWS_PRODUCTION) then
+         ! UNDER THE SCHEME THE ROW WAS ASSEMBLED WITH, which is not always
+         ! the flag pair: the kind-generic text selects the endpoint from
+         ! lambda and leaves the flags alone, while the two routines below
+         ! read the flags, so a run whose flags named the other endpoint
+         ! scaled a row of one scheme by the terms of the other.  The
+         ! production path has no such gap, because RK_rhs forms both inside
+         ! the scope where reconstruction_continuation_rhs has set the flags.
+         ! One rule answers it, assembled_reconstruction_is_plm, and the
+         ! generic text selects on the same one.
+         sav_plm    = use_plm
+         sav_weno   = use_weno3
+         sav_method = rec_method
+         if (assembled_reconstruction_is_plm()) then
+            rec_method = 'PLM';    use_plm = .true.;  use_weno3 = .false.
+         else
+            rec_method = 'WENO3';  use_plm = .false.; use_weno3 = .true.
+         endif
          if (well_balanced) call equilibrium_pressure_force_of_state(u)
          call momentum_row_terms_of_state(WL, WR, S)
+         rec_method = sav_method
+         use_plm    = sav_plm
+         use_weno3  = sav_weno
       endif
       R(1,:) = dF(1,:) - S(1,:)
       R(2,:) = dF(2,:) - S(2,:)
@@ -283,6 +310,16 @@
       ! standing alone in a row that has no fluxes.
       R(:,1-Ng) = 0.0d0
       call store_row_terms(u, dF, S, heat, cool, Smom, Sene)
+
+      ! THE COMPLETE TERMS OF THE THREE ROWS OF THIS ASSEMBLY, for an
+      ! independent reader of the discrete balance. Default off: nothing is
+      ! written and no file is opened unless EXHALE_CONSERVATION_BUDGET is
+      ! set (module conservation_budget). It writes the arrays above and the
+      ! face data this assembly stored, and changes none of them.
+      if (conservation_budget_exports_left())                           &
+         call write_conservation_budget_terms(u, dF, S, R,              &
+                                              heat, cool, Smom, Sene,   &
+                                              rows_kind)
 
       ! The rounding floor of the continuity row, measured on the first
       ! state a run assembles a stationary residual for when

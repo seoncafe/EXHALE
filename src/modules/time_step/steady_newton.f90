@@ -30,6 +30,7 @@
                  adopt_background_of_best_iterate,                       &
                  install_background_of_adopted_state,                  &
                  ieq_sweep_ledger_last, xuv_self_field_passes,        &
+                 ieq_sweep_state_kind,                                 &
                  ieq_report_cell,                                      &
                  molecular_decay_rate_of_the_cell,                     &
                  set_molecular_decay_cells
@@ -207,6 +208,7 @@
                 base_row_control_volume_balance,                          &
                 base_row_reservoir_condition,                             &
                 measure_the_closure_map_at_the_base,                      &
+                jacobian_action_against_closure_count_and_probe_arc,      &
                 outer_residual_closure_target,                            &
                 closure_amplification_at_the_base,                        &
                 equilibrate_the_scaled_columns,                           &
@@ -4294,8 +4296,20 @@
       ! certification, which forms the count from the state it is handed,
       ! read the energy row of cell 1 at 2.073e-4 of its scale while this
       ! residual reported 1e-11 there. Re-forming the count from the ghosts
-      ! as refreshed makes the two evaluations one; without conduction or
-      ! viscosity the count enters no row and nothing changes.
+      ! as refreshed makes the two evaluations one.
+      !
+      ! IT IS NOT ONLY THE CONDUCTIVE FLUX THAT READS THE COUNT. This
+      ! comment said that without conduction or viscosity the count enters
+      ! no row and nothing changes, and that is true only of an ideal-gas
+      ! mixture. Where the caloric equation of state is active the count is
+      ! what the temperature is formed from, so it reaches the pressure, the
+      ! face states and the rows built on them. MEASURED 2026-09-21 on
+      ! molecular_scalar_gj1132_kzz1e9/HeH0.083 with visc = F and cond = F:
+      ! this route reports the mass row at 9.745141E-09 where the loaded
+      ! state route, which does not re-form the count, reports 1.392918E-08,
+      ! a factor 0.70, and the momentum row at 5.136539E-13 against
+      ! 4.875714E-13. The atomic checkpoint of the same measurement shows no
+      ! difference, which is the control.
       call U_to_W(u, W)
       rho = W(1,:)
       call get_species_densities(rho,f_sp,nhi,nhii,nhei,nheii,         &
@@ -6283,6 +6297,768 @@
 
       ! ------------------------------------------------------!
 
+      integer(8) function digest_of_a_real_array(a) result(h)
+      ! A deterministic digest of every bit of a real array, so that two
+      ! evaluations can state that they were handed the same NUMBERS and not
+      ! merely the same array name. Only exclusive-or and logical shifts are
+      ! used, so nothing here depends on how the compiler treats integer
+      ! overflow.
+      real*8, dimension(:), intent(in) :: a
+      integer(8) :: b
+      integer :: i
+      h = 0_8
+      do i = 1, size(a)
+         b = transfer(a(i), b)
+         h = ieor(h, b)
+         h = ior(ishft(h, 13), ishft(h, -51))
+      enddo
+      end function digest_of_a_real_array
+
+      ! ------------------------------------------------------!
+
+      subroutine scaled_row_class_norms(x, Dr, cls2, cinf, jinf, kinf)
+      ! The 2-norm and the largest entry of Dr^-1 x within each row class of
+      ! the flat vector: the mass rows of every cell, the momentum rows, the
+      ! energy rows, the species rows together, and class 5 the whole
+      ! vector. This is the row distribution every norm in this measurement
+      ! is reported as, so that a number is never a single norm.
+      real*8, dimension(nvar_jac*N), intent(in)  :: x, Dr
+      real*8, dimension(5),          intent(out) :: cls2, cinf
+      integer, dimension(5),         intent(out) :: jinf, kinf
+      integer :: j, k, is, ic
+      real*8  :: q
+      cls2 = 0.0d0;  cinf = 0.0d0;  jinf = 0;  kinf = 0
+      do j = 1, N
+         do k = 1, nvar_jac
+            is = nvar_jac*(j-1) + k
+            ic = k
+            if (k .gt. 3) ic = 4
+            q = abs(x(is))/max(Dr(is), 1.0d-300)
+            cls2(ic) = cls2(ic) + q*q
+            cls2(5)  = cls2(5)  + q*q
+            if (q .gt. cinf(ic)) then
+               cinf(ic) = q;  jinf(ic) = j;  kinf(ic) = k
+            endif
+            if (q .gt. cinf(5)) then
+               cinf(5) = q;  jinf(5) = j;  kinf(5) = k
+            endif
+         enddo
+      enddo
+      cls2 = sqrt(cls2)
+      end subroutine scaled_row_class_norms
+
+      ! ------------------------------------------------------!
+
+      subroutine jacobian_action_against_closure_count_and_probe_arc    &
+                 (u_state, f_sp_state)
+      ! THE DIRECTIONAL DERIVATIVE OF THE STATIONARY RESIDUAL AS A FUNCTION
+      ! OF TWO QUANTITIES THE OPERATOR IS FREE IN: how many passes the
+      ! eliminated composition is swept for, k, and how long the arc of the
+      ! matrix-free difference is, h.
+      !
+      ! WHY THE TWO TOGETHER AND NEITHER ALONE. The residual is
+      ! F_k(Y) = L(Y) + S(Y, c_k(Y)), c_k(Y) the composition after k passes
+      ! of the elimination at fixed Y. Each k is a DIFFERENT smooth map, and
+      ! a difference quotient resolves the derivative of the map it samples,
+      ! never of the map the solve is judged by. A plateau in h at one k
+      ! therefore says that the quotient of THAT map is resolved and says
+      ! nothing about whether c_k is the eliminated composition c*; and a
+      ! change with k is a change of the map, not evidence of a
+      ! finite-difference defect. Only the two dimensions together separate
+      ! them.
+      !
+      ! WHAT IS HELD FIXED ACROSS THE WHOLE GRID. One state; one seed
+      ! composition, named at every call and overwritten by none of them;
+      ! the SAME k at both endpoints of every difference; the same four
+      ! directions, built once before the grid and held; and the stationary
+      ! reconstruction with the PLM to WENO3 continuation disabled, which is
+      ! the endpoint condition the kind-generic assembly requires.
+      !
+      ! THE TWO REFERENCES THE GRID IS READ AGAINST are formed inside it, so
+      ! that no point of the table is compared with a number from another
+      ! run: the action of the same direction at the production arc h = 1,
+      ! which is what a plateau in h is read on, and the action of the same
+      ! direction at the run's own converged closure, which is what a
+      ! movement with k is read on. The converged closure is the first row
+      ! of the grid for that reason.
+      !
+      ! WHAT IS RECORDED AT EVERY EVALUATION. The requested fixed count, the
+      ! count actually completed, the increment the sweep exited on and the
+      ! tolerance it was asked for, whether that tolerance was reached, the
+      ! seed digest, the cells whose composition is not a root of the
+      ! chemical network, the refusal screen, and whether the residual is
+      ! admissible for derivative use at all. A k at which the inner map
+      ! leaves roots unresolved is not a point at which a Jacobian can be
+      ! validated, and the reader is given what it takes to see that.
+      !
+      ! THIS ROUTINE EVALUATES AND STOPS. It returns to no solve, adopts
+      ! nothing, and tags every evaluation as discarded, so the products the
+      ! modules carry are put back. The sweep count it imposes is the
+      ! argument n_eq_sweeps_fixed of eval_residual and not a new control.
+      ! The conserved state and the composition the run holds. They are the
+      ! state every evaluation below is taken at, and neither is written.
+      real*8, dimension(3,1-Ng:N+Ng),          intent(inout) :: u_state
+      real*8, dimension(1-Ng:N+Ng,n_species),  intent(in)    :: f_sp_state
+      real*8, allocatable :: Y(:), D(:), Drow(:), Djudged(:)
+      real*8, allocatable :: Fconv(:), Fk(:), Fp(:), Fm(:)
+      real*8, allocatable :: Jprod(:), Jfwd(:), Jctr(:), dif(:)
+      real*8, allocatable :: vdir(:,:), vh(:), ab(:,:), abf(:,:)
+      real*8, allocatable :: zstep(:), Jref_k(:,:,:), Jref_h(:,:)
+      integer, allocatable :: ipiv(:)
+      real*8, dimension(1-Ng:N+Ng,n_species) :: f_sp_base, fwork
+      real*8, dimension(1-Ng:N+Ng) :: heat_c, cool_c, heat_k, cool_k
+      real*8, dimension(1-Ng:N+Ng) :: heat_w, cool_w
+      real*8, dimension(1-Ng:N+Ng) :: npart_c, npart_k, npart_w
+      real*8, dimension(1:N) :: xh2_c, xh2_k
+      real*8, dimension(5) :: cls2, cinf
+      integer, dimension(5) :: jinf, kinf
+      ! The two dimensions. k = 0 stands for the run's own policy: sweep to
+      ! the convergence test instead of to a count, and it is taken first so
+      ! that it is the reference the fixed counts are read against.
+      integer, parameter :: n_k = 7
+      integer, dimension(n_k) :: k_list = (/ 0, 1, 2, 3, 4, 6, 8 /)
+      integer, parameter :: n_h = 9
+      ! THE PRODUCTION ARC IS THE FIRST ENTRY, because the plateau in h is
+      ! read against it and a reference has to exist before the points that
+      ! are compared with it.
+      integer, parameter :: ih_ref = 1
+      real*8, dimension(n_h) :: h_list =                                 &
+           (/ 1.0d0, 1.0d-3, 1.0d-2, 1.0d-1, 3.0d-1,                     &
+              3.0d0, 1.0d1, 1.0d2, 1.0d3 /)
+      ! THE DIRECTIONS. Four are built at every state. A fifth sits on the
+      ! species unknowns of the cell whose species row stands furthest
+      ! outside its certification, and exists only where a coupled
+      ! configuration registers such a row. A sixth is named by the
+      ! environment, as one unknown kind over a range of cells, so that the
+      ! arc ladder can be run along the very direction another measurement
+      ! of this operator reports on.
+      integer, parameter :: n_dir_max = 6
+      integer :: n_dir, id_species, id_named
+      character(len=12), dimension(n_dir_max) :: dir_name
+      character(len=40) :: channel_txt
+      character(len=64) :: named_spec
+      character(len=48) :: row_txt
+      integer :: neq, ik, ih, id, j, k, i, is, ncolor_bad, lpinfo, ld
+      integer :: n_swept_base, n_swept_p, n_swept_m, j_mass, j_ene, j_spec
+      integer :: n_active_bounds, nroot_base, refusal_base
+      integer :: nroot_p, nroot_m, jw_eq, kw_eq
+      integer :: jlo_named, jhi_named, kind_named, ios
+      integer :: n_sup, n_moved, j_moved, k_moved, jc, krow
+      real*8  :: eps_nom, eps_use, dispY, dispD, vn, q
+      real*8  :: inc_base, sweep_target, df_eq
+      real*8  :: dnpart_max, dheat_max, dcool_max
+      real*8  :: resp_max, sum_sup, worst_sup, sum_moved, worst_moved
+      real*8  :: den, e_rel
+      ! A row counts as moved by the direction when its response reaches
+      ! this fraction of the largest response in the support. It is the
+      ! rule the coupled-block measurement of this module reports its mean
+      ! over, so that the two numbers are the same quantity.
+      real*8, parameter :: moved_floor = 1.0d-3
+      integer :: jnpart_max, jheat_max
+      logical :: ok_prod, ok_p, ok_m, adm_base, adm_k, reached_base
+      type(residual_evaluation_products) :: products_at_entry
+      type(solve_refusal_statistics)     :: statistics_at_entry
+
+      ! THE CLOSURE POLICY IS THE RUN'S OWN, read here because this route
+      ! reaches no solve and nothing else would read it: how many passes the
+      ! elimination is allowed, the increment it is asked to reach, and the
+      ! channel that increment is measured on.
+      call read_composition_elimination_controls
+      ! THE PRODUCTS AND THE REFUSAL STATISTICS OF THE RUN ARE HELD ASIDE
+      ! ONCE, around the whole measurement, instead of around each
+      ! evaluation. Per evaluation the restore would put back the very
+      ! counters this measurement exists to record: the passes completed,
+      ! the increment the sweep exited on and the cells without a chemical
+      ! root are all fields of residual_evaluation_products.
+      call hold_residual_evaluation_products(products_at_entry)
+      call hold_solve_refusal_statistics(statistics_at_entry)
+      ! WHICH DIRECTIONS THIS STATE CARRIES, decided before anything is
+      ! allocated. The species direction exists only where a species row
+      ! does; the named one only where the environment names it, as
+      ! "<kind>,<first cell>,<last cell>" with kind one of mass, momentum,
+      ! energy, carrier or element, which is the direction the
+      ! coupled-block measurement of this module builds.
+      neq        = nvar_jac*N
+      n_dir      = 4
+      id_species = 0
+      id_named   = 0
+      kind_named = 0
+      jlo_named  = 1
+      jhi_named  = N
+      if (nspec_row .gt. 0) then
+         n_dir      = n_dir + 1
+         id_species = n_dir
+      endif
+      call get_environment_variable('EXHALE_CLOSURE_PROBE_DIRECTION',    &
+                                    named_spec)
+      if (len_trim(named_spec) .gt. 0) then
+         i = index(named_spec, ',')
+         if (i .gt. 1) then
+            select case (trim(adjustl(named_spec(1:i-1))))
+            case ('mass');     kind_named = 1
+            case ('momentum'); kind_named = 2
+            case ('energy');   kind_named = 3
+            case ('carrier')
+               do is = 1, nspec_row
+                  if (srow_kind(is) .eq. srow_carrier .and.               &
+                      kind_named .eq. 0) kind_named = 3 + is
+               enddo
+            case ('element')
+               do is = 1, nspec_row
+                  if (srow_kind(is) .ne. srow_carrier .and.               &
+                      kind_named .eq. 0) kind_named = 3 + is
+               enddo
+            end select
+            read(named_spec(i+1:),*,iostat=ios) jlo_named, jhi_named
+            if (ios .ne. 0) then
+               jlo_named = 1;  jhi_named = N
+            endif
+         endif
+         jlo_named = max(1, min(N, jlo_named))
+         jhi_named = max(jlo_named, min(N, jhi_named))
+         if (kind_named .ge. 1 .and. kind_named .le. nvar_jac) then
+            n_dir    = n_dir + 1
+            id_named = n_dir
+         else
+            write(*,'(A,A,A)')                                           &
+                 ' (closure_probe) EXHALE_CLOSURE_PROBE_DIRECTION="',    &
+                 trim(named_spec), '" names no unknown this system'//    &
+                 ' carries; no named direction was built.'
+         endif
+      endif
+      allocate(Y(neq), D(neq), Drow(neq), Djudged(neq))
+      allocate(Fconv(neq), Fk(neq), Fp(neq), Fm(neq))
+      allocate(Jprod(neq), Jfwd(neq), Jctr(neq), dif(neq))
+      allocate(vdir(neq,n_dir), vh(neq), zstep(neq))
+      allocate(ab(2*kl_jac+ku_jac+1, neq))
+      allocate(abf(2*kl_jac+ku_jac+1, neq), ipiv(neq))
+      allocate(Jref_k(neq, n_h, n_dir), Jref_h(neq, n_dir))
+      Jref_k = 0.0d0;  Jref_h = 0.0d0
+      dir_name(1) = 'banded_step'
+      dir_name(2) = 'cell_mass'
+      dir_name(3) = 'cell_energy'
+      dir_name(4) = 'smooth'
+      if (id_species .gt. 0) dir_name(id_species) = 'cell_species'
+      if (id_named   .gt. 0) dir_name(id_named)   = 'named_block'
+
+      ! THE GHOSTS ARE THIS RUN'S BOUNDARY MODEL BEFORE ANY SCALE IS READ
+      ! FROM THEM, in the order eval_residual itself has: the boundary is
+      ! applied to the state, and only then is a row scale formed from it.
+      call Apply_BC(u_state)
+      call pack_U(u_state, Y)
+      call pack_species_rows(u_state, f_sp_state, Y)
+      f_sp_base = f_sp_state
+
+      ! THE RESIDUAL OF THE STATE UNDER THE RUN'S OWN CLOSURE POLICY. This
+      ! is the F the merit and the acceptance gate of a solve read, and the
+      ! reference every fixed-count residual below is compared against.
+      !
+      ! ON A SPECIES-ROW SYSTEM IT IS TAKEN FIRST, in the order
+      ! solve_steady_jfnk has and for its reason: the floor of ln n and two
+      ! faces of the species box are the element budget of the cell, which
+      ! the carrier operator freezes during an evaluation, so this is the
+      ! earliest point at which either can be formed. A measurement that
+      ! packs the carrier as a density and never arms the logarithm
+      ! measures a DIFFERENT unknown space from the one the solve carries:
+      ! the column scale of a carrier that is absent is then its own
+      ! vanishing density instead of the 1 a logarithm needs, and every
+      ! scaled quantity below would be read on that scale.
+      !
+      ! THE THREE-UNKNOWN ROUTE KEEPS ITS ORIGINAL ORDER, character for
+      ! character: the block below is empty there, and the scales are
+      ! formed from module data an evaluation refreshes, so moving the
+      ! evaluation across them would move that grid by parts in 1E+05
+      ! (MEASURED on this checkpoint: the digests of all 252 actions and
+      ! the fifth digit of the largest forward-to-central distances).
+      !
+      ! AND THE RESIDUAL THE GRID IS READ AGAINST IS TAKEN AFTER THE SPACE
+      ! IS ARMED. The evaluation inside the block is discarded: a residual
+      ! taken while the carrier is still a density belongs to a vector
+      ! this grid never uses, because exp(ln n) is not n again in its last
+      ! bits and the base cell's mass row amplifies that difference by
+      ! about 3.5E+01 into a judged row of order one.
+      if (nspec_row .gt. 0) then
+         call eval_residual(Y, f_sp_base, fwork, Fconv, heat_c, cool_c,   &
+                            n_part=npart_c, admissible=adm_base,          &
+                            may_be_adopted=.false.)
+         call form_carrier_unknown_space(Y)
+      endif
+      call freeze_species_unknown_box(Y)
+      call cell_state_scales(Y, D)
+      call eval_residual(Y, f_sp_base, fwork, Fconv, heat_c, cool_c,      &
+                         n_part=npart_c, admissible=adm_base,             &
+                         may_be_adopted=.false.)
+      n_swept_base = n_eq_sweeps_last
+      inc_base     = eq_sweep_increment_last
+      sweep_target = eq_sweep_reltol
+      reached_base = (inc_base .le. sweep_target)
+      nroot_base   = n_no_chem_root_last
+      refusal_base = eval_refusal
+      xh2_c = 0.0d0
+      if (thereis_mol) then
+         do j = 1, N
+            if (npart_c(j) .gt. 0.0d0)                                   &
+               xh2_c(j) = u_state(1,j)*fwork(j,isp_H2)/npart_c(j)
+         enddo
+      endif
+      ! The scales are taken from the state's OWN evaluation and from the
+      ! conserved state that evaluation left, which is this state: nothing
+      ! has been evaluated since.
+      call row_scaling_of_the_linear_model(Y, D, Drow, u_state)
+      ! THE SIZE EVERY ROW IS JUDGED AT, species rows included.
+      ! judged_size_of_the_hydrodynamic_rows writes the three conserved
+      ! slots and leaves the rest to its caller, so the species slots are
+      ! filled here with the same product the certification forms: the
+      ! tolerance that row is gated with at its radius times the scale that
+      ! row is divided by, which on a species-row system is what Drow
+      ! already carries (cell_row_scales). A row the gate only reports
+      ! divides by cert_tol_reported_only and is a reported measure and not
+      ! a distance, exactly as in certification_species_row_gate.
+      Djudged = Drow
+      call judged_size_of_the_hydrodynamic_rows(u_state, Djudged)
+      do j = 1, N
+         do i = 1, nspec_row
+            is = nvar_jac*(j-1) + 3 + i
+            if (srow_kind(i) .eq. srow_carrier) then
+               Djudged(is) = cert_tol_carrier_at(r(j))*Drow(is)
+            else
+               Djudged(is) = cert_tol_element_at(r(j))*Drow(is)
+            endif
+         enddo
+      enddo
+
+      n_active_bounds = 0
+      if (allocated(species_bound_is_active))                            &
+         n_active_bounds = count(species_bound_is_active)
+
+      write(*,'(A)') ' (closure_probe) ---- the identity of the grid ----'
+      write(*,'(A,I0,A,I0,A,I0,A,I0)')                                   &
+           ' (closure_probe) system: ', nvar_jac, ' unknowns per cell'// &
+           ' over ', N, ' cells = ', neq, ' entries, species rows ',     &
+           n_species_rows()
+      write(*,'(A,I0,A,L1,A,I0)')                                        &
+           ' (closure_probe) ieq_sweep_state_kind ',                     &
+           ieq_sweep_state_kind, ', is the marching kind: ',             &
+           (ieq_sweep_state_kind .eq. ieq_state_marching),               &
+           ', active species bounds held ', n_active_bounds
+      write(*,'(A,A,A,L1,A,L1)')                                         &
+           ' (closure_probe) reconstruction ', trim(rec_method),         &
+           ', PLM to WENO3 continuation armed: ', recon_lambda_on,       &
+           ', judged row scaling: ', judged_row_scaling_on
+      write(*,'(A,Z16.16,A,Z16.16)')                                     &
+           ' (closure_probe) seed composition digest ',                  &
+           digest_of_a_real_array(reshape(f_sp_base,                     &
+                                  (/ size(f_sp_base) /))),               &
+           ', state digest ', digest_of_a_real_array(Y)
+      write(*,'(A,L1,A,I0,A,I0,A,ES11.3)')                               &
+           ' (closure_probe) closure policy of the run: sweep to the'//  &
+           ' fixed point ', resid_at_own_composition, ', at most ',      &
+           n_selfconsistent_max, ' pass(es), cap ', n_eq_sweeps_cap,     &
+           ', increment asked for ', eq_sweep_reltol
+      write(*,'(A,I0,A,ES11.3,A,ES11.3,A,L1)')                           &
+           ' (closure_probe) BASE closure policy: swept ', n_swept_base, &
+           ' pass(es), exit increment ', inc_base, ', asked for ',       &
+           sweep_target, ', reached: ', reached_base
+      write(*,'(A,L1,A,I0,A,I0)')                                        &
+           ' (closure_probe) BASE admissible ', adm_base,                &
+           ', cells without a chemical root ', nroot_base,               &
+           ', refusal screen ', refusal_base
+      call scaled_row_class_norms(Fconv, Drow, cls2, cinf, jinf, kinf)
+      write(*,'(A,5ES12.4)')                                             &
+           ' (closure_probe) BASE ||Dr^-1 F||_2 by class'//              &
+           ' (mass mom energy species all) ', cls2
+      call scaled_row_class_norms(Fconv, Djudged, cls2, cinf, jinf, kinf)
+      write(*,'(A,5ES12.4)')                                             &
+           ' (closure_probe) BASE ||Dj^-1 F||_2 by class'//              &
+           ' (mass mom energy species all) ', cls2
+      write(*,'(A,3(ES12.4,I5))')                                        &
+           ' (closure_probe) BASE largest |F|/Dj with its cell,'//       &
+           ' mass momentum energy ', cinf(1), jinf(1), cinf(2), jinf(2), &
+           cinf(3), jinf(3)
+      j_mass = max(1, jinf(1))
+      j_ene  = max(1, jinf(3))
+      j_spec = max(1, jinf(4))
+      if (nspec_row .gt. 0) then
+         call name_of_unknown(nvar_jac*(j_spec-1)                    &
+                              + max(4, kinf(4)), row_txt)
+         write(*,'(A,ES12.4,A,I0,A,A)')                                  &
+              ' (closure_probe) BASE largest |F|/Dj over the species'//  &
+              ' rows ', cinf(4), ' at cell ', j_spec, ', row ',          &
+              trim(adjustl(row_txt))
+      endif
+
+      ! ---- the four directions, built once and held over the grid ----
+      !
+      ! THE FIRST IS THE STEP THE SOLVE PROPOSES AT THIS STATE: the Newton
+      ! direction of the banded model of the FULL residual, in the scaled
+      ! coordinates the linear system is written in,
+      !   (J D / Drow) z = -F/Drow,   s = D z,
+      ! which is the step the outer iteration takes when the Krylov cycle
+      ! accepts its own preconditioner's proposal and the pseudo-transient
+      ! term is absent. It is not the Krylov step itself, and it cannot be:
+      ! the Krylov step is a function of h and of k, so it is not a
+      ! direction along which a sweep in h and k can be run at all.
+      n_eq_sweeps_model = max(1, n_swept_base)
+      call build_banded_jac_full(Y, f_sp_base, ab, ncolor_bad)
+      do k = 1, neq
+         do j = max(1, k-ku_jac), min(neq, k+kl_jac)
+            ab(kl_jac+ku_jac+1 + j - k, k) =                             &
+                 ab(kl_jac+ku_jac+1 + j - k, k)*D(k)/Drow(j)
+         enddo
+      enddo
+      abf = ab
+      ld  = 2*kl_jac + ku_jac + 1
+      call dgbtrf(neq, neq, kl_jac, ku_jac, abf, ld, ipiv, lpinfo)
+      zstep = -Fconv/Drow
+      if (lpinfo .eq. 0)                                                 &
+         call dgbtrs('N', neq, kl_jac, ku_jac, 1, abf, ld, ipiv, zstep,  &
+                     neq, lpinfo)
+      vdir(:,1) = D*zstep
+      write(*,'(A,I0,A,I0,A,ES12.4)')                                    &
+           ' (closure_probe) banded step: colors unresolved ',           &
+           ncolor_bad, ', LAPACK info ', lpinfo,                         &
+           ', ||D^-1 s||_2 of the proposed step ',                       &
+           sqrt(sum(zstep*zstep))
+
+      ! THE OTHER THREE. Two are supported on a single cell, the cell whose
+      ! mass row and whose energy row stand furthest outside what the
+      ! certification allows, so that the derivative is sampled where the
+      ! rows of this state refuse; the third is the smooth deterministic
+      ! direction the run-level self-tests use, which reaches every cell.
+      vdir(:,2) = 0.0d0
+      vdir(:,3) = 0.0d0
+      do k = 1, 3
+         vdir(nvar_jac*(j_mass-1)+k, 2) = D(nvar_jac*(j_mass-1)+k)
+         vdir(nvar_jac*(j_ene -1)+k, 3) = D(nvar_jac*(j_ene -1)+k)
+      enddo
+      do is = 1, neq
+         vdir(is,4) = sin(0.1d0*dble(is))*D(is)
+      enddo
+      ! THE SPECIES DIRECTION sits on every species unknown of the cell
+      ! whose species row stands furthest outside its certification, so
+      ! that the derivative is sampled on the unknowns the coupled system
+      ! adds and at the cell where they refuse.
+      if (id_species .gt. 0) then
+         vdir(:,id_species) = 0.0d0
+         do i = 1, nspec_row
+            is = nvar_jac*(j_spec-1) + 3 + i
+            vdir(is,id_species) = D(is)
+         enddo
+      endif
+      ! THE NAMED DIRECTION is one unknown kind over a range of cells,
+      ! each component at that unknown's own column scale, which is how
+      ! jacobian_action_of_the_coupled_block builds the direction it
+      ! reports on. The two are then the same displacement: the probe
+      ! length is divided by the norm of the direction, so scaling the
+      ! direction leaves eps*v unchanged.
+      if (id_named .gt. 0) then
+         vdir(:,id_named) = 0.0d0
+         do j = jlo_named, jhi_named
+            is = nvar_jac*(j-1) + kind_named
+            vdir(is,id_named) = D(is)
+         enddo
+         call name_of_unknown(nvar_jac*(jlo_named-1) + kind_named,       &
+                              row_txt)
+         write(*,'(A,A,A,I0,A,I0)')                                      &
+              ' (closure_probe) the named direction sits on the ',       &
+              trim(adjustl(row_txt)), ' unknown of cells ', jlo_named,   &
+              ' to ', jhi_named
+      endif
+      ! EVERY DIRECTION IS A UNIT VECTOR IN THE SCALED COORDINATES, so that
+      ! the actions of four directions are read on one scale. The action is
+      ! homogeneous of degree one in the direction, so this fixes the units
+      ! and changes nothing else.
+      do id = 1, n_dir
+         vn = sqrt(sum((vdir(:,id)/D)**2))
+         if (vn .gt. 0.0d0) vdir(:,id) = vdir(:,id)/vn
+         write(*,'(A,I0,A,A,A,ES12.4,A,ES12.4,A,I0)')                    &
+              ' (closure_probe) DIR ', id, ' ', trim(dir_name(id)),      &
+              ': ||D^-1 v||_2 ', sqrt(sum((vdir(:,id)/D)**2)),           &
+              ', ||v||_2 ', sqrt(sum(vdir(:,id)**2)),                    &
+              ', nonzero entries ', count(vdir(:,id) .ne. 0.0d0)
+      enddo
+      write(*,'(A,I0,A,I0,A)')                                           &
+           ' (closure_probe) the localized directions sit at cell ',     &
+           j_mass, ' (mass row) and cell ', j_ene, ' (energy row)'
+
+      ! ---- the grid ----
+      write(*,'(A)') ' (closure_probe) ---- the grid ----'
+      do ik = 1, n_k
+         k = k_list(ik)
+         if (k .gt. 0) then
+            call eval_residual(Y, f_sp_base, fwork, Fk, heat_k, cool_k,  &
+                               n_part=npart_k, admissible=adm_k,         &
+                               may_be_adopted=.false.,                   &
+                               n_eq_sweeps_fixed=k)
+         else
+            call eval_residual(Y, f_sp_base, fwork, Fk, heat_k, cool_k,  &
+                               n_part=npart_k, admissible=adm_k,         &
+                               may_be_adopted=.false.)
+         endif
+         ! THE CONVERGENCE TEST IS NOT TAKEN AT A FIXED COUNT, and the
+         ! record says so rather than printing the untouched variable as
+         ! though it were a measurement: with n_eq_sweeps_fixed present the
+         ! sweep runs the passes and skips the increment altogether
+         ! (eq_fixed_count).
+         if (k .gt. 0) then
+            write(*,'(A,I0,A,I0,A,A,A,L1,A,I0,A,I0)')                    &
+                 ' (closure_probe) K k=', k, ' completed ',              &
+                 n_eq_sweeps_last, ' increment ',                        &
+                 'not taken at a fixed count, and neither is the test',  &
+                 ' admissible ', adm_k, ' roots_missing ',               &
+                 n_no_chem_root_last, ' refusal ', eval_refusal
+         else
+            write(*,'(A,I0,A,I0,A,ES11.3,A,L1,A,L1,A,I0,A,I0)')          &
+                 ' (closure_probe) K k=', k, ' completed ',              &
+                 n_eq_sweeps_last, ' increment ',                        &
+                 eq_sweep_increment_last, ' reached ',                   &
+                 (eq_sweep_increment_last .le. eq_sweep_reltol),         &
+                 ' admissible ', adm_k, ' roots_missing ',               &
+                 n_no_chem_root_last, ' refusal ', eval_refusal
+         endif
+         ! THE CLOSURE INCREMENT AS THE OUTER ROWS SEE IT, in the measure
+         ! the elimination's own stopping test uses and on the three
+         ! channels the residual reads the composition through. The
+         ! relative change of the particle count IS the relative change of
+         ! the temperature the rows are assembled at
+         ! (increment_of_what_the_residual_reads).
+         xh2_k = 0.0d0
+         if (thereis_mol) then
+            do j = 1, N
+               if (npart_k(j) .gt. 0.0d0)                                &
+                  xh2_k(j) = u_state(1,j)*fwork(j,isp_H2)/npart_k(j)
+            enddo
+         endif
+         call increment_of_what_the_residual_reads(npart_k(1:N),         &
+                 npart_c(1:N), xh2_k, xh2_c, heat_k(1:N), cool_k(1:N),   &
+                 heat_c(1:N), cool_c(1:N), .true., df_eq, jw_eq, kw_eq)
+         call eq_channel_name(kw_eq, channel_txt)
+         dnpart_max = 0.0d0;  dheat_max = 0.0d0;  dcool_max = 0.0d0
+         jnpart_max = 0;      jheat_max = 0
+         do j = 1, N
+            q = abs(npart_k(j) - npart_c(j))                             &
+                /max(abs(npart_c(j)), 1.0d-300)
+            if (q .gt. dnpart_max) then
+               dnpart_max = q;  jnpart_max = j
+            endif
+            q = abs(heat_k(j) - heat_c(j))/max(abs(heat_c(j)), 1.0d-300)
+            if (q .gt. dheat_max) then
+               dheat_max = q;  jheat_max = j
+            endif
+            dcool_max = max(dcool_max, abs(cool_k(j) - cool_c(j))        &
+                            /max(abs(cool_c(j)), 1.0d-300))
+         enddo
+         write(*,'(A,I0,A,ES11.3,A,I0,A,A)')                             &
+              ' (closure_probe) CLOSURE k=', k, ' increment against'//   &
+              ' the converged closure ', df_eq, ' at cell ', jw_eq,      &
+              ', channel ', trim(channel_txt)
+         write(*,'(A,I0,A,ES11.3,I5,A,ES11.3,I5,A,ES11.3)')              &
+              ' (closure_probe) CHANNELS k=', k, ' largest relative'//   &
+              ' change: particle count (hence temperature) ',            &
+              dnpart_max, jnpart_max, ', heating ', dheat_max,           &
+              jheat_max, ', cooling ', dcool_max
+         dif = Fconv - Fk
+         call scaled_row_class_norms(dif, Drow, cls2, cinf, jinf, kinf)
+         write(*,'(A,I0,A,5ES12.4)')                                     &
+              ' (closure_probe) DIFF k=', k,                             &
+              ' ||Dr^-1 (F - F_jac)||_2 by class ', cls2
+         write(*,'(A,I0,A,3(ES12.4,I5))')                                &
+              ' (closure_probe) DIFFMAX k=', k, ' largest'//             &
+              ' |F - F_jac|/Dr with its cell, mass momentum energy ',    &
+              cinf(1), jinf(1), cinf(2), jinf(2), cinf(3), jinf(3)
+         call scaled_row_class_norms(dif, Djudged, cls2, cinf, jinf, kinf)
+         write(*,'(A,I0,A,5ES12.4)')                                     &
+              ' (closure_probe) DIFFJ k=', k,                            &
+              ' ||Dj^-1 (F - F_jac)||_2 by class ', cls2
+
+         ! THE ACTION AT THIS k: the probe of the production route, and at
+         ! the step that probe actually took, the forward and the central
+         ! difference of the SAME map, both endpoints at the same k and
+         ! from the same seed.
+         if (k .gt. 0) then
+            n_eq_sweeps_model = k
+         else
+            n_eq_sweeps_model = max(1, n_eq_sweeps_last)
+         endif
+         do ih = 1, n_h
+            jv_probe_arc_scale = h_list(ih)
+            do id = 1, n_dir
+               vh = vdir(:,id)
+               call hold_the_active_bounds_of(vh)
+               call jv_product(Y, Fk, f_sp_base, vh, Jprod, ok_prod)
+               eps_nom = jv_probe_step_nominal_last
+               eps_use = jv_probe_step_last
+               dispY   = eps_use*sqrt(sum(vh*vh))
+               dispD   = eps_use*sqrt(sum((vh/D)**2))
+               if (k .gt. 0) then
+                  call eval_residual(Y + eps_use*vh, f_sp_base, fwork,   &
+                                     Fp, heat_w, cool_w,                 &
+                                     n_part=npart_w, admissible=ok_p,    &
+                                     may_be_adopted=.false.,             &
+                                     n_eq_sweeps_fixed=k)
+               else
+                  call eval_residual(Y + eps_use*vh, f_sp_base, fwork,   &
+                                     Fp, heat_w, cool_w,                 &
+                                     n_part=npart_w, admissible=ok_p,    &
+                                     may_be_adopted=.false.)
+               endif
+               n_swept_p = n_eq_sweeps_last
+               nroot_p   = n_no_chem_root_last
+               if (k .gt. 0) then
+                  call eval_residual(Y - eps_use*vh, f_sp_base, fwork,   &
+                                     Fm, heat_w, cool_w,                 &
+                                     n_part=npart_w, admissible=ok_m,    &
+                                     may_be_adopted=.false.,             &
+                                     n_eq_sweeps_fixed=k)
+               else
+                  call eval_residual(Y - eps_use*vh, f_sp_base, fwork,   &
+                                     Fm, heat_w, cool_w,                 &
+                                     n_part=npart_w, admissible=ok_m,    &
+                                     may_be_adopted=.false.)
+               endif
+               n_swept_m = n_eq_sweeps_last
+               nroot_m   = n_no_chem_root_last
+               Jfwd = (Fp - Fk)/eps_use
+               Jctr = (Fp - Fm)/(2.0d0*eps_use)
+               if (ih .eq. ih_ref) Jref_h(:,id) = Jctr
+               if (ik .eq. 1)      Jref_k(:,ih,id) = Jctr
+               write(*,'(A,I0,A,ES9.2,A,A,A,3L1,A,2ES11.3,A,2ES11.3,'//  &
+                       'A,I0,1X,I0,A,I0,1X,I0,A,I0,1X,L1)')              &
+                    ' (closure_probe) ACT k=', k, ' h=', h_list(ih),     &
+                    ' dir=', trim(dir_name(id)), ' ok=', ok_prod, ok_p,  &
+                    ok_m, ' eps ', eps_nom, eps_use, ' disp ', dispY,    &
+                    dispD, ' swept ', n_swept_p, n_swept_m,              &
+                    ' roots ', nroot_p, nroot_m, ' blocked ',            &
+                    jv_probe_blocked_last, jv_probe_backward_last
+               call scaled_row_class_norms(Jprod, Drow, cls2, cinf,      &
+                                           jinf, kinf)
+               write(*,'(A,I0,A,ES9.2,A,A,A,5ES12.4)')                   &
+                    ' (closure_probe) JPROD k=', k, ' h=', h_list(ih),   &
+                    ' dir=', trim(dir_name(id)),                         &
+                    ' ||Dr^-1 J v||_2 by class ', cls2
+               call scaled_row_class_norms(Jfwd, Drow, cls2, cinf,       &
+                                           jinf, kinf)
+               write(*,'(A,I0,A,ES9.2,A,A,A,5ES12.4)')                   &
+                    ' (closure_probe) JFWD k=', k, ' h=', h_list(ih),    &
+                    ' dir=', trim(dir_name(id)),                         &
+                    ' ||Dr^-1 J v||_2 by class ', cls2
+               call scaled_row_class_norms(Jctr, Drow, cls2, cinf,       &
+                                           jinf, kinf)
+               write(*,'(A,I0,A,ES9.2,A,A,A,5ES12.4)')                   &
+                    ' (closure_probe) JCTR k=', k, ' h=', h_list(ih),    &
+                    ' dir=', trim(dir_name(id)),                         &
+                    ' ||Dr^-1 J v||_2 by class ', cls2
+               dif = Jfwd - Jctr
+               call scaled_row_class_norms(dif, Drow, cls2, cinf,        &
+                                           jinf, kinf)
+               write(*,'(A,I0,A,ES9.2,A,A,A,5ES12.4)')                   &
+                    ' (closure_probe) JFC k=', k, ' h=', h_list(ih),     &
+                    ' dir=', trim(dir_name(id)),                         &
+                    ' ||Dr^-1 (Jfwd - Jctr)||_2 by class ', cls2
+               ! THE SAME DISAGREEMENT IN THE MEASURE THE COUPLED-BLOCK
+               ! MEASUREMENT REPORTS, so that the ladder can be read
+               ! against that number directly: the relative distance
+               ! between the production forward difference and the central
+               ! difference of the same map, row by row, over the cells
+               ! the direction sits on, averaged over every row of that
+               ! support and over the rows the direction MOVES. A row
+               ! whose two sides both stand at the rounding floor carries
+               ! no derivative to compare, which is why the second mean
+               ! exists.
+               resp_max = 0.0d0
+               do jc = 1, N
+                  if (.not. any(vdir(nvar_jac*(jc-1)+1:nvar_jac*jc, id)    &
+                                .ne. 0.0d0)) cycle
+                  do krow = 1, nvar_jac
+                     is = nvar_jac*(jc-1) + krow
+                     resp_max = max(resp_max, abs(Jctr(is)),             &
+                                    abs(Jfwd(is)))
+                  enddo
+               enddo
+               n_sup = 0;  sum_sup = 0.0d0;  worst_sup = 0.0d0
+               n_moved = 0;  sum_moved = 0.0d0;  worst_moved = 0.0d0
+               j_moved = 0;  k_moved = 0
+               do jc = 1, N
+                  if (.not. any(vdir(nvar_jac*(jc-1)+1:nvar_jac*jc, id)    &
+                                .ne. 0.0d0)) cycle
+                  do krow = 1, nvar_jac
+                     is  = nvar_jac*(jc-1) + krow
+                     den = max(abs(Jctr(is)), abs(Jfwd(is)))
+                     if (den .le. 0.0d0) cycle
+                     e_rel   = abs(Jfwd(is) - Jctr(is))/den
+                     n_sup   = n_sup + 1
+                     sum_sup = sum_sup + e_rel
+                     worst_sup = max(worst_sup, e_rel)
+                     if (den .ge. moved_floor*resp_max) then
+                        n_moved   = n_moved + 1
+                        sum_moved = sum_moved + e_rel
+                        if (e_rel .gt. worst_moved) then
+                           worst_moved = e_rel
+                           j_moved     = jc
+                           k_moved     = krow
+                        endif
+                     endif
+                  enddo
+               enddo
+               row_txt = 'none'
+               if (j_moved .gt. 0)                                       &
+                  call name_of_unknown(nvar_jac*(j_moved-1) + k_moved,   &
+                                       row_txt)
+               write(*,'(A,I0,A,ES9.2,A,A,A,I0,1X,ES12.4,1X,ES12.4,'//   &
+                       'A,I0,1X,ES12.4,1X,ES12.4,A,A)')                  &
+                    ' (closure_probe) MOVED k=', k_list(ik), ' h=',      &
+                    h_list(ih), ' dir=', trim(dir_name(id)),             &
+                    ' support rows/mean/worst ', n_sup,                  &
+                    sum_sup/dble(max(1, n_sup)), worst_sup,              &
+                    ' moved rows/mean/worst ', n_moved,                  &
+                    sum_moved/dble(max(1, n_moved)), worst_moved,        &
+                    ' worst moved row ', trim(adjustl(row_txt))
+               ! THE PLATEAU IN h: the distance from the action of the
+               ! same direction and the same k at the production arc.
+               dif = Jctr - Jref_h(:,id)
+               call scaled_row_class_norms(dif, Drow, cls2, cinf,        &
+                                           jinf, kinf)
+               write(*,'(A,I0,A,ES9.2,A,A,A,5ES12.4,A,ES12.4)')          &
+                    ' (closure_probe) DH k=', k, ' h=', h_list(ih),      &
+                    ' dir=', trim(dir_name(id)),                         &
+                    ' ||Dr^-1 (J(h) - J(1))||_2 by class ', cls2,        &
+                    ' relative to ||J(1)|| ',                            &
+                    cls2(5)/max(sqrt(sum((Jref_h(:,id)                   &
+                                          /max(Drow, 1.0d-300))**2)),    &
+                                1.0d-300)
+               ! THE MOVEMENT WITH k: the distance from the action of the
+               ! same direction at the same arc under the converged
+               ! closure.
+               dif = Jctr - Jref_k(:,ih,id)
+               call scaled_row_class_norms(dif, Drow, cls2, cinf,        &
+                                           jinf, kinf)
+               write(*,'(A,I0,A,ES9.2,A,A,A,5ES12.4,A,ES12.4)')          &
+                    ' (closure_probe) DK k=', k, ' h=', h_list(ih),      &
+                    ' dir=', trim(dir_name(id)),                         &
+                    ' ||Dr^-1 (J(k) - J(conv))||_2 by class ', cls2,     &
+                    ' relative to ||J(conv)|| ',                         &
+                    cls2(5)/max(sqrt(sum((Jref_k(:,ih,id)                &
+                                          /max(Drow, 1.0d-300))**2)),    &
+                                1.0d-300)
+               write(*,'(A,I0,A,ES9.2,A,A,A,Z16.16,A,Z16.16)')           &
+                    ' (closure_probe) JHASH k=', k, ' h=', h_list(ih),   &
+                    ' dir=', trim(dir_name(id)), ' fwd ',                &
+                    digest_of_a_real_array(Jfwd), ' ctr ',               &
+                    digest_of_a_real_array(Jctr)
+            enddo
+         enddo
+      enddo
+      jv_probe_arc_scale = 1.0d0
+      call put_back_residual_evaluation_products(products_at_entry)
+      call put_back_solve_refusal_statistics(statistics_at_entry)
+      write(*,'(A)') ' (closure_probe) ---- end of the grid ----'
+      deallocate(Y, D, Drow, Djudged, Fconv, Fk, Fp, Fm)
+      deallocate(Jprod, Jfwd, Jctr, dif, vdir, vh, zstep, ab, abf, ipiv)
+      deallocate(Jref_k, Jref_h)
+      end subroutine jacobian_action_against_closure_count_and_probe_arc
+
+      ! ------------------------------------------------------!
+
       subroutine species_row_jacobian_action_check(Y, f_sp_base)
       ! J r AGAINST [F(Y + eps r) - F(Y)]/eps ON THE SYSTEM THIS SOLVE
       ! CARRIES, to the standard the run-level self-test states: a correct
@@ -6627,10 +7403,10 @@
       ! named rather than assuming it.
       !
       ! THE OUTER GHOST RULE. The last lines compare the carrier row of
-      ! eval_residual, divided by the code time scale it was converted by,
-      ! against carrier_steady_residual called on the state that evaluation
-      ! returned, the way the certification calls it. At the outermost cells
-      ! the two agree only if one ghost rule is in force.
+      ! eval_residual against carrier_steady_residual called on the state
+      ! that evaluation returned, the way the certification calls it, both
+      ! read in the units the residual vector carries. At the outermost
+      ! cells the two agree only if one ghost rule is in force.
       !
       ! IT IS A DIAGNOSTIC AND NOTHING ELSE: with
       ! EXHALE_COUPLED_JAC_ACTION unset nothing here runs, and with it set
@@ -6646,6 +7422,7 @@
       real*8, dimension(1-Ng:N+Ng) :: rho_w, vel_w
       real*8, dimension(1:N,n_carrier_max) :: cres_again, cterms_again
       real*8  :: eps1, eps2, vn, tmax, tscale_code, e1, e2, den
+      real*8  :: cres_code
       real*8  :: sum_rel, worst_rel, entry_recon, rcmax_again, rvol_again
       real*8  :: resp_max, sum_moved, worst_moved
       integer :: n_moved, j_moved, k_moved
@@ -6808,8 +7585,12 @@
            '  colors ', ncolor_jac
       write(u_out,'(A,A,A,I0,A,I0)') '# direction: ', trim(dirspec),      &
            ' of cells ', jlo, ' to ', jhi
-      write(u_out,'(A,ES14.7,A,ES14.7)') '# probe length ', eps1,         &
-           '  second length ', eps2
+      ! The two numbers are the SCALARS the direction is multiplied by, not
+      ! the displacements: the state moves by eps1*||v|| and eps2*||v||. A
+      ! reader that gates on an arc has to know which of the two it holds
+      ! (src/tests/coupled_block_jacobian/README.md states it the same way).
+      write(u_out,'(A,ES14.7,A,ES14.7)') '# probe scalar ', eps1,         &
+           '  second scalar ', eps2
       write(u_out,'(A,ES14.7,A,I0)') '# fraction to the boundary of'//    &
            ' the species box ', tmax, '  blocked components ', n_blocked
       write(u_out,'(A,L1,A,I0)') '# the action was sampled: ', ok_jv,     &
@@ -6833,24 +7614,37 @@
               ' that are exactly zero ', nzero, ' of ',                   &
               max(0, min(jhi, N-2) - jlo + 1)
       endif
+      ! BOTH SIDES IN THE UNITS OF THE RESIDUAL VECTOR. eval_residual forms
+      ! the carrier row as cres*tscale_code, so the certification's row is
+      ! brought over by that same product rather than the row being divided
+      ! back: for a double x and a scale t, (x*t)/t is not in general x
+      ! again (MEASURED: (0.1d0*3)/3 differs from 0.1d0 by 1.4e-17, one
+      ! spacing; and for t = 1.745e-10, the value of this case, 13 percent
+      ! of a million random doubles of the magnitude these rows carry come
+      ! back changed), and a bitwise statement made across that round trip
+      ! would fail on the rounding of the conversion even where the two
+      ! operators agree term for term. Multiplying both sides by the same
+      ! tscale_code is the same operation on the same operands, so the
+      ! equality below is a statement about the two residuals and about
+      ! nothing else.
       ! The outer ghost rule, at the two outermost cells.
       if (icar .gt. 0) then
          do j = N-1, N
             i = nvar_jac*(j-1) + 3 + icar
+            cres_code = cres_again(j,srow_idx(icar))*tscale_code
             write(u_out,'(A,I0,2(1X,ES22.15),1X,L1)') '# outer ghost'//   &
-                 ' rule, cell ', j, F0(i)/tscale_code,                    &
-                 cres_again(j,srow_idx(icar)),                            &
-                 (F0(i)/tscale_code .eq. cres_again(j,srow_idx(icar)))
+                 ' rule, cell ', j, F0(i), cres_code,                     &
+                 (F0(i) .eq. cres_code)
          enddo
          ! And the same comparison at the cells the direction sits on, so
          ! that a difference confined to the outermost cells can be told
          ! from one the whole column carries.
          do j = jlo, jhi
             i = nvar_jac*(j-1) + 3 + icar
+            cres_code = cres_again(j,srow_idx(icar))*tscale_code
             write(u_out,'(A,I0,2(1X,ES22.15),1X,L1)') '# species row'//   &
-                 ' scale, cell ', j, F0(i)/tscale_code,                   &
-                 cres_again(j,srow_idx(icar)),                            &
-                 (F0(i)/tscale_code .eq. cres_again(j,srow_idx(icar)))
+                 ' scale, cell ', j, F0(i), cres_code,                    &
+                 (F0(i) .eq. cres_code)
          enddo
       endif
       write(u_out,'(A)') '# columns: cell kind jv cd1 cd2 band'//         &

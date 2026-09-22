@@ -11,7 +11,7 @@
                             melem_name
    use composition, only: comp_mass_per_H, comp_ntot_bc, comp_rho_bc,   &
                           h2_mixing_ratio_base, h2_mixing_ratio_ceiling, &
-                          base_h2_nuclei_fraction
+                          base_h2_nuclei_fraction, h2_bound_fraction
    use lower_atmosphere_profile, only: lap_file, lap_in_use,             &
                           lap_solution_id, lap_p_match_bar,              &
                           lap_source_code, lap_iteration,                &
@@ -115,6 +115,12 @@
       real*8                          :: q_h2_resolved, q_h2_max
       real*8                          :: p_base_cgs, n0_from_p_base
       real*8                          :: p_from_density_key
+      ! The forced base reservoir particle count and the value the base
+      ! composition gives, kept apart so the log carries both.
+      character(len = 64)             :: ntot_bc_forced_env
+      real*8                          :: ntot_bc_of_composition
+      real*8                          :: ntot_bc_forced
+      integer                         :: ios_ntot_bc
       integer                         :: iw
       ! The token list of "Restart option change" and its two counters
       character(len = 250)            :: optline
@@ -1995,6 +2001,60 @@
                  ' particle count nor the'
       write(*,*) '       ghost composition claims molecules.'
       error stop 1
+   endif
+
+   ! ---- forcing the base reservoir particle count, a diagnostic ------ !
+   ! EXHALE_BASE_PARTICLE_COUNT = <positive real> | atomic replaces
+   ! ntot_bc, the free particles the base reservoir holds per (H+He)
+   ! nucleus, by the stated count. It exists to separate the two statements
+   ! a molecular base makes at once, which comp_ntot_bc above combines:
+   !
+   !   (a) the H nuclei bound into H2 are not free particles, so at the
+   !       prescribed base pressure and temperature the reservoir holds
+   !       1/ntot_bc times as many nuclei, and n0 = p_base/(k_B T0
+   !       ntot_bc) below carries that into the base mass density;
+   !   (b) the lower ghost carries the same H2 in its composition.
+   !
+   ! The value "atomic" gives the count of the SAME composition with no H2
+   ! binding, ntot_bc + h2_bound_fraction(), which is what comp_ntot_bc
+   ! returns with molecular_base off. The base then has the mass density an
+   ! atomic reservoir would have at that (p_base, T0) while (b) is
+   ! untouched, so the face condition can be read against one changed
+   ! quantity. Anything else is read as the count itself.
+   !
+   ! Off by default and in every production run: unset, empty, unreadable
+   ! or not a positive number leaves ntot_bc exactly as comp_ntot_bc
+   ! returned it, writes no line and touches nothing. When it is set the
+   ! base state is not the one this input.inp describes, so the two counts
+   ! are announced together and the run says what it is.
+   ntot_bc_of_composition = ntot_bc
+   call get_environment_variable('EXHALE_BASE_PARTICLE_COUNT',            &
+                                 ntot_bc_forced_env)
+   if (len_trim(ntot_bc_forced_env) .gt. 0) then
+      if (trim(adjustl(ntot_bc_forced_env)) .eq. 'atomic') then
+         ntot_bc_forced = ntot_bc
+         if (molecular_base)                                             &
+            ntot_bc_forced = ntot_bc + h2_bound_fraction()
+      else
+         read(ntot_bc_forced_env, *, iostat=ios_ntot_bc) ntot_bc_forced
+         if (ios_ntot_bc .ne. 0) ntot_bc_forced = -1.0d0
+      endif
+      if (.not. (ntot_bc_forced .gt. 0.0d0)) then
+         write(*,*) '(input_read) ERROR: EXHALE_BASE_PARTICLE_COUNT ='//  &
+                    ' "'//trim(ntot_bc_forced_env)//'" is neither a'//    &
+                    ' positive number nor "atomic".'
+         write(*,*) '  It states the free particles per (H+He) nucleus'// &
+                    ' the base reservoir holds.'
+         error stop 1
+      endif
+      ntot_bc = ntot_bc_forced
+      write(*,'(A)') ' (input_read) EXHALE_BASE_PARTICLE_COUNT: the'//    &
+           ' base reservoir particle count is FORCED; this run is not'//  &
+           ' the configuration its input.inp describes.'
+      write(*,'(A,ES23.15E3)') '   ntot_bc from the base composition = ', &
+           ntot_bc_of_composition
+      write(*,'(A,ES23.15E3)') '   ntot_bc forced                    = ', &
+           ntot_bc
    endif
 
    ! ---- the base level has one source -------------------------------- !
