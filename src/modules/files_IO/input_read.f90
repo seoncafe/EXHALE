@@ -60,8 +60,8 @@
    character(len=64), save, public :: base_level_source = 'the density key'
 
    ! ---- what a restart continues ------------------------------------- !
-   ! WHAT A RESTART IS FOR, stated once and checked against the other keys
-   ! (docs/restart_contract_design_20260909.md section 2). A loaded state can
+   ! WHAT A RESTART IS FOR, stated once and checked against the other keys.
+   ! A loaded state can
    ! be continued in three different senses, and they are not variants of one
    ! path: a physical trajectory carries the clock the file records and every
    ! step obeys the physical-mode contract; a relaxation carries no clock and
@@ -82,8 +82,7 @@
    logical, save, public :: stationary_evaluate_only      = .false.
    logical, save, public :: stationary_equilibrate_loaded = .false.
    ! ---- what a restart is allowed to change -------------------------- !
-   ! WHICH PHYSICS OPTIONS A RESTART MAY CHANGE (decision 21 of
-   ! docs/To_be_determined_by_user_20260906.md, option a). A state is a
+   ! WHICH PHYSICS OPTIONS A RESTART MAY CHANGE. A state is a
    ! solution of an equation set, so the restart contract refuses a state
    ! whose option set is not the run's; the way this project reaches its
    ! solutions is to converge without an option and restart with it on, so
@@ -648,7 +647,7 @@
 				! solved in the coupled molecular ionization equilibrium,
 				! with the H2O and OH photolysis of the FUV bands. It is
 				! what lets the code compute its own base H2/H partition
-				! instead of importing it (docs/a2_oxygen_option_design.md).
+				! instead of importing it.
 				! Requires the molecular network, helium and oxygen; the
 				! checks are below, after every key is parsed.
 				str = get_word(line, 3)
@@ -695,8 +694,8 @@
 				! fixed-wind transport relaxations, judged jointly by the
 				! certification of the refreshed state
 				! (steady_wind_with_element_diffusion). MEASURED on the two
-				! reloads of backup/regression (Update_EXHALE_stage2.md section 8,
-				! 2026-09-11): the alternation brings every elemental wind
+				! reloads of backup/regression (2026-09-11): the alternation
+				! brings every elemental wind
 				! row of the HD 209458 b reload inside 1e-5 in 12 passes
 				! and the hot-Uranus H2 wind row from 7.4e-2 to 2.2e-2 in
 				! 40 passes, while the coupled solve certifies neither
@@ -802,7 +801,7 @@
 			else if (lbl_match(line, 'Lower atmosphere profile')) then
 				! Lower-atmosphere solution handed over as a table over an
 				! interval of pressure instead of the single-level scalars of
-				! base.inp (docs/phase_e_flux_closure_design.md section 2).
+				! base.inp.
 				! "Lower atmosphere profile: lower_atmosphere_profile.dat".
 				! Tested BEFORE 'Lower atmosphere', whose label is a prefix of
 				! this one (longest / most-specific first, as for the two
@@ -857,8 +856,7 @@
 					write(*,*) '(input_read) Energy solver: explicit forward Euler'
 				endif
 			else if (lbl_match(line, 'Run mode')) then
-				! WHAT THIS RUN IS DOING, stated rather than inferred
-				! (docs/a0_run_mode_contract_20260906.md section 6).
+				! WHAT THIS RUN IS DOING, stated rather than inferred.
 				! "Run mode: init" = initialization / continuation, no claim
 				! about elapsed time; "Run mode: phys" = physical
 				! integration, one global dt per step and a clock that
@@ -878,10 +876,9 @@
 			else if (lbl_match(line, 'Restart intent')) then
 				! "Restart intent: trajectory | relaxation | stationary
 				!  [evaluate|equilibrate]"
-				! (docs/restart_contract_design_20260909.md section 2). Only
-				! meaningful for a run that loads a state; the consistency
-				! block below refuses it otherwise, and refuses the two
-				! combinations that contradict themselves.
+				! Only meaningful for a run that loads a state; the
+				! consistency block below refuses it otherwise, and
+				! refuses the two combinations that contradict themselves.
 				str = get_word(line, 3)
 				if (str .eq. 'trajectory') then
 					restart_intent = restart_intent_trajectory
@@ -985,8 +982,7 @@
 				! through the reconstruction, the Riemann jumps and the
 				! pressure force, so that the equilibrium's flux difference
 				! and its source cancel in the algebra instead of in
-				! floating point (Kaeppeli and Mishra 2016, A&A 587, A94;
-				! docs/well_balanced_flux_difference_design_20260910.md).
+				! floating point (Kaeppeli and Mishra 2016, A&A 587, A94).
 				! Exact preservation needs a flux that resolves a stationary
 				! contact, which ROE and HLLC do and LLF does not.
 				str = get_word(line, 3)
@@ -1082,7 +1078,7 @@
 				! emits in LTE and absorbs the same diluted B_nu(T0) the
 				! `Base IR field` closure supplies, so each stops cooling at
 				! its own radiative equilibrium temperature instead of running
-				! the layer down (docs/TO_BE_DONE.md item (G)). Default False.
+				! the layer down. Default False.
 				! H2O and CO need `Oxygen chemistry: True` to exist at all; H2
 				! needs `Molecular chemistry: True`. See
 				! molecular_infrared_cooling.f90.
@@ -1183,7 +1179,7 @@
 				! H = kT/(mu g). It is checked at startup by
 				! write_setup_report, which prints H(T_eq)/dr in cells and
 				! warns below 10; the undamped stationary 2 dr entropy mode
-				! sets in near 5 (docs/hd189_base_checkerboard.md). Ignored
+				! sets in near 5. Ignored
 				! by the Uniform and Stretched grid types.
 				! The key is the only writer of dr_base_from_key: the
 				! resolved-configuration record says "key" or "default"
@@ -1288,7 +1284,7 @@
 				   ' retired and ignored -- the residual norm is the'//      &
 				   ' maximum over cells of a'
 				write(*,'(A)') '     cell''s own scaled residual, and there'//&
-				   ' is no other form (Update_EXHALE_stage1.md section 145).'
+				   ' is no other form (Update_EXHALE_stage1.pdf section 145).'
 			else if (lbl_match(line, 'Flux spread tol')) then
 				! "Flux spread tol: <tol> [<r_flux [R_p]>]" -- the FLUX gate
 				! (section 133). The steady solve is accepted only when the
@@ -1592,8 +1588,7 @@
    ! together with the molecular network (System_HeH_mol_metals), so the two
    ! are not exclusive. Neither is He/H diffusion any more: the element
    ! transport of binary_element_diffusion closes over the molecular carriers
-   ! (Blanc friction, mean carrier mass and charge, mole-fraction driver),
-   ! validated by test T7 of docs/binary_diffusion_design.md section 6.
+   ! (Blanc friction, mean carrier mass and charge, mole-fraction driver).
    if (thereis_mol .and. .not. thereis_He) then
       write(*,*) '(input_read) ERROR: Molecular chemistry needs He/H>0.'
       error stop 1
@@ -1605,7 +1600,7 @@
    ! two-index Roe average needs the Vinokur-Montagne/Glaister extension the
    ! code does not carry. With molecular chemistry and the ladder caloric
    ! EOS the index varies across the H2 front, so that derivation does not
-   ! hold there. See docs/a2_roe_interface.md section 3.
+   ! hold there.
    if (flux .eq. 'ROE' .and. thereis_mol .and.                            &
        .not. caloric_eos_monatomic) then
       write(*,*) '(input_read) ERROR: "Numerical flux: ROE" conflicts'//  &
@@ -1614,13 +1609,13 @@
       write(*,*) '  estimate are derived for one constant adiabatic index,'
       write(*,*) '  which the molecular ladder EOS does not provide.'
       write(*,*) '  Use "Numerical flux: HLLC" or "LLF", or set'
-      write(*,*) '  "Caloric EOS: monatomic". See docs/a2_roe_interface.md.'
+      write(*,*) '  "Caloric EOS: monatomic".'
       error stop 1
    endif
 
    ! ---- oxygen chemistry (the A2 option) ----
-   ! Section 4.6 of docs/a2_oxygen_option_design.md: name the key, name the
-   ! other owner of the quantity, name the fix, stop. The option is a third
+   ! Name the key, name the other owner of the quantity, name the fix, stop.
+   ! The option is a third
    ! producer of the base H2/H partition, so it joins the single-source rule
    ! that the lower-atmosphere profile and base.inp already follow rather
    ! than inventing one of its own.
@@ -1964,11 +1959,11 @@
    ! pinned density while the gas in it counts one particle per nucleus, and
    ! the isothermal base boundary silently sits at ntot_bc*T0 instead of T0.
    !
-   ! Section 11.5-C of docs/supersonic_molecular_base.md asked for exactly this
-   ! refusal ("If the intended quantity remains EOS-only, the code must instead
-   ! refuse a mismatch between that EOS state and the species state used at the
-   ! same ghost"); it is item P35, decided 2026-09-02 and recorded in section
-   ! 120 of docs/Update_EXHALE. Measured before the refusal existed: the
+   ! This refusal was asked for in exactly these terms ("If the intended
+   ! quantity remains EOS-only, the code must instead refuse a mismatch
+   ! between that EOS state and the species state used at the same ghost");
+   ! it is item P35, decided 2026-09-02 and recorded in section 120 of
+   ! docs/Update_EXHALE_stage1.pdf. Measured before the refusal existed: the
    ! HD 209458 b VULCAN handoff runs ran at ntot_bc = 0.555-0.994, i.e. base
    ! ghosts from 0.555 to 0.994 of the temperature their input.inp asked for.
    if (molecular_base .and. .not. thereis_mol) then
@@ -2068,8 +2063,8 @@
    ! the small electron term dp_bc is added later by the ghost BC).  The
    ! legacy density key then says the same thing twice, and the two can
    ! disagree -- which is what put the hot-Uranus gate at 9 microbar while
-   ! its handoff and its base radius both said 1 (docs/p44_base_sawtooth.md
-   ! sections 9.1 and 9.3).  So: if both are given they must agree, and if
+   ! its handoff and its base radius both said 1.  So: if both are given they
+   ! must agree, and if
    ! they do not the run stops here rather than marching on a base level
    ! nobody chose.  1% is the tolerance; a handoff and a density key that
    ! describe one level agree far better than that.
@@ -2247,7 +2242,7 @@
    ! partition that a local steady state cannot produce, so it turns the
    ! transport on. A molecular run without it keeps the local-equilibrium
    ! closure it has always had; that closure is violated on its own solution
-   ! across the H2 front (docs/supersonic_molecular_base.md sec. 13.6), and
+   ! across the H2 front, and
    ! changing this default is a deliberate step with a golden refresh, not a
    ! side effect of adding the operator.
    if (.not. carrier_transport_stated) carrier_transport = thereis_oxychem
@@ -2348,8 +2343,8 @@
    ! so the local balance rows fix only the PARTITION among the molecular
    ! species and leave their sum where the seed put it; the content is set by
    ! the slow formation and dissociation and by transport, neither of which a
-   ! local equilibrium sees. MEASURED on the hot Uranus element state
-   ! (docs/steady_solver_design.md, item B5h): 0.77 of any seed perturbation
+   ! local equilibrium sees. MEASURED on the hot Uranus element state: 0.77
+   ! of any seed perturbation
    ! of the layer's H2 content survives every pass of the sweep, the same 0.77
    ! at perturbations of 1e-6 and of 1e-2, and the base cell's energy row,
    ! being a near-cancellation of the fluxes its continuous-temperature ghost
@@ -2385,7 +2380,7 @@
       write(*,*) '  Set "Molecular carrier transport: True", which makes'
       write(*,*) '  n(H2) a Newton unknown solved from its own transport'
       write(*,*) '  balance, or drop "Coupled carrier solve" and march.'
-      write(*,*) '  See docs/steady_solver_design.md. Aborting.'
+      write(*,*) '  Aborting.'
       error stop 1
    endif
 
@@ -2412,8 +2407,7 @@
          ' chemistry: True" to transport H2, or remove the line.'
    endif
 
-   ! THE RUN MODE, AND WHY ITS DEFAULT IS init
-   ! (docs/a0_run_mode_contract_20260906.md sections 4 and 6).
+   ! THE RUN MODE, AND WHY ITS DEFAULT IS init.
    !
    ! The ordinary use of this code is a stationary solution: march until the
    ! flux functional is flat, finish with a stationary solve, certify the
@@ -2443,7 +2437,7 @@
    endif
 
    ! WHAT THIS RESTART CONTINUES, AND THE THREE STATEMENTS THAT CONTRADICT
-   ! THEMSELVES (docs/restart_contract_design_20260909.md section 2).
+   ! THEMSELVES.
    !
    ! The intent is a statement about a state read from a file, so a run that
    ! reads none has nothing to state; a trajectory is a physical integration,
@@ -2638,8 +2632,7 @@
    ! --------------------------------------------------------------------- !
 
    subroutine name_restart_option_change_token(tok)
-   ! ONE TOKEN OF "Restart option change" (decision 21 of
-   ! docs/To_be_determined_by_user_20260906.md, option a).
+   ! ONE TOKEN OF "Restart option change".
    !
    ! A token is either one of the physics switches the state file's
    ! '# options' line carries, in which case naming it allows that switch
@@ -2825,8 +2818,7 @@
    ! the value is allowed to do to the wind:
    !
    !  provenance         which code / network / profile produced the file.
-   !                     Comments only today; no key is parsed (planned as
-   !                     A1a of docs/oxygen_chemistry_new_plan.md).
+   !                     Comments only today; no key is parsed.
    !  EOS boundary       state of the gas at the handoff level:
    !                     T_base [K]     -> T0
    !                     r_base [R_J]   -> R0
@@ -3025,7 +3017,7 @@
    ! With a profile in use, the three physics categories of base.inp have a
    ! single source and it is the profile. Accepting a scalar beside it would
    ! reintroduce exactly the same-solution problem the profile removes by
-   ! construction (docs/phase_e_flux_closure_design.md section 2.4).
+   ! construction.
    character(len=*), intent(in) :: kname, cat
    if (.not. lap_in_use) return
    write(*,*) '(input_read) ERROR: base.inp key "'//trim(kname)//          &
@@ -3340,7 +3332,6 @@
 	   ' [<p_ubar>]" to state the base LEVEL, and'
 	write(*,'(A)') '   base.inp / "Lower atmosphere profile:" to state'//  &
 	   ' the base temperature and composition.'
-	write(*,'(A)') '   Background: docs/phaseC_characteristic_base_bc.md.'
 	write(*,*)
 	error stop 1
 	end subroutine retired_base_key

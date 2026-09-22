@@ -2,14 +2,11 @@
       ! THE ATTEMPTED-STEP CONTROLLER: one checkpoint, one trial, one
       ! adoption boundary.
       !
-      ! docs/b3a_attempted_step_controller_design_20260906.md is the design
-      ! this file implements, and docs/b1_target_system_20260906.md section 7
-      ! is the rollback contract it satisfies. The marching loop of
-      ! EXHALE_main takes one step as fourteen operations in a fixed order
-      ! (b1 section 7.1). Rows 1 through 12 change the physical state; the
-      ! adoption boundary sits immediately before update_map_end_step, which
-      ! is the first point at which the state of the step is complete. This
-      ! module owns
+      ! The marching loop of EXHALE_main takes one step as fourteen
+      ! operations in a fixed order (b1 section 7.1). Rows 1 through 12
+      ! change the physical state; the adoption boundary sits immediately
+      ! before update_map_end_step, which is the first point at which the
+      ! state of the step is complete. This module owns
       !
       !   (a) the checkpoint of everything rows 1 to 12 write, taken before
       !       row 1 and restored on a rejected attempt;
@@ -649,8 +646,8 @@
       real*8, parameter, public :: err_species_floor_of_budget =           &
                                    element_ratio_gate
 
-      ! THE INNER NONLINEAR ERROR HAS TO BE BELOW THE TEMPORAL ONE
-      ! (review PLAN_20260909_review.md F3). The three passes each stop
+      ! THE INNER NONLINEAR ERROR HAS TO BE BELOW THE TEMPORAL ONE.
+      ! The three passes each stop
       ! their nonlinear solves at a finite tolerance, and the difference
       ! the estimate measures carries the errors of all three, so a
       ! difference of the size of those tolerances says nothing about the
@@ -1335,7 +1332,7 @@
       ! sides, which is the closure of the SOURCE STEP alone.
       !
       ! WHY THE RESERVOIR IS NOT ON THE LEFT (B3c, advisor 2026-09-06).
-      ! T1.5 of docs/b1_target_system_20260906.md is written as
+      ! The target thermal-energy closure is written as
       ! Delta u_th + Delta u_form = integral Q_ext, with Q_ext carrying
       ! only exchanges with the radiation field. THIS CODE'S heat AND cool
       ! ARE NOT THAT Q_ext: they are the NET THERMAL source. Term by term,

@@ -24,6 +24,6 @@ Base grid [dr,cells]: 1.9999999494757503e-4 50
 ```
 
 gfortran's list-directed read returns that decimal to the bits above, and the
-grid it builds equals the old default grid bit for bit (MEASURED,
-`docs/lhs1140b_stationary_D1b_20260919.md`). The inputs of the live
+grid it builds equals the old default grid bit for bit (MEASURED).
+The inputs of the live
 directories were pinned with this line by `src/utils/pin_base_grid.py`.

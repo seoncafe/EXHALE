@@ -15,7 +15,7 @@ Oklopcic and Hirata (2018), ApJL 855, L11 (`2018ApJ...855L..11O`), section
 `HD209458b/`: here `He_diffusion: True`, `He_metal_diffusion: True`,
 `He_Kzz: 1.0e9` and there is no `Jlya escape-prob`, while `HD209458b/` has the
 escape-probability closure and no diffusion.
-`docs/paper_materials_vintage_audit.md` section 3c measures the two at
+The two are measured at
 `log10 Mdot` 10.40 against 9.47, a difference of 0.93 dex.
 
 **The spectrum in force until this switch.** READ from `input.inp` as it stood
@@ -137,5 +137,5 @@ the orbit goes from 3.193 (the power law, from the `LX = 27.20`,
 **Reruns are a separate instruction.** Nothing here was re-run, re-converged
 or deleted, and neither the LaRT cases built from `output/` nor the
 `insitu_*` products were touched. Producing a wind under this input is a
-D-physical step of `docs/PLAN_20260906_rev2.md` section 3, gated on its own
-prerequisites and on an explicit instruction.
+D-physical step, gated on its own prerequisites and on an explicit
+instruction.

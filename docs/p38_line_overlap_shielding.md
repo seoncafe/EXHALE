@@ -1,7 +1,7 @@
 # H2 Lyman-Werner self-shielding with overlapping lines
 
 *2026-09-03. `TO_BE_DONE.md` item P38, the open question left by
-`docs/Update_EXHALE_stage1.md` section 122 and `docs/h2_self_shielding_cloudy.md`
+`docs/h2_self_shielding_cloudy.md`
 section 11.2.*
 
 
@@ -9,8 +9,7 @@ section 11.2.*
 > table in `src/modules/lower_atmosphere/h2_self_shielding_table.f90` is now
 > built from the overlapping-line calculation of section 4 and is a rate for
 > all H2 rather than for CLOUDY's H2g sub-reservoir;
-> `h2_shielding_overlap_column` is gone. `Update_EXHALE_stage1.md` section 135 is the
-> changelog entry and carries the verification. Sections 1-5 below are the
+> `h2_shielding_overlap_column` is gone. Sections 1-5 below are the
 > measurement as it was made, and stand; section 6 records what was done with
 > it.
 
@@ -427,7 +426,7 @@ is smallest and therefore least robust (`f_shield` at
 `T = 900, 1300, 1800, 2700 K` at `n_H = 1e13 cm^-3`, `1e18 <= N_H2 <= 5.6e21`
 at 4 points per decade. `n_H` enters the line-by-line calculation only through
 the LTE populations, i.e. not at all; the CLOUDY table's own density axis moves
-`f_shield` by at most 40 per cent (`Update_EXHALE_stage1.md` section 122.6), and the
+`f_shield` by at most 40 per cent, and the
 Meudon runs are all at `1e13`.
 
 ### 5.1 The two overlapping-line calculations against each other
@@ -693,7 +692,7 @@ larger dissociation branching.
 ## 6. What was done
 
 **Both errors were fixed, in that order, and the table was replaced rather
-than patched.** `Update_EXHALE_stage1.md` section 135 is the changelog entry; this
+than patched.** This
 section records only what the decision was and why.
 
 **Stage 1, the H2g weighting.** CLOUDY was patched a second time -- four more

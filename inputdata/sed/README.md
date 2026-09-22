@@ -1,6 +1,6 @@
 # Stellar spectra of the planet calculations of record
 
-Decision 16 of `docs/development_plan_20260905_rev3.md` section 10.5: every
+Decision 16: every
 planet calculation of record uses `Spectrum type: Load` with the SED the
 reference literature used, or assumed, for that planet; one file per planet
 lives here, with the paper, the proxy star, the scaling to the planet's orbit,
@@ -9,8 +9,8 @@ the wavelength coverage and the unit conversion stated.
 This directory holds the inventory and the files that could be built from data
 already in the workspace. Three of them are now the spectrum of their
 configuration: `hd209458b_solar_whi2008.txt`, `hd189733b_epseri_salz2016.txt`
-and `wasp121b_composite_huang2023.txt` were switched in on 2026-09-06 (step C3
-of `docs/PLAN_20260906_rev2.md`), each recorded in the README of the run
+and `wasp121b_composite_huang2023.txt` were switched in on 2026-09-06 (step
+C3), each recorded in the README of the run
 directory that names it. Every other file here is built and unused. A switch is
 a configuration change on its own and never a rerun: the outputs standing in a
 switched directory were produced under its previous spectrum and are labelled
@@ -106,7 +106,7 @@ is first order in the curvature of `F_lambda` over a bin, again `(dl/l)^2`
 relative for a smooth continuum but unbounded across a line narrower than the
 step.
 
-`src/tests/spectrum_type/loaded_sed_table_semantics.f90` measures exactly this
+Exactly this is measured
 through the production consumers, on four synthetic tables built from an
 analytic `F_lambda` by exact bin averaging (a narrow emission line, a sharp
 step at the He I threshold, one bin ten times its neighbours, and a steep
@@ -274,8 +274,7 @@ remaining one is stated in the coverage table
 above; none of them is fixed by the check itself.
 
 The reconstruction the reader applies to a table, and what the production
-consumers make of it, are tested separately by
-`src/tests/spectrum_type/run.sh sed_semantics`.
+consumers make of it, are tested separately.
 
 ---
 
@@ -1028,8 +1027,7 @@ and not the target's, **not a reproduction of the Huang et al. spectrum**
 (their LLmodels run above 1700 A is unavailable).
 
 **Sensitivity of the production rates to the candidate input.** Measured
-2026-09-06 by `src/tests/spectrum_type/wasp121b_sed_sensitivity.f90`, which
-loads each file through the production `set_energy_vectors` with the
+2026-09-06, loading each file through the production `set_energy_vectors` with the
 configuration of `WASP-121b/input.inp` and its `metals.inp` (He 2^3S on,
 Stellar Teff 6459 K and Stellar radius 1.458 R_sun, Stellar Lya flux 1.0e5,
 solar C/N/O/Mg/Ca/Na/Fe, a = 0.02544 AU, [13.60, 123.98, 1.24e3] eV, X-rays

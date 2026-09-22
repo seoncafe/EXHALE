@@ -120,8 +120,7 @@
       ! units of ulp(t)/B. On the LHS 1140 b column (T 418 to 5838 K,
       ! p 1.6e-15 to 9.5e-7 bar) that form is wrong by more than 1 percent in
       ! 186 of 500 cells, returns exactly zero in 164 of them where the fit is
-      ! positive, and is 1.3e4 times the fit's value at its worst (MEASURED,
-      ! docs/lhs1140b_stationary_L7d_20260914.md section 2).
+      ! positive, and is 1.3e4 times the fit's value at its worst (MEASURED).
       !
       ! Multiplying by the conjugate,
       !     A + t - sqrt(t (2A + t)) = A^2/((A + t) + sqrt(t (2A + t)))

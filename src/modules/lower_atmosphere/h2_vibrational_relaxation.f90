@@ -261,8 +261,7 @@
    ! states and what the low-temperature behavior confirms (a rate that is
    ! finite at 100 K has no threshold). The file distributes only that
    ! direction, so no detailed-balance identity can be formed from it; the
-   ! helium set does distribute both and is checked in
-   ! src/tests/physics_probe/molecular_energy_recipients.f90.
+   ! helium set does distribute both.
    !
    ! WHAT IS TABULATED is the same quantity as for the other two colliders:
    ! the thermal v = 1 -> v' = 0 relaxation, summed over final j' and
@@ -602,12 +601,10 @@
    !    that data set and not a minimum for every level, rotational state
    !    and collider a nascent molecule reaches.
    !
-   ! WHAT BRACKETS IT. The reduced statistical-equilibrium model of
-   ! src/tests/h2_level_ladder solves the levels the published collision
-   ! data cover, carries the levels above them as one explicitly uncertain
-   ! group, and evaluates the exact form below on its solution; the bracket
-   ! it gives on three representative cells of the certified molecular base
-   ! is in docs/lhs1140b_stationary_L31_energy_cycles_20260917.md.
+   ! WHAT BRACKETS IT. A reduced statistical-equilibrium model solves the
+   ! levels the published collision data cover, carries the levels above
+   ! them as one explicitly uncertain group, and evaluates the exact form
+   ! below on its solution.
    !
    ! WHERE THE FORM COMES FROM: Burton, Hollenbach & Tielens (1990)
    ! eq. (A1), whose structure and counting unit are set out in
@@ -637,7 +634,7 @@
    !
    ! HOW FAR THIS LAYER IS FROM THE DISTINCTION MATTERING: 1 - f = 7.0e-09
    ! at the certified base with the collider sum this module now carries
-   ! (MEASURED, docs/lhs1140b_stationary_L7g_inventory_20260916.md). That
+   ! (MEASURED). That
    ! number is a property of THIS model, not a bound on its distance from a
    ! level-population one; what makes the two agree at this base is that
    ! every level of the ladder is collisionally dominated there by orders,

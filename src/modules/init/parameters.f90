@@ -39,12 +39,10 @@
       ! raised by one per pass of the marching loop in EXHALE_main. It counts
       ! passes, not accepted steps; n_steps_attempted and n_steps_accepted
       ! below are the two step ledgers. The run prints it as "count=" and
-      ! write_setup_report keys the cap below as "count_max", the labels the
-      ! log readers under src/tests match on.
+      ! write_setup_report keys the cap below as "count_max".
       integer :: marching_step
 
       ! ----- WHAT A RUN IS DOING, AND THE CLOCK THAT GOES WITH IT -----
-      ! docs/a0_run_mode_contract_20260906.md sections 2, 4 and 5.
       !
       ! Three different things share one marching loop: reaching an
       ! admissible state from a guess, relaxing to a stationary one, and
@@ -99,8 +97,7 @@
       ! entry and exit of the stationary solver, which is continuation
       ! whatever mode the run is in.
       ! B6 CATEGORY 4, THE UNBUDGETED ACCEPTED CORRECTIONS THAT ARE STILL
-      ! INSIDE THE ATTEMPTED STEP (b1 section 7.4; advisor decision 8 of
-      ! docs/b3a_attempted_step_controller_design_20260906.md section 9).
+      ! INSIDE THE ATTEMPTED STEP (b1 section 7.4).
       ! Row 12's Shapiro filter alters the adopted state with no source term
       ! behind the change. It is carried until B3b reaches it, and is
       ! counted here so that the certification can refuse a state whose
@@ -133,7 +130,7 @@
       ! speed exactly, the gravity source is cell-local, and the WENO3
       ! pressure gradient only sees interface pressures. The measured
       ! dependence is a 1e-2 alternating amplitude in ln(rho) for H/dr < 5
-      ! and 1e-4 for H/dr > 100 (docs/hd189_base_checkerboard.md). High-
+      ! and 1e-4 for H/dr > 100. High-
       ! gravity planets have the least margin: on the default grid the value
       ! write_setup_report echoes is 26.9 cells per H at T_eq for
       ! HD 189733 b against 102.3 for WASP-121 b.
@@ -142,9 +139,7 @@
       ! the value is the one a reader of the key would spell: an input.inp
       ! WITHOUT the key and one stating "Base grid [dr,cells]: 2.0e-4 50"
       ! build the same grid to the bit (the list-directed read of 2.0e-4 into
-      ! a real*8 is this double; asserted by
-      ! src/tests/grid_and_gates/base_cell_width_provenance.f90 and
-      ! base_grid_key_reproduces_default.sh). The grid is part of a stored
+      ! a real*8 is this double). The grid is part of a stored
       ! state: load_IC refuses a state whose cell centers differ from the
       ! run's by more than 1e-10 relative. An input written before 2026-09-19
       ! was run on the width 1.9999999494757503d-4 (the default-real literal
@@ -153,8 +148,8 @@
       ! as "Base grid [dr,cells]: 1.9999999494757503e-4 50"
       ! (src/utils/pin_base_grid.py), and each preserved tree whose inputs
       ! were not edited has a GRID_DEFAULT_NOTE.md at its root stating the
-      ! same line (docs/lhs1140b_stationary_D1b_20260919.md). The width a run
-      ! used is recorded at round-trip precision by write_resolved_config.
+      ! same line. The width a run used is recorded at round-trip precision
+      ! by write_resolved_config.
       real*8, parameter :: dr_base_default = 2.0d-4
       real*8  :: dr_base     = dr_base_default  ! uniform base cell size [R_p]
       integer, parameter :: N_low_cells_default = 50
@@ -277,7 +272,7 @@
       ! step 0 (pre-staging behavior), for A/B tests only.
       logical :: sec_ion_immediate = .false.
       ! He recombination radiation ionizing H (Draine 2011 y/z parametrization,
-      ! on-the-spot; see docs/QUESTIONS_2026-07-17.md).
+      ! on-the-spot).
       !  .true. (default) = the >= 24.6 eV ground-capture continuum ionizes H
       !   with the local fraction y (Draine Eq. 14.16) and the < 24.6 eV cascade
       !   photons ionize H with the density-dependent fraction z (Draine Sec.
@@ -290,7 +285,7 @@
       !  .false. = He II -> He I recombination photons are all lost locally
       !   (pure case B, y=0), the legacy path.
       logical :: use_he_rec_coupling = .true.
-      ! He/H diffusive separation (docs/design_hehe_diffusion.md):
+      ! He/H diffusive separation:
       !  .false. (default) = He/H frozen at the input HeH everywhere (legacy);
       !  .true. = evolve the He element ratio with advection + molecular
       !  diffusion (He settles, He/H falls with altitude).  Metals stay frozen
@@ -415,7 +410,7 @@
       ! the Ly-alpha line and is always stated ("Stellar Lya flux").
       logical :: fuv_b3_flux_stated = .false., fuv_b4_flux_stated = .false.
       logical :: fuv_b3_from_spectrum = .false., fuv_b4_from_spectrum = .false.
-      ! Oxygen chemistry (the A2 option, docs/a2_oxygen_option_design.md):
+      ! Oxygen chemistry (the A2 option):
       ! OH / H2O / CO added to the coupled molecular ionization equilibrium,
       ! with the H2O and OH photolysis of the FUV bands.  It is what lets
       ! EXHALE compute its own base H2/H partition instead of importing it
@@ -431,8 +426,8 @@
       ! Key "Molecular carrier transport: True|False". Its DEFAULT is not a
       ! constant: it is on whenever the oxygen chemistry is on, because a
       ! local steady state is the wrong physics at the cool base that option
-      ! exists for -- tau_chem(H2)/tau_adv is of order unity there
-      ! (docs/a2_oxygen_option_design.md sec. 3.1). Resolved in input_read
+      ! exists for -- tau_chem(H2)/tau_adv is of order unity there. Resolved
+      ! in input_read
       ! once every key is parsed; carrier_transport_stated records whether
       ! the run said so itself, so the default can change without silently
       ! overriding a stated value.
@@ -565,8 +560,8 @@
       ! Molecular infrared bands (`Molecular IR bands`). .false. is the state
       ! before 2026-08-30: the only infrared coolants below the H2 -> H front
       ! were H3+ and the ground-term fine-structure lines, so a converged
-      ! molecular layer had nothing holding it and collapsed to 190-400 K
-      ! (docs/TO_BE_DONE.md item (G)). .true. adds the H2 quadrupole and magnetic
+      ! molecular layer had nothing holding it and collapsed to 190-400 K.
+      ! .true. adds the H2 quadrupole and magnetic
       ! dipole line spectrum and the H2O and CO bands, each exchanging with the
       ! same diluted B_nu(T0) `Base IR field` supplies, so each stops at its own
       ! radiative equilibrium temperature. See molecular_infrared_cooling.f90.
@@ -731,8 +726,7 @@
                                           !  transonic, 2 = hot_parker,
                                           !  3 = auto (select_IC_auto picks
                                           !  the family from the cold
-                                          !  sonic-point topology; see
-                                          !  docs/auto_ic_design.md);
+                                          !  sonic-point topology);
                                           !  4 = windae (init.f90 builds an
                                           !  in-process Wind-AE warm-start
                                           !  IC via wae_exhale_bridge, then
@@ -777,7 +771,7 @@
       ! Jacobian Newton (+hybrd1 fallback) vs. legacy MINPACK hybrd1
       ! ("Newton solver: False"). use_brent_tsolve: the post-process energy
       ! equation via the bracketing Brent root-finder vs. legacy hybrd1 + the
-      ! 2x-band reject ("Brent solver: False"). See docs/Update_EXHALE_solver.
+      ! 2x-band reject ("Brent solver: False").
       logical :: use_newton_ieq  = .true.
       logical :: use_brent_tsolve = .true.
 
@@ -974,7 +968,7 @@
       ! SPREAD of the mass flux and is blind to a uniform drift of the whole
       ! profile; without this gate, runs can stop on spatially flat but still
       ! level-drifting states that differ by tens of percent in Mdot
-      ! (path-dependent quasi-steady snapshots; see refactor_stage1_log.md).
+      ! (path-dependent quasi-steady snapshots).
       ! "Level tol: <val>" in input.inp; <= 0 disables (DEFAULT, legacy
       ! behavior preserved byte-identically). Kept opt-in until a steady-
       ! state Newton/PTC reference calibrates the production tolerance: the
@@ -1078,9 +1072,9 @@
       ! weak 1-2-1 filter u_j += (eps/4)(u_{j-1}-2u_j+u_{j+1}) is applied to the
       ! conservative variables. shapiro_eps in [0,1]; eps <= 0 disables it.
       ! OFF BY DEFAULT (opt-in). It damps the HD189733b breathing TRANSIENT, but
-      ! the HD209458b cold-IC S x V sweep (docs/base_breathing_progress.md,
-      ! HD209458b_test/) showed that with the filter ON the clean cold-IC solution
-      ! is driven OFF the transonic-wind saddle into the INFALL attractor (v < 0
+      ! the HD209458b cold-IC S x V sweep showed that with the filter ON the
+      ! clean cold-IC solution is driven OFF the transonic-wind saddle into
+      ! the INFALL attractor (v < 0
       ! everywhere) regardless of the velocity BC, while filter-OFF relaxes to a
       ! clean outflow. So it must NOT be a global default; enable for each run with
       ! "Shapiro filter: <eps> [<every>]" only for cases that actually breathe.
@@ -1169,7 +1163,7 @@
       real*8  ::  Mrapp       ! Ratio M_star/M_p
       real*8  ::  atilde      ! Orbital radius in unit of R0 (a/R0)
       real*8  ::  r_esc       ! Escape radius for constant momentum
-      ! Flux gate (docs/Update_EXHALE_stage1.md section 133). The steady solve is
+      ! Flux gate (docs/Update_EXHALE_stage1.pdf section 133). The steady solve is
       ! accepted only when BOTH the residual ||R|| < resid_tol AND the radial
       ! spread of the Riemann FACE mass flux over r >= r_flux is below
       ! flux_spread_th (section 145). The two
@@ -1420,7 +1414,7 @@
       ! absorber.  Where the band is shielded the true shell average is
       ! lower, because the slant columns away from the substellar point are
       ! longer: 0.20-0.33 for the Lyman-Werner band over a hot-Uranus
-      ! molecular layer (docs/e2_lw_geometry.md sec. 5.3).  THAT REFINEMENT
+      ! molecular layer.  THAT REFINEMENT
       ! IS NOT IMPLEMENTED: there is no key that asks for it, and this
       ! function is the only dilution in the code, so a shielded band is
       ! diluted by the optically thin factor.

@@ -63,8 +63,7 @@
       ! photochemistry models that carry inner shells make the same
       ! approximation (Cecchi-Pestellini et al. 2009, A&A 496, 863, their
       ! Eq. 1; Locci et al. 2022, PSJ 3, 1, their Eq. 3, whose species set
-      ! has singly charged ions only).  Decision item 7 of
-      ! docs/To_be_determined_by_user_20260906.md.
+      ! has singly charged ions only).
       !
       ! WHAT THE ONE ELECTRON COSTS, MEASURED with the degradation routine
       ! itself (electron_energy_degradation) on an atomic H/He cell.  The
@@ -726,7 +725,7 @@
       ! AN EARLIER VERSION OF THIS BRANCH was digitized from Fig. 1 of Chan,
       ! Cooper & Brion (1992), Chem. Phys. 168, 375, whose Tables 1-4 give
       ! only the discrete Lyman and Werner transitions.  That reading is kept
-      ! in section 151.10 of docs/Update_EXHALE_stage1.md as a cross-check -- it
+      ! in section 151.10 of docs/Update_EXHALE_stage1.pdf as a cross-check -- it
       ! agrees with the table used here to 2 per cent at 16 eV and 6 per cent
       ! at 17 eV -- and is not used in the code.  A table beats a figure.
       !

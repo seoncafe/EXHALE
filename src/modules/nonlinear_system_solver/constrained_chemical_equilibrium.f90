@@ -7,7 +7,7 @@
 	! as explicit residual rows, the electron density taken from charge
 	! neutrality, and the whole system embedded in a continuation in the
 	! radiation field from the dense molecular limit up to the full local
-	! field (docs/supersonic_molecular_base.md section 11.5-B).
+	! field.
 	!
 	! WHY THE FORMULATION IS THIS ONE. The fraction systems
 	! (System_HeH_mol / System_HeH_mol_metals) solve for stage fractions of
@@ -115,7 +115,7 @@
 	! layout of the cell's system and says whether the continuation reached
 	! the full field; the caller judges it with the same judge every other
 	! candidate faces (ionization_fractions_physical and
-	! normalized_reaction_residual against ieq_res_tol, section 11.5-A). A
+	! normalized_reaction_residual against ieq_res_tol). A
 	! successful library status and a small step in the transformed variables
 	! are evidence of neither.
 	!
@@ -160,15 +160,13 @@
 	private
 	public :: cce_dump_paths_read
 	public :: equilibrium_from_molecular_limit
-	! Opt-in diagnostic (docs/charge_exchange_cancellation_limit.md section 5).
+	! Opt-in diagnostic.
 	! cce_probe_from_dump is the entry the standalone driver calls; it is not
 	! reached by any production path.
 	public :: cce_probe_from_dump
 	! The layout of the cell's network, its balance rows, and the species
-	! slots and array lengths that index both. Read by the structural
-	! assertions of src/tests/constrained_network_layout/ and by the
-	! reaction assertions of src/tests/charge_exchange_rows/; no production
-	! path calls them.
+	! slots and array lengths that index both. No production path calls
+	! them.
 	public :: constrained_network_layout_of_cell
 	public :: constrained_network_balance_rows_of_cell
 	public :: is_HI, is_HII, is_H2, is_HeI_SI, is_HeII, is_HeIII, is_HeITR
@@ -244,10 +242,9 @@
 	! iterates reach.
 	real*8,  parameter :: u_shift = 1.0d0
 
-	! Finite-difference size for the constrained solve, chosen by the
-	! measured sweep of docs/charge_exchange_cancellation_limit.md phase B
-	! rather than left at MINPACK's default. fdjac1 forms eps =
-	! sqrt(max(epsfcn, epsmch)) and, under unit_step_floor, uses
+	! Finite-difference size for the constrained solve, chosen by a
+	! measured sweep rather than left at MINPACK's default. fdjac1 forms
+	! eps = sqrt(max(epsfcn, epsmch)) and, under unit_step_floor, uses
 	! h_j = eps*max(1,|v_j|), so passing epsfcn = fd_eta^2 sets the step to
 	! fd_eta*max(1,|v_j|) -- the absolute-floor rule the review asks for,
 	! with no value of the iterate at which it degenerates. Measured on the
@@ -306,7 +303,7 @@
 	! dimensionless) of the vector hybrd1 returns. The MINPACK exit code
 	! takes no part -- info = 1 is an xtol statement about the step and
 	! info = 4 routinely returns finished roots it cannot certify
-	! (docs/Update_EXHALE_stage1.md section 113). This is the tolerance of an
+	! (docs/Update_EXHALE_stage1.pdf section 113). This is the tolerance of an
 	! INTERMEDIATE rung; the final candidate is judged by the caller.
 	real*8,  parameter :: rung_res_tol = 1.0d-6
 
@@ -335,7 +332,7 @@
 	! outside the domain from overflowing to infinity or underflowing to
 	! exactly zero -- either of which would destroy the information the
 	! residual carries and, in the zero case, the module's own positivity
-	! claim (docs/charge_exchange_cancellation_limit.md section 3.4).
+	! claim.
 	real*8,  parameter :: ln_ratio_max = 2.5d2
 
 	! Seed floor of a species whose closed-form molecular limit is zero,
@@ -452,7 +449,7 @@
 	real*8,  save :: row_scale(n_fraction_rows_max)
 	! ---------------------------------------------------------------
 	! Opt-in state dump of a continuation that failed to reach the full
-	! field (docs/charge_exchange_cancellation_limit.md section 5, phase A).
+	! field.
 	! Off unless the environment variable EXHALE_CCE_DUMP names a file, and
 	! then written ONCE, for the first failing cell of the run. These three
 	! are deliberately NOT threadprivate: the once-only guard has to be
@@ -520,8 +517,7 @@
 	! the continuation completed, not that the composition solves the cell's
 	! network: the caller applies ionization_fractions_physical and
 	! normalized_reaction_residual against ieq_res_tol, the same judge every
-	! other candidate faces (docs/supersonic_molecular_base.md section
-	! 11.5-A/B).
+	! other candidate faces.
 
 	integer, intent(in)    :: nx, mbase, iox
 	real*8,  intent(in)    :: n_e_ref, p_bar
@@ -562,7 +558,7 @@
 	! it is, it must not still describe the previous cell this thread
 	! solved: a cell's equilibrium is a function of that cell's state, not
 	! of the order the sweep handed cells to threads
-	! (docs/Update_EXHALE_stage1.md section 121).
+	! (docs/Update_EXHALE_stage1.pdf section 121).
 	species_held(:)             = .false.
 	n_unknown                   = 0
 	n_reaction_row              = 0
@@ -1112,8 +1108,7 @@
 	! BOUNDED ON BOTH SIDES, and the lower bound is the point. The module
 	! claims that no iterate can produce a nonpositive density; with only
 	! the upper side capped that claim was false, because a sufficiently
-	! negative exponent underflows exp to exactly zero
-	! (docs/charge_exchange_cancellation_limit.md section 3.4). Clamping the
+	! negative exponent underflows exp to exactly zero. Clamping the
 	! low side restores the claim exactly: exp(-250) = 2.6e-109 times any
 	! reference density this network carries is still a normal, strictly
 	! positive number.
@@ -1515,7 +1510,7 @@
 	! which species are floored, and, through the return below, whether the
 	! continuation is seeded at all -- a function of the order the cells
 	! happened to be handed to threads, and with it the accepted state of
-	! every class-5 cell (docs/Update_EXHALE_stage1.md section 121).
+	! every class-5 cell (docs/Update_EXHALE_stage1.pdf section 121).
 	do isp = 1,n_species_max
 		if (.not. seed_species_of_cell(isp)) cycle
 		sden_floor = seed_floor_fraction*element_nuclei_of_species(isp)
@@ -1756,7 +1751,7 @@
 
 	! ===============================================================
 	!  Opt-in diagnostic of a continuation that did not reach the full
-	!  field (docs/charge_exchange_cancellation_limit.md section 5).
+	!  field.
 	!  Nothing below runs unless EXHALE_CCE_DUMP is set, or unless the
 	!  standalone driver calls cce_probe_from_dump. No production path
 	!  reaches any of it.
@@ -2030,12 +2025,12 @@
 	!----------------------------------!
 
 	subroutine cce_probe_from_dump(fname)
-	! Standalone re-evaluation of a saved failed continuation: phase B of
-	! docs/charge_exchange_cancellation_limit.md. Reads the dump, rebuilds
+	! Standalone re-evaluation of a saved failed continuation. Reads the
+	! dump, rebuilds
 	! the cell exactly as the driver would, and reports
 	!   1 the residual, and the H+/He+ rows summed in binary64 against the
 	!     exact sum of the same binary64 terms (real*16 accumulation), which
-	!     isolates SUMMATION error -- the thing section 3.1 says must be
+	!     isolates SUMMATION error, the quantity that must be
 	!     measured;
 	!   2 Jacobian columns under MINPACK's rule, scale-aware forward and
 	!     central differences over a sweep of eta, and the column-by-column

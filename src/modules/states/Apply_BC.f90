@@ -66,9 +66,9 @@
    ! The boundary state is a function of a stated input set, and these hold
    ! that input set as it stood at the derivation, so that a consumer can ask
    ! whether the cache belongs to the state it is about to use it on instead
-   ! of assuming it (docs/lhs1140b_stationary_D5a_20260918.md sections 5 and
-   ! 9, where the cache of one composition read by the residual of another is
-   ! measured at 6.92 to 28.15 rounding floors of the base continuity row).
+   ! of assuming it (the cache of one composition read by the residual of
+   ! another is measured at 6.92 to 28.15 rounding floors of the base
+   ! continuity row).
    !
    ! THE INPUT SET, and nothing else: the interior conserved state, the
    ! composition-derived state the ghost continuation and the caloric map
@@ -371,8 +371,7 @@
    ! that: the forward difference entering the MC limiter of PLM_rec is then
    ! EXACTLY zero, a zero enters the limiter's argument list, the limited slope
    ! of cell N is exactly zero and that cell carries no pressure gradient at
-   ! all. MEASURED on the analytic hydrostatic column by
-   ! src/tests/grid_and_gates/hydrostatic_residual, the momentum residual of
+   ! all. MEASURED on the analytic hydrostatic column, the momentum residual of
    ! cell N in units of its own weight, at Grid cells = 250 / 500 / 1000 /
    ! 2000 and its order in 1/N:
    !

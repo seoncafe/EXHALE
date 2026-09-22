@@ -144,7 +144,6 @@ ATES model.
   equilibrium is preserved to rounding (Kappeli and Mishra 2014, 2016). A
   measurement option: turning it on moves every result, and the
   species-row stationary solves do not improve under it
-  (`docs/well_balanced_flux_difference_design_20260910.md`)
 - A steady state is not "converged", it is CERTIFIED: one evaluator states
   one condition per active balance and the run prints, and the state file
   records, which conditions were met and which row and cell refused. The
@@ -206,8 +205,8 @@ ATES model.
   tolerance is the certification's
 - Python loaders (`examples/exhale_io.py`) driven by the `# columns` schema
   header every output file carries; a bitwise regression harness over a
-  sixteen-case physics matrix (`make check`); and 33 assertion suites under
-  `src/tests/` plus three standalone test programs (`make test`), which print
+  sixteen-case physics matrix (`make check`); and 33 assertion suites
+  plus three standalone test programs (`make test`), which print
   one `PASS|FAIL <name> measured= reference= tol=` line per assertion
 - A restart is a contract, not a file copy. Both state files carry a
   `restart_schema 1` metadata block (reservoir, species columns, grid,
@@ -299,8 +298,7 @@ Solver:                 Newton
 An atomic run finished this way certifies. A run that carries a species row,
 an element row from `He_diffusion` or a carrier row from the molecular
 carriers, does not: no such configuration has yet reached its certification
-tolerance on any route, and what limits them is measured and recorded in
-[`docs/code_status_20260910.md`](docs/code_status_20260910.md) section 3.3.
+tolerance on any route, and what limits them is measured and recorded.
 Quote a mass-loss rate from such a run only with that qualification.
 
 Everything else (compiler variants, all opt-in physics keys, output-file
@@ -313,13 +311,6 @@ schemas, convergence recipes, post-processing) is in
 
 **Start here**
 
-- [`docs/code_status_20260910.md`](docs/code_status_20260910.md): the state of
-  the code physics by physics (implemented / verified / limited / missing),
-  what is certified and what limits the rest, the ordered problems and the
-  task list. Read this one first in a new session
-- [`docs/ISSUES_20260909.md`](docs/ISSUES_20260909.md): every problem the
-  2026-09 work exposed, resolved (a table) and open (with its evidence and
-  its next item)
 - [`README_HOWTO.md`](README_HOWTO.md), task-oriented recipes: one entry per
   task, with the exact input lines, the expected output, and where the full
   documentation lives. All the details this file used to carry are there
@@ -331,7 +322,8 @@ schemas, convergence recipes, post-processing) is in
   metals, the marching scheme, boundary and initial conditions, the stationary
   solve), written from the source at the depth of the ATES paper; the section
   files are `docs/physics_overview/*.tex`
-- [`docs/Update_EXHALE_stage2.md`](docs/Update_EXHALE_stage2.md): the current update log (stage 2, from 2026-09-05), whose PDF carries the
+- [`docs/Update_EXHALE_stage2.pdf`](docs/Update_EXHALE_stage2.pdf): the current
+  update log (stage 2, from 2026-09-05). It carries the
   code-size appendix against the original ATES and the list of source inherited unchanged from it
   (`docs/Update_EXHALE_appendix.tex`, re-measured with `src/utils/codesize.py`);
   [`docs/Update_EXHALE_stage1.pdf`](docs/Update_EXHALE_stage1.pdf): sections 1-171, the dated changelog against
@@ -358,9 +350,7 @@ schemas, convergence recipes, post-processing) is in
   how H2 is treated: it is one species with no (v,J) resolution, so every
   level distribution is an assumption; the assumptions, their sources and
   their validity ranges collected in one place
-- [`docs/binary_diffusion_design.md`](docs/binary_diffusion_design.md),
-  [`docs/design_hehe_diffusion.md`](docs/design_hehe_diffusion.md) and
-  [`docs/version_compare.pdf`](docs/version_compare.pdf), diffusive
+- [`docs/version_compare.pdf`](docs/version_compare.pdf), diffusive
   separation of He and metals, and its measured effect on He 10830
 - [`docs/transmission_spectrum.pdf`](docs/transmission_spectrum.pdf): how the
   transit spectra are computed from the wind profiles
@@ -374,15 +364,6 @@ schemas, convergence recipes, post-processing) is in
 - [`docs/code_comparison.pdf`](docs/code_comparison.pdf) and
   [`docs/methodology_comparison.pdf`](docs/methodology_comparison.pdf):
   comparison with ATES, Salz, Kubyshkina, Murray-Clay, AIOLOS, Taylor, Xing
-
-- [`docs/PLAN_20260909_rev1.md`](docs/PLAN_20260909_rev1.md) and
-  [`docs/worker_rules.md`](docs/worker_rules.md): the plan the open items
-  belong to, and the rules every worker on this tree follows
-- [`docs/certification_tolerance_anchoring_20260910.md`](docs/certification_tolerance_anchoring_20260910.md):
-  the five measured anchors behind the element and carrier tolerances, and
-  why the wind and the layer cannot share one number
-- [`docs/steady_solver_design.md`](docs/steady_solver_design.md): the
-  stationary solver section by section, ending with what the design became
 
 `docs/` holds roughly forty further memos on individual investigations;
 [`docs/TO_BE_DONE.md`](docs/TO_BE_DONE.md) is the open-items list.
@@ -443,4 +424,4 @@ schemas, convergence recipes, post-processing) is in
 
 Kwang-Il Seon (KASI / UST)
 
-Last updated: 2026-09-22 12:07
+Last updated: 2026-09-22 22:41

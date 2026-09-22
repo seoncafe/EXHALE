@@ -14,9 +14,6 @@ modeling choice, not a measured quantity. This note measures what it controls,
 proposes two criteria that can be evaluated numerically, and reports the value
 they select.
 
-Background on why the guard exists at all: `docs/hd189_base_checkerboard.md`
-section 10.
-
 ---
 
 ## 0. Verdict
@@ -89,8 +86,7 @@ with the `[O I] 63 um` / `[C II] 158 um` coefficients replaced by their
 density-dependent two-level forms and Fe II by the 2-D statistical-equilibrium
 table. Frozen while `T` is swept: the ionization state, `ne`, `nHI`, the escape
 probabilities `beta` (a column, so not a function of this cell's trial
-temperature) and the heating rate, all read from the converged run. This is the
-construction of `docs/hd189_base_checkerboard.md` section 10.4.
+temperature) and the heating rate, all read from the converged run.
 
 `T_eq,base(w)` below is the root of `cool(T) = heat` with everything else held
 at the converged state. It is the balance point of the cooling change alone,
@@ -162,8 +158,7 @@ i.e. `6e-6` of the local heating, and about `3e7` times *below* the coronal
 value at 999 K. The critical densities behind that are of order 1e0-1e3 cm^-3
 for these lines, against `ne = 8.4e8` and `nHI = 8.8e13` at the base. (This
 estimate was computed outside the code, from standard atomic data, and is
-quoted to an order of magnitude; it agrees with the `~1e-10` recorded in
-`hd189_base_checkerboard.md` section 10.7.)
+quoted to an order of magnitude.)
 
 So below the fit floor the correct metal cooling is essentially the two
 explicitly saturated lines plus a negligible saturated C I term, and the
@@ -386,8 +381,8 @@ matrix does not exercise this guard.** The goldens were not re-snapshotted
    dominated below the floor are now solved in statistical equilibrium at the
    local density, and what the guard still switches off is negligible at any
    density (section 7.1).**
-3. **The base has no radiative floor** (`hd189_base_checkerboard.md` section
-   10.7 item 1). With the guard narrowed, the HD 189733 b base at ~570 K has a
+3. **The base has no radiative floor**. With the guard narrowed, the
+   HD 189733 b base at ~570 K has a
    metal cooling of `~5e-8` against a heating of `3.4e-6`: it is not in local
    radiative balance at all, and its temperature is set by the boundary and by
    the flow. A wide `w` hides this behind an artificial coolant rather than

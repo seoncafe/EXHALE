@@ -10,11 +10,10 @@
 ! 190-400 K against an equilibrium temperature of 1100-1400 K, because the only
 ! infrared coolants the code carried below the H2 -> H front were H3+ and the
 ! ground-term fine-structure lines, treated as pure emitters into vacuum.  The
-! `Base IR field` closure (Update_EXHALE_stage1.md section 55) gave those two families
+! `Base IR field` closure (Update_EXHALE_stage1.pdf section 55) gave those two families
 ! their incident field; it could not reach the rest of the layer, where the
 ! coolants that matter in a real H2 atmosphere -- water, carbon monoxide and
 ! molecular hydrogen itself -- were simply absent.  This module supplies them.
-! docs/TO_BE_DONE.md item (G).
 !
 ! THE PHYSICS.  For an optically thin layer in LTE the net radiative loss per
 ! unit volume of species X is

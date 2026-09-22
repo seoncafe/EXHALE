@@ -55,11 +55,9 @@
       ! log) and the reason the two atoms are not ordered by mass and
       ! polarizability are at the coefficient.  The substitution is stated
       ! there and is not a fit.
-      ! The audit of the earlier treatment, with the size of the affected
-      ! terms, is docs/molecular_chemistry_audit_he_rich.md.
       !
-      ! HE-DOMINATED LIMIT.  Two further limits of this network are recorded
-      ! there rather than patched here, because both would replace a
+      ! HE-DOMINATED LIMIT.  Two further limits of this network are noted
+      ! rather than patched here, because both would replace a
       ! Koskinen Table-1 entry with a rate from another compilation:
       !   * HeH+ formation.  REPAIRED 2026-09-15 (item L7f), and the
       !     paragraph is kept because the repair is the point.  Table 1
@@ -469,9 +467,7 @@
       !     identified the model ladder retired on 2026-09-06: it deviated
       !     the same way, 1.010 at 600 K rising to 1.101 at 5000 K, which is
       !     the ratio of the two partition functions and nothing else.  An
-      !     assertion holds this agreement,
-      !     h2_equilibrium_constant_janaf_at_* of
-      !     src/tests/physics_probe/h2_rovibrational_identity.f90.
+      !     assertion holds this agreement.
       !   * Cohen & Westberg (1983) recommend BOTH directions on the same
       !     data sheet, so their ratio k1(H2)/k-1(H2) is an equilibrium
       !     constant from an evaluation that used none of the above:
@@ -616,8 +612,7 @@
       ! certified molecular base of LHS 1140 b and on the hottest atomic
       ! wind of the catalog, the association source at every cell with T
       ! outside 77-5000 K stands far below the other H2 formation channels
-      ! there; the two profiles and the numbers are in
-      ! docs/lhs1140b_stationary_L31_energy_cycles_20260917.md.
+      ! there.
       double precision function k3b_H_H_to_H2_monatomic(T) result(k)
       real*8, intent(in) :: T
       k = 1.9d-30/max(T, 1.0d0)
@@ -645,9 +640,8 @@
       ! ionized colliders are not a small share of the heavy particles, and
       ! leaving them out then understates the R15 association rate there;
       ! what that association rate is worth against the other H2 sources
-      ! above the front is measured in
-      ! docs/lhs1140b_stationary_L31_energy_cycles_20260917.md, not argued
-      ! from the H2 abundance, because R15 runs on atomic hydrogen.
+      ! above the front is measured, not argued from the H2 abundance,
+      ! because R15 runs on atomic hydrogen.
       double precision function h2_association_collider_density           &
                                   (T, n_H2, n_HI, n_He) result(n_eff)
       real*8, intent(in) :: T, n_H2, n_HI, n_He
@@ -1152,8 +1146,7 @@
       ! reverse, so k(H+ + He)/k(He+ + H) is under no obligation to equal
       ! 4 exp(-127,500 K / T), and the ~10^2-10^3 factor by which it differs
       ! measures the separation of two channels rather than an error in
-      ! either fit. See docs/molecular_chemistry_audit_he_rich.md section
-      ! 4.3 and the Group B block of charge_exchange.f90.
+      ! either fit. See the Group B block of charge_exchange.f90.
       !
       ! R21: H + He+ -> H+ + He                 (Stancil et al. 1998)
       double precision function rk_R21_H_Hep_cx(T) result(k)

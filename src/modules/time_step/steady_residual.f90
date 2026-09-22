@@ -532,8 +532,8 @@
       !
       ! WHY NOT rho (|v| + c_s)/dr, WHICH IS WHAT THIS WAS. That is the state
       ! scale times the cell's signal-crossing rate, and nothing in the
-      ! continuity row moves at c_s. MEASURED (docs/p54_base_layer_mass_flux.md
-      ! section 3): dividing by it gives identically the fractional flux error
+      ! continuity row moves at c_s. MEASURED: dividing by it gives
+      ! identically the fractional flux error
       ! per cell TIMES the local Mach number, verified to one percent on a
       ! converged state at r = 1.001 to 2.1. In a quasi-hydrostatic layer at
       ! Mach 5e-5 that is a factor 2e4 of blindness -- a tolerance of 1e-5 at
@@ -772,8 +772,8 @@
       ! the scale over F_0 is 4.4e5 at 1.005 R_p and 1.9e2 at 1.2 on the
       ! molecular hot Uranus -- so a row that reads 1e-8 against
       ! rho(|v|+c_s)/dr can still be displacing the mass flux, and it was:
-      ! docs/p55_base_mode.md section 4 predicts the marching departure rate
-      ! of an accepted state from this ratio to 9 percent.  With no gravity
+      ! the marching departure rate of an accepted state is predicted from
+      ! this ratio to 9 percent.  With no gravity
       ! the weight is zero and the max falls back on the dynamic terms; on a
       ! state at rest with a uniform pressure all three terms vanish and the
       ! scale is the tiny floor below, which is the only place a fully zero
@@ -800,8 +800,8 @@
       ! MEASURED on the states the previous scale accepted: the energy row of
       ! the molecular hot Uranus's layer reads 1.7e-3 to 4.7e-3 of its own
       ! largest term at 1.03 to 1.05 R_p, and cell 1 reads 0.99, while the
-      ! same rows read 1e-8 to 1e-4 against E(|v|+c_s)/dr
-      ! (docs/p54g23_row_scale_scan.md section ii). A state can be steady on
+      ! same rows read 1e-8 to 1e-4 against E(|v|+c_s)/dr. A state can be
+      ! steady on
       ! the old measure and out by one part in a thousand on the physics the
       ! row is balancing.
       integer,                        intent(in) :: j
@@ -845,9 +845,6 @@
       !              terms, and cell 1 by 99 percent, while reading 1e-8 to
       !              1e-4 on the old scale.
       !
-      ! Full measurement: docs/p54_base_layer_mass_flux.md sections 3 and 10,
-      ! docs/p55_base_mode.md section 4, docs/p54g23_row_scale_scan.md.
-      !
       ! THE MOMENTUM ROW'S GRAVITATIONAL BOUND IS NOT A SEPARATE CASE ANY
       ! MORE. Section 62.3 added max(..., rho |dPhi/dr|) because the old
       ! scale could not see gravity; the weight is now one of the three
@@ -859,8 +856,8 @@
       ! and the line-search merit. Rescaling those with these quantities was
       ! tried and measured: the mass row's version varies by a factor 9 across
       ! the first two cells and left the hot-Uranus solve with no descent
-      ! direction after 179 iterations against 9 for the measure-only build
-      ! (docs/p54_base_layer_mass_flux.md section 10.4). So the merit and the
+      ! direction after 179 iterations against 9 for the measure-only build.
+      ! So the merit and the
       ! acceptance test are deliberately no longer one expression apart.
       !
       ! There is no region switch in any row: the same expression holds at
@@ -922,7 +919,7 @@
       ! own physics sets", which is what this norm has always been described
       ! as and, until section 145, was not.
       !
-      ! WHAT THIS REPLACES, AND WHY (docs/p55_base_mode.md section 11). There
+      ! WHAT THIS REPLACES, AND WHY. There
       ! were two forms and neither was this one:
       !
       !   volume weighted   sum_j |R_kj| V_j / sum_j s_kj V_j
@@ -1090,17 +1087,17 @@
       ! is a reconstruction of the state and is not the conserved quantity, and
       ! the mass row's own residual is the fractional change of the FACE flux
       ! across a cell (mass_flux_row_scale). MEASURED on the two accepted
-      ! states of docs/p55_base_mode.md section 11.3: above r = 1.10 the face
+      ! states: above r = 1.10 the face
       ! flux takes ONE double-precision value over three hundred cells, while
       ! the cell-centred product read 2.5e-4 over the same window -- and the
-      ! sum of the mass row's own per-cell fractions bounds the face flux's
+      ! sum of the mass row's own fractions bounds the face flux's
       ! total variation at 3.2e-10 there. The gate was reporting the
       ! difference between two functionals, not a failure of conservation, and
       ! it did so by six orders.
       !
       ! It also removes the cell-1 artifact for free: the centred product there
-      ! is -21 times the wind flux and changes sign (section 2 of
-      ! docs/p54_base_layer_mass_flux.md), while both of that cell's faces
+      ! is -21 times the wind flux and changes sign, while both of that
+      ! cell's faces
       ! carry inflow of order the wind flux.
       !
       ! THE SIGN IS KEPT. A window in which the flux reverses is not steady,

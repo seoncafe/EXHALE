@@ -7,13 +7,11 @@
       !               ->  O  + H + H      (O5)
       !     OH  + hv  ->  O  + H          (O7)
       !
-      ! O3 alone carries 54.5% of the H2O loss at the HD 189733 b base
-      ! (docs/a2_oxygen_option_design.md sec. 2.2), which is what makes the
-      ! OH/H2O cycle catalytic rather than a one-way sink; without it the
-      ! oxygen chemistry cannot set the H2/H partition.  The reaction set,
-      ! the quantum yields and the band edges are fixed by
-      ! docs/a2_reaction_audit.md sec. 7 and are carried in oxygen_rates,
-      ! which this module reads rather than restating.
+      ! O3 alone carries 54.5% of the H2O loss at the HD 189733 b base,
+      ! which is what makes the OH/H2O cycle catalytic rather than a one-way
+      ! sink; without it the oxygen chemistry cannot set the H2/H partition.
+      ! The reaction set, the quantum yields and the band edges are carried
+      ! in oxygen_rates, which this module reads rather than restating.
       !
       ! ---------------------------------------------------------------
       ! 1. WHY BANDS AND NOT THE PHOTON ENERGY GRID
@@ -300,8 +298,7 @@
       ! for the Lyman-Werner channel.
       !
       ! Reference: Draine & Bertoldi (1996) is the precedent for the band
-      ! form; the cross sections and yields are sourced in
-      ! docs/a2_reaction_audit.md sections 4 and 7.
+      ! form.
 
       use oxygen_rates, only: n_fuv_band, fuv_band_name,                  &
                               qy_H2O_OH_H, qy_H2O_H2_O1D, qy_H2O_O_H_H,   &
@@ -462,9 +459,8 @@
       ! Ly-alpha band, whose optical depth crosses unity inside a single
       ! cell.  The form above reduces to the rectangle rule as dtau -> 0
       ! and reproduces the closed form EXACTLY, cell by cell and summed
-      ! over the column, whatever the grid -- which is what gate G4 of
-      ! docs/a2_oxygen_option_design.md asks of the band ledger, and what
-      ! output/FUV_bands.txt measures.
+      ! over the column, whatever the grid -- which output/FUV_bands.txt
+      ! measures.
       double precision function water_photolysis_rate(F_band, ib, tau_out, &
                                 dtau, tr_lines) result(j)
       real(dp), intent(in) :: F_band, tau_out, dtau, tr_lines

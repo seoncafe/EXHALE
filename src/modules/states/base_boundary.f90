@@ -14,13 +14,12 @@
    ! of rho g at cell 1 over a 8x refinement of the hot-Uranus base grid, with
    ! the interior truncation error at 4.9e-6.  The velocity artifact it drives
    ! is first order in dr (-247.1, -123.2, -61.3, -30.5 cm/s over the same
-   ! ladder), which is the base sawtooth of docs/p44_base_sawtooth.md section 7
+   ! ladder), which is the base sawtooth
    ! reproduced by Euler plus gravity plus that boundary alone, with no
    ! chemistry, no radiation and no wind.  Separately, copying the interior
    ! velocity into the ghost (the one-way valve) made the boundary reflect
    ! 95 percent of an acoustic pulse leaving through it; holding the same
    ! numbers with a stated velocity instead left 3 percent.
-   ! Design note and every measurement: docs/phaseC_characteristic_base_bc.md.
    !
    ! THE CONDITION.  At r_edg(0) the eigenvalues are v-c, v and v+c, and a
    ! wave enters the domain when its eigenvalue is positive (the radial
@@ -56,8 +55,7 @@
    ! c_i is the INTERIOR sound speed at the interior gamma_eff, because the
    ! outgoing wave is an interior wave.  An earlier experiment that took the
    ! velocity from v - 2c/(gamma-1) while still pinning rho and p at T0 drove
-   ! a spurious base inflow whenever cell 1 was hot
-   ! (docs/heitr_metals_and_convergence_notes.md section 2.5); that is what a
+   ! a spurious base inflow whenever cell 1 was hot; that is what a
    ! compatibility relation closed with an over-stated reservoir pair does.
    !
    ! THE RESERVOIR IS (p, s).  The two reservoir conditions are the pressure
@@ -153,8 +151,7 @@
    ! executable, two entry compositions returned ghosts 4.7e-3 to 5.5e-2
    ! apart in their trace ions, both accepted by every test the sweep
    ! applies, and the base continuity row of the first physical cell read
-   ! 8.335e-08 in one and 2.923e-09 in the other (READ,
-   ! docs/lhs1140b_p1_step1_20260919.md section 1).  v3 states two things
+   ! 8.335e-08 in one and 2.923e-09 in the other.  v3 states two things
    ! the state had no way to carry before: WHICH composition the ghost solve
    ! starts from (base_ghost_composition_seed_id below), and that the
    ! composition it returns is a fixed point of that same solve to a stated
@@ -180,8 +177,8 @@
    ! ghost rows a restart pair carries; the second is the state's own ghost,
    ! which is where it exists.  The two are far apart as seeds -- the
    ! reservoir row carries 31 times the ghost's own H II and 26 times less
-   ! H3+ (READ, docs/lhs1140b_p1_step1b_20260919.md section 6.1) -- and the
-   ! fixed point is what makes the choice cost nothing but passes.
+   ! H3+ -- and the fixed point is what makes the choice cost nothing but
+   ! passes.
    !
    ! EXHALE_GHOST_COMPOSITION_SEED replaces it for a measurement, and a run
    ! with that key set is entered at a composition the model does not state.
@@ -199,13 +196,12 @@
    ! the ghost cell's own heavy-particle count at the composition the sweep
    ! returned, at the ghost's own radius one cell lower.  MEASURED on the
    ! hot-Uranus molecular state of LHS 1140 b: 8.402582811444896e-01 at the
-   ! level against 8.794250686178137e-01 in the ghost, 4.7 per cent apart
-   ! (docs/lhs1140b_stationary_D5a_20260918.md sections 1 and 6.3).  That
-   ! distance is the density ratio across one base cell of that grid, whose
-   ! cells are 0.048 pressure scale heights: MEASURED, the same ratio is
-   ! 4.87e-02 on the LHS 1140 b He/H 9.7 state and 5.50e-03 on the
+   ! level against 8.794250686178137e-01 in the ghost, 4.7 per cent apart.
+   ! That distance is the density ratio across one base cell of that grid,
+   ! whose cells are 0.048 pressure scale heights: MEASURED, the same ratio
+   ! is 4.87e-02 on the LHS 1140 b He/H 9.7 state and 5.50e-03 on the
    ! hot-Uranus grid of carrier_model_a_newton, and it follows the grid and
-   ! not the chemistry (docs/lhs1140b_p6b_p6c_20260920.md).
+   ! not the chemistry.
    !
    ! THE QUANTITY THE TWO DO SHARE is the particles per unit mass, which is
    ! what the ghost construction below continues the level with, and there
@@ -283,8 +279,7 @@
    !   MEASURED on the certified LHS 1140 b atomic state, the Riemann face
    !   flux is +1.00000 F_wind at every face of the grid including this one
    !   while the cell-centred product reads -2.00 F_wind at cell 1 and -2.27
-   !   at cell 2 (item L21; the hot-Uranus base of
-   !   docs/p44_base_sawtooth.md section 3 reads -196 F_wind against a face
+   !   at cell 2 (the hot-Uranus base reads -196 F_wind against a face
    !   flux of +0.98).  It is not used.
    !
    !   the matched face velocity v_b of (C-).  This is the face's own
@@ -335,8 +330,7 @@
    ! particular cells, and where the cell that carries one of them changes
    ! the range keeps its value but changes its slope.  MEASURED on the
    ! certified LHS 1140 b state of `.L14/x003_HeH2.13` with one window cell
-   ! swept through the argmax (item L26, section 8 of
-   ! docs/lhs1140b_stationary_L26_20260916.md): the two one-sided derivatives
+   ! swept through the argmax: the two one-sided derivatives
    ! of the face density converge at three step sizes to -242.2 and +0.0128,
    ! a slope jump of 1.9e4 at a point where the value itself is continuous.
    ! The second moment has no argmax: it is a polynomial in the state divided
@@ -430,8 +424,7 @@
    ! which the incoming amplitude is driven toward the reservoir at a finite
    ! rate; that form is not a function of the instantaneous state, so it does
    ! not have a fixed point the steady residual can express.  It is an open
-   ! item, not a setting: see the decision section of
-   ! docs/phaseC_characteristic_base_bc.md.
+   ! item, not a setting.
    real*8, parameter :: base_incoming_invariant_weight = 0.0d0
 
    ! A compatibility relation is a linear relation; far from a solution it can
@@ -469,8 +462,8 @@
    ! sweep's own entry state. load_IC replaces the lower ghost rows of a
    ! restart with the composition of the gas the reservoir holds at the base
    ! level, whose partition within each element is the FIRST PHYSICAL
-   ! CELL's (docs/lhs1140b_stationary_D5b2_20260918.md section 7), and the
-   ! sweep then solves the ghost's own ionization from that entry state.
+   ! CELL's, and the sweep then solves the ghost's own ionization from that
+   ! entry state.
    ! Whether the ghost the sweep RETURNS depends on where it started is a
    ! property of the ghost system and not of the state, and the only way to
    ! measure it is to start the same solve from a stated composition.

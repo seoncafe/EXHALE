@@ -6,8 +6,8 @@
       use Read_input
       use Initialization
       ! What the restart file said it was produced under (parsed by load_IC).
-      ! The molecular state implied by a solved atomic one (item L7 of
-      ! docs/PLAN_20260913_lhs_stationary.md): an initialization product,
+      ! The molecular state implied by a solved atomic one: an
+      ! initialization product,
       ! written and then nothing else.
       use molecular_seed, only: molecular_seed_configure,                 &
                                 molecular_seed_on,                        &
@@ -124,7 +124,7 @@
                                coupled_block_entry,                      &
                                coupled_entry_residual_rel_tol
       ! The stationary certification of the state the marching route would
-      ! declare solved (docs/a2_certification_contract_20260906.md).
+      ! declare solved.
       ! THE ATTEMPTED-STEP CONTROLLER (B3a): the checkpoint of the whole
       ! step, the acceptance predicate at the adoption boundary, the
       ! step-size policy of a rejection and the integration-error estimate.
@@ -453,8 +453,7 @@
       ! The damped Picard alternation of the stationary route
       ! (steady_wind_with_element_diffusion).
       !
-      ! FOUR QUANTITIES, AND NO TWO OF THEM ARE THE SAME ONE
-      ! (docs/PLAN_20260916_rev3.md section 3 step 1):
+      ! FOUR QUANTITIES, AND NO TWO OF THEM ARE THE SAME ONE:
       !   carrier_residual_returned  the residual of the carrier operator at
       !                              the composition the pass hands back,
       !                              |res| over the sum of that row's own
@@ -505,9 +504,9 @@
       ! on the accepted step by relax_photochemical_composition. 1e-2 is the
       ! measured boundary of the steady solve's tolerance on the hot Uranus
       ! hand-off: the wind solve still accepts the handed-over state at 0.2
-      ! and stops accepting at 0.4, so this stands a factor 20 inside it
-      ! (docs/p50_carrier_wind_alternation.md). The outer iteration shortens
-      ! it on a pass that failed to move the joint measure, and leaves this
+      ! and stops accepting at 0.4, so this stands a factor 20 inside it.
+      ! The outer iteration shortens it on a pass that failed to move the
+      ! joint measure, and leaves this
       ! value where a later entry reads the run's own setting.
       !
       ! EXHALE_CARRIER_TRUST overrides it and EXHALE_OUTER_PASSES the pass
@@ -707,8 +706,7 @@
       ! modeled: the probe at csm_err_probe walks the same sequence on to
       ! an increment of 1e-12 and records the distance from there to the
       ! state the test accepted.  The worst distance and what it costs are
-      ! at csm_err_safety and in docs/coupled_source_loop_cost.md,
-      ! section 8.
+      ! at csm_err_safety.
       !
       ! THE ANCHOR IS THE TIGHTEST TEST THE ADOPTED STATE HAS TO PASS, and
       ! that is the certification's composition rows: cert_tol_carrier_at(r)
@@ -721,9 +719,9 @@
       ! interface admits, and it is what is set here.
       !
       ! WHAT IT COSTS AND WHAT LOOSENING IT WOULD BUY was MEASURED
-      ! 2026-09-06 (docs/coupled_source_loop_cost.md, section 1): a decade
-      ! of tolerance is 1.3 passes and about 15 percent of the wall time,
-      ! so the tolerance is NOT the cost lever, and the step's own truncation
+      ! 2026-09-06: a decade of tolerance is 1.3 passes and about 15 percent
+      ! of the wall time, so the tolerance is NOT the cost lever, and the
+      ! step's own truncation
       ! error (5.3e-3 relative) is five decades above the loosest value
       ! measured.  What the cost is made of is stated at csm_max_pass.
       real*8,  parameter :: csm_T_tol      = 1.0d-8
@@ -732,9 +730,8 @@
       ! solve, and the sweep is the expensive one, so this is the cost knob
       ! of the whole step.  Exhaustion is a status, never a clamp.
       !
-      ! WHAT THE COUNT IS.  MEASURED across items COST2 to COST5
-      ! (docs/coupled_source_loop_cost.md, sections 2 to 4), in order of
-      ! what was learned: the attenuated field is the largest single term
+      ! WHAT THE COUNT IS.  MEASURED across items COST2 to COST5, in order
+      ! of what was learned: the attenuated field is the largest single term
       ! of the sweep and is built from the composition the pass was HANDED,
       ! so the front walks inward one cell a pass; carrying the solved
       ! column forward removes the walk (10.10 to 7.13 passes) but costs
@@ -763,10 +760,9 @@
       ! the estimate has to exist at the pass that exits and a step's pass
       ! count is an integer: MEASURED 0.14 passes of 6.96 on
       ! mol_base_handoff, where 48 of 300 exits carry an estimate, and
-      ! 0.08 of 10.09 on wasp_full, where 271 of 300 do (item COST7,
-      ! docs/coupled_source_loop_cost.md section 8).  So the error test is
-      ! not a cost lever either; what it changes is what the two
-      ! tolerances bound.  The molecular path
+      ! 0.08 of 10.09 on wasp_full, where 271 of 300 do (item COST7).  So
+      ! the error test is not a cost lever either; what it changes is what
+      ! the two tolerances bound.  The molecular path
       ! carries two modes of
       ! nearly equal cost, the composition and the temperature; the one lag
       ! that limits the composition mode's RATE there is n_tot, the third
@@ -848,8 +844,8 @@
       ! one.  What is stable is the Rayleigh quotient of the whole increment
       ! vector, theta = <d_k, d_{k-1}> / <d_{k-1}, d_{k-1}>, the projection
       ! of the error onto the dominant decay mode (0.07 to 0.22 in size,
-      ! stable from the second pass; docs/coupled_source_loop_cost.md,
-      ! section 5).  One such scalar is taken for the temperature block and
+      ! stable from the second pass).  One such scalar is taken for the
+      ! temperature block and
       ! one for the composition block, in the norms the stopping test itself
       ! uses.
       !
@@ -911,8 +907,7 @@
       ! 3 costs 0.06 passes, because past a factor of 2 most exits are
       ! taken on the increment anyway, the guards refusing a pair whose
       ! increments have reached round-off.  A bound exceeded on one step
-      ! in 300 is not a bound, which is why 2 is not the value.  The full
-      ! table is in docs/coupled_source_loop_cost.md, section 8.
+      ! in 300 is not a bound, which is why 2 is not the value.
       real*8 :: csm_err_safety = 3.0d0
       ! TEST HOOK, default off: report no estimate on any pass.  The
       ! stopping test then falls back to the increment on every pass, which
@@ -1040,8 +1035,7 @@
       ! WHAT THE FACTOR IS WORTH was MEASURED on mol_base_handoff at 300
       ! steps against a control of 6.96 passes, with the stopping test
       ! taken on the increment as it then was: 6.61, 6.15, 6.36 at reach 1,
-      ! 2, 3 and 7.7 to 7.8 at 10 and above (the table is in
-      ! docs/coupled_source_loop_cost.md, section 5).  Above 3 the model is
+      ! 2, 3 and 7.7 to 7.8 at 10 and above.  Above 3 the model is
       ! asked for more than it has and the loop pays a pass for each
       ! candidate its own next pass then undoes.
       real*8 :: csm_x_reach = 2.0d0
@@ -1306,9 +1300,9 @@
            ! THE FACE MASS FLUX THE SCHEME ACTUALLY TRANSPORTS, beside the
            ! cell-centred product it is so often confused with.  At a base
            ! carrying a collocated odd-even velocity mode the two differ by
-           ! two orders of magnitude AND IN SIGN (docs/p44_base_sawtooth.md
-           ! section 3, where it had to be reconstructed by integrating the
-           ! mass row downward; it is stored, so it is written here instead).
+           ! two orders of magnitude AND IN SIGN (it had to be
+           ! reconstructed by integrating the mass row downward; it is
+           ! stored, so it is written here instead).
            ! Columns 8 and 9 are the lower and upper faces of cell jj,
            ! F_rho r^2 in code units, the quantity a stationary wind holds
            ! constant.
@@ -1367,7 +1361,7 @@
       ! be the same array, so a caller CANNOT hand the sweep its own previous
       ! answer even by accident.  Before that separation the same test read
       ! 1406 of 1500 entries differing by 3.0e-3 of the row scale
-      ! (Update_EXHALE_stage1.md section 146.3).
+      ! (Update_EXHALE_stage1.pdf section 146.3).
       !
       ! THE SYSTEM REPLAYED IS THE ONE A SOLVE WOULD CARRY.  The species-row
       ! registry is empty until a solve registers it, so without the two
@@ -1847,7 +1841,7 @@
       ! runaway. A state read from a previous run has no startup transient to
       ! amplify, and re-staging it re-solves its ionization at a
       ! photoionization rate it was not converged under: measured on the
-      ! WASP-121b steady solution of docs/p55_base_mode.md, whose writing run
+      ! WASP-121b steady solution, whose writing run
       ! armed the coupling at step 2242, re-staging moved the first
       ! ionization sweep's particle count by 8.1e-3 instead of 2.6e-4 and
       ! took the layer 250 times further from the root over 3000 steps.
@@ -1895,7 +1889,6 @@
       sec_flip_step  = -1
 
       ! WHAT THE RESTART FILE SAYS ITS STATE IS, AND WHAT THIS RUN ASKS OF IT
-      ! (docs/a0_run_mode_contract_20260906.md section 3, "Restart").
       !
       ! There are two different things a physical run can do with a loaded
       ! file, and they are told apart by what the file says about itself.
@@ -2001,11 +1994,10 @@
       fspread_gate = huge(1.0d0)
       steady_gates_converged = .false.
 
-      ! WHAT THIS RESTART CONTINUES (Restart intent, input_read;
-      ! docs/restart_contract_design_20260909.md section 2). Two of the three
-      ! intents continue below: a trajectory carries the clock read from the
-      ! file's header, set above, and a relaxation is the marching path this
-      ! loop is. The third takes no step at all and does not return.
+      ! WHAT THIS RESTART CONTINUES (Restart intent, input_read). Two of the
+      ! three intents continue below: a trajectory carries the clock read
+      ! from the file's header, set above, and a relaxation is the marching
+      ! path this loop is. The third takes no step at all and does not return.
       if (do_load_IC .and. restart_intent .eq. restart_intent_stationary)  &
          call stationary_state_of_the_loaded_restart
 
@@ -2118,10 +2110,9 @@
             !-------------------------------------------------!
 
             ! ============ THE ATTEMPTED STEP (B3a) ============
-            ! docs/b3a_attempted_step_controller_design_20260906.md. The
-            ! fourteen operations of docs/b1_target_system_20260906.md
-            ! section 7.1 are one trial: rows 1 to 12 change the physical
-            ! state, and the adoption boundary is immediately before
+            ! The fourteen operations of the enumerated step are one trial:
+            ! rows 1 to 12 change the physical state, and the adoption
+            ! boundary is immediately before
             ! update_map_end_step, the first point at which that state is
             ! complete. A refused trial is restored from the checkpoint,
             ! retaken at half dt, and leaves no contribution to any
@@ -2636,8 +2627,7 @@
             endif
 
             !------------------------------------------------!
-            ! THE COUPLED SOURCE STEP (rows 7 to 9 of the enumerated step,
-            ! docs/b1_target_system_20260906.md T1.4 to T1.9 and T2.1).
+            ! THE COUPLED SOURCE STEP (rows 7 to 9 of the enumerated step).
             !
             ! ONE local source step per cell at fixed volume, with the
             ! temperature and the composition as its unknowns:
@@ -3084,8 +3074,7 @@
             ! status other than ENERGY_UPDATE_OK means the solve found no
             ! temperature at all for at least one cell: nothing was
             ! assembled from it, so there is no state to march on. The
-            ! leniency the initialization mode grants elsewhere
-            ! (docs/a0_run_mode_contract_20260906.md section 2) is about an
+            ! leniency the initialization mode grants elsewhere is about an
             ! iterate that exists, and a temperature that does not exist is
             ! not one. The controller restores the checkpoint and retakes
             ! the step at half dt.
@@ -3522,9 +3511,8 @@
             enddo macrostep
 
             ! THE STEP IS ADOPTED HERE, and this is the only place the
-            ! physical clock moves (docs/a0_run_mode_contract_20260906.md
-            ! section 5). Physical time advances by the GLOBAL dt of the
-            ! step that was accepted -- never by the minimum pseudo-step,
+            ! physical clock moves. Physical time advances by the GLOBAL dt of
+            ! the step that was accepted -- never by the minimum pseudo-step,
             ! which belongs to no single trajectory, and never by an
             ! attempt the controller threw away, whose state the run does
             ! not keep.
@@ -4309,8 +4297,7 @@
                              '  du=', du, '  dtu=', dtu
       ! The value of the convergence functional the run actually used at its
       ! last step, with the window it was taken over, so that it can be
-      ! recomputed from the state this run writes
-      ! (src/tests/grid_and_gates/mass_flux_spread_functional.py).
+      ! recomputed from the state this run writes.
       write(*,'(A,I0,A,I0,A,ES23.15)')                                        &
            '     mass_flux_spread: window cells ', j_min, '..', N,            &
            '  value=', du
@@ -4331,8 +4318,7 @@
       ! column had already been assembled with the previous H(n=2) closure
       ! and was not rebuilt, so the heating this run reports and the channel
       ! sum that Heating_breakdown.txt reconstructs on the same state were
-      ! two different numbers, which is what
-      ! src/tests/grid_and_gates/output_state_consistency.sh measures.
+      ! two different numbers.
       !
       ! What is left is the documented lag of the closure itself (b1 T1.7:
       ! H(n=2) is a 2x2 statistical equilibrium solved one outer pass before
@@ -4350,8 +4336,7 @@
       ! 2.4e-16.  What the residual carries is the documented one-sweep lag
       ! of the temperature, nine decades below anything that gates.  Rebuilding
       ! the pair here would take one more sweep at the final state, move every
-      ! golden, and leave the same lag in the other direction
-      ! (docs/lhs1140b_stationary_L19_L20_20260915.md).
+      ! golden, and leave the same lag in the other direction.
 
       !---------------------------------------------------!
 
@@ -4781,8 +4766,8 @@
       ! right-hand side; multiplied by the step it is the state change the
       ! first step after it inherits, which is what the transient that
       ! follows has to be compared with. Measured on the hot-Uranus molecular
-      ! case (docs/f_plm_weno_continuation.md): dt |R|/|u| over the dtu window
-      ! predicts the observed dtu of the last PLM step to 0.5 percent and of
+      ! case: dt |R|/|u| over the dtu window predicts the observed dtu of the
+      ! last PLM step to 0.5 percent and of
       ! the first WENO3 step to 8 percent, so the transient there IS the
       ! operator difference and not an instability of WENO3.
       integer, intent(in) :: step_no
@@ -5061,7 +5046,7 @@
 
       ! Faces at which the Roe flux was replaced by the HLLE flux because
       ! the estimated star state does not exist (separating flow leaves
-      ! vacuum) or is not admissible (docs/a2_roe_interface.md section 3).
+      ! vacuum) or is not admissible.
       ! A Roe run prints it even when it is zero: zero is the statement that
       ! every face kept the Roe flux, and that is worth reading. The counter
       ! belongs to the Roe branch, so no other flux reports it.
@@ -5593,8 +5578,7 @@
       subroutine stationary_state_of_the_loaded_restart
       ! THE STATIONARY RESIDUAL AND CERTIFICATION OF A LOADED STATE, MEASURED
       ! ON THE STATE AS LOADED, AND THE STATIONARY SOLVE ENTERED FROM IT
-      ! (docs/restart_contract_design_20260909.md section 2,
-      ! "Restart intent: stationary").
+      ! ("Restart intent: stationary").
       !
       ! WHY THE STATE AS LOADED. A stationary state is a state the equations
       ! hold on; whether they hold is a question about THAT state and about
@@ -5796,8 +5780,7 @@
       ! floors of that row's own rounding floor (gate ten): the hot-Uranus
       ! molecular states of LHS 1140 b go from 15.98 to 9.06 (He/H 2.13),
       ! 31.24 to 3.09 (He/H 9.7) and 19.04 to 0.08 (the L22 state), and the
-      ! atomic states of the same planet and grid do not move
-      ! (docs/lhs1140b_stationary_D5b1_20260918.md).
+      ! atomic states of the same planet and grid do not move.
       if (.not. boundary_rebuild_suppressed()) call Apply_BC(u)
       call report_base_face_state_consistency(                            &
            'evaluate_route_at_assemble_residual', u)
@@ -5892,8 +5875,7 @@
          ! writes stands downstream of it: the residual re-assembled on the
          ! SAME conserved array after the face-flux report has installed a
          ! boundary of its own. The cached face state carries no validity, so
-         ! the rows below need not reproduce the rows above; what they do
-         ! reproduce is recorded (docs/lhs1140b_stationary_D5b1_20260918.md).
+         ! the rows below need not reproduce the rows above.
          if (boundary_trace_armed()) then
             call assemble_residual(u, n_tot + ne, heat, cool, Rres)
             call base_mass_rows_of_this_evaluation(                        &
@@ -5920,7 +5902,7 @@
       ! HAND-OFF STARTS IT, at a pseudo-time of 1.0, not at the CFL interval:
       ! a state written by a run is already relaxed, and a continuation
       ! started at the CFL dt from it does not reach the root.  MEASURED
-      ! (2026-09-11, docs/Update_EXHALE_stage2.md section 8, 8 threads): the
+      ! (2026-09-11, docs/Update_EXHALE_stage2.pdf section 8, 8 threads): the
       ! hydrodynamic solve of the hot-Uranus carrier reload stands at
       ! ||R|| 1.13 after 40 iterations from the CFL start and at 1.5e-9 in
       ! 12 iterations from 1.0; the HD 209458 b element reload stagnates at
@@ -5984,8 +5966,8 @@
       ! sweep just produced. On the first step of a restart that stage is not
       ! a rate but a FINITE JUMP: the particle count moves by the whole
       ! truncation error of the file, and the energy moves with it. Measured
-      ! on the two states of docs/p55_base_mode.md, the jump is the same size
-      ! at CFL 0.6, 0.06, 0.006 and 0.0006 -- it does not scale with dt, which
+      ! on two states, the jump is the same size at CFL 0.6, 0.06, 0.006 and
+      ! 0.0006 -- it does not scale with dt, which
       ! is what makes it a projection and not a term of the equation -- and it
       ! reaches 6.2e-3 of the cell energy in one step at r = 1.10 on
       ! WASP-121b, twelve times that step's entire hydro contribution.
@@ -6018,8 +6000,8 @@
       ! Floor of the iteration, not a target accuracy: the cell solve stops at
       ! its own xtol = sqrt(machine epsilon), so the particle count it returns
       ! cannot be reproduced from one sweep to the next below about 1e-11.
-      ! Measured on both states of docs/p55_base_mode.md; the sweep history is
-      ! printed when the cap is reached so a state that is NOT contracting is
+      ! Measured on both states; the sweep history is printed when the cap is
+      ! reached so a state that is NOT contracting is
       ! visible rather than silently accepted.
       real*8,  parameter :: dnpart_tol = 1.0d-10
       real*8, dimension(1-Ng:N+Ng) :: npart_prev
@@ -6078,8 +6060,6 @@
 
       subroutine physical_handoff_check
       ! THE STATE A PHYSICAL INTEGRATION STARTS FROM, TESTED BEFORE IT STARTS
-      ! (docs/a0_run_mode_contract_20260906.md section 3, "Initialization to
-      ! physical integration").
       !
       ! A trajectory is a sequence of states the equations describe. If the
       ! first one is not such a state, every later one inherits that: the
@@ -6696,7 +6676,7 @@
               carrier_resid_th
       endif
       write(*,'(A)') '        (a state that has to be quoted as steady'//    &
-           ' must pass all three; see Update_EXHALE_stage1.md section 145)'
+           ' must pass all three; see Update_EXHALE_stage1.pdf section 145)'
       call write_residual_breakdown(Rres, u, heat, cool, 'marching stop')
       end subroutine report_marching_stop
 
@@ -6796,8 +6776,7 @@
       ! both hand back a valid state on which the composition update still
       ! makes progress: MEASURED on the atomic reload, the worst elemental
       ! wind row stood at 2.61e-3 after the first budget-ended solve and at
-      ! 2.78e-4 after the update that followed it
-      ! (docs/solver_partition_experiment_20260911.md sec. 5.1). Ending the
+      ! 2.78e-4 after the update that followed it. Ending the
       ! alternation on that flag discards what the pass achieved. The flag is
       ! printed every pass.
       !
@@ -6822,8 +6801,7 @@
       ! THE COMPOSITION DRIFT AND THE VOLUME-WEIGHTED CARRIER RESIDUAL ARE
       ! REPORTED AND ARE NOT ACCEPTANCES. The transport operator's smallest
       ! step, one cell crossing time, already moves the composition by
-      ! 1.1e-2 on the He/H = 0.0793 hot Uranus (READ from
-      ! docs/p50_carrier_wind_alternation.md), so a drift gate below that
+      ! 1.1e-2 on the He/H = 0.0793 hot Uranus, so a drift gate below that
       ! stands under anything a pass can produce; and an average over a
       ! column says nothing about the cell in which the equation is worst
       ! satisfied, which is what every row of the certification is measured
@@ -6897,8 +6875,7 @@
       ! bound is the one the progress control leaves.  It exists to
       ! separate a relaxation the bound throttles from a mode the
       ! alternation cannot damp: the first decays at a rate proportional
-      ! to the bound, the second at the same rate whatever the bound
-      ! (docs/lhs1140b_stationary_L33_20260917.md section 6.3).
+      ! to the bound, the second at the same rate whatever the bound.
       logical :: carrier_trust_held
       real*8  :: carrier_trust_hold
 
@@ -6938,8 +6915,8 @@
       ! What each half's measure is, and why it is unavailable where it is.
       character(len=64) :: carrier_measure_state, element_measure_state
       ! THE CARRIER RELAXATION'S ENDING IN THE OUTCOME TABLE OF THE
-      ! CONTRACT (docs/PLAN_20260916_rev3.md section 3 step 3).  The inner
-      ! endings and the outer verdict are separate statements.  A relaxation
+      ! CONTRACT.  The inner endings and the outer verdict are separate
+      ! statements.  A relaxation
       ! that kept admissible steps and then met the excursion bound has made
       ! an ADMISSIBLE PARTIAL update at the wind it was given: the
       ! composition may need a refreshed wind before it can go further, and
@@ -7297,8 +7274,7 @@
          ! which is what this control was written against; the measure is
          ! now the elemental transport residual of the returned state and
          ! the two differ in size (a factor 21 on the hot molecular case,
-         ! MEASURED, docs/lhs1140b_stationary_L22_20260916.md section
-         ! "Step 1"). What the passage below states is the SHAPE of the two
+         ! MEASURED). What the passage below states is the SHAPE of the two
          ! trajectories, and the measure those numbers were taken with is
          ! the one EXHALE_ELEMENT_DRIFT_IS_MAP_DISTANCE=1 selects. The rows are
          ! not monotone while the composition is still travelling: the
@@ -7306,8 +7282,7 @@
          ! returned, and a composition still far from its fixed point
          ! changes that wind. MEASURED on LHS 1140 b at 0.10, 0.15 and 0.20
          ! of the GJ 1132 spectrum, seeded from the certified 0.25 solution
-         ! and continued at dtau0 = 1e8
-         ! (docs/lhs1140b_stationary_L14_20260914.md): every pass had
+         ! and continued at dtau0 = 1e8: every pass had
          ! hydro info = 0 with all three hydrodynamic rows inside their
          ! tolerances, the element relaxation reached the fixed point of
          ! its operator every pass, and its distance fell 6.62e-1 ->
@@ -8040,9 +8015,8 @@
          ! converge. That is a property of the splitting and not of the
          ! bound's value, so where the alternation gives up the state is
          ! handed to the block, in which the wind is not held and the two
-         ! halves are one map of one vector
-         ! (docs/lhs1140b_stationary_L22_step3_design_20260916.md sections
-         ! 1.5 and 6.1). The three conditions are the ones that document
+         ! halves are one map of one vector. The three conditions are the
+         ! ones that document
          ! states: the pass did not count as progress under the joint rule,
          ! on outer_no_fall_max consecutive passes, which is what
          ! outer_no_progress already says, AND the carrier relaxation of

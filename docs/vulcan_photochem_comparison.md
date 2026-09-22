@@ -24,8 +24,7 @@ EXHALE's answer. It is a question about the interface.
 > `q_H2_base` and `p_base` became read keys on 2026-08-10 (see "Where this
 > leaves the coupling"), the elemental reservoir keys `<El>_H_base` followed,
 > and since 2026-08-27 the handoff can be a *profile* file rather than
-> scalars (`docs/phase_e_flux_closure_design.md`,
-> `src/modules/files_IO/lower_atmosphere_profile.f90`). The code choice was
+> scalars (`src/modules/files_IO/lower_atmosphere_profile.f90`). The code choice was
 > taken with it: see P1.7 below.
 
 ## Setup
@@ -145,7 +144,7 @@ not reach a steady state: over 87000 steps `du` wandered between 0.77 and 1.86
 and never approached 1e-3, the marching-time base breathing that HD 189733 b
 has shown since ATES. (This originally cited `TO_BE_DONE.md` item (A); note
 that item is now closed, and its diagnosis of the *JFNK* residual floor as a
-base-momentum wall was refuted: `docs/newton_scaling_and_base_wall.md`. The
+base-momentum wall was refuted. The
 marching oscillation described here is a separate observation and stands.)
 Cutting both runs at a fixed 20000 steps
 (`EXHALE_MAXSTEPS`) and comparing on common physical radii gives median
@@ -227,26 +226,24 @@ at the base) and `p_base` (the level it refers to), and both converters write
 them. With `Molecular base: True` the photochemical value replaces the
 chemical-equilibrium fit in the base particle count, so the difference between
 networks now reaches the wind solve; `base.inp` files without the key behave
-exactly as before. Design, size of the effect and the validation gates:
-`docs/base_composition_handoff_plan.md`. `q_H` and the molecular mixing ratios
+exactly as before. `q_H` and the molecular mixing ratios
 stay comments: `q_H` is implied by `q_H2_base` and `HeH_base`, and the
 molecules have nothing to act on in EXHALE's atomic metal set.
 
 **2026-08-19: where the code choice is decided.** Because `q_H2_base` is now
 read, the 7.2x spread measured here propagates into the wind solve, so choosing
-between the two codes is no longer neutral. The decision, together with the
+between the two codes is no longer neutral. There are
 reasons to prefer Photochem that have nothing to do with chemistry (speed, the
 `gasgiants` extension, and `clima` as the only path away from a prescribed
-T(p)), is in `docs/oxygen_chemistry_options.md` §2.4. The recommendation there
+T(p)). The recommendation
 is to fix the reaction network before changing codes, since the network carries
-4.0x of the 7.2x. The plan of record for acting on this, including the matched
-network-plus-domain rerun (its phase P1), is `docs/oxygen_chemistry_new_plan.md`.
+4.0x of the 7.2x.
 
 ---
 
 # 2026-08-26, Phase P1: matched network, matched domain, and the H2 budget
 
-This section is the record of phase **P1** of `docs/oxygen_chemistry_new_plan.md`
+This section is the record of phase **P1**
 (reinstall Photochem, rerun the comparison with matched network *and* matched
 vertical domain, add Photochem's gas-giant mechanism as a third network, export the
 reaction budget at the handoff level, and measure the EXHALE-level effect on a
@@ -457,9 +454,7 @@ with `H = p/(rho g)` and `g = G M_p/r^2` from that run's own `input.inp`
 `mu = 1.2751 m_H` measured as `rho/(m_H p/k_B T)`) gives **`H = 1.115e8` cm and
 `tau_adv = H/v = 2.132e8` s**, 14% below the numbers above; the 1.27e8 could not
 be reproduced from the run and no `mu`/`g` was recorded with it. The ratio is
-unchanged in order of magnitude: `tau_chem/tau_adv = 1.05e-3` (network C'). The full
-re-measurement, including the same ratio on HD 189733 b and its radial profile,
-is in `oxygen_chemistry_new_plan.md` phase P4.
+unchanged in order of magnitude: `tau_chem/tau_adv = 1.05e-3` (network C').
 
 ## P1.5 HD 209458 b: the three networks agree, and why
 
@@ -521,8 +516,7 @@ stronger wind.
 For contrast, the equilibrium-fit reference is a much larger perturbation
 (`ntot_bc` 0.994 against 0.68-0.73) and its run did not converge: JFNK returned
 `info=2` and the resumed marching was still at `du = 3.2` after 7000 steps. The
-"photochemical against equilibrium" difference recorded in
-`base_composition_handoff_plan.md` §11 (-12.9% at a matched marching state)
+"photochemical against equilibrium" difference (-12.9% at a matched marching state)
 therefore remains the un-Newton-finished number it was; **only the
 code-and-network comparison here is JFNK-converged.**
 
@@ -568,8 +562,7 @@ The plan leaves the VULCAN-or-Photochem decision to the user. What P1 measured:
 > (`src/utils/photochem_to_lower_profile.py`) and VULCAN the cross-check
 > (`src/utils/vulcan_to_lower_profile.py`), on the last row of the table
 > below: only Photochem carries a climate model, so only it can be the route
-> away from a prescribed T(p). Record: `docs/Update_EXHALE_stage1.md` sections 77-78,
-> `docs/oxygen_chemistry_new_plan.md` ("P1 and P2 on a real target").
+> away from a prescribed T(p).
 > The evidence table is left as measured.
 
 | criterion | VULCAN | Photochem |

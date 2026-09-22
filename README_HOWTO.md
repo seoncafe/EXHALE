@@ -5,7 +5,7 @@ how to build it and run one example. This file is the detail: one entry per
 task, with the exact lines and commands, the expected output, and where the
 full documentation lives. Everything here is opt-in; a bare `input.inp` runs
 the legacy ATES-compatible model. (Reference manual:
-`docs/EXHALE_user_manual.pdf`; changelog: `docs/Update_EXHALE_stage2.md` (current, from 2026-09-05) and `docs/Update_EXHALE_stage1.pdf` (sections 1-171).)
+`docs/EXHALE_user_manual.pdf`; changelog: `docs/Update_EXHALE_stage1.pdf` (sections 1-171).)
 
 **Contents**
 
@@ -27,7 +27,7 @@ make FC=ifort           # ifort   (equivalently: make ifort)
 make FC=ifx             # ifx     (equivalently: make ifx)
 make check              # bitwise golden regression (see below)
 make test               # the assertion suites: element census, diffusion,
-                        #   residual determinism, and every src/tests/*/run.sh
+                        #   residual determinism
 make clean              # remove build/ objects and modules (keeps EXHALE.x)
 make distclean          # remove build/ and EXHALE.x
 make wind_ae_ic         # standalone Wind-AE IC generator -> ./wind_ae_ic.x
@@ -149,8 +149,7 @@ was asked for. Whether the state that came back is a steady state of the
 configured atmosphere is decided separately, by one evaluator that states one
 condition per active balance and names the row and the cell that refused.
 Those tolerances are anchored by measurement and are not the solver's target
-(`src/modules/time_step/certification.f90`, and
-`docs/certification_tolerance_anchoring_20260910.md` for the species rows):
+(`src/modules/time_step/certification.f90`):
 
 | row | tolerance |
 |---|---|
@@ -170,13 +169,12 @@ three-unknown run certifies; **no configuration carrying a species row (an
 element row from `He_diffusion`, a carrier row from the molecular carriers)
 has yet reached its tolerance on any route**, so a mass-loss rate from such a
 run is quoted with that qualification.
--> `docs/code_status_20260910.md` section 3.3, `docs/ISSUES_20260909.md` 3.1.
 
 Full-physics cases (He 2³S + metals, secondary ionization, a `base.inp`
 handoff) that used to abort at `info = 2` around `||R|| ~ 2.8e-3` now reach
 `info = 0`; the cause was the solver's diagonal scaling and its stagnation
-watchdog, not the lower boundary condition -> `docs/newton_scaling_and_base_wall.md`,
-`docs/EXHALE_BC_and_IC.pdf` (convergence-criterion and test-matrix sections),
+watchdog, not the lower boundary condition -> `docs/EXHALE_BC_and_IC.pdf`
+(convergence-criterion and test-matrix sections),
 `docs/steady_solver_memo.pdf`.
 
 **`Low-Mach damping`** is the key to reach for when a run stalls because a
@@ -187,7 +185,6 @@ contact-resolving HLLC flux no longer damps. It adds a gated fourth-difference
 stress to the numerical flux (exactly zero above `M = 1e-3`, and since it
 enters the flux, the JFNK residual sees the same equation the marching loop
 does), unlike the Shapiro filter, which smooths the marching state only.
--> `docs/hd209_metal_stagnation.md`.
 
 ## Base grid resolution (`Base grid [dr,cells]`)
 
@@ -200,8 +197,7 @@ key out. Runs made before 2026-09-19 without the key used the width
 `1.9999999494757503e-4` (the single-precision neighbor of 2e-4), whose grid
 differs by a few 1e-9 relative, enough for a restart to be refused; the inputs
 of those runs that have results beside them state
-`Base grid [dr,cells]: 1.9999999494757503e-4 50`
-(`docs/lhs1140b_stationary_D1b_20260919.md`):
+`Base grid [dr,cells]: 1.9999999494757503e-4 50`:
 
 ```
 # input.inp -- optional; the first line IS the default
@@ -234,8 +230,7 @@ base is a coarser wind. Raising `Grid cells:` alongside holds the upper
 stretch instead (`1.0e-4 100`/500, `5.0e-5 200`/658, `2.5e-5 400`/916,
 `1.25e-5 800`/1375 keep the default-grid stretch ratio), at proportionally
 more work in every sweep. A restart must load an IC written at the same `N`
-(the row count is checked). Full investigation:
-`docs/hd189_base_checkerboard.md`.
+(the row count is checked).
 
 ## The lower boundary (`Base BC`)
 
@@ -408,11 +403,9 @@ H) and the mole-fraction driver of the front all follow from that.
 molecular diffusion): an eddy coefficient is a property of the atmosphere
 being modeled, so state it if you want one. With `Solver: Newton` the code
 co-converges the diffused composition with the steady wind (outer JFNK <->
-diffusion iteration). Formulation, discretization and acceptance tests:
-`docs/binary_diffusion_design.md` (`make diffusion_tests && ./diffusion_tests.x`
-runs them); `docs/design_hehe_diffusion.md` is the record of the earlier
-trace-helium build; quantitative before/after comparison on HD 209458 b and
-WASP-121 b: `docs/version_compare.pdf`. -> manual §3.6.
+diffusion iteration). Acceptance tests: `make diffusion_tests &&
+./diffusion_tests.x` runs them; quantitative before/after comparison on
+HD 209458 b and WASP-121 b: `docs/version_compare.pdf`. -> manual §3.6.
 
 ## Legacy atomic-data switch
 
@@ -452,7 +445,7 @@ H2/H2+/H3+/HeH+ join the coupled ionization equilibrium; H2 photoionization
 opacity/heating (Yan+1998) and H3+ IR cooling (Miller+2013) are included;
 `Ion_species*.txt` gains `H2 H2p H3p HeHp` columns. Requires He/H > 0.
 `He_diffusion` may be on: the element transport closes over the molecular
-carriers (`docs/binary_diffusion_design.md` section 5). A `metals.inp` may be present: the
+carriers. A `metals.inp` may be present: the
 metal stages are then solved in the same system as the molecular network,
 which they share the free electron density with (`examples/16_molecular_metals`);
 in the shielded molecular base the metals are the dominant electron donors, so
@@ -512,8 +505,7 @@ from a freshly converged metals-off state plus the `Low-Mach damping` key
 (`5.0e-3`, with `1.0e-2` run alongside for comparison). The seed has to be
 converged with the binary in hand: a restart file written by an older binary
 is a different seed and fails. Step-by-step recipe: `examples/README.md`, the
-`16_molecular_metals` note. Why, and what the residual measure does and does
-not control in that shell: `docs/hd209_metal_stagnation.md` §9.
+`16_molecular_metals` note.
 
 The infrared coolants of that layer emit into vacuum unless the atmosphere
 below the base is given to them:
@@ -643,7 +635,6 @@ average is off by a factor 4.6-6.1 for a real stellar spectrum, the Ly-alpha
 band uses the incident flux with no H I resonance scattering so it is an upper
 bound, and the Damköhler and diffusive-time columns of `Oxygen_chemistry.txt`
 say where the answer is chemistry and where it is transport. Default off.
--> `docs/a2_oxygen_option_design.md`, `docs/a2_reaction_audit.md`.
 
 **A coupled steady solve on a molecular layer must carry the H2 row.**
 
@@ -672,7 +663,6 @@ row carried the same measurement reads 9.7e-10, below `Resid tol` = 1e-8. A
 residual that is not a function of its unknowns has no root, so the refusal is
 the honest outcome. A run whose only transported balance is an element
 (`He_diffusion` in an atomic gas) is unaffected, and so is marching.
--> `docs/steady_solver_design.md`.
 
 ## Hand off a lower-atmosphere model (`base.inp`)
 
@@ -702,8 +692,8 @@ checks afterwards that the reservoirs held.
 
 The scalar `base.inp` states the lower atmosphere at one level. A **profile**
 states it over an interval of pressure, which is what lets `K_zz` be a profile
-rather than a constant and what the elemental-flux closure of
-`docs/phase_e_flux_closure_design.md` needs. One opt-in key turns it on:
+rather than a constant and what the elemental-flux closure needs.
+One opt-in key turns it on:
 
 ```
 Lower atmosphere profile: lower_atmosphere_profile.dat
@@ -804,7 +794,6 @@ change the configuration, the abundances, the matching level or a trial flux
 and the id changes. That is what makes "these two files are the same
 lower-atmosphere solution" checkable rather than assumed: EXHALE stops if a
 `base.inp` sitting beside a profile carries a different id or none.
--> `docs/phase_e_flux_closure_design.md` §2, §4; `docs/Update_EXHALE_stage1.md` §76-77.
 
 ## Use VULCAN photochemistry for the base state (subroutine-style)
 
@@ -836,10 +825,7 @@ provides H/C/N/O(/S) composition only: metal abundances stay in `metals.inp`.
 Which photochemistry code is not a free choice any more: VULCAN and Photochem
 disagree about `q_H` at 1 ubar by 7.2x on this planet, and since `q_H2_base`
 became a read key that difference reaches the wind solve. The measurement is
-`docs/vulcan_photochem_comparison.md`; the plan for the decision, and the wider
-question of what oxygen chemistry EXHALE should carry, is
-`docs/oxygen_chemistry_new_plan.md` (which supersedes the ordering in
-`docs/oxygen_chemistry_options.md`).
+`docs/vulcan_photochem_comparison.md`.
 Manual invocation and finer control:
 
 ```bash
@@ -1364,7 +1350,7 @@ post-processing pass writes. Default matrix (sixteen cases):
 `./run_check.sh phase0-cases` names the last five on their own. Two further
 directories are pinned reload fixtures rather than matrix cases and are not
 goldens: `backup/regression/wasp_full_newton/IC/` (the certified atomic
-state, read by the `restart_intent` rows of `src/tests/grid_and_gates/`, and
+state, read by the `restart_intent` rows, and
 refreshed only together with the golden) and
 `backup/regression/atomic_elem_newton/` (HD 209458 b with eight element rows,
 the diagnostic entry point of the atomic element reload, with its own `IC/`
@@ -1387,9 +1373,15 @@ review).
 
 `make test` is the separate, assertion-based gate: it builds and runs
 `element_census_tests`, `diffusion_tests`, `residual_determinism` and every
-executable `src/tests/*/run.sh`, runs every one of them even after a failure,
+executable suite, runs every one of them even after a failure,
 prints one `PASS|FAIL <name> measured= reference= tol=` line per assertion,
-and exits nonzero if any suite failed. There are 41 such suites:
+and exits nonzero if any suite failed.
+
+**The suites are not part of this repository.** They live in the development
+tree under `src/tests/`, which is not published, so `make test`,
+`make diffusion_tests` and `make element_census_tests` do not run from a clone
+of this repository; `make` and `make check` are unaffected. What follows
+describes the gate as it runs in the development tree. There are 41 suites:
 
 ```
 acceptance_classes  adv_static_limit  attempted_step  boundary_state
@@ -1411,10 +1403,10 @@ transit_state
 ionization balance row by the fraction the flow carries, in each of the seven
 systems that can reach that row.
 
-A suite can also be run on its own, for instance
-`src/tests/physics_probe/run.sh`. Fourteen of them carry a `README.md` saying what
+A suite can also be run on its own. Fourteen of them carry a `README.md` saying what
 their assertions compare and which are red on purpose; for the rest that
-statement is in the driver's header. A few rows are FAIL by design and say so
+statement is in the driver's header. Both live under `src/tests/` and are
+therefore outside this repository. A few rows are FAIL by design and say so
 (the `closure_spread_within_the_row_tolerance_*` rows of
 `residual_determinism` are a standing measurement, not a regression). Run every suite whose driver links a module
 you changed, not only the one you were aiming at.
@@ -1470,7 +1462,7 @@ while keeping `EXHALE.x`. The planet directories `HD209458b/`, `HD189733b/`,
 ## Where results and documents live
 
 - `docs/EXHALE_user_manual.pdf`: full reference (inputs, outputs, physics)
-- `docs/Update_EXHALE_stage2.md`: current update log (stage 2, from 2026-09-05); its PDF carries the code-size appendix vs ATES (`docs/Update_EXHALE_appendix.tex`); `docs/Update_EXHALE_stage1.pdf`: sections 1-171, dated changelog
+- `docs/Update_EXHALE_stage2.pdf`: the current update log (stage 2, from 2026-09-05), carrying the code-size appendix vs ATES (`docs/Update_EXHALE_appendix.tex`); `docs/Update_EXHALE_stage1.pdf`: sections 1-171, dated changelog
 - `docs/cooling_formulas.pdf`: the analytic CHIANTI cooling fits
 - `docs/photoion_cross_sections.pdf`, `docs/recombination_coefficients.pdf`:
   atomic data and its benchmarks
@@ -1481,22 +1473,14 @@ while keeping `EXHALE.x`. The planet directories `HD209458b/`, `HD189733b/`,
 - `docs/molecular_hydrogen_treatment.pdf`: H2 as a single species with no
   (v,J) resolution: where the level distribution is assumed, on what evidence,
   and over what range each fit holds
-- `docs/design_hehe_diffusion.md`, `docs/version_compare.pdf`: He/H and metal
+- `docs/version_compare.pdf`: He/H and metal
   diffusive separation, and its effect on He 10830
 - `docs/transmission_spectrum.pdf`: the transit spectrum calculation
 - `docs/EXHALE_BC_and_IC.pdf`: boundary and initial conditions
 - `docs/steady_solver_memo.pdf`: Newton-Krylov design notes
-- `docs/newton_scaling_and_base_wall.md`: JFNK diagonal scaling, line-search
-  merit and stagnation watchdog; why the base momentum row is not the blocker
-- `docs/hd189_base_checkerboard.md`, `docs/hd209_metal_stagnation.md`: the two
-  base-layer investigations behind `Base grid`, `Low-Mach damping` and the
-  since-retired `Base ghost temperature` (the closure those investigations
-  were choosing among is gone: `docs/phaseC_characteristic_base_bc.md`)
 - `docs/viscosity_conduction.md`, `docs/coronal_cutoff_width.md`: molecular
   transport, and the coronal-fit validity floor
 - `docs/wind_ae_solver.pdf`: the included Wind-AE solver
 - `docs/code_comparison.pdf`, `docs/methodology_comparison.pdf`:
   comparison with other escape codes
-- `docs/code_review_20260702.md`: full-code review report (fixes and
-  recommendations)
 - `docs/TO_BE_DONE.md`: open items

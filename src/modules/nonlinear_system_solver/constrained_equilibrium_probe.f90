@@ -1,7 +1,6 @@
       program constrained_equilibrium_probe
       ! Standalone re-evaluation of one saved constrained-equilibrium state,
-      ! without the hydrodynamics: phase A/B of
-      ! docs/charge_exchange_cancellation_limit.md.
+      ! without the hydrodynamics.
       !
       ! The state is produced by a normal run with the environment variable
       ! EXHALE_CCE_DUMP set to a file name; the first continuation that fails

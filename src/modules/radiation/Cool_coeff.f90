@@ -3527,8 +3527,7 @@
    ! are 227.7 K and 326.6 K); for C I it is exp(-2351.38/T) against
    ! splittings of 23.6 K and 62.4 K. Evaluated at the ~240 K base of
    ! HD 189733 b those components supplied 99.7% of the O I cooling rate
-   ! and drove the base to a fifth of T_eq
-   ! (docs/hd189_base_checkerboard.md).
+   ! and drove the base to a fifth of T_eq.
    !
    ! Physically, at T far below 1e3 K the only metal transitions still
    ! collisionally excitable are the ground-term fine-structure lines,
@@ -3761,8 +3760,7 @@
    ! times the LINE-CENTRE depth. Written in one convention it is the same
    ! function as Hollenbach & McKee (1979), ApJS 41, 555, eq. (5.10), which
    ! is quoted in line-centre depth: 2 beta(sqrt(pi) tau_0) and their
-   ! eps(tau_0) agree to five digits above tau_0 = 1e3
-   ! (src/tests/physics_probe/fine_structure_escape_probability.f90).
+   ! eps(tau_0) agree to five digits above tau_0 = 1e3.
    !
    ! fine_structure_line_transfer below therefore multiplies the
    ! line-centre depth of each cell by sqrt(pi) before any argument is
@@ -4304,7 +4302,7 @@
    ! (18 electrons) -- there is no Badnell fit to switch to for either
    ! stage. Huang's analytic form is therefore the rate for iron, which is
    ! also what the Huang reproduction plan prescribes for the stages where
-   ! Badnell coverage stops (docs/Huang_update_plan.md, Phase 1c).
+   ! Badnell coverage stops.
 
    ! Fe II + e -> Fe I  (rate producing the Fe I daughter).
    double precision function alpha_rec_FeI_Huang(T)

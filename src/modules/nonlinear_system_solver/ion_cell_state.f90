@@ -1,8 +1,8 @@
 	module ion_cell_state
 	! Named-field cell state for the equilibrium ionization residuals. It
-	! replaces reading the position-packed params() inside the residuals
-	! (§5.2 Inc 4, docs/refactor_plan_system_composition_parser.md): params
-	! stays as the MINPACK transport argument (hybrd1/fdjac1/solve_ieq), but
+	! replaces reading the position-packed params() inside the residuals.
+	! params stays as the MINPACK transport argument
+	! (hybrd1/fdjac1/solve_ieq), but
 	! the converted equilibrium systems no longer read it -- they read the
 	! named fields below instead. The field names follow the physical
 	! quantities of the equilibrium params layout.

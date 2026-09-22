@@ -21,8 +21,7 @@
       !     nearly five decades between the base and 1.2 R_p
       !     (docs/eddy_diffusion_kzz.tex, LHS1140b/kzz_decision.md).
       !
-      ! Schema: docs/phase_e_flux_closure_design.md section 2, and
-      ! docs/input_schema.md section 2d.  Example file:
+      ! Schema: docs/input_schema.md section 2d.  Example file:
       ! examples/17_lower_profile/lower_atmosphere_profile.dat.
       !
       ! Interpolation.  Every intensive quantity is interpolated linearly in
@@ -387,7 +386,7 @@
       character(len=*), intent(in) :: why
       write(*,*) '(lower_atmosphere_profile) ERROR in '//trim(lap_file)//':'
       write(*,*) '  '//trim(why)//'.'
-      write(*,*) '  Schema: docs/phase_e_flux_closure_design.md section 2.'
+      write(*,*) '  Schema: docs/input_schema.md section 2d.'
       error stop 1
       end subroutine refuse
 

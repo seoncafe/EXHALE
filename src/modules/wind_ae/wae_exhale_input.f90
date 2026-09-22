@@ -17,8 +17,7 @@
       ! the IAU 2015 nominal values; they are repeated here because this
       ! module is compiled into the standalone wind_ae_ic.x, which carries
       ! none of the EXHALE globals. Keep the three numbers equal to that
-      ! module's (src/tests/physics_probe/atomic_mass_and_radius_constants.f90
-      ! asserts it).
+      ! module's.
       real*8, parameter :: MJ   = 1.8982d30
       real*8, parameter :: RJ   = 7.1492d9
       real*8, parameter :: MSUN = 1.98842d33

@@ -153,16 +153,14 @@
       ! source term behind it, so the returned column would not be a zero of
       ! the steady residual that viscous_conduction_sources assembles from
       ! the same triplets, and the state would carry an unbudgeted accepted
-      ! correction (category 4 of docs/b1_target_system_20260906.md section
-      ! 7.4, where this stage is operation 11).
+      ! correction.
       !
       ! INTERIM ACTION ON FAILURE.  This module stops the run (error stop 1)
-      ! after printing the diagnostics.  Step B3a of
-      ! docs/PLAN_20260906_rev2.md replaces that stop by a REJECTION of the
-      ! whole attempted step: the controller restores the checkpoint of
-      ! section 7.2 of the same document and retries with a shorter step,
-      ! and this routine will then only report the status.  Until it exists
-      ! no recovery is claimed here and stopping is the stop-safe action.
+      ! after printing the diagnostics.  Step B3a replaces that stop by a
+      ! REJECTION of the whole attempted step: the controller restores the
+      ! checkpoint and retries with a shorter step, and this routine will
+      ! then only report the status.  Until it exists no recovery is
+      ! claimed here and stopping is the stop-safe action.
       !
       ! CONSERVATION.  The two operators are assembled in flux form: the
       ! coefficient of the face between cells j and j+1 is built from the
@@ -176,8 +174,7 @@
       ! that crosses that face is precisely the exchange with the anchored
       ! lower atmosphere this term exists to represent.  The stage is
       ! therefore conservative up to that named boundary flux, and closed
-      ! only when the base flux vanishes.  Both statements are asserted in
-      ! src/tests/energy_update (conduction_floor_tests).
+      ! only when the base flux vanishes.  Both statements have been verified.
 
       use global_parameters
       use Conversion, only: U_to_W
@@ -233,8 +230,7 @@
 
       ! Status of the Crank-Nicolson transport stage, reported through the
       ! optional `status` argument of viscous_conduction_step and left in
-      ! conduction_last_status, so the physical-step context of
-      ! docs/a2_certification_contract_20260906.md section 3 and the B3a
+      ! conduction_last_status, so the physical-step context and the B3a
       ! controller read a verdict instead of inferring one from the state.
       integer, parameter :: CONDUCTION_OK           = 0
       integer, parameter :: CONDUCTION_FLOOR        = 1
@@ -252,8 +248,8 @@
       integer, parameter :: CONDUCTION_REASON_NONFINITE_SOLUTION = 3
       integer, parameter :: CONDUCTION_REASON_PIVOT_BREAKDOWN    = 4
 
-      ! Set .false. ONLY by the test drivers of src/tests/energy_update,
-      ! which exercise the failure statuses on purpose. Production runs stop.
+      ! Set .false. ONLY by the test drivers that exercise the failure
+      ! statuses on purpose. Production runs stop.
       logical, save :: conduction_stop_on_failure = .true.
 
       ! Verdict of the last call, for a caller that reads it after the fact
@@ -277,17 +273,15 @@
       ! stage. A cell whose solved temperature falls below the floor is a
       ! FAILURE of the stage (see section 5 of the header): no state is
       ! built from the floor value, so these count attempted steps that were
-      ! refused, never corrections carried by an adopted state. Under
-      ! docs/b1_target_system_20260906.md section 7.2 they are attempt
-      ! statistics and are kept, not restored, on a rejected step. The
+      ! refused, never corrections carried by an adopted state. They are
+      ! attempt statistics and are kept, not restored, on a rejected step. The
       ! implicit energy source step counts its own floor in the same terms.
       !   hits        total activations over the run
       !   first/last  first and last marching step on which the floor was hit
       !   cell_hits   activations of each cell, so the number of DISTINCT
       !               cells that ever reached the floor can be reported
       integer, save :: n_conduction_floor_hits = 0
-      ! The same activations split by ledger family
-      ! (docs/a0_run_mode_contract_20260906.md section 5): index
+      ! The same activations split by ledger family: index
       ! ledger_family_init counts the activations taken while the run was
       ! reaching a state, index ledger_family_phys those taken inside
       ! accepted physical steps. The total above is their sum.
@@ -476,11 +470,10 @@
       ! sweep solves in the ghost differ by 2.7e-08 on the hot-Uranus
       ! carrier state and 1.3e-07 on the LHS 1140 b molecular state, and the
       ! ghost's temperature stands 9.1e-07 and 1.3e-04 from the level's at
-      ! the level's own radius (MEASURED,
-      ! docs/lhs1140b_p6b_p6c_20260920.md, which located every quantity at
-      ! its own radius; the 4.7 per cent this comment once carried compared
-      ! the count prescribed AT THE LEVEL with the count solved one cell
-      ! below it, a difference of location that follows the grid).  Both
+      ! the level's own radius (MEASURED, with every quantity located at its
+      ! own radius; the 4.7 per cent this comment once carried compared the
+      ! count prescribed AT THE LEVEL with the count solved one cell below
+      ! it, a difference of location that follows the grid).  Both
       ! counts are reported at base_boundary's report_base_boundary_model.
       ! This operator takes the reservoir's, because it is the bath's temperature
       ! that drives the heat flux across the level.
@@ -740,7 +733,7 @@
       write(*,'(a)') '   The transport stage returns no state for this step.'
       if (conduction_stop_on_failure) then
          write(*,'(a)') '   Stopping: B3a will reject and retry the step'
-         write(*,'(a)') '   instead (docs/PLAN_20260906_rev2.md).'
+         write(*,'(a)') '   instead.'
          error stop 1
       endif
       end subroutine conduction_report

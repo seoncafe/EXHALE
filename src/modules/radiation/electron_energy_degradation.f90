@@ -87,7 +87,7 @@
    !    fraction would be low by a factor of about three at 1 keV.
    !
    ! ---------------------------------------------------------------------
-   !  DISSOCIATIVE IONIZATION OF H2 (see docs/Update_EXHALE_stage1.md section 130)
+   !  DISSOCIATIVE IONIZATION OF H2 (see docs/Update_EXHALE_stage1.pdf section 130)
    ! ---------------------------------------------------------------------
    !  H2 + e -> H + H+ + 2e is carried, through dissoc_ion_per_H2p below:
    !  the secondary electrons make one such proton for every 22 H2+ ions.
@@ -474,7 +474,7 @@
    ! -- while below x = 0.1, where our molecular layer lives, eq. (14) stays
    ! inside 1.40 sigma and their fit reaches 2.77 sigma at x = 1e-4 and
    ! collapses to zero below it. The full point-by-point table is in
-   ! docs/Update_EXHALE_stage1.md section 118.
+   ! docs/Update_EXHALE_stage1.pdf section 118.
    pure function dalgarno_heating_efficiency(tab, k, x) result(eta)
       real*8, intent(in)  :: tab(3,n_dal_E)
       integer, intent(in) :: k

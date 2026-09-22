@@ -554,7 +554,7 @@
       !     the smaller of the two, that is the more restrictive one, never
       !     the less safe one. Measured at a Mach 60 state with eps = 1e-3
       !     p_avg: theta = 0.85629 here against t_eps = 0.94910 from their
-      !     Eq. (2.12) (src/tests/physics_probe/positivity_limiter_scaling.f90).
+      !     Eq. (2.12).
       !
       !   * Their theta is one number per CELL, the minimum over that cell's
       !     quadrature points, which is what leaves the cell average of the
@@ -587,12 +587,12 @@
       ! p/(gamma-1) has the same sign. The nonlinear map that forces their
       ! quadratic has no counterpart here.
       !
-      ! WHY IT IS CONTINUOUS AND WHY THAT IS THE POINT (docs/Update_EXHALE_stage1.md
+      ! WHY IT IS CONTINUOUS AND WHY THAT IS THE POINT (docs/Update_EXHALE_stage1.pdf
       ! section 138; the measurement is P49). This routine used to be a hard
-      ! switch: as soon as a reconstructed rho or p crossed zero, the WHOLE
-      ! face pair was replaced by the two cell averages. That is a STEP
-      ! DISCONTINUITY of the residual F(Y), and it is what stopped the
-      ! molecular reload's steady solve. Measured on the hot Uranus hand-off:
+      ! reconstructed rho or p crossed zero, the WHOLE face pair was replaced
+      ! by the two cell averages. That is a STEP DISCONTINUITY of the residual
+      ! F(Y), and it is what stopped the molecular reload's steady solve.
+      ! Measured on the hot Uranus hand-off:
       ! the WENO3 left density at the face of cell 273 (r = 1.2324 R_p) sat at
       ! 2.50e-15 against cell averages of 1e-4, eleven orders below and
       ! positive by a hair, so the iterate sat exactly on the switching
@@ -621,7 +621,7 @@
       ! a cancellation whose result is decided by the rounding of the product
       ! rather than by theta: MEASURED over 200000 reconstructed values that
       ! cross zero, the bare update is EXACTLY ZERO for 1013 of them and never
-      ! negative (src/tests/physics_probe/positivity_limiter_scaling.f90).
+      ! negative.
       ! Zero is the value this floor exists to avoid: a zero face density
       ! divides in v = m/rho and in the sound speed of Num_Fluxes.f90. The
       ! scaled density and pressure are therefore clamped to eps after the

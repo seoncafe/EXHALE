@@ -14,8 +14,7 @@ Both switches default OFF.
 **2026-08-10 (later the same day): the motivation stated above no longer
 holds.** There is no near-base momentum wall. The `info = 2` residual floor
 reported throughout Sec. 5 and Sec. 8 was traced to the JFNK diagonal scaling
-and the stagnation watchdog, and the same cases now converge with `info = 0`;
-see `docs/newton_scaling_and_base_wall.md`. The derivation, the discretization,
+and the stagnation watchdog, and the same cases now converge with `info = 0`. The derivation, the discretization,
 the verification of Sec. 7 and the physical A/B numbers of Sec. 8 are
 unaffected, only the diagnosis they were measured against is. All `info = 2`
 outcomes and every "worst residual cell `j = 1`" entry below were produced with
@@ -230,10 +229,9 @@ a cell-parallel region.
 
 JFNK must solve *exactly* the system the marching relaxes: a term present in one
 and absent from the other makes the two paths converge to different states.
-(This section originally cited the `info=2` stagnation of
-`docs/base_composition_handoff_plan.md` Sec. 11.8-11.9 as evidence for that
+(This section originally cited an `info=2` stagnation as evidence for that
 requirement. That attribution is withdrawn: the stagnation was the solver's
-scaling and watchdog, Sec. 11.10 there, but the consistency requirement itself
+scaling and watchdog, but the consistency requirement itself
 stands on its own and is what the three properties below enforce.)
 
 1. **One definition of the source.** `viscous_conduction_sources` returns the
@@ -286,8 +284,7 @@ refresh; the snapshots now carry the `visc_on` / `cond_on` /
 Four analytic checks on a geometrically stretched 500-cell grid, run against
 the compiled module from a throwaway driver (`opcheck.f90`). *That driver was
 never committed and is not in the repository; the numbers below are the record
-of the run, and reproducing them means writing the driver again. The only
-committed unit-test source is `src/tests/diffusion_tests.f90`.*
+of the run, and reproducing them means writing the driver again.*
 
 | check | expectation | measured |
 |---|---|---|
@@ -363,8 +360,7 @@ The further reading recorded here originally (that the residual is therefore a
 property of the lower boundary condition) was **withdrawn on 2026-08-10**:
 the base momentum row was subsequently measured to be satisfiable (a 2.9 ppm
 ghost-pressure change nulls it), and the `j = 1` "worst cell" was an artifact of
-a diagnostic that normalized momentum by the base cell's own `|rho v|`. See
-`docs/newton_scaling_and_base_wall.md`.
+a diagnostic that normalized momentum by the base cell's own `|rho v|`.
 
 > **STALE (P35, 2026-09-02).** The `vulcan_work` run directories cited
 > here carry `Molecular base: True` with the molecular network off. The base

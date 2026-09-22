@@ -151,9 +151,7 @@
       ! molecular_seed_statement_from_line), and a state that came out of no
       ! conversion says so. Without it the mode and the invariant are lost at
       ! the first solve, and the only record left is the log of the run that
-      ! converted (PLAN_20260920_rev9 section 16).
-      !
-      ! Item L7 of docs/PLAN_20260913_lhs_stationary.md.
+      ! converted.
 
       use global_parameters
       use species_table, only: isp_HI, isp_HII, isp_H2, n_mion
@@ -549,7 +547,7 @@
          ! of the layer.  The lower-atmosphere model and the wind network
          ! AGREE about the bottom of the layer, and the composition step the
          ! base boundary condition makes there is a transport question and
-         ! not a chemistry one (docs/lhs1140b_stationary_L7f_20260915.md).
+         ! not a chemistry one.
          if (base_h2_composition_imposed()) then
             q_base  = h2_mixing_ratio_base()
             x2_base = base_h2_nuclei_fraction()

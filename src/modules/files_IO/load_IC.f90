@@ -43,10 +43,9 @@
                                base_ghost_composition_seed_id,            &
                                set_state_file_ghost_rows
       ! WHERE THE RESTART PAIR IS READ FROM, and which option tokens a
-      ! molecular seed conversion is allowed to find different (item L7 of
-      ! docs/PLAN_20260913_lhs_stationary.md). Both are no-ops for an
-      ! ordinary restart: the path is 'output/..._IC.txt' and no token may
-      ! differ that the input did not name.
+      ! molecular seed conversion is allowed to find different. Both are
+      ! no-ops for an ordinary restart: the path is 'output/..._IC.txt' and
+      ! no token may differ that the input did not name.
       use molecular_seed, only: molecular_seed_state_file,                &
                                 molecular_seed_option_may_differ,         &
                                 molecular_seed_on,                        &
@@ -121,12 +120,12 @@
    ! file written before the option existed means as well.
    logical :: ic_ionization_transport = .false.
    real*8  :: ic_base_flux_const    = -1.0d0
-   ! WHICH RUN STATE PRODUCED THE STATE IN THE FILE, and its clock
-   ! (docs/a0_run_mode_contract_20260906.md sections 3 and 5). A file written
-   ! before the field existed carries no statement, and the only thing that
-   ! can be said about it is that no elapsed time was recorded with it, which
-   ! is what run_mode_init means: ic_run_mode therefore starts at
-   ! run_mode_init and ic_run_mode_present says whether the file stated it.
+   ! WHICH RUN STATE PRODUCED THE STATE IN THE FILE, and its clock. A file
+   ! written before the field existed carries no statement, and the only
+   ! thing that can be said about it is that no elapsed time was recorded
+   ! with it, which is what run_mode_init means: ic_run_mode therefore
+   ! starts at run_mode_init and ic_run_mode_present says whether the file
+   ! stated it.
    integer :: ic_run_mode         = run_mode_init
    logical :: ic_run_mode_present = .false.
    real*8  :: ic_t_phys           = 0.0d0
@@ -171,8 +170,7 @@
    end type file_certification_claim
 
    ! ------------------------------------------------------------------ !
-   ! THE RESTART METADATA BLOCK (docs/restart_contract_design_20260909.md
-   ! section 3).
+   ! THE RESTART METADATA BLOCK
    !
    ! WHAT IT IS FOR. The state files carry the state; what they carried until
    ! now about the RUN that produced it was the coupling line and the
@@ -240,8 +238,7 @@
 
    ! ------------------------------------------------------------------ !
    ! THE TOKENS OF THE 'options' FIELD, AND WHICH OF THEM A RESTART MAY BE
-   ! ALLOWED TO CHANGE (decision 21 of
-   ! docs/To_be_determined_by_user_20260906.md, option a).
+   ! ALLOWED TO CHANGE.
    !
    ! Comparing the whole field exactly is right for a state that claims to
    ! be stationary and wrong for the way this project reaches its
@@ -289,8 +286,8 @@
    ! relaxed at a held wind in alternation with it. Both routes carry the
    ! same rows in the same state files with the same columns: the balances
    ! whose residual must vanish are the same balances, and a state that is
-   ! stationary is stationary under either. Under the metadata contract of
-   ! docs/lhs1140b_stationary_L23_20260916.md the route that produced a
+   ! stationary is stationary under either. Under the metadata contract
+   ! the route that produced a
    ! state is metadata OF the state and not a statement of which equations
    ! it solves, so a difference in this token is admissible without being
    ! named: the loaded state is a starting point of the same system. The
@@ -376,7 +373,7 @@
       ! r appears in the state file. Assigning the file's column into r would
       ! march centers from one construction against faces, widths and window
       ! indices from another, so the column is read here and compared with r
-      ! instead (docs/development_plan_20260905_rev3.md section 10.2 item 3).
+      ! instead.
       real*8, dimension(1-Ng:N+Ng)        :: r_file
       ! Hydrogen nuclei density of the loaded state (free + bound in molecules)
       real*8, dimension(1-Ng:N+Ng)        :: nH_l
@@ -644,7 +641,7 @@
          ! HeH+ clause below then refuses.  The ghost itself was a writer
          ! defect -- the molecular columns came from the sweep's arrays while
          ! the atomic ones were f_sp*rho at the write, and the ghost's rho
-         ! had moved in between (fixed the same day, docs/Update_EXHALE_stage1.md
+         ! had moved in between (fixed the same day, docs/Update_EXHALE_stage1.pdf
          ! section 169; files written before it still carry such ghosts).
          ! The range stays physical either way: a check on the input's He/H
          ! has nothing to say about boundary data.
@@ -883,8 +880,8 @@
       ! Helium keeps its own convention: the base cells are set to the input
       ! He/H, the column above may carry a diffused split. A state bound for
       ! ANOTHER reservoir goes through map_state_to_grid.py --reservoir first.
-      ! (the flag is allocated by input_read; the test keeps the unit tests of
-      !  src/tests, which build a state without it, on the untouched path)
+      ! (the flag is allocated by input_read; the test keeps a state built
+      !  without it on the untouched path)
       do e = 1, n_melem
          if (.not. allocated(melem_from_handoff)) exit
          if (.not. melem_from_handoff(e))  cycle
@@ -1199,8 +1196,7 @@
       ! rows exchanged for another admissible ghost, the cell-1 continuity
       ! row of one hot-Uranus molecular state reads 9.06, 15.98, 425 or
       ! 7.4e8 of its own rounding floors, and one of those ghosts reverses
-      ! the sign of the base face mass flux (MEASURED,
-      ! docs/lhs1140b_stationary_D5a_20260918.md section 4).
+      ! the sign of the base face mass flux (MEASURED).
       !
       ! WHAT REPLACES THEM. The composition of the gas the reservoir holds at
       ! the base level (base_reservoir_composition_row below), and, for the
@@ -1777,7 +1773,7 @@
 
       subroutine verify_restart_metadata(meta_h, meta_i)
       ! THE CONFIGURATION THE RESTART FILES STATE, AGAINST THE ONE THIS RUN
-      ! RESOLVED (docs/restart_contract_design_20260909.md section 3).
+      ! RESOLVED.
       !
       ! Three outcomes, and no fourth: the pair carries no block and is
       ! loaded as a state of an unknown configuration; the pair carries a
@@ -1920,8 +1916,7 @@
       !-------------------------------------!
 
       subroutine compare_options_field(s_file, s_run, s_source)
-      ! THE OPTIONS FIELD, TOKEN BY TOKEN (decision 21 of
-      ! docs/To_be_determined_by_user_20260906.md, option a).
+      ! THE OPTIONS FIELD, TOKEN BY TOKEN.
       !
       ! Three things happen to a token, and nothing else can:
       !   it differs and the input did not name it  -> the load is refused
@@ -2539,12 +2534,11 @@
       ! carries only the centers. A file written under a different
       ! "Grid type", "Base grid" or "Outer radius" passes the row-count
       ! guard above whenever it has the same "Grid cells", so the centers are
-      ! compared here and a mismatch is refused
-      ! (docs/development_plan_20260905_rev3.md section 10.2 item 3).
+      ! compared here and a mismatch is refused.
       !
       ! Compared over the physical cells 1..N only. The ghost rows are
       ! boundary data, rebuilt on the first step of the restart, and the
-      ! writer's ghost convention changed (docs/Update_EXHALE_stage1.md
+      ! writer's ghost convention changed (docs/Update_EXHALE_stage1.pdf
       ! section 169), so files written before it carry ghosts of their own.
       !
       ! Tolerance 1e-10 relative: the writer emits list-directed reals with
@@ -2604,9 +2598,7 @@
          write(*,'(A)') '   The faces, widths and window indices are this'// &
             ' run''s and are not re-read, so the state cannot be marched'
          write(*,'(A)') '   on the file''s centers. Restart on the grid the'//&
-            ' state was written on, or map the state onto this grid first'
-         write(*,'(A)') '   (docs/development_plan_20260905_rev3.md'//       &
-            ' section 10.2 item 3).'
+            ' state was written on, or map the state onto this grid first.'
          error stop 1
       endif
       end subroutine verify_restart_radii

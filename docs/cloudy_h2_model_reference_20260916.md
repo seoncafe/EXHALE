@@ -1,6 +1,6 @@
 # What Cloudy c25.00 does with its H2 data, and what of it EXHALE should take
 
-Item L7g of `docs/PLAN_20260916_rev3.md` section 7, read-only study. Nothing was
+Item L7g, read-only study. Nothing was
 built, nothing was run, no EXHALE source file was edited, and nothing in
 `~/CLOUDY/c25.00/` was touched. Cloudy is third-party code under its own license
 (`/home/kiseon/CLOUDY/c25.00/license.txt`); it is quoted below only in short
@@ -12,11 +12,6 @@ does it. Every number is labeled MEASURED (computed here) or READ (taken from a
 source file, a data file header or a document). A statement about a published
 paper that Cloudy cites is labeled as Cloudy's citation unless the paper itself
 sits in `../references/` and was read.
-
-The companion document is
-`docs/lhs1140b_stationary_L7g_inventory_20260916.md`, the data inventory, whose
-sections 2.3 to 2.5, 3 and 6 this memo extends. Several numbers below are READ
-from that inventory rather than re-measured, and are marked so.
 
 ---
 

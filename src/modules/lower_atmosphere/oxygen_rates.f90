@@ -1,6 +1,6 @@
       module oxygen_rates
       ! Rate coefficients and thermodynamic data for the oxygen-hydrogen
-      ! chemistry of the A2 option (docs/a2_oxygen_option_design.md).
+      ! chemistry of the A2 option.
       !
       ! THIS MODULE IS IN THE BUILD (SRC in the Makefile).  It carries the
       ! coefficients, their sources and their validity ranges, plus the
@@ -8,13 +8,7 @@
       ! carrier rows of System_HeH_mol, the transport of
       ! diffusive_photochemistry and the FUV bands of water_photolysis read
       ! them.  They act only where the oxygen chemistry is switched on
-      ! (thereis_oxychem), so a run without it never evaluates one.  The
-      ! standalone driver that checks the coefficients alone is
-      ! src/tests/a2_m1/.
-      !
-      ! The audit that fixed every number below, with the two-network
-      ! comparison table and the measured share each reaction carries at the
-      ! HD 189733 b base, is docs/a2_reaction_audit.md.
+      ! (thereis_oxychem), so a run without it never evaluates one.
       !
       ! Units are cgs throughout: two-body rates in cm^3 s^-1, three-body
       ! rates in cm^6 s^-1 (the low-pressure limit k0), T in K.  EXHALE
@@ -81,8 +75,8 @@
       ! THE ZERO OF THIS TABLE, AND WHY IT NEVER LEAKS OUT.  With the eighth
       ! coefficient dropped the zero is the NIST convention: each element in
       ! its standard reference state at 298.15 K.  That is NOT the reference
-      ! of the formation-energy reservoir eps_s of the energy ledger
-      ! (docs/b1_target_system_20260906.md T1.2), which is every element as a
+      ! of the formation-energy reservoir eps_s of the energy ledger, which
+      ! is every element as a
       ! neutral, ground-state, free atom at rest.  The two zeros never have
       ! to be reconciled, because every use this module makes of the table is
       ! a DIFFERENCE over a balanced reaction -- the reaction dG of
@@ -122,8 +116,8 @@
       ! 300 K, 1.23 at 1000 K, 1.11 at 2000 K.  The JANAF value is kept
       ! because the rate evaluations these coefficients reverse (Baulch
       ! et al. 1992; Lifshitz & Michael 1991) were themselves referred to
-      ! JANAF thermochemistry, and the measured test of the reversal in
-      ! docs/a2_reaction_audit.md sec. 5 confirms it: reversing O10 with the
+      ! JANAF thermochemistry, and the measured test of the reversal
+      ! confirms it: reversing O10 with the
       ! Shomate data reproduces VULCAN's independently transcribed
       ! O + H2O -> OH + OH to within 0.82-1.36 over 300-2500 K, against
       ! 1.60-3.27 with the NASA-9 data.  A run that needs the modern
@@ -564,8 +558,7 @@
       ! 1.75x smaller at 1000 K -- a bigger change than either evaluation's
       ! quoted uncertainty allows for, and the largest single change this
       ! audit makes to a rate that is actually in the minimal set.  The
-      ! later evaluation is adopted; the consequence for the measured
-      ! budget is in docs/a2_reaction_audit.md.
+      ! later evaluation is adopted.
       double precision function rk_O2_O_H2_hydroxyl(T) result(k)
       real(dp), intent(in) :: T
       k = 6.34d-12*exp(-4000.0d0/T) + 1.46d-9*exp(-9650.0d0/T)
@@ -901,8 +894,8 @@
       end function
 
       ! Formation energy eps_s [eV] of one particle of the thermodynamic
-      ! table, measured from the reference state of the energy ledger
-      ! (docs/b1_target_system_20260906.md T1.2): every element a neutral,
+      ! table, measured from the reference state of the energy ledger:
+      ! every element a neutral,
       ! ground-state, free atom at rest.  So eps(H) = eps(O) = eps(C) = 0 by
       ! the reference, and a molecule carries minus its dissociation energy
       ! into those atoms.
@@ -1052,8 +1045,8 @@
       ! in the form that does not cancel when K_c is small (n_CO -> the
       ! limiting element) or large (n_CO -> n_C n_O / K_c).
       !
-      ! WHY THIS IS THE CARBON RESERVOIR OF THE A2 NETWORK.  Decision D4 of
-      ! docs/a2_oxygen_option_design.md carries CO as an unreactive oxygen
+      ! WHY THIS IS THE CARBON RESERVOIR OF THE A2 NETWORK.  The network
+      ! carries CO as an unreactive oxygen
       ! reservoir -- it holds 45-46% of the oxygen at every level of every
       ! measured case, so a network that gives the whole oxygen abundance to
       ! the water family over-supplies the OH cycle by about a factor two --
@@ -1083,7 +1076,7 @@
       !     photodissociation, which predissociates in lines and
       !     self-shields (van Dishoeck & Black 1988), i.e. a second
       !     shielding function and a second band; it is not in the audited
-      !     set of docs/a2_reaction_audit.md and is not attempted here.
+      !     set and is not attempted here.
       !  3. Ionization is not in the balance.  Where CO is associated the
       !     gas is shielded and both elements are neutral, so this costs
       !     nothing there; above the turnover n_CO is negligible.

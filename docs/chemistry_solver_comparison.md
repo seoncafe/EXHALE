@@ -46,8 +46,7 @@ memo:
 | all reverse rates in both reference codes come from thermodynamics | the code applies thermodynamic reversal only to reactions declared or indexed as reversible | narrow the statement to configured reversible pairs |
 
 The cell-387 failure that motivated the comparison has also been resolved by a
-missing He+ + H channel, as recorded in
-`docs/charge_exchange_cancellation_limit.md`. Numerical improvements remain
+missing He+ + H channel. Numerical improvements remain
 useful, but they are no longer remedies for that failure.
 
 ---
@@ -168,8 +167,7 @@ classified two physical channels as a reversible pair.
 a defect.** The H2 three-body recombination and its collisional dissociation
 are the *same channel* run forwards and backwards, so detailed balance does
 apply to them, unlike the He <-> H pair, where the two published fits describe
-a radiative and a collisional channel and are correctly independent
-(`docs/molecular_chemistry_audit_he_rich.md`). EXHALE has:
+a radiative and a collisional channel and are correctly independent. EXHALE has:
 
 - `H + H + M -> H2 + M` : `8.0e-33 (300/T)^0.6` (Ham et al. 1970),
   `mol_rates.f90`
@@ -453,12 +451,6 @@ final root is invariant to the offsets.
 
 ## 7. Cross references
 
-- `docs/molecular_chemistry_audit_he_rich.md`: the He <-> H rate pair and why
-  its two directions are correctly independent.
-- `docs/charge_exchange_cancellation_limit.md`: the diagnosis that led here.
-- `docs/supersonic_molecular_base.md`: the problem this work belongs to.
-- `docs/Update_EXHALE_stage1.md` sections 113-114: the acceptance rule and the
-  constrained solver.
 - `src/modules/nonlinear_system_solver/constrained_chemical_equilibrium.f90`,
   `src/modules/lower_atmosphere/mol_rates.f90`,
   `src/modules/lower_atmosphere/lower_column.f90`, the EXHALE side of every

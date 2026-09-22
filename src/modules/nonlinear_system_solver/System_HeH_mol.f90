@@ -134,7 +134,7 @@
 	logical, save :: mk_third_body_resolved
 
 	! ---------------------------------------------------------------
-	! Oxygen chemistry (the A2 option, docs/a2_oxygen_option_design.md).
+	! Oxygen chemistry (the A2 option).
 	! Cell-invariant coefficients, hoisted once per cell by
 	! set_oxygen_coeffs exactly as the molecular ones are, and read by
 	! oxygen_carrier_rows. All zero, and never read, without the option.
@@ -153,9 +153,7 @@
 	! on a hot base, so an independently transcribed reverse produces an
 	! arbitrary net rather than a small error. Detailed balance against the
 	! module's Shomate table makes the pair exact by construction and makes
-	! the hot limit reduce to chemical equilibrium (decision D2; the measured
-	! validation against a published reverse rate is
-	! docs/a2_reaction_audit.md sec. 5).
+	! the hot limit reduce to chemical equilibrium (decision D2).
 	!
 	! ok6 is used ONLY for the O(1D) number-density diagnostic. O(1D)'s only
 	! sink in the audited set is O6 itself, so in steady state the O6 flux
@@ -471,7 +469,7 @@
 	! positive) and is called AFTER it, so fvec(4) already holds the
 	! molecular H2 balance and is added to here.
 	!
-	! Reactions (docs/a2_reaction_audit.md sec. 2; ids as in that table):
+	! Reactions:
 	!   O1   OH  + H2  -> H2O + H      O1r  H2O + H  -> OH + H2
 	!   O2   O   + H2  -> OH  + H      O2r  OH  + H  -> O  + H2
 	!   O3   H2O + hv  -> OH  + H

@@ -2,12 +2,6 @@
       ! ONE EVALUATOR OF THE EQUATIONS A RUN IS ACTUALLY SOLVING, AND THE
       ! CONTEXTS THAT READ IT.
       !
-      ! docs/a2_certification_contract_20260906.md is the contract; this is
-      ! steps 1 to 3 of its section 7. The inventory of what a given run
-      ! solves is docs/b1a_active_equation_inventory_20260906.md section 2,
-      ! and the run states are docs/a0_run_mode_contract_20260906.md
-      ! section 2.
-      !
       ! WHAT IT IS FOR. Until now "converged" was a statement about three
       ! hydrodynamic rows, a mass-flux spread, sometimes a carrier norm and,
       ! since the acceptance-class contract, a count of cells without a
@@ -175,9 +169,8 @@
       ! step": the adoption boundary of the marching step (B3a). It is a
       ! context of THIS evaluator and not a second implementation, so the
       ! tolerances a physical step is judged by and the tolerances a
-      ! stationary state is certified by are one set of numbers (advisor
-      ! decision 5, docs/b3a_attempted_step_controller_design_20260906.md
-      ! section 9). What it asks for is different from what the stationary
+      ! stationary state is certified by are one set of numbers. What it
+      ! asks for is different from what the stationary
       ! context asks for -- the time-discrete balances of the step, not the
       ! stationary residual, which a valid finite-time state does not have
       ! to zero -- but the row measure and the floors are the same.
@@ -379,7 +372,7 @@
       ! magnitude larger than their difference. The precision the same
       ! equation can be resolved to is therefore not one number, and the
       ! report states the two separately instead of averaging them into one
-      ! threshold (docs/certification_tolerance_anchoring_20260910.md).
+      ! threshold.
       !
       ! The radii: r_layer is the top of the diffusion-dominated column of
       ! this code's planets (the K_zz term of binary_element_diffusion still
@@ -389,9 +382,7 @@
       real*8, parameter, public :: cert_regime_wind_r  = 1.20d0
 
       ! WHICH CELLS A SPECIES ROW IS GATED IN, and what the number is
-      ! (decision 22 (a), user 2026-09-10; the five anchors are MEASURED in
-      ! docs/certification_tolerance_anchoring_20260910.md sections 2, 4
-      ! and 9).
+      ! (decision 22 (a), user 2026-09-10; the five anchors are MEASURED).
       !
       ! GATING, at r >= cert_regime_wind_r: 1e-5. It is the coarser of the
       ! two floors the element operator states for itself (about 1e-12 in a
@@ -691,9 +682,8 @@
       public :: cert_mass_gate_name
       public :: certification_species_row_gate
       public :: certification_entry_index
-      ! The stage sum entry, so that src/tests/certification/ can state its
-      ! verdict on a measure it chooses rather than on one a solve happens
-      ! to produce.
+      ! The stage sum entry, so that a test can state its verdict on a
+      ! measure it chooses rather than on one a solve happens to produce.
       public :: ionization_stage_sum_entry
       ! What decided the direction of the base contact and whether the
       ! base face flux agrees with it (base_contact_direction_agreement).
@@ -712,9 +702,9 @@
       ! The verdict of the LAST stationary certification made, so that the
       ! end of a run can act on the state it actually wrote.
       type(cert_report), save :: cert_last
-      ! WHETHER THE RUN CLAIMED A STATIONARY STATE AT ALL. The run states of
-      ! docs/a0_run_mode_contract_20260906.md section 2 are three, and a
-      ! relaxation snapshot is not one of the other two: a run that ends on a
+      ! WHETHER THE RUN CLAIMED A STATIONARY STATE AT ALL. The run states are
+      ! three, and a relaxation snapshot is not one of the other two: a run
+      ! that ends on a
       ! step cap, on a stall, on a NaN or on any other bound has made no
       ! claim about stationarity, so refusing to certify it is not a finding
       ! about the state -- there was nothing to certify. Only a run that
@@ -910,9 +900,9 @@
       ! its own flux instead of at 3e-12: on the HD 209458 b base layer that
       ! is about 3e-10 rather than 3e-12. What the row is FOR is undamaged --
       ! the flux errors it was given this scale to catch are fractions of a
-      ! percent to tens of percent of the flux (the 30 percent at 1.03 R_p
-      ! of docs/p54_base_layer_mass_flux.md), seven decades above any floor
-      ! measured -- and the mass-flux spread gate reads the same quantity
+      ! percent to tens of percent of the flux (the 30 percent at 1.03 R_p),
+      ! seven decades above any floor measured -- and the mass-flux spread
+      ! gate reads the same quantity
       ! independently.
       integer,                        intent(in) :: j
       real*8, dimension(3,1-Ng:N+Ng), intent(in) :: u
@@ -1994,11 +1984,9 @@
       !
       ! A measure above the bound is a broken construction and not a state
       ! the solver could have done better on; the constructions that break
-      ! the identity on purpose stand at 1.5e-4 to 3.6e-4 (MEASURED,
-      ! src/tests/ionization_stage_flux/), ten decades above it, and the
-      ! states this code produces at 0.07 to 0.08 of it. The derivation, the
-      ! executed validation and the production readings are anchor (8) of
-      ! docs/certification_tolerance_anchoring_20260910.md.
+      ! the identity on purpose stand at 1.5e-4 to 3.6e-4 (MEASURED), ten
+      ! decades above it, and the states this code produces at 0.07 to 0.08
+      ! of it.
       !
       ! ONE ENTRY PER ELEMENT. The identity is a statement about one
       ! element's own nucleus flux, so a single entry over both elements
@@ -2760,9 +2748,8 @@
                              W, T, f_sp, f_sp_old, dt_g, L_hydro,          &
                              n_no_chem_root, carrier_completed, verd)
       ! THE PHYSICAL-STEP CONTEXT. Evaluated on the TRIAL state at the
-      ! adoption boundary of the marching step, in the order
-      ! docs/b3a_attempted_step_controller_design_20260906.md section 3.3
-      ! fixes: cheapest and most decisive first, so that a state that is
+      ! adoption boundary of the marching step, in this order: cheapest and
+      ! most decisive first, so that a state that is
       ! not a state at all is refused before any residual is assembled.
       !
       !   1 finiteness and positivity of u, T and f_sp;

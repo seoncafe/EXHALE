@@ -1,9 +1,8 @@
 # Choosing `He_Kzz` for LHS 1140 b — material for a user decision
 
 **2026-09-13: every `exhale/...` path in this file now lives under
-`archive_20260830/exhale/...`. The solutions it describes predate the code
-changes listed in `MODELS.md` section 5 and are superseded by `models/`;
-read `MODELS.md` for the tree of record.**
+`archive_20260830/exhale/...`. The solutions it describes predate the later
+code changes and are superseded by `models/`.**
 
 **Status: settled. Sections 1-4 lay the two halves of the evidence side by
 side, section 5 makes the recommendation, and the user adopted it on
@@ -11,13 +10,11 @@ side, section 5 makes the recommendation, and the user adopted it on
 the He 10830 line implies, section 7 makes that composition an output of the
 flux closure, and section 8 asks the two questions together.**
 
-Prepared 2026-08-25, after Phase D of `../docs/binary_diffusion_design.md`
+Prepared 2026-08-25, after Phase D
 (binary H/He element diffusion, through decision D3). Companion documents:
 
 - `kzz_literature.md` — the literature survey behind section 1, with the
   verification status of every number.
-- `../docs/binary_diffusion_design.md` section 9.4 — one-paragraph summary
-  and pointer.
 
 ---
 
@@ -396,7 +393,7 @@ Elemental ratio `(He/H)/HeH` from the `_adv` profiles:
 > and none of it is current.** The whole ladder has been re-solved twice
 > since: on the Garcia Munoz (2025) coefficient
 > (`exhale/ladder_gm25/results.txt`) and then on the composition-renormalized
-> SvS85 split of `docs/Update_EXHALE_stage1.md` section 96
+> SvS85 split
 > (`exhale/crossings_j96/results.txt`). The current values are
 > He/H = 3.8075 on the `K_zz` <= 1e4 plateau, 1.6108 at the adopted
 > `K_zz` = 1e9, 0.8368 at 1e11, 0.4132 well mixed on the GJ 1132 proxy and
@@ -770,7 +767,7 @@ Damkohler number is wrong wherever the species' relaxation times differ, and
 correcting it means either gating the correction species by species or
 raising the gate to the slowest relaxation time in the system.
 
-**Fixed, `../docs/Update_EXHALE_stage1.md` section 72** (2026-08-25): the gate now
+**Fixed** (2026-08-25): the gate now
 uses the slowest relaxation rate of the solved species vector. Re-post-
 processing `heh10_diff_kzz1e8` with the corrected binary leaves 15 of 503
 cells at equilibrium, all at `r <= 1.0034 R_p`, removes the step in the
@@ -796,13 +793,12 @@ number, now labelled as the well-mixed limit.
 
 Everything above treats `He/H` as an input to be chosen — the value at which
 the modelled He 10830 line meets the measured one, conditional on `K_zz`.
-Milestone E4 of `../docs/phase_e_flux_closure_design.md` removes that framing
+Milestone E4 removes that framing
 on the lower-atmosphere side: **the matching-level composition is now solved
 for, not stated.** The photochemical column is given the elemental escape
 fluxes as an upper boundary condition, the wind is solved on the profile that
 comes back, its own elemental fluxes are measured, and the two are iterated
-to agreement (`../docs/Update_EXHALE_stage1.md` section 79;
-`exhale/flux_closure/`).
+to agreement (`exhale/flux_closure/`).
 
 The measured answer on this planet, from three starting fluxes spanning a
 factor of ten:
@@ -1106,7 +1102,7 @@ determinism but says nothing about seed dependence.
 
 **The practical rule.** A ladder scan is climbed one step at a time; a large
 jump in reservoir can leave an outer region the solver will not revisit and
-no convergence test will flag. Record: `../docs/Update_EXHALE_stage1.md` section 83.
+no convergence test will flag.
 
 ---
 

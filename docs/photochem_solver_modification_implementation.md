@@ -4,8 +4,7 @@ Date: 2026-08-29
 
 ## The judgement first
 
-The deep elemental residual diagnosed in `deep_level_elemental_check.md` is
-removed at its source, and **it does not move the observable**. Re-measured on
+The deep elemental residual is removed at its source, and **it does not move the observable**. Re-measured on
 the corrected build with 11 rungs, the LHS 1140 b flux-closure crossing of the
 He I 10830 equivalent width is at He/H = **9.0484** (chord) / **9.0461**
 (quadratic) -- the same to every digit the photochem 0.8.4 ladder printed. On
@@ -22,7 +21,7 @@ Two things must be read with that conclusion:
 - The corrected clima refuses two compositions the old build solved,
   He/H = 9.4 and 9.5. That is **not a regression of this change**: the same
   solver defect is in 0.8.4, which refuses two others on the same grid.
-  Diagnosed. Section 4.4, and `Update_EXHALE_stage1.md` section 91.
+  Diagnosed. Section 4.4.
 
 ## 1. What was built
 
@@ -232,8 +231,7 @@ The first version of this section read that message at face value -- an
 isolated failure of the bracketing scan of section 2.3, cause not diagnosed --
 and counted a net of three failures removed and one introduced. **The
 measurement contradicts both.** It is recorded in
-`LHS1140b/exhale/clima_bracket_diagnosis/` and written up as section 91 of
-`docs/Update_EXHALE_stage1.md`; the three points that matter here are:
+`LHS1140b/exhale/clima_bracket_diagnosis/`; the three points that matter here are:
 
 - **The bracketing scan is not the cause.** The root is inside the interval it
   scans and the residual crosses zero once, monotonically, in the last scan

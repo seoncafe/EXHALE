@@ -160,9 +160,7 @@
       ! the volume dV = (r_edg(j)^3 - r_edg(j-1)^3)/3, the same pair Source
       ! divides (Gphi_i(j) - Gphi_i(j-1)) by to get the gravity of cell j, and
       ! the same width the column integrals n(j)*dr_j(j) and the cell optical
-      ! depths use with the cell-centred densities. Tested to round-off by
-      ! src/tests/grid_and_gates/grid_width_identity.f90; specification in
-      ! docs/development_plan_20260905_rev3.md section 10.1 item 1.
+      ! depths use with the cell-centred densities. Tested to round-off.
       ! r_edg(-Ng) lies outside the array, so the innermost ghost takes the
       ! width of its neighbour.
       dr_j(2-Ng:N+Ng) = r_edg(2-Ng:N+Ng) - r_edg(1-Ng:N+Ng-1)

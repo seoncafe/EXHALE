@@ -90,8 +90,7 @@
       ! are written once and a source assembled in either basis describes
       ! the same events. The two are equivalent term by term: for an
       ! element whose boundary flows are u_0 and u_1, the stage sources are
-      ! S_0 = -u_0, S_1 = u_0 - u_1 and S_2 = u_1, which is the conversion
-      ! src/tests/charge_exchange_rows asserts reaction by reaction.
+      ! S_0 = -u_0, S_1 = u_0 - u_1 and S_2 = u_1.
       !
       ! WHO OWNS THE RATE COEFFICIENTS. cx_kc and cx_metal_base are
       ! thread-local and hold ONE cell: cx_set_cell(T) fills cx_kc for that
@@ -154,7 +153,7 @@
       !             held at the endpoint, not extrapolated (see
       !             electron_capture_O2p_from_H).
       !   Default : 1.0 = the published rate, made the default on 2026-08-30
-      !             (docs/Update_EXHALE_stage1.md section 107, measurement in section
+      !             (docs/Update_EXHALE_stage1.pdf section 107, measurement in section
       !             103). Charge transfer beats O III recombination wherever
       !             n(H0)/n_e exceeds a few 1e-3 -- k_CT/alpha_rec is
       !             122/280/617 at 5e3/1e4/2e4 K -- which is the whole launch
@@ -803,8 +802,7 @@
       ! below) is a consequence
       ! of comparing two channels, not evidence of a defect in either fit.
       ! The label in Table 4, and in this file before 2026-08-31, dropped
-      ! the photon and with it the reason. See
-      ! docs/molecular_chemistry_audit_he_rich.md section 4.3.
+      ! the photon and with it the reason.
       !
       ! B1 HAS TWO BRANCHES. Glover & Jappsen (2007), ApJ 666, 1, Table 1
       ! reaction R27, read from the published paper, fit the Kimura table as

@@ -3,14 +3,13 @@
 > **Status (2026-08-15).** Phases 2-5 have since been implemented and
 > validated; the expectations below are the pre-implementation predictions,
 > kept as a record. Read them against what was actually measured: the phase
-> notes in `docs/Update_EXHALE_stage1.md`, `docs/coronal_cutoff_width.md`,
-> `docs/lya_destruction_channels.md` and `docs/transmission_spectrum.tex`, and
-> against the status marks in `Huang_update_plan.md`, not as a description of
+> notes in `docs/coronal_cutoff_width.md`,
+> `docs/lya_destruction_channels.md` and `docs/transmission_spectrum.tex`, not as a description of
 > current behavior. Individual sections below are left uncorrected.
 
 This note collects the changes in atmospheric structure, ionization structure,
 mass-loss rate and observed spectrum that are expected once the physical
-processes proposed in `Huang_update_plan.md` (the extended metal set, Ly-alpha
+processes proposed (the extended metal set, Ly-alpha
 radiative transfer, the $H(n=2)$ excited state, the Roche potential and the
 boundary-condition update) are implemented in EXHALE.
 

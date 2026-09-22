@@ -2,8 +2,7 @@
 
 **2026-09-13: the runs these three cases were drawn from moved to
 `../archive_20260830/exhale/...` and the paths below follow them. They
-predate the code changes listed in `../MODELS.md` section 5 and are
-superseded by `../models/`; read `../MODELS.md` for the tree of record.**
+predate the later code changes and are superseded by `../models/`.**
 
 The three converged winds that carry the memo's headline result
 (`docs/lhs1140b_exhale_vs_pwinds.pdf`): the He I 10830 equivalent width of
@@ -14,10 +13,9 @@ their own equivalent-width crossing**, so each line matches the measured
 directly rather than by interpolation; the third isolates the metal effect
 at fixed composition. (The equivalent widths sit 0.2--0.4 sigma above the
 band center rather than on it: the post-process here carries the
-composition-resolved secondary-ionization branching of
-`docs/Update_EXHALE_stage1.md` sections 94-96, adopted after the crossings were
-solved, and at these helium-rich compositions it deepens the line by 0.7-1.2
-per cent. All five crossings have since been re-solved on it
+composition-resolved secondary-ionization branching adopted after the
+crossings were solved, and at these helium-rich compositions it deepens
+the line by 0.7-1.2 per cent. All five crossings have since been re-solved on it
 (`../archive_20260830/exhale/crossings_j96/results.txt`), and how far each moved depends on
 how steep its own ladder is: the scalar-base one goes from 1.6261 to 1.6108,
 0.9 per cent, while the flux-closure one goes from 9.048 to 8.212, 9.2 per
@@ -28,8 +26,7 @@ two branches, quoted as ~5.6 below from the compositions these three cases
 were solved at, is 5.1 on the re-solved crossings; the cases themselves are
 left where they were solved.) All use the GJ 1132 proxy spectrum
 (`../sed/lhs1140_sed_gj1132_at_b.txt`), binary H/He element diffusion at
-`K_zz = 1e9 cm2/s`, and the Garcia Munoz (2025) He(2^3S) rate
-(`docs/Update_EXHALE_stage1.md` section 87).
+`K_zz = 1e9 cm2/s`, and the Garcia Munoz (2025) He(2^3S) rate.
 
 | case | lower boundary | He/H | red-pair EW [%A] | log10 Mdot |
 |---|---|---|---|---|

@@ -6,8 +6,8 @@
 > `adv_comp_status`), the measure column `adv_mass_row`, the row decision
 > by the certification's face-flux mass operator against
 > `adv_conditional_tol = 1e-2`, and the header block `# adv_schema 2`. The
-> current description is in `README.md`, `README_HOWTO.md`, the user manual
-> section 4 and `docs/Update_EXHALE_stage2.md` (entries N11, N11b). The measured
+> current description is in `README.md`, `README_HOWTO.md` and the user manual
+> section 4. The measured
 > numbers below are of the old product and are kept for the record.
 
 2026-08-12. Files: `src/modules/post_process/post_process_adv.f90`,
@@ -123,8 +123,7 @@ and re-formed. The systems solve the whole H/He vector at once, so a cell may
 be pinned to equilibrium only when every population it solves is equilibrated.
 This condition originally read `Da = (dr/v) (P_HI + alpha_HII n_e)`, the
 hydrogen rate alone, which froze the far more slowly relaxing He(2^3S)
-metastable at its equilibrium value in cells where it is advected; the rates
-and the measured effect are in `Update_EXHALE_stage1.md` section 72.
+metastable at its equilibrium value in cells where it is advected.
 
 **(iii) `x_HII,eq < 1e-6` -- numerical.** The residuals carry the *neutral*
 fraction `x_HI` and the ion density is extracted as `(1 - x_HI) n_h`, so the
@@ -344,9 +343,7 @@ that was solved before.
 
 ### The refusal of a cell whose flow is not stationary
 
-**Added 2026-09-08** (decision 9 of `docs/To_be_determined_by_user_20260906.md`,
-option (a), which takes decision 14 / T8.1 of
-`docs/b1_target_system_20260906.md` section 8). The exact steady equation is
+**Added 2026-09-08.** The exact steady equation is
 correct on a stationary state and unbounded on any other, so the correction is
 now **refused** wherever its own assumption fails, and that cell keeps the run's
 own temperature and the ionization equilibrium at that temperature -- exactly
@@ -373,9 +370,7 @@ is matters only through the size of the term it puts into the equation, and the
 same `|dln F|` is negligible in one cell and dominant in another according to how
 large the two kept terms are there. MEASURED on `wasp_full`: the median
 cell-to-cell `|dln F|` is 5.5e-3 (ADV-STATIC) and the ratio exceeds one in 297 of
-503 cells, reaching 438. `src/tests/adv_static_limit` pins that distinction
-directly: the same divergence that gives a ratio of one gives 1/16 once the
-advected term is sixteen times larger.
+503 cells, reaching 438.
 
 **The refusal covers the composition as well as the temperature.** The
 ionization correction of a cell is the same kind of object, the steady
@@ -616,8 +611,7 @@ above are reproduced by the production runs recorded in this document.
 # Two more, 2026-08-29: a population solved as a difference, and an unread `info`
 
 Same file, same post-process, found the same way (a one-cell step in an `_adv`
-metastable profile). Full write-up, with the numbers: `Update_EXHALE_stage1.md`
-section 88.
+metastable profile).
 
 ## 3. The ground singlet was solved as a difference
 
@@ -691,11 +685,10 @@ ran with the coupling *off* and the post-process with it *on*, because
 
 Both are fixed (2026-08-30). The branching is now resolved on the cell's own
 neutral He/H ratio and returned per target atom, so nothing divides by a
-vanishing density (`svs85_secondary_branching`; `Update_EXHALE_stage1.md` section 96,
+vanishing density (`svs85_secondary_branching`;
 `TO_BE_DONE.md` item (J)), and `sec_ion_active` is armed before the loop when
 `do_only_pp` is set, so the one equilibrium solve of a PP-only run uses the same
-physics as the post-process beside it (`Update_EXHALE_stage1.md` section 94,
-`TO_BE_DONE.md` item (K)). On the control run the cells above 1.5 R_p with a
+physics as the post-process beside it (`TO_BE_DONE.md` item (K)). On the control run the cells above 1.5 R_p with a
 collapsed ground singlet go from 171 of 233 to none.
 
 Fixed in passing, outside the post-process: `LHS1140b/make_memo_figures.py` and

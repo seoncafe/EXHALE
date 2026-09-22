@@ -169,10 +169,9 @@
 	! stellar field does by more than this factor. The coupling is a CORRECTION
 	! to the direct photoionization integral, so it dominating by three decades
 	! is a statement that the on-the-spot budget has run away -- which is what
-	! the unweighted 1/n_HI of the earlier form did in a fully ionized cell
-	! (docs/supersonic_molecular_base.md section 12). Counted over cells and
-	! steps, like the positivity counters, and reported at the end of the run
-	! only when it is not zero.
+	! the unweighted 1/n_HI of the earlier form did in a fully ionized cell.
+	! Counted over cells and steps, like the positivity counters, and
+	! reported at the end of the run only when it is not zero.
 	real*8, parameter :: he_rec_dominant_ratio = 1.0d3
 	integer :: n_cells_he_rec_photoionization_dominant = 0
 	real*8  :: he_rec_photoionization_ratio_max = 0.0d0
@@ -269,9 +268,8 @@
 	! raises the LOCAL mean intensity of the scattered field and would
 	! double-count photons already removed if it were applied here.
 	!
-	! Section 2.6 of docs/a2_oxygen_option_design.md asks instead for the
-	! solved J_Lya(r) of lya_rt as B2's field. That remains the fuller
-	! treatment: it would also carry the internally generated Ly-alpha of
+	! The fuller treatment is instead the solved J_Lya(r) of lya_rt as B2's
+	! field: it would also carry the internally generated Ly-alpha of
 	! the recombination cascade, which a stellar transmission cannot. The
 	! band is reported separately in output/FUV_bands.txt so that a run
 	! whose oxygen chemistry turns on B2 can be read off.
@@ -846,8 +844,7 @@
 		! the cross section that acts locally is f*sigma as well.  Every
 		! integrand below is linear in exactly one cross section, so folding f
 		! once into the flux weight they share is identical to multiplying each
-		! cross section by it (docs/development_plan_20260905_rev3.md section
-		! 10.2 item 7).
+		! cross section by it.
 		!
 		! The attenuation is the MEAN over the cell, exp(-tau_out)
 		! (1 - exp(-dtau))/dtau, not the inner-face value: the rate of the
@@ -1168,8 +1165,7 @@
 		! absorbed energy must carry the same f, i.e. the cross section that
 		! acts locally is f*sigma too.  Every integrand below is linear in
 		! exactly one cross section, so folding f once into the flux weight
-		! they all share is identical to multiplying each cross section by it
-		! (docs/development_plan_20260905_rev3.md section 10.2 item 7).
+		! they all share is identical to multiplying each cross section by it.
 		!
 		! The attenuation is the MEAN over the cell, exp(-tau_out)
 		! (1 - exp(-dtau))/dtau, and not the inner-face value: the rate of
@@ -2184,8 +2180,7 @@
 		                             heat_chan(:,17))
 		heat = heat + heat_chan(:,17)
 
-		! The two CO destruction channels of the one-sided CO model
-		! (docs/b3b_co_destruction_design_20260906.md).  Both are formed
+		! The two CO destruction channels of the one-sided CO model are formed
 		! HERE and nowhere else, and both take their energy from the one
 		! formation-energy table, so they cannot state two different C=O
 		! bond energies.
@@ -2236,10 +2231,9 @@
 	! energy the energy equation is charged. Written a second time in the
 	! output module it can drift from the equation exactly as the three
 	! copies of the heating sum did, and that is what happened: until this
-	! routine existed the scanner
-	! src/tests/physics_probe/heating_sum_uniqueness.py had to record
-	! write_output.f90 as an exception. It is one file, one set of imports
-	! and one place those energies are read.
+	! routine existed the scanner had to record write_output.f90 as an
+	! exception. It is one file, one set of imports and one place those
+	! energies are read.
 	!
 	! WHAT IT IS NOT. It is not a second heating assembly. This is a sum over
 	! the GRID at fixed band; heating_of_composition is a sum over the BANDS
@@ -2705,7 +2699,7 @@
 	! cells. Every array keeps the explicit shape 1-Ng:N+Ng of the whole
 	! grid and only the elements j_lo:j_hi are read or written, so the
 	! compiled arithmetic of a cell is what the serial whole-array form
-	! produced (assumed-shape dummies moved it; Update_EXHALE_stage1.md 145).
+	! produced (assumed-shape dummies moved it; Update_EXHALE_stage1.pdf 145).
 	! ne, beta_fs and nbar_fs come in from eval_cool: they are not
 	! cell-local. ect returns this block's sub-block times.
 
@@ -2950,7 +2944,7 @@
 	!$    ect(2) = ect(2) + (omp_get_wtime() - ec_tstart); ec_tstart = omp_get_wtime()
 	!$ endif
 	! THE METAL BLOCKS RUN ONLY WHEN THE RUN CARRIES METALS.  Measured on the
-	! H/He hot Uranus (docs/marching_step_performance_plan.md): with every
+	! H/He hot Uranus: with every
 	! metal density identically zero, the metal table interpolations, the
 	! fine-structure transfer and the CNO cooling below were 79 per cent of
 	! this routine's time -- and this routine, called four times a step, was
@@ -3128,9 +3122,8 @@
 	! (HITEMP through the Photochem k-coefficients). Each is the NET rate --
 	! LTE emission minus absorption of the diluted B_nu(T0) the lower
 	! atmosphere presents -- so each vanishes at its own radiative equilibrium
-	! temperature instead of running the layer down to nothing. That fixed
-	! point is what docs/TO_BE_DONE.md item (G) asks for; the emission magnitudes
-	! alone would only deepen the collapse.
+	! temperature instead of running the layer down to nothing. The emission
+	! magnitudes alone would only deepen the collapse.
 	! Off by default (`Molecular IR bands`). The dilution is the same
 	! 0.5*base_sky_fraction the H3+ closure uses, and it is zero when
 	! `Base IR field` is off, which reduces the channels to pure emitters --
@@ -3488,9 +3481,8 @@
 	! ------------------------------------------------------------- !
 
 	! He recombination radiation ionizing H I and H2 (Draine 2011 on-the-spot
-	! emission, absorbed locally; docs/QUESTIONS_2026-07-17.md,
-	! docs/supersonic_molecular_base.md section
-	! 12). Given the pre-solve (lagged) densities and the rate coefficients,
+	! emission, absorbed locally). Given the pre-solve (lagged) densities and
+	! the rate coefficients,
 	! returns the He II recombination coefficient the ionization balance should
 	! use (rcheiiB_new), the extra H I and H2 photoionization rates [s^-1]
 	! (dP_HI, dP_H2), and the extra photoelectron heating [erg cm^-3 s^-1]

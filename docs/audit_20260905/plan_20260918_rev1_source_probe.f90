@@ -2,8 +2,8 @@
 ! argument list of the entry text it reviewed. Item D7a gave that routine a
 ! helium-row orientation argument and a cell-temperature guard, so this file
 ! no longer compiles against the tree; it is kept as the dated record of the
-! review's counterexample, which src/tests/charge_exchange_rows/ now carries
-! (the same Si I + He II numbers, RED on the entry text and GREEN after).
+! review's counterexample (the same Si I + He II numbers, RED on the entry
+! text and GREEN after).
 program plan_revision_source_probe
    ! Targeted calls to the unchanged production charge-exchange module.
    ! This is not an execution of the full atmosphere or ionization solver.

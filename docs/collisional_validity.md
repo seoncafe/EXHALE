@@ -2,8 +2,6 @@
 
 Tool: `src/utils/collisional_validity.py` (Python post-processing; it reads
 an existing run directory and changes nothing).
-Spec: `docs/lhs1140b_lower_atmosphere_plan_new.md`, Phase F item 4 and the
-baseline row 11 it enforces.
 
 A hydrodynamic wind solution is a continuum solution, and it is a solution
 of the physical problem only where the gas is collisional on the scale over
@@ -160,7 +158,7 @@ because the sound speed, the Mach number, the critical point and the
 structure scale are properties of the state that satisfies the momentum
 equation, and the `_adv` pair carries that state's density and velocity
 beside a temperature from a closure the momentum equation was never
-re-solved for (`docs/lhs1140b_stationary_L10_20260913.md` section 6).
+re-solved for.
 `--adv` reads the `_adv` pair instead, which is the question to ask of the
 COMPOSITION, since the mean free path is set by how much of the gas is
 neutral.  Until 2026-09-13 the default was the `_adv` pair and the flag was

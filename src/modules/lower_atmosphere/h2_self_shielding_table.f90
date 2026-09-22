@@ -117,7 +117,7 @@
       ! this same line list, these same LTE populations and this same
       ! frequency integral, with a single-flight escape probability under
       ! complete redistribution, so that only the set of ray columns over
-      ! solid angle differs (docs/e2_lw_geometry.md).  The plane-parallel
+      ! solid angle differs.  The plane-parallel
       ! trapping OVER-PREDICTS p_eff, by 0.2 per cent at r/H = 41 and by up
       ! to 20 per cent at r/H = 16, one-signed everywhere, and by 6.5 per
       ! cent weighted by the dissociation rate over a hot-Uranus molecular

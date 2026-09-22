@@ -90,10 +90,10 @@
 	write(outfile,*) ' ----- Simulation setup parameters -----'
 	write(outfile,*)
 	! WHAT THIS RUN IS DOING, and whether the input said so or the code took
-	! its default (docs/a0_run_mode_contract_20260906.md section 6). The
-	! default is init in every configuration: the ordinary run of this code
-	! relaxes to a stationary solution, which is initialization / continuation
-	! and claims no elapsed time. A physical integration is asked for, carries
+	! its default. The default is init in every configuration: the ordinary
+	! run of this code relaxes to a stationary solution, which is
+	! initialization / continuation and claims no elapsed time. A physical
+	! integration is asked for, carries
 	! a clock that advances only on an accepted global step, and says so in
 	! the header of the state it writes.
 	if (run_mode .eq. run_mode_phys) then
@@ -341,8 +341,7 @@
 		endif
 	endif
 	! WHAT IS KNOWN ABOUT THE CONFIGURATION THE LOADED STATE WAS PRODUCED
-	! UNDER, and what this run was allowed to change about it
-	! (docs/restart_contract_design_20260909.md section 3, decision 21).
+	! UNDER, and what this run was allowed to change about it.
 	! A state whose configuration cannot be compared with this run's is not
 	! a state this run can be held to, and a state reloaded under changed
 	! physics options is a starting point and not a solution: both are
@@ -502,7 +501,7 @@
 	! Resolution of the base density scale height H = kT_eq/(mu g) in cells:
 	! b0 = R_p/H(T_eq) is the Jeans parameter, dr_j(1) the first cell size
 	! after the Mixed-grid smoothing. Below ~5 cells per H the scheme carries
-	! an undamped stationary 2*dr entropy mode (docs/hd189_base_checkerboard.md).
+	! an undamped stationary 2*dr entropy mode.
 	write(outfile,17) '- Base scale-height resolution: H(T_eq)/dr = ',      &
 		1.0d0/(b0*dr_j(1)), ' cells'
 	if (1.0d0/(b0*dr_j(1)) .lt. 10.0d0)                                     &
@@ -909,8 +908,8 @@
 	! overrides (r_base/T_base/HeH_base) are resolved.  Consumers
 	! (EXHALE_transit.py) read these values instead of re-parsing input.inp,
 	! so a base.inp override of the radius/temperature/He ratio reaches the
-	! transit geometry as well (docs/lhs1140b_lower_atmosphere_plan_new.md,
-	! Phase B).  Format: '# ' comments, then one 'key  value' pair per line.
+	! transit geometry as well.  Format: '# ' comments, then one
+	! 'key  value' pair per line.
 	integer :: u, ie
 	logical :: base_present
 	! Domain record of the one-sided CO destruction model over the run so
@@ -1058,10 +1057,10 @@
 	! closure driver and element_budget.py read one authority for which
 	! solution the wind was built on.
 	call lap_report_provenance(u)
-	! The elemental fluxes measured over the overlap window (section 3.4 of
-	! docs/phase_e_flux_closure_design.md). Reported only when a diffusion
-	! step has actually produced them: this routine also runs before the wind,
-	! and an unmeasured flux must say so rather than print a zero.
+	! The elemental fluxes measured over the overlap window. Reported only
+	! when a diffusion step has actually produced them: this routine also
+	! runs before the wind, and an unmeasured flux must say so rather than
+	! print a zero.
 	if (lap_in_use) then
 		if (.not. lap_flux_measured) then
 			write(u,'(A)') 'lower_profile_flux_state  unmeasured'
@@ -1166,8 +1165,7 @@
 	! wide enough for the sign of the value and a three-digit exponent of
 	! either sign (ES24.17E3 is not: it fills with asterisks for a negative
 	! value). Both signs, zero, the exponent range and the parse back to the
-	! same bits are asserted by
-	! src/tests/grid_and_gates/base_cell_width_provenance.f90.
+	! same bits have been verified.
 	real*8, intent(in) :: val
 	character(len=26)  :: s
 	write(s,'(ES26.17E3)') val

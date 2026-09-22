@@ -40,7 +40,7 @@
       ! composition, the heating and the cooling remain double: what is
       ! evaluated here is the arithmetic of the finite-volume operator on a
       ! given composition, which is where the residual's non-smoothness
-      ! floor is (docs/Update_EXHALE_stage2.md item N33: the Roe flux of a face in
+      ! floor is (docs/Update_EXHALE_stage2.pdf item N33: the Roe flux of a face in
       ! the near-hydrostatic base layer is built from state jumps 3e5 to
       ! 6e6 times smaller than the states, so it carries the last bit of
       ! O(1) quantities, and the row divides the flux difference by the cell

@@ -102,10 +102,10 @@
                                         carrier_mass_amu,              &
                                         carrier_advective_divergence,  &
                                         carrier_diffusion_coefficient
-      ! The acceptance contexts of docs/a2_certification_contract_20260906.md
-      ! section 3. The probe and the trial decisions are taken there, on the
-      ! facts one residual evaluation records, so that this solver and the
-      ! marching stop read ONE statement of what makes a state usable.
+      ! The acceptance contexts. The probe and the trial decisions are taken
+      ! in the certification module, on the facts one residual evaluation
+      ! records, so that this solver and the marching stop read ONE statement
+      ! of what makes a state usable.
       use certification,          only: cert_evaluation_facts,          &
                                         trial_state_is_admissible,      &
                                         probe_direction_is_usable,      &
@@ -598,7 +598,7 @@
       integer :: ldab_normal   = 49
 
       ! HOW A PROBE STATE THAT CANNOT BE DESCRIBED IS ANSWERED
-      ! (docs/Update_EXHALE_stage1.md section 121).
+      ! (docs/Update_EXHALE_stage1.pdf section 121).
       !
       ! The Jacobian columns and the Krylov products are directional
       ! derivatives OF THE RESIDUAL AT Y. The point Y + h*v at which they are
@@ -665,7 +665,7 @@
       ! It is applied only where `admissible` is asked for, so the marching
       ! path and the current iterate are untouched.
       !
-      ! Grounds (docs/Update_EXHALE_stage1.md section 138; measurement P49). On the
+      ! Grounds (docs/Update_EXHALE_stage1.pdf section 138; measurement P49). On the
       ! hot Uranus hand-off the solve spent 66 iterations driving the layer at
       ! 1.19-1.23 R_p from 3.5e-14 to 7.7e-16 g cm^-3 and from 900 K to
       ! 65,000 K while ||R|| improved from 8.2e-2 to 2.8e-2. What held that
@@ -684,8 +684,8 @@
       ! Direct measurement on the HD 209458 b hand-off state does not support
       ! that: R(2,1) is a four-order cancellation of gravity against the
       ! pressure gradient whose remainder is 6.5e-5 of the gravity term, and a
-      ! 2.9 ppm change of the ghost pressure drives it to zero
-      ! (docs/newton_scaling_and_base_wall.md). The option is kept as an
+      ! 2.9 ppm change of the ghost pressure drives it to zero. The option is
+      ! kept as an
       ! experiment, not as a remedy for a base that cannot be solved.
       ! Trial states this solve refused because a cell of their chemistry was
       ! not a root of the network (see eval_residual). Counted here
@@ -1391,8 +1391,7 @@
       ! 7.9e-4 of its right-hand side in one product and left 2.6e+05 of the
       ! mass row and 2.0e+05 of the momentum row of the same state, whose
       ! measures stood at 5.0e-9 and 4.2e-13 against tolerances of 3e-12 and
-      ! 1e-8; the step then raised the mass row to 1.2e-2
-      ! (docs/lhs1140b_stationary_L4d_20260913.md section 5, MEASURED).
+      ! 1e-8; the step then raised the mass row to 1.2e-2 (MEASURED).
       !
       ! WHAT THE SCALE IS. Row k of cell j is divided by tol_k(j) s_k(j),
       ! s_k the scale the certification divides that row by
@@ -1424,8 +1423,7 @@
       ! cost is measured too: the HD 209458 b element reload certifies at
       ! outer pass 12 instead of 11, its second pass ending on "no descent
       ! direction exists" at ||R|| 6.3e-01 and the element relaxation
-      ! halving omega for the rest of the solve
-      ! (docs/lhs1140b_stationary_L4e_20260914.md sections 4 and 6).
+      ! halving omega for the rest of the solve.
       logical :: judged_row_scaling_on = .false.
       ! AND WHETHER THE KRYLOV CYCLE IS ASKED TO STOP INSIDE THE
       ! TOLERANCES RATHER THAN AT A FRACTION OF THE RESIDUAL IT STARTED
@@ -1449,7 +1447,7 @@
       ! subspace exhausted at one product and the solve stops on "no
       ! descent direction exists" at the sixth iteration of the pass-8
       ! state where the entry text ground sixty and returned the same
-      ! state (docs/lhs1140b_stationary_L4e_20260914.md sections 4 and 5).
+      ! state.
       logical :: krylov_stops_inside_the_tolerances = .false.
 
       ! WHETHER THE MERIT OF THE THREE-UNKNOWN ROUTE IS READ ON THE ROW
@@ -1464,7 +1462,7 @@
       ! state column scales (cell_state_scales) while the gate is
       ! max_k,j |F| / (tol_k s_k): two functionals, and a rule that bounds
       ! the first bounds nothing about the second. MEASURED on the LHS 1140 b
-      ! 0.02-XUV state (docs/lhs1140b_stationary_L17_20260915.md section 3):
+      ! 0.02-XUV state:
       ! the linear cycle reaches its forcing term and leaves the continuity
       ! row of the base cell at 1.7 and the energy row at 21 times the value
       ! each entered the step with, while the 2-norm it minimizes falls.
@@ -1569,8 +1567,7 @@
       ! shift: on the molecular seed at 1.2 R_p the accepted steps are
       ! lam = 2e-3 and dtau doubles through them to its 1e14 ceiling in about
       ! forty iterations, after which the solve is the unshifted Newton on a
-      ! state it is not near and the residual stands at 1.77
-      ! (docs/lhs1140b_stationary_L7d_20260914.md section 3). The ratio form
+      ! state it is not near and the residual stands at 1.77. The ratio form
       ! was implemented on the line-search merit (it is what the entry text
       ! ran on) and on the judged distance from certification, and MEASURED
       ! on the LHS 1140 b wind with the C, N and O reservoirs neither ramps. The merit falls by a few percent an
@@ -1599,8 +1596,8 @@
 
       ! THE STEP LENGTH AT WHICH AN ACCEPTED STEP STILL COUNTS AS A FULL ONE
       ! for the ramp above. The line search halves, so 0.5 is "the full step,
-      ! or one backtrack": MEASURED on the two regimes this rule has to serve
-      ! (docs/lhs1140b_stationary_L7d_20260914.md section 3), the LHS 1140 b
+      ! or one backtrack": MEASURED on the two regimes this rule has to
+      ! serve, the LHS 1140 b
       ! C/N/O pass-8 state takes lam = 0.5 on its first six accepted steps
       ! and lam = 1 on every one after, while the molecular seed 1.2 R_p
       ! state runs lam down through 0.25, 0.125, 6.3e-2 to 2.0e-3 once the
@@ -1616,7 +1613,7 @@
       ! search can make as small as 2^-20, while the growth of a full step is
       ! clipped at two. One short accepted step therefore undoes up to twenty
       ! doublings. MEASURED on the 0.02-XUV rung of the LHS 1140 b He/H = 2.13
-      ! column (docs/lhs1140b_stationary_L4h_20260915.md section 3): outer
+      ! column: outer
       ! pass 39 enters at dtau = 1e+08 and reaches the explicit-stable floor
       ! 7.93e-05, twelve decades below, in 59 iterations through a run of
       ! accepted steps of lam = 3.1e-2, 7.8e-3 and 2.4e-4; the merit falls by
@@ -1697,8 +1694,7 @@
       logical :: ptc_ramp_guard_on = .true.
       ! AND THE GROWTH GATE OF STATEMENT (3), WHICH IS OFF
       ! (ptc_growth_gate_on, EXHALE_PTC_RAMP_GROWTH_GATE=1 turns it on).
-      ! MEASURED on the LHS 1140 b C/N/O column
-      ! (docs/lhs1140b_stationary_L4h_20260915.md section 5.5): a residual
+      ! MEASURED on the LHS 1140 b C/N/O column: a residual
       ! progress test cannot separate the two regimes of this ramp. The near
       ! states the doubling exists for carry a merit that hovers within a
       ! tenth of its entry value for the first iterations while ||R|| halves,
@@ -1718,7 +1714,7 @@
       ! that bought this much is a transient the pseudo-time should follow
       ! down; a step that bought less is telling us the pseudo-time is not
       ! what is wrong, and it is held. MEASURED at 1e-3, 1e-2 and 1e-1 on
-      ! both fixtures (docs/lhs1140b_stationary_L4h_20260915.md section 5.7).
+      ! both fixtures.
       real*8 :: ptc_damped_progress_min = 1.0d-2
 
       ! THE MULTIPLE OF THE EXPLICIT-STABLE INTERVAL BELOW WHICH A FURTHER
@@ -1789,7 +1785,7 @@
 
       ! THE OPERATOR THE LINEAR SOLVE IS MEASURED ON.
       !
-      ! src/tests/krylov_and_dogleg drives the production Krylov cycle with
+      ! A test driver drives the production Krylov cycle with
       ! a dense operator and an identity preconditioner that the test states
       ! itself, so that each named outcome of the cycle is read from the
       ! routine the solver runs and not from a copy of its text. With no
@@ -2525,8 +2521,8 @@
       ! -- scaling this system by those quantities as well, the mass row's
       ! varying by a factor 9 across the first two cells, left the molecular
       ! hot-Uranus solve with no descent direction after 179 iterations against
-      ! 9 for the measure-only build (docs/p54_base_layer_mass_flux.md section
-      ! 10.4). The unknowns keep the scales below; the rows do not.
+      ! 9 for the measure-only build. The unknowns keep the scales below; the
+      ! rows do not.
       !
       ! It sets the finite-difference step sizes, the scaled Newton system
       ! D^-1 J D, and the line-search merit ||D^-1 F||_2.
@@ -2642,8 +2638,8 @@
       ! the ATOMIC ELEMENT reload stops with no descent at ||R|| = 1.777
       ! against the 7.4e-2 the state scaling reaches, its row scales
       ! spanning 3.7e-10 to 92.7 and dgbcon 7.3e-8 -> 8.9e-10 -- the failure
-      ! docs/p54_base_layer_mass_flux.md section 10.4 measured for this
-      ! scaling, with a corrected trust region. The freedom left is the
+      ! measured for this scaling, with a corrected trust region. The freedom
+      ! left is the
       ! COLUMN scaling D, which is not this routine's.
       !
       ! THE THREE-UNKNOWN ROUTE IS UNTOUCHED, and by construction rather
@@ -3883,7 +3879,7 @@
       ! caller that is PROBING -- a Krylov direction, a Jacobian column, a
       ! line-search trial -- must not put such a residual into its Newton
       ! model; the marching loop never asks and is unaffected
-      ! (docs/Update_EXHALE_stage1.md section 121).
+      ! (docs/Update_EXHALE_stage1.pdf section 121).
       logical, optional,                       intent(out)   :: admissible
       ! Whether the caller could ADOPT this state. A line-search or damped
       ! Gauss-Newton candidate could; a Jacobian color or a Krylov
@@ -5621,7 +5617,7 @@
       ! direction solves (I/dtau + A) dZ = -s -- an implicit Euler step, not a
       ! minimizer of m -- and on the He/H = 0.3 hand-off state it points
       ! UPHILL at every damping, including the dtau -> 0 limit dZ = -s, which
-      ! is uphill exactly when s^T A s < 0 (docs/Update_EXHALE_stage1.md section
+      ! is uphill exactly when s^T A s < 0 (docs/Update_EXHALE_stage1.pdf section
       ! 126). The damped Gauss-Newton family above descends for every mu, so
       ! what is left is choosing mu, and that is a one-dimensional search
       ! along the Levenberg-Marquardt curve: walk mu down by decades from a
@@ -5779,8 +5775,7 @@
       ! and a row that refuses in one cell and a row that refuses in 499 are
       ! different states behind the same line: on the pass-8 entry state of
       ! the LHS 1140 b C/N/O case the energy row named cell 500 and stood
-      ! outside 1e-6 in 499 of the 500 cells
-      ! (docs/lhs1140b_stationary_L4f_20260913.md section 4). They are taken
+      ! outside 1e-6 in 499 of the 500 cells. They are taken
       ! from the quantities this routine has already formed, so that no
       ! state is assembled twice to count what one sweep can count.
       integer, dimension(3), optional, intent(out) :: n_outside, cell_outside
@@ -5908,8 +5903,7 @@
       ! the continuity tolerance and the tolerance of no particular cell,
       ! reports 333 where the condition the acceptance applies is 3.3; it
       ! stands at or above this distance, by the ratio of the cell's floor to
-      ! 3e-12, MEASURED at up to 3.2e+03 on the HD 209458 b base layer
-      ! (docs/certification_tolerance_anchoring_20260910.md, anchor 6).
+      ! 3e-12, MEASURED at up to 3.2e+03 on the HD 209458 b base layer.
       !
       ! THE TOLERANCE IS A FUNCTION OF THE STATE, through the floor, so two
       ! iterates are each ranked against the arithmetic of their own base
@@ -7175,8 +7169,7 @@
       ! cell j, which is how the curve is read at the cell that BINDS a
       ! solve: the least error there is the smallest row measure a Newton
       ! step can resolve at that cell, and no tolerance below it is
-      ! reachable by this method whatever the state
-      ! (docs/certification_tolerance_anchoring_20260910.md).
+      ! reachable by this method whatever the state.
       jcell_test = 1
       call get_environment_variable('EXHALE_JAC_TEST_CELL', env)
       if (len_trim(env) .gt. 0) then
@@ -7587,8 +7580,7 @@
            ' of cells ', jlo, ' to ', jhi
       ! The two numbers are the SCALARS the direction is multiplied by, not
       ! the displacements: the state moves by eps1*||v|| and eps2*||v||. A
-      ! reader that gates on an arc has to know which of the two it holds
-      ! (src/tests/coupled_block_jacobian/README.md states it the same way).
+      ! reader that gates on an arc has to know which of the two it holds.
       write(u_out,'(A,ES14.7,A,ES14.7)') '# probe scalar ', eps1,         &
            '  second scalar ', eps2
       write(u_out,'(A,ES14.7,A,I0)') '# fraction to the boundary of'//    &
@@ -7843,8 +7835,7 @@
       ! STOPS FOR SUCCESS AT STATES THE ACCEPTANCE REFUSES: MEASURED on the
       ! molecular partitioned run, three hydrodynamic solves stopped at
       ! ||R|| below 1e-8 and were refused at return with mass rows
-      ! 5.95e-12, 8.00e-12 and 4.99e-12 against 3e-12
-      ! (docs/solver_partition_experiment_20260911.md section 7.3).
+      ! 5.95e-12, 8.00e-12 and 4.99e-12 against 3e-12.
       !
       ! So this is the same evaluation and the same formula the acceptance
       ! at return makes: certification_evaluate builds the report of the
@@ -10480,8 +10471,7 @@
       subroutine freeze_element_constraint_rows(Y, f_sp, D)
       ! THE SHARED ELEMENT BUDGET OF EVERY CELL AS A LINEARIZED ROW OF THIS
       ! STEP, formed once from the iterate and from the budget the carrier
-      ! operator froze at that same iterate (item N4b, decision 14 route
-      ! (i); docs/constrained_step_design_20260909.md section 2).
+      ! operator froze at that same iterate (item N4b, decision 14 route (i)).
       !
       ! WHAT THE ROW IS. For each element a carrier of the cell holds,
       !
@@ -11460,8 +11450,7 @@
          ! sweep, so a state resting on a cell without a chemical root
          ! cannot be declared solved here -- AND every row the
          ! certification judges this system by, each against its own
-         ! tolerance. The gate alone is not the acceptance (D3,
-         ! docs/solver_partition_experiment_20260911.md section 7.3): it
+         ! tolerance. The gate alone is not the acceptance (D3): it
          ! reads one number against the run's "Resid tol" while the mass
          ! row is certified against 3e-12. When the gate is met and a
          ! certified row is not, the state is not a solution of the
@@ -15641,8 +15630,7 @@
       ! numbers, and the old length does not minimize the model and need not
       ! even decrease it: with r0 = 1, A = 1 and a band of 10 the merit at
       ! the point it returns is 40.5 against 0.5 at the iterate, while the
-      ! minimizer reaches 0 (src/tests/krylov_and_dogleg, row
-      ! approximate_gradient_length_decreases_the_model; R2).
+      ! minimizer reaches 0 (R2).
       !
       ! The point is therefore an APPROXIMATE DESCENT POINT of the model
       ! along a direction the band supplies, and not the Cauchy point of an
@@ -15918,7 +15906,7 @@
       !
       ! WHY. The pseudo-transient line search controls the step by a
       ! pseudo-time and then asks the merit whether the result is acceptable.
-      ! Measured (docs/Update_EXHALE_stage1.md section 142), on the coupled hot
+      ! Measured (docs/Update_EXHALE_stage1.pdf section 142), on the coupled hot
       ! Uranus that control fails in a specific way: the step it builds is an
       ! ASCENT direction of the merit in the model's own arithmetic from outer
       ! iteration 5 onward, because the I/dtau term's contribution to the
@@ -17119,9 +17107,8 @@
       ! MOVE. The merit the line search descends on is || F/D ||_2 with D
       ! rebuilt from every iterate, so two of its values are two norms and
       ! their ratio carries the change of scale as well as the change of
-      ! state: MEASURED on the reproduction of
-      ! docs/lhs1140b_stationary_L4d_20260913.md, one re-evaluation of the
-      ! SAME state reported 3.18e-2 and 1.97e-2 across a rebuild of the
+      ! state: MEASURED, one re-evaluation of the SAME state reported 3.18e-2
+      ! and 1.97e-2 across a rebuild of the
       ! scales, a factor 1.6 with the state untouched. Dfix is the column
       ! scale of the state this solve was entered at, held for the life of
       ! the solve, and f2_fixed is the merit in it; the history below is kept
@@ -17166,7 +17153,7 @@
       logical :: monotone_search
       ! Stagnation limit: consecutive outer iterations in which the line
       ! search found NO acceptable step at all. Measured on the HD 209458 b
-      ! hand-off state (docs/newton_scaling_and_base_wall.md): runs that go on
+      ! hand-off state: runs that go on
       ! to converge never string more than 4 such iterations together, runs
       ! that are truly stuck string 34 or more.
       integer, parameter :: n_no_descent_max = 12
@@ -17195,7 +17182,7 @@
       ! continuity row five to seven decades against a 3e-12 tolerance before
       ! it comes back down. The count would then fire on a solve that is
       ! descending; it is the merit that says whether it is (see the reset
-      ! below, and docs/lhs1140b_stationary_L4b_20260913.md section 4).
+      ! below).
       !
       ! WHERE 20 COMES FROM. Over every solve of the P50 campaign that ended
       ! info = 0 on a configuration that survived measurement, the largest
@@ -17477,7 +17464,7 @@
       ! -- Jacobian columns, Krylov products, line-search trials -- is not,
       ! and is tagged separately so that the acceptance ledgers, the non-root
       ! streak and its stop are not written by states no one adopted
-      ! (docs/Update_EXHALE_stage1.md section 121).
+      ! (docs/Update_EXHALE_stage1.pdf section 121).
       call set_ioniz_eq_sweep_state_kind(ieq_state_steady_iterate)
       ! The invariant the acceptance of this solve rests on, measured on the
       ! hand-off state when it is asked for. Its sweeps are the solver's and
@@ -17563,9 +17550,7 @@
       ! maximum over rows and over the two regions of volume-weighted ratios
       ! taken on the scale each region's physics sets (residual_row_scale).
       ! So the iterate with the smallest ||R|| still need not be the last one
-      ! -- handled at the end of this routine, not by changing the merit
-      ! (docs/newton_scaling_and_base_wall.md section 4,
-      ! docs/hd209_metal_stagnation.md).
+      ! -- handled at the end of this routine, not by changing the merit.
       if (merit_is_on_the_model_row_scaling()) then
          f2 = sqrt(sum((F/Drow)**2))  ! merit in the SCALED space
       else
@@ -17652,8 +17637,7 @@
          ! tolerance. The gate alone is not the acceptance: it reads one
          ! number against the run's "Resid tol" while the certification
          ! reads the mass row against 3e-12, so a solve stopping on the
-         ! gate stops at states the return then refuses (D3,
-         ! docs/solver_partition_experiment_20260911.md section 7.3). When
+         ! gate stops at states the return then refuses (D3). When
          ! the gate is met and a certified row is not, the state is not a
          ! solution and the iteration goes on.
          !
@@ -18155,8 +18139,7 @@
          ! ITS FLOOR. The cycle minimizes the 2-norm of the SCALED residual,
          ! and where the rows stand decades apart in that one vector -- energy
          ! rows at 3.7e-2 with continuity rows at 2.1e-9, MEASURED on the
-         ! LHS 1140 b wind with the C, N, O reservoirs
-         ! (docs/lhs1140b_stationary_L4b_20260913.md section 4) -- the tenth
+         ! LHS 1140 b wind with the C, N, O reservoirs -- the tenth
          ! the cycle is allowed to leave costs nothing in the norm it is
          ! measured in and everything in the continuity rows the
          ! certification then reads against 3e-12. The excursion is first
@@ -18251,8 +18234,8 @@
          ! inner Newton model minimizes -- is a different measure: on the
          ! HD 189733 b hand-off state the two differ by a median factor 2.2 at
          ! lam = 1, and 7 of the 14 steps the frozen test accepted RAISED the
-         ! true residual, by up to 9x (docs/newton_scaling_and_base_wall.md
-         ! §10). Mode 0 leaves the stored weights alone, so the frozen model of
+         ! true residual, by up to 9x. Mode 0 leaves the stored weights alone,
+         ! so the frozen model of
          ! this outer iteration survives the search.
          ! Armijo after a stagnation restart: descent against the merit of
          ! the state the search starts from, not against the worst of the
@@ -18350,7 +18333,7 @@
          ! stagnation counter fires (11 identical repetitions, measured on the
          ! He/H = 0.3 hand-off state). What is wrong there is the DIRECTION,
          ! so a direction that is guaranteed downhill is built instead
-         ! (docs/Update_EXHALE_stage1.md section 126). While dtau is still above its
+         ! (docs/Update_EXHALE_stage1.pdf section 126). While dtau is still above its
          ! floor the reduction below does change the next iteration, and the
          ! PTC ramp is left to do its work.
          endif   ! .not. use_tr -- the trust region replaces the search
@@ -18493,8 +18476,7 @@
                   ! alone, so it runs through states whose residual is
                   ! standing still and removes its own shift: MEASURED on the
                   ! 0.01-XUV columns of LHS 1140 b the pseudo-time reaches its
-                  ! 1e14 ceiling while ||R|| stands at 1.9
-                  ! (docs/lhs1140b_stationary_L4h_20260915.md section 3.3).
+                  ! 1e14 ceiling while ||R|| stands at 1.9.
                   ! The gate below is the test the stagnation counter reads,
                   ! taken on the state just adopted: the merit in the FIXED
                   ! scale of this solve, against the value that same norm had
@@ -18506,7 +18488,7 @@
                   ! TWO REGIMES, MEASURED (section 5.5 of the same memo). The
                   ! near states this ramp exists for move their merit as
                   ! little per iteration as the flat ones do: on the
-                  ! LHS 1140 b C/N/O column the per-step ratio form leaves
+                  ! LHS 1140 b C/N/O column the ratio form leaves
                   ! dtau at 1.13 where the plain doubling is at 2 and 4 --
                   ! which is L4g's own measurement of the
                   ! EXHALE_PTC_RAMP_DOUBLE=0 branch -- and this window gate
@@ -18531,9 +18513,8 @@
                   ! AND IT IS TAKEN ONLY WHERE THE STEP BOUGHT SOMETHING
                   ! (statement 2). A DAMPED STEP MEANS TWO DIFFERENT THINGS
                   ! and a fixed floor cannot tell them apart, MEASURED on the
-                  ! two fixtures of this item
-                  ! (docs/lhs1140b_stationary_L4h_20260915.md sections 5.2
-                  ! and 5.3): on the HD 209458 b element reload the damped
+                  ! two fixtures of this item: on the HD 209458 b element
+                  ! reload the damped
                   ! steps at small dtau move nothing -- the merit and the
                   ! state stand at the printed digits while the pseudo-time
                   ! falls twelve decades -- and the cut is simply wrong
@@ -18572,9 +18553,7 @@
          ! DECIDED. What separates the two things a damped step can mean is
          ! not whether it progressed and not how far the pseudo-time has
          ! come, but WHERE dtau STANDS RELATIVE TO THE EXPLICIT-STABLE
-         ! INTERVAL, both MEASURED on the fixtures of this item
-         ! (docs/lhs1140b_stationary_L4h_20260915.md sections 5.2, 5.3 and
-         ! 5.7):
+         ! INTERVAL, both MEASURED on the fixtures of this item:
          !
          !   dtau >> dt_CFL: the shift still shapes the step, so a damped
          !     step that bought nothing is the statement that dtau is too
@@ -18698,8 +18677,8 @@
          ! best judged iterate by construction and no trial can improve on it
          ! however far the merit falls. MEASURED on the LHS 1140 b wind with
          ! the C, N, O reservoirs, the state the partitioned outer loop hands
-         ! its second pass (docs/lhs1140b_stationary_L4b_20260913.md section
-         ! 4): over the 40 iterations the count stopped the solve after, the
+         ! its second pass: over the 40 iterations the count stopped the solve
+         ! after, the
          ! judged distance never improved on its 3.685e+04 entry while the
          ! merit fell from 1.50e-2 to 3.15e-3 and was still falling.
          !
@@ -18722,7 +18701,7 @@
          ! window then does not enter at all.
          !
          ! The margin merit_fall_min separates two MEASURED regimes of this
-         ! route (docs/lhs1140b_stationary_L4d_20260913.md section 3): a
+         ! route: a
          ! window of a solve that goes on to certify falls by 25 to 35
          ! percent, and a window of the grind that the same loop's later
          ! passes fall into falls by 6 percent while the state is four
@@ -18859,8 +18838,7 @@
          ! Count consecutive such iterations. (A watchdog on rnorm instead
          ! cannot work here: the solver minimizes the merit, not rnorm, and
          ! the opening pseudo-transient legitimately raises rnorm for ~30
-         ! iterations while it repairs the sub-sonic region -- see
-         ! docs/newton_scaling_and_base_wall.md.)
+         ! iterations while it repairs the sub-sonic region.)
          if (ok) then
             n_no_descent = 0
          else
@@ -19030,7 +19008,7 @@
       ! nonetheless produced a state that satisfies the code's own convergence
       ! criterion -- reporting it as a failure throws that state away and sends
       ! the caller back to time-marching (measured on examples/16: a 3.958e-5
-      ! iterate discarded at iteration 2, docs/hd209_metal_stagnation.md).
+      ! iterate discarded at iteration 2).
       call unpack_U(Y, u);  call Apply_BC(u)
       gates_now = steady_gates_met(rnorm, u, resid_tol, fspread,        &
                           nspec_row .gt. 0, carrier_relnorm_state)
@@ -19143,7 +19121,7 @@
       endif
       ! The frozen background the carrier transport reads must describe the
       ! state handed back, not the last state this solve happened to evaluate
-      ! (docs/Update_EXHALE_stage1.md section 121).
+      ! (docs/Update_EXHALE_stage1.pdf section 121).
       call install_background_of_adopted_state
       gate_rnorm_accepted = rnorm;  gate_fspread_accepted = fspread
       write(*,'(A,I0,A,ES11.3,A,ES10.3,A,I0,A,I0)')                      &
@@ -19336,8 +19314,8 @@
       ! first and then fell through to the carrier row, so a state that met the
       ! residual gate and missed the other two printed "the CARRIER gate is the
       ! one left" while the flux gate was also unmet, by a factor 4.9.
-      ! Measured on the 1 microbar hot Uranus (docs/p23_transport_on_state.md
-      ! section 6): ||R|| = 1.547e-6 against 1e-5, carrier row 7.535e-3 against
+      ! Measured on the 1 microbar hot Uranus:
+      ! ||R|| = 1.547e-6 against 1e-5, carrier row 7.535e-3 against
       ! 1e-3, flux spread 2.447e-2 against 5e-3 -- two gates left, one named.
       ! One line per unmet gate says what is true whichever combination occurs.
       if (info .ne. 0) then

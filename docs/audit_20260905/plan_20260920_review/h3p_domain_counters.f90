@@ -1,7 +1,7 @@
 ! Focused probe of the production H3+ module AS IT STOOD ON 2026-09-20.
 !
 ! IT NO LONGER COMPILES, AND THAT IS THE RECORD. This program demonstrated
-! defect 10.2 of docs/PLAN_20260920_rev9.md by asserting the counts the
+! a defect by asserting the counts the
 ! module then produced: a temperature exactly at the valid lower endpoint of
 ! the fit (30 K) and exactly at the first non-LTE table row (300 K) were each
 ! counted as outside the domain, and a nonfinite argument was counted as
@@ -12,10 +12,6 @@
 ! gone and its assertions state the defective behavior.
 !
 ! It is kept unchanged as the evidence that was inherited by that review.
-! The assertions that hold today are in
-! src/tests/physics_probe/h3p_cooling_limits.f90, which tests both endpoints,
-! the value one unit in the last place below each of them, and the nonfinite
-! arguments.
 program h3p_domain_counters
   use h3p_cooling
   implicit none

@@ -151,6 +151,5 @@ sub-Lyman band.
 
 **Reruns are a separate instruction.** Nothing here was re-run, re-converged
 or deleted, and neither the LaRT cases built from `output/` nor the `insitu_*`
-products were touched. Producing a wind under this input is a D-physical step
-of `docs/PLAN_20260906_rev2.md` section 3, gated on its own prerequisites and
-on an explicit instruction.
+products were touched. Producing a wind under this input is a D-physical step,
+gated on its own prerequisites and on an explicit instruction.

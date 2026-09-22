@@ -3,8 +3,7 @@ module energy_semi_implicit
    ! composition and fixed heating.
    !
    ! WHERE IT SITS.  Since B3c this is the INNER step of the coupled
-   ! temperature-composition source step of
-   ! docs/b1_target_system_20260906.md T1.6: the marching loop alternates it
+   ! temperature-composition source step: the marching loop alternates it
    ! with the composition sweep until the pair stops moving, so the
    ! composition is fixed for one pass and not for the step.  Two things
    ! follow, and both are optional arguments of solve_energy_semi_implicit
@@ -86,9 +85,8 @@ module energy_semi_implicit
    ! Status of the temperature solve of one cell, and of the update as a
    ! whole (the worst cell). Reported through the optional `status` argument
    ! of solve_energy_semi_implicit and through energy_update_last_status, so
-   ! the physical-step context of docs/a2_certification_contract_20260906.md
-   ! section 3 and the B3a controller can read a verdict rather than infer
-   ! one from the returned numbers.
+   ! the physical-step context and the B3a controller can read a verdict
+   ! rather than infer one from the returned numbers.
    integer, parameter :: ENERGY_UPDATE_OK         = 0
    integer, parameter :: ENERGY_UPDATE_ITER_CAP   = 1
    integer, parameter :: ENERGY_UPDATE_NO_BRACKET = 2
@@ -195,7 +193,7 @@ module energy_semi_implicit
    ! balance asks for a temperature below the range where the equation of
    ! state and the chemical network are defined, and at 0.01 T0 almost any
    ! composition satisfies its reaction balance
-   ! (docs/Update_EXHALE_stage1.md section 113). These now count floor
+   ! (docs/Update_EXHALE_stage1.pdf section 113). These now count floor
    ! FAILURES, that is attempts: no accepted state sits on the floor, because
    ! the clamp that used to produce one is gone.
    !   hits        total activations over the run
@@ -203,8 +201,7 @@ module energy_semi_implicit
    !   cell_hits   activations of each cell, so the number of DISTINCT cells
    !               that ever touched the floor can be reported
    integer, save :: n_energy_floor_hits = 0
-   ! The same activations split by ledger family
-   ! (docs/a0_run_mode_contract_20260906.md section 5): index
+   ! The same activations split by ledger family: index
    ! ledger_family_init counts the activations taken while the run was
    ! reaching a state, index ledger_family_phys those taken inside accepted
    ! physical steps. Two floor activations belonging to different run states
@@ -295,7 +292,7 @@ contains
    ! composition the solve is being run at.  It is a separate argument
    ! because the temperature the step starts from and the energy it starts
    ! from need not belong to the same composition.  In the coupled source
-   ! step of docs/b1_target_system_20260906.md T1.6 they do not: the energy
+   ! step they do not: the energy
    ! is the thermal energy the cell HAD, at its old composition, less the
    ! formation-energy change of the composition change, while T_old is the
    ! temperature the composition was solved at.  Absent, the routine falls
@@ -653,7 +650,7 @@ contains
       ! energy_update_last_status for a caller that reads it later.
       integer, intent(out), optional :: status
       ! THE INNER STEP OF THE COUPLED SOURCE STEP
-      ! (docs/b1_target_system_20260906.md T1.6).  All three are absent when
+      ! All three are absent when
       ! the caller advances the temperature at frozen composition, and the
       ! routine then behaves exactly as it did before B3c.
       !   T_start   the temperature the composition and the sources were

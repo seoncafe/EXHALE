@@ -1,4 +1,4 @@
-! Diagnostic derived from src/tests/carrier_retry/carrier_retry.f90 on 2026-09-12.
+! Diagnostic written on 2026-09-12.
 ! Production routines are unchanged. Existing fixture statements are retained;
 ! original full-line comments are omitted. Added AUDIT rows test returned-state contracts.
       program stationary_retry_history_probe

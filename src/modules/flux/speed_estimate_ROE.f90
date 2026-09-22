@@ -11,7 +11,7 @@
       ! face gammas, which is that value exactly wherever the two sides
       ! agree (every face of an atomic gas).  A run whose caloric EOS makes
       ! the index vary across the front is refused the Roe flux at input
-      ! (input_read.f90; docs/a2_roe_interface.md section 3).
+      ! (input_read.f90).
       !
       ! The estimate carries a status because the star state need not exist.
       ! Two rarefactions that separate fast enough leave vacuum between the
@@ -20,8 +20,6 @@
       ! (ROE_STAR_INADMISSIBLE).  Sound speeds are formed only from a state
       ! that passed that test, so no square root of a negative ratio is
       ! taken and no NaN leaves this routine.
-      !
-      ! Interface: docs/a2_roe_interface.md, approved 2026-09-05.
 
       implicit none
 

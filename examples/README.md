@@ -115,9 +115,8 @@ Notes
   `T`, because the convergence measure is taken over `r >= r_esc` and does not
   look there. That propagates to the Balmer lines at the 5-8% relative level
   (H-alpha peak 2.098% against 2.199%, H-beta 1.046% against 1.134%); He I
-  10830 is insensitive (40.19% against 40.26%). Full account:
-  `docs/hd209_metal_stagnation.md` section 9, `docs/Update_EXHALE_stage1.md`
-  section 61. The hot-Uranus molecular+metals case converges cold, so this is
+  10830 is insensitive (40.19% against 40.26%).
+  The hot-Uranus molecular+metals case converges cold, so this is
   specific to HD 209458 b.
 
 ## 13_lower_atmosphere/

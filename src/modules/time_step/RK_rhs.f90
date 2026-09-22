@@ -10,7 +10,7 @@
                                       contact_mode_dissipation_flux
       ! The well-balanced face data of the reconstruction that produced the
       ! face states this right-hand side is built from ("Well balanced:",
-      ! default off; docs/well_balanced_flux_difference_design_20260910.md).
+      ! default off).
       use Reconstruction_step, only: wb_dev_L, wb_dev_R, wb_dp_eq,      &
                                      wb_P_up, wb_P_dn
 

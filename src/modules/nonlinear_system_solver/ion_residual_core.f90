@@ -6,7 +6,7 @@
 	! The standard blocks are verbatim-shared by System_HeH and
 	! System_HeH_metals (§5.2 Inc 1); the TR-form rows and the He 2^3S triplet
 	! row are shared by System_HeH_TR, System_HeH_TR_metals and System_HeH_mol
-	! (§5.2 Inc 3, docs/refactor_plan_system_composition_parser.md). It also
+	! (§5.2 Inc 3). It also
 	! holds impose_transported_ionization_fractions, the substitution that
 	! replaces an ionization balance row by the fraction the flow carries;
 	! every system that can reach those rows calls that one routine. Only

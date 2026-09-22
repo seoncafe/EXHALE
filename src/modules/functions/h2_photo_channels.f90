@@ -326,8 +326,7 @@
       ! mutually inadmissible -- for 'yan_rho', where rho_D exceeds the
       ! measured detector ratio r.  Clipping it would silently redefine
       ! the measured observable, so the run stops and states the
-      ! restriction instead.  The test that scans 'yan_rho' over
-      ! 51.4-2000 eV is src/tests/physics_probe/h2_channel_detector_ratio.
+      ! restriction instead.
       if (.not. (frac_H2_double_of_proton_events .ge. 0.0d0 .and.         &
                  frac_H2_double_of_proton_events .le. 1.0d0)) then
          write(*,'(a)') ' (h2_photo_channels) ERROR: the double-'//       &
@@ -430,9 +429,9 @@
       ! code, which is why they are returned separately and not summed here:
       !
       !   e_reservoir  Formation and ionization energy STORED IN THE
-      !                PRODUCTS, measured from the reference state of
-      !                docs/b1_target_system_20260906.md T1.2: every element
-      !                a neutral, ground-state, free atom at rest.  On that
+      !                PRODUCTS, measured from the reference state in which
+      !                every element is a neutral, ground-state, free atom at
+      !                rest.  On that
       !                reference eps(H2) = -D0(H2), eps(H) = 0, eps(H+) =
       !                I(H), eps(H2+) = I(H) - D0(H2+); the reservoir charge
       !                of a channel is sum(eps of products) - eps(H2), and

@@ -21,7 +21,7 @@
       ! of ~4.5 km/s, and the alternating component of v grows to 4.7-10
       ! times the local mean |v| where the metals-off solution carries 0.001.
       ! Every failed steady solve of that configuration puts its worst scaled
-      ! residual in that shell (docs/hd209_metal_stagnation.md sec. 1 and 6).
+      ! residual in that shell.
       !
       ! -------------------------------------------------------------------
       ! 2. The stress
@@ -79,7 +79,7 @@
       ! the pair takes energy out of the internal energy and puts it into
       ! the velocity field.
       !
-      ! MEASURED (src/tests/low_mach_stress_energy/; the smallest eigenvalue
+      ! MEASURED (the smallest eigenvalue
       ! of the symmetric part of the operator of E' over its largest, against
       ! the eigensolver's own rounding): +7.2e-17 on a uniform grid at
       ! constant coefficient, -1.1e-12 for a coefficient falling four decades
@@ -108,9 +108,8 @@
       ! closing at one face and -5.9e-18 on the LHS 1140 b wind.
       !
       ! (G) IS NOT WHAT THIS MODULE APPLIES.  The executable form is (1) with
-      ! the pair (4); (G) is derived and measured in
-      ! docs/lhs1140b_stationary_L25_20260916.md step 1 and is not adopted
-      ! here, so a run that turns this option on carries the indefinite form.
+      ! the pair (4); (G) is not adopted here, so a run that turns this
+      ! option on carries the indefinite form.
       !
       ! THE MASS FLUX IS NOT TOUCHED, and neither is the energy flux other
       ! than through (4).  MEASURED on this configuration, a fourth-difference
@@ -123,7 +122,7 @@
       ! radiative source, i.e. they would rewrite the base velocity and
       ! thermal structure rather than damp an oscillation.  The momentum flux
       ! rho v^2 + p does NOT vanish at stagnation -- it tends to p -- which is
-      ! why (1) stays small there (numbers in docs/hd209_metal_stagnation.md).
+      ! why (1) stays small there.
       !
       ! -------------------------------------------------------------------
       ! 3. The gate

@@ -2,11 +2,10 @@
       ! Advective transport of species mass fractions on the SAME faces, with
       ! the SAME mass flux, as the density.
       !
-      ! THE IDENTITY THIS MODULE EXISTS FOR (docs/b4_spatial_operator_design_20260906.md
-      ! T-B4.1 to T-B4.3).  There is one set of faces, r_edg(1-Ng:N+Ng), and
-      ! one mass flux per face, F_rho(j), the one the Riemann solver returns
-      ! and RK_rhs stores.  Every species mass flux is that scalar multiplied
-      ! by a face composition that sums to one,
+      ! THE IDENTITY THIS MODULE EXISTS FOR.  There is one set of faces,
+      ! r_edg(1-Ng:N+Ng), and one mass flux per face, F_rho(j), the one the
+      ! Riemann solver returns and RK_rhs stores.  Every species mass flux is
+      ! that scalar multiplied by a face composition that sums to one,
       !
       !     F_s(j) = F_rho(j) Y_s^face(j),     sum_s Y_s^face(j) = 1,
       !

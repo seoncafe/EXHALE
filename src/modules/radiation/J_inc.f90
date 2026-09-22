@@ -1,8 +1,8 @@
    module J_incident
    ! Energy-dependent incident spectrum.
    !
-   ! ONE SPECTRUM TYPE BUILDS EVERY BAND (docs/development_plan_20260905_rev3.md
-   ! section 10.5 decision 13). "Spectrum type:" in input.inp states the
+   ! ONE SPECTRUM TYPE BUILDS EVERY BAND. "Spectrum type:" in input.inp
+   ! states the
    ! spectrum of the WHOLE photon grid, the XUV and the part below 13.6 eV
    ! alike -- the part where the He 2^3S metastable (4.80 eV) and the low-IP
    ! metals absorb:

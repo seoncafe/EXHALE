@@ -232,8 +232,7 @@
    ! t = 0, and the reduction to xi <= 1/2 by the symmetry keeps the path
    ! away from its singularity at t = 1, so ten-point Gauss-Legendre is at
    ! round-off (MEASURED 4e-14 relative at the worst point, xi = 1/2,
-   ! against the series; src/tests/physics_probe/lya_escape_probability.f90
-   ! carries the check).  xi = 1/2 is the reflecting-boundary default and is
+   ! against the series).  xi = 1/2 is the reflecting-boundary default and is
    ! returned from the closed form directly.
    real*8, intent(in) :: xi_in
 
@@ -518,9 +517,7 @@
    ! factor (2x)^6 of exp(-x^2), so the segments are cut at
    ! h = 0.25/max(x_in,1) in the erfc argument x = c u, which holds the
    ! relative remainder at (2 x h)^6/2016000 = 8e-9 wherever the beam is
-   ! not already extinguished.  The driver
-   ! src/tests/physics_probe/lya_beam_cell_mean.f90 measures what is left
-   ! against a fine reference.
+   ! not already extinguished.
    !
    ! tbar2 exists because the trapping buildup E of the penetrating beam is
    ! itself linear in T_s, so the field the cell sees, T_s E, is quadratic

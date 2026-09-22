@@ -33,7 +33,7 @@
 	                          element_census_verify
 	use h2_vibrational_relaxation, only: h2_vibrational_heat_fraction,     &
 	                                     h2_energy_per_bound_fluorescence_eV
-	! Oxygen chemistry (the A2 option, docs/a2_oxygen_option_design.md):
+	! Oxygen chemistry (the A2 option):
 	! the FUV photolysis bands and the CO reservoir.
 	use water_photolysis, only: n_fuv_band
 	use oxygen_rates, only: co_equilibrium_density,                       &
@@ -42,7 +42,7 @@
    use System_HeH_TR_metals      ! merged He-triplet + metals system
 	! Constrained element-conserving chemical equilibrium in positive
 	! species densities, tracked from the radiation-free molecular limit to
-	! the cell's field (docs/supersonic_molecular_base.md section 11.5-B).
+	! the cell's field.
 	use constrained_chemical_equilibrium, only:                           &
 	                             equilibrium_from_molecular_limit
    use charge_exchange, only: cx_set_cell, cx_metal_base,  &   ! Huang Table 4 charge exchange
@@ -217,7 +217,7 @@
 	! -- and NOT by alternation across sweeps, which is what left the ghost
 	! carrying an iteration history of the composition the state was entered
 	! with (9.06 rounding floors of the base continuity row on the hot-Uranus
-	! molecular state, docs/lhs1140b_stationary_D5a_20260918.md section 8).
+	! molecular state).
 	!
 	! THE TOLERANCE IS ON THE STATED EQUATION and is absolute in x_H2, a
 	! fraction of the cell's hydrogen nuclei: the pair is closed when
@@ -258,7 +258,7 @@
 	! both accepted at reaction residuals of about 3e-26, both with the
 	! imposed H2 partition closed to 0.0, both with hybrd1 answering info = 1,
 	! and the difference does not close over six decades of the inner stopping
-	! accuracy (READ, docs/lhs1140b_p1_step1b_20260919.md sections 1 and 3).
+	! accuracy.
 	! The acceptance tests are blind in the direction the base mass row reads.
 	!
 	! WHAT IS COMPARED, AND IN WHICH UNITS. Each species of the two lower
@@ -287,18 +287,16 @@
 	! (x_HII 8.848e-7 against 8.888e-7, x_H2 by 3.9e-9) takes that row from
 	! 3.90 to 111.3 of its own rounding floors, i.e. 107.4 floors per 4.1e-9
 	! of composition, so ONE rounding floor of the row is bought by 3.8e-11
-	! (READ, docs/lhs1140b_p1_step1_20260919.md sections 5.1 and 5.2; the
-	! f_sp layout and that partition differ by the hydrogen nuclei per unit
-	! mass, 0.75 there, which is an O(1) factor). A move of 1e-11 is a quarter
-	! of one rounding floor of the row that reads it.
+	! (the f_sp layout and that partition differ by the hydrogen nuclei per
+	! unit mass, 0.75 there, which is an O(1) factor). A move of 1e-11 is a
+	! quarter of one rounding floor of the row that reads it.
 	!   Below: the composition solve stops at sqrt(dpmpar(1)) = 1.49e-8 and
 	! pins the returned ghost to a plateau in the composition's own units.
 	! MEASURED on examples/15_molecular with the carriers transported, where
 	! the map's gain in the H3+ direction is close to one, the sweep settles
 	! into an exact two-cycle whose largest move is 6.5e-12 (H I) and whose
 	! H3+ leg is 2.2e-12; tightening the inner stop to 1e-12 takes the whole
-	! sweep under this accuracy in two applications
-	! (docs/lhs1140b_p1_step2b_20260920.md).
+	! sweep under this accuracy in two applications.
 	!   A relative statement per species cannot be made at all there: 2.2e-12
 	! of composition is 5.1e-3 OF H3+'s own value at 4.2e-10 of the cell, and
 	! 1.5e-2 of H2+'s at 4.7e-18, while the same move is 0.06 of one rounding
@@ -465,12 +463,11 @@
 	! rates back together with the composition, or the closure of the
 	! reinstated composition is read against the rates of the state that
 	! was discarded (MEASURED on the carrier_retry column: 5.3e-4 against
-	! 1.6e-16, twelve decades, docs/lhs1140b_stationary_D4a_20260918.md
-	! table 2). The enumeration stands here, beside the declarations, so
-	! that an array added to the rate state is added to the snapshot in
-	! the same place. Allocation status is part of the state: an array
-	! that was not allocated when the snapshot was taken is deallocated
-	! again.
+	! 1.6e-16, twelve decades). The enumeration stands here, beside the
+	! declarations, so that an array added to the rate state is added to
+	! the snapshot in the same place. Allocation status is part of the
+	! state: an array that was not allocated when the snapshot was taken
+	! is deallocated again.
 	type :: ieq_rate_state
 		type(ion_rates), allocatable :: rate_cell(:)
 		real*8,  allocatable :: ne_cell(:), TK_cell(:), ntot_cell(:)
@@ -507,7 +504,7 @@
 	!
 	! bg_cell is rewritten by EVERY molecular sweep, and the steady solver
 	! sweeps on states it does not keep: Jacobian columns, Krylov products and
-	! line-search trials (docs/Update_EXHALE_stage1.md section 121). When the solver
+	! line-search trials (docs/Update_EXHALE_stage1.pdf section 121). When the solver
 	! returns, the last sweep it ran was in general a trial the line search
 	! REJECTED, and the best-iterate restore can additionally hand back a state
 	! from several outer iterations earlier -- so the background left in
@@ -526,7 +523,7 @@
 	type(ion_rates), dimension(:), allocatable, save :: bg_cell_best
 
 	! WHICH STATE THE SWEEP IS EVALUATING, and the three ledgers that keep
-	! them apart (docs/Update_EXHALE_stage1.md section 121).
+	! them apart (docs/Update_EXHALE_stage1.pdf section 121).
 	!
 	! The marching loop calls ioniz_eq on the state the run holds. The steady
 	! (JFNK / PTC) solver calls it on three different things: the current
@@ -624,8 +621,7 @@
 		integer :: streak_peak   = 0
 	end type ioniz_eq_ledger
 
-	! The marching ledger is kept once per LEDGER FAMILY
-	! (docs/a0_run_mode_contract_20260906.md section 5): index
+	! The marching ledger is kept once per LEDGER FAMILY: index
 	! ledger_family_init holds the sweeps taken while the run was reaching a
 	! state, index ledger_family_phys those taken inside accepted physical
 	! steps. The fields are the same; what differs is what a number in them
@@ -648,8 +644,8 @@
 	type(ioniz_eq_ledger), save :: ieq_sweep_ledger_last
 
 	! Acceptance tolerance on the normalized reaction residual of an
-	! equilibrium state (docs/supersonic_molecular_base.md section 11.5-A;
-	! docs/Update_EXHALE_stage1.md section 113). A state is accepted as a ROOT of
+	! equilibrium state (docs/Update_EXHALE_stage1.pdf section 113). A state
+	! is accepted as a ROOT of
 	! the ionization/chemical network only when it lies inside the element
 	! bounds AND the largest reaction imbalance of any row, in units of the
 	! row's turnover rate (normalized_reaction_residual), is at or below
@@ -777,7 +773,7 @@
 	real*8, parameter :: ieq_nonroot_res_cap = 1.0d2
 
 	! The acceptance statistics of the He-branch equilibrium solves
-	! (docs/Update_EXHALE_stage1.md section 113) live in the ledgers declared above:
+	! (docs/Update_EXHALE_stage1.pdf section 113) live in the ledgers declared above:
 	! how many cell states were accepted as (1) solver-converged roots,
 	! (2) roots without solver convergence, (3) projected/handback states
 	! whose rechecked residual still marks a root, (4) NON-ROOT states
@@ -934,7 +930,7 @@
 	! to 3e-6 (1000 steps) above the interior's, He exact, and zero once the
 	! base had settled -- and a restart of such a file failed the round-trip
 	! identity in exactly those two rows. Every write of a state therefore
-	! calls this first (docs/Update_EXHALE_stage1.md section 169).
+	! calls this first (docs/Update_EXHALE_stage1.pdf section 169).
 	real*8, dimension(1-Ng:N+Ng),           intent(in) :: rho
 	real*8, dimension(1-Ng:N+Ng,n_species), intent(in) :: f_sp
 
@@ -982,8 +978,7 @@
 	real*8  :: np_ghost_entry(1-Ng:0), np_ghost_return(1-Ng:0)
 
 	real*8, dimension(1-Ng:N+Ng),   intent(in) :: T_in
-	! CHEMISTRY PRESERVES THE DENSITY IT IS GIVEN
-	! (docs/b1_target_system_20260906.md T2.1, replacing D0 C2).  Chemical
+	! CHEMISTRY PRESERVES THE DENSITY IT IS GIVEN.  Chemical
 	! reactions rearrange nucleons and electrons among species and create no
 	! mass, so the mass density is an INPUT of this step and not one of its
 	! results: n_io is intent(in), the species fractions returned are
@@ -997,7 +992,7 @@
 	! it handed in can be described at all: the same fields the run-wide
 	! ledgers accumulate, for this one sweep. The steady solver reads
 	! n_nonfinite and n_offsimplex off it to decide whether a probe or a
-	! line-search trial is usable (docs/Update_EXHALE_stage1.md section 121); the
+	! line-search trial is usable (docs/Update_EXHALE_stage1.pdf section 121); the
 	! marching loop does not ask.
 	type(ioniz_eq_ledger), optional, intent(out) :: sweep_ledger
 	! DIAGNOSTIC ONLY (T2.2, T2.3): the mass density reconstructed from the
@@ -1287,8 +1282,7 @@
 	!
 	! Default: the rows the caller installed, which for a restart are the
 	! composition of the gas the reservoir holds at the base level, with the
-	! partition within each element taken from the first physical cell
-	! (docs/lhs1140b_stationary_D5b2_20260918.md section 7). With
+	! partition within each element taken from the first physical cell. With
 	! EXHALE_GHOST_COMPOSITION_SEED set they are replaced by the stated
 	! composition, so that the same ghost system is solved from a different
 	! starting point and the seed dependence of the ghost it returns can be
@@ -1351,7 +1345,7 @@
 	! this map is a boundary that is a function of the composition the run was
 	! entered at, and MEASURED it is: two entry compositions return ghosts
 	! 4.7e-3 to 5.5e-2 apart in their trace ions, both accepted by every test
-	! the sweep applies (READ, docs/lhs1140b_p1_step1b_20260919.md section 1).
+	! the sweep applies.
 	!
 	! The map is therefore applied again, at the ghost it returned and at the
 	! composition the cells above the ghosts were HANDED, until the ghost and
@@ -2804,7 +2798,7 @@
 				! once, which a projection cannot do), charge neutrality
 				! identically, and a continuation in the radiation field from
 				! the dense molecular limit instead of three unconnected
-				! guesses (docs/supersonic_molecular_base.md section 11.5-B).
+				! guesses.
 				!
 				! Its result is a candidate, not an acceptance: it faces the
 				! SAME judge every other candidate faces, bounds and the
@@ -2937,8 +2931,7 @@
 				! solving the network is not adopted: the cell keeps
 				! the composition it entered the sweep with, a state
 				! the run already held, and the heating and cooling
-				! built after the sweep are those of THAT composition
-				! (docs/Update_EXHALE_stage1.md section 170).
+				! built after the sweep are those of THAT composition.
 				if (acc_class .eq. 4) then
 					acc_class = nonroot_acceptance_class(acc_res)
 					if (acc_class .eq. 6)                                  &
@@ -3192,8 +3185,7 @@
 				! solving the network is not adopted: the cell keeps
 				! the composition it entered the sweep with, a state
 				! the run already held, and the heating and cooling
-				! built after the sweep are those of THAT composition
-				! (docs/Update_EXHALE_stage1.md section 170).
+				! built after the sweep are those of THAT composition.
 				if (acc_class .eq. 4) then
 					acc_class = nonroot_acceptance_class(acc_res)
 					if (acc_class .eq. 6)                                  &
@@ -3412,8 +3404,7 @@
 	! weighted sum of them, so the closure leaves 1 by a few units in the
 	! last place at every sweep and in the same direction.
 	!
-	! MEASURED (item L19, 2026-09-15,
-	! docs/lhs1140b_stationary_L19_L20_20260915.md): without this
+	! MEASURED (2026-09-15): without this
 	! projection the departure RATCHETS, about 1e-14 per outer pass of a
 	! stationary solve, reaching 5.1e-13 after nineteen passes and 6.2e-13
 	! after twenty-four. Nothing bounded it -- the element operator's own
@@ -3685,7 +3676,7 @@
    ! |S(g) - g| <= the accuracy, which is the stopping statement of a fixed
    ! point: the returned state's own move, |S(S(g)) - S(g)|, is that move
    ! times the map's gain, MEASURED at 4.9e-3 in the direction the seed
-   ! spans (READ, docs/lhs1140b_p1_step1b_20260919.md section 6.1), so a
+   ! spans, so a
    ! ghost accepted here is three decades better than the accuracy as a
    ! fixed point of its own solve. The composition leg is taken in the
    ! composition's own units and the count leg against its own value, for
@@ -3742,8 +3733,7 @@
    ! into one another the base ceases to be the base the state was solved at:
    ! restating the reservoir at the solved count moves the base pressure by
    ! 4.45 per cent and the cell-1 continuity row of a certified hot-Uranus
-   ! state from 1.2e-08 to 1.0 (MEASURED,
-   ! docs/lhs1140b_stationary_D5a_20260918.md section 6.2).
+   ! state from 1.2e-08 to 1.0 (MEASURED).
    !
    ! WHAT THE ELECTRON COUNT IS OF. It is the free electron density of the
    ! composition this sweep returned, counted by calc_ne and by nothing else:
@@ -3753,8 +3743,8 @@
    ! molecular ions H2+, H3+ and HeH+, and, under eos_metals, each metal
    ! stage. A second sum written out here would be a second policy: on the
    ! LHS 1140 b hot-Uranus ghosts the three molecular ions carry 1.02 and
-   ! 0.78 per cent of the electron density of the two ghost cells (MEASURED,
-   ! docs/PLAN_20260919_review.md section 4), which is not a rounding
+   ! 0.78 per cent of the electron density of the two ghost cells
+   ! (MEASURED), which is not a rounding
    ! difference. VALIDITY: any network the sweep solves, molecular or
    ! atomic; in an atomic gas the molecular terms of calc_ne are absent and
    ! the value is the H/He (and metal) count it always was. ne is in cm^-3
@@ -4199,8 +4189,7 @@
 	! this cell (the section-93 convention: every species set to the whole of
 	! its element). A root has res -> 0 to the accuracy of the solve; element
 	! bounds and conservation alone say nothing about it, which is why the
-	! acceptance test of ioniz_eq requires BOTH
-	! (docs/supersonic_molecular_base.md section 11.5).
+	! acceptance test of ioniz_eq requires BOTH.
 	!
 	! The molecular systems already reach hybrd1 with their rows divided by
 	! the turnover scale (set_mol_turnover_rates, set_mol_metal_turnover_-
@@ -4961,8 +4950,7 @@
 	! next sweeps repair (see ieq_res_tol / ieq_nonroot_streak_stop above).
 	! One sweep beyond that the same cell resting on a non-root is a
 	! solution built on a state that does not solve the reaction network:
-	! continuing would produce a physically meaningless wind
-	! (docs/supersonic_molecular_base.md section 11.5-A), so the run stops
+	! continuing would produce a physically meaningless wind, so the run stops
 	! here with the full cell diagnostics. The two classes share the streak
 	! because they are the same statement about the cell -- its chemistry
 	! was not solved -- and differ only in which state was kept.
@@ -5015,7 +5003,7 @@
 		write(*,'(A)') '   Bounds and element conservation are necessary'//&
 			' conditions, not reaction equilibrium; continuing with a'
 		write(*,'(A)') '   known non-root produces a physically'//        &
-			' meaningless wind. See docs/Update_EXHALE_stage1.md section 113.'
+			' meaningless wind. See docs/Update_EXHALE_stage1.pdf section 113.'
 		flush(6)
 		!$omp end critical (ieq_acc_report)
 		error stop 'ioniz_eq: persistent non-root chemical equilibrium'

@@ -139,7 +139,7 @@ a non-LTE He(2³S) network, a non-LTE H(n=2) population (Christie et al. 2013), 
 through a Neufeld escape-probability closure or an imported field, and the transmission
 post-processor `EXHALE_transit.py`. Size of the production build: 95 Fortran source
 files, 50,762 SLOC excluding blank and comment lines (`src/utils/codesize.py`, measured
-2026-09-11; the 74 test drivers under `src/tests/` add 20,741), of which 30,003 are in
+2026-09-11), of which 30,003 are in
 modules that do not exist in upstream ATES; the appendix of `docs/Update_EXHALE_stage2.pdf`
 carries the full table.
 
@@ -389,8 +389,7 @@ normalization is settled in the source: Larsson's p. 149 states that "the early 
 obtained at CRYRING [23,24] and ASTRID [27], which gave results just above or at
 10−7 cm³ s⁻¹, were slightly too high because of rotational excitations", and his Ref. 24 is
 Sundström et al. **Frelikh's pair is the superseded one**, by the rotationally cold storage
-ring measurements and the calculation that reproduces them. The assertions that pin this
-construction are `src/tests/physics_probe/h3p_recombination_branching.f90`.
+ring measurements and the calculation that reproduces them.
 
 **On H2 + M, Baulch et al. (1992) is held too**, and it sharpens both columns. Its
 `H2 + H2 -> 2H + H2` entry, p. 550, is `k0 = 1.5e-9 exp(-48350/T)` over **2500-8000 K**,

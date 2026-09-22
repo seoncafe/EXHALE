@@ -6,8 +6,7 @@
                        write_coupling_state_header,                      &
                        write_provenance_header,                          &
                        state_is_certified, state_certification_reason
-      ! THE CONFIGURATION THE STATE IN THIS FILE IS A STATE OF
-      ! (docs/restart_contract_design_20260909.md section 3). The block is
+      ! THE CONFIGURATION THE STATE IN THIS FILE IS A STATE OF. The block is
       ! built and parsed in one place, the module that reads a restart file,
       ! so the writer and the loader cannot disagree about its fields.
       use IC_load, only: write_restart_metadata_header
@@ -42,9 +41,7 @@
       ! energy of a CO dissociation event and the fragment kinetic energy
       ! it leaves.  Both are the assembly's own constants, read here for a
       ! COLUMN-INTEGRATED aggregate of one band; the deposit of one cell is
-      ! formed only in heating_of_composition
-      ! (src/tests/physics_probe/heating_sum_uniqueness.py records this
-      ! file as the one exception and why).
+      ! formed only in heating_of_composition.
       use Cooling_Coefficients, only: base_sky_fraction
       use molecular_infrared_cooling, only: h2_line_emission_lte,          &
                             h2o_band_emission_lte, co_band_emission_lte,   &
@@ -968,10 +965,9 @@
       ! partition, and whether it does is a property of the run rather than
       ! of the code: on a 2331 K base the thermal channel H2 + M -> H + H + M
       ! carries 70-97% of the net and the oxygen cycle a few percent, while
-      ! on a 864 K base the oxygen family carries 96-99.6%
-      ! (docs/a2_oxygen_option_design.md sec. 2.2). A run whose base is
+      ! on a 864 K base the oxygen family carries 96-99.6%. A run whose base is
       ! hotter than it should be -- and every molecular run is, until the
-      ! H2O and CO infrared bands of item (G) exist -- is answering a
+      ! H2O and CO infrared bands exist -- is answering a
       ! different question, so the decomposition is written out instead of
       ! being left to be inferred from the partition.
       !
@@ -1061,10 +1057,10 @@
       ! atoms are not there -- and the code has no H2O or CO infrared bands
       ! to put in their place. H3+ is the only molecular coolant it carries.
       !
-      ! That is item (G) of docs/TO_BE_DONE.md arriving through the composition
-      ! instead of through the temperature, and section 9 of
-      ! docs/a2_oxygen_option_design.md says so in advance: A2 is the
-      ! composition of the molecular layer and (G) is its energy. Measured
+      ! That is the missing molecular infrared cooling arriving through the
+      ! composition instead of through the temperature: A2 is the
+      ! composition of the molecular layer and that cooling is its energy.
+      ! Measured
       ! on the hot-Uranus molecular gate, the layer just above the base
       ! cools 15x more slowly with the option on than with it off, at
       ! comparable heating.
@@ -1128,7 +1124,7 @@
             ' "Molecular IR bands" off, so nothing replaces the [O I]'//   &
             ' and C I/C II lines the molecules switched off and the'//     &
             ' layer they are in is warmer than the same composition'//     &
-            ' would really be (docs/TO_BE_DONE.md item (G)).'
+            ' would really be.'
 
       ! ---- FUV band penetration and the G4 band ledger ----
       ! THE QUANTITY THAT IS CLOSED. For every band, the photons the beam

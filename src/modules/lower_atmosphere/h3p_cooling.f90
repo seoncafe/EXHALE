@@ -17,7 +17,7 @@
       !   Lambda_H3+ = n_H3+ * 4 pi * E(T) * s(T, n_H2)   [W cm^-3]
       !   (multiply by 1e7 for erg s^-1 cm^-3),
       !
-      ! the 4 pi being the one conversion from the per-steradian fit.
+      ! the 4 pi being the one conversion from the fit per steradian.
       !
       ! THE NON-LTE FACTOR.  s(T, [H2]) is the departure factor of their
       ! Table 6, defined by their eq. 8 as the ratio of the vibrational-level
@@ -36,8 +36,7 @@
       ! radiative decay empties the emitting levels faster than collisions
       ! populate them, so each collisional excitation is followed by a decay
       ! and the emission per H3+ is set by the collision rate: s is linear in
-      ! n(H2) and vanishes with it.  Decision 8 of
-      ! docs/b1_target_system_20260906.md section 6.1 adopts that limit as
+      ! n(H2) and vanishes with it.  That limit is adopted as
       ! the evaluation below the table,
       !
       !   s(T, n_H2 < 1e6) = s(T, 1e6) * n_H2/1e6,
@@ -466,8 +465,7 @@
       ! The three limits it has to have, and does:
       !   T = T_rad, W_dil = 1  ->  exactly zero, to machine precision:
       !       gas buried in a blackbody at its own temperature neither cools
-      !       nor heats.  This is the fixed point section 110 of
-      !       docs/Update_EXHALE_stage1.md relies on for TO_BE_DONE item (G).
+      !       nor heats.
       !   T -> 0                ->  emission -> 0, absorption finite: the
       !       band heats at the rate the field supplies, not faster.
       !   W_dil = 0             ->  the emission-only rate, unchanged.

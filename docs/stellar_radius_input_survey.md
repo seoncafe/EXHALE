@@ -93,8 +93,8 @@ So only transit spectra need recomputing, never the winds.
 | `docs/version_compare/v2_diff/` | the same two | the same |
 
 Those two are the He/H-diffusion version comparison, and their numbers are
-quoted in `docs/version_compare.md`, `docs/version_compare.tex` and
-`docs/design_hehe_diffusion.md`; those three documents need their figures
+quoted in `docs/version_compare.md` and
+`docs/version_compare.tex`; those two documents need their figures
 and quoted depths refreshed after the transit is redone.
 
 Already done: `LHS1140b/heh_series/heh_1`, `heh_10`, `heh_1000` were
@@ -102,9 +102,8 @@ recomputed on 2026-08-23, wind untouched, superseded products kept in each
 case's `rstar0p44_default/`.
 
 `examples/tutorial/` and `examples/tutorial_nometals/` also need their
-transit redone, but they are already on the recompute list of
-`he23s_default_recompute_list.md` for a different reason (their stored
-output predates the triplet default), so they are tracked there.
+transit redone, but they are already on the recompute list for a
+different reason (their stored output predates the triplet default).
 
 ## Left as they are, and why
 

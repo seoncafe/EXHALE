@@ -107,8 +107,7 @@
       ! ---- metadata for each base (H/He/molecular) species ----
       ! Composition metadata for the non-metal species, so the EOS helpers
       ! (calc_rho / calc_ne / calc_ntot in utilities.f90) can eventually be
-      ! driven from one table instead of hardcoded branches (§5.3 of
-      ! docs/refactor_plan_system_composition_parser.md). Every species counts
+      ! driven from one table instead of hardcoded branches. Every species counts
       ! as ONE gas particle in the pressure/EOS particle sum.
       ! UNIT OF bsp_mass: the hydrogen ATOM, mu = 1.67353284e-24 g
       ! (parameters.f90), which is the mass unit of the density
@@ -119,7 +118,6 @@
       !   atom (global_parameters), an ionization stage changing the mass
       !   by 1.4e-4, below the precision at which it is used; and
       !   HeH+ = 1 + m_He_over_m_H.
-      ! Decision 14 of docs/development_plan_20260905_rev3.md section 10.5.
       ! H2, H2+ and H3+ are NUCLEUS COUNTS in the same unit, 2, 2 and 3 m_H:
       ! the molecular binding energies are 4.5, 2.7 and 4.4 eV, i.e. a mass
       ! defect of order 1e-9 of the molecule, which is below every digit
@@ -162,8 +160,8 @@
       ! without it every O nucleus bound in OH, H2O or CO disappears from
       ! the element total, and the total-oxygen closure
       !   n_O,tot = n(OI) + n(OII) + n(OIII) + n(OH) + n(H2O) + n(CO)
-      ! silently loses half the element (docs/a2_oxygen_option_design.md
-      ! sec. 4.1). Zero for every species that predates the oxygen option,
+      ! silently loses half the element. Zero for every species that
+      ! predates the oxygen option,
       ! so it is inert for a run without it.
       integer, parameter :: bsp_nO(n_bsp) = &
            [ 0, 0, 0, 0, 0, 0,  0, 0, 0, 0,  1, 1, 1 ]

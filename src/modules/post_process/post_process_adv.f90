@@ -1422,8 +1422,8 @@
 	! The check on the restored term is the case with a solution in closed
 	! form: with heating and cooling negligible (E) integrates to
 	! w = p/rho proportional to rho^(gamma-1) F^(-gamma), F = rho v r^2, and
-	! src/tests/adv_static_limit marches a column of constant density and
-	! F = r against that solution (first order in the cell width, MEASURED).
+	! marching a column of constant density and F = r reproduces that
+	! solution (first order in the cell width, MEASURED).
 
 	do j = 3-Ng,N+Ng ! Start from first computational cell
 
@@ -1594,8 +1594,7 @@
 	 		! three cells of the LHS 1140 b 45 Rp wind that reach this branch:
 	 		! |R|/s = 1.5e-17, 2.8e-17 and 5.2e-17, against a fallback that
 	 		! discarded roots good to every digit and, because the correction
-	 		! is an upwind recursion, restarted the profile above them
-	 		! (docs/lhs1140b_stationary_L10_20260913.md).
+	 		! is an upwind recursion, restarted the profile above them.
 	 		!
 	 		! WHY IT MATTERS MORE THAN ONE CELL. The corrected temperature of
 	 		! a cell is differenced against the corrected temperature of the

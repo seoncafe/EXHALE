@@ -284,8 +284,7 @@
       ! one (q_H2_base > 0), and from the Visscher/Koskinen chemical-
       ! equilibrium fit at (p_base_bar, T0) otherwise.  Chemical equilibrium
       ! underestimates H2 dissociation at T_eq ~ 1000-2000 K, which is why
-      ! the photochemical value takes precedence when it exists
-      ! (docs/base_composition_handoff_plan.md).
+      ! the photochemical value takes precedence when it exists.
       if (q_h2_base .gt. 0.0d0) then
          h2_mixing_ratio_base = q_h2_base
       else

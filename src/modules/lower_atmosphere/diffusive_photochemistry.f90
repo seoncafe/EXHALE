@@ -7,10 +7,9 @@
       !   Phi_i = - n_tot (D_i + K_zz) d f_i/dr
       !           - n_i D_i [ 1/H_i - 1/H_atm ]        (f_i = n_i/n_tot)
       !
-      ! for i = H2, OH, H2O, CO.  This is milestone M3 of
-      ! docs/a2_oxygen_option_design.md; sections 3 and 4 of that document
-      ! are the specification and this header states what was built and what
-      ! was measured, not what was intended.
+      ! for i = H2, OH, H2O, CO.  This is milestone M3 of the A2 oxygen
+      ! option.  This header states what was built and what was measured,
+      ! not what was intended.
       !
       ! ---------------------------------------------------------------
       ! 1. WHY THE CARRIERS CANNOT BE A LOCAL STEADY STATE
@@ -22,8 +21,7 @@
       ! reason the code can carry thirty ion stages cheaply.
       !
       ! The measurement that motivated this module says it is not correct
-      ! for H2 at a cool base (design sec. 3.1, from the P4 block of
-      ! docs/oxygen_chemistry_new_plan.md): at the HD 189733 b 1-microbar
+      ! for H2 at a cool base: at the HD 189733 b 1-microbar
       ! level tau_chem(H2)/tau_adv is 0.20 to 1.67 on H/v, and 16.4 when the
       ! two are compared at the same pressure, against 1e-3 on HD 209458 b.
       !
@@ -161,8 +159,8 @@
       !
       ! WHETHER THE BASE FACE IS AN INFLOW is decided by the wind's mass
       ! flux and not by the base cell's velocity.  Measured on the converged
-      ! hot Uranus (docs/p44_base_sawtooth.md): the cell-centred rho v r^2 of
-      ! cell 1 is 160 to 200 times the wind's flux INWARD while the face flux
+      ! hot Uranus: the cell-centred rho v r^2 of cell 1 is 160 to 200 times
+      ! the wind's flux INWARD while the face flux
       ! is 0.36 to 0.98 times the wind's flux OUTWARD, and the discrepancy
       ! decays over four cells, which is the signature of a collocated
       ! odd-even velocity mode and not of infall.  The stationary evaluation
@@ -203,9 +201,8 @@
       ! divergence of the hydrodynamic face mass flux, F_rho(j) Y_c(j)/m_c,
       ! and it is taken with the mass row itself inside the Runge-Kutta
       ! stages, on the same faces, areas, volumes and time step
-      ! (species_face_flux.f90, docs/b4_spatial_operator_design_20260906.md
-      ! T-B4.1 to T-B4.3).  A cell can then only lose the carrier that the
-      ! mass row says it loses, whatever the velocity field does, and a
+      ! (species_face_flux.f90).  A cell can then only lose the carrier that
+      ! the mass row says it loses, whatever the velocity field does, and a
       ! uniform partition is preserved to round-off.  What these rows carry
       ! is the operator-split remainder: the diffusive and drift face fluxes
       ! and the chemistry.  The one place the advective term still appears is
@@ -266,8 +263,7 @@
       !
       ! References: Banks & Kockarts (1973), Aeronomy, Part B, ch. 15 (the
       ! diffusive flux and the rigid-sphere coefficient); Draine & Bertoldi
-      ! (1996) for the H2 band; the reaction set is
-      ! docs/a2_reaction_audit.md.
+      ! (1996) for the H2 band.
 
       use mol_rates, only: h2_thermochemistry_init, h2_thermochemistry_ready
       use global_parameters
@@ -382,20 +378,17 @@
       public :: carrier_diffusion_coefficient
       public :: carrier_set_init
       public :: n_carrier_max
-      ! Element-closure unit test (src/tests/element_census_tests.f90): the
-      ! write-back's invariant is that the element totals it is handed come
-      ! back unchanged, and the test states it on the two routines that make
-      ! the pair.
+      ! Element closure: the write-back's invariant is that the element
+      ! totals it is handed come back unchanged, on the two routines that
+      ! make the pair.
       public :: carrier_state, carrier_write_back
       ! The advective term of the carrier rows, exposed so that an
       ! acceptance test measures it against the Runge-Kutta stage's own
       ! update of the same state and not against a transcription of it.
       public :: carrier_advective_divergence, carrier_mass_amu
       ! The two face coefficients of the advective term and the predicate
-      ! that says whether the base ghosts are data or a copy: public so that
-      ! src/tests/carrier_boundary_jacobian/ can state the boundary
-      ! derivative the block-tridiagonal assembly uses and compare it with a
-      ! central difference of the divergence itself.
+      ! that says whether the base ghosts are data or a copy: they carry the
+      ! boundary derivative the block-tridiagonal assembly uses.
       public :: carrier_advective_face_coefficients
       public :: carrier_base_composition_imposed
       ! The L22 step 2b interventions, so that a test driver can state what
@@ -425,9 +418,7 @@
       ! that assembles the row.
       public :: carrier_h2_chemical_root
       public :: carrier_drift_location
-      ! The two row scales of the last assembly side by side, so that
-      ! src/tests/carrier_retry/ can state on the production arrays what
-      ! each of them does to the measure when the step is shortened: the
+      ! The two row scales of the last assembly side by side: the
       ! one the Newton iterates against carries the time term, the one a
       ! returned state is judged against does not.
       public :: carrier_row_scales
@@ -441,9 +432,9 @@
                 carrier_headroom, carrier_headroom_known,               &
                 carrier_element_headroom,                               &
                 carrier_species_index
-      ! Test only: writes the element budget of a synthetic cell, so that
-      ! src/tests/steady_species_rows/ can state the projection onto the
-      ! budget face of the coupled solve's unknown box.
+      ! Test only: writes the element budget of a synthetic cell, from which
+      ! the projection onto the budget face of the coupled solve's unknown
+      ! box is formed.
       public :: carrier_headroom_set_for_test
       public :: n_carrier, carrier_name, ic_H2, ic_OH, ic_H2O, ic_CO
       public :: ic_Hp, ic_HeII, ic_HeIII, carrier_solved
@@ -454,17 +445,15 @@
       ! stages, the element nucleus density each is a fraction of, the
       ! frozen face state their fluxes ride on, one stage's face flux and
       ! its two derivatives, the identity that sums the stages of one
-      ! element, and the projection onto each element's simplex.  Public
-      ! because src/tests/ionization_stage_flux/ states, on the production
-      ! objects, that the helium rows ride on the HELIUM nucleus flux and
-      ! that the two helium stages share one simplex and one closing stage.
+      ! element, and the projection onto each element's simplex.  The
+      ! helium rows ride on the HELIUM nucleus flux and the two helium
+      ! stages share one simplex and one closing stage.
       public :: carrier_is_ionization_stage, carrier_stage_element
       public :: carrier_nucleus_reference, carrier_stage_face_state
       ! THE HELIUM THE TWO IONIZED STAGES MAY HOLD, and the neutral helium
       ! a trial partition of them leaves.  They are the admissible set of
       ! the helium rows and the closure the chemistry rows read, written
-      ! once; src/tests/carrier_helium_inventory/ measures the state the
-      ! projection and the write-back return against them.
+      ! once.
       public :: carrier_helium_available_to_stages
       public :: carrier_helium_neutral_of_partition
       public :: carrier_helium_singlet_breach
@@ -472,9 +461,8 @@
       public :: carrier_stage_face_flux, ionization_stage_nucleus_sum
       public :: carrier_ionization_stage_projection
       ! The element table of the carriers and the perturbation the chemistry
-      ! rows are differentiated with: public because src/tests/physics_probe/
-      ! carrier_reference_scales.f90 measures the directional derivative the
-      ! second one produces against a central difference of the first.
+      ! rows are differentiated with: the second one produces a directional
+      ! derivative of the first.
       public :: carrier_element_reference_density,                       &
                 carrier_source_derivative_step, carrier_source
       ! The domain of the one-sided CO destruction model, cumulative over
@@ -483,22 +471,19 @@
       ! destruction and no formation legitimate.
       public :: carrier_co_domain_record, carrier_co_domain_f_dom
       ! Test only: writes distinct amounts into the two ledger families of
-      ! the domain record, so that src/tests/carrier_retry/ can state on the
-      ! production arrays that the record separates the families, that the
-      ! run total composes them (a sum for the counts, a maximum for the
-      ! worst ratio), and that a refused attempt does not roll it back.
+      ! the domain record, which separates the families; the run total
+      ! composes them (a sum for the counts, a maximum for the worst
+      ! ratio), and a refused attempt does not roll it back.
       public :: carrier_co_domain_perturb_for_test
       ! Whether an element constraint moved a given cell in the last
-      ! limiter call: src/tests/carrier_constraint_attribution/ measures
-      ! that the CO thermal ceiling marks the cell it acts in, which is the
-      ! cell whose OH and H2O rows it moves.
+      ! limiter call: the CO thermal ceiling marks the cell it acts in,
+      ! which is the cell whose OH and H2O rows it moves.
       public :: carrier_cell_is_constrained, limit_to_element_budget
       ! ACCEPTANCE OF THE STATE THE CARRIER SOLVE RETURNS, and the
       ! classification of a stalling iteration it keeps separate from it.
-      ! Both are decisions taken on their arguments alone, so
-      ! src/tests/carrier_returned_state_acceptance/ can state them on
-      ! constructed rows, and so the retry controller of rev 3 sec. 4.1 can
-      ! ask for a verdict on a trial state without running a solve.
+      ! Both are decisions taken on their arguments alone, so the retry
+      ! controller can ask for a verdict on a trial state without running
+      ! a solve.
       public :: carrier_returned_state_verdict, carrier_stall_class
       ! TWO RECORDS WITH TWO SCOPES, each named for the one it keeps.
       ! carrier_step_verdict is THIS transport step's: it is reset to
@@ -509,12 +494,11 @@
       ! that produced it, which is what makes it the wrong gate for a step.
       public :: carrier_verdict_reason_text
       public :: carrier_step_verdict, carrier_last_verdict_of_run
-      ! THE CARRIER-LOCAL CHECKPOINT AND THE RETRY CONTROLLER (PLAN
-      ! 20260906 rev 2, step A3).  The checkpoint is the carrier fractions
-      ! plus every module array and counter one transport attempt writes;
-      ! carrier_transport_interval is the step's body with the stop taken
-      ! out of it, so src/tests/carrier_retry/ can reach the exhaustion
-      ! branch and read what the controller did.
+      ! THE CARRIER-LOCAL CHECKPOINT AND THE RETRY CONTROLLER.  The
+      ! checkpoint is the carrier fractions plus every module array and
+      ! counter one transport attempt writes; carrier_transport_interval is
+      ! the step's body with the stop taken out of it, so the exhaustion
+      ! branch can be reached and what the controller did read.
       public :: carrier_checkpoint
       public :: carrier_checkpoint_take, carrier_checkpoint_restore
       public :: carrier_checkpoint_matches
@@ -669,8 +653,7 @@
       ! time is 0.02 to 1.3 times the flow time r/|v| across the front,
       ! while the three molecular ions that are left local sit at 1e-9 to
       ! 5e-5 of it and hold at most 2e-8 of the H nuclei, so the split
-      ! between carried and local is a measurement and not a convention
-      ! (docs/supersonic_molecular_base.md sec. 13.6).
+      ! between carried and local is a measurement and not a convention.
       !
       ! n_carrier_max dimensions every array; n_carrier is how many of them
       ! this run solves, set once by carrier_set_init.  The inactive columns
@@ -777,8 +760,8 @@
       ! leave: no further iteration reduces it, and halving the substep
       ! raises it, because the time term it is round-off of grows like
       ! 1/dt while the physical terms the state is judged against do not.
-      ! MEASURED on the molecular column of src/tests/carrier_retry/: the
-      ! Newton reaches 2.6e-16 of the full row terms, about one eps, so the
+      ! MEASURED on the molecular column: the Newton reaches 2.6e-16 of the
+      ! full row terms, about one eps, so the
       ! bound is not tight against the iteration it classifies.
       !
       ! WHAT IT DECIDES.  A row whose residual is at or below this fraction
@@ -1151,8 +1134,8 @@
       !
       !     tau_dest  <<  tau_res  <<  tau_form
       !
-      ! (docs/b1_target_system_20260906.md T5.2).  The first inequality says
-      ! the destruction is fast enough that the transported CO reaches the
+      ! The first inequality says the destruction is fast enough that the
+      ! transported CO reaches the
       ! balance the rates set before it leaves the cell; the second says the
       ! omitted formation is too slow to rebuild what was destroyed while
       ! the gas is there.  Neither is an assumption this code may make
@@ -1404,8 +1387,7 @@
                              1.0d0/2.0d0**carrier_retry_max
 
       ! TEST HOOKS.  Both default to the production behavior, no production
-      ! path writes either, and src/tests/carrier_retry/ is the only reader
-      ! of what they cause.  They exist because the branches they reach --
+      ! path writes either.  They exist because the branches they reach --
       ! restore, halve, exhaust -- cannot otherwise be driven on a column
       ! that solves, and a column that does not solve would test the
       ! chemistry and not the controller.
@@ -1550,8 +1532,7 @@
       ! reads.  A trial that is refused has to put ALL of them back, or the
       ! state the caller receives is a composition of one trial beside the
       ! rates, the heat capacity and the boundary of another.  MEASURED on
-      ! the carrier_retry column before this was enumerated
-      ! (docs/lhs1140b_stationary_D4a_20260918.md, table 4): the rate state
+      ! the carrier_retry column before this was enumerated: the rate state
       ! was left 14.87 K from the composition, so the closure residual of
       ! the returned state read 5.3e-4 where the state's own is 1.6e-16,
       ! and the energy-to-pressure map stood 1.5e-3 relative away from the
@@ -1765,8 +1746,7 @@
       ! WHAT A CONSTRAINT DOES EXCUSE is the cell it moved, and the whole of
       ! it: the clamps rescale carriers cell by cell, and through the free
       ! atomic closures of carrier_source that moves every coupled row of
-      ! that cell, so the attribution is per cell (measured in
-      ! src/tests/carrier_constraint_attribution/).  Those rows are counted
+      ! that cell, so the attribution is per cell.  Those rows are counted
       ! and reported as the constraint's, never certified.
       !
       ! A NON-FINITE ROW IS REFUSED WHEREVER IT IS, constrained or not: a
@@ -2442,7 +2422,6 @@
       write(*,'(a)') '   they were discarded with the entry state, and'// &
          ' the composition f_sp was not written, so'
       write(*,'(a)') '   no partial interval has entered the run.'
-      write(*,'(a)') '   See docs/PLAN_20260906_rev2.md step A3.'
       write(*,'(a)') '   Physical integration accepts only a step that'// &
          ' satisfies its balances, so this'
       write(*,'(a)') '   step cannot be accepted.'
@@ -2526,8 +2505,8 @@
       ! applies: subdividing refines its time integration and does not change
       ! the splitting.  The splitting error against the operators around it
       ! is the error of freezing that background over dt and is unchanged by
-      ! the subdivision.  src/tests/carrier_retry/ measures the
-      ! time-integration error by step doubling and prints it.
+      ! the subdivision.  The time-integration error is measured by step
+      ! doubling and printed.
       !
       ! LABELED PARTIAL RECOVERY.  The checkpoint is the carrier
       ! subsystem's.  A refused substep leaves the hydrodynamic, ionization
@@ -3521,9 +3500,8 @@
       ! ------------------------------------------------------------- !
 
       ! WRITE A DISTINCT CHANGE INTO EVERY ITEM THE CHECKPOINT COVERS.
-      ! src/tests/carrier_retry/ states restoration as a measurement over
-      ! the whole list, and not over the items one particular column
-      ! happens to move: an item left out of carrier_checkpoint_take or of
+      ! Restoration is a measurement over the whole list, and not over the
+      ! items one particular column happens to move: an item left out of
       ! carrier_checkpoint_restore is then a failing assertion.  An array
       ! that is not allocated is allocated here, so the restore is asked to
       ! give the module its allocation status back and not only its
@@ -3727,8 +3705,8 @@
       ! at the signal speed. That is a bound on the row, but it is not the
       ! row's own term, and measured on the He/H = 0.0793 hot Uranus it
       ! exceeds the sum of the terms the row actually balances by 10^2.7 to
-      ! 10^6.4 (docs/p50_carrier_wind_alternation.md section 2.4). A state
-      ! the steady solver accepted at info = 0 then reported a carrier
+      ! 10^6.4. A state the steady solver accepted at info = 0 then reported
+      ! a carrier
       ! residual of 1.6e-4 while carrying 0.60 of its own terms at the H2
       ! front, and the outer loop had no way to see that the state it was
       ! handing over was not a carrier steady state at all.
@@ -3894,10 +3872,10 @@
       ! ------------------------------------------------------------- !
 
       ! Test only: no production path calls this.  The element budget is a
-      ! property of a state this module has assembled, and
-      ! src/tests/steady_species_rows/ states the projection onto the budget
-      ! face of the coupled solve's unknown box on a SYNTHETIC cell, which
-      ! has no such state.  It writes the budget [cm^-3] the face is then
+      ! property of a state this module has assembled, and the projection
+      ! onto the budget face of the coupled solve's unknown box is taken on
+      ! a SYNTHETIC cell, which has no such state.  It writes the budget
+      ! [cm^-3] the face is then
       ! formed from.
       subroutine carrier_headroom_set_for_test(nmax)
       real(dp), dimension(:,:), intent(in) :: nmax
@@ -4398,8 +4376,7 @@
       ! flux, so a stage written per unit mass on the bulk flux and given
       ! the whole mixing-ratio eddy flux -n_tot K d(n_k/n_tot)/dr carries
       ! the element's share of the eddy transport a second time
-      ! (ionization_stage_transport, and the derivation in
-      ! docs/lhs1140b_stationary_L12b_derivation_20260916.md section 2.1).
+      ! (ionization_stage_transport).
       !
       ! The molecular carriers are NOT ionization stages: H2, OH, H2O and
       ! CO carry a molecular diffusion coefficient and a settling drift of
@@ -4529,8 +4506,7 @@
       ! LHS 1140 b state `wellmixed/HeH0.083` at cell 500, r = 29.0 R_p:
       ! that inward flux is -2.9471e-02 cm^-3 s^-1 against an interior
       ! influx of +9.7857e-04, thirty times the largest term of the row,
-      ! and the row measure of the cell goes from 2.4619e-02 to 5.0629e-01
-      ! (docs/lhs1140b_stationary_L22_20260916.md, step 2b).
+      ! and the row measure of the cell goes from 2.4619e-02 to 5.0629e-01.
       !
       ! THE INNER FACE is closed for the reason the base handoff states:
       ! what the layer below hands over is a COMPOSITION on the inflowing
@@ -5010,8 +4986,7 @@
       ! mis-scaling but a total loss of the row: in a hydrogen and helium
       ! atmosphere nO_free is identically zero, so both the step and the
       ! floor fall to their 1e-300 guard and the diagonal derivative of the
-      ! proton row comes back as exactly zero
-      ! (src/tests/carrier_reference_scales/).
+      ! proton row comes back as exactly zero.
       double precision function carrier_element_reference_density(ic,     &
                                nH_free, nO_free, nC_free, nHe_nuc)       &
                                result(nref)
@@ -5030,8 +5005,7 @@
          ! the Jacobian's difference step and the absolute floor of the
          ! row -- and a scale that can fall to zero where an element is
          ! wholly bound in a molecule would leave the row's diagonal
-         ! derivative at the 1e-300 guard, which is the defect
-         ! src/tests/carrier_reference_scales/ was written for.  The two
+         ! derivative at the 1e-300 guard.  The two
          ! agree to the molecular and metastable fractions of the helium,
          ! which are trace.
          nref = nHe_nuc
@@ -5350,7 +5324,7 @@
       endif
       ! ---- CO: the one-sided destruction model -----------------------
       ! Two channels and no formation term, which is what "one-sided"
-      ! means (docs/b3b_co_destruction_design_20260906.md secs. 1 and 2):
+      ! means:
       !
       !   D1  He+ + CO -> C+ + O + He, UMIST RATE22 entry 4068, measured,
       !       accuracy better than 25 percent, temperature independent at
@@ -6102,8 +6076,7 @@
                ! the msum/m_c the row carries and the m_c/msum of Y.  It was
                ! being divided by m_c here as well, which made every
                ! advective entry a factor m_c too small -- 2 for H2.  The
-               ! expression is now the one
-               ! src/tests/carrier_boundary_jacobian/ measures against a
+               ! expression is now the one that agrees with a
                ! central difference of carrier_advective_divergence itself,
                ! to 1e-8 on a state whose mass fraction is constant so that
                ! the reconstruction contributes nothing.  The limiter of
@@ -7591,8 +7564,7 @@
       ! unchanged thermal energy give AFTER it.  The two therefore stand one
       ! increment apart, and the contract bounds that increment by
       ! chem_cycle_tol alone, i.e. by ten times ieq_res_tol.  MEASURED on
-      ! the twelve-cell molecular column of src/tests/carrier_retry
-      ! (docs/lhs1140b_stationary_D4a_20260918.md, table 2): the realized
+      ! the twelve-cell molecular column: the realized
       ! gap there is 2.4e-7 relative, well inside what the contract admits.
       !
       ! WHAT THAT GAP DOES TO THE CHEMISTRY, measured and not assumed.  A

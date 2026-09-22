@@ -6,7 +6,7 @@
       ! This is the destruction channel that takes over from He+ charge
       ! transfer once the star-ward CO and H2 columns thin out, and together
       ! with that channel it is the whole of the one-sided CO destruction
-      ! model (docs/b3b_co_destruction_design_20260906.md).
+      ! model.
       !
       ! ---------------------------------------------------------------
       ! 1. THE RATE, AND WHY IT IS NOT WRITTEN AS VISSER'S k0 THETA

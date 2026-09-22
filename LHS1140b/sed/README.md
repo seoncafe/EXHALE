@@ -134,8 +134,8 @@ the plotted curve remains unexplained (it reshapes at fixed EW; see
 `lhs1140_sed_gj1132_at_b_xuv<factor>.txt` is the whole flux column of
 `lhs1140_sed_gj1132_at_b.txt` times the factor, on the same wavelength grid:
 0.01, 0.015, 0.02, 0.03, 0.05, 0.06, 0.065, 0.07, 0.10, 0.15, 0.16, 0.18,
-0.20, 0.25, 0.26, 0.28, 0.30, 0.33.  They are the XUV axis of the model catalog
-(`../MODELS.md` section 3) and of the continuations that reach its low end.
+0.20, 0.25, 0.26, 0.28, 0.30, 0.33.  They are the XUV axis of the model
+catalog and of the continuations that reach its low end.
 
 The scaling is ACHROMATIC and redefines no band, so every band integral is the
 reference integral times the factor and the series is a one-parameter family

@@ -2,11 +2,6 @@
       ! THE TRANSPORT OF THE IONIZATION STAGES OF ONE ELEMENT, WRITTEN ON
       ! THAT ELEMENT'S OWN NUCLEUS FLUX.
       !
-      ! Derivation and the three conditions the identity below needs:
-      ! docs/lhs1140b_stationary_L12b_derivation_20260916.md sections 2 and 3.
-      ! The variable, the boundaries and the He 2^3S level:
-      ! docs/lhs1140b_stationary_L12a_design_20260913.md.
-      !
       ! WHAT IS CARRIED.  For an element with stages k = 1 ... n_k + 1, the
       ! fractions of that element's NUCLEI in each stage, x_k = n_k/n_el.
       ! The n_k carried rows are the ionized stages; the neutral stage is the
@@ -36,8 +31,7 @@
       !    sum_k F_k(f) = N_el(f)     to rounding at every face,          (2)
       !
       ! which says that moving charge between stages cannot move a nucleus.
-      ! It holds under three conditions, each of which has a RED row in
-      ! src/tests/ionization_stage_flux/:
+      ! It holds under three conditions:
       !
       !   C1  ONE element face flux multiplies every stage.  A second copy,
       !       rebuilt per stage from its own donor rule, does not return one
@@ -325,9 +319,7 @@
       ! which raises the right-hand side by that much of itself.
       !
       ! MEASURED over manufactured columns whose eddy coefficient spans
-      ! K_0 = 0 to 1e15 cm^2 s^-1: 1.00 to 1.50
-      ! (docs/lhs1140b_stationary_D3a_20260918.md section 6; anchor (8) of
-      ! docs/certification_tolerance_anchoring_20260910.md).
+      ! K_0 = 0 to 1e15 cm^2 s^-1: 1.00 to 1.50.
       integer, intent(in) :: nk
       real*8  :: g
       if (nk .le. 1) then
@@ -380,9 +372,7 @@
       ! states reach 0.06 to 0.08 of it (their worst faces carry g = 1 to
       ! five decimals, the advective nucleus flux dominating the eddy term
       ! there); a broken construction of the same identity stands at 1.5e-4
-      ! to 3.6e-4, ten decades higher
-      ! (docs/lhs1140b_stationary_D3a_20260918.md section 6, anchor (8) of
-      ! docs/certification_tolerance_anchoring_20260910.md).
+      ! to 3.6e-4, ten decades higher.
       integer,          intent(in) :: nk
       real*8, optional, intent(in) :: g
       real*8 :: dbound, gg

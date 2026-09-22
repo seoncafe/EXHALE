@@ -1,7 +1,6 @@
 # Line trapping in the thick metal resonance lines: measurement and verdict
 
-2026-08-11. Companion to `docs/hd189_base_checkerboard.md` §10, which
-introduced the escape probability `beta(tau)` for the two ground-term
+2026-08-11. Earlier work introduced the escape probability `beta(tau)` for the two ground-term
 fine-structure lines `[O I] 63um` and `[C II] 158um` and explicitly left the
 thick resonance lines of a metal-rich wind untreated. This memo measures that
 open item and closes it. (Those two lines were the whole trapped set at the
@@ -270,9 +269,7 @@ negligible, but it is an estimate, not a measurement.
 Changed: the `SCOPE` comment of the fine-structure trapping block in
 `src/modules/radiation/Cool_coeff.f90` now states the validity condition
 `ne << beta A_ul / q_ul` and its measured margin, in place of the sentence
-recording the resonance lines as untreated; the corresponding "still not fixed"
-entries in `docs/hd189_base_checkerboard.md` §10.1/§10.7 and
-`docs/Update_EXHALE_stage1.md` §42 now point here.
+recording the resonance lines as untreated.
 
 **No code path was modified and no result changed.** `beta = 1` for the
 resonance lines is kept, now as a justified effective treatment rather than an
@@ -439,15 +436,3 @@ the moment a run has a base thick in `[O I] 63um` -- a denser or more
 oxygen-rich lower atmosphere than the gates carry, or the same gate with the
 `Base IR field` on, where the same `beta` also scales the incident field
 `nbar_fs` and so the heating the layer takes from below.
-
-### 10.6 Test
-
-`src/tests/physics_probe/fine_structure_escape_probability.f90` (registered in
-`src/tests/physics_probe/run.sh`) asserts that the production routine is
-(B-7) branch by branch, that `beta(0) = 1/2`, that the branch point is
-continuous, that (B-7) at `sqrt(pi) tau` and Hollenbach & McKee eq. (5.10) at
-`tau` are one function, and -- as a recorded measurement of the open defect --
-that the departure of the line-centre argument is at least 1.75 for
-`tau0 >= 3` and at most 1.13 at the depths the shipped cases reach. The last
-block goes red the day the argument is corrected and has to be rewritten with
-it.

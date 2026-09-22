@@ -11,8 +11,7 @@
       ! the 15.4 eV photoionization edge, so without this term the only H2
       ! losses below 15.4 eV are thermal (R12), electron impact (R14) and
       ! ion chemistry.  Absent it, EXHALE's network keeps a base far more
-      ! molecular than photochemical models of the same layer give
-      ! (docs/base_composition_handoff_plan.md sec. 5).
+      ! molecular than photochemical models of the same layer give.
       !
       ! ---------------------------------------------------------------
       ! 1. Band and unattenuated rate
@@ -159,7 +158,6 @@
       ! per cent where H2 is already negligible, and by 6.5 per cent weighted
       ! by the dissociation rate.  It is one-signed and it is smaller than
       ! the spread between escape-probability methods in the same slab.
-      ! docs/e2_lw_geometry.md.
       !
       ! 2f. WHICH COLUMN, AND WHICH FLUX.  N_H2 below is the column toward
       ! the star, and the caller supplies the RADIAL column
@@ -214,8 +212,8 @@
       !
       ! 3a. WHAT WAS MEASURED, AND HOW IT WAS CLOSED.  The 45 per cent
       ! excess of the FUV band ledger was two WAVELENGTH BANDS, not two
-      ! fits.  MEASURED (src/tests/physics_probe/lyman_werner_cell_mean.f90
-      ! sec. 6, 2026-09-06 with the table then shipped): the column integral
+      ! fits.  MEASURED (2026-09-06 with the table then shipped): the column
+      ! integral
       ! of sigma_diss/p_eff reached 1.5154 at the top of the column axis,
       ! where a share of the band cannot pass 1, and 1.5154 is the photon
       ! content of 912-1200 A over that of 912-1110 A for the flat-F_lambda
@@ -767,8 +765,7 @@
       ! not the cell mean of sigma_diss/p_eff.  The photon ledger needs the
       ! second, because it is what telescopes to the column integral of
       ! sigma_pump, i.e. to the beam's own loss
-      ! (h2_lw_band_photon_fraction_absorbed).  MEASURED
-      ! (src/tests/physics_probe/lyman_werner_cell_mean.f90 sec. 6): on
+      ! (h2_lw_band_photon_fraction_absorbed).  MEASURED: on
       ! cells spanning 2.5 H2 scale heights the one-column division stands
       ! 8 per cent above the beam loss and this form closes on it.
       double precision function                                           &

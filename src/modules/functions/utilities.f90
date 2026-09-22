@@ -20,9 +20,9 @@
    ! Why it is .false., where the answer is not "an equation of the inventory
    ! refused it": a run that ends on a step cap or any other bound makes NO
    ! stationarity claim at all, and a state written by such a run is a
-   ! relaxation snapshot. The distinction is the run state of
-   ! docs/a0_run_mode_contract_20260906.md section 2, and it is written into
-   ! the header so that a reader of the file can tell the two apart. Empty
+   ! relaxation snapshot. The distinction is the run state, and it is
+   ! written into the header so that a reader of the file can tell the two
+   ! apart. Empty
    ! for a certified state and for a refusal on the entries themselves.
    character(len=32), save :: state_certification_reason = ''
 
@@ -48,7 +48,7 @@
    ! including them in a flux-spread or a residual measure doubles it (the
    ! accepted flux spread of the HD 189733 b solve is 4.64e-3 over the
    ! physical cells and 1.05e-2 with the two upper ghost rows counted,
-   ! section 133.6 of docs/Update_EXHALE_stage1.md).  A reader that does not know
+   ! section 133.6 of docs/Update_EXHALE_stage1.pdf).  A reader that does not know
    ! this silently averages two rows of boundary data into every profile.
    !
    ! It was written by Hydro_ioniz(_adv).txt alone, which made it a property
@@ -171,8 +171,8 @@
    !
    ! WHY. A restart re-reads the state but re-derives the switches from
    ! input.inp, and for a STAGED switch that is a different setting from the
-   ! one the state was converged under. Measured (docs/p55_base_mode.md
-   ! section 10): the WASP-121b steady solution was reached with the SvS85
+   ! one the state was converged under. Measured: the WASP-121b steady
+   ! solution was reached with the SvS85
    ! secondary ionization armed at step 2242, the restart re-staged it, the
    ! first ionization sweep moved the particle count by 8.1e-3 rather than
    ! 2.6e-4, and the layer left the root by a peak-to-peak 4.3 times the wind
@@ -229,9 +229,9 @@
       why = ''
       if (len_trim(state_certification_reason) .gt. 0)                    &
          why = ' cert_reason='//trim(state_certification_reason)
-      ! mode / t_phys: WHICH OF THE THREE RUN STATES PRODUCED THIS STATE
-      ! (docs/a0_run_mode_contract_20260906.md sections 2 and 5). A state
-      ! written by an initialization or continuation run is a relaxation
+      ! mode / t_phys: WHICH OF THE THREE RUN STATES PRODUCED THIS STATE.
+      ! A state written by an initialization or continuation run is a
+      ! relaxation
       ! snapshot: it has no elapsed time and none is written for it, so a
       ! restart cannot invent one. A state written by a physical integration
       ! carries the time it was reached at, in seconds, as the sum of the
@@ -605,8 +605,6 @@
 	! of the pair is therefore about 1e-8, attained on the closed-form side
 	! of the switch, and the value there is 1 to within that; the rates that
 	! consume it are set by cross sections known to a few per cent.
-	! (src/tests/physics_probe/absorbed_fraction_switch.f90 measures the
-	! bound against a quadruple-precision reference.)
 	elemental double precision function absorbed_fraction_per_unit_depth(d) &
 	                                   result(fr)
 	real*8, intent(in) :: d

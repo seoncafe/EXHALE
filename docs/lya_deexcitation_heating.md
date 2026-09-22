@@ -76,8 +76,7 @@ code rather than transcribed from a single numbered equation in any one paper.
   a further loss channel of that field, which lowers `J_Lya` near the base and
   so lowers this heating term there.]
 - Runtime toggle: `incl_deexc_heat`, declared in `parameters.f90` and read from
-  the `Deexc heat` key in `input_read.f90`. **On by default since 2026-08-12**
-  (`docs/Update_EXHALE_stage1.md` section 50): the argument that had justified the old
+  the `Deexc heat` key in `input_read.f90`. **On by default since 2026-08-12**: the argument that had justified the old
   default -- that the term overlaps the H I collisional-excitation cooling --
   does not hold, because that cooling is the one-way Cen (1992) coronal rate
   with no de-excitation term in it. `Deexc heat: False` restores the one-way
@@ -122,8 +121,7 @@ on but `Deexc heat` off the same setup was stable, and the more strongly
 irradiated planets tolerated the term. That is why the key was kept off for the
 low-irradiation cases.
 
-**Retested 2026-08-12, and it no longer reproduces.** The `n = 2` corrections of
-`docs/Update_EXHALE_stage1.md` section 50 cut the population that drives this term:
+**Retested 2026-08-12, and it no longer reproduces.** The `n = 2` corrections cut the population that drives this term:
 `n(2s)` roughly halves and the volume-integrated `Hdx` of the `wasp_full`
 configuration falls to 0.56 of its former value. With those in place and
 `Deexc heat` on by default, HD 209458 b re-converges from its stored initial

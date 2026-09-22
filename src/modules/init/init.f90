@@ -189,8 +189,7 @@
       ! stale, and it is the value the standalone residual/Newton diagnostics
       ! (which stop right after init) see. On HD 189733 b the placeholder made
       ! the old ghost pressure disagree with the interior by 4.4%, which the
-      ! base face read as a contact discontinuity
-      ! (docs/hd189_base_checkerboard.md section 15).
+      ! base face read as a contact discontinuity.
       nhei = 0.0d0;  nheii = 0.0d0;  nheiii = 0.0d0;  nheiTR = 0.0d0
       call get_species_densities(W(1,:),f_sp,nhi,nhii,nhei,nheii,           &
                                  nheiii,nheiTR,nm,ne,n_tot)

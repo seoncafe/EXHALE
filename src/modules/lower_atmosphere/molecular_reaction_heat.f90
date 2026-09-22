@@ -32,8 +32,8 @@
       ! either way.
       !
       ! HOW LARGE.  Measured on the converged He/H = 0.0793 hot Uranus
-      ! (docs/p53_h2_adiabatic_index.md and section 141 of
-      ! docs/Update_EXHALE_stage1.md), the sum below is 2.4 times the whole
+      ! (section 141 of docs/Update_EXHALE_stage1.pdf), the sum below is 2.4
+      ! times the whole
       ! photoelectric heating rate over 1.00-1.05 r_base, falling through 1 at
       ! 1.053 and to 1 percent by 1.10.  The argument above makes that ratio
       ! I(H2)/(hv - I(H2)), so 2.4 corresponds to a mean absorbed photon of
@@ -43,8 +43,8 @@
       ! HOW IT IS BUILT.  Not as a list of reaction enthalpies -- a list can
       ! disagree with itself -- but from ONE table of species formation
       ! energies, species_formation_energy below, which is the eps_s of the
-      ! energy ledger (docs/b1_target_system_20260906.md T1.2) and covers
-      ! every species the code carries, not only the molecular ones.
+      ! energy ledger, and covers every species the code carries, not only
+      ! the molecular ones.
       ! eps(X) is the energy needed to build X out of neutral ground-state
       ! free atoms at rest and free electrons at rest, so
       !
@@ -89,9 +89,8 @@
       ! freedom receives it, and four channels of this network leave a
       ! product in an excited state instead of giving the gas kinetic
       ! energy.  The enthalpy is the same in every case -- the formation
-      ! table is untouched and the reaction-energy identity of
-      ! src/tests/physics_probe holds -- and what changes is only the
-      ! RECIPIENT.
+      ! table is untouched and the reaction-energy identity holds -- and what
+      ! changes is only the RECIPIENT.
       !
       !   * R5, H2+ + e -> H + H, and R16, HeH+ + e -> He + H, leave ONE
       !     HYDROGEN ATOM IN n = 2.  Takagi (2002), Phys. Scr. T96, 52,
@@ -198,8 +197,7 @@
       ! ------------------------------------------------------------------ !
       ! THE SPECIES FORMATION-ENERGY TABLE eps_s [eV].
       !
-      ! REFERENCE STATE, one for the whole code
-      ! (docs/b1_target_system_20260906.md T1.2): every element a neutral,
+      ! REFERENCE STATE, one for the whole code: every element a neutral,
       ! ground-state, free atom at rest, at the zero of its internal level
       ! ladder; a free electron carries zero, so the ionization energy of an
       ! ion sits on the ion.  A metal stage therefore carries the CUMULATIVE
@@ -401,15 +399,15 @@
       ! written down here either.
       !
       ! O1, O1r, O2 and O2r are the four collisional channels of the oxygen
-      ! network (docs/a2_reaction_audit.md section 2); the photolysis channels
+      ! network; the photolysis channels
       ! O3, O4, O5 and O7 are paid by the absorbed photon and are deposited by
       ! water_photolysis through heat_per_water_dissociation and
       ! heat_per_hydroxyl_dissociation, so they are absent here.
       !
       ! O6 is the sink of the eliminated O(1D).  The elimination transfers the
-      ! reservoir with the nuclei (docs/b1_target_system_20260906.md T1.9
-      ! item 1): the flux through O6 equals the O(1D) production oj4 n(H2O),
-      ! and it carries eps(O(1D)) to the products.  Writing the channel with
+      ! reservoir with the nuclei: the flux through O6 equals the O(1D)
+      ! production oj4 n(H2O), and it carries eps(O(1D)) to the products.
+      ! Writing the channel with
       ! eps(O(1D)) among the reactants is what makes the O4 + O6 pair deposit
       ! exactly as much as the direct route H2O + hv -> OH + H at the same
       ! photon energy, which is acceptance test AT-1d (ii).
@@ -525,8 +523,8 @@
       ! deposit by at most that 0.55 eV -- half of what is left after the
       ! photon -- and understates nothing.  The reaction ENTHALPY itself is
       ! untouched: q(ir_R23) is still the formation-table difference, which
-      ! is what the reaction-energy identity of src/tests/physics_probe
-      ! asserts; what is subtracted here is the part of it that leaves the
+      ! is what the reaction-energy identity asserts; what is subtracted here
+      ! is the part of it that leaves the
       ! gas as light.
       !
       ! THIS IS THE ONLY CHANNEL OF THE TABLE THAT EMITS A PHOTON PROMPTLY.
@@ -584,11 +582,8 @@
       !
       ! WHERE THE UNCERTAINTY IS CARRIED.  As a recipient fraction of the
       ! 10.199 eV, varied on three representative cells of the certified
-      ! molecular base by
-      ! src/tests/physics_probe/molecular_energy_recipients.f90 and
-      ! tabulated in docs/lhs1140b_stationary_L31_energy_cycles_20260917.md
-      ! together with the complete energy cycles that show the excitation is
-      ! deposited once and only once.
+      ! molecular base, together with the complete energy cycles that show
+      ! the excitation is deposited once and only once.
       !
       ! A run whose H2+ is vibrationally hot prints the validity line of
       ! reaction_heat_recipient_validity_report below, once, at its first
@@ -634,12 +629,8 @@
       ! this share.  That is the uncertainty of the peak position and is
       ! carried here as the smallest of the two, with the distance from peak
       ! to mean unquantified.  Both are varied, separately from the
-      ! branching, on three representative cells by
-      ! src/tests/physics_probe/molecular_energy_recipients.f90, and the
-      ! bracket is in
-      ! docs/lhs1140b_stationary_L31_energy_cycles_20260917.md.  No figure
-      ! of either paper has been digitized; if one ever is, the memo records
-      ! the digitization and the population assumptions it rests on.
+      ! branching, on three representative cells.  No figure of either paper
+      ! has been digitized.
       !
       ! Where the fraction below is 1 the share is deposited in full either
       ! way and the uncertainty does not reach the gas at all; it reaches it
@@ -693,8 +684,7 @@
          ! (MEASURED), so the model and the exact form cannot differ here by
          ! anything the run reports. At a shallower base or at the top of a
          ! thinner layer they can, and the size of the difference there is
-         ! what the reduced statistical-equilibrium model of
-         ! src/tests/h2_level_ladder brackets.
+         ! what a reduced statistical-equilibrium model brackets.
          f_heat = h2_vibrational_heat_fraction(T, nhi(j), nh2, nheiS(j))
          ! The heat of each channel is q(ir) above; what is written here is
          ! only which densities and which rate coefficient multiply it, and
@@ -777,8 +767,8 @@
       ! was born in and not in v = 0.  The comparison is a property of the
       ! network and not of the cell, so the line is unconditional whenever
       ! the recipients are in force; what varies from run to run is the
-      ! recipient's weight in the heat budget, which the uncertainty rows of
-      ! src/tests/physics_probe/molecular_energy_recipients.f90 measure.
+      ! recipient's weight in the heat budget, which the uncertainty rows
+      ! measure.
       if (recipient_validity_said) return
       recipient_validity_said = .true.
       if (.not. reaction_heat_recipients_corrected()) return
@@ -1033,7 +1023,7 @@
 
       subroutine formation_energy_density(rho, f_sp, u_form, n_H_n2, n_O1D)
       ! The formation/excitation reservoir u_form = sum_s n_s eps_s
-      ! [erg cm^-3] of every cell (docs/b1_target_system_20260906.md T1.2).
+      ! [erg cm^-3] of every cell.
       !
       ! rho is the adimensional mass density and f_sp the species fractions,
       ! so n_s = rho f_sp(s) n0 in cm^-3, the same conversion

@@ -40,8 +40,7 @@
       ! reference set at T_ex(CO) = 5 K, is carried beside it as
       ! co_self_shielding_texc5 and is NOT called by the rate: it exists so
       ! that the spread between the two excitation temperatures can be
-      ! measured from this tree, which is what
-      ! src/tests/physics_probe/co_shielding_table.f90 does.
+      ! measured from this tree.
       !
       ! NEITHER TABLE IS AT THE EXCITATION TEMPERATURE OF THIS GAS, and the
       ! reason is a data limit rather than a choice of convenience.  READ,

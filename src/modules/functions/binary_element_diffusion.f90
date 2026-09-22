@@ -1,8 +1,6 @@
       module binary_element_diffusion
       ! Binary (two-component) H/He element transport for the single-fluid
-      ! EXHALE wind.  Formulation: docs/binary_diffusion_design.md (sections
-      ! 2-5), including the molecular-region closure of its section 5
-      ! (milestone M4).
+      ! EXHALE wind.
       !
       ! COMPONENTS.  The gas is treated as two components moving through each
       ! other with a single mass-averaged velocity v (the hydro's velocity):
@@ -279,7 +277,7 @@
       ! comparison principle for the linear system.  (The lagged linearization
       ! this replaced entered the drift as [rho D G (1-X_lag)] X, whose flux
       ! does not vanish at X = 1 unless the lag is already there; measured, it
-      ! let X reach 1.52.  Sections 84 and 86 of docs/Update_EXHALE_stage1.md.)
+      ! let X reach 1.52.  Sections 84 and 86 of docs/Update_EXHALE_stage1.pdf.)
       !
       ! M-MATRIX CONDITION.  The Newton Jacobian has
       !   off-diagonals   aa = -K r^2 dJ/dX(j-1) <= 0,  cc = K r^2 dJ/dX(j+1) <= 0
@@ -529,8 +527,8 @@
       ! the entry species carried, so the departure from rho is an invariant
       ! of the step and what is left in it is the round-off of that
       ! inversion: 1.0e-15 at the entry of the atomic element fixture and
-      ! 1.0e-14 after a relaxation of the synthetic columns of
-      ! src/tests/element_operator (both MEASURED).  Over the he_relax_maxstep
+      ! 1.0e-14 after a relaxation of the synthetic columns (both MEASURED).
+      ! Over the he_relax_maxstep
       ! steps of a relaxation those accumulate at worst to ~4e-13, so this
       ! bound stands two and a half decades above the arithmetic and ten
       ! decades below a mass error with any physical meaning.  It is stated
@@ -543,8 +541,7 @@
       ! The drift flux vanishes at both ends of the composition axis in the
       ! discrete operator as in the continuum (module header), so a converged
       ! step leaves X inside [0,1] up to the round-off of the tridiagonal
-      ! solve; this is the same bound the T14 rows of src/tests/
-      ! diffusion_tests.f90 hold the measured excursions to.
+      ! solve.
       real*8, parameter :: element_fraction_bound_tol = 1.0d-12
 
       ! THE ADVECTED ELEMENT MASS FRACTIONS, between the beginning of a
@@ -1589,7 +1586,7 @@
       ! The reduction is the one certification_row_measure forms for the
       ! same rows, so the number read here and the elemental entries of the
       ! certification of the same state are one measure and not two
-      ! spellings of it; src/tests/element_operator states that as a row.
+      ! spellings of it.
       !
       ! WHY A RESIDUAL AND NOT THE INNER MAP'S DISTANCE.  The distance
       ! relax_element_composition returns is the distance to the endpoint of
@@ -2482,7 +2479,7 @@
       !
       ! Newton, not a Picard sweep on a lagged (1-X): the lag is exactly what
       ! removes the shutoff of the drift at the ends of the composition axis,
-      ! and with it the bounds on X (header, and docs/Update_EXHALE_stage1.md
+      ! and with it the bounds on X (header, and docs/Update_EXHALE_stage1.pdf
       ! section 86).  The Jacobian is an M-matrix for any iterate in [0,1],
       ! and the nonlinearity is quadratic, so the iteration converges in a
       ! few passes; a step that does not reduce the residual is halved.
@@ -2860,7 +2857,7 @@
       ! as the trace-metal re-seed of element_diffusion_step does, because a
       ! cell that held no hydrogen held no ionization split either and ioniz_eq
       ! re-solves the split from the element total on the next call.
-      ! Section 84 of docs/Update_EXHALE_stage1.md.
+      ! Section 84 of docs/Update_EXHALE_stage1.pdf.
       real*8, dimension(1-Ng:N+Ng,n_species), intent(inout) :: f_sp
       real*8, dimension(1-Ng:N+Ng),           intent(in)    :: Xhe, msum
       logical,                                intent(in)    :: scale_metals
@@ -3020,9 +3017,7 @@
       ! solve_trace_element_in_hydrogen) and the stationary system on the
       ! composition it assembles (write_species_rows_into_composition of
       ! steady_newton.f90, through project_element_mass_fractions).  A
-      ! caller that writes neither is measured under a different boundary,
-      ! and the acceptance suite src/tests/element_operator states the size
-      ! of that difference rather than assuming it away.
+      ! caller that writes neither is measured under a different boundary.
       !
       ! The lower ghosts are the Dirichlet reservoir the state carries: cell
       ! 1 and below are incoming data and carry no equation here.
@@ -4259,10 +4254,7 @@
       ! Radial profile of the elemental face fluxes of the composition the
       ! step hands back, written to ./output/element_flux_profile.txt and
       ! replaced at every call, so that after a run the file holds the state
-      ! the run ended on.  This is the T8 diagnostic of
-      ! docs/binary_diffusion_design.md section 6, and the measurement the
-      ! Phase-E flux closure reads
-      ! (docs/phase_e_flux_closure_design.md section 3.4):
+      ! the run ended on.  The fluxes it writes are:
       !
       !   F_He(r_f) = 4 pi r_f^2 ( F_rho Y_He + J )         [g/s]
       !   F_H (r_f) = 4 pi r_f^2 ( F_rho (1 - Y_He) - J )   [g/s]
@@ -4294,15 +4286,15 @@
       ! With a lower-atmosphere profile in use the routine also reduces each
       ! elemental flux to ONE number -- its median and its relative radial
       ! spread -- over each of TWO radial windows, for write_resolved_config
-      ! and the flux closure of docs/phase_e_flux_closure_design.md section 6.
+      ! and the flux closure.
       !
       ! (a) The OVERLAP window, the interval both models describe.  Its upper
       !     edge is the radius the profile reaches, r(p_top).  Its lower edge
       !     is MEASURED rather than assumed: the first face at which the
       !     5-face moving spread of r^2 rho v falls below 10 percent, which
       !     is where the standing base sound wave stops dominating
-      !     (docs/binary_diffusion_design.md section 7.3, where that spread is
-      !     10^2-10^4 times its own median).  When no face qualifies the edge
+      !     (where that spread is 10^2-10^4 times its own median).  When no face
+      !     qualifies the edge
       !     falls back to 1.02 R_p and lap_flux_r_lo_measured says so.  An
       !     empty window is recorded as empty and never replaced by a number
       !     from outside it.

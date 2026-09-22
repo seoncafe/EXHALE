@@ -59,9 +59,7 @@ Key quantitative facts:
   (~10⁸ cm⁻³, 100× Saha) between 10 μbar and 1 bar; radical/haze heating of ±100-400 K
   right at the 1 μbar handoff level. *(2026-08-19: EXHALE still has no
   O/OH/H₂O species of its own, so the OH-catalyzed destruction reaches the code
-  only through the handoff. The directions open to us, with costs and validation
-  gates, are in `docs/oxygen_chemistry_options.md`, and the plan of record
-  built on them is `docs/oxygen_chemistry_new_plan.md`; the blocker itself is
+  only through the handoff. The blocker itself is
   `TO_BE_DONE.md` item (H).)*
 - **The published coupling is loose, not monolithic:** Lavvas 2014 takes T(p>1 μbar…top)
   *from* the Koskinen thermosphere and uses "species < 3 amu escape at the wind
@@ -210,8 +208,7 @@ The Lavvas & Arfaux code is not public, so the practical paths are:
    update is under-relaxed with omega = 0.5 (halved, floor 0.125, on any
    iteration whose residual failed to fall). The convergence test reads the
    undamped residual, and a residual smaller than the spread of its own window
-   is reported UNRESOLVED rather than converged. Design:
-   `docs/phase_e_flux_closure_design.md` §6. The radiation half (dumping
+   is reported UNRESOLVED rather than converged. The radiation half (dumping
    F_ν(r_base) and handing it to the photochemical model) is still not
    implemented: the adapters take a stellar flux file and a dilution instead.]
 
@@ -264,7 +261,7 @@ He_rec_coupling, He-H charge exchange).
 | 2 (remaining) | local-equilibrium caveat (no molecular *advection*: Koskinen's high-altitude H₂ replenishment not reproduced); dissociative/double photoionization channels (P4/P5); 4.48 eV dissociation energy sink; diatomic γ; `_adv` post-process; GJ 1214 b He-halving validation (full M-dwarf setup) | open | gates defined in §Tier-2 |
 | 2a | `Molecular base: True`, EOS-only base correction (`Molecular chemistry: True` turns this on by itself, since an atomic `ntot_bc` under a molecular base is inconsistent): removes the H₂-bound particles from `ntot_bc` (lower base pressure / heavier base μ; chemistry stays atomic, crude, documented). q_H₂ comes from the photochemical handoff when `base.inp` carries `q_H2_base`, and from the equilibrium fit otherwise (2026-08-10; `composition.f90`) | **done** | HD 209458 b: q_H₂(1 μbar,1450 K)=0.831 → ntot_bc 1.0→0.546 (equilibrium fit) |
 | 3 | `base.inp` reader in `input_read` (T_base / r_base / HeH_base / Kzz_base, echo + no-op when absent) + `src/utils/run_lower.py` driver (isothermal or Guillot 2010 semi-grey T(p); writes base.inp with a molecular-base warning). [2026-08-26: the reader also takes `q_H2_base`, `p_base` and one `<El>_H_base` key per element (any of the ten `species_table` symbols), the El/H **nuclei** ratio at the handoff level, which overrides `metals.inp` for that element, turns the metal system on by itself when it is the only nonzero abundance, and on a restart renormalizes that element's whole loaded column onto the stated ratio (`load_IC.f90`). Every key now carries a *category* (provenance / EOS boundary / elemental reservoir / initial guess / boundary constraint), which states what it is allowed to do to the wind; table in `docs/input_schema.md` §2c.] | **done (analytic stack)** | end-to-end: driver → base.inp → EXHALE consumes and echoes; iso vs Guillot: r₀ 1.4723 vs 1.4660 R_J, T_base 1450 vs 1313 K (HD 209458 b) |
-| 3 (upgrade) | **VULCAN end-to-end**: public VULCAN cloned (`EXHALE/VULCAN/`, FastChem compiled), HD 189733 b SNCHO photochemical run converged (2356 steps); converter `src/utils/vulcan_to_base.py` (.vul → base.inp with photochemical q_H2/q_H, VULCAN-μ/T hypsometric r_base; molecular mixing ratios as comments; **no metal release**, outside VULCAN's scope, stays Lavvas-only). Since 2026-08-10 the converter also writes the read keys `q_H2_base` and `p_base`, so the photochemical H₂ partition **replaces the chemical-equilibrium fit** in the molecular-base particle count instead of being recorded as a comment (`docs/base_composition_handoff_plan.md`) | **done (H/C/N/O composition)** | HD 189733 b at 1 μbar: **q_H2=0.63, q_H=0.23, photochemistry dissociates ~11× more H than the equilibrium column (q_H=0.020)**, directly quantifying the Tier-1 caveat; r_base 1.168 vs analytic 1.174 R_J; T_base 863 K (Moses11 T(p)); EXHALE consumes the file (overrides echoed) |
+| 3 (upgrade) | **VULCAN end-to-end**: public VULCAN cloned (`EXHALE/VULCAN/`, FastChem compiled), HD 189733 b SNCHO photochemical run converged (2356 steps); converter `src/utils/vulcan_to_base.py` (.vul → base.inp with photochemical q_H2/q_H, VULCAN-μ/T hypsometric r_base; molecular mixing ratios as comments; **no metal release**, outside VULCAN's scope, stays Lavvas-only). Since 2026-08-10 the converter also writes the read keys `q_H2_base` and `p_base`, so the photochemical H₂ partition **replaces the chemical-equilibrium fit** in the molecular-base particle count instead of being recorded as a comment | **done (H/C/N/O composition)** | HD 189733 b at 1 μbar: **q_H2=0.63, q_H=0.23, photochemistry dissociates ~11× more H than the equilibrium column (q_H=0.020)**, directly quantifying the Tier-1 caveat; r_base 1.168 vs analytic 1.174 R_J; T_base 863 K (Moses11 T(p)); EXHALE consumes the file (overrides echoed) |
 | 3 (profile) | [2026-08-27] **`Lower atmosphere profile: <file>`**, the lower atmosphere handed over as a *table over an interval of pressure* instead of the single-level scalars of `base.inp`. Reader `src/modules/files_IO/lower_atmosphere_profile.f90`, schema module `src/utils/lower_profile_schema.py`, producers `src/utils/photochem_to_lower_profile.py` (production path; `--tp-file` or a `--climate` radiative-convective solution) and `src/utils/vulcan_to_lower_profile.py` (cross-check, VULCAN carries no climate model). At its matching pressure the profile sets T₀, R₀, p_base, q_H2, He/H and each elemental reservoir it carries; `K_zz` is taken as a *profile* interpolated onto the grid, which is the point, the homopause is where K_zz crosses the molecular diffusion coefficient and a scalar `He_Kzz` cannot locate it. `n_tot` and `rho` are carried, not imposed. A `base.inp` beside a profile may no longer state those quantities: the EOS-boundary, elemental-reservoir and boundary-constraint keys are refused by name, and the file must carry a `# solution_id` matching the profile's | **done** | `lower_profile` regression case (HD 209458 b: reader, matching-level base state, elemental reservoirs, K_zz(p) in place of the scalar, the accepting branch of the solution_id pairing, and the elemental-flux window statistics); example `examples/17_lower_profile/`; schema `docs/input_schema.md` §2d |
 
 Notable physics finding from the Tier-1 gate work: the Visscher **equilibrium** fit keeps the
@@ -546,8 +543,7 @@ effective band, the ν₂ fundamental at 2521.3 cm⁻¹ (E/k = 3627.5 K), as
 Λ_net = Λ_emit(T)[1 + n̄ − n̄ exp(E/T)], with equilibrium temperatures of 936.1 K
 and then 941.2 K.** Pairing a total emission fit with the Boltzmann factor of one
 of its transitions diverges below about 150 K and is wrong by a factor 1.5-1.9
-over 400-1000 K; §112 of `docs/Update_EXHALE_stage1.md` measures it and records what
-moved. The approximations and where they break are
+over 400-1000 K. The approximations and where they break are
 written at `h3p_net_cooling_rate` in `src/modules/lower_atmosphere/h3p_cooling.f90`
 and at `fine_structure_line_transfer` in `src/modules/radiation/Cool_coeff.f90`.
 Fe II (a precomputed statistical-equilibrium table), the coronal remainders and
@@ -575,7 +571,7 @@ above with the switch on, and both return `info = 0`.
 
 **Stale, and not re-measurable from here: the field-on columns and the predicted
 floors below were computed with the single-band H₃⁺ closure, which was replaced
-on 2026-08-31 (§112 of `docs/Update_EXHALE_stage1.md`).** The converged solutions these
+on 2026-08-31.** The converged solutions these
 restart from no longer exist as run directories, so the table is left as the
 record of what that closure gave. The same four-way comparison re-measured with
 the current closure, at the 12000-step protocol of the `mol_ir_bands` regression
@@ -614,8 +610,7 @@ photodissociation of neutral H2: its photo-rates start at the 15.4 eV
 photoionization edge, so below that the only H2 losses are thermal (R12),
 electron impact (R14) and ion chemistry. Their own note says the omission is
 deliberate and that adding it (Backx et al. 1976 cross section, dissociation
-probability 0.125) moved their Ṁ by ≤ 1.4×. `base_composition_handoff_plan.md`
-§5 records the consequence for us: the network wants a base more molecular than
+probability 0.125) moved their Ṁ by ≤ 1.4×. The consequence for us is that the network wants a base more molecular than
 any photochemical code gives, and pinning `q_H2` at the base (Route 1) patches
 over the missing physics rather than supplying it. This section supplies it.
 
@@ -803,7 +798,7 @@ unshielded 6.03e-5 s⁻¹ computed above, and suppressed by 10⁶ at the base.
 
 ### Route 2 verdict: the physics was missing, but it does not close the gap
 
-The Route 2 criterion of `base_composition_handoff_plan.md` §5 was whether the
+The Route 2 criterion was whether the
 network's own base composition moves toward the photochemical partition once the
 missing dissociation is supplied, without pinning it. **It does not**, and the
 measurement says why.
@@ -820,8 +815,7 @@ R15 (H + H + M) sets n_H2 ∝ n_H², so
 heavy-particle density with the M = H2 coefficient but the collider sum over
 H2, H and He with the published coefficients of Cohen & Westberg 1983, which at
 this base lowers the association rate by 22 per cent; the balance argument
-below is unchanged in form. Item L7g,
-`docs/lhs1140b_stationary_L7g_model_20260916.md`.)*
+below is unchanged in form.)*
 
 
     n_H / n_H2  ∝  (total H2 destruction rate)^(1/2) ,
@@ -940,7 +934,7 @@ band the same omission would be an order-unity error, which is why the new
 module carries it explicitly. **The single-band H₃⁺ form the 941 K belongs to
 was itself replaced the same day** (a total emission fit cannot be paired with
 the Boltzmann factor of one transition at all temperatures) and the H₃⁺ column
-below is the replacement's (§112 of `docs/Update_EXHALE_stage1.md`).
+below is the replacement's.
 
 Each channel therefore has its own radiative equilibrium temperature, and it is
 the fixed point rather than the magnitude that answers item (G):
@@ -1065,8 +1059,7 @@ With the oxygen chemistry on, where H₂O and CO exist, the magnitudes are
 different by five orders: on HD 189733 b the two bands carry 4.8e-5 and 2.7e-5
 erg cm⁻³ s⁻¹ at r = 1.005 against a total of 7.5e-5, and a 12000-step A/B moves
 the base from 760.2 to 829.1 K and `x_H2` from 0.330 to 0.483, both toward the
-photochemical reference (864 K, 0.910). Neither of those runs is converged;
-`docs/Update_EXHALE_stage1.md` §110 carries the full statement and its caveats.
+photochemical reference (864 K, 0.910). Neither of those runs is converged.
 
 ### What is assumed
 

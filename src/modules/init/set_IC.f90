@@ -53,7 +53,7 @@
 
 	! Automatic IC selection ("IC mode: auto"): pick the IC family from the
 	! cold sonic-point topology of the actual potential before anything is
-	! built (v2 decision tree, docs/auto_ic_design.md). Explicit legacy keys
+	! built (v2 decision tree). Explicit legacy keys
 	! (Transonic IC / Hot Parker IC) take precedence and skip the selector.
 	if (ic_mode .eq. 3) call select_IC_auto
 
@@ -198,9 +198,9 @@
 	! the fit branch is clipped AT THE CEILING and says so once, rather than
 	! clipping x2 at 1 silently -- which is where the earlier form produced an
 	! exactly zero neutral-H column at helium-rich He/H and left nothing for
-	! the He recombination photons to ionize (docs/supersonic_molecular_base.md
-	! section 12). Clipping at the ceiling gives x2 = 1, fully molecular
-	! hydrogen, which is the physical statement the ceiling makes.
+	! the He recombination photons to ionize. Clipping at the ceiling gives
+	! x2 = 1, fully molecular hydrogen, which is the physical statement the
+	! ceiling makes.
 	!
 	! 2 H -> 1 H2 (H2 mass = 2 m_H) conserves both H nuclei and mass; the
 	! transfer is capped by the available neutral HI so warm/ionized layers
@@ -314,11 +314,10 @@
 	!-------------------------------------------------------!
 
 	subroutine select_IC_auto
-	! Automatic IC-family selection ("IC mode: auto"); v2 decision tree of
-	! docs/auto_ic_design.md. A single exact probe -- does the COLD base
-	! sound speed admit an interior sonic point in the actual (Roche or
-	! spherical) potential? -- separates the regimes with no tunable
-	! threshold:
+	! Automatic IC-family selection ("IC mode: auto"); v2 decision tree.
+	! A single exact probe -- does the COLD base sound speed admit an
+	! interior sonic point in the actual (Roche or spherical) potential? --
+	! separates the regimes with no tunable threshold:
 	!   interior sonic point -> transonic IC. Catches (a) deep-RLOF bases,
 	!     where the Roche dphi/dr -> 0 toward L1 always crosses the
 	!     critical condition (e.g. WASP-121b), and (b) low-gravity
