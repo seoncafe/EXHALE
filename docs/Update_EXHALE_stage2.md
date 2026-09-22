@@ -15404,7 +15404,7 @@ reading only the advection-corrected profiles.
 ### What a state that satisfies the flux criterion and not the certification costs
 
 `docs/du_stop_vs_stationary_20260920.md`, with
-`docs/lhs1140b_catalog_state_20260920.tex` as the document it answers a
+`docs/lhs1140b_catalog_state_20260922.tex` as the document it answers a
 question of. On one certified case,
 `atomic_scalar_gj1132_kzz1e9/HeH2.13`, a state that meets the flux-spread
 criterion the literature converges on (`du < 1e-3`, ATES and CETIMB, the
@@ -16411,3 +16411,68 @@ stated at the write statement, and the reader of
 `src/tests/coupled_block_jacobian` was taught both wordings, so a file written
 before 2026-09-22 still parses and an archived one does not become unreadable
 by a rename.
+
+## 17. The catalog summary rewritten on the catalog as it stands (2026-09-22)
+
+`docs/lhs1140b_catalog_state_20260920.tex` was renamed
+`docs/lhs1140b_catalog_state_20260922.tex` and its three tables were rebuilt
+from the tree rather than amended, because a check of the 2026-09-20 tables
+against the certificates in the case directories found four kinds of error in
+them, and three of the four were errors on the day the tables were written and
+not the catalog moving under them.
+
+**What the check found.** Of the twelve rows of the not-certified table, four
+did not state what the section says they state ("the row named is the one the
+certification refuses on").
+
+- The three rows at 0.01 of the fiducial XUV quoted the interrupted campaign
+  attempt's JFNK log, not a certificate. `photochem_x0.01_kzzprofile/HeH9.7`
+  read "mass row 1.16 at cell 1", which is the run's `||R||` 1.163E+00 and the
+  worst-row line beside it, while the certificate of the generation the index
+  names refuses on four entries (mass 5.880E-01 at cell 11, momentum
+  7.774E-07 at cell 495, energy 1.949E+00 at cell 7, elemental He/H 3.538E-02
+  at cell 389). For the other two the quoted pairs, "mass row 3.3e-4 at cell
+  245" and "energy row 9.98e-1 at cell 248", are in neither the certificate
+  nor the log line: cells 245 and 248 appear in no source this check could
+  find, and the log names cell 232 and cell 354 instead.
+- `photochem_kzzprofile/HeH9` (molecular) read "mass row 2.25e-1 at cell 2".
+  That measure and its 2.2E-11 tolerance are the 2026-09-18 reading of that
+  case; the generation the 2026-09-20 tables were about reads mass 1.041E+00
+  against 3.4E-10 at cell 2, and refuses on five entries, not one.
+- `scalar_kzz1e9/HeH0.083` (molecular) named only the H2 carrier row; its
+  certificate also refuses the elemental He/H row at 2.503E-04, cell 280.
+- Two `||R||` values were a mid-solve iterate rather than the run's final
+  line: 2.542E-01 where the solve ended at 2.458E-01, and 1.171E+00 where it
+  ended at 1.163E+00. A third, the molecular `scalar_kzz1e9/HeH2.13` row of
+  the certified table, took `du` from the last `(JFNK) done` line and `||R||`
+  from somewhere else, so the pair did not come from one solve.
+
+**How the rebuilt tables are made.** Every cell is read from the tree by one
+stated rule and none is typed. `du` and `||R||` are the pair on the LAST
+`(JFNK) done` line of the case's `run.log`, so they are one solve's two
+numbers; a case that was never advanced has no such line and reads `--`. The
+refusing rows are read from `certification.txt` of the generation the index
+names `latest_complete`, and every refusing entry is listed. log10 Mdot and
+the He I 10830 equivalent width come from `models/status.py`, re-run
+read-only; its output reproduces the committed table of `LHS1140b/MODELS.md`
+section 7 line for line, which is the check that the two agree. The counts are
+`models/status.py inventory`, re-run read-only at 2026-09-22 11:55:41 KST:
+**143 state indexes, 92 certified**, the same totals the stored
+`CASE_INVENTORY.json` carries from 2026-09-21 21:10.
+
+**What the rebuilt tables say.** 94 models, 83 of them certified, where the
+2026-09-20 tables counted 88 and 76: the six rungs the XUV continuation opened
+and the promotion of `scalar_x0.01_kzz1e9/HeH2.13`. Eleven models carry no
+certificate, and they still fall into three kinds, now 2 + 5 + 4 rather than
+3 + 5 + 4. One statement of the section changed with the numbers: the entry
+that refuses most often is the hydrodynamic mass row, in seven of the eleven,
+where the 2026-09-20 text said it was the H2 carrier balance, which appears in
+five. The four `diffusion_check` models now carry measured certificates that
+refuse on the hydrodynamic and elemental rows, which is what a state that was
+post-processed without a time integration is expected to do, and the section
+says so rather than leaving their row empty.
+
+Rebuilt and looked at: 7 pages, one Underfull hbox in the opening paragraph
+and no Overfull box, no LaTeX warning and no undefined reference. The three
+figures and section 5, the measurement of what a flux-converged refused state
+differs from a certified one BY, are unchanged.

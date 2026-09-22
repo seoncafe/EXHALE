@@ -7,7 +7,7 @@ Every number below is MEASURED in this session unless it is marked READ.
 
 ## The question
 
-`docs/lhs1140b_catalog_state_20260920.tex`, section 3, states that several
+`docs/lhs1140b_catalog_state_20260922.tex`, section 3, states that several
 models of the catalog meet the flux-spread criterion the literature converges
 on, `du < 1e-3` (ATES, Caldiroli et al. 2021; CETIMB, Koskinen et al. 2013a,
 who ask that `F_c = rho v r^2` be constant with altitude), and are
@@ -138,7 +138,7 @@ profiles overlaid) and `docs/figures/du_stop_vs_stationary_differences.pdf`
 (`LHS1140b/winered_hires_y.sh`, `R = 68000`), run on both states with each of
 the two state selections. The `adv` selection is the catalog's own and
 reproduces its published number for this case (EW 1.3749 %A, READ from
-`docs/lhs1140b_catalog_state_20260920.tex`); the `solution` selection reads
+`docs/lhs1140b_catalog_state_20260922.tex`); the `solution` selection reads
 the state files themselves. The comparison is like for like in both columns,
 the same selection on both states, and the two selections disagree with each
 other far more than the two states do, since the advection-corrected
@@ -184,7 +184,7 @@ partition that is wrong by a per cent where the line forms.
 Against the observational side this is small. It is not small against the
 differences the catalog resolves between neighboring models: the He/H rungs
 of this group stand 0.178 %A apart in the equivalent width here (READ,
-`docs/lhs1140b_catalog_state_20260920.tex`, section 4: 1.1970 at He/H = 1.70
+`docs/lhs1140b_catalog_state_20260922.tex`, section 4: 1.1970 at He/H = 1.70
 against 1.3749 at 2.13), and the shift measured above is 0.018 %A, a tenth of
 that gap, so a crossing He/H read off such a ladder would move by about a
 tenth of a rung. The certification buys a resolution the flux criterion does not.

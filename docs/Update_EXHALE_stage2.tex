@@ -16002,7 +16002,7 @@ reading only the advection-corrected profiles.
 \subsubsection{What a state that satisfies the flux criterion and not the certification costs}\label{what-a-state-that-satisfies-the-flux-criterion-and-not-the-certification-costs}
 
 \texttt{docs/du\_stop\_vs\_stationary\_20260920.md}, with
-\texttt{docs/lhs1140b\_catalog\_state\_20260920.tex} as the document it answers a
+\texttt{docs/lhs1140b\_catalog\_state\_20260922.tex} as the document it answers a
 question of. On one certified case,
 \texttt{atomic\_scalar\_gj1132\_kzz1e9/HeH2.13}, a state that meets the flux-spread
 criterion the literature converges on (\texttt{du\ \textless{}\ 1e-3}, ATES and CETIMB, the
@@ -17062,6 +17062,78 @@ stated at the write statement, and the reader of
 \texttt{src/tests/coupled\_block\_jacobian} was taught both wordings, so a file written
 before 2026-09-22 still parses and an archived one does not become unreadable
 by a rename.
+
+\subsection{17. The catalog summary rewritten on the catalog as it stands (2026-09-22)}\label{17-the-catalog-summary-rewritten-on-the-catalog-as-it-stands-2026-09-22}
+
+\texttt{docs/lhs1140b\_catalog\_state\_20260920.tex} was renamed
+\texttt{docs/lhs1140b\_catalog\_state\_20260922.tex} and its three tables were rebuilt
+from the tree rather than amended, because a check of the 2026-09-20 tables
+against the certificates in the case directories found four kinds of error in
+them, and three of the four were errors on the day the tables were written and
+not the catalog moving under them.
+
+\textbf{What the check found.} Of the twelve rows of the not-certified table, four
+did not state what the section says they state ("the row named is the one the
+certification refuses on").
+
+\begin{itemize}
+\tightlist
+\item
+  The three rows at 0.01 of the fiducial XUV quoted the interrupted campaign
+  attempt\textquotesingle s JFNK log, not a certificate. \texttt{photochem\_x0.01\_kzzprofile/HeH9.7}
+  read "mass row 1.16 at cell 1", which is the run\textquotesingle s \texttt{\textbar{}\textbar{}R\textbar{}\textbar{}} 1.163E+00 and the
+  worst-row line beside it, while the certificate of the generation the index
+  names refuses on four entries (mass 5.880E-01 at cell 11, momentum
+  7.774E-07 at cell 495, energy 1.949E+00 at cell 7, elemental He/H 3.538E-02
+  at cell 389). For the other two the quoted pairs, "mass row 3.3e-4 at cell
+  245" and "energy row 9.98e-1 at cell 248", are in neither the certificate
+  nor the log line: cells 245 and 248 appear in no source this check could
+  find, and the log names cell 232 and cell 354 instead.
+\item
+  \texttt{photochem\_kzzprofile/HeH9} (molecular) read "mass row 2.25e-1 at cell 2".
+  That measure and its 2.2E-11 tolerance are the 2026-09-18 reading of that
+  case; the generation the 2026-09-20 tables were about reads mass 1.041E+00
+  against 3.4E-10 at cell 2, and refuses on five entries, not one.
+\item
+  \texttt{scalar\_kzz1e9/HeH0.083} (molecular) named only the H2 carrier row; its
+  certificate also refuses the elemental He/H row at 2.503E-04, cell 280.
+\item
+  Two \texttt{\textbar{}\textbar{}R\textbar{}\textbar{}} values were a mid-solve iterate rather than the run\textquotesingle s final
+  line: 2.542E-01 where the solve ended at 2.458E-01, and 1.171E+00 where it
+  ended at 1.163E+00. A third, the molecular \texttt{scalar\_kzz1e9/HeH2.13} row of
+  the certified table, took \texttt{du} from the last \texttt{(JFNK)\ done} line and \texttt{\textbar{}\textbar{}R\textbar{}\textbar{}}
+  from somewhere else, so the pair did not come from one solve.
+\end{itemize}
+
+\textbf{How the rebuilt tables are made.} Every cell is read from the tree by one
+stated rule and none is typed. \texttt{du} and \texttt{\textbar{}\textbar{}R\textbar{}\textbar{}} are the pair on the LAST
+\texttt{(JFNK)\ done} line of the case\textquotesingle s \texttt{run.log}, so they are one solve\textquotesingle s two
+numbers; a case that was never advanced has no such line and reads \texttt{-\/-}. The
+refusing rows are read from \texttt{certification.txt} of the generation the index
+names \texttt{latest\_complete}, and every refusing entry is listed. log10 Mdot and
+the He I 10830 equivalent width come from \texttt{models/status.py}, re-run
+read-only; its output reproduces the committed table of \texttt{LHS1140b/MODELS.md}
+section 7 line for line, which is the check that the two agree. The counts are
+\texttt{models/status.py\ inventory}, re-run read-only at 2026-09-22 11:55:41 KST:
+\textbf{143 state indexes, 92 certified}, the same totals the stored
+\texttt{CASE\_INVENTORY.json} carries from 2026-09-21 21:10.
+
+\textbf{What the rebuilt tables say.} 94 models, 83 of them certified, where the
+2026-09-20 tables counted 88 and 76: the six rungs the XUV continuation opened
+and the promotion of \texttt{scalar\_x0.01\_kzz1e9/HeH2.13}. Eleven models carry no
+certificate, and they still fall into three kinds, now 2 + 5 + 4 rather than
+3 + 5 + 4. One statement of the section changed with the numbers: the entry
+that refuses most often is the hydrodynamic mass row, in seven of the eleven,
+where the 2026-09-20 text said it was the H2 carrier balance, which appears in
+five. The four \texttt{diffusion\_check} models now carry measured certificates that
+refuse on the hydrodynamic and elemental rows, which is what a state that was
+post-processed without a time integration is expected to do, and the section
+says so rather than leaving their row empty.
+
+Rebuilt and looked at: 7 pages, one Underfull hbox in the opening paragraph
+and no Overfull box, no LaTeX warning and no undefined reference. The three
+figures and section 5, the measurement of what a flux-converged refused state
+differs from a certified one BY, are unchanged.
 
 \appendix
 \input{Update_EXHALE_appendix}

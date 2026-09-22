@@ -283,7 +283,7 @@ P4b-2, P4c, P4d and the certification rule).
 handoff, the item memos of section 5, `docs/EXHALE_user_manual`,
 `docs/EXHALE_physics_and_algorithms`, `docs/EXHALE_BC_and_IC` and the
 `docs/physics_overview/*.tex` sections behind them,
-`docs/lhs1140b_catalog_state_20260920.tex` with its three figures.
+`docs/lhs1140b_catalog_state_20260922.tex` with its three figures.
 
 ### 2.2 New keys and their defaults
 
@@ -515,7 +515,7 @@ text), `docs/PLAN_20260919_review.md`.
 series), `lhs1140b_catalog_refresh_20260919.md` (third and fourth passes) and
 `du_stop_vs_stationary_20260920.md`.
 
-**The catalog summary document**: `docs/lhs1140b_catalog_state_20260920.tex`
+**The catalog summary document**: `docs/lhs1140b_catalog_state_20260922.tex`
 and its `.pdf` (7 pages), with `docs/figures/du_stop_vs_stationary_profiles.pdf`,
 `docs/figures/du_stop_vs_stationary_differences.pdf` and
 `docs/figures/du_stop_vs_stationary_he10830.pdf`.
