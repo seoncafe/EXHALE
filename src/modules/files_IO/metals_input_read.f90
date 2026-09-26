@@ -17,7 +17,8 @@
 
       use global_parameters
       use charge_exchange, only: cx_full,  &  ! full-Table-4 toggle
-                                 cx_o2p_h_scale  ! Group-E O2+ + H0 dial
+                                 cx_o2p_h_scale, &  ! Group-E O2+ + H0 dial
+                                 cx_n2p_h_scale     ! Group-E N2+ + H0 dial
 
       implicit none
 
@@ -43,18 +44,19 @@
       ! that quantity is kept. A second statement stops the run: two
       ! abundances for one element are two answers to one question, and
       ! last-line-wins would silently pick one.
-      integer, parameter :: n_quantity = 15
+      integer, parameter :: n_quantity = 16
       character(len=12), parameter :: quantity_name(n_quantity) =            &
          [ character(len=12) :: 'X_C', 'X_N', 'X_O', 'X_Mg', 'X_Si',         &
            'X_Ca', 'X_Na', 'X_K', 'X_S', 'X_Fe',                             &
-           'cx_full', 'cx_O2p_H', 'cno_cool', 'eos_metals', 'pp_metals' ]
+           'cx_full', 'cx_O2p_H', 'cx_N2p_H', 'cno_cool', 'eos_metals',      &
+           'pp_metals' ]
       integer :: quantity_line(n_quantity)
       integer :: iline, iq
 
       inquire(file = met_inp_file, exist = file_exists)
       if (.not. file_exists) then
-         write(*,*) '(metals_input) No metals.inp found; using built-in', &
-                    ' X_C/X_N/X_O/X_Mg defaults.'
+         write(*,*) '(metals_input) No metals.inp found; no metals', &
+                    ' (every abundance stays zero).'
          return
       endif
 
@@ -94,8 +96,9 @@
          ! accepts its neutral ion label (e.g. 'SiI') and its bare symbol
          ! (e.g. 'Si'). The single-letter sulphur is 'S'/'SI'; silicon is
          ! 'Si'/'SiI'.
-         ! 'cx_full <0|1>' toggles the full Huang Table 4 (He-H and
-         ! metal-metal charge exchange) instead of the metal-H default.
+         ! 'cx_full <0|1>' adds Huang Table 4 groups C (metal + He, He+)
+         ! and D (metal + metal) to the metal + H default; the He <-> H
+         ! pair is He_H_charge_exchange of input.inp, not this key.
          if (trim(tok) == 'cx_full' .or. trim(tok) == 'CX_FULL') then
             call refuse_second_statement('cx_full', iline, trimmed)
             cx_full = (ab > 0.5d0)
@@ -121,6 +124,24 @@
             else
                write(*,'(a)') '   O2+ + H0 charge transfer OFF '           &
                   // '(Huang Table 4 only)'
+            endif
+            cycle
+         endif
+
+         ! 'cx_N2p_H <scale>' rescales the other group-E electron capture,
+         ! N2+ + H0 -> N+ + H+, in units of the published Barragan et al.
+         ! (2006) rate (their reaction 4). 1 (default) is that rate; 0 leaves
+         ! the row out exactly; other values are bounding experiments. Not
+         ! folded into cx_full, which means "all of Table 4".
+         if (trim(tok) == 'cx_N2p_H' .or. trim(tok) == 'cx_n2p_h') then
+            call refuse_second_statement('cx_N2p_H', iline, trimmed)
+            cx_n2p_h_scale = max(ab, 0.0d0)
+            if (cx_n2p_h_scale > 0.0d0) then
+               write(*,'(a,es9.2,a)') '   N2+ + H0 -> N+ + H+ charge '     &
+                  // 'transfer ON at ', cx_n2p_h_scale,                    &
+                  ' x Barragan+2006 [default 1]'
+            else
+               write(*,'(a)') '   N2+ + H0 charge transfer OFF'
             endif
             cycle
          endif

@@ -133,7 +133,7 @@
       !     formed molecule over the levels in their LTE proportions, which
       !     leaves the net collisional heat of the formation exactly zero and
       !     the whole bond energy in the thermal pool
-      !     (docs/cloudy_h2_model_reference_20260916.md section 5.1).
+      !     (md/cloudy_h2_model_reference_20260916.md section 5.1).
       !
       ! The internal shares of R6 and R15 carry Hollenbach & McKee's (1979,
       ! ApJS 41, 555, p. 586) collisional branching (1 + n_cr/n)^-1,

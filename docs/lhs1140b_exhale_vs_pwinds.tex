@@ -20,6 +20,19 @@
 \begin{document}
 \maketitle
 
+\begin{center}
+\fbox{\parbox{0.92\textwidth}{\textbf{Stale since 2026-09-24.} Every EXHALE
+state, equivalent width and composition in this memo is of the physics before
+the atomic-data audit of 2026-09-24 (\texttt{md/Update\_EXHALE\_stage3.md}
+sections 17 and 18). The largest correction for this line is the
+2$^3$S$\,\to\,$1$^1$S electron-impact de-excitation, the detailed-balance
+reverse of the excitation the network carried, which the metastable network
+had left out: it lowers the He~10830 equivalent width of the certified
+molecular states by about 20 per cent after a re-solve, so the compositions
+this memo reads from the line are low. The p-winds side is unaffected. The
+EXHALE side is being re-solved, the molecular $K_{zz}=10^{9}$ family first.}}
+\end{center}
+
 \section{Goal, and the answer up front}
 
 The question is whether a wind that is solved, rather than assumed,
@@ -113,7 +126,7 @@ them stands above the measured $1.108 \pm 0.030$, the lowest by $33$ per cent
 (Sect.~\ref{sec:closureladder}). There is no crossing in this sequence. Read
 against its own local slope, $\mathrm{d}\ln
 EW/\mathrm{d}\ln(\mathrm{He/H}) = 0.49$ between the two lowest solutions, the
-measurement would be reached near $\mathrm{He/H} \approx 1.1$, which is below
+measurement would be reached near $\mathrm{He/H} \approx 1.2$, which is below
 every solution obtained and is an extrapolation, not a solution. The earlier
 crossing at $8.212$ was a consequence of the base metals cooling the wind;
 they no longer do.
@@ -180,7 +193,7 @@ produces it is unidentified. It is not thermal, since the solved gas cools
 below $1000$\,K over the region where the line forms, and it is not bulk
 outflow, which reaches $1.1$\,km\,s$^{-1}$ at $20\,R_p$ on the fainter
 spectrum and $3.6$ on the brighter. Read as turbulence it is
-$\mathcal{M} = 2.3$--$4.0$ against the sound speed these solutions themselves
+$\mathcal{M} = 2.2$--$3.9$ against the sound speed these solutions themselves
 carry, supersonic on every convention and well above what the literature is
 willing to assume. One mechanism would supply width without a free parameter,
 the metastable bump produced by adiabatic cooling of Schulik \& Owen (2025).
@@ -194,7 +207,7 @@ than the wind solved here, because its temperature is imposed at
 $5000$--$6000$\,K where the line forms, but at FWHM $0.575$\,\AA{} with its
 turbulence term on ($0.458$ without it) it is still $1.5$ times narrower than
 the measured $0.841$, and it overshoots the blue component threefold. Adding
-broadening does not rescue it. Its absorbing power is $24\%$ below the
+broadening does not rescue it. Its absorbing power is $25\%$ below the
 measurement, so no convolution can reach the observed depth and width at
 once. The width is a shortfall the two codes share. That is also what the
 audit of the measurement side leaves (Sect.~\ref{sec:widthaudit}): the
@@ -292,8 +305,10 @@ three days later by the correction to the lower boundary described in
 Sect.~\ref{sec:l21}, and every case was solved again. The set of record is
 the one solved on 2026-09-16, on a single build. Of the 86 cases in it that
 have no molecules in the wind, 79 converge, each in one cycle started from
-its own previous state; the seven that do not are the gaps in
-Table~\ref{tab:campaign}. The results of 2026-09-14 are kept unchanged, and
+its own previous state. The seven that did not are the lowest-XUV cases;
+five of them have since certified with the Roe numerical flux, solved after
+this campaign, and the two left are cases at $0.01$ of the fiducial XUV
+(Table~\ref{tab:campaign}, Sect.~\ref{sec:xuvgrid}). The results of 2026-09-14 are kept unchanged, and
 the two generations are compared case by case in the working notes of
 2026-09-15 on the re-solve. A number labeled \emph{preL21} below is from
 2026-09-14; everything else is from the final pass.
@@ -362,6 +377,7 @@ here, from the same starting state, the same input and the same build.
 (largest cellwise imbalance, each measured against the largest term in its
 own equation) and the outcome of the stationary solve on the reference case,
 $K_{zz} = 10^{9}$, $\mathrm{He/H} = 1.6261$.}
+\setlength{\tabcolsep}{5.5pt}
 \begin{tabular}{lccccl}
 \toprule
 option & hydro & mass & momentum & energy & outcome \\
@@ -456,7 +472,7 @@ density stands a factor $5.9$ apart at $44\,R_p$.
 
 The consequence for the line is a choice of which profile to read rather than
 a correction. The He\,\textsc{i} $10830$ equivalent width read from the
-solution's own composition is $15.5116$\,\%\,\AA{} against $1.1702$ from the
+solution's own composition is $15.5120$\,\%\,\AA{} against $1.1702$ from the
 advection-corrected one, a factor $13.3$. Feeding the transit tool the
 solution's \emph{temperature} together with the corrected composition instead
 moves it by $0.15$ per cent. The line depends on the composition and hardly
@@ -505,16 +521,20 @@ five cases with a scalar base, that turns hours of refusing into minutes of
 converging: the case at $0.20$ of the fiducial spectrum and
 $\mathrm{He/H} = 2.13$ went from four cycles in $6$\,h\,$22$, still refusing,
 to converged in $17$ minutes. Nine of the thirteen cases treated this way
-converged within the hour. \emph{Four did not}, and they are the gaps in
-Table~\ref{tab:xuvgrid}: the run over the scalar base at $0.10$ of the
-fiducial with $\mathrm{He/H} = 9.7$, and the photochemical cases at $0.15$, $0.20$ and
-$0.25$, all keep the same behavior at $\mathrm{d}\tau_0 = 10^{8}$, the step
-falling back to order ten while the mass equation in the first cell holds
-$\|R\|$ near $1.5$. Starting the step higher is not what they need.
-Separately, the three cases at $0.01$ of the fiducial have never solved on
-any boundary. That is attributed to the Newton model of a wind subsonic to
-Mach $10^{-8}$ over its whole lower atmosphere; the finite-difference
-Jacobian and the convergence criterion were both measured and both cleared.
+converged within the hour. \emph{Four did not}: the run over the scalar base
+at $0.10$ of the fiducial with $\mathrm{He/H} = 9.7$, and the photochemical
+cases at $0.15$, $0.20$ and $0.25$, all keep the same behavior at
+$\mathrm{d}\tau_0 = 10^{8}$, the step falling back to order ten while the
+mass equation in the first cell holds $\|R\|$ near $1.5$. Starting the step
+higher is not what they need. Separately, the three cases at $0.01$ of the
+fiducial did not solve on either boundary in this campaign. That is
+attributed to the Newton model of a wind subsonic to Mach $10^{-8}$ over its
+whole lower atmosphere; the finite-difference Jacobian and the convergence
+criterion were both measured and both cleared. All four of the first group
+have since certified with the Roe numerical flux in place of HLLC, and so has
+the scalar case at $0.01$ with $\mathrm{He/H} = 2.13$, reached by a
+continuation in XUV on 2026-09-21; the other two cases at $0.01$ are not
+certified (Sect.~\ref{sec:xuvgrid}, Table~\ref{tab:xuvgrid}).
 
 \subsection{The base boundary, which chose its branch on the wrong quantity}
 \label{sec:l21}
@@ -651,10 +671,12 @@ stands entirely above it. Against preL21 the movement is smaller and it is
 all one thing: the base cell is the reservoir that was prescribed instead of
 the interior isentrope, so every case is a little cooler and denser at its
 first cell, a little smaller in $\dot M$, and a little weaker in the line.
-The crossings walk \emph{up} by $1$ to $14$ per cent, most of it at
-$K_{zz} \le 10^{5}$, where the equivalent width responds most weakly to
-composition and a $2$ per cent shift in it buys a long step in
-$\mathrm{He/H}$.
+The crossings of the groups with diffusion walk \emph{up} by $1.5$ to $14$
+per cent, most of it at $K_{zz} \le 10^{5}$, where the equivalent width
+responds most weakly to composition and a $2$ per cent shift in it buys a
+long step in $\mathrm{He/H}$. The two well-mixed crossings move less: by
+$0.8$ per cent on the GJ\,1132 proxy and by $0.002$ per cent on the GJ\,699
+one, whose solutions the correction left as they were.
 
 \subsection{The campaign, group by group}
 \label{sec:campaign}
@@ -663,22 +685,28 @@ Table~\ref{tab:campaign} collects the whole campaign on one page: twenty-one
 groups of models, the reservoirs solved in each, where that group's own
 solutions cross the measured equivalent width, and the range of the escape
 rate over the group. It indexes the sections that follow, and it also records
-what is not solved: seven cases of the XUV grid, three of them at $0.01$ of
-the fiducial and four between $0.10$ and $0.25$, and the groups with
-molecules in the wind, which are still being worked and whose solved cases
-are recorded as they stand.
+what is not solved: two cases at $0.01$ of the fiducial XUV, which are what
+is left of the seven lowest-XUV cases this campaign did not solve, and the
+groups with molecules in the wind, which are still being worked and whose
+solved cases are recorded as they stand.
 
 \begin{table}[htbp]\centering\small
-\caption{Every group of models and what it returns, on one build. The
+\caption{Every group of models and what it returns, on one build apart from
+the XUV-grid cases named below. The
 crossing is where the group's own solved solutions reach the measured
 red-pair equivalent width, $1.108 \pm 0.030$\,\%\,\AA, and $\dot M$ is the
-range over the group. The cases at $0.01$ of the fiducial XUV have never
-solved; the photochemical cases at $0.15$, $0.20$, $0.25$ and the scalar
-He/H\,$=9.7$ case at $0.10$ stopped solving on the corrected lower boundary
-(Sect.~\ref{sec:xuvgrid}). In the groups with molecules three cases are still
-running at the time of writing and are marked so; what they wait on is the
-step that lets the transported H$_2$ settle, recorded in the working notes on
-this campaign.}
+range over the group. The rows of the XUV grid also hold cases solved after
+this campaign, READ from \texttt{LHS1140b/MODELS.md} (sections 3.1, 7 and 8,
+as of 2026-09-23): the photochemical cases at $0.15$, $0.20$, $0.25$ and the
+scalar He/H\,$=9.7$ case at $0.10$, which stopped solving on the corrected
+lower boundary and certify with the Roe numerical flux, and the scalar
+He/H\,$=2.13$ cases from $0.07$ down to $0.01$, reached by a continuation in
+XUV on 2026-09-21, and the scalar He/H\,$=9.7$ rungs at $0.0675$, $0.0662$ and
+$0.065$, continued from $0.07$ on 2026-09-23. The scalar He/H\,$=9.7$ cases at
+$0.06$, $0.0624$ and $0.01$ and the photochemical case at
+$0.01$ are not certified (Sect.~\ref{sec:xuvgrid}). In the groups with molecules the cases
+without a certificate are marked so; why each stops is recorded in the
+working notes on this campaign.}
 \label{tab:campaign}
 \begin{tabular}{llcc}
 \toprule
@@ -692,7 +720,7 @@ $K_{zz} = 10^{6}$ & $0.55$--$3.74$ (6) & $2.8930$ & $7.84$--$7.87$ \\
 $K_{zz} = 10^{7}$ & $0.55$--$3.18$ (4) & $2.5365$ & $7.85$--$7.87$ \\
 $K_{zz} = 10^{8}$ & $0.55$--$2.41$ (4) & $1.9729$ & $7.85$--$7.87$ \\
 $K_{zz} = 10^{9}$ & $0.55$--$9.7$ (7) & $1.5161$ & $7.85$--$7.87$ \\
-$K_{zz} = 10^{10}$ & $0.55$--$1.29$ (4) & $1.1579$ & $7.86$ \\
+$K_{zz} = 10^{10}$ & $0.55$--$1.29$ (4) & $1.1580$ & $7.86$ \\
 $K_{zz} = 10^{11}$ & $0.55$--$0.93$ (4) & $0.8927$ & $7.86$ \\
 $K_{zz} = 10^{9}$, C/N/O base & $2.13$ (1) & - & $7.87$ \\
 \midrule
@@ -704,19 +732,20 @@ $K_{zz}(p)$ from the profile & $2.09$--$12$ (9) &
 none: every solution above & $7.90$--$7.91$ \\
 \midrule
 \multicolumn{4}{l}{\emph{XUV grid, lower atmosphere held fixed}}\\
-scalar, $K_{zz} = 10^{9}$ & $0.10$--$0.33 \times$ at He/H $2.13$;
-$0.15$--$0.33\times$ at $9.7$ & depth limit at $0.28\times$ & $6.82$--$7.36$ \\
- & $0.01\times$, and $0.10\times$ at $9.7$: not solved & & \\
-photochemical column & $0.10$, $0.30$, $0.33 \times$ at He/H $9.7$ &
+scalar, $K_{zz} = 10^{9}$ & $0.01$--$0.33 \times$ at He/H $2.13$;
+$0.065$--$0.33\times$ at $9.7$ & depth limit at $0.28\times$ & $5.79$--$7.36$ \\
+ & $0.01$, $0.06$, $0.0624\times$ at $9.7$: not certified & & \\
+photochemical column & $0.10$--$0.33 \times$ at He/H $9.7$ &
 limit below $0.10\times$ & $6.84$--$7.39$ \\
- & $0.01$, $0.15$, $0.20$, $0.25\times$: not solved & & \\
+ & $0.01\times$: not certified & & \\
 \midrule
 \multicolumn{4}{l}{\emph{molecular chemistry in the wind}}\\
-scalar base, well mixed & $0.083$, $0.55$ not converged; $2.13$ still running
+scalar base, well mixed & $0.083$, $0.55$ not certified; $2.13$ not solved
 & - & - \\
-scalar base, $K_{zz} = 10^{9}$ & $2.13$, $9.7$ converged; $0.55$ a marching
-stop; $0.083$ not converged & - & $7.91$--$7.95$ \\
-photochemical column & $2.09$, $9$ still running & - & - \\
+scalar base, $K_{zz} = 10^{9}$ & $0.55$--$9.7$ (7) certified; & $1.4643$ &
+$7.59$--$7.94$ \\
+ & $0.083$ not certified & & \\
+photochemical column & $9$ not certified; $2.09$ not solved & - & - \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -728,11 +757,35 @@ $\mathrm{He/H} = 2.13$ at $\log_{10}\dot M = 7.91$, red-pair
 $EW = 1.5758$\,\%\,\AA{} and depth $5.63$ per cent, and $9.7$ at $7.95$,
 $2.4212$\,\%\,\AA{} and $7.68$ per cent, both with element diffusion at
 $K_{zz} = 10^{9}$. Both stand above the measured $1.108$, as the
-flux-consistent solutions do. The $0.55$ case of the same group is a marching
-stop rather than a converged state ($\log_{10}\dot M = 7.64$,
-$EW = 0.1591$\,\%\,\AA), so no crossing is read from this group here even
-though two of its cases straddle the measurement. The remaining molecular
-cases have not converged or are still running, and are not quoted.
+flux-consistent solutions do. These numbers are from the spectra of
+2026-09-16; both cases have been run again since, and the spectra now in
+their directories (written 2026-09-20) give $EW = 1.5604$ and
+$2.4060$\,\%\,\AA{} through the operator of Sect.~\ref{sec:ew}. The rest of
+their record is not re-quoted here.
+
+[2026-09-24] Five more cases of the same group now carry a certificate, each
+confirmed by four consecutive re-entries that change the state by at most
+$1.2\times10^{-12}$: $\mathrm{He/H} = 0.55$ ($\log_{10}\dot M = 7.59$,
+$EW = 0.1015$\,\%\,\AA), $1.45$ ($7.85$, $1.0964$), $1.52$ ($7.86$,
+$1.1532$), $1.6$ ($7.86$, $1.2155$) and $1.8$ ($7.88$, $1.3584$), all through
+the operator of Sect.~\ref{sec:ew}. The two adjacent certified rungs
+$1.45$ and $1.52$ straddle the measured $1.108$, and the log-log chord
+between them crosses it at $\mathrm{He/H} = 1.4643$; from $1.45$ to $2.13$
+the profiles, $\dot M$, the outer Mach number and the H$_2$ front move
+smoothly with He/H, while the $0.55$ state is a different wind (an H$_2$
+layer to $1.13\,R_p$, $x_{\rm H_2} \simeq 10^{-2}$ in the far wind, a peak
+temperature of $3400$\,K against $5200$\,K), and the interval between $0.55$
+and $1.45$ has not been sampled. The crossing is of the equivalent width
+alone: at $\mathrm{He/H} = 1.45$ the model red line is $4.07$ per cent deep,
+$3.3$ times the fitted depth of C26, and correspondingly narrower, so the
+molecular solutions share the line-shape disagreement of the other
+unbroadened EXHALE spectra of this memo. Convolved as in
+Sect.~\ref{sec:broadening}, the $1.45$ solution reaches the measured width at
+$f = 22.21$\,km\,s$^{-1}$, with depth $1.224$ per cent, blue $0.160$, ratio
+$7.64$ and $EW = 1.060$\,\%\,\AA, and the broadened EW crosses $1.108$ at
+$\mathrm{He/H} = 1.511$ between the certified $1.45$ and $1.52$
+(\texttt{docs/lhs1140b\_catalog\_state.tex}, section 5). The remaining
+molecular cases are not certified and are not quoted.
 
 \section{Inputs, and how each was pinned}
 \subsection{System}
@@ -1254,9 +1307,11 @@ are without it. Over that range of composition the profile barely moves, so
 the three nearly coincide; the composition dependence of the absorbing power
 is Fig.~\ref{fig:ew}. Neither code applies a line-of-sight bulk velocity, so
 both sets of model curves are shifted by the
-$v_{\rm wind} = +2.26$\,km\,s$^{-1}$ that C26 fit, a rigid shift that leaves
-equivalent widths unchanged. The figure is drawn in the presentation of the
-paper's Fig.~4.}
+$v_{\rm wind} = +2.26$\,km\,s$^{-1}$ that C26 fit. The shift is applied to
+the plotted curves only: every equivalent width in this memo is computed on
+the unshifted spectra, the observation in the planetary rest frame of its
+released file. The figure is drawn in the presentation of the paper's
+Fig.~4.}
 \label{fig:fig4}
 \end{figure}
 \section{Why the two models disagree}
@@ -1405,18 +1460,28 @@ which a self-consistent model can be matched without first settling the
 broadening question.
 
 Over the blended red pair (vacuum $10832.6$--$10834.2$\,\AA), the released
-spectrum gives $EW = 1.108 \pm 0.030$\,\%\,\AA. EXHALE crosses it at
+spectrum gives $EW = 1.108 \pm 0.030$\,\%\,\AA: the trapezoid over its own 44
+samples in the window ($10832.622$ to $10834.175$\,\AA). Since 2026-09-23
+every model equivalent width in this memo is measured through that same
+operator: the instrument-convolved model is interpolated linearly onto those
+44 samples and integrated with their trapezoid weights. Before that date each
+model was integrated with a trapezoid on its own, finer grid inside the
+nominal window. The two differ by at most $1.5\times10^{-4}$\,\%\,\AA{} on the
+unbroadened EXHALE spectra of the set of models and $1.8\times10^{-4}$ on the
+unbroadened p-winds curves, and by up to $0.6$ per cent on the curves
+broadened by the added Gaussians of Sect.~\ref{sec:broadening}, whose wings
+reach the window edges. EXHALE crosses the measured value at
 
 \begin{equation}
-  \mathrm{He/H} = 0.4044 \quad (0.3851\text{--}0.4201 \text{ on the } EW\
+  \mathrm{He/H} = 0.4044 \quad (0.3877\text{--}0.4237 \text{ on the } EW\
   1\sigma), \qquad \mathrm{H\!:\!He} = 2.5 ,
 \end{equation}
 
-that is $4.8\times$ solar, a helium mass fraction of $0.62$. The crossing is
+that is $4.9\times$ solar, a helium mass fraction of $0.62$. The crossing is
 read between two solved compositions, $0.40$ at $EW = 1.1011$ and $0.42$ at
 $1.1324$\,\%\,\AA{} against the observed $1.1084 \pm 0.0295$, in the
-well-mixed group; the case at $0.40$ is $0.07\sigma$ from the measurement.
-Turning the turbulence term on moves the crossing to $0.3985$, $1.3$ per cent
+well-mixed group; the case at $0.40$ is $0.25\sigma$ from the measurement.
+Turning the turbulence term on moves the crossing to $0.3985$, $1.5$ per cent
 away, so the estimate does not depend on the broadening treatment. The value
 sits three orders of magnitude away from the paper's
 $\mathrm{H\!:\!He} \lesssim 10^{-3}$, and the reason is the structural
@@ -1437,7 +1502,7 @@ to the broadening treatment: each solved composition of the well-mixed group
 up to $\mathrm{He/H} = 1$ carries both syntheses of the same solution, so the
 two curves differ only in the broadening, and they cross the measured band at
 $\mathrm{He/H} = 0.4044$ without the turbulence term and $0.3985$ with it,
-$1.3$ per cent apart. The three compositions $0.40$, $0.42$ and $0.44$ drawn
+$1.5$ per cent apart. The three compositions $0.40$, $0.42$ and $0.44$ drawn
 on top are where the spacing brackets the measurement directly.}
 \label{fig:ew}
 \end{figure}
@@ -1491,8 +1556,10 @@ FWHM $f$ in velocity, and ask which $f$ reproduces the measured line. The
 convolution is applied to the excess absorption $(\max T - T)/\max T$ built
 from the instrument-convolved synthetic spectrum. Depth, width and the
 red/blue ratio are then read off with the same three-Gaussian extractor used
-on the data, and the equivalent width by the same integral over the vacuum
-window $10832.60$--$10834.20$\,\AA. Only $f$ is varied, and every number in
+on the data, and the equivalent width through the same operator as the
+observed one (Sect.~\ref{sec:ew}): the broadened curve interpolated onto the
+observation's samples in the vacuum window $10832.60$--$10834.20$\,\AA{} and
+integrated with their trapezoid weights. Only $f$ is varied, and every number in
 Table~\ref{tab:broadening} is measured the way the corresponding observed
 number was.
 
@@ -1513,10 +1580,10 @@ EW [\%\,\AA] \\
 $0$   & $4.085$ & $0.586$ & $6.97$ & $0.253$ & $1.101$ \\
 $10$  & $2.346$ & $0.313$ & $7.49$ & $0.440$ & $1.101$ \\
 $15$  & $1.730$ & $0.228$ & $7.59$ & $0.597$ & $1.097$ \\
-$20$  & $1.351$ & $0.177$ & $7.64$ & $0.765$ & $1.080$ \\
+$20$  & $1.351$ & $0.177$ & $7.64$ & $0.765$ & $1.079$ \\
 $\mathbf{22.2}$ & $\mathbf{1.229}$ & $\mathbf{0.161}$ & $\mathbf{7.65}$ &
-$\mathbf{0.841}$ & $\mathbf{1.067}$ \\
-$25$  & $1.103$ & $0.144$ & $7.66$ & $0.938$ & $1.045$ \\
+$\mathbf{0.841}$ & $\mathbf{1.065}$ \\
+$25$  & $1.103$ & $0.144$ & $7.66$ & $0.938$ & $1.042$ \\
 \midrule
 observed & $1.24^{+0.22}_{-0.23}$ & $0.25^{+0.14}_{-0.12}$ &
 $6.7^{+12.7}_{-3.1}$ & $0.841$ & $1.108 \pm 0.030$ \\
@@ -1539,7 +1606,10 @@ $\mathrm{He/H} = 3.0$ asks for $22.23$ and the $K_{zz} = 10^{9}$ run at
 $1.50$ for $22.22$. Solar composition asks for $22.40$, although that run
 carries a third of the observed absorption ($1.533\%$ red, EW $0.380$) and so
 matches the shape while missing the amount. All six are solved cases, and the
-spread over them is $0.9$ per cent. The required broadening is therefore set
+spread over them is $0.9$ per cent. [2026-09-24] The molecular
+$K_{zz} = 10^{9}$ solutions that straddle the measurement, He/H~$=1.45$ and
+$1.52$, ask for $22.21$ and $22.20$\,km\,s$^{-1}$, and the whole certified
+molecular ladder from $0.55$ to $2.13$ for $22.12$ to $22.32$. The required broadening is therefore set
 by the velocity field rather than by composition or by the broadening
 treatment already in place, which is what Sect.~\ref{sec:width} inferred. The
 equivalent width falls by $3\%$ between $f = 0$ and $f = 22.2$ because the
@@ -1560,19 +1630,21 @@ H\,\textsc{i}/H\,\textsc{ii}/He\,\textsc{i}/He\,\textsc{ii}/He\,\textsc{iii}
 and electron densities, gives $c_s = 5.3$\,km\,s$^{-1}$ at $2\,R_p$
 ($T = 4108$\,K, $\mu = 2.00$), $5.6$ at the metastable peak $1.53\,R_p$
 ($4607$\,K, $2.03$) and $3.2$ at $10\,R_p$ ($1437$\,K, $1.90$); weighted over
-the line-forming region by $n(2\,^3S)\,r$, $T = 2499$\,K, $\mu = 1.94$ and
-$c_s = 4.1$\,km\,s$^{-1}$. This is the sound speed of the bulk gas, the
+the line-forming region by $n(2\,^3S)\,r$ (integrated over $r$), $T = 2498$\,K,
+$\mu = 1.93$ and $c_s = 4.2$\,km\,s$^{-1}$ [corrected 2026-09-24: the value
+printed before, $4.1$, did not follow from its own $T$ and $\mu$, and the
+Mach numbers below moved with it]. This is the sound speed of the bulk gas, the
 quantity a Mach number is defined against, not the helium thermal speed that
 enters the line profile.
 
 Against that, the Gaussian is supersonic on any convention. Read as a
 line-of-sight velocity dispersion, $\sigma = 9.44$\,km\,s$^{-1}$ is
-$\mathcal{M} = 2.3$. Read in the convention of Lamp\'on et al.\ and p-winds,
+$\mathcal{M} = 2.2$. Read in the convention of Lamp\'on et al.\ and p-winds,
 where $v_{\rm turb}$ is the quantity added to
 $b^2 = 2kT/m + v_{\rm turb}^2$, it is $v_{\rm turb} = \sqrt{2}\,\sigma =
-13.4$\,km\,s$^{-1}$, $\mathcal{M} = 3.3$; as an isotropic three-dimensional
+13.4$\,km\,s$^{-1}$, $\mathcal{M} = 3.2$; as an isotropic three-dimensional
 turbulent speed, $\sqrt{3}\,\sigma = 16.3$\,km\,s$^{-1}$,
-$\mathcal{M} = 4.0$. The $v_{\rm turb} = c_s$ convention of
+$\mathcal{M} = 3.9$. The $v_{\rm turb} = c_s$ convention of
 Sect.~\ref{sec:lit} supplies only $3$--$5$\,km\,s$^{-1}$ in this gas, about a
 third of what the data demand. The literature reviewed there points the other
 way: Yan et al.\ (2024) argue $\mathcal{M} = 1$ is already an overestimate at
@@ -1750,7 +1822,8 @@ eddy coefficient from $K_{zz} = 0$ to $10^{11}$\,cm$^2$\,s$^{-1}$, by the
 same route in every case: the same stationary solve, the same
 advection-corrected profiles, the same transit synthesis, and the same
 red-pair equivalent width on the vacuum window
-$10832.60$--$10834.20$\,\AA. Table~\ref{tab:kzzcross} is the result, with
+$10832.60$--$10834.20$\,\AA, through the operator of Sect.~\ref{sec:ew}.
+Table~\ref{tab:kzzcross} is the result, with
 four to seven solved compositions in each group. Every entry is interpolated
 between two solved compositions, none extrapolated, but the brackets are not
 all equally tight: at $10^{7}$, $10^{8}$ and $10^{9}$ the case below the
@@ -1768,8 +1841,8 @@ $K_{zz}$. At $10^{11}$ the upper edge of that range lies above the group's
 highest solved composition ($EW = 1.1364$ at $\mathrm{He/H} = 0.93$) and is
 not bracketed. The decades $10^{1}$--$10^{4}$ were not scanned in composition
 on the current code: on the 2026-08-30 solutions their equivalent width at a
-fixed composition differed from the $K_{zz} = 0$ one by less than $10^{-13}$
-of the measurement error, which is the entry they carry. The last column is
+fixed composition differed from the $K_{zz} = 0$ one by at most
+$6\times10^{-8}$ of the measurement error, which is the entry they carry. The last column is
 the ratio to the 2026-08-30 value (Table~\ref{tab:moved}).}
 \label{tab:kzzcross}
 \begin{tabular}{lcclc}
@@ -1781,18 +1854,18 @@ $0$ (molecular only) & $3.1010$ & $2.9942$--$3.2093$ &
 $3.0$ [$1.0798$], $3.5$ [$1.2175$] & $0.814$ \\
 $10^{1}$--$10^{4}$ & \multicolumn{4}{l}{not distinguishable from
 $K_{zz} = 0$ by this line (archived 2026-08-30)} \\
-$10^{5}$  & $3.0706$ & $2.9677$--$3.1772$ &
+$10^{5}$  & $3.0706$ & $2.9677$--$3.1771$ &
 $3.0$ [$1.0880$], $3.35$ [$1.1862$] & $0.809$ \\
-$10^{6}$  & $2.8930$ & $2.7928$--$2.9948$ &
-$2.8$ [$1.0804$], $3.19$ [$1.1949$] & $0.800$ \\
-$10^{7}$  & $2.5365$ & $2.4823$--$2.5903$ &
-$0.55$ [$0.1585$], $2.70$ [$1.1996$] & $0.826$ \\
+$10^{6}$  & $2.8930$ & $2.7928$--$2.9949$ &
+$2.8$ [$1.0804$], $3.19$ [$1.1948$] & $0.800$ \\
+$10^{7}$  & $2.5365$ & $2.4824$--$2.5904$ &
+$0.55$ [$0.1586$], $2.70$ [$1.1996$] & $0.826$ \\
 $10^{8}$  & $1.9729$ & $1.9195$--$2.0263$ &
 $0.55$ [$0.3089$], $2.05$ [$1.1513$] & $0.867$ \\
 $10^{9}$ (adopted) & $\mathbf{1.5161}$ & $1.4644$--$1.5744$ &
-$0.55$ [$0.4793$], $1.50$ [$1.0996$] & $0.941$ \\
-$10^{10}$ & $1.1579$ & $1.1104$--$1.2077$ &
-$1.15$ [$1.1032$], $1.29$ [$1.1867$] & $1.019$ \\
+$0.55$ [$0.4794$], $1.50$ [$1.0996$] & $0.941$ \\
+$10^{10}$ & $1.1580$ & $1.1104$--$1.2077$ &
+$1.15$ [$1.1031$], $1.29$ [$1.1867$] & $1.019$ \\
 $10^{11}$ & $0.8927$ & $0.8542$--(not bracketed) &
 $0.865$ [$1.0866$], $0.93$ [$1.1364$] & $1.067$ \\
 \midrule
@@ -1836,8 +1909,9 @@ reservoir, $0.8927$, is $2.2$ times the well-mixed $0.4044$.
 
 Over the span the literature leaves open at the base pressure of these runs
 the inferred reservoir ratio moves only from $1.16$ to $1.97$, a factor
-$1.7$, against a factor $7$ in equivalent width across the same two decades
-at fixed composition: the line responds to composition much faster than it
+$1.7$, against a factor $100$ in $K_{zz}$ that moves the equivalent width at
+fixed composition by a factor $2.1$ ($\mathrm{He/H} = 0.55$, from
+$0.3089$ to $0.6463$\,\%\,\AA): the line responds to composition much faster than it
 responds to $K_{zz}$, so a large change in the eddy coefficient is bought
 back by a small change in the reservoir. The composition inferred from this
 line under diffusion is therefore only weakly conditional on $K_{zz}$, as
@@ -1925,12 +1999,12 @@ $f$ [km\,s$^{-1}$] & red [\%] & blue [\%] & red/blue & FWHM [\AA] &
 EW [\%\,\AA] \\
 \midrule
 $0$   & $4.091$ & $0.588$ & $6.96$ & $0.252$ & $1.100$ \\
-$10$  & $2.344$ & $0.313$ & $7.48$ & $0.440$ & $1.100$ \\
-$15$  & $1.728$ & $0.228$ & $7.58$ & $0.597$ & $1.096$ \\
-$20$  & $1.349$ & $0.177$ & $7.63$ & $0.765$ & $1.080$ \\
+$10$  & $2.344$ & $0.313$ & $7.48$ & $0.440$ & $1.099$ \\
+$15$  & $1.728$ & $0.228$ & $7.58$ & $0.597$ & $1.095$ \\
+$20$  & $1.349$ & $0.177$ & $7.63$ & $0.765$ & $1.077$ \\
 $\mathbf{22.2}$ & $\mathbf{1.227}$ & $\mathbf{0.161}$ & $\mathbf{7.64}$ &
-$\mathbf{0.841}$ & $\mathbf{1.067}$ \\
-$25$  & $1.101$ & $0.144$ & $7.65$ & $0.938$ & $1.047$ \\
+$\mathbf{0.841}$ & $\mathbf{1.063}$ \\
+$25$  & $1.101$ & $0.144$ & $7.65$ & $0.938$ & $1.041$ \\
 \midrule
 observed & $1.24^{+0.22}_{-0.23}$ & $0.25^{+0.14}_{-0.12}$ &
 $6.7^{+12.7}_{-3.1}$ & $0.841$ & $1.108 \pm 0.030$ \\
@@ -1942,13 +2016,15 @@ The width is reached at $f = 22.22$\,km\,s$^{-1}$ FWHM, the same value to
 four digits as the well-mixed solution of Sect.~\ref{sec:broadening} solved
 without diffusion. At that Gaussian the depth is $1.227\%$ against the
 measured $1.24^{+0.22}_{-0.23}$, the blue component $0.161\%$ against
-$0.25^{+0.14}_{-0.12}$, the ratio $7.64$ against $6.7^{+12.7}_{-3.1}$ and the
-equivalent width $1.067$ against $1.108 \pm 0.030$, all four inside the
-observed $1\sigma$ interval at the value fixed by the width alone, as in the
-well-mixed case. The velocity the profile demands is therefore unchanged by
-turning diffusion on and by the adopted eddy coefficient. Diffusion changes
-how much helium is there, not how fast it moves.
-Figure~\ref{fig:diffbroad}(a) shows the radial number density profiles of the
+$0.25^{+0.14}_{-0.12}$ and the ratio $7.64$ against $6.7^{+12.7}_{-3.1}$, all
+three inside the observed $1\sigma$ interval at the value fixed by the width
+alone, as in the well-mixed case. The velocity the profile demands is
+therefore unchanged by turning diffusion on and by the adopted eddy
+coefficient. Diffusion changes how much helium is there, not how fast it
+moves. The equivalent width at that Gaussian, $1.063$ against
+$1.108 \pm 0.030$, falls $1.5\sigma$ below the measurement, for the reason
+given in Sect.~\ref{sec:broadening}: the wings carry absorption out of the
+integration window. Figure~\ref{fig:diffbroad}(a) shows the radial number density profiles of the
 hydrogen and helium species in this diffusive steady state, and
 Figure~\ref{fig:diffbroad}(b) the broadened transit spectrum against the
 measurement.
@@ -1994,14 +2070,15 @@ the curve already has at $f = 0$.
 EXHALE row of Table~\ref{tab:broadening} repeated for comparison. The
 Gaussian is the one that reproduces the measured width, $0.841$\,\AA; the
 depths and the ratio are read at that Gaussian. Equivalent widths are for the
-unbroadened curve, over the vacuum window $10832.60$--$10834.20$\,\AA.}
+unbroadened curve, over the vacuum window $10832.60$--$10834.20$\,\AA{} and
+through the operator of Sect.~\ref{sec:ew}.}
 \label{tab:pwbroad}
 \begin{tabular}{lrrrrr}
 \toprule
 curve & EW$(f{=}0)$ [\%\,\AA] & $f$ [km\,s$^{-1}$] & red [\%] & blue [\%] &
 red/blue \\
 \midrule
-p-winds best fit, turbulence on  & $0.837$ & $17.8$ & $0.926$ & $0.339$ &
+p-winds best fit, turbulence on  & $0.836$ & $17.8$ & $0.926$ & $0.339$ &
 $2.73$ \\
 p-winds best fit, turbulence off & $0.701$ & $20.1$ & $0.777$ & $0.301$ &
 $2.58$ \\
@@ -2016,8 +2093,8 @@ $0.25^{+0.14}_{-0.12}$ & $6.7^{+12.7}_{-3.1}$ \\
 \end{tabular}
 \end{table}
 
-The p-winds best fit carries $0.837$\,\%\,\AA{} against the measured
-$1.108 \pm 0.030$, $24\%$ short. At the Gaussian that reproduces the width,
+The p-winds best fit carries $0.836$\,\%\,\AA{} against the measured
+$1.108 \pm 0.030$, $25\%$ short. At the Gaussian that reproduces the width,
 $f = 17.8$\,km\,s$^{-1}$, the red depth is $0.926\%$ against
 $1.24^{+0.22}_{-0.23}$, about $1.4\sigma$ low. The broadening moves the
 disagreement rather than removing it. Unbroadened, the curve is too deep in
@@ -2033,7 +2110,7 @@ the two components share the optical depth, and a common convolution acts on
 both alike. It stays well below the measured $6.7^{+12.7}_{-3.1}$, though the
 observed interval is wide enough that this alone is not a discriminator.
 
-Matching the depth as well would require $24\%$ more absorbing power, and
+Matching the depth as well would require $32\%$ more absorbing power, and
 that is not something a convolution supplies: it is a change in $\dot M$,
 temperature or composition. Fitting the broadening as a free parameter
 alongside those, which is what the measurement asks for, would presumably
@@ -2486,17 +2563,21 @@ The candidates, in the order they should be tested:
 \item \emph{More energy}: tested (Sect.~\ref{sec:gj699}), and it does
       not do it. The GJ\,699 proxy carries five times the XUV of the
       GJ\,1132 proxy used here, and the paper itself runs both. Solving the
-      scan again on it raises $\dot M$ sevenfold and moves the composition
+      scan again on it raises $\dot M$ fivefold and moves the composition
       estimate by an order of magnitude, but leaves the required extra
-      broadening at $21.95$\,km\,s$^{-1}$ against $22.18$: the width gap is
-      not an energy-input problem.
+      broadening at $21.97$\,km\,s$^{-1}$ (GJ\,699 proxy, the solution at
+      $\mathrm{He/H} = 0.050$ nearest its crossing) against $22.22$
+      (GJ\,1132 proxy, the solution at $\mathrm{He/H} = 0.40$): the width
+      gap is not an energy-input problem.
 \item \emph{A different helium distribution}: tested
       (Sect.~\ref{sec:diffbroad}), and it does not do it either. Letting
       helium settle by diffusion and lifting it back with an eddy term
       redistributes the absorber by orders of magnitude and moves the
       inferred composition with it, but the required broadening stays at
-      $22.19$\,km\,s$^{-1}$: it changes how much helium is there, not how
-      fast it moves.
+      $22.22$\,km\,s$^{-1}$ (the diffusive solution at
+      $\mathrm{He/H} = 1.50$, $K_{zz} = 10^{9}$\,cm$^2$\,s$^{-1}$), the value
+      without diffusion: it changes how much helium is there, not how fast
+      it moves.
 \item \emph{Heating the code does not carry.} Taylor et al.'s trapped-ion
       turbulence, or any magnetically mediated dissipation, is outside a
       1D hydrodynamic energy equation by construction. Sect.~\ref{sec:candscale}
@@ -2518,8 +2599,8 @@ The paper's composition constraint should be read in the same light: it
 inherits the isothermal assumption. Impose a $6100$\,K structure and only
 helium-rich gas absorbs enough; solve the energy balance on this spectrum
 and, in the well-mixed limit, the same absorption is reached near
-$\mathrm{He/H} = 0.42$, and near $0.048$ on the other proxy spectrum, or near
-$1.6$ once helium is allowed to settle against the adopted eddy coefficient.
+$\mathrm{He/H} = 0.40$, and near $0.053$ on the other proxy spectrum, or near
+$1.5$ once helium is allowed to settle against the adopted eddy coefficient.
 No answer on that list is secure while the width is unexplained, because the
 width is what tells us whether the line-forming gas is the gas either model
 thinks it is.
@@ -2548,7 +2629,7 @@ $v_{\rm wind} = +2.26$\,km\,s$^{-1}$.}
 \end{figure}
 
 Figure~\ref{fig:beststruct} shows what that EXHALE solution actually is. It
-is not a fast, hot outflow. The temperature peaks at $4282$\,K near
+is not a fast, hot outflow. The temperature peaks at $4292$\,K near
 $1.51\,R_p$, comparable to the isothermal value p-winds imposes, and then
 falls by adiabatic expansion to $855$\,K by $10\,R_p$ over the region that
 forms the line. The velocity reaches only $1.1$\,km\,s$^{-1}$ at $20\,R_p$.
@@ -2557,7 +2638,7 @@ is the \emph{more} ionized of the two:
 $x(\mathrm{H\,\textsc{ii}}) = 0.03$, $0.07$ and $0.16$ at $2$, $3$ and
 $5\,R_p$ against
 $x(\mathrm{He\,\textsc{ii}}+\mathrm{He\,\textsc{iii}}) = 0.06$, $0.14$ and
-$0.29$. Helium carries the electrons that make the gas, and its ionization
+$0.30$. Helium carries the electrons that make the gas, and its ionization
 threshold is where this spectrum puts most of its photons. The metastable
 population peaks well out, at $5.2\,R_p$ with $n(2\,^3S) = 38$\,cm$^{-3}$ in
 local equilibrium. A large, cold, slow, metastable-rich envelope of this kind
@@ -2643,7 +2724,7 @@ $0.050$  & $8.57$ & $2676$ ($1.47$) & $3.59$ & $53.0$ ($5.8$) & $3.54$ & $0.282$
 $0.083$  & $8.57$ & $2919$ ($1.45$) & $3.49$ & $86.7$ ($5.7$) & $5.40$ & $0.284$ & $1.627$ \\
 $1$      & $8.55$ & $6240$ ($1.34$) & $2.59$ & $431$  ($6.8$) & $13.60$ & $0.313$ & $4.525$ \\
 $10^{3}$ & $8.42$ & $9518$ ($1.36$) & $2.03$ & $2.6\times10^{4}$ ($1.0$)
-         & $7.51$  & $0.359$ & $2.873$ \\
+         & $7.51$  & $0.359$ & $2.872$ \\
 \midrule
 observed & - & - & - & - & $1.254$ & $0.841$ & $1.108 \pm 0.030$ \\
 \bottomrule
@@ -2671,7 +2752,7 @@ extrapolated from the solar case.
 The same code gives $\mathrm{He/H} = 0.4044$ on the GJ\,1132 proxy, an order
 of magnitude away, and the crossing passes the solar value on the way: the
 brighter spectrum wants a helium-\emph{poor} atmosphere, $0.63\times$ solar,
-where the fainter one wanted a helium-rich one, $4.8\times$ solar. The
+where the fainter one wanted a helium-rich one, $4.9\times$ solar. The
 measurement cannot arbitrate, because the two proxies are two guesses at the
 same unobserved spectrum and both reproduce the observed equivalent width
 once composition is free. The conclusion is therefore about the inference
@@ -2875,8 +2956,10 @@ and ${\rm O/H} = 4.957\times10^{-7}$. The remainder sits in species the
 profile does not carry, so this accounting is a decomposition of the
 elemental ratios rather than an independent measurement of them.
 
-This is the direct link to Sect.~\ref{sec:basemetals}. The C and N that cool
-the wind and take its line down by $2.6\times$ are held in the column as
+This is the direct link to Sect.~\ref{sec:basemetals}. The C and N that
+cooled the wind on the 2026-08-30 solutions and took its line down by
+$2.6\times$ there (on the current C, N and O cooling they move it by $0.20$
+per cent, Sect.~\ref{sec:cnocooling}) are held in the column as
 CH$_4$ and NH$_3$, both of which the solution keeps in the gas phase across
 the trap, so they cross the tropopause intact and arrive at the match at
 essentially their deep values. Oxygen, whose carrier is water, does not.
@@ -3063,14 +3146,14 @@ He/H at $2R_{\rm p}$ & $\log_{10}\dot M$ \\
 \midrule
 \multicolumn{7}{l}{\emph{reservoir} $\mathrm{He/H} = 11.11$} \\
 recorded, other starting state   & $3.8857$ & $0.2845$ & $1.1798$ & $1.065$ & $1.5498$ & $7.400$ \\
-reference, $K_{zz} = 10^{9}$ & $3.9267$ & $0.2845$ & $1.1927$ & $1.076$ & $1.5664$ & $7.410$ \\
+reference, $K_{zz} = 10^{9}$ & $3.9267$ & $0.2845$ & $1.1928$ & $1.077$ & $1.5664$ & $7.410$ \\
 A, chemistry only      & $3.9422$ & $0.2845$ & $1.1976$ & $1.081$ & $1.5743$ & $7.410$ \\
-B, chemistry and wind  & $3.9416$ & $0.2845$ & $1.1965$ & $1.080$ & $1.5582$ & $7.410$ \\
+B, chemistry and wind  & $3.9416$ & $0.2845$ & $1.1966$ & $1.080$ & $1.5582$ & $7.410$ \\
 \midrule
 \multicolumn{7}{l}{\emph{reservoir} $\mathrm{He/H} = 2.09$} \\
 recorded, other starting state   & $2.0683$ & $0.2472$ & $0.5445$ & $0.491$ & $0.2351$ & $7.500$ \\
 reference, $K_{zz} = 10^{9}$ & $2.0760$ & $0.2472$ & $0.5466$ & $0.493$ & $0.2359$ & $7.500$ \\
-A, chemistry only      & $2.0929$ & $0.2472$ & $0.5511$ & $0.497$ & $0.2377$ & $7.510$ \\
+A, chemistry only      & $2.0929$ & $0.2472$ & $0.5512$ & $0.497$ & $0.2377$ & $7.510$ \\
 B, chemistry and wind  & $2.0846$ & $0.2467$ & $0.5486$ & $0.495$ & $0.2355$ & $7.510$ \\
 \bottomrule
 \end{tabular}
@@ -3146,10 +3229,10 @@ same way, downward. In relative terms that is $-2.1$ to $-0.8$ per cent, and
 it is the relative figure that carries over to the present crossing. It is
 also no larger than the spread of the procedure itself: re-solving the
 \emph{same} profile from a different starting state moves the equivalent
-width by $1.08$ per cent at $\mathrm{He/H} = 11.11$ and $0.38$ per cent at
+width by $1.09$ per cent at $\mathrm{He/H} = 11.11$ and $0.38$ per cent at
 $2.09$, against the $0.32$--$0.83$ per cent the eddy form produces. The
 signal is buried in the spread of the procedure that would have to measure
-it, by a narrower margin than before: $1.08$ against $0.83$ per cent where
+it, by a narrower margin than before: $1.09$ against $0.83$ per cent where
 the previous branching gave $1.29$ against $0.79$.
 
 \medskip
@@ -3323,8 +3406,8 @@ the iteration resolves, and it is stated here rather than corrected. Solving
 the same run again in four cycles (identical input, identical handoff column,
 identical build, each cycle started from the previous one and each converging
 at $\|R\| \simeq 10^{-4}$) lands on different fixed points depending on which
-converged wind it started from: on the $1.0\times$ run, $EW = 0.519$, $0.532$
-and $0.542$\,\%\,\AA{} from three starting states, a spread of $4.6$ per
+converged wind it started from: on the $1.0\times$ run, $EW = 0.5185$, $0.5318$
+and $0.5423$\,\%\,\AA{} from three starting states, a spread of $4.6$ per
 cent. Four further cycles move each line of descent by at most $0.23$ per
 cent and leave the flux spread and the base temperature unmoved, so these are
 three fixed points of the procedure rather than three truncations of one. The
@@ -3402,7 +3485,7 @@ elemental abundances) stands as an account of which term does what; the size
 of the last term does not. Re-measured on the current code at
 $K_{zz} = 10^{9}$ and $\mathrm{He/H} = 2.13$, adding the column's C, N and O
 to the scalar base moves $\log_{10}\dot M$ from $7.87$ to $7.87$ and the
-red-pair equivalent width from $1.3749$ to $1.3721$\,\%\,\AA{}, $0.12$ per
+red-pair equivalent width from $1.3749$ to $1.3721$\,\%\,\AA{}, $0.20$ per
 cent, where the archived pair moved by $-0.36$\,dex and a factor $2.9$ in
 depth. The base metals are no longer the lever that separates the two lower
 boundaries. The flux-consistent solution at $\mathrm{He/H} = 2.09$ now gives
@@ -3441,7 +3524,7 @@ from the advection-corrected profiles.
 
 \begin{table}[htbp]\centering\small
 \caption{The two directions the thermostat runs, measured on the solved
-structures of the 2026-09-14 campaign. $EW$ is on this memo's red-pair window
+structures of the set of record solved on 2026-09-16. $EW$ is on this memo's red-pair window
 against the observed $1.108 \pm 0.030$\,\%\,\AA. The C, N and O line cooling
 of all four is the density-resolved CHIANTI treatment of
 Sect.~\ref{sec:cnocooling}, which is what makes columns one and two nearly
@@ -3674,10 +3757,10 @@ O/H trap \\
 \midrule
 $2.09$ & $5$ & $0.026$ & $26.34$ & $54.42$ & $2.0924$ & $7.910$ & $5.321$ & $0.2603$ & $1.4765$ & $4.97$ \\
 $3$ & $4$ & $0.048$ & $19.89$ & $60.52$ & $3.0034$ & $7.900$ & $6.156$ & $0.2684$ & $1.7640$ & $5.52$ \\
-$5$ & $4$ & $0.043$ & $13.37$ & $66.32$ & $5.0057$ & $7.900$ & $6.933$ & $0.2805$ & $2.0746$ & $6.53$ \\
+$5$ & $4$ & $0.043$ & $13.37$ & $66.32$ & $5.0057$ & $7.900$ & $6.933$ & $0.2805$ & $2.0745$ & $6.53$ \\
 $7$ & $4$ & $0.044$ & $9.17$ & $70.06$ & $7.0080$ & $7.900$ & $7.102$ & $0.2871$ & $2.1768$ & $7.77$ \\
 $8$ & $4$ & $0.045$ & $8.11$ & $70.98$ & $8.0091$ & $7.900$ & $7.115$ & $0.2896$ & $2.2004$ & $7.99$ \\
-$9$ & $4$ & $0.045$ & $7.37$ & $71.66$ & $9.0103$ & $7.900$ & $7.111$ & $0.2916$ & $2.2137$ & $8.86$ \\
+$9$ & $4$ & $0.045$ & $7.37$ & $71.66$ & $9.0103$ & $7.900$ & $7.111$ & $0.2916$ & $2.2136$ & $8.86$ \\
 $9.7$ & $4$ & $0.045$ & $6.88$ & $72.10$ & $9.7111$ & $7.900$ & $7.101$ & $0.2931$ & $2.2206$ & $9.03$ \\
 $10$ & $4$ & $0.045$ & $6.70$ & $72.28$ & $10.0114$ & $7.900$ & $7.094$ & $0.2936$ & $2.2224$ & $9.06$ \\
 $12$ & $4$ & $0.045$ & $5.56$ & $73.36$ & $12.0137$ & $7.900$ & $7.037$ & $0.2966$ & $2.2289$ & $10.51$ \\
@@ -3703,7 +3786,7 @@ $\mathrm{He/H} \simeq 8$, so the measurement is not reached anywhere on it.
 Read against its own local slope
 $\mathrm{d}\ln EW/\mathrm{d}\ln(\mathrm{He/H}) = 0.49$ between the two lowest
 rows, the measured equivalent width would be reached near
-$\mathrm{He/H} \approx 1.1$; that is an extrapolation below every solved
+$\mathrm{He/H} \approx 1.2$; that is an extrapolation below every solved
 reservoir and is not offered as the answer. What the sequence does say is
 that the photochemical lower boundary no longer makes the line harder to
 reach than the metal-free one does; it makes it easier. The comparison at one
@@ -3899,21 +3982,30 @@ irradiation.
 It is run from both lower boundaries, since the two are not interchangeable:
 the scalar-base solution at $\mathrm{He/H} = 2.13$ ($EW = 1.3749$\,\%\,\AA)
 and the flux-consistent solution at $\mathrm{He/H} = 9.71$ ($EW = 2.2206$).
-Every point is solved by the same route as the fiducial.
+Every point is solved by the same route as the fiducial, apart from the
+numerical flux of the entries marked in Table~\ref{tab:xuvgrid} and the
+starting state of the scalar case at $0.01$.
 
 \begin{table}[htbp]\centering
 \caption{The He\,10830 line against the XUV scaling, from the two lower
 boundaries. Bold marks the row at which each model is nearest the $0.6$ per
-cent depth limit of the 2025 epoch. On the corrected lower boundary of
-Sect.~\ref{sec:l21} four of these cases no longer solve, and they are the gap
-in the flux-consistent column: at $0.15$, $0.20$ and $0.25$ of the fiducial
-spectrum the hydrodynamic equations of the first and last cells refuse under
-a composition that is still moving, and at $0.01$ neither branch has ever
-solved. The $0.05$ case the previous draft carried for the flux-consistent
-branch was solved on the earlier boundary and is not quoted here. Since
-2026-09-17 all seven of these cases are solved with a different numerical
-flux between cells, for the reason and with the systematic difference given
-after the table; rows filled that way carry it.}
+cent depth limit of the 2025 epoch. Entries marked $\dagger$ are solved with
+the Roe numerical flux in place of HLLC, for the reason and with the
+systematic difference given after the table: the flux-consistent cases at
+$0.15$, $0.20$ and $0.25$ of the fiducial spectrum, which stopped solving
+under HLLC on the corrected lower boundary of Sect.~\ref{sec:l21}, and the
+scalar case at $0.01$, reached by a continuation in XUV through $0.07$,
+$0.05$, $0.03$, $0.02$ and $0.015$ on 2026-09-21 (the scalar depths at those
+five scalings are below $10^{-3}$ per cent and are not tabulated). All four
+certify. Their certification and $\log_{10}\dot M$ are READ from
+\texttt{LHS1140b/MODELS.md}, sections 3.1, 7 and 8, as of 2026-09-23; their
+red depth is the case's own \texttt{tpm\_He10830\_metrics.txt} and their
+$EW$ is measured here through the operator of Sect.~\ref{sec:ew}, both equal
+to that record to the digits shown. The flux-consistent case at $0.01$ is not
+certified: its last run was stopped at the campaign's $30$-minute ceiling
+with the hydrodynamic equations refusing, and it is not tabulated. The $0.05$
+case the previous draft carried for the flux-consistent branch was solved on
+the earlier boundary and is not quoted here.}
 \label{tab:xuvgrid}
 \begin{tabular}{rrrrrrr}
 \toprule
@@ -3926,17 +4018,18 @@ red [\%] & $EW$ [\%\,\AA] & $\log_{10}\dot M$ \\
 $1.00$ & $4.958$ & $1.3749$ & $7.87$ & $7.101$ & $2.2206$ & $7.90$ \\
 $0.33$ & $1.020$ & $0.2555$ & $7.36$ & $3.821$ & $1.0979$ & $7.39$ \\
 $0.30$ & $0.760$ & $0.1894$ & $7.32$ & $3.542$ & $1.0097$ & $7.35$ \\
-$0.25$ & $\mathbf{0.279}$ & $0.0700$ & $7.24$ & \multicolumn{3}{c}{not solved} \\
-$0.20$ & $0.007$ & $0.0022$ & $7.13$ & \multicolumn{3}{c}{not solved} \\
-$0.15$ & $0.001$ & $0.0003$ & $7.00$ & \multicolumn{3}{c}{not solved} \\
+$0.25$ & $\mathbf{0.279}$ & $0.0700$ & $7.24$ & $3.002^{\dagger}$ & $0.8428$ & $7.26$ \\
+$0.20$ & $0.007$ & $0.0022$ & $7.13$ & $2.433^{\dagger}$ & $0.6711$ & $7.16$ \\
+$0.15$ & $0.001$ & $0.0003$ & $7.00$ & $1.783^{\dagger}$ & $0.4822$ & $7.02$ \\
 $0.10$ & $0.000$ & $0.0001$ & $6.82$ & $\mathbf{1.001}$ & $0.2674$ & $6.84$ \\
-$0.01$ & \multicolumn{6}{c}{not solved on either branch} \\
+$0.01$ & $0.000^{\dagger}$ & $0.0000$ & $5.79$ & \multicolumn{3}{c}{not certified} \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-\noindent The seven cases this grid is missing are, since 2026-09-17, solved
-with a different choice for the numerical flux the solver uses to move mass,
+\noindent The entries marked $\dagger$ belong to the seven lowest-XUV atomic
+cases that are, since 2026-09-17, solved with a different choice for the
+numerical flux the solver uses to move mass,
 momentum and energy between cells, on the same $500$-cell grid and by the
 same recipe in every other respect. The original flux does not reach the
 stationary state there at all, and the reason is the grid and not the wind:
@@ -3952,24 +4045,27 @@ the grid, so they do not change what the grid is read for, and they are
 quoted wherever such a row appears.
 
 \noindent The scalar model meets the $0.6$ per cent limit at $0.28$ of the
-fiducial XUV; the flux-consistent one has not reached it on any scaling that
-is solved. In the scalar model the depth crosses $0.6$ between $0.25$
+fiducial XUV; the flux-consistent one has not reached it on any scaling at
+which it certifies. In the scalar model the depth crosses $0.6$ between $0.25$
 ($0.279$ per cent) and $0.30$ ($0.760$), at $0.283$ read linearly in both
 variables. On the paper's fiducial
 $F_{\rm XUV} = 33$\,erg\,cm$^{-2}$\,s$^{-1}$ that puts the 2025 epoch at
 about $9$\,erg\,cm$^{-2}$\,s$^{-1}$ or less. The flux-consistent branch is
-still at $1.001$ per cent at $0.10$, the faintest scaling it has a solution
-for, and the three scalings between $0.10$ and $0.30$ are the ones that do
-not solve, so \emph{its crossing lies below $0.10$ and is not bracketed}. The
-figure draws the gap rather than a line across it.
+still at $1.001$ per cent at $0.10$, the faintest scaling at which it
+certifies; from $0.30$ down to $0.10$ its depth falls monotonically ($3.542$,
+$3.002$, $2.433$, $1.783$ and $1.001$ per cent), so \emph{its crossing lies
+below $0.10$}, and since its case at $0.01$ is not certified \emph{the
+crossing is not bracketed}. The figure draws that uncertified point as well,
+and the $0.06$ it marks on this branch is a linear reading between it and
+$0.10$, not a measured crossing.
 
 The two branches no longer agree on this, as the 2026-08-30 grids did (both
 then at about $0.33$). The flux-consistent branch makes a much stronger line
 at every scaling it solves, which is the same statement
 Table~\ref{tab:closureladder} makes at the fiducial, so its limit is reached
 at a smaller fraction of the fiducial XUV than the scalar one's: below $0.10$
-against $0.28$, a factor of at least $2.8$. How much smaller is what the
-three unsolved scalings would settle.
+against $0.28$, a factor of at least $2.8$. How much smaller is what a
+certified flux-consistent state below $0.10$ would settle.
 
 The decline is also far steeper in the scalar model than in the
 flux-consistent one: over the $0.33$ to $0.10$ interval the scalar depth
@@ -3990,10 +4086,12 @@ either. (b) The red-pair depth against the XUV scaling
 (Table~\ref{tab:xuvgrid}), from the scalar base at $\mathrm{He/H} = 2.13$ and
 the photochemical column at $9.71$. The scalar model falls below the $0.6$
 per cent limit of the 2025 non-detection at about $0.28$ of the fiducial
-irradiation (dotted). The other model is drawn as one connected run over
-$0.30$ to $1.00$ and one isolated marker at $0.10$, because the three
-scalings between them do not solve; its limit therefore lies below $0.10$ and
-is not bracketed.}
+irradiation (dotted). The other model is drawn from $0.10$ to $1.00$, where
+every point certifies, and continued to its case at $0.01$, which does not
+certify; the $0.06$ marked where that last segment crosses the limit is a
+linear reading between an uncertified point and $0.10$, not a measured
+crossing. On certified states its limit lies below $0.10$ and is not
+bracketed.}
 \label{fig:closureladder}
 \end{figure}
 
@@ -4013,8 +4111,8 @@ measured $0.841$.
 The lower-boundary axis therefore behaves like the other three: it moves the
 composition inference and the escape rate, and it does not move the width. It
 does not reach the measurement here either: at its matched Gaussian the
-lowest flux-consistent solution sits at a red depth of $1.675\%$ against the
-observed $1.254^{+0.22}_{-0.23}$ and an equivalent width of $1.457$ against
+lowest flux-consistent solution sits at a red depth of $1.648\%$ against the
+observed $1.254^{+0.22}_{-0.23}$ and an equivalent width of $1.428$ against
 $1.108 \pm 0.030$, both above the band, because broadening conserves
 absorbing power and this solution has too much of it. That is the mirror
 image of the p-winds case of Sect.~\ref{sec:pwbroad}, where the curve has too
@@ -4028,7 +4126,7 @@ Three of them (started at reservoirs $2.09$, $9.7$ and $12$) against the
 measurement; the thick curve is the lowest of them convolved with the
 $22.1$\,km\,s$^{-1}$ FWHM Gaussian that reproduces the observed width, which
 then lands \emph{below} the observed flux because the equivalent width was
-already $35$ per cent too large. Model curves are shifted by the fitted
+already $33$ per cent too large. Model curves are shifted by the fitted
 $v_{\rm wind} = +2.26$\,km\,s$^{-1}$, as elsewhere in this memo. (b) The
 solved climate of the column handed over, with the tropopause at $1.031$\,bar
 and the $1\,\mu$bar matching level marked; the stratosphere sits at the skin
@@ -4306,8 +4404,9 @@ The line is not reproduced. What stands:
       2026-09-14 carried a $418$\,K first cell where the prescribed
       reservoir was $226$\,K (Sect.~\ref{sec:l21}). That correction takes
       the base cell down by a median $46$ per cent in temperature, $\dot M$
-      down by $2$ per cent everywhere, and the crossings \emph{up} by $1$ to
-      $14$ per cent.
+      down by $2$ per cent everywhere, and the crossings \emph{up} by $1.5$
+      to $14$ per cent with diffusion, and by $0.8$ and $0.002$ per cent in
+      the two well-mixed groups.
 \item Line shape: not matched, by a factor $3.3$ in depth and width alike,
       and not fixable by composition. The missing ingredient is
       $22.22$\,km\,s$^{-1}$ FWHM of velocity spread ($\sigma =
@@ -4391,14 +4490,15 @@ The line is not reproduced. What stands:
       the scalar base; over the photochemical column it is not yet
       bracketed. Scaling the irradiation with the lower atmosphere held
       fixed, the red-pair depth falls below the $0.6$ per cent limit of the
-      2025 epoch at $\simeq\!0.279$ of fiducial in the scalar-base model,
+      2025 epoch at $\simeq\!0.283$ of fiducial in the scalar-base model,
       about $9$\,erg\,cm$^{-2}$\,s$^{-1}$
       (Sect.~\ref{sec:xuvgrid}, Table~\ref{tab:xuvgrid}). The
       flux-consistent grid is still at $1.001$ per cent at $0.10$, the
-      faintest scaling it solves, so its limit lies below $0.10$ and is not
-      bracketed: on the corrected lower boundary the three scalings between
-      $0.10$ and $0.30$ no longer solve, and the $0.01$ points of both
-      branches have never solved.
+      faintest scaling at which it certifies, so its limit lies below $0.10$
+      and is not bracketed: the three scalings between $0.10$ and $0.30$
+      certify with the Roe numerical flux, and its case at $0.01$ does not.
+      The scalar case at $0.01$ certifies, reached by a continuation in XUV
+      on 2026-09-21.
 \item Not verified: the cross-check with a second chemistry code. VULCAN
       did not converge on this cold helium-rich column, its convergence
       measure rose against the criterion with the timestep pinned, the
@@ -4412,6 +4512,9 @@ The line is not reproduced. What stands:
       $\mathrm{He/H} = 2.13$ at $\log_{10}\dot M = 7.91$ with a red-pair
       $EW = 1.5758$\,\%\,\AA, and $9.7$ at $7.95$ with $2.4212$\,\%\,\AA.
       Both stand above the measurement, as the flux-consistent solutions do.
+      These are the spectra of 2026-09-16; both cases have been run again
+      since, and the spectra now on disk give $1.5604$ and
+      $2.4060$\,\%\,\AA{} (Sect.~\ref{sec:campaign}).
       The other cases of those groups have not converged, are a marching
       stop, or are still running at the time of writing, so no crossing is
       read from a molecular group here. What they wait on is the step that
@@ -4485,7 +4588,7 @@ transit synthesis; off by default. \\
 
 \begin{table}[htbp]\centering\small
 \caption{Where the runs, the tools and the records live.}
-\begin{tabular}{lp{0.58\textwidth}}
+\begin{tabular}{l>{\raggedright\arraybackslash}p{0.46\textwidth}}
 \toprule
 path & contents \\
 \midrule
@@ -4507,9 +4610,11 @@ Sect.~\ref{sec:photochem}. \\
 converge. \\
 \texttt{LHS1140b/LHS1140b\_analysis.ipynb} & Regenerates every number and
 figure in this memo. \\
-\texttt{LHS1140b/make\_memo\_figures.py} & The convolution, the
-three-Gaussian extractor and the integration window used for every model
-spectrum here. \\
+\texttt{LHS1140b/make\_memo\_figures.py} & The convolution and the
+three-Gaussian extractor used for every model spectrum here. \\
+\texttt{LHS1140b/he10830\_equivalent\_width.py} & The window and the
+measurement operator of every equivalent width here, observed and modeled
+alike (Sect.~\ref{sec:ew}; since 2026-09-23). \\
 \texttt{he\_line\_metrics.py} & The three-Gaussian extractor
 applied to the released spectrum and to every model. \\
 \texttt{LHS1140b/winered\_hires\_y.sh} & Sets the resolving power to
@@ -4528,13 +4633,13 @@ power is CARMENES, overridden here. \\
 
 \begin{table}[htbp]\centering\small
 \caption{The working notes each measurement is recorded in.}
-\begin{tabular}{lp{0.58\textwidth}}
+\begin{tabular}{l>{\raggedright\arraybackslash}p{0.49\textwidth}}
 \toprule
 record & what it holds \\
 \midrule
 \texttt{docs/well\_balanced\_and\_hydrostatic\_20260913.tex} & The
 hydrostatic-exact discretization, term by term. \\
-\texttt{docs/collisional\_validity.md} & The definitions and tables behind
+\texttt{md/collisional\_validity.md} & The definitions and tables behind
 Sect.~\ref{sec:validity}. \\
 \texttt{docs/eddy\_diffusion\_kzz.tex} & The survey of eddy coefficients and
 the note that the adopted $10^{9}$ has no planet-specific basis. \\

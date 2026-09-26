@@ -143,15 +143,19 @@ Key & Default & What it selects, and where \\
   (\texttt{cross\_sec.f90}). \\
 \texttt{Legacy\_HHe\_rates} & off &
   Reverts H/He recombination and collisional ionization to the ATES fits
-  (\texttt{util\_ion\_eq.f90}). \\
+  (\texttt{Cool\_coeff.f90}). \\
 \texttt{Atomic rate set:} & \texttt{default} &
   \texttt{Koskinen2022} swaps four atomic H/He rate coefficients
-  (\texttt{util\_ion\_eq.f90}). \\
+  (\texttt{Cool\_coeff.f90}, \texttt{mol\_rates.f90}). \\
 \texttt{Secondary\_ionization} & on, staged &
   Secondary ionization by fast photoelectrons; \texttt{Immediate} applies it
   from step 0 (\texttt{electron\_energy\_degradation.f90}). \\
 \texttt{He\_rec\_coupling} & on &
-  He\,II recombination radiation ionizing H\,I
+  He\,II and He\,III recombination radiation absorbed on the spot; off is
+  case B for both (\texttt{util\_ion\_eq.f90}). \\
+\texttt{H\_rec\_escape} & on &
+  H\,II ground captures whose photons are not re-absorbed by H\,I in the
+  cell are net recombinations; off is case B everywhere
   (\texttt{util\_ion\_eq.f90}). \\
 \texttt{He\_H\_charge\_exchange} & on &
   The He/H charge-exchange pair (\texttt{charge\_exchange.f90}). \\
@@ -169,8 +173,9 @@ Key & Default & What it selects, and where \\
   \texttt{Monochromatic}: the spectrum of the whole photon grid
   (\texttt{sed\_read.f90}, \texttt{J\_inc.f90}). \\
 \texttt{Stellar Teff:} + \texttt{Stellar radius:} & 0 (off) &
-  Enable the diluted-blackbody Balmer continuum and the $\mathrm{H}(n{=}2)$
-  model (\texttt{excited\_hydrogen.f90}). \\
+  Enable the $\mathrm{H}(n{=}2)$ model and its Balmer-continuum coupling,
+  whose band is read from the run's own spectrum type
+  (\texttt{excited\_hydrogen.f90}). \\
 \texttt{Stellar Lya flux:} & 0 &
   Stellar Ly-$\alpha$ at the orbit; also band B2 of the oxygen photolysis
   (\texttt{lya\_rt.f90}). \\
@@ -297,6 +302,12 @@ Black, J.~H. 1978, ApJ, 222, 125
 \bibitem[Biassoni et al.(2024)]{Biassoni2024}
 Biassoni, F., Caldiroli, A., Gallo, E., et al. 2024, A\&A, 682, A115
 
+\bibitem[Black(1981)]{Black1981}
+Black, J.~H. 1981, MNRAS, 197, 553
+
+\bibitem[Bray et al.(2000)]{Bray2000}
+Bray, I., Burgess, A., Fursa, D.~V., \& Tully, J.~A. 2000, A\&AS, 146, 481
+
 \bibitem[Caldiroli et al.(2021)]{Caldiroli2021}
 Caldiroli, A., Haardt, F., Gallo, E., et al. 2021, A\&A, 655, A30
 
@@ -357,12 +368,11 @@ Wolniewicz, L., Simbotin, I., \& Dalgarno, A. 1998, ApJS, 115, 293
 \bibitem[Dalgarno et al.(1999)]{Dalgarno1999}
 Dalgarno, A., Yan, M., \& Liu, W. 1999, ApJS, 125, 237
 
-\bibitem[Draine(2011)]{Draine2011}
-Draine, B.~T. 2011, Physics of the Interstellar and Intergalactic Medium
-(Princeton: Princeton Univ. Press)
-
 \bibitem[Draine \& Bertoldi(1996)]{Draine1996}
 Draine, B.~T., \& Bertoldi, F. 1996, ApJ, 468, 269
+
+\bibitem[Drake(1986)]{Drake1986}
+Drake, G.~W.~F. 1986, Phys. Rev. A, 34, 2871
 
 \bibitem[Drake et al.(1969)]{Drake1969}
 Drake, G.~W., Victor, G.~A., \& Dalgarno, A. 1969, Phys. Rev., 180, 25
@@ -393,6 +403,12 @@ Huang, C., Koskinen, T., Lavvas, P., \& Fossati, L. 2023, ApJ, 951, 123
 \bibitem[Hui \& Gnedin(1997)]{Hui1997}
 Hui, L., \& Gnedin, N.~Y. 1997, MNRAS, 292, 27
 
+\bibitem[Hummer(1994)]{Hummer1994}
+Hummer, D.~G. 1994, MNRAS, 268, 109
+
+\bibitem[Hummer \& Storey(1998)]{Hummer1998}
+Hummer, D.~G., \& Storey, P.~J. 1998, MNRAS, 297, 1073
+
 \bibitem[Jameson et al.(1981)]{Jameson1981}
 Jameson, A., Schmidt, W., \& Turkel, E. 1981, AIAA Paper 81-1259
 
@@ -421,9 +437,6 @@ Kurganov, A., \& Tadmor, E. 2000, J. Comput. Phys., 160, 241
 \bibitem[Locci et al.(2022)]{Locci2022}
 Locci, D., Cecchi-Pestellini, C., \& Micela, G. 2022, PSJ, 3, 1
 
-\bibitem[Mao \& Kaastra(2016)]{Mao2016}
-Mao, J., \& Kaastra, J. 2016, A\&A, 587, A84
-
 \bibitem[Millar et al.(2024)]{Millar2024}
 Millar, T.~J., Walsh, C., Van de Sande, M., \& Markwick, A.~J. 2024, A\&A, 682, A109
 
@@ -440,6 +453,9 @@ Neufeld, D.~A. 1990, ApJ, 350, 216
 \bibitem[Norcross(1971)]{Norcross1971}
 Norcross, D.~W. 1971, J. Phys. B, 4, 652
 
+\bibitem[Nussbaumer \& Schmutz(1984)]{Nussbaumer1984}
+Nussbaumer, H., \& Schmutz, W. 1984, A\&A, 138, 495
+
 \bibitem[Odert et al.(2020)]{Odert2020}
 Odert, P., Erkaev, N.~V., Lammer, H., et al. 2020, A\&A, 638, A49
 
@@ -448,6 +464,12 @@ Oka, T., \& Epp, E. 2004, ApJ, 613, 349
 
 \bibitem[Oklop\v{c}i\'c \& Hirata(2018)]{Oklopcic2018}
 Oklop\v{c}i\'c, A., \& Hirata, C.~M. 2018, ApJ, 855, L11
+
+\bibitem[Pengelly(1964)]{Pengelly1964}
+Pengelly, R.~M. 1964, MNRAS, 127, 145
+
+\bibitem[Pengelly \& Seaton(1964)]{Pengelly1964b}
+Pengelly, R.~M., \& Seaton, M.~J. 1964, MNRAS, 127, 165
 
 \bibitem[Perthame \& Shu(1996)]{Perthame1996}
 Perthame, B., \& Shu, C.-W. 1996, Numer. Math., 73, 119
@@ -482,6 +504,12 @@ Johnsen, R., Chen, A., \& Biondi, M.~A. 1980, J. Chem. Phys., 72, 3085
 
 \bibitem[Schauer et al.(1989)]{Schauer1989}
 Schauer, M.~M., Jefferts, S.~R., Barlow, S.~E., \& Dunn, G.~H. 1989, J. Chem. Phys., 91, 4593
+
+\bibitem[Seaton(1955)]{Seaton1955}
+Seaton, M.~J. 1955, Proc. Phys. Soc. A, 68, 457
+
+\bibitem[Seaton(1959)]{Seaton1959}
+Seaton, M.~J. 1959, MNRAS, 119, 81
 
 \bibitem[Sekiya et al.(1980)]{Sekiya1980}
 Sekiya, M., Nakazawa, K., \& Hayashi, C. 1980, Prog. Theor. Phys., 64, 1968

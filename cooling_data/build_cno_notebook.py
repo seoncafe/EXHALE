@@ -169,7 +169,8 @@ C_{\rm dex} = n_e k_e(T) + n_{\rm HI} k_{\rm H}(T)$$
 
 with $f_l = g_l/Z_{\rm term}(T)$ (this weighting makes the two-level LTE
 limit equal the exact ground-term Boltzmann population), $k_e$ from the
-CHIANTI $\Upsilon$, and $k_{\rm H}$ from Draine 2011 / Goldsmith+2012.
+CHIANTI $\Upsilon$, and $k_{\rm H}$ from Yan \& Babb (2023; C I, N II),
+Abrahamsson, Krems \& Dalgarno (2007; O I) and Barinovs et al. (2005; C II).
 The non-FS remainder stays coronal (multi-exp refit excluding the
 $1\!\to\!2$ channel; `fit_fs_saturation.py`).  Note the $n_{\rm HI}$
 channel can also *raise* the cooling above the electron-only coronal

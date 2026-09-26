@@ -5,7 +5,7 @@
                             mion_isphot, mion_iphot, mion_ethr,       &
                             mion_z2, mion_elem, mion_iscool,          &
                             mion_stage, mion_name, mion_fsp,          &
-                            melem_Z, melem_top, im_FeII, im_OI,       &
+                            melem_top, im_FeII, im_OI,                &
                             isp_HeTR,                                    &
                             isp_H2, isp_H2p, isp_H3p, isp_HeHp,          &
                             isp_OH, isp_H2O, isp_CO
@@ -28,10 +28,11 @@
                             co_band_net_cooling_rate,                  &
                             molecular_planck_cross_section
    use Cross_sections, only: sigma, sigma_HeI, sigma_H2,              &
-                             metal_photoion_sigma  ! sigma_H(E,Z),
-                                        ! sigma_HeI(E), sigma_H2(E),
-                                        ! metal_photoion_sigma(k,E)
+                             metal_photoion_sigma,                    &
+                             metal_shell_photoion_sigma,              &
+                             metal_shell_relaxation, mph_n_sub
    use composition, only: he_ground_singlet_density
+   use charge_exchange, only: charge_exchange_heating
    ! D0(H2) in eV. The bond energy has one definition in this code
    ! (mol_rates.f90); the neutral-dissociation heat below reads it from
    ! there rather than writing 4.478 of its own.
@@ -60,7 +61,8 @@
                             photoelectron_energy_partition,                 &
                             photoelectron_shares, n_abs_fixed,              &
                             iabs_HI, iabs_HeI, iabs_HeII, iabs_HeTR,     &
-                            iabs_H2, iabs_H2_di, dissoc_ion_per_H2p
+                            iabs_H2, iabs_H2_di, dissoc_ion_per_H2p,     &
+                            n_dal_E, dalgarno_energy_node_weights
    ! H2 Lyman-Werner photodissociation, for the heating breakdown diagnostic
    use water_photolysis, only: n_fuv_band, ib_LW, ib_B2,             &
                        ib_B3, ib_B4,                                    &
@@ -102,9 +104,9 @@
 	! eval_cool sub-block timers (EXHALE_PROFILE=1 via ec_prof_on); diagnostic only
 	logical, save :: ec_prof_on = .false.
 	real*8,  save :: ec_t(5) = 0.0d0, ec_t0 = 0.0d0
-	character(len=40), parameter :: ec_name(5) = (/ 'recomb/ion/coex coefficient fits        ', &
-	   'bremsstrahlung Gaunt                    ', 'metal rec/ion/cool tables               ', &
-	   'fine-structure transfer + CNO           ', 'H3+ / molecular IR                      ' /)
+	character(len=40), parameter :: ec_name(5) = (/ 'recombination/ionization coefficients   ', &
+	   'radiative cooling of the cells          ', 'He ground-capture shares                ', &
+	   'fine-structure line transfer            ', 'H3+ / molecular IR                      ' /)
 
 	! ----- He I 2^1S -> 1^1S two-photon continuum ----- !
 	! The 2^1S term decays by emitting a photon PAIR summing to 20.62 eV, with
@@ -118,51 +120,161 @@
 	! at 3.511 eV, overestimating the deposited energy by 40%.
 	real*8, parameter :: f_2q_HeI  = 0.5564d0   ! ionizing photons per 2^1S decay
 	real*8, parameter :: Ee_2q_HeI = 2.512d0    ! photoelectron energy [eV]
-	! Photoelectron energies of the He cascade exits that are single lines:
-	! 584 A resonance (21.2-13.6) and the 2^3S 19.8 eV line (19.8-13.6).
-	real*8, parameter :: Ee_584_HeI  = 7.6d0
-	! Singlet-excited captures: 2/3 go to 2^1P -> 584 A (always ionizing),
-	! 1/3 to 2^1S -> two-photon.
-	real*8, parameter :: f_sing_HeI  = (2.0d0 + f_2q_HeI)/3.0d0
-	real*8, parameter :: Ee_sing_HeI = (2.0d0*Ee_584_HeI                    &
-	                                    + f_2q_HeI*Ee_2q_HeI)/3.0d0
-	! Low-density channel-weighted average over the case-B cascade exits
-	! (19.8 eV line / 584 A / two-photon), used in atomic mode.
-	real*8, parameter :: Ee_casc_HeI = 0.75d0*6.2d0 + 0.17d0*Ee_584_HeI     &
-	                                   + 0.08d0*Ee_2q_HeI
+	! Draine (2011, sect. 14.3.2, p. 149): "56% of these two-photon decays
+	! produce a photon with hnu > 13.60 eV"; Osterbrock & Ferland (2006,
+	! sect. 2.4, p. 30): "0.56 per radiative decay from He0 2 1S".
+	!
+	! The radiative rate of the 2^3S metastable to 1^1S [s^-1], Drake
+	! (1971) as listed by Lampon et al. (2020, A&A 636, A13, Table 2, "A31
+	! ... 1.272 x 10^-4"); the one value HeITR_coeffs and the atomic-mode
+	! cascade of recombination_radiation_absorbed use.
+	real*8, parameter :: A_HeI_23S_11S = 1.272d-4
 
 	! ----- Representative photon energies of the He recombination channels -----
-	! Each channel of he_rec_coupling emits at one energy, at which the
+	! Each channel of recombination_radiation_absorbed emits at one energy, at which the
 	! absorbers (H I, H2 and, above 24.6 eV, He I) compete for the photon.
 	! The ground-capture continuum starts AT the He I ionization threshold,
 	! so this energy is that threshold and is read from it.
 	real*8, parameter :: E_gnd_HeI  = e_th_HeI ! ground-capture continuum edge
-	real*8, parameter :: E_584_HeI  = 21.2d0   ! 2^1P -> 1^1S resonance line
-	real*8, parameter :: E_19_HeI   = 19.8d0   ! 2^3S -> 1^1S line
+	! The two He I lines, at the NIST ASD level energies of Cool_coeff
+	! (E_HeI_23S_eV = 19.8196 eV; 2^1P at 21.2180 eV).
+	real*8, parameter :: E_584_HeI  = E_HeI_23S_eV + E_HeI_21P_23S_eV
+	real*8, parameter :: E_19_HeI   = E_HeI_23S_eV
 	! Mean energy of the 2^1S two-photon photons that lie above the H I edge:
 	! the continuum is not a line, and this single energy stands for it. The
 	! shape (Drake, Victor & Dalgarno 1969) is not carried in the code, only
 	! the two integrals f_2q_HeI and Ee_2q_HeI over the H I window, so the
 	! energy below is e_th_HI + Ee_2q_HeI and cannot be re-integrated over the
-	! narrower H2 window; see EeH2_2q_HeI.
+	! narrower H2 window. APPROXIMATE: the H2-ionizing photon COUNT of the
+	! two-photon continuum is the integral of the same shape over e_th_H2 to
+	! 20.62 eV, which is smaller than f_2q_HeI (the integral over e_th_HI to
+	! 20.62 eV); f_2q_HeI is used for H2 as well, so the H2 share of this
+	! channel is overestimated. R2_2q = 1.2 is the smallest H2/H I
+	! cross-section ratio of the set.
 	real*8, parameter :: E_2q_HeI   = e_th_HI + Ee_2q_HeI       ! 16.110 eV
-	! Cascade-averaged exit energy used by the atomic (case-B) branch, the same
-	! 0.75/0.17/0.08 weighting that defines Ee_casc_HeI.
-	real*8, parameter :: E_casc_HeI = e_th_HI + Ee_casc_HeI     ! 19.741 eV
-	! The photoelectron each of those photons leaves in H2 (threshold
-	! e_th_H2), the H2 counterparts of 11.0 / 7.6 / 6.2 / Ee_2q_HeI /
-	! Ee_casc_HeI.
-	real*8, parameter :: EeH2_gnd_HeI  = E_gnd_HeI  - e_th_H2   ! 9.161 eV
-	real*8, parameter :: EeH2_584_HeI  = E_584_HeI  - e_th_H2   ! 5.774 eV
-	real*8, parameter :: EeH2_19_HeI   = E_19_HeI   - e_th_H2   ! 4.374 eV
-	! APPROXIMATE: the H2-ionizing photon COUNT of the two-photon continuum is
-	! the integral of the same shape over e_th_H2 to 20.62 eV, which is smaller
-	! than f_2q_HeI (the integral over e_th_HI to 20.62 eV); the shape is not in the
-	! code, so f_2q_HeI is used for H2 as well and this sub-channel's H2 share
-	! is overestimated. It is 1/3 of one of five channels, and R2_2q = 1.2 is
-	! the smallest H2/H I cross-section ratio of the set.
-	real*8, parameter :: EeH2_2q_HeI   = E_2q_HeI   - e_th_H2   ! 0.685 eV
-	real*8, parameter :: EeH2_casc_HeI = E_casc_HeI - e_th_H2   ! 4.315 eV
+
+	! ----- He I 584 A: a resonance line, destroyed on the spot ----- !
+	! Radiative rates of 1s2p 1P1 [s^-1] to the ground (584.334 A) and to
+	! 1s2s 1S0 (2.0587 um), READ from the NIST Atomic Spectra Database
+	! (He I lines; accuracy class AAA, transition-probability reference
+	! T8636c73): 1.7989e9 and 1.9746e6.  Draine (2011, eq. 14.18) prints
+	! 1.799e9 and 1.976e6, a branching ratio of 1.098e-3.
+	real*8, parameter :: A_HeI_21P_11S = 1.7989d9
+	real*8, parameter :: A_HeI_21P_21S = 1.9746d6
+	! The probability that one excitation of 2^1P ends in 2^1S (then in
+	! the two-photon continuum) rather than in a new 584 A photon:
+	! 1/912.0 (DERIVED).
+	real*8, parameter :: eps_HeI_21P_21S = A_HeI_21P_21S                 &
+	                                     /(A_HeI_21P_11S + A_HeI_21P_21S)
+	! lambda^3 g_u A/(8 pi^(3/2) g_l) of the line [cm^4 s^-1], g_u/g_l = 3,
+	! lambda = h c/E_584: divided by the thermal speed of the helium atom
+	! it is the line-centre cross section of the Doppler profile
+	! (He_I_584_mean_cross_section).
+	real*8, parameter :: lam_584_cm   = hp_eV*c_light/E_584_HeI
+	real*8, parameter :: sig0v_584    = 3.0d0*lam_584_cm**3*A_HeI_21P_11S &
+	                                  /(8.0d0*pi**1.5d0)
+
+	! ----- The ground-capture edges of the three recombinations ----- !
+	real*8, parameter :: E_gnd_HI   = e_th_HI    ! H II -> H I
+	real*8, parameter :: E_gnd_HeII = e_th_HeII  ! He III -> He II
+
+	! ----- He III -> He II recombination radiation ----- !
+	! He II level energies above the ground [eV], NIST ASD as distributed
+	! in CHIANTI v11 he_2.elvlc (2s1/2 329179.767 cm^-1, 2p1/2 329179.299,
+	! 2p3/2 329185.156; hc = 1.239841984e-4 eV cm): Ly-alpha at the
+	! g-weighted 2p, and the ionization potential of n = 2, the edge of the
+	! direct-capture continuum into n = 2 (13.6047 eV, above the H I edge
+	! by 6.2 meV).
+	real*8, parameter :: E_lya_HeII = 329183.204d0*1.239841984d-4  ! 40.8135 eV
+	real*8, parameter :: E_2s_HeII  = 329179.767d0*1.239841984d-4  ! 40.8131 eV
+	real*8, parameter :: E_n2_HeII  = e_th_HeII - E_2s_HeII        ! 13.6047 eV
+	! Two-photon decay of He II 2s: Drake (1986, Phys. Rev. A 34, 2871,
+	! eq. 27; hydrogen_n2_rates: A_2s1s) with Z = 2, the effective
+	! radiative charge Z_r = 1 + m_e/(M + m_e) and the alpha-particle mass
+	! M: 8.22938 x 64 x Z_r^4 (1 - m_e/M) x 0.99986007 (relativistic
+	! factor) = 526.823 s^-1 (DERIVED); the nonrelativistic Nussbaumer &
+	! Schmutz (1984, A&A 138, 495, eq. 6) scaling 8.2249 Z^6 R_Z/R_H gives
+	! 526.61 s^-1, 0.04% lower. The spectrum is
+	! their fit A(y) (eq. 2: alpha = 0.88, beta = 1.53, gamma = 0.8,
+	! C = 202.0 s^-1, y = E/E_2s), integrated here in three bands, the
+	! photons of each per decay (the fit's own integral normalizing) and
+	! their mean energy: 13.598-15.426 eV (H I only), 15.426-24.587 eV
+	! (H I, H2) and above 24.587 eV (H I, H2, He I): 0.11163 at 14.5160 eV,
+	! 0.57725 at 20.0127 eV, 0.73620 at 31.1293 eV (DERIVED by quadrature
+	! of the published fit, accurate to 0.1% over 0.07 < y < 0.93).
+	real*8, parameter :: A_2q_HeII     = 526.823d0
+	real*8, parameter :: f_2q_HeII_lo  = 0.11163d0, E_2q_HeII_lo  = 14.5160d0
+	real*8, parameter :: f_2q_HeII_mid = 0.57725d0, E_2q_HeII_mid = 20.0127d0
+	real*8, parameter :: f_2q_HeII_hi  = 0.73620d0, E_2q_HeII_hi  = 31.1293d0
+	! 2s -> 2p ion collisions of He II (Pengelly & Seaton 1964, eq. 48:
+	! H+ and He2+ impact): the separations of 2s1/2 from 2p1/2 and 2p3/2
+	! [erg] (0.468 and 5.389 cm^-1, he_2.elvlc) and the reduced masses of
+	! He+ with H+ and with He2+ [g].
+	real*8, parameter :: dE_2s2p12_HeII = 0.468d0*hp_erg*c_light
+	real*8, parameter :: dE_2s2p32_HeII = 5.389d0*hp_erg*c_light
+	real*8, parameter :: mu_HeII_p   = m_p*(m_He_atom - m_e)              &
+	                                   /(m_p + m_He_atom - m_e)
+	real*8, parameter :: mu_HeII_He2p = (m_He_atom - 2.0d0*m_e)           &
+	                                    *(m_He_atom - m_e)                 &
+	                                    /(2.0d0*m_He_atom - 3.0d0*m_e)
+
+	! ----- The channels of recombination_radiation_absorbed ----- !
+	! 1 H ground capture, 2 He I ground capture, 3 He I 584 A, 4 He I
+	! 19.8 eV, 5 He I two-photon (above 13.6 eV), 6 He II ground capture,
+	! 7 He II Ly-alpha, 8-10 He II two-photon bands, 11 He II n = 2
+	! continuum: their photon energies
+	! [eV], and the cross sections of the absorbers at them [1e-18 cm^2]
+	! (H I, He I ground, He II, H2; each metal ion), which depend on
+	! nothing but the switches that select the cross sections and are
+	! formed once (on_the_spot_cross_sections).
+	integer, parameter :: n_otsp_ch = 11
+	integer, parameter :: ic_gnd_HI = 1, ic_gnd_HeI = 2, ic_584_HeI = 3,   &
+	                      ic_19_HeI = 4, ic_2q_HeI = 5, ic_gnd_HeII = 6,  &
+	                      ic_lya_HeII = 7, ic_2q_HeII_lo = 8,             &
+	                      ic_2q_HeII_mid = 9, ic_2q_HeII_hi = 10,         &
+	                      ic_n2_HeII = 11
+	real*8, parameter :: otsp_E(n_otsp_ch) = [ E_gnd_HI, E_gnd_HeI,        &
+	        E_584_HeI, E_19_HeI, E_2q_HeI, E_gnd_HeII,                    &
+	        E_lya_HeII, E_2q_HeII_lo, E_2q_HeII_mid, E_2q_HeII_hi,        &
+	        E_n2_HeII ]
+	real*8,  save :: otsp_sab(4,n_otsp_ch) = 0.0d0
+	real*8,  save :: otsp_smet(n_mion,n_otsp_ch) = 0.0d0
+	! What a metal absorption of each channel's photon does beyond the
+	! outer-shell event (Cross_sections: metal_shell_relaxation), averaged
+	! over the shells the photon can open with their cross sections as
+	! weights: otsp_met_dbind is the energy [eV] the photoelectron and the
+	! Auger electrons receive LESS than E - mion_ethr (zero where only the
+	! outer shell is open), otsp_met_fmulti the fraction of the
+	! absorptions that eject two or more electrons, kept only for an ion
+	! whose next-but-one stage the balance carries (the neutrals of the
+	! three-stage elements; every other ion goes one carried stage up).
+	real*8,  save :: otsp_met_dbind(n_mion,n_otsp_ch)  = 0.0d0
+	real*8,  save :: otsp_met_fmulti(n_mion,n_otsp_ch) = 0.0d0
+	logical, save :: otsp_ready  = .false.
+
+	! ----- The metal photoabsorption of the photon grid, shell by shell ----- !
+	! Built by metal_photoabsorption_spectral_tables on the grid e_v it was
+	! handed, and rebuilt if the grid is not that one.  For photo-table
+	! column k and bin i:
+	!   mpa_sig_multi(i,k)  the cross section [Mb] of the absorptions that
+	!                       eject two or more electrons (Auger decay);
+	!   mpa_w(i,0,k)        the energy [eV] of the electrons at or below
+	!                       E_sec_ion, which thermalize whole, and
+	!   mpa_w(i,m,k)        m = 1..n_dal_E, the energy of those above it
+	!                       on the node m of the Dalgarno energy grid
+	!                       (dalgarno_energy_node_weights),
+	! both summed over the photoelectron (e_v - E_th,s) and the Auger
+	! electrons of every open shell, weighted by the shell's cross section
+	! [Mb] and divided by e_v.  Contracted with a cell's partition
+	! coefficients they give its metal photoheating and secondary
+	! ionizations for any number of electrons (photoionization_field_at_
+	! cell_HHe).
+	real*8,  allocatable, save :: mpa_e_v(:)
+	real*8,  allocatable, save :: mpa_sig_multi(:,:)
+	real*8,  allocatable, save :: mpa_w(:,:,:)
+	logical, save :: mpa_ready = .false.
+	logical, save :: otsp_ates   = .false.
+	logical, save :: otsp_metals = .false.
 
 	! ----- He recombination coupling diagnostic -----
 	! Cells in which the He recombination photons ionize H I faster than the
@@ -188,8 +300,9 @@
 	!   1-6  photoionization of each absorber (photoheating_of_composition)
 	!   7    photoelectric heating of H(n=2)
 	!   8    collisional de-excitation of H(n=2) by the Lyman-alpha field
-	!   9    photoelectrons of the H I / H2 / metal ionizations driven by He
-	!        recombination radiation
+	!   9    photoelectrons of the H I / He I / H2 / metal ionizations driven
+	!        by recombination radiation absorbed on the spot (H II, He II,
+	!        He III; recombination_radiation_absorbed)
 	!  10    He(2^3S) + H  -> He + H+ + e   (Penning branch)
 	!  11    He(2^3S) + H  -> HeH+ + e      (associative branch)
 	!  12    He(2^3S) + H2 -> He + H2+ + e  (Penning branch)
@@ -200,7 +313,8 @@
 	!  17    collisional reactions of the oxygen network, O(1D) sink included
 	!  18    He+ + CO -> C+ + O + He, the charge-transfer destruction of CO
 	!  19    kinetic energy of the CO photodissociation fragments
-	integer, parameter :: n_heat_channel = 19
+	!  20    energy defects of the charge-exchange reactions
+	integer, parameter :: n_heat_channel = 20
 	! Named index of the one channel a consumer outside this module reads
 	! on its own: output/Lyman_Werner.txt writes the Lyman-Werner fragment
 	! deposit beside the rate it belongs to, and takes it from the array
@@ -217,7 +331,7 @@
 	      'heat_H2_LW_dissoc       ', 'heat_H2_LW_fluor        ',          &
 	      'heat_mol_chem           ', 'heat_FUV_photolysis     ',          &
 	      'heat_oxygen_collisional ', 'heat_CO_Hep_transfer    ',          &
-	      'heat_CO_photodissoc     ' /)
+	      'heat_CO_photodissoc     ', 'heat_charge_exchange    ' /)
 
 	! The channel array of the state the ionization sweep RETURNED. The
 	! sweep passes this array to heating_of_composition, so it holds the
@@ -406,6 +520,9 @@
 	! Star-ward face values of the H2 column and of the Lyman-Werner
 	! continuum depth, the outer end of the cell the rate is averaged over.
 	real*8  :: NH2col_out, tau_lw_out
+	! Band share the Lyman-Werner lines have taken out of the beam, summed
+	! cell by cell from the top of the column (see where tr_lines is set).
+	real*8  :: a_path
 	! Star-ward face value of the CO column, the outer end of the cell the
 	! CO rate is averaged over.
 	real*8  :: NCOcol_out
@@ -432,11 +549,13 @@
 	dtau_lya = 0.0d0
 
 	! ---- H2 lines: self-shielding and the fraction of the LW band they
-	! take out of the shared beam.  Both are read from the table at the H2
-	! column above the cell and the cell's own T and n_H (the table is built
-	! for a homogeneous column, so the temperature and density of the gas
-	! above are approximated by the local ones in both), and both exist
-	! whether or not the oxygen chemistry is on.
+	! take out of the shared beam.  The table is built for a homogeneous
+	! column.  The self-shielding factor is read at the H2 column above the
+	! cell and the cell's own T and n_H, the gas above approximated by the
+	! local one; the band fraction A is the sum over the cells above of the
+	! same local integral that cell's own rate takes (below), so that the
+	! beam loses exactly what the rates of the cells above have spent.  Both
+	! exist whether or not the oxygen chemistry is on.
 	!
 	! A is the fraction of the band photons the pumping lines have taken
 	! out of the beam by that column, int_0^N sigma_pump dN' with
@@ -460,13 +579,43 @@
 	! width of a narrower band, and the two disagreed by 45 per cent
 	! (lyman_werner.f90 sec. 3a).  The rate below is the mean of the same
 	! table over the cell.
+	!
+	! A ALONG THE PATH, NOT A OF A UNIFORM SLAB.  The table is tabulated for
+	! a slab of one (T, n_H), and the column above a cell of the molecular
+	! layer is not one: MEASURED on the warm-started oxygen_chemistry state,
+	! T runs from 462 to 3370 K over the column.  The H2 rates of every cell
+	! (lyman_werner_band_absorption_rate_cell_mean) take sigma_pump at that
+	! cell's own (T, n_H) across the cell, so the photons the lines have
+	! taken out of the beam above a face are the sum over the cells above of
+	! the same integral, A(N_in; T_k, n_k) - A(N_out; T_k, n_k) cell by
+	! cell, and not A(N; T_j, n_j) of the whole column at the temperature of
+	! the cell the beam has reached.  The continuum rates of the shared band
+	! below multiply by this transmission, so the two readings are the
+	! difference between a shared beam whose photons are counted once and
+	! one whose continuum sees photons the lines have already spent (or
+	! misses photons they have not): MEASURED on that state, the continuum
+	! share of the band 0.361 with the slab reading against 0.544 with the
+	! path one, and the band's photon ledger 1.8e-1 of its beam loss short
+	! with the slab reading against -3.4e-3 with the path one, the residual
+	! of the product-of-means discretization of the shared beam.  On an
+	! isothermal column at uniform n_H the two readings are the same number.
 	if (thereis_mol .and. F_LW_star .gt. 0.0d0) then
 		call calc_column_dens_one(nH2, NH2col)
-		do j = 1-Ng,N+Ng
+		a_path = 0.0d0
+		do j = N+Ng,1-Ng,-1
 			f_shield(j) = h2_self_shielding_level_resolved(NH2col(j),     &
 			                            T_K(j), nH_nuc(j))
-			a_lines(j) = min(h2_lw_band_photon_fraction_absorbed(         &
-			                 NH2col(j), T_K(j), nH_nuc(j)), 1.0d0)
+			if (j .lt. N+Ng) then
+				NH2col_out = NH2col(j+1)
+			else
+				NH2col_out = 0.0d0
+			endif
+			a_path = a_path                                               &
+			       + h2_lw_band_photon_fraction_absorbed(NH2col(j),       &
+			                 T_K(j), nH_nuc(j))                           &
+			       - h2_lw_band_photon_fraction_absorbed(NH2col_out,      &
+			                 T_K(j), nH_nuc(j))
+			a_lines(j) = min(a_path, 1.0d0)
 			tr_lines(j) = 1.0d0 - a_lines(j)
 			col_over_overlap = max(col_over_overlap,                       &
 			                       NH2col(j)/h2_shield_max_column())
@@ -677,6 +826,70 @@
 	endif
 	end function photoelectron_share
 
+	! THE METAL PHOTOABSORPTION OF THE PHOTON GRID, SHELL BY SHELL: the
+	! tables mpa_sig_multi and mpa_w (declared with their meaning at the
+	! head of this module) on the current e_v.  Each shell s of each
+	! photo-ionizable ion takes its own partial cross section
+	! (metal_shell_photoion_sigma) and hands on a photoelectron of
+	! e_v - E_th,s and, where its vacancy autoionizes, Auger electrons of
+	! e_auger,s (metal_shell_relaxation); the fluorescence and the
+	! ionization energy of the further electrons are not electron energy
+	! and are not in mpa_w.  Formed once for a grid, inside a critical
+	! region, so a first call from a parallel region is safe; a grid that
+	! has changed since (a new set_energy_vectors) is detected by
+	! comparison and the tables are rebuilt.
+	subroutine metal_photoabsorption_spectral_tables
+	integer :: k, is, i, ie
+	real*8  :: E, sg, eth, eaug, pmul, efl, eim, Ee(2), wt(n_dal_E)
+	logical :: current
+
+	current = mpa_ready
+	if (current) current = (size(mpa_e_v) .eq. Nl)
+	if (current) current = all(mpa_e_v .eq. e_v(1:Nl))
+	if (current) return
+	!$omp critical (metal_photoabsorption_table)
+	current = mpa_ready
+	if (current) current = (size(mpa_e_v) .eq. Nl)
+	if (current) current = all(mpa_e_v .eq. e_v(1:Nl))
+	if (.not. current) then
+		mpa_ready = .false.
+		if (allocated(mpa_e_v))       deallocate(mpa_e_v)
+		if (allocated(mpa_sig_multi)) deallocate(mpa_sig_multi)
+		if (allocated(mpa_w))         deallocate(mpa_w)
+		allocate(mpa_e_v(Nl), mpa_sig_multi(Nl,n_mphot),                 &
+		         mpa_w(Nl,0:n_dal_E,n_mphot))
+		mpa_sig_multi = 0.0d0
+		mpa_w         = 0.0d0
+		do k = 1,n_mphot
+			do i = 1,Nl
+				E = e_v(i)
+				do is = 0,mph_n_sub(k)
+					sg = metal_shell_photoion_sigma(k, is, E)
+					if (.not. (sg > 0.0d0)) cycle
+					call metal_shell_relaxation(k, is, eth, eaug, pmul,  &
+					                            efl, eim)
+					mpa_sig_multi(i,k) = mpa_sig_multi(i,k) + sg*pmul
+					Ee(1) = E - eth
+					Ee(2) = eaug
+					do ie = 1,2
+						if (.not. (Ee(ie) > 0.0d0)) cycle
+						if (Ee(ie) .gt. E_sec_ion) then
+							call dalgarno_energy_node_weights(Ee(ie), wt)
+							mpa_w(i,1:n_dal_E,k) = mpa_w(i,1:n_dal_E,k)    &
+							                     + sg*Ee(ie)*wt/E
+						else
+							mpa_w(i,0,k) = mpa_w(i,0,k) + sg*Ee(ie)/E
+						endif
+					enddo
+				enddo
+			enddo
+		enddo
+		mpa_e_v   = e_v(1:Nl)
+		mpa_ready = .true.
+	endif
+	!$omp end critical (metal_photoabsorption_table)
+	end subroutine metal_photoabsorption_spectral_tables
+
 	subroutine advance_starward_columns(j_hi, j_lo,                       &
 	              nhi, nheiS, nheii, nheiTR, nh2, nm, has_h2,             &
 	              N1_c, N15_c, N2_c, NTR_c, NH2_c, Nm_c,                  &
@@ -818,9 +1031,9 @@
 	!----------------------------------!
 
 		! Initialization of integrands
-		Hea_1  = 0.0
-		PIR_1  = 0.0
-		q_abs  = 0.0
+		Hea_1  = 0.0d0
+		PIR_1  = 0.0d0
+		q_abs  = 0.0d0
 
 		! The depth at the star-ward face comes from the column of
 		! everything OUTSIDE the cell, which the caller passes in; nothing
@@ -971,10 +1184,10 @@
 
 	sec_on = use_sec_ion .and. sec_ion_active
 
-	nhei   = 0.0
-	nheii  = 0.0
-	nheiii = 0.0
-	nheiTR = 0.0
+	nhei   = 0.0d0
+	nheii  = 0.0d0
+	nheiii = 0.0d0
+	nheiTR = 0.0d0
 
 	! Evaluate the column density
 	call calc_column_dens(nhi,nhei,nheii,nheiTR,N1,N15,N2,NTR)
@@ -1003,7 +1216,7 @@
 	             P_HI_j,P_HeI_j,P_HeII_j,P_HeITR_j,Pm_j,                  &
 	             P_H2_j,P_H2_di_j,P_H2_dd_j,P_H2_nd_j,                    &
 	             h1_HI_j,h1_HeI_j,h1_HeII_j,h1_HeTR_j,h1_H2_j,h1m_j,      &
-	             heat_j, chan_j, q_j, q_abs_j)
+	             heat_j, chan_j, q_j, q_abs_j, Pm2_j)
 	! The attenuated stellar XUV field of ONE cell, and every rate it drives
 	! there: the photoionization rate of each absorber, the photoheating rate
 	! of one particle of each of them, the absorbed energy and the heating
@@ -1062,6 +1275,13 @@
 
 	real*8, intent(out) :: P_HI_j,P_HeI_j,P_HeII_j,P_HeITR_j
 	real*8, dimension(n_mion), intent(out) :: Pm_j
+	! The part of Pm_j whose absorptions eject two or more electrons (an
+	! inner-shell vacancy that autoionizes) and that the balance carries as
+	! a jump of two stages: nonzero only for the neutrals of the elements
+	! with three carried stages (species_table melem_top = 2).  Every other
+	! absorber goes one carried stage up whatever it ejects (Cross_sections
+	! header, STAGES ABOVE THE CARRIED ONES).
+	real*8, dimension(n_mion), intent(out), optional :: Pm2_j
 	real*8, intent(out) :: P_H2_j,P_H2_di_j,P_H2_dd_j,P_H2_nd_j
 	real*8, intent(out) :: h1_HI_j,h1_HeI_j,h1_HeII_j,h1_HeTR_j,h1_H2_j
 	real*8, dimension(n_mion), intent(out) :: h1m_j
@@ -1087,6 +1307,11 @@
 	real*8, dimension(Nl) :: fiHI,fiHeI,fiH2
 	real*8, dimension(Nl) :: acc_HI,acc_HeI,acc_HeII,acc_HeTR,acc_H2
 	real*8, dimension(Nl) :: acc_mion
+	! The metal electron energy of the cell on each Dalgarno node,
+	! sum_i n_i mpa_w(:,m,k(i)): what the metal photoelectrons and Auger
+	! electrons hand the secondary-ionization partition.
+	real*8, dimension(Nl,n_dal_E) :: wsec_m
+	integer :: m
 	type(photoelectron_partition_t) :: pep
 	real*8 :: Psec_HI,Psec_HeI,Psec_H2,Psec_H2_di
 
@@ -1097,12 +1322,14 @@
 	P_H2_dd_j = 0.0d0
 	P_H2_nd_j = 0.0d0
 	Pm_j      = 0.0d0
+	if (present(Pm2_j)) Pm2_j = 0.0d0
+	call metal_photoabsorption_spectral_tables
 
-      PIR_1   = 0.0
-      PIR_15  = 0.0
-      PIR_2   = 0.0
-      PIR_TR  = 0.0
-      q_abs   = 0.0
+      PIR_1   = 0.0d0
+      PIR_15  = 0.0d0
+      PIR_2   = 0.0d0
+      PIR_TR  = 0.0d0
+      q_abs   = 0.0d0
 
 		! The photoheating integrands default to zero so the He 2^3S and H2
 		! rates stay 0 in cells/runs where those absorbers are absent.
@@ -1121,7 +1348,7 @@
 		                            + s_heiTR*NTR_out*1.0d-18
 		if (has_h2) tauE_out = tauE_out                                   &
 		                           + s_h2*NH2_out*1.0d-18
-		tau_m = 0.0
+		tau_m = 0.0d0
 		do i = 1,n_mion
 			if (.not. mion_isphot(i)) cycle
 			k = mion_iphot(i)
@@ -1144,7 +1371,7 @@
 			dtauE = s_hi*nhi_j*dr_cell*1.0d-18
 		endif
 		if (has_h2) dtauE = dtauE + s_h2*nh2_j*dr_cell*1.0d-18
-		tau_m = 0.0
+		tau_m = 0.0d0
 		do i = 1,n_mion
 			if (.not. mion_isphot(i)) cycle
 			k = mion_iphot(i)
@@ -1402,12 +1629,17 @@
 		endif
 
 		! sigma_tab is the TOTAL photoabsorption of the ion, inner shells
-		! included, and every absorption in it is charged here to one
-		! ionization of stage i and to a photoelectron of e_v - mion_ethr(i).
-		! Above a K or L edge that is the model's approximation of an Auger
-		! event, not the event itself; what it under-counts, and why it is
-		! what the published photochemistry models do, is at the table in
-		! cross_sec.f90.
+		! included.  Each shell's absorption hands the electron gas its
+		! photoelectron, e_v - E_th,s, and, where the vacancy autoionizes,
+		! its Auger electrons (Cross_sections: metal_shell_relaxation); the
+		! fluorescence leaves and the further ionization energy is spent.
+		! mpa_w carries that electron energy node by node, so the heat of
+		! one ion and the secondary ionizations of all of them are one
+		! contraction with the cell's partition, for any number of
+		! electrons.  Under "Photoelectron heating: full"
+		! (photoheat_photon_fraction > 0, a comparison option that heats
+		! with a fixed share of the photon) the outer-shell form is kept.
+		if (photoheat_photon_fraction .gt. 0.0d0) then
 		do i = 1,n_mion
 			if (.not. mion_isphot(i)) cycle
 			k = mion_iphot(i)
@@ -1428,6 +1660,33 @@
 			if (mol_sec) acc_secH2 = acc_secH2 + sigma_tab(:,k)*nm_j(i)/e_v * &
 				     merge(fiH2 *(e_v-mion_ethr(i))/e_th_H2 , 0.0d0, e_v > mion_ethr(i) + E_sec_ion)
 		enddo
+		else
+		wsec_m = 0.0d0
+		do i = 1,n_mion
+			if (.not. mion_isphot(i)) cycle
+			k = mion_iphot(i)
+			acc_mion = mpa_w(:,0,k)
+			if (sec_on) then
+				do m = 1,n_dal_E
+					acc_mion    = acc_mion + pep%f_heat(m)*mpa_w(:,m,k)
+					wsec_m(:,m) = wsec_m(:,m) + nm_j(i)*mpa_w(:,m,k)
+				enddo
+			else
+				do m = 1,n_dal_E
+					acc_mion = acc_mion + mpa_w(:,m,k)
+				enddo
+			endif
+			h1m_loc(i) = sum(int_f*acc_mion*de_v)*1.0d-18
+		enddo
+		if (sec_on) then
+			do m = 1,n_dal_E
+				acc_secHI  = acc_secHI  + pep%c_ion_HI(m) /e_th_HI *wsec_m(:,m)
+				acc_secHeI = acc_secHeI + pep%c_ion_HeI(m)/e_th_HeI*wsec_m(:,m)
+				if (mol_sec) acc_secH2 = acc_secH2                            &
+				                       + pep%c_ion_H2(m)/e_th_H2*wsec_m(:,m)
+			enddo
+		endif
+		endif
 		! Absorbed energy integral (this one is a property of the entry
 		! composition: it is what the heating efficiency q is measured
 		! against, so it keeps the absorber densities).  The cross sections
@@ -1452,10 +1711,10 @@
 		PIR_15  = sum(int_15 *de_v)
 		PIR_2   = sum(int_2  *de_v)
 		if(thereis_HeITR) PIR_TR = sum(int_TR*de_v)
-		PIR_H2 = 0.0
-		PIR_H2_di = 0.0
-		PIR_H2_dd = 0.0
-		PIR_H2_nd = 0.0
+		PIR_H2 = 0.0d0
+		PIR_H2_di = 0.0d0
+		PIR_H2_dd = 0.0d0
+		PIR_H2_nd = 0.0d0
 		if (has_h2) then
 			PIR_H2    = sum(int_h2   *de_v)
 			PIR_H2_di = sum(int_h2_di*de_v)
@@ -1464,12 +1723,18 @@
 		endif
 		do i = 1,n_mion
 			if (.not. mion_isphot(i)) then
-				Pm_loc(i) = 0.0
+				Pm_loc(i) = 0.0d0
 				cycle
 			endif
 			k = mion_iphot(i)
 			int_m = int_f*sigma_tab(:,k)/e_v
 			Pm_loc(i) = sum(int_m*de_v)*1.0d-18*erg2eV
+			if (present(Pm2_j)) then
+				if (mion_stage(i) .eq. 0 .and.                               &
+				    melem_top(mion_elem(i)) .ge. 2)                           &
+					Pm2_j(i) = sum(int_f*mpa_sig_multi(:,k)/e_v*de_v)        &
+					           *1.0d-18*erg2eV
+			endif
 		enddo
 		q_abs   = sum(int_q  *de_v)
 
@@ -1551,7 +1816,7 @@
 				     heat_chan,                                     &
 				     heat_of_one_HI, heat_of_one_HeI,               &
 				     heat_of_one_HeII, heat_of_one_HeTR,            &
-				     heat_of_one_H2, heat_of_one_mion)
+				     heat_of_one_H2, heat_of_one_mion, P_m2)
 	! Computes photoionization rates and heating rates for an
 	!	atmosphere composed of H, He, and (optionally) metals.
 	! Metal ion densities arrive as nm(:,1:n_mion) in canonical
@@ -1625,7 +1890,7 @@
 	real*8 :: N1o,N15o,N2o,NTRo,NH2o
 	real*8 :: Nmo(n_mphot)
 	real*8 :: nh2_cell
-	real*8 :: Pm_row(n_mion), h1m_row(n_mion)
+	real*8 :: Pm_row(n_mion), h1m_row(n_mion), Pm2_row(n_mion)
 	real*8 :: P_H2_c,P_H2_di_c,P_H2_dd_c,P_H2_nd_c
 	real*8 :: chan_c(6)
 	! Secondary-ionization coupling applied only when enabled AND staged on
@@ -1643,6 +1908,9 @@
 	real*8, dimension(1-Ng:N+Ng), intent(out) ::  P_HI
    real*8, dimension(1-Ng:N+Ng), intent(out) ::  P_HeI,P_HeII,P_HeITR
    real*8, dimension(1-Ng:N+Ng,n_mion), intent(out) ::  P_m
+   ! The part of P_m that the balance carries as a two-stage jump
+   ! (photoionization_field_at_cell_HHe, Pm2_j).
+   real*8, dimension(1-Ng:N+Ng,n_mion), intent(out), optional ::  P_m2
 
    ! Heating efficiency
    real*8, dimension(1-Ng:N+Ng),intent(out) ::  q
@@ -1693,7 +1961,8 @@
 	if (present(nh2)) call calc_column_dens_one(nh2, NH2col)
 
 	! Metal-free P_m entries (top-stage ions) stay zero
-	P_m = 0.0
+	P_m = 0.0d0
+	if (present(P_m2)) P_m2 = 0.0d0
 
 	D0_H2_eV = h2_dissociation_energy_eV()
 	E_ker_H2_dd_eV = h2_double_fragment_kinetic_energy()
@@ -1717,7 +1986,7 @@
 	!$OMP          D0_H2_eV, E_ker_H2_dd_eV ) &
 	!$OMP PRIVATE ( j, N1o,N15o,N2o,NTRo,NH2o,Nmo, nh2_cell,                 &
 	!$OMP           Pm_row,h1m_row, P_H2_c,P_H2_di_c,P_H2_dd_c,P_H2_nd_c,    &
-	!$OMP           chan_c )
+	!$OMP           chan_c, Pm2_row )
 	do j = 1-Ng,N+Ng
 
 		! The columns of everything outside the cell.  Nothing sits above the
@@ -1749,9 +2018,10 @@
 		         P_HI(j),P_HeI(j),P_HeII(j),P_HeITR(j),Pm_row,             &
 		         P_H2_c,P_H2_di_c,P_H2_dd_c,P_H2_nd_c,                     &
 		         h1_HI(j),h1_HeI(j),h1_HeII(j),h1_HeTR(j),h1_H2(j),h1m_row,&
-		         heat(j), chan_c, q(j), q_abs_cell(j))
+		         heat(j), chan_c, q(j), q_abs_cell(j), Pm2_row)
 
 		P_m(j,:)  = Pm_row
+		if (present(P_m2)) P_m2(j,:) = Pm2_row
 		h1_m(j,:) = h1m_row
 		if (present(P_H2))    P_H2(j)    = P_H2_c
 		if (present(P_H2_di)) P_H2_di(j) = P_H2_di_c
@@ -1957,7 +2227,8 @@
 	! Ground-singlet neutral helium of this composition, formed here for
 	! the one chemical-heat channel that has a neutral-helium reactant.
 	real*8, dimension(1-Ng:N+Ng) :: nheiS_chem
-	real*8, dimension(1-Ng:N+Ng) :: rcheiiB_hrc,dP_HI_hrc,dP_H2_hrc
+	real*8, dimension(1-Ng:N+Ng) :: rchiiB_hrc,rcheiiB_hrc,rcheiiiB_hrc
+	real*8, dimension(1-Ng:N+Ng) :: dP_HI_hrc,dP_HeI_hrc,dP_H2_hrc
 	real*8, dimension(1-Ng:N+Ng,n_mion) :: dP_m_hrc
 	! Production of O(1D) [cm^-3 s^-1] through the H2O + hv -> H2 + O(1D)
 	! branch, the flux its local steady state carries into the O6 sink.
@@ -1985,16 +2256,21 @@
 		heat = heat + (heat_chan(:,7) + heat_chan(:,8))
 	endif
 
-	! He recombination radiation absorbed by H I, H2 and the metal ions. The
-	! RATE corrections of this coupling belong to the state that entered the
-	! sweep and are not rebuilt here; its photoelectron heating carries the
-	! densities of the absorbers, so it is evaluated at the composition this
-	! routine was given and only the heating is kept.
-	if (use_he_rec_coupling .and. thereis_He) then
-		call he_rec_coupling(T_K, nhi, nmol(:,1), nhei, nheii, nheiTR,     &
-		                     ne, nm, A31, q31a, q31b,                      &
-		                     rcheiiB_hrc, dP_HI_hrc, dP_H2_hrc,            &
-		                     dP_m_hrc, heat_chan(:,9))
+	! Recombination radiation absorbed on the spot: the H I, He I, H2 and
+	! metal ionizations by the ground-capture photons of H II, He II and
+	! He III and by the He II and He III cascade photons
+	! (recombination_radiation_absorbed). The RATE corrections of this
+	! coupling belong to the state that entered the sweep and are not
+	! rebuilt here; its photoelectron heating carries the densities of the
+	! absorbers, so it is evaluated at the composition this routine was
+	! given and only the heating is kept.
+	if (use_h_rec_escape .or. (use_he_rec_coupling .and. thereis_He)) then
+		call recombination_radiation_absorbed(T_K, nhi, nhii, nmol(:,1),   &
+		                     nhei, nheii, nheiii, nheiTR, ne, nm,          &
+		                     A31, q31a, q31b,                              &
+		                     rchiiB_hrc, rcheiiB_hrc, rcheiiiB_hrc,        &
+		                     dP_HI_hrc, dP_HeI_hrc, dP_H2_hrc, dP_m_hrc,   &
+		                     heat_chan(:,9))
 		heat = heat + heat_chan(:,9)
 	endif
 
@@ -2078,7 +2354,7 @@
 	! at 3200 K, computed from the Abgrall, Roueff & Drira (2000) transition
 	! probabilities rather than adopted, and replacing the 2.0 eV Burton,
 	! Hollenbach & Tielens (1990) Appendix A adopt without a derivation
-	! (docs/p39_lw_cross_section_sources.md sec. 5.2). The count of such
+	! (md/p39_lw_cross_section_sources.md sec. 5.2). The count of such
 	! decays per dissociation is (1 - p)/p. At the density of a molecular
 	! base that energy is collisionally de-excited and becomes heat; at low
 	! density it is radiated away in the infrared quadrupole lines, and
@@ -2091,7 +2367,7 @@
 	! lone pump would have. It is not the constant 0.135 either: shielding
 	! removes the strongest pumping lines first, and the lines that survive
 	! to depth have a different branching, measured as p_lw
-	! (docs/p39_lw_cross_section_sources.md).
+	! (md/p39_lw_cross_section_sources.md).
 	! THE GROUND-SINGLET NEUTRAL HELIUM, formed once for every molecular
 	! channel of this assembly that needs it.  It is the third collider of
 	! the H2 vibrational cascade (Jozwiak et al. 2024) and the neutral
@@ -2208,6 +2484,15 @@
 		heat_chan(:,19) = k_co*nox(:,3)*heat_per_co_dissociation()
 		heat = heat + heat_chan(:,19)
 	endif
+
+	! 20: the energy defects of the charge-exchange reactions the balance
+	! rows apply (metal + H/He/metal and He <-> H), less the excitation
+	! of product states that leaves as radiation; charge_exchange_heating
+	! states the product states and the ledger. The helium reactant is
+	! the ground singlet, nheiS_chem; ne sets the metastable populations.
+	call charge_exchange_heating(T_K, ne, nhi, nhii, nheiS_chem, nheii,  &
+	                             nheiii, nm, heat_chan(:,20))
+	heat = heat + heat_chan(:,20)
 
 	end subroutine heating_of_composition
 
@@ -2339,7 +2624,7 @@
             ! The H2 share of the shared LW beam, on the same ledger as the
             ! continuum absorbers. Two DIFFERENT branchings are needed and
             ! they are not the same number (lyman_werner.f90, and
-            ! docs/p39_lw_cross_section_sources.md):
+            ! md/p39_lw_cross_section_sources.md):
             !   p_lw_single    how many fluorescent decays accompany each
             !                  dissociation, (1 - p)/p, which is the term the
             !                  energy equation carries.  Both terms are in
@@ -2514,17 +2799,20 @@
 	!	argument list no longer grows when a metal is added.
 
 	! Structure. Everything below is a function of the cell's own temperature
-	! and densities, with ONE exception: the fine-structure line transfer,
-	! whose escape probabilities are integrals of the columns above and below
-	! the cell. That exception is solved here for the whole grid; the
-	! cell-local remainder runs in eval_cool_cells over contiguous blocks of
-	! cells inside a single OpenMP parallel region. Each cell therefore gets
-	! the same arithmetic as a serial sweep, and the result is bitwise
+	! and densities, with TWO exceptions formed here for the whole grid
+	! before the cell loop: the fine-structure line transfer, whose escape
+	! probabilities are integrals of the columns above and below the cell,
+	! and the ground-capture weight of the He II recombination, which needs
+	! the cell's width and its absorber densities (ground_capture_escape_weights).
+	! The cell-local remainder runs in eval_cool_cells over contiguous blocks
+	! of cells inside a single OpenMP parallel region. Each cell therefore
+	! gets the same arithmetic as a serial sweep, and the result is bitwise
 	! reproducible at any thread count.
 
 	! Block decomposition of the cell range and the sub-block timers a block
 	! returns (see ec_t / ec_name).
 	integer :: ib, nblk, j_lo, j_hi, ncell
+
 	real*8  :: ect(5)
 
 	real*8, dimension(1-Ng:N+Ng),intent(in)  :: nhi,nhii,           &
@@ -2540,8 +2828,13 @@
    ! photon occupation number of the field incident from the lower atmosphere
    real*8, dimension(1-Ng:N+Ng,n_fsline) :: beta_fs, nbar_fs
 	real*8, dimension(1-Ng:N+Ng) :: ne		  			 ! Electron number density
-	! Neutral helium in its ground singlet, n(1^1S) (see below)
-	real*8, dimension(1-Ng:N+Ng) :: nheiS
+	! Neutral helium in its ground singlet, n(1^1S), and the 2^3S metastable
+	! (zero where the caller carries none)
+	real*8, dimension(1-Ng:N+Ng) :: nheiS, nheiTR_c
+	! Ground-capture escape weights of the H II, He II and He III
+	! recombinations (ground_capture_escape_weights)
+	real*8, dimension(1-Ng:N+Ng) :: y_HI, y_gnd, y_HeII
+	real*8, dimension(1-Ng:N+Ng) :: nh2_c
 
    ! Recombination rate coefficients
    real*8, dimension(1-Ng:N+Ng),intent(out) :: rchiiB,	 &
@@ -2561,28 +2854,24 @@
 	real*8, dimension(1-Ng:N+Ng),intent(out) ::  cool
 
 	! Optional cooling breakdown in each channel (cgs erg cm^-3 s^-1, same
-	! units as `cool`). Columns 1-6 = H/He recombination, collisional
-	! ionization, then the collisional-excitation channel split into its
-	! three absorbers -- H I (the Lyman-alpha-dominated H-line cooling),
-	! He I, He II -- and finally bremsstrahlung (incl. metal-ion charges);
-	! column 7 = H3+ infrared cooling (0 unless the caller supplies nmol);
-	! columns 8-10 = the molecular infrared bands under `Molecular IR bands`
-	! -- H2 lines (needs nmol), H2O and CO bands (need nox) -- each the NET
-	! rate, emission minus absorption of the field from below, so a column is
-	! negative wherever that channel heats;
-	! columns 10+i = metal ion i line cooling (0 for non-coolant ions).
-	! The He I column also carries the He 2^3S metastable collisional cooling
-	! (10830 A + singlet-conversion terms), so columns 3-5 sum exactly to
-	! ne*coex. This is an exact decomposition of `cool` in the default
-	! (.not.use_2lev_cool) branch; in the two-level branch the metal terms for
-	! each ion are the resonance-line approximation and need not sum to cool_M.
-	real*8, dimension(1-Ng:N+Ng,10+n_mion),intent(out),optional :: cool_chan
+	! units as `cool`), in the n_cool_chan columns of
+	! radiative_cooling_of_cell (Cool_coeff): 1 recombination, 2 collisional
+	! ionization, 3-5 collisional excitation of H I (the Lyman-alpha-dominated
+	! H-line cooling), He I (with the He 2^3S metastable's own channels) and
+	! He II, 6 free-free (incl. metal-ion charges); 7 H3+ infrared cooling (0
+	! unless the caller supplies nmol); 8-10 the molecular infrared bands under
+	! `Molecular IR bands` -- H2 lines (needs nmol), H2O and CO bands (need
+	! nox) -- each the NET rate, emission minus absorption of the field from
+	! below, so a column is negative wherever that channel heats; 10+i the
+	! line cooling of metal ion i (0 for non-coolant ions). The columns are an
+	! exact decomposition of `cool`: their sum is `cool` to round-off.
+	real*8, dimension(1-Ng:N+Ng,n_cool_chan),intent(out),optional :: cool_chan
 
 	! He 2^3S metastable density [cm^-3], present only for the triplet-tracking
-	! callers. When supplied it adds the collisional-ionization cooling of the
-	! 2^3S state (4.8 eV per event, ci_HeI23S) to the CI channel. a_ion_HeITR
-	! returns the He(2^3S) collisional-ionization rate coefficient [cm^3 s^-1]
-	! for the ionization equations, mirroring a_ion_HI/HeI/HeII.
+	! callers. When supplied it adds the collisional channels of the 2^3S
+	! state (radiative_cooling_of_cell). a_ion_HeITR returns the He(2^3S)
+	! collisional-ionization rate coefficient [cm^3 s^-1] for the ionization
+	! equations, mirroring a_ion_HI/HeI/HeII.
 	real*8, dimension(1-Ng:N+Ng),intent(in),optional  :: nheiTR
 	real*8, dimension(1-Ng:N+Ng),intent(out),optional :: a_ion_HeITR
 
@@ -2618,18 +2907,12 @@
    endif
 
 	! Line trapping of the ground-term fine-structure lines this module
-	! solves explicitly. Earlier versions built a GRAY escape
-	! probability from the lowest XUV band opacity over one cell width
-	! (AIOLOS chemistry.cpp:1006 scaled that by an arbitrary 1e8, driving
-	! beta -> 0 and switching metal-line cooling off; EXHALE replaced it
-	! with beta = 1 everywhere, the optically thin limit). Neither is a
-	! line optical depth, and beta = 1 overestimates the cooling of a
-	! dense base where [O I] 63um reaches tau ~ 3. beta is now the
-	! line-center escape probability of each line, from the columns above
-	! and below the cell, and nbar_fs carries the thermal infrared field of
-	! the lower atmosphere the same lines absorb ("Base IR field", off by
-	! default) (Cool_coeff.f90: fine_structure_line_transfer). Every other
-	! metal ion keeps the optically thin limit; see the scope note there.
+	! solves explicitly: beta is the line-center escape probability of each
+	! line, from the columns above and below the cell, and nbar_fs carries
+	! the thermal infrared field of the lower atmosphere the same lines
+	! absorb ("Base IR field", off by default) (Cool_coeff.f90:
+	! fine_structure_line_transfer). Every other metal ion keeps the
+	! optically thin limit; see the scope note there.
 	beta_fs = 1.0d0
 	nbar_fs = 0.0d0
 	!$ if (ec_prof_on) ec_t0 = omp_get_wtime()
@@ -2640,21 +2923,41 @@
 	! Neutral helium in its ground singlet, n(1^1S) = n(He I) - n(2^3S).
 	! The state vector's He I column CONTAINS the metastable
 	! (composition.f90), and the ground-state coefficients of the cooling --
-	! the 24.6 eV collisional ionization and the Cen (1992) collisional
-	! excitation, both of the 1^1S term -- act on the singlet alone: the
-	! metastable sits 19.8 eV up and carries its own 4.8 eV ionization and
-	! its own 10830 A and singlet-conversion channels, which eval_cool_cells
-	! adds from nheiTR. Charging it the ground-state coefficients as well
-	! would count it twice, once in each level's channels. Same subtraction
-	! as PH_heat_HHe and photoheating_of_composition make of the same column.
-	! Formed here, over the whole grid, before the parallel region below.
-	! Without a metastable column there is no metastable inside n(He I) and
-	! the singlet is that column unchanged.
+	! the 24.6 eV collisional ionization and the collisional excitation out
+	! of 1^1S -- act on the singlet alone: the metastable sits 19.8 eV up and
+	! carries its own channels (radiative_cooling_of_cell). Charging it the
+	! ground-state coefficients as well would count it twice. Same
+	! subtraction as PH_heat_HHe and photoheating_of_composition make of the
+	! same column. Without a metastable column there is no metastable inside
+	! n(He I) and the singlet is that column unchanged.
 	if (present(nheiTR)) then
-		nheiS = he_ground_singlet_density(nhei, nheiTR)
+		nheiS    = he_ground_singlet_density(nhei, nheiTR)
+		nheiTR_c = nheiTR
 	else
-		nheiS = nhei
+		nheiS    = nhei
+		nheiTR_c = 0.0d0
 	endif
+
+	! The ground-capture escape weights of the recombinations the balance
+	! runs on, from the same densities recombination_radiation_absorbed is
+	! handed (the summed He I column and the H2 density), so the cooling
+	! charges the captures the balance performs. They do not depend on T,
+	! so a caller that varies T at fixed densities (the semi-implicit
+	! energy update) sees them frozen.
+	y_HI   = 0.0d0
+	y_gnd  = 0.0d0
+	y_HeII = 0.0d0
+	!$ if (ec_prof_on) ec_t0 = omp_get_wtime()
+	if (use_h_rec_escape .or. (use_he_rec_coupling .and. thereis_He)) then
+		if (present(nmol)) then
+			nh2_c = nmol(:,1)
+		else
+			nh2_c = 0.0d0
+		endif
+		call ground_capture_escape_weights(nhi, nh2_c, nhei, nheii, nm,  &
+		                                   y_HI, y_gnd, y_HeII)
+	endif
+	!$ if (ec_prof_on) ec_t(3) = ec_t(3) + (omp_get_wtime() - ec_t0)
 
 	! One parallel region per call, over contiguous blocks of cells of the
 	! fixed even length xuv_rate_block (see chemical_rate_coefficients for
@@ -2674,10 +2977,11 @@
 	   if (j_hi .lt. j_lo) cycle
 	   ect = 0.0d0
 	   call eval_cool_cells(j_lo,j_hi, ect,                             &
-	          T_K,nhi,nhii,nheiS,nheii,nheiii, nm, ne, beta_fs, nbar_fs,&
+	          T_K,nhi,nhii,nheiS,nheiTR_c,nheii,nheiii, nm, ne,         &
+	          y_HI, y_gnd, y_HeII, beta_fs, nbar_fs,                    &
 	          rchiiB,rcheiiB,rcheiiiB, rec_m,                           &
 	          a_ion_HI,a_ion_HeI,a_ion_HeII, aion_m,                    &
-	          cool, cool_chan, nheiTR, a_ion_HeITR, nmol, nox)
+	          cool, cool_chan, a_ion_HeITR, nmol, nox)
 	   ec_t = ec_t + ect
 	enddo
 	!$omp end parallel do
@@ -2688,19 +2992,18 @@
 	!---------------------------------------------------!
 
 	subroutine eval_cool_cells(j_lo,j_hi, ect,                       &
-	                   T_K,nhi,nhii,nheiS,nheii,nheiii, nm, ne,      &
-	                   beta_fs, nbar_fs,                             &
+	                   T_K,nhi,nhii,nheiS,nheiTR,nheii,nheiii, nm,   &
+	                   ne, y_HI, y_gnd, y_HeII, beta_fs, nbar_fs,    &
 	                   rchiiB,rcheiiB,rcheiiiB, rec_m,               &
 	                   a_ion_HI,a_ion_HeI,a_ion_HeII, aion_m,        &
-	                   cool, cool_chan, nheiTR, a_ion_HeITR, nmol, nox)
+	                   cool, cool_chan, a_ion_HeITR, nmol, nox)
 
 	! The cell-local part of eval_cool, over the cells j_lo:j_hi. Called
 	! from inside the parallel region of eval_cool, once per block of
 	! cells. Every array keeps the explicit shape 1-Ng:N+Ng of the whole
-	! grid and only the elements j_lo:j_hi are read or written, so the
-	! compiled arithmetic of a cell is what the serial whole-array form
-	! produced (assumed-shape dummies moved it; Update_EXHALE_stage1.pdf 145).
-	! ne, beta_fs and nbar_fs come in from eval_cool: they are not
+	! grid and only the elements j_lo:j_hi are read or written.
+	! ne, the escape weights, beta_fs and nbar_fs come in from eval_cool:
+	! they are not
 	! cell-local. ect returns this block's sub-block times.
 
 	integer, intent(in) :: j_lo, j_hi
@@ -2709,36 +3012,30 @@
 
 	integer :: i,j
 
-	! nheiS is the He I GROUND SINGLET density n(1^1S), formed by eval_cool
-	! from the summed neutral-helium column and the metastable it contains.
-	! The ground-state collisional coefficients below act on it alone; the
-	! metastable's own channels are added from nheiTR.
+	! nheiS is the He I GROUND SINGLET density n(1^1S), nheiTR the 2^3S
+	! metastable (zero where the caller carries none).
 	real*8, dimension(1-Ng:N+Ng),intent(in)  :: nhi,nhii,           &
-	                                            nheiS,nheii,nheiii
+	                                            nheiS,nheiTR,       &
+	                                            nheii,nheiii
 	! Metal ion densities (canonical species_table order)
 	real*8, dimension(1-Ng:N+Ng,n_mion),intent(in) :: nm
 
 	! Dimensional temperature
 	real*8, dimension(1-Ng:N+Ng),intent(in) ::  T_K
 
-   real*8, dimension(1-Ng:N+Ng) :: brem,coex,coio,reco  ! Cooling rates
-   real*8, dimension(1-Ng:N+Ng) :: cool_M               ! Metal cooling
+	real*8, dimension(1-Ng:N+Ng,n_fsline),intent(in) :: beta_fs, nbar_fs
+	real*8, dimension(1-Ng:N+Ng),intent(in) :: ne        ! Electron density
+	! Ground-capture escape weights of H II, He II and He III
+	real*8, dimension(1-Ng:N+Ng),intent(in) :: y_HI, y_gnd, y_HeII
+
+   real*8, dimension(1-Ng:N+Ng) :: metal_col            ! dispatcher scratch
    real*8, dimension(1-Ng:N+Ng) :: cool_H3p             ! H3+ infrared cooling
    real*8, dimension(1-Ng:N+Ng) :: cool_H2, cool_H2O, cool_CO ! molecular bands
    real*8 :: w_ir                                       ! incident-field dilution
-   real*8, dimension(1-Ng:N+Ng) :: brem_acc,coolm_acc   ! sum accumulators
-   real*8, dimension(1-Ng:N+Ng) :: metal_col            ! dispatcher scratch
-   real*8, dimension(1-Ng:N+Ng,n_mion)  :: c_metal      ! metal line-cool coeffs
-   ! Line transfer of the ground-term fine-structure lines solved explicitly
-   ! (Cool_coeff: fine_structure_line_transfer): escape probabilities and the
-   ! photon occupation number of the field incident from the lower atmosphere
-	real*8, dimension(1-Ng:N+Ng,n_fsline),intent(in) :: beta_fs, nbar_fs
-	real*8, dimension(1-Ng:N+Ng),intent(in) :: ne        ! Electron density
-	real*8, dimension(1-Ng:N+Ng) :: GF_z1,GF_z2			 ! free-free Gaunt at Z_ion=1,2
-	real*8 :: Cdex_OI,Cdex_CII                           ! 2-level collis. de-exc.
-	! Named bridges for the (verbatim) two-level cooling branch
-	real*8, dimension(1-Ng:N+Ng) :: nci,ncii,noi,noii,nmgi,nmgii
-	real*8, dimension(1-Ng:N+Ng) :: c_CI,c_OII,c_MgI,c_MgII
+   ! One cell's channels, and the cell's metal densities and fine-structure
+   ! transfer as contiguous vectors
+   real*8 :: chan(n_cool_chan), nm_cell(n_mion)
+   real*8 :: beta_cell(n_fsline), nbar_cell(n_fsline)
 
    ! Recombination rate coefficients
    real*8, dimension(1-Ng:N+Ng),intent(inout) :: rchiiB,	 &
@@ -2747,11 +3044,6 @@
    ! Metal recombination rates for each ion (canonical order)
    real*8, dimension(1-Ng:N+Ng,n_mion),intent(inout) :: rec_m
 
-	! Recombination cooling coefficients
-	real*8, dimension(1-Ng:N+Ng) :: coeff_rec_cool_HII,  &
-									coeff_rec_cool_HeII, &
-									coeff_rec_cool_HeIII
-
    ! Ionization coefficients
    real*8, dimension(1-Ng:N+Ng),intent(inout) ::  a_ion_HI,	&
       							   				 a_ion_HeI, &
@@ -2759,204 +3051,37 @@
    ! Metal collisional ionization rates for each ion (canonical order)
    real*8, dimension(1-Ng:N+Ng,n_mion),intent(inout) :: aion_m
 
-	real*8, dimension(1-Ng:N+Ng) :: coeff_coex_rate_HI,    &
-	 								coeff_coex_rate_HeI,   &
-									coeff_coex_rate_HeII
-	! He 2^3S metastable cooling coefficients (triplet-tracking callers only):
-	! 10830 A collisional-excitation cooling, and the q31a/q31b conversion
-	! rate coefficients reused for their thermal-energy ledger.
-	real*8, dimension(1-Ng:N+Ng) :: coeff_coex_HeI23S_10830, q31a_l, q31b_l
-
 	! Heating, cooling
 	real*8, dimension(1-Ng:N+Ng),intent(inout) ::  cool
 
-	! Optional cooling breakdown in each channel (cgs erg cm^-3 s^-1, same
-	! units as `cool`). Columns 1-6 = H/He recombination, collisional
-	! ionization, then the collisional-excitation channel split into its
-	! three absorbers -- H I (the Lyman-alpha-dominated H-line cooling),
-	! He I, He II -- and finally bremsstrahlung (incl. metal-ion charges);
-	! column 7 = H3+ infrared cooling (0 unless the caller supplies nmol);
-	! columns 8-10 = the molecular infrared bands under `Molecular IR bands`
-	! -- H2 lines (needs nmol), H2O and CO bands (need nox) -- each the NET
-	! rate, emission minus absorption of the field from below, so a column is
-	! negative wherever that channel heats;
-	! columns 10+i = metal ion i line cooling (0 for non-coolant ions).
-	! The He I column also carries the He 2^3S metastable collisional cooling
-	! (10830 A + singlet-conversion terms), so columns 3-5 sum exactly to
-	! ne*coex. This is an exact decomposition of `cool` in the default
-	! (.not.use_2lev_cool) branch; in the two-level branch the metal terms for
-	! each ion are the resonance-line approximation and need not sum to cool_M.
-	real*8, dimension(1-Ng:N+Ng,10+n_mion),intent(inout),optional :: cool_chan
+	! Optional cooling breakdown (see eval_cool)
+	real*8, dimension(1-Ng:N+Ng,n_cool_chan),intent(inout),optional :: cool_chan
 
-	! He 2^3S metastable density [cm^-3], present only for the triplet-tracking
-	! callers. When supplied it adds the collisional-ionization cooling of the
-	! 2^3S state (4.8 eV per event, ci_HeI23S) to the CI channel. a_ion_HeITR
-	! returns the He(2^3S) collisional-ionization rate coefficient [cm^3 s^-1]
-	! for the ionization equations, mirroring a_ion_HI/HeI/HeII.
-	real*8, dimension(1-Ng:N+Ng),intent(in),optional  :: nheiTR
+	! He(2^3S) collisional-ionization rate coefficient returned to the
+	! triplet-tracking callers (see eval_cool)
 	real*8, dimension(1-Ng:N+Ng),intent(inout),optional :: a_ion_HeITR
 
-	! Molecular densities [cm^-3], canonical order H2, H2+, H3+, HeH+ (the
-	! same layout calc_ne takes). Supplied by every caller that tracks the
-	! molecular network, so the electron density used by the cooling is the
-	! one the equilibrium solver itself uses, and so the H3+ infrared cooling
-	! (which needs n_H3+ and the n_H2 collider density) is part of the same
-	! `cool` every caller gets. Omitted only by callers that model a
-	! molecule-free gas (see the note at calc_ne below).
+	! Molecular and oxygen-carrier densities (see eval_cool)
 	real*8, dimension(1-Ng:N+Ng,4),intent(in),optional :: nmol
-
-	! Oxygen-carrier densities [cm^-3], canonical order OH, H2O, CO (the
-	! layout nox_eq uses). Present only when the oxygen chemistry is on, which
-	! is the only configuration in which H2O and CO exist at all. Used for the
-	! H2O and CO infrared bands; OH has no cross-section table and is left out
-	! (it carries a few percent of the oxygen where the water does the rest).
 	real*8, dimension(1-Ng:N+Ng,3),intent(in),optional :: nox
 
-	! He 2^3S collisional-ionization rate coefficient (always computed; only
-	! exported / applied through the optional arguments above).
-	real*8, dimension(1-Ng:N+Ng) :: aion_HeITR
-
-	!-- Recombination --!
-
-	! Rate coefficients
+	!-- Rate coefficients of the ionization balance --!
+	! The recombination and collisional-ionization coefficients, the same
+	! range routines chemical_rate_coefficients calls.
 	!$ if (ec_prof_on) ec_tstart = omp_get_wtime()
 	call rec_HII_B_range(T_K,rchiiB,j_lo,j_hi)      ! HII
 	call rec_HeII_B_range(T_K,rcheiiB,j_lo,j_hi)    ! HeII
 	call rec_HeIII_B_range(T_K,rcheiiiB,j_lo,j_hi)  ! HeIII
-	
-	! Cooling rate coefficients
-	call rec_cool_HII_range(T_K,coeff_rec_cool_HII,j_lo,j_hi)
-	call rec_cool_HeII_range(T_K,coeff_rec_cool_HeII,j_lo,j_hi)
-	call rec_cool_HeIII_range(T_K,coeff_rec_cool_HeIII,j_lo,j_hi)
-
-	! Cooling rate
-	reco(j_lo:j_hi)  = coeff_rec_cool_HII(j_lo:j_hi)*nhii(j_lo:j_hi)     & ! HII
-		   + coeff_rec_cool_HeII(j_lo:j_hi)*nheii(j_lo:j_hi)   & ! HeII
-		   + coeff_rec_cool_HeIII(j_lo:j_hi)*nheiii(j_lo:j_hi)   ! HeIII
-
-	!-- Collisional ionization --!
-	
-	! Rate coefficients
 	call ion_coeff_HI_range(T_K,a_ion_HI,j_lo,j_hi)      ! HI
 	call ion_coeff_HeI_range(T_K,a_ion_HeI,j_lo,j_hi)    ! HeI
 	call ion_coeff_HeII_range(T_K,a_ion_HeII,j_lo,j_hi)  ! HeII
-	call ci_HeI23S_range(T_K,aion_HeITR,j_lo,j_hi)       ! He 2^3S metastable (4.8 eV threshold)
-	if (present(a_ion_HeITR)) a_ion_HeITR(j_lo:j_hi) = aion_HeITR(j_lo:j_hi)
+	if (present(a_ion_HeITR)) call ci_HeI23S_range(T_K,a_ion_HeITR,j_lo,j_hi)
 
-	! Cooling rate. The prefactor of each term is the ionization potential of
-	! that stage in erg, read from the named global constants e_th_*_erg
-	! (global_parameters), which are the eV thresholds of the photon grid
-	! divided by erg2eV. One definition each: this assembly, the cell-by-cell
-	! temperature root of the advection post-process (T_equation) and the
-	! photoelectron energy h nu - e_th all charge the same energy per event.
-	! e_th_HeI is the potential of the He I GROUND SINGLET and is charged to
-	! nheiS, the metastable removed; the metastable's own e_th_HeTR is the
-	! term below it. The 2^3S term (added only when nheiTR is supplied)
-	! reproduces the Black (1981) form 6.41e-21 sqrt(T) exp(-55338/T)
-	! n_e n_23S once multiplied by n_e below.
-	coio(j_lo:j_hi) =  e_th_HI_erg*a_ion_HI(j_lo:j_hi)*nhi(j_lo:j_hi)  	 & ! HI
-		  + e_th_HeI_erg*a_ion_HeI(j_lo:j_hi)*nheiS(j_lo:j_hi) 	 & ! HeI (1^1S)
-		  + e_th_HeII_erg*a_ion_HeII(j_lo:j_hi)*nheii(j_lo:j_hi)   ! HeII
-	if (present(nheiTR)) coio(j_lo:j_hi) = coio(j_lo:j_hi)                                     &
-		  + e_th_HeTR_erg*aion_HeITR(j_lo:j_hi)*nheiTR(j_lo:j_hi)   ! He 2^3S
-	
-	!-- Bremsstrahlung --!
-
-	! Free-free scales with the ion NET charge Z_ion (not the nuclear number):
-	! H II, He II and singly-ionized metals are Z_ion = 1; He III and doubly-
-	! ionized metals are Z_ion = 2. The Gaunt factor is evaluated at Z_ion, so
-	! only the charge-1 and charge-2 values are needed.
-	!$ if (ec_prof_on) then
-	!$    ect(1) = ect(1) + (omp_get_wtime() - ec_tstart); ec_tstart = omp_get_wtime()
-	!$ endif
-	call GF_range(T_K, 1.0d0, GF_z1,j_lo,j_hi)
-	call GF_range(T_K, 2.0d0, GF_z2,j_lo,j_hi)
-
-	! Cooling rate: sum n_ion * Z_ion^2 * gbar(Z_ion) over all charged ions.
-	! mion_z2 = mion_stage^2 already holds the metal charge^2 (neutral -> 0,
-	! an exact +0 term); the Gaunt table is selected by mion_stage.
-	! The molecular ions H2+, H3+ and HeH+ are Z_ion = 1 and DO donate to ne
-	! above, but are deliberately left out of this charge sum: they exist only
-	! in the cold (T ~ 1e3 K) molecular base, where this hot-plasma free-free
-	! expression is an extrapolation whose emission comes out at radio/IR
-	! frequencies the atmosphere is not thin to. Free-free is negligible against
-	! the H3+ infrared and metal line cooling there, so the ion charge sum is
-	! smaller than ne by the molecular-ion density inside the molecular layer.
-	brem_acc(j_lo:j_hi) = GF_z1(j_lo:j_hi)*nhii(j_lo:j_hi)                       ! HII   (Z_ion = 1)
-	brem_acc(j_lo:j_hi) = brem_acc(j_lo:j_hi) + GF_z1(j_lo:j_hi)*nheii(j_lo:j_hi)           ! HeII  (Z_ion = 1)
-	brem_acc(j_lo:j_hi) = brem_acc(j_lo:j_hi) + 4.0*GF_z2(j_lo:j_hi)*nheiii(j_lo:j_hi)      ! HeIII (Z_ion = 2)
-	! Metal ions only when the run carries metals: with none, every term
-	! below is an exact +0 and the loop is skipped (see the note before the
-	! metal rate block).
-	if (thereis_metals) then
-	do i = 1,n_mion
-		if (mion_stage(i) == 2) then
-			brem_acc(j_lo:j_hi) = brem_acc(j_lo:j_hi) + mion_z2(i)*GF_z2(j_lo:j_hi)*nm(j_lo:j_hi,i)
-		else
-			brem_acc(j_lo:j_hi) = brem_acc(j_lo:j_hi) + mion_z2(i)*GF_z1(j_lo:j_hi)*nm(j_lo:j_hi,i)
-		endif
-	enddo
-	endif
-	brem(j_lo:j_hi) = 1.426e-27*sqrt(T_K(j_lo:j_hi))*brem_acc(j_lo:j_hi)
-
-	!-- Collisional excitation --!
-
-	! Rate coefficients
-	call coex_rate_HI_range(T_K,coeff_coex_rate_HI,j_lo,j_hi) 		! HI
-	call coex_rate_HeI_range(T_K,coeff_coex_rate_HeI,j_lo,j_hi)   	! HeI
-	call coex_rate_HeII_range(T_K,coeff_coex_rate_HeII,j_lo,j_hi)  	! HeII
-
-	! Cooling rate
-	coex(j_lo:j_hi) = coeff_coex_rate_HI(j_lo:j_hi)*nhi(j_lo:j_hi)       &    ! HI
-		  + coeff_coex_rate_HeI(j_lo:j_hi)*nheiS(j_lo:j_hi)    &    ! HeI (1^1S)
-		  + coeff_coex_rate_HeII(j_lo:j_hi)*nheii(j_lo:j_hi)        ! HeII
-
-	! He 2^3S metastable collisional cooling (triplet-tracking callers only).
-	! Both terms scale with the EXPLICITLY computed n_23S (nheiTR); the common
-	! n_e factor is applied together with the other coex terms in `cool` below.
-	!  (1) 2^3S -> 2^3P collisional excitation, then 10830 A radiative decay
-	!      and photon escape (Black 1981 / Allan 2024 / Falorca & Vidotto 2026
-	!      Table A2). The 10830 photon leaves the gas radially (the wind is thin
-	!      to it); its line optical depth is what the transit sees. Black's
-	!      implicit steady-state triplet form (~T^-0.6687 n_e n_He+) is NOT used.
-	!  (2) 2^3S -> 2^1S (0.80 eV) and 2^3S -> 2^1P (1.40 eV) collisional
-	!      conversions each remove their threshold energy from the electron gas;
-	!      the excited singlet then decays radiatively (that photon is not
-	!      thermal). Rate coefficients reused from coex_HeI_23S_21S / _21P.
-	! The ground -> triplet excitation (q13, 19.82 eV) is deliberately EXCLUDED:
-	! that channel is already carried by the Cen-1992 He I coex term above
-	! (coeff_coex_rate_HeI*nheiS, an excitation OUT of the ground singlet);
-	! adding q13 here would double count it.
-	if (present(nheiTR)) then
-		call coex_rate_HeI23S_10830_range(T_K,coeff_coex_HeI23S_10830,j_lo,j_hi)
-		call coex_HeI_23S_21S_range(T_K,q31a_l,j_lo,j_hi)
-		call coex_HeI_23S_21P_range(T_K,q31b_l,j_lo,j_hi)
-		coex(j_lo:j_hi) = coex(j_lo:j_hi) + ( coeff_coex_HeI23S_10830(j_lo:j_hi)                          &
-		              + (0.80d0*q31a_l(j_lo:j_hi) + 1.40d0*q31b_l(j_lo:j_hi))/erg2eV )*nheiTR(j_lo:j_hi)
-	endif
-
-	!-- Metal recombination + collisional ionization rates --!
-	! (rates for ionization equilibrium; not part of cool here.)
-	! Filled per canonical ion via the metadata dispatchers, which call
-	! the same routines for each ion as before; ions with no entry (inert top
-	! stage, neutral non-recombiner) return 0.
-	!$ if (ec_prof_on) then
-	!$    ect(2) = ect(2) + (omp_get_wtime() - ec_tstart); ec_tstart = omp_get_wtime()
-	!$ endif
-	! THE METAL BLOCKS RUN ONLY WHEN THE RUN CARRIES METALS.  Measured on the
-	! H/He hot Uranus: with every
-	! metal density identically zero, the metal table interpolations, the
-	! fine-structure transfer and the CNO cooling below were 79 per cent of
-	! this routine's time -- and this routine, called four times a step, was
-	! half of a 16-thread marching step.  Skipping them is bitwise identical
-	! for a metals-off run: each skipped term is a product with a zero
-	! density, and the outputs a caller could read are set here to what they
-	! would have multiplied into (zero rates, beta = 1, no infrared field).
-	! The ionization sweep already gates its metal solve on the same flag.
-	rec_m(j_lo:j_hi,:)   = 0.0d0
-	aion_m(j_lo:j_hi,:)  = 0.0d0
-	c_metal(j_lo:j_hi,:) = 0.0d0
-	cool_M(j_lo:j_hi)  = 0.0d0
+	! THE METAL BLOCKS RUN ONLY WHEN THE RUN CARRIES METALS: with every
+	! metal density identically zero each skipped term is a product with a
+	! zero density, and the rates a caller could read are set to zero.
+	rec_m(j_lo:j_hi,:)  = 0.0d0
+	aion_m(j_lo:j_hi,:) = 0.0d0
 	if (thereis_metals) then
 	do i = 1,n_mion
 		call rec_coeff_by_ion_range(i,T_K,metal_col,j_lo,j_hi)
@@ -2964,117 +3089,10 @@
 		call ion_coeff_by_ion_range(i,T_K,metal_col,j_lo,j_hi)
 		aion_m(j_lo:j_hi,i) = metal_col(j_lo:j_hi)
 	enddo
-
-	!-- Metal radiative cooling (forbidden/fine-structure lines) --!
-	do i = 1,n_mion
-		call cool_coeff_by_ion_range(i,T_K,metal_col,j_lo,j_hi)
-		c_metal(j_lo:j_hi,i) = metal_col(j_lo:j_hi)
-	enddo
-
-	! Density-dependent override for Fe II line cooling. The 1-D coronal
-	! cool_coeff_metal('FeII',...) above overestimates cooling at the dense
-	! base by ~1e4x because the forbidden a6D fine-structure / metastable
-	! lines (n_crit ~ 1e4-1e7 cm^-3) are collisionally saturated there
-	! (n_e >> n_crit). Replace c_metal(:,FeII) with the multilevel
-	! statistical-equilibrium coefficient Lambda_eff(T,ne) = (sum_u n_u A_ul
-	! dE_ul)/ne. In the assembly cool_M = ne*sum_i nm(:,i)*c_metal,
-	! the ne cancels the 1/ne in Lambda_eff, leaving the correct LTE-saturated
-	! cooling for each ion (collider-independent, so the electron-only SE solve is
-	! exact in this limit). At low ne it reduces to the coronal rate.
-	call cool_FeII_ne_range(T_K, ne, metal_col,j_lo,j_hi)
-	c_metal(j_lo:j_hi,im_FeII) = metal_col(j_lo:j_hi)
-
+	endif
 	!$ if (ec_prof_on) then
-	!$    ect(3) = ect(3) + (omp_get_wtime() - ec_tstart); ec_tstart = omp_get_wtime()
+	!$    ect(1) = ect(1) + (omp_get_wtime() - ec_tstart); ec_tstart = omp_get_wtime()
 	!$ endif
-
-	! Density-dependent override for the ground-term fine-structure floors
-	! of C I, C II, N II and O I, and for the METASTABLE terms of all six
-	! C/N/O fits (CHIANTI mode only; the legacy AIOLOS fits keep their own
-	! constant floors). Same Lambda_eff = W_FS/ne + remainder convention as
-	! Fe II above; the statistical-equilibrium solution saturates the floor
-	! (n_crit,e([C II] 158um) ~ 20 cm^-3!) and adds the H-collision
-	! excitation channel the electron-only coronal curve misses. beta
-	! enters as A_ul -> beta*A_ul inside that solution. The metastable
-	! terms of the remainder are saturated against their LTE ceiling in the
-	! same coefficients (n_crit,e is 1e4-1e9 cm^-3 for those levels). N I
-	! and O II have a single-level 4S* ground term, so their coefficients
-	! carry the metastable saturation alone and take no line-trapping
-	! argument. See cool_CI_ne_func / cooling_data/fit_fs_saturation.py.
-	if (cno_chianti) then
-		call cool_CI_ne_range(T_K, ne, nhi, beta_fs, nbar_fs, metal_col,j_lo,j_hi)
-		c_metal(j_lo:j_hi,im_CI)  = metal_col(j_lo:j_hi)
-		call cool_CII_ne_range(T_K, ne, nhi, beta_fs, nbar_fs, metal_col,j_lo,j_hi)
-		c_metal(j_lo:j_hi,im_CII) = metal_col(j_lo:j_hi)
-		call cool_NI_ne_range(T_K, ne, metal_col,j_lo,j_hi)
-		c_metal(j_lo:j_hi,im_NI)  = metal_col(j_lo:j_hi)
-		call cool_NII_ne_range(T_K, ne, nhi, beta_fs, nbar_fs, metal_col,j_lo,j_hi)
-		c_metal(j_lo:j_hi,im_NII) = metal_col(j_lo:j_hi)
-		call cool_OI_ne_range(T_K, ne, nhi, beta_fs, nbar_fs, metal_col,j_lo,j_hi)
-		c_metal(j_lo:j_hi,im_OI)  = metal_col(j_lo:j_hi)
-		call cool_OII_ne_range(T_K, ne, metal_col,j_lo,j_hi)
-		c_metal(j_lo:j_hi,im_OII) = metal_col(j_lo:j_hi)
-	endif
-
-	if (use_2lev_cool) then
-		! Bridge the metadata arrays to the named scalars used below.
-		nci(j_lo:j_hi)   = nm(j_lo:j_hi,1)
-		ncii(j_lo:j_hi)  = nm(j_lo:j_hi,2)
-		noi(j_lo:j_hi)   = nm(j_lo:j_hi,4)
-		noii(j_lo:j_hi)  = nm(j_lo:j_hi,5)
-		nmgi(j_lo:j_hi)  = nm(j_lo:j_hi,10)
-		nmgii(j_lo:j_hi) = nm(j_lo:j_hi,11)
-		c_CI(j_lo:j_hi)   = c_metal(j_lo:j_hi,1)
-		c_OII(j_lo:j_hi)  = c_metal(j_lo:j_hi,5)
-		c_MgI(j_lo:j_hi)  = c_metal(j_lo:j_hi,10)
-		c_MgII(j_lo:j_hi) = c_metal(j_lo:j_hi,11)
-		! Two-level fine-structure cooling for the dominant coolants
-		! [O I] 63um and [C II] 158um (critical-density saturation +
-		! H-atom collisions). C I and O II keep the Black-1981 fit; the
-		! exponential ("forbidden") part of the C II / O I fit is retained
-		! on top of the two-level ground term (matching ATES_extended).
-		! N has no line cooling.
-		! Trapping enters as A_ul -> beta*A_ul in the two fine-structure
-		! lambda_2level calls (the physically correct place; see
-		! cool_OI_ne_func). The exponential "forbidden" add-ons and every
-		! other ion stay optically thin, and this branch takes no incident
-		! field even under "Base IR field": it is the legacy AIOLOS two-level
-		! form kept for comparison, and the ground-term statistical
-		! equilibrium that replaced it is where the field belongs.
-		do j = j_lo,j_hi
-			! Collisional de-excitation rates [s^-1]
-			Cdex_OI  = nhi(j)*4.2d-11*(T_K(j)/100.0d0)**0.67          ! H
-			Cdex_CII = ne(j) *8.7d-8 *(T_K(j)/2000.0d0)**(-0.37)      & ! e
-			         + nhi(j)*4.0d-11                                   ! H
-			cool_M(j) =                                                    &
-			    ne(j)*nci(j)*c_CI(j)                                       &
-			  + noi(j) *( lambda_2level(beta_fs(j,ifs_OI63)*8.91d-5,227.7d0,0.6d0,Cdex_OI ,T_K(j)) &
-			              + ne(j)*1.1d-20*exp(-30162.0d0/T_K(j))           &
-			                     *(1.0d0+(T_K(j)/0.75d4)**0.5) )           &
-			  + ncii(j)*( lambda_2level(beta_fs(j,ifs_CII158)*2.29d-6,91.21d0,2.0d0,Cdex_CII,T_K(j)) &
-			              + ne(j)*3.1d-20*exp(-45162.0d0/T_K(j))           &
-			                     *(1.0d0+(T_K(j)/0.75d4)**1.5) )           &
-			  + ne(j)*noii(j)*c_OII(j)                                  &
-			  + ne(j)*nmgi(j)*c_MgI(j) + ne(j)*nmgii(j)*c_MgII(j)                          &
-                  + ne(j)*nm(j,17)*c_metal(j,17)               &
-                  + ne(j)*nm(j,19)*c_metal(j,19)               &
-                  + ne(j)*nm(j,26)*c_metal(j,26)
-		enddo
-	else
-		! Sum the line-cooling metal ions (mion_iscool) in canonical
-		! order, then apply the ne prefactor once. This is
-		! bit-identical to the explicit eight-term expression: the
-		! iscool ions, in canonical order, are exactly
-		! CI,CII,OI,OII,NI,NII,MgI,MgII. Line trapping is already inside
-		! c_metal for [O I] 63um / [C II] 158um; the rest are thin.
-		coolm_acc(j_lo:j_hi) = 0.0d0
-		do i = 1,n_mion
-			if (.not. mion_iscool(i)) cycle
-			coolm_acc(j_lo:j_hi) = coolm_acc(j_lo:j_hi) + nm(j_lo:j_hi,i)*c_metal(j_lo:j_hi,i)
-		enddo
-		cool_M(j_lo:j_hi) = ne(j_lo:j_hi) * coolm_acc(j_lo:j_hi)
-	endif
-	endif   ! thereis_metals
 
 	!-- H3+ infrared cooling (molecular layer) --!
 
@@ -3082,7 +3100,7 @@
 	! (2013) LTE emission per molecule with their Table-6 non-LTE departure
 	! factor s(T, n_H2) (h3p_cooling module -- ONE definition, shared with
 	! every caller of eval_cool). Inside a molecular base at T ~ 1e3 K this is
-	! the dominant coolant: the atomic channels above are all exponentially
+	! the dominant coolant: the atomic channels are all exponentially
 	! suppressed there, so leaving it out of `cool` leaves that gas with no
 	! radiative loss at all. It lives here, not on top of eval_cool's return
 	! value, so that the temperature update in the marching loop
@@ -3095,9 +3113,6 @@
 	! infrared of the lower atmosphere, a blackbody at T0 covering half the
 	! sky at the base; W_dil = 0 (the default) leaves the emission-only rate
 	! untouched. Approximations and their range: h3p_net_cooling_rate.
-	!$ if (ec_prof_on) then
-	!$    ect(4) = ect(4) + (omp_get_wtime() - ec_tstart); ec_tstart = omp_get_wtime()
-	!$ endif
 	cool_H3p(j_lo:j_hi) = 0.0d0
 	if (present(nmol)) then
 		do j = j_lo,j_hi
@@ -3117,13 +3132,12 @@
 	!-- Molecular infrared bands (H2 lines, H2O and CO bands) --!
 
 	! The infrared coolants a real H2 atmosphere carries below the H2 -> H
-	! front and this code did not: the H2 quadrupole plus magnetic dipole line
-	! spectrum (Roueff et al. 2019) and the H2O and CO vibration-rotation bands
-	! (HITEMP through the Photochem k-coefficients). Each is the NET rate --
-	! LTE emission minus absorption of the diluted B_nu(T0) the lower
-	! atmosphere presents -- so each vanishes at its own radiative equilibrium
-	! temperature instead of running the layer down to nothing. The emission
-	! magnitudes alone would only deepen the collapse.
+	! front: the H2 quadrupole plus magnetic dipole line spectrum (Roueff et
+	! al. 2019) and the H2O and CO vibration-rotation bands (HITEMP through
+	! the Photochem k-coefficients). Each is the NET rate -- LTE emission
+	! minus absorption of the diluted B_nu(T0) the lower atmosphere presents
+	! -- so each vanishes at its own radiative equilibrium temperature
+	! instead of running the layer down to nothing.
 	! Off by default (`Molecular IR bands`). The dilution is the same
 	! 0.5*base_sky_fraction the H3+ closure uses, and it is zero when
 	! `Base IR field` is off, which reduces the channels to pure emitters --
@@ -3149,44 +3163,32 @@
 			endif
 		enddo
 	endif
+	!$ if (ec_prof_on) then
+	!$    ect(5) = ect(5) + (omp_get_wtime() - ec_tstart); ec_tstart = omp_get_wtime()
+	!$ endif
 
-	! Total cooling rate
-	cool(j_lo:j_hi) = ne(j_lo:j_hi)*(brem(j_lo:j_hi) + coex(j_lo:j_hi)  &
-	                  + reco(j_lo:j_hi) + coio(j_lo:j_hi))              &
-	       + cool_M(j_lo:j_hi) + cool_H3p(j_lo:j_hi)                    &
-	       + cool_H2(j_lo:j_hi) + cool_H2O(j_lo:j_hi) + cool_CO(j_lo:j_hi)
-
-	! Breakdown by channel for the diagnostic (Huang Fig. 10).
-	! Read straight from the arrays already computed above, so the sum of
-	! all channels reproduces `cool` exactly in the default branch.
-	if (present(cool_chan)) then
-		cool_chan(j_lo:j_hi,1) = ne(j_lo:j_hi)*reco(j_lo:j_hi)
-		cool_chan(j_lo:j_hi,2) = ne(j_lo:j_hi)*coio(j_lo:j_hi)
-		! Collisional excitation split by absorber. H I is the
-		! Lyman-alpha-dominated H-line cooling; He II is its own term. The
-		! He I column is taken as the remainder ne*coex - HI - HeII so that it
-		! also absorbs the He 2^3S metastable terms folded into coex above,
-		! keeping columns 3-5 an exact split of ne*coex.
-		cool_chan(j_lo:j_hi,3) = ne(j_lo:j_hi)*(coeff_coex_rate_HI(j_lo:j_hi)*nhi(j_lo:j_hi))      ! coex_HI [Lya]
-		cool_chan(j_lo:j_hi,5) = ne(j_lo:j_hi)*(coeff_coex_rate_HeII(j_lo:j_hi)*nheii(j_lo:j_hi))  ! coex_HeII
-		cool_chan(j_lo:j_hi,4) = ne(j_lo:j_hi)*coex(j_lo:j_hi) - cool_chan(j_lo:j_hi,3) - cool_chan(j_lo:j_hi,5)  ! coex_HeI
-		cool_chan(j_lo:j_hi,6) = ne(j_lo:j_hi)*brem(j_lo:j_hi)
-		cool_chan(j_lo:j_hi,7)  = cool_H3p(j_lo:j_hi)
-		cool_chan(j_lo:j_hi,8)  = cool_H2(j_lo:j_hi)
-		cool_chan(j_lo:j_hi,9)  = cool_H2O(j_lo:j_hi)
-		cool_chan(j_lo:j_hi,10) = cool_CO(j_lo:j_hi)
-		do i = 1,n_mion
-			if (mion_iscool(i)) then
-				cool_chan(j_lo:j_hi,10+i) = ne(j_lo:j_hi)*nm(j_lo:j_hi,i)*c_metal(j_lo:j_hi,i)
-			else
-				cool_chan(j_lo:j_hi,10+i) = 0.0d0
-			endif
-		enddo
-	endif
+	!-- The atomic, ionic and metal channels, cell by cell --!
+	! radiative_cooling_of_cell (Cool_coeff) is the ONE assembly of them,
+	! the same one the post-process temperature root balances; the total is
+	! the sum of the channels, so the breakdown reproduces it to round-off.
+	do j = j_lo,j_hi
+		nm_cell   = nm(j,:)
+		beta_cell = beta_fs(j,:)
+		nbar_cell = nbar_fs(j,:)
+		call radiative_cooling_of_cell(T_K(j), ne(j), nhi(j), nhii(j),     &
+		        nheiS(j), nheiTR(j), nheii(j), nheiii(j), y_HI(j),         &
+		        y_gnd(j), y_HeII(j), nm_cell, beta_cell, nbar_cell, chan)
+		chan(7)  = cool_H3p(j)
+		chan(8)  = cool_H2(j)
+		chan(9)  = cool_H2O(j)
+		chan(10) = cool_CO(j)
+		cool(j)  = sum(chan)
+		if (present(cool_chan)) cool_chan(j,:) = chan
+	enddo
 
 	! End of subroutine
 	!$ if (ec_prof_on) then
-	!$    ect(5) = ect(5) + (omp_get_wtime() - ec_tstart); ec_tstart = omp_get_wtime()
+	!$    ect(2) = ect(2) + (omp_get_wtime() - ec_tstart); ec_tstart = omp_get_wtime()
 	!$ endif
 	end subroutine eval_cool_cells
 
@@ -3293,6 +3295,9 @@
 	             // ' (emission minus absorption of the field from below), so'
 	write(71,'(a)') '#   a negative value is that band heating the gas; they'     &
 	             // ' are identically zero unless "Molecular IR bands" is on.'
+	write(71,'(a)') '#   with the He 2^3S tracked, coex_HeI carries the net'     &
+	             // ' 1^1S <-> 2^3S exchange, negative where the superelastic'  &
+	             // ' collisions of the metastable heat the gas.'
 	write(71,'(a)',advance='no') '#   metal-ion columns (canonical order):'
 	do i = 1,n_mion
 		write(71,'(1x,a)',advance='no') trim(mion_name(i))
@@ -3430,22 +3435,44 @@
 
 	!----------------------------------!
 
-	! Various coefficients for HeI triplet chemistry
-	subroutine HeITR_coeffs(T_K,rcheiTR,rcheii,A31,q13,q31a,q31b,Q31)
+	! Various coefficients for HeI triplet chemistry. The electron-impact
+	! rates are those of Cool_coeff.f90 (their block header). q13 is the
+	! rate at which a 1^1S atom is put into 2^3S by electron impact: the
+	! direct excitation 1^1S -> 2^3S PLUS the excitation of every higher
+	! triplet level, which cascades into 2^3S (Cool_coeff:
+	! excitation_rate_HeI_11S_triplets; 0.10 of the direct rate at 1e4 K,
+	! 0.33 at 2e4 K). q31g is the detailed-balance reverse of the DIRECT
+	! excitation, 2^3S -> 1^1S; q31a excites 2^3S -> 2^1S, and q31b
+	! 2^3S -> 2^1P plus every singlet level above it (Cool_coeff:
+	! excitation_rate_HeI_23S_singlets_n3; 0.023 of q31a + q31b at 1e4 K,
+	! 0.09 at 2e4 K), whose cascades end in 1^1S as 2^1P's does.
+	! A31 = 1.272e-4 s^-1 is the 2^3S -> 1^1S magnetic-dipole decay rate
+	! (Drake 1971, as used by Oklopcic & Hirata 2018). rcheiTR is the
+	! capture into the triplets (all of which end in 2^3S) and rcheii the
+	! case-B capture into the singlets, i.e. into the excited singlets
+	! (Cool_coeff: alpha_rec_HeII_23S, alpha_rec_HeII_excited_singlets);
+	! the ground capture that escapes the cell is added to rcheii by
+	! recombination_radiation_absorbed. The energy of each excitation is
+	! charged by radiative_cooling_of_cell from the direct rate and the
+	! He I excitation sum, not from q13 here.
+	subroutine HeITR_coeffs(T_K,rcheiTR,rcheii,A31,q13,q31g,q31a,q31b,Q31)
 	
 	! Dimensional temperature
 	real*8, dimension(1-Ng:N+Ng),intent(in) ::  T_K
 
 	real*8, intent(out) :: A31
 	real*8, dimension(1-Ng:N+Ng), intent(out) :: rcheiTR,rcheii,   &
-								   q13,q31a,q31b,Q31
+								   q13,q31g,q31a,q31b,Q31
 
 	call rec_HeII_23S(T_K,rcheiTR)
-	call rec_HeII_11S(T_K,rcheii)
+	rcheii = alpha_rec_HeII_into_singlets(T_K, 0.0d0)
 	call coex_HeI_1S_23S(T_K,q13)
+	q13 = q13 + excitation_rate_HeI_11S_triplets(T_K)
+	call deexc_HeI_23S_1S(T_K,q31g)
 	call coex_HeI_23S_21S(T_K,q31a)
 	call coex_HeI_23S_21P(T_K,q31b)
-	A31 = 1.272e-4
+	q31b = q31b + excitation_rate_HeI_23S_singlets_n3(T_K)
+	A31 = A_HeI_23S_11S
 
 	! He(2^3S)+H total ionization (Penning + associative), Garcia Munoz (2025)
 	! from the Movre & Meyer (1997) cross sections, used unconditionally (the
@@ -3480,505 +3507,631 @@
 
 	! ------------------------------------------------------------- !
 
-	! He recombination radiation ionizing H I and H2 (Draine 2011 on-the-spot
-	! emission, absorbed locally). Given the pre-solve (lagged) densities and
-	! the rate coefficients,
-	! returns the He II recombination coefficient the ionization balance should
-	! use (rcheiiB_new), the extra H I and H2 photoionization rates [s^-1]
-	! (dP_HI, dP_H2), and the extra photoelectron heating [erg cm^-3 s^-1]
-	! (dheat). All four are zero when the flag is off; the caller applies them.
-	!
-	! WHICH SPECIES ABSORBS THE PHOTON. Every channel below emits a photon of a
-	! known energy E_c, and the on-the-spot assumption is that the photon is
-	! absorbed inside the same cell. WHO absorbs it is then a competition among
-	! the species whose ionization threshold lies below E_c, in the ratio of
-	! their absorption coefficients,
-	!
-	!     w_s(E_c) = n_s sigma_s(E_c) / sum_s' n_s' sigma_s'(E_c),
-	!
-	! with s running over H I (13.6 eV), H2 (15.4 eV), every photo-ionizable
-	! metal ion whose threshold lies below E_c, and, for the >= 24.6 eV
-	! ground-capture continuum only, He I. The H I share ionizes H I, the H2
-	! share ionizes H2 (it is returned in dP_H2 and added to the H2
-	! photoionization rate by the caller), each metal share ionizes that metal
-	! ion (returned in dP_m, added to its photoionization rate P_m), and the
-	! He I share re-ionizes He and is therefore excluded from the effective
-	! He II recombination coefficient.
-	! In a molecular gas H2 is not a small competitor: sigma_H2/sigma_HI is 1.2
-	! at 16 eV and 3.5-3.7 from 20 to 25 eV, so where H2 outnumbers H I the He
-	! recombination photons go to H2, not to H I.
-	!
-	! THE METALS ARE NOT NEGLIGIBLE EITHER. Their abundance is
-	! 1e-4 to 1e-3, but their cross sections in this band are large: at
-	! 24.6 eV sigma is 4.9 (C II), 5.1 (Fe II) and 11.9 (O I) against 1.24
-	! for H I, and at 16.11 eV 13.4 (C I) and 6.6 (O I) against 4.0. Measured
-	! on the converged WASP-121b cases the metal share of the absorption
-	! coefficient is 3e-3 to 4e-3 at the base (O I) and reaches 2.3e-2 at
-	! 1.61 R_p, where hydrogen is ionized and C II carries 89% of it; on the
-	! hot-Uranus molecular cases it is 3e-3 in the molecular layer and 1.1e-2
-	! in the wind. That is a share of the photons, and it was going to
-	! hydrogen.
-	!
-	! The competition is written in the ratio form w_HI = 1/(1 + R_He n_HeI/n_HI
-	! + R_H2 n_H2/n_HI + sum_m R_m n_m/n_HI), with R_s = sigma_s(E_c)/
-	! sigma_HI(E_c) evaluated once at entry. A run with no metals adds
-	! EXACTLY 0.0 to every one of those sums, which is what keeps it bitwise
-	! unchanged.
-	!
-	! HOW MANY OF THE PHOTONS STAY. The cell does not necessarily absorb the
-	! photons it emits. Each channel has its own cell optical depth and its own
-	! absorbed fraction,
-	!
-	!     tau_c  = (sum_s n_s sigma_s(E_c)) dr_j,      dr_j = cell width [cm],
-	!     f_abs  = 1 - exp(-tau_c),
-	!
-	! the remaining 1 - f_abs leaving the cell, and the rate per particle of
-	! absorber s is the absorbed photons shared out by absorption coefficient,
-	!
-	!     dP_s = P_c f_abs w_s(E_c)/n_s
-	!          = P_c sigma_s(E_c) dr_j [1 - exp(-tau_c)]/tau_c.
-	!
-	! The second form is the one to reason about: the bracket is 1 at tau -> 0
-	! and 1/tau at tau -> infinity, so the rate has NO division singularity
-	! anywhere -- at tau -> 0 it is the optically thin limit P_c sigma_s dr_j,
-	! the rate a single absorber in a transparent cell would see. It is
-	! evaluated in the first form, share divided by density and multiplied by
-	! f_abs, because f_abs is exactly 1.0 in double precision for tau > 37 and
-	! the expression then reduces bit for bit to the optically thick limit
-	! (which is what a molecular base and a dense atomic base are). The
-	! vanishing-absorber divergence this replaces appeared with n_HI = 0
-	! and n_H2 a 1e-151 numerical residue: the thick-limit expression alone
-	! returns 1e100 s^-1, while tau_c = 1e-160 and the photon has in fact left.
-	!
-	! An escaped photon does not re-ionize He either, so the He I share is
-	! removed from the effective He II recombination coefficient only in
-	! proportion to the photons that stay: alpha_eff = alpha_B + alpha_1
-	! (1 - f_abs w_HeI), written below as (1 - f_abs) + f_abs (w_HI + w_H2) so
-	! that the optically thick limit is again bit for bit the earlier form.
-	!
-	! VALIDITY. (i) LOCAL absorption: a photon that leaves the cell is dropped
-	! rather than followed, so its absorption in some outer cell is not counted.
-	! The wind thins outward, so most of what leaves a thin cell escapes the
-	! domain; in a thick layer, where the neighbours would absorb it, f_abs is
-	! already 1 and nothing leaves. (ii) A photoelectron released by one of
-	! these photons is deposited entirely as heat: it is not passed through
-	! the Shull & van Steenberg secondary-ionization partition that the
-	! stellar photoelectrons of PH_heat_HHe go through. The energies involved
-	! are 0.7-11 eV, at or below the 11 eV threshold below which that
-	! partition returns pure heat anyway, except for the 11.0 eV H I share of
-	! the ground-capture channel. (iii) Each channel is collapsed onto one representative photon energy; the
-	! 2^1S two-photon continuum, which is not a line, is discussed at E_2q_HeI
-	! below. (iv) tau_c uses the cell width dr_j, i.e. a radially escaping
-	! photon; the true mean chord of an isotropically emitted photon in a plane
-	! slab is longer by a factor of order 2.
-	!
-	! atomic mode (thereis_HeITR = .false.):
-	!   alpha_1 = Mao & Kaastra ground (1s^2) capture; alpha_B = active He II
-	!   case B (rec_HeII_B). rcheiiB_new = alpha_B + (w_HI + w_H2) alpha_1
-	!   (Draine Eq. 14.17 with H2 added to the competition); the case-B cascade
-	!   fraction z alpha_B is split between H I and H2 at the cascade-averaged
-	!   photon energy E_casc_HeI; the heating uses the ground photoelectron
-	!   energies E_gnd - 13.6 = 11.0 eV (H I) and E_gnd - 15.4 = 9.2 eV (H2) and
-	!   the cascade-averaged Ee_casc_HeI ~ 6.14 eV (H I) / EeH2_casc_HeI (H2).
-	! TR mode (thereis_HeITR = .true.): channels are explicit -- alpha_1 is the
-	!   1^1S channel (rec_HeII_11S, which HeITR_coeffs writes into rcheiiB) and
-	!   the 2^3S / singlet cascade rates (A31, q31a, q31b, n_2^3S = nheiTR) drive
-	!   the H-ionizing photon production directly, so z is not used (a 2^3S
-	!   destroyed by photoionization/Penning emits no 19.8 eV photon).
-	subroutine he_rec_coupling(T_K, nhi, nh2, nhei, nheii, nheiTR, ne,   &
-	                           nm, A31, q31a, q31b,                      &
-	                           rcheiiB_new, dP_HI, dP_H2, dP_m, dheat)
-	! He recombination radiation absorbed locally by H I, H2 and the metal
-	! ions (Draine 2011 emission; see the call site in
-	! ionization_equilibrium for the physics).
-	!
-	! What is returned, and at which state. rcheiiB_new, dP_HI, dP_H2 and
-	! dP_m are RATES and coefficients: an effective He II recombination
-	! coefficient [cm^3 s^-1] and the photoionization rate [s^-1] each
-	! absorber takes, i.e. the quantities the ionization system is solved
-	! with. dheat is the photoelectron HEATING [erg cm^-3 s^-1] of the
-	! composition passed in, since every channel of it carries the density
-	! of the absorber that receives the photon. A caller whose composition
-	! changes afterwards must call this again at the new densities and take
-	! dheat from that call; ionization_equilibrium does exactly that, so the
-	! rates its sweep uses stay the lagged ones while the heating it returns
-	! belongs to the composition it returns.
+	! THE GROUND-CAPTURE ESCAPE WEIGHTS of the three recombinations, cell by
+	! cell. A capture into the ground level of the recombined species r
+	! (H I, He I, He II) emits a photon at the ionization edge of r
+	! (E_gnd_HI, E_gnd_HeI, E_gnd_HeII). The cell keeps the fraction
+	! f = 1 - exp(-tau) of those photons, tau = dl sum_s n_s sigma_s(E) the
+	! cell optical depth at that energy of every absorber (H I, He I, He II,
+	! H2 and the photo-ionizable metal ions; the cross sections are zero
+	! below each threshold), and shares what it keeps in the ratio of the
+	! absorption coefficients. The fraction NOT re-absorbed by r,
+	!     y_r = 1 - n_r sigma_r(E) dl (1 - exp(-tau))/tau ,
+	! is the weight of the ground capture in the net recombination
+	! coefficient of the balance (Cool_coeff: alpha_rec_HII_net,
+	! alpha_rec_HeII_net, alpha_rec_HeIII_net) and in its cooling: y_r -> 0
+	! is case B on the spot, y_r -> 1 is case A. ONE definition:
+	! recombination_radiation_absorbed, eval_cool and the advection
+	! post-process all call this routine. A weight whose switch is off is
+	! zero (case B): y_HI under "H_rec_escape", y_gnd and y_HeII under
+	! "He_rec_coupling". Cross sections in 1e-18 cm^2 (dl carries the unit).
+	! VALIDITY: the local closure of recombination_radiation_absorbed.
+	subroutine ground_capture_escape_weights(nhi, nh2, nhei, nheii, nm,   &
+	                                         y_HI, y_gnd, y_HeII)
+	real*8, dimension(1-Ng:N+Ng), intent(in)  :: nhi, nh2, nhei, nheii
+	real*8, dimension(1-Ng:N+Ng,n_mion), intent(in) :: nm
+	real*8, dimension(1-Ng:N+Ng), intent(out) :: y_HI, y_gnd, y_HeII
+	integer, parameter :: ich(3) = [ic_gnd_HI, ic_gnd_HeI, ic_gnd_HeII]
+	real*8  :: kap, dl, g_tau
+	logical :: on(3)
+	integer :: j, ic, im
 
-	real*8, dimension(1-Ng:N+Ng), intent(in)  :: T_K, nhi, nh2, nhei,   &
-	                                              nheii, nheiTR, ne,     &
-	                                              q31a, q31b
-	real*8, dimension(1-Ng:N+Ng,n_mion), intent(in)  :: nm
-	real*8,                       intent(in)  :: A31
-	real*8, dimension(1-Ng:N+Ng), intent(out) :: rcheiiB_new, dP_HI,    &
-	                                              dP_H2, dheat
-	real*8, dimension(1-Ng:N+Ng,n_mion), intent(out) :: dP_m
+	on  = [use_h_rec_escape,                                              &
+	       use_he_rec_coupling .and. thereis_He,                          &
+	       use_he_rec_coupling .and. thereis_He]
+	call on_the_spot_cross_sections
+	y_HI   = 0.0d0
+	y_gnd  = 0.0d0
+	y_HeII = 0.0d0
+	!$omp parallel do default(shared) schedule(static)                    &
+	!$omp    private(j, ic, im, kap, dl, g_tau)
+	do j = 1-Ng,N+Ng
+		dl = dr_j(j)*R0*1.0d-18
+		do ic = 1,3
+			if (.not. on(ic)) cycle
+			kap = nhi(j)*otsp_sab(1,ich(ic)) + nhei(j)*otsp_sab(2,ich(ic))  &
+			    + nheii(j)*otsp_sab(3,ich(ic)) + nh2(j)*otsp_sab(4,ich(ic))
+			if (thereis_metals) then
+				do im = 1,n_mion
+					kap = kap + nm(j,im)*otsp_smet(im,ich(ic))
+				enddo
+			endif
+			g_tau = absorbed_fraction_over_tau(kap*dl)*dl
+			select case (ic)
+				case (1); y_HI(j)   = 1.0d0 - nhi(j)*otsp_sab(1,ic_gnd_HI)*g_tau
+				case (2); y_gnd(j)  = 1.0d0 - nhei(j)*otsp_sab(2,ic_gnd_HeI)*g_tau
+				case (3); y_HeII(j) = 1.0d0 - nheii(j)                     &
+				                      *otsp_sab(3,ic_gnd_HeII)*g_tau
+			end select
+		enddo
+	enddo
+	!$omp end parallel do
 
-	real*8, dimension(1-Ng:N+Ng) :: alpha1, alphaB
-	real*8 :: Rratio, R2_gnd, R2_584, R2_19, R2_2q, R2_casc
-	real*8 :: s_gnd, s_584, s_19, s_2q, s_casc
-	real*8 :: s2_gnd, s2_584, s2_19, s2_2q, s2_casc, sHe_gnd
-	real*8 :: dl, f_gnd, f_584, f_19, f_2q, f_casc, y_net
-	real*8 :: y, y2, u2, z, T4, ncrit, P_add, P2_add, H_add, H2_add
-	real*8 :: wc, wc2, w584, w584_2, w19, w19_2, w2q, w2q_2
-	real*8 :: fs_HI, fs_R2, Ees_HI, Ees_H2, nhig, n2
-	logical :: absorb_low, absorb_gnd
-	integer :: j
-	! --- metal absorbers ---
-	! Channel index: 1 ground capture (24.6 eV), 2 the 584 A resonance
-	! (21.2), 3 the 2^3S line (19.8), 4 the 2^1S two-photon continuum
-	! (16.110), 5 the case-B cascade average (19.741) used by the atomic
-	! branch. For every photo-ionizable metal ion: its cross section at those
-	! five energies (sm), the ratio to sigma_HI there (Rm), and the
-	! photoelectron energy E_c - E_th it leaves (Em). mabs lists the ions
-	! that absorb at least one channel, so a run with metals off has
-	! n_mabs = 0 and every metal sum below is untouched from 0.0.
-	integer, parameter :: n_chan_hrc = 5
-	real*8  :: E_chan(n_chan_hrc), sHI_chan(n_chan_hrc)
-	real*8  :: sm(n_mion,n_chan_hrc), Rm(n_mion,n_chan_hrc)
-	real*8  :: Em(n_mion,n_chan_hrc), gmv(n_mion)
-	real*8  :: nmtot, gm, Pm_add, Hm_add, fs_Rm, Ees_m
-	real*8  :: tm_gnd, tm_584, tm_19, tm_2q, tm_casc
-	real*8  :: um_gnd, um_584, um_19, um_2q, um_casc
-	integer :: mabs(n_mion), n_mabs, im, ic, kph, ii
+	end subroutine ground_capture_escape_weights
 
-	! Photoionization cross-section ratios sigma_s/sigma_HI at the
-	! representative energy of each channel, used to split that channel's
-	! photons among the absorbers (Draine Eq. 14.16 generalized to H2). Their
-	! (small) kT dependence is neglected. Evaluated once here, not per cell.
-	s_gnd   = sigma(E_gnd_HeI ,1.0d0)
-	s_584   = sigma(E_584_HeI ,1.0d0)
-	s_19    = sigma(E_19_HeI  ,1.0d0)
-	s_2q    = sigma(E_2q_HeI  ,1.0d0)
-	s_casc  = sigma(E_casc_HeI,1.0d0)
-	s2_gnd  = sigma_H2(E_gnd_HeI)
-	s2_584  = sigma_H2(E_584_HeI)
-	s2_19   = sigma_H2(E_19_HeI)
-	s2_2q   = sigma_H2(E_2q_HeI)
-	s2_casc = sigma_H2(E_casc_HeI)
-	sHe_gnd = sigma_HeI(E_gnd_HeI)
-	Rratio  = sHe_gnd/max(s_gnd , 1.0d-99)
-	R2_gnd  = s2_gnd /max(s_gnd , 1.0d-99)
-	R2_584  = s2_584 /max(s_584 , 1.0d-99)
-	R2_19   = s2_19  /max(s_19  , 1.0d-99)
-	R2_2q   = s2_2q  /max(s_2q  , 1.0d-99)
-	R2_casc = s2_casc/max(s_casc, 1.0d-99)
+	! ------------------------------------------------------------- !
 
-	! Metal absorbers of the same photons, evaluated once here.
-	! metal_photoion_sigma returns zero below the ion's own threshold, so an
-	! ion that cannot absorb a channel carries Rm = 0 for it and drops out of
-	! that channel's competition without a test. Em is the photoelectron
-	! energy left behind, meaningful only where Rm > 0.
-	E_chan   = [E_gnd_HeI, E_584_HeI, E_19_HeI, E_2q_HeI, E_casc_HeI]
-	sHI_chan = [s_gnd, s_584, s_19, s_2q, s_casc]
-	sm     = 0.0d0
-	Rm     = 0.0d0
-	Em     = 0.0d0
-	gmv    = 0.0d0
-	dP_m   = 0.0d0
-	n_mabs = 0
+	! (1 - exp(-tau))/tau for tau >= 0, the fraction of a cell's photons the
+	! cell absorbs divided by its optical depth: 1 at tau -> 0, 1/tau at
+	! tau -> infinity, with no division singularity; by its series below
+	! tau = 1e-4 (absorbed_photon_fraction holds the same guard). The rate
+	! at which one absorber of cross section sigma takes photons emitted at
+	! P per unit volume is P sigma dl times this.
+	pure function absorbed_fraction_over_tau(tau) result(g)
+	real*8, intent(in) :: tau
+	real*8 :: g
+	if (tau .le. 0.0d0) then
+		g = 1.0d0
+	else if (tau .lt. 1.0d-4) then
+		g = 1.0d0 - 0.5d0*tau*(1.0d0 - tau/3.0d0)
+	else
+		g = (1.0d0 - exp(-tau))/tau
+	endif
+	end function absorbed_fraction_over_tau
+
+	! ------------------------------------------------------------- !
+
+	! Cross sections [1e-18 cm^2] of the on-the-spot absorbers at the
+	! channel energies otsp_E: otsp_sab(1..4,c) for H I, He I (ground),
+	! He II and H2, otsp_smet(i,c) for metal ion i (zero for an ion that is
+	! not photo-ionizable). Each is zero below its own threshold, so an
+	! absorber that cannot take a photon drops out of that channel without
+	! a test. Formed on the first call and again only if a switch that
+	! selects a cross section ("ATES photoionization rate", the metals)
+	! has changed (the fill is a critical region, so a first call from
+	! inside a parallel region is safe).
+	subroutine on_the_spot_cross_sections
+	integer :: ic, im, k, is
+	real*8  :: sg, eth, eaug, pmul, efl, eim
+	if (otsp_ready .and. (otsp_ates .eqv. ates_photoion_rate)           &
+	    .and. (otsp_metals .eqv. thereis_metals)) return
+	!$omp critical (on_the_spot_cross_section_table)
+	do ic = 1,n_otsp_ch
+		otsp_sab(1,ic) = sigma(otsp_E(ic), 1.0d0, e_th_HI)
+		otsp_sab(2,ic) = sigma_HeI(otsp_E(ic))
+		otsp_sab(3,ic) = sigma(otsp_E(ic), 2.0d0, e_th_HeII)
+		otsp_sab(4,ic) = sigma_H2(otsp_E(ic))
+		otsp_smet(:,ic)       = 0.0d0
+		otsp_met_dbind(:,ic)  = 0.0d0
+		otsp_met_fmulti(:,ic) = 0.0d0
+		if (thereis_metals) then
+			do im = 1,n_mion
+				if (.not. mion_isphot(im)) cycle
+				k = mion_iphot(im)
+				otsp_smet(im,ic) = metal_photoion_sigma(k, otsp_E(ic))
+				if (.not. (otsp_smet(im,ic) > 0.0d0)) cycle
+				! The subshells this photon opens (the outer shell
+				! contributes neither term).
+				do is = 1,mph_n_sub(k)
+					sg = metal_shell_photoion_sigma(k, is, otsp_E(ic))
+					if (.not. (sg > 0.0d0)) cycle
+					call metal_shell_relaxation(k, is, eth, eaug, pmul,  &
+					                            efl, eim)
+					otsp_met_dbind(im,ic) = otsp_met_dbind(im,ic)        &
+					     + sg*(eth - eaug - mion_ethr(im))/otsp_smet(im,ic)
+					if (mion_stage(im) .eq. 0 .and.                      &
+					    melem_top(mion_elem(im)) .ge. 2)                  &
+						otsp_met_fmulti(im,ic) = otsp_met_fmulti(im,ic)  &
+						     + sg*pmul/otsp_smet(im,ic)
+				enddo
+			enddo
+		endif
+	enddo
+	otsp_ates   = ates_photoion_rate
+	otsp_metals = thereis_metals
+	otsp_ready  = .true.
+	!$omp end critical (on_the_spot_cross_section_table)
+	end subroutine on_the_spot_cross_sections
+
+	! ------------------------------------------------------------- !
+
+	! THE HE I 584 A LINE AS AN ABSORBER: the mean cross section [1e-18
+	! cm^2] of one He I atom for a 584 A photon, the quantity Wood, Mathis
+	! & Ercolano (2004, MNRAS 348, 1337, sect. 4.1) set the mean free path
+	! between two scatterings with, l_scat = [n(He0) a_nu(Ly-alpha)]^-1:
+	! the Doppler profile of their eq. (15),
+	!    a_nu = pi^(1/2) e^2 f exp[-(dnu/dnu_D)^2]/(m_e c dnu_D) ,
+	! with exp[-(dnu/dnu_D)^2] replaced by its mean over the Maxwellian of
+	! the atom that emitted the photon, 2^(-3/2) (their eq. 16).  Written
+	! through the radiative rate, pi^(1/2) e^2 f/(m_e c dnu_D) =
+	! 3 lambda^3 A/(8 pi^(3/2) v_th), v_th = (2 k T/m_He)^(1/2).  At 1e4 K
+	! 1.33e-14 cm^2 (DERIVED; with their f = 0.29, 1.39e-14).
+	elemental double precision function He_I_584_mean_cross_section(T)   &
+	                                   result(s)
+	real*8, intent(in) :: T
+	s = 2.0d0**(-1.5d0)*sig0v_584                                         &
+	    /sqrt(2.0d0*kb_erg*max(T, 1.0d0)/m_He_atom)*1.0d18
+	end function He_I_584_mean_cross_section
+
+	! ------------------------------------------------------------- !
+
+	! ONE CHANNEL OF ONE CELL: P photons per unit volume and time of
+	! channel ic (energy otsp_E(ic) plus the capture kinetic energy Ek [eV]
+	! for a continuum), shared among the absorbers of the cell (densities
+	! nhi, nhei, nheii, nh2, nm; cell width dl in cm times 1e-18). i_self
+	! is the recombined species of a ground-capture channel (1 H I, 2 He I,
+	! 3 He II), whose share is the on-the-spot cancellation and is skipped,
+	! 0 for every other channel. Adds the rate per absorber particle
+	! [s^-1] of H I, He I, H2 and each metal ion, the part of each metal
+	! rate that ejects two or more electrons (dP_m2, nonzero only where the
+	! balance carries that jump) and the photoelectron heat [erg cm^-3
+	! s^-1]: a metal absorption heats with the photoelectron and the Auger
+	! electrons of the shells the photon opens, E - mion_ethr -
+	! otsp_met_dbind (on_the_spot_cross_sections).
+	!
+	! A RESONANCE LINE (the He I 584 A photons: kap_line present, the line
+	! opacity n(He I) sigma_bar in the units of kap) is scattered by He I
+	! as it crosses the cell, and each scattering either re-emits it (the
+	! fraction 1 - eps_line) or converts it to the 2^1S two-photon
+	! continuum (eps_line, the 2.06 um branch).  One flight through the
+	! cell, of total depth tau = (kap + kap_line) dl, ends in a continuum
+	! absorption with probability c = q a, in a line scattering with
+	! l = (1 - q) a, or leaves the cell with e = 1 - a, where
+	! a = 1 - exp(-tau) and q = kap/(kap + kap_line).  Repeating the flight
+	! after every scattering that re-emits, the photon is absorbed in the
+	! continuum with probability c/D, converted with l eps_line/D and
+	! escapes with e/D, D = e + c + l eps_line (the three sum to one; D
+	! is formed as that sum, which has no cancellation).  With no He I
+	! (kap_line = 0) this is the continuum channel exactly; for a cell
+	! thick in both the line and the continuum (e -> 0) the absorbed share
+	! is q/(q + eps_line (1 - q)), Wood, Mathis & Ercolano's eq. (17),
+	!   P(H_OTS) = n(H0) a(H0)/[n(H0) a(H0) + n(He0) a_nu(He0)/914] ,
+	! with every continuum absorber of the cell in place of H0 alone.  The
+	! photons converted are returned in P_conv [cm^-3 s^-1], for the
+	! caller to put through the 2^1S two-photon channel.
+	pure subroutine absorb_recombination_channel(ic, P, Ek, i_self,       &
+	                   nhi, nhei, nheii, nh2, nm, dl,                     &
+	                   dP_HI, dP_HeI, dP_H2, dP_m, dP_m2, heat,           &
+	                   kap_line, eps_line, P_conv)
+	integer, intent(in)    :: ic, i_self
+	real*8,  intent(in)    :: P, Ek, nhi, nhei, nheii, nh2, nm(n_mion), dl
+	real*8,  intent(inout) :: dP_HI, dP_HeI, dP_H2, dP_m(n_mion),         &
+	                          dP_m2(n_mion), heat
+	real*8,  intent(in),    optional :: kap_line, eps_line
+	real*8,  intent(inout), optional :: P_conv
+	real*8  :: kap, g_dl, Eph, rate_s, heat_c
+	real*8  :: tau_t, a_t, e_t, q_c, q_l, D_t
+	integer :: im
+	if (.not. (P > 0.0d0)) return
+	kap = nhi*otsp_sab(1,ic) + nhei*otsp_sab(2,ic) + nheii*otsp_sab(3,ic) &
+	    + nh2*otsp_sab(4,ic)
 	if (thereis_metals) then
 		do im = 1,n_mion
-			if (.not. mion_isphot(im)) cycle
-			kph = mion_iphot(im)
-			do ic = 1,n_chan_hrc
-				sm(im,ic) = metal_photoion_sigma(kph, E_chan(ic))
-				Rm(im,ic) = sm(im,ic)/max(sHI_chan(ic), 1.0d-99)
-				Em(im,ic) = E_chan(ic) - mion_ethr(im)
-			enddo
-			if (maxval(sm(im,:)) .gt. 0.0d0) then
-				n_mabs       = n_mabs + 1
-				mabs(n_mabs) = im
-			endif
+			kap = kap + nm(im)*otsp_smet(im,ic)
 		enddo
 	endif
-
-	! alpha_B is the active He II case B (whichever fit eval_cool uses).
-	call rec_HeII_B(T_K, alphaB)
-
-	if (.not. thereis_HeITR) then
-		! atomic (case-B) mode: alpha_1 = Mao & Kaastra ground capture.
-		alpha1 = alpha1_HeII_mao(T_K)
-		do j = 1-Ng,N+Ng
-			n2   = nh2(j)
-			nhig = max(nhi(j),1.0d-99)
-			! Metal opacity (tm) and metal/H I absorption ratio (um) of the
-			! two channels this branch uses. Both are untouched
-			! zeros without metals, so every expression below reduces to the
-			! H I / H2 / He I form bit for bit.
-			nmtot   = 0.0d0
-			tm_gnd  = 0.0d0
-			tm_casc = 0.0d0
-			um_gnd  = 0.0d0
-			um_casc = 0.0d0
-			do ii = 1,n_mabs
-				im      = mabs(ii)
-				gm      = nm(j,im)
-				gmv(im) = gm/nhig
-				nmtot   = nmtot   + gm
-				tm_gnd  = tm_gnd  + gm*sm(im,1)
-				tm_casc = tm_casc + gm*sm(im,5)
-				um_gnd  = um_gnd  + gmv(im)*Rm(im,1)
-				um_casc = um_casc + gmv(im)*Rm(im,5)
-			enddo
-			absorb_gnd = (nhi(j) + n2 + nhei(j) + nmtot) .gt. 0.0d0
-			absorb_low = (nhi(j) + n2 + nmtot)           .gt. 0.0d0
-			! Fraction of each channel's photons absorbed within the cell,
-			! 1 - exp(-tau_c) over the cell width; the rest leaves. The
-			! sigma_* functions return the cross section in 1e-18 cm^2, the
-			! unit the stellar optical depth of PH_heat_HHe also carries.
-			dl     = dr_j(j)*R0*1.0d-18
-			f_gnd  = absorbed_photon_fraction((nhi(j)*s_gnd               &
-			         + n2*s2_gnd + nhei(j)*sHe_gnd + tm_gnd)*dl)
-			f_casc = absorbed_photon_fraction((nhi(j)*s_casc              &
-			         + n2*s2_casc + tm_casc)*dl)
-			! y, y2: H I and H2 shares of the >= 24.6 eV ground-capture
-			! continuum; the rest is re-absorbed by He I.
-			if (absorb_gnd) then
-				u2 = R2_gnd*n2/nhig
-				y  = 1.0d0/(1.0d0 + Rratio*nhei(j)/nhig + u2 + um_gnd)
-				y2 = y*u2
+	g_dl   = absorbed_fraction_over_tau(kap*dl)*dl
+	if (present(kap_line)) then
+		if (kap_line > 0.0d0) then
+			tau_t = (kap + kap_line)*dl
+			a_t   = absorbed_photon_fraction(tau_t)
+			if (tau_t .lt. 1.0d-4) then
+				e_t = 1.0d0 - a_t
 			else
-				y  = 0.0d0
-				y2 = 0.0d0
+				e_t = exp(-tau_t)
 			endif
-			! wc, wc2: H I and H2 shares of the case-B cascade exits, all of
-			! which lie below the He I edge, at the cascade-averaged energy.
-			if (absorb_low) then
-				u2   = R2_casc*n2/nhig
-				wc   = 1.0d0/(1.0d0 + u2 + um_casc)
-				wc2  = wc*u2
-			else
-				wc   = 0.0d0
-				wc2  = 0.0d0
-			endif
-			! z: density-dependent fraction of case-B cascade photons above the
-			! H I edge; 0.96 (low density, 19.8 eV line ionizes H) -> 0.67 (2^3S
-			! collisionally converted to singlets) via the 2^3S critical density
-			! (documented interpolation between Draine's two limits). The
-			! fraction above the H2 edge differs slightly (the part of the
-			! two-photon continuum between 13.6 and 15.4 eV cannot ionize H2);
-			! z is used for both, as the two-photon exit is 8% of the cascade.
-			! n_crit itself leaves the double-precision range at low
-			! temperature: 1100 exp(1.2/T4) sqrt(T4) is +Inf below
-			! T = 17.1 K (T4 = 1.71e-3 gives 1.2/T4 + ln(1100 sqrt(T4))
-			! = 705.6, and the exponent range ends at 709.78). There
-			! n_e/n_crit is zero and z is at its low-density limit, so
-			! that limit is the value taken and n_crit is never formed.
-			T4    = T_K(j)/1.0d4
-			z     = 0.67d0 + 0.29d0
-			if (T4 .gt. 1.71d-3) then
-				ncrit = 1100.0d0*exp(1.2d0/T4)*sqrt(T4)
-				z     = 0.67d0 + 0.29d0/(1.0d0 + ne(j)/ncrit)
-			endif
-			! He II recombination: alpha_eff = alpha_B + alpha_1
-			! (1 - f_abs w_HeI); a ground-capture photon that leaves the cell
-			! does not re-ionize He, so it is a net recombination too.
-			y_net = (1.0d0 - f_gnd) + f_gnd*(y + y2 + y*um_gnd)
-			rcheiiB_new(j) = alphaB(j) + y_net*alpha1(j)
-			! Extra H I and H2 photoionization rates [s^-1], each channel's
-			! share of the photons it keeps. The H2 rate is the H I one channel
-			! by channel times sigma_H2/sigma_HI, because both shares carry the
-			! same 1/(n_HI sigma_HI + n_H2 sigma_H2) factor.
-			dP_HI(j) = nheii(j)*ne(j)*(z*alphaB(j)*wc*f_casc                &
-			           + y*alpha1(j)*f_gnd)/nhig
-			dP_H2(j) = nheii(j)*ne(j)*(z*alphaB(j)*wc*R2_casc*f_casc        &
-			           + y*alpha1(j)*R2_gnd*f_gnd)/nhig
-			! The same two channels absorbed by each metal ion: a rate per
-			! ion of that stage, added to its photoionization rate by the
-			! caller, and its photoelectron heating at E_c - E_th of that ion.
-			! Hm_add stays 0.0 without metals.
-			Hm_add = 0.0d0
-			do ii = 1,n_mabs
-				im = mabs(ii)
-				dP_m(j,im) = nheii(j)*ne(j)                                &
-				             *(z*alphaB(j)*wc*Rm(im,5)*f_casc              &
-				               + y*alpha1(j)*Rm(im,1)*f_gnd)/nhig
-				Hm_add = Hm_add + gmv(im)*nheii(j)*ne(j)                   &
-				         *(z*alphaB(j)*wc*Rm(im,5)*Em(im,5)*f_casc         &
-				           + y*alpha1(j)*Rm(im,1)*Em(im,1)*f_gnd)
-			enddo
-			! Photoelectron heating [erg cm^-3 s^-1]. Ee_casc_HeI = 6.14 eV is a
-			! low-density channel-weighted average, approximate;
-			! E_gnd = 11.0 eV (24.6-13.6) for H I, 9.2 eV (24.6-15.4) for H2.
-			dheat(j) = (nheii(j)*ne(j)*(z*alphaB(j)*wc*Ee_casc_HeI*f_casc  &
-			           + y*alpha1(j)*11.0d0*f_gnd)                          &
-			           + nheii(j)*ne(j)*(z*alphaB(j)*wc2*EeH2_casc_HeI     &
-			             *f_casc                                            &
-			           + y2*alpha1(j)*EeH2_gnd_HeI*f_gnd)                  &
-			           + Hm_add)/erg2eV
-		enddo
-	else
-		! TR mode: alpha_1 = 1^1S channel (rec_HeII_11S).
-		call rec_HeII_11S(T_K, alpha1)
-		do j = 1-Ng,N+Ng
-			n2   = nh2(j)
-			nhig = max(nhi(j),1.0d-99)
-			! Metal opacity and metal/H I absorption ratio of the four
-			! channels this branch resolves; untouched zeros
-			! without metals.
-			nmtot  = 0.0d0
-			tm_gnd = 0.0d0
-			tm_584 = 0.0d0
-			tm_19  = 0.0d0
-			tm_2q  = 0.0d0
-			um_gnd = 0.0d0
-			um_584 = 0.0d0
-			um_19  = 0.0d0
-			um_2q  = 0.0d0
-			do ii = 1,n_mabs
-				im      = mabs(ii)
-				gm      = nm(j,im)
-				gmv(im) = gm/nhig
-				nmtot   = nmtot  + gm
-				tm_gnd  = tm_gnd + gm*sm(im,1)
-				tm_584  = tm_584 + gm*sm(im,2)
-				tm_19   = tm_19  + gm*sm(im,3)
-				tm_2q   = tm_2q  + gm*sm(im,4)
-				um_gnd  = um_gnd + gmv(im)*Rm(im,1)
-				um_584  = um_584 + gmv(im)*Rm(im,2)
-				um_19   = um_19  + gmv(im)*Rm(im,3)
-				um_2q   = um_2q  + gmv(im)*Rm(im,4)
-			enddo
-			absorb_gnd = (nhi(j) + n2 + nhei(j) + nmtot) .gt. 0.0d0
-			absorb_low = (nhi(j) + n2 + nmtot)           .gt. 0.0d0
-			! Fraction of each channel's photons absorbed within the cell
-			! (dl carries the 1e-18 cm^2 unit of the sigma_* functions).
-			dl    = dr_j(j)*R0*1.0d-18
-			f_gnd = absorbed_photon_fraction((nhi(j)*s_gnd                &
-			        + n2*s2_gnd + nhei(j)*sHe_gnd + tm_gnd)*dl)
-			f_584 = absorbed_photon_fraction((nhi(j)*s_584 + n2*s2_584    &
-			        + tm_584)*dl)
-			f_19  = absorbed_photon_fraction((nhi(j)*s_19  + n2*s2_19     &
-			        + tm_19 )*dl)
-			f_2q  = absorbed_photon_fraction((nhi(j)*s_2q  + n2*s2_2q     &
-			        + tm_2q )*dl)
-			if (absorb_gnd) then
-				u2 = R2_gnd*n2/nhig
-				y  = 1.0d0/(1.0d0 + Rratio*nhei(j)/nhig + u2 + um_gnd)
-				y2 = y*u2
-			else
-				y  = 0.0d0
-				y2 = 0.0d0
-			endif
-			! H I / H2 shares of the three sub-24.6 eV exits: the 584 A
-			! resonance, the 19.8 eV 2^3S line, and the 2^1S two-photon
-			! continuum at its mean in-band energy.
-			if (absorb_low) then
-				u2     = R2_584*n2/nhig
-				w584   = 1.0d0/(1.0d0 + u2 + um_584)
-				w584_2 = w584*u2
-				u2     = R2_19*n2/nhig
-				w19    = 1.0d0/(1.0d0 + u2 + um_19)
-				w19_2  = w19*u2
-				u2     = R2_2q*n2/nhig
-				w2q    = 1.0d0/(1.0d0 + u2 + um_2q)
-				w2q_2  = w2q*u2
-			else
-				w584   = 0.0d0
-				w584_2 = 0.0d0
-				w19    = 0.0d0
-				w19_2  = 0.0d0
-				w2q    = 0.0d0
-				w2q_2  = 0.0d0
-			endif
-			! Singlet-excited captures: 2/3 go to 2^1P -> 584 A (always
-			! ionizing), 1/3 to 2^1S -> two-photon (f_2q_HeI of which lies above
-			! the H I edge). Absorber-weighted photon counts and deposited
-			! energies per capture; with n_H2 = 0 these reduce exactly to the
-			! constants f_sing_HeI and Ee_sing_HeI.
-			fs_HI  = (2.0d0*w584*f_584                                      &
-			          + f_2q_HeI*w2q*f_2q  )/3.0d0
-			fs_R2  = (2.0d0*w584*R2_584*f_584                               &
-			          + f_2q_HeI*w2q*R2_2q*f_2q)/3.0d0
-			Ees_HI = (2.0d0*Ee_584_HeI*w584*f_584                           &
-			          + f_2q_HeI*Ee_2q_HeI*w2q*f_2q)/3.0d0
-			Ees_H2 = (2.0d0*EeH2_584_HeI*w584_2*f_584                       &
-			          + f_2q_HeI*EeH2_2q_HeI*w2q_2*f_2q)/3.0d0
-			! (1) 1^1S channel coefficient: net ground capture, alpha_1
-			! (1 - f_abs w_HeI), plus the singlet-excited capture channel
-			! (0.25 alpha_B) missing from the current network. Those exits are
-			! all below the He I edge, so they are a net recombination whether
-			! they are absorbed or not.
-			y_net = (1.0d0 - f_gnd) + f_gnd*(y + y2 + y*um_gnd)
-			rcheiiB_new(j) = y_net*alpha1(j) + 0.25d0*alphaB(j)
-			! (2) H-ionizing photon production [cm^-3 s^-1], each channel
-			! reduced to the photons the cell keeps:
-			P_add = y*alpha1(j)*nheii(j)*ne(j)*f_gnd            ! ground (>=24.6)
-			P_add = P_add + fs_HI*0.25d0*alphaB(j)*nheii(j)*ne(j)
-			! 2^3S radiative decay (19.8 eV line).
-			P_add = P_add + A31*nheiTR(j)*w19*f_19
-			! 2^3S collisionally converted to singlets, then decaying: 2^1S
-			! two-photon (f_2q_HeI ionizing) + 2^1P -> 584 A (1.0 ionizing).
-			P_add = P_add + ne(j)*nheiTR(j)                                &
-			        *(q31a(j)*f_2q_HeI*w2q*f_2q + q31b(j)*w584*f_584)
-			dP_HI(j) = P_add/nhig
-			! (2b) the same photons absorbed by H2 instead, as a rate per H2
-			! molecule (the n_H2 of the share cancels, as for H I above).
-			P2_add = y*alpha1(j)*nheii(j)*ne(j)*R2_gnd*f_gnd
-			P2_add = P2_add + fs_R2*0.25d0*alphaB(j)*nheii(j)*ne(j)
-			P2_add = P2_add + A31*nheiTR(j)*w19*R2_19*f_19
-			P2_add = P2_add + ne(j)*nheiTR(j)                              &
-			         *(q31a(j)*f_2q_HeI*w2q*R2_2q*f_2q                     &
-			           + q31b(j)*w584*R2_584*f_584)
-			dP_H2(j) = P2_add/nhig
-			! (2c) the same four channels absorbed by each metal ion, as a
-			! rate per ion of that stage. Same structure as (2b):
-			! the metal density of the share cancels, leaving Rm/n_HI.
-			do ii = 1,n_mabs
-				im = mabs(ii)
-				fs_Rm = (2.0d0*w584*Rm(im,2)*f_584                        &
-				         + f_2q_HeI*w2q*Rm(im,4)*f_2q)/3.0d0
-				Pm_add = y*alpha1(j)*nheii(j)*ne(j)*Rm(im,1)*f_gnd
-				Pm_add = Pm_add + fs_Rm*0.25d0*alphaB(j)*nheii(j)*ne(j)
-				Pm_add = Pm_add + A31*nheiTR(j)*w19*Rm(im,3)*f_19
-				Pm_add = Pm_add + ne(j)*nheiTR(j)                          &
-				         *(q31a(j)*f_2q_HeI*w2q*Rm(im,4)*f_2q              &
-				           + q31b(j)*w584*Rm(im,2)*f_584)
-				dP_m(j,im) = Pm_add/nhig
-			enddo
-			! (3) photoelectron heating [erg cm^-3 s^-1], channel E_dep [eV]:
-			! ground 11.0; singlet-excited Ee_sing_HeI = 5.53; 19.8 eV line
-			! -> 6.2; 2^3S coll. -> singlet: two-photon Ee_2q_HeI + 584 A 7.6.
-			H_add = y*alpha1(j)*nheii(j)*ne(j)*11.0d0*f_gnd
-			H_add = H_add + 0.25d0*alphaB(j)*nheii(j)*ne(j)*Ees_HI
-			H_add = H_add + A31*nheiTR(j)*w19*6.2d0*f_19
-			H_add = H_add + ne(j)*nheiTR(j)                                &
-			        *(q31a(j)*f_2q_HeI*Ee_2q_HeI*w2q*f_2q                  &
-			          + q31b(j)*Ee_584_HeI*w584*f_584)
-			! and the same channels deposited in H2, 15.4 eV lower each.
-			H2_add = y2*alpha1(j)*nheii(j)*ne(j)*EeH2_gnd_HeI*f_gnd
-			H2_add = H2_add + 0.25d0*alphaB(j)*nheii(j)*ne(j)*Ees_H2
-			H2_add = H2_add + A31*nheiTR(j)*w19_2*EeH2_19_HeI*f_19
-			H2_add = H2_add + ne(j)*nheiTR(j)                              &
-			         *(q31a(j)*f_2q_HeI*EeH2_2q_HeI*w2q_2*f_2q             &
-			           + q31b(j)*EeH2_584_HeI*w584_2*f_584)
-			! and in each metal ion, E_c - E_th of that ion per photon; the
-			! shares carry the metal density, as the H2 ones carry n_H2.
-			! Hm_add stays 0.0 without metals.
-			Hm_add = 0.0d0
-			do ii = 1,n_mabs
-				im    = mabs(ii)
-				Ees_m = (2.0d0*Em(im,2)*w584*Rm(im,2)*gmv(im)*f_584        &
-				         + f_2q_HeI*Em(im,4)*w2q*Rm(im,4)*gmv(im)*f_2q)    &
-				        /3.0d0
-				Hm_add = Hm_add                                            &
-				         + y*Rm(im,1)*gmv(im)*alpha1(j)*nheii(j)*ne(j)     &
-				           *Em(im,1)*f_gnd                                 &
-				         + 0.25d0*alphaB(j)*nheii(j)*ne(j)*Ees_m           &
-				         + A31*nheiTR(j)*w19*Rm(im,3)*gmv(im)*Em(im,3)     &
-				           *f_19                                           &
-				         + ne(j)*nheiTR(j)                                 &
-				           *(q31a(j)*f_2q_HeI*Em(im,4)*w2q*Rm(im,4)        &
-				             *gmv(im)*f_2q                                 &
-				             + q31b(j)*Em(im,2)*w584*Rm(im,2)*gmv(im)      &
-				               *f_584)
-			enddo
-			dheat(j) = (H_add + H2_add + Hm_add)/erg2eV
+			q_c  = kap/(kap + kap_line)
+			q_l  = kap_line/(kap + kap_line)
+			D_t  = e_t + q_c*a_t + q_l*a_t*eps_line
+			g_dl = absorbed_fraction_over_tau(tau_t)*dl/D_t
+			P_conv = P_conv + P*q_l*a_t*eps_line/D_t
+		endif
+	endif
+	Eph    = otsp_E(ic) + Ek
+	heat_c = 0.0d0
+	if (i_self .ne. 1 .and. otsp_sab(1,ic) > 0.0d0) then
+		rate_s = P*otsp_sab(1,ic)*g_dl
+		dP_HI  = dP_HI + rate_s
+		heat_c = heat_c + rate_s*nhi*(Eph - e_th_HI)
+	endif
+	if (i_self .ne. 2 .and. otsp_sab(2,ic) > 0.0d0) then
+		rate_s = P*otsp_sab(2,ic)*g_dl
+		dP_HeI = dP_HeI + rate_s
+		heat_c = heat_c + rate_s*nhei*(Eph - e_th_HeI)
+	endif
+	if (otsp_sab(4,ic) > 0.0d0) then
+		rate_s = P*otsp_sab(4,ic)*g_dl
+		dP_H2  = dP_H2 + rate_s
+		heat_c = heat_c + rate_s*nh2*(Eph - e_th_H2)
+	endif
+	if (thereis_metals) then
+		do im = 1,n_mion
+			if (.not. (otsp_smet(im,ic) > 0.0d0)) cycle
+			rate_s     = P*otsp_smet(im,ic)*g_dl
+			dP_m(im)   = dP_m(im) + rate_s
+			dP_m2(im)  = dP_m2(im) + rate_s*otsp_met_fmulti(im,ic)
+			heat_c     = heat_c + rate_s*nm(im)                           &
+			           *(Eph - mion_ethr(im) - otsp_met_dbind(im,ic))
 		enddo
 	endif
+	heat = heat + heat_c/erg2eV
+	end subroutine absorb_recombination_channel
 
-	! End of subroutine
-	end subroutine he_rec_coupling
+	! ------------------------------------------------------------- !
+
+	! RECOMBINATION RADIATION ABSORBED ON THE SPOT: the ionizing photons the
+	! recombinations of H II, He II and He III emit, absorbed in the cell
+	! they are emitted in. Given the pre-solve (lagged) densities, returns
+	! the recombination coefficients the ionization balance should use
+	! (rchiiB_new, rcheiiB_new, rcheiiiB_new [cm^3 s^-1]), the extra
+	! photoionization rates [s^-1] of H I, He I (ground), H2 and every
+	! metal ion (dP_HI, dP_HeI, dP_H2, dP_m), and the photoelectron heating
+	! [erg cm^-3 s^-1] of the composition passed in (dheat). With both
+	! switches off it returns the case-B coefficients and zeros.
+	!
+	! WHICH SPECIES ABSORBS A PHOTON. Every channel emits photons of one
+	! representative energy E_c; the cell keeps the fraction 1 - exp(-tau_c)
+	! of them, tau_c = dl sum_s n_s sigma_s(E_c), and shares it among the
+	! absorbers s in the ratio of n_s sigma_s(E_c). The rate at which ONE
+	! absorber s takes them is then P_c sigma_s dl (1 - exp(-tau_c))/tau_c
+	! (P_c the emission per unit volume), finite at tau_c -> 0 (the
+	! optically thin rate of a single absorber) and -> P_c sigma_s/kappa_c
+	! in a thick cell. Absorbers: H I, He I (ground), He II, H2 and the
+	! photo-ionizable metal ions; each takes only what lies above its own
+	! threshold. In a molecular gas H2 is not a small competitor
+	! (sigma_H2/sigma_HI is 1.2 at 16 eV and 3.5-3.7 from 20 to 25 eV), and
+	! the metals take a measured share of 3e-3 to 2e-2 on the WASP-121 b
+	! and hot-Uranus cases despite abundances of 1e-4 to 1e-3.
+	!
+	! THE GROUND CAPTURES are the one channel whose photon can be taken by
+	! the species that emitted it: the share re-absorbed by the recombined
+	! species is a capture and a re-ionization that cancel, and is left out
+	! of both the net coefficient (ground_capture_escape_weights) and the
+	! rates below; the part taken by another absorber ionizes it; the part
+	! that leaves the cell is a net recombination too.
+	!
+	! CHANNELS.
+	!  H II -> H I ("H_rec_escape"): the ground capture, alpha_1(H I)
+	!   (Cool_coeff: Milne relation), at 13.598 eV. The case-B captures
+	!   into n >= 2 emit below 13.6 eV and ionize nothing here.
+	!  He II -> He I ("He_rec_coupling"): the ground capture at 24.587 eV,
+	!   and the case-B captures through their exits: the excited-singlet
+	!   captures (Cool_coeff: alpha_rec_HeII_excited_singlets), 2/3 to 2^1P
+	!   -> 584 A and 1/3 to 2^1S -> two photons (f_2q_HeI of them above
+	!   the H I edge); and the captures into the triplets, all ending in
+	!   2^3S, which leave it by the 19.8 eV 2^3S -> 1^1S line (A31), by
+	!   conversion to 2^1S (q31a) or to 2^1P and the higher singlets (q31b),
+	!   or by de-excitation to 1^1S (q31g, no photon). With the metastable
+	!   tracked the last three act on the n(2^3S) of the network; without
+	!   it (atomic mode) each triplet capture is shared among them in the
+	!   ratio A31 : n_e q31a : n_e q31b : n_e q31g (the 2^3S photoionization
+	!   and Penning ionization, which only the network carries, are not
+	!   exits there). This is the construction of Draine (2011, sect.
+	!   14.3.2: "Approximately 25% of these will be to states with total
+	!   spin S = 0", "approximately 1/3 end up in 1s2s 1S0, and approximately
+	!   2/3 in 1s2p 1P1o"; sect. 15.5: "z ~ 0.96 at low densities ... to
+	!   z ~ 0.67 at high densities", z the H-ionizing photons of a case-B
+	!   capture, with his critical density eqs. 14.19-14.20 the ratio
+	!   A31/(q31a + q31b)) and of Osterbrock & Ferland (2006, sect. 2.4,
+	!   p. 30, "p ~ 3/4 + 1/4 [2/3 + 1/3 (0.56)] = 0.96" and 0.66 at high
+	!   density), with the triplet share of Hummer & Storey (1998;
+	!   Cool_coeff: case_b_triplet_share_HeI) in place of 3/4 and the
+	!   network's own Bray et al. (2000) rates in place of the fixed
+	!   high-density split: z = 0.966 (n_e -> 0) and 0.660 (n_e = 1e8
+	!   cm^-3) at 1e4 K (MEASURED, physics probe
+	!   recombination_radiation_on_the_spot), in a cell without He I; He I
+	!   scatters the 584 A photons and turns a share of them into 2^1S
+	!   two-photon decays (VALIDITY (iii)), which lowers z.
+	!  He III -> He II ("He_rec_coupling"): the ground capture,
+	!   alpha_1(He II), at 54.418 eV (He II re-absorbs it on the spot; H I,
+	!   He I, H2 and metals take the rest); the direct capture into n = 2
+	!   (Cool_coeff: alpha_n2_hydrogenic_seaton), whose continuum starts at
+	!   I_2 = 13.6047 eV and ionizes H I and metals only; and the case-B
+	!   exits, every case-B capture ending in 2s (the fraction
+	!   case_b_2s_fraction_hydrogenic) or 2p. 2p decays by He II
+	!   Ly-alpha, 40.8135 eV; 2s decays by two photons (A_2q_HeII) unless an
+	!   ion collision moves it to 2p first (Pengelly & Seaton 1964, the
+	!   H+ and He2+ impact of their eq. 48, Cool_coeff:
+	!   l_mixing_2s2p_pengelly_seaton), and the two-photon spectrum of
+	!   Nussbaumer & Schmutz (1984) is carried in three bands (constants at
+	!   E_2q_HeII_lo). Osterbrock & Ferland (2006, sect. 2.5, p. 34 and
+	!   Table 2.6) name the same three H-ionizing products of He III -> He II
+	!   recombination: He II Ly-alpha from 2p, the 2s two-photon continuum
+	!   ("on the average, 1.42 ionizing photons are emitted per decay"; the
+	!   three bands here sum to 1.425), and the n = 2 continuum of the
+	!   direct captures. Their Table 2.6 implies a case-B 2s share of 0.28
+	!   (1e4 K) and 0.31 (2e4 K) for He II (DERIVED), against 0.264 and
+	!   0.293 from the Pengelly (1964) table used here. They take Ly-alpha
+	!   and the n = 2 continuum as absorbed on the spot by H0 and let most
+	!   two-photon photons leave the He++ zone; here every channel competes
+	!   by cross section within the cell (VALIDITY (i)).
+	!
+	! ENERGY. A photoelectron receives E_c - I_s, plus for a continuum
+	! channel the mean kinetic energy of the captured electron (E1 = beta/
+	! alpha from the capture relation of Cool_coeff, capture_energy_loss_
+	! rate), which the recombination cooling charges to every capture it
+	! counts (lambda_rec_*: the net coefficients). All of it is deposited as
+	! heat: it is not passed through the secondary-ionization partition of
+	! the stellar photoelectrons, which that partition would leave as heat
+	! below its 30 eV threshold anyway, except for the He III ground capture
+	! (40.8 eV on H I) and the He II Ly-alpha on H I (27.2 eV).
+	!
+	! VALIDITY. (i) LOCAL absorption: a photon that leaves the cell is
+	! dropped rather than followed, so its absorption in some outer cell is
+	! not counted; the escape weight is therefore a property of the cell
+	! width as well as of the gas, and a finer grid moves it toward case A
+	! wherever a cell is not thick. The wind thins outward, so most of what
+	! leaves a thin cell escapes the domain; in a thick layer f is 1 and
+	! nothing leaves. (ii) tau_c uses the cell width dr_j, i.e. a radially
+	! escaping photon; the mean chord of an isotropically emitted photon in
+	! a plane slab is longer by a factor of order 2. (iii) The He I 584 A
+	! line is scattered by the cell's He I, and every scattering can end
+	! it in the 2^1S two-photon continuum (absorb_recombination_channel,
+	! after Wood, Mathis & Ercolano 2004, sect. 4.1). Their mean free path
+	! averages the Doppler cross section over the emitting atom's
+	! Maxwellian and does not follow the frequency redistribution; the
+	! complete-redistribution mean of the same competition in one flight,
+	! the integral over x of exp(-x^2)/pi^(1/2) beta/(beta + exp(-x^2))
+	! (beta the continuum-to-line-centre opacity ratio), is 0.86 to 1.48
+	! times theirs for beta = 1e-2 to 1e-6 (DERIVED here by quadrature, not
+	! in the paper), and the natural damping wings (Voigt a = 1.3e-3 at
+	! 1e4 K) are in neither. The escape from the cell is that of one
+	! flight through the depth of the mean cross section, exp(-tau): for a
+	! cell thick in the line (line-centre depth tau_0 >~ 10) a resonance
+	! photon escapes by frequency diffusion into the wings with a
+	! probability of order 1/(tau_0 (pi ln tau_0)^(1/2)) per scattering in
+	! a static slab (the usual order-of-magnitude form, not from a source
+	! read for this code; larger in a velocity gradient), which exp(-tau)
+	! underestimates; that matters where the escape competes with eps_line
+	! and the continuum, tau_0 of 1e1 to 1e3. Collisional transfer
+	! 2^1P -> 2^1S by electrons, which competes with the 2.06 um branch once n_e
+	! q(2^1P,2^1S) approaches A(2^1P,2^1S) = 1.97e6 s^-1, is not included;
+	! its rate coefficient was not read. He II Ly-alpha is still a
+	! continuum photon of its energy: its scattering by He II, which
+	! lengthens its path and so raises the share the cell keeps, is not
+	! followed. (iv) The He 2^3S metastable is not an absorber (its density
+	! is 1e-6 to 1e-3 of He I), and the He I absorber density is the summed
+	! He I column the caller passes. (v) The H2 share of every channel makes
+	! H2+ only; the dissociative and double-ionization branches that the
+	! He III photons (40.8, 54.4 eV) would open in H2 are not split off:
+	! He III and H2 do not coexist in these winds.
+	subroutine recombination_radiation_absorbed(T_K, nhi, nhii, nh2,      &
+	                           nhei, nheii, nheiii, nheiTR, ne, nm,       &
+	                           A31, q31a, q31b,                           &
+	                           rchiiB_new, rcheiiB_new, rcheiiiB_new,     &
+	                           dP_HI, dP_HeI, dP_H2, dP_m, dheat, dP_m2)
+	real*8, dimension(1-Ng:N+Ng), intent(in)  :: T_K, nhi, nhii, nh2,    &
+	                                              nhei, nheii, nheiii,   &
+	                                              nheiTR, ne, q31a, q31b
+	real*8, dimension(1-Ng:N+Ng,n_mion), intent(in)  :: nm
+	real*8,                       intent(in)  :: A31
+	real*8, dimension(1-Ng:N+Ng), intent(out) :: rchiiB_new, rcheiiB_new, &
+	                                              rcheiiiB_new, dP_HI,    &
+	                                              dP_HeI, dP_H2, dheat
+	real*8, dimension(1-Ng:N+Ng,n_mion), intent(out) :: dP_m
+	! The part of dP_m that ejects two or more electrons and that the
+	! balance carries as a two-stage jump (absorb_recombination_channel).
+	real*8, dimension(1-Ng:N+Ng,n_mion), intent(out), optional :: dP_m2
+
+	real*8, dimension(1-Ng:N+Ng) :: y_HI, y_gnd, y_HeII
+	real*8, dimension(1-Ng:N+Ng) :: aB2, aB3, a1H, a1He, a1He2, a2He2
+	real*8, dimension(1-Ng:N+Ng) :: E1_H, E1_He, E1_He2, E2_He2
+	real*8  :: dl, t3, qa_c, qb_c, D_exit, f2s, mix, P2q, P_c
+	real*8  :: dPm_cell(n_mion), dPm2_cell(n_mion), nm_cell(n_mion)
+	real*8  :: kap_584, P_584_conv
+	logical :: h_on, he_on
+	integer :: j
+
+	h_on  = use_h_rec_escape
+	he_on = use_he_rec_coupling .and. thereis_He
+
+	call on_the_spot_cross_sections
+
+	call ground_capture_escape_weights(nhi, nh2, nhei, nheii, nm,        &
+	                                   y_HI, y_gnd, y_HeII)
+
+	! The coefficients of the balance: case B plus the escaping ground
+	! captures.
+	rchiiB_new   = alpha_rec_HII_net(T_K, y_HI)
+	rcheiiB_new  = alpha_rec_HeII_into_singlets(T_K, y_gnd)
+	rcheiiiB_new = alpha_rec_HeIII_net(T_K, y_HeII)
+
+	dP_HI  = 0.0d0
+	dP_HeI = 0.0d0
+	dP_H2  = 0.0d0
+	dP_m   = 0.0d0
+	if (present(dP_m2)) dP_m2 = 0.0d0
+	dheat  = 0.0d0
+	if (.not. (h_on .or. he_on)) return
+
+	! Capture coefficients and the mean kinetic energy [eV] of each
+	! continuum channel's captured electrons, beta/alpha = k T (3/2 +
+	! dln alpha/dln T) (Cool_coeff: capture_energy_loss_rate), which its
+	! photon carries above the edge.
+	a1H   = alpha_1_HI(T_K)
+	a1He  = alpha_1_HeI(T_K)
+	a1He2 = alpha_1_HeII(T_K)
+	a2He2 = alpha_n2_hydrogenic_seaton(T_K, 2.0d0)
+	aB2   = alpha_rec_HeII_B(T_K)
+	aB3   = alpha_rec_HeIII_B(T_K)
+	E1_H   = capture_kinetic_energy_eV(T_K, 1)
+	E1_He  = capture_kinetic_energy_eV(T_K, 2)
+	E1_He2 = capture_kinetic_energy_eV(T_K, 3)
+	E2_He2 = capture_kinetic_energy_eV(T_K, 4)
+
+	! Every quantity is cell-local, so the cells are shared among threads
+	! and the result does not depend on their number.
+	!$omp parallel do default(shared) schedule(static)                    &
+	!$omp    private(j, dl, P_c, t3, qa_c, qb_c, D_exit, f2s, mix, P2q,   &
+	!$omp            dPm_cell, dPm2_cell, nm_cell, kap_584, P_584_conv)
+	do j = 1-Ng,N+Ng
+		dl = dr_j(j)*R0*1.0d-18
+		nm_cell   = nm(j,:)
+		dPm_cell  = 0.0d0
+		dPm2_cell = 0.0d0
+
+		! ---- H II -> H I ----
+		if (h_on) then
+			P_c = a1H(j)*nhii(j)*ne(j)
+			call absorb_recombination_channel(ic_gnd_HI, P_c, E1_H(j), 1, &
+			        nhi(j), nhei(j), nheii(j), nh2(j), nm_cell, dl,       &
+			        dP_HI(j), dP_HeI(j), dP_H2(j), dPm_cell, dPm2_cell, dheat(j))
+		endif
+
+		if (he_on) then
+			! ---- He II -> He I ----
+			! The 584 A line opacity of the cell's He I, in the units of
+			! the continuum opacity of absorb_recombination_channel.
+			kap_584    = nhei(j)*He_I_584_mean_cross_section(T_K(j))
+			P_584_conv = 0.0d0
+			P_c = a1He(j)*nheii(j)*ne(j)
+			call absorb_recombination_channel(ic_gnd_HeI, P_c, E1_He(j), 2, &
+			        nhi(j), nhei(j), nheii(j), nh2(j), nm_cell, dl,       &
+			        dP_HI(j), dP_HeI(j), dP_H2(j), dPm_cell, dPm2_cell, dheat(j))
+			if (.not. thereis_HeITR) then
+				! atomic mode: the case-B captures through their exits (see
+				! CHANNELS above); t3 of them end in 2^3S, which radiates
+				! the 19.8 eV line (A), is converted to 2^1S (n_e q31a) or
+				! 2^1P and the higher singlets (n_e q31b), or is
+				! de-excited to 1^1S (n_e q31g), in the ratio of those
+				! rates.
+				P_c   = aB2(j)*nheii(j)*ne(j)
+				t3    = case_b_triplet_share_HeI(T_K(j))
+				qa_c  = excitation_rate_HeI_23S_21S(T_K(j))
+				qb_c  = excitation_rate_HeI_23S_21P(T_K(j))                 &
+				      + excitation_rate_HeI_23S_singlets_n3(T_K(j))
+				D_exit = A_HeI_23S_11S + ne(j)*(qa_c + qb_c                 &
+				       + deexcitation_rate_HeI_23S_11S(T_K(j)))
+				call absorb_recombination_channel(ic_19_HeI,  &
+				        t3*A_HeI_23S_11S/D_exit*P_c, 0.0d0, 0,            &
+				        nhi(j), nhei(j), nheii(j), nh2(j), nm_cell, dl,   &
+				        dP_HI(j), dP_HeI(j), dP_H2(j), dPm_cell, dPm2_cell, dheat(j))
+				call absorb_recombination_channel(ic_584_HeI, &
+				        ((1.0d0 - t3)*2.0d0/3.0d0                         &
+				         + t3*ne(j)*qb_c/D_exit)*P_c, 0.0d0, 0,           &
+				        nhi(j), nhei(j), nheii(j), nh2(j), nm_cell, dl,   &
+				        dP_HI(j), dP_HeI(j), dP_H2(j), dPm_cell, dPm2_cell, dheat(j), &
+				        kap_584, eps_HeI_21P_21S, P_584_conv)
+				call absorb_recombination_channel(ic_2q_HeI,  &
+				        f_2q_HeI*((1.0d0 - t3)/3.0d0                      &
+				         + t3*ne(j)*qa_c/D_exit)*P_c, 0.0d0, 0,           &
+				        nhi(j), nhei(j), nheii(j), nh2(j), nm_cell, dl,   &
+				        dP_HI(j), dP_HeI(j), dP_H2(j), dPm_cell, dPm2_cell, dheat(j))
+			else
+				! metastable mode: the explicit exits
+				P_c = alpha_rec_HeII_excited_singlets(T_K(j))*nheii(j)*ne(j)
+				call absorb_recombination_channel(ic_584_HeI, 2.0d0/3.0d0*P_c, &
+				        0.0d0, 0, nhi(j), nhei(j), nheii(j), nh2(j),      &
+				        nm_cell, dl, dP_HI(j), dP_HeI(j), dP_H2(j),       &
+				        dPm_cell, dPm2_cell, dheat(j),                    &
+				        kap_584, eps_HeI_21P_21S, P_584_conv)
+				call absorb_recombination_channel(ic_2q_HeI, f_2q_HeI/3.0d0*P_c, &
+				        0.0d0, 0, nhi(j), nhei(j), nheii(j), nh2(j),      &
+				        nm_cell, dl, dP_HI(j), dP_HeI(j), dP_H2(j),       &
+				        dPm_cell, dPm2_cell, dheat(j))
+				call absorb_recombination_channel(ic_19_HeI, A31*nheiTR(j), &
+				        0.0d0, 0, nhi(j), nhei(j), nheii(j), nh2(j),      &
+				        nm_cell, dl, dP_HI(j), dP_HeI(j), dP_H2(j),       &
+				        dPm_cell, dPm2_cell, dheat(j))
+				call absorb_recombination_channel(ic_2q_HeI,  &
+				        f_2q_HeI*q31a(j)*ne(j)*nheiTR(j), 0.0d0, 0,       &
+				        nhi(j), nhei(j), nheii(j), nh2(j), nm_cell, dl,   &
+				        dP_HI(j), dP_HeI(j), dP_H2(j), dPm_cell, dPm2_cell, dheat(j))
+				call absorb_recombination_channel(ic_584_HeI, &
+				        q31b(j)*ne(j)*nheiTR(j), 0.0d0, 0,                &
+				        nhi(j), nhei(j), nheii(j), nh2(j), nm_cell, dl,   &
+				        dP_HI(j), dP_HeI(j), dP_H2(j), dPm_cell, dPm2_cell, dheat(j), &
+				        kap_584, eps_HeI_21P_21S, P_584_conv)
+			endif
+			! The 584 A photons the He I scattering converted to 2^1S
+			! (each leaving a 2.06 um photon of 0.60 eV to escape) decay
+			! through the 2^1S two-photon continuum, f_2q_HeI H-ionizing
+			! photons each.
+			call absorb_recombination_channel(ic_2q_HeI,                  &
+			        f_2q_HeI*P_584_conv, 0.0d0, 0,                        &
+			        nhi(j), nhei(j), nheii(j), nh2(j), nm_cell, dl,       &
+			        dP_HI(j), dP_HeI(j), dP_H2(j), dPm_cell, dPm2_cell, dheat(j))
+
+			! ---- He III -> He II ----
+			if (nheiii(j) > 0.0d0) then
+				P_c = a1He2(j)*nheiii(j)*ne(j)
+				call absorb_recombination_channel(ic_gnd_HeII, P_c, E1_He2(j), 3, &
+				        nhi(j), nhei(j), nheii(j), nh2(j), nm_cell, dl,   &
+				        dP_HI(j), dP_HeI(j), dP_H2(j), dPm_cell, dPm2_cell, dheat(j))
+				call absorb_recombination_channel(ic_n2_HeII, &
+				        a2He2(j)*nheiii(j)*ne(j), E2_He2(j), 0,           &
+				        nhi(j), nhei(j), nheii(j), nh2(j), nm_cell, dl,   &
+				        dP_HI(j), dP_HeI(j), dP_H2(j), dPm_cell, dPm2_cell, dheat(j))
+				f2s = case_b_2s_fraction_hydrogenic(T_K(j), 2.0d0)
+				mix = nhii(j)*l_mixing_2s2p_pengelly_seaton(T_K(j),       &
+				          ne(j), 2.0d0, 1.0d0, mu_HeII_p, dE_2s2p12_HeII, &
+				          dE_2s2p32_HeII, A_2q_HeII)                      &
+				    + nheiii(j)*l_mixing_2s2p_pengelly_seaton(T_K(j),     &
+				          ne(j), 2.0d0, 2.0d0, mu_HeII_He2p,              &
+				          dE_2s2p12_HeII, dE_2s2p32_HeII, A_2q_HeII)
+				P2q = A_2q_HeII/(A_2q_HeII + mix)
+				P_c = aB3(j)*nheiii(j)*ne(j)
+				call absorb_recombination_channel(ic_lya_HeII, &
+				        P_c*(1.0d0 - f2s*P2q), 0.0d0, 0,                  &
+				        nhi(j), nhei(j), nheii(j), nh2(j), nm_cell, dl,   &
+				        dP_HI(j), dP_HeI(j), dP_H2(j), dPm_cell, dPm2_cell, dheat(j))
+				call absorb_recombination_channel(ic_2q_HeII_lo, &
+				        f_2q_HeII_lo*f2s*P2q*P_c, 0.0d0, 0,               &
+				        nhi(j), nhei(j), nheii(j), nh2(j), nm_cell, dl,   &
+				        dP_HI(j), dP_HeI(j), dP_H2(j), dPm_cell, dPm2_cell, dheat(j))
+				call absorb_recombination_channel(ic_2q_HeII_mid, &
+				        f_2q_HeII_mid*f2s*P2q*P_c, 0.0d0, 0,              &
+				        nhi(j), nhei(j), nheii(j), nh2(j), nm_cell, dl,   &
+				        dP_HI(j), dP_HeI(j), dP_H2(j), dPm_cell, dPm2_cell, dheat(j))
+				call absorb_recombination_channel(ic_2q_HeII_hi, &
+				        f_2q_HeII_hi*f2s*P2q*P_c, 0.0d0, 0,               &
+				        nhi(j), nhei(j), nheii(j), nh2(j), nm_cell, dl,   &
+				        dP_HI(j), dP_HeI(j), dP_H2(j), dPm_cell, dPm2_cell, dheat(j))
+			endif
+		endif
+		dP_m(j,:) = dPm_cell
+		if (present(dP_m2)) dP_m2(j,:) = dPm2_cell
+	enddo
+	!$omp end parallel do
+
+	end subroutine recombination_radiation_absorbed
+
+	! Mean kinetic energy [eV] of the electrons captured into the ground
+	! level of H I (1), He I (2), He II (3), and into n = 2 of He II (4):
+	! beta/alpha = k T (3/2 + dln alpha/dln T) (Cool_coeff:
+	! capture_energy_loss_rate, dlnT_capture).
+	elemental double precision function capture_kinetic_energy_eV(T, ich)
+	real*8,  intent(in) :: T
+	integer, intent(in) :: ich
+	real*8 :: a_lo, a_0, a_hi, T_lo, T_hi
+	T_lo = T*exp(-dlnT_capture)
+	T_hi = T*exp( dlnT_capture)
+	select case (ich)
+		case (1)
+			a_lo = alpha_1_HI(T_lo);  a_0 = alpha_1_HI(T);  a_hi = alpha_1_HI(T_hi)
+		case (2)
+			a_lo = alpha_1_HeI(T_lo); a_0 = alpha_1_HeI(T); a_hi = alpha_1_HeI(T_hi)
+		case (3)
+			a_lo = alpha_1_HeII(T_lo); a_0 = alpha_1_HeII(T)
+			a_hi = alpha_1_HeII(T_hi)
+		case default
+			a_lo = alpha_n2_hydrogenic_seaton(T_lo, 2.0d0)
+			a_0  = alpha_n2_hydrogenic_seaton(T,    2.0d0)
+			a_hi = alpha_n2_hydrogenic_seaton(T_hi, 2.0d0)
+	end select
+	capture_kinetic_energy_eV = capture_energy_loss_rate(T, a_lo, a_0, a_hi) &
+	                            /a_0*erg2eV
+	end function capture_kinetic_energy_eV
 
 
 	! End of module

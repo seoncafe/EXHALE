@@ -66,8 +66,9 @@ HEAT_FIXED = ('r', 'T', 'ne', 'heat_total', 'heat_HI', 'heat_HeI',
               'heat_He23S_assoc', 'heat_He23S_H2_Penning',
               'heat_H2_LW_dissoc', 'heat_H2_LW_fluor', 'heat_mol_chem',
               'heat_FUV_photolysis', 'heat_oxygen_collisional',
-              'heat_CO_Hep_transfer', 'heat_CO_photodissoc')
-# The 19 deposit channels above are heat_channel_name of util_ion_eq.f90
+              'heat_CO_Hep_transfer', 'heat_CO_photodissoc',
+              'heat_charge_exchange')
+# The 20 deposit channels above are heat_channel_name of util_ion_eq.f90
 # with the descriptive brackets stripped ('heat_Hpe[excitedH]' -> 'heat_Hpe');
 # the header of every Heating_breakdown.txt carries the full names and is
 # what the loader actually reads.

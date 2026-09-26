@@ -610,13 +610,17 @@
 
    ! --------------------------------------------------------------- !
 
-   subroutine jlya_escape_prob(T_K, nhi, nhii, ne, v_in, Jlya, tau)
+   subroutine jlya_escape_prob(T_K, nhi, nhii, nheii, nheiii, ne, v_in,   &
+                               Jlya, tau)
    ! Voigt-averaged Ly-alpha mean intensity J_lya(r) [erg s^-1 cm^-2 Hz^-1 sr^-1]
    ! by the escape-probability method, and the line-centre optical depth
    ! tau(r) at each cell's inner face.
-   ! T_K/nhi/nhii/ne are physical (cgs) cell-by-cell arrays; v_in is the dimensionless
-   ! radial velocity (v_in*v0 = cm/s). Called in-line from excited_H_update.
-   real*8, dimension(1-Ng:N+Ng), intent(in)  :: T_K, nhi, nhii, ne, v_in
+   ! T_K/nhi/nhii/nheii/nheiii/ne are physical (cgs) cell-by-cell arrays
+   ! (the ions are the l-mixing colliders of the 2s level); v_in is the
+   ! dimensionless radial velocity (v_in*v0 = cm/s). Called in-line from
+   ! excited_H_update.
+   real*8, dimension(1-Ng:N+Ng), intent(in)  :: T_K, nhi, nhii, nheii,  &
+                                                nheiii, ne, v_in
    real*8, dimension(1-Ng:N+Ng), intent(out) :: Jlya, tau
 
    integer :: j, jm, jp
@@ -718,7 +722,8 @@
       ! The (1-beta) factor makes Jbar -> S in the thick limit and -> 0 when thin
       ! (beta -> 1), instead of the source function S diverging as n1s -> 0 in the
       ! ionized outer wind (which spuriously raised Jbar outward).
-      D2p   = n2p_destruction_rate(Tl, ne(j), gamma2_bal, gamma2_bal)
+      D2p   = n2p_destruction_rate(Tl, ne(j), nhii(j), nheii(j),         &
+                                   nheiii(j), gamma2_bal, gamma2_bal)
       Jint  = Jpref*(g1s/g2p)*(Prec + Pcol)*(1.0d0 - beta_tot)             &
             /(max(A_2p1s*beta_tot + D2p, 1.0d-30)*max(nhi(j),1.0d-30))
 

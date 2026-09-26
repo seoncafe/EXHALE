@@ -82,7 +82,7 @@
       ! fid_resolve (LHS 1140 b, He_Kzz = 1e9, He_diffusion on, 500 cells to
       ! 29 R_p), with the code's own non-resonant ion-neutral coefficients
       ! and the resonant charge-exchange channel they exclude added at
-      ! sigma = 2e-15 cm^2 (docs/collisional_validity.md section 1):
+      ! sigma = 2e-15 cm^2 (md/collisional_validity.md section 1):
       !
       !   |w/v| stays below 0.1 only inside r = 1.22 R_p (H) and 1.24 R_p
       !   (He); over r >= 1.2 R_p it reaches 0.62 (H) and 0.43 (He) without

@@ -9,7 +9,8 @@
 	                         base_ghost_electron_count,                 &
 	                         r_base_level, base_reservoir_p,            &
                             base_reservoir_T, base_face_mach_blend
-	use charge_exchange, only: he_h_charge_exchange, cx_o2p_h_scale
+	use charge_exchange, only: he_h_charge_exchange, cx_o2p_h_scale,      &
+	                           cx_n2p_h_scale
 	! Which spectrum built the grid; the single record of the choice.
 	use J_incident,      only: spectrum_is_planck, loaded_table_floor_eV
 	use sed_reader,      only: photon_grid_floor_eV
@@ -24,6 +25,8 @@
 	                     restart_option_change_given,                   &
 	                     ic_option_change_applied, ic_option_change_inert
 	use Read_input,      only: base_level_source, carrier_newton_on_stall
+	use grid_construction, only: domain_outer_radius, mixed_stretch_ratio, &
+	                     outer_shells_width_ratio
 	use composition,     only: h2_mixing_ratio_base, h2_mixing_ratio_ceiling
 	use diffusive_photochemistry, only: carrier_co_domain_record,        &
 	                     carrier_co_domain_f_dom
@@ -110,7 +113,7 @@
 		                 ' for the state this run writes'
 	endif
 	write(outfile,10) &
-      ' - Upper boundary of the domain: ', r_max, ' [R_p]'
+      ' - Upper boundary of the domain: ', domain_outer_radius(), ' [R_p]'
 	if (spherical_domain) then
 		write(outfile,*) &
          '- Domain mode: Spherical (pure planetary potential, '          // &
@@ -220,6 +223,19 @@
 				write(outfile,*) &
       '  of the refreshed state either way.'
 			endif
+			! Stated only when it is not the default, so the report of a
+			! run without the key is the one it always was.
+			if (composition_update_holds_pressure) then
+				write(outfile,*) &
+      '  and "Composition update holds: pressure": the composition'//      &
+      ' update of the stationary alternation keeps rho, v and p of'
+				write(outfile,*) &
+      '  every cell, T follows from p at the new particle count and E'//    &
+      ' is rebuilt from the caloric EOS of the new composition'
+				write(outfile,*) &
+      '  (the default holds the conserved E and moves p). The energy'//     &
+      ' the rebuild adds is printed at every pass.'
+			endif
 			if (maxval(kzz_cell) .le. 0.0d0) write(outfile,*) &
       '  WARNING K_zz = 0 everywhere, so the transport is pure molecular'//&
       ' diffusion -- the wrong limit for a lower atmosphere,'
@@ -250,7 +266,7 @@
       ' the helium of HeH+'
 		write(outfile,*) &
       '  (for a wind in which P r/|v| < 1 the local root over-ionizes;'//  &
-      ' docs/k22_electron_density_excess.md sec. 7)'
+      ' md/k22_electron_density_excess.md sec. 7)'
 		if (thereis_mol) then
 			write(outfile,*) &
       '  the source of each stage row is rows (1), (2) and (3) of the'//   &
@@ -404,10 +420,10 @@
          ' H+ and He+ radiative recombination are the Storey & Hummer'
 		write(outfile,*) &
          '   (1995) power laws 4.0e-12 and 4.6e-12 (300/T)^0.64 in place'// &
-         ' of the Badnell/Mao case B; H and He collisional ionization are'
+         ' of the Badnell/Milne case B; H and He collisional ionization'
 		write(outfile,*) &
-         '   the Voronov (1997) fit, which is the default set as well.'//   &
-         ' Recombination COOLING is unchanged.'
+         '   are the Voronov (1997) fit, which is the default set as'//     &
+         ' well. The recombination cooling follows the coefficients.'
 	endif
 	if (do_read_sed) &
 		write(outfile,*) & 
@@ -497,6 +513,25 @@
 	else
 		write(outfile,*) '- Base grid: "Base grid [dr,cells]" is ignored'//&
 			' by grid type '//trim(grid_type)//' (Mixed only)'
+	endif
+	! The shells beyond the constructed grid, where the two faces are and
+	! the three width ratios that say whether the stretch continues across
+	! the old outer face: the ratio of the shells (set by their cell
+	! count), the ratio of the constructed grid's stretched region, and the
+	! jump dr(nc+1)/dr(nc) at the old outer face itself.
+	if (n_outer_shells .gt. 0) then
+		write(outfile,'(A,I0,A,I0,A)') ' - Outer shells: ',               &
+			n_outer_shells, ' cells beyond the constructed grid of ',      &
+			N - n_outer_shells, ' cells'
+		write(outfile,'(A,ES23.16,A,ES23.16,A)')                           &
+			'   outer face of the constructed grid ',                      &
+			r_edg(N - n_outer_shells), ' R_p, of the shells ', r_edg(N),   &
+			' R_p'
+		write(outfile,'(A,F12.8,A,F12.8,A,F12.8)')                         &
+			'   width ratio of the shells ', outer_shells_width_ratio,      &
+			'; of the Mixed stretched region ', mixed_stretch_ratio,       &
+			'; across the old outer face ',                                &
+			dr_j(N - n_outer_shells + 1)/dr_j(N - n_outer_shells)
 	endif
 	! Resolution of the base density scale height H = kT_eq/(mu g) in cells:
 	! b0 = R_p/H(T_eq) is the Jeans parameter, dr_j(1) the first cell size
@@ -684,7 +719,7 @@
 	subroutine write_parse_dump
 	! Dump every variable input_read derives from input.inp (plus any base.inp
 	! override) to parse_dump.txt, one "name = value" line per variable, in the
-	! docs/input_schema.md key order. Gated by EXHALE_PARSE_DUMP=1 in
+	! md/input_schema.md key order. Gated by EXHALE_PARSE_DUMP=1 in
 	! EXHALE_main and used by the parser-refactor regression corpus
 	! (backup/regression/run_parse_corpus.sh). metals.inp / opacity.inp
 	! variables are out of scope (separate parsers). Values are the final
@@ -697,7 +732,7 @@
 	open(newunit=u, file='parse_dump.txt', status='replace', action='write')
 
 	write(u,'(A)') '# EXHALE parse dump (EXHALE_PARSE_DUMP=1): variables set by input_read'
-	write(u,'(A)') '# order follows docs/input_schema.md; cgs where input_read converts'
+	write(u,'(A)') '# order follows md/input_schema.md; cgs where input_read converts'
 
 	! ----- core block (fixed order) -----
 	call put_s('p_name', p_name)
@@ -744,6 +779,12 @@
 	call put_i('N', N)
 	call put_r('dr_base', dr_base)
 	call put_i('N_low_cells', N_low_cells)
+	! Only when "Outer shells" is given, so that every parse-corpus case
+	! without the key dumps exactly what it dumped before.
+	if (n_outer_shells .gt. 0) then
+		call put_i('n_outer_shells', n_outer_shells)
+		call put_r('r_outer_shells_face', r_outer_shells_face)
+	endif
 	call put_s('flux', flux)
 	call put_s('rec_method', rec_method)
 	call put_l('use_weno3', use_weno3)
@@ -785,8 +826,10 @@
 	call put_l('atomic_rate_set_k22', atomic_rate_set_k22)
 	call put_l('use_sec_ion', use_sec_ion)
 	call put_l('use_he_rec_coupling', use_he_rec_coupling)
+	call put_l('use_h_rec_escape', use_h_rec_escape)
 	call put_l('he_h_charge_exchange', he_h_charge_exchange)
 	call put_r('cx_o2p_h_scale', cx_o2p_h_scale)
+	call put_r('cx_n2p_h_scale', cx_n2p_h_scale)
 	call put_l('thereis_mol', thereis_mol)
 	call put_s('h2_double_ionization', h2_double_ionization)
 	call put_l('h2_neutral_dissociation', h2_neutral_dissociation)
@@ -952,7 +995,10 @@
 	! digits. base_grid_in_effect is F for the Uniform and Stretched grid
 	! types, which ignore the width and the cell count.
 	write(u,'(A,A)')      'grid_type                 ', trim(grid_type)
-	write(u,'(A,I0)')     'grid_cells                ', N
+	! The "Grid cells" of the constructed grid; the shells, when there
+	! are any, are the two lines after base_grid_in_effect, and the run
+	! solves on grid_cells + outer_shells_cells cells.
+	write(u,'(A,I0)')     'grid_cells                ', N - n_outer_shells
 	write(u,'(A,A)')      'outer_radius_Rp           ',                  &
 		trim(round_trip_decimal(r_max))
 	write(u,'(A,A)')      'base_cell_width_Rp        ',                  &
@@ -965,11 +1011,16 @@
 	endif
 	write(u,'(A,L1)')     'base_grid_in_effect       ',                  &
 		grid_type .eq. 'Mixed'
+	if (n_outer_shells .gt. 0) then
+		write(u,'(A,I0)')  'outer_shells_cells        ', n_outer_shells
+		write(u,'(A,A)')   'outer_shells_face_Rp      ',                  &
+			trim(round_trip_decimal(r_outer_shells_face))
+	endif
 	! Which set of atomic H/He rate coefficients the run used: 'K22' = the
 	! four Koskinen et al. (2022) Table 1 entries R1-R4 selected by "Atomic
-	! rate set:", 'default' = EXHALE's own (Badnell/Mao case B, or the
-	! legacy ATES fits under Legacy_HHe_rates). Recombination cooling is
-	! unaffected either way.
+	! rate set:", 'default' = EXHALE's own (Badnell/Milne case B, or the
+	! legacy ATES fits under Legacy_HHe_rates). The recombination cooling
+	! follows the coefficients either way.
 	if (atomic_rate_set_k22) then
 		write(u,'(A)')     'atomic_rate_set           K22'
 	else
@@ -993,6 +1044,10 @@
 	write(u,'(A,L1)')     'carrier_transport         ', carrier_transport
 	write(u,'(A,L1)')     'carrier_in_newton         ', carrier_in_newton
 	write(u,'(A,L1)')     'carrier_newton_on_stall   ', carrier_newton_on_stall
+	! Written only for the non-default value; a file without the line is
+	! a run whose composition update held the conserved energy.
+	if (composition_update_holds_pressure)                              &
+		write(u,'(A)')     'composition_update_holds  pressure'
 	write(u,'(A,L1)')     'ionization_transport      ', ionization_transport
 	write(u,'(A,L1)')     'oxygen_chemistry          ', thereis_oxychem
 	if (thereis_oxychem) then
@@ -1058,9 +1113,9 @@
 	! solution the wind was built on.
 	call lap_report_provenance(u)
 	! The elemental fluxes measured over the overlap window. Reported only
-	! when a diffusion step has actually produced them: this routine also
-	! runs before the wind, and an unmeasured flux must say so rather than
-	! print a zero.
+	! when the certification has measured a state and produced them: this
+	! routine also runs before the wind, and an unmeasured flux must say so
+	! rather than print a zero.
 	if (lap_in_use) then
 		if (.not. lap_flux_measured) then
 			write(u,'(A)') 'lower_profile_flux_state  unmeasured'
@@ -1081,8 +1136,8 @@
 				write(u,'(A,I0)') 'lower_profile_flux_nface  ', 0
 				write(u,'(A)') '# The overlap window is empty: the profile'//&
 					' stops at or below the radius'
-				write(u,'(A)') '# where the base sound wave leaves the'//    &
-					' mass flux flat, so no face of the'
+				write(u,'(A)') '# from which the face mass flux of the'//   &
+					' state is constant, so no face of the'
 				write(u,'(A)') '# interval both models describe carries a'// &
 					' usable elemental flux.  The'
 				write(u,'(A)') '# steady_* window below is then the only'//  &

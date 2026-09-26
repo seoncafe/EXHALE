@@ -1,28 +1,37 @@
 #!/usr/bin/env python3
-"""Generate docs/Update_EXHALE_stage2.tex from docs/Update_EXHALE_stage2.md.
+"""Generate docs/Update_EXHALE_stage<N>.tex from md/Update_EXHALE_stage<N>.md.
 
 The Markdown log is the file the entries are appended to; the TeX file is
 its typeset twin in the memo class the earlier stage logs use
 (docs/my_memo.cls). Pandoc converts the body; this script supplies the
-preamble and the macros Pandoc's LaTeX writer expects.
+preamble and the macros Pandoc's LaTeX writer expects. One script for every
+stage log: the stage is the argument, and STAGES below holds what differs
+between them (the start date in the title, and the appendix).
 
-The appendices are not in the Markdown log. They live in
-docs/Update_EXHALE_appendix.tex, which is written by hand, and the postamble
-below emits \\appendix and \\input{Update_EXHALE_appendix} after the converted
-body; the path is relative to docs/, where latexmk runs. Regenerate after
-appending to the log or editing the appendix:
+The appendices are not in the Markdown logs. The code-size appendix lives in
+docs/Update_EXHALE_appendix.tex, which is written by hand; for a stage whose
+entry in STAGES names it, the postamble emits \\appendix and
+\\input{Update_EXHALE_appendix} after the converted body (the path is
+relative to docs/, where latexmk runs). It follows the current log: it was
+input by the stage 2 twin until 2026-09-25 and by the stage 3 twin since.
+Regenerate after appending to a log or editing the appendix:
 
-    python3 src/utils/update_log_to_tex.py
-    cd docs && latexmk -pdf Update_EXHALE_stage2.tex
+    python3 src/utils/update_log_to_tex.py 3
+    cd docs && latexmk -pdf Update_EXHALE_stage3.tex
 """
 import os, re, subprocess, sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-MD = os.path.join(ROOT, 'docs', 'Update_EXHALE_stage2.md')
-TEX = os.path.join(ROOT, 'docs', 'Update_EXHALE_stage2.tex')
 
-PREAMBLE = r"""%% EXHALE: running update log, stage 2 (from 2026-09-05).
-%% GENERATED from Update_EXHALE_stage2.md by src/utils/update_log_to_tex.py;
+# What differs between the stage logs: the first day of each, which the title
+# carries, and the appendix fragment its postamble inputs (None for none).
+STAGES = {
+    2: dict(start='2026-09-05', appendix=None),
+    3: dict(start='2026-09-23', appendix='Update_EXHALE_appendix'),
+}
+
+PREAMBLE = r"""%% EXHALE: running update log, stage STAGE (from START).
+%% GENERATED from Update_EXHALE_stageSTAGE.md by src/utils/update_log_to_tex.py;
 %% edit the Markdown, not this file.
 %% Author: Kwang-Il Seon
 \documentclass[english,a4paper]{my_memo}
@@ -46,7 +55,7 @@ PREAMBLE = r"""%% EXHALE: running update log, stage 2 (from 2026-09-05).
 \sloppy
 \begin{document}
 
-\title{EXHALE: Update Log (stage 2, from 2026-09-05)}
+\title{EXHALE: Update Log (stage STAGE, from START)}
 \author{Kwang-Il Seon}
 \date{Last updated: \docmoddate}
 \maketitle
@@ -55,12 +64,24 @@ PREAMBLE = r"""%% EXHALE: running update log, stage 2 (from 2026-09-05).
 \bigskip
 
 """
-# \appendix then the hand-maintained appendix fragment, then the end of
-# the document. The \input path is relative to docs/, the directory
-# latexmk runs in.
-POSTAMBLE = "\n\\appendix\n\\input{Update_EXHALE_appendix}\n\\end{document}\n"
+
+def postamble(appendix):
+    """The end of the document: \\appendix and the hand-maintained appendix
+    fragment for a stage that carries one, then \\end{document}."""
+    if appendix:
+        return "\n\\appendix\n\\input{" + appendix + "}\n\\end{document}\n"
+    return "\n\\end{document}\n"
 
 def main():
+    if len(sys.argv) != 2 or not sys.argv[1].isdigit() \
+            or int(sys.argv[1]) not in STAGES:
+        sys.exit('usage: python3 src/utils/update_log_to_tex.py <stage>, '
+                 'stage one of ' + ', '.join(str(k) for k in sorted(STAGES)))
+    stage = int(sys.argv[1])
+    MD = os.path.join(ROOT, 'md', 'Update_EXHALE_stage%d.md' % stage)
+    TEX = os.path.join(ROOT, 'docs', 'Update_EXHALE_stage%d.tex' % stage)
+    head = (PREAMBLE.replace('STAGE', str(stage))
+                    .replace('START', STAGES[stage]['start']))
     md = open(MD).read()
     # The first line is the document title, carried by \title above.
     md = re.sub(r'^# .*\n', '', md, count=1)
@@ -83,7 +104,7 @@ def main():
     body = body.replace('\\begin{longtable}', '{\\small\n\\begin{longtable}')
     body = body.replace('\\end{longtable}', '\\end{longtable}\n}')
     with open(TEX, 'w') as f:
-        f.write(PREAMBLE + body + POSTAMBLE)
+        f.write(head + body + postamble(STAGES[stage]['appendix']))
     print('wrote', TEX, len(body.splitlines()), 'body lines')
 
 if __name__ == '__main__':

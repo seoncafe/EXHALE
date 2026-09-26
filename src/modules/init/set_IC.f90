@@ -18,7 +18,7 @@
 	use oxygen_rates, only: co_equilibrium_density,                   &
 	                        oxygen_chemical_equilibrium_fractions
 	use grav_func
-	use grid_construction, only: cell_nearest_radius
+	use grid_construction, only: cell_nearest_radius, domain_outer_radius
 
 	implicit none
 
@@ -117,7 +117,7 @@
 			! hydrostatic profile inside the region the IC has to
 			! resolve. cell_nearest_radius turns the position minloc
 			! returns into a subscript of the 1-Ng:N+Ng grid arrays.
-			r_half = 0.5e0*(r_max + 1.0e0)
+			r_half = 0.5e0*(domain_outer_radius() + 1.0e0)
 			i_rhalf = cell_nearest_radius(r_half)
 			minrho = W(1,i_rhalf)
 
@@ -426,7 +426,8 @@
 	!-------------------------------------------------------!
 
 	subroutine find_sonic(c2, rc, have_rc)
-	! Locate the transonic (sonic) point r_c in [r(0), r_max] where the
+	! Locate the transonic (sonic) point r_c in [r(0), r_out] (r_out the
+	! outer radius of the domain, domain_outer_radius) where the
 	! isothermal-wind critical condition Dphi(r_c) = 2*c2/r_c holds.
 	! f(r) = Dphi(r) - 2*c2/r is > 0 at the base (gravity dominated) and turns
 	! negative toward L1 (Dphi -> 0 there in Roche mode).  Bisection on the
@@ -441,7 +442,7 @@
 	integer :: it
 
 	rlo = r(0)
-	rhi = r_max
+	rhi = domain_outer_radius()
 	flo = Dphi(rlo) - 2.0d0*c2/rlo
 	fhi = Dphi(rhi) - 2.0d0*c2/rhi
 

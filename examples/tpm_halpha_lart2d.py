@@ -19,7 +19,8 @@ Pipeline
   LaRT h5     -> Pa_2D[iz, irho]  (scattering rate, *unit luminosity*)
   P_alpha(rho,z) = Pa_2D * L_lya            L_lya = F_lya*4pi a^2 / (h nu_lya)  [photons/s]
   J_lya,eff(rho,z) = P_alpha / B12_lya      (so B12*J = P_alpha = the 1s->2p pump)
-  n_2p(rho,z) = Christie+2013 rate equilibrium (same as TPM.n2_populations)
+  n_2p(rho,z) = the 2s/2p rate equilibrium of exhale_transit_lib.n2_populations
+                (the solver's rates; imported, not restated)
   tau(b,nu)   = int n_2p(rho=b, z) sigma_Ha(nu, v_LOS, T) dz,   v_LOS = v(r) z/r
   disk-average over impact parameter b -> H-alpha transmission spectrum
 
@@ -54,6 +55,11 @@ import h5py
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import exhale_io as aio   # noqa: E402
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# The n = 2 rate equilibrium, the Balmer-continuum rate and the Ly-alpha
+# coefficients are those of the transit post-processor, which carries the
+# solver's rates (hydrogen_n2_rates.f90, excited_hydrogen.f90).
+import exhale_transit_lib as etl   # noqa: E402
 
 # ---- constants (SI, matching EXHALE_transit.py) ----
 # The Jupiter radius is defined once, as RJ_CM of exhale_io (the IAU 2015
@@ -82,63 +88,14 @@ f_Ha_2p = 0.70941     # 2p -> 3s (0.01361) + 2p -> 3d (0.69580)
 A12_Ha = 4.4101e7
 Fadd_const = np.sqrt(np.pi) * echg**2 / (4.0 * np.pi * E0 * me * c_l)
 
-# Ly-alpha 1s<->2p pumping (cgs B coefficients, as in EXHALE_transit.py)
-lA      = 1215.6701e-10
-nu_Lya  = c_l / lA
-A_2p1s  = 6.3e8
-g1s, g2s, g2p = 2.0, 2.0, 6.0
-c_cgs, h_cgs, kb_cgs = 2.99792458e10, 6.62607015e-27, 1.380649e-16
-eV2Hz = 2.417989242e14
-B21_lya = A_2p1s * c_cgs**2 / (2.0 * h_cgs * nu_Lya**3)
-B12_lya = (g2p / g1s) * B21_lya
-A_2s1s  = 8.26
+# Ly-alpha 1s<->2p pumping coefficients: the post-processor's own, so the
+# pump B12*J and the n = 2 balance below use one set of constants.
+B21_lya = etl.B21_lya
+B12_lya = etl.B12_lya
 
 
-def gamma_n2_balmer(T_star, R_over_a):
-    """n=2 photoionization rate [s^-1] from a diluted stellar blackbody Balmer
-    continuum (E > 3.4 eV).  Same as TPM.gamma_n2_balmer.  R_over_a = R_star/a."""
-    if T_star <= 0.0:
-        return 0.0
-    E2   = 3.40
-    nu2  = E2 * eV2Hz
-    s2th = 1.4e-17
-    Eg   = np.linspace(E2, 13.6, 400)
-    nu   = Eg * eV2Hz
-    Bnu  = (2.0 * h_cgs * nu**3 / c_cgs**2) / (np.exp(h_cgs * nu / (kb_cgs * T_star)) - 1.0)
-    Fnu  = np.pi * Bnu * R_over_a**2
-    sig2 = s2th * (nu2 / nu)**3
-    return np.trapz(Fnu / (h_cgs * nu) * sig2, nu)
-
-
-def n2_populations(T, n1s, nHII, ne, Jlya, G2s=0.0, G2p=0.0):
-    """Christie+2013 2s/2p rate equilibrium -> (n2s, n2p, n2tot) [cm^-3].
-    G2s, G2p are the n=2 Balmer-continuum photoionization sinks [s^-1]."""
-    T  = np.maximum(T, 1.0)
-    t4 = T / 1.0e4
-    aB  = 2.54e-13 * t4**(-0.8163 - 0.0208 * np.log(t4))
-    a2s = (0.282 + 0.047 * t4 - 0.006 * t4**2) * aB
-    a2p = aB - a2s
-    C1s2s = 1.21e-8 * (1.0 / t4)**0.455 * np.exp(-118400.0 / T)
-    C1s2p = 1.71e-8 * (1.0 / t4)**0.077 * np.exp(-118400.0 / T)
-    C2s2p = 6.21e-5 * (np.log(T / 1.02) - 0.57721) / np.sqrt(T)
-    C2s1s = 1.21e-8 * (1.0 / t4)**0.455 * (g1s / g2s)
-    C2p1s = 1.71e-8 * (1.0 / t4)**0.077 * (g1s / g2p)
-    C2p2s = C2s2p * (g2s / g2p)
-    Ppump = B12_lya * Jlya
-    Pstim = B21_lya * Jlya
-    L2p = A_2p1s + Pstim + (C2p1s + C2p2s) * ne + G2p
-    L2s = (C2s1s + C2s2p) * ne + A_2s1s + G2s
-    # Cascade source alpha_2l*ne*nHII: the recombining partner is a proton,
-    # and ne >> nHII wherever helium and metals supply the electrons.
-    S2p = (Ppump + C1s2p * ne) * n1s + a2p * ne * nHII
-    S2s = (C1s2s * ne) * n1s + a2s * ne * nHII
-    M12 = C2s2p * ne
-    M21 = C2p2s * ne
-    det = L2p * L2s - M12 * M21
-    det = np.where(np.abs(det) > 0.0, det, 1.0)
-    n2p = np.maximum((S2p * L2s + M12 * S2s) / det, 0.0)
-    n2s = np.maximum((L2p * S2s + M21 * S2p) / det, 0.0)
-    return n2s, n2p, n2s + n2p
+gamma_n2_balmer = etl.gamma_n2_balmer
+n2_populations = etl.n2_populations
 
 
 def read_lart_pa2d(h5file):
@@ -211,6 +168,10 @@ def build_n2p_2d(run, Pa, z, rho, L_lya, fluxfac=1.0, T_star=0.0, R_over_a=0.0,
     nHI_g = np.interp(rad, r, nHI, left=nHI[0], right=0.0)
     ne_g  = np.interp(rad, r, ne,  left=ne[0],  right=0.0)
     nHII_g = np.interp(rad, r, nHII, left=nHII[0], right=0.0)
+    nHeII_g = np.interp(rad, r, np.asarray(run.ion['HeII'], float),
+                        left=run.ion['HeII'][0], right=0.0)
+    nHeIII_g = np.interp(rad, r, np.asarray(run.ion['HeIII'], float),
+                         left=run.ion['HeIII'][0], right=0.0)
     Palpha = Pa * L_lya * fluxfac              # [s^-1 atom^-1]  (fluxfac = Omega_star/4pi)
     if Pa1 is not None and L_insitu > 0.0:
         # In-situ diffuse Ly-alpha volume source: radial profile, NO fluxfac.
@@ -219,7 +180,8 @@ def build_n2p_2d(run, Pa, z, rho, L_lya, fluxfac=1.0, T_star=0.0, R_over_a=0.0,
         Palpha = Palpha + Palpha_insitu
     Jlya_eff = Palpha / B12_lya
     G2 = gamma_n2_balmer(T_star, R_over_a)     # n=2 Balmer-continuum photoionization sink
-    n2s, n2p, _ = n2_populations(T_g, nHI_g, nHII_g, ne_g, Jlya_eff, G2s=G2, G2p=G2)
+    n2s, n2p, _ = n2_populations(T_g, nHI_g, nHII_g, nHeII_g, nHeIII_g, ne_g,
+                                 Jlya_eff, G2s=G2, G2p=G2)
     # The LaRT Ly-alpha field (Jlya_eff, built from Pa) pumps ONLY 1s->2p inside
     # n2_populations (the pump enters the 2p source term, not 2s), so using the
     # LaRT scattering rate here is the correct 1s->2p pumping. The 2s population

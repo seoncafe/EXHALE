@@ -98,7 +98,8 @@
       implicit none
       private
       public :: conservation_budget_exports_left,                        &
-                write_conservation_budget_terms
+                write_conservation_budget_terms,                         &
+                conservation_budget_request_next
 
       ! How many further assemblies are to be exported. Negative means the
       ! environment has not been read yet; zero means nothing more is
@@ -108,6 +109,9 @@
       ! Index of the export about to be written, so that the file name and
       ! the header of each one say which assembly of the process it is.
       integer, save :: export_index = 0
+      ! The name of the state the next export belongs to, set by a
+      ! stage-labeled request and cleared by the export that consumes it.
+      character(len=96), save :: pending_label = ''
 
       contains
 
@@ -135,6 +139,24 @@
       endif
       more = (exports_left .gt. 0)
       end function conservation_budget_exports_left
+
+      ! ------------------------------------------------------!
+
+      subroutine conservation_budget_request_next(label)
+      ! EXPORT THE NEXT ASSEMBLY UNDER A NAME, whatever the environment
+      ! asked for.  The stage export of the stationary alternation
+      ! (EXHALE_STAGE_EXPORT in EXHALE_main.f90) calls this at the state it
+      ! names, so that the export is identified by the state it was
+      ! assembled on and not by a count of assemblies, which finite-
+      ! difference probes and trial evaluations also consume.  The next
+      ! assembly after the request is the one exported; the label goes into
+      ! its header.  It adds to any count EXHALE_CONSERVATION_BUDGET set.
+      character(len=*), intent(in) :: label
+      logical :: read_once
+      read_once = conservation_budget_exports_left()
+      exports_left = exports_left + 1
+      pending_label = label
+      end subroutine conservation_budget_request_next
 
       ! ------------------------------------------------------!
 
@@ -239,6 +261,10 @@
 
       write(uu,'(A)') '# EXHALE conservation_budget schema 1'
       write(uu,'(A,I0)') '# export index in this process: ', export_index
+      if (len_trim(pending_label) .gt. 0) then
+         write(uu,'(A,A)') '# stage: ', trim(pending_label)
+         pending_label = ''
+      endif
       call write_provenance_header(uu)
       call write_coupling_state_header(uu)
       write(uu,'(A,I0,A,I0,A,I0,A,I0,A,I0)') '# rows ', N+2*Ng-1,        &

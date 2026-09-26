@@ -44,8 +44,9 @@
    use lya_rt, only: jlya_escape_prob, jint_arr, jstar_arr,                  &
                      lya_line_center_optical_depth,                         &
                      lya_photosphere_attenuation_cell_mean
-   ! n=2 / Ly-alpha atomic data and collisional rate coefficients
-   ! (Christie+2013 Table 2, Draine 2011); one definition, shared with lya_rt.
+   ! n=2 / Ly-alpha atomic data and collisional rate coefficients (see the
+   ! header of hydrogen_n2_rates for the sources); one definition, shared
+   ! with lya_rt and with the H I cooling of Cool_coeff.
    use hydrogen_n2_rates
    ! The stellar field the Balmer continuum is photoionized by, the n = 2
    ! ionization threshold that heads it, and the frequency of a
@@ -61,8 +62,16 @@
    implicit none
 
    ! ----- Balmer-continuum (n=2 photoionization) data ----- !
-   ! sigma_2 at the n = 2 edge; the hydrogenic continuum of Osterbrock &
-   ! Ferland (2006) falls as (e_th_HI_n2/E)^3 above it.
+   ! sigma_2 at the n = 2 edge [cm^2], one value for 2s and 2p, taken to
+   ! fall as (e_th_HI_n2/E)^3 above it (the Kramers frequency dependence).
+   ! 1.4e-17 is Seaton (1959, MNRAS 119, 81) at the n = 2 edge: his eq. (3)
+   ! Kramers cross section 1.5814e-17 times his eq. (10) Gaunt factor
+   ! g_II(2, 0) = 0.8715 gives 1.378e-17 (DERIVED). The exact hydrogenic
+   ! values are 1.478e-17 (2s) and 1.355e-17 (2p), statistical mean
+   ! 1.386e-17 (DERIVED by integrating the bound-free dipole matrix
+   ! elements). Osterbrock & Ferland (2006) give no n = 2 value (their
+   ! eq. 2.4 is the 1s cross section), and Christie, Arras & Li (2013),
+   ! whose level balance this module solves, leave sigma_2s,2p unstated.
    real*8, parameter :: s2_thr   = 1.4d-17             ! sigma_2 at threshold [cm^2]
 
    ! ----- Ly-alpha pumping (parameterized J_lya) data ----- !
@@ -210,7 +219,8 @@
    else if (jlya_mode .eq. 2) then
       ! (c) In-line escape-probability RT (Neufeld/Harrington wing escape),
       ! evaluated from the current state every timestep. Fills taulya too.
-      call jlya_escape_prob(T_K, nhi, nhii, ne, v_in, Jlya_arr, taulya)
+      call jlya_escape_prob(T_K, nhi, nhii, nheii, nheiii, ne, v_in,     &
+                            Jlya_arr, taulya)
    else
       ! (a) Parameterized J_lya = 0.1 F_LyC/Dnu_D (Huang+2017 Eq. 6), attenuated
       ! by 1/(1+tau_lya) with tau_lya the top-down line-centre Ly-alpha optical
@@ -237,6 +247,7 @@
       chem_n2 = dissociative_recombination_n2_source(T_K(j),               &
                        n_h2p_mol(j), n_hehp_mol(j), max(ne(j),0.0d0))
       call n2_populations(T_K(j), max(nhi(j),0.0d0), max(nhii(j),0.0d0),    &
+                          max(nheii(j),0.0d0), max(nheiii(j),0.0d0),        &
                           max(ne(j),0.0d0), Jlya_arr(j),                    &
                           gamma2_bal, gamma2_bal, chem_n2, n2s, n2p)
       n2tot = n2s + n2p
@@ -284,7 +295,7 @@
 
    ! --------------------------------------------------------------- !
 
-   subroutine n2_populations(T, n1s, nHII_l, ne_l, Jlya,                     &
+   subroutine n2_populations(T, n1s, nHII_l, nHeII_l, nHeIII_l, ne_l, Jlya, &
                              gam_ion_2s, gam_ion_2p, chem_n2, n2s, n2p)
    ! Christie+2013 Eqs. 12-13: solve the 2x2 2s/2p rate equilibrium for the
    ! H(n=2) populations [cm^-3]. T in K, densities in cm^-3, Jlya in cgs
@@ -300,14 +311,16 @@
    ! [cm^-3 s^-1]; see n2_rate_matrix for what it is and how it is split
    ! between the two levels.
 
-   real*8, intent(in)  :: T, n1s, nHII_l, ne_l, Jlya, gam_ion_2s, gam_ion_2p
+   real*8, intent(in)  :: T, n1s, nHII_l, nHeII_l, nHeIII_l, ne_l, Jlya
+   real*8, intent(in)  :: gam_ion_2s, gam_ion_2p
    real*8, intent(in)  :: chem_n2
    real*8, intent(out) :: n2s, n2p
 
    real*8 :: L2p, L2s, S2p, S2s, M12, M21, det
 
-   call n2_rate_matrix(T, n1s, nHII_l, ne_l, Jlya, gam_ion_2s,            &
-                       gam_ion_2p, chem_n2, L2p, L2s, S2p, S2s, M12, M21)
+   call n2_rate_matrix(T, n1s, nHII_l, nHeII_l, nHeIII_l, ne_l, Jlya,     &
+                       gam_ion_2s, gam_ion_2p, chem_n2,                   &
+                       L2p, L2s, S2p, S2s, M12, M21)
 
    det = L2p*L2s - M12*M21
    if (abs(det) .le. 0.0d0) det = 1.0d0
@@ -319,9 +332,9 @@
 
    ! --------------------------------------------------------------- !
 
-   subroutine n2_rate_matrix(T, n1s, nHII_l, ne_l, Jlya, gam_ion_2s,      &
-                             gam_ion_2p, chem_n2, L2p, L2s, S2p, S2s,     &
-                             M12, M21)
+   subroutine n2_rate_matrix(T, n1s, nHII_l, nHeII_l, nHeIII_l, ne_l,     &
+                             Jlya, gam_ion_2s, gam_ion_2p, chem_n2,       &
+                             L2p, L2s, S2p, S2s, M12, M21)
    ! The 2x2 rate matrix and source vector of the 2s/2p statistical
    ! equilibrium (Christie+2013 Eqs. 12-13), the ONE definition of the
    ! coefficients: n2_populations solves the system with them and
@@ -355,28 +368,34 @@
    ! all-2s assignment would route the same energy out of the gas by a
    ! different channel and leave a larger n = 2 population behind.
 
-   real*8, intent(in)  :: T, n1s, nHII_l, ne_l, Jlya, gam_ion_2s, gam_ion_2p
+   real*8, intent(in)  :: T, n1s, nHII_l, nHeII_l, nHeIII_l, ne_l, Jlya
+   real*8, intent(in)  :: gam_ion_2s, gam_ion_2p
    real*8, intent(in)  :: chem_n2
    real*8, intent(out) :: L2p, L2s, S2p, S2s, M12, M21
 
    real*8 :: Tl, a2s, a2p
-   real*8 :: C1s2s, C1s2p, C2s2p, C2s1s, C2p1s, C2p2s
+   real*8 :: C1s2s, C1s2p, C2s1s, C2p1s, Mix_2s2p, Mix_2p2s
    real*8 :: Ppump, Pstim
 
    Tl = max(T, 1.0d0)
 
-   ! Level-resolved recombination (Draine 2011; Table 2 R2,R8,R9).
+   ! Level-resolved recombination: the balance's case-B coefficient split
+   ! into 2s and 2p (hydrogen_n2_rates).
    a2s = alpha_2s_hydrogen(Tl)
    a2p = alpha_2p_hydrogen(Tl)
 
-   ! Collisional excitation 1s->2s, 1s->2p, 2s<->2p l-mixing and the reverse
-   ! 2s/2p->1s de-excitation (R3,R4,R5 and their detailed-balance partners).
+   ! Collisional excitation 1s->2s, 1s->2p and the reverse 2s/2p->1s
+   ! de-excitation (hydrogen_n2_rates: the H I rate set of Cool_coeff and
+   ! its detailed-balance partners), and the 2s <-> 2p l-mixing rates
+   ! [s^-1] by electrons (Seaton 1955) and by H+, He+ and He2+ (Pengelly
+   ! & Seaton 1964), which at 1e4 K the protons dominate by a factor 8.3
+   ! in ionized gas.
    C1s2s = c1s2s_rate(Tl)
    C1s2p = c1s2p_rate(Tl)
-   C2s2p = c2s2p_rate(Tl)
    C2s1s = c2s1s_rate(Tl)
    C2p1s = c2p1s_rate(Tl)
-   C2p2s = c2p2s_rate(Tl)
+   Mix_2s2p = l_mixing_rate_2s2p(Tl, ne_l, nHII_l, nHeII_l, nHeIII_l)
+   Mix_2p2s = l_mixing_rate_2p2s(Tl, ne_l, nHII_l, nHeII_l, nHeIII_l)
 
    ! Ly-alpha pump (1s->2p) and stimulated emission (2p->1s).
    Ppump = B12_lya*Jlya
@@ -387,14 +406,14 @@
    ! electron is a proton, not another electron. The two differ wherever the
    ! electrons come from helium and metals while hydrogen is still neutral,
    ! which is the case through the base.
-   L2p = A_2p1s + Pstim + (C2p1s + C2p2s)*ne_l + gam_ion_2p
-   L2s = (C2s1s + C2s2p)*ne_l + gam_ion_2s + A_2s1s
+   L2p = A_2p1s + Pstim + C2p1s*ne_l + Mix_2p2s + gam_ion_2p
+   L2s = C2s1s*ne_l + Mix_2s2p + gam_ion_2s + A_2s1s
    S2p = (Ppump + C1s2p*ne_l)*n1s + a2p*ne_l*nHII_l                      &
        + max(chem_n2, 0.0d0)*g2p/(g2s + g2p)
    S2s = (C1s2s*ne_l)*n1s + a2s*ne_l*nHII_l                              &
        + max(chem_n2, 0.0d0)*g2s/(g2s + g2p)
-   M12 = C2s2p*ne_l
-   M21 = C2p2s*ne_l
+   M12 = Mix_2s2p
+   M21 = Mix_2p2s
 
    end subroutine n2_rate_matrix
 
@@ -485,6 +504,7 @@
       chem_n2 = dissociative_recombination_n2_source(T_K(j),              &
                       n_h2p_mol(j), n_hehp_mol(j), max(ne(j),0.0d0))
       call n2_rate_matrix(T_K(j), max(nhi(j),0.0d0), max(nhii(j),0.0d0),  &
+                          max(nheii(j),0.0d0), max(nheiii(j),0.0d0),      &
                           max(ne(j),0.0d0), Jlya_arr(j),                  &
                           gamma2_bal, gamma2_bal, chem_n2,                &
                           L2p, L2s, S2p, S2s, M12, M21)

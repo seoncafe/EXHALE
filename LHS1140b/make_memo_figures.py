@@ -41,13 +41,21 @@ plt.rcParams.update({'text.usetex': True, 'font.family': 'serif',
 
 OUT = '../docs/figures'
 os.makedirs(OUT, exist_ok=True)
-AIR = 10832.057/10829.09114
-EW_LO, EW_HI = 10832.60, 10834.20
+# The window, the air/vacuum factor and the measurement operator of every
+# equivalent width below: `he10830_equivalent_width.py`.
+import he10830_equivalent_width as HEW
+AIR = HEW.AIR
+EW_LO, EW_HI = HEW.EW_LO, HEW.EW_HI
 
 # Neither our p-winds oracle nor EXHALE_transit.py applies a line-of-sight
 # bulk velocity, so the model curves sit at the planetary rest frame while
 # the measured line is redshifted. Shift both by the value C26 fit,
-# v_wind = 2.26 km/s, for the overlay. Equivalent width is unaffected.
+# v_wind = 2.26 km/s, for the overlay only: every equivalent width below is
+# computed from the unshifted arrays (the observation in the planet rest
+# frame of its CSV), so the shift enters no EW. Applied to a model it would
+# move the fixed-window EW by about 1e-5 relative (1.5603206 to 1.5603390 %A
+# on the molecular K_zz = 1e9 He/H 2.13 spectrum, MEASURED 2026-09-23); the
+# window is fixed, so a shifted line is not exactly invariant.
 C_KMS = 2.99792458e5
 V_WIND_KMS = 2.26
 dlam_air = V_WIND_KMS/C_KMS*10830.0
@@ -64,12 +72,13 @@ o_dep  = g('absorption_depth_positive_percent')
 o_sig  = g('uncertainty_1sigma_percent')
 
 mo = (o_vac >= EW_LO) & (o_vac <= EW_HI)
-EW_digitized = np.trapz(o_dep[mo], o_vac[mo])
-EW_digitized_err = np.sqrt(np.sum((o_sig[mo]*np.median(np.diff(o_vac)))**2))
+EW_measured, EW_measured_err = HEW.observed_equivalent_width()
 
 # Every crossing quoted in the memo, and every one in the results.txt of the
-# run directories the crossings are read from, is solved against the digitized
-# value as it is printed there: 1.108 +/- 0.030 %A.  Use the same two numbers
+# run directories the crossings are read from, is solved against the value
+# the released spectrum gives (Cherubim_2026/LHS1140b_He10833_README.md: the
+# authors' Zenodo numbers, not a raster digitization), as it is printed
+# there: 1.108 +/- 0.030 %A.  Use the same two numbers
 # here so that the figures and the tables cross at the same composition.
 EW_obs, EW_err = 1.108, 0.030
 
@@ -128,9 +137,8 @@ def red_ew(tag, sub=''):
     c = exhale_curve(tag, sub)
     if c is None:
         return np.nan
-    lam = c[0]*AIR
-    m = (lam >= EW_LO) & (lam <= EW_HI)
-    return np.trapz(c[1][m], lam[m])
+    v = HEW.model_equivalent_width(c[0]*AIR, c[1])
+    return np.nan if v is None else v
 
 
 def have(tag, sub=''):
@@ -319,7 +327,7 @@ plt.savefig(f'{OUT}/lhs1140b_structure.pdf')
 plt.close()
 
 print(f'EW target = {EW_obs:.4f} +/- {EW_err:.4f}  '
-      f'(digitized {EW_digitized:.4f} +/- {EW_digitized_err:.4f})')
+      f'(released spectrum {EW_measured:.4f} +/- {EW_measured_err:.4f})')
 for lab, x in cross.items():
     print(f'  crossing ({lab}): He/H = {x:.3f}  H:He = {1/x:.2f}  '
           f'{x/0.0833:.1f}x solar')
@@ -421,8 +429,8 @@ def broadened_metrics(lam, exc, fwhm_kms, frame='air', lam0=10830.0):
     e = broaden(lam, exc, fwhm_kms, lam0)
     d = fit_metrics(lam, e, frame=frame)
     lv = lam*AIR if frame == 'air' else lam
-    m = (lv >= EW_LO) & (lv <= EW_HI)
-    d['ew'] = np.trapz(e[m], lv[m])
+    v = HEW.model_equivalent_width(lv, e)
+    d['ew'] = np.nan if v is None else v
     return d
 
 def matched_kernel_curve(lam, exc, frame='air', lam0=10830.0):

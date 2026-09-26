@@ -24,6 +24,7 @@
       use BC_Apply,        only: Apply_BC
       use ionization_equilibrium, only: ioniz_eq, ioniz_eq_ledger,      &
                  set_ioniz_eq_sweep_state_kind, ieq_state_marching,      &
+                 set_ioniz_eq_state_may_be_refused,                      &
                  ieq_state_steady_iterate, ieq_state_steady_candidate,   &
                  finite_real, keep_background_of_adopted_state,          &
                  keep_background_of_best_iterate,                        &
@@ -565,7 +566,7 @@
          integer :: n_trial_no_chem_root  = 0
          integer :: no_chem_root_cell_max = 0
          real*8  :: no_chem_root_res_max  = 0.0d0
-         integer :: n_eval_refusal(0:6)   = 0
+         integer :: n_eval_refusal(0:7)   = 0
       end type solve_refusal_statistics
 
       ! WITH THE SPECIES ROWS THE GEOMETRY CHANGES, so these are set once per
@@ -741,6 +742,10 @@
       integer, parameter :: refuse_sweep_nonfinite          = 4
       integer, parameter :: refuse_row_nonfinite            = 5
       integer, parameter :: refuse_no_chemical_root         = 6
+      ! The sweep left a lower-boundary solve open at this state (the base
+      ! handoff partition of a ghost, or the ghost composition fixed point),
+      ! so the boundary the rows are built on is an iterate.
+      integer, parameter :: refuse_lower_boundary_open      = 7
       integer :: eval_refusal        = refuse_none
       integer :: eval_refusal_cell   = 0
       integer :: eval_refusal_row    = 0
@@ -755,7 +760,7 @@
       ! the top of a solve; a probe's refusal counts, because a refused
       ! probe is a Newton column or a Krylov direction the solve did not
       ! get.
-      integer :: n_eval_refusal(0:6) = 0
+      integer :: n_eval_refusal(0:7) = 0
       ! Jacobian-vector products this solve had to take on the BACKWARD side
       ! of the direction because no forward step along it landed on a
       ! describable state (jv_product). Zero over a solve is the statement
@@ -1242,9 +1247,23 @@
       ! spectrum of A_z M^-1, and a cluster of them near zero is the part of
       ! the operator the band leaves behind. Run on the whole operator and
       ! on its compressions onto the species rows and onto the hydrodynamic
-      ! rows, so that the cluster can be attributed to a row class.
+      ! rows, so that the cluster can be attributed to a row class. Each of
+      ! the six smallest values carries its residual ||A y - theta y|| from
+      ! the Arnoldi relation, and the three smallest of the whole operator
+      ! also the residual measured on the operator itself, so that a value
+      ! the compression invented can be told from a resolved one.
+      !
+      ! HOW MANY PRODUCTS (n_ritz_step, EXHALE_RITZ_STEPS=<k>, default 200).
+      ! Arnoldi resolves the extreme, well-separated part of a spectrum
+      ! first and a cluster near the origin last, so 200 products can leave
+      ! the smallest values undetermined; the residuals say when they do.
+      ! At k equal to the number of unknowns the recursion spans the whole
+      ! space, the Hessenberg is similar to the operator, and its
+      ! eigenvalues are those of the operator itself up to rounding and to
+      ! the nonlinearity of the finite-difference action. The count is
+      ! capped at the number of unknowns.
       logical :: precond_spectrum_on = .false.
-      integer, parameter :: n_ritz_step = 200
+      integer :: n_ritz_step = 200
       ! The Ritz vectors of the three smallest-magnitude Ritz values of the
       ! whole operator, kept so that the band-difference measurement below
       ! can be taken on the directions the spectrum names. Empty until the
@@ -4203,7 +4222,19 @@
       endif
       call comp_T_from_p(p, n_tot, ne, T)
       if (use_excited_H) call excited_H_update(T,rho,f_sp,v,rel_change)
+      ! A caller that asks whether this state is admissible refuses it when
+      ! the sweep says it is not, so the sweep may hand back a lower
+      ! boundary it could not solve with that counted, instead of stopping
+      ! the run (ieq_state_may_be_refused in ionization_equilibrium.f90).
+      ! Every such caller evaluates a candidate -- a line-search,
+      ! trust-region or Levenberg-Marquardt trial, a Krylov or
+      ! finite-difference probe -- and none evaluates the iterate the solve
+      ! holds, the base point of its Newton model or the state it returns:
+      ! those are evaluated without `admissible`, and there the event still
+      ! stops the run.
+      call set_ioniz_eq_state_may_be_refused(present(admissible))
       call ioniz_eq(T,rho,f_sp,heat,cool,eta,sweep)
+      call set_ioniz_eq_state_may_be_refused(.false.)
       ! Refresh the particle count from the equilibrium fractions, exactly as
       ! the marching loop does before its transport stage, so the residual's
       ! T = p/(n_tot+n_e) is the same temperature the marching step diffuses.
@@ -4442,6 +4473,7 @@
          ! rest of the record already admits the state, exactly as before:
          ! it is the expensive half.
          cfacts%n_sweep_nonfinite    = sweep%n_nonfinite
+         cfacts%n_sweep_ghost_open   = sweep%n_ghost_open
          cfacts%n_no_chem_root_trial = n_no_chem_root_last
          cfacts%n_no_chem_root_state = n_no_chem_root_state
          cfacts%chem_root_gate       = gate_chem_root
@@ -4480,6 +4512,11 @@
              eval_refusal .eq. refuse_none) then
             eval_refusal       = refuse_sweep_nonfinite
             eval_refusal_value = dble(cfacts%n_sweep_nonfinite)
+         endif
+         if (cfacts%n_sweep_ghost_open .gt. 0 .and.                      &
+             eval_refusal .eq. refuse_none) then
+            eval_refusal       = refuse_lower_boundary_open
+            eval_refusal_value = dble(cfacts%n_sweep_ghost_open)
          endif
          if (gate_chem_root) then
             admissible = trial_state_is_admissible(cfacts)
@@ -4866,6 +4903,10 @@
          write(*,'(A,A,I0,A)') tag, '      refused: ',                    &
               int(eval_refusal_value), ' cell(s) more than the iterate'// &
               ' carry a composition that is not a root of the network'
+      case (refuse_lower_boundary_open)
+         write(*,'(A,A,I0,A)') tag, '      refused: ',                    &
+              int(eval_refusal_value), ' lower-boundary solve(s) of the'//&
+              ' sweep left open (ghost partition or ghost fixed point)'
       end select
       end subroutine write_last_evaluation_refusal
 
@@ -7419,7 +7460,7 @@
       ! this fraction of the largest response in the support.
       real*8, parameter :: moved_floor = 1.0d-3
       integer :: neq, i, j, k, ios, jlo, jhi, nunres, saved_wmode
-      integer :: n_blocked, n_sup, u_out, islot, icar, irow, jcol
+      integer :: n_blocked, n_sup, u_out, icar, irow, jcol
       integer :: jworst_again, icworst_again, kind_wanted, nzero
       logical :: okp, ok_jv
       character(len=512) :: fname
@@ -8318,7 +8359,7 @@
       !                                    default (user decision,
       !                                    2026-09-08).
       character(len=32) :: env
-      integer :: iselect
+      integer :: iselect, k_ritz, ios_ritz
       real*8  :: xselect
       project_species_trial = .true.
       call get_environment_variable('EXHALE_SPECIES_BOUND_PROJECT', env)
@@ -8393,11 +8434,27 @@
       !                                  selected outer iteration, on the
       !                                  whole operator and on its
       !                                  compressions onto the species and
-      !                                  the hydrodynamic rows
+      !                                  the hydrodynamic rows, each with
+      !                                  its residual ||A y - theta y||
       !                                  (precond_spectrum_on).
       precond_spectrum_on = .false.
       call get_environment_variable('EXHALE_PRECOND_SPECTRUM', env)
       if (trim(env) .eq. '1') precond_spectrum_on = .true.
+      !   EXHALE_RITZ_STEPS=<k>          the number of Arnoldi products of
+      !                                  that measurement (n_ritz_step,
+      !                                  default 200, capped at the number
+      !                                  of unknowns; below 2 is refused).
+      n_ritz_step = 200
+      call get_environment_variable('EXHALE_RITZ_STEPS', env)
+      if (len_trim(env) .gt. 0) then
+         read(env, *, iostat=ios_ritz) k_ritz
+         if (ios_ritz .ne. 0 .or. k_ritz .lt. 2) then
+            write(*,'(A,A,A)') ' (steady_newton) ERROR: EXHALE_RITZ_STEPS'// &
+                 ' = "', trim(env), '" is not an integer of at least 2.'
+            error stop 1
+         endif
+         n_ritz_step = k_ritz
+      endif
       if (allocated(ritz_vector_of_the_smallest))                        &
          deallocate(ritz_vector_of_the_smallest)
       if (allocated(ritz_value_of_the_smallest))                         &
@@ -12531,7 +12588,7 @@
               ' residual evaluations at ',                                &
               real(clock_now - clock_at_entry,8)                          &
               /real(clock_rate,8)/real(n_eval_here,8),                    &
-              ' s each; inner cell solves ', nt_calls,                    &
+              ' s each; inner cell solves ', nt_calls_here,               &
               ', of them fell back to hybrd1 ', nt_fall_here, ' (',       &
               100.0d0*real(nt_fall_here,8)                                &
               /real(max(nt_calls_here,1),8), '%)'
@@ -12826,7 +12883,7 @@
       integer, dimension(:), allocatable :: n_steps_at_k
       real*8, dimension(n_scan-1) :: dd
       logical, dimension(n_scan-1) :: marked
-      real*8  :: eps0, dt, vn, big, relbig, tk, hw, med, tv, net
+      real*8  :: eps0, dt, vn, big, relbig, tk, hw, med
       real*8  :: med_track, tv_track, net_track, relmed, d2_track
       real*8  :: d2_first, geo, wmax, pjmp, pface
       real*8, dimension(N) :: cellwork
@@ -14406,9 +14463,62 @@
 
       ! ------------------------------------------------------!
 
+      subroutine action_of_the_preconditioned_operator(Y, F0, f_sp_base, &
+                        D, Drow, abf, ipiv, idtau, row_equil, x, w, ok)
+      ! THE ACTION w = A_z M^-1 x OF THE OPERATOR THE KRYLOV CYCLE RUNS.
+      !
+      ! M^-1 is the banded preconditioner solve and A_z the matrix-free
+      ! Jacobian of the residual in the scaled unknowns, with the
+      ! pseudo-time diagonal idtau D/Drow; where the rows of the linear
+      ! model are equilibrated (row_equil) the action carries the same row
+      ! scaling the cycle applies. One definition, used by the Arnoldi
+      ! recursion that measures the spectrum and by the residual of each
+      ! Ritz pair, so that the two measure the same operator. ok is false
+      ! where the preconditioner solve fails, where the action cannot be
+      ! sampled, or where a component is not finite, and w is then not to
+      ! be read.
+      real*8, dimension(nvar_jac*N),  intent(in) :: Y, F0, D, Drow, x
+      real*8, dimension(1-Ng:N+Ng,n_species), intent(in) :: f_sp_base
+      real*8, dimension(2*kl_jac+ku_jac+1,nvar_jac*N), intent(in) :: abf
+      integer, dimension(nvar_jac*N), intent(in) :: ipiv
+      real*8,  intent(in) :: idtau
+      logical, intent(in) :: row_equil
+      real*8, dimension(nvar_jac*N), intent(out) :: w
+      logical, intent(out) :: ok
+      real*8, allocatable :: z(:)
+      integer :: neq, lpinfo
+      logical :: jv_ok
+      neq = nvar_jac*N
+      ok  = .false.
+      w   = 0.0d0
+      allocate(z(neq))
+      z = x
+      call banded_preconditioner_solve(abf, ipiv, neq, z, lpinfo)
+      if (lpinfo .ne. 0 .or. .not. every_component_is_finite(z)) then
+         deallocate(z)
+         return
+      endif
+      call project_out_of_the_active_element_constraints(z)
+      call jacobian_action_of_direction(Y, F0, f_sp_base, D*z, w, jv_ok)
+      if (.not. jv_ok) then
+         deallocate(z)
+         return
+      endif
+      w = w/Drow + idtau*(D/Drow)*z
+      ! AND THE ROW SCALING OF THE LINEAR MODEL, where it is on:
+      ! the operator the cycle works with is E A_z and the band it is
+      ! preconditioned by is E times the same band, so the two agree
+      ! (unit_infinity_norm_row_scaling_of_the_band).
+      if (row_equil) w = w*model_row_equilibration
+      ok = every_component_is_finite(w)
+      deallocate(z)
+      end subroutine action_of_the_preconditioned_operator
+
+      ! ------------------------------------------------------!
+
       subroutine ritz_values_of_a_matrix_free_operator(Y, F0, f_sp_base,&
                         D, Drow, abf, ipiv, idtau, mask, kmax, V, wr, wi,&
-                        VR, ldvr, kdone, info)
+                        VR, ldvr, kdone, hsub, info)
       ! THE RITZ VALUES OF A_z M^-1 COMPRESSED ONTO THE RANGE OF A MASK.
       !
       ! An Arnoldi recursion of at most kmax products from a deterministic
@@ -14422,7 +14532,17 @@
       !
       ! The basis and the eigenvectors of the Hessenberg are handed back so
       ! that the caller can form Ritz vectors from them; info is dgeev's,
-      ! and kdone the number of products the recursion managed.
+      ! and kdone the number of products the recursion managed. hsub is
+      ! the norm of what the last product left after it was orthogonalized
+      ! against the basis, h(kdone+1,kdone) of the Arnoldi relation
+      !
+      !     A V_k = V_k H_k + h(k+1,k) v(k+1) e_k^T,
+      !
+      ! which is what the residual of every Ritz pair is made of (the
+      ! caller). It is the value the recursion stopped on whichever way it
+      ! stopped: at kmax, at a breakdown, where it is below the rounding of
+      ! the column and the subspace is invariant, or at a failed product,
+      ! where it is the subdiagonal of the last column that was completed.
       real*8, dimension(nvar_jac*N),  intent(in) :: Y, F0, D, Drow, mask
       real*8, dimension(1-Ng:N+Ng,n_species), intent(in) :: f_sp_base
       real*8, dimension(2*kl_jac+ku_jac+1,nvar_jac*N), intent(in) :: abf
@@ -14432,43 +14552,33 @@
       real*8, dimension(nvar_jac*N,kmax+1), intent(out) :: V
       real*8, dimension(kmax),      intent(out) :: wr, wi
       real*8, dimension(ldvr,kmax), intent(out) :: VR
+      real*8,  intent(out) :: hsub
       integer, intent(out) :: kdone, info
-      real*8, allocatable :: Hs(:,:), Hd(:,:), z(:), w(:), work(:), VL(:,:)
+      real*8, allocatable :: Hs(:,:), Hd(:,:), w(:), work(:), VL(:,:)
       real*8  :: hnext, tmp
-      integer :: neq, i, j, kk, lpinfo, lwork
+      integer :: neq, i, j, kk, lwork
       logical :: jv_ok, row_equil_here
       neq   = nvar_jac*N
       ! The spectrum measured is that of the operator the CYCLE runs, so
       ! it carries the row scaling of the linear model where that scaling is
       ! on (the_linear_model_rows_are_equilibrated).
       row_equil_here = the_linear_model_rows_are_equilibrated(neq)
-      kdone = 0;  info = 0
+      kdone = 0;  info = 0;  hsub = 0.0d0;  hnext = 0.0d0
       wr = 0.0d0;  wi = 0.0d0;  VR = 0.0d0
-      allocate(Hs(kmax+1,kmax), z(neq), w(neq))
+      allocate(Hs(kmax+1,kmax), w(neq))
       Hs = 0.0d0
       call deterministic_unit_direction(20260911, V(:,1))
       V(:,1) = mask*V(:,1)
       tmp = sqrt(sum(V(:,1)**2))
       if (tmp .le. 0.0d0) then
-         deallocate(Hs, z, w)
+         deallocate(Hs, w)
          return
       endif
       V(:,1) = V(:,1)/tmp
       do j = 1, kmax
-         z = V(:,j)
-         call banded_preconditioner_solve(abf, ipiv, neq, z, lpinfo)
-         if (lpinfo .ne. 0 .or. .not. every_component_is_finite(z)) exit
-         call project_out_of_the_active_element_constraints(z)
-         call jacobian_action_of_direction(Y, F0, f_sp_base, D*z, w,     &
-                                           jv_ok)
+         call action_of_the_preconditioned_operator(Y, F0, f_sp_base, D, &
+                   Drow, abf, ipiv, idtau, row_equil_here, V(:,j), w, jv_ok)
          if (.not. jv_ok) exit
-         w = w/Drow + idtau*(D/Drow)*z
-         ! AND THE ROW SCALING OF THE LINEAR MODEL, where it is on:
-         ! the operator the cycle works with is E A_z and the band it is
-         ! preconditioned by is E times the same band, so the two agree
-         ! (unit_infinity_norm_row_scaling_of_the_band).
-         if (row_equil_here) w = w*model_row_equilibration
-         if (.not. every_component_is_finite(w)) exit
          w = mask*w
          do kk = 1, 2
             do i = 1, j
@@ -14485,8 +14595,9 @@
          Hs(j+1,j) = hnext
          V(:,j+1)  = w/hnext
       enddo
+      hsub = hnext
       if (kdone .lt. 1) then
-         deallocate(Hs, z, w)
+         deallocate(Hs, w)
          return
       endif
       lwork = max(8*kdone, 16)
@@ -14494,8 +14605,39 @@
       Hd = Hs(1:kdone,1:kdone)
       call dgeev('N', 'V', kdone, Hd, kdone, wr, wi, VL, 1, VR, ldvr,    &
                  work, lwork, info)
-      deallocate(Hd, work, VL, Hs, z, w)
+      deallocate(Hd, work, VL, Hs, w)
       end subroutine ritz_values_of_a_matrix_free_operator
+
+      ! ------------------------------------------------------!
+
+      subroutine coefficients_of_the_ritz_vector(VR, ldvr, kdone, wi, jp, &
+                                                 sr, si, snrm)
+      ! THE COEFFICIENTS s = sr + i si OF THE RITZ VECTOR OF VALUE jp IN
+      ! THE ARNOLDI BASIS, and their norm.
+      !
+      ! dgeev stores a real eigenvector of the Hessenberg in one column of
+      ! VR and a complex pair in two consecutive columns: where wi(j) > 0
+      ! the vector of value j is VR(:,j) + i VR(:,j+1), and that of its
+      ! conjugate j+1 is VR(:,j) - i VR(:,j+1). This routine undoes that
+      ! packing, so that the caller can form the Ritz vector and its
+      ! residual the same way for a real value and for a complex one.
+      integer, intent(in) :: ldvr, kdone, jp
+      real*8, dimension(ldvr,*), intent(in) :: VR
+      real*8, dimension(*),      intent(in) :: wi
+      real*8, dimension(kdone), intent(out) :: sr, si
+      real*8, intent(out) :: snrm
+      if (wi(jp) .eq. 0.0d0) then
+         sr = VR(1:kdone,jp)
+         si = 0.0d0
+      else if (wi(jp) .gt. 0.0d0) then
+         sr = VR(1:kdone,jp)
+         si = VR(1:kdone,jp+1)
+      else
+         sr =  VR(1:kdone,jp-1)
+         si = -VR(1:kdone,jp)
+      endif
+      snrm = sqrt(sum(sr*sr) + sum(si*si))
+      end subroutine coefficients_of_the_ritz_vector
 
       ! ------------------------------------------------------!
 
@@ -14516,6 +14658,32 @@
       ! Run three times: on the whole operator, and on its compressions
       ! onto the species rows and onto the hydrodynamic rows, so that a
       ! cluster near zero can be attributed to a class of unknowns.
+      !
+      ! THE ACCURACY OF EACH RITZ VALUE, measured, because a value that is
+      ! an artifact of the compression looks exactly like a real one. For
+      ! a Ritz pair (theta, y = V_k s) with ||s|| = 1 the Arnoldi relation
+      ! gives
+      !
+      !     A y - theta y = V_k (H_k s - theta s) + h(k+1,k) s_k v(k+1)
+      !                   = h(k+1,k) s_k v(k+1),
+      !
+      ! so its residual is |h(k+1,k)| |s_k|, from numbers the recursion
+      ! already holds. That is printed for the six smallest values of every
+      ! compression. It rests on two assumptions: that the basis is
+      ! orthonormal, and that the operator is linear. The finite-difference
+      ! action is not linear to the last digit, so for the three smallest
+      ! values of the whole operator the residual is also MEASURED, by
+      ! applying the operator once more to y (twice for a complex pair,
+      ! once to each part). Where the two disagree, the recursion's picture
+      ! of the operator is not the operator.
+      !
+      ! What the residual means: (theta, y) is an exact eigenpair of the
+      ! operator perturbed by -r y^T, so ||r|| is a BACKWARD error. For a
+      ! non-normal operator it does not bound |theta - lambda| by itself,
+      ! the bound also carries the conditioning of the eigenvector. But a
+      ! value whose residual is not small against its own magnitude is not
+      ! resolved at all, and the ratio residual / |theta| is printed so that
+      ! can be read directly.
       real*8, dimension(nvar_jac*N),  intent(in) :: Y, F0, D, Drow
       real*8, dimension(1-Ng:N+Ng,n_species), intent(in) :: f_sp_base
       real*8, dimension(2*kl_jac+ku_jac+1,nvar_jac*N), intent(in) :: abf
@@ -14523,9 +14691,12 @@
       real*8,  intent(in) :: idtau
       real*8, allocatable :: V(:,:), mask(:), yritz(:)
       real*8, allocatable :: wr(:), wi(:), VR(:,:)
+      real*8, allocatable :: sr(:), si(:), yr(:), yi(:), ar(:), ai(:)
       integer, allocatable :: iorder(:)
       real*8  :: tmp, amag, amin, amax
       real*8  :: share(5)
+      real*8  :: hsub, snrm, res_est, res_meas
+      logical :: ok_r, ok_i, row_equil_here
       integer :: neq, kdone, i, j, kk, ievinfo, iwhich, kmax
       integer :: n_below_2, n_below_4, n_complex, ipick, jpick
       integer :: jcell(10), ncell_hit, ic
@@ -14540,6 +14711,10 @@
       call hold_solve_refusal_statistics(statistics_at_entry)
       allocate(V(neq,kmax+1), mask(neq), yritz(neq))
       allocate(wr(kmax), wi(kmax), VR(kmax,kmax), iorder(kmax))
+      allocate(sr(kmax), si(kmax), yr(neq), yi(neq), ar(neq), ai(neq))
+      ! The same row scaling the recursion applies (the_linear_model_rows_
+      ! are_equilibrated), so the measured residual is of the same operator.
+      row_equil_here = the_linear_model_rows_are_equilibrated(neq)
 
       do iwhich = 0, 2
          call unknown_mask_of_the_row_class(iwhich, mask)
@@ -14551,7 +14726,7 @@
          if (iwhich .eq. 1 .and. nspec_row .le. 0) cycle
          call ritz_values_of_a_matrix_free_operator(Y, F0, f_sp_base, D, &
                    Drow, abf, ipiv, idtau, mask, kmax, V, wr, wi, VR,    &
-                   kmax, kdone, ievinfo)
+                   kmax, kdone, hsub, ievinfo)
          if (kdone .lt. 2 .or. ievinfo .ne. 0) then
             write(*,'(A,A,A,I0,A,I0)') ' (JFNK) [diag 15] ', trim(what), &
                  ': the recursion managed ', kdone, ' products, dgeev'// &
@@ -14595,6 +14770,22 @@
                  ' (JFNK) [diag 15]   smallest ', i, ': real ',          &
                  wr(iorder(i)), ', imaginary ', wi(iorder(i)),           &
                  ', magnitude ', hypot(wr(iorder(i)), wi(iorder(i)))
+         enddo
+         ! --- their residuals, from the Arnoldi relation ---
+         write(*,'(A,ES12.5,A)') ' (JFNK) [diag 15]   Ritz residuals'//  &
+              ' ||A y - theta y|| from the Arnoldi relation,'//          &
+              ' h(k+1,k) = ', hsub, ':'
+         do i = 1, min(6, kdone)
+            call coefficients_of_the_ritz_vector(VR, kmax, kdone, wi,    &
+                                                 iorder(i), sr(1:kdone), &
+                                                 si(1:kdone), snrm)
+            amag    = hypot(wr(iorder(i)), wi(iorder(i)))
+            res_est = abs(hsub)*hypot(sr(kdone), si(kdone))              &
+                      /max(snrm, 1.0d-300)
+            write(*,'(A,I2,A,ES12.5,A,ES12.5)')                          &
+                 ' (JFNK) [diag 15]   smallest ', i, ': residual ',      &
+                 res_est, ', over the magnitude ',                       &
+                 res_est/max(amag, 1.0d-300)
          enddo
          ! --- where the smallest Ritz vectors live ---
          ! Only for the whole operator: the compressions' vectors live on
@@ -14644,10 +14835,56 @@
                  ' tenths of it sits in ', ncell_hit, ' cells, the'//    &
                  ' largest of them', (jcell(i), i = 1, min(10,           &
                  ncell_hit))
+            ! --- and its residual, MEASURED on the operator itself ---
+            ! y = V_k s with both parts of s, normalized so that ||y|| = 1
+            ! (the stored ritz_vector_of_the_smallest above is one column
+            ! of a complex pair and is not the eigenvector of a complex
+            ! value). With theta = tr + i ti and y = yr + i yi,
+            !     A y - theta y = (A yr - tr yr + ti yi)
+            !                   + i (A yi - tr yi - ti yr).
+            call coefficients_of_the_ritz_vector(VR, kmax, kdone, wi,    &
+                                                 jpick, sr(1:kdone),     &
+                                                 si(1:kdone), snrm)
+            res_est = abs(hsub)*hypot(sr(kdone), si(kdone))              &
+                      /max(snrm, 1.0d-300)
+            yr = 0.0d0;  yi = 0.0d0
+            do i = 1, kdone
+               yr = yr + sr(i)*V(:,i)
+               yi = yi + si(i)*V(:,i)
+            enddo
+            tmp = sqrt(sum(yr*yr) + sum(yi*yi))
+            if (tmp .gt. 0.0d0) then
+               yr = yr/tmp;  yi = yi/tmp
+            endif
+            call action_of_the_preconditioned_operator(Y, F0, f_sp_base, &
+                      D, Drow, abf, ipiv, idtau, row_equil_here, yr, ar,  &
+                      ok_r)
+            ok_i = .true.;  ai = 0.0d0
+            if (wi(jpick) .ne. 0.0d0)                                    &
+               call action_of_the_preconditioned_operator(Y, F0,         &
+                         f_sp_base, D, Drow, abf, ipiv, idtau,           &
+                         row_equil_here, yi, ai, ok_i)
+            if (ok_r .and. ok_i) then
+               ar = mask*ar;  ai = mask*ai
+               ar = ar - wr(jpick)*yr + wi(jpick)*yi
+               ai = ai - wr(jpick)*yi - wi(jpick)*yr
+               res_meas = sqrt(sum(ar*ar) + sum(ai*ai))
+               write(*,'(A,ES12.5,A,ES12.5,A,ES12.5)')                   &
+                    ' (JFNK) [diag 15]     Ritz residual measured ',     &
+                    res_meas, ' (Arnoldi estimate ', res_est,            &
+                    '), over the magnitude ',                            &
+                    res_meas/max(ritz_value_of_the_smallest(ipick),      &
+                                 1.0d-300)
+            else
+               write(*,'(A)') ' (JFNK) [diag 15]     Ritz residual'//    &
+                    ' measured: the operator could not be applied to'//  &
+                    ' the Ritz vector'
+            endif
          enddo
       enddo
 
       deallocate(V, mask, yritz, wr, wi, VR, iorder)
+      deallocate(sr, si, yr, yi, ar, ai)
       call put_back_solve_refusal_statistics(statistics_at_entry)
       call put_back_residual_evaluation_products(products_at_entry)
       end subroutine ritz_values_of_the_preconditioned_operator
@@ -16123,7 +16360,7 @@
       ray_verdict = tr_step_taken;  merit_reproducibility = 0.0d0
       merit_first = 0.0d0;  n_passes_first = 0
       Ftrial = F
-      n_refused_at_entry = sum(n_eval_refusal(1:6))
+      n_refused_at_entry = sum(n_eval_refusal(1:7))
 
       ! THE REFERENCE MERIT IS MEASURED IN THE SAME MODE AS THE TRIALS.
       ! The caller's f2 is the merit of this iterate with the WENO3 weights
@@ -16954,7 +17191,7 @@
               ', ratio ', ratio, ', ||s|| ', snorm
          write(*,'(A,A,A,I0)') ' (JFNK) [diag 6]   exit: ', trim(why_txt),&
               ', samples refused during this step ',                      &
-              sum(n_eval_refusal(1:6)) - n_refused_at_entry
+              sum(n_eval_refusal(1:7)) - n_refused_at_entry
          ! AND WHAT THE CONSTRAINED STEP DID WITH THE SHARED ROWS: how many
          ! of them the projection was taken on, how many cells the
          ! restoration moved, and the violation magnitude it removed.
@@ -17708,7 +17945,12 @@
          ! (Jacobian probes, J*v) then reuse them (mode 2), so the inner
          ! problem excludes the strongly nonlinear weight response (the
          ! standard lagged-weights remedy for FV steady solves). The line
-         ! search does NOT use them -- see there.
+         ! search does NOT use them -- see there.  On the trust-region route
+         ! (EXHALE_TRUST_REGION=1) the merit evaluation sets weno_mode = 0
+         ! and nothing restores it before the leg and the spectral hook, so
+         ! there the products differentiate the weights (INSPECTED and
+         ! MEASURED 2026-09-23: two cycles give different actions on one
+         ! direction); which of the two the leg should use is not decided.
          weno_mode = 1
          call set_ioniz_eq_sweep_state_kind(ieq_state_steady_iterate)
          call eval_residual(Y, f_sp, f_sp_j, F, heat0, cool0,             &
@@ -19193,6 +19435,11 @@
               n_eval_refusal(refuse_row_nonfinite),                       &
               ', no chemical root ',                                      &
               n_eval_refusal(refuse_no_chemical_root)
+         if (n_eval_refusal(refuse_lower_boundary_open) .gt. 0)           &
+            write(*,'(A,I0,A)') ' (JFNK) residual samples refused for a'//&
+                 ' lower boundary the sweep left open: ',                 &
+                 n_eval_refusal(refuse_lower_boundary_open),              &
+                 ' (ghost partition or ghost composition fixed point)'
          write(*,'(A,I0,A)') ' (JFNK) Jacobian-vector products taken on'//&
               ' the backward side of their direction: ',                  &
               n_jv_backward_sample, ' (no forward step along them landed'//&

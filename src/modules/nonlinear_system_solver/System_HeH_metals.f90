@@ -49,6 +49,10 @@
 	real*8, allocatable, save :: met_ntot(:)   ! total density of the element
 	real*8, allocatable, save :: met_g0(:)     ! photoionization of neutral
 	real*8, allocatable, save :: met_g1(:)     ! photoionization of singly ionized
+	! The part of met_g0 whose absorptions leave the neutral as X++ (an
+	! inner-shell vacancy that autoionizes; metal_rows).  Zero where the
+	! driver does not supply it.
+	real*8, allocatable, save :: met_g02(:)
 	real*8, allocatable, save :: met_b0(:)     ! collisional ionization of neutral
 	real*8, allocatable, save :: met_b1(:)     ! collisional ionization of singly ionized
 	real*8, allocatable, save :: met_a1(:)     ! recombination of singly ionized
@@ -65,20 +69,26 @@
 	! another. The allocatables are lazily allocated per thread on first use in
 	! set_metal_coeffs (its `if (.not.allocated)` guard now runs per thread).
 	!$omp threadprivate(met_nelem, met_ntot, met_g0, met_g1, met_b0, met_b1,  &
-	!$omp                met_a1, met_a2, met_top)
+	!$omp                met_a1, met_a2, met_top, met_g02)
 
 	contains
 
 	! Store the cell-by-cell metal element coefficients for ion_system_HeH_metals.
-	subroutine set_metal_coeffs(nelem, ntot, g0, g1, b0, b1, a1, a2, top)
+	! g02 (optional): the part of g0 that takes the neutral straight to
+	! X++; absent, it is zero and every absorption advances one stage.
+	subroutine set_metal_coeffs(nelem, ntot, g0, g1, b0, b1, a1, a2, top, &
+	                            g02)
 		integer, intent(in) :: nelem
 		real*8, dimension(nelem), intent(in) :: ntot, g0, g1, b0, b1, a1, a2
 		integer, dimension(nelem), intent(in) :: top
+		real*8, dimension(nelem), intent(in), optional :: g02
 		if (.not. allocated(met_ntot)) then
 			allocate(met_ntot(nelem), met_g0(nelem), met_g1(nelem),   &
 			         met_b0(nelem), met_b1(nelem), met_a1(nelem),     &
-			         met_a2(nelem), met_top(nelem))
+			         met_a2(nelem), met_top(nelem), met_g02(nelem))
 		endif
+		met_g02 = 0.0d0
+		if (present(g02)) met_g02 = g02
 		met_nelem = nelem
 		met_ntot  = ntot
 		met_g0    = g0
@@ -153,6 +163,7 @@
 	! solve both X0<->X+ and X+<->X++; two-stage elements solve only
 	! X0<->X+ and pin the unused upper unknown to zero.
 	call metal_rows(fvec, x, 4, met_nelem, met_ntot, met_g0, met_g1,   &
+	                met_g02,                                           &
 	                met_b0, met_b1, met_a1, met_a2, met_top,           &
 	                nm0, nm1, nm2, n_e)
 
@@ -169,7 +180,9 @@
 	! He <-> H charge exchange (Huang Table 4 group B). Standard He row
 	! (HeI->HeII positive), so he_row_sign = +1.
 	call he_h_cx_fvec(fvec, ieq_cell%kcx_He0_Hp, ieq_cell%kcx_Hep_H0,  &
-	                  n_hi, n_hii, n_hei, n_heii, 1.0d0)
+	                  ieq_cell%kcx_Hepp_H0,                            &
+	                  n_hi, n_hii, n_hei, n_heii, n_heiii, 1.0d0,       &
+	                  .false.)
 
 	! The transported ionization fractions, where the flow carries them
 	! and not this cell's local balance (ion_residual_core).
@@ -249,9 +262,14 @@
                     + (-n_X*met_b0(e) - met_a1(e)*n_X)*n_e
       fjac(ix,ix+1) = fjac(ix,ix+1) - n_X*met_g0(e) + (-n_X*met_b0(e))*n_e
       if (met_top(e) .ge. 2) then
-         ! Row ix+1: X+<->X++ , f = nm1*g1 + (nm1*b1 - a2*nm2)*n_e
+         ! Row ix+1: X+<->X++ , f = nm1*g1 + nm0*g02 + (nm1*b1 - a2*nm2)*n_e
          fjac(ix+1,ix)   = fjac(ix+1,ix)   + n_X*met_g1(e) + (n_X*met_b1(e))*n_e
          fjac(ix+1,ix+1) = fjac(ix+1,ix+1) + (-met_a2(e)*n_X)*n_e
+         ! + nm0*g02, nm0 = n_X (1 - x(ix) - x(ix+1)): the direct X0 -> X++
+         if (met_g02(e) .ne. 0.0d0) then
+            fjac(ix+1,ix)   = fjac(ix+1,ix)   - n_X*met_g02(e)
+            fjac(ix+1,ix+1) = fjac(ix+1,ix+1) - n_X*met_g02(e)
+         endif
       endif
    enddo
 
@@ -262,10 +280,11 @@
                       n_hi, n_hii, n_hei, n_heii, n_heiii,             &
                       met_ntot, n_h, n_he, 1.0d0, ieq_cell%T_K)
 
-   ! He <-> H charge-exchange Jacobian (rows 1,2; cols 1,2,3), mirror of
+   ! He <-> H charge-exchange Jacobian (rows 1,2,3; cols 1,2,3), mirror of
    ! the he_h_cx_fvec call in the residual (standard He row, +1).
    call he_h_cx_jac(N_eq, fjac, ieq_cell%kcx_He0_Hp, ieq_cell%kcx_Hep_H0,  &
-                    n_h, n_he, n_hi, n_hii, n_hei, n_heii)
+                    ieq_cell%kcx_Hepp_H0,                                 &
+                    n_h, n_he, n_hi, n_hii, n_hei, n_heii, n_heiii)
 
    ! Pinned/identity rows LAST (CX never targets them): absent elements pin
    ! both stages; two-stage elements pin the unused X++ unknown.

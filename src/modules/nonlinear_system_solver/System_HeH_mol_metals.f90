@@ -52,7 +52,7 @@
 	                             oxygen_carrier_rows,                     &
 	                             oj3, oj4, oj5, oj7
 	use System_HeH_metals, only: met_nelem, met_ntot, met_g0, met_g1,     &
-	                             met_b0, met_b1, met_a1, met_a2, met_top
+	                             met_b0, met_b1, met_a1, met_a2, met_top, met_g02
 	use species_table,     only: iel_O
 	use charge_exchange,   only: cx_add_to_fvec, he_h_cx_fvec
 
@@ -94,9 +94,10 @@
 	! exchange is left out of the bound; it is one contribution among several
 	! to the same row and the scale only has to be right to within a factor.
 	!
-	! photo_scale multiplies the two photoionization rates met_g0/met_g1 and
-	! nothing else, with the same meaning and the same exactness at 1 as in
-	! set_mol_turnover_rates (System_HeH_mol).
+	! photo_scale multiplies the photoionization rates met_g0/met_g1 (and
+	! met_g02, the neutral's direct jump to X++, which the X+ <-> X++ row
+	! carries) and nothing else, with the same meaning and the same
+	! exactness at 1 as in set_mol_turnover_rates (System_HeH_mol).
 	subroutine set_mol_metal_turnover_rates(n_e_ref, photo_scale)
 	real*8, intent(in) :: n_e_ref, photo_scale
 	real*8  :: sc
@@ -112,8 +113,9 @@
 		                  + (met_b0(e) + met_a1(e))*n_e_ref)
 		if (sc .gt. 0.0d0) mol_inv_turnover(ix) = 1.0d0/sc
 		if (met_top(e) .ge. 2) then
-			! X+ <-> X++ : the same three channels one stage up.
-			sc = met_ntot(e)*(photo_scale*met_g1(e)              &
+			! X+ <-> X++ : the same three channels one stage up, and
+			! the neutral's direct jump across it.
+			sc = met_ntot(e)*(photo_scale*(met_g1(e) + met_g02(e))  &
 			                  + (met_b1(e) + met_a2(e))*n_e_ref)
 			if (sc .gt. 0.0d0) mol_inv_turnover(ix+1) = 1.0d0/sc
 		endif
@@ -132,7 +134,7 @@
 	real*8  :: g_lw                             ! LW photodissociation
 	real*8  :: b_hi,b_hei,b_heii,b_heiTR        ! collisional ionization
 	real*8  :: a_hii,a_heii,a_heiii,a_heiTR     ! recombination
-	real*8  :: A31,q13,q31a,q31b,Q31            ! triplet kinetics
+	real*8  :: A31,q13,q31g,q31a,q31b,Q31       ! triplet kinetics
 	real*8  :: n_h,n_he,n_e,ntot
 	real*8  :: n_hi,n_hii,n_h2,n_h2p,n_h3p,n_hehp
 	real*8  :: n_hei,n_heii,n_heiii,n_heiTR,n_heiSI
@@ -159,6 +161,7 @@
 	A31     = ieq_cell%A31
 	g_heiTR = ieq_cell%P_HeITR
 	q13     = ieq_cell%q13
+	q31g    = ieq_cell%q31g
 	q31a    = ieq_cell%q31a
 	q31b    = ieq_cell%q31b
 	Q31     = ieq_cell%Q31
@@ -234,7 +237,7 @@
 	                  g_h2_dd, g_h2_nd, g_lw,                           &
 	                  a_hii, a_heii, a_heiii, a_heiTR,                  &
 	                  b_hi, b_hei, b_heii, b_heiTR,                     &
-	                  q13, q31a, q31b, Q31, A31)
+	                  q13, q31g, q31a, q31b, Q31, A31)
 
 	! --- Oxygen-carrier rows, and the oxygen cycle's exchange with H2 ---
 	! Called after mol_heh_rows, which it adds to (fvec(4)). nm0(iel_O) is
@@ -248,6 +251,7 @@
 
 	! --- Metal rows (System_HeH_metals, shifted to mbase..) ---
 	call metal_rows(fvec, x, mbase, met_nelem, met_ntot, met_g0, met_g1, &
+	                met_g02,                                           &
 	                met_b0, met_b1, met_a1, met_a2, met_top,             &
 	                nm0, nm1, nm2, n_e)
 
@@ -271,7 +275,9 @@
 	! production positive here, so he_row_sign = +1. Group B is excluded
 	! from cx_act, so it is applied only here (no double counting).
 	call he_h_cx_fvec(fvec, ieq_cell%kcx_He0_Hp, ieq_cell%kcx_Hep_H0,    &
-	                  n_hi, n_hii, n_heiSI, n_heii, 1.0d0)
+	                  ieq_cell%kcx_Hepp_H0,                              &
+	                  n_hi, n_hii, n_heiSI, n_heii, n_heiii, 1.0d0,       &
+	                  .true.)
 
 	! Each row divided by its own turnover rate, molecular block and metal
 	! block alike (set_mol_turnover_rates, set_mol_metal_turnover_rates).

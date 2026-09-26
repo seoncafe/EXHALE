@@ -1,0 +1,1894 @@
+%% EXHALE: running update log, stage 3 (from 2026-09-23).
+%% GENERATED from Update_EXHALE_stage3.md by src/utils/update_log_to_tex.py;
+%% edit the Markdown, not this file.
+%% Author: Kwang-Il Seon
+\documentclass[english,a4paper]{my_memo}
+\synctex=1
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{array}
+\usepackage{calc}
+\usepackage{url}
+\urlstyle{tt}
+\usepackage{soul}
+\usepackage{babel}
+\providecommand{\tightlist}{\setlength{\itemsep}{0pt}\setlength{\parskip}{0pt}}
+\providecommand{\pandocbounded}[1]{#1}
+\providecommand{\passthrough}[1]{#1}
+\newlength{\cslhangindent}
+\newlength{\csllabelwidth}
+\setcounter{secnumdepth}{0}
+\sloppy
+\begin{document}
+
+\title{EXHALE: Update Log (stage 3, from 2026-09-23)}
+\author{Kwang-Il Seon}
+\date{Last updated: \docmoddate}
+\maketitle
+
+\tableofcontents
+\bigskip
+
+This log continues \texttt{md/Update\_EXHALE\_stage2.md} from 2026-09-23. The
+earlier logs are kept under their own names:
+
+\begin{itemize}
+\tightlist
+\item
+  \texttt{docs/Update\_EXHALE\_stage0.\{tex,pdf\}}: the early phase (the ATES fork up to
+  2026-08-15).
+\item
+  \texttt{docs/Update\_EXHALE\_stage1.\{md,tex,pdf\}}: sections 1-171, 2026-06 to
+  2026-09-05; "Update\_EXHALE section N" in the source comments and the older
+  memos points into that file.
+\item
+  \texttt{docs/Update\_EXHALE\_stage2.\{md,tex,pdf\}}: sections 1-17, 2026-09-05 to
+  2026-09-22.
+\end{itemize}
+
+The entries of 2026-09-23 were first written into the stage 2 log as its
+sections 18 to 24 and moved here the same day as sections 1 to 7; a record of
+that day that cites "\texttt{md/Update\_EXHALE\_stage2.md} section 18" to "section
+24" means section 1 to section 7 of this file (the references known at the
+move were rewritten).
+
+Each entry below is one dated section: what changed, why, which files, the
+check that was run and its result. Section numbers restart at 1. The plan the
+entries execute is \texttt{md/PLAN\_20260923\_rev2.md}.
+
+\begin{center}\rule{0.5\linewidth}{0.5pt}\end{center}
+
+\subsection{1. The Ritz residuals of the preconditioned spectrum (2026-09-23)}\label{1-the-ritz-residuals-of-the-preconditioned-spectrum-2026-09-23}
+
+The spectrum hook \texttt{EXHALE\_PRECOND\_SPECTRUM=1} printed Ritz values with no
+accuracy of their own (\texttt{md/ISSUES\_20260909.md} item (D8), plan section 16).
+It now prints the residual \texttt{\textbar{}\textbar{}A\ y\ -\ theta\ y\textbar{}\textbar{}} of each.
+
+\textbf{The residual.} For a Ritz pair \texttt{(theta,\ y\ =\ V\_k\ s)} with \texttt{\textbar{}\textbar{}s\textbar{}\textbar{}\ =\ 1} the
+Arnoldi relation \texttt{A\ V\_k\ =\ V\_k\ H\_k\ +\ h(k+1,k)\ v(k+1)\ e\_k\^{}T} gives
+\texttt{A\ y\ -\ theta\ y\ =\ h(k+1,k)\ s\_k\ v(k+1)}, so the residual is \texttt{\textbar{}h(k+1,k)\textbar{}\ \textbar{}s\_k\textbar{}}.
+\texttt{ritz\_values\_of\_a\_matrix\_free\_operator} now hands back \texttt{h(k+1,k)}, and the
+routine prints that residual and the residual over the value\textquotesingle s magnitude for
+the six smallest values of every compression. That form assumes a linear
+operator and an orthonormal basis, and the finite-difference action is linear
+only to its truncation, so for the three smallest values of the whole operator
+the residual is also measured by applying the operator once more to \texttt{y}, once
+to each part of a complex pair. The operator action is now one routine,
+\texttt{action\_of\_the\_preconditioned\_operator}, called by the recursion and by the
+measured residual alike; the complex-pair packing of dgeev is undone in
+\texttt{coefficients\_of\_the\_ritz\_vector}. Every existing \texttt{{[}diag\ 15{]}} line is printed
+as before, and the residuals are new lines.
+
+\textbf{Verification.} On the stored state of
+\texttt{atomic\_scalar\_gj1132x0.01\_kzz1e9/HeH9.7}
+(\texttt{g0002\_20260919T004843Z\_f7485b14}) with \texttt{EXHALE\_TRUST\_REGION=1},
+\texttt{EXHALE\_ELEM\_DIAG=1}, \texttt{EXHALE\_PRECOND\_SPECTRUM=1} and \texttt{EXHALE\_JFNK\_MAXIT=1}, a
+17-second run: the 30 \texttt{{[}diag\ 15{]}} lines of the binary before the change are
+byte-identical after it, so extracting the action moved nothing in the
+recursion; and the Arnoldi estimate and the measured residual agree to five or
+six digits for all three measured pairs, the complex one included. MEASURED.
+The hook runs only under \texttt{EXHALE\_PRECOND\_SPECTRUM=1} inside the trust-region
+step, which no case of the regression matrix enables, so the matrix was not
+rerun. Two unused local declarations of the same file (\texttt{islot}; \texttt{tv}, \texttt{net})
+were removed on the way; they carried no value.
+
+\textbf{What it shows.} At 200 products that spectrum is the one phase 9 of the
+campaign quoted (largest 9.99385E-01, smallest 2.52128E-04, ratio 3.96381E+03,
+reproduced to every digit), and its small end is not resolved:
+\texttt{h(k+1,k)\ =\ 0.168501}, and the residual over the magnitude is 12.8, 3.58, 1.86,
+1.86, 1.09 and 1.09 for the six smallest values, every one larger than one.
+
+\textbf{The whole space.} \texttt{n\_ritz\_step} became \texttt{EXHALE\_RITZ\_STEPS=\textless{}k\textgreater{}} (default 200,
+capped at the number of unknowns, below 2 refused). At k = 1500, the number of
+unknowns of this operator, the Hessenberg is similar to the operator, and the
+same fixture took 136 s. MEASURED: smallest 5.60717E-06, ratio 1.78560E+05,
+43 values below 1E-4 and 319 below 1E-2, against 0 and 6 at 200 products. So
+"nothing below 1E-4" is wrong on that checkpoint, and "there is no near-null
+mode of the preconditioned operator" is refuted. What the recursion finds are
+small eigenvalues of the operator the Krylov cycle sees: the hydrodynamic block
+alone (three unknowns a cell; \texttt{nvar\_jac\ =\ 3\ +\ nspec\_row}, with no species rows
+on this route), scaled and preconditioned. {[}Corrected later on 2026-09-23 by
+\texttt{md/lhs1140b\_spectral\_checks\_20260923.md}: this read "and shifted by the
+pseudo-time diagonal"; the shift is in the band preconditioner only, the hook
+being handed \texttt{idtau\_leg\ =\ 0}.{]} They are not established as time scales of the
+atmosphere, and they say nothing about the alternated composition-hydrodynamics
+map. {[}Wording corrected 2026-09-23 after
+the review of \texttt{md/PLAN\_20260923.md}: this paragraph read "it has a cluster of
+slow modes".{]} Below about 1E-5 even the full recursion does not resolve them:
+the residual measured on the operator is 9.72E-06, 9.88E-06 and 9.56E-06 for
+the three smallest values (the first two one conjugate pair), larger than the
+pair\textquotesingle s magnitude and 0.96 of the third\textquotesingle s, so none is resolved from zero at the
+production probe length; the floor was later measured to be the rounding of
+the forward difference (it falls as arc\^{}-0.97 with the probe length, spectral
+checks memo). What the measurement bounds rigorously is the
+smallest singular value of the action as applied: on the normalized Ritz
+vector its norm is at most \textbar theta\textbar{} + \textbar\textbar r\textbar\textbar{} = 1.5E-05. Whether the 1E-5 floor
+of the residual is truncation, rounding or nonadditivity of the
+finite-difference action is not decided by these runs;
+\texttt{measure\_the\_additivity\_of\_the\_jacobian\_action} is the narrower test. The
+vectors (the real and imaginary parts of the pair, and the third) carry 53 to
+61 per cent in the mass rows and peak in the wind around cells 93 to 169, not
+at the base, but since they are not resolved their location is not
+established either. The documents that quoted the 200-product numbers carry
+a dated correction beside them. What stands is the direct measurement they
+were offered beside: on the alternated route the Krylov cycle reaches its
+tolerance in one to four products.
+
+\subsection{2. Two records the campaign left open, closed (2026-09-23)}\label{2-two-records-the-campaign-left-open-closed-2026-09-23}
+
+\textbf{\texttt{EXHALE\_RESIDUAL} now writes the configuration it measured under.} The
+route stopped at \texttt{src/EXHALE\_main.f90:1335}, before \texttt{write\_setup\_report} and
+\texttt{write\_resolved\_config} further down, so \texttt{EXHALE\_setup.out} was left empty and
+\texttt{EXHALE\_resolved.out} absent. It now writes both before its stop, as the direct
+steady route already did before its own. MEASURED on the stored state of
+\texttt{atomic\_scalar\_gj1132x0.01\_kzz1e9/HeH9.7}: 62 and 48 lines written where there
+were none, the printed residual byte-identical (9.806145E-01, 8.723527E-06,
+1.071147E+00), and the resolved file identical to a normal run\textquotesingle s but for two
+added lines, the base ghost count and its electrons as solved, present because
+this route evaluates the residual, and so solves the ghost, before it writes.
+
+\textbf{The conversion now asserts the charge.} \texttt{molecular\_seed\_from\_atomic\_state}
+computed the positive charge density before and after the 2 H -\textgreater{} H2 transfer
+and never compared the two. It now does, cell by cell, against
+\texttt{inventory\_feasible\_slack} (eight units in the last place) times the charge
+density, the bound \texttt{element\_inventory} already uses for two expressions of the
+same nuclei; a neutral cell must come back exactly. A breach stops the run, and
+the largest change is printed in units of \texttt{eps\ *\ n\_chg}. A relative change was
+not used because a neutral cell carries no charge and the ratio is not defined
+there. The \texttt{molecular\_seed} suite asserts it in each of its three modes:
+29 of 29 pass, and the change is 0.00 units in every mode, so in memory the
+transfer conserves the charge bitwise, and the 1.5 units the M2 conversion
+audit measured were its file round trip, as that audit said. The failure path
+was read, not exercised.
+
+\subsection{3. Two statements of the source that were not true, corrected (2026-09-23)}\label{3-two-statements-of-the-source-that-were-not-true-corrected-2026-09-23}
+
+Found while checking the review of \texttt{md/PLAN\_20260923.md} against the code;
+the plan\textquotesingle s revision is \texttt{md/PLAN\_20260923\_rev1.md}. Neither change moves a
+number: one is a comment and one is the text of a printed line.
+
+\textbf{The certificate printed a withdrawn reason.} Its report says why the
+species rows below \texttt{cert\_regime\_wind\_r} = 1.20 are reported and do not gate,
+and for the band 1.10 to 1.20 it printed that the row\textquotesingle s discretization, 4.6e-4
+at the binding radius, "stands above any tolerance one could set there". The
+comment above \texttt{cert\_regime\_wind\_r} said the same, that a 1e-5 gate would ask
+the residual to fall below the error of its own discrete equation. That
+inference was withdrawn on 2026-09-11 (\texttt{md/code\_status\_20260910.md} section
+3.3): the algebraic residual of the discrete equations is not bounded below by
+their truncation error, and the same routine took a wind H2 row to 2.4e-13 on
+a held background. The gating decision is unchanged; its stated reason is now
+the one that document gives, that no state of this code has come near 1e-5
+there and that the terms of the row are conserved only to 2e-3
+(\texttt{certification.f90}, the comment of the two regimes and the report block).
+
+\textbf{The absent-carrier threshold claimed a round-off argument.} The comment on
+\texttt{carrier\_absent\_fraction} (\texttt{diffusive\_photochemistry.f90}) said that 1e-20 of
+the free reservoir is "four decades below the round-off of a double against
+the reservoir, so nothing at or under it is a resolved density at all", and
+that such a carrier carries nothing any reported quantity depends on. A small
+term vanishing from a rounded sum does not make it unresolved: stored as its
+own double, 4e-17 stays 4e-17 with a relative spacing of 1.5e-16, and its
+production, loss and transport stay resolved with it. The comment now says the
+threshold is a choice and not a round-off limit, and that the test reads the
+abundance alone, not the production or the incoming flux that could raise it.
+The threshold itself is unchanged.
+
+Verified: the build compiles (\texttt{EXHALE.x} md5
+\texttt{69233669123c368b2d58aebc132eda85}; the printed string moved it from
+\texttt{67646328ad476a976a7953aba65bdffc}), and one \texttt{stationary\ evaluate} of a stored
+molecular state (the pass-6 state of \texttt{kzz1e9/HeH0.55} from the 2026-09-21
+alternation audit) prints the corrected block and reproduces to four digits
+the verdict that audit measured on it under its own binary (carrier balance H2
+9.722E-04 at cell 500, elemental transport He/H 7.353E-04 at cell 336). The line counts of both files are
+unchanged. The regression matrix was not rerun: the printed text enters no
+output file the matrix compares, and a comment enters no object code.
+
+\subsection{4. Four more source comments that were not true, corrected (2026-09-23)}\label{4-four-more-source-comments-that-were-not-true-corrected-2026-09-23}
+
+Found while checking the second review of the LHS 1140 b plan
+(\texttt{md/PLAN\_20260923\_review1.md}) against the code; the plan\textquotesingle s revision is
+\texttt{md/PLAN\_20260923\_rev2.md}. All four are comments in
+\texttt{diffusive\_photochemistry.f90}; the line count of the file is unchanged and
+the rebuilt \texttt{EXHALE.x} has the same md5, \texttt{69233669123c368b2d58aebc132eda85},
+so no object code moved.
+
+\begin{itemize}
+\tightlist
+\item
+  \textbf{The boundary section of the module header said "OUTER: zero gradient,
+  as the element operator does"}, and that a run whose carriers are not
+  negligible there is flagged in \texttt{output/Oxygen\_chemistry.txt}. The carrier
+  operator imposes zero diffusive, eddy and settling flux on the outer face
+  (\texttt{Jf(N)\ =\ 0}), which with a settling drift is not a zero gradient, and
+  \texttt{Oxygen\_chemistry.txt} is written only by oxygen-chemistry runs and flags
+  no carrier. The header now states the flux condition and points to
+  \texttt{carrier\_face\_coefficients}.
+\item
+  \textbf{\texttt{carrier\_face\_coefficients} justified that closure by the outer cells
+  being collisionless}, quoting \texttt{Kn\_bulk} = 1.4-2.4 at the domain top and an
+  exobase at 18.8-25.4 R\_p. Those numbers come from runs made before the
+  2026-09-13 well-balanced re-solve. MEASURED with
+  \texttt{src/utils/collisional\_validity.py} on the current certified states and on
+  the \texttt{kzz1e9/HeH0.55} audit state: \texttt{Kn\_bulk} at the top cell is
+  0.055-0.142, the exobase lies above the domain, and the largest species
+  value in the critical region is 0.41-0.59. The comment now says the outer
+  cells are transitional and that the zero face flux rests on the other
+  reason it gives, the measured inward settling flux of a ghost-built face.
+  \texttt{md/collisional\_validity.md} carries the same measurement as a dated note.
+\item
+  \textbf{The row-scale floor was said to be converged by construction} ("a
+  density that small cannot change any observable, so a row below it IS
+  converged", and "every term of such a row is round-off"). The floor is the
+  rate that would move a carrier by 1e-20 of its element in one
+  signal-crossing time, a scale that a row is judged against; it proves
+  nothing about the row.
+\item
+  \textbf{The absence test was said to separate round-off from a real row}. It
+  reads the abundance alone, and a carrier far below the threshold can carry
+  a real, resolved production; the comment now says that the test removes
+  such a cell from the carrier gate without asking whether production or
+  incoming flux could raise it, and that this is a choice.
+\end{itemize}
+
+Outside the source, the comment on the 2.26 km/s overlay shift in
+\texttt{LHS1140b/make\_memo\_figures.py} said the equivalent width is unaffected. The
+equivalent widths are computed from unshifted arrays, so the shift enters
+none of them; applied to a model it would move the fixed-window EW by
+1.2e-5 relative (MEASURED). The comment now says both.
+
+Verified: \texttt{make} rebuilt \texttt{EXHALE.x} to the same md5; the Python file parses.
+Nothing was run beyond that, since no executable statement changed.
+
+\subsection{5. One equivalent-width operator for the observation and every model (2026-09-23)}\label{5-one-equivalent-width-operator-for-the-observation-and-every-model-2026-09-23}
+
+The user\textquotesingle s decision on \texttt{md/PLAN\_20260923\_rev2.md} section 4: the observed
+statistic stays as it is (1.1084293096 +/- 0.0294774727 \%A, working target
+1.108 +/- 0.030), and every model is put through the same operator. A model
+spectrum, already convolved to the instrument resolution, is interpolated
+linearly onto the observation\textquotesingle s own vacuum samples inside 10832.60 to
+10834.20 A (44 samples, 10832.622 to 10834.175 A) and integrated with their
+trapezoid weights. Before, each model was integrated with a masked trapezoid
+on its own grid inside the nominal window, so the two integrals started and
+stopped at different wavelengths.
+
+\textbf{One module, six readers.} \texttt{LHS1140b/he10830\_equivalent\_width.py} holds
+the window, the vacuum/air ratio, the observation, and the operator
+(\texttt{model\_equivalent\_width}, \texttt{transit\_file\_equivalent\_width},
+\texttt{observed\_equivalent\_width}). The six places that computed an EW each on its
+own now call it: \texttt{LHS1140b/models/status.py} (the results table and, since
+this change, the EW column of the provenance table, which it used to copy
+from each run\textquotesingle s \texttt{REPRODUCE.md}), \texttt{LHS1140b/make\_memo\_figures.py} (the
+unbroadened and the broadened curves, and the observed value, whose variable
+and printed label no longer call the released spectrum a digitization),
+\texttt{LHS1140b/models/compare\_archive.py}, \texttt{LHS1140b/models/write\_reproduce.py}
+(whose line also said the window was in air; it is in vacuum), and the inline
+EW of \texttt{LHS1140b/models/run\_case.sh}. The unused regular expression that read
+the EW out of \texttt{REPRODUCE.md} was removed.
+
+\textbf{What moved, MEASURED.} Over the 177 EXHALE spectra of the catalog the
+change is at most 1.45e-4 \%A, relative -1.1e-3 to +0.9e-3; 31 spectra move in
+the fourth decimal, 15 of the 83 certified rows of the catalog table among
+them (for example the certified molecular K\_zz = 1e9 He/H 2.13 and 9.7 read
+1.5604 and 2.4060 where they read 1.5603 and 2.4061), and one crossing moves
+(K\_zz = 0: 3.1011 to 3.1010). Broadened curves and p-winds curves move more,
+up to about 0.6 per cent, because their wings reach the window edges that the
+old model integral kept and the observation\textquotesingle s samples do not (for example
+the matched-kernel EW of the well-mixed He/H 0.4 solution, 1.067 to 1.065).
+\texttt{LHS1140b/MODELS.md} sections 7 and 8 were regenerated by
+\texttt{models/status.py\ -\/-write}; \texttt{docs/lhs1140b\_catalog\_state.tex} carries
+the new EWs, a paragraph on the operator and the recomputed comparison of its
+section 4 (1.374869 to 1.356745 \%A, 0.60 standard deviations), rebuilt to
+seven pages and checked; the memo \texttt{docs/lhs1140b\_exhale\_vs\_pwinds.tex} and
+its figures are brought to the same operator in a separate pass
+(\texttt{md/lhs1140b\_ew\_operator\_memo\_changes\_20260923.md}).
+
+\subsection{6. The stage export of the stationary alternation (2026-09-23)}\label{6-the-stage-export-of-the-stationary-alternation-2026-09-23}
+
+\texttt{EXHALE\_STAGE\_EXPORT=1} (default off) writes, for every pass of the
+alternation, the state the driver holds at four named stages:
+\texttt{hydro\_entry} (before the hydrodynamic solve; from the second pass on, the
+state the previous composition update handed over), \texttt{hydro\_return} (the
+accepted solve after the ionization sweep that follows it), \texttt{certification}
+(the joint test, with the three residual rows), and \texttt{composition\_return}
+(after the element and carrier updates and the rebuild of p and T at the
+fixed conserved state). Each goes to \texttt{output/stage\_state\_p\textless{}pass\textgreater{}\_\textless{}stage\textgreater{}.txt}
+with every row, ghosts included: r, rho, v, p, T, heat, cool, the particle
+and electron densities, H I, H II, He I, He II, He III, He(2\^{}3S), H2, H2+,
+H3+, HeH+, the conserved variables, and at the certification the residual
+rows. At \texttt{hydro\_entry} and at the certification the driver also asks
+\texttt{conservation\_budget} for the next assembly under the stage\textquotesingle s name
+(\texttt{conservation\_budget\_request\_next}, new), so the energy row\textquotesingle s terms of that
+state are exported without counting assemblies, which probes and trials also
+consume. It is the instrument \texttt{md/PLAN\_20260923\_rev2.md} P1.5 and P1.6 (b)
+call for (the four named-stage captures of review R4).
+
+The writer calls nothing that sets a module variable. MEASURED on one pass
+from the certified \texttt{molecular\_scalar\_gj1132\_kzz1e9/HeH2.13} g0008 state: the
+data rows of \texttt{Hydro\_ioniz.txt} and \texttt{Ion\_species.txt} are bitwise the same with
+the export off (twice), with it on, and with the previous binary
+\texttt{69233669123c368b2d58aebc132eda85}; the log differs only by the export
+lines. The two exported budget files carry their stage names. Binary
+\texttt{EXHALE.x} md5 \texttt{b017fe42407c980068e112a8ca3d71d3}, copied to
+\texttt{LHS1140b/models/EXHALE\_b017fe42.x} with its manifest. The regression matrix
+was not rerun: every new call in the driver is guarded by the key, and the
+budget module gained a subroutine and a header line that are reached only on
+a request, so with the key off no executed statement of any route changed.
+The bitwise check above covers the stationary alternation; the matrix\textquotesingle s
+cases, which march, were not run.
+
+\subsection{7. Three defects the family C audit found, fixed, and two small ones (2026-09-23)}\label{7-three-defects-the-family-c-audit-found-fixed-and-two-small-ones-2026-09-23}
+
+The audit of the 13-decade H2 hole in
+\texttt{molecular\_photochem\_gj1132\_kzzprofile/HeH9}
+(\texttt{md/lhs1140b\_family\_c\_h2\_slab\_20260923.md}, item P1.7 of
+\texttt{md/PLAN\_20260923\_rev2.md}) traced it to the molecular seed and found why no
+solve removed it. Each finding was checked in the source before it was
+changed.
+
+\textbf{The element relaxation threw away its own kept steps}
+(\texttt{binary\_element\_diffusion.f90}, \texttt{relax\_element\_composition}). Its retry
+budget counts every rejected step of the relaxation, and when it ran out the
+routine returned \texttt{element\_relaxation\_failed} and restored the entry
+composition, even after 24 to 31 steps had been kept. The module\textquotesingle s outcome
+table, and the driver that reads it, reserve that outcome for a relaxation
+that kept no step; the driver then refuses the pass and skips the carrier
+relaxation (\texttt{EXHALE\_main.f90}, the \texttt{outer\_element\_update\_refused} branch).
+This is how the carrier operator never ran on the family C case in four
+solves, and how the 2026-09-18 rung at He/H 1.411 ended at its second pass
+("took 28 steps and found no admissible 29th", READ, L34c section 4). A
+relaxation that has kept steps now ends as a partial advance
+(\texttt{element\_relaxation\_step\_budget}) with the kept steps handed back, and says
+so once in the log; one that kept none is still refused with its entry
+composition. The retry budget still counts every rejection. Test: two new
+rows of \texttt{src/tests/element\_operator/} on a test knob
+(\texttt{element\_refuse\_after\_accepted\_for\_test}, -1 in every production run) that
+lets three steps through and refuses the rest: the relaxation reports the
+partial advance, three steps, and a moved composition; with no step let
+through it reports the refusal and returns the entry composition bitwise.
+Every row of the suite passes.
+
+\textbf{A sweep could rewrite a transported H2} (\texttt{ionization\_equilibrium.f90}, the
+extraction of the molecular partition). With the carriers transported the
+sweep is handed H2 (\texttt{x\_h2\_fixed}) and solves the rest against it; a root
+meets the imposed value through its own row, but a non-root acceptance
+(class 4) or a clamp onto the element budget (class 3) returned another
+x(4), and the extraction wrote that back as the cell\textquotesingle s H2. MEASURED on the
+seed\textquotesingle s intermediate state of the family C case: the returned H2 differed from
+the handed one at exactly the 21 non-root cells, by up to 82 per cent; with
+the fix it differs nowhere by more than 7.8e-16. The imposed value is now
+written and the atomic hydrogen takes the remainder of the budget.
+
+\textbf{The molecular seed read a root off cells the sweep had not solved}
+(\texttt{molecular\_seed\_from\_atomic\_state.f90}, the \texttt{local} mode). The seed takes the
+root of each cell\textquotesingle s own H2 row at the ions of one sweep; at cells where that
+sweep adopted a non-root with every ion at zero, the root was 4e-17 of the
+hydrogen, thirteen decades below the neighbouring cells, and that was the
+hole. The sweep now records the acceptance class of each cell
+(\texttt{ieq\_cell\_acceptance\_class}, written and never read inside the sweep), and
+the seed reads no root off a class-4 or class-6 cell: such a cell takes the
+root of its nearest solved neighbours, interpolated in log x2 over r, and the
+smaller of that and the fit. MEASURED on the same reproducer: the 21 cells go
+from 4e-17 (and from up to 6.8e-4 where the rising slab was) to a smooth
+1.8e-4 to 2.1e-3 between the solved cells 428 and 450; outside them the seed
+moves by at most 8.2e-4 relative, through the H2 fix above. Two further
+changes the audit proposed were tried and not kept: iterating sweep and root
+to a common fixed point did not converge in 30 iterations and drove the base
+layer to its unshielded branch (x2 = 6.9e-4 at 974 K), because a cell\textquotesingle s
+shielding column is the H2 above it and the iteration is not a local one; and
+adopting the root in place of the smaller of root and fit follows from the
+same iteration and was withdrawn with it. The \texttt{molecular\_seed} suite passes
+29 of 29.
+
+\textbf{Smaller.} The comment on \texttt{nH\_free} in \texttt{diffusive\_photochemistry.f90} said
+it excludes the hydrogen of the ion stages and molecular ions; it is the
+cell\textquotesingle s hydrogen less the HeH+ nucleus (\texttt{carrier\_element\_totals}). And
+\texttt{carrier\_row\_terms.txt} was written with \texttt{ES14.7}, which drops the \texttt{E} of a
+three-digit exponent (\texttt{1.0332735-100}); it is now \texttt{ES15.7E3}.
+
+\textbf{Not changed, reported.} Two provenance attributions in the state index of
+the family C case are wrong (the audit memo, D4): the certificate of g0002
+belongs to a later solve, and g0001\textquotesingle s manifest names another binary than its
+own file header. The index is written by the catalog tools and was not edited
+by hand.
+
+Verified: the element-operator and molecular-seed suites pass; the H2 fix
+and the seed on the family C reproducers as above; the stationary route with
+\texttt{EXHALE\_STAGE\_EXPORT} unchanged. \texttt{EXHALE.x} md5
+\texttt{45190de9ba3752eb720a728d54d3a1e3}. The one regression case that runs the H2
+carrier operator, \texttt{mol\_carrier}, was run with the binary before and after the
+element and H2 fixes (section 8).
+
+\subsection{8. The regression check of section 7, a cell writer, and corrections from the spectral and On stall tests (2026-09-24)}\label{8-the-regression-check-of-section-7-a-cell-writer-and-corrections-from-the-spectral-and-on-stall-tests-2026-09-24}
+
+\textbf{The one regression case that runs the H2 carrier operator.} \texttt{mol\_carrier}
+was run from its input with \texttt{OMP\_NUM\_THREADS=1\ EXHALE\_MAXSTEPS=12000} twice,
+once with the binary before the fixes of section 7 (\texttt{EXHALE\_b017fe42.x}) and
+once after (\texttt{EXHALE\_af853fe7.x}), in copies
+(\texttt{LHS1140b/models/.P1/d2d3\_mol\_carrier/}). MEASURED: the two
+\texttt{Hydro\_ioniz.txt} differ by at most 1.3e-11 relative and the two
+\texttt{Ion\_species.txt} by at most 9.4e-13; neither run met a non-root cell or the
+retry budget of the element relaxation, so the difference is the H2 now
+written exactly at the imposed value where a root had met it to the solver\textquotesingle s
+tolerance. Below 0.1 per cent, it needs no golden refresh.
+
+\textbf{A cell writer on the \texttt{EXHALE\_NEWTON\_TEST} route} (\texttt{EXHALE\_main.f90}). The
+route printed only the row maxima of the solver\textquotesingle s vector F(Y), so where it
+differed from the \texttt{EXHALE\_RESIDUAL} route the cell was not known (ISSUES D5).
+It now writes \texttt{output/newton\_residual\_profile.txt} with the columns of
+\texttt{output/residual\_profile.txt} (its temperature column is 0: the route forms no
+temperature array). MEASURED on \texttt{molecular\_scalar\_gj1132\_kzz1e9/HeH2.13} g0008
+with \texttt{EXHALE\_RELOAD\_EQ=0}: the two routes differ in cells 1 and 2 alone, where
+the base face mass flux differs by 9 per cent, and nowhere else in 500 cells;
+the mass-row maxima (5.10e-09 against 1.37e-09) are that base difference.
+
+\textbf{From the checks of the preconditioned spectrum}
+(\texttt{md/lhs1140b\_spectral\_checks\_20260923.md}):
+
+\begin{itemize}
+\tightlist
+\item
+  the cost line of the additivity measurement printed the run\textquotesingle s cumulative
+  count of inner cell solves where it meant this measurement\textquotesingle s own
+  (\texttt{nt\_calls}, now \texttt{nt\_calls\_here}, \texttt{steady\_newton.f90});
+\item
+  the comment that the Newton model\textquotesingle s products reuse the frozen WENO3
+  weights is true on the line-search route and not on the trust-region route,
+  where the merit evaluation sets \texttt{weno\_mode\ =\ 0} and nothing restores it
+  before the leg and the spectral hook; the comment now says so, and which of
+  the two the leg should use is left open;
+\item
+  the base boundary\textquotesingle s comment that the states "sit decades from" the
+  thresholds of the wind window now records a state that sits one decade away
+  and a probe that crosses the switch (\texttt{base\_boundary.f90});
+\item
+  the records that called the spectrum\textquotesingle s operator "shifted by the pseudo-time
+  diagonal" (ISSUES D8, stage 3 section 1, the p2\_base note, the plan rev2
+  section 3.6) were corrected: the shift is in the band preconditioner only.
+\end{itemize}
+
+\textbf{From the On stall test} (\texttt{md/lhs1140b\_on\_stall\_end\_to\_end\_20260923.md}):
+
+\begin{itemize}
+\tightlist
+\item
+  \texttt{Ionization\ transport:\ True} was refused with \texttt{Coupled\ carrier\ solve:\ True}
+  but not with \texttt{On\ stall}, which hands the same registry the same unknowns
+  once the alternation stalls; it is now refused with either
+  (\texttt{input\_read.f90});
+\item
+  the comment on \texttt{EXHALE\_JFNK\_MAXIT} said a named cap makes the run take one
+  stationary solve; it forbids a second entry into the stationary route and
+  caps the solve of every pass inside the one entry, which the test measured
+  (\texttt{EXHALE\_main.f90}); the plan rev2 carried the same error and is corrected.
+  The handover itself fails: the conditions are met and the transition begins,
+  and the re-evaluation of the snapshot\textquotesingle s residual stops the run on the face
+  mass flux guard, the carrier balance also reading a background the snapshot
+  does not hold. That is a change of the solver\textquotesingle s control flow and is reported
+  for a decision, not fixed.
+\end{itemize}
+
+\textbf{The update log.} The entries of 2026-09-23 were moved from the stage 2 log
+(its sections 18 to 24) into this file on the user\textquotesingle s instruction, and
+\texttt{src/utils/update\_log\_to\_tex.py} now takes the stage as its argument (\texttt{2} or
+\texttt{3}; the code-size appendix stays with stage 2). \texttt{docs/Update\_EXHALE\_stage2.tex}
+was regenerated for sections 1 to 17 (310 pages, no error or undefined
+reference) and this log\textquotesingle s twin built (7 pages at the time).
+
+Verified: the element-operator and molecular-seed suites pass; the builds
+compile. \texttt{EXHALE.x} md5 \texttt{46d5b9f4c0a62c1ab0cdf9bb165839ef}.
+
+\begin{center}\rule{0.5\linewidth}{0.5pt}\end{center}
+
+\subsection{9. Three defects the transient measurements found, repaired (2026-09-24)}\label{9-three-defects-the-transient-measurements-found-repaired-2026-09-24}
+
+The P4 measurements of the plan (\texttt{md/lhs1140b\_p4\_transients\_20260923.md},
+whose worker reported them and left them in place) found three defects; each
+is repaired and its path checked.
+
+\textbf{The default CFL number was a single-precision literal.} \texttt{real*8\ ::\ CFL\ =\ 0.6} stored 0.6000000238 (\texttt{parameters.f90}); every run that took the default
+marched at a step 3.97e-8 longer than the one it declared (MEASURED: the first
+step on a certified molecular state is 0.54736376538957865 s with the default
+and 0.54736374363929763 s with \texttt{CFL:\ 0.6}). Now \texttt{0.6d0}. The same kind of
+literal set the Voronov (1997) collisional-ionization coefficients of all
+seventeen rows of \texttt{Cool\_coeff.f90} (11.26 stored as 11.2600002), and the
+physics probe \texttt{voronov\_carbon\_ionization.f90} mirrored it on purpose to
+compare exactly; both are now double-precision literals, and the probe passes
+at its 1e-12 tolerance (MEASURED). The rounding was below 1e-7 relative, four
+decades under the precision of the fits; a declared constant is still the
+constant it declares.
+
+\textbf{\texttt{EXHALE\_UPDATE\_MAP} could stop before its last requested step.} The
+diagnostic switched off the flux-spread stop, the residual gate and the JFNK
+hand-off, but not the step-change stop or the stall stop, and on a stationary
+state a step of a quarter of the CFL step already moves the state by less
+than \texttt{dtu\_th}: a six-step map ended after three blocks. While the map runs,
+every stop flag is now cleared after the stop tests of each step
+(\texttt{EXHALE\_main.f90}), so the map ends on its own step count and the staged
+secondary ionization cannot change the physics between two of its steps; the
+stop line says "the update map wrote its N requested step(s)". MEASURED on a
+copy of the failing run without \texttt{Force\ start}: six blocks, dt from 6.6296e-05
+to 6.6296e-11 of the code unit.
+
+\textbf{\texttt{EXHALE\_DUMP\_IC=1} wrote placeholders as the lower ghost rows.} \texttt{load\_IC}
+fills the primitive ghost rows with cell 1\textquotesingle s state until the first \texttt{Apply\_BC},
+which writes the ghosts of the conserved array only; the dump wrote the
+primitive array. It now takes the ghost rows of the primitive array the
+boundary derivation held (\texttt{bc\_W\_hold}). MEASURED: the two lower ghost rows
+read rho = 1.302e14 and 1.242e14, T = 233.0998 and 226.0275 K, against the
+placeholder 4.857e13 and 546.06 K before, and the file\textquotesingle s 233.1004 and 226.0281
+K (the 2.5e-6 is the ghost composition the boundary re-derives from the loaded
+column).
+
+The P4 memo now carries its command record (section 7, which its worker had
+not written) and the repairs beside each defect.
+
+\subsection{10. The elemental flux records ride on the Riemann face mass flux; a row writer for the helium element (2026-09-24)}\label{10-the-elemental-flux-records-ride-on-the-riemann-face-mass-flux-a-row-writer-for-the-helium-element-2026-09-24}
+
+\textbf{What was wrong.} The element transport operator is handed the face mass
+flux of the Riemann solve (\texttt{face\_mass\_flux\_of\_state}), the one the mass row
+differences. Two records of it were not: the base budget entry
+(\texttt{element\_base\_flux}) and \texttt{output/element\_flux\_profile.txt} built their face
+mass flux as the face mean of the cell-centred density and velocity. Near the
+base the cell-centred velocity carries a collocated two-cell odd-even mode
+(project record P44), so on the certified \texttt{molecular\_scalar\_gj1132\_kzz1e9/HeH0.55}
+state the file read 4 pi r\^{}2 F = -1.07e9, +1.16e8, -3.8e7 and +5.9e7 g/s at
+faces 1 to 4, while the Riemann flux is 3.934813e7 g/s through every face
+(MEASURED). The "standing base sound wave" the comments named was that mode,
+not a wave of the solution.
+
+\textbf{What the records are now} (\texttt{binary\_element\_diffusion.f90},
+\texttt{certification.f90}, \texttt{EXHALE\_main.f90}):
+
+\begin{itemize}
+\tightlist
+\item
+  \texttt{write\_element\_flux\_profile} takes the face mass flux of the state it
+  describes and is called by the certification of that state, with the flux
+  the element row was measured on, whenever \texttt{EXHALE\_DIFFUSION\_CHECK=1} or a
+  lower-atmosphere profile is in use; the element step no longer writes it.
+  Before, the file held the profile of the last relaxation, taken before the
+  last hydrodynamic solve, and a stationary evaluate never wrote it.
+\item
+  The base budget entry uses the flux of its own evaluation: the relaxation\textquotesingle s
+  \texttt{Frho\_in}, or on the marching path the step flux \texttt{F0/6\ +\ F1/6\ +\ 2\ F2/3} of
+  the three SSP-RK3 stages (the flux whose divergence is the step\textquotesingle s density
+  change), read once per step; with neither, it says "not measured".
+\item
+  \texttt{face\_mass\_flux\_cgs} converts a code face flux with n0 mu v0 and the face
+  mean of msum.
+\item
+  The velocity is no longer an argument of \texttt{element\_diffusion\_step} or
+  \texttt{relax\_element\_composition} (nothing read it).
+\item
+  \texttt{composition\_residual} and \texttt{trace\_composition\_residual} reduced their norm
+  with \texttt{max}, whose result with a NaN is compiler dependent; a non-finite row
+  now sets the norm to huge.
+\item
+  \texttt{element\_transport\_residual}, documented as side-effect free, added its
+  face reconstructions to the run\textquotesingle s face counters; it now restores them.
+\end{itemize}
+
+\textbf{The helium row, term by term.} \texttt{EXHALE\_ELEMENT\_ROW\_TERMS=1} (default off)
+writes \texttt{output/element\_row\_terms.txt} from the certification\textquotesingle s own evaluation:
+the diffusive and advective terms of each face, the residual, the floor, the
+scale and the measure, with the face F\_rho, X\_face and J. Its measure agrees
+with the certification\textquotesingle s full-precision anchor to the sixteenth digit.
+
+\textbf{What it measured} (\texttt{md/lhs1140b\_element\_row\_terms\_20260924.md}): on the
+certified He/H 0.55 and 1.8 states the helium flux through r \textless{} 1.10 varies by
+2.2e-3 and 7.8e-5 of its median, nearly all of it the step across cell 2 (the
+first solved cell, row 6.1e-5 and 2.3e-5, ungated); every other cell below
+r = 1.2 stands at or below 1.5e-7 and 2.7e-7. At cell 2 the residual would change
+the helium density in 9e9 and 3e10 s, against an advective cell time of 2e6 s
+and a diffusive one of 47 s. The comment in \texttt{certification.f90} that gave
+"element fluxes not conserved, spread 9.8" as the reason for not gating
+r \textless{} 1.10 had measured the face-mean artifact; it and the printed line now say
+the band is reported by decision, and the gating itself is unchanged. The
+Phase-E statement that the LHS 1140 b overlap window is structurally empty
+rested on the same quantity and is marked stale where it stands
+(\texttt{md/phase\_e\_flux\_closure\_design.md}, \texttt{src/utils/element\_flux\_closure.py},
+\texttt{md/certification\_tolerance\_anchoring\_20260910.md}); it was not re-measured.
+\texttt{src/utils/collisional\_validity.py} and \texttt{md/collisional\_validity.md} used
+the same wording for the base cells; corrected (the computation, whose
+velocity scale binds four decades below its threshold there, is unchanged).
+
+\textbf{Checks.} The solved state does not move: an evaluate of the certified He/H
+1.45 state by the new binary writes \texttt{Hydro\_ioniz.txt}, \texttt{Ion\_species.txt} and
+both \texttt{\_adv} files identical to the 46d5b9f4 evaluate apart from the
+provenance line, CERTIFIED, and its \texttt{element\_flux\_profile.txt} carries
+7.0353671e7 g/s from face 1 outward (MEASURED; the worker measured the same on
+the He/H 0.55 and 1.8 states). Suites: element operator 65 of 65 (its base
+record rows assert the new definition and fail against the old objects by
+1.54 and 1.31), \texttt{diffusion\_tests.x} 35 of 35, certification 123 PASS,
+steady species rows 202, species face flux 18 (the last two by the worker).
+The dead velocity arrays of \texttt{diffusion\_tests.f90} and
+\texttt{certification\_contexts.f90} are removed, and the test T6, which claimed a
+uniform mixture "under an arbitrary velocity field" that the operator never
+read, now says what it tests.
+
+\subsection{11. The molecular K\_zz = 1e9 ladder certified across the observed equivalent width (2026-09-24)}\label{11-the-molecular-k_zz--1e9-ladder-certified-across-the-observed-equivalent-width-2026-09-24}
+
+Items P1.1 to P1.3 of the plan, run under the binary \texttt{EXHALE\_46d5b9f4.x}
+(the tree of section 8), every rung a stationary alternation from a certified
+parent mapped onto the new reservoir with the pressure held
+(\texttt{map\_state\_to\_grid.py\ -\/-ic\ -\/-reservoir\ He/H}, the base mixing ratio from the
+same nucleus fraction f), 24 passes and a 3 h ceiling allowed. Run
+directories under \texttt{LHS1140b/models/.P1/}; driver \texttt{.P1/make\_rung.sh}.
+
+{\def\LTcaptype{none} % do not increment counter
+{\small
+\begin{longtable}[]{@{}>{\raggedright\arraybackslash}p{\dimexpr(\linewidth-14\tabcolsep)/7\relax}>{\raggedright\arraybackslash}p{\dimexpr(\linewidth-14\tabcolsep)/7\relax}>{\raggedright\arraybackslash}p{\dimexpr(\linewidth-14\tabcolsep)/7\relax}>{\raggedright\arraybackslash}p{\dimexpr(\linewidth-14\tabcolsep)/7\relax}>{\raggedright\arraybackslash}p{\dimexpr(\linewidth-14\tabcolsep)/7\relax}>{\raggedright\arraybackslash}p{\dimexpr(\linewidth-14\tabcolsep)/7\relax}>{\raggedright\arraybackslash}p{\dimexpr(\linewidth-14\tabcolsep)/7\relax}@{}}
+\toprule\noalign{}
+He/H & parent & passes & wall of the passes & outcome & EW {[}\%A{]} & log10 Mdot \\
+\midrule\noalign{}
+\endhead
+\bottomrule\noalign{}
+\endlastfoot
+0.55 & the 2026-09-21 audit state (pilot) & 12, then 4 & 4.30 h, then 0.07 h & certified in the continuation & 0.1015 & 7.59 \\
+1.8 & certified 2.13 (descent pilot) & 12, then 3 & 1.04 h, then 0.04 h & certified in the continuation & 1.3584 & 7.88 \\
+1.45 & certified 1.8 & 17 & 1.15 h & certified & 1.0964 & 7.85 \\
+1.6 & certified 1.8 & 21 & 1.22 h & certified & 1.2155 & 7.86 \\
+1.52 & certified 1.45 & 14 & 0.88 h & certified & 1.1532 & 7.86 \\
+0.689 & certified 0.55 & 24 (budget) & 2.85 h & not certified: elemental row 9.9e-4, still falling & 0.274 (uncertified state) & 7.67 \\
+\end{longtable}
+}
+}
+
+MEASURED. Every certified state was re-entered four times in a chain of
+\texttt{Restart\ intent:\ stationary\ evaluate}, each entry reading the state the one
+before wrote: CERTIFIED at every entry, the largest relative change of any
+field after four entries 1.2e-12 (the 1.8 chain; 3.5e-13 or less for the others). The EW is the catalog\textquotesingle s measurement
+operator (section 5) on the spectrum \texttt{EXHALE\_transit.py} synthesized from the
+published state. The two adjacent certified rungs 1.45 and 1.52 straddle the
+observed 1.108 +/- 0.030 \%A, and \texttt{models/status.py} puts the crossing of the
+log-log chord at He/H = 1.4643. The interval is 0.0205 dex, below the plan\textquotesingle s
+0.03 dex floor, so the refinement stopped there.
+
+\textbf{Connectivity} (\texttt{.P1/connectivity/compare\_rungs.py}, figure
+\texttt{docs/figures/lhs1140b\_kzz1e9\_molecular\_rungs.pdf}): from 1.45 to 2.13 the
+temperature, velocity, density, H II and He 2\^{}3S profiles, the mass-loss rate
+(7.847 to 7.902), the outer Mach number (0.515 to 0.508) and the H2 front
+(x(H2) = 1e-2 at 1.200 to 1.161 R\_p) move monotonically, and neighbor
+differences scale with the step (about 3 per cent in T for 0.02 dex). The
+0.55 state is a different wind: x(H2) above 0.5 to 1.13 R\_p and near 1e-2 in
+the far wind, a peak temperature of 3400 K against 5200 K and more, He 2\^{}3S
+thirty times lower. The interval between 0.55 and 1.45 is not sampled
+(the 0.689 rung is its first point), so whether the two are one branch, and
+whether a second crossing lies between them, is not established. The
+0.689 rung\textquotesingle s last state (uncertified) is intermediate: x(H2) above 0.5 to
+1.10 R\_p as at 0.55, but 1.5e-4 at 10 R\_p, near the 1.45 value.
+
+\textbf{The line shape} (\texttt{docs/figures/lhs1140b\_kzz1e9\_molecular\_ew.pdf}): the
+crossing is of the integrated EW alone. At He/H = 1.45 the model red line is
+4.07 per cent deep, 3.3 times the depth Cherubim et al. (2026) fit
+(1.24 +0.22/-0.23 per cent), and correspondingly narrower; the molecular
+solutions share the line-shape disagreement of the unbroadened atomic
+spectra.
+
+\textbf{Published} (\texttt{models/run\_case.sh} with \texttt{SEED=} the certified run, which
+solves nothing new from a certified entry, evaluates, synthesizes the spectrum
+and writes \texttt{REPRODUCE.md}): \texttt{molecular\_scalar\_gj1132\_kzz1e9/HeH0.55} g0007 and
+the new cases \texttt{HeH1.45}, \texttt{HeH1.52}, \texttt{HeH1.6}, \texttt{HeH1.8} (g0002 each), added to
+\texttt{models/make\_models.py}. The new cases\textquotesingle{} \texttt{input.inp} is the certified
+\texttt{HeH2.13} input with the He/H changed, the input the states were solved under;
+\texttt{make\_models.py} itself would write \texttt{Restart\ intent:\ stationary\ equilibrate}
+for a molecular case, which the older \texttt{HeH0.083} carries and the certified
+cases do not (a difference of route, reported for a decision). The catalog
+inventory reads 157 state indexes, 100 certified. \texttt{LHS1140b/MODELS.md}
+sections 7 and 8 and \texttt{models/CASE\_INVENTORY.\{md,json\}} were rewritten by
+\texttt{status.py\ -\/-write}; \texttt{docs/lhs1140b\_catalog\_state.tex} carries the new rows
+(section 13) and \texttt{docs/lhs1140b\_exhale\_vs\_pwinds.tex} its corrected
+molecular paragraph and campaign table (both rebuilt, no error, pages checked).
+A verification binary copied into \texttt{models/} had become the "newest
+EXHALE\_.x" that \texttt{status.py} takes as the binary of record; it was moved to
+the run directory that used it.
+
+\textbf{The physical record of the straddling states} (plan section 3.1, with the
+writer of section 10, \texttt{.P1/element\_row\_terms/record\_straddle.txt}): the H2
+carrier row is worst inside the gated wind (5.16e-6 and 7.90e-6), and the
+helium element row is worst at cell 2, ungated (2.04e-5 and 1.27e-4), the
+next worst below r = 1.2 being 1.07e-6 (cell 6) and 5.4e-6 (cell 3), both in
+the first cells above the base; at cell 2 the residual would change the helium density in 2.9e10 and
+4.6e9 s, against an advective cell time of 1.5e6 s, and the region below 1.2
+passes the helium flux on to within 9.3e-5 of its throughput.
+
+\textbf{P3} (\texttt{md/lhs1140b\_p3\_low\_xuv\_20260923.md}, run 2026-09-23 under
+\texttt{EXHALE\_69233669.x}): the atomic He/H 9.7 branch certifies at 0.0675, 0.0662
+and 0.065 of the fiducial XUV (EW 0.0239, 0.0172, 0.0132 \%A) and refuses at
+0.06 and 0.0624 on the elemental row; each certified rung re-entered four
+times, CERTIFIED throughout.
+
+\subsection{12. The regression of sections 9 and 10, and the validation of the crossing (2026-09-24)}\label{12-the-regression-of-sections-9-and-10-and-the-validation-of-the-crossing-2026-09-24}
+
+\textbf{The matrix} (\texttt{make\ check}, binary \texttt{ac232b34}, the tree with section 9;
+sixteen cases run, against the goldens of 2026-09-20). Verdict REGRESSION
+FAIL, for three reasons, MEASURED and attributed with the binary of the day
+before (\texttt{EXHALE\_46d5b9f4.x}, the tree without section 9) run on copies of the
+cases:
+
+\begin{enumerate}
+\def\labelenumi{\arabic{enumi}.}
+\tightlist
+\item
+  \textbf{The CFL literal of section 9.} The control reproduces the goldens
+  (\texttt{mol\_lyman\_werner} identical, \texttt{mol\_carrier} within 1.3e-11), so every
+  movement is today\textquotesingle s, and in these marching cases the only change that acts
+  is the step 3.97e-8 shorter. The state files move by at most 9.1e-5
+  (\texttt{wasp\_he23off}; 1.6e-5 or less in the rest), below the 1e-3 tolerance.
+  What exceeds it is the \texttt{adv\_mass\_row} column of \texttt{Hydro\_ioniz\_adv.txt}, the
+  mass-row measure the post-processing writes per row, in the four
+  molecular 12000-step snapshots that are far from stationary (du near 0.8):
+  1.2e-3 to 4.3e-3 relative (\texttt{mol\_lyman\_werner}, \texttt{mol\_diffusion},
+  \texttt{mol\_sec\_ion}, \texttt{mol\_carrier}), and 0 against 5.6e-15 in one row of
+  \texttt{wasp\_full\_newton}. \texttt{hydrostatic\_column} moves one ghost-row ion density
+  from 4.1e-185 to 1.2e-170 (the control is identical to its golden). None
+  of these is a change of a physical quantity above the tolerance.
+\item
+  \textbf{\texttt{oxygen\_chemistry} stops before its first step}, with the control as
+  well: "ghost composition is not a fixed point", the map applied 20 times
+  and still moving by 5.7e-7 against an accuracy of 1e-11, after the
+  constrained molecular roots of the cold start were clamped onto the
+  simplex. The golden (2026-09-20 13:53) predates the ghost fixed point
+  (commit of 2026-09-20 16:18); the case has not run since. The refusal is
+  the boundary\textquotesingle s designed behavior, so what to do with it is reported for a
+  decision, not changed.
+\item
+  Two files of \texttt{iontrans\_metals} have no reference (MISS, not a failure).
+\end{enumerate}
+
+\textbf{Section 10 does not move them.} The five cases that exercise the changed
+paths (element operator and its records, the certification\textquotesingle s element block)
+were re-run with the tree of section 10 (\texttt{76c3ce17}) against the outputs of
+the matrix: \texttt{mol\_diffusion}, \texttt{lower\_profile}, \texttt{iontrans\_metals},
+\texttt{mol\_carrier}, \texttt{hydrostatic\_column}, REGRESSION PASS, all byte-identical
+(tolerance 0). The other cases run without element diffusion and do not
+reach those paths.
+
+\textbf{The goldens were not refreshed.} The refresh of the sixteen cases that
+section 9 moves was refused by the session\textquotesingle s permission check; the outputs of
+the matrix stand in the case directories and are what a refresh would
+snapshot.
+
+\textbf{The validation of the crossing of section 11} (plan order 12):
+
+\begin{itemize}
+\tightlist
+\item
+  A reverse continuation: He/H 1.52 reached downward from the certified 1.6
+  certifies (pass 13) and agrees with the 1.52 reached upward from 1.45 to
+  5.3e-6 in every hydrodynamic field and 1.4e-4 in every species, EW 1.15317
+  against 1.15316 \%A (\texttt{LHS1140b/models/.P1/reverse\_HeH1.52\_from1.6/}).
+\item
+  A refined grid (\texttt{LHS1140b/models/.P1/refine\_grid/}): the two straddling
+  states on 1000 cells (the base block and every other spacing halved, the
+  outer radius unchanged) certify (passes 16, 15) and give EW 1.0640 and
+  1.1196 \%A (against 1.0964 and 1.1532 on 500 cells), log10 Mdot 7.84 and
+  7.85. They still straddle 1.108; the chord moves from He/H 1.4643 to 1.505.
+  The discretization shift, 3 per cent in EW, is of the size of the
+  observation\textquotesingle s working error; a 2000-cell pair is running to read the order.
+\item
+  The physical record of section 11 and the operator of section 5.
+\item
+  The domain test waits for a grid option (a decision).
+\end{itemize}
+
+\subsection{13. The width of the line on the molecular crossing, and the catalog summary brought up to date (2026-09-24)}\label{13-the-width-of-the-line-on-the-molecular-crossing-and-the-catalog-summary-brought-up-to-date-2026-09-24}
+
+\textbf{The broadening the line needs} (user instruction: after the EW, match the
+width with an assumed turbulent Gaussian as \texttt{docs/lhs1140b\_exhale\_vs\_pwinds.tex}
+does). \texttt{LHS1140b/models/.P1/connectivity/broaden\_molecular.py} restates the
+memo\textquotesingle s operation (the excess absorption of the instrument-convolved spectrum
+convolved with a Gaussian of FWHM f in velocity, the three-Gaussian extractor
+of \texttt{he\_line\_metrics.py}, the EW operator of section 5, f matched where the
+red-pair FWHM reaches the measured 0.841 A) and first reproduces the memo on
+its atomic well-mixed He/H 0.40 state: f = 22.22 km/s, depth 1.229, blue
+0.161, ratio 7.65, EW 1.0645 (the memo prints 1.065). MEASURED on the
+certified molecular K\_zz = 1e9 states:
+
+{\def\LTcaptype{none} % do not increment counter
+{\small
+\begin{longtable}[]{@{}>{\raggedright\arraybackslash}p{\dimexpr(\linewidth-16\tabcolsep)/8\relax}>{\raggedright\arraybackslash}p{\dimexpr(\linewidth-16\tabcolsep)/8\relax}>{\raggedright\arraybackslash}p{\dimexpr(\linewidth-16\tabcolsep)/8\relax}>{\raggedright\arraybackslash}p{\dimexpr(\linewidth-16\tabcolsep)/8\relax}>{\raggedright\arraybackslash}p{\dimexpr(\linewidth-16\tabcolsep)/8\relax}>{\raggedright\arraybackslash}p{\dimexpr(\linewidth-16\tabcolsep)/8\relax}>{\raggedright\arraybackslash}p{\dimexpr(\linewidth-16\tabcolsep)/8\relax}>{\raggedright\arraybackslash}p{\dimexpr(\linewidth-16\tabcolsep)/8\relax}@{}}
+\toprule\noalign{}
+He/H & cells & EW, f = 0 & matched f {[}km/s{]} & red {[}\%{]} & blue {[}\%{]} & red/blue & EW at f \\
+\midrule\noalign{}
+\endhead
+\bottomrule\noalign{}
+\endlastfoot
+0.55 & 500 & 0.1015 & 22.32 & 0.113 & 0.014 & 7.89 & 0.0981 \\
+1.45 & 500 & 1.0964 & 22.21 & 1.224 & 0.160 & 7.64 & 1.0600 \\
+1.52 & 500 & 1.1532 & 22.20 & 1.287 & 0.169 & 7.63 & 1.1149 \\
+1.6 & 500 & 1.2155 & 22.19 & 1.357 & 0.178 & 7.61 & 1.1752 \\
+1.8 & 500 & 1.3584 & 22.16 & 1.516 & 0.200 & 7.58 & 1.3135 \\
+2.13 & 500 & 1.5604 & 22.12 & 1.741 & 0.231 & 7.55 & 1.5087 \\
+9.7 & 500 & 2.4060 & 21.80 & 2.684 & 0.359 & 7.47 & 2.3264 \\
+1.45 & 1000 & 1.0640 & 22.21 & 1.188 & 0.155 & 7.65 & 1.0288 \\
+1.52 & 1000 & 1.1196 & 22.19 & 1.250 & 0.164 & 7.64 & 1.0825 \\
+observed & & 1.108 +/- 0.030 & & 1.24 +0.22/-0.23 & 0.25 +0.14/-0.12 & 6.7 +12.7/-3.1 & 1.108 +/- 0.030 \\
+\end{longtable}
+}
+}
+
+At He/H 1.45 the width is reached at 22.21 km/s (sigma 9.43 km/s) and the
+depth, the blue component and the ratio then fall inside the observed 1 sigma
+intervals without being tuned. The kernel does not depend on composition or
+chemistry (22.12 to 22.32 over 0.55 to 2.13; the memo\textquotesingle s atomic families 22.20
+to 22.40). The Gaussian wings carry 3.3 per cent of the EW out of the
+window, so the broadened EW crosses the working target 1.108 at He/H 1.5112
+between the certified 1.45 and 1.52 on the catalog grid; on 1000 cells the
+broadened EW of 1.52 is 1.0825, and the chord extended past 1.52 reaches the
+target at 1.55 (DERIVED, an extrapolation). On the advection-corrected
+profiles weighted by n(2 3S) r over r, c\_s = 4.33 km/s in the line-forming
+region of both straddling states, so the kernel is Mach 2.2 (sigma), 3.1
+(sqrt 2 sigma, the v\_turb of Lampon et al. and p-winds) and 3.8 (sqrt 3
+sigma). Figure \texttt{docs/figures/lhs1140b\_kzz1e9\_molecular\_broadened.pdf}.
+
+\textbf{A correction to the memo found on the way.} The memo\textquotesingle s c\_s of the
+line-forming region of the well-mixed He/H 0.55 state, 4.1 km/s, did not
+follow from its own T = 2499 K and mu = 1.94; recomputed with the memo\textquotesingle s
+weighting (n(2 3S) r integrated over r on the \texttt{\_adv} profiles, which
+reproduces T = 2498 K and mu = 1.93) it is 4.21 km/s, and the Mach numbers of
+the matched kernel move from 2.3, 3.3, 4.0 to 2.2, 3.2, 3.9 (summary and
+section of the memo corrected, marked in place).
+
+\textbf{The catalog summary.} Renamed on the user\textquotesingle s instruction to
+\texttt{docs/lhs1140b\_catalog\_state.tex} (no date in the name; it was
+\texttt{lhs1140b\_catalog\_state\_20260922.tex}, and the references in
+\texttt{md/du\_stop\_vs\_stationary\_20260920.md}, \texttt{md/session\_handoff\_20260920.md}
+and the stage 2 and 3 logs now point to the new name; the stage 2 twin
+\texttt{Update\_EXHALE\_stage2.\{tex,pdf\}} still carries the old name and was not
+regenerated). Brought up to date rather than annotated: the counts (157
+indexes, 100 certified; 103 models, 91 certified), the table by group, the
+table of certified models (eight new rows) and of uncertified ones (the
+molecular 0.55 row out, the He/H 9.7 rungs at 0.06 and 0.0624 in), the
+mechanisms (and the count of refusing rows, which the old text stated
+wrongly: the energy row, not the mass row, appeared most often), the
+operator-difference statement re-measured over the 91 certified rows (still
+at most 1.5e-4 \%A, 15 rows in the fourth decimal), and a new section 5 on the
+molecular crossing, its validation and the broadening. Rebuilt (11 pages, no
+error), every changed page checked.
+
+\subsection{14. The user\textquotesingle s decisions of 2026-09-24 on the open items, and what each gave}\label{14-the-users-decisions-of-2026-09-24-on-the-open-items-and-what-each-gave}
+
+The list of section 6 of \texttt{md/lhs1140b\_plan\_rev2\_execution\_20260924.md},
+reordered by what it changes, was put to the user; every item was decided
+"as recommended". Items 2 and 3 (the rungs below He/H 1.45, and the grid of
+the catalog) are still running and are recorded in the next section.
+
+\textbf{Item 1, the width of the line.} The added Gaussian of section 13 is an
+empirical parameter of the comparison, fixed by the measured width alone;
+every composition read from the full line is stated as conditional on it
+(\texttt{docs/lhs1140b\_catalog\_state.tex} section 5, the execution record).
+
+\textbf{Item 4, which cells gate the species rows: compared, not changed.} A
+default-off diagnostic, \texttt{EXHALE\_CERT\_GATE\_DIAGNOSTIC=1} (\texttt{certification.f90}),
+prints for every carrier and element row what the verdict would be if every
+cell from cell 3 outward were gated against the wind tolerance (1e-5), cells 1
+and 2 reported. MEASURED on all 99 ladder cases re-evaluated with it
+(\texttt{md/lhs1140b\_gating\_diagnostic\_20260924.md}): every stored verdict
+reproduces; under the candidate rule 38 of the 91 certified cases stay
+certified and 53 would be refused, 52 of them by the helium element row in
+the first cells above the base (cell 3 in 45 cases, up to 9.1e-2) and one by
+the H2 row (\texttt{molecular\ kzz1e9/HeH9.7}, 4.76e-5 at r = 1.127); no uncertified
+case would become certified. In 27 atomic K\_zz cases the element row exceeds
+1e-5 in 76 to 205 cells up to r = 1.09 to 1.19 (on the atomic kzz1e9 He/H 1.50
+and 1.60 states 1.5e-3 and 1.8e-3 at cell 3, 184 and 182 cells out to
+r = 1.16). The premise of the item, that below r = 1.2 only the first solved
+cell stands above 1e-5, holds on the six certified molecular K\_zz = 1e9
+states and not on the atomic ladders. The gate was not changed. The same
+worker\textquotesingle s compiler warnings showed two truncations in the certification report
+(\texttt{System\_HeH\_mol\_metals} printed as \texttt{System\_HeH\_mol\_metal}, the carrier row\textquotesingle s
+scale text cut at 76 characters); both fields were widened (log text only).
+The diagnostic shares the gate\textquotesingle s reduction with the verdict
+(\texttt{species\_row\_distance\_over\_gated\_cells}); the certification suite passes 143
+of 143, and with the variable unset every output is byte-identical to the
+build before it (MEASURED by the worker on four states).
+
+\textbf{Item 6, a grid option that keeps the interior.} \texttt{Outer\ shells\ {[}r\_face,cells{]}:\ \textless{}r\_face\textgreater{}\ \textless{}cells\textgreater{}} (K33d of \texttt{md/input\_schema.md}, default
+off): the grid is built as before, and \texttt{\textless{}cells\textgreater{}} cells are appended beyond its
+outer face, their widths in geometric progression with the ratio that puts
+the last face exactly on \texttt{r\_face}; every constructed center up to the first
+outer ghost, every face, width and volume and the window indices are bitwise
+those without the key (new test \texttt{grid\_and\_gates/outer\_shells\_base\_identity},
+40 of 40), \texttt{N} and everything sized on it follow the extended grid, and a
+state written with shells carries them in its \texttt{\#\ grid} line, so it loads only
+into a run with the same shells. With the key absent every output is
+byte-identical to the control build (MEASURED on an LHS 1140 b evaluate and on
+\texttt{hydrostatic\_column}).
+
+\textbf{Item 5, the domain test (P1.4 (c)) and the outer closure}
+(\texttt{md/lhs1140b\_outer\_shells\_domain\_test\_20260924.md}). The straddling
+molecular states on the 500-cell grid plus 43 shells to 60 R\_p (spacing ratio
+continuous to 4e-4) both certify (13 and 10 passes). MEASURED: the wind turns
+transonic, with a sonic point at 40.3 R\_p (Mach 0.51 at the old 29 R\_p edge
+becomes 0.77); the EW falls by 1.74 per cent at both compositions (1.0964 to
+1.0773, 1.1532 to 1.1330), log10 Mdot moves by 2e-4, and the profiles move by
+at most 0.13 per cent inside 2 R\_p and by up to 20 to 30 per cent at the old
+edge. The EW crossing moves from He/H 1.4643 to 1.4886; with the matched
+kernel (unchanged, 22.2 km/s) both extended states lie below 1.108. The H2
+carrier\textquotesingle s last-cell defect stays two decades below the gate on both domains
+(5.6e-7 at 60 R\_p): the zero diffusive outer face does not decide these
+states; the subsonic outflow boundary at 30 R\_p holds the outer wind on a
+subsonic branch and acts through the hydrodynamics (tentative).
+
+\textbf{Item 7, the composition update holding the pressure.} \texttt{Composition\ update\ holds:\ energy\textbar{}pressure} (K15j, default \texttt{energy}): with \texttt{pressure}, the
+composition update of the alternation keeps rho, v and p of every cell,
+re-closes the eliminated species at the temperature of the new composition
+and rebuilds the energy from the caloric equation of state
+(\texttt{rebuild\_energy\_at\_held\_pressure}, \texttt{EXHALE\_main.f90}), printing the energy
+it adds. MEASURED (\texttt{md/lhs1140b\_composition\_update\_pressure\_20260924.md}):
+it removes what it was built for, the base pressure step (cells 1 to 3 held
+exactly; the base face mass flux handed to the next solve 4.46e-8 against the
+wind\textquotesingle s 4.44e-8, where the default hands -2.84e-5), and the next hydrodynamic
+solve still fails in all three tests: on the well-mixed He/H 0.083 and 0.55
+cases on the energy row at the H2 front (the carrier update raises the
+cooling there by 31 to 44 per cent at the fixed wind, under either value),
+and on the K\_zz = 1e9 rung 1.8 to 1.6, where the default recovers and
+certifies at pass 21, it fails from pass 2 on and never recovers. The
+obstacle behind the base step is the front\textquotesingle s energy balance under a
+composition change at fixed wind. The default is unchanged; the option stays,
+default off, with its negative result recorded. With the key absent every
+output is byte-identical to the control build (MEASURED on the P1.6 entry and
+on \texttt{hydrostatic\_column}).
+
+\textbf{Item 8, one route for every molecular catalog case.} \texttt{make\_models.py}
+wrote \texttt{Restart\ intent:\ stationary\ equilibrate} for a molecular case; the
+certified molecular cases carry \texttt{stationary}, and were solved under it from
+an atomic-to-molecular conversion as well as from molecular continuations
+(He/H 2.13 and 9.7, runs of 2026-09-19, READ). So instead of a rule by the
+kind of seed (the recommendation), every molecular case now takes
+\texttt{stationary}: \texttt{make\_models.py} writes it, with \texttt{Coupled\ carrier\ solve:\ False}
+and the base-grid comment line the certified cases carry, and its output now
+equals the \texttt{input.inp} of every molecular K\_zz = 1e9 and well-mixed case
+byte for byte (the two photochemical molecular cases differ only in the order
+of one line); \texttt{molecular\_scalar\_gj1132\_kzz1e9/HeH0.083/input.inp}, the one
+case with \texttt{equilibrate}, was changed to match.
+
+\textbf{Item 9, the \texttt{On\ stall} handover:} deferred.
+
+\textbf{Item 10, the goldens.} Refreshed for the sixteen cases the matrix of
+section 12 ran (all but \texttt{oxygen\_chemistry}), from the outputs of that matrix;
+the previous goldens are kept in \texttt{backup/regression/golden\_pre\_cfl\_20260924/}.
+
+\textbf{Item 11, \texttt{oxygen\_chemistry}.} The case now starts from its own golden of
+2026-09-20 (the 1000-step snapshot of the cold start, kept in its \texttt{IC/}) and
+marches 1000 steps from there (\texttt{Load\ IC?\ True}, \texttt{Restart\ intent:\ relaxation}; its \texttt{README.md} records why); the load passes the ghost fixed
+point and the run ends at du = 20.9, log10 Mdot 9.39 (MEASURED with the
+control build). Its golden was snapshotted from that run.
+
+\textbf{The smaller items.} The Phase-E overlap window is entry (AH) of
+\texttt{md/TO\_BE\_DONE.md}, deferred to the next time the LHS 1140 b profile runs
+are handled. \texttt{docs/Update\_EXHALE\_stage2.\{tex,pdf\}} was regenerated for the
+edit of its section 17 (310 pages, no error). \texttt{src/utils/map\_state\_to\_grid.py}
+wrote \texttt{nan} as the center shift in its \texttt{\#\ mapped:} line between grids of
+different cell counts; it now says the shift is not defined there.
+
+\subsection{15. The grid of the crossing (decision item 3) and the regression of sections 13 and 14 (2026-09-24)}\label{15-the-grid-of-the-crossing-decision-item-3-and-the-regression-of-sections-13-and-14-2026-09-24}
+
+\textbf{Three grids, three compositions.} The certified molecular K\_zz = 1e9
+states at He/H 1.45, 1.52 and 1.6 were mapped onto grids of 1000 and 2000
+cells (the base block and every other spacing halved at each step, the outer
+radius unchanged; target grids from cold-start dumps) and solved again with
+the rung environment; all six certify (1000 cells: 16, 15, 15 passes; 2000
+cells: 13, 13, 19). MEASURED through the catalog\textquotesingle s evaluation, synthesis and
+EW operator (\texttt{LHS1140b/models/.P1/refine\_grid/},
+\texttt{.P1/connectivity/grid\_convergence.txt}):
+
+{\def\LTcaptype{none} % do not increment counter
+{\small
+\begin{longtable}[]{@{}>{\raggedright\arraybackslash}p{\dimexpr(\linewidth-12\tabcolsep)/6\relax}>{\raggedright\arraybackslash}p{\dimexpr(\linewidth-12\tabcolsep)/6\relax}>{\raggedright\arraybackslash}p{\dimexpr(\linewidth-12\tabcolsep)/6\relax}>{\raggedright\arraybackslash}p{\dimexpr(\linewidth-12\tabcolsep)/6\relax}>{\raggedright\arraybackslash}p{\dimexpr(\linewidth-12\tabcolsep)/6\relax}>{\raggedright\arraybackslash}p{\dimexpr(\linewidth-12\tabcolsep)/6\relax}@{}}
+\toprule\noalign{}
+He/H & EW, 500 cells & 1000 cells & 2000 cells & continuum (DERIVED) & log10 Mdot 500 / 1000 / 2000 \\
+\midrule\noalign{}
+\endhead
+\bottomrule\noalign{}
+\endlastfoot
+1.45 & 1.0964 & 1.0640 & 1.0475 & 1.030 & 7.85 / 7.84 / 7.84 \\
+1.52 & 1.1532 & 1.1196 & 1.1025 & 1.085 & 7.86 / 7.85 / 7.85 \\
+1.6 & 1.2155 & 1.1804 & 1.1625 & 1.144 & 7.86 / 7.86 / 7.86 \\
+\end{longtable}
+}
+}
+
+The EW converges at first order (successive-difference ratio 1.96, p = 0.97,
+at every composition), and the continuum column is the Richardson
+extrapolation at that order. The crossing of the working target 1.108 moves
+from He/H 1.4643 (500 cells) to 1.5054 (1000), 1.5273 (2000) and 1.552
+(continuum); from the broadened line of section 13, from 1.5112 to 1.5547,
+1.5780 and about 1.60 (the last just above the 1.6 rung); every other value is
+interpolated between certified rungs. The matched kernel does not move with
+the resolution (22.18 to 22.21 km/s on all nine states). The 500-cell catalog
+overestimates the EW by about 6 per cent, twice the observation\textquotesingle s working
+error; a formally second-order scheme converging at first order in the EW
+points to a first-order error in the line-forming region, whose source is not
+established. Combined with the domain factor of section 14 (DERIVED, the two
+measured separately), the crossing stands near 1.58 from the EW and near 1.63
+from the broadened line. Which grid the catalog should use is left to the
+user with these numbers.
+
+\textbf{The regression of sections 13 and 14.} After all the code of this series
+had landed (the diagnostic of item 4, the grid option of item 6, the
+composition option of item 7, the widened report fields, and the mapper
+record), the tree was rebuilt (\texttt{EXHALE.x} md5
+\texttt{2df491cb020e8200be247e2469964a63}, no warning) and the whole matrix run
+against the goldens refreshed in section 14: REGRESSION PASS, all seventeen
+cases byte-identical (66 files; the two \texttt{\_adv} files of \texttt{iontrans\_metals} have
+no reference, as that route writes none), \texttt{oxygen\_chemistry} included on its
+warm start.
+
+\subsection{16. The user\textquotesingle s decisions of 2026-09-24 on the four remaining items}\label{16-the-users-decisions-of-2026-09-24-on-the-four-remaining-items}
+
+Put to the user after sections 14 and 15; decided the same day.
+
+\textbf{The catalog\textquotesingle s grid: 500 cells, the compositions quoted from the grid
+continuum.} The catalog keeps its 500-cell grid (every certified state, the
+chains and the ladders stay as they are); a composition read from it is
+quoted as the continuum value of section 15, with the difference between the
+500-cell and the continuum value as the grid uncertainty of every catalog
+number: from the EW, He/H 1.55 (the 500-cell crossing is 1.46, 0.025 dex
+lower, because the 500-cell EW is about 6 per cent high), from the broadened
+line about 1.60 (1.51 on 500 cells); with the domain factor of section 14, 1.58 and 1.63 (DERIVED, the two
+effects measured separately). \texttt{docs/lhs1140b\_catalog\_state.tex} section 5
+states the rule.
+
+\textbf{The gating candidate: not adopted.} The species rows keep their current
+gate; the diagnostic \texttt{EXHALE\_CERT\_GATE\_DIAGNOSTIC=1} stays as a default-off
+report.
+
+\textbf{The pressure-holding composition update: kept, default off.} \texttt{Composition\ update\ holds:\ pressure} stays in the code with its negative result (section
+14, item 7); the default remains \texttt{energy}.
+
+\textbf{The energy imbalance at the H2 front: explored.} The obstacle item 7
+exposed, the energy row at the H2 front failing after a composition change at
+fixed wind, is being diagnosed (\texttt{LHS1140b/models/.P1/h2\_front\_energy/}); its
+result is recorded in a later section.
+
+\subsection{17. The atomic-data audit of 2026-09-24, applied}\label{17-the-atomic-data-audit-of-2026-09-24-applied}
+
+\texttt{md/EXHALE\_ATOMIC\_DATA\_AUDIT\_2026-09-24.md} (an audit of the atomic data
+against the sibling code MoCHII) was checked item by item in the code and,
+where it could be obtained, in the original source, and applied; the four
+memos carry every verdict, source, size and command:
+\texttt{md/atomic\_data\_audit\_applied\_core\_20260924.md} (the H/He cooling core),
+\texttt{md/atomic\_data\_audit\_metal\_tables\_20260924.md} (the CHIANTI metal
+tables), \texttt{md/charge\_exchange\_detailed\_balance\_20260924.md} (the
+charge-exchange table) and \texttt{md/atomic\_data\_audit\_applied\_docs\_20260924.md}
+(comments, unreachable code, the detailed-balance test). Every item the
+audit raised was found to be real; the corrections are physics corrections
+and are on by default.
+
+\textbf{The H/He cooling core.}
+
+\begin{itemize}
+\tightlist
+\item
+  Recombination cooling of every ion is k T alpha (3/2 + dln alpha/dln T)
+  on the coefficient the balance itself uses (B1, B7, B12). Hui \& Gnedin
+  (1997) print the He III fit with a factor 8 where the hydrogenic scaling
+  gives 2: He III removed 3.05 kT per capture at 1e4 K and now 0.76 kT. The
+  relation reproduces Hummer (1994) Table 1 to 0.1 per cent.
+\item
+  The post-process temperature root and \texttt{eval\_cool} now call one cell
+  assembly, \texttt{radiative\_cooling\_of\_cell} (B2); the two coolings differed by
+  a factor 1.04-1.60 on the \texttt{wasp\_full} post-process and now agree to
+  1.3e-14.
+\item
+  \textbf{The 2\^{}3S -\textgreater{} 1\^{}1S electron-impact de-excitation (B3)}, the
+  detailed-balance reverse of q13, is in every place the triplet balance is
+  written, with the 19.82 eV returned to the gas. Oklopcic \& Hirata (2018)
+  leave it out as small against 2\^{}3S -\textgreater{} 2\^{}1S, 2\^{}1P; that holds at 1e4 K
+  (ratio 0.055) and not below: 0.15 at 5e3 K, 0.57 at 3e3 K, 2.8 at 2e3 K
+  (MEASURED), the temperatures of the LHS 1140 b line-forming region.
+\item
+  Voronov (1997) fits take Voronov\textquotesingle s fitted dE again (B4: Mg II x1/1.47, C I
+  x1/1.10 at 5e3 K); n = 2 recombination is the balance\textquotesingle s case-B coefficient
+  split with Draine\textquotesingle s 2s fraction (B6, +2.6 per cent at 1e4 K); He I, He II
+  (A3) and H I (B8) collisional-excitation cooling are CHIANTI 11.0.2 sums
+  with the observed level energies (x1.11, x1.29 and x1.11 at 1e4, 1e4 and
+  5e3 K), H I on one rate set shared with the n = 2 model; single-precision
+  literals are gone from the four files (B10); \texttt{use\_2lev\_cool},
+  \texttt{lambda\_2level}, \texttt{melem\_Z}, \texttt{cool\_FeII\_func} and the other unreachable
+  wrappers are removed (B11).
+\end{itemize}
+
+\textbf{The metal line cooling (A2).} Mg II took the CHIANTI \texttt{.scups} scaling
+energy (4.27 eV) as its transition energy where the observed g-weighted
+4.4300 eV belongs, 1.15 times too high at 1e4 K and 1.39 at 5e3 K; it is
+refitted with observed energies and every bound channel (0.2 per cent).
+Ca II and Mg I carried the resonance line alone; they now take (T, n\_e)
+statistical-equilibrium tables with every channel (at n\_e = 1e9 cm\^{}-3 the
+old coefficient was 1.7-4 times low for Ca II and 5.8-480 times low for Mg I
+over 1e4-3e3 K). Fe I stays on its Boltzmann (LTE-limit) table, now stated
+as an upper limit at most 2.0 times the low-density value; the data for a
+density-resolved Fe I solve are not available here.
+
+\textbf{Charge exchange.} The reverse rows of Huang et al. (2023) Table 4 depart
+from detailed balance with internal partition functions by factors 0.18 to
+2.9. Each measured or computed direction is kept as the original paper gives
+it, and the other is computed from it by detailed balance with NIST
+partition functions; four reverse rows are not carried (A2, A10, C4, C6),
+their forward channel ending in an excited or radiative product; three
+transcriptions are corrected to the originals (A12 Si2+ + H: 1.23e-9 and
+the sign of its exponent; C5: Zhao et al. 2004 eq. 19 in full; A15: Stancil
+et al. 1998 Table 1 directly). Ten pairs whose originals could not be
+obtained (mostly Physical Review A) stay as printed and are marked
+KNOWN\_BLOCKED in the new test \texttt{src/tests/charge\_exchange\_detailed\_balance};
+among them N + H+ (its endothermic direction falls with T) and Na + H+ (both
+directions below 1e-60 cm\^{}3 s\^{}-1, so no Na-H charge exchange acts).
+
+\textbf{Other corrections of the same series.} Comments that contradicted the
+code or the source (C1, C4 to C9, C11) are corrected; \texttt{rk\_R21\_H\_Hep\_cx},
+\texttt{rk\_R22\_Hp\_He\_cx} and the three unreachable Lyman-Werner fits are removed
+after a call-graph search; the Lyman-Werner warning of
+\texttt{ionization\_equilibrium.f90} and \texttt{write\_output.f90} no longer cites a DB96
+fit the band share has not used since 2026-09-06 (\texttt{NH2\_db96\_max} removed);
+\texttt{src/tests/a2\_m1} compiles again against a built tree and its saved output
+was regenerated (the 0 K photolysis thresholds; \texttt{md/a2\_reaction\_audit.md}
+carries a correction block); the \texttt{Makefile} flag stamp now hashes the first
+line of \texttt{\$(FC)\ -\/-version}, whose conda-forge package build number
+\texttt{-dumpfullversion} drops: the previous \texttt{build/} held 35 objects of gcc
+16.2.0-4 and 92 of 16.2.0-5 linked into one binary.
+
+\textbf{Checks.} The tree was rebuilt from \texttt{make\ distclean} (\texttt{EXHALE.x} md5
+\texttt{551dae520985d63c9ea8b15c21106589}, no warning; copied to
+\texttt{LHS1140b/models/EXHALE\_551dae52.x} with \texttt{BINARY\_MANIFEST\_551dae520985.txt});
+\texttt{physics\_probe}, \texttt{charge\_exchange\_detailed\_balance} (65 pass, 10 known
+blocked) and \texttt{charge\_exchange\_rows} pass on it. The regression matrix and
+the remaining suites are recorded in the next sections.
+
+\textbf{Effect (MEASURED by the workers, on builds of the same physics).}
+\texttt{wasp\_full}: log10 Mdot -2e-4 (cooling core), +4e-4 (charge exchange), -2.7e-3
+(metal tables, a du-stopped case, so below its path spread); Fe III x0.48
+at 1.2 R\_p. LHS 1140 b: the He 10830 EW of the certified molecular states
+falls by 14.9 to 16.7 per cent on evaluation, almost all from B3, and by 20
+per cent after one stationary re-solve (He/H 1.45: 1.0964 -\textgreater{} 0.8775 \%A;
+1.52: 1.1532 -\textgreater{} 0.9180), because n(2\^{}3S)/n(He) falls by 41-58 per cent at
+5-10 R\_p, where n\_e q31g is 3-100 times A31. No certificate of the catalog
+holds under the corrected physics. \textbf{Every LHS 1140 b number of this log
+before this section, and of \texttt{docs/lhs1140b\_catalog\_state.tex}, is of the
+physics before the audit.}
+
+\subsection{18. The H2-front energy imbalance, the H3+ non-LTE interpolant, and the descent below He/H 1.45 (2026-09-24)}\label{18-the-h2-front-energy-imbalance-the-h3-non-lte-interpolant-and-the-descent-below-heh-145-2026-09-24}
+
+\textbf{The H2 front (decision of section 16).} Diagnosed with the tree binary of
+section 15 and no change to the source
+(\texttt{md/lhs1140b\_h2\_front\_energy\_imbalance\_20260924.md}, figure
+\texttt{docs/figures/lhs1140b\_h2\_front\_energy\_imbalance.pdf}). MEASURED: across the
+composition update one term of the front\textquotesingle s energy row moves, the H3+
+infrared cooling (99.6 per cent of the cooling there): on the well-mixed
+He/H 0.083 update H2 at the front rises 3.2 per cent, H3+ answers with +8.6
+per cent (+17.5 with the pressure held), and the cooling of the spike cell
+rises by 31 (44) per cent against a heating that rises by 1 per cent. The
+code path is consistent (the next solve assembles the relaxation\textquotesingle s cooling
+to 1e-7 and 3e-5). About two thirds of the jump came from the interpolant of
+the H3+ non-LTE factor (below). With the composition frozen a hydrodynamic
+root exists and the trust-region solve reaches it (\textbar\textbar R\textbar\textbar{} 1.5e-7 and 1.6e-8),
+where the line search cannot take its first step; the well-mixed He/H 0.083
+alternation still does not converge with the pressure held and the trust
+region (6 passes, the front walking outward, Mdot -26 per cent). The
+trust region inside the alternation is a solver-control change and was not
+made.
+
+\textbf{The H3+ non-LTE factor is now a power law between the columns of Miller et
+al. (2013) Table 6} (\texttt{h3p\_cooling.f90}, \texttt{s\_table}). The emission per H3+
+ion can grow at most as fast as the collision rate that populates the
+emitting levels, so the local index d ln s / d ln n(H2) lies between 0 and 1,
+and the table\textquotesingle s node-to-node indices do (0.00 to 0.89). The interpolant
+linear in s over log n gave 12.6 just above the 1e8 cm\^{}-3 column and 0.17
+just below it at 2000 K (DERIVED), and over r = 1.25-1.40 R\_p of the
+well-mixed He/H 0.083 state an H3+ cooling 1.8 to 5.6 times the power law\textquotesingle s.
+In T the interpolant stays linear; its form there is not fixed by any bound
+and is written at the code with the row ratios. The correction is on by
+default and is in the binary of section 17.
+
+\textbf{The descent below He/H 1.45 (decision item 2 of section 14)} ran under the
+P1.2 rules on \texttt{EXHALE\_46d5b9f4.x} (the physics before section 17;
+\texttt{LHS1140b/models/.P1/descend\_from\_1.45\_record.txt}): 1.152 from 1.45 not
+certified (18 passes, 3 h); 1.2924 from 1.45 certified (16 passes); 1.152 from
+1.2924 not certified (24 passes, the H2 carrier row 3.1e-4 at cell 247);
+1.2202 from 1.2924 not certified (24 passes, the He/H element row 8.6e-5 at
+cell 234 and falling by about 10 per cent a pass); the driver stopped on two
+consecutive failed refinements. The interval 0.55 to 1.29 stays unsampled,
+and the one new certified state is of the physics before section 17.
+
+\textbf{The molecular family under the corrected physics (user decision of
+2026-09-24: this family first).} The certified He/H 1.45, 1.52, 1.6, 1.8
+and 2.13 states are being re-solved from themselves with
+\texttt{EXHALE\_551dae52.x} (\texttt{LHS1140b/models/.P1/newphys/}, the rung environment,
+24 passes, 4 h); their result, the new crossing and what follows for the
+rest of the catalog are recorded in a later section.
+
+\subsection{19. The second round of the atomic-data audit (2026-09-24/25)}\label{19-the-second-round-of-the-atomic-data-audit-2026-09-2425}
+
+The audit\textquotesingle s author rechecked the applied tree from MoCHII
+(\texttt{\textasciitilde{}/MoCHII/MoCHII\_v1.00/md/EXHALE\_AUDIT\_RECHECK\_2026-09-24.md} and
+\texttt{...\_SECOND\_RECHECK\_2026-09-24.md}): every item of section 17 was confirmed as
+applied correctly, and the open ones were listed. Each was verified in the
+code and the original source before it was applied; memos
+\texttt{md/atomic\_data\_audit\_round2\_core\_20260924.md},
+\texttt{md/charge\_exchange\_detailed\_balance\_20260924.md} section 10 and
+\texttt{md/chianti\_descaling\_spline\_20260924.md}.
+
+\textbf{Recombination and the helium network.}
+
+\begin{itemize}
+\tightlist
+\item
+  The ground-state capture coefficient alpha\_1 is the Milne relation on the
+  photoionization cross section the transfer uses, for H I, He I and He II
+  (0.998 of Hummer 1994 for H I, 1.006-1.011 of Hummer \& Storey 1998 for
+  He I); case B = Badnell alpha\_A minus that alpha\_1 (the Mao \& Kaastra fit,
+  2.7 per cent low for He I at 1e4 K, is removed).
+\item
+  The Oklopcic \& Hirata (2018) alpha\_1 is the capture to 1\^{}1S alone; with the
+  singlet/triplet coupling off the excited-singlet captures were missing.
+  Case B is now split into triplet and singlet captures with Hummer \& Storey
+  (1998) Table 5 in both configurations.
+\item
+  \textbf{H ground captures escape where the gas is thin} (new key \texttt{H\_rec\_escape},
+  default True, K14d2 of \texttt{md/input\_schema.md}): alpha\_HII = alpha\_B + y\_HI
+  alpha\_1 with the local escape weight of the He II construction, case A in
+  the thin outer wind and case B in the thick base; \texttt{False} is case B
+  everywhere. A correction of the case-B assumption where it does not hold,
+  hence on by default.
+\item
+  The He III recombination cascade (ground capture, direct capture to n = 2,
+  He II Ly-alpha, the two-photon continuum of Nussbaumer \& Schmutz 1984, the
+  2s-2p mixing of He II) is absorbed on the spot under \texttt{He\_rec\_coupling}.
+\item
+  The collisional feed of 2\^{}3S through the higher triplets (feed/q13 = 0.018,
+  0.101, 0.328 at 5e3, 1e4, 2e4 K, CHIANTI 11.0.2) is added to q13 wherever
+  the triplet balance reads it, and so are the 2\^{}3S -\textgreater{} n\^{}1L (n \textgreater= 3)
+  excitations.
+\item
+  A(2s -\textgreater{} 1s) = 8.2249 s\^{}-1 (Nussbaumer \& Schmutz 1984; was 8.26); the 2s-2p
+  l-mixing of H by protons, He+ and He2+ from Pengelly \& Seaton (1964) with
+  their own cut-off rule (the Lamb shift or fine structure for 2s, not the
+  Debye radius); the 2\^{}3S electron-impact ionization as Black (1981) eq. 12
+  prints it; \texttt{coll\_rate\_prefactor} = 8.629132e-6 from CODATA, one parameter;
+  the 2\^{}3S triplet cooling is a CHIANTI sum (Black\textquotesingle s 13179 K was his fitted
+  threshold, not an energy); the (T, n\_e) cooling tables above their top
+  density continue with the last slope clipped to {[}-1, 0{]}; q31g is recorded
+  in the diagnostic states (state 28 of \texttt{stage\_channels.txt}).
+\end{itemize}
+
+\textbf{Energy terms that were missing.} The metal recombination energy (k T
+alpha (3/2 + dln alpha/dln T)) and the metal collisional-ionization energy
+(potential times the Voronov rate) are in the cooling; the charge-exchange
+energy defects heat the gas (new heat channel 20, \texttt{heat\_charge\_exchange}:
+per reaction the defect less the energy radiated by an excited product,
+product states from the sources read; the ledger closes to 1.4e-8 eV an
+event). On \texttt{wasp\_full} the charge-exchange heat is 18 per cent of the
+heating at the base, 3.9 at 1.1 R\_p, 0.4 at 1.3 R\_p; the base share is
+mostly Fe + H+, whose product state could not be read (Rutherford \& Vroom
+1972) and is taken as ground, an upper bound.
+
+\textbf{Charge exchange.} N + H+ / N+ + H are now Kingdon \& Ferland (1996) Table 1
+(Butler \& Dalgarno 1979) with the reverse by detailed balance (the printed
+Huang rows were 69 and 1.5e7 times low at 1e4 K); Na + H+, Na+ + H and K + H+
+are not carried (no reading of the printed Table 4 form gives a physical
+rate; the originals, Dutta et al. 2001 and Watanabe et al. 2002, could not be
+obtained); D26 and D30 are derived by detailed balance from the source
+directions; the gate now also requires every carried rate to obey the
+threshold law (205 pass, 6 known blocked, 2 known defects).
+
+\textbf{CHIANTI descaling.} CHIANTI prescribes the natural cubic spline through
+the \texttt{.scups} points (\texttt{descale\_scups.pro}, CHIANTI Technical Reports 4 and 13);
+the scripts of \texttt{cooling\_data/} used the not-a-knot spline (as ChiantiPy).
+Every CHIANTI-based coefficient was regenerated with the natural spline: He I
+cooling moves by -2 to +0.5 per cent over 3e3-3e4 K (Upsilon(1\^{}1S-2\^{}1P) by
+-16 per cent at 1e4 K), H I by +-0.7 per cent, O I fine-structure Upsilon by
++1.3 to +6.7 per cent, most others below 1 per cent.
+
+\textbf{Other repairs of the series.} The Lyman-Werner band share the H2O/OH
+continua see is now summed cell by cell along the path at each cell\textquotesingle s own
+(T, n\_H) (it was one uniform slab at the local T: the band\textquotesingle s photon ledger
+was 18 per cent short on the warm-started \texttt{oxygen\_chemistry} state; only
+\texttt{Oxygen\ chemistry:\ True} runs reach it); six test suites were repaired
+(\texttt{md/test\_suite\_repairs\_20260924.md}).
+
+\textbf{Build and checks.} Tree rebuilt from \texttt{make\ distclean}: \texttt{EXHALE.x} md5
+\texttt{b059a4be0459d65fdc3dff9894ba5d2f}, no warning, copied to
+\texttt{LHS1140b/models/EXHALE\_b059a4be.x} with \texttt{BINARY\_MANIFEST\_b059a4be0459.txt}.
+All 42 suites run on it (MEASURED): 38 pass; \texttt{grid\_and\_gates} fails its three
+\texttt{stationary\_evaluate\_*} rows on the pinned fixture
+\texttt{backup/regression/wasp\_full\_newton/IC/} (solved under the old physics; a
+re-solve under this physics certifies, \texttt{info\ =\ 0}, \textbar\textbar R\textbar\textbar{} 2.3e-9, and waits in
+\texttt{LHS1140b/models/.P1/suite\_repairs/wfn\_IC\_r2/} for the golden refresh);
+\texttt{residual\_determinism} fails its known closure-spread row (1.17e4, the
+solver item open since 2026-09-18); the two \texttt{steady\_*} suites need the log of
+a finished steady solve as input.
+
+\textbf{Effect (MEASURED by the workers).} Of the core items alone: \texttt{wasp\_full}
+log10 Mdot 13.35 -\textgreater{} 13.32, the H ionization front outward (x(H+) 0.36 lower
+at 1.27 R\_p), T up to +11 per cent; \texttt{mol\_metals} -0.004. Of the
+charge-exchange items: \texttt{wasp\_full} +4.2e-3, N II down by up to 1.8 dex. On
+the LHS 1140 b He/H 1.45 state the core items lower the He 10830 EW by 7 per
+cent on evaluation, mostly through the triplet/singlet split of case B
+(0.041 \%A), \texttt{H\_rec\_escape} (0.020) and the Milne alpha\_1 (0.011).
+
+\textbf{The LHS 1140 b molecular family between the two rounds} (binary
+\texttt{EXHALE\_551dae52.x}, \texttt{LHS1140b/models/.P1/newphys/}): re-solved from the
+certified states, no rung certified in 24 passes (the H2 carrier row at the
+front falling by 0.72-0.86 a pass), then all five certified in 7-11 more
+passes. Their EWs (MEASURED, evaluate + synthesis + the EW operator): He/H
+1.45 0.9813, 1.52 1.0185, 1.6 1.0587, 1.8 1.1500, 2.13 1.2765 \%A; the 1.108
+crossing near He/H 1.70. These are of the physics of section 17 only; the
+states under this section\textquotesingle s physics are being solved from them.
+
+\subsection{20. The molecular K\_zz = 1e9 family under the audited physics (2026-09-25)}\label{20-the-molecular-k_zz--1e9-family-under-the-audited-physics-2026-09-25}
+
+The user\textquotesingle s decision of 2026-09-24 was to re-solve this family first. The
+five states He/H 1.45, 1.52, 1.6, 1.8 and 2.13 were re-solved from the
+states certified under the first round (section 19) with
+\texttt{EXHALE\_b059a4be.x} (\texttt{LHS1140b/models/.P1/newphys/HeH\textless{}x\textgreater{}\_r2/}, the rung
+environment, \texttt{resolve.sh}): all five certified in 13 passes (the H2 carrier
+row at the front falling from 0.5 to 6e-6 - 9e-6). Each was then evaluated,
+synthesized and measured with the EW operator (\texttt{evaluate\_ew.sh},
+\texttt{eval\_r2/}; every evaluation certified). MEASURED:
+
+{\def\LTcaptype{none} % do not increment counter
+{\small
+\begin{longtable}[]{@{}>{\raggedright\arraybackslash}p{\dimexpr(\linewidth-10\tabcolsep)/5\relax}>{\raggedright\arraybackslash}p{\dimexpr(\linewidth-10\tabcolsep)/5\relax}>{\raggedright\arraybackslash}p{\dimexpr(\linewidth-10\tabcolsep)/5\relax}>{\raggedright\arraybackslash}p{\dimexpr(\linewidth-10\tabcolsep)/5\relax}>{\raggedright\arraybackslash}p{\dimexpr(\linewidth-10\tabcolsep)/5\relax}@{}}
+\toprule\noalign{}
+He/H & EW, audit round 2 & round 1 & before the audit & log10 Mdot, round 2 \\
+\midrule\noalign{}
+\endhead
+\bottomrule\noalign{}
+\endlastfoot
+1.45 & 0.9387 & 0.9813 & 1.0964 & 7.899 \\
+1.52 & 0.9776 & 1.0185 & 1.1532 & 7.906 \\
+1.6 & 1.0198 & 1.0587 & 1.2155 & 7.913 \\
+1.8 & 1.1159 & 1.1500 & 1.3584 & 7.927 \\
+2.13 & 1.2497 & 1.2765 & 1.5604 & 7.945 \\
+\end{longtable}
+}
+}
+
+The 1.108 crossing of the log-log chord moves from He/H 1.4643 (before the
+audit) to \textbf{1.7833, between the certified 1.6 and 1.8}, on the 500-cell
+grid; the EW falls by 14 to 20 per cent at fixed He/H and log10 Mdot rises
+by about 0.05. The grid continuum factor and the domain factor of sections
+15 and 14 were measured under the old physics and are not re-measured here.
+Figure \texttt{docs/figures/lhs1140b\_kzz1e9\_audit\_stages.pdf}
+(\texttt{.P1/newphys/compare\_physics\_stages.py}): the EW against He/H at the three
+stages, the line at He/H 1.8, and T, v, n(2\^{}3S), x(H+) and x(H2) at He/H 1.8.
+At He/H 1.8 (MEASURED on the \texttt{\_adv} profiles, before the audit / round 1 /
+round 2): the line keeps its shape and loses depth; the peak temperature is
+5439 / 5315 / 5600 K; the velocity at the outer edge 1.21 / 1.40 / 1.36
+km/s; x(H+) at 20 R\_p 0.059 / 0.056 / 0.050 (the ground captures escape in
+the thin far wind); the metastable density at its peak (1.35-1.38 R\_p) 33.3 /
+33.3 / 31.8 cm\^{}-3, and its radial integral over 1-1.5, 1.5-3 and 3-30 R\_p
+11.1 / 10.9 / 10.2, 28.8 / 28.3 / 27.6 and 28.4 / 24.2 / 23.4 cm\^{}-3 R\_p. The
+loss is in the cool outer wind beyond 3 R\_p (-18 per cent), where the
+superelastic 2\^{}3S -\textgreater{} 1\^{}1S collisions outrun the radiative decay, and the EW
+falls by 18 per cent with it.
+
+\subsection{21. The code-size appendix moves to this log (2026-09-25)}\label{21-the-code-size-appendix-moves-to-this-log-2026-09-25}
+
+On the user\textquotesingle s instruction the hand-written code-size appendix
+\texttt{docs/Update\_EXHALE\_appendix.tex} is now input by this log\textquotesingle s typeset twin
+instead of the stage 2 twin (\texttt{src/utils/update\_log\_to\_tex.py}, \texttt{STAGES});
+\texttt{docs/Update\_EXHALE\_stage2.\{tex,pdf\}} were regenerated without it. Its
+references to "this log" now name the stage 2 log where they meant it, and
+it states that its numbers (measured 2026-09-22) do not yet include the code
+of stage 3; they are re-measured with \texttt{src/utils/codesize.py} when the
+atomic-data series is closed.
+
+\subsection{22. The originals supplied on 2026-09-25, read and applied}\label{22-the-originals-supplied-on-2026-09-25-read-and-applied}
+
+The user supplied the papers the two audit rounds could not obtain; each was
+read and the code checked against it (memos
+\texttt{md/charge\_exchange\_detailed\_balance\_20260924.md} sections 11 and 11.8,
+\texttt{md/atomic\_sources\_hhe\_20260925.md}).
+
+\textbf{Charge exchange.}
+
+\begin{itemize}
+\tightlist
+\item
+  Na + H+ (Dutta et al. 2001, non-radiative, product H(n=2), endothermic by
+  1.682 eV) and Na, K + H+ (Watanabe et al. 2002, radiative): neither paper
+  gives a fit and Huang et al.\textquotesingle s Table 4 forms are in neither; the rate is
+  now the Maxwellian average of Dutta\textquotesingle s cross sections (their own rate
+  figure violates the threshold law below about 5000 K) plus Watanabe\textquotesingle s
+  radiative values: 8.4e-12 at 1e4 K against 4.4e-171 as coded before. The
+  reverse is not carried (it starts from H(n=2)). K + H+ from Watanabe.
+\item
+  Fe + H+, O+, N+ (Rutherford \& Vroom 1972 Table I): the 300-1200 K values
+  in log-log, held above 1200 K; the measured cross sections start at 8 eV,
+  so every wind rate is an extrapolation, bracketed by 1.4e-9 and 4.0e-9 at
+  1e4 K (DERIVED; the held value is the source\textquotesingle s own extrapolation to 6 per
+  cent; Pequignot \& Aldrovandi 1986 infer 2.7e-9). The product state is not
+  determined in the paper; the near-resonance reading (Fe+ z4F/z4D, 1.18 eV
+  of heat an event instead of the full 5.70 eV defect) is the one Pequignot
+  \& Aldrovandi\textquotesingle s Table 3 also takes; the range is stated at the code.
+\item
+  S + H+ (Zhao et al. 2005 Table III), Si + He+ (Satta et al. 2013 eq. 8,
+  Table 1), S + C+ (Chenel et al. 2010 Table 2), Na + Ca+ (Kwolek et al.
+  2019, measured at 0.015-0.09 eV, the Langevin value kept as an upper bound)
+  replace the Table 4 transcriptions; the reverses of channels whose forward
+  ends in an excited product (Fe rows, Si + He+, Na + Ca+) are not carried.
+  C + Si+ (D1/D2) stays blocked: the paper Table 4 cites for it does not
+  contain it. The detailed-balance gate: 194 pass, 0 fail, 1 known blocked.
+\item
+  Effect: \texttt{wasp\_full} log10 Mdot -3e-4; the charge-exchange heat at the base
+  falls from 18 to 6.7 per cent of the heating; Na I D2 transit depth 1.169
+  -\textgreater{} 1.156 per cent.
+\end{itemize}
+
+\textbf{Hydrogen and helium.}
+
+\begin{itemize}
+\tightlist
+\item
+  The He I collision strengths of the metastable network (q13, q31g, q31a,
+  q31b) were exponential fits the ATES code carried, not coefficients of
+  Lampon et al. (2020), who take the values from Bray et al. (2000). Bray
+  tabulates 5.6e3-5.6e5 K; the fits passed through the first four table
+  values and were an unsupported extrapolation below 5.6e3 K (1.10-1.16
+  times the new strengths at 1.5e3 K). Now: Bray\textquotesingle s table inside its range
+  (PCHIP in log-log; one misprint of Table 2 corrected), the CHIANTI he\_1
+  temperature dependence joined continuously outside it; the feed through
+  the higher triplets, the 2\^{}3S cooling, the 2\^{}3S -\textgreater{} n\^{}1L excitations and
+  the He I cooling sums were rebuilt on Bray. On the LHS 1140 b He/H 1.8
+  state the He 10830 EW rises by 2.3 per cent on evaluation.
+\item
+  H 2s-2p mixing by electrons: the coded rate (Janev et al. 2003, from
+  Chibisov 1969) was ten times below Seaton\textquotesingle s (1955) first-order dipole
+  constant; now Seaton (1955) eq. (55), approximation V (5.78e-5 cm\^{}3 s\^{}-1 at
+  1e4 K against his Table 1 5.7e-5; Osterbrock \& Ferland Table 4.10 agree).
+\item
+  A(2s -\textgreater{} 1s) = 8.22461 s\^{}-1 (H) and 526.823 s\^{}-1 (He II), Drake (1986)
+  eq. (27) (section 19 wrote 8.2249, the Nussbaumer \& Schmutz 1984 value it
+  replaced).
+\item
+  The case-B share of recombinations into H 2s is now Pengelly\textquotesingle s (1964,
+  Table I) hydrogenic fraction, the one the He II branch already used; the
+  quadratic in T that section 17 (item B6) called "Draine\textquotesingle s 2s fraction" is
+  Christie et al.\textquotesingle s (2013) fit, and Draine (2011) gives only Tables 14.2 and
+  14.3.
+\item
+  The atomic-mode (no 2\^{}3S) He I case-B photons are now sent at their own
+  exits (584 A, 19.8 eV, two-photon) split by the network\textquotesingle s rates, instead
+  of one averaged energy (3.10 instead of 4.12 eV of heat a capture at high
+  density; z = 0.966 and 0.660 at low and high density against Draine\textquotesingle s
+  0.96 and 0.67).
+\item
+  Voronov (1997): all 20 rows equal the published Table I; its stated range
+  (1 eV-20 keV) is written at the code with what the fit does below it.
+  Anderson et al. (2000) confirm the CHIANTI H I strengths to 2.5 per cent at
+  0.5-5 eV; Yan \& Babb (2023) published values equal the arXiv ones; Dere et
+  al. (1997) and Del Zanna et al. (2015) say nothing about the descaling
+  spline, which rests on the CHIANTI IDL code.
+\end{itemize}
+
+\textbf{Build.} Tree rebuilt from \texttt{make\ distclean}: \texttt{EXHALE.x} md5
+\texttt{50aa18d79bcd25f219b5b59baa31b8b8}, no warning, copied to
+\texttt{LHS1140b/models/EXHALE\_50aa18d7.x} with its manifest. The manifests of
+2026-09-24/25 listed files as changed that were not (the header lines of the
+previous manifest matched the file-name search); the three lists were rebuilt
+from the md5 lines of consecutive manifests. The refined-grid runs of the
+round-2 physics that were still running (He/H 1.6 on 2000 cells, 2.13 on 1000
+and 2000) were stopped as superseded; the molecular family, the regression
+fixture, the regression matrix and the suites are being re-run on this binary.
+
+\textbf{The texts the corrections made stale} (\texttt{md/stale\_texts\_20260925.md}):
+the physics document (\texttt{docs/physics\_overview/*.tex}, the PDF rebuilt, 70
+pages), \texttt{docs/transmission\_spectrum.\{tex,md,pdf\}} and
+\texttt{md/atomic\_data\_EXHALE\_vs\_MoCHII.md} were brought to the code. The transit
+post-processor built the n = 2 populations of the Balmer lines with Christie
+et al.\textquotesingle s rates while claiming to mirror the solver; it now uses the solver\textquotesingle s
+rates, one transcribed function each (agreement with the Fortran 3.1e-13,
+MEASURED), and keeps only its own Ly-alpha and Balmer fields (which the
+profiles do not carry). H-alpha peak depth of HD 209458 b -1.73 per cent,
+of \texttt{wasp\_full} +0.14 per cent (MEASURED), almost all from the proton
+l-mixing, which lowers n(2s)/n(2) at 1.3-3 R\_p from 0.53-0.69 to 0.26-0.34.
+The n = 2 threshold cross section 1.4e-17 cm\^{}2 is Seaton (1959) at the n = 2
+edge (1.378e-17 DERIVED), not Osterbrock \& Ferland.
+
+\subsection{23. The Markdown documents move to md/ (2026-09-25)}\label{23-the-markdown-documents-move-to-md-2026-09-25}
+
+On the user\textquotesingle s instruction the 350 Markdown files directly under \texttt{docs/} moved
+to the new top-level \texttt{md/}; \texttt{docs/} keeps the LaTeX and PDF documents, the
+figures and the dated audit directories, whose 13 Markdown files stayed with
+the files they describe. Done with \texttt{mv}, not \texttt{git\ mv}: git sees the 35 tracked
+files as deleted under \texttt{docs/} and new under \texttt{md/}. Paths that followed:
+
+\begin{itemize}
+\tightlist
+\item
+  \texttt{.gitignore}: the rule that keeps the development record off the public
+  repository (\texttt{docs/*.md} with 35 exceptions) is now \texttt{md/*.md} with the same
+  35 exceptions under \texttt{md/}.
+\item
+  73 relative links of 24 moved files into \texttt{docs/} subdirectories now read
+  \texttt{../docs/...}.
+\item
+  3079 references \texttt{docs/\textless{}name\textgreater{}.md} in 416 maintained files (sources and
+  their comments, tests, scripts, \texttt{README.md}, \texttt{README\_HOWTO.md}, the \texttt{md/}
+  files themselves, the \texttt{docs/} LaTeX, the regression README and scripts) now
+  read \texttt{md/\textless{}name\textgreater{}.md}; four of them are strings the binary prints (the setup
+  report, one lower-atmosphere message, one test message), so the tree binary
+  changed (\texttt{EXHALE.x} md5 \texttt{b30e56f63335431dcb22b9fe3f80f948}, no warning); the
+  state files the regression compares carry none of them.
+\item
+  \texttt{src/utils/update\_log\_to\_tex.py} reads the logs from \texttt{md/}.
+\item
+  Left as they were: run records and products (inputs, outputs, state files,
+  \texttt{REPRODUCE.md}, logs, the \texttt{.P1} run areas, archived regression snapshots),
+  whose text records the paths of their day and whose bytes other records
+  hash; and the one string \texttt{LHS1140b/models/make\_models.py} writes into the 94
+  stored catalog inputs, so that it still reproduces them byte for byte.
+\item
+  The workspace \texttt{CLAUDE.md} and the session memory point to \texttt{md/}.
+\item
+  The 17 \texttt{docs/} documents whose text names these paths were rebuilt on the
+  user\textquotesingle s instruction (the two log twins regenerated first): every build
+  without error or undefined reference, the new paths in the PDFs.
+\end{itemize}
+
+\subsection{24. The last items of the MoCHII comparison, and the molecular crossing under the corrected physics (2026-09-25/26)}\label{24-the-last-items-of-the-mochii-comparison-and-the-molecular-crossing-under-the-corrected-physics-2026-09-2526}
+
+\texttt{md/EXHALE\_MOCHII\_ATOMIC\_COMPARISON\_2026-09-25.md} (a side-by-side of the
+atomic processes of EXHALE and MoCHII, written from the MoCHII side) found the
+recombination construction, the recombination cooling, the He 2\^{}3S network
+and the H 2s-2p mixing now the same in both codes to four digits at 1e4 K,
+and listed five open items for EXHALE; each was verified and applied (memos
+\texttt{md/charge\_exchange\_detailed\_balance\_20260924.md} section 12 and
+\texttt{md/photoionization\_584\_auger\_20260925.md}).
+
+\begin{itemize}
+\tightlist
+\item
+  \textbf{N2+ + H -\textgreater{} N+ + H+} (Barragan et al. 2006 Table 2, 9.70e-10 cm\^{}3 s\^{}-1 at
+  1e4 K, the product N+ 2s2p\^{}3 3D0, so no reverse; heat 4.57 eV an event;
+  \texttt{metals.inp:\ cx\_N2p\_H\ \textless{}scale\textgreater{}}, default 1). On \texttt{wasp\_full} N III falls by up
+  to 5.4 decades.
+\item
+  \textbf{He2+ + H -\textgreater{} He+ + H+ + photon} (Kingdon \& Ferland 1996 Table 1, 1.0e-14,
+  radiative, no reverse and no heat), in every system that carries He III;
+  He III falls by 0.69 dex at the \texttt{wasp\_full} base. The original of the rate
+  (West, Lane \& Cohen 1982, Phys. Rev. A 26, 3164) could not be obtained.
+\item
+  \textbf{Density-dependent detailed balance.} Where the source names the product
+  level, the reverse is the thermal reverse times the population-weighted
+  factor of the metastable levels at the local (T, n\_e) (five-level
+  statistical equilibrium of N I, S II, C I from CHIANTI 11.0.2), and the
+  heat of the forward channel removes the forbidden-line energy a metastable
+  product radiates at low density; elsewhere the thermal reverse is exact at
+  every density. \texttt{wasp\_full} (n\_e 8e8-3.5e9) moves by less than 0.2 per cent.
+  A 0/0 below 60 K in the metastable Boltzmann weights (one LHS 1140 b base
+  cell sits at 40.8 K) was guarded.
+\item
+  \textbf{He I 584 A.} The line is resonantly scattered by He0 inside the cell,
+  and each scattering ends in absorption by H I (or H2, or a metal ion), in
+  conversion to 2\^{}1S through the 2.06 um branch (1/912) and the existing
+  two-photon exit, or in escape (Wood, Mathis \& Ercolano 2004 sect. 4.1,
+  eqs. 15-17, generalized to every continuum absorber of the cell and to
+  escape); their eq. 17 carries He/H = 0.1 in its coefficient.
+\item
+  \textbf{Inner-shell photoionization.} Each subshell absorption heats with the
+  photoelectron plus the Auger energy, the fluorescence and the further
+  ionization energy are not heat, and the neutrals of C, N, O, Mg, Si, Ca and
+  Fe are carried straight to X++ where the vacancy autoionizes (Kaastra \&
+  Mewe 1993 Tables 2 and 3; Ca II 3s is treated as radiative, since the
+  measured energies forbid its autoionization). At 98 eV the electrons of a
+  Mg II absorption receive 0.333 of the photon energy instead of 0.847.
+\end{itemize}
+
+\textbf{Build.} \texttt{EXHALE.x} md5 \texttt{f4da21f29579d87370efec2a4220f4c4}, no warning,
+copied to \texttt{LHS1140b/models/EXHALE\_f4da21f2.x} with its manifest. On LHS 1140
+b the two He items move the He 10830 EW by +0.05 per cent (He/H 1.8), but a
+state of the previous physics does not certify under them, so the molecular
+states are re-solved on this binary.
+
+\textbf{The molecular K\_zz = 1e9 family under the physics of section 22}
+(\texttt{EXHALE\_50aa18d7.x}; \texttt{.P1/newphys/}, \texttt{.P1/refine\_grid\_r3/}). He/H 1.8 and
+2.13 re-solved from the round-2 states; 1.6 and 1.52 as rungs from 1.8 (1.45
+failed its rung: the H2 carrier row held at 1e-1 through four passes).
+MEASURED, every evaluation certified except the one marked:
+
+{\def\LTcaptype{none} % do not increment counter
+{\small
+\begin{longtable}[]{@{}>{\raggedright\arraybackslash}p{\dimexpr(\linewidth-10\tabcolsep)/5\relax}>{\raggedright\arraybackslash}p{\dimexpr(\linewidth-10\tabcolsep)/5\relax}>{\raggedright\arraybackslash}p{\dimexpr(\linewidth-10\tabcolsep)/5\relax}>{\raggedright\arraybackslash}p{\dimexpr(\linewidth-10\tabcolsep)/5\relax}>{\raggedright\arraybackslash}p{\dimexpr(\linewidth-10\tabcolsep)/5\relax}@{}}
+\toprule\noalign{}
+He/H & EW, 500 cells & 1000 cells & 2000 cells & continuum (DERIVED) \\
+\midrule\noalign{}
+\endhead
+\bottomrule\noalign{}
+\endlastfoot
+1.52 & 1.0038 & & & \\
+1.6 & 1.0475 & 1.0187 & 1.0039 & 0.988 \\
+1.8 & 1.1468 & 1.1162 & 1.1003 (a) & 1.083 \\
+2.13 & 1.2853 & 1.2516 & 1.2343 & 1.216 \\
+crossing of 1.108 & 1.721 & 1.783 & 1.819 & 1.860 \\
+\end{longtable}
+}
+}
+
+(a) the re-evaluation of the certified state refuses the base mass row by a
+factor 1.9 (1.4e-8 against 7.4e-9); its EW is quoted for reference.
+
+The EW converges at first order with the grid (successive-difference ratios
+1.93-1.95, p = 0.95-0.97), as under the physics before the audit, and the
+crossing moves from He/H 1.46 (500 cells) and 1.55 (continuum) before the
+audit to 1.72 and 1.86. The 60 R\_p domain factor of section 14 was measured
+before the audit and is not applied here.
+
+\textbf{The documents brought to the code} (\texttt{md/user\_manual\_update\_20260926.md}):
+\texttt{docs/EXHALE\_user\_manual.tex} (rebuilt, 103 pages, no error or undefined
+reference, every changed page looked at), \texttt{README.md} and \texttt{README\_HOWTO.md}
+now describe the input keys (\texttt{H\_rec\_escape}, \texttt{He\_rec\_coupling}, the
+\texttt{metals.inp} keys \texttt{cx\_N2p\_H}, \texttt{cx\_O2p\_H}, \texttt{cx\_full}), the 24 columns of
+\texttt{Heating\_breakdown.txt} (charge-exchange heat in column 24), the
+\texttt{stage\_channels.txt} layout and the atomic data of sections 17-24. Found in
+the code and fixed: \texttt{H\_rec\_escape} was parsed but missing from the list of
+recognized keys (a spurious "unrecognized input line" warning, and a second
+statement not refused); the missing-\texttt{metals.inp} message promised built-in
+abundances that are zero; comments said \texttt{cx\_full} toggles the He-H pair and
+that O2+/N2+ + H are dropped; the \texttt{stage\_channels.txt} header omitted the
+metal charge-exchange channels 27-32. \texttt{md/input\_schema.md} K14e (still
+"Koskinen 2013") and its \texttt{metals.inp} table (no group-E keys) were brought up
+to date. Not changed: \texttt{H\_rec\_escape} and \texttt{He\_rec\_coupling}, like the other
+physics switches of their group, are neither echoed in the setup report nor
+restart option tokens.
+
+\textbf{Checks of the binary of this section} (\texttt{EXHALE\_f4da21f2.x}). The suites:
+\texttt{physics\_probe} did not compile one new probe (\texttt{inner\_shell\_photoabsorption\_ledger}
+called \texttt{cx\_set\_cell} without the electron density the density-dependent
+reverses added; the two items were written at the same time); fixed, and the
+suite passes. \texttt{grid\_and\_gates} fails its fixture rows plus
+\texttt{outer\_iteration\_ending\_is\_the\_stagnation\_one} and
+\texttt{restart\_lower\_ghost\_is\_the\_derived\_boundary} (7.9e-14 against 1e-14), all on
+the pinned fixture of the previous physics; \texttt{residual\_determinism} keeps its
+known row; the two \texttt{steady\_*} suites need a solve log. The regression matrix
+ran all 17 cases; every one differs from the goldens by the physics
+(\texttt{wasp\_full} log10 Mdot and the base inflow: 214 inflow cells against 257).
+\textbf{The user held the golden refresh (2026-09-26).} The stationary re-solve
+of the fixture from the previous one did not converge (info = 2: the energy
+row 3.1e-2 at cell 406, the closure of \texttt{System\_HeH\_TR\_metals} 4.6e-3 at cell
+340), while the matrix case \texttt{wasp\_full\_newton} (marching, then Newton)
+certified (info = 0, \textbar\textbar R\textbar\textbar{} 4.4e-9); that output is the candidate fixture.
+The tree was rebuilt after the comment and message corrections of this
+section (\texttt{EXHALE.x} md5 \texttt{0a7532d5087f14df41142fb499b68240}; it differs from
+\texttt{EXHALE\_f4da21f2.x} in printed strings and comments only).
+
+\textbf{The molecular states on \texttt{EXHALE\_f4da21f2.x}} (\texttt{.P1/newphys/HeH\textless{}x\textgreater{}\_r4},
+re-solved from the certified states of the previous physics; certified in
+9, 9, 8 and 7 passes; every evaluation certified). He 10830 EW, 500 cells:
+He/H 1.52 1.0047, 1.6 1.0483, 1.8 1.1477, 2.13 1.2862 (+0.06-0.09 per cent
+against the table above); the 1.108 crossing 1.7194 (1.7213 before). The
+refined grids were not re-solved on this binary; the crossing\textquotesingle s grid factor
+above stands within the size of this change.
+
+\subsection{25. The helium-hydrogen charge exchange from its originals (2026-09-26)}\label{25-the-helium-hydrogen-charge-exchange-from-its-originals-2026-09-26}
+
+The He2+ + H original the user supplied (West, Lane \& Cohen 1982) and an
+analysis made on the MoCHII side of the He+ + H exchange
+(\texttt{\textasciitilde{}/MoCHII/MoCHII\_v1.00/md/heii\_h\_charge\_exchange/}) were checked against
+the published papers and applied (\texttt{md/charge\_exchange\_detailed\_balance\_20260924.md}
+section 12.9). Every rate below is DERIVED from the cited cross sections
+unless marked READ.
+
+\begin{itemize}
+\tightlist
+\item
+  \textbf{He2+ + H -\textgreater{} He+(1s) + H+ + photon.} The 1.0e-14 cm\^{}3 s\^{}-1 of Kingdon \&
+  Ferland (1996) is not a result of any calculation: it is the value they set
+  for every reaction without a significant channel (READ, their sect. 2).
+  Now the Maxwellian average of the West et al. (1982) radiative cross
+  sections (Figs. 4-6, with the resolved resonances): 2.0e-13 at 1e3 K,
+  1.65e-13 at 1e4 K, 1.57e-13 at 3e4 K, 16-20 times the old value; a
+  calculation above 1e3 K, an extrapolation below.
+\item
+  \textbf{He+ + H -\textgreater{} He + H+, non-radiative.} The Kingdon \& Ferland fit reproduces
+  the singlet-conditional cross sections of Zygelman et al. (1989) without
+  the 1/4 of the spin statistics, and those cross sections are themselves
+  hundreds of times those of Kimura et al. (1993) and Loreau et al. (2014).
+  Now the Loreau et al. (2014) H+ + He cross section by microscopic
+  reversibility (weights 4:1, threshold 13.65 eV/u, zero below 15 eV/u):
+  4.4e-17 at 1e4 K instead of 9.0e-15, 1.5 per cent of the radiative channel;
+  the band at the code (up to 2.9x at 1e4 K from the threshold treatment;
+  0.4-2.5x above 3e4 K). The reverse He + H+ (B1) follows by detailed balance
+  (5.1e-22 at 1e4 K instead of 1.0e-19); the heat of an event is unchanged.
+\item
+  \textbf{He+ + H, radiative.} Stancil, Lepp \& Dalgarno (1998) Table 1 row 19
+  prints 1.20e-15 (READ); the code carried the 1.25e-15 of Glover \& Jappsen
+  (2007). Now 1.20e-15.
+\end{itemize}
+
+Effect (MEASURED): \texttt{wasp\_full} log10 Mdot -0.002 (inside the marching spread),
+He III down to 0.94 dex at the base, He II and He 2\^{}3S +48 and +52 per cent at
+1.1 R\_p, the charge-exchange share of the heating 5.6 -\textgreater{} 0.9 per cent at 1.05
+R\_p. \textbf{LHS 1140 b He/H 1.8 (evaluation of the certified state): the old
+He+ + H exchange supplied up to 10.7 per cent of the heating; without it the
+peak temperature falls from about 5600 to 5150 K, He II and He 2\^{}3S rise by
+14 and 15 per cent at 1.5 R\_p, and the He 10830 EW rises from 1.1477 to 1.1818
+\%A (+3.0 per cent).} The certificate does not hold under the corrected rates
+(energy row 8.4e-2), so the molecular states are re-solved on the binary of
+this section (\texttt{EXHALE.x} md5 \texttt{59c6be36820b8ba5c958c294ad9e6f02}, copied to
+\texttt{LHS1140b/models/EXHALE\_59c6be36.x} with its manifest).
+
+\textbf{The molecular states re-solved on \texttt{EXHALE\_59c6be36.x}} (\texttt{.P1/newphys/HeH\textless{}x\textgreater{}\_r5},
+from the certified states of section 24): He/H 1.6, 1.8 and 2.13 certified in
+25, 23 and 21 passes, every evaluation certified. He 10830 EW, 500 cells
+(MEASURED): 1.6 1.0577, 1.8 1.1550, 2.13 1.2902 (+0.9, +0.6 and +0.3 per cent
+against section 24; the +3.0 per cent of the evaluation at fixed wind is
+mostly given back by the solved wind); the 1.108 crossing moves from 1.7194
+to 1.7026 (DERIVED). He/H 1.52 stopped in its second pass: a JFNK trial
+iterate with \textbar\textbar R\textbar\textbar{} near 2 left a lower ghost whose base H2 handoff partition
+did not close in 30 passes (last move 2.0e-6 against 1e-10), and the guard of
+\texttt{ionization\_equilibrium.f90} (a boundary nothing stands behind is refused)
+ends the run with \texttt{error\ stop} even on a trial state. Whether a trial should
+instead be refused and the step shortened is a solver-control question put
+to the user.
+
+\subsection{26. A trial state no longer stops the run at an unclosed lower ghost (2026-09-26)}\label{26-a-trial-state-no-longer-stops-the-run-at-an-unclosed-lower-ghost-2026-09-26}
+
+User decision: as recommended (\texttt{md/ghost\_closure\_trial\_refusal\_20260926.md}).
+The guard of \texttt{ionization\_equilibrium.f90} that stops the run when the lower
+ghost\textquotesingle s base H2 handoff partition does not close against its own ionization
+balance (tolerance 1e-10, 30 passes) now distinguishes a state a caller can
+refuse from one it cannot: the stationary JFNK\textquotesingle s trial evaluations
+(\texttt{eval\_residual} of \texttt{steady\_newton.f90} when it screens admissibility: line
+search, trust region, Levenberg-Marquardt and pseudo-time trials, the
+finite-difference probes) and the relaxation\textquotesingle s trial chemistry
+(\texttt{equilibrate\_chemistry\_at\_fixed\_conserved\_state}) declare it before the
+sweep, and there an unclosed ghost refuses the trial (logged as \texttt{CANDIDATE\ REFUSED}, counted in the ledger, refusal code 7, closure reason 5), the
+solver then shortening the step as for its other refusals; an accepted state,
+the state written, the marching sweep and every other path keep the stop. The
+same rule now covers the ghost-composition fixed point one step later. MEASURED:
+the He/H 1.52 re-solve of section 25 passes the trial that stopped it (the
+lambda = 1 trial of JFNK solve 3 iteration 7; the halved trials close) and
+certifies at pass 24; an evaluate of He/H 1.6 and a copy of \texttt{mol\_carrier}
+are byte-identical to the build before (\texttt{EXHALE\_59c6be36.x}) in every data
+line; the suites pass, the two failing ones (\texttt{residual\_determinism},
+\texttt{grid\_and\_gates} fixture rows) failing identically on the build before.
+\texttt{EXHALE.x} md5 \texttt{7db5afe9b1d80ce757fcc07d1b499330}, copied to
+\texttt{LHS1140b/models/EXHALE\_7db5afe9.x} with its manifest.
+
+The He/H 1.52 state on this physics: EW 1.0149 \%A (certified evaluation); with
+1.6, 1.8 and 2.13 of section 25 the 500-cell ladder is 1.0149, 1.0577,
+1.1550, 1.2902 and the crossing of 1.108 stays at 1.7026.
+
+\textbf{The grid of the crossing on this physics} (\texttt{.P1/refine\_grid\_r5/}, binary
+\texttt{EXHALE\_59c6be36.x}, the 1000-cell He/H 1.8 and 2.13 continued on
+\texttt{EXHALE\_7db5afe9.x}, identical physics; every state and evaluation
+certified). He 10830 EW, MEASURED; continuum DERIVED (Richardson at the
+measured order):
+
+{\def\LTcaptype{none} % do not increment counter
+{\small
+\begin{longtable}[]{@{}>{\raggedright\arraybackslash}p{\dimexpr(\linewidth-10\tabcolsep)/5\relax}>{\raggedright\arraybackslash}p{\dimexpr(\linewidth-10\tabcolsep)/5\relax}>{\raggedright\arraybackslash}p{\dimexpr(\linewidth-10\tabcolsep)/5\relax}>{\raggedright\arraybackslash}p{\dimexpr(\linewidth-10\tabcolsep)/5\relax}>{\raggedright\arraybackslash}p{\dimexpr(\linewidth-10\tabcolsep)/5\relax}@{}}
+\toprule\noalign{}
+He/H & 500 cells & 1000 cells & 2000 cells & continuum \\
+\midrule\noalign{}
+\endhead
+\bottomrule\noalign{}
+\endlastfoot
+1.6 & 1.0577 & 1.0297 & 1.0150 & 0.999 \\
+1.8 & 1.1550 & 1.1249 & 1.1094 & 1.093 \\
+2.13 & 1.2902 & 1.2571 & 1.2403 & 1.223 \\
+crossing of 1.108 & 1.703 & 1.764 & 1.797 & 1.838 \\
+\end{longtable}
+}
+}
+
+First order again (successive-difference ratios 1.91-1.96, p = 0.93-0.97).
+Against the physics before the audit (1.464 on 500 cells, 1.552 in the
+continuum) the crossing has moved to 1.703 and 1.838; the continuum value is
+interpolated between the certified continuum points of 1.8 and 2.13.
+
+\subsection{27. The molecular family under the corrected physics: catalog publication and the width of the line (2026-09-26)}\label{27-the-molecular-family-under-the-corrected-physics-catalog-publication-and-the-width-of-the-line-2026-09-26}
+
+\textbf{Catalog.} The certified He/H 1.52, 1.6, 1.8 and 2.13 states of sections 25
+and 26 were published into \texttt{LHS1140b/models/molecular\_scalar\_gj1132\_kzz1e9/}
+(\texttt{run\_case.sh}, \texttt{SEED=} the certified run, \texttt{EXHALE\_7db5afe9.x}): every re-
+measurement "original claim REPRODUCED", every evaluation certified; EW 1.0149,
+1.0577, 1.1550, 1.2902 \%A, log10 Mdot 7.89, 7.90, 7.91, 7.93. The catalog\textquotesingle s
+He/H 0.55, 1.45 and 9.7 molecular states are of the physics before the audit
+and were not re-solved.
+
+\textbf{The added Gaussian} (\texttt{.P1/connectivity/broaden\_molecular\_final.py}, the
+operations of section 13; output \texttt{broaden\_molecular\_final.txt}, figure
+\texttt{docs/figures/lhs1140b\_kzz1e9\_molecular\_broadened\_final.pdf}). The memo check
+(atomic well-mixed He/H 0.40) reproduces f = 22.22 km/s. MEASURED: the matched
+kernel is 22.10-22.19 km/s FWHM on every state and grid (sigma 9.39-9.42
+km/s), and at it the red depth, blue depth and ratio of the He/H 1.8 state
+lie inside the observed 1 sigma (red 1.289, blue 0.170, ratio 7.60). The
+broadened EW (MEASURED on each grid, continuum DERIVED):
+
+{\def\LTcaptype{none} % do not increment counter
+{\small
+\begin{longtable}[]{@{}>{\raggedright\arraybackslash}p{\dimexpr(\linewidth-10\tabcolsep)/5\relax}>{\raggedright\arraybackslash}p{\dimexpr(\linewidth-10\tabcolsep)/5\relax}>{\raggedright\arraybackslash}p{\dimexpr(\linewidth-10\tabcolsep)/5\relax}>{\raggedright\arraybackslash}p{\dimexpr(\linewidth-10\tabcolsep)/5\relax}>{\raggedright\arraybackslash}p{\dimexpr(\linewidth-10\tabcolsep)/5\relax}@{}}
+\toprule\noalign{}
+He/H & 500 cells & 1000 cells & 2000 cells & continuum \\
+\midrule\noalign{}
+\endhead
+\bottomrule\noalign{}
+\endlastfoot
+1.6 & 1.0227 & 0.9955 & 0.9813 & 0.966 \\
+1.8 & 1.1167 & 1.0876 & 1.0726 & 1.057 \\
+2.13 & 1.2474 & 1.2155 & 1.1992 & 1.182 \\
+crossing of 1.108 & 1.781 & 1.851 & 1.890 & 1.933 \\
+\end{longtable}
+}
+}
+
+As turbulence the kernel is supersonic: on the He/H 1.6 and 1.8 states the
+line-forming region (n(2\^{}3S) r weighting) has T = 2650 and 2756 K, mu = 1.94
+and 2.03, c\_s = 4.33 km/s, so sigma = 9.4 km/s is Mach 2.2 as a line-of-sight
+dispersion, 3.1 as sqrt(2) sigma and 3.8 as an isotropic speed, as before the
+audit. From the EW alone the crossing is 1.703 (500 cells) and 1.838
+(continuum); from the broadened line 1.781 and 1.933.
+
+\subsection{28. The catalog summary brought to the tree\textquotesingle s state, and why the molecular winds do not certify (2026-09-26)}\label{28-the-catalog-summary-brought-to-the-trees-state-and-why-the-molecular-winds-do-not-certify-2026-09-26}
+
+\texttt{docs/lhs1140b\_catalog\_state.tex} (13 pages, rebuilt, pages 5 to 8 checked
+by eye):
+
+\begin{itemize}
+\tightlist
+\item
+  The certified table carries the molecular K\_zz = 1e9 rows the catalog now
+  publishes, READ from each case\textquotesingle s \texttt{run.log} and \texttt{models/status.py}: 1.52,
+  1.6, 1.8 and 2.13 under \texttt{EXHALE\_7db5afe9.x} (note a); 1.45 under
+  \texttt{EXHALE\_b059a4be.x}, the second round of corrections, EW 0.9387 (note b;
+  under \texttt{EXHALE\_50aa18d7.x} neither its re-solve nor its rung from 1.52
+  certified within the time ceiling, and it was not attempted under the
+  binary of record); 9.7 (note c, below). The rows of the table before this
+  entry were the pre-audit values (1.6: EW 1.2155, now 1.0577).
+\item
+  A new subsection of section 3, "Why the molecular winds do not certify",
+  assembled from \texttt{md/lhs1140b\_stationary\_L34c\_20260918.md},
+  \texttt{md/lhs1140b\_alternation\_audit\_20260921.md},
+  \texttt{md/lhs1140b\_coupled\_trial\_20260921.md} and \texttt{md/TO\_BE\_DONE.md} L22: the
+  composition half of the partitioned route refuses (the H2 carrier row in
+  all six cases), by two measured mechanisms (the composition update takes
+  the wind out of solution in the well-mixed cases; a drift under a
+  saturated movement bound in \texttt{kzz1e9/HeH0.083}); the coupled route fails
+  in its Krylov solve; the open item is a preconditioner that holds the
+  species rows. Every one of those measurements predates the atomic-data
+  corrections and none was repeated under \texttt{EXHALE\_7db5afe9.x}.
+\item
+  The two molecular cases that published no state
+  (\texttt{molecular\_scalar\_gj1132\_wellmixed/HeH2.13},
+  \texttt{molecular\_photochem\_gj1132\_kzzprofile/HeH2.09}) are now named.
+\end{itemize}
+
+Found and fixed: \texttt{LHS1140b/models/status.py} printed the \texttt{not\_solved.md}
+reason beside \texttt{molecular\_scalar\_gj1132\_kzz1e9/HeH9.7}, which is certified.
+The certified generation \texttt{g0008\_20260920T052941Z\_c3c466a4} is the
+2026-09-20 evaluation of the state written on 2026-09-19; the
+\texttt{not\_solved.md} is that of a re-solve made later the same day
+(\texttt{g0006\_20260920T000506Z\_5b2061aa}, \texttt{composition\_refusal}, the H2 carrier
+row 5.13e-4 at cell 262 after 40 passes), which did not replace it. A
+certified row with a \texttt{not\_solved.md} beside it now reads "a later re-solve,
+not the state shown: ..." (MEASURED on the table output). \texttt{MODELS.md} was
+not rewritten.
+
+\appendix
+\input{Update_EXHALE_appendix}
+\end{document}

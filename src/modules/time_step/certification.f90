@@ -93,7 +93,12 @@
                                           transported_rows_exist,         &
                                     ionization_closure_residual_profile
       use excited_hydrogen,         only: excited_hydrogen_level_residual
-      use binary_element_diffusion, only: element_transport_residual
+      use binary_element_diffusion, only: element_transport_residual,     &
+                                          element_row_terms_record,       &
+                                          element_row_terms_on,           &
+                                          element_row_terms_write,        &
+                                          element_flux_profile_on,        &
+                                          write_element_flux_profile
       use element_inventory,        only: ien_H, ien_He
       ! What identity (2) of ionization_stage_transport can stand at in
       ! floating point. The identity is algebraic, so this is the whole of
@@ -394,24 +399,45 @@
       ! (element 3.05e-4, carrier 7.19e-2, MEASURED), so it admits no state
       ! that exists.
       !
-      ! REPORTED AND NOT GATING, below cert_regime_wind_r. Two reasons, one
-      ! per part of that column:
-      !   r < cert_regime_layer_r  the element fluxes of the operator are
-      !     not conserved there at all: their radial spread over that
-      !     window is 9.8 times the median (MEASURED, after the mass-closure
-      !     repair; 39 before it), which is the standing base sound wave and
-      !     not a tolerance question. No threshold means anything against
-      !     it, and the window gates nothing until it is repaired.
-      !   between the two radii  the discretization of the row is 4.6e-4 at
-      !     the radius that binds (r = 1.153, 78 percent of the row measured
-      !     there, MEASURED by grid refinement), so a 1e-5 gate would ask a
-      !     residual to fall one and a half decades below the error of the
-      !     discrete equation it is the residual of. No separate anchor for
-      !     the band exists, and inventing one would be choosing a number
-      !     rather than measuring it.
+      ! REPORTED AND NOT GATING, below cert_regime_wind_r, by decision:
+      ! which cells gate is a choice of the acceptance, not a property the
+      ! rows measure. What the two parts of that column measure:
+      !   r < cert_regime_layer_r  on the Riemann face mass flux the rows
+      !     ride on, the elemental helium flux varies over that window by
+      !     2.2e-3 and 7.8e-5 of its median on the two certified LHS 1140 b
+      !     kzz1e9 states (He/H 0.55 and 1.8), almost all of it the step
+      !     across the first solved cell, whose row is the worst of the
+      !     column (6.1e-5, 2.3e-5); every other cell of the window stands
+      !     below 1.6e-7 there, and below 1.1e-6 and 5.4e-6 on the He/H 1.45
+      !     and 1.52 states, whose cell 2 reads 2.0e-5 and 1.3e-4 (MEASURED
+      !     2026-09-24). The spread of 9.8
+      !     (39 before the mass-closure repair) once quoted here as the
+      !     non-conservation of these fluxes was measured on the face mean
+      !     of the cell-centred rho and v, which carries the collocated
+      !     odd-even velocity mode of the base and is not the flux the rows
+      !     ride on; it is not a property of the operator.
+      !   between the two radii  the element row stands at 6.9e-8 and
+      !     2.7e-7 on the same two states (MEASURED 2026-09-24); the
+      !     candidates of 2026-09-10 bound there at 3e-4 (r = 1.153). Its
+      !     truncation error there, 4.6e-4 by grid refinement, is not a
+      !     floor under its algebraic residual: the same routine took a
+      !     wind H2 row to 2.4e-13 on a held background (MEASURED
+      !     2026-09-11). No anchor for the band exists yet.
       ! A state whose wind rows are within tolerance is therefore certified
       ! IN THE WIND, and the report and the state file say so in one line
       ! with the worst reported row beside it.
+      !
+      ! THE CANDIDATE GATING, measured beside the one in force and deciding
+      ! nothing (user decision of 2026-09-24, to be taken on a side-by-side
+      ! reading): the carrier and elemental transport rows gated at every
+      ! cell from this one outward, against the tolerance each kind takes
+      ! in the wind (cert_tol_carrier_at and cert_tol_element_at at
+      ! cert_regime_wind_r, one number for the whole gated column), with the
+      ! absence mask of the carrier rows as it stands. Cell 1 is the
+      ! Dirichlet reservoir of the element operator and carries no element
+      ! equation (element_transport_residual reports it as zero); cell 2 is
+      ! the first cell that operator solves. Both are reported only.
+      integer, parameter, public :: cert_gate_candidate_first_cell = 3
 
       ! What the run asked its stationary solver for ("Resid tol"), kept so
       ! that a report can name the solver's target beside the row measures.
@@ -431,7 +457,7 @@
          logical           :: finite      = .true.
          real*8            :: tol         = 0.0d0
          logical           :: within_tol  = .true.
-         character(len=76) :: units_floor = ''
+         character(len=128) :: units_floor = ''
          ! INFORMATIONAL, NEVER DECISIVE. Rows whose residual already sits
          ! at the arithmetic round-off of their own full terms, which is
          ! what an exact solve leaves there: they are accepted and flagged.
@@ -479,6 +505,20 @@
          ! that binds the element row of a real state (r = 1.15).
          real*8            :: row_max_reported = 0.0d0
          integer           :: jworst_reported  = 0
+         ! THE SAME ROW UNDER THE CANDIDATE GATING, beside the gating in
+         ! force (cert_gate_candidate_first_cell): every cell from the third
+         ! outward gated at the wind tolerance of the row's kind, the
+         ! absence mask as it stands, cells 1 and 2 reported. Filled for
+         ! every regime-gated row and read by no verdict of the
+         ! certification; EXHALE_CERT_GATE_DIAGNOSTIC=1 prints it. The
+         ! largest measure over the cells that candidate gates and its cell
+         ! (jworst_from3 = 0: no such cell), whether the row is within
+         ! tolerance there, and the largest measure over cells 1 and 2.
+         real*8            :: row_max_from3   = 0.0d0
+         integer           :: jworst_from3    = 0
+         logical           :: within_from3    = .false.
+         real*8            :: row_max_cells12 = 0.0d0
+         integer           :: jworst_cells12  = 0
          ! WHERE A TOLERANCE THAT IS A FUNCTION OF THE CELL BINDS. The
          ! continuity row's tolerance is one (cert_tol_mass_at), so the
          ! cell whose measure stands furthest outside ITS OWN tolerance is
@@ -614,6 +654,13 @@
       ! alone and are not re-derived at either call site.
       type, public :: cert_evaluation_facts
          integer :: n_sweep_nonfinite     = 0
+         ! Lower-boundary solves the sweep left open at this state: a ghost
+         ! whose base handoff partition did not close against its own
+         ! ionization balance, or a ghost composition that did not reach a
+         ! fixed point of its sweep (ionization_equilibrium.f90,
+         ! ieq_state_may_be_refused). The boundary the rows are built on is
+         ! then an iterate and not the solution of the stated equations.
+         integer :: n_sweep_ghost_open    = 0
          integer :: n_no_chem_root_trial  = 0
          integer :: n_no_chem_root_state  = 0
          ! Whether the caller asks for the chemical-root condition at all: a
@@ -680,6 +727,11 @@
       public :: mass_row_column_verdict
       public :: cert_mass_gate_name
       public :: certification_species_row_gate
+      ! The candidate gating of the species rows and the verdict of a
+      ! report under either gating, so that a test can state both on rows
+      ! it chooses (cert_gate_candidate_first_cell).
+      public :: certification_species_row_gate_candidate
+      public :: certification_report_verdict
       public :: certification_entry_index
       ! The stage sum entry, so that a test can state its verdict on a
       ! measure it chooses rather than on one a solve happens to produce.
@@ -718,14 +770,15 @@
       logical function trial_state_is_admissible(f) result(ok)
       ! THE STATIONARY NEWTON TRIAL CONTEXT: a
       ! trial is admissible if it is a state at all -- finite rows, a finite
-      ! sweep, inside the element headroom -- and if its eliminated chemistry
+      ! sweep, a lower boundary the sweep could solve, inside the element
+      ! headroom -- and if its eliminated chemistry
       ! is locally valid, which here means it leaves no MORE cells without a
       ! chemical root than the iterate it is compared against. The solver's
       ! own merit-decrease and trust-region rules then decide the step; no
       ! stationary tolerance enters this decision.
       type(cert_evaluation_facts), intent(in) :: f
       ok = (f%n_sweep_nonfinite .eq. 0) .and. f%headroom_ok                &
-           .and. f%rows_finite
+           .and. f%rows_finite .and. (f%n_sweep_ghost_open .eq. 0)
       if (f%chem_root_gate) ok = ok .and.                                  &
            (f%n_no_chem_root_trial .le. f%n_no_chem_root_state)
       end function trial_state_is_admissible
@@ -736,7 +789,10 @@
       ! THE PROBE CONTEXT: a residual sample
       ! taken to build a Jacobian column or a Jacobian-vector product is
       ! usable when every row it produced is a finite number and the sweep
-      ! that produced them found none. Convergence is not asked of it, and
+      ! that produced them found none, on a lower boundary that sweep could
+      ! solve (a difference against rows built on an unsolved ghost samples
+      ! the ghost's iteration error, not the operator). Convergence is not
+      ! asked of it, and
       ! neither is the chemical-root condition: a probe is not a state the
       ! run may adopt, and holding it to that condition would refuse the
       ! neighborhood of a point the solver is standing on.
@@ -1036,26 +1092,84 @@
       ! because the DISCRETIZATION cannot be judged there; this excludes it
       ! because there is no species to judge. Both leave the cell reported.
       logical, optional, intent(in) :: absent(nc)
-      real*8  :: q, tol, d
+      real*8  :: tol(nc)
+      integer :: j
+      do j = 1, nc
+         if (is_carrier) then
+            tol(j) = cert_tol_carrier_at(r(j))
+         else
+            tol(j) = cert_tol_element_at(r(j))
+         endif
+      enddo
+      call species_row_distance_over_gated_cells(nc, tol, res, scale,     &
+                                                 dgate, rgate, jgate,     &
+                                                 absent)
+      end subroutine certification_species_row_gate
+
+      ! ------------------------------------------------------!
+
+      subroutine certification_species_row_gate_candidate(nc, is_carrier,  &
+                                                res, scale, dgate, rgate,  &
+                                                jgate, absent)
+      ! THE SAME REDUCTION UNDER THE CANDIDATE GATING
+      ! (cert_gate_candidate_first_cell): a cell from the third outward is
+      ! gated against the tolerance the row's kind takes in the wind, and
+      ! cells 1 and 2 divide by cert_tol_reported_only. The absence mask,
+      ! when given, leaves a cell out exactly as in the gating in force.
+      ! Nothing in the verdict of the certification calls this routine.
+      integer, intent(in)  :: nc
+      logical, intent(in)  :: is_carrier
+      real*8,  intent(in)  :: res(nc), scale(nc)
+      real*8,  intent(out) :: dgate, rgate
+      integer, intent(out) :: jgate
+      logical, optional, intent(in) :: absent(nc)
+      real*8  :: tol(nc), tol_wind
+      integer :: j
+      if (is_carrier) then
+         tol_wind = cert_tol_carrier_at(cert_regime_wind_r)
+      else
+         tol_wind = cert_tol_element_at(cert_regime_wind_r)
+      endif
+      do j = 1, nc
+         tol(j) = cert_tol_reported_only
+         if (j .ge. cert_gate_candidate_first_cell) tol(j) = tol_wind
+      enddo
+      call species_row_distance_over_gated_cells(nc, tol, res, scale,     &
+                                                 dgate, rgate, jgate,     &
+                                                 absent)
+      end subroutine certification_species_row_gate_candidate
+
+      ! ------------------------------------------------------!
+
+      pure subroutine species_row_distance_over_gated_cells(nc, tol, res,  &
+                                                scale, dgate, rgate,       &
+                                                jgate, absent)
+      ! THE LARGEST DISTANCE OF A SPECIES ROW FROM ITS TOLERANCE over the
+      ! cells it is gated in, and the one expression of it for both
+      ! gatings: over the cells with tol(j) < cert_tol_reported_only and
+      ! not marked absent, the largest of |res_j| / max(scale_j, floor) /
+      ! tol(j) (dgate), the measure of the cell that carries it (rgate) and
+      ! that cell (jgate; 0 when no cell is gated).
+      integer, intent(in)  :: nc
+      real*8,  intent(in)  :: tol(nc), res(nc), scale(nc)
+      real*8,  intent(out) :: dgate, rgate
+      integer, intent(out) :: jgate
+      logical, optional, intent(in) :: absent(nc)
+      real*8  :: q, d
       integer :: j
       dgate = 0.0d0;  rgate = 0.0d0;  jgate = 0
       do j = 1, nc
          if (present(absent)) then
             if (absent(j)) cycle
          endif
-         if (is_carrier) then
-            tol = cert_tol_carrier_at(r(j))
-         else
-            tol = cert_tol_element_at(r(j))
-         endif
-         if (tol .ge. cert_tol_reported_only) cycle
+         if (tol(j) .ge. cert_tol_reported_only) cycle
          q = abs(res(j))/max(scale(j), cert_scale_floor)
-         d = q/tol
+         d = q/tol(j)
          if (jgate .eq. 0 .or. d .gt. dgate) then
             dgate = d;  rgate = q;  jgate = j
          endif
       enddo
-      end subroutine certification_species_row_gate
+      end subroutine species_row_distance_over_gated_cells
 
       ! ------------------------------------------------------!
 
@@ -1130,6 +1244,10 @@
       real*8,           intent(in)    :: res(1:N), scale(1:N)
       logical, optional, intent(in)   :: absent(1:N)
       real*8  :: dgate
+      ! The candidate gating first, on the same res, scale and mask: it
+      ! writes only its own fields, and a row the gating in force cannot
+      ! judge (the return below) still carries it.
+      call fill_candidate_gate(ent, is_carrier, res, scale, absent)
       if (present(absent)) then
          call certification_species_row_gate(N, is_carrier, res, scale,   &
                   dgate, ent%row_max_gate, ent%jworst_gate,               &
@@ -1152,6 +1270,36 @@
       endif
       ent%within_tol = ent%finite .and. (dgate .lt. 1.0d0)
       end subroutine gate_species_row
+
+      ! ------------------------------------------------------!
+
+      subroutine fill_candidate_gate(ent, is_carrier, res, scale, absent)
+      ! THE CANDIDATE GATING OF ONE ROW, from the res, scale and absence
+      ! mask the gating in force reads: the gated part under
+      ! certification_species_row_gate_candidate, its verdict on the same
+      ! terms as gate_species_row (a non-finite row or a column with no
+      ! gated cell is not within), and cells 1 and 2 through the one
+      ! definition of the row measure. Writes the *_from3 and *_cells12
+      ! fields of the entry and nothing else.
+      type(cert_entry), intent(inout) :: ent
+      logical,          intent(in)    :: is_carrier
+      real*8,           intent(in)    :: res(1:N), scale(1:N)
+      logical, optional, intent(in)   :: absent(1:N)
+      real*8  :: dgate
+      integer :: nlow
+      logical :: fin_low
+      call certification_species_row_gate_candidate(N, is_carrier, res,   &
+               scale, dgate, ent%row_max_from3, ent%jworst_from3, absent)
+      ent%within_from3 = ent%finite .and. (ent%jworst_from3 .gt. 0)       &
+                         .and. (dgate .lt. 1.0d0)
+      nlow = min(cert_gate_candidate_first_cell - 1, N)
+      ent%row_max_cells12 = 0.0d0
+      ent%jworst_cells12  = 0
+      if (nlow .ge. 1)                                                     &
+         call certification_row_measure(nlow, 1, res(1:nlow),              &
+                  scale(1:nlow), ent%row_max_cells12, ent%jworst_cells12,  &
+                  fin_low)
+      end subroutine fill_candidate_gate
 
       ! ------------------------------------------------------!
 
@@ -1236,6 +1384,9 @@
       real*8, dimension(1-Ng:N+Ng) :: Frho_cert
       real*8, dimension(1-Ng:N+Ng,n_mion) :: cn_m
       real*8, dimension(1:N) :: ehe_res, ehe_sc
+      ! The helium element row term by term, filled by the same evaluation
+      ! that forms ehe_res and ehe_sc (EXHALE_ELEMENT_ROW_TERMS=1).
+      type(element_row_terms_record) :: ehe_terms
       real*8, dimension(1:N,n_melem) :: etr_res, etr_sc
       logical, dimension(n_melem)    :: etr_carried
       real*8, dimension(1:N) :: clo_res, clo_tr, n2_res, n2_sc
@@ -1251,6 +1402,10 @@
       integer :: ient
       logical :: ssum_known
       character(len=76) :: clo_why, n2_why
+      ! The verdict as certification_report_verdict returns it, held apart
+      ! from rep until it is written into it (rep is that routine's input).
+      logical :: verdict_certified
+      integer :: verdict_n_failing
 
       rep%context         = context
       rep%n               = 0
@@ -1351,9 +1506,30 @@
          ! assembled for it and handed to the element operator, which stands
          ! below the steady residual and does not reach up to it.
          call face_mass_flux_of_state(Wcert(1,:), Frho_cert)
-         call element_transport_residual(Wcert(1,:), Tcert,                &
-                  f_sp, Frho_cert, ehe_res, ehe_sc, he_ok, etr_res,        &
-                  etr_sc, tr_ok, tr_carried = etr_carried)
+         if (element_row_terms_on()) then
+            call element_transport_residual(Wcert(1,:), Tcert,             &
+                     f_sp, Frho_cert, ehe_res, ehe_sc, he_ok, etr_res,     &
+                     etr_sc, tr_ok, tr_carried = etr_carried,              &
+                     he_terms = ehe_terms)
+         else
+            call element_transport_residual(Wcert(1,:), Tcert,             &
+                     f_sp, Frho_cert, ehe_res, ehe_sc, he_ok, etr_res,     &
+                     etr_sc, tr_ok, tr_carried = etr_carried)
+         endif
+         ! THE RECORDS OF THIS STATE'S ELEMENTAL TRANSPORT, on the same face
+         ! mass flux the row above rode on, written by the evaluation that
+         ! measured them so that each file describes the state it is
+         ! written with: the helium row term by term (default off), and the
+         ! elemental face flux profile, with the flux closure windows when a
+         ! lower-atmosphere profile is in use.  Files and the closure
+         ! windows of the resolved-configuration record only; nothing the
+         ! verdict or the solution reads.
+         if (he_ok .and. element_row_terms_on())                           &
+            call element_row_terms_write('output/element_row_terms.txt',   &
+                                         ehe_terms)
+         if (element_flux_profile_on())                                    &
+            call write_element_flux_profile(Wcert(1,:), Tcert, f_sp,       &
+                                            Frho_cert)
       endif
       call transport_row_entry(rep, 'elemental transport He/H partition',   &
                he_diffusion .and. thereis_He, he_ok, ehe_res, ehe_sc,       &
@@ -1436,34 +1612,12 @@
          rep%carrier_history_ok = carrier_history_certifiable()
 
       ! ---- the verdict ----
-      rep%n_failing = 0
-      rep%certified = .true.
-      do i = 1, rep%n
-         select case (rep%e(i)%status)
-            case (cert_unavailable)
-               rep%certified = .false.
-               rep%n_failing = rep%n_failing + 1
-            case (cert_evaluated)
-               if (.not. rep%e(i)%within_tol .or. .not. rep%e(i)%finite)   &
-                  then
-                  rep%certified = .false.
-                  rep%n_failing = rep%n_failing + 1
-               endif
-         end select
-      enddo
-      if (.not. chem_root_known) rep%certified = .false.
-      if (n_no_chem_root .ne. 0) rep%certified = .false.
-      ! An unbudgeted accepted correction is a change of a conserved
-      ! quantity with no source term behind it, and it stands in the history
-      ! of the state being judged. The energy and
-      ! conduction temperature floors are the two of them that have a
-      ! counter today.
-      if (rep%n_unbudgeted_accepted_correction .gt. 0)                     &
-         rep%certified = .false.
-      ! A marked carrier history refuses certification with that as the
-      ! reason: a state reached through an interval that was never covered
-      ! is not a state of the equations the run states it solves.
-      if (.not. rep%carrier_history_ok) rep%certified = .false.
+      ! Taken under the gating in force; certification_report_verdict is
+      ! its one expression.
+      call certification_report_verdict(rep, .false., verdict_certified,  &
+                                        verdict_n_failing)
+      rep%certified = verdict_certified
+      rep%n_failing = verdict_n_failing
 
       ! The first cell of the state whose composition is not a root, so a
       ! refusal names a cell and not only a count.
@@ -1494,6 +1648,61 @@
       endif
 
       end subroutine certification_evaluate
+
+      ! ------------------------------------------------------!
+
+      subroutine certification_report_verdict(rep, candidate_gating,       &
+                                              certified, n_failing)
+      ! THE VERDICT OF A REPORT, and the one expression of it. An entry
+      ! refuses when it is unavailable, or evaluated and not within its
+      ! tolerance or not finite; the state is refused by any refusing entry
+      ! and by the four conditions below that are not rows.
+      !
+      ! candidate_gating = .false. is the verdict of the certification.
+      ! .true. reads each regime-gated row (the carrier and elemental
+      ! transport rows) through its candidate fields instead
+      ! (fill_candidate_gate, cert_gate_candidate_first_cell) and every
+      ! other entry and condition as it stands; it is reported beside the
+      ! verdict and never replaces it.
+      type(cert_report), intent(in)  :: rep
+      logical,           intent(in)  :: candidate_gating
+      logical,           intent(out) :: certified
+      integer,           intent(out) :: n_failing
+      integer :: i
+      logical :: refuses
+      n_failing = 0
+      certified = .true.
+      do i = 1, rep%n
+         refuses = .false.
+         if (candidate_gating .and. rep%e(i)%regime_gated) then
+            refuses = .not. rep%e(i)%within_from3
+         else
+            select case (rep%e(i)%status)
+               case (cert_unavailable)
+                  refuses = .true.
+               case (cert_evaluated)
+                  refuses = .not. rep%e(i)%within_tol .or.                 &
+                            .not. rep%e(i)%finite
+            end select
+         endif
+         if (refuses) then
+            certified = .false.
+            n_failing = n_failing + 1
+         endif
+      enddo
+      if (.not. rep%chem_root_known) certified = .false.
+      if (rep%n_no_chem_root .ne. 0) certified = .false.
+      ! An unbudgeted accepted correction is a change of a conserved
+      ! quantity with no source term behind it, and it stands in the history
+      ! of the state being judged. The energy and
+      ! conduction temperature floors are the two of them that have a
+      ! counter today.
+      if (rep%n_unbudgeted_accepted_correction .gt. 0) certified = .false.
+      ! A marked carrier history refuses certification with that as the
+      ! reason: a state reached through an interval that was never covered
+      ! is not a state of the equations the run states it solves.
+      if (.not. rep%carrier_history_ok) certified = .false.
+      end subroutine certification_report_verdict
 
       ! ------------------------------------------------------!
 
@@ -2116,7 +2325,8 @@
 
       function system_variant_name(iv) result(nm)
       integer, intent(in) :: iv
-      character(len=20)   :: nm
+      ! Long enough for the longest name below (21 characters).
+      character(len=24)   :: nm
       select case (iv)
          case (1);     nm = 'System_H'
          case (2);     nm = 'System_HeH'
@@ -2294,12 +2504,9 @@
            '     and elemental transport ',                                &
            cert_tol_element_at(cert_regime_wind_r),                        &
            '; the species rows of the cells below that radius are'
-      write(*,'(A,ES9.2,A)') '     REPORTED AND DO NOT GATE: the'//        &
-           ' layer r <', cert_regime_layer_r, ', whose element fluxes'
-      write(*,'(A)') '     are not conserved (spread 9.8), and the'//      &
-           ' band above it, whose discretization (4.6e-4 at the'
-      write(*,'(A)') '     binding radius) stands above any tolerance'//   &
-           ' one could set there'
+      write(*,'(A,ES9.2,A)') '     REPORTED AND DO NOT GATE, by'//         &
+           ' decision: the layer r <', cert_regime_layer_r,               &
+           ' and the band above it'
       if (cert_resid_tol_of_run .gt. 0.0d0)                                &
          write(*,'(A,ES9.2,A)') '     the run''s own "Resid tol" is ',     &
               cert_resid_tol_of_run, ', which is the SOLVER''s target'//   &
@@ -2663,8 +2870,123 @@
                  rep%n_unbudgeted_accepted_correction,                     &
                  ' unbudgeted accepted correction(s) in the history'
       endif
+      if (candidate_gate_report_on()) call write_candidate_gate_block(rep)
       write(*,'(A)') ' '
       end subroutine certification_report_write
+
+      ! ------------------------------------------------------!
+
+      function candidate_gate_report_on() result(on)
+      ! Whether the run asks for the candidate gating to be printed beside
+      ! the verdict (EXHALE_CERT_GATE_DIAGNOSTIC=1). Off by default, so that
+      ! a run's report is unchanged by it; with it on the report gains the
+      ! block of write_candidate_gate_block and nothing else changes.
+      logical :: on
+      character(len=32) :: env
+      call get_environment_variable('EXHALE_CERT_GATE_DIAGNOSTIC', env)
+      on = (trim(env) .eq. '1')
+      end function candidate_gate_report_on
+
+      ! ------------------------------------------------------!
+
+      subroutine write_candidate_gate_block(rep)
+      ! THE CANDIDATE GATING BESIDE THE VERDICT (cert_gate_candidate_first_
+      ! cell). For each carrier and elemental transport row: the largest
+      ! measure over the cells the candidate gates, with its cell and
+      ! radius, and the largest over cells 1 and 2; then the verdict the
+      ! same report takes under the candidate (certification_report_
+      ! verdict) and, when it refuses, what refuses it. Reported only: the
+      ! verdict printed above is the certification's.
+      type(cert_report), intent(in) :: rep
+      logical :: cand_certified
+      integer :: cand_n_failing, i, jw
+      character(len=16)   :: sw
+      character(len=2048) :: why
+      character(len=160)  :: item
+      call certification_report_verdict(rep, .true., cand_certified,      &
+                                        cand_n_failing)
+      write(*,'(A)') '   candidate gating (EXHALE_CERT_GATE_DIAGNOSTIC=1;'//&
+           ' reported only, the verdict above stands):'
+      write(*,'(A,I0,A,ES8.1,A,ES8.1,A)') '     the carrier and elemental'//&
+           ' transport rows gated at every cell from cell ',               &
+           cert_gate_candidate_first_cell, ' outward, carrier ',           &
+           cert_tol_carrier_at(cert_regime_wind_r), ', element ',          &
+           cert_tol_element_at(cert_regime_wind_r),                        &
+           ' (the wind values);'
+      write(*,'(A)') '     the absence mask as it stands; cells 1 and 2'//  &
+           ' reported only'
+      do i = 1, rep%n
+         if (.not. rep%e(i)%regime_gated) cycle
+         jw = rep%e(i)%jworst_from3
+         if (jw .gt. 0) then
+            sw = merge('within', 'ABOVE ', rep%e(i)%within_from3)
+            write(*,'(A,A52,A,ES10.3,A,I0,A,ES12.5,A,A)') '     ',         &
+                 rep%e(i)%name, ' cells>=3 ', rep%e(i)%row_max_from3,      &
+                 ' at cell ', jw, ' (r=', r(jw), ')  ', trim(sw)
+         else
+            write(*,'(A,A52,A)') '     ', rep%e(i)%name,                   &
+                 ' cells>=3 no gated cell (every one absent or none'//     &
+                 ' in the column)'
+         endif
+         jw = rep%e(i)%jworst_cells12
+         if (jw .gt. 0) then
+            write(*,'(A,ES10.3,A,I0,A,ES12.5,A)') '          cells 1-2 ',  &
+                 rep%e(i)%row_max_cells12, ' at cell ', jw, ' (r=',        &
+                 r(jw), '), reported'
+         else
+            write(*,'(A)') '          cells 1-2  zero in both, reported'
+         endif
+      enddo
+      if (cand_certified) then
+         write(*,'(A)') '   under the candidate rule: CERTIFIED'
+         return
+      endif
+      why = ''
+      do i = 1, rep%n
+         item = ''
+         if (rep%e(i)%regime_gated) then
+            if (rep%e(i)%within_from3) cycle
+            jw = rep%e(i)%jworst_from3
+            if (jw .gt. 0) then
+               write(item,'(A,A,ES10.3,A,I0,A,F9.5,A)')                    &
+                    trim(rep%e(i)%name), ' (', rep%e(i)%row_max_from3,     &
+                    ' at cell ', jw, ', r=', r(jw), ')'
+            else
+               item = trim(rep%e(i)%name)//' (no gated cell)'
+            endif
+         else if (rep%e(i)%status .eq. cert_unavailable) then
+            item = trim(rep%e(i)%name)//' (unavailable)'
+         else if (rep%e(i)%status .eq. cert_evaluated .and.                &
+                  (.not. rep%e(i)%within_tol .or.                          &
+                   .not. rep%e(i)%finite)) then
+            item = trim(rep%e(i)%name)//' (as in the verdict above)'
+         endif
+         if (len_trim(item) .gt. 0) call append_refusal(why, item)
+      enddo
+      if (.not. rep%chem_root_known)                                       &
+         call append_refusal(why, 'chemistry not stated by the caller')
+      if (rep%n_no_chem_root .ne. 0)                                       &
+         call append_refusal(why, 'cells without a chemical root')
+      if (rep%n_unbudgeted_accepted_correction .gt. 0)                     &
+         call append_refusal(why, 'unbudgeted accepted corrections')
+      if (.not. rep%carrier_history_ok)                                    &
+         call append_refusal(why, 'carrier history not certifiable')
+      write(*,'(A,A)') '   under the candidate rule: NOT CERTIFIED,'//     &
+           ' refused by ', trim(why)
+      end subroutine write_candidate_gate_block
+
+      ! ------------------------------------------------------!
+
+      subroutine append_refusal(buf, item)
+      ! One more refusing item in a '; '-separated list.
+      character(len=*), intent(inout) :: buf
+      character(len=*), intent(in)    :: item
+      if (len_trim(buf) .gt. 0) then
+         buf = trim(buf)//'; '//trim(item)
+      else
+         buf = trim(item)
+      endif
+      end subroutine append_refusal
 
       ! ------------------------------------------------------!
 

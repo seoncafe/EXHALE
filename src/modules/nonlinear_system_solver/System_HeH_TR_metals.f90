@@ -41,7 +41,7 @@
 	                              metal_rows, heh_tr_rows,             &
 	                              impose_transported_ionization_fractions
 	use System_HeH_metals,  only: met_nelem, met_ntot, met_g0, met_g1,    &
-	                              met_b0, met_b1, met_a1, met_a2, met_top
+	                              met_b0, met_b1, met_a1, met_a2, met_top, met_g02
 
 	implicit none
 
@@ -57,14 +57,12 @@
 	real*8  :: g_hi,g_hei,g_heii,g_heiTR        ! photoionization
 	real*8  :: b_hi,b_hei,b_heii,b_heiTR        ! collisional ionization
 	real*8  :: a_hii,a_heii,a_heiii,a_heiTR     ! recombination
-	real*8  :: A31,q13,q31a,q31b,Q31            ! triplet kinetics
+	real*8  :: A31,q13,q31g,q31a,q31b,Q31            ! triplet kinetics
 	real*8  :: n_h,n_he,n_e
 	real*8  :: n_hi,n_hii
 	real*8  :: n_heii,n_heiii,n_heiTR,n_heiSI
 	! Each element's metal densities (neutral/+/++); charge exchange added later.
 	real*8  :: nm0(met_nelem),nm1(met_nelem),nm2(met_nelem)
-	real*8  :: n_X
-	integer :: e,ix
 
 	! Unpack H/He coefficients
 	g_hi    = ieq_cell%P_HI       ! = P_HI
@@ -85,6 +83,7 @@
 	A31     = ieq_cell%A31       ! = A31
 	g_heiTR = ieq_cell%P_HeITR   ! = P_HeITR
 	q13     = ieq_cell%q13       ! = q13
+	q31g    = ieq_cell%q31g      ! = q31g (reverse of q13)
 	q31a    = ieq_cell%q31a      ! = q31a
 	q31b    = ieq_cell%q31b      ! = q31b
 	Q31     = ieq_cell%Q31       ! = Q31
@@ -111,10 +110,11 @@
 	                 n_e, g_hi, g_hei, g_heii, g_heiTR,                      &
 	                 a_hii, a_heii, a_heiii, a_heiTR,                        &
 	                 b_hi, b_hei, b_heii, b_heiTR,                           &
-	                 q13, q31a, q31b, Q31, A31)
+	                 q13, q31g, q31a, q31b, Q31, A31)
 
 	! --- Metal rows (verbatim System_HeH_metals, shifted to rows 5..) ---
 	call metal_rows(fvec, x, 5, met_nelem, met_ntot, met_g0, met_g1,     &
+	                met_g02,                                           &
 	                met_b0, met_b1, met_a1, met_a2, met_top,             &
 	                nm0, nm1, nm2, n_e)
 
@@ -138,7 +138,8 @@
 
 	! He <-> H charge exchange (Huang Table 4 group B). The He reactant of
 	! He + H+ -> He+ + H is the GROUND SINGLET He(1^1S), n_heiSI: the rate
-	! Table 4 lists for it, from Glover & Jappsen (2007), carries the barrier
+	! charge_exchange::he_h_cx_rates forms for it, the detailed-balance
+	! reverse of He+ + H -> He(1^1S) + H+, carries the barrier
 	! exp(-12.75/T4), and 12.75e4 K = 10.99 eV is the ionization-potential
 	! difference 24.587 - 13.598 eV of ground-state helium against hydrogen.
 	! He(2^3S) lies 19.82 eV above the singlet, so its own charge exchange
@@ -150,7 +151,9 @@
 	! Group B is excluded from cx_act, so it is applied only here (no double
 	! counting with cx_add_to_fvec).
 	call he_h_cx_fvec(fvec, ieq_cell%kcx_He0_Hp, ieq_cell%kcx_Hep_H0,    &
-	                  n_hi, n_hii, n_heiSI, n_heii, -1.0d0)
+	                  ieq_cell%kcx_Hepp_H0,                              &
+	                  n_hi, n_hii, n_heiSI, n_heii, n_heiii, -1.0d0,      &
+	                  .false.)
 
 	! The transported ionization fractions, where the flow carries them
 	! and not this cell's local balance (ion_residual_core).

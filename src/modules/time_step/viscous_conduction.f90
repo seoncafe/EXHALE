@@ -50,7 +50,7 @@
       ! spherical divergence in (B2), which likewise cannot be meant
       ! literally.  We therefore implement (1) and (2) -- physical
       ! correctness is the acceptance criterion -- and record the
-      ! discrepancy in docs/viscosity_conduction.md.
+      ! discrepancy in md/viscosity_conduction.md.
       !
       ! EXHALE evolves the TOTAL energy E = rho w^2/2 + p/(g-1), so the
       ! energy source that belongs with the momentum source F_mu is
@@ -750,7 +750,7 @@
       ! the diffusive limit is ~1 t_s against an advective step of ~9e-5 t_s,
       ! so these terms are NOT stiff there and the implicit treatment is
       ! insurance for a denser base, a coarser grid or a larger coefficient
-      ! rather than a necessity (docs/viscosity_conduction.md Sec. 4).
+      ! rather than a necessity (md/viscosity_conduction.md Sec. 4).
       !
       !   (i)  momentum   rho (w* - w)/dt = (1/2)[F_mu(w) + F_mu(w*)]
       !        The total energy is advanced by the viscous WORK that goes

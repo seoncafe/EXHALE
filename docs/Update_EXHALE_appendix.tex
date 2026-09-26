@@ -1,7 +1,8 @@
 %% Appendices of the EXHALE update log.
 %%
-%% HAND-MAINTAINED, unlike Update_EXHALE_stage2.tex, which src/utils/update_log_to_tex.py
-%% generates.  The generator emits \appendix and then
+%% HAND-MAINTAINED, unlike the typeset logs Update_EXHALE_stage<N>.tex, which
+%% src/utils/update_log_to_tex.py generates; it is input by the twin of the
+%% current log (stage 3 since 2026-09-25, stage 2 before).  The generator emits \appendix and then
 %% \input{Update_EXHALE_appendix} after the converted body, so this fragment
 %% carries no \appendix, no \documentclass and no \begin{document} /
 %% \end{document} of its own.  Edit this file directly, then regenerate the
@@ -27,13 +28,20 @@ reformatting and comment-only edits are \emph{not} counted as changes. The
 measurement script is \texttt{src/utils/codesize.py}, which reprints every
 number of this appendix and the byte-identical list of
 Table~\ref{tab:untouched}. Measured 2026-09-22, i.e.\ after the whole of
-stage 1 and of the stage-2 series through section 16 of this log: the
+stage 1 and of the stage-2 series through section 16 of the stage 2 log
+(\texttt{md/Update\_EXHALE\_stage2.md}): the
 acceptance and certification contracts, the attempted-step controller, the
 partitioned stationary solver, the oxygen and carbon chemistry, the molecular
 infrared bands, the ionization-stage transport and the charge-exchange rows,
 the base contact boundary and its trace, the molecular seed taken from an
 atomic state, the transition into the coupled carrier solve, the discrete
 conservation ledger, and the test suites those series brought with them.
+
+\noindent\emph{Not yet re-measured for stage 3.} The numbers of this
+appendix are those of 2026-09-22; the code changes of stage 3 (among them
+the atomic-data audit and its repairs, sections 17 to 19 of the stage 3 log)
+are not in them. They are re-measured with \texttt{src/utils/codesize.py} when that
+series is closed.
 
 \paragraph{What the script counts as \emph{core}.} Every \texttt{.f90} file
 under \texttt{src/} except those in \texttt{src/modules/wind\_ae/}, which is
@@ -315,7 +323,7 @@ tooling (GUI, the \texttt{EXHALE\_transit.py} transmission post-processor,
 plotting/analysis, the lower-atmosphere adapters and the elemental-flux
 closure driver) and 304\,946 lines of documentation (390 md/tex files, notebook
 checkpoints excluded: the memos, the manual, the dated audit directories and
-this log) under \texttt{docs/}.
+the update logs) under \texttt{docs/}.
 
 
 % ===================================================================== %

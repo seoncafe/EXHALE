@@ -14,8 +14,11 @@ Burgess & Tully 1992 type 1).  We fit
     Upsilon(T) = a + b * ln(1 + T/T0)
 
 with dE left free as well (the tables were generated with the CHIANTI
-.scups theoretical dE, not the observed-wavelength energy; letting dE
-float recovers it and keeps the formula to 3+1 parameters).
+.scups header dE, not the observed-wavelength energy; letting dE
+float recovers it and keeps the formula to 3+1 parameters).  For Mg I and
+Ca II that energy is the observed one; for Mg II it is the theoretical
+4.27 eV, and the Mg II fit printed here is superseded by the observed-energy,
+all-channel fit of magnesium_ii_line_cooling.py.
 
 Fe II (coronal / Boltzmann-metastable) is a sum over hundreds of
 transitions with dE from ~0.05 eV (a6D fine structure) to ~5 eV (UV), so a
@@ -146,6 +149,11 @@ for name, r in results.items():
         else:
             print(f"  {name:13s} g_l={r['g_l']:.0f}  dE={r['dE']:.4f} eV  "
                   f"Ups = {r['a']:.6g} + {r['b']:.6g}*ln(1+T/{r['T0']:.6g})")
+        # the digits Cool_coeff.f90 carries (cool_MgI_2853_coronal,
+        # cool_CaII_HK_coronal): a, b, T0, dE [erg], dE/k [K]
+        print(f"  {name:13s} Fortran: a b T0 dE_erg dE_over_k = "
+              f"{r['a']:.8g} {r['b']:.8g} {r['T0']:.8g} "
+              f"{r['dE']*EV_ERG:.8e} {r['dE']*EV_ERG/K_B:.3f}")
 for name, r in results.items():
     if r["kind"] == "multiexp":
         terms = " + ".join(f"{a:.4e}*exp(-{t:.1f}/T)"

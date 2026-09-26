@@ -7,6 +7,15 @@
       
       implicit none
       
+      ! The two stretch ratios of the grid, stated by define_grid for the
+      ! setup report: the width ratio dr_j(j+1)/dr_j(j) of the stretched
+      ! region of the Mixed grid (0 for the other grid types), and the width
+      ! ratio of the outer shells (0 without them). The second is the one the
+      ! cell count of "Outer shells" sets, and the first is the ratio it
+      ! continues.
+      real*8 :: mixed_stretch_ratio      = 0.0d0
+      real*8 :: outer_shells_width_ratio = 0.0d0
+
       contains
 
       subroutine define_grid
@@ -26,15 +35,23 @@
                       ! imply SAVE and skip the loop on every later call)
       real*8 :: q
       real*8 :: dr
+      ! Cells of the CONSTRUCTED grid, the one "Grid type", "Grid cells",
+      ! "Base grid" and "Outer radius" define. The outer shells, when
+      ! "Outer shells" asks for them, are appended beyond its outer face as
+      ! cells nc+1 .. N, so every statement of the construction below runs
+      ! on the index range 1-Ng .. nc+Ng and produces the same centers,
+      ! faces and widths whether or not shells follow.
+      integer :: nc
 
+      nc    = N - n_outer_shells
       N_low = N_low_cells
       drc   = dr_base
-      N_up  = N - N_low
+      N_up  = nc - N_low
 
       if (grid_type .eq. 'Mixed') then
-         if (N_low .lt. 2 .or. N_low .gt. N-10) then
+         if (N_low .lt. 2 .or. N_low .gt. nc-10) then
             write(*,'(A,I0,A,I0,A)') ' (define_grid.f90) ERROR: "Base grid'// &
-               ' cells: ', N_low, '" must lie in [2,', N-10, '] (the '//      &
+               ' cells: ', N_low, '" must lie in [2,', nc-10, '] (the '//     &
                'stretched region needs the remaining cells).'
             error stop 1
          endif
@@ -46,19 +63,21 @@
          endif
       endif
 
+      mixed_stretch_ratio = 0.0d0
+
       select case (grid_type)
       
       case ('Uniform')
          !------ Uniform spaced grid ------!
          
          ! Grid spacing
-         dr = (r_max-1.0)/(1.0*N)
+         dr = (r_max-1.0)/(1.0*nc)
          
          ! Lower ghost cells
          r(1-Ng) = 1.0
          
          ! Loop for others cell centers
-         do j = 2-Ng,N+Ng
+         do j = 2-Ng,nc+Ng
                r(j) = r(j-1) + dr
          enddo
       
@@ -67,7 +86,8 @@
       case ('Stretched')
         
          !------ Regular stretched grid ------!
-         r   = (/ (r_max**((j-1+Ng)*1.0/(N*1.0 + 2.0*Ng - 1.0) ), j = 1-Ng,N+Ng) /)
+         r(1-Ng:nc+Ng) = (/ (r_max**((j-1+Ng)*1.0/(nc*1.0 + 2.0*Ng - 1.0) ), &
+                             j = 1-Ng,nc+Ng) /)
 
       !--------------------------------------------------
 
@@ -126,14 +146,16 @@
          ! End of while loop
          enddo
          
+         mixed_stretch_ratio = x0
+
          ! Construct stretched grid
-         do j = N_low + 1,N
+         do j = N_low + 1,nc
             r(j) = r(j-1) + x0**(1.0*j - N_low -1)*drc
          enddo
          
          ! Add ghost points at the top of the domain
          do j = 1,Ng
-            r(N+j) = 2.0*r(N+j-1) - r(N+j-2)
+            r(nc+j) = 2.0*r(nc+j-1) - r(nc+j-2)
          enddo
        
        !--------------------------------------------------
@@ -148,9 +170,9 @@
       
       !--- Cell edges r_{j+1/2} ---!
       
-      ! Cell edges (N+2*Ng-1 points) - r_edg(j) = r_{j+1/2}
-      r_edg(1-Ng:N+Ng-1) = 0.5*(r(1-Ng:N+Ng-1) + r(2-Ng:N+Ng))
-      r_edg(N+Ng) = 2.0*r_edg(N+Ng-1) - r_edg(N+Ng-2)
+      ! Cell edges (nc+2*Ng-1 points) - r_edg(j) = r_{j+1/2}
+      r_edg(1-Ng:nc+Ng-1) = 0.5*(r(1-Ng:nc+Ng-1) + r(2-Ng:nc+Ng))
+      r_edg(nc+Ng) = 2.0*r_edg(nc+Ng-1) - r_edg(nc+Ng-2)
       
       !--- Cell dimensions r_{j+1/2} - r_{j-1/2} --- !
       ! The width stored for cell j is the distance between the two faces of
@@ -163,7 +185,7 @@
       ! depths use with the cell-centred densities. Tested to round-off.
       ! r_edg(-Ng) lies outside the array, so the innermost ghost takes the
       ! width of its neighbour.
-      dr_j(2-Ng:N+Ng) = r_edg(2-Ng:N+Ng) - r_edg(1-Ng:N+Ng-1)
+      dr_j(2-Ng:nc+Ng) = r_edg(2-Ng:nc+Ng) - r_edg(1-Ng:nc+Ng-1)
       dr_j(1-Ng) = dr_j(2-Ng)
       
       
@@ -184,26 +206,35 @@
          r(2-Ng) = 1.0
          r(1-Ng) = r(2-Ng) - 0.5*(dr_j(1-Ng) + dr_j(2-Ng))
    
-         do j = 3-Ng,N+Ng
+         do j = 3-Ng,nc+Ng
             r(j) = r(j-1) + 0.5*(dr_j(j) + dr_j(j-1))
          enddo  
       
-      	! Rescale to [1,r_max]
-         r = (r-1)/(r(N+Ng) - 1.0)*(r_max - 1.0) + 1.0
+      	! Rescale to [1,r_max]: the center of the outermost ghost cell of
+         ! the constructed grid is placed at r_max, so its outer PHYSICAL
+         ! face r_edg(nc) lies about one and a half cells inside r_max.
+         r(1-Ng:nc+Ng) = (r(1-Ng:nc+Ng)-1)/(r(nc+Ng) - 1.0)*(r_max - 1.0) &
+                         + 1.0
       	
       	! Re-eval edges and cell size
       	
-      	! Cell edges (N+2*Ng-1 points) - r_edg(j) = r_{j+1/2}
-         r_edg(1-Ng:N+Ng-1) = 0.5*(r(1-Ng:N+Ng-1) + r(2-Ng:N+Ng))
-         r_edg(N+Ng) = 2.0*r_edg(N+Ng-1) - r_edg(N+Ng-2)
+      	! Cell edges (nc+2*Ng-1 points) - r_edg(j) = r_{j+1/2}
+         r_edg(1-Ng:nc+Ng-1) = 0.5*(r(1-Ng:nc+Ng-1) + r(2-Ng:nc+Ng))
+         r_edg(nc+Ng) = 2.0*r_edg(nc+Ng-1) - r_edg(nc+Ng-2)
 		
          !--- Cell dimensions r_{j+1/2} - r_{j-1/2} --- !
          ! Same identity as above: dr_j(j) = r_edg(j) - r_edg(j-1) is the
          ! width of cell j itself, the innermost ghost taking its neighbour's.
-         dr_j(2-Ng:N+Ng) = r_edg(2-Ng:N+Ng) - r_edg(1-Ng:N+Ng-1)
+         dr_j(2-Ng:nc+Ng) = r_edg(2-Ng:nc+Ng) - r_edg(1-Ng:nc+Ng-1)
          dr_j(1-Ng) = dr_j(2-Ng)
    
       endif
+
+      ! Shells beyond the outer face of the constructed grid ("Outer
+      ! shells"). They replace its two outer ghost cells by physical cells
+      ! and leave cells 1-Ng .. nc and faces 1-Ng .. nc as constructed.
+      outer_shells_width_ratio = 0.0d0
+      if (n_outer_shells .gt. 0) call append_outer_shells(nc)
 
       !-----------------------------!
       
@@ -225,17 +256,19 @@
       ! loudly; the user should set a smaller "Escape radius [R_p]:".
       if (j_min .gt. N) then
          do j = 1-Ng,N+Ng
-            if (r(j) .ge. (1.0d0 + 0.5d0*(r_max-1.0d0))) goto 112
+            if (r(j) .ge. (1.0d0 + 0.5d0*(domain_outer_radius()-1.0d0)))   &
+               goto 112
          enddo
 112      j_min = j
          write(*,'(A,F6.3,A,F6.3,A)')                                       &
             '    (define_grid.f90) WARNING: escape radius r_esc = ', r_esc,  &
-            ' R_p >= domain r_max = ', r_max, ' R_p.'
+            ' R_p >= domain r_max = ', domain_outer_radius(), ' R_p.'
          write(*,*) '       The escape radius is outside the L1-truncated ' //&
                     'domain; the constant-momentum'
          write(*,*) '       convergence range would be empty. Clamping it ' //&
                     'to mid-domain (r >= '
-         write(*,'(A,F6.3,A)') '        ', 1.0d0+0.5d0*(r_max-1.0d0),        &
+         write(*,'(A,F6.3,A)') '        ',                                   &
+                    1.0d0+0.5d0*(domain_outer_radius()-1.0d0),               &
                     ' R_p). Set a smaller "Escape radius [R_p]:" in input.inp.'
       endif
       ! The window is a range of PHYSICAL cells, so its first index is cell 1
@@ -256,12 +289,13 @@
 121   j_flux = j
       if (j_flux .gt. N) then
          do j = 1-Ng,N+Ng
-            if (r(j) .ge. (1.0d0 + 0.5d0*(r_max-1.0d0))) goto 122
+            if (r(j) .ge. (1.0d0 + 0.5d0*(domain_outer_radius()-1.0d0)))   &
+               goto 122
          enddo
 122      j_flux = j
          write(*,'(A,F6.3,A,F6.3,A)')                                       &
             '    (define_grid.f90) WARNING: flux-window radius r_flux = ',   &
-            r_flux, ' R_p >= domain r_max = ', r_max,                        &
+            r_flux, ' R_p >= domain r_max = ', domain_outer_radius(),        &
             ' R_p; clamping the flux gate window to mid-domain.'
       endif
       j_flux = max(j_flux, 1)
@@ -282,6 +316,145 @@
 
       ! End of subroutine
       end subroutine define_grid
+
+      ! ---------------------------------------------------------------- !
+
+      subroutine append_outer_shells(nc)
+      ! SHELLS BEYOND THE OUTER FACE OF THE CONSTRUCTED GRID.
+      !
+      ! The constructed grid of nc cells ends at the face r_edg(nc). This
+      ! appends m = n_outer_shells cells beyond it, cells nc+1 .. N = nc+m,
+      ! whose last face r_edg(N) is the radius r_F = r_outer_shells_face of
+      ! "Outer shells [r_face,cells]:", and leaves everything at and below
+      ! r_edg(nc) as the construction made it: the centers r(1-Ng .. nc),
+      ! the faces r_edg(1-Ng .. nc), the widths dr_j(1-Ng .. nc) and with
+      ! them every volume below r_edg(nc) are the ones a run without shells
+      ! builds, bit for bit.
+      !
+      ! Every face of this grid is the midpoint of the two centers beside it,
+      ! r_edg(j) = (r(j) + r(j+1))/2, which is what the reconstruction reads
+      ! (a face value is extrapolated from the center by (r(j+1) - r(j))/2).
+      ! The shells keep that rule, so they are built from their centers:
+      !
+      !   r(nc+1)            = the center of the first outer ghost of the
+      !                        constructed grid, unchanged, which keeps
+      !                        r_edg(nc) = (r(nc) + r(nc+1))/2 as it was;
+      !   r(nc+k) - r(nc+k-1) = s x^(k-1),  k = 2 .. m,  s = r(nc+1) - r(nc);
+      !   r(N+1)             = 2 r_F - r(N), so that r_edg(N) = r_F;
+      !   r(N+j)             = 2 r(N+j-1) - r(N+j-2), j = 2 .. Ng, the
+      !                        linear extrapolation the Mixed grid applies
+      !                        to its own outer ghosts.
+      !
+      ! With center spacings in geometric progression the widths are too,
+      ! dr_j(nc+k) = s (1 + x) x^(k-1)/2, so x is the width ratio of the
+      ! shells, and it is the root of
+      !
+      !   S(x) = sum_{i=0}^{m-1} x^i + x^m/2 = (r_F - r(nc))/s,
+      !
+      ! the statement r_edg(N) = r_F with the ghost spacing r(N+1) - r(N)
+      ! continuing the progression, s x^m. S is increasing and convex for
+      ! x > 0, so Newton's method started above the root descends to it
+      ! monotonically; S(0) = 1, so a positive root exists iff r_F lies
+      ! beyond r(nc+1). The cell count m decides x: the width ratio is
+      ! continuous across the old outer face when m is chosen so that x is
+      ! the stretch ratio of the grid below (mixed_stretch_ratio for the
+      ! Mixed grid). Both ratios are written to the setup report.
+      integer, intent(in) :: nc
+      integer :: j, k, m, it
+      real*8  :: s, q, x, xn, sx, dsx, sp, rf
+
+      m  = n_outer_shells
+      rf = r_outer_shells_face
+      s  = r(nc+1) - r(nc)
+      if (.not. (rf .gt. r(nc+1))) then
+         write(*,'(A,ES13.6,A,ES13.6,A)') ' (define_grid.f90) ERROR: '//     &
+            '"Outer shells" face r = ', rf, ' R_p does not lie beyond'//     &
+            ' the first outer ghost center of the grid, ', r(nc+1), ' R_p.'
+         error stop 1
+      endif
+      q = (rf - r(nc))/s
+
+      ! A starting point above the root, then Newton down to it. The
+      ! descent stops when a step no longer lowers x: that is the rounding
+      ! floor of S(x) - q.
+      x = 1.0d0
+      call shell_spacing_sum(x, m, sx, dsx)
+      do while (sx .lt. q)
+         x = 2.0d0*x
+         call shell_spacing_sum(x, m, sx, dsx)
+      enddo
+      do it = 1, 200
+         call shell_spacing_sum(x, m, sx, dsx)
+         xn = x - (sx - q)/dsx
+         if (.not. (xn .lt. x)) exit
+         x = xn
+      enddo
+      outer_shells_width_ratio = x
+
+      sp = s
+      do k = 2, m
+         sp = sp*x
+         r(nc+k) = r(nc+k-1) + sp
+      enddo
+      ! The ghost center that puts the last face on r_F. One rounding in the
+      ! difference and one in the sum can leave the midpoint one unit in the
+      ! last place off r_F; the neighbouring double is then taken, so the
+      ! face lands on r_F exactly.
+      r(N+1) = 2.0d0*rf - r(N)
+      do it = 1, 4
+         if (0.5d0*(r(N) + r(N+1)) .eq. rf) exit
+         r(N+1) = nearest(r(N+1), rf - 0.5d0*(r(N) + r(N+1)))
+      enddo
+      do j = 2, Ng
+         r(N+j) = 2.0d0*r(N+j-1) - r(N+j-2)
+      enddo
+
+      ! Faces and widths above r_edg(nc), by the rules of define_grid.
+      r_edg(nc+1:N+Ng-1) = 0.5d0*(r(nc+1:N+Ng-1) + r(nc+2:N+Ng))
+      r_edg(N+Ng) = 2.0d0*r_edg(N+Ng-1) - r_edg(N+Ng-2)
+      dr_j(nc+1:N+Ng) = r_edg(nc+1:N+Ng) - r_edg(nc:N+Ng-1)
+
+      if (r_edg(N) .ne. rf) then
+         write(*,'(A,ES23.16,A,ES23.16,A)') ' (define_grid.f90) ERROR: '// &
+            'the outer face of the shells is ', r_edg(N), ' R_p, not the ', &
+            rf, ' R_p "Outer shells" states.'
+         error stop 1
+      endif
+
+      end subroutine append_outer_shells
+
+      ! ---------------------------------------------------------------- !
+
+      subroutine shell_spacing_sum(x, m, sx, dsx)
+      ! S(x) = sum_{i=0}^{m-1} x^i + x^m/2 and its derivative, by Horner's
+      ! rule, which has no division by x - 1 and so no special case at the
+      ! uniform spacing x = 1.
+      real*8,  intent(in)  :: x
+      integer, intent(in)  :: m
+      real*8,  intent(out) :: sx, dsx
+      integer :: i
+      sx  = 0.5d0
+      dsx = 0.0d0
+      do i = 1, m
+         dsx = dsx*x + sx
+         sx  = sx*x + 1.0d0
+      enddo
+      end subroutine shell_spacing_sum
+
+      ! ---------------------------------------------------------------- !
+
+      real*8 function domain_outer_radius()
+      ! THE OUTER RADIUS OF THE DOMAIN THE RUN SOLVES [R_p]: the outer face
+      ! of the last shell when "Outer shells" appends shells, else r_max,
+      ! the radius the grid is constructed for ("Outer radius" or the
+      ! Roche/Hill radius), which is the center of the outermost ghost cell
+      ! of the Mixed and Stretched grids.
+      if (n_outer_shells .gt. 0) then
+         domain_outer_radius = r_outer_shells_face
+      else
+         domain_outer_radius = r_max
+      endif
+      end function domain_outer_radius
 
       ! ---------------------------------------------------------------- !
 

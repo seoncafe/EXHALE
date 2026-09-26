@@ -126,10 +126,51 @@ def read_scups(path):
     return trans
 
 
+def scaled_upsilon_spline(xs, ys):
+    """The interpolant of the scaled effective collision strength of one
+    .scups transition: the NATURAL cubic spline through the stored points
+    (second derivative zero at the first and last point).
+
+    This is the interpolation the CHIANTI IDL software applies to its own
+    data.  The .scups values are either the 5- to 9-point spline knot
+    values of the data sets retained from before CHIANTI 8 (knots uniform
+    in the scaled temperature x = 0..1; h_1, he_1, he_2, ca_2, fe_2, n_2,
+    o_1 in v11.0.2) or the scaled data points themselves (CHIANTI 8 and
+    later; c_1, c_2, n_1, mg_1, mg_2, o_2), the value at x = 0 extrapolated
+    and the value at x = 1 extrapolated or taken from the high-temperature
+    limit (Del Zanna et al. 2015, A&A 582, A56, section 2.1 and Appendix
+    A.2).  Neither that paper nor Dere et al. (1997, A&AS 125, 149,
+    section 3.4) states the spline type or its end conditions; the rates
+    are obtained "by interpolation in the scaled domain" (Del Zanna et al.
+    2015, section 2.1).  The spline type is set by the software: CHIANTI
+    evaluates both kinds of set with SPL_INIT/SPL_INTERP called without
+    end-derivative keywords in DESCALE_SCUPS.PRO (CHIANTI IDL 11.0.4, the
+    routine CHIANTI Technical Report 13 names for the de-scaling;
+    SPL2UPS.PRO calls it), which IDL defines as the natural spline.
+    DESCALE_UPS.PRO (1996) and DESCALE_ALL.PRO (the routine Del Zanna et
+    al. 2015 name; it takes uniform knots) evaluate the knot values the
+    same way.  ChiantiPy 0.15.2 (Ion.upsilonDescale, FITPACK splrep with
+    s = 0) uses the not-a-knot spline instead; for the 5-point sets the two
+    differ by tens of percent between the knots (He I 1^1S-2^1P: natural /
+    not-a-knot = 0.84 at 1e4 K, 0.72 at 3e3 K).  Burgess & Tully (1992,
+    A&A 254, 436, Appendix) define a third spline for their own 5-point
+    fits, with quadratic end intervals; CHIANTI does not evaluate its knots
+    with it.  Which spline the CHIANTI knot values were fitted with is not
+    stated in either CHIANTI paper (Dere et al. 1997 describe the fitting
+    routines only as "based on the Burgess & Tully (1992) concept and
+    methods").
+    """
+    return CubicSpline(xs, ys, bc_type="natural")
+
+
 def upsilon(tr, T):
     """Burgess & Tully (1992) descaled effective collision strength Upsilon(T).
 
-    T may be a scalar or array [K]. de is in Rydberg.
+    T may be a scalar or array [K]. de is in Rydberg.  The scaled strength is
+    interpolated with scaled_upsilon_spline (the natural spline of CHIANTI's
+    DESCALE_SCUPS.PRO).  The scaled temperature lies in [0, 1) for every
+    T > 0 and the stored points span [0, 1], so the clip below only guards
+    rounding at the ends.
     """
     T = np.atleast_1d(np.asarray(T, dtype=float))
     de = tr["de"]
@@ -140,7 +181,7 @@ def upsilon(tr, T):
         st = 1.0 - np.log(C) / np.log(et + C)
     else:
         st = et / (et + C)
-    spl = CubicSpline(tr["xs"], tr["ys"])
+    spl = scaled_upsilon_spline(tr["xs"], tr["ys"])
     sups = spl(np.clip(st, tr["xs"][0], tr["xs"][-1]))
     if tt == 1:
         ups = sups * np.log(et + np.e)
@@ -166,6 +207,18 @@ def cooling_lambda(elem, ion, T, lower_levels=None, upper_levels=None):
     excitation-rate coefficient out of the lower level. Optionally restrict to a
     set of lower and/or upper levels (e.g. {1} ground, {3,4} the 2p Ly-alpha
     doublet for H I).
+
+    ENERGY.  dE here is the .scups header energy, which is the Burgess-Tully
+    scaling energy of the collision strength (a theoretical value), in both
+    the Boltzmann factor and the radiated energy.  Physically both must be
+    the observed level gap of the .elvlc file.  The two agree to 0.1 percent
+    or better for Mg I, Ca II, Fe II, H I, He I, He II and O I (CHIANTI
+    v11.0.2), but not for Mg II (3s-3p: 4.27 eV against 4.43 eV observed;
+    the old Mg II fit is 1.39x too high at 5e3 K) nor for C I, C II, N I,
+    N II and O II (up to 22 percent in dE; the O II ground-term sum is 0.38x
+    the observed-energy one at 5e3 K).  Kept as it is so that the fits now
+    in Cool_coeff.f90 stay reproducible; the observed-energy sum is
+    multilevel_statistical_equilibrium.coronal_line_cooling.
     Returns (Lambda_total, per_transition) where per_transition is a list of
     (ll, ul, Lambda_array).
     """
@@ -231,6 +284,11 @@ def cooling_effective(elem, ion, T, pop="coronal", e_cut_cm1=None,
     restrict_to_wgfa keeps only transitions that also appear in the .wgfa file
     (i.e. carry a radiative A / oscillator strength), matching Huang's "1105 of
     4339" Fe II selection.
+
+    ENERGY.  The lower-level populations use the observed level energies, but
+    each transition's excitation Boltzmann factor and radiated energy use the
+    .scups header (Burgess-Tully scaling) energy, as in cooling_lambda; see
+    the ENERGY note there for which ions this matters for.
     """
     d = ion_dir(elem, ion)
     lev = _level_energy_cm1(read_elvlc(os.path.join(d, f"{elem}_{ion}.elvlc")))

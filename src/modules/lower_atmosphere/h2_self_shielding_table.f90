@@ -86,8 +86,8 @@
       ! summed over every Lyman and Werner transition with 911.75 A <= lambda
       ! <= 1201 A, on a 4e5-point frequency grid, with a Voigt profile
       ! (scipy wofz inside +-300 Doppler widths, the exact Lorentzian outside)
-      ! and b = sqrt(2kT/m_H2), the same Doppler parameter as
-      ! h2_doppler_parameter.  Level populations are LTE at the imposed T,
+      ! and b = sqrt(2kT/m_H2), the thermal Doppler parameter of H2 with
+      ! no turbulent term.  Level populations are LTE at the imposed T,
       ! which is what CLOUDY's own runs show at these densities (dep coef =
       ! 1.000 at every level) and what the Meudon runs show as well.
       !
@@ -191,7 +191,7 @@
       ! their sec. 5.2); Abgrall, Roueff & Drira (2000) A&AS 141, 297 (the
       ! line data); Le Petit et al. (2006) ApJS 164, 506 (the Meudon PDR code
       ! this was checked against); Ferland et al. (2017) RMxAA 53, 385
-      ! (CLOUDY, the trapping).  docs/p38_line_overlap_shielding.md is the
+      ! (CLOUDY, the trapping).  md/p38_line_overlap_shielding.md is the
       ! measurement.
 
       implicit none

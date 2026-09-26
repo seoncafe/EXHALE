@@ -980,7 +980,7 @@ overshoots the measured 1.254 per cent by the same factor the width falls
 short. The composition is inferred from the equivalent width for that
 reason. And the wind these numbers come from is *unvalidated as a continuum
 solution*: it is subsonic to the 30 `R_p` domain edge and the critical region
-is transitional (`../docs/collisional_validity.md`).
+is transitional (`../md/collisional_validity.md`).
 
 ### 8.2 The XUV grid against the 2025 non-detection
 
@@ -1082,7 +1082,7 @@ it holds about one per cent of the metastable column.
 
 **The physical judgement.** The 20-30 `R_p` region in which the two
 solutions differ is where the collisional-validity measurement puts the
-exobase, 19.8-26.7 `R_p`, and where `Kn > 1` (`../docs/collisional_validity.md`).
+exobase, 19.8-26.7 `R_p`, and where `Kn > 1` (`../md/collisional_validity.md`).
 *The fluid solution is not valid in exactly the region that makes the
 difference.* The ground for discarding the original 12.01 solution is
 therefore continuity of the trend, not a physical criterion; and by the same

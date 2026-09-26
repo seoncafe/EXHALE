@@ -41,8 +41,9 @@ the exact multilevel LTE emission sum_u f_u^Boltz A_ul h nu_ul.
 Atomic data
   levels, A values, electron Upsilon : CHIANTI v11.0.2 (elvlc / wgfa / scups)
   k_H (H-atom de-excitation)
-    C I, N II : Yan, Stancil, Satta, Wang, Gu & Forrey (2022),
-                MNRAS 518, 6004, Tables 1 and 2 (relaxation rates, 10-1e4 K)
+    C I, N II : Yan & Babb (2023), MNRAS 518, 6004, Tables 1 and 2
+                (relaxation rates, tabulated 10-1e4 K; every value checked
+                against the published article)
     O I       : Abrahamsson, Krems & Dalgarno (2007), ApJ 654, 1171,
                 as tabulated in LAMDA oatom.dat (20-1000 K)
     C II      : Barinovs, van Hemert, Krems & Dalgarno (2005), ApJ 620, 537,
@@ -155,7 +156,7 @@ def fit_upsilon(tr):
 
 def fit_kH(Ttab, ktab):
     """Quadratic in u = log10(T/1e3) for log10(k_H), fitted over the
-    tabulated range and evaluated clamped to it."""
+    tabulated temperatures >= 50 K and evaluated clamped to that range."""
     m = Ttab >= 50.0
     u = np.log10(Ttab[m]/1e3)
     c = np.polyfit(u, np.log10(ktab[m]), 2)    # [c2, c1, c0]

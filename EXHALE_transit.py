@@ -38,7 +38,7 @@ from exhale_io import loadtxt_cells
 
 # Pure constants, line metadata, and physics/utility functions live in the
 # importable library so they can be tested without a simulation.  The
-# orchestration (file reading, density prep, the loop over each line,
+# control flow (file reading, density prep, the loop over each line,
 # convolution, plotting, saving) stays in this script.
 from exhale_transit_lib import (
     _tenv, _tenv_set,
@@ -210,7 +210,7 @@ rot_period, _src_rot_period = parameter_with_source(
 
 # Instrument spectral resolving power R = lambda/Delta-lambda for the Gaussian
 # line-spread convolution.  Each is env-overridable (EXHALE_TRANSIT_RES_* , with
-# the TPM_RES_* fallback); defaults below match the instruments named inline.
+# the TPM_RES_* names still read); defaults below match the instruments named inline.
 Instr_res_HeTR = float(_tenv('RES_HETR', '8e4'))  # He I 10830: CARMENES 8e4 / GIANO-B 5e4
 # NOTE: the 8e4 default is CARMENES. It is not universal: the LHS 1140 b
 # He 10830 transit was taken with WINERED in HIRES-Y mode, R = 68,000
@@ -236,8 +236,12 @@ Instr_res_OI   = float(_tenv('RES_OI',   '1.0e3'))
 # H-alpha absorption arises from the n=2 hydrogen population. Following
 # Christie, Arras & Li (2013, ApJ 772, 144), the 2s/2p populations are
 # set by the rate-equilibrium equations (their Eqs. 12-13) including
-# Ly-alpha radiative pumping (1s<->2p). The Ly-alpha mean intensity
-# J_lya(r) is NOT produced by EXHALE; it is obtained in one of two ways:
+# Ly-alpha radiative pumping (1s<->2p), with the rate coefficients of the
+# solver's own n=2 model (exhale_transit_lib: n2_populations). The Ly-alpha
+# mean intensity J_lya(r) is not in the profiles this tool reads (a run
+# with the excited-hydrogen model writes its own field to
+# output/Excited_H.txt, which is not read here); it is obtained in one of
+# two ways:
 #
 #  (1) If Jlya_file is set to an existing two-column text file, J_lya(r)
 #      is read from it:
@@ -420,6 +424,10 @@ _ncol_ion = first_data_row_ncol(Ioniz_file)
 _metal_charge = [0, 1, 2,  0, 1, 2,  0, 1, 2,  0, 1, 2,  0, 1, 2,  0, 1, 2,
                  0, 1,     0, 1,     0, 1,     0, 1, 2]
 ne_metal_cm = np.zeros_like(nhi)
+# H2+ and HeH+, whose dissociative recombination leaves one H atom in n = 2
+# (the chemical source of n2_populations); zero in an atomic run.
+nh2p_cm  = np.zeros_like(nhi)
+nhehp_cm = np.zeros_like(nhi)
 if _ncol_ion >= 7 + len(_metal_charge):
     _nm = loadtxt_cells(Ioniz_file,
                         usecols = range(7, 7 + len(_metal_charge)), unpack = True)
@@ -432,6 +440,7 @@ if _ncol_ion >= 7 + len(_metal_charge):
         _h2p, _h3p, _hehp = loadtxt_cells(
             Ioniz_file, usecols = (_c0 + 1, _c0 + 2, _c0 + 3), unpack = True)
         ne_metal_cm = ne_metal_cm + _h2p + _h3p + _hehp
+        nh2p_cm, nhehp_cm = _h2p, _hehp
 
 # --------------------------------------------------------------------- #
 # Auto-size the wavelength window for each line so the WHOLE line profile is
@@ -530,7 +539,7 @@ if do_Ha:
 			print('(TPM)   F_LyC: xi=%.2f * incident %.3e * absorbed frac %.4f'
 			      ' = %.3e erg/cm2/s' % (xi, F_inc, abs_frac, F_LyC))
 		else:
-			F_LyC = 1.0e4   # last-resort fallback if LEUV unavailable
+			F_LyC = 1.0e4   # used only if LEUV is unavailable
 			print('(TPM)   WARNING: LEUV not read; using F_LyC = %.2e' % F_LyC)
 		Dnu_D_lya = nu_Lya*np.sqrt(2.0*kb*T/mp)/c_light  # Hz; F_LyC cgs -> J_lya cgs
 		Jlya = 0.1*F_LyC/Dnu_D_lya
@@ -542,8 +551,14 @@ if do_Ha:
 		Gamma_2p = Gamma_2s   # ~equal (Huang+2017 Table 2: 25.7 vs 21.5 s^-1)
 		print('(TPM)   n=2 photoionization: Gamma_2s = Gamma_2p = %.2e s^-1'
 		      ' (T_star = %g K)' % (Gamma_2s, T_star))
-	n2s_cm, n2p_cm, n2_cm = n2_populations(T, n1s_cm, nhii, ne_cm, Jlya,
-	                                       G2s = Gamma_2s, G2p = Gamma_2p)
+	# The solver's rate coefficients (exhale_transit_lib: n2_populations),
+	# with the H II recombination set the run used; the field (J_lya and
+	# the Balmer continuum) is this tool's, as stated above.
+	n2s_cm, n2p_cm, n2_cm = n2_populations(T, n1s_cm, nhii, nheii, nheiii,
+	                                       ne_cm, Jlya,
+	                                       G2s = Gamma_2s, G2p = Gamma_2p,
+	                                       nH2p = nh2p_cm, nHeHp = nhehp_cm,
+	                                       rate_set = _par['h_rate_set'])
 	# Carry the 2s and 2p populations separately (different Balmer cross
 	# sections); build the symmetric (inverted + normal) chord profiles in m^-3.
 	data_n2  = np.concatenate((np.flip(n2_cm)*1.0e6,  n2_cm*1.0e6))

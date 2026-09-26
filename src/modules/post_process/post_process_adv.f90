@@ -202,7 +202,7 @@
    ! by the metal-aware post-process modes (pp_metal_mode = 1 frozen, 2 re-solve).
    real*8, dimension(1-Ng:N+Ng,n_mion), intent(in) :: nm_in
 	
-	integer i,j,k
+	integer j,k
 	integer :: n_pp_reject       ! cell-by-cell T solves rejected as non-physical
 	! Cell solves that did not converge (hybrd1 info /= 1) and therefore kept
 	! the incoming equilibrium state: the advection ionization system, the
@@ -236,6 +236,9 @@
    ! Metal photoionization rates for each ion (filled by PH_heat_HHe; used for the
    ! metal re-solve in mode 2, otherwise discarded).
    real*8, dimension(1-Ng:N+Ng,n_mion) ::  P_m
+   ! The part of P_m that takes a neutral straight to X++ (an autoionizing
+   ! inner-shell vacancy), for the same re-solve.
+   real*8, dimension(1-Ng:N+Ng,n_mion) ::  P_m2
    ! Working metal densities driving the post-process heating/cooling [cgs].
    ! Built from nm_in per pp_metal_mode: 0 -> zero (metal-free, legacy _adv),
    ! 1 -> frozen eq metals, 2 -> re-solved. nm_out is its dimensionless (n0)
@@ -248,16 +251,18 @@
 
    ! Recombination coefficients
    real*8, dimension(1-Ng:N+Ng) ::  rchiiB,rcheiiB,rcheiiiB,rcheiTR
-   ! He recombination radiation -> H ionization coupling scratch
-   ! (use_he_rec_coupling; zero-effect when off).
-   real*8, dimension(1-Ng:N+Ng) ::  rcheiiB_hrc,dP_HI_hrc,dheat_hrc
+   ! Recombination radiation absorbed on the spot (use_h_rec_escape,
+   ! use_he_rec_coupling; zero-effect when both are off).
+   real*8, dimension(1-Ng:N+Ng) ::  rchiiB_hrc,rcheiiB_hrc,rcheiiiB_hrc
+   real*8, dimension(1-Ng:N+Ng) ::  dP_HI_hrc,dP_HeI_hrc,dheat_hrc
    ! H2 density seen by the He-recombination coupling. The _adv reconstruction
    ! is molecule-free (module-header composition note), so it is identically
    ! zero here and the coupling reduces to the H I / He I competition; the H2
    ! rate it returns is discarded for the same reason.
    real*8, dimension(1-Ng:N+Ng) ::  nh2_pp, dP_H2_hrc
-   ! Metal share of the He recombination photons, added to P_m
-   real*8, dimension(1-Ng:N+Ng,n_mion) ::  dP_m_hrc
+   ! Metal share of the recombination photons, added to P_m, and its
+   ! part that ends in X++, added to P_m2
+   real*8, dimension(1-Ng:N+Ng,n_mion) ::  dP_m_hrc, dP_m2_hrc
    ! Metal recombination/ionization rates for each ion returned by eval_cool.
    ! In the re-solve mode (pp_metals=2) they feed the cell-by-cell metal
    ! ionization-balance solve; in the frozen mode they are discarded.
@@ -268,11 +273,15 @@
    ! Each element's metal coefficients handed to set_metal_coeffs for the
    ! re-solve (canonical element order); built per cell from the 2-D rates.
    real*8, dimension(n_melem) ::  meg_ntot,meg_g0,meg_g1,meg_b0,meg_b1,  &
-                                  meg_a1,meg_a2
+                                  meg_a1,meg_a2,meg_g02
    integer, dimension(n_melem) ::  meg_top
    integer :: i0,top,im
       
-   real*8, dimension(1-Ng:N+Ng) ::  q13,q31a,q31b,Q31
+   real*8, dimension(1-Ng:N+Ng) ::  q13,q31g,q31a,q31b,Q31
+   ! Ground-capture escape weights of the H II, He II and He III
+   ! recombinations of each cell (ground_capture_escape_weights), for the
+   ! cooling the temperature root balances
+   real*8, dimension(1-Ng:N+Ng) ::  y_HI_pp, y_gnd_pp, y_HeII_pp
 	real*8 :: A31
  	
  	! Ionization coefficients
@@ -321,20 +330,8 @@
       							  
 	      
 	      
-   real*8 :: TT                              ! Temperature component
-   real*8 :: PIR_1,PIR_15,PIR_2,PIR_TR       ! Photoionization rates
-   real*8 :: deltal                          ! Optical depth
    real*8 :: dr	                           ! Grid spacing
-   real*8 :: iup_1,ilo_1,        &           ! Photoheating integral variables
-             iup_15,ilo_15,      &
-             iup_2,ilo_2,        &
-             iup_TR,ilo_TR,	   &
-             iup_f,ilo_f 
-   real*8 :: elo,eup                         ! Energy parameters
    real*8 :: tol,dpmpar                      ! Equilibrium system setup
-   real*8 :: Hea_1 		          	         ! Heating rates
-   real*8 :: brem,coex,coio,reco             ! Cooling rates
-   real*8 :: iup_H,ilo_H                     ! Heating rate integral variables         
       
       
 	! Substitution in the ODE solution
@@ -604,7 +601,7 @@
 	if (thereis_He) then
 		call PH_heat_HHe(nhi,nhei,nheii,nheiTR, nm_w, xion,     &
 					 P_HI,P_HeI,P_HeII,P_HeITR, P_m,        &
-					 dum_v1,dum_v2)
+					 dum_v1,dum_v2, P_m2=P_m2)
   	else
 	  	call PH_heat_H(nhi, xion, P_HI,dum_v1,dum_v2)
   	endif
@@ -622,26 +619,38 @@
 
  	
  	if (thereis_HeITR) then
-		call HeITR_coeffs(T_K,rcheiTR,rcheiiB,A31,q13,q31a,q31b,Q31)
-		! NOTE: rcheiiB is alpha1 from Oklopcic - being overwritten
+		! rcheiiB becomes the case-B capture into the singlets; the escaping
+		! ground captures are added below.
+		call HeITR_coeffs(T_K,rcheiTR,rcheiiB,A31,q13,q31g,q31a,q31b,Q31)
 
 	endif
 
-	! He recombination radiation ionizing H I (Draine 2011; default off).
-	! Correct the He II recombination coefficient and the H I photoionization
-	! rate driving the advection ODE (the heating correction is applied later,
-	! to theat). Mirrors ionization_equilibrium.
-	if (use_he_rec_coupling .and. thereis_He) then
+	! Recombination radiation absorbed on the spot (recombination_radiation_
+	! absorbed). Replace the recombination coefficients by the net ones and
+	! add the photoionization rates driving the advection ODE (the heating
+	! correction is applied later, to theat). Mirrors
+	! ionization_equilibrium; molecule-free (nh2_pp = 0).
+	if (use_h_rec_escape .or. (use_he_rec_coupling .and. thereis_He)) then
 		nh2_pp = 0.0d0
-		call he_rec_coupling(T_K, nhi, nh2_pp, nhei, nheii, nheiTR,       &
-		                     ne, nm_w, A31, q31a, q31b,                    &
-		                     rcheiiB_hrc, dP_HI_hrc, dP_H2_hrc,            &
-		                     dP_m_hrc, dheat_hrc)
-		rcheiiB = rcheiiB_hrc
-		P_HI    = P_HI + dP_HI_hrc
+		call recombination_radiation_absorbed(T_K, nhi, nhii, nh2_pp,     &
+		                     nhei, nheii, nheiii, nheiTR, ne, nm_w,        &
+		                     A31, q31a, q31b,                              &
+		                     rchiiB_hrc, rcheiiB_hrc, rcheiiiB_hrc,        &
+		                     dP_HI_hrc, dP_HeI_hrc, dP_H2_hrc, dP_m_hrc,   &
+		                     dheat_hrc, dP_m2=dP_m2_hrc)
+		rchiiB = rchiiB_hrc
+		if (use_he_rec_coupling .and. thereis_He) then
+			rcheiiB  = rcheiiB_hrc
+			rcheiiiB = rcheiiiB_hrc
+		endif
+		P_HI    = P_HI  + dP_HI_hrc
+		P_HeI   = P_HeI + dP_HeI_hrc
 		! The metal share of the same photons feeds the metal re-solve
 		! (pp_metals=2) exactly as it feeds the equilibrium solve.
-		if (thereis_metals) P_m = P_m + dP_m_hrc
+		if (thereis_metals) then
+			P_m  = P_m  + dP_m_hrc
+			P_m2 = P_m2 + dP_m2_hrc
+		endif
 	endif
 
    !----------------------------------!
@@ -872,7 +881,8 @@
 	!                           + (a_ion_HeI + alpha_HeII + alpha_HeI23S)*n_e
 	!           He II/He III  : P_HeII + (a_ion_HeII + alpha_HeIII)*n_e
 	!           He(2^3S)      : A31 + P_HeITR
-	!                           + (q31a + q31b + a_ion_HeITR)*n_e + Q31*n_HI
+	!                           + (q31g + q31a + q31b + a_ion_HeITR)*n_e
+	!                           + Q31*n_HI
 	!        (the He(2^3S) row is exactly the loss side of fvec(4) of
 	!        adv_implicit_HeH_TR, with the same rate coefficients from
 	!        HeITR_coeffs / eval_cool -- no rate is redefined here.)
@@ -943,7 +953,7 @@
 				     P_HeII(j) + (a_ion_HeII(j) + rcheiiiB(j) )*ne(j))
 				if (thereis_HeITR)                                          &
 					nu_relax = min(nu_relax, A31 + P_HeITR(j)                &
-					     + (q31a(j) + q31b(j) + a_ion_HeITR(j))*ne(j)        &
+					     + (q31g(j) + q31a(j) + q31b(j) + a_ion_HeITR(j))*ne(j) &
 					     + Q31(j)*nhi(j))
 			endif
 			Da_slowest = t_cross*nu_relax
@@ -1077,11 +1087,12 @@
 			adv_cell%a_ion_HeI = a_ion_HeI(j)
 			adv_cell%a_ion_HeII = a_ion_HeII(j)
 			! He <-> H charge-exchange rate coefficients (Huang Table 4 group
-			! B), read by he_h_cx_fvec_adv in the H/He adv systems. T-only, so
-			! evaluate once per cell; the adv residual adds nothing when
-			! he_h_charge_exchange is off (bit-identical).
+			! B, and He2+ + H0), read by he_h_cx_fvec_adv in the H/He adv
+			! systems. T-only, so evaluate once per cell; the adv residual
+			! adds nothing when he_h_charge_exchange is off (bit-identical).
 			call he_h_cx_rates(T_K(j), adv_cell%kcx_He0_Hp,                &
-			                           adv_cell%kcx_Hep_H0)
+			                           adv_cell%kcx_Hep_H0,                &
+			                           adv_cell%kcx_Hepp_H0)
 			! Effective He/H for the electron density inside the adv system:
 			! the global HeH normally (byte-identical legacy), the local
 			! (diffused) nhe/nh when He_diffusion is on.
@@ -1100,6 +1111,7 @@
 				adv_cell%A31 = A31
 				adv_cell%P_HeITR = P_HeITR(j)
 				adv_cell%q13 = q13(j)
+				adv_cell%q31g = q31g(j)
 				adv_cell%q31a = q31a(j)
 				adv_cell%q31b = q31b(j)
 				adv_cell%Q31 = Q31(j)
@@ -1196,8 +1208,9 @@
 		do j = 1-Ng,N+Ng
 			if (nh(j) <= 0.0d0) cycle
 
-			! Charge-exchange rate coefficients for this cell temperature.
-			call cx_set_cell(T_K(j))
+			! Charge-exchange rate coefficients for this cell's temperature
+			! and electron density.
+			call cx_set_cell(T_K(j), ne(j))
 
 			! Each element's metal coefficients (canonical order) from the 2-D
 			! photo/collisional/recombination rate arrays.
@@ -1210,17 +1223,20 @@
 				meg_b0(im)   = aion_m_pp(j,i0)
 				meg_a1(im)   = rec_m_pp(j,i0+1)
 				if (top >= 2) then
-					meg_g1(im) = P_m(j,i0+1)
-					meg_b1(im) = aion_m_pp(j,i0+1)
-					meg_a2(im) = rec_m_pp(j,i0+2)
+					meg_g1(im)  = P_m(j,i0+1)
+					meg_g02(im) = P_m2(j,i0)
+					meg_b1(im)  = aion_m_pp(j,i0+1)
+					meg_a2(im)  = rec_m_pp(j,i0+2)
 				else
-					meg_g1(im) = 0.0d0
-					meg_b1(im) = 0.0d0
-					meg_a2(im) = 0.0d0
+					meg_g1(im)  = 0.0d0
+					meg_g02(im) = 0.0d0
+					meg_b1(im)  = 0.0d0
+					meg_a2(im)  = 0.0d0
 				endif
 			enddo
 			call set_metal_coeffs(n_melem, meg_ntot, meg_g0, meg_g1,   &
-			                      meg_b0, meg_b1, meg_a1, meg_a2, meg_top)
+			                      meg_b0, meg_b1, meg_a1, meg_a2, meg_top, &
+			                      meg_g02)
 
 			! Pin the advection-corrected H/He fractions for the wrapper.
 			pp_xHII_fix   = nhii(j)/nh(j)
@@ -1355,6 +1371,19 @@
 	! incoming profile, so the cell-by-cell energy solve balances the same
 	! metal cooling eval_cool reports.
 	call fine_structure_line_transfer(T_K, nm_w, beta_fs_pp, nbar_fs_pp)
+
+	! The ground-capture escape weights of the three recombinations at the
+	! composition the temperature is solved at, from the one definition
+	! eval_cool also uses (molecule-free: no H2 absorber on this path).
+	y_HI_pp   = 0.0d0
+	y_gnd_pp  = 0.0d0
+	y_HeII_pp = 0.0d0
+	if (use_h_rec_escape .or. (use_he_rec_coupling .and. thereis_He)) then
+		nh2_pp = 0.0d0
+		call ground_capture_escape_weights(nhi, nh2_pp, nhei, nheii,     &
+		                                   nm_w, y_HI_pp, y_gnd_pp,       &
+		                                   y_HeII_pp)
+	endif
 
 	! Count cell-by-cell temperature solves rejected as non-physical (metal modes).
 	n_pp_reject = 0
@@ -1516,7 +1545,11 @@
 		! Parameters
 		teq_cell%nhi  = nhi(j)
 	 	teq_cell%nhii  = nhii(j)
-	 	teq_cell%nhei  = nhei(j)
+	 	teq_cell%nheiS  = nheiS(j)
+	 	teq_cell%nheiTR = nheiTR(j)
+	 	teq_cell%y_HI   = y_HI_pp(j)
+	 	teq_cell%y_gnd  = y_gnd_pp(j)
+	 	teq_cell%y_HeII = y_HeII_pp(j)
 	 	teq_cell%nheii  = nheii(j)
 	 	teq_cell%nheiii  = nheiii(j)
 	 	teq_cell%mup  = mmw(j)
@@ -1773,8 +1806,10 @@
 	!---- Update cooling rates ----!
 
 	! Molecule-free electron sum and no H3+ cooling, as at the first eval_cool
-	! call above; T_equation, which solved for this T_K, assembles the same
-	! channels.
+	! call above. T_equation, which solved for this T_K, balanced the same
+	! assembly (Cool_coeff: radiative_cooling_of_cell) at the same densities;
+	! the fine-structure escape probabilities it held fixed are those of the
+	! profile the pass started from, which eval_cool re-forms at this T_K.
 	call eval_cool(T_K,nhi,nhii,nhei,nheii,nheiii, nm_w,            &
 	  			   dum_v1,dum_v2,dum_v3, rec_m_pp,                   &
 				   dum_v4,dum_v5,dum_v6, aion_m_pp,                      &

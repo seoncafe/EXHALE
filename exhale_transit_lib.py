@@ -8,7 +8,7 @@ what an ``_adv`` profile says about the validity of its own rows.  Apart
 from numpy/scipy and the profile readers of ``examples/exhale_io.py`` it
 references only its own constants, so it imports cleanly on its own and can
 be unit-tested without a simulation.  The main script imports these names
-and keeps the top-down orchestration (loading a run, density prep, the
+and keeps the top-down control flow (loading a run, density prep, the
 loops over the lines, convolution, plotting, saving).
 """
 
@@ -106,7 +106,8 @@ A12_D = 4.6999e8
 Fadd_const = np.sqrt(np.pi)*e**2.0/(4.0*np.pi*E0*me*c_light)
 
 # ----- H-alpha line + n=2 level-population atomic data ----- #
-# (Christie, Arras & Li 2013, ApJ 772, 144; rate coeffs in their Table 2)
+# The level balance is that of Christie, Arras & Li (2013, ApJ 772, 144,
+# eqs. 12-13); its rate coefficients are the solver's (n2_populations below).
 
 # H-alpha (n=2 -> n=3), air wavelength [m]
 l_Ha   = 6562.8e-10
@@ -137,7 +138,10 @@ g1s, g2s, g2p = 2.0, 2.0, 6.0
 # Ly-alpha (1s<->2p) atomic data for the radiative pumping
 nu_Lya  = c_light/lA            # lA = 1215.67 A (vacuum), defined above
 A_2p1s  = 6.2649e8              # A(2p->1s) [s^-1], NIST ASD (Wiese and Fuhr 2009); one value with hydrogen_n2_rates.f90
-A_2s1s  = 8.26                  # A(2s->1s) two-photon [s^-1] (Table 2, R10)
+# A(2s->1s), the two-photon decay [s^-1]: Drake (1986, Phys. Rev. A 34,
+# 2871, eq. 27) for H with the finite nuclear mass, the value of
+# hydrogen_n2_rates.f90 (A_2s1s), where the derivation is written.
+A_2s1s  = 8.22461
 
 # Einstein-B coefficients in the mean-intensity (J_nu) convention, in cgs
 # so that B * J_lya [erg s^-1 cm^-2 Hz^-1 sr^-1] gives a rate in s^-1:
@@ -147,49 +151,267 @@ eV2Hz = 2.417989242e14         # Hz per eV
 B21_lya = A_2p1s*c_cgs**2.0/(2.0*h_cgs*nu_Lya**3.0)   # ~2.85e9
 B12_lya = (g2p/g1s)*B21_lya                           # ~8.55e9 (1s->2p pump)
 
-# Doppler / optical-depth helper constants for the auto-window sizing
+# Doppler / optical-depth constants for the auto-window sizing
 _amu = 1.66053907e-27
 _kB  = 1.380649e-23
 _ec2 = 0.026540045                # pi e^2 / (m_e c)  [cm^2 Hz] (sqrt-pi form below)
 _ccm = 2.99792458e10
 
 
-def n2_populations(T, n1s, nHII, ne, Jlya, G2s=0.0, G2p=0.0):
-	# Solve the 2s/2p rate-equilibrium (Christie+2013 Eqs. 12-13) for the
-	# n=2 populations [cm^-3]. All densities in cm^-3, T in K, Jlya in cgs.
-	# Returns (n2s, n2p, n2tot). Forward collisional rates from Table 2;
-	# reverse rates by detailed balance (g-weights; 2s,2p ~ degenerate).
-	# Mirrors src/modules/radiation/excited_hydrogen.f90::n2_populations.
-	T  = np.maximum(T, 1.0)               # defensive floor (avoid 1/T, log(0))
-	t4 = T/1.0e4
-	# Case-B and level-resolved recombination (Draine 2011; Table 2 R2,R8,R9)
-	aB  = 2.54e-13*t4**(-0.8163 - 0.0208*np.log(t4))
-	a2s = (0.282 + 0.047*t4 - 0.006*t4**2.0)*aB
+# ----- THE H(n=2) RATE COEFFICIENTS OF THE SOLVER ----- #
+# n2_populations below rebuilds the 2s/2p populations with the rate
+# coefficients the solver's own level balance uses
+# (src/modules/radiation/excited_hydrogen.f90: n2_rate_matrix), transcribed
+# from hydrogen_n2_rates.f90 and the Cooling_Coefficients functions it reads
+# (Cool_coeff.f90); each function names the Fortran it reproduces, and the
+# sources and validity are written there. All in cgs, T in K. The constants
+# are those of global_parameters (parameters.f90).
+_KB_EV   = 8.617333262e-05        # kb_eV
+_KB_ERG  = 1.380649e-16           # kb_erg
+_HP_ERG  = 6.62607015e-27         # hp_erg
+_C_CGS   = 2.99792458e10          # c_light
+_ME_G    = 9.1093837015e-28       # m_e
+_MP_G    = 1.67262192369e-24      # m_p
+_MH_G    = 1.67353284e-24         # mu, the hydrogen atom
+_MHE_G   = 6.6464790722e-24       # m_He_atom
+_ERG2EV  = 6.241509075e11         # erg2eV
+_E_TH_HI = 13.598434599           # e_th_HI [eV]
+_E_HI_N2 = 10.19881               # E_HI_n2_eV, 1s-2s [eV]
+# coll_rate_prefactor, h^2/((2 pi m_e)^(3/2) k^(1/2)) [cm^3 s^-1 K^(1/2)]
+_COLL_PREF = _HP_ERG**2/((2.0*np.pi*_ME_G)**1.5*np.sqrt(_KB_ERG))
+# Separations of 2s1/2 from 2p1/2 and 2p3/2 [erg] and the reduced masses
+# of H with e, H+, He+ and He2+ [g] (hydrogen_n2_rates.f90).
+_DE_2S2P12 = 0.035*_HP_ERG*_C_CGS
+_DE_2S2P32 = 0.331*_HP_ERG*_C_CGS
+_MU_H_E    = _ME_G*_MH_G/(_ME_G + _MH_G)
+_MU_H_P    = _MP_G*_MH_G/(_MP_G + _MH_G)
+_MU_H_HEP  = (_MHE_G - _ME_G)*_MH_G/(_MHE_G - _ME_G + _MH_G)
+_MU_H_HE2P = (_MHE_G - 2.0*_ME_G)*_MH_G/(_MHE_G - 2.0*_ME_G + _MH_G)
+# The 12 positive nodes and weights of the 24-point Gauss-Legendre rule of
+# ground_capture_milne_moments.
+_GL24_X = np.array([6.40568928626056300e-02, 1.91118867473616311e-01,
+                    3.15042679696163397e-01, 4.33793507626045127e-01,
+                    5.45421471388839563e-01, 6.48093651936975546e-01,
+                    7.40124191578554358e-01, 8.20001985973902947e-01,
+                    8.86415527004400960e-01, 9.38274552002732798e-01,
+                    9.74728555971309474e-01, 9.95187219997021311e-01])
+_GL24_W = np.array([1.27938195346752215e-01, 1.25837456346828303e-01,
+                    1.21670472927803419e-01, 1.15505668053725613e-01,
+                    1.07444270115965607e-01, 9.76186521041140648e-02,
+                    8.61901615319532882e-02, 7.33464814110804109e-02,
+                    5.92985849154367417e-02, 4.42774388174195510e-02,
+                    2.85313886289337432e-02, 1.23412297999870909e-02])
+
+
+def hydrogen_ground_capture(T):
+	# alpha_1 of H II -> H I [cm^3 s^-1], the Milne relation on the
+	# hydrogenic ground-state cross section of the transfer (Cool_coeff:
+	# ground_capture_milne, ion 1, and cross_sec.f90: sigma). The solver
+	# interpolates a table of this quadrature (capture_table_value); the
+	# two agree to the table's interpolation error.
+	T   = np.maximum(np.asarray(T, dtype=float), 1.0)
+	kT  = _KB_EV*T
+	I   = _E_TH_HI
+	tmx = np.log(1.0 + 50.0*kT/I)
+	acc = np.zeros_like(T)
+	for x, w in zip(_GL24_X, _GL24_W):
+		for sgn in (-1.0, 1.0):
+			E   = I*np.exp(0.5*tmx*(1.0 + sgn*x))
+			eps = np.sqrt(E/I - 1.0)
+			sig = 6.3*(I/E)**4*np.exp(4.0 - 4.0*np.arctan(eps)/eps)            \
+			      /(1.0 - np.exp(-2.0*np.pi/eps))              # [1e-18 cm^2]
+			acc = acc + w*E**3*sig*np.exp(-(E - I)/kT)
+	return (2.0*np.sqrt(2.0/np.pi)/(_C_CGS**2*(_ME_G*kT/_ERG2EV)**1.5)
+	        *0.5*tmx*acc*1.0e-18/_ERG2EV**3)
+
+
+def alpha_B_hydrogen(T, rate_set='default'):
+	# Case-B recombination coefficient of H II [cm^3 s^-1], the one the
+	# ionization balance removes protons with (Cool_coeff: alpha_rec_HII_B):
+	#   'default'      Badnell (2006, 2023 update) total minus the Milne
+	#                  ground capture (alphaB_HII_new);
+	#   'koskinen2022' Koskinen et al. (2022) Table 1 R1 ("Atomic rate
+	#                  set: Koskinen2022");
+	#   'legacy'       Hui & Gnedin (1997) ("Legacy_HHe_rates: True").
+	T = np.maximum(np.asarray(T, dtype=float), 1.0)
+	if rate_set == 'koskinen2022':
+		return 4.0e-12*(300.0/T)**0.64
+	if rate_set == 'legacy':
+		xl = 2.0*157807.0/T
+		return 2.753e-14*xl**1.5/(1.0 + (xl/2.740)**0.407)**2.242
+	tt  = np.sqrt(T/2.965)
+	rr  = 8.318e-11/(tt*(1.0 + tt)**(1.0 - 0.7472)
+	                 *(1.0 + np.sqrt(T/7.001e5))**(1.0 + 0.7472))
+	return rr - hydrogen_ground_capture(T)
+
+
+def case_b_2s_fraction(T, Z=1.0):
+	# Share of the case-B captures of a hydrogenic ion that end in 2s,
+	# from Pengelly (1964, MNRAS 127, 145, Table I), interpolated linearly
+	# in log t' of the logarithms of the two coefficients and held at the
+	# table ends (Cool_coeff: case_b_2s_fraction_hydrogenic).
+	a2s = np.array([30.6, 20.4, 13.3, 8.37, 5.07, 2.93, 1.61])
+	a2p = np.array([97.5, 56.8, 32.1, 17.6, 9.27, 4.68, 2.28])
+	T   = np.maximum(np.asarray(T, dtype=float), 1.0)
+	pos = np.log(1.0e-4*T/(Z*Z))/np.log(2.0) + 4.0
+	k   = np.clip(np.floor(pos), 1, 6).astype(int)
+	f   = np.where(pos > 1.0, np.where(pos >= 7.0, 1.0, pos - k), 0.0)
+	k   = np.where(pos >= 7.0, 6, np.where(pos > 1.0, k, 1))
+	l2s = np.exp(np.log(a2s[k-1]) + f*(np.log(a2s[k]) - np.log(a2s[k-1])))
+	l2p = np.exp(np.log(a2p[k-1]) + f*(np.log(a2p[k]) - np.log(a2p[k-1])))
+	return l2s/(l2s + l2p)
+
+
+def _upsilon_quartic_logT(c, T):
+	# Cool_coeff: upsilon_quartic_logT, T held inside 1e3-1e5 K.
+	x = np.log10(np.clip(T, 1.0e3, 1.0e5)/1.0e4)
+	return 10.0**(c[0] + x*(c[1] + x*(c[2] + x*(c[3] + x*c[4]))))
+
+
+# Cool_coeff: upsilon_HI_1s2s, upsilon_HI_1s2p (CHIANTI v11.0.2 h_1, the
+# rate set of the H I cooling as well).
+_UPS_1S2S = (-5.41913497e-01, 1.45680880e-01, -5.14786365e-02,
+             -4.89245376e-02, 4.41143616e-02)
+_UPS_1S2P = (-3.02352097e-01, 3.07054967e-01, 2.18544412e-01,
+             2.79631531e-02, -3.12591467e-02)
+
+
+def hydrogen_n2_collision_rates(T):
+	# (C1s2s, C1s2p, C2s1s, C2p1s) [cm^3 s^-1]: Cool_coeff
+	# excitation_rate_HI_1s2s/_1s2p and their detailed-balance reverses
+	# deexcitation_rate_HI_2s1s/_2p1s with the Boltzmann factor cancelled.
+	T  = np.maximum(np.asarray(T, dtype=float), 1.0)
+	u2s = _upsilon_quartic_logT(_UPS_1S2S, T)
+	u2p = _upsilon_quartic_logT(_UPS_1S2P, T)
+	bz  = np.exp(-_E_HI_N2/(_KB_EV*T))
+	pre = _COLL_PREF/np.sqrt(T)
+	return (pre/2.0*u2s*bz, pre/2.0*u2p*bz, pre/2.0*u2s, pre/6.0*u2p)
+
+
+def l_mixing_2s2p_electron(T):
+	# 2s -> 2p by electron impact [cm^3 s^-1], Seaton (1955, Proc. Phys.
+	# Soc. A 68, 457, eq. 55, approximation V), Maxwell-averaged in closed
+	# form (hydrogen_n2_rates: c2s2p_rate). 5.78e-5 at 1e4 K.
+	a_bohr = 0.529177210903e-8
+	Ry_erg = 2.1798723611035e-11
+	kT  = _KB_ERG*np.maximum(np.asarray(T, dtype=float), 1.0)
+	pre = 72.0*np.pi*a_bohr**2*Ry_erg*np.sqrt(8.0*_MU_H_E/np.pi)/(_ME_G*np.sqrt(kT))
+	g, m = 0.5772156649, 2.21
+	return pre*(np.maximum(np.log(4.0*kT/_DE_2S2P12) - g - m, 0.0)/3.0
+	            + 2.0*np.maximum(np.log(4.0*kT/_DE_2S2P32) - g - m, 0.0)/3.0)
+
+
+def _lower_gamma_3(x):
+	with np.errstate(over='ignore', invalid='ignore'):
+		return np.where(x < 1.0e-2, x**3*(1.0/3.0 - x/4.0 + x*x/10.0),
+		                2.0 - np.exp(-x)*(x*x + 2.0*x + 2.0))
+
+
+def _lower_gamma_2(x):
+	with np.errstate(over='ignore', invalid='ignore'):
+		return np.where(x < 1.0e-2, x**2*(0.5 - x/3.0 + x*x/8.0),
+		                1.0 - np.exp(-x)*(1.0 + x))
+
+
+def l_mixing_2s2p_ion(T, n_e, z, Z_c, mu_g, dE1, dE2, A_2q):
+	# 2s -> 2p by a charged heavy particle [cm^3 s^-1], Pengelly & Seaton
+	# (1964, MNRAS 127, 165, eqs. 34-41) with their cut-off
+	# min(1.12 hbar v/dE, 0.72 v tau, R_D), Maxwell-averaged in closed form
+	# (Cool_coeff: l_mixing_2s2p_pengelly_seaton, where the physics and the
+	# validity are written).
+	from scipy.special import exp1
+	e_esu  = 1.602176634e-19*_C_CGS/10.0
+	hbar   = _HP_ERG/(2.0*np.pi)
+	a_bohr = hbar**2/(_ME_G*e_esu**2)
+	Tk   = np.maximum(np.asarray(T, dtype=float), 1.0)
+	R_D  = np.sqrt(_KB_ERG*Tk/(4.0*np.pi*np.maximum(n_e, 1.0e-30)*e_esu**2))
+	K_1  = np.sqrt(6.0*(Z_c/z)**2*12.0)*e_esu**2/hbar*a_bohr
+	v_th = np.sqrt(2.0*_KB_ERG*Tk/mu_g)
+	q = np.zeros(np.broadcast(Tk, R_D).shape)
+	with np.errstate(over='ignore', invalid='ignore', divide='ignore'):
+		for dE, wt in ((dE1, 1.0/3.0), (dE2, 2.0/3.0)):
+			a_c = min(1.12*hbar/dE, 0.72/A_2q)
+			x_1 = K_1/(a_c*v_th**2)
+			x_a = R_D**2/(a_c*v_th)**2
+			x_D = (K_1/(R_D*v_th))**2
+			B0  = 0.5 + np.log(R_D*v_th/K_1)
+			A0  = 0.5 + np.log(a_c*v_th**2/K_1)
+			near = (0.5*np.pi*a_c**2*v_th**3*_lower_gamma_3(x_1)
+			        + np.pi*K_1**2/v_th*(A0*(np.exp(-x_1) - np.exp(-x_a))
+			          + np.log(x_1)*np.exp(-x_1) - np.log(x_a)*np.exp(-x_a)
+			          + exp1(x_1) - exp1(x_a))
+			        + np.pi*K_1**2/v_th*(B0*np.exp(-x_a)
+			          + 0.5*(np.log(x_a)*np.exp(-x_a) + exp1(x_a))))
+			far  = (0.5*np.pi*a_c**2*v_th**3*_lower_gamma_3(x_a)
+			        + 0.5*np.pi*R_D**2*v_th*(_lower_gamma_2(x_D) - _lower_gamma_2(x_a))
+			        + np.pi*K_1**2/v_th*(B0*np.exp(-x_D)
+			          + 0.5*(np.log(x_D)*np.exp(-x_D) + exp1(x_D))))
+			q = q + wt*np.where(x_1 < x_a, near, far)
+	return 2.0/np.sqrt(np.pi)*q
+
+
+def l_mixing_rate_2s2p(T, ne, nHII, nHeII, nHeIII):
+	# THE 2s -> 2p TRANSFER RATE [s^-1] of one H(2s) atom: electrons and
+	# the ions H+, He+ and He2+ (hydrogen_n2_rates: l_mixing_rate_2s2p).
+	# The reverse, 2p -> 2s, is (g2s/g2p) times it.
+	ion = lambda Zc, mu: l_mixing_2s2p_ion(T, ne, 1.0, Zc, mu, _DE_2S2P12,
+	                                       _DE_2S2P32, A_2s1s)
+	return (ne*l_mixing_2s2p_electron(T) + nHII*ion(1.0, _MU_H_P)
+	        + nHeII*ion(1.0, _MU_H_HEP) + nHeIII*ion(2.0, _MU_H_HE2P))
+
+
+def dissociative_recombination_n2_source(T, nH2p, nHeHp, ne):
+	# Chemical production of H(n=2) [cm^-3 s^-1] by H2+ + e (Koskinen et
+	# al. 2022, R5) and HeH+ + e (R16), each leaving one H atom in n = 2
+	# (molecular_reaction_heat.f90: dissociative_recombination_n2_source,
+	# mol_rates.f90: rk_R5_H2p_dr, rk_R16_HeHp_dr); zero, as there, when
+	# EXHALE_REACTION_HEAT_RECIPIENTS=0.
+	if os.environ.get('EXHALE_REACTION_HEAT_RECIPIENTS', '').strip() == '0':
+		return np.zeros_like(np.asarray(T, dtype=float))
+	T = np.maximum(np.asarray(T, dtype=float), 1.0)
+	return ((2.3e-8*(300.0/T)**0.4*np.maximum(nH2p, 0.0)
+	         + 1.0e-8*(300.0/T)**0.6*np.maximum(nHeHp, 0.0))*np.maximum(ne, 0.0))
+
+
+def n2_populations(T, n1s, nHII, nHeII, nHeIII, ne, Jlya, G2s=0.0, G2p=0.0,
+                   nH2p=0.0, nHeHp=0.0, rate_set='default'):
+	# The 2s/2p statistical equilibrium (Christie, Arras & Li 2013, eqs.
+	# 12-13) as the solver writes it (excited_hydrogen.f90: n2_rate_matrix
+	# and n2_populations), with the solver's rate coefficients (above):
+	# A(2s) of Drake (1986), the CHIANTI 1s-2s/2p collision rates of the
+	# H I cooling, the l-mixing by electrons (Seaton 1955) and by H+, He+
+	# and He2+ (Pengelly & Seaton 1964), the balance's own case-B
+	# coefficient split with the 2s share of Pengelly (1964), and the
+	# chemical n = 2 source of a molecular run. Densities [cm^-3] (negative
+	# entries are clamped to zero, as the solver does), T [K], Jlya [cgs],
+	# G2s, G2p the Balmer-continuum photoionization rates [s^-1], rate_set
+	# as for alpha_B_hydrogen. Returns (n2s, n2p, n2s + n2p).
+	#
+	# WHAT THIS DOES NOT SHARE WITH THE SOLVER is the field: J_lya and
+	# G2s/G2p are the caller's (EXHALE_transit.py: a J_lya file or the
+	# Huang et al. 2017 estimate, and a diluted blackbody Balmer continuum),
+	# because the solver writes neither to the profiles this tool reads.
+	T   = np.maximum(np.asarray(T, dtype=float), 1.0)
+	n1s, nHII, nHeII, nHeIII, ne = (np.maximum(q, 0.0) for q in
+	                                (n1s, nHII, nHeII, nHeIII, ne))
+	aB  = alpha_B_hydrogen(T, rate_set)
+	a2s = case_b_2s_fraction(T, 1.0)*aB
 	a2p = aB - a2s
-	# Collisional excitation 1s->2s, 1s->2p, and 2s<->2p l-mixing (R3,R4,R5)
-	C1s2s = 1.21e-8*(1.0/t4)**0.455*np.exp(-118400.0/T)
-	C1s2p = 1.71e-8*(1.0/t4)**0.077*np.exp(-118400.0/T)
-	C2s2p = 6.21e-5*(np.log(T/1.02) - 0.57721)/np.sqrt(T)
-	# Reverse (de-exciting) rates by detailed balance. Written in their
-	# analytically-cancelled form: the Boltzmann exp(118400/T) factor
-	# cancels the exp(-118400/T) inside C1s2s/C1s2p (super-elastic
-	# collisions), so we avoid the numerical 0*inf at very low T.
-	C2s1s = 1.21e-8*(1.0/t4)**0.455*(g1s/g2s)          # = C1s2s*exp(118400/T)
-	C2p1s = 1.71e-8*(1.0/t4)**0.077*(g1s/g2p)          # = C1s2p*(g1s/g2p)*exp(..)
-	C2p2s = C2s2p*(g2s/g2p)
+	C1s2s, C1s2p, C2s1s, C2p1s = hydrogen_n2_collision_rates(T)
+	M12 = l_mixing_rate_2s2p(T, ne, nHII, nHeII, nHeIII)   # 2s -> 2p [s^-1]
+	M21 = (g2s/g2p)*M12                                     # 2p -> 2s [s^-1]
+	chem = dissociative_recombination_n2_source(T, nH2p, nHeHp, ne)
 	# Ly-alpha radiative pump (1s->2p) and stimulated emission (2p->1s)
 	Ppump = B12_lya*Jlya
 	Pstim = B21_lya*Jlya
 	# 2x2 linear system  [[L2p, -M12],[-M21, L2s]] [n2p,n2s]^T = [S2p,S2s]^T
-	L2p = A_2p1s + Pstim + (C2p1s + C2p2s)*ne + G2p
-	L2s = (C2s1s + C2s2p)*ne + G2s + A_2s1s
+	L2p = A_2p1s + Pstim + C2p1s*ne + M21 + G2p
+	L2s = C2s1s*ne + M12 + G2s + A_2s1s
 	# Cascade source: the electron recombines onto a proton, so the rate is
 	# alpha_2l*ne*nHII. ne and nHII part company wherever helium and metals
 	# supply the electrons while hydrogen is still neutral, i.e. at the base.
-	S2p = (Ppump + C1s2p*ne)*n1s + a2p*ne*nHII
-	S2s = (C1s2s*ne)*n1s + a2s*ne*nHII
-	M12 = C2s2p*ne
-	M21 = C2p2s*ne
+	S2p = (Ppump + C1s2p*ne)*n1s + a2p*ne*nHII + chem*g2p/(g2s + g2p)
+	S2s = (C1s2s*ne)*n1s + a2s*ne*nHII + chem*g2s/(g2s + g2p)
 	det = L2p*L2s - M12*M21
 	det = np.where(np.abs(det) > 0.0, det, 1.0)   # guard (det>0 physically)
 	n2p = np.maximum((S2p*L2s + M12*S2s)/det, 0.0)
@@ -199,16 +421,36 @@ def n2_populations(T, n1s, nHII, ne, Jlya, G2s=0.0, G2p=0.0):
 
 def gamma_n2_balmer(T_star, R_over_a):
 	# n=2 photoionization rate [s^-1] from a diluted stellar blackbody
-	# Balmer continuum (E > 3.4 eV, lambda < 3647 A). Hydrogenic cross
-	# section sigma_2(nu) = sigma2_th*(nu2/nu)^3. R_over_a = R_star/a
-	# (dimensionless). For a stellar beam, the rate is int F_nu/(h nu)*sigma dnu
-	# with F_nu = pi B_nu(T_star)*(R_star/a)^2.
+	# Balmer continuum, over the band the solver integrates, from the n=2
+	# edge e_th_HI/4 = 3.3996 eV (3647 A) to the H I edge 13.5984 eV
+	# (J_incident: e_th_HI_n2; excited_hydrogen: balmer_band_integrals).
+	# Hydrogenic cross section sigma_2(nu) = sigma2_th*(nu2/nu)^3, one value
+	# for 2s and 2p, the solver's s2_thr. R_over_a = R_star/a (dimensionless).
+	# For a stellar beam, the rate is int F_nu/(h nu)*sigma dnu with
+	# F_nu = pi B_nu(T_star)*(R_star/a)^2.
+	#
+	# THE FIELD DIFFERS FROM THE SOLVER'S: the solver integrates the run's
+	# own spectrum type (the loaded table, the power law or the Planck
+	# field), and neither that spectrum nor the rate is in the profiles this
+	# tool reads, so a blackbody at T_star stands in for it here.
+	#
+	# sigma2_th = 1.4e-17 cm^2 is the n = 2 threshold value of the
+	# Kramers cross section with the bound-free Gaunt factor of Seaton
+	# (1959, MNRAS 119, 81, eqs. 3 and 10, READ): 2^6 alpha pi a_0^2 n /
+	# (3 sqrt(3) Z^2) g_II(n, 0) = 1.5814e-17 x 0.8715 = 1.378e-17 cm^2
+	# for n = 2 (DERIVED), rounded. The exact nonrelativistic hydrogenic
+	# values at the edge are 1.478e-17 (2s) and 1.355e-17 (2p), whose
+	# statistical average (weights 2 : 6) is 1.386e-17 (DERIVED by direct
+	# integration of the bound-free dipole matrix elements, reproducing
+	# 6.304e-18 for 1s). The (nu2/nu)^3 dependence with a constant
+	# threshold value leaves out the rise of g_II above the edge.
 	if T_star <= 0.0:
 		return 0.0
-	E2   = 3.40                          # eV, n=2 ionization threshold
+	E2   = 13.598434599/4.0              # eV, n=2 ionization threshold (e_th_HI_n2)
+	E1   = 13.598434599                  # eV, H I edge (e_th_HI); above it H(1s) absorbs
 	nu2  = E2*eV2Hz
-	s2th = 1.4e-17                       # cm^2, sigma at the n=2 threshold
-	Eg   = np.linspace(E2, 13.6, 400)    # eV (>13.6 eV: BB flux negligible + H1s absorbs)
+	s2th = 1.4e-17                       # cm^2, sigma at the n=2 threshold (s2_thr)
+	Eg   = np.linspace(E2, E1, 400)      # eV
 	nu   = Eg*eV2Hz
 	Bnu  = (2.0*h_cgs*nu**3.0/c_cgs**2.0)/(np.exp(h_cgs*nu/(kb_cgs*T_star)) - 1.0)
 	Fnu  = np.pi*Bnu*R_over_a**2.0       # flux at planet [erg s^-1 cm^-2 Hz^-1]
@@ -303,7 +545,8 @@ def read_input_params(path):
 	lines the Fortran core uses (word 4 in both cases), and are None when the
 	line is absent -- they are optional in input.inp. Returns a dict:
 	  Rp [m], Mp [kg], T0 [K], a_orb [m], Mstar [kg], LEUV, appx_mth,
-	  R_star_Rsun [R_sun or None], T_star [K or None]."""
+	  R_star_Rsun [R_sun or None], T_star [K or None], h_rate_set ('default',
+	  'legacy' or 'koskinen2022', the H II recombination set of the run)."""
 	with open(path, 'r') as f:
 		lines = f.readlines()
 
@@ -347,10 +590,23 @@ def read_input_params(path):
 	if appx_ln is not None:
 		appx_mth = appx_ln.split(':')[-1].strip()
 
+	# The H II recombination coefficient of the run (input_read.f90, the
+	# same labels and word positions): "Atomic rate set: Koskinen2022"
+	# takes precedence over "Legacy_HHe_rates: True", as in Cool_coeff:
+	# alpha_rec_HII_B. n2_populations splits that coefficient into 2s, 2p.
+	h_rate_set = 'default'
+	legacy_ln = find_input_label(lines, 'Legacy_HHe_rates')
+	if legacy_ln is not None and get_word(legacy_ln, 2) in ('True', 'true'):
+		h_rate_set = 'legacy'
+	set_ln = find_input_label(lines, 'Atomic rate set')
+	if set_ln is not None and get_word(set_ln, 4) in ('Koskinen2022',
+	                                                  'koskinen2022'):
+		h_rate_set = 'koskinen2022'
+
 	params = dict(Rp=Rp, Mp=Mp, T0=T0, a_orb=a_orb, Mstar=Mstar,
 	              LEUV=LEUV, appx_mth=appx_mth,
 	              R_star_Rsun=R_star_Rsun, T_star=T_star,
-	              resolved=False)
+	              h_rate_set=h_rate_set, resolved=False)
 
 	# Prefer the wind solver's resolved configuration when present.
 	# EXHALE_resolved.out is written by write_setup_report.f90

@@ -13,6 +13,14 @@ Coolants and channels (Huang 2023 Section 2.5):
 Na I and Fe I are NOT in CHIANTI v11.0.2 (only ionization data); they are built
 separately from NIST oscillator strengths + Van Regemorter (see the Fe I / Na I
 sub-phase) and appended to these tables there.
+
+These columns reproduce the coefficients now fitted in Cool_coeff.f90, with the
+.scups header energy of chianti_cooling.cooling_lambda.  Two of them are not
+the physical coefficient: MgII_hk uses the theoretical 3s-3p energy (4.27 eV,
+observed 4.43 eV; rebuilt with observed energies and every channel by
+magnesium_ii_line_cooling.py), and MgI_2853 / CaII_HK are the resonance lines
+alone (the whole ions, at the local n_e, are the tables of
+metal_cooling_density_resolved.py).
 """
 
 import os

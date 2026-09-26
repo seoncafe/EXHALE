@@ -75,6 +75,10 @@ def fe2_levels_cooling(T, ne, lev, sc, A, nmax=None):
         if ll not in pos or ul not in pos:
             continue
         a, b = pos[ll], pos[ul]                        # a=lower, b=upper
+        # .scups header (scaling) energy in the Boltzmann factor, where the
+        # observed level gap belongs; for Fe II the two agree to 0.1 percent
+        # and the table moves by under 0.1 percent (measured against
+        # multilevel_statistical_equilibrium.line_cooling).
         de_erg = tr['de'] * RY_ERG
         ups = float(upsilon(tr, T)[0])
         # de-excitation u->l and excitation l->u (electron collider)
@@ -151,6 +155,7 @@ def lambda_eff_table(Tgrid, negrid, nmax=None):
         if ll not in pos or ul not in pos:
             continue
         a, b = pos[ll], pos[ul]                        # a=lower, b=upper
+        # .scups header energy in the Boltzmann factor (see fe2_levels_cooling)
         de_erg = tr['de'] * RY_ERG
         ups = np.asarray(upsilon(tr, Tgrid), dtype=float)   # shape (nT,)
         trans.append((a, b, de_erg, ups))

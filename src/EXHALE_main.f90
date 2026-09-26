@@ -26,9 +26,16 @@
                              n_cells_he_singlet_clamped
       ! The caloric equation of state, read directly where a state's pressure
       ! has to be the pressure of a REFRESHED composition at an unchanged
-      ! conserved energy (the work state of the stationary evaluation).
+      ! conserved energy (the work state of the stationary evaluation), and
+      ! where a state's energy has to be the energy of a refreshed
+      ! composition at an unchanged pressure ("Composition update holds:
+      ! pressure").
       use caloric_eos, only: pressure_from_energy_density,                 &
+                             energy_density_from_pressure,                 &
                              caloric_mixture_active, molecular_cell
+      ! The shell volume of one cell, for the domain sum of the energy the
+      ! held-pressure composition update adds.
+      use grid_construction, only: spherical_cell_volume
       use binary_element_diffusion, only: element_diffusion_step,          &
                                           element_step_last_status,      &
                                           element_step_accepted,         &
@@ -81,7 +88,8 @@
                                           carrier_co_domain_f_dom,      &
                                           n_carrier_max,                &
                                           carrier_relax_fixed_point,    &
-                                          carrier_relax_nothing_to_advance
+                                          carrier_relax_nothing_to_advance,&
+                                          chem_cycles_max, chem_cycle_tol
       use element_census, only: element_census_state, element_census_take, &
                                element_census_verify,                     &
                                element_census_reservoir
@@ -90,6 +98,8 @@
                                report_base_boundary_model
       use molecular_infrared_cooling, only: molecular_infrared_init
       use mol_rates, only: h2_thermochemistry_init
+      use Cooling_Coefficients, only: capture_coefficient_tables_init
+      use conservation_budget, only: conservation_budget_request_next
       use steady_residual_mod, only: assemble_residual, residual_norms,  &
                                      write_residual_breakdown,          &
                                      flux_spread_of_state, steady_gates_met, &
@@ -352,8 +362,11 @@
       ! info = 1 and offers the hand-off again N_stall steps later -- would
       ! spend the cap once per entry and the number measured under it would
       ! be the sum of several solves from different states. Under a named
-      ! cap the run therefore takes its FIRST stationary solve and no other,
-      ! so that one measurement is one solve.
+      ! cap the run therefore makes its FIRST entry into the stationary
+      ! route and no other.  Inside that entry the partitioned alternation
+      ! still solves once for each outer pass, each solve under the cap, so
+      ! a named cap bounds each pass's solve and does not make the entry one
+      ! solve (MEASURED 2026-09-23 on an LHS 1140 b molecular state).
       logical :: jfnk_run_cap_named       = .false.
       integer :: n_stationary_solves_run  = 0
       character(len=32) :: jfnk_cap_env
@@ -1136,6 +1149,14 @@
       ! region opens.
       call h2_thermochemistry_init
 
+      ! Tabulate the capture coefficients built from quadratures (the Milne
+      ! ground captures of H I, He I, He II and the direct capture into
+      ! n = 2 of He II), which the rate and cooling functions read in every
+      ! cell sweep; after input_read, because the He I cross section
+      ! follows "ATES photoionization rate", and before the first parallel
+      ! region.
+      call capture_coefficient_tables_init
+
       ! analytic lower column (opt-in "Lower column: <R_1bar in R_J>"):
       ! integrate the isothermal-Teq hypsometric column (Koskinen+2022) from
       ! the 1-bar radius to the 1-ubar base and report the derived base radius
@@ -1225,6 +1246,13 @@
          ! (certification_evaluate -> set_state_certified), so no success
          ! token outlives the state or the model it was made under.
          if (do_load_IC) call set_state_certified(ic_certified, ic_cert_reason)
+         ! The ghost rows of W are still load_IC's placeholders (cell 1's
+         ! state): Apply_BC writes the ghosts of the conserved array only.
+         ! The boundary state it derived is the primitive array it held.
+         if (allocated(bc_W_hold)) then
+            W(:,1-Ng:0)   = bc_W_hold(:,1-Ng:0)
+            W(:,N+1:N+Ng) = bc_W_hold(:,N+1:N+Ng)
+         endif
          rho = W(1,:)
          v   = W(2,:)
          p   = W(3,:)
@@ -1331,6 +1359,14 @@
          write(*,'(A,ES12.4)') '   ||R|| = max_k : ', maxval(resid_c)
          call write_residual_breakdown(Rres, u, heat, cool,                &
                                        'EXHALE_RESIDUAL diagnostic')
+         ! This diagnostic stops before the setup report and the resolved-
+         ! configuration record further down, so it writes them here, as
+         ! the direct steady route does before its own stop: without them a
+         ! residual measured this way cannot be tied to the configuration it
+         ! was measured under (EXHALE_setup.out was left empty and
+         ! EXHALE_resolved.out absent).
+         call write_setup_report
+         call write_resolved_config
          write(*,*) '(EXHALE_main) EXHALE_RESIDUAL=1: residual reported, stopping.'
          stop
       endif
@@ -1602,6 +1638,32 @@
          do k = 1,3
             write(*,'(A,I2,4X,ES16.6)') '   k=', k, resid_c(k)
          enddo
+         block
+           ! THE SAME PROFILE THE EXHALE_RESIDUAL ROUTE WRITES, from the
+           ! solver's vector F(Y), so that the two routes can be compared
+           ! cell by cell and not only in their row maxima
+           ! (output/newton_residual_profile.txt carries the columns of
+           ! output/residual_profile.txt).
+           integer :: jj, uu
+           real*8, dimension(1-Ng:N+Ng) :: Frho_diag
+           call face_mass_flux_of_state(u(1,:), Frho_diag)
+           open(newunit=uu, file='output/newton_residual_profile.txt',    &
+                status='replace', action='write')
+           write(uu,'(A)') '# the T column is 0: this route forms no'//   &
+                ' temperature array (F(Y) forms its own internally)'
+           write(uu,'(A)') '# r[Rp]  n[cm-3]  v[cm/s]  T[K]  '//           &
+                'R_mass  R_mom  R_energy  Phi_lo  Phi_hi'
+           do jj = 1, N
+              write(uu,'(1X,9(ES16.8,1X))') r(jj), u(1,jj)*n0,             &
+                   u(2,jj)/u(1,jj)*v0, T(jj)*T0,                          &
+                   Rres(1,jj), Rres(2,jj), Rres(3,jj),                    &
+                   Frho_diag(jj-1)*r_edg(jj-1)*r_edg(jj-1),                &
+                   Frho_diag(jj)*r_edg(jj)*r_edg(jj)
+           end do
+           close(uu)
+           write(*,'(A)') ' (newton_test) wrote'//                       &
+                ' output/newton_residual_profile.txt'
+         end block
          write(*,*) '(EXHALE_main) EXHALE_NEWTON_TEST=1: done, stopping.'
          stop
       endif
@@ -1749,7 +1811,8 @@
          ! The direct steady route stops here, so the resolved-configuration
          ! record is written on this route too -- element_budget.py and the
          ! Phase-E flux closure both read it, and the elemental fluxes it
-         ! carries only exist once a diffusion step has run.
+         ! carries exist once the certification has measured a state
+         ! (write_element_flux_profile, called by certification_evaluate).
          call write_resolved_config
          write(*,*) '(EXHALE_main) EXHALE_PTC=1: solver done, output written, stopping.'
          stop
@@ -2552,7 +2615,7 @@
             if (species_advection_active())                           &
                call species_advection_project(f_sp)
             if (he_diffusion)                                         &
-               call element_diffusion_step(rho,v,T,f_sp,dt_loc)
+               call element_diffusion_step(rho,T,f_sp,dt_loc)
 
             ! A REFUSED ELEMENT STEP. The step judges
             ! its candidate on every call and hands back the entry
@@ -3970,6 +4033,18 @@
                du_plateaued = (stall_count .ge. N_stall) .and. is_level_stable
             endif
 
+            ! The update map ends on its own step count (update_map_end_step
+            ! sets max_steps) and on nothing else. Its smallest steps are the
+            ! ones a step-order measurement needs, and on a stationary state
+            ! they fall below dtu_th: the step-change stop ended a six-step map
+            ! after three blocks (measured 2026-09-23). Clearing the flags here
+            ! also keeps the staged secondary ionization below from switching
+            ! the physics between two steps of one map.
+            if (upmap_n .gt. 0) then
+               mass_flux_converged = .false.;  step_change_converged = .false.
+               du_plateaued = .false.;  steady_gates_converged = .false.
+            endif
+
             ! Staged secondary ionization: the SvS85 coupling is applied only
             ! after the wind has first converged without it -- from a cold IC the
             ! secondary-ionization base feedback amplifies the startup transient
@@ -4284,6 +4359,11 @@
       else if (do_only_pp) then
          write(*,'(A)') '     -> stopped: "Do only PP" -- no time'//         &
               ' integration was requested'
+      else if (hit_max_steps .and. upmap_n .gt. 0) then
+         ! update_map_end_step sets the cap once its last block is written.
+         write(*,'(A,I0,A)') '     -> stopped: the update map wrote its ',  &
+              upmap_n, ' requested step(s)'
+         call report_marching_stop
       else if (hit_max_steps) then
          write(*,'(A,I0,A)') '     -> stopped: reached EXHALE_MAXSTEPS = ',  &
               max_steps, ' steps WITHOUT convergence'
@@ -4389,8 +4469,8 @@
 
       ! Rewrite the resolved-configuration record now that the wind exists:
       ! the configuration in it is the same one written before the run, and
-      ! the elemental fluxes over the overlap window only exist once a
-      ! diffusion step has measured them.
+      ! the elemental fluxes over the overlap window are those of the state
+      ! the certification above measured (write_element_flux_profile).
       call write_resolved_config
 
       !---------------------------------------------------!
@@ -6516,7 +6596,7 @@
       real*8  :: dtl, g, gmax(3), rmax(3), dmax(3)
       real*8  :: smax(5,3)
       character(len=9), parameter :: sname(5) = (/'hydro    ', 'chem     ', &
-           'energy   ', 'transport', 'filter   '/)
+           'boundary ', 'transport', 'filter   '/)
       character(len=8), parameter :: rname(3) = (/'mass    ', 'momentum',   &
            'energy  '/)
       if (.not. upmap_open()) return
@@ -6612,7 +6692,7 @@
               status='replace', action='write')
          upmap_file_open = .true.
          write(upmap_unit,'(A)') '# dt j k r  R  G_dt  hydro chem'//       &
-              ' energy transport filter    (k = 1 mass, 2 momentum,'//     &
+              ' boundary transport filter  (k = 1 mass, 2 momentum,'//     &
               ' 3 energy; all rates in code units 1/t_s)'
       endif
       upmap_open = .true.
@@ -6877,6 +6957,10 @@
       ! to the bound, the second at the same rate whatever the bound.
       logical :: carrier_trust_held
       real*8  :: carrier_trust_hold
+      ! The stage export of the alternation (EXHALE_STAGE_EXPORT=1, default
+      ! off) and the label of the conservation-budget export it requests.
+      logical :: stage_export_on
+      character(len=96) :: stage_label
 
       integer :: hydro_info, elem_status, carrier_outcome, outer_ending
       integer :: n_no_fall, icert, sp_cell, ref_cell, cell_here, pass_cap
@@ -6893,6 +6977,11 @@
       real*8  :: prog_worst, prog_worst_prev, dist_here
       logical :: species_alternated, pass_certified, rows_finite
       logical :: update_taken
+      ! The primitive state and the total energy density of the state the
+      ! composition update is entered at ("Composition update holds:
+      ! pressure"): rho, v and p are what that contract holds, and E is the
+      ! reference the energy it adds is measured against.
+      real*8, allocatable :: W_comp_hold(:,:), E_comp_hold(:)
       ! HOW FAR THE COMPOSITION STILL IS FROM THE FIXED POINT OF ITS OWN
       ! OPERATORS, over the last two updates whose measure was available,
       ! and how many of those there have been.  It is the RESIDUAL of each
@@ -7015,6 +7104,8 @@
 
       call get_environment_variable('EXHALE_CARRIER_TRUST', diag_env)
       if (len_trim(diag_env) .gt. 0) read(diag_env,*) carrier_trust
+      call get_environment_variable('EXHALE_STAGE_EXPORT', diag_env)
+      stage_export_on = (trim(diag_env) .eq. '1')
       call get_environment_variable('EXHALE_OUTER_PASSES', diag_env)
       if (len_trim(diag_env) .gt. 0) read(diag_env,*) outer_pass_cap
       ! The bound one pass may move the carriers by is shortened by the
@@ -7076,6 +7167,13 @@
 
       do it_diff = 1, pass_cap
          t_pass0 = omp_get_wtime()
+         if (stage_export_on) then
+            call write_stage_state(it_diff, 'hydro_entry', .false.)
+            write(stage_label,'(A,I0,A)') 'pass ', it_diff,               &
+                 ' hydro_entry: the first assembly of the hydrodynamic'// &
+                 ' solve of this pass'
+            call conservation_budget_request_next(stage_label)
+         endif
          if (use_jfnk) then
             ! THE COUPLED ROUTE (section 139). With the carrier row among
             ! the unknowns the outer loop is not an alternation at all: one
@@ -7120,6 +7218,8 @@
          ! T column moves. p is not touched -- it is the conserved state's
          ! own pressure -- so this makes (p, T, f_sp) a consistent triple.
          call comp_T_from_p(p,n_tot,ne,T)
+         if (stage_export_on)                                             &
+            call write_stage_state(it_diff, 'hydro_return', .false.)
          ! A1: the state this pass would hand on as accepted, against the
          ! reservoirs the run resolved.
          call element_census_reservoir('steady outer pass (accepted '//   &
@@ -7146,11 +7246,18 @@
          if (.not. boundary_rebuild_suppressed()) call Apply_BC(u)
          call report_base_face_state_consistency(                         &
               'steady_wind_joint_test_at_assemble_residual', u)
+         if (stage_export_on) then
+            write(stage_label,'(A,I0,A)') 'pass ', it_diff,               &
+                 ' certification: the joint test of this pass'
+            call conservation_budget_request_next(stage_label)
+         endif
          call assemble_residual(u, n_tot + ne, heat, cool, Rres)
          call certification_evaluate(cert_context_stationary, u, Rres,     &
                   f_sp, resid_th,                                         &
                   n_cells_without_chemical_root(last_sweep%acc_n),        &
                   .true., cert_now)
+         if (stage_export_on)                                             &
+            call write_stage_state(it_diff, 'certification', .true.)
          pass_certified = cert_now%certified
          ! The worst GATED species row of this state is the measure the
          ! joint acceptance waits on, ranked by distance from its own
@@ -7441,6 +7548,16 @@
          if (outer_ending .eq. outer_running .and. it_diff .lt. pass_cap) &
              then
             update_taken = .true.
+            ! WHAT THE UPDATE HOLDS, taken before anything moves: under
+            ! "Composition update holds: pressure" the rho, v and p of the
+            ! state certified above, which the rebuild after the two
+            ! relaxations restores at the new composition.
+            if (composition_update_holds_pressure) then
+               if (.not. allocated(W_comp_hold))                           &
+                  allocate(W_comp_hold(3,1-Ng:N+Ng), E_comp_hold(1-Ng:N+Ng))
+               call hold_state_before_composition_update(W_comp_hold,     &
+                                                         E_comp_hold)
+            endif
             ! Element composition relaxed to its steady state at the fixed
             ! wind. The wind is the face mass flux of THIS state, read from
             ! the mass row this state assembled and handed to the operator:
@@ -7455,7 +7572,7 @@
                ! composition update at fixed u does not move.
                Frho_elem = 0.0d0
                if (thereis_He) call face_mass_flux_of_state(rho, Frho_elem)
-               call relax_element_composition(rho,v,T,f_sp,Frho_elem,     &
+               call relax_element_composition(rho,T,f_sp,Frho_elem,       &
                                               comp_omega,                 &
                                               element_map_distance,kd,    &
                                               status=elem_status,         &
@@ -7580,6 +7697,18 @@
                   outer_ending = outer_state_not_finite
                endif
             endif
+
+            ! ---- THE HELD PRESSURE, RESTORED AT THE NEW COMPOSITION ----
+            ! Under "Composition update holds: pressure", after every
+            ! composition change of the pass and before anything is
+            ! measured on the state it hands back: rho, v and p as the
+            ! certified state had them, T and E of the new composition. A
+            ! refused element update restored the entry composition and a
+            ! non-finite one is not a gas, so neither is rebuilt.
+            if (composition_update_holds_pressure .and.                   &
+                outer_ending .eq. outer_running)                          &
+               call rebuild_energy_at_held_pressure(it_diff, W_comp_hold,  &
+                                                    E_comp_hold)
 
             ! ---- THE FOUR MEASURES OF THIS PASS, ON THE STATE IT HANDS
             !      BACK ----
@@ -7717,7 +7846,11 @@
             ! not write them, and the carrier relaxation is given u and
             ! does not write it. So (u, f_sp) here is one state and not
             ! two stages, and p, T, rho, v were re-formed from that pair
-            ! above. Frho_elem is the face mass flux of the same rho. The
+            ! above. Under "Composition update holds: pressure" the energy
+            ! row of u was rebuilt at the held pressure after both
+            ! relaxations, and p, T, rho, v were re-formed from the rebuilt
+            ! pair, so it is still one state. Frho_elem is the face mass
+            ! flux of the same rho. The
             ! two residuals recorded beside them were measured on that
             ! same pair.
             !
@@ -8000,6 +8133,8 @@
                     bound_last_dabs, '  (', ctd_nlim,                    &
                     ' cell(s) limited in the last solve)'
          endif
+         if (stage_export_on .and. update_taken)                          &
+            call write_stage_state(it_diff, 'composition_return', .false.)
          call get_environment_variable('EXHALE_DIFFUSION_CHECK', diag_env)
          if (trim(diag_env) .eq. '1')                                    &
             call write_diffusion_pass_profile(it_diff)
@@ -8295,6 +8430,302 @@
       close(uu)
 
       end subroutine write_diffusion_pass_profile
+
+      ! ------------------------------------------------------------- !
+
+      subroutine write_stage_state(pass, stage, with_residual)
+      ! THE STATE THE STATIONARY ALTERNATION HOLDS AT A NAMED STAGE OF ONE
+      ! PASS (EXHALE_STAGE_EXPORT=1, default off).  Four stages, in the
+      ! order of a pass: hydro_entry, before the hydrodynamic solve (from the
+      ! second pass on, the state the previous composition update handed
+      ! over); hydro_return, the accepted solve after the ionization sweep
+      ! that follows it; certification, the joint test, with its residual
+      ! rows; composition_return, after the element and carrier updates and
+      ! the rebuild of p and T at the fixed conserved state (the default),
+      ! or of E and T at the held rho, v and p under "Composition update
+      ! holds: pressure", which the file then states in its header.  The label
+      ! names the state, where a count of assemblies would not: probes and
+      ! trial evaluations also assemble.  The calls at hydro_entry and at
+      ! the certification ask conservation_budget for the next assembly
+      ! under the same name.
+      !
+      ! It writes the arrays as the driver holds them and calls nothing that
+      ! sets a module variable, so a run with the export on follows the
+      ! trajectory of a run without it.  One file for each pass and stage,
+      ! output/stage_state_p<pass>_<stage>.txt, every row including ghosts.
+      integer, intent(in)          :: pass
+      character(len=*), intent(in) :: stage
+      logical, intent(in)          :: with_residual
+      character(len=128) :: fname
+      integer :: uu, j, ios
+
+      write(fname,'(A,I3.3,A,A,A)') 'output/stage_state_p', pass, '_',    &
+                                    trim(stage), '.txt'
+      open(newunit=uu, file=trim(fname), status='replace',               &
+           action='write', iostat=ios)
+      if (ios .ne. 0) then
+         write(*,'(A)') ' (EXHALE_main) cannot open '//trim(fname)//      &
+              '; the stage is not exported'
+         return
+      endif
+      write(uu,'(A)') '# EXHALE stage state (EXHALE_STAGE_EXPORT=1)'
+      write(uu,'(A,I0,A,A)') '# pass ', pass, ', stage ', trim(stage)
+      write(uu,'(A)') '# the arrays the stationary alternation holds at'// &
+           ' this stage: densities in cm^-3, T in K; rho, v, p, heat,'//   &
+           ' cool, u and R in code units'
+      ! heat and cool are those of the last cycle of the chemistry closure
+      ! at the held pressure, taken at the temperature of that cycle.
+      if (composition_update_holds_pressure .and.                         &
+          trim(stage) .eq. 'composition_return') then
+         write(uu,'(A)') '# the composition update held rho, v and p of'// &
+              ' every cell; T and E (u3) were rebuilt at the new'//       &
+              ' composition ("Composition update holds: pressure")'
+         write(uu,'(A)') '# the eliminated species were closed at the'//  &
+              ' held pressure; heat and cool are those of the last'//     &
+              ' cycle of that closure'
+      endif
+      if (with_residual) then
+         write(uu,'(A)') '# columns: j r[Rp] rho v p T[K] heat cool'//    &
+              ' n_tot n_e n_HI n_HII n_HeI n_HeII n_HeIII n_He23S n_H2'//  &
+              ' n_H2+ n_H3+ n_HeH+ u1 u2 u3 R_mass R_momentum R_energy'
+      else
+         write(uu,'(A)') '# columns: j r[Rp] rho v p T[K] heat cool'//    &
+              ' n_tot n_e n_HI n_HII n_HeI n_HeII n_HeIII n_He23S n_H2'//  &
+              ' n_H2+ n_H3+ n_HeH+ u1 u2 u3'
+      endif
+      do j = 1-Ng, N+Ng
+         write(uu,'(I5,22ES17.9)', advance='no') j, r(j), rho(j), v(j),   &
+              p(j), T(j)*T0, heat(j), cool(j), n_tot(j)*n0, ne(j)*n0,     &
+              nhi(j)*n0, nhii(j)*n0, nhei(j)*n0, nheii(j)*n0,             &
+              nheiii(j)*n0, nheiTR(j)*n0,                                 &
+              rho(j)*n0*f_sp(j,isp_H2), rho(j)*n0*f_sp(j,isp_H2p),        &
+              rho(j)*n0*f_sp(j,isp_H3p), rho(j)*n0*f_sp(j,isp_HeHp),      &
+              u(1,j), u(2,j), u(3,j)
+         if (with_residual) write(uu,'(3ES17.9)', advance='no')           &
+              Rres(1,j), Rres(2,j), Rres(3,j)
+         write(uu,'(A)') ''
+      enddo
+      close(uu)
+      end subroutine write_stage_state
+
+      ! ------------------------------------------------!
+
+      subroutine hold_state_before_composition_update(W_hold, E_hold)
+      ! The state the composition update of the stationary alternation is
+      ! entered at, in the form "Composition update holds: pressure"
+      ! restores after it: the primitive array of u at the composition
+      ! installed now, and the total energy density E.
+      !
+      ! THE CALORIC MAPS ARE REFRESHED FIRST. The pressure of a molecular
+      ! cell is the inverse of the caloric equation of state of that cell's
+      ! mixture, and only get_species_densities writes the arrays that map
+      ! reads; refreshing them from the (rho, f_sp) the joint test was taken
+      ! on makes W_hold(3,:) the pressure that state's rows were assembled
+      ! with. On a composition they already describe, the refresh returns
+      ! the same numbers.
+      real*8, intent(out) :: W_hold(3,1-Ng:N+Ng), E_hold(1-Ng:N+Ng)
+
+      rho = u(1,:)
+      call get_species_densities(rho,f_sp,nhi,nhii,nhei,nheii,           &
+                                 nheiii,nheiTR,nm,ne,n_tot)
+      call U_to_W(u, W_hold)
+      E_hold = u(3,:)
+      end subroutine hold_state_before_composition_update
+
+      ! ------------------------------------------------!
+
+      subroutine rebuild_energy_at_held_pressure(pass_now, W_hold, E_hold)
+      ! "Composition update holds: pressure". The state the composition
+      ! update hands to the next hydrodynamic solve keeps the density, the
+      ! velocity and the pressure every physical cell had in the certified
+      ! state (W_hold). Its temperature is T = p/(n_tot + n_e) of the new
+      ! composition, and its total energy density is
+      !
+      !     E = (rho v)^2/(2 rho) + (rho e)(rho, p; new composition),
+      !
+      ! the caloric equation of state of the new mixture at the held
+      ! pressure (energy_density_from_pressure: 3/2 k per atom, ion and
+      ! electron plus the rovibrational energy of H2), with the kinetic part
+      ! the one u already carries, since rho and rho v are not touched.
+      !
+      ! WHY. At a base many decades subsonic the stationary wind rests on a
+      ! near-hydrostatic balance between the reservoir and the first cells.
+      ! A composition change at fixed E moves the pressure of a molecular
+      ! cell through its particle count and heat capacity; a pressure step
+      ! dp against the reservoir drives a face mass flux of order dp/c,
+      ! which there exceeds rho v by decades. Holding p leaves the pressure
+      ! force, the face pressures and the base face state as the solve
+      ! left them, and the composition change enters the energy row, where
+      ! the enthalpy it carries belongs.
+      !
+      ! THE CHEMISTRY IS CLOSED AT THE HELD PRESSURE. The relaxations close
+      ! the eliminated species (ions, electrons, the molecular ions) at the
+      ! temperature of the unchanged conserved state; at the held pressure
+      ! the temperature is another one (1 percent higher where the H2
+      ! carrier moved most, MEASURED on the well-mixed He/H 0.083 state),
+      ! so the chemistry handed over would not be the equilibrium of the
+      ! state it is handed over with, and a residual that eliminates it by
+      ! one sweep would read a composition still moving. Cycles of (T of
+      ! the held pressure at the current particle count; one equilibrium
+      ! sweep, the transported carriers held; T again) are taken until the
+      ! temperature stops moving, on the tolerance and cycle budget of the
+      ! closure at a fixed conserved state (chem_cycle_tol, chem_cycles_max
+      ! of diffusive_photochemistry), so the two contracts close the
+      ! chemistry to one standard. A sweep that returns a composition that
+      ! is not finite is undone and the rebuild is taken on the composition
+      ! the relaxations returned. The closure and the rebuild run only when
+      ! the update moved the pressure the unchanged u carries in at least
+      ! one cell; a composition that did not move is handed back untouched,
+      ! bit for bit, which is the fixed-point statement below.
+      !
+      ! ONE RULE IN EVERY CELL. Where the pressure u carries at the closed
+      ! composition equals the held pressure to the bit, E is already the
+      ! answer and u is left alone: every cell whose caloric map is the
+      ! constant-gamma one (e = p/(gamma - 1) does not depend on the
+      ! composition, so holding E and holding p are one statement there).
+      ! Elsewhere E is rebuilt. The equality test is exact on purpose: the
+      ! question is whether the two contracts give the same double, not
+      ! whether they are close.
+      !
+      ! THE BOUNDARY IS DERIVED AGAIN from the rebuilt interior and the new
+      ! composition (Apply_BC writes the ghosts and the cached face states
+      ! and nothing else), and the primitive state and the temperature are
+      ! re-formed from the rebuilt u, so u, W, p and T describe one gas.
+      !
+      ! THE RECORD, one block for each pass. The energy the rebuild adds,
+      ! the sum over the physical cells of (E_new - E_hold) V_j with V_j the
+      ! shell volume of the cell (spherical_cell_volume, R_p^3 per
+      ! steradian, with E in the code unit p0), also as a fraction of the
+      ! thermal energy of the domain; the closure's cycles and increments;
+      ! the largest relative pressure step the fixed-energy contract would
+      ! have handed over (u unchanged, at the composition the relaxations
+      ! returned); the largest relative departure of the rebuilt pressure
+      ! from the held one (the precision of the inverse caloric map); and
+      ! both for the first three cells. The rebuild is a change of the
+      ! relaxation path and not of the stationary equations: at a fixed
+      ! point the composition does not move, nothing is rebuilt and the
+      ! sum is zero.
+      integer, intent(in) :: pass_now
+      real*8,  intent(in) :: W_hold(3,1-Ng:N+Ng), E_hold(1-Ng:N+Ng)
+      real*8  :: W_fixed_energy(3,1-Ng:N+Ng), W_after_closure(3,1-Ng:N+Ng)
+      real*8  :: p_held(1-Ng:N+Ng), T_cycle(1-Ng:N+Ng)
+      real*8  :: f_sp_relaxed(1-Ng:N+Ng,n_species)
+      real*8  :: dE_domain, Eth_domain, vol_cell, rel_now
+      real*8  :: dp_step_worst, dp_held_worst
+      real*8  :: closure_dT, closure_dT_first
+      integer :: jcell, n_rebuilt_cells, j_step_worst, j_held_worst
+      integer :: n_pressure_moved, kcycle, closure_cycles
+      logical :: closure_ok
+      character(len=48) :: closure_text
+      type(ioniz_eq_ledger) :: ledger_held
+
+      ! The caloric maps of the composition the relaxations returned, and
+      ! the pressure the unchanged u has under them.
+      rho = u(1,:)
+      call get_species_densities(rho,f_sp,nhi,nhii,nhei,nheii,           &
+                                 nheiii,nheiTR,nm,ne,n_tot)
+      call U_to_W(u, W_fixed_energy)
+      n_pressure_moved = count(W_fixed_energy(3,1:N) .ne. W_hold(3,1:N))
+      if (n_pressure_moved .eq. 0) then
+         write(*,'(A,I0,A)') '    composition update held the pressure'// &
+              ' (pass ', pass_now, '): the update moved no cell''s'//      &
+              ' pressure; nothing rebuilt'
+         return
+      endif
+
+      ! The chemistry of the new composition, closed at the held pressure.
+      p_held           = W_hold(3,:)
+      f_sp_relaxed     = f_sp
+      closure_ok       = .false.
+      closure_text     = 'the cycle budget was spent'
+      closure_cycles   = 0
+      closure_dT       = 0.0d0
+      closure_dT_first = 0.0d0
+      call comp_T_from_p(p_held,n_tot,ne,T)
+      do kcycle = 1, chem_cycles_max
+         T_cycle = T
+         call ioniz_eq(T,rho,f_sp,heat,cool,eta,ledger_held)
+         closure_cycles = kcycle
+         if (ledger_held%n_nonfinite .gt. 0 .or.                          &
+             .not. every_species_is_finite(f_sp)) then
+            f_sp = f_sp_relaxed
+            call get_species_densities(rho,f_sp,nhi,nhii,nhei,nheii,     &
+                                       nheiii,nheiTR,nm,ne,n_tot)
+            call comp_T_from_p(p_held,n_tot,ne,T)
+            closure_text = 'NOT FINITE: the relaxed composition kept'
+            exit
+         endif
+         call get_species_densities(rho,f_sp,nhi,nhii,nhei,nheii,        &
+                                    nheiii,nheiTR,nm,ne,n_tot)
+         call comp_T_from_p(p_held,n_tot,ne,T)
+         closure_dT = maxval(abs(T(1:N) - T_cycle(1:N))                   &
+                             /max(T(1:N), 1.0d-300))
+         if (kcycle .eq. 1) closure_dT_first = closure_dT
+         if (closure_dT .lt. chem_cycle_tol) then
+            closure_ok   = .true.
+            closure_text = 'closed'
+            exit
+         endif
+      enddo
+
+      ! E at the held pressure, in every cell where u does not already
+      ! carry it.
+      call U_to_W(u, W_after_closure)
+      n_rebuilt_cells = 0
+      do jcell = 1, N
+         if (W_after_closure(3,jcell) .ne. W_hold(3,jcell)) then
+            u(3,jcell) = 0.5d0*u(2,jcell)*u(2,jcell)/u(1,jcell)           &
+                       + energy_density_from_pressure(jcell, u(1,jcell),  &
+                                                      W_hold(3,jcell))
+            n_rebuilt_cells = n_rebuilt_cells + 1
+         endif
+      enddo
+      if (.not. boundary_rebuild_suppressed()) call Apply_BC(u)
+      call U_to_W(u,W)
+      rho = W(1,:);  v = W(2,:);  p = W(3,:);  E = u(3,:)
+      call comp_T_from_p(p,n_tot,ne,T)
+
+      dE_domain     = 0.0d0
+      Eth_domain    = 0.0d0
+      dp_step_worst = 0.0d0;  j_step_worst = 0
+      dp_held_worst = 0.0d0;  j_held_worst = 0
+      do jcell = 1, N
+         vol_cell   = spherical_cell_volume(jcell)
+         dE_domain  = dE_domain + (u(3,jcell) - E_hold(jcell))*vol_cell
+         Eth_domain = Eth_domain + (E_hold(jcell)                         &
+                    - 0.5d0*u(2,jcell)*u(2,jcell)/u(1,jcell))*vol_cell
+         rel_now = abs(W_fixed_energy(3,jcell) - W_hold(3,jcell))         &
+                   /W_hold(3,jcell)
+         if (rel_now .gt. dp_step_worst) then
+            dp_step_worst = rel_now;  j_step_worst = jcell
+         endif
+         rel_now = abs(p(jcell) - W_hold(3,jcell))/W_hold(3,jcell)
+         if (rel_now .gt. dp_held_worst) then
+            dp_held_worst = rel_now;  j_held_worst = jcell
+         endif
+      enddo
+      write(*,'(A,I0,A,I0,A,I0,A)') '    composition update held the'//   &
+           ' pressure (pass ', pass_now, '): E rebuilt in ',              &
+           n_rebuilt_cells, ' of ', N, ' cells'
+      write(*,'(A,A,A,I0,A,ES10.3,A,ES10.3)') '      chemistry at the'//  &
+           ' held pressure: ', trim(closure_text), ' in ', closure_cycles, &
+           ' cycle(s); max |dT|/T of the first cycle', closure_dT_first,  &
+           ', of the last', closure_dT
+      write(*,'(A,ES11.3,A,ES11.3,A,ES10.3,A)') '      energy the'//      &
+           ' rebuild adds: sum of dE V =', dE_domain, ' (code units per'//&
+           ' sr; ', dE_domain*p0*R0**3*4.0d0*pi, ' erg over 4 pi sr), ',  &
+           dE_domain/max(abs(Eth_domain), tiny(1.0d0)),                   &
+           ' of the thermal energy of the domain'
+      write(*,'(A,ES10.3,A,I0,A,ES10.3,A,I0)') '      |dp|/p the'//      &
+           ' fixed-energy contract would have handed over: largest',      &
+           dp_step_worst, ' at cell ', j_step_worst,                      &
+           '; rebuilt against held p: largest', dp_held_worst,            &
+           ' at cell ', j_held_worst
+      write(*,'(A,3ES11.3,A,3ES11.3)') '      cells 1-3, (p - p_held)/'// &
+           'p_held at fixed energy:',                                     &
+           (W_fixed_energy(3,jcell)/W_hold(3,jcell) - 1.0d0, jcell = 1, 3),&
+           '; as rebuilt:', (p(jcell)/W_hold(3,jcell) - 1.0d0, jcell = 1, 3)
+      end subroutine rebuild_energy_at_held_pressure
 
       ! ------------------------------------------------!
 

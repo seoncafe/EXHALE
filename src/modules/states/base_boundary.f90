@@ -1178,8 +1178,13 @@
    ! density between them is an interpolation and not a law of thermal
    ! contact, and the average of the two isentropes that a symmetric
    ! handover returns at zero has no physics behind it.  Where the window
-   ! has standing the states sit decades from its two thresholds (measured
-   ! above), and where it does not the matched face velocity of a state that
+   ! has standing the states measured above sit decades from its two
+   ! thresholds, but not every state does: the atomic x0.01, He/H = 9.7
+   ! state g0002 of LHS 1140 b sits one decade away (d = 2.04e-4 against
+   ! 2e-3), and a finite-difference probe of about two standard arcs
+   ! crosses the switch (MEASURED 2026-09-23), so the residual a Newton
+   ! differentiates can carry this step.  Where the window does not have
+   ! standing the matched face velocity of a state that
    ! moves is of order 1 to 100 cm/s away from zero.  The one state that IS
    ! at the switch is the one it was built for, a column in exact
    ! hydrostatic balance with the level, and the floor below decides it for

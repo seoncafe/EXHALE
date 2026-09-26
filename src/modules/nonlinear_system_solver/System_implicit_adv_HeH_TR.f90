@@ -22,11 +22,12 @@
 	! Row 2 is therefore the ground-singlet balance, i.e. the summed He I
 	! balance minus the metastable balance of row 4. Its terms:
 	!   gain  He+ recombination into the singlet ladder (aheii), the
-	!         metastable returning to the ground state by collisional
-	!         de-excitation (q31a+q31b), by the 2^3S -> 1^1S radiative decay
-	!         (A31) and by the He(2^3S)+H0 ionizing collisions (Q31, both the
-	!         Penning and the associative branch leaving He in 1^1S), and the
-	!         He+ + H0 charge exchange;
+	!         metastable returning to the ground state by electron
+	!         collisions -- directly (q31g, the detailed-balance reverse of
+	!         q13) or through 2^1S and 2^1P (q31a+q31b) --, by the
+	!         2^3S -> 1^1S radiative decay (A31) and by the He(2^3S)+H0
+	!         ionizing collisions (Q31, both the Penning and the associative
+	!         branch leaving He in 1^1S), and the He+ + H0 charge exchange;
 	!   loss  photoionization (ghei), electron-impact ionization (ionhei),
 	!         collisional excitation into the metastable (q13), and the
 	!         He0 + H+ charge exchange.
@@ -56,7 +57,7 @@
 	real*8  :: ionhi,ionhei,ionheii,ionheiTR
 	real*8  :: heh_loc
    real*8  :: params(25)
-   real*8  :: A31,q13,q31a,q31b,Q31
+   real*8  :: A31,q13,q31g,q31a,q31b,Q31
 	
 	! Coefficients of the system
  	c1         = adv_cell%c1    ! = dr/v
@@ -78,6 +79,7 @@
 	A31	     = adv_cell%A31   ! = A31
 	gheiTR     = adv_cell%P_HeITR   ! = P_HeITR
 	q13        = adv_cell%q13   ! = q13
+	q31g       = adv_cell%q31g  ! = q31g (reverse of q13)
 	q31a	     = adv_cell%q31a   ! = q31a
 	q31b	     = adv_cell%q31b   ! = q31b
 	Q31 	     = adv_cell%Q31   ! = Q31
@@ -121,14 +123,14 @@
   	! into the metastable. Gains: recombination of He+ into the singlet ladder
   	! (aheii; the aheiTR channel feeds the metastable and is charged to row 4),
   	! and every route by which the metastable returns to the ground state --
-  	! collisional de-excitation (q31a+q31b), the 2^3S -> 1^1S decay A31, and
+  	! electron collisions (q31g + q31a + q31b), the 2^3S -> 1^1S decay A31, and
   	! the He(2^3S)+H0 ionizing collisions Q31, whose Penning branch leaves
   	! He(1^1S)+H+ + e- and whose associative branch makes HeH+ that
   	! dissociatively recombines back to ground-state He (see ion_residual_core).
   	fvec(2) =  xheiS_old - xheiS + c1*(                     &
   		       xheii*aheii*xe*n_h                            &
   		     - xheiS*(ghei + (ionhei + q13)*xe*n_h)          &
-  		     + xheiTR*((q31a + q31b)*xe*n_h                  &
+  		     + xheiTR*((q31g + q31a + q31b)*xe*n_h           &
   		               + A31 + xhi*Q31*n_h))
   	 	      	 	    
   	fvec(3) =  xheiii_old - xheiii + c1*(	    &
@@ -141,14 +143,16 @@
 	fvec(4) =    xheiTR_old - xheiTR + c1*(   &
 		     - gheiTR*xheiTR				         &
 		     + (xheii*aheiTR + xheiS*q13    	&
-		     -  xheiTR*(q31a + q31b))*xe*n_h	&
+		     -  xheiTR*(q31g + q31a + q31b))*xe*n_h	&
 		     - xheiTR*ionheiTR*xe*n_h           &
 		     - xheiTR*(A31 + xhi*Q31*n_h))
 
 	! He <-> H charge exchange (Huang Table 4 group B) on the H (row 1) and
-	! He (row 2) rows, both written neutral-gain positive here. The helium
+	! He (row 2) rows, both written neutral-gain positive here, and He2+ +
+	! H0 on rows 1 and 3 (He III gain positive). The helium
 	! reactant of He + H+ -> He+ + H is the GROUND SINGLET, xheiS: the rate
-	! Table 4 lists for it, from Glover & Jappsen (2007), carries the barrier
+	! charge_exchange::he_h_cx_rates forms for it, the detailed-balance
+	! reverse of He+ + H -> He(1^1S) + H+, carries the barrier
 	! exp(-12.75/T4), and 12.75e4 K = 10.99 eV is the ionization-potential
 	! difference 24.587 - 13.598 eV of ground-state helium against hydrogen.
 	! He(2^3S) lies 19.82 eV above the singlet, so its own charge exchange
@@ -158,8 +162,9 @@
 	! Row 2 is the ground-singlet balance, so the singlet loss the pair
 	! reports is charged to the row that owns the singlet, exactly as the
 	! equilibrium systems charge it.
-	call he_h_cx_fvec_adv(fvec, c1, xhi, xhii, xheiS, xheii, heh_loc, n_h, &
-	                      adv_cell%kcx_He0_Hp, adv_cell%kcx_Hep_H0)
+	call he_h_cx_fvec_adv(fvec, c1, xhi, xhii, xheiS, xheii, xheiii,       &
+	                      heh_loc, n_h, adv_cell%kcx_He0_Hp,              &
+	                      adv_cell%kcx_Hep_H0, adv_cell%kcx_Hepp_H0)
 
 	! End of subroutine
 	end subroutine adv_implicit_HeH_TR

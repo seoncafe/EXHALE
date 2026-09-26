@@ -401,7 +401,7 @@ $N_{\rm H_2} = 10^{19}$~cm$^{-2}$. Second, \textsc{Cloudy} applies the
 Federman, Glassgold \& Kwan (1979) shielding function to each transition using
 that transition's own optical depth, so no line absorbs any other line's beam.
 Sec.~135 of \texttt{Update\_EXHALE} and
-\texttt{docs/p38\_line\_overlap\_shielding.md} are the measurement.
+\texttt{md/p38\_line\_overlap\_shielding.md} are the measurement.
 
 What is tabulated now is a line-by-line calculation of the same three
 quantities on the same $39 \times 9 \times 3$ grid: a plane-parallel slab, a
@@ -420,7 +420,7 @@ $\log_{10} p_{\rm eff}$, trilinear in
 $(\log_{10} T, \log_{10} n_{\rm H}, \log_{10} N_{\rm H_2})$, with every axis
 clamped rather than extrapolated. The generator is
 \texttt{src/utils/h2\_shielding\_table\_line\_by\_line.py};
-\texttt{docs/h2\_self\_shielding\_cloudy.md} and
+\texttt{md/h2\_self\_shielding\_cloudy.md} and
 \texttt{src/utils/h2\_shielding\_table\_from\_cloudy.py} record the
 \textsc{Cloudy} runs, which still supply the fluorescent trapping.
 
@@ -533,8 +533,8 @@ and the code now carries both from the same table: $p_{\rm single}$, the
 untrapped $D/(D+\sum A_{ul})$, which fixes how many fluorescent decays
 accompany each dissociation, and $p_{\rm eff}$, which fixes how many band
 photons the beam loses per dissociation. Sec.~132 of \texttt{Update\_EXHALE}
-and \texttt{docs/p39\_lw\_cross\_section\_sources.md} carry the derivation;
-Sec.~135 and \texttt{docs/p38\_line\_overlap\_shielding.md} carry the rebuild
+and \texttt{md/p39\_lw\_cross\_section\_sources.md} carry the derivation;
+Sec.~135 and \texttt{md/p38\_line\_overlap\_shielding.md} carry the rebuild
 of the table these three are read from.
 
 \paragraph{What DB96 still owns.} The band share $A$ that H$_2$ removes from

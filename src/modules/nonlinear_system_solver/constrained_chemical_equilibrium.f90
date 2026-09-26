@@ -148,10 +148,10 @@
 	use System_HeH_mol_metals, only: set_mol_metal_turnover_rates
 	use System_HeH_metals, only: met_nelem, met_ntot, met_g0, met_g1,      &
 	                             met_b0, met_b1, met_a1, met_a2, met_top,  &
-	                             set_metal_coeffs
+	                             met_g02, set_metal_coeffs
 	use charge_exchange,   only: cx_add_to_fvec, he_h_cx_fvec,             &
 	                             cx_metal_base, cx_add_to_turnover,        &
-	                             cx_set_cell
+	                             cx_set_cell, he_h_cx_rates
 	use lower_column,      only: q_h2_equilibrium
 	use oxygen_rates,      only: oxygen_chemical_equilibrium_fractions, &
 	                             rk_D1_Hep_CO
@@ -1140,7 +1140,7 @@
 	real*8, intent(out) :: fvec(n_fraction_rows_max)
 
 	real*8  :: nm0(n_melem), nm1(n_melem), nm2(n_melem)
-	real*8  :: gm0(n_melem), gm1(n_melem)
+	real*8  :: gm0(n_melem), gm1(n_melem), gm02(n_melem)
 	real*8  :: xzero(n_fraction_rows_max)
 	real*8  :: n_e, lam
 	integer :: i, e
@@ -1186,8 +1186,8 @@
 	                  ieq_cell%rcheiiiB, ieq_cell%rcheiTR,                &
 	                  ieq_cell%a_ion_HI, ieq_cell%a_ion_HeI,              &
 	                  ieq_cell%a_ion_HeII, ieq_cell%a_ion_HeITR,          &
-	                  ieq_cell%q13, ieq_cell%q31a, ieq_cell%q31b,         &
-	                  ieq_cell%Q31, ieq_cell%A31)
+	                  ieq_cell%q13, ieq_cell%q31g, ieq_cell%q31a,         &
+	                  ieq_cell%q31b, ieq_cell%Q31, ieq_cell%A31)
 
 	! Oxygen carriers, and the oxygen cycle's exchange with the H2 row.
 	! sden(is_HI) is the free atomic H and nm0(iel_O) the free atomic O by
@@ -1201,15 +1201,16 @@
 
 	if (thereis_metals) then
 		do e = 1,met_nelem
-			gm0(e) = lam*met_g0(e)
-			gm1(e) = lam*met_g1(e)
+			gm0(e)  = lam*met_g0(e)
+			gm1(e)  = lam*met_g1(e)
+			gm02(e) = lam*met_g02(e)
 		enddo
 		! metal_rows writes the identity rows fvec = x for an absent
 		! element and for the pinned X++ of a two-stage element; those
 		! rows are not selected below, so the argument only has to exist.
 		xzero(1:n_fraction_row) = 0.0d0
 		call metal_rows(fvec, xzero, metal_base, met_nelem, met_ntot,     &
-		                gm0, gm1, met_b0, met_b1, met_a1, met_a2,         &
+		                gm0, gm1, gm02, met_b0, met_b1, met_a1, met_a2,   &
 		                met_top, nm0, nm1, nm2, n_e)
 		cx_metal_base = metal_base
 		! The rows are mol_heh_rows', so the He I <-> He II row is
@@ -1230,9 +1231,12 @@
 		cx_metal_base = 4
 	endif
 
+	! Row 2 of mol_heh_rows is the He II stage source, which He2+ + H0
+	! feeds (heii_row_is_stage_source).
 	call he_h_cx_fvec(fvec, ieq_cell%kcx_He0_Hp, ieq_cell%kcx_Hep_H0,     &
+	                  ieq_cell%kcx_Hepp_H0,                               &
 	                  sden(is_HI), sden(is_HII), sden(is_HeI_SI),         &
-	                  sden(is_HeII), 1.0d0)
+	                  sden(is_HeII), sden(is_HeIII), 1.0d0, .true.)
 
 	! Each row against its own turnover rate, in the normalization the
 	! caller's acceptance judge uses (set_turnover_scales_at_field).
@@ -1605,11 +1609,11 @@
 	if (thereis_HeITR) then
 		! Steady state of the 2^3S level: fed by He+ recombination into the
 		! triplet and by 1^1S collisional excitation, drained by
-		! photoionization, A31, collisional de-excitation, electron impact
-		! ionization and Penning ionization on H0.
+		! photoionization, A31, electron collisions to 1^1S, 2^1S and 2^1P,
+		! electron impact ionization and Penning ionization on H0.
 		drain_tr = photo_scale*ieq_cell%P_HeITR + ieq_cell%A31         &
 		         + sden(is_HI)*ieq_cell%Q31                            &
-		         + (ieq_cell%q31a + ieq_cell%q31b                      &
+		         + (ieq_cell%q31g + ieq_cell%q31a + ieq_cell%q31b      &
 		            + ieq_cell%a_ion_HeITR)*n_e
 		if (drain_tr .gt. 0.0d0) f_tr = min(                           &
 			n_e*(f1*ieq_cell%rcheiTR + f0*ieq_cell%q13)/drain_tr, f0)
@@ -1627,7 +1631,8 @@
 			u1 = photo_scale*met_g1(e) + met_b1(e)*n_e
 			d2 = met_a2(e)*n_e
 			call ionization_stage_fractions(u0, u1, d1, d2,        &
-			                                met_top(e), f0, f1, f2)
+			                                met_top(e), f0, f1, f2, &
+			                                photo_scale*met_g02(e))
 			sden(i)   = f0*met_ntot(e)
 			sden(i+1) = f1*met_ntot(e)
 			if (met_top(e) .ge. 2) sden(i+2) = f2*met_ntot(e)
@@ -1661,7 +1666,8 @@
 
 	!----------------------------------!
 
-	subroutine ionization_stage_fractions(u0, u1, d1, d2, top, f0, f1, f2)
+	subroutine ionization_stage_fractions(u0, u1, d1, d2, top, f0, f1, f2, &
+	                                      u02)
 	! Stage fractions of an element in its OWN ionization balance at a fixed
 	! electron density,
 	!
@@ -1677,9 +1683,15 @@
 	! element's simplex. top = 1 keeps two stages, top >= 2 all three. A
 	! vanishing denominator means the element has no ionization channel at
 	! all at this field, and the whole element is neutral.
+	!
+	! u02 (optional, three stages only) is the part of u0 that takes stage
+	! 0 straight to stage 2 (an autoionizing inner-shell vacancy): the flow
+	! across the 1|2 boundary is then n_1 u_1 + n_0 u02 = n_2 d_2, and
+	! n_2 is proportional to u_0 u_1 + u02 d_1 instead of u_0 u_1.
 	real*8,  intent(in)  :: u0, u1, d1, d2
 	integer, intent(in)  :: top
 	real*8,  intent(out) :: f0, f1, f2
+	real*8,  intent(in), optional :: u02
 	real*8 :: w0, w1, w2, s
 
 	f0 = 1.0d0
@@ -1690,6 +1702,7 @@
 		w0 = d1*d2
 		w1 = u0*d2
 		w2 = u0*u1
+		if (present(u02)) w2 = w2 + u02*d1
 		s  = w0 + w1 + w2
 		if (s .gt. 0.0d0) then
 			f0 = w0/s
@@ -1816,7 +1829,7 @@
 			            ieq_cell%a_ion_HeII, ieq_cell%a_ion_HeITR
 			write(iu,*) ieq_cell%rcheiTR, ieq_cell%A31,            &
 			            ieq_cell%P_HeITR
-			write(iu,*) ieq_cell%q13, ieq_cell%q31a,               &
+			write(iu,*) ieq_cell%q13, ieq_cell%q31g, ieq_cell%q31a, &
 			            ieq_cell%q31b, ieq_cell%Q31
 			write(iu,*) ieq_cell%P_H2, ieq_cell%P_H2_di,           &
 			            ieq_cell%P_H2_dd, ieq_cell%P_H2_nd,         &
@@ -1839,6 +1852,9 @@
 				            met_a2(e), met_top(e)
 			enddo
 			write(iu,*) sden(1:n_species_max)
+			! The direct X0 -> X++ rate of each element, appended
+			! last so that a dump without it is still read.
+			write(iu,*) met_g02(1:met_nelem)
 			close(iu)
 			write(*,'(A,I0,A,A)') ' (constrained_chemical_'//  &
 				'equilibrium) cell state of cell ', ieq_cell%jcell,  &
@@ -1871,7 +1887,7 @@
 	integer, intent(out) :: nt
 	integer, intent(in)  :: irow
 
-	real*8 :: n_e, lam, r1, r2
+	real*8 :: n_e, lam, r1, r2, r3
 	real*8 :: nm0(n_melem), nm1(n_melem), nm2(n_melem)
 	integer :: e, i
 
@@ -1896,6 +1912,8 @@
 	! The H <-> He pair, the two gross rates the review is about.
 	r1 = ieq_cell%kcx_He0_Hp*sden(is_HeI_SI)*sden(is_HII)
 	r2 = ieq_cell%kcx_Hep_H0*sden(is_HeII)*sden(is_HI)
+	! and He2+ + H0 -> He+ + H+, which feeds both rows
+	r3 = ieq_cell%kcx_Hepp_H0*sden(is_HeIII)*sden(is_HI)
 
 	nt = 0
 	if (irow .eq. 1) then
@@ -1921,6 +1939,7 @@
 			-(mk10 + mk13)*sden(is_HII)*sden(is_H2))
 		call add_term(lbl, val, nt, 'CX gross R2 (He+ +H0)', r2)
 		call add_term(lbl, val, nt, 'CX gross R1 (He0 +H+)', -r1)
+		call add_term(lbl, val, nt, 'CX gross R3 (He2+ +H0)', r3)
 	else
 		call add_term(lbl, val, nt, 'photoion He(1^1S)',               &
 			lam*ieq_cell%P_HeI*sden(is_HeI_SI))
@@ -1947,6 +1966,7 @@
 			-rk_D1_Hep_CO()*ieq_cell%n_co*sden(is_HeII))
 		call add_term(lbl, val, nt, 'CX gross R1 (He0 +H+)', r1)
 		call add_term(lbl, val, nt, 'CX gross R2 (He+ +H0)', -r2)
+		call add_term(lbl, val, nt, 'CX gross R3 (He2+ +H0)', r3)
 	endif
 
 	end subroutine hydrogen_helium_row_terms
@@ -2045,7 +2065,7 @@
 	real*8  :: sden(n_species_max), u(n_species_max), fres(n_species_max)
 	real*8  :: mg_ntot(n_melem), mg_g0(n_melem), mg_g1(n_melem)
 	real*8  :: mg_b0(n_melem), mg_b1(n_melem), mg_a1(n_melem)
-	real*8  :: mg_a2(n_melem)
+	real*8  :: mg_a2(n_melem), mg_g02(n_melem)
 	integer :: mg_top(n_melem)
 	real*8  :: fj0(n_species_max,n_species_max)
 	real*8  :: fjf(n_species_max,n_species_max)
@@ -2061,7 +2081,7 @@
 	integer :: nsolv
 	real(kind=16) :: qsum
 	integer :: iu, ios, e, i, j, k, nt, ie, iflag, lwrk, ierr
-	real*8  :: kcx1_save, kcx2_save
+	real*8  :: kcx1_save, kcx2_save, kcx3_save, k1_regen, k2_regen
 
 	open(newunit=iu, file=trim(fname), status='old', action='read',       &
 	     iostat=ios)
@@ -2089,11 +2109,16 @@
 	read(iu,*) ieq_cell%a_ion_HI, ieq_cell%a_ion_HeI,                     &
 	           ieq_cell%a_ion_HeII, ieq_cell%a_ion_HeITR
 	read(iu,*) ieq_cell%rcheiTR, ieq_cell%A31, ieq_cell%P_HeITR
-	read(iu,*) ieq_cell%q13, ieq_cell%q31a, ieq_cell%q31b, ieq_cell%Q31
+	read(iu,*) ieq_cell%q13, ieq_cell%q31g, ieq_cell%q31a, ieq_cell%q31b, &
+	           ieq_cell%Q31
 	read(iu,*) ieq_cell%P_H2, ieq_cell%P_H2_di,                           &
 	           ieq_cell%P_H2_dd, ieq_cell%P_H2_nd, ieq_cell%k_LW,         &
 	           ieq_cell%T_K, ieq_cell%ntot
 	read(iu,*) ieq_cell%kcx_He0_Hp, ieq_cell%kcx_Hep_H0
+	! The He2+ + H0 coefficient is not in the dump (formats 1 and 2); it is
+	! regenerated from the temperature by the routine that forms it.
+	call he_h_cx_rates(ieq_cell%T_K, k1_regen, k2_regen,                  &
+	                   ieq_cell%kcx_Hepp_H0)
 	read(iu,*) ieq_cell%n_ofam, ieq_cell%n_co
 	read(iu,*) ieq_cell%x_h2_fixed, ieq_cell%x_ox_fixed,                  &
 	           ieq_cell%x_h2_fix,                                         &
@@ -2112,6 +2137,9 @@
 		           mg_a1(e), mg_a2(e), mg_top(e)
 	enddo
 	read(iu,*) sden(1:n_species_max)
+	mg_g02 = 0.0d0
+	read(iu,*,iostat=ios) mg_g02(1:nel)
+	if (ios .ne. 0) mg_g02 = 0.0d0
 	close(iu)
 
 	if (thereis_oxychem) then
@@ -2127,8 +2155,8 @@
 	call set_mol_coeffs(ieq_cell%T_K, ieq_cell%ntot)
 	if (thereis_metals) then
 		call set_metal_coeffs(nel, mg_ntot, mg_g0, mg_g1, mg_b0,       &
-		                      mg_b1, mg_a1, mg_a2, mg_top)
-		call cx_set_cell(ieq_cell%T_K)
+		                      mg_b1, mg_a1, mg_a2, mg_top, mg_g02)
+		call cx_set_cell(ieq_cell%T_K, n_e_ref)
 	endif
 
 	call set_molecular_network_layout(nx, mbase, iox)
@@ -2154,6 +2182,7 @@
 	write(*,'(A,I0)') ' held species ', count(species_held)
 	write(*,'(A,ES13.6)') ' kcx He0+H+ ', ieq_cell%kcx_He0_Hp
 	write(*,'(A,ES13.6)') ' kcx He+ +H0 ', ieq_cell%kcx_Hep_H0
+	write(*,'(A,ES13.6)') ' kcx He2+ +H0 ', ieq_cell%kcx_Hepp_H0
 
 	! ---- 1. residual, and the summation test on the two H/He rows ----
 	par(:) = 0.0d0
@@ -2274,8 +2303,10 @@
 	! ---- 4. the same with the H <-> He pair removed (diagnosis only) ----
 	kcx1_save = ieq_cell%kcx_He0_Hp
 	kcx2_save = ieq_cell%kcx_Hep_H0
-	ieq_cell%kcx_He0_Hp = 0.0d0
-	ieq_cell%kcx_Hep_H0 = 0.0d0
+	kcx3_save = ieq_cell%kcx_Hepp_H0
+	ieq_cell%kcx_He0_Hp  = 0.0d0
+	ieq_cell%kcx_Hep_H0  = 0.0d0
+	ieq_cell%kcx_Hepp_H0 = 0.0d0
 	call set_turnover_scales_at_field(n_e_ref, lam_try)
 	call constrained_equilibrium_residual(n_unknown, u, fres, iflag, par)
 	call jacobian_by_differences(u, fres, fjref, 2, 1.0d-5)
@@ -2292,8 +2323,9 @@
 			write(*,'(A,ES12.4)') '   condition number ',          &
 				svals(1)/svals(n_unknown)
 	endif
-	ieq_cell%kcx_He0_Hp = kcx1_save
-	ieq_cell%kcx_Hep_H0 = kcx2_save
+	ieq_cell%kcx_He0_Hp  = kcx1_save
+	ieq_cell%kcx_Hep_H0  = kcx2_save
+	ieq_cell%kcx_Hepp_H0 = kcx3_save
 	call set_turnover_scales_at_field(n_e_ref, lam_try)
 
 	! ---- 5. same root from a displaced seed (validation criterion 4) ----

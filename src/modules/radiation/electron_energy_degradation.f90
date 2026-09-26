@@ -91,10 +91,13 @@
    ! ---------------------------------------------------------------------
    !  H2 + e -> H + H+ + 2e is carried, through dissoc_ion_per_H2p below:
    !  the secondary electrons make one such proton for every 22 H2+ ions.
-   !  The photon side of the same channel is a branching of the Yan,
-   !  Sadeghpour & Dalgarno (1998) cross section
-   !  (frac_H2_dissociative_ionization in cross_sec.f90), and its
-   !  photoelectron enters this module as its own absorber, iabs_H2_di.
+   !  The photon side of the same channel is the H2 photoabsorption cross
+   !  section (sigma_H2 in cross_sec.f90: Backx et al. 1976 below 18 eV,
+   !  Samson & Haddad 1994 from 18 to 300 eV, the Yan, Sadeghpour &
+   !  Dalgarno 1998 sum-rule tail above) times the H+/(H+ + H2+) branching
+   !  of Chung et al. (1993) Table II (frac_H2_dissociative_ionization in
+   !  cross_sec.f90), and its photoelectron enters this module as its own
+   !  absorber, iabs_H2_di.
    !
    !  All quantities cgs except energies, which are eV.
 
@@ -106,6 +109,7 @@
    public :: photoelectron_partition_t
    public :: photoelectron_energy_partition, photoelectron_shares
    public :: photoelectron_energy_grid
+   public :: dalgarno_energy_bracket, dalgarno_energy_node_weights
    public :: svs85_fion_HI, svs85_fion_HeI
    public :: dalgarno_x_h2he, h2_ionization_share
    public :: heh_neutral_svs85, dal_h2_weight, n_dal_E, dal_E
@@ -332,7 +336,7 @@
    real*8, intent(in) :: e_v(:)     ! spectral grid [eV]
    real*8, intent(in) :: e_th(:)    ! ionization threshold of each absorber
    integer :: nl_loc, na, i, a, k
-   real*8  :: le, w
+   real*8  :: w
 
    nl_loc = size(e_v)
    na     = size(e_th)
@@ -342,24 +346,57 @@
 
    do a = 1, na
       do i = 1, nl_loc
-         le = log10(max(e_v(i) - e_th(a), tiny_den))
-         if (le .le. dal_logE(1)) then
-            k = 1;  w = 0.0d0
-         else if (le .ge. dal_logE(n_dal_E)) then
-            k = n_dal_E - 1;  w = 1.0d0
-         else
-            k = 1
-            do while (k .lt. n_dal_E-1 .and. le .gt. dal_logE(k+1))
-               k = k + 1
-            enddo
-            w = (le - dal_logE(k))/(dal_logE(k+1) - dal_logE(k))
-         endif
+         call dalgarno_energy_bracket(e_v(i) - e_th(a), k, w)
          sec_kE(i,a) = k
          sec_wE(i,a) = w
       enddo
    enddo
 
    end subroutine photoelectron_energy_grid
+
+   pure subroutine dalgarno_energy_bracket(E0, k, w)
+   ! Bracket index k and weight w of an electron energy E0 [eV] in the
+   ! Dalgarno energy grid: a quantity tabulated at dal_E is read at E0 as
+   ! (1 - w) q(k) + w q(k+1), linear in log10(E0) and clamped at both ends
+   ! (the validity note of photoelectron_energy_grid). The one definition
+   ! of that interpolation, for the photoelectrons of the spectral grid and
+   ! for an electron of any other energy (the Auger electrons of a metal
+   ! inner-shell absorption, dalgarno_energy_node_weights).
+   real*8,  intent(in)  :: E0
+   integer, intent(out) :: k
+   real*8,  intent(out) :: w
+   real*8 :: le
+   le = log10(max(E0, tiny_den))
+   if (le .le. dal_logE(1)) then
+      k = 1;  w = 0.0d0
+   else if (le .ge. dal_logE(n_dal_E)) then
+      k = n_dal_E - 1;  w = 1.0d0
+   else
+      k = 1
+      do while (k .lt. n_dal_E-1 .and. le .gt. dal_logE(k+1))
+         k = k + 1
+      enddo
+      w = (le - dal_logE(k))/(dal_logE(k+1) - dal_logE(k))
+   endif
+   end subroutine dalgarno_energy_bracket
+
+   pure subroutine dalgarno_energy_node_weights(E0, wt)
+   ! The same interpolation written as weights on the tabulated energies:
+   ! a partition coefficient q tabulated at dal_E is sum_k wt(k) q(k) at
+   ! E0. A photoabsorption that releases several electrons of different
+   ! energies (a photoelectron and Auger electrons) is the sum of their
+   ! weights times their energies, so the partition of all of them is one
+   ! contraction with the cell's coefficients (photoelectron_partition_t)
+   ! whatever the number of electrons.
+   real*8, intent(in)  :: E0
+   real*8, intent(out) :: wt(n_dal_E)
+   integer :: k
+   real*8  :: w
+   call dalgarno_energy_bracket(E0, k, w)
+   wt      = 0.0d0
+   wt(k)   = 1.0d0 - w
+   wt(k+1) = w
+   end subroutine dalgarno_energy_node_weights
 
    ! ================================================================= !
    !  Shull & van Steenberg (1985) fits: their equations (1) and (2)

@@ -64,7 +64,10 @@ endif
 # -llapack of the system. Override without editing this file:
 #     make LAPACK_LIBS='-L/path -llapack -lblas'
 FC_PATH    := $(shell command -v $(FC) 2>/dev/null)
-FC_VERSION := $(shell $(FC) -dumpfullversion -dumpversion 2>/dev/null | head -n 1)
+# The first line of --version, not -dumpfullversion: it carries the package
+# build number (conda-forge "gcc 16.2.0-5"), which -dumpfullversion drops, and
+# two builds of one release are different compilers for the flag stamp below.
+FC_VERSION := $(shell $(FC) --version 2>/dev/null | head -n 1)
 TOOLCHAIN_PREFIX ?= $(abspath $(dir $(FC_PATH))..)
 ifneq (,$(wildcard $(TOOLCHAIN_PREFIX)/lib/libopenblas.so))
   LAPACK_LIBS ?= -L$(TOOLCHAIN_PREFIX)/lib -lopenblas -Wl,-rpath,$(TOOLCHAIN_PREFIX)/lib -ldl
@@ -288,7 +291,7 @@ CCE_DEPFILE := $(OBJDIR)/.deps_cce.mk
 
 # Rebuild everything when the effective build flags change. The stamp file
 # NAME encodes a hash of the full flag string -- the compiler's resolved
-# path and version (two gfortrans of the same name on different PATHs are
+# path and version line, package build number included (two gfortrans of the same name on different PATHs are
 # different compilers; objects of one must not be linked by the other) and
 # $(FFLAGS) $(MODFLAG) --
 # so a different flag set names a different stamp: the previous one becomes

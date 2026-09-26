@@ -24,8 +24,10 @@ equation and be missing from the breakdown.
      the Balmer continuum, \eqref{eq:ion:balmer}\\
 8  & \texttt{heat\_Hdx[Lya-deexc]} & collisional de-excitation of the
      Ly$\alpha$-pumped $n=2$ atoms (\texttt{incl\_deexc\_heat}, default on)\\
-9  & \texttt{heat\_He\_recomb} & photoelectrons of the H\,{\sc i}, H$_2$ and
-     metal ionizations driven by helium recombination radiation\\
+9  & \texttt{heat\_He\_recomb} & photoelectrons of the H\,{\sc i},
+     He\,{\sc i}, H$_2$ and metal ionizations driven by recombination
+     radiation absorbed on the spot (He\,{\sc ii} and He\,{\sc iii}, and
+     the H\,{\sc ii} ground captures taken by metals)\\
 10--12 & \texttt{heat\_He23S\_*} & He($2^3$S)$+$H Penning and associative
      branches, and He($2^3$S)$+$H$_2$ Penning\\
 13--14 & \texttt{heat\_H2\_LW\_*} & kinetic energy of the Lyman-Werner
@@ -36,6 +38,11 @@ equation and be missing from the breakdown.
 16--19 & \texttt{heat\_FUV\_photolysis}, \texttt{heat\_oxygen\_collisional},
      \texttt{heat\_CO\_Hep\_transfer}, \texttt{heat\_CO\_photodissoc} &
      the oxygen option's deposits\\
+20 & \texttt{heat\_charge\_exchange} & energy defects of the applied
+     charge-exchange reactions (metal$+$H/He/metal and He$\leftrightarrow$H),
+     less the excitation of a product state that leaves as radiation;
+     negative for an endothermic reaction
+     (\texttt{charge\_exchange\_heating})\\
 \bottomrule
 \end{tabular}
 \end{center}
@@ -102,7 +109,9 @@ prompt-deposit behavior for comparison.
 \label{sec:thermal:cool}
 
 \texttt{eval\_cool} (\texttt{util\_ion\_eq.f90}) assembles the cooling rate
-of every cell as
+of every cell, the atomic, ionic and metal channels through the one routine
+\texttt{radiative\_cooling\_of\_cell} (\texttt{Cool\_coeff.f90}) that the
+post-process temperature root also calls, as
 \begin{equation}
 \Lambda = n_e\left(\Lambda_{\rm ff}+\Lambda_{\rm cx}
                  +\Lambda_{\rm rec}+\Lambda_{\rm ci}\right)
@@ -119,16 +128,31 @@ exactly.
 
 \paragraph{Recombination.} $\Lambda_{\rm rec} =
 \lambda_{\rm HII}n_{\rm HII}+\lambda_{\rm HeII}n_{\rm HeII}
-+\lambda_{\rm HeIII}n_{\rm HeIII}$ with, for hydrogen \citep{Hui1997},
++\lambda_{\rm HeIII}n_{\rm HeIII}+\sum_i\lambda_i n_{{\rm m},i}$, each the
+kinetic energy the captured electrons carry off, the last sum over the
+recombining metal ions. For captures of rate coefficient
+$\alpha(T)=\langle\sigma v\rangle$ in a Maxwellian gas it is exactly
 \begin{equation}
-\lambda_{\rm HII}(T) = 3.435\times10^{-30}\,T\,
-   \frac{x^{1.970}}{\left[1+(x/2.250)^{0.376}\right]^{3.720}},
-\qquad x = \frac{2\times157807}{T}.
+\lambda(T) = kT\,\alpha(T)\left(\frac{3}{2}
+            + \frac{{\rm d}\ln\alpha}{{\rm d}\ln T}\right),
 \label{eq:th:reccool}
 \end{equation}
-The helium terms are $kT$ times the \emph{same} recombination coefficient
-the ionization balance runs on, so electrons are not removed at one rate and
-the gas charged at another.
+which Table~1 of \citet{Hummer1994} obeys to 0.1 per cent, and it is applied
+to the \emph{same} coefficient the ionization balance removes the ions with:
+the net coefficients \eqref{eq:ion:netalpha} of H\,{\sc ii}, He\,{\sc ii}
+and He\,{\sc iii} (case B plus the escaping ground captures, whichever
+\texttt{Atomic rate set} gives $\alpha_{\rm B}$), and for each metal ion
+the Badnell radiative plus dielectronic (or \citealt{Huang2023} iron)
+coefficient of its balance; the relation holds for dielectronic capture as
+well, where it charges the resonance energy. The escape weights depend on the
+densities and the cell width only, so they are frozen while $T$ varies. The
+logarithmic slope is a centred difference of half step $10^{-3}$ in $\ln T$
+for H\,{\sc ii}, He\,{\sc ii} and He\,{\sc iii}, and is written analytically
+from the published forms for the metal ions
+(\texttt{metal\_recombination\_energy\_rate}).
+The kinetic energy of a ground capture whose photon is absorbed by another
+species is returned with the photoelectron
+(\texttt{recombination\_radiation\_absorbed}).
 
 \paragraph{Collisional ionization.} $\Lambda_{\rm ci}$ charges each
 ionization its measured potential in erg,
@@ -136,30 +160,36 @@ ionization its measured potential in erg,
 \Lambda_{\rm ci} = E_{\rm th}^{\rm HI}\beta_{\rm HI}n_{\rm HI}
    + E_{\rm th}^{\rm HeI}\beta_{\rm HeI}n_{1^1{\rm S}}
    + E_{\rm th}^{\rm HeII}\beta_{\rm HeII}n_{\rm HeII}
-   + E_{\rm th}^{2^3{\rm S}}\beta_{2^3{\rm S}}n_{2^3{\rm S}},
+   + E_{\rm th}^{2^3{\rm S}}\beta_{2^3{\rm S}}n_{2^3{\rm S}}
+   + \sum_i E_{\rm th}^{i}\beta_i n_{{\rm m},i},
 \label{eq:th:cicool}
 \end{equation}
 the He\,{\sc i} term acting on the ground \emph{singlet}
 $n(1^1{\rm S}) = n({\rm He\,I}) - n(2^3{\rm S})$, because the metastable
-sits 19.8\,eV up and carries its own 4.8\,eV threshold in the last term.
+sits 19.8\,eV up and carries its own 4.8\,eV threshold ($\beta_{2^3{\rm
+S}}$ from \citealt{Black1981}, eq.~12). The metal term charges each
+collisional ionization the measured potential of the ion; with it and the
+metal recombination term above, the electron gas, the ionization energy and
+the recombination radiation close for the metals as for H and He.
 The same subtraction is made in the photoheating and in the collisional
 excitation below, so the metastable is never charged the ground-state
 coefficients as well.
 
-\paragraph{Collisional excitation.} $\Lambda_{\rm cx}$ is the sum of three
-fits,
-\begin{equation}
-\lambda_{\rm HI} = \frac{7.5\times10^{-19}}{1+\sqrt{T/10^{5}}}e^{-118348/T},
-\qquad
-\lambda_{\rm HeI} = 1.1\times10^{-19}T^{0.082}e^{-2.3\times10^{5}/T},
-\qquad
-\lambda_{\rm HeII} = \frac{5.54\times10^{-17}T^{-0.397}}{1+\sqrt{T/10^{5}}}
-                     e^{-473638/T},
-\label{eq:th:coexcool}
-\end{equation}
-contracted with $n_{\rm HI}$, $n(1^1{\rm S})$ and $n_{\rm HeII}$. The first
-of these is the Ly$\alpha$-dominated hydrogen line cooling, and it is the
-optically thin fit as written: \emph{no escape probability multiplies the
+\paragraph{Collisional excitation.} $\Lambda_{\rm cx}$ is the coronal
+(every excitation radiated) sum over the upper levels of the CHIANTI v11.0.2
+models of H\,{\sc i} and He\,{\sc ii} and over the 28 upper terms $n\le5$ of
+\citet[Table~2]{Bray2000} for He\,{\sc i} (the strengths the metastable
+network uses, Sec.~\ref{sec:ionization:cellsystem}), with observed level
+energies, contracted with $n_{\rm HI}$, $n(1^1{\rm S})$ and $n_{\rm HeII}$.
+The CHIANTI strengths are descaled with the natural cubic spline CHIANTI's
+own \texttt{descale\_scups} prescribes.
+For H\,{\sc i} the $n=2$ part is $10.2\,{\rm eV}\,(q_{1s2s}+q_{1s2p})$ with
+the same rates the H($n{=}2$) model uses (Sec.~\ref{sec:ionization:n2}); the
+$n\ge3$ part and the He sums are fits
+$C\,T^{-1/2}\left[a+\ln(1+T/T_0)\right]e^{-T_{\rm ex}/T}$ printed by
+\texttt{cooling\_data/fit\_hydrogen\_helium\_excitation.py}, accurate to
+1--2 per cent. The H\,{\sc i} term is the Ly$\alpha$-dominated hydrogen line
+cooling, and it is the optically thin coefficient as written: \emph{no escape probability multiplies the
 Ly$\alpha$ cooling channel.} $\lambda_{\rm HI}$ is
 \texttt{lambda\_coex\_HI} of \texttt{Cool\_coeff.f90} and
 \texttt{eval\_cool} contracts it with $n_{\rm HI}$ and $n_e$ with no such
@@ -174,13 +204,23 @@ keeping the de-excitation heating channel 8 as an independent source, that is
 it would double count. A ledger carrying both is the stated target and is not
 built.
 
-With the metastable tracked, two further terms are added to
-$\Lambda_{\rm cx}$, both scaling with the explicitly computed
-$n(2^3{\rm S})$: the $2^3$S$\to2^3$P excitation followed by 10830\,\AA{}
-decay and escape, and the $2^3$S$\to2^1$S (0.80\,eV) and $2^3$S$\to2^1$P
-(1.40\,eV) collisional conversions, each removing its threshold energy from
-the electron gas. The ground-to-triplet excitation $q_{13}$ is deliberately
-excluded here, being already inside $\lambda_{\rm HeI}$.
+With the metastable tracked, the He\,{\sc i} sum leaves out the
+$1^1$S$\to2^3$S transition, which is the network's own rate $q_{13}$, and the
+exchange between the two levels is charged with that rate and its
+detailed-balance reverse $q_{31g}$,
+$E(2^3{\rm S})\left[q_{13}n(1^1{\rm S})-q_{31g}n(2^3{\rm S})\right]$,
+negative (a heating) wherever the metastable is overpopulated against its
+Boltzmann ratio to the ground. The excitations $1^1$S$\to n^3L$ into the
+higher triplets, which feed $2^3$S through their cascade (in $q_{13}$ of the
+triplet row), are charged their full energy by the He\,{\sc i} sum, of
+which $E(n^3L)-E(2^3{\rm S})$ is radiated in the cascade and $E(2^3{\rm S})$
+is carried by the metastable they make. Further terms scale with
+$n(2^3{\rm S})$: the excitation of $2^3$S within the triplets, radiated back
+to $2^3$S (10830\,\AA{} and the higher triplet lines; a CHIANTI v11 coronal
+sum, of which the \citet{Black1981} coefficient it replaces is 0.81 at
+$10^4$\,K and 0.79 at 5000\,K), and the $2^3$S$\to2^1$S (0.796\,eV), $2^3$S$\to
+2^1$P (1.398\,eV) and $2^3$S$\to n^1L$ ($n\ge3$) collisional conversions,
+each removing its excitation energy from the electron gas.
 
 \paragraph{Free-free.} $\Lambda_{\rm ff} = 1.426\times10^{-27}\sqrt{T}
 \sum_{\rm ions} Z_{\rm ion}^{2}\,\bar g(T,Z_{\rm ion})\,n_{\rm ion}$, with
@@ -194,17 +234,29 @@ extrapolation whose emission comes out at frequencies the atmosphere is not
 thin to, and where H$_3^+$ and metal lines dominate by far.
 
 \paragraph{Metal lines.} $\Lambda_{\rm metal} = n_e\sum_i n_{{\rm m},i}
-c_i(T)$ with $c_i$ a closed-form analytic fit to the CHIANTI v11.0.2
-optically thin line-cooling curve of that ion. The C/N/O fits are the
-default (\texttt{cno\_chianti = .true.}; \texttt{cno\_cool 0} in
-\texttt{metals.inp} restores the legacy set ported from AIOLOS), and
-Mg\,{\sc i/ii}, Ca\,{\sc ii}, Na\,{\sc i} and Fe\,{\sc i/ii} follow the same
-route. Two entries are not in CHIANTI v11 and are built otherwise: the
-Na\,{\sc i} D doublet with a $\bar g$ factor 0.2 calibrated against the
-CHIANTI Mg\,{\sc ii} and Ca\,{\sc ii} values, and the Fe\,{\sc i} permitted
-multiplets.
+c_i(T, n_e)$, every $c_i$ built from CHIANTI v11.0.2 (collision strengths
+descaled with the natural cubic spline) where the ion is in it. The C/N/O
+coefficients are the default (\texttt{cno\_chianti = .true.};
+\texttt{cno\_cool 0} in \texttt{metals.inp} restores the legacy set ported
+from AIOLOS). Mg\,{\sc ii} is a closed-form fit to the coronal sum of every
+excitation out of $3s\,^2$S with the observed level energies. Ca\,{\sc ii}
+and Mg\,{\sc i} are $(T,n_e)$ statistical-equilibrium tables with every
+channel (the Ca\,{\sc ii} $3d\,^2$D metastables and the Mg\,{\sc i} $3s3p\,^3$P
+term besides the resonance lines; at $n_e=10^{9}$\,cm$^{-3}$ they are
+1.7--4 and 5.8--480 times the resonance line alone over
+$10^4$--3000\,K). Two entries are not in CHIANTI v11 and are built
+otherwise: the Na\,{\sc i} D doublet with a $\bar g$ factor 0.2 calibrated
+against the CHIANTI Mg\,{\sc ii} and Ca\,{\sc ii} values, and the
+Fe\,{\sc i} permitted multiplets from NIST oscillator strengths with the
+lower levels in Boltzmann equilibrium over the even-parity metastable
+manifold, the high-density limit, which is an upper limit at most 2.0 times
+the low-density value over 2000--$3\times10^4$\,K (the data for a
+density-resolved Fe\,{\sc i} solve are not available). Above the top
+density of a $(T,n_e)$ table ($10^{14}$\,cm$^{-3}$) the coefficient
+continues with the slope of the last interval clipped to $[-1,0]$, the
+bounds of a thermalized and a coronal channel.
 
-Two density-dependent replacements are made on top of those coronal curves,
+Two further density-dependent replacements are made on top of coronal curves,
 because a coronal fit assumes $\Lambda\propto n_e$ and no level saturation
 while the base of an irradiated atmosphere runs at $n_e\sim10^{9}$,
 $n_{\rm HI}\sim10^{14}$\,cm$^{-3}$, decades above the critical densities of
@@ -229,18 +281,21 @@ the lines involved.
   \label{eq:th:fsse}
   \end{equation}
   with $C_{ul} = n_e k_{e,ul}(T)+n_{\rm HI}k_{{\rm H},ul}(T)$ and
-  $k_{e,ul} = 8.629\times10^{-6}\Upsilon/(g_u\sqrt T)$, the effective
+  $k_{e,ul} = C\,\Upsilon/(g_u\sqrt T)$ ($C = 8.629132\times10^{-6}$\,cm$^3$\,s$^{-1}$\,K$^{1/2}$, the Maxwellian constant of the triplet row \eqref{eq:ion:tripletrow}), the effective
   collision strengths $\Upsilon$ being quartic fits in
   $x = \log_{10}(T/10^{4})$ to the CHIANTI \texttt{.scups} values over
-  $10^{3}$--$10^{5}$\,K (largest error 4.8 percent) and the H-atom rates
+  $10^{3}$--$10^{5}$\,K (largest error 8.2 percent, at the $10^3$\,K end on
+  C\,{\sc i}) and the H-atom rates
   taken from \citet{YanBabb2023} for C\,{\sc i} and N\,{\sc ii},
   \citet{Abrahamsson2007} for O\,{\sc i} and \citet{Barinovs2005} for
   C\,{\sc ii}. The
   emitted power per ion is
   $W_{\rm FS} = \sum_{u>l} f_u\beta_{ul}A_{ul}k_{\rm B}E_{ul}$ and the
   coefficient returned is $\Lambda_{\rm eff} = W_{\rm FS}/n_e+\Lambda_{\rm rem}$,
-  $\Lambda_{\rm rem}$ being a refit of the coronal curve keeping only the
-  channels that leave the ground term.
+  $\Lambda_{\rm rem}(T,n_e)$ being the statistical-equilibrium table of the
+  channels that leave the ground term (\texttt{cool\_logLrem\_*}; the
+  metastable upper levels of those channels have critical densities of
+  $10^{4}$--$10^{9}$\,cm$^{-3}$).
 \end{itemize}
 
 The line trapping $\beta_{ul}$ of these fine-structure lines is the
@@ -269,7 +324,15 @@ their Table 5 (the ``using $z(t)$'' column) with the non-LTE departure
 factor $s$ of their Table 6, whose only collider is H$_2$ through the
 proton-hopping reaction with the \citet{Oka2004} coefficient
 $2\times10^{-15}$\,m$^{3}$\,s$^{-1}$. Table 6 covers
-$n({\rm H_2}) = 10^{6}$--$10^{14}$\,cm$^{-3}$; below that the code adopts
+$n({\rm H_2}) = 10^{6}$--$10^{14}$\,cm$^{-3}$ in steps of two decades.
+Between its columns $s$ is interpolated as a power law in $n({\rm H_2})$:
+the emission per H$_3^+$ ion can grow at most as fast as the collision rate
+that populates the emitting levels, so the local index ${\rm d}\ln s/{\rm
+d}\ln n$ lies between 0 and 1, as the node-to-node indices of the table do
+(0.00--0.89), whereas an interpolant linear in $s$ against $\log n$ reached
+12.6 just above the $10^{8}$\,cm$^{-3}$ column at 2000\,K. Between the
+temperature rows the interpolation stays linear, a form the paper does not
+constrain. Below the table the code adopts
 the linear low-collider limit $s(T,n) = s(T,10^{6})\,n/10^{6}$ and records
 the cell as evaluated outside the tabulated range. This is the dominant
 coolant of a molecular base: the atomic channels above are all exponentially
@@ -358,14 +421,18 @@ per unit mass. The upstream term carries the \emph{upstream} cell's specific int
 energy formed at the upstream composition and temperature, not this cell's
 caloric state evaluated at $T_{\rm up}$: the rovibrational heat capacity
 belongs to the gas that holds the molecules, so across a dissociation front
-two cells at the same temperature store different energy. The root is
-bracketed rather than guessed (\texttt{solve\_T\_brent}, on by default
-through \texttt{use\_brent\_tsolve}): 80 logarithmically spaced probes from
+two cells at the same temperature store different energy. With the metals
+on, the root is bracketed rather than guessed (\texttt{solve\_T\_brent}, on
+by default through \texttt{use\_brent\_tsolve}): 80 logarithmically spaced probes from
 $\max(0.05T_{\rm guess},1\,{\rm K})$ to $4T_{\rm guess}$ locate the
 \emph{first} sign change, i.e.\ the lowest root, and Brent's method closes
 the bracket to $2\epsilon|b|+{\rm tol}/2$ with ${\rm tol}=10^{-10}$ in
-$T/T_0$, which is what keeps the solve off the hot spurious root;
-\texttt{hybrd1} on the same residual is the fallback. The metal densities and
+$T/T_0$, which is what keeps the solve off the hot spurious root; the
+cooling it balances is \texttt{radiative\_cooling\_of\_cell}, the assembly
+\texttt{eval\_cool} reports; a cell with no bracket keeps its converged
+equilibrium temperature and is counted as rejected. Without the metals, or
+with \texttt{Brent solver: False}, the root is MINPACK \texttt{hybrd1} on
+the same residual (\texttt{post\_process\_adv.f90}). The metal densities and
 the fine-structure escape probabilities are held fixed while the root finder
 varies $T$, the latter because the optical depth is a column over the whole
 atmosphere and not a function of this cell's trial temperature.

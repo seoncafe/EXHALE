@@ -443,6 +443,15 @@ def element_to_h(d, scols, el):
     return nEl, nH
 
 
+def shift_text(shift):
+    """The center shift for the `# mapped:` line. Between grids of different
+    cell counts there is no cell-by-cell shift, and the line says so instead
+    of printing nan."""
+    if shift is None or not np.isfinite(shift):
+        return 'not defined (the target grid has a different cell count)'
+    return f'{shift:.2e}'
+
+
 def rewrite_coupling(header, tgt_path, src_path, shift, n_new, n_ghost_extrap,
                      ext_note='', grid_line='', reservoir_line=''):
     out = []
@@ -473,7 +482,8 @@ def rewrite_coupling(header, tgt_path, src_path, shift, n_new, n_ghost_extrap,
         else:
             out.append(h)
     out.append(f'# mapped: onto the cell centers of {os.path.abspath(tgt_path)} from {os.path.abspath(src_path)} '
-               f'by map_state_to_grid.py; largest relative center shift of the physical cells {shift:.2e}; '
+               f'by map_state_to_grid.py; largest relative center shift of the physical cells '
+               f'{shift_text(shift)}; '
                f'{n_ghost_extrap} ghost row(s) extrapolated linearly in ln r; an initialization seed, not a continuation'
                + ext_note)
     return out

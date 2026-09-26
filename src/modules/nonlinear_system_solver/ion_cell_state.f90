@@ -51,8 +51,15 @@
 		real*8 :: rcheiTR = 0.0d0
 		real*8 :: A31 = 0.0d0
 		real*8 :: P_HeITR = 0.0d0
+		! 1^1S -> 2^3S by electron impact [cm^3 s^-1]: the direct excitation
+		! plus the excitation of the higher triplets, which cascade into
+		! 2^3S (utils_ion_eq: HeITR_coeffs)
 		real*8 :: q13 = 0.0d0
+		! 2^3S -> 1^1S electron-impact de-excitation [cm^3 s^-1], the
+		! detailed-balance reverse of the direct excitation (Cool_coeff.f90)
+		real*8 :: q31g = 0.0d0
 		real*8 :: q31a = 0.0d0
+		! 2^3S -> 2^1P and every singlet above it (utils_ion_eq: HeITR_coeffs)
 		real*8 :: q31b = 0.0d0
 		real*8 :: Q31 = 0.0d0
 		real*8 :: P_H2 = 0.0d0
@@ -83,9 +90,11 @@
 		! calc_ntot's sum (one particle per species), NOT rho/m_H.
 		real*8 :: ntot = 0.0d0
 		! He <-> H charge-exchange rate coefficients (Huang Table 4 group B):
-		! kcx_He0_Hp = He0+H+ -> He++H0, kcx_Hep_H0 = He++H0 -> He0+H+.
+		! kcx_He0_Hp = He0+H+ -> He++H0, kcx_Hep_H0 = He++H0 -> He0+H+,
+		! and kcx_Hepp_H0 = He2+ + H0 -> He+ + H+ (radiative).
 		real*8 :: kcx_He0_Hp = 0.0d0
 		real*8 :: kcx_Hep_H0 = 0.0d0
+		real*8 :: kcx_Hepp_H0 = 0.0d0
 		! Oxygen chemistry (the A2 option). n_ofam is the FREE OXYGEN FAMILY
 		! of the cell [cm^-3]: every oxygen nucleus except the one locked in
 		! CO, i.e. the reservoir shared by O I, O II, O III, OH and H2O. The
@@ -206,6 +215,7 @@
 		real*8 :: A31
 		real*8 :: P_HeITR
 		real*8 :: q13
+		real*8 :: q31g
 		real*8 :: q31a
 		real*8 :: q31b
 		real*8 :: Q31
@@ -214,6 +224,7 @@
 		! set per cell at the advection call site (see he_h_cx_rates).
 		real*8 :: kcx_He0_Hp
 		real*8 :: kcx_Hep_H0
+		real*8 :: kcx_Hepp_H0
 		! Metal electrons of the cell, counted per H nucleus (n_e,metal/n_h).
 		! The recombination terms of the advection residuals scale with the
 		! TOTAL free electron density, and in the shielded base the metals are
@@ -233,9 +244,20 @@
 	type teq_state
 		real*8 :: nhi
 		real*8 :: nhii
-		real*8 :: nhei
+		! Neutral helium by level: the ground singlet n(1^1S) and the 2^3S
+		! metastable (zero where it is not tracked). The cooling acts on each
+		! level with its own coefficients (radiative_cooling_of_cell).
+		real*8 :: nheiS
+		real*8 :: nheiTR = 0.0d0
 		real*8 :: nheii
 		real*8 :: nheiii
+		! Ground-capture escape weights of the H II, He II and He III
+		! recombinations of the cell (utils_ion_eq:
+		! ground_capture_escape_weights), functions of the densities, held
+		! fixed while the root finder varies T.
+		real*8 :: y_HI   = 0.0d0
+		real*8 :: y_gnd  = 0.0d0
+		real*8 :: y_HeII = 0.0d0
 		real*8 :: mup
 		real*8 :: mum
 		real*8 :: rhov

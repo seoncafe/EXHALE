@@ -21,7 +21,7 @@
       !     nearly five decades between the base and 1.2 R_p
       !     (docs/eddy_diffusion_kzz.tex, LHS1140b/kzz_decision.md).
       !
-      ! Schema: docs/input_schema.md section 2d.  Example file:
+      ! Schema: md/input_schema.md section 2d.  Example file:
       ! examples/17_lower_profile/lower_atmosphere_profile.dat.
       !
       ! Interpolation.  Every intensive quantity is interpolated linearly in
@@ -57,18 +57,23 @@
       public :: eddy_diffusion_on_grid
       public :: lap_report_provenance
       ! ---- the elemental flux measured over two radial windows ----------- !
-      ! Filled by binary_element_diffusion when a profile is in use; written
-      ! by write_resolved_config.  lap_flux_measured stays .false. until a
-      ! diffusion step has produced numbers, so an unmeasured run says so.
+      ! Filled by write_element_flux_profile (binary_element_diffusion) when
+      ! a profile is in use, from the elemental face fluxes of the state the
+      ! certification measures, on that state's Riemann face mass flux;
+      ! written by write_resolved_config.  lap_flux_measured stays .false.
+      ! until a state has been measured, so an unmeasured run says so.
       !
       ! TWO windows are reported, because they answer two different questions
       ! and only measurement says which one carries a usable number:
       !
       !  (a) the OVERLAP window, the interval both models describe: from the
-      !      top of the base sound-wave region up to the radius the profile
-      !      reaches.  Its lower edge is measured, not assumed -- the first
-      !      face at which the 5-face moving spread of r^2 rho v falls below
-      !      10 per cent -- and falls back to 1.02 R_p when no face qualifies.
+      !      first face at which the face mass flux of the state is constant
+      !      up to the radius the profile reaches.  Its lower edge is
+      !      measured, not assumed -- the first face at which the 5-face
+      !      moving spread of 4 pi r^2 F_rho falls below 10 per cent, which
+      !      leaves out a base transient of a state still marching and no
+      !      face of a stationary one -- and falls back to 1.02 R_p when no
+      !      face qualifies.
       !  (b) the STEADY-FLUX window, r >= r_esc, the escape region the solver
       !      itself uses to declare the wind steady.  At a steady state the
       !      elemental flux is radius independent, so a flux measured here IS
@@ -386,7 +391,7 @@
       character(len=*), intent(in) :: why
       write(*,*) '(lower_atmosphere_profile) ERROR in '//trim(lap_file)//':'
       write(*,*) '  '//trim(why)//'.'
-      write(*,*) '  Schema: docs/input_schema.md section 2d.'
+      write(*,*) '  Schema: md/input_schema.md section 2d.'
       error stop 1
       end subroutine refuse
 

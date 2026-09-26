@@ -386,7 +386,7 @@ loaded column onto the stated ratio, preserving the ionization split and the
 radial shape (\texttt{load\_IC.f90}). Every key of \texttt{base.inp} now carries
 a \emph{category} (provenance, EOS boundary, elemental reservoir, initial
 guess, boundary constraint), which is what states what the value is allowed to
-do to the wind; the full table is \texttt{docs/input\_schema.md} \S2c and the
+do to the wind; the full table is \texttt{md/input\_schema.md} \S2c and the
 user manual's Tier-3 section. Neither \texttt{run\_lower.py} nor
 \texttt{vulcan\_to\_base.py} writes \texttt{<El>\_H\_base}: VULCAN's networks are
 H/C/N/O(/S), so the only element ratios it could hand over are its own inputs,
@@ -416,7 +416,7 @@ producers write the format: \texttt{src/utils/photochem\_to\_lower\_profile.py}
 by its radiative--convective climate model) and
 \texttt{src/utils/vulcan\_to\_lower\_profile.py} (the cross-check path, VULCAN
 carries no climate model). Column-by-column schema:
-\texttt{docs/input\_schema.md} \S2d; example: \texttt{examples/17\_lower\_profile/}.
+\texttt{md/input\_schema.md} \S2d; example: \texttt{examples/17\_lower\_profile/}.
 
 \paragraph{The driver.} \texttt{src/utils/run\_lower.py <run\_dir> --r1bar <R\_J>
 [--guillot] [--tint T] [--kzz K]} reads $M_\mathrm{p}$, $T_\mathrm{eq}$, He/H from the run

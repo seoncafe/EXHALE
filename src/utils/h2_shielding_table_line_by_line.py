@@ -19,7 +19,7 @@ the columns
 a planetary molecular base reaches that is not a correction but the dominant
 term: at T = 1300 K, n_H = 1e13 cm^-3, letting the lines absorb each other's
 beam lowers the surviving pumping by a factor 24 at N_H2 = 1e21 cm^-2 and 630
-at 4.4e21.  docs/p38_line_overlap_shielding.md is the measurement, and
+at 4.4e21.  md/p38_line_overlap_shielding.md is the measurement, and
 docs/Update_EXHALE_stage1.pdf section 135 the changelog entry.
 
 WHAT IS COMPUTED HERE AND WHAT IS NOT.  Everything line overlap touches is
@@ -226,8 +226,8 @@ HEADER = """      module h2_self_shielding_table
       ! summed over every Lyman and Werner transition with 911.75 A <= lambda
       ! <= 1201 A, on a 4e5-point frequency grid, with a Voigt profile
       ! (scipy wofz inside +-300 Doppler widths, the exact Lorentzian outside)
-      ! and b = sqrt(2kT/m_H2), the same Doppler parameter as
-      ! h2_doppler_parameter.  Level populations are LTE at the imposed T,
+      ! and b = sqrt(2kT/m_H2), the thermal Doppler parameter of H2 with
+      ! no turbulent term.  Level populations are LTE at the imposed T,
       ! which is what CLOUDY's own runs show at these densities (dep coef =
       ! 1.000 at every level) and what the Meudon runs show as well.
       !
@@ -331,7 +331,7 @@ HEADER = """      module h2_self_shielding_table
       ! their sec. 5.2); Abgrall, Roueff & Drira (2000) A&AS 141, 297 (the
       ! line data); Le Petit et al. (2006) ApJS 164, 506 (the Meudon PDR code
       ! this was checked against); Ferland et al. (2017) RMxAA 53, 385
-      ! (CLOUDY, the trapping).  docs/p38_line_overlap_shielding.md is the
+      ! (CLOUDY, the trapping).  md/p38_line_overlap_shielding.md is the
       ! measurement.
 
       implicit none

@@ -30,11 +30,17 @@ convergence.  Both H and He are iterated here; design section 6.1 held He at
 zero, and that is superseded.
 
 Which window supplies the number is a physical question, not a detail.  The
-overlap window -- between the base sound-wave region and the profile top --
-is what the closure is defined on, but on LHS 1140 b it is only ~0.01 R_p
-thick and the mass flux across it is not flat (measured spread 60%-700%,
-against 2.9e7 g/s in the steady far field versus 4.7e9 g/s at 1.010 R_p).
-The steady window (r >= r_esc) is flat to about 7% there.  This driver
+overlap window -- from the first face at which the face mass flux of the
+state is constant up to the profile top -- is what the closure is defined
+on, but on LHS 1140 b it is only ~0.01 R_p thick.  [The spreads once
+quoted here for it (60%-700%, 4.7e9 g/s at 1.010 R_p against 2.9e7 g/s in
+the far field, and 7% for the steady window) were measured when
+element_flux_profile.txt carried the face mean of the cell-centred rho and
+v, which carries the collocated odd-even velocity mode of the base.  The
+file now carries the Riemann face mass flux, and on a stationary state that
+flux is constant to 1e-8 through the whole column (MEASURED 2026-09-24 on
+the certified LHS 1140 b kzz1e9 states); the overlap spreads of a
+lower-profile run have not been re-measured on it.]  This driver
 therefore reads the overlap window first and falls back on the steady one
 when the overlap is unmeasurable or its spread exceeds the tolerance,
 recording in the iteration log which window supplied the number and why.
@@ -292,9 +298,10 @@ def _or_nan(x):
 
 
 def overlap_flux_window(keys):
-    """The window the closure is defined on: between the base sound-wave
-    region and the profile top (design section 3.4).  Returns None when the
-    run did not measure it, together with the state it reported."""
+    """The window the closure is defined on: from the first face at which
+    the face mass flux of the state is constant up to the profile top
+    (design section 3.4).  Returns None when the run did not measure it,
+    together with the state it reported."""
     state = keys.get('lower_profile_flux_state', 'unmeasured')
     if state != 'measured':
         return None, state

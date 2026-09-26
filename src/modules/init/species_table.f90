@@ -191,7 +191,8 @@
              'OH   ', 'H2O  ', 'CO   ' ]
 
       ! ---- indices for each ion (canonical mion order; see table above) ----
-      ! Used for index-based rate dispatch (rec/ion/cool_coeff_by_ion), so
+      ! Used for index-based rate dispatch (rec/ion_coeff_by_ion_range and
+      ! metal_line_cooling_coefficient of Cool_coeff.f90), so
       ! rate routines are selected without a string comparison on each call.
       integer, parameter :: im_CI    =  1, im_CII   =  2, im_CIII  =  3
       integer, parameter :: im_OI    =  4, im_OII   =  5, im_OIII  =  6
@@ -252,13 +253,13 @@
              7.902d0, 16.199d0, 0.0d0 ]
       ! contributes to metal line cooling (cool_M)?  (Huang+2023)
       ! adds CHIANTI Ca II H&K, Na I D, and Fe II to the C/N/O/Mg coolants
-      ! already present (cool_coeff_metal dispatches each by name), plus Fe I
-      ! (NIST f-values + Van Regemorter, Huang Fig 5). Si/K/S still have no
-      ! line-cooling fit and stay excluded.
-      ! Fe II cooling is density-dependent: eval_cool overrides the coronal
-      ! coefficient with the multilevel-SE Lambda_eff(T,ne) (cool_FeII_ne), so
-      ! the forbidden a6D fine-structure / metastable lines saturate (LTE) at
-      ! the dense base instead of being overcounted ~1e4x.
+      ! already present (metal_line_cooling_coefficient dispatches each by
+      ! index), plus Fe I (NIST f-values + Van Regemorter, Huang Fig 5).
+      ! Si/K/S still have no line-cooling fit and stay excluded.
+      ! Fe II cooling is density-dependent: the multilevel-SE
+      ! Lambda_eff(T,ne) (cool_FeII_ne_value), so the forbidden a6D
+      ! fine-structure / metastable lines saturate (LTE) at the dense base
+      ! instead of being overcounted ~1e4x as a coronal rate would.
       logical, parameter :: mion_iscool(n_mion) = &
            [ .true., .true., .false.,  .true., .true., .false.,      &
              .true., .true., .false.,  .true., .true., .false.,      &
@@ -274,9 +275,6 @@
              'FeI  ', 'FeII ', 'FeIII' ]
 
       ! ---- metadata for each element (length n_melem) ----
-      ! nuclear charge (Z), used for the metal Gaunt factor
-      integer, parameter :: melem_Z(n_melem)   = &
-           [ 6, 8, 7, 12, 14, 20, 11, 19, 16, 26 ]
       ! The atomic weights melem_A_u [u] and melem_A [m_H], which give the
       ! metal mass contribution to the gas mass density and to the mean
       ! molecular weight (eos_include_metals), are declared with the element

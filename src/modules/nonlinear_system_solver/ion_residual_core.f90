@@ -46,11 +46,11 @@
 	! reservoir and an orientation that are the caller's, so the channels
 	! it owns are left at zero here and filled by whoever applies it.
 	! Two reaction sets own channels this way:
-	!   the He <-> H pair of Huang et al. (2023) Table 4 group B
-	!   (charge_exchange::he_h_cx_fvec), channels 10, 11, 22 and 23;
-	!   calling that routine once with each of its two rate coefficients
-	!   zeroed isolates the two directions from the one expression that
-	!   defines them;
+	!   the He <-> H charge exchange of Huang et al. (2023) Table 4 group
+	!   B and He2+ + H0 -> He+ + H+ (charge_exchange::he_h_cx_fvec),
+	!   channels 10, 11, 22, 23 and 33 to 35; calling that routine once
+	!   with all but one of its three rate coefficients zeroed isolates
+	!   each reaction from the one expression that defines them;
 	!   the metal charge exchange of the same table, groups A and C and
 	!   the group E electron capture
 	!   (charge_exchange::charge_exchange_stage_sources), channels 27 to
@@ -59,14 +59,15 @@
 	! Their channels exist here so that the signed channel sum of a stage
 	! is the source the transported row was assembled from, whichever of
 	! those reactions the configuration activates.
-	integer, parameter :: n_stage_chan = 32
+	integer, parameter :: n_stage_chan = 35
 	! Which stage's source each channel belongs to: 1 = H II, 2 = He II,
 	! 3 = He III.
 	integer, parameter :: stage_chan_row(n_stage_chan) =                  &
 	     (/ 1,1,1,1,1,1,1,1,1,1,1,                                        &
 	        2,2,2,2,2,2,2,2,2,2,2,2,                                      &
 	        3,3,3,                                                        &
-	        1,1, 2,2, 3,3 /)
+	        1,1, 2,2, 3,3,                                                &
+	        1, 2, 3 /)
 	! Production (+1) or loss (-1) of that stage.
 	real*8, parameter :: stage_chan_sign(n_stage_chan) =                  &
 	     (/  1.0d0, 1.0d0, 1.0d0, 1.0d0, 1.0d0, 1.0d0, 1.0d0,             &
@@ -74,7 +75,8 @@
 	         1.0d0, 1.0d0, 1.0d0, 1.0d0, 1.0d0,                           &
 	        -1.0d0,-1.0d0,-1.0d0,-1.0d0,-1.0d0, 1.0d0,-1.0d0,             &
 	         1.0d0, 1.0d0,-1.0d0,                                         &
-	         1.0d0,-1.0d0, 1.0d0,-1.0d0, 1.0d0,-1.0d0 /)
+	         1.0d0,-1.0d0, 1.0d0,-1.0d0, 1.0d0,-1.0d0,                    &
+	         1.0d0, 1.0d0,-1.0d0 /)
 	character(len=22), parameter :: stage_chan_name(n_stage_chan) =       &
 	     (/ 'HII_photo_HI          ', 'HII_collisional_HI    ',           &
 	        'HII_penning_He23S     ', 'HII_H2_photo_diss_ion ',           &
@@ -92,12 +94,19 @@
 	        'HeIII_recombination   ',                                     &
 	        'HII_cx_gain_metal     ', 'HII_cx_loss_metal     ',           &
 	        'HeII_cx_gain_metal    ', 'HeII_cx_loss_metal    ',           &
-	        'HeIII_cx_gain_metal   ', 'HeIII_cx_loss_metal   ' /)
+	        'HeIII_cx_gain_metal   ', 'HeIII_cx_loss_metal   ',           &
+	        'HII_cx_gain_HeIII_HI  ', 'HeII_cx_gain_HeIII_HI ',           &
+	        'HeIII_cx_loss_HeIII_HI' /)
 	! The two channels of each stage the caller's He <-> H pair owns.
 	integer, parameter :: ich_HII_cx_gain  = 10
 	integer, parameter :: ich_HII_cx_loss  = 11
 	integer, parameter :: ich_HeII_cx_gain = 22
 	integer, parameter :: ich_HeII_cx_loss = 23
+	! The three channels of He2+ + H0 -> He+ + H+ (the caller's as well):
+	! a proton and a He+ made, a He2+ lost.
+	integer, parameter :: ich_HII_cx_gain_hepp   = 33
+	integer, parameter :: ich_HeII_cx_gain_hepp  = 34
+	integer, parameter :: ich_HeIII_cx_loss_hepp = 35
 	! The two channels of each stage the caller's metal charge exchange
 	! owns.  No reaction of the present set promotes He II to He III or
 	! captures an electron onto He III (Table 4 groups A, C and E, whose
@@ -126,10 +135,11 @@
 	! thread, which is how a record is meant to be taken.
 	integer, parameter :: stage_chan_ncell_max = 8
 	! The kernel's own arguments, in the order the record writes them.
-	! Entries 1 to 27 are common to both gas branches, 28 to 57 are the
-	! molecular network's; the atomic branch writes 27 and stops.
-	integer, parameter :: n_stage_state_common = 27
-	integer, parameter :: n_stage_state_mol    = 57
+	! Entries 1 to 29 are common to both gas branches (26, 27 and 29 are
+	! the caller's He <-> H charge-exchange coefficients), 30 to 59 are the
+	! molecular network's; the atomic branch writes 29 and stops.
+	integer, parameter :: n_stage_state_common = 29
+	integer, parameter :: n_stage_state_mol    = 59
 	integer, save :: stage_chan_cells(stage_chan_ncell_max) = 0
 	integer, save :: stage_chan_ncell = 0
 	logical, save :: stage_chan_asked = .false.
@@ -203,17 +213,19 @@
 		write(u,'(A)') '# gross channels of the ion-stage rows '//        &
 		     '(EXHALE_STAGE_CHANNELS), one line per evaluation'
 		write(u,'(A)') '# gas cell icall nstate state(1:nstate) '//       &
-		     'chan(1:26)   [rates cm^-3 s^-1]'
+		     'chan(1:n)   [rates cm^-3 s^-1], n listed below'
 		write(u,'(A)') '# gas: MS molecular rows in the local sweep, '//  &
 		     'MC the same rows in the transport operator, A- atomic '//   &
 		     'rows (call site not distinguishable in the kernel)'
-		write(u,'(A)') '# state 1..27 (both branches): T_K n_HI n_HII '// &
+		write(u,'(A)') '# state 1..29 (both branches): T_K n_HI n_HII '// &
 		     'n_HeI_singlet n_HeI_triplet n_HeII n_HeIII n_e '//          &
 		     'g_HI g_HeI g_HeII g_HeI23S'
 		write(u,'(A)') '#   a_HII a_HeII a_HeIII a_HeI23S '//             &
 		     'b_HI b_HeI b_HeII b_HeI23S q13 q31a q31b Q31 A31 '//        &
-		     'k_cx_He0_Hp k_cx_Hep_H0'
-		write(u,'(A)') '# state 28..57 (molecular only): n_tot n_H2 '//   &
+		     'k_cx_He0_Hp k_cx_Hep_H0 q31g k_cx_Hepp_H0 (q13 = direct '// &
+		     '1^1S -> 2^3S excitation plus the higher-triplet feed; '//   &
+		     'q31g the reverse of the direct one)'
+		write(u,'(A)') '# state 30..59 (molecular only): n_tot n_H2 '//   &
 		     'n_H2p n_H3p n_HeHp g_H2 g_H2_di g_H2_dd g_H2_nd g_LW '//    &
 		     'k5 k6 k7 k8 k9 k10 k11 k12 k13 k14 k15_two_body k16 '//     &
 		     'k17 k18 k19 k_H2p_He k23 k_ion_H2 k_CO_HeII n_third'
@@ -224,8 +236,8 @@
 			     merge('  production', '  loss      ',                     &
 			           stage_chan_sign(k) .gt. 0.0d0)
 		enddo
-		write(u,'(A)') '# channels 10, 11, 22 and 23 are the caller'//    &
-		     '''s He <-> H charge-exchange pair and are zero here'
+		write(u,'(A)') '# channels 10, 11, 22, 23, 33 to 35 (He <-> H) and '// &
+		     '27 to 32 (metal charge exchange) are the caller''s, zero here'
 		stage_chan_opened = .true.
 	endif
 	stage_chan_icall = stage_chan_icall + 1
@@ -343,22 +355,27 @@
 	! molecular system. b_heiTR is the He(2^3S) collisional-ionization
 	! coefficient (ci_HeI23S, threshold 4.8 eV): He(2^3S)+e- -> He+ + 2e-
 	! removes the triplet, so it enters as a destruction term -n_e*n_heiTR*b_heiTR.
+	! q31g is the 2^3S -> 1^1S electron-impact de-excitation, the
+	! detailed-balance reverse of q13 (Cool_coeff.f90), so the electron
+	! collisions between the two levels drive them towards their Boltzmann
+	! ratio 3 exp(-19.82 eV/kT); q31a, q31b take the metastable to 2^1S and
+	! 2^1P, which decay to 1^1S.
 	! Q31 is the TOTAL He(2^3S)+H ionization rate coefficient, Penning plus
 	! associative: both channels quench the metastable, so the sink here takes
 	! the sum. Only the terms that create a lasting proton or deposit the
 	! Penning exothermicity are scaled by f_penning_HeI23S.
 	subroutine tr_triplet_row(ftr, n_hi, n_heiSI, n_heiTR, n_heii, n_e,   &
-	                          g_heiTR, a_heiTR, q13, q31a, q31b, Q31, A31, &
-	                          b_heiTR)
+	                          g_heiTR, a_heiTR, q13, q31g, q31a, q31b,     &
+	                          Q31, A31, b_heiTR)
 	real*8, intent(out) :: ftr
 	real*8, intent(in)  :: n_hi, n_heiSI, n_heiTR, n_heii, n_e
-	real*8, intent(in)  :: g_heiTR, a_heiTR, q13, q31a, q31b, Q31, A31
+	real*8, intent(in)  :: g_heiTR, a_heiTR, q13, q31g, q31a, q31b, Q31, A31
 	real*8, intent(in)  :: b_heiTR
 
 	ftr = - n_heiTR*g_heiTR                                         &
 	      + n_e*( n_heii*a_heiTR                                    &
 	            + n_heiSI*q13                                       &
-	            - n_heiTR*(q31a + q31b)                             &
+	            - n_heiTR*(q31g + q31a + q31b)                      &
 	            - n_heiTR*b_heiTR)                                  &
 	      - n_heiTR*(A31 + n_hi*Q31)
 	end subroutine tr_triplet_row
@@ -373,14 +390,14 @@
 	                       n_heiii, n_e, g_hi, g_hei, g_heii, g_heiTR,     &
 	                       a_hii, a_heii, a_heiii, a_heiTR,                &
 	                       b_hi, b_hei, b_heii, b_heiTR,                   &
-	                       q13, q31a, q31b, Q31, A31, chan,               &
+	                       q13, q31g, q31a, q31b, Q31, A31, chan,         &
 	                       transport_operator)
 	real*8 :: fvec(*)
 	real*8, intent(in) :: n_hi, n_hii, n_heiSI, n_heiTR, n_heii, n_heiii, n_e
 	real*8, intent(in) :: g_hi, g_hei, g_heii, g_heiTR
 	real*8, intent(in) :: a_hii, a_heii, a_heiii, a_heiTR
 	real*8, intent(in) :: b_hi, b_hei, b_heii, b_heiTR
-	real*8, intent(in) :: q13, q31a, q31b, Q31, A31
+	real*8, intent(in) :: q13, q31g, q31a, q31b, Q31, A31
 	! THE STAGE ROWS CHANNEL BY CHANNEL (declaration of n_stage_chan), each
 	! a single term of the three rows below and written from the same
 	! factors.  The stage sources of an atomic gas are
@@ -430,8 +447,8 @@
 	fvec(3) = n_heii*g_heii + n_heii*b_heii*n_e - a_heiii*n_heiii*n_e
 
 	call tr_triplet_row(fvec(4), n_hi, n_heiSI, n_heiTR, n_heii, n_e,     &
-	                    g_heiTR, a_heiTR, q13, q31a, q31b, Q31, A31,      &
-	                    b_heiTR)
+	                    g_heiTR, a_heiTR, q13, q31g, q31a, q31b, Q31,     &
+	                    A31, b_heiTR)
 
 	! The same terms one by one, and the record of them when this cell was
 	! named.  The rows above are untouched by either.
@@ -471,6 +488,8 @@
 			stt(24) = Q31;      stt(25) = A31
 			stt(26) = ieq_cell%kcx_He0_Hp
 			stt(27) = ieq_cell%kcx_Hep_H0
+			stt(28) = q31g
+			stt(29) = ieq_cell%kcx_Hepp_H0
 			from_operator = .false.
 			if (present(transport_operator))                               &
 				from_operator = transport_operator
@@ -526,12 +545,20 @@
 	! (mtop >= 2) solve both X0<->X+ and X+<->X++; two-stage elements solve
 	! only X0<->X+ and pin the unused upper unknown. Expression order is
 	! verbatim from the System_HeH_metals residual.
-	subroutine metal_rows(fvec, x, base, nelem, mtot, mg0, mg1,        &
+	subroutine metal_rows(fvec, x, base, nelem, mtot, mg0, mg1, mg02,  &
 	                      mb0, mb1, ma1, ma2, mtop, nm0, nm1, nm2, n_e)
 	integer, intent(in) :: base, nelem
 	real*8 :: fvec(*)
 	real*8, intent(in)  :: x(*)
 	real*8, intent(in)  :: mtot(nelem), mg0(nelem), mg1(nelem)
+	! mg02: the part of the neutral's photoionization rate mg0 that ejects
+	! two or more electrons (an autoionizing inner-shell vacancy) and so
+	! takes the atom straight to X++. The rows are the net flows across the
+	! two stage boundaries, so a direct X0 -> X++ event crosses both: it is
+	! in mg0 on the X0 <-> X+ row already, and adds nm0*mg02 to the
+	! X+ <-> X++ row. The stage sum is untouched (the unknowns are the
+	! fractions of X+ and X++, the neutral their complement).
+	real*8, intent(in)  :: mg02(nelem)
 	real*8, intent(in)  :: mb0(nelem), mb1(nelem), ma1(nelem), ma2(nelem)
 	integer, intent(in) :: mtop(nelem)
 	real*8, intent(in)  :: nm0(nelem), nm1(nelem), nm2(nelem)
@@ -549,7 +576,7 @@
 			           + (nm0(e)*mb0(e) - ma1(e)*nm1(e))*n_e
 			if (mtop(e) .ge. 2) then
 				! X+ <-> X++
-				fvec(ix+1) = nm1(e)*mg1(e)                            &
+				fvec(ix+1) = nm1(e)*mg1(e) + nm0(e)*mg02(e)           &
 				           + (nm1(e)*mb1(e) - ma2(e)*nm2(e))*n_e
 			else
 				! Two-stage element: no X++, pin the unused unknown.

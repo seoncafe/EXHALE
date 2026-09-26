@@ -23,12 +23,23 @@ ATES model.
   inside the coupled ionization system, with Badnell RR+DR recombination
   (Huang et al. 2023 fits for Fe I/II and Shull & Van Steenberg for Ca I, whose
   isoelectronic sequences the Badnell project does not reach), Voronov
-  collisional ionization, and Huang et al. (2023) charge exchange, extended by
-  the `O2+ + H0 -> O+ + H+` electron capture of Barragan et al. (2006) that
-  Table 4 omits (on by default; `metals.inp: cx_O2p_H 0` restores the
-  Table-4-only reaction set)
-- Metal-line cooling as closed-form analytic fits to CHIANTI v11 (C I/II,
-  N I/II, O I/II, Mg I/II, Ca II, Na I, Fe II; 0.1-3% accuracy), with
+  collisional ionization, and the charge-exchange reactions of Huang et al.
+  (2023) Table 4, extended by the `O2+ + H0 -> O+ + H+` and
+  `N2+ + H0 -> N+ + H+` electron captures of Barragan et al. (2006) that
+  Table 4 omits (on by default; `metals.inp: cx_O2p_H 0` or `cx_N2p_H 0`
+  leaves either out); each rate is taken from its original source and each
+  pair held to detailed balance with internal partition functions (the
+  source's direction kept, the other derived, and for the three forwards whose
+  sources name their product levels the reverse follows the product
+  populations of a five-level statistical equilibrium at the local electron
+  density), the energy defects heat the gas (`heat_charge_exchange`), and the
+  recombination and collisional-ionization energies of the metals enter the
+  cooling
+- Metal-line cooling from CHIANTI v11 (collision strengths descaled with the
+  natural spline CHIANTI prescribes, observed level energies): closed-form
+  fits for Mg II and Na I, (T, n_e) statistical-equilibrium tables for Ca II,
+  Mg I, Fe II and the levels of C/N/O above their ground terms, and the Fe I
+  table in its LTE limit, with
   the split ground terms of C I, C II, N II and O I solved in exact statistical
   equilibrium at the local `(n_e, n_HI)` instead of the coronal limit, which
   gives the density-dependent saturation of the [C II] 158 um and [O I] 63 um
@@ -38,33 +49,52 @@ ATES model.
   cell enters the statistical-equilibrium solution as `A_ul -> beta*A_ul`),
   and a smooth cutoff of the coronal fits below their
   10^3 K validity floor, leaving only the explicit fine-structure terms
-- He I 2³S metastable triplet in the coupled solver, with
-  temperature-dependent He(2³S)+H and +H₂ destruction rates
-  (García Muñoz 2025, continuous closed forms with a 0.9/0.1
+- H and He recombination with case A where the gas is thin and case B where
+  it is thick (`H_rec_escape`, `He_rec_coupling`; ground captures from the
+  Milne relation on the transfer's cross sections), the He II and He III
+  recombination radiation absorbed on the spot, the He I 584 A resonance line
+  scattered by He I and partly converted into the 2^1S two-photon continuum
+  (Wood, Mathis & Ercolano 2004), and every recombination cooling term
+  `k T alpha (3/2 + dln alpha/dln T)` on the coefficient the balance uses
+- He I 2^3S metastable triplet in the coupled solver, with the
+  electron-impact 2^3S -> 1^1S de-excitation (the detailed-balance reverse of
+  the excitation), the collisional feed through the higher triplets, the
+  collision strengths of Bray et al. (2000), temperature-dependent He(2^3S)+H
+  and +H2 destruction rates
+  (Garcia Munoz 2025, continuous closed forms with a 0.9/0.1
   Penning/associative branching)
 - Updated photoionization data: He I ground state from Verner et al. (1996),
-  and a He I 2³S cross section extended past 60 eV against TOPbase
+  a He I 2^3S cross section extended past 60 eV against TOPbase, and the
+  inner shells of the metal ions (Verner & Yakovlev 1995) with their Auger
+  and fluorescence relaxation (Kaastra & Mewe 1993): the Auger electrons heat
+  the gas and a neutral that loses two or more electrons jumps two stages
+- He+ + H charge exchange in its radiative and non-radiative channels, its
+  detailed-balance reverse and the radiative He2+ + H capture in every
+  helium-bearing system (`He_H_charge_exchange`, default on)
 - One stellar spectrum type builds every band of the photon grid, the XUV and
-  the part below 13.6 eV where the He 2³S metastable and the low-IP metals
+  the part below 13.6 eV where the He 2^3S metastable and the low-IP metals
   absorb: `Spectrum type: Power-law` is the power law everywhere,
   `Spectrum type: Planck` is the photospheric blackbody
   `pi B_nu(T_eff) (R_star/a)^2` built from `Stellar Teff` and `Stellar radius`,
   and `Spectrum type: Load` is the table everywhere. A loaded table that stops
-  above the lowest threshold of an active absorber (4.80 eV = 2583 Å with
+  above the lowest threshold of an active absorber (4.768 eV = 2600 A with
   `Include He23S? True`, or a neutral metal's threshold) stops the run rather
   than leaving that absorber without a field; the startup report states the
   type, the source of the band below 13.6 eV, and the integrated grid flux
-- Secondary ionization by fast photoelectrons (Shull & van Steenberg 1985)
+- Secondary ionization by fast photoelectrons: the ionization budget of
+  Shull & van Steenberg (1985), with the heating fraction, its dependence on
+  the photoelectron energy and the H2 channels from Dalgarno, Yan & Liu (1999)
 - Non-LTE H(n=2) populations and Ly-alpha radiative transfer, from either a
   fast Neufeld escape-probability closure or a field imported from the LaRT
   Monte Carlo code, including the Ly-alpha emitted in situ within the wind
 - Molecular chemistry: H2, H2+, H3+ and HeH+ in the coupled ionization
   equilibrium, with H2 photoionization opacity/heating, Miller et al. (2013)
   H3+ infrared cooling, and H2 photodissociation in the Lyman-Werner bands
-  from a level-resolved CLOUDY calculation tabulated on our own (T, n_H,
-  N_H2) grid -- the dissociation cross section itself, with the line
-  self-shielding and the trapping of the fluorescent decay photons inside it,
-  rather than a published closed-form fit
+  from a line-by-line calculation over every Lyman and Werner transition,
+  tabulated on our own (T, n_H, N_H2) grid -- the dissociation cross section
+  itself, with the line self-shielding and the line overlap inside it and the
+  trapping of the fluorescent decay photons taken from level-resolved CLOUDY
+  runs, rather than a published closed-form fit
 - Oxygen chemistry: OH, H2O and CO in the same coupled system, with the FUV
   photolysis of H2O and OH in four bands, so the base H2/H partition is
   computed rather than imported. Rates from Baulch et al. (2005) and the IUPAC
@@ -88,7 +118,7 @@ ATES model.
   transport: True`, default off): H+ becomes a fifth carrier and the sweep is
   handed the transported fraction where a parcel leaves its shell faster
   than it ionizes (`P r/|v| < 1`), which is what the Koskinen et al. (2022)
-  comparison of `docs/k22_electron_density_excess.md` needed
+  comparison of `md/k22_electron_density_excess.md` needed
 - Thermal infrared field of the atmosphere below the base, so the molecular
   and fine-structure coolants return the net rate rather than the vacuum limit
 - Molecular infrared bands (`Molecular IR bands`): the H2 quadrupole and
@@ -138,6 +168,19 @@ ATES model.
   a non-monotone (Grippo) line search and a scaled trust region. The
   stationary system carries a row and an unknown for every transported
   balance the configuration activates, not only the hydrodynamic triple
+- `Composition update holds: pressure` (default `energy`): where the
+  stationary solve alternates a hydrodynamic solve with the fixed-wind
+  element and carrier relaxations, the composition update keeps the density,
+  velocity and pressure of every cell and rebuilds the total energy from the
+  caloric equation of state of the new composition, instead of keeping the
+  conserved energy and letting the pressure move. At a base many decades
+  subsonic a pressure step of 1e-4 against the reservoir drives a face mass
+  flux decades above the wind's into the next solve; holding the pressure
+  removes that step. A route through the iteration, not an equation set: at
+  a fixed point both values leave the state unchanged, and the energy each
+  update adds is printed at every pass. On the LHS 1140 b molecular states it
+  removes the base step but does not by itself make the next solve converge
+  (`md/lhs1140b_composition_update_pressure_20260924.md`)
 - `Well balanced: True` (default False) carries the departure from each
   cell's own local hydrostatic equilibrium through the reconstruction, the
   Riemann jumps and the pressure force, so a discrete hydrostatic
@@ -179,7 +222,13 @@ ATES model.
   present means metals on, likewise `opacity.inp` and `base.inp`
 - Runtime grid size: `Grid cells: <N>` in `input.inp` (default 500), so
   base-refinement studies run without a rebuild
-- `EXHALE_transit.py` transmission post-processor: He I 10830 Å, Ly-alpha,
+- Shells beyond the constructed grid, off by default: `Outer shells
+  [r_face,cells]: <r_face> <cells>` appends `<cells>` cells outside the
+  outer face of the grid, the last face landing on `r_face` [R_p], with the
+  cells, faces and volumes below the old outer face unchanged bit for bit, so
+  a domain-size test moves only the outer boundary (`md/input_schema.md`,
+  K33d)
+- `EXHALE_transit.py` transmission post-processor: He I 10830 A, Ly-alpha,
   H-alpha, H-beta, the metal resonance doublets Mg II h&k, Ca II H&K and
   Na I D, and the O I 1302/1304/1306 triplet out of its three resolved
   ground-term fine-structure levels, with impact-parameter Voigt integration,
@@ -204,9 +253,11 @@ ATES model.
   consistency, whose tolerance is arithmetic, and stationarity, whose
   tolerance is the certification's
 - Python loaders (`examples/exhale_io.py`) driven by the `# columns` schema
-  header every output file carries; a bitwise regression harness over a
-  sixteen-case physics matrix (`make check`); and 33 assertion suites
-  plus three standalone test programs (`make test`), which print
+  header every output file carries; a regression harness over a
+  seventeen-case physics matrix (`make check`, bitwise first, else within a
+  stated relative tolerance); and 42 assertion suites (`src/tests/*/run.sh`)
+  plus the standalone `element_census_tests`, `diffusion_tests` and
+  `residual_determinism` (`make test`), which print
   one `PASS|FAIL <name> measured= reference= tol=` line per assertion
 - A restart is a contract, not a file copy. Both state files carry a
   `restart_schema 1` metadata block (reservoir, species columns, grid,
@@ -322,10 +373,13 @@ schemas, convergence recipes, post-processing) is in
   metals, the marching scheme, boundary and initial conditions, the stationary
   solve), written from the source at the depth of the ATES paper; the section
   files are `docs/physics_overview/*.tex`
-- [`docs/Update_EXHALE_stage2.pdf`](docs/Update_EXHALE_stage2.pdf): the current
-  update log (stage 2, from 2026-09-05). It carries the
-  code-size appendix against the original ATES and the list of source inherited unchanged from it
-  (`docs/Update_EXHALE_appendix.tex`, re-measured with `src/utils/codesize.py`);
+- [`docs/Update_EXHALE_stage3.pdf`](docs/Update_EXHALE_stage3.pdf): the current
+  update log (stage 3, from 2026-09-23; source `md/Update_EXHALE_stage3.md`).
+  It carries the code-size appendix against the original ATES and the list of
+  source inherited unchanged from it (`docs/Update_EXHALE_appendix.tex`,
+  measured 2026-09-22 with `src/utils/codesize.py`, before the code of stage 3);
+  [`docs/Update_EXHALE_stage2.pdf`](docs/Update_EXHALE_stage2.pdf): sections
+  1-17 (2026-09-05 to 09-22);
   [`docs/Update_EXHALE_stage1.pdf`](docs/Update_EXHALE_stage1.pdf): sections 1-171, the dated changelog against
   the original ATES
 - [`examples/README.md`](examples/README.md): what each of the numbered
@@ -341,7 +395,7 @@ schemas, convergence recipes, post-processing) is in
   CHIANTI cooling-coefficient fits and their accuracy
 - [`docs/photoion_cross_sections.pdf`](docs/photoion_cross_sections.pdf) and
   [`docs/recombination_coefficients.pdf`](docs/recombination_coefficients.pdf):
-  the H/He/He 2³S atomic data and its benchmarks
+  the H/He/He 2^3S atomic data and its benchmarks
 - [`docs/lower_atmosphere_coupling.pdf`](docs/lower_atmosphere_coupling.pdf),
   the lower-atmosphere connection: analytic column, molecular chemistry,
   Lyman-Werner photodissociation, base infrared field, the H2/H2O/CO infrared
@@ -359,13 +413,14 @@ schemas, convergence recipes, post-processing) is in
   initial conditions, the convergence criteria, and the Newton-Krylov design
 - [`docs/wind_ae_solver.pdf`](docs/wind_ae_solver.pdf): the included Wind-AE
   solver behind `IC mode: windae`
-- [`docs/viscosity_conduction.md`](docs/viscosity_conduction.md), molecular
+- [`md/viscosity_conduction.md`](md/viscosity_conduction.md), molecular
   viscosity and heat conduction: derivation and where they matter
 - [`docs/code_comparison.pdf`](docs/code_comparison.pdf) and
   [`docs/methodology_comparison.pdf`](docs/methodology_comparison.pdf):
   comparison with ATES, Salz, Kubyshkina, Murray-Clay, AIOLOS, Taylor, Xing
 
-`docs/` holds roughly forty further memos on individual investigations.
+`docs/` holds further typeset notes on individual investigations, and `md/`
+the Markdown memos of the development record.
 
 ---
 
@@ -375,7 +430,7 @@ schemas, convergence recipes, post-processing) is in
    E. (2021)](https://ui.adsabs.harvard.edu/abs/2021A%26A...655A..30C). *Irradiation-driven escape of
    primordial planetary atmospheres I. The ATES photoionization hydrodynamics
    code.* A&A, 655, A30; and [(2022)](https://ui.adsabs.harvard.edu/abs/2022A%26A...663A.122C),
-   *… II. Evaporation efficiency of sub-Neptunes through hot Jupiters.*
+   *... II. Evaporation efficiency of sub-Neptunes through hot Jupiters.*
    A&A, 663, A122.  (The code EXHALE forks.)
 
 2. [Biassoni, F., Caldiroli, A., Gallo, E., Haardt, F., Spinelli, R., Borsa,
@@ -392,8 +447,9 @@ schemas, convergence recipes, post-processing) is in
 
 5. [Taylor, A. R., Koskinen, T., et al. (2025)](https://ui.adsabs.harvard.edu/abs/2025ApJ...989...68T).
    *A Multispecies Atmospheric Escape Model with Excited Hydrogen and Helium:
-   Application to HD209458b.* ApJ, 989, 68.  (Temperature-dependent Penning
-   rate; diffusive-separation reference model.)
+   Application to HD209458b.* ApJ, 989, 68.  (Diffusive-separation reference
+   model; its He(2^3S)+H Penning fit was replaced by the Garcia Munoz 2025
+   rate.)
 
 6. [Xing, L., Yan, D., Guo, J. (2023)](https://ui.adsabs.harvard.edu/abs/2023ApJ...953..166X). *The Mass
    Fractionation of Helium in the Escaping Atmosphere of HD 209458b.* ApJ,
@@ -423,4 +479,4 @@ schemas, convergence recipes, post-processing) is in
 
 Kwang-Il Seon (KASI / UST)
 
-Last updated: 2026-09-22 23:23
+Last updated: 2026-09-26 16:01

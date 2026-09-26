@@ -1553,6 +1553,16 @@
            ' r_min[Rp] '//trim(meta_num(r(1)))//                                 &
            ' r_max[Rp] '//trim(meta_num(r(N)))//                                 &
            ' mode '//trim(grid_type)
+      ! Shells appended beyond the constructed grid ("Outer shells") make
+      ! another discretization of the same interior: the field states their
+      ! number and the radius of their outer face, so a state written with
+      ! shells loads only into a run with the same shells, and the field of
+      ! a run without them is the line above alone.
+      if (n_outer_shells .gt. 0) then
+         write(s,'(A,I0,A)') ' outer_shells ', n_outer_shells,              &
+              ' r_face[Rp] '//trim(meta_num(r_outer_shells_face))
+         blk(imeta_grid) = trim(blk(imeta_grid))//trim(s)
+      endif
 
       ! The constants the state was solved with. The set is named so that
       ! one token identifies a revision of parameters.f90's constants, and

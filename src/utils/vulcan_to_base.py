@@ -19,7 +19,7 @@ Reads the VULCAN output (T(p), composition mixing ratios vs pressure) and
    the elemental reservoirs `HeH_base` and `<El>_H_base` for the elements
    VULCAN's networks carry (C, N, O, S), summed over every carrier.
    The molecular mixing ratios stay comments: nothing in EXHALE consumes
-   them, so they are diagnostic metadata (docs/input_schema.md section 2c).
+   them, so they are diagnostic metadata (md/input_schema.md section 2c).
 
 What it does NOT provide: atomic-metal release fractions (Na/Mg/Ca/Fe).
 VULCAN's networks are H/C/N/O(/S) -- metal/alkali chemistry and condensation

@@ -14,12 +14,12 @@ run.  For each EXHALE benchmark run it writes:
 Run for all four default benchmarks in one invocation to also emit the combined
 paper figure EXHALE/paper/figs/fig_lya_insitu.pdf.
 
-Physics (matches EXHALE_transit.py::n2_populations exactly):
-  t4  = T/1e4  (T clamped to >= 1 K)
-  aB  = 2.54e-13 * t4**(-0.8163 - 0.0208*ln(t4))          case-B recomb
-  a2s = (0.282 + 0.047*t4 - 0.006*t4**2) * aB
-  a2p = aB - a2s                                            recombs landing in 2p
-  C1s2p = 1.71e-8 * (1/t4)**0.077 * exp(-118400/T)          collisional 1s->2p
+Physics (the coefficients of exhale_transit_lib, i.e. of the solver:
+hydrogen_n2_rates.f90 and Cool_coeff.f90; imported, not restated):
+  aB  = etl.alpha_B_hydrogen(T)            the balance's case-B coefficient
+  a2s = etl.case_b_2s_fraction(T) * aB     the case-B share into 2s (Pengelly 1964)
+  a2p = aB - a2s                           recombinations landing in 2p
+  C1s2p                                    etl.hydrogen_n2_collision_rates (CHIANTI)
   n_e = n_HII + n_HeII + 2 n_HeIII
   eps_rec = a2p * n_e * n_HII * E_Lya
   eps_col = C1s2p * n_e * n_HI  * E_Lya
@@ -33,7 +33,7 @@ Comparison to Yan et al. (2022, ApJ 936, 177), their Eq. 8:
   of recombinations landing in 2p (a2p = aB - a2s) and only the 1s->2p
   collisional channel, because only 2p decays yield a Ly-alpha photon (2s decays
   via the two-photon continuum).  This is consistent with
-  EXHALE_transit.py::n2_populations.  It also differs (a) from the in-code
+  exhale_transit_lib.n2_populations.  It also differs (a) from the in-code
   src/modules/radiation/lya_rt.f90, which uses the full alphaB, and (b) from the
   classic 0.68*alphaB rule of thumb.  Only the SHAPE of eps(r) matters for the
   LaRT sampling (normalization is external); the rec/col split and integrated
@@ -54,6 +54,8 @@ _HERE = os.path.dirname(os.path.abspath(__file__))
 if _HERE not in sys.path:
     sys.path.insert(0, _HERE)
 import exhale_io as aio
+sys.path.insert(0, os.path.dirname(_HERE))
+import exhale_transit_lib as etl   # noqa: E402
 
 # --- physical constants (cgs) ---
 # The Jupiter radius is defined once, as RJ_CM of exhale_io, which carries the
@@ -67,16 +69,15 @@ DEFAULT_RUNS = ['hd189', 'hd209', 'wasp121', 'wasp52']
 def emissivity(run):
     """Return dict with r[R_p] and eps_rec/eps_col/eps_tot [erg cm^-3 s^-1].
 
-    Matches EXHALE_transit.py::n2_populations for the atomic coefficients.
+    The atomic coefficients are those of exhale_transit_lib.n2_populations.
     """
     r = run.r
     T = np.maximum(run.T, 1.0)               # defensive floor (avoid 1/T, ln 0)
-    t4 = T / 1.0e4
 
-    aB = 2.54e-13 * t4 ** (-0.8163 - 0.0208 * np.log(t4))
-    a2s = (0.282 + 0.047 * t4 - 0.006 * t4 ** 2.0) * aB
+    aB = etl.alpha_B_hydrogen(T)
+    a2s = etl.case_b_2s_fraction(T, 1.0) * aB
     a2p = aB - a2s
-    C1s2p = 1.71e-8 * (1.0 / t4) ** 0.077 * np.exp(-118400.0 / T)
+    C1s2p = etl.hydrogen_n2_collision_rates(T)[1]
 
     n_HI = run.ion['HI']
     n_HII = run.ion['HII']

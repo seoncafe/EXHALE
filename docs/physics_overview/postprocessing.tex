@@ -146,8 +146,14 @@ h\&k, Ca\,{\sc ii} H\&K and Na\,{\sc i} D, the metal lines being skipped
 automatically for a metals-off run. It integrates the Voigt line opacity
 over impact parameter, averages over the stellar disk, and convolves with
 the instrument profile and the planet's rotation; the Balmer branch builds
-the non-LTE $2s/2p$ populations following \citet{Christie2013}, the
-same model Sec.~\ref{sec:ionization:n2} solves inside the Fortran code. An
+the non-LTE $2s/2p$ populations with the level balance of
+\citet{Christie2013} and the rate coefficients of the Fortran model of
+Sec.~\ref{sec:ionization:n2} (transcribed in \texttt{exhale\_transit\_lib.py},
+\texttt{n2\_populations}, and equal to them to $3\times10^{-13}$ relative), but with a field
+of its own, because neither the solver's Ly$\alpha$ field nor its Balmer
+rate is in the profiles the tool reads: $J_{\rm Ly\alpha}$ from a file or
+the estimate of Huang et al.\ (2017), and a diluted stellar blackbody for
+the Balmer continuum. An
 optional triaxial Roche geometry comes from \texttt{roche\_recon.py}.
 Overrides are environment variables (\texttt{EXHALE\_TRANSIT\_*}: resolving
 power, He window, rotation period, azimuthal samples) and the output keeps
@@ -177,7 +183,10 @@ the path, md5 and size of each file read, and the state's own provenance,
 coupling, boundary model and reservoir lines.
 
 What the choice costs was MEASURED on \texttt{wasp\_full}, which carries
-both states, as the peak transit depth relative to itself: He\,{\sc i} 10830
+both states, as the peak transit depth relative to itself (before the
+atomic-data corrections of 2026-09-24/25, which moved both states, and
+before the post-processor took the solver's $n=2$ rates; not re-measured
+since): He\,{\sc i} 10830
 $-0.64$ per cent, H$\alpha$ $-1.28$, H$\beta$ $-3.48$, Ly$\alpha$ unchanged
 at its saturated ceiling, and the optically thin metal lines $+0.1$ to $+0.8$.
 The metastable helium column is 12 per cent \emph{larger} in the solved

@@ -49,8 +49,8 @@ under their new names:
 Each entry below is one dated section: what changed, why, which files, the
 gate that was run and its result, and the movement it produced against the
 scratch baseline or the goldens. Section numbers restart at 1. The plan the
-entries execute is \texttt{docs/development\_plan\_20260905\_rev3.md} (sections 1-10)
-with the order of \texttt{docs/development\_plan\_20260905\_execution.md}; item labels
+entries execute is \texttt{md/development\_plan\_20260905\_rev3.md} (sections 1-10)
+with the order of \texttt{md/development\_plan\_20260905\_execution.md}; item labels
 (A1, A8, 10.1-1, D0, C1 ...) are the plan\textquotesingle s.
 
 \begin{center}\rule{0.5\linewidth}{0.5pt}\end{center}
@@ -289,7 +289,7 @@ items 7, 8, 10, 12, 10.3, 10.5 decisions 3, 13, 17.
 \item
   \textbf{A2, ROE estimator and caller} (\texttt{speed\_estimate\_ROE.f90} rewritten;
   \texttt{Num\_Fluxes.f90} ROE branch; \texttt{input\_read.f90}; \texttt{EXHALE\_main.f90}):
-  \texttt{docs/a2\_roe\_interface.md} implemented as approved: \texttt{roe\_star\_state},
+  \texttt{md/a2\_roe\_interface.md} implemented as approved: \texttt{roe\_star\_state},
   status OK/VACUUM/INADMISSIBLE, the vacuum test first, PVRS kept only when
   admissible, two-rarefaction exponent \texttt{1/z}, two-shock densities times the
   upstream densities, HLLE flux on faces without an admissible star state
@@ -340,7 +340,7 @@ items 7, 8, 10, 12, 10.3, 10.5 decisions 3, 13, 17.
   so no run exercises the fix yet.
 \item
   \textbf{2a-PLANCK} (\texttt{J\_inc.f90}, \texttt{set\_energy\_vectors.f90}, \texttt{input\_read.f90},
-  \texttt{write\_setup\_report.f90}, \texttt{excited\_hydrogen.f90}, \texttt{docs/input\_schema.md}):
+  \texttt{write\_setup\_report.f90}, \texttt{excited\_hydrogen.f90}, \texttt{md/input\_schema.md}):
   \texttt{Spectrum\ type:\ Planck} (requires \texttt{Stellar\ Teff} and \texttt{Stellar\ radius})
   builds the whole grid from \texttt{pi\ B\_nu(T\_eff)\ (R\_star/a)\^{}2}; the Balmer
   routines call the same shared function (unchanged result); the setup
@@ -382,8 +382,8 @@ returns 0 for a species missing from the table (needs a stop);
 \texttt{write\_output.f90} 806-816\textquotesingle s FUV ledger closed form carries no line
 transmission for B2 (its \texttt{rel\_diff} reads 1.0 now; the LW row was already
 0.84); \texttt{inputdata/sed/README.md} describes the old warning in six places;
-\texttt{docs/input\_schema.md} row 11a should state the coverage requirement;
-\texttt{docs/a2\_oxygen\_option\_design.md} 402 describes the pre-2a B2 field; the
+\texttt{md/input\_schema.md} row 11a should state the coverage requirement;
+\texttt{md/a2\_oxygen\_option\_design.md} 402 describes the pre-2a B2 field; the
 \texttt{physics\_probe/README.md} summary counts are stale; \texttt{J\_XUV} (used by the
 Wind-AE bridge), the FUV band fluxes and the monochromatic flux do not yet
 follow the spectrum type (decision 13 is enforced for the photon grid only);
@@ -479,8 +479,8 @@ cooling).
   recombination channel is 64\% of the cooling there), state 1e-4.
 \item
   \textbf{Documentation pass}: \texttt{inputdata/sed/README.md} (seven places, the
-  stop), \texttt{docs/input\_schema.md} (row 11a coverage rule; rows 11, 11b, 11d,
-  K3, K4 line references corrected), \texttt{docs/a2\_oxygen\_option\_design.md}
+  stop), \texttt{md/input\_schema.md} (row 11a coverage rule; rows 11, 11b, 11d,
+  K3, K4 line references corrected), \texttt{md/a2\_oxygen\_option\_design.md}
   (B2 row), \texttt{src/tests/physics\_probe/README.md} (two summaries: 41/15/26 at
   35d9dd5; 83 assertions, 69 PASS, 14 FAIL after 2a with the LLF fix already
   in the tree) and \texttt{grid\_and\_gates/README.md}, rev 3 section 10.2 and 10.5
@@ -743,8 +743,8 @@ so its outer-tail and base-cell numbers compare two points of one transient).
   (\texttt{photon\_grid\_floor\_eV}, or the table floor for a loaded SED) instead of
   the first bin center, which the new partition had moved to 4.95 eV
   against a floor of 4.768 eV. The documents that restated the changed
-  quantities were brought in line: \texttt{docs/input\_schema.md} (profile level,
-  R\_J), \texttt{docs/a2\_oxygen\_option\_design.md} (molecular masses in m\_H units),
+  quantities were brought in line: \texttt{md/input\_schema.md} (profile level,
+  R\_J), \texttt{md/a2\_oxygen\_option\_design.md} (molecular masses in m\_H units),
   rev 3 and the execution document (landed marks).
 \end{itemize}
 
@@ -954,7 +954,7 @@ the carrier solver question is settled. \texttt{make\ check} and one
   \texttt{speed\_estimate\_ROE}; left as the frozen record it is.
 \item
   \textbf{Document sync} (\texttt{docs/EXHALE\_user\_manual.tex} + PDF rebuilt,
-  \texttt{docs/p44\_base\_sawtooth.md}, \texttt{write\_output.f90} and \texttt{util\_ion\_eq.f90}
+  \texttt{md/p44\_base\_sawtooth.md}, \texttt{write\_output.f90} and \texttt{util\_ion\_eq.f90}
   comments, \texttt{write\_setup\_report.f90}): the manual carries the \texttt{Planck}
   type, the decision-17 stop, the six-band edge grid, the IAU constants and
   NIST thresholds, the signed \texttt{du}, the profile base level and the restart
@@ -1006,7 +1006,7 @@ the production build was restored to \texttt{b2c15e53c888d09fa90ffdad80443c3a}.
 \textbf{Phase 1 is closed.} Open for the user before Phase 3: decision 4 (carrier
 step rejection/retry), the relaxation amnesty of the ionization sweep that
 handed the carrier system a non-root, the D0 draft
-(\texttt{docs/d0\_governing\_system\_20260906.md}, 33 consistency items, 15 questions)
+(\texttt{md/d0\_governing\_system\_20260906.md}, 33 consistency items, 15 questions)
 for acceptance, the switch of the planet inputs to their loaded SEDs (2d), the
 WASP-121 b SED choice (solar shape, WASP-17 shape, or the two joined at 1700 A),
 and the sub-Lyman band budget of the \texttt{Load} grid (the table\textquotesingle s own resolution
@@ -1014,27 +1014,27 @@ is kept; Mg II stays at 5.5e-4).
 
 \subsection{7. PLAN\_20260906\_rev2, Step A: acceptance contracts and run modes (2026-09-06)}\label{7-plan_20260906_rev2-step-a-acceptance-contracts-and-run-modes-2026-09-06}
 
-Plan of record for this stage: \texttt{docs/PLAN\_20260906\_rev2.md} (rev 0 and rev 1
+Plan of record for this stage: \texttt{md/PLAN\_20260906\_rev2.md} (rev 0 and rev 1
 and their two reviews are kept beside it; the execution document of
 2026-09-05 points at rev 2). The decisions of \texttt{To\_be\_determined\_by\_user\_20260906.md}
 were judged against \texttt{To\_be\_determined\_by\_user\_recommend\_20260906.md} and
 adopted as rev 2 section 2 states.
 
-Documents written (advisor): \texttt{docs/a0\_run\_mode\_contract\_20260906.md} (the
+Documents written (advisor): \texttt{md/a0\_run\_mode\_contract\_20260906.md} (the
 three run states; \texttt{Time\ stepping:\ Local} and PTC are initialization only;
 physical time advances only by accepted global steps; headers gain \texttt{mode=} and
 \texttt{t\_phys=}; the proposed \texttt{Run\ mode:\ init\ \textbar{}\ phys} key awaits the user\textquotesingle s
-confirmation before A0-impl); \texttt{docs/a2\_certification\_contract\_20260906.md}
+confirmation before A0-impl); \texttt{md/a2\_certification\_contract\_20260906.md}
 (one evaluator, four contexts: probe, stationary trial, physical step,
 certification; statuses \texttt{not\_applicable\ /\ evaluated\ /\ unavailable}; one
 condition per active balance; what replaces what). Documents drafted by
 workers and verified for structure and wording:
-\texttt{docs/b1a\_active\_equation\_inventory\_20260906.md} (flags, equations per flag,
+\texttt{md/b1a\_active\_equation\_inventory\_20260906.md} (flags, equations per flag,
 constraints, five validity states with producers, the prerequisite table for
 eight configurations; finding: only the hydro rows have a state-consistent
 evaluator; the composition projection, the \texttt{rho} rewrite and thirteen closures
 with stated domains are recorded nowhere) and
-\texttt{docs/b1\_target\_system\_20260906\_draft.md} (energy ledger with the shared H2
+\texttt{md/b1\_target\_system\_20260906\_draft.md} (energy ledger with the shared H2
 zero at \texttt{v=0,J=0}; chemistry mass-preserving; Lyman-alpha loss and return
 from one 2p balance, an escape-probability multiplier on the existing
 cooling explicitly not the target; the zero-net-current closure derived from
@@ -1149,7 +1149,7 @@ specified and recommended; ten open questions).
   unusable. Tolerances inherited; the convergence study is owed.
 \item
   \textbf{B1 accepted (2026-09-06).} The user decided the fourteen open
-  questions of \texttt{docs/b1\_target\_system\_20260906\_draft.md} as recommended
+  questions of \texttt{md/b1\_target\_system\_20260906\_draft.md} as recommended
   (metal reservoir zero; electron mass convention; \texttt{ioniz\_eq} density
   \texttt{intent(in)}; the residual H I excitation cooling under the Lyman-alpha
   ledger; trace metals in the diffusion matrix; H+ in the B9 set; CO
@@ -1157,7 +1157,7 @@ specified and recommended; ten open questions).
   H3+ low-collider policy; one H2 partition function; rollback of
   diagnostic extrema; identity row placement; the CO ceiling\textquotesingle s validity
   category; O(1D) reservoir; the refused \texttt{\_adv} product rule). The accepted
-  specification is \texttt{docs/b1\_target\_system\_20260906.md} (the draft kept and
+  specification is \texttt{md/b1\_target\_system\_20260906.md} (the draft kept and
   marked superseded). This is the Phase 2 gate of PLAN rev 2; B2 (the
   residual-controlled temperature solve) started the same day.
 \item
@@ -1231,8 +1231,8 @@ specified and recommended; ten open questions).
   the state flagged, continue; physical: stop), which is the item A3b, and
   the case runs in \texttt{init} mode as the diagnostic it is.
 \item
-  \textbf{B3a and B4 designs} (\texttt{docs/b3a\_attempted\_step\_controller\_design\_20260906.md},
-  \texttt{docs/b4\_spatial\_operator\_design\_20260906.md}, read-only workers; advisor
+  \textbf{B3a and B4 designs} (\texttt{md/b3a\_attempted\_step\_controller\_design\_20260906.md},
+  \texttt{md/b4\_spatial\_operator\_design\_20260906.md}, read-only workers; advisor
   decisions in their last sections). B3a: eight of the fourteen step
   operations have no returned-state verdict today (RK/BC, element diffusion,
   excited H, \texttt{ioniz\_eq}, the projection, \texttt{Apply\_BC}, conduction, Shapiro);
@@ -1351,7 +1351,7 @@ specified and recommended; ten open questions).
   \texttt{hydrostatic\_column}, \texttt{mol\_base\_handoff} bitwise identical. Both floor
   reports of \texttt{EXHALE\_main.f90} now state the B2/B2b behavior.
 \item
-  \textbf{COlit} (\texttt{docs/co\_destruction\_rates\_literature\_20260906.md}; publisher
+  \textbf{COlit} (\texttt{md/co\_destruction\_rates\_literature\_20260906.md}; publisher
   PDFs of Westley 1980 NSRDS-NBS 67, Tsai 2017, Wakelam 2012 added to
   \texttt{references/}): B1\textquotesingle s CO choice is settled on physics: every neutral CO
   destruction channel carries a barrier of 6.7 eV or more, so the one-sided
@@ -1486,7 +1486,7 @@ specified and recommended; ten open questions).
   counters exposed (B6 wiring is the certification owner\textquotesingle s).
 \item
   \textbf{COlit, completed with the user\textquotesingle s PDFs} (Visser 2009, McElroy 2013,
-  Venot 2012, 2020; \texttt{docs/co\_destruction\_rates\_literature\_20260906.md}, 1419
+  Venot 2012, 2020; \texttt{md/co\_destruction\_rates\_literature\_20260906.md}, 1419
   lines): CO photodissociation as Visser et al. define it (37 bands inside
   EXHALE\textquotesingle s 912 to 1110 A beam, unshielded 2.6e-10 s\^{}-1 in the Draine field,
   shielding tables in \texttt{N\_CO\ x\ N\_H2} for four parameter sets, T\_ex raised only
@@ -1803,7 +1803,7 @@ specified and recommended; ten open questions).
   independent normalizations of one absorption, the level-resolved
   dissociation table over \texttt{p\_lw\_absorbed} against the DB96 eq. 39 band
   share (\texttt{lyman\_werner.f90}, \texttt{h2\_self\_shielding\_table.f90}). Also:
-  \texttt{docs/a2\_oxygen\_option\_design.md} 882 documents columns that no longer
+  \texttt{md/a2\_oxygen\_option\_design.md} 882 documents columns that no longer
   exist; the \texttt{a2\_m2} kinetics check asserts the beam identity for every band.
 \item
   \textbf{A2tol2} (measurement and decision; \texttt{a2\_certification\_contract\_20260906.md}
@@ -1896,7 +1896,7 @@ specified and recommended; ten open questions).
     restated to their sum: 343.0 + 137.9 = 480.9 for the HD 209458 b
     spectrum (\texttt{Update\_EXHALE\_stage1.md} records the 912-1201 A integral of
     that spectrum as 481.0 and its halves as those two numbers), and the
-    LW-only cases (\texttt{mol\_lyman\_werner}, \texttt{heh\_1\_lw\_40k} (renamed 2026-09-16 from \texttt{armA\_LW}; mapping in \texttt{docs/named\_case\_audit.md} section 6), \texttt{heh\_1\_lw\_12k} (renamed 2026-09-16 from \texttt{armD\_D2\_LW}),
+    LW-only cases (\texttt{mol\_lyman\_werner}, \texttt{heh\_1\_lw\_40k} (renamed 2026-09-16 from \texttt{armA\_LW}; mapping in \texttt{md/named\_case\_audit.md} section 6), \texttt{heh\_1\_lw\_12k} (renamed 2026-09-16 from \texttt{armD\_D2\_LW}),
     \texttt{heh\_1\_lw\_newton} (renamed 2026-09-16 from \texttt{armD\_D2\_LW\_newton})) from 343.0 to 480.9 so that they keep the same
     star. The README\_HOWTO HD 189733 b recipe goes from LW 600.1 + B1 648.4
     to LW 1248.5.
@@ -1930,7 +1930,7 @@ specified and recommended; ten open questions).
     first closes on it to 1e-6 (\texttt{physics\_probe/lyman\_werner\_cell\_mean}
     sec. 6). \texttt{h2\_band\_equivalent\_width} and eq. (39) are removed; the two
     published self-shielding fits stay, called by nothing, for the
-    comparison of \texttt{docs/h2\_self\_shielding\_cloudy.md}.
+    comparison of \texttt{md/h2\_self\_shielding\_cloudy.md}.
   \item
     \textbf{The ledger.} The LW row of \texttt{output/FUV\_bands.txt} is a closure like
     B3 and B4, and its label says so. MEASURED on the \texttt{oxygen\_chemistry}
@@ -2471,7 +2471,7 @@ specified and recommended; ten open questions).
   elements far from the reservoir ratio, and a uniform composition is what both
   forms carry exactly; a converged pair is what would measure the difference at
   the separation those cases reach, and is named as open in
-  \texttt{docs/b4\_spatial\_operator\_design\_20260906.md}. No golden was refreshed.
+  \texttt{md/b4\_spatial\_operator\_design\_20260906.md}. No golden was refreshed.
 \item
   \textbf{B4-1 landed (element rows), advisor verification} (2026-09-06): new
   module \texttt{species\_advective\_transport} (\texttt{species\_face\_flux.f90}): the face
@@ -2803,7 +2803,7 @@ specified and recommended; ten open questions).
   its coefficients only is now \texttt{chemical\_rate\_coefficients} (-3.6 percent
   \texttt{wasp\_full}, -5.6 percent \texttt{mol\_metals}, +3.5 percent \texttt{mol\_base\_handoff},
   the last from the 27 metal slots looped with metals off: guard on
-  \texttt{thereis\_metals}, HYG-COL). Recorded: \texttt{docs/openmp\_parallelization.md}
+  \texttt{thereis\_metals}, HYG-COL). Recorded: \texttt{md/openmp\_parallelization.md}
   (2.07x at 16 threads, bit-identical across threads) is stale: measured 8.2x
   and round-off 6.6e-14 (DOCS-OMP). A \texttt{cp\ -irp} of another item blocked on an
   interactive prompt since 2026-09-06 was killed by PID (23818, cwd checked).
@@ -2877,7 +2877,7 @@ specified and recommended; ten open questions).
   guarded on \texttt{thereis\_metals} (inert; COST3\textquotesingle s +3.5 percent NOT reproduced:
   guarded 53.7/52.8 s against unguarded 55.7/52.5 s on \texttt{mol\_base\_handoff}
   300, within the run-to-run spread, kept as dead-work removal); DOCS-OMP
-  \texttt{docs/openmp\_parallelization.md} dated and brought to COST3\textquotesingle s measured
+  \texttt{md/openmp\_parallelization.md} dated and brought to COST3\textquotesingle s measured
   state (8.2x at 16 threads, 6.6e-14 between thread counts). Recorded:
   no \texttt{reduction} on a physical quantity exists in \texttt{src/}, so the 6.6e-14
   thread-count difference comes from block boundaries set by
@@ -2888,7 +2888,7 @@ specified and recommended; ten open questions).
   temporary for \texttt{nm\_j} on every call (runtime warning in \texttt{physics\_probe});
   \texttt{EXHALE\_main.f90:452} is 141 characters.
 \item
-  \textbf{REF-ZHANGSHU} (comments, \texttt{docs/p49\_front\_energy\_mode.md} 6.1, probe
+  \textbf{REF-ZHANGSHU} (comments, \texttt{md/p49\_front\_energy\_mode.md} 6.1, probe
   \texttt{positivity\_limiter\_scaling} 15 assertions; user-supplied PDF read): the
   citation was wrong as stated: \texttt{positivity\_limited\_faces} is not the
   limiter of Zhang and Shu 2010 (JCP 229, 8918) but one built on the same
@@ -2918,7 +2918,7 @@ specified and recommended; ten open questions).
   (Eq. 2.11), which would restore the reconstruction average, is recorded as
   a change of scheme, not applied.
 \item
-  \textbf{REF-LODI} (documentation, \texttt{docs/phaseC\_characteristic\_base\_bc.md}
+  \textbf{REF-LODI} (documentation, \texttt{md/phaseC\_characteristic\_base\_bc.md}
   +282/-50; the three user-supplied journal PDFs read as page images since
   their text layers lose the displayed equations): the wave-amplitude
   normalization (Poinsot and Lele Eqs. (15)-(23); Thompson 1990 (44)-(47)
@@ -3048,7 +3048,7 @@ specified and recommended; ten open questions).
 \item
   \textbf{LYA-BETA-METALS} (measurement by the worker, fix applied by the
   advisor; \texttt{Cool\_coeff.f90}, probe \texttt{fine\_structure\_escape\_probability},
-  \texttt{docs/resonance\_line\_trapping.md} sections 6.1 and 10; publisher scans of
+  \texttt{md/resonance\_line\_trapping.md} sections 6.1 and 10; publisher scans of
   de Jong, Boland and Dalgarno 1980 and Osterbrock 1962 fetched into
   \texttt{references/}): \texttt{line\_escape\_probability\_one\_face} is de Jong et al. 1980
   eq. (B-7), both branches to round-off, applied to the eight ground-term
@@ -3269,7 +3269,7 @@ specified and recommended; ten open questions).
   run failed on "Cannot open file ../inputdata/sed/...", not on a runtime
   check). Production \texttt{EXHALE.x} restored, \texttt{make\ -q} up to date, md5
   ba3d34e6eaee. \textbf{The series is closed}: goldens refreshed once, \texttt{make\ check} byte-identical, fcheck clean, docs and PDFs rebuilt. What follows is
-  in \texttt{docs/session\_handoff\_20260907.md}.
+  in \texttt{md/session\_handoff\_20260907.md}.
 \item
   \textbf{HYG-PY} (advisor, 2026-09-07; \texttt{python/paper\_data.py},
   \texttt{python/make\_struct\_figures.py}): \texttt{HEAT\_FIXED} (the headerless-file
@@ -3503,7 +3503,7 @@ specified and recommended; ten open questions).
   positive and is what the comment already claimed; \texttt{mol\_diffusion} 300
   steps byte-identical, since at production flags the infinity was clamped
   to the same 0. The \texttt{csm\_max\_pass} comment of \texttt{EXHALE\_main.f90} and
-  \texttt{docs/steady\_solver\_design.md} section 15 corrected to the FIELD-SELF and
+  \texttt{md/steady\_solver\_design.md} section 15 corrected to the FIELD-SELF and
   B5c measurements. Recorded: \texttt{diffusion\_tests} T9 reads 1.098e-12 against
   its 1e-12 bound at \texttt{-O1\ -fcheck} (an optimization-level rounding
   sensitivity of \texttt{relative\_settling\_mass}, 35/0 at -O3); the outer loop\textquotesingle s
@@ -3800,7 +3800,7 @@ specified and recommended; ten open questions).
   spends 1.0 to 1.6 passes on that; the extrapolation\textquotesingle s ceiling is the last
   factor 1/\textbar theta\textbar. Redefining the test on the estimated error is a change
   of what the loop returns and is put to the user as decision item 8 of
-  \texttt{docs/To\_be\_determined\_by\_user\_20260906.md} (recommendation (b)). Tests:
+  \texttt{md/To\_be\_determined\_by\_user\_20260906.md} (recommendation (b)). Tests:
   \texttt{coupled\_source\_step} RED 2 rows against the control, GREEN 39/0
   (\texttt{extrapolation\_lowers\_the\_pass\_count} 6.09 against 6.96 at 300 steps;
   \texttt{refused\_extrapolation\_costs\_nothing} identical at 6.80;
@@ -3814,7 +3814,7 @@ specified and recommended; ten open questions).
   tables and belongs in a \texttt{docs/} memo.
   Advisor: the measured tables and the item history that had grown to some
   230 comment lines around the coupled-step constants are moved to
-  \texttt{docs/coupled\_source\_loop\_cost.md} (sections 1-7, decision item 8 linked);
+  \texttt{md/coupled\_source\_loop\_cost.md} (sections 1-7, decision item 8 linked);
   the code site keeps each constant\textquotesingle s conclusion and a section pointer. The
   setup report does not echo environment switches (none of them, by
   design), so the switch is reported by the run counter line alone. Advisor
@@ -3826,7 +3826,7 @@ specified and recommended; ten open questions).
   runs end with status 2, "not certified", exactly as the golden runs do).
 \item
   \textbf{COST7} (decision item 8, option (b), user 2026-09-08; \texttt{EXHALE\_main.f90},
-  \texttt{coupled\_source\_step} suite, \texttt{docs/coupled\_source\_loop\_cost.md} sections
+  \texttt{coupled\_source\_step} suite, \texttt{md/coupled\_source\_loop\_cost.md} sections
   7-8): \textbf{the coupled source loop stops on the ESTIMATED REMAINING ERROR of
   the pair (T, composition), not on the last increment.} The estimate is
   \textbar theta/(1 - theta)\textbar{} times this pass\textquotesingle s increment in each of the two norms
@@ -3897,7 +3897,7 @@ specified and recommended; ten open questions).
   be refreshed by the user} (archive first), then \texttt{make\ check} re-run.
 \item
   \textbf{ADV-STATIC} (\texttt{post\_process\_adv.f90}, new suite \texttt{adv\_static\_limit},
-  \texttt{docs/postprocess\_advection\_validity.md}): \textbf{the brief\textquotesingle s premise is
+  \texttt{md/postprocess\_advection\_validity.md}): \textbf{the brief\textquotesingle s premise is
   refuted and the 0.78 K of \texttt{hydrostatic\_column}\textquotesingle s \texttt{\_adv} file is named.}
   MEASURED: the flow where it sits is Mach 0.23 to 0.82 (the case is a
   300-step relaxation snapshot, not a static column: \texttt{rho\ v\ r\^{}2} spans seven
@@ -3946,7 +3946,7 @@ specified and recommended; ten open questions).
 \item
   \textbf{ADV-ENERGY} (\texttt{T\_equation.f90}, \texttt{ion\_cell\_state.f90},
   \texttt{post\_process\_adv.f90}, \texttt{adv\_static\_limit} +7 rows,
-  \texttt{docs/postprocess\_advection\_validity.md}): the advection post-process\textquotesingle s
+  \texttt{md/postprocess\_advection\_validity.md}): the advection post-process\textquotesingle s
   energy equation is now the EXACT steady internal-energy equation. The
   enthalpy flux of the mass-flux divergence, \texttt{h\ div(rho\ v)} with \texttt{h\ =\ e\ +\ p/rho}, enters \texttt{T\_equation} through a new zero-default field of the cell
   record, \texttt{teq\_cell\%div\_rhov}, as a separate additive term in both branches
@@ -4025,7 +4025,7 @@ specified and recommended; ten open questions).
   with the B5g binary: \texttt{Hydro\_ioniz.txt} and \texttt{Ion\_species.txt} IDENTICAL to
   the gate-3 output, CERTIFIED, log10 Mdot 13.30.
 \item
-  \textbf{B5f} (\texttt{docs/a2\_certification\_contract\_20260906.md} section 11.6; no
+  \textbf{B5f} (\texttt{md/a2\_certification\_contract\_20260906.md} section 11.6; no
   constant moved): the \texttt{cert\_tol\_element} ladder on \texttt{mol\_diffusion} at
   \texttt{Resid\ tol} 1e-8 / 1e-9 / 1e-10 gives ONE state: the 1e-8 solve meets its
   target in 66 iterations (element row 4.633e-11, reproducing B5e digit for
@@ -4055,7 +4055,7 @@ specified and recommended; ten open questions).
   \texttt{post\_process\_adv.f90} +227/-43, \texttt{write\_output.f90} +94/-10,
   \texttt{examples/exhale\_io.py}, \texttt{EXHALE\_transit.py}, \texttt{README.md},
   \texttt{README\_HOWTO.md}, user manual section 4 (PDF rebuilt, 76 pages),
-  \texttt{docs/postprocess\_advection\_validity.md}, \texttt{adv\_static\_limit} +13 rows):
+  \texttt{md/postprocess\_advection\_validity.md}, \texttt{adv\_static\_limit} +13 rows):
   \textbf{the advection post-process refuses the correction in every cell whose
   own energy-equation term ratio says the flow is not stationary; that cell
   keeps the run\textquotesingle s temperature and the ionization equilibrium at it; a new
@@ -4166,7 +4166,7 @@ specified and recommended; ten open questions).
   had; the \texttt{Molecular\ carrier\ transport} entry corrected from "inert
   without oxygen chemistry" to "needs molecular chemistry"), \texttt{README.md},
   \texttt{README\_HOWTO.md} (new block; the oxygen paragraph\textquotesingle s dangling "It"
-  corrected), \texttt{docs/steady\_solver\_design.md} section 19): \textbf{\texttt{Coupled\ carrier\ solve:\ True} with \texttt{Molecular\ chemistry:\ True} and \texttt{Molecular\ carrier\ transport:\ False} is refused at startup}, after every key is
+  corrected), \texttt{md/steady\_solver\_design.md} section 19): \textbf{\texttt{Coupled\ carrier\ solve:\ True} with \texttt{Molecular\ chemistry:\ True} and \texttt{Molecular\ carrier\ transport:\ False} is refused at startup}, after every key is
   resolved (so the oxygen default of the transport key is seen: MEASURED,
   \texttt{Oxygen\ chemistry:\ True} plus the coupled key is accepted, the same with
   the transport stated \texttt{False} is refused), with a message naming what was
@@ -4182,7 +4182,7 @@ specified and recommended; ten open questions).
   a zero-byte \texttt{EXHALE\_setup.out} and no \texttt{EXHALE\_resolved.out}, like every
   other \texttt{input\_read} refusal. Tests RED (the eliminated-H2 coupled run
   completed and printed a Mdot) / GREEN; advisor \texttt{grid\_and\_gates} 98/0,
-  \texttt{physics\_probe} 1491/0. Advisor corrected \texttt{docs/input\_schema.md} K15e
+  \texttt{physics\_probe} 1491/0. Advisor corrected \texttt{md/input\_schema.md} K15e
   ("needs K15d" now qualified to the molecular configuration). Recorded:
   \texttt{EXHALE\_main.f90} opens \texttt{EXHALE\_setup.out} (truncating) before
   \texttt{input\_read}, so any refusal erases the previous run\textquotesingle s setup report (fix:
@@ -4197,10 +4197,10 @@ specified and recommended; ten open questions).
   green on the advisor build; the marching path is untouched.
 \item
   \textbf{HYG-CHECKED} (\texttt{input\_read.f90} comments plus one new report block,
-  \texttt{docs/input\_schema.md}, \texttt{README\_HOWTO.md}, user manual (PDF 77 pages),
+  \texttt{md/input\_schema.md}, \texttt{README\_HOWTO.md}, user manual (PDF 77 pages),
   \texttt{grid\_and\_gates} new row \texttt{carrier\_transport\_inert} +4 assertions): every
   requirement statement of \texttt{input\_read.f90} and every "Needs K.." /
-  "refused with" clause of \texttt{docs/input\_schema.md} checked against the code
+  "refused with" clause of \texttt{md/input\_schema.md} checked against the code
   that enforces it. 40 enforced as stated. ONE not enforced (\texttt{Molecular\ carrier\ transport:\ True} with the molecular network off) is now a
   startup WARNING, not a refusal, by the code\textquotesingle s own convention for a
   present-and-inert key (every consumer is guarded by \texttt{thereis\_mol},
@@ -4257,7 +4257,7 @@ specified and recommended; ten open questions).
   ADV-REFUSE (decisions 8b, 9a). Gate 5, a \texttt{make\ check} on the current
   tree (B5i, HYG-SETUP, HYG-CHECKED on top, all startup-only), follows.
 \item
-  \textbf{HYG-DOCS} (documents only: \texttt{docs/input\_schema.md}, user manual (PDF 82
+  \textbf{HYG-DOCS} (documents only: \texttt{md/input\_schema.md}, user manual (PDF 82
   pages), \texttt{README\_HOWTO.md}): the 91 stale "F" line tokens (77 lines)
   and the 37 \texttt{GUI\textless{}n\textgreater{}} numbers (MEASURED stale by a uniform 13 lines) are
   gone; a key is located by its label and the header says so; nine Notes
@@ -4398,7 +4398,7 @@ specified and recommended; ten open questions).
 \item
   \textbf{B5l} (\texttt{steady\_newton.f90} +392/-82; \texttt{diffusive\_photochemistry.f90}
   +51/-6, the headroom accessor only; \texttt{steady\_species\_rows} suite +161 and
-  +108; \texttt{docs/steady\_solver\_design.md} section 21; \texttt{certification.f90},
+  +108; \texttt{md/steady\_solver\_design.md} section 21; \texttt{certification.f90},
   \texttt{EXHALE\_main.f90}, \texttt{steady\_residual.f90}, \texttt{ionization\_equilibrium.f90},
   \texttt{input\_read.f90} untouched): \textbf{the element budget is a face of the unknown
   box and the projection treats it exactly.} \texttt{freeze\_species\_unknown\_box}
@@ -4490,9 +4490,9 @@ specified and recommended; ten open questions).
   \textbf{Preparation of PLAN\_20260909\_rev1 (items N-1 and N17; advisor,
   documentation and file moves only, no source change; user\textquotesingle s go-ahead
   2026-09-09 with the instruction not to rerun regression checks after
-  simple changes).} \texttt{docs/PLAN\_20260909.md} was written from the review of
-  the issues inventory (\texttt{docs/ISSUES\_20260909\_review.md}), reviewed
-  (\texttt{docs/PLAN\_20260909\_review.md}) and revised to \texttt{docs/PLAN\_20260909\_rev1.md},
+  simple changes).} \texttt{md/PLAN\_20260909.md} was written from the review of
+  the issues inventory (\texttt{md/ISSUES\_20260909\_review.md}), reviewed
+  (\texttt{md/PLAN\_20260909\_review.md}) and revised to \texttt{md/PLAN\_20260909\_rev1.md},
   the plan of record (items N-1 to N17, stages A to E, decisions 13 to 19).
   Before writing rev 1 the advisor re-read the review\textquotesingle s new source claims:
   the sampled integration-error estimate is printed and dropped and no
@@ -4507,7 +4507,7 @@ specified and recommended; ten open questions).
   \texttt{backup/regression/atomic\_elem\_newton/} (input, metals, setup and resolved
   reports, \texttt{run.log}, the two handed-back state files, \texttt{run.sh}, README;
   6.8 MB, of which \texttt{run.log} 6.2 MB; not in \texttt{DEFAULT\_CASES}); the common
-  worker brief became \texttt{docs/worker\_rules.md} with the session paths
+  worker brief became \texttt{md/worker\_rules.md} with the session paths
   generalized and three rules added (one owner per source file per
   increment; affected-path validation only; named outcomes in reports); the
   review harness \texttt{docs/audit\_20260905/run\_issues\_review\_20260909.sh} was run
@@ -4873,7 +4873,7 @@ specified and recommended; ten open questions).
   (745 lines, one \texttt{SRC} line in the \texttt{Makefile}), \texttt{diffusive\_photochemistry.f90}
   (its three element densities, hydrogen budget and five carrier box sides
   now derived from the map with unchanged arithmetic), \texttt{steady\_species\_rows}
-  suite, \texttt{docs/element\_inventory\_contexts\_20260909.md} corrected;
+  suite, \texttt{md/element\_inventory\_contexts\_20260909.md} corrected;
   \texttt{steady\_newton.f90} untouched): \textbf{the map reports, nothing enforces it
   yet}, so the Stage B gate may not claim from this item that trial
   construction, chemistry and certification enforce one constraint (N4b).
@@ -5182,7 +5182,7 @@ specified and recommended; ten open questions).
   functional other than the gate\textquotesingle s; the state of the atomic reload is
   reported as WORSE than before N20 until N8a lands. Reported, not fixed:
   \texttt{EXHALE\_main.f90} 1182 should pass \texttt{u} to \texttt{cell\_row\_scales};
-  \texttt{docs/p54\_base\_layer\_mass\_flux.md} 10.4 now has a second measurement
+  \texttt{md/p54\_base\_layer\_mass\_flux.md} 10.4 now has a second measurement
   behind it.
 \item
   \textbf{N16e} (the order of each row class is its own integrator\textquotesingle s;
@@ -5322,7 +5322,7 @@ specified and recommended; ten open questions).
   \begin{itemize}
   \tightlist
   \item
-    2 n(H2O) \textless= nH\_avail\texttt{\ (and\ the\ O\ and\ C\ rows)\ replaces\ the\ five\ separate\ corners\ as\ the\ step\ limit\ (each\ corner\ is\ implied\ by\ the\ row,\ so\ nothing\ is\ lost\ and\ the\ direction\ along\ the\ surface\ is\ gained);\ a\ nonlinear\ feasibility\ screen\ by\ magnitude\ at\ every\ candidate;\ a\ restoration\ phase\ for\ an\ infeasible\ start\ (on\ the\ element-and-carrier\ reload\ 52\ trials\ restored\ over\ 1165\ cell-steps,\ worst\ violation\ 1.630\ -\textgreater{}\ 2e-16;\ 6\ candidates\ refused\ by\ magnitude;\ 167\ write-back\ cells\ whose\ closure\ could\ not\ return\ an\ element\ total,\ counted).\ **Stated,\ not\ claimed**:\ on\ both\ reload\ fixtures\ the\ shared\ hydrogen\ row\ is\ never\ within\ a\ probe\ step\ of\ being\ tight\ (occupancy\ 0.985\ to\ 0.989,\ active\ band\ 1e-8),\ so\ the\ active-set\ PROJECTION\ onto\ the\ constraint\ hyperplane,\ the\ part\ route\ (i)\ is\ named\ for,\ fired\ on\ ZERO\ iterations\ of\ either\ run;\ its\ correctness\ is\ stated\ by\ the\ suite\ rows,\ and\ the\ measured\ improvement\ comes\ from\ the\ write-back,\ the\ budget\ leaving\ the\ coordinate\ box\ and\ the\ shared\ step\ limit.\ The\ atomic\ element\ reload\ (element\ rows,\ no\ carrier\ row)\ is\ identical\ line\ for\ line\ over\ its\ 150-iteration\ first\ solve\ (}\textbar\textbar R\textbar\textbar{}\texttt{3.800e-2\ both).\ Tests}steady\_species\_rows\texttt{182/0\ (RED\ with}EXHALE\_ELEMENT\_CONSTRAINT\_ROWS=0\texttt{,\ 20\ rows\ fail),\ }krylov\_and\_dogleg\texttt{73/0,}certification\texttt{29/0;}mol\_carrier\texttt{marching\ 200\ steps\ bitwise;}wasp\_full\_newton\texttt{\ bitwise\ (}\textbar\textbar R\textbar\textbar{}\texttt{4.213e-9,}info = 0\texttt{,\ }log10 Mdot\texttt{13.30).\ **Advisor**:\ rebuild\ warning-free,}steady\_newton.o\texttt{md5}42fcf223\texttt{and\ binary\ md5}9c9ba732\texttt{identical\ to\ the\ worker\textquotesingle{}s;\ the\ three\ suites\ 73/0,\ 182/0,\ 29/0;}wasp\_full\_newton\texttt{\textquotesingle{}s\ two\ matrix\ files\ compared\ by\ the\ advisor\ against\ the\ Stage\ A\ reference:\ IDENTICAL.\ Two\ earlier\ builds\ of\ the\ item\ were\ discarded\ and\ their\ runs\ rerun\ (report\ section\ 8).\ Certification\ unchanged\ (decision\ 12\ c).\ **Stage\ B\ gate**:\ N4a\ map,\ N4b\ constrained\ step\ and\ element-conserving\ write-back,\ N5\textquotesingle{}s\ three\ contracts\ measured\ (contract\ 2\ fails\ by\ design\ on\ two\ reloads),\ N8a\ scales\ and\ closure\ map:\ the\ gate\textquotesingle{}s\ rows\ are\ in;\ what\ is\ NOT\ met\ is\ convergence\ of\ any\ species-row\ solve,\ which\ is\ Stage\ C\textquotesingle{}s\ criterion,\ not\ Stage\ B\textquotesingle{}s.\ N4b\textquotesingle{}s\ user-visible\ switches:\ }EXHALE\_SPECIES\_BUDGET\_FACE\texttt{is\ retired\ and\ replaced\ by}EXHALE\_ELEMENT\_CONSTRAINT\_ROWS\texttt{(=0\ restores\ the\ five\ corners),}EXHALE\_ELEMENT\_WRITE\_BACK\texttt{added\ (the\ element-conserving\ write-back);\ no\ input\ key,\ output\ column\ or\ unknown\ layout\ changed.\ Also\ found\ by\ N4b:}dc/d(nd) = c/nd\texttt{exactly\ (the\ constraint\ is\ homogeneous\ of\ degree\ one\ in\ the\ density,\ so\ an\ active\ row\ cannot\ push\ the\ mass\ unknown);\ two\ earlier\ builds\ of\ the\ item\ were\ discarded\ on\ the\ atomic\ fixture\textquotesingle{}s\ line-for-line\ check\ (a\ blocked\ probe\ component\ zeroed\ unconditionally\ made\ the\ sampled\ operator\ nonlinear,\ factor\ 33\ regression;\ the\ probe\ sides\ compared\ before\ capping).\ The\ advisor\ annotated\ the\ retired\ switch\ in\ the\ B5l\ entry\ and\ in}docs/steady\_solver\_design.md`.
+    2 n(H2O) \textless= nH\_avail\texttt{\ (and\ the\ O\ and\ C\ rows)\ replaces\ the\ five\ separate\ corners\ as\ the\ step\ limit\ (each\ corner\ is\ implied\ by\ the\ row,\ so\ nothing\ is\ lost\ and\ the\ direction\ along\ the\ surface\ is\ gained);\ a\ nonlinear\ feasibility\ screen\ by\ magnitude\ at\ every\ candidate;\ a\ restoration\ phase\ for\ an\ infeasible\ start\ (on\ the\ element-and-carrier\ reload\ 52\ trials\ restored\ over\ 1165\ cell-steps,\ worst\ violation\ 1.630\ -\textgreater{}\ 2e-16;\ 6\ candidates\ refused\ by\ magnitude;\ 167\ write-back\ cells\ whose\ closure\ could\ not\ return\ an\ element\ total,\ counted).\ **Stated,\ not\ claimed**:\ on\ both\ reload\ fixtures\ the\ shared\ hydrogen\ row\ is\ never\ within\ a\ probe\ step\ of\ being\ tight\ (occupancy\ 0.985\ to\ 0.989,\ active\ band\ 1e-8),\ so\ the\ active-set\ PROJECTION\ onto\ the\ constraint\ hyperplane,\ the\ part\ route\ (i)\ is\ named\ for,\ fired\ on\ ZERO\ iterations\ of\ either\ run;\ its\ correctness\ is\ stated\ by\ the\ suite\ rows,\ and\ the\ measured\ improvement\ comes\ from\ the\ write-back,\ the\ budget\ leaving\ the\ coordinate\ box\ and\ the\ shared\ step\ limit.\ The\ atomic\ element\ reload\ (element\ rows,\ no\ carrier\ row)\ is\ identical\ line\ for\ line\ over\ its\ 150-iteration\ first\ solve\ (}\textbar\textbar R\textbar\textbar{}\texttt{3.800e-2\ both).\ Tests}steady\_species\_rows\texttt{182/0\ (RED\ with}EXHALE\_ELEMENT\_CONSTRAINT\_ROWS=0\texttt{,\ 20\ rows\ fail),\ }krylov\_and\_dogleg\texttt{73/0,}certification\texttt{29/0;}mol\_carrier\texttt{marching\ 200\ steps\ bitwise;}wasp\_full\_newton\texttt{\ bitwise\ (}\textbar\textbar R\textbar\textbar{}\texttt{4.213e-9,}info = 0\texttt{,\ }log10 Mdot\texttt{13.30).\ **Advisor**:\ rebuild\ warning-free,}steady\_newton.o\texttt{md5}42fcf223\texttt{and\ binary\ md5}9c9ba732\texttt{identical\ to\ the\ worker\textquotesingle{}s;\ the\ three\ suites\ 73/0,\ 182/0,\ 29/0;}wasp\_full\_newton\texttt{\textquotesingle{}s\ two\ matrix\ files\ compared\ by\ the\ advisor\ against\ the\ Stage\ A\ reference:\ IDENTICAL.\ Two\ earlier\ builds\ of\ the\ item\ were\ discarded\ and\ their\ runs\ rerun\ (report\ section\ 8).\ Certification\ unchanged\ (decision\ 12\ c).\ **Stage\ B\ gate**:\ N4a\ map,\ N4b\ constrained\ step\ and\ element-conserving\ write-back,\ N5\textquotesingle{}s\ three\ contracts\ measured\ (contract\ 2\ fails\ by\ design\ on\ two\ reloads),\ N8a\ scales\ and\ closure\ map:\ the\ gate\textquotesingle{}s\ rows\ are\ in;\ what\ is\ NOT\ met\ is\ convergence\ of\ any\ species-row\ solve,\ which\ is\ Stage\ C\textquotesingle{}s\ criterion,\ not\ Stage\ B\textquotesingle{}s.\ N4b\textquotesingle{}s\ user-visible\ switches:\ }EXHALE\_SPECIES\_BUDGET\_FACE\texttt{is\ retired\ and\ replaced\ by}EXHALE\_ELEMENT\_CONSTRAINT\_ROWS\texttt{(=0\ restores\ the\ five\ corners),}EXHALE\_ELEMENT\_WRITE\_BACK\texttt{added\ (the\ element-conserving\ write-back);\ no\ input\ key,\ output\ column\ or\ unknown\ layout\ changed.\ Also\ found\ by\ N4b:}dc/d(nd) = c/nd\texttt{exactly\ (the\ constraint\ is\ homogeneous\ of\ degree\ one\ in\ the\ density,\ so\ an\ active\ row\ cannot\ push\ the\ mass\ unknown);\ two\ earlier\ builds\ of\ the\ item\ were\ discarded\ on\ the\ atomic\ fixture\textquotesingle{}s\ line-for-line\ check\ (a\ blocked\ probe\ component\ zeroed\ unconditionally\ made\ the\ sampled\ operator\ nonlinear,\ factor\ 33\ regression;\ the\ probe\ sides\ compared\ before\ capping).\ The\ advisor\ annotated\ the\ retired\ switch\ in\ the\ B5l\ entry\ and\ in}md/steady\_solver\_design.md`.
   \end{itemize}
 \item
   \textbf{N21} (what limits the species-row solves now; \texttt{steady\_newton.f90}
@@ -5492,11 +5492,11 @@ specified and recommended; ten open questions).
   such a cell is not measured; a corrected row is not close to the run\textquotesingle s own
   row and is not expected to be (the certified state moves T by 6.7e-2 at
   \texttt{m\_j} 3e-16). Advisor: one \texttt{percent} in \texttt{README.md} fixed;
-  \texttt{docs/postprocess\_advection\_validity.md} marked stale with a pointer.
+  \texttt{md/postprocess\_advection\_validity.md} marked stale with a pointer.
 \item
   \textbf{N10} (decision 15 option a, the restart contract; \texttt{input\_read.f90}
   +137, \texttt{load\_IC.f90} +551, \texttt{write\_output.f90} +13, \texttt{EXHALE\_main.f90} +166,
-  \texttt{grid\_and\_gates} +1 row script of 20 assertions, \texttt{docs/input\_schema.md} K43
+  \texttt{grid\_and\_gates} +1 row script of 20 assertions, \texttt{md/input\_schema.md} K43
   and appendix D.2, manual entry; PDF not rebuilt): the key \texttt{Restart\ intent:\ trajectory\ \textbar{}\ relaxation\ \textbar{}\ stationary\ {[}evaluate\textbar{}equilibrate{]}} with the three
   consistency refusals (default \texttt{trajectory} in \texttt{phys}, \texttt{relaxation}
   otherwise, so no existing input changes behavior); both state files carry
@@ -5543,7 +5543,7 @@ specified and recommended; ten open questions).
   comparison forbids the option-ladder workflow (converge without an option,
   restart with it on); legacy pairs are unaffected, every new rung would be
   refused; the disciplined fix is a key naming the tokens allowed to differ.
-  Also corrected: \texttt{docs/input\_schema.md} appendix D listed the retired
+  Also corrected: \texttt{md/input\_schema.md} appendix D listed the retired
   \texttt{valve}/\texttt{fluxconst} fields and the wrong \texttt{base\_bc} values. Reported:
   \texttt{Run\ mode} is absent from \texttt{input\_schema.md}; the \texttt{EXHALE\_PTC=1} route
   writes no setup report; a re-evaluated state writes \texttt{sec\_ion\_step=0}.
@@ -5586,7 +5586,7 @@ specified and recommended; ten open questions).
 \item
   \textbf{N10b} (decision 21 option a; \texttt{load\_IC.f90} +319/-20, \texttt{input\_read.f90}
   +145/-1, \texttt{write\_setup\_report.f90} +62/-6, \texttt{grid\_and\_gates} +1 script of 11
-  rows, \texttt{docs/input\_schema.md} K44 and D.2, manual entry): the key \texttt{Restart\ option\ change:\ \textless{}token\textgreater{}{[},\ ...{]}}; the \texttt{options} field is compared TOKEN BY
+  rows, \texttt{md/input\_schema.md} K44 and D.2, manual entry): the key \texttt{Restart\ option\ change:\ \textless{}token\textgreater{}{[},\ ...{]}}; the \texttt{options} field is compared TOKEN BY
   TOKEN from one table (\texttt{opt\_name(20)}, \texttt{opt\_value}, the emitted text
   bitwise unchanged), only the named tokens may differ, every other
   difference refuses the load naming the token with its \texttt{from\ -\textgreater{}\ to}; six
@@ -5946,7 +5946,7 @@ specified and recommended; ten open questions).
   delivered patch and it reproduces \texttt{diff\_element\_inventory.diff} line for
   line; the advisor confirmed 832 lines, one routine, a warning-free build
   (md5 \texttt{3201310a}, N26c\textquotesingle s delivered binary) and \texttt{element\_operator} 6/0,
-  \texttt{steady\_species\_rows} 189/0. Lesson written into \texttt{docs/worker\_rules.md}:
+  \texttt{steady\_species\_rows} 189/0. Lesson written into \texttt{md/worker\_rules.md}:
   \texttt{\textbackslash{}cp\ -f} / \texttt{\textbackslash{}mv\ -f} always, and a stale command is canceled as a task,
   not killed as a process.
 \item
@@ -5968,7 +5968,7 @@ specified and recommended; ten open questions).
   \textbf{N8b} (anchoring the species-row certification tolerances;
   \texttt{certification.f90} +173 additive, no value moved; \texttt{steady\_newton.f90} one
   diagnostic; \texttt{certification} suite 29 -\textgreater{} 42 rows; memo
-  \texttt{docs/certification\_tolerance\_anchoring\_20260910.md}): \textbf{1e-8 is refused
+  \texttt{md/certification\_tolerance\_anchoring\_20260910.md}): \textbf{1e-8 is refused
   by no floor of the arithmetic, the closure or the representation (five to
   eleven decades below it); what refuses it is the DISCRETIZATION and the
   ELEMENT FLUX CONSERVATION.} MEASURED on the two candidates: reproducibility
@@ -6005,7 +6005,7 @@ specified and recommended; ten open questions).
   \textbf{N28} (the code items of ISSUES 3.7; \texttt{EXHALE\_main.f90}, \texttt{RK\_rhs.f90},
   \texttt{steady\_residual.f90}, \texttt{element\_census.f90}, \texttt{element\_inventory.f90} and
   \texttt{attempted\_step.f90} (the duplicate constant), \texttt{grid\_and\_gates} +2 rows and
-  headers, \texttt{docs/input\_schema.md} K45): (1) \texttt{EXHALE\_JFNK\_MAXIT} caps the RUN:
+  headers, \texttt{md/input\_schema.md} K45): (1) \texttt{EXHALE\_JFNK\_MAXIT} caps the RUN:
   the three call sites of \texttt{steady\_wind\_with\_element\_diffusion} pass one named
   default \texttt{jfnk\_outer\_iterations\_default\ =\ 3000} (the marching hand-off\textquotesingle s
   literal was 500, the one default that moved; \texttt{wasp\_full\_newton} converges
@@ -6128,7 +6128,7 @@ specified and recommended; ten open questions).
   gate it has): whether it should gate is a decision.
 \item
   \textbf{N8c} (the five anchors re-measured on the states after N29; the memo
-  \texttt{docs/certification\_tolerance\_anchoring\_20260910.md} only, 344 -\textgreater{} 524
+  \texttt{md/certification\_tolerance\_anchoring\_20260910.md} only, 344 -\textgreater{} 524
   lines, no source file changed): \textbf{the reading is unchanged and is now
   taken on states worth measuring.} Post-N29 candidates (advisor-verified:
   no \texttt{src} file newer than the brief): atomic reload 275 iterations, 254/22,
@@ -6188,7 +6188,7 @@ specified and recommended; ten open questions).
 \item
   \textbf{N30} (decision 22 a; \texttt{certification.f90} +296/-54, \texttt{steady\_newton.f90}
   +50/-30, \texttt{certification} suite 42 -\textgreater{} 57 rows, \texttt{steady\_species\_rows} 189 -\textgreater{}
-  194, \texttt{docs/input\_schema.md} the \texttt{cert\_reason} row): \texttt{cert\_tol\_element} and
+  194, \texttt{md/input\_schema.md} the \texttt{cert\_reason} row): \texttt{cert\_tol\_element} and
   \texttt{cert\_tol\_carrier} are gone as single numbers; \texttt{cert\_tol\_element\_wind\ =\ cert\_tol\_carrier\_wind\ =\ 1e-5} with one accessor each (\texttt{cert\_tol\_*\_at(r)}, a
   step at \texttt{cert\_regime\_wind\_r} = 1.20; \texttt{cert\_tol\_reported\_only\ =\ huge} below),
   the anchoring written at the declaration with the memo cited; \textbf{one
@@ -6271,7 +6271,7 @@ specified and recommended; ten open questions).
   \texttt{README\_HOWTO.md} (\texttt{Resid\ tol} default 1e-5 not 1e-3, \texttt{Flux\ spread\ tol}
   default 2e-5 on the face flux not 5e-3, a certification table, a restart
   section, an eleven-row hook table, the sixteen cases and 25 suites), the
-  NEW \texttt{docs/code\_status\_20260910.md} (418 lines, replaces the 2026-09-05 file
+  NEW \texttt{md/code\_status\_20260910.md} (418 lines, replaces the 2026-09-05 file
   as the read-first document; section 3.3 states what is and is not
   certified and what limits the rest), the project \texttt{CLAUDE.md} pointer line,
   \texttt{TO\_BE\_DONE.md} (an index of what is open, three headings corrected, 35
@@ -7076,7 +7076,7 @@ specified and recommended; ten open questions).
   the user asked for, of why the coupled solve fails and what a different
   approach would be (a segregated solve, the CETIMB way read from
   Koskinen et al. 2013 section 2.1.3 and 2022 Appendix B, a different
-  treatment of the layer), is \texttt{docs/solver\_approach\_analysis\_20260910.md}.
+  treatment of the layer), is \texttt{md/solver\_approach\_analysis\_20260910.md}.
   Reported, not fixed (ISSUES 3.7): the \texttt{count} global shadowing the
   intrinsic; \texttt{newton\_dense}\textquotesingle s hardcoded step test; the dead \texttt{dp\_bc}/\texttt{ntot\_bc}
   refreshes; \texttt{store\_row\_terms}\textquotesingle s momentum scale under the new key;
@@ -7088,10 +7088,10 @@ specified and recommended; ten open questions).
 
 \subsection{8. PLAN\_20260911: the partitioned stationary route (2026-09-11)}\label{8-plan_20260911-the-partitioned-stationary-route-2026-09-11}
 
-Plan of record: \texttt{docs/PLAN\_20260911\_partitioned\_solver.md}. User instruction
-of 2026-09-11: read \texttt{docs/solver\_approach\_analysis\_20260910.md}, its review
-\texttt{docs/solver\_approach\_analysis\_20260910\_review.md} and
-\texttt{docs/solver\_partition\_experiment\_20260911.md}, correct the errors they
+Plan of record: \texttt{md/PLAN\_20260911\_partitioned\_solver.md}. User instruction
+of 2026-09-11: read \texttt{md/solver\_approach\_analysis\_20260910.md}, its review
+\texttt{md/solver\_approach\_analysis\_20260910\_review.md} and
+\texttt{md/solver\_partition\_experiment\_20260911.md}, correct the errors they
 establish, run the solver experiments, and adopt the partitioned route in the
 production solver if it measures better than the coupled species-row solve.
 This reopens the stage-2 solver program that the 2026-09-10 instruction had
@@ -7101,7 +7101,7 @@ P14 and P15 on the two findings of that afternoon\textquotesingle s Codex advers
 and P16 to P18 on the user\textquotesingle s two decisions of the same afternoon, then P20 and
 P21 in the evening and the terminology sweep A1 to A4 on the user\textquotesingle s instruction
 of that evening (P13, P19 and P22 are the record itself); the rules every worker
-on this tree follows are \texttt{docs/worker\_rules.md}.
+on this tree follows are \texttt{md/worker\_rules.md}.
 
 \subsubsection{The items}\label{the-items}
 
@@ -7156,7 +7156,7 @@ on this tree follows are \texttt{docs/worker\_rules.md}.
   pass ends on one of five named outcomes. MEASURED (P2) on
   \texttt{carrier\_elem\_newton} through the archived driver: the entry text returns
   \texttt{drift\ =\ 2.8126757844770485e-02} at \texttt{trust\ =\ 0.01}, reproducing the
-  0.02812676 of \texttt{docs/solver\_partition\_experiment\_20260911.md} section 7.2
+  0.02812676 of \texttt{md/solver\_partition\_experiment\_20260911.md} section 7.2
   exactly; the repaired routine returns \texttt{9.9956436739254070e-03} at the same
   setting and \texttt{2.9845242387380568e-03} at \texttt{trust\ =\ 0.003}, so the bound holds
   and it scales (a factor 3.33 smaller setting gives a factor 3.35 smaller
@@ -7266,7 +7266,7 @@ on this tree follows are \texttt{docs/worker\_rules.md}.
   guards are now separate and each tests its own array, with no arithmetic on
   any path.
 \item
-  \textbf{P5: the analysis document corrected} (\texttt{docs/solver\_approach\_analysis\_20260910.md},
+  \textbf{P5: the analysis document corrected} (\texttt{md/solver\_approach\_analysis\_20260910.md},
   +463/-115, 114 to 592 lines). All nine corrections the review established
   are in place, each with an inline \texttt{{[}corrected\ 2026-09-11:\ ...{]}} mark citing
   the review section or the experiment measurement behind it: the spatial
@@ -7325,8 +7325,8 @@ on this tree follows are \texttt{docs/worker\_rules.md}.
   \textbf{P7: the measurement.} Below.
 \item
   \textbf{P8: the corrections propagated to the documents and tests that carried
-  them} (\texttt{docs/code\_status\_20260910.md}, \texttt{docs/ISSUES\_20260909.md},
-  \texttt{docs/certification\_tolerance\_anchoring\_20260910.md},
+  them} (\texttt{md/code\_status\_20260910.md}, \texttt{md/ISSUES\_20260909.md},
+  \texttt{md/certification\_tolerance\_anchoring\_20260910.md},
   \texttt{src/tests/steady\_selfconsistent\_residual/run.sh},
   \texttt{src/tests/steady\_species\_rows/steady\_species\_rows\_tests.f90}). The
   withdrawn inference (a spatial truncation error of 5e-4 at N = 500 floors
@@ -7352,10 +7352,10 @@ on this tree follows are \texttt{docs/worker\_rules.md}.
   mass fractions that sum to one, the suite going 194/0 to \textbf{195/0} with a
   new row measuring the closure by the code\textquotesingle s own mass policy.
 \item
-  \textbf{P9: this section}, \texttt{docs/session\_handoff\_20260911.md}, the status section
+  \textbf{P9: this section}, \texttt{md/session\_handoff\_20260911.md}, the status section
   of the plan, the dated sections of the two fixture READMEs, the reopening
-  paragraphs of \texttt{docs/code\_status\_20260910.md} section 3 and
-  \texttt{docs/ISSUES\_20260909.md} section 5, and the new entries of
+  paragraphs of \texttt{md/code\_status\_20260910.md} section 3 and
+  \texttt{md/ISSUES\_20260909.md} section 5, and the new entries of
   \texttt{TO\_BE\_DONE.md}.
 \item
   \textbf{P10: the best-iterate ledger reads the hydrodynamic rows against their own
@@ -7717,7 +7717,7 @@ the best-iterate ledger. \textbf{P18} followed and closed the same day.
   rounding floor} (\texttt{src/modules/time\_step/certification.f90} +212/-2,
   \texttt{src/modules/time\_step/steady\_residual.f90} +177/-1,
   \texttt{src/tests/certification/certification\_contexts.f90} +105/-0,
-  \texttt{docs/certification\_tolerance\_anchoring\_20260910.md} +302/-0 appended;
+  \texttt{md/certification\_tolerance\_anchoring\_20260910.md} +302/-0 appended;
   MEASURED by P16 with \texttt{git\ diff\ -\/-numstat}, the share of the other uncommitted
   item in \texttt{steady\_residual.f90} separated by attributing each hunk). The user\textquotesingle s
   first decision of the afternoon, and it CLOSES the first entry of the plan\textquotesingle s
@@ -7792,7 +7792,7 @@ the best-iterate ledger. \textbf{P18} followed and closed the same day.
   derivation, both candidate estimates, the measured ratios and all three
   impact measurements are the appended section \textbf{"Anchor (6), 2026-09-11: the
   mass row\textquotesingle s rounding floor"} of
-  \texttt{docs/certification\_tolerance\_anchoring\_20260910.md}; its nine earlier
+  \texttt{md/certification\_tolerance\_anchoring\_20260910.md}; its nine earlier
   sections are byte-identical.
 \item
   \textbf{P17: the best-iterate ledger reads the mass row against the cell\textquotesingle s own
@@ -7992,9 +7992,9 @@ the best-iterate ledger. \textbf{P18} followed and closed the same day.
 \item
   \textbf{P22: the record of P21, of the terminology sweep and of the external
   commit} (this section with its two new subsections, the status rows of
-  \texttt{docs/PLAN\_20260911\_partitioned\_solver.md}, \texttt{docs/session\_handoff\_20260911.md},
+  \texttt{md/PLAN\_20260911\_partitioned\_solver.md}, \texttt{md/session\_handoff\_20260911.md},
   the rewritten H2 front entry and the new outside-scope entry of
-  \texttt{TO\_BE\_DONE.md}, and one sentence in \texttt{docs/code\_status\_20260910.md}
+  \texttt{TO\_BE\_DONE.md}, and one sentence in \texttt{md/code\_status\_20260910.md}
   section 3).
 \item
   \textbf{D1 to D3: \texttt{docs/EXHALE\_physics\_and\_algorithms.tex}, the physical equations
@@ -8157,7 +8157,7 @@ omega, the carrier trust and the seconds, and the closing \texttt{(certification
 block names what refuses. Those \texttt{\textless{}scratchpad\textgreater{}/} paths are the session scratch
 root and are TEMPORARY: they will be gone, and everything quoted from them is
 recorded here, in the two fixture READMEs and in
-\texttt{docs/session\_handoff\_20260911.md}. The runs reproduce from the pinned
+\texttt{md/session\_handoff\_20260911.md}. The runs reproduce from the pinned
 fixtures by the recipes in those READMEs.
 
 What the ladders show. On the atomic fixture the worst gated species row
@@ -8225,7 +8225,7 @@ they stand:
   distance 0.141 (P16), and cell 50, r = 1.00977, 4.245E-10 against 3.2E-09,
   distance 0.132 (P17). The base-layer floor of this fixture is what the
   anchor is measured on: see the decisions subsection below and
-  \texttt{docs/certification\_tolerance\_anchoring\_20260910.md}, "Anchor (6)".
+  \texttt{md/certification\_tolerance\_anchoring\_20260910.md}, "Anchor (6)".
 \item
   The carrier reload refuses on the H2 wind row, and the user\textquotesingle s second
   decision of the afternoon ran the continuation that says what that row IS.
@@ -8364,7 +8364,7 @@ still refuses states: the HD 209458 b mass row is refused at pass 3 at distance
 cells, admitted by their own anchor, out to cell 180 where the row carries
 signal. The derivation and all three impact measurements are the appended
 section "Anchor (6), 2026-09-11: the mass row\textquotesingle s rounding floor" of
-\texttt{docs/certification\_tolerance\_anchoring\_20260910.md}.
+\texttt{md/certification\_tolerance\_anchoring\_20260910.md}.
 
 \textbf{Decision 2: the long continuation of the hot-Uranus carrier reload.} The
 pass budget was set to 400 and the run went to pass \textbf{110}, where the progress
@@ -8585,7 +8585,7 @@ name or measured statement was changed anywhere in the four diffs.
   \texttt{\textless{}network\textgreater{}}, the names that do exist there being \texttt{vulcan/}, \texttt{ncho/},
   \texttt{zahnle/}, \texttt{zahnle\_s/} and \texttt{eqfit/} (READ from the tree).
 \item
-  \textbf{A2, \texttt{docs/Update\_EXHALE\_stage2.md}: 176 to 1} (the one is the verb, "when both
+  \textbf{A2, \texttt{md/Update\_EXHALE\_stage2.md}: 176 to 1} (the one is the verb, "when both
   stellar keys arm H(n=2)"), and \texttt{Update\_EXHALE\_appendix.tex} 1 to 0. The
   largest class was "in both arms" of a two-binary comparison, now "in both
   builds"; then the optional paths ("the well-balanced option", "quad
@@ -8769,15 +8769,15 @@ Fourth \texttt{make\ check} after P21 and the terminology sweep (advisor, 2026-0
 \item
   P5: the same truncation-as-floor reasoning stood in three other documents
   (closed the same day by P8); the analysis document\textquotesingle s own title is still
-  stronger than its corrected conclusion; \texttt{docs/session\_handoff\_20260910.md}
-  and \texttt{docs/steady\_solver\_design.md} carry statements of the same family,
+  stronger than its corrected conclusion; \texttt{md/session\_handoff\_20260910.md}
+  and \texttt{md/steady\_solver\_design.md} carry statements of the same family,
   not read line by line; the experiment\textquotesingle s private build is retained at
   \texttt{/tmp/exhale\_partition\_20260911.ZxXJEB} per its own section 9.
 \item
-  P8: \texttt{docs/certification\_tolerance\_anchoring\_20260910.md} still opens with
+  P8: \texttt{md/certification\_tolerance\_anchoring\_20260910.md} still opens with
   \texttt{cert\_tol\_element} and \texttt{cert\_tol\_carrier} at 1e-8, which decision 22 (a)
   superseded, and whether that memo is a dated record or a live reference is
-  a decision; \texttt{docs/code\_status\_20260910.md} section 3 described the
+  a decision; \texttt{md/code\_status\_20260910.md} section 3 described the
   stage-2 solver program as closed (this session\textquotesingle s item P9 marks it
   superseded); \st{\mbox{\texttt{mass\_closed\_column}} exists only in
   \mbox{\texttt{src/tests/element\_operator/element\_operator\_tests.f90}} and two suites now
@@ -8900,13 +8900,13 @@ Fourth \texttt{make\ check} after P21 and the terminology sweep (advisor, 2026-0
 
 \subsection{9. PLAN\_20260912: the seven findings of the stage-2 review (2026-09-12)}\label{9-plan_20260912-the-seven-findings-of-the-stage-2-review-2026-09-12}
 
-Plan of record: \texttt{docs/PLAN\_20260912\_review\_fixes.md}. User instruction of
-2026-09-12: analyze \texttt{docs/Update\_EXHALE\_stage2\_review\_20260912.md} against the
+Plan of record: \texttt{md/PLAN\_20260912\_review\_fixes.md}. User instruction of
+2026-09-12: analyze \texttt{md/Update\_EXHALE\_stage2\_review\_20260912.md} against the
 code, and where its analysis is right, write the plan and start the
 corrections. All seven findings R1 to R7 were confirmed in the source before
 the plan was written (the confirming lines are listed at the head of the plan);
 the corrections are items Q1 to Q4, Q1 and Q4 by the advisor, Q2 and Q3 by
-workers under \texttt{docs/worker\_rules.md}. Every number below is MEASURED on the
+workers under \texttt{md/worker\_rules.md}. Every number below is MEASURED on the
 tree of this section unless marked READ.
 
 \subsubsection{The state contract at a fixed hydrodynamic state (R2, R3)}\label{the-state-contract-at-a-fixed-hydrodynamic-state-r2-r3}
@@ -9040,7 +9040,7 @@ main loop keeps \texttt{E} describes two molecular states 3.3e-3 apart.
 \item
   \textbf{Q3 (R5), worker (Sonnet).} \texttt{certification.f90} (+105/-17),
   \texttt{src/tests/certification/certification\_contexts.f90} (+106),
-  \texttt{docs/certification\_tolerance\_anchoring\_20260910.md} (addendum).
+  \texttt{md/certification\_tolerance\_anchoring\_20260910.md} (addendum).
   \texttt{mass\_row\_cell\_verdict} returns a third, optional outcome: RESOLVED
   (\texttt{cert\_mass\_round\_margin\ *\ floor\ \textless{}\ cert\_tol\_mass\_ceiling}, judged as P16
   anchored it) or UNRESOLVED (the margin times the floor reaches the ceiling,
@@ -9333,8 +9333,8 @@ cell 1 is 7.2e-5, so the certification\textquotesingle s assembly (after the out
 own sweep) and the solve\textquotesingle s disagree by 0.5 percent of it. Candidates: the
 ghost cell\textquotesingle s particle count behind the base-face conductive flux, formed
 from different ghost compositions on the two paths, or the sweep\textquotesingle s local
-re-solution of the ghosts. Recorded in \texttt{docs/TO\_BE\_DONE.md} and
-\texttt{docs/ISSUES\_20260909.md} section 3.7 with the instrumentation it needs.
+re-solution of the ghosts. Recorded in \texttt{md/TO\_BE\_DONE.md} and
+\texttt{md/ISSUES\_20260909.md} section 3.7 with the instrumentation it needs.
 Because the joint progress measure (Q1) is dominated by that constant entry
 (207 tolerances against the species rows\textquotesingle{} 74), the matched fixture cannot
 be run past the stagnation guard until it is removed.
@@ -9388,9 +9388,9 @@ byte-identical)}, 64 file comparisons PASS with data identical.
 
 \subsection{10. PLAN\_20260913: the findings of the two reviews of 2026-09-12 (2026-09-13)}\label{10-plan_20260913-the-findings-of-the-two-reviews-of-2026-09-12-2026-09-13}
 
-Plan of record: \texttt{docs/PLAN\_20260913\_review\_fixes.md}. User instruction: read
-\texttt{docs/code\_bug\_optimization\_review\_20260912.md} and
-\texttt{docs/parallel\_code\_review\_20260912.md}, confirm each finding in the code,
+Plan of record: \texttt{md/PLAN\_20260913\_review\_fixes.md}. User instruction: read
+\texttt{md/code\_bug\_optimization\_review\_20260912.md} and
+\texttt{md/parallel\_code\_review\_20260912.md}, confirm each finding in the code,
 plan the corrections and carry them out, running the binary in parallel
 where that shortens the verification. Every finding (B1 to B6, P1 to P3) was
 confirmed in the source before the plan was written (the confirming lines
@@ -9419,7 +9419,7 @@ this tree unless marked READ.
   1e-12; one covering segment; constant spectrum; an uncovered band): 14/0.
   \texttt{wasp121b\_sed\_sensitivity} moved to the new routine with its own
   transcription corrected the same way (\texttt{spectrum\_type} 170/0 over the
-  whole suite). \texttt{docs/input\_schema.md}, the manual\textquotesingle s key rows and the
+  whole suite). \texttt{md/input\_schema.md}, the manual\textquotesingle s key rows and the
   physics document\textquotesingle s band paragraph say the new rule.
 \item
   \textbf{S2 (B3, B4, O2 counters): the thermochemical closure contract.}
@@ -9497,16 +9497,16 @@ this tree unless marked READ.
   closure contract reports the same result on every gate case).
 \item
   \textbf{S8: measured-first items, not changed} (O1, O2 beyond the counters,
-  A, B, C, E of the parallel review): recorded in \texttt{docs/TO\_BE\_DONE.md} with
+  A, B, C, E of the parallel review): recorded in \texttt{md/TO\_BE\_DONE.md} with
   the measurement each needs; the counters of S2 and the team/BLAS report
   of S5/S6 are the instrumentation for them.
 \end{itemize}
 
 \subsection{11. PLAN\_20260913\_lhs\_stationary: the LHS 1140 b stationary solve (2026-09-13 to 2026-09-16)}\label{11-plan_20260913_lhs_stationary-the-lhs-1140-b-stationary-solve-2026-09-13-to-2026-09-16}
 
-Plan of record: \texttt{docs/PLAN\_20260913\_lhs\_stationary.md}, items L1 to L14; the
+Plan of record: \texttt{md/PLAN\_20260913\_lhs\_stationary.md}, items L1 to L14; the
 item memos are \texttt{docs/lhs1140b\_stationary\_L*.md}, the design of record for
-item L12a is \texttt{docs/lhs1140b\_stationary\_L12a\_design\_20260913.md}, and the
+item L12a is \texttt{md/lhs1140b\_stationary\_L12a\_design\_20260913.md}, and the
 campaign they serve is \texttt{LHS1140b/MODELS.md}. User decision of 2026-09-13 (option 1): the stage-2
 solver program, closed on 2026-09-10 and reopened once on 2026-09-11 for the
 partitioned route, is reopened for ONE item -\/- making the current code reach a
@@ -9914,7 +9914,7 @@ item\textquotesingle s own diff, from its memo.
   \texttt{src/modules/init/molecular\_seed\_from\_atomic\_state.f90}, 573 lines, mode
   \texttt{EXHALE\_MOLECULAR\_SEED=\textless{}atomic\ output\ dir\textgreater{}} with \texttt{...\_INVARIANT=p\textbar{}T} and
   \texttt{...\_X2=\textless{}0..1\textgreater{}\textbar{}local}; \texttt{load\_IC.f90} lets the six molecular tokens differ
-  only in a seed conversion; \texttt{write\_output.f90}; \texttt{docs/input\_schema.md}
+  only in a seed conversion; \texttt{write\_output.f90}; \texttt{md/input\_schema.md}
   appendix D.3; new suite \texttt{src/tests/molecular\_seed}). The seed exists and is
   exact (conversion identity 2.6e-15, EOS closure 4e-16, budgets to
   round-off), the loader accepts it, and on the certified He/H 1.60 and 2.13
@@ -10024,7 +10024,7 @@ item\textquotesingle s own diff, from its memo.
 \item
   \textbf{L10: the \texttt{\_adv} profiles in the outer wind, and one real defect in the
   upwind recursion} (\texttt{post\_process\_adv.f90} +56/-3,
-  \texttt{src/utils/collisional\_validity.py} +52/-10, \texttt{docs/collisional\_validity.md}).
+  \texttt{src/utils/collisional\_validity.py} +52/-10, \texttt{md/collisional\_validity.md}).
   The departing \texttt{\_adv} temperature is NOT a post-processing defect: above
   4 R\_p the recombination and photoionization Damkoehler numbers fall below
   1e-2, the composition is frozen and advected, and the advection correction
@@ -10392,7 +10392,7 @@ item\textquotesingle s own diff, from its memo.
 \item
   \textbf{L15: the JFNK solve is not reproducible at eight OpenMP threads, and the
   residual evaluation is not where that enters} (OPEN;
-  \texttt{docs/lhs1140b\_stationary\_L15\_20260916.md}). Two runs of the same fixture
+  \texttt{md/lhs1140b\_stationary\_L15\_20260916.md}). Two runs of the same fixture
   (\texttt{backup/regression/atomic\_elem\_newton} reload) at eight threads part after
   about 21 JFNK iterations and end pass 1 at mass rows 3.08e-02 and 1.20e-02;
   one thread is bitwise reproducible. FIRST STEP, MEASURED 2026-09-16 on the
@@ -10425,7 +10425,7 @@ item\textquotesingle s own diff, from its memo.
 \item
   \textbf{L16: a recorded pass-1 triple that the current source does not reproduce}
   (OPEN, READ 2026-09-15 from the L4h memo, not chased).
-  \texttt{docs/lhs1140b\_stationary\_L4g\_20260914.md} section 7.3 records 2.16e-09 /
+  \texttt{md/lhs1140b\_stationary\_L4g\_20260914.md} section 7.3 records 2.16e-09 /
   4.24e-13 / 1.55e-08 on a fixture where the L4h control build gives 3.08e-02 /
   1.90e-05 / 8.34e-01. The item is to rerun that fixture on the L4g-era build
   (its md5 is in that memo) and on the current one, single-threaded, and say
@@ -10434,7 +10434,7 @@ item\textquotesingle s own diff, from its memo.
 \item
   \textbf{L17: the 0.02-XUV hydrodynamic solve, with the ramp excluded and the
   discretization named} (closed 2026-09-15 by the user, DIAGNOSED AND NOT
-  SOLVED; \texttt{docs/lhs1140b\_stationary\_L17\_20260915.md},
+  SOLVED; \texttt{md/lhs1140b\_stationary\_L17\_20260915.md},
   \texttt{steady\_newton.f90} only). With the L4h guard the pseudo-time makes the
   march the continuation is for and STAYS there taking full steps
   (\texttt{x002\_HeH2.13} at iteration 175: \texttt{lam} 1.00, \texttt{dtau} 1.05e+02 and doubling,
@@ -10608,7 +10608,7 @@ item\textquotesingle s own diff, from its memo.
   under the flux-keyed face and 1.31 / 1.05 under the local one. There is ONE
   boundary now, keyed on \texttt{have\_F} and the weight \texttt{s} and not on the route, and
   the certification LABEL ("of the stationary operator") is written into
-  \texttt{docs/restart\_contract\_design\_20260909.md} section 7. USER DECISION
+  \texttt{md/restart\_contract\_design\_20260909.md} section 7. USER DECISION
   2026-09-16, APPLIED: the two jobs \texttt{base\_face\_mach\_blend} was doing are
   separated and the second is stated SCALE-FREE -\/- the wind window\textquotesingle s standing
   in the branch is read off the window\textquotesingle s OWN relative flux spread
@@ -10740,7 +10740,7 @@ item\textquotesingle s own diff, from its memo.
 \item
   \textbf{L7f: the 7-to-21 disagreement between the wind network and the handoff was
   the ROOT FORMULA, and three rate-table entries were wrong}
-  (\texttt{docs/lhs1140b\_stationary\_L7f\_20260915.md}; \texttt{mol\_rates.f90},
+  (\texttt{md/lhs1140b\_stationary\_L7f\_20260915.md}; \texttt{mol\_rates.f90},
   \texttt{molecular\_reaction\_heat.f90}, \texttt{write\_output.f90}). \texttt{carrier\_h2\_chemical\_root}
   formed the row\textquotesingle s root as production over loss RATE at the trial, on the
   stated ground that the production does not depend on n(H2). It does: the
@@ -10825,7 +10825,7 @@ item\textquotesingle s own diff, from its memo.
 \item
   \textbf{L7g: the molecular base is hotter than the atomic one because of the
   molecular reaction heat, and the ledger does not double count} (OPEN in one
-  named remainder; \texttt{docs/lhs1140b\_stationary\_L7g\_20260915.md}). On the old
+  named remainder; \texttt{md/lhs1140b\_stationary\_L7g\_20260915.md}). On the old
   boundary the two base ghost rows carried 879.1 and 873.0 K and cell 1
   \textbf{1023.0 K} where the ATOMIC case of the same planet, He/H and boundary
   carried 419.3, 413.7 and 417.6 K, with \texttt{base.inp} stating 226 K. FIRST TEST,
@@ -10940,8 +10940,8 @@ item\textquotesingle s own diff, from its memo.
 \item
   \textbf{The two Codex reviews of this series, and what each finding cost.} Both
   were checked against the source before anything was done, and the verification
-  tables are \texttt{docs/session\_handoff\_20260915\_rev1.md} sections 12 and 17.
-  The FIRST (2026-09-15 21:13, \texttt{docs/session\_handoff\_20260915\_review.md}), nine
+  tables are \texttt{md/session\_handoff\_20260915\_rev1.md} sections 12 and 17.
+  The FIRST (2026-09-15 21:13, \texttt{md/session\_handoff\_20260915\_review.md}), nine
   source findings, every one CONFIRMED: R23 depositing its whole 9.16 eV as gas
   heat (\texttt{molecular\_reaction\_heat.f90} adds \texttt{k23\ n(H2)\ n(He+)\ q(R23)} to
   \texttt{gamma\_chem} with no photon term) -\textgreater{} reopened under L7g, every radiative
@@ -10966,7 +10966,7 @@ item\textquotesingle s own diff, from its memo.
   review\textquotesingle s suggestion that a golden refresh follow attribution alone was NOT
   taken: the standing rule is one deliberate refresh at the end of a series
   with the movement reported, and the user decides. The SECOND (2026-09-16
-  07:09, \texttt{docs/session\_handoff\_20260915\_review1.md}), R1 to R7 plus four
+  07:09, \texttt{md/session\_handoff\_20260915\_review1.md}), R1 to R7 plus four
   wording items: R1, the stationary and physical-time routes using different
   base-boundary operators (confirmed, and it had been a deliberate choice to
   keep the marching goldens bitwise) -\textgreater{} one boundary for both routes, measured
@@ -10990,7 +10990,7 @@ item\textquotesingle s own diff, from its memo.
   convergence.
 \item
   \textbf{The campaign re-run on the corrected base boundary, twice}
-  (\texttt{docs/lhs1140b\_rerun\_20260915.md}, three-column table by
+  (\texttt{md/lhs1140b\_rerun\_20260915.md}, three-column table by
   \texttt{LHS1140b/models/compare\_trees.py}, which reads both trees with the readers
   of \texttt{status.py}). The catalog was re-solved on \texttt{db87b88d1ce5} (built
   2026-09-15 20:38: L4h, L7e, L7f, L18, L19, L21), which measures the boundary
@@ -11119,7 +11119,7 @@ item\textquotesingle s own diff, from its memo.
   (\texttt{docs/figures/lhs1140b\_wb\_vs\_archive\_kzz1e9.pdf}). Three more arrived with
   the re-run: \texttt{compare\_trees.py} (355 lines) reads two whole trees with the
   readers of \texttt{status.py} and writes the three-column table and the agreement
-  block of \texttt{docs/lhs1140b\_rerun\_20260915.md}; \texttt{archive\_results.sh} preserves
+  block of \texttt{md/lhs1140b\_rerun\_20260915.md}; \texttt{archive\_results.sh} preserves
   one generation of results under its own tag before the next overwrites it
   (\texttt{models\_20260914\_preL21/}, \texttt{models\_20260915\_db87/}); and
   \texttt{run\_lowxuv\_dtau0.sh} re-solves a named case at \texttt{EXHALE\_PTC\_DTAU0=1.0e8}
@@ -11561,7 +11561,7 @@ the sixteen goldens above were just taken with. Reported for the next build.
 \item
   \textbf{The sixteen \texttt{backup/regression/} case directories that carried the noun
   "arm" were renamed} (PLAN\_20260916\_rev3 section 10; mapping in
-  \texttt{docs/named\_case\_audit.md} section 6): the He/H ladder is now
+  \texttt{md/named\_case\_audit.md} section 6): the He/H ladder is now
   \texttt{heh\_0p3}/\texttt{heh\_3}/\texttt{heh\_10}/\texttt{heh\_30} and the He/H = 1 family
   \texttt{heh\_1\_\{12k,40k,lw\_12k,lw\_40k,newton,lw\_newton,newton\_bigstack,x2matched\}},
   and the four quarantined cases are named for the key each exercises. None of
@@ -11570,7 +11570,7 @@ the sixteen goldens above were just taken with. Reported for the next build.
 \item
   \textbf{\texttt{Restart\ intent:\ stationary\ evaluate} now produces every output of a run
   from the state it measured, and the runner\textquotesingle s \texttt{CFL\ 1e-12} step is gone}
-  (item L9, \texttt{docs/lhs1140b\_stationary\_L9\_20260916.md}). Three states are named
+  (item L9, \texttt{md/lhs1140b\_stationary\_L9\_20260916.md}). Three states are named
   and each product says which one it describes: the loaded state, kept
   untouched; the work state, which holds the loaded conserved density,
   momentum and energy and derives p and T from the refreshed composition
@@ -11589,7 +11589,7 @@ the sixteen goldens above were just taken with. Reported for the next build.
 \item
   \textbf{The molecular network\textquotesingle s energy goes where the measurements say it goes, and
   the three-body channel runs at the rate of its own third body} (item L7g,
-  \texttt{docs/lhs1140b\_stationary\_L7g\_model\_20260916.md}). Five corrections, none of
+  \texttt{md/lhs1140b\_stationary\_L7g\_model\_20260916.md}). Five corrections, none of
   which touches a reaction enthalpy: R5 and R16 leave one hydrogen atom in
   n = 2, so the gas is charged 0.749 and 1.554 eV instead of 10.948 and 11.753
   and the 10.199 eV reaches the H(n=2) population where the run carries one and
@@ -11634,7 +11634,7 @@ the sixteen goldens above were just taken with. Reported for the next build.
   face states no reservoir either; and NO diffusive, eddy or settling flux
   crosses either end of the column, at the outer face because the gas there is
   not collisional (bulk Knudsen number 1.4-2.4 at the 30 R\_p top, exobase at
-  18.8-25.4 R\_p, READ from \texttt{docs/collisional\_validity.md}) and at the inner face
+  18.8-25.4 R\_p, READ from \texttt{md/collisional\_validity.md}) and at the inner face
   because the handoff composition already enters on the inflowing base face.
   Forming the outer face instead would leave the inward settling drift of H2
   alone crossing it, thirty times the largest term of the row it enters. The
@@ -11647,7 +11647,7 @@ the sixteen goldens above were just taken with. Reported for the next build.
   \texttt{mol\_carrier}, \texttt{mol\_base\_handoff} and \texttt{mol\_diffusion} are byte-identical over
   12000 steps in every output file except the \texttt{\#\ provenance:} wall-clock line,
   and no golden was refreshed.
-  Memo: \texttt{docs/lhs1140b\_stationary\_L22\_20260916.md} section "Step 2c".
+  Memo: \texttt{md/lhs1140b\_stationary\_L22\_20260916.md} section "Step 2c".
 \item
   \textbf{One three-body rate for the H2 chemistry and for its heat, the helium
   collider at every call site, and the Le Bourlot table corrected against the
@@ -11680,11 +11680,11 @@ the sixteen goldens above were just taken with. Reported for the next build.
   \texttt{src/tests/physics\_probe/molecular\_third\_body\_in\_the\_chemistry.f90}, 9
   assertions including the three Jacobian entries by central difference, RED 5
   of 9 against an entry text. Memo: the "Follow-up" section of
-  \texttt{docs/lhs1140b\_stationary\_L7g\_model\_20260916.md}.
+  \texttt{md/lhs1140b\_stationary\_L7g\_model\_20260916.md}.
 \item
   \textbf{The coupled block, its coupling measured and its entry named (item L22
   step 3, increments I1 and I2, 2026-09-17).} The block the design of
-  \texttt{docs/lhs1140b\_stationary\_L22\_step3\_design\_20260916.md} settled on is the
+  \texttt{md/lhs1140b\_stationary\_L22\_step3\_design\_20260916.md} settled on is the
   existing \texttt{Coupled\ carrier\ solve:\ True} route, so the first question is
   whether its matrix-free action is a usable difference quotient at the width
   the refusing cases have. \texttt{EXHALE\_COUPLED\_JAC\_ACTION=\textless{}file\textgreater{}} (with
@@ -11739,7 +11739,7 @@ the sixteen goldens above were just taken with. Reported for the next build.
   \texttt{docs/lhs1140b\_exhale\_vs\_pwinds.tex} carry the decision. The catalog\textquotesingle s states
   for these cases are made by the campaign re-run on the final binary; no
   output of the measurement directories is copied into a case directory. Memo:
-  \texttt{docs/lhs1140b\_stationary\_L25\_20260916.md}, step 3.
+  \texttt{md/lhs1140b\_stationary\_L25\_20260916.md}, step 3.
 \item
   \textbf{L22 step 3, increments I3 to I5: a route is not an equation set, and the
   block measured against the alternation.} The \texttt{carrier\_newton} token of a
@@ -11805,7 +11805,7 @@ the sixteen goldens above were just taken with. Reported for the next build.
   \texttt{EXHALE\_BASE\_WIND\_SAY\_ON\_MACH} is removed (the amplitude weight is that
   statement, at its own scale) and \texttt{EXHALE\_BASE\_WIND\_AMPLITUDE} is added. The
   probe is now the suite: 32 \texttt{PASS\textbar{}FAIL} rows on each of five states.
-  Memo: \texttt{docs/lhs1140b\_stationary\_L26\_20260916.md}, section "Repair".
+  Memo: \texttt{md/lhs1140b\_stationary\_L26\_20260916.md}, section "Repair".
 \end{itemize}
 
 \subsubsection{The golden refresh of 2026-09-17}\label{the-golden-refresh-of-2026-09-17}
@@ -11920,13 +11920,13 @@ refreshed with this snapshot.
 
 \subsection{12. PLAN\_20260917: the corrections that follow the review of the 2026-09-17 handoff (2026-09-17 to 2026-09-18)}\label{12-plan_20260917-the-corrections-that-follow-the-review-of-the-2026-09-17-handoff-2026-09-17-to-2026-09-18}
 
-Plan of record: \texttt{docs/PLAN\_20260917.md}, items L27 to L36, written after
-\texttt{docs/session\_handoff\_20260917\_review.md} (the Codex review of the first
+Plan of record: \texttt{md/PLAN\_20260917.md}, items L27 to L36, written after
+\texttt{md/session\_handoff\_20260917\_review.md} (the Codex review of the first
 handoff text) and the revised handoff
-\texttt{docs/session\_handoff\_20260917\_rev1.md}, whose sections 0 and 4 carry what
+\texttt{md/session\_handoff\_20260917\_rev1.md}, whose sections 0 and 4 carry what
 the review established and what was verified in the source before the plan
 was written. The item numbers continue
-\texttt{docs/PLAN\_20260913\_lhs\_stationary.md}, whose last item is L26. The code the
+\texttt{md/PLAN\_20260913\_lhs\_stationary.md}, whose last item is L26. The code the
 plan stands on is \texttt{EXHALE.x} md5 \texttt{59bfdb3fc4d0104fc2e9c3734596d2f6},
 repository HEAD \texttt{3c73905ca8a7fe2af92a5c2b014c225b2feedff3}, with the
 seventeen regression goldens as the 2026-09-17 refresh of section 11 left
@@ -11987,7 +11987,7 @@ final \texttt{du} on both builds; the whole-file difference is the two provenanc
 lines. The 32.376 and 336.552 readings survive only on an explicitly labeled
 row that asserts nothing.
 
-\textbf{Record.} Two head notes in \texttt{docs/lhs1140b\_stationary\_L26\_20260916.md}
+\textbf{Record.} Two head notes in \texttt{md/lhs1140b\_stationary\_L26\_20260916.md}
 sections R3 and R9 saying that the face-flux readings there are PLM
 evaluations of WENO3 states, pointing at the revised handoff\textquotesingle s section 4.3
 and at this item; the rest of that memo is left as the record it was.
@@ -12044,7 +12044,7 @@ measured=1, read from the identified scope of that solve. Print only;
 \texttt{Hydro\_ioniz.txt} and \texttt{Ion\_species.txt}.
 
 \textbf{Record.} A head note at "Step 3, increments I3 to I5" of
-\texttt{docs/lhs1140b\_stationary\_L22\_20260916.md} saying that its 2.83103e-08
+\texttt{md/lhs1140b\_stationary\_L22\_20260916.md} saying that its 2.83103e-08
 reading was a reader defect and that the records of the one completed solve
 give 0.843.
 
@@ -12289,7 +12289,7 @@ plus one new module procedure and its call), \texttt{h2\_vibrational\_relaxation
 \texttt{src/tests/physics\_probe/molecular\_energy\_recipients.f90} (+433/-12, 62
 assertions to 81), the new suite \texttt{src/tests/h2\_level\_ladder/} (an 818-line
 model, a 32-assertion driver, \texttt{run.sh} and a README), and one row of
-\texttt{docs/input\_schema.md}.
+\texttt{md/input\_schema.md}.
 
 \textbf{The energy audit.} Five closed cycles, with the gas share of every step
 measured from the production \texttt{molecular\_chemical\_heating} rather than
@@ -12411,7 +12411,7 @@ Rev. A 83, 042713, plots a total over 0 to 350 K and tabulates nothing, and
 the table above makes this the largest single uncertainty in the molecular
 base heat.
 
-\textbf{Record.} \texttt{docs/lhs1140b\_stationary\_L31\_energy\_cycles\_20260917.md}.
+\textbf{Record.} \texttt{md/lhs1140b\_stationary\_L31\_energy\_cycles\_20260917.md}.
 
 \subsubsection{L32: one frozen rejected coupled Newton system, measured before any preconditioner is designed}\label{l32-one-frozen-rejected-coupled-newton-system-measured-before-any-preconditioner-is-designed}
 
@@ -12507,7 +12507,7 @@ No production numerical change, no default moved, no preconditioner designed;
 the one source change is the print-only loop-top iterate record reported under
 L28 above.
 
-\textbf{Record.} \texttt{docs/lhs1140b\_stationary\_L32\_20260917.md}, with the frozen
+\textbf{Record.} \texttt{md/lhs1140b\_stationary\_L32\_20260917.md}, with the frozen
 checkpoint, the identities and every run log under
 \texttt{docs/audit\_20260905/L32\_20260917/}.
 
@@ -12572,7 +12572,7 @@ coefficient moves the x2 = 0.5 front only from 1.2565 to 1.3705 R\_p, while
 \texttt{q\_H2\_base} moves the x2 = 1e-2 contour from 1.1626 R\_p to beyond the 30 R\_p
 boundary).
 
-\textbf{Record.} \texttt{docs/lhs1140b\_stationary\_L33\_20260917.md} and the reader
+\textbf{Record.} \texttt{md/lhs1140b\_stationary\_L33\_20260917.md} and the reader
 \texttt{LHS1140b/models/.L22/outer\_pass\_history.py}.
 
 \subsubsection{L34a: the atomic catalog re-run, 79 reproduced and the seven low-XUV Roe cases}\label{l34a-the-atomic-catalog-re-run-79-reproduced-and-the-seven-low-xuv-roe-cases}
@@ -12654,7 +12654,7 @@ recorded in that rung\textquotesingle s \texttt{REPRODUCE.md}. 86 \texttt{REPROD
 were regenerated. Nothing under \texttt{backup/regression/}, \texttt{src/} or any molecular
 case directory was touched.
 
-\textbf{Record.} \texttt{docs/lhs1140b\_stationary\_L34a\_20260918.md}.
+\textbf{Record.} \texttt{md/lhs1140b\_stationary\_L34a\_20260918.md}.
 
 \subsubsection{L36 and L36c: ionization stage transport}\label{l36-and-l36c-ionization-stage-transport}
 
@@ -12786,9 +12786,9 @@ naming the species and the cell was added; the tolerance was not touched, and
 the choice between raising the fixture\textquotesingle s threshold and accepting the row as a
 statement about the sweep\textquotesingle s own noise is open.
 
-\textbf{Record.} \texttt{docs/lhs1140b\_stationary\_L36\_20260918.md} and
-\texttt{docs/lhs1140b\_stationary\_L36c\_20260918.md}; the key\textquotesingle s documentation is the
-rewritten K15f row of \texttt{docs/input\_schema.md}.
+\textbf{Record.} \texttt{md/lhs1140b\_stationary\_L36\_20260918.md} and
+\texttt{md/lhs1140b\_stationary\_L36c\_20260918.md}; the key\textquotesingle s documentation is the
+rewritten K15f row of \texttt{md/input\_schema.md}.
 
 \subsubsection{L36d: both elements\textquotesingle{} ionization stages carried, and the anchor the stage rows already had}\label{l36d-both-elements-ionization-stages-carried-and-the-anchor-the-stage-rows-already-had}
 
@@ -12815,7 +12815,7 @@ together, and projects the two helium stages in one simplex;
 \texttt{certification.f90} gains \texttt{ionization\ stage\ nucleus\ sum\ H} and \texttt{...\ He}, both
 reported and not gating; \texttt{input\_read.f90} restates the three kept refusals and
 \texttt{write\_setup\_report.f90} echoes the carried set, the flux each rides on and
-the closing stage of each element. K15f of \texttt{docs/input\_schema.md} was
+the closing stage of each element. K15f of \texttt{md/input\_schema.md} was
 rewritten in the five places this item makes false. \texttt{src/EXHALE\_main.f90},
 \texttt{steady\_newton.f90} and \texttt{binary\_element\_diffusion.f90} were not touched.
 
@@ -12858,7 +12858,7 @@ measure over the interior cells reads 7.2833e-06 at 250 cells
 eddy halves of the source within a factor 2.38 of each other. Extrapolated
 with that order to the 1.8447e-3 R\_p spacing on which
 \texttt{cert\_tol\_carrier\_wind\ =\ 1e-5} was anchored for a smooth ELEMENT column
-(\texttt{docs/certification\_tolerance\_anchoring\_20260910.md} section 2 (3)) the stage
+(\texttt{md/certification\_tolerance\_anchoring\_20260910.md} section 2 (3)) the stage
 column reads 7.80e-7, and a decade above it is 7.8e-6. \textbf{The rule of the
 anchoring memo, applied to a measurement of an IONIZATION row, returns the
 number the stage rows already carry, so 1e-5 is anchored for them and no
@@ -12936,7 +12936,7 @@ whose production and loss cancel to three decades the net is the same size as
 the residual. That is the one thing that decides whether the He+ row can ever
 certify, it is a change to a shared acceptance interface with its own
 anchoring, and it was not made here. \textbf{It is item D3 of
-\texttt{docs/PLAN\_20260918\_rev1.md}.}
+\texttt{md/PLAN\_20260918\_rev1.md}.}
 
 \textbf{The \texttt{carrier\_retry} RED row, diagnosed.}
 \texttt{one\_further\_sweep\_leaves\_the\_returned\_composition\_within\_the\_sweep\_tolerance}
@@ -12961,7 +12961,7 @@ moves the composition by 1.5067e+08, its worst being He III at cell 4, the
 local root of the helium ionization there being eight decades from the
 transported value. The tolerance and the 1e-20 presence threshold were not
 touched; the returned-state closure contract this row reads on is item \textbf{D4}
-of \texttt{docs/PLAN\_20260918\_rev1.md}.
+of \texttt{md/PLAN\_20260918\_rev1.md}.
 
 \textbf{One defect fixed beside the stage work.}
 \texttt{carrier\_ionization\_stage\_projection} wrote into an unallocated cell record
@@ -12969,7 +12969,7 @@ of \texttt{docs/PLAN\_20260918\_rev1.md}.
 caller that projected on its own segfaulted; the routine now allocates it.
 Found by the new acceptance row that calls it directly.
 
-\textbf{Record.} \texttt{docs/lhs1140b\_stationary\_L36d\_20260918.md}. Goldens were not
+\textbf{Record.} \texttt{md/lhs1140b\_stationary\_L36d\_20260918.md}. Goldens were not
 refreshed and \texttt{EXHALE.x} was not written; \texttt{hp\_front}\textquotesingle s golden is now stale by
 1.6e-1 in the helium columns and joins the two L36c reported.
 
@@ -13186,14 +13186,14 @@ stage sources and the sweep\textquotesingle s rows differ by those terms. The fi
 metal-free, so nothing measured here is affected; adding it needs the frozen
 metal densities per stage and the \texttt{cx\_metal\_base} layout of the system being
 judged, neither of which the transport operator holds. \textbf{It is item D7 of
-\texttt{docs/PLAN\_20260918\_rev1.md}.}
+\texttt{md/PLAN\_20260918\_rev1.md}.}
 
 \textbf{Four key-on goldens are stale}: \texttt{hp\_front}, \texttt{hp\_zero\_seed} and
 \texttt{hp\_trace\_seed} from L36c and L36d, and now \texttt{carrier\_model\_a\_newton} by
 1.2e-04. One refresh at the close of the series; none taken here.
 
-\textbf{Record.} \texttt{docs/lhs1140b\_stationary\_L36e\_20260918.md}; the key\textquotesingle s
-documentation is the K15f row of \texttt{docs/input\_schema.md}, rewritten again
+\textbf{Record.} \texttt{md/lhs1140b\_stationary\_L36e\_20260918.md}; the key\textquotesingle s
+documentation is the K15f row of \texttt{md/input\_schema.md}, rewritten again
 around the atomic configuration, the row source in each gas, the refusal that
 is kept and \texttt{iontrans} as a nameable restart token.
 
@@ -13288,7 +13288,7 @@ equilibrium sweep, and the sweep moves the physical particle count by
 below the 6.9e-09 the re-entry moves it.
 
 \textbf{\texttt{c\_round\ =\ 100}, proposed for the record and not adopted.} Applying anchor
-(6) of \texttt{docs/certification\_tolerance\_anchoring\_20260910.md} with the re-entry
+(6) of \texttt{md/certification\_tolerance\_anchoring\_20260910.md} with the re-entry
 as the perturbation, the largest ratio is 31.24 and P16\textquotesingle s own margin of 3.7
 above it gives 116, a round \textbf{100} where the code carries 10. \textbf{The rule does
 not make that choice unambiguous}, because it fixes the margin above a
@@ -13307,7 +13307,7 @@ evaluations at about 7 s each), or to re-derive \texttt{c\_round} on the round-t
 perturbation. The contract question the measurement leaves is not about the
 sweep but \textbf{what a restart pair must carry so that the base face flux of a
 molecular column is the same flux after a write and a read}, and it is item
-\textbf{D5} of \texttt{docs/PLAN\_20260918\_rev1.md}. Two certifications inside one run, of
+\textbf{D5} of \texttt{md/PLAN\_20260918\_rev1.md}. Two certifications inside one run, of
 one conserved state, already differ by a factor 4.3 at the base cells while
 agreeing to four digits at the verdict cell, so the re-entry is where the
 movement is measured and not where it begins.
@@ -13345,8 +13345,8 @@ at each of the two molecular states, 81 PASS, 0 FAIL. No control run of the
 entry text was taken, because the file in the tree already stood ahead of the
 last commit through other items\textquotesingle{} work.
 
-\textbf{Record.} \texttt{docs/lhs1140b\_stationary\_L37\_20260918.md}, which carries every
-table in full. \texttt{docs/lhs1140b\_stationary\_L31\_energy\_cycles\_20260917.md}
+\textbf{Record.} \texttt{md/lhs1140b\_stationary\_L37\_20260918.md}, which carries every
+table in full. \texttt{md/lhs1140b\_stationary\_L31\_energy\_cycles\_20260917.md}
 section 5.4 now states that no rule drawn from the profile picks the dilute
 upper column and that the radius is the choice.
 
@@ -13464,7 +13464,7 @@ back where they were, and \texttt{HeH9.7} behaves the same way (2.340e-08 agains
 cm s\^{}-1 and lies far below the r \textgreater= 1.20 window every gated species row is
 judged in, so this is the cancellation of the base and not a second opinion
 about the wind. Item L37 measures the band and its mechanism; the contract
-question is item \textbf{D5} of \texttt{docs/PLAN\_20260918\_rev1.md}.
+question is item \textbf{D5} of \texttt{md/PLAN\_20260918\_rev1.md}.
 
 \textbf{What was written.} \texttt{models/status.py\ -\/-write} regenerated \texttt{MODELS.md}
 sections 7 and 8; \texttt{LHS1140b/make\_memo\_figures.py} regenerated the twenty
@@ -13477,7 +13477,7 @@ files, two \texttt{REPRODUCE.md} written by their own runs and naming md5
 \texttt{3146d11b4090306dcea75bb9718edd22}, \texttt{output\_pre\_L34/} beside each of the five
 cases touched, and \texttt{docs/figures/lhs1140b\_L34b\_reference.png}.
 
-\textbf{Record.} \texttt{docs/lhs1140b\_stationary\_L34b\_20260918.md}.
+\textbf{Record.} \texttt{md/lhs1140b\_stationary\_L34b\_20260918.md}.
 
 \subsubsection{L34c: the remaining molecular cases, and the two seeding routes the restart contract refuses}\label{l34c-the-remaining-molecular-cases-and-the-two-seeding-routes-the-restart-contract-refuses}
 
@@ -13593,7 +13593,7 @@ row rises there, so restoring the bound is not by itself the remedy. Two case
 directories now hold a state pair whose halves are from different runs, a
 solve writing \texttt{Hydro\_ioniz.txt} only when it ends.
 
-\textbf{Record.} \texttt{docs/lhs1140b\_stationary\_L34c\_20260918.md}.
+\textbf{Record.} \texttt{md/lhs1140b\_stationary\_L34c\_20260918.md}.
 
 \subsubsection{L35: the matched-domain flux and grid comparison, and the local base closure}\label{l35-the-matched-domain-flux-and-grid-comparison-and-the-local-base-closure}
 
@@ -13708,7 +13708,7 @@ nothing is flowing (ghosts 3.86 and 4.00 per cent); on the hydrostatic column
 the same 1/2 costs 3.07e-07, which is why it has not been visible. The item
 is "state what the boundary does when the wind says nothing", with the
 smoothstep\textquotesingle s value at zero written at the place it is used, which it is not
-now. \textbf{It is item D2 of \texttt{docs/PLAN\_20260918\_rev1.md}.} Not a reason for an
+now. \textbf{It is item D2 of \texttt{md/PLAN\_20260918\_rev1.md}.} Not a reason for an
 item: the remote closure\textquotesingle s nonlocality, \texttt{r\_flux} moving over a factor ten on a
 converged wind changing the window mean by 1.3e-05 and the face state not at
 all, and a 1.5x extended domain moving the discriminant by 1e-04 and the face
@@ -13731,7 +13731,7 @@ difference in \texttt{dr\_base} damped by a factor 3.8 by the rescale, and that 
 the Python replica was validated, an exact match holding only with the
 single-precision value. The correction (\texttt{2.0d-4}) moves every Mixed grid built
 from the default, which is a golden refresh, so it was not made. \textbf{It is item
-D1 of \texttt{docs/PLAN\_20260918\_rev1.md}}, whose D1a is the disclosure and
+D1 of \texttt{md/PLAN\_20260918\_rev1.md}}, whose D1a is the disclosure and
 provenance and whose D1b is the default change on new configurations only.
 Reported with it: the \texttt{hydrostatic\_column} regression fixture is not a column
 at rest, its recorded output being a 300-step relaxation snapshot whose first
@@ -13740,7 +13740,7 @@ whose wind window has a relative flux spread of 2.40, the largest in the tree,
 so a future well-balancedness test should build its own state at rest rather
 than load this one.
 
-\textbf{Record.} \texttt{docs/lhs1140b\_stationary\_L35\_20260918.md} and
+\textbf{Record.} \texttt{md/lhs1140b\_stationary\_L35\_20260918.md} and
 \texttt{docs/figures/lhs1140b\_L35\_flux\_grid.png}.
 
 \subsubsection{\texorpdfstring{L30c: what moves \texttt{oxygen\_chemistry} by order unity}{L30c: what moves oxygen\_chemistry by order unity}}\label{l30c-what-moves-oxygen_chemistry-by-order-unity}
@@ -13822,7 +13822,7 @@ network directly, a rate, a branching ratio or a conservation identity, and
 the present case gives the oxygen path the reproducibility golden it was
 opened for.
 
-\textbf{Record.} \texttt{docs/lhs1140b\_stationary\_L30c\_20260918.md}.
+\textbf{Record.} \texttt{md/lhs1140b\_stationary\_L30c\_20260918.md}.
 
 \subsubsection{\texorpdfstring{The \texttt{count} rename of the plan\textquotesingle s section 11}{The count rename of the plan\textquotesingle s section 11}}\label{the-count-rename-of-the-plans-section-11}
 
@@ -13877,7 +13877,7 @@ all renamed.
 \texttt{\textquotesingle{}\#\ count\ \ j\ \ r{[}Rp{]}\ \ ...\textquotesingle{}}, \texttt{\textquotesingle{}\ \ \ \ \ -\textgreater{}\ stopped:\ reached\ count\_max\ =\ \textquotesingle{}} and the
 report key \texttt{count\_max} in \texttt{EXHALE\_setup.out} are unchanged, because
 \texttt{src/tests/attempted\_step/run.sh} parses the log with
-\texttt{re.search(r"step-clock:\ count=(\textbackslash{}d+)\ ...")} and \texttt{docs/input\_schema.md}
+\texttt{re.search(r"step-clock:\ count=(\textbackslash{}d+)\ ...")} and \texttt{md/input\_schema.md}
 documents \texttt{count\_max} as that report key; moving the labels would move the
 logs the control compares line for line. The declaration now carries a
 comment naming the printed label and the report key so the two can be found
@@ -13913,7 +13913,7 @@ because a comment refined in \texttt{parameters.f90} after the first pass change
 object\textquotesingle s line tables; every number above is from the rebuilt binary.
 
 \textbf{Record.} The declaration comment in \texttt{src/modules/init/parameters.f90} and
-the K32c row of \texttt{docs/input\_schema.md}, below.
+the K32c row of \texttt{md/input\_schema.md}, below.
 
 \subsubsection{Further corrections made while the series landed}\label{further-corrections-made-while-the-series-landed}
 
@@ -13942,12 +13942,12 @@ bookkeeping subsection below and are named here only so the list is complete.
   14b describes that suite, its five statements, its configurations and its
   RED expectation before L36e.
 \item
-  \textbf{\texttt{docs/input\_schema.md} K32c}, the \texttt{Max\ steps} row, gave \texttt{count\_max} in
+  \textbf{\texttt{md/input\_schema.md} K32c}, the \texttt{Max\ steps} row, gave \texttt{count\_max} in
   both its "default" and its "variable" column. The report key is still
   \texttt{count\_max}, and the variable behind it is now \texttt{marching\_step\_max}; the
   variable column reads \texttt{marching\_step\_max\ (report\ key\ count\_max)}.
 \item
-  \textbf{\texttt{docs/lhs1140b\_stationary\_L31\_energy\_cycles\_20260917.md} section 5.4}
+  \textbf{\texttt{md/lhs1140b\_stationary\_L31\_energy\_cycles\_20260917.md} section 5.4}
   stated a rule for the H2 front and none for the dilute upper column, and
   none exists to state: at that radius \texttt{2\ n(H2)/n\_H} is flat and rising
   outward, 3.43e-06 at cell 296 to 3.88e-06 at cell 303. The memo now says so
@@ -13964,7 +13964,7 @@ bookkeeping subsection below and are named here only so the list is complete.
   measurement, pointing at the block below it that already said so. Comment
   only; \texttt{bash\ -n} clean; the runner\textquotesingle s statements unchanged.
 \item
-  Already recorded below: \textbf{\texttt{docs/code\_status\_20260910.md}\textquotesingle s transport row},
+  Already recorded below: \textbf{\texttt{md/code\_status\_20260910.md}\textquotesingle s transport row},
   whose sense was inverted, and \textbf{\texttt{LHS1140b/models/write\_reproduce.py}\textquotesingle s seed
   and cold-start paragraphs}, both corrected with the bookkeeping items of
   the plan\textquotesingle s section 11.
@@ -13987,7 +13987,7 @@ correctly signed form is written out as the conservative flux of the cell
 second difference, \texttt{dv/dt\ =\ -M\^{}-1\ B\^{}T\ K\ B\ v}, with its measured
 \texttt{lambda\_min/lambda\_max} of -4.5e-17 at the closing gate and -5.9e-18 on the
 LHS 1140 b state, and the header says that it is derived in
-\texttt{docs/lhs1140b\_stationary\_L25\_20260916.md} step 1 and \textbf{is not adopted here},
+\texttt{md/lhs1140b\_stationary\_L25\_20260916.md} step 1 and \textbf{is not adopted here},
 so a run that turns the option on carries the indefinite form. Section 4\textquotesingle s
 "there is no secular source" was part of the same claim and was corrected in
 place. Comment lines only, 63 insertions and 11 deletions, no executable line
@@ -14011,7 +14011,7 @@ comment: a budget of 40 never reaches two in a row, and
 \texttt{EXHALE\_CARRIER\_TRUST=1e-4} lets the carrier take steps and makes every pass
 fall. The solve leg goes from 58 s to 103 s. One executable line changed.
 
-\textbf{\texttt{docs/TO\_BE\_DONE.md}, the L7g cascade entry} keeps its blocking statement
+\textbf{\texttt{md/TO\_BE\_DONE.md}, the L7g cascade entry} keeps its blocking statement
 (the Bossion et al. 2018 H2-H state-to-state rates extended to all bound
 states, as used by Nesterenok et al. 2019, and a modern H2-He set above
 v = 3) and gains L31\textquotesingle s reduced ladder as the bounded substitute, with the
@@ -14049,12 +14049,12 @@ which applies; that branch now says the seed was named on the command line
 and that \texttt{pick\_seed.py} chose nothing. Both defects reach every record ever
 written with \texttt{SEED=}, the molecular campaign included.
 
-\textbf{The documents.} \texttt{docs/code\_status\_20260910.md}\textquotesingle s transport row stated the
+\textbf{The documents.} \texttt{md/code\_status\_20260910.md}\textquotesingle s transport row stated the
 \texttt{Ionization\ transport} requirement with the sense inverted, that
 \texttt{Coupled\ carrier\ solve:\ True} is needed and the run refused without it; the
 opposite is true after L36c, and the row now says that the partitioned route
 runs it and the coupled route is refused, with the reason and the date.
-\texttt{docs/input\_schema.md} K15f was rewritten by L36c around the new unknown, the
+\texttt{md/input\_schema.md} K15f was rewritten by L36c around the new unknown, the
 flux it rides on, the simplex, the validity range and the four refusals, and
 K32g now states ONE counting convention for
 \texttt{EXHALE\_REACTION\_HEAT\_RECIPIENTS}, three grouped corrections spanning four
@@ -14141,7 +14141,7 @@ through the He/H charge exchange item L36e added to the stage sources; the
 \texttt{hydrostatic\_column} and changes no case. The second matrix was running at
 the time of writing; it was then stopped before it finished, on the user\textquotesingle s
 instruction of 2026-09-18 14:10, and no movement table was taken from it
-(READ, \texttt{docs/session\_handoff\_20260918.md} section 2.3; corrected 2026-09-19).
+(READ, \texttt{md/session\_handoff\_20260918.md} section 2.3; corrected 2026-09-19).
 Section 13 carries the refresh forward.
 
 \textbf{The refresh itself is not taken here.} It is the advisor\textquotesingle s, after the
@@ -14150,15 +14150,15 @@ read and never written by any item, each item measured its own movement
 against a control build of its own entry text instead.
 
 \begin{quote}
-\textbf{DEFERRED.} On 2026-09-18 at 14:10 the user instructed that no golden is refreshed and no further movement table is kept while the corrections of \texttt{docs/PLAN\_20260918\_rev2.md} continue on the same tree: a refresh now would be repeated within days. The closing binary of the L27 to L37 series is \texttt{74b96cdcf887dcfee301ec547f012d88} (manifest \texttt{LHS1140b/models/BINARY\_MANIFEST\_74b96cdcf887.txt}); the goldens stay the 2026-09-17 set; every item\textquotesingle s control is its own entry-text build, so the stale goldens do not enter any verification; one refresh follows when the rev2 items have landed, with its movement table then.
+\textbf{DEFERRED.} On 2026-09-18 at 14:10 the user instructed that no golden is refreshed and no further movement table is kept while the corrections of \texttt{md/PLAN\_20260918\_rev2.md} continue on the same tree: a refresh now would be repeated within days. The closing binary of the L27 to L37 series is \texttt{74b96cdcf887dcfee301ec547f012d88} (manifest \texttt{LHS1140b/models/BINARY\_MANIFEST\_74b96cdcf887.txt}); the goldens stay the 2026-09-17 set; every item\textquotesingle s control is its own entry-text build, so the stale goldens do not enter any verification; one refresh follows when the rev2 items have landed, with its movement table then.
 \end{quote}
 
 \subsection{13. PLAN\_20260918\_rev2: the corrections that follow the two reviews of PLAN\_20260918 (2026-09-18 to 2026-09-19)}\label{13-plan_20260918_rev2-the-corrections-that-follow-the-two-reviews-of-plan_20260918-2026-09-18-to-2026-09-19}
 
-Plan of record: \texttt{docs/PLAN\_20260918\_rev2.md}, which replaced
-\texttt{docs/PLAN\_20260918\_rev1.md} and the first text \texttt{docs/PLAN\_20260918.md}
-after two reviews (\texttt{docs/PLAN\_20260918\_review.md} and
-\texttt{docs/PLAN\_20260918\_review1.md}); its sections 0 and 0.4 record which of the
+Plan of record: \texttt{md/PLAN\_20260918\_rev2.md}, which replaced
+\texttt{md/PLAN\_20260918\_rev1.md} and the first text \texttt{md/PLAN\_20260918.md}
+after two reviews (\texttt{md/PLAN\_20260918\_review.md} and
+\texttt{md/PLAN\_20260918\_review1.md}); its sections 0 and 0.4 record which of the
 reviews\textquotesingle{} source findings were read in the working tree before they were
 adopted. The plan holds nine items, D1 to D9, raised by the L35, L36 and L37
 measurements of section 12 and by the reviews; its table "Decisions made on
@@ -14178,10 +14178,10 @@ running table of movement against the goldens is kept from item to item:
 each item measures its own movement against a control build of its own entry
 text, on scratch copies. No golden is refreshed while the corrections
 continue; one refresh follows when they have landed. On
-\texttt{docs/DECISION\_D2a\_D8\_review.md} the user chose, for D2a, choice \textbf{A} at the
+\texttt{md/DECISION\_D2a\_D8\_review.md} the user chose, for D2a, choice \textbf{A} at the
 pressure-balanced stationary contact (the reservoir owns the thermodynamic
 state of the level, including at rest), with the rest of the Codex D2a text
-of \texttt{docs/DECISION\_D2a\_D8\_codex.md} kept; for D8, the Codex generation
+of \texttt{md/DECISION\_D2a\_D8\_codex.md} kept; for D8, the Codex generation
 structure as reviewed, with legacy import of the existing products and item
 D8a as the first increment. On the D3a memo the user approved D3b as
 recommended: the He II gate and its denominator stay, the stage-sum entries
@@ -14216,7 +14216,7 @@ candidate, \texttt{ES24.17E3}, prints 24 asterisks for a negative value, MEASURE
 (\texttt{default} or \texttt{key}) and \texttt{base\_grid\_in\_effect}; \texttt{EXHALE\_setup.out} states
 \texttt{dr\_base\ =\ \textless{}round-trip\ value\textgreater{}\ (the\ default)} or \texttt{(from\ the\ key)};
 \texttt{LHS1140b/models/write\_reproduce.py} writes a \texttt{\#\#\ The\ grid} section from the
-run\textquotesingle s resolved record; \texttt{docs/input\_schema.md} row K33b states the stored
+run\textquotesingle s resolved record; \texttt{md/input\_schema.md} row K33b states the stored
 default and the trap. No value moved.
 
 \textbf{How it was verified.} \texttt{src/tests/grid\_and\_gates/base\_cell\_width\_provenance.f90}
@@ -14312,7 +14312,7 @@ optional \texttt{Ek\_out} on \texttt{ionization\_stage\_face\_flux};
 \texttt{g\ =\ S/S\textquotesingle{}} at the face that carries the measure; \texttt{certification.f90} moves
 the entry into the public \texttt{ionization\_stage\_sum\_entry}, which takes the
 measured \texttt{g}, sets \texttt{finite}, gates on both, and names \texttt{g} in the entry\textquotesingle s
-\texttt{scale:} line; anchor (8) in \texttt{docs/certification\_tolerance\_anchoring\_20260910.md}.
+\texttt{scale:} line; anchor (8) in \texttt{md/certification\_tolerance\_anchoring\_20260910.md}.
 The tolerance is 3.1086244689504383e-15 (H) and 5.3290705182007514e-15 (He)
 at the measured \texttt{g\ =\ 1}; the algebraic ceiling of \texttt{g} (3/2 and 2) is used
 only where the operator reports none.
@@ -14512,7 +14512,7 @@ reservoir\textquotesingle s elements and the first physical cell\textquotesingle
 cells alone. \texttt{write\_output.f90} writes \texttt{\#\ boundary\_model} and
 \texttt{\#\ boundary\_reservoir} on both halves. \texttt{EXHALE\_main.f90}: the two remaining
 evaluation sites install the boundary after the sweep, and the boundary is
-derived at the top of each marching attempt. \texttt{docs/input\_schema.md} appendix D.
+derived at the top of each marching attempt. \texttt{md/input\_schema.md} appendix D.
 
 \textbf{How it was verified.} Acceptance all bitwise: the four ghost variants of D5a
 give one boundary and one first residual (1.5582E-08 in all four), a
@@ -14926,7 +14926,7 @@ entry \texttt{conduction\_base\_heat\_flux}. \texttt{binary\_element\_diffusion.
 reservoir composition stated as a condition that drives a flux either way, and
 \texttt{element\_base\_diffusive\_flux} recording face 0. \texttt{diffusive\_photochemistry.f90}
 (comment): the carrier carries zero diffusive flux across the base face and its
-advection is upwinded on the face mass flux. \texttt{docs/input\_schema.md} (\texttt{T\_base}
+advection is upwinded on the face mass flux. \texttt{md/input\_schema.md} (\texttt{T\_base}
 is the temperature of the level; the two model identities) and
 \texttt{LHS1140b/MODELS.md} section 4.
 
@@ -15023,10 +15023,10 @@ Corrected by the advisor as the items came in.
   from the file\textquotesingle s first cell; after D2b the seeds differ and the row reads
   4.0e-16, so it now asserts the round-trip rounding band 1e-14, and whether the
   file\textquotesingle s ghost rows are read is decided by the four ghost variants of
-  \texttt{src/tests/boundary\_state/} (reason in \texttt{docs/lhs1140b\_stationary\_D5b2\_20260918.md}
+  \texttt{src/tests/boundary\_state/} (reason in \texttt{md/lhs1140b\_stationary\_D5b2\_20260918.md}
   section 11).
 \item
-  \textbf{\texttt{docs/lhs1140b\_stationary\_L33\_20260917.md}} section 6.3 gained an "Executed
+  \textbf{\texttt{md/lhs1140b\_stationary\_L33\_20260917.md}} section 6.3 gained an "Executed
   2026-09-18" paragraph stating the bounded experiment\textquotesingle s result on the case it
   designed.
 \item
@@ -15090,7 +15090,7 @@ measured and reported at that time.
 
 Approved by the user on 2026-09-19 ("남은 것도 전부 진행"). Before the
 refresh the series closed four further code defects that the catalog
-re-evaluation exposed (\texttt{docs/lhs1140b\_stationary\_D9fix\_20260919.md}): the
+re-evaluation exposed (\texttt{md/lhs1140b\_stationary\_D9fix\_20260919.md}): the
 ghost H2 closure of D5b-2 contracted linearly (slope 0.74 to 0.90 per pass)
 and now takes a secant step on its scalar equation and tests the residual at
 the returned state; \texttt{transfer\_h2} of the atomic-to-molecular seed overwrote
@@ -15104,7 +15104,7 @@ the setup report stored beside a case\textquotesingle s results. The rounding-de
 \texttt{carrier\_bound\_default\_halves} row became a DIAGNOSTIC. The catalog runner
 gained \texttt{run\_case.sh\ -\/-evaluate}, writable \texttt{\_IC} copies, \texttt{pick\_seed.py} tier 0
 on \texttt{latest\_certified}, and the demotion of a parent that the current binary
-refuses (\texttt{docs/lhs1140b\_stationary\_D8b\_20260918.md}, addendum).
+refuses (\texttt{md/lhs1140b\_stationary\_D8b\_20260918.md}, addendum).
 
 The three x0.01-XUV atomic catalog states are refused on the final binary and
 the refusal is physical: they were solved on the pre-D2b blended base face,
@@ -15115,7 +15115,7 @@ catalog item.
 A metal-bearing transported-ionization reference now exists: WASP-121b with
 He 2\^{}3S and solar trace metals, \texttt{Ionization\ transport:\ True}, certified at
 outer pass 29 from the certified \texttt{wasp\_full\_newton} state
-(\texttt{docs/iontrans\_metals\_reference\_20260919.md}); the transported stage
+(\texttt{md/iontrans\_metals\_reference\_20260919.md}); the transported stage
 sources equal the sweep\textquotesingle s rows at every cell exactly. It is the regression
 case \texttt{iontrans\_metals}, in the default list, with its outer-pass cap pinned
 in the new one-line file \texttt{outer\_passes} (read by \texttt{run\_check.sh} as
@@ -15170,8 +15170,8 @@ value.
 
 \subsection{14. PLAN\_20260919\_rev1: the review folded in, the boundary composition closed (2026-09-19 to 2026-09-20)}\label{14-plan_20260919_rev1-the-review-folded-in-the-boundary-composition-closed-2026-09-19-to-2026-09-20}
 
-Plan of record: \texttt{docs/PLAN\_20260919\_rev1.md}, which folds
-\texttt{docs/PLAN\_20260919\_review.md} into the first text \texttt{docs/PLAN\_20260919.md}
+Plan of record: \texttt{md/PLAN\_20260919\_rev1.md}, which folds
+\texttt{md/PLAN\_20260919\_review.md} into the first text \texttt{md/PLAN\_20260919.md}
 after checking each of the review\textquotesingle s ten findings against the source and,
 where a finding was about behavior, against an execution on this tree. Nine
 were confirmed and one (R2, the solved ghost electron count) was confirmed
@@ -15197,7 +15197,7 @@ nobody could repeat: 88 indexes with 74 certified in the first text, 137 with
 83 in the review, 136 with 83 in the advisor\textquotesingle s check of the same day. None of
 the three stated which directories it counted or what "certified" meant.
 
-\textbf{What changed} (\texttt{docs/lhs1140b\_p0\_p4a\_20260919.md}). \texttt{models/status.py\ inventory\ {[}-\/-write{]}} publishes \texttt{LHS1140b/models/CASE\_INVENTORY.\{md,json\}}:
+\textbf{What changed} (\texttt{md/lhs1140b\_p0\_p4a\_20260919.md}). \texttt{models/status.py\ inventory\ {[}-\/-write{]}} publishes \texttt{LHS1140b/models/CASE\_INVENTORY.\{md,json\}}:
 the selection rule in words and the name of the function that IS the rule,
 the instant it was taken, the binary of record with its md5 and its source
 list, the criterion for certified (the index names a \texttt{latest\_certified} whose
@@ -15263,7 +15263,7 @@ which P4d then closed by binding the bytes.
 
 \subsubsection{P5a: the capacity contract of a certification report}\label{p5a-the-capacity-contract-of-a-certification-report}
 
-\textbf{What was wrong} (\texttt{docs/lhs1140b\_p5a\_20260919.md}). \texttt{add\_entry} in
+\textbf{What was wrong} (\texttt{md/lhs1140b\_p5a\_20260919.md}). \texttt{add\_entry} in
 \texttt{certification.f90} returned silently when the report already held
 \texttt{cert\_max\_entries} entries, and every entry writer then assigned into
 \texttt{rep\%e(rep\%n)}, which in that state is the PREVIOUS entry. MEASURED through
@@ -15297,7 +15297,7 @@ a repair: the number is the size of the inventory and is now derived from it.
 
 \subsubsection{P4b: the seed of a new solve, resolved once}\label{p4b-the-seed-of-a-new-solve-resolved-once}
 
-\textbf{What was wrong} (\texttt{docs/lhs1140b\_p4b\_20260919.md}). The manifest of
+\textbf{What was wrong} (\texttt{md/lhs1140b\_p4b\_20260919.md}). The manifest of
 \texttt{molecular\_scalar\_gj1132\_kzz1e9/HeH9.7} \texttt{g0004\_20260919T103629Z\_9b8394a3}
 carried a null parent with "not recorded by the run that wrote this state",
 while the run record it names carries the seed \texttt{g0003\_...ffa78b36} of its own
@@ -15340,7 +15340,7 @@ a second of the mark.
 
 \subsubsection{P5b: the executable a test selects, and the one it says it ran}\label{p5b-the-executable-a-test-selects-and-the-one-it-says-it-ran}
 
-\textbf{What was wrong} (\texttt{docs/lhs1140b\_p5b\_20260919.md}). No suite under
+\textbf{What was wrong} (\texttt{md/lhs1140b\_p5b\_20260919.md}). No suite under
 \texttt{src/tests/} printed or checked the identity of the binary it ran (READ: the
 string \texttt{md5} occurs in no pre-change suite script except where an OUTPUT file
 is hashed), and the selection was made by four different names. MEASURED: a
@@ -15375,7 +15375,7 @@ with the two \texttt{coupled\_block\_jacobian} rows of R5.
 
 \subsubsection{R2 and P1 step 1, experiments 1 and 2: the ghost\textquotesingle s seed decides the certificate}\label{r2-and-p1-step-1-experiments-1-and-2-the-ghosts-seed-decides-the-certificate}
 
-\textbf{What was wrong} (\texttt{docs/lhs1140b\_p1\_step1\_20260919.md}). R2: the solved
+\textbf{What was wrong} (\texttt{md/lhs1140b\_p1\_step1\_20260919.md}). R2: the solved
 ghost electron count summed H II, He II, He III and the metal stages and
 declared the molecular ions negligible, while \texttt{calc\_ne}, which the production
 electron density comes from, counts H2+, H3+ and HeH+ with their charges. The
@@ -15442,7 +15442,7 @@ ghost\textquotesingle s system or one root the cell solver stops short of, which
 
 \subsubsection{P1 step 1, experiments 3 to 6: one root, and the sweep does not reach it}\label{p1-step-1-experiments-3-to-6-one-root-and-the-sweep-does-not-reach-it}
 
-\textbf{What the experiments found} (\texttt{docs/lhs1140b\_p1\_step1b\_20260919.md}). There
+\textbf{What the experiments found} (\texttt{md/lhs1140b\_p1\_step1b\_20260919.md}). There
 is ONE root, and the composition sweep does not reach it: the ghost it
 returns keeps a measured fraction of the composition it was seeded with.
 Three measurements decide it.
@@ -15498,7 +15498,7 @@ does not survive a load and a write exactly.
 
 \subsubsection{P1 step 2: the boundary composition is a fixed point of the sweep}\label{p1-step-2-the-boundary-composition-is-a-fixed-point-of-the-sweep}
 
-\textbf{What changed} (\texttt{docs/lhs1140b\_p1\_step2\_20260920.md}). The sweep is a map
+\textbf{What changed} (\texttt{md/lhs1140b\_p1\_step2\_20260920.md}). The sweep is a map
 from the composition it is entered at to the one it returns, and \texttt{ioniz\_eq}
 now applies that map again at the ghost it returned, with the interior
 restored at each application, until the ghost\textquotesingle s composition and its
@@ -15545,7 +15545,7 @@ it.
 
 \subsubsection{P1 step 2b: the accuracy belonged in the composition\textquotesingle s own units}\label{p1-step-2b-the-accuracy-belonged-in-the-compositions-own-units}
 
-\textbf{What was wrong} (\texttt{docs/lhs1140b\_p1\_step2b\_20260920.md}). The contract
+\textbf{What was wrong} (\texttt{md/lhs1140b\_p1\_step2b\_20260920.md}). The contract
 introduced a regression: \texttt{grid\_and\_gates\ coupled\_carrier\_h2} failed 2 of its
 11 rows, both runs stopping with \texttt{ERROR\ STOP\ ioniz\_eq:\ the\ ghost\ composition\ is\ not\ a\ fixed\ point} after twenty applications. The cause is none of the four
 candidates the item listed, each of which was tested and refuted. The
@@ -15589,7 +15589,7 @@ contract when the item closed.
 
 \subsubsection{P6d: the charge-exchange turnover says which cell it answers for}\label{p6d-the-charge-exchange-turnover-says-which-cell-it-answers-for}
 
-\textbf{What was wrong} (\texttt{docs/lhs1140b\_p6d\_p6e\_20260919.md}).
+\textbf{What was wrong} (\texttt{md/lhs1140b\_p6d\_p6e\_20260919.md}).
 \texttt{cx\_add\_to\_turnover} read the thread-local rate coefficients and the metal
 base without the cell guard its neighbors carry, and the turnover sets a
 normalization that chemical acceptance reads.
@@ -15664,7 +15664,7 @@ stopped being true when the matrix was snapshot on 2026-09-19.
 \textbf{What was wrong.} The first text said the transit tool reads only the
 advection-corrected profiles. It does not: \texttt{EXHALE\_TRANSIT\_STATE=solution}
 selects the solved state pair (READ). What the item found instead were three
-defects of the tool (\texttt{docs/lhs1140b\_p6f\_20260919.md}): the default selection
+defects of the tool (\texttt{md/lhs1140b\_p6f\_20260919.md}): the default selection
 on a run with no \texttt{\_adv} products died inside \texttt{numpy.loadtxt} with a bare
 \texttt{FileNotFoundError}; a saved curve named its inputs by path only, so a number
 could not be traced to the state that produced it; and the O I ground-term
@@ -15707,7 +15707,7 @@ numbers, and reading a resolved generation is preferred over a moving
 
 \subsubsection{P6b: the time-step restriction of the cells that are evolved}\label{p6b-the-time-step-restriction-of-the-cells-that-are-evolved}
 
-\textbf{What was wrong} (\texttt{docs/lhs1140b\_p6b\_p6c\_20260920.md}). \texttt{eval\_dt} took
+\textbf{What was wrong} (\texttt{md/lhs1140b\_p6b\_p6c\_20260920.md}). \texttt{eval\_dt} took
 \texttt{CFL\ min\_j\ dr\_j/(\textbar{}v\_j\textbar{}\ +\ c\_j)} over \texttt{1-Ng:N+Ng}, and two things are wrong
 with that for the scheme in use. The cell-centered width \texttt{dr\_j} is not the
 width the spherical finite-volume divergence gives a cell at its outer face,
@@ -15792,7 +15792,7 @@ it opens is visible.
 
 \subsubsection{P4b-2: a flux-closure rung publishes, with its seed}\label{p4b-2-a-flux-closure-rung-publishes-with-its-seed}
 
-\textbf{What was wrong} (\texttt{docs/lhs1140b\_p4cd\_20260920.md}). The item as written
+\textbf{What was wrong} (\texttt{md/lhs1140b\_p4cd\_20260920.md}). The item as written
 said \texttt{run\_closure.sh} publishes the rungs through the same publisher and hands
 it no seed. READ, the delivered text of \texttt{run\_closure.sh} and of
 \texttt{src/utils/element\_flux\_closure.py}: neither names \texttt{publish\_state.py} at all,
@@ -15934,7 +15934,7 @@ kept, with the reference sitting on this pass\textquotesingle s child.
 
 \subsubsection{The catalog under the contract: the third and fourth passes}\label{the-catalog-under-the-contract-the-third-and-fourth-passes}
 
-\textbf{The third pass} (\texttt{docs/lhs1140b\_catalog\_refresh\_20260919.md}, third pass),
+\textbf{The third pass} (\texttt{md/lhs1140b\_catalog\_refresh\_20260919.md}, third pass),
 on the binary of record \texttt{EXHALE\_75d55d9d.x}, md5
 \texttt{75d55d9d4fd0e748cd01d6e35713e34c}, which differs from the previous catalog
 binary in nine of its 169 production sources, each named with the item that
@@ -16001,8 +16001,8 @@ reading only the advection-corrected profiles.
 
 \subsubsection{What a state that satisfies the flux criterion and not the certification costs}\label{what-a-state-that-satisfies-the-flux-criterion-and-not-the-certification-costs}
 
-\texttt{docs/du\_stop\_vs\_stationary\_20260920.md}, with
-\texttt{docs/lhs1140b\_catalog\_state\_20260922.tex} as the document it answers a
+\texttt{md/du\_stop\_vs\_stationary\_20260920.md}, with
+\texttt{docs/lhs1140b\_catalog\_state.tex} as the document it answers a
 question of. On one certified case,
 \texttt{atomic\_scalar\_gj1132\_kzz1e9/HeH2.13}, a state that meets the flux-spread
 criterion the literature converges on (\texttt{du\ \textless{}\ 1e-3}, ATES and CETIMB, the
@@ -16137,7 +16137,7 @@ record.
 
 \subsubsection{What this section is}\label{what-this-section-is}
 
-\texttt{docs/PLAN\_20260920.md} began as the plan for P2 of \texttt{PLAN\_20260919\_rev1.md},
+\texttt{md/PLAN\_20260920.md} began as the plan for P2 of \texttt{PLAN\_20260919\_rev1.md},
 the three LHS 1140 b states at 0.01 of the fiducial XUV whose hydrodynamic
 Newton makes no progress. It was reviewed nine times, each review read against
 the source before anything was adopted, and the revisions \texttt{\_rev1} to \texttt{\_rev9}
@@ -16145,7 +16145,7 @@ record what each one corrected. The chain is kept because the corrections are
 the substance: a plan that survived nine readings without one of them finding
 a defect would be a plan nobody checked.
 
-\texttt{docs/PLAN\_20260920\_rev9.md} is the plan of record. This section records what
+\texttt{md/PLAN\_20260920\_rev9.md} is the plan of record. This section records what
 the reviews found in the CODE, and the repairs that followed on 2026-09-21.
 
 \subsubsection{The five defects, and how each was found}\label{the-five-defects-and-how-each-was-found}
@@ -16357,7 +16357,7 @@ control against measured on \texttt{mol\_base\_handoff} and \texttt{mol\_metals}
 
 \subsubsection{What this section is}\label{what-this-section-is-1}
 
-\texttt{docs/PLAN\_20260920\_rev9.md} asks one question about seven states: the three
+\texttt{md/PLAN\_20260920\_rev9.md} asks one question about seven states: the three
 LHS 1140 b atomic states at 0.01 of the fiducial XUV whose hydrodynamic Newton
 makes no progress, and the four molecular models whose chemistry rows refuse,
 are they refused by something wrong in the operator, or are they states far
@@ -16376,7 +16376,7 @@ differ, the deliverable is the source and this section says so.
 
 \subsubsection{The phases, in the order they ran}\label{the-phases-in-the-order-they-ran}
 
-\textbf{Phase 1, A0 identity} (\texttt{docs/lhs1140b\_identity\_records\_20260921.md}, with
+\textbf{Phase 1, A0 identity} (\texttt{md/lhs1140b\_identity\_records\_20260921.md}, with
 the new \texttt{LHS1140b/models/identity\_record.py}). The identity of five checkpoints
 before anything was measured on them: the generation, the writing binary, the
 boundary model, the phase and ending, and the refusing rows, each field labeled
@@ -16396,7 +16396,7 @@ is a records defect: no state, residual or certificate value is affected, only
 the ability to say which log a certificate was read from.
 
 \textbf{Phase 2, residual-route equivalence}
-(\texttt{docs/lhs1140b\_residual\_routes\_20260921.md}), 24 invocations each in its own
+(\texttt{md/lhs1140b\_residual\_routes\_20260921.md}), 24 invocations each in its own
 directory with a sidecar, all exiting normally, the restart pair unchanged in
 all 24. The loaded-state route, the evaluate route and the stationary assembly
 of the marching route agree term for term: 0 of 500 entries differ in the mass,
@@ -16416,7 +16416,7 @@ step fires in 128 of 500 cells, all below r = 1.042, exactly the region where
 these states refuse. With \texttt{Energy\ solver:\ Explicit} the stage rate equals the
 state\textquotesingle s own \texttt{heat\ -\ cool} to seven digits.
 
-\textbf{Phase 3, repeatability} (\texttt{docs/lhs1140b\_repeatability\_20260921.md}, evidence
+\textbf{Phase 3, repeatability} (\texttt{md/lhs1140b\_repeatability\_20260921.md}, evidence
 under \texttt{docs/audit\_20260905/repeatability\_20260921/}, 88 sidecars, 32
 determinism blocks). MEASURED: \texttt{VERDICT:\ the\ residual\ is\ a\ state\ function\ (bitwise\ identical)} at every one of the 28 determinism invocations, over two
 checkpoints, five thread configurations of \texttt{OMP\_NUM\_THREADS} and
@@ -16433,7 +16433,7 @@ matters is that the operator is reproducible, so a directional difference
 measured on it is a statement about the operator and not about its noise.
 
 \textbf{Phase 4, the closure count against the probe arc}
-(\texttt{docs/lhs1140b\_closure\_and\_probe\_20260921.md}), five invocations each in its
+(\texttt{md/lhs1140b\_closure\_and\_probe\_20260921.md}), five invocations each in its
 own directory under \texttt{env\ -i}, all exiting 0, the whole 2077-line block
 byte-identical across two processes and across one and eight threads. The
 derivative stabilizes in the probe arc and does not move with the closure
@@ -16455,7 +16455,7 @@ the existing \texttt{n\_eq\_sweeps\_fixed} argument rather than a new closure co
 reaches no solve, adopts no state and writes no file, and is off by default.
 
 \textbf{Phase 5, the conservation export and its audit}
-(\texttt{docs/lhs1140b\_conservation\_audit\_20260921.md}). Design 1 of the plan\textquotesingle s
+(\texttt{md/lhs1140b\_conservation\_audit\_20260921.md}). Design 1 of the plan\textquotesingle s
 section 13.2 was built:
 \texttt{src/modules/time\_step/conservation\_budget.f90} writes
 \texttt{output/conservation\_budget\_\textless{}nnnn\textgreater{}.txt} from the assembly point of
@@ -16477,14 +16477,14 @@ last bit at the outer boundary, so 98.8 per cent of the mass entering the base
 never reaches the wind and above the gate the flux is constant over 284 cells.
 That base to gate ratio is 82.18 (MEASURED in the plan\textquotesingle s RESULT block from the
 two fluxes the deliverable prints), and
-\texttt{docs/lhs1140b\_stationary\_D9fix\_20260919.md} section 6 had measured the base
+\texttt{md/lhs1140b\_stationary\_D9fix\_20260919.md} section 6 had measured the base
 face flux of the same case at 82.2 times the wind-window mean two days earlier
 with a different instrument and a different binary: the first quantity in this
 investigation confirmed twice independently. The audit found no ledger error,
 no missing term and no double-counted gravity.
 
 \textbf{Phase 8, the M2 conversion audit}
-(\texttt{docs/lhs1140b\_m2\_conversion\_audit\_20260921.md}). No promised invariant of the
+(\texttt{md/lhs1140b\_m2\_conversion\_audit\_20260921.md}). No promised invariant of the
 atomic-to-molecular conversion fails: H nuclei 2.57E-16, He nuclei exactly
 zero, mass 2.30E-16, equation-of-state round trip 3.72E-16 against the 1e-12 the
 routine refuses at, no cell capped and no refusal, and \texttt{invariant\ =\ p} keeps rho
@@ -16506,7 +16506,7 @@ not a seed problem, and both historical seeds of this case used \texttt{local} w
 provenance), which the current binary reproduces to 1e-12.
 
 \textbf{Phase 6, the M1 alternation audit}
-(\texttt{docs/lhs1140b\_alternation\_audit\_20260921.md}), Mode C: six outer passes on
+(\texttt{md/lhs1140b\_alternation\_audit\_20260921.md}), Mode C: six outer passes on
 each of four cases, the budget declared in passes with a wall ceiling, all four
 spending the budget and none timing out, 24 passes, 24 hydrodynamic solves, 810
 JFNK iterations, 1394 Krylov products, 974 carrier trials, and the current
@@ -16536,7 +16536,7 @@ fourth it follows the wind, a localized interior peak at r = 3.015 dominated by
 the He+ with H2 channel, 4.373E-03 of 4.425E-03.
 
 \textbf{Phase 6b, the coupled Stage B}
-(\texttt{docs/lhs1140b\_coupled\_action\_20260921.md}), the prerequisite the plan\textquotesingle s
+(\texttt{md/lhs1140b\_coupled\_action\_20260921.md}), the prerequisite the plan\textquotesingle s
 section 9.4 sets for the coupled trial. On
 \texttt{molecular\_scalar\_gj1132\_kzz1e9/HeH0.083} with \texttt{Coupled\ carrier\ solve:\ True},
 five unknowns a cell and 2500 entries, 7 closure counts x 9 arcs x 5
@@ -16568,7 +16568,7 @@ compared against moves 0.19 per cent. It is neither an implementation error nor
 a noise floor: the test was measuring its own probe arc.
 
 \textbf{Phase 9, P2 Stage C and Stage D at the base}
-(\texttt{docs/lhs1140b\_p2\_base\_stage\_cd\_20260921.md}, archive
+(\texttt{md/lhs1140b\_p2\_base\_stage\_cd\_20260921.md}, archive
 \texttt{docs/audit\_20260905/p2\_base\_stage\_cd\_20260921/}), two groups, the default
 route with \texttt{EXHALE\_LINEAR\_ROWS=1} as the observation group and
 \texttt{EXHALE\_TRUST\_REGION=1} with \texttt{EXHALE\_ELEM\_DIAG=1} as a named numerical variant
@@ -16583,7 +16583,7 @@ one pass. The trust-region diagnostics produced output for the first time on
 any of these states: Ritz spectrum ratio 3.96E+03 with nothing below 1E-4, the
 band omitting 0.26 per cent of the action, the subspace scan identical at 40,
 80, 160 and 320 products after three, observed reduction equal to the
-prediction to 1.000 at eight consecutive iterations. What refuses is in the
+prediction to 1.000 at eight consecutive iterations. {[}Corrected 2026-09-23: this is wrong. Taken to the full 1500 unknowns of the operator, the Arnoldi recursion on the same checkpoint finds 43 values below 1E-4 and 319 below 1E-2 (not 0 and 6), the smallest magnitude 5.6E-06 (not 2.5E-04) and the ratio 1.79E+05 (not 3.96E+03). 200 products had not resolved the small end, and the Ritz residuals added that day say so: the smallest 200-product value carried a residual 12.8 times its own magnitude. Below about 1E-5 not even the full recursion resolves the spectrum, because there the residual measured on the operator is about 1E-5 whatever the value, the resolution of the finite-difference action itself. The Krylov cycle reaching its tolerance in one to four products is a direct measurement and stands.{]} What refuses is in the
 wind: the elemental transport He/H partition at 7.218E-05 against 1.0E-05 at
 cell 295 after pass 1; the composition update then lifts the energy row to
 6.512E-06 and the second hydrodynamic solve stagnates with predicted and
@@ -16592,7 +16592,7 @@ arithmetic floor. The document declines to classify that second solve, and so
 does the plan: it is the alternation, not the Newton.
 
 \textbf{The base reservoir probe}
-(\texttt{docs/lhs1140b\_base\_reservoir\_probe\_20260921.md}), the measurement the plan\textquotesingle s
+(\texttt{md/lhs1140b\_base\_reservoir\_probe\_20260921.md}), the measurement the plan\textquotesingle s
 sections 11.3 and 17.2 name as the one that would decide whether the molecular
 base state is wrong or far from its fixed point. It held the interior of the M2
 checkpoint and varied only what the reservoir states: at fixed base pressure
@@ -16738,7 +16738,7 @@ where a RESULT block and its deliverable differ the deliverable is the source
 and the text says so.
 
 \textbf{Phase 7, the M1 coupled trial}
-(\texttt{docs/lhs1140b\_coupled\_trial\_20260921.md}, with the RESULT block of
+(\texttt{md/lhs1140b\_coupled\_trial\_20260921.md}, with the RESULT block of
 \texttt{PLAN\_20260920\_rev9.md} section 9.4). One admissible case,
 \texttt{molecular\_scalar\_gj1132\_kzz1e9/HeH0.083} from generation
 \texttt{g0004\_20260920T053734Z\_79b42a03} under \texttt{Coupled\ carrier\ solve:\ True}, against
@@ -16789,7 +16789,7 @@ keys. Because only one pass completed, the compact state norms are not
 available and were not substituted.
 
 \textbf{The longer alternation of the three atomic P2 cases}
-(\texttt{docs/lhs1140b\_atomic\_alternation\_20260921.md}), twelve outer passes budgeted
+(\texttt{md/lhs1140b\_atomic\_alternation\_20260921.md}), twelve outer passes budgeted
 per case on the three states from their own stored generations, all three of
 them written under the superseded boundary model
 \texttt{characteristic\_face\_ps\_reservoir\_C\_minus\_contact\_upwind\_v2} and continued by
@@ -16825,7 +16825,7 @@ not an oscillation: the two conditions never hold together, so no pass
 certifies.
 
 \textbf{The provenance repairs}
-(\texttt{docs/lhs1140b\_provenance\_repairs\_20260921.md}, with section 10.6 of the plan
+(\texttt{md/lhs1140b\_provenance\_repairs\_20260921.md}, with section 10.6 of the plan
 as it now reads). The plan\textquotesingle s first text asked for something that already
 existed, and says so: \texttt{certification.source\_md5} was ALREADY being recorded by
 the publisher when 10.6 was written, the field having been added to
@@ -16865,7 +16865,7 @@ loads a seed and solves writes \texttt{converted\ from\ .../atomic/output;\ inva
 \texttt{==\textgreater{}\ REGRESSION\ PASS\ (all\ cases\ byte-identical)}, the harness comparing
 numeric content alone so that the added header line is invisible to it.
 
-\textbf{Stage F, the XUV continuation} (\texttt{docs/lhs1140b\_xuv\_continuation\_20260921.md},
+\textbf{Stage F, the XUV continuation} (\texttt{md/lhs1140b\_xuv\_continuation\_20260921.md},
 with the RESULT block of the plan\textquotesingle s section 14), authorized by the user on
 2026-09-21 and, in the plan\textquotesingle s own words, the result of the whole
 investigation. Ten rungs, 158 outer passes and 946 JFNK iterations on the
@@ -17066,7 +17066,8 @@ by a rename.
 \subsection{17. The catalog summary rewritten on the catalog as it stands (2026-09-22)}\label{17-the-catalog-summary-rewritten-on-the-catalog-as-it-stands-2026-09-22}
 
 \texttt{docs/lhs1140b\_catalog\_state\_20260920.tex} was renamed
-\texttt{docs/lhs1140b\_catalog\_state\_20260922.tex} and its three tables were rebuilt
+\texttt{docs/lhs1140b\_catalog\_state\_20260922.tex} (since 2026-09-24
+\texttt{docs/lhs1140b\_catalog\_state.tex}) and its three tables were rebuilt
 from the tree rather than amended, because a check of the 2026-09-20 tables
 against the certificates in the case directories found four kinds of error in
 them, and three of the four were errors on the day the tables were written and
@@ -17135,6 +17136,10 @@ and no Overfull box, no LaTeX warning and no undefined reference. The three
 figures and section 5, the measurement of what a flux-converged refused state
 differs from a certified one BY, are unchanged.
 
-\appendix
-\input{Update_EXHALE_appendix}
+\begin{center}\rule{0.5\linewidth}{0.5pt}\end{center}
+
+The entries from 2026-09-23 on continue in \texttt{md/Update\_EXHALE\_stage3.md}
+(the day\textquotesingle s first entries were written here as sections 18 to 24 and moved
+there as its sections 1 to 7).
+
 \end{document}

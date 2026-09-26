@@ -57,10 +57,12 @@ population must be computed from a non-LTE balance. We follow
 \textbf{Christie, Arras \& Li (2013, ApJ 772, 144)}, including
 collisional excitation/de-excitation, recombination cascade, two-photon
 decay, $\ell$-mixing, and \textbf{Ly$\alpha$ radiative pumping}
-($1s\leftrightarrow2p$). The Ly$\alpha$ mean intensity $J_{\rm Ly\alpha}(r)$
-is \emph{not} produced by EXHALE; it is either read from an external text
-file or, by default, estimated with the simple prescription of Huang
-et~al.~(2017), see \S\ref{sec:jlya}.
+($1s\leftrightarrow2p$), with the rate coefficients of EXHALE's own
+$n=2$ model. The Ly$\alpha$ mean intensity $J_{\rm Ly\alpha}(r)$ is not in
+the profiles the tool reads (a run with the excited-hydrogen model writes
+its own field to \texttt{output/Excited\_H.txt}, which is not read); it is
+either read from an external text file or, by default, estimated with the
+simple prescription of Huang et~al.~(2017), see \S\ref{sec:jlya}.
 
 The H$\alpha$ branch always runs; only the source of $J_{\rm Ly\alpha}$
 depends on whether \texttt{Jlya\_file} is set. The existing He/Ly$\alpha$
@@ -68,7 +70,7 @@ behavior is unchanged.
 
 This memo also documents the \textbf{metal resonance doublets}
 (Mg\,II\,h\&k, Ca\,II\,H\&K, Na\,I\,D; \S\ref{sec:metals}), which are
-computed by the same LOS pipeline and produce the same three-curve
+computed by the same line-of-sight integration and produce the same three-curve
 spectrum figures as the H/He lines.
 
 %=============================================================================
@@ -78,62 +80,87 @@ spectrum figures as the H/He lines.
 The $2s$ and $2p$ states are treated separately because they have very
 different lifetimes (the $2p\to1s$ Ly$\alpha$ decay is fast,
 $A_{2p\to1s}=6.2649\times10^{8}\,$s$^{-1}$, whereas the $2s\to1s$ two-photon
-decay is slow, $A_{2s\to1s}=8.26\,$s$^{-1}$). With $n_{1s}=n_{\rm H\,I}$,
+decay is slow, $A_{2s\to1s}=8.22461\,$s$^{-1}$, Drake 1986, eq.~27). With
+$n_{1s}=n_{\rm H\,I}$, $n_{\rm H\,II}$, $n_{\rm He\,II}$, $n_{\rm He\,III}$,
 $n_e$ and $T$ taken from the EXHALE profiles, the rate-equilibrium
-equations are (Christie et~al.\ Eqs.~12--13)
-
+equations are those of Christie et~al.\ (Eqs.~12--13) as the solver
+writes them (\texttt{excited\_hydrogen.f90}, \texttt{n2\_rate\_matrix}):
 \begin{align}
 \bigl[A_{2p\to1s} + B_{2p\to1s}J_{\rm Ly\alpha}
-   + (C_{2p\to1s}+C_{2p\to2s})n_e + \Gamma_{2p}\bigr]\,n_{2p}
-   - C_{2s\to2p}\,n_e\,n_{2s}
+   + C_{2p\to1s}n_e + M_{2p2s} + \Gamma_{2p}\bigr]\,n_{2p}
+   - M_{2s2p}\,n_{2s}
    &= \bigl(B_{1s\to2p}J_{\rm Ly\alpha}+C_{1s\to2p}n_e\bigr)n_{1s}
-      + \alpha_{2p}n_e^2, \\
-\bigl[(C_{2s\to1s}+C_{2s\to2p})n_e + \Gamma_{2s} + A_{2s\to1s}\bigr]\,n_{2s}
-   - C_{2p\to2s}\,n_e\,n_{2p}
-   &= C_{1s\to2s}\,n_e\,n_{1s} + \alpha_{2s}n_e^2 .
+      + \alpha_{2p}n_e n_{\rm H\,II} + \tfrac34 S_{\rm chem}, \\
+\bigl[C_{2s\to1s}n_e + M_{2s2p} + \Gamma_{2s} + A_{2s\to1s}\bigr]\,n_{2s}
+   - M_{2p2s}\,n_{2p}
+   &= C_{1s\to2s}\,n_e\,n_{1s} + \alpha_{2s}n_e n_{\rm H\,II}
+      + \tfrac14 S_{\rm chem},
 \end{align}
-
-This is a $2\times2$ linear system in $(n_{2p},n_{2s})$,
+where the recombination source is $\alpha n_e n_{\rm H\,II}$ (the
+electron recombines onto a proton; $n_e$ and $n_{\rm H\,II}$ differ at the
+base, where helium and metals supply the electrons), $M_{2s2p}$ [s$^{-1}$]
+is the $\ell$-mixing rate by electrons and ions, $M_{2p2s} =
+(g_{2s}/g_{2p})M_{2s2p}$, and $S_{\rm chem}$ is the chemical $n=2$
+production of a molecular run, the dissociative recombination of H$_2^+$
+and HeH$^+$ ($k_5 n_{\rm H_2^+}n_e + k_{16}n_{\rm HeH^+}n_e$, Koskinen
+et~al.\ 2022 R5 and R16), shared between $2s$ and $2p$ by statistical
+weight. This is a $2\times2$ linear system in $(n_{2p},n_{2s})$,
 \[
-\begin{pmatrix} L_{2p} & -C_{2s\to2p}n_e \\ -C_{2p\to2s}n_e & L_{2s}\end{pmatrix}
+\begin{pmatrix} L_{2p} & -M_{2s2p} \\ -M_{2p2s} & L_{2s}\end{pmatrix}
 \begin{pmatrix} n_{2p}\\ n_{2s}\end{pmatrix}
 =\begin{pmatrix} S_{2p}\\ S_{2s}\end{pmatrix},
 \]
-solved per radial cell by Cramer's rule. The total $n=2$ density driving
-H$\alpha$ absorption is $n_2 = n_{2s}+n_{2p}$; in practice it is
-dominated by the metastable $2s$ state.
+solved per radial cell by Cramer's rule. The $2s$ and $2p$ densities are
+carried separately into the Balmer opacity, whose sub-level oscillator
+strengths differ.
 
 \subsection{Rate coefficients}
 
-The forward collisional rates are taken from Christie et~al.\ Table~2
-(Janev et~al.~2003); the reverse (super-elastic) rates follow by detailed
-balance using the statistical weights $g_{1s}=2$, $g_{2s}=2$, $g_{2p}=6$.
-With $t_4 \equiv T/10^4\,$K:
+Every coefficient is the one the solver's level balance uses, transcribed
+in \texttt{exhale\_transit\_lib.py} from \texttt{hydrogen\_n2\_rates.f90}
+and \texttt{Cool\_coeff.f90} (the Fortran name is given at each function,
+and the two agree to $3\times10^{-13}$ relative over $10^{3}$--$10^{5}$\,K,
+the $\ell$-mixing rates also over $n = 1$--$10^{15}$\,cm$^{-3}$, measured
+against the production objects):
 
 \begin{center}
 \small
-\begin{tabular}{lll}
+\begin{tabular}{p{0.26\textwidth}p{0.66\textwidth}}
 \toprule
-Process & Coefficient & Expression [cm$^3$\,s$^{-1}$] \\
+Coefficient & Source and form \\
 \midrule
-Case-B recomb.\ (Draine 2011)   & $\alpha_B$        & $2.54\times10^{-13}\,t_4^{-0.8163-0.0208\ln t_4}$ \\
-$\to 2s$ (incl.\ cascade)        & $\alpha_{2s}$     & $(0.282+0.047t_4-0.006t_4^2)\,\alpha_B$ \\
-$\to 2p$                         & $\alpha_{2p}$     & $\alpha_B-\alpha_{2s}$ \\
-$1s\to2s$ excitation             & $C_{1s\to2s}$     & $1.21\times10^{-8}\,t_4^{-0.455}\,e^{-118400/T}$ \\
-$1s\to2p$ excitation             & $C_{1s\to2p}$     & $1.71\times10^{-8}\,t_4^{-0.077}\,e^{-118400/T}$ \\
-$2s\leftrightarrow2p$ $\ell$-mix & $C_{2s\to2p}$     & $6.21\times10^{-5}\,(\ln(T/T_0)-\gamma)/\sqrt{T}$ \\
-$2s\to1s$ (super-elastic)        & $C_{2s\to1s}$     & $1.21\times10^{-8}\,t_4^{-0.455}\,(g_{1s}/g_{2s})$ \\
-$2p\to1s$ (super-elastic)        & $C_{2p\to1s}$     & $1.71\times10^{-8}\,t_4^{-0.077}\,(g_{1s}/g_{2p})$ \\
-$2p\to2s$ $\ell$-mix             & $C_{2p\to2s}$     & $C_{2s\to2p}\,(g_{2s}/g_{2p})$ \\
+$\alpha_B$ & the case-B coefficient of the ionization balance: Badnell
+  (2006, 2023 update) radiative recombination minus the ground capture of
+  the Milne relation on the hydrogenic cross section (or the Koskinen
+  et~al.\ 2022 or Hui \& Gnedin 1997 fit, as \texttt{Atomic rate set} and
+  \texttt{Legacy\_HHe\_rates} of the run's \texttt{input.inp} select) \\
+$\alpha_{2s}$, $\alpha_{2p}$ & $f_{2s}(T)\,\alpha_B$ and
+  $\alpha_B-\alpha_{2s}$, with $f_{2s}$ the case-B fraction of Pengelly
+  (1964, Table~I); 0.322 at $10^4$\,K \\
+$C_{1s\to2s}$, $C_{1s\to2p}$ & $C\,\Upsilon(T)\,e^{-E_{12}/kT}/(2\sqrt T)$,
+  $C = h^2/[(2\pi m_e)^{3/2}k^{1/2}]$, the CHIANTI v11.0.2 $h_1$ effective
+  collision strengths (the rates of the H\,I cooling) \\
+$C_{2s\to1s}$, $C_{2p\to1s}$ & their detailed-balance reverses,
+  Boltzmann factor cancelled analytically \\
+$M_{2s2p}$ & $n_e q^e + n_{\rm H\,II}q^{\rm p} + n_{\rm He\,II}q^{\rm He^+}
+  + n_{\rm He\,III}q^{\rm He^{2+}}$: electrons from Seaton (1955, eq.~55,
+  approximation V; $5.78\times10^{-5}$ at $10^4$\,K), ions from the
+  impact-parameter cross section of Pengelly \& Seaton (1964) with their
+  cut-off (protons $4.8\times10^{-4}$ at $10^4$\,K) \\
 \bottomrule
 \end{tabular}
 \end{center}
-with $T_0=1.02\,$K and $\gamma=0.57721$ (Euler--Mascheroni). The reverse
-rates are written in their analytically-cancelled form: the Boltzmann
-factor $e^{+118400/T}$ implied by detailed balance cancels the
-$e^{-118400/T}$ inside $C_{1s\to2s}/C_{1s\to2p}$, which avoids a
-numerical $0\times\infty$ at the very low temperatures that can occur at
-the base of the post-processed profile.
+
+The rates of Christie et~al.\ (2013, Table~2) used here before
+2026-09-25 differed in four places: $A_{2s\to1s}=8.26$\,s$^{-1}$; the
+Draine case-B fit with a quadratic $f_{2s}$; power-law collision rates;
+and the electron $\ell$-mixing rate of their R5 ($5.35\times10^{-6}$ at
+$10^4$\,K) with no ion term. Only the last moves the populations
+measurably: on the HD\,209458\,b \texttt{\_adv} profile the proton term
+brings $n_{2s}/n_2$ from 0.53--0.69 down to 0.26--0.34 between 1.3 and
+3\,$R_p$, the peak H$\alpha$ depth falls by 1.7 per cent and H$\beta$ is
+unchanged; on the solved \texttt{wasp\_full} state H$\alpha$ rises by 0.14
+per cent (measured, \texttt{md/stale\_texts\_20260925.md}).
 
 \subsection{Ly$\alpha$ pumping and the $J_{\rm Ly\alpha}$ input}
 \label{sec:jlya}
@@ -216,17 +243,27 @@ Ly$\alpha$ component; for a self-consistent profile, supply
 
 The $n=2$ levels are photoionized by the stellar Balmer continuum
 ($E>3.4$\,eV, $\lambda<3647$\,\AA{}); this depletes $n_2$ and is included
-in Eqs.~(12)--(13) through $\Gamma_{2s},\Gamma_{2p}$. The Balmer-continuum
-field is outside EXHALE's XUV scope, so it is estimated from a diluted
-stellar blackbody: for a stellar effective temperature \texttt{T\_star}
-and radius \texttt{R\_star},
+in Eqs.~(12)--(13) through $\Gamma_{2s},\Gamma_{2p}$. The solver
+integrates the Balmer band of the run's own spectrum type, but neither
+that spectrum nor the rate is in the profiles this tool reads, so here the
+field is a diluted stellar blackbody: for a stellar effective temperature
+\texttt{T\_star} and radius \texttt{R\_star},
 \[
-  \Gamma_2 = \int_{\nu_2}^{\infty}\frac{F_\nu}{h\nu}\,\sigma_2(\nu)\,d\nu,
+  \Gamma_2 = \int_{\nu_2}^{\nu_1}\frac{F_\nu}{h\nu}\,\sigma_2(\nu)\,d\nu,
   \quad F_\nu = \pi B_\nu(T_\star)\Bigl(\frac{R_\star}{a}\Bigr)^2,
   \quad \sigma_2(\nu)=\sigma_{2,\rm th}\Bigl(\frac{\nu_2}{\nu}\Bigr)^{3},
 \]
-with $\nu_2$ the $n=2$ threshold and $\sigma_{2,\rm th}\simeq1.4\times
-10^{-17}\,\mathrm{cm^2}$, and $\Gamma_{2s}\simeq\Gamma_{2p}\simeq\Gamma_2$.
+over the band the solver uses, from the $n=2$ edge $h\nu_2 = 3.3996$\,eV
+to the H\,I edge $h\nu_1 = 13.5984$\,eV (above it the ground state absorbs
+the photons), with $\sigma_{2,\rm th}=1.4\times10^{-17}\,\mathrm{cm^2}$ for
+both levels and $\Gamma_{2s}=\Gamma_{2p}=\Gamma_2$. The solver states no
+source for $\sigma_{2,\rm th}$; it is, to its two figures, the $n=2$
+threshold value of the Kramers cross section with the bound-free Gaunt
+factor of Seaton (1959, MNRAS 119, 81, eqs.~3 and 10),
+$1.378\times10^{-17}\,\mathrm{cm^2}$, and the exact hydrogenic threshold
+values are $1.478\times10^{-17}$ ($2s$) and $1.355\times10^{-17}$ ($2p$)
+cm$^2$, statistical mean $1.386\times10^{-17}\,\mathrm{cm^2}$ (derived by
+direct integration of the bound-free dipole matrix elements).
 This reproduces Huang et~al.'s Table~2 values ($\sim20$--$26\,$s$^{-1}$)
 for a K dwarf, and is substantially larger for a hotter G dwarf
 (e.g.\ $\sim140\,$s$^{-1}$ for HD\,209458's $T_\star\simeq6065\,$K), which
@@ -539,7 +576,7 @@ the metal block of \texttt{Ion\_species\_adv.txt}; a metals-off run
 Each species is treated as a \textbf{doublet}, with both components
 summed in a single wavelength window
 (Table~\ref{tab:metal-lines}; NIST $f$-values and $A$-coefficients).
-The optical depth uses exactly the H/He pipeline: spherical chords
+The optical depth is computed exactly as for H/He: spherical chords
 $\sqrt{r^2-b^2}$ on the impact-parameter grid, LOS velocity
 $v_{\rm los}=v\,x/r$, Voigt profiles via the Faddeeva function
 (vectorized over wavelength), trapezoidal $\tau$, projected-area disk

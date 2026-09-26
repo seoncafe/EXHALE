@@ -146,7 +146,7 @@
    ! land back on v'' = 0 and leave only rotational energy are 16.3 to 16.5
    ! per cent of the bound fluorescences and are ALREADY INSIDE these means,
    ! so they must not be discounted a second time.
-   ! Source and arithmetic: docs/p39_lw_cross_section_sources.md sec. 5.2.
+   ! Source and arithmetic: md/p39_lw_cross_section_sources.md sec. 5.2.
    !
    ! VALIDITY.
    !  * 700-3200 K, the grid of the level-resolved calculation; the fit is
@@ -608,7 +608,7 @@
    !
    ! WHERE THE FORM COMES FROM: Burton, Hollenbach & Tielens (1990)
    ! eq. (A1), whose structure and counting unit are set out in
-   ! docs/p39_lw_cross_section_sources.md section 5.2 and are not restated
+   ! md/p39_lw_cross_section_sources.md section 5.2 and are not restated
    ! here; this function is their quenched share n gamma/(A + n gamma).
    !
    ! WHAT THIS FRACTION APPROXIMATES, written down so that the
@@ -624,7 +624,7 @@
    ! for the cascade and no fraction at all, and it is exact in both the
    ! collisionally starved and the thermalized limit. It is what Cloudy
    ! c25.00 evaluates over its 303-level model of the same state
-   ! (docs/cloudy_h2_model_reference_20260916.md section 5.1).
+   ! (md/cloudy_h2_model_reference_20260916.md section 5.1).
    !
    ! IT IS NOT BUILDABLE HERE, and the reason is data, not effort: the
    ! H2-H rate coefficients stop at v = 3 in everything that distributes

@@ -490,24 +490,47 @@ of the published tables and not a physical threshold.
 
 Three fields in the code are not the direct stellar beam.
 
-\paragraph{Helium recombination radiation.} With
-\texttt{He\_rec\_coupling} (default on), the photons emitted when
-He\,{\sc ii} recombines are coupled on the spot to the ionization of
-H\,{\sc i}, H$_2$ and the metals (\texttt{he\_rec\_coupling} in
-\texttt{util\_ion\_eq.f90}). Each cascade exit is represented at one photon
-energy: the ground-capture continuum starting at $E_{\rm th}({\rm He\,I})$,
-the $2^1P\to1^1S$ resonance line at 21.2\,eV, the $2^3S\to1^1S$ line at
+\paragraph{Recombination radiation.} The ionizing photons emitted when
+H\,{\sc ii}, He\,{\sc ii} and He\,{\sc iii} recombine are absorbed on the
+spot (\texttt{recombination\_radiation\_absorbed} in
+\texttt{util\_ion\_eq.f90}): each cell keeps the fraction $1-e^{-\tau}$ of
+every channel at its own optical depth and shares it among H\,{\sc i},
+He\,{\sc i}, He\,{\sc ii}, H$_2$ and the metals in the ratio of their
+absorption coefficients; the part re-absorbed by the recombined species
+itself is the on-the-spot cancellation of the net coefficients
+\eqref{eq:ion:netalpha}. The H\,{\sc ii} ground captures
+(\texttt{H\_rec\_escape}, default on) can be taken only by H\,{\sc i} and
+the low-potential metals. With \texttt{He\_rec\_coupling} (default on)
+each He\,{\sc ii} cascade exit is represented at one photon energy: the
+ground-capture continuum starting at $E_{\rm th}({\rm He\,I})$, the
+$2^1P\to1^1S$ resonance line at 21.2\,eV, the $2^3S\to1^1S$ line at
 19.8\,eV, and the part of the $2^1S$ two-photon continuum above the hydrogen
-edge. The last is not a line: integrating the \citet{Drake1969} shape over 13.598--20.62\,eV gives 0.5564 ionizing photons per decay
-carrying 8.9646\,eV, a mean in-band photon energy of 16.110\,eV and hence
-2.512\,eV of photoelectron energy per photon, against 3.511\,eV for a flat
-distribution over the same window.
+edge. The last is not a line: integrating the \citet{Drake1969} shape over
+13.598--20.62\,eV gives 0.5564 ionizing photons per decay carrying
+8.9646\,eV, a mean in-band photon energy of 16.110\,eV and hence 2.512\,eV of
+photoelectron energy per photon, against 3.511\,eV for a flat distribution
+over the same window. The He\,{\sc iii} channels are the ground capture at
+54.4\,eV, the direct capture into He\,{\sc ii} $n=2$ \citep{Seaton1959},
+whose continuum starts at 13.605\,eV, He\,{\sc ii} Ly$\alpha$ at 40.81\,eV,
+and the He\,{\sc ii} $2s$ two-photon continuum, whose spectrum is the fit of
+\citet{Nussbaumer1984} carried in three bands (13.6--15.4, 15.4--24.6 and
+above 24.6\,eV: 0.112, 0.577 and 0.736 photons per decay). Every case-B
+capture of He\,{\sc iii} ends in $2s$ (the fraction of
+\citealt{Pengelly1964}) or $2p$, and $2s$ decays by two photons at
+526.823\,s$^{-1}$ (\citealt{Drake1986} eq.~27 at $Z=2$, with the
+$\alpha$-particle mass) unless a proton or He$^{2+}$ collision moves it to
+$2p$ first \citep{Pengelly1964b}.
 
 \paragraph{Lyman-Werner band.} The 912--1201\,\AA{} beam is solved once for
 all of its absorbers together (\texttt{fuv\_lw\_photon\_field}), because an
 H$_2$O molecule cannot absorb a photon an H$_2$ line has already taken. Its
 transmission down to a face is $T = (1-A)e^{-\tau_c}$ with
-$A = \int \sigma_{\rm pump}f_{\rm shield}(N_{\rm H_2})n_{\rm H_2}{\rm d}r$,
+$A = \int \sigma_{\rm pump}f_{\rm shield}(N_{\rm H_2})n_{\rm H_2}{\rm d}r$
+summed along the path, each cell contributing at its own $(T, n)$ the same
+integral its own line rate takes (the table is built for a uniform slab, and
+reading $A$ of the whole column at the temperature of the cell the beam has
+reached would count as taken photons the lines of the cells above have not
+taken, or the reverse),
 and across one cell the identity
 \begin{equation}
 T^{\rm out}-T^{\rm in} = e^{-\tau^{\rm out}}

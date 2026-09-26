@@ -18,7 +18,7 @@
                                base_reservoir_nhat, r_base_level
       ! A molecular seed run writes the pair a restart READS, not the pair a
       ! solution leaves behind, and records the partition it was built with
-      ! in both halves (docs/input_schema.md appendix D.3).
+      ! in both halves (md/input_schema.md appendix D.3).
       use molecular_seed, only: molecular_seed_on,                        &
                                 write_molecular_seed_header
       use species_table, only: n_mion, mion_name, im_OI, melem_i0,       &
@@ -27,7 +27,7 @@
                                        NH2_col_lw, f_shield_lw, k_lw_diss, &
                                        p_lw_single,                        &
                                        tr_lines_lw, a_lines_lw, P_H2_eq,   &
-                                       NH2_db96_max, lw_col_over_overlap,  &
+                                       lw_col_over_overlap,                &
                                        nox_eq, n_o1d_eq,                   &
                                        NH2O_col, NOH_col,                  &
                                        NCO_col, k_co_diss,                 &
@@ -1539,16 +1539,15 @@
               ' validity range (absorbed, bound): ',                       &
               ir_abs(1) + ir_abs(2) + ir_abs(3), ir_bound
       endif
-      if (lw_col_over_overlap .gt. 1.0d0 .or.                             &
-          maxval(NH2_col_lw) .gt. NH2_db96_max)                            &
-         write(*,'(a,es9.2,a,f6.2,a,es9.2,a)') ' (write_output/eq)'//      &
+      if (lw_col_over_overlap .gt. 1.0d0)                                 &
+         write(*,'(a,es9.2,a,f6.2,a)') ' (write_output/eq)'//              &
            ' WARNING: the star-ward H2 column reaches ',                   &
            maxval(NH2_col_lw), ' cm^-2, which is ',                        &
            lw_col_over_overlap, ' times the top of the column axis of'//  &
            ' the overlapping-line self-shielding table, above which its'//&
-           ' edge value is returned rather than a calculated one, and'//   &
-           ' the band share the H2 lines remove is on a fit demonstrated'//&
-           ' only to ', NH2_db96_max, ' cm^-2 (Draine & Bertoldi 1996).'
+           ' edge value is returned rather than a calculated one, for'//   &
+           ' the dissociation rate and the band share the H2 lines'//      &
+           ' remove alike.'
 
       end subroutine write_oxygen_chemistry
 

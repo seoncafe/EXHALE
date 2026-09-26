@@ -9,13 +9,13 @@ the legacy ATES-compatible model. (Reference manual:
 
 **Contents**
 
-- [Build](#build) · [Run](#run) · [Run a standard converged model](#run-a-standard-converged-model)
-- [Base grid resolution](#base-grid-resolution-base-grid-drcells) · [The lower boundary](#the-lower-boundary-base-bc) · [Viscosity and heat conduction](#damp-the-base-with-viscosity-and-heat-conduction)
-- [Stellar spectrum](#choose-the-stellar-spectrum-spectrum-type) · [Trace metals](#add-trace-metals) · [He I 2^3S / 10830](#he-i-23s-metastable-triplet-and-the-10830-line) · [He/H diffusive separation](#heh-and-metal-diffusive-separation) · [Legacy atomic-data switch](#legacy-atomic-data-switch)
-- [Analytic lower column](#check-the-base-radius-analytic-lower-column) · [Molecular chemistry](#molecular-chemistry-warm-neptunes-and-sub-neptunes) · [Oxygen chemistry](#compute-the-base-h2h-partition-instead-of-importing-it-oxygen-chemistry) · [`base.inp` handoff](#hand-off-a-lower-atmosphere-model-baseinp) · [VULCAN pre-step](#use-vulcan-photochemistry-for-the-base-state-subroutine-style) · [Obtaining VULCAN and FastChem](#obtaining-vulcan-and-fastchem-third-party-not-in-this-repo) · [Obtaining Photochem](#obtaining-photochem-third-party-not-in-this-repo)
+- [Build](#build) | [Run](#run) | [Run a standard converged model](#run-a-standard-converged-model)
+- [Base grid resolution](#base-grid-resolution-base-grid-drcells) | [The lower boundary](#the-lower-boundary-base-bc) | [Viscosity and heat conduction](#damp-the-base-with-viscosity-and-heat-conduction)
+- [Stellar spectrum](#choose-the-stellar-spectrum-spectrum-type) | [Trace metals](#add-trace-metals) | [He I 2^3S / 10830](#he-i-23s-metastable-triplet-and-the-10830-line) | [He/H diffusive separation](#heh-and-metal-diffusive-separation) | [Atomic-data switches](#atomic-data-switches)
+- [Analytic lower column](#check-the-base-radius-analytic-lower-column) | [Molecular chemistry](#molecular-chemistry-warm-neptunes-and-sub-neptunes) | [Oxygen chemistry](#compute-the-base-h2h-partition-instead-of-importing-it-oxygen-chemistry) | [`base.inp` handoff](#hand-off-a-lower-atmosphere-model-baseinp) | [VULCAN pre-step](#use-vulcan-photochemistry-for-the-base-state-subroutine-style) | [Obtaining VULCAN and FastChem](#obtaining-vulcan-and-fastchem-third-party-not-in-this-repo) | [Obtaining Photochem](#obtaining-photochem-third-party-not-in-this-repo)
 - [Wind-AE warm start](#warm-start-a-hard-planet-wind-ae-ic)
-- [Output files](#output-files) · [Reading output in Python](#reading-output-in-python) · [Live plot](#live-plot-during-a-run) · [Transmission spectra](#transmission-spectra-exhale_transitpy)
-- [Example configurations](#example-configurations) · [Regression and hygiene](#regression-and-hygiene) · [Directory layout](#directory-layout) · [Where results and documents live](#where-results-and-documents-live)
+- [Output files](#output-files) | [Reading output in Python](#reading-output-in-python) | [Live plot](#live-plot-during-a-run) | [Transmission spectra](#transmission-spectra-exhale_transitpy)
+- [Example configurations](#example-configurations) | [Regression and hygiene](#regression-and-hygiene) | [Directory layout](#directory-layout) | [Where results and documents live](#where-results-and-documents-live)
 
 ---
 
@@ -59,14 +59,14 @@ button.
 The GUI writes the original ATES-format `input.inp`, which runs with the
 legacy convergence behavior (single-stage marching to `du < 1e-3`, no Newton
 finish). All EXHALE extensions are opt-in keys appended to `input.inp`
-(`du_th [PLM,WENO3]`, `Solver: Newton`, `Domain mode`, …) or separate runtime
+(`du_th [PLM,WENO3]`, `Solver: Newton`, `Domain mode`, ...) or separate runtime
 files (`metals.inp`, `opacity.inp`, `base.inp`), so to use them either add the
 lines by hand or start from `examples/` (Option B).
 
 ### Option B: direct (recommended for scripted or repeated runs)
 
 1. Pick or create a run directory containing an `input.inp` (copy one from
-   `examples/`; `examples/tutorial/` is a ready-to-run demo, with the He 2³S
+   `examples/`; `examples/tutorial/` is a ready-to-run demo, with the He 2^3S
    triplet already switched on).
 2. If metals are required, place a `metals.inp` in the same directory.
 3. Build once at the repo root, then run the binary from inside the run
@@ -107,7 +107,7 @@ PLM` (or `WENO3`) alone is single-stage and uses only the first `du_th` value.
 Then the JFNK Newton finish runs. If the flux metric plateaus just above the
 hand-off threshold (seen with He diffusion), the hand-off now fires on the
 plateau automatically. A quantitative Mdot always needs the Newton finish.
--> manual §2.5-2.6.
+-> manual sections 2.4 and 2.7.
 
 **Convergence criterion (flux-based).** Convergence is judged on the *flux*
 criterion of the reference codes: the fractional spread of the mass flux,
@@ -170,7 +170,7 @@ element row from `He_diffusion`, a carrier row from the molecular carriers)
 has yet reached its tolerance on any route**, so a mass-loss rate from such a
 run is quoted with that qualification.
 
-Full-physics cases (He 2³S + metals, secondary ionization, a `base.inp`
+Full-physics cases (He 2^3S + metals, secondary ionization, a `base.inp`
 handoff) that used to abort at `info = 2` around `||R|| ~ 2.8e-3` now reach
 `info = 0`; the cause was the solver's diagonal scaling and its stagnation
 watchdog, not the lower boundary condition -> `docs/EXHALE_BC_and_IC.pdf`
@@ -265,12 +265,12 @@ molecular base (HD 209458 b with a `base.inp` handoff) conduction moves base
 (Prandtl 2/3); `Viscosity: <mu0> [<s>]` instead sets a diagnostic power law
 `mu = mu0*T^s` in code units. Coefficients are the neutral atomic-hydrogen
 values (Watson et al. 1981): the ionized-wind (Spitzer) conductivity is not
-included. -> `docs/viscosity_conduction.md`.
+included. -> `md/viscosity_conduction.md`.
 
 ## Choose the stellar spectrum (`Spectrum type`)
 
 One type builds **every** band of the photon grid, the XUV and the part below
-13.6 eV alike, where the He 2^3S metastable (4.80 eV) and the low-IP metals
+13.6 eV alike, where the He 2^3S metastable (4.768 eV) and the low-IP metals
 absorb. No band is filled from a type the input did not select.
 
 | `Spectrum type:` | property line it consumes | what the whole grid is |
@@ -291,7 +291,7 @@ type is an upper bound while its EUV falls far below that of an active star;
 a run that needs both bands right needs a measured table.
 
 **A loaded table must reach the floor of the grid.** The floor is the lowest
-ionization threshold any active absorber has: 4.80 eV = 2583.0 A with
+ionization threshold any active absorber has: 4.768 eV = 2600.5 A with
 `Include He23S? True`, the lowest active neutral-metal threshold when a low-IP
 metal is in `metals.inp` (K I at 4.341 eV = 2856.1 A is the lowest the species
 table has; the shipped metal sets bottom out at Na I, 5.139 eV = 2412.6 A),
@@ -308,13 +308,14 @@ Every run states in `EXHALE_setup.out` which type it used, what the band below
 nominal `(10^LX + 10^LEUV)/(4 pi a^2)` at the same dilution. Read those three
 lines first when a photoionization rate looks wrong.
 
-Two limits, as of 2026-09-05: the Balmer continuum of `excited_hydrogen.f90`
-integrates a blackbody whatever the type, and `J_XUV` (the total the Wind-AE
-bridge is handed), the four FUV band fluxes and the monochromatic flux are
-still built from `LX`/`LEUV` or from input keys rather than from the type. The
+What the type does not reach: `J_XUV` (the total the Wind-AE bridge is
+handed) and the monochromatic flux are built from `LX`/`LEUV`, and the four
+FUV band fluxes come from their input keys (or, under `Load`, from the
+spectrum file when a key is absent). The Balmer continuum of
+`excited_hydrogen.f90` is the run's own spectrum over 3.40-13.6 eV. The
 Tk interface offers only `Load`, `Power-law` and `Monochromatic` and writes no
 stellar lines, so a `Planck` run is configured by hand.
--> `docs/input_schema.md` rows 11, 11a, 11b, 11d, K3, K4.
+-> `md/input_schema.md` rows 11, 11a, 11b, 11d, K3, K4.
 
 ## Add trace metals
 
@@ -339,9 +340,10 @@ Optional control keys, also written inside `metals.inp`:
 | Key | Meaning |
 |---|---|
 | `pp_metals 0\|1\|2` | metal treatment in the advection post-process |
-| `cx_full 0\|1` | full Huang+2023 charge-exchange network |
+| `cx_full 0\|1` | `1` adds groups C (metal + He/He+) and D (metal + metal) of the Huang+2023 Table 4 reaction list to group A (metal + H/H+), which is always on. It does not gate the He <-> H reactions (`He_H_charge_exchange` in `input.inp`) nor the two group E captures below |
 | `cno_cool 0\|1` | C/N/O cooling source: `1` = CHIANTI fits including N I/N II (default), `0` = legacy AIOLOS fits |
-| `cx_O2p_H <scale>` | rescales `O2+ + H0 -> O+ + H+`, which Huang+2023 Table 4 does not have, in units of the published Barragán+2006 rate (default `1`; `0` reproduces the Table-4-only set). Not controlled by `cx_full`. On HD 209458 b carrying it suppresses O III by 4.7 decades at 1.05 R_p, 3.7 at 1.1 and 2.7 at 1.2 |
+| `cx_O2p_H <scale>` | rescales `O2+ + H0 -> O+ + H+`, which Huang+2023 Table 4 does not have, in units of the published Barragan+2006 rate (default `1`; `0` leaves the row out). Not controlled by `cx_full`. On HD 209458 b carrying it suppresses O III by 4.7 decades at 1.05 R_p, 3.7 at 1.1 and 2.7 at 1.2 (MEASURED 2026-08-30) |
+| `cx_N2p_H <scale>` | rescales `N2+ + H0 -> N+ + H+`, the other capture Table 4 does not have, in units of the Barragan+2006 rate (their Table 2, 9.70e-10 cm^3 s^-1 at 1e4 K; default `1`; `0` leaves the row out). Not controlled by `cx_full`. On `wasp_full` N III/N falls from 0.444 to 0.0029 at 1.3 R_p (MEASURED 2026-09-26, `md/charge_exchange_detailed_balance_20260924.md` section 12.6) |
 | `eos_metals 0\|1` | metals in the bulk-gas mass/electron/particle budget (default `1`) |
 
 The CHIANTI coronal fits are cut off below their 10^3 K validity floor by a
@@ -353,7 +355,7 @@ paper planets is identical to every digit printed over `w = 0.02-1.2`, against
 a 500-650 K spread before. The guard is kept because extrapolating a fit below
 its fitted range is the wrong thing to do, not as a tuning knob. `cno_cool 0`
 (the legacy AIOLOS branch) is deliberately not cut off.
--> manual §3.2, `docs/cooling_formulas.pdf`, `docs/coronal_cutoff_width.md` §7.
+-> manual section 3.2, `docs/cooling_formulas.pdf`, `md/coronal_cutoff_width.md` section 7.
 
 ## He I 2^3S metastable triplet and the 10830 line
 
@@ -365,13 +367,18 @@ opposite direction:
 Include He23S? False     # the atomic-helium limit, for comparison only
 ```
 When on, the metastable triplet joins the coupled solver, with the
-temperature-dependent He(2³S)+H Penning-ionization rate of Taylor et al.
-(2025) in place of the classic 5e-10 constant, and a He 2³S photoionization
-cross section extended past 60 eV against TOPbase/Opacity-Project data (two
-Verner-form wings plus a power-law bridge). Both are always on when the
-triplet is. `EXHALE_transit.py` then computes the 10830 line from the `*_adv`
+temperature-dependent He(2^3S)+H Penning-ionization rate of Garcia Munoz
+(2025, the Maxwell average of the Movre & Meyer 1997 cross sections) in place
+of the classic 5e-10 constant, and a He 2^3S photoionization cross section
+extended past 60 eV against TOPbase/Opacity-Project data (two Verner-form
+wings plus a power-law bridge). Both are always on when the triplet is. The
+electron collisions of the network use the Bray et al. (2000) collision
+strengths, including the 2^3S -> 1^1S de-excitation (the detailed-balance
+reverse of the excitation, which outruns the radiative decay in cool gas) and
+the feed of 2^3S through the higher triplets; case-B recombination is split
+into triplet and singlet captures with Hummer & Storey (1998) Table 5. `EXHALE_transit.py` then computes the 10830 line from the `*_adv`
 output: see [Transmission spectra](#transmission-spectra-exhale_transitpy).
--> manual §5.2, `docs/photoion_cross_sections.pdf`.
+-> manual section 5.2, `docs/photoion_cross_sections.pdf`.
 
 ## He/H (and metal) diffusive separation
 
@@ -405,20 +412,53 @@ being modeled, so state it if you want one. With `Solver: Newton` the code
 co-converges the diffused composition with the steady wind (outer JFNK <->
 diffusion iteration). Acceptance tests: `make diffusion_tests &&
 ./diffusion_tests.x` runs them; quantitative before/after comparison on
-HD 209458 b and WASP-121 b: `docs/version_compare.pdf`. -> manual §3.6.
+HD 209458 b and WASP-121 b: `docs/version_compare.pdf`. -> manual section 3.6.
 
-## Legacy atomic-data switch
+## Atomic-data switches
 
-The He I ground-state photoionization cross section defaults to the Verner
-et al. (1996) fit; add
+Every switch below is a comparison option or a like-for-like device; the
+defaults are the physics the code recommends.
 
 ```
-ATES_photoionization_rate: True
+H_rec_escape: True            # default; False = case B for H II everywhere
+He_rec_coupling: True         # default; False = case B for He II and He III, cascade photons lost
+He_H_charge_exchange: True    # default; False drops He+ + H, He + H+, He2+ + H
+Legacy_HHe_rates: False       # default; True = Hui & Gnedin 1997 / Abel+1997 H/He fits
+Atomic rate set: default      # or Koskinen2022 (their Table 1 R1-R4)
+ATES_photoionization_rate: False   # default; True = the original ATES He I fit
 ```
 
-to revert to the original ATES 2-term fit. (The He 2³S cross section and the
-temperature-dependent Penning rate are always on.)
--> `docs/photoion_cross_sections.pdf`.
+- `H_rec_escape`: the H II -> H I ground captures (the Milne `alpha_1`) whose
+  13.6 eV photons leave the cell or are taken by a metal count as
+  recombinations, `alpha_B + y alpha_1` with `y` the local escape weight:
+  case A in the thin outer wind, case B in the thick base. The closure is
+  local, so where cells are neither thick nor thin the weight depends on the
+  cell width.
+- `He_rec_coupling`: the He II and He III recombination radiation is absorbed
+  on the spot (ground captures with the same escape weight; the He II case-B
+  cascade through the 584 A line, which He I scatters and partly converts into
+  the 2^1S two-photon continuum, the 19.8 eV line and the two-photon
+  continuum; the He III ground capture, the n = 2 capture, He II Ly-alpha and
+  the 2s two-photon continuum). Its photoelectrons are the heating channel
+  `heat_He_recomb`.
+- `He_H_charge_exchange`: He+ + H (radiative, Stancil et al. 1998, plus
+  non-radiative, from the H+ + He cross sections of Loreau et al. 2014), its
+  detailed-balance reverse, and the radiative He2+ + H capture (West, Lane &
+  Cohen 1982, 1.6 - 2.0e-13 cm^3 s^-1 at 1e3 - 3e4 K), in every
+  helium-bearing system and independent of `cx_full`.
+- `Atomic rate set: Koskinen2022` swaps the H+/He+ recombination and the H/He
+  collisional ionization for Koskinen et al. (2022) Table 1 R1-R4. The
+  recombination cooling follows the coefficient (every term is
+  `k T alpha (3/2 + dln alpha/dln T)` on the coefficient the balance uses).
+  For the closest comparison with their Model A also set
+  `He_rec_coupling: False` and `H_rec_escape: False`: their Table 1 has no
+  ground-capture split.
+- `ATES_photoionization_rate: True` reverts the He I ground-state cross
+  section to the original ATES 2-term fit. (The He 2^3S cross section and the
+  temperature-dependent Penning rate are always on.)
+
+-> manual Table 3 and section 8, `md/input_schema.md` K14b-K14f,
+`docs/photoion_cross_sections.pdf`, `docs/recombination_coefficients.pdf`.
 
 ## Check the base radius (analytic lower column)
 
@@ -429,9 +469,9 @@ Startup report: derived r(1 ubar) as an [equilibrium, fully-atomic] bracket,
 base H2/H/He fractions and mu, next to the input "Planet radius". Rule of
 thumb from the four worked planets (`examples/13_lower_atmosphere/`):
 HD 189733 b input radius falls inside its bracket; WASP-52 b's transit-radius
-shortcut is 0.17-0.35 R_J too deep (biases Mdot ×1.5, He 10830 unchanged).
+shortcut is 0.17-0.35 R_J too deep (biases Mdot x1.5, He 10830 unchanged).
 This is the one-line consistency check that needs no handoff.
--> `docs/lower_atmosphere_coupling.pdf` §4.1, §5.
+-> `docs/lower_atmosphere_coupling.pdf` section 4.1, section 5.
 
 ## Molecular chemistry (warm Neptunes and sub-Neptunes)
 
@@ -456,7 +496,7 @@ Caveat: local equilibrium, no molecular advection, the advection-corrected
 The oxygen chemistry below is what lifts the first half of that caveat: with
 `Molecular carrier transport: True` the carriers H2, OH, H2O and CO are
 transported; without the oxygen chemistry the carrier is H2 alone.
--> `docs/lower_atmosphere_coupling.pdf` §4.3.
+-> `docs/lower_atmosphere_coupling.pdf` section 4.3.
 
 The second half of the caveat, the H/H+ partition, has its own key:
 `Ionization transport: True` (default off) carries H+ as a fifth carrier of
@@ -464,7 +504,7 @@ the same operator and pins the sweep's proton row to the transported fraction
 in the interior cells (the lower ghosts stay the reservoir). Use it where the
 wind leaves a shell faster than it ionizes -- on the hot-Uranus Koskinen 2022
 gate `P r/|v|` is 0.15-0.35 above 1.5 r_base and the local root over-ionizes
-by 2-5x (`docs/k22_electron_density_excess.md` sec. 7). It needs `Molecular
+by 2-5x (`md/k22_electron_density_excess.md` sec. 7). It needs `Molecular
 carrier transport: True` and `Molecular chemistry: True`. With
 `Solver: Newton` both stationary routes carry it: the coupled route
 (`Coupled carrier solve: True`) gives the proton a row in the stationary
@@ -494,7 +534,7 @@ with the Lyman-Werner band on needs `2.0e-5`, where the base-adjacent momentum
 row stalls). `Max steps: 150000` covers the marching warm-up. Marching alone
 never reaches the layer (the H3+ cooling time there is ~1e7 CFL steps), so the
 Newton finish is not optional here. Converged solutions, the recipe and the
-caveats: `docs/lower_atmosphere_coupling.pdf` §7.
+caveats: `docs/lower_atmosphere_coupling.pdf` section 7.
 
 **Molecular chemistry with `metals.inp` present needs two more things.** On
 HD 209458 b that combination does not converge from a cold start at any
@@ -521,10 +561,10 @@ each stops cooling at its own radiative-equilibrium temperature (576-642 K for
 the C I/O I lines, 975 K for the H3+ bands at `T0 = 1140 K` and half-sky
 coverage). Every other cooling channel keeps the optically thin, no-incident-field
 limit, so an atomic run is unaffected: those channels carry no cooling there.
--> `docs/lower_atmosphere_coupling.pdf` §8.
+-> `docs/lower_atmosphere_coupling.pdf` section 8.
 
 That closure hands a field to the coolants the code already had. Below the
-H2 → H front a real H2 atmosphere carries three more that it did not, and
+H2 -> H front a real H2 atmosphere carries three more that it did not, and
 they are what actually hold the layer:
 
 ```
@@ -546,7 +586,7 @@ depths that say whether the optically thin closure still holds, and a
 column-integrated infrared block is appended to `output/FUV_bands.txt`. With
 `Base IR field` off the new bands emit into vacuum, which deepens the collapse
 instead of holding the layer; `input_read` warns about that combination.
--> `docs/lower_atmosphere_coupling.pdf` §10.
+-> `docs/lower_atmosphere_coupling.pdf` section 10.
 
 Lyman-Werner photodissociation of H2 is opt-in and needs the band flux at the
 planet, which the code's own XUV grid does not carry:
@@ -565,7 +605,7 @@ branching ratios come from the same table. The run writes
 Default 0 = off. With `Oxygen chemistry: True` the same key
 also supplies the first photolysis band, because 912-1201 A is one wavelength
 interval that H2, H2O and OH all absorb out of one beam (see below).
--> `docs/lower_atmosphere_coupling.pdf` §9.
+-> `docs/lower_atmosphere_coupling.pdf` section 9.
 
 ## Compute the base H2/H partition instead of importing it (oxygen chemistry)
 
@@ -633,7 +673,7 @@ carbon nucleus, so it cannot follow two element factors at once).
 with hydrogen there. Three things to know before quoting a number: the B4 band
 average is off by a factor 4.6-6.1 for a real stellar spectrum, the Ly-alpha
 band uses the incident flux with no H I resonance scattering so it is an upper
-bound, and the Damköhler and diffusive-time columns of `Oxygen_chemistry.txt`
+bound, and the Damkohler and diffusive-time columns of `Oxygen_chemistry.txt`
 say where the answer is chemistry and where it is transport. Default off.
 
 **A coupled steady solve on a molecular layer must carry the H2 row.**
@@ -684,9 +724,9 @@ It also writes the elemental reservoirs `C_H_base N_H_base O_H_base S_H_base`
 (El/H nuclei, every carrier counted), which override `metals.inp` for those
 elements; `Mg Si Ca Na K Fe` stay `metals.inp`'s job. Every `base.inp` key,
 and the category that says what it may do to the wind, is tabulated in
-`docs/input_schema.md` section 2c; `src/utils/element_budget.py <run_dir>`
+`md/input_schema.md` section 2c; `src/utils/element_budget.py <run_dir>`
 checks afterwards that the reservoirs held.
--> `docs/lower_atmosphere_coupling.pdf` §4.4.
+-> `docs/lower_atmosphere_coupling.pdf` section 4.4.
 
 ## Hand off a lower-atmosphere *profile* (`lower_atmosphere_profile.dat`)
 
@@ -703,7 +743,7 @@ With the key set, the file owns the base state (`T0`, `R0`, `p_base`,
 `q_H2`), the elemental reservoirs (`HeH` and every `X_<El>`) and `K_zz` on
 the grid, and every `base.inp` key of those three categories is **refused**
 beside it, so there is one source and not two. Schema and every refusal:
-`docs/input_schema.md` section 2d. A worked minimal case:
+`md/input_schema.md` section 2d. A worked minimal case:
 `examples/17_lower_profile/` (its `make_example_profile.py` writes the
 synthetic column that documents the schema).
 
@@ -825,14 +865,14 @@ provides H/C/N/O(/S) composition only: metal abundances stay in `metals.inp`.
 Which photochemistry code is not a free choice any more: VULCAN and Photochem
 disagree about `q_H` at 1 ubar by 7.2x on this planet, and since `q_H2_base`
 became a read key that difference reaches the wind solve. The measurement is
-`docs/vulcan_photochem_comparison.md`.
+`md/vulcan_photochem_comparison.md`.
 Manual invocation and finer control:
 
 ```bash
 python3 src/utils/vulcan_driver.py <run_dir> --r1bar 1.36 [--force] [--sflux F] [--atm F]
 python3 src/utils/run_lower.py     <run_dir> --r1bar 1.36 [--guillot]
 ```
--> `docs/lower_atmosphere_coupling.pdf` §4.4 and Fig. 2.
+-> `docs/lower_atmosphere_coupling.pdf` section 4.4 and Fig. 2.
 
 ## Obtaining VULCAN and FastChem (third-party, not in this repo)
 
@@ -846,7 +886,7 @@ src/utils/setup_vulcan.sh    # clones VULCAN into EXHALE/VULCAN/ + patches + bui
 ```
 
 (EXHALE also runs this automatically the first time you use `Lower atmosphere:
-vulcan …` and `VULCAN/` is missing.) The script clones VULCAN, applies the two
+vulcan ...` and `VULCAN/` is missing.) The script clones VULCAN, applies the two
 modifications EXHALE needs, builds FastChem, and removes stale run products.
 
 **Download sources and required citations** (please cite in any publication
@@ -866,7 +906,7 @@ modifications you need to make if you set it up by hand:
 
 | File (in the VULCAN clone) | Modification |
 |---|---|
-| `make_chem_funs.py` | add `encoding=None` to the `np.genfromtxt(vulcan_cfg.com_file, …)` call so the element-conservation check does not crash on Python 3 (bytes-vs-str) |
+| `make_chem_funs.py` | add `encoding=None` to the `np.genfromtxt(vulcan_cfg.com_file, ...)` call so the element-conservation check does not crash on Python 3 (bytes-vs-str) |
 | `vulcan_cfg.py` | set `use_photo = True` and `use_live_plot = False` (this file is the driver's template) |
 | `output/*.vul` | delete (run products; regenerated for each run in `<run_dir>/vulcan_work/`) |
 | `fastchem_vulcan/` | `make` to build the `fastchem` binary |
@@ -975,7 +1015,7 @@ It reads an EXHALE `input.inp`, ramps from the seed, and writes
 `<outdir>/{Hydro_ioniz,Ion_species}_IC.txt` on the grid given by an
 `IC_dump.txt` from a prior EXHALE run with the same domain settings. Then run
 EXHALE on the result with `Load IC? True` and `Solver: Newton`.
--> manual §2.7, `docs/wind_ae_solver.pdf`.
+-> manual section 2.10, `docs/wind_ae_solver.pdf`.
 
 ## Restart a run (`Load IC`, `Restart intent`, `Restart option change`)
 
@@ -1039,7 +1079,7 @@ One practical consequence: **states written before the Jupiter-radius
 unification cannot be reloaded at all** (every cell center moved, so the grid
 guard refuses them). That covers the stored `heh_*` case directories (renamed 2026-09-16), the planet
 folders and `benchmarks/`; regenerating them is user-gated.
--> `docs/input_schema.md` K43, K44 and appendix D.2; manual §2.
+-> `md/input_schema.md` K43, K44 and appendix D.2; manual section 2.
 
 ## Measurement hooks you may meet in a log
 
@@ -1077,18 +1117,18 @@ All output is written to `output/` in the run directory.
 | File | Contents |
 |------|----------|
 | `Hydro_ioniz.txt` | Radius, number density, velocity, pressure, temperature, heating rate, cooling rate (columns vs. radius) |
-| `Ion_species.txt` | Number densities of H I, H II, He I, He II, He III, He 2³S, and the metal ionization stages (33 species; zero columns when a species is off) |
-| `Hydro_ioniz_adv.txt` | `Hydro_ioniz.txt` re-solved as the steady ionization and energy equations along the recorded flow, plus three further columns: `adv_T_status` and `adv_comp_status`, the validity of the row's temperature and of its composition separately (0 corrected, 1 retained, 2 failed, 3 unsupported, 4 not evaluated), and `adv_mass_row`, the measure both were decided by. A corrected row is a CONDITIONAL correction, accurate to the fraction of itself in the mass flux that the file's own `# adv_conditional_tol` line states; whether the whole input state passed the stationary certification is a separate statement, in its `# adv_input_certified` line. The conditions, the two fields, the measure and both numbers are defined once, in manual §4 ("Validity range of the advection correction"); read them there rather than from a second copy |
+| `Ion_species.txt` | Number densities of H I, H II, He I, He II, He III, He 2^3S, and the metal ionization stages (33 species; zero columns when a species is off) |
+| `Hydro_ioniz_adv.txt` | `Hydro_ioniz.txt` re-solved as the steady ionization and energy equations along the recorded flow, plus three further columns: `adv_T_status` and `adv_comp_status`, the validity of the row's temperature and of its composition separately (0 corrected, 1 retained, 2 failed, 3 unsupported, 4 not evaluated), and `adv_mass_row`, the measure both were decided by. A corrected row is a CONDITIONAL correction, accurate to the fraction of itself in the mass flux that the file's own `# adv_conditional_tol` line states; whether the whole input state passed the stationary certification is a separate statement, in its `# adv_input_certified` line. The conditions, the two fields, the measure and both numbers are defined once, in manual section 4 ("Validity range of the advection correction"); read them there rather than from a second copy |
 | `Ion_species_adv.txt` | Post-processed version of `Ion_species.txt`, carrying the same two validity fields as its last two columns and the same header block |
-| `Cooling_breakdown.txt` | Radiative cooling by channel vs. radius: six H/He channels, the H3+ infrared channel, then one column for each metal ion |
-| `Heating_breakdown.txt` | Volumetric heating by channel vs. radius, 23 columns: the photoheating split by absorber (H I, He I, He II, He 2³S, H2, metals), then the two excited-H channels, the He-recombination coupling, the Penning and associative branches of He 2³S + H, He 2³S + H2 Penning, the dissociation and fluorescence halves of Lyman-Werner, the collisional H2/He reactions, the FUV photolysis of H2O and OH, the collisional oxygen reactions, and the two CO destruction channels (He+ charge transfer and photodissociation). The columns are the channel array the ionization sweep filled for the state written beside them, so their sum is the `heat` column of `Hydro_ioniz.txt` to round-off |
+| `Cooling_breakdown.txt` | Radiative cooling by channel vs. radius: six atomic channels (recombination and collisional ionization, which include the energies of the metal ions; collisional excitation of H I, He I and He II; free-free), the H3+ infrared channel, the H2, H2O and CO infrared bands (net rates), then one column for each metal ion's line cooling. With the He 2^3S tracked the He I column is the net 1^1S <-> 2^3S exchange plus the metastable's own channels, negative where the superelastic collisions heat the gas |
+| `Heating_breakdown.txt` | Volumetric heating by channel vs. radius, 24 columns (r, T, n_e, total, then 20 channels): the photoheating split by absorber (H I, He I, He II, He 2^3S, H2, metals, the last with the Auger electrons of inner-shell vacancies), then the two excited-H channels, the recombination radiation absorbed on the spot (`heat_He_recomb`), the Penning and associative branches of He 2^3S + H, He 2^3S + H2 Penning, the dissociation and fluorescence halves of Lyman-Werner, the collisional H2/He reactions, the FUV photolysis of H2O and OH, the collisional oxygen reactions, the two CO destruction channels (He+ charge transfer and photodissociation), and the energy defects of the charge-exchange reactions (`heat_charge_exchange`, less what a radiating product state carries away; negative for an endothermic reaction). The columns are the channel array the ionization sweep filled for the state written beside them, so their sum is the `heat` column of `Hydro_ioniz.txt` to round-off |
 | `Excited_H.txt` | Non-LTE H(n=2) populations (when the Balmer/Ly-alpha physics is on) |
 | `Lyman_Werner.txt` | H2 photodissociation diagnostics (only when a molecular run carries a `Stellar LW flux`): radius, temperature, H2 fraction and density, star-ward H2 column, self-shielding factor, rate, heating |
-| `Oxygen_chemistry.txt` | the solved oxygen partition (only with `Oxygen chemistry: True`): free atomic O, O II, O III, OH, H2O, CO, O(1D), x_H2, the chemical against the advection time scale with their Damköhler ratio, the H2O and OH photolysis rates, and the H2 diffusion coefficient, `K_zz` and diffusive time of each cell (18 columns); with `Molecular carrier transport: True` a trailer carries the last transport step's Newton count, residual, limiter count, worst overshoot and the number of cells where the transported CO was cut back to its chemical equilibrium; every run also closes the file with the net H2 loss budget at the base cell, decomposed into eleven channels, which says whether the oxygen cycle or the thermal channel is running that run's partition |
+| `Oxygen_chemistry.txt` | the solved oxygen partition (only with `Oxygen chemistry: True`): free atomic O, O II, O III, OH, H2O, CO, O(1D), x_H2, the chemical against the advection time scale with their Damkohler ratio, the H2O and OH photolysis rates, and the H2 diffusion coefficient, `K_zz` and diffusive time of each cell (18 columns); with `Molecular carrier transport: True` a trailer carries the last transport step's Newton count, residual, limiter count, worst overshoot and the number of cells where the transported CO was cut back to its chemical equilibrium; every run also closes the file with the net H2 loss budget at the base cell, decomposed into eleven channels, which says whether the oxygen cycle or the thermal channel is running that run's partition |
 | `FUV_bands.txt` | how deep each FUV band penetrates (only with `Oxygen chemistry: True`): the H2O, OH and CO columns, the four band optical depths, the band-resolved photodissociation rates, the CO photodissociation rate and its Visser shielding function, the photolysis heating, and a trailer carrying the band energy ledger and the shared-beam split of the 912-1201 A band |
 | `OI_levels.txt` / `OI_levels_adv.txt` | O I `2p4 3P` ground-term level populations (metal-bearing runs only): radius, T, n_e, n(H I), n(O I), then f(3P2)/f(3P1)/f(3P0) and the same three as densities. Same three-level statistical equilibrium as the [O I] 63/145/44um cooling; these are the lower levels of the O I 1302.168/1304.858/1306.029 A triplet, which `EXHALE_transit.py` reads |
 
-Every file starts with a `# columns …` schema header, so analysis tools adapt
+Every file starts with a `# columns ...` schema header, so analysis tools adapt
 to the column layout automatically. `examples/exhale_io.py` is the loader that
 reads those headers, and it is the one every new script should use: four
 independent column parsers exist in the tree already, and adding a fifth adds
@@ -1104,7 +1144,7 @@ ratio of the file named by `Lower atmosphere profile:`), that element's loaded
 column is renormalized onto the stated `El/H` by a single factor, reported in
 the run log, so a closure iteration restarts on the reservoir it just moved to.
 Elements the handoff does not state, and restarts with no handoff, are loaded
-unchanged. Full column definitions: `docs/EXHALE_user_manual.pdf` §4.
+unchanged. Full column definitions: `docs/EXHALE_user_manual.pdf` section 4.
 
 ## Reading output in Python
 
@@ -1161,12 +1201,12 @@ whose absence is reported as a skipped fit rather than as an error.
 
 It reads `input.inp` and the `*_adv.txt` profiles in `output/` and produces the
 model transmission curves (theoretical, instrument-convolved, and
-instrument+rotation-convolved) for **He I 10830 Å, Ly-alpha, H-alpha,
+instrument+rotation-convolved) for **He I 10830 A, Ly-alpha, H-alpha,
 H-beta**, the metal resonance doublets **Mg II h&k, Ca II H&K, Na I D** and
 the **O I 1302/1304/1306** triplet (all of these appear automatically for a
 metals-on run and are skipped otherwise). A 3-D Roche-equipotential geometry is available via
 `geometry = 'triaxial'` (`roche_recon.py`).
--> manual §5.2, `docs/transmission_spectrum.pdf`.
+-> manual section 5.2, `docs/transmission_spectrum.pdf`.
 
 ### Where the star and planet parameters come from
 
@@ -1268,7 +1308,7 @@ EXHALE_TRANSIT_ROTP=2.2185 EXHALE_TRANSIT_ROT_NPHI=64 python3 EXHALE_transit.py
 Rotation is computed as the exact projected-disk integral (each chord
 Doppler-shifted by its local solid-body velocity `Omega*b*cos(phi)` and
 averaged over azimuth), not a single-velocity Gaussian convolution; it
-conserves each line's equivalent width. -> manual §5.2.
+conserves each line's equivalent width. -> manual section 5.2.
 
 ## Example configurations
 
@@ -1286,9 +1326,9 @@ lines each one adds.
 | `03_newton/` | Two-stage + Newton finish (recommended default) |
 | `04_newton_from_state/` | Resume from a saved state with Newton |
 | `05_metals/` | Metals on (solar C/N/O/Mg/Ca/Na/Fe) |
-| `06_he23s/` | He I 2³S triplet included |
+| `06_he23s/` | He I 2^3S triplet included |
 | `07_balmer_lya/` | Balmer + Ly-alpha RT |
-| `08_full/` | Full physics (metals + He 2³S + Balmer/Lya) |
+| `08_full/` | Full physics (metals + He 2^3S + Balmer/Lya) |
 | `09_spherical/` | Extended spherical domain |
 | `10_warm_seed_ic/` | Warm-seed initial condition |
 | `11_windae_ic/` | In-process Wind-AE IC for HD 189733 b: the self-consistent-BC ramp converges and writes the IC; EXHALE's own base-breathing instability (separate from the IC) then limits the warm start |
@@ -1332,8 +1372,8 @@ post-processing pass writes. Default matrix (sixteen cases):
 
 | case | what it guards |
 |---|---|
-| `wasp_full` | WASP-121 b with He 2³S **and** metals |
-| `wasp_he23off` | the same with He 2³S off (the HeITR-off branch) |
+| `wasp_full` | WASP-121 b with He 2^3S **and** metals |
+| `wasp_he23off` | the same with He 2^3S off (the HeITR-off branch) |
 | `wasp_full_newton` | the same case with `Solver: Newton`, so the JFNK steady solve is in the matrix and not only the marching stop |
 | `mol_base_handoff` | hot-Uranus Tier-2 gate: molecular chemistry + a `base.inp` handoff whose `q_H2_base` drives the photochemical base particle count; 12000-step snapshot |
 | `mol_metals` | the same gate + solar C/N/O/Mg/Ca/Na/Fe: the molecular and metal networks in one system; 12000-step snapshot |
@@ -1419,39 +1459,39 @@ goldens still reproduce.
 
 ```
 EXHALE/
-├── Makefile               # incremental build (FC=gfortran default)
-├── run_EXHALE.sh          # optional GUI launcher (writes input.inp, calls make)
-├── src/
-│   ├── EXHALE_main.f90    # program entry point
-│   ├── modules/           # Fortran source modules (flux, init, radiation, …)
-│   └── utils/             # Python GUI (EXHALE_interface_main.py), fortdep.py
-├── VULCAN/                # third-party VULCAN (+FastChem), NOT in this repo;
-│                          #   fetched by src/utils/setup_vulcan.sh
-├── photochem/             # third-party Photochem v0.9.0 + the EXHALE patch,
-│                          #   NOT in this repo (git-ignored);
-│                          #   src/utils/setup_photochem.sh puts it there
-├── photochem_clima_data/  # the data tables Photochem imports (v0.3.1),
-│                          #   NOT in this repo (git-ignored; clone + pip -e)
-├── README_photochem.md    # what to download, what to install, how to build
-│                          #   the two above, and what the patch is
-├── inputdata/             # opacity / SED table samples (*.opa, Jlya.txt, …)
-├── cooling_data/          # CHIANTI cooling-formula fit scripts + notebooks
-├── examples/
-│   ├── 01_legacy_marching/ … 16_molecular_metals/   # ready-made configs
-│   ├── README.md          # one-line description of each config folder
-│   ├── exhale_io.py       # Python loaders for all output files
-│   ├── EXHALE_analysis.ipynb
-│   ├── tutorial/          # minimal worked example (generic hot Jupiter,
-│   │                      #   He 2³S on)
-│   └── tutorial_nometals/ # the same config without metals.inp
-├── docs/                  # user manual, changelog, physics and numerics memos
-├── observational_data/    # digitized observational comparison data
-├── benchmarks/            # benchmark runs for the four production planets
-├── paper/                 # manuscript and its figure scripts
-├── EXHALE_transit.py      # transmission spectrum post-processor
-├── EXHALE_plots.py        # live / static profile plotter
-├── roche_recon.py         # Roche-lobe geometry helper
-└── eta_approx.py          # analytic heating-efficiency approximation
+|-- Makefile               # incremental build (FC=gfortran default)
+|-- run_EXHALE.sh          # optional GUI launcher (writes input.inp, calls make)
+|-- src/
+|   |-- EXHALE_main.f90    # program entry point
+|   |-- modules/           # Fortran source modules (flux, init, radiation, ...)
+|   `-- utils/             # Python GUI (EXHALE_interface_main.py), fortdep.py
+|-- VULCAN/                # third-party VULCAN (+FastChem), NOT in this repo;
+|                          #   fetched by src/utils/setup_vulcan.sh
+|-- photochem/             # third-party Photochem v0.9.0 + the EXHALE patch,
+|                          #   NOT in this repo (git-ignored);
+|                          #   src/utils/setup_photochem.sh puts it there
+|-- photochem_clima_data/  # the data tables Photochem imports (v0.3.1),
+|                          #   NOT in this repo (git-ignored; clone + pip -e)
+|-- README_photochem.md    # what to download, what to install, how to build
+|                          #   the two above, and what the patch is
+|-- inputdata/             # opacity / SED table samples (*.opa, Jlya.txt, ...)
+|-- cooling_data/          # CHIANTI cooling-formula fit scripts + notebooks
+|-- examples/
+|   |-- 01_legacy_marching/ ... 16_molecular_metals/   # ready-made configs
+|   |-- README.md          # one-line description of each config folder
+|   |-- exhale_io.py       # Python loaders for all output files
+|   |-- EXHALE_analysis.ipynb
+|   |-- tutorial/          # minimal worked example (generic hot Jupiter,
+|   |                      #   He 2^3S on)
+|   `-- tutorial_nometals/ # the same config without metals.inp
+|-- docs/                  # user manual, changelog, physics and numerics memos
+|-- observational_data/    # digitized observational comparison data
+|-- benchmarks/            # benchmark runs for the four production planets
+|-- paper/                 # manuscript and its figure scripts
+|-- EXHALE_transit.py      # transmission spectrum post-processor
+|-- EXHALE_plots.py        # live / static profile plotter
+|-- roche_recon.py         # Roche-lobe geometry reconstruction
+`-- eta_approx.py          # analytic heating-efficiency approximation
 ```
 
 Build artifacts land in `build/`; `make clean` removes object and module files
@@ -1467,8 +1507,8 @@ while keeping `EXHALE.x`. The planet directories `HD209458b/`, `HD189733b/`,
 - `docs/photoion_cross_sections.pdf`, `docs/recombination_coefficients.pdf`:
   atomic data and its benchmarks
 - `docs/lower_atmosphere_coupling.pdf`, lower-atmosphere connection: survey,
-  implementation, 4-planet examples, figures; §7 the converged Tier-2
-  solutions and the recipe that reaches them, §8 `Base IR field`, §9
+  implementation, 4-planet examples, figures; section 7 the converged Tier-2
+  solutions and the recipe that reaches them, section 8 `Base IR field`, section 9
   Lyman-Werner photodissociation
 - `docs/molecular_hydrogen_treatment.pdf`: H2 as a single species with no
   (v,J) resolution: where the level distribution is assumed, on what evidence,
@@ -1478,7 +1518,7 @@ while keeping `EXHALE.x`. The planet directories `HD209458b/`, `HD189733b/`,
 - `docs/transmission_spectrum.pdf`: the transit spectrum calculation
 - `docs/EXHALE_BC_and_IC.pdf`: boundary and initial conditions
 - `docs/steady_solver_memo.pdf`: Newton-Krylov design notes
-- `docs/viscosity_conduction.md`, `docs/coronal_cutoff_width.md`: molecular
+- `md/viscosity_conduction.md`, `md/coronal_cutoff_width.md`: molecular
   transport, and the coronal-fit validity floor
 - `docs/wind_ae_solver.pdf`: the included Wind-AE solver
 - `docs/code_comparison.pdf`, `docs/methodology_comparison.pdf`:

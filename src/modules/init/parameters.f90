@@ -159,6 +159,20 @@
       ! own digits; the resolved-configuration record reports the flag.
       logical :: dr_base_from_key = .false.
 
+      ! ----- Shells beyond the constructed grid ("Outer shells") -----
+      ! "Outer shells [r_face,cells]: <r_face> <cells>" appends <cells>
+      ! physical cells beyond the outer face of the grid that "Grid type",
+      ! "Grid cells", "Base grid" and "Outer radius" construct, the last of
+      ! them ending on the face r_face [R_p]; define_grid
+      ! (append_outer_shells) builds them. The constructed cells and faces
+      ! are unchanged by it, bit for bit, so a run with shells differs from
+      ! one without only above the old outer face. N counts the shells:
+      ! input_read adds n_outer_shells to "Grid cells" before any array is
+      ! sized, so the cell count of the constructed grid is
+      ! N - n_outer_shells. 0 = no shells (the default).
+      integer :: n_outer_shells      = 0
+      real*8  :: r_outer_shells_face = 0.0d0
+
       character(len = :), allocatable :: flux
       character(len = :), allocatable :: rec_method 
       character(len = :), allocatable :: appx_mth
@@ -205,8 +219,10 @@
       !  Benjamin+1999 He recombination already matches modern data.)
       logical :: ates_photoion_rate = .false.
       ! H/He recombination + collisional-ionization rate model:
-      !  .false. (default) = Badnell RR (+ He II DR) minus Mao & Kaastra 2016
-      !   alpha_1 for case-B recombination, and Voronov 1997 collisional
+      !  .false. (default) = Badnell RR (+ He II DR) minus the ground capture
+      !   alpha_1 of the Milne relation on the transfer's own ground-state
+      !   cross section (Cool_coeff: ground_capture_milne) for case-B
+      !   recombination, and Voronov 1997 collisional
       !   ionization; .true. = legacy ATES fits (Hui & Gnedin 1997 recombination,
       !   Abel+1997/HG97 collisional ionization).  Free-free always uses the
       !   van Hoof et al. 2014 Gaunt table regardless of this flag.
@@ -219,14 +235,18 @@
       !   so that a run can be compared like for like with their Model A.
       !   Their recombination is the Storey & Hummer (1995) power law
       !   4.0e-12 (300/T)^0.64 (H+) and 4.6e-12 (300/T)^0.64 (He+), in place
-      !   of the default Badnell RR minus Mao & Kaastra alpha_1 case B; their
+      !   of the default Badnell RR minus Milne alpha_1 case B; their
       !   collisional ionization is the same Voronov (1997) fit EXHALE
       !   already uses by default, so R3/R4 move nothing unless
       !   legacy_hhe_rates is set as well. The default set is the physically
       !   preferred one here (case B, the Lyman continuum being optically
       !   thick), so this key exists to reproduce their choice, not to
-      !   replace ours. It swaps the RATE coefficients only: the
-      !   recombination COOLING rates are untouched.
+      !   replace ours. It swaps the RATE coefficients; the recombination
+      !   cooling follows them (Cool_coeff: lambda_rec_*, the capture
+      !   relation applied to the balance's coefficient). With H_rec_escape
+      !   or He_rec_coupling on, the escaping ground captures (Milne alpha_1)
+      !   are added on top of their case-B laws; a like-for-like run sets
+      !   both keys False.
       logical :: atomic_rate_set_k22 = .false.
       ! "Caloric EOS: monatomic" -- every particle, H2 included, stores
       ! (3/2) k T (gamma = 5/3 everywhere), the state of the code before the
@@ -250,12 +270,14 @@
       ! two accountings, at about f = 0.65, and this reproduces it without
       ! claiming a physics.
       real*8  :: photoheat_photon_fraction = -1.0d0
-      ! Secondary ionization by fast photoelectrons (Shull & van Steenberg 1985).
-      !  .true. (default) = high-energy photoelectrons (E0 > 40 eV) partition their
-      !   excess energy into heating f_heat(x), H I secondary ionization, and He I
-      !   secondary ionization following the SvS85 asymptotic fits; x is the ionized
-      !   fraction of the H+He nuclei. .false. = legacy full-thermalization
-      !   (bit-identical to the pre-2026 behavior).
+      ! Secondary ionization by fast photoelectrons.
+      !  .true. (default) = a photoelectron above E_sec_ion (30 eV) partitions
+      !   its energy into heat and secondary ionizations of H I, He I and H2:
+      !   the Shull & van Steenberg (1985) amplitudes times the Dalgarno, Yan &
+      !   Liu (1999) energy dependence W(x, 1 keV)/W(x, E0), redistributed over
+      !   the local composition, and the DYL99 heating fraction
+      !   (electron_energy_degradation.f90); x = n_e/(n_H + n_He).  .false. =
+      !   full thermalization (the pre-2026 behavior).
       logical :: use_sec_ion = .true.
       ! Runtime state of the SvS85 coupling: .true. only once it is actually
       ! applied. From a cold IC the secondary-ionization base feedback amplifies
@@ -270,21 +292,35 @@
       ! Input override "Secondary_ionization: Immediate": apply the coupling from
       ! step 0 (pre-staging behavior), for A/B tests only.
       logical :: sec_ion_immediate = .false.
-      ! He recombination radiation ionizing H (Draine 2011 y/z parametrization,
-      ! on-the-spot).
-      !  .true. (default) = the >= 24.6 eV ground-capture continuum ionizes H
-      !   with the local fraction y (Draine Eq. 14.16) and the < 24.6 eV cascade
-      !   photons ionize H with the density-dependent fraction z (Draine Sec.
-      !   15.5); couples an extra H I photoionization rate and its photoelectron
-      !   heating, and corrects the He II recombination to alpha_B + y alpha_1.
-      !   In TR mode this also restores the singlet-excited capture channel
-      !   (0.25 alpha_B) that the alpha_1-only network omits -- with the
-      !   coupling off, the TR singlet recombination is neither case A nor
-      !   case B. The photons are real; default on (2026-07-23, Update
-      !   section 39).
-      !  .false. = He II -> He I recombination photons are all lost locally
-      !   (pure case B, y=0), the legacy path.
+      ! He recombination radiation absorbed on the spot ("He_rec_coupling";
+      ! utils_ion_eq: recombination_radiation_absorbed).
+      !  .true. (default) = the He II -> He I and He III -> He II ground-
+      !   capture photons are shared among the absorbers of the cell (the
+      !   part not re-absorbed by the recombined species, y, is a net
+      !   recombination: alpha_B + y alpha_1), and the He II cascade photons
+      !   (584 A, 19.8 eV, two-photon) and He III cascade photons (He II
+      !   Ly-alpha, two-photon, the n = 2 continuum) ionize H I, He I, H2 and
+      !   the metals, with their photoelectron heating. The photons are
+      !   real; default on.
+      !  .false. = pure case B for both helium recombinations (y = 0), the
+      !   cascade photons lost; the singlet and triplet captures of the
+      !   metastable network are then the case-B split of alpha_B (Cool_coeff:
+      !   case_b_triplet_share_HeI).
       logical :: use_he_rec_coupling = .true.
+      ! H II -> H I ground captures escaping the cell ("H_rec_escape").
+      !  .true. (default) = the capture into H(1s) counts as a recombination
+      !   in the fraction y_HI of its photons that H I does not re-absorb in
+      !   the cell (alpha_B + y_HI alpha_1: case B where the gas is thick at
+      !   13.6 eV, case A where it is thin), and the photons taken by metal
+      !   ions ionize them. A CORRECTION: case B everywhere asserts that
+      !   every ground-capture photon is re-absorbed by hydrogen on the spot,
+      !   which does not hold in the ionized, optically thin outer wind of an
+      !   escaping atmosphere, where alpha_1/alpha_B = 0.61 at 1e4 K. It is
+      !   the construction the He II recombination has carried since
+      !   He_rec_coupling (the same escape weight), which is why it is on by
+      !   default.
+      !  .false. = case B everywhere (y_HI = 0).
+      logical :: use_h_rec_escape = .true.
       ! He/H diffusive separation:
       !  .false. (default) = He/H frozen at the input HeH everywhere (legacy);
       !  .true. = evolve the He element ratio with advection + molecular
@@ -441,6 +477,23 @@
       ! off: the coupled route changes the size and the band geometry of the
       ! steady system, so a run that does not ask for it must not pay for it.
       logical :: carrier_in_newton = .false.
+      ! WHAT THE COMPOSITION UPDATE OF THE STATIONARY ALTERNATION HOLDS FIXED
+      ! ("Composition update holds: energy|pressure"). Between two
+      ! hydrodynamic solves the element and carrier relaxations change the
+      ! composition of every cell at a fixed hydrodynamic state, and the
+      ! state then has to be one gas again. .false. ("energy", the default)
+      ! holds the conserved variables (rho, rho v, E): p and T follow from
+      ! the unchanged thermal energy at the new particle count and heat
+      ! capacity. .true. ("pressure") holds rho, v and p: T = p/(n_tot + n_e)
+      ! of the new composition, with its eliminated species closed again at
+      ! that temperature, and E is rebuilt from the caloric equation of
+      ! state of that composition with the kinetic part unchanged. The
+      ! two contracts are two relaxation paths to one set of stationary
+      ! equations: at a fixed point the composition does not move and both
+      ! leave the state as it is. Holding p keeps the pressure force and the
+      ! face pressures of a near-hydrostatic base as the solve left them,
+      ! where a pressure step dp drives a face mass flux of order dp/c.
+      logical :: composition_update_holds_pressure = .false.
       ! THE CARRIER GATE. When the carrier row counts as steady: 0.1 percent
       ! of the row's own largest terms, volume-weighted over the layer and
       ! the wind separately (carrier_steady_residual). It is a THIRD gate
@@ -464,7 +517,7 @@
       ! partition is the right answer only where a parcel is ionized faster
       ! than it leaves the shell it sits in, P r/|v| >> 1. Measured on the
       ! Koskinen 2022 Model A comparison (a 0.0457 M_J planet at 0.048 au
-      ! with the flux quartered, docs/k22_electron_density_excess.md sec. 7)
+      ! with the flux quartered, md/k22_electron_density_excess.md sec. 7)
       ! that number is 0.15-0.35 above 1.5 r_base: the gas leaves each shell
       ! three to seven times faster than it can be photoionized, so the
       ! ionization fraction is not the local root but whatever the parcel
@@ -526,8 +579,6 @@
                                           !  13.6 eV HI edge (e.g. Mg I, 7.646
                                           !  eV) is present; triggers extension
                                           !  of the energy grid/SED below 13.6 eV
-      logical :: use_2lev_cool  = .false. ! Two-level fine-structure metal
-                                          !  cooling ([O I] 63um, [C II] 158um)
       logical :: cno_chianti    = .true.  ! C/N/O line cooling source:
                                           !  .true. (default) = CHIANTI v11
                                           !   closed-form fits incl. N I/N II,
@@ -542,7 +593,7 @@
       ! Cool_coeff.f90). The guard is exp(-x^2) with x = (T_floor/T - 1)/w, so
       ! w is a modeling choice, not a measured quantity: the temperature the
       ! base settles at depends on it at the ~100 K level. The measured
-      ! justified window is w = 0.08-0.13 (docs/coronal_cutoff_width.md);
+      ! justified window is w = 0.08-0.13 (md/coronal_cutoff_width.md);
       ! 0.1 is the default.
       real*8  :: coronal_cutoff_width = 0.1d0
       ! Thermal infrared field of the lower atmosphere, seen by the
@@ -705,7 +756,7 @@
       ! acceptance gate see the production operator with no blending in it.
       !
       ! recon_lambda_step0 <= 0 (the default, and what an absent key leaves)
-      ! is the shipped one-step switch. See docs/input_schema.md.
+      ! is the shipped one-step switch. See md/input_schema.md.
       logical :: recon_lambda_on   = .false. ! continuation armed for this run
       real*8  :: recon_lambda      = 0.0d0   ! current lambda in [0,1]
       real*8  :: recon_lambda_step = 0.0d0   ! current step in lambda
@@ -778,7 +829,9 @@
       !------- Global constants -------!
       
       ! Physical constants
-      real*8,parameter ::  pi      = 3.1415926536d0   ! pi
+      ! pi to the double-precision digits (the 3.1415926536 it replaces
+      ! was 7e-12 low).
+      real*8,parameter ::  pi      = 3.14159265358979324d0
       ! Boltzmann constant in CGS units (CODATA/SI exact value 1.380649e-16;
       ! updated 2026-08-15 from the truncated ATES literal 1.38e-16, a 4.7e-4
       ! relative change that moves every thermal quantity -- goldens were
@@ -943,7 +996,7 @@
       real*8,parameter ::  e_th_MgII = 15.035d0  ! Threshold for MgII ionization
 
 	   ! Numerical constants
-      real*8 ::  CFL    = 0.6         ! CFL number; settable in input.inp via "CFL:" (lower = smaller dt, may damp a numerical limit cycle)
+      real*8 ::  CFL    = 0.6d0       ! CFL number; settable in input.inp via "CFL:" (lower = smaller dt, may damp a numerical limit cycle)
       real*8 ::  du_th     = 1.0d-3   ! final (stage-2 / WENO3) escape-momentum threshold; settable in input.inp via "du_th [PLM,WENO3]:". 1e-3 is the original ATES-Code-main value (EXHALE had loosened it to 2e-2, accepting ~2% mass-flux spread).
       real*8 ::  du_th_plm = -1.0d0   ! stage-1 (PLM) threshold; if > du_th the run is two-stage: PLM until du<du_th_plm, then switch reconstruction to WENO3 and converge at du<du_th. <=0 => single-stage at du_th.
       real*8,parameter ::  dtu_th = 1.0d-8      ! Threshold variation of time deriv.
@@ -1102,7 +1155,7 @@
       ! the near-base momentum imbalance that CETIMB carries and EXHALE's
       ! inviscid HLLC scheme lacks. Full derivation, discretization and
       ! boundary treatment: src/modules/time_step/viscous_conduction.f90 and
-      ! docs/viscosity_conduction.md. Both switches default OFF, so a run
+      ! md/viscosity_conduction.md. Both switches default OFF, so a run
       ! without the keys is byte-identical to the inviscid code.
       !
       ! "Viscosity: True" -- radial viscous force (div tau)_r plus its
@@ -1300,10 +1353,11 @@
       logical :: use_excited_H   = .false. ! master switch (set if T_star_eff>0)
       ! Collisional de-excitation of H(n=2) returns 10.2 eV to the electron
       ! gas (Hdx_arr). It is NOT a double count of the H I collisional-
-      ! excitation cooling: the Cen (1992) coefficient in Cool_coeff.f90
-      ! (coex_rate_HI) is a one-way, Boltzmann-suppressed excitation rate --
+      ! excitation cooling: that coefficient (Cool_coeff.f90,
+      ! lambda_coex_HI) is a one-way, Boltzmann-suppressed excitation rate --
       ! the coronal limit, in which every excitation is assumed to escape --
-      ! and carries no density-dependent de-excitation term. Subtracting the
+      ! and carries no density-dependent de-excitation term; the two use the
+      ! same 1s <-> 2s, 2p rate coefficients. Subtracting the
       ! de-excitation is the correction to that limit. Most of the n=2
       ! population is maintained by Ly-alpha pumping rather than by a
       ! collision, so the term is best read as absorbed Ly-alpha thermalized

@@ -74,11 +74,13 @@
   	        + c1*((gheii + ionheii*xe*n_h)*xheii - aheiii*xheiii*xe*n_h)
 
 	! He <-> H charge exchange (Huang Table 4 group B) on the H (row 1) and
-	! He I (row 2) rows, both written neutral-gain positive here. Without the
+	! He I (row 2) rows, both written neutral-gain positive here, and He2+ +
+	! H0 on rows 1 and 3 (He III gain positive). Without the
 	! metastable the whole He I population is the ground singlet, so xheiS is
 	! the He I fraction (n_HeI/n_he) the reaction sees.
-	call he_h_cx_fvec_adv(fvec, c1, xhi, xhii, xheiS, xheii, heh_loc, n_h, &
-	                      adv_cell%kcx_He0_Hp, adv_cell%kcx_Hep_H0)
+	call he_h_cx_fvec_adv(fvec, c1, xhi, xhii, xheiS, xheii, xheiii,       &
+	                      heh_loc, n_h, adv_cell%kcx_He0_Hp,              &
+	                      adv_cell%kcx_Hep_H0, adv_cell%kcx_Hepp_H0)
 
 	! End of subroutine
 	end subroutine adv_implicit_HeH

@@ -42,7 +42,8 @@ if sys.argv[1] == '--check':
     # that only the numbers are compared.
     bad = 0
     for tag in ('0p33', '0p30', '0p28', '0p26', '0p25', '0p20', '0p18',
-                '0p16', '0p15', '0p10', '0p07', '0p065', '0p06', '0p05',
+                '0p16', '0p15', '0p10', '0p07', '0p0675', '0p0662', '0p065',
+                '0p0624', '0p06', '0p05',
                 '0p03', '0p02', '0p015', '0p01'):
         path = os.path.join(HERE, 'lhs1140_sed_gj1132_at_b_xuv%s.txt' % tag)
         if not os.path.exists(path):

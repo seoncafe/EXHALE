@@ -9,7 +9,7 @@ python3 src/utils/h2_shielding_table_line_by_line.py \
 
 and this directory holds everything that command reads, moved here on
 2026-09-06 from the scratch directory of the 2026-09-03 session (P38,
-`docs/p38_line_overlap_shielding.md`), where it would have been lost with
+`md/p38_line_overlap_shielding.md`), where it would have been lost with
 `/tmp`. MEASURED 2026-09-06: the command above regenerates the shipped
 module byte for byte.
 

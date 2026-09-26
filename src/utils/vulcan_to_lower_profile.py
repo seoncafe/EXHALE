@@ -5,7 +5,7 @@ Same schema, same command line and same fingerprint rule as
 `photochem_to_lower_profile.py`; the only difference is where the chemistry
 comes from.  VULCAN has no climate model, so this producer can never be
 the path away from a prescribed T(p)
-(`docs/vulcan_photochem_comparison.md` P1.7);
+(`md/vulcan_photochem_comparison.md` P1.7);
 what it is for is stating, on the same planet and the same matching level,
 how much of the handoff is the chemistry code rather than the chemistry
 (P1 measured 1.70x in q_H on an 864 K base and 1.08x on a 2331 K base).

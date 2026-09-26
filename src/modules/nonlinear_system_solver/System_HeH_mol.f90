@@ -300,13 +300,14 @@
 	! (1) H+ : photo- and collisional ionization of H0, the dissociative H2
 	!     photoionization, radiative recombination, the H2 channels
 	!     R9/R10/R13, R17, Penning, and the H <-> He charge exchange of both
-	!     directions.
+	!     directions and of He2+ + H0.
 	s(1) = (photo_scale*ieq_cell%P_HI + photo_scale*ieq_cell%P_H2_di       &
 	        + photo_scale*2.0d0*ieq_cell%P_H2_dd                          &
 	        + (ieq_cell%a_ion_HI + ieq_cell%rchiiB)*ne)*nH               &
 	     + (mk9 + mk10 + mk13)*nH*nH                                      &
 	     + (mk17 + ieq_cell%Q31                                           &
-	        + ieq_cell%kcx_He0_Hp + ieq_cell%kcx_Hep_H0)*nHe*nH
+	        + ieq_cell%kcx_He0_Hp + ieq_cell%kcx_Hep_H0                   &
+	        + ieq_cell%kcx_Hepp_H0)*nHe*nH
 
 	! (2) He+ : the He I and He II photo/collisional/recombination channels
 	!     of the summed helium balance, the molecular sinks R17/R23, the
@@ -322,13 +323,15 @@
 	           + ieq_cell%a_ion_HeITR + ieq_cell%rcheiiB                  &
 	           + ieq_cell%rcheiiiB + ieq_cell%rcheiTR)*ne)*nHe            &
 	     + (mk17 + mk23                                                   &
-	        + ieq_cell%kcx_He0_Hp + ieq_cell%kcx_Hep_H0)*nHe*nH
+	        + ieq_cell%kcx_He0_Hp + ieq_cell%kcx_Hep_H0                   &
+	        + ieq_cell%kcx_Hepp_H0)*nHe*nH
 	if (thereis_oxychem)                                                  &
 		s(2) = s(2) + rk_D1_Hep_CO()*ieq_cell%n_co*nHe
 
-	! (3) He++ : He II ionization and He III recombination.
+	! (3) He++ : He II ionization, He III recombination and He2+ + H0.
 	s(3) = (photo_scale*ieq_cell%P_HeII + (ieq_cell%a_ion_HeII            &
-	                           + ieq_cell%rcheiiiB)*ne)*nHe
+	                           + ieq_cell%rcheiiiB)*ne)*nHe               &
+	     + ieq_cell%kcx_Hepp_H0*nHe*nH
 
 	! (4) H2 : formation by R6/R9/R11/R15 and every destruction channel
 	!     (photoionization, Lyman-Werner, R8/R10/R12/R13/R14, He+ and HeH+
@@ -370,8 +373,9 @@
 	!     ionization and the two Penning collisions.
 	if (thereis_HeITR) then
 		s(8) = (photo_scale*ieq_cell%P_HeITR + ieq_cell%A31           &
-		        + (ieq_cell%rcheiTR + ieq_cell%q13 + ieq_cell%q31a    &
-		           + ieq_cell%q31b + ieq_cell%a_ion_HeITR)*ne)*nHe    &
+		        + (ieq_cell%rcheiTR + ieq_cell%q13 + ieq_cell%q31g    &
+		           + ieq_cell%q31a + ieq_cell%q31b                    &
+		           + ieq_cell%a_ion_HeITR)*ne)*nHe                    &
 		     + (ieq_cell%Q31 + mk_ion_H2)*nHe*nH
 		nrow = 8
 	else
@@ -582,7 +586,7 @@
 	real*8  :: g_hi,g_hei,g_heii,g_heiTR,g_h2,g_h2_di,g_h2_dd,g_h2_nd,g_lw
 	real*8  :: b_hi,b_hei,b_heii,b_heiTR
 	real*8  :: a_hii,a_heii,a_heiii,a_heiTR
-	real*8  :: A31,q13,q31a,q31b,Q31
+	real*8  :: A31,q13,q31g,q31a,q31b,Q31
 	real*8  :: n_h,n_he,n_e,T,ntot
 	real*8  :: n_hi,n_hii,n_h2,n_h2p,n_h3p,n_hehp
 	real*8  :: n_hei,n_heii,n_heiii,n_heiTR,n_heiSI
@@ -603,6 +607,7 @@
 	A31     = ieq_cell%A31
 	g_heiTR = ieq_cell%P_HeITR
 	q13     = ieq_cell%q13
+	q31g    = ieq_cell%q31g
 	q31a    = ieq_cell%q31a
 	q31b    = ieq_cell%q31b
 	Q31     = ieq_cell%Q31
@@ -640,13 +645,17 @@
 	                  g_h2_dd, g_h2_nd, g_lw,                           &
 	                  a_hii, a_heii, a_heiii, a_heiTR,                  &
 	                  b_hi, b_hei, b_heii, b_heiTR,                     &
-	                  q13, q31a, q31b, Q31, A31)
+	                  q13, q31g, q31a, q31b, Q31, A31)
 
-	! He <-> H charge exchange (Huang Table 4 group B). Row 1 (H+ balance)
-	! and row 2 (He+ balance) are both written production positive, so
-	! he_row_sign = +1. The ground singlet n_heiSI is the CX He I reservoir.
+	! He <-> H charge exchange (Huang Table 4 group B, and He2+ + H0). Row
+	! 1 (H+ balance) and row 2 (He+ balance) are both written production
+	! positive, so he_row_sign = +1, and row 2 is the He II stage source,
+	! which He2+ + H0 -> He+ + H+ feeds. The ground singlet n_heiSI is the
+	! CX He I reservoir.
 	call he_h_cx_fvec(fvec, ieq_cell%kcx_He0_Hp, ieq_cell%kcx_Hep_H0,   &
-	                  n_hi, n_hii, n_heiSI, n_heii, 1.0d0)
+	                  ieq_cell%kcx_Hepp_H0,                             &
+	                  n_hi, n_hii, n_heiSI, n_heii, n_heiii, 1.0d0,      &
+	                  .true.)
 
 	! Each row divided by its own turnover rate (set_mol_turnover_rates), so
 	! the helium and molecular blocks reach hybrd1 with the same weight.
@@ -683,7 +692,7 @@
 	                        g_h2_dd, g_h2_nd, g_lw,                          &
 	                        a_hii, a_heii, a_heiii, a_heiTR,                 &
 	                        b_hi, b_hei, b_heii, b_heiTR,                    &
-	                        q13, q31a, q31b, Q31, A31,                       &
+	                        q13, q31g, q31a, q31b, Q31, A31,                 &
 	                        p_Hp, l_Hp, p_H2, l_H2, l_H2_phot, h2_chan,    &
 	                        chan)
 
@@ -700,7 +709,7 @@
 	real*8, intent(in) :: g_h2_di, g_h2_dd, g_h2_nd
 	real*8, intent(in) :: a_hii,a_heii,a_heiii,a_heiTR
 	real*8, intent(in) :: b_hi,b_hei,b_heii,b_heiTR
-	real*8, intent(in) :: q13,q31a,q31b,Q31,A31
+	real*8, intent(in) :: q13,q31g,q31a,q31b,Q31,A31
 	! THE ROWS SPLIT INTO THEIR PRODUCTION AND THEIR LOSS, both positive,
 	! for the two rows a transported carrier owns: the proton (1) and H2 (4).
 	! A row is production - loss, and where the chemistry is fast the two
@@ -924,8 +933,8 @@
 	! (8) He 2^3S balance (VERBATIM System_HeH_TR row 4)
 	if (thereis_HeITR) then
 		call tr_triplet_row(fvec(8), n_hi, n_heiSI, n_heiTR, n_heii, n_e,   &
-		                    g_heiTR, a_heiTR, q13, q31a, q31b, Q31, A31,    &
-		                    b_heiTR)
+		                    g_heiTR, a_heiTR, q13, q31g, q31a, q31b, Q31,   &
+		                    A31, b_heiTR)
 		! He(2^3S)+H2 ionization triplet loss, total of the Penning and the
 		! associative branch: both quench the metastable, and neither makes
 		! He+, so there is no He+ row term. Garcia Munoz (2025) Table A.5.
@@ -977,18 +986,20 @@
 			stt(24) = Q31;      stt(25) = A31
 			stt(26) = ieq_cell%kcx_He0_Hp
 			stt(27) = ieq_cell%kcx_Hep_H0
-			stt(28) = ntot
-			stt(29) = n_h2;     stt(30) = n_h2p
-			stt(31) = n_h3p;    stt(32) = n_hehp
-			stt(33) = g_h2;     stt(34) = g_h2_di
-			stt(35) = g_h2_dd;  stt(36) = g_h2_nd;  stt(37) = g_lw
-			stt(38) = k5;       stt(39) = k6;       stt(40) = k7
-			stt(41) = k8;       stt(42) = k9;       stt(43) = k10
-			stt(44) = k11;      stt(45) = k12;      stt(46) = k13
-			stt(47) = k14;      stt(48) = k15;      stt(49) = k16
-			stt(50) = k17;      stt(51) = k18;      stt(52) = k19
-			stt(53) = k_h2p_he; stt(54) = k23;      stt(55) = k_ion_H2
-			stt(56) = k_co_hep; stt(57) = n_third
+			stt(28) = q31g
+			stt(29) = ieq_cell%kcx_Hepp_H0
+			stt(30) = ntot
+			stt(31) = n_h2;     stt(32) = n_h2p
+			stt(33) = n_h3p;    stt(34) = n_hehp
+			stt(35) = g_h2;     stt(36) = g_h2_di
+			stt(37) = g_h2_dd;  stt(38) = g_h2_nd;  stt(39) = g_lw
+			stt(40) = k5;       stt(41) = k6;       stt(42) = k7
+			stt(43) = k8;       stt(44) = k9;       stt(45) = k10
+			stt(46) = k11;      stt(47) = k12;      stt(48) = k13
+			stt(49) = k14;      stt(50) = k15;      stt(51) = k16
+			stt(52) = k17;      stt(53) = k18;      stt(54) = k19
+			stt(55) = k_h2p_he; stt(56) = k23;      stt(57) = k_ion_H2
+			stt(58) = k_co_hep; stt(59) = n_third
 			! The transport operator is the only caller that asks for the
 			! production/loss split, so its evaluations are told apart from
 			! the local sweep's here and nowhere else.

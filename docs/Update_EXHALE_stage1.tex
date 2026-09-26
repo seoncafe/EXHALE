@@ -874,7 +874,7 @@ beyond the CT wiring.
 \subsection{Atomic data and rates (sources, not fabricated)}
 
 All 63 rate rows are transcribed verbatim from
-\texttt{docs/charge\_exchange\_table4.md}, the image-verified transcription of
+\texttt{md/charge\_exchange\_table4.md}, the image-verified transcription of
 Huang+2023 Table 4 (23 Group A $+$ 2 Group B $+$ 6 Group C $+$ 32 Group D). The
 paper text says ``65 reactions''; the 2-row discrepancy is immaterial and noted
 in the reference doc.
@@ -2440,8 +2440,8 @@ time-marching limit cycle if a steady solution exists); or accepting HD189733b a
 marginal, time-averaged quasi-steady case. A separate, cheaper idea for \emph{speed}
 (not the oscillation) is local cell-by-cell time-stepping, since the global $dt$ is currently
 set by the smallest base cell (\texttt{eval\_dt.f90}). Full working notes:
-\texttt{docs/heitr\_metals\_and\_convergence\_notes.md}; solver-option discussion:
-\texttt{docs/numerical\_methods.md}.
+\texttt{md/heitr\_metals\_and\_convergence\_notes.md}; solver-option discussion:
+\texttt{md/numerical\_methods.md}.
 
 \paragraph{Code-size note.} The merge adds one Fortran module
 (\texttt{System\_HeH\_TR\_metals.f90}, 84 SLOC), so the 2026-06-07 file tally of 57
@@ -2538,7 +2538,7 @@ hydrostatic (default), transonic isothermal wind (added for the Phase-4
 deep-RLOF Case~D, where the cold IC false-converges), and the hot-Parker warm
 seed (benchmarked: no speedup) --- and the choice was manual. Kubyshkina+2018
 build an IC for each planet automatically; the design study is
-\texttt{docs/auto\_ic\_design.md} and the literature comparison
+\texttt{md/auto\_ic\_design.md} and the literature comparison
 \texttt{docs/code\_comparison.tex}.
 
 \paragraph{The selector (one exact probe, no tunable threshold).}
@@ -2982,7 +2982,7 @@ H})g/(kT)$, $D=1.52\times10^{18}(1/m_{\rm H}+1/m_{\rm He})^{1/2}T^{1/2}/n$ (Bank
 conservative} implicit (backward-Euler tridiagonal) update of $n_{\rm He}$; the new split is
 written back into \texttt{f\_sp} conserving mass ($\sum_s m_s f_{{\rm sp},s}=1$, metals frozen
 to H). Gated on \texttt{He\_diffusion} (default off; \texttt{He\_Kzz} sets $K_{zz}$).
-Derivation: \texttt{docs/design\_hehe\_diffusion.md}.
+Derivation: \texttt{md/design\_hehe\_diffusion.md}.
 
 \paragraph{Root-cause bug (design doc \S7).} A local time scale named \texttt{t0}
 ($=R_0/v_0$) shadowed the \emph{global temperature} \texttt{T0} (Fortran is case-insensitive)
@@ -3562,7 +3562,7 @@ heating in \texttt{PH\_heat\_H}/\texttt{PH\_heat\_HHe}); \texttt{T\_equation.f90
 \texttt{input\_read.f90}, \texttt{parameters.f90}, \texttt{write\_setup\_report.f90}
 (\texttt{legacy\_hhe\_rates} and \texttt{use\_sec\_ion} declared, defaulted,
 parsed, echoed); \texttt{cooling\_data/gauntff\_thermal\_avg.py} (van Hoof table
-generator); \texttt{docs/input\_schema.md} (keys K14b, K14c).
+generator); \texttt{md/input\_schema.md} (keys K14b, K14c).
 
 \subsection{Quantitative check}
 New default rates ($\alpha_B$, collisional ionization $ci$; $\mathrm{cm^3\,s^{-1}}$),
@@ -3613,7 +3613,7 @@ is wrong: part of the He recombination radiation --- the $\ge24.6\,$eV
 ground-capture continuum, the 584\,\AA{} resonance line, the 19.8\,eV
 $2^3$S line, and the ${>}13.6\,$eV part of the He\,I two-photon continuum ---
 ionizes H instead. The physics and the choice of recipe were worked out in
-\texttt{docs/QUESTIONS\_2026-07-17.md}. This section documents an opt-in
+\texttt{md/QUESTIONS\_2026-07-17.md}. This section documents an opt-in
 coupling using Draine's (2011) on-the-spot $y$/$z$ parametrization. New input
 key \texttt{He\_rec\_coupling} (flag \texttt{use\_he\_rec\_coupling}), default
 \texttt{False} $\to$ pure case B, bit-identical to the legacy path.
@@ -3687,7 +3687,7 @@ i.e.\ the $\alpha_1$ subtracted in \texttt{alphaB\_HeII\_new});
 and to the advection ODE and \texttt{theat} in post-process);
 \texttt{input\_read.f90}, \texttt{parameters.f90}, \texttt{write\_setup\_report.f90}
 (\texttt{use\_he\_rec\_coupling} declared, defaulted \texttt{.false.}, parsed,
-echoed); \texttt{docs/input\_schema.md} (key K14d).
+echoed); \texttt{md/input\_schema.md} (key K14d).
 
 \subsection{Quantitative check (HD\,209458\,b)}
 Protocol: HD\,209458\,b \texttt{input.inp}\,$+$\,\texttt{metals.inp}, the
@@ -3825,7 +3825,7 @@ old (crashing) behavior on the high-gravity cases.
 
 The line-by-line comparison against Falorca \& Vidotto (2026,
 arXiv:2607.18193) and Garc\'ia Mu\~noz (2025, A\&A 698, A199) --- full analysis
-in \texttt{docs/falorca2026\_he3d\_review.md} --- exposed six physics gaps, all
+in \texttt{md/falorca2026\_he3d\_review.md} --- exposed six physics gaps, all
 implemented and validated in this series (its validation work also surfaced the
 secondary-ionization NaN regression fixed in the previous section). Physical
 correctness is the acceptance criterion throughout; the impact sizes below are
@@ -3913,7 +3913,7 @@ tripped both triggers on step~1 and ran away to a NaN by step~1220; with the gua
 the same input converges (step 8706, $\log_{10}\dot M = 13.21$). The
 PLM\,$\to$\,WENO3 switch is deliberately \emph{not} guarded, because the
 regression cases legitimately switch on step~1 at $du(1)=0.37$. No new input keys.
-Details: \texttt{docs/newton\_scaling\_and\_base\_wall.md} \S9.
+Details: \texttt{md/newton\_scaling\_and\_base\_wall.md} \S9.
 
 % ===================================================================== %
 \section{JFNK line search decides on the true residual (2026-08-11)}
@@ -3937,7 +3937,7 @@ $\log_{10}\dot M = 13.17$, superseding the \texttt{du}-stop $13.21$ of the
 preceding section); \texttt{photo\_deep\_secion\_cont} converges in 24 outer
 iterations instead of 59; no case exhausts its backtracks any more. No new input
 keys, no golden changed. Details:
-\texttt{docs/newton\_scaling\_and\_base\_wall.md} \S10.
+\texttt{md/newton\_scaling\_and\_base\_wall.md} \S10.
 
 % ===================================================================== %
 \section{Metal-line cooling at a cold base: line trapping and the coronal-fit validity floor (2026-08-11)}
@@ -4041,7 +4041,7 @@ ${\sim}700$\,K the guard leaves ions without an explicit two-level term
 (C\,\textsc{i}, N, Mg, Ca, Na, Fe) with no cooling at all --- for C\,\textsc{i} that
 omits the real [C\,\textsc{i}]\,609/370\,$\mu$m lines, whose LTE rate at the
 HD\,189733\,b base is ${\sim}10^{-10}$ erg cm$^{-3}$ s$^{-1}$, i.e.\ $10^{-4}$ of
-the local heating. Details: \texttt{docs/hd189\_base\_checkerboard.md} \S10.
+the local heating. Details: \texttt{md/hd189\_base\_checkerboard.md} \S10.
 Files:
 \begin{verbatim}
 src/modules/radiation/Cool_coeff.f90
@@ -4057,7 +4057,7 @@ The resolution of the uniform region of the \texttt{Mixed} grid was two hardcode
 locals in \texttt{define\_grid.f90} (\texttt{N\_low = 50} cells of
 \texttt{drc = 2.0e-4} $R_{\rm p}$). It is now an input key, because that spacing is
 what decides whether the base carries the stationary $2\Delta r$ entropy mode
-diagnosed in \texttt{docs/hd189\_base\_checkerboard.md}: the controlling parameter
+diagnosed in \texttt{md/hd189\_base\_checkerboard.md}: the controlling parameter
 is the number of cells per base density scale height, $H/\Delta r$ with
 $H = kT/(\mu g)$, and a $4\times$ refinement was measured to remove the mode.
 
@@ -4126,7 +4126,7 @@ $\lVert R\rVert = 5.7\times10^{-5}$ --- unchanged from the preceding section.
 Malformed values are rejected in \texttt{define\_grid} (a cell count outside
 $[2, N-10]$, or a uniform region that does not fit inside $r_{\max}$).
 
-Details: \texttt{docs/hd189\_base\_checkerboard.md} \S11. Files:
+Details: \texttt{md/hd189\_base\_checkerboard.md} \S11. Files:
 \begin{verbatim}
 src/modules/init/parameters.f90
 src/modules/init/define_grid.f90
@@ -4198,7 +4198,7 @@ The boundary jump and the density inversion are gone; the extended alternating t
 as well (beyond cell 7 the amplitude drops $13\times$ to $420\times$), and what remains is a
 stronger disturbance confined to cells 2--4. Three further restart$+$Newton cycles reproduce
 each state digit for digit, so both are exact fixed points and no further decay is available
-from cycling. Details, window sweep and scope: \texttt{docs/hd189\_base\_checkerboard.md}
+from cycling. Details, window sweep and scope: \texttt{md/hd189\_base\_checkerboard.md}
 \S13. \textbf{Not} measured at that point: a cold start under the new closure (6\,h,
 $10^{6}$ steps), other planets, transit observables.
 
@@ -4303,7 +4303,7 @@ is left alone; the H-only system (no helium) and the post-processing advection s
 \texttt{post\_process\_adv.f90} are outside this validation, and the advected profiles of
 HD\,209458\,b still carry small negative H\,\textsc{ii}, He\,\textsc{iii} and He\,$2^3S$
 entries in the first 14 cells above the base. Full account:
-\texttt{docs/ionization\_root\_validation.md}. Files:
+\texttt{md/ionization\_root\_validation.md}. Files:
 \begin{verbatim}
 src/modules/radiation/ionization_equilibrium.f90
 src/modules/radiation/util_ion_eq.f90
@@ -4362,7 +4362,7 @@ therefore not what suppresses Ly$\alpha$ cooling, and the destruction channels t
 $\beta = 1$ for the resonance lines is kept and is now documented at the code site as a
 justified effective treatment with its validity condition, in the \texttt{SCOPE} comment of
 \texttt{src/modules/radiation/Cool\_coeff.f90}, instead of an acknowledged omission. Full
-measurement: \texttt{docs/resonance\_line\_trapping.md}.
+measurement: \texttt{md/resonance\_line\_trapping.md}.
 
 % ===================================================================== %
 \section{Metal electrons and a validity range for the post-process advection correction (2026-08-12)}
@@ -4454,7 +4454,7 @@ Files:
 \item \texttt{src/modules/nonlinear\_system\_solver/ion\_cell\_state.f90}
 \item \texttt{src/modules/nonlinear\_system\_solver/System\_implicit\_adv\_\{H,HeH,HeH\_TR\}.f90}
 \end{itemize}
-Full account: \texttt{docs/postprocess\_advection\_validity.md}.
+Full account: \texttt{md/postprocess\_advection\_validity.md}.
 
 Found and \textbf{not} fixed, marked at the code site: \texttt{System\_implicit\_adv\_HeH}
 (helium on, He\,$2^3$S off) writes its electron-impact ionization terms without the
@@ -4553,7 +4553,7 @@ Files:
 \item \texttt{src/modules/post\_process/post\_process\_adv.f90}
 \item \texttt{cooling\_data/fit\_fs\_saturation.py} --- generator; prints every coefficient
 \item \texttt{cooling\_data/make\_cooling\_doc\_figures.py}
-\item \texttt{docs/cooling\_formulas.tex}, \texttt{docs/coronal\_cutoff\_width.md}
+\item \texttt{docs/cooling\_formulas.tex}, \texttt{md/coronal\_cutoff\_width.md}
   section 7, \texttt{TO\_BE\_DONE.md} item (C)
 \end{itemize}
 
@@ -4610,14 +4610,14 @@ energy residual from $1.12\times10^{2}, 1.20\times10^{2}$ to $1.31\times10^{-1},
 1.54\times10^{-1}$, with cell 3 outward and the wind window unchanged to every digit.
 Re-converging the planet from its stored state: JFNK scaled merit $\lVert F_s\rVert_2$
 $1.43 \to 0.315$, \texttt{info = 0}, $\log_{10}\dot M$ $9.15 \to 9.14$. Measurements and
-term-by-term split: \texttt{docs/hd189\_base\_checkerboard.md} section 15.
+term-by-term split: \texttt{md/hd189\_base\_checkerboard.md} section 15.
 
 % ===================================================================== %
 \section{H($n=2$) rate coefficients, the trapped-$2p$ balance, and de-excitation heating (2026-08-12)}
 
 Four corrections to the excited-hydrogen and Ly$\alpha$ modules, plus the structural change
 that made the first one possible. Measurement and the full number tables:
-\texttt{docs/lya\_destruction\_channels.md} section 11.
+\texttt{md/lya\_destruction\_channels.md} section 11.
 
 \paragraph{One definition of the $n=2$ rate coefficients.} The Ly$\alpha$ and $n=2$ atomic
 data and every collisional rate coefficient existed in three copies --- inside
@@ -4694,7 +4694,7 @@ $9.3790 \to 9.4581$; the H$\alpha$ and H$\beta$ transit depths move by 0.4--1.7\
 ($n(2p)$, which carries the opacity, barely moves, while $n(2s)$ halves). HD\,209458\,b is
 the largest move (0.075 dex, from items 1--3) because its Ly$\alpha$ cooling is a negligible
 share of its radiative losses while the $n=2$ heating terms are not; it is also the case
-\texttt{docs/lya\_deexcitation\_heating.md} recorded as going NaN at the base with the
+\texttt{md/lya\_deexcitation\_heating.md} recorded as going NaN at the base with the
 de-excitation heating on, which no longer reproduces with the corrected populations
 (re-converges from its stored initial condition, and a cold start survives a 20000-step
 cap). A build at \texttt{-O1 -fopenmp -g -fcheck=bounds,do,mem} running the
@@ -4716,7 +4716,7 @@ Files:
 
 The parser refused \texttt{Molecular chemistry: True} together with a \texttt{metals.inp}.
 That refusal blocked two things: the deep ($10^{-3}$\,bar) lower-atmosphere handoff of
-\texttt{docs/base\_composition\_handoff\_plan.md} \S11.7, whose A/B pair carries metals and
+\texttt{md/base\_composition\_handoff\_plan.md} \S11.7, whose A/B pair carries metals and
 whose consistent configuration is Tier-2 molecular chemistry; and trace-metal work on
 sub-Neptunes, which have a molecular base by construction.
 
@@ -4866,9 +4866,9 @@ Files:
 Documentation: \texttt{README.md}, \texttt{README\_HOWTO.md},
 \texttt{examples/README.md}, \texttt{docs/EXHALE\_user\_manual.tex} (the example table also
 became a \texttt{longtable}, which it needed already --- as a float it ran past the bottom
-margin into the page footer), \texttt{docs/input\_schema.md},
-\texttt{docs/lower\_atmosphere\_coupling.md},
-\texttt{docs/base\_composition\_handoff\_plan.md}.
+margin into the page footer), \texttt{md/input\_schema.md},
+\texttt{md/lower\_atmosphere\_coupling.md},
+\texttt{md/base\_composition\_handoff\_plan.md}.
 
 % ===================================================================== %
 \section{One electron density for the cooling and for the ionization solver (2026-08-13)}
@@ -5001,7 +5001,7 @@ Files:
 \item \texttt{src/modules/time\_step/energy\_semi\_implicit.f90}
 \item \texttt{src/modules/post\_process/post\_process\_adv.f90} (comments only)
 \end{itemize}
-Documentation: \texttt{docs/lower\_atmosphere\_coupling.md}.
+Documentation: \texttt{md/lower\_atmosphere\_coupling.md}.
 
 % ===================================================================== %
 \section{A fourth regression case for the molecular $+$ metals system (2026-08-13)}
@@ -5202,7 +5202,7 @@ median 1.27 and 10--90\% range 1.13--1.32, and over all 187 cells where H$_3^+$ 
 than half the cooling the sign is right in 181. The whole difference between the two marching
 energy equations is the H$_3^+$ term and nothing else. The physics of the converged solution,
 including the 190--300\,K molecular layer, is in
-\texttt{docs/lower\_atmosphere\_coupling.md} and in the next section.
+\texttt{md/lower\_atmosphere\_coupling.md} and in the next section.
 
 An \texttt{-O1 -fopenmp -g -fcheck=bounds,do,mem} build runs both molecular configurations
 for 300 steps with no runtime check firing.
@@ -5216,7 +5216,7 @@ Files: \texttt{src/modules/radiation/util\_ion\_eq.f90},
 \texttt{docs/EXHALE\_user\_manual.tex} (section 4.3 rewritten --- it still described four
 H/He channels and columns 9--35 for the metals, which had been wrong since the
 collisional-excitation split; a radiative-cooling row for H$_3^+$ added to the atomic-data
-table), \texttt{docs/lower\_atmosphere\_coupling.md}, \texttt{TO\_BE\_DONE.md}.
+table), \texttt{md/lower\_atmosphere\_coupling.md}, \texttt{TO\_BE\_DONE.md}.
 \par}
 
 \section{The infrared field of the lower atmosphere (\texttt{Base IR field}) (2026-08-13)}
@@ -5331,7 +5331,7 @@ Files: \texttt{src/modules/radiation/Cool\_coeff.f90},
 \texttt{src/modules/init/parameters.f90},
 \texttt{src/modules/files\_IO/input\_read.f90},
 \texttt{src/modules/files\_IO/write\_setup\_report.f90}. Documentation:
-\texttt{docs/lower\_atmosphere\_coupling.md},
+\texttt{md/lower\_atmosphere\_coupling.md},
 \texttt{docs/EXHALE\_user\_manual.tex}, \texttt{TO\_BE\_DONE.md}.
 \par}
 
@@ -5341,7 +5341,7 @@ Files: \texttt{src/modules/radiation/Cool\_coeff.f90},
 The molecular network had no photodissociation of neutral H$_2$. The Koskinen
 et al.\ (2022) Table-1 photo-rates start at the 15.4\,eV photoionization edge, so
 below that the only H$_2$ losses were thermal (R12), electron impact (R14) and
-ion chemistry. \texttt{docs/base\_composition\_handoff\_plan.md} \S5 named the
+ion chemistry. \texttt{md/base\_composition\_handoff\_plan.md} \S5 named the
 omission as the reason EXHALE's base comes out more molecular than any
 photochemical code gives, and recorded that pinning $q_{\rm H_2}$ at the base
 (Route 1) patches over it. This adds the missing term.
@@ -5481,9 +5481,9 @@ Files, by directory under \texttt{src/modules/}:
 \texttt{System\_HeH\_mol.f90}, \texttt{System\_HeH\_mol\_metals.f90};
 \texttt{radiation/} --- \texttt{ionization\_equilibrium.f90},
 \texttt{util\_ion\_eq.f90}; plus \texttt{Makefile}.
-Documentation: \texttt{docs/lower\_atmosphere\_coupling.md},
-\texttt{docs/base\_composition\_handoff\_plan.md},
-\texttt{docs/EXHALE\_user\_manual.tex}, \texttt{docs/input\_schema.md},
+Documentation: \texttt{md/lower\_atmosphere\_coupling.md},
+\texttt{md/base\_composition\_handoff\_plan.md},
+\texttt{docs/EXHALE\_user\_manual.tex}, \texttt{md/input\_schema.md},
 \texttt{README.md}, \texttt{README\_HOWTO.md},
 \texttt{examples/exhale\_io.py}.
 \par}
@@ -5533,7 +5533,7 @@ chemistry AND solar C/N/O (\texttt{examples/16\_molecular\_metals}), which fails
 with the prescription that works for its metals-off twin
 \texttt{examples/15\_molecular}.\par}
 The diagnosis is in
-\texttt{docs/hd209\_metal\_stagnation.md}; what follows is what changed in the
+\texttt{md/hd209\_metal\_stagnation.md}; what follows is what changed in the
 code, and one thing that was measured and deliberately \emph{not} changed.
 
 \paragraph{The measurement.} \texttt{solve\_steady\_jfnk} accepts a step on the
@@ -5562,7 +5562,7 @@ continuation \texttt{photo\_deep\_secion\_cont} from \texttt{info = 0} at
 $7.284\times10^{-4}$ in 4 iterations to \texttt{info = 2} at
 $3.249\times10^{-3}$ in 15. This reproduces on two more cases the measurement
 that rejected the same change on 2026-08-11
-(\texttt{docs/newton\_scaling\_and\_base\_wall.md} \S4), and for the reason
+(\texttt{md/newton\_scaling\_and\_base\_wall.md} \S4), and for the reason
 given there: the Newton step is computed from the full residual over all rows,
 so a merit that ignores most of those rows rejects the steps that step takes.
 The merit stays whole-domain, and the code now says so at the site with the
@@ -5643,13 +5643,13 @@ converges at neither tolerance --- 112920 marching steps to the hand-off against
 25837 for the metals-off twin, then 281 outer iterations to a best $\|R\|$ of
 $3.623\times10^{-4}$ with the worst scaled residual at $r = 1.021$, inside the
 stagnant shell. Both remain open, in
-\texttt{docs/hd209\_metal\_stagnation.md}.
+\texttt{md/hd209\_metal\_stagnation.md}.
 
 {\sloppy
 Files: \texttt{src/modules/time\_step/steady\_newton.f90},
 \texttt{src/modules/files\_IO/load\_IC.f90},
 \texttt{src/modules/files\_IO/write\_setup\_report.f90}. Documentation:
-\texttt{docs/hd209\_metal\_stagnation.md} (new), \texttt{TO\_BE\_DONE.md}
+\texttt{md/hd209\_metal\_stagnation.md} (new), \texttt{TO\_BE\_DONE.md}
 item~(A).
 \par}
 
@@ -5673,7 +5673,7 @@ JFNK finish it also means that the residual changes definition between outer
 iterations: \texttt{f\_sp} is overwritten by each accepted trial, so the map the
 next iteration differentiates and line-searches differs from the previous one,
 by a finite amount, at exactly those cells
-(\texttt{docs/hd209\_metal\_stagnation.md} section~3, where the same section
+(\texttt{md/hd209\_metal\_stagnation.md} section~3, where the same section
 corrects an earlier claim --- within one outer iteration the Jacobian probes and
 the line-search trials do all start from the same composition).
 
@@ -5777,13 +5777,13 @@ Both HD\,209458\,b cases are
 marginal solves and an $O(1)$ change to a handful of cells' composition moves
 them either way; what does not move is that their worst scaled residual sits in
 the stagnant shell at $r = 1.021$ throughout
-(\texttt{docs/hd209\_metal\_stagnation.md} section~6). Removing the inheritance
+(\texttt{md/hd209\_metal\_stagnation.md} section~6). Removing the inheritance
 is justified on its own terms, not by what it does to these two solves.\par}
 
 {\sloppy
 Files: \texttt{src/modules/radiation/ionization\_equilibrium.f90},
 \texttt{src/EXHALE\_main.f90}. Documentation:
-\texttt{docs/hd209\_metal\_stagnation.md} sections~3 and~5,
+\texttt{md/hd209\_metal\_stagnation.md} sections~3 and~5,
 \texttt{TO\_BE\_DONE.md} item~(A).
 \par}
 
@@ -5808,7 +5808,7 @@ ${\sim}207$\,cm\,s$^{-1}$ in the metals-off twin ($M\sim3\times10^{-5}$ against
 a sound speed of ${\sim}4.5$\,km\,s$^{-1}$), and the alternating component of
 $v$ grows to 4.7--10 times the local mean $|v|$ where the metals-off solution
 carries 0.001. Every failed steady solve of that configuration puts its worst
-scaled residual in that shell (\texttt{docs/hd209\_metal\_stagnation.md}
+scaled residual in that shell (\texttt{md/hd209\_metal\_stagnation.md}
 sections~1 and~6).\par}
 
 \paragraph{The term.} \texttt{Low-Mach damping: <eps4> [<M\_th>]} adds a
@@ -6021,8 +6021,8 @@ Files: \texttt{src/modules/flux/low\_mach\_dissipation.f90} (new),
 \texttt{src/modules/files\_IO/input\_read.f90},
 \texttt{src/modules/files\_IO/write\_setup\_report.f90},
 \texttt{src/EXHALE\_main.f90}, \texttt{Makefile}. Documentation:
-\texttt{docs/hd209\_metal\_stagnation.md} sections~7 and~8,
-\texttt{docs/EXHALE\_user\_manual.tex}, \texttt{docs/input\_schema.md} K31b,
+\texttt{md/hd209\_metal\_stagnation.md} sections~7 and~8,
+\texttt{docs/EXHALE\_user\_manual.tex}, \texttt{md/input\_schema.md} K31b,
 \texttt{README.md}, \texttt{TO\_BE\_DONE.md} item~(A).
 \par}
 
@@ -6036,7 +6036,7 @@ restart at two damping coefficients and failing from a cold one, and left open
 whether the acceptance window should be widened to include the layer the
 failures live in. Both questions, and the seed the warm prescription depends
 on, were measured on 2026-08-15. The full account is
-\texttt{docs/hd209\_metal\_stagnation.md} section~9; this section records the
+\texttt{md/hd209\_metal\_stagnation.md} section~9; this section records the
 code change and the conclusions.
 
 \paragraph{The change: the layer's residual is printed, not tested.}
@@ -6209,7 +6209,7 @@ coefficient pair run alongside.\par}
 
 {\sloppy
 Files: \texttt{src/modules/time\_step/steady\_newton.f90} (diagnostic only).
-Documentation: \texttt{docs/hd209\_metal\_stagnation.md} section~9,
+Documentation: \texttt{md/hd209\_metal\_stagnation.md} section~9,
 \texttt{examples/README.md}, \texttt{README\_HOWTO.md},
 \texttt{TO\_BE\_DONE.md} item~(A).
 \par}
@@ -6269,7 +6269,7 @@ gravitational force density $|\rho|\,|G\phi_i(j)-G\phi_i(j{-}1)|/\Delta r_j$
 (the discrete potential difference of the source term), so the number is the
 fractional violation of hydrostatic balance; the three rows print separately.
 Print-only, \texttt{make check} 5/5 byte-identical. Re-measured on the
-section~61 states (\texttt{docs/hd209\_metal\_stagnation.md} section~10): the
+section~61 states (\texttt{md/hd209\_metal\_stagnation.md} section~10): the
 converged \texttt{examples/15} (old scale 9.99) and \texttt{examples/16}
 $\varepsilon_4 = 5\times10^{-3}$ (0.195) and $1\times10^{-2}$ (2.352)
 solutions all hold the layer at $10^{-5}$--$1.4\times10^{-4}$ of $\rho g$.
@@ -6478,7 +6478,7 @@ He/H 0.0959 (from \texttt{base.inp}) while the transit read 1.27\,$R_J$ /
 absorbing areas, and the rotation velocity, so this was a real transit-side
 error for every handoff run.
 
-Fix, per \texttt{docs/lhs1140b\_lower\_atmosphere\_plan\_new.md} Phase~B:
+Fix, per \texttt{md/lhs1140b\_lower\_atmosphere\_plan\_new.md} Phase~B:
 
 {\sloppy
 \begin{itemize}
@@ -6563,7 +6563,7 @@ different physics on different planets. All four now carry \texttt{True}; none
 of them has stored output.
 
 The runs whose stored output predates the flip are listed in
-\texttt{docs/he23s\_default\_recompute\_list.md}; nothing there has been
+\texttt{md/he23s\_default\_recompute\_list.md}; nothing there has been
 recomputed.
 
 %=============================================================================
@@ -6614,7 +6614,7 @@ metric, and the restart of a diffused state (2026-08-25)}
 % ===================================================================== %
 Three defects on the \texttt{He\_diffusion} path, all of them independent of the
 transport formulation and all of them blocking the Phase-D milestones of
-\texttt{docs/binary\_diffusion\_design.md} (sections 7.3, 7.4).
+\texttt{md/binary\_diffusion\_design.md} (sections 7.3, 7.4).
 
 \paragraph{The steady solve and the diffusion relaxation are now one routine.}
 The steady residual (\texttt{steady\_newton.f90}) carries no diffusion: the
@@ -6692,7 +6692,7 @@ it produces, as the memo's T2 comparison.
 {\sloppy
 The composition operator of \texttt{He\_diffusion} is rewritten from the
 trace-helium-in-hydrogen kernel to the two-component (binary) formulation of
-\texttt{docs/binary\_diffusion\_design.md}, sections 2--4. New module
+\texttt{md/binary\_diffusion\_design.md}, sections 2--4. New module
 \texttt{src/modules/functions/binary\_element\_diffusion.f90}, routine
 \texttt{element\_diffusion\_step}; the old module is kept for the duration of
 milestone M2 with its routine renamed \texttt{he\_diffusion\_step\_trace} and
@@ -6782,7 +6782,7 @@ that carried \texttt{He\_diffusion: True} without the key ---
 \texttt{docs/version\_compare/wasp\_v2\_diff}, \texttt{scratch\_fs/hd189} (deleted 2026-09-12: a stale fine-structure-cooling scratch run superseded by \texttt{HD189733b/}) ---
 now state \texttt{He\_Kzz: 1.0e9} explicitly, so each input records the eddy
 coefficient its stored output was produced with; no output was regenerated.
-\texttt{docs/input\_schema.md} K19 and \texttt{README\_HOWTO.md} are updated.
+\texttt{md/input\_schema.md} K19 and \texttt{README\_HOWTO.md} are updated.
 \texttt{examples/exhale\_io.py} gains a derived \texttt{Run.heh\_profile}, the
 He/H element ratio with the same nucleus weights the operator uses, so the
 analysis reads one definition.
@@ -6856,7 +6856,7 @@ LHS\,1140\,b run) waits on the baseline capture; neither is claimed here.
 \section{Milestone M3: the binary operator on a wind, the LHS\,1140\,b
 helium-rich runs, and the removal of the trace kernel (2026-08-25)}
 % ===================================================================== %
-Milestone M3 of \texttt{docs/binary\_diffusion\_design.md}: the binary element
+Milestone M3 of \texttt{md/binary\_diffusion\_design.md}: the binary element
 diffusion operator of section 68 is run on converged winds --- the
 HD\,209458\,b \texttt{examples/14\_diffusion} configuration against the captured
 baseline of the kernel it replaces (T2b) and the three LHS\,1140\,b helium-rich
@@ -7636,7 +7636,7 @@ of the same cell, their ratio and the dominant stage pair to
 
 \subsection{Measured effect}
 
-The full tables are \texttt{docs/binary\_diffusion\_design.md} section 9.3. In
+The full tables are \texttt{md/binary\_diffusion\_design.md} section 9.3. In
 short, on two winds restarted from the same converged state and
 Newton-finished:
 
@@ -7886,7 +7886,7 @@ end of the molecular / \texttt{He\_diffusion} exclusion (2026-08-26)}
 % ===================================================================== %
 \texttt{input\_read.f90} refused \texttt{Molecular chemistry: True} together
 with \texttt{He\_diffusion: True} --- an \texttt{error stop} that
-\texttt{docs/binary\_diffusion\_design.md} section 5 put there deliberately, to
+\texttt{md/binary\_diffusion\_design.md} section 5 put there deliberately, to
 be lifted by a validated closure and not by deleting the check. The closure is
 now built and the check is gone.
 
@@ -8003,8 +8003,8 @@ bounds --- the same 28 pass with no runtime error.
 \subsection{The exclusion, and the restart}
 
 \texttt{input\_read.f90} no longer refuses the pair; the paragraph there now
-says why it does not. \texttt{docs/input\_schema.md}, \texttt{README\_HOWTO.md}
-and \texttt{docs/oxygen\_chemistry\_new\_plan.md} are corrected where they
+says why it does not. \texttt{md/input\_schema.md}, \texttt{README\_HOWTO.md}
+and \texttt{md/oxygen\_chemistry\_new\_plan.md} are corrected where they
 stated the exclusion.
 
 \texttt{load\_IC.f90} refused to restart \emph{any} molecular state whose
@@ -8103,7 +8103,7 @@ when the molecular columns are zero.
 
 Byte-identity of the old cases only shows that the operator stays out of the way
 when it is off; nothing in \texttt{make check} ran it at all
-(\texttt{docs/binary\_diffusion\_design.md} section 7.5 had been carrying that
+(\texttt{md/binary\_diffusion\_design.md} section 7.5 had been carrying that
 as an open item since the design was written). The sixth default case,
 \texttt{backup/regression/mol\_diffusion}, closes it. It is
 \texttt{mol\_base\_handoff} --- the Tier-2 hot-Uranus gate with molecular
@@ -8135,7 +8135,7 @@ elemental reservoirs that reach \texttt{melem\_ab} (2026-08-26)}
 % ===================================================================== %
 {\sloppy
 \texttt{base.inp} carried six keys and no statement of what any of them meant
-for the wind. That is P2 of \texttt{docs/oxygen\_chemistry\_new\_plan.md}, and
+for the wind. That is P2 of \texttt{md/oxygen\_chemistry\_new\_plan.md}, and
 the reason it matters is not tidiness: \texttt{q\_H2\_base} had been described
 in places as pinning the base composition, when all it does is set the base
 particle count, and the handoff had no way at all to carry an element --- the
@@ -8146,7 +8146,7 @@ quantity EXHALE actually transports.
 
 Every key now belongs to one of five categories, and the category states what
 the value may do. The table lives in three places that must agree:
-\texttt{read\_base\_inp}'s header comment, \texttt{docs/input\_schema.md}
+\texttt{read\_base\_inp}'s header comment, \texttt{md/input\_schema.md}
 section 2c, and here.
 
 \begin{center}\small
@@ -8418,7 +8418,7 @@ digit. The stored run directories were not regenerated.
 % ===================================================================== %
 \section{The lower atmosphere as a profile, not six scalars (2026-08-27)}
 % ===================================================================== %
-Milestone E1 of \texttt{docs/phase\_e\_flux\_closure\_design.md}. The
+Milestone E1 of \texttt{md/phase\_e\_flux\_closure\_design.md}. The
 lower-atmosphere handoff has been a set of single-level scalars in
 \texttt{base.inp} since Tier 3, and that shape is what makes the composition an
 input rather than an output: \texttt{HeH} is one number, the diffusion operator
@@ -8439,11 +8439,11 @@ names a plain-text file: a block of \texttt{\# key value} header lines, a
 shallow. Same conventions as every other EXHALE product, so
 \texttt{examples/exhale\_io.py} reads it
 (\texttt{load\_lower\_atmosphere\_profile}) with the loader everything else
-uses. The full schema is \texttt{docs/input\_schema.md} section 2d; the header
+uses. The full schema is \texttt{md/input\_schema.md} section 2d; the header
 of the shipped example is
 
 \begin{lstlisting}[language={},basicstyle=\ttfamily\scriptsize]
-# EXHALE lower-atmosphere profile (docs/phase_e_flux_closure_design.md section 2)
+# EXHALE lower-atmosphere profile (md/phase_e_flux_closure_design.md section 2)
 # solution_id 43902c714fe3462149dfe4e5e259553ff3327e405f2a0039176bb5668ee56770
 # source_code analytic
 # source_version examples/17_lower_profile/make_example_profile.py
@@ -8642,7 +8642,7 @@ the path the six cases execute.
 \section{Two producers for the profile handoff: the Photochem adapter and its
 VULCAN cross-check (2026-08-27)}
 % ===================================================================== %
-Milestone E2 of \texttt{docs/phase\_e\_flux\_closure\_design.md}. Section 76
+Milestone E2 of \texttt{md/phase\_e\_flux\_closure\_design.md}. Section 76
 gave EXHALE a reader for the lower-atmosphere profile and an example file built
 by hand; what was missing was a producer. E2 supplies two, behind one command
 line:
@@ -8655,7 +8655,7 @@ line:
   the same fingerprint from a finished VULCAN \texttt{.vul} output. This is the
   cross-check, not a second production path: VULCAN has no climate model, so
   it can never be the route away from a prescribed $T(p)$
-  (\texttt{docs/vulcan\_photochem\_comparison.md} P1.7).
+  (\texttt{md/vulcan\_photochem\_comparison.md} P1.7).
 \item \texttt{src/utils/lower\_profile\_schema.py} --- everything that is a
   property of the FORMAT rather than of either chemistry code: the shared
   command line, the elemental accounting, the hydrostatic radius, the level
@@ -8809,7 +8809,7 @@ $K_{zz}$ [cm$^2$\,s$^{-1}$] & $5.000\times10^{11}$ & $5.000\times10^{11}$ &
 The matched-network hydrogen ratio is
 \texttt{q\_H(VULCAN)/q\_H(Photochem) = 1.079}, which reproduces the
 \textbf{1.08} P1 measured for the code factor on this planet's 2331\,K base
-(\texttt{docs/vulcan\_photochem\_comparison.md} P1.7) --- the adapters carry the
+(\texttt{md/vulcan\_photochem\_comparison.md} P1.7) --- the adapters carry the
 same disagreement the direct comparison found, and add none of their own.
 $T$, $n_{\rm tot}$ and the two element ratios the codes were given identically
 agree to $10^{-4}$ or better.
@@ -8895,7 +8895,7 @@ E3, and the flux closure is E4.
 \section{The climate step, the cold trap, and LHS\,1140\,b through the profile
 (2026-08-27)}
 % ===================================================================== %
-Milestone E3 of \texttt{docs/phase\_e\_flux\_closure\_design.md}, and with it
+Milestone E3 of \texttt{md/phase\_e\_flux\_closure\_design.md}, and with it
 the two gates E2 left open: the LHS\,1140\,b application and T-E8.
 
 Until now the handoff's $T(p)$ was an input. \texttt{--climate} makes it a
@@ -9147,7 +9147,7 @@ them into being worse.
 \section{The elemental-flux closure: the composition becomes an output
 (2026-08-27)}\label{sec:flux-closure}
 % ===================================================================== %
-Milestone E4 of \texttt{docs/phase\_e\_flux\_closure\_design.md}, and with it
+Milestone E4 of \texttt{md/phase\_e\_flux\_closure\_design.md}, and with it
 the last three of Phase E's tests, T-E5 through T-E7.
 
 Until now the lower model was told what to do and never heard back. E2 and E3
@@ -9584,7 +9584,7 @@ it the mass flux, is fixed. Nothing measured that.
 \texttt{src/utils/collisional\_validity.py} (new, Python post-processing; it
 reads an existing run directory and changes nothing, and no Fortran source was
 touched) computes it. Definitions, provenance and the full result tables:
-\texttt{docs/collisional\_validity.md}.
+\texttt{md/collisional\_validity.md}.
 
 \subsection{The collision model is not a new one}
 
@@ -9708,7 +9708,7 @@ electron and H-nucleus closures were checked reaction by reaction against the
 publisher PDFs, and the closures were measured on runs spanning
 \texttt{He/H} = 0.079 to 1000. The record, with the full reaction table and the
 numbers quoted below, is
-\texttt{docs/molecular\_chemistry\_audit\_he\_rich.md}.
+\texttt{md/molecular\_chemistry\_audit\_he\_rich.md}.
 
 \subsection{No rate coefficient was wrong}
 
@@ -10242,7 +10242,7 @@ divergence-free, and the comparison principle that the header's M-matrix
 argument invokes does not apply --- at either end. What separates the two ends
 here is measurement, not proof: the lower one held in every step of both runs,
 the upper one did not. The header comment
-and the corresponding sentence of \texttt{docs/binary\_diffusion\_design.md}
+and the corresponding sentence of \texttt{md/binary\_diffusion\_design.md}
 Sect.~3 (``a clip at round-off (1e-15) is kept only as an assertion, not as a
 limiter'') are corrected to state the measurement.
 
@@ -10417,7 +10417,7 @@ is inside $1.1\,R_p$, where the old $H_p$ sat on its isobaric plateau:
 $\mathrm{Kn}_{\rm bulk}$ at $1.1\,R_p$ goes from $4\times10^{-5}$--$1.2\times
 10^{-4}$ to $2.5$--$4.2\times10^{-4}$. Mach maxima, $\log_{10}\dot{M}$ and the
 coupling times are independent of $L$ and unchanged.
-\texttt{docs/collisional\_validity.md} carries the recomputed tables and a
+\texttt{md/collisional\_validity.md} carries the recomputed tables and a
 row-by-row account of what moved; the numbers quoted in
 section~\ref{sec:knudsen} are the ones from the old scale and are superseded
 by it. Figure \texttt{docs/figures/lhs1140b\_knudsen.pdf} regenerated (that
@@ -11026,7 +11026,7 @@ H$_2^+$ rows, associative branch into the HeH$^+$ row, total on the H$_2$ and
 triplet sinks); \texttt{System\_implicit\_adv\_HeH\_TR.f90};
 \texttt{util\_ion\_eq.f90}; \texttt{ionization\_equilibrium.f90};
 \texttt{post\_process\_adv.f90} (heating terms).
-\texttt{docs/molecular\_chemistry\_audit\_he\_rich.md} section~4.4 updated,
+\texttt{md/molecular\_chemistry\_audit\_he\_rich.md} section~4.4 updated,
 including the withdrawal of its claim that the step entered the Jacobian ---
 the coefficient is constant within a cell, so it appeared only as a jump in
 the loss rate between neighbouring cells.
@@ -11362,7 +11362,7 @@ change: without the metastable all He\,\textsc{i} is the singlet);
 the three \texttt{info} guards, their counters and reports, and
 \texttt{pin\_cell\_to\_equilibrium}, which the validity conditions and the
 guards share).
-\texttt{docs/postprocess\_advection\_validity.md} carries the same items next
+\texttt{md/postprocess\_advection\_validity.md} carries the same items next
 to the 2026-08-12 pair.
 \texttt{docs/lhs1140b\_exhale\_vs\_pwinds.tex} is \emph{not} edited.
 
@@ -11404,7 +11404,7 @@ leak can reach the check at all}. What it reads instead is how far
 is raised from $10^{-4}$ to $10^{-3}$ --- an interim value for the solver as it
 then was; \S\,90 tightens it to $10^{-10}$ once the solver is fixed. Full
 diagnosis, with every measurement:
-\texttt{docs/deep\_level\_elemental\_check.md}.
+\texttt{md/deep\_level\_elemental\_check.md}.
 
 \subsection*{89.1 The symptom}
 
@@ -11511,7 +11511,7 @@ that is the same underlying solver defect moving address rather than a new one
 --- 0.8.4 refuses two compositions of its own on the same grid.
 
 \textbf{Files.} \texttt{src/utils/lower\_profile\_schema.py};
-\texttt{docs/deep\_level\_elemental\_check.md} (the diagnosis);
+\texttt{md/deep\_level\_elemental\_check.md} (the diagnosis);
 \texttt{LHS1140b/exhale/nh\_refusal\_diagnosis/} (the measurement record:
 README, four scripts, five tables, 38 adapter runs under \texttt{scan/}). No
 EXHALE run was made for any of it and no golden was touched; the adapter's
@@ -11533,7 +11533,7 @@ $\log_{10}\dot M$ is unchanged in its fourth decimal. The one EXHALE change is
 that \texttt{-{}-abundance-tol} goes back to its design value,
 $10^{-3} \rightarrow 10^{-10}$. Records:
 \texttt{LHS1140b/exhale/crossings\_pc090/results.txt},
-\texttt{docs/photochem\_solver\_modification\_implementation.md}.
+\texttt{md/photochem\_solver\_modification\_implementation.md}.
 
 \subsection*{90.1 What was changed, and where}
 
@@ -11560,7 +11560,7 @@ unconstrained MINPACK solves.
 
 Both dependency changes are reproducible patches applied through Photochem's
 CMake configuration. Diagnosis:
-\texttt{docs/photochem\_solver\_modification\_investigation.md}.
+\texttt{md/photochem\_solver\_modification\_investigation.md}.
 
 \subsection*{90.2 A blocking defect, found only by running a column}
 
@@ -11677,10 +11677,10 @@ remains the reproduction path for every profile whose header reads
 \texttt{\# source\_version photochem 0.8.4}.
 
 \textbf{Files.} \texttt{src/utils/lower\_profile\_schema.py} (the default);
-\texttt{docs/photochem\_solver\_modification\_investigation.md} (diagnosis),
-\texttt{docs/photochem\_solver\_modification\_implementation.md} (what was
+\texttt{md/photochem\_solver\_modification\_investigation.md} (diagnosis),
+\texttt{md/photochem\_solver\_modification\_implementation.md} (what was
 built and measured),
-\texttt{docs/deep\_level\_elemental\_check.md} \S\S\,8--10 (the tolerance, the
+\texttt{md/deep\_level\_elemental\_check.md} \S\S\,8--10 (the tolerance, the
 crossings, the climate solve);
 \texttt{LHS1140b/exhale/crossings\_pc090/} (the 11-rung re-measurement) and
 \texttt{LHS1140b/exhale/nh\_refusal\_diagnosis/scan\_pc090/} (the 45-point
@@ -11952,7 +11952,7 @@ $6.5\times10^{-8}$ in the He/H the closure iterates on, against
 \texttt{element\_flux\_closure.py}'s \texttt{tol = 0.05}. One defect was found
 on the way and corrected: \texttt{insert\_level} broke $n = p/(k_B T)$ at
 exactly one level of the table, the matching level. Full diagnosis, with every
-measurement: \texttt{docs/lower\_profile\_deep\_boundary\_sensitivity.md};
+measurement: \texttt{md/lower\_profile\_deep\_boundary\_sensitivity.md};
 record \texttt{LHS1140b/exhale/deep\_temperature\_sensitivity/}.
 
 \textbf{Reproduced inside one build.} The initial guess handed to the climate
@@ -12064,7 +12064,7 @@ schema change cannot reach it. Not measured: another reservoir value, another
 planet, another $K_{zz}$, and whether the two grid groups are the only two.
 
 \textbf{Files.}
-\texttt{docs/lower\_profile\_deep\_boundary\_sensitivity.md} (the diagnosis);
+\texttt{md/lower\_profile\_deep\_boundary\_sensitivity.md} (the diagnosis);
 \texttt{LHS1140b/exhale/deep\_temperature\_sensitivity/} (the record: README,
 six scripts, three tables, thirteen adapter runs);
 \texttt{src/utils/lower\_profile\_schema.py} (\texttt{insert\_level});
@@ -12368,7 +12368,7 @@ the run-wide \texttt{hybrd1} exit-code histogram of the molecular solves.
 the end of a run, next to the clamped-cell count.
 \item \texttt{TO\_BE\_DONE.md} --- new item (O), the negative reconstructed
 pressure.
-\item \texttt{docs/molecular\_chemistry\_audit\_he\_rich.md} --- section 7,
+\item \texttt{md/molecular\_chemistry\_audit\_he\_rich.md} --- section 7,
 closing both open items of its section 6.
 \end{itemize}
 
@@ -13054,7 +13054,7 @@ not prove it).
 
 \textbf{Files.} \texttt{src/utils/photochem\_to\_lower\_profile.py}
 (\texttt{steady\_state\_at\_stated\_model\_top});
-\texttt{docs/lower\_profile\_deep\_boundary\_sensitivity.md} \S\,8 (the repair,
+\texttt{md/lower\_profile\_deep\_boundary\_sensitivity.md} \S\,8 (the repair,
 with every measurement);
 \texttt{LHS1140b/exhale/deep\_temperature\_sensitivity/}
 (\texttt{runs/pin\_g4*}, \texttt{spread\_table\_pinned.txt}, README);
@@ -13259,7 +13259,7 @@ fired).
 \section{The O I ground term stops being an internal of the cooling (2026-08-30)}
 %=============================================================================
 
-Phase P3 item 2 of \texttt{docs/oxygen\_chemistry\_new\_plan.md}. The three
+Phase P3 item 2 of \texttt{md/oxygen\_chemistry\_new\_plan.md}. The three
 fine-structure levels of the O I \texttt{2p4 3P} ground term were already being solved
 for -- the \texttt{[O I]} 63.2/145.5/44.1um cooling is a three-level statistical
 equilibrium and cannot be evaluated without them -- but the solution existed
@@ -14189,7 +14189,7 @@ cool base: measured on a photochemical model of HD\,189733\,b it carries
 through $\mathrm{OH+H_2\to H_2O+H}$ and the photolysis that returns the water to
 OH.
 
-This section is milestone M2 of \texttt{docs/a2\_oxygen\_option\_design.md}: the
+This section is milestone M2 of \texttt{md/a2\_oxygen\_option\_design.md}: the
 chemistry solved as a \textbf{local steady state}, with the FUV bands, inside the
 cell-by-cell equilibrium solve. There is no vertical transport --- that is M3,
 and the design says in advance that a local steady state is the wrong physics at
@@ -14214,7 +14214,7 @@ $\mathrm{O(^1D)+H_2\to OH+H}$ (Atkinson et al.\ 2004, IUPAC data sheet I.A2.18),
 and the four photolysis channels \texttt{O3}/\texttt{O4}/\texttt{O5} (H$_2$O) and
 \texttt{O7} (OH). Five further reactions were transcribed and \textbf{excluded on
 measurement}, at $7.8\times10^{-9}$ to $2.8\times10^{-5}$ of the dominant
-channel. The audit is \texttt{docs/a2\_reaction\_audit.md}; the coefficients are
+channel. The audit is \texttt{md/a2\_reaction\_audit.md}; the coefficients are
 \texttt{src/modules/lower\_atmosphere/oxygen\_rates.f90}, which M1 deliberately
 left out of \texttt{SRC} in the \texttt{Makefile} and which M2 puts in.
 
@@ -14512,12 +14512,12 @@ here, so the matrix is unchanged at seven cases.
 Section 108 built the oxygen chemistry as a \textbf{local steady state} and said
 in advance that this is the wrong physics at the base the option exists for. The
 measurement behind that is the P4 block of
-\texttt{docs/oxygen\_chemistry\_new\_plan.md}: at the HD\,189733\,b 1\,$\mu$bar
+\texttt{md/oxygen\_chemistry\_new\_plan.md}: at the HD\,189733\,b 1\,$\mu$bar
 level $\tau_{\rm chem}({\rm H_2})/\tau_{\rm adv}$ is 0.20 to 1.67 on $H/v$ and
 16.4 pressure-matched at EXHALE's own base cell, against $10^{-3}$ on
 HD\,209458\,b. The one planet whose base partition the oxygen photochemistry
 decides is the one planet whose base partition is not local. This section is
-milestone M3 of \texttt{docs/a2\_oxygen\_option\_design.md}: the transport.
+milestone M3 of \texttt{md/a2\_oxygen\_option\_design.md}: the transport.
 
 It also closes a bookkeeping defect section 108 measured and left open --- the
 912--1110\,\AA\ band was counted twice --- and that comes first, because the
@@ -15337,7 +15337,7 @@ covers the H$_2$ line sum, the net exchange, the corrected H$_3^+$ net rate and
 the two-sided fine-structure escape in one run. The H$_2$O and CO bands are not
 covered by any case: they need the oxygen chemistry, whose own regression case
 (\texttt{mol\_oxygen}) is milestone M5 of
-\texttt{docs/a2\_oxygen\_option\_design.md} and is still unwritten.
+\texttt{md/a2\_oxygen\_option\_design.md} and is still unwritten.
 
 What item (G) still holds, narrowed: where the molecules are, the layer now has
 coolants of the right size and each has a radiative equilibrium temperature
@@ -15794,7 +15794,7 @@ $\log_{10}\dot M$ stays 10.58. Refreshed at the end of this change with
 check\,$\to$\,golden\,$\to$\,check.
 
 \subsection*{The \texttt{Base IR field} NaN of the He/H\,$=1$ case}
-\texttt{docs/supersonic\_molecular\_base.md} section 11.6 reports that switching
+\texttt{md/supersonic\_molecular\_base.md} section 11.6 reports that switching
 \texttt{Base IR field} on in the He/H\,$=1$ molecular case reaches NaN at step 3,
 and attributes it to this routine. \textbf{Reproduced and fixed.} The case is
 \texttt{backup/regression/mol\_diffusion} with \texttt{He/H = 1.0} (in both
@@ -15860,7 +15860,7 @@ the same concurrent load): no measurable cost.
 its own physics: a cell state was retained as chemical equilibrium if it
 satisfied the element bounds, whatever its reaction residual, and after a
 projection onto the element budget the residual was not recomputed at all
-(\texttt{docs/supersonic\_molecular\_base.md} \S11.4). Bounds and element
+(\texttt{md/supersonic\_molecular\_base.md} \S11.4). Bounds and element
 conservation are necessary conditions; they are not reaction equilibrium.
 Both branches --- molecular and atomic --- now accept a state as a root only
 when it is inside the element bounds \emph{and} its normalized reaction
@@ -16052,7 +16052,7 @@ The order of proof was: instrument, measure, implement, re-verify.
 
 {\sloppy
 \textbf{The judgement first.} Stage 3 of the supersonic-molecular-base series
-(\texttt{docs/supersonic\_molecular\_base.md} \S11.5-B) was to build a
+(\texttt{md/supersonic\_molecular\_base.md} \S11.5-B) was to build a
 chemical equilibrium solve whose iterates cannot leave the physical
 composition domain, so that the poisoning \S113 could catch but not
 condemn --- cell 387 of the He/H$\,=1$ case, accepted at a normalized reaction
@@ -16194,7 +16194,7 @@ $1.05\times10^6/T$ by which it departs from it (921$\times$ at 1140 K,
 coded expressions) is a consequence of comparing two different channels, not
 evidence of a defect in either fit. The caveat in \texttt{mol\_rates.f90}
 calling this a detailed-balance violation was wrong and is corrected, as is
-\S4.3 of \texttt{docs/molecular\_chemistry\_audit\_he\_rich.md}. An
+\S4.3 of \texttt{md/molecular\_chemistry\_audit\_he\_rich.md}. An
 independent 2018 network (Ziegler, A\&A 620, A81, Table A.1 rows 7 and 8)
 pairs exactly the same two sources.
 
@@ -17250,7 +17250,7 @@ supposed to vary He/H. If the base molecularity moves along the ladder as
 well, the two variables are confounded and a measured trend cannot be
 attributed to either. Holding $x_2$ fixed makes the ladder an experiment in
 He/H alone. For contrast, the \texttt{q\_H2\_base = 0.30} used in the D2
-experiment of \texttt{docs/supersonic\_molecular\_base.md} was chosen only
+experiment of \texttt{md/supersonic\_molecular\_base.md} was chosen only
 for being ``below the maximum 1/3'' --- nearly the same number, with no
 reason attached to it.
 
@@ -17312,12 +17312,12 @@ not.} C1 turned several descriptions of \texttt{q\_H2\_base} into falsehoods
 --- most directly \texttt{input\_read.f90}'s ``It is an EOS anchor, NOT a
 composition pin: nothing holds H2 at that value'' --- and those were fixed
 where they describe CURRENT behaviour: \texttt{parameters.f90},
-\texttt{input\_read.f90}, \texttt{docs/input\_schema.md},
+\texttt{input\_read.f90}, \texttt{md/input\_schema.md},
 \texttt{docs/EXHALE\_user\_manual.tex} and
 \texttt{docs/composition\_restart\_and\_base\_handoff.tex}. The same wording
 survives in this changelog's earlier sections and in the dated plan and
-review memos (\texttt{docs/oxygen\_chemistry\_plan\_code\_review.md},
-\texttt{docs/a2\_oxygen\_option\_design.md}), and was deliberately left
+review memos (\texttt{md/oxygen\_chemistry\_plan\_code\_review.md},
+\texttt{md/a2\_oxygen\_option\_design.md}), and was deliberately left
 there: those are records of what was true when they were written, and
 rewriting them would destroy the history rather than correct it.
 
@@ -17327,7 +17327,7 @@ Under the imposed partition the ghost ionization stages are physical:
 H\,\textsc{i} $6.94\times10^{12}$, H\,\textsc{ii} 674, He\,\textsc{i}
 $7.35\times10^{12}$, H$_2$ $4.286\times10^{13}$, H$_3^+$
 $5.26\times10^{4}$~cm$^{-3}$. Hydrogen is not ionized; the fully ionized
-11--132~K base recorded in \texttt{docs/supersonic\_molecular\_base.md}
+11--132~K base recorded in \texttt{md/supersonic\_molecular\_base.md}
 \S11.3 does not recur here. This is one probe on one case and is not a claim
 about the He/H$\,=1$ case, which is refused by C2 as configured and is
 re-specified in the window re-measurement block.
@@ -17342,7 +17342,7 @@ and a boundary condition that copies an interior velocity into it is
 over-specified --- it feeds the domain a state the domain itself produced.
 The interior downstream of such a boundary is not a solution of the stated
 problem, whatever the chemistry is doing. \S2 of
-\texttt{docs/supersonic\_molecular\_base.md} established this; what was
+\texttt{md/supersonic\_molecular\_base.md} established this; what was
 missing was that a run never said when it had crossed.
 
 \texttt{check\_base\_inflow\_is\_subsonic} now measures the base ghost Mach
@@ -17355,7 +17355,7 @@ moves outward. An outflowing base is a different condition and is measured
 but not warned on.
 
 \textbf{Reported, not enforced.} \S11.5-D of
-\texttt{docs/supersonic\_molecular\_base.md} is explicit that this must not
+\texttt{md/supersonic\_molecular\_base.md} is explicit that this must not
 be called the chemistry fix, and it is not: the crossing is evidence about
 the configuration, not a numerical fault to repair in place. It also does not
 make \texttt{Base velocity: massflux} redundant, nor the reverse --- that
@@ -18490,7 +18490,7 @@ base whose ghost silently sits at $\mathtt{ntot\_bc}\times T_0$ --- is refused
 at startup from this section on; it is its own subsection below because the
 refusal invalidates existing runs and the decision to write it was the user's. The measured consequence is that the ``molecular base runs
 supersonic near $\mathrm{He/H}\sim1$--$10$'' window of
-\texttt{docs/supersonic\_molecular\_base.md} is not a physical phenomenon: the
+\texttt{md/supersonic\_molecular\_base.md} is not a physical phenomenon: the
 same case now relaxes to a subsonic, warm, fully molecular base.
 
 \subsection*{What the defect did}
@@ -18632,7 +18632,7 @@ boundary is then not isothermal: it sits at $\mathtt{ntot\_bc}\times T_0$.}
 Measured on \texttt{backup/regression/armD\_D1}, $\mathtt{ntot\_bc}=0.768722$
 and the ghost is at $876.34$~K where \texttt{Equilibrium temperature: 1140.0}
 was asked for. Section 11.5-C of
-\texttt{docs/supersonic\_molecular\_base.md} had already written down the
+\texttt{md/supersonic\_molecular\_base.md} had already written down the
 required response --- ``the code must instead refuse a mismatch between that EOS
 state and the species state used at the same ghost''.
 
@@ -18970,7 +18970,7 @@ $\|F_s\|_2$ differed in its third digit, before any hygiene decision can act
 settles it.
 
 \textbf{It was a defect of its own, and it is now repaired} (item (P37) of
-\texttt{TO\_BE\_DONE.md}, \texttt{docs/supersonic\_molecular\_base.md}
+\texttt{TO\_BE\_DONE.md}, \texttt{md/supersonic\_molecular\_base.md}
 section 12.6). Traced to the constrained element-conserving continuation: its
 seed floored the species listed in \texttt{n\_unknown} /
 \texttt{species\_of\_unknown}, which are rung-partition state built later in
@@ -19144,7 +19144,7 @@ ground-state Solomon dissociation rate divided by the band-integrated field,
 normalized to its own value at the illuminated face of the same run.
 
 Two independent checks of the setup, both in
-\texttt{docs/h2\_self\_shielding\_cloudy.md}: \textsc{Cloudy}'s own
+\texttt{md/h2\_self\_shielding\_cloudy.md}: \textsc{Cloudy}'s own
 \texttt{G(TH85)} at the face is $1.25\times10^{6}$, matching the Habing
 conversion done by hand, and its band photon flux agrees with $F/\langle h\nu
 \rangle$ as \texttt{lyman\_werner.f90} forms it to $0.3\%$.
@@ -19464,7 +19464,7 @@ the mass-loss rate almost unchanged. There is no window and no crossing
 anywhere on the ladder, which is what section~\ref{sec:he-rec-absorber}
 predicted when it removed the two defects that had made the He/H${}\sim1$ case
 look supersonic. The full account, with the convergence recipe and the run
-ledger of each rung, is \texttt{docs/supersonic\_molecular\_base.md}
+ledger of each rung, is \texttt{md/supersonic\_molecular\_base.md}
 section~13; this section is its record here.}
 
 The planet is the hot Uranus of the Tier-2 gate (0.0457\,$M_J$, 0.49\,$R_J$,
@@ -20536,7 +20536,7 @@ Files: \texttt{src/modules/time\_step/steady\_residual.f90},
 \texttt{src/modules/time\_step/steady\_newton.f90},
 \texttt{src/EXHALE\_main.f90}.
 Documentation: \texttt{TO\_BE\_DONE.md} item (P42),
-\texttt{docs/supersonic\_molecular\_base.md} section 13.2.
+\texttt{md/supersonic\_molecular\_base.md} section 13.2.
 
 
 
@@ -20546,7 +20546,7 @@ and H$_2$ is the only one that needs to be (2026-09-02)}
 \label{sec:molecular-carrier-transport}
 % ===================================================================== %
 \textbf{Judgment first. EXHALE solved H$_2$ in local chemical equilibrium, and
-section 13.6 of \texttt{docs/supersonic\_molecular\_base.md} measured that
+section 13.6 of \texttt{md/supersonic\_molecular\_base.md} measured that
 closure to be violated on its own solution: across the H$_2$ front of the
 converged He/H\,=\,0.0793 hot Uranus the omitted advection term is 44 to 117
 times the whole net chemical rate. The transport operator that closes that gap
@@ -20662,7 +20662,7 @@ $-250$\,cm\,s$^{-1}$ and its cell-centred $\rho v r^2$ is 196 times the wind's
 flux inward --- while the face flux the scheme actually transports there,
 reconstructed by integrating its own steady mass residual down from the smooth
 wind, is $+0.36$ to $+0.98$ times the wind flux, \emph{outward}, in every
-converged configuration measured (\texttt{docs/p44\_base\_sawtooth.md}). The
+converged configuration measured (\texttt{md/p44\_base\_sawtooth.md}). The
 cell-centred velocity at that base is a collocated odd-even mode, not infall:
 $\rho$, $p$ and $T$ are monotone through the same cells, the layer carries 288
 cells per scale height, and no dissipative remedy tried --- Shapiro filter,
@@ -20895,8 +20895,8 @@ Files: \texttt{src/modules/lower\_atmosphere/diffusive\_photochemistry.f90},
 \texttt{src/modules/files\_IO/write\_setup\_report.f90},
 \texttt{src/modules/files\_IO/write\_output.f90},
 \texttt{src/modules/init/parameters.f90}, \texttt{src/EXHALE\_main.f90}.
-Documentation: \texttt{docs/supersonic\_molecular\_base.md} sections 13.6 and
-13.7, \texttt{docs/a2\_oxygen\_option\_design.md}, \texttt{TO\_BE\_DONE.md}
+Documentation: \texttt{md/supersonic\_molecular\_base.md} sections 13.6 and
+13.7, \texttt{md/a2\_oxygen\_option\_design.md}, \texttt{TO\_BE\_DONE.md}
 items (P43) and (V).
 
 \section{The trace metals now compete for the He recombination photons, and
@@ -22013,7 +22013,7 @@ $E_{\rm bound}$ moves \texttt{heat\_total} by $0.05$ per cent integrated.
 \item \textbf{Above \texttt{h2\_shielding\_overlap\_column} everything here is
   an upper bound}, for the line-overlap reason
   Sec.~\ref{sec:h2-shield-table} gives. That item is unchanged.
-\item Sources and arithmetic: \texttt{docs/p39\_lw\_cross\_section\_sources.md}.
+\item Sources and arithmetic: \texttt{md/p39\_lw\_cross\_section\_sources.md}.
 \end{itemize}
 
 
@@ -22406,7 +22406,7 @@ Files: \texttt{src/modules/time\_step/steady\_residual.f90},
 \texttt{src/modules/files\_IO/write\_setup\_report.f90},
 \texttt{src/modules/files\_IO/write\_output.f90},
 \texttt{src/EXHALE\_main.f90}.
-Documentation: \texttt{docs/input\_schema.md}, \texttt{README\_HOWTO.md},
+Documentation: \texttt{md/input\_schema.md}, \texttt{README\_HOWTO.md},
 \texttt{docs/EXHALE\_user\_manual.tex}, \texttt{TO\_BE\_DONE.md} item (P42).
 
 
@@ -22661,7 +22661,7 @@ Files: \texttt{src/modules/lower\_atmosphere/diffusive\_photochemistry.f90},
 \texttt{src/modules/radiation/excited\_hydrogen.f90}.
 Regression: \texttt{backup/regression/mol\_carrier}.
 Documentation: \texttt{docs/molecular\_hydrogen\_treatment.tex},
-\texttt{docs/input\_schema.md}, \texttt{TO\_BE\_DONE.md} items (P43) and (Y).
+\texttt{md/input\_schema.md}, \texttt{TO\_BE\_DONE.md} items (P43) and (Y).
 \section{The H$_2$ Lyman--Werner table was a rate for a sub-reservoir of
 H$_2$ and it left out line overlap; the two errors had opposite signs and hid
 each other (2026-09-03)}
@@ -22934,7 +22934,7 @@ corresponded to.
 
 \subsection{What was wrong}
 
-\texttt{docs/p44\_base\_sawtooth.md} (Secs.~8 and 9 there) arrived at this from
+\texttt{md/p44\_base\_sawtooth.md} (Secs.~8 and 9 there) arrived at this from
 the other end. The hot-Uranus gate carries a base velocity artifact at cell~1
 ($v(1) \approx -250$~cm\,s$^{-1}$, a first-order-in-$dr$ boundary
 discretization error) whose effect on the base-face mass flux scales with the
@@ -23556,7 +23556,7 @@ solves still meet \emph{both} gates and reach a smaller residual than before.
 The largest single relative change anywhere in \texttt{wasp\_full} is
 $2.4\times10^{-1}$ in the velocity of the base cell at $r = 1.00235$, where
 $v = -1.9$~cm~s$^{-1}$: that is the collocated odd--even mode of
-\texttt{docs/p44\_base\_sawtooth.md}, not a change in the wind.
+\texttt{md/p44\_base\_sawtooth.md}, not a change in the wind.
 
 \medskip
 \noindent\textbf{Block-F golden refresh.} The previous goldens are preserved at
@@ -23619,7 +23619,7 @@ trials refused   & 0 & 37 (worst 4 cells, worst residual 1.33e-6) \\
 ended the hand-off. What holds the second solve is the flux gate at
 $7.6\times10^{-3}$ against a threshold of $5\times10^{-3}$, a factor $1.5$ ---
 and that is the propagating front of
-\texttt{docs/supersonic\_molecular\_base.md} Sec.~13.7, not a solver failure:
+\texttt{md/supersonic\_molecular\_base.md} Sec.~13.7, not a solver failure:
 the carrier pass moves the composition by $0.553$ and leaves a carrier steady
 residual of $3.92\times10^{-2}$ at $r = 1.203$, and over the marching that
 follows the flux spread grows monotonically from $1.24\times10^{-1}$ at step
@@ -25068,9 +25068,9 @@ JFNK iterations against 5, with $\log_{10}\dot M$ unchanged at 10.34. The
 Newton system and the line-search merit keep the state scales, deliberately.
 
 \medskip
-\noindent Full measurement: \texttt{docs/p54\_base\_layer\_mass\_flux.md} (the
-mass row and the census), \texttt{docs/p55\_base\_mode.md} (the momentum row
-and the marching departure), \texttt{docs/p54g23\_row\_scale\_scan.md} (all
+\noindent Full measurement: \texttt{md/p54\_base\_layer\_mass\_flux.md} (the
+mass row and the census), \texttt{md/p55\_base\_mode.md} (the momentum row
+and the marching departure), \texttt{md/p54g23\_row\_scale\_scan.md} (all
 three rows compared). This closes item (AA) for the mass flux and opens
 (AD) and (AE) in \texttt{TO\_BE\_DONE.md}.
 
@@ -25127,7 +25127,7 @@ $1.92\times10^{2}$ at 1.20 on the hot Uranus ($7.69\times10^{3}$,
 $2.24\times10^{3}$, $1.08\times10^{2}$, $1.71\times10^{1}$ on WASP-121b). A
 residual $\epsilon$ of that row therefore displaces the mass flux by
 $\epsilon\,(|{\rm d}F_2|/F_0)$ of the wind per crossing time, and
-\texttt{docs/p55\_base\_mode.md} \S4 predicts the measured departure rate of an
+\texttt{md/p55\_base\_mode.md} \S4 predicts the measured departure rate of an
 accepted state from exactly that product to \textbf{9 per cent}.
 
 \medskip
@@ -25159,7 +25159,7 @@ $r\ge$ & spread, cell centre & spread, Riemann face\\
 $1.002\,R_{\rm p}$. The one place they differ is cell~1, where the centred
 product is $-21\,F_0$ --- negative, 21 times the wind flux --- while both of
 its faces carry $+1.75$ and $+1.92\,F_0$; that is the odd-even mode of
-\texttt{docs/p44\_base\_sawtooth.md}, and it is why the face flux is single
+\texttt{md/p44\_base\_sawtooth.md}, and it is why the face flux is single
 signed over the whole column where the cell-centred one changes sign. There is
 no mass source that could produce the rest: $S_1=0$, and the Shapiro filter,
 the low-Mach damping, the element diffusion, the carrier transport, the viscous
@@ -25229,7 +25229,7 @@ All 34 named cases were run under both binaries --- the 10-case
 \texttt{run\_check.sh} matrix, every \texttt{backup/regression/} case carrying
 \texttt{Solver: Newton}, and the three \texttt{Resid tol} cases --- from copies
 of their inputs, each keeping its own \texttt{maxsteps} and otherwise capped at
-60{,}000 steps. Full table: \texttt{docs/p54g23\_census.md}.
+60{,}000 steps. Full table: \texttt{md/p54g23\_census.md}.
 
 \medskip
 \noindent\textbf{Seven goldens move; twenty-seven are byte-identical.} The
@@ -25258,7 +25258,7 @@ under this measure --- \texttt{armD\_D2\_LW\_newton}, \texttt{armD\_D2\_newton},
 too, at the same iteration and for the same reason (\texttt{no descent
 direction exists for the banded model at this state}, at flux spreads of 21 to
 34, i.e.\ states nowhere near steady). The failure list is a strict subset of
-the old one; \texttt{docs/p54g23\_nonconvergent.md} records which row and which
+the old one; \texttt{md/p54g23\_nonconvergent.md} records which row and which
 cell blocks each.
 
 \begin{table}[htbp]\centering\small
@@ -25378,7 +25378,7 @@ them --- for a reason independent of the row scale.
       magnitude --- all depart identically (4.277, 4.291, 4.292). \emph{The
       departure is not controlled by the part of the residual this section
       removes}; it is a restart kick and a cell-1 problem
-      (\texttt{docs/p55\_base\_mode.md} \S7(2) and \S7(3)). New item (AD).
+      (\texttt{md/p55\_base\_mode.md} \S7(2) and \S7(3)). New item (AD).
 \item \textbf{The energy half of (AA)}, the factor-2 gap in
       ${\rm heating}={\rm cooling}+p\,{\rm div}\,v+{\rm advection}$ below
       $1.08\,r_{\rm base}$. This section is a statement about how a row is
@@ -25390,10 +25390,10 @@ them --- for a reason independent of the row scale.
 \texttt{energy\_row\_scale}, \texttt{store\_row\_terms},
 \texttt{refresh\_row\_terms}; \texttt{residual\_row\_scale} dispatches),
 \texttt{src/modules/time\_step/steady\_newton.f90} (comment only).
-Documentation: \texttt{docs/p54\_base\_layer\_mass\_flux.md},
-\texttt{docs/p55\_base\_mode.md}, \texttt{docs/p54g23\_row\_scale\_scan.md},
-\texttt{docs/input\_schema.md} (K35, K35b),
-\texttt{docs/newton\_scaling\_and\_base\_wall.md} (\S2 and \S3),
+Documentation: \texttt{md/p54\_base\_layer\_mass\_flux.md},
+\texttt{md/p55\_base\_mode.md}, \texttt{md/p54g23\_row\_scale\_scan.md},
+\texttt{md/input\_schema.md} (K35, K35b),
+\texttt{md/newton\_scaling\_and\_base\_wall.md} (\S2 and \S3),
 \texttt{TO\_BE\_DONE.md} ((AA) closed for the mass flux, (V) extended,
 (AD) and (AE) opened).
 
@@ -25412,7 +25412,7 @@ step number, at a rate the accepted state's own residual predicts to nine
 percent. Two things produce it, both measured; one is now fixed, and the other
 is what \S\ref{sec:row-scales-own-terms}'s item (AD) is about.
 
-\noindent Full account and figures: \texttt{docs/p55\_base\_mode.md},
+\noindent Full account and figures: \texttt{md/p55\_base\_mode.md},
 \texttt{docs/p55\_base\_mode.png}, \texttt{docs/p55\_operator\_terms.png},
 \texttt{docs/p55\_reload.png}.
 
@@ -25657,8 +25657,8 @@ header; \texttt{comp\_T\_from\_p} after the post-solve sweep;
 \texttt{src/modules/files\_IO/write\_output.f90} (emits the line),
 \texttt{src/modules/files\_IO/write\_setup\_report.f90} (reports the restore),
 \texttt{src/modules/init/parameters.f90} (\texttt{sec\_ion\_armed\_step}).
-Documentation: \texttt{docs/p55\_base\_mode.md} (+ three figures),
-\texttt{docs/input\_schema.md}, \texttt{docs/EXHALE\_user\_manual.tex},
+Documentation: \texttt{md/p55\_base\_mode.md} (+ three figures),
+\texttt{md/input\_schema.md}, \texttt{docs/EXHALE\_user\_manual.tex},
 \texttt{TO\_BE\_DONE.md} ((AD) narrowed, the \texttt{roundtrip} broken IC
 opened). Regression: 10/10 data identical; \texttt{run\_fcheck.sh} CLEAN.
 
@@ -25679,8 +25679,8 @@ routine's own comment says it is, and under it two accepted states carried cells
 218 times above the tolerance. Both are now what they say. Neither change moves a
 mass-loss rate.
 
-\noindent Measurements: \texttt{docs/p55\_base\_mode.md} \S11,
-\texttt{docs/p55\_update\_map.md}, \texttt{docs/p55\_du\_window\_census.md}.
+\noindent Measurements: \texttt{md/p55\_base\_mode.md} \S11,
+\texttt{md/p55\_update\_map.md}, \texttt{docs/p55\_du\_window\_census.md}.
 
 \subsection{The flux gate reads the Riemann face mass flux}
 
@@ -25977,9 +25977,9 @@ fixes), the earlier builds of 2026-09-03 cannot be reconstructed either way.
 \texttt{src/modules/functions/utilities.f90},
 \texttt{src/modules/files\_IO/write\_output.f90},
 \texttt{src/modules/files\_IO/write\_setup\_report.f90}, \texttt{Makefile}.
-Documentation: \texttt{docs/p55\_base\_mode.md} \S11,
-\texttt{docs/p55\_update\_map.md}, \texttt{docs/p55\_du\_window\_census.md},
-\texttt{docs/input\_schema.md}, \texttt{docs/EXHALE\_user\_manual.tex},
+Documentation: \texttt{md/p55\_base\_mode.md} \S11,
+\texttt{md/p55\_update\_map.md}, \texttt{docs/p55\_du\_window\_census.md},
+\texttt{md/input\_schema.md}, \texttt{docs/EXHALE\_user\_manual.tex},
 \texttt{TO\_BE\_DONE.md}.
 
 \section{The boundary condition writes the boundary, and the residual is a
@@ -26599,7 +26599,7 @@ continuation state and \texttt{reconstruction\_operator\_label}),
 \texttt{src/modules/time\_step/steady\_residual.f90}
 (\texttt{reconstruction\_continuation\_rhs}), \texttt{src/EXHALE\_main.f90}
 (the controller). Documentation:
-\texttt{docs/f\_plm\_weno\_continuation.md}, \texttt{docs/input\_schema.md}.
+\texttt{md/f\_plm\_weno\_continuation.md}, \texttt{md/input\_schema.md}.
 
 \section{One routine counts the elements, and it is asserted around every
 refresh that moves them (2026-09-03)}
@@ -26882,7 +26882,7 @@ factor 2 above the run's own convention.} That is fixed: one definition,
 code has.
 
 \noindent Full account, design and figures:
-\texttt{docs/e2\_lw\_geometry.md},
+\texttt{md/e2\_lw\_geometry.md},
 \texttt{docs/e2\_lw\_geometry\_factors.png},
 \texttt{docs/e2\_lw\_geometry\_rays.png}.
 
@@ -27847,7 +27847,7 @@ $R_{\rm mom}(1)/(\rho g)$ reads 0.2514, 0.2507, 0.2503, 0.2502 over an
 $8\times$ refinement, against an interior truncation error of
 $4.9\times10^{-6}$.} The velocity it drives is first order in $\delta r$:
 $-247.1, -123.2, -61.3, -30.5$~cm~s$^{-1}$, which is
-\texttt{docs/p44\_base\_sawtooth.md} section 7's production ladder
+\texttt{md/p44\_base\_sawtooth.md} section 7's production ladder
 ($-248.3, -122.2, -60.0$) reproduced to within 1--2 per cent \textbf{with no
 chemistry, no radiation, no molecules and no wind}. The base sawtooth was never
 a molecular-layer phenomenon; it was this boundary.
@@ -27874,7 +27874,7 @@ closure --- and its level is now carried to the face by the boundary itself, so
 refining the grid no longer moves the level the user stated.
 
 \noindent Design note, every measurement, and the decisions:
-\texttt{docs/phaseC\_characteristic\_base\_bc.md}. Patch:
+\texttt{md/phaseC\_characteristic\_base\_bc.md}. Patch:
 \texttt{docs/phaseC\_base\_bc.diff}.
 
 \subsection{What the count is, and what the code had}
@@ -27917,7 +27917,7 @@ Two probe measurements separate them, and they separate cleanly.
       gives 0.031.
 \end{itemize}
 
-\noindent \texttt{docs/p44\_base\_sawtooth.md} section 9 reached the same
+\noindent \texttt{md/p44\_base\_sawtooth.md} section 9 reached the same
 separation from the other side (raising $T_0$ closes the thermal gap and leaves
 the flux error untouched), and \texttt{TO\_BE\_DONE.md} item (W) records it.
 
@@ -28030,7 +28030,7 @@ with the reloaded root to \textbf{$3.9\times10^{-5}$ in $\rho$,
 $1.9\times10^{-4}$ in $v$, $1.3\times10^{-5}$ in $T$}, $v(1) = +14.393$ against
 $+14.395$, and $T$ at $r - R_{\rm p} = 8\times10^{-3}$ equal to 818.01~K in
 both. \textbf{That repairs the reproducibility defect of
-\texttt{docs/p44\_base\_sawtooth.md} section 8.4}, which measured three
+\texttt{md/p44\_base\_sawtooth.md} section 8.4}, which measured three
 $\texttt{info} = 0$ states of this configuration on this same default base grid
 putting the H$_2$ front anywhere in 1.053--1.089 $R_{\rm p}$ and that
 temperature anywhere in 583--949~K. The cold start costs 820 JFNK iterations
@@ -28097,7 +28097,7 @@ dependence covers $13.26 \to 13.24$ and whose Newton-finished sibling gives
 $13.21 \to 13.21$, though their 60 per cent longer march
 ($11289 \to 18026$) is a real cost; and \texttt{lower\_profile} is not converged
 in either build (\texttt{du} 28.2 and 819) so its row compares two transients.
-Full table: \texttt{docs/phaseC\_characteristic\_base\_bc.md} section 7.4.
+Full table: \texttt{md/phaseC\_characteristic\_base\_bc.md} section 7.4.
 
 \subsection{What this does not do}
 
@@ -28191,7 +28191,7 @@ composition before each repetition). Patch:
 
 \subsection{The premise of item (4) does not reproduce}
 
-\S11.6 of \texttt{docs/p55\_base\_mode.md} recorded that re-running the
+\S11.6 of \texttt{md/p55\_base\_mode.md} recorded that re-running the
 ionization sweep on an accepted state moves the mass residual of cells 1 and 2
 from $9\times10^{-6}$ to $2.7\times10^{-1}$ and $8.6\times10^{-1}$, and
 attributed it to \texttt{ioniz\_eq} rewriting $\rho$ through

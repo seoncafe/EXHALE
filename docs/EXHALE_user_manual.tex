@@ -50,10 +50,13 @@ to trace metals, metal-line cooling, a runtime opacity dispatcher, the Roche
 tidal potential, and excited-hydrogen / Ly$\alpha$ physics. It documents every
 input parameter (with a brief physical meaning), every output file (column by
 column, with units), the analysis tools, and a set of worked examples. The
-detailed physics derivations live in the companion notes
-(\texttt{Update\_EXHALE\_early\_phase.tex}, \texttt{transmission\_spectrum.tex},
-\texttt{Update\_EXHALE.tex}, \texttt{cooling\_formulas.tex} (the complete
-reference for every analytic cooling coefficient),
+equations and algorithms as the code applies them are in
+\texttt{EXHALE\_physics\_and\_algorithms.pdf}; the detailed derivations live in
+the companion notes (the dated update logs
+\texttt{Update\_EXHALE\_stage0.pdf} to \texttt{Update\_EXHALE\_stage3.pdf},
+whose Markdown sources are \texttt{md/Update\_EXHALE\_stage1.md} to
+\texttt{stage3.md}, \texttt{transmission\_spectrum.tex},
+\texttt{cooling\_formulas.tex} (the analytic cooling coefficients),
 \texttt{EXHALE\_BC\_and\_IC.tex} (the boundary- and
 initial-condition reference), and \texttt{wind\_ae\_solver.tex}, the
 Wind-AE steady-wind solver used by \texttt{IC mode: windae});
@@ -84,16 +87,20 @@ to a steady state, where $\Phi$ is the gravitational (optionally Roche) potentia
 (\S\ref{sec:potential}), $\mathcal{H}$ is the XUV photoionization heating and
 $\mathcal{C}$ the radiative cooling. Coupled to the hydrodynamics, at every step it solves the
 \emph{ionization equilibrium} of H, He, and the trace metals (C, N, O, Mg, Si,
-Ca, Na, K, S, Fe) with a Newton (MINPACK) solver, including photoionization,
+Ca, Na, K, S, Fe) with a Newton (MINPACK) solver, including photoionization
+(of the inner shells of the metals too, with their Auger electrons),
 collisional ionization, radiative + dielectronic recombination, and charge
 exchange. The photoelectron energy budget carries secondary ionization (a fast
 photoelectron drives further H\,I / He\,I / H$_2$ ionizations instead of
 thermalizing fully) on the Shull \& van Steenberg (1985) ionization budget
-with the Dalgarno, Yan \& Liu (1999) heating fraction and molecular channels,
-the He\,II\,$\to$\,He\,I
-recombination radiation is coupled to H\,I ionization on the spot (Draine 2011
-$y$/$z$), and the He\,$\leftrightarrow$\,H charge-exchange pair (Koskinen 2013)
-acts in every helium-bearing ionization system. When the metastable He\,$2\,^3$S
+with the Dalgarno, Yan \& Liu (1999) heating fraction and molecular channels.
+The ionizing recombination radiation of H\,II, He\,II and He\,III is absorbed on
+the spot, so that the ground captures count as case~A where the gas is thin
+and case~B where it is thick, and the He\,I 584\,\AA\ resonance line is
+scattered by He\,I and partly converted into the $2\,^1$S two-photon continuum
+(\S\ref{sec:data}). The He\,$\leftrightarrow$\,H charge exchange (He$^+$\,$+$\,H,
+its reverse, and the radiative He$^{2+}$\,$+$\,H capture) acts in every
+helium-bearing ionization system. When the metastable He\,$2\,^3$S
 triplet is included the code adds its explicit collisional-excitation cooling
 (the 10830\,\AA\ channel) and the He\,$2\,^3$S\,$+$\,H / H$_2$ Penning
 ionization that removes the metastable. The converged run yields the radial
@@ -101,8 +108,8 @@ profiles of density, velocity,
 temperature, and the ionization state, plus the steady-state \emph{mass-loss
 rate} $\dot M$. A post-processing pass adds advection to the ionization balance,
 and the Python tool \texttt{EXHALE\_transit.py} turns a converged model into transit
-\emph{transmission spectra} (He\,10830, Ly$\alpha$, H$\alpha$/H$\beta$, and the
-metal resonance lines Mg\,II, Ca\,II, Na\,I).
+\emph{transmission spectra} (He\,10830, Ly$\alpha$, H$\alpha$/H$\beta$, the
+metal resonance lines Mg\,II, Ca\,II, Na\,I, and the O\,I 1302/1304/1306 triplet).
 
 \subsection{The lower boundary, radii, and normalization}
 The computational domain starts at a \textbf{lower boundary} placed at the
@@ -221,14 +228,16 @@ are auto-generated, so only edited sources and their dependents recompile.
 make                 # build ./EXHALE.x with gfortran
 make FC=ifort        # Intel ifort   (or FC=ifx for the LLVM compiler)
 make wind_ae_ic      # standalone Wind-AE IC generator -> ./wind_ae_ic.x
-make check           # byte-identical regression against the stored goldens
+make check           # regression against the stored goldens
 make clean           # remove .o/.mod (keeps EXHALE.x)
 make distclean       # wipe build/ and EXHALE.x
 \end{lstlisting}
 \texttt{make check} rebuilds, re-runs each regression case single-threaded
 (\texttt{OMP\_NUM\_THREADS=1}, so the result is deterministic) and
-\emph{bitwise}-compares \texttt{output/Hydro\_ioniz.txt} and
-\texttt{output/Ion\_species.txt} against the stored reference outputs. The
+compares \texttt{output/Hydro\_ioniz.txt} and
+\texttt{output/Ion\_species.txt} against the stored reference outputs,
+\emph{bitwise} first and otherwise within \texttt{REGRESSION\_REL\_TOL}
+(default $10^{-3}$ relative), the verdict line saying which. The
 standing rule it encodes: a refactor with no intended physics change must be
 byte-identical, and a new physics option must default to off. The harness and
 its reference outputs live in \texttt{backup/regression/}; the target reports
@@ -793,7 +802,15 @@ Variable & Effect \\
   ionization stage rows at one of those cells appends one line to
   \path{output/stage_channels.txt} carrying the gas branch, the cell, a call
   counter, the kernel's own arguments and the channels, so the rows can be
-  re-evaluated afterwards at the very state the run gave them. The rows run
+  re-evaluated afterwards at the very state the run gave them. A line holds
+  the state entries 1--29 of both gas branches (temperature, densities,
+  photoionization, recombination and collision coefficients; 26, 27 and 29
+  the He\,$\leftrightarrow$\,H charge-exchange coefficients of He$^0$\,$+$\,H$^+$,
+  He$^+$\,$+$\,H$^0$ and He$^{2+}$\,$+$\,H$^0$, 28 the $2\,^3$S\,$\to$\,$1\,^1$S
+  de-excitation $q_{31g}$), entries 30--59 of the molecular network in a
+  molecular branch, then the 35 gross channels of the H\,II, He\,II and
+  He\,III rows; the file's header names every entry and channel
+  (\path{ion_residual_core.f90}). The rows run
   inside the cell sweep, so the order of the lines is deterministic only with
   one thread. \\
 \end{longtable}
@@ -1000,7 +1017,7 @@ $(\ast)$ \texttt{Log10 of X-ray luminosity [erg/s]:} & real (log$_{10}$) & Only
   is stated by \texttt{Restart intent:} below; the state files also carry the
   configuration they were produced under, and a restart under another
   composition, grid, constant set or option set is refused naming the field
-  (\texttt{docs/input\_schema.md} appendix D.2), unless the differing options
+  (\texttt{md/input\_schema.md} appendix D.2), unless the differing options
   are named by \texttt{Restart option change:} below. \\
 \texttt{Do only PP:} & logical & Skip the time loop and only run the
   post-processing on existing output. It still takes one time step before it
@@ -1105,7 +1122,7 @@ defaults restore the standard behavior).}\label{tab:inp-opt}\\
   500--650\,K spread before. The default is kept at $0.1$, and the guard is
   kept because extrapolating a fit below its fitted range is the wrong thing to
   do, not as a tuning knob
-  (\texttt{docs/coronal\_cutoff\_width.md}, section~7). \\
+  (\texttt{md/coronal\_cutoff\_width.md}, section~7). \\
 \texttt{Base IR field:} & \texttt{True}/\texttt{False} (def.\ \texttt{False})
   & Let the infrared coolants of the molecular layer see the thermal radiation
   of the atmosphere below the base instead of emitting into vacuum. The lower
@@ -1119,7 +1136,7 @@ defaults restore the standard behavior).}\label{tab:inp-opt}\\
   H$_3^+$ infrared cooling; every other channel keeps the optically thin,
   no-incident-field limit. Off by default, and with no effect on an atomic run,
   where those channels carry no cooling
-  (\path{docs/lower_atmosphere_coupling.md}). \\
+  (\path{md/lower_atmosphere_coupling.md}). \\
 \texttt{Molecular IR bands:} & \texttt{True}/\texttt{False} (def.\ \texttt{False})
   & Add the infrared coolants an H$_2$ atmosphere carries below the
   H$_2\to$H front and the atomic channels do not: the H$_2$ quadrupole and
@@ -1162,11 +1179,13 @@ defaults restore the standard behavior).}\label{tab:inp-opt}\\
   cycle releases exactly zero; the photon-driven reactions, the radiative
   recombinations, the collisional ionizations, the Penning channels and the
   H/He charge exchange are excluded because their energy is already in the
-  ledger. Needs \texttt{Molecular chemistry}, so an atomic run is unaffected
+  ledger (the charge exchange in its own channel,
+  \texttt{heat\_charge\_exchange}). Needs \texttt{Molecular chemistry}, so an
+  atomic run is unaffected
   to the bit. Writes the column \texttt{heat\_mol\_chem} to
   \texttt{output/Heating\_breakdown.txt}
   (\path{src/modules/lower_atmosphere/molecular_reaction_heat.f90},
-  \texttt{Update\_EXHALE.md} Sec.~141). \\
+  \texttt{Update\_EXHALE\_stage1} Sec.~141). \\
 \texttt{Stellar LW flux [erg/cm2/s]:} & real (def.\ 0) & Band-integrated
   stellar flux in the H$_2$ Lyman--Werner bands (912--1201\,\AA, i.e.\
   10.3--13.6\,eV) \emph{at the planet's orbit}. Switches on H$_2$
@@ -1198,7 +1217,7 @@ defaults restore the standard behavior).}\label{tab:inp-opt}\\
   zero silently. Without a spectrum file, 0 (default) = no photodissociation. The
   key is inert without \texttt{Molecular chemistry: True}. Writes
   \texttt{output/Lyman\_Werner.txt}
-  (\path{docs/lower_atmosphere_coupling.md}). With
+  (\path{md/lower_atmosphere_coupling.md}). With
   \texttt{Oxygen chemistry: True} the same key \emph{also} supplies the first
   photolysis band (band \texttt{LW}): 912--1201\,\AA{} is one wavelength
   interval with one incident flux, over which H$_2$, H$_2$O and OH absorb out
@@ -1264,7 +1283,8 @@ defaults restore the standard behavior).}\label{tab:inp-opt}\\
 \texttt{Deexc heat:} & logical (def.\ \texttt{True}) & Collisional de-excitation
   of H($n{=}2$) returns $10.2\,$eV to the electrons. It is not a double count of
   the H\,\textsc{i} collisional-excitation cooling, which is the one-way coronal
-  rate of Cen (1992) with no de-excitation term in it; most of the $n{=}2$
+  sum over the CHIANTI~11.0.2 H\,I levels (the same $1s\to2s,2p$ rates the
+  $n{=}2$ model uses) with no de-excitation term in it; most of the $n{=}2$
   population is maintained by Ly$\alpha$ pumping, so the term is absorbed
   Ly$\alpha$ thermalized by a collision. Active only with the excited-H model;
   \texttt{False} reverts to the one-way ledger. \\
@@ -1273,8 +1293,8 @@ defaults restore the standard behavior).}\label{tab:inp-opt}\\
   hydrostatic IC; needed for deep-RLOF bases that do not launch from rest.
   Auto-enables \texttt{Force start}. \\
 \texttt{Newton solver:} & logical (def.\ \texttt{True}) & Solve the ionization
-  equilibrium with the analytic-Jacobian Newton method (with a MINPACK
-  \texttt{hybrd1} fallback); \texttt{False} reverts to the legacy \texttt{hybrd1}.
+  equilibrium with the analytic-Jacobian Newton method (MINPACK
+  \texttt{hybrd1} takes over where it fails); \texttt{False} reverts to the legacy \texttt{hybrd1}.
   Default is faster ($\sim$25\%) and reproduces \texttt{hybrd1} to $\sim10^{-7}$. \\
 \texttt{Brent solver:} & logical (def.\ \texttt{True}) & Solve the post-process
   energy equation with a bracketing (Brent) root-finder that selects the physical
@@ -1346,7 +1366,7 @@ defaults restore the standard behavior).}\label{tab:inp-opt}\\
   tolerance; the volume-weighted norm is reported beside it and no longer
   decides acceptance. $du$ alone is blind to the energy imbalance
   (\S\ref{sec:newton}); the scales and the reason for each are in
-  \texttt{docs/input\_schema.md} K35. \\
+  \texttt{md/input\_schema.md} K35. \\
 \texttt{Time stepping:} & \texttt{Local} & Pseudo-time steps in each cell
   (steady-state acceleration; not time-accurate). Reaches the deep state fast but
   leaves residuals in each cell; pair with a Newton finish. \\
@@ -1376,7 +1396,7 @@ defaults restore the standard behavior).}\label{tab:inp-opt}\\
   loading a file that says \texttt{mode=phys} without a finite non-negative
   \texttt{t\_phys} is refused), and is echoed in \texttt{EXHALE\_setup.out}
   together with whether it was given or defaulted. See
-  \texttt{docs/input\_schema.md} K45. \\
+  \texttt{md/input\_schema.md} K45. \\
 \texttt{Restart intent:} & \texttt{trajectory} $|$
   \texttt{relaxation} $|$ \texttt{stationary} [\texttt{evaluate} $|$
   \texttt{equilibrate}] (def.\ \texttt{trajectory} with
@@ -1426,7 +1446,7 @@ defaults restore the standard behavior).}\label{tab:inp-opt}\\
   \texttt{carrier\_newton}, \texttt{iontrans}), whose change makes the rows
   of the file not the rows of this run and is a cold start and not a restart; a
   word naming the grid, the reservoir or the constant set; the key with
-  \texttt{Load IC?\ False}. See \texttt{docs/input\_schema.md} appendix D.2.
+  \texttt{Load IC?\ False}. See \texttt{md/input\_schema.md} appendix D.2.
   \\
 \texttt{Low-Mach damping:} & real $\varepsilon_4$ [, real $M_{\rm th}$]
   (def.\ $-1$, i.e.\ off; $M_{\rm th}=10^{-3}$) & Artificial dissipation of the
@@ -1480,9 +1500,13 @@ defaults restore the standard behavior).}\label{tab:inp-opt}\\
 \texttt{Legacy\_HHe\_rates:} & logical (def.\ \texttt{False}) & Revert the H/He
   case-B recombination and collisional ionization to the legacy ATES fits
   (Hui \& Gnedin 1997 recombination; Abel+1997 / Hui \& Gnedin 1997 collisional
-  ionization). Default uses Badnell (2023) RR ($+$ He\,II DR) minus the Mao \&
-  Kaastra (2016) $\alpha_1$ for case B, and Voronov (1997) collisional
-  ionization (\S\ref{sec:data}). The free-free Gaunt factor and its ion
+  ionization). Default uses Badnell (2023) RR ($+$ He\,II DR) minus the ground
+  capture $\alpha_1$ for case B, $\alpha_1$ being the Milne relation on the
+  ground-state photoionization cross section the radiative transfer absorbs
+  with (for H\,I, He\,I and He\,II), and Voronov (1997) collisional
+  ionization (\S\ref{sec:data}). The ground captures added back by
+  \texttt{H\_rec\_escape} and \texttt{He\_rec\_coupling} are that Milne
+  $\alpha_1$ in either setting. The free-free Gaunt factor and its ion
   net-charge weighting are always the van Hoof et al.\ (2014) form,
   independent of this switch. \\
 \texttt{Atomic rate set:} & \texttt{default} $|$ \texttt{Koskinen2022}
@@ -1497,12 +1521,17 @@ defaults restore the standard behavior).}\label{tab:inp-opt}\\
   are the ones EXHALE already uses, so only the two recombination coefficients
   change value; the branch does pin the Voronov form against
   \texttt{Legacy\_HHe\_rates}. The default set is the physically preferred one
-  here, case~B recombination, the Lyman continuum being optically thick in
-  this gas, so the key exists to reproduce their choice and not to replace
-  ours. It swaps \emph{rate} coefficients only, with one deliberate exception:
-  $\lambda_{\rm rec}$(He\,II) \emph{is} $k_BT$ times the He\,II recombination
-  coefficient and therefore follows the switch, since removing electrons at
-  one rate and charging the gas at another would not conserve the ledger.
+  here (case~B where the Lyman continuum is optically thick, the escaping
+  ground captures added where it is thin; \texttt{H\_rec\_escape},
+  \texttt{He\_rec\_coupling}), so the key exists to reproduce their choice and
+  not to replace ours. It swaps \emph{rate} coefficients only, and the recombination cooling
+  follows them: every recombination cooling term is
+  $k_BT\,\alpha\,(3/2+{\rm d}\ln\alpha/{\rm d}\ln T)$ on the coefficient the
+  balance uses, so the electrons removed and the energy removed come from one
+  rate. With \texttt{He\_rec\_coupling} or \texttt{H\_rec\_escape} on, the
+  Milne ground capture $\alpha_1$ is added to Table~1's coefficient, which has
+  no such split, so the closest like-for-like run also sets
+  \texttt{He\_rec\_coupling: False} and \texttt{H\_rec\_escape: False}.
   Any other word stops the run (\S\ref{sec:data}). \\
 \texttt{Secondary\_ionization:} & \texttt{False} $|$ \texttt{True} $|$
   \texttt{Immediate} (def.\ \texttt{True}, staged) & Secondary ionization by
@@ -1517,23 +1546,64 @@ defaults restore the standard behavior).}\label{tab:inp-opt}\\
   wind first converges without it, then the run re-converges. \texttt{False}
   restores full photoelectron thermalization, bit-identical to the legacy
   path; \texttt{Immediate} applies it from step~0 (A/B tests only). \\
-\texttt{He\_rec\_coupling:} & logical (def.\ \texttt{True}) & Couple
-  He\,II\,$\to$\,He\,I recombination radiation to H\,I ionization (Draine 2011
-  on-the-spot $y$/$z$; \S\ref{sec:data}). Adds an H\,I photoionization rate
-  $n_{\rm HeII}n_e[z\,\alpha_B+y\,\alpha_1]$ with its photoelectron heating and
-  shifts the He\,II recombination to $\alpha_B+y\,\alpha_1$; $y$ is the local
-  $\ge24.6\,$eV ground-capture share ionizing H, $z$ the density-dependent
-  cascade share. \texttt{False} $=$ pure case B (photons lost locally, the
-  legacy path; in the He\,$2\,^3$S mode the singlet recombination is then
-  neither case A nor case B). \\
+\texttt{He\_rec\_coupling:} & logical (def.\ \texttt{True}) & Absorb the
+  ionizing recombination radiation of He\,II\,$\to$\,He\,I and
+  He\,III\,$\to$\,He\,II on the spot (\S\ref{sec:data}). He\,II: the ground
+  captures ($\alpha_1$, the Milne relation on the He\,I cross section) count
+  as recombinations with the local escape weight $y$, the fraction of their
+  24.6\,eV photons that He\,I does not re-absorb in the cell, so the He\,II
+  coefficient is $\alpha_B+y\,\alpha_1$ (case~A where the cell is thin,
+  case~B where it is thick); the photons that H\,I, H$_2$ and the metals take
+  ionize those species; and the case-B captures leave through their own exits, the
+  584\,\AA\ line (scattered by He\,I and partly converted into the $2\,^1$S
+  two-photon continuum), the 19.8\,eV $2\,^3$S line and the two-photon
+  continuum, shared by the network's rates (the H-ionizing photons of a
+  case-B capture are $z=0.966$ as $n_e\to0$ and 0.660 at
+  $n_e=10^8$\,cm$^{-3}$, at $10^4$\,K in a cell without He\,I, as the physics
+  probe \texttt{recombination\_radiation\_on\_the\_spot} measures them;
+  He\,I scattering of the 584\,\AA\ line lowers $z$). He\,III: the ground
+  capture, the direct capture into $n=2$, He\,II Ly$\alpha$ and the $2s$
+  two-photon continuum (Nussbaumer \& Schmutz 1984), with the $2s$--$2p$
+  mixing of He\,II by ion impact. All the photoelectron energy is heat
+  (channel \texttt{heat\_He\_recomb}). With the He\,$2\,^3$S network on,
+  case~B is split into triplet and singlet captures with Hummer \& Storey
+  (1998) Table~5 in both settings of the key. \texttt{False} $=$ case~B for
+  both recombinations with the cascade photons lost. \\
+\texttt{H\_rec\_escape:} & logical (def.\ \texttt{True}) & The H\,II\,$\to$\,H\,I
+  ground captures whose 13.6\,eV photons leave the cell or are taken by a
+  metal ion count as recombinations: the H\,II coefficient is
+  $\alpha_B+y_{\rm HI}\,\alpha_1$, $\alpha_1$ the Milne relation on the
+  hydrogenic ground cross section and $y_{\rm HI}=1-n_{\rm HI}\sigma_{\rm HI}\,
+  \Delta r\,(1-e^{-\tau})/\tau$ the escape weight of the same construction as
+  He\,II's ($\tau$ the cell's optical depth at 13.6\,eV over H\,I and the
+  metal ions), so case~A holds in the thin outer wind and case~B in the thick
+  base. The recombination cooling uses the same coefficient at the frozen
+  weight; the $n=2$ sources of the H($n{=}2$) model stay case~B. The closure
+  is local: a photon that leaves the cell is dropped, so where the cells are
+  neither thick nor thin the weight depends on the cell width. On by default
+  because it corrects the case-B assumption where it does not hold;
+  \texttt{False} $=$ case~B everywhere (e.g.\ for a like-for-like comparison
+  with Koskinen et al.\ 2022). Written as \texttt{use\_h\_rec\_escape} in the
+  parse dump (\texttt{EXHALE\_PARSE\_DUMP=1}). \\
 \texttt{He\_H\_charge\_exchange:} & logical (def.\ \texttt{True}) & The
-  He\,$\leftrightarrow$\,H charge-exchange pair (Koskinen 2013 rates via Huang
-  2023 Table~4): He$^0+$H$^+\!\to$He$^+\!+$H$^0$ (endothermic) and the
-  He$^+\!+$H$^0\!\to$He$^0+$H$^+$ loss channel where neutral H dominates
-  ($\sim40\%$ of He\,II at $r\simeq1.05$ on WASP-121\,b, $<1\%$ by
-  $r\ge1.2$). Applied by dedicated routines in \emph{every} helium-bearing
-  ionization system, independent of \texttt{cx\_full} (which still gates the
-  metal groups). \texttt{False} $=$ legacy no-He-CX path, bit-identical. \\
+  He\,$\leftrightarrow$\,H charge exchange: He$^+\!+$H$^0\!\to$He$^0+$H$^+$ as
+  the sum of its radiative channel (Stancil, Lepp \& Dalgarno 1998, from
+  Zygelman et al.\ 1989) and its non-radiative one (the Maxwellian average of
+  the H$^+\!+$He cross section of Loreau, Ryabchenko \& Vaeck 2014, turned
+  forward by microscopic reversibility; 1.5\% of the radiative channel at
+  $10^4$\,K);
+  He$^0+$H$^+\!\to$He$^+\!+$H$^0$, the detailed-balance reverse of the
+  non-radiative channel (endothermic by 10.99\,eV); and the radiative capture
+  He$^{2+}\!+$H$^0\!\to$He$^+\!+$H$^+\!+h\nu$ (the Maxwellian average of
+  the cross section of West, Lane \& Cohen 1982,
+  1.6--2.0$\times10^{-13}$\,cm$^3$\,s$^{-1}$ at $10^3$--$3\times10^4$\,K),
+  which has no reverse. The non-radiative exchange heats the
+  gas by 10.99\,eV an event and its reverse takes that back; the radiative
+  channels give their energy to the photon (channel
+  \texttt{heat\_charge\_exchange}). Applied by dedicated routines in
+  \emph{every} helium-bearing ionization system, independent of
+  \texttt{cx\_full} (which gates the metal groups~C and~D). \texttt{False}
+  leaves all three out. \\
 \texttt{He\_diffusion:} & logical (def.\ \texttt{False}) & Enable diffusive
   separation of helium: transport the helium \emph{mass fraction} of the
   two-component H/He gas with advection $+$ molecular-diffusion settling, so
@@ -1653,7 +1723,7 @@ defaults restore the standard behavior).}\label{tab:inp-opt}\\
   $x(\mathrm{H^+}) = 0.129/0.327/0.585$ at $2.0/2.4/3.0\,r_{\rm base}$ where
   integrating along the same flow gives $0.057/0.078/0.106$ and Model~A, which
   advects every species, has $0.020/0.055/0.080$
-  (\texttt{docs/k22\_electron\_density\_excess.md} \S7). The proton's
+  (\texttt{md/k22\_electron\_density\_excess.md} \S7). The proton's
   molecular diffusion is set to zero, an ion in a neutral gas being
   ambipolar- or Coulomb-limited rather than hard-sphere and the term this
   option exists for being the bulk advection, while the eddy coefficient
@@ -1749,9 +1819,13 @@ defaults restore the standard behavior).}\label{tab:inp-opt}\\
   agree exactly. Any other word stops the run. \\
 \texttt{Photoelectron heating:} & \texttt{excess} $|$ \texttt{full} $|$ real
   $f\in(0,1]$ (def.\ \texttt{excess}) & What a photoionization deposits as
-  heat. \texttt{excess} (physical): the photoelectron's $h\nu-I$.
+  heat. \texttt{excess} (physical): the electron energy, $h\nu-I$ for an
+  outer-shell absorption and, for an inner-shell absorption by a metal ion,
+  the photoelectron's $h\nu-E_{{\rm th},s}$ plus the Auger electrons of the
+  vacancy (Kaastra \& Mewe 1993; \S\ref{sec:data}).
   \texttt{full}: the whole photon energy $h\nu$; a number: the fraction $f$ of
-  $h\nu$. The last two are \emph{comparison} options. Koskinen et al.\ (2022)
+  $h\nu$ (both keep the outer-shell form for the metals). The last two are
+  \emph{comparison} options. Koskinen et al.\ (2022)
   Figure~9 shows a stellar heating rate 2.5--3 times what $h\nu-I$ gives at
   their ionization rate and spectrum, i.e.\ between the two accountings, and a
   fraction reproduces their profile without claiming a physics; a run that
@@ -1779,13 +1853,18 @@ defaults restore the standard behavior).}\label{tab:inp-opt}\\
 only). If present, it lists the total elemental abundance $n_X/n_{\rm H}$ (summed
 over ionization stages; the equilibrium solver distributes each element over its
 stages) for any of C, N, O, Mg, Si, Ca, Na, K, S, Fe. Blank lines and \texttt{\#}
-comments are ignored; any non-zero abundance turns metals on. Five control keys
+comments are ignored; any non-zero abundance turns metals on. Each quantity
+may be stated once; a second line for it stops the run. Six control keys
 are also accepted: \texttt{pp\_metals} (metal treatment in the advection
 post-process: \texttt{0}=metal-free, \texttt{1}=frozen at the converged
 equilibrium (default), \texttt{2}=re-solve the metal stages inside the post-process
 iteration, at fixed element totals),
-\texttt{cx\_full} (\texttt{1}=full Huang+2023 charge-exchange network; default
-metal--H only), \texttt{cno\_cool} (C/N/O line-cooling source:
+\texttt{cx\_full} (\texttt{1} adds groups~C (metal$+$He/He$^+$) and D
+(metal$+$metal) of the Huang et al.\ 2023 Table~4 reaction list to the
+metal$+$H/H$^+$ group~A that is always active; it does not gate the
+He\,$\leftrightarrow$\,H reactions, which have their own \texttt{input.inp} key
+\texttt{He\_H\_charge\_exchange}, nor the two group~E electron captures
+below), \texttt{cno\_cool} (C/N/O line-cooling source:
 \texttt{1}=closed-form fits to CHIANTI v11, including N\,I/N\,II cooling
 (default); \texttt{0}=legacy AIOLOS analytic fits, which have no N cooling and
 deviate by 40--70\% from CHIANTI for O\,I/O\,II in the wind-launch region,
@@ -1795,23 +1874,37 @@ their mass to the gas density and base density, their electrons to the
 free-electron density and the base pressure correction, and their nuclei to
 the total particle density, a ${\sim}1\%$ mass effect at solar abundances,
 consistent with the charge balance inside the ionization solver (default);
-\texttt{0}=legacy trace approximation, H/He-only gas budget), and
-\texttt{cx\_O2p\_H} (default \texttt{1} = the published rate).
-Huang+2023 Table~4 has no doubly ionized oxygen row, so re-sourcing the
-charge-exchange network to that paper dropped
-$\rm O^{2+} + H^{0} \rightarrow O^{+} + H^{+}$.
-EXHALE carries it separately at the published
-Barrag\'an et al.\ (2006, ApJ 636, 544) rate (the calculation CHIANTI\,v11
-and Cloudy both adopt), and \texttt{cx\_O2p\_H\,<scale>} rescales it, with
-\texttt{0} reproducing the Table-4-only reaction set exactly and other values
-serving as bounding experiments. It is deliberately \emph{not} controlled by
-\texttt{cx\_full}, which means ``all of Table~4''. Measured on HD\,209458\,b,
-carrying the reaction suppresses the O\,\textsc{iii} fraction by 4.7 decades
+\texttt{0}=legacy trace approximation, H/He-only gas budget), and the two
+group~E scales \texttt{cx\_O2p\_H} and \texttt{cx\_N2p\_H} (default \texttt{1}
+each = the published rate).
+Huang+2023 Table~4 has no doubly ionized oxygen or nitrogen row, so
+re-sourcing the charge-exchange network to that paper dropped
+$\rm O^{2+} + H^{0} \rightarrow O^{+} + H^{+}$ and
+$\rm N^{2+} + H^{0} \rightarrow N^{+} + H^{+}$.
+EXHALE carries both separately at the rates of one calculation, Barrag\'an
+et al.\ (2006, ApJ 636, 544; their Table~1 $k_1$ for oxygen, the calculation
+CHIANTI\,v11 and Cloudy both adopt, and their Table~2 $k_4$ for nitrogen,
+interpolated in $\log$--$\log$ and held at the ends of the calculated
+$10^2$--$10^5$\,K). \texttt{cx\_O2p\_H\,<scale>} and
+\texttt{cx\_N2p\_H\,<scale>} rescale them, with \texttt{0} leaving the row
+out exactly and other values serving as bounding experiments. They are
+deliberately \emph{not} controlled by \texttt{cx\_full}, which means ``all of
+Table~4''. Measured on HD\,209458\,b,
+carrying the oxygen reaction suppresses the O\,\textsc{iii} fraction by 4.7 decades
 at 1.05\,\rp, 3.7 at 1.1 and 2.7 at 1.2, and raises O\,\textsc{i} by 3\% below
 1.2\,\rp\ and 52\% near 2--3\,\rp, while
-$\dot M$ moves by 0.01\,dex (\S103 and \S107 of \texttt{Update\_EXHALE}). The
-reverse direction is not carried: it is endothermic by 21.5\,eV, hence
-Boltzmann suppressed by $10^{-11}$ at $10^4$\,K. Solar reference
+$\dot M$ moves by 0.01\,dex (\S103 and \S107 of \texttt{Update\_EXHALE\_stage1};
+measured 2026-08-30, before the charge-exchange corrections of 2026-09-24 to
+09-26). The nitrogen capture ($9.70\times10^{-10}$\,cm$^3$\,s$^{-1}$ at
+$10^4$\,K) beats N\,\textsc{iii} recombination wherever $n({\rm H\,I})/n_e$
+exceeds a few $10^{-3}$; MEASURED on the \texttt{wasp\_full} regression case
+(2026-09-26, \path{md/charge_exchange_detailed_balance_20260924.md}
+section~12.6), N\,\textsc{iii}/N falls from 0.444 to 0.0029 at 1.3\,\rp\ and
+$\log_{10}\dot M$ moves by $-3\times10^{-5}$\,dex. Neither reverse is
+carried: each is endothermic by more than 16\,eV (21.5\,eV for oxygen,
+16.0\,eV for nitrogen), and the nitrogen product N$^+(2s2p^3\,^3D^o)$ decays by
+the 1084\,\AA\ multiplet, which leaves the cell, so that event heats the gas by
+4.57\,eV of its 16.00\,eV defect. Solar reference
 values (Asplund+2009):
 \begin{lstlisting}[style=cfg]
 # metals.inp -- solar n_X/n_H (Asplund+2009)
@@ -1835,8 +1928,13 @@ pressure-broadened (Robinson \& Catling $f(p)=1+a\,(p/p_0)^n$ via
 
 \subsection{Excited hydrogen and the Ly$\alpha$ pumping field}\label{sec:excitedH}
 \label{sec:jlya}
-The non-LTE H($n{=}2$) model (the metastable $2s$ + resonance $2p$ levels,
-Christie+2013) feeds two things: in \texttt{EXHALE.x} the H($n{=}2$)
+The non-LTE H($n{=}2$) model (the metastable $2s$ + resonance $2p$ levels in
+the level balance of Christie et al.\ 2013, with the rate coefficients listed in
+Table~\ref{tab:data}: $A(2s\to1s)$ of Drake 1986, the CHIANTI $1s\to2s,2p$
+collision rates, the $2s$--$2p$ mixing by electrons of Seaton 1955 and by
+H$^+$, He$^+$ and He$^{2+}$ of Pengelly \& Seaton 1964, and the case-B
+coefficient of the balance split with the $2s$ fraction of Pengelly 1964)
+feeds two things: in \texttt{EXHALE.x} the H($n{=}2$)
 photoionization adds a Balmer proton source and photoelectric heating to the
 energy/ionization balance; in \texttt{EXHALE\_transit.py} the $n{=}2$ population sets the
 H$\alpha$/H$\beta$ transmission. The model is \emph{off by default}; it switches
@@ -1901,15 +1999,25 @@ options:
   Carlo), which shortens the random walk and lowers $\bar J_{\rm Ly\alpha}$
   in the bottom few scale heights only. This is the most
   physical of the three but still an approximation; see
-  \texttt{Update\_EXHALE.tex}\,\S12 for the full formulae.
+  \texttt{Update\_EXHALE\_stage1}\,\S12 for the full formulae.
 \end{description}
 
 \noindent
-\texttt{EXHALE\_transit.py} uses the \emph{same} logic for its H$\alpha$/H$\beta$ $n{=}2$
-population: if a \texttt{Jlya\_file} is set it is read (mode 1), otherwise the
-mode-0 parameterized estimate above is used (with $F_{\rm LyC}$ rebuilt from the
-run's H\,I column and the stellar EUV). So a converged run with no Ly$\alpha$ input
-still yields H$\alpha$/H$\beta$ predictions, via the default field.
+\texttt{EXHALE\_transit.py} rebuilds the H$\alpha$/H$\beta$ $n{=}2$ population
+from the profiles with the solver's level balance and the solver's rate
+coefficients, each transcribed as its own function of
+\texttt{exhale\_transit\_lib.py} (\texttt{n2\_populations} agrees with the
+Fortran to $3.1\times10^{-13}$ relative, MEASURED 2026-09-25,
+\path{md/stale_texts_20260925.md}); it takes the run's rate set from
+\texttt{Atomic rate set:} and \texttt{Legacy\_HHe\_rates:} of
+\texttt{input.inp}. What it does not share with the solver is the field, which
+the profiles do not carry: if a \texttt{Jlya\_file} is set it is read (mode 1),
+otherwise the mode-0 parameterized estimate above is used (with $F_{\rm LyC}$
+rebuilt from the run's H\,I column and the stellar EUV), and the Balmer
+continuum that photoionizes $n{=}2$ is a blackbody at \texttt{Stellar Teff}
+diluted by $(R_\star/a)^2$ rather than the run's own spectrum. So a converged
+run with no Ly$\alpha$ input still yields H$\alpha$/H$\beta$ predictions, via
+the default field.
 
 \subsection{The photon grid and the spectrum that fills it}\label{sec:metalsed}
 Neutral metals have ionization thresholds \emph{far below} the hydrogen Lyman
@@ -2096,9 +2204,9 @@ escaper (HD\,209458b) helium itself separates and the He\,10830 line weakens; on
 a furious escaper (WASP-121b) helium is dragged out almost unfractionated while
 the heavy metals still settle strongly. Full physics, derivation, and a
 two-planet before/after comparison:
-\texttt{docs/version\_compare.\{md,tex,pdf\}}; the stage-resolved coefficient
-is derived and measured in
-\texttt{docs/Update\_EXHALE.\{md,pdf\}} \S68 and \S71. The flags are
+\texttt{docs/version\_compare.\{tex,pdf\}} and \texttt{md/version\_compare.md};
+the stage-resolved coefficient is derived and measured in
+\texttt{Update\_EXHALE\_stage1} \S68 and \S71. The flags are
 \textbf{default off}, so standard runs are byte-identical to before.
 
 \subsection{Lower-atmosphere connection (Tier 1--3)}\label{sec:loweratm}
@@ -2150,8 +2258,11 @@ because the two blocks share the free electron density and the metals are the
 dominant electron donors in the shielded molecular base. H$_2$
 photodissociation in the Lyman--Werner bands is available and opt-in: add
 \texttt{Stellar LW flux [erg/cm2/s]:} with the band flux at the planet.
-Caveats: local \emph{equilibrium} chemistry only (no
-molecular advection), $\gamma=5/3$ retained. On hot Jupiters the result is a thin molecular base under a sharp
+Caveats: without \texttt{Molecular carrier transport: True} (its default
+is on only with \texttt{Oxygen chemistry}) the molecular species are closed
+by their local equilibrium, with no advection; the caloric equation of state
+is the H$_2$ ladder of \texttt{Caloric EOS} (default), not $\gamma=5/3$.
+On hot Jupiters the result is a thin molecular base under a sharp
 H$_2\to$H front with an atomic wind above: the atomic assumption becomes a
 result rather than an input.
 
@@ -2269,7 +2380,10 @@ the dissociations per photon removed from the beam. $A$ cannot exceed 1, and
 measured over the whole table it reaches 0.69--1.00 at the top of its column
 axis. Until 2026-09-06 $A$ was DB96 eq.~(39), an equivalent width of the
 narrower 912--1110\,\AA{} band, and the two normalizations disagreed by 45 per
-cent. The split is exact cell by cell, so what the three absorbers take is
+cent. The column above a cell is not one slab: $A$ is summed cell by cell along
+the path, each cell above contributing the table integral across its own
+column interval at its own $(T,n_{\rm H})$, the same cross section its own
+H$_2$ rate is formed from. The split is exact cell by cell, so what the three absorbers take is
 what the beam loses, and \texttt{output/FUV\_bands.txt} reports that ledger.
 A run with the oxygen chemistry on, no spectrum file and
 \texttt{Stellar LW flux} left at 0 is warned that it gets no H$_2$O or OH
@@ -2366,7 +2480,7 @@ Keys are matched as labels, by the same anchored rule the \texttt{input.inp}
 reader uses, and every key carries a \textbf{category} that states what the
 value is allowed to do to the wind. There are five, and the same table is
 carried by \texttt{read\_base\_inp}'s header comment and by
-\texttt{docs/input\_schema.md} \S2c:
+\texttt{md/input\_schema.md} \S2c:
 
 \begin{center}\small
 \begin{tabular}{@{}>{\raggedright\arraybackslash}p{3.5cm}>{\raggedright\arraybackslash}p{2.6cm}>{\raggedright\arraybackslash}p{7.6cm}@{}}
@@ -2629,7 +2743,7 @@ problem instead of an input to it.
 \paragraph{See also.} \texttt{examples/17\_lower\_profile/} is a ready-to-run
 HD209458b case whose \texttt{make\_example\_profile.py} regenerates the
 synthetic column it ships (\S\ref{sec:exinputs}). The authoritative
-column-by-column schema is \texttt{docs/input\_schema.md} section~2d.
+column-by-column schema is \texttt{md/input\_schema.md} section~2d.
 
 % ===================================================================== %
 \subsection{Obtaining VULCAN and FastChem}\label{sec:vulcan-obtain}
@@ -2785,7 +2899,7 @@ a converged wind from a snapshot. The counts are printed at the end of the run, 
 verdict and the measure of every row are recorded in the \texttt{adv\_T\_status},
 \texttt{adv\_comp\_status} and \texttt{adv\_mass\_row} columns of
 \texttt{Hydro\_ioniz\_adv.txt} (\S\ref{sec:hydroioniz}). Full account:
-\path{docs/postprocess_advection_validity.md}.
+\path{md/postprocess_advection_validity.md}.
 
 \subsection{\texttt{Hydro\_ioniz.txt} / \texttt{Hydro\_ioniz\_adv.txt}}
 \label{sec:hydroioniz}
@@ -2833,7 +2947,7 @@ each has its own field and neither is the first refusal of a single mixed intege
 the same five values.
 
 \begin{center}\small
-\begin{tabular}{@{}cll@{}}
+\begin{tabular}{@{}cl>{\raggedright\arraybackslash}p{0.70\textwidth}@{}}
 \toprule
 Value & Name & Meaning \\
 \midrule
@@ -2911,7 +3025,7 @@ This matters because the file is also the restart input: copied to
 \texttt{Hydro\_ioniz\_IC.txt} and read back under \texttt{Load IC? True}, its
 \texttt{sec\_ion} field tells the new run to start the coupling where the old
 one left it, instead of re-running the staging on a state that no longer needs
-it (\S144 of \texttt{docs/Update\_EXHALE.md}). A file written before this line
+it (\S144 of \texttt{md/Update\_EXHALE\_stage1.md}). A file written before this line
 existed simply has no such line, and such a restart starts staged exactly as it
 did before. The other fields are reported, never imposed:
 \texttt{input.inp} states them for the new run.
@@ -2996,11 +3110,19 @@ CO.
 \subsection{\texttt{Cooling\_breakdown.txt}}
 Radiative cooling by channel [erg\,cm$^{-3}$\,s$^{-1}$] vs.\ radius. Columns:
 \texttt{1}=$r$, \texttt{2}=$T$ [K], \texttt{3}=$n_e$ [cm$^{-3}$], \texttt{4}=total
-cooling; \texttt{5--10}= the six H/He channels (recombination, collisional
-ionization, then collisional excitation split by absorber into
-H\,{\sc i} (the Ly$\alpha$-dominated H-line cooling), He\,{\sc i} (which
-also carries the He\,$2^3$S metastable terms) and He\,{\sc ii}, and finally
-bremsstrahlung); \texttt{11}= the H$_3^+$ infrared cooling (zero unless the run
+cooling; \texttt{5--10}= the six atomic channels: recombination (the kinetic
+energy $k_BT\alpha\,(3/2+{\rm d}\ln\alpha/{\rm d}\ln T)$ of the captured
+electrons of H\,II, He\,II, He\,III \emph{and} of every recombining metal ion),
+collisional ionization (the ionization potential of every H, He and metal
+ionization), then collisional excitation split by absorber into
+H\,{\sc i} (the Ly$\alpha$-dominated H-line cooling), He\,{\sc i} and
+He\,{\sc ii}, and finally free--free emission of every ion by its net charge.
+With the He\,$2\,^3$S tracked, the He\,{\sc i} column carries the metastable's
+own terms: the net $1\,^1$S\,$\leftrightarrow$\,$2\,^3$S exchange, which is
+\emph{negative} where the superelastic $2\,^3$S\,$\to$\,$1\,^1$S collisions
+heat the gas, the triplet cascade that radiates 10830\,\AA\ and the higher
+triplet lines, and the $2\,^3$S\,$\to$\,singlet excitations;
+\texttt{11}= the H$_3^+$ infrared cooling (zero unless the run
 tracks the molecular network); \texttt{12--14}= the H$_2$, H$_2$O and CO
 infrared bands, which are NET rates (emission less absorption of the field
 from below, so a negative value is that band heating the gas) and are
@@ -3014,14 +3136,18 @@ The \texttt{\# col} header line always names the layout.
 \subsection{\texttt{Heating\_breakdown.txt}}
 Volumetric heating by channel [erg\,cm$^{-3}$\,s$^{-1}$] vs.\ radius, the
 companion of \texttt{Cooling\_breakdown.txt} and written unconditionally at the
-end of the run. 21 columns: \texttt{1}=$r$ [\rp], \texttt{2}=$T$ [K],
+end of the run. 24 columns: \texttt{1}=$r$ [\rp], \texttt{2}=$T$ [K],
 \texttt{3}=$n_e$ [cm$^{-3}$], \texttt{4}=total heating; \texttt{5--10}= the
 photoionization heating split by \emph{absorber}: H\,\textsc{i},
 He\,\textsc{i}, He\,\textsc{ii}, He\,$2^3$S, H$_2$, and the sum over the metal
-stages; \texttt{11}= the photoelectric heating of the H($n{=}2$) population
+stages (whose electrons include the Auger electrons of an inner-shell
+vacancy); \texttt{11}= the photoelectric heating of the H($n{=}2$) population
 (the excited-H model); \texttt{12}= the collisional de-excitation of
 H($n{=}2$), i.e.\ absorbed Ly$\alpha$ thermalized by a collision;
-\texttt{13}= the He-recombination coupling; \texttt{14}= the Penning branch of
+\texttt{13}= \texttt{heat\_He\_recomb}, the photoelectrons of the H\,\textsc{i},
+He\,\textsc{i}, H$_2$ and metal ionizations driven by the recombination
+radiation absorbed on the spot (He\,II and He\,III recombinations, and the
+H\,II ground captures taken by a metal); \texttt{14}= the Penning branch of
 He\,$2^3$S\,$+$\,H; \texttt{15}= its associative branch
 He\,$2^3$S\,$+$\,H\,$\to$\,HeH$^+$\,$+$\,e; \texttt{16}=
 He\,$2^3$S\,$+$\,H$_2$ Penning ionization; \texttt{17}= the fragment kinetic
@@ -3029,8 +3155,16 @@ energy of the H$_2$ Lyman--Werner photodissociation; \texttt{18}= the
 collisionally de-excited Lyman--Werner fluorescence; \texttt{19}= the
 collisional reactions of the H$_2$/He network; \texttt{20}= the FUV photolysis
 of H$_2$O and OH; \texttt{21}= the collisional reactions of the oxygen network
-including the O($^1D$) sink. A channel of physics the run does not carry is
-identically zero.
+including the O($^1D$) sink; \texttt{22}= He$^+$\,$+$\,CO\,$\to$\,C$^+$\,$+$\,O\,$+$\,He,
+the charge-transfer destruction of CO; \texttt{23}= the fragment kinetic energy
+of the CO photodissociation; \texttt{24}= \texttt{heat\_charge\_exchange}, the
+energy defects of the charge-exchange reactions the run applies (metal$+$H,
+metal$+$He, metal$+$metal and He\,$\leftrightarrow$\,H), each less the
+excitation of a product state that leaves as radiation (an allowed decay, the
+photon of a radiative transfer, and, below the critical densities, the
+forbidden lines of an N\,I, S\,II or C\,I product formed out of statistical
+equilibrium), negative for an endothermic reaction. A channel of physics the
+run does not carry is identically zero.
 
 \textbf{One state per output file.} These columns are not recomputed for the
 dump: they are the channel array the ionization sweep filled for the state
@@ -3190,7 +3324,7 @@ the outer boundary, corrected by the 2-D-approximation factor from
 \texttt{2D approximate method} (\texttt{Rate/2 + Mdot/2}$\Rightarrow\times\frac12$,
 \texttt{Mdot/4}$\Rightarrow\times\frac14$). It is reported as $\log_{10}\dot M$
 [g\,s$^{-1}$]; divide by $M_p$ and multiply by 1\,Gyr to express it in
-$M_p$\,Gyr$^{-1}$. The helper \texttt{exhale\_io.mdot\_log10} / \texttt{mdot\_Mp\_per\_Gyr}
+$M_p$\,Gyr$^{-1}$. The functions \texttt{exhale\_io.mdot\_log10} / \texttt{mdot\_Mp\_per\_Gyr}
 reproduce this.
 
 \subsection{\texttt{EXHALE\_resolved.out}: the configuration the wind
@@ -3243,7 +3377,8 @@ against the equilibrium profiles (solid). It also prints $\log_{10}\dot M$.
 transmission spectra and reports the line-center
 absorption depths (theoretical, instrument-convolved, and
 instrument+rotation-convolved) for \textbf{He\,10830}, \textbf{Ly$\alpha$},
-\textbf{H$\alpha$/H$\beta$} (from the non-LTE $n{=}2$ population, Christie+2013,
+\textbf{H$\alpha$/H$\beta$} (from the non-LTE $n{=}2$ population, the level
+balance of Christie et al.\ 2013 with the solver's own rate coefficients,
 pumped by the Ly$\alpha$ field of \S\ref{sec:jlya}),
 and the metal resonance doublets \textbf{Mg\,II\,h\&k}, \textbf{Ca\,II\,H\&K},
 \textbf{Na\,I\,D} and the \textbf{O\,I\,1302/1304/1306} triplet: the metals
@@ -3279,7 +3414,9 @@ selection, the path, md5 and size of each file it read, and the state's own
 provenance, coupling, boundary model and reservoir lines.
 
 On a marching case that carries both states the choice is small but not
-negligible.  MEASURED on the \texttt{wasp\_full} configuration, as the peak
+negligible.  MEASURED on the \texttt{wasp\_full} configuration (before the
+atomic-data corrections of 2026-09-24 to 09-26 and the solver's rates in the
+transit tool's $n{=}2$ model; not re-measured since), as the peak
 transit depth relative to itself: He\,{\sc i} 10830 $-0.64$ per cent,
 H$\alpha$ $-1.28$, H$\beta$ $-3.48$, Ly$\alpha$ unchanged at its saturated
 ceiling, and the optically thin metal lines $+0.1$ to $+0.8$.  The metastable
@@ -3343,7 +3480,7 @@ $M_p$, $T_0$, $a$, $M_\star$ and He/H the wind actually used, while
 \texttt{input.inp} alone would be stale. When the file is present the script
 says so at startup and takes those six from it; when it is absent it says that
 too and falls back on \texttt{input.inp}. A present-but-unreadable file is a
-hard error, never a silent fallback. The stellar radius and $T_{\rm eff}$ are
+hard error, never silently replaced by \texttt{input.inp}. The stellar radius and $T_{\rm eff}$ are
 not in that file and come from \texttt{input.inp} (or their environment
 overrides) either way.
 
@@ -3378,9 +3515,9 @@ warns when \texttt{Stellar radius}/\texttt{Stellar Teff} are missing from
 \texttt{input.inp}; read that block first when a spectrum looks wrong. A
 missing \texttt{Stellar radius} is the one worth checking before anything
 else: transit depths are normalized by $\pi R_\star^2$ and the chord
-integration stops at $R_\star/R_p$, so the built-in fallback shifts every
+integration stops at $R_\star/R_p$, so the built-in default radius shifts every
 depth, and not by a single factor. Measured on the tutorial planet (a
-$1.13\,M_\odot$ star, so $R_\star \simeq 1.155\,R_\odot$), the fallback
+$1.13\,M_\odot$ star, so $R_\star \simeq 1.155\,R_\odot$), the built-in default
 %% STALE (P48; Update_EXHALE_stage1 section 137): computed with the profile files' GHOST
 %% rows included: the two boundary rows at each end of every Hydro_ioniz /
 %% Ion_species file, which the Python readers now drop. Measured shift on three
@@ -3883,14 +4020,22 @@ By default EXHALE is an \emph{atomic/ionic} code: the modeled species are H, He
 stages. The optional molecular network (\texttt{Molecular chemistry: True},
 \S\ref{sec:loweratm}) adds H$_2$, H$_2^+$, H$_3^+$ and HeH$^+$ to the coupled
 equilibrium, with H$_2$ photoionization opacity (Yan et al.\ 1998) and H$_3^+$
-infrared cooling (Miller et al.\ 2013). Beyond those four there is \textbf{no
-molecular chemistry and no molecular opacity} (no H$^-$, CO, or H$_2$O),
-so no molecular line lists or partition functions enter the calculation.
-Table~\ref{tab:data}
-collects the provenance of every rate and cross section, grouped by physical
-process. The H/He baseline is inherited essentially unchanged from the original
-ATES (Caldiroli et al.\ 2021, 2022); the metal, excited-hydrogen, and
-charge-exchange data were added in this work.
+infrared cooling (Miller et al.\ 2013); \texttt{Oxygen chemistry: True} adds
+OH, H$_2$O and CO (\S\ref{sec:oxychem}), and \texttt{Molecular IR bands: True}
+the H$_2$ line spectrum (Roueff et al.\ 2019) and the H$_2$O and CO bands
+(HITEMP) as infrared coolants. There is no H$^-$, and the only molecular
+opacities are those of H$_2$ (its ionizing continuum and the Lyman--Werner
+lines) and, with the oxygen chemistry, the FUV photodissociation of H$_2$O,
+OH and CO.
+Table~\ref{tab:data} collects the provenance of the atomic rates and cross
+sections, grouped by physical process. Of the H/He data of the original ATES
+(Caldiroli et al.\ 2021, 2022) the code keeps the hydrogenic cross sections
+of H\,I and He\,II and, as comparison options, the legacy fits
+(\texttt{ATES\_photoionization\_rate}, \texttt{Legacy\_HHe\_rates}); the
+default recombination, collisional and cooling coefficients of H and He were
+replaced after the atomic-data audits of 2026-09-24 to 09-26
+(\path{md/Update_EXHALE_stage3.md} sections 17, 19 and 22), and the metal,
+excited-hydrogen, and charge-exchange data were added in this work.
 
 \begin{longtable}{@{}>{\raggedright\arraybackslash\hyphenpenalty=10000\exhyphenpenalty=10000}p{0.205\textwidth}p{0.30\textwidth}p{0.43\textwidth}@{}}
 \caption{Atomic data sources, by process. Source files:
@@ -3912,52 +4057,72 @@ Solar reference & 10 metals (\texttt{metals.inp} template) & Asplund et al.\ (20
 Helium & He/H ratio & input parameter (\texttt{He/H number ratio}) \\
 \midrule
 \multicolumn{3}{@{}l}{\textbf{Photoionization cross sections}}\\[2pt]
-Bound--free $\sigma(E)$ & H\,I & hydrogenic (Kramers) analytic form (orig.\ ATES) \\
+Bound--free $\sigma(E)$ & H\,I, He\,II & hydrogenic (Kramers) analytic form on the measured thresholds (orig.\ ATES) \\
  & He\,I & Verner, Ferland, Korista \& Yakovlev (1996) default; legacy ATES 2-term fit via \texttt{ATES\_photoionization\_rate} \\
  & He\,I\,$2\,^3$S (metastable) & two VFKY96 (Verner) wings $+$ power-law bridge, fitted to TOPbase/Opacity-Project (extends the orig.\ Norcross 1971 broken power law past 60\,eV) \\
- & C, N, O, Mg, Si, Na, Fe (+ ions) & Verner, Ferland, Korista \& Yakovlev (1996), single-shell fits \\
- & K\,I & Verner \& Yakovlev (1995) \\
+ & C, N, O, Mg, Si, Ca, Na, S, Fe (+ ions) & Verner, Ferland, Korista \& Yakovlev (1996) outer-shell fits below the first inner-shell edge, Verner \& Yakovlev (1995) above it; the inner subshells (Verner \& Yakovlev 1995, their \texttt{phfit2}) are in the sum, so $\sigma$ is the whole photoabsorption of the ion \\
+ & K\,I & Verner \& Yakovlev (1995) at every energy, outer shell and subshells \\
+Inner-shell relaxation & the 17 photo-ionizable metal ions & a vacancy below the outer shell relaxes by Auger decay (one or more further electrons, the ion jumping two or more stages) or radiatively, with the probabilities of Kaastra \& Mewe (1993, A\&AS 97, 443) Table~2 and the fluorescence of their Table~3, the vacancy energy closed exactly on the code's thresholds ($E_{{\rm th},s}=I_i+$ further ionization energies $+$ Auger energy $+$ fluorescence); the photoelectron and the Auger electrons are the electron energy, the fluorescence leaves the cell. A neutral of C, N, O, Mg, Si, Ca, Fe that loses two or more electrons goes to its third stage in the balance; a jump beyond the carried stages is counted in the top carried stage \\
 Opacity model (runtime) & all (via \texttt{opacity.inp}) & A=analytic above (default); C=constant above threshold, $\sigma =$ \texttt{OPA\_CONST\_}$X$ times the analytic value at the edge; P=that constant base times the pressure-broadening factor (Robinson \& Catling); T=tabulated files \\
 \midrule
 \multicolumn{3}{@{}l}{\textbf{Collisional (electron-impact) ionization}}\\[2pt]
-Rate $C(T)$ & H\,I, He\,I, He\,II & Voronov (1997, ADNDT 65, 1) default; legacy ATES fits (Abel+1997 / Hui \& Gnedin 1997) via \texttt{Legacy\_HHe\_rates} \\
- & C--Fe, all stages & Voronov (1997, ADNDT 65, 1) \\
+Rate $C(T)$ & H\,I, He\,I, He\,II & Voronov (1997, ADNDT 65, 1) Table~I default; legacy ATES fits (Abel+1997 / Hui \& Gnedin 1997) via \texttt{Legacy\_HHe\_rates} \\
+ & C--Fe, all stages & Voronov (1997) Table~I, each row with Voronov's own fitted $\Delta E$; the fits are stated for 1\,eV--20\,keV (3\,eV He\,II, 2\,eV N\,II, O\,II) and are evaluated below that range with their exact $e^{-U}$ threshold factor and no accuracy claim \\
+ & He\,$2\,^3$S & Black (1981, MNRAS 197, 553) eq.~12, $8.38\times10^{-10}T^{1/2}e^{-55338/T}$ \\
 \midrule
 \multicolumn{3}{@{}l}{\textbf{Recombination (radiative RR + dielectronic DR)}}\\[2pt]
-Case~B (RR) & H\,II, He\,II, He\,III & Badnell (2023) RR $-$ Mao \& Kaastra (2016) $\alpha_1$ ($+$ Badnell DR for He\,II) default; legacy Hui \& Gnedin (1997) fits via \texttt{Legacy\_HHe\_rates} \\
-He rec.\ radiation $\to$ H\,I (def.\ on, \texttt{He\_rec\_coupling}) & He\,II\,$\to$\,He\,I & Draine (2011) on-the-spot $y$/$z$: extra H\,I photoionization $n_{\rm HeII}n_e[z\,\alpha_B+y\,\alpha_1]$ with photoelectron heating, He\,II recombination shifted to $\alpha_B+y\,\alpha_1$; \texttt{False} $=$ pure case B \\
-Metastable & He\,II\,$\to2\,^3$S, $1\,^1$S & power-law fits (orig.\ ATES) \\
-Penning ionization & He\,$2\,^3$S\,$+$\,H & Taylor et al.\ (2025) temperature-dependent fit (replaces the const.\ $5\times10^{-10}$; always on) \\
- & He\,$2\,^3$S\,$+$\,H$_2$ & fit to Garc\'{i}a Mu\~{n}oz (2025) Table~A.5 (\texttt{penning\_HeI23S\_H2}, valid 500--10\,000\,K): He\,$2\,^3$S\,$+$\,H$_2\to$\,He\,$1\,^1$S\,$+$\,H$_2^+ + e^-$, releasing $4.4$\,eV to the electrons. The minor H\,$+$\,HeH$^+$ associative-ionization branch is not resolved: the full rate goes to the dominant Penning channel. Active only when a molecular run also tracks the triplet \\
+Ground capture $\alpha_1$ & H\,I, He\,I, He\,II & the Milne relation on the ground-state photoionization cross section the transfer uses, so the capture and the absorption of its photon are one process (0.998 of Hummer 1994 for H\,I, 1.006--1.011 of Hummer \& Storey 1998 for He\,I, as the code comment records them) \\
+Case~B & H\,II, He\,II, He\,III & Badnell (2023) RR ($+$ Badnell DR for He\,II) minus that $\alpha_1$ default; legacy Hui \& Gnedin (1997) fits via \texttt{Legacy\_HHe\_rates}; Koskinen et al.\ (2022) Table~1 R1, R2 via \texttt{Atomic rate set} \\
+Case~A where thin (def.\ on, \texttt{H\_rec\_escape}, \texttt{He\_rec\_coupling}) & H\,II, He\,II, He\,III & the balance coefficient is $\alpha_B+y\,\alpha_1$, $y$ the fraction of the ground-capture photons the recombined species does not re-absorb in the cell (case~A in a thin cell, case~B in a thick one); \texttt{False} $=$ case~B \\
+Recombination radiation absorbed on the spot (def.\ on, \texttt{He\_rec\_coupling}) & He\,II\,$\to$\,He\,I, He\,III\,$\to$\,He\,II & He\,II: the case-B captures leave through their own exits (the 584\,\AA\ line, the 19.8\,eV $2\,^3$S line, the $2\,^1$S two-photon continuum of Drake, Victor \& Dalgarno 1969), shared by the network's rates as in Draine (2011, sect.~14.3.2, 15.5) and Osterbrock \& Ferland (2006, sect.~2.4); He\,III: the ground capture, the direct capture into $n=2$ (Seaton 1959), He\,II Ly$\alpha$ and the $2s$ two-photon continuum (Nussbaumer \& Schmutz 1984; $A(2s)=526.823$\,s$^{-1}$ of Drake 1986), with the $2s$ share of Pengelly (1964) and the $2s$--$2p$ ion mixing of Pengelly \& Seaton (1964). Every photon is shared among H\,I, He\,I, He\,II, H$_2$ and the metal ions by their opacity in the cell; what leaves the cell is dropped \\
+He\,I 584\,\AA\ resonance line & He\,I $2\,^1$P\,$\to$\,$1\,^1$S & scattered by He\,I in the cell and converted into the $2\,^1$S two-photon continuum with probability $1/912.0$ per scattering (NIST $A$ values), a flight ending in continuum absorption, line scattering or escape, after Wood, Mathis \& Ercolano (2004, sect.~4.1); in a cell thick in line and continuum the continuum share tends to their eq.~(17) with every continuum absorber in place of H\,I. Doppler mean cross section, no frequency redistribution, and no electron-collisional $2\,^1$P\,$\to$\,$2\,^1$S transfer (validity stated at the code) \\
+Metastable & He\,II\,$\to2\,^3$S, He\,II\,$\to$\,excited singlets & case~B split into triplet and singlet captures with the triplet share of Hummer \& Storey (1998) Table~5 (0.771 at $10^4$\,K), so ground $+$ singlets $+$ triplets $=$ the Badnell $\alpha_A$ \\
+Electron collisions & He\,$1\,^1$S\,$\leftrightarrow2\,^3$S, $2\,^3$S\,$\to2\,^1$S, $2\,^1$P & $8.629132\times10^{-6}\,\Upsilon\,e^{-E/kT}/(g\sqrt{T})$ with the Bray et al.\ (2000) effective collision strengths (their table inside $10^{3.75}$--$10^{5.75}$\,K, the CHIANTI~11.0.2 he\_1 temperature dependence joined continuously outside it) and NIST level energies; the $2\,^3$S$\to1\,^1$S de-excitation $q_{31g}$ is the detailed-balance reverse of the excitation \\
+ & He\,$1\,^1$S\,$\to n\,^3L$, $2\,^3$S\,$\to n\,^1L$ ($n\ge3$) & the excitations into the higher triplets cascade into $2\,^3$S and are added to $q_{13}$ (0.019, 0.107, 0.331 of it at $5\times10^3$, $10^4$, $2\times10^4$\,K); the excitations of $2\,^3$S into the singlets above $2\,^1$P destroy it and are added to $q_{31b}$; both are coronal sums over the Bray et al.\ (2000) terms $n\le5$ \\
+Penning ionization & He\,$2\,^3$S\,$+$\,H & Garc\'{i}a Mu\~{n}oz (2025) Maxwell average of the Movre \& Meyer (1997) cross sections (always on); the total quenches the metastable, 0.9 of it is Penning (He\,$+$\,H$^+$\,$+\,e^-$) and 0.1 associative (HeH$^+$\,$+\,e^-$) \\
+ & He\,$2\,^3$S\,$+$\,H$_2$ & Garc\'{i}a Mu\~{n}oz (2025) network rows (Cohen \& Lane 1977 cross sections; 500--10\,000\,K), split 0.9 Penning (H$_2^+$) : 0.1 associative (H\,$+$\,HeH$^+$). Active only when a molecular run also tracks the triplet \\
 RR + DR & C, N, O, Mg, Si, Na, K, S, Ca\,II (+ stages) & Badnell (2006, ApJS 167, 334) RR + Badnell adf48 DR (TAMOC clist\_K) \\
 RR only & Ca\,I (Ca\,II$+e$) & Shull \& Van Steenberg (1982); no DR \\
 RR + DR & Fe\,I, Fe\,II & Huang et al.\ (2023) analytic fit; the Badnell DR project does not cover these isoelectronic sequences (see the note below the table) \\
 \midrule
 \multicolumn{3}{@{}l}{\textbf{Charge exchange (charge transfer)}}\\[2pt]
-metal\,$+$\,H/H$^+$ (default) & 23 reactions (Group~A) & Huang et al.\ (2023, ApJ 951, 123) Table~4 \\
-He\,$+$\,H/H$^+$ (default on, \texttt{He\_H\_charge\_exchange}) & 2 reactions (Group~B) & Koskinen et al.\ (2013) rates via Huang et al.\ (2023) Table~4; applied by dedicated routines in every helium-bearing system, \emph{not} gated by \texttt{cx\_full} \\
-full network (\texttt{cx\_full}) & $+$ metal$+$He, metal$+$metal & Huang et al.\ (2023) Table~4 (Groups C/D) \\
+metal\,$+$\,H/H$^+$ (default) & group~A: the 23 rows of Huang et al.\ (2023, ApJ 951, 123) Table~4, 19 carried & the reaction list of that table, each rate from the original source where it could be read (Kingdon \& Ferland 1996 and the calculations behind it: Allan et al.\ 1988, Butler \& Dalgarno 1979, 1980, Neufeld \& Dalgarno 1987, Gargaud et al.\ 1982; Kimura et al.\ 1996; Stancil et al.\ 1998, 1999; Zhao et al.\ 2005; Rutherford \& Vroom 1972; Dutta et al.\ 2001; Watanabe et al.\ 2002). The direction the source calculated or measured is carried as published; the other is computed from it by detailed balance with NIST internal partition functions. Four reverses (Mg$^+$, Fe$^+$, Si$^+$, Na$^+$\,$+$\,H) are not carried, their forward ending in an excited or radiative product \\
+density-dependent reverses & N\,$+$\,H$^+$, S$^+$\,$+$\,H, C\,$+$\,S$^+$ & for the three forwards whose sources name their product levels, the reverse is the thermal one times the product populations of a five-level statistical equilibrium of N\,I, S\,II and C\,I at the cell's $(T,n_e)$ (CHIANTI~11.0.2 $A$ values and electron collision strengths); it equals the thermal reverse at the collisional limit \\
+He\,$+$\,H/H$^+$ (default on, \texttt{He\_H\_charge\_}\allowbreak\texttt{exchange}) & group~B and He$^{2+}$\,$+$\,H & He$^+$\,$+$\,H: radiative (Stancil, Lepp \& Dalgarno 1998, from Zygelman et al.\ 1989) $+$ non-radiative (Loreau, Ryabchenko \& Vaeck 2014, by reciprocity); He\,$+$\,H$^+$: detailed balance of the non-radiative channel; He$^{2+}$\,$+$\,H\,$\to$\,He$^+$\,$+$\,H$^+$\,$+h\nu$: West, Lane \& Cohen (1982), Maxwellian average of their cross section, no reverse. Applied by dedicated routines in every helium-bearing system, \emph{not} gated by \texttt{cx\_full} \\
+full network (\texttt{cx\_full}) & groups~C, D: metal$+$He/He$^+$, metal$+$metal & Table~4 reaction list with the originals where read (Kimura et al.\ 1993; Zhao et al.\ 2004; Satta et al.\ 2013; Prasad \& Huntress 1980; Rutherford \& Vroom 1972; Chenel et al.\ 2010; Kwolek et al.\ 2019; Lavvas et al.\ 2014), reverses by detailed balance; C$^+$, O$^+$, Si$^+$\,$+$\,He and Fe$^+$\,$+$\,O, Fe$^+$\,$+$\,N, Na$^+$\,$+$\,Ca are not carried; C\,$+$\,Si$^+$ as printed \\
+O$^{2+}$, N$^{2+}$\,$+$\,H (default on, \texttt{cx\_O2p\_H}, \texttt{cx\_N2p\_H}) & group~E, not in Table~4 & Barrag\'an et al.\ (2006) Tables~1 and 2, interpolated over $10^2$--$10^5$\,K; no reverse; not gated by \texttt{cx\_full} \\
+heat (channel \texttt{heat\_charge\_}\allowbreak\texttt{exchange}) & every applied reaction & the energy defect less the excitation of a product state that leaves as radiation (product states from the sources read; Fe$^+$ products in the near-resonant z$^4$F/z$^4$D terms) \\
 \midrule
 \multicolumn{3}{@{}l}{\textbf{Radiative cooling}}\\[2pt]
-recomb., coll.\ ion./exc., free--free & H, He & Hui \& Gnedin (1997) recomb.\ cooling; Black (1981) collisional; free--free bremsstrahlung with the van Hoof et al.\ (2014) thermal Gaunt factor, weighted by ion net charge \\
-H$_3^+$ infrared (molecular runs) & H$_3^+$ & Miller et al.\ (2013) LTE emission per molecule (Table~5 $z(T)$ fits) times their Table~6 non-LTE departure factor $s(T,n_{\rm H_2})$; optically thin. The dominant coolant of a molecular base, where every atomic channel above is exponentially suppressed \\
-metal line cooling \mbox{(analytic)} & C\,I/II, N\,I/II, O\,I/II & closed-form fits to CHIANTI v11.0.2 (default); legacy AIOLOS fits via \texttt{cno\_cool 0} (no N cooling) \\
-metal line cooling \mbox{(analytic)} & Mg\,I/II, Ca\,II\,H\&K, Na\,I\,D, Fe\,II coronal & closed-form fits to CHIANTI v11.0.2 (Burgess--Tully descaled; 1--3\% accuracy); Na\,I\,D via effective $\bar g\!\approx\!0.2$ \\
-metal line cooling \mbox{(tabulated)} & Fe\,I; Fe\,II\,$(T,n_e)$ & NIST $f$-values $+$ Van Regemorter; CHIANTI multilevel statistical equilibrium \\
-ground-term fine structure (statistical equilibrium) & C\,I $2p^2\,^3P$, C\,II $2p\,^2P$, N\,II $2p^2\,^3P$, O\,I $2p^4\,^3P$ & the split ground term is solved in exact statistical equilibrium at the local $(n_e, n_{\rm H\,I})$ instead of the low-density coronal limit, which overstates these lines by 2.9--8.3 decades at the base. Electron collision strengths from CHIANTI v11.0.2; H-atom rates from Yan \& Babb (2023) for C\,I/N\,II, Abrahamsson, Krems \& Dalgarno (2007) for O\,I, Barinovs et al.\ (2005) for C\,II. The coronal curve is kept only for the channels leaving the ground term. The complete set: the other coolants have a single ground level, are built from permitted lines (Fe\,I), or already use a statistical-equilibrium table (Fe\,II) \\
+recombination & H\,II, He\,II, He\,III, metal ions & the kinetic energy of the captured electrons, $kT\alpha\,(3/2+{\rm d}\ln\alpha/{\rm d}\ln T)$, with the coefficient $\alpha$ the ionization balance uses (for H\,II, He\,II and He\,III the net coefficient $\alpha_B+y\,\alpha_1$, at the frozen escape weight; for the metals their RR$+$DR coefficient); checked against Hummer (1994) \\
+coll.\ excitation & H\,I & coronal sum over the CHIANTI~11.0.2 h\_1 levels (Anderson et al.\ 2000 collision strengths), observed energies, the $1s\to2s,2p$ rates the H($n{=}2$) model uses \\
+ & He\,I & coronal sum over the 28 terms $n\le5$ of Bray et al.\ (2000); with the He\,$2\,^3$S tracked, the $1\,^1$S$\to2\,^3$S channel is charged with the network's own excitation and its detailed-balance reverse (a net that turns negative where the metastable is overpopulated), plus the triplet cascade cooling of $2\,^3$S (Bray terms $n\le5$) and the thresholds of its excitations into the singlets \\
+ & He\,II & coronal sum over the CHIANTI~11.0.2 he\_2 levels (Ballance 2003) \\
+coll.\ ionization, free--free & H, He, metals & the measured ionization potential per event (He\,$2\,^3$S and the metal ions included); free--free bremsstrahlung with the van Hoof et al.\ (2014) thermal Gaunt factor, weighted by ion net charge \\
+CHIANTI descaling & every CHIANTI-based coefficient & the Burgess--Tully scaled collision strengths descaled with the natural cubic spline of CHIANTI's \texttt{descale\_scups.pro}, as CHIANTI prescribes \\
+H$_3^+$ infrared (molecular runs) & H$_3^+$ & Miller et al.\ (2013) LTE emission per molecule (Table~5 $z(T)$ fits) times their Table~6 non-LTE departure factor $s(T,n_{\rm H_2})$, interpolated as a power law in $n({\rm H_2})$ between the columns and linearly in $T$; optically thin. The dominant coolant of a molecular base, where every atomic channel above is exponentially suppressed \\
+metal line cooling & C\,I/II, N\,I/II, O\,I/II & the ground term in statistical equilibrium (row below) plus the channels that leave it from $(T,n_e)$ statistical-equilibrium tables of CHIANTI~11.0.2 (default); legacy AIOLOS fits via \texttt{cno\_cool 0} (no N cooling) \\
+ & Mg\,II & closed-form fit (0.2\%) to the coronal sum over the 32 bound levels of the CHIANTI~11.0.2 model with the observed level energies \\
+ & Mg\,I, Ca\,II & $(T,n_e)$ statistical-equilibrium tables of CHIANTI~11.0.2 carrying every channel of the ion \\
+ & Na\,I\,D & Van Regemorter with effective $\bar g=0.2$ (not in CHIANTI) \\
+ & Fe\,I & NIST $f$-values $+$ Van Regemorter, lower levels Boltzmann-populated: the high-density (LTE) limit, an upper limit at most 2.0 times the low-density value \\
+ & Fe\,II & $(T,n_e)$ multilevel statistical-equilibrium table (CHIANTI) \\
+ & all $(T,n_e)$ tables & above their top density the last slope in $\log n_e$ is carried on, clipped to $[-1,0]$ \\
+ground-term fine structure (statistical equilibrium) & C\,I $2p^2\,^3P$, C\,II $2p\,^2P$, N\,II $2p^2\,^3P$, O\,I $2p^4\,^3P$ & the split ground term is solved in exact statistical equilibrium at the local $(n_e, n_{\rm H\,I})$ instead of the low-density coronal limit, which overstates these lines by 2.9--8.3 decades at the base. Electron collision strengths from CHIANTI v11.0.2; H-atom rates from Yan \& Babb (2023) for C\,I/N\,II, Abrahamsson, Krems \& Dalgarno (2007) for O\,I, Barinovs et al.\ (2005) for C\,II. The complete set: the other coolants have a single ground level, are built from permitted lines (Fe\,I), or already use a statistical-equilibrium table (Fe\,II) \\
 line trapping & the eight ground-term fine-structure lines & line-center escape probability from the column above the cell, Hollenbach \& McKee (1979) / de Jong, Boland \& Dalgarno (1980) plane-parallel Doppler form renormalized to $\beta(0)=1$; applied as $A_{ul}\!\to\!\beta A_{ul}$ \emph{inside} the statistical-equilibrium solution, the only placement correct in both the low- and high-density limits. Other lines, including Mg\,II h\&k, are treated as optically thin \\
 validity floor of the coronal fits & all CHIANTI-derived coefficients & the coronal part is cut off smoothly below $10^{3}$\,K (the lower end of the fitted range), continuous in value and $dT$-slope and bit-identical above it; only the explicitly solved ground-term fine-structure terms survive below. The roll-off is $\exp(-x^2)$ with $x=(T_{\rm floor}/T-1)/w$ and $w=0.1$ by default, settable as \texttt{Coronal cutoff width:}. With the C/N/O ground-term fine-structure floors saturated no coronal cooling survives below the floor for the guard to remove, and the base-cell balance temperature of all four paper planets is identical over $w = 0.02$--$1.2$. Not applied to the legacy AIOLOS branch (\texttt{cno\_cool 0}) \\
 \midrule
 \multicolumn{3}{@{}l}{\textbf{Photoelectric heating}}\\[2pt]
-secondary ionization (def.\ on, \texttt{Secondary\_ionization}) & H\,I, He\,I, H$_2$ & Shull \& van Steenberg (1985) $f_{\rm ion}(x)$ fits with the Dalgarno, Yan \& Liu (1999) energy dependence, and Dalgarno et al.'s heating fraction $f_{\rm heat}(x,E_0)$, H$_2$ target channel and molecular heat returns; photoelectrons with $E_0>30\,$eV drive secondary H\,I / He\,I / H$_2$ ionizations, heating scaled to $f_{\rm heat}$; the He\,$2^3$S photoelectron feeds the same heating and secondary-source budget \\
+secondary ionization (def.\ on, \texttt{Secondary\_}\allowbreak\texttt{ionization}) & H\,I, He\,I, H$_2$ & Shull \& van Steenberg (1985) $f_{\rm ion}(x)$ fits with the Dalgarno, Yan \& Liu (1999) energy dependence, and Dalgarno et al.'s heating fraction $f_{\rm heat}(x,E_0)$, H$_2$ target channel and molecular heat returns; photoelectrons with $E_0>30\,$eV drive secondary H\,I / He\,I / H$_2$ ionizations, heating scaled to $f_{\rm heat}$; the He\,$2^3$S photoelectron and the metal photoelectrons and Auger electrons feed the same heating and secondary-source budget \\
 \midrule
 \multicolumn{3}{@{}l}{\textbf{Excited hydrogen H($n{=}2$) and Ly$\alpha$}}\\[2pt]
-$2s/2p$ rate equilibrium & H($n{=}2$) & Christie, Arras \& Li (2013) Table~2 \\
-recombination cascade to $n{=}2$ & H & Draine (2011) \\
+$2s/2p$ rate equilibrium & H($n{=}2$) & the level balance of Christie, Arras \& Li (2013, eqs.~12--13); $A(2p\to1s)=6.2649\times10^8$\,s$^{-1}$ (NIST), $A(2s\to1s)=8.22461$\,s$^{-1}$ (Drake 1986, eq.~27); $1s\leftrightarrow2s,2p$ collisions from the CHIANTI~11.0.2 h\_1 strengths and their detailed-balance reverses; $2s$--$2p$ mixing by electrons, Seaton (1955) eq.~(55), and by H$^+$, He$^+$ and He$^{2+}$, Pengelly \& Seaton (1964) with their cut-off; in a molecular run the H$_2^+$ and HeH$^+$ dissociative recombinations as an $n{=}2$ source \\
+recombination cascade to $n{=}2$ & H & the case-B coefficient of the balance, split with the $2s$ fraction of Pengelly (1964, Table~I) \\
+Balmer continuum & H($n{=}2$) & $\sigma_2=1.4\times10^{-17}$\,cm$^2$ at the $n=2$ edge (Seaton 1959, $1.378\times10^{-17}$ with his Gaunt factor), falling as $E^{-3}$, over the run's own spectrum from $e_{\rm th,HI}/4$ to $e_{\rm th,HI}$ \\
 Ly$\alpha$ pumping field (mode~0) & H & Huang et al.\ (2017) Eq.~6 \\
 \midrule
 \multicolumn{3}{@{}l}{\textbf{Transmission line data (\texttt{EXHALE\_transit.py})}}\\[2pt]
-$\lambda$, $f$-value, $A_{ki}$ & He\,10830, Ly$\alpha$, H$\alpha$, H$\beta$, Mg\,II, Ca\,II\,H\&K, Na\,I\,D & NIST ASD \\
+$\lambda$, $f$-value, $A_{ki}$ & He\,10830, Ly$\alpha$, H$\alpha$, H$\beta$, Mg\,II, Ca\,II\,H\&K, Na\,I\,D, O\,I\,1302/1304/1306 & NIST ASD \\
 line profile & all & Voigt (Faddeeva, \texttt{scipy.special.wofz}) \\
 \end{longtable}
 
@@ -3970,8 +4135,13 @@ whereas the Badnell dielectronic-recombination project reaches the phosphorus
 isoelectronic sequence (15 electrons) as of its paper~XVI (2022). Ca\,I has the
 same problem one sequence lower (K-like, 19 electrons) and likewise keeps a
 non-Badnell rate. \textbf{Note on completeness.} The metal grid carries the stages
-needed for the XUV-driven ionization balance and the observed NUV/optical lines;
-higher stages and additional elements (e.g.\ the full Fe forest, K\,I, Mg\,I)
-beyond those tabulated above are not modeled.
+needed for the XUV-driven ionization balance and the observed NUV/optical lines:
+three stages of C, N, O, Mg, Si, Ca, Fe and two of Na, K, S. Twelve of the 27
+carry a line-cooling channel (C\,I, C\,II, N\,I, N\,II, O\,I, O\,II, Mg\,I,
+Mg\,II, Ca\,II, Na\,I, Fe\,I, Fe\,II); the others (the doubly ionized stages,
+Si\,I, Si\,II, Ca\,I, Na\,II, K\,I, K\,II, S\,I, S\,II) cool only through
+recombination, collisional ionization and free--free emission, where each
+applies. Higher stages
+and additional elements are not modeled.
 
 \end{document}

@@ -533,7 +533,7 @@ def load_OI_levels(path, ghost=False):
 
 
 def load_lower_atmosphere_profile(path):
-    """Read a lower-atmosphere profile file (docs/input_schema.md section 2d).
+    """Read a lower-atmosphere profile file (md/input_schema.md section 2d).
 
     Returns (header, columns): `header` maps every `# key value` line to its
     value string, `columns` maps every name of the `# columns:` line to its

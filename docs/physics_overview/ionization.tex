@@ -70,9 +70,11 @@ configurations: \texttt{System\_H}, \texttt{System\_HeH},
 \texttt{System\_HeH\_mol\_metals}. The shared rows live once, in
 \texttt{ion\_residual\_core.f90}.
 
-\paragraph{The H/He rows.} With photoionization rates $\Gamma$, case-B
-recombination coefficients $\alpha$ and electron-impact ionization
-coefficients $\beta$, \texttt{heh\_rows} writes
+\paragraph{The H/He rows.} With photoionization rates $\Gamma$,
+recombination coefficients $\alpha$ (case B plus the ground captures whose
+photons are not re-absorbed on the spot, \eqref{eq:ion:netalpha}) and
+electron-impact ionization coefficients $\beta$, \texttt{heh\_rows}
+writes
 \begin{align}
 0 &= n_{\rm HI}\Gamma_{\rm HI}
    + \left(n_{\rm HI}\beta_{\rm HI}-\alpha_{\rm HII}n_{\rm HII}\right)n_e,
@@ -108,14 +110,32 @@ balance,
 0 = -n_{2^3{\rm S}}\Gamma_{2^3{\rm S}}
     + n_e\left[n_{\rm HeII}\alpha_{2^3{\rm S}}
              + n_{1^1{\rm S}}q_{13}
-             - n_{2^3{\rm S}}(q_{31a}+q_{31b})
+             - n_{2^3{\rm S}}(q_{31g}+q_{31a}+q_{31b})
              - n_{2^3{\rm S}}\beta_{2^3{\rm S}}\right]
     - n_{2^3{\rm S}}\left(A_{31}+n_{\rm HI}Q_{31}\right),
 \label{eq:ion:tripletrow}
 \end{equation}
-where $q_{13}$ is the collisional excitation out of the singlet ground
-state, $q_{31a}$ and $q_{31b}$ the collisional conversions to $2^1$S and
-$2^1$P, $A_{31} = 1.272\times10^{-4}$\,s$^{-1}$ the forbidden radiative
+where $q_{13}$ is the collisional feed of $2^3$S out of the singlet
+ground state: the direct excitation $1^1$S$\to2^3$S plus the excitation of
+every higher triplet term $n\le5$ of \citet[Table~2]{Bray2000}, each of which cascades
+into $2^3$S within the triplets (0.019 of the direct rate at 5000\,K, 0.107
+at $10^4$\,K, 0.331 at $2\times10^4$\,K); $q_{31g} =
+q^{\rm direct}_{13}(g_1/g_3)e^{E_{13}/kT}$ is the detailed-balance reverse of
+the direct excitation (written with the Boltzmann factor cancelled, so it
+stays finite where $q_{13}$ underflows, and not negligible in cool gas:
+$q_{31g}/(q_{31a}+q_{31b}) = 0.055$ at $10^4$\,K, 0.15 at 5000\,K, 0.56 at
+3000\,K and 2.7 at 2000\,K); $q_{31a}$ and $q_{31b}$ are the
+collisional conversions to $2^1$S and to $2^1$P, the latter together with
+every singlet level above it (0.019 of $q_{31a}+q_{31b}$ at $10^4$\,K), all
+of the form $C\,\Upsilon\,e^{-E/kT}/(g_i\sqrt{T})$ with the Maxwellian
+constant $C = h^2/[(2\pi m_e)^{3/2}k^{1/2}] = 8.629132\times10^{-6}$
+cm$^3$\,s$^{-1}$\,K$^{1/2}$, the effective collision strengths of
+\citet[Tables~2 and 3]{Bray2000} for the network's own transitions and for
+the higher levels of the sums alike (interpolated inside the tabulated
+$10^{3.75}$--$10^{5.75}$\,K and continued outside it with the temperature
+dependence of the CHIANTI v11.0.2 strength of the same transition, scaled to
+the table end) and the NIST level energies,
+$A_{31} = 1.272\times10^{-4}$\,s$^{-1}$ the forbidden radiative
 decay, $\beta_{2^3{\rm S}}$ the electron-impact ionization of the
 metastable at its own 4.8\,eV threshold, and $Q_{31}$ the \emph{total}
 He($2^3$S)$+$H ionization rate coefficient. Both channels of $Q_{31}$
@@ -248,21 +268,52 @@ total ground-level fit
 implemented as \texttt{rr\_badnell} (its dummy \texttt{T0} keeps the
 published notation and is not the code's temperature scale). Dielectronic
 recombination of He\,{\sc ii} adds the adf09 three-term sum
-$T^{-3/2}\sum_i c_i e^{-E_i/T}$. Case B is formed by subtracting the $n=1$
-direct-capture level fit of \citet{Mao2016},
+$T^{-3/2}\sum_i c_i e^{-E_i/T}$. Case B is formed by subtracting the
+capture into the ground level, $\alpha_1$, from the Milne relation on the
+ground-state photoionization cross section the radiative transfer itself
+absorbs with (hydrogenic for H\,{\sc i} and He\,{\sc ii}, the
+\citet{Verner1996} fit for He\,{\sc i}),
 \begin{equation}
-\alpha_1(T) = \frac{a_0\,\theta^{-b_0-c_0\ln\theta}
-                    \left(1+a_2\theta^{-b_2}\right)}
-                   {1+a_1\theta^{-b_1}},
-\qquad \theta = k_{\rm B}T\ \mathrm{[eV]},
-\label{eq:ion:rrmao}
+\alpha_1(T) = \frac{g_n}{g_+}\sqrt{\frac{2}{\pi}}
+   \frac{1}{c^2(m_ekT)^{3/2}}
+   \int_0^\infty (I+E)^2\,\sigma(I+E)\,e^{-E/kT}\,{\rm d}E,
+\label{eq:ion:milne}
 \end{equation}
-so that $\alpha_{\rm B} = \alpha_{\rm A}-\alpha_1$ for H\,{\sc ii},
-He\,{\sc ii} and He\,{\sc iii}. The metal stages take Badnell RR $+$ adf09
+($g_n/g_+ = 2$, $1/2$, $2$ for H\,{\sc i}, He\,{\sc i}, He\,{\sc ii};
+\texttt{ground\_capture\_milne}, a 24-point Gauss--Legendre rule in
+$\ln(1+E/I)$ accurate to $10^{-10}$), so that the ground captures and the
+absorption of the photons they emit are one process and
+$\alpha_{\rm B} = \alpha_{\rm A}-\alpha_1$ for H\,{\sc ii}, He\,{\sc ii}
+and He\,{\sc iii}. $\alpha_1$ is 0.998 of \citet{Hummer1994} for H\,{\sc i},
+0.999 of his hydrogenic scaling for He\,{\sc ii} and 1.006--1.011 of
+\citet{Hummer1998} for He\,{\sc i}. With the metastable tracked, the
+case-B captures of He\,{\sc ii} are split between the triplets (all ending
+in $2^3$S) and the excited singlets (ending in $1^1$S) in the ratio of the
+two sums of \citet[Table~5]{Hummer1998}, a triplet share of 0.755 at
+10\,K, 0.771 at $10^4$\,K and 0.781 at $2.5\times10^4$\,K.
+
+\paragraph{The coefficients the balance uses.} A ground capture emits a
+photon above the edge of the recombined species; the part of those photons
+the same species re-absorbs in the cell is a capture and a re-ionization
+that cancel. The coefficients of the rows are therefore
+\begin{equation}
+\alpha_{\rm HII} = \alpha_{\rm B} + y_{\rm HI}\,\alpha_1^{\rm H},\qquad
+\alpha_{\rm HeII} = \alpha_{\rm B} + y_{\rm gnd}\,\alpha_1^{\rm He},\qquad
+\alpha_{\rm HeIII} = \alpha_{\rm B} + y_{\rm HeII}\,\alpha_1^{\rm He^+},
+\label{eq:ion:netalpha}
+\end{equation}
+$y_r = 1 - n_r\sigma_r\,\Delta r\,(1-e^{-\tau})/\tau$ the fraction of the
+photons not re-absorbed by $r$ in the cell, $\tau$ the cell optical depth
+at the edge of every absorber (\texttt{ground\_capture\_escape\_weights}).
+$y\to0$ is case B, where the gas is thick at the edge; $y\to1$ case A, in
+the thin outer wind. \texttt{H\_rec\_escape} (default on) governs
+$y_{\rm HI}$ and \texttt{He\_rec\_coupling} (default on) the two helium
+weights; a switch that is off sets its weight to zero. The photons taken by
+other absorbers ionize them (Sec.~\ref{sec:radiation:internal}). The metal stages take Badnell RR $+$ adf09
 DR through the same two forms, with the one gap (Ca\,{\sc ii}, K-like)
 handled separately and noted at the code site.
 
-\paragraph{Collisional ionization.} \citet{Voronov1997} Table 1,
+\paragraph{Collisional ionization.} \citet{Voronov1997} Table~I,
 \begin{equation}
 \beta(T) = A\,\frac{\left(1+P\sqrt{U}\right)U^{K}e^{-U}}{X+U},
 \qquad U = \frac{\Delta E}{k_{\rm B}T},
@@ -270,15 +321,39 @@ handled separately and noted at the code site.
 \end{equation}
 with $(\Delta E,P,A,X,K)$ equal to $(13.6,0,2.91\times10^{-8},0.232,0.39)$
 for H\,{\sc i}, $(24.6,0,1.75\times10^{-8},0.180,0.35)$ for He\,{\sc i} and
-$(54.4,1,2.05\times10^{-9},0.265,0.25)$ for He\,{\sc ii}. The $\Delta E$
-here is Voronov's own fit coefficient, not the measured potential; the
-energy \emph{removed} per ionization is the measured one,
-$E_{{\rm th}}$ in erg.
+$(54.4,1,2.05\times10^{-9},0.265,0.25)$ for He\,{\sc ii}, and the metal
+stages take their own rows of the same table. The $\Delta E$
+here is Voronov's own fit coefficient, not the measured potential (Mg\,{\sc
+ii} 15.2 against 15.035\,eV), for the metals as for H and He; the
+energy \emph{removed} per ionization of H and He is the measured one,
+$E_{{\rm th}}$ in erg. Voronov's fits cover 1\,eV--20\,keV (3\,eV for
+He\,{\sc ii}, 2\,eV for N\,{\sc ii} and O\,{\sc ii}); below that, in the
+2000--$10^4$\,K of a photoionized wind, the same expression is evaluated,
+which keeps the exact threshold factor $e^{-U}$ but continues the fitted
+prefactor where no data constrain it, and no accuracy is claimed there.
 
-\paragraph{Charge exchange.} \texttt{charge\_exchange.f90} carries the 63
-reactions of \citet{Huang2023} Table 4 plus one row that is not in it. The default active set is Group A, the 23 metal$+$H/H$^+$
-reactions; \texttt{cx\_full} adds the metal$+$He (C) and metal$+$metal (D)
-groups. The He$\leftrightarrow$H pair (Group B),
+\paragraph{Charge exchange.} \texttt{charge\_exchange.f90} carries the
+reaction list of \citet{Huang2023} Table 4, 63 rows, plus one row that is
+not in it, but not all of that table's rate coefficients. A rate that a
+source calculated or measured is carried as the source gives it, from the
+original where it could be read (among others Kingdon \& Ferland 1996 with
+Butler \& Dalgarno 1979 for N$+$H$^+$, Dutta et al.\ 2001 and Watanabe et al.\
+2002 for Na$+$H$^+$, Watanabe et al.\ for K$+$H$^+$, Rutherford \& Vroom 1972 for Fe$+$X$^+$, Zhao et
+al.\ 2005 for S$+$H$^+$, Satta et al.\ 2013 for Si$+$He$^+$, Chenel et al.\
+2010 for S$+$C$^+$, Kwolek et al.\ 2019 for Na$+$Ca$^+$); where the source
+gives one direction only, the other is computed from it by detailed balance,
+$k_r = k_f\,[Q(X^s)Q(Y^{t+1})]/[Q(X^{s+1})Q(Y^t)]\,
+e^{[I(X^s)-I(Y^t)]/kT}$ with NIST internal partition functions and
+ionization energies, in place of the fitted reverses Table 4 prints. Ten
+reverses of Table 4 are not carried (A2, A6, A10, A22, C2, C4, C6, D18,
+D28, D30), because their forward channel ends in an excited or radiative
+product and so has no collisional reverse from the populated states. One
+pair, D1/D2 (C$+$Si$^+$), stays as printed: the paper Table 4 cites for it
+contains no such rate. \texttt{src/tests/charge\_exchange\_detailed\_balance}
+checks every carried pair against detailed balance and every carried rate
+against the threshold law. The default active set is Group A, the 23
+metal$+$H/H$^+$ reactions; \texttt{cx\_full} adds the metal$+$He (C) and
+metal$+$metal (D) groups. The He$\leftrightarrow$H pair (Group B),
 ${\rm He}^0+{\rm H}^+ \rightleftharpoons {\rm He}^+ + {\rm H}^0$, is applied
 separately by \texttt{he\_h\_cx\_fvec} so that it is available in
 \emph{every} system containing helium and is never counted twice; it is
@@ -288,7 +363,9 @@ on by default at the published rate because its absence leaves the
 O\,{\sc iii} profile wrong by decades in the region a transit probes;
 \texttt{cx\_O2p\_H 0} in \texttt{metals.inp} restores the Table-4-only set
 exactly. Each reaction enters as $R = k\,n_{\rm donor}n_{\rm acceptor}$, so
-the zero-abundance guard is automatic.
+the zero-abundance guard is automatic. The energy defect of each applied
+reaction, less the excitation of a product state that leaves as radiation,
+is heating channel 20 (Sec.~\ref{sec:thermal:heat}).
 
 \paragraph{Penning ionization of the metastable.} The total
 He($2^3$S)$+$H ionization rate coefficient is the Maxwell-Boltzmann average
@@ -452,34 +529,60 @@ de-excitation, $\ell$-mixing and photoionization by the stellar Balmer
 continuum. The atomic data are in one place
 (\texttt{hydrogen\_n2\_rates.f90}): $A_{2p1s}=6.2649\times10^{8}$\,s$^{-1}$
 (NIST ASD, the nonrelativistic dipole value carrying the reduced-mass
-factor), $A_{2s1s}=8.26$\,s$^{-1}$, $g_{1s}=g_{2s}=2$, $g_{2p}=6$,
-$f_{\rm Ly\alpha}=0.4162$, the \citeauthor{Christie2013} Table 2 collisional rates
-such as
-$q_{1s2p} = 1.71\times10^{-8}\,t_4^{-0.077}e^{-118400/T}$, their
-detailed-balance inverses, and the \citet{Draine2011} case-B recombination and
-its $2s/2p$ split,
+factor), $A_{2s1s}=8.22461$\,s$^{-1}$ (\citealt{Drake1986} eq.~27, with the
+finite nuclear mass and his relativistic factor), $g_{1s}=g_{2s}=2$, $g_{2p}=6$,
+$f_{\rm Ly\alpha}=0.4162$, the $1s\to2s$ and $1s\to2p$ collisional rates
+$C\,\Upsilon\,e^{-E/kT}/(2\sqrt{T})$ with the CHIANTI v11
+effective collision strengths (the rates the H\,{\sc i} cooling uses too),
+their detailed-balance inverses, and the case-B coefficient of the
+ionization balance (the captures into $n\ge2$) split into $2s$ and $2p$ with
+the case-B fraction of \citet[Table~I]{Pengelly1964}, $\alpha_{2s} =
+f_{2s}(T)\,\alpha_{\rm B}$, $\alpha_{2p} = \alpha_{\rm B}-\alpha_{2s}$
+($f_{2s} = 0.322$ at $10^4$\,K). The $2s\to2p$ $\ell$-mixing rate is
 \begin{equation}
-\alpha_{\rm B} = 2.54\times10^{-13}\,
-   t_4^{-0.8163-0.0208\ln t_4},
-\qquad
-\alpha_{2s} = \left(0.282+0.047t_4-0.006t_4^{2}\right)\alpha_{\rm B},
-\label{eq:ion:alphaB}
+M_{2s2p} = n_e C^{e}_{2s2p} + n_{\rm HII}q^{\rm p}_{2s2p}
+   + n_{\rm HeII}q^{\rm He^+}_{2s2p} + n_{\rm HeIII}q^{\rm He^{2+}}_{2s2p},
+\label{eq:ion:lmix}
 \end{equation}
-with $t_4 = T/10^{4}$\,K. The removal of a $2p$ atom without emission of a
-line photon is
+$C^e$ the electron rate of \citet{Seaton1955} eq.~(55), his approximation V,
+Maxwell-averaged in closed form with the same two final states and
+separations ($5.78\times10^{-5}$\,cm$^3$\,s$^{-1}$ at $10^4$\,K; the
+\citeauthor{Christie2013} Table 2 rate, $5.35\times10^{-6}$, averages a
+cross section whose constant is one tenth of Seaton's first-order dipole
+constant, and is not used), and
+the ion rates
+the impact-parameter cross section of \citet{Pengelly1964b}, eqs.~(34)--(41),
+Maxwell-averaged in closed form with their cut-off
+$R_c = \min(1.12\hbar v/\Delta E, 0.72v\tau, R_D)$; the Lamb shift and the
+fine structure set $\Delta E$ ($2s_{1/2}$--$2p_{1/2}$ 0.035\,cm$^{-1}$,
+--$2p_{3/2}$ 0.331\,cm$^{-1}$), which is the smallest cut-off below
+$n_e\sim4\times10^{12}$\,cm$^{-3}$. The proton coefficient is
+$4.8\times10^{-4}$\,cm$^3$\,s$^{-1}$ at $10^4$\,K, 8.3 times the electron
+one, so $2s$ is mixed into $2p$ faster than it decays by two photons
+wherever \mbox{$n_e = n_{\rm p}\gtrsim1.5\times10^4$\,cm$^{-3}$}. The removal of a $2p$
+atom without emission of a line photon is
 \begin{equation}
 D_{2p} = n_e q_{2p1s} + \Gamma_{2p}
-       + n_e C_{2p2s}\frac{A_{2s1s}}
-         {A_{2s1s}+n_e(q_{2s1s}+C_{2s2p})+\Gamma_{2s}}.
+       + M_{2p2s}\frac{A_{2s1s}}
+         {A_{2s1s}+n_eq_{2s1s}+M_{2s2p}+\Gamma_{2s}},
 \label{eq:ion:d2p}
 \end{equation}
+$M_{2p2s} = (g_{2s}/g_{2p})M_{2s2p}$.
 
 \paragraph{Balmer continuum.} The $n=2$ photoionization rate and the
 photoelectric heating it delivers are integrals over
 $[E_{\rm th}({\rm H},n{=}2), E_{\rm th}({\rm H})]$ of the run's own
 spectrum with the hydrogenic cross section
 $\sigma_2(E) = \sigma_2^{\rm thr}(E_2/E)^{3}$,
-$\sigma_2^{\rm thr} = 1.4\times10^{-17}$\,cm$^{2}$:
+$\sigma_2^{\rm thr} = 1.4\times10^{-17}$\,cm$^{2}$ for $2s$ and $2p$ alike. The
+code states no source for that value; it is, to its two figures, the $n=2$
+threshold value of the Kramers cross section with the bound-free Gaunt
+factor of \citet[eqs.~3 and 10]{Seaton1959}, $1.378\times10^{-17}$\,cm$^{2}$,
+and the exact hydrogenic threshold values are $1.478\times10^{-17}$ ($2s$) and
+$1.355\times10^{-17}$\,cm$^{2}$ ($2p$), statistical mean
+$1.386\times10^{-17}$\,cm$^{2}$ (derived for this document); the $(E_2/E)^3$
+form with a constant threshold value leaves out the rise of the Gaunt factor
+above the edge:
 \begin{equation}
 \Gamma_2 = \frac{\sigma_2^{\rm thr}E_2^{3}}{h\,\nu_{\rm eV}}
            \int F_E\,E^{-4}\,{\rm d}E,

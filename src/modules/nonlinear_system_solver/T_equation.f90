@@ -6,19 +6,19 @@
 	use caloric_eos, only: internal_energy_of_mixture
 	use utils, only : calc_ne
 	use Cooling_Coefficients
-	use species_table, only : n_mion, mion_iscool, mion_name,           &
-	                          mion_z2, mion_elem, mion_stage, melem_Z,  &
-	                          im_CI, im_CII, im_NII, im_OI, im_FeII
+	use species_table, only : n_mion, mion_stage
 
 	implicit none
 
 	! Cell-by-cell metal state for the advection post-process temperature solve.
 	! post_process_adv sets these (cgs densities for the current cell, and
-	! the on/off switch) immediately before each hybrd1(T_equation,...) call,
-	! so the implicit T it converges to balances the SAME metal line cooling
-	! that eval_cool reports. Module-scope (not via params(40)) because the
-	! 27-ion metal vector does not fit the legacy params array. Safe because
-	! the post-process temperature loop is serial.
+	! the on/off switch) immediately before each hybrd1(T_equation,...) call.
+	! The cooling T_equation balances is radiative_cooling_of_cell
+	! (Cool_coeff), the one assembly eval_cool also evaluates, so the T it
+	! converges to balances the cooling eval_cool reports at it.
+	! Module-scope (not via params(40)) because the 27-ion metal vector does
+	! not fit the legacy params array. Safe because the post-process
+	! temperature loop is serial.
 	real*8  :: pp_nm_cell(n_mion) = 0.0d0   ! current-cell metal densities [cm^-3]
 	logical :: pp_metal_on        = .false. ! add metal cooling/brem/ne in T_equation
 	! Line-center escape probabilities of the ground-term fine-structure
@@ -70,7 +70,7 @@
 	real*8  :: x(N_T_eq),fvec(N_T_eq)
    real*8  :: params(40)
 	real*8  :: nhi,nhii
-	real*8  :: nhei,nheii,nheiii
+	real*8  :: nheiS,nheiTR,nheii,nheiii
 	real*8  :: ne
 	real*8  :: mum,mup
 	real*8  :: rhov
@@ -81,9 +81,11 @@
 	real*8  :: x_h2_up
 	real*8  :: e_up
 	real*8  :: div_rhov
-	real*8  :: reco,coio,brem,coex,cool,cool_M
+	real*8  :: cool
 	real*8  :: TT
-	real*8  :: GF_z1,GF_z2   ! free-free Gaunt at ion net charge Z_ion = 1, 2
+	! The cooling channels of the cell, and its metal densities as the cell
+	! assembly takes them (zero with the metals off)
+	real*8  :: chan(n_cool_chan), nm_c(n_mion)
 	integer :: im
 
 	! Parameters. The energy-equation coefficients are read from the named-field
@@ -91,7 +93,8 @@
 	! passed through by hybrd1 / solve_T_brent / Tres.
 	nhi    = teq_cell%nhi
 	nhii   = teq_cell%nhii
-	nhei   = teq_cell%nhei
+	nheiS  = teq_cell%nheiS
+	nheiTR = teq_cell%nheiTR
 	nheii  = teq_cell%nheii
 	nheiii = teq_cell%nheiii
   	mup    = teq_cell%mup
@@ -109,29 +112,32 @@
    ! pp_nm_cell (cgs), set by post_process_adv; pp_metal_on gates whether
    ! metals contribute.
 
-   ! Free electron density (includes metal ions). Molecular ions are
-   ! deliberately omitted as trace electron donors (negligible in the atomic
-   ! post-process gas where this energy residual is solved).
+   ! Free electron density, the charge sum of calc_ne (utilities) for the
+   ! molecule-free post-process gas, which is what eval_cool forms from the
+   ! same densities there: H II, He II and He III, and the metal stages
+   ! under the eos_metals policy.
    if (thereis_He) then
-		ne = nhii + nheii + 2.0*nheiii
+		ne = nhii + nheii + 2.0d0*nheiii
 	else
 		ne = nhii
 	endif
-	if (pp_metal_on) then
+	nm_c = 0.0d0
+	if (pp_metal_on) nm_c = pp_nm_cell
+	if (pp_metal_on .and. eos_include_metals .and. thereis_metals) then
 		do im = 1,n_mion
-			ne = ne + dble(mion_stage(im))*pp_nm_cell(im)
+			if (mion_stage(im) .gt. 0)                                  &
+				ne = ne + dble(mion_stage(im))*nm_c(im)
 		enddo
 	endif
       
 	! Substitutions
 	TT = x(1)*T0
 	! The hybrd1 search can transiently overshoot to a negative trial T. Every
-	! cooling rate below is a fit in T that has no value there: brem takes
-	! sqrt(TT), and lambda_rec_HII raises (2*157807/TT) to the power 1.970,
-	! which is a NaN for TT < 0 and an overflow for TT -> 0+. The NaN then
-	! poisons the Newton step, and under -ffpe-trap=invalid it aborts the run
-	! (measured in the post-process of the He/H = 1 molecular case, which is
-	! metals-off: lambda_rec_HII in Cool_coeff.f90, from hybrd1). So
+	! cooling rate below is a fit in T that has no value there: the free-free
+	! term takes sqrt(TT), and the recombination coefficients are a NaN for
+	! TT < 0 and diverge as TT -> 0+. The NaN then poisons the Newton step,
+	! and under -ffpe-trap=invalid it aborts the run (measured in the
+	! post-process of the He/H = 1 molecular case, which is metals-off). So
 	! floor the argument of the rate functions at a small positive temperature,
 	! unconditionally: it is the domain of the fits, not an option. The
 	! physical root sits far above the floor -- the coldest base in the
@@ -139,105 +145,19 @@
 	! stays real and finite where the solver is only passing through.
 	TT = max(TT, 1.0d0)
 
-	!--- Evaluate cooling rates ---!
-			
-    ! Cooling rate
-   reco  =  lambda_rec_HII(TT)*nhii     & ! HII
-         +  lambda_rec_HeII(TT)*nheii   & ! HeII
-         +  lambda_rec_HeIII(TT)*nheiii   ! HeIII
+	!--- Cooling rate ---!
+	! The atomic, ionic and metal channels of the cell from the ONE assembly
+	! (Cool_coeff: radiative_cooling_of_cell), at this trial temperature and
+	! the cell's densities, frozen ground-capture escape weights and
+	! fine-structure line transfer. The post-process gas carries no
+	! molecules, so eval_cool adds nothing to these channels there either.
+	call radiative_cooling_of_cell(TT, ne, nhi, nhii, nheiS, nheiTR,     &
+	                               nheii, nheiii, teq_cell%y_HI,          &
+	                               teq_cell%y_gnd, teq_cell%y_HeII, nm_c, &
+	                               pp_beta_fs, pp_nbar_fs, chan)
 
-   !-- Collisional ionization --!
-      
-   ! Cooling rate
-   ! The prefactors are the ionization potentials in erg, the named global
-   ! constants e_th_*_erg, so this root and the cooling assembly of
-   ! util_ion_eq charge the same energy per collisional ionization.
-   coio =  e_th_HI_erg*ci_rate_HI(TT)*nhi  	         & ! HI
-           + e_th_HeI_erg*ci_rate_HeI(TT)*nhei 		   & ! HeI
-	  		  + e_th_HeII_erg*ci_rate_HeII(TT)*nheii      ! HeII
-
-   !-- Bremsstrahlung --!
-
-   ! Cooling rate (H/He plus every charged metal ion). Free-free scales with
-   ! the ion NET charge Z_ion: H II, He II and singly-ionized metals are
-   ! Z_ion = 1; He III and doubly-ionized metals are Z_ion = 2. The Gaunt
-   ! factor is evaluated at Z_ion. Matches the brem accumulator in eval_cool.
-   GF_z1 = gbar_ff(TT, 1.0d0)
-   GF_z2 = gbar_ff(TT, 2.0d0)
-   brem = GF_z1*nhii + GF_z1*nheii + 4.0d0*GF_z2*nheiii   ! HII, HeII, HeIII
-   if (pp_metal_on) then
-      do im = 1,n_mion
-         if (mion_z2(im) == 0) cycle
-         if (mion_stage(im) == 2) then
-            brem = brem + dble(mion_z2(im))*GF_z2*pp_nm_cell(im)
-         else
-            brem = brem + dble(mion_z2(im))*GF_z1*pp_nm_cell(im)
-         endif
-      enddo
-   endif
-   brem = 1.426e-27*sqrt(TT)*brem
-
-   !-- Collisional excitation --!
-
-   ! Collisional excitation
-   coex = lambda_coex_HI(TT)*nhi       &    ! HI
-        + lambda_coex_HeI(TT)*nhei     &    ! HeI
-        + lambda_coex_HeII(TT)*nheii        ! HeII
-
-   !-- Metal line cooling. Sum the same mion_iscool coolants eval_cool
-   ! sums, using the scalar coefficient dispatcher so the converged T
-   ! balances the reported cooling. Trapping of the ground-term
-   ! fine-structure lines enters through pp_beta_fs, everything else is
-   ! optically thin.
-   cool_M = 0.0d0
-   if (pp_metal_on) then
-      do im = 1,n_mion
-         if (.not. mion_iscool(im)) cycle
-         if (im .eq. im_FeII) then
-            ! density-dependent Fe II (matches eval_cool's c_metal override:
-            ! the local ne selects the coronal->LTE-saturated coefficient)
-            cool_M = cool_M + pp_nm_cell(im)*cool_FeII_ne_value(TT, ne)
-         else if (cno_chianti .and. im .eq. im_CI) then
-            ! saturated [C I] 609/370um ground term (matches eval_cool)
-            cool_M = cool_M + pp_nm_cell(im)                          &
-                              *cool_CI_ne_func(TT, ne, nhi,           &
-                                 pp_beta_fs(ifs_CI609),               &
-                                 pp_beta_fs(ifs_CI370),               &
-                                 pp_nbar_fs(ifs_CI609),               &
-                                 pp_nbar_fs(ifs_CI370))
-         else if (cno_chianti .and. im .eq. im_CII) then
-            ! saturated [C II] 158um ground term (matches eval_cool)
-            cool_M = cool_M + pp_nm_cell(im)                          &
-                              *cool_CII_ne_func(TT, ne, nhi,          &
-                                 pp_beta_fs(ifs_CII158),              &
-                                 pp_nbar_fs(ifs_CII158))
-         else if (cno_chianti .and. im .eq. im_NII) then
-            ! saturated [N II] 205/122um ground term (matches eval_cool)
-            cool_M = cool_M + pp_nm_cell(im)                          &
-                              *cool_NII_ne_func(TT, ne, nhi,          &
-                                 pp_beta_fs(ifs_NII205),              &
-                                 pp_beta_fs(ifs_NII122),              &
-                                 pp_nbar_fs(ifs_NII205),              &
-                                 pp_nbar_fs(ifs_NII122))
-         else if (cno_chianti .and. im .eq. im_OI) then
-            ! saturated [O I] 63/145/44um ground term (matches eval_cool)
-            cool_M = cool_M + pp_nm_cell(im)                          &
-                              *cool_OI_ne_func(TT, ne, nhi,           &
-                                 pp_beta_fs(ifs_OI63),                &
-                                 pp_beta_fs(ifs_OI145),               &
-                                 pp_beta_fs(ifs_OI44),                &
-                                 pp_nbar_fs(ifs_OI63),                &
-                                 pp_nbar_fs(ifs_OI145),               &
-                                 pp_nbar_fs(ifs_OI44))
-         else
-            cool_M = cool_M + pp_nm_cell(im)                          &
-                              *cool_coeff_of_ion(im, TT)
-         endif
-      enddo
-   endif
-
-   ! Total cooling rate in erg/(s cm^3)
- 	cool = (ne*(brem + coex + reco + coio) + ne*cool_M)/q0
+	! Total cooling rate in code units
+	cool = sum(chan)/q0
 
 	! Equation
    ! Steady internal-energy equation of the profile, upwind-differenced:
@@ -313,7 +233,7 @@
    else
    fvec(1) = mum*rhov*x(1) - mup*rhov*Told 		&
            + gamma_ad*mum*dr*div_rhov*x(1)                 &
-           - (gamma_ad-1.0)*(coeff*x(1) + mup*mum*dr*(heaold - cool))
+           - (gamma_ad-1.0d0)*(coeff*x(1) + mup*mum*dr*(heaold - cool))
    endif
       
    ! End of subroutine

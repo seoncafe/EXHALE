@@ -1597,7 +1597,7 @@
 
       integer :: j, k, isp, nrow
       integer :: rows(n_species)
-      real*8  :: d, sc, budget, rel, inner, cand
+      real*8  :: d, sc, budget, inner, cand
       real*8, dimension(1-Ng:N+Ng) :: nd_h, nH_h, nO_h, nC_h
       real*8, allocatable :: Y_full(:,:), Y_half(:,:)
 
@@ -2494,7 +2494,10 @@
       ! enumeration follows that type: a field added there and not added
       ! here would leave a piece of the sweep's cell state unchecked, so
       ! the two are kept side by side deliberately and this comment says
-      ! so. 34 real*8 and 3 logical, in declaration order.
+      ! so. 38 real*8 and 5 logical, in declaration order but for the fields
+      ! added after the enumeration was first written, which follow it with
+      ! the next primes; the integer jcell, the label a diagnostic written
+      ! from inside the sweep uses, carries no state and is left out.
       type(ion_rates), intent(in) :: x
       h =        x%P_HI       + 3.0d0*x%P_HeI      + 5.0d0*x%P_HeII       &
         + 7.0d0*x%rchiiB      + 11.0d0*x%rcheiiB   + 13.0d0*x%rcheiiiB    &
@@ -2508,10 +2511,14 @@
         + 103.0d0*x%kcx_He0_Hp+ 107.0d0*x%kcx_Hep_H0                      &
         + 109.0d0*x%n_ofam    + 113.0d0*x%n_co                            &
         + 127.0d0*x%x_h2_fix  + 131.0d0*x%x_oh_fix                        &
-        + 137.0d0*x%x_h2o_fix + 139.0d0*x%x_hp_fix
+        + 137.0d0*x%x_h2o_fix + 139.0d0*x%x_hp_fix                        &
+        + 163.0d0*x%q31g      + 167.0d0*x%x_heii_fix                      &
+        + 173.0d0*x%x_heiii_fix + 193.0d0*x%kcx_Hepp_H0
       if (x%x_h2_fixed) h = h + 149.0d0
       if (x%x_ox_fixed) h = h + 151.0d0
       if (x%x_hp_fixed) h = h + 157.0d0
+      if (x%x_heii_fixed)  h = h + 181.0d0
+      if (x%x_heiii_fixed) h = h + 191.0d0
       end function ion_rates_hash
 
       real*8 function ledger_hash(g) result(h)
@@ -2524,7 +2531,8 @@
         + 17.0d0*dble(g%n_cce_attempt) + 19.0d0*dble(g%n_cce_root)        &
         + 23.0d0*dble(g%n_cce_solve) + 29.0d0*g%cce_seconds               &
         + 31.0d0*dble(g%n_nonfinite) + 37.0d0*dble(g%n_offsimplex)        &
-        + 41.0d0*g%viol_worst + 43.0d0*dble(g%streak_peak)
+        + 41.0d0*g%viol_worst + 43.0d0*dble(g%streak_peak)                &
+        + 47.0d0*dble(g%n_ghost_open)
       do i = 0, 5
          h = h + dble(53 + i)*dble(g%n_mol_info(i))
       enddo

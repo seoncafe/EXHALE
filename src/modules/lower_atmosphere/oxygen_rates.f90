@@ -40,10 +40,12 @@
       ! O1, O2, O8, O9 and O10 all run close to cancellation on a hot base
       ! (the HD 209458 b gross rates are three decades above the net), and an
       ! independently transcribed reverse rate then produces an arbitrary net
-      ! rather than a small error -- which is exactly the defect the R21/R22
-      ! note in mol_rates.f90 records for the He charge-exchange pair.  Both
-      ! reference networks avoid it the same way: neither carries an explicit
-      ! reverse for any of these reactions, and each computes
+      ! rather than a small error.  The charge-exchange pairs of Huang et
+      ! al. (2023) Table 4 are fitted independently in the two directions,
+      ! and src/tests/charge_exchange_detailed_balance measures how far they
+      ! depart from detailed balance.  Both reference networks avoid the
+      ! defect the same way: neither carries an explicit reverse for any of
+      ! these reactions, and each computes
       !
       !     k_rev = k_fwd / K_c ,   K_c = exp(-dG/RT) (P0/kB T)^(dn) ,
       !
@@ -157,11 +159,12 @@
       ! REACTIONS NOT IN THIS MODULE, AND WHY
       !
       ! O8, O9, O10 and O12 below are transcribed but are NOT part of the
-      ! minimal set the measured budget supports; they are here so that the
-      ! audit records a value and a verdict rather than an omission, in the
-      ! way mol_rates.f90 carries R21/R22.  Their measured shares of the
-      ! dominant channel O1 at the HD 189733 b base are 7.8e-9 (O8),
-      ! 9.7e-8 (O9), 5.5e-7 (O10) and 2.8e-5 (O12).
+      ! minimal set the measured budget supports: no balance row calls
+      ! them, and their one caller is the rate check of src/tests/a2_m1.
+      ! They are here so that the audit records a value and a verdict
+      ! rather than an omission.  Their measured shares of the dominant
+      ! channel O1 at the HD 189733 b base are 7.8e-9 (O8), 9.7e-8 (O9),
+      ! 5.5e-7 (O10) and 2.8e-5 (O12).
       !
       ! O11 of the design -- physical quenching O(1D) + M -> O + M -- has no
       ! entry here, and the reason is now published rather than assumed.
@@ -349,7 +352,7 @@
       ! pump in lines that lie longward of 1110 A: the level-resolved line
       ! list of h2_self_shielding_table reaches 1201 A, and at saturation
       ! those lines carry about a third of the dissociations it rates
-      ! (docs/p38_line_overlap_shielding.md sec. 4.4).  So 912-1201 A is one
+      ! (md/p38_line_overlap_shielding.md sec. 4.4).  So 912-1201 A is one
       ! interval with one line absorber, and splitting it at 1110 A would
       ! normalize the H2 pumping per photon of a band narrower than the band
       ! the lines drink from.  That is what the 1110 A edge did until
@@ -652,7 +655,7 @@
       ! k_inf is needed, and it is numerically irrelevant -- see the THIRD
       ! BODY M note in the header.
       !
-      ! NOT IN THE MINIMAL SET: measured at 8.5e-9 of O1 at the
+      ! NOT IN THE MINIMAL SET: measured at 7.8e-9 of O1 at the
       ! HD 189733 b base.
       double precision function rk_O8_O_H_assoc(T) result(k0)
       real(dp), intent(in) :: T
@@ -715,7 +718,7 @@
       ! association measurement.  Baulch recommends no k_inf for this
       ! reaction.
       !
-      ! NOT IN THE MINIMAL SET: measured at 1.1e-7 of O1 at the HD 189733 b
+      ! NOT IN THE MINIMAL SET: measured at 9.7e-8 of O1 at the HD 189733 b
       ! base with the N2 value adopted here.
       double precision function rk_O9_H_OH_assoc(T) result(k0)
       real(dp), intent(in) :: T
@@ -727,7 +730,7 @@
       !     250-2400 K, dlog k = +-0.15.  Baulch et al. (2005), Table 4.1
       !     and data sheet p. 1032.
       !
-      ! NOT IN THE MINIMAL SET: measured at 1.5e-6 of O1 at the HD 189733 b
+      ! NOT IN THE MINIMAL SET: measured at 5.5e-7 of O1 at the HD 189733 b
       ! base.  It is transcribed because it is the one reaction in this
       ! module whose reverse is written out explicitly in the other network
       ! (VULCAN id 5, O + H2O -> OH + OH, 8.20e-14 T^0.95 exp(-8570/T),
@@ -757,9 +760,9 @@
       !     (total of the three channels; the 2 HO channel dominates).
       !
       ! NOT IN THE MINIMAL SET: the second O(1D) sink after O6, measured at
-      ! 1.2e-5 of O1 at the HD 189733 b base and giving O(1D) a lifetime of
-      ! 1.1 s there against 1.6e-3 s from O6 -- 700x slower, so it changes
-      ! the O(1D) steady state by 0.14%.  It is transcribed so that the
+      ! 2.8e-5 of O1 at the HD 189733 b base and giving O(1D) a lifetime of
+      ! 1.1 s there against 1.6e-3 s from O6 -- 685x slower, so it changes
+      ! the O(1D) steady state by 0.15%.  It is transcribed so that the
       ! O(1D) closure records a value for its only competitor rather than an
       ! omission.  This is the value zahnle_earth.yaml carries; VULCAN's
       ! id 619 gives 1.62e-10 exp(+65/T) over 235-370 K, 21% below the
@@ -1006,7 +1009,7 @@
       ! gamma = 77700 K and a stated lower bound of 2590 K) or produces
       ! species this code does not carry.  Above the helium ionization
       ! front this entry is the fastest channel by one to four decades
-      ! (docs/co_destruction_rates_literature_20260906.md sec. 12.5).
+      ! (md/co_destruction_rates_literature_20260906.md sec. 12.5).
       double precision function rk_D1_Hep_CO() result(k)
       k = 1.60d-9
       end function
@@ -1072,11 +1075,14 @@
       !  2. Equilibrium is not kinetics.  CO in an irradiated upper
       !     atmosphere is quenched -- it survives above the level at which
       !     equilibrium would destroy it -- so this is a lower bound on the
-      !     reservoir there.  Carrying the kinetics would need CO
+      !     reservoir there.  The kinetics are carried when CO is a
+      !     transported carrier ("Molecular carrier transport"): its
+      !     destruction is then He+ + CO (rk_D1_Hep_CO) and CO
       !     photodissociation, which predissociates in lines and
-      !     self-shields (van Dishoeck & Black 1988), i.e. a second
-      !     shielding function and a second band; it is not in the audited
-      !     set and is not attempted here.
+      !     self-shields (co_photodissociation.f90 with the shielding
+      !     function of co_self_shielding_table.f90), and this equilibrium
+      !     form is used only where CO is not transported and for the
+      !     initial state.
       !  3. Ionization is not in the balance.  Where CO is associated the
       !     gas is shielded and both elements are neutral, so this costs
       !     nothing there; above the turnover n_CO is negligible.

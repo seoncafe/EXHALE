@@ -110,8 +110,10 @@
       ! the two CO destruction channels cannot disagree about how much
       ! energy the C=O bond holds.  hv is NOT the flat-band mean: CO absorbs
       ! in 37 discrete bands, not across the beam, and the flat-band mean
-      ! 11.7354 eV is below the 11.1157 eV threshold by so little that it
-      ! would make the deposit an artefact of the band edges.
+      ! 11.7354 eV is set by the band edges 912 and 1201 A, including the
+      ! 83 A longward of the CO window where CO does not absorb; it lies
+      ! only 0.62 eV above the 11.1157 eV threshold, so a deposit taken from
+      ! it would be an artefact of those edges.
       !
       ! What is used is the OSCILLATOR-STRENGTH WEIGHTED MEAN over Visser's
       ! Table 1, sum_i f_i hv_i / sum_i f_i over the 37 bands.  MEASURED

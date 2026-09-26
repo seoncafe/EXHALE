@@ -139,7 +139,7 @@
       ! atomic pair from that directory, this module builds the molecular
       ! state, the run writes output/Hydro_ioniz_IC.txt and
       ! output/Ion_species_IC.txt and stops. EXHALE_MOLECULAR_SEED_INVARIANT
-      ! selects p (default) or T. Documented in docs/input_schema.md
+      ! selects p (default) or T. Documented in md/input_schema.md
       ! appendix D.
       !
       ! WHICH CONVERSION PRODUCED A STATE'S SEED travels with the state.
@@ -154,6 +154,7 @@
 
       use global_parameters
       use species_table, only: isp_HI, isp_HII, isp_H2, n_mion
+      use element_inventory, only: inventory_feasible_slack
       use element_census, only: element_nuclei_and_charge, n_element,     &
                                 ie_H, ie_He
       use composition, only: get_species_densities, comp_T_from_p,        &
@@ -169,7 +170,7 @@
       ! smaller of the fit and that root, see "WHERE THE REQUESTED FRACTION
       ! COMES FROM" above.
       use diffusive_photochemistry, only: carrier_h2_chemical_root
-      use ionization_equilibrium, only: ioniz_eq
+      use ionization_equilibrium, only: ioniz_eq, ieq_cell_acceptance_class
       use Conversion, only: W_to_U, U_to_W
       use BC_Apply, only: Apply_BC
 
@@ -221,6 +222,10 @@
       real*8 :: rec_dT_rel = 0.0d0, rec_dp_rel = 0.0d0
       real*8 :: rec_eos_close = 0.0d0
       real*8 :: rec_dnH = 0.0d0, rec_dnHe = 0.0d0, rec_drho = 0.0d0
+      ! The largest change of the positive charge density of a cell, in
+      ! units of that cell's own census rounding eps * n_chg (see the charge
+      ! assertion); zero where every cell came back bitwise.
+      real*8 :: rec_dchg_ulp = 0.0d0
 
       ! Every conservation identity of the conversion is exact in the
       ! fraction space it is carried out in (2 x 0.5 delta = delta for the
@@ -376,8 +381,10 @@
       real*8, dimension(1-Ng:N+Ng,n_mion) :: nm
       real*8, dimension(1-Ng:N+Ng,n_element) :: nnuc0, nnuc1
       real*8, dimension(1-Ng:N+Ng) :: nchg0, nchg1, rcomp0, rcomp1
+      real*8  :: dchg, chg_floor
+      integer :: n_chg_breach
       real*8, dimension(3,1-Ng:N+Ng) :: u, W_rt
-      real*8  :: q, qmax, x2, fH, df, x2_eff, d, q_cell
+      real*8  :: q, qmax, x2, d, q_cell
       integer :: j, jworst, n_capped, n_neg, n_qmax
       ! THE PARTITION OF EVERY CELL, formed before it is applied so that the
       ! transfer is one operation on one column and the 'local' mode can
@@ -402,6 +409,12 @@
       real*8, dimension(1-Ng:N+Ng) :: root_imbalance
       real*8  :: x2_root
       integer :: n_root_governs, j_cross
+      ! Cells whose sweep returned no root, the own-row root of every cell
+      ! (interpolated from the solved cells where the sweep returned none),
+      ! and which cells were solved.
+      integer :: n_nonroot_cells
+      real*8, dimension(1-Ng:N+Ng) :: x2_rootcol
+      logical, dimension(1-Ng:N+Ng) :: root_ok
 
       if (.not. seed_on) return
 
@@ -571,31 +584,44 @@
       ! sweep, so one is taken here and its composition is then thrown away:
       ! f_sp goes back to the atomic state and the revised partition is
       ! applied to that, so nothing this sweep decided about the ionization
-      ! reaches the file.
+      ! reaches the file.  The root is the root of each cell's row AT THE
+      ! FIT'S STATE: its ions and the self-shielding column of the fit's H2.
+      ! Iterating sweep and root to a common fixed point is not a local
+      ! question, because the shielding column of a cell is the H2 above it;
+      ! MEASURED on molecular_photochem_gj1132_kzzprofile/HeH9, 30 such
+      ! iterations did not converge (last relative move 0.99) and drove the
+      ! base layer to its unshielded branch (x2 = 6.9e-4 at 974 K).
+      !
+      ! A CELL THE SWEEP DID NOT SOLVE HAS NO ROOT TO READ.  Where the sweep
+      ! adopted a non-root (class 4) or refused its candidate (class 6), its
+      ! ions are not a solution of the network, and a root read off them is
+      ! not the row's: MEASURED on the same case, cells 432 to 439, where the
+      ! non-root left every ion at zero, took a root of 4e-17, thirteen
+      ! decades below the neighbouring cells, and the seed carried that hole
+      ! into every stored state.  Nor is the fit the answer there: it is a
+      ! thermal statement, and it puts 0.55 of the hydrogen of those wind
+      ! cells into H2 (MEASURED) where their solved neighbours hold 1e-4 to
+      ! 2e-3.  Such a cell takes the root of its nearest solved neighbours,
+      ! interpolated in log x2 over r, and the smaller of that and the fit.
       if (seed_x2_mode .eq. 'local') then
          heat_s = 0.0d0;  cool_s = 0.0d0;  eta_s = 0.0d0
          call ioniz_eq(T_src, rho, f_sp, heat_s, cool_s, eta_s)
          call carrier_h2_chemical_root(rho, f_sp, n_root,               &
                                        row_imbalance = root_imbalance)
          f_sp = f_atomic
-         rec_base_ratio_min = 0.0d0
-         rec_base_ratio_max = 0.0d0
+         call root_of_the_solved_cells(n_root, x2_rootcol, root_ok)
+         n_nonroot_cells = 0
          do j = 1-Ng, N+Ng
             if (nnuc0(j,ie_H) .le. 0.0d0) cycle
-            if (n_root(j) .le. 0.0d0)     cycle
-            x2_root = min(2.0d0*n_root(j)/nnuc0(j,ie_H), 1.0d0)
-            ! INSIDE THE BASE LAYER the handoff is compared with the root
-            ! and the comparison is reported; the partition adopted there is
-            ! the same min as everywhere else (see the block above).
-            if (j .ge. 1 .and. j .le. j_base_top .and. x2_root .gt. 0.0d0) &
-               then
-               ratio = x2_base/x2_root
-               if (rec_base_ratio_min .le. 0.0d0 .or.                    &
-                   ratio .lt. rec_base_ratio_min)                        &
-                  rec_base_ratio_min = ratio
-               if (ratio .gt. rec_base_ratio_max)                        &
-                  rec_base_ratio_max = ratio
+            if (.not. root_ok(j)) then
+               if (j .ge. 1 .and. j .le. N)                              &
+                  n_nonroot_cells = n_nonroot_cells + 1
+               if (x2_rootcol(j) .gt. 0.0d0)                             &
+                  x2_col(j) = min(x2_col(j), x2_rootcol(j))
+               cycle
             endif
+            x2_root = x2_rootcol(j)
+            if (x2_root .le. 0.0d0) cycle
             if (x2_root .lt. x2_col(j)) then
                x2_col(j) = x2_root
                if (j .ge. 1 .and. j .le. N) then
@@ -603,6 +629,23 @@
                   if (j_cross .eq. 0) j_cross = j
                endif
             endif
+         enddo
+         if (n_nonroot_cells .gt. 0)                                     &
+            write(*,'(A,I0,A)') '   (molecular_seed) ', n_nonroot_cells,  &
+                 ' cell(s) the sweep did not solve take the root of'//    &
+                 ' their solved neighbours; no root is read off a non-root'
+         ! INSIDE THE BASE LAYER the handoff is compared with the root and
+         ! the comparison is reported.
+         rec_base_ratio_min = 0.0d0
+         rec_base_ratio_max = 0.0d0
+         do j = 1, j_base_top
+            if (nnuc0(j,ie_H) .le. 0.0d0 .or. n_root(j) .le. 0.0d0) cycle
+            x2_root = min(2.0d0*n_root(j)/nnuc0(j,ie_H), 1.0d0)
+            if (x2_root .le. 0.0d0) cycle
+            ratio = x2_base/x2_root
+            if (rec_base_ratio_min .le. 0.0d0 .or.                       &
+                ratio .lt. rec_base_ratio_min) rec_base_ratio_min = ratio
+            if (ratio .gt. rec_base_ratio_max) rec_base_ratio_max = ratio
          enddo
          ! The two statements side by side at a few radii, so that a
          ! reader can see WHERE they cross and by how much they differ
@@ -653,6 +696,41 @@
               ' conserve what 2 H -> H2 conserves.'
          write(*,'(A,3ES12.4)') '   max relative change of the H nuclei,'//&
               ' the He nuclei and the mass: ', rec_dnH, rec_dnHe, rec_drho
+         error stop 1
+      endif
+      ! THE CHARGE, which 2 H -> H2 also conserves, and conserves exactly:
+      ! the transfer writes only H I and H2, both of charge zero
+      ! (bsp_charge), so the positive charge density of every cell has to
+      ! come back as it went in. It was computed before and after (nchg0,
+      ! nchg1) and, until 2026-09-23, never compared.
+      !
+      ! Compared cell by cell, and not as a relative change, because a cell
+      ! with no ion carries no charge and a ratio is not defined there. The
+      ! bound is the rounding of the census sum itself: every charge weight
+      ! is positive, so that rounding is inventory_feasible_slack (eight
+      ! units in the last place) times the charge density, the bound
+      ! element_inventory uses for two expressions of the same nuclei. It is
+      ! zero in a cell with no ion, which must then come back exactly.
+      ! MEASURED before the assertion existed (docs of the 2026-09-21 M2
+      ! conversion audit, section 5): 1.5 units at most on a real state,
+      ! and that residue was the file round trip, not the transfer.
+      n_chg_breach = 0
+      rec_dchg_ulp = 0.0d0
+      do j = 1-Ng, N+Ng
+         dchg      = abs(nchg1(j) - nchg0(j))
+         chg_floor = epsilon(1.0d0)*max(nchg0(j), nchg1(j))
+         if (dchg .gt. inventory_feasible_slack*max(nchg0(j), nchg1(j)))  &
+            n_chg_breach = n_chg_breach + 1
+         if (chg_floor .gt. 0.0d0)                                        &
+            rec_dchg_ulp = max(rec_dchg_ulp, dchg/chg_floor)
+      enddo
+      if (n_chg_breach .gt. 0) then
+         write(*,'(A,I0,A)') ' (molecular_seed) ERROR: the transfer moved'//&
+              ' the positive charge density of ', n_chg_breach,           &
+              ' cell(s) by more than the rounding of its census.'
+         write(*,'(A,ES12.4,A)') '   largest change where a charge is'//  &
+              ' present: ', rec_dchg_ulp, ' units of eps * n_chg'//       &
+              ' (the bound is 8); a neutral cell must come back exactly.'
          error stop 1
       endif
 
@@ -771,6 +849,52 @@
       enddo
       end subroutine transfer_h2
 
+      ! ------------------------------------------------------------- !
+
+      subroutine root_of_the_solved_cells(n_root_in, x2r, ok)
+      ! The own-row root x2 = 2 n(H2)/n_H of every cell.  A cell the sweep
+      ! solved (acceptance class 1, 2, 3 or 5) gives its own; a cell it did
+      ! not (4 or 6) takes the interpolation, linear in log x2 over r,
+      ! between the nearest solved cells below and above it, or the nearest
+      ! one where only one side has any.  Zero where no cell was solved.
+      real*8, dimension(1-Ng:N+Ng),  intent(in)  :: n_root_in
+      real*8, dimension(1-Ng:N+Ng),  intent(out) :: x2r
+      logical, dimension(1-Ng:N+Ng), intent(out) :: ok
+      integer :: jc, jlo, jhi
+      real*8  :: wgt
+      x2r = 0.0d0
+      ok  = .false.
+      do jc = 1-Ng, N+Ng
+         if (nnuc0(jc,ie_H) .le. 0.0d0) cycle
+         if (ieq_cell_acceptance_class(jc) .eq. 4 .or.                    &
+             ieq_cell_acceptance_class(jc) .eq. 6) cycle
+         if (n_root_in(jc) .le. 0.0d0) cycle
+         x2r(jc) = min(2.0d0*n_root_in(jc)/nnuc0(jc,ie_H), 1.0d0)
+         ok(jc)  = (x2r(jc) .gt. 0.0d0)
+      enddo
+      do jc = 1-Ng, N+Ng
+         if (ok(jc) .or. nnuc0(jc,ie_H) .le. 0.0d0) cycle
+         jlo = jc - 1
+         do while (jlo .ge. 1-Ng)
+            if (ok(jlo)) exit
+            jlo = jlo - 1
+         enddo
+         jhi = jc + 1
+         do while (jhi .le. N+Ng)
+            if (ok(jhi)) exit
+            jhi = jhi + 1
+         enddo
+         if (jlo .ge. 1-Ng .and. jhi .le. N+Ng) then
+            wgt = (r(jc) - r(jlo))/(r(jhi) - r(jlo))
+            x2r(jc) = exp((1.0d0 - wgt)*log(x2r(jlo)) + wgt*log(x2r(jhi)))
+         else if (jlo .ge. 1-Ng) then
+            x2r(jc) = x2r(jlo)
+         else if (jhi .le. N+Ng) then
+            x2r(jc) = x2r(jhi)
+         endif
+      enddo
+      end subroutine root_of_the_solved_cells
+
       end subroutine molecular_seed_from_atomic_state
 
       ! ------------------------------------------------------!
@@ -855,6 +979,8 @@
       endif
       write(*,'(A,3ES12.4)') '   max relative change of H nuclei, He'//   &
            ' nuclei, mass: ', rec_dnH, rec_dnHe, rec_drho
+      write(*,'(A,F6.2,A)') '   max change of the positive charge'//     &
+           ' density: ', rec_dchg_ulp, ' units of eps * n_chg (bound 8)'
       write(*,'(A,A1)') '   thermodynamic invariant kept: ', seed_invariant
       write(*,'(A,ES12.4,A,ES12.4)') '   it moved T by (max, relative) ', &
            rec_dT_rel, '   and p by ', rec_dp_rel

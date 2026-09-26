@@ -230,9 +230,11 @@
 	!
 	! A FAILURE IS A REFUSED BOUNDARY. Exhausting the passes without reaching
 	! the tolerance means the pair has no fixed point the sweep can reach,
-	! and the ghost composition would then be an arbitrary iterate; the run
-	! stops and says so rather than handing the boundary a state nothing
-	! stands behind.
+	! and the ghost composition would then be an arbitrary iterate. At a
+	! state the run holds, the run stops and says so rather than handing the
+	! boundary a state nothing stands behind; at a candidate whose caller
+	! refuses what the sweep reports inadmissible, that caller refuses it
+	! (ieq_state_may_be_refused).
 	real*8,  parameter :: base_ghost_closure_tol    = 1.0d-10
 	integer, parameter :: base_ghost_closure_passes = 30
 	! What the closure reached in this sweep: the largest residual of
@@ -311,7 +313,9 @@
 	! A BOUNDARY THAT CANNOT REACH IT FAILS LOUDLY, with the numbers, exactly
 	! as the ghost's H2 partition closure does: a ghost that is not a fixed
 	! point of its own solve is an iterate, and nothing stands behind a
-	! boundary built on one.
+	! boundary built on one. The same rule decides who refuses it: the run
+	! at a state it holds, the caller at a candidate that caller refuses
+	! (ieq_state_may_be_refused).
 	!
 	! VALIDITY: the lower ghost cells of a run whose network is molecular and
 	! carries helium, where the boundary's composition holds the trace ions
@@ -355,13 +359,14 @@
 	! zero when the run supplies no band flux.
 	real*8, dimension(:), allocatable :: p_lw_single, p_lw_absorbed
 	! Transmission of the Lyman-Werner LINES down to each cell's inner face,
-	! 1 - A: the fraction of the 912-1110 A band that H2 has NOT already
+	! 1 - A: the fraction of the 912-1201 A band that H2 has NOT already
 	! taken, which the H2O and OH continua of the same interval multiply
 	! their own attenuation by (water_photolysis.f90 sec. 3). Identically 1
 	! without a Lyman-Werner band flux. a_lines_lw is the largest A the
 	! column reached, i.e. the deepest cell's removed fraction; the run
-	! reports once if the H2 column leaves the checked range of either of
-	! the two self-shielding fits (lyman_werner.f90 sec. 2).
+	! reports once if the H2 column leaves the column axis of the
+	! self-shielding table, which serves both the rate and A
+	! (lyman_werner.f90 sec. 2g).
 	real*8, dimension(:), allocatable :: tr_lines_lw
 	! H2 photoionization rate of the last sweep [s^-1], kept for the H2
 	! budget decomposition write_output prints: it is the one loss channel
@@ -369,13 +374,6 @@
 	real*8, dimension(:), allocatable :: P_H2_eq
 	real*8 :: a_lines_lw = 0.0d0
 	logical :: warned_lw_fit_range = .false.
-	! NH2_db96_max: Draine & Bertoldi (1996) sec. 5.2, the agreement of their
-	! eq. (37) with an exact calculation is excellent "even out to the largest
-	! column densities considered, N2 = 3 x 10^21 cm^-2".  They state no upper
-	! limit on the fit itself, so a deeper column is undemonstrated rather
-	! than outside a published range.  This fit sets the band share A only;
-	! the photodissociation RATE is on the level-resolved table.
-	real*8, parameter :: NH2_db96_max     = 3.0d21
 
 	! Largest ratio, over the cells of the last equilibrium field solve, of
 	! the star-ward H2 column to the column at which the self-shielding table
@@ -448,9 +446,10 @@
 	real*8,  dimension(:),   allocatable :: ieq_TK_cell
 	real*8,  dimension(:),   allocatable :: ieq_ntot_cell
 	! Metal coefficients of each cell, in the order set_metal_coeffs takes
-	! them: ntot, g0, g1, b0, b1, a1, a2.
+	! them: ntot, g0, g1, b0, b1, a1, a2, and g02 (the neutral's direct
+	! jump to X++, its optional last argument).
 	real*8,  dimension(:,:,:), allocatable :: ieq_met_coef
-	integer, parameter :: ieq_n_met_coef = 7
+	integer, parameter :: ieq_n_met_coef = 8
 	logical :: ieq_rates_ready   = .false.
 	integer :: ieq_neq_stored    = 0
 	integer :: ieq_mbase_stored  = 0
@@ -489,6 +488,7 @@
 		real*8  :: ntot(n_melem) = 0.0d0
 		real*8  :: g0(n_melem)   = 0.0d0
 		real*8  :: g1(n_melem)   = 0.0d0
+		real*8  :: g02(n_melem)  = 0.0d0
 		real*8  :: b0(n_melem)   = 0.0d0
 		real*8  :: b1(n_melem)   = 0.0d0
 		real*8  :: a1(n_melem)   = 0.0d0
@@ -547,6 +547,41 @@
 	integer, parameter :: ieq_state_steady_iterate    = 2
 	integer, parameter :: ieq_state_steady_candidate  = 3
 	integer, save :: ieq_sweep_state_kind = ieq_state_marching
+
+	! WHETHER THE CALLER CAN REFUSE THE STATE THIS SWEEP EVALUATES.
+	!
+	! The lower boundary is built on the two lower ghost cells, and the
+	! sweep refuses a ghost it could not solve: a base handoff partition
+	! x_H2 = x2 (1 - x_ion) that did not close against the ghost's own
+	! ionization balance (base_ghost_closure_tol), or a ghost composition
+	! that did not reach a fixed point of the sweep that returns it
+	! (ghost_composition_fixed_point_tol). The composition map is then not
+	! defined at the state the sweep was handed, and the question is only
+	! WHO refuses that state.
+	!
+	! For a state the run holds -- the marching state, the steady solver's
+	! iterate, the state written -- nobody else can: the run stops, with
+	! the numbers. But the steady solver and the carrier relaxation also
+	! hand the sweep CANDIDATES (a line-search or trust-region trial, a
+	! Krylov or finite-difference probe, a relaxation trial), and each of
+	! those callers already refuses a candidate the sweep reports
+	! inadmissible and shortens or redirects its step: the sweep ledger's
+	! n_nonfinite is read that way (eval_residual in steady_newton.f90 and
+	! equilibrate_chemistry_at_fixed_conserved_state in
+	! diffusive_photochemistry.f90). A ghost that did not close at such a
+	! candidate is the same statement -- the candidate is not a state the
+	! code can describe -- so it is reported through the same ledger
+	! (n_ghost_open) and the candidate is refused by the rule that refuses
+	! the others, instead of stopping a run whose held state is sound.
+	!
+	! The distinction is not inferred from ieq_sweep_state_kind: a steady
+	! candidate is also evaluated where no caller reads its admissibility
+	! (the base point of the Newton model, the diagnostics), and the
+	! carrier relaxation's trials are tagged as marching states. It is
+	! DECLARED by the caller that does read it, around its own call, with
+	! set_ioniz_eq_state_may_be_refused; every other sweep keeps the stop.
+	! Called from outside any parallel region.
+	logical, save :: ieq_state_may_be_refused = .false.
 	! EXHALE_MASS_PROJECTION, read once (mass_projection_of_the_sweep)
 	logical, save :: mass_projection_on    = .true.
 	logical, save :: mass_projection_known = .false.
@@ -595,10 +630,18 @@
 	!                  a non-root acceptance. Zero in the probe ledger by
 	!                  construction: a probe neither raises the streak nor
 	!                  clears it, so "consecutive" has no meaning there.
-	! The last three are the admissibility signal the steady solver reads back
-	! from a sweep; they are accumulated in every ledger, and it is the
-	! candidate ledger's copy that decides whether a trial or probe state is
-	! usable at all.
+	!   n_ghost_open   lower-boundary solves this sweep left open at a state
+	!                  its caller declared it may refuse
+	!                  (ieq_state_may_be_refused): the lower ghost cells whose
+	!                  base handoff partition did not close, plus one when the
+	!                  ghost composition did not reach its fixed point. Zero
+	!                  in every sweep that no caller may refuse, since there
+	!                  the same event stops the run.
+	! n_nonfinite, n_offsimplex, viol_worst and n_ghost_open are the
+	! admissibility signal the steady solver reads back from a sweep; they
+	! are accumulated in every ledger, and it is the copy of the one sweep
+	! (sweep_ledger) that decides whether a trial or probe state is usable
+	! at all.
 	type :: ioniz_eq_ledger
 		integer :: n_sweep       = 0
 		integer :: n_reseed      = 0
@@ -619,6 +662,7 @@
 		integer :: n_offsimplex  = 0
 		real*8  :: viol_worst    = 0.0d0
 		integer :: streak_peak   = 0
+		integer :: n_ghost_open  = 0
 	end type ioniz_eq_ledger
 
 	! The marching ledger is kept once per LEDGER FAMILY: index
@@ -795,6 +839,15 @@
 	! matter.
 	integer, save :: ieq_acc_nprint = 0
 	integer, parameter :: ieq_acc_nprint_max = 2000
+
+	! THE ACCEPTANCE CLASS OF EACH CELL IN THE LAST SWEEP, as the ledger
+	! counts them (1 converged root, 2 root without solver convergence,
+	! 3 root after the clamp onto the element budget, 4 non-root adopted,
+	! 5 constrained-continuation root, 6 candidate refused and the entry
+	! composition kept; 0 where no cell was solved).  Written by the sweep
+	! and read by nothing inside it: it is for a caller that must not read a
+	! non-root cell as a solution, such as the molecular seed's own-row root.
+	integer, allocatable, save :: ieq_cell_acceptance_class(:)
 
 	contains
 
@@ -976,6 +1029,14 @@
 	real*8  :: ghost_fp_move, ghost_thermal_move
 	real*8  :: f_sp_sweep_entry(1-Ng:N+Ng,n_species)
 	real*8  :: np_ghost_entry(1-Ng:0), np_ghost_return(1-Ng:0)
+	! A lower-boundary solve left open at a state the caller may refuse
+	! (ieq_state_may_be_refused): the lower ghost cells of this application
+	! whose base handoff partition did not close, whether the ghost
+	! composition fixed point was given up at its pass bound, and the
+	! one-field ledger that carries the latter into the run-wide ledgers.
+	integer :: n_ghost_h2_open
+	logical :: ghost_fp_open
+	type(ioniz_eq_ledger) :: ledger_ghost_fp
 
 	real*8, dimension(1-Ng:N+Ng),   intent(in) :: T_in
 	! CHEMISTRY PRESERVES THE DENSITY IT IS GIVEN.  Chemical
@@ -1051,6 +1112,9 @@
    real*8, dimension(1-Ng:N+Ng) ::  P_H2_dd, P_H2_nd
    ! Metal photoionization rates for each ion (canonical order) from PH_heat.
    real*8, dimension(1-Ng:N+Ng,n_mion) ::  P_m
+   ! The part of P_m the balance carries as the neutral's jump to X++
+   ! (an autoionizing inner-shell vacancy; photoionization_field_at_cell_HHe).
+   real*8, dimension(1-Ng:N+Ng,n_mion) ::  P_m2
                        	
    ! Heating and cooling of the composition this sweep RETURNS: both are
    ! assembled after the cell sweep, from the post-sweep densities and the
@@ -1079,7 +1143,7 @@
    integer :: jb_lo, jb_hi
    ! What the field routine returns for one cell that is not already a
    ! whole-grid array here.
-   real*8 ::  Pm_row(n_mion), h1m_row(n_mion), chan_row(6)
+   real*8 ::  Pm_row(n_mion), h1m_row(n_mion), chan_row(6), Pm2_row(n_mion)
    real*8 ::  heat_row, q_abs_row
    ! Constants of the molecule and the switches of the photoelectron
    ! partition, resolved once per call rather than per cell.
@@ -1095,14 +1159,16 @@
    ! Recombination coefficients
    real*8, dimension(1-Ng:N+Ng) ::  rchiiB,rcheiiB,rcheiiiB,rcheiTR
 
-   ! He recombination radiation -> H ionization coupling scratch
-   ! (use_he_rec_coupling; zero-effect when off).
-   real*8, dimension(1-Ng:N+Ng) ::  rcheiiB_hrc,dP_HI_hrc,dheat_hrc
-   real*8, dimension(1-Ng:N+Ng) ::  dP_H2_hrc
-   ! Metal share of the He recombination photons, added to P_m
-   real*8, dimension(1-Ng:N+Ng,n_mion) ::  dP_m_hrc
+   ! Recombination radiation absorbed on the spot (use_h_rec_escape,
+   ! use_he_rec_coupling): the balance's recombination coefficients and the
+   ! photoionization rates the absorbed photons add.
+   real*8, dimension(1-Ng:N+Ng) ::  rchiiB_hrc,rcheiiB_hrc,rcheiiiB_hrc
+   real*8, dimension(1-Ng:N+Ng) ::  dP_HI_hrc,dP_HeI_hrc,dP_H2_hrc,dheat_hrc
+   ! Metal share of the recombination photons, added to P_m, and the part
+   ! of it that is a jump to X++, added to P_m2
+   real*8, dimension(1-Ng:N+Ng,n_mion) ::  dP_m_hrc, dP_m2_hrc
 
-	real*8, dimension(1-Ng:N+Ng) :: q13,q31a,q31b,Q31
+	real*8, dimension(1-Ng:N+Ng) :: q13,q31g,q31a,q31b,Q31
 	real*8 :: A31
 
    ! Ionization coefficients
@@ -1114,7 +1180,7 @@
    ! Each element's metal coefficients for ion_system_HeH_metals (canonical order),
    ! built per cell from the 2D rate arrays and handed to set_metal_coeffs.
    real*8, dimension(n_melem) :: meg_ntot,meg_g0,meg_g1,meg_b0,meg_b1, &
-                                 meg_a1,meg_a2
+                                 meg_a1,meg_a2,meg_g02
    ! Highest stage per element handed to set_metal_coeffs (2 = three-stage,
    ! 1 = two-stage); see species_table::melem_top.
    integer, dimension(n_melem) :: meg_top
@@ -1375,12 +1441,16 @@
 	ghost_fp_move     = 0.0d0
 	ghost_thermal_move = 0.0d0
 	ghost_fp_reached  = .not. ghost_contract_on
+	ghost_fp_open     = .false.
 	if (ghost_contract_on) f_sp_sweep_entry = f_sp_io
 
 	ghost_fixed_point: do
 	ghost_fp_pass            = ghost_fp_pass + 1
 	sweep_advances_the_streak = (ghost_fp_pass .eq. 1)
 	bg_ready                 = bg_ready_entry
+	! Like every other ledger row, it describes the application whose state
+	! the sweep returns.
+	n_ghost_h2_open          = 0
 
 	!----------------------------------!
 	
@@ -1560,18 +1630,16 @@
 	                         lw_col_over_overlap)
 	if (thereis_mol .and. F_LW_star .gt. 0.0d0 .and.                      &
 	    .not. warned_lw_fit_range) then
-		if (lw_col_over_overlap .gt. 1.0d0 .or.                            &
-		    maxval(NH2_col_lw) .gt. NH2_db96_max) then
+		if (lw_col_over_overlap .gt. 1.0d0) then
 			warned_lw_fit_range = .true.
-			write(*,'(a,es9.2,a,f6.2,a,es9.2,a)') ' (ioniz_eq)'//         &
+			write(*,'(a,es9.2,a,f6.2,a)') ' (ioniz_eq)'//                 &
 			  ' WARNING: the star-ward H2 column reaches ',               &
 			  maxval(NH2_col_lw), ' cm^-2, which is ',                    &
 			  lw_col_over_overlap, ' times the top of the column axis'// &
 			  ' of the overlapping-line self-shielding table, above'//    &
 			  ' which its edge value is returned rather than a'//         &
-			  ' calculated one, and the band share the H2 lines remove'//&
-			  ' is on a fit demonstrated only to ', NH2_db96_max,         &
-			  ' cm^-2 (Draine & Bertoldi 1996).'
+			  ' calculated one, for the dissociation rate and the band'//&
+			  ' share the H2 lines remove alike.'
 		endif
 	endif
 
@@ -1615,6 +1683,8 @@
 	! The one-particle photoheating rates of the absorbers this run does not
 	! carry stay zero, and so does the metal block until the sweep fills it.
 	P_m     = 0.0d0
+	P_m2    = 0.0d0
+	dP_m2_hrc = 0.0d0
 	h1_HeI  = 0.0d0
 	h1_HeII = 0.0d0
 	h1_HeTR = 0.0d0
@@ -1640,49 +1710,48 @@
 	                    a_ion_HI,a_ion_HeI,a_ion_HeII, aion_m,            &
 	                    a_ion_HeITR=a_ion_HeITR)
 
-	! Capture the ground-state H proton-budget coefficients on
-	! every pass (the converged pass is the one read out by write_excited_H).
-	if (use_excited_H) then
-		cion_HI  = a_ion_HI          ! collisional ionization [cm^3 s^-1]
-		arec_HII = rchiiB            ! case-B recombination  [cm^3 s^-1]
-	endif
 
 	! Charge-exchange rate coefficients are evaluated per cell below
 	! (cx_set_cell) before each metal ionization solve.
 
 	if (thereis_HeITR) then
-		call HeITR_coeffs(T_K,rcheiTR,rcheiiB,A31,q13,q31a,q31b,Q31)
-		! NOTE: rcheiiB is alpha1 from Oklopcic - being overwritten
+		! rcheiiB becomes the case-B capture into the singlets; the escaping
+		! ground captures are added below.
+		call HeITR_coeffs(T_K,rcheiTR,rcheiiB,A31,q13,q31g,q31a,q31b,Q31)
 	endif
 
-	! He recombination radiation ionizing H I and H2 (Draine 2011 emission,
-	! absorbed locally: the cell keeps the fraction 1 - exp(-tau_c) of each
-	! channel's photons at its own optical depth and the rest leave).
-	! Uses the pre-solve (lagged) densities, like the other lagged rate terms;
-	! corrects the He II recombination coefficient rcheiiB, adds an H I
-	! photoionization rate to P_HI and an H2 one to P_H2. Its photoelectron
-	! HEATING is not taken from this call: it carries the absorber densities,
-	! so it is re-evaluated after the sweep. Which species takes the photon is
-	! the ratio of the absorption coefficients at the energy of the channel,
-	! so in a molecular layer, where H2 outnumbers H I by three decades and
-	! absorbs 1.2-3.7 times as strongly, essentially all of it goes to H2.
-	! The He II recombination *cooling* is kT times the coefficient this
-	! balance removes He+ with as far as that coefficient is a function of
-	! temperature alone (Cool_coeff: alpha_rec_HeII_total, the two capture
-	! channels rcheiiB + rcheiTR when the triplet is tracked). What this
-	! coupling adds on top of that -- the weight y_net on the ground-term
-	! channel and the 0.25 alpha_B excited-singlet capture -- is a function
-	! of the absorber densities, and eval_cool is also evaluated at perturbed
-	! temperatures by the semi-implicit energy update, whose dC/dT divides
-	! the difference of two eval_cool calls by 1e-5 T; the reason is at
-	! alpha_rec_HeII_total. At T = 1e4 K and y_net = 0.81 that leaves 10 per
-	! cent of this channel uncharged.
-	if (use_he_rec_coupling .and. thereis_He) then
-		call he_rec_coupling(T_K, nhi, nmol_eq(:,1), nhei, nheii, nheiTR,  &
+	! Recombination radiation absorbed on the spot (recombination_radiation_
+	! absorbed): the ground-capture photons of H II, He II and He III and the
+	! He II and He III cascade photons, each cell keeping the fraction
+	! 1 - exp(-tau_c) of each channel at its own optical depth and the rest
+	! leaving. Uses the pre-solve (lagged) densities, like the other lagged
+	! rate terms. It replaces the three recombination coefficients by the
+	! net ones (case B plus the ground captures whose photons are not
+	! re-absorbed by the recombined species in the cell) and returns the
+	! H I, He I, H2 and metal photoionization rates the absorbed photons add.
+	! Its photoelectron HEATING is not taken from this call: it carries the
+	! absorber densities, so it is re-evaluated after the sweep. Which
+	! species takes a photon is the ratio of the absorption coefficients at
+	! the energy of the channel, so in a molecular layer, where H2
+	! outnumbers H I by three decades and absorbs 1.2-3.7 times as
+	! strongly, the He photons go to H2. The recombination *cooling*
+	! charges the kinetic energy of the captures this balance performs:
+	! eval_cool forms the same escape weights from the densities it is
+	! given (ground_capture_escape_weights) and Cool_coeff's lambda_rec_*
+	! evaluate the net coefficients at them, the weights held fixed while T
+	! varies.
+	if (use_h_rec_escape .or. (use_he_rec_coupling .and. thereis_He)) then
+		call recombination_radiation_absorbed(T_K, nhi, nhii,              &
+		                     nmol_eq(:,1), nhei, nheii, nheiii, nheiTR,    &
 		                     ne, nm, A31, q31a, q31b,                      &
-		                     rcheiiB_hrc, dP_HI_hrc, dP_H2_hrc,            &
-		                     dP_m_hrc, dheat_hrc)
-		rcheiiB = rcheiiB_hrc
+		                     rchiiB_hrc, rcheiiB_hrc, rcheiiiB_hrc,        &
+		                     dP_HI_hrc, dP_HeI_hrc, dP_H2_hrc, dP_m_hrc,   &
+		                     dheat_hrc, dP_m2=dP_m2_hrc)
+		rchiiB   = rchiiB_hrc
+		if (use_he_rec_coupling .and. thereis_He) then
+			rcheiiB  = rcheiiB_hrc
+			rcheiiiB = rcheiiiB_hrc
+		endif
 		! The photoionization rates this coupling adds -- to H I, to H2 and
 		! to each metal ion -- are added to the stellar ones cell by cell in
 		! the sweep below, where the stellar field of that cell has just been
@@ -1694,10 +1763,24 @@
 		! 1.9-2.3%; splitting off that much of a channel that is itself a
 		! correction would be well inside the +/-4-5% the measured branching
 		! carries. The whole of dP_H2_hrc therefore makes H2+. The same holds
-		! for the two channels added later: these photons are far below the
-		! 51.4 eV double-ionization threshold and outside the 33-41 eV
+		! for the two channels added later: the He II photons are far below
+		! the 51.4 eV double-ionization threshold and outside the 33-41 eV
 		! neutral window, so of the four channels only the H2+ one can
-		! receive them, and P_H2_dd / P_H2_nd stay untouched.
+		! receive them, and P_H2_dd / P_H2_nd stay untouched. The He III
+		! photons (He II Ly-alpha at 40.8 eV, the ground capture at 54.4 eV)
+		! would reach those windows, but they are emitted where He III
+		! exists, in the ionized wind, and H2 exists only in the molecular
+		! base; their H2 share is also sent to H2+ (validity (v) of
+		! recombination_radiation_absorbed).
+	endif
+
+	! Capture the ground-state H proton-budget coefficients on
+	! every pass (the converged pass is the one read out by write_excited_H):
+	! the recombination coefficient is the one the balance removes protons
+	! with, case B plus the escaping ground captures.
+	if (use_excited_H) then
+		cion_HI  = a_ion_HI          ! collisional ionization [cm^3 s^-1]
+		arec_HII = rchiiB            ! net recombination     [cm^3 s^-1]
 	endif
 
 
@@ -1927,6 +2010,9 @@
 		n_ieq_fail   = 0
 		n_acc(:)      = 0
 		acc_resmax(:) = 0.0d0
+		if (.not. allocated(ieq_cell_acceptance_class))                   &
+			allocate(ieq_cell_acceptance_class(1-Ng:N+Ng))
+		ieq_cell_acceptance_class = 0
 		hist_conv(:)  = 0
 		hist_uncv(:)  = 0
 		n_cce_attempt = 0
@@ -1972,7 +2058,8 @@
 		         N1_face,N15_face,N2_face,NTR_face,NH2col_face,Nm_face)
 
 		!$omp parallel do default(shared) schedule(static)                 &
-		!$omp   private(j, Pm_row, h1m_row, chan_row, heat_row, q_abs_row) &
+		!$omp   private(j, Pm_row, h1m_row, chan_row, heat_row, q_abs_row, &
+		!$omp           Pm2_row)                                           &
 		!$omp   if(marching_step > 0)
 		do j = jb_hi, jb_lo, -1
 			call photoionization_field_at_cell_HHe(j,                      &
@@ -1985,8 +2072,9 @@
 			         P_HI(j),P_HeI(j),P_HeII(j),P_HeITR(j), Pm_row,        &
 			         P_H2(j),P_H2_di(j),P_H2_dd(j),P_H2_nd(j),             &
 			         h1_HI(j),h1_HeI(j),h1_HeII(j),h1_HeTR(j),h1_H2(j),    &
-			         h1m_row, heat_row, chan_row, q(j), q_abs_row)
+			         h1m_row, heat_row, chan_row, q(j), q_abs_row, Pm2_row)
 			P_m(j,:)  = Pm_row
+			P_m2(j,:) = Pm2_row
 			h1_m(j,:) = h1m_row
 		enddo
 		!$omp end parallel do
@@ -2008,8 +2096,8 @@
 				P_HI(j) = P_HI(j) + gph_balmer_HI(j)
 			endif
 
-			! He recombination radiation, absorbed locally.
-			if (use_he_rec_coupling) then
+			! Recombination radiation, absorbed locally.
+			if (use_he_rec_coupling .or. use_h_rec_escape) then
 				! Count where the coupling out-ionizes the stellar field by
 				! three decades, before P_HI absorbs it (diagnostic; silent
 				! when zero).
@@ -2028,13 +2116,20 @@
 					endif
 				endif
 				P_HI(j) = P_HI(j) + dP_HI_hrc(j)
+				! The He II and He III photons absorbed by He I (the ground
+				! singlet): an addition to its photoionization rate.
+				P_HeI(j) = P_HeI(j) + dP_HeI_hrc(j)
 				! The same photons absorbed by H2: an addition to the H2
 				! photoionization rate, which drives the H2 destruction row
 				! and the H2+ formation row of the molecular system.
 				if (thereis_mol) P_H2(j) = P_H2(j) + dP_H2_hrc(j)
 				! And the share each metal ion takes of the same photons,
-				! an addition to its photoionization rate.
-				if (thereis_metals) P_m(j,:) = P_m(j,:) + dP_m_hrc(j,:)
+				! an addition to its photoionization rate (and the part of
+				! it that ends in X++ to the jump rate).
+				if (thereis_metals) then
+					P_m(j,:)  = P_m(j,:)  + dP_m_hrc(j,:)
+					P_m2(j,:) = P_m2(j,:) + dP_m2_hrc(j,:)
+				endif
 			endif
 
 		enddo
@@ -2055,11 +2150,11 @@
 		!$omp           ghost_closure_move, ghost_closure_res, ghost_closed,         &
 		!$omp           ghost_cell_closure, x_h2_secant_prev, f_h2_secant_prev,      &
 		!$omp           x_h2_map, f_h2_map, x_h2_secant, have_h2_secant_prev,        &
-		!$omp           Pm_row, h1m_row, chan_row, heat_row, q_abs_row)              &
+		!$omp           Pm_row, h1m_row, chan_row, heat_row, q_abs_row, Pm2_row)     &
 		!$omp   reduction(+:n_mol_clamped,n_mol_info,n_ieq_reseed,n_ieq_retry, &
 		!$omp               n_ieq_unphys,n_ieq_fail,n_acc,hist_conv,hist_uncv, &
 		!$omp               n_cce_attempt,n_cce_root,n_cce_solve,cce_seconds,  &
-		!$omp               n_res_nonfinite)                                   &
+		!$omp               n_res_nonfinite,n_ghost_h2_open)                   &
 		!$omp   reduction(max:acc_resmax,viol_sweep_worst,ghost_closure_res_sweep,  &
 		!$omp               ghost_closure_pass_sweep) if(marching_step > 0)
 		do j = jb_hi, jb_lo, -1
@@ -2173,17 +2268,23 @@
 				         P_H2(j),P_H2_di(j),P_H2_dd(j),P_H2_nd(j),         &
 				         h1_HI(j),h1_HeI(j),h1_HeII(j),h1_HeTR(j),         &
 				         h1_H2(j),                                         &
-				         h1m_row, heat_row, chan_row, q(j), q_abs_row)
+				         h1m_row, heat_row, chan_row, q(j), q_abs_row,     &
+				         Pm2_row)
 				P_m(j,:)  = Pm_row
+				P_m2(j,:) = Pm2_row
 				h1_m(j,:) = h1m_row
 				if (use_excited_H) then
 					gph_ground_HI(j) = P_HI(j)
 					P_HI(j) = P_HI(j) + gph_balmer_HI(j)
 				endif
-				if (use_he_rec_coupling) then
-					P_HI(j) = P_HI(j) + dP_HI_hrc(j)
+				if (use_he_rec_coupling .or. use_h_rec_escape) then
+					P_HI(j)  = P_HI(j)  + dP_HI_hrc(j)
+					P_HeI(j) = P_HeI(j) + dP_HeI_hrc(j)
 					if (thereis_mol) P_H2(j) = P_H2(j) + dP_H2_hrc(j)
-					if (thereis_metals) P_m(j,:) = P_m(j,:) + dP_m_hrc(j,:)
+					if (thereis_metals) then
+						P_m(j,:)  = P_m(j,:)  + dP_m_hrc(j,:)
+						P_m2(j,:) = P_m2(j,:) + dP_m2_hrc(j,:)
+					endif
 				endif
 			endif
 
@@ -2204,12 +2305,14 @@
 			ieq_cell%a_ion_HeII = a_ion_HeII(j)
 
 			! He <-> H charge-exchange rate coefficients (Huang Table 4 group
-			! B): read by he_h_cx_fvec/he_h_cx_jac in every He system. Depends
-			! only on T, so evaluate once per cell here (cheap). The residual
-			! routines add nothing when he_h_charge_exchange is off, so this is
-			! harmless (and bit-identical) in that case.
+			! B, and He2+ + H0): read by he_h_cx_fvec/he_h_cx_jac in every He
+			! system. Depends only on T, so evaluate once per cell here
+			! (cheap). The residual routines add nothing when
+			! he_h_charge_exchange is off, so this is harmless (and
+			! bit-identical) in that case.
 			call he_h_cx_rates(T_K(j), ieq_cell%kcx_He0_Hp,               &
-			                           ieq_cell%kcx_Hep_H0)
+			                           ieq_cell%kcx_Hep_H0,               &
+			                           ieq_cell%kcx_Hepp_H0)
 
 			! The He 2^3S channels: the cell's rates where the level is
 			! tracked, and zero where it is not, so that every system and
@@ -2222,6 +2325,7 @@
 				ieq_cell%A31     = A31
 				ieq_cell%P_HeITR = P_HeITR(j)
 				ieq_cell%q13     = q13(j)
+				ieq_cell%q31g    = q31g(j)
 				ieq_cell%q31a    = q31a(j)
 				ieq_cell%q31b    = q31b(j)
 				ieq_cell%Q31     = Q31(j)
@@ -2231,6 +2335,7 @@
 				ieq_cell%A31     = 0.0d0
 				ieq_cell%P_HeITR = 0.0d0
 				ieq_cell%q13     = 0.0d0
+				ieq_cell%q31g    = 0.0d0
 				ieq_cell%q31a    = 0.0d0
 				ieq_cell%q31b    = 0.0d0
 				ieq_cell%Q31     = 0.0d0
@@ -2524,9 +2629,10 @@
 			! Each element's metal coefficients are handed to
 			! ion_system_HeH_metals via set_metal_coeffs; the charge-
 			! exchange rate coefficients are stored for this cell by
-			! cx_set_cell (used inside the residual by cx_add_to_fvec).
+			! cx_set_cell (used inside the residual by cx_add_to_fvec), at
+			! the electron density the cell's other coefficients use.
 			if (thereis_metals) then
-				call cx_set_cell(T_K(j))
+				call cx_set_cell(T_K(j), ne(j))
 
 				! Build the metal coefficients for each element in canonical order
 				! from the 2D rate arrays (col i0 = neutral, i0+1 = +,
@@ -2540,19 +2646,21 @@
 					meg_b0(im)   = aion_m(j,i0)
 					meg_a1(im)   = rec_m(j,i0+1)
 					if (top .ge. 2) then
-						meg_g1(im) = P_m(j,i0+1)
-						meg_b1(im) = aion_m(j,i0+1)
-						meg_a2(im) = rec_m(j,i0+2)
+						meg_g1(im)  = P_m(j,i0+1)
+						meg_g02(im) = P_m2(j,i0)
+						meg_b1(im)  = aion_m(j,i0+1)
+						meg_a2(im)  = rec_m(j,i0+2)
 					else
 						! No second ionization stage for this element.
-						meg_g1(im) = 0.0d0
-						meg_b1(im) = 0.0d0
-						meg_a2(im) = 0.0d0
+						meg_g1(im)  = 0.0d0
+						meg_g02(im) = 0.0d0
+						meg_b1(im)  = 0.0d0
+						meg_a2(im)  = 0.0d0
 					endif
 				enddo
 				call set_metal_coeffs(n_melem, meg_ntot, meg_g0, meg_g1, &
 				                    meg_b0, meg_b1, meg_a1, meg_a2,     &
-				                    meg_top)
+				                    meg_top, meg_g02)
 
 				! Metal rows of the molecular system get their turnover
 				! scale too, after set_mol_turnover_rates has reset the
@@ -2576,6 +2684,7 @@
 				ieq_met_coef(:,5,j) = meg_b1
 				ieq_met_coef(:,6,j) = meg_a1
 				ieq_met_coef(:,7,j) = meg_a2
+				ieq_met_coef(:,8,j) = meg_g02
 			endif
 
 			! Initial guess.  The second and later passes of the self-field
@@ -2981,12 +3090,33 @@
 				! and an unclosed pair leaves it an arbitrary iterate of
 				! the alternation rather than the solution of a stated
 				! equation.
+				!
+				! WHO REFUSES IT (ieq_state_may_be_refused). At a state the
+				! run holds, the run: it stops. At a candidate whose caller
+				! declared that it refuses what the sweep reports
+				! inadmissible -- a line-search, trust-region or relaxation
+				! trial, a Krylov or finite-difference probe -- the caller:
+				! the event is counted in the sweep ledger (n_ghost_open),
+				! that caller refuses the candidate by the same rule that
+				! refuses a non-finite sweep, and shortens or redirects its
+				! step. The pair is the same equation in both cases and is
+				! not loosened in either; what differs is only whether a
+				! state stands behind the run when this one is refused. The
+				! cell keeps the last pass's state, which no one adopts.
 				if (ghost_cell_closure .and. .not. ghost_closed .and.     &
 				    it_self .ge. n_self_max) then
 					!$omp critical (ieq_acc_report)
-					write(*,'(A)') ' (ioniz_eq) STOP: the base handoff'// &
-						' partition of a lower ghost did not close'//     &
-						' against its own ionization balance'
+					if (ieq_state_may_be_refused) then
+						write(*,'(A)') ' (ioniz_eq) CANDIDATE REFUSED:'// &
+							' the base handoff partition of a lower'//    &
+							' ghost did not close against its own'//      &
+							' ionization balance'
+					else
+						write(*,'(A)') ' (ioniz_eq) STOP: the base'//     &
+							' handoff partition of a lower ghost did'//   &
+							' not close against its own ionization'//     &
+							' balance'
+					endif
 					write(*,'(A,I0,A,I0,A)') '   ghost cell ', j,         &
 						'   passes ', it_self, ''
 					write(*,'(A,ES12.5,A,ES12.5)') '   last move of the'//&
@@ -2997,7 +3127,9 @@
 						ghost_closure_res
 					flush(6)
 					!$omp end critical (ieq_acc_report)
-					error stop 'ioniz_eq: base ghost H2 closure failed'
+					if (.not. ieq_state_may_be_refused)                   &
+						error stop 'ioniz_eq: base ghost H2 closure failed'
+					n_ghost_h2_open = n_ghost_h2_open + 1
 				endif
 				if (ghost_cell_closure .and. last_self) then
 					ghost_closure_res_sweep =                             &
@@ -3018,6 +3150,7 @@
 				! them.
 				if (last_self) then
 					n_acc(acc_class) = n_acc(acc_class) + 1
+					ieq_cell_acceptance_class(j) = acc_class
 					if (finite_real(acc_res))                              &
 						acc_resmax(acc_class) =                            &
 							max(acc_resmax(acc_class),acc_res)
@@ -3216,6 +3349,7 @@
 				! them.
 				if (last_self) then
 					n_acc(acc_class) = n_acc(acc_class) + 1
+					ieq_cell_acceptance_class(j) = acc_class
 					if (finite_real(acc_res))                              &
 						acc_resmax(acc_class) =                            &
 							max(acc_resmax(acc_class),acc_res)
@@ -3236,6 +3370,15 @@
 			if (thereis_mol) then
 				! guard tiny negatives from the NL solve
 				sys_x(1:N_eq) = max(sys_x(1:N_eq), 0.0d0)
+				! A TRANSPORTED H2 IS HANDED TO THIS SWEEP, NOT SOLVED BY
+				! IT.  A root meets the imposed value through its own
+				! row, but a non-root acceptance (class 4) or a clamp
+				! onto the element budget (class 3) can return another
+				! x(4), and writing that back rewrote the carrier the
+				! transport solve owns, cell by cell.  The imposed value
+				! is written; the atomic hydrogen below takes the
+				! remainder of the budget.
+				if (ieq_cell%x_h2_fixed) sys_x(4) = ieq_cell%x_h2_fix
 				nhii(j)   = nh(j)*sys_x(1)
 				nmol_eq(j,1) = 0.5d0*sys_x(4)*nh(j)
 				nmol_eq(j,2) = 0.5d0*sys_x(5)*nh(j)
@@ -3375,6 +3518,7 @@
 		! ways that ends.
 		ledger_sweep%n_offsimplex  = n_mol_clamped + n_ieq_fail
 		ledger_sweep%viol_worst    = viol_sweep_worst
+		ledger_sweep%n_ghost_open  = n_ghost_h2_open
 
 		! The non-root streak counts CONSECUTIVE sweeps of a state the run
 		! holds; a probe sweep leaves it alone (nonroot_streak_update), so
@@ -3685,6 +3829,15 @@
    ! with the cells above the ghosts restored to the composition they were
    ! handed, so that what this routine returns for them stays one
    ! application of one map.
+   !
+   ! AN APPLICATION WHOSE GHOST PARTITION DID NOT CLOSE ENDS THE ITERATION.
+   ! The map whose fixed point is sought contains that closure, so an
+   ! application in which it stayed open is not an evaluation of the map,
+   ! and applying it again pursues the fixed point of something else. Only
+   ! a candidate its caller may refuse gets here (at any other state the
+   ! closure has already stopped the run), and the sweep returns it with
+   ! n_ghost_open counted, which refuses it.
+   if (n_ghost_h2_open .gt. 0) exit ghost_fixed_point
    if (.not. ghost_fp_reached) then
       ghost_fp_move = ghost_composition_distance(                         &
                            f_sp_sweep_entry(1-Ng:0,:), f_sp_io(1-Ng:0,:))
@@ -3695,10 +3848,15 @@
          ghost_fp_reached = .true.
       else if (ghost_fp_pass .ge. ghost_composition_fixed_point_passes)   &
       then
-         call ghost_fixed_point_refused(ghost_fp_pass, ghost_fp_move,     &
+         ! Refused like the partition closure above: the run stops at a
+         ! state it holds, and a candidate its caller may refuse is handed
+         ! back with the refusal counted (ieq_state_may_be_refused).
+         call ghost_fixed_point_not_reached(ghost_fp_pass, ghost_fp_move, &
               ghost_thermal_move,                                         &
               'the ghost composition did not reach a fixed point of'//    &
               ' the sweep that returns it')
+         ghost_fp_open = .true.
+         exit ghost_fixed_point
       else
          f_sp_sweep_entry(1-Ng:0,:) = f_sp_io(1-Ng:0,:)
          f_sp_io = f_sp_sweep_entry
@@ -3706,6 +3864,18 @@
    endif
    if (ghost_fp_reached) exit ghost_fixed_point
    enddo ghost_fixed_point
+   ! The fixed point given up at a refusable candidate is found after this
+   ! application's ledger was formed, so it is added to the three copies of
+   ! it here: the one handed to the caller, the last-sweep census and the
+   ! run-wide ledger of the tagged state kind.
+   if (ghost_fp_open) then
+      ledger_ghost_fp = ioniz_eq_ledger()
+      ledger_ghost_fp%n_ghost_open = 1
+      call add_to_ioniz_eq_ledger(ledger_ghost_fp)
+      ieq_sweep_ledger_last%n_ghost_open =                               &
+           ieq_sweep_ledger_last%n_ghost_open + 1
+      if (present(sweep_ledger)) sweep_ledger = ieq_sweep_ledger_last
+   endif
    if (ghost_contract_on) then
       ghost_fixed_point_move_sweep   = ghost_fp_move
       ghost_thermal_move_sweep       = ghost_thermal_move
@@ -3895,17 +4065,23 @@
 
 	!----------------------------------!
 
-	subroutine ghost_fixed_point_refused(npass, move, thermal_move, what)
+	subroutine ghost_fixed_point_not_reached(npass, move, thermal_move, what)
 	! A BOUNDARY NOTHING STANDS BEHIND IS REFUSED, with the numbers, as the
 	! ghost's H2 partition closure is refused: a ghost composition that is
 	! not a fixed point of the solve that returned it is an iterate of that
 	! solve, and the base face state, the base continuity row and every
 	! certificate taken from them would be functions of the composition the
-	! run was entered at.
+	! run was entered at. The run stops unless the caller declared that it
+	! refuses the state this sweep evaluates (ieq_state_may_be_refused);
+	! then the numbers are written and the caller refuses the candidate.
 	integer, intent(in) :: npass
 	real*8,  intent(in) :: move, thermal_move
 	character(len=*), intent(in) :: what
-	write(*,'(A)') ' (ioniz_eq) STOP: '//trim(what)
+	if (ieq_state_may_be_refused) then
+		write(*,'(A)') ' (ioniz_eq) CANDIDATE REFUSED: '//trim(what)
+	else
+		write(*,'(A)') ' (ioniz_eq) STOP: '//trim(what)
+	endif
 	write(*,'(A,I0,A,I0)') '   applications of the ghost composition'//   &
 	     ' map ', npass, '   bound ', ghost_composition_fixed_point_passes
 	write(*,'(A,ES12.5,A,ES12.5)') '   last move of the ghost species'//  &
@@ -3915,8 +4091,9 @@
 	     ' composition ', ghost_composition_fixed_point_move,             &
 	     '   count ', ghost_count_fixed_point_move
 	flush(6)
-	error stop 'ioniz_eq: the ghost composition is not a fixed point'
-	end subroutine ghost_fixed_point_refused
+	if (.not. ieq_state_may_be_refused)                                  &
+		error stop 'ioniz_eq: the ghost composition is not a fixed point'
+	end subroutine ghost_fixed_point_not_reached
 
 	! End of subroutine
 	end subroutine ioniz_eq
@@ -4105,7 +4282,7 @@
 			n_hi_loc = max(1.0d0 - x(1), 0.0d0)*ieq_cell%nh
 			s = ieq_cell%P_HeITR + ieq_cell%A31                          &
 			  + n_hi_loc*ieq_cell%Q31                                    &
-			  + (ieq_cell%q31a + ieq_cell%q31b                           &
+			  + (ieq_cell%q31g + ieq_cell%q31a + ieq_cell%q31b           &
 			     + ieq_cell%a_ion_HeITR)*n_e
 			if (s .gt. 0.0d0) x(itr) = min(                              &
 			      n_e*(x(2)*ieq_cell%rcheiTR + xneu*ieq_cell%q13)/s, xneu)
@@ -4224,7 +4401,7 @@
 	real*8,  intent(in) :: n_e_ref
 	real*8,  intent(out), optional :: row_out(n)
 	real*8  :: fv(n), srow(n), cxb(n), par(60), el_tot(12)
-	real*8  :: nH, nHe, ne, cx_heh, s
+	real*8  :: nH, nHe, ne, cx_heh, cx_hepp, s
 	integer :: iflag, i, e, ix
 
 	par(:)    = 0.0d0                 ! transport argument only, unread
@@ -4282,11 +4459,14 @@
 		nHe = ieq_cell%nhe
 		ne  = n_e_ref
 		cx_heh = (ieq_cell%kcx_He0_Hp + ieq_cell%kcx_Hep_H0)*nH*nHe
+		! He2+ + H0 -> He+ + H+ reaches rows (1) and (3) (boundary flows).
+		cx_hepp = ieq_cell%kcx_Hepp_H0*nH*nHe
 		! (1) H+ : photo- and collisional ionization of H0, radiative
 		!     recombination, He <-> H charge exchange; with the triplet
 		!     tracked, the Penning ionization source of heh_tr_rows.
 		srow(1) = (ieq_cell%P_HI                                          &
-		           + (ieq_cell%a_ion_HI + ieq_cell%rchiiB)*ne)*nH + cx_heh
+		           + (ieq_cell%a_ion_HI + ieq_cell%rchiiB)*ne)*nH + cx_heh &
+		         + cx_hepp
 		if (thereis_HeITR) then
 			srow(1) = srow(1) + f_penning_HeI23S*ieq_cell%Q31*nHe*nH
 			! (2) summed He I balance of heh_tr_rows: both photoionization
@@ -4296,15 +4476,17 @@
 			           + (ieq_cell%a_ion_HeI + ieq_cell%a_ion_HeITR       &
 			              + ieq_cell%rcheiTR + ieq_cell%rcheiiB)*ne)*nHe  &
 			        + cx_heh
-			! (3) He+ <-> He++.
+			! (3) He+ <-> He++, and He2+ + H0 -> He+ + H+.
 			srow(3) = (ieq_cell%P_HeII                                    &
-			           + (ieq_cell%a_ion_HeII + ieq_cell%rcheiiiB)*ne)*nHe
+			           + (ieq_cell%a_ion_HeII + ieq_cell%rcheiiiB)*ne)*nHe&
+			        + cx_hepp
 			! (4) He 2^3S: populated from He+ recombination and 1^1S
 			!     excitation, drained by photoionization, A31,
 			!     de-excitation, electron-impact and Penning ionization.
 			srow(4) = (ieq_cell%P_HeITR + ieq_cell%A31                    &
-			           + (ieq_cell%rcheiTR + ieq_cell%q13 + ieq_cell%q31a &
-			              + ieq_cell%q31b + ieq_cell%a_ion_HeITR)*ne)*nHe &
+			           + (ieq_cell%rcheiTR + ieq_cell%q13 + ieq_cell%q31g &
+			              + ieq_cell%q31a + ieq_cell%q31b                 &
+			              + ieq_cell%a_ion_HeITR)*ne)*nHe                 &
 			        + ieq_cell%Q31*nHe*nH
 		else
 			! (2)(3) the standard heh_rows balances.
@@ -4312,7 +4494,8 @@
 			           + (ieq_cell%a_ion_HeI + ieq_cell%rcheiiB)*ne)*nHe  &
 			        + cx_heh
 			srow(3) = (ieq_cell%P_HeII                                    &
-			           + (ieq_cell%a_ion_HeII + ieq_cell%rcheiiiB)*ne)*nHe
+			           + (ieq_cell%a_ion_HeII + ieq_cell%rcheiiiB)*ne)*nHe&
+			        + cx_hepp
 		endif
 		if (thereis_metals) then
 			! X0 <-> X+ and X+ <-> X++ of each element (the metal_rows
@@ -4325,7 +4508,7 @@
 				srow(ix) = met_ntot(e)*(met_g0(e)                         &
 				           + (met_b0(e) + met_a1(e))*ne)
 				if (met_top(e) .ge. 2)                                    &
-					srow(ix+1) = met_ntot(e)*(met_g1(e)                   &
+					srow(ix+1) = met_ntot(e)*((met_g1(e) + met_g02(e))    &
 					             + (met_b1(e) + met_a2(e))*ne)
 			enddo
 			cx_metal_base = mbase
@@ -4473,6 +4656,17 @@
 
 	!----------------------------------!
 
+	subroutine set_ioniz_eq_state_may_be_refused(on)
+	! Declared by a caller around its own ioniz_eq call: .true. when it
+	! reads the sweep ledger's admissibility signal and refuses the state it
+	! handed in when that signal says so (ieq_state_may_be_refused), .false.
+	! again after the call. Called from OUTSIDE any parallel region.
+	logical, intent(in) :: on
+	ieq_state_may_be_refused = on
+	end subroutine set_ioniz_eq_state_may_be_refused
+
+	!----------------------------------!
+
 	subroutine add_to_ioniz_eq_ledger(a)
 	! Add one sweep's totals to the ledger of the state kind currently
 	! tagged. Serial: called once per sweep, outside the cell loop.
@@ -4514,6 +4708,7 @@
 	tot%n_offsimplex  = tot%n_offsimplex  + a%n_offsimplex
 	tot%viol_worst    = max(tot%viol_worst, a%viol_worst)
 	tot%streak_peak   = max(tot%streak_peak, a%streak_peak)
+	tot%n_ghost_open  = tot%n_ghost_open  + a%n_ghost_open
 	end subroutine accumulate_ioniz_eq_ledger
 
 	!----------------------------------!
@@ -4620,6 +4815,11 @@
 			'     ioniz-eq admissibility: ', led%n_offsimplex,            &
 			' cell(s) with no in-simplex starting point, largest '//      &
 			'element-budget violation ', led%viol_worst
+
+	if (led%n_ghost_open .gt. 0)                                          &
+		write(*,'(A,I0,A)')                                               &
+			'     ioniz-eq lower boundary: ', led%n_ghost_open,           &
+			' ghost solve(s) left open at refused candidate states'
 
 	end subroutine write_one_ioniz_eq_ledger
 
@@ -5237,7 +5437,8 @@
 	! element that is absent keeps its stages at zero, as its residual rows do.
 
 	use System_HeH_metals, only: met_nelem, met_ntot, met_g0, met_g1,     &
-	                             met_b0, met_b1, met_a1, met_a2, met_top
+	                             met_b0, met_b1, met_a1, met_a2, met_top, &
+	                             met_g02
 
 	integer, intent(in)    :: n, mbase
 	real*8,  intent(in)    :: n_e
@@ -5257,7 +5458,9 @@
 			u1 = met_g1(im) + met_b1(im)*n_e
 			d2 = met_a2(im)*n_e
 			w1 = u0*d2
-			w2 = u0*u1
+			! the neutral's direct jump to X++ crosses the 1|2 boundary
+			! too (metal_rows): n_2 d_2 = n_1 u_1 + n_0 g02
+			w2 = u0*u1 + met_g02(im)*d1
 			s  = d1*d2 + w1 + w2
 			if (s .gt. 0.0d0) then
 				x(ix)   = w1/s
@@ -5312,6 +5515,7 @@
 		ws%ntot(1:met_nelem) = met_ntot(1:met_nelem)
 		ws%g0(1:met_nelem)   = met_g0(1:met_nelem)
 		ws%g1(1:met_nelem)   = met_g1(1:met_nelem)
+		ws%g02(1:met_nelem)  = met_g02(1:met_nelem)
 		ws%b0(1:met_nelem)   = met_b0(1:met_nelem)
 		ws%b1(1:met_nelem)   = met_b1(1:met_nelem)
 		ws%a1(1:met_nelem)   = met_a1(1:met_nelem)
@@ -5332,6 +5536,7 @@
 		met_ntot(1:ws%nelem) = ws%ntot(1:ws%nelem)
 		met_g0(1:ws%nelem)   = ws%g0(1:ws%nelem)
 		met_g1(1:ws%nelem)   = ws%g1(1:ws%nelem)
+		met_g02(1:ws%nelem)  = ws%g02(1:ws%nelem)
 		met_b0(1:ws%nelem)   = ws%b0(1:ws%nelem)
 		met_b1(1:ws%nelem)   = ws%b1(1:ws%nelem)
 		met_a1(1:ws%nelem)   = ws%a1(1:ws%nelem)
@@ -5357,6 +5562,7 @@
 		same = (now%nelem .eq. ws%nelem)                                  &
 		       .and. all(now%ntot .eq. ws%ntot)                           &
 		       .and. all(now%g0 .eq. ws%g0) .and. all(now%g1 .eq. ws%g1)  &
+		       .and. all(now%g02 .eq. ws%g02)                             &
 		       .and. all(now%b0 .eq. ws%b0) .and. all(now%b1 .eq. ws%b1)  &
 		       .and. all(now%a1 .eq. ws%a1) .and. all(now%a2 .eq. ws%a2)  &
 		       .and. all(now%top .eq. ws%top)
@@ -5380,11 +5586,13 @@
 	  .and. (a%a_ion_HeI .eq. b%a_ion_HeI)                               &
 	  .and. (a%a_ion_HeII .eq. b%a_ion_HeII)                             &
 	  .and. (a%a_ion_HeITR .eq. b%a_ion_HeITR)                           &
-	  .and. (a%q13 .eq. b%q13) .and. (a%q31a .eq. b%q31a)                &
+	  .and. (a%q13 .eq. b%q13) .and. (a%q31g .eq. b%q31g)                &
+	  .and. (a%q31a .eq. b%q31a)                                         &
 	  .and. (a%q31b .eq. b%q31b) .and. (a%Q31 .eq. b%Q31)                &
 	  .and. (a%A31 .eq. b%A31)                                           &
 	  .and. (a%kcx_He0_Hp .eq. b%kcx_He0_Hp)                             &
 	  .and. (a%kcx_Hep_H0 .eq. b%kcx_Hep_H0)                             &
+	  .and. (a%kcx_Hepp_H0 .eq. b%kcx_Hepp_H0)                           &
 	  .and. (a%P_H2 .eq. b%P_H2) .and. (a%k_LW .eq. b%k_LW)              &
 	  .and. (a%T_K .eq. b%T_K) .and. (a%ntot .eq. b%ntot)                &
 	  .and. (a%n_ofam .eq. b%n_ofam) .and. (a%n_co .eq. b%n_co)
@@ -5449,12 +5657,12 @@
 			call set_oxygen_turnover_rates(ieq_iox_stored, 1.0d0)
 	endif
 	if (thereis_metals) then
-		call cx_set_cell(ieq_TK_cell(j))
+		call cx_set_cell(ieq_TK_cell(j), ieq_ne_cell(j))
 		call set_metal_coeffs(n_melem, ieq_met_coef(:,1,j),               &
 		                      ieq_met_coef(:,2,j), ieq_met_coef(:,3,j),   &
 		                      ieq_met_coef(:,4,j), ieq_met_coef(:,5,j),   &
 		                      ieq_met_coef(:,6,j), ieq_met_coef(:,7,j),   &
-		                      melem_top)
+		                      melem_top, ieq_met_coef(:,8,j))
 		if (thereis_mol)                                                  &
 			call set_mol_metal_turnover_rates(ieq_ne_cell(j), 1.0d0)
 	endif

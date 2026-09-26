@@ -10,8 +10,8 @@
 # Jacobian at a step so small the difference was its own numerical noise.  The
 # patch corrects all of it, adds the elemental-closure check on the Photochem
 # side, and pins Clima v0.7.5.  Why each was needed and what it measured:
-#   docs/photochem_solver_modification_investigation.md
-#   docs/photochem_solver_modification_implementation.md
+#   md/photochem_solver_modification_investigation.md
+#   md/photochem_solver_modification_implementation.md
 # What each change is, what to download, what to install, and how to build:
 #   README_photochem.md
 #

@@ -129,16 +129,18 @@ first-order term the continuum closure drops is the viscous stress, whose
 size relative to the pressure is ~ lambda |dv/dr| / vbar: a change of the
 bulk velocity distorts the distribution function in proportion to the
 THERMAL speed, not to the local bulk speed.  Normalizing by v instead
-diverges at every stagnation point -- the base sound-wave layer of these
-runs crosses v = 0 repeatedly -- which is what an ad-hoc Mach floor was
-patching before.  c_s is used in place of vbar so that L stays one length,
+diverges at every stagnation point -- the cell-centred velocity of the
+base cells crosses v = 0 repeatedly, through the collocated two-cell
+odd-even mode those cells carry (a mode of the cell-centred field, not a
+wave of the solution: the Riemann face mass flux there is the wind's own)
+-- which is what an ad-hoc Mach floor was patching before.  c_s is used in place of vbar so that L stays one length,
 common to all species; the two differ by an O(1) factor.
 
 The floor at the local cell width dr_cell is a statement about what a
 discrete solution can carry: no structure exists below one cell, so a
 gradient claiming one is measuring the mesh.  It binds only in the base
-sound-wave layer (3 of 500 cells in one of the four runs of
-`docs/collisional_validity.md`, all at r < 1.002 R_p, four orders of
+cells that carry the odd-even mode (3 of 500 cells in one of the four runs of
+`md/collisional_validity.md`, all at r < 1.002 R_p, four orders of
 magnitude below the verdict threshold) and never in a critical region.
 
     Kn_s = lambda_s / L.

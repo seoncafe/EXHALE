@@ -179,10 +179,10 @@
       ! base H2 fraction been pinned from the same handoff the gate compares
       ! against, the gate would measure nothing.
       !
-      ! OUTER: zero gradient, as the element operator does.  The carriers are
-      ! negligible there by many decades in every configuration this option
-      ! targets; a run in which they are not is outside its validity range
-      ! and output/Oxygen_chemistry.txt says so.
+      ! OUTER: no diffusive, eddy or settling flux crosses the outer face,
+      ! and the carriers leave it by advection alone.  carrier_face_coefficients
+      ! gives the reason, a ghost-built face flux measured to draw carriers
+      ! inward; no output file flags a carrier that is not negligible there.
       !
       ! ---------------------------------------------------------------
       ! 6. DISCRETIZATION AND THE SIMPLEX
@@ -295,6 +295,7 @@
       use utils, only: calc_ne
       use ionization_equilibrium, only: bg_cell, bg_ready, finite_real,   &
                                         ioniz_eq, ioniz_eq_ledger,       &
+                                        set_ioniz_eq_state_may_be_refused, &
                                         transported_rows_exist,          &
                                         ieq_rate_state,                  &
                                         save_ieq_rate_state,             &
@@ -531,14 +532,14 @@
       integer, parameter :: dp = kind(1.0d0)
       ! ABSOLUTE SMALLNESS OF A CARRIER, one number for the whole module:
       ! the fraction of the free reservoir of its own element below which a
-      ! carrier density carries no mass, no charge, no opacity and no energy
-      ! that any quantity the code reports depends on.  Twenty decades is
-      ! the same statement the elemental transport rows make about an
-      ! element (1e-20 rho X_base, binary_element_diffusion), and it is four
-      ! decades below the round-off of a double against the reservoir, so
-      ! nothing at or under it is a resolved density at all.  It carries the
-      ! row-scale floor of carrier_residual and the absolute floor under the
-      ! certification's carrier row.
+      ! carrier density is treated as absent.  Twenty decades is the same
+      ! statement the elemental transport rows make about an element
+      ! (1e-20 rho X_base, binary_element_diffusion).  It is a choice, not a
+      ! round-off limit: a density stored as its own double stays resolved
+      ! far below eps of the reservoir, and the test reads the abundance
+      ! alone, not the production or the incoming flux that could raise it.
+      ! It carries the row-scale floor of carrier_residual and the absolute
+      ! floor under the certification's carrier row.
       real(dp), parameter, public :: carrier_absent_fraction = 1.0d-20
 
       ! HOW A CARRIER NEWTON ENDED.  A solve that stopped short returns a
@@ -836,6 +837,10 @@
       ! the closure hands back (the closure body says why), so no closure
       ! can return it and the value is left unused rather than reassigned.
       integer,  parameter, public :: chem_closure_not_admissible = 4
+      ! The sweep could not solve the lower boundary at this state: a
+      ! ghost's base handoff partition or the ghost composition fixed point
+      ! was left open (ieq_state_may_be_refused, ionization_equilibrium.f90).
+      integer,  parameter, public :: chem_closure_boundary_open  = 5
       integer, public :: chem_cycles_cap_for_test = -1
       integer, public :: n_chem_closure_cycles   = 0
       integer, public :: n_chem_closures_reached = 0
@@ -1184,7 +1189,7 @@
       ! The stated constant of the domain test.  One decade is the weakest
       ! reading of "much less than" that is still a statement, and the
       ! measured profile of the oxygen_chemistry case
-      ! (docs/co_destruction_rates_literature_20260906.md sec. 12.5) puts
+      ! (md/co_destruction_rates_literature_20260906.md sec. 12.5) puts
       ! every cell above r = 1.05 at tau_dest/tau_res of 1.8e-1 to 9.6e-5
       ! and every cell below r = 1.04 at 1.5 to 6.7e2, so any threshold
       ! between 1e-1 and 1 selects the same boundary on that state.  It is a
@@ -2802,19 +2807,19 @@
             fl   = rowdump_floor(j,ic)
             rr   = rowdump_res(j,ic)
             sterm = rowdump_scale(j,ic)
-            write(u,'(I6,1X,ES14.7,1X,ES12.5,1X,A8,12(1X,ES14.7))')      &
+            write(u,'(I6,1X,ES14.7,1X,ES12.5,1X,A8,12(1X,ES15.7E3))')    &
                  j, r(j), bg_cell(j)%T_K, trim(carrier_name(ic)),        &
                  rowdump_nc(j,ic),                                       &
                  rowdump_nc(j,ic)/max(bg_cell(j)%ntot, 1.0d-300),        &
                  dif, advj, pr, ls, rowdump_phot(j,ic), pr - ls, rr, fl, &
                  sterm, abs(rr)/max(sterm, 1.0d-300)
-            write(u,'(A,I6,1X,A8,6(1X,ES14.7))') '  face', j,          &
+            write(u,'(A,I6,1X,A8,6(1X,ES15.7E3))') '  face', j,        &
                  trim(carrier_name(ic)),                                 &
                  rowdump_fdif_in(j,ic), rowdump_fdif_out(j,ic),          &
                  rowdump_fadv_in(j,ic), rowdump_fadv_out(j,ic),          &
                  rowdump_frho_in(j), rowdump_frho_out(j)
             if (ic .eq. ic_H2) then
-               write(u,'(A,I6,15(1X,ES14.7))') '  chan', j,              &
+               write(u,'(A,I6,15(1X,ES15.7E3))') '  chan', j,            &
                     (rowdump_h2ch(j,k), k = 1, n_h2chan)
             endif
          enddo
@@ -2862,9 +2867,9 @@
       ! The carrier mixing ratios of the current state, and the element
       ! headroom each of them is limited against.
       !
-      ! nH_free is the H nuclei NOT held by the ion stages and the molecular
-      ! ions, i.e. what H I and the transported carriers share; nO_free and
-      ! nC_free are the same for oxygen and carbon against their ion stages.
+      ! nH_free is the cell's hydrogen less the nucleus locked in HeH+, and
+      ! nO_free and nC_free are its oxygen and carbon totals whatever species
+      ! holds them (carrier_element_totals in element_inventory).
       ! They are the element totals minus the parts this step cannot move, so
       ! a carrier that stays inside them cannot break an element budget.
       !
@@ -4485,11 +4490,11 @@
       ! THE OUTER FACE.  Molecular diffusion and the settling drift
       ! G = (m_c - mbar) g/(kT) are Chapman-Enskog coefficients of a
       ! COLLISIONAL mixture, and the outermost cells of these domains are
-      ! not collisional.  READ from docs/collisional_validity.md: on
-      ! LHS 1140 b the bulk Knudsen number is 0.13-0.30 at 8-9.5 R_p,
-      ! 0.66-1.11 at 20 R_p and 1.4-2.4 at the domain top of 30 R_p, with
-      ! the exobase at 18.8-25.4 R_p.  A flux built from a diffusion
-      ! coefficient at Kn > 1 is not a fluid flux, so the face carries none.
+      ! transitional.  MEASURED 2026-09-23 with collisional_validity.py on
+      ! the current LHS 1140 b states: Kn_bulk 0.06-0.14 at the top cell
+      ! (29 R_p), the largest species value 0.41-0.59, exobase above the
+      ! domain.  That is not Kn > 1, so the zero face flux is a closure
+      ! chosen for the reason below, not a property of collisionless gas.
       ! The composition still leaves through that face, by advection, which
       ! is a statement about the bulk motion and not about the collisions.
       !
@@ -5222,8 +5227,8 @@
                         ieq_cell%rcheiiiB, ieq_cell%rcheiTR,             &
                         ieq_cell%a_ion_HI, ieq_cell%a_ion_HeI,           &
                         ieq_cell%a_ion_HeII, ieq_cell%a_ion_HeITR,       &
-                        ieq_cell%q13, ieq_cell%q31a, ieq_cell%q31b,      &
-                        ieq_cell%Q31, ieq_cell%A31,                      &
+                        ieq_cell%q13, ieq_cell%q31g, ieq_cell%q31a,      &
+                        ieq_cell%q31b, ieq_cell%Q31, ieq_cell%A31,       &
                         p_Hp = pHp, l_Hp = lHp, p_H2 = pH2,              &
                         l_H2 = lH2, l_H2_phot = lH2ph,               &
                         h2_chan = h2chan)
@@ -5240,9 +5245,13 @@
       ! not the source before the pair was added.  The two directions are
       ! not separated because the routine returns their difference, which
       ! is the same statement the helium rows below carry.
+      ! Row (2) is the He II stage source here, which He2+ + H0 -> He+ +
+      ! H+ feeds (heii_row_is_stage_source).
       cx_dHp = fv(1)
       call he_h_cx_fvec(fv, ieq_cell%kcx_He0_Hp, ieq_cell%kcx_Hep_H0,    &
-                        n_hi, n_hii, n_heiSI, n_heii, 1.0d0)
+                        ieq_cell%kcx_Hepp_H0,                            &
+                        n_hi, n_hii, n_heiSI, n_heii, n_heiii, 1.0d0,     &
+                        .true.)
       cx_dHp = fv(1) - cx_dHp
       ! The photolysis channels set_oxygen_coeffs built for this cell: the
       ! transport operator evaluates the chemistry at the cell's own,
@@ -5272,20 +5281,22 @@
                        ieq_cell%rcheiiiB, ieq_cell%rcheiTR,              &
                        ieq_cell%a_ion_HI, ieq_cell%a_ion_HeI,            &
                        ieq_cell%a_ion_HeII, ieq_cell%a_ion_HeITR,        &
-                       ieq_cell%q13, ieq_cell%q31a, ieq_cell%q31b,       &
-                       ieq_cell%Q31, ieq_cell%A31,                       &
+                       ieq_cell%q13, ieq_cell%q31g, ieq_cell%q31a,       &
+                       ieq_cell%q31b, ieq_cell%Q31, ieq_cell%A31,        &
                        transport_operator = .true.)
       ! The same pair in the orientation those rows are written in: row (2)
       ! is the summed He I balance, He-I-gain positive, so he_row_sign =
       ! -1.  The reactant of He + H+ -> He+ + H is the GROUND SINGLET
-      ! He(1^1S): the Table 4 rate carries the barrier exp(-12.75/T4), and
+      ! He(1^1S): the rate carries the barrier exp(-12.75/T4), and
       ! 12.75e4 K = 10.99 eV is the ionization-potential difference
       ! 24.587 - 13.598 eV of ground-state helium against hydrogen, while
       ! He(2^3S) lies 19.82 eV above the singlet and the same collision is
       ! exothermic for it.  System_HeH_TR passes the singlet for that
       ! reason, and this row is that row.
       call he_h_cx_fvec(fv, ieq_cell%kcx_He0_Hp, ieq_cell%kcx_Hep_H0,    &
-                        n_hi, n_hii, n_heiSI, n_heii, -1.0d0)
+                        ieq_cell%kcx_Hepp_H0,                            &
+                        n_hi, n_hii, n_heiSI, n_heii, n_heiii, -1.0d0,    &
+                        .false.)
       endif
 
       ! THE METAL CHARGE EXCHANGE OF THE SAME TWO BALANCES.  Group A of
@@ -5312,7 +5323,9 @@
       cx_lHe = 0.0d0
       if (thereis_metals .and.                                          &
           (ionization_transport .or. carrier_solved(ic_HeII))) then
-         call cx_set_cell(ieq_cell%T_K)
+         ! at the background electron density the sweep formed the
+         ! cell's coefficients with, so that the rates are the sweep's
+         call cx_set_cell(ieq_cell%T_K, cbg_ne(j))
          call charge_exchange_stage_sources(cbg_nm0(j,:), cbg_nm1(j,:), &
                         cbg_nm2(j,:), n_hi, n_hii, n_heiSI, n_heii,     &
                         n_heiii, ieq_cell%T_K, cx_sH, cx_sHe,           &
@@ -5773,15 +5786,15 @@
             dph = dph + abs(src(ic))
             ! ABSOLUTE FLOOR ON THE ROW SCALE, and it is not cosmetic. A
             ! relative residual with no floor asks a row whose species is
-            ! 1e-28 of its element to balance to 1e-12 of ITSELF, and out in
-            ! the wind every term of such a row is round-off: measured on
+            ! 1e-28 of its element to balance to 1e-12 of ITSELF: measured on
             ! the HD 209458 b example, H2O jumped four decades from cell to
             ! cell at 1e-28 and the Newton spent its whole iteration budget
             ! there at a relative residual of 1 while every cell that
             ! carries a molecule was already at 1e-13. The floor is 1e-20 of
             ! the element the carrier belongs to, converted to the row's own
-            ! volumetric-rate units: a density that small cannot change any
-            ! observable, so a row below it IS converged.
+            ! volumetric-rate units: the rate that would move the carrier by
+            ! 1e-20 of its element in one signal-crossing time.  A row is
+            ! judged against it; it does not declare the row closed.
             !
             ! IT IS CONVERTED BY THE LARGER OF TWO RATES, and the second one
             ! is why this line changed. Dividing by the step alone made the
@@ -5802,14 +5815,14 @@
                                                     nO_free(j),         &
                                                     nC_free(j),         &
                                                     cbg_nHenuc(j))
-            ! AND THE SAME NUMBER SAYS WHETHER THE SPECIES IS THERE AT ALL.
-            ! The floor above is a floor on the row's SCALE and answers "is
-            ! this row's imbalance resolvable"; it does not answer "is there
-            ! a species here".  A carrier at 1e-27 cm^-3 in a gas of 1e6
-            ! whose own production term is a real rate reads a relative
-            ! imbalance of exactly 1 with both terms 30 decades below
-            ! anything: the row is then a statement about round-off, and
-            ! what tells the two apart is the abundance, not the terms.
+            ! AND THE SAME NUMBER DECIDES WHICH CELLS COUNT AS ABSENT.  The
+            ! floor above bounds the row's SCALE; this test reads the
+            ! abundance alone.  A carrier at 1e-27 cm^-3 in a gas of 1e6 can
+            ! read a relative imbalance of 1 while its production is a real,
+            ! resolved rate, so the test does not make the row round-off: it
+            ! removes that cell from the carrier gate (certification keeps
+            ! its measure in the report) without asking whether production
+            ! or incoming flux could raise the carrier.  That is a choice.
             if (present(absent_out))                                     &
                absent_out(j,ic) = (nc(ic) .lt. carrier_absent_fraction*nfl)
             dsc = dsc + carrier_absent_fraction*nfl                      &
@@ -7594,10 +7607,12 @@
       ! the temperature stops moving. The closure is reported as reached,
       ! ok = .true., ONLY when all of the following hold on the last cycle:
       ! the relative temperature increment is below chem_cycle_tol; the
-      ! sweep's ledger reports no nonfinite cell; the composition is a set
+      ! sweep's ledger reports no nonfinite cell and no lower-boundary solve
+      ! left open; the composition is a set
       ! of numbers; and p, T, heat, cool and eta are finite on the physical
       ! cells with p > 0 and T > 0. Anything else -- the cycle budget spent,
-      ! a nonfinite composition, a state that is not admissible -- is
+      ! a nonfinite composition, an unsolved lower boundary, a state that
+      ! is not admissible -- is
       ! ok = .false. with the reason named, and the caller restores the
       ! trial. EVERY ONE OF THOSE IS A STATEMENT ABOUT THE STATE HANDED
       ! BACK, which is what the closure is asked about; the count of cells
@@ -7631,7 +7646,12 @@
                                                              p, T, ntot, ne)
       do k = 1, cap
          T_prev = T
+         ! The caller restores the trial whenever this closure is not
+         ! reached, so the sweep may hand back a lower boundary it could not
+         ! solve with that counted instead of stopping the run.
+         call set_ioniz_eq_state_may_be_refused(.true.)
          call ioniz_eq(T, u(1,:), f_sp, heat, cool, eta, ledger)
+         call set_ioniz_eq_state_may_be_refused(.false.)
          n_cycles = k
          chem_last_offsimplex  = ledger%n_offsimplex
          chem_last_nonfinite   = ledger%n_nonfinite
@@ -7641,6 +7661,13 @@
              .not. all(f_sp(1:N,:) .eq. f_sp(1:N,:)) .or.                 &
              .not. all(abs(f_sp(1:N,:)) .le. huge(1.0d0))) then
             why = chem_closure_nonfinite;  exit
+         endif
+         ! A LOWER BOUNDARY THE SWEEP COULD NOT SOLVE is a statement about
+         ! the state handed back, like the two above: the ghost cells the
+         ! boundary is built on are an iterate, not the solution of the
+         ! base handoff and of the ghost's own ionization balance.
+         if (ledger%n_ghost_open .gt. 0) then
+            why = chem_closure_boundary_open;  exit
          endif
          ! n_offsimplex IS A PROPERTY OF THE ROOT SEARCH AND NOT OF THE
          ! STATE HANDED BACK, so it is reported and does not refuse the
@@ -7729,6 +7756,7 @@
       case (chem_closure_exhausted);      txt = 'cycle budget spent'
       case (chem_closure_nonfinite);      txt = 'nonfinite composition'
       case (chem_closure_not_admissible); txt = 'p, T, heat, cool or eta not admissible'
+      case (chem_closure_boundary_open);  txt = 'lower boundary left open'
       case default;                       txt = 'unrecognized reason'
       end select
       end function chem_closure_reason_text

@@ -345,10 +345,11 @@
 
       ! ------------------------------------------------------------------ !
 
-      ! Non-LTE departure factor s(T, n_H2), Miller+2013 Table 6, bilinear in
-      ! (T, log10 n_H2 [cm^-3]).  Below the lowest tabulated collider density
-      ! the collisional limit of the module header is used, so s and the
-      ! cooling vanish linearly with n_H2; above the highest tabulated one the
+      ! Non-LTE departure factor s(T, n_H2), Miller+2013 Table 6, a power law
+      ! in n_H2 between the tabulated columns and linear in T between the
+      ! tabulated rows (s_table below says why).  Below the lowest tabulated
+      ! collider density the collisional limit of the module header is used,
+      ! so s and the cooling vanish linearly with n_H2; above the highest tabulated one the
       ! table edge is held; outside 300-5000 K the nearest tabulated row is
       ! used.  Each of those three is recorded, and so is a nonfinite
       ! argument.
@@ -398,11 +399,34 @@
       s = s_table(tt, ln)
       end function h3p_nonlte_factor
 
-      ! Bilinear interpolation of Table 6 on its own grid; both arguments
-      ! must already lie inside it.
+      ! Interpolation of Table 6 on its own grid; both arguments must
+      ! already lie inside it.
+      !
+      ! IN n_H2 THE INTERPOLANT IS A POWER LAW BETWEEN COLUMNS, i.e. log s
+      ! linear in log n_H2.  The emission per H3+ ion can grow at most as
+      ! fast as the collision rate that populates the emitting levels, so
+      ! the local index d ln s / d ln n_H2 lies between 0 (the LTE limit)
+      ! and 1 (the collisional limit the module header adopts below the
+      ! table), and the node-to-node indices of Table 6 all do (0.00 to
+      ! 0.89).  A power law between columns keeps each interval's index at
+      ! that node-to-node value.  An interpolant linear in s against log n,
+      ! used before 2026-09-24, does not: where s rises by two decades
+      ! across one interval (e.g. 0.0049 to 0.2894 at 2000 K between 1e8 and
+      ! 1e10 cm^-3) its local index reaches 12.6 just above the lower column
+      ! against 0.17 just below it, and over r = 1.25-1.40 R_p of a
+      ! well-mixed LHS 1140 b molecular state (He/H 0.083) it put the H3+
+      ! cooling 1.8 to 5.6 times above the power law.  The paper gives s only at its columns and states
+      ! no interpolation; every Table 6 value is positive, so the power law
+      ! is defined everywhere on the grid.
+      ! IN T THE INTERPOLANT STAYS LINEAR between rows 300-500 K apart.  No
+      ! bound like the one above fixes its form; s changes between adjacent
+      ! rows by under 30 per cent in 42 of the 50 row intervals, and by the
+      ! factors 12.6 and 2.9 over 300-600 and 600-1000 K at 1e8 cm^-3 and
+      ! 6.1 over 300-600 K at 1e6 cm^-3, where the form of the T
+      ! interpolant matters and is not constrained by the paper.
       double precision function s_table(tt, ln) result(s)
       real*8, intent(in) :: tt, ln
-      real*8 :: ft, fn
+      real*8 :: ft, fn, s_cooler_row, s_warmer_row
       integer :: it, in
       it = 1
       do while (it .lt. nTs-1 .and. sT(it+1) .lt. tt)
@@ -412,10 +436,9 @@
       in = 1 + int((ln - sLogN(1))/2.0d0)           ! uniform step 2 in log10
       if (in .gt. nNs-1) in = nNs-1
       fn = (ln - sLogN(in))/2.0d0
-      s  = (1.d0-ft)*(1.d0-fn)*sTab(it,  in  )                            &
-         +       ft *(1.d0-fn)*sTab(it+1,in  )                            &
-         + (1.d0-ft)*      fn *sTab(it,  in+1)                            &
-         +       ft *      fn *sTab(it+1,in+1)
+      s_cooler_row = sTab(it,  in)*(sTab(it,  in+1)/sTab(it,  in))**fn
+      s_warmer_row = sTab(it+1,in)*(sTab(it+1,in+1)/sTab(it+1,in))**fn
+      s    = (1.d0-ft)*s_cooler_row + ft*s_warmer_row
       end function s_table
 
       ! ------------------------------------------------------------------ !

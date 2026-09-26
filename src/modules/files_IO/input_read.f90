@@ -144,7 +144,7 @@
       'He/H number ratio', '2D approximate method', 'Parent star mass',      &
       'Spectrum type', 'Spectrum file', 'Power-law index', 'Photon energy',  &
       'Use only EUV', 'Log10 of X-ray luminosity', 'Log10 of EUV luminosity',&
-      'Grid type', 'Base grid', 'Grid cells',                                &
+      'Grid type', 'Base grid', 'Grid cells', 'Outer shells',                &
       'Reconstruction continuation',                                         &
       'Numerical flux', 'Reconstruction scheme', 'Include He23S',            &
       'Load IC', 'Do only PP', 'Force start',                                &
@@ -155,11 +155,13 @@
       'Lya stellar boost', 'Lya absorbing bottom',                           &
       'du_th', 'ATES_photoionization_rate',                                  &
       'Legacy_HHe_rates', 'Secondary_ionization', 'He_rec_coupling',         &
+      'H_rec_escape',                                                        &
       'He_H_charge_exchange', 'Atomic rate set',                             &
       'Molecular chemistry', 'Molecular base', 'Stellar LW flux',           &
       'Oxygen chemistry', 'Molecular carrier transport',                   &
       'Ionization transport',                                                  &
       'Coupled carrier solve',                                             &
+      'Composition update holds',                                          &
       'Oxygen transport',                                                  &
       'Stellar FUV B1 flux', 'Stellar FUV B3 flux',                        &
       'Stellar FUV B4 flux',                                               &
@@ -457,13 +459,16 @@
 		                                   ! (Mixed grid), see parameters.f90
 		dr_base_from_key = .false.    ! set by the "Base grid" key below
 		N_low_cells      = N_low_cells_default ! number of uniform base cells
+		n_outer_shells      = 0       ! no shells beyond the constructed grid
+		r_outer_shells_face = 0.0d0   ! (the "Outer shells" key below)
 		base_bc_mode     = 0          ! density-anchored base (legacy) by default
 		ates_photoion_rate = .false.  ! default: Verner+1996 He I (1^1S) photoion.
-		legacy_hhe_rates   = .false.  ! default: Badnell/Mao + Voronov H/He rates
+		legacy_hhe_rates   = .false.  ! default: Badnell/Milne + Voronov H/He rates
 		atomic_rate_set_k22 = .false. ! default: EXHALE's own atomic H/He rates
 		use_sec_ion        = .true.   ! default: SvS85 secondary ionization ON
 		sec_ion_immediate  = .false.  ! default: staged (applied after 1st converge)
 		use_he_rec_coupling = .true.  ! default: He rec. photons ionize/heat H
+		use_h_rec_escape    = .true.  ! default: escaping H ground captures
 		he_h_charge_exchange = .true. ! default: He <-> H charge exchange (group B) ON
 		do i = 1, nlines
 			line = filelines(i)
@@ -538,7 +543,7 @@
 				! Walk the PLM -> WENO3 hand-off along the homotopy
 				! R_lambda = (1-lambda) R_PLM + lambda R_WENO3 instead of changing
 				! the discrete operator in one step (see recon_lambda_step0 in
-				! parameters.f90 and docs/input_schema.md). Only "Reconstruction
+				! parameters.f90 and md/input_schema.md). Only "Reconstruction
 				! scheme: PLM+WENO3" has a hand-off to walk.
 				!   dlambda   step in lambda per marching step; <= 0 disables,
 				!             1.0 is the one-step switch this replaces
@@ -571,7 +576,7 @@
 				if (str .eq. 'True' .or. str .eq. 'true') ates_photoion_rate = .true.
 			else if (lbl_match(line, 'Legacy_HHe_rates')) then
 				! Revert H/He recombination + collisional ionization to the legacy
-				! ATES fits (default is Badnell/Mao case B + Voronov 1997).
+				! ATES fits (default is Badnell/Milne case B + Voronov 1997).
 				! "Legacy_HHe_rates: True"
 				str = get_word(line, 2)
 				if (str .eq. 'True' .or. str .eq. 'true') legacy_hhe_rates = .true.
@@ -615,20 +620,33 @@
 					sec_ion_immediate = .true.
 				endif
 			else if (lbl_match(line, 'He_rec_coupling')) then
-				! Couple He II -> He I recombination radiation to H ionization
-				! (Draine 2011 y/z, on-the-spot). Default ON (the photons are
-				! real; "He_rec_coupling: False" restores the legacy lost-photon
-				! path, which in TR mode leaves the singlet recombination
-				! neither case A nor case B).
+				! He II and He III recombination radiation absorbed on the
+				! spot (utils_ion_eq: recombination_radiation_absorbed).
+				! Default ON (the photons are real); "He_rec_coupling: False"
+				! is case B for both helium recombinations with the cascade
+				! photons lost.
 				str = get_word(line, 2)
 				if (str .eq. 'True'  .or. str .eq. 'true' ) use_he_rec_coupling = .true.
 				if (str .eq. 'False' .or. str .eq. 'false') use_he_rec_coupling = .false.
+			else if (lbl_match(line, 'H_rec_escape')) then
+				! H II -> H I ground captures whose photons leave the cell or
+				! are taken by a metal ion count as recombinations (case A
+				! where the gas is thin at 13.6 eV, case B where it is thick).
+				! Default ON; "H_rec_escape: False" is case B everywhere.
+				str = get_word(line, 2)
+				if (str .eq. 'True'  .or. str .eq. 'true' ) use_h_rec_escape = .true.
+				if (str .eq. 'False' .or. str .eq. 'false') use_h_rec_escape = .false.
 			else if (lbl_match(line, 'He_H_charge_exchange')) then
-				! He <-> H charge exchange (Huang 2023 Table 4 group B, rates
-				! from Koskinen 2013): He0+H+ <-> He++H0. Default ON in every
-				! ionization system that contains He. "He_H_charge_exchange:
-				! False" restores the legacy no-He-CX path (Group B not
-				! assembled anywhere).
+				! He <-> H charge exchange, He0+H+ <-> He++H0 (rates in
+				! charge_exchange::he_h_cx_rates): He+ + H is the sum of the
+				! radiative channel (Stancil, Lepp & Dalgarno 1998, from
+				! Zygelman et al. 1989) and the non-radiative one (from the
+				! H+ + He cross sections of Loreau et al. 2014); He + H+ is
+				! the detailed-balance reverse of the non-radiative one, and
+				! He2+ + H0 -> He+ + H+ is radiative (West et al. 1982).
+				! Default ON in every ionization system that contains He.
+				! "He_H_charge_exchange: False" leaves the pair out of every
+				! system.
 				str = get_word(line, 2)
 				if (str .eq. 'True'  .or. str .eq. 'true' ) he_h_charge_exchange = .true.
 				if (str .eq. 'False' .or. str .eq. 'false') he_h_charge_exchange = .false.
@@ -730,6 +748,34 @@
 					write(*,*) '  block from the pass at which the'
 					write(*,*) '  alternation stops approaching a joint'
 					write(*,*) '  fixed point). Aborting.'
+					error stop 1
+				endif
+			else if (lbl_match(line, 'Composition update holds')) then
+				! "Composition update holds: energy|pressure", DEFAULT
+				! energy -- which thermodynamic variable the composition
+				! update of the stationary alternation keeps fixed beside
+				! rho and v while the element and carrier relaxations
+				! change the composition at the fixed hydrodynamic state.
+				! energy: the conserved E (p and T follow from it at the
+				! new composition). pressure: p (T = p/(n_tot + n_e) of the
+				! new composition, E rebuilt from its caloric equation of
+				! state, kinetic part unchanged). A route through the
+				! relaxation, not an equation set: a stationary state is
+				! stationary under either. A word that is neither stops
+				! the run rather than falling through to the default.
+				str = get_word(line, 4)
+				if (str .eq. 'pressure' .or. str .eq. 'Pressure') then
+					composition_update_holds_pressure = .true.
+				else if (str .eq. 'energy' .or. str .eq. 'Energy') then
+					composition_update_holds_pressure = .false.
+				else
+					write(*,*) '(input_read) ERROR: "Composition update'
+					write(*,*) '  holds: '//trim(str)//'" is not a value'
+					write(*,*) '  this key takes. It takes energy (the'
+					write(*,*) '  conserved E is held, the default) or'
+					write(*,*) '  pressure (rho, v and p are held and E'
+					write(*,*) '  is rebuilt at the new composition).'
+					write(*,*) '  Aborting.'
 					error stop 1
 				endif
 			else if (lbl_match(line, 'Oxygen transport')) then
@@ -1053,7 +1099,7 @@
 				! survives below the fit floor for the guard to remove, and the
 				! base-cell balance temperature of all four paper planets is
 				! identical over w = 0.02-1.2
-				! (docs/coronal_cutoff_width.md section 7.2).
+				! (md/coronal_cutoff_width.md section 7.2).
 				str = get_word(line, 4);  read(str,*) coronal_cutoff_width
 				write(*,'(A,F6.3)') ' (input_read) Coronal excitation cutoff'// &
 				   ' width w =', coronal_cutoff_width
@@ -1211,6 +1257,40 @@
 				endif
 				write(*,'(A,I0,A)') ' (input_read) Grid cells: ', N,         &
 				   ' computational cells'
+			else if (lbl_match(line, 'Outer shells')) then
+				! "Outer shells [r_face,cells]: <r_face> <cells>" appends
+				! <cells> physical cells beyond the outer face of the grid
+				! the keys above construct, the last of them ending on the
+				! face <r_face> [R_p] (define_grid.f90, append_outer_shells:
+				! center spacings in geometric progression, the ratio
+				! solved so that the last face is <r_face>). The
+				! constructed cells, faces and volumes are unchanged, bit
+				! for bit, so the key moves the outer boundary and adds gas
+				! above the old one without moving the interior; "Outer
+				! radius" instead rebuilds every cell. The number of
+				! cells sets the width ratio of the shells: it continues
+				! the stretch of the grid below when chosen so that the two
+				! ratios the setup report prints agree. N becomes "Grid
+				! cells" + <cells> once every key is read (after the outer
+				! radius is resolved, below). Both numbers are required.
+				str = get_word(line, 4)
+				read(str,*,iostat=ios) r_outer_shells_face
+				if (ios .ne. 0) r_outer_shells_face = 0.0d0
+				str = get_word(line, 5)
+				read(str,*,iostat=ios) n_outer_shells
+				if (ios .ne. 0 .or. len_trim(str) .eq. 0) n_outer_shells = 0
+				if (n_outer_shells .lt. 1 .or.                             &
+				    .not. (r_outer_shells_face .gt. 1.0d0)) then
+					write(*,'(A)') ' (input_read.f90) ERROR: "Outer'//      &
+					   ' shells [r_face,cells]:" takes the radius of the'//  &
+					   ' outer face [R_p] and a number of cells >= 1,'
+					write(*,'(A)') '   e.g. "Outer shells [r_face,cells]:'//&
+					   ' 60.0 43"; the line reads "'//trim(line)//'".'
+					error stop 1
+				endif
+				write(*,'(A,I0,A,ES12.5,A)') ' (input_read) Outer shells: ', &
+				   n_outer_shells, ' cells out to the face r = ',          &
+				   r_outer_shells_face, ' R_p'
 			else if (lbl_match(line, 'Viscosity')) then
 				! "Viscosity: True" selects the calibrated mu(T) (Watson+1981
 				! conductivity through the monatomic Chapman-Enskog relation)
@@ -1856,6 +1936,26 @@
       r_max = (3.0*Mrapp)**(-1.0/3.0)*atilde
       if (r_out_user .gt. 1.0d0) r_max = r_out_user
    endif
+
+   ! THE OUTER SHELLS COUNT AS CELLS OF THE DOMAIN. Every array sized on N
+   ! (allocate_grid_arrays below, the state vectors, the output rows, the
+   ! windows and the outer boundary at N) takes them in; define_grid builds
+   ! the constructed grid on the first N - n_outer_shells cells and the
+   ! shells above it. Their face must lie outside r_max, the radius the
+   ! grid is constructed for; define_grid refuses a face that does not lie
+   ! beyond the first outer ghost center, the exact condition.
+   if (n_outer_shells .gt. 0) then
+      if (.not. (r_outer_shells_face .gt. r_max)) then
+         write(*,'(A,ES12.5,A,ES12.5,A)') ' (input_read.f90) ERROR: the'//   &
+            ' "Outer shells" face r = ', r_outer_shells_face,                &
+            ' R_p does not lie outside the constructed grid (r_max = ',      &
+            r_max, ' R_p).'
+         error stop 1
+      endif
+      N = N + n_outer_shells
+      write(*,'(A,I0,A,I0,A)') ' (input_read) Domain cells: ', N,           &
+         ' (', N - n_outer_shells, ' constructed + outer shells)'
+   endif
             
 	!------ Normalization constants ------!
 
@@ -2302,9 +2402,12 @@
       ! composition the sweep returns therefore answer one H+ and He+
       ! balance of a cell, which is what the refusal that stood here
       ! protected while the terms were missing.
-      if (carrier_in_newton) then
+      ! "On stall" hands the same registry the same unknowns once the
+      ! alternation stalls, so it is refused for the same reason.
+      if (carrier_in_newton .or. carrier_newton_on_stall) then
          write(*,*) '(input_read) ERROR: "Ionization transport: True" with'
-         write(*,*) '  "Coupled carrier solve: True" is refused. The'
+         write(*,*) '  "Coupled carrier solve: True" or "On stall" is'
+         write(*,*) '  refused. The'
          write(*,*) '  coupled row registry carries every carrier unknown'
          write(*,*) '  as the species mass fraction of its f_sp column,'
          write(*,*) '  and a stage unknown is a fraction per element'
@@ -2812,7 +2915,7 @@
    ! keys matched as labels (lbl_match), exactly as in input.inp. Written by
    ! src/utils/run_lower.py (analytic column) or src/utils/vulcan_to_base.py
    ! (photochemistry); see docs/lower_atmosphere_coupling.* and
-   ! docs/input_schema.md section 2c, which carries the same table.
+   ! md/input_schema.md section 2c, which carries the same table.
    !
    ! Every key belongs to one of five categories, and the category says what
    ! the value is allowed to do to the wind:

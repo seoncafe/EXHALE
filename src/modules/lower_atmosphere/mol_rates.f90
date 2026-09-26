@@ -1,23 +1,41 @@
       module mol_rates
-      ! molecular (H2 / H2+ / H3+ / HeH+) reaction-rate coefficients,
-      ! transcribed VERBATIM from Koskinen et al. (2022), ApJ 929:52, Table 1
+      ! molecular (H2 / H2+ / H3+ / HeH+) reaction-rate coefficients, on
+      ! the reaction list of Koskinen et al. (2022), ApJ 929:52, Table 1
       ! (page 19; verified against the PDF in references/).  All rates in
-      ! cgs (cm^3 s^-1; the two three-body rates R13/R15 in cm^6 s^-1 --
-      ! multiply by the total density n as in the table's "n" factor).
+      ! cgs (cm^3 s^-1; the three-body rates R13/R15 are returned as
+      ! two-body equivalents, the cm^6 s^-1 coefficient times the third-body
+      ! density, as in the table's "n" factor).
       ! T = heavy-particle temperature [K]; Te = electron temperature [K]
       ! (EXHALE uses a common T).
       !
-      ! ONE ENTRY IS NOT TRANSCRIBED: R12, the thermal dissociation of H2, is
-      ! built by detailed balance from the R15 recombination instead of from
-      ! the Table-1 fit, because the two Table-1 entries are the same channel
-      ! in opposite directions and their source measurements do not overlap
-      ! in temperature.  The full argument and its verification are at R12.
+      ! R1-R11, R13, R14, R16, R18, R19 and R23 are the Table-1 expressions
+      ! as printed.  The entries that are NOT, each argued at its own
+      ! function:
+      !   R12  the thermal dissociation of H2, built by detailed balance
+      !        from R15 instead of from the Table-1 fit, because the two
+      !        Table-1 entries are the same channel in opposite directions
+      !        and their source measurements do not overlap in temperature;
+      !   R15  the Cohen & Westberg (1983) recommended coefficient with the
+      !        third bodies resolved, in place of the Ham et al. (1970)
+      !        room-temperature value Table 1 prints;
+      !   R17  the measured two-body total of Boehringer & Arnold (1986)
+      !        less the radiative branch R23, plus the Table-1 Arrhenius
+      !        term;
+      !   R20  not carried: its cited source bounds the channel far below
+      !        the Table-1 value (the retired-R20 block below);
+      !   R21, R22  not in this module: the He <-> H charge-exchange pair
+      !        is charge_exchange::he_h_cx_rates, applied in every system
+      !        that carries He.
+      ! One reaction is not in Table 1 at all: H2+ + He -> HeH+ + H (Black
+      ! 1978; rk_H2p_He_HeHp), the HeH+ source Table 1 omits.
       !
       ! Photo-rates P1-P5 (H, He, H2 photoionization; H2 dissociative and
       ! double photoionization) are "SC" in the paper -- computed from cross
-      ! sections x stellar flux x column densities.  In EXHALE these follow
-      ! the existing PH_heat routines (util_ion_eq) once H2 cross sections
-      ! are added; they are NOT part of this module.
+      ! sections x stellar flux x column densities.  In EXHALE they are the
+      ! photoionization rates util_ion_eq builds from the cross sections of
+      ! cross_sec.f90 (P_H2, P_H2_di, P_H2_dd; the double-ionization part
+      ! is zero unless a model for it is selected); they are NOT part of
+      ! this module.
       !
       ! THIRD BODY M (R12, R13, R15).  Koskinen et al. (2022) write the
       ! three-body rates as a two-body coefficient times "n" and do not say
@@ -90,8 +108,10 @@
       ! sensitivity test with a Backx et al. (1976) cross section and
       ! dissociation probability 0.125 changed Mdot by <= 1.4x.  EXHALE adds
       ! it separately and opt-in, in
-      ! src/modules/lower_atmosphere/lyman_werner.f90 (Draine & Bertoldi
-      ! 1996; key "Stellar LW flux"), so it is deliberately absent here.
+      ! src/modules/lower_atmosphere/lyman_werner.f90 (the dissociation
+      ! cross section of the line-by-line self-shielding table
+      ! h2_self_shielding_table.f90; key "Stellar LW flux"), so it is
+      ! deliberately absent here.
 
       ! Physical constants and the hydrogen-atom mass, from the one place
       ! that owns them.  Nothing else of global_parameters is in scope here,
@@ -116,8 +136,7 @@
                 rk_R10_Hp_H2v4, rk_R11_H3p_H,   rk_R12_H2_thdis,         &
                 rk_R13_Hp_H2_M, rk_R14_H2_edis, rk_R15_3body_H2,         &
                 rk_R16_HeHp_dr, rk_R17_Hep_H2_diss, rk_R18_HeHp_H2,      &
-                rk_R19_HeHp_H,  rk_H2p_He_HeHp,    rk_R21_H_Hep_cx,     &
-                rk_R22_Hp_He_cx, rk_R23_H2_Hep_cx
+                rk_R19_HeHp_H,  rk_H2p_He_HeHp,    rk_R23_H2_Hep_cx
       ! The photon R23 emits, read by the reaction-heat ledger so that a
       ! radiative channel does not deposit its own photon as heat, and the
       ! two-body/three-body domain guard of R17.
@@ -259,7 +278,7 @@
       ! U = 13.6 eV / E_e;  E_e = kB Te in eV.  The eV Boltzmann constant is
       ! the CODATA value owned by global_parameters, not a rounded local
       ! copy: it is not part of the published fit.  The 13.6 eV IS: it is
-      ! Voronov's Table 1 entry, fitted together with the four coefficients
+      ! Voronov's Table I entry, fitted together with the four coefficients
       ! below, so it stays as published rather than reading the measured
       ! threshold e_th_HI.  Same for the 24.6 eV of R4.
       elemental double precision function rk_R3_H_cion(Te) result(k)
@@ -1130,36 +1149,6 @@
       k = 3.0d-10*exp(-6717.0d0/T)
       end function
 
-      ! R21 and R22 are transcribed for completeness but are NOT the rates
-      ! the code uses: the H <-> He charge-exchange pair is applied in every
-      ! system that carries He, from Huang et al. (2023) Table 4 rows B1/B2
-      ! (charge_exchange::he_h_cx_rates, which is where the live definition
-      ! and its provenance are), whose values agree with these to 4% (R21)
-      ! and to the rounding of the 128,000 K barrier (R22).
-      !
-      ! These two are NOT each other's reverse, and it is a mistake to test
-      ! them against detailed balance -- as this comment did before
-      ! 2026-08-31. R21 is RADIATIVE charge transfer, He+ + H -> He + H+ +
-      ! photon (Stancil, Lepp & Dalgarno 1998, Table 1 row 19, from
-      ! Zygelman et al. 1989); R22 is the NON-RADIATIVE collisional channel
-      ! (Kimura et al. 1993). A photon-emitting process has no collisional
-      ! reverse, so k(H+ + He)/k(He+ + H) is under no obligation to equal
-      ! 4 exp(-127,500 K / T), and the ~10^2-10^3 factor by which it differs
-      ! measures the separation of two channels rather than an error in
-      ! either fit. See the Group B block of charge_exchange.f90.
-      !
-      ! R21: H + He+ -> H+ + He                 (Stancil et al. 1998)
-      double precision function rk_R21_H_Hep_cx(T) result(k)
-      real*8, intent(in) :: T
-      k = 1.2d-15*(300.0d0/T)**(-0.25d0)
-      end function
-
-      ! R22: H+ + He -> H + He+                 (Glover & Jappsen 2007)
-      double precision function rk_R22_Hp_He_cx(T) result(k)
-      real*8, intent(in) :: T
-      k = 1.75d-11*(300.0d0/T)**0.75d0*exp(-128000.0d0/T)
-      end function
-
       ! R23: H2 + He+ -> H2+ + He + hv          (Barlow 1984)
       !
       ! THE PRODUCTS INCLUDE A PHOTON, and the name of the channel says so:
@@ -1173,7 +1162,7 @@
       ! measurement actually bounds: the 1989 experiment detects H3+, which
       ! both H2+ and HeH+ make, so its number is the sum of this channel and
       ! the HeH+ channel of the retired R20 -- which is why that channel
-      ! cannot be 4.2e-13 (see the retired-R20 block below).
+      ! cannot be 4.2e-13 (see the retired-R20 block above).
       !
       ! WHERE THE 9.16 eV GOES, and why the heat ledger may not have it all.
       ! Boehringer & Arnold (1986), J. Chem. Phys. 84, 1459, p. 1461,
@@ -1189,7 +1178,7 @@
       !   excited state (v = 2)."
       !
       ! 153 nm is 8.103 eV of the reaction's 9.161 eV, and it LEAVES: at
-      ! 1530 A it is longward of the Lyman-Werner bands (912-1110 A) and of
+      ! 1530 A it is longward of the Lyman-Werner bands (912-1201 A) and of
       ! the Lyman continuum, so neither H2 nor H I absorbs it where it is
       ! made.  What stays with the gas is the remaining 1.058 eV, and the
       ! paper says most of that is INTERNAL -- the H2+ is born in v = 2,

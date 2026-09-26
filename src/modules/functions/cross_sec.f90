@@ -45,81 +45,78 @@
       ! the whole photoabsorption of the ion; the outer shell alone was
       ! 0.099 per cent (C II) to 7.0 per cent (Mg I) of it at 1240 eV.
       !
-      ! What the ionization and the heat are charged to is stated here
-      ! because this table is where the absorption enters.  The absorbing
-      ! ion advances ONE stage, and the photoelectron energy is
-      ! h nu - E_th(outer), the ionization potential of the transition the
-      ! model performs; util_ion_eq forms both from sigma_tab and
-      ! mion_ethr, so there is one rule and one place for it.  The real
-      ! event is not that: an inner-shell absorption ejects an inner
-      ! electron of energy h nu - I(inner) and is followed by an Auger
-      ! cascade that fills the hole and ejects a further electron of
-      ! I(inner) - I_1 - I_2, leaving the atom TWO OR MORE stages up.  So
-      ! the model under-counts the charge state by at least one stage, and
-      ! under-counts the electron energy by the second ionization
-      ! potential it never spends, of order 10-50 eV out of a 300-1000 eV
-      ! photon.  The three-stage metal ladder of species_table cannot
-      ! represent the Auger product; the published exoplanet
-      ! photochemistry models that carry inner shells make the same
-      ! approximation (Cecchi-Pestellini et al. 2009, A&A 496, 863, their
-      ! Eq. 1; Locci et al. 2022, PSJ 3, 1, their Eq. 3, whose species set
-      ! has singly charged ions only).
+      ! WHAT AN ABSORPTION IN EACH SHELL DOES.  An absorption in the outer
+      ! shell ejects one electron of h nu - E_th and advances the ion one
+      ! stage.  An absorption in a subshell s below it ejects the
+      ! photoelectron h nu - E_th,s (E_th,s the threshold of that shell,
+      ! mph_sub_e_th) and leaves a vacancy of energy E_th,s - I_i above the
+      ! next ion's ground state.  The vacancy relaxes:
+      !  * by Auger (autoionizing) transitions where it lies above the
+      !    double-ionization threshold I_i + I_(i+1): one or more further
+      !    electrons leave, the ion ends two or more stages up, and the
+      !    Auger electrons carry what the ionization energies of those
+      !    electrons and the fluorescence photons leave of E_th,s - I_i;
+      !  * radiatively where it lies below that threshold (Na I 2p,
+      !    Mg II 2p, K I 3p, Ca II 3p and 3s, and every valence 2s, 3s, 3d
+      !    hole): the ion ends one stage up, excited by E_th,s - I_i, which
+      !    leaves as line radiation.
+      ! The probability of each number of ejected electrons and the photon
+      ! energy of the cascade are Kaastra & Mewe (1993, A&AS 97, 443),
+      ! Tables 2 and 3, in the block mph_sub_p_multi ... mph_sub_e_ion_multi
+      ! below, with the energy of the vacancy closed exactly (their Eq. 5
+      ! on this code's thresholds):
+      !     E_th,s = I_i + e_ion_multi + e_auger + e_fluor .
+      ! What each part becomes: the photoelectron and the Auger electrons
+      ! are the electron energy (electron_energy_degradation divides it
+      ! between heat and secondary ionization); I_i and, for a neutral whose
+      ! next stage this code photoionizes, I_(i+1) are the ionization energy
+      ! the stage balance stores; the photons leave the cell.
       !
-      ! WHAT THE ONE ELECTRON COSTS, MEASURED with the degradation routine
-      ! itself (electron_energy_degradation) on an atomic H/He cell.  The
-      ! real event hands the cascade two electrons, h nu - I_K and
-      ! I_K - I_1 - I_2; the model hands it one of h nu - I_1, which is the
-      ! sum of those two PLUS the second ionization potential the model
-      ! never spends.  For C I at 300 eV (9.0 and 255.4 eV against 288.7),
-      ! N I at 530 eV (125.2 and 360.7 against 515.5) and O I at 550 eV
-      ! (12.0 and 489.3 against 536.4), the one electron delivers 0.95 to
-      ! 1.09 times the heat of the two and 1.10 to 1.37 times the secondary
-      ! H I ionizations, over ionized fractions 0.01 to 0.49.  The excess
-      ! energy is I_2, 24 to 35 eV of a 300-550 eV photon.
+      ! STAGES ABOVE THE CARRIED ONES.  species_table carries three stages
+      ! of C, N, O, Mg, Si, Ca, Fe and two of Na, K, S, and the top stage is
+      ! not photoionized.  A neutral of a three-stage element that loses two
+      ! or more electrons goes to its third stage (the balance rows carry
+      ! that jump: System_HeH_metals, met_g02).  Every other multiple
+      ! ionization (a singly ionized absorber, a neutral of Na, K or S, and
+      ! the third and further electrons of any absorber) would leave the
+      ! carried stages: the ion is counted in the top carried stage, its
+      ! charge there is lower than the true one by the electrons beyond it,
+      ! and the ionization energy of those electrons is spent (it is not
+      ! heat) but not stored by the balance: physically it returns as the
+      ! recombination radiation of the stages this code does not carry.
+      ! The electrons the top stage does not count are missing from n_e;
+      ! for trace metals that is below the precision n_e is solved to.
       !
-      ! FLUORESCENCE IS NEGLECTED, AND IT IS BELOW 2.3 PER CENT OF EVERY
-      ! EVENT A RUN CAN MAKE.  A hole can be filled by a photon instead of
-      ! an Auger electron, with probability the fluorescence yield.  READ
-      ! from Krause 1979, J. Phys. Chem. Ref. Data 8, 307, Table 3 (p. 315),
-      ! K-shell yield omega_K: C 2.8e-3, N 5.2e-3, O 8.3e-3, Na 0.023,
-      ! Mg 0.030, Si 0.050, S 0.078, K 0.140, Ca 0.163, Fe 0.340.  Which of
-      ! those a run can reach is settled by the K thresholds of this table
-      ! against e_top: C 291, N 404.8, O 538, Na 1079, Mg 1311/1320,
-      ! Si 1846/1848, S 2477, K 3614, Ca 4043/4047, Fe 7124/7140 eV.  With
-      ! the default e_top = 1240 eV only C, N, O and Na I ever have a K
-      ! hole, and their omega_K are 0.28, 0.52, 0.83 and 2.3 per cent: the
-      ! neglected radiative branch is at most 2.3 per cent of the K-hole
-      ! events of a run, and under 1 per cent for the three coolants.  The
-      ! large K yields, iron's 0.340 above all, belong to holes this grid
-      ! cannot open.
+      ! FLUORESCENCE AND ITS YIELDS.  The fluorescence of a K vacancy is
+      ! a small branch at the energies this grid reaches: READ from Krause
+      ! 1979, J. Phys. Chem. Ref. Data 8, 307, Table 3 (p. 315), omega_K =
+      ! 2.8e-3, 5.2e-3, 8.3e-3 and 0.023 for C, N, O and Na, the only K
+      ! shells below the default e_top = 1240 eV; Kaastra & Mewe normalize
+      ! their radiative K rates to the yields of Bambynek et al. (1972)
+      ! (their Sect. 2.1).  Their Table 3 is the whole photon output of the
+      ! cascade, the valence lines of the final ion included (the 2s-2p
+      ! lines of 5-15 eV that follow a C, N or O KLL decay carry most of
+      ! e_fluor there); a line weaker than 5e-5 photons per vacancy is not
+      ! listed in it and is inside e_auger here.
       !
-      ! The heavier ions contribute L-shell absorption, and there the yields
-      ! are smaller still.  For an L1 or L2 vacancy the quantity to quote is
-      ! the EFFECTIVE fluorescence yield nu_1, nu_2 of Krause's Table 5
-      ! (p. 320, his eqs. 9 and 10), which counts the vacancy handed down by
-      ! a Coster-Kronig transition and then filled radiatively, so it is the
-      ! full probability that an initial L1 or L2 hole ends in an L X-ray;
-      ! for L3, the bottom of the shell, he states nu_3 = omega_3 (p. 313).
-      ! READ, nu_1 / nu_2 / omega_3: Mg 1.2e-3 / 1.2e-3 / 1.2e-3,
-      ! Si 3.9e-4 / 3.7e-4 / 3.8e-4, S 3.2e-4 / 2.6e-4 / 2.6e-4,
-      ! K 4.9e-4 / 2.7e-4 / 2.7e-4, Ca 6.1e-4 / 3.3e-4 / 3.3e-4,
-      ! Fe 6.5e-3 / 6.3e-3 / 6.3e-3.  So every L-shell event this grid can
-      ! make is radiationless to better than 0.7 per cent.
-      !
-      ! Uncertainty class, Krause's Table 2 (p. 314): omega_K is 40 to 10
-      ! per cent for Z = 5-10 (C, N, O), 10 to 5 per cent for Z = 10-20 (Na,
-      ! Mg, Si, S, K) and 5 to 3 per cent for Z = 20-30 (Ca, Fe); the L
-      ! yields are 25 to 30 per cent over Z = 10-30, and his footnote (a)
-      ! covers exactly these rows: "In these regions, yields for molecules
-      ! and solids may differ from those for atoms by more than the values
-      ! quoted."  An uncertainty of that size on a branch of 2 per cent
-      ! leaves the neglect where it is.
-      !
-      ! A fluorescence photon would carry out of the cell energy this code
-      ! keeps as heat, so the neglect makes the heating an upper bound by
-      ! the fractions above.  Raising e_top past 1.3 keV starts making Mg
-      ! and Si K holes (omega_K 0.030 and 0.050) and past 4 keV Ca and Fe
-      ! ones, and the approximation has to be revisited there.
+      ! APPROXIMATIONS, with their range.  (i) The 2p and 3p subshells of
+      ! Verner's fits are Kaastra & Mewe's L2 + L3 and M2 + M3 combined in
+      ! the ratio 1 : 2 of their occupancies.  (ii) Kaastra & Mewe decide
+      ! each Auger transition on Lotz energy levels; the Ca II 3s vacancy,
+      ! which their Table 2 lets autoionize, lies at E_th,s - I_i = 48.5 eV,
+      ! below the Ca III potential of 50.91 eV (NIST), and is taken as
+      ! radiative.  (iii) The Auger energy is the mean over the cascades of
+      ! a vacancy; how it is shared among several Auger electrons is not
+      ! carried, and the degradation treats it as one electron.  (iv) The
+      ! fluorescence photons and the de-excitation lines leave the cell;
+      ! their absorption elsewhere (a 50.3 eV Mg III line ionizes H I and
+      ! He I) is not followed, like every photon this code does not
+      ! transport.  (v) The yields are those of the free ion in its ground
+      ! state; Kaastra & Mewe's Sect. 3 compares them with the independent
+      ! Fe calculation of Jacobs & Rozsnyai (1986) (their Fig. 1).
+      ! src/utils/inner_shell_relaxation_table.py emits the block from the
+      ! tables and, with --check, compares it back (the physics probe runs
+      ! that check).
       !
       ! HOW MUCH THIS MOVES A RUN.  MEASURED with the incident spectrum as
       ! the weight and no attenuation: above 100 eV hydrogen and helium
@@ -385,11 +382,133 @@
            0          , 0          , 1          , 0          , 1          , 2 ], &   ! FeII  1s 2s 2p 3s 3p 3d
            [n_metal_subshell,n_metal_photo] )
 
+      ! ---- Relaxation of a subshell vacancy (Kaastra & Mewe 1993) ----
+      !
+      ! The same slots as the mph_sub_* fits above.  Written by
+      ! src/utils/inner_shell_relaxation_table.py, whose header states the
+      ! sources, the shell map and the energetic rule; the physics is at
+      ! the head of this module ("WHAT AN ABSORPTION IN EACH SHELL DOES").
+      ! Closure, exact to the printed digits:
+      !   mph_sub_e_th = I_i + mph_sub_e_ion_multi + mph_sub_e_auger
+      !                  + mph_sub_e_fluor ,
+      ! I_i the threshold mph_e_th of the ion.
+      ! Threshold of the subshell itself, E_th,s [eV] (phfit2.f PH1, field
+      ! 1).
+      real*8, parameter :: mph_sub_e_th(n_metal_subshell,n_metal_photo) = &
+           reshape( [ &
+           2.910d+02     , 1.939d+01     , 0.0d0         , 0.0d0         , 0.0d0         , 0.0d0, &   ! CI
+           3.076d+02     , 3.047d+01     , 0.0d0         , 0.0d0         , 0.0d0         , 0.0d0, &   ! CII
+           5.380d+02     , 2.848d+01     , 0.0d0         , 0.0d0         , 0.0d0         , 0.0d0, &   ! OI
+           5.581d+02     , 4.599d+01     , 0.0d0         , 0.0d0         , 0.0d0         , 0.0d0, &   ! OII
+           4.048d+02     , 2.541d+01     , 0.0d0         , 0.0d0         , 0.0d0         , 0.0d0, &   ! NI
+           4.236d+02     , 3.796d+01     , 0.0d0         , 0.0d0         , 0.0d0         , 0.0d0, &   ! NII
+           1.311d+03     , 9.400d+01     , 5.490d+01     , 0.0d0         , 0.0d0         , 0.0d0, &   ! MgI
+           1.320d+03     , 9.881d+01     , 6.569d+01     , 0.0d0         , 0.0d0         , 0.0d0, &   ! MgII
+           1.846d+03     , 1.560d+02     , 1.060d+02     , 1.517d+01     , 0.0d0         , 0.0d0, &   ! SiI
+           1.848d+03     , 1.619d+02     , 1.186d+02     , 2.240d+01     , 0.0d0         , 0.0d0, &   ! SiII
+           4.043d+03     , 4.425d+02     , 3.523d+02     , 4.830d+01     , 3.443d+01     , 0.0d0, &   ! CaI
+           4.047d+03     , 4.445d+02     , 3.638d+02     , 6.037d+01     , 4.090d+01     , 0.0d0, &   ! CaII
+           1.079d+03     , 7.084d+01     , 3.814d+01     , 0.0d0         , 0.0d0         , 0.0d0, &   ! NaI
+           3.614d+03     , 3.843d+02     , 3.014d+02     , 4.080d+01     , 2.466d+01     , 0.0d0, &   ! KI
+           2.477d+03     , 2.350d+02     , 1.700d+02     , 2.130d+01     , 0.0d0         , 0.0d0, &   ! SI
+           7.124d+03     , 8.570d+02     , 7.240d+02     , 1.040d+02     , 6.600d+01     , 1.470d+01, &   ! FeI
+           7.140d+03     , 8.608d+02     , 7.341d+02     , 1.102d+02     , 7.617d+01     , 2.193d+01 ], &   ! FeII
+           [n_metal_subshell,n_metal_photo] )
+      ! Probability that the vacancy autoionizes, i.e. that two or more
+      ! electrons leave (Kaastra & Mewe 1993, Table 2).
+      real*8, parameter :: mph_sub_p_multi(n_metal_subshell,n_metal_photo) = &
+           reshape( [ &
+           9.97400000d-1 , 0.0d0         , 0.0d0         , 0.0d0         , 0.0d0         , 0.0d0, &   ! CI
+           9.98100000d-1 , 0.0d0         , 0.0d0         , 0.0d0         , 0.0d0         , 0.0d0, &   ! CII
+           9.90600000d-1 , 0.0d0         , 0.0d0         , 0.0d0         , 0.0d0         , 0.0d0, &   ! OI
+           9.89100000d-1 , 0.0d0         , 0.0d0         , 0.0d0         , 0.0d0         , 0.0d0, &   ! OII
+           9.94000000d-1 , 0.0d0         , 0.0d0         , 0.0d0         , 0.0d0         , 0.0d0, &   ! NI
+           9.92900000d-1 , 0.0d0         , 0.0d0         , 0.0d0         , 0.0d0         , 0.0d0, &   ! NII
+           9.99900000d-1 , 1.00000000d0  , 9.96700000d-1 , 0.0d0         , 0.0d0         , 0.0d0, &   ! MgI
+           9.65900000d-1 , 9.99900000d-1 , 0.0d0         , 0.0d0         , 0.0d0         , 0.0d0, &   ! MgII
+           9.98800000d-1 , 1.00000000d0  , 9.97333333d-1 , 0.0d0         , 0.0d0         , 0.0d0, &   ! SiI
+           9.99300000d-1 , 1.00000000d0  , 9.95833333d-1 , 0.0d0         , 0.0d0         , 0.0d0, &   ! SiII
+           9.99900000d-1 , 1.00000000d0  , 1.00000000d0  , 1.00000000d0  , 9.95000000d-1 , 0.0d0, &   ! CaI
+           9.86000000d-1 , 9.99000000d-1 , 1.00000000d0  , 0.0d0         , 0.0d0         , 0.0d0, &   ! CaII
+           9.74000000d-1 , 9.99900000d-1 , 0.0d0         , 0.0d0         , 0.0d0         , 0.0d0, &   ! NaI
+           9.89000000d-1 , 9.99300000d-1 , 1.00000000d0  , 9.99900000d-1 , 0.0d0         , 0.0d0, &   ! KI
+           9.95400000d-1 , 9.99900000d-1 , 9.99566667d-1 , 0.0d0         , 0.0d0         , 0.0d0, &   ! SI
+           9.95302349d-1 , 1.00000000d0  , 9.84600000d-1 , 1.00000000d0  , 9.99900000d-1 , 0.0d0, &   ! FeI
+           9.95299530d-1 , 1.00000000d0  , 9.84533333d-1 , 1.00000000d0  , 9.99900000d-1 , 0.0d0 ], &   ! FeII
+           [n_metal_subshell,n_metal_photo] )
+      ! Mean kinetic energy of the Auger electrons of one absorption [eV],
+      ! the remainder of (*).
+      real*8, parameter :: mph_sub_e_auger(n_metal_subshell,n_metal_photo) = &
+           reshape( [ &
+           2.45856558d2  , 0.0d0         , 0.0d0         , 0.0d0         , 0.0d0         , 0.0d0, &   ! CI
+           2.19568517d2  , 0.0d0         , 0.0d0         , 0.0d0         , 0.0d0         , 0.0d0, &   ! CII
+           4.79735708d2  , 0.0d0         , 0.0d0         , 0.0d0         , 0.0d0         , 0.0d0, &   ! OI
+           4.49126597d2  , 0.0d0         , 0.0d0         , 0.0d0         , 0.0d0         , 0.0d0, &   ! OII
+           3.47690530d2  , 0.0d0         , 0.0d0         , 0.0d0         , 0.0d0         , 0.0d0, &   ! NI
+           3.32711922d2  , 0.0d0         , 0.0d0         , 0.0d0         , 0.0d0         , 0.0d0, &   ! NII
+           1.14309526d3  , 2.16873000d1  , 3.21154955d1  , 0.0d0         , 0.0d0         , 0.0d0, &   ! MgI
+           1.10178074d3  , 3.63051436d0  , 0.0d0         , 0.0d0         , 0.0d0         , 0.0d0, &   ! MgII
+           1.63521362d3  , 9.06880672d1  , 7.41871267d1  , 0.0d0         , 0.0d0         , 0.0d0, &   ! SiI
+           1.55348775d3  , 6.66478916d1  , 5.97012375d1  , 0.0d0         , 0.0d0         , 0.0d0, &   ! SiII
+           3.26632745d3  , 2.73375158d2  , 2.74709803d2  , 4.57949000d0  , 1.63961833d1  , 0.0d0, &   ! CaI
+           3.22583840d3  , 2.42757999d2  , 2.55300933d2  , 0.0d0         , 0.0d0         , 0.0d0, &   ! CaII
+           9.46973749d2  , 1.84131786d1  , 0.0d0         , 0.0d0         , 0.0d0         , 0.0d0, &   ! NaI
+           3.00960138d3  , 2.49977863d2  , 2.33930458d2  , 4.83389250d0  , 0.0d0         , 0.0d0, &   ! KI
+           2.14344108d3  , 1.54915246d2  , 1.33561563d2  , 0.0d0         , 0.0d0         , 0.0d0, &   ! SI
+           4.58748986d3  , 6.34063545d2  , 6.31366342d2  , 5.12063791d1  , 4.18955566d1  , 0.0d0, &   ! FeI
+           4.54217288d3  , 5.72919782d2  , 5.88819011d2  , 1.08323370d1  , 2.93166518d1  , 0.0d0 ], &   ! FeII
+           [n_metal_subshell,n_metal_photo] )
+      ! Mean energy leaving as photons [eV] (Kaastra & Mewe 1993 Table 3,
+      ! sum of omega E; E_th,s - I_i for a vacancy that does not
+      ! autoionize).
+      real*8, parameter :: mph_sub_e_fluor(n_metal_subshell,n_metal_photo) = &
+           reshape( [ &
+           9.56683000d0  , 8.13000000d0  , 0.0d0         , 0.0d0         , 0.0d0         , 0.0d0, &   ! CI
+           1.58546900d1  , 6.09000000d0  , 0.0d0         , 0.0d0         , 0.0d0         , 0.0d0, &   ! CII
+           9.85442000d0  , 1.48600000d1  , 0.0d0         , 0.0d0         , 0.0d0         , 0.0d0, &   ! OI
+           1.95166600d1  , 1.08700000d1  , 0.0d0         , 0.0d0         , 0.0d0         , 0.0d0, &   ! OII
+           1.31570700d1  , 1.08800000d1  , 0.0d0         , 0.0d0         , 0.0d0         , 0.0d0, &   ! NI
+           1.41796400d1  , 8.36000000d0  , 0.0d0         , 0.0d0         , 0.0d0         , 0.0d0, &   ! NII
+           6.05989700d1  , 4.96317000d1  , 1.53120000d-1 , 0.0d0         , 0.0d0         , 0.0d0, &   ! MgI
+           8.68860000d1  , 8.90000000d-3 , 5.06550000d1  , 0.0d0         , 0.0d0         , 0.0d0, &   ! MgII
+           1.07694610d2  , 8.33512000d0  , 7.35447333d0  , 7.01800000d0  , 0.0d0         , 0.0d0, &   ! SiI
+           1.50030090d2  , 1.77054000d0  , 9.19531667d0  , 6.05000000d0  , 0.0d0         , 0.0d0, &   ! SiII
+           5.42251620d2  , 2.75089700d1  , 9.09636667d0  , 2.57375100d1  , 1.10166667d-1 , 0.0d0, &   ! CaI
+           5.51529850d2  , 2.33296200d1  , 3.04471333d1  , 4.85000000d1  , 2.90300000d1  , 0.0d0, &   ! CaII
+           5.64938600d1  , 6.19000000d-3 , 3.30010000d1  , 0.0d0         , 0.0d0         , 0.0d0, &   ! NaI
+           4.11980470d2  , 1.85945300d1  , 2.15322067d1  , 3.27000000d-3 , 2.03190000d1  , 0.0d0, &   ! KI
+           2.06302280d2  , 1.27039900d1  , 2.75067000d0  , 1.09400000d1  , 0.0d0         , 0.0d0, &   ! SI
+           2.25243645d3  , 1.72398100d1  , 1.13988867d1  , 6.35000000d-3 , 5.06333333d-3 , 6.79800000d0, &   ! FeI
+           2.29861582d3  , 3.89464100d1  , 1.35467333d1  , 7.23000000d-3 , 6.41333333d-3 , 5.73100000d0 ], &   ! FeII
+           [n_metal_subshell,n_metal_photo] )
+      ! Mean ionization energy of the electrons beyond the first [eV] (NIST
+      ! ASD; mion_ethr for a stage the code photoionizes).
+      real*8, parameter :: mph_sub_e_ion_multi(n_metal_subshell,n_metal_photo) = &
+           reshape( [ &
+           2.43166120d1  , 0.0d0         , 0.0d0         , 0.0d0         , 0.0d0         , 0.0d0, &   ! CI
+           4.77967932d1  , 0.0d0         , 0.0d0         , 0.0d0         , 0.0d0         , 0.0d0, &   ! CII
+           3.47898720d1  , 0.0d0         , 0.0d0         , 0.0d0         , 0.0d0         , 0.0d0, &   ! OI
+           5.43367426d1  , 0.0d0         , 0.0d0         , 0.0d0         , 0.0d0         , 0.0d0, &   ! OII
+           2.94224000d1  , 0.0d0         , 0.0d0         , 0.0d0         , 0.0d0         , 0.0d0, &   ! NI
+           4.71084384d1  , 0.0d0         , 0.0d0         , 0.0d0         , 0.0d0         , 0.0d0, &   ! NII
+           9.96597677d1  , 1.50350000d1  , 1.49853845d1  , 0.0d0         , 0.0d0         , 0.0d0, &   ! MgI
+           1.16298259d2  , 8.01355856d1  , 0.0d0         , 0.0d0         , 0.0d0         , 0.0d0, &   ! MgII
+           9.49397697d1  , 4.88248128d1  , 1.63064000d1  , 0.0d0         , 0.0d0         , 0.0d0, &   ! SiI
+           1.28132158d2  , 7.71315684d1  , 3.33534458d1  , 0.0d0         , 0.0d0         , 0.0d0, &   ! SiII
+           2.28307929d2  , 1.35502872d2  , 6.23808300d1  , 1.18700000d1  , 1.18106500d1  , 0.0d0, &   ! CaI
+           2.57761750d2  , 1.66542381d2  , 6.61819340d1  , 0.0d0         , 0.0d0         , 0.0d0, &   ! CaII
+           7.03933906d1  , 4.72816314d1  , 0.0d0         , 0.0d0         , 0.0d0         , 0.0d0, &   ! NaI
+           1.88077152d2  , 1.11386607d2  , 4.15963349d1  , 3.16218375d1  , 0.0d0         , 0.0d0, &   ! KI
+           1.16896635d2  , 5.70207642d1  , 2.33277669d1  , 0.0d0         , 0.0d0         , 0.0d0, &   ! SI
+           2.76171694d2  , 1.97794645d2  , 7.33327716d1  , 4.48852709d1  , 1.61973801d1  , 0.0d0, &   ! FeI
+           2.83012302d2  , 2.32734808d2  , 1.15535256d2  , 8.31614330d1  , 3.06479349d1  , 0.0d0 ], &   ! FeII
+           [n_metal_subshell,n_metal_photo] )
+
 	   contains
 	
 	   !----- Hydrogenic atoms -----! 
 	
-      double precision function sigma(E,Z,E_th)
+      pure double precision function sigma(E,Z,E_th)
       ! Hydrogenic photoionization cross section of an ion of nuclear charge
       ! Z, in 1e-18 cm^2.
       !
@@ -419,22 +538,22 @@
          ! the threshold itself: a cross section that turned on a fraction
          ! below it (the retired 0.99999*E_0, 1.4e-4 eV for H I) is absorption
          ! by a photon that cannot ionize.
-         sigma = 0.0
+         sigma = 0.0d0
 
       else if (E.gt.E_0) then      ! For E > E_th
 
          ! Substitution
-         eps = sqrt(E/E_0-1.0)               
+         eps = sqrt(E/E_0-1.0d0)               
          
          ! Cross section value
-         sigma = 6.3/(Z*Z)*(E_0/E)**4.0        &
-                  *exp(4.0-4.0*atan(eps)/eps)    &
-                  /(1.0-exp(-2.0*pi/eps))
+         sigma = 6.3d0/(Z*Z)*(E_0/E)**4.0d0        &
+                  *exp(4.0d0-4.0d0*atan(eps)/eps)    &
+                  /(1.0d0-exp(-2.0d0*pi/eps))
             
       else
          ! Exactly at the threshold: the eps -> 0 limit of the expression
          ! above, which is finite and equal to the threshold cross section.
-         sigma = 6.3/(Z*Z) 
+         sigma = 6.3d0/(Z*Z) 
       
       endif
 
@@ -449,7 +568,7 @@
       ! (VFKY96) single-shell fit.  ates_photoion_rate=.true. reverts to the legacy
       ! ATES two-term fit.  (The 2^3S metastable TRIPLET is handled separately by
       ! sigma_HeI23S; this routine is the singlet ground state only.)
-      double precision function sigma_HeI(E)
+      pure double precision function sigma_HeI(E)
       real*8,intent(in) :: E
       real*8 :: eth
 
@@ -463,9 +582,9 @@
          ! absorbed.)
          eth = e_th_HeI
          if (E.ge.eth) then
-            sigma_HeI = 0.6935/((E*1.0d-2)**1.82+(E*1.0d-2)**3.23)
+            sigma_HeI = 0.6935d0/((E*1.0d-2)**1.82d0+(E*1.0d-2)**3.23d0)
          else
-            sigma_HeI = 0.0
+            sigma_HeI = 0.0d0
          endif
       else
          ! --- Default: Verner, Ferland, Korista & Yakovlev 1996 He I 1^1S ---
@@ -520,8 +639,8 @@
                            PB=2.941d0,   ywB=1.717d0, y0B=5.488d-5,y1B=1.118d0
 
       ! Transition (bridge) node energies: Cooper minimum x3 and bump x4
-      x3 = log10(hp_eV*c_light/(357.340*1e-8))   ! ~34.70 eV
-      x4 = log10(hp_eV*c_light/(271.940*1e-8))    ! ~45.59 eV
+      x3 = log10(hp_eV*c_light/(357.340d0*1d-8))   ! ~34.70 eV
+      x4 = log10(hp_eV*c_light/(271.940d0*1d-8))    ! ~45.59 eV
 
       logE = log10(E)
 
@@ -596,13 +715,13 @@
       !                       * (1 + sqrt(y/y_a))^(-P)
       !  The two agree exactly when y_0 = y_1 = 0 and l = 0.
 
-      double precision function sigma_VFKY96(E,E_th,E_0,s_0,y_a,P,y_w, &
+      pure double precision function sigma_VFKY96(E,E_th,E_0,s_0,y_a,P,y_w, &
                                              y_0,y_1)
       real*8, intent(in) :: E,E_th,E_0,s_0,y_a,P,y_w,y_0,y_1
       real*8 :: x,z,Q,Fy
 
       if (E .lt. E_th) then
-         sigma_VFKY96 = 0.0
+         sigma_VFKY96 = 0.0d0
          return
       endif
 
@@ -623,14 +742,14 @@
       real*8 :: y,Q,Fy
 
       if (E .lt. E_th) then
-         sigma_Verner96 = 0.0
+         sigma_Verner96 = 0.0d0
          return
       endif
 
       y  = E/E_0
-      Q  = 5.5 + dble(l) - 0.5*P
-      Fy = ((y-1.0)**2 + y_w**2) * y**(-Q)            &
-                                 * (1.0 + sqrt(y/y_a))**(-P)
+      Q  = 5.5d0 + dble(l) - 0.5d0*P
+      Fy = ((y-1.0d0)**2 + y_w**2) * y**(-Q)            &
+                                 * (1.0d0 + sqrt(y/y_a))**(-P)
       sigma_Verner96 = s_0 * Fy
 
       end function sigma_Verner96
@@ -1037,10 +1156,9 @@
       ! takes its 1995 fit above its own turn-on.  Summed this way the
       ! function reproduces phfit2 shell for shell.
       !
-      ! Every one of these absorptions advances the ion ONE stage and hands
-      ! the degradation cascade one electron of h nu - E_th(outer); the
-      ! under-count that is, and why it is what the field does, is at the
-      ! table above.
+      ! This is the absorption; what each shell's absorption does to the
+      ! ion and to the photon energy is metal_shell_relaxation, shell by
+      ! shell (metal_shell_photoion_sigma), and the head of this module.
       double precision function metal_photoion_sigma(k,E)
       integer, intent(in) :: k
       real*8,  intent(in) :: E
@@ -1098,6 +1216,89 @@
       enddo
 
       end subroutine metal_subshell_turn_on
+
+      !--------------!
+
+      ! PARTIAL photoabsorption cross section [Mb] of ONE shell of metal
+      ! photo-table column k: is = 0 is the outer shell, is = 1 ...
+      ! mph_n_sub(k) the subshells of the mph_sub_* slots.  The same fits,
+      ! turn-ons and handover as metal_photoion_sigma, which is their sum
+      ! in the order is = 0, 1, 2, ...; summed in that order the shells
+      ! reproduce it to the last bit.  Zero outside 1..n_metal_photo, for
+      ! a slot the ion has no electrons in, and below the shell's turn-on.
+      double precision function metal_shell_photoion_sigma(k, is, E)
+      integer, intent(in) :: k, is
+      real*8,  intent(in) :: E
+
+      metal_shell_photoion_sigma = 0.0d0
+      if (k .lt. 1 .or. k .gt. n_metal_photo) return
+      if (E .lt. mph_e_th(k)) return
+      if (is .eq. 0) then
+         if (E .ge. mph_e_max(k)) then
+            metal_shell_photoion_sigma = sigma_Verner96(E, mph_e_th(k),  &
+                 mph95_E0(k), mph95_s0(k), mph95_ya(k), mph95_P(k),       &
+                 mph95_yw(k), mph_l(k))
+         else
+            metal_shell_photoion_sigma = sigma_VFKY96(E, mph_e_th(k),    &
+                 mph96_E0(k), mph96_s0(k), mph96_ya(k), mph96_P(k),       &
+                 mph96_yw(k), mph96_y0(k), mph96_y1(k))
+         endif
+      else if (is .le. mph_n_sub(k)) then
+         if (E .lt. mph_sub_e_on(is,k)) return
+         metal_shell_photoion_sigma = sigma_Verner96(E,                  &
+              mph_sub_e_on(is,k), mph_sub_E0(is,k), mph_sub_s0(is,k),     &
+              mph_sub_ya(is,k), mph_sub_P(is,k), mph_sub_yw(is,k),        &
+              mph_sub_l(is,k))
+      endif
+
+      end function metal_shell_photoion_sigma
+
+      !--------------!
+
+      ! What ONE absorption in shell is (0 = outer) of metal photo-table
+      ! column k hands on, beyond the photon's own energy [eV]:
+      !   e_th     the threshold the photoelectron is charged against, so
+      !            the photoelectron carries h nu - e_th;
+      !   e_aug    the mean kinetic energy of the Auger electrons;
+      !   p_multi  the probability that two or more electrons leave;
+      !   e_fluor  the mean energy that leaves as photons;
+      !   e_ion_multi  the mean ionization energy of the electrons beyond
+      !            the first.
+      ! The outer shell ejects one electron and nothing else.  The five
+      ! close the vacancy exactly, e_th = I + e_ion_multi + e_aug + e_fluor
+      ! with I = mph_e_th(k) (the table block above, and the head of this
+      ! module for what each part becomes).
+      pure subroutine metal_shell_relaxation(k, is, e_th, e_aug, p_multi, &
+                                             e_fluor, e_ion_multi)
+      integer, intent(in)  :: k, is
+      real*8,  intent(out) :: e_th, e_aug, p_multi, e_fluor, e_ion_multi
+
+      e_th        = 0.0d0
+      e_aug       = 0.0d0
+      p_multi     = 0.0d0
+      e_fluor     = 0.0d0
+      e_ion_multi = 0.0d0
+      if (k .lt. 1 .or. k .gt. n_metal_photo) return
+      if (is .eq. 0) then
+         e_th = mph_e_th(k)
+      else if (is .le. mph_n_sub(k)) then
+         ! The closure is imposed here in the code's own arithmetic, so the
+         ! photon energy is shared out to the last bit: the Auger energy of
+         ! an autoionizing vacancy is the remainder of the tabulated parts
+         ! (mph_sub_e_auger is that remainder to the printed digits), and a
+         ! radiative vacancy radiates exactly E_th,s - I.
+         e_th        = mph_sub_e_th(is,k)
+         p_multi     = mph_sub_p_multi(is,k)
+         e_ion_multi = mph_sub_e_ion_multi(is,k)
+         if (p_multi .gt. 0.0d0) then
+            e_fluor = mph_sub_e_fluor(is,k)
+            e_aug   = e_th - mph_e_th(k) - e_ion_multi - e_fluor
+         else
+            e_fluor = e_th - mph_e_th(k)
+         endif
+      endif
+
+      end subroutine metal_shell_relaxation
 
       !----------------------------------------
 
