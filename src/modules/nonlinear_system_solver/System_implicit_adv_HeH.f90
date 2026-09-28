@@ -1,5 +1,8 @@
 	module System_implicit_adv_HeH
-	! Ionization equilibrium system with both H and He
+	! Advection-corrected ionization system for H and He without the He 2^3S
+	! metastable: one step of the backward differentiation formula for
+	! v dx/dr = R(x) in the fractions, taken by post_process_adv (the step is
+	! stated at the adv_rates type of ion_cell_state).
 	
 	use global_parameters
 	use ion_cell_state, only: adv_cell
@@ -13,7 +16,7 @@
 	
 	integer :: N_eq,iflag
 	real*8  :: x(N_eq),fvec(N_eq)
-	real*8  :: xhi_old,xheiS_old,xheiii_old
+	real*8  :: xhi_hist,xheiS_hist,xheiii_hist
 	real*8  :: ghi,ghei,gheii
 	real*8  :: xhi,xhii
 	real*8  :: xheiS,xheii,xheiii
@@ -27,14 +30,14 @@
 
 	! Coefficients of the system
 
- 	c1         = adv_cell%c1    ! = dr/v
- 	xhi_old    = adv_cell%xhi_old    ! = nhi/nh
- 	xheiS_old  = adv_cell%xheiS_old   ! = nhei/nhe (all He I is the singlet here)
- 	xheiii_old = adv_cell%xheiii_old    ! = nheiii/nhe
+ 	c1         = adv_cell%c1    ! = g*h_j/v_j, the rate weight of the step
+ 	xhi_hist    = adv_cell%xhi_hist    ! history of n_HI/n_H
+ 	xheiS_hist  = adv_cell%xheiS_hist   ! history of n_HeI/n_He (all He I is the singlet here)
+ 	xheiii_hist = adv_cell%xheiii_hist    ! history of n_HeIII/n_He
  	n_h        = adv_cell%nh    ! = nh
  	ghi        = adv_cell%P_HI    ! = P_HI
- 	ghei       = adv_cell%P_HeI    ! = P_HeI = nh
- 	gheii      = adv_cell%P_HeII    ! = P_HeII = nhe
+ 	ghei       = adv_cell%P_HeI    ! = P_HeI
+ 	gheii      = adv_cell%P_HeII    ! = P_HeII
    ahii       = adv_cell%rchiiB    ! = rchiiB
  	aheii      = adv_cell%rcheiiB   ! = rcheiiB
  	aheiii     = adv_cell%rcheiiiB   ! = rcheiiiB
@@ -42,7 +45,7 @@
 	ionhei     = adv_cell%a_ion_HeI   ! = a_ion_HeI
 	ionheii    = adv_cell%a_ion_HeII   ! = a_ion_HEII
 	! Effective He/H for the electron density: packed as the global HeH by
-	! post_process_adv (legacy, byte-identical); with He_diffusion the local,
+	! post_process_adv (the global HeH normally); with He_diffusion the local,
 	! radius-dependent nhe/nh is passed instead (the global HeH would misstate
 	! n_e by the local separation factor).
 	heh_loc    = adv_cell%heh_loc   ! = He/H (local when he_diffusion)
@@ -64,13 +67,13 @@
    ! The electron-impact ionization coefficients (ionhi, ionhei, ionheii,
    ! [cm^3 s^-1]) multiply the electron density xe*n_h, as in adv_implicit_H,
    ! adv_implicit_HeH_TR and the equilibrium rows (heh_rows: n_hi*b_hi*n_e).
-  	fvec(1) =  xhi_old - xhi   					        		&
+  	fvec(1) =  xhi_hist - xhi   					        		&
   	        + c1*(-(ghi + ionhi*xe*n_h)*xhi    + ahii*xhii*xe*n_h)
 
-  	fvec(2) =  xheiS_old - xheiS 					  		    &
+  	fvec(2) =  xheiS_hist - xheiS 					  		    &
   		    + c1*(-(ghei + ionhei*xe*n_h)*xheiS + aheii*xheii*xe*n_h)
 
-  	fvec(3) =  xheiii_old - xheiii					  			&
+  	fvec(3) =  xheiii_hist - xheiii					  			&
   	        + c1*((gheii + ionheii*xe*n_h)*xheii - aheiii*xheiii*xe*n_h)
 
 	! He <-> H charge exchange (Huang Table 4 group B) on the H (row 1) and

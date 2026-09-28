@@ -94,12 +94,24 @@
    ! condition is written at the operator (viscous_conduction.f90) and not
    ! taken from the advected trace.
    !
-   ! THE BASE LEVEL IS r_base_level, NOT THE FACE.  "Base BC: pressure" states
-   ! the pressure at r = 1 (the planet radius the handoff quotes: 1 microbar in
-   ! Koskinen et al. 2022 section 3.1), and the reservoir state is carried from
-   ! there to r_edg(0) along its own hydrostatic isentrope.  So the level the
-   ! user states does not move when the grid changes, and the half-cell error
-   ! this module exists to remove is not reintroduced at the level itself.
+   ! THE BASE LEVEL IS THE FACE.  "Base BC: pressure" states the pressure at
+   ! r = 1 (the planet radius the handoff quotes: 1 microbar in Koskinen et
+   ! al. 2022 section 3.1), r_base_level, and define_grid places the first
+   ! face of every grid on that level, r_edg(0) = r_base_level = 1 exactly.
+   ! So the reservoir's (p, s) IS the state of the face side it owns, with no
+   ! transport along any isentrope, and the contact between the reservoir
+   ! and the domain neither moves with the cell width nor encloses a slab of
+   ! reservoir gas.  The two lower ghost cells lie below the level and hold
+   ! the reservoir continued downward (base_ghost_averages).
+   !
+   ! Until 2026-09-27 the level was the center of a ghost cell and the face
+   ! half a cell above it (Mixed grid); the reservoir was carried to the face
+   ! along its own hydrostatic isentrope, which put a slab of 226 K reservoir
+   ! gas of thickness dr/2 under the domain and made the base pressure of the
+   ! domain p_0 [1 - dr/(2 H_res)]: a first-order error in dr, MEASURED as a
+   ! -2.2 % / -1.15 % density offset of the whole LHS 1140 b molecular lower
+   ! layer on 500 / 1000 cells (md/ew_grid_order_20260926.md, section 3).
+   ! base_boundary_states refuses a grid whose first face is not the level.
 
    use global_parameters
    use grav_func, only: phi
@@ -133,8 +145,10 @@
    ! that a state written by this model and a state written by another are
    ! told apart by their provenance and not by a difference in the numbers.
    ! The model itself is the one this module implements and is described at
-   ! the head of the file: the (p, s) reservoir carried along its own
-   ! hydrostatic isentrope to the face, the linearized C- relation of the
+   ! the head of the file: the (p, s) reservoir stated at the face, which
+   ! is the reservoir level itself (v4; until v3 the face sat dr/2 above
+   ! the level and the reservoir was carried to it along its own
+   ! hydrostatic isentrope), the linearized C- relation of the
    ! first interior cell, and the contact upwinded on the direction the
    ! matching returns, with the reservoir owning the level at rest.
    !
@@ -158,9 +172,15 @@
    ! accuracy (ionization_equilibrium,
    ! ghost_composition_fixed_point_move and ghost_count_fixed_point_move),
    ! so that the ghost no longer remembers the seed.
+   !
+   ! v4 puts the face on the level (see "THE BASE LEVEL IS THE FACE" above):
+   ! the reservoir is the face state it owns, where v3 carried it from the
+   ! level to a face half a cell above along its own isentrope. The grid
+   ! moves with it, so a v3 state reaches a v4 run only through
+   ! map_state_to_grid.py, as a seed.
    character(len=*), parameter :: base_boundary_model_id =                &
         'characteristic_face_ps_reservoir_C_minus_contact_upwind'//       &
-        '_ghost_fixed_point_seed_reservoir_row_v3'
+        '_ghost_fixed_point_seed_reservoir_row_face_at_level_v4'
 
    ! WHICH COMPOSITION THE GHOST SOLVE STARTS FROM.  Part of the model, not
    ! of a reader's handling of rows it drops: the seed selects which of two
@@ -885,7 +905,8 @@
    !
    ! VALIDITY.  The midpoint c_v makes the density exact to third order in
    ! ln(T_b/T_a).  This routine is only ever used over half a cell and over
-   ! the two ghost cells, i.e. |ln(T_b/T_a)| < (gamma-1)/gamma * Ng*dr/H,
+   ! the two ghost cells (cell 1 to the face, the face to the ghosts below
+   ! it), i.e. |ln(T_b/T_a)| < (gamma-1)/gamma * Ng*dr/H,
    ! which on the hot-Uranus base grid is 6e-3 and on any grid a run of this
    ! code uses is below 0.1; the density error is then below 1e-7 relative.
    ! It is NOT valid as a general isentrope integrator over a scale height.
@@ -1129,14 +1150,9 @@
    Wi(1) = rho_i;  Wi(2) = v_i;  Wi(3) = p_i
 
    ! ---- the reservoir state at the face ----
-   call continue_hydrostatic_isentrope(0, base_reservoir_nhat,            &
-                                       r_base_level,                      &
-                                       base_reservoir_p                   &
-                                       /(base_reservoir_nhat              &
-                                         *base_reservoir_T),              &
-                                       base_reservoir_T, rb,              &
-                                       rho_res, T_res)
-   p_res = base_reservoir_nhat*rho_res*T_res
+   ! The face is the level (base_boundary_states checks it), so this is the
+   ! stated reservoir itself, with no transport along any isentrope.
+   call reservoir_state_at_level(rho_res, T_res, p_res)
 
    ! ---- the two reservoir conditions, and the one interior relation ----
    !
@@ -1280,23 +1296,47 @@
 
    !------------------------------------------!
 
+   subroutine reservoir_state_at_level(rho_res, T_res, p_res)
+   ! The lower atmosphere's own state at the base level, which is the face:
+   ! the prescribed (p, T) and the density p = n_hat rho T gives them.
+   real*8, intent(out) :: rho_res, T_res, p_res
+   T_res   = base_reservoir_T
+   p_res   = base_reservoir_p
+   rho_res = base_reservoir_p/(base_reservoir_nhat*base_reservoir_T)
+   end subroutine reservoir_state_at_level
+
+   !------------------------------------------!
+
    subroutine reservoir_face_state(Wface)
-   ! The reservoir carried to the face, at rest. This is the whole boundary
-   ! when the interior has no admissible state to supply a characteristic
-   ! from, and it is the state every other branch starts from.
+   ! The reservoir at the face, at rest. This is the whole boundary when the
+   ! interior has no admissible state to supply a characteristic from, and
+   ! it is the state every other branch starts from.
    real*8, intent(out) :: Wface(3)
-   real*8 :: rho_res, T_res
-   call continue_hydrostatic_isentrope(0, base_reservoir_nhat,            &
-                                       r_base_level,                      &
-                                       base_reservoir_p                   &
-                                       /(base_reservoir_nhat              &
-                                         *base_reservoir_T),              &
-                                       base_reservoir_T, r_edg(0),        &
-                                       rho_res, T_res)
+   real*8 :: rho_res, T_res, p_res
+   call reservoir_state_at_level(rho_res, T_res, p_res)
    Wface(1) = rho_res
    Wface(2) = 0.0d0
-   Wface(3) = base_reservoir_nhat*rho_res*T_res
+   Wface(3) = p_res
    end subroutine reservoir_face_state
+
+   !------------------------------------------!
+
+   subroutine require_base_face_at_level()
+   ! The face the condition is imposed at must be the level the reservoir
+   ! is stated at: every grid define_grid builds has r_edg(0) = 1 exactly,
+   ! and set_base_reservoir is called with r_level = 1. A grid built some
+   ! other way (a test that writes r_edg itself) states its reservoir at its
+   ! own face. Any other pairing would put a slab between the reservoir and
+   ! the domain, which is the error the face-at-level model removes, so it
+   ! is refused and not bridged.
+   if (r_edg(0) .ne. r_base_level) then
+      write(*,'(A)') ' (base_boundary) ERROR: the lower face of the grid'// &
+           ' is not the level the reservoir is stated at.'
+      write(*,'(A,ES23.16,A,ES23.16)') '   r_edg(0) = ', r_edg(0),         &
+           '   r_base_level = ', r_base_level
+      error stop 1
+   endif
+   end subroutine require_base_face_at_level
 
    !------------------------------------------!
 
@@ -1317,7 +1357,7 @@
    !
    ! VALIDITY is continue_hydrostatic_isentrope's: the midpoint heat
    ! capacity makes the density exact to third order in ln(T/T_base), which
-   ! holds over the half cell and the two ghost cells this is asked for and
+   ! holds over the two ghost cells below the level this is asked for and
    ! not over a scale height.
    real*8, intent(in) :: rq
    real*8 :: rho_q
@@ -1412,6 +1452,8 @@
    real*8, intent(out) :: Wface(3), Wghost(3,1-Ng:0), Wface_lower(3)
    real*8 :: nhat1, T1, Wi(3), F_wind_layer, d_window_layer
    logical :: have_F_layer
+
+   call require_base_face_at_level()
 
    ! An inadmissible first cell cannot state an outgoing characteristic, and
    ! dividing by it would make the boundary itself the source of the NaN. The

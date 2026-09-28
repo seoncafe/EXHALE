@@ -374,6 +374,7 @@
       public :: carrier_relax_outcome_text
       public :: carrier_transport_diagnostics
       public :: carrier_diffusion_coefficient
+      public :: carrier_diffusivities_of_state
       public :: carrier_set_init
       public :: n_carrier_max
       ! Element closure: the write-back's invariant is that the element
@@ -1211,9 +1212,10 @@
       ! has; a nonzero value says the state the step wrote holds more helium
       ! than its cells have.
       real(dp), save :: carrier_helium_singlet_under_zero = 0.0d0
-      ! Molecular diffusion coefficient of each carrier on the grid, kept
-      ! from the last step so the run can print the transport time scale
-      ! beside the chemical one it already prints.
+      ! Molecular diffusion coefficient of each carrier on the grid [cm^2/s]
+      ! at the state the run last held (carrier_diffusion_coefficient says
+      ! which), so the run can print the transport time scale beside the
+      ! chemical one it already prints.
       real(dp), dimension(:,:), allocatable :: pct_Dco
       ! The sum of each carrier row's own term magnitudes, from the last
       ! residual assembly, THE TIME TERM INCLUDED.  This is the scale of the
@@ -2205,8 +2207,20 @@
       enddo
       end subroutine carrier_record_refused_rows
 
-      ! Molecular diffusion coefficient of carrier ic in cell j [cm^2/s],
-      ! from the last transport step; zero before the first one.
+      ! Molecular diffusion coefficient of carrier ic in cell j [cm^2/s] of
+      ! the state the run last HELD, which is the last of
+      !   * the entry state of an accepted carrier transport interval
+      !     (carrier_transport_interval: a marching step, or a kept trial of
+      !     the carrier relaxation; a refused step or trial puts the value
+      !     of the state before it back through the carrier checkpoint),
+      !   * the state the carrier relaxation returns
+      !     (relax_photochemical_composition), and
+      !   * the state the steady solver hands back (solve_steady_ptc,
+      !     solve_steady_jfnk, through carrier_diffusivities_of_state), and
+      !   * the state the chemical-decay diagnostic of the steady solver
+      !     reports on (chemical_decay_against_the_transport_times).
+      ! A residual evaluated at a trial or probe state stores nothing.  Zero
+      ! before the first of them.
       double precision function carrier_diffusion_coefficient(j, ic)      &
                                 result(D)
       integer, intent(in) :: j, ic
@@ -2216,6 +2230,31 @@
          D = 0.0d0
       endif
       end function carrier_diffusion_coefficient
+
+      ! The molecular diffusivities of the state (rho, f_sp) the run holds,
+      ! stored for carrier_diffusion_coefficient.  The temperature and the
+      ! gas-particle density are those of the frozen background, which the
+      ! caller has made the background of that state (for the steady solver,
+      ! install_background_of_adopted_state); they are the same numbers
+      ! carrier_state hands the transport operator.  Nothing is stored where
+      ! no transported balance exists or no background has been formed.
+      subroutine carrier_diffusivities_of_state(rho, f_sp)
+      real(dp), dimension(1-Ng:N+Ng),           intent(in) :: rho
+      real(dp), dimension(1-Ng:N+Ng,n_species), intent(in) :: f_sp
+      real(dp), dimension(1-Ng:N+Ng) :: ntot_bg, TK_bg
+      real(dp), dimension(1-Ng:N+Ng,n_carrier_max) :: D_state
+      integer :: j
+      if (.not. transported_rows_exist() .or. .not. bg_ready) return
+      if (.not. allocated(bg_cell)) return
+      do j = 1-Ng, N+Ng
+         ntot_bg(j) = bg_cell(j)%ntot
+         TK_bg(j)   = bg_cell(j)%T_K
+      enddo
+      call carrier_diffusivities(f_sp, rho, TK_bg, ntot_bg, D_state)
+      if (.not. allocated(pct_Dco))                                      &
+         allocate(pct_Dco(1-Ng:N+Ng,n_carrier_max))
+      pct_Dco = D_state
+      end subroutine carrier_diffusivities_of_state
 
       ! ------------------------------------------------------------- !
 
@@ -7409,9 +7448,13 @@
       ! ------------------------------------------------------------- !
 
       ! THE LARGEST COMPOSITION CHANGE OF A TRIAL AND WHERE IT STANDS.
-      ! The movement bound itself is unchanged and is the absolute one: a
-      ! trial is refused when this change, divided by the largest H2 mixing
-      ! ratio of the entry state, exceeds trust.  What the wind responds to
+      ! It is the movement bound of the relaxation only under
+      ! EXHALE_CARRIER_BOUND_FRACTION=1 (carrier_bound_on_fraction): a trial
+      ! is then refused when this change, divided by the largest H2 mixing
+      ! ratio of the entry state, exceeds trust.  The DEFAULT bound is the
+      ! relative change of the particle count n_tot + n_e of each cell
+      ! (carrier_particle_count_change, relax_photochemical_composition).
+      ! The reasoning for the absolute form follows.  What the wind responds to
       ! is the ABSOLUTE composition change -- it is what moves the mean
       ! molecular mass, the particle count and the equation of state -- and
       ! an absolute bound is therefore already vacuous for a cell whose
@@ -7782,17 +7825,29 @@
       ! THE BOUND is on the composition handed back, not on the transport
       ! step: every trial is taken on a copy, the chemistry of a kept step
       ! is closed on the new composition at the fixed conserved state, and
-      ! only then is the displacement from the pass entry measured, on the
-      ! largest H2 mixing ratio of the ENTRY state.  A trial whose returned
-      ! state lies outside `trust`, whose interval the operator did not
-      ! cover, whose chemistry did not close, or which left a species
-      ! non-finite, is undone (composition and background) and retried at
-      ! half the length down to relax_grow_min.  MEASURED (hot-Uranus
-      ! carrier reload): the shortest admissible trial still moves 6.5e-4 of
-      ! the entry H2 maximum, so at a bound below that nothing is kept.
+      ! only then is the displacement from the pass entry measured: the
+      ! relative change of each cell's particle count n_tot + n_e
+      ! (carrier_particle_count_change), or, where the run asks for the
+      ! retired measure, the largest carrier change over x_ref below.  A
+      ! trial whose returned state lies outside `trust`, whose interval the
+      ! operator did not cover, whose chemistry did not close, or which left
+      ! a species non-finite, is undone (composition and background) and
+      ! retried at half the length down to relax_grow_min.  MEASURED
+      ! (hot-Uranus carrier reload, on the retired measure): the shortest
+      ! admissible trial still moves 6.5e-4 of the entry H2 maximum, so at a
+      ! bound below that nothing is kept.
       !
       ! THE FIXED POINT is one at which a full-length trial no longer moves
-      ! the carriers, with the chemistry closed on each side of it.
+      ! the carriers, with the chemistry closed on each side of it: the
+      ! largest change of any solved carrier over one step, against x_ref,
+      ! the largest fraction any solved carrier holds at the pass entry.
+      ! x_ref is taken over the SOLVED carriers and not over H2 alone: a
+      ! run with transported ionization stages and no molecular network
+      ! holds no H2, its H2 maximum is zero, and the 1e-30 floor that stood
+      ! in for it made the fixed-point test unreachable (a step change
+      ! below 1e-40), so such a relaxation could only end on the bound or
+      ! on its step budget, and the displacement it reported was ~1e28
+      ! (MEASURED, backup/regression/iontrans_metals run.log).
       subroutine relax_photochemical_composition(u, v, f_sp, p, T,       &
                                                  heat, cool, eta,         &
                                                  trust, drift, nstep,     &
@@ -7884,7 +7939,11 @@
       enddo
       dt_code(1-Ng:0)   = dt_code(1)
       dt_code(N+1:N+Ng) = dt_code(N)
-      x_ref  = max(maxval(fentry(1:N,ic_H2)), 1.0d-30)
+      x_ref  = 1.0d-30
+      do ic = 1, n_carrier
+         if (carrier_solved(ic))                                         &
+            x_ref = max(x_ref, maxval(fentry(1:N,ic)))
+      enddo
       ! The primitive state of the entry composition at u: what is handed
       ! back when no step is kept.
       call pressure_and_temperature_at_fixed_conserved_state(u, f_sp,     &
@@ -8078,6 +8137,13 @@
       carrier_rows_advect = .false.
       call carrier_state(rho, f_sp, fnow, ntot, nrho, wfac, TK,          &
                          mbar, nH_free, nO_free, nC_free)
+      ! The diffusivities of the composition this pass returns, at the
+      ! background of its last kept chemistry (or of the entry, when no
+      ! trial was kept): the state the run holds from here.
+      call carrier_diffusivities(f_sp, rho, TK, ntot, Dco)
+      if (.not. allocated(pct_Dco))                                      &
+         allocate(pct_Dco(1-Ng:N+Ng,n_carrier_max))
+      pct_Dco = Dco
       drift = 0.0d0
       pct_drift_j  = 0
       pct_drift_ic = 1

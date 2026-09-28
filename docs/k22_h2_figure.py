@@ -5,7 +5,7 @@ section "The H2 extent, 2026-09-12").
 
 Model A: benchmarks/koskinen2022_model_a/model_a_fig8_digitized.txt (the
 2026-09-12 pixel digitization of their Figure 8) and the 2026-09-05 readings of
-docs/p23_published_profiles.md 5.1 (circles). EXHALE: the matched marching run
+md/p23_published_profiles.md 5.1 (circles). EXHALE: the matched marching run
 (benchmarks/koskinen2022_model_a/matched_hnu_minus_I/output; NOT the
 superseded Roche-domain state in benchmarks/koskinen2022_model_a/output, see
 the README there), the carrier reload fixture's pinned

@@ -333,8 +333,8 @@ which keeps the exact threshold factor $e^{-U}$ but continues the fitted
 prefactor where no data constrain it, and no accuracy is claimed there.
 
 \paragraph{Charge exchange.} \texttt{charge\_exchange.f90} carries the
-reaction list of \citet{Huang2023} Table 4, 63 rows, plus one row that is
-not in it, but not all of that table's rate coefficients. A rate that a
+reaction list of \citet{Huang2023} Table 4, 63 rows, plus two rows that
+are not in it, but not all of that table's rate coefficients. A rate that a
 source calculated or measured is carried as the source gives it, from the
 original where it could be read (among others Kingdon \& Ferland 1996 with
 Butler \& Dalgarno 1979 for N$+$H$^+$, Dutta et al.\ 2001 and Watanabe et al.\
@@ -357,15 +357,54 @@ metal$+$metal (D) groups. The He$\leftrightarrow$H pair (Group B),
 ${\rm He}^0+{\rm H}^+ \rightleftharpoons {\rm He}^+ + {\rm H}^0$, is applied
 separately by \texttt{he\_h\_cx\_fvec} so that it is available in
 \emph{every} system containing helium and is never counted twice; it is
-gated by \texttt{He\_H\_charge\_exchange} (default on). Group E is the one
-reaction outside Table 4, ${\rm O}^{2+}+{\rm H}^0\to{\rm O}^{+}+{\rm H}^+$,
-on by default at the published rate because its absence leaves the
+gated by \texttt{He\_H\_charge\_exchange} (default on). Group E is the two
+reactions outside Table 4, ${\rm O}^{2+}+{\rm H}^0\to{\rm O}^{+}+{\rm H}^+$
+and ${\rm N}^{2+}+{\rm H}^0\to{\rm N}^{+}+{\rm H}^+$ (Barrag\'an et al.\
+2006, Tables 1 and 2, held at the ends of $10^2$--$10^5$\,K), on by default
+at the published rates because the absence of the first leaves the
 O\,{\sc iii} profile wrong by decades in the region a transit probes;
-\texttt{cx\_O2p\_H 0} in \texttt{metals.inp} restores the Table-4-only set
-exactly. Each reaction enters as $R = k\,n_{\rm donor}n_{\rm acceptor}$, so
+\texttt{cx\_O2p\_H 0} and \texttt{cx\_N2p\_H 0} in \texttt{metals.inp}
+restore the Table-4-only set exactly. Each reaction enters as $R = k\,n_{\rm donor}n_{\rm acceptor}$, so
 the zero-abundance guard is automatic. The energy defect of each applied
 reaction, less the excitation of a product state that leaves as radiation,
 is heating channel 20 (Sec.~\ref{sec:thermal:heat}).
+
+\paragraph{The helium-hydrogen pair.} ${\rm He}^+ + {\rm H} \to
+{\rm He} + {\rm H}^+$ has a radiative and a non-radiative channel, and both
+are carried (\texttt{charge\_exchange.f90}).  The radiative one is row (19)
+of \citet{Stancil1998} Table~1, $k = 1.20\times10^{-15}(T/300)^{0.25}$
+cm$^3$\,s$^{-1}$, the direct radiative charge transfer of Zygelman et al.\
+(1989) weighted by the 1/4 of the singlet approach.  The non-radiative one is
+the Maxwellian average of the H$^+$\,$+$\,He(1s$^2$) cross section of
+\citet{Loreau2014} turned into the exothermic direction by microscopic
+reversibility, $E_r = E_f + 10.989$\,eV in the center-of-mass frame with
+statistical weights 4 and 1, so that the reverse threshold lies at
+$x_{\rm th} = 13.655$\,eV/u.  Their calculation starts at 15\,eV/u and their
+fit stays finite below the threshold, where the channel is closed, so since
+2026-09-26 the reverse cross section between the threshold and 15\,eV/u is
+%
+\begin{equation}
+  \sigma_r(x) = \sigma_r(15)\,
+  \sqrt{\frac{x - x_{\rm th}}{15 - x_{\rm th}}},\qquad
+  x_{\rm th} \le x \le 15\ {\rm eV/u},
+  \label{eq:ion:heph_threshold}
+\end{equation}
+%
+and zero below $x_{\rm th}$: by reciprocity $\sigma_f v$ is constant at low
+forward energy, capture on the ion-induced-dipole potential with a transfer
+probability independent of energy, an assumption over forward energies of
+0--1.08\,eV that no calculation tests.  Before, $\sigma_r$ was zero below
+15\,eV/u, which closed a channel that is open: the forward rate then fell as
+$e^{-E/kT}$ and was $1.5\times10^{-21}$\,cm$^3$\,s$^{-1}$ at $10^3$\,K, where
+it is now $9.56\times10^{-17}$ ($9.64\times10^{-17}$ at $10^4$\,K, against
+$4.41\times10^{-17}$).  The rate is tabulated from 300\,K to $10^5$\,K
+(generator \texttt{cooling\_data/heii\_h\_charge\_exchange\_rate.py}),
+interpolated linearly in $\ln k$ against $1/T$, the first chord continued
+below 300\,K and the $10^5$\,K value held above.  The non-radiative channel
+is 3.3 per cent of the radiative one at $10^4$\,K and 5.9 per cent at
+$10^3$\,K, so He$^+$ + H is removed almost entirely by radiative charge
+transfer; the reverse ${\rm He} + {\rm H}^+ \to {\rm He}^+ + {\rm H}$ is the
+detailed-balance reverse of the non-radiative channel alone.
 
 \paragraph{Penning ionization of the metastable.} The total
 He($2^3$S)$+$H ionization rate coefficient is the Maxwell-Boltzmann average
@@ -478,8 +517,21 @@ local balance of Sec.~\ref{sec:ionization:cellsystem} is not the answer. Two
 places in the code carry the ionization state along the flow instead.
 
 \paragraph{The implicit advection systems.} \texttt{System\_implicit\_adv\_H},
-\texttt{\_HeH} and \texttt{\_HeH\_TR} solve, per hydrogen nucleus and with
-$c_1 = \Delta r/v$ the residence time of the cell,
+\texttt{\_HeH} and \texttt{\_HeH\_TR} each take one step of
+$v\,{\rm d}x/{\rm d}r = R(x)$ into cell $j$, per hydrogen nucleus, with the
+variable-step second-order backward differentiation formula (BDF2):
+$x^{\rm up} \equiv a_1 x_{j-1} - a_2 x_{j-2}$ is the history of the step and
+$c_1 = g\,h_j/v_j$ its rate weight, $h_j = r_j - r_{j-1}$,
+$w = h_j/h_{j-1}$, $a_1 = (1+w)^2/(1+2w)$, $a_2 = w^2/(1+2w)$,
+$g = (1+w)/(1+2w)$, so that the rates and the velocity are both those of
+cell $j$. The first step of the recursion, and every step after a cell it
+does not integrate, is backward Euler ($a_1 = g = 1$, $a_2 = 0$;
+$x^{\rm up} = x_{j-1}$), as is a BDF2 step whose populations come out
+negative. BDF2 is L-stable, so a population that relaxes within the cell
+settles on its local equilibrium (the trapezoid rule, A- but not L-stable,
+would alternate about it); \texttt{post\_process\_adv} states the formula,
+its derivation and its zero-stability bound $w\le1+\sqrt2$. The systems
+solve
 \begin{align}
 0 &= x^{\rm up}_{\rm HI}-x_{\rm HI}
    + c_1\left[-\left(\Gamma_{\rm HI}+\beta_{\rm HI}x_e n_{\rm H}\right)x_{\rm HI}

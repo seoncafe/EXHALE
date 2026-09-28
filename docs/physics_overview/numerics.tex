@@ -4,7 +4,7 @@
 \subsection{The radial grid}
 \label{sec:numerics:grid}
 
-The domain $[1, r_{\max}]$ is discretized into $N$ finite-volume cells
+The domain above the base level $r = 1$ is discretized into $N$ finite-volume cells
 (\texttt{Grid cells:}, default 500) with $N_g = 2$ ghost cells at each end;
 all grid arrays run over $1-N_g \le j \le N+N_g$.  \texttt{define\_grid.f90}
 builds the cell centers $r_j$, the interfaces $r_{j+1/2}$ as their midpoints,
@@ -14,9 +14,19 @@ pair that forms $\Delta V_j$ in \eqref{eq:geom}, the same pair the
 gravitational source differences, and the same width the column integrals
 $n_j\,\Delta r_j$ and the cell optical depths use.
 
-Three grid types are available, as in ATES.  \texttt{Uniform} takes
-$\Delta r = (r_{\max}-1)/N$.  \texttt{Stretched} places the centers at
-$r_j = r_{\max}^{(j-1+N_g)/(N+2N_g-1)}$.  \texttt{Mixed}, the type every
+Three grid types are available, and since 2026-09-27 every one of them
+places the first face exactly on the base level, $r_{\rm edg}(0) = 1$, so
+that the reservoir stated there is the state of that face
+(Sec.~\ref{sec:bcic:base}); the two lower ghost cells lie below the level.
+\texttt{Uniform} takes $\Delta r = (r_{\max}-1)/N$ and
+$r_j = 1 + (j - \tfrac12)\Delta r$, so its faces are $1 + j\,\Delta r$ and the
+outer face of cell $N$ is $r_{\max}$.  \texttt{Stretched} places the centers
+in geometric progression, $r_j = 2x^j/(1+x)$, so that the face between
+$r_0$ and $r_1$ is the level, with $x$ the root of
+$(N+N_g)\ln x - \ln[(1+x)/2] - \ln r_{\max} = 0$ (the center of the outermost
+ghost at $r_{\max}$), found by Newton's method from
+$x = r_{\max}^{1/(N+N_g)}$, which climbs to it monotonically because the
+function is increasing and concave.  \texttt{Mixed}, the type every
 shipped configuration uses, lays $N_{\rm low}$ uniform cells of width
 $\Delta r_{\rm base}$ on the base and then stretches the remaining
 $N_{\rm up} = N - N_{\rm low}$ cells by a factor $k$ that solves
@@ -32,7 +42,18 @@ The two numbers are the key \texttt{Base grid [dr,cells]:} and default to
 $\Delta r_{\rm base} = 2\times10^{-4}\,R_p$ and $N_{\rm low} = 50$, the values
 ATES hard-codes.  The widths are then smoothed once by a 1-2-1 pass running
 downward from the junction to the base, the centers are rebuilt from the
-smoothed widths, and the whole grid is rescaled back onto $[1, r_{\max}]$.
+smoothed widths, and the grid is mapped by the affine map that sends its
+first face to $1$ and the center of its outermost ghost to $r_{\max}$, which
+multiplies every width by one factor and so keeps the smoothed shape.  For
+all three types the first ghost center is then restated as the mirror of the
+first cell center, $r_0 = 2 - r_1$, which moves it by rounding only and makes
+the first face exactly $1.0$; the run stops if that face is not 1 or if a
+ghost cell reaches $r \le 0$.  Until 2026-09-27 the level was a ghost
+\emph{center} ($r_0 = 1$ on the \texttt{Mixed} grid, $r_{1-N_g} = 1$ on the
+other two), so every cell center has since moved (by half a cell on the
+\texttt{Mixed} grid, by one and a half on the other two) and a state
+written before then does not load on the present grid
+(Sec.~\ref{sec:bcic:restart}).
 The requirement behind $\Delta r_{\rm base}$ is that the pressure scale
 height $H = k_BT/(\bar m g)$, with $\bar m = \rho/n_{\rm tot}$ the mean
 particle mass, be resolved by several cells at the base; a
@@ -278,7 +299,7 @@ $\min(\mathrm{Ma},1)$ after \citet{Rieper2011}, which is the published
 low-Mach cure for a flux whose dissipation does not vanish with the Mach
 number; the option is \texttt{Low Mach velocity jump:}, it is off by default,
 and it is not recommended on a near-hydrostatic column. The factor is exactly
-zero where two neighbouring velocities cancel in the Roe average, so it removes
+zero where two neighboring velocities cancel in the Roe average, so it removes
 the damping of the odd-even ($2\Delta r$) velocity mode at precisely the faces
 that mode lives on; measured on the LHS 1140 b low-XUV base it turned a solve
 unmodified Roe completes into a nearly pure odd-even mode. Rieper's premise,

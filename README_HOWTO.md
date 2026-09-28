@@ -498,24 +498,36 @@ The oxygen chemistry below is what lifts the first half of that caveat: with
 transported; without the oxygen chemistry the carrier is H2 alone.
 -> `docs/lower_atmosphere_coupling.pdf` section 4.3.
 
-The second half of the caveat, the H/H+ partition, has its own key:
-`Ionization transport: True` (default off) carries H+ as a fifth carrier of
-the same operator and pins the sweep's proton row to the transported fraction
-in the interior cells (the lower ghosts stay the reservoir). Use it where the
-wind leaves a shell faster than it ionizes -- on the hot-Uranus Koskinen 2022
-gate `P r/|v|` is 0.15-0.35 above 1.5 r_base and the local root over-ionizes
-by 2-5x (`md/k22_electron_density_excess.md` sec. 7). It needs `Molecular
-carrier transport: True` and `Molecular chemistry: True`. With
-`Solver: Newton` both stationary routes carry it: the coupled route
-(`Coupled carrier solve: True`) gives the proton a row in the stationary
-system and hands the sweep the Newton unknown; the partitioned alternation
-(the default, that key off) holds the composition through each hydrodynamic
-solve, whose sweeps are handed the transported proton fraction, and
-transports it in the carrier relaxation between the solves (until 2026-09-12
-that combination was refused, on a premise that held for the plain Newton
-finish the refusal was written for and not for the alternation). Marching needs neither
-of the two solver keys, and the direct steady route (`EXHALE_PTC=1`) is
-refused outright.
+The second half of the caveat, the ionization partition, has its own key:
+`Ionization transport: True` (default off) carries the ionization state of
+hydrogen and helium (H+, He+, He++, each a fraction of its element's nuclei)
+with the flow, as rows of the transport-chemistry operator, and hands every
+ionization sweep the transported fractions instead of solving them as local
+roots (the lower ghosts stay with the sweep). Use it where the wind leaves a
+shell faster than it ionizes -- on the hot-Uranus Koskinen 2022 gate `P r/|v|`
+is 0.15-0.35 above 1.5 r_base and the local root over-ionizes by 2-5x
+(`md/k22_electron_density_excess.md` sec. 7); on the LHS 1140 b molecular
+wind the transported state has x(H II) = 0.049 at 29 R_p where the local
+root has 0.61 (`md/Update_EXHALE_stage3.md` section 29.6). It needs helium
+in the mixture and works in an atomic gas as well as a molecular one; in a
+molecular gas it also needs `Molecular carrier transport: True`. It is
+refused with `Coupled carrier solve: True` or `On stall` and with the direct
+steady route (`EXHALE_PTC=1`); the partitioned stationary alternation (the
+default) and marching carry it. Full reference: `md/input_schema.md` K15f.
+
+Starting a stationary solve with the key on from a state solved without it
+moves the composition far (the electron density of the outer wind by 40-85 %
+on LHS 1140 b). From the default starting bound of the carrier relaxation
+(1e-2 of a cell's particle count a pass) the hydrodynamic solve of the
+second pass failed and did not recover on that state; starting the bound at
+0.5 certified it in 14 passes (`md/Update_EXHALE_stage3.md` section 29.7).
+Recipe for that restart:
+
+```bash
+EXHALE_CARRIER_TRUST=0.5 EXHALE_PTC_DTAU0=1.0 ../../EXHALE.x   # plus the run's other settings
+```
+The progress control then grows or shrinks the bound from there. The default
+start stays 1e-2 because the H2 carrier cases do worse from a large bound.
 
 **Converging a molecular run needs three more keys than an atomic one:**
 
@@ -1061,16 +1073,37 @@ different blocks is refused.
   loop would otherwise take can move a state stationary to `||R||` 8.4e-9 by
   eight decades.
 
+  **A killed stationary run keeps its last pass.** After every outer pass
+  after which the iteration goes on, the state the next pass starts from
+  (the accepted composition update of that pass) is written to
+  `output/Hydro_ioniz_last_pass.txt` and `output/Ion_species_last_pass.txt`,
+  overwriting the pair of the pass before. Each half is written to a
+  `.part` name and renamed, so a kill during the write leaves the previous
+  pair whole. The pair is written by the writer of the final state, with the
+  same headers, so copying it to `Hydro_ioniz_IC.txt` / `Ion_species_IC.txt`
+  continues the run from that pass. It is never a certified state: both
+  halves carry `certified=F cert_reason=pass_snapshot_p<pass>` and a
+  `# pass_snapshot pass=<n> carrier_movement_bound=... element_omega=...`
+  line (the bound and the factor are not restored by a restart; pass them
+  with `EXHALE_CARRIER_TRUST` / `EXHALE_DIFF_OMEGA` if wanted). Halves of two
+  different passes state two reasons and `load_IC` refuses them. A run that
+  ends on its own writes its final state as before, and the pair beside it is
+  then one pass older. `LHS1140b/models/.P1/s2_continuation/config_rung.sh`
+  takes the pair as the entry when the parent has no `Hydro_ioniz.txt`.
+
 Refused: the key without `Load IC? True`, `trajectory` with `Run mode: init`,
 `stationary` without `Solver: Newton`.
 
 **`Restart option change:`** exists for the option ladder this project converges
 with: converge without an option, restart with it on, converge again. Naming
 a token permits exactly that token to differ; everything else still refuses
-and states the token. Six tokens may **never** be named, because they decide
+and states the token. Four tokens may **never** be named, because they decide
 how many unknowns the state has, so changing one is a cold start and not a
-restart: `metals`, `mol`, `oxychem`, `carrier`, `carrier_newton`,
-`iontrans`. The permitted change is written into the new state as one
+restart: `metals`, `mol`, `oxychem`, `carrier`. `iontrans` may be named (the
+ionization stages have a column in every state file; the key changes whether
+it is a local root or a transported partition), and `carrier_newton` is a
+route token whose difference is admitted without being named and recorded as
+a `# route_change` line. The permitted change is written into the new state as one
 `# option_change <from> -> <to> at restart of <source>` line and inherited by
 the rungs after it, and `EXHALE_setup.out` states the restart provenance and
 the permitted changes.
@@ -1078,7 +1111,10 @@ the permitted changes.
 One practical consequence: **states written before the Jupiter-radius
 unification cannot be reloaded at all** (every cell center moved, so the grid
 guard refuses them). That covers the stored `heh_*` case directories (renamed 2026-09-16), the planet
-folders and `benchmarks/`; regenerating them is user-gated.
+folders and `benchmarks/`; regenerating them is user-gated. The same holds
+for every state written before 2026-09-27, when the first cell face of every
+grid type was put on the base level: such a state loads only as a seed mapped
+with `src/utils/map_state_to_grid.py <src> <target_grid_file> <out> --ic`.
 -> `md/input_schema.md` K43, K44 and appendix D.2; manual section 2.
 
 ## Measurement hooks you may meet in a log
@@ -1120,6 +1156,7 @@ All output is written to `output/` in the run directory.
 | `Ion_species.txt` | Number densities of H I, H II, He I, He II, He III, He 2^3S, and the metal ionization stages (33 species; zero columns when a species is off) |
 | `Hydro_ioniz_adv.txt` | `Hydro_ioniz.txt` re-solved as the steady ionization and energy equations along the recorded flow, plus three further columns: `adv_T_status` and `adv_comp_status`, the validity of the row's temperature and of its composition separately (0 corrected, 1 retained, 2 failed, 3 unsupported, 4 not evaluated), and `adv_mass_row`, the measure both were decided by. A corrected row is a CONDITIONAL correction, accurate to the fraction of itself in the mass flux that the file's own `# adv_conditional_tol` line states; whether the whole input state passed the stationary certification is a separate statement, in its `# adv_input_certified` line. The conditions, the two fields, the measure and both numbers are defined once, in manual section 4 ("Validity range of the advection correction"); read them there rather than from a second copy |
 | `Ion_species_adv.txt` | Post-processed version of `Ion_species.txt`, carrying the same two validity fields as its last two columns and the same header block |
+| `Hydro_ioniz_last_pass.txt`, `Ion_species_last_pass.txt` | only on the stationary route (`Restart intent: stationary` and the partitioned outer iteration): the state the next outer pass starts from, rewritten after every pass that is not the last, so that a run stopped from outside keeps its last completed pass. Same columns and headers as `Hydro_ioniz.txt` / `Ion_species.txt`, a restartable pair once copied to the `_IC` names, never certified (`certified=F cert_reason=pass_snapshot_p<pass>` in both halves). See "Restart a run" |
 | `Cooling_breakdown.txt` | Radiative cooling by channel vs. radius: six atomic channels (recombination and collisional ionization, which include the energies of the metal ions; collisional excitation of H I, He I and He II; free-free), the H3+ infrared channel, the H2, H2O and CO infrared bands (net rates), then one column for each metal ion's line cooling. With the He 2^3S tracked the He I column is the net 1^1S <-> 2^3S exchange plus the metastable's own channels, negative where the superelastic collisions heat the gas |
 | `Heating_breakdown.txt` | Volumetric heating by channel vs. radius, 24 columns (r, T, n_e, total, then 20 channels): the photoheating split by absorber (H I, He I, He II, He 2^3S, H2, metals, the last with the Auger electrons of inner-shell vacancies), then the two excited-H channels, the recombination radiation absorbed on the spot (`heat_He_recomb`), the Penning and associative branches of He 2^3S + H, He 2^3S + H2 Penning, the dissociation and fluorescence halves of Lyman-Werner, the collisional H2/He reactions, the FUV photolysis of H2O and OH, the collisional oxygen reactions, the two CO destruction channels (He+ charge transfer and photodissociation), and the energy defects of the charge-exchange reactions (`heat_charge_exchange`, less what a radiating product state carries away; negative for an endothermic reaction). The columns are the channel array the ionization sweep filled for the state written beside them, so their sum is the `heat` column of `Hydro_ioniz.txt` to round-off |
 | `Excited_H.txt` | Non-LTE H(n=2) populations (when the Balmer/Ly-alpha physics is on) |

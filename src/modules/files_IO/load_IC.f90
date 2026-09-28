@@ -249,12 +249,13 @@
    ! refused by name, and the change that was allowed is written into the
    ! new state's block, so a rung of a ladder states what it was reached
    ! from instead of the change being silent.
-   integer, parameter :: n_opt = 21
+   integer, parameter :: n_opt = 22
    character(len=16), parameter :: opt_name(n_opt) = [ character(len=16) :: &
         'He23S', 'metals', 'eos_metals', 'mol', 'molbase', 'oxychem',       &
         'carrier', 'carrier_newton', 'iontrans', 'he_diff',                 &
         'he_metal_diff', 'sec_ion', 'caloric_mono', 'excH', 'base_ir',      &
-        'mol_ir', 'mol_heat', 'visc', 'cond', 'jlya', 'wellbal' ]
+        'mol_ir', 'mol_heat', 'visc', 'cond', 'jlya', 'wellbal',            &
+        'interdiff_enth' ]
    ! WHICH TOKENS MAY NEVER BE NAMED, and why: these four decide WHICH
    ! SPECIES THE STATE FILES CARRY. metals adds the metal ionization
    ! stages, mol the four molecular carriers, oxychem the three oxygen
@@ -280,7 +281,8 @@
         .false., .true.,  .false., .true.,  .false., .true.,                &
         .true.,  .false., .false., .false.,                                 &
         .false., .false., .false., .false., .false.,                        &
-        .false., .false., .false., .false., .false., .false. ]
+        .false., .false., .false., .false., .false., .false.,               &
+        .false. ]
    ! A ROUTE TOKEN: the same equations, solved by another algorithm.
    ! carrier_newton says whether the transported balances are unknowns of
    ! the Newton vector, solved together with the wind as one block, or are
@@ -298,7 +300,20 @@
         .false., .false., .false., .false., .false., .false.,               &
         .false., .true.,  .false., .false.,                                 &
         .false., .false., .false., .false., .false.,                        &
-        .false., .false., .false., .false., .false., .false. ]
+        .false., .false., .false., .false., .false., .false.,               &
+        .false. ]
+   ! THE VALUE A TOKEN HAS IN A FILE WRITTEN BEFORE THE TOKEN EXISTED. A
+   ! token added to the vocabulary is absent from every state written
+   ! earlier, and what such a state solved is known: the equations of the
+   ! code that wrote it, which had no such term. interdiff_enth (the
+   ! interdiffusion enthalpy flux of the energy equation, He_diffusion) did
+   ! not exist before, so an older state was solved without it and reads
+   ! as F. An empty entry means the token has always been written, and its
+   ! absence from a file of this schema is refused as before.
+   character(len=8), parameter :: opt_value_when_absent(n_opt) = [          &
+        character(len=8) ::                                                 &
+        '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '',     &
+        '', '', '', '', '', 'F' ]
    ! The tokens the input named as allowed to differ, set by input_read
    ! from "Restart option change:" (which is where an unknown token and a
    ! layout token are refused, the input file being what states them).
@@ -1679,6 +1694,12 @@
       case ('cond');           opt_value = tf(cond_on)
       case ('jlya');           write(opt_value,'(I0)') jlya_mode
       case ('wellbal');        opt_value = tf(well_balanced)
+      ! The interdiffusion enthalpy flux enters the equations only where the
+      ! elements move (binary_element_diffusion,
+      ! interdiffusion_enthalpy_active), so the token states the term and not
+      ! the key: a run without He_diffusion writes F whatever the key says.
+      case ('interdiff_enth'); opt_value = tf(he_diffusion .and. thereis_He &
+                                       .and. interdiffusion_enthalpy_flux)
       case default
          write(*,'(A)') ' (load_IC) ERROR: the option token "'//           &
               trim(name)//'" is named in opt_name and has no value in'//   &
@@ -1963,6 +1984,14 @@
       ! do not carry the same vocabulary.
       nef = count_char(s_file, '=')
       ner = count_char(s_run,  '=')
+      ! A token added after the file was written is absent from it and
+      ! reads as the value it had then (opt_value_when_absent), so it is
+      ! counted as present.
+      do i = 1, n_opt
+         if (len_trim(opt_value_when_absent(i)) .eq. 0) cycle
+         if (trim(opt_field_value(s_file, opt_name(i))) .eq. '<absent>')    &
+            nef = nef + 1
+      enddo
       if (nef .ne. ner) then
          write(*,'(A)') ' (load_IC) ERROR: metadata field "options":'//    &
               ' the restart files carry a different set of option'
@@ -1976,6 +2005,9 @@
       endif
       do i = 1, n_opt
          vf = opt_field_value(s_file, opt_name(i))
+         if (trim(vf) .eq. '<absent>' .and.                                 &
+             len_trim(opt_value_when_absent(i)) .gt. 0)                     &
+            vf = opt_value_when_absent(i)
          vr = opt_field_value(s_run,  opt_name(i))
          if (trim(vf) .eq. trim(vr)) then
             if (restart_option_change_named(i)) nsame = nsame + 1
@@ -2600,6 +2632,13 @@
             write(*,'(A)') '   "Base grid [dr,cells]:'//                     &
                ' 1.9999999494757503e-4 50" (src/utils/pin_base_grid.py).'
          endif
+         ! Every grid built since 2026-09-27 has its first face on the base
+         ! level (define_grid); a state written before that has its centers
+         ! half a cell higher at the base and differs from every present grid.
+         write(*,'(A)') '   A state written before 2026-09-27 lies on a'//     &
+            ' grid whose base level was a ghost center, not the'
+         write(*,'(A)') '   first face; it loads only as a seed mapped by'//   &
+            ' src/utils/map_state_to_grid.py --ic.'
          write(*,'(A,I0,A,ES23.16)') '   cell ', j_worst,                    &
             ': the run has r = ', r(j_worst)
          write(*,'(A,ES23.16)') '                    the file has r = ',     &

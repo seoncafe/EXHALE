@@ -4,8 +4,11 @@
       use global_parameters
       use utils, only: write_row_layout_header,                        &
                        write_coupling_state_header,                      &
+                       coupling_state_fields,                            &
                        write_provenance_header,                          &
-                       state_is_certified, state_certification_reason
+                       state_is_certified, state_certification_reason, &
+                       set_state_certified
+      use, intrinsic :: iso_c_binding, only: c_char, c_int, c_null_char
       ! THE CONFIGURATION THE STATE IN THIS FILE IS A STATE OF. The block is
       ! built and parsed in one place, the module that reads a restart file,
       ! so the writer and the loader cannot disagree about its fields.
@@ -24,6 +27,7 @@
       use species_table, only: n_mion, mion_name, im_OI, melem_i0,       &
                                iel_O, iel_C
       use ionization_equilibrium, only: nmol_eq,   &  ! molecular columns
+                                       molecular_carrier_densities_from_state, &
                                        NH2_col_lw, f_shield_lw, k_lw_diss, &
                                        p_lw_single,                        &
                                        tr_lines_lw, a_lines_lw, P_H2_eq,   &
@@ -116,7 +120,7 @@
       ! the steady equations of the correction drop terms as large as that
       ! fraction of the ones they keep), the local radiative balance rather
       ! than the flow sets the temperature (thermal Damkohler number above
-      ! one), or the gas enters the cell and the upwind difference has no
+      ! one), or the gas enters the cell and the step of the recursion has no
       ! upstream state.
       integer, parameter :: adv_retained = 1
       ! The correction was attempted and its solve did not converge, or its
@@ -127,10 +131,14 @@
       ! and oxygen (OH H2O CO) carriers from its particle and electron
       ! counts, so a cell in which those omitted species carry more of the
       ! particle count than the species it does carry is a cell class it does
-      ! not model.
+      ! not model.  For the TEMPERATURE the same holds of the energy balance:
+      ! a row whose heating and cooling in the run are carried more by the
+      ! omitted molecular and oxygen channels than by the channels the
+      ! post-process assembles keeps the run's own temperature with this
+      ! value (the energy class of post_process_adv).
       integer, parameter :: adv_unsupported = 3
       ! The post-process did not reach this row: a ghost row below the first
-      ! cell at which the upwind difference of its equations can be taken.
+      ! cell at which the step of its equations can be taken.
       integer, parameter :: adv_not_evaluated = 4
 
       ! THE CONDITION UNDER WHICH A ROW IS A CORRECTION, and the accuracy
@@ -154,6 +162,21 @@
       ! both.
       real*8, parameter :: adv_conditional_tol = 1.0d-2
 
+      ! The C library rename(3), which replaces the target name in one step
+      ! within a file system (POSIX), so a reader of the target sees the old
+      ! file or the new one and never a partial one. Standard Fortran has no
+      ! rename; this interface is the same for every compiler the Makefile
+      ! names.
+      interface
+         function posix_rename(old_path, new_path) bind(C, name='rename')  &
+                  result(rc)
+            import :: c_char, c_int
+            character(kind=c_char), dimension(*), intent(in) :: old_path
+            character(kind=c_char), dimension(*), intent(in) :: new_path
+            integer(c_int) :: rc
+         end function posix_rename
+      end interface
+
       contains
 
       subroutine write_derived_provenance_header(unit)
@@ -164,24 +187,25 @@
       ! was evaluated on that state and on no other.  A 'certified=' field
       ! here would attach the verdict of one composition to another one, so
       ! this file carries no coupling header at all; what it carries is the
-      ! pair of the state it was derived from, under a key that says it is
-      ! provenance, with the sentence that fixes what the key means.
+      ! fields of the state it was derived from -- the same fields as the
+      ! '# coupling:' line of the solved Hydro_ioniz.txt, with the
+      ! certification pair first (coupling_state_fields: certified,
+      ! cert_reason, sec_ion, sec_ion_step, recon, iontrans, mode,
+      ! t_phys) -- under a key that says it is
+      ! provenance, with the sentence that fixes what the key means.  Both
+      ! _adv files carry it (Hydro_ioniz_adv.txt and Ion_species_adv.txt).
       !
-      ! The same pair is stated in words in the adv_input_certified line of
-      ! write_adv_validity_header, which the transit tool reads; this line is
-      ! the machine-readable form of it, and the two are one statement.
+      ! The certification pair is stated in words in the adv_input_certified
+      ! line of write_adv_validity_header, which the transit tool reads; this
+      ! line is the machine-readable form of it, and the two are one
+      ! statement.
       integer, intent(in) :: unit
-      character(len=1)  :: c
-      character(len=48) :: why
-      c = 'F';  if (state_is_certified) c = 'T'
-      why = ''
-      if (len_trim(state_certification_reason) .gt. 0)                     &
-         why = ' cert_reason='//trim(state_certification_reason)
-      write(unit,'(A,A1,A)') '# derived_from: certified=', c, trim(why)
-      write(unit,'(A)') '# derived_from is PROVENANCE: the certification'// &
-                     ' pair of the state these rows were derived'
-      write(unit,'(A)') '#   from, which is the state written beside'//     &
-                     ' this file. It is a statement about that state'
+      write(unit,'(A)') '# derived_from: '//                            &
+                     trim(coupling_state_fields(certification_first=.true.))
+      write(unit,'(A)') '# derived_from is PROVENANCE: the physics and'//   &
+                     ' certification fields of the state these rows'
+      write(unit,'(A)') '#   were derived from, which is the state written'//&
+                     ' beside this file. It is a statement about that state'
       write(unit,'(A)') '#   and not about these rows: the'//               &
                      ' advection-corrected composition is another'
       write(unit,'(A)') '#   composition, and no entry of the'//            &
@@ -267,197 +291,33 @@
       real*8, dimension(1-Ng:N+Ng) :: mrow
 
 
+      character(len=40) :: hyd_path, ion_path
+
       mrow = 0.0d0
       if (present(adv_mass_row)) mrow = adv_mass_row
 
-      !---- Write thermodynamic profiles ----!
-
+      !---- The state pair: thermodynamic and ionization profiles ----!
       if (flag.eq.'eq') then
          if (molecular_seed_on()) then
             ! The product of a seed run IS the restart input: it is written
             ! under the name a restart reads, so that nothing has to be
             ! renamed between the conversion and the run it seeds.
-            open(unit = 2, file = './output/Hydro_ioniz_IC.txt')
+            hyd_path = './output/Hydro_ioniz_IC.txt'
+            ion_path = './output/Ion_species_IC.txt'
          else
-      	open(unit = 2, file = './output/Hydro_ioniz.txt')
+            hyd_path = './output/Hydro_ioniz.txt'
+            ion_path = './output/Ion_species.txt'
          endif
-	   else	! Change output file after postprocessing
-		   open(unit = 2, file = './output/Hydro_ioniz_adv.txt')
-	   endif
-
-      ! Schema header ('#' comment lines; readers that predate the header
-      ! can skip them, numeric content is unchanged)
-      ! Column 2 is rho*n0: the MASS density in units of m_H per cm^3 (metals
-      ! included under the eos_metals policy), not a number density. Multiply by
-      ! m_H to get g/cm^3.
-      write(2,'(A)') '# EXHALE schema 2'
-      if (present(adv_T_status)) then
-         write(2,'(A)') '# columns r[Rp] rho[mH/cm3] v[cm/s] p[cgs] '//     &
-                        'T[K] heat[erg/cm3/s] cool[erg/cm3/s] '//           &
-                        'adv_T_status adv_comp_status adv_mass_row'
-      else
-         write(2,'(A)') '# columns r[Rp] rho[mH/cm3] v[cm/s] p[cgs] '//     &
-                        'T[K] heat[erg/cm3/s] cool[erg/cm3/s]'
+      else	! Change output file after postprocessing
+         hyd_path = './output/Hydro_ioniz_adv.txt'
+         ion_path = './output/Ion_species_adv.txt'
       endif
-      ! Which rows are physical. The loop below writes 1-Ng..N+Ng, so the
-      ! first Ng and the last Ng rows are GHOST cells, filled by Apply_BC
-      ! from the interior (lower: fixed base state; upper: zero-gradient /
-      ! WENO3 extrapolation). Their rho*v*r^2 is a boundary extrapolation,
-      ! not part of the solution, and including them in a flux-spread or
-      ! residual measure doubles it: the accepted flux spread of the
-      ! HD 189733 b solve is 4.64e-3 over the physical cells and 1.05e-2 if
-      ! the two upper ghost rows are counted (section 133.6). The line is a
-      ! '#' comment, so no reader's numeric parse and no golden changes.
-
-         call write_row_layout_header(2)
-         if (flag .eq. 'eq') then
-            ! What the state in this file was produced under (see the
-            ! routine). Hydro_ioniz.txt is what a restart is fed as
-            ! Hydro_ioniz_IC.txt, so this is the file the line has to
-            ! travel in.
-            call write_coupling_state_header(2)
-         else
-            call write_derived_provenance_header(2)
-         endif
-         call write_provenance_header(2)
-         call write_base_boundary_header(2)
-         call write_molecular_seed_header(2)
-         ! The reservoir, species schema, physical grid, constants, options
-         ! and clock the state was produced under: what a restart of this
-         ! file is compared against (see the routine).
-         call write_restart_metadata_header(2)
-         ! What the two status columns mean, what the stationarity of the
-         ! input was judged by, what the product is, and how many rows carry
-         ! each value (see the routine).
-         if (present(adv_T_status))                                         &
-            call write_adv_validity_header(2, adv_T_status, adv_comp_status)
-         do j = 1-Ng,N+Ng
-            if (present(adv_T_status)) then
-               write(2,*) r(j),        &     ! Rad. dist.
-                        rho(j)*n0,     &     ! Density
-                        v(j)*v0,       &     ! Velocity
-                        p(j)*p0,       &     ! Pressure
-                        T(j)*T0,       &     ! Temperature
-                        heat(j)*q0,    &     ! Rad. heat.
-                        cool(j)*q0,    &     ! Rad. cool.
-                        adv_T_status(j),  &  ! Validity of its temperature
-                        adv_comp_status(j),& ! Validity of its composition
-                        mrow(j)              ! The measure both were decided by
-            else
-               write(2,*) r(j),        &     ! Rad. dist.
-                        rho(j)*n0,     &     ! Density
-                        v(j)*v0,       &     ! Velocity
-                        p(j)*p0,       &     ! Pressure
-                        T(j)*T0,       &     ! Temperature
-                        heat(j)*q0,    &     ! Rad. heat.
-                        cool(j)*q0           ! Rad. cool.
-            endif
-         enddo
-      close(2)
-      
-      !---- Write ionization profiles ----!  
-      if (flag.eq.'eq') then
-         if (molecular_seed_on()) then
-            open(unit = 3, file = './output/Ion_species_IC.txt')
-         else
-      	open(unit = 3, file = './output/Ion_species.txt')
-         endif
-	   else	! Change output file after postprocessing
-		   open(unit = 3, file = './output/Ion_species_adv.txt')
-	   endif
-
-      ! Schema header: species labels in column order, generated from the
-      ! species table so they stay correct when species are added.
-      write(3,'(A)') '# EXHALE schema 2'
-      ! The advection post-process reconstructs an H/He + trace-metal gas and
-      ! does not carry the molecular or oxygen species: their columns below
-      ! are the EQUILIBRIUM values, written beside advection-corrected H, He
-      ! and metal columns. Say so in the file rather than only in the module
-      ! that produces it, so that a reader of Ion_species_adv.txt cannot take
-      ! them for corrected profiles. Lifting the limitation is separate work.
-      if (flag .ne. 'eq' .and. (thereis_mol .or. thereis_oxychem)) then
-         write(3,'(A)') '# NOTE the molecular columns (H2 H2p H3p HeHp)'// &
-                        ' and, when present, the oxygen columns'
-         write(3,'(A)') '#   (OH H2O CO) are NOT advection-corrected:'//   &
-                        ' the post-process reconstructs an'
-         write(3,'(A)') '#   H/He + trace-metal gas, so those columns'//   &
-                        ' are the equilibrium solution and the'
-         write(3,'(A)') '#   metal columns inside the molecular layer'//   &
-                        ' inherit that approximation.'
-      endif
-      write(3,'(A)', advance='no') '# columns r[Rp] HI HII HeI HeII '// &
-                                   'HeIII HeITR'
-      do i = 1,n_mion
-         write(3,'(A)', advance='no') ' '//trim(mion_name(i))
-      enddo
-      ! molecular columns (present only when thereis_mol)
-      if (thereis_mol) write(3,'(A)', advance='no') ' H2 H2p H3p HeHp'
-      ! oxygen-carrier columns (present only when thereis_oxychem)
-      if (thereis_oxychem) write(3,'(A)', advance='no') ' OH H2O CO'
-      ! The validity of each row travels with the species columns as well,
-      ! so a reader of this file alone can tell a corrected composition from
-      ! the run's own (see write_adv_validity_header).
-      if (present(adv_T_status)) write(3,'(A)', advance='no')            &
-                                   ' adv_T_status adv_comp_status'
-      write(3,'(A)') ''
-
-      call write_row_layout_header(3)
-      call write_base_boundary_header(3)
-      call write_molecular_seed_header(3)
-      ! Both state files carry the block: they are two halves of one state,
-      ! and a restart reads both, so a pair whose halves state different
-      ! configurations is refused rather than half-loaded.
-      call write_restart_metadata_header(3)
-      if (present(adv_T_status))                                         &
-         call write_adv_validity_header(3, adv_T_status, adv_comp_status)
-      do j = 1-Ng,N+Ng
-
-         if (present(adv_T_status)) then
-            ! The advection-corrected write. Its own statements, kept apart
-            ! from the equilibrium ones below so that the equilibrium file
-            ! is written by the statements it always was.
-            if (thereis_oxychem) then
-               write(3,*) r(j), nhi(j)*n0, nhii(j)*n0, nhei(j)*n0,       &
-                        nheii(j)*n0, nheiii(j)*n0, nheiTR(j)*n0,         &
-                        (nm(j,i)*n0, i = 1,n_mion),                      &
-                        (nmol_eq(j,i), i = 1,4),                         &
-                        (nox_eq(j,i), i = 1,3),                          &
-                        adv_T_status(j), adv_comp_status(j)
-            else if (thereis_mol) then
-               write(3,*) r(j), nhi(j)*n0, nhii(j)*n0, nhei(j)*n0,       &
-                        nheii(j)*n0, nheiii(j)*n0, nheiTR(j)*n0,         &
-                        (nm(j,i)*n0, i = 1,n_mion),                      &
-                        (nmol_eq(j,i), i = 1,4),                         &
-                        adv_T_status(j), adv_comp_status(j)
-            else
-               write(3,*) r(j), nhi(j)*n0, nhii(j)*n0, nhei(j)*n0,       &
-                        nheii(j)*n0, nheiii(j)*n0, nheiTR(j)*n0,         &
-                        (nm(j,i)*n0, i = 1,n_mion),                      &
-                        adv_T_status(j), adv_comp_status(j)
-            endif
-         else if (thereis_oxychem) then
-            write(3,*) r(j), nhi(j)*n0, nhii(j)*n0, nhei(j)*n0,        &
-                     nheii(j)*n0, nheiii(j)*n0, nheiTR(j)*n0,          &
-                     (nm(j,i)*n0, i = 1,n_mion),                       &
-                     (nmol_eq(j,i), i = 1,4),                          &
-                     (nox_eq(j,i), i = 1,3)   ! OH H2O CO (already cm^-3)
-         else if (thereis_mol) then
-            write(3,*) r(j), nhi(j)*n0, nhii(j)*n0, nhei(j)*n0,        &
-                     nheii(j)*n0, nheiii(j)*n0, nheiTR(j)*n0,          &
-                     (nm(j,i)*n0, i = 1,n_mion),                       &
-                     (nmol_eq(j,i), i = 1,4)  ! H2 H2+ H3+ HeH+ (already cm^-3)
-         else
-         write(3,*) r(j),       & ! Rad. dist.
-                  nhi(j)*n0,    & ! HI
-                  nhii(j)*n0,   & ! HII
-                  nhei(j)*n0,   & ! HeI
-                  nheii(j)*n0,  & ! HeII
-                  nheiii(j)*n0, & ! HeIII
-                  nheiTR(j)*n0, & ! HeITR
-                  (nm(j,i)*n0, i = 1,n_mion)  ! metal ions (canonical order)
-         endif
-      enddo
-      close(3)
+      call write_hydro_state_file(trim(hyd_path), flag, rho, v, p, T,     &
+                                  heat, cool, mrow, adv_T_status,         &
+                                  adv_comp_status)
+      call write_species_state_file(trim(ion_path), flag, nhi, nhii,      &
+                                    nhei, nheii, nheiii, nheiTR, nm,      &
+                                    adv_T_status, adv_comp_status)
 
       !---- Lyman-Werner photodissociation diagnostic ----!
       ! Written only for a molecular run that carries a Lyman-Werner band
@@ -584,6 +444,361 @@
 
       ! End of subroutine
       end subroutine write_output
+
+      ! ------------------------------------------------------------------ !
+
+      subroutine write_hydro_state_file(path, flag, rho, v, p, T, heat,   &
+                                        cool, mrow, adv_T_status,         &
+                                        adv_comp_status, pass_statement,  &
+                                        ios_open)
+      ! THE THERMODYNAMIC HALF OF A STATE, to the file named: r, rho, v, p,
+      ! T, heat and cool of every row, ghosts included, under the header a
+      ! restart reads (the coupling line, provenance, boundary reservoir,
+      ! molecular seed statement and the restart metadata block).  One
+      ! writer for the solved state, the advection-corrected profiles and
+      ! the pass snapshot of the stationary outer iteration, so the three
+      ! cannot state the header in different ways.
+      !
+      ! pass_statement, present only for the pass snapshot, is written as
+      ! its own '#' line after the coupling line.  ios_open, when present,
+      ! receives the status of the open instead of the run stopping on a
+      ! file that cannot be opened: a snapshot that cannot be written must
+      ! not end the run that is producing it.
+      character(len=*), intent(in) :: path
+      character(len=2), intent(in) :: flag
+      real*8, dimension(1-Ng:N+Ng), intent(in) :: rho, v, p, T, heat, cool
+      real*8, dimension(1-Ng:N+Ng), intent(in) :: mrow
+      integer, dimension(1-Ng:N+Ng), intent(in), optional :: adv_T_status
+      integer, dimension(1-Ng:N+Ng), intent(in), optional :: adv_comp_status
+      character(len=*), intent(in), optional :: pass_statement
+      integer, intent(out), optional :: ios_open
+      integer :: unit_h, j
+
+      if (present(ios_open)) then
+         open(newunit = unit_h, file = path, status = 'replace',          &
+              action = 'write', iostat = ios_open)
+         if (ios_open .ne. 0) return
+      else
+         open(newunit = unit_h, file = path)
+      endif
+
+      ! Schema header ('#' comment lines; readers that predate the header
+      ! can skip them, numeric content is unchanged)
+      ! Column 2 is rho*n0: the MASS density in units of m_H per cm^3 (metals
+      ! included under the eos_metals policy), not a number density. Multiply by
+      ! m_H to get g/cm^3.
+      write(unit_h,'(A)') '# EXHALE schema 2'
+      if (present(adv_T_status)) then
+         write(unit_h,'(A)') '# columns r[Rp] rho[mH/cm3] v[cm/s] p[cgs] '//     &
+                        'T[K] heat[erg/cm3/s] cool[erg/cm3/s] '//           &
+                        'adv_T_status adv_comp_status adv_mass_row'
+      else
+         write(unit_h,'(A)') '# columns r[Rp] rho[mH/cm3] v[cm/s] p[cgs] '//     &
+                        'T[K] heat[erg/cm3/s] cool[erg/cm3/s]'
+      endif
+      ! Which rows are physical. The loop below writes 1-Ng..N+Ng, so the
+      ! first Ng and the last Ng rows are GHOST cells, filled by Apply_BC
+      ! from the interior (lower: fixed base state; upper: zero-gradient /
+      ! WENO3 extrapolation). Their rho*v*r^2 is a boundary extrapolation,
+      ! not part of the solution, and including them in a flux-spread or
+      ! residual measure doubles it: the accepted flux spread of the
+      ! HD 189733 b solve is 4.64e-3 over the physical cells and 1.05e-2 if
+      ! the two upper ghost rows are counted (section 133.6). The line is a
+      ! '#' comment, so no reader's numeric parse and no golden changes.
+
+         call write_row_layout_header(unit_h)
+         if (flag .eq. 'eq') then
+            ! What the state in this file was produced under (see the
+            ! routine). Hydro_ioniz.txt is what a restart is fed as
+            ! Hydro_ioniz_IC.txt, so this is the file the line has to
+            ! travel in.
+            call write_coupling_state_header(unit_h)
+            ! The pass snapshot says what it is on a line of its own,
+            ! beside the certification pair it carries.
+            if (present(pass_statement))                               &
+               write(unit_h,'(A)') '# '//trim(pass_statement)
+         else
+            call write_derived_provenance_header(unit_h)
+         endif
+         call write_provenance_header(unit_h)
+         call write_base_boundary_header(unit_h)
+         call write_molecular_seed_header(unit_h)
+         ! The reservoir, species schema, physical grid, constants, options
+         ! and clock the state was produced under: what a restart of this
+         ! file is compared against (see the routine).
+         call write_restart_metadata_header(unit_h)
+         ! What the two status columns mean, what the stationarity of the
+         ! input was judged by, what the product is, and how many rows carry
+         ! each value (see the routine).
+         if (present(adv_T_status))                                         &
+            call write_adv_validity_header(unit_h, adv_T_status, adv_comp_status)
+         do j = 1-Ng,N+Ng
+            if (present(adv_T_status)) then
+               write(unit_h,*) r(j),        &     ! Rad. dist.
+                        rho(j)*n0,     &     ! Density
+                        v(j)*v0,       &     ! Velocity
+                        p(j)*p0,       &     ! Pressure
+                        T(j)*T0,       &     ! Temperature
+                        heat(j)*q0,    &     ! Rad. heat.
+                        cool(j)*q0,    &     ! Rad. cool.
+                        adv_T_status(j),  &  ! Validity of its temperature
+                        adv_comp_status(j),& ! Validity of its composition
+                        mrow(j)              ! The measure both were decided by
+            else
+               write(unit_h,*) r(j),        &     ! Rad. dist.
+                        rho(j)*n0,     &     ! Density
+                        v(j)*v0,       &     ! Velocity
+                        p(j)*p0,       &     ! Pressure
+                        T(j)*T0,       &     ! Temperature
+                        heat(j)*q0,    &     ! Rad. heat.
+                        cool(j)*q0           ! Rad. cool.
+            endif
+         enddo
+      close(unit_h)
+      end subroutine write_hydro_state_file
+
+      ! ------------------------------------------------------------------ !
+
+      subroutine write_species_state_file(path, flag, nhi, nhii, nhei,     &
+                                          nheii, nheiii, nheiTR, nm,       &
+                                          adv_T_status, adv_comp_status,   &
+                                          pass_statement, ios_open)
+      ! THE COMPOSITION HALF OF A STATE, to the file named: every species
+      ! density of every row, ghosts included. The molecular and oxygen
+      ! columns are read from nmol_eq and nox_eq, so a caller refreshes them
+      ! from the state it writes first (molecular_carrier_densities_from_state).
+      ! pass_statement and ios_open as in write_hydro_state_file.
+      character(len=*), intent(in) :: path
+      character(len=2), intent(in) :: flag
+      real*8, dimension(1-Ng:N+Ng), intent(in) :: nhi, nhii
+      real*8, dimension(1-Ng:N+Ng), intent(in) :: nhei, nheii, nheiii
+      real*8, dimension(1-Ng:N+Ng), intent(in) :: nheiTR
+      real*8, dimension(1-Ng:N+Ng,n_mion), intent(in) :: nm
+      integer, dimension(1-Ng:N+Ng), intent(in), optional :: adv_T_status
+      integer, dimension(1-Ng:N+Ng), intent(in), optional :: adv_comp_status
+      character(len=*), intent(in), optional :: pass_statement
+      integer, intent(out), optional :: ios_open
+      integer :: unit_i, j, i
+
+      if (present(ios_open)) then
+         open(newunit = unit_i, file = path, status = 'replace',          &
+              action = 'write', iostat = ios_open)
+         if (ios_open .ne. 0) return
+      else
+         open(newunit = unit_i, file = path)
+      endif
+
+      ! Schema header: species labels in column order, generated from the
+      ! species table so they stay correct when species are added.
+      write(unit_i,'(A)') '# EXHALE schema 2'
+      ! The advection post-process reconstructs an H/He + trace-metal gas and
+      ! does not carry the molecular or oxygen species: their columns below
+      ! are the EQUILIBRIUM values, written beside advection-corrected H, He
+      ! and metal columns. Say so in the file rather than only in the module
+      ! that produces it, so that a reader of Ion_species_adv.txt cannot take
+      ! them for corrected profiles. Lifting the limitation is separate work.
+      if (flag .ne. 'eq' .and. (thereis_mol .or. thereis_oxychem)) then
+         write(unit_i,'(A)') '# NOTE the molecular columns (H2 H2p H3p HeHp)'// &
+                        ' and, when present, the oxygen columns'
+         write(unit_i,'(A)') '#   (OH H2O CO) are NOT advection-corrected:'//   &
+                        ' the post-process reconstructs an'
+         write(unit_i,'(A)') '#   H/He + trace-metal gas, so those columns'//   &
+                        ' are the equilibrium solution and the'
+         write(unit_i,'(A)') '#   metal columns inside the molecular layer'//   &
+                        ' inherit that approximation.'
+      endif
+      write(unit_i,'(A)', advance='no') '# columns r[Rp] HI HII HeI HeII '// &
+                                   'HeIII HeITR'
+      do i = 1,n_mion
+         write(unit_i,'(A)', advance='no') ' '//trim(mion_name(i))
+      enddo
+      ! molecular columns (present only when thereis_mol)
+      if (thereis_mol) write(unit_i,'(A)', advance='no') ' H2 H2p H3p HeHp'
+      ! oxygen-carrier columns (present only when thereis_oxychem)
+      if (thereis_oxychem) write(unit_i,'(A)', advance='no') ' OH H2O CO'
+      ! The validity of each row travels with the species columns as well,
+      ! so a reader of this file alone can tell a corrected composition from
+      ! the run's own (see write_adv_validity_header).
+      if (present(adv_T_status)) write(unit_i,'(A)', advance='no')            &
+                                   ' adv_T_status adv_comp_status'
+      write(unit_i,'(A)') ''
+
+      call write_row_layout_header(unit_i)
+      ! THE PASS SNAPSHOT STATES ITS CLAIM IN BOTH HALVES. The solved state
+      ! states it on Hydro_ioniz alone; the snapshot writes the coupling
+      ! line here as well, so that a pair whose two halves were written
+      ! by different passes (a run killed between the two renames of
+      ! write_pass_state_pair) states two certification reasons and is
+      ! refused by load_IC (adopt_certification_claim) instead of being
+      ! loaded as one state.
+      if (present(pass_statement)) then
+         call write_coupling_state_header(unit_i)
+         write(unit_i,'(A)') '# '//trim(pass_statement)
+      endif
+      ! The derived product states the fields of the state it was derived
+      ! from, as Hydro_ioniz_adv.txt does (see the routine).
+      if (flag .ne. 'eq') call write_derived_provenance_header(unit_i)
+      call write_base_boundary_header(unit_i)
+      call write_molecular_seed_header(unit_i)
+      ! Both state files carry the block: they are two halves of one state,
+      ! and a restart reads both, so a pair whose halves state different
+      ! configurations is refused rather than half-loaded.
+      call write_restart_metadata_header(unit_i)
+      if (present(adv_T_status))                                         &
+         call write_adv_validity_header(unit_i, adv_T_status, adv_comp_status)
+      do j = 1-Ng,N+Ng
+
+         if (present(adv_T_status)) then
+            ! The advection-corrected write. Its own statements, kept apart
+            ! from the equilibrium ones below so that the equilibrium file
+            ! is written by the statements it always was.
+            if (thereis_oxychem) then
+               write(unit_i,*) r(j), nhi(j)*n0, nhii(j)*n0, nhei(j)*n0,       &
+                        nheii(j)*n0, nheiii(j)*n0, nheiTR(j)*n0,         &
+                        (nm(j,i)*n0, i = 1,n_mion),                      &
+                        (nmol_eq(j,i), i = 1,4),                         &
+                        (nox_eq(j,i), i = 1,3),                          &
+                        adv_T_status(j), adv_comp_status(j)
+            else if (thereis_mol) then
+               write(unit_i,*) r(j), nhi(j)*n0, nhii(j)*n0, nhei(j)*n0,       &
+                        nheii(j)*n0, nheiii(j)*n0, nheiTR(j)*n0,         &
+                        (nm(j,i)*n0, i = 1,n_mion),                      &
+                        (nmol_eq(j,i), i = 1,4),                         &
+                        adv_T_status(j), adv_comp_status(j)
+            else
+               write(unit_i,*) r(j), nhi(j)*n0, nhii(j)*n0, nhei(j)*n0,       &
+                        nheii(j)*n0, nheiii(j)*n0, nheiTR(j)*n0,         &
+                        (nm(j,i)*n0, i = 1,n_mion),                      &
+                        adv_T_status(j), adv_comp_status(j)
+            endif
+         else if (thereis_oxychem) then
+            write(unit_i,*) r(j), nhi(j)*n0, nhii(j)*n0, nhei(j)*n0,        &
+                     nheii(j)*n0, nheiii(j)*n0, nheiTR(j)*n0,          &
+                     (nm(j,i)*n0, i = 1,n_mion),                       &
+                     (nmol_eq(j,i), i = 1,4),                          &
+                     (nox_eq(j,i), i = 1,3)   ! OH H2O CO (already cm^-3)
+         else if (thereis_mol) then
+            write(unit_i,*) r(j), nhi(j)*n0, nhii(j)*n0, nhei(j)*n0,        &
+                     nheii(j)*n0, nheiii(j)*n0, nheiTR(j)*n0,          &
+                     (nm(j,i)*n0, i = 1,n_mion),                       &
+                     (nmol_eq(j,i), i = 1,4)  ! H2 H2+ H3+ HeH+ (already cm^-3)
+         else
+         write(unit_i,*) r(j),       & ! Rad. dist.
+                  nhi(j)*n0,    & ! HI
+                  nhii(j)*n0,   & ! HII
+                  nhei(j)*n0,   & ! HeI
+                  nheii(j)*n0,  & ! HeII
+                  nheiii(j)*n0, & ! HeIII
+                  nheiTR(j)*n0, & ! HeITR
+                  (nm(j,i)*n0, i = 1,n_mion)  ! metal ions (canonical order)
+         endif
+      enddo
+      close(unit_i)
+      end subroutine write_species_state_file
+
+      ! ------------------------------------------------------------------ !
+
+      subroutine write_pass_state_pair(pass_now, pass_statement, rho, v,  &
+                                       p, T, heat, cool, nhi, nhii, nhei, &
+                                       nheii, nheiii, nheiTR, nm, f_sp,   &
+                                       written)
+      ! THE STATE ONE OUTER PASS OF THE STATIONARY ITERATION HANDS TO THE
+      ! NEXT, as a restartable pair:
+      !
+      !    output/Hydro_ioniz_last_pass.txt   output/Ion_species_last_pass.txt
+      !
+      ! overwritten at every pass, so that a run stopped from outside (a
+      ! wall-clock timeout, a kill) leaves the state of its last completed
+      ! pass behind instead of nothing. Copied to Hydro_ioniz_IC.txt /
+      ! Ion_species_IC.txt the pair is a "Load IC? True" restart like any
+      ! other state file: the writers, header lines and restart tokens are
+      ! the ones of the solved state (write_hydro_state_file,
+      ! write_species_state_file).
+      !
+      ! IT IS NEVER A CERTIFIED STATE. The pair carries certified=F
+      ! cert_reason=pass_snapshot_p<pass>: the certification of a pass is
+      ! taken before its composition update, and the state written here is
+      ! the state after it, on which no certification was made. The pair
+      ! the run holds for its own final state is put back afterwards, so the
+      ! files the run writes at its end are not touched. Both halves carry
+      ! the coupling line (the solved state writes it on Hydro_ioniz alone),
+      ! so a pair assembled from two passes states two reasons and load_IC
+      ! refuses it (adopt_certification_claim).
+      !
+      ! WRITTEN SO THAT A KILL CANNOT LEAVE A PARTIAL FILE. Each half is
+      ! written to '<name>.part' in the same directory and renamed onto its
+      ! name only after both halves were written and closed; a kill during
+      ! the writing leaves the previous pass's pair whole. A kill between
+      ! the two renames leaves halves of two passes, which load_IC refuses
+      ! as above.
+      !
+      ! nmol_eq and nox_eq, which the molecular and oxygen columns are read
+      ! from, are refreshed from (rho, f_sp) for the write and put back
+      ! after it, so nothing this routine does is read by the run later.
+      integer, intent(in)          :: pass_now
+      character(len=*), intent(in) :: pass_statement
+      real*8, dimension(1-Ng:N+Ng), intent(in) :: rho, v, p, T, heat, cool
+      real*8, dimension(1-Ng:N+Ng), intent(in) :: nhi, nhii
+      real*8, dimension(1-Ng:N+Ng), intent(in) :: nhei, nheii, nheiii
+      real*8, dimension(1-Ng:N+Ng), intent(in) :: nheiTR
+      real*8, dimension(1-Ng:N+Ng,n_mion), intent(in) :: nm
+      real*8, dimension(1-Ng:N+Ng,n_species), intent(in) :: f_sp
+      logical, intent(out) :: written
+      character(len=*), parameter :: hyd_name =                           &
+                                     './output/Hydro_ioniz_last_pass.txt'
+      character(len=*), parameter :: ion_name =                           &
+                                     './output/Ion_species_last_pass.txt'
+      character(len=len(state_certification_reason)) :: hold_reason
+      character(len=32) :: snap_reason
+      logical :: hold_cert
+      real*8, allocatable :: nmol_hold(:,:), nox_hold(:,:)
+      real*8, dimension(1-Ng:N+Ng) :: mrow_none
+      integer :: ios_h, ios_i, rc_h, rc_i
+
+      written = .false.
+      hold_cert   = state_is_certified
+      hold_reason = state_certification_reason
+      write(snap_reason,'(A,I0)') 'pass_snapshot_p', pass_now
+      call set_state_certified(.false., trim(snap_reason))
+      if (thereis_mol)     nmol_hold = nmol_eq
+      if (thereis_oxychem) nox_hold  = nox_eq
+      call molecular_carrier_densities_from_state(rho, f_sp)
+      mrow_none = 0.0d0
+
+      call write_hydro_state_file(hyd_name//'.part', 'eq', rho, v, p, T,  &
+                                  heat, cool, mrow_none,                  &
+                                  pass_statement = pass_statement,        &
+                                  ios_open = ios_h)
+      ios_i = -1
+      if (ios_h .eq. 0)                                                    &
+         call write_species_state_file(ion_name//'.part', 'eq', nhi,      &
+                                       nhii, nhei, nheii, nheiii, nheiTR, &
+                                       nm, pass_statement = pass_statement,&
+                                       ios_open = ios_i)
+
+      if (thereis_mol)     nmol_eq = nmol_hold
+      if (thereis_oxychem) nox_eq  = nox_hold
+      call set_state_certified(hold_cert, trim(hold_reason))
+
+      if (ios_h .ne. 0 .or. ios_i .ne. 0) then
+         write(*,'(A,I0,A)') ' (write_pass_state_pair) the state of pass ', &
+              pass_now, ' could not be opened for writing; the pair of'//  &
+              ' the previous pass is left as it was'
+         return
+      endif
+      rc_i = posix_rename(ion_name//'.part'//c_null_char,                 &
+                          ion_name//c_null_char)
+      rc_h = posix_rename(hyd_name//'.part'//c_null_char,                 &
+                          hyd_name//c_null_char)
+      if (rc_i .ne. 0 .or. rc_h .ne. 0) then
+         write(*,'(A,I0,A,I0,A,I0,A)') ' (write_pass_state_pair) the'//    &
+              ' state of pass ', pass_now, ' was written but not renamed'//&
+              ' (rename status ', rc_i, ', ', rc_h, '); its .part files'// &
+              ' are left beside the last pair'
+         return
+      endif
+      written = .true.
+      end subroutine write_pass_state_pair
 
       ! ------------------------------------------------------------------ !
 

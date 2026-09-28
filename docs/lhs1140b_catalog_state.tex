@@ -11,7 +11,7 @@
 \renewcommand{\arraystretch}{1.0}
 \title{The LHS 1140 b catalog: what is certified and what is not}
 \author{EXHALE}
-\date{2026-09-26}
+\date{2026-09-28}
 \begin{document}
 \maketitle
 
@@ -23,8 +23,15 @@ states certified under the atomic data as corrected on 2026-09-24 to
 other state, equivalent width, crossing and certificate below is of the
 physics before those corrections: none of those certificates holds under the
 corrected physics, and their equivalent widths are not current (the molecular
-family's crossing moved from He/H~=~1.46 to 1.70 on the catalog grid). They
-are re-solved next, family by family.}}
+family's crossing moved from He/H~=~1.46 to 1.70 on the catalog grid).
+\textbf{The code moved again on 2026-09-26 to 2026-09-28} (sections 29.1 to
+29.12 of the same log: an OpenMP race in the metal sweep, the interdiffusion
+enthalpy flux, the He$^+$\,+\,H charge exchange near threshold, the
+\texttt{\_adv} post-process made second order, the lower face placed at the
+reservoir level): every number of this summary, section~5 included,
+predates those changes. By the user's decision of 2026-09-26 certified rows
+are not re-solved after each change; the models that did not solve come
+first (section~3).}}
 \end{center}
 
 \noindent
@@ -397,6 +404,40 @@ diffusion at $K_{zz}=10^{9}$, certifies from He/H~=~0.55 to 9.7 (sections 4
 and 5). What separates those states from the refused ones, beyond the
 measurements above, was not established.
 
+\subsection*{Solved since, by continuation (2026-09-26 to 2026-09-28)}
+
+Several of the cases above, and the rungs between them, now certify
+(MEASURED; runs under \url{LHS1140b/models/.P1/s2_continuation/},
+\texttt{md/Update\_EXHALE\_stage3.md} section 29.13). They are not yet
+published to the catalog, and they are of the code after the changes named
+in the banner, so they are not comparable one to one with the rows of
+sections 4 and 5.
+\begin{itemize}
+\item \textbf{The well-mixed molecular family is the $K_{zz}=10^{9}$ one with
+      \texttt{He\_diffusion} off}: its \texttt{base.inp} carries
+      \texttt{Kzz\_base 1.0e9}, which the carrier transport reads. A certified
+      $K_{zz}=10^{9}$ state with He/H set uniform
+      (\texttt{map\_state\_to\_grid.py --uniform}) certifies with diffusion
+      off in 10 passes, and rungs in He/H then certify down to 0.4: 2.13,
+      1.8, 1.4, 1.1, 0.85, 0.76, 0.68 and 0.61 on the grid of this summary,
+      and 0.61, 0.55 and 0.4 on the face-at-level grid of the final code,
+      each in 10 to 21 passes. Starting the direct way from the catalog's
+      refused state, the same case is refused again at pass 5.
+\item \textbf{The molecular $K_{zz}=10^{9}$ family below the crossing}:
+      He/H~=~1.45 and 1.30, then 1.223, 1.186, 1.168 and 1.15 on the final
+      code. Below He/H~$\approx 1.2$ the rungs must be small (0.01 to 0.02
+      in log He/H) and the carrier movement bound held at $10^{-2}$: the
+      growing bound of the corrected progress control drives a sawtooth of
+      the H$_2$ carrier row there (\texttt{md/TO\_BE\_DONE.md} item (g)).
+\item \textbf{\texttt{molecular\_photochem\_gj1132\_kzzprofile/HeH9}}
+      certifies (41 passes) once the lower-ghost closure defect of section
+      29.9 of the log is fixed; the earlier runs had stopped on it.
+\item \textbf{Still unsolved}: $K_{zz}=10^{9}$ below He/H~=~1.15 (1.12
+      running), well-mixed below 0.4, and the photochemical He/H~=~2.09,
+      whose gated row oscillates between 0.08 and 0.54 with the hydrodynamic
+      solve failing on most passes.
+\end{itemize}
+
 \section{The models that are certified}
 
 Ninety-one models carry a certificate. The table lists each with the
@@ -711,8 +752,13 @@ kernel.}
 \includegraphics[width=\textwidth]{figures/lhs1140b_kzz1e9_molecular_rungs_final.pdf}
 \caption{The certified molecular $K_{zz}=10^{9}$ states He/H~=~1.52 to 2.13
 under the corrected atomic physics (advection-corrected profiles):
-temperature, velocity, $\rho/m_{\rm H}$, H$_2$ fraction, H~\textsc{ii}
-fraction and $n({\rm He}\,2^3S)$ against radius.}
+temperature, velocity, $\rho/m_{\rm H}$, the number densities of all
+hydrogen nuclei $n({\rm H})$ and all helium nuclei $n({\rm He})$ (every
+ionization stage, level and molecule counted: H~\textsc{i}, H~\textsc{ii},
+2\,H$_2$, 2\,H$_2^+$, 3\,H$_3^+$ and HeH$^+$ for hydrogen; He~\textsc{i},
+He~\textsc{ii}, He~\textsc{iii} and HeH$^+$ for helium), their ratio
+$n({\rm He})/n({\rm H})$, the H~\textsc{ii} fraction, $n({\rm He}\,2^3S)$
+and the H$_2$ fraction against radius.}
 \label{fig:molrungsfinal}
 \end{figure}
 
@@ -770,7 +816,9 @@ which is what lets a later measurement, or a ladder that resolves 0.178
 \centering
 \includegraphics[width=\textwidth]{figures/du_stop_vs_stationary_profiles.pdf}
 \caption{The certified stationary solution and the flux-converged refused
-state of the atomic \texttt{scalar\_kzz1e9/HeH2.13}, as functions of radius.}
+state of the atomic \texttt{scalar\_kzz1e9/HeH2.13}, as functions of radius.
+The last panel is the number density of all helium nuclei, He~\textsc{i} +
+He~\textsc{ii} + He~\textsc{iii}, independent of ionization and level.}
 \end{figure}
 
 \begin{figure}[htbp]

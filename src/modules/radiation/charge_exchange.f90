@@ -2128,7 +2128,8 @@
       !       k_nonrad is the reciprocity transform of the H+ + He(1s^2)
       !       cross section of Loreau, Ryabchenko & Vaeck (2014), so k(B1)
       !       is the Maxwellian average of that computed cross section
-      !       itself (cut at 15 eV/u, the note at the function); the
+      !       itself (with the near-threshold form of the note at the
+      !       function); the
       !       detailed-balance form only moves the tabulation to the
       !       exothermic direction, where the table interpolates well.
       !       The rate table of an earlier calculation of this direction,
@@ -2204,6 +2205,14 @@
       !       and 3.8e-15 from the fit: 1.4x and 1.9x the fit above 1e4 K,
       !       where the recomputation of Courtney et al. (below) is 0.85x
       !       of it. Band carried above 1e4 K: 0.85x - 1.9x.
+      !       BELOW 1000 K a digitization of Courtney et al. (2021) Fig. 3
+      !       (the NLTE zero-density curve without stimulated processes,
+      !       about 3% a point, made in the MoCHII tree on 2026-09-26)
+      !       lies 1.9x above this fit at 100 K and 2.8x at 10 K, while it
+      !       agrees within 2% over 1e3 - 1e4 K. A fit to their tabulated
+      !       rate (University of Georgia Molecular Opacity Project) would
+      !       replace this power law; the site no longer exists (2026-09-27). The same
+      !       row is carried by MoCHII (agreed 2026-09-26).
       !       PUBLISHED RANGE 1 - 1000 K: their introduction says they
       !       present the rate coefficient of the radiative processes "for
       !       temperatures up to 1000 K", and Table I stops there. EXHALE
@@ -2538,28 +2547,33 @@
       !     E_r = E_f + 10.989 eV (c.m.), statistical weights 4 for
       !     He+(1s) + H(1s) and 1 for He(1^1S) + H+ ,
       ! with E[eV/u] fixing the relative speed, E_cm = mu[u] E, so that the
-      ! reverse threshold lies at 13.65 eV/u. The table below is the
-      ! Maxwellian average of this sigma_f (DERIVED, mu_f = 0.8051 u), with
-      ! sigma_r set to ZERO BELOW 15 eV/u: the fit runs smoothly through
-      ! the threshold and stays finite under it (1.3e-23 cm^2 at 10 eV/u,
-      ! 8.05 eV c.m., where the channel is closed), so it does not follow
-      ! the threshold, and their Fig. 1 shows the calculation from 15 eV/u.
-      ! Interpolated linearly in ln k against 1/T, the shape of a rate set
-      ! by a threshold; the first chord is continued below 300 K (where the
-      ! rate is below 1e-33) and the 1e5 K value is held above 1e5 K.
+      ! reverse threshold lies at x_th = 13.655 eV/u. The table below is
+      ! the Maxwellian average of this sigma_f (DERIVED, mu_f = 0.8051 u;
+      ! generator cooling_data/heii_h_charge_exchange_rate.py). Their
+      ! calculation starts at 15 eV/u (their Fig. 1) and the fit does not
+      ! follow the threshold (it stays finite under it, 1.3e-23 cm^2 at
+      ! 10 eV/u, where the channel is closed), so between x_th and 15 eV/u
+      ! the reverse cross section is taken as
+      !     sigma_r(x) = sigma_r(15) sqrt((x - x_th)/(15 - x_th)),
+      ! zero below x_th: by reciprocity, sigma_f v constant at low forward
+      ! energy, capture on the ion-induced dipole potential with a transfer
+      ! probability independent of energy (an assumption over forward
+      ! energies 0 - 1.08 eV that no calculation tests). The same form is
+      ! carried by MoCHII (2026-09-26), so the two codes agree.
+      ! Interpolated linearly in ln k against 1/T; the first chord is
+      ! continued below 300 K and the 1e5 K value is held above 1e5 K.
       !
       ! UNCERTAINTY, as factors on the carried value (DERIVED from the
       ! published cross sections):
-      !   - Near threshold, T < 3e4 K. Carrying the fit through the
-      !     threshold instead of cutting it at 15 eV/u gives 1.3x at 3e4 K,
-      !     2.9x at 1e4 K, 6.6x at 6e3 K, 53x at 3e3 K and 2.3e5x at
-      !     1e3 K. That is the upper edge; the carried value is the lower
-      !     one, because the cross section must vanish at threshold and the
-      !     calculations read here fall steeply toward it (Kimura et al.
-      !     1993, Fig. 1: two decades between 20 eV and the threshold).
-      !     At the carried value the channel is 1.5% of the radiative one
-      !     at 1e4 K and below 0.2% of it under 3e3 K; at the upper edge it
-      !     would be 4% at 1e4 K and 21% at 1e3 K.
+      !   - Near threshold, T < 3e4 K. The two treatments of 13.655 -
+      !     15 eV/u that bracket the carried one: the fit carried through
+      !     the threshold (finite there, so sigma_f ~ 1/E_f and a rate
+      !     growing without bound as T falls) gives 1.32x at 1e4 K, 2.1x at
+      !     3e3 K and 3.6x at 1e3 K; sigma_r = 0 below 15 eV/u, carried
+      !     here before 2026-09-26, closes a channel that is open and gives
+      !     0.46x at 1e4 K, 0.039x at 3e3 K and 1.5e-5x at 1e3 K. At the
+      !     carried value the channel is 3.3% of the radiative one at 1e4 K
+      !     and 5.9% at 1e3 K.
       !   - Above 3e4 K, where the calculations disagree. Kimura, Lane,
       !     Dalgarno & Dixson (1993), ApJ 405, 801, Table 1 (the reverse
       !     cross section at 20 - 5000 eV, energies read as c.m.), turned
@@ -2578,8 +2592,8 @@
       !     of Kimura et al. (1993, the same group) by 230 - 370x at 20
       !     and 50 eV, while the two reverse calculations agree with each
       !     other to within a factor 8.
-      ! Relative to the radiative channel B2 the carried rate is 1.5% at
-      ! 1e4 K, 2.2% at 3e4 K and 4.7% at 1e5 K: He+ + H is removed almost
+      ! Relative to the radiative channel B2 the carried rate is 3.3% at
+      ! 1e4 K, 2.6% at 3e4 K and 4.7% at 1e5 K: He+ + H is removed almost
       ! entirely by radiative charge transfer in this whole range.
       !
       ! Kingdon & Ferland (1996), ApJS 106, 205, Table 1 row He+ (a =
@@ -2587,7 +2601,7 @@
       ! before 2026-09-26, is a fit to the Zygelman et al. values WITHOUT
       ! the 1/4: it lies within 13 - 30% of the singlet-conditional
       ! Maxwellian average at 5e4 - 1e5 K and 55x above it at 1e4 K, which
-      ! puts it 200x above the carried value at 1e4 K and 3600x at 1e5 K
+      ! puts it 93x above the carried value at 1e4 K and 3500x at 1e5 K
       ! (DERIVED).
       double precision function nonradiative_electron_capture_Hep_from_H(T) &
                                 result(k)
@@ -2597,12 +2611,12 @@
          1.5d3, 2.0d3, 3.0d3, 4.0d3, 5.0d3, 6.0d3, 7.0d3, 8.0d3, 1.0d4,  &
          1.2d4, 1.5d4, 2.0d4, 2.5d4, 3.0d4, 4.0d4, 5.0d4, 6.0d4, 8.0d4,  &
          1.0d5 ]
-      real*8, parameter  :: k_l(n_l) = [ 5.006d-34, 7.293d-27,           &
-         8.095d-24, 1.481d-21, 8.024d-20, 5.684d-19, 3.827d-18,          &
-         9.597d-18, 1.635d-17, 2.307d-17, 2.929d-17, 3.486d-17,          &
-         4.414d-17, 5.138d-17, 5.964d-17, 6.945d-17, 7.699d-17,          &
-         8.370d-17, 9.714d-17, 1.124d-16, 1.304d-16, 1.769d-16,          &
-         2.387d-16 ]
+      real*8, parameter  :: k_l(n_l) = [ 9.484d-17, 9.506d-17,           &
+         9.528d-17, 9.562d-17, 9.617d-17, 9.670d-17, 9.754d-17,          &
+         9.797d-17, 9.805d-17, 9.789d-17, 9.758d-17, 9.721d-17,          &
+         9.644d-17, 9.579d-17, 9.522d-17, 9.541d-17, 9.693d-17,          &
+         9.962d-17, 1.081d-16, 1.205d-16, 1.368d-16, 1.811d-16,          &
+         2.418d-16 ]
       real*8  :: x, w, lnk
       integer :: i
       if (T .le. 0.0d0) then

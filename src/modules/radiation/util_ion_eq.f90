@@ -835,23 +835,34 @@
 	! e_auger,s (metal_shell_relaxation); the fluorescence and the
 	! ionization energy of the further electrons are not electron energy
 	! and are not in mpa_w.  Formed once for a grid, inside a critical
-	! region, so a first call from a parallel region is safe; a grid that
-	! has changed since (a new set_energy_vectors) is detected by
-	! comparison and the tables are rebuilt.
+	! region; a grid that has changed since (a new set_energy_vectors) is
+	! detected by comparison and the tables are rebuilt.
+	!
+	! A FIRST CALL FROM A PARALLEL REGION IS SAFE because the flag is
+	! published: mpa_ready is written with a sequentially consistent atomic
+	! write after the tables are filled and read with a sequentially
+	! consistent atomic read before them, so a thread that sees it set also
+	! sees the tables the setting thread wrote.  A REBUILD is safe only
+	! outside a parallel region, since it deallocates tables another thread
+	! may be reading; e_v is formed only at initialization
+	! (set_energy_vectors, sed_read), serially, so every rebuild is serial.
 	subroutine metal_photoabsorption_spectral_tables
 	integer :: k, is, i, ie
 	real*8  :: E, sg, eth, eaug, pmul, efl, eim, Ee(2), wt(n_dal_E)
 	logical :: current
 
+	!$omp atomic read seq_cst
 	current = mpa_ready
 	if (current) current = (size(mpa_e_v) .eq. Nl)
 	if (current) current = all(mpa_e_v .eq. e_v(1:Nl))
 	if (current) return
 	!$omp critical (metal_photoabsorption_table)
+	!$omp atomic read seq_cst
 	current = mpa_ready
 	if (current) current = (size(mpa_e_v) .eq. Nl)
 	if (current) current = all(mpa_e_v .eq. e_v(1:Nl))
 	if (.not. current) then
+		!$omp atomic write seq_cst
 		mpa_ready = .false.
 		if (allocated(mpa_e_v))       deallocate(mpa_e_v)
 		if (allocated(mpa_sig_multi)) deallocate(mpa_sig_multi)
@@ -885,6 +896,7 @@
 			enddo
 		enddo
 		mpa_e_v   = e_v(1:Nl)
+		!$omp atomic write seq_cst
 		mpa_ready = .true.
 	endif
 	!$omp end critical (metal_photoabsorption_table)
@@ -3598,14 +3610,24 @@
 	! absorber that cannot take a photon drops out of that channel without
 	! a test. Formed on the first call and again only if a switch that
 	! selects a cross section ("ATES photoionization rate", the metals)
-	! has changed (the fill is a critical region, so a first call from
-	! inside a parallel region is safe).
+	! has changed. The fill is a critical region that re-tests the flag, and
+	! the flag is published with sequentially consistent atomic accesses (as
+	! in metal_photoabsorption_spectral_tables), so a first call from inside
+	! a parallel region is safe; both callers run it serially before their
+	! own parallel loops.
 	subroutine on_the_spot_cross_sections
 	integer :: ic, im, k, is
 	real*8  :: sg, eth, eaug, pmul, efl, eim
-	if (otsp_ready .and. (otsp_ates .eqv. ates_photoion_rate)           &
+	logical :: current
+	!$omp atomic read seq_cst
+	current = otsp_ready
+	if (current .and. (otsp_ates .eqv. ates_photoion_rate)              &
 	    .and. (otsp_metals .eqv. thereis_metals)) return
 	!$omp critical (on_the_spot_cross_section_table)
+	!$omp atomic read seq_cst
+	current = otsp_ready
+	if (.not. (current .and. (otsp_ates .eqv. ates_photoion_rate)       &
+	           .and. (otsp_metals .eqv. thereis_metals))) then
 	do ic = 1,n_otsp_ch
 		otsp_sab(1,ic) = sigma(otsp_E(ic), 1.0d0, e_th_HI)
 		otsp_sab(2,ic) = sigma_HeI(otsp_E(ic))
@@ -3639,7 +3661,9 @@
 	enddo
 	otsp_ates   = ates_photoion_rate
 	otsp_metals = thereis_metals
+	!$omp atomic write seq_cst
 	otsp_ready  = .true.
+	endif
 	!$omp end critical (on_the_spot_cross_section_table)
 	end subroutine on_the_spot_cross_sections
 

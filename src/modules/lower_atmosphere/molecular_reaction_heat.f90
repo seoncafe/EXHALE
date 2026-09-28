@@ -733,9 +733,12 @@
       ! body.  No enthalpy changes either way; the formation table is not
       ! reachable from here.
       !
-      ! The key is read once and held.  Both callers -- the heating
-      ! assembly and the H(n=2) update -- run serially, outside any parallel
-      ! region, so the first read cannot race.
+      ! The key is read once and held, in state shared by the threads.  The
+      ! heating assembly, the H(n=2) source and the validity report call this
+      ! serially; set_mol_coeffs (System_HeH_mol) calls it from inside the
+      ! OpenMP cell sweep of ioniz_eq and serializes the call with the named
+      ! critical region exhale_reaction_heat_recipients_key.  A new caller
+      ! inside a parallel region must take the same critical region.
       character(len=8) :: env
       if (.not. recipients_key_read) then
          env = ''

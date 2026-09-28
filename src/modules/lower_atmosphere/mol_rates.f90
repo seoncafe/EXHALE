@@ -130,8 +130,8 @@
 
       implicit none
       private
-      public :: rk_R1_Hp_rec,   rk_R2_Hep_rec,  rk_R3_H_cion,            &
-                rk_R4_He_cion,  rk_R5_H2p_dr,   rk_R6_H3p_dr_H2,         &
+      public :: rk_R1_Hp_rec,   rk_R2_Hep_rec,                           &
+                rk_R5_H2p_dr,   rk_R6_H3p_dr_H2,                         &
                 rk_R7_H3p_dr_3H, rk_R8_H2p_H2,  rk_R9_H2p_H,             &
                 rk_R10_Hp_H2v4, rk_R11_H3p_H,   rk_R12_H2_thdis,         &
                 rk_R13_Hp_H2_M, rk_R14_H2_edis, rk_R15_3body_H2,         &
@@ -257,10 +257,18 @@
 
       ! R1-R4 are the atomic H/He reactions of Table 1.  They are also the
       ! set the input key "Atomic rate set: Koskinen2022" puts in front of
-      ! EXHALE's own atomic rates: Cool_coeff calls these four functions in
-      ! that mode, so the published coefficients have one definition, here,
-      ! whether the run is molecular or atomic.  They are elemental for that
-      ! caller, whose accessors are elemental themselves.
+      ! EXHALE's own atomic rates.  R1 and R2 are defined here and Cool_coeff
+      ! calls them in that mode, so the published coefficients have one
+      ! definition whether the run is molecular or atomic.  They are
+      ! elemental for that caller, whose accessors are elemental themselves.
+      !
+      ! R3 (H + e -> H+ + 2e) and R4 (He + e -> He+ + 2e) are the Voronov
+      ! (1997) fits with Voronov's own Table I rows (13.6 eV, 2.91e-8,
+      ! 0.232, 0.39 and 24.6 eV, 1.75e-8, 0.180, 0.35), which are the
+      ! collisional ionization rates the code evaluates in every mode.  Their
+      ! one definition is Cool_coeff's voronov_ci with those rows
+      ! (ci_HI_new, ci_HeI_new), which ci_rate_HI and ci_rate_HeI return in
+      ! the Koskinen2022 mode as well.
 
       ! R1: H+ + e -> H + hv                    (Storey & Hummer 1995)
       elemental double precision function rk_R1_Hp_rec(Te) result(k)
@@ -272,28 +280,6 @@
       elemental double precision function rk_R2_Hep_rec(Te) result(k)
       real*8, intent(in) :: Te
       k = 4.6d-12*(300.0d0/Te)**0.64d0
-      end function
-
-      ! R3: H + e -> H+ + 2e                    (Voronov 1997)
-      ! U = 13.6 eV / E_e;  E_e = kB Te in eV.  The eV Boltzmann constant is
-      ! the CODATA value owned by global_parameters, not a rounded local
-      ! copy: it is not part of the published fit.  The 13.6 eV IS: it is
-      ! Voronov's Table I entry, fitted together with the four coefficients
-      ! below, so it stays as published rather than reading the measured
-      ! threshold e_th_HI.  Same for the 24.6 eV of R4.
-      elemental double precision function rk_R3_H_cion(Te) result(k)
-      real*8, intent(in) :: Te
-      real*8 :: U
-      U = 13.6d0/(kb_eV*Te)
-      k = 2.91d-8*U**0.39d0*exp(-U)/(0.232d0 + U)
-      end function
-
-      ! R4: He + e -> He+ + 2e                  (Voronov 1997)
-      elemental double precision function rk_R4_He_cion(Te) result(k)
-      real*8, intent(in) :: Te
-      real*8 :: U
-      U = 24.6d0/(kb_eV*Te)
-      k = 1.75d-8*U**0.35d0*exp(-U)/(0.180d0 + U)
       end function
 
       ! R5: H2+ + e -> H + H                    (Auerbach et al. 1977)

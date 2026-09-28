@@ -353,8 +353,9 @@
 	! of the metastable). Sets ftr to the single triplet residual expression;
 	! verbatim-shared as row 4 of the TR / TR_metals systems and row 8 of the
 	! molecular system. b_heiTR is the He(2^3S) collisional-ionization
-	! coefficient (ci_HeI23S, threshold 4.8 eV): He(2^3S)+e- -> He+ + 2e-
-	! removes the triplet, so it enters as a destruction term -n_e*n_heiTR*b_heiTR.
+	! coefficient (ionization_rate_HeI_23S, threshold 4.8 eV):
+	! He(2^3S)+e- -> He+ + 2e- removes the triplet, so it enters as a
+	! destruction term -n_e*n_heiTR*b_heiTR.
 	! q31g is the 2^3S -> 1^1S electron-impact de-excitation, the
 	! detailed-balance reverse of q13 (Cool_coeff.f90), so the electron
 	! collisions between the two levels drive them towards their Boltzmann

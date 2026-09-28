@@ -7,7 +7,7 @@ Usage: k22_model_a_figures.py <run_output_dir> [<second_run_output_dir>] [<third
        matched run; benchmarks/koskinen2022_model_a/output is the superseded
        Roche-domain state of the morning of 2026-09-05, see the README there)
 
-The Model A curves are the digitized readings of docs/p23_published_profiles.md
+The Model A curves are the digitized readings of md/p23_published_profiles.md
 section 5.1 (Figure 8 densities, Figure 7 T and v; log10 n in cm^-3), on
 r/r_base = (r/R_p)/1.34, r_base being their 1 microbar lower boundary; ours is
 r/R_p, since our R_p IS the lower boundary (same absolute radius to 2e-4).

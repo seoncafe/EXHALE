@@ -1889,6 +1889,427 @@ certified row with a \texttt{not\_solved.md} beside it now reads "a later re-sol
 not the state shown: ..." (MEASURED on the table output). \texttt{MODELS.md} was
 not rewritten.
 
+\subsection{29. Errors fixed and models solved first: the plan of 2026-09-26}\label{29-errors-fixed-and-models-solved-first-the-plan-of-2026-09-26}
+
+User instruction (2026-09-26): re-checking solutions that move little
+against the observational error is not the priority; fixing errors and
+solving the models that do not solve is. Plan \texttt{md/PLAN\_20260926.md}; the
+user approved its recommendations (goldens and fixture refreshed; the
+composition-side solver work reopened if continuation does not close the
+cases; \texttt{diffusion\_check} taken out of the model count). New physics only
+where it can change results seriously; the rest is recorded, not applied.
+
+\subsubsection{29.1 An OpenMP data race in the metal sweep (fixed)}\label{291-an-openmp-data-race-in-the-metal-sweep-fixed}
+
+\texttt{meg\_g02} (the inner-shell Auger share of neutral photoionization to X++,
+added with binary f4da21f2 on 2026-09-25) was missing from the private list
+of the He + metals cell sweep (\texttt{ionization\_equilibrium.f90}, then \textasciitilde2137, a
+\texttt{default(shared)} loop), so threads overwrote each other\textquotesingle s value between the
+write and the two reads. MEASURED: route-B stationary restart of
+\texttt{wasp\_full\_newton} failed at 8 threads (composition elimination never
+contracts, \texttt{info\ =\ 2}) and certified at 1 thread; two 8-thread runs of one
+input differed before the solve started (\texttt{md/metal\_sweep\_openmp\_race\_20260926.md}).
+Every metals-on run at more than one thread since f4da21f2 was affected;
+the regression matrix (1 thread) and every metals-on catalog certificate
+(last published 2026-09-20) were not. Fix: \texttt{meg\_g02} private, and all four
+cell loops of \texttt{ioniz\_eq} converted to \texttt{default(none)} with explicit shared
+lists; an audit of every parallel region of \texttt{radiation/} and
+\texttt{lower\_atmosphere/} found one more, formal, race (two table-ready flags read
+without synchronization; now \texttt{omp\ atomic\ read/write\ seq\_cst}). New suite
+\texttt{src/tests/thread\_count\_identity/} (200 steps of \texttt{wasp\_full} at 1 and 8
+threads, data lines bitwise): 7db5afe9 FAIL (3.2e-3 Hydro, 5.4e-2 Ion),
+fixed binary PASS. The r0 case (route B, 8 threads) now certifies,
+\texttt{info\ =\ 0}, \textbar\textbar R\textbar\textbar{} 6.50e-9. No 1-thread run moved.
+
+\subsubsection{29.2 Fix batch (errors confirmed in the source)}\label{292-fix-batch-errors-confirmed-in-the-source}
+
+F1 free-free Gaunt factor: van Hoof et al. (2014) eq. (21) uses the
+infinite-mass Rydberg (READ, their sect. 2), so Ry/k = 157887.51 K, not
+157807 (the Hui \& Gnedin 1997 constant, kept in that fit); F2 the carrier
+diffusivity read by outputs and diagnostics was zero on a stationary path
+(MEASURED D\_H2 = 0 at every cell; now 7.9e6 - 8.2e9 cm\^{}2/s); F3 the
+determinism replay now passes \texttt{u} to \texttt{cell\_row\_scales}; F4 pressure formed
+before the composition refresh at 3 of 9 sites (coupled-block entry, after
+\texttt{solve\_steady\_*}, trial end; the other 6 verified not stale); F5 the CO
+column, dissociation rate and shielding factor joined the step checkpoint;
+F6 an inert \texttt{Coupled\ carrier\ solve} is reported; F7 five wrong comments;
+F8 the \texttt{\_adv} headers carry every provenance field; F10 seven callerless
+\texttt{Cool\_coeff} wrappers removed and the Voronov H/He fit defined once
+(rates bitwise unchanged). Effect on the regression inputs (single thread):
+F1 alone, at most 1.4e-4 relative (\texttt{wasp\_full} velocity), log10 Mdot
+unchanged to 4 digits.
+
+\subsubsection{29.3 The interdiffusion enthalpy flux (new physics, serious)}\label{293-the-interdiffusion-enthalpy-flux-new-physics-serious}
+
+The energy equation of a diffusing mixture carries q\_d = sum\_i h\_i J\_i
+(Cook 2009, Phys. Fluids 21, 055109, eqs. 11-13; Schunk 1977, Rev. Geophys.
+Space Phys. 15, 429, eqs. 15b, 16, 20c; READ). EXHALE moved He relative to H
+and carried no such term in either energy equation. MEASURED size on LHS
+1140 b He\_diffusion states: 13-26 \% of the local energy budget at
+1.1-5 R\_p (\texttt{md/interdiffusion\_enthalpy\_flux\_20260926.md}). Implemented in
+both routes (binary model: q\_d = J\_He (h\_He - h\_H), sensible enthalpies
+with the electrons each ion carries; formation energy verified to be
+carried already); key \texttt{Interdiffusion\ enthalpy\ flux:} default True with
+\texttt{He\_diffusion} (the term belongs to the equation), False only to match
+published models that omit it (Koskinen 2013, 2022; Yelle 2004); restart
+token \texttt{interdiff\_enth} (older states restart under
+\texttt{Restart\ option\ change:\ interdiff\_enth}). Suite
+\texttt{src/tests/interdiffusion\_enthalpy\_flux/} 18/18. Effect on the molecular
+He/H 1.8 state (24 + 24 passes, carrier row 1.6e-5 at the end, not yet
+certified): T -166 K median over 1.3-2 R\_p (largest -236 K, -4.4 \%),
+He/H -3.1 \%, the n(2\^{}3S) column -1.3 \%, log10 Mdot +0.002.
+
+\subsubsection{29.4 He+ + H non-radiative charge exchange near threshold}\label{294-he--h-non-radiative-charge-exchange-near-threshold}
+
+Section 25 took the Loreau et al. (2014) H+ + He cross section forward by
+reciprocity with sigma\_r = 0 below 15 eV/u, where their calculation starts.
+That closes an open channel: the forward (exothermic) rate then fell as
+exp(-E/kT) at low T (5e-34 at 300 K). Adopted, as in MoCHII (the user\textquotesingle s
+decision relayed by the MoCHII session), sigma\_r(x) = sigma\_r(15)
+sqrt((x - x\_th)/(15 - x\_th)) between x\_th = 13.655 eV/u and 15 eV/u, i.e.
+sigma\_f v constant at low energy (ion-induced-dipole capture with a
+constant transfer probability; an assumption no calculation tests).
+Rate: 9.64e-17 at 1e4 K (was 4.41e-17), 9.56e-17 at 1e3 K (was 1.5e-21);
+3.3 \% of the radiative channel at 1e4 K. Generator
+\texttt{cooling\_data/heii\_h\_charge\_exchange\_rate.py} (reproduces the old table to
+0.4 \% with the old cut).
+
+The radiative channel, the user asked, is one coefficient in both codes:
+Stancil, Lepp \& Dalgarno (1998) Table 1 row (19), 1.20e-15 (T/300)\^{}0.25,
+the Zygelman et al. (1989) Table I DIRECT column times the 1/4 of the
+singlet approach (READ; 1.17e-15 at 300 K from the original). MoCHII moved
+from the Glover \& Jappsen (2007) R26 1.25e-15, which cites the same data
+and cannot be reproduced from it (2026-09-26); EXHALE unchanged. A
+digitization of Courtney et al. (2021) Fig. 3 agrees with this fit within
+2 \% over 1e3 - 1e4 K and lies 1.9x above it at 100 K; a fit to their
+tabulated rate needs the data file (University of Georgia Molecular
+Opacity Project, not reachable from here).
+
+\subsubsection{29.5 Goldens, fixture, suites}\label{295-goldens-fixture-suites}
+
+Goldens re-snapshotted from the tree binary 4e275f1d (the physics of
+7db5afe9) after a full matrix (all 17 cases differed from the round-3
+goldens, as expected); backup \texttt{golden\_pre\_round45\_20260926}. Fixture
+\texttt{wasp\_full\_newton/IC} replaced by the 1-thread route-B certified state of
+7db5afe9 (backup \texttt{IC\_pre\_round45\_20260926}). Every suite on the integrated
+binary: all pass except grid\_and\_gates (3 rows: the fixture is not a root of
+the fixed physics, to be re-made with the final binary), residual\_determinism
+(known row), the two suites that need run logs.
+
+Closing the series (2026-09-27): the matrix on the final binary 6844f188
+(sections 29.1-29.4, 29.7, 29.9) differs from the goldens of 7db5afe9 in
+every case beyond 1e-3, largest in the helium columns of the lower cells
+(3.7 \% at row 1 of \texttt{wasp\_full}, the He+ + H rate at low T) and in the
+molecular cases (the ghost start, the progress control); goldens refreshed
+from it (backup \texttt{golden\_pre\_final\_20260927}). Fixture re-solved on 6844f188
+at 8 threads (\texttt{info\ =\ 0}, \textbar\textbar R\textbar\textbar{} 4.11e-9; backup \texttt{IC\_pre\_final\_20260927});
+\texttt{grid\_and\_gates} 345/345. Every suite passes except the known
+\texttt{residual\_determinism} row and the two suites that need run logs.
+
+\subsubsection{29.6 Models solved}\label{296-models-solved}
+
+MEASURED, \texttt{.P1/s1\_remeasure/}, \texttt{.P1/s2\_continuation/}: every failure of the
+catalog\textquotesingle s unsolved molecular and atomic cases stands under 7db5afe9 (six
+passes each); continuation then solved:
+
+\begin{itemize}
+\tightlist
+\item
+  \texttt{molecular\_scalar\_gj1132\_kzz1e9/HeH1.45}: rung from the certified 1.52,
+  certified in 13 passes.
+\item
+  \texttt{molecular\_scalar\_gj1132\_wellmixed/HeH2.13}, 1.8, 1.4: the well-mixed
+  molecular cases differ from the K\_zz = 1e9 ones ONLY by \texttt{He\_diffusion}
+  off (their \texttt{base.inp} carries \texttt{Kzz\_base\ 1.0e9}, which the carrier
+  transport reads). From the certified kzz1e9/2.13 state, He/H set uniform
+  (new \texttt{map\_state\_to\_grid.py\ -\/-uniform}) and diffusion off: certified in 10
+  passes; then rungs 1.8 (10 passes) and 1.4 (14 passes) with
+  \texttt{make\_rung.sh} (\texttt{UNIFORM=1}). The direct re-solve of the catalog\textquotesingle s
+  well-mixed 2.13 state is refused by the progress control at pass 5, so
+  the continuation is what solves it.
+\item
+  \texttt{molecular\_photochem\_gj1132\_kzzprofile/HeH9}: on the final binary of
+  the series (2dd9a865, face at the level), mapped from its 40-pass state
+  on 6844f188 (\texttt{.P1/s2\_continuation/photo9\_f}, row 7.4e-5 falling 0.77 a
+  pass) and continued 40 passes: certified (H2 carrier row 9.2e-6 at cell
+  217), \texttt{.P1/s2\_continuation/photo9\_v4} (2026-09-27). Its earlier stops were
+  the lower-ghost closure defect of section 29.9.
+\item
+  Ionization-stage transport on the molecular 1.8 state stalls on the He++
+  row under the progress control; the cause is the control (29.7).
+\end{itemize}
+
+\subsubsection{29.7 A progress-control defect of the composition relaxation}\label{297-a-progress-control-defect-of-the-composition-relaxation}
+
+Diagnosed (\texttt{.P1/iontr\_diag/}): each pass of the carrier relaxation ends on
+its particle-count cap, the state moves a fixed amount a pass, the relative
+gated measure stays flat because residual and scale fall together, and the
+outer control reads that as no progress, halves the cap and ends the loop.
+With the cap held (diagnostic override) the same state certified in 14
+passes.
+
+Fixed (\texttt{EXHALE\_main.f90} progress control, binary d4b571e8): a pass whose
+consumed carrier update ended on its movement bound, whose solve converged
+and whose joint distance did not rise by more than 1.1x is not judged by the
+relative measures and does not halve the bound; the bound doubles after such
+a pass up to 0.5 and halves when a bound-limited update raises the distance
+of a converged wind or precedes the first failed solve; omega follows the
+same rule and no longer drops on hydro entry failures;
+\texttt{EXHALE\_CARRIER\_TRUST\_HOLD} still freezes the bound. Also fixed: the scale
+\texttt{x\_ref} of the carrier fixed-point test was the H2 maximum alone, so with
+transported stages and no molecules it sat at its 1e-30 floor and the test
+could never pass (logged displacement \textasciitilde1.7e28, MEASURED on
+\texttt{iontrans\_metals}). MEASURED: the hot-Uranus stagnation fixture certifies at
+pass 42 (it stagnated; the suite row that needs that ending now holds the
+bound); \texttt{iontrans\_metals} accepts at pass 17 instead of 48, the two
+certified states within 7.6e-5; the molecular He/H 1.8 state with transported
+stages certifies in 14 passes from a starting bound of 0.5
+(\texttt{EXHALE\_CARRIER\_TRUST=0.5}) but not from the default 1e-2, where the hydro
+solve fails at pass 2 under the old control and the new one alike; with the
+interdiffusion flux on, that state\textquotesingle s hydro solve fails on entry and a slow
+mode on the He front (0.86-0.93 a pass) remains. REGRESSION on
+\texttt{kzz1e9/HeH0.083}: a growing bound makes the H2 row at the outer cells
+498-500 overshoot (up to 1.5e-1) and the bound saws; neither control
+certifies that case (the old one stalls on the elemental row at cell 338).
+\texttt{mol\_carrier} bitwise unchanged (the outer loop is not entered). Open: the
+starting bound for transported stages, the H2 outer-cell overshoot, the
+hydro entry failures with the interdiffusion flux.
+
+\subsubsection{29.8 Incidents of this series}\label{298-incidents-of-this-series}
+
+\begin{itemize}
+\tightlist
+\item
+  A \texttt{sed} insertion with an empty line address put a three-line comment
+  before every line of \texttt{src/tests/boundary\_state/molecular\_seed\_of\_an\_atomic\_state.sh};
+  the 153 blocks were removed and the file checked by diff against the
+  afternoon copy (identical except the intended line).
+\item
+  The tree binary was rebuilt while a regression matrix was running on it;
+  the matrix was stopped and is re-run after the series.
+\end{itemize}
+
+\subsubsection{29.9 The lower-ghost H2 closure stalled with a zero move (fixed)}\label{299-the-lower-ghost-h2-closure-stalled-with-a-zero-move-fixed}
+
+The molecular photochemical-column cases (He/H 9 and 2.09) stopped at
+passes 1-3 with "the base handoff partition of a lower ghost did not close":
+the closure\textquotesingle s own move exactly zero and its residual 9-41 times the 1e-10
+tolerance. Diagnosed (\texttt{.P1/ghost\_stop/}): each closure pass after the first
+started the molecular solve from the previous pass\textquotesingle s accepted state, whose
+x(4) held the OLD imposed H2 partition; the pinned row x(4) - x\_h2\_fix then
+entered hybrd1 carrying the whole secant move, and hybrd1 (xtol = sqrt(eps),
+diag = 1) can return a move below 2 xtol \textbar\textbar x\textbar\textbar{} \textasciitilde{} 3e-8 untouched with
+info = 1 (hybrd.f90: first delta = pnorm, halved on the rejected step, then
+delta \textless= xtol xnorm). The write-back then imposed the value, the next pass\textquotesingle s
+map saw no move, and 28 identical solves followed (27 of 27 traced events;
+41 of 41 refusals and stops in the S1 logs, residuals 8.2e-10 - 2.8e-8, all
+below that floor). Fix: \texttt{impose\_transported\_fractions} sets every unknown a
+transport solve owns (H2 partition, oxygen carriers, ionization stages) to
+its imposed value before both the molecular and the atomic hybrd1 solves;
+the stop report prints the pin error. MEASURED with the fix (worker build):
+0 of 127092 ghost closures unclosed, pin error exactly 0, no refusal and no
+stop; the He/H 9 case then fails on its H2 carrier row (0.88), a separate
+problem. Binary 6844f188. Every molecular base-handoff regression case is
+reached (ghost composition moves by 1e-12 - 1e-9).
+
+\subsubsection{\texorpdfstring{29.10 The \texttt{\_adv} post-process made second order}{29.10 The \_adv post-process made second order}}\label{2910-the-_adv-post-process-made-second-order}
+
+User decision (2026-09-27): the catalog quotes the He 10830 EW of the \texttt{\_adv}
+post-process. That post-process was a first-order upwind recursion in r
+(backward Euler of dx/dr = R/v with the rates at r\_j and the residence time
+at r\_\{j-1\}), the main source of the first-order grid convergence of the EW
+(\texttt{md/ew\_grid\_order\_20260926.md}). Now the variable-step BDF2,
+y\_j - a1 y\_\{j-1\} + a2 y\_\{j-2\} = g h\_j F(y\_j, r\_j) with w = h\_j/h\_\{j-1\},
+a1 = (1+w)\^{}2/(1+2w), a2 = w\^{}2/(1+2w), g = (1+w)/(1+2w) (derived at
+\texttt{post\_process\_adv.f90}, coefficients as eq. (1.4) of Li \& Liao,
+arXiv:2201.00527; L-stable, so a population that equilibrates within a cell
+does not ring as under the trapezoid rule), for every composition system
+and the energy equation, rates and 1/v at the same point; backward Euler on
+the first step, after a refused cell, for w \textgreater{} 1 + sqrt(2), and as a retake
+of a step with a negative population or no temperature root (0 retakes on
+the nine states). MEASURED on the nine certified grid states (He/H 1.6, 1.8,
+2.13 on 500, 1000, 2000 cells), with the state held fixed: the post-process
+share of the EW error falls from +3.0 \% / +1.0 \% (p = 1.00) to below
+3e-4, and the \texttt{\_adv} 2\^{}3S column converges at p = 1.98 - 2.14 (1.00 - 1.01
+before); a closed-form column test gives p = 1.989. The EW itself changes
+by -3.9 \% (500 cells) to -0.97 \% (2000 cells) at He/H 1.6 (1.05692 -\textgreater{}
+1.01571 on 500 cells) and still converges at first order: what remains is
+the solved state\textquotesingle s first-order base closure (being fixed) and the transit
+integration (p \textasciitilde{} 1.4, opposite sign).
+
+Also fixed: the h div(rho v) term of the \texttt{\_adv} energy equation was built
+from differences of the cell-centred rho v r\^{}2, which carries the odd-even
+pattern of the cell-centred velocity at the base (1.8e12 to 3.4e12 between
+neighbours while the face mass flux changed by 1e-10), giving 805 / 4008 /
+579 K at the first corrected cell on 500 / 1000 / 2000 cells; it is now the
+state\textquotesingle s own mass row, the face-flux divergence. Below about 1.13 R\_p the
+molecule-free post-process lacks the molecular heating and H3+ cooling that
+set the run\textquotesingle s energy balance there; by the user\textquotesingle s decision (2026-09-27) the
+run T is kept there with status 3 "unsupported" wherever the omitted heating
+and cooling exceed the carried ones (196 / 389 / 776 cells on 500 / 1000 /
+2000 cells, up to 1.134 - 1.137 R\_p; EW change at most 1.2e-4 relative);
+the user manual\textquotesingle s status table says so. Binary ca651768.
+Suites: adv\_static\_limit 53, transit\_state 12, transit\_census 21,
+physics\_probe 2199, thread\_count\_identity 9, all pass. Every \texttt{\_adv} golden
+moves (5 short cases: T up to 5.9 \%, n(2\^{}3S) up to 9.4 \%). The catalog EWs
+predate this change by -1 \% to -4 \%. Found, not changed:
+\texttt{thermal\_damkohler\_number} is the net rate \textbar H - C\textbar/u, near zero at a
+balanced cell, not the relaxation rate its comment describes.
+Docs: the transit tool now says a stationary SOLVE writes no \texttt{\_adv} products
+and its evaluation does; the project CLAUDE.md says the matrix compares the
+\texttt{\_adv} pair as well.
+
+\subsubsection{29.11 The lower face at the reservoir level}\label{2911-the-lower-face-at-the-reservoir-level}
+
+The reservoir (the \texttt{base.inp} handoff or the Photochem profile\textquotesingle s matching
+level) is stated at r = 1, but the domain\textquotesingle s lower face sat at
+r\_edg(0) = 1 + dr/2, and \texttt{base\_boundary.f90} carried the reservoir pressure
+up to that face along the reservoir\textquotesingle s own isentrope: a half-cell slab of
+226 K gas whose thickness scales with dr lay between the level and the
+domain (MEASURED: the lower layer offset by -2.2 \% / -1.15 \% in density on
+500 / 1000 cells, \texttt{md/ew\_grid\_order\_20260926.md} section 3). Now the face
+is the level in every grid mode (Uniform, Stretched, Mixed:
+\texttt{define\_grid.f90}, r(0) = 2 - r(1), refusals if a ghost reaches r \textless= 0 or
+the face is not 1), the face state is the stated reservoir with no
+transport along any isentrope, the ghosts hold the reservoir continued
+below the level, and the Photochem matching level is the face on every
+grid; boundary model id \texttt{...\_face\_at\_level\_v4}. MEASURED on the molecular
+He/H 1.8 state, 500 / 1000 / 2000 cells, all certified: the pressure gap
+between the interior at the level and the reservoir falls from 2.93 /
+1.44 / 0.70 \% to 0.114 / 0.067 / 0.038 \%; the lower-layer density offset
+falls 20-40x; the wind quantities stay first order with errors 1.6-1.9x
+smaller (log10 Mdot 7.9147 / 7.9113 / 7.9094 -\textgreater{} 7.9116 / 7.9098 / 7.9086;
+\texttt{\_adv} EW 1.1548 / 1.1248 / 1.1091 -\textgreater{} 1.1482 / 1.1214 / 1.1074 \%A, measured
+before the \texttt{\_adv} change of 29.10). The remaining first-order error is
+likely the thermal layer at the contact, which the grid does not resolve
+(cell-1 T 800 / 695 / 604 K against the 226 K reservoir, 13 \% lower at every
+halving; not shown to drive the wind). Two other first-order terms were
+found and left: the element-diffusion Dirichlet He/H is imposed at the
+cell-1 center, dr/2 above the level (\texttt{binary\_element\_diffusion.f90}
+946-959; the He/H change near the base is 1.5e-4), and the conduction bath
+at the ghost center r(0) (\texttt{viscous\_conduction.f90} 485; conduction off in
+these runs). Every cell center moves by dr/2, so the grid guard refuses
+every state written before: such a state loads only as a seed made with
+\texttt{map\_state\_to\_grid.py\ -\/-ic} onto the new grid (a 1-step cold run gives the
+target grid). The regression fixtures and goldens are migrated in the same
+series (MEASURED, 2026-09-27: every fixture of the default matrix and every
+fixture a suite reads mapped with \texttt{map\_state\_to\_grid.py\ -\/-ic} onto a 1-step
+cold-run grid; \texttt{wasp\_full\_newton/IC} re-solved and certified, info = 0,
+\textbar\textbar R\textbar\textbar{} 1.43e-9, and \texttt{iontrans\_metals/IC} a copy of it; the \texttt{hp\_*} seeds,
+whose recipe from \texttt{mol\_base\_handoff} is now refused by the \texttt{carrier} restart
+token, mapped from their previous pairs with the seeds kept (x(H II) 0 and
+1e-12); \texttt{jfnk\_hd189}, a named case outside the matrix whose legacy pair has
+no \texttt{\#\ columns} header, not migrated; the two suites that read catalog states
+now map them into their own scratch; every suite passes, and the standing
+\texttt{residual\_determinism} row now passes (5.9e-2 against \textless{} 1); goldens
+refreshed from the matrix run on 2dd9a865, backup
+\texttt{golden\_pre\_facelevel\_20260927}); the LHS 1140 b catalog states stay
+records of the previous
+boundary (their EWs move by -0.6 \% at 500 cells, below the observational
+error). Binary 2dd9a865.
+
+\subsubsection{29.12 A restartable state after every outer pass}\label{2912-a-restartable-state-after-every-outer-pass}
+
+The stationary route wrote its state only when the run ended, so a run
+stopped from outside (a wall-clock \texttt{timeout}) lost every pass it had made:
+MEASURED on 2026-09-28, three LHS 1140 b continuations lost 35, 13 and 9
+passes. Now each outer pass that does not end the iteration writes the state
+the next pass starts from, \texttt{output/Hydro\_ioniz\_last\_pass.txt} and
+\texttt{output/Ion\_species\_last\_pass.txt}, overwritten each pass, by the same writer
+and headers as the final state files, rebuilt from (u, f\_sp) in the order of
+\texttt{rebuild\_state\_from\_checkpoint} with every side effect on the caloric mixture
+undone; both files carry \texttt{certified=F\ cert\_reason=pass\_snapshot\_p\textless{}n\textgreater{}} and a
+\texttt{\#\ pass\_snapshot} line (the movement bound and omega of that pass, which a
+restart does not inherit: pass them by \texttt{EXHALE\_CARRIER\_TRUST} /
+\texttt{EXHALE\_DIFF\_OMEGA}), so a pair mixed from two passes is refused by
+\texttt{load\_IC} and no tool reads a snapshot as certified. Each file is written to
+\texttt{\textless{}name\textgreater{}.part} and renamed. MEASURED: 0.03 - 0.05 s a pass on 500 cells
+(passes of 90 - 135 s); a run killed during pass 3 left the complete pass-2
+pair, which restarted and continued as the uninterrupted run did; the final
+state files of a normal run are bitwise those of the previous binary.
+\texttt{LHS1140b/models/.P1/s2\_continuation/config\_rung.sh} continues from the pair
+when the parent has no final state. Binary a7255a03. The regression matrix
+on it, strict (\texttt{REGRESSION\_REL\_TOL=0}): all 17 cases byte-identical to the
+goldens of 2dd9a865 (MEASURED).
+
+\subsubsection{29.13 The unsolved molecular cases by continuation (state of 2026-09-28 16:30)}\label{2913-the-unsolved-molecular-cases-by-continuation-state-of-2026-09-28-1630}
+
+All runs under \texttt{LHS1140b/models/.P1/s2\_continuation/} (scripts \texttt{config\_rung.sh},
+\texttt{make\_rung.sh} in \texttt{.P1/}, \texttt{chain.sh}, \texttt{facelevel\_continue.sh}; env as the
+catalog: \texttt{EXHALE\_PTC\_DTAU0=1.0}, 8 threads). Certified states (MEASURED,
+\texttt{certified=T}, the JFNK \textbar\textbar R\textbar\textbar{} of the last solve 6.5e-9 - 2.9e-8):
+
+{\def\LTcaptype{none} % do not increment counter
+{\small
+\begin{longtable}[]{@{}>{\raggedright\arraybackslash}p{\dimexpr(\linewidth-10\tabcolsep)/5\relax}>{\raggedright\arraybackslash}p{\dimexpr(\linewidth-10\tabcolsep)/5\relax}>{\raggedright\arraybackslash}p{\dimexpr(\linewidth-10\tabcolsep)/5\relax}>{\raggedright\arraybackslash}p{\dimexpr(\linewidth-10\tabcolsep)/5\relax}>{\raggedright\arraybackslash}p{\dimexpr(\linewidth-10\tabcolsep)/5\relax}@{}}
+\toprule\noalign{}
+family & He/H & passes & binary & note \\
+\midrule\noalign{}
+\endhead
+\bottomrule\noalign{}
+\endlastfoot
+kzz1e9 & 1.45 & 14 & 7db5afe9 & rung from 1.52 \\
+kzz1e9 & 1.30 & 5 (after 24) & 7db5afe9 & \\
+kzz1e9 & 1.223 & 9 (after 40 + 40) & 2dd9a865 & moved to the face-at-level grid \\
+kzz1e9 & 1.186 & 24 (after 30) & 2dd9a865 & \\
+kzz1e9 & 1.168 & 20 & 2dd9a865 & \\
+kzz1e9 & 1.15 & 46 & a7255a03 & carrier bound held at 1e-2 \\
+wellmixed & 2.13, 1.8, 1.4, 1.1, 0.85, 0.7603, 0.68, 0.6116 & 10 - 21 each & 7db5afe9 & path finding, previous grid \\
+wellmixed & 0.6116, 0.55, 0.4 & 16, 18, 17 & 2dd9a865 & on the face-at-level grid \\
+photochem kzzprofile & 9 & 41 & 2dd9a865 & after 40 passes on 6844f188 \\
+\end{longtable}
+}
+}
+
+Not solved yet: kzz1e9 below 1.15 (1.12 running, gated row falling to
+1e-4 then flat at 1.3e-4 over passes 14-16); wellmixed 0.3347 and below;
+photochem kzzprofile 2.09 (gated row oscillating 0.08 - 0.54, hydro info = 2
+on most passes, about 40 min a pass); kzz1e9 0.083 and the wellmixed
+0.083 are the far ends of the two chains.
+
+What was learned on the way (MEASURED):
+
+\begin{itemize}
+\tightlist
+\item
+  The well-mixed molecular cases are the kzz1e9 ones with \texttt{He\_diffusion}
+  off (their \texttt{base.inp} carries \texttt{Kzz\_base\ 1.0e9}, which the carrier
+  transport reads); a kzz1e9 state with He/H set uniform
+  (\texttt{map\_state\_to\_grid.py\ -\/-uniform}) certifies with diffusion off in 10
+  passes, which is how the family was entered.
+\item
+  Runs stopped by a wall-clock \texttt{timeout} lost every pass (35, 13 and 9
+  passes), which section 29.12 fixed for every later run; and
+  \texttt{config\_rung.sh} ran under \texttt{set\ -e}, so a run that timed out never wrote
+  its \texttt{EXIT.txt} and a waiting continuation never started (fixed).
+\item
+  The growing carrier bound of section 29.7 drives a sawtooth in the H2
+  cases below He/H \textasciitilde1.2 (kzz1e9 1.15: the gated row between 5e-3 and 2e-1
+  over 35 passes with hydro info alternating 0/2) and in the well-mixed
+  0.3347 rung (between 2e-4 and 1e-2, the refusing cell moving between the
+  front near cell 357 and the outer cell 500). Holding the bound at 1e-2
+  (\texttt{EXHALE\_CARRIER\_TRUST\_HOLD=1e-2}) certified kzz1e9 1.15 in 46 passes, and
+  1.12 then fell 2.6x a pass to 1e-4; it did not stop the well-mixed 0.3347
+  oscillation (1e-3 - 2.7e-3 over 19 passes). The rule that grows the bound
+  is therefore not right for the H2 carrier; an open item.
+\end{itemize}
+
+Documents brought to the code of this series (2026-09-28): the user manual
+(input keys \texttt{Interdiffusion\ enthalpy\ flux}, \texttt{Outer\ shells}, \texttt{Composition\ update\ holds}, \texttt{H2\ double\ ionization}, \texttt{H2\ neutral\ dissociation} and the
+retired \texttt{Oxygen\ transport} added from \texttt{known\_keys}; the \texttt{\_last\_pass} output
+files; the face at the level; the BDF2 post-process; the progress control;
+the thread-count note; stale statements corrected, among them the tokens a
+\texttt{Restart\ option\ change:} line may not name, four not six), the physics and
+algorithms document (the interdiffusion enthalpy flux in the energy
+equations, the lower face, the grid constructions, the He+ + H pair, Ry/k,
+the post-process step, the progress control and the snapshot; stale
+statements corrected, among them the default of \texttt{H2\ double\ ionization},
+\texttt{chung80}, and the claim that every extension defaults to off) and
+\texttt{README.md}. Two source comments corrected (\texttt{base\_boundary.f90} model id,
+\texttt{steady\_residual.f90} energy row scale; comments only), and
+\texttt{src/tests/interdiffusion\_enthalpy\_flux/run.sh} made executable: \texttt{make\ test}
+had skipped it silently.
+
 \appendix
 \input{Update_EXHALE_appendix}
 \end{document}

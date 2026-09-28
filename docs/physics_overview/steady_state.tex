@@ -18,12 +18,18 @@ subtracts the radiative source from its third row,
   \begin{aligned}
     R_1 &= dF_1 - S_1, \\
     R_2 &= dF_2 - S_2 - S_\mu, \\
-    R_3 &= dF_3 - S_3 - (\mathcal{H} - \Lambda) - S_{\mathcal{E}},
+    R_3 &= dF_3 - S_3 - (\mathcal{H} - \Lambda) - S_{\mathcal{E}}
+           + \nabla\!\cdot q_d,
   \end{aligned}
   \label{eq:residual}
 \end{equation}
 %
-with $dF$ and $S$ from \eqref{eq:dF1} to \eqref{eq:source}, evaluated through
+with $\nabla\!\cdot q_d$ the divergence of the interdiffusion enthalpy flux of
+Sec.~\ref{sec:mol:interdiffusion}, formed from the element fluxes of the
+state itself and identically zero, with no arithmetic, unless
+\texttt{He\_diffusion} moves the elements; the composition is therefore an
+argument of every assembly.  $dF$ and $S$ are those of \eqref{eq:dF1} to
+\eqref{eq:source}, evaluated through
 the same \texttt{reconstruction\_continuation\_rhs} the marching stages call,
 so that the fixed point of the marching and the zero of the residual are the
 same state by construction.  The lowest ghost cell has no lower face and
@@ -36,12 +42,15 @@ largest term \emph{that row itself contains}
 (\texttt{residual\_row\_scale}):
 %
 \begin{equation}
+  \begin{gathered}
   s_1(j) = \frac{\max\bigl(|F_{j-1/2}|A_-,\ |F_{j+1/2}|A_+\bigr)}{\Delta V_j},
   \quad
   s_2(j) = \max\bigl(|{\rm ram}|,\ |\partial_r p|,\
                      \rho|\partial_r\Phi|,\ |S_\mu|\bigr),
-  \quad
-  s_3(j) = \max\bigl(|dF_3|,\ |S_3|,\ \mathcal{H},\ \Lambda\bigr).
+  \\
+  s_3(j) = \max\bigl(|dF_3|,\ |S_3|,\ \mathcal{H},\ \Lambda,\
+                     |S_{\mathcal{E}}|,\ |\nabla\!\cdot q_d|\bigr).
+  \end{gathered}
   \label{eq:rowscales}
 \end{equation}
 %
@@ -371,15 +380,63 @@ stand outside it by construction.  Conversely a nonzero hydrodynamic flag does
 not end the loop by itself, because the composition update that follows it
 still makes progress.
 
-The quantity the alternation waits on is the worst gated species row of the
-certification, judged in the wind.  Where it fails to fall over a pass, both
-updates are shortened, $\omega$ halved down to a floor of $0.125$ and the
-carrier movement bound halved down to $10^{-3}$, and three consecutive passes
-without a fall end the loop rather than spend the budget on a fixed point the
-alternation is not approaching.  The endings are named: the joint
-certification passes; a row of the state is not finite; the element
-composition update is refused; the joint measure stops falling; the pass
-budget ends uncertified.
+\paragraph{The progress control.}
+A pass makes progress when the joint distance of the state to the
+certification falls, or, where that distance is carried by a row that is not
+hydrodynamic, when the composition's own residual falls; three consecutive
+passes without progress end the loop rather than spend the budget (20 passes,
+\texttt{EXHALE\_OUTER\_PASSES}) on a fixed point the alternation is not
+approaching.  The endings are named: the joint certification passes; a row of
+the state is not finite; the element composition update is refused; the
+joint measure stops falling; the pass budget ends uncertified.
+
+The two step lengths of the composition half, the element under-relaxation
+$\omega$ (start $0.5$, \texttt{EXHALE\_DIFF\_OMEGA}; floor $0.125$) and the
+carrier movement bound, the largest relative change of one cell's particle
+count $n_{\rm tot}+n_e$ one pass may make (start $10^{-2}$,
+\texttt{EXHALE\_CARRIER\_TRUST}; floor $10^{-3}$; ceiling $0.5$), answer to
+the hydrodynamic solve that consumes the update (revised 2026-09-27).
+\emph{A pass whose carrier update ended on its movement bound is not a pass
+without progress} as long as the solve that consumed it converged and the
+joint distance rose by no more than a factor $1.1$: the state moved by the
+whole bound, and the relative measures cannot show it because residual and
+scale fall together.  MEASURED on the LHS~1140\,b He/H\,$=1.8$ state with
+transported ionization stages, every pass ended on the bound while the gated
+measure stood at $2.17$ to $2.20\times10^{-2}$; the earlier control read that
+as stagnation, halved the bound to its floor and ended the loop, while the
+same state with the bound held at $0.5$ certified in 14 passes.  Such a pass
+is neither counted toward the ending nor allowed to shorten a step, and the
+bound doubles, up to $0.5$.  The bound halves when a bound-limited update
+raised the joint distance of a solved wind by more than $1.1$, when it
+preceded the first failed solve after a converged one, and when a pass
+without progress moved the carriers short of the bound on a solved wind; a
+relaxation that kept no step leaves it where it is.  $\omega$ halves on a pass
+without progress whose wind was solved and on the first failed solve after a
+converged one, and doubles back toward its starting value after a converged
+solve on a pass with progress.  A failed solve that follows another failed
+solve did not start from a solved wind, so the update is not what failed it
+and neither step is shortened.  \texttt{EXHALE\_CARRIER\_TRUST\_HOLD} freezes
+the bound for every pass.  Recorded as open: the starting bound for
+transported stages (the state above certifies from $0.5$ and not from
+$10^{-2}$), and the molecular He/H\,$=0.083$ continuation, where a growing
+bound makes the H$_2$ row of the outermost cells overshoot and neither control
+certifies.
+
+\paragraph{The state of every pass, kept.}
+Every pass after which the iteration goes on writes the state the next pass
+starts from, rebuilt from $(u, f_{\rm sp})$ in the order of the checkpoint
+restoration with every side effect on the caloric mixture undone, to
+\texttt{output/Hydro\_ioniz\_last\_pass.txt} and
+\texttt{output/Ion\_species\_last\_pass.txt} by the writers of the final
+state, so a run stopped from outside keeps its last completed pass.  The pair
+carries \texttt{certified=F cert\_reason=pass\_snapshot\_p<n>} in both halves,
+because the certification of a pass is taken before its composition update
+and the snapshot is the state after it, and a \texttt{\# pass\_snapshot} line
+with the movement bound and $\omega$ of the next pass, which a restart does
+not inherit.  Each half is written under a temporary name and renamed, and a
+pair mixed from two passes states two reasons and is refused by the loader.
+Nothing the run reads afterwards changes: the final state files of a run are
+bitwise those of the binary before the snapshot existed.
 
 Two rules keep the state self-consistent.  The progress control stands
 \emph{ahead} of the composition update, so the pass that ends the iteration

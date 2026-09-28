@@ -27,9 +27,16 @@ import tpm_halpha_lart2d as h2d
 import exhale_to_lart as e2l
 
 W = os.path.join(ROOT, 'WASP-52b')
-# Digitized WASP-52 b transmission spectra.  These are not in the repository;
-# point EXHALE_OBSDATA at the directory that holds them.
-OBSDIR = os.environ.get('EXHALE_OBSDATA', os.path.join(W, 'observations'))
+# Measured WASP-52 b transmission spectra (He I 10830, Kirk et al. 2022;
+# H-alpha, Chen et al. 2020).  They are not in the repository: they live in
+# the "A" root of md/observational_comparison_data.md,
+# ~/Exoplanetary_Atmosphere/WASP-52b, which the WASP-52b notebooks and
+# python/make_transit_figures.py read as well.  EXHALE_OBSDATA overrides it.
+OBSDIR = os.environ.get('EXHALE_OBSDATA', os.path.join(
+    os.path.expanduser('~/Exoplanetary_Atmosphere'), 'WASP-52b'))
+if not os.path.isdir(OBSDIR):
+    sys.exit('make_poster_figs.py: observation directory %s not found; '
+             'set EXHALE_OBSDATA' % OBSDIR)
 FIG = 'figs'
 os.makedirs(FIG, exist_ok=True)
 

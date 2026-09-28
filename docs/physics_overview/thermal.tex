@@ -146,7 +146,7 @@ the Badnell radiative plus dielectronic (or \citealt{Huang2023} iron)
 coefficient of its balance; the relation holds for dielectronic capture as
 well, where it charges the resonance energy. The escape weights depend on the
 densities and the cell width only, so they are frozen while $T$ varies. The
-logarithmic slope is a centred difference of half step $10^{-3}$ in $\ln T$
+logarithmic slope is a centered difference of half step $10^{-3}$ in $\ln T$
 for H\,{\sc ii}, He\,{\sc ii} and He\,{\sc iii}, and is written analytically
 from the published forms for the metal ions
 (\texttt{metal\_recombination\_energy\_rate}).
@@ -224,9 +224,15 @@ each removing its excitation energy from the electron gas.
 
 \paragraph{Free-free.} $\Lambda_{\rm ff} = 1.426\times10^{-27}\sqrt{T}
 \sum_{\rm ions} Z_{\rm ion}^{2}\,\bar g(T,Z_{\rm ion})\,n_{\rm ion}$, with
-$\bar g$ the thermally averaged Gaunt factor of \citet{vanHoof2014},
-interpolated linearly in $x = \log_{10}(Z^{2}\,157807/T)$
-and clamped to the tabulated range. Only $Z_{\rm ion}=1$ and 2 occur.
+$\bar g$ the thermally averaged Gaunt factor of \citet{vanHoof2014} as a
+function of $\gamma^2 = Z^2\,{\rm Ry}/kT$ (their eq.~21), interpolated
+linearly in $x = \log_{10}\gamma^2$ and clamped to the tabulated range.  Ry
+is the infinite-mass Rydberg unit of energy, as their section~2 defines it,
+$hcR_\infty$ with the CODATA 2018 $R_\infty$ and the exact SI $h$, $c$, $k$
+the code carries, so ${\rm Ry}/k = 157887.5$\,K (\texttt{Cool\_coeff.f90},
+\texttt{Ry\_over\_kB}).  Until 2026-09-26 the code used 157807\,K, the constant
+of the \citet{Hui1997} recombination fits, which moved the regression
+outputs by at most $1.4\times10^{-4}$ relative. Only $Z_{\rm ion}=1$ and 2 occur.
 The molecular ions H$_2^+$, H$_3^+$ and HeH$^+$ do donate to $n_e$ but are
 deliberately left out of this charge sum: they exist only in the
 $T\sim10^{3}$\,K molecular base, where this hot-plasma expression is an
@@ -407,7 +413,10 @@ default.
 \texttt{equation\_T} is used by \texttt{post\_process\_adv.f90}
 (Sec.~\ref{sec:postprocessing:adv}) and by test drivers, and by nothing else;
 what it solves is the \emph{steady} internal-energy balance of the profile,
-upwind differenced,
+differenced by the same variable-step BDF2 step as the ionization systems
+(Sec.~\ref{sec:ionization:advected}): every $r$-derivative at $r_j$ is
+$(f_j - a_1 f_{j-1} + a_2 f_{j-2})/(g h_j)$ and every other factor is the value
+at $r_j$,
 \begin{equation}
 \nabla\!\cdot\!(u\mathbf{v}) + p\,\nabla\!\cdot\!\mathbf{v}
  = \rho v\frac{{\rm d}e}{{\rm d}r}
@@ -417,8 +426,8 @@ upwind differenced,
 \label{eq:th:teq}
 \end{equation}
 with $e$ the internal energy per unit mass and $h = e+p/\rho$ the enthalpy
-per unit mass. The upstream term carries the \emph{upstream} cell's specific internal
-energy formed at the upstream composition and temperature, not this cell's
+per unit mass. The history of the step carries each upstream cell's specific internal
+energy formed at that cell's composition and temperature, not this cell's
 caloric state evaluated at $T_{\rm up}$: the rovibrational heat capacity
 belongs to the gas that holds the molecules, so across a dissociation front
 two cells at the same temperature store different energy. With the metals

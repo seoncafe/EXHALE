@@ -30,9 +30,14 @@ equation of state, the lower boundary condition, the reconstruction, the
 steady-state solvers, the transported species and essentially all of the
 chemistry are not.  Every physics extension is selected at run time by the
 presence of a key in \texttt{input.inp} or of a companion file
-(\texttt{metals.inp}, \texttt{opacity.inp}, \texttt{base.inp}), and every one
-of them defaults to off, so that a configuration that states none of them
-reproduces the atomic H/He problem.
+(\texttt{metals.inp}, \texttt{opacity.inp}, \texttt{base.inp}).  Every
+option that adds a species, a transport process or an external field defaults
+to off, so that a configuration that states none of them solves the atomic
+H/He problem; the keys that default to on are parts of the physics of what is
+already selected, which a key can only turn off for comparison (among them the
+He/H charge exchange, secondary ionization, the molecular reaction heat, the
+resolved H$_2$ photoabsorption channels, and the interdiffusion enthalpy flux
+of a run with \texttt{He\_diffusion}; Table~\ref{tab:keys}).
 
 \subsection{Units}
 \label{sec:intro:units}
@@ -51,7 +56,8 @@ temperature $T_0$, and the base number density $n_0$:
 %
 where $m_{\rm H} = 1.67353284\times10^{-24}$~g is the mass of the hydrogen
 \emph{atom}, not the atomic mass unit.  Radii are in units of $R_0$, so the
-base level sits at $r = 1$; velocities in $v_0$; mass densities in
+base level sits at $r = 1$, which is the lower face of the grid
+(Sec.~\ref{sec:numerics:grid}); velocities in $v_0$; mass densities in
 $n_0m_{\rm H}$; pressures in $p_0$; temperatures in $T_0$; and volumetric energy
 rates in $q_0$.  The mass unit being the hydrogen atom, the density is the
 number of hydrogen-atom masses per unit volume, and a species contributes

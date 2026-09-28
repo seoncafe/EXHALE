@@ -94,7 +94,8 @@ start = time.time()
 #
 #   the `_adv` profile is a POST-PROCESS of a marching state.  It takes the
 #   marched temperature and composition and applies a steady advective
-#   correction cell by cell, first-order upwind at the bulk velocity, with
+#   correction cell by cell, second order in the cell width (variable-step
+#   BDF2 along the flow at the bulk velocity), with
 #   no eddy term and no element drift, and it refuses that correction where
 #   an assumption of the steady equations fails in a cell.  It is an
 #   independent discretization of the same column, and it is not what any
@@ -107,10 +108,13 @@ start = time.time()
 #   top of it would be a SECOND and different transport approximation of the
 #   same stages, laid over the one that was solved.
 #
-# A stationary route therefore writes no `_adv` products, and none are to be
-# manufactured for one: a run without them is read with
-# EXHALE_TRANSIT_STATE=solution, and the default selection refuses by name
-# when the `_adv` pair is absent rather than reading the other state.
+# A stationary SOLVE therefore writes no `_adv` products, and none are to be
+# manufactured for one by this tool; the evaluation of a solved state
+# (`Restart intent: stationary evaluate`) runs the post-process on that
+# state and writes them, which is how the LHS 1140 b catalog EW is made.
+# A run without them is read with EXHALE_TRANSIT_STATE=solution, and the
+# default selection refuses by name when the `_adv` pair is absent rather
+# than reading the other state.
 #
 # The pair is a PAIR: the temperature of one state and the composition of
 # the other solve neither set of equations, so both files come from the same
@@ -123,8 +127,8 @@ start = time.time()
 path = _tenv('PATH', '.')  # EXHALE's files destination folder (env override)
 Input_file = path + '/input.inp'
 # A selection whose files are not there is refused with the reason, not with
-# a traceback: the usual case is a stationary run, which writes no `_adv`
-# products because there was no marching state to correct.
+# a traceback: the usual case is a stationary solve, which writes no `_adv`
+# products (its evaluation, `Restart intent: stationary evaluate`, does).
 try:
 	Hydro_file, Ioniz_file, _state_selection = transit_state_files(
 	    path, _tenv('STATE', 'adv'))
@@ -372,7 +376,7 @@ _adv          = read_adv_validity(Hydro_file)
 # How far the run's other state stands from the one this curve is built on,
 # measured on the three quantities a He I 10830 or a Balmer curve integrates.
 # The other state is only being located here, so it is not required to
-# exist: a stationary run has no `_adv` products and that is not an error.
+# exist: a stationary solve has no `_adv` products and that is not an error.
 _state_other  = transit_state_files(
     path, 'solution' if _state_selection == 'adv' else 'adv', require=False)
 _state_record = {

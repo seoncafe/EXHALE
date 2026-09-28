@@ -183,22 +183,35 @@
 	! Named-field cell state for the advection-correction ionization residuals
 	! (System_implicit_adv_H/HeH/HeH_TR). One type covers BOTH advection
 	! layouts: the H-only and HeH systems read the leading fields, the HeH_TR
-	! system additionally reads the triplet channels (rcheiTR..xheiTR_old).
+	! system additionally reads the triplet channels (rcheiTR..xheiTR_hist).
 	! heh_loc is the effective He/H for the electron density (global HeH
 	! normally, the local nhe/nh with He_diffusion). Filled field by field by
 	! post_process_adv before each hybrd1 advection solve.
 	!
-	! xheiS_old is the upstream population of the GROUND SINGLET He(1^1S)
-	! alone, not of the summed He I: the advection systems carry the singlet
-	! and the He(2^3S) metastable as separate unknowns, so that neither is
-	! ever formed as the difference of the other two (a difference that
-	! collapses to zero once the metastable holds most of the neutral He).
-	! Without the triplet the two coincide, all He I being in the singlet.
+	! THE STEP. Each residual is one step of the backward differentiation
+	! formula for dx/dr = R(x)/v in the fractions x (post_process_adv,
+	! variable_step_bdf2_weights):
+	!
+	!     x_j - x_hist = c1 R_j(x_j) ,   c1 = g h_j / v_j ,
+	!
+	! with x_hist = a1 x_{j-1} - a2 x_{j-2} and h_j = r_j - r_{j-1}. The
+	! second-order step has the variable-step BDF2 weights (a1, a2, g); the
+	! first step of the recursion, and a step retaken for positivity, is
+	! backward Euler, a1 = g = 1 and a2 = 0, for which x_hist is the
+	! upstream fraction x_{j-1}. The rates R_j and the velocity v_j are both
+	! those of the cell the step lands on.
+	!
+	! xheiS_hist is the history of the GROUND SINGLET He(1^1S) alone, not of
+	! the summed He I: the advection systems carry the singlet and the
+	! He(2^3S) metastable as separate unknowns, so that neither is ever formed
+	! as the difference of the other two (a difference that collapses to zero
+	! once the metastable holds most of the neutral He). Without the triplet
+	! the two coincide, all He I being in the singlet.
 	type adv_rates
 		real*8 :: c1
-		real*8 :: xhi_old
-		real*8 :: xheiS_old
-		real*8 :: xheiii_old
+		real*8 :: xhi_hist
+		real*8 :: xheiS_hist
+		real*8 :: xheiii_hist
 		real*8 :: nh
 		real*8 :: P_HI
 		real*8 :: P_HeI
@@ -219,7 +232,7 @@
 		real*8 :: q31a
 		real*8 :: q31b
 		real*8 :: Q31
-		real*8 :: xheiTR_old
+		real*8 :: xheiTR_hist
 		! He <-> H charge-exchange rate coefficients (Huang Table 4 group B),
 		! set per cell at the advection call site (see he_h_cx_rates).
 		real*8 :: kcx_He0_Hp
@@ -258,43 +271,49 @@
 		real*8 :: y_HI   = 0.0d0
 		real*8 :: y_gnd  = 0.0d0
 		real*8 :: y_HeII = 0.0d0
+		! Mean molecular weight of the cell (mup) and of its upstream
+		! neighbor (mum); mup*mum is the factor the residual is multiplied by
+		! (T_equation), nothing else.
 		real*8 :: mup
 		real*8 :: mum
+		! rho_j v_j of the cell [code units]
 		real*8 :: rhov
+		! Pressure-work coefficient mum*v_j*(rho_j - rho_hist), with rho_hist
+		! the history of the density formed with the weights of the step
+		! (the adv_rates note on THE STEP).
 		real*8 :: coeff
-		real*8 :: dr
-		real*8 :: Told
+		! The width the right-hand side of the step is multiplied by: g*h_j
+		! for the variable-step BDF2 step, h_j for backward Euler, with
+		! h_j = r_j - r_{j-1} [code units].
+		real*8 :: dr_step
+		! Heating of the cell [code units]
 		real*8 :: heaold
 		! n(H2)/(n_tot + n_e) of the cell, for the caloric EOS of the energy
-		! residual. Zero for an atomic gas, which is the monatomic case.
+		! residual. Zero for an atomic gas.
 		real*8 :: x_h2
-		! The same fraction in the UPSTREAM cell, the one the upwind
-		! difference takes its energy from. It selects the branch of the
-		! residual together with x_h2 above: a cell is solved with the
-		! caloric energy whenever either side of the interface holds H2,
-		! because an atomic cell fed by a molecular neighbor receives
-		! molecular energy. Zero for an atomic upstream.
-		real*8 :: x_h2_up = 0.0d0
-		! SPECIFIC internal energy of that upstream cell,
-		! e_up = E(x_h2_up, T_up)/mu_up [code units, energy per unit mass],
-		! with E the energy per particle of the caloric EOS. This is the
-		! quantity the flow transports into the cell, so it is evaluated at
-		! the UPSTREAM composition and the upstream temperature: the
-		! rovibrational heat capacity of H2 belongs to the gas that holds
-		! the molecules, and across a dissociation front the two cells store
-		! different energy at the same temperature. Formed by the caller,
-		! and held fixed while the root finder varies this cell's T.
-		real*8 :: e_up = 0.0d0
+		! THE HISTORY OF THE SPECIFIC INTERNAL ENERGY the flow carries in,
+		! e_hist = a1 e_{j-1} - a2 e_{j-2} with the weights of the step,
+		! each e_k = E(x_H2,k, T_k)/mu_k [code units, energy per unit mass]
+		! evaluated at the composition and temperature of ITS OWN cell: the
+		! rovibrational heat capacity of H2 belongs to the gas that holds the
+		! molecules, so across a dissociation front two cells at the same
+		! temperature store different energy, and an atomic cell fed by a
+		! molecular neighbor receives molecular energy. Backward Euler is the
+		! upstream cell's energy alone. Formed by the caller and held fixed
+		! while the root finder varies this cell's T.
+		real*8 :: e_hist = 0.0d0
 		! Divergence of the mass flux of the cell, div(rho v) [code units],
 		! the coefficient of the enthalpy flux term of the steady
 		! internal-energy equation (T_equation, where the algebra is written
-		! out). It is a property of the state the residual is handed, not of
-		! the trial temperature, so it is held fixed while the root finder
-		! varies T, exactly as the densities are.
+		! out). post_process_adv takes it from the mass row of the state, the
+		! face mass fluxes of the Riemann solve differenced over the cell
+		! (the statement in its energy block). It is a property of the state
+		! the residual is handed, not of the trial temperature, so it is held
+		! fixed while the root finder varies T, exactly as the densities are.
 		!
-		! Zero is the stationary mass flux rho v r^2 = const, for which the
-		! term is absent from the equation; the field then contributes an
-		! exact zero and the residual is the advected balance without it.
+		! Zero is a stationary mass flux, for which the term is absent from
+		! the equation; the field then contributes an exact zero and the
+		! residual is the advected balance without it.
 		real*8 :: div_rhov = 0.0d0
 	end type teq_state
 

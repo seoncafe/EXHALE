@@ -168,6 +168,7 @@
       'Lower atmosphere', 'Lower atmosphere profile',                        &
       'Lower column', 'He_Kzz', 'He_alphaT', 'He_ambipolar',                 &
       'He_metal_diffusion', 'He_diffusion', 'Stall', 'Energy solver',        &
+      'Interdiffusion enthalpy flux',                                        &
       'Time stepping', 'Level tol', 'Solver', 'Valve eps', 'Hydrostatic base',&
       'Shapiro filter', 'Low-Mach damping', 'Well balanced',                 &
       'Low Mach velocity jump',                                              &
@@ -881,6 +882,23 @@
 				! Diffuse trace metals too. "He_metal_diffusion: True"
 				str = get_word(line, 2)
 				if (str .eq. 'True' .or. str .eq. 'true') he_metal_diffusion = .true.
+			else if (lbl_match(line, 'Interdiffusion enthalpy flux')) then
+				! The enthalpy the element fluxes carry, a term of the energy
+				! equation of the diffusing mixture (parameters.f90). Default
+				! True; "Interdiffusion enthalpy flux: False" removes it to
+				! match a published model that omits it. Inert unless
+				! He_diffusion moves the elements.
+				str = get_word(line, 4)
+				if (str .eq. 'False' .or. str .eq. 'false') then
+					interdiffusion_enthalpy_flux = .false.
+				else if (str .eq. 'True' .or. str .eq. 'true') then
+					interdiffusion_enthalpy_flux = .true.
+				else
+					write(*,*) '(input_read) ERROR: "Interdiffusion'//     &
+					           ' enthalpy flux:" takes True or False, not "'//&
+					           trim(str)//'".'
+					error stop 1
+				endif
 			else if (lbl_match(line, 'He_diffusion')) then
 				! He/H diffusive separation (default off).
 				! "He_diffusion: True"
@@ -2276,9 +2294,11 @@
 
    ! ----- The lower-boundary reservoir -----
    ! (p, s) at the base LEVEL r = 1, carried as the isentrope through
-   ! (p = ntot_bc + dp_bc, T = T0) at the base composition. base_boundary
-   ! continues it to the first face itself, so the level the user states does
-   ! not move when the grid does. "Base BC: pressure" has already set n0 so
+   ! (p = ntot_bc + dp_bc, T = T0) at the base composition. The level is the
+   ! first face of the grid (define_grid places r_edg(0) = 1), so the level
+   ! the user states is the contact with the domain on every grid, and
+   ! base_boundary continues the reservoir only downward, into the ghost
+   ! cells below it. "Base BC: pressure" has already set n0 so
    ! that this pressure is the requested one; "Base BC: density" states n0 and
    ! the pressure follows.
    call set_base_reservoir(ntot_bc + dp_bc, 1.0d0,                        &
@@ -2449,12 +2469,16 @@
    ! local equilibrium sees. MEASURED on the hot Uranus element state: 0.77
    ! of any seed perturbation
    ! of the layer's H2 content survives every pass of the sweep, the same 0.77
-   ! at perturbations of 1e-6 and of 1e-2, and the base cell's energy row,
-   ! being a near-cancellation of the fluxes its continuous-temperature ghost
-   ! produces, amplifies that by ~4e3. Two evaluations of ONE state then
-   ! differ by 3.2e5 times "Resid tol" per unit relative seed change. A
-   ! residual that is not a function of its unknowns has no root, and a state
-   ! accepted at "Resid tol" on it is accepting its seed.
+   ! at perturbations of 1e-6 and of 1e-2. That survival is a property of
+   ! the chemistry and holds whatever the boundary. How far the residual
+   ! carries it was measured under the continuous-temperature base ghost the
+   ! characteristic base face state (base_boundary) has since replaced: the
+   ! base cell's energy row amplified it by ~4e3 there, and two evaluations
+   ! of ONE state differed by 3.2e5 times "Resid tol" per unit relative seed
+   ! change. Those two numbers have not been measured again under the
+   ! present boundary. A residual that depends on the seed at all is not a
+   ! function of its unknowns and has no root, and a state accepted at
+   ! "Resid tol" on it is accepting its seed.
    !
    ! With "Molecular carrier transport: True" the H2 row of the network
    ! becomes x - x_fix with x_fix a Newton unknown, so the content is solved
@@ -2477,8 +2501,9 @@
       write(*,*) '  shielded layer: the fast chemistry conserves H2 nuclei'
       write(*,*) '  there, so the sweep returns the content it was seeded'
       write(*,*) '  with. The stationary residual is then not a function of'
-      write(*,*) '  its unknowns -- MEASURED, its seed dependence is 3.2e5'
-      write(*,*) '  times "Resid tol" per unit relative seed change -- and'
+      write(*,*) '  its unknowns -- MEASURED under the former base ghost,'
+      write(*,*) '  its seed dependence was 3.2e5 times "Resid tol" per'
+      write(*,*) '  unit relative seed change -- and'
       write(*,*) '  there is no root for the Newton to converge to.'
       write(*,*) '  Set "Molecular carrier transport: True", which makes'
       write(*,*) '  n(H2) a Newton unknown solved from its own transport'

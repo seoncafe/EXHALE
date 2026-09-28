@@ -36,7 +36,8 @@ gravity and a radiative source,
        = -\rho\,\frac{\partial\Phi}{\partial r} + S_\mu,\\
     \frac{\partial \mathcal{E}}{\partial t}
       &+ \frac{1}{r^2}\frac{\partial}{\partial r}\bigl(r^2 (\mathcal{E}+p)v\bigr)
-       = -\rho v\,\frac{\partial\Phi}{\partial r} + Q + S_{\mathcal{E}},
+       = -\rho v\,\frac{\partial\Phi}{\partial r} + Q + S_{\mathcal{E}}
+         - \frac{1}{r^2}\frac{\partial}{\partial r}\bigl(r^2 q_d\bigr),
   \end{aligned}
   \label{eq:euler}
 \end{equation}
@@ -44,7 +45,11 @@ gravity and a radiative source,
 where $Q = \mathcal{H} - \Lambda$ is the net radiative heating minus cooling
 per unit volume (Sec.~\ref{sec:thermal}) and $S_\mu$, $S_{\mathcal{E}}$ are the viscous and conductive
 sources of Sec.~\ref{sec:hydro:transport}, both off unless a run asks for
-them.  The factor $4\pi$ that would appear in the face areas and the cell
+them.  $q_d = \sum_s h_sJ_s$ is the interdiffusion enthalpy flux of a mixture
+whose elements move relative to the mass-averaged velocity $v$
+\citep[eqs.~11--13]{Cook2009}: it exists only where \texttt{He\_diffusion}
+moves helium against hydrogen, and is written out in
+Sec.~\ref{sec:mol:interdiffusion}.  The factor $4\pi$ that would appear in the face areas and the cell
 volume cancels between them and is simply not carried.
 
 \subsection{The discrete divergence}

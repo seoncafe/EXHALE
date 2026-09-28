@@ -140,9 +140,16 @@ $\sigma({\rm H^+})/[\sigma({\rm H^+})+\sigma({\rm H_2^+})]$ and tabulated at
 69 energies from 18.076 to 124\,eV, linearly interpolated, zero at and below
 threshold and held flat above 124\,eV. The thresholds are 15.4\,eV (M,
 leaves H$_2^+$), 18.076\,eV (S, leaves H\,$+$\,H$^+$), 51.4\,eV (D, two
-protons), and none of its own for N. With the default
-\texttt{h2\_double\_ionization = 'off'} only the S channel is resolved
-separately.
+protons), and none of its own for N. The D channel is resolved by default
+(\texttt{H2 double ionization: chung80}, the 20 per cent of the H$^+$
+events at and above 80\,eV that \citet{Chung1993} state, ramped linearly from
+the 51.4\,eV threshold, the ramp not being in the source);
+\texttt{yan\_rho} builds it from the double-to-single ratio of
+\citet{Yan1998} instead (at 110\,eV \texttt{chung80} gives 15 per cent more
+double ionization than \texttt{yan\_rho}), and
+\texttt{off} folds it back into S, which reproduces the code before the
+channel existed. The N window is resolved by default as well
+(\texttt{H2 neutral dissociation: True}).
 
 The energy of one absorbed photon is accounted channel by channel by
 \texttt{h2\_channel\_energy\_recipients}, the single statement of what each
@@ -538,3 +545,82 @@ carries its own mass fraction and its own binary coefficient; otherwise the
 metals are frozen to hydrogen, i.e.\ they ride in component 1 at the
 metal/H ratio the cell holds, and what \texttt{project\_elements} preserves
 for them is that ratio and not the density.
+
+The Dirichlet composition sits at the \emph{center} of cell~1, half a cell
+above the base level, which since 2026-09-27 is the lower face of the grid
+(Sec.~\ref{sec:bcic:base}).  That offset is a first-order term in the cell
+width which is recorded and not changed; the He/H change near the base is
+$1.5\times10^{-4}$ (\texttt{md/Update\_EXHALE\_stage3.md} section 29.11).
+
+\subsection{The interdiffusion enthalpy flux}
+\label{sec:mol:interdiffusion}
+
+Particles that move relative to the mass-averaged velocity carry their
+enthalpy with them.  In a mixture whose species move with velocities
+$v + w_s$, the energy equation is
+%
+\begin{equation}
+  \frac{\partial\mathcal{E}}{\partial t}
+  + \nabla\!\cdot\!\bigl[(\mathcal{E}+p)\mathbf{v}\bigr]
+  = \ldots - \nabla\!\cdot q_d,
+  \qquad
+  q_d = \sum_s h_s J_s,\quad J_s = \rho_s w_s,\quad \sum_s J_s = 0,
+  \label{eq:mol:qd}
+\end{equation}
+%
+\citep[eqs.~11--13, the Dufour flux and the kinetic energy of the relative
+motion left out there and here]{Cook2009}.  Because $J_s$ is a flux relative
+to the \emph{mass}-weighted velocity, $h_s$ is the specific enthalpy and not
+the internal energy.  With the binary element model of
+Sec.~\ref{sec:mol:diffusion} every species moves with its element and the
+electrons with their ions, so $J_1 = -J_{\rm He}$ and
+%
+\begin{equation}
+  q_d = J_{\rm He}\,\bigl(h_{\rm He} - h_1\bigr)
+      + \sum_X J_X\,\bigl(h_X - h_{\rm H}\bigr),
+  \label{eq:mol:qdbinary}
+\end{equation}
+%
+the metal sum present only where \texttt{He\_metal\_diffusion} moves each
+metal against hydrogen (taken against $h_{\rm H}$, component 1 without its
+metals, the group that recoils) and the metals carry mass in the mixture.
+The $h_c$ are \emph{sensible} specific enthalpies built from the caloric
+equation of state (\texttt{component\_specific\_enthalpies} in
+\texttt{binary\_element\_diffusion.f90}): per particle
+$h = e + kT = kT\,\gamma/(\gamma-1)$ for every atom, ion and molecular ion,
+each ion counted with the $Z$ electrons the ambipolar field makes follow it,
+and H$_2$ adding its rovibrational energy of Sec.~\ref{sec:mol:caloric};
+HeH$^+$ is shared between the two components in the proportion of its
+nuclei.  Formation energy is not in them: the energy update books chemical
+energy through the formation-energy density, whose reference in the source
+step is the composition the element transport has just written, so the
+formation energy of the moved nuclei rides with them already, and the
+stationary energy row holds chemical energy only as the reaction heating and
+cooling inside $\mathcal{H}-\Lambda$.  $J$ is the operator's whole diffusive
+flux, gradient, eddy and settling drift together, since eddy mixing carries
+enthalpy as it carries the elements.  Face values of $h_c$ are the
+arithmetic means of the two cells, the face rule of every coefficient of the
+operator, and the flux is zero wherever $J$ is, in particular at faces 0 and
+$N$.
+
+The divergence is taken on the face areas and volumes of the element rows,
+$[A_+q_d(j) - A_-q_d(j-1)]/V_j$ for $j = 2\ldots N$, so an interior face
+cancels between its two cells and the energy the term moves telescopes over
+the column; cell~1, the Dirichlet reservoir of the element operator, carries
+no element equation and no interdiffusion energy.  Both routes carry it: the
+marching step subtracts $\Delta t\,\nabla\!\cdot q_d$, formed from the element
+fluxes the accepted element step itself carried, from the thermal energy
+before the coupled source step starts (\texttt{EXHALE\_main.f90}); the
+stationary energy row adds $\nabla\!\cdot q_d$ formed from the element fluxes
+of the state itself \eqref{eq:residual}.  The key
+\texttt{Interdiffusion enthalpy flux:} is \textbf{on by default} whenever
+\texttt{He\_diffusion} moves helium, because the term belongs to the energy
+equation of any mixture whose components move relative to one another;
+\texttt{False} exists to reproduce published escape models that omit it
+\citep[eq.~3]{Koskinen2013}, \citep[eq.~B3]{Koskinen2022}.  With
+\texttt{He\_diffusion} off the term is identically zero with no arithmetic.
+MEASURED on the LHS~1140\,b \texttt{He\_diffusion} states: the divergence
+reaches 13 to 26 per cent of the local energy budget at 1.1--5\,$R_p$, and on
+the molecular He/H\,$=1.8$ state (24 outer passes with the term, not yet
+certified) it lowers $T$ by a median 166\,K over 1.3--2\,$R_p$ and He/H by
+3.1 per cent, and moves $\log_{10}\dot M$ by $+0.002$.

@@ -123,6 +123,20 @@
       ! Read only: they carry no arithmetic of their own.
       public :: caloric_cell_mixture
       public :: h2_rovibrational_table_grid, h2_rovibrational_table_node
+      public :: caloric_mixture_record
+      public :: hold_caloric_mixture, restore_caloric_mixture
+
+      ! THE COMPOSITION THE CALORIC MAPS READ, AS ONE RECORD, so that a
+      ! caller that needs the maps of another composition for a moment (the
+      ! pass snapshot of the stationary outer iteration, which evaluates the
+      ! state the next pass starts from) can put the module back exactly as
+      ! it found it and leave the trajectory of the run untouched.
+      type :: caloric_mixture_record
+         logical :: held   = .false.
+         logical :: active = .false.
+         real*8,  allocatable :: nk_per_mass(:), x_h2(:)
+         logical, allocatable :: molecular_cell(:)
+      end type caloric_mixture_record
 
       ! Is any cell of this run molecular?  Set by
       ! caloric_state_from_composition; .false. keeps every map on the
@@ -233,6 +247,35 @@
       enddo
 
       end subroutine caloric_state_from_composition
+
+      ! ------------------------------------------------------!
+
+      subroutine hold_caloric_mixture(rec)
+      ! Copy the composition the caloric maps read into rec.
+      type(caloric_mixture_record), intent(out) :: rec
+      rec%active = caloric_mixture_active
+      rec%held   = allocated(nk_per_mass)
+      if (rec%held) then
+         rec%nk_per_mass    = nk_per_mass
+         rec%x_h2           = x_h2
+         rec%molecular_cell = molecular_cell
+      endif
+      end subroutine hold_caloric_mixture
+
+      ! ------------------------------------------------------!
+
+      subroutine restore_caloric_mixture(rec)
+      ! Put back the composition hold_caloric_mixture copied into rec. The
+      ! arrays are allocated by the first refresh and never deallocated, so
+      ! a record taken before that first refresh restores the flag alone.
+      type(caloric_mixture_record), intent(in) :: rec
+      caloric_mixture_active = rec%active
+      if (rec%held .and. allocated(nk_per_mass)) then
+         nk_per_mass    = rec%nk_per_mass
+         x_h2           = rec%x_h2
+         molecular_cell = rec%molecular_cell
+      endif
+      end subroutine restore_caloric_mixture
 
       ! ------------------------------------------------------!
 

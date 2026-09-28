@@ -18,7 +18,7 @@ five-phase averaging, both of which are used here.
 The fit is done in two stages -- match the red-component equivalent width
 first, then fit the line shape with the broadening free and the equivalent
 width held -- with a joint likelihood grid as a control.  The write-up is
-`../../docs/pwinds_broadening_free_refit.md`.
+`../../md/pwinds_broadening_free_refit.md`.
 
 ## Files
 

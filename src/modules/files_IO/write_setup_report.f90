@@ -590,6 +590,22 @@
 	else
 		write(outfile,*) '- Well balanced: off (opt-in key "Well balanced")'
 	endif
+	! The energy carried by the element fluxes. Stated only where the
+	! elements move, so the report of a run without He_diffusion is the one
+	! it always was.
+	if (he_diffusion) then
+		if (interdiffusion_enthalpy_flux) then
+			write(outfile,*) '- Interdiffusion enthalpy flux: on (the'//      &
+				' energy equation carries q_d = sum_s h_s J_s of the'
+			write(outfile,*) '    element fluxes, Cook 2009 eqs. 11-13,'//   &
+				' in the marching update and the stationary energy row)'
+		else
+			write(outfile,*) '- Interdiffusion enthalpy flux: OFF by'//       &
+				' request (the elements move but the energy equation'
+			write(outfile,*) '    omits the enthalpy they carry, as'//       &
+				' Koskinen et al. 2013, 2022 and Yelle 2004 do)'
+		endif
+	endif
 	! Rieper (2011) low-Mach correction of the Roe dissipation: the normal
 	! velocity jump entering the two acoustic expansion coefficients is
 	! scaled by min(|U_Roe|/a_Roe, 1).  It is defined on the ROE branch only.
@@ -624,7 +640,7 @@
 	! states WHERE it is and WHAT the reservoir says, not which ghost closure
 	! is selected -- there is no longer a choice of closure to report.
 	write(outfile,*) '- Base boundary: characteristic condition at the'//   &
-		' face r_edg(0)'
+		' face r_edg(0), which is the base level'
 	write(outfile,23) '    reservoir (p, s) at r = ', r_base_level,         &
 		': p = ', base_reservoir_p, ' p0, T = ', base_reservoir_T, ' T0'
 	write(outfile,21) '    supersonic-outflow regularization width, face Mach = ',      &
@@ -852,6 +868,7 @@
 	call put_l('he_ambipolar', he_ambipolar)
 	call put_l('he_metal_diffusion', he_metal_diffusion)
 	call put_l('he_diffusion', he_diffusion)
+	call put_l('interdiffusion_enthalpy_flux', interdiffusion_enthalpy_flux)
 	call put_r('stall_tol', stall_tol)
 	call put_i('N_stall', N_stall)
 	call put_l('use_semi_implicit_energy', use_semi_implicit_energy)

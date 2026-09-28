@@ -60,6 +60,15 @@ EPS = sys.float_info.epsilon
 ROWS = ("mass", "momentum", "energy")
 
 
+def interdiffusion_divergence(cell):
+    """The divergence of the interdiffusion enthalpy flux of one cell, the
+    Sidf column of a schema-2 file, ADDED to the energy row by the assembly:
+    R_energy = dF_energy - S_energy - (heat - cool) - Sene + Sidf.  A
+    schema-1 file was written by a code that had no such term, so it is
+    zero there."""
+    return cell.get("Sidf", 0.0)
+
+
 # --------------------------------------------------------------------- #
 # reading
 
@@ -190,10 +199,11 @@ def rebuilt_rows(cell, branch, wants_transport):
     grav = (a_hi * fm_hi * (phi_hi - phi_c)
             - a_lo * fm_lo * (phi_lo - phi_c))
     dfe = (a_hi * fe_hi - a_lo * fe_lo + grav) / vol
+    sidf = interdiffusion_divergence(cell)
     terms = [a_hi * fe_hi / vol, a_lo * fe_lo / vol, grav / vol,
-             cell["S_energy"], cell["heat"], cell["cool"], sene]
+             cell["S_energy"], cell["heat"], cell["cool"], sene, sidf]
     out["energy"] = (dfe - cell["S_energy"] - (cell["heat"] - cell["cool"])
-                     - sene,
+                     - sene + sidf,
                      max(abs(t) for t in terms))
     out["_grav_over_volume"] = grav / vol
     out["_dF"] = {"mass": (a_hi * fm_hi - a_lo * fm_lo) / vol,
@@ -206,7 +216,7 @@ def row_scales(cell, wants_transport):
 
     mass      max(|A F|_hi, |A F|_lo)/V           (mass_flux_row_scale)
     momentum  max(|ram|, |pressure|, |gravity|, |Smom|)
-    energy    max(|dF_E|, |S_E|, heat, cool, |Sene|)
+    energy    max(|dF_E|, |S_E|, heat, cool, |Sene|, |Sidf|)
 
     all of steady_residual.f90.  The momentum and energy scales read the
     exported production attribution, which is what the binary's own measure
@@ -221,7 +231,8 @@ def row_scales(cell, wants_transport):
     s_mom = max(abs(cell["momentum_ram"]), abs(cell["momentum_pressure"]),
                 abs(cell["momentum_gravity"]), abs(smom))
     s_ene = max(abs(cell["dF_energy"]), abs(cell["S_energy"]),
-                abs(cell["heat"]), abs(cell["cool"]), abs(sene))
+                abs(cell["heat"]), abs(cell["cool"]), abs(sene),
+                abs(interdiffusion_divergence(cell)))
     return {"mass": max(s_mass, tiny), "momentum": max(s_mom, tiny),
             "energy": max(s_ene, tiny)}
 
@@ -233,7 +244,7 @@ def energy_with_potential_defect(cell, wants_transport):
             = [A_R (F_E,R + phi_R F_m,R)
              - A_L (F_E,L + phi_L F_m,L)]/V - phi_c S_mass - Q
 
-    with Q = heat - cool + Sene.  The term phi_c R_mass is KEPT: these
+    with Q = heat - cool + Sene - Sidf.  The term phi_c R_mass is KEPT: these
     checkpoints are not stationary and their mass rows are not small, so
     dropping it would impose a stationary mass identity on a state that has
     none.  Returns the defect and the largest term it is a difference of.
@@ -246,7 +257,7 @@ def energy_with_potential_defect(cell, wants_transport):
                       + phi_hi * cell["face_mass_hi"]) / vol
     left_lo = a_lo * (cell["face_energy_lo"]
                       + phi_lo * cell["face_mass_lo"]) / vol
-    q = cell["heat"] - cell["cool"] + sene
+    q = cell["heat"] - cell["cool"] + sene - interdiffusion_divergence(cell)
     right = left_hi - left_lo - phi_c * cell["S_mass"] - q
     left = cell["R_energy"] + phi_c * cell["R_mass"]
     terms = [abs(left_hi), abs(left_lo), abs(q), abs(cell["R_energy"]),
@@ -442,6 +453,7 @@ def audit(budget, top, extra_subdomains, csv):
                           * window[0]["face_mass_lo"])))
         src_ene = sum(c["volume"] * (c["heat"] - c["cool"]
                                      + (c["Sene"] if wants_transport else 0.0)
+                                     - interdiffusion_divergence(c)
                                      + c["phi_cell"] * c["S_mass"])
                       for c in window)
         print("  %-46s cells %4d..%4d" % (label, ja, jb))

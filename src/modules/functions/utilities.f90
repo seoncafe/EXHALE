@@ -29,8 +29,10 @@
 	contains
 
    subroutine set_state_certified(flag, reason)
-   ! Set by the certification contexts alone (certification.f90); every other
-   ! reader takes it.
+   ! Set by the certification contexts (certification.f90) and by the
+   ! run's own adoption of a loaded claim; every other reader takes it. The
+   ! pass state writer (write_pass_state_pair) sets the pair of the pass
+   ! snapshot for its own write and puts the run's pair back after it.
    logical,          intent(in) :: flag
    character(len=*), intent(in) :: reason
    state_is_certified         = flag
@@ -203,12 +205,30 @@
    !
    ! It is a '#' comment, so no numeric parse and no golden changes: the
    ! regression compares with grep -v '^ *#'.
+   !
+   ! The fields are formed by coupling_state_fields, which the provenance
+   ! line of the derived (_adv) products writes as well, so the two lines
+   ! cannot state different sets of fields.
       integer, intent(in) :: unit
+      write(unit,'(A)') '# coupling: '//trim(coupling_state_fields())
+   end subroutine write_coupling_state_header
+
+   function coupling_state_fields(certification_first) result(fields)
+   ! The key=value fields of the '# coupling:' line, without its label, in
+   ! the order that line has always carried them (write_coupling_state_header
+   ! states what each field means). With certification_first present and
+   ! true, the same fields with the certification pair (certified,
+   ! cert_reason) moved to the front: the order of the '# derived_from:'
+   ! line of the _adv products, whose readers key on 'derived_from:
+   ! certified='.
+      logical, intent(in), optional :: certification_first
+      character(len=512) :: fields
       character(len=1) :: s, c
       character(len=48) :: why
       character(len=16) :: ptr
       character(len=64) :: mtok
       character(len=32) :: tbuf
+      character(len=16) :: sbuf
       s = 'F';  if (sec_ion_active) s = 'T'
       ! iontrans: the state in this file was produced with the hydrogen
       ! ionization state CARRIED (Ionization transport), so its H+ column is a
@@ -243,13 +263,18 @@
       else
          mtok = ' mode=init'
       endif
-      write(unit,'(A,A1,A,I0,A,A,A,A,A1,A,A)')                            &
-           '# coupling: sec_ion=', s,                                     &
-           ' sec_ion_step=', sec_ion_armed_step,                          &
-           ' recon=', trim(reconstruction_operator_label()),              &
-           trim(ptr),                                                     &
-           ' certified=', c, trim(why), trim(mtok)
-   end subroutine write_coupling_state_header
+      write(sbuf,'(I0)') sec_ion_armed_step
+      fields = 'sec_ion='//s//' sec_ion_step='//trim(sbuf)//              &
+               ' recon='//trim(reconstruction_operator_label())//         &
+               trim(ptr)//' certified='//c//trim(why)//trim(mtok)
+      if (present(certification_first)) then
+         if (certification_first)                                         &
+            fields = 'certified='//c//trim(why)//' sec_ion='//s//         &
+                     ' sec_ion_step='//trim(sbuf)//                       &
+                     ' recon='//trim(reconstruction_operator_label())//   &
+                     trim(ptr)//trim(mtok)
+      endif
+   end function coupling_state_fields
 	! ------------------------------------------------------!
 
 	subroutine calc_ne(nhii,nheii,nheiii,ne,nm,nmol)

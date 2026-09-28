@@ -88,6 +88,62 @@
 	! any size whenever the kept terms are large.
 	real*8, parameter :: enthalpy_ratio_report_level = 1.0d0
 
+	! THE STEP OF THE RECURSION. Every equation this post-process integrates
+	! along the flow is an ODE in r, dy/dr = F(y, r): the ionization balance
+	! v dx/dr = R(x) of the H, HeH and HeH_TR advection systems, and the steady
+	! internal-energy equation (the statement before the energy loop). Both are
+	! stiff wherever the chemistry or the radiative balance relaxes within a
+	! cell (a Damkohler number above one). Each is advanced cell by cell with
+	! ONE rule, the backward differentiation formula of order two on the
+	! nonuniform grid (variable-step BDF2):
+	!
+	!     y_j - a1 y_{j-1} + a2 y_{j-2} = g h_j F(y_j, r_j) ,
+	!     h_j = r_j - r_{j-1},  w = h_j/h_{j-1},
+	!     a1 = (1+w)^2/(1+2w),  a2 = w^2/(1+2w),  g = (1+w)/(1+2w) .
+	!
+	! Derivation: the left side over g h_j is dP/dr at r_j for P the quadratic
+	! through (r_{j-2},y_{j-2}), (r_{j-1},y_{j-1}), (r_j,y_j), since
+	! dP/dr(r_j) = y_j (2h_j + h_{j-1})/(h_j (h_j + h_{j-1}))
+	!            - y_{j-1} (h_j + h_{j-1})/(h_j h_{j-1})
+	!            + y_{j-2} h_j/(h_{j-1} (h_j + h_{j-1})) ;
+	! multiplying by g h_j = h_j (h_j + h_{j-1})/(2h_j + h_{j-1}) gives the
+	! weights above. This is the variable-step BDF2 formula in the form
+	! D2 v^n = d0(r_n,0) dv^n + d1(r_n,0) dv^{n-1} of Li & Liao, "Stability
+	! of variable-step BDF2 and BDF3 methods", arXiv:2201.00527 (2022),
+	! eq. (1.4), which was read for this; the textbook source they cite is
+	! Hairer, Norsett & Wanner, Solving Ordinary Differential Equations I,
+	! 2nd ed., sect. III.5 (not re-read here). At w = 1 they are the constant-step BDF2, (3/2) y_j - 2 y_{j-1}
+	! + (1/2) y_{j-2} = h F_j. The formula is exact for quadratics, so its
+	! local error is O(h^3) and the recursion is second order in the cell
+	! width. The same weights differentiate the known profiles the energy
+	! equation holds (the density), so every r-derivative of a step is taken
+	! at r_j by one rule, and every other factor of the step (the rates, the
+	! heating and cooling, the velocity that makes the residence time) is the
+	! value at r_j.
+	!
+	! The recursion is started, and restarted after every cell it does not
+	! integrate (a refused or failed cell), by backward Euler,
+	! y_j - y_{j-1} = h_j F(y_j, r_j): one step of local error O(h^2), which
+	! leaves the global order two. A BDF2 step whose populations or root are
+	! not admissible (a negative population, no temperature root) is retaken
+	! by backward Euler, which keeps the populations of a linear rate system
+	! nonnegative; the log counts both.
+	!
+	! WHY NOT THE TRAPEZOID RULE. It is second order and A-stable but not
+	! L-stable: its amplification factor (1 + z/2)/(1 - z/2) tends to -1 as
+	! z = -Da -> -infinity, so a population that relaxes within the cell does
+	! not settle on its local equilibrium but alternates about it from cell to
+	! cell. BDF2, like backward Euler, is L-stable: both amplification roots
+	! of its step tend to zero there, so in the stiff limit it returns the
+	! local equilibrium.
+	!
+	! ZERO-STABILITY. Variable-step BDF2 is zero-stable for step ratios
+	! w <= 1 + sqrt(2) (R. D. Grigorieff 1983, Numer. Math. 42, 359, as
+	! cited by Li & Liao above; the 1983 paper was not read); a cell whose
+	! ratio exceeds that bound is integrated by backward Euler. The Mixed
+	! grids of the LHS 1140 b states have w <= 1.018 (MEASURED 2026-09-27).
+	real*8, parameter :: bdf2_step_ratio_limit = 2.414213562373095d0
+
 	! Advection-corrected H/He ionized fractions for the current cell, pinned
 	! while the metal re-solve (pp_metals=2) adjusts only the metal stages.
 	! Set per cell before each ion_system_metals_pp / hybrd1 call.
@@ -119,7 +175,7 @@
 	! of the temperature correction a statement about the flow rather than
 	! about the sign of v: t_cross = dr/v grows without bound as v -> 0, so at
 	! any nonzero radiative rate the correction switches ITSELF off before the
-	! upwind difference it is built on loses its meaning. Unity is not a
+	! step it is built on loses its meaning. Unity is not a
 	! tunable threshold: it is the statement that one of the two terms of the
 	! equation is larger than the other.
 	pure real*8 function thermal_damkohler_number(t_cross, q_rad, u_th)
@@ -141,16 +197,19 @@
 	!
 	!     rho v de/dr  -  p v dln(rho)/dr  +  h div(rho v)  =  heat - cool
 	!
-	! upwind-differenced, and with the common 1/dr divided out its three terms
-	! are, in the variables of the residual,
+	! differenced by the step of the recursion (bdf2_step_ratio_limit): every
+	! r-derivative at r_j is (f_j - f_hist)/dr_step, with f_hist the history
+	! a1 f_{j-1} - a2 f_{j-2} (backward Euler: f_{j-1}) and dr_step = g h_j
+	! (backward Euler: h_j). With the common 1/dr_step divided out its three
+	! terms are, in the variables of the residual,
 	!
-	!     q_adv  = |rho v (e_j - e_{j-1})|
-	!     q_prs  = |w v (rho_j - rho_{j-1})|          w = p/rho
-	!     q_enth = |h div(rho v) dr|                  h = e + w
+	!     q_adv  = |rho v (e_j - e_hist)|
+	!     q_prs  = |w v (rho_j - rho_hist)|          w = p/rho
+	!     q_enth = |h div(rho v) dr_step|            h = e + w
 	!
-	! The third vanishes for a stationary mass flux rho v r^2 and for nothing
-	! else, so this ratio is how much of the equation the non-stationarity of
-	! the recorded flow carries, and above one the temperature the equation
+	! The third vanishes for a stationary mass flux and for nothing else, so
+	! this ratio is how much of the equation the non-stationarity of the
+	! recorded flow carries, and above one the temperature the equation
 	! returns is set by that term rather than by the balance.
 	!
 	! IT IS A SENSITIVITY DIAGNOSTIC AND NOT A STATIONARITY CERTIFICATE.
@@ -162,34 +221,53 @@
 	! stationary certification uses; this ratio is reported next to it, with
 	! enthalpy_ratio_report_level as the level at which the term dominates.
 	!
-	! The arguments are the cell (subscript up) and its upwind neighbor
-	! (subscript lo): the two points at which the residual evaluates the
-	! state.
-	pure real*8 function enthalpy_flux_term_ratio(h_up, div_rhov, dr,      &
-	                     rho_up, v_up, e_up, e_lo, w_up, rho_lo)
+	! The arguments are the cell (subscript up) and the history of the step
+	! into it (subscript hist), the values the residual evaluates the state at.
+	pure real*8 function enthalpy_flux_term_ratio(h_up, div_rhov, dr_step, &
+	                     rho_up, v_up, e_up, e_hist, w_up, rho_hist)
 	real*8, intent(in) :: h_up      ! enthalpy per unit mass of the cell
 	real*8, intent(in) :: div_rhov  ! divergence of the mass flux [1/length]
-	real*8, intent(in) :: dr        ! width of the cell
+	real*8, intent(in) :: dr_step   ! width the step multiplies F by
 	real*8, intent(in) :: rho_up    ! density of the cell
 	real*8, intent(in) :: v_up      ! velocity of the cell
-	real*8, intent(in) :: e_up,e_lo ! internal energy per unit mass, two points
+	real*8, intent(in) :: e_up      ! internal energy per unit mass, the cell
+	real*8, intent(in) :: e_hist    ! ... its history
 	real*8, intent(in) :: w_up      ! p/rho of the cell
-	real*8, intent(in) :: rho_lo    ! density of the upwind point
+	real*8, intent(in) :: rho_hist  ! history of the density
 	real*8 :: q_enth,q_adv,q_prs
 
-	q_adv  = abs(rho_up*v_up*(e_up - e_lo))
-	q_prs  = abs(w_up*v_up*(rho_up - rho_lo))
-	q_enth = abs(h_up*div_rhov*dr)
+	q_adv  = abs(rho_up*v_up*(e_up - e_hist))
+	q_prs  = abs(w_up*v_up*(rho_up - rho_hist))
+	q_enth = abs(h_up*div_rhov*dr_step)
 	! A cell in which all three terms vanish carries no equation at all, and
 	! the floor makes that ratio zero rather than 0/0: nothing to refuse.
 	enthalpy_flux_term_ratio = q_enth/max(q_adv, q_prs, 1.0d-99)
 
 	end function enthalpy_flux_term_ratio
 
+	! The weights of one variable-step BDF2 step (see bdf2_step_ratio_limit
+	! for the formula and its derivation): the step into r_j from r_{j-1} and
+	! r_{j-2}, with h_step = r_j - r_{j-1} and h_prev = r_{j-1} - r_{j-2} in
+	! any common unit.
+	pure subroutine variable_step_bdf2_weights(h_step, h_prev,            &
+	                                          w_prev, w_prev2, w_rate)
+	real*8, intent(in)  :: h_step, h_prev
+	real*8, intent(out) :: w_prev   ! a1, the weight of y_{j-1}
+	real*8, intent(out) :: w_prev2  ! a2, the weight of y_{j-2}
+	real*8, intent(out) :: w_rate   ! g, F_j is multiplied by g h_step
+	real*8 :: step_ratio
+
+	step_ratio = h_step/h_prev
+	w_prev  = (1.0d0 + step_ratio)**2/(1.0d0 + 2.0d0*step_ratio)
+	w_prev2 = step_ratio**2/(1.0d0 + 2.0d0*step_ratio)
+	w_rate  = (1.0d0 + step_ratio)/(1.0d0 + 2.0d0*step_ratio)
+
+	end subroutine variable_step_bdf2_weights
+
 	subroutine post_process_adv(rho,v,p,T_in,heat,cool,eta,   &
                                   nhi_in,nhii_in,		    &
                                   nhei_in,nheii_in,nheiii_in,   &
-                                  nheiTR_in, nm_in)
+                                  nheiTR_in, nm_in, f_sp_in)
 
 
 	real*8, dimension(1-Ng:N+Ng), intent(in) :: rho,v,p,T_in
@@ -201,6 +279,10 @@
    ! Converged equilibrium metal densities (dimensionless, n0 units), used
    ! by the metal-aware post-process modes (pp_metal_mode = 1 frozen, 2 re-solve).
    real*8, dimension(1-Ng:N+Ng,n_mion), intent(in) :: nm_in
+   ! The composition of the recorded state, handed to the residual assembly
+   ! below: its energy row reads the composition (the interdiffusion
+   ! enthalpy flux of a diffusing mixture). Only the mass row is read here.
+   real*8, dimension(1-Ng:N+Ng,n_species), intent(in) :: f_sp_in
 	
 	integer j,k
 	integer :: n_pp_reject       ! cell-by-cell T solves rejected as non-physical
@@ -334,9 +416,6 @@
    real*8 :: tol,dpmpar                      ! Equilibrium system setup
       
       
-	! Substitution in the ODE solution
-	real*8 :: As
-
 	! Validity of the advection correction, cell by cell (filled by the block
 	! just before the ionization loop, where the three conditions are stated).
 	logical, dimension(1-Ng:N+Ng) :: adv_correction_valid
@@ -357,20 +436,11 @@
 	real*8  :: r_Da_thermal_max    ! radius at which it is largest
 	integer :: n_T_local      ! cells left at the run's own temperature
 	! The enthalpy flux of the mass-flux divergence, the third term of the
-	! energy equation (see the statement in the energy loop): its coefficient
-	! div(rho v), and its size against the other two terms.
-	real*8  :: x_h2_cell      ! H2 share of the particle count of the cell
-	real*8  :: x_h2_upwind    ! ... of the upwind cell the energy comes from
-	! e_up and e_lo are the two ENDS OF THE INTERFACE, the cell at r(j) and
-	! the cell at r(j-1), for the term sizes of the sensitivity diagnostic;
-	! e_upwind is the same specific energy of the upwind cell handed to the
-	! residual, which names it for the direction the flow comes from.
-	real*8  :: e_up,e_lo      ! internal energy per unit mass at the two ends
-	real*8  :: e_upwind       ! that of the upwind cell, for the residual
+	! energy equation (see the statement before the energy loop), against
+	! the other two terms: the specific internal energy of the cell, its
+	! p/rho and its enthalpy per unit mass, for the sensitivity diagnostic.
+	real*8  :: e_up           ! internal energy per unit mass of the cell
 	real*8  :: w_up,h_up      ! p/rho and the enthalpy per unit mass, this cell
-	real*8  :: Fmass_up,Fmass_lo   ! mass flux rho v r^2 at the two points
-	real*8  :: dV_cv          ! volume between the two points, d(r^3)/3
-	real*8  :: div_rhov       ! divergence of the mass flux of the cell
 	real*8  :: enthalpy_flux_ratio, enthalpy_flux_ratio_max
 	real*8  :: r_enthalpy_flux_max ! radius at which that ratio is largest
 	integer :: n_enthalpy_term_dominant ! cells whose ratio is above the level
@@ -405,6 +475,14 @@
 	! carries, for the cell class it does not model (adv_unsupported).
 	real*8  :: n_omitted, n_carried
 	logical, dimension(1-Ng:N+Ng) :: cell_class_modelled
+	! The same statement about the ENERGY equation (see where it is formed):
+	! the heating and cooling of the run's own state that this post-process
+	! does not carry, against those it does, and the verdict of each cell.
+	real*8  :: q_omitted, q_carried
+	real*8, dimension(1-Ng:N+Ng)   :: theat_of_run_composition
+	logical, dimension(1-Ng:N+Ng) :: energy_class_modelled
+	integer :: n_energy_class_refused
+	real*8  :: r_energy_class_top
 
 	! Validity of the temperature and of the composition of each row, in the
 	! five values of the two-field schema (output_write); written as the last
@@ -420,17 +498,39 @@
    real*8, dimension(60) :: params
    real*8, dimension(40) :: paramsT
       
-	real*8 :: rhop,rhom,vp,mum,mup,vm
-	real*8 :: sys_sol_T(1), sys_x_T(1)
-	! Largest term the energy equation holds in the current cell, the
-	! scale its residual is read against (see the solve below).
-	real*8 :: energy_residual_scale
+	real*8 :: vp,vm
+	real*8 :: sys_x_T(1)
    real*8 :: wa_T(8)
-   logical :: brent_ok                       ! Task 1: Brent T-solve status
    ! The cell energy solve kept the run's own temperature: it did not
    ! converge, or its root was outside the band a temperature of this gas
    ! can occupy.
    logical :: T_solve_fell_back
+   ! How the cell energy solve ended (energy_step): a root, a root at the
+   ! cancellation floor of its own terms, or one of the four ways it keeps
+   ! the run's own temperature.
+   integer :: T_outcome
+   integer, parameter :: T_root_found = 0, T_root_at_floor = 1,           &
+                         T_no_bracket = 2, T_not_converged = 3,           &
+                         T_non_positive = 4, T_out_of_band = 5
+
+   ! THE STEP (bdf2_step_ratio_limit, this module). The variable-step BDF2
+   ! weights of the step INTO each cell, from the two cells below it, and
+   ! whether the grid admits that step there (zero-stability).
+   real*8,  dimension(1-Ng:N+Ng) :: bdf_a1, bdf_a2, bdf_g
+   logical, dimension(1-Ng:N+Ng) :: bdf2_admissible
+   ! Whether the step in progress is the BDF2 step (else backward Euler).
+   logical :: use_bdf2
+   ! Width the right-hand side of a step is multiplied by, g h_j or h_j
+   ! [code units], and the histories of the density and of the specific
+   ! internal energy that step differences against.
+   real*8  :: dr_step, rho_hist, e_hist
+   ! The divergence of the mass flux of each cell, div(rho v), from the
+   ! mass row of the state (see the statement before the energy loop).
+   real*8, dimension(1-Ng:N+Ng) :: div_rhov_state
+   ! Ledger of the steps of the last pass: BDF2 and backward Euler steps,
+   ! and the BDF2 steps retaken by backward Euler.
+   integer :: n_bdf2_comp, n_be_comp, n_bdf2_comp_retaken
+   integer :: n_bdf2_T, n_be_T, n_bdf2_T_retaken
       
       
    !----------------------------------------------------------!      
@@ -550,8 +650,24 @@
 	n_T_noconv     = 0
 	n_T_res_root   = 0
 
+	! The weights of the step into each cell. The two lowest rows have no
+	! two cells below them and are never the target of a BDF2 step.
+	bdf_a1 = 1.0d0
+	bdf_a2 = 0.0d0
+	bdf_g  = 1.0d0
+	bdf2_admissible = .false.
+	do j = 3-Ng,N+Ng
+		call variable_step_bdf2_weights(r(j) - r(j-1), r(j-1) - r(j-2),     &
+		                                bdf_a1(j), bdf_a2(j), bdf_g(j))
+		bdf2_admissible(j) = (r(j) - r(j-1) <=                              &
+		                      bdf2_step_ratio_limit*(r(j-1) - r(j-2)))
+	enddo
+
 	! Iterate the post processing
 	do k = 1,10	! Usually 10 gives a good convergence
+
+	n_bdf2_comp = 0;  n_be_comp = 0;  n_bdf2_comp_retaken = 0
+	n_bdf2_T    = 0;  n_be_T    = 0;  n_bdf2_T_retaken    = 0
 	
 	! Summed He I from the two populations carried through the pass, then the
 	! H and He NUCLEI totals from the one shared definition (utils).  The
@@ -628,8 +744,9 @@
 	! Recombination radiation absorbed on the spot (recombination_radiation_
 	! absorbed). Replace the recombination coefficients by the net ones and
 	! add the photoionization rates driving the advection ODE (the heating
-	! correction is applied later, to theat). Mirrors
-	! ionization_equilibrium; molecule-free (nh2_pp = 0).
+	! of the same photons is part of the one heating assembly below,
+	! heating_of_composition, which calls the same routine; dheat_hrc is not
+	! read). Mirrors ionization_equilibrium; molecule-free (nh2_pp = 0).
 	if (use_h_rec_escape .or. (use_he_rec_coupling .and. thereis_He)) then
 		nh2_pp = 0.0d0
 		call recombination_radiation_absorbed(T_K, nhi, nhii, nh2_pp,     &
@@ -750,7 +867,8 @@
 		! reports it after this routine returns; assembling a residual is a
 		! measurement of a state and not a step, so the count is put back.
 		n_limited_before = n_faces_positivity_limited
-		call assemble_residual(u_state, n_part_state, heat, cool, R_state)
+		call assemble_residual(u_state, n_part_state, f_sp_in, heat, cool,  &
+		                       R_state)
 		n_faces_positivity_limited = n_limited_before
 
 		mass_row_within_tol = .true.
@@ -779,46 +897,49 @@
 			endif
 		enddo
 
+		! THE DIVERGENCE OF THE MASS FLUX the energy equation holds, cell by
+		! cell: the mass row just assembled, which is the face mass fluxes of
+		! the Riemann solve of this state differenced over the cell's own
+		! control volume (the mass row has no source, so R_1 is that
+		! divergence). See the statement before the energy loop for why this
+		! and not a difference of the cell-centred rho v r^2.
+		div_rhov_state        = 0.0d0
+		div_rhov_state(2-Ng:) = R_state(1,2-Ng:)
+
 		! THE SENSITIVITY OF THE ANSWER, next to the decision above. How much
 		! of the energy equation the non-stationarity of the recorded flow
 		! carries is the size of its enthalpy flux term against the two terms
-		! the balance keeps (enthalpy_flux_term_ratio, this module), formed on
-		! the two points the upwind difference is taken between. It is
-		! reported and refuses nothing: the same ratio is reached with a mass
-		! divergence of any size once the kept terms are large.
+		! the balance keeps (enthalpy_flux_term_ratio, this module), formed
+		! with the step the energy loop takes into the cell (bdf2_step_ratio_
+		! limit) on the run's own temperature. It is reported and refuses
+		! nothing: the same ratio is reached with a mass divergence of any
+		! size once the kept terms are large.
 		enthalpy_flux_ratio_max  = 0.0d0
 		r_enthalpy_flux_max      = 0.0d0
 		n_enthalpy_term_dominant = 0
 		do j = 2-Ng,N+Ng
-			! The divergence of the mass flux over the control volume whose
-			! two bounding points are the two the upwind difference is taken
-			! between: (A_p F_p - A_m F_m)/dV with F = rho v, A = r^2,
-			! dV = d(r^3)/3, an exact zero wherever the two points carry the
-			! same rho v r^2. This is the coefficient the energy residual is
-			! given, so the diagnostic and the equation see one number.
-			Fmass_up = rho(j)  *v(j)  *r(j)**2
-			Fmass_lo = rho(j-1)*v(j-1)*r(j-1)**2
-			dV_cv    = (r(j)**3 - r(j-1)**3)/3.0d0
-			div_rhov = (Fmass_up - Fmass_lo)/dV_cv
-			! The three terms, with the common 1/dr divided out, in the
+			! The three terms, with the common 1/dr_step divided out, in the
 			! variables of the residual: e = E(x_H2,T)/mu with E the energy
 			! per particle of the caloric EOS, p/rho = T/mu, h = e + p/rho.
-			! Each end of the upwind energy difference is evaluated at the
-			! composition of ITS OWN cell, as the residual does: the
-			! rovibrational energy of H2 travels with the gas that holds the
-			! molecules, so across a dissociation front the two ends store
-			! different energy at the same temperature.
-			dr        = r(j) - r(j-1)
-			x_h2_cell   = h2_particle_fraction(j)
-			x_h2_upwind = h2_particle_fraction(j-1)
-			e_up = internal_energy_of_mixture(x_h2_cell,   T_in(j))         &
-			       /mmw_in(j)
-			e_lo = internal_energy_of_mixture(x_h2_upwind, T_in(j-1))       &
-			       /mmw_in(j-1)
+			! Each point of the history is evaluated at the composition of
+			! ITS OWN cell, as the residual does: the rovibrational energy of
+			! H2 travels with the gas that holds the molecules.
+			use_bdf2 = bdf2_admissible(j)
+			dr_step  = step_width(j, use_bdf2)
+			if (use_bdf2) then
+				e_hist   = bdf_a1(j)*specific_internal_energy(j-1, T_in(j-1), mmw_in(j-1)) &
+				         - bdf_a2(j)*specific_internal_energy(j-2, T_in(j-2), mmw_in(j-2))
+				rho_hist = bdf_a1(j)*rho(j-1) - bdf_a2(j)*rho(j-2)
+			else
+				e_hist   = specific_internal_energy(j-1, T_in(j-1), mmw_in(j-1))
+				rho_hist = rho(j-1)
+			endif
+			e_up = specific_internal_energy(j, T_in(j), mmw_in(j))
 			w_up = T_in(j)/mmw_in(j)
 			h_up = e_up + w_up
 			enthalpy_flux_ratio = enthalpy_flux_term_ratio(h_up,        &
-			     div_rhov, dr, rho(j), v(j), e_up, e_lo, w_up, rho(j-1))
+			     div_rhov_state(j), dr_step, rho(j), v(j), e_up, e_hist,   &
+			     w_up, rho_hist)
 			if (enthalpy_flux_ratio > enthalpy_flux_ratio_max) then
 				enthalpy_flux_ratio_max = enthalpy_flux_ratio
 				r_enthalpy_flux_max     = r(j)
@@ -850,6 +971,44 @@
 				cell_class_modelled(j) = (n_omitted <= n_carried)
 			enddo
 		endif
+
+		! THE ENERGY CLASS THE RECONSTRUCTION MODELS. The energy equation
+		! solved below balances the heating and cooling this post-process
+		! assembles for an H/He + trace-metal gas; the run's own energy
+		! equation balanced every channel it solved, the molecular and oxygen
+		! ones included (the heat and cool handed in). On the state handed
+		! in, at the run's temperature and composition, the difference of the
+		! two is exactly what the post-process omits, and where it is larger
+		! than what the post-process carries, the temperature the equation
+		! returns is set by the absence of the channels that set the gas's
+		! temperature, and the row is not a statement about that gas.
+		! MEASURED on the LHS 1140 b molecular states (He/H = 1.6, 500
+		! cells): below 1.08 R_p the molecular chemistry heat is 1.4e-7 of
+		! the 1.5e-7 erg cm^-3 s^-1 deposited at 1.001 R_p and the H3+
+		! infrared band carries the cooling, while the carried channels hold
+		! 8.4e-9 heating; the energy equation there then returned 1280 /
+		! 1051 / 600 K at 1.002 R_p on 500 / 1000 / 2000 cells against a
+		! run temperature of 1500 K. Like the particle count above, the
+		! comparison is between two numbers of the same cell and carries no
+		! threshold; a run in which every channel is carried has
+		! q_omitted = 0 up to the arithmetic of the two assemblies.
+		call calc_ntot(nhi,nhii,nhei,nheii,nheiii,n_tot,nm_w)
+		call heating_of_current_composition(theat_of_run_composition)
+		energy_class_modelled  = .true.
+		n_energy_class_refused = 0
+		r_energy_class_top     = 0.0d0
+		do j = 1-Ng,N+Ng
+			q_omitted = abs(heat(j) - theat_of_run_composition(j))           &
+			          + abs(cool(j) - tcool_in(j)/q0)
+			q_carried = abs(theat_of_run_composition(j))                     &
+			          + abs(tcool_in(j)/q0)
+			! Written so that a comparison that is not a number refuses.
+			energy_class_modelled(j) = (q_omitted <= q_carried)
+			if (.not. energy_class_modelled(j)) then
+				n_energy_class_refused = n_energy_class_refused + 1
+				r_energy_class_top     = max(r_energy_class_top, r(j))
+			endif
+		enddo
 	endif
 
    !----------------------------------!
@@ -857,14 +1016,15 @@
 	!---- Where is the advection correction valid? ----!
 	!
 	! The correction replaces the local ionization balance of a cell by the
-	! steady advection-ionization ODE, integrated upwind across the cell. Three
+	! steady advection-ionization ODE, integrated along the flow by the step
+	! of the recursion (bdf2_step_ratio_limit). Three
 	! conditions make that replacement carry no information; where any of them
 	! holds the cell keeps the converged equilibrium ionization instead.
 	!
-	!  (i)   Inflow, v <= 0 on either face -- PHYSICAL. The upwind
-	!        discretization takes the upstream state from the cell below, which
-	!        is not the upstream cell when the gas moves inward (the breathing
-	!        base). The residence time dr/v is then negative as well.
+	!  (i)   Inflow, v <= 0 in the cell or the one below it -- PHYSICAL. The
+	!        step takes the upstream state from the cells below, which are not
+	!        upstream when the gas moves inward (the breathing base). The
+	!        residence time h/v is then negative as well.
 	!
 	!  (ii)  Da = (dr/v)*nu_relax > Da_local_equilibrium -- PHYSICAL. The
 	!        Damkohler number compares the time the gas spends in the cell with
@@ -927,7 +1087,7 @@
 	! not_evaluated, so a row no loop reaches says that rather than claiming
 	! a correction: the ionization loop runs from 2-Ng and the energy loop
 	! from 3-Ng, and the rows below those are ghosts with no upstream state
-	! for the upwind difference to read.
+	! for the step to read.
 
 	adv_correction_valid = .true.
 	adv_correction_valid(1-Ng) = .false.   ! inner boundary: never corrected
@@ -939,7 +1099,10 @@
 		if (v(j) <= 0.0d0 .or. v(j-1) <= 0.0d0) then
 			adv_correction_valid(j) = .false.
 		else
-			t_cross  = (r(j) - r(j-1))*R0/(v(j-1)*v0)
+			! The residence time of the gas in the cell, h_j/v_j: the
+			! velocity of the cell the rates are evaluated in, as in the step
+			! (bdf2_step_ratio_limit).
+			t_cross  = (r(j) - r(j-1))*R0/(v(j)*v0)
 			nu_relax = P_HI(j) + (a_ion_HI(j) + rchiiB(j))*ne(j)
 			if (thereis_He) then
 				! He II -> He I recombination: with the triplet on, rcheiiB is
@@ -973,7 +1136,7 @@
 		! equilibrium one the run converged to: the run's own value, kept.
 		! A cell that is corrected here can still fail its own solve, which
 		! the loop below records. The temperature field gets what conditions
-		! (i) and (iv) say about it -- the upwind energy difference has no
+		! (i) and (iv) say about it -- the energy step has no
 		! upstream state under inflow either, and a non-stationary cell has
 		! no steady energy equation -- and the energy loop adds the rest.
 		if (adv_correction_valid(j)) then
@@ -985,23 +1148,16 @@
 
    !----------------------------------!
 
-   ! Evolve species including the advection term in the
-   ! 	ODE form
-   ! Note: we are using point values here instead of 
-   ! 	volume averages; they agree up to O(dr^2)
-      
-   ! The ionization fraction at the inner boundary are taken 
-	!	from the input vectors (completely neutral atmosphere)
-     
+   ! Evolve the species with the advection term kept, in the ODE form
+   ! v dx/dr = R(x), cell by cell upward by the step of the recursion
+   ! (bdf2_step_ratio_limit): BDF2 where the cell below was itself
+   ! integrated in this pass, backward Euler at the start of the recursion
+   ! and after every cell it does not integrate. Point values are used for
+   ! cell averages; they agree to O(dr^2). The recorded velocity profile is
+   ! held fixed.
 
-   ! Loop to solve the differential equation
-   ! It is implicitly assumed that the velocity fields does 
-   !	not change by including the advection term
-      
-      
-	      
    if (.not.thereis_He) then
-	      
+
 		do j = 2-Ng,N+Ng
 			! Outside its validity range the advection correction carries no
 			! information; the cell keeps the converged equilibrium ionization.
@@ -1011,13 +1167,7 @@
 				cycle
 			endif
 
-			! Substitutions
-			dr  = (r(j) - r(j-1))*R0
-			As  = dr/(v(j-1)*v0)
-
-			! Advection coeff.
-			adv_cell%c1 = As
-			adv_cell%xhi_old = nhi(j-1)/nh(j-1)
+			! The rates of the cell
 			adv_cell%nh = nh(j)
 			adv_cell%P_HI = P_HI(j)
 			adv_cell%rchiiB = rchiiB(j)
@@ -1026,13 +1176,21 @@
 			! density the recombination terms of the residual see.
 			adv_cell%xe_metal = ne_metal(j)/max(nh(j),1.0d-30)
 
-			! Initial guess of solution
-			sys_x(1) = nhi(j)/nh(j)     
-			
-			! Call hybrd1 routine (from minpack)
-			call hybrd1(adv_implicit_H,Neq_adv,sys_x,sys_sol,   &
-						tol,info,wa,lwa_adv,params)
-			
+			use_bdf2 = bdf2_admissible(j) .and.                              &
+			           adv_comp_status(j-1) == adv_corrected
+			call composition_step(j, use_bdf2)
+			if (use_bdf2 .and. info == 1 .and.                              &
+			    .not. populations_are_admissible()) then
+				n_bdf2_comp_retaken = n_bdf2_comp_retaken + 1
+				use_bdf2 = .false.
+				call composition_step(j, use_bdf2)
+			endif
+			if (use_bdf2) then
+				n_bdf2_comp = n_bdf2_comp + 1
+			else
+				n_be_comp = n_be_comp + 1
+			endif
+
 			! Non-converged cell: keep the equilibrium ionization (see the
 			! H/He branch below for why the returned iterate is discarded).
 			if (info /= 1) then
@@ -1043,21 +1201,21 @@
 				cycle
 			endif
 
-			! Extract solution profiles	
+			! Extract solution profiles
 			nhi(j)    = sys_x(1)*nh(j)
 			nhii(j)   = (1.0 - sys_x(1))*nh(j)
 
-      	enddo
-      	
+		enddo
+
 		   ! Force condition of zero helium
 		   nheiS  = 0.0
 		   nhei   = 0.0
 		   nheii  = 0.0
-		   nheiii = 0.0			
+		   nheiii = 0.0
 		   nheiTR = 0.0
 
 	else
-		
+
 		do j = 2-Ng,N+Ng
 			! Outside its validity range the advection correction carries no
 			! information; the cell keeps the converged equilibrium H/He
@@ -1067,15 +1225,7 @@
 				cycle
 			endif
 
-			! Substitutions
-			dr  = (r(j) - r(j-1))*R0
-			As  = dr/(v(j-1)*v0)
-
-			! Advection coeff.
-			adv_cell%c1  = As
-			adv_cell%xhi_old  = nhi(j-1)/nh(j-1)
-			adv_cell%xheiS_old  = nheiS(j-1)/nhe(j-1)
-			adv_cell%xheiii_old  = nheiii(j-1)/nhe(j-1)
+			! The rates of the cell
 			adv_cell%nh  = nh(j)
 			adv_cell%P_HI  = P_HI(j)
 			adv_cell%P_HeI  = P_HeI(j)
@@ -1089,13 +1239,13 @@
 			! He <-> H charge-exchange rate coefficients (Huang Table 4 group
 			! B, and He2+ + H0), read by he_h_cx_fvec_adv in the H/He adv
 			! systems. T-only, so evaluate once per cell; the adv residual
-			! adds nothing when he_h_charge_exchange is off (bit-identical).
+			! adds nothing when he_h_charge_exchange is off.
 			call he_h_cx_rates(T_K(j), adv_cell%kcx_He0_Hp,                &
 			                           adv_cell%kcx_Hep_H0,                &
 			                           adv_cell%kcx_Hepp_H0)
 			! Effective He/H for the electron density inside the adv system:
-			! the global HeH normally (byte-identical legacy), the local
-			! (diffused) nhe/nh when He_diffusion is on.
+			! the global HeH normally, the local (diffused) nhe/nh when
+			! He_diffusion is on.
 			if (he_diffusion) then
 				adv_cell%heh_loc = nhe(j)/max(nh(j),1.0d-30)
 			else
@@ -1116,36 +1266,29 @@
 				adv_cell%q31b = q31b(j)
 				adv_cell%Q31 = Q31(j)
 				adv_cell%a_ion_HeITR = a_ion_HeITR(j)
-				adv_cell%xheiTR_old = nheiTR(j-1)/nhe(j-1)
-				! Effective He/H for the electron density (see non-TR block).
-				if (he_diffusion) then
-					adv_cell%heh_loc = nhe(j)/max(nh(j),1.0d-30)
-				else
-					adv_cell%heh_loc = HeH
-				endif
 			endif
-			
-			! Initial guess of solution
-			sys_x(1) = nhi(j)/nh(j) 
-			sys_x(2) = nheiS(j)/nhe(j)
-			sys_x(3) = nheiii(j)/nhe(j)
-			if (thereis_HeITR) sys_x(4) = nheiTR(j)/nhe(j) 
-			
-			! Call hybrd1 routine (from minpack)
-			if (thereis_HeITR) then 
-				call hybrd1(adv_implicit_HeH_TR,Neq_adv,sys_x,sys_sol,   &
-							tol,info,wa,lwa_adv,params)
+
+			use_bdf2 = bdf2_admissible(j) .and.                              &
+			           adv_comp_status(j-1) == adv_corrected
+			call composition_step(j, use_bdf2)
+			if (use_bdf2 .and. info == 1 .and.                              &
+			    .not. populations_are_admissible()) then
+				n_bdf2_comp_retaken = n_bdf2_comp_retaken + 1
+				use_bdf2 = .false.
+				call composition_step(j, use_bdf2)
+			endif
+			if (use_bdf2) then
+				n_bdf2_comp = n_bdf2_comp + 1
 			else
-				call hybrd1(adv_implicit_HeH,Neq_adv,sys_x,sys_sol,   &
-							tol,info,wa,lwa_adv,params)
+				n_be_comp = n_be_comp + 1
 			endif
-				
+
 			! A cell whose advection system did not converge carries no
 			! correction: the returned iterate satisfies neither the
 			! advection balance it was asked to solve nor the equilibrium
 			! balance it started from, so it is not a state of the gas. The
 			! equilibrium solution of that same cell is, and it is what the
-			! three validity conditions above already fall back to.
+			! validity conditions above already fall back to.
 			if (info /= 1) then
 				call pin_cell_to_equilibrium(j)
 				n_adv_noconv = n_adv_noconv + 1
@@ -1153,22 +1296,22 @@
 				cycle
 			endif
 
-			! Extract solution profiles	
+			! Extract solution profiles
 			nhi(j)    = sys_x(1)*nh(j)
 			nhii(j)   = (1.0 - sys_x(1))*nh(j)
 			nheiS(j)  = sys_x(2)*nhe(j)
 			nheiii(j) = sys_x(3)*nhe(j)
 			if (thereis_HeITR) then
-				nheiTR(j) = sys_x(4)*nhe(j) 
+				nheiTR(j) = sys_x(4)*nhe(j)
 				nheii(j)  = (1.0 - sys_x(2) - sys_x(3) - sys_x(4))*nhe(j)
 			else
 				nheiTR(j) = 0.0
 				nheii(j)  = (1.0 - sys_x(2) - sys_x(3))*nhe(j)
 			endif
 			nhei(j)   = nheiS(j) + nheiTR(j)
-			
+
 		enddo
-		
+
 	endif ! End if thereis_He
 	      
       
@@ -1299,58 +1442,8 @@
 	!----------------------------------!
 
 	!---- Heating of the advection-corrected composition ----!
-
-	! The photoheating of ONE particle of each absorber, from the same
-	! attenuated field the equilibrium pass used, and then the ONE heating
-	! assembly (utils_ion_eq) contracted with the advection-corrected
-	! densities. This is the same routine the ionization sweep and the
-	! heating breakdown call, so the _adv energy solve balances the heating
-	! the run's own energy equation deposits and cannot drift from it.
-	!
-	! The composition reconstructed here carries no molecular and no oxygen
-	! carriers (see the header of this module), which is what the two
-	! composition flags below say; the molecular and oxygen deposits are
-	! therefore absent from the _adv heating, as are the molecular carriers
-	! from its n_e and its n_tot.
-	if (thereis_He) then
-		call PH_heat_HHe(nhi,nhei,nheii,nheiTR, nm_w, xion,     &
-		                 dum_v1,dum_v2,dum_v3,dum_v4, P_m,          &
-		                 dum_v6,dum_v5,                             &
-		                 heat_of_one_HI   = h1_HI_pp,               &
-		                 heat_of_one_HeI  = h1_HeI_pp,              &
-		                 heat_of_one_HeII = h1_HeII_pp,             &
-		                 heat_of_one_HeTR = h1_HeTR_pp,             &
-		                 heat_of_one_H2   = h1_H2_pp,               &
-		                 heat_of_one_mion = h1_m_pp)
-  	else
-	  	call PH_heat_H(nhi, xion, dum_v1,dum_v6,dum_v2,             &
-	  	               heat_of_one_HI = h1_HI_pp)
-		h1_HeI_pp  = 0.0d0
-		h1_HeII_pp = 0.0d0
-		h1_HeTR_pp = 0.0d0
-		h1_H2_pp   = 0.0d0
-		h1_m_pp    = 0.0d0
-  	endif
-
-	nmol_pp = 0.0d0
-	nox_pp  = 0.0d0
-	k_lw_pp = 0.0d0
-	! No CO in the reconstructed composition, so no CO photodissociation
-	! rate: the two CO channels of the assembly are gated on with_oxygen,
-	! which is .false. here, and this array is what they would contract.
-	k_co_pp = 0.0d0
-	p_lw_pp = 1.0d0
-	j_fuv_pp = 0.0d0
-	call heating_of_composition(T_K,                                      &
-	         nhi,nhii,nhei,nheii,nheiii,nheiTR, nm_w, nmol_pp, nox_pp,    &
-	         ne, n_tot,                                                   &
-	         h1_HI_pp,h1_HeI_pp,h1_HeII_pp,h1_HeTR_pp,h1_H2_pp,h1_m_pp,   &
-	         A31,q31a,q31b,Q31,                                           &
-	         k_lw_pp, p_lw_pp, k_co_pp, j_fuv_pp, j_fuv_pp,               &
-	         .false., .false., theat, heat_chan_pp)
-
-	! Adimensionalize
-	theat = theat/q0
+	! (heating_of_current_composition, below)
+	call heating_of_current_composition(theat)
 
 	!----------------------------------!
 	
@@ -1399,7 +1492,9 @@
 	!     div(u v) + p div(v)  =  heating - cooling
 	!   = rho v de/dr  -  p v dln(rho)/dr  +  h div(rho v)             (E)
 	!
-	! upwind-differenced, with u the internal energy density, e the internal
+	! differenced by the step of the recursion (bdf2_step_ratio_limit;
+	! the residual term by term in T_equation), with u the internal
+	! energy density, e the internal
 	! energy per unit mass and h = e + p/rho the enthalpy per unit mass. The
 	! two forms are one equation: div(rho e v) = e div(rho v) + rho v de/dr,
 	! and p div(v) = (p/rho) div(rho v) - p v dln(rho)/dr.
@@ -1409,25 +1504,30 @@
 	! stationary mass flux rho v r^2 = const and for nothing else, so a
 	! correction built without it describes a converged wind and no other
 	! state. It is handed to the residual through teq_cell%div_rhov, whose
-	! two branches T_equation states the algebra of.
+	! algebra T_equation states.
 	!
-	! WHICH DIVERGENCE, AND WHY. div(rho v) is formed with the operator the
-	! mass row of the state uses, (A_p F_p - A_m F_m)/dV with F = rho v,
-	! A = r^2 and dV = d(r^3)/3 (RK_rhs), over the control volume whose two
-	! bounding points are the two points the upwind energy difference is taken
-	! between, r(j-1) and r(j). Those are the only two points at which this
-	! residual evaluates the state, so the mass flux entering the term is the
-	! state's own at the same two points, and the term is an exact zero
-	! wherever the two carry the same rho v r^2. A centered difference of the
-	! neighboring cells would not have that property and would measure a
-	! divergence at a point the energy difference never visits. The FACE mass
-	! flux of the state is a different object and is not read here: its faces
-	! are not the two points of this difference. It is what decides WHETHER
-	! this cell has a steady equation at all -- the mass row of the state,
-	! measured in the stationarity block above by the operator the stationary
-	! certification uses -- and the two answer two questions: that block
-	! how far the state departs from stationary in this cell, this term what
-	! the equation carries at that departure.
+	! WHICH DIVERGENCE, AND WHY. div(rho v) is the MASS ROW OF THE STATE: the
+	! face mass fluxes of the Riemann solve of the state differenced over the
+	! cell's own control volume, (A_{j+1/2} F_{j+1/2} - A_{j-1/2} F_{j-1/2})/dV_j
+	! (RK_rhs), the operator condition (iv) above and the stationary
+	! certification read. It is the divergence at the cell centre to second
+	! order, the point at which the step evaluates every other factor, and
+	! it is an exact zero wherever the two faces carry the same flux.
+	!
+	! Until 2026-09-27 the same operator was applied to the CELL-CENTRED
+	! rho v r^2 of r(j-1) and r(j), the two points of the upwind difference
+	! used then. That quantity is not the mass flux of a finite-volume state,
+	! and at the base of a quasi-hydrostatic layer it carries the odd-even
+	! pattern of the cell-centred velocity. MEASURED on the certified
+	! LHS 1140 b state of He/H = 1.6 on 500 cells: at 1.0010-1.0014 R_p the
+	! cell-centred rho v r^2 steps between 1.8e12 and 3.4e12 (v = 0.13,
+	! 0.25, 0.21 cm/s) while the face mass flux changes by 1e-10 of itself
+	! across each cell (the adv_mass_row column). Its difference put an
+	! enthalpy flux 77 times the kept terms into the equation at 1.0010 R_p,
+	! and the temperature returned at the first corrected cell, 805 / 4008 /
+	! 579 K on 500 / 1000 / 2000 cells against a run temperature of 1465 /
+	! 1272 / 1039 K there, was set by it and carried by the recursion up to
+	! 1.1 R_p.
 	!
 	! WHAT THE TERM IS WORTH. MEASURED 2026-09-08 on
 	! backup/regression/hydrostatic_column, a 300-step mechanical column whose
@@ -1451,14 +1551,14 @@
 	! The check on the restored term is the case with a solution in closed
 	! form: with heating and cooling negligible (E) integrates to
 	! w = p/rho proportional to rho^(gamma-1) F^(-gamma), F = rho v r^2, and
-	! marching a column of constant density and F = r reproduces that
-	! solution (first order in the cell width, MEASURED).
+	! marching a column of constant density and F = r with this step
+	! reproduces that solution at second order in the cell width: departure
+	! 4.4e-4, 1.1e-4, 2.8e-5, 7.0e-6 on 50 to 400 cells of a stretched grid,
+	! observed order 1.99, against 0.999 for backward Euler at every step
+	! (MEASURED 2026-09-27, src/tests/adv_static_limit, rows N4 and N5).
 
 	do j = 3-Ng,N+Ng ! Start from first computational cell
 
-		! Substitutions
-		rhop = rho(j)
-		rhom = rho(j-1)
 		vm = v(j-1)
 		vp = v(j)
 		! The mass row is above the fraction a corrected row is accurate to
@@ -1472,10 +1572,19 @@
 			adv_T_status(j) = adv_retained
 			cycle
 		endif
+		! The energy balance of the cell is carried by channels this
+		! post-process omits (the energy class, formed with the stationarity
+		! condition above): the row keeps the run's own temperature, and the
+		! field says the closure does not cover it.
+		if (.not. energy_class_modelled(j)) then
+			T_out(j)        = T_in(j)
+			adv_T_status(j) = adv_unsupported
+			cycle
+		endif
 		! Inflow (condition (i) of the ionization validity block above): the
-		! cell keeps the converged eq temperature. The advection-corrected
-		! energy solve is upwind-differenced just like the ionization solve, so
-		! it is invalid wherever the gas moves inward, and it would otherwise
+		! cell keeps the converged eq temperature. The energy step takes its
+		! history from the cells below, just like the ionization step, so it
+		! is invalid wherever the gas moves inward, and it would otherwise
 		! land on the spurious hot root that then cascades up. This is a
 		! property of the discretization, so it does not depend on the metal
 		! switch. Conditions (ii) and (iii) of that block are statements about
@@ -1488,8 +1597,6 @@
 			cycle
 		endif
 		dr = r(j) - r(j-1)
-		mum = mmw(j-1)
-		mup = mmw(j)
 
 		! Local radiative balance (thermal_damkohler_number, this module): the
 		! gas that spends longer in the cell than the local net radiative rate
@@ -1517,164 +1624,37 @@
 			cycle
 		endif
 
-		! The divergence of the mass flux of this cell, on the two points the
-		! upwind energy difference is taken between (see the statement above):
-		! the mass row's flux-difference operator over the control volume
-		! bounded by r(j-1) and r(j). The same operator, on the state handed
-		! in, forms the stationarity condition (iv) of the validity block.
-		Fmass_up = rho(j)  *vp*r(j)**2
-		Fmass_lo = rho(j-1)*vm*r(j-1)**2
-		dV_cv    = (r(j)**3 - r(j-1)**3)/3.0d0
-		div_rhov = (Fmass_up - Fmass_lo)/dV_cv
+		! The step (bdf2_step_ratio_limit): BDF2 where the temperature of the
+		! cell below was itself integrated in this pass, backward Euler at the
+		! start of the recursion and after a cell that kept the run's own
+		! temperature. A BDF2 step that finds no admissible root is retaken
+		! by backward Euler before the cell falls back to the run's own
+		! temperature.
+		use_bdf2 = bdf2_admissible(j) .and. adv_T_status(j-1) == adv_corrected
+		call energy_step(j, use_bdf2, sys_x_T(1), T_outcome)
+		if (use_bdf2 .and. T_outcome >= T_no_bracket) then
+			n_bdf2_T_retaken = n_bdf2_T_retaken + 1
+			use_bdf2 = .false.
+			call energy_step(j, use_bdf2, sys_x_T(1), T_outcome)
+		endif
+		if (use_bdf2) then
+			n_bdf2_T = n_bdf2_T + 1
+		else
+			n_be_T = n_be_T + 1
+		endif
 
-		! The caloric state of the two cells the upwind energy difference is
-		! taken between. e_upwind is the SPECIFIC internal energy of the
-		! upwind cell, E(x_H2,up, T_up)/mu_up, which is the quantity the flow
-		! carries into this cell: it is evaluated at the upwind composition
-		! and the upwind temperature, so a cell with no H2 below a molecular
-		! neighbor still receives the rovibrational energy of that gas. The
-		! upwind temperature is the one the cell below was left with by this
-		! same loop, T_out(j-1), the value the residual differences against.
-		x_h2_cell   = h2_particle_fraction(j)
-		x_h2_upwind = h2_particle_fraction(j-1)
-		e_upwind    = internal_energy_of_mixture(x_h2_upwind, T_out(j-1))   &
-		              /mum
-
-	 	!--- Solve equation for temperature implicitly ---!
-		
-		! Parameters
-		teq_cell%nhi  = nhi(j)
-	 	teq_cell%nhii  = nhii(j)
-	 	teq_cell%nheiS  = nheiS(j)
-	 	teq_cell%nheiTR = nheiTR(j)
-	 	teq_cell%y_HI   = y_HI_pp(j)
-	 	teq_cell%y_gnd  = y_gnd_pp(j)
-	 	teq_cell%y_HeII = y_HeII_pp(j)
-	 	teq_cell%nheii  = nheii(j)
-	 	teq_cell%nheiii  = nheiii(j)
-	 	teq_cell%mup  = mmw(j)
-	 	teq_cell%mum  = mmw(j-1)
-	 	teq_cell%rhov  = rhop*vp
-	 	teq_cell%coeff  = mum*vp*(rhop-rhom)
-	 	teq_cell%dr = dr
-	 	teq_cell%Told = T_out(j-1)
-	 	teq_cell%heaold = theat(j)
-	 	! Composition entries of the caloric EOS: the H2 share of the
-	 	! particle-plus-electron count of this cell and of the upwind one, as
-	 	! the equilibrium solve left them, and the specific internal energy
-	 	! the flow carries in with it.
-	 	teq_cell%x_h2    = x_h2_cell
-	 	teq_cell%x_h2_up = x_h2_upwind
-	 	teq_cell%e_up    = e_upwind
-	 	! Coefficient of the enthalpy flux term of (E), formed above from the
-	 	! state this pass was handed. It does not change while the root finder
-	 	! varies the temperature.
-	 	teq_cell%div_rhov = div_rhov
-	 	! Metal densities for this cell [cgs] go through the equation_T module
-	 	! array (the 27-ion vector does not fit params). pp_metal_on gates
-	 	! whether T_equation adds the metal cooling/brem/n_e terms.
-	 	pp_nm_cell(:)  = nm_w(j,:)
-	 	pp_beta_fs(:)  = beta_fs_pp(j,:)
-	 	pp_nbar_fs(:)  = nbar_fs_pp(j,:)
-
-	 	! Initial guess of solution
-		sys_x_T(1) = T_out(j)
-
-	 	! Task 1: solve the scalar energy equation by bracketing the physical
-	 	! (lowest) root + Brent when metal cooling is on (the default). The
-	 	! metal-cooled residual is non-monotone and has a second, spurious *hot*
-	 	! root that a Newton/Powell solve (hybrd1) could land on; bracketing from
-	 	! below selects the physical root structurally. Fall back to the converged
-	 	! eq T if no bracket is found. With "Brent solver: False" (use_brent_tsolve
-	 	! = .false.) the legacy MINPACK solve + 2x-band reject is used instead.
-	 	! Metals-off always keeps the original MINPACK solve (monotone residual,
-	 	! byte-identical).
-	 	T_solve_fell_back = .false.
-	 	if (pp_metal_on .and. use_brent_tsolve) then
-	 		call solve_T_brent(paramsT, T_in(j), sys_x_T(1), brent_ok)
-	 		if (.not. brent_ok) then
-	 			sys_x_T(1)  = T_in(j)
-	 			n_pp_reject = n_pp_reject + 1
-	 			T_solve_fell_back = .true.
-	 		endif
-	 	else
-	 		! Legacy MINPACK solve.
-	 		call hybrd1(T_equation,1,sys_x_T,sys_sol_T,   &
-	 		            tol,info,wa_T,8,paramsT)
-	 		! A non-converged solve leaves an iterate that balances neither
-	 		! the advected energy equation nor the equilibrium one; the
-	 		! converged equilibrium temperature is the state to keep.
-	 		!
-	 		! WHAT info MEANS AND WHAT THE ROOT IS. MINPACK's info states how
-	 		! its ITERATION ended, not whether the iterate is a root: info = 4
-	 		! and 5 are returned when the steps stop improving the residual,
-	 		! which is what a stalled search and an ARRIVED one look like
-	 		! alike. At the root the residual sits at the cancellation floor
-	 		! of the terms it is assembled from and no step can lower it, so
-	 		! a solve that arrives to full precision is reported exactly as
-	 		! one that never got there. The root of a scalar equation is
-	 		! defined by its residual, so the iterate is kept whenever that
-	 		! residual is negligible against the largest term the equation
-	 		! holds, and only an iterate that is not a root falls back.
-	 		!
-	 		! THE SCALE. The terms of (E) as T_equation assembles them: the
-	 		! advected internal energy of this cell and of its upwind
-	 		! neighbor, the compression work, and the photoheating. A sum of
-	 		! terms of size s cannot be formed to better than a few machine
-	 		! epsilons of s, so 1e2*epsilon(s) is the level at which the
-	 		! equation is an identity in double precision; an iterate that is
-	 		! not a root stands orders of magnitude above it. MEASURED on the
-	 		! three cells of the LHS 1140 b 45 Rp wind that reach this branch:
-	 		! |R|/s = 1.5e-17, 2.8e-17 and 5.2e-17, against a fallback that
-	 		! discarded roots good to every digit and, because the correction
-	 		! is an upwind recursion, restarted the profile above them.
-	 		!
-	 		! WHY IT MATTERS MORE THAN ONE CELL. The corrected temperature of
-	 		! a cell is differenced against the corrected temperature of the
-	 		! cell below, so a discarded root is not a local blemish: every
-	 		! row above it is integrated from a different starting value.
-	 		if (info /= 1) then
-	 			energy_residual_scale =                                        &
-	 			   max(abs(mum*teq_cell%rhov*sys_x_T(1)),                      &
-	 			       abs(mup*teq_cell%rhov*teq_cell%Told),                   &
-	 			       abs((gamma_ad - 1.0d0)*teq_cell%coeff*sys_x_T(1)),      &
-	 			       abs((gamma_ad - 1.0d0)*mup*mum*dr*theat(j)))
-	 			if (abs(sys_sol_T(1)) <=                                       &
-	 			    1.0d2*epsilon(1.0d0)*energy_residual_scale) then
-	 				n_T_res_root = n_T_res_root + 1
-	 			else
-	 				sys_x_T(1) = T_in(j)
-	 				n_T_noconv = n_T_noconv + 1
-	 				T_solve_fell_back = .true.
-	 			endif
-	 		endif
-	 		! A non-positive root is not a temperature, whatever else is in the
-	 		! gas, so this test is not conditional on the metals. It matters
-	 		! because T_out feeds the NEXT post-process pass: eval_cool takes
-	 		! sqrt(T/T0) in the Badnell recombination fit (rr_badnell), so a
-	 		! negative T there is a NaN cooling rate in an ordinary build and an
-	 		! abort under -ffpe-trap=invalid. Measured on the He/H = 1 molecular
-	 		! case, which is metals-off and so had no test at all: cells 278-280
-	 		! come back at -42, -640 and -2474 K on the second pass. Keep the
-	 		! converged equilibrium temperature -- the same state the
-	 		! non-converged branch above keeps, and for the same reason.
-	 		if (.not. (sys_x_T(1) > 0.0d0)) then
-	 			sys_x_T(1)  = T_in(j)
-	 			n_pp_reject = n_pp_reject + 1
-	 			T_solve_fell_back = .true.
-	 		endif
-	 		! With metal cooling, additionally reject an out-of-band root: the
-	 		! metal-cooled residual is non-monotone and carries a second,
-	 		! spurious HOT root that hybrd1 can land on.
-	 		if (pp_metal_on) then
-	 			if (sys_x_T(1) > 2.0d0*T_in(j)  .or.   &
-	 			    sys_x_T(1) < 0.5d0*T_in(j)) then
-	 				sys_x_T(1)  = T_in(j)
-	 				n_pp_reject = n_pp_reject + 1
-	 				T_solve_fell_back = .true.
-	 			endif
-	 		endif
-	 	endif
+		! The ledger of how the cell solve ended (energy_step), and the run's
+		! own temperature wherever it gave no root of this gas.
+		select case (T_outcome)
+		case (T_root_at_floor)
+			n_T_res_root = n_T_res_root + 1
+		case (T_not_converged)
+			n_T_noconv   = n_T_noconv + 1
+		case (T_no_bracket, T_non_positive, T_out_of_band)
+			n_pp_reject  = n_pp_reject + 1
+		end select
+		T_solve_fell_back = (T_outcome >= T_no_bracket)
+		if (T_solve_fell_back) sys_x_T(1) = T_in(j)
 
 		! The cell solve did not converge, or its root was not a temperature
 		! of this gas, so the row carries the run's own temperature.
@@ -1686,9 +1666,9 @@
 
 		! Extract solution profiles
 		T_out(j) = sys_x_T(1)
-	 	
+
 	enddo
-	
+
 	! Update pressure and temperature
 	p_out = (n_tot + ne)/n0*T_out
 	T_K = T_out*T0
@@ -1772,6 +1752,27 @@
 	   n_enthalpy_term_dominant, ' of ', N+2*Ng-1,                            &
 	   ' cells (reported, not a refusal; level ',                             &
 	   enthalpy_ratio_report_level, ').'
+
+	! Report the cells whose energy balance the post-process does not carry
+	! (the energy class, formed on the state handed in).
+	if (n_energy_class_refused > 0)                                         &
+		write(*,'(a,i0,a,i0,a,f8.4,a)') ' (post_process_adv) energy class: ',&
+		   n_energy_class_refused, ' of ', N+2*Ng,                            &
+		   ' cells have more heating and cooling in channels the'//         &
+		   ' post-process omits than in those it carries (up to r = ',       &
+		   r_energy_class_top, ' Rp); they keep the run temperature.'
+
+	! Report the steps the two recursions took on the last pass
+	! (bdf2_step_ratio_limit): BDF2 steps, backward Euler steps (the start of
+	! the recursion and every restart after a cell it did not integrate),
+	! and the BDF2 steps retaken by backward Euler for a negative population
+	! or no admissible temperature root.
+	write(*,'(a,i0,a,i0,a,i0,a,i0,a,i0,a,i0,a)')                              &
+	   ' (post_process_adv) steps of the last pass: composition ',          &
+	   n_bdf2_comp, ' BDF2 and ', n_be_comp, ' backward Euler (',           &
+	   n_bdf2_comp_retaken, ' retaken from BDF2); energy ', n_bdf2_T,       &
+	   ' BDF2 and ', n_be_T, ' backward Euler (', n_bdf2_T_retaken,         &
+	   ' retaken from BDF2).'
 
 	! Report how many cells fell back to the eq temperature: a non-positive
 	! root (any run) or, with metals on, one outside the 0.5-2x band.
@@ -1861,6 +1862,291 @@
 	nhei(jc)   = nheiS(jc) + nheiTR(jc)
 
 	end subroutine pin_cell_to_equilibrium
+
+	! THE HEATING OF THE COMPOSITION THE PASS HOLDS NOW [code units]. The
+	! photoheating of ONE particle of each absorber, from the same attenuated
+	! field the equilibrium pass used, and then the ONE heating assembly
+	! (utils_ion_eq) contracted with the densities of the pass. This is the
+	! same routine the ionization sweep and the heating breakdown call, so
+	! the _adv energy solve balances the heating the run's own energy
+	! equation deposits and cannot drift from it.
+	!
+	! The composition reconstructed here carries no molecular and no oxygen
+	! carriers (see the header of this module), which is what the two
+	! composition flags below say; the molecular and oxygen deposits are
+	! therefore absent from the _adv heating, as are the molecular carriers
+	! from its n_e and its n_tot.
+	subroutine heating_of_current_composition(heat_out)
+	real*8, dimension(1-Ng:N+Ng), intent(out) :: heat_out
+	! The metal photoionization rates the field call also returns; the
+	! pass's own P_m (with the recombination photons added) is not touched.
+	real*8, dimension(1-Ng:N+Ng,n_mion) :: P_m_of_field
+
+	if (thereis_He) then
+		call PH_heat_HHe(nhi,nhei,nheii,nheiTR, nm_w, xion,     &
+		                 dum_v1,dum_v2,dum_v3,dum_v4, P_m_of_field, &
+		                 dum_v6,dum_v5,                             &
+		                 heat_of_one_HI   = h1_HI_pp,               &
+		                 heat_of_one_HeI  = h1_HeI_pp,              &
+		                 heat_of_one_HeII = h1_HeII_pp,             &
+		                 heat_of_one_HeTR = h1_HeTR_pp,             &
+		                 heat_of_one_H2   = h1_H2_pp,               &
+		                 heat_of_one_mion = h1_m_pp)
+  	else
+	  	call PH_heat_H(nhi, xion, dum_v1,dum_v6,dum_v2,             &
+	  	               heat_of_one_HI = h1_HI_pp)
+		h1_HeI_pp  = 0.0d0
+		h1_HeII_pp = 0.0d0
+		h1_HeTR_pp = 0.0d0
+		h1_H2_pp   = 0.0d0
+		h1_m_pp    = 0.0d0
+  	endif
+
+	nmol_pp = 0.0d0
+	nox_pp  = 0.0d0
+	k_lw_pp = 0.0d0
+	! No CO in the reconstructed composition, so no CO photodissociation
+	! rate: the two CO channels of the assembly are gated on with_oxygen,
+	! which is .false. here, and this array is what they would contract.
+	k_co_pp = 0.0d0
+	p_lw_pp = 1.0d0
+	j_fuv_pp = 0.0d0
+	call heating_of_composition(T_K,                                      &
+	         nhi,nhii,nhei,nheii,nheiii,nheiTR, nm_w, nmol_pp, nox_pp,    &
+	         ne, n_tot,                                                   &
+	         h1_HI_pp,h1_HeI_pp,h1_HeII_pp,h1_HeTR_pp,h1_H2_pp,h1_m_pp,   &
+	         A31,q31a,q31b,Q31,                                           &
+	         k_lw_pp, p_lw_pp, k_co_pp, j_fuv_pp, j_fuv_pp,               &
+	         .false., .false., heat_out, heat_chan_pp)
+
+	! Adimensionalize
+	heat_out = heat_out/q0
+
+	end subroutine heating_of_current_composition
+
+	! THE WIDTH THE RIGHT-HAND SIDE OF THE STEP INTO CELL jc IS MULTIPLIED
+	! BY [code units]: g h_j for BDF2, h_j for backward Euler
+	! (bdf2_step_ratio_limit).
+	real*8 function step_width(jc, bdf2)
+	integer, intent(in) :: jc
+	logical, intent(in) :: bdf2
+	step_width = r(jc) - r(jc-1)
+	if (bdf2) step_width = bdf_g(jc)*step_width
+	end function step_width
+
+	! The history of the fraction num/den for the step into cell jc,
+	! a1 x_{j-1} - a2 x_{j-2} (BDF2) or x_{j-1} (backward Euler). Cell jc-2
+	! is read only by the BDF2 step.
+	real*8 function history_of_fraction(num, den, jc, bdf2)
+	real*8, dimension(1-Ng:N+Ng), intent(in) :: num, den
+	integer, intent(in) :: jc
+	logical, intent(in) :: bdf2
+	if (bdf2) then
+		history_of_fraction = bdf_a1(jc)*num(jc-1)/den(jc-1)                &
+		                    - bdf_a2(jc)*num(jc-2)/den(jc-2)
+	else
+		history_of_fraction = num(jc-1)/den(jc-1)
+	endif
+	end function history_of_fraction
+
+	! SPECIFIC internal energy of cell kc at the code temperature T_code and
+	! mean molecular weight mu, E(x_H2,kc, T)/mu, evaluated at the H2 share of
+	! ITS OWN cell (see the e_hist field of ion_cell_state).
+	real*8 function specific_internal_energy(kc, T_code, mu)
+	integer, intent(in) :: kc
+	real*8,  intent(in) :: T_code, mu
+	specific_internal_energy =                                          &
+	     internal_energy_of_mixture(h2_particle_fraction(kc), T_code)/mu
+	end function specific_internal_energy
+
+	! ONE STEP OF THE IONIZATION RECURSION INTO CELL jc: the history of the
+	! step and its rate weight c1 = (g) h_j/v_j, then the cell's advection
+	! system solved from the fractions of the last pass. The rates of the
+	! cell are loaded by the caller; the result is left in sys_x and info.
+	subroutine composition_step(jc, bdf2)
+	integer, intent(in) :: jc
+	logical, intent(in) :: bdf2
+
+	adv_cell%c1       = step_width(jc, bdf2)*R0/(v(jc)*v0)
+	adv_cell%xhi_hist = history_of_fraction(nhi, nh, jc, bdf2)
+	sys_x(1) = nhi(jc)/nh(jc)
+	if (.not. thereis_He) then
+		call hybrd1(adv_implicit_H,Neq_adv,sys_x,sys_sol,               &
+		            tol,info,wa,lwa_adv,params)
+		return
+	endif
+	adv_cell%xheiS_hist  = history_of_fraction(nheiS,  nhe, jc, bdf2)
+	adv_cell%xheiii_hist = history_of_fraction(nheiii, nhe, jc, bdf2)
+	sys_x(2) = nheiS(jc)/nhe(jc)
+	sys_x(3) = nheiii(jc)/nhe(jc)
+	if (thereis_HeITR) then
+		adv_cell%xheiTR_hist = history_of_fraction(nheiTR, nhe, jc, bdf2)
+		sys_x(4) = nheiTR(jc)/nhe(jc)
+		call hybrd1(adv_implicit_HeH_TR,Neq_adv,sys_x,sys_sol,          &
+		            tol,info,wa,lwa_adv,params)
+	else
+		call hybrd1(adv_implicit_HeH,Neq_adv,sys_x,sys_sol,             &
+		            tol,info,wa,lwa_adv,params)
+	endif
+	end subroutine composition_step
+
+	! Whether the fractions a composition step returned in sys_x are
+	! populations: none negative, the H fractions summing to one and the He
+	! fractions (the once-ionized one being the rest) to one.
+	logical function populations_are_admissible()
+	real*8 :: x_heii_rest
+	populations_are_admissible = (sys_x(1) >= 0.0d0 .and. sys_x(1) <= 1.0d0)
+	if (.not. thereis_He) return
+	x_heii_rest = 1.0d0 - sys_x(2) - sys_x(3)
+	if (thereis_HeITR) x_heii_rest = x_heii_rest - sys_x(4)
+	populations_are_admissible = populations_are_admissible .and.       &
+	     sys_x(2) >= 0.0d0 .and. sys_x(3) >= 0.0d0 .and.                 &
+	     x_heii_rest >= 0.0d0
+	if (thereis_HeITR) populations_are_admissible =                     &
+	     populations_are_admissible .and. sys_x(4) >= 0.0d0
+	end function populations_are_admissible
+
+	! ONE STEP OF THE ENERGY RECURSION INTO CELL jc (the equation is stated
+	! before the energy loop, the residual in T_equation). Returns the root
+	! in code units and how the solve ended; T_root is the run's own
+	! temperature whenever outcome is T_no_bracket or above.
+	subroutine energy_step(jc, bdf2, T_root, outcome)
+	integer, intent(in)  :: jc
+	logical, intent(in)  :: bdf2
+	real*8,  intent(out) :: T_root
+	integer, intent(out) :: outcome
+	real*8  :: xT(1), fT(1)
+	real*8  :: e_cell_root
+	logical :: ok_brent
+
+	! The width of the step and the histories it differences against. The
+	! specific energy of each history cell is formed at ITS OWN composition
+	! and the temperature this loop left it with, which is the quantity the
+	! flow carries in (the e_hist field of ion_cell_state).
+	dr_step = step_width(jc, bdf2)
+	if (bdf2) then
+		rho_hist = bdf_a1(jc)*rho(jc-1) - bdf_a2(jc)*rho(jc-2)
+		e_hist   = bdf_a1(jc)*specific_internal_energy(jc-1, T_out(jc-1),   &
+		                                               mmw(jc-1))           &
+		         - bdf_a2(jc)*specific_internal_energy(jc-2, T_out(jc-2),   &
+		                                               mmw(jc-2))
+	else
+		rho_hist = rho(jc-1)
+		e_hist   = specific_internal_energy(jc-1, T_out(jc-1), mmw(jc-1))
+	endif
+
+	teq_cell%nhi    = nhi(jc)
+	teq_cell%nhii   = nhii(jc)
+	teq_cell%nheiS  = nheiS(jc)
+	teq_cell%nheiTR = nheiTR(jc)
+	teq_cell%y_HI   = y_HI_pp(jc)
+	teq_cell%y_gnd  = y_gnd_pp(jc)
+	teq_cell%y_HeII = y_HeII_pp(jc)
+	teq_cell%nheii  = nheii(jc)
+	teq_cell%nheiii = nheiii(jc)
+	teq_cell%mup    = mmw(jc)
+	teq_cell%mum    = mmw(jc-1)
+	teq_cell%rhov   = rho(jc)*v(jc)
+	teq_cell%coeff  = mmw(jc-1)*v(jc)*(rho(jc) - rho_hist)
+	teq_cell%dr_step = dr_step
+	teq_cell%heaold = theat(jc)
+	! Composition entry of the caloric EOS: the H2 share of the
+	! particle-plus-electron count of this cell, as the equilibrium solve
+	! left it.
+	teq_cell%x_h2   = h2_particle_fraction(jc)
+	teq_cell%e_hist = e_hist
+	! Coefficient of the enthalpy flux term, the mass row of the state
+	! (see the statement before the energy loop). It does not change while
+	! the root finder varies the temperature.
+	teq_cell%div_rhov = div_rhov_state(jc)
+	! Metal densities for this cell [cgs] go through the equation_T module
+	! array (the 27-ion vector does not fit params). pp_metal_on gates
+	! whether T_equation adds the metal cooling/brem/n_e terms.
+	pp_nm_cell(:)  = nm_w(jc,:)
+	pp_beta_fs(:)  = beta_fs_pp(jc,:)
+	pp_nbar_fs(:)  = nbar_fs_pp(jc,:)
+
+	outcome = T_root_found
+	T_root  = T_in(jc)
+
+	! Solve the scalar energy equation by bracketing the physical (lowest)
+	! root + Brent when metal cooling is on (the default). The metal-cooled
+	! residual is non-monotone and has a second, spurious hot root that a
+	! Newton/Powell solve (hybrd1) could land on; bracketing from below
+	! selects the physical root structurally. With "Brent solver: False"
+	! (use_brent_tsolve = .false.) the MINPACK solve + 2x-band reject is used
+	! instead. Metals-off always takes the MINPACK solve (monotone residual).
+	if (pp_metal_on .and. use_brent_tsolve) then
+		call solve_T_brent(paramsT, T_in(jc), xT(1), ok_brent)
+		if (.not. ok_brent) then
+			outcome = T_no_bracket
+			return
+		endif
+		T_root = xT(1)
+		return
+	endif
+
+	xT(1) = T_out(jc)
+	call hybrd1(T_equation,1,xT,fT,tol,info,wa_T,8,paramsT)
+	! WHAT info MEANS AND WHAT THE ROOT IS. MINPACK's info states how its
+	! ITERATION ended, not whether the iterate is a root: info = 4 and 5 are
+	! returned when the steps stop improving the residual, which is what a
+	! stalled search and an ARRIVED one look like alike. The root of a scalar
+	! equation is defined by its residual, so the iterate is kept whenever
+	! that residual is negligible against the largest term the equation
+	! holds, and only an iterate that is not a root is refused.
+	!
+	! THE SCALE. The terms of the residual as T_equation assembles them: the
+	! advected energy of this cell and its history, the enthalpy flux of the
+	! mass divergence, the compression work, and the photoheating. A sum of
+	! terms of size s cannot be formed to better than a few machine epsilons
+	! of s, so 1e2*epsilon(s) is the level at which the equation is an
+	! identity in double precision. MEASURED on the three cells of the
+	! LHS 1140 b 45 Rp wind that reached this branch under the upwind step
+	! (before 2026-09-27): |R|/s = 1.5e-17, 2.8e-17 and 5.2e-17.
+	!
+	! WHY IT MATTERS MORE THAN ONE CELL. The corrected temperature of a cell
+	! is the history of the cells above it, so a discarded root is not a
+	! local blemish: every row above it is integrated from a different
+	! starting value.
+	if (info /= 1) then
+		e_cell_root = internal_energy_of_mixture(teq_cell%x_h2, xT(1))
+		if (abs(fT(1)) <= 1.0d2*epsilon(1.0d0)*max(                      &
+		       abs(teq_cell%mum*teq_cell%rhov*e_cell_root),                &
+		       abs(teq_cell%mup*teq_cell%mum*teq_cell%rhov*e_hist),        &
+		       abs(teq_cell%mum*dr_step*teq_cell%div_rhov                  &
+		           *(e_cell_root + xT(1))),                                &
+		       abs(teq_cell%coeff*xT(1)),                                  &
+		       abs(teq_cell%mup*teq_cell%mum*dr_step*theat(jc)))) then
+			outcome = T_root_at_floor
+		else
+			outcome = T_not_converged
+			return
+		endif
+	endif
+	! A non-positive root is not a temperature, whatever else is in the
+	! gas, so this test is not conditional on the metals. It matters
+	! because T_out feeds the NEXT post-process pass: eval_cool takes
+	! sqrt(T/T0) in the Badnell recombination fit (rr_badnell), so a
+	! negative T there is a NaN cooling rate in an ordinary build and an
+	! abort under -ffpe-trap=invalid (MEASURED on the He/H = 1 molecular
+	! case, metals-off: cells 278-280 at -42, -640 and -2474 K on the second
+	! pass under the upwind step).
+	if (.not. (xT(1) > 0.0d0)) then
+		outcome = T_non_positive
+		return
+	endif
+	! With metal cooling, additionally refuse an out-of-band root: the
+	! metal-cooled residual is non-monotone and carries a second, spurious
+	! HOT root that hybrd1 can land on.
+	if (pp_metal_on) then
+		if (xT(1) > 2.0d0*T_in(jc) .or. xT(1) < 0.5d0*T_in(jc)) then
+			outcome = T_out_of_band
+			return
+		endif
+	endif
+	T_root = xT(1)
+	end subroutine energy_step
 
 	! End of subroutine
 	end subroutine post_process_adv

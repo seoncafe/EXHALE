@@ -10,8 +10,12 @@ follow from it. EXHALE is a heavily extended fork of the ATES code (Caldiroli
 et al. 2021; Biassoni et al. 2024): the metal chemistry and cooling, the
 molecular and lower-atmosphere layers, the diffusive separation of helium, the
 Ly-alpha radiative transfer, and the Newton-Krylov steady-state solver are new.
-Every extension is opt-in, so a bare `input.inp` still reproduces the legacy
-ATES model.
+Every extension that adds a species, a transport process or a field is
+opt-in; corrections to the physics of the ATES problem itself (the He 2^3S
+triplet, secondary ionization, case A/B recombination, the He/H charge
+exchange) are on by default, so a bare `input.inp` solves the atomic H/He
+problem with that physics rather than reproducing the legacy ATES model bit
+for bit.
 
 ---
 
@@ -68,7 +72,11 @@ ATES model.
   inner shells of the metal ions (Verner & Yakovlev 1995) with their Auger
   and fluorescence relaxation (Kaastra & Mewe 1993): the Auger electrons heat
   the gas and a neutral that loses two or more electrons jumps two stages
-- He+ + H charge exchange in its radiative and non-radiative channels, its
+- He+ + H charge exchange in its radiative channel (Stancil, Lepp & Dalgarno
+  1998, row 19) and its non-radiative one (the H+ + He cross section of
+  Loreau, Ryabchenko & Vaeck 2014 by reciprocity, taken as
+  `sigma_r(15) sqrt((x - x_th)/(15 - x_th))` between the 13.655 eV/u
+  threshold and the 15 eV/u where their calculation starts), its
   detailed-balance reverse and the radiative He2+ + H capture in every
   helium-bearing system (`He_H_charge_exchange`, default on)
 - One stellar spectrum type builds every band of the photon grid, the XUV and
@@ -152,7 +160,13 @@ ATES model.
   diffusive settling in the computed ambipolar field, and an optional eddy
   term; each trace metal can diffuse independently. The friction is resolved
   by ionization stage -- hard sphere, polarization and Coulomb -- so an ion
-  is held to the protons instead of settling at a neutral rate
+  is held to the protons instead of settling at a neutral rate. The energy
+  equation carries the enthalpy the moving elements take with them, the
+  interdiffusion enthalpy flux `q_d = sum_s h_s J_s` (Cook 2009, eqs. 11-13),
+  in the marching update and the stationary energy row alike
+  (`Interdiffusion enthalpy flux:`, on by default whenever `He_diffusion` is;
+  `False` only to reproduce published models that omit it; 13-26 percent of
+  the local energy budget at 1.1-5 R_p on the LHS 1140 b diffusion states)
 
 **Hydrodynamics and solvers**
 
@@ -213,8 +227,12 @@ ATES model.
   of the run, `n0 = p_base/(k_B T0 ntot_bc)`, so `Log10 lower boundary number
   density` is then unnecessary, and a pair that disagrees by more than 1% is
   refused at startup rather than one of the two silently winning
-- OpenMP parallelization of the cell ionization sweep, bitwise identical to
-  the serial result
+- OpenMP parallelization of the cell sweeps, bitwise identical to the serial
+  result: the suite `src/tests/thread_count_identity` runs 200 steps of the
+  metals-on regression case at 1 and 8 threads and compares every data line
+  (it found, and the tree fixed on 2026-09-26, a shared scratch variable of
+  the metal sweep that made metals-on runs between 2026-09-25 and that fix
+  depend on the thread count)
 
 **Tooling**
 
@@ -255,7 +273,7 @@ ATES model.
 - Python loaders (`examples/exhale_io.py`) driven by the `# columns` schema
   header every output file carries; a regression harness over a
   seventeen-case physics matrix (`make check`, bitwise first, else within a
-  stated relative tolerance); and 42 assertion suites (`src/tests/*/run.sh`)
+  stated relative tolerance); and 44 assertion suites (`src/tests/*/run.sh`)
   plus the standalone `element_census_tests`, `diffusion_tests` and
   `residual_determinism` (`make test`), which print
   one `PASS|FAIL <name> measured= reference= tol=` line per assertion
@@ -275,19 +293,42 @@ ATES model.
   and the conserved variable is the authority: the density is read from its own
   column and the loaded species are projected onto it, so the state a restart
   evaluates is the state the file names to the last bit, whatever mass closure
-  the written composition carries. The departure is reported on every restart
+  the written composition carries. The departure is reported on every restart.
+  The grid is part of the contract: since 2026-09-27 the first cell face of
+  every grid type is the base level `r = 1` (the reservoir the lower
+  atmosphere states is then the face state itself, with no half-cell slab of
+  reservoir gas under the domain), so every cell center moved and a state
+  written before then is refused; it enters a run only as a seed mapped with
+  `src/utils/map_state_to_grid.py <src> <target_grid_file> <out> --ic`
+  (`--reservoir El/H <value>` rescales an element, `--uniform` sets it to one
+  ratio in every row)
+- A stationary run that alternates a wind solve with a composition relaxation
+  keeps the state of its last completed outer pass on disk,
+  `output/Hydro_ioniz_last_pass.txt` and `output/Ion_species_last_pass.txt`,
+  overwritten each pass and written by the final-state writers, so a run
+  stopped from outside can be continued from that pass (copy the pair to the
+  `_IC` names). The pair is never a certified state: both halves say
+  `certified=F cert_reason=pass_snapshot_p<n>`, and a `# pass_snapshot` line
+  records the carrier movement bound and the element under-relaxation factor
+  of the next pass, which a restart does not inherit
+  (`EXHALE_CARRIER_TRUST`, `EXHALE_DIFF_OMEGA` pass them back)
 - The advection-corrected `_adv` profiles the analysis and transit tools read
   say row by row what they are: two validity fields, `adv_T_status` and
   `adv_comp_status`, for the temperature and the composition separately, and
   `adv_mass_row`, the measure both were decided by. The post-process solves
-  the steady ionization and energy equations along the recorded flow, and the
+  the steady ionization and energy equations along the recorded flow, second
+  order in the cell width (variable-step BDF2 since 2026-09-27; the
+  first-order recursion before it put 1-4 percent into the He 10830
+  equivalent width of the LHS 1140 b states), and the
   flow it integrates along changes its face mass flux by a fraction of itself
   across each cell; the correction is first order in that fraction, so a row
   at or below the `# adv_conditional_tol` of the file is corrected and is a
   CONDITIONAL correction accurate to that fraction of itself, while a row
   above it, or one whose local radiative balance rather than the flow sets
   its temperature, or one the gas flows into, or one whose ionization is
-  already equilibrated, keeps the run's own state and says so. Whether the
+  already equilibrated, or one whose energy balance is carried by the
+  molecular channels the post-process omits, keeps the run's own state and
+  says so. Whether the
   whole input state passed the stationary certification is a separate
   statement in the same header (`# adv_input_certified`), and the product is
   declared there as a one-way correction on a fixed density and velocity
@@ -348,9 +389,13 @@ Solver:                 Newton
 
 An atomic run finished this way certifies. A run that carries a species row,
 an element row from `He_diffusion` or a carrier row from the molecular
-carriers, does not: no such configuration has yet reached its certification
-tolerance on any route, and what limits them is measured and recorded.
-Quote a mass-loss rate from such a run only with that qualification.
+carriers, is solved by alternating the wind solve with the composition
+relaxations over outer passes; many such states certify (the LHS 1140 b
+molecular and atomic diffusion states among them, `cert_reason=certified_in_wind`,
+the species rows gated at `r >= 1.20 R_p`), and some do not yet, what limits
+them being measured and recorded. The `# coupling:` line of every state file
+says which: quote a mass-loss rate only from a state that says `certified=T`,
+or with that qualification.
 
 Everything else (compiler variants, all opt-in physics keys, output-file
 schemas, convergence recipes, post-processing) is in
@@ -479,4 +524,4 @@ the Markdown memos of the development record.
 
 Kwang-Il Seon (KASI / UST)
 
-Last updated: 2026-09-26 16:01
+Last updated: 2026-09-28 17:05

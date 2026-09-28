@@ -110,7 +110,10 @@
 		! Density (isothermal hydrostatic)
 		b0_eff = 1.0d0	! Change if the planet b0 is too low - only for IC
 		do
-			W(1,:) = (/ (rho_bc*exp(b0_eff*(-Gphi_c(j) + Gphi_c(0))), 	&
+			! rho_bc is the density AT THE BASE LEVEL r = 1, the first face
+			! of the grid (define_grid); the ghosts below it take the same
+			! stratification continued downward.
+			W(1,:) = (/ (rho_bc*exp(b0_eff*(-Gphi_c(j) + phi(1.0d0))), 	&
 					j = 1-Ng,N+Ng) /)
 
 			! Density at mid-domain, the smallest density of a bound
@@ -134,7 +137,8 @@
 		write(*,*)
 
 		! Velocity: small linear seed (default), or the Parker head-start (hot-Parker)
-		W(2,:) = 0.5*(r-r(0))
+		! zero at the base level r = 1, the first face of the grid
+		W(2,:) = 0.5*(r-1.0d0)
 	endif
 
 	! Fix density in outer layers
@@ -377,7 +381,8 @@
 	! (*) has a subsonic root (v<cs) and a supersonic root (v>cs); the transonic
 	! wind takes the subsonic root for r<rc and the supersonic root for r>rc.
 	! rho then follows from steady mass conservation rho*v*r^2 = Mdot, with Mdot
-	! pinned to the base density BC (rho = rho_bc at r(0)).
+	! pinned to the base density BC (rho = rho_bc at the base level r = 1,
+	! the first face of the grid).
 	!
 	! ok = .false. signals no interior sonic point (a subsonic breeze / bound
 	! case), so set_IC keeps the hydrostatic IC.
@@ -413,9 +418,18 @@
 		endif
 	enddo
 
-	! Density from mass conservation, normalized to the base BC (rho_bc at r(0))
-	vbase = v_w(0)
-	Mdot  = rho_bc*vbase*r(0)*r(0)
+	! Density from mass conservation, normalized to the base BC (rho_bc at the
+	! base level r = 1): v there from the same Bernoulli relation, on the
+	! branch the base is on (supersonic only when rc is the base itself).
+	Kr = Bc - phi(1.0d0)
+	if (Kr .le. hmin) then
+		vbase = cs
+	else if (1.0d0 .lt. rc) then
+		vbase = wind_root(Kr, c2, cs, .false.)
+	else
+		vbase = wind_root(Kr, c2, cs, .true.)
+	endif
+	Mdot  = rho_bc*vbase
 	do j = 1-Ng, N+Ng
 		rho_w(j) = Mdot/(v_w(j)*r(j)*r(j))
 	enddo
@@ -426,8 +440,8 @@
 	!-------------------------------------------------------!
 
 	subroutine find_sonic(c2, rc, have_rc)
-	! Locate the transonic (sonic) point r_c in [r(0), r_out] (r_out the
-	! outer radius of the domain, domain_outer_radius) where the
+	! Locate the transonic (sonic) point r_c in [1, r_out] (1 the base
+	! level, r_out the outer radius of the domain, domain_outer_radius) where the
 	! isothermal-wind critical condition Dphi(r_c) = 2*c2/r_c holds.
 	! f(r) = Dphi(r) - 2*c2/r is > 0 at the base (gravity dominated) and turns
 	! negative toward L1 (Dphi -> 0 there in Roche mode).  Bisection on the
@@ -441,7 +455,7 @@
 	real*8 :: rlo, rhi, flo, fhi, rmid, fmid
 	integer :: it
 
-	rlo = r(0)
+	rlo = 1.0d0
 	rhi = domain_outer_radius()
 	flo = Dphi(rlo) - 2.0d0*c2/rlo
 	fhi = Dphi(rhi) - 2.0d0*c2/rhi

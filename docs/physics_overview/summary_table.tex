@@ -39,7 +39,8 @@ Key & Default & What it selects, and where \\
   dayside dilution of every stellar beam and the factor on $\dot M$
   (Table~\ref{tab:2d}; \texttt{parameters.f90}, \texttt{utilities.f90}). \\
 \texttt{Grid type:} & mandatory &
-  \texttt{Uniform}, \texttt{Mixed} or \texttt{Stretched}
+  \texttt{Uniform}, \texttt{Mixed} or \texttt{Stretched}; every type puts
+  the first face on the base level, $r_{\rm edg}(0) = 1$
   (\texttt{define\_grid.f90}). \\
 \texttt{Grid cells:} & 500 &
   Number of physical cells; ghosts are added on top
@@ -53,6 +54,10 @@ Key & Default & What it selects, and where \\
 \texttt{Outer radius [R\_p]:} & L1 radius &
   Outer boundary; required in spherical mode
   (\texttt{input\_read.f90}). \\
+\texttt{Outer shells [r\_face,cells]:} & none &
+  Cells appended beyond the constructed grid out to the face
+  \texttt{r\_face}, the cells below unchanged bit for bit
+  (\texttt{define\_grid.f90}). \\
 \midrule
 \multicolumn{3}{l}{\itshape Discretization}\\
 \midrule
@@ -217,6 +222,10 @@ Key & Default & What it selects, and where \\
 \texttt{Molecular carrier transport:} & follows oxygen chemistry &
   Vertical transport of the molecular carriers
   (\texttt{diffusive\_photochemistry.f90}). \\
+\texttt{Composition update holds:} & energy &
+  What the composition update of the stationary alternation holds beside
+  $\rho$ and $v$: the conserved energy, or the pressure
+  (\texttt{EXHALE\_main.f90}). \\
 \texttt{Coupled carrier solve:} & off &
   $n(\mathrm{H_2})$ as a fourth Newton unknown per cell instead of an
   alternation (\texttt{steady\_newton.f90}). \\
@@ -225,6 +234,13 @@ Key & Default & What it selects, and where \\
 \texttt{Molecular base:} & off &
   Removes the H nuclei bound into $\mathrm{H}_2$ from the base particle count
   \eqref{eq:ntotbc} (\texttt{composition.f90}). \\
+\texttt{H2 double ionization:} & \texttt{chung80} &
+  $\mathrm{H_2} + h\nu \to 2\mathrm{H^+} + 2e$ resolved above 51.4\,eV;
+  \texttt{yan\_rho} the other model, \texttt{off} folds it into the single
+  dissociative channel (\texttt{h2\_photo\_channels.f90}). \\
+\texttt{H2 neutral dissociation:} & on &
+  $\mathrm{H_2} + h\nu \to \mathrm{H} + \mathrm{H}$ over 33--41\,eV
+  (\texttt{h2\_photo\_channels.f90}). \\
 \texttt{Molecular reaction heat:} & on &
   Deposits the energy the collisional molecular reactions release
   (\texttt{molecular\_reaction\_heat.f90}). \\
@@ -256,6 +272,10 @@ Key & Default & What it selects, and where \\
   Thermal-diffusion factor. \\
 \texttt{He\_ambipolar} & on &
   Ambipolar term of the element diffusion. \\
+\texttt{Interdiffusion enthalpy flux:} & on (with \texttt{He\_diffusion}) &
+  The enthalpy flux $\sum_s h_sJ_s$ of the diffusing elements in the energy
+  equation, Sec.~\ref{sec:mol:interdiffusion}
+  (\texttt{binary\_element\_diffusion.f90}). \\
 \texttt{Viscosity:} & off &
   Radial viscous force and its dissipation \eqref{eq:viscous}
   (\texttt{viscous\_conduction.f90}). \\
@@ -365,6 +385,9 @@ Takagi, H. 2002, Phys. Scr., T96, 52
 \bibitem[Wolniewicz et al.(1998)]{Wolniewicz1998}
 Wolniewicz, L., Simbotin, I., \& Dalgarno, A. 1998, ApJS, 115, 293
 
+\bibitem[Cook(2009)]{Cook2009}
+Cook, A.~W. 2009, Phys. Fluids, 21, 055109
+
 \bibitem[Dalgarno et al.(1999)]{Dalgarno1999}
 Dalgarno, A., Yan, M., \& Liu, W. 1999, ApJS, 125, 237
 
@@ -434,8 +457,15 @@ Krause, M.~O. 1979, J. Phys. Chem. Ref. Data, 8, 307
 \bibitem[Kurganov \& Tadmor(2000)]{Kurganov2000}
 Kurganov, A., \& Tadmor, E. 2000, J. Comput. Phys., 160, 241
 
+\bibitem[Li \& Liao(2022)]{LiLiao2022}
+Li, Z., \& Liao, H.-L. 2022, SIAM J. Numer. Anal., 60, 2253
+(read as arXiv:2201.00527)
+
 \bibitem[Locci et al.(2022)]{Locci2022}
 Locci, D., Cecchi-Pestellini, C., \& Micela, G. 2022, PSJ, 3, 1
+
+\bibitem[Loreau et al.(2014)]{Loreau2014}
+Loreau, J., Ryabchenko, S., \& Vaeck, N. 2014, J. Phys. B, 47, 135204
 
 \bibitem[Millar et al.(2024)]{Millar2024}
 Millar, T.~J., Walsh, C., Van de Sande, M., \& Markwick, A.~J. 2024, A\&A, 682, A109
@@ -516,6 +546,9 @@ Sekiya, M., Nakazawa, K., \& Hayashi, C. 1980, Prog. Theor. Phys., 64, 1968
 
 \bibitem[Shull \& van Steenberg(1985)]{Shull1985}
 Shull, J.~M., \& van Steenberg, M.~E. 1985, ApJ, 298, 268
+
+\bibitem[Stancil et al.(1998)]{Stancil1998}
+Stancil, P.~C., Lepp, S., \& Dalgarno, A. 1998, ApJ, 509, 1
 
 \bibitem[Taylor et al.(2025)]{Taylor2025}
 Taylor, J., Oklop\v{c}i\'c, A., Rustamkulov, Z., et al. 2025, ApJ, 989, 68

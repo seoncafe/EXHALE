@@ -6,7 +6,17 @@
       !   R(:,1) = dF - S                          (mass)
       !   R(:,2) = dF - S - F_mu                   (momentum)
       !   R(:,3) = dF_E - S_E - (heat-cool)
-      !                       - (w F_mu + q_mu + conduction)   (energy)
+      !                       - (w F_mu + q_mu + conduction)
+      !                       + div q_d                        (energy)
+      !
+      ! q_d is the interdiffusion enthalpy flux of a mixture whose elements
+      ! move relative to one another (He_diffusion; Cook 2009, Phys. Fluids
+      ! 21, 055109, eqs. 11-13), formed from the composition of the state by
+      ! interdiffusion_enthalpy_divergence_of_state (binary_element_
+      ! diffusion) and identically zero, with no arithmetic, when the
+      ! elements do not move.  The composition is therefore an argument of
+      ! every assembly: the energy row of a diffusing mixture is not a
+      ! function of u, n_part, heat and cool alone.
       !
       ! dF, S come from the existing Reconstruct + RK_rhs. heat/cool are
       ! supplied by the caller, which decides how they were obtained: the
@@ -46,6 +56,8 @@
                                         ieq_state_marching
       use conservation_budget, only: conservation_budget_exports_left,  &
                                      write_conservation_budget_terms
+      use binary_element_diffusion, only: interdiffusion_enthalpy_active, &
+                           interdiffusion_enthalpy_divergence_of_state
 
       implicit none
       private
@@ -72,10 +84,11 @@
       !                            takes the magnitude where it needs one)
       !   momentum_largest_term(j) max(|ram|, |dp/dr|, |rho dphi/dr|)
       !                            (momentum)
-      !   energy_largest_term(j)   max(|dF_3|, |S_3|, heat, cool)  (energy)
-      !
-      ! plus the operator-split viscous/conduction sources where those are
-      ! active.
+      !   energy_largest_term(j)   max(|dF_3|, |S_3|, heat, cool, |Sene|,
+      !                            |Sidf|)  (energy: Sene the viscous and
+      !                            conduction sources where those are
+      !                            active, Sidf the divergence of the
+      !                            interdiffusion enthalpy flux)
       !
       ! THE MOMENTUM ROW'S THREE TERMS ARE THE TERMS OF THE EQUATION, and
       ! they are not dF_2 and S_2. Under PLM the pressure sits partly in
@@ -217,14 +230,20 @@
 
       ! ------------------------------------------------------!
 
-      subroutine assemble_residual(u, n_part, heat, cool, R)
+      subroutine assemble_residual(u, n_part, f_sp, heat, cool, R)
       real*8, dimension(3,1-Ng:N+Ng), intent(in)  :: u
       real*8, dimension(1-Ng:N+Ng),   intent(in)  :: n_part
+      ! The composition of the state u, the one n_part was formed from.
+      ! The energy row reads it for the interdiffusion enthalpy flux.
+      real*8, dimension(1-Ng:N+Ng,n_species), intent(in) :: f_sp
       real*8, dimension(1-Ng:N+Ng),   intent(in)  :: heat, cool
       real*8, dimension(3,1-Ng:N+Ng), intent(out) :: R
       ! Local scratch so callers' own WL/WR/dF/S are untouched
       real*8, dimension(3,1-Ng:N+Ng) :: WL, WR, dF, S, W
       real*8, dimension(1-Ng:N+Ng)   :: Tc, Smom, Sene
+      ! The divergence of the interdiffusion enthalpy flux, in the units of
+      ! the energy row (zero unless the elements move).
+      real*8, dimension(1-Ng:N+Ng)   :: Sidf
       integer :: rows_kind
       ! The reconstruction in force at entry, restored after the terms of a
       ! kind-generic row have been evaluated under the scheme that row was
@@ -303,13 +322,30 @@
          R(2,:) = R(2,:) - Smom
          R(3,:) = R(3,:) - Sene
       endif
+      ! THE ENTHALPY THE ELEMENT FLUXES CARRY.  With He_diffusion on, helium
+      ! and hydrogen cross every face with different velocities, and the
+      ! energy row gains the divergence of q_d = sum_s h_s J_s, positive
+      ! where the moving particles take more enthalpy out of the cell than
+      ! they bring in.  The element fluxes, the faces and the geometry are
+      ! those of the element rows of the same state, so the energy this
+      ! term moves telescopes over the column as the element flux does.
+      ! The temperature is the one this assembly's own conduction term and
+      ! the marching loop use, p/n_part.
+      Sidf = 0.0d0
+      if (interdiffusion_enthalpy_active()) then
+         call U_to_W(u, W)
+         Tc = W(3,:)/n_part
+         call interdiffusion_enthalpy_divergence_of_state(W(1,:), Tc,     &
+                                                          f_sp, Sidf)
+         R(3,:) = R(3,:) + Sidf
+      endif
       ! THE LOWEST GHOST CELL CARRIES NO EQUATION: it has no lower face, so
       ! there is no balance to state there and its row is zero (RK_rhs
       ! defines the same column of dF and S as zero for the same reason).
       ! Written explicitly so that no reader of R can find a heating rate
       ! standing alone in a row that has no fluxes.
       R(:,1-Ng) = 0.0d0
-      call store_row_terms(u, dF, S, heat, cool, Smom, Sene)
+      call store_row_terms(u, dF, S, heat, cool, Smom, Sene, Sidf)
 
       ! THE COMPLETE TERMS OF THE THREE ROWS OF THIS ASSEMBLY, for an
       ! independent reader of the discrete balance. Default off: nothing is
@@ -319,7 +355,7 @@
       if (conservation_budget_exports_left())                           &
          call write_conservation_budget_terms(u, dF, S, R,              &
                                               heat, cool, Smom, Sene,   &
-                                              rows_kind)
+                                              Sidf, rows_kind)
 
       ! The rounding floor of the continuity row, measured on the first
       ! state a run assembles a stationary residual for when
@@ -329,7 +365,8 @@
           .not. mass_floor_scan_reported) then
          if (mass_floor_scan_armed()) then
             mass_floor_scan_reported = .true.
-            call mass_row_rounding_floor_scan(u, n_part, heat, cool, R)
+            call mass_row_rounding_floor_scan(u, n_part, f_sp, heat,    &
+                                              cool, R)
          endif
       endif
 
@@ -389,11 +426,14 @@
 
       ! ------------------------------------------------------!
 
-      subroutine store_row_terms(u, dF, S, heat, cool, Smom, Sene)
+      subroutine store_row_terms(u, dF, S, heat, cool, Smom, Sene, Sidf)
       ! Keep the terms of each row as RK_rhs and the ionization sweep have
-      ! just produced them, and the state they belong to.
+      ! just produced them, and the state they belong to.  Sidf is the
+      ! divergence of the interdiffusion enthalpy flux, a term of the energy
+      ! row like the others.
       real*8, dimension(3,1-Ng:N+Ng), intent(in) :: u, dF, S
       real*8, dimension(1-Ng:N+Ng),   intent(in) :: heat, cool, Smom, Sene
+      real*8, dimension(1-Ng:N+Ng),   intent(in) :: Sidf
       integer :: j
       if (.not. allocated(face_mass_flux_r2))                            &
          allocate(face_mass_flux_r2(1-Ng:N+Ng),                          &
@@ -418,7 +458,7 @@
                 abs(Smom(j)))
          energy_largest_term(j)   = max(abs(dF(3,j)), abs(S(3,j)),       &
                                         abs(heat(j)), abs(cool(j)),      &
-                                        abs(Sene(j)))
+                                        abs(Sene(j)), abs(Sidf(j)))
       enddo
       state_of_row_terms = u
       end subroutine store_row_terms
@@ -457,7 +497,8 @@
       if (.not. allocated(face_mass_flux_r2)) then
          ! No sweep has run yet, so there are no radiative terms to keep.
          call store_row_terms(u, dF, S, 0.0d0*dF(1,:), 0.0d0*dF(1,:),    &
-                              0.0d0*dF(1,:), 0.0d0*dF(1,:))
+                              0.0d0*dF(1,:), 0.0d0*dF(1,:),          &
+                              0.0d0*dF(1,:))
          return
       endif
       do j = 1-Ng, N+Ng
@@ -617,7 +658,8 @@
 
       ! ------------------------------------------------------!
 
-      subroutine mass_row_rounding_floor_scan(u, n_part, heat, cool, Rgiven)
+      subroutine mass_row_rounding_floor_scan(u, n_part, f_sp, heat, cool, &
+                                              Rgiven)
       ! WHAT THE CONTINUITY ROW OF THIS STATE CANNOT GO BELOW, MEASURED.
       !
       ! One ulp is added to the density of every physical cell and the whole
@@ -643,6 +685,7 @@
       ! reproduce bitwise.
       real*8, dimension(3,1-Ng:N+Ng), intent(in) :: u, Rgiven
       real*8, dimension(1-Ng:N+Ng),   intent(in) :: n_part, heat, cool
+      real*8, dimension(1-Ng:N+Ng,n_species), intent(in) :: f_sp
       real*8, dimension(3,1-Ng:N+Ng) :: up, Rp, Rb
       real*8, dimension(1:N) :: sc, fsg, ffl, jmp
       real*8 :: dV, mach, d1, d2, d3, vv, cs, worst_sg, worst_fl, back
@@ -662,8 +705,8 @@
          up(1,j) = nearest(u(1,j), 1.0d0)
       enddo
       mass_floor_scan_running = .true.
-      call assemble_residual(up, n_part, heat, cool, Rp)
-      call assemble_residual(u,  n_part, heat, cool, Rb)
+      call assemble_residual(up, n_part, f_sp, heat, cool, Rp)
+      call assemble_residual(u,  n_part, f_sp, heat, cool, Rb)
       mass_floor_scan_running = .false.
       back = 0.0d0
       do j = 1, N

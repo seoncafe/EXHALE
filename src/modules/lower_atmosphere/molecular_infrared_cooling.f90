@@ -32,8 +32,11 @@
 !     nbar_l      = 1 / [exp(dE_l/T_rad) - 1]                              (6)
 !
 ! where f_u(T) = g_u exp(-T_u/T) / Q(T) is the LTE population of the upper
-! level and W is the dilution of the incident field (the sky fraction the
-! lower atmosphere subtends, times the screening of the intervening column).
+! level and W is the geometric dilution of the incident field, the fraction
+! of the sky the lower atmosphere subtends seen from radius r,
+! W = [1 - sqrt(1 - (R_p/r)^2)]/2 (0.5*base_sky_fraction(r, 1), util_ion_eq),
+! and zero with `Base IR field` off.  W carries no screening by the
+! intervening column: the layer is treated as optically thin (VALIDITY).
 ! Q is the internal partition function of H2 of caloric_eos, the one
 ! Boltzmann sum the code forms over the rovibrational ladder, so the
 ! populations that radiate here are the populations whose energy the equation

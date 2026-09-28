@@ -7,10 +7,50 @@
 For the reason given in Sec.~\ref{sec:ionization:advected},
 \texttt{post\_process\_adv.f90} re-solves the profile once, at the end of the
 run, with the ionization advected: the systems \eqref{eq:ion:advh}--\eqref{eq:ion:advhe2} are solved cell by cell
-from the base outward, each cell taking the upstream cell's solved fractions
-as its $x^{\rm up}$, and the temperature is then re-solved on the steady
-internal-energy equation \eqref{eq:th:teq} with the Brent bracket of
-Sec.~\ref{sec:thermal:tsolve}.
+from the base outward, each cell taking its history $x^{\rm up}$ from the
+solved fractions of the two cells below it, and the temperature is then
+re-solved on the steady internal-energy equation \eqref{eq:th:teq} with the
+Brent bracket of Sec.~\ref{sec:thermal:tsolve}.
+
+\paragraph{The step.} Both recursions are one-step integrations of an ODE in
+$r$, ${\rm d}y/{\rm d}r = F(y, r)$, with the variable-step second-order
+backward differentiation formula (BDF2),
+%
+\begin{equation}
+  y_j - a_1 y_{j-1} + a_2 y_{j-2} = g\,h_j\,F(y_j, r_j),\qquad
+  a_1 = \frac{(1+w)^2}{1+2w},\quad a_2 = \frac{w^2}{1+2w},\quad
+  g = \frac{1+w}{1+2w},
+  \label{eq:pp:bdf2}
+\end{equation}
+%
+$h_j = r_j - r_{j-1}$, $w = h_j/h_{j-1}$: the left side over $g\,h_j$ is
+${\rm d}P/{\rm d}r$ at $r_j$ of the quadratic $P$ through the three points,
+so the step is exact for quadratics and the recursion second order in the
+cell width (the formula of \citealt{LiLiao2022}, eq.~(1.4) of the preprint).
+Every $r$-derivative of a step, the known density profile of the energy
+equation included, is taken at $r_j$ by this rule, and every other factor
+(rates, heating and cooling, the velocity of the residence time) is the value
+at $r_j$.  The recursion starts, and restarts after every cell it does not
+integrate, with backward Euler ($a_1 = g = 1$, $a_2 = 0$); a cell whose step
+ratio exceeds the zero-stability bound $w \le 1 + \sqrt2$ is integrated by
+backward Euler, and a BDF2 step whose populations come out negative or whose
+temperature has no root is retaken by backward Euler, which keeps the
+populations of a linear rate system nonnegative; the run log counts all
+three.  BDF2 is L-stable, like backward Euler, so in the stiff limit a
+population that relaxes within the cell returns its local equilibrium; the
+trapezoid rule, A- but not L-stable, would alternate about it from cell to
+cell.  Until 2026-09-27 every step was backward Euler with the rates at $r_j$
+and the residence time at $r_{j-1}$, a first-order recursion that was the
+main source of the first-order grid convergence of the He\,10830 equivalent
+width.  MEASURED on nine certified LHS~1140\,b states (He/H 1.6, 1.8 and 2.13
+on 500, 1000 and 2000 cells) with the state held fixed, the post-process
+share of the equivalent-width error falls from $+3.0$/$+1.0$ per cent to
+below $3\times10^{-4}$, the \texttt{\_adv} $2^3$S column converges at order
+1.98--2.14 (1.00--1.01 before), and a closed-form column test gives 1.99; the
+equivalent width itself moves by $-3.9$ per cent (500 cells) to $-0.97$ per
+cent (2000 cells) at He/H $=1.6$ and still converges at first order, what
+remains being the solved state's own base closure and the transit
+integration.
 
 Three properties of that pass are worth stating.
 
@@ -19,11 +59,14 @@ Three properties of that pass are worth stating.
   divergence of the mass flux, $h\,r^{-2}{\rm d}(\rho v r^{2})/{\rm d}r$,
   vanishes for a stationary mass flux and for nothing else, so a correction
   built without it would describe a converged wind and no other state. The
-  divergence is formed with the same operator the mass row of the state uses,
-  $(A_pF_p-A_mF_m)/{\rm d}V$ over the control volume whose two bounding
-  points are the two points the upwind energy difference is taken between,
-  so the term is an exact zero wherever those two carry the same
-  $\rho v r^{2}$.
+  divergence is the mass row of the state itself, the face mass fluxes of
+  its Riemann solve differenced over the cell,
+  $(A_{j+1/2}F_{j+1/2}-A_{j-1/2}F_{j-1/2})/{\rm d}V_j$, so the term is an
+  exact zero wherever the two faces carry the same flux. (Until 2026-09-27
+  it was the same operator applied to the cell-centered $\rho v r^{2}$ of two
+  neighboring cells, which at the base of a quasi-hydrostatic layer carries
+  the odd-even pattern of the cell-centered velocity; its difference set the
+  temperature of the lower layer.)
 \item A cell is corrected only where the correction means something. Above
   the Damk\"ohler number $10^{2}$, formed with the \emph{slowest} relaxing
   species of the solved system, the gas reaches local equilibrium many times
@@ -41,14 +84,23 @@ Three properties of that pass are worth stating.
   HeH$^+$ are not passed in and are not re-solved, so inside a molecular
   layer the \texttt{\_adv} particle count omits the neutral H$_2$ and the
   molecular-ion electrons. The output file says so in its own header rather
-  than only in the source.
+  than only in the source.  The same holds for the energy balance: the
+  post-process lacks the molecular chemistry heat and the H$_3^+$ and
+  molecular band cooling, so wherever the heating and cooling it omits,
+  measured on the state handed in as the difference between the run's own
+  channels and its own at the run's temperature and composition, exceed the
+  ones it carries, the row keeps the run's temperature with
+  \texttt{adv\_T\_status} $=3$ (\texttt{unsupported}); MEASURED on the
+  LHS~1140\,b molecular states, 196/389/776 rows on 500/1000/2000 cells, up
+  to $1.134$--$1.137\,R_p$, with an equivalent-width change of at most
+  $1.2\times10^{-4}$ of itself.
 \end{itemize}
 
-The first of those gates has a fourth companion: wherever $v\le0$ on either
-face, the cell keeps the converged equilibrium ionization and temperature,
-because the upwind discretization takes the upstream state from the cell
-below, which is not the upstream cell when the gas moves inward, and the
-residence time $\Delta r/v$ is then negative as well. The relaxation rate
+The first of those gates has a fourth companion: wherever $v\le0$ in the cell
+or the one below it, the cell keeps the converged equilibrium ionization and
+temperature, because the step takes its history from the cells below, which
+are not upstream when the gas moves inward, and the residence time $h/v$ is
+then negative as well. The relaxation rate
 entering the Damk\"ohler number is the total rate at which each solved
 population is destroyed and re-formed, and the \emph{minimum} over the
 species the system solves is taken, because He($2^3$S) relaxes orders of
@@ -119,7 +171,10 @@ energy equation itself used, so the channel sum and the \texttt{heat} or
 \texttt{cool} column of \texttt{Hydro\_ioniz.txt} are the same number to
 round-off; \texttt{Excited\_H.txt}, \texttt{Lyman\_Werner.txt},
 \texttt{FUV\_bands.txt}, \texttt{Oxygen\_chemistry.txt} and
-\texttt{OI\_levels.txt} carry the optional physics. The two \texttt{\_adv} files carry a
+\texttt{OI\_levels.txt} carry the optional physics;
+\texttt{Hydro\_ioniz\_last\_pass.txt} and \texttt{Ion\_species\_last\_pass.txt}
+are the state of the last completed outer pass of an alternating stationary
+run, never certified (Sec.~\ref{sec:steady:partitioned}). The two \texttt{\_adv} files carry a
 \texttt{\# derived\_from:} line rather than the \texttt{\# coupling:} header
 of a state file (item L9, 2026-09-17): they describe an advection-corrected
 composition, which is not the composition any certification was made on, so the
@@ -165,8 +220,8 @@ repeated here.
 \paragraph{Which state the spectrum is built from.}
 The two selections are two answers for one column and not two formats of one
 answer.  The \texttt{\_adv} pair is a post-process of a marching state: a
-steady advective correction cell by cell, first-order upwind at the bulk
-velocity, with no eddy term and no element drift, refused in a cell where an
+steady advective correction cell by cell, second order in the cell width
+(variable-step BDF2 along the flow at the bulk velocity), with no eddy term and no element drift, refused in a cell where an
 assumption of the steady equations fails.  It is an independent
 discretization of the same column and no equation of the run was solved for
 it.  The solved pair is the state the solver produced and the certification

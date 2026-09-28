@@ -31,7 +31,7 @@ so this file says it explicitly):
 * `model_a_fig9_digitized.txt` -- their Figure 9 (heating and cooling),
   digitized 2026-09-05. `model_a_fig8_digitized.txt` -- their Figure 8 (H2,
   H, He densities), digitized 2026-09-12 every 0.1 R_p
-  (`docs/p23_published_profiles.md` section 5.1 carries the 2026-09-05
+  (`md/p23_published_profiles.md` section 5.1 carries the 2026-09-05
   readings of every curve).
 * `matched_fixture_states/pass12/` -- the state of the stationary-solver
   fixture re-pinned on THIS configuration

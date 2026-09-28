@@ -1068,7 +1068,7 @@ def transit_state_files(path, selection, require=True):
 	``adv``       ``output/Hydro_ioniz_adv.txt`` and
 	              ``output/Ion_species_adv.txt``, the advection-corrected
 	              profile, an INDEPENDENT discretization of the same column
-	              (first-order upwind marching at the bulk velocity, no eddy
+	              (second-order BDF2 marching at the bulk velocity, no eddy
 	              term, no element drift).  It is what this tool has always
 	              read, and it stays the default.
 
@@ -1076,9 +1076,10 @@ def transit_state_files(path, selection, require=True):
 	the other for the composition would synthesize a line from a state that
 	solves neither set of equations.
 
-	A stationary route writes no `_adv` products at all: the advection
-	correction is a post-process of a marching state, so a run that was
-	solved rather than marched simply has no `adv` state.  With
+	A stationary solve writes no `_adv` products: the advection
+	correction is a post-process of a state, and the solve does not run
+	it; the evaluation of a solved state (`Restart intent: stationary
+	evaluate`) does run it and writes the pair.  With
 	``require`` the pair a selection names must be on disk, and a missing
 	one is refused by name; the other state is never read in its place,
 	because a curve carrying the name of one state and the numbers of the
@@ -1136,10 +1137,12 @@ def file_identity(path):
 # The header keys by which a profile states which state it holds: where the
 # numbers came from (`provenance`, `source`), which boundary the solve stood
 # on (`boundary_model`, `boundary_reservoir`), which physics was active and
-# whether the state was certified (`coupling`), and which option was changed
-# at a restart (`option_change`).
+# whether the state was certified (`coupling`, and `derived_from`, the same
+# fields as they stand in the advection-corrected products this tool reads),
+# and which option was changed at a restart (`option_change`).
 STATE_PROVENANCE_KEYS = ('provenance', 'source', 'boundary_model',
-                         'boundary_reservoir', 'coupling', 'option_change')
+                         'boundary_reservoir', 'coupling', 'derived_from',
+                         'option_change')
 
 
 def state_provenance_statements(path):

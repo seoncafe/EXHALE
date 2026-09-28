@@ -1,5 +1,8 @@
 	module System_implicit_adv_H
-	! Ionization equilibrium system with both H and He
+	! Advection-corrected ionization system for hydrogen alone: one step of
+	! the backward differentiation formula for v dx/dr = R(x) in the neutral
+	! fraction x = n_HI/n_H, taken by post_process_adv (the step is stated
+	! at the adv_rates type of ion_cell_state).
 	
 	use global_parameters
 	use ion_cell_state, only: adv_cell
@@ -12,7 +15,7 @@
 	
 	integer :: Neq,iflag
 	real*8  :: x(Neq),fvec(Neq)
-	real*8  :: xhi_old
+	real*8  :: xhi_hist
 	real*8  :: ghi
 	real*8  :: xhi,xhii,xe
 	real*8  :: c1
@@ -23,8 +26,8 @@
 	
 	
 	! Coefficients of the system
- 	c1      = adv_cell%c1    ! = dr/v
- 	xhi_old = adv_cell%xhi_old    ! = nhi/nh
+ 	c1      = adv_cell%c1    ! = g*h_j/v_j, the rate weight of the step
+ 	xhi_hist = adv_cell%xhi_hist    ! history of n_HI/n_H
  	n_h     = adv_cell%nh    ! = nh
  	ghi     = adv_cell%P_HI    ! = P_HI  
    ahii    = adv_cell%rchiiB    ! = rchiiB  
@@ -41,7 +44,7 @@
    xe = xhii + adv_cell%xe_metal
       
       ! System of equations      
-  	fvec(1) =  xhi_old - x(1)					&
+  	fvec(1) =  xhi_hist - x(1)					&
   		    + c1*(-(ghi+ionhi*xe*n_h)*xhi + ahii*xhii*xe*n_h)
   		   
 	! End of subroutine

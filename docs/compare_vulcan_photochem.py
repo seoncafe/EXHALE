@@ -11,7 +11,7 @@ Three runs:
 
 A vs C isolates the code, B vs C isolates the reaction network.
 
-Run A is produced by VULCAN itself (see docs/vulcan_photochem_comparison.md for
+Run A is produced by VULCAN itself (see md/vulcan_photochem_comparison.md for
 the configuration); this script produces B and C and then compares all three.
 
 Usage
@@ -82,7 +82,7 @@ def read_climate():
     profile is cut below Photochem's default top of atmosphere (1e-7 bar =
     0.1 dyn/cm^2). The 1 ubar handoff EXHALE reads stays inside what is kept,
     but the upper boundary then sits closer to it than VULCAN's does -- see the
-    caveats in docs/vulcan_photochem_comparison.md."""
+    caveats in md/vulcan_photochem_comparison.md."""
     P, T, Kzz = np.loadtxt(os.path.join(VULCAN_DIR, 'atm/atm_HD189_Kzz.txt'),
                            skiprows=2, unpack=True)
     o = np.argsort(P)[::-1]                       # Photochem wants decreasing P
@@ -327,7 +327,7 @@ def main():
     else:
         if not os.path.exists(VULCAN_OUT):
             sys.exit(f'missing VULCAN output {VULCAN_OUT}; run VULCAN first '
-                     '(see docs/vulcan_photochem_comparison.md)')
+                     '(see md/vulcan_photochem_comparison.md)')
         do_compare(workdir)
 
 

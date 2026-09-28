@@ -355,6 +355,21 @@
       ! Also diffuse the trace metals (each element with its own mass and
       !  binary diffusion coefficient); default .false. = metals frozen to H.
       logical :: he_metal_diffusion = .false.
+      ! The interdiffusion enthalpy flux q_d = sum_i h_i J_i of the energy
+      ! equation of a diffusing mixture (Cook 2009, Phys. Fluids 21, 055109,
+      ! eqs. 11-13; the (5/2) p_s w_s term of Schunk 1977, Rev. Geophys.
+      ! Space Phys. 15, 429, eqs. 15b and 16), carried in the marching energy
+      ! update and in the stationary energy row whenever He_diffusion moves
+      ! the elements (binary_element_diffusion, interdiffusion_enthalpy_*).
+      ! DEFAULT .true.: the term is part of the energy equation of any
+      ! mixture whose components move relative to one another, so a run that
+      ! moves helium against hydrogen and omits it solves an energy equation
+      ! that does not conserve the enthalpy the moving particles carry.
+      ! "Interdiffusion enthalpy flux: False" exists only to match published
+      ! escape models that omit it (Koskinen et al. 2013, Icarus 226, 1678,
+      ! eq. 3; Koskinen et al. 2022, ApJ 929, 52, eq. B3; Yelle 2004, Icarus
+      ! 170, 167, eq. 5).  Inert (bitwise) while he_diffusion is off.
+      logical :: interdiffusion_enthalpy_flux = .true.
       ! analytic lower column (Koskinen+2022; docs/lower_atmosphere_
       ! coupling.*): radius of the 1-bar level [R_J].  If > 0, on startup the
       ! isothermal-Teq hypsometric column with chemical-equilibrium H2/H/He

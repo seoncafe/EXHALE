@@ -319,6 +319,10 @@
                                n_melem, melem_i0, melem_top, melem_A,      &
                                melem_name, iel_C, iel_O
       use composition,   only: mass_per_H_nucleus_without_He
+      ! The rovibrational energy of H2 of the caloric equation of state, the
+      ! one internal energy the sensible enthalpy of the components adds to
+      ! (5/2) kT per particle (component_specific_enthalpies).
+      use caloric_eos,   only: h2_rovibrational_energy_and_heat_capacity
       use species_advective_transport, only: species_advective_update,   &
                                     species_face_fraction,              &
                                     species_face_flux,                  &
@@ -370,6 +374,18 @@
       ! it, which would make an identity between two operators out of an
       ! identity within one.
       public :: element_nucleus_face_flux
+      ! THE INTERDIFFUSION ENTHALPY FLUX of the energy equation of the
+      ! diffusing mixture, the sensible enthalpy the element fluxes carry
+      ! (Cook 2009, eqs. 11-13): its face value from given element fluxes,
+      ! its divergence in the code units of the energy row, and both from a
+      ! state in hand.  The marching update and the stationary energy row
+      ! are written with these and nothing else.
+      public :: interdiffusion_enthalpy_active
+      public :: interdiffusion_enthalpy_face_flux
+      public :: interdiffusion_enthalpy_divergence
+      public :: interdiffusion_enthalpy_divergence_of_state
+      public :: helium_diffusive_face_flux, trace_element_diffusive_face_flux
+      public :: component_specific_enthalpies
 
       ! THE BUDGET ENTRY OF THIS OPERATOR'S BASE BOUNDARY CONDITION: the
       ! helium element mass flux [g cm^-2 s^-1] the base carries, ADVECTIVE
@@ -765,7 +781,7 @@
 
       subroutine element_diffusion_step(rho, Tcode, f_sp, dt_code,        &
                                         closed_base, Jface_out, Frho_in,  &
-                                        status)
+                                        status, JXface_out)
       ! Advance the helium mass fraction X one relaxation step and project the
       ! new element totals back into f_sp.  rho, Tcode are the current
       ! adimensional primitives, dt_code the adimensional relaxation timestep;
@@ -779,6 +795,13 @@
       ! [g cm^-2 s^-1] at the faces r_edg(0:N) evaluated with the coefficients
       ! the step actually used and the NEW X, so that a discrete elemental
       ! budget closes exactly against it (test T1b).
+      ! JXface_out (optional) returns, in the same units and at the same
+      ! faces, the diffusive MASS flux of every trace metal relative to the
+      ! hydrogen it diffuses through, formed with the coefficients the metal
+      ! step used and its new mixing ratio (trace_face_coefficients); zero
+      ! unless He_metal_diffusion moves the metals.  Both are zero on a call
+      ! that moves nothing (flag off, no helium, or an unsolved step), and a
+      ! caller uses them only for a step whose composition was accepted.
       ! Frho_in (optional) is the FACE MASS FLUX F_rho(j) at r_edg(j) in code
       ! units, the one the Riemann solve of this state returned and the mass
       ! row of this state differences, and its presence is what turns the
@@ -812,6 +835,7 @@
       real*8, dimension(0:N), optional,       intent(out)   :: Jface_out
       real*8, dimension(1-Ng:N+Ng), optional, intent(in)    :: Frho_in
       integer, optional,                      intent(out)   :: status
+      real*8, dimension(0:N,n_melem), optional, intent(out) :: JXface_out
 
       real*8, dimension(1-Ng:N+Ng) :: nucH, nucHe, msum, mass1, Xhe, Xold
       real*8, dimension(1-Ng:N+Ng) :: msum_out
@@ -822,7 +846,8 @@
       real*8, dimension(1-Ng:N+Ng) :: cadvf, wYtr, cadvX
       real*8, dimension(1-Ng:N+Ng) :: eEf, ne_phys, zbHe, ne_rel
       real*8, dimension(1-Ng:N+Ng,n_hcar)    :: yH
-      real*8, dimension(0:N)       :: Agrd, Bdrf, Jf
+      real*8, dimension(0:N)       :: Agrd, Bdrf, Jf, PLX, PRX
+      real*8, dimension(1-Ng:N+Ng) :: fXnew
       integer, dimension(0:N)      :: updrf
       ! The face mass flux the element transport of this evaluation rode on
       ! (code units, and in g cm^-2 s^-1), whether one exists, and the face
@@ -844,6 +869,8 @@
 
       if (present(status)) status = element_step_accepted
       element_step_last_status = element_step_accepted
+      if (present(Jface_out))  Jface_out  = 0.0d0
+      if (present(JXface_out)) JXface_out = 0.0d0
       if (.not. he_diffusion) return
       if (.not. thereis_He)   return
 
@@ -1070,6 +1097,17 @@
             call solve_trace_element_in_hydrogen(nX, nH_phys, DcoX, GcoX,  &
                                                  fXbase, dt_phys, rp,       &
                                                  Frho, wYtr, cadvX, advect)
+            ! The metal's diffusive mass flux the step carried: the face
+            ! coefficients the solve used and the mixing ratio it returned.
+            if (present(JXface_out)) then
+               call trace_face_coefficients(nH_phys, DcoX, GcoX, rp,       &
+                                            PLX, PRX)
+               fXnew = nX/max(nH_phys, 1.0d-30)
+               do j = 0, N
+                  JXface_out(j,im) = melem_A(im)*mu*                      &
+                                     (PLX(j)*fXnew(j) + PRX(j)*fXnew(j+1))
+               enddo
+            endif
             do j = 1-Ng, N+Ng
                ! Target density from the solved mixing ratio.  There is no
                ! cap at the reservoir ratio: settling piles an element up as
@@ -3514,14 +3552,8 @@
       real*8, dimension(0:N),       optional, intent(out) :: n_one
 
       real*8, dimension(1-Ng:N+Ng) :: nucH, nucHe, msum, mass1, Xhe
-      real*8, dimension(1-Ng:N+Ng) :: carH, carHe, mcarH, dlnpsi
-      real*8, dimension(1-Ng:N+Ng) :: rho_phys, TK, Dco, Gco, rp
-      real*8, dimension(1-Ng:N+Ng) :: ntot_phys, dmeff, zb1, eEf, Dneut
       real*8, dimension(1-Ng:N+Ng) :: Yf, Fs, nHe_cell, m1_cell, nH_cell
-      real*8, dimension(0:N)       :: Agrd, Bdrf
-      integer, dimension(0:N)      :: updrf
-      integer, dimension(1-Ng:N+Ng):: idom
-      real*8  :: sv_over, sv_under, sv_resid, sv_trace, dJl, dJr
+      real*8  :: sv_over, sv_under, sv_resid, sv_trace
       real*8  :: sv_exc
       integer :: sv_steps, sv_bnd
       integer :: j
@@ -3554,25 +3586,9 @@
       call mixture_mass_split(f_sp, nucH, nucHe, mass1, msum)
       Xhe = m_He_amu*nucHe/msum
 
-      TK       = Tcode*T0
-      where (TK .lt. 1.0d0) TK = 1.0d0
-      rp       = r*R0
-      rho_phys = rho*n0*mu*msum
-      call carrier_counts(f_sp, carH, carHe, mcarH)
-      ntot_phys = (carH + carHe)*rho*n0
-      where (ntot_phys .lt. 1.0d0) ntot_phys = 1.0d0
-      call helium_hydrogen_diffusion(rho, Tcode, f_sp, Dco, Dneut, idom)
-      call settling_coefficient(rho, Tcode, f_sp, Gco, dmeff, zb1, eEf,   &
-                                dlnpsi)
-      call drift_and_gradient_face_coefficients(rho_phys, Dco, Gco, rp,   &
-                                                Agrd, Bdrf, updrf)
-
       ! The diffusive half, face by face, in the branch the Peclet switch
       ! selected -- the same call composition_residual makes.
-      do j = 0, N
-         call element_face_flux(Xhe(j), Xhe(j+1), Agrd(j), Bdrf(j),       &
-                                updrf(j), Jdif(j), dJl, dJr)
-      enddo
+      call helium_diffusive_face_flux(rho, Tcode, f_sp, Jdif)
 
       ! The advective half: the face mass flux of the mass row carrying the
       ! reconstructed face mass fraction, the same two routines the stages
@@ -3604,6 +3620,402 @@
                                            sv_resid, sv_trace)
 
       end subroutine element_nucleus_face_flux
+
+      ! ------------------------------------------------------------------ !
+
+      subroutine helium_diffusive_face_flux(rho, Tcode, f_sp, Jdif)
+      ! The diffusive helium mass flux of the state (rho, Tcode, f_sp) at
+      ! the faces f = 0 ... N [g cm^-2 s^-1], positive outward:
+      !
+      !    Jdif(f) = -A_grd (X_r - X_l) - B_drf [X(1-X)](f) ,
+      !
+      ! the gradient, eddy and settling-drift flux of element_face_flux in
+      ! the branch the Peclet switch selects, with the coefficients of
+      ! drift_and_gradient_face_coefficients.  Faces 0 and N carry none.
+      ! The one spelling of it for a state in hand: element_nucleus_face_flux
+      ! returns it beside the advective half, and the interdiffusion enthalpy
+      ! flux of the energy equation is formed from it.  Nothing here writes
+      ! module state.
+      real*8, dimension(1-Ng:N+Ng),           intent(in)  :: rho, Tcode
+      real*8, dimension(1-Ng:N+Ng,n_species), intent(in)  :: f_sp
+      real*8, dimension(0:N),                 intent(out) :: Jdif
+
+      real*8, dimension(1-Ng:N+Ng) :: nucH, nucHe, msum, mass1, Xhe
+      real*8, dimension(1-Ng:N+Ng) :: rho_phys, Dco, Gco, rp
+      real*8, dimension(1-Ng:N+Ng) :: dmeff, zb1, eEf, dlnpsi
+      real*8, dimension(0:N)       :: Agrd, Bdrf
+      integer, dimension(0:N)      :: updrf
+      real*8  :: dJl, dJr
+      integer :: j
+
+      Jdif = 0.0d0
+      if (.not. thereis_He) return
+
+      call mixture_mass_split(f_sp, nucH, nucHe, mass1, msum)
+      Xhe = m_He_amu*nucHe/msum
+      rp       = r*R0
+      rho_phys = rho*n0*mu*msum
+      call helium_hydrogen_diffusion(rho, Tcode, f_sp, Dco)
+      call settling_coefficient(rho, Tcode, f_sp, Gco, dmeff, zb1, eEf,   &
+                                dlnpsi)
+      call drift_and_gradient_face_coefficients(rho_phys, Dco, Gco, rp,   &
+                                                Agrd, Bdrf, updrf)
+      do j = 0, N
+         call element_face_flux(Xhe(j), Xhe(j+1), Agrd(j), Bdrf(j),       &
+                                updrf(j), Jdif(j), dJl, dJr)
+      enddo
+
+      end subroutine helium_diffusive_face_flux
+
+      ! ------------------------------------------------------------------ !
+
+      subroutine trace_element_diffusive_face_flux(rho, Tcode, f_sp, JX)
+      ! The diffusive MASS flux of every trace metal element relative to the
+      ! hydrogen it diffuses through, at the faces f = 0 ... N
+      ! [g cm^-2 s^-1], positive outward, for the state in hand:
+      !
+      !    JX(f,im) = A_X m_H [ PL(f) fX(f) + PR(f) fX(f+1) ] ,
+      !
+      ! fX = n_X/n_H and PL, PR of trace_face_coefficients with the
+      ! coefficients of trace_element_transport_coefficients, i.e. the flux
+      ! the stationary trace row of element_transport_residual is the
+      ! divergence of.  Zero unless He_metal_diffusion moves the metals.
+      real*8, dimension(1-Ng:N+Ng),           intent(in)  :: rho, Tcode
+      real*8, dimension(1-Ng:N+Ng,n_species), intent(in)  :: f_sp
+      real*8, dimension(0:N,n_melem),         intent(out) :: JX
+
+      real*8, dimension(1-Ng:N+Ng) :: nucH, nucHe, nH_phys, ntot_phys
+      real*8, dimension(1-Ng:N+Ng) :: carH, carHe, mcarH, dlnpsi, TK, rp
+      real*8, dimension(1-Ng:N+Ng) :: Gco, dmeff, zb1, eEf, zbHe, ne_rel
+      real*8, dimension(1-Ng:N+Ng) :: ne_phys, nX, nXold, DcoX, GcoX, fX
+      real*8, dimension(1-Ng:N+Ng,n_hcar) :: yH
+      real*8, dimension(0:N) :: PL, PR
+      integer :: im, j
+
+      JX = 0.0d0
+      if (.not. (he_metal_diffusion .and. thereis_metals)) return
+
+      TK = Tcode*T0
+      where (TK .lt. 1.0d0) TK = 1.0d0
+      rp = r*R0
+      call settling_coefficient(rho, Tcode, f_sp, Gco, dmeff, zb1, eEf,   &
+                                dlnpsi)
+      call element_nucleus_counts(f_sp, nucH, nucHe)
+      nH_phys = nucH*rho*n0
+      where (nH_phys .lt. 1.0d-30) nH_phys = 1.0d-30
+      call carrier_counts(f_sp, carH, carHe, mcarH)
+      ntot_phys = (carH + carHe)*rho*n0
+      where (ntot_phys .lt. 1.0d0) ntot_phys = 1.0d0
+      call mean_charges_and_electrons(f_sp, zb1, zbHe, ne_rel)
+      ne_phys = max(ne_rel*rho*n0, 1.0d0)
+      call carrier_fractions(f_sp, n_hcar, hcar_isp, yH)
+      do im = 1, n_melem
+         call trace_element_transport_coefficients(im, f_sp, rho, TK,     &
+                  ntot_phys, ne_phys, yH, mcarH, zb1, eEf, dlnpsi,        &
+                  nX, nXold, DcoX, GcoX)
+         fX = nX/max(nH_phys, 1.0d-30)
+         call trace_face_coefficients(nH_phys, DcoX, GcoX, rp, PL, PR)
+         do j = 0, N
+            JX(j,im) = melem_A(im)*mu*(PL(j)*fX(j) + PR(j)*fX(j+1))
+         enddo
+      enddo
+
+      end subroutine trace_element_diffusive_face_flux
+
+      ! ------------------------------------------------------------------ !
+
+      logical function interdiffusion_enthalpy_active()
+      ! Whether the energy equation carries the interdiffusion enthalpy
+      ! flux: only where the elements move relative to one another, i.e.
+      ! with He_diffusion on and helium in the run, and unless the key
+      ! "Interdiffusion enthalpy flux: False" removes it to match a
+      ! published model that omits it (parameters.f90).
+      interdiffusion_enthalpy_active = he_diffusion .and. thereis_He      &
+                                       .and. interdiffusion_enthalpy_flux
+      end function interdiffusion_enthalpy_active
+
+      ! ------------------------------------------------------------------ !
+
+      subroutine component_specific_enthalpies(Tcode, f_sp, hHe, h1,      &
+                                               hHgrp, hX)
+      ! THE SENSIBLE SPECIFIC ENTHALPIES [erg/g] OF THE COMPONENTS THE
+      ! ELEMENT OPERATOR MOVES, cell by cell (ghosts included):
+      !
+      !   hHe       helium, every stage, with the free electrons its ions
+      !             gave up;
+      !   h1        component 1 as the binary operator defines it
+      !             (mixture_mass_split): the hydrogen carriers, the oxygen
+      !             and carbon carriers, and the metals where their mass is
+      !             in the mixture (eos_include_metals), with their
+      !             electrons;
+      !   hHgrp     component 1 without the metals: the group that recoils
+      !             against a metal diffusing through hydrogen;
+      !   hX(:,im)  metal element im, every stage, with its electrons.
+      !
+      ! Per particle, h_s = e_s + p_s/n_s = e_s + kT (Cook 2009, eq. 13),
+      ! with e_s the internal energy of the code's caloric equation of state
+      ! (caloric_eos): kT/(gamma_ad - 1) for every atom, ion, electron and
+      ! for H2+, H3+, HeH+ and the oxygen carriers, plus the rovibrational
+      ! energy k u_rv(T) of H2 (the same ladder, same table, and zero under
+      ! "Caloric EOS: monatomic").  So h_s = kT gamma_ad/(gamma_ad - 1) for
+      ! every particle, H2 adding k u_rv.  Each ion's electrons are counted
+      ! with it: the ambipolar field makes the electrons follow the ions with
+      ! no current, n_e w_e = sum_s Z_s n_s w_s, so an ion of charge Z moves
+      ! Z electrons with its own element.  HeH+ carries a nucleus of each
+      ! element; its particle and electron enthalpy is shared between the two
+      ! components in the proportion of its nuclei, as its mass is
+      ! (mixture_mass_split puts the helium nucleus in the helium component
+      ! and the proton in component 1).  The He 2^3S column is a level of
+      ! He I and is skipped, as the particle count of the equation of state
+      ! skips it (calc_ntot).
+      !
+      ! FORMATION (IONIZATION, DISSOCIATION) ENERGY IS NOT IN THESE
+      ! ENTHALPIES, and must not be: the conserved energy u(3) of this code
+      ! is kinetic plus sensible, and the chemical energy of the species is
+      ! booked separately through the formation-energy density
+      ! (formation_energy_density), whose reference in the coupled source
+      ! step is the composition the element transport has just written
+      ! (EXHALE_main, u_form_old_csm after element_diffusion_step), so the
+      ! formation energy of the nuclei moved rides with them and costs the
+      ! thermal energy nothing.  The stationary energy row holds no
+      ! formation-energy density at all: chemical energy enters it only as
+      ! the reaction heating and cooling rates inside heat - cool, released
+      ! where the species react, so nuclei moved by diffusion carry their
+      ! formation energy there exactly as advected ones do.  What the
+      ! transport of particles carries and no other term books is their
+      ! sensible enthalpy.
+      !
+      ! A component a cell holds none of is given the enthalpy of its
+      ! neutral ground species, which is what enters such a cell first; the
+      ! flux carrying it is then the gradient flux into an empty cell.
+      real*8, dimension(1-Ng:N+Ng),           intent(in)  :: Tcode
+      real*8, dimension(1-Ng:N+Ng,n_species), intent(in)  :: f_sp
+      real*8, dimension(1-Ng:N+Ng),           intent(out) :: hHe, h1, hHgrp
+      real*8, dimension(1-Ng:N+Ng,n_melem),   intent(out) :: hX
+
+      real*8, dimension(1-Ng:N+Ng) :: nucH, nucHe, mass1, msum, mmetal
+      real*8, dimension(n_melem)   :: enth_el, cnt_el
+      real*8  :: cp_part, kT_erg, TKc, urv, crv, enth_He, enth_1, enth_met
+      real*8  :: part_enth, w_He, dens
+      integer :: j, ib, im, iel
+
+      ! gamma_ad/(gamma_ad - 1): the enthalpy per particle in units of kT
+      ! of the caloric EOS for every species but H2 (5/2 for 5/3).
+      cp_part = gamma_ad/(gamma_ad - 1.0d0)
+
+      call mixture_mass_split(f_sp, nucH, nucHe, mass1, msum, mmetal)
+
+      do j = 1-Ng, N+Ng
+         TKc = Tcode(j)*T0
+         if (TKc .lt. 1.0d0) TKc = 1.0d0
+         kT_erg = kb_erg*TKc
+         urv = 0.0d0
+         if (thereis_mol) call h2_rovibrational_energy_and_heat_capacity( &
+                                  TKc, urv, crv)
+         enth_He  = 0.0d0
+         enth_1   = 0.0d0
+         enth_met = 0.0d0
+         do ib = 1, n_bsp
+            if (bsp_is_excited_level(ib)) cycle
+            dens = f_sp(j,bsp_fsp(ib))
+            if (dens .eq. 0.0d0) cycle
+            part_enth = cp_part*kT_erg*(1.0d0 + dble(bsp_charge(ib)))
+            if (bsp_fsp(ib) .eq. isp_H2) part_enth = part_enth + kb_erg*urv
+            w_He = 0.0d0
+            if (bsp_nHe(ib) .gt. 0) w_He = dble(bsp_nHe(ib))              &
+                                   /dble(bsp_nHe(ib) + bsp_nH(ib))
+            enth_He = enth_He + w_He*dens*part_enth
+            enth_1  = enth_1  + (1.0d0 - w_He)*dens*part_enth
+         enddo
+         enth_el = 0.0d0
+         cnt_el  = 0.0d0
+         if (eos_include_metals .and. thereis_metals) then
+            do im = 1, n_mion
+               dens = f_sp(j,mion_fsp(im))
+               iel  = mion_elem(im)
+               part_enth = cp_part*kT_erg*(1.0d0 + dble(mion_stage(im)))
+               enth_el(iel) = enth_el(iel) + dens*part_enth
+               cnt_el(iel)  = cnt_el(iel)  + dens
+               enth_met     = enth_met + dens*part_enth
+            enddo
+            enth_1 = enth_1 + enth_met
+         endif
+         ! Per gram: the masses are those of mixture_mass_split, in units
+         ! of the hydrogen atom per unit of the code density, as the
+         ! particle counts above are.
+         if (m_He_amu*nucHe(j) .gt. 1.0d-30) then
+            hHe(j) = enth_He/(m_He_amu*nucHe(j)*mu)
+         else
+            hHe(j) = cp_part*kT_erg/(m_He_amu*mu)
+         endif
+         if (mass1(j) .gt. 1.0d-30) then
+            h1(j) = enth_1/(mass1(j)*mu)
+         else
+            h1(j) = cp_part*kT_erg/(m_H_amu*mu)
+         endif
+         if (mass1(j) - mmetal(j) .gt. 1.0d-30) then
+            hHgrp(j) = (enth_1 - enth_met)/((mass1(j) - mmetal(j))*mu)
+         else
+            hHgrp(j) = cp_part*kT_erg/(m_H_amu*mu)
+         endif
+         do iel = 1, n_melem
+            if (melem_A(iel)*cnt_el(iel) .gt. 1.0d-30) then
+               hX(j,iel) = enth_el(iel)/(melem_A(iel)*cnt_el(iel)*mu)
+            else
+               hX(j,iel) = cp_part*kT_erg/(melem_A(iel)*mu)
+            endif
+         enddo
+      enddo
+
+      end subroutine component_specific_enthalpies
+
+      ! ------------------------------------------------------------------ !
+
+      subroutine interdiffusion_enthalpy_face_flux(Tcode, f_sp, Jhe, qd,  &
+                                                   JX)
+      ! THE INTERDIFFUSION ENTHALPY FLUX at the faces f = 0 ... N
+      ! [erg cm^-2 s^-1], positive outward.
+      !
+      ! In a mixture whose species move with velocities u + w_s relative to
+      ! the mass-weighted mean velocity u of the hydrodynamics, the energy
+      ! equation is
+      !
+      !    dE/dt + div[(E + p) u] = div(tau.u - q_c - q_d) ,
+      !    q_d = sum_s h_s J_s ,  J_s = rho_s w_s ,  sum_s J_s = 0 ,
+      !
+      ! (Cook 2009, Phys. Fluids 21, 055109, eqs. 11-13; the Dufour flux and
+      ! the kinetic energy of the relative motion are left out there and
+      ! here).  The same term is the difference between the heat flow of a
+      ! species measured in the mean frame and in its own drift frame,
+      ! q_s* = q_s + (5/2) p_s w_s + ... (Schunk 1977, Rev. Geophys. Space
+      ! Phys. 15, 429, eqs. 15b and 16): summing the species energy
+      ! equations (Schunk eq. 20c, written about u_s = u + w_s) over s gives
+      ! the mixture equation with div sum_s (5/2) p_s w_s = div sum_s h_s J_s
+      ! for particles that store (3/2) kT.  Because h_s multiplies a flux
+      ! relative to the MASS-weighted velocity, it is the enthalpy and not
+      ! the internal energy (Cook 2009, text after eq. 13).
+      !
+      ! With the binary element model of this module every species of an
+      ! element moves with its element, the electrons with their ions, and
+      ! J_1 = -J_He, so
+      !
+      !    q_d = J_He [ h_He - h_1 ]  +  sum_X J_X [ h_X - h_H ] ,
+      !
+      ! h_c the sensible specific enthalpies of component_specific_
+      ! enthalpies.  The metal sum is present only where He_metal_diffusion
+      ! moves each metal against hydrogen (J_X of trace_element_diffusive_
+      ! face_flux or of the marching step); the hydrogen group then recoils
+      ! against it (project_elements), which is why the metal term is taken
+      ! against h_H, component 1 without its metals.  Without that option the
+      ! metals are part of component 1 and ride in h_1.  The metal term is
+      ! also dropped where the metals carry no mass in the mixture
+      ! (eos_include_metals off): their transport then moves neither mass
+      ! nor energy of the gas the hydrodynamics describes.
+      !
+      ! J is the operator's whole diffusive flux, gradient, eddy and
+      ! settling drift together.  The eddy part is included: the same eddy
+      ! mixing that moves the elements carries their enthalpy (Cook 2009,
+      ! section II.B: "if J_i is nonzero, then q_d is potentially important,
+      ! regardless of whether J_i represents a molecular ..., subgrid-scale
+      ! ..., or turbulent diffusion ... flux").
+      !
+      ! Face values: h_c at a face is the arithmetic mean of its two cells,
+      ! the face rule of every coefficient of this operator.  The flux is
+      ! zero wherever J is, in particular at faces 0 and N, whose diffusive
+      ! coefficients the operator sets to zero.
+      real*8, dimension(1-Ng:N+Ng),           intent(in)  :: Tcode
+      real*8, dimension(1-Ng:N+Ng,n_species), intent(in)  :: f_sp
+      real*8, dimension(0:N),                 intent(in)  :: Jhe
+      real*8, dimension(0:N),                 intent(out) :: qd
+      real*8, dimension(0:N,n_melem), optional, intent(in) :: JX
+
+      real*8, dimension(1-Ng:N+Ng) :: hHe, h1, hHgrp
+      real*8, dimension(1-Ng:N+Ng,n_melem) :: hX
+      integer :: j, im
+
+      call component_specific_enthalpies(Tcode, f_sp, hHe, h1, hHgrp, hX)
+      do j = 0, N
+         qd(j) = Jhe(j)*0.5d0*((hHe(j) - h1(j)) + (hHe(j+1) - h1(j+1)))
+      enddo
+      if (present(JX) .and. he_metal_diffusion .and. thereis_metals      &
+          .and. eos_include_metals) then
+         do im = 1, n_melem
+            do j = 0, N
+               qd(j) = qd(j) + JX(j,im)*0.5d0*                            &
+                       ((hX(j,im) - hHgrp(j)) + (hX(j+1,im) - hHgrp(j+1)))
+            enddo
+         enddo
+      endif
+
+      end subroutine interdiffusion_enthalpy_face_flux
+
+      ! ------------------------------------------------------------------ !
+
+      subroutine interdiffusion_enthalpy_divergence(qd, divq)
+      ! The divergence of the face flux qd [erg cm^-2 s^-1] in every cell
+      ! the element operator carries an equation for, in the code units of
+      ! the energy row (q0 = n0 mu v0^3/R0):
+      !
+      !    divq(j) = [ A_+ qd(j) - A_- qd(j-1) ] / (V_j R0 q0) ,  j = 2 ... N,
+      !
+      ! with A and V of spherical_face_area_and_cell_volume, the one
+      ! geometry of the element rows, so an interior face cancels between
+      ! the two cells that share it and sum_j V_j divq(j) R0 q0 is
+      ! A_N qd(N) - A_1 qd(1): the energy the term moves is conserved to
+      ! round-off within the column.  Cell 1 is the Dirichlet reservoir of
+      ! the element operator and carries no element equation (its
+      ! composition is prescribed), so it carries no interdiffusion energy
+      ! either: the enthalpy that crosses face 1 comes with helium that the
+      ! reservoir supplies, exactly as the element flux through face 1 does.
+      ! Cell 1 and the ghosts are returned as zero.
+      real*8, dimension(0:N),       intent(in)  :: qd
+      real*8, dimension(1-Ng:N+Ng), intent(out) :: divq
+
+      real*8, dimension(0:N) :: fa
+      real*8, dimension(1:N) :: cv
+      integer :: j
+
+      divq = 0.0d0
+      call spherical_face_area_and_cell_volume(fa, cv)
+      do j = 2, N
+         divq(j) = (fa(j)*qd(j) - fa(j-1)*qd(j-1))/(cv(j)*R0*q0)
+      enddo
+
+      end subroutine interdiffusion_enthalpy_divergence
+
+      ! ------------------------------------------------------------------ !
+
+      subroutine interdiffusion_enthalpy_divergence_of_state(rho, Tcode,  &
+                                                             f_sp, divq,  &
+                                                             qd_out)
+      ! The divergence of the interdiffusion enthalpy flux of the state
+      ! (rho, Tcode, f_sp) in the code units of the energy row, the term the
+      ! stationary energy row adds (steady_residual, assemble_residual):
+      ! the element fluxes of the state itself (helium_diffusive_face_flux,
+      ! trace_element_diffusive_face_flux), the face flux of
+      ! interdiffusion_enthalpy_face_flux and the divergence of
+      ! interdiffusion_enthalpy_divergence -- the same three steps the
+      ! marching update takes with the fluxes of its own element step.
+      ! Zero, with no arithmetic, unless interdiffusion_enthalpy_active().
+      ! Writes no module state.  qd_out (optional) returns the face flux.
+      real*8, dimension(1-Ng:N+Ng),           intent(in)  :: rho, Tcode
+      real*8, dimension(1-Ng:N+Ng,n_species), intent(in)  :: f_sp
+      real*8, dimension(1-Ng:N+Ng),           intent(out) :: divq
+      real*8, dimension(0:N), optional,       intent(out) :: qd_out
+
+      real*8, dimension(0:N) :: Jhe, qd
+      real*8, dimension(0:N,n_melem) :: JX
+
+      divq = 0.0d0
+      if (present(qd_out)) qd_out = 0.0d0
+      if (.not. interdiffusion_enthalpy_active()) return
+      call helium_diffusive_face_flux(rho, Tcode, f_sp, Jhe)
+      call trace_element_diffusive_face_flux(rho, Tcode, f_sp, JX)
+      call interdiffusion_enthalpy_face_flux(Tcode, f_sp, Jhe, qd, JX)
+      call interdiffusion_enthalpy_divergence(qd, divq)
+      if (present(qd_out)) qd_out = qd
+
+      end subroutine interdiffusion_enthalpy_divergence_of_state
 
       ! ------------------------------------------------------------------ !
 

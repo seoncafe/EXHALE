@@ -65,38 +65,77 @@
 
       mixed_stretch_ratio = 0.0d0
 
+      ! THE LOWER FACE OF THE DOMAIN IS THE BASE LEVEL, r_edg(0) = 1.
+      !
+      ! The radius unit R0 is the radius of the level the lower atmosphere
+      ! is stated at (base.inp's r_base, the matching level of a "Lower
+      ! atmosphere profile:", else the planet radius at the "Base BC"
+      ! level), and base_boundary holds its reservoir (p, s) there. Every
+      ! grid type below places its first face exactly on that level, so
+      ! the contact between the reservoir and the domain IS the level: no
+      ! slab of reservoir gas lies between the level and the domain, and
+      ! the boundary does not move when the cell width changes. The two
+      ! lower ghost cells lie below the level and hold the reservoir
+      ! continued downward (base_boundary, base_ghost_averages).
+      !
+      ! Until 2026-09-27 the level was a ghost CENTER -- r(0) = 1 on the
+      ! Mixed grid, r(1-Ng) = 1 on the Uniform and Stretched grids -- so the
+      ! face sat half a cell (Mixed) or one and a half cells (the others)
+      ! above it, the reservoir was carried across that slab along its own
+      ! hydrostatic isentrope, and the base pressure of the domain carried
+      ! a first-order error p_0 dr/(2 H_res) (md/ew_grid_order_20260926.md,
+      ! section 3).
+
       select case (grid_type)
-      
+
       case ('Uniform')
          !------ Uniform spaced grid ------!
-         
+         ! nc cells of one width tiling [1, r_max]: faces r_edg(j) = 1 + j dr,
+         ! centers half a width above the face below them.
+
          ! Grid spacing
-         dr = (r_max-1.0)/(1.0*nc)
-         
-         ! Lower ghost cells
-         r(1-Ng) = 1.0
-         
-         ! Loop for others cell centers
-         do j = 2-Ng,nc+Ng
-               r(j) = r(j-1) + dr
+         dr = (r_max - 1.0d0)/dble(nc)
+
+         do j = 1-Ng, nc+Ng
+            r(j) = 1.0d0 + (dble(j) - 0.5d0)*dr
          enddo
-      
+
       !--------------------------------------------------
-       
+
       case ('Stretched')
-        
+
          !------ Regular stretched grid ------!
-         r(1-Ng:nc+Ng) = (/ (r_max**((j-1+Ng)*1.0/(nc*1.0 + 2.0*Ng - 1.0) ), &
-                             j = 1-Ng,nc+Ng) /)
+         ! Centers in geometric progression, r(j) = 2 x^j/(1 + x), so that
+         ! the face between r(0) and r(1) is the level, (r(0) + r(1))/2 = 1,
+         ! and the center of the outermost ghost is r_max,
+         !
+         !     g(x) = (nc + Ng) ln x - ln((1 + x)/2) - ln r_max = 0 .
+         !
+         ! g is increasing and concave for x > 0, and g < 0 at the start
+         ! x = r_max^(1/(nc + Ng)), so Newton's method climbs to the root
+         ! monotonically; the loop stops when a step no longer raises x,
+         ! which is the rounding floor of g.
+         x0 = r_max**(1.0d0/dble(nc + Ng))
+         do j = 1, 200
+            f  = dble(nc + Ng)*log(x0) - log(0.5d0*(1.0d0 + x0)) - log(r_max)
+            df = dble(nc + Ng)/x0 - 1.0d0/(1.0d0 + x0)
+            x1 = x0 - f/df
+            if (.not. (x1 .gt. x0)) exit
+            x0 = x1
+         enddo
+         r(1-Ng:nc+Ng) = (/ (2.0d0*x0**j/(1.0d0 + x0), j = 1-Ng,nc+Ng) /)
 
       !--------------------------------------------------
 
-      case ('Mixed') 
-      
+      case ('Mixed')
+
          !------ Mixed grid ------!
          ! Constructed with N_low uniform spaced points
-         ! and N_up points in a stretched grid
-         
+         ! and N_up points in a stretched grid. The construction below
+         ! starts at a provisional center r(0) = 1; only the SHAPE of the
+         ! widths it produces is kept, and the final map after the
+         ! smoothing puts the first face on the level.
+
          ! Lower ghost cells
          r(1-Ng) = 1.0 - drc
          r(2-Ng) = 1.0
@@ -210,24 +249,51 @@
             r(j) = r(j-1) + 0.5*(dr_j(j) + dr_j(j-1))
          enddo  
       
-      	! Rescale to [1,r_max]: the center of the outermost ghost cell of
-         ! the constructed grid is placed at r_max, so its outer PHYSICAL
-         ! face r_edg(nc) lies about one and a half cells inside r_max.
-         r(1-Ng:nc+Ng) = (r(1-Ng:nc+Ng)-1)/(r(nc+Ng) - 1.0)*(r_max - 1.0) &
-                         + 1.0
-      	
-      	! Re-eval edges and cell size
-      	
-      	! Cell edges (nc+2*Ng-1 points) - r_edg(j) = r_{j+1/2}
-         r_edg(1-Ng:nc+Ng-1) = 0.5*(r(1-Ng:nc+Ng-1) + r(2-Ng:nc+Ng))
-         r_edg(nc+Ng) = 2.0*r_edg(nc+Ng-1) - r_edg(nc+Ng-2)
-		
-         !--- Cell dimensions r_{j+1/2} - r_{j-1/2} --- !
-         ! Same identity as above: dr_j(j) = r_edg(j) - r_edg(j-1) is the
-         ! width of cell j itself, the innermost ghost taking its neighbour's.
-         dr_j(2-Ng:nc+Ng) = r_edg(2-Ng:nc+Ng) - r_edg(1-Ng:nc+Ng-1)
-         dr_j(1-Ng) = dr_j(2-Ng)
-   
+      	! Map onto [1, r_max] by the affine map that sends the first face
+         ! (r(0) + r(1))/2 to the level r = 1 and the center of the
+         ! outermost ghost cell to r_max, so the outer PHYSICAL face
+         ! r_edg(nc) lies about one and a half cells inside r_max. The map
+         ! multiplies every width by one factor, so the smoothed shape of
+         ! the widths is kept.
+         q = 0.5d0*(r(0) + r(1))
+         r(1-Ng:nc+Ng) = (r(1-Ng:nc+Ng) - q)/(r(nc+Ng) - q)*(r_max - 1.0d0) &
+                         + 1.0d0
+
+      endif
+
+      ! THE FIRST FACE ON THE LEVEL, EXACTLY. The constructions above put
+      ! (r(0) + r(1))/2 at 1 up to rounding; the ghost center is re-stated
+      ! as the mirror of r(1) about the level, r(0) = 2 - r(1), which moves
+      ! it by rounding only. That difference is exact (1 <= r(1) <= 2), and
+      ! the sum r(0) + r(1) is then exactly 2, so the face below is exactly
+      ! 1.0d0 and the reservoir stated at the level needs no transport to
+      ! reach the face (base_boundary).
+      r(0) = 2.0d0 - r(1)
+
+      !--- Cell edges r_{j+1/2} ---!
+      ! Cell edges (nc+2*Ng-1 points) - r_edg(j) = r_{j+1/2}
+      r_edg(1-Ng:nc+Ng-1) = 0.5d0*(r(1-Ng:nc+Ng-1) + r(2-Ng:nc+Ng))
+      r_edg(nc+Ng) = 2.0d0*r_edg(nc+Ng-1) - r_edg(nc+Ng-2)
+
+      !--- Cell dimensions r_{j+1/2} - r_{j-1/2} --- !
+      ! dr_j(j) = r_edg(j) - r_edg(j-1) is the width of cell j itself, the
+      ! innermost ghost taking its neighbour's (see the identity above).
+      dr_j(2-Ng:nc+Ng) = r_edg(2-Ng:nc+Ng) - r_edg(1-Ng:nc+Ng-1)
+      dr_j(1-Ng) = dr_j(2-Ng)
+
+      ! The ghost cells lie below the level, so a base cell as wide as the
+      ! planet would put them at r <= 0, where the potential is singular.
+      if (.not. (r(1-Ng) - 0.5d0*dr_j(1-Ng) .gt. 0.0d0)) then
+         write(*,'(A,ES13.6,A)') ' (define_grid.f90) ERROR: the first'//   &
+            ' cell is ', dr_j(1), ' R_p wide, so the ghost cells below'//  &
+            ' the base level reach r <= 0. Use more cells.'
+         error stop 1
+      endif
+      if (r_edg(0) .ne. 1.0d0) then
+         write(*,'(A,ES23.16,A)') ' (define_grid.f90) ERROR: the first'//  &
+            ' face of the grid is r = ', r_edg(0), ' R_p, not the base'//   &
+            ' level r = 1.'
+         error stop 1
       endif
 
       ! Shells beyond the outer face of the constructed grid ("Outer
@@ -448,7 +514,8 @@
       ! of the last shell when "Outer shells" appends shells, else r_max,
       ! the radius the grid is constructed for ("Outer radius" or the
       ! Roche/Hill radius), which is the center of the outermost ghost cell
-      ! of the Mixed and Stretched grids.
+      ! of the Mixed and Stretched grids and the outer face of the Uniform
+      ! grid.
       if (n_outer_shells .gt. 0) then
          domain_outer_radius = r_outer_shells_face
       else

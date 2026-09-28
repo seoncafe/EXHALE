@@ -7,7 +7,7 @@ loaded (`Load IC? True`) by a run whose grid construction has since changed
 Usage:
   map_state_to_grid.py <src_dir> <target_grid_file> <out_dir> [--ic]
                        [--extrapolate-beyond <r/R_p>]
-                       [--reservoir <El>/H <value> ...]
+                       [--reservoir <El>/H <value> ...] [--uniform]
 
 <src_dir>          holds Hydro_ioniz.txt and Ion_species.txt (or the *_IC.txt pair)
 <target_grid_file> any Hydro_ioniz*.txt written by a run on the target grid;
@@ -86,6 +86,16 @@ mapping above carries it and the ionization split of the element is
 untouched. The `# reservoir` line of both output files then states the new
 ratios, and the `# mapped:` line records each rescaling, its factor and the
 measured El/H of the base rows and of the column.
+
+`--uniform` (with `--reservoir`) sets the element to the named ratio in EVERY
+row instead of multiplying the column by one factor: the factor of a row is
+(value (n_H - Hs) - X)/(S - value Hs), S and Hs the nuclei of the element
+and of hydrogen the rescaled columns hold (HeH+ holds one of each) and X
+those of the element in the other columns, so that the row's El/H comes out
+at the value exactly. This is the seed of a run whose element
+does not separate (helium with `He_diffusion` off, which load_IC refuses at
+any He/H other than the input's in any row) made from a state that was
+solved with separation.
 
 One factor over the whole column is what `load_IC.f90` does with the
 element on a restart. For HELIUM with `He_diffusion` on, the He/H of a
@@ -575,12 +585,14 @@ def resolve_state_source(src):
 
 def main():
     argv = sys.argv[1:]
-    args, as_ic, r_ext, res_new = [], False, None, {}
+    args, as_ic, r_ext, res_new, uniform = [], False, None, {}, False
     k = 0
     while k < len(argv):
         a = argv[k]
         if a == '--ic':
             as_ic = True
+        elif a == '--uniform':
+            uniform = True
         elif a == '--reservoir':
             if k + 2 >= len(argv):
                 refuse('--reservoir needs an element ratio and a value, '
@@ -607,6 +619,8 @@ def main():
         else:
             args.append(a)
         k += 1
+    if uniform and not res_new:
+        refuse('--uniform sets the ratio a --reservoir names; give --reservoir <El>/H <value>')
     if len(args) != 3:
         sys.exit(__doc__)
     src, tgt, out = args
@@ -787,7 +801,23 @@ def main():
             el_cols = element_stage_columns(el, scols)
             if not el_cols:
                 refuse(f'--reservoir {key}: the species file carries no {el} column')
-            fac = val/old
+            if uniform:
+                # The factor of each row that puts its El/H at the value.
+                # The rescaled columns hold S nuclei of the element and Hs
+                # hydrogen nuclei (HeH+ holds one of each), the others X of
+                # the element: (f S + X)/(nH - Hs + f Hs) = value.
+                nEl0, nH0 = element_to_h(d, scols, el)
+                S = sum(element_nuclei_in(scols[j], el)*d[:, j] for j in el_cols)
+                Hs = sum(H_NUC.get(scols[j], 0)*d[:, j] for j in el_cols)
+                den = S - val*Hs
+                if not np.all(den > 0.0):
+                    refuse(f'--uniform {key}: a row cannot reach the value by its {el} columns')
+                fac = (val*(nH0 - Hs) - (nEl0 - S))/den
+                if not np.all(fac > 0.0):
+                    refuse(f'--uniform {key}: the other {el} carriers already exceed '
+                           f'the value in some row')
+            else:
+                fac = val/old
             for j in el_cols:
                 d_rho += element_mass_weight(scols[j], el)*d[:, j]*(fac - 1.0)
                 d_part += element_particle_weight(scols[j], el)*d[:, j]*(fac - 1.0)
@@ -825,11 +855,17 @@ def main():
                        'the ionization stages alone does not move the element count by the '
                        'factor asked for')
             phys = q[NGHOST:r_new.size - NGHOST]
-            notes.append(f'the {el} was carried from the reservoir {key} {old:.6E} to '
-                         f'{val:.6E} by one factor {fac:.16E} in every row (initialization '
-                         f'choice: the column keeps its shape and its base rows take the new '
-                         f'reservoir), {key} of the physical cells {phys.min():.6E} to '
-                         f'{phys.max():.6E}, {where} {base.max():.6E}')
+            if uniform:
+                notes.append(f'the {el} was set to {key} {val:.6E} in every row (--uniform: '
+                             f'a factor of each row, {np.min(fac):.6E} to {np.max(fac):.6E}; '
+                             f'initialization choice for a run whose {el} does not separate), '
+                             f'{key} of the physical cells {phys.min():.6E} to {phys.max():.6E}')
+            else:
+                notes.append(f'the {el} was carried from the reservoir {key} {old:.6E} to '
+                             f'{val:.6E} by one factor {fac:.16E} in every row (initialization '
+                             f'choice: the column keeps its shape and its base rows take the new '
+                             f'reservoir), {key} of the physical cells {phys.min():.6E} to '
+                             f'{phys.max():.6E}, {where} {base.max():.6E}')
         res_note = ('; ' + '; '.join(notes)
                     + f'; the pressure is unchanged and the temperature follows the particle '
                       f'count, T {T_src[NGHOST]:.6E} -> {b[NGHOST, j_T_r[0]]:.6E} K at the '

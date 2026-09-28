@@ -162,7 +162,8 @@
 
       subroutine write_conservation_budget_terms(u, dF, S, Rrow,         &
                                                  heat, cool,             &
-                                                 Smom, Sene, rows_kind)
+                                                 Smom, Sene, Sidf,       &
+                                                 rows_kind)
       ! Write one assembly's complete row terms to
       ! output/conservation_budget_<nnnn>.txt.
       !
@@ -171,7 +172,10 @@
       !
       !   Rrow(1) = dF(1) - S(1)
       !   Rrow(2) = dF(2) - S(2) - Smom
-      !   Rrow(3) = dF(3) - S(3) - (heat - cool) - Sene
+      !   Rrow(3) = dF(3) - S(3) - (heat - cool) - Sene + Sidf
+      !
+      ! with Sidf the divergence of the interdiffusion enthalpy flux
+      ! (zero unless He_diffusion moves the elements).
       !
       ! and the face data is the module state the same assembly stored.
       ! Nothing is recomputed here except the geometry, which is a function
@@ -182,6 +186,7 @@
       ! without regard to case, so an R here hides it.
       real*8, dimension(3,1-Ng:N+Ng), intent(in) :: u, dF, S, Rrow
       real*8, dimension(1-Ng:N+Ng),   intent(in) :: heat, cool, Smom, Sene
+      real*8, dimension(1-Ng:N+Ng),   intent(in) :: Sidf
       integer, intent(in) :: rows_kind
 
       character(len=64) :: fname
@@ -259,7 +264,7 @@
          return
       endif
 
-      write(uu,'(A)') '# EXHALE conservation_budget schema 1'
+      write(uu,'(A)') '# EXHALE conservation_budget schema 2'
       write(uu,'(A,I0)') '# export index in this process: ', export_index
       if (len_trim(pending_label) .gt. 0) then
          write(uu,'(A,A)') '# stage: ', trim(pending_label)
@@ -318,7 +323,7 @@
            ' (transport per unit area per unit time);'//                 &
            ' area_*, volume, dr, r_* are GEOMETRY;'//                    &
            ' phi_* is a POTENTIAL;'//                                    &
-           ' dF_*, S_*, R_*, heat, cool, Smom, Sene,'//                  &
+           ' dF_*, S_*, R_*, heat, cool, Smom, Sene, Sidf,'//            &
            ' grav_work_over_volume and the three momentum terms are'//   &
            ' CONTRIBUTIONS ALREADY DIVIDED BY THE CELL VOLUME'//         &
            ' (rates of change of a conserved density)'
@@ -338,6 +343,11 @@
       write(uu,'(A)') '# Sene is the COMBINED transport energy source'// &
            ' w*F_mu + q_mu + conduction, as viscous_conduction_sources'//&
            ' returns it; the three are not separated at this point'
+      write(uu,'(A)') '# Sidf is the divergence of the interdiffusion'// &
+           ' enthalpy flux q_d = sum_s h_s J_s of the element fluxes,'//&
+           ' ADDED to R_energy: R_energy = dF_energy - S_energy -'//     &
+           ' (heat - cool) - Sene + Sidf; zero unless He_diffusion'//    &
+           ' moves the elements (schema 2 adds this column)'
       write(uu,'(A)') '# momentum_ram, momentum_pressure and'//          &
            ' momentum_gravity are the production attribution of the'//   &
            ' momentum row, not inputs to the identity; their sum is'//   &
@@ -353,7 +363,7 @@
            ' grav_work_over_volume'//                                    &
            ' rho momentum_density energy_density'//                      &
            ' dF_mass dF_momentum dF_energy'//                            &
-           ' S_mass S_momentum S_energy heat cool Smom Sene'//           &
+           ' S_mass S_momentum S_energy heat cool Smom Sene Sidf'//      &
            ' R_mass R_momentum R_energy'//                               &
            ' momentum_ram momentum_pressure momentum_gravity'//          &
            ' equilibrium_pressure_force'
@@ -388,7 +398,7 @@
          else
             epf = not_applicable
          endif
-         write(uu,'(1X,I6,1X,I2,41(1X,ES25.16E3))')                      &
+         write(uu,'(1X,I6,1X,I2,42(1X,ES25.16E3))')                      &
               j, merge(1, 0, j .ge. 1 .and. j .le. N),                   &
               r(j), rm, rp, dAm, dAp, dV, dr,                            &
               Gphi_i(j-1), Gphi_i(j), Gphi_c(j),                         &
@@ -400,7 +410,7 @@
               u(1,j), u(2,j), u(3,j),                                    &
               dF(1,j), dF(2,j), dF(3,j),                                 &
               S(1,j), S(2,j), S(3,j),                                    &
-              heat(j), cool(j), Smom(j), Sene(j),                        &
+              heat(j), cool(j), Smom(j), Sene(j), Sidf(j),               &
               Rrow(1,j), Rrow(2,j), Rrow(3,j),                           &
               ram, pgr, grv, epf
       enddo

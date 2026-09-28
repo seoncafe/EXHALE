@@ -43,13 +43,37 @@ The distinction matters as soon as the base composition changes: with $(p,s)$
 the temperature follows the composition, with $(p,T)$ the entropy does.  The
 entropy is carried implicitly, as the isentrope through
 $(p_{\rm base}, T_{\rm base})$ at the base composition, which is what
-\texttt{base.inp} and the lower-atmosphere profile reader state.  The level is
-$r = 1$ and not the face, so the level the user states does not move when the
-grid does; the reservoir state is carried from the level to the face along its
-own hydrostatic isentrope.
+\texttt{base.inp} and the lower-atmosphere profile reader state.
+
+\paragraph{The face is the level.}
+The level is $r = 1$, and every grid type places its first face exactly
+there, $r_{-1/2} = r_{\rm edg}(0) = 1$ (Sec.~\ref{sec:numerics:grid};
+\texttt{base\_boundary\_states} stops the run if it is not).  The
+reservoir's $(p, s)$ is therefore the state of the face side it owns, with no
+transport along any isentrope, and the contact between the reservoir and the
+domain neither moves with the cell width nor encloses a slab of reservoir
+gas; the two lower ghost cells lie below the level.  Until 2026-09-27 the
+level was the center of a ghost cell, the face lay half a cell above it on
+the \texttt{Mixed} grid, and the reservoir was carried up to the face along
+its own hydrostatic isentrope.  That put a slab of reservoir gas of thickness
+$\Delta r/2$ under the domain and made the base pressure of the domain
+$p_0[1-\Delta r/(2H_{\rm res})]$, a first-order error in $\Delta r$: MEASURED,
+the molecular lower layer of the LHS~1140\,b He/H\,$=1.8$ state sat 2.2 and
+1.15 per cent low in density on 500 and 1000 cells, and the pressure gap
+between the interior at the level and the reservoir, $2.93/1.44/0.70$ per
+cent on 500/1000/2000 cells, is $0.114/0.067/0.038$ per cent with the face at
+the level (boundary model v4, \texttt{face\_at\_level\_v4}).  The wind
+quantities stay first order in $\Delta r$ with errors 1.6--1.9 times smaller;
+the remaining first-order error is likely the thermal layer at the contact,
+which the grid does not resolve (cell-1 temperature 800/695/604\,K against
+the 226\,K reservoir), and two first-order terms were found and left: the
+element-diffusion Dirichlet He/H at the cell-1 center
+(Sec.~\ref{sec:mol:diffusion}) and the conduction bath at the ghost center
+$r(0)$ (\texttt{viscous\_conduction.f90}).
 
 \paragraph{Continuation along a hydrostatic isentrope.}
-Both the interior state and the reservoir state are carried to the face by
+The interior state is carried from the center of cell 1 to the face, and the
+ghost cells are filled from the face state downward, by
 \texttt{continue\_hydrostatic\_isentrope}, which uses the fact that at rest
 and at constant entropy the Bernoulli function is uniform,
 %
@@ -456,4 +480,19 @@ the model that wrote it, names the model this run solves, and says that the
 boundary is rebuilt from the physical column and this run's reservoir and
 that its ghost composition is solved to this model's own seed and fixed
 point, so the state's residual is not the residual it was written with.  A
-file written before the identity was recorded says so as well.
+file written before the identity was recorded says so as well.  A state
+written before 2026-09-27 (boundary model v3 or older) is nevertheless
+refused, by the grid check and not by the boundary model: every cell center
+has moved since the face was put on the level (by half a cell on the
+\texttt{Mixed} grid), and the loader
+compares the file's centers with the run's to $10^{-10}$.  Such a state enters
+a run only as an initialization seed mapped onto the new grid by
+\texttt{src/utils/map\_state\_to\_grid.py --ic}, which writes
+\texttt{mode=init t\_phys=0 certified=F cert\_reason=mapped\_seed} into it,
+and the run has to solve it again.
+
+A stationary run that alternates a wind solve with a composition relaxation
+also leaves a restartable pair of its last completed outer pass,
+\texttt{Hydro\_ioniz\_last\_pass.txt} and \texttt{Ion\_species\_last\_pass.txt}
+(Sec.~\ref{sec:steady:partitioned}); copied to the \texttt{\_IC} names it is
+loaded like any state file, and it is never a certified state.

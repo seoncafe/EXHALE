@@ -226,7 +226,11 @@
 	! (the ghost reservoir block of the sweep). What the solve underneath
 	! resolves is MEASURED on the LHS 1140 b molecular seed ghosts: the
 	! secant takes the residual to 2e-16 to 6e-16 in 10 or 11 passes, so the
-	! tolerance asks nothing the ionization solve cannot deliver.
+	! tolerance asks nothing the ionization solve cannot deliver -- provided
+	! the solve starts from the imposed value (impose_transported_fractions):
+	! started from the previous pass's state, hybrd1 can return a move
+	! below about 3e-8 untouched and the residual then stalls at the size
+	! of that move (MEASURED 2026-09-26, 1e-9 - 3e-8, with a zero move).
 	!
 	! A FAILURE IS A REFUSED BOUNDARY. Exhausting the passes without reaching
 	! the tolerance means the pair has no fixed point the sweep can reach,
@@ -1855,7 +1859,9 @@
 	! was a data race.
 	if (thereis_mol .and. .not. h2_thermochemistry_ready())               &
 		call h2_thermochemistry_init
-		!$omp parallel do default(shared) schedule(static)                 &
+		!$omp parallel do default(none) schedule(static)                 &
+		!$omp   shared(h1_HI, jb_hi, jb_lo, N1_face, nhi, P_HI, q, sec_on_xuv,        &
+		!$omp          xion)                                                          &
 		!$omp   private(j, heat_row) if(marching_step > 0)
 		do j = jb_hi, jb_lo, -1
 			call photoionization_field_at_cell_H(j, N1_face(j), nhi(j),    &
@@ -1883,7 +1889,12 @@
 		! over cells. sys_x/wa/info are threadprivate (global_parameters); only
 		! the subroutine-local scratch is private. marching_step==0 runs serial (the
 		! clause) because its first-step warm-start reads the neighbor cell.
-		!$omp parallel do default(shared) schedule(dynamic,8)                  &
+		!$omp parallel do default(none) schedule(dynamic,8)                  &
+		!$omp   shared(a_ion_HI, gph_balmer_HI, gph_ground_HI, h1_HI,                 &
+		!$omp          ieq_ne_cell, ieq_ntot_cell, ieq_rate_cell, ieq_TK_cell,        &
+		!$omp          jb_hi, jb_lo, lwa, marching_step, N1_face, N_eq, ne, nh,       &
+		!$omp          nhi, nhii, P_HI, q, r, rchiiB, sec_on_xuv, T_K, tol,           &
+		!$omp          use_excited_H, xion, xuv_self_field_passes)                    &
 		!$omp   private(params, usednt, it_self, last_self, self_moved,        &
 		!$omp           x_self, heat_row) if(marching_step > 0)
 		do j = jb_hi, jb_lo, -1
@@ -2057,7 +2068,14 @@
 		         N1_blk,N15_blk,N2_blk,NTR_blk,NH2_blk,Nm_blk,             &
 		         N1_face,N15_face,N2_face,NTR_face,NH2col_face,Nm_face)
 
-		!$omp parallel do default(shared) schedule(static)                 &
+		!$omp parallel do default(none) schedule(static)                 &
+		!$omp   shared(D0_H2_xuv, E_ker_H2_dd_xuv, e_vib_bound, f_vib_quench,         &
+		!$omp          h1_H2, h1_HeI, h1_HeII, h1_HeTR, h1_HI, h1_m, has_h2_xuv,      &
+		!$omp          jb_hi, jb_lo, mol_sec_xuv, N15_face, N1_face, N2_face,         &
+		!$omp          nh2_entry, NH2col_face, nheii, nheiS_face, nheiTR, nhi,        &
+		!$omp          nm, Nm_face, NTR_face, P_H2, P_H2_dd, P_H2_di, P_H2_nd,        &
+		!$omp          P_HeI, P_HeII, P_HeITR, P_HI, P_m, P_m2, q, sec_on_xuv,        &
+		!$omp          xion)                                                          &
 		!$omp   private(j, Pm_row, h1m_row, chan_row, heat_row, q_abs_row, &
 		!$omp           Pm2_row)                                           &
 		!$omp   if(marching_step > 0)
@@ -2134,9 +2152,44 @@
 
 		enddo
 
-		!$omp parallel do default(shared) schedule(dynamic,8) copyin(cx_metal_base) &
+		! EVERY VARIABLE OF THIS SWEEP HAS A STATED SHARING ATTRIBUTE
+		! (default(none)), as in the three other cell loops of this routine.
+		! A variable in shared() is read here, or written only in the element
+		! of the loop's own cell j; one the loop writes for its own cell and
+		! then reads (a per-cell scratch) is private; a count or extremum over
+		! cells is a reduction; the solver scratch and the cell state the
+		! residual routines read are threadprivate module variables (sys_x,
+		! info, ieq_cell, met_*, mk*, cx_*). A new variable the compiler
+		! reports as unspecified has to be placed in one of those classes:
+		! meg_g02, a per-cell scratch left under default(shared), made every
+		! metals-on run at more than one thread take another cell's X++
+		! photoionization rate.
+		!$omp parallel do default(none) schedule(dynamic,8) copyin(cx_metal_base) &
+		!$omp   shared(A31, a_ion_HeI, a_ion_HeII, a_ion_HeITR, a_ion_HI,             &
+		!$omp          aion_m, bg_cell, bg_ready, carrier_transport, D0_H2_xuv,       &
+		!$omp          do_load_IC, dP_H2_hrc, dP_HeI_hrc, dP_HI_hrc, dP_m2_hrc,       &
+		!$omp          dP_m_hrc, E_ker_H2_dd_xuv, e_vib_bound, f_vib_quench,          &
+		!$omp          ghost_acc_res_cell, ghost_closure_pass_cell,                   &
+		!$omp          ghost_closure_res_cell, gph_balmer_HI, gph_ground_HI,          &
+		!$omp          h1_H2, h1_HeI, h1_HeII, h1_HeTR, h1_HI, h1_m, has_h2_xuv,      &
+		!$omp          ieq_cell_acceptance_class, ieq_decay_ncell, ieq_met_coef,      &
+		!$omp          ieq_ne_cell, ieq_ntot_cell, ieq_rate_cell,                     &
+		!$omp          ieq_report_cell, ieq_state_may_be_refused, ieq_TK_cell,        &
+		!$omp          ionization_transport, iox, j_h2o_fuv, j_oh_fuv, jb_hi,         &
+		!$omp          jb_lo, k_lw_diss, lwa, marching_step, mbase, mol_sec_xuv,      &
+		!$omp          N, N15_face, N1_face, N2_face, N_eq, n_in_dim, n_o1d_eq,       &
+		!$omp          n_tot, nCO_cell, ne, nh, NH2col_face, nhe, nhei, nheii,        &
+		!$omp          nheiii, nheiTR, nhi, nhii, nm, Nm_face, nm_tot, nmol_eq,       &
+		!$omp          nox_eq, NTR_face, P_H2, P_H2_dd, P_H2_di, P_H2_eq,             &
+		!$omp          P_H2_nd, P_HeI, P_HeII, P_HeITR, P_HI, P_m, P_m2, q, q13,      &
+		!$omp          Q31, q31a, q31b, q31g, r, rcheiiB, rcheiiiB, rcheiTR,          &
+		!$omp          rchiiB, rec_m, sec_on_xuv, sweep_advances_the_streak,          &
+		!$omp          T_K, thereis_He, thereis_HeITR, thereis_metals,                &
+		!$omp          thereis_mol, thereis_oxychem, tol, use_excited_H,              &
+		!$omp          use_h_rec_escape, use_he_rec_coupling, xion,                   &
+		!$omp          xuv_self_field_passes)                                         &
 		!$omp   private(params, usednt, i0, top, im, meg_ntot, meg_g0, meg_g1,      &
-		!$omp           meg_b0, meg_b1, meg_a1, meg_a2, meg_top,                     &
+		!$omp           meg_b0, meg_b1, meg_a1, meg_a2, meg_top, meg_g02,            &
 		!$omp           pbar_loc, viol, viol_best,                                  &
 		!$omp           iatt, info_ieq, ok_rank, best_rank, conv_ieq, phys_ieq,      &
 		!$omp           x_root_best, x_entry, acc_class, acc_res, res_att,          &
@@ -2830,6 +2883,7 @@
 						                                    mbase,ne(j))
 						n_ieq_retry = n_ieq_retry + 1
 					endif
+					call impose_transported_fractions(sys_x, N_eq, iox)
 
 					if (thereis_metals) then
 						! Metals appended above the molecular unknowns; point
@@ -3125,6 +3179,13 @@
 					write(*,'(A,ES12.5)') '   residual of x_H2 -'//       &
 						' x2 (1 - x_ion) at the returned state ',         &
 						ghost_closure_res
+					! The pin error tells a pair without a fixed point
+					! (pin error ~0, residual left) from a solve that did not
+					! apply the imposition (pin error = residual).
+					if (ieq_cell%x_h2_fixed)                              &
+						write(*,'(A,ES12.5)') '   pin error |x(4) -'//    &
+							' imposed x_H2| of the returned solve ',      &
+							abs(sys_x(4) - ieq_cell%x_h2_fix)
 					flush(6)
 					!$omp end critical (ieq_acc_report)
 					if (.not. ieq_state_may_be_refused)                   &
@@ -3199,6 +3260,7 @@
 					else if (iatt .eq. 3) then
 						sys_x(1:N_eq) = 0.0d0
 					endif
+					call impose_transported_fractions(sys_x, N_eq, 0)
 
 					if (thereis_HeITR .and. thereis_metals) then
 						! Merged He-triplet + metals: triplet at sys_x(4),
@@ -4850,6 +4912,34 @@
 		ib = 15
 	endif
 	end function residual_decade
+
+	!----------------------------------!
+
+	subroutine impose_transported_fractions(x, nx, iox)
+	! THE UNKNOWNS A TRANSPORT SOLVE OWNS START AT THEIR IMPOSED VALUES.
+	! Where the H2 partition, the oxygen carriers or the ionization stages
+	! are handed to this sweep (ieq_cell%x_*_fixed), their rows are the
+	! constraints x - x_fix = 0 (System_HeH_mol*.f90, ion_residual_core),
+	! so an imposed value is known data and the solve should start there.
+	! Started elsewhere (the previous pass's accepted state still holds the
+	! OLD imposed value), the constraint enters the solve carrying the whole
+	! move as its residual, and hybrd1 can return a move below
+	! 2 xtol ||x|| (about 3e-8 here, xtol = sqrt(eps)) untouched and
+	! report convergence: the lower-ghost H2 closure then stopped a
+	! molecular run with a zero move and a pin error of 1e-9 - 3e-8
+	! (md/Update_EXHALE_stage3.md section 29.9). iox is the first oxygen
+	! row, or 0 where the system carries none.
+	integer, intent(in)    :: nx, iox
+	real*8,  intent(inout) :: x(nx)
+	if (ieq_cell%x_hp_fixed    .and. nx .ge. 1) x(1) = ieq_cell%x_hp_fix
+	if (ieq_cell%x_heii_fixed  .and. nx .ge. 2) x(2) = ieq_cell%x_heii_fix
+	if (ieq_cell%x_heiii_fixed .and. nx .ge. 3) x(3) = ieq_cell%x_heiii_fix
+	if (ieq_cell%x_h2_fixed    .and. nx .ge. 4) x(4) = ieq_cell%x_h2_fix
+	if (ieq_cell%x_ox_fixed .and. iox .gt. 0 .and. iox + 1 .le. nx) then
+		x(iox)   = ieq_cell%x_oh_fix
+		x(iox+1) = ieq_cell%x_h2o_fix
+	endif
+	end subroutine impose_transported_fractions
 
 	!----------------------------------!
 

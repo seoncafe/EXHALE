@@ -14,7 +14,7 @@ the reference curves use the code's own temperature dependence:
   q13          coex_HeI_1S_23S     src/modules/radiation/Cool_coeff.f90:898
   q31a         coex_HeI_23S_21S    src/modules/radiation/Cool_coeff.f90:920
   q31b         coex_HeI_23S_21P    src/modules/radiation/Cool_coeff.f90:943
-  b_23S        ci_HeI23S           src/modules/radiation/Cool_coeff.f90:1091
+  b_23S        ionization_rate_HeI_23S  src/modules/radiation/Cool_coeff.f90
   Q31          ioniz_HeI23S_H      src/modules/radiation/Cool_coeff.f90:1040
   Q31(H2)      ioniz_HeI23S_H2     src/modules/radiation/Cool_coeff.f90:1076
   A31 = 1.272e-4 s^-1              src/modules/radiation/util_ion_eq.f90:1235

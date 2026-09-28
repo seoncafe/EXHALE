@@ -123,8 +123,9 @@
 
       ! Particle count of the first interior cell, kept where n_tot and n_e are
       ! defined so the lower boundary cannot disagree with the EOS about what a
-      ! particle is. Read by the continuous-temperature base ghost (Apply_BC),
-      ! which needs T(1) = p(1)/n_part_cell1; unused otherwise.
+      ! particle is. Read by the characteristic base face state
+      ! (base_boundary_states, through Apply_BC), which needs
+      ! T(1) = p(1)/n_part_cell1 and nhat(1) = n_part_cell1/rho(1).
       n_part_cell1 = n_tot(1) + ne(1)
 
       ! Caloric half of the equation of state.  It reads the same

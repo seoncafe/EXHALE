@@ -17,8 +17,8 @@ This file is what to download, what has to be installed to build it, how to
 build it, what differs from upstream, and how to check the result. The
 physics of the two solver corrections, why they were needed, and the
 measurements that closed them are in
-`docs/photochem_solver_modification_investigation.md` and
-`docs/photochem_solver_modification_implementation.md`.
+`md/photochem_solver_modification_investigation.md` and
+`md/photochem_solver_modification_implementation.md`.
 
 
 ## 1. What to download from GitHub

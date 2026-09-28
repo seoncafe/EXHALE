@@ -2,7 +2,7 @@
 
       use, intrinsic :: ieee_arithmetic, only: ieee_is_finite
       use global_parameters
-      use species_table, only: n_mion, mion_fsp, isp_HeI, isp_HeTR
+      use species_table, only: n_mion, mion_fsp, isp_HeI, isp_HeTR, n_melem
       use Read_input
       use Initialization
       ! What the restart file said it was produced under (parsed by load_IC).
@@ -32,7 +32,9 @@
       ! pressure").
       use caloric_eos, only: pressure_from_energy_density,                 &
                              energy_density_from_pressure,                 &
-                             caloric_mixture_active, molecular_cell
+                             caloric_mixture_active, molecular_cell,       &
+                             caloric_mixture_record,                       &
+                             hold_caloric_mixture, restore_caloric_mixture
       ! The shell volume of one cell, for the domain sum of the energy the
       ! held-pressure composition update adds.
       use grid_construction, only: spherical_cell_volume
@@ -51,7 +53,10 @@
                                           species_advection_active,       &
                                           species_advection_begin_step,   &
                                           species_advection_stage,        &
-                                          species_advection_project
+                                          species_advection_project,      &
+                                          interdiffusion_enthalpy_active, &
+                                          interdiffusion_enthalpy_face_flux, &
+                                          interdiffusion_enthalpy_divergence
       use diffusive_photochemistry, only: photochemical_transport_step,   &
                                           carrier_verdict,              &
                                           carrier_interval_covered,     &
@@ -504,6 +509,12 @@
       ! handed to the element operator, which has no way of its own to reach
       ! the steady residual.
       real*8, dimension(:), allocatable :: Frho_elem
+      ! The element fluxes the marching element step carried, helium and
+      ! each trace metal [g cm^-2 s^-1, faces 0:N], the interdiffusion
+      ! enthalpy flux they carry [erg cm^-2 s^-1, faces 0:N] and its
+      ! divergence in the units of the energy row.
+      real*8, dimension(:),   allocatable :: J_he_face, q_id_face, div_q_id
+      real*8, dimension(:,:), allocatable :: J_metal_face
       ! The displacement the carrier relaxation kept, the third participant
       ! of the same damped Picard iteration.
       real*8  :: carrier_displacement_pass
@@ -512,15 +523,19 @@
       ! state, so the ratio the progress control reads can be logged with
       ! the two absolute numbers it came from.
       real*8, dimension(:,:), allocatable :: crc_res, crc_terms
-      ! HOW FAR ONE FIXED-WIND CARRIER PASS MAY MOVE THE COMPOSITION, as a
-      ! fraction of the largest H2 mixing ratio of the entry state, enforced
-      ! on the accepted step by relax_photochemical_composition. 1e-2 is the
-      ! measured boundary of the steady solve's tolerance on the hot Uranus
-      ! hand-off: the wind solve still accepts the handed-over state at 0.2
-      ! and stops accepting at 0.4, so this stands a factor 20 inside it.
-      ! The outer iteration shortens it on a pass that failed to move the
-      ! joint measure, and leaves this
-      ! value where a later entry reads the run's own setting.
+      ! HOW FAR ONE FIXED-WIND CARRIER PASS MAY MOVE THE COMPOSITION, as the
+      ! largest relative change of one cell's particle count n_tot + n_e
+      ! over the pass, enforced on the accepted step by
+      ! relax_photochemical_composition. This is the value the outer
+      ! iteration STARTS from. 1e-2 stands a factor 20 inside the measured
+      ! boundary of the steady solve's tolerance on the hot Uranus hand-off,
+      ! taken on the retired measure (a fraction of the largest H2 mixing
+      ! ratio of the entry state): the wind solve still accepted the
+      ! handed-over state at 0.2 and stopped accepting it at 0.4. The outer
+      ! iteration lengthens the bound after a converged solve that consumed
+      ! an update it had limited and shortens it after a solve that failed
+      ! (steady_wind_with_element_diffusion), and leaves this value where a
+      ! later entry reads the run's own setting.
       !
       ! EXHALE_CARRIER_TRUST overrides it and EXHALE_OUTER_PASSES the pass
       ! cap, so the alternation can be run as a CONTINUATION that walks the
@@ -1320,7 +1335,7 @@
          if (.not. boundary_rebuild_suppressed()) call Apply_BC(u)
          call report_base_face_state_consistency(                       &
               'EXHALE_RESIDUAL_at_assemble_residual', u)
-         call assemble_residual(u, n_tot + ne, heat, cool, Rres)
+         call assemble_residual(u, n_tot + ne, f_sp, heat, cool, Rres)
          call residual_norms(Rres, u, resid_c)
          ! cell-by-cell residual profile (localize the momentum imbalance)
          block
@@ -1440,7 +1455,7 @@
          call pack_species_rows(u, f_sp, Yvec)
          call freeze_species_unknown_box(Yvec)
          call cell_state_scales(Yvec, Ddet)
-         call cell_row_scales(Yvec, Ddet, Drdet)
+         call cell_row_scales(Yvec, Ddet, Drdet, u)
          nvj_det = nvar_jac
          ! Trial states of the size a line search takes: two hydrodynamic,
          ! and one on every species slot, which the hydrodynamic pair does
@@ -1695,8 +1710,9 @@
          f_sp_test = f_sp
          ! F0 + frozen heat/cool at Y, then the banded Jacobian
          call eval_residual(Yvec, f_sp, f_sp_test, Fvec, heat0, cool0, npart0)
-         call frozen_residual(Yvec, npart0, heat0, cool0, F0f)
-         call build_banded_jac(Yvec, npart0, heat0, cool0, abjac)
+         call frozen_residual(Yvec, npart0, f_sp_test, heat0, cool0, F0f)
+         call build_banded_jac(Yvec, npart0, f_sp_test, heat0, cool0,     &
+                               abjac)
          ! Deterministic probe direction, SCALED BY THE UNKNOWNS' OWN
          ! MAGNITUDES.  Unscaled, max|r| = 1 in code units is a
          ! perturbation many times the state itself wherever the density is
@@ -1715,7 +1731,7 @@
          call band_matvec(abjac, rdir, Jr)
          jac_eps = 1.0d-7
          Yvec = Yvec + jac_eps*rdir
-         call frozen_residual(Yvec, npart0, heat0, cool0, dFD)
+         call frozen_residual(Yvec, npart0, f_sp_test, heat0, cool0, dFD)
          dFD = (dFD - F0f)/jac_eps
          jac_err = maxval(abs(dFD - Jr))/max(maxval(abs(Jr)), 1.0d-30)
          write(*,'(A,ES12.4)') ' (jac_test) max|F_frozen(Y)| = ', maxval(abs(F0f))
@@ -2615,7 +2631,9 @@
             if (species_advection_active())                           &
                call species_advection_project(f_sp)
             if (he_diffusion)                                         &
-               call element_diffusion_step(rho,T,f_sp,dt_loc)
+               call element_diffusion_step(rho,T,f_sp,dt_loc,         &
+                                           Jface_out=J_he_face,       &
+                                           JXface_out=J_metal_face)
 
             ! A REFUSED ELEMENT STEP. The step judges
             ! its candidate on every call and hands back the entry
@@ -2632,6 +2650,35 @@
                if (run_mode .eq. run_mode_phys) exit trial
                as_element_ok = .true.
                n_element_refused_init = n_element_refused_init + 1
+            endif
+
+            ! THE ENTHALPY THE ELEMENT STEP MOVED, in the same step as the
+            ! composition it moved.  Helium and hydrogen crossed every face
+            ! with different velocities, and the particles carried their
+            ! sensible enthalpy with them: the energy equation of the
+            ! diffusing mixture has the flux q_d = sum_s h_s J_s
+            ! (Cook 2009, eqs. 11-13; interdiffusion_enthalpy_face_flux
+            ! states the physics), so every cell the step moved elements
+            ! into or out of gains or loses
+            !    dt div(q_d) = dt [A_+ q_d(+) - A_- q_d(-)]/V
+            ! of thermal energy, formed from the very element fluxes the step
+            ! carried and on the faces and volumes of the element rows.
+            ! The column sum is the difference of the boundary face fluxes,
+            ! wherever dt_loc is uniform, as for the element update itself.
+            ! Applied before the coupled source step takes the thermal
+            ! energy it starts from (u_th_old_csm below), so that step heats
+            ! and cools the energy the transport left.  Only for a step whose
+            ! composition was accepted: a refused step moved nothing.  The
+            ! formation energy of the moved nuclei is not added here: it
+            ! rides with them through the formation-energy reference the
+            ! coupled source step takes from this composition.
+            if (interdiffusion_enthalpy_active() .and.                    &
+                element_step_last_status .eq. element_step_accepted) then
+               call interdiffusion_enthalpy_face_flux(T, f_sp, J_he_face, &
+                                                      q_id_face,          &
+                                                      J_metal_face)
+               call interdiffusion_enthalpy_divergence(q_id_face, div_q_id)
+               u(3,1:N) = u(3,1:N) - dt_loc(1:N)*div_q_id(1:N)
             endif
 
             if (attempted_step_injected_refusal(as_op_diffusion)) then
@@ -3230,12 +3277,18 @@
             ! caloric_state_from_composition twice in one step, and the two
             ! passes are not the same arithmetic when the mixture is
             ! molecular.
+            ! The composition comes first: a trial that left early (a
+            ! refused element or carrier step) changed f_sp after its last
+            ! get_species_densities, and that call refreshes the caloric
+            ! mixture U_to_W reads. On a trial that ran to its end f_sp is
+            ! the composition of the chemistry stage.
+            rho = u(1,:)
+            call get_species_densities(rho,f_sp,nhi,nhii,nhei,nheii,      &
+                                       nheiii,nheiTR,nm,ne,n_tot)
             call U_to_W(u,W)
             rho = W(1,:)
             v   = W(2,:)
             p   = W(3,:)
-            call get_species_densities(rho,f_sp,nhi,nhii,nhei,nheii,      &
-                                       nheiii,nheiTR,nm,ne,n_tot)
             call comp_T_from_p(p,n_tot,ne,T)
 
             if (as_trial_reason .ne. 0) then
@@ -3720,7 +3773,7 @@
                ! bit, so the marched state is untouched; on an atomic mixture
                ! it reproduces the standing boundary exactly.
                call Apply_BC(u)
-               call assemble_residual(u, n_tot + ne, heat, cool, Rres)
+               call assemble_residual(u, n_tot + ne, f_sp, heat, cool, Rres)
                call residual_norms(Rres, u, resid_c)
                resid_max   = maxval(resid_c)
                ! The spread the stop measured on this state, not a second
@@ -3775,7 +3828,7 @@
             ! the current u).
             if (p54_ts_every .gt. 0) then
                if (mod(marching_step, p54_ts_every) .eq. 0) then
-                  call assemble_residual(u, n_tot + ne, heat, cool, Rres)
+                  call assemble_residual(u, n_tot + ne, f_sp, heat, cool, Rres)
                   call p54_flux_timeseries_append
                endif
             endif
@@ -4441,7 +4494,7 @@
       ! 'certified=' field of the '# coupling:' header is a statement about
       ! the file it stands in. The residual is assembled here from that same
       ! state, and heat and cool are the ones the state carries.
-      call assemble_residual(u, n_tot + ne, heat, cool, Rres)
+      call assemble_residual(u, n_tot + ne, f_sp, heat, cool, Rres)
       call certification_evaluate(cert_context_stationary, u, Rres, f_sp,  &
                resid_th, n_cells_without_chemical_root(last_sweep%acc_n), &
                .true., cert_now)
@@ -4479,7 +4532,7 @@
       write(*,*) '(EXHALE_main.f90) Starting the post processing routine..'
 
       call post_process_adv(rho,v,p,T,heat,cool,eta,    &
-                            nhi,nhii,nhei,nheii,nheiii,nheiTR,nm)
+                            nhi,nhii,nhei,nheii,nheiii,nheiTR,nm,f_sp)
       
       write(*,*) '(EXHALE_main.f90) Post processing routine done.'
 
@@ -4865,12 +4918,12 @@
       rec_method = 'PLM';    use_plm = .true.;  use_weno3 = .false.
       u_probe = u
       call Apply_BC(u_probe)
-      call assemble_residual(u_probe, n_tot + ne, heat, cool, R_plm)
+      call assemble_residual(u_probe, n_tot + ne, f_sp, heat, cool, R_plm)
 
       rec_method = 'WENO3';  use_plm = .false.; use_weno3 = .true.
       u_probe = u
       call Apply_BC(u_probe)
-      call assemble_residual(u_probe, n_tot + ne, heat, cool, R_weno)
+      call assemble_residual(u_probe, n_tot + ne, f_sp, heat, cool, R_weno)
 
       rec_method      = sav_method
       use_plm         = sav_plm
@@ -5868,7 +5921,7 @@
       ! closure of the ghost's molecular partition.
       call report_base_boundary_model('the boundary of this evaluation')
       call report_base_face_cache_reads('evaluate route')
-      call assemble_residual(u, n_tot + ne, heat, cool, Rres)
+      call assemble_residual(u, n_tot + ne, f_sp, heat, cool, Rres)
       call base_mass_rows_of_this_evaluation('C_residual_rows', u, Rres)
       call ghost_record_of_this_evaluation('C_residual_rows', u, Rres)
       call residual_norms(Rres, u, resid_c)
@@ -5937,7 +5990,7 @@
          write(*,*) '(EXHALE_main.f90) Starting the post processing'//      &
               ' routine..'
          call post_process_adv(rho,v,p,T,heat,cool,eta,                     &
-                               nhi,nhii,nhei,nheii,nheiii,nheiTR,nm)
+                               nhi,nhii,nhei,nheii,nheiii,nheiTR,nm,f_sp)
          write(*,*) '(EXHALE_main.f90) Post processing routine done.'
          if (n_cells_he_singlet_clamped .gt. 0)                             &
             write(*,'(A,I0,A)')                                             &
@@ -5956,7 +6009,7 @@
          ! boundary of its own. The cached face state carries no validity, so
          ! the rows below need not reproduce the rows above.
          if (boundary_trace_armed()) then
-            call assemble_residual(u, n_tot + ne, heat, cool, Rres)
+            call assemble_residual(u, n_tot + ne, f_sp, heat, cool, Rres)
             call base_mass_rows_of_this_evaluation(                        &
                  'F_residual_rows_after_report', u, Rres)
             call report_base_face_state_consistency(                       &
@@ -6013,7 +6066,7 @@
       if (.not. boundary_rebuild_suppressed()) call Apply_BC(u)
       call report_base_face_state_consistency(                            &
            'stationary_restart_final_certification', u)
-      call assemble_residual(u, n_tot + ne, heat, cool, Rres)
+      call assemble_residual(u, n_tot + ne, f_sp, heat, cool, Rres)
       call certification_evaluate(cert_context_stationary, u, Rres, f_sp,   &
                resid_th, n_cells_without_chemical_root(last_sweep%acc_n),   &
                .true., cert_now)
@@ -6377,7 +6430,7 @@
          if (.not. boundary_rebuild_suppressed()) call Apply_BC(u)
          call report_base_face_state_consistency(                          &
               'update_map_at_the_steady_residual', u)
-         call assemble_residual(u, n_tot + ne, heat, cool, R_um)
+         call assemble_residual(u, n_tot + ne, f_sp, heat, cool, R_um)
          ! The carrier row's steady residual of the SAME state, per cell,
          ! with the row's own terms beside it.
          if (upmap_carrier) then
@@ -6716,7 +6769,7 @@
       ! and is otherwise stale.
       real*8, dimension(3) :: rc_now
       real*8 :: fsp_now, fmean_now
-      call assemble_residual(u, n_tot + ne, heat, cool, Rres)
+      call assemble_residual(u, n_tot + ne, f_sp, heat, cool, Rres)
       call residual_norms(Rres, u, rc_now)
       call flux_spread_of_state(u, fsp_now, fmean_now)
       write(*,'(A)') '        THIS IS A MARCHING STOP, NOT AN ACCEPTED'//    &
@@ -6866,16 +6919,26 @@
       ! alternation. A pass that leaves it where it was is not by itself a
       ! stalled alternation, because a composition still far from the fixed
       ! point of its own operator changes the wind that row is a residual
-      ! of; so the step lengths are shortened, and the consecutive passes
-      ! counted, only where the composition's own distance to that fixed
-      ! point ALSO failed to fall. Where both stand still, both updates are
-      ! shortened -- the element relaxation's under-relaxation omega is
-      ! halved (floor 0.125) and the carrier movement bound is halved (floor
-      ! carrier_trust_floor) -- and outer_no_fall_max consecutive such
+      ! of; so a pass is counted as one without progress only where the
+      ! composition's own distance to that fixed point ALSO failed to
+      ! fall, and outer_no_fall_max consecutive such
       ! passes end the loop rather than spend the budget on a fixed point
-      ! the alternation is not approaching. The measurement behind that
-      ! rule, and why shortening omega on a rising row makes the alternation
-      ! slower rather than steadier, is at the progress control itself.
+      ! the alternation is not approaching. A pass whose carrier update
+      ! ended on its movement bound, on a converged wind, while the bound
+      ! can still grow, is not judged by those two relative measures, which
+      ! cannot move on it; the bound is lengthened instead. The two step
+      ! lengths of the composition half -- the element relaxation's
+      ! under-relaxation omega (floor 0.125, up to its starting value) and
+      ! the carrier movement bound (floor carrier_trust_floor, up to
+      ! carrier_trust_max) -- answer to the hydrodynamic solve that
+      ! consumes the update: they grow after it converged and shrink after
+      ! it failed following a converged one; omega also shrinks on a pass
+      ! judged without progress on a converged wind, and the bound on one
+      ! whose carrier moved short of the bound and did not help, or whose
+      ! bound-limited update raised the joint distance of a solved wind. The
+      ! measurements behind these rules, and why shortening a step on a
+      ! flat relative measure makes the alternation slower rather than
+      ! steadier, are at the progress control itself.
       !
       ! THE COMPOSITION DRIFT AND THE VOLUME-WEIGHTED CARRIER RESIDUAL ARE
       ! REPORTED AND ARE NOT ACCEPTANCES. The transport operator's smallest
@@ -6946,10 +7009,23 @@
       ! this floor a pass would move the composition by less than a tenth of
       ! what the front covers in one cell crossing time.
       real*8, parameter  :: carrier_trust_floor = 1.0d-3
+      ! THE LARGEST VALUE THE MOVEMENT BOUND GROWS TO. The bound is the
+      ! largest relative change of one cell's particle count n_tot + n_e
+      ! over one pass. 0.5 is the value at which the LHS 1140 b molecular
+      ! He/H = 1.8 state with transported ionization stages certified in
+      ! 14 passes (MEASURED, .P1/iontr_diag/E2_unthrottled_7db5, the bound
+      ! held there): the carriers reached their own fixed point at the
+      ! wind of every pass, the first update moved the outer wind's
+      ! particle count by 35 percent, and the hydrodynamic solve that
+      ! consumed it converged. It stays below a factor-two change of a
+      ! cell's particle count in one pass, which the diagnostic interval
+      ! mask of the relaxation treats as outside any regime a held wind can
+      ! be read in (its safety stop, diffusive_photochemistry.f90).
+      real*8, parameter  :: carrier_trust_max = 0.5d0
       ! HOLDING THE MOVEMENT BOUND AT ONE VALUE, a diagnostic and not an
       ! input key.  EXHALE_CARRIER_TRUST_HOLD=<value> sets the bound to
-      ! that value and takes the halving below out of the pass, so the
-      ! composition may move by the same fraction at every pass; unset,
+      ! that value and takes every change of it below out of the pass, so
+      ! the composition may move by the same fraction at every pass; unset,
       ! which is every run by default, nothing here is reached and the
       ! bound is the one the progress control leaves.  It exists to
       ! separate a relaxation the bound throttles from a mode the
@@ -6957,6 +7033,35 @@
       ! to the bound, the second at the same rate whatever the bound.
       logical :: carrier_trust_held
       real*8  :: carrier_trust_hold
+      ! WHAT THE HYDRODYNAMIC SOLVE OF A PASS CONSUMED, read by the
+      ! progress control of that pass (the step lengths of the composition
+      ! half answer to the solve that consumes the update, below).
+      ! hydro_info_prev is the flag of the previous pass's solve, so that
+      ! a failed solve can be told apart as the first failure after a
+      ! converged wind (the update it consumed is then the only thing new)
+      ! or one of a run of failures that the update did not start.
+      ! element_update_ran says the element relaxation of the previous pass
+      ! handed back a composition (it did not restore its entry).
+      ! comp_omega_start is the under-relaxation factor the run starts at,
+      ! the largest value omega recovers to.
+      integer :: hydro_info_prev
+      logical :: element_update_ran, update_on_bound, bound_throttled
+      logical :: pass_without_progress, hydro_failure_after_solved
+      logical :: bound_step_harmed
+      ! HOW FAR A RELATIVE MEASURE MAY RISE ON A THROTTLED PASS AND STILL
+      ! COUNT AS FLAT. A pass whose carrier update the bound limited is read
+      ! as throttled, and the bound lengthened, only while the joint
+      ! distance stays below this factor times its previous value; a larger
+      ! rise on a solved wind says the step itself made the state worse, and
+      ! the bound is halved instead. MEASURED: the throttled He++ measure of
+      ! the LHS 1140 b He/H = 1.8 transported-stage state moved by +1.4
+      ! percent over its flat stretch (2.17e-2 to 2.20e-2); the H2 row at the
+      ! outer cells of the molecular He/H = 0.083 continuation rose by 20
+      ! percent a pass (4.07e-4, 4.95e-4, 6.04e-4, 7.20e-4) at the floor of
+      ! the bound, and by a factor 4 after one doubling of it
+      ! (.P1/progress_control/b_kzz1e9_0.083, pass 3).
+      real*8, parameter :: throttled_flat_band = 1.1d0
+      real*8  :: comp_omega_start
       ! The stage export of the alternation (EXHALE_STAGE_EXPORT=1, default
       ! off) and the label of the conservation-budget export it requests.
       logical :: stage_export_on
@@ -7080,6 +7185,7 @@
       ! against the damped one without a rebuild.
       call get_environment_variable('EXHALE_DIFF_OMEGA', diag_env)
       if (len_trim(diag_env) .gt. 0) read(diag_env,*) comp_omega
+      comp_omega_start = comp_omega
       comp_residual                    = 0.0d0
       element_map_distance          = 0.0d0
       element_residual_returned     = 0.0d0
@@ -7129,6 +7235,11 @@
       ! shortening of the movement bound below reads it, so it must exist
       ! before the first pass, where no relaxation has run.
       carrier_steps_last = 0
+      ! The first pass's solve consumed no update: no relaxation ending,
+      ! no element update, and no earlier solve to compare its flag with.
+      carrier_outcome       = carrier_relax_nothing_to_advance
+      element_update_ran    = .false.
+      hydro_info_prev       = 0
 
       block_now       = carrier_in_newton
       handed_over     = .false.
@@ -7200,10 +7311,14 @@
                                   hydro_info)
          endif
          call set_transported_species_rows(.false.)
-         call U_to_W(u,W)
-         rho = W(1,:);  v = W(2,:);  p = W(3,:);  E = u(3,:)
+         ! The composition the solve handed back sets the caloric mixture
+         ! U_to_W reads; the last get_species_densities inside the solve may
+         ! have been made at a trial composition, so it is refreshed first.
+         rho = u(1,:)
          call get_species_densities(rho,f_sp,nhi,nhii,nhei,nheii,       &
                                     nheiii,nheiTR,nm,ne,n_tot)
+         call U_to_W(u,W)
+         rho = W(1,:);  v = W(2,:);  p = W(3,:);  E = u(3,:)
          call comp_T_from_p(p,n_tot,ne,T)
          if (use_excited_H) call excited_H_update(T,rho,f_sp,v,exc_rel)
          call ioniz_eq(T,rho,f_sp,heat,cool,eta,last_sweep)
@@ -7251,7 +7366,7 @@
                  ' certification: the joint test of this pass'
             call conservation_budget_request_next(stage_label)
          endif
-         call assemble_residual(u, n_tot + ne, heat, cool, Rres)
+         call assemble_residual(u, n_tot + ne, f_sp, heat, cool, Rres)
          call certification_evaluate(cert_context_stationary, u, Rres,     &
                   f_sp, resid_th,                                         &
                   n_cells_without_chemical_root(last_sweep%acc_n),        &
@@ -7359,11 +7474,15 @@
          endif
 
          ! ---- THE PROGRESS CONTROL, AHEAD OF ANY UPDATE OF THIS PASS ----
-         ! The joint measure is what the passes are spent on, so it is what
-         ! the step lengths are chosen by. omega damps the element
-         ! relaxation and trust_pass bounds the carrier pass; both are
+         ! The joint measure is what the passes are spent on, and the
+         ! hydrodynamic solve of this pass is what consumed the last
+         ! update, so those two are what the step lengths are chosen by.
+         ! omega damps the element relaxation and trust_pass bounds the
+         ! carrier pass. On a pass judged without progress both are
          ! shortened together, because which of the two failed to move the
-         ! measure is not a question this loop can answer. It is decided
+         ! measure is not a question this loop can answer; what each one
+         ! does after the solve that consumed it is stated at the rules
+         ! below. It is decided
          ! here, before the update, so that the pass which ends the
          ! iteration takes no update and hands back the state its own
          ! certification above was evaluated on (the invariant in the
@@ -7440,19 +7559,91 @@
          ! distance is carried by the wind, AND whose rows do not fall is
          ! the stagnation this control was written for, and it still ends
          ! the loop on outer_no_fall_max consecutive passes.
+         !
+         ! A PASS THROTTLED BY THE MOVEMENT BOUND IS NOT JUDGED BY THOSE
+         ! TWO MEASURES, because neither can move on it. When the carrier
+         ! relaxation that the solve of this pass consumed ended on the
+         ! movement bound, the composition moved exactly as far as the bound
+         ! let it, and both measures are RELATIVE: each row residual over
+         ! that row's own terms. Where the whole outer wind is away from the
+         ! fixed point of the carriers by a similar fraction, the residual
+         ! and its scale fall together and the ratio stays where it was.
+         ! MEASURED on LHS 1140 b, molecular He/H = 1.8 with transported
+         ! ionization stages (.P1/s2_continuation/iontr_HeH1.8{,_c2}): every
+         ! relaxation ended on the bound, n_e at cell 380 fell by a constant
+         ! 1.5 percent a pass, the He++ residual at cell 416 fell by 32
+         ! percent and its row terms by 31 percent over the continuation,
+         ! and the gated measure stood at 2.17e-2 to 2.20e-2; the control
+         ! read that as stagnation, halved the bound to its floor and ended
+         ! the loop. Held at 0.5, the same state certified in 14 passes
+         ! (.P1/iontr_diag/E2_unthrottled_7db5). What moves on such a pass
+         ! is the state itself, by the full bound, so the pass is read by
+         ! that: it is neither counted toward the ending nor taken as a fall
+         ! of the measure, and the bound is lengthened (below) as long as it
+         ! can still grow. At its largest value, or with the bound held, or
+         ! when the solve that consumed the update failed, or when the joint
+         ! distance rose by more than throttled_flat_band (the step then
+         ! made the state worse, which a throttle does not), the pass is
+         ! judged by the two measures as any other.
+         !
+         ! THE STEP LENGTHS OF THE COMPOSITION HALF ANSWER TO THE SOLVE
+         ! THAT CONSUMES THE UPDATE. The movement bound doubles, up to
+         ! carrier_trust_max, after a converged solve (info = 0) that
+         ! consumed an update the bound had limited, unless the joint
+         ! distance rose past throttled_flat_band, when it is halved; it is
+         ! halved after the first failed solve following a converged one,
+         ! when the update it consumed ended on the bound. The failure does
+         ! not lower the largest value the bound may grow back to: the size
+         ! of the update does not predict whether the solve fails (MEASURED
+         ! on the LHS 1140 b He/H = 1.8 transported-stage state with the
+         ! interdiffusion enthalpy flux off, .P1/progress_control: after an
+         ! update limited to 1e-2 the solve of pass 2 failed, and held at
+         ! 0.5 the same state converged every solve, a1 and a1h). A failed
+         ! solve that follows another failed solve did
+         ! not start from a solved wind, so the update is not what failed
+         ! it and neither step length is shortened for it (MEASURED: on the
+         ! atomic He/H = 9.7 rungs at 0.06 and 0.0624 of the GJ 1132
+         ! spectrum the solve of the very first pass, which consumed no
+         ! update, already ended info = 2, and every later one did too).
+         ! omega shortens on the same attributable failure, and on a pass
+         ! judged without progress whose wind was solved (the element update
+         ! moved on a solved wind and did not help); it recovers by doubling,
+         ! up to the value the run started at, after a converged solve on a
+         ! pass not judged without progress. The start is its upper limit
+         ! because it is the damping the alternation needs against its own
+         ! limit cycle (relax_element_composition).
          ! A pass that reaches the progress control below replaces this;
          ! a pass that ends the iteration before it never asks.
          progress_decided_by = 'not asked: this pass did not reach the'// &
               ' progress control'
          if (outer_ending .eq. outer_running) then
+            ! WHAT THE SOLVE OF THIS PASS CONSUMED: the carrier relaxation
+            ! and the element relaxation of the previous pass (none on the
+            ! first), and whether it failed after a converged solve.
+            update_on_bound = carrier_relaxation_ran .and.                 &
+                 (carrier_outcome .eq. carrier_relax_movement_bound) .and. &
+                 transported_rows_exist() .and. .not. block_now
+            hydro_failure_after_solved = (hydro_info .ne. 0) .and.         &
+                 (hydro_info_prev .eq. 0) .and. (it_diff .gt. 1)
+            bound_step_harmed = update_on_bound .and.                     &
+                 (hydro_info .eq. 0) .and. (.not. carrier_trust_held) .and.&
+                 (prog_worst/throttled_flat_band .gt. prog_worst_prev)
+            bound_throttled = update_on_bound .and. (hydro_info .eq. 0)    &
+                 .and. (.not. carrier_trust_held) .and.                   &
+                 (trust_pass .lt. carrier_trust_max) .and.                &
+                 (.not. bound_step_harmed)
             composition_closing = (hydro_worst_dist .lt. prog_worst) .and. &
                                   ((n_comp_updates .lt. 2) .or.           &
                                    (comp_residual_last .lt. comp_residual_before))
-            ! WHICH OF THE TWO MEASURES DECIDED IT, for the log line of the
-            ! pass: the joint distance of the whole state, or the
-            ! composition's own residual where the state's distance is
+            ! WHICH OF THE MEASURES DECIDED IT, for the log line of the
+            ! pass: the throttle, the joint distance of the whole state, or
+            ! the composition's own residual where the state's distance is
             ! carried by something other than a hydrodynamic row.
-            if (prog_worst .lt. prog_worst_prev) then
+            if (bound_throttled) then
+               progress_decided_by = 'not judged: the carrier update'//   &
+                    ' this solve consumed ended on its movement bound,'// &
+                    ' which is lengthened'
+            else if (prog_worst .lt. prog_worst_prev) then
                progress_decided_by = 'the coupled residual fell'
             else if (composition_closing) then
                if (n_comp_updates .lt. 2) then
@@ -7468,10 +7659,13 @@
                progress_decided_by = 'neither the coupled residual nor '// &
                     'the composition residual fell'
             endif
-            if (prog_worst .ge. prog_worst_prev .and.                     &
-                .not. composition_closing) then
+            pass_without_progress = (.not. bound_throttled) .and.         &
+                 (prog_worst .ge. prog_worst_prev) .and.                  &
+                 (.not. composition_closing)
+            if (pass_without_progress) then
                n_no_fall = n_no_fall + 1
-               if (he_diffusion .and. comp_omega .gt. 0.125d0) then
+               if (he_diffusion .and. hydro_info .eq. 0 .and.             &
+                   comp_omega .gt. 0.125d0) then
                   comp_omega = max(0.5d0*comp_omega, 0.125d0)
                   write(*,'(A,F6.3)') '    -> neither the joint distance'//&
                        ' nor the composition distance fell;'//            &
@@ -7485,13 +7679,28 @@
                ! relaxation kept no transport step therefore leaves the
                ! bound where it is; it is still counted as a pass without a
                ! fall, so the loop still ends on outer_no_fall_max of them.
+               ! Nor is it the prescription for a carrier the bound itself
+               ! stopped: that bound answers to the solve (below). And a
+               ! carrier that moved on a wind the solve did not converge
+               ! was not shown not to help, so on such a pass the bound,
+               ! like omega, is left where it is (MEASURED on the certified
+               ! E2 state continued with the interdiffusion enthalpy flux,
+               ! .P1/progress_control/a2_E2certified_interdiff: the entry
+               ! solve failed on passes 1 to 3 whatever the update, and
+               ! halving the bound there left it at 5e-3 for the passes
+               ! that followed).
                if (carrier_trust_held) then
                   write(*,'(A,ES9.2)') '    -> neither the joint'//        &
                        ' distance nor the composition distance fell;'//   &
                        ' the carrier movement bound is held at',          &
                        trust_pass
+               else if (update_on_bound) then
+                  write(*,'(A,ES9.2)') '    -> neither the joint'//        &
+                       ' distance nor the composition distance fell on'// &
+                       ' an update the bound limited; the bound'//        &
+                       ' answers to the solve, and stands at', trust_pass
                else if (transported_rows_exist() .and.                    &
-                   .not. block_now .and.                          &
+                   .not. block_now .and. hydro_info .eq. 0 .and.          &
                    carrier_steps_last .gt. 0 .and.                        &
                    trust_pass .gt. carrier_trust_floor) then
                   trust_pass = max(0.5d0*trust_pass, carrier_trust_floor)
@@ -7507,12 +7716,52 @@
                endif
                if (n_no_fall .ge. outer_no_fall_max)                      &
                   outer_ending = outer_no_progress
-            else
+            else if (.not. bound_throttled) then
                n_no_fall = 0
+            endif
+            ! THE MOVEMENT BOUND, KEYED TO THE SOLVE THAT CONSUMED IT.
+            if (.not. carrier_trust_held .and. update_on_bound) then
+               if (bound_throttled) then
+                  trust_pass = min(2.0d0*trust_pass, carrier_trust_max)
+                  write(*,'(A,ES9.2)') '    -> the carrier update ended'// &
+                       ' on its movement bound and the solve that'//      &
+                       ' consumed it converged; movement bound =',        &
+                       trust_pass
+               else if (bound_step_harmed .and.                           &
+                        trust_pass .gt. carrier_trust_floor) then
+                  trust_pass = max(0.5d0*trust_pass, carrier_trust_floor)
+                  write(*,'(A,ES9.2)') '    -> an update the bound limited'//&
+                       ' raised the joint distance of a solved wind;'//   &
+                       ' movement bound =', trust_pass
+               else if (hydro_failure_after_solved .and.                  &
+                        trust_pass .gt. carrier_trust_floor) then
+                  trust_pass = max(0.5d0*trust_pass, carrier_trust_floor)
+                  write(*,'(A,ES9.2)') '    -> the solve that consumed'//  &
+                       ' an update the bound limited failed after a'//    &
+                       ' converged one; movement bound =', trust_pass
+               endif
+            endif
+            ! THE UNDER-RELAXATION OF THE ELEMENT UPDATE, BY THE SAME RULE.
+            if (he_diffusion .and. element_update_ran) then
+               if (hydro_info .eq. 0 .and. .not. pass_without_progress   &
+                   .and. comp_omega .lt. comp_omega_start) then
+                  comp_omega = min(2.0d0*comp_omega, comp_omega_start)
+                  write(*,'(A,F6.3)') '    -> the solve that consumed'//  &
+                       ' the element update converged on a pass not'//    &
+                       ' judged without progress; under-relaxation'//     &
+                       ' omega =', comp_omega
+               else if (hydro_failure_after_solved .and.                  &
+                        comp_omega .gt. 0.125d0) then
+                  comp_omega = max(0.5d0*comp_omega, 0.125d0)
+                  write(*,'(A,F6.3)') '    -> the solve that consumed'//  &
+                       ' the element update failed after a converged'//   &
+                       ' one; under-relaxation omega =', comp_omega
+               endif
             endif
             sp_worst_prev   = sp_worst
             prog_worst_prev = prog_worst
          endif
+         hydro_info_prev = hydro_info
 
          ! ---- THE COMPOSITION UPDATE THE NEXT SOLVE WILL CONSUME ----
          update_taken = .false.
@@ -7545,6 +7794,9 @@
          ! which the relaxation actually ran may write the entry state the
          ! handover below is judged on.
          carrier_relaxation_ran = .false.
+         ! Whether the element relaxation of THIS pass hands back a
+         ! composition, read by the progress control of the next pass.
+         element_update_ran = .false.
          if (outer_ending .eq. outer_running .and. it_diff .lt. pass_cap) &
              then
             update_taken = .true.
@@ -7599,6 +7851,7 @@
                   ! that was never adopted.
                   outer_ending = outer_element_update_refused
                else
+                  element_update_ran = .true.
                   ! THE SWEEP IS ENTERED AT THE RELAXED COMPOSITION'S OWN
                   ! PARTICLE COUNT AND TEMPERATURE. The relaxation moved
                   ! f_sp, so n_tot, n_e and T = p/(n_tot + n_e) still
@@ -7658,7 +7911,6 @@
                   n_bound_endings = n_bound_endings + 1
                else
                   n_bound_endings = 0
-      n_no_fall_at_handover = 0
                endif
                ! THE ENDING OF THE CARRIER RELAXATION, READ INTO THE
                ! OUTCOME TABLE OF THE CONTRACT.  A relaxation that kept
@@ -8246,12 +8498,18 @@
             endif
          endif
          if (entry_state .eq. coupled_block_entry) then
-            call U_to_W(u,W)
-            rho = W(1,:);  v = W(2,:);  p = W(3,:);  E = u(3,:)
+            ! In the order of rebuild_state_from_checkpoint: the composition
+            ! of the snapshot first, since get_species_densities refreshes
+            ! the caloric mixture (nk_per_mass, x_h2, molecular_cell) that
+            ! U_to_W reads; then the boundary on the restored interior; the
+            ! primitive state and the temperature last.
+            rho = u(1,:)
             call get_species_densities(rho,f_sp,nhi,nhii,nhei,nheii,      &
                                        nheiii,nheiTR,nm,ne,n_tot)
-            call comp_T_from_p(p,n_tot,ne,T)
             if (.not. boundary_rebuild_suppressed()) call Apply_BC(u)
+            call U_to_W(u,W)
+            rho = W(1,:);  v = W(2,:);  p = W(3,:);  E = u(3,:)
+            call comp_T_from_p(p,n_tot,ne,T)
             handed_over  = .true.
             block_now    = .true.
             ! From here the transported balances are unknowns of the
@@ -8311,6 +8569,19 @@
             write(*,'(A,A)') '    the coupled block was not entered: ',   &
                  trim(coupled_entry_refusal_text(entry_why))
          endif
+
+         ! ---- THE STATE THE NEXT PASS STARTS FROM, KEPT ON DISK ----
+         ! Every pass after which the iteration goes on writes the state the
+         ! next pass will consume -- the accepted composition update of this
+         ! pass, or the entry state of the coupled block where the handover
+         ! above restored it -- to output/{Hydro_ioniz,Ion_species}_last_pass
+         ! .txt, so that a run stopped from outside keeps its last completed
+         ! pass (write_state_of_the_pass). A pass that ends the iteration
+         ! writes nothing here: the run writes its final state next, and the
+         ! last pass of the budget takes no update, so its state is that
+         ! final state.
+         if (outer_ending .eq. outer_running .and. it_diff .lt. pass_cap)  &
+            call write_state_of_the_pass(it_diff, trust_pass, comp_omega)
 
          ! ---- THE ENDING OF THIS PASS, NAMED ----
          if (outer_ending .eq. outer_certified) then
@@ -8507,6 +8778,78 @@
       enddo
       close(uu)
       end subroutine write_stage_state
+
+      ! ------------------------------------------------!
+
+      subroutine write_state_of_the_pass(pass_now, bound_now, omega_now)
+      ! THE STATE ONE OUTER PASS HANDS TO THE NEXT, written as a restartable
+      ! pair (write_pass_state_pair, write_output.f90).
+      !
+      ! WHAT IS WRITTEN IS WHAT THE NEXT PASS CONSUMES: the conserved state u
+      ! and the composition f_sp, since the hydrodynamic solve of the next
+      ! pass is entered with that pair and nothing else. The primitive state
+      ! and the densities are formed from it here in the order of
+      ! rebuild_state_from_checkpoint -- the composition first, because the
+      ! pressure of a molecular cell is the inverse of the caloric equation
+      ! of state of that cell's mixture and get_species_densities is what
+      ! refreshes the mixture; then U_to_W; then T = p/(n_tot + n_e) -- into
+      ! arrays of this routine, not into the driver's. The boundary is not
+      ! rebuilt: the ghost rows a file carries are not read by a restart,
+      ! which derives them from the column and the reservoir (load_IC).
+      !
+      ! NOTHING HERE IS READ BY THE RUN AFTERWARDS. get_species_densities
+      ! rewrites the caloric mixture and n_part_cell1, and both are put back
+      ! as they were found; the certification pair, nmol_eq and nox_eq are
+      ! put back by the writer. So a run follows the same trajectory, and
+      ! writes the same final state, with the pass state written or not.
+      !
+      ! The pass line of the files records, beside the pass, the carrier
+      ! movement bound and the element under-relaxation factor the
+      ! iteration will use next: a restart from the pair starts from the
+      ! run's own settings (EXHALE_CARRIER_TRUST, EXHALE_DIFF_OMEGA
+      ! restore these by hand).
+      integer, intent(in) :: pass_now
+      real*8,  intent(in) :: bound_now, omega_now
+      real*8 :: W_pass(3,1-Ng:N+Ng), T_pass(1-Ng:N+Ng)
+      real*8, dimension(1-Ng:N+Ng) :: nhi_pass, nhii_pass, nhei_pass,     &
+                                      nheii_pass, nheiii_pass,            &
+                                      nheiTR_pass, ne_pass, ntot_pass
+      real*8 :: nm_pass(1-Ng:N+Ng,n_mion)
+      type(caloric_mixture_record) :: mixture_hold
+      real*8 :: npart1_hold, t_write_start
+      character(len=200) :: pass_state_text
+      character(len=24)  :: bound_text, omega_text
+      logical :: pair_written
+
+      t_write_start = omp_get_wtime()
+      call hold_caloric_mixture(mixture_hold)
+      npart1_hold = n_part_cell1
+      nhei_pass = 0.0d0;  nheii_pass = 0.0d0;  nheiii_pass = 0.0d0
+      nheiTR_pass = 0.0d0
+      call get_species_densities(u(1,:), f_sp, nhi_pass, nhii_pass,       &
+                                 nhei_pass, nheii_pass, nheiii_pass,      &
+                                 nheiTR_pass, nm_pass, ne_pass, ntot_pass)
+      call U_to_W(u, W_pass)
+      call comp_T_from_p(W_pass(3,:), ntot_pass, ne_pass, T_pass)
+      write(bound_text,'(ES23.16)') bound_now
+      write(omega_text,'(ES23.16)') omega_now
+      write(pass_state_text,'(A,I0,A,A,A)') 'pass_snapshot pass=',          &
+           pass_now, ' carrier_movement_bound='//trim(adjustl(bound_text)),&
+           ' element_omega='//trim(adjustl(omega_text)),                  &
+           ' (the state after the composition update of this pass;'//     &
+           ' not certified)'
+      call write_pass_state_pair(pass_now, trim(pass_state_text),         &
+                                 W_pass(1,:), W_pass(2,:), W_pass(3,:),   &
+                                 T_pass, heat, cool, nhi_pass, nhii_pass, &
+                                 nhei_pass, nheii_pass, nheiii_pass,      &
+                                 nheiTR_pass, nm_pass, f_sp, pair_written)
+      call restore_caloric_mixture(mixture_hold)
+      n_part_cell1 = npart1_hold
+      if (pair_written)                                                   &
+         write(*,'(A,I0,A,F8.3,A)') '    state of pass ', pass_now,       &
+              ' written to output/{Hydro_ioniz,Ion_species}_last_pass.txt'//&
+              ' (', omp_get_wtime() - t_write_start, ' s)'
+      end subroutine write_state_of_the_pass
 
       ! ------------------------------------------------!
 
@@ -8747,6 +9090,12 @@
                p(1-Ng:N+Ng), T(1-Ng:N+Ng), cs(1-Ng:N+Ng))
       allocate(heat(1-Ng:N+Ng), cool(1-Ng:N+Ng))
       allocate(Frho_elem(1-Ng:N+Ng))
+      allocate(J_he_face(0:N), q_id_face(0:N), div_q_id(1-Ng:N+Ng))
+      allocate(J_metal_face(0:N,n_melem))
+      J_he_face    = 0.0d0
+      q_id_face    = 0.0d0
+      div_q_id     = 0.0d0
+      J_metal_face = 0.0d0
       allocate(crc_res(1:N,n_carrier_max), crc_terms(1:N,n_carrier_max))
       crc_res   = 0.0d0
       crc_terms = 0.0d0

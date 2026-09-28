@@ -37,7 +37,10 @@ import numpy as np
 # van Hoof (2014) free-free Gaunt-factor table; give its path in GAUNTFF_DAT.
 DEFAULT_DAT = "gauntff_vh14.dat"
 
-RY_OVER_K = 157807.0   # Ry / k_B [K]; matches EXHALE's 2*157807 threshold usage
+# Ry / k_B [K], Ry the infinite-mass Rydberg unit of van Hoof et al. (2014),
+# section 2: Ry = h c R_inf with CODATA 2018 R_inf = 109737.31568160 cm^-1 and
+# the exact h, c, k_B (Cool_coeff.f90, Ry_over_kB).
+RY_OVER_K = 6.62607015e-27 * 2.99792458e10 * 109737.31568160 / 1.380649e-16
 
 # Refined output grid in log10(gamma^2).
 OUT_LG2_MIN = -6.0

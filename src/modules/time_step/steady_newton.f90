@@ -102,7 +102,8 @@
                                         carrier_source,                &
                                         carrier_mass_amu,              &
                                         carrier_advective_divergence,  &
-                                        carrier_diffusion_coefficient
+                                        carrier_diffusion_coefficient, &
+                                        carrier_diffusivities_of_state
       ! The acceptance contexts. The probe and the trial decisions are taken
       ! in the certification module, on the facts one residual evaluation
       ! records, so that this solver and the marching stop read ONE statement
@@ -2340,6 +2341,9 @@
       ! operator cannot disagree about which balances exist.
       logical, intent(in) :: on
       integer :: ic, im
+      ! Whether the line below about an empty registry has been printed:
+      ! it is a property of the configuration, so the run says it once.
+      logical, save :: empty_registry_reported = .false.
       nspec_row = 0
       srow_kind = 0;  srow_idx = 0;  srow_isp = 0
       if (on) then
@@ -2390,6 +2394,17 @@
             srow_idx (nspec_row) = ic
             srow_isp (nspec_row) = carrier_species_index(ic)
          enddo
+         ! A coupled solve was asked for and this configuration activates
+         ! no transported balance (no element diffusion, no transported
+         ! carrier): the Newton system is the three hydrodynamic rows alone,
+         ! and the request changes nothing.
+         if (nspec_row .eq. 0 .and. .not. empty_registry_reported) then
+            write(*,'(A)') ' (steady_newton) "Coupled carrier solve"'//  &
+                 ' is inert here: this configuration registers no'//      &
+                 ' transported balance, so the stationary system has'//   &
+                 ' the three hydrodynamic rows alone.'
+            empty_registry_reported = .true.
+         endif
       endif
       if (.not. allocated(erow_he))                                      &
          allocate(erow_he(1:N), escale_he(1:N),                          &
@@ -2667,10 +2682,12 @@
       ! u IS THE CONSERVED STATE Y DESCRIBES, and the hydrodynamic rows can
       ! be put on their certification scale only with it: residual_row_scale
       ! is the largest term the row itself holds, which is a property of an
-      ! assembled state and not of a vector of unknowns. A caller that
-      ! cannot supply it (the replay driver of the main program, and the
-      ! beyond-band column probe) gets the state scales in those three
-      ! slots, which is what the row scaling was before this change.
+      ! assembled state and not of a vector of unknowns. The solves and the
+      ! determinism replay of the main program (EXHALE_RESID_DETERMINISM)
+      ! pass it. A caller without it gets the state scales in those three
+      ! slots: the beyond-band column probe
+      ! (jacobian_column_reach_beyond_the_band), which holds Y and not the
+      ! ghost-filled state, and the unit tests of the species rows.
       !
       ! IT IS A LOCAL OF THE SOLVE AND NOT A MODULE ARRAY, so that it has the
       ! same aliasing status as D and the solve owns its own copy. That alone
@@ -4138,8 +4155,9 @@
          endif
       endif
       ! Composition of the INTERIOR of Y, evaluated before the ghosts are
-      ! filled: Apply_BC reads n_part_cell1 for the continuous-temperature base
-      ! ghost (T(1) = p(1)/n_part_cell1) and that global is written by
+      ! filled: Apply_BC reads n_part_cell1 for the characteristic base face
+      ! state (T(1) = p(1)/n_part_cell1, base_boundary_states) and that
+      ! global is written by
       ! get_species_densities. Without this call it still holds the value left
       ! by the PREVIOUS residual evaluation, so F would depend on the previous Y
       ! as well as on Y -- and a finite-difference Jacobian column would then
@@ -4349,7 +4367,7 @@
          captured_temperature       = T
          captured_particle_count    = n_tot + ne
       endif
-      call assemble_residual(u, n_tot + ne, heat, cool, R)
+      call assemble_residual(u, n_tot + ne, f_sp, heat, cool, R)
       call pack_R(R, Fvec)
       ! The carrier row of the same state: the steady continuity equation of
       ! n(H2), assembled by the module that owns it, on the background this
@@ -4567,7 +4585,7 @@
 
       ! ------------------------------------------------------!
 
-      subroutine frozen_residual(Y, n_part, heat, cool, Fvec)
+      subroutine frozen_residual(Y, n_part, f_sp_frozen, heat, cool, Fvec)
       ! FROZEN-radiation residual: the hydro flux/gravity residual at Y with
       ! heat/cool held FIXED (no ioniz_eq, no column-density recompute). This
       ! is strictly local (WENO3 stencil) and hence exactly banded, so the
@@ -4576,13 +4594,17 @@
       ! weakly non-local radiation response is left to the outer iteration.
       real*8, dimension(nvar_jac*N),       intent(in)  :: Y
       real*8, dimension(1-Ng:N+Ng), intent(in)  :: n_part, heat, cool
+      ! The composition held with the radiation: the energy row reads it
+      ! for the interdiffusion enthalpy flux, whose response to the
+      ! hydrodynamic unknowns (through rho and T) the band then carries.
+      real*8, dimension(1-Ng:N+Ng,n_species), intent(in) :: f_sp_frozen
       real*8, dimension(nvar_jac*N),       intent(out) :: Fvec
       real*8, dimension(3,1-Ng:N+Ng) :: u, R
       integer :: j, i
       u = 0.0d0
       call unpack_U(Y, u)
       call Apply_BC(u)
-      call assemble_residual(u, n_part, heat, cool, R)
+      call assemble_residual(u, n_part, f_sp_frozen, heat, cool, R)
       call pack_R(R, Fvec)
       ! THE SPECIES SLOTS CARRY NO EQUATION IN THIS RESIDUAL, and they are
       ! written rather than left as they were found.  pack_R fills three
@@ -4624,7 +4646,7 @@
 
       ! ------------------------------------------------------!
 
-      subroutine build_banded_jac(Y, n_part, heat, cool, ab)
+      subroutine build_banded_jac(Y, n_part, f_sp_frozen, heat, cool, ab)
       ! Colored finite-difference banded Jacobian of the FROZEN residual,
       ! stored in LAPACK general-band form for dgbtrf/dgbtrs:
       !   ab(kl+ku+1 + i - j, j) = J(i,j),  i in [j-ku, j+kl]
@@ -4633,6 +4655,7 @@
       ! band entries with no cross-contamination.
       real*8, dimension(nvar_jac*N),               intent(in)  :: Y
       real*8, dimension(1-Ng:N+Ng),         intent(in)  :: n_part, heat, cool
+      real*8, dimension(1-Ng:N+Ng,n_species), intent(in) :: f_sp_frozen
       real*8, dimension(2*kl_jac+ku_jac+1, nvar_jac*N), intent(out) :: ab
       real*8, dimension(nvar_jac*N) :: F0, Fp, Yp, dYc
       integer :: neq, color, jcol, irow, ilo, ihi
@@ -4642,7 +4665,7 @@
       sqeps = sqrt(epsilon(1.0d0))
       ab    = 0.0d0
 
-      call frozen_residual(Y, n_part, heat, cool, F0)
+      call frozen_residual(Y, n_part, f_sp_frozen, heat, cool, F0)
 
       do color = 1, ncolor_jac
          Yp  = Y
@@ -4651,7 +4674,7 @@
             dYc(jcol) = sqeps*max(abs(Y(jcol)), 1.0d0)
             Yp(jcol)  = Y(jcol) + dYc(jcol)
          enddo
-         call frozen_residual(Yp, n_part, heat, cool, Fp)
+         call frozen_residual(Yp, n_part, f_sp_frozen, heat, cool, Fp)
          do jcol = color, neq, ncolor_jac
             ilo = max(1,   jcol - ku_jac)
             ihi = min(neq, jcol + kl_jac)
@@ -10050,6 +10073,9 @@
       logical :: have
       if (.not. thereis_mol) return
       call cells_of_the_row_report(cells, ncell, ncell_max)
+      ! The diffusivities of THIS state, at the background of the residual
+      ! evaluation just made on it, and not those of a state held earlier.
+      call carrier_diffusivities_of_state(u(1,:), f_sp)
       call U_to_W(u, W)
       write(*,'(A)') ' (decay_vs_transport) molecule cell  L[cm]  '//     &
            'D[cm2/s]  1/|lambda_row|[s]  1/lambda_slow[s]  '//            &
@@ -11609,6 +11635,9 @@
       call resid_relnorm(F, u, rc, rnorm)
       call set_ioniz_eq_sweep_state_kind(ieq_state_marching)
       call install_background_of_adopted_state
+      ! The carrier diffusivities the diagnostics read describe the state
+      ! handed back, at the background just installed for it.
+      call carrier_diffusivities_of_state(u(1,:), f_sp)
       ! THE COMPLETION FLAG IS A STATEMENT ABOUT THE STATE HANDED BACK. The
       ! gate that set info = 0 was taken at the loop top, on the iterate;
       ! this asks the same question of the state that leaves the routine,
@@ -14958,6 +14987,12 @@
       real*8, allocatable :: Fa(:), Fp(:), Yp(:), acol(:), fcol(:)
       real*8, dimension(1-Ng:N+Ng,n_species) :: fwork
       real*8, dimension(1-Ng:N+Ng) :: heatw, coolw, npartw
+      ! What the frozen-radiation columns hold fixed: the heating, cooling
+      ! and composition of the BASE iterate.  The probe evaluations below
+      ! overwrite heatw, coolw and fwork with the probe's own, so the
+      ! frozen column is formed from these copies.
+      real*8, dimension(1-Ng:N+Ng,n_species) :: f_frz
+      real*8, dimension(1-Ng:N+Ng) :: heat_frz, cool_frz
       real*8  :: share(5), sh_dif(5)
       integer :: jcell(10), ncell_hit
       integer :: neq, i, j, k, iv, n_vec, lpinfo, icol, ncol_hit
@@ -15075,7 +15110,10 @@
                             state_is_discarded=.true.,                   &
                             n_eq_sweeps_fixed=n_eq_sweeps_model)
          if (.not. okp) cycle
-         call frozen_residual(Y, npartw, heatw, coolw, fcol)
+         f_frz    = fwork
+         heat_frz = heatw
+         cool_frz = coolw
+         call frozen_residual(Y, npartw, f_frz, heat_frz, cool_frz, fcol)
          hstep = sqrt(epsilon(1.0d0))
          do k = 1, ncol_hit
             icol = colpick(k)
@@ -15098,7 +15136,7 @@
             ! The same column with the radiation held fixed, which is
             ! exactly banded: whatever the full column carries beyond the
             ! stencil and this one does not is the non-local response.
-            call frozen_residual(Yp, npartw, heatw, coolw, Fp)
+            call frozen_residual(Yp, npartw, f_frz, heat_frz, cool_frz, Fp)
             w = (Fp - fcol)/hstep/Drow
             call column_split_against_the_band(acol, icol, ab, s_in,     &
                                                s_band, s_out, s_whole)
@@ -19356,8 +19394,10 @@
       endif
       ! The frozen background the carrier transport reads must describe the
       ! state handed back, not the last state this solve happened to evaluate
-      ! (docs/Update_EXHALE_stage1.pdf section 121).
+      ! (docs/Update_EXHALE_stage1.pdf section 121). The carrier
+      ! diffusivities the diagnostics read describe the same state.
       call install_background_of_adopted_state
+      call carrier_diffusivities_of_state(u(1,:), f_sp)
       gate_rnorm_accepted = rnorm;  gate_fspread_accepted = fspread
       write(*,'(A,I0,A,ES11.3,A,ES10.3,A,I0,A,I0)')                      &
            ' (JFNK) done info=',info,                                     &

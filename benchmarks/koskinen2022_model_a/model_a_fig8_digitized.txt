@@ -2,7 +2,7 @@
 # (page 10 rendered at 400 dpi; frame and ticks located from the print: 169.4 px per R_p, 74.3 px per decade;
 #  tick residuals below 0.4 px; each curve isolated by RGB distance < 60 from its matplotlib color, one value per
 #  pixel column, dash gaps bridged by linear interpolation, 7-point running median). log10 of number density in
-#  cm^-3 (the axis is m^-3; 6 subtracted). H+ and e- are not tabulated here (the 2026-09-05 readings of docs/p23_published_profiles.md 5.1 carry them).
+#  cm^-3 (the axis is m^-3; 6 subtracted). H+ and e- are not tabulated here (the 2026-09-05 readings of md/p23_published_profiles.md 5.1 carry them).
 #  r/r_base = (r/R_p)/1.34. The first rows (r < 1.45) sit on the near-vertical part of every curve: order of magnitude only.
 # columns: r/R_p  r/r_base  logn_H2  logn_H  logn_He  f_H2=2n(H2)/(2n(H2)+n(H))
  1.34   1.000   12.67   11.19   11.88   0.984
