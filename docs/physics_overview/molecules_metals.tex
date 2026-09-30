@@ -612,13 +612,55 @@ marching step subtracts $\Delta t\,\nabla\!\cdot q_d$, formed from the element
 fluxes the accepted element step itself carried, from the thermal energy
 before the coupled source step starts (\texttt{EXHALE\_main.f90}); the
 stationary energy row adds $\nabla\!\cdot q_d$ formed from the element fluxes
-of the state itself \eqref{eq:residual}.  The key
+of the state itself \eqref{eq:residual}.
+
+\paragraph{The transported carriers.}  A molecular carrier moved by the
+carrier operator of Sec.~\ref{sec:mol:carrier} (H$_2$, and OH, H$_2$O, CO
+with the oxygen chemistry) moves relative to the rest of its own elements as
+well: its diffusive, eddy and settling number flux $\Phi_c$ moves nuclei that
+the element fluxes do not, and the nuclei of the same elements held by the
+species that are not carriers move the other way, nucleus for nucleus, so the
+element fluxes are left as they are.  The same identity then gives
+%
+\begin{equation}
+  q_{\rm car} = \sum_c \Phi_c\,\Bigl[h_c - \sum_{\rm el}\nu_{c,\rm el}\,
+  \bar h_{\rm el}\Bigr],
+  \label{eq:mol:qcar}
+\end{equation}
+%
+with $h_c$ the enthalpy of one carrier particle and $\bar h_{\rm el}$ the
+enthalpy of the non-carrier species of element el per nucleus (for hydrogen
+H\,I, H$^+$, H$_2^+$, H$_3^+$ and the hydrogen share of HeH$^+$; for O and C
+their atomic stages where the metals are in the mixture), each particle with
+the electrons its charge gave up; an element with no non-carrier species in a
+cell recoils with its neutral atom.  An H$_2$ molecule rising through atomic
+hydrogen at zero hydrogen flux thus carries $h_{\rm H_2} - 2h_{\rm H} =
+k(u_{\rm rv} - 5T/2)$, about $-1.5\,kT$ at 1000\,K.  $\Phi_c$ is the carrier
+operator's own face flux for the state in hand (\texttt{carrier\_enthalpy\_face\_flux}
+in \texttt{diffusive\_photochemistry.f90}), with the temperature and particle
+count of that state; both ends of the carrier column are closed, so
+$q_{\rm car}(0) = q_{\rm car}(N) = 0$ and the divergence, taken over cells
+$1\ldots N$ on the carrier rows' geometry, sums to zero over the column.  The
+stationary energy row adds $\nabla\!\cdot q_{\rm car}$ beside $\nabla\!\cdot q_d$;
+the marching step subtracts $\Delta t\,\nabla\!\cdot q_{\rm car}$ after an
+accepted carrier step, from the fluxes of the composition that step returned
+(its own fluxes to first order in $\Delta t$, exactly at a fixed point).  The
+ionization stages carried by \texttt{Ionization transport} are not covered:
+their face flux contains the element's advection, and the relative part is
+not formed.  MEASURED on the certified well-mixed He/H\,$=0.19$ state of
+LHS~1140\,b before the term existed: $|\nabla\!\cdot q_{\rm car}|$ is a median
+1.8 per cent of the heating over $1.001 < r/R_p < 1.03$, up to 10 per cent,
+comparable to the net heating where heating and cooling cancel, and that
+state is no longer stationary with the term (the carrier row stands at
+$7\times10^{-3}$ on the first pass).  The key
 \texttt{Interdiffusion enthalpy flux:} is \textbf{on by default} whenever
-\texttt{He\_diffusion} moves helium, because the term belongs to the energy
+\texttt{He\_diffusion} moves helium or a molecular carrier is transported, and
+controls both terms, because the term belongs to the energy
 equation of any mixture whose components move relative to one another;
 \texttt{False} exists to reproduce published escape models that omit it
 \citep[eq.~3]{Koskinen2013}, \citep[eq.~B3]{Koskinen2022}.  With
-\texttt{He\_diffusion} off the term is identically zero with no arithmetic.
+\texttt{He\_diffusion} off the element term is identically zero with no
+arithmetic, and so is the carrier term without transported carriers.
 MEASURED on the LHS~1140\,b \texttt{He\_diffusion} states: the divergence
 reaches 13 to 26 per cent of the local energy budget at 1.1--5\,$R_p$, and on
 the molecular He/H\,$=1.8$ state (24 outer passes with the term, not yet

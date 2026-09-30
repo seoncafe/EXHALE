@@ -75,6 +75,55 @@
       !   mu(T) = (4/15)(m_H/k_B) kappa(T)
       !         = 1.44e-4 (T/1000 K)^0.7     g cm^-1 s^-1 .            (5)
       !
+      ! THE CONDUCTIVITY OF THE MIXTURE (2026-09-30; replaces (4) in the
+      ! heat conduction term, (5) is kept for the viscosity).  The heat
+      ! conduction coefficient is the number-weighted sum of the
+      ! Banks & Kockarts (1973) coefficients of the gas constituents, the
+      ! form Salz et al. (2015, A&A 576, A21, Eqs. 24-26) use for an
+      ! electron-proton plasma and neutral hydrogen and Sutton et al.
+      ! (2015, JGR 120, 6884, Eq. 5) for a neutral mixture including
+      ! helium:
+      !
+      !   kappa = (1/n) [ n_e kappa_ei + n_HI kappa_H + n_HeI kappa_He ]
+      !   kappa_ei = 1.2e-6 T^(5/2)   (Salz 2015 Eq. 24, Spitzer 1978)
+      !   kappa_H  = 379 T^0.69       (Salz 2015 Eq. 25)
+      !   kappa_He = 299 T^0.69       (Sutton 2015 Eq. 5)
+      !                                        erg cm^-1 s^-1 K^-1 ,   (4')
+      !
+      ! n the number density of all particles (electrons, atoms and ions,
+      ! the metals included), one temperature for all of them.  The ions
+      ! contribute nothing of their own (their coefficient, Yelle 2004
+      ! Eq. 9, is 7.4e-8 T^(5/2)/sqrt(mu), below 1e-2 of kappa_H at 1e4 K);
+      ! they enter only through n.  kappa_H is (4) to within 2 per cent
+      ! from 300 to 7000 K (0.06 per cent at 1000 K).  At He/H = 9.7 the
+      ! helium term decides kappa (0.79 kappa_H at 1000 K).  The helium
+      ! coefficient agrees with the tabulated helium conductivity of
+      ! Incropera et al. (2007, Fundamentals of Heat and Mass Transfer, 6th
+      ! ed., Table A.4) to 1 per cent at 300 and 1000 K.
+      !
+      ! MOLECULAR HYDROGEN.  None of the three sources gives an H2
+      ! coefficient; H2 enters (4') as n_H2 kappa_H2 with
+      !
+      !   kappa_H2 = A T^s [ 1 + c E(theta_v/T) ],  E(x) = x^2 e^x/(e^x - 1)^2,
+      !   A = 272.523, s = 0.735652, c = 0.370446, theta_v = 5987 K
+      !                                        erg cm^-1 s^-1 K^-1,   (4'')
+      !
+      ! the Eucken form (a viscosity T^s times a heat capacity whose
+      ! vibrational part is the Einstein function of the v = 0 -> 1 spacing
+      ! of H2, 5987.000 K in the Roueff et al. 2019 ladder this code carries,
+      ! h2_vibrational_relaxation / molecular_infrared_data) fitted to the
+      ! tabulated conductivity of Incropera et al. (2007), Table A.4, over
+      ! 200-2000 K: largest deviation 2.5 per cent (at 200 K), rms 1.05 per
+      ! cent (h2_conductivity).  The table is not a power law (local
+      ! exponent 0.74 from 300 to 1000 K, 0.98 from 1900 to 2000 K); a
+      ! single power law misses it by 6 per cent.  VALIDITY: 200-2000 K.
+      ! Below 200 K the rotational heat capacity freezes out and (4'')
+      ! overestimates (+7.6 per cent at 150 K, +20 per cent at 100 K); above
+      ! 2000 K it is an EXTRAPOLATION of the fitted form (no tabulated
+      ! value).  The
+      ! molecular ions (H2+, H3+, HeH+) are trace particles and enter only
+      ! through n and n_e.
+      !
       ! VALIDITY.  (4) and (5) are the NEUTRAL atomic-hydrogen values.  Above
       ! the ionization front the electron (Spitzer) conductivity, ~ T^{5/2},
       ! is much larger, and Coulomb collisions raise the ion viscosity; that
@@ -188,6 +237,11 @@
       ! The lower atmosphere's own temperature at a radius, which is the
       ! base boundary condition of this operator (conduction_base_level_T).
       use base_boundary, only: base_reservoir_temperature_at
+      use species_table, only: isp_HI, isp_HII, isp_HeI, isp_HeII,      &
+                               isp_HeIII, isp_H2, isp_H2p, isp_H3p,       &
+                               isp_HeHp, isp_OH, isp_H2O, isp_CO,         &
+                               n_mion, mion_fsp
+      use utils, only: calc_ne, calc_ntot
 
       implicit none
       private
@@ -195,8 +249,10 @@
       public :: dynamic_viscosity, thermal_conductivity
       public :: viscous_momentum_source, viscous_dissipation
       public :: thermal_conduction_source, viscous_conduction_sources
+      public :: thermal_conduction_coeffs
       public :: viscous_conduction_step
       public :: conduction_base_level_T, conduction_base_heat_flux
+      public :: conduction_scale, h2_conductivity
 
       ! THE BUDGET ENTRY OF THE BASE BOUNDARY CONDITION of this operator:
       ! the conductive heat flux through the base face at the last
@@ -294,6 +350,18 @@
       ! kappa = kappa_1000K (T/1000 K)^kappa_expo  [erg cm^-1 s^-1 K^-1].
       real*8, parameter :: kappa_1000K = 4.45d4
       real*8, parameter :: kappa_expo  = 0.7d0
+      ! Banks & Kockarts (1973) coefficients of (4'), erg cm^-1 s^-1 K^-1
+      ! with T in K: electron-ion (Salz et al. 2015 Eq. 24), neutral
+      ! hydrogen (Eq. 25) and neutral helium (Sutton et al. 2015 Eq. 5).
+      real*8, parameter :: kappa_ei_coef = 1.2d-6, kappa_ei_expo = 2.5d0
+      real*8, parameter :: kappa_H_coef  = 379.0d0
+      real*8, parameter :: kappa_He_coef = 299.0d0
+      real*8, parameter :: kappa_n_expo  = 0.69d0
+      ! Molecular hydrogen, Eq. (4''): the fit to Incropera et al. (2007)
+      ! Table A.4 over 200-2000 K (section 2), theta_v the v = 0 -> 1
+      ! spacing of H2 (Roueff et al. 2019).
+      real*8, parameter :: kappa_H2_A = 272.523d0, kappa_H2_s = 0.735652d0
+      real*8, parameter :: kappa_H2_c = 0.370446d0, theta_v_H2 = 5987.0d0
       ! Chapman-Enskog/Eucken ratio for a monatomic gas: kappa = eucken k_B mu/m.
       real*8, parameter :: eucken      = 3.75d0        ! = 15/4
 
@@ -362,22 +430,127 @@
 
       ! ------------------------------------------------------!
 
-      subroutine thermal_conductivity(Tcell, kap)
-      ! Heat conduction coefficient in CODE units, Eq. (4).
+      real*8 function conduction_scale()
+      ! A CONTINUATION FACTOR, NOT PHYSICS. Measurement key
+      ! EXHALE_CONDUCTION_SCALE = s, 0 <= s <= 1 (1 when unset, which is
+      ! the equation): the conductivity of (4') is multiplied by s, in the
+      ! stationary row and the marching update alike. It exists to reach a
+      ! state with conduction from one solved without it in steps: on the
+      ! LHS 1140 b states the omitted term is 0.5 to 100 times the heating
+      ! (md/Update_EXHALE_stage3.md section 40), and a solve that switches
+      ! it on at once does not converge. A state solved at 0 < s < 1 is a
+      ! step of that continuation and not a prediction of the model. The
+      ! factor is part of the state identity: the 'cond' token of the
+      ! options field carries its value wherever s /= 1 (load_IC,
+      ! opt_value).
+      real*8,  save :: scale = 1.0d0
+      logical, save :: scale_read = .false.
+      character(len=32) :: env
+      integer :: st
+      if (.not. scale_read) then
+         scale_read = .true.
+         call get_environment_variable('EXHALE_CONDUCTION_SCALE', env,     &
+                                       status=st)
+         if (st .eq. 0 .and. len_trim(env) .gt. 0) then
+            read(env,*,iostat=st) scale
+            if (st .ne. 0 .or. .not. (scale .ge. 0.0d0 .and.               &
+                scale .le. 1.0d0)) then
+               write(*,*) '(conduction) ERROR: EXHALE_CONDUCTION_SCALE'//  &
+                          ' takes a number from 0 to 1, not "'//           &
+                          trim(env)//'".'
+               error stop 1
+            endif
+            write(*,'(A,F8.5,A)') ' (conduction) heat conduction scaled'//  &
+                 ' by', scale, ' (continuation factor'//                   &
+                 ' EXHALE_CONDUCTION_SCALE; 1 is the equation)'
+         endif
+      endif
+      conduction_scale = scale
+      end function conduction_scale
+
+      ! ------------------------------------------------------!
+
+      subroutine thermal_conductivity(Tcell, f_sp, kap)
+      ! Heat conduction coefficient of the mixture, Eq. (4'), in CODE
+      ! units, times the continuation factor conduction_scale. The number
+      ! fractions come from the composition f_sp of the same cells (rho
+      ! f_sp is a number density, so rho cancels in every ratio); the
+      ! electron and particle counts are the equation of state's own
+      ! (calc_ne, calc_ntot).
       real*8, dimension(1-Ng:N+Ng), intent(in)  :: Tcell
+      real*8, dimension(1-Ng:N+Ng,n_species), intent(in) :: f_sp
       real*8, dimension(1-Ng:N+Ng), intent(out) :: kap
-      real*8 :: pref
-      integer :: j
+      real*8, dimension(1-Ng:N+Ng) :: xe, xH, xHe, zero, nhe0, nhe1, nhe2
+      real*8, dimension(1-Ng:N+Ng) :: ne_w, nt_w, nh2
+      real*8, dimension(1-Ng:N+Ng,n_mion) :: nm_w
+      real*8, dimension(1-Ng:N+Ng,4) :: nmol_w
+      real*8, dimension(1-Ng:N+Ng,3) :: nox_w
+      real*8 :: to_code, TK
+      integer :: j, im
       if (.not. conduction_active()) then
          kap = 0.0d0
          return
       endif
-      ! kappa_code = kappa_cgs T0/(rho0 v0^3 R0)
-      pref = kappa_1000K*(T0/1.0d3)**kappa_expo*T0/(n0*mu*v0**3*R0)
+      zero = 0.0d0
+      if (thereis_He) then
+         nhe0 = f_sp(:,isp_HeI);  nhe1 = f_sp(:,isp_HeII)
+         nhe2 = f_sp(:,isp_HeIII)
+      else
+         nhe0 = 0.0d0;  nhe1 = 0.0d0;  nhe2 = 0.0d0
+      endif
+      do im = 1, n_mion
+         nm_w(:,im) = f_sp(:,mion_fsp(im))
+      enddo
+      if (thereis_mol) then
+         nmol_w(:,1) = f_sp(:,isp_H2);   nmol_w(:,2) = f_sp(:,isp_H2p)
+         nmol_w(:,3) = f_sp(:,isp_H3p);  nmol_w(:,4) = f_sp(:,isp_HeHp)
+         call calc_ne(f_sp(:,isp_HII), nhe1, nhe2, ne_w, nm_w, nmol_w)
+         if (thereis_oxychem) then
+            nox_w(:,1) = f_sp(:,isp_OH);  nox_w(:,2) = f_sp(:,isp_H2O)
+            nox_w(:,3) = f_sp(:,isp_CO)
+            call calc_ntot(f_sp(:,isp_HI), f_sp(:,isp_HII), nhe0, nhe1,  &
+                           nhe2, nt_w, nm_w, nmol_w, nox_w)
+         else
+            call calc_ntot(f_sp(:,isp_HI), f_sp(:,isp_HII), nhe0, nhe1,  &
+                           nhe2, nt_w, nm_w, nmol_w)
+         endif
+         nh2 = f_sp(:,isp_H2)
+      else
+         call calc_ne(f_sp(:,isp_HII), nhe1, nhe2, ne_w, nm_w)
+         call calc_ntot(f_sp(:,isp_HI), f_sp(:,isp_HII), nhe0, nhe1,      &
+                        nhe2, nt_w, nm_w)
+         nh2 = 0.0d0
+      endif
+      ! cgs -> code: kappa_code = kappa_cgs T0/(rho0 v0^3 R0)
+      to_code = conduction_scale()*T0/(n0*mu*v0**3*R0)
       do j = 1-Ng, N+Ng
-         kap(j) = pref*max(Tcell(j), 1.0d-8)**kappa_expo
+         TK = max(Tcell(j), 1.0d-8)*T0
+         xe(j)  = ne_w(j)/(ne_w(j) + nt_w(j))
+         xH(j)  = f_sp(j,isp_HI)/(ne_w(j) + nt_w(j))
+         xHe(j) = nhe0(j)/(ne_w(j) + nt_w(j))
+         kap(j) = to_code*( xe(j)*kappa_ei_coef*TK**kappa_ei_expo         &
+                          + xH(j)*kappa_H_coef*TK**kappa_n_expo           &
+                          + xHe(j)*kappa_He_coef*TK**kappa_n_expo         &
+                          + nh2(j)/(ne_w(j) + nt_w(j))*h2_conductivity(TK))
       enddo
       end subroutine thermal_conductivity
+
+      ! ------------------------------------------------------!
+
+      real*8 function h2_conductivity(TK)
+      ! Thermal conductivity of molecular hydrogen [erg cm^-1 s^-1 K^-1] at
+      ! TK [K], Eq. (4''): valid 200-2000 K, an extrapolation outside
+      ! (section 2 of the header).
+      real*8, intent(in) :: TK
+      real*8 :: x, einstein
+      x = theta_v_H2/TK
+      if (x .gt. 700.0d0) then
+         einstein = 0.0d0
+      else
+         einstein = x*x*exp(x)/(exp(x) - 1.0d0)**2
+      endif
+      h2_conductivity = kappa_H2_A*TK**kappa_H2_s*(1.0d0 + kappa_H2_c*einstein)
+      end function h2_conductivity
 
       ! ------------------------------------------------------!
 
@@ -488,7 +661,7 @@
 
       ! ------------------------------------------------------!
 
-      subroutine thermal_conduction_coeffs(Tcell, blo, bdi, bup)
+      subroutine thermal_conduction_coeffs(Tcell, f_sp, blo, bdi, bup)
       ! Tridiagonal coefficients of (1/r^2) d/dr(r^2 kappa dT/dr):
       !   Q(j) = blo(j) T(j-1) + bdi(j) T(j) + bup(j) T(j+1) .
       !
@@ -497,6 +670,7 @@
       ! callers multiply blo(1) by, so the coefficient and the temperature
       ! it acts on belong to one boundary condition.
       real*8, dimension(1-Ng:N+Ng), intent(in)  :: Tcell
+      real*8, dimension(1-Ng:N+Ng,n_species), intent(in) :: f_sp
       real*8, dimension(N),         intent(out) :: blo, bdi, bup
       real*8, dimension(1-Ng:N+Ng) :: kap, Tb
       real*8 :: Ap, Am, dV, rp, rm, kp, km, wp, wm, dp, dm
@@ -504,7 +678,7 @@
 
       Tb = Tcell
       Tb(1-Ng:0) = conduction_base_level_T(Tcell)
-      call thermal_conductivity(Tb, kap)
+      call thermal_conductivity(Tb, f_sp, kap)
       blo = 0.0d0;  bdi = 0.0d0;  bup = 0.0d0
 
       do j = 1, N
@@ -567,9 +741,10 @@
 
       ! ------------------------------------------------------!
 
-      subroutine thermal_conduction_source(Tcell, Qc)
+      subroutine thermal_conduction_source(Tcell, f_sp, Qc)
       ! Heat conduction source (1/r^2) d/dr(r^2 kappa dT/dr), code units.
       real*8, dimension(1-Ng:N+Ng), intent(in)  :: Tcell
+      real*8, dimension(1-Ng:N+Ng,n_species), intent(in) :: f_sp
       real*8, dimension(1-Ng:N+Ng), intent(out) :: Qc
       real*8, dimension(N) :: blo, bdi, bup
       real*8  :: Tb
@@ -577,7 +752,7 @@
       Qc = 0.0d0
       conduction_base_heat_flux = 0.0d0
       if (.not. conduction_active()) return
-      call thermal_conduction_coeffs(Tcell, blo, bdi, bup)
+      call thermal_conduction_coeffs(Tcell, f_sp, blo, bdi, bup)
       Tb = conduction_base_level_T(Tcell)
       do j = 1, N
          if (j .eq. 1) then
@@ -599,20 +774,22 @@
 
       ! ------------------------------------------------------!
 
-      subroutine viscous_conduction_sources(vel, Tcell, Smom, Sene)
+      subroutine viscous_conduction_sources(vel, Tcell, f_sp, Smom, Sene)
       ! The pair that enters the conserved-variable equations:
       !   Smom = F_mu                          (momentum, Eq. 1)
       !   Sene = w F_mu + q_mu + conduction    (TOTAL energy, Eq. 3)
       ! This is the single definition used by BOTH the steady residual and
       ! the marching update, so the two cannot describe different systems.
       real*8, dimension(1-Ng:N+Ng), intent(in)  :: vel, Tcell
+      ! The composition of the same cells (the conductivity of the mixture).
+      real*8, dimension(1-Ng:N+Ng,n_species), intent(in) :: f_sp
       real*8, dimension(1-Ng:N+Ng), intent(out) :: Smom, Sene
       real*8, dimension(1-Ng:N+Ng) :: qv, Qc
       Smom = 0.0d0;  Sene = 0.0d0
       if (.not. transport_active()) return
       call viscous_momentum_source(vel, Tcell, Smom)
       call viscous_dissipation(vel, Tcell, qv)
-      call thermal_conduction_source(Tcell, Qc)
+      call thermal_conduction_source(Tcell, f_sp, Qc)
       Sene = vel*Smom + qv + Qc
       end subroutine viscous_conduction_sources
 
@@ -740,8 +917,8 @@
 
       ! ------------------------------------------------------!
 
-      subroutine viscous_conduction_step(u, W, Tcell, n_part, dt, step,   &
-                                         status)
+      subroutine viscous_conduction_step(u, W, Tcell, n_part, f_sp, dt,  &
+                                         step, status)
       ! Crank-Nicolson update of the two transport operators, applied as an
       ! operator-split stage of the marching loop, as CETIMB integrates the
       ! same terms.  Both are diffusive, so an explicit update would be bound
@@ -770,6 +947,8 @@
       ! failure, not a clamp (section 5 of the module header).
       real*8, dimension(3,1-Ng:N+Ng), intent(inout) :: u, W
       real*8, dimension(1-Ng:N+Ng),   intent(in)    :: Tcell, n_part, dt
+      ! The composition of the same cells (the conductivity of the mixture).
+      real*8, dimension(1-Ng:N+Ng,n_species), intent(in) :: f_sp
       ! Marching step index, for the failure report and the floor counters.
       integer,                        intent(in)    :: step
       ! Verdict of the stage. Optional, so the call site is unchanged; the
@@ -878,7 +1057,7 @@
          ! did not run, and in the ghosts, which it never touches.
          call viscous_dissipation(vnew, Tcell, qv)
          if (conduction_active()) then
-            call thermal_conduction_coeffs(Tcell, blo, bdi, bup)
+            call thermal_conduction_coeffs(Tcell, f_sp, blo, bdi, bup)
          else
             blo = 0.0d0;  bdi = 0.0d0;  bup = 0.0d0
          endif

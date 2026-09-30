@@ -46,9 +46,10 @@ where $Q = \mathcal{H} - \Lambda$ is the net radiative heating minus cooling
 per unit volume (Sec.~\ref{sec:thermal}) and $S_\mu$, $S_{\mathcal{E}}$ are the viscous and conductive
 sources of Sec.~\ref{sec:hydro:transport}, both off unless a run asks for
 them.  $q_d = \sum_s h_sJ_s$ is the interdiffusion enthalpy flux of a mixture
-whose elements move relative to the mass-averaged velocity $v$
-\citep[eqs.~11--13]{Cook2009}: it exists only where \texttt{He\_diffusion}
-moves helium against hydrogen, and is written out in
+whose elements or transported carriers move relative to the mass-averaged
+velocity $v$ \citep[eqs.~11--13]{Cook2009}: it exists where
+\texttt{He\_diffusion} moves helium against hydrogen and where a molecular
+carrier is transported, and is written out in
 Sec.~\ref{sec:mol:interdiffusion}.  The factor $4\pi$ that would appear in the face areas and the cell
 volume cancels between them and is simply not carried.
 
@@ -331,6 +332,13 @@ still the physics the row balances, so its magnitude,
 is formed separately and is the term the momentum residual is read against
 under this option.
 
+Under this option the lower boundary shares the same equilibrium: the
+interior pressure its outgoing characteristic reads is $P_{\rm dn}(1)$, and
+the two ghost cells continue \eqref{eq:wb_eq} below the level through the
+face state (Sec.~\ref{sec:bcic:base}), so a column at rest in the discrete
+equilibrium and meeting the reservoir's pressure at the level carries no
+flux through the base face either.
+
 \subsection{Low-Mach dissipation of the contact mode}
 \label{sec:hydro:lowmach}
 
@@ -393,21 +401,40 @@ not satisfy $vS_\mu + q_\mu = \nabla\!\cdot\!(\tau\cdot v)$.  Physical
 correctness being the criterion, \eqref{eq:viscous} is what is implemented and
 the discrepancy is recorded in the source.
 
-Neither Koskinen paper prints the transport coefficients, so the atomic
-hydrogen conductivity of \citet{Watson1981} is used,
+Neither Koskinen paper prints the transport coefficients.  The heat
+conduction coefficient is the number-weighted sum of the Banks \& Kockarts
+(1973) coefficients of the constituents, as \citet{Salz2015} (their
+Eqs.~24--26, electron--ion and neutral hydrogen) and \citet{Sutton2015}
+(their Eq.~5, with helium) write it,
 %
 \begin{equation}
-  \kappa(T) = 4.45\times10^{4}\left(\frac{T}{1000\,\mathrm{K}}\right)^{0.7}
+  \kappa = \frac{1}{n}\Bigl[\,n_e\,1.2\times10^{-6}\,T^{5/2}
+     + n_{\rm HI}\,379\,T^{0.69} + n_{\rm HeI}\,299\,T^{0.69}
+     + n_{\rm H_2}\,k_{\rm H_2}(T)\Bigr]
   \ \mathrm{erg\,cm^{-1}\,s^{-1}\,K^{-1}},
-  \qquad
-  \mu(T) = \frac{4}{15}\frac{m_{\rm H}}{k_B}\,\kappa(T),
   \label{eq:transport_coeff}
 \end{equation}
 %
-the second being the Chapman-Enskog/Eucken relation for a monatomic gas,
-Prandtl number $2/3$.  Both are the \emph{neutral} values: above the
-ionization front the electron conductivity is far larger and that regime is
-not covered, which is stated at the routine.  In code units
+$n$ the number density of all particles and $T$ in K; ions contribute through
+$n$ only.  The hydrogen term is the atomic hydrogen conductivity of
+\citet{Watson1981}, $4.45\times10^{4}(T/1000\,\mathrm{K})^{0.7}$, to within
+2 per cent between 300 and 7000~K; at He/H $=9.7$ the helium term decides
+$\kappa$ (0.81 of the hydrogen value on the LHS~1140~b states), and it
+agrees with the tabulated helium conductivity of \citet{Incropera2007}
+(Table~A.4) to 1 per cent at 300 and 1000~K.  None of these sources gives an
+H$_2$ coefficient: $k_{\rm H_2}(T) = A\,T^{s}\,[1 + c\,E(\theta_v/T)]$,
+$E(x) = x^2 e^x/(e^x-1)^2$, $A = 272.523$, $s = 0.735652$, $c = 0.370446$,
+$\theta_v = 5987$~K (the $v=0\to1$ spacing of H$_2$ in the
+\citet{Roueff2019} ladder), an Eucken form fitted to the tabulated
+conductivity of \citet{Incropera2007}, Table~A.4, over 200--2000~K (largest
+deviation 2.5 per cent, rms 1.05 per cent); it is valid there and an
+extrapolation outside.  The molecular ions enter through $n$ and $n_e$
+only.  A continuation factor $s$ on $\kappa$
+(\texttt{EXHALE\_CONDUCTION\_SCALE}) is part of the state identity (the
+\texttt{cond} token carries it).  The viscosity keeps the hydrogen value tied
+to the Watson conductivity by the Chapman--Enskog/Eucken relation for a
+monatomic gas, Prandtl number $2/3$,
+$\mu(T) = \frac{4}{15}\frac{m_{\rm H}}{k_B}\,4.45\times10^{4}(T/1000\,\mathrm{K})^{0.7}$.  In code units
 $\mu_{\rm code} = \mu_{\rm cgs}/(n_0 m_{\rm H} v_0 R_0)$, the inverse Reynolds
 number, and $\kappa_{\rm code} = \tfrac{15}{4}\mu_{\rm code}$.
 

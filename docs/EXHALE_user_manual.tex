@@ -465,19 +465,44 @@ the outgoing acoustic invariant of the first cell,
 \begin{equation}
   p_b - \rho_i c_i\, v_b \;=\; p_i - \rho_i c_i\, v_i ,
 \end{equation}
-where the subscript $i$ is cell~1 continued to the face along its own
-hydrostatic isentrope and $c_i$ uses cell~1's own $\gamma_{\rm eff}$. The
-closed-form invariant $v-2c/(\gamma-1)$ is deliberately not used: the caloric
-equation of state gives every cell its own $\gamma_{\rm eff}(x_{\rm H_2},T)$,
-and that invariant assumes one constant $\gamma$.
+where the subscript $i$ is cell~1 carried to the face and $c_i$ uses
+cell~1's own $\gamma_{\rm eff}$. The closed-form invariant $v-2c/(\gamma-1)$
+is deliberately not used: the caloric equation of state gives every cell its
+own $\gamma_{\rm eff}(x_{\rm H_2},T)$, and that invariant assumes one constant
+$\gamma$.
 
-The ghost cells are then the volume averages of the hydrostatic isentrope
-through the face state continued \emph{below} the face, i.e.\ below the level,
-with the velocity carrying a constant
-$\rho v r^2$. They are not copies of the face state: the two differ by half a
-cell of stratification, and that half cell is what the previous ghost-cell
-closure left as a resolution-independent momentum imbalance of $25\%$ of the
-weight of cell~1.
+\textbf{With \texttt{Well balanced: True}} (boundary model v5,
+\texttt{face\_at\_level\_discrete\_equilibrium\_v5}) cell~1 is carried to the
+face by its own constant-density hydrostatic equilibrium,
+$p_i = p_1 + \rho_1[\Phi(r_1) - \Phi(r_{\rm edg}(0))]$, $\rho_i = \rho_1$, the
+pressure the well-balanced reconstruction extrapolates cell~1 to at the same
+face, and the ghost cells continue that same discrete equilibrium below the
+level: each ghost's constant-density equilibrium meets the face state's
+pressure (ghost~0) or the ghost above it (ghost~$-1$) at its upper face, at the
+reservoir-side temperature. The boundary and the reconstruction then share one
+discrete mechanical equilibrium (K\"appeli \& Mishra 2016, A\&A 587, A94,
+section~2.1): a column at rest in it, meeting the reservoir's pressure at the
+level, carries no flux through the base face and no momentum defect in the
+base cells, to rounding, whatever its entropy stratification, and the face
+state carries the interior's own mass flux $\rho_1 v_1 r_1^2$ at the density
+of the face state. The reservoir still states the pressure and the entropy of
+the gas it supplies. What this removes is an $O[(\Delta r/H)^2]$ truncation
+difference between two second-order constructions: on a column built in the
+discrete equilibrium the previous (v4) boundary left a base flux
+$1.47\times10^4$ times a Mach $10^{-8}$ wind; with v5 the base face carries
+that wind to $2\times10^{-3}$ (\texttt{src/tests/grid\_and\_gates},
+\texttt{base\_reservoir\_equilibrium} and \texttt{low\_mach\_face\_flux}). A
+seed mapped from another grid or model is not in this discrete equilibrium,
+and its lower layer is not at rest until it is projected onto it.
+
+\textbf{Without it} (boundary model v4) cell~1 is carried to the face along
+its own hydrostatic isentrope, and the ghost cells are the volume averages of
+the reservoir's hydrostatic isentrope through the face state continued
+\emph{below} the face, i.e.\ below the level. In both models the velocity
+carries a constant $\rho v r^2$. The ghosts are not copies of the face state:
+the two differ by half a cell of stratification, and that half cell is what
+the previous ghost-cell closure left as a resolution-independent momentum
+imbalance of $25\%$ of the weight of cell~1.
 
 \paragraph{The face at the level (boundary model v4, 2026-09-27).} Until
 2026-09-27 the level was a ghost cell \emph{center} ($r(0)=1$ on the
@@ -710,13 +735,13 @@ outer cells of the molecular He/H\,$=0.083$ continuation, which neither the
 old nor the new control certifies), is in \texttt{md/Update\_EXHALE\_stage3.md}
 section~29.7.
 
-\emph{A restartable state after every pass} (2026-09-28). Every outer pass
-after which the iteration goes on writes the state the next pass starts from
-to \path{output/Hydro_ioniz_last_pass.txt} and
-\path{output/Ion_species_last_pass.txt}, overwriting the previous pass's pair,
-so a run stopped from outside (a wall-clock limit, a kill) keeps its last
-completed pass; \S\ref{sec:lastpass} describes the files and the restart from
-them.
+\emph{A restartable state after every pass} (2026-09-28; published as
+generations since 2026-09-29). Every outer pass after which the iteration goes
+on publishes the state the next pass starts from as one generation
+\path{output/pass_state/<state_id>/}, named by
+\path{output/pass_state/current}, so a run stopped from outside (a wall-clock
+limit, a kill) keeps its last completed pass; \S\ref{sec:passstate} describes
+the files and the restart from them.
 
 \begin{figure}[htbp]\centering
 \includegraphics[width=0.95\textwidth]{figures/newton_convergence.pdf}
@@ -744,7 +769,7 @@ implements the ``Newton from an existing state'' recipe of \S\ref{sec:newton}
 \texttt{EXHALE\_CARRIER\_TRUST} / \texttt{EXHALE\_DIFF\_OMEGA}, which set the
 starting step lengths of the stationary outer passes and are how a run
 continued from a pass snapshot takes over the step lengths it had reached
-(\S\ref{sec:lastpass}). Typical usage:
+(\S\ref{sec:passstate}). Typical usage:
 \begin{lstlisting}[style=sh]
 EXHALE_RESIDUAL=1 ./EXHALE.x                      # rank a "converged" state
 EXHALE_PTC=1 EXHALE_PTC_JFNK=1 EXHALE_PTC_DTAU0=1.0 ./EXHALE.x   # re-converge it
@@ -823,7 +848,7 @@ Variable & Effect \\
   and doubles it back up to this starting value, \S\ref{sec:newton}), so the
   undamped loop ($1.0$) can be compared with the damped one without a
   rebuild. A restart does not inherit the $\omega$ a run had reached: to
-  continue from a pass snapshot (\S\ref{sec:lastpass}) at the value its
+  continue from a pass snapshot (\S\ref{sec:passstate}) at the value its
   \texttt{\# pass\_snapshot} line records, pass it here. \\
 \texttt{EXHALE\_CARRIER\_TRUST=}$\langle v\rangle$ & Set the starting
   movement bound of the carrier update of the stationary outer passes, the
@@ -837,6 +862,13 @@ Variable & Effect \\
   \texttt{\# pass\_snapshot} line records, which a restart does not inherit. \\
 \texttt{EXHALE\_OUTER\_PASSES=}$\langle n\rangle$ & The pass budget of the
   stationary outer iteration (default 20). \\
+\texttt{EXHALE\_PASS\_STATE\_STOP\_AT=}$\langle k\rangle$[\texttt{:}$\langle
+  p\rangle$] & A measurement key: stop the run (exit status 3) right after
+  step $k$ of the publication of the pass state of pass $p$ (of every pass
+  when $p$ is not given): $k=1$ after the temporary directory is written,
+  $2$ after it is renamed onto its generation name, $3$ after
+  \path{output/pass_state/current} names it (\S\ref{sec:passstate}). Unset:
+  no effect. \\
 \midrule
 \texttt{EXHALE\_MAXSTEPS=}$\langle n\rangle$ & Deterministic step cap: leave
   the marching loop after $n$ steps and write the outputs. Separate from the
@@ -1818,10 +1850,14 @@ defaults restore the standard behavior).}\label{tab:inp-opt}\\
   $q_d=\sum_s h_sJ_s$ in the energy equation of the diffusing mixture
   (Cook 2009, Phys.\ Fluids 21, 055109, eqs.~11--13): the sensible enthalpy
   the helium (and, with \texttt{He\_metal\_diffusion}, each metal) carries as
-  it moves against hydrogen, in the marching energy update and in the
-  stationary energy row alike (\S\ref{sec:hediff}). It acts only with
-  \texttt{He\_diffusion: True} and helium in the gas; otherwise the key is
-  inert, bit for bit. \textbf{On by default, because the term belongs to the
+  it moves against hydrogen, and the sensible enthalpy each transported
+  molecular carrier (H$_2$; OH, H$_2$O, CO with the oxygen chemistry) carries
+  relative to the rest of its elements, in the marching energy update and in
+  the stationary energy row alike (\S\ref{sec:hediff}). It acts with
+  \texttt{He\_diffusion: True} and helium in the gas, or with
+  \texttt{Molecular carrier transport: True}; otherwise the key is inert, bit
+  for bit. A restart from a state written without the carrier term names the
+  token \texttt{carrier\_enth} on a \texttt{Restart option change:} line. \textbf{On by default, because the term belongs to the
   energy equation of any mixture whose components move relative to one
   another}; \texttt{False} exists only to reproduce published escape models
   that omit it (Koskinen et al.\ 2013, 2022; Yelle 2004). MEASURED on the
@@ -2029,9 +2065,12 @@ defaults restore the standard behavior).}\label{tab:inp-opt}\\
   $\mu=\mu_0T^{s}$ in code units ($s=0.7$ by default), kept for sensitivity
   scans. Off $=$ byte-identical to the inviscid code. \\
 \texttt{Conduction:} & logical (def.\ \texttt{False}) & Add heat conduction
-  $r^{-2}\partial_r(r^2\kappa\,\partial_rT)$ with the Watson et al.\ (1981)
-  atomic-hydrogen $\kappa(T)=4.45\times10^{4}\,(T/10^{3}\,{\rm
-  K})^{0.7}$\,erg\,cm$^{-1}$s$^{-1}$K$^{-1}$. Off $=$ byte-identical. \\
+  $r^{-2}\partial_r(r^2\kappa\,\partial_rT)$ with the conductivity of the
+  mixture $\kappa=[n_e\,1.2\times10^{-6}T^{5/2}+n_{\rm HI}\,379\,T^{0.69}
+  +n_{\rm HeI}\,299\,T^{0.69}+n_{\rm H_2}k_{\rm H_2}(T)]/n$\,erg\,cm$^{-1}$s$^{-1}$K$^{-1}$
+  (Banks \& Kockarts 1973 as Salz et al.\ 2015 and Sutton et al.\ 2015 state
+  it; $k_{\rm H_2}$ an Eucken-form fit to Incropera et al.\ 2007 Table A.4,
+  valid 200--2000 K; $n$ all particles). Off $=$ byte-identical. \\
 \texttt{Caloric EOS:} & \texttt{ladder} $|$ \texttt{monatomic}
   (def.\ \texttt{ladder}) & The caloric equation of state. \texttt{ladder}:
   every atom, ion and electron stores $\tfrac32 kT$ and H$_2$ its
@@ -3063,9 +3102,9 @@ the equilibrium files are what they read when the solved state is asked for
 (\texttt{EXHALE\_TRANSIT\_STATE=solution}, \S\ref{sec:tpm}) or when a
 stationary solve wrote no advection-corrected pair. A stationary run that
 alternates a wind solve with a composition relaxation also keeps the state of
-its last completed outer pass, \texttt{Hydro\_ioniz\_last\_pass.txt} and
-\texttt{Ion\_species\_last\_pass.txt} (\S\ref{sec:lastpass}), a restartable
-pair that is never a certified state.
+its last completed outer pass, the generation
+\path{output/pass_state/<state_id>/} named by \path{output/pass_state/current}
+(\S\ref{sec:passstate}), a restartable pair that is never a certified state.
 
 \paragraph{Caveat: the \texttt{\_adv} profile at a ``breathing'' base.}
 The advection-corrected (\texttt{*\_adv.txt}) \emph{temperature and ionization}
@@ -3371,16 +3410,21 @@ the acceptance gates used, and the grid size.
 later has to say which boundary it is a solution of:
 
 \begin{quote}\ttfamily\small
-\# boundary\_model characteristic\_face\_ps\_reservoir\_C\_minus\_contact\_upwind\_\\\hspace*{2em}ghost\_fixed\_point\_seed\_reservoir\_row\_face\_at\_level\_v4\\
+\# boundary\_model characteristic\_face\_ps\_reservoir\_C\_minus\_contact\_upwind\_\\\hspace*{2em}ghost\_fixed\_point\_seed\_reservoir\_row\_face\_at\_level\_\\\hspace*{2em}discrete\_equilibrium\_v5\\
 \# boundary\_reservoir version 1 p[p0] T[T0] nhat[n0/rho0] r\_level[Rp] \ldots
 \end{quote}
 
 \noindent (each is one line in the file). The first names the model that built the face state
 (\S\ref{sec:basebc}); the identity changes when the model does, v2 being the
 contact upwind without a stated ghost composition, v3 adding the ghost
-seed and the fixed point the ghost composition is held to, and v4
+seed and the fixed point the ghost composition is held to, v4
 (2026-09-27) putting the lower face on the base level, so that the reservoir
-is the face state it owns with no transport along an isentrope.  The second states
+is the face state it owns with no transport along an isentrope, and v5
+(\texttt{\ldots\_face\_at\_level\_discrete\_equilibrium\_v5}, 2026-09-29) building the
+interior pressure at the face and the ghost cells from the well-balanced
+reconstruction's own discrete equilibrium.  A run with \texttt{Well balanced:
+True} states v5; a run without it builds the v4 boundary unchanged and states
+v4.  The second states
 the prescribed reservoir with the version of its prescription: the pressure
 and temperature at the base level, the particles per unit mass of the
 reservoir gas and the radius the three are stated at, each written at
@@ -3425,53 +3469,99 @@ $n({\rm O\,\textsc{i}})+n({\rm O\,\textsc{ii}})+n({\rm O\,\textsc{iii}})
 +n({\rm OH})+n({\rm H_2O})+n({\rm CO})$, and the same holds for carbon with
 CO.
 
-\subsection{\texttt{Hydro\_ioniz\_last\_pass.txt} / \texttt{Ion\_species\_last\_pass.txt}}
-\label{sec:lastpass}
+\subsection{\texttt{pass\_state/}: the state of every outer pass}
+\label{sec:passstate}
 The state of the last completed outer pass of the stationary route
 (\S\ref{sec:newton}), written since 2026-09-28 so that a run stopped from
-outside keeps the passes it made. \emph{When}: after every outer pass after
-which the iteration goes on, i.e.\ only where the route alternates a wind solve
-with a composition relaxation (\texttt{He\_diffusion}, or molecular carriers
-without \texttt{Coupled carrier solve: True}); each pass overwrites the pair of
-the pass before. A pass that ends the iteration writes nothing here, because
-the run then writes its final \texttt{Hydro\_ioniz.txt} /
+outside keeps the passes it made, and published as generations since
+2026-09-29 (until then it was the pair
+\texttt{Hydro\_ioniz\_last\_pass.txt} / \texttt{Ion\_species\_last\_pass.txt},
+overwritten half by half, \texttt{md/Update\_EXHALE\_stage3.md} section~33).
+\emph{When}: after every outer pass after which the iteration goes on, i.e.\
+only where the route alternates a wind solve with a composition relaxation
+(\texttt{He\_diffusion}, or molecular carriers without \texttt{Coupled carrier
+solve: True}). A pass that ends the iteration publishes nothing, because the
+run then writes its final \texttt{Hydro\_ioniz.txt} /
 \texttt{Ion\_species.txt}, and the last pass of the budget takes no
-composition update, so its state is that final state; the pair left beside a
-finished run is one pass older than it. \emph{What}: the state the next pass
-starts from, i.e.\ the accepted composition update of that pass (or the entry
-state of the coupled block where the route handed over to it), written by the
-same writers and with the same header lines as the final state files, so the
-two files have exactly the columns of \texttt{Hydro\_ioniz.txt} and
-\texttt{Ion\_species.txt}. Writing them changes nothing the run reads
+composition update, so its state is that final state; the generation left
+beside a finished run is one pass older than it. \emph{What}: the state the
+next pass starts from, i.e.\ the accepted composition update of that pass (or
+the entry state of the coupled block where the route handed over to it),
+written by the same writers and with the same header lines as the final state
+files, so the two files have exactly the columns of \texttt{Hydro\_ioniz.txt}
+and \texttt{Ion\_species.txt}. Writing them changes nothing the run reads
 afterwards; the final state files of a run are bitwise those it wrote before
-the snapshot existed (MEASURED on the regression matrix, 2026-09-28). The cost
-is 0.03--0.05\,s a pass on 500 cells.
+the snapshot existed (MEASURED on the regression matrix, 2026-09-28, and again
+for the generations on \texttt{iontrans\_metals} and \texttt{hp\_front},
+2026-09-29).
+
+\emph{Layout}: one directory for each published pass,
+\begin{quote}\ttfamily\small
+output/pass\_state/<state\_id>/Hydro\_ioniz.txt\\
+output/pass\_state/<state\_id>/Ion\_species.txt\\
+output/pass\_state/<state\_id>/manifest.txt\\
+output/pass\_state/current
+\end{quote}
+with \texttt{<state\_id>} $=$ \texttt{r<run identity>\_p<n>}. The run
+identity is formed once at the start of the run from the wall clock to the
+millisecond and the processor clock count
+(\texttt{yyyymmddThhmmss.sss\_c<count>}), so two runs writing the same pass
+number never name one generation. \texttt{manifest.txt} states, one
+\texttt{key=value} a line, the \texttt{state\_id}, the \texttt{run\_identity},
+the \texttt{pass}, the \texttt{previous\_state\_id} (the generation
+\texttt{current} named when this one was published), the two file names with
+their sizes in bytes, and the certification pair. \texttt{current} is one line,
+the \texttt{state\_id} of the generation a restart takes.
+
+\emph{The order of publication}: (1) the three files are written and closed in
+\path{output/pass_state/.<state_id>.tmp/}; (2) that directory is renamed onto
+\path{output/pass_state/<state_id>}; (3) \path{output/pass_state/current.part}
+is written with the new \texttt{state\_id} and renamed onto
+\path{output/pass_state/current}, the single rename that publishes the
+generation; (4) the generation \texttt{current} named before is kept, and the
+one it had replaced (its manifest's \texttt{previous\_state\_id}) is removed,
+file by file under its name. An interruption at any point therefore leaves
+\texttt{current} naming a complete generation, or, before the first
+publication in a directory, no \texttt{current}. An interruption before step 2
+leaves a \texttt{.<state\_id>.tmp} directory, one between steps 2 and 3 a
+complete generation no pointer names; neither is read, and neither is removed
+by a later run. \texttt{EXHALE\_PASS\_STATE\_STOP\_AT} (Table~\ref{tab:env})
+stops a run after a chosen step, to measure this.
 
 \emph{Headers}: both halves carry the \texttt{\# coupling:} line, with
-\texttt{certified=F cert\_reason=pass\_snapshot\_p<n>} for pass $n$, and a line
+\texttt{certified=F cert\_reason=pass\_snapshot\_p<n>} for pass $n$ and, as
+its last field, \texttt{state\_id=<state\_id>}, and a line
 \begin{quote}\ttfamily\small
 \# pass\_snapshot pass=<n> carrier\_movement\_bound=<b> element\_omega=<w>
 (the state after the composition update of this pass; not certified)
 \end{quote}
 A snapshot is \emph{never} a certified state: the certification of a pass is
 taken before its composition update and the snapshot is the state after it,
-so no tool may read it as certified. Each half is written to
-\texttt{<name>.part} and renamed onto its name only after both halves are
-written, so a kill during the write leaves the previous pair whole; a kill
-between the two renames leaves halves of two passes, which state two
-different \texttt{cert\_reason} values and are refused by \texttt{load\_IC}.
+so no tool may read it as certified. \texttt{load\_IC} refuses a pair whose
+halves state two different \texttt{state\_id} values, and a pair in which one
+half states one and the other does not (a generation file beside a final state
+file); a pair in which neither states one (every final state, every file
+written before the field existed) is read as before. The final state files of
+a run carry no \texttt{state\_id}.
 
-\emph{Restarting from them}: copy the pair to
-\texttt{output/Hydro\_ioniz\_IC.txt} / \texttt{output/Ion\_species\_IC.txt} and
-run with \texttt{Load IC?\ True} as from any state file (the restart contract
-of \S\ref{sec:inputs} applies unchanged). The carrier movement bound and the
-element under-relaxation factor the run had reached are \emph{not} restored by
-a restart; to continue at the values of the \texttt{\# pass\_snapshot} line,
-pass them as \texttt{EXHALE\_CARRIER\_TRUST=<b>} and
-\texttt{EXHALE\_DIFF\_OMEGA=<w>} (Table~\ref{tab:env}). MEASURED: a run killed
-during pass 3 left the complete pass-2 pair, which restarted and continued as
-the uninterrupted run did (\texttt{md/Update\_EXHALE\_stage3.md}
-section~29.12).
+\emph{Restarting from them}: copy the pair of the generation \texttt{current}
+names to \texttt{output/Hydro\_ioniz\_IC.txt} /
+\texttt{output/Ion\_species\_IC.txt},
+\begin{lstlisting}[style=sh]
+G=$(cat output/pass_state/current)
+cp output/pass_state/$G/Hydro_ioniz.txt output/Hydro_ioniz_IC.txt
+cp output/pass_state/$G/Ion_species.txt output/Ion_species_IC.txt
+\end{lstlisting}
+and run with \texttt{Load IC?\ True} as from any state file (the restart
+contract of \S\ref{sec:inputs} applies unchanged). The carrier movement bound
+and the element under-relaxation factor the run had reached are \emph{not}
+restored by a restart; to continue at the values of the
+\texttt{\# pass\_snapshot} line, pass them as
+\texttt{EXHALE\_CARRIER\_TRUST=<b>} and \texttt{EXHALE\_DIFF\_OMEGA=<w>}
+(Table~\ref{tab:env}). MEASURED: a run killed during pass 3 left the complete
+pass-2 pair, which restarted and continued as the uninterrupted run did
+(\texttt{md/Update\_EXHALE\_stage3.md} section~29.12, with the pair of that
+time).
 
 \subsection{\texttt{Cooling\_breakdown.txt}}
 Radiative cooling by channel [erg\,cm$^{-3}$\,s$^{-1}$] vs.\ radius. Columns:

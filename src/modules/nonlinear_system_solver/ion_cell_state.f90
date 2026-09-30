@@ -315,6 +315,18 @@
 		! the equation; the field then contributes an exact zero and the
 		! residual is the advected balance without it.
 		real*8 :: div_rhov = 0.0d0
+		! THE TRANSPORT TERMS OF THE ENERGY EQUATION the run solved and the
+		! advected balance must keep (post_process_adv, 2026-09-30): heat
+		! conduction Q_c = b_lo T_{j-1} + b_di T_j + b_up T_{j+1} (the
+		! triplets of viscous_conduction) and the divergence of the enthalpy
+		! flux of the element and carrier fluxes, entered as heating [code
+		! units]. heat_extra is the part held fixed while the root finder
+		! varies this cell's T (the neighbors' conduction and the enthalpy
+		! flux divergence), cond_diag the coefficient b_di of this cell's own
+		! T. Zero for a run without these terms, and the residual is then the
+		! one it always was, to the bit.
+		real*8 :: heat_extra = 0.0d0
+		real*8 :: cond_diag  = 0.0d0
 	end type teq_state
 
 	type(teq_state), save :: teq_cell

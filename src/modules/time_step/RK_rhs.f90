@@ -525,7 +525,7 @@
       integer :: j,jf,sweep,n_new_faces,n_repl
       real*8  :: dr,rp,rm,dAp,dAm,dV,dF3p
       real*8, dimension(3) :: Fp,Fm,dFc
-      real*8  :: pL,pR,rho_e
+      real*8  :: pL,pR
       real*8  :: qp,qm
       real*8  :: wgt,w_face_p
 
@@ -559,15 +559,12 @@
          n_new_faces  = 0
          rebuild_cell = .false.
 
-         ! Locate the cells still outside rho > 0, rho e > 0 and mark their
-         ! two interfaces. Each test is the negation of "strictly positive",
-         ! so a NaN -- which compares false against everything -- is caught.
+         ! Locate the cells still outside rho > 0, rho e > 0 (or not finite;
+         ! admissible_conserved_cell, the one definition of the test) and
+         ! mark their two interfaces.
          do j = 1,N
 
-            if (u_new(1,j) .gt. 0.0d0) then
-               rho_e = u_new(3,j) - 0.5d0*u_new(2,j)*u_new(2,j)/u_new(1,j)
-               if (rho_e .gt. 0.0d0) cycle
-            endif
+            if (admissible_conserved_cell(u_new(:,j))) cycle
 
             ! Both interfaces already first order: the violation does not come
             ! from the flux discretization (a source term, or a time step past

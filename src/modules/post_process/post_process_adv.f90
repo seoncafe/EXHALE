@@ -41,11 +41,21 @@
 	use Conversion,          only: W_to_U
 	use Reconstruction_step, only: n_faces_positivity_limited
 	use steady_residual_mod, only: assemble_residual, residual_row_scale,  &
-	                               row_terms_describe_state
+	                               row_terms_describe_state,               &
+	                               carrier_enthalpy_divergence
 	use certification,       only: cert_scale_floor
 	! The species the reconstruction below omits, for the cell class it does
 	! not model (see adv_unsupported).
 	use ionization_equilibrium, only: nmol_eq, nox_eq
+	! The transport terms of the run's energy equation (heat conduction and
+	! the enthalpy flux of the element and carrier fluxes), which the
+	! advected balance keeps with the corrected temperature (the energy
+	! block below, "THE TRANSPORT TERMS").
+	use viscous_conduction, only: conduction_active,                      &
+	                              thermal_conduction_coeffs,              &
+	                              conduction_base_level_T
+	use binary_element_diffusion, only: interdiffusion_enthalpy_active,   &
+	                              interdiffusion_enthalpy_divergence_of_state
 
 	implicit none
 
@@ -520,6 +530,18 @@
    logical, dimension(1-Ng:N+Ng) :: bdf2_admissible
    ! Whether the step in progress is the BDF2 step (else backward Euler).
    logical :: use_bdf2
+   ! THE TRANSPORT TERMS OF THE ENERGY EQUATION (the statement at the
+   ! energy loop): whether the run solved any, the conduction triplets and
+   ! the enthalpy flux divergence of the current temperature profile, the
+   ! neighbor temperatures the marching sweep reads, the step each corrected
+   ! cell took, and whether the column Newton solve is the one evaluating.
+   logical :: pp_transport_on, pp_newton_mode
+   real*8, dimension(N) :: pp_cond_lo, pp_cond_di, pp_cond_up
+   real*8, dimension(1-Ng:N+Ng) :: pp_heat_rel, pp_T_nbr, pp_T_march
+   real*8  :: pp_T_bath
+   logical, dimension(1-Ng:N+Ng) :: pp_bdf2_used
+   integer :: n_col_newton_it, n_col_newton_fail
+   real*8  :: col_newton_step
    ! Width the right-hand side of a step is multiplied by, g h_j or h_j
    ! [code units], and the histories of the density and of the specific
    ! internal energy that step differences against.
@@ -1557,6 +1579,31 @@
 	! observed order 1.99, against 0.999 for backward Euler at every step
 	! (MEASURED 2026-09-27, src/tests/adv_static_limit, rows N4 and N5).
 
+	! THE TRANSPORT TERMS. A run with heat conduction, or with the enthalpy
+	! flux of diffusing elements or transported carriers, solved an energy
+	! equation that holds them, and in a conduction-dominated layer they
+	! carry the energy (md/Update_EXHALE_stage3.md sections 40-45: 0.5 to
+	! 100 times the heating on the LHS 1140 b states). The advected balance
+	! (E) keeps them, evaluated with the CORRECTED temperature: conduction
+	! couples each cell to both neighbors, so the column is not a marching
+	! recursion any more. The marching sweep below reads the cell below at
+	! its corrected value and the cell above at the profile the pass starts
+	! from (a first approximation), and the column Newton solve after it
+	! solves the corrected cells together, with the conductivity and the
+	! enthalpy flux divergence re-evaluated at every iterate
+	! (energy_column_newton). Cells that keep the run's own temperature are
+	! fixed values of that solve.
+	pp_transport_on = conduction_active() .or.                            &
+	                  interdiffusion_enthalpy_active() .or.               &
+	                  associated(carrier_enthalpy_divergence)
+	pp_newton_mode  = .false.
+	pp_bdf2_used    = .false.
+	if (k .eq. 1) n_col_newton_fail = 0
+	if (pp_transport_on) then
+		pp_T_nbr = T_out
+		call transport_terms_of_profile(T_out)
+	endif
+
 	do j = 3-Ng,N+Ng ! Start from first computational cell
 
 		vm = v(j-1)
@@ -1642,6 +1689,7 @@
 		else
 			n_be_T = n_be_T + 1
 		endif
+		pp_bdf2_used(j) = use_bdf2
 
 		! The ledger of how the cell solve ended (energy_step), and the run's
 		! own temperature wherever it gave no root of this gas.
@@ -1668,6 +1716,10 @@
 		T_out(j) = sys_x_T(1)
 
 	enddo
+
+	! The corrected cells together, with the transport terms of the
+	! corrected temperature (the statement before the marching sweep).
+	if (pp_transport_on) call energy_column_newton()
 
 	! Update pressure and temperature
 	p_out = (n_tot + ne)/n0*T_out
@@ -2059,6 +2111,7 @@
 	! (see the statement before the energy loop). It does not change while
 	! the root finder varies the temperature.
 	teq_cell%div_rhov = div_rhov_state(jc)
+	call set_transport_terms_of_cell(jc)
 	! Metal densities for this cell [cgs] go through the equation_T module
 	! array (the 27-ion vector does not fit params). pp_metal_on gates
 	! whether T_equation adds the metal cooling/brem/n_e terms.
@@ -2117,7 +2170,9 @@
 		       abs(teq_cell%mum*dr_step*teq_cell%div_rhov                  &
 		           *(e_cell_root + xT(1))),                                &
 		       abs(teq_cell%coeff*xT(1)),                                  &
-		       abs(teq_cell%mup*teq_cell%mum*dr_step*theat(jc)))) then
+		       abs(teq_cell%mup*teq_cell%mum*dr_step*theat(jc)),            &
+		       abs(teq_cell%mup*teq_cell%mum*dr_step*(teq_cell%heat_extra     &
+		           + teq_cell%cond_diag*xT(1))))) then
 			outcome = T_root_at_floor
 		else
 			outcome = T_not_converged
@@ -2147,6 +2202,217 @@
 	endif
 	T_root = xT(1)
 	end subroutine energy_step
+
+	!------------------------------------------------------------------!
+
+	subroutine transport_terms_of_profile(Tprof)
+	! The conduction triplets of the temperature profile Tprof [code units]
+	! (thermal_conduction_coeffs, the operator of the run's own energy
+	! equation, conductivity of the composition the post-process was handed)
+	! and the enthalpy flux divergence of the element and carrier fluxes of
+	! the same profile, entered as heating (the run's energy row ADDS the
+	! divergence, steady_residual). pp_T_bath is the base-level temperature
+	! the operator holds in the ghost (conduction_base_level_T).
+	real*8, dimension(1-Ng:N+Ng), intent(in) :: Tprof
+	real*8, dimension(1-Ng:N+Ng) :: s_elem, s_carr
+	pp_heat_rel = 0.0d0
+	if (conduction_active()) then
+		call thermal_conduction_coeffs(Tprof, f_sp_in, pp_cond_lo,        &
+		                               pp_cond_di, pp_cond_up)
+		pp_T_bath = conduction_base_level_T(Tprof)
+	else
+		pp_cond_lo = 0.0d0;  pp_cond_di = 0.0d0;  pp_cond_up = 0.0d0
+		pp_T_bath  = 0.0d0
+	endif
+	if (interdiffusion_enthalpy_active()) then
+		call interdiffusion_enthalpy_divergence_of_state(rho, Tprof,      &
+		                                                 f_sp_in, s_elem)
+		pp_heat_rel = pp_heat_rel - s_elem
+	endif
+	if (associated(carrier_enthalpy_divergence)) then
+		call carrier_enthalpy_divergence(rho, Tprof, f_sp_in, s_carr)
+		pp_heat_rel = pp_heat_rel - s_carr
+	endif
+	end subroutine transport_terms_of_profile
+
+	!------------------------------------------------------------------!
+
+	subroutine set_transport_terms_of_cell(jc)
+	! The transport heating of cell jc for the energy residual: the
+	! conduction of its two neighbors and the enthalpy flux divergence as
+	! the fixed part, its own conduction coefficient as the part that
+	! varies with its temperature (teq_state). The neighbor above is the
+	! pass's profile in the marching sweep and the current iterate in the
+	! column solve; the neighbor below is the current value either way (the
+	! base bath for cell 1).
+	integer, intent(in) :: jc
+	real*8 :: T_below, T_above
+	teq_cell%heat_extra = 0.0d0
+	teq_cell%cond_diag  = 0.0d0
+	if (.not. pp_transport_on) return
+	if (jc .lt. 1 .or. jc .gt. N) return
+	if (jc .eq. 1) then
+		T_below = pp_T_bath
+	else
+		T_below = T_out(jc-1)
+	endif
+	if (pp_newton_mode) then
+		T_above = T_out(jc+1)
+	else
+		T_above = pp_T_nbr(jc+1)
+	endif
+	teq_cell%heat_extra = pp_cond_lo(jc)*T_below + pp_cond_up(jc)*T_above &
+	                    + pp_heat_rel(jc)
+	teq_cell%cond_diag  = pp_cond_di(jc)
+	end subroutine set_transport_terms_of_cell
+
+	!------------------------------------------------------------------!
+
+	real*8 function energy_residual_of_cell(jc)
+	! The residual of the energy equation of corrected cell jc at the
+	! current profile T_out: the setup energy_step makes (histories, step,
+	! densities, transport terms) and T_equation at T_out(jc).
+	integer, intent(in) :: jc
+	real*8  :: xv(1), fv(1)
+	integer :: iflag_r
+	dr_step = step_width(jc, pp_bdf2_used(jc))
+	if (pp_bdf2_used(jc)) then
+		rho_hist = bdf_a1(jc)*rho(jc-1) - bdf_a2(jc)*rho(jc-2)
+		e_hist   = bdf_a1(jc)*specific_internal_energy(jc-1, T_out(jc-1),   &
+		                                               mmw(jc-1))           &
+		         - bdf_a2(jc)*specific_internal_energy(jc-2, T_out(jc-2),   &
+		                                               mmw(jc-2))
+	else
+		rho_hist = rho(jc-1)
+		e_hist   = specific_internal_energy(jc-1, T_out(jc-1), mmw(jc-1))
+	endif
+	teq_cell%nhi    = nhi(jc);    teq_cell%nhii   = nhii(jc)
+	teq_cell%nheiS  = nheiS(jc);  teq_cell%nheiTR = nheiTR(jc)
+	teq_cell%y_HI   = y_HI_pp(jc); teq_cell%y_gnd = y_gnd_pp(jc)
+	teq_cell%y_HeII = y_HeII_pp(jc)
+	teq_cell%nheii  = nheii(jc);  teq_cell%nheiii = nheiii(jc)
+	teq_cell%mup    = mmw(jc);    teq_cell%mum    = mmw(jc-1)
+	teq_cell%rhov   = rho(jc)*v(jc)
+	teq_cell%coeff  = mmw(jc-1)*v(jc)*(rho(jc) - rho_hist)
+	teq_cell%dr_step = dr_step
+	teq_cell%heaold = theat(jc)
+	teq_cell%x_h2   = h2_particle_fraction(jc)
+	teq_cell%e_hist = e_hist
+	teq_cell%div_rhov = div_rhov_state(jc)
+	call set_transport_terms_of_cell(jc)
+	pp_nm_cell(:) = nm_w(jc,:)
+	pp_beta_fs(:) = beta_fs_pp(jc,:)
+	pp_nbar_fs(:) = nbar_fs_pp(jc,:)
+	xv(1) = T_out(jc)
+	iflag_r = 1
+	call T_equation(1, xv, fv, iflag_r, paramsT)
+	energy_residual_of_cell = fv(1)
+	end function energy_residual_of_cell
+
+	!------------------------------------------------------------------!
+
+	subroutine energy_column_newton()
+	! THE CORRECTED CELLS SOLVED TOGETHER. Unknowns: the temperatures of the
+	! cells the marching sweep corrected; every other cell is a fixed value.
+	! Equations: their energy residuals (energy_residual_of_cell), each a
+	! function of the temperatures two cells below (the histories of the
+	! step), its own and one above (conduction), so the Jacobian is banded
+	! with two sub- and one super-diagonal. It is formed by one-sided
+	! differences at fixed transport coefficients, and the conductivity and
+	! the enthalpy flux divergence are re-evaluated at every iterate, so
+	! the converged profile satisfies the equation with the transport terms
+	! of its own temperature. A step moves no temperature by more than
+	! 30 per cent of itself. The solve ends when no temperature moves by
+	! more than 1e-10 of itself; one that does not end in 100 iterations,
+	! or leaves a temperature that is not positive (or outside the band of
+	! the metal-cooled residual), returns the marching profile and is
+	! counted.
+	integer, parameter :: kl = 2, ku = 1, ldab = 2*kl + ku + 1
+	integer, parameter :: it_max = 100
+	integer, allocatable :: cells(:), pos(:), ipiv_c(:)
+	real*8,  allocatable :: ab_c(:,:), g0(:), dT(:)
+	integer :: nc, i, m, jr, it, info_c, jm
+	real*8  :: h, gp, lam_c, dmax
+	logical :: bad
+	nc = 0
+	allocate(pos(1-Ng:N+Ng));  pos = 0
+	do jr = 3-Ng, N+Ng
+		if (adv_T_status(jr) .eq. adv_corrected) then
+			nc = nc + 1;  pos(jr) = nc
+		endif
+	enddo
+	n_col_newton_it = 0
+	col_newton_step = 0.0d0
+	if (nc .eq. 0) then
+		deallocate(pos);  return
+	endif
+	allocate(cells(nc), ipiv_c(nc), ab_c(ldab,nc), g0(nc), dT(nc))
+	do jr = 3-Ng, N+Ng
+		if (pos(jr) .gt. 0) cells(pos(jr)) = jr
+	enddo
+	pp_T_march = T_out
+	pp_newton_mode = .true.
+	bad = .false.
+	do it = 1, it_max
+		call transport_terms_of_profile(T_out)
+		do i = 1, nc
+			g0(i) = energy_residual_of_cell(cells(i))
+		enddo
+		ab_c = 0.0d0
+		do i = 1, nc
+			m = cells(i)
+			h = 1.0d-7*max(abs(T_out(m)), 1.0d-30)
+			T_out(m) = T_out(m) + h
+			do jr = m-1, m+2
+				if (jr .lt. 3-Ng .or. jr .gt. N+Ng) cycle
+				if (pos(jr) .eq. 0) cycle
+				gp = energy_residual_of_cell(jr)
+				! AB(kl+ku+1+row-col, col) of the LAPACK band storage
+				ab_c(kl+ku+1+pos(jr)-i, i) = (gp - g0(pos(jr)))/h
+			enddo
+			T_out(m) = T_out(m) - h
+		enddo
+		dT = -g0
+		call dgbsv(nc, kl, ku, 1, ab_c, ldab, ipiv_c, dT, nc, info_c)
+		if (info_c .ne. 0) then
+			bad = .true.;  exit
+		endif
+		lam_c = 1.0d0
+		do i = 1, nc
+			m = cells(i)
+			if (abs(dT(i)) .gt. 0.3d0*T_out(m))                            &
+				lam_c = min(lam_c, 0.3d0*T_out(m)/abs(dT(i)))
+		enddo
+		dmax = 0.0d0
+		do i = 1, nc
+			m = cells(i)
+			T_out(m) = T_out(m) + lam_c*dT(i)
+			dmax = max(dmax, abs(lam_c*dT(i))/max(T_out(m), 1.0d-30))
+		enddo
+		n_col_newton_it = it
+		col_newton_step = dmax
+		if (dmax .lt. 1.0d-10) exit
+	enddo
+	do i = 1, nc
+		m = cells(i)
+		if (.not. (T_out(m) .gt. 0.0d0)) bad = .true.
+		if (pp_metal_on) then
+			if (T_out(m) .gt. 2.0d0*T_in(m) .or. T_out(m) .lt. 0.5d0*T_in(m)) &
+				bad = .true.
+		endif
+	enddo
+	if (col_newton_step .ge. 1.0d-10) bad = .true.
+	if (bad) then
+		T_out = pp_T_march
+		n_col_newton_fail = n_col_newton_fail + 1
+	endif
+	pp_newton_mode = .false.
+	write(*,'(A,I0,A,I0,A,ES10.3,A,L1)') ' (post_process_adv) transport'//&
+	     ' terms: column solve of ', nc, ' corrected cells, ',             &
+	     n_col_newton_it, ' iterations, last relative step ',              &
+	     col_newton_step, '; marching profile kept: ', bad
+	deallocate(pos, cells, ipiv_c, ab_c, g0, dT)
+	end subroutine energy_column_newton
 
 	! End of subroutine
 	end subroutine post_process_adv

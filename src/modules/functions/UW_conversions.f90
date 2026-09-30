@@ -126,21 +126,58 @@
       ! writes, and the ghosts are set from them by Apply_BC.
       !
       ! Each test is the negation of "strictly positive", so a NaN -- which
-      ! compares false against everything -- is inadmissible too.
+      ! compares false against everything -- is inadmissible too. An
+      ! infinity is not a thermodynamic state either, and it compares TRUE
+      ! against zero, so every conserved component must also be finite.
+      ! Until 2026-09-29 the test accepted +Inf density and energy (code
+      ! audit of 2026-09-29, md/CODE_AUDIT_20260929.md F2).
+      !
+      ! NO ARITHMETIC HERE CAN OVERFLOW. The sign of rho e = E - (rho v)^2 /
+      ! (2 rho) is the sign of 2 rho E - (rho v)^2 for rho > 0, and that is
+      ! evaluated on the three components divided by the largest of their
+      ! magnitudes, which are all at most 1: squaring a momentum before the
+      ! division overflowed for a finite cell of 1e160 in every component
+      ! and trapped under -ffpe-trap=overflow (follow-up review
+      ! md/CODE_AUDIT_20260929_review1.md, R3). The scaled products can
+      ! only underflow, toward a zero that decides nothing wrongly, since a
+      ! component that underflows against the largest is negligible beside
+      ! it. The decision differs from the unscaled one only within the
+      ! rounding of rho e against zero.
       logical function positive_density_and_internal_energy(U_in)
       real*8, intent(in) :: U_in(3,1-Ng:N+Ng)
       integer :: j
-      real*8  :: rho_e
 
       positive_density_and_internal_energy = .false.
       do j = 1,N
-         if (.not. (U_in(1,j) .gt. 0.0d0)) return
-         rho_e = U_in(3,j) - 0.5d0*U_in(2,j)*U_in(2,j)/U_in(1,j)
-         if (.not. (rho_e .gt. 0.0d0)) return
+         if (.not. admissible_conserved_cell(U_in(:,j))) return
       enddo
       positive_density_and_internal_energy = .true.
 
       end function positive_density_and_internal_energy
+
+      !-----------------------------------------------------------!
+
+      ! The test above for ONE cell (rho, rho v, E): finite, rho > 0 and
+      ! rho e > 0, evaluated without overflow. The single definition every
+      ! reader uses: the stage test above and the positivity repair
+      ! (RK_rhs.f90), which picks the cells it rebuilds with it.
+      logical function admissible_conserved_cell(uc)
+      use, intrinsic :: ieee_arithmetic, only: ieee_is_finite
+      real*8, intent(in) :: uc(3)
+      real*8 :: s, d, m, e
+
+      admissible_conserved_cell = .false.
+      if (.not. (ieee_is_finite(uc(1)) .and. ieee_is_finite(uc(2)) .and.  &
+                 ieee_is_finite(uc(3)))) return
+      if (.not. (uc(1) .gt. 0.0d0)) return
+      if (.not. (uc(3) .gt. 0.0d0)) return
+      s = max(uc(1), abs(uc(2)), uc(3))
+      d = uc(1)/s
+      m = uc(2)/s
+      e = uc(3)/s
+      admissible_conserved_cell = (2.0d0*d*e .gt. m*m)
+
+      end function admissible_conserved_cell
 
       !-----------------------------------------------------------!
 

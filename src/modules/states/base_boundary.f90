@@ -104,6 +104,16 @@
    ! reservoir gas.  The two lower ghost cells lie below the level and hold
    ! the reservoir continued downward (base_ghost_averages).
    !
+   ! ONE DISCRETE EQUILIBRIUM WITH THE WELL-BALANCED RECONSTRUCTION.  With
+   ! "Well balanced: True" the interior state the outgoing characteristic
+   ! reads is cell 1's own constant-density hydrostatic equilibrium at the
+   ! face, and the ghosts continue that same discrete equilibrium below the
+   ! level through the face state (interior_state_at_level_face,
+   ! base_ghost_averages), so the boundary and the reconstruction balance a
+   ! column at rest by one discrete mechanical equilibrium (Kaeppeli &
+   ! Mishra 2016, A&A 587, A94, section 2.1).  Without it the interior and
+   ! the ghosts are continued along hydrostatic isentropes.
+   !
    ! Until 2026-09-27 the level was the center of a ghost cell and the face
    ! half a cell above it (Mixed grid); the reservoir was carried to the face
    ! along its own hydrostatic isentrope, which put a slab of 226 K reservoir
@@ -178,9 +188,24 @@
    ! level to a face half a cell above along its own isentrope. The grid
    ! moves with it, so a v3 state reaches a v4 run only through
    ! map_state_to_grid.py, as a seed.
-   character(len=*), parameter :: base_boundary_model_id =                &
+   !
+   ! v5 (discrete_equilibrium) is the model of a run with the well-balanced
+   ! reconstruction ("Well balanced: True"): the interior state the
+   ! outgoing characteristic reads is cell 1's own constant-density
+   ! hydrostatic equilibrium at the face, and the two ghost cells continue
+   ! that discrete equilibrium below the level (see "ONE DISCRETE
+   ! EQUILIBRIUM" at base_ghost_averages), where v4 continued cell 1 and the
+   ! ghosts along hydrostatic isentropes. A run without the well-balanced
+   ! reconstruction builds the v4 boundary unchanged and states the v4
+   ! identity, so a restart is told of a change exactly where the boundary
+   ! changed. base_boundary_model_id returns the identity of this run.
+   character(len=*), parameter :: base_boundary_model_id_isentropic =     &
         'characteristic_face_ps_reservoir_C_minus_contact_upwind'//       &
         '_ghost_fixed_point_seed_reservoir_row_face_at_level_v4'
+   character(len=*), parameter :: base_boundary_model_id_equilibrium =    &
+        'characteristic_face_ps_reservoir_C_minus_contact_upwind'//       &
+        '_ghost_fixed_point_seed_reservoir_row_face_at_level'//           &
+        '_discrete_equilibrium_v5'
 
    ! WHICH COMPOSITION THE GHOST SOLVE STARTS FROM.  Part of the model, not
    ! of a reader's handling of rows it drops: the seed selects which of two
@@ -281,7 +306,7 @@
    ! direction-dependent traces, and an intermediate face density is an
    ! interpolation between them rather than a law of thermal contact.
    !
-   ! THE VALUE STANDS FAR FROM EVERY OPERATING POINT, which is the whole
+   ! THE VALUE STANDS FAR FROM EVERY STATE MEASURED, which is the whole
    ! requirement on it: a base at |M_i| within 1e-8 of unity is a base the
    ! condition has no model for either way, and no state of this code has
    ! been measured inside the transition.  EXHALE_BASE_MACH_BLEND=<value>
@@ -378,8 +403,23 @@
    !
    ! sqrt(1.90e-04 * 1.39e-02) = 1.6e-03, and 2e-03 to one digit: 10 times
    ! above the loosest state that is a wind and 7 times below the tightest
-   ! state that is not one, so the two populations sit decades away from the
-   ! threshold on either side and no state is near it.
+   ! state that is not one, so the two populations of WRITTEN states sit
+   ! decades away from the threshold on either side.
+   !
+   ! THE ITERATES OF A STEADY SOLVE ARE NOT WRITTEN STATES, and they do
+   ! cross it. MEASURED 2026-09-29 on the stalled LHS 1140 b molecular
+   ! continuations (.P1/s2_continuation/wm8_0.3169, wm6_0.3347, kzz7_1.09,
+   ! stage exports of every pass): the solves that converged returned
+   ! d_window = 8.4e-5 to 1.4e-4 with the reservoir owning the level (lower
+   ! ghosts at 232-234 K), and every solve that failed returned
+   ! d_window = 2.000e-3 to 4.1e-3 with the interior owning it (ghosts at
+   ! 1136-1413 K), several of them at 2.000e-3 to four digits. A solve that
+   ! enters at a written state, is pushed across the threshold by its first
+   ! steps and has to cross it again to reach the root meets a residual
+   ! that steps where it crosses; the passes alternated between the two
+   ! for 60 to 80 passes. So the direction is HELD through each steady
+   ! solve (hold_base_contact_direction_from_entry below) and the state
+   ! the solve returns is judged by this rule again.
    real*8, save :: base_wind_window_spread  = 2.0d-3
 
    ! THE AMPLITUDE BELOW WHICH THE WINDOW CARRIES NO FLUX AT ALL.
@@ -460,6 +500,10 @@
    integer :: n_base_face_mach_limited   = 0
    integer :: n_base_reversal_evals      = 0
    integer :: n_base_supersonic_outflow  = 0
+   ! Ghost cells wider than two scale heights of the gas they hold, which no
+   ! constant-density equilibrium reaches the face pressure through; they
+   ! keep the isentropic average (base_ghost_averages, well-balanced model).
+   integer :: n_base_ghost_equilibrium_unreachable = 0
    real*8  :: base_face_mach_last        = 0.0d0
    real*8  :: base_face_blend_last       = 0.0d0
    ! The quantities the branch is decided by, kept from the last evaluation
@@ -475,6 +519,43 @@
    real*8  :: base_face_rho_rev_last     = 0.0d0
    real*8  :: base_face_T_res_last       = 0.0d0
    real*8  :: base_face_T_i_last         = 0.0d0
+
+   ! ---- THE DIRECTION OF THE CONTACT, HELD THROUGH ONE STEADY SOLVE ----
+   !
+   ! The upwind side of the contact is a property of a SOLUTION: the side
+   ! the mass flux of the level comes from. The iterates a steady solve
+   ! passes through are not solutions, and the rule of
+   ! characteristic_base_face_state read on them selects a branch the
+   ! solution does not have (MEASURED, comment at base_wind_window_spread).
+   ! A branch that changes between two residual evaluations of one solve is
+   ! a step in the function the Newton iteration differentiates, and its
+   ! finite-difference Jacobian and line search are then taken across it.
+   ! So while a steady solve runs the direction is the one the rule reads
+   ! at the FIRST evaluation of the solve, which is its entry state, and it
+   ! does not change inside the solve. What keeps this from choosing the
+   ! answer is the test after it: the caller reads the rule again on the
+   ! returned state (base_contact_reverses_in_state) and, where the rule
+   ! and the held direction differ on a converged solve, solves again with
+   ! the rule's direction held. A root is therefore accepted only on the
+   ! branch its own rule selects, which is the condition every written
+   ! state was judged by before; what the hold changes is the path to it.
+   ! The marching route and every evaluation outside a steady solve read
+   ! the rule at every evaluation, as before.
+   !
+   ! EXHALE_BASE_CONTACT_PER_EVALUATION=1 reads the rule at every
+   ! evaluation inside the solves as well (the behavior before 2026-09-29),
+   ! for a control experiment; nothing else reads that variable.
+   logical, save :: base_contact_per_evaluation = .false.
+   ! Set by the caller before a steady solve; the first evaluation then
+   ! fixes the held direction.
+   logical, save :: base_contact_hold_on     = .false.
+   logical, save :: base_contact_held        = .false.
+   logical, save :: base_contact_held_reverse = .false.
+   ! What the rule itself read at the last evaluation, held or not, and how
+   ! many evaluations of the solve read the other side from the held one.
+   logical, save :: base_contact_rule_reverse_last = .false.
+   integer, save :: base_contact_evals_held  = 0
+   integer, save :: base_contact_evals_other = 0
 
    ! ---- THE COMPOSITION THE LOWER GHOST CELLS ENTER A SWEEP WITH ----
    !
@@ -577,6 +658,9 @@
    write(*,'(A,F10.3,A,F10.3,A)') '   T_res =',                            &
         base_face_T_res_last*T0, ' K   T_i =', base_face_T_i_last*T0,      &
         ' K  (the reservoir''s and the interior''s, at the face)'
+   if (well_balanced) write(*,'(A,I0)') '   ghosts kept on the isentrope'// &
+        ' because no constant-density equilibrium reached the face: ',    &
+        n_base_ghost_equilibrium_unreachable
    end subroutine report_base_face_state
 
    !------------------------------------------!
@@ -850,7 +934,7 @@
    ! expressions.
    character(len=*), intent(in) :: tag
    write(*,'(A)') ' [base boundary model] '//trim(tag)
-   write(*,'(A)') '   model  '//base_boundary_model_id
+   write(*,'(A)') '   model  '//base_boundary_model_id()
    write(*,'(A)') '   ghost composition seed: '//                        &
         base_ghost_composition_seed_id
    if (ghost_composition_seed_armed()) write(*,'(A)') '   NOTE: EXHALE'//&
@@ -882,6 +966,93 @@
            base_ghost_fixed_point_passes, ' applications'
    endif
    end subroutine report_base_boundary_model
+
+   !------------------------------------------!
+
+   function base_boundary_model_id() result(id)
+   ! The identity of the lower boundary this run builds: v5 with the
+   ! well-balanced reconstruction, v4 without it (the comment at
+   ! base_boundary_model_id_equilibrium says what the two are).
+   character(len=:), allocatable :: id
+   if (well_balanced) then
+      id = base_boundary_model_id_equilibrium
+   else
+      id = base_boundary_model_id_isentropic
+   endif
+   end function base_boundary_model_id
+
+   !------------------------------------------!
+
+   subroutine interior_state_at_level_face(W1, nhat1, T1, Wi, T_i)
+   ! The first interior cell carried to the level face r_edg(0): the
+   ! interior state the outgoing characteristic of the base condition reads
+   ! (characteristic_base_face_state), and the one the conservation budget
+   ! export reports. One routine, so the two cannot disagree.
+   !
+   ! W1, nhat1, T1 are the CELL AVERAGE of cell 1 (rho, v, p), its particle
+   ! count per unit mass and its temperature, p_1 = nhat1 rho_1 T1.
+   !
+   ! WITH THE WELL-BALANCED RECONSTRUCTION it is cell 1's own
+   ! constant-density hydrostatic equilibrium at the face,
+   !
+   !     rho_i = rho_1 ,   p_i = p_1 + rho_1 (phi(r_1) - phi(r_edg(0))) ,
+   !
+   ! which is wb_P_dn(1), the pressure the reconstruction extrapolates cell 1
+   ! to at the same face (Reconstruction.f90,
+   ! hydrostatic_equilibrium_of_each_cell), formed by the same expression
+   ! from the same cell averages and the same potential arrays. The
+   ! boundary and the reconstruction then measure the pressure of cell 1 at
+   ! the face from ONE discrete equilibrium. That equilibrium is mechanical,
+   ! dp/dr = -rho dphi/dr in the scheme's own discrete form, and says
+   ! nothing about the temperature or the entropy (Kaeppeli & Mishra 2016,
+   ! A&A 587, A94, section 2.1, which separates the discrete mechanical
+   ! equilibrium a scheme preserves from a thermal one); it holds for a
+   ! column of any entropy stratification, and on such a column at rest the
+   ! matching below returns v_b = 0 to rounding wherever the column meets
+   ! the reservoir's pressure at the level. The isentropic continuation used
+   ! without the well-balanced reconstruction differs from this pressure by
+   ! about (1/2 gamma)(dr/2H)^2 of p, a truncation difference between two
+   ! second-order constructions with no physics in it, and against a wind
+   ! at a base Mach number of 1e-8 that difference drives a face velocity
+   ! 1e4 times the wind's (MEASURED, src/tests/grid_and_gates,
+   ! low_mach_face_flux, before this construction). The reservoir is not
+   ! changed by it: it still states the pressure and the entropy of the gas
+   ! it supplies.
+   !
+   ! WITHOUT THE WELL-BALANCED RECONSTRUCTION the reconstruction carries no
+   ! discrete equilibrium to share, and cell 1 is continued along its own
+   ! hydrostatic isentrope, which is exact for a column isentropic between
+   ! the level and the center of cell 1 and the closest match to an
+   ! ordinary reconstruction otherwise.
+   !
+   ! THE VELOCITY is the mass flux of cell 1 carried to the face,
+   ! v_i = rho_1 v_1 r_1^2/(rho_i r_edg(0)^2): a stationary flow carries
+   ! rho v r^2, so this is the interior's velocity at the face and not its
+   ! value half a cell above it.  With the well-balanced reconstruction
+   ! rho_i = rho_1 is the density of a mechanical model and not of the gas
+   ! at the face, and characteristic_base_face_state carries the same mass
+   ! flux at the density of the face state instead (the comment there).
+   !
+   ! Wi is (rho_i, v_i, p_i) and T_i = p_i/(nhat1 rho_i) the temperature
+   ! that state carries at cell 1's own particle count.
+   real*8, intent(in)  :: W1(3), nhat1, T1
+   real*8, intent(out) :: Wi(3), T_i
+   real*8 :: rho_i, rb, r1
+
+   rb = r_edg(0)
+   r1 = r(1)
+   if (well_balanced) then
+      rho_i = W1(1)
+      Wi(3) = W1(3) + W1(1)*(Gphi_c(1) - Gphi_i(0))
+      T_i   = Wi(3)/(nhat1*rho_i)
+   else
+      call continue_hydrostatic_isentrope(1, nhat1, r1, W1(1), T1, rb,     &
+                                          rho_i, T_i)
+      Wi(3) = nhat1*rho_i*T_i
+   endif
+   Wi(1) = rho_i
+   Wi(2) = W1(1)*W1(2)*r1*r1/(rho_i*rb*rb)
+   end subroutine interior_state_at_level_face
 
    !------------------------------------------!
 
@@ -1023,6 +1194,9 @@
       read(env,*,iostat=ios) v
       if (ios .eq. 0 .and. v .gt. 0.0d0) base_wind_window_amplitude = v
    endif
+   env = ' '
+   call get_environment_variable('EXHALE_BASE_CONTACT_PER_EVALUATION', env)
+   base_contact_per_evaluation = (trim(env) .eq. '1')
    end subroutine read_base_branch_options
 
    !------------------------------------------!
@@ -1111,14 +1285,41 @@
    !
    ! W1, nhat1, T1 are the CELL AVERAGE of the first interior cell, its
    ! particle count per unit mass and its temperature.  The interior state at
-   ! the face is built from cell 1 alone, along cell 1's own hydrostatic
-   ! isentrope, and NOT from the reconstruction stencil: the stencil reaches
-   ! into the ghost, and a boundary condition that reads its own output is the
-   ! circular dependency this module exists to break.  Continuing along the
-   ! hydrostatic isentrope rather than extrapolating linearly is what makes
-   ! the condition WELL BALANCED: in a hydrostatic atmosphere at rest the
-   ! interior face pressure equals the reservoir's and (C-) returns v_b = 0
-   ! exactly, at any resolution.
+   ! the face is built from cell 1 alone (interior_state_at_level_face), and
+   ! NOT from the reconstruction stencil: the stencil reaches into the ghost,
+   ! and a boundary condition that reads its own output is the circular
+   ! dependency this module exists to break.
+   !
+   ! WHICH REST STATES THE CONDITION BALANCES.  With the well-balanced
+   ! reconstruction the interior pressure at the face is cell 1's own
+   ! constant-density equilibrium, the one the reconstruction extrapolates
+   ! cell 1 to, and base_ghost_averages continues the same discrete
+   ! equilibrium below the level through the face state.  A column at rest
+   ! in the scheme's discrete hydrostatic equilibrium whose cell 1 meets the
+   ! reservoir's pressure at the level then has p_i = p_res, so (C-) returns
+   ! v_b = 0, the equilibrium mismatch of face 0 and the departures of
+   ! faces 0 and 1 vanish, and the base face carries no flux, all to
+   ! rounding, whatever the column's entropy stratification (Kaeppeli &
+   ! Mishra 2016, A&A 587, A94, section 2.1: a discrete MECHANICAL
+   ! equilibrium; MEASURED on the discrete columns a_iso and a_warm of
+   ! src/tests/grid_and_gates, base_reservoir_equilibrium).  A column in
+   ! continuum balance that is not in the discrete one (an analytic
+   ! isothermal or isentropic column sampled as cell averages) is not a rest
+   ! state of the scheme, and the truncation difference it carries is the
+   ! reconstruction's and the same at every interior face.
+   !
+   ! Without the well-balanced reconstruction the continuation is cell 1's
+   ! hydrostatic isentrope, which balances an atmosphere isentropic between
+   ! the level and the center of cell 1, and no other rest state exactly:
+   ! hydrostatic balance does not imply constant entropy, and the
+   ! continuation starts from a point state while W1 is a cell average.
+   ! Paired with the well-balanced reconstruction (the v4 model) the
+   ! isentropic continuation left the two traces of face 0 a truncation
+   ! error of the pressure apart (4.9e-4 of p on a mapped atomic He/H 9.7
+   ! seed, whose Roe pressure-jump term then carried about 1e4 times the
+   ! wind flux; md/atomic_heh97_reduced_xuv_20260929_review.md section 4.1),
+   ! which is why the well-balanced model shares the reconstruction's
+   ! equilibrium instead.
    real*8, intent(in)  :: W1(3), nhat1, T1
    ! The mass flux the state carries in the wind window, the relative
    ! standard deviation of that flux inside the window, and whether they are
@@ -1130,24 +1331,19 @@
    real*8 :: rho_i, T_i, p_i, v_i, c_i, M_i, M_wind, s_wind
    real*8 :: rho_res, T_res, p_res
    real*8 :: rho_b, v_b, p_b, c_b, rho_rev
-   real*8 :: w_rev, w_out, rb, r1, v_floor
+   real*8 :: w_rev, w_out, rb, v_floor
    logical :: reverse_flow
 
    rb = r_edg(0)
-   r1 = r(1)
 
    ! ---- the interior state at the face ----
-   call continue_hydrostatic_isentrope(1, nhat1, r1, W1(1), T1, rb,       &
-                                       rho_i, T_i)
-   p_i = nhat1*rho_i*T_i
-   ! Velocity along the same continuation: a steady flow carries rho v r^2,
-   ! so this is the interior's velocity at the face and not its value half a
-   ! cell above it.
-   v_i = W1(1)*W1(2)*r1*r1/(rho_i*rb*rb)
+   ! Cell 1's own constant-density equilibrium at the face under the
+   ! well-balanced reconstruction, its hydrostatic isentrope without it
+   ! (interior_state_at_level_face states both and why).
+   call interior_state_at_level_face(W1, nhat1, T1, Wi, T_i)
+   rho_i = Wi(1);  v_i = Wi(2);  p_i = Wi(3)
    c_i = sqrt(adiabatic_index_at_T(1, T_i)*p_i/rho_i)
    M_i = v_i/c_i
-
-   Wi(1) = rho_i;  Wi(2) = v_i;  Wi(3) = p_i
 
    ! ---- the reservoir state at the face ----
    ! The face is the level (base_boundary_states checks it), so this is the
@@ -1199,7 +1395,9 @@
    ! state g0002 of LHS 1140 b sits one decade away (d = 2.04e-4 against
    ! 2e-3), and a finite-difference probe of about two standard arcs
    ! crosses the switch (MEASURED 2026-09-23), so the residual a Newton
-   ! differentiates can carry this step.  Where the window does not have
+   ! differentiates can carry this step, and the iterates of a solve do
+   ! cross it (MEASURED 2026-09-29); inside a steady solve the direction is
+   ! therefore the held one below.  Where the window does not have
    ! standing the matched face velocity of a state that
    ! moves is of order 1 to 100 cm/s away from zero.  The one state that IS
    ! at the switch is the one it was built for, a column in exact
@@ -1238,11 +1436,55 @@
                 *((abs(p_i) + abs(p_b))/(rho_i*c_i) + abs(v_i))
       reverse_flow = (v_b .lt. -v_floor)
    endif
+   ! INSIDE A STEADY SOLVE THE DIRECTION IS THE ONE OF ITS ENTRY STATE (the
+   ! block "THE DIRECTION OF THE CONTACT, HELD THROUGH ONE STEADY SOLVE" at
+   ! the head of the module). The rule's own reading is kept beside it.
+   base_contact_rule_reverse_last = reverse_flow
+   if (base_contact_hold_on) then
+      if (.not. base_contact_held) then
+         base_contact_held         = .true.
+         base_contact_held_reverse = reverse_flow
+      endif
+      base_contact_evals_held = base_contact_evals_held + 1
+      if (reverse_flow .neqv. base_contact_held_reverse)                   &
+         base_contact_evals_other = base_contact_evals_other + 1
+      reverse_flow = base_contact_held_reverse
+   endif
    w_rev = 0.0d0
    if (reverse_flow) w_rev = 1.0d0
    if (w_rev .gt. 0.0d0) n_base_reversal_evals = n_base_reversal_evals + 1
    rho_rev = isentropic_density_at_pressure(1, rho_i, p_i, T_i, p_b)
    rho_b   = (1.0d0 - w_rev)*rho_res + w_rev*rho_rev
+
+   ! ---- the interior's mass flux through the face (well-balanced model) ----
+   !
+   ! What the interior carries to the level is its MASS FLUX rho_1 v_1 r_1^2,
+   ! and through a stationary face the mass flux is continuous: a contact
+   ! cannot stand at a face gas flows through, so in a steady state the gas
+   ! just inside the level has the density of the face state the contact
+   ! selects, rho_b (the reservoir's on inflow, the interior's own on
+   ! reversal). The interior's velocity at the face is therefore that flux
+   ! over rho_b r_edg(0)^2, and the face state then carries the interior's
+   ! own mass flux, rho_b v_b r_edg(0)^2 = rho_1 v_1 r_1^2 wherever the
+   ! pressures balance. v_i above divides the same flux by rho_i = rho_1,
+   ! the density of cell 1's constant-density equilibrium, which is a
+   ! mechanical model of the cell's pressure and not the density of the
+   ! gas at the face: it differs from rho_b by the stratification across
+   ! half a cell and by any entropy difference between the reservoir and
+   ! cell 1, and MEASURED on the manufactured winds of
+   ! src/tests/grid_and_gates (low_mach_face_flux) it made the base face
+   ! carry 3.9 per cent (isothermal) and 7.8 per cent (warming) more than
+   ! the wind at every Mach number, and the ghosts, which continue
+   ! rho_b v_b r^2, the same excess. The direction of the contact was read
+   ! above from the velocity at rho_i; rho_1 v_1 has the same sign at any
+   ! density, so the two readings differ only where the pressure term and
+   ! the advective one of v_b cancel to O(dr/H), a face that carries no
+   ! resolved flow either way.
+   !
+   ! Without the well-balanced reconstruction rho_i is cell 1's isentrope at
+   ! the face, the face density of an isentropic column, and the velocity
+   ! is left as it was.
+   if (well_balanced) v_b = v_i*(rho_i/rho_b) + (p_b - p_i)/(rho_i*c_i)
 
    ! ---- supersonic branches ----
    !
@@ -1390,7 +1632,7 @@
    real*8, intent(out) :: Wghost(3,1-Ng:0)
    real*8, intent(out) :: Wface_lower(3)
    real*8 :: T_face, flux_r2, a_, b_, xx, num_r, num_p, den, rho_q, T_q
-   real*8 :: rho_l, T_l
+   real*8 :: rho_l, T_l, P_up_j, chi_j, dphi_up
    integer :: j, k
    real*8, parameter :: xg(8) = (/                                        &
       -0.9602898564975363d0, -0.7966664774136267d0,                       &
@@ -1432,6 +1674,73 @@
    call continue_hydrostatic_isentrope(0, base_reservoir_nhat, r_edg(0),  &
                                        Wface(1), T_face, r_edg(1-Ng),     &
                                        rho_l, T_l)
+
+   if (well_balanced) then
+      ! ONE DISCRETE EQUILIBRIUM.  The well-balanced reconstruction measures
+      ! every face pressure against the constant-density equilibrium of the
+      ! cell it extrapolates from, P_up(j) = p_j - rho_j (phi_i(j) -
+      ! phi_c(j)) at its upper face and P_dn(j) = p_j + rho_j (phi_c(j) -
+      ! phi_i(j-1)) at its lower one, and a face is in equilibrium when the
+      ! two cells that share it reach the same pressure there (Kaeppeli &
+      ! Mishra 2016, A&A 587, A94, section 2.1 and eq. 18).  The ghosts are
+      ! built in that equilibrium, downward from the face state:
+      !
+      !     P_up(0)  = p_b ,          P_up(-1) = P_dn(0) ,
+      !
+      ! each ghost keeping the ratio chi_j = p_j/rho_j it carries on the
+      ! reservoir-side isentrope above (its temperature at the particle
+      ! count the reservoir states), so that
+      !
+      !     p_j = P_up(j) / (1 - (phi_i(j) - phi_c(j))/chi_j) ,  rho_j = p_j/chi_j .
+      !
+      ! The equilibrium mismatch of face 0 is then P_dn(1) - p_b, which
+      ! interior_state_at_level_face makes the same pressure difference the
+      ! characteristic matching closes, and zero on a column at rest in
+      ! discrete equilibrium with the reservoir; the WENO3 departures of
+      ! faces 0 and 1, whose stencils read ghost 0 and ghost -1, vanish on
+      ! it as well, and so does the jump of the face below the ghost, whose
+      ! pressure is P_dn(0) on both sides.  What the ghosts carry of the
+      ! reservoir is unchanged: their temperature, entropy and composition
+      ! are the reservoir-side ones, and only their pressure and density
+      ! move, together, by a factor 1 + O((dr/H)^2) from the isentropic
+      ! averages.  The equilibrium is mechanical and not thermal: the
+      ! reservoir still states the pressure and the entropy of the gas it
+      ! supplies.
+      !
+      ! VALIDITY: a constant-density equilibrium reaches the face pressure
+      ! only while (phi_i(j) - phi_c(j))/chi_j = dr_j/(2H) < 1, a ghost
+      ! narrower than two scale heights of the gas it holds; a ghost wider
+      ! than that keeps the isentropic average above and is counted in
+      ! n_base_ghost_equilibrium_unreachable.
+      P_up_j = Wface(3)
+      do j = 0, 1-Ng, -1
+         chi_j = Wghost(3,j)/Wghost(1,j)
+         dphi_up = Gphi_i(j) - Gphi_c(j)
+         if (chi_j .gt. dphi_up .and. chi_j .eq. chi_j) then
+            Wghost(3,j) = P_up_j/(1.0d0 - dphi_up/chi_j)
+            Wghost(1,j) = Wghost(3,j)/chi_j
+            Wghost(2,j) = flux_r2/(Wghost(1,j)*r(j)*r(j))
+         else
+            n_base_ghost_equilibrium_unreachable =                        &
+               n_base_ghost_equilibrium_unreachable + 1
+         endif
+         if (j .gt. 1-Ng) then
+            ! P_dn(j), the pressure of the face below: the P_up of the ghost
+            ! under it.  The lowest ghost has no face below it that any row
+            ! reads (hydrostatic_equilibrium_of_each_cell sets its P_dn to
+            ! its own pressure).
+            P_up_j = Wghost(3,j) + Wghost(1,j)*(Gphi_c(j) - Gphi_i(j-1))
+         endif
+      enddo
+      ! The face below ghost 0 carries P_dn(0) = P_up(-1) (the P_up of the
+      ! lowest ghost, which the loop leaves in P_up_j), at the
+      ! reservoir-side isentrope's temperature there.
+      Wface_lower(3) = P_up_j
+      Wface_lower(1) = Wface_lower(3)/(base_reservoir_nhat*T_l)
+      Wface_lower(2) = flux_r2/(Wface_lower(1)*r_edg(1-Ng)*r_edg(1-Ng))
+      return
+   endif
+
    Wface_lower(1) = rho_l
    Wface_lower(3) = base_reservoir_nhat*rho_l*T_l
    Wface_lower(2) = flux_r2/(rho_l*r_edg(1-Ng)*r_edg(1-Ng))
@@ -1484,6 +1793,73 @@
    call base_ghost_averages(Wface, Wghost, Wface_lower)
 
    end subroutine base_boundary_states
+
+   !------------------------------------------!
+
+   subroutine hold_base_contact_direction_from_entry()
+   ! Called before a steady solve: the direction of the contact is fixed by
+   ! the first evaluation of the base face that follows, which is the one of
+   ! the solve's entry state, and held until release_base_contact_direction.
+   ! A run with EXHALE_BASE_CONTACT_PER_EVALUATION=1 holds nothing.
+   call read_base_branch_options()
+   base_contact_hold_on     = .not. base_contact_per_evaluation
+   base_contact_held        = .false.
+   base_contact_held_reverse = .false.
+   base_contact_evals_held  = 0
+   base_contact_evals_other = 0
+   end subroutine hold_base_contact_direction_from_entry
+
+   !------------------------------------------!
+
+   subroutine hold_base_contact_direction(reverse)
+   ! Called before a steady solve that is to run on a STATED side of the
+   ! contact: the side the rule selected on the root of the previous solve.
+   logical, intent(in) :: reverse
+   call read_base_branch_options()
+   base_contact_hold_on     = .not. base_contact_per_evaluation
+   base_contact_held        = base_contact_hold_on
+   base_contact_held_reverse = reverse
+   base_contact_evals_held  = 0
+   base_contact_evals_other = 0
+   end subroutine hold_base_contact_direction
+
+   !------------------------------------------!
+
+   subroutine release_base_contact_direction(held, reverse, n_evals,        &
+                                             n_other)
+   ! Called after the solve: every later evaluation reads the rule again.
+   ! Returns whether a direction was held at all (false where the solve
+   ! never evaluated this boundary, or nothing was held), which side, and
+   ! over how many evaluations of the solve the rule read the other side.
+   logical, intent(out) :: held, reverse
+   integer, intent(out) :: n_evals, n_other
+   held    = base_contact_hold_on .and. base_contact_held
+   reverse = base_contact_held_reverse
+   n_evals = base_contact_evals_held
+   n_other = base_contact_evals_other
+   base_contact_hold_on = .false.
+   base_contact_held    = .false.
+   end subroutine release_base_contact_direction
+
+   !------------------------------------------!
+
+   logical function base_contact_reverses_in_state(W) result(reverse)
+   ! The side the rule of characteristic_base_face_state selects on the
+   ! state W, read with nothing held: .true. where the interior owns the
+   ! level (a reverse flow), .false. where the reservoir does. W is the
+   ! primitive state whose first cell n_part_cell1 belongs to, as for every
+   ! other evaluation of this boundary. Only the diagnostics of the last
+   ! evaluation (the *_last variables and the counters) are written.
+   real*8, intent(in) :: W(3,1-Ng:N+Ng)
+   real*8 :: Wface(3), Wghost(3,1-Ng:0), Wface_lower(3)
+   logical :: hold_was_on
+   hold_was_on = base_contact_hold_on
+   base_contact_hold_on = .false.
+   base_contact_rule_reverse_last = .false.
+   call base_boundary_states(W, Wface, Wghost, Wface_lower)
+   reverse = base_contact_rule_reverse_last
+   base_contact_hold_on = hold_was_on
+   end function base_contact_reverses_in_state
 
    ! End of module
    end module base_boundary

@@ -16,6 +16,8 @@
 	use sed_reader,      only: photon_grid_floor_eV
 	use caloric_eos,     only: caloric_eos_state_line
 	use Numerical_Fluxes, only: low_mach_velocity_jump
+	use binary_element_diffusion, only: interdiffusion_enthalpy_scale
+	use viscous_conduction, only: conduction_scale
 	use species_table,   only: melem_name
 	use IC_load,         only: melem_from_abundance,                    &
 	                     ic_coupling_present, ic_sec_ion_active,        &
@@ -590,6 +592,20 @@
 	else
 		write(outfile,*) '- Well balanced: off (opt-in key "Well balanced")'
 	endif
+	! Heat conduction and the conductivity it uses.
+	if (cond_on) then
+		write(outfile,*) '- Heat conduction: on, kappa = (n_e 1.2e-6 T^2.5'// &
+			' + n_HI 379 T^0.69 + n_HeI 299 T^0.69 + n_H2 k_H2(T))/n'//      &
+			' erg/cm/s/K'
+		write(outfile,*) '    (Banks & Kockarts 1973 as Salz et al. 2015'//  &
+			' Eqs. 24-26 and Sutton et al. 2015 Eq. 5 state them; k_H2 the'
+		write(outfile,*) '    Eucken-form fit to Incropera et al. 2007 Table A.4,'// &
+			' valid 200-2000 K)'
+		if (conduction_scale() .ne. 1.0d0)                                 &
+			write(outfile,'(A,F8.5,A)') '  - CONTINUATION FACTOR on the'//   &
+			' conductivity: ', conduction_scale(),                         &
+			' (EXHALE_CONDUCTION_SCALE; a step, not the model)'
+	endif
 	! The energy carried by the element fluxes. Stated only where the
 	! elements move, so the report of a run without He_diffusion is the one
 	! it always was.
@@ -599,6 +615,10 @@
 				' energy equation carries q_d = sum_s h_s J_s of the'
 			write(outfile,*) '    element fluxes, Cook 2009 eqs. 11-13,'//   &
 				' in the marching update and the stationary energy row)'
+			if (interdiffusion_enthalpy_scale() .ne. 1.0d0)                &
+				write(outfile,'(A,F8.5,A)') '  - CONTINUATION FACTOR on'//    &
+				' that term: ', interdiffusion_enthalpy_scale(),               &
+				' (EXHALE_INTERDIFF_ENTH_SCALE; a step, not the model)'
 		else
 			write(outfile,*) '- Interdiffusion enthalpy flux: OFF by'//       &
 				' request (the elements move but the energy equation'

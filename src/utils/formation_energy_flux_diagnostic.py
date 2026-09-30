@@ -1,26 +1,57 @@
 #!/usr/bin/env python3
-"""Formation-energy flux diagnostic: how large is the term the energy
-equation omits.
+"""Advective formation-energy inventory and flux diagnostic.
 
-The thermal energy equation EXHALE integrates today carries one material
-energy flux, the hydrodynamic one that `Phys_flux` builds,
+The thermal energy equation EXHALE integrates carries one material energy
+flux, the hydrodynamic one that `Phys_flux` builds,
 
     F_E = v (E + p),   E = (1/2) rho v^2 + u_th        (Num_Fluxes.f90:434)
 
 with `u_th` the caloric internal energy, so the rovibrational energy of bound
-H2 is inside it (caloric_eos.f90, `energy_density_from_pressure`).  What is
-absent is the CHEMICAL energy the same material carries: a proton advected
-outward carries 13.6 eV of ionization energy with it, and where the
-composition changes along the flow the divergence of that flux is a source or
-a sink of the thermal energy.  The target system writes it as
+H2 is inside it (caloric_eos.f90, `energy_density_from_pressure`).  The
+chemical (formation) energy u_form = sum_s n_s eps_s moves with the gas and
+with the relative motion of the species, F_form = sum_s eps_s (n_s v +
+Phi_s), and its balance follows from the species balances
+d_t n_s + div(n_s v + Phi_s) = S_s:
 
-    d_t u_th + div(F_E) = Q_local - (1/r^2) d_r ( r^2 F_form ) - d_t u_form|_chem
-    u_form = sum_s n_s eps_s ,      F_form = u_form v
+    d_t u_form + div(F_form) = sum_s eps_s S_s .
+
+THAT IS NOT A TERM MISSING FROM THE THERMAL EQUATION.  In the total energy
+balance of the gas (kinetic, gravitational, sensible and formation energy,
+with the work, the boundary fluxes and the radiation absorbed and emitted
+all written in it) the chemical conversion is exchanged between u_form and
+the rest; subtracting the balance above from it gives the sensible-energy
+equation, in which the conversion appears ONCE, as -sum_s eps_s S_s, and
+that is what the reaction heating and cooling rates of the code already are
+(a photoionization heats by h nu - I, not by h nu; a recombination cools by
+the kinetic energy of the captured electron, not by I).  Adding -div(F_form)
+or -d_t u_form|chem to that equation would count the same conversion twice
+(code audit of 2026-09-29, md/CODE_AUDIT_20260929.md F8; this header said
+otherwise until then).  The sensible enthalpy carried by a species moving
+relative to the mixture is a different quantity: binary_element_diffusion.f90
+carries it for the elements, and the carriers are the open item of the same
+audit (F1).
+
+WHAT THIS SCRIPT MEASURES is the ADVECTIVE part only, F_form,adv = u_form v
+from the cell-centred profiles; it reads no relative species flux Phi_s.  In
+a stationary state
+
+    div(F_form,adv) = sum_s eps_s S_s - div(sum_s eps_s Phi_s) ,
+
+so its divergence equals the chemical conversion of each cell only where the
+relative formation-energy transport is negligible, and only where the species
+balances are stationary.  A difference between div(F_form,adv) and the
+conversion is therefore a sum of distinct things -- the omitted relative
+(diffusive) transport, the residual of the species balances of the saved
+state, species with no eps_s entry, and the midpoint flux reconstruction of
+this script -- and none of them can be singled out from the difference alone
+(follow-up review md/CODE_AUDIT_20260929_review1.md, R2).  A complete ledger
+test reads the operator's own fluxes and reaction sources and compares their
+discrete balance; comparing div(u_form v) with the heating and cooling does
+not establish it.
 
 This script MEASURES `div(F_form)` on saved output directories and compares it
 with the heating and cooling rates those same states carry.  It changes
-nothing in the code: it is the pre-measurement increment B4-2 is required to
-report before the term is switched on.
+nothing in the code.
 
 `eps_s` is the formation and excitation energy of one particle of species `s`
 above the single declared reference of B1 T1.2 (every element a neutral,

@@ -154,6 +154,42 @@ _save_prefix = os.path.join(path, _tenv('SAVE_PREFIX', ''))
 _fig_prefix  = _tenv('FIG_PREFIX', '')
 
 
+def _checked_transmission(line, prob, lam, clip=False, tol=1.0e-12):
+	"""A disk-averaged transmission, checked before the spectrum uses it.
+
+	lam is the wavelength array of the line in METRES, as the l_onde_*
+	arrays of this script are; the messages quote it in Angstrom.
+
+	exp(-tau) with tau >= 0 lies in [0, 1], and a large tau underflows it to 0
+	rather than overflowing it, so a non-finite transmission is a defect of the
+	optical depth or of its inputs (density, temperature, geometry, opacity)
+	and not a saturated line. It stops the synthesis and names the first
+	wavelength that carries one, instead of being replaced by a value the
+	invalid input gives no basis for. A departure from [0, 1] larger than tol
+	is a defect as well; with clip=True the departures within tol (the
+	rounding of the disk average) are set to the bound and counted.
+	"""
+	prob = np.asarray(prob, dtype=float)
+	bad = ~np.isfinite(prob)
+	if bad.any():
+		i = int(np.flatnonzero(bad)[0])
+		raise ValueError('%s: %d non-finite transmission value(s); the first '
+		                 'at wavelength index %d (%.6f A) is %r'
+		                 % (line, int(bad.sum()), i, 1.0e10*float(lam[i]), prob[i]))
+	far = (prob < -tol) | (prob > 1.0 + tol)
+	if far.any():
+		i = int(np.flatnonzero(far)[0])
+		raise ValueError('%s: transmission %r outside [0, 1] at wavelength '
+		                 'index %d (%.6f A)' % (line, prob[i], i, 1.0e10*float(lam[i])))
+	if clip:
+		n_out = int(np.count_nonzero((prob < 0.0) | (prob > 1.0)))
+		if n_out > 0:
+			print('   (%s) %d transmission value(s) within %.0e of [0, 1] set '
+			      'to the bound' % (line, n_out, tol))
+		prob = np.clip(prob, 0.0, 1.0)
+	return prob
+
+
 def _fig_name(line):
 	"""Figure file name for a line key ('' = do not save this figure)."""
 	return (os.path.join(path, _fig_prefix + line + '.png')
@@ -833,11 +869,10 @@ avg_prob_HD = ((A_star - A_atm) + (A_atm - A_planet)*prob_tot_HD[:])/A_star
 # Normalization to continuum
 avg_prob_HD = avg_prob_HD[:]*A_star/(A_star - A_planet)
 
-# Physical transmission is in [0,1]; clip any non-finite entries (a saturated
-# Lya damping wing can overflow exp(-tau) in a single grid cell) so the line
-# profile and the auto-scaled plot axes stay well defined.
-avg_prob_HD = np.clip(np.nan_to_num(avg_prob_HD, nan=1.0, posinf=1.0, neginf=0.0),
-                      0.0, 1.0)
+# The transmission is checked before use (_checked_transmission): a
+# non-finite value stops the synthesis, and only the rounding of the disk
+# average is clipped to [0, 1].
+avg_prob_HD = _checked_transmission('Lya', avg_prob_HD, l_onde_HI, clip=True)
 
 # Integral over the planet's projected area H-alpha and H-beta
 if do_Ha:
@@ -944,19 +979,25 @@ transit_depth = (Rp/R_star)**2.0    # retained for the metal generic path below
 
 # metastable HeI triplet
 avg_prob_rot_HeTR = _rotate_disk_average(exp_tau_HeTR, l_onde_HeTR)
+avg_prob_rot_HeTR = _checked_transmission('He 10830 (rotated)',
+                                          avg_prob_rot_HeTR, l_onde_HeTR)
 convolved_rot_prob_HeTR = convolve(avg_prob_rot_HeTR, gaussian_HeTR, boundary='extend')
 
-# Hydrogen and Deuterium (Ly-alpha); guard the saturated-wing overflow as above
+# Hydrogen and Deuterium (Ly-alpha), checked as above
 avg_prob_rot_HD = _rotate_disk_average(exp_tau_HD, l_onde_HI)
-avg_prob_rot_HD = np.clip(np.nan_to_num(avg_prob_rot_HD, nan=1.0, posinf=1.0,
-                                        neginf=0.0), 0.0, 1.0)
+avg_prob_rot_HD = _checked_transmission('Lya (rotated)', avg_prob_rot_HD,
+                                        l_onde_HI, clip=True)
 convolved_rot_prob_HD = convolve(avg_prob_rot_HD, gaussian_HD, boundary='extend')
 
 # H-alpha / H-beta
 if do_Ha:
 	avg_prob_rot_Ha = _rotate_disk_average(exp_tau_Ha, l_onde_Ha)
+	avg_prob_rot_Ha = _checked_transmission('H-alpha (rotated)',
+	                                        avg_prob_rot_Ha, l_onde_Ha)
 	convolved_rot_prob_Ha = convolve(avg_prob_rot_Ha, gaussian_Ha, boundary='extend')
 	avg_prob_rot_Hb = _rotate_disk_average(exp_tau_Hb, l_onde_Hb)
+	avg_prob_rot_Hb = _checked_transmission('H-beta (rotated)',
+	                                        avg_prob_rot_Hb, l_onde_Hb)
 	convolved_rot_prob_Hb = convolve(avg_prob_rot_Hb, gaussian_Hb, boundary='extend')
 
 # Transmission minima

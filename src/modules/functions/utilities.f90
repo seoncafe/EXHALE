@@ -31,8 +31,8 @@
    subroutine set_state_certified(flag, reason)
    ! Set by the certification contexts (certification.f90) and by the
    ! run's own adoption of a loaded claim; every other reader takes it. The
-   ! pass state writer (write_pass_state_pair) sets the pair of the pass
-   ! snapshot for its own write and puts the run's pair back after it.
+   ! pass state writer (publish_pass_state_generation) sets the pair of the
+   ! pass snapshot for its own write and puts the run's pair back after it.
    logical,          intent(in) :: flag
    character(len=*), intent(in) :: reason
    state_is_certified         = flag
@@ -166,7 +166,7 @@
            ' restart_schema=3 resid_def=145 N=', N
    end subroutine write_provenance_header
 
-   subroutine write_coupling_state_header(unit)
+   subroutine write_coupling_state_header(unit, state_id)
    ! THE LINE THAT SAYS WHAT PHYSICS THE STATE IN THIS FILE WAS PRODUCED
    ! UNDER, for every switch of the run that is NOT fixed by input.inp but
    ! changes while the run converges.
@@ -209,8 +209,20 @@
    ! The fields are formed by coupling_state_fields, which the provenance
    ! line of the derived (_adv) products writes as well, so the two lines
    ! cannot state different sets of fields.
+   !
+   ! state_id, present only for a generation of the pass state
+   ! (publish_pass_state_generation, write_output.f90), is appended as the
+   ! last field, state_id=<generation>, on both halves of the pair; load_IC
+   ! refuses a pair whose halves state different identities or only one of
+   ! them states one. Absent, the line is the one every other file carries.
       integer, intent(in) :: unit
-      write(unit,'(A)') '# coupling: '//trim(coupling_state_fields())
+      character(len=*), intent(in), optional :: state_id
+      if (present(state_id)) then
+         write(unit,'(A)') '# coupling: '//trim(coupling_state_fields())// &
+                           ' state_id='//trim(state_id)
+      else
+         write(unit,'(A)') '# coupling: '//trim(coupling_state_fields())
+      endif
    end subroutine write_coupling_state_header
 
    function coupling_state_fields(certification_first) result(fields)

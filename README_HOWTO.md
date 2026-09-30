@@ -79,7 +79,8 @@ cd examples/tutorial && ../../EXHALE.x  # reads ./input.inp, writes ./output/
 
 `OMP_NUM_THREADS` controls the OpenMP team (the ionization sweep, the rate
 tables, the carrier residual, the reconstructions and the hydrodynamic rows;
-default min(cores, 16), dynamic adjustment off, the team obtained is
+default the physical cores, since a second hardware thread on a core
+adds nothing, dynamic adjustment off, the team obtained is
 reported); the serial and parallel results are bitwise identical.
 `OPENBLAS_NUM_THREADS` controls the separate thread pool of the OpenBLAS the
 GNU build links; unset, the binary sets it to 1 at startup (README, Build).
@@ -242,9 +243,18 @@ Two characteristics enter a subsonic inflow face and one leaves, so the lower
 atmosphere states two conditions and the interior supplies one. The two are the
 **pressure and the specific entropy** of the lower atmosphere at the base level
 `r = 1`; the one is the outgoing acoustic invariant of the first interior cell.
-The ghost cells are the volume averages of the same hydrostatic isentrope
-continued below the face -- not copies of the face state, which is the half-cell
-error the previous ghost-cell closure carried.
+With `Well balanced: True` the interior pressure that invariant reads is the
+first cell's own constant-density hydrostatic equilibrium at the face, the one
+the well-balanced reconstruction extrapolates the cell to, and the ghost cells
+continue that same discrete equilibrium below the face, so a column at rest in
+the scheme's discrete equilibrium carries no flux through the base (boundary
+model `..._face_at_level_discrete_equilibrium_v5`). Without it the first cell
+is carried to the face along its hydrostatic isentrope and the ghost cells are
+the volume averages of the reservoir's hydrostatic isentrope continued below
+the face (`..._face_at_level_v4`). Neither is a copy of the face state, which
+is the half-cell error the previous ghost-cell closure carried. A seed mapped
+from another grid or model is not in the discrete equilibrium of this one, and
+its lower layer is not at rest until it is projected onto it.
 
 The only key is the base **level**:
 
@@ -1075,21 +1085,48 @@ different blocks is refused.
 
   **A killed stationary run keeps its last pass.** After every outer pass
   after which the iteration goes on, the state the next pass starts from
-  (the accepted composition update of that pass) is written to
-  `output/Hydro_ioniz_last_pass.txt` and `output/Ion_species_last_pass.txt`,
-  overwriting the pair of the pass before. Each half is written to a
-  `.part` name and renamed, so a kill during the write leaves the previous
-  pair whole. The pair is written by the writer of the final state, with the
-  same headers, so copying it to `Hydro_ioniz_IC.txt` / `Ion_species_IC.txt`
-  continues the run from that pass. It is never a certified state: both
-  halves carry `certified=F cert_reason=pass_snapshot_p<pass>` and a
+  (the accepted composition update of that pass) is published as one
+  generation `output/pass_state/<state_id>/`, with
+  `<state_id> = r<run identity>_p<pass>` (the run identity is the start
+  time of the run to the millisecond and a processor clock count, so two
+  runs never name one generation). The generation holds `Hydro_ioniz.txt`,
+  `Ion_species.txt` and `manifest.txt` (state_id, run identity, pass, the
+  generation before it, the two file names with their byte sizes, the
+  certification reason). It is written in `output/pass_state/.<state_id>.tmp/`,
+  renamed onto its name, and then published by writing
+  `output/pass_state/current.part` and renaming it onto
+  `output/pass_state/current`, one line naming the generation. So a kill at
+  any moment leaves `current` naming a complete generation (or no `current`
+  before the first publication). The generation `current` named before is
+  kept, older ones are removed. The pair is written by the writer of the
+  final state, with the same headers, so copying the pair `current` names to
+  `Hydro_ioniz_IC.txt` / `Ion_species_IC.txt` continues the run from that
+  pass:
+
+      G=$(cat output/pass_state/current)
+      cp output/pass_state/$G/Hydro_ioniz.txt output/Hydro_ioniz_IC.txt
+      cp output/pass_state/$G/Ion_species.txt output/Ion_species_IC.txt
+
+  It is never a certified state: both halves carry
+  `certified=F cert_reason=pass_snapshot_p<pass> ... state_id=<state_id>` on
+  the coupling line and a
   `# pass_snapshot pass=<n> carrier_movement_bound=... element_omega=...`
   line (the bound and the factor are not restored by a restart; pass them
-  with `EXHALE_CARRIER_TRUST` / `EXHALE_DIFF_OMEGA` if wanted). Halves of two
-  different passes state two reasons and `load_IC` refuses them. A run that
-  ends on its own writes its final state as before, and the pair beside it is
-  then one pass older. `LHS1140b/models/.P1/s2_continuation/config_rung.sh`
-  takes the pair as the entry when the parent has no `Hydro_ioniz.txt`.
+  with `EXHALE_CARRIER_TRUST` / `EXHALE_DIFF_OMEGA` if wanted). `load_IC`
+  refuses a pair whose halves state two different `state_id` values, or in
+  which one half states one and the other does not. A run that ends on its
+  own writes its final state as before (without a `state_id`), and the
+  generation beside it is then one pass older.
+  `EXHALE_PASS_STATE_STOP_AT=<step>[:<pass>]` stops a run (exit status 3)
+  right after step 1 (temporary directory written), 2 (renamed) or 3
+  (`current` published) of that pass, to measure what an interruption
+  leaves. Until 2026-09-29 the pair was
+  `output/{Hydro_ioniz,Ion_species}_last_pass.txt`, overwritten half by half
+  (`md/Update_EXHALE_stage3.md` section 33).
+  `LHS1140b/models/.P1/s2_continuation/config_rung.sh.new` (to replace
+  `config_rung.sh` once no running process uses it) takes the generation
+  `current` names as the entry when the parent has no `Hydro_ioniz.txt`, and
+  a legacy `*_last_pass.txt` pair after that.
 
 Refused: the key without `Load IC? True`, `trajectory` with `Run mode: init`,
 `stationary` without `Solver: Newton`.
@@ -1156,7 +1193,7 @@ All output is written to `output/` in the run directory.
 | `Ion_species.txt` | Number densities of H I, H II, He I, He II, He III, He 2^3S, and the metal ionization stages (33 species; zero columns when a species is off) |
 | `Hydro_ioniz_adv.txt` | `Hydro_ioniz.txt` re-solved as the steady ionization and energy equations along the recorded flow, plus three further columns: `adv_T_status` and `adv_comp_status`, the validity of the row's temperature and of its composition separately (0 corrected, 1 retained, 2 failed, 3 unsupported, 4 not evaluated), and `adv_mass_row`, the measure both were decided by. A corrected row is a CONDITIONAL correction, accurate to the fraction of itself in the mass flux that the file's own `# adv_conditional_tol` line states; whether the whole input state passed the stationary certification is a separate statement, in its `# adv_input_certified` line. The conditions, the two fields, the measure and both numbers are defined once, in manual section 4 ("Validity range of the advection correction"); read them there rather than from a second copy |
 | `Ion_species_adv.txt` | Post-processed version of `Ion_species.txt`, carrying the same two validity fields as its last two columns and the same header block |
-| `Hydro_ioniz_last_pass.txt`, `Ion_species_last_pass.txt` | only on the stationary route (`Restart intent: stationary` and the partitioned outer iteration): the state the next outer pass starts from, rewritten after every pass that is not the last, so that a run stopped from outside keeps its last completed pass. Same columns and headers as `Hydro_ioniz.txt` / `Ion_species.txt`, a restartable pair once copied to the `_IC` names, never certified (`certified=F cert_reason=pass_snapshot_p<pass>` in both halves). See "Restart a run" |
+| `pass_state/current`, `pass_state/<state_id>/{Hydro_ioniz,Ion_species,manifest}.txt` | only on the stationary route (`Restart intent: stationary` and the partitioned outer iteration): the state the next outer pass starts from, published as one generation after every pass that is not the last, so that a run stopped from outside keeps its last completed pass; `current` names the generation to take. Same columns and headers as `Hydro_ioniz.txt` / `Ion_species.txt` plus `state_id=` on the coupling line of both, a restartable pair once copied to the `_IC` names, never certified (`certified=F cert_reason=pass_snapshot_p<pass>` in both halves). Replaces `Hydro_ioniz_last_pass.txt` / `Ion_species_last_pass.txt` (until 2026-09-29). See "Restart a run" |
 | `Cooling_breakdown.txt` | Radiative cooling by channel vs. radius: six atomic channels (recombination and collisional ionization, which include the energies of the metal ions; collisional excitation of H I, He I and He II; free-free), the H3+ infrared channel, the H2, H2O and CO infrared bands (net rates), then one column for each metal ion's line cooling. With the He 2^3S tracked the He I column is the net 1^1S <-> 2^3S exchange plus the metastable's own channels, negative where the superelastic collisions heat the gas |
 | `Heating_breakdown.txt` | Volumetric heating by channel vs. radius, 24 columns (r, T, n_e, total, then 20 channels): the photoheating split by absorber (H I, He I, He II, He 2^3S, H2, metals, the last with the Auger electrons of inner-shell vacancies), then the two excited-H channels, the recombination radiation absorbed on the spot (`heat_He_recomb`), the Penning and associative branches of He 2^3S + H, He 2^3S + H2 Penning, the dissociation and fluorescence halves of Lyman-Werner, the collisional H2/He reactions, the FUV photolysis of H2O and OH, the collisional oxygen reactions, the two CO destruction channels (He+ charge transfer and photodissociation), and the energy defects of the charge-exchange reactions (`heat_charge_exchange`, less what a radiating product state carries away; negative for an endothermic reaction). The columns are the channel array the ionization sweep filled for the state written beside them, so their sum is the `heat` column of `Hydro_ioniz.txt` to round-off |
 | `Excited_H.txt` | Non-LTE H(n=2) populations (when the Balmer/Ly-alpha physics is on) |

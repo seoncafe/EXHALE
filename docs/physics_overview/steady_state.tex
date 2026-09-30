@@ -25,9 +25,10 @@ subtracts the radiative source from its third row,
 \end{equation}
 %
 with $\nabla\!\cdot q_d$ the divergence of the interdiffusion enthalpy flux of
-Sec.~\ref{sec:mol:interdiffusion}, formed from the element fluxes of the
-state itself and identically zero, with no arithmetic, unless
-\texttt{He\_diffusion} moves the elements; the composition is therefore an
+Sec.~\ref{sec:mol:interdiffusion}, formed from the element and carrier
+fluxes of the state itself and identically zero, with no arithmetic, unless
+\texttt{He\_diffusion} moves the elements or a molecular carrier is
+transported; the composition is therefore an
 argument of every assembly.  $dF$ and $S$ are those of \eqref{eq:dF1} to
 \eqref{eq:source}, evaluated through
 the same \texttt{reconstruction\_continuation\_rhs} the marching stages call,
@@ -423,18 +424,23 @@ bound makes the H$_2$ row of the outermost cells overshoot and neither control
 certifies.
 
 \paragraph{The state of every pass, kept.}
-Every pass after which the iteration goes on writes the state the next pass
+Every pass after which the iteration goes on publishes the state the next pass
 starts from, rebuilt from $(u, f_{\rm sp})$ in the order of the checkpoint
-restoration with every side effect on the caloric mixture undone, to
-\texttt{output/Hydro\_ioniz\_last\_pass.txt} and
-\texttt{output/Ion\_species\_last\_pass.txt} by the writers of the final
-state, so a run stopped from outside keeps its last completed pass.  The pair
-carries \texttt{certified=F cert\_reason=pass\_snapshot\_p<n>} in both halves,
+restoration with every side effect on the caloric mixture undone, as one
+generation \texttt{output/pass\_state/<id>/} (\texttt{Hydro\_ioniz.txt},
+\texttt{Ion\_species.txt}, \texttt{manifest.txt}) written by the writers of
+the final state, with \texttt{<id>} $=$ \texttt{r<run identity>\_p<n>}, so a
+run stopped from outside keeps its last completed pass.  The pair carries
+\texttt{certified=F cert\_reason=pass\_snapshot\_p<n>} in both halves,
 because the certification of a pass is taken before its composition update
 and the snapshot is the state after it, and a \texttt{\# pass\_snapshot} line
 with the movement bound and $\omega$ of the next pass, which a restart does
-not inherit.  Each half is written under a temporary name and renamed, and a
-pair mixed from two passes states two reasons and is refused by the loader.
+not inherit.  The generation is written in a temporary directory, renamed
+onto its name, and published by renaming a one-line file onto
+\texttt{output/pass\_state/current}; an interruption at any point therefore
+leaves \texttt{current} naming a complete generation.  Both halves state
+\texttt{state\_id=<id>} on their coupling line, and the loader refuses a pair
+whose halves state two identities or only one.
 Nothing the run reads afterwards changes: the final state files of a run are
 bitwise those of the binary before the snapshot existed.
 

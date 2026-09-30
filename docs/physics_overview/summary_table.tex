@@ -272,15 +272,17 @@ Key & Default & What it selects, and where \\
   Thermal-diffusion factor. \\
 \texttt{He\_ambipolar} & on &
   Ambipolar term of the element diffusion. \\
-\texttt{Interdiffusion enthalpy flux:} & on (with \texttt{He\_diffusion}) &
-  The enthalpy flux $\sum_s h_sJ_s$ of the diffusing elements in the energy
-  equation, Sec.~\ref{sec:mol:interdiffusion}
-  (\texttt{binary\_element\_diffusion.f90}). \\
+\texttt{Interdiffusion enthalpy flux:} & on (with \texttt{He\_diffusion} or a
+  transported molecular carrier) &
+  The enthalpy flux $\sum_s h_sJ_s$ of the diffusing elements and of the
+  transported carriers in the energy equation,
+  Sec.~\ref{sec:mol:interdiffusion} (\texttt{binary\_element\_diffusion.f90},
+  \texttt{diffusive\_photochemistry.f90}). \\
 \texttt{Viscosity:} & off &
   Radial viscous force and its dissipation \eqref{eq:viscous}
   (\texttt{viscous\_conduction.f90}). \\
 \texttt{Conduction:} & off &
-  Heat conduction with $\kappa(T)$ of \eqref{eq:transport_coeff}. \\
+  Heat conduction with the mixture $\kappa$ of \eqref{eq:transport_coeff}. \\
 \end{longtable}
 }
 
@@ -518,6 +520,18 @@ Roueff, E., Abgrall, H., Czachorowski, P., et al. 2019, A\&A, 630, A58
 
 \bibitem[Rusanov(1961)]{Rusanov1961}
 Rusanov, V.~V. 1961, J. Comput. Math. Phys. USSR, 1, 267
+
+\bibitem[Incropera et al.(2007)]{Incropera2007}
+Incropera, F.~P., DeWitt, D.~P., Bergman, T.~L., \& Lavine, A.~S. 2007,
+Fundamentals of Heat and Mass Transfer, 6th ed. (Hoboken: Wiley)
+
+\bibitem[Salz et al.(2015)]{Salz2015}
+Salz, M., Banerjee, R., Mignone, A., Schneider, P.~C., Czesla, S., \&
+Schmitt, J.~H.~M.~M. 2015, A\&A, 576, A21
+
+\bibitem[Sutton et al.(2015)]{Sutton2015}
+Sutton, E.~K., Thayer, J.~P., Wang, W., Solomon, S.~C., Liu, X., \& Foster,
+B.~T. 2015, J. Geophys. Res. Space Physics, 120, 6884
 
 \bibitem[Salz et al.(2016)]{Salz2016}
 Salz, M., Czesla, S., Schneider, P.~C., \& Schmitt, J.~H.~M.~M. 2016,

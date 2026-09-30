@@ -483,6 +483,13 @@
       ! longer arc buys accuracy in proportion until the curvature term
       ! meets it. This scale is what measures where that is.
       real*8  :: jv_probe_arc_scale = 1.0d0
+      ! THE MATRIX-FREE ACTION WITH THE WENO3 WEIGHTS DIFFERENTIATED
+      ! (EXHALE_JV_FRESH_WEIGHTS=1): the products of the Newton model are
+      ! taken with weno_mode = 0, the weights recomputed at every probe, in
+      ! place of the frozen weights of mode 2. Measurement only: it asks
+      ! whether the frozen-weight model is what fails to predict the change
+      ! of a row whose terms cancel.
+      logical :: jv_fresh_weights = .false.
       ! WHAT THE LAST PROBE OF jv_product ACTUALLY DID, so that a defect can
       ! be attributed to a decision of the feasible set rather than to the
       ! residual. Written by every product; read only by a print.
@@ -1710,6 +1717,47 @@
       ! iteration, and the ratio form leaves their pseudo-time at 1.13 where
       ! the plain doubling solves them.
       logical :: ptc_ramp_guard_on = .true.
+      ! PSEUDO-TRANSIENT STEPS ACCEPTED BY THE PSEUDO-TIME CONTROL, NOT BY
+      ! MERIT DESCENT (EXHALE_PTC_SER=1, measurement key, off by default;
+      ! md/Update_EXHALE_stage3.md section 42). A step dY of the shifted
+      ! system (I/dtau + J) dY = -F is a step of the pseudo-time relaxation;
+      ! at small dtau it is dY ~ -dtau F, which a merit line search refuses
+      ! wherever the relaxation is stable in time but not monotone in the
+      ! scaled 2-norm (MEASURED: steps of lam 1e-6 at dtau 8e-5 refused on
+      ! the LHS 1140 b conduction rung, the residual smooth along them).
+      ! Kelley & Keyes (1998, SIAM J. Numer. Anal. 35, 508), abstract:
+      ! "Standard globalization strategies such as line search or trust
+      ! region methods often stagnate at local minima"; their pseudo-time
+      ! step follows the residual reduction (SER, their Eq. 1.5). With the
+      ! key: a trial is accepted when it is admissible and no cell's
+      ! density or total energy moves by more than ptc_ser_max_change of
+      ! itself (halving lam otherwise); dtau follows SER,
+      ! dtau <- dtau min(2, max(1/2, f2/f2_try)), times lam when the step
+      ! was shortened; the returns to the best iterate, the stagnation stop
+      ! and the damped Gauss-Newton escape that replace an accepted step are
+      ! not taken; the solve ends at its gates or at its iteration cap and
+      ! hands back its LAST iterate unless the best one met the gates.
+      logical :: ptc_ser_on = .false.
+      real*8  :: ptc_ser_max_change = 0.3d0
+      ! EXHALE_PTC_SER=2: the same acceptance, the pseudo-time DOUBLED on a
+      ! full step and multiplied by lam on a shortened one instead of the
+      ! SER ratio (which holds dtau near its entry value while the merit
+      ! falls by a per cent a step, MEASURED on the section 42 fixtures).
+      logical :: ptc_ser_doubles = .false.
+      ! THE TERMINAL PHASE IS NEWTON'S (EXHALE_PTC_SER_RNORM=<x>, default
+      ! 1e-3): once ||R|| of the current iterate is below x, the step is
+      ! accepted by the merit line search again (and the damped Gauss-Newton
+      ! escape may replace it), because an unconditionally accepted step at
+      ! dtau -> infinity is a Newton step whose inexact linear model can
+      ! only wander at its own error level: MEASURED on the 0.0624 conduction
+      ! rung at factor 0.751 (md/Update_EXHALE_stage3.md section 50), ||R||
+      ! between 5e-6 and 5e-5 for 400 iterations at dtau = 1e14 against an
+      ! energy tolerance of 1e-6. Above x the pseudo-time acceptance holds,
+      ! which is where the nonmonotone transients live (||R|| 0.06 -> 1.2 on
+      ! the section 42 fixture T3).
+      real*8  :: ptc_ser_rnorm_switch = 1.0d-3
+      ! Whether the current iteration is in the pseudo-transient phase.
+      logical :: ptc_ser_phase = .false.
       ! AND THE GROWTH GATE OF STATEMENT (3), WHICH IS OFF
       ! (ptc_growth_gate_on, EXHALE_PTC_RAMP_GROWTH_GATE=1 turns it on).
       ! MEASURED on the LHS 1140 b C/N/O column: a residual
@@ -8382,8 +8430,8 @@
       !                                    default (user decision,
       !                                    2026-09-08).
       character(len=32) :: env
-      integer :: iselect, k_ritz, ios_ritz
-      real*8  :: xselect
+      integer :: iselect, k_ritz, ios_ritz, ios_ser
+      real*8  :: xselect, x_ser
       project_species_trial = .true.
       call get_environment_variable('EXHALE_SPECIES_BOUND_PROJECT', env)
       if (trim(env) .eq. '0') project_species_trial = .false.
@@ -8524,6 +8572,11 @@
       !                                  non-positive or unreadable value
       !                                  leaves it at one.
       jv_probe_arc_scale = 1.0d0
+      !   EXHALE_JV_FRESH_WEIGHTS=1      take the products of the Newton
+      !                                  model with the WENO3 weights
+      !                                  recomputed (jv_fresh_weights).
+      call get_environment_variable('EXHALE_JV_FRESH_WEIGHTS', env)
+      jv_fresh_weights = (trim(env) .eq. '1')
       call get_environment_variable('EXHALE_JV_PROBE_ARC', env)
       if (len_trim(env) .gt. 0) then
          xselect = 0.0d0
@@ -8600,6 +8653,31 @@
       call get_environment_variable('EXHALE_PTC_RAMP_DOUBLE', env)
       if (trim(env) .eq. '0')                                            &
          pseudo_time_doubles_on_an_accepted_step = .false.
+      !   EXHALE_PTC_SER=1               accept pseudo-transient steps by
+      !                                  the pseudo-time control (SER) and
+      !                                  not by merit descent (ptc_ser_on);
+      !   EXHALE_PTC_SER_MAX_CHANGE=<x>  the largest relative change of a
+      !                                  cell's density or total energy
+      !                                  such a step may make (default 0.3).
+      ptc_ser_on = .false.
+      call get_environment_variable('EXHALE_PTC_SER', env)
+      if (trim(env) .eq. '1') ptc_ser_on = .true.
+      ptc_ser_doubles = .false.
+      if (trim(env) .eq. '2') then
+         ptc_ser_on = .true.;  ptc_ser_doubles = .true.
+      endif
+      ptc_ser_rnorm_switch = 1.0d-3
+      call get_environment_variable('EXHALE_PTC_SER_RNORM', env)
+      if (len_trim(env) .gt. 0) then
+         read(env,*,iostat=ios_ser) x_ser
+         if (ios_ser .eq. 0 .and. x_ser .ge. 0.0d0) ptc_ser_rnorm_switch = x_ser
+      endif
+      ptc_ser_max_change = 0.3d0
+      call get_environment_variable('EXHALE_PTC_SER_MAX_CHANGE', env)
+      if (len_trim(env) .gt. 0) then
+         read(env,*,iostat=ios_ser) x_ser
+         if (ios_ser .eq. 0 .and. x_ser .gt. 0.0d0) ptc_ser_max_change = x_ser
+      endif
       !   EXHALE_PTC_RAMP_GUARD=0       take the pseudo-time ramp unguarded:
       !                                  no bound on the cut of an accepted
       !                                  step, no floor at a fixed span below
@@ -17345,6 +17423,10 @@
       real*8, dimension(3,1-Ng:N+Ng)          :: utry, Wtry
       real*8, dimension(1-Ng:N+Ng,n_species)  :: f_sp_j, f_sp_best
       real*8  :: rnorm, rc(3), dtau, lam, f2, f2_try, idtau, amx0
+      ! The largest relative change of a cell's density or total energy
+      ! along a trial (ptc_ser_on), and the loop index it is formed with.
+      real*8  :: ser_change
+      integer :: j_ser
       ! The floor the cut of an unfavorable step stops at, and the factor
       ! an accepted step multiplies the pseudo-time by
       ! (pseudo_time_doubles_on_an_accepted_step).
@@ -17406,6 +17488,12 @@
       ! the trial beside them.
       logical :: linear_rows_on, jv_ok_diag
       real*8, allocatable :: Jv_diag(:), r_lin(:)
+      ! The cell-by-cell prediction of the energy row over a band of cells
+      ! (EXHALE_LINEAR_ROWS=1, band EXHALE_LINEAR_ROWS_CELLS=lo,hi).
+      real*8, allocatable :: F_lr(:), f_sp_lr(:,:), heat_lr(:), cool_lr(:)
+      integer :: lr_lo, lr_hi, lr_j, lr_ios, lr_saved_mode
+      logical :: lr_ok
+      character(len=32) :: lr_env
       real*8  :: lin_row(3), f_row(3), rc_diag(3), rnorm_diag
       character(len=8) :: lin_env
       ! HOW MANY CELLS EACH HYDRODYNAMIC ROW REFUSES IN, and which cell is
@@ -17847,7 +17935,20 @@
       if (len_trim(tr_env) .gt. 0) read(tr_env,*) merit_fall_min
       call get_environment_variable('EXHALE_LINEAR_ROWS', lin_env)
       linear_rows_on = (trim(lin_env) .eq. '1')
-      if (linear_rows_on) allocate(Jv_diag(neq), r_lin(neq))
+      if (linear_rows_on) then
+         allocate(Jv_diag(neq), r_lin(neq), F_lr(neq))
+         allocate(f_sp_lr(1-Ng:N+Ng,n_species))
+         allocate(heat_lr(1-Ng:N+Ng), cool_lr(1-Ng:N+Ng))
+         lr_lo = 290;  lr_hi = 312
+         call get_environment_variable('EXHALE_LINEAR_ROWS_CELLS', lr_env)
+         if (len_trim(lr_env) .gt. 0) then
+            do lr_j = 1, len_trim(lr_env)
+               if (lr_env(lr_j:lr_j) .eq. ',') lr_env(lr_j:lr_j) = ' '
+            enddo
+            read(lr_env,*,iostat=lr_ios) lr_lo, lr_hi
+         endif
+         lr_lo = max(1, min(lr_lo, N));  lr_hi = max(lr_lo, min(lr_hi, N))
+      endif
       eta_forcing = gm_rtol_ceiling;  eta_forcing_prev = gm_rtol_ceiling
       f2_at_last_cycle = -1.0d0
       carrier_relnorm_best = carrier_relnorm_state
@@ -18042,6 +18143,7 @@
          endif
          call set_ioniz_eq_sweep_state_kind(ieq_state_steady_candidate)
          weno_mode = 2
+         if (jv_fresh_weights) weno_mode = 0
          ! DIAGONAL SCALING FOR THIS OUTER ITERATION, and it is taken AFTER
          ! the evaluation of the iterate. A species row's scale is not a
          ! function of Y alone: cell_row_scales reads the elemental row
@@ -18490,6 +18592,71 @@
                     lin_row(1)/max(f_row(1),1.0d-300),                     &
                     lin_row(2)/max(f_row(2),1.0d-300),                     &
                     lin_row(3)/max(f_row(3),1.0d-300)
+               ! AND CELL BY CELL OVER THE BAND: the energy row at the
+               ! iterate, the model's value after the full step with and
+               ! without the pseudo-transient shift, and the row actually
+               ! found at Y + dY, with the weights recomputed as the trials
+               ! are. Measurement only: one extra residual evaluation.
+               lr_saved_mode = weno_mode
+               weno_mode = 0
+               call eval_residual(Y + dY, f_sp, f_sp_lr, F_lr, heat_lr,     &
+                                  cool_lr, admissible=lr_ok,               &
+                                  may_be_adopted=.false.,                  &
+                                  state_is_discarded=.true.)
+               weno_mode = lr_saved_mode
+               write(*,'(A,L2)') ' (JFNK) [lin] energy row by cell: j,'//   &
+                    ' F, F+J dY, F+J dY+dY/dtau, F(Y+dY), '//              &
+                    ' (F(Y+dY)-F)/(J dY); the trial admissible', lr_ok
+               do lr_j = lr_lo, lr_hi
+                  kk = nvar_jac*(lr_j-1) + 3
+                  write(*,'(A,I5,5ES13.4E3)') ' (JFNK) [lin] ', lr_j,       &
+                       F(kk), F(kk) + Jv_diag(kk),                         &
+                       F(kk) + Jv_diag(kk) + idtau*dY(kk), F_lr(kk),       &
+                       (F_lr(kk) - F(kk))/sign(max(abs(Jv_diag(kk)),       &
+                       1.0d-300), Jv_diag(kk))
+               enddo
+               write(*,'(A)') ' (JFNK) [lin] the same cells: j, dY of'//    &
+                    ' (mass, momentum, energy) over Y, heat, cool, their'// &
+                    ' relative change over the step, H I and H II'//       &
+                    ' fractions and their relative change'
+               do lr_j = lr_lo, lr_hi
+                  kk = nvar_jac*(lr_j-1)
+                  write(*,'(A,I5,11ES11.3E3)') ' (JFNK) [lin] ', lr_j,      &
+                       dY(kk+1)/Y(kk+1), dY(kk+2)/sign(max(abs(Y(kk+2)),   &
+                       1.0d-300), Y(kk+2)), dY(kk+3)/Y(kk+3),              &
+                       heat0(lr_j), cool0(lr_j),                           &
+                       heat_lr(lr_j)/max(heat0(lr_j),1.0d-300) - 1.0d0,    &
+                       cool_lr(lr_j)/max(cool0(lr_j),1.0d-300) - 1.0d0,    &
+                       f_sp(lr_j,1), f_sp(lr_j,2),                         &
+                       f_sp_lr(lr_j,1)/max(f_sp(lr_j,1),1.0d-300) - 1.0d0, &
+                       f_sp_lr(lr_j,2)/max(f_sp(lr_j,2),1.0d-300) - 1.0d0
+               enddo
+               ! THE ROW ALONG THE STEP DIRECTION ON A LADDER OF LENGTHS,
+               ! from a tenth of the step to the probe scale: the difference
+               ! quotient (F(Y + t dY) - F(Y))/t of the energy row, which is
+               ! constant in t where the row is smooth along dY.
+               write(*,'(A)') ' (JFNK) [lin] (F(Y+t dY)-F)/t of the energy'//&
+                    ' row: t, then the cells of the band'
+               do lr_ios = -1, 5
+                  weno_mode = 0
+                  call eval_residual(Y + (10.0d0**lr_ios)*dY, f_sp,          &
+                                     f_sp_lr, F_lr, heat_lr, cool_lr,      &
+                                     admissible=lr_ok,                     &
+                                     may_be_adopted=.false.,               &
+                                     state_is_discarded=.true.)
+                  weno_mode = lr_saved_mode
+                  write(*,'(A,ES9.1,L2,40ES11.3E3)') ' (JFNK) [lin] t=',    &
+                       10.0d0**lr_ios, lr_ok,                              &
+                       ((F_lr(nvar_jac*(lr_j-1)+3)                         &
+                         - F(nvar_jac*(lr_j-1)+3))/(10.0d0**lr_ios),       &
+                        lr_j = lr_lo, lr_hi)
+                  write(*,'(A,ES9.1,40ES11.3E3)') ' (JFNK) [lin] heat, cool'//&
+                       ' change over t at the band: t=', 10.0d0**lr_ios,   &
+                       ((heat_lr(lr_j)/max(heat0(lr_j),1.0d-300) - 1.0d0)  &
+                        /(10.0d0**lr_ios), lr_j = lr_lo, lr_hi),            &
+                       ((cool_lr(lr_j)/max(cool0(lr_j),1.0d-300) - 1.0d0)  &
+                        /(10.0d0**lr_ios), lr_j = lr_lo, lr_hi)
+               enddo
             else
                write(*,'(A)') ' (JFNK) linear residual left: the action'//  &
                     ' has no admissible sample along the step'
@@ -18520,6 +18687,10 @@
             f2ref = maxval(f2hist)
             jref  = maxval(jhist)
          endif
+         ! The phase of this iteration (ptc_ser_rnorm_switch): pseudo-time
+         ! acceptance while ||R|| is above the switch, the merit line search
+         ! below it.
+         ptc_ser_phase = ptc_ser_on .and. (rnorm .ge. ptc_ser_rnorm_switch)
          if (.not. use_tr) then
          lam = 1.0d0;  ok = .false.;  f2_try = huge(1.0d0)
          weno_mode = 0
@@ -18584,7 +18755,28 @@
                if (try_ok .and. dj_try .gt. jref .and.                   &
                    f2_try .lt. (1.0d0 - 1.0d-4*lam)*f2ref)               &
                     n_judged_excursions = n_judged_excursions + 1
-               if (try_ok .and.                                          &
+               if (ptc_ser_phase) then
+                  ! THE PSEUDO-TIME STEP IS ACCEPTED WHEN IT IS ADMISSIBLE
+                  ! AND BOUNDED (ptc_ser_on): no merit descent is asked of
+                  ! it. A step that moves a cell's density or total energy
+                  ! by more than ptc_ser_max_change of itself is shortened.
+                  ser_change = 0.0d0
+                  do j_ser = 1, N
+                     ser_change = max(ser_change,                         &
+                        abs(Ytry(nvar_jac*(j_ser-1)+1)                   &
+                            - Y(nvar_jac*(j_ser-1)+1))                   &
+                        /max(abs(Y(nvar_jac*(j_ser-1)+1)), 1.0d-300),    &
+                        abs(Ytry(nvar_jac*(j_ser-1)+3)                   &
+                            - Y(nvar_jac*(j_ser-1)+3))                   &
+                        /max(abs(Y(nvar_jac*(j_ser-1)+3)), 1.0d-300))
+                  enddo
+                  if (try_ok .and. ser_change .le. ptc_ser_max_change) then
+                     ok = .true.
+                     if (f2_try .ge. f2)                                 &
+                        n_nonmonotone_accepts = n_nonmonotone_accepts + 1
+                     exit
+                  endif
+               else if (try_ok .and.                                     &
                    f2_try .lt. (1.0d0 - 1.0d-4*lam)*f2ref) then
                   ok = .true.
                   if (f2_try .ge. (1.0d0 - 1.0d-4*lam)*f2)              &
@@ -18626,7 +18818,7 @@
             ! (measured: 487 such acceptances in 500 iterations on the
             ! He/H = 0.3 hand-off state).
             lm_tried = (.not. ok)
-            if (ok) lm_tried = (f2_try .ge. f2)
+            if (ok .and. .not. ptc_ser_phase) lm_tried = (f2_try .ge. f2)
          endif
          if (lm_tried) then
             call levenberg_marquardt_descent(Y, F, f_sp, D, Drow, ab, f2,&
@@ -18741,7 +18933,14 @@
             ! HD 209458 b element reload's first pass ends at a mass row of
             ! 2.2e-09 and an energy row of 1.6e-08 where the entry text
             ! leaves 2.9e-02 and 4.1e-01.
-            if (pseudo_time_doubles_on_an_accepted_step) then
+            if (ptc_ser_phase) then
+               ! SER (Kelley & Keyes 1998, Eq. 1.5), bounded to a factor
+               ! two either way per step, times lam on a shortened step.
+               dtau_ramp = min(2.0d0, max(0.5d0, f2/max(f2_try, 1.0d-300)))
+               if (ptc_ser_doubles) dtau_ramp = 2.0d0
+               if (lam .lt. 1.0d0) dtau_ramp = dtau_ramp*lam
+               dtau = min(max(dtau*dtau_ramp, dtau_floor), 1.0d14*dtau0)
+            else if (pseudo_time_doubles_on_an_accepted_step) then
                if (lam .ge. lam_of_a_full_step) then
                   dtau_ramp = 2.0d0
                   ! THE GATE OF STATEMENT (3), WHICH IS OFF
@@ -19011,7 +19210,7 @@
          ! Neither functional is moving. Go back to the best iterate
          ! and stop accepting sideways steps; if that buys nothing either,
          ! stop.
-         if (n_since_best .ge. n_stall_best) then
+         if (n_since_best .ge. n_stall_best .and. .not. ptc_ser_on) then
             if (.not. monotone_search) then
                Y = Ybest;  f_sp = f_sp_best;  rnorm = rnorm_best
                n_no_chem_root_state = n_no_chem_root_best
@@ -19067,7 +19266,7 @@
          ! (A separate info value was considered and not taken: every caller
          ! of this routine branches on info == 0 alone, so a new code would
          ! be read exactly as 2 is and would only be a second name for it.)
-         if (ptc_ramp_guard_on .and.                                      &
+         if (ptc_ramp_guard_on .and. .not. ptc_ser_on .and.               &
              n_damped_run .ge. ptc_damped_run_max) then
             if (n_damped_restarts .ge. ptc_damped_restarts_max) then
                info = 2
@@ -19289,6 +19488,10 @@
       ! the state handed back is judged row by row against each row's own
       ! tolerance, and on the species rows too.
       keep_this_iterate = (dj_best .lt. dj)
+      ! THE PSEUDO-TIME RELAXATION HANDS BACK WHERE IT GOT TO (ptc_ser_on):
+      ! its iterates are a relaxation path and not a search, so the last one
+      ! is kept unless the best one met the gates and it did not.
+      if (ptc_ser_on) keep_this_iterate = .false.
       if ((gates_best .and. .not. gates_now) .or.                         &
           ((gates_best .eqv. gates_now) .and. keep_this_iterate)) then
          Y = Ybest;  f_sp = f_sp_best;  rnorm = rnorm_best

@@ -164,7 +164,10 @@ for bit.
   equation carries the enthalpy the moving elements take with them, the
   interdiffusion enthalpy flux `q_d = sum_s h_s J_s` (Cook 2009, eqs. 11-13),
   in the marching update and the stationary energy row alike
-  (`Interdiffusion enthalpy flux:`, on by default whenever `He_diffusion` is;
+  and the enthalpy the transported molecular carriers (H2, OH, H2O, CO) carry
+  relative to the rest of their elements
+  (`Interdiffusion enthalpy flux:`, on by default whenever `He_diffusion` is or
+  a molecular carrier is transported;
   `False` only to reproduce published models that omit it; 13-26 percent of
   the local energy budget at 1.1-5 R_p on the LHS 1140 b diffusion states)
 
@@ -264,7 +267,22 @@ for bit.
   flux difference carries inside it, the face pressures or the equilibrium
   pressure departures the momentum branch in force uses, the explicit and
   transport sources, the radiative heating and cooling, and the assembled
-  rows, every real at seventeen significant decimal digits. Absent or `0`
+  rows, every real at seventeen significant decimal digits. Schema 3 appends,
+  for the upper face of each row, the left and right face states (rho, v, p)
+  the Riemann problem was solved on, the well-balanced pressure data
+  (`wb_dp_eq`, `wb_dev_L`, `wb_dev_R` and the jump `dp_WB` the Roe flux uses),
+  the central mass transport 0.5 (F_L + F_R), the part of the numerical mass
+  flux the pressure jump carries (the production `Num_flux` with the
+  production jump minus the same call with the jump set to zero, an
+  attribution and not a flux; NaN where the flux is not Roe or the option is
+  off) and the recomputed `Num_flux` mass flux; per cell |R_mass|, the scale
+  the stationary solve divides it by, their ratio and the signed running sum
+  of V R_mass over the physical cells; and a header block for the base: the
+  reservoir, the interior state the base condition reads at the face (the
+  first cell's own constant-density equilibrium under `Well balanced: True`,
+  its hydrostatic isentrope otherwise), the characteristic face velocity, both states of face 0, the numerical base
+  mass flow and the wind-window flux. The export is a measurement: the run's
+  outputs are bitwise the same with it on or off. Absent or `0`
   nothing is written and no file is opened.
   `EXHALE_conservation_budget.py` reads that file, rebuilds each row from
   the exported terms alone, and reports two things separately: assembly
@@ -303,15 +321,23 @@ for bit.
   (`--reservoir El/H <value>` rescales an element, `--uniform` sets it to one
   ratio in every row)
 - A stationary run that alternates a wind solve with a composition relaxation
-  keeps the state of its last completed outer pass on disk,
-  `output/Hydro_ioniz_last_pass.txt` and `output/Ion_species_last_pass.txt`,
-  overwritten each pass and written by the final-state writers, so a run
-  stopped from outside can be continued from that pass (copy the pair to the
-  `_IC` names). The pair is never a certified state: both halves say
-  `certified=F cert_reason=pass_snapshot_p<n>`, and a `# pass_snapshot` line
-  records the carrier movement bound and the element under-relaxation factor
-  of the next pass, which a restart does not inherit
-  (`EXHALE_CARRIER_TRUST`, `EXHALE_DIFF_OMEGA` pass them back)
+  publishes the state of every completed outer pass as one generation,
+  `output/pass_state/<state_id>/` (`Hydro_ioniz.txt`, `Ion_species.txt`,
+  `manifest.txt`), written by the final-state writers, with
+  `<state_id> = r<run identity>_p<pass>`; the one-line file
+  `output/pass_state/current` names the generation to take, and it is
+  replaced by a single rename only after that generation is complete, so a
+  run stopped from outside at any moment leaves `current` naming a whole
+  state. The generation `current` named before is kept and older ones are
+  removed. Copy the pair `current` names to the `_IC` names to continue from
+  that pass. The pair is never a certified state: both halves say
+  `certified=F cert_reason=pass_snapshot_p<n> ... state_id=<state_id>`
+  (`load_IC` refuses halves of two generations), and a `# pass_snapshot`
+  line records the carrier movement bound and the element under-relaxation
+  factor of the next pass, which a restart does not inherit
+  (`EXHALE_CARRIER_TRUST`, `EXHALE_DIFF_OMEGA` pass them back). Until
+  2026-09-29 the pair was `output/{Hydro_ioniz,Ion_species}_last_pass.txt`
+  (`md/Update_EXHALE_stage3.md` section 33)
 - The advection-corrected `_adv` profiles the analysis and transit tools read
   say row by row what they are: two validity fields, `adv_T_status` and
   `adv_comp_status`, for the temperature and the composition separately, and
@@ -524,4 +550,4 @@ the Markdown memos of the development record.
 
 Kwang-Il Seon (KASI / UST)
 
-Last updated: 2026-09-28 17:05
+Last updated: 2026-09-30 20:17 KST

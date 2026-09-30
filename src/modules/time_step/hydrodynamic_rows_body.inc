@@ -645,7 +645,7 @@
       ! ------------------------------------------------------!
 
       subroutine hydrostatic_equilibrium_of_each_cell_fv(u_in,P_up,P_dn, &
-                       p_cell,rho_cell,dev_L,dev_R,dp_eq,pL_asm,pR_asm)
+                       p_cell,rho_cell,dev_L,dev_R,dp_eq)
       ! The two face values of the local hydrostatic equilibrium of every
       ! cell: constant density rho_j through the cell's own pressure p_j,
       !     p_eq,j(r) = p_j - rho_j (phi(r) - phi(r_j)),
@@ -659,7 +659,6 @@
       real(fv), dimension(1-Ng:N+Ng), intent(out) :: P_up, P_dn
       real(fv), dimension(1-Ng:N+Ng), intent(out) :: p_cell, rho_cell
       real(fv), dimension(1-Ng:N+Ng), intent(out) :: dev_L, dev_R, dp_eq
-      real(fv), dimension(1-Ng:N+Ng), intent(out) :: pL_asm, pR_asm
       real(fv), dimension(3,1-Ng:N+Ng) :: W
       integer :: j
 
@@ -758,7 +757,7 @@
 
       if (well_balanced)                                                 &
          call hydrostatic_equilibrium_of_each_cell_fv(u_in,P_up,P_dn,    &
-                 p_cell,rho_cell,dev_L,dev_R,dp_eq,pL_asm,pR_asm)
+                 p_cell,rho_cell,dev_L,dev_R,dp_eq)
 
       if (plm) then
          if (well_balanced) then

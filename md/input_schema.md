@@ -3,8 +3,8 @@
 This document is the authoritative schema of EXHALE's `input.inp` file. It began
 as the "document the schema" step, the prerequisite for the increments that converted the Fortran
 positional reads to anchored label matching and unified the Python loaders.
-Those increments have since been carried out; §3.0 describes the parser as it
-now behaves, and §3.1--3.2 are retained as a record of the positional design it
+Those increments have since been carried out; section 3.0 describes the parser as it
+now behaves, and section 3.1--3.2 are retained as a record of the positional design it
 replaced.
 
 **How to find a key in the source.** Every key is located by its label, not
@@ -35,7 +35,7 @@ different regions:
    few are **conditional**: the spectrum-property line depends on
    `Spectrum type`, the energy-band line is skipped for a monochromatic
    spectrum, and the X-ray luminosity line is read only when X-rays are
-   included. (Historically this block was read strictly by line order; §3.1
+   included. (Historically this block was read strictly by line order; section 3.1
    records that design.)
 
 2. An **optional keyword-extension block**. Every line of the file is scanned in
@@ -97,7 +97,7 @@ Rows are in the exact order `input_read.f90` reads them.
 | 11b | `Power-law index:` (only if `Power-law`) | positional, word 3 | real | - | conditional | GUI | Sets `PLind`, `is_PL_sed = .true.`. The law is normalized on `[e_low, e_mid]` and evaluated wherever the grid reaches, so below `e_low` it is an extrapolation of an EUV fit -- that is what the type means. Measured on `backup/regression/wasp_full` (index -1): with the grid floor at 4.80 eV (He 2^3S on) the grid integrates to 1.420 times the nominal XUV flux, and with the floor at 13.6 eV to 0.995, so the extrapolated sub-Lyman band carries 0.425 of the nominal flux. |
 | 11d | `Stellar Teff [K]:` + `Stellar radius [R_sun]:` (only if `Planck`) | keyword block (K3, K4) | reals | K, R_sun | conditional | - | The photospheric blackbody `pi B_nu(T_eff) (R_star/a)^2` per unit photon energy on every point of the grid (`planck_stellar_flux_eV`, `J_inc.f90`), diluted like every other stellar beam. No property line of its own: it reads the two optional stellar keys, and a `Planck` run missing either of them is a fatal `error stop 1`. Its absolute scale comes from `T_eff` and `R_star`, not from `LX`/`LEUV`, so the integrated grid flux differs from the nominal XUV flux (113x on the `wasp_full` parameters) and the setup report prints both. A real photosphere is not a blackbody -- line blanketing and the Balmer jump depress the near-ultraviolet -- so this field is an upper bound below 13.6 eV and falls far below the true EUV of an active star above it; a run that needs both bands right needs `Load`. |
 | 11c | `Photon energy [eV]:` (only if `Monochromatic`) | positional, word 4 | real | eV | conditional | GUI | Sets `e_low`, `is_monochr = .true.`. If below the He I threshold, He is removed and `HeH` is zeroed. |
-| 12 | `Use only EUV?` | positional, word 4 | bool-ish | - | mandatory | GUI | Word 4 `== 'False'` sets `thereis_Xray = .true.` (X-rays INCLUDED). `True` leaves X-rays off. See the double-negative note in §6.7. |
+| 12 | `Use only EUV?` | positional, word 4 | bool-ish | - | mandatory | GUI | Word 4 `== 'False'` sets `thereis_Xray = .true.` (X-rays INCLUDED). `True` leaves X-rays off. See the double-negative note in section 6.7. |
 | 13 | `[E_low,E_mid(,E_high)] = [ ... ]` (skipped if monochromatic) | positional, words 4, 6, 8 | reals | eV | conditional | GUI | If X-rays off: read `e_low` (word 4) and `e_mid` (word 6); `e_top` defaults to `1.24e3`. If X-rays on: also read `e_top` (word 8). The GUI writes `-`-separated values; examples use `,`; both parse because only word positions 4/6/8 matter. |
 | 14 | `Log10 of X-ray luminosity [erg/s]:` (only if X-rays on) | positional, word 6 | real | log10(erg/s) | conditional | GUI | Sets `LX`; `LX = 0` when X-rays off. |
 | 15 | `Log10 of EUV luminosity [erg/s]:` | positional, word 6 | real | log10(erg/s) | mandatory | GUI; IO `LEUV`; TR content match | Sets `LEUV`. |
@@ -134,7 +134,7 @@ by the Python loaders except where noted.
 | K13b | `Reconstruction continuation` | word 3 (+ optional words 4, 5) | real (+ real and/or keyword) | - | `recon_lambda_step0=0` (off: the one-step hand-off) | `recon_lambda_step0`, `recon_lambda_dtu_tol`, `recon_lambda_adaptive` | `Reconstruction continuation: <dlambda> [<dtu_tol>] [fixed\ or adaptive]`. Walks the PLM -> WENO3 hand-off of a two-stage run along the homotopy `R_lambda = (1-lambda) R_PLM + lambda R_WENO3` instead of changing the discrete operator in one step. `dlambda` is the step in lambda per marching step (`<= 0` off; `1.0` reproduces the one-step switch, byte-identical). `dtu_tol` (default `1.2`) is the step control: lambda advances while `dtu <= dtu_tol * dtu` at the start of the ramp, and a step that exceeds it halves the lambda step instead of advancing. `fixed` disables that control; `adaptive` is the default. The two optional fields are told apart by content, not position. Requires `Reconstruction scheme: PLM+WENO3` with a non-empty PLM stage (order dependency on core line 18 and on K13); otherwise a WARNING is printed and the key is ignored. Once lambda reaches 1 the continuation disarms and the run continues in pure WENO3, so the JFNK finish and all acceptance gates see the production operator. |
 | K14 | `ATES_photoionization_rate` | word 2 == `True`/`true` | flag | - | `.false.` (Verner 1996) | `ates_photoion_rate` | Reverts He I (1^1S) photoionization to the legacy ATES fit. |
 | K14b | `Legacy_HHe_rates` | word 2 == `True`/`true` | flag | - | `.false.` (Badnell minus Milne alpha_1 + Voronov) | `legacy_hhe_rates` | Reverts H/He case-B recombination and collisional ionization to the legacy ATES fits (Hui & Gnedin 1997 recombination; Abel+1997/HG97 collisional ionization). Default uses Badnell RR (+ He II DR) minus the ground-capture alpha_1 for case B (since 2026-09-24 the Milne relation on the ground photoionization cross section the transfer uses; the Mao & Kaastra 2016 fit before), and Voronov 1997 collisional ionization. Free-free always uses the van Hoof et al. 2014 Gaunt table. |
-| K14c | `Secondary_ionization` | word 2 == `False`/`True`/`Immediate` | flag | - | `.true.`, STAGED (SvS85 on after first convergence) | `use_sec_ion`, `sec_ion_immediate` | Shull & van Steenberg (1985) secondary ionization by fast photoelectrons (E0 > 40 eV): heating is scaled by f_heat(x) and H I / He I gain secondary ionizations; x is the ionized fraction of the H+He nuclei. STAGED activation (Update §38): the coupling is applied only after the wind first converges without it, then the run re-converges (stops are held N_stall steps after the flip). From a cold IC the immediate coupling amplifies the base startup transient into a NaN runaway on high-gravity cases. `False` = full photoelectron thermalization (bit-identical to the legacy path); `Immediate` = apply from step 0 (pre-staging behavior, A/B tests only). |
+| K14c | `Secondary_ionization` | word 2 == `False`/`True`/`Immediate` | flag | - | `.true.`, STAGED (SvS85 on after first convergence) | `use_sec_ion`, `sec_ion_immediate` | Shull & van Steenberg (1985) secondary ionization by fast photoelectrons (E0 > 40 eV): heating is scaled by f_heat(x) and H I / He I gain secondary ionizations; x is the ionized fraction of the H+He nuclei. STAGED activation (Update section 38): the coupling is applied only after the wind first converges without it, then the run re-converges (stops are held N_stall steps after the flip). From a cold IC the immediate coupling amplifies the base startup transient into a NaN runaway on high-gravity cases. `False` = full photoelectron thermalization (bit-identical to the legacy path); `Immediate` = apply from step 0 (pre-staging behavior, A/B tests only). |
 | K14d | `He_rec_coupling` | word 2 == `True`/`False` | flag | - | `.true.` (the recombination radiation of He II and He III is absorbed on the spot; `False` = case B for both with the cascade photons lost) | `use_he_rec_coupling` | He II -> He I and (since 2026-09-24) He III -> He II recombination radiation absorbed on the spot (`util_ion_eq`, `recombination_radiation_absorbed`). He II: the ground captures (`alpha_1`, the Milne relation on the transfer's He I cross section) escape with the local weight `y` or ionize H I and He I on the spot; the excited-level cascade photons that ionize H I are the density-dependent share `z` (Draine 2011 Sec. 15.5). He III: the ground capture, the direct capture to n = 2, He II Ly-alpha, the two-photon continuum (Nussbaumer & Schmutz 1984) and the 2s-2p mixing of He II. In triplet mode case B is split into triplet and singlet captures with Hummer & Storey (1998) Table 5 in both settings of the key. `False` = case B for both recombinations with the cascade photons lost. |
 | K14d2 | `H_rec_escape` | word 2 == `True`/`False` | flag | - | `.true.` (ground captures that leave the cell or are taken by a metal count as recombinations) | `use_h_rec_escape` | Case A where the gas is thin at 13.6 eV, case B where it is thick: the H II recombination coefficient is `alpha_B + y_HI alpha_1`, `alpha_1` the Milne relation on the hydrogenic ground cross section and `y_HI = 1 - n_HI sigma_HI dr (1 - exp(-tau))/tau` the local escape weight over H I and the metal ions below 13.6 eV (the construction of the He II weight). The photons the metals take ionize them; the photons H I re-absorbs are the on-the-spot cancellation. The recombination cooling is the capture relation on the same coefficient at the frozen weight; the n = 2 sources stay case B. Local closure: a photon that leaves the cell is dropped, so where cells are neither thick nor thin the weight depends on the cell width. `False` = case B everywhere (e.g. for a like-for-like with Koskinen et al. 2022, whose Table 1 is case B). Added 2026-09-24. |
 | K14e | `He_H_charge_exchange` | word 2 == `True`/`False` | flag | - | `.true.` (the He/H charge-exchange reactions active in every He system) | `he_h_charge_exchange` (charge_exchange module) | The He/H charge exchange (`charge_exchange::he_h_cx_rates`; since 2026-09-24/25 from the original sources): He+ + H0 -> He0 + H+ is the radiative channel of Stancil, Lepp & Dalgarno (1998, from Zygelman et al. 1989) plus the non-radiative channel of Kingdon & Ferland (1996); He0 + H+ -> He+ + H0 is the detailed-balance reverse of that non-radiative channel (the Kimura et al. 1993 rate is not carried); He2+ + H0 -> He+ + H+ + photon (Kingdon & Ferland 1996 Table 1, radiative, no reverse). The energy defects enter heat channel 20. Applied by dedicated routines in every ionization system with He (the advection pair and the analytic Jacobians included), independent of `cx_full`. `False` leaves the reactions out of every system. |
@@ -162,12 +162,12 @@ by the Python loaders except where noted.
 | K25 | `Energy solver` | word 3 == `Explicit` | flag | - | semi-implicit (`.true.`) | `use_semi_implicit_energy=.false.` | `Explicit` reverts the source update to forward Euler; any other word leaves the semi-implicit update in place. |
 | K26 | `Time stepping` | word 3 == `Local` | flag | - | global (`.false.`) | `use_local_dt=.true.` | Cell-by-cell pseudo-time. |
 | K27 | `Level tol` | word 3 | real | - | `lev_th=-1` | `lev_th` | Mass-flux level-stability tolerance. |
-| K28 | `Solver` | word 2 == `Newton` (+ optional word 3) | flag + real | - | `use_newton_solver=.false.`, `newton_du_switch=1e-2` | `use_newton_solver`, `newton_du_switch` | JFNK hand-off. Distinct from K41/K42 (see §6.9). |
+| K28 | `Solver` | word 2 == `Newton` (+ optional word 3) | flag + real | - | `use_newton_solver=.false.`, `newton_du_switch=1e-2` | `use_newton_solver`, `newton_du_switch` | JFNK hand-off. Distinct from K41/K42 (see section 6.9). |
 | K29 | `Valve eps` | word 3 | - | - | - | - | **Retired 2026-09-03 (section 152).** The label is still matched, and a file that carries it is REFUSED at startup with a message naming the replacement. There is no ghost velocity closure to select: the lower boundary takes the velocity from the outgoing acoustic characteristic of the first interior cell. |
-| K30 | `Hydrostatic base` | word 3 | - | - | - | - | **Retired 2026-09-03, refused as K29.** There is no ghost pressure closure to select: the face pressure is the reservoir's, carried to the face along its own hydrostatic isentrope, and the ghost cells are the volume averages of that isentrope continued below the face. |
+| K30 | `Hydrostatic base` | word 3 | - | - | - | - | **Retired 2026-09-03, refused as K29.** There is no ghost pressure closure to select: the first face is the reservoir level and the face pressure is the reservoir's; under `Well balanced: True` the ghost cells continue the reconstruction's discrete constant-density equilibrium below the face at the reservoir-side temperature, and without it they are the volume averages of the reservoir's hydrostatic isentrope continued below the face. |
 | K31 | `Shapiro filter` | word 3 (+ optional word 4) | real, int | - , steps | `shapiro_eps=-1`, `shapiro_every=4` | `shapiro_eps`, `shapiro_every` | Word 3 is the filter amplitude (`<= 0` disables it), optional word 4 the period in steps. Off by default; opt-in for a breathing base. |
 | K31b | `Low-Mach damping` | word 3 (+ optional word 4) | real, real | - , Mach | `lowmach_damp_eps=-1` (off), `lowmach_damp_mach_th=1e-3` | `lowmach_damp_eps`, `lowmach_damp_mach_th` | Gated fourth-difference (Jameson-Schmidt-Turkel) dissipation of the `2 dr` contact/entropy mode that the contact-resolving HLLC flux stops damping as `v -> 0`. Added to the numerical momentum flux (and its work term to the energy flux) inside `RK_rhs`, so the marching loop and the JFNK steady residual see the same equation -- unlike K31, which touches the marching state only. The gate `[max(0, 1 - M^2/M_th^2)]^2` is exactly zero for `M >= M_th`. Explicit stability needs `eps4 < 1/(16 CFL)`; `input_read` warns otherwise. `eps4 <= 0` = off (default, bit-identical). See `src/modules/flux/low_mach_dissipation.f90`. |
-| K32 | `Base BC` | word 3 (+ optional word 4 if `pressure`) | string + real | - / microbar | `base_bc_mode=0` (density), `base_p_ubar=1.0` | `base_bc_mode`, `base_p_ubar` | `density` or `pressure`. It sets the base LEVEL, not the boundary closure, and it is the only base key left. The pressure it names is the pressure of the lower-atmosphere reservoir AT `r = 1` (the planet radius, the level `base.inp`'s `p_base` also refers to), not at the first cell face: `base_boundary` carries the reservoir from that level to `r_edg(0)` along its own hydrostatic isentrope, so refining the grid does not move the level the user stated. Pressure mode derives `n0`. |
+| K32 | `Base BC` | word 3 (+ optional word 4 if `pressure`) | string + real | - / microbar | `base_bc_mode=0` (density), `base_p_ubar=1.0` | `base_bc_mode`, `base_p_ubar` | `density` or `pressure`. It sets the base LEVEL, not the boundary closure, and it is the only base key left. The pressure it names is the pressure of the lower-atmosphere reservoir AT `r = 1` (the planet radius, the level `base.inp`'s `p_base` also refers to), and every grid places its first face `r_edg(0)` on that level, so the reservoir is the state of the face side it owns and refining the grid does not move the level the user stated. Pressure mode derives `n0`. |
 | K32b | `Base ghost temperature` | word 4 | - | - | - | - | **Retired 2026-09-03, refused as K29.** There is no ghost temperature closure to select: the face temperature follows from the reservoir pressure and entropy at the base composition. |
 | K32c | `Max steps` | word 3 | int | steps | `count_max=1000000` | `marching_step_max` (report key `count_max`) | Hard cap on marching iterations. The env variable `EXHALE_MAXSTEPS` is separate and only exits earlier. |
 | K32d | `Coronal cutoff width` | word 4 | real | - | `coronal_cutoff_width=0.1` | `coronal_cutoff_width` | Roll-off width of the coronal-excitation guard below the 1e3 K CHIANTI fit floor (`Cool_coeff.f90`). Must be > 0; input_read aborts otherwise. Since the ground-term fine-structure statistical equilibrium (2026-08-12) the base temperature is insensitive to `w` over 0.02-1.2, so the value is no longer a tuning knob; the earlier 0.08-0.13 justification window is superseded (`md/coronal_cutoff_width.md` section 7.2). |
@@ -366,9 +366,9 @@ Example: `examples/17_lower_profile/`, whose
 
 ## 3. Parsing semantics
 
-### 3.0 Update (§5.6 Inc 1): the core block is now label-matched
+### 3.0 Update (section 5.6 Inc 1): the core block is now label-matched
 
-As of §5.6 Inc 1, the Fortran core block is **no longer read by line order**.
+As of section 5.6 Inc 1, the Fortran core block is **no longer read by line order**.
 Every core key is matched as a **label**: anchored at the start of the
 left-trimmed line and terminated by a value separator (`:`, `?`, whitespace, or
 `=`). The optional keyword-extension block uses the same anchored matching.
@@ -379,7 +379,7 @@ Practical consequences:
   files parse unchanged because their lines are self-labeling (e.g. `Planet
   radius [R_J]: 1.401`).
 - **The value is still taken by word position** with `get_word(line, n)` on the
-  matched line, so every "word N" entry in the §2 table is still accurate; only
+  matched line, so every "word N" entry in the section 2 table is still accurate; only
   *which* line supplies the value changed (label lookup instead of sequence).
 - **Collisions are resolved deterministically.** Anchoring removes the old
   capitalization-only hazard (`Newton solver:` no longer false-matches
@@ -422,27 +422,27 @@ Practical consequences:
   energy-band line is read unless the spectrum is monochromatic; the X-ray
   luminosity line is read only when X-rays are included.
 
-The rest of §3 documents the original positional design that Inc 1 replaced.
+The rest of section 3 documents the original positional design that Inc 1 replaced.
 
 ### 3.1 Core reads (formerly positional; now label-matched)
 
-Before §5.6 Inc 1 the core block was read by a fixed sequence of
+Before section 5.6 Inc 1 the core block was read by a fixed sequence of
 `read(11, '(A)') line` statements, each followed by `get_word(line, n)`; the
 parser never inspected the label and trusted that line N held the intended
 parameter with its value at word position N. That positional design (described
 here for reference) had these consequences, now removed by the label matching in
-§3.0:
+section 3.0:
 
 - Inserting or deleting any core line shifted every later core read.
 - The number of core lines is not constant: it grows or shrinks with
   `Spectrum type` (line 11a/11b/11c), with the monochromatic flag (line 13
   skipped), and with the X-ray choice (lines 13 word 8 and 14). The Fortran
   parser tracked these with matching `if` branches, so it stayed consistent, but
-  any external reader that assumes fixed line numbers will not (see §6).
+  any external reader that assumes fixed line numbers will not (see section 6).
 
 ### 3.2 Keyword matching (historical: the substring design)
 
-*Superseded by §3.0. Kept because the clause ordering it describes is still what
+*Superseded by section 3.0. Kept because the clause ordering it describes is still what
 the code does.* The loop tested each line against a chain of
 `else if (index(line, 'KEY') > 0)` clauses. Matching was:
 
@@ -511,7 +511,7 @@ The parser aborts with `error stop 1` (a nonzero exit) on genuine input errors:
 - A key stated more than once, in `input.inp` or in `base.inp`
   (`refuse_duplicate_keys`), or a quantity stated more than once in
   `metals.inp` (`refuse_second_statement`). See the duplicate-key entry in
-  §3.0.
+  section 3.0.
 
 Malformed reads inside `read(str, *)` propagate a Fortran I/O error at the point
 of the read (the core block does not recover from a malformed line; the companion
@@ -588,7 +588,7 @@ Any other key warns ("unknown key") and is skipped.
 ## 6. Discrepancies and fragilities
 
 Framed tentatively. Items 6.1--6.4 and 6.8 were the observations that motivated
-§5.6 Inc 1--3; all five have since been resolved and are kept with their
+section 5.6 Inc 1--3; all five have since been resolved and are kept with their
 resolutions, because the resolution is the thing worth knowing.
 
 ### 6.1 Positional fragility (resolved)
@@ -598,7 +598,7 @@ any core line shifted every later read; the parser stayed self-consistent only
 because it mirrored the conditional lines (spectrum property, energy band,
 X-ray) with matching `if` branches. **Resolved by Inc 1:** every core key is
 found by anchored label match, order is irrelevant, and a missing mandatory key
-aborts with a message naming it (§3.0).
+aborts with a message naming it (section 3.0).
 
 ### 6.2 `EXHALE_transit.py` header reads (resolved)
 
@@ -675,7 +675,7 @@ similar names; only the code disambiguates them.
 
 ### 6.10 Manual vs code
 
-The user manual (`docs/EXHALE_user_manual.tex`, §"input.inp", around lines
+The user manual (`docs/EXHALE_user_manual.tex`, section "input.inp", around lines
 466-566) describes the same two-region layout (fixed-order core block plus
 optional keyword block) and the conditional spectrum-property line, so it
 appears broadly consistent with the code. The manual's keyword table is a
@@ -708,10 +708,10 @@ lines are comments; `load_IC` skips them, except for two it reads:
 | line | in | read by | meaning |
 |---|---|---|---|
 | `# columns r[Rp] HI HII ...` | `Ion_species_IC.txt` | `load_IC` | maps species columns by label, so a file with a different column set still restores every element it does carry |
-| `# coupling: sec_ion=... sec_ion_step=... recon=... certified=... mode=...` | `Hydro_ioniz_IC.txt` (a pass snapshot carries it in both files) | `parse_coupling_header`; the `certified=` / `cert_reason=` pair of each half by `parse_certification_claim`, and a pair whose halves state different values is refused | the run state the profile was produced under |
-| `# pass_snapshot pass=<n> carrier_movement_bound=<b> element_omega=<w> ...` | both files, only in a pair written as `output/{Hydro_ioniz,Ion_species}_last_pass.txt` | not read (a comment) | the pair is the state the stationary outer iteration handed from pass `n` to pass `n+1`, with the movement bound and under-relaxation factor that pass would have used; its coupling line says `certified=F cert_reason=pass_snapshot_p<n>`. Copied to the `_IC` names it is an ordinary restart, and no tool takes it for a certified state |
+| `# coupling: sec_ion=... sec_ion_step=... recon=... certified=... mode=... [state_id=<id>]` | `Hydro_ioniz_IC.txt` (a pass snapshot carries it in both files) | `parse_coupling_header`; the `certified=` / `cert_reason=` pair and the `state_id=` of each half by `parse_certification_claim`, and a pair whose halves state different values is refused | the run state the profile was produced under. `state_id=<id>` is written only in the two halves of a generation of the pass state (`output/pass_state/<id>/`) and names it; `adopt_certification_claim` refuses a pair whose halves state two different ids, or of which one half states an id and the other none. A pair in which neither half states one is read as before |
+| `# pass_snapshot pass=<n> carrier_movement_bound=<b> element_omega=<w> ...` | both files, only in a pair published as a generation `output/pass_state/<id>/{Hydro_ioniz,Ion_species}.txt` (named by `output/pass_state/current`; `output/{Hydro_ioniz,Ion_species}_last_pass.txt` until 2026-09-29) | not read (a comment) | the pair is the state the stationary outer iteration handed from pass `n` to pass `n+1`, with the movement bound and under-relaxation factor that pass would have used; its coupling line says `certified=F cert_reason=pass_snapshot_p<n> ... state_id=<id>`. Copied to the `_IC` names it is an ordinary restart, and no tool takes it for a certified state |
 | `# restart_schema 1` and the seven field lines under it | both files | `parse_restart_metadata_line`, `verify_restart_metadata` | the CONFIGURATION the state is a state of (D.2) |
-| `# boundary_model <identity>` | both files | `parse_boundary_model_line` | which LOWER BOUNDARY MODEL produced the state. Informational: the boundary is rebuilt from the physical column and this run's own reservoir whatever the file says, and the loader reports whether the two models agree. A state written before the line existed carries none, and the loader says so. The current identity is `characteristic_face_ps_reservoir_C_minus_contact_upwind_v2`: the (p, s) reservoir carried to the face along its own hydrostatic isentrope, the linearized C- relation of the first interior cell, and the contact upwinded on the direction the matching returns with the reservoir owning the level at rest. `..._smoothstep_v1` is the same reservoir and the same matching with the entropy source handed over by a cubic smoothstep whose value at zero flow was the average of the two isentropes. A state carries the residual and the certificate of the model it was written under, and neither transfers across the two; the loader says so and loads the state |
+| `# boundary_model <identity>` | both files | `parse_boundary_model_line` | which LOWER BOUNDARY MODEL produced the state. Informational: the boundary is rebuilt from the physical column and this run's own reservoir whatever the file says, and the loader reports whether the two models agree. A state written before the line existed carries none, and the loader says so. The identity a run states depends on the reconstruction (`base_boundary_model_id` in `base_boundary.f90`): with `Well balanced: True` it is `characteristic_face_ps_reservoir_C_minus_contact_upwind_ghost_fixed_point_seed_reservoir_row_face_at_level_discrete_equilibrium_v5` (the first cell carried to the level face by its own constant-density equilibrium and the ghosts continuing that discrete equilibrium below it), without it `..._face_at_level_v4` (the first cell and the ghosts continued along hydrostatic isentropes). Both are the (p, s) reservoir stated at the level face, the linearized C- relation of the first interior cell, the contact upwinded on the direction the matching returns with the reservoir owning the level at rest, and the ghost composition held to a fixed point of its own solve from a stated seed. Earlier: `..._row_v3` (the face half a cell above the level), `..._upwind_v2` (no stated ghost seed), `..._smoothstep_v1` (the entropy source handed over by a cubic smoothstep whose value at zero flow was the average of the two isentropes). A state carries the residual and the certificate of the model it was written under, and neither transfers across the two; the loader says so and loads the state |
 | `# boundary_reservoir version <v> p[p0] T[T0] nhat[n0/rho0] r_level[Rp] <four numbers>` | both files | reported | the PRESCRIBED reservoir the boundary was built on, with the version of that prescription. It is the only boundary input the physical column cannot reconstruct, which is why it travels with the state; the four numbers are written at seventeen significant digits and round trip a double exactly |
 
 **THE GHOST ROWS OF THE PAIR ARE NOT READ.** Both files carry `N + 2*Ng` rows

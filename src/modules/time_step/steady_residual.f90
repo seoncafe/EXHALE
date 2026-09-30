@@ -71,7 +71,30 @@
                 n_cells_without_chemical_root,                       &
                 row_terms_describe_state,                            &
                 face_mass_flux_of_state,                             &
-                mass_row_rounding_floor
+                mass_row_rounding_floor,                             &
+                energy_row_divergence_of_state,                      &
+                carrier_enthalpy_divergence
+
+      ! THE ENTHALPY THE TRANSPORTED CARRIERS CARRY (code audit of
+      ! 2026-09-29, F1). The divergence is formed by the carrier operator
+      ! (diffusive_photochemistry, carrier_enthalpy_divergence_of_state),
+      ! which uses this module and so cannot be used by it; it registers
+      ! the procedure here when the carrier set is decided
+      ! (carrier_set_init), and a run without carriers leaves the pointer
+      ! null and the term absent.
+      abstract interface
+         subroutine energy_row_divergence_of_state(rho, Tcode, f_sp,    &
+                                                   divq, q_out)
+            import :: N, Ng, n_species
+            real*8, dimension(1-Ng:N+Ng),           intent(in)  :: rho
+            real*8, dimension(1-Ng:N+Ng),           intent(in)  :: Tcode
+            real*8, dimension(1-Ng:N+Ng,n_species), intent(in)  :: f_sp
+            real*8, dimension(1-Ng:N+Ng),           intent(out) :: divq
+            real*8, dimension(0:N), optional,       intent(out) :: q_out
+         end subroutine energy_row_divergence_of_state
+      end interface
+      procedure(energy_row_divergence_of_state), pointer, save ::      &
+                carrier_enthalpy_divergence => null()
 
       ! THE TERMS EACH CONSERVATION ROW IS BUILT FROM, as assemble_residual
       ! last produced them, together with the state they belong to. The three
@@ -88,7 +111,8 @@
       !                            |Sidf|)  (energy: Sene the viscous and
       !                            conduction sources where those are
       !                            active, Sidf the divergence of the
-      !                            interdiffusion enthalpy flux)
+      !                            enthalpy flux of the element and
+      !                            carrier fluxes)
       !
       ! THE MOMENTUM ROW'S THREE TERMS ARE THE TERMS OF THE EQUATION, and
       ! they are not dF_2 and S_2. Under PLM the pressure sits partly in
@@ -243,8 +267,13 @@
       real*8, dimension(1-Ng:N+Ng)   :: Tc, Smom, Sene
       ! The divergence of the interdiffusion enthalpy flux, in the units of
       ! the energy row (zero unless the elements move).
-      real*8, dimension(1-Ng:N+Ng)   :: Sidf
+      real*8, dimension(1-Ng:N+Ng)   :: Sidf, Scar
       integer :: rows_kind
+      ! The continuity row's scale of every cell, formed only when the
+      ! conservation budget exports this assembly, and the two flux-branch
+      ! counters held across that formation.
+      real*8, dimension(1-Ng:N+Ng)   :: continuity_scale
+      integer :: jcell_scale, n_roe_hlle_saved, n_llf_saved
       ! The reconstruction in force at entry, restored after the terms of a
       ! kind-generic row have been evaluated under the scheme that row was
       ! actually assembled with.
@@ -318,7 +347,7 @@
       if (transport_active()) then
          call U_to_W(u, W)
          Tc = W(3,:)/n_part
-         call viscous_conduction_sources(W(2,:), Tc, Smom, Sene)
+         call viscous_conduction_sources(W(2,:), Tc, f_sp, Smom, Sene)
          R(2,:) = R(2,:) - Smom
          R(3,:) = R(3,:) - Sene
       endif
@@ -339,6 +368,19 @@
                                                           f_sp, Sidf)
          R(3,:) = R(3,:) + Sidf
       endif
+      ! THE ENTHALPY THE CARRIER FLUXES CARRY, the same physics for the
+      ! relative motion of a carrier within its own elements (diffusive_
+      ! photochemistry, carrier_enthalpy_face_flux states it).  Added into
+      ! Sidf, the one record of the enthalpy of relative transport that the
+      ! row terms and the conservation budget report.  Its column sum is
+      ! zero: both ends of the carrier column are closed.
+      if (associated(carrier_enthalpy_divergence)) then
+         call U_to_W(u, W)
+         Tc = W(3,:)/n_part
+         call carrier_enthalpy_divergence(W(1,:), Tc, f_sp, Scar)
+         R(3,:) = R(3,:) + Scar
+         Sidf   = Sidf + Scar
+      endif
       ! THE LOWEST GHOST CELL CARRIES NO EQUATION: it has no lower face, so
       ! there is no balance to state there and its row is zero (RK_rhs
       ! defines the same column of dF and S as zero for the same reason).
@@ -350,12 +392,30 @@
       ! THE COMPLETE TERMS OF THE THREE ROWS OF THIS ASSEMBLY, for an
       ! independent reader of the discrete balance. Default off: nothing is
       ! written and no file is opened unless EXHALE_CONSERVATION_BUDGET is
-      ! set (module conservation_budget). It writes the arrays above and the
-      ! face data this assembly stored, and changes none of them.
-      if (conservation_budget_exports_left())                           &
-         call write_conservation_budget_terms(u, dF, S, R,              &
+      ! set (module conservation_budget). It writes the arrays above, the
+      ! face states WL, WR the fluxes were formed from and the face data
+      ! this assembly stored, and changes none of them.
+      !
+      ! The continuity row's scale is the one the stationary solve divides
+      ! by, residual_row_scale, read here because this module owns it. The
+      ! row terms of u were stored just above, so it forms no Riemann
+      ! problem; the two flux-branch counters are restored all the same, so
+      ! that no path of the export can move a count the run reports.
+      if (conservation_budget_exports_left()) then
+         n_roe_hlle_saved = n_faces_roe_hlle
+         n_llf_saved      = n_faces_llf
+         continuity_scale(1-Ng) = 0.0d0
+         do jcell_scale = 2-Ng, N+Ng
+            continuity_scale(jcell_scale) =                             &
+               residual_row_scale(1, jcell_scale, u)
+         enddo
+         n_faces_roe_hlle = n_roe_hlle_saved
+         n_faces_llf      = n_llf_saved
+         call write_conservation_budget_terms(u, WL, WR, dF, S, R,      &
                                               heat, cool, Smom, Sene,   &
-                                              Sidf, rows_kind)
+                                              Sidf, continuity_scale,   &
+                                              rows_kind)
+      endif
 
       ! The rounding floor of the continuity row, measured on the first
       ! state a run assembles a stationary residual for when
@@ -1002,15 +1062,11 @@
       ! below the escape radius [1:j_min-1] and combined by the LARGER of the
       ! two.
       !
-      ! Why the two regions are not merged, and why the combination is the
-      ! maximum: their rows are made dimensionless by different physics (the
-      ! wind's momentum density above r_esc, the gravitational force density
-      ! below it; residual_row_scale), so the two numbers are not addends of a
-      ! common quantity. Each is already a dimensionless statement whose
-      ! target is "small", and the maximum says that EVERY part of the column
-      ! is steady -- no region can be averaged away by another. With the
-      ! cell-wise maximum inside relnorm_over_cells the split is no longer
-      ! what protects the layer, but it still keeps the two regions' numbers
+      ! Every row of every cell is divided by the same expression, its own
+      ! largest term (residual_row_scale, which has no region switch), and
+      ! relnorm_over_cells takes the cell-wise maximum, so the maximum of the
+      ! two regions is the maximum over the whole column: the split changes
+      ! no number. It is kept because it makes the two regions' numbers
       ! reportable separately, which is what the JFNK's region line uses.
       real*8, dimension(3,1-Ng:N+Ng), intent(in)  :: R
       real*8, dimension(3,1-Ng:N+Ng), intent(in)  :: u

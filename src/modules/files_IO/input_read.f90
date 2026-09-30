@@ -1361,12 +1361,14 @@
 				endif
 			else if (lbl_match(line, 'Conduction')) then
 				! "Conduction: True" enables heat conduction with the
-				! Watson et al. (1981) atomic-hydrogen kappa(T).
+				! conductivity of the mixture (viscous_conduction.f90,
+				! Eq. 4': Banks & Kockarts 1973 electron, H and He values).
 				str = get_word(line, 2)
 				if (str .eq. 'True' .or. str .eq. 'true') cond_on = .true.
 				if (str .eq. 'False' .or. str .eq. 'false') cond_on = .false.
 				if (cond_on) write(*,'(A)') ' (input_read) Heat conduction: '// &
-				   'kappa(T) = 4.45e4 (T/1000 K)^0.7 erg/cm/s/K'
+				   'kappa = (n_e 1.2e-6 T^2.5 + n_HI 379 T^0.69 + n_HeI 299'// &
+				   ' T^0.69 + n_H2 k_H2(T))/n erg/cm/s/K'
 			else if (lbl_match(line, 'Resid tol')) then
 				! "Resid tol: <val>" = converge on the steady residual ||R||
 				! instead of du (<= 0 disables; legacy du-based stop).

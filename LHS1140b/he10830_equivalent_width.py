@@ -19,9 +19,15 @@ line-of-sight velocity (models carry none and the observation is in its
 planet rest frame; every EW here is computed unshifted), and any covariance
 of the observational error (the error below assumes independent samples).
 
-The window, the vacuum/air ratio and the observational error formula are the
-ones make_memo_figures.py has used since the catalog began; only the model
-side of the operator changed.
+The window and the vacuum/air ratio are the ones make_memo_figures.py has
+used since the catalog began.  The observational error is the error of the
+SAME linear estimator as the equivalent width: EW = sum_i w_i d_i with the
+trapezoidal weights w_i of the samples, so sigma^2 = sum_i (w_i sigma_i)^2
+for independent samples (until 2026-09-29 every sample was given the median
+sample spacing as its weight, 0.0295 against 0.0289 %A; code audit of
+2026-09-29, md/CODE_AUDIT_20260929.md F5).  Neither includes a covariance of
+the observational errors or the uncertainty of the continuum fit, which the
+released spectrum does not provide.
 """
 import csv
 import os
@@ -55,15 +61,25 @@ IN_WINDOW = (OBS_VAC >= EW_LO) & (OBS_VAC <= EW_HI)
 SAMPLES = OBS_VAC[IN_WINDOW]
 
 
+def trapezoidal_weights(x):
+    """The weights w_i with np.trapz(y, x) = sum_i w_i y_i: half the sum of
+    the two adjacent intervals inside, half the one interval at each end."""
+    dx = np.diff(x)
+    w = np.zeros_like(x)
+    w[:-1] += 0.5*dx
+    w[1:] += 0.5*dx
+    return w
+
+
 def observed_equivalent_width():
     """(EW, sigma) of the observation [%A].
 
-    sigma = sqrt(sum (sigma_i dlambda)^2) with the median sample spacing:
-    independent samples, no covariance (md/PLAN_20260923_rev2.md section 4
-    states what this leaves out)."""
+    sigma = sqrt(sum (w_i sigma_i)^2) with the trapezoidal weights w_i of the
+    estimator itself: independent samples, no covariance
+    (md/PLAN_20260923_rev2.md section 4 states what this leaves out)."""
     ew = float(np.trapz(OBS_DEPTH[IN_WINDOW], SAMPLES))
-    err = float(np.sqrt(np.sum((OBS_SIGMA[IN_WINDOW]
-                                * np.median(np.diff(OBS_VAC)))**2)))
+    err = float(np.sqrt(np.sum((trapezoidal_weights(SAMPLES)
+                                * OBS_SIGMA[IN_WINDOW])**2)))
     return ew, err
 
 
@@ -73,10 +89,18 @@ def model_equivalent_width(lam_vac, excess_percent):
     lam_vac: vacuum wavelengths [A], planet rest frame; excess_percent: the
     excess absorption [%] at those wavelengths.  Returns None when the curve
     does not span the observation's samples in the window, since linear
-    interpolation would then extrapolate a constant."""
+    interpolation would then extrapolate a constant, and when the curve is
+    not a curve: arrays that are not one-dimensional or not of one length,
+    fewer than two samples, a non-finite value in either array (a NaN
+    wavelength passes the ordering test below, since every comparison with
+    it is false), or wavelengths not strictly ordered."""
     lam = np.asarray(lam_vac, dtype=float)
     exc = np.asarray(excess_percent, dtype=float)
+    if lam.ndim != 1 or exc.ndim != 1 or lam.size != exc.size:
+        return None
     if lam.size < 2:
+        return None
+    if not (np.all(np.isfinite(lam)) and np.all(np.isfinite(exc))):
         return None
     if lam[0] > lam[-1]:
         lam, exc = lam[::-1], exc[::-1]
@@ -95,8 +119,13 @@ def transit_file_excess(path):
     s = np.loadtxt(path)
     if s.ndim != 2 or s.shape[1] < 3:
         return None
+    if not np.all(np.isfinite(s[:, [0, 2]])):
+        return None
+    cont = s[:, 2].max()
+    if not cont > 0.0:
+        return None
     lam = s[:, 0]*AIR
-    exc = (s[:, 2].max() - s[:, 2])/s[:, 2].max()*100.0
+    exc = (cont - s[:, 2])/cont*100.0
     return lam, exc
 
 

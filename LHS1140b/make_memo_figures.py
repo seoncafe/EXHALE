@@ -74,13 +74,15 @@ o_sig  = g('uncertainty_1sigma_percent')
 mo = (o_vac >= EW_LO) & (o_vac <= EW_HI)
 EW_measured, EW_measured_err = HEW.observed_equivalent_width()
 
-# Every crossing quoted in the memo, and every one in the results.txt of the
-# run directories the crossings are read from, is solved against the value
-# the released spectrum gives (Cherubim_2026/LHS1140b_He10833_README.md: the
-# authors' Zenodo numbers, not a raster digitization), as it is printed
-# there: 1.108 +/- 0.030 %A.  Use the same two numbers
-# here so that the figures and the tables cross at the same composition.
-EW_obs, EW_err = 1.108, 0.030
+# Every crossing is solved against the equivalent width the released
+# spectrum gives (Cherubim_2026/, the authors' Zenodo numbers, not a raster
+# digitization) through the operator of he10830_equivalent_width.py, rounded
+# to the three decimals the tables quote.  The error is OURS, computed from
+# the released per-sample errors under independent samples, not a number of
+# the paper: 0.030 until 2026-09-29, when the estimator was given its own
+# trapezoidal weights (0.0289, code audit F5); figures and crossing ranges
+# drawn before that date carry the band +/- 0.030.
+EW_obs, EW_err = round(EW_measured, 3), round(EW_measured_err, 3)
 
 def curve_file(path):
     """Air wavelength and excess absorption [%] of one transit file."""

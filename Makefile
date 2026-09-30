@@ -28,6 +28,7 @@
 
 OBJDIR := build
 MODDIR := $(OBJDIR)
+comma  := ,
 EXE    := EXHALE.x
 
 # ---- choose compiler -------------------------------------------------
@@ -45,7 +46,11 @@ ifneq (,$(filter ifort ifx,$(FC)))
   # The Intel compilers bring their own LAPACK: MKL, built for their own
   # runtime, so the same rule as below (a LAPACK of the compiler's own
   # prefix) is the one-line -qmkl.  Sequential: the code threads itself.
-  LAPACK_LIBS ?= -qmkl=sequential
+  # The compiler's runtime (libiomp5, libimf, ...) and MKL are recorded in
+  # the rpath, as the OpenBLAS prefix is below, so the binary runs without
+  # the oneAPI environment (the run scripts start it under env -i).
+  LAPACK_LIBS ?= -qmkl=sequential -Wl,-rpath,$(TOOLCHAIN_PREFIX)/lib \
+                 $(if $(MKLROOT),-Wl$(comma)-rpath$(comma)$(MKLROOT)/lib)
 else
   FFLAGS  := -O3 -fopenmp
   MODFLAG := -J$(MODDIR) -I$(MODDIR)
@@ -304,6 +309,17 @@ BUILDFLAGS := $(FC_PATH) $(FC_VERSION) $(FFLAGS) $(MODFLAG)
 FLAGHASH   := $(firstword $(shell printf '%s' '$(BUILDFLAGS)' | cksum))
 FLAGSTAMP  := $(OBJDIR)/.buildflags-$(FLAGHASH)
 
+# Relink the executables when the LINK command changes. The compile stamp
+# above does not see LDLIBS (the LAPACK the executable is linked against,
+# LAPACK_LIBS), so a changed library left the old executable standing as
+# "up to date" (code audit of 2026-09-29, md/CODE_AUDIT_20260929.md F7).
+# The same device, on the link command: its hash names a stamp that the
+# executables depend on, so a changed library relinks them and recompiles
+# nothing, and an unchanged command names the present stamp.
+LINKFLAGS  := $(FC_PATH) $(FC_VERSION) $(FFLAGS) $(MODFLAG) $(LDLIBS)
+LINKHASH   := $(firstword $(shell printf '%s' '$(LINKFLAGS)' | cksum))
+LINKSTAMP  := $(OBJDIR)/.linkflags-$(LINKHASH)
+
 # ---------------------------------------------------------------------
 .PHONY: all clean distclean ifort ifx wind_ae_ic check test diffusion_tests \
         cce_probe residual_determinism element_census_tests
@@ -393,7 +409,7 @@ residual_determinism: $(EXE)
 	   echo "determinism test not found (src/tests/residual_determinism/)"; \
 	 fi
 
-$(EXE): $(OBJ)
+$(EXE): $(OBJ) $(LINKSTAMP)
 	$(FC) $(FFLAGS) $(MODFLAG) $(OBJ) -o $@ $(LDLIBS)
 	@echo "built $@"
 
@@ -411,14 +427,14 @@ $(DIFT_OBJ): $(FLAGSTAMP)
 
 # Constrained-equilibrium probe (separate executable; needs LAPACK for the
 # singular values).
-$(CCE_EXE): $(CCE_OBJ)
+$(CCE_EXE): $(CCE_OBJ) $(LINKSTAMP)
 	$(FC) $(FFLAGS) $(MODFLAG) $(CCE_OBJ) -o $@ $(LDLIBS)
 	@echo "built $@"
 $(CCE_OBJ): $(FLAGSTAMP)
 
 # Element census / conservation tests (separate executable; needs LAPACK
 # for the same reason cce_probe.x does).
-$(ECT_EXE): $(ECT_OBJ)
+$(ECT_EXE): $(ECT_OBJ) $(LINKSTAMP)
 	$(FC) $(FFLAGS) $(MODFLAG) $(ECT_OBJ) -o $@ $(LDLIBS)
 	@echo "built $@"
 $(ECT_OBJ): $(FLAGSTAMP)
@@ -434,6 +450,8 @@ $(OBJDIR)/%.o: %.f90 | $(OBJDIR)
 $(OBJ): $(FLAGSTAMP)
 $(FLAGSTAMP): | $(OBJDIR)
 	@rm -f $(OBJDIR)/.buildflags-* && touch $@
+$(LINKSTAMP): | $(OBJDIR)
+	@rm -f $(OBJDIR)/.linkflags-* && touch $@
 
 $(OBJDIR):
 	@mkdir -p $@

@@ -264,7 +264,8 @@
 
       use mol_rates, only: h2_thermochemistry_init, h2_thermochemistry_ready
       use global_parameters
-      use caloric_eos, only: adiabatic_index_at_T
+      use caloric_eos, only: adiabatic_index_at_T,                        &
+                             h2_rovibrational_energy_and_heat_capacity
       use grav_func,     only: Dphi
       use species_table, only: n_bsp, bsp_fsp, bsp_mass,                 &
                                bsp_nHe, bsp_is_excited_level,            &
@@ -273,7 +274,9 @@
                                isp_H2, isp_H2p, isp_H3p, isp_HeHp,       &
                                isp_OH, isp_H2O, isp_CO,                  &
                                n_mion, mion_fsp, melem_i0, melem_top,    &
-                               n_melem, iel_O, iel_C
+                               n_melem, iel_O, iel_C,                    &
+                               bsp_charge, bsp_nH, bsp_nO, bsp_nC,       &
+                               mion_elem, mion_stage
       use binary_element_diffusion, only: hard_sphere_pair_diffusion,     &
                           advected_carrier_reset,                        &
                           advected_carrier_register,                     &
@@ -323,7 +326,8 @@
       use ion_cell_state, only: ion_rates
       use caloric_eos, only: pressure_from_energy_density
       use steady_residual_mod, only: carrier_row_scale,                  &
-                                     face_mass_flux_of_state
+                                     face_mass_flux_of_state,            &
+                                     carrier_enthalpy_divergence
       use species_advective_transport, only: species_face_fraction,      &
                                      species_face_flux
       ! THE TRANSPORT OF AN IONIZATION STAGE, written on its element's own
@@ -408,6 +412,11 @@
       public :: thermochemical_state
       public :: save_thermochemical_state, restore_thermochemical_state
       public :: carrier_steady_residual
+      public :: carrier_enthalpy_active, carrier_enthalpy_face_flux,      &
+                carrier_enthalpy_divergence_of_state
+      ! Test only: the diffusion coefficients the carrier face flux is
+      ! formed from (src/tests/carrier_enthalpy_flux).
+      public :: carrier_diffusivities
       ! The terms of every carrier row of the last assembly, written on
       ! request (EXHALE_CARRIER_ROW_TERMS=1) by the certification that
       ! measured them.  A record of a measurement; nothing reads it back.
@@ -1358,7 +1367,7 @@
       ! reinstates them, allocation status included: an array that was not
       ! allocated before the call is deallocated again, so the module comes
       ! back to the state it was in and not merely to the same numbers.
-      type, public :: carrier_module_state
+      type :: carrier_module_state
          real(dp), allocatable :: cbg_nhii(:), cbg_nh2p(:), cbg_nh3p(:)
          real(dp), allocatable :: cbg_nhehp(:), cbg_nhei(:), cbg_nheii(:)
          real(dp), allocatable :: cbg_nheiii(:), cbg_nheiTR(:), cbg_ne(:)
@@ -1506,7 +1515,7 @@
       ! The carrier fractions are optional in the pair below because at the
       ! top of a step they do not exist yet: the entry state of the
       ! carriers is f_sp, which the step has not written.
-      type, public :: carrier_checkpoint
+      type :: carrier_checkpoint
          real(dp), allocatable :: fc(:,:)
          ! The arrays a residual assembly overwrites, in the enumeration
          ! save_carrier_module_state already keeps, reused rather than
@@ -1557,7 +1566,7 @@
       ! get_species_densities, the one routine that turns (rho, f_sp) into
       ! number densities and refreshes them, exactly as the production
       ! paths do.
-      type, public :: thermochemical_state
+      type :: thermochemical_state
          real(dp), allocatable :: f_sp(:,:)
          real(dp), allocatable :: p(:), T(:)
          real(dp), allocatable :: heat(:), cool(:), eta(:)
@@ -1619,6 +1628,18 @@
       ! covers a test driver that enters through the carriers.
       if (thereis_mol .and. .not. h2_thermochemistry_ready())             &
          call h2_thermochemistry_init
+
+      ! THE ENTHALPY THE CARRIERS CARRY enters the stationary energy row
+      ! through the one procedure the residual module holds for it (that
+      ! module cannot use this one, which uses it): registered here, where
+      ! the carrier set is decided, and read by assemble_residual.  A run
+      ! whose energy equation carries no carrier term leaves it null, and
+      ! its residual is the one it had.
+      if (carrier_enthalpy_active()) then
+         carrier_enthalpy_divergence => carrier_enthalpy_divergence_of_state
+      else
+         nullify(carrier_enthalpy_divergence)
+      endif
 
       ! THE TRANSPORTED SET.  Each solved carrier is advected on the
       ! hydrodynamic face mass fluxes inside the Runge-Kutta stages, on the
@@ -5571,6 +5592,235 @@
       dJl =  (Agr - Bst*wl)*wcl
       dJr = (-Agr - Bst*wr)*wcr
       end subroutine carrier_face_flux
+
+      ! ------------------------------------------------------------- !
+
+      ! WHETHER THE ENERGY EQUATION CARRIES THE ENTHALPY OF THE CARRIER
+      ! FLUXES: where a molecular carrier (H2, OH, H2O, CO) is transported
+      ! relative to the gas, unless "Interdiffusion enthalpy flux: False"
+      ! removes the enthalpy of relative transport altogether (the one key
+      ! for the element and the carrier terms, parameters.f90).  The
+      ! ionization stages carried by "Ionization transport" are not covered:
+      ! their face flux is a stage flux with the element's advection inside
+      ! it, and the relative part that would carry enthalpy is not formed
+      ! here (an open item, md/TO_BE_DONE.md (j)).
+      logical function carrier_enthalpy_active() result(on)
+      integer :: ic
+      on = .false.
+      if (.not. (interdiffusion_enthalpy_flux .and. thereis_mol .and.     &
+                 carrier_transport)) return
+      do ic = ic_H2, ic_CO
+         if (carrier_solved(ic)) on = .true.
+      enddo
+      end function carrier_enthalpy_active
+
+      ! ------------------------------------------------------------- !
+
+      subroutine carrier_enthalpy_face_flux(rho, Tcode, f_sp, q)
+      ! THE SENSIBLE ENTHALPY FLUX OF THE MOLECULAR CARRIERS at the faces
+      ! f = 0 ... N [erg cm^-2 s^-1], positive outward (code audit of
+      ! 2026-09-29, md/CODE_AUDIT_20260929.md F1).
+      !
+      ! The energy equation of a mixture whose species move relative to the
+      ! gas carries q_d = sum_s h_s J_s (Cook 2009, Phys. Fluids 21, 055109,
+      ! eqs. 11-13; interdiffusion_enthalpy_face_flux states the physics and
+      ! carries the ELEMENT part, in which every species of an element moves
+      ! with its element).  A carrier moves relative to the rest of its own
+      ! elements as well: its diffusive, eddy and settling flux Phi_c
+      ! (carrier_face_flux, the flux the carrier rows are the divergence of)
+      ! moves nuclei that the element fluxes do not, so the nuclei of the
+      ! same elements held by the species that are NOT carriers move the
+      ! other way, nucleus for nucleus, and the element fluxes are left as
+      ! they are.  The carrier term is therefore
+      !
+      !    q_car = sum_c Phi_c [ h_c - sum_el nu_{c,el} hbar_el ] ,
+      !
+      ! h_c the enthalpy of one carrier particle and hbar_el the enthalpy
+      ! of the non-carrier species of element el per nucleus of el
+      ! (H: HI, H+, H2+, H3+ and the hydrogen share of HeH+; O and C: their
+      ! atomic stages where the metals are in the mixture), each particle
+      ! with the electrons its charge gave up, as in
+      ! component_specific_enthalpies.  Per particle h_s = e_s + kT with
+      ! e_s of the caloric EOS: gamma_ad/(gamma_ad - 1) kT (1 + Z_s), H2
+      ! adding its rovibrational energy k u_rv (zero under "Caloric EOS:
+      ! monatomic").  An element with no non-carrier species in a cell
+      ! recoils with its neutral ground atom.  So an H2 molecule rising
+      ! through atomic hydrogen at zero hydrogen flux carries
+      ! h_H2 - 2 h_H = k (u_rv - 5 T/2) upward per molecule.  Formation
+      ! energy is not in these enthalpies, for the reason
+      ! component_specific_enthalpies gives.
+      !
+      ! THE FLUX IS THE CARRIER OPERATOR'S OWN, for the state in hand: the
+      ! coefficients of carrier_face_coefficients from carrier_diffusivities
+      ! and carrier_geometry, and carrier_face_flux on the unknown f_sp and
+      ! the mixing-ratio factor n rho/n_tot.  The temperature and the
+      ! particle count are those of the state passed (Tcode and the particle
+      ! count of its composition, calc_ntot's), not the frozen background of
+      ! a carrier step, so the term follows the iterate of a steady solve.
+      ! Only the faces 1 ... N-1 carry a carrier flux (both ends of the
+      ! carrier column are closed, carrier_face_coefficients), so q(0) =
+      ! q(N) = 0 and the term moves energy within the column only.  Face
+      ! values of h are the arithmetic means of their two cells.  Writes no
+      ! module state (l22b_setup reads its options once).
+      real(dp), dimension(1-Ng:N+Ng),           intent(in)  :: rho, Tcode
+      real(dp), dimension(1-Ng:N+Ng,n_species), intent(in)  :: f_sp
+      real(dp), dimension(0:N),                 intent(out) :: q
+
+      real(dp), dimension(1-Ng:N+Ng) :: nd, ntot, TK, mbar, wfac
+      real(dp), dimension(1-Ng:N+Ng) :: rp, rep, dtd, dtp, gphys
+      real(dp), dimension(1-Ng:N+Ng,n_carrier_max) :: Dco, dh
+      real(dp), dimension(0:N,n_carrier_max) :: Agrd, Bdrf
+      integer,  dimension(0:N,n_carrier_max) :: updrf
+      logical  :: car_bsp(n_bsp)
+      real(dp) :: cp_part, kTe, urv, crv, hs, dens, nnuc
+      real(dp) :: eH, nHnuc, eO, nOnuc, eC, nCnuc, hbH, hbO, hbC, hc
+      real(dp) :: Jfc, dJl, dJr
+      integer  :: j, ic, ib, isp, im
+
+      q = 0.0d0
+      if (.not. carrier_enthalpy_active()) return
+
+      ! Which species of the table are carriers of this run.
+      car_bsp = .false.
+      do ic = ic_H2, ic_CO
+         if (.not. carrier_solved(ic)) cycle
+         isp = carrier_species_index(ic)
+         do ib = 1, n_bsp
+            if (bsp_fsp(ib) .eq. isp) car_bsp(ib) = .true.
+         enddo
+      enddo
+
+      cp_part = gamma_ad/(gamma_ad - 1.0d0)
+      nd = rho*n0
+      do j = 1-Ng, N+Ng
+         ! The gas-particle count of calc_ntot: one particle for every
+         ! species of the table but the excited level, and the metal stages
+         ! where the equation of state counts them.
+         ntot(j) = 0.0d0
+         do ib = 1, n_bsp
+            if (bsp_is_excited_level(ib)) cycle
+            ntot(j) = ntot(j) + f_sp(j,bsp_fsp(ib))*nd(j)
+         enddo
+         if (eos_include_metals .and. thereis_metals) then
+            do im = 1, n_mion
+               ntot(j) = ntot(j) + f_sp(j,mion_fsp(im))*nd(j)
+            enddo
+         endif
+         TK(j) = max(Tcode(j)*T0, 1.0d0)
+         if (ntot(j) .gt. 0.0d0) then
+            mbar(j) = rho(j)*n0*mu/ntot(j)
+         else
+            mbar(j) = mu
+         endif
+         wfac(j) = nd(j)/max(ntot(j), 1.0d-99)
+      enddo
+      dtd = 1.0d0
+      call carrier_geometry(dtd, rp, rep, dtp, gphys)
+      call carrier_diffusivities(f_sp, rho, TK, ntot, Dco)
+      call carrier_face_coefficients(ntot, TK, mbar, gphys, Dco, rp,     &
+                                     Agrd, Bdrf, updrf)
+
+      ! The enthalpy difference of every carrier against the nuclei that
+      ! recoil, cell by cell [erg per carrier particle].
+      dh = 0.0d0
+      do j = 1-Ng, N+Ng
+         kTe = kb_erg*TK(j)
+         urv = 0.0d0
+         call h2_rovibrational_energy_and_heat_capacity(TK(j), urv, crv)
+         eH = 0.0d0;  nHnuc = 0.0d0
+         eO = 0.0d0;  nOnuc = 0.0d0
+         eC = 0.0d0;  nCnuc = 0.0d0
+         do ib = 1, n_bsp
+            if (bsp_is_excited_level(ib) .or. car_bsp(ib)) cycle
+            dens = f_sp(j,bsp_fsp(ib))
+            if (dens .le. 0.0d0) cycle
+            nnuc = dble(bsp_nH(ib) + bsp_nHe(ib) + bsp_nO(ib) + bsp_nC(ib))
+            if (nnuc .le. 0.0d0) cycle
+            hs = cp_part*kTe*(1.0d0 + dble(bsp_charge(ib)))
+            if (bsp_fsp(ib) .eq. isp_H2) hs = hs + kb_erg*urv
+            eH = eH + dens*hs*dble(bsp_nH(ib))/nnuc
+            eO = eO + dens*hs*dble(bsp_nO(ib))/nnuc
+            eC = eC + dens*hs*dble(bsp_nC(ib))/nnuc
+            nHnuc = nHnuc + dens*dble(bsp_nH(ib))
+            nOnuc = nOnuc + dens*dble(bsp_nO(ib))
+            nCnuc = nCnuc + dens*dble(bsp_nC(ib))
+         enddo
+         if (eos_include_metals .and. thereis_metals) then
+            do im = 1, n_mion
+               dens = f_sp(j,mion_fsp(im))
+               if (dens .le. 0.0d0) cycle
+               hs = cp_part*kTe*(1.0d0 + dble(mion_stage(im)))
+               if (mion_elem(im) .eq. iel_O) then
+                  eO = eO + dens*hs;  nOnuc = nOnuc + dens
+               else if (mion_elem(im) .eq. iel_C) then
+                  eC = eC + dens*hs;  nCnuc = nCnuc + dens
+               endif
+            enddo
+         endif
+         hbH = cp_part*kTe;  hbO = cp_part*kTe;  hbC = cp_part*kTe
+         if (nHnuc .gt. 0.0d0) hbH = eH/nHnuc
+         if (nOnuc .gt. 0.0d0) hbO = eO/nOnuc
+         if (nCnuc .gt. 0.0d0) hbC = eC/nCnuc
+         do ib = 1, n_bsp
+            if (.not. car_bsp(ib)) cycle
+            hc = cp_part*kTe*(1.0d0 + dble(bsp_charge(ib)))
+            if (bsp_fsp(ib) .eq. isp_H2) hc = hc + kb_erg*urv
+            do ic = ic_H2, ic_CO
+               if (.not. carrier_solved(ic)) cycle
+               if (carrier_species_index(ic) .ne. bsp_fsp(ib)) cycle
+               dh(j,ic) = hc - (dble(bsp_nH(ib))*hbH + dble(bsp_nO(ib))*hbO &
+                                + dble(bsp_nC(ib))*hbC)
+            enddo
+         enddo
+      enddo
+
+      do ic = ic_H2, ic_CO
+         if (.not. carrier_solved(ic)) cycle
+         isp = carrier_species_index(ic)
+         do j = 1, N-1
+            call carrier_face_flux(f_sp(j,isp), f_sp(j+1,isp), wfac(j),   &
+                                   wfac(j+1), Agrd(j,ic), Bdrf(j,ic),     &
+                                   updrf(j,ic), Jfc, dJl, dJr)
+            q(j) = q(j) + Jfc*0.5d0*(dh(j,ic) + dh(j+1,ic))
+         enddo
+      enddo
+      end subroutine carrier_enthalpy_face_flux
+
+      ! ------------------------------------------------------------- !
+
+      subroutine carrier_enthalpy_divergence_of_state(rho, Tcode, f_sp,  &
+                                                      divq, q_out)
+      ! The divergence of carrier_enthalpy_face_flux in every cell 1 ... N
+      ! of the carrier column, in the code units of the energy row
+      ! (q0 = n0 mu v0^3/R0), on the carrier rows' own geometry
+      ! (spherical_face_area_and_cell_volume):
+      !
+      !    divq(j) = [ A_j q(j) - A_{j-1} q(j-1) ] / (V_j R0 q0) ,  j = 1 ... N.
+      !
+      ! Cell 1 is included: the carrier column, unlike the element column
+      ! (whose cell 1 is the prescribed reservoir), carries a balance in
+      ! every cell 1 ... N.  With q(0) = q(N) = 0, sum_j V_j divq(j) = 0 to
+      ! rounding.  The ghosts are returned as zero.  Zero, with no
+      ! arithmetic, unless carrier_enthalpy_active().  q_out (optional)
+      ! returns the face flux [erg cm^-2 s^-1].
+      real(dp), dimension(1-Ng:N+Ng),           intent(in)  :: rho, Tcode
+      real(dp), dimension(1-Ng:N+Ng,n_species), intent(in)  :: f_sp
+      real(dp), dimension(1-Ng:N+Ng),           intent(out) :: divq
+      real(dp), dimension(0:N), optional,       intent(out) :: q_out
+      real(dp), dimension(0:N) :: q, fa
+      real(dp), dimension(1:N) :: cv
+      integer :: j
+
+      divq = 0.0d0
+      if (present(q_out)) q_out = 0.0d0
+      if (.not. carrier_enthalpy_active()) return
+      call carrier_enthalpy_face_flux(rho, Tcode, f_sp, q)
+      call spherical_face_area_and_cell_volume(fa, cv)
+      do j = 1, N
+         divq(j) = (fa(j)*q(j) - fa(j-1)*q(j-1))/(cv(j)*R0*q0)
+      enddo
+      if (present(q_out)) q_out = q
+      end subroutine carrier_enthalpy_divergence_of_state
 
       ! ------------------------------------------------------------- !
 

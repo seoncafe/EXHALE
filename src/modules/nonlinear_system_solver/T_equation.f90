@@ -190,6 +190,10 @@
    !   - coeff*T                          (p/rho) v (rho_j - rho_hist)
    !   - mup*mum*dr_step*(heat - cool)    dr_step (heating - cooling)
    !
+   ! with heat = heaold + heat_extra + cond_diag*T: the photoheating, and
+   ! the heat conduction and enthalpy flux divergence of a run that solved
+   ! them (teq_state; zero otherwise).
+   !
    ! THE HISTORY IS THE ENERGY THE FLOW CARRIES IN, so each e_k of e_hist is
    ! the SPECIFIC internal energy of its own cell, E(x_H2,k, T_k)/mu_k,
    ! formed by the caller at that cell's composition and temperature: the
@@ -211,7 +215,8 @@
    fvec(1) = mum*rhov*e_cell                                            &
            - mup*mum*rhov*e_hist                                        &
            + mum*dr_step*div_rhov*(e_cell + x(1))                       &
-           - (coeff*x(1) + mup*mum*dr_step*(heaold - cool))
+           - (coeff*x(1) + mup*mum*dr_step*(heaold + teq_cell%heat_extra   &
+              + teq_cell%cond_diag*x(1) - cool))
 
    ! End of subroutine
 	end subroutine T_equation

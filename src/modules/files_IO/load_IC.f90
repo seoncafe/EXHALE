@@ -53,6 +53,8 @@
       ! Which build produced a state file: the source revision stamped into
       ! the executable (the run never calls git).
       use build_stamp, only: build_git, build_dirty
+      use binary_element_diffusion, only: interdiffusion_enthalpy_scale
+      use viscous_conduction, only: conduction_scale
       ! Oxygen-chemistry seed for a restart file written before the option
       ! existed (see the block near the end of load_IC).
       use oxygen_rates, only: co_equilibrium_density,                   &
@@ -162,12 +164,21 @@
    ! before either is adopted. The presence flags separate "the file states
    ! F" from "the file states nothing", which is what makes a legacy header
    ! (no field) distinguishable from a disagreement.
+   !
+   ! state_id is the generation of the pass state a file belongs to
+   ! (publish_pass_state_generation, write_output.f90), stated as the last
+   ! field of the coupling line of both halves of a generation and by no
+   ! other file. It is an identity, not a claim: two halves that state
+   ! different ones, or a half that states one beside a half that does not,
+   ! are not one state (adopt_certification_claim).
    type :: file_certification_claim
       logical :: header_present    = .false.
       logical :: certified_present = .false.
       logical :: certified         = .false.
       logical :: reason_present    = .false.
       character(len=cert_reason_len) :: reason = ''
+      logical :: state_id_present  = .false.
+      character(len=64) :: state_id = ''
    end type file_certification_claim
 
    ! ------------------------------------------------------------------ !
@@ -249,13 +260,13 @@
    ! refused by name, and the change that was allowed is written into the
    ! new state's block, so a rung of a ladder states what it was reached
    ! from instead of the change being silent.
-   integer, parameter :: n_opt = 22
+   integer, parameter :: n_opt = 23
    character(len=16), parameter :: opt_name(n_opt) = [ character(len=16) :: &
         'He23S', 'metals', 'eos_metals', 'mol', 'molbase', 'oxychem',       &
         'carrier', 'carrier_newton', 'iontrans', 'he_diff',                 &
         'he_metal_diff', 'sec_ion', 'caloric_mono', 'excH', 'base_ir',      &
         'mol_ir', 'mol_heat', 'visc', 'cond', 'jlya', 'wellbal',            &
-        'interdiff_enth' ]
+        'interdiff_enth', 'carrier_enth' ]
    ! WHICH TOKENS MAY NEVER BE NAMED, and why: these four decide WHICH
    ! SPECIES THE STATE FILES CARRY. metals adds the metal ionization
    ! stages, mol the four molecular carriers, oxychem the three oxygen
@@ -282,7 +293,7 @@
         .true.,  .false., .false., .false.,                                 &
         .false., .false., .false., .false., .false.,                        &
         .false., .false., .false., .false., .false., .false.,               &
-        .false. ]
+        .false., .false. ]
    ! A ROUTE TOKEN: the same equations, solved by another algorithm.
    ! carrier_newton says whether the transported balances are unknowns of
    ! the Newton vector, solved together with the wind as one block, or are
@@ -301,19 +312,20 @@
         .false., .true.,  .false., .false.,                                 &
         .false., .false., .false., .false., .false.,                        &
         .false., .false., .false., .false., .false., .false.,               &
-        .false. ]
+        .false., .false. ]
    ! THE VALUE A TOKEN HAS IN A FILE WRITTEN BEFORE THE TOKEN EXISTED. A
    ! token added to the vocabulary is absent from every state written
    ! earlier, and what such a state solved is known: the equations of the
    ! code that wrote it, which had no such term. interdiff_enth (the
    ! interdiffusion enthalpy flux of the energy equation, He_diffusion) did
    ! not exist before, so an older state was solved without it and reads
-   ! as F. An empty entry means the token has always been written, and its
+   ! as F; so does carrier_enth (the enthalpy flux of the transported
+   ! carriers, 2026-09-29). An empty entry means the token has always been written, and its
    ! absence from a file of this schema is refused as before.
    character(len=8), parameter :: opt_value_when_absent(n_opt) = [          &
         character(len=8) ::                                                 &
         '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '',     &
-        '', '', '', '', '', 'F' ]
+        '', '', '', '', '', 'F', 'F' ]
    ! The tokens the input named as allowed to differ, set by input_read
    ! from "Restart option change:" (which is where an unknown token and a
    ! layout token are refused, the input file being what states them).
@@ -443,9 +455,9 @@
       meta_h = ''
       meta_i = ''
       claim_h = file_certification_claim(.false., .false., .false.,        &
-                                         .false., '')
+                                         .false., '', .false., '')
       claim_i = file_certification_claim(.false., .false., .false.,        &
-                                         .false., '')
+                                         .false., '', .false., '')
       ! The loaded state's own option-change history starts empty and is
       ! filled from the file, so this run's line is appended after it.
       ic_option_change        = ''
@@ -611,6 +623,15 @@
       ! WHAT THE STATE CLAIMS ABOUT ITSELF: the one pair the two halves
       ! state, into the imported metadata (see the routine).
       call adopt_certification_claim(claim_h, claim_i)
+      ! A claim is about the state UNDER THE EQUATIONS IT WAS WRITTEN WITH.
+      ! A restart that changes a physics option ("Restart option change:",
+      ! compare_options_field) loads it as a starting point of other
+      ! equations, so the claim is not carried into a file this run writes
+      ! without measuring (an IC dump), nor held against an evaluation.
+      if (ic_option_change_applied .and. ic_certified) then
+         ic_certified   = .false.
+         ic_cert_reason = 'option_change_seed'
+      endif
 
       composition_changed_here = .false.
       composition_changed_why  = ''
@@ -1294,14 +1315,14 @@
       idf = ic_boundary_model
       pos = index(trim(idf), ' ')
       if (pos .gt. 1) idf = idf(1:pos-1)
-      if (trim(idf) .eq. base_boundary_model_id) then
+      if (trim(idf) .eq. base_boundary_model_id()) then
          write(*,'(A)') ' (load_IC) boundary model of the restart: '//    &
               trim(idf)//' (this run''s).'
       else
          write(*,'(A)') ' (load_IC) NOTE: the restart was produced'//     &
               ' under boundary model '//trim(idf)
          write(*,'(A)') '   and this run solves '//                       &
-              base_boundary_model_id//'. The boundary is rebuilt from'//  &
+              base_boundary_model_id()//'. The boundary is rebuilt from'//  &
               ' the physical column'
          write(*,'(A)') '   and this run''s reservoir, and its ghost'//   &
               ' composition is solved to this model''s own seed and'//    &
@@ -1691,15 +1712,35 @@
       case ('mol_ir');         opt_value = tf(mol_ir_bands)
       case ('mol_heat');       opt_value = tf(mol_reaction_heat)
       case ('visc');           opt_value = tf(visc_on)
-      case ('cond');           opt_value = tf(cond_on)
+      ! A continuation factor s /= 1 on the conductivity
+      ! (EXHALE_CONDUCTION_SCALE, conduction_scale) is another energy
+      ! equation: the token then carries s itself (F7.5) in place of T.
+      case ('cond')
+         opt_value = tf(cond_on)
+         if (cond_on .and. conduction_scale() .ne. 1.0d0)                  &
+            write(opt_value,'(F7.5)') conduction_scale()
       case ('jlya');           write(opt_value,'(I0)') jlya_mode
       case ('wellbal');        opt_value = tf(well_balanced)
       ! The interdiffusion enthalpy flux enters the equations only where the
       ! elements move (binary_element_diffusion,
       ! interdiffusion_enthalpy_active), so the token states the term and not
       ! the key: a run without He_diffusion writes F whatever the key says.
-      case ('interdiff_enth'); opt_value = tf(he_diffusion .and. thereis_He &
-                                       .and. interdiffusion_enthalpy_flux)
+      ! A continuation factor s /= 1 on the term (EXHALE_INTERDIFF_ENTH_SCALE,
+      ! interdiffusion_enthalpy_scale) is another energy equation, so the
+      ! token then carries s itself (F7.5) in place of T: a state of a
+      ! continuation step can never be read as one of the model.
+      case ('interdiff_enth')
+         opt_value = tf(he_diffusion .and. thereis_He                      &
+                        .and. interdiffusion_enthalpy_flux)
+         if (opt_value .eq. 'T' .and.                                       &
+             interdiffusion_enthalpy_scale() .ne. 1.0d0)                    &
+            write(opt_value,'(F7.5)') interdiffusion_enthalpy_scale()
+      ! The enthalpy flux of the molecular carriers enters where they are
+      ! transported (diffusive_photochemistry, carrier_enthalpy_active: the
+      ! molecular carriers are solved exactly when the network exists and
+      ! its transport is selected), with the same key.
+      case ('carrier_enth');   opt_value = tf(interdiffusion_enthalpy_flux  &
+                                       .and. thereis_mol .and. carrier_transport)
       case default
          write(*,'(A)') ' (load_IC) ERROR: the option token "'//           &
               trim(name)//'" is named in opt_name and has no value in'//   &
@@ -2338,6 +2379,12 @@
                     'the "cert_reason" token is longer than the field')
             claim%reason_present = .true.
             claim%reason         = trim(val)
+         case ('state_id')
+            if (claim%state_id_present)                                   &
+               call refuse_coupling_header(fname, line,                   &
+                    'the key "state_id" is stated twice')
+            claim%state_id_present = .true.
+            claim%state_id         = trim(val)
          end select
       enddo
       end subroutine parse_certification_claim
@@ -2368,9 +2415,45 @@
       ! not a disagreement: the stated value is taken and the asymmetry is
       ! printed. A field both halves state differently is two claims about
       ! one state and is refused, never merged.
+      !
+      ! THE IDENTITY OF THE STATE IS NOT SUCH A FIELD. state_id is written
+      ! on both halves of a generation of the pass state and on no other
+      ! file, so a half that states it beside a half that does not is a
+      ! generation file paired with a file from elsewhere, and two different
+      ! ones are halves of two generations: both are refused. A pair in
+      ! which neither half states one (every solved state, every file
+      ! written before the field existed) is read as it always was.
       type(file_certification_claim), intent(in) :: claim_h, claim_i
+      character(len=64) :: sid_stated_h, sid_stated_i
       ic_certified   = .false.
       ic_cert_reason = ''
+      if (claim_h%state_id_present .neqv. claim_i%state_id_present) then
+         sid_stated_h = '(none)'
+         sid_stated_i = '(none)'
+         if (claim_h%state_id_present) sid_stated_h = claim_h%state_id
+         if (claim_i%state_id_present) sid_stated_i = claim_i%state_id
+         write(*,'(A)') ' (load_IC) ERROR: only one of the two restart'//  &
+              ' files states a pass state identity, so they are not two'// &
+              ' halves of one state:'
+         write(*,'(A)') '   Hydro_ioniz_IC.txt: state_id='//trim(sid_stated_h)
+         write(*,'(A)') '   Ion_species_IC.txt: state_id='//trim(sid_stated_i)
+         write(*,'(A)') '   take both files from one directory'//          &
+              ' output/pass_state/<state_id>/'
+         error stop 1
+      endif
+      if (claim_h%state_id_present .and.                                   &
+          trim(claim_h%state_id) .ne. trim(claim_i%state_id)) then
+         write(*,'(A)') ' (load_IC) ERROR: the two restart files are'//    &
+              ' halves of two different pass state generations:'
+         write(*,'(A)') '   Hydro_ioniz_IC.txt: state_id='//               &
+              trim(claim_h%state_id)
+         write(*,'(A)') '   Ion_species_IC.txt: state_id='//               &
+              trim(claim_i%state_id)
+         error stop 1
+      endif
+      if (claim_h%state_id_present)                                        &
+         write(*,'(A)') ' (load_IC) the state is the pass state'//         &
+              ' generation '//trim(claim_h%state_id)
       if (claim_h%certified_present .and. claim_i%certified_present .and.  &
           (claim_h%certified .neqv. claim_i%certified)) then
          write(*,'(A)') ' (load_IC) ERROR: the two restart files state'//  &

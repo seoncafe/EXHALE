@@ -58,6 +58,8 @@
                                           interdiffusion_enthalpy_face_flux, &
                                           interdiffusion_enthalpy_divergence
       use diffusive_photochemistry, only: photochemical_transport_step,   &
+                                          carrier_enthalpy_active,      &
+                                          carrier_enthalpy_divergence_of_state,&
                                           carrier_verdict,              &
                                           carrier_interval_covered,     &
                                           carrier_interval_exhausted,   &
@@ -100,7 +102,11 @@
                                element_census_reservoir
       use lower_column, only: lower_column_solve
       use base_boundary, only: report_base_face_state,                    &
-                               report_base_boundary_model
+                               report_base_boundary_model,                &
+                               hold_base_contact_direction_from_entry,    &
+                               hold_base_contact_direction,               &
+                               release_base_contact_direction,            &
+                               base_contact_reverses_in_state
       use molecular_infrared_cooling, only: molecular_infrared_init
       use mol_rates, only: h2_thermochemistry_init
       use Cooling_Coefficients, only: capture_coefficient_tables_init
@@ -514,6 +520,9 @@
       ! enthalpy flux they carry [erg cm^-2 s^-1, faces 0:N] and its
       ! divergence in the units of the energy row.
       real*8, dimension(:),   allocatable :: J_he_face, q_id_face, div_q_id
+      ! The divergence of the enthalpy flux of the carriers the carrier
+      ! step moved (code audit 2026-09-29, F1), energy-row units.
+      real*8, dimension(:),   allocatable :: div_q_car
       real*8, dimension(:,:), allocatable :: J_metal_face
       ! The displacement the carrier relaxation kept, the third participant
       ! of the same damped Picard iteration.
@@ -1210,6 +1219,9 @@
 
       ! Initialize simulations
       call init(W,u,f_sp)
+      ! The identity of this run, which names the generations of its pass
+      ! state (publish_pass_state_generation, write_output.f90).
+      call establish_run_identity()
 
       ! The molecular seed: convert the atomic state the loader just read,
       ! write it under the names a restart reads, and stop. No time step is
@@ -1821,6 +1833,8 @@
          ! them from THIS state first, so one row is one state (the lower
          ! ghosts' rho moves after the sweep; see the routine).
          call molecular_carrier_densities_from_state(rho,f_sp)
+         call certify_the_state_to_be_written(j .eq. 0,                  &
+              'direct_steady_route_final_certification')
          call write_output(rho,v,p,T,heat,cool,eta,                    &
                            nhi,nhii,nhei,nheii,nheiii,nheiTR,nm,'eq')
          call assert_written_state_is_the_accepted_one
@@ -1831,6 +1845,13 @@
          ! (write_element_flux_profile, called by certification_evaluate).
          call write_resolved_config
          write(*,*) '(EXHALE_main) EXHALE_PTC=1: solver done, output written, stopping.'
+         ! THE SAME EXIT CONTRACT AS EVERY OTHER STEADY ROUTE: a stationary
+         ! claim the final certificate refuses exits with status 2, after the
+         ! state and the resolved configuration are written; an unfinished
+         ! snapshot (no claim) exits 0 (certification_stop_uncertified).
+         ! Until 2026-09-29 this route stopped with status 0 in every case
+         ! (follow-up review md/CODE_AUDIT_20260929_review1.md, R1).
+         call certification_stop_uncertified
          stop
       endif
 
@@ -2407,15 +2428,17 @@
                u1(k,:) = u(k,:) - dt_loc*(dF(k,:) - S(k,:))
             enddo
 
-            ! Apply boundary conditions
-            call Apply_BC(u1)
-
-            ! Local repair first (see the note above); the test below then
-            ! decides whether it was enough.
-            if (.not. positive_density_and_internal_energy(u1)) then
+            ! THE INTERIOR IS TESTED BEFORE THE BOUNDARY IS BUILT ON IT:
+            ! Apply_BC reads the physical cells and writes only the ghosts,
+            ! and neither the test nor the repair reads the ghosts of the
+            ! trial, so the decisions are the ones taken after it before
+            ! 2026-09-29, and an inadmissible interior no longer reaches the
+            ! boundary and EOS routines (follow-up review
+            ! md/CODE_AUDIT_20260929_review1.md, R3). Local repair first (see
+            ! the note above); the test below then decides whether it was
+            ! enough.
+            if (.not. positive_density_and_internal_energy(u1))            &
                call positivity_limited_fluxes(1,u,u,S,dt_loc,u1,flux_corr_ok)
-               if (flux_corr_ok) call Apply_BC(u1)
-            endif
 
 
             if (.not. positive_density_and_internal_energy(u1)) then
@@ -2430,6 +2453,9 @@
                if (n_dt_halve .le. n_dt_halve_max) cycle retry_step
                exit retry_step
             endif
+
+            ! Apply boundary conditions, on the admissible interior
+            call Apply_BC(u1)
 
             ! THE SPECIES ROWS OF THIS STAGE, on the face mass fluxes the
             ! mass row of this same stage was built from.  Placed after the
@@ -2453,13 +2479,9 @@
                u2(k,:) = (3.0*u(k,:) + u1(k,:) - dt_loc*(dF(k,:) - S(k,:)))/4.0
             enddo
 
-            ! Apply boundary conditions
-            call Apply_BC(u2)
-
-            if (.not. positive_density_and_internal_energy(u2)) then
+            ! The interior first, as in the first stage.
+            if (.not. positive_density_and_internal_energy(u2))            &
                call positivity_limited_fluxes(2,u,u1,S,dt_loc,u2,flux_corr_ok)
-               if (flux_corr_ok) call Apply_BC(u2)
-            endif
 
             if (.not. positive_density_and_internal_energy(u2)) then
                if (n_dt_halve .eq. 0) n_steps_dt_halved = n_steps_dt_halved + 1
@@ -2473,6 +2495,9 @@
                if (n_dt_halve .le. n_dt_halve_max) cycle retry_step
                exit retry_step
             endif
+
+            ! Apply boundary conditions, on the admissible interior
+            call Apply_BC(u2)
 
             call species_advection_stage(2,u(1,:),u1(1,:),u2(1,:),         &
                                          face_flux(1,:),dt_loc)
@@ -2489,15 +2514,11 @@
                u(k,:) = (u(k,:) + 2.0*(u2(k,:) - dt_loc*(dF(k,:) - S(k,:))))/3.0
             enddo
 
-            ! Apply boundary conditions
-            call Apply_BC(u)
-
-            ! u_old, not u: this stage overwrites u in place, so the state at
-            ! the beginning of the step is only left in u_old.
-            if (.not. positive_density_and_internal_energy(u)) then
+            ! The interior first, as in the first stage. u_old, not u: this
+            ! stage overwrites u in place, so the state at the beginning of
+            ! the step is only left in u_old.
+            if (.not. positive_density_and_internal_energy(u))             &
                call positivity_limited_fluxes(3,u_old,u2,S,dt_loc,u,flux_corr_ok)
-               if (flux_corr_ok) call Apply_BC(u)
-            endif
 
             if (.not. positive_density_and_internal_energy(u)) then
                if (n_dt_halve .eq. 0) n_steps_dt_halved = n_steps_dt_halved + 1
@@ -2511,6 +2532,9 @@
                if (n_dt_halve .le. n_dt_halve_max) cycle retry_step
                exit retry_step
             endif
+
+            ! Apply boundary conditions, on the admissible interior
+            call Apply_BC(u)
 
             call species_advection_stage(3,u_old(1,:),u2(1,:),u(1,:),      &
                                          face_flux(1,:),dt_loc)
@@ -2723,6 +2747,26 @@
                as_carrier_ok = .false.
                if (run_mode .eq. run_mode_phys) exit trial
                as_carrier_ok = .true.
+            endif
+
+            ! THE ENTHALPY THE CARRIER STEP MOVED, as the element step's
+            ! above: the carriers crossed the faces relative to the rest of
+            ! their elements and took their sensible enthalpy with them
+            ! (diffusive_photochemistry, carrier_enthalpy_face_flux), so the
+            ! thermal energy of every cell changes by dt div(q_car), formed
+            ! from the carrier fluxes of the composition the step returned.
+            ! The step itself is backward Euler over substeps, so the fluxes
+            ! of its end state times dt are the step's own to first order in
+            ! dt, and exactly the flux of the stationary energy row at a
+            ! fixed point, which is what makes the marching and the
+            ! stationary routes solve one energy equation.  The column sum
+            ! is zero: both ends of the carrier column are closed.  Only for
+            ! an interval the step covered: an exhausted one moved nothing.
+            if (carrier_enthalpy_active() .and.                          &
+                as_carrier_status .ne. carrier_interval_exhausted) then
+               call carrier_enthalpy_divergence_of_state(rho, T, f_sp,    &
+                                                         div_q_car)
+               u(3,1:N) = u(3,1:N) - dt_loc(1:N)*div_q_car(1:N)
             endif
             if (attempted_step_injected_refusal(as_op_carriers)) then
                as_inject_op = as_op_carriers;  exit trial
@@ -3233,7 +3277,8 @@
                call U_to_W(u,W)
                rho = W(1,:);  v = W(2,:);  p = W(3,:)
                call comp_T_from_p(p,n_tot,ne,T)
-               call viscous_conduction_step(u,W,T,n_tot+ne,dt_loc,marching_step)
+               call viscous_conduction_step(u,W,T,n_tot+ne,f_sp,dt_loc,       &
+                                            marching_step)
                call Apply_BC(u)
             endif
 
@@ -5707,6 +5752,33 @@
 
       ! ------------------------------------------------------!
 
+      subroutine certify_the_state_to_be_written(stationary_claim, tag)
+      ! THE CERTIFICATION OF THE STATE A STEADY ROUTE IS ABOUT TO WRITE, made
+      ! on that state and nothing else: the claim the route makes, the
+      ! boundary derived again from the composition the state carries (the
+      ! sweep inside the last solve moved the composition after the boundary
+      ! that solve stood on was derived, and a steady solve holds the side of
+      ! the base contact, base_boundary.f90, which is released by now), the
+      ! residual assembled from that state, and the certification evaluated
+      ! on it, so the 'certified=' field of the file is a statement about the
+      ! file. Every steady route that writes a state calls this before
+      ! write_output: the stationary restart, and the direct EXHALE_PTC=1
+      ! route, which until 2026-09-29 wrote whatever certificate the solve
+      ! had left (code audit of 2026-09-29, md/CODE_AUDIT_20260929.md F3).
+      logical,          intent(in) :: stationary_claim
+      character(len=*), intent(in) :: tag
+      call certification_note_stationarity_claim(stationary_claim)
+      if (.not. boundary_rebuild_suppressed()) call Apply_BC(u)
+      call report_base_face_state_consistency(tag, u)
+      call assemble_residual(u, n_tot + ne, f_sp, heat, cool, Rres)
+      call certification_evaluate(cert_context_stationary, u, Rres, f_sp,   &
+               resid_th, n_cells_without_chemical_root(last_sweep%acc_n),   &
+               .true., cert_now)
+      call certification_report_write(cert_now, 'final state, as written')
+      end subroutine certify_the_state_to_be_written
+
+      ! ------------------------------------------------------!
+
       subroutine stationary_state_of_the_loaded_restart
       ! THE STATIONARY RESIDUAL AND CERTIFICATION OF A LOADED STATE, MEASURED
       ! ON THE STATE AS LOADED, AND THE STATIONARY SOLVE ENTERED FROM IT
@@ -6055,22 +6127,9 @@
       call element_census_reservoir('output (stationary restart)',          &
                                     rho, f_sp)
       call molecular_carrier_densities_from_state(rho,f_sp)
-      call certification_note_stationarity_claim(info_jfnk .eq. 0)
-      ! ONE COMPOSITION, ONE BOUNDARY, ONE RESIDUAL. The solve returned a
-      ! state and a composition, and the sweep inside its last pass moved
-      ! the composition after the boundary that pass stood on was derived;
-      ! the residual below reads the cached base face state through Rec_BC.
-      ! The boundary is therefore derived from the composition this
-      ! certification is taken at, as the three evaluation routes and the
-      ! JFNK residual already do.
-      if (.not. boundary_rebuild_suppressed()) call Apply_BC(u)
-      call report_base_face_state_consistency(                            &
-           'stationary_restart_final_certification', u)
-      call assemble_residual(u, n_tot + ne, f_sp, heat, cool, Rres)
-      call certification_evaluate(cert_context_stationary, u, Rres, f_sp,   &
-               resid_th, n_cells_without_chemical_root(last_sweep%acc_n),   &
-               .true., cert_now)
-      call certification_report_write(cert_now, 'final state, as written')
+      ! ONE COMPOSITION, ONE BOUNDARY, ONE RESIDUAL (the routine's comment).
+      call certify_the_state_to_be_written(info_jfnk .eq. 0,              &
+           'stationary_restart_final_certification')
       call write_output(rho,v,p,T,heat,cool,eta,                            &
                         nhi,nhii,nhei,nheii,nheiii,nheiTR,nm,'eq')
       call assert_written_state_is_the_accepted_one
@@ -7136,6 +7195,13 @@
       ! outer_no_fall_max asks of the joint progress rule, because the two
       ! statements are the same stall seen from the two halves.
       integer :: n_bound_endings, n_no_fall_at_handover
+      ! THE SIDE OF THE BASE CONTACT HELD THROUGH EACH STEADY SOLVE
+      ! (base_boundary, hold_base_contact_direction_from_entry): whether a
+      ! side was held, which (.true. = the interior owns the level), what
+      ! the rule reads on the returned state, and the counts of the solve.
+      logical :: held_side_on, held_side_reverse, rule_side_reverse
+      logical :: held_given_reverse, held_side_given
+      integer :: held_side_evals, held_side_other, contact_solves
       ! THE ENTRY STATE OF THE COUPLED BLOCK. One immutable record, written
       ! by the last pass in which a relaxation actually ran and read at the
       ! transition; the pass that declares the stall runs no relaxation, so
@@ -7285,54 +7351,105 @@
                  ' solve of this pass'
             call conservation_budget_request_next(stage_label)
          endif
-         if (use_jfnk) then
-            ! THE COUPLED ROUTE (section 139). With the carrier row among
-            ! the unknowns the outer loop is not an alternation at all: one
-            ! solve returns a wind and a carrier partition that are steady
-            ! states of each other, and the loop below runs once.
-            ! WHICH BALANCES BECOME ROWS is the registry's own question,
-            ! answered from the configuration: the carriers where they are
-            ! transported, the elements where they diffuse.  What is asked
-            ! here is only whether the transported balances are to be solved
-            ! WITH the wind instead of alternated with it, which is one
-            ! choice for all of them.
-            ! THE I1 MEASUREMENT REGISTERS THE BLOCK AND NOTHING ELSE
-            ! DOES. With EXHALE_COUPLED_JAC_ACTION set the run writes the
-            ! block's Jacobian action on the state it was entered at and
-            ! stops there, so the rows are registered for that measurement
-            ! whichever route the input asked for; with the key unset this
-            ! is the route's own choice and nothing changes.
-            call set_transported_species_rows(block_now .or.              &
-                 coupled_block_jacobian_action_requested())
-            call solve_steady_jfnk(u, f_sp, resid_max, maxit, dtau0,    &
-                                   40, hydro_info)
-         else
-            call solve_steady_ptc(u, f_sp, resid_max, maxit, dtau0,     &
-                                  hydro_info)
-         endif
-         call set_transported_species_rows(.false.)
-         ! The composition the solve handed back sets the caloric mixture
-         ! U_to_W reads; the last get_species_densities inside the solve may
-         ! have been made at a trial composition, so it is refreshed first.
-         rho = u(1,:)
-         call get_species_densities(rho,f_sp,nhi,nhii,nhei,nheii,       &
-                                    nheiii,nheiTR,nm,ne,n_tot)
-         call U_to_W(u,W)
-         rho = W(1,:);  v = W(2,:);  p = W(3,:);  E = u(3,:)
-         call comp_T_from_p(p,n_tot,ne,T)
-         if (use_excited_H) call excited_H_update(T,rho,f_sp,v,exc_rel)
-         call ioniz_eq(T,rho,f_sp,heat,cool,eta,last_sweep)
-         call get_species_densities(rho,f_sp,nhi,nhii,nhei,nheii,       &
-                                    nheiii,nheiTR,nm,ne,n_tot)
-         ! T IS THE TEMPERATURE OF THE COMPOSITION BESIDE IT. Without this
-         ! line T is still p/(n_tot + n_e) evaluated at the particle count
-         ! BEFORE the sweep above, so the T column of the file written from
-         ! here belongs to a composition one sweep behind its own species
-         ! columns. Measured on the hot Uranus steady solution: the two
-         ! disagree by up to 1.8e-5, by ~1e-7 elsewhere, and nothing but the
-         ! T column moves. p is not touched -- it is the conserved state's
-         ! own pressure -- so this makes (p, T, f_sp) a consistent triple.
-         call comp_T_from_p(p,n_tot,ne,T)
+         ! THE SIDE OF THE BASE CONTACT IS HELD THROUGH THE SOLVE, and the
+         ! root is accepted only on the side its own rule selects (the block
+         ! "THE DIRECTION OF THE CONTACT, HELD THROUGH ONE STEADY SOLVE" in
+         ! base_boundary.f90 gives the reason and the measurement). The first
+         ! solve holds the side of its entry state; where it converges on a
+         ! state whose rule reads the other side, one more solve from that
+         ! state holds the rule's side. A solve that did not converge is not
+         ! repeated: its returned state is an iterate, and the next pass
+         ! enters from it.
+         contact_solves  = 0
+         held_side_given = .false.
+         held_given_reverse = .false.
+         do
+            contact_solves = contact_solves + 1
+            if (held_side_given) then
+               call hold_base_contact_direction(held_given_reverse)
+            else
+               call hold_base_contact_direction_from_entry()
+            endif
+            if (use_jfnk) then
+               ! THE COUPLED ROUTE (section 139). With the carrier row among
+               ! the unknowns the outer loop is not an alternation at all: one
+               ! solve returns a wind and a carrier partition that are steady
+               ! states of each other, and the loop below runs once.
+               ! WHICH BALANCES BECOME ROWS is the registry's own question,
+               ! answered from the configuration: the carriers where they are
+               ! transported, the elements where they diffuse.  What is asked
+               ! here is only whether the transported balances are to be solved
+               ! WITH the wind instead of alternated with it, which is one
+               ! choice for all of them.
+               ! THE I1 MEASUREMENT REGISTERS THE BLOCK AND NOTHING ELSE
+               ! DOES. With EXHALE_COUPLED_JAC_ACTION set the run writes the
+               ! block's Jacobian action on the state it was entered at and
+               ! stops there, so the rows are registered for that measurement
+               ! whichever route the input asked for; with the key unset this
+               ! is the route's own choice and nothing changes.
+               call set_transported_species_rows(block_now .or.              &
+                    coupled_block_jacobian_action_requested())
+               call solve_steady_jfnk(u, f_sp, resid_max, maxit, dtau0,    &
+                                      40, hydro_info)
+            else
+               call solve_steady_ptc(u, f_sp, resid_max, maxit, dtau0,     &
+                                     hydro_info)
+            endif
+            call release_base_contact_direction(held_side_on,                &
+                 held_side_reverse, held_side_evals, held_side_other)
+            call set_transported_species_rows(.false.)
+            ! The composition the solve handed back sets the caloric mixture
+            ! U_to_W reads; the last get_species_densities inside the solve may
+            ! have been made at a trial composition, so it is refreshed first.
+            rho = u(1,:)
+            call get_species_densities(rho,f_sp,nhi,nhii,nhei,nheii,       &
+                                       nheiii,nheiTR,nm,ne,n_tot)
+            call U_to_W(u,W)
+            rho = W(1,:);  v = W(2,:);  p = W(3,:);  E = u(3,:)
+            call comp_T_from_p(p,n_tot,ne,T)
+            if (use_excited_H) call excited_H_update(T,rho,f_sp,v,exc_rel)
+            call ioniz_eq(T,rho,f_sp,heat,cool,eta,last_sweep)
+            call get_species_densities(rho,f_sp,nhi,nhii,nhei,nheii,       &
+                                       nheiii,nheiTR,nm,ne,n_tot)
+            ! T IS THE TEMPERATURE OF THE COMPOSITION BESIDE IT. Without this
+            ! line T is still p/(n_tot + n_e) evaluated at the particle count
+            ! BEFORE the sweep above, so the T column of the file written from
+            ! here belongs to a composition one sweep behind its own species
+            ! columns. Measured on the hot Uranus steady solution: the two
+            ! disagree by up to 1.8e-5, by ~1e-7 elsewhere, and nothing but the
+            ! T column moves. p is not touched -- it is the conserved state's
+            ! own pressure -- so this makes (p, T, f_sp) a consistent triple.
+            call comp_T_from_p(p,n_tot,ne,T)
+            if (.not. held_side_on) exit
+            rule_side_reverse = base_contact_reverses_in_state(W)
+            write(*,'(A,A,A,I0,A,I0,A,A,A)') ' (base boundary) the contact'//  &
+                 ' was held on the ',                                         &
+                 trim(merge('interior side  ', 'reservoir side ',             &
+                            held_side_reverse)),                              &
+                 ' through the solve (', held_side_evals, ' evaluations; the'// &
+                 ' rule read the other side at ', held_side_other,            &
+                 '); on the returned state the rule reads the ',              &
+                 trim(merge('interior side  ', 'reservoir side ',             &
+                            rule_side_reverse)), '.'
+            if (rule_side_reverse .eqv. held_side_reverse) exit
+            if (hydro_info .ne. 0 .or. contact_solves .ge. 2) then
+               ! A root of the held equations that its own rule puts on the
+               ! other side is not a root of the equations the model states,
+               ! so a converged solve is not reported as one (code audit of
+               ! 2026-09-29, F3); every caller reads hydro_info = 2 as a
+               ! solve whose state does not meet the gate.
+               if (hydro_info .eq. 0) hydro_info = 2
+               write(*,'(A,I0,A)') '    the returned state is not a root'// &
+                    ' on the side its own rule selects: the solve reports'// &
+                    ' info = ', hydro_info, ', and the certification'//     &
+                    ' judges the state with the rule.'
+               exit
+            endif
+            write(*,'(A)') '    the root is on the other side of its own'//    &
+                 ' rule: solved again from it with the rule''s side held.'
+            held_side_given    = .true.
+            held_given_reverse = rule_side_reverse
+         enddo
          if (stage_export_on)                                             &
             call write_stage_state(it_diff, 'hydro_return', .false.)
          ! A1: the state this pass would hand on as accepted, against the
@@ -8571,12 +8688,13 @@
          endif
 
          ! ---- THE STATE THE NEXT PASS STARTS FROM, KEPT ON DISK ----
-         ! Every pass after which the iteration goes on writes the state the
-         ! next pass will consume -- the accepted composition update of this
-         ! pass, or the entry state of the coupled block where the handover
-         ! above restored it -- to output/{Hydro_ioniz,Ion_species}_last_pass
-         ! .txt, so that a run stopped from outside keeps its last completed
-         ! pass (write_state_of_the_pass). A pass that ends the iteration
+         ! Every pass after which the iteration goes on publishes the state
+         ! the next pass will consume -- the accepted composition update of
+         ! this pass, or the entry state of the coupled block where the
+         ! handover above restored it -- as one generation
+         ! output/pass_state/<state_id>/, named by output/pass_state/current,
+         ! so that a run stopped from outside keeps its last completed pass
+         ! (write_state_of_the_pass). A pass that ends the iteration
          ! writes nothing here: the run writes its final state next, and the
          ! last pass of the budget takes no update, so its state is that
          ! final state.
@@ -8782,8 +8900,9 @@
       ! ------------------------------------------------!
 
       subroutine write_state_of_the_pass(pass_now, bound_now, omega_now)
-      ! THE STATE ONE OUTER PASS HANDS TO THE NEXT, written as a restartable
-      ! pair (write_pass_state_pair, write_output.f90).
+      ! THE STATE ONE OUTER PASS HANDS TO THE NEXT, published as a
+      ! restartable pair in one generation of output/pass_state/
+      ! (publish_pass_state_generation, write_output.f90).
       !
       ! WHAT IS WRITTEN IS WHAT THE NEXT PASS CONSUMES: the conserved state u
       ! and the composition f_sp, since the hydrodynamic solve of the next
@@ -8819,6 +8938,7 @@
       real*8 :: npart1_hold, t_write_start
       character(len=200) :: pass_state_text
       character(len=24)  :: bound_text, omega_text
+      character(len=96)  :: pass_state_id
       logical :: pair_written
 
       t_write_start = omp_get_wtime()
@@ -8838,16 +8958,17 @@
            ' element_omega='//trim(adjustl(omega_text)),                  &
            ' (the state after the composition update of this pass;'//     &
            ' not certified)'
-      call write_pass_state_pair(pass_now, trim(pass_state_text),         &
+      call publish_pass_state_generation(pass_now, trim(pass_state_text), &
                                  W_pass(1,:), W_pass(2,:), W_pass(3,:),   &
                                  T_pass, heat, cool, nhi_pass, nhii_pass, &
                                  nhei_pass, nheii_pass, nheiii_pass,      &
-                                 nheiTR_pass, nm_pass, f_sp, pair_written)
+                                 nheiTR_pass, nm_pass, f_sp, pair_written,&
+                                 pass_state_id)
       call restore_caloric_mixture(mixture_hold)
       n_part_cell1 = npart1_hold
       if (pair_written)                                                   &
          write(*,'(A,I0,A,F8.3,A)') '    state of pass ', pass_now,       &
-              ' written to output/{Hydro_ioniz,Ion_species}_last_pass.txt'//&
+              ' published as output/pass_state/'//trim(pass_state_id)//   &
               ' (', omp_get_wtime() - t_write_start, ' s)'
       end subroutine write_state_of_the_pass
 
@@ -9091,6 +9212,8 @@
       allocate(heat(1-Ng:N+Ng), cool(1-Ng:N+Ng))
       allocate(Frho_elem(1-Ng:N+Ng))
       allocate(J_he_face(0:N), q_id_face(0:N), div_q_id(1-Ng:N+Ng))
+      allocate(div_q_car(1-Ng:N+Ng))
+      div_q_car = 0.0d0
       allocate(J_metal_face(0:N,n_melem))
       J_he_face    = 0.0d0
       q_id_face    = 0.0d0

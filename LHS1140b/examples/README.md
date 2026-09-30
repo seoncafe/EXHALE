@@ -9,7 +9,7 @@ The three converged winds that carry the memo's headline result
 LHS 1140 b is reproduced at a very different helium abundance depending on
 what is placed at the lower boundary. The two crossing cases are solved **at
 their own equivalent-width crossing**, so each line matches the measured
-`1.108 +/- 0.030 %A` (red pair, vacuum 10832.60-10834.20 A, R = 68,000)
+`1.108 +/- 0.029 %A` (0.030 before the estimator took its own trapezoidal weights, 2026-09-29) (red pair, vacuum 10832.60-10834.20 A, R = 68,000)
 directly rather than by interpolation; the third isolates the metal effect
 at fixed composition. (The equivalent widths sit 0.2--0.4 sigma above the
 band center rather than on it: the post-process here carries the

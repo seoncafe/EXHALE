@@ -175,9 +175,85 @@
             character(kind=c_char), dimension(*), intent(in) :: new_path
             integer(c_int) :: rc
          end function posix_rename
+         ! mkdir(2) and remove(3) for the directories of the pass state
+         ! (publish_pass_state_generation). mode_t is a 32-bit unsigned
+         ! integer on every system the Makefile builds for, passed by value.
+         function posix_mkdir(dir_path, dir_mode) bind(C, name='mkdir')    &
+                  result(rc)
+            import :: c_char, c_int
+            character(kind=c_char), dimension(*), intent(in) :: dir_path
+            integer(c_int), value :: dir_mode
+            integer(c_int) :: rc
+         end function posix_mkdir
+         function posix_remove(entry_path) bind(C, name='remove')          &
+                  result(rc)
+            import :: c_char, c_int
+            character(kind=c_char), dimension(*), intent(in) :: entry_path
+            integer(c_int) :: rc
+         end function posix_remove
       end interface
+      private :: posix_mkdir, posix_remove
+      private :: pass_state_safe_name, pass_state_generation_name_valid,  &
+                 pass_state_current_generation,                           &
+                 pass_state_previous_generation,                          &
+                 remove_pass_state_directory, stop_if_pass_state_step
+
+      ! THE IDENTITY OF THIS RUN, unique across runs and hosts: the wall
+      ! clock of the run start to the millisecond and the count of the
+      ! processor clock at that moment, 'yyyymmddThhmmss.sss_c<count>'.
+      ! Set once (establish_run_identity) and read by the pass state, whose
+      ! generations are named by it, so that two runs writing the same pass
+      ! number into one directory cannot publish two states under one name.
+      character(len=48), save :: run_identity = ''
+
+      ! THE PASS STATE of the stationary outer iteration is published in
+      ! generations under this directory (publish_pass_state_generation):
+      ! one subdirectory for each pass, and the one-line file 'current'
+      ! naming the generation a restart takes.
+      character(len=*), parameter, private :: pass_state_root =           &
+                                              './output/pass_state'
 
       contains
+
+      ! ------------------------------------------------------------------ !
+
+      subroutine establish_run_identity()
+      ! Form run_identity from date_and_time (to the millisecond) and the
+      ! 64-bit system_clock count; both are standard Fortran. The clock
+      ! count differs between hosts started at the same millisecond, the
+      ! date between runs of one host. Called once at the start of the run;
+      ! a second call keeps the first identity.
+      integer :: dt_values(8)
+      integer(kind=8) :: clock_count
+      if (len_trim(run_identity) .gt. 0) return
+      call date_and_time(values = dt_values)
+      call system_clock(count = clock_count)
+      write(run_identity,'(I4.4,2I2.2,A,3I2.2,A,I3.3,A,I0)')              &
+           dt_values(1), dt_values(2), dt_values(3), 'T', dt_values(5),   &
+           dt_values(6), dt_values(7), '.', dt_values(8), '_c', clock_count
+      run_identity = pass_state_safe_name(run_identity)
+      end subroutine establish_run_identity
+
+      ! ------------------------------------------------------------------ !
+
+      function pass_state_safe_name(raw) result(safe)
+      ! The name with every character outside [A-Za-z0-9._-] replaced by
+      ! '_', so that it can stand as one path component and as one token of
+      ! a header line.
+      character(len=*), intent(in) :: raw
+      character(len=len(raw)) :: safe
+      integer :: ic
+      character(len=1) :: ch
+      safe = raw
+      do ic = 1, len_trim(raw)
+         ch = raw(ic:ic)
+         if (.not. ((ch .ge. 'A' .and. ch .le. 'Z') .or.                  &
+                    (ch .ge. 'a' .and. ch .le. 'z') .or.                  &
+                    (ch .ge. '0' .and. ch .le. '9') .or.                  &
+                    ch .eq. '.' .or. ch .eq. '_' .or. ch .eq. '-'))       &
+            safe(ic:ic) = '_'
+      enddo
+      end function pass_state_safe_name
 
       subroutine write_derived_provenance_header(unit)
       ! WHOSE CERTIFICATE THE LINE BESIDE A DERIVED PRODUCT IS.
@@ -236,10 +312,11 @@
       !
       ! Both are '#' comments, so no numeric parse and no golden changes.
       integer, intent(in) :: unit
-      write(unit,'(A)') '# boundary_model '//base_boundary_model_id
-      ! ES23.16E3 round trips a double exactly, so the four numbers on the
-      ! line are the numbers the run held and not a rendering of them.
-      write(unit,'(A,I0,A,4(1X,ES23.16E3))')                              &
+      write(unit,'(A)') '# boundary_model '//base_boundary_model_id()
+      ! ES24.16E3 round trips a double exactly, so the four numbers on the
+      ! line are the numbers the run held and not a rendering of them (24,
+      ! not 23: the field must hold the sign, W >= D + E + 5).
+      write(unit,'(A,I0,A,4(1X,ES24.16E3))')                              &
            '# boundary_reservoir version ',                               &
            base_reservoir_prescription_version,                           &
            ' p[p0] T[T0] nhat[n0/rho0] r_level[Rp]',                      &
@@ -450,7 +527,7 @@
       subroutine write_hydro_state_file(path, flag, rho, v, p, T, heat,   &
                                         cool, mrow, adv_T_status,         &
                                         adv_comp_status, pass_statement,  &
-                                        ios_open)
+                                        ios_open, state_id)
       ! THE THERMODYNAMIC HALF OF A STATE, to the file named: r, rho, v, p,
       ! T, heat and cool of every row, ghosts included, under the header a
       ! restart reads (the coupling line, provenance, boundary reservoir,
@@ -463,7 +540,10 @@
       ! its own '#' line after the coupling line.  ios_open, when present,
       ! receives the status of the open instead of the run stopping on a
       ! file that cannot be opened: a snapshot that cannot be written must
-      ! not end the run that is producing it.
+      ! not end the run that is producing it.  state_id, present only for
+      ! the pass snapshot, is the generation the file belongs to, stated as
+      ! the last field of the coupling line of both halves
+      ! (publish_pass_state_generation); the solved state carries none.
       character(len=*), intent(in) :: path
       character(len=2), intent(in) :: flag
       real*8, dimension(1-Ng:N+Ng), intent(in) :: rho, v, p, T, heat, cool
@@ -472,6 +552,7 @@
       integer, dimension(1-Ng:N+Ng), intent(in), optional :: adv_comp_status
       character(len=*), intent(in), optional :: pass_statement
       integer, intent(out), optional :: ios_open
+      character(len=*), intent(in), optional :: state_id
       integer :: unit_h, j
 
       if (present(ios_open)) then
@@ -512,7 +593,7 @@
             ! routine). Hydro_ioniz.txt is what a restart is fed as
             ! Hydro_ioniz_IC.txt, so this is the file the line has to
             ! travel in.
-            call write_coupling_state_header(unit_h)
+            call write_coupling_state_header(unit_h, state_id)
             ! The pass snapshot says what it is on a line of its own,
             ! beside the certification pair it carries.
             if (present(pass_statement))                               &
@@ -532,9 +613,13 @@
          ! each value (see the routine).
          if (present(adv_T_status))                                         &
             call write_adv_validity_header(unit_h, adv_T_status, adv_comp_status)
+         ! Real columns in ES25.17E3, which reads back to the same binary64
+         ! value (see write_species_state_file); the advection rows carry two
+         ! integer status columns before the measure.
          do j = 1-Ng,N+Ng
             if (present(adv_T_status)) then
-               write(unit_h,*) r(j),        &     ! Rad. dist.
+               write(unit_h,'(7(1X,ES25.17E3),2(1X,I0),1X,ES25.17E3)')     &
+                        r(j),        &     ! Rad. dist.
                         rho(j)*n0,     &     ! Density
                         v(j)*v0,       &     ! Velocity
                         p(j)*p0,       &     ! Pressure
@@ -545,7 +630,8 @@
                         adv_comp_status(j),& ! Validity of its composition
                         mrow(j)              ! The measure both were decided by
             else
-               write(unit_h,*) r(j),        &     ! Rad. dist.
+               write(unit_h,'(7(1X,ES25.17E3))')                          &
+                        r(j),        &     ! Rad. dist.
                         rho(j)*n0,     &     ! Density
                         v(j)*v0,       &     ! Velocity
                         p(j)*p0,       &     ! Pressure
@@ -562,12 +648,13 @@
       subroutine write_species_state_file(path, flag, nhi, nhii, nhei,     &
                                           nheii, nheiii, nheiTR, nm,       &
                                           adv_T_status, adv_comp_status,   &
-                                          pass_statement, ios_open)
+                                          pass_statement, ios_open,        &
+                                          state_id)
       ! THE COMPOSITION HALF OF A STATE, to the file named: every species
       ! density of every row, ghosts included. The molecular and oxygen
       ! columns are read from nmol_eq and nox_eq, so a caller refreshes them
       ! from the state it writes first (molecular_carrier_densities_from_state).
-      ! pass_statement and ios_open as in write_hydro_state_file.
+      ! pass_statement, ios_open and state_id as in write_hydro_state_file.
       character(len=*), intent(in) :: path
       character(len=2), intent(in) :: flag
       real*8, dimension(1-Ng:N+Ng), intent(in) :: nhi, nhii
@@ -578,7 +665,26 @@
       integer, dimension(1-Ng:N+Ng), intent(in), optional :: adv_comp_status
       character(len=*), intent(in), optional :: pass_statement
       integer, intent(out), optional :: ios_open
-      integer :: unit_i, j, i
+      character(len=*), intent(in), optional :: state_id
+      integer :: unit_i, j, i, n_real
+      ! Every real column in ES25.17E3, which reads back to the same binary64
+      ! value (17 significant digits); list-directed output leaves the digit
+      ! count to the runtime, and the ifx one writes 15, which moves a
+      ! reloaded value by up to 12 ulp (measured 2026-09-29) -- more than the
+      ! one-ulp scale of the certification rounding floors. The advection
+      ! rows end in the two integer status columns.
+      character(len=64) :: row_fmt, row_fmt_adv
+
+      ! The column count of the branches below: the oxygen rows carry the
+      ! four molecular columns and the three oxygen ones.
+      n_real = 7 + n_mion
+      if (thereis_oxychem) then
+         n_real = n_real + 7
+      else if (thereis_mol) then
+         n_real = n_real + 4
+      endif
+      write(row_fmt,'(A,I0,A)')     '(', n_real, '(1X,ES25.17E3))'
+      write(row_fmt_adv,'(A,I0,A)') '(', n_real, '(1X,ES25.17E3),2(1X,I0))'
 
       if (present(ios_open)) then
          open(newunit = unit_i, file = path, status = 'replace',          &
@@ -626,13 +732,12 @@
       call write_row_layout_header(unit_i)
       ! THE PASS SNAPSHOT STATES ITS CLAIM IN BOTH HALVES. The solved state
       ! states it on Hydro_ioniz alone; the snapshot writes the coupling
-      ! line here as well, so that a pair whose two halves were written
-      ! by different passes (a run killed between the two renames of
-      ! write_pass_state_pair) states two certification reasons and is
-      ! refused by load_IC (adopt_certification_claim) instead of being
-      ! loaded as one state.
+      ! line here as well, with the state_id of its generation, so that a
+      ! pair assembled from two generations (or from a generation and a
+      ! solved state) states two identities and is refused by load_IC
+      ! (adopt_certification_claim) instead of being loaded as one state.
       if (present(pass_statement)) then
-         call write_coupling_state_header(unit_i)
+         call write_coupling_state_header(unit_i, state_id)
          write(unit_i,'(A)') '# '//trim(pass_statement)
       endif
       ! The derived product states the fields of the state it was derived
@@ -653,37 +758,37 @@
             ! from the equilibrium ones below so that the equilibrium file
             ! is written by the statements it always was.
             if (thereis_oxychem) then
-               write(unit_i,*) r(j), nhi(j)*n0, nhii(j)*n0, nhei(j)*n0,       &
+               write(unit_i,row_fmt_adv) r(j), nhi(j)*n0, nhii(j)*n0, nhei(j)*n0,       &
                         nheii(j)*n0, nheiii(j)*n0, nheiTR(j)*n0,         &
                         (nm(j,i)*n0, i = 1,n_mion),                      &
                         (nmol_eq(j,i), i = 1,4),                         &
                         (nox_eq(j,i), i = 1,3),                          &
                         adv_T_status(j), adv_comp_status(j)
             else if (thereis_mol) then
-               write(unit_i,*) r(j), nhi(j)*n0, nhii(j)*n0, nhei(j)*n0,       &
+               write(unit_i,row_fmt_adv) r(j), nhi(j)*n0, nhii(j)*n0, nhei(j)*n0,       &
                         nheii(j)*n0, nheiii(j)*n0, nheiTR(j)*n0,         &
                         (nm(j,i)*n0, i = 1,n_mion),                      &
                         (nmol_eq(j,i), i = 1,4),                         &
                         adv_T_status(j), adv_comp_status(j)
             else
-               write(unit_i,*) r(j), nhi(j)*n0, nhii(j)*n0, nhei(j)*n0,       &
+               write(unit_i,row_fmt_adv) r(j), nhi(j)*n0, nhii(j)*n0, nhei(j)*n0,       &
                         nheii(j)*n0, nheiii(j)*n0, nheiTR(j)*n0,         &
                         (nm(j,i)*n0, i = 1,n_mion),                      &
                         adv_T_status(j), adv_comp_status(j)
             endif
          else if (thereis_oxychem) then
-            write(unit_i,*) r(j), nhi(j)*n0, nhii(j)*n0, nhei(j)*n0,        &
+            write(unit_i,row_fmt) r(j), nhi(j)*n0, nhii(j)*n0, nhei(j)*n0,        &
                      nheii(j)*n0, nheiii(j)*n0, nheiTR(j)*n0,          &
                      (nm(j,i)*n0, i = 1,n_mion),                       &
                      (nmol_eq(j,i), i = 1,4),                          &
                      (nox_eq(j,i), i = 1,3)   ! OH H2O CO (already cm^-3)
          else if (thereis_mol) then
-            write(unit_i,*) r(j), nhi(j)*n0, nhii(j)*n0, nhei(j)*n0,        &
+            write(unit_i,row_fmt) r(j), nhi(j)*n0, nhii(j)*n0, nhei(j)*n0,        &
                      nheii(j)*n0, nheiii(j)*n0, nheiTR(j)*n0,          &
                      (nm(j,i)*n0, i = 1,n_mion),                       &
                      (nmol_eq(j,i), i = 1,4)  ! H2 H2+ H3+ HeH+ (already cm^-3)
          else
-         write(unit_i,*) r(j),       & ! Rad. dist.
+         write(unit_i,row_fmt) r(j),       & ! Rad. dist.
                   nhi(j)*n0,    & ! HI
                   nhii(j)*n0,   & ! HII
                   nhei(j)*n0,   & ! HeI
@@ -698,22 +803,26 @@
 
       ! ------------------------------------------------------------------ !
 
-      subroutine write_pass_state_pair(pass_now, pass_statement, rho, v,  &
-                                       p, T, heat, cool, nhi, nhii, nhei, &
-                                       nheii, nheiii, nheiTR, nm, f_sp,   &
-                                       written)
+      subroutine publish_pass_state_generation(pass_now, pass_statement, &
+                                       rho, v, p, T, heat, cool, nhi,     &
+                                       nhii, nhei, nheii, nheiii, nheiTR, &
+                                       nm, f_sp, written, published_id)
       ! THE STATE ONE OUTER PASS OF THE STATIONARY ITERATION HANDS TO THE
-      ! NEXT, as a restartable pair:
+      ! NEXT, published as ONE GENERATION:
       !
-      !    output/Hydro_ioniz_last_pass.txt   output/Ion_species_last_pass.txt
+      !    output/pass_state/<gen>/Hydro_ioniz.txt
+      !    output/pass_state/<gen>/Ion_species.txt
+      !    output/pass_state/<gen>/manifest.txt
+      !    output/pass_state/current          (one line: <gen>)
       !
-      ! overwritten at every pass, so that a run stopped from outside (a
-      ! wall-clock timeout, a kill) leaves the state of its last completed
-      ! pass behind instead of nothing. Copied to Hydro_ioniz_IC.txt /
-      ! Ion_species_IC.txt the pair is a "Load IC? True" restart like any
-      ! other state file: the writers, header lines and restart tokens are
-      ! the ones of the solved state (write_hydro_state_file,
-      ! write_species_state_file).
+      ! <gen> = r<run_identity>_p<pass>, so no two runs and no two passes
+      ! name one generation. A run stopped from outside (a wall-clock
+      ! timeout, a kill) leaves the state of its last published pass behind
+      ! instead of nothing. Copied to Hydro_ioniz_IC.txt / Ion_species_IC.txt
+      ! the pair of the generation 'current' names is a "Load IC? True"
+      ! restart like any other state file: the writers, header lines and
+      ! restart tokens are the ones of the solved state
+      ! (write_hydro_state_file, write_species_state_file).
       !
       ! IT IS NEVER A CERTIFIED STATE. The pair carries certified=F
       ! cert_reason=pass_snapshot_p<pass>: the certification of a pass is
@@ -722,15 +831,32 @@
       ! the run holds for its own final state is put back afterwards, so the
       ! files the run writes at its end are not touched. Both halves carry
       ! the coupling line (the solved state writes it on Hydro_ioniz alone),
-      ! so a pair assembled from two passes states two reasons and load_IC
-      ! refuses it (adopt_certification_claim).
+      ! ending in state_id=<gen>, so a pair assembled from two generations,
+      ! or from a generation and a solved state, is refused by load_IC
+      ! (adopt_certification_claim).
       !
-      ! WRITTEN SO THAT A KILL CANNOT LEAVE A PARTIAL FILE. Each half is
-      ! written to '<name>.part' in the same directory and renamed onto its
-      ! name only after both halves were written and closed; a kill during
-      ! the writing leaves the previous pass's pair whole. A kill between
-      ! the two renames leaves halves of two passes, which load_IC refuses
-      ! as above.
+      ! THE ORDER OF PUBLICATION, so that an interruption at any point
+      ! leaves 'current' naming a complete generation (or, before the first
+      ! publication of a directory, no 'current' at all):
+      !
+      !   1. the two state files and the manifest are written and closed in
+      !      output/pass_state/.<gen>.tmp/;
+      !   2. that directory is renamed onto output/pass_state/<gen> (one
+      !      rename(2));
+      !   3. output/pass_state/current.part, holding <gen>, is written,
+      !      closed and renamed onto output/pass_state/current (one
+      !      rename(2): the single decision that publishes the generation);
+      !   4. the generation 'current' named before step 3 is kept, and the
+      !      one IT replaced (the previous_state_id of its manifest) is
+      !      removed, file by file under its explicit name.
+      !
+      ! An interruption before step 2 leaves a .<gen>.tmp directory, one
+      ! between 2 and 3 a complete generation no pointer names; neither is
+      ! read by anything, and neither is removed by a later run (only names
+      ! read from a manifest are removed). EXHALE_PASS_STATE_STOP_AT=
+      ! <step>[:<pass>] stops the run (stop 3) right after step 1, 2 or 3
+      ! of the pass named (of every pass if none is), so what an
+      ! interruption at each point leaves can be measured.
       !
       ! nmol_eq and nox_eq, which the molecular and oxygen columns are read
       ! from, are refreshed from (rho, f_sp) for the write and put back
@@ -744,18 +870,47 @@
       real*8, dimension(1-Ng:N+Ng,n_mion), intent(in) :: nm
       real*8, dimension(1-Ng:N+Ng,n_species), intent(in) :: f_sp
       logical, intent(out) :: written
-      character(len=*), parameter :: hyd_name =                           &
-                                     './output/Hydro_ioniz_last_pass.txt'
-      character(len=*), parameter :: ion_name =                           &
-                                     './output/Ion_species_last_pass.txt'
+      character(len=*), intent(out) :: published_id
+      character(len=*), parameter :: hyd_leaf = 'Hydro_ioniz.txt'
+      character(len=*), parameter :: ion_leaf = 'Ion_species.txt'
+      character(len=*), parameter :: manifest_leaf = 'manifest.txt'
+      ! 0755, the mode of a directory the owner writes and others read.
+      integer(c_int), parameter :: dir_mode_0755 = 493_c_int
+      character(len=96)  :: gen_name, gen_before, gen_retired
+      character(len=192) :: tmp_dir, gen_dir, ptr_file
       character(len=len(state_certification_reason)) :: hold_reason
       character(len=32) :: snap_reason
       logical :: hold_cert
       real*8, allocatable :: nmol_hold(:,:), nox_hold(:,:)
       real*8, dimension(1-Ng:N+Ng) :: mrow_none
-      integer :: ios_h, ios_i, rc_h, rc_i
+      integer :: ios_h, ios_i, ios_m, unit_m
+      integer(c_int) :: rc_dir, rc_gen, rc_ptr
+      integer(kind=8) :: bytes_h, bytes_i
 
       written = .false.
+      published_id = ''
+      if (len_trim(run_identity) .eq. 0) call establish_run_identity()
+      write(gen_name,'(A,A,I0)') 'r'//trim(run_identity), '_p', pass_now
+      gen_name = pass_state_safe_name(gen_name)
+      tmp_dir  = pass_state_root//'/.'//trim(gen_name)//'.tmp'
+      gen_dir  = pass_state_root//'/'//trim(gen_name)
+      ptr_file = pass_state_root//'/current'
+      gen_before = pass_state_current_generation()
+
+      ! The directory of the generations exists after the first pass; its
+      ! mkdir failing on an existing directory is the ordinary case, and a
+      ! directory that cannot be created shows in the mkdir that follows.
+      rc_dir = posix_mkdir(pass_state_root//c_null_char, dir_mode_0755)
+      rc_dir = posix_mkdir(trim(tmp_dir)//c_null_char, dir_mode_0755)
+      if (rc_dir .ne. 0) then
+         write(*,'(A,I0,A)') ' (publish_pass_state_generation) the state'// &
+              ' of pass ', pass_now, ' is not written: the directory '//  &
+              trim(tmp_dir)//' could not be created; the generation'//    &
+              ' published before is left as it was'
+         return
+      endif
+
+      ! ---- 1. the generation, written in the temporary directory ----
       hold_cert   = state_is_certified
       hold_reason = state_certification_reason
       write(snap_reason,'(A,I0)') 'pass_snapshot_p', pass_now
@@ -765,40 +920,218 @@
       call molecular_carrier_densities_from_state(rho, f_sp)
       mrow_none = 0.0d0
 
-      call write_hydro_state_file(hyd_name//'.part', 'eq', rho, v, p, T,  &
-                                  heat, cool, mrow_none,                  &
+      call write_hydro_state_file(trim(tmp_dir)//'/'//hyd_leaf, 'eq',     &
+                                  rho, v, p, T, heat, cool, mrow_none,    &
                                   pass_statement = pass_statement,        &
-                                  ios_open = ios_h)
+                                  ios_open = ios_h,                       &
+                                  state_id = trim(gen_name))
       ios_i = -1
       if (ios_h .eq. 0)                                                    &
-         call write_species_state_file(ion_name//'.part', 'eq', nhi,      &
-                                       nhii, nhei, nheii, nheiii, nheiTR, &
-                                       nm, pass_statement = pass_statement,&
-                                       ios_open = ios_i)
+         call write_species_state_file(trim(tmp_dir)//'/'//ion_leaf,      &
+                                       'eq', nhi, nhii, nhei, nheii,      &
+                                       nheiii, nheiTR, nm,                &
+                                       pass_statement = pass_statement,   &
+                                       ios_open = ios_i,                  &
+                                       state_id = trim(gen_name))
 
       if (thereis_mol)     nmol_eq = nmol_hold
       if (thereis_oxychem) nox_eq  = nox_hold
       call set_state_certified(hold_cert, trim(hold_reason))
 
-      if (ios_h .ne. 0 .or. ios_i .ne. 0) then
-         write(*,'(A,I0,A)') ' (write_pass_state_pair) the state of pass ', &
-              pass_now, ' could not be opened for writing; the pair of'//  &
-              ' the previous pass is left as it was'
+      ios_m = -1
+      if (ios_h .eq. 0 .and. ios_i .eq. 0) then
+         bytes_h = -1
+         bytes_i = -1
+         inquire(file = trim(tmp_dir)//'/'//hyd_leaf, size = bytes_h)
+         inquire(file = trim(tmp_dir)//'/'//ion_leaf, size = bytes_i)
+         open(newunit = unit_m, file = trim(tmp_dir)//'/'//manifest_leaf, &
+              status = 'replace', action = 'write', iostat = ios_m)
+         if (ios_m .eq. 0) then
+            write(unit_m,'(A)') '# EXHALE pass state generation'//         &
+                 ' (publish_pass_state_generation, write_output.f90);'//  &
+                 ' the directory of the generation is named by state_id'
+            write(unit_m,'(A)') 'state_id='//trim(gen_name)
+            write(unit_m,'(A)') 'run_identity='//trim(run_identity)
+            write(unit_m,'(A,I0)') 'pass=', pass_now
+            if (len_trim(gen_before) .gt. 0) then
+               write(unit_m,'(A)') 'previous_state_id='//trim(gen_before)
+            else
+               write(unit_m,'(A)') 'previous_state_id=none'
+            endif
+            write(unit_m,'(A)') 'hydro_file='//hyd_leaf
+            write(unit_m,'(A,I0)') 'hydro_bytes=', bytes_h
+            write(unit_m,'(A)') 'species_file='//ion_leaf
+            write(unit_m,'(A,I0)') 'species_bytes=', bytes_i
+            write(unit_m,'(A)') 'certified=F'
+            write(unit_m,'(A)') 'cert_reason='//trim(snap_reason)
+            close(unit_m, iostat = ios_m)
+         endif
+      endif
+      if (ios_h .ne. 0 .or. ios_i .ne. 0 .or. ios_m .ne. 0) then
+         write(*,'(A,I0,A)') ' (publish_pass_state_generation) the state'// &
+              ' of pass ', pass_now, ' could not be written in '//        &
+              trim(tmp_dir)//'; the directory is removed and the'//       &
+              ' generation published before is left as it was'
+         call remove_pass_state_directory(tmp_dir)
          return
       endif
-      rc_i = posix_rename(ion_name//'.part'//c_null_char,                 &
-                          ion_name//c_null_char)
-      rc_h = posix_rename(hyd_name//'.part'//c_null_char,                 &
-                          hyd_name//c_null_char)
-      if (rc_i .ne. 0 .or. rc_h .ne. 0) then
-         write(*,'(A,I0,A,I0,A,I0,A)') ' (write_pass_state_pair) the'//    &
-              ' state of pass ', pass_now, ' was written but not renamed'//&
-              ' (rename status ', rc_i, ', ', rc_h, '); its .part files'// &
-              ' are left beside the last pair'
+      call stop_if_pass_state_step(1, pass_now)
+
+      ! ---- 2. the complete generation under its own name ----
+      rc_gen = posix_rename(trim(tmp_dir)//c_null_char,                   &
+                            trim(gen_dir)//c_null_char)
+      if (rc_gen .ne. 0) then
+         write(*,'(A,I0,A,I0,A)') ' (publish_pass_state_generation) the'// &
+              ' state of pass ', pass_now, ' was written but its'//       &
+              ' directory not renamed (rename status ', rc_gen, '); '//   &
+              trim(tmp_dir)//' is left, and not published'
          return
+      endif
+      call stop_if_pass_state_step(2, pass_now)
+
+      ! ---- 3. the publication: one rename of the pointer ----
+      open(newunit = unit_m, file = trim(ptr_file)//'.part',              &
+           status = 'replace', action = 'write', iostat = ios_m)
+      if (ios_m .eq. 0) then
+         write(unit_m,'(A)') trim(gen_name)
+         close(unit_m, iostat = ios_m)
+      endif
+      rc_ptr = -1
+      if (ios_m .eq. 0) rc_ptr = posix_rename(trim(ptr_file)//'.part'//    &
+                                  c_null_char, trim(ptr_file)//c_null_char)
+      if (rc_ptr .ne. 0) then
+         write(*,'(A,I0,A)') ' (publish_pass_state_generation) the'//     &
+              ' state of pass ', pass_now, ' is complete in '//           &
+              trim(gen_dir)//' but '//trim(ptr_file)//' could not be'//  &
+              ' made to name it; the pointer still names the'//           &
+              ' generation published before'
+         return
+      endif
+      call stop_if_pass_state_step(3, pass_now)
+
+      ! ---- 4. keep the generation replaced now, remove the one before ----
+      if (len_trim(gen_before) .gt. 0) then
+         gen_retired = pass_state_previous_generation(gen_before)
+         if (len_trim(gen_retired) .gt. 0 .and.                           &
+             trim(gen_retired) .ne. trim(gen_before) .and.                &
+             trim(gen_retired) .ne. trim(gen_name))                       &
+            call remove_pass_state_directory(pass_state_root//'/'//       &
+                                             trim(gen_retired))
       endif
       written = .true.
-      end subroutine write_pass_state_pair
+      published_id = trim(gen_name)
+      end subroutine publish_pass_state_generation
+
+      ! ------------------------------------------------------------------ !
+
+      function pass_state_generation_name_valid(gen) result(valid)
+      ! A generation name this writer can have made: 'r' followed by
+      ! characters of [A-Za-z0-9._-] only. It is therefore one path
+      ! component inside output/pass_state and never '.' or '..', which is
+      ! what makes a name read from a file safe to remove.
+      character(len=*), intent(in) :: gen
+      logical :: valid
+      valid = .false.
+      if (len_trim(gen) .eq. 0) return
+      if (gen(1:1) .ne. 'r') return
+      valid = (pass_state_safe_name(trim(gen)) .eq. trim(gen))
+      end function pass_state_generation_name_valid
+
+      ! ------------------------------------------------------------------ !
+
+      function pass_state_current_generation() result(gen)
+      ! The generation output/pass_state/current names, or '' when there is
+      ! none (or the line is not a generation name).
+      character(len=96) :: gen
+      integer :: unit_c, ios_c
+      gen = ''
+      open(newunit = unit_c, file = pass_state_root//'/current',          &
+           status = 'old', action = 'read', iostat = ios_c)
+      if (ios_c .ne. 0) return
+      read(unit_c,'(A)', iostat = ios_c) gen
+      close(unit_c)
+      if (ios_c .ne. 0) gen = ''
+      gen = adjustl(gen)
+      if (.not. pass_state_generation_name_valid(gen)) gen = ''
+      end function pass_state_current_generation
+
+      ! ------------------------------------------------------------------ !
+
+      function pass_state_previous_generation(gen) result(gen_prev)
+      ! The previous_state_id the manifest of generation gen states, or ''
+      ! when it states none or the manifest cannot be read.
+      character(len=*), intent(in) :: gen
+      character(len=96) :: gen_prev
+      character(len=256) :: mline
+      integer :: unit_c, ios_c
+      gen_prev = ''
+      open(newunit = unit_c, file = pass_state_root//'/'//trim(gen)//     &
+           '/manifest.txt', status = 'old', action = 'read',              &
+           iostat = ios_c)
+      if (ios_c .ne. 0) return
+      do
+         read(unit_c,'(A)', iostat = ios_c) mline
+         if (ios_c .ne. 0) exit
+         if (index(mline, 'previous_state_id=') .eq. 1) then
+            gen_prev = adjustl(mline(len('previous_state_id=')+1:))
+            exit
+         endif
+      enddo
+      close(unit_c)
+      if (.not. pass_state_generation_name_valid(gen_prev)) gen_prev = ''
+      end function pass_state_previous_generation
+
+      ! ------------------------------------------------------------------ !
+
+      subroutine remove_pass_state_directory(dir_path)
+      ! Remove a directory of the pass state: the three files a generation
+      ! holds, by their names, and then the directory, which remove(3)
+      ! removes only when it is empty. Nothing is removed by a pattern, so a
+      ! file this writer did not put there stops the removal of the
+      ! directory, and that is reported.
+      character(len=*), intent(in) :: dir_path
+      integer(c_int) :: rc_rm
+      rc_rm = posix_remove(trim(dir_path)//'/Hydro_ioniz.txt'//c_null_char)
+      rc_rm = posix_remove(trim(dir_path)//'/Ion_species.txt'//c_null_char)
+      rc_rm = posix_remove(trim(dir_path)//'/manifest.txt'//c_null_char)
+      rc_rm = posix_remove(trim(dir_path)//c_null_char)
+      if (rc_rm .ne. 0)                                                    &
+         write(*,'(A)') ' (publish_pass_state_generation) '//             &
+              trim(dir_path)//' could not be removed (absent, or it'//    &
+              ' holds a file this writer did not write); left as it is'
+      end subroutine remove_pass_state_directory
+
+      ! ------------------------------------------------------------------ !
+
+      subroutine stop_if_pass_state_step(step_done, pass_now)
+      ! EXHALE_PASS_STATE_STOP_AT=<step>[:<pass>] (default: unset, no
+      ! effect): stop the run with status 3 right after step <step> of the
+      ! publication of pass <pass> (of every pass when no pass is named),
+      ! the interruption the order of publication is built against. A
+      ! measurement key; a value that cannot be read is ignored.
+      integer, intent(in) :: step_done, pass_now
+      character(len=32) :: stop_text
+      integer :: stop_step, stop_pass, icolon, ios_s
+      call get_environment_variable('EXHALE_PASS_STATE_STOP_AT', stop_text)
+      if (len_trim(stop_text) .eq. 0) return
+      stop_pass = -1
+      icolon = index(stop_text, ':')
+      if (icolon .gt. 0) then
+         read(stop_text(1:icolon-1),*,iostat=ios_s) stop_step
+         if (ios_s .ne. 0) return
+         read(stop_text(icolon+1:),*,iostat=ios_s) stop_pass
+         if (ios_s .ne. 0) return
+      else
+         read(stop_text,*,iostat=ios_s) stop_step
+         if (ios_s .ne. 0) return
+      endif
+      if (stop_step .ne. step_done) return
+      if (stop_pass .ge. 0 .and. stop_pass .ne. pass_now) return
+      write(*,'(A,I0,A,I0,A)') ' (publish_pass_state_generation) stopped'//&
+           ' after step ', step_done, ' of the publication of pass ',     &
+           pass_now, ' (EXHALE_PASS_STATE_STOP_AT)'
+      stop 3
+      end subroutine stop_if_pass_state_step
 
       ! ------------------------------------------------------------------ !
 

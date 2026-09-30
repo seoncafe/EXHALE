@@ -10,7 +10,17 @@ run, with the ionization advected: the systems \eqref{eq:ion:advh}--\eqref{eq:io
 from the base outward, each cell taking its history $x^{\rm up}$ from the
 solved fractions of the two cells below it, and the temperature is then
 re-solved on the steady internal-energy equation \eqref{eq:th:teq} with the
-Brent bracket of Sec.~\ref{sec:thermal:tsolve}.
+Brent bracket of Sec.~\ref{sec:thermal:tsolve}.  In a run that solved heat
+conduction or the enthalpy flux of the element and carrier fluxes, the
+heating of that equation holds them too, evaluated with the corrected
+temperature: conduction \eqref{eq:transport_coeff} couples each cell to both
+neighbors, so after the marching sweep the corrected cells are solved
+together by a Newton iteration on the column (banded Jacobian, conductivity
+and enthalpy flux divergence re-evaluated at each iterate); cells that keep
+the run's temperature are fixed values of that solve.  Without these terms
+the corrected temperature of a conduction-dominated layer answers another
+equation (7900~K against the run's 5500~K at 1.2~$R_p$ on the fiducial
+LHS~1140~b atomic case).
 
 \paragraph{The step.} Both recursions are one-step integrations of an ODE in
 $r$, ${\rm d}y/{\rm d}r = F(y, r)$, with the variable-step second-order
@@ -172,8 +182,8 @@ energy equation itself used, so the channel sum and the \texttt{heat} or
 round-off; \texttt{Excited\_H.txt}, \texttt{Lyman\_Werner.txt},
 \texttt{FUV\_bands.txt}, \texttt{Oxygen\_chemistry.txt} and
 \texttt{OI\_levels.txt} carry the optional physics;
-\texttt{Hydro\_ioniz\_last\_pass.txt} and \texttt{Ion\_species\_last\_pass.txt}
-are the state of the last completed outer pass of an alternating stationary
+the generation \texttt{pass\_state/<id>/} named by \texttt{pass\_state/current}
+is the state of the last completed outer pass of an alternating stationary
 run, never certified (Sec.~\ref{sec:steady:partitioned}). The two \texttt{\_adv} files carry a
 \texttt{\# derived\_from:} line rather than the \texttt{\# coupling:} header
 of a state file (item L9, 2026-09-17): they describe an advection-corrected

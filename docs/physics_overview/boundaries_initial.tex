@@ -71,11 +71,57 @@ element-diffusion Dirichlet He/H at the cell-1 center
 (Sec.~\ref{sec:mol:diffusion}) and the conduction bath at the ghost center
 $r(0)$ (\texttt{viscous\_conduction.f90}).
 
-\paragraph{Continuation along a hydrostatic isentrope.}
-The interior state is carried from the center of cell 1 to the face, and the
-ghost cells are filled from the face state downward, by
-\texttt{continue\_hydrostatic\_isentrope}, which uses the fact that at rest
-and at constant entropy the Bernoulli function is uniform,
+\paragraph{The interior state at the face.}
+The interior state $(\rho_i, v_i, p_i)$ that \eqref{eq:lodi} reads is built
+from the cell average of cell 1 alone (\texttt{interior\_state\_at\_level\_face}),
+never from the reconstruction stencil, because that stencil reaches into the
+ghost and a boundary condition that reads its own output is circular.  How
+cell 1 is carried to the face depends on the reconstruction the boundary
+has to agree with.
+
+\emph{With the well-balanced reconstruction} (\texttt{Well balanced: True},
+Sec.~\ref{sec:hydro:wb}; boundary model
+\texttt{face\_at\_level\_discrete\_equilibrium\_v5}) it is cell 1's own
+constant-density equilibrium at the face,
+%
+\begin{equation}
+  \rho_i = \rho_1, \qquad
+  p_i = P_{\rm dn}(1) = p_1 + \rho_1\bigl[\Phi_c(1) - \Phi_i(0)\bigr],
+  \label{eq:base_interior_wb}
+\end{equation}
+%
+the pressure the reconstruction itself extrapolates cell 1 to at the same
+face, formed by the same expression from the same cell averages and
+potential arrays, with $T_i = p_i/(\hat n_1\rho_1)$ at cell 1's particle
+count.  The boundary and the reconstruction then measure the pressure of
+cell 1 at the face from one discrete equilibrium.  That equilibrium is
+mechanical, the discrete form of $dp/dr = -\rho\,d\Phi/dr$, and says nothing
+about the temperature or the entropy \citep[Sect.~2.1]{Kaeppeli2016}; it
+holds for a column of any entropy stratification, and the reservoir is not
+changed by it: it still states the pressure and the entropy of the gas it
+supplies.  The isentropic continuation below, which this replaces under the
+well-balanced option, differs from $P_{\rm dn}(1)$ by about
+$(1/2\gamma)(\Delta r/2H)^2$ of $p$, a truncation difference between two
+second-order constructions with no physics in it.  MEASURED
+(\texttt{src/tests/grid\_and\_gates}, \texttt{base\_reservoir\_equilibrium}
+and \texttt{low\_mach\_face\_flux}): on a static column built in the
+reconstruction's discrete equilibrium and meeting the reservoir's pressure at
+the level, that difference left a face-0 flux of $1.46\times10^{-4}$ of
+$(\rho c)_{\rm res}$, $v_b = -2.6\times10^{-4}\,c_{\rm res}$ and a cell-1
+momentum row of $3.1\times10^{-3}$ of the weight, $1.47\times10^4$ times the
+wind flux against a manufactured wind at Mach $10^{-8}$; with
+\eqref{eq:base_interior_wb} and the ghosts below, all three are at the
+rounding level (below $10^{-14}$) on the isothermal column, on a column
+warming upward and on a column with a pressure-balanced contact at the level,
+and the face flux of the manufactured wind is within $2.1\times10^{-3}$
+(isothermal) and $2.5\times10^{-3}$ (warming) of the wind at every Mach number
+from $10^{-3}$ to $10^{-9}$, falling at first order with the base cell width.
+
+\emph{Without it} the reconstruction carries no discrete equilibrium to
+share, and cell 1 is continued along its own hydrostatic isentrope by
+\texttt{continue\_hydrostatic\_isentrope} (boundary model
+\texttt{face\_at\_level\_v4}), which uses the fact that at rest and at
+constant entropy the Bernoulli function is uniform,
 %
 \begin{equation}
   u(T) + T - \frac{\Phi(r)}{\hat n} = \text{const}
@@ -92,15 +138,16 @@ makes this exact to third order in $\ln(T_b/T_a)$, and the routine is only
 ever used over half a cell and over the two ghost cells, where that logarithm
 is below $0.1$ and the density error is below $10^{-7}$ relative.  It is not
 a general isentrope integrator over a scale height and is not used as one.
+The same routine gives, under both models, the temperature of the reservoir
+continued below the level, which the ghost cells carry and the conduction
+operator reads as the bath's temperature.  The isentropic continuation
+balances an atmosphere that is isentropic between the level and the center of
+cell 1 and no other rest state exactly: hydrostatic balance does not imply
+constant entropy, and the continuation starts from a point state while cell 1
+holds an average.
 
-Continuing along the isentrope rather than extrapolating linearly is what
-makes the condition well balanced: in a hydrostatic atmosphere at rest the
-interior face pressure equals the reservoir's and \eqref{eq:lodi} returns
-$v_b = 0$ exactly, at any resolution.  The interior state at the face is built
-from cell 1 alone, never from the reconstruction stencil, because that stencil
-reaches into the ghost and a boundary condition that reads its own output is
-circular.  The interior velocity is carried to the face at constant
-$\rho v r^2$ rather than copied.
+In both models the interior velocity is carried to the face at constant
+$\rho v r^2$, $v_i = \rho_1v_1r_1^2/(\rho_i r_b^2)$, rather than copied.
 
 \paragraph{What is held, and the order of the three steps.}
 The acoustic matching comes first: the pressure is a reservoir condition in
@@ -126,6 +173,29 @@ and the average of the two isentropes that a symmetric handover returns at
 zero has no physics behind it.  This is what distinguishes boundary model v2
 from v1, whose entropy source was handed over by a cubic smoothstep in the
 face Mach number.
+
+\textbf{The interior's mass flux is carried at the face density (well-balanced
+model).}  Through a stationary face the mass flux is continuous: a contact
+cannot stand at a face gas flows through, so in a steady state the gas just
+inside the level has the density $\rho_b$ of the face state the contact
+selects.  Under the well-balanced model $\rho_i = \rho_1$ is the density of a
+mechanical model of cell 1 and not of the gas at the face, so once $\rho_b$
+is chosen the advective part of the face velocity is the interior's mass
+flux at that density,
+%
+\begin{equation}
+  v_b = \frac{\rho_1 v_1 r_1^2}{\rho_b r_b^2} + \frac{p_b - p_i}{\rho_ic_i},
+  \label{eq:vb_mass_flux}
+\end{equation}
+%
+and the face state carries the interior's own mass flux wherever the
+pressures balance.  MEASURED on the manufactured winds above, dividing by
+$\rho_1$ instead made the base face carry 3.9 (isothermal) and 7.8 (warming)
+per cent more than the wind at every Mach number, and the ghosts, which
+continue $\rho_bv_br^2$, the same excess.  The direction of the contact is
+read from the velocity at $\rho_i$; $\rho_1v_1$ has the same sign at any
+density, so the two differ only where the two terms of $v_b$ cancel to
+$O(\Delta r/H)$, a face that carries no resolved flow either way.
 
 \textbf{At rest and at inflow the reservoir owns the level.}  At a
 pressure-balanced contact at rest the two sides may carry two entropies and
@@ -188,6 +258,33 @@ not a wind reads $1.39\times10^{-2}$.  The amplitude floor acts on no state
 the code meets: the smallest window Mach number measured anywhere is
 $3.7\times10^{-9}$, at a cold start.
 
+\paragraph{The direction is held through each steady solve.}
+The separation above is one of \emph{written} states.  The iterates of a
+steady solve are not written states, and they do cross the threshold.
+MEASURED on three stalled LHS\,1140\,b molecular continuations (the
+well-mixed He/H $=0.3169$ and $0.3347$ rungs and the $K_{zz}=10^9$ He/H
+$=1.09$ rung, stage exports of every pass): every solve that converged
+returned $d_{\rm window}=8.4\times10^{-5}$ to $1.4\times10^{-4}$ with the
+reservoir owning the level, and every solve that failed returned
+$d_{\rm window}=2.000\times10^{-3}$ to $4.1\times10^{-3}$ with the interior
+owning it, several at $2.000\times10^{-3}$ to four digits.  A solve entered at
+a written state is pushed across the threshold by its first steps, and to
+reach the root it has to cross it again through a residual that steps
+there; the outer passes then alternated between a converged and a failed
+solve for 60 to 80 passes.  The upwind side of the contact is a property of
+a solution, so while a steady solve runs the side is the one the rule
+selects at the solve's first evaluation, its entry state, and it does not
+change inside the solve.  The rule is applied again to the state the solve
+returns; where a converged solve returns a state whose rule selects the other
+side, one more solve from that state holds that side, so a root is accepted
+only on the side its own rule selects, the condition every written state was
+judged by before.  Only the path to the root changes.  The marching route and
+every evaluation outside a steady solve apply the rule at every evaluation,
+and \texttt{EXHALE\_BASE\_CONTACT\_PER\_EVALUATION=1} does so inside the
+solves as well, for a control experiment.  On the well-mixed He/H $=0.3169$
+rung, which had alternated for 80 passes, holding the side certified the
+state in six passes.
+
 Holding the incoming acoustic invariant $p_b + \rho c v_b = p_{\rm res}$
 instead of the static pressure is present in the source as a weight that is
 zero.  Both forms are exactly well balanced at rest; on a moving solution the
@@ -210,18 +307,50 @@ solution can ask for any velocity, so the face state is capped at Mach 5 and
 the events are counted.
 
 \paragraph{The ghost cells.}
-\texttt{base\_ghost\_averages} fills the two lower ghosts with the
-\emph{volume averages} of the hydrostatic isentrope through the face state,
-continued below it, evaluated by 8-point Gauss-Legendre quadrature weighted by
-$r^2$, with the velocity carrying a constant $\rho v r^2$ so the
-reconstruction sees no spurious velocity gradient.  Writing the face value
-into a ghost cell average instead is a half-cell error: the two differ by
-$\Delta r/2H$, which is first order in $\Delta r$ in the state and
-\emph{zeroth} order in the momentum residual it produces, an imbalance that
-no resolution removes.  \texttt{Rec\_BC} then puts the face state itself into the left
-slot of the base face; the right slot is the interior's reconstruction of cell
-1 down to that face and is deliberately left alone, the Riemann solver being
-what mediates the two.
+\texttt{base\_ghost\_averages} fills the two lower ghosts from the face state
+downward, with the velocity carrying a constant $\rho v r^2$ so the
+reconstruction sees no spurious velocity gradient.  Without the well-balanced
+reconstruction they are the \emph{volume averages} of the hydrostatic
+isentrope through the face state, continued below it, evaluated by 8-point
+Gauss-Legendre quadrature weighted by $r^2$.  With it they continue the
+reconstruction's discrete equilibrium below the level,
+%
+\begin{equation}
+  P_{\rm up}(0) = p_b, \qquad P_{\rm up}(-1) = P_{\rm dn}(0),
+  \qquad
+  p_j = \frac{P_{\rm up}(j)}{1 - [\Phi_i(j)-\Phi_c(j)]/\chi_j},
+  \quad \rho_j = \frac{p_j}{\chi_j},
+  \label{eq:ghost_wb}
+\end{equation}
+%
+each ghost keeping the ratio $\chi_j = p_j/\rho_j$ of the isentropic average,
+that is the reservoir-side temperature at the particle count the reservoir
+states, so that only its pressure and density move, together, by a factor
+$1 + O[(\Delta r/H)^2]$.  The equilibrium mismatch of face 0 is then
+$P_{\rm dn}(1) - p_b$, the same pressure difference \eqref{eq:lodi} closes,
+and it vanishes with the WENO3 departures of faces 0 and 1 (whose stencils
+read the two ghosts) and the jump of the face below the ghosts, whose state
+is $P_{\rm dn}(0)$ on both sides, on any column at rest in discrete
+equilibrium with the reservoir.  A ghost wider than two scale heights of the
+gas it holds, $[\Phi_i(j)-\Phi_c(j)]/\chi_j \ge 1$, has no such equilibrium
+and keeps the isentropic average; the events are counted.  Writing the face
+value into a ghost cell average instead of either construction is a half-cell
+error: the two differ by $\Delta r/2H$, which is first order in $\Delta r$ in
+the state and \emph{zeroth} order in the momentum residual it produces, an
+imbalance that no resolution removes.  \texttt{Rec\_BC} then puts the face
+state itself into the left slot of the base face; the right slot is the
+interior's reconstruction of cell 1 down to that face and is deliberately
+left alone, the Riemann solver being what mediates the two.
+
+A column sampled from a continuum hydrostatic profile (an analytic isothermal
+or isentropic column as cell averages) is not a rest state of the discrete
+scheme: its cell averages lie $O[(\Delta r/H)^2]$ of $p$ from the discrete
+equilibrium through the same reservoir pressure, and under the well-balanced
+model that distance appears at the base face as $P_{\rm dn}(1) - p_{\rm res}$
+(MEASURED on the analytic isothermal column, face-0 flux $3.1\times10^{-4}$ of
+$(\rho c)_{\rm res}$ on the coarsest base grid, falling at order 2.0).  A seed
+has to be projected onto the discrete equilibrium for its lower layer to be
+at rest.
 
 The base Mach number is recorded every step and a first crossing into
 supersonic inflow is warned about, as a validity check on the boundary that is
@@ -492,7 +621,8 @@ a run only as an initialization seed mapped onto the new grid by
 and the run has to solve it again.
 
 A stationary run that alternates a wind solve with a composition relaxation
-also leaves a restartable pair of its last completed outer pass,
-\texttt{Hydro\_ioniz\_last\_pass.txt} and \texttt{Ion\_species\_last\_pass.txt}
+also leaves a restartable pair of its last completed outer pass, the
+generation \texttt{output/pass\_state/<id>/} that
+\texttt{output/pass\_state/current} names
 (Sec.~\ref{sec:steady:partitioned}); copied to the \texttt{\_IC} names it is
 loaded like any state file, and it is never a certified state.

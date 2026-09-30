@@ -37,6 +37,7 @@
                                n_base_face_mach_limited,                  &
                                n_base_reversal_evals,                     &
                                n_base_supersonic_outflow,                 &
+                               n_base_ghost_equilibrium_unreachable,      &
                                base_face_mach_last, base_face_blend_last, &
                                base_face_Mi_last, base_face_Mwind_last,   &
                                base_face_swind_last
@@ -110,7 +111,7 @@
       real*8, dimension(3,1-Ng:N+Ng), intent(in) :: u_in
       real*8, dimension(3,1-Ng:N+Ng) :: W_now
       real*8 :: Wf(3), Wg(3,1-Ng:0), Wl(3)
-      integer :: n_inad, n_mach, n_rev, n_sup
+      integer :: n_inad, n_mach, n_rev, n_sup, n_geq
       real*8  :: m_last, b_last, mi_last, mw_last, sw_last
       integer :: k, j
 
@@ -118,6 +119,7 @@
       n_mach  = n_base_face_mach_limited
       n_rev   = n_base_reversal_evals
       n_sup   = n_base_supersonic_outflow
+      n_geq   = n_base_ghost_equilibrium_unreachable
       m_last  = base_face_mach_last
       b_last  = base_face_blend_last
       mi_last = base_face_Mi_last
@@ -131,6 +133,7 @@
       n_base_face_mach_limited     = n_mach
       n_base_reversal_evals        = n_rev
       n_base_supersonic_outflow    = n_sup
+      n_base_ghost_equilibrium_unreachable = n_geq
       base_face_mach_last          = m_last
       base_face_blend_last         = b_last
       base_face_Mi_last            = mi_last

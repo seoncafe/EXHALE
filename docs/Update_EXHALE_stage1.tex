@@ -25572,7 +25572,10 @@ for bit.
 
 \textbf{Writing the files with more digits would not have helped.} They are
 written with list-directed output, i.e.\ full double precision already
-(\texttt{0.99980405732338939}), and the written triple is self-consistent to
+(\texttt{0.99980405732338939}) [correction 2026-09-29: true of the gfortran
+build only; the ifx runtime writes 15 significant digits, up to 12~ulp from
+the value; the state writers use \texttt{ES25.17E3} since then, stage~3
+section~39], and the written triple is self-consistent to
 $10^{-8}$ at most radii. The gap is four to five orders above anything the
 format could cause.
 

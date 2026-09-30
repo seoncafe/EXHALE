@@ -343,6 +343,7 @@
       implicit none
       private
       public :: element_diffusion_step, relax_element_composition
+      public :: interdiffusion_enthalpy_scale
       ! The advective half of the transport of every species row carried on
       ! the hydro's own face mass fluxes inside the Runge-Kutta stages: the
       ! element mass fractions and the declared molecular and proton
@@ -3968,20 +3969,75 @@
       ! either: the enthalpy that crosses face 1 comes with helium that the
       ! reservoir supplies, exactly as the element flux through face 1 does.
       ! Cell 1 and the ghosts are returned as zero.
+      !
+      ! THE BUDGET OF THE WHOLE HYDRODYNAMIC COLUMN (cells 1 ... N, lower
+      ! face 0). Cell 1's composition is steady, so the element flux the
+      ! reservoir puts through face 0 is the flux through face 1, A_0 J_0 =
+      ! A_1 J_1, and with it the enthalpy, A_0 q_0 = A_1 qd(1): cell 1 gains
+      ! and loses the same energy, divq(1) = 0 is that balance and not an
+      ! omission, and
+      !    sum_{j=1..N} V_j divq(j) R0 q0 = A_N qd(N) - A_1 qd(1)
+      ! is the outflow at face N minus the RESERVOIR'S ENERGY SUPPLY at face
+      ! 0, which is A_1 qd(1) and not the qd(0) of the face-flux array (the
+      ! element operator carries no flux at face 0). The conservation budget
+      ! export states the same (conservation_budget, Sidf).
       real*8, dimension(0:N),       intent(in)  :: qd
       real*8, dimension(1-Ng:N+Ng), intent(out) :: divq
 
       real*8, dimension(0:N) :: fa
       real*8, dimension(1:N) :: cv
       integer :: j
-
       divq = 0.0d0
       call spherical_face_area_and_cell_volume(fa, cv)
       do j = 2, N
-         divq(j) = (fa(j)*qd(j) - fa(j-1)*qd(j-1))/(cv(j)*R0*q0)
+         divq(j) = interdiffusion_enthalpy_scale()*                     &
+                   (fa(j)*qd(j) - fa(j-1)*qd(j-1))/(cv(j)*R0*q0)
       enddo
 
       end subroutine interdiffusion_enthalpy_divergence
+
+      ! ------------------------------------------------------------------ !
+
+      real*8 function interdiffusion_enthalpy_scale()
+      ! A CONTINUATION FACTOR, NOT PHYSICS. Measurement key
+      ! EXHALE_INTERDIFF_ENTH_SCALE = s, 0 <= s <= 1 (1 when unset, which
+      ! is the equation): interdiffusion_enthalpy_divergence multiplies the
+      ! divergence by s. It exists to reach a state of the full equation
+      ! (s = 1) from one solved without the term (s = 0) in steps, where the
+      ! term moves the solution by O(1) and a Newton solve from the s = 0
+      ! state does not converge (the atomic He/H 9.7 cases at reduced XUV,
+      ! md/Update_EXHALE_stage3.md section 38). A state solved at 0 < s < 1
+      ! is a step of that continuation and not a prediction of the model.
+      ! The factor changes the energy equation, so it is part of the
+      ! identity of every state written under it: the 'interdiff_enth'
+      ! token of the options field carries its value wherever s /= 1
+      ! (load_IC, opt_value), and a restart across a change of s must name
+      ! that token on its "Restart option change:" line.
+      real*8,  save :: enthalpy_scale = 1.0d0
+      logical, save :: enthalpy_scale_read = .false.
+      character(len=32) :: env
+      integer :: st
+
+      if (.not. enthalpy_scale_read) then
+         enthalpy_scale_read = .true.
+         call get_environment_variable('EXHALE_INTERDIFF_ENTH_SCALE', env, &
+                                       status=st)
+         if (st .eq. 0 .and. len_trim(env) .gt. 0) then
+            read(env,*,iostat=st) enthalpy_scale
+            if (st .ne. 0 .or. .not. (enthalpy_scale .ge. 0.0d0 .and.      &
+                enthalpy_scale .le. 1.0d0)) then
+               write(*,*) '(diffusion) ERROR: EXHALE_INTERDIFF_ENTH_SCALE'//  &
+                          ' takes a number from 0 to 1, not "'//            &
+                          trim(env)//'".'
+               error stop 1
+            endif
+            write(*,'(A,F8.5,A)') ' (diffusion) interdiffusion enthalpy'//   &
+                 ' flux scaled by', enthalpy_scale, ' (continuation factor'//&
+                 ' EXHALE_INTERDIFF_ENTH_SCALE; 1 is the equation)'
+         endif
+      endif
+      interdiffusion_enthalpy_scale = enthalpy_scale
+      end function interdiffusion_enthalpy_scale
 
       ! ------------------------------------------------------------------ !
 

@@ -11,7 +11,7 @@
 \renewcommand{\arraystretch}{1.0}
 \title{The LHS 1140 b catalog: what is certified and what is not}
 \author{EXHALE}
-\date{2026-09-28}
+\date{2026-09-29}
 \begin{document}
 \maketitle
 
@@ -29,9 +29,16 @@ family's crossing moved from He/H~=~1.46 to 1.70 on the catalog grid).
 enthalpy flux, the He$^+$\,+\,H charge exchange near threshold, the
 \texttt{\_adv} post-process made second order, the lower face placed at the
 reservoir level): every number of this summary, section~5 included,
-predates those changes. By the user's decision of 2026-09-26 certified rows
-are not re-solved after each change; the models that did not solve come
-first (section~3).}}
+predates those changes. \textbf{On 2026-09-29 the code moved once more}
+(sections 33 to 37): the sensible enthalpy the transported molecular
+carriers carry is in the energy equation (default on), and under
+\texttt{Well balanced: True} the base boundary shares the reconstruction's
+discrete hydrostatic equilibrium (boundary model
+\texttt{\ldots\_discrete\_equilibrium\_v5}), which removes a base mass flux of
+up to $10^{4}$ times a weak wind. Two continuation states certified under
+the previous boundary re-certified under it in 2 and 4 passes (MEASURED).
+By the user's decision of 2026-09-26 certified rows are not re-solved after
+each change; the models that did not solve come first (section~3).}}
 \end{center}
 
 \noindent
@@ -48,16 +55,26 @@ the atomic-data corrections began: He/H~=~1.45 on 2026-09-25 under
 \texttt{EXHALE\_b059a4be.x} (the second of five rounds of corrections), and
 1.52, 1.6, 1.8 and 2.13 on 2026-09-26 under the binary of record,
 \texttt{EXHALE\_7db5afe9.x}, md5 \texttt{7db5afe9b1d80ce757fcc07d1b499330}
-(section~5). The counts below are MEASURED by
-\texttt{models/status.py inventory}, re-run read-only on 2026-09-26:
-\textbf{157 state indexes, 100 certified} (the same on 2026-09-24; 143 and
-92 on 2026-09-22). These counts are of the recorded certificates: all but
-the five molecular rows named above were measured under binaries before
-the atomic-data corrections, and none but the four of 2026-09-26 under the
-binary of record. A case
+(section~5). Three molecular rows were published on 2026-09-29 from states
+the continuation of \texttt{md/Update\_EXHALE\_stage3.md} sections 29.13,
+34 and 37 certified: the photochemical \case{photochem\_kzzprofile/HeH9} and
+\case{photochem\_kzzprofile/HeH2.09} under \texttt{EXHALE\_6dd54955.x}
+(base boundary model v4, with the enthalpy flux of the transported
+carriers) and \case{scalar\_wellmixed/HeH0.55} under
+\texttt{EXHALE\_3c22c63e.x} (the discrete-equilibrium boundary model v5),
+as the table notes of section~4 say. The counts below are MEASURED by
+\texttt{models/status.py inventory}, re-run read-only on 2026-09-29, which
+names \texttt{EXHALE\_6dd54955.x}, md5
+\texttt{6dd549556910351a7f857708b4853a69}, as the binary of record:
+\textbf{210 state indexes, 155 certified} (158 and 103 earlier on
+2026-09-29, before the continuation rungs were published; 157 and 100 on
+2026-09-24 and 2026-09-26; 143 and 92 on 2026-09-22). These counts are of
+the recorded certificates: the molecular rows published on 2026-09-29 were
+measured under the binaries their table notes name (section~4), all other
+rows under binaries before the atomic-data corrections. A case
 counts as certified when its index names a \texttt{latest\_certified}
 generation that no refused re-evaluation has marked stale. Section 3 and
-section 4 list the 103 models of the ladders and of \texttt{diffusion\_check};
+section 4 list the 156 models of the ladders and of \texttt{diffusion\_check};
 the remaining 54 indexes are 46 flux-closure iterates, two archival copies,
 one study directory and five run directories the low-XUV rungs left.
 Section~5, rewritten on 2026-09-26 under the corrected atomic physics: the
@@ -198,11 +215,11 @@ group & wind chemistry & He/H & XUV & $K_{zz}$ & diff. & $du$ reached & cases & 
 \case{scalar\_x0.25\_kzz1e9} & atomic & 2.13, 9.7 & 0.25 & 1.0e9 & on & 5.2E-12 to 1.7E-11 & 2 & 2\\
 \case{scalar\_x0.30\_kzz1e9} & atomic & 2.13, 9.7 & 0.30 & 1.0e9 & on & 3.2E-12 to 5.6E-12 & 2 & 2\\
 \case{scalar\_x0.33\_kzz1e9} & atomic & 2.13, 9.7 & 0.33 & 1.0e9 & on & 2.8E-12 to 3.4E-12 & 2 & 2\\
-\case{photochem\_kzzprofile} & molecular & 9 & 1 & profile & on & 1.4E-02 & 1 & 0\\
-\case{scalar\_kzz1e9} & molecular & 0.083 to 9.7 & 1 & 1.0e9 & on & 1.4E-12 to 4.5E-11 & 8 & 7\\
-\case{scalar\_wellmixed} & molecular & 0.083, 0.55 & 1 & none & off & 9.1E-13 to 6.6E-12 & 2 & 0\\
+\case{photochem\_kzzprofile} & molecular & 2.09, 9 & 1 & profile & on & 3.6E-12 to 4.9E-12 & 2 & 2\\
+\case{scalar\_kzz1e9} & molecular & 0.083 to 9.7 & 1 & 1.0e9 & on & 8.2E-13 to 1.2E-10 & 40 & 39\\
+\case{scalar\_wellmixed} & molecular & 0.083 to 2.13 & 1 & none & off & 7.8E-13 to 2.5E-10 & 22 & 21\\
 \midrule
-\multicolumn{7}{l}{total} & 103 & 91\\
+\multicolumn{7}{l}{total} & 156 & 146\\
 \bottomrule
 \end{longtable}\normalsize
 
@@ -215,16 +232,27 @@ certificate; the other 37 were written by runs that asked for no time
 integration, so they are states that were post-processed and never advanced,
 and they are not failures of a solve.
 
-Two molecular cases carry no index at all and are not counted in the table:
-\case{molecular\_scalar\_gj1132\_wellmixed/HeH2.13} and
-\case{molecular\_photochem\_gj1132\_kzzprofile/HeH2.09} were attempted and
-published no state (section~3).
+One molecular case carries no index at all and is not counted in the table:
+\case{molecular\_scalar\_gj1132\_wellmixed/HeH2.13} was attempted and
+published no state (section~3). \case{molecular\_photochem\_gj1132\_kzzprofile/HeH2.09},
+which was in the same position, has published a certified state since
+2026-09-29 (section~4).
 
 \section{The models that are not certified}
 
-Twelve of the 103 models carry no certificate. Each was solved, or attempted,
-or written without being advanced at all, and the certificate of the
-generation its index names refuses it. The last column lists every entry of
+Ten of the 156 indexed models carry no certificate. Four of them, the
+\texttt{diffusion\_check} rows, are not models of their own: each is the
+post-processing pass of a certified case repeated with
+\texttt{EXHALE\_DIFFUSION\_CHECK=1} (\texttt{Do only PP: True}, CFL
+$10^{-12}$; \texttt{models/diffusion\_check/README.md}) to write the element
+face-flux table, and it makes no stationary claim
+(\texttt{cert\_reason=no\_stationary\_claim}). The four cases they repeat, the \texttt{HeH0.55} rungs of
+\texttt{atomic\_scalar\_gj1132\_kzz0}, \texttt{\_kzz1e8}, \texttt{\_kzz1e9}
+and \texttt{\_kzz1e10}, are certified (\texttt{certified\_in\_wind}, read 2026-09-29), and the rows the
+certificate refuses on below are those of the post-processed state, not of a
+solve. The other six were solved, or attempted, or written without being
+advanced at all, and the certificate of the generation its index names
+refuses them. The last column lists every entry of
 that certificate that stands above its tolerance, with the measure and the
 cell, in the certificate's own order.
 
@@ -241,42 +269,49 @@ case & wind chemistry & He/H & XUV & $K_{zz}$ & diff. & $du$ & $\lVert R\rVert$ 
 \case{scalar\_x0.01\_kzz1e9/HeH9.7} & atomic & 9.7 & 0.01 & 1.0e9 & on & 4.424E-12 & 9.978E-01 & mass 9.806e-1 at cell 2; momentum 8.724e-6 at cell 1; energy 1.071 at cell 1\\
 \case{scalar\_x0.06\_kzz1e9/HeH9.7} & atomic & 9.7 & 0.06 & 1.0e9 & on & 2.785E-12 & 5.589E-07 & elemental He/H 2.508e-2 at cell 333\\
 \case{scalar\_x0.0624\_kzz1e9/HeH9.7} & atomic & 9.7 & 0.0624 & 1.0e9 & on & 3.086E-12 & 8.091E-08 & elemental He/H 1.435e-2 at cell 333\\
-\case{photochem\_kzzprofile/HeH9} & molecular & 9 & 1 & profile & on & 1.406E-02 & 3.167E-01 & mass 1.041 at cell 2; momentum 1.450e-3 at cell 1; energy 1.021 at cell 1; H$_2$ carrier 1.000 at cell 432; elemental He/H 1.494e-4 at cell 217\\
 \case{scalar\_kzz1e9/HeH0.083} & molecular & 0.083 & 1 & 1.0e9 & on & 4.879E-12 & 1.369E-08 & H$_2$ carrier 8.150e-4 at cell 499; elemental He/H 2.503e-4 at cell 280\\
 \case{scalar\_wellmixed/HeH0.083} & molecular & 0.083 & 1 & none & off & 6.592E-12 & 2.701E-08 & H$_2$ carrier 7.371e-2 at cell 500\\
-\case{scalar\_wellmixed/HeH0.55} & molecular & 0.55 & 1 & none & off & 9.086E-13 & 1.062E-08 & energy 1.000 at cell 246; H$_2$ carrier 2.363e-2 at cell 306\\
 \bottomrule
 \end{longtable}\normalsize
 
 \noindent
-Read by mechanism, the twelve fall into four kinds.
+Read by mechanism, the ten fall into three kinds.
 \begin{itemize}
-\item \textbf{The hydrodynamic Newton makes no progress} on the two models
-      that remain at 0.01 of the fiducial XUV. The composition relaxes while
-      the hydrodynamic rows stand still between passes. These are the models
-      of the open solver item. The third model of that group,
-      \case{scalar\_x0.01\_kzz1e9/HeH2.13}, left this table on 2026-09-21:
-      an XUV continuation down the ladder 0.07, 0.05, 0.03, 0.02, 0.015,
-      0.01 reached a certified state of it, 17 to 19 passes a rung, every
-      rung ending \texttt{info = 0}. It was reached by continuation and not
-      by a better solver, and nothing establishes either way whether the two
-      models still here have a stationary solution at all.
-\item \textbf{The elemental He/H row refuses} the two He/H~=~9.7 rungs at
-      0.06 and 0.0624 of the fiducial XUV, at cell 333, with the
-      hydrodynamic rows inside their tolerances: continued from the
-      certified 0.065 rung, each was refused by the progress control within
-      five passes, the row rising (2026-09-23).
-\item \textbf{The composition half of the solve refuses} the four
-      molecular models: the H$_2$ carrier balance in all four, and in
-      \case{photochem\_kzzprofile/HeH9} also the base cell's hydrodynamic
-      rows. The wind itself is converged in three of them. The next
-      subsection says what was measured.
+\item \textbf{The four atomic He/H~=~9.7 models at 0.01 to 0.0624 of the
+      fiducial XUV} (the hydrodynamic Newton made no progress at 0.01; the
+      elemental He/H row refused 0.06 and 0.0624 at cell 333). Their catalog
+      states lie on the grid before the lower face was placed at the level,
+      so they load only as seeds mapped onto the present grid, and there the
+      stationary solve fails on every pass (\texttt{info~=~2}). The mapped
+      seeds are winds (mass-flux spread 0.3 per cent), but their lower
+      layer is off the grid's discrete hydrostatic equilibrium by about
+      $10^{-3}$ of the pressure, which the Roe pressure-jump term turns into
+      a numerical mass flux of up to $10^{4}$ times the wind; projected onto
+      that equilibrium (with the base boundary sharing it), the mass and
+      momentum rows fall from 1.9 and $5\times10^{-3}$ to
+      $3.7\times10^{-3}$ and $8\times10^{-7}$ on the 0.06 seed, and the energy
+      row, about 1, is what remains: the heat of the base cell and the
+      interdiffusion enthalpy flux of a composition that is not in its
+      diffusive steady state near the base. Stationary solves from the
+      projected seeds are running
+      (\texttt{md/atomic\_heh97\_reduced\_xuv\_20260929.md}, its review, and
+      \texttt{md/Update\_EXHALE\_stage3.md} sections 35 to 37).
+\item \textbf{The composition half of the solve refuses} the two
+      molecular models: the H$_2$ carrier balance in both, and in
+      \case{scalar\_kzz1e9/HeH0.083} also the elemental He/H row. The wind
+      itself is converged in both. The next subsection says what was
+      measured. Two more molecular models stood in this table until
+      2026-09-29, \case{photochem\_kzzprofile/HeH9} and
+      \case{scalar\_wellmixed/HeH0.55}; they were reached by continuation and
+      their certified states are published (section~4). The two that remain
+      are approached to He/H~=~0.19 and 0.1 (the subsection after next).
 \item \textbf{Nothing was solved} in the four \texttt{diffusion\_check}
-      models: they were post-processed without a time integration, so they
-      have no $du$ and no $\lVert R\rVert$. Their certificates were measured
-      all the same, and refuse on the hydrodynamic rows and the elemental
-      row, which is what an unadvanced state is expected to do; they are not
-      failures of a solve.
+      rows: they are post-processing passes of four certified cases, made
+      without a time integration, so they have no $du$ and no
+      $\lVert R\rVert$. Their certificates were measured all the same, and
+      refuse on the hydrodynamic rows and the elemental row, which is what an
+      unadvanced state is expected to do; they are not failures of a solve,
+      and not models of their own.
 \end{itemize}
 
 \paragraph{What the two numbers say.} $du$ is the fractional spread of the
@@ -288,20 +323,19 @@ certificate, naming the wind chemistry because the same short name occurs in
 both families: the molecular \case{scalar\_kzz1e9/HeH0.083} reaches
 $du = 4.9\times10^{-12}$ with $\lVert R\rVert = 1.4\times10^{-8}$, the
 molecular \case{scalar\_wellmixed/HeH0.083} $6.6\times10^{-12}$ and
-$2.7\times10^{-8}$, the molecular \case{scalar\_wellmixed/HeH0.55}
-$9.1\times10^{-13}$ and $1.1\times10^{-8}$, and the atomic
+$2.7\times10^{-8}$, and the atomic
 \case{scalar\_x0.01\_kzz1e9/HeH9.7} $4.4\times10^{-12}$ with
 $\lVert R\rVert = 1.0$, and the atomic He/H~=~9.7 rungs at 0.06 and 0.0624
 $2.8\times10^{-12}$ and $3.1\times10^{-12}$ with $5.6\times10^{-7}$ and
 $8.1\times10^{-8}$. By the flux-spread criterion these are converged winds,
-and three of them also sit at a residual norm of $10^{-8}$.
+and two of them also sit at a residual norm of $10^{-8}$.
 
 What refuses them is this code's own row-by-row certification, which is
 stricter: it measures every equation of the inventory cell by cell and names
-each one that stands above its tolerance. Over the twelve the elemental
-He/H row appears in nine of them, the hydrodynamic energy row in eight, the
-mass and momentum rows in seven each and the H$_2$ carrier balance in the
-wind in four (MEASURED on the table above). A state that meets the flux-spread
+each one that stands above its tolerance. Over the ten the elemental
+He/H row appears in eight of them, the hydrodynamic energy, mass and
+momentum rows in six each and the H$_2$ carrier balance in the
+wind in two (MEASURED on the table above). A state that meets the flux-spread
 criterion and fails one such row is a meaningful solution by the standard
 other work uses, and the table says which rows keep it from this one.
 
@@ -320,11 +354,16 @@ tree's binary of 2026-09-21 (md5 \texttt{89ec6714...}). Whether the same
 cases behave the same way under \texttt{EXHALE\_7db5afe9.x} was not
 measured.
 
-\paragraph{The six cases.} The four of the table above, and the two with no
-index (READ from each case's \texttt{not\_solved.md} and from
-\texttt{md/lhs1140b\_stationary\_L34c\_20260918.md}). The two with no index
-were started from the certified atomic wind of the same composition. Each
-was stopped at the six-hour ceiling:
+\paragraph{The six cases.} The two molecular rows of the table above, the
+two that stood in it until they certified by continuation
+(\case{photochem\_kzzprofile/HeH9} and \case{scalar\_wellmixed/HeH0.55},
+section~4), and the two that published no index when these measurements
+were made (READ from each case's \texttt{not\_solved.md}, now
+\texttt{not\_solved\_<date>.md} where the case has solved since, and from
+\texttt{md/lhs1140b\_stationary\_L34c\_20260918.md}); of those two,
+\case{photochem\_kzzprofile/HeH2.09} has certified by continuation as well.
+The two with no index were started from the certified atomic wind of the
+same composition. Each was stopped at the six-hour ceiling:
 \begin{itemize}
 \item \case{molecular\_scalar\_gj1132\_wellmixed/HeH2.13}: the carrier H$_2$
       row flattened at $4.3\times10^{-1}$ after seven outer passes.
@@ -402,61 +441,85 @@ the open item that owns these cases.
 \paragraph{What does certify.} The same network, with binary H/He
 diffusion at $K_{zz}=10^{9}$, certifies from He/H~=~0.55 to 9.7 (sections 4
 and 5). What separates those states from the refused ones, beyond the
-measurements above, was not established.
+measurements above, was not established. Three of the six certified later,
+by continuation under later binaries, with the carrier movement bound held
+(the next subsection); the account above is of the binaries it names.
 
-\subsection*{Solved since, by continuation (2026-09-26 to 2026-09-28)}
+\subsection*{Solved since, by continuation (2026-09-26 to 2026-09-29)}
 
-Several of the cases above, and the rungs between them, now certify
-(MEASURED; runs under \url{LHS1140b/models/.P1/s2_continuation/},
-\texttt{md/Update\_EXHALE\_stage3.md} section 29.13). They are not yet
-published to the catalog, and they are of the code after the changes named
-in the banner, so they are not comparable one to one with the rows of
-sections 4 and 5.
+Most of the cases above, and the rungs between them, now certify (MEASURED;
+runs under \url{LHS1140b/models/.P1/s2_continuation/},
+\url{LHS1140b/models/.P1/audit_F1/} and \url{LHS1140b/models/.P1/v5_test/},
+\texttt{md/Update\_EXHALE\_stage3.md} sections 29.13, 30, 34 and 37). They
+are of the code after the changes named in the banner, so they are not
+comparable one to one with the older rows. All of them are published to
+the catalog as of 2026-09-29 and stand in the table of section~4 (notes d,
+e, g, h, i and r there): each with its own \texttt{run.log} by
+\texttt{models/publish\_state.py} (the published pair is the solved pair
+byte for byte), its advection-corrected profiles and transit spectrum made
+by the no-step evaluate pass of the binary that solved it.
 \begin{itemize}
 \item \textbf{The well-mixed molecular family is the $K_{zz}=10^{9}$ one with
       \texttt{He\_diffusion} off}: its \texttt{base.inp} carries
       \texttt{Kzz\_base 1.0e9}, which the carrier transport reads. A certified
       $K_{zz}=10^{9}$ state with He/H set uniform
       (\texttt{map\_state\_to\_grid.py --uniform}) certifies with diffusion
-      off in 10 passes, and rungs in He/H then certify down to 0.4: 2.13,
-      1.8, 1.4, 1.1, 0.85, 0.76, 0.68 and 0.61 on the grid of this summary,
-      and 0.61, 0.55 and 0.4 on the face-at-level grid of the final code,
-      each in 10 to 21 passes. Starting the direct way from the catalog's
-      refused state, the same case is refused again at pass 5.
-\item \textbf{The molecular $K_{zz}=10^{9}$ family below the crossing}:
-      He/H~=~1.45 and 1.30, then 1.223, 1.186, 1.168 and 1.15 on the final
-      code. Below He/H~$\approx 1.2$ the rungs must be small (0.01 to 0.02
-      in log He/H) and the carrier movement bound held at $10^{-2}$: the
-      growing bound of the corrected progress control drives a sawtooth of
-      the H$_2$ carrier row there (\texttt{md/TO\_BE\_DONE.md} item (g)).
+      off, and rungs in He/H then certify on the face-at-level grid from 2.13
+      down to 0.1: 2.13, 1.8, 1.4, 1.1, 0.85, 0.76, 0.68, 0.61, 0.55, 0.4,
+      0.366, 0.335, 0.317, 0.3, 0.26, 0.22, 0.19, 0.16, 0.14, 0.12 and 0.1,
+      the rungs below 0.4 with the base contact direction held through each
+      solve (section 30 of the log). The rung at 0.09 does not certify: the
+      H$_2$ carrier row of the outermost cell ($r = 30~R_p$) rises pass
+      after pass (\texttt{md/TO\_BE\_DONE.md} item (m)). Starting the direct
+      way from the catalog's refused state, the same case is refused again
+      at pass 5.
+\item \textbf{The molecular $K_{zz}=10^{9}$ family}: certified on the
+      face-at-level grid from He/H~=~1.45 down to 0.19, through 1.30, 1.223,
+      1.186, 1.168, 1.15, 1.12, 1.09, 1.075, 1.06, 1.03, 1.0, 0.97, 0.94,
+      0.91, 0.88, 0.85, 0.8, 0.75, 0.7, 0.65, 0.6, 0.55, 0.5, 0.45, 0.4,
+      0.374, 0.35, 0.324, 0.3, 0.279, 0.26 and 0.22. Below He/H~$\approx 1.2$
+      the rungs must be small (0.01 to 0.03 in He/H) and the carrier movement
+      bound held (\texttt{md/TO\_BE\_DONE.md} item (g)). The rungs at 0.16 and
+      at the log-midpoint 0.174 do not certify in 80 and 47 passes.
 \item \textbf{\texttt{molecular\_photochem\_gj1132\_kzzprofile/HeH9}}
       certifies (41 passes) once the lower-ghost closure defect of section
-      29.9 of the log is fixed; the earlier runs had stopped on it.
-\item \textbf{Still unsolved}: $K_{zz}=10^{9}$ below He/H~=~1.15 (1.12
-      running), well-mixed below 0.4, and the photochemical He/H~=~2.09,
-      whose gated row oscillates between 0.08 and 0.54 with the hydrodynamic
-      solve failing on most passes.
+      29.9 of the log is fixed, and the photochemical He/H~=~2.09 certifies
+      as well. Both were reloaded with the carrier enthalpy flux and
+      certified again, He/H~=~9 in 24 passes and 2.09 in 47, and those states
+      are the published ones.
+\item \textbf{With the carrier enthalpy flux} (section 34 of the log), eight
+      of these states were reloaded and re-certified: $K_{zz}=10^{9}$ at
+      He/H~=~0.55, 1.223, 1.30 and 1.45 (the last two by continuation from
+      1.223), well-mixed at 0.55 and 2.13, and the photochemical 2.09 and 9,
+      in 6 to 47 passes; on the four compared with their parents (the
+      $K_{zz}=10^{9}$ and well-mixed 0.55 and the two photochemical ones) the
+      term changes the temperature of the H$_2$ layer by $-32$ to $+43$~K and
+      the wind mass flux by $-0.2$ to $-0.9$ per cent.
+\item \textbf{Under the discrete-equilibrium base boundary} (model v5,
+      section 37 of the log), the well-mixed He/H~=~0.55 state certified
+      with the carrier enthalpy flux was reloaded and certified again in 4
+      passes (\texttt{EXHALE\_3c22c63e.x}); that state is the published one.
+\item \textbf{Still unsolved}: $K_{zz}=10^{9}$ below He/H~=~0.19,
+      well-mixed below 0.1, and the four atomic He/H~=~9.7 models above.
 \end{itemize}
 
 \section{The models that are certified}
 
-Ninety-one models carry a certificate. The table lists each with the
-mass-loss rate and the He~I 10830 equivalent width the catalog reports for
-it. Eight of these rows are new since 2026-09-22: the He/H~=~9.7 rungs at
-0.0675, 0.0662 and 0.065 of the fiducial XUV (certified on 2026-09-23 under
-\texttt{EXHALE\_69233669.x}, continued from the 0.07 rung) and the molecular
-rows at He/H~=~0.55, 1.45, 1.52, 1.6 and 1.8 (certified on 2026-09-24 under
-\texttt{EXHALE\_46d5b9f4.x}; section~5); of those five, 1.45 was certified
-again on 2026-09-25 and 1.52, 1.6 and 1.8 on 2026-09-26, and the table gives
-those later states (notes a and b). Seven rows were new between
-2026-09-20 and 2026-09-22: the six rungs of the
-2026-09-21 XUV continuation on the He/H~=~2.13 branch at 0.015, 0.02, 0.03,
-0.05 and 0.07 of the fiducial spectrum together with the 0.07 rung on the
-He/H~=~9.7 branch, and the 0.01 rung on the He/H~=~2.13 branch that the
-continuation certified. The molecular rows at He/H~=~2.13 and 9.7 certified on
-2026-09-20, when every active equation of the inventory was measured on their
-states and found within tolerance; 2.13 was certified again on 2026-09-26
-(note a).
+146 models carry a certificate. The table lists each with the mass-loss
+rate and the He~I 10830 equivalent width the catalog reports for it. On
+2026-09-29 the continuation states of section~3 (the last subsection) were
+published: the two photochemical molecular rows, the molecular
+$K_{zz}=10^{9}$ family from He/H~=~0.19 to 1.45 (34 rows, 0.55 and 1.45
+replacing their earlier states) and the well-mixed molecular family from
+He/H~=~0.1 to 2.13 (21 rows). The family is therefore of mixed code, and the
+notes say which binary, boundary model and grid each row is of (notes d, e,
+g, h, i); five of them, and \case{photochem\_kzzprofile/HeH2.09}, carry note
+r. The He/H~=~9.7 rungs at 0.0675, 0.0662 and 0.065 of the fiducial XUV were
+certified on 2026-09-23 under \texttt{EXHALE\_69233669.x}; the molecular
+$K_{zz}=10^{9}$ rows at He/H~=~1.52, 1.6, 1.8 and 2.13 were certified on
+2026-09-26 under \texttt{EXHALE\_7db5afe9.x} (note a) and 9.7 on 2026-09-20
+(note c); the XUV continuation of the He/H~=~2.13 branch (0.01 to 0.07) on
+2026-09-21.
 
 \scriptsize\linespread{1.0}\selectfont\begin{longtable}{@{}l >{\raggedright\arraybackslash}p{1.1cm} l l l l l l r r@{}}
 \toprule
@@ -547,13 +610,68 @@ case & wind chemistry & He/H & XUV & $K_{zz}$ & diff. & $du$ & $\lVert R\rVert$ 
 \case{scalar\_x0.30\_kzz1e9/HeH9.7} & atomic & 9.7 & 0.30 & 1.0e9 & on & 5.587E-12 & 6.702E-08 & 7.310 & 0.9395\\
 \case{scalar\_x0.33\_kzz1e9/HeH2.13} & atomic & 2.13 & 0.33 & 1.0e9 & on & 2.761E-12 & 4.566E-08 & 7.360 & 0.2555\\
 \case{scalar\_x0.33\_kzz1e9/HeH9.7} & atomic & 9.7 & 0.33 & 1.0e9 & on & 3.376E-12 & 9.900E-08 & 7.360 & 1.0231\\
-\case{scalar\_kzz1e9/HeH0.55} & molecular & 0.55 & 1 & 1.0e9 & on & 2.822E-12 & 9.541E-09 & 7.590 & 0.1015\\
-\case{scalar\_kzz1e9/HeH1.45}\textsuperscript{b} & molecular & 1.45 & 1 & 1.0e9 & on & 4.524E-11 & 7.974E-09 & 7.900 & 0.9387\\
+\case{photochem\_kzzprofile/HeH2.09}\textsuperscript{d,r} & molecular & 2.09 & 1 & profile & on & 3.559E-12 & 1.590E-07 & 8.060 & 1.5009\\
+\case{photochem\_kzzprofile/HeH9}\textsuperscript{d} & molecular & 9 & 1 & profile & on & 4.885E-12 & 7.724E-08 & 7.990 & 1.8919\\
+\case{scalar\_kzz1e9/HeH0.19}\textsuperscript{g,r} & molecular & 0.19 & 1 & 1.0e9 & on & 1.173E-10 & 1.000E-08 & 7.340 & 0.0021\\
+\case{scalar\_kzz1e9/HeH0.22}\textsuperscript{g} & molecular & 0.22 & 1 & 1.0e9 & on & 6.063E-12 & 1.270E-08 & 7.380 & 0.0024\\
+\case{scalar\_kzz1e9/HeH0.26}\textsuperscript{g} & molecular & 0.26 & 1 & 1.0e9 & on & 5.135E-12 & 1.160E-08 & 7.440 & 0.0031\\
+\case{scalar\_kzz1e9/HeH0.2793}\textsuperscript{g} & molecular & 0.2793 & 1 & 1.0e9 & on & 3.765E-12 & 1.270E-08 & 7.460 & 0.0036\\
+\case{scalar\_kzz1e9/HeH0.3}\textsuperscript{g} & molecular & 0.3 & 1 & 1.0e9 & on & 3.026E-12 & 9.640E-09 & 7.490 & 0.0044\\
+\case{scalar\_kzz1e9/HeH0.324}\textsuperscript{g} & molecular & 0.324 & 1 & 1.0e9 & on & 3.561E-12 & 1.400E-08 & 7.520 & 0.0058\\
+\case{scalar\_kzz1e9/HeH0.35}\textsuperscript{g} & molecular & 0.35 & 1 & 1.0e9 & on & 2.078E-12 & 1.250E-08 & 7.550 & 0.0089\\
+\case{scalar\_kzz1e9/HeH0.3742}\textsuperscript{g} & molecular & 0.3742 & 1 & 1.0e9 & on & 3.547E-12 & 7.500E-09 & 7.580 & 0.0165\\
+\case{scalar\_kzz1e9/HeH0.4}\textsuperscript{g} & molecular & 0.4 & 1 & 1.0e9 & on & 1.990E-12 & 1.140E-08 & 7.600 & 0.0386\\
+\case{scalar\_kzz1e9/HeH0.45}\textsuperscript{g} & molecular & 0.45 & 1 & 1.0e9 & on & 4.610E-12 & 6.630E-09 & 7.640 & 0.0927\\
+\case{scalar\_kzz1e9/HeH0.5}\textsuperscript{g} & molecular & 0.5 & 1 & 1.0e9 & on & 1.998E-12 & 1.540E-08 & 7.670 & 0.1453\\
+\case{scalar\_kzz1e9/HeH0.55}\textsuperscript{e} & molecular & 0.55 & 1 & 1.0e9 & on & 1.256E-12 & 9.220E-09 & 7.700 & 0.1972\\
+\case{scalar\_kzz1e9/HeH0.6}\textsuperscript{g} & molecular & 0.6 & 1 & 1.0e9 & on & 1.964E-12 & 1.360E-08 & 7.730 & 0.2580\\
+\case{scalar\_kzz1e9/HeH0.65}\textsuperscript{g} & molecular & 0.65 & 1 & 1.0e9 & on & 2.410E-12 & 7.420E-09 & 7.750 & 0.3144\\
+\case{scalar\_kzz1e9/HeH0.7}\textsuperscript{g} & molecular & 0.7 & 1 & 1.0e9 & on & 1.910E-12 & 6.100E-09 & 7.770 & 0.3669\\
+\case{scalar\_kzz1e9/HeH0.75}\textsuperscript{g,r} & molecular & 0.75 & 1 & 1.0e9 & on & 2.413E-12 & 1.010E-08 & 7.780 & 0.4152\\
+\case{scalar\_kzz1e9/HeH0.8}\textsuperscript{g} & molecular & 0.8 & 1 & 1.0e9 & on & 1.962E-12 & 1.080E-08 & 7.790 & 0.4603\\
+\case{scalar\_kzz1e9/HeH0.85}\textsuperscript{g,r} & molecular & 0.85 & 1 & 1.0e9 & on & 1.963E-12 & 1.410E-08 & 7.810 & 0.5029\\
+\case{scalar\_kzz1e9/HeH0.88}\textsuperscript{g} & molecular & 0.88 & 1 & 1.0e9 & on & 2.304E-12 & 1.100E-08 & 7.810 & 0.5274\\
+\case{scalar\_kzz1e9/HeH0.91}\textsuperscript{g} & molecular & 0.91 & 1 & 1.0e9 & on & 1.469E-12 & 1.060E-08 & 7.820 & 0.5513\\
+\case{scalar\_kzz1e9/HeH0.94}\textsuperscript{g} & molecular & 0.94 & 1 & 1.0e9 & on & 2.029E-12 & 8.240E-09 & 7.830 & 0.5743\\
+\case{scalar\_kzz1e9/HeH0.97}\textsuperscript{g} & molecular & 0.97 & 1 & 1.0e9 & on & 2.799E-12 & 9.730E-09 & 7.830 & 0.5968\\
+\case{scalar\_kzz1e9/HeH1.0}\textsuperscript{g} & molecular & 1.0 & 1 & 1.0e9 & on & 2.390E-12 & 1.300E-08 & 7.840 & 0.6187\\
+\case{scalar\_kzz1e9/HeH1.03}\textsuperscript{g} & molecular & 1.03 & 1 & 1.0e9 & on & 2.496E-12 & 1.480E-08 & 7.840 & 0.6401\\
+\case{scalar\_kzz1e9/HeH1.06}\textsuperscript{g,r} & molecular & 1.06 & 1 & 1.0e9 & on & 2.301E-12 & 1.480E-08 & 7.850 & 0.6610\\
+\case{scalar\_kzz1e9/HeH1.075}\textsuperscript{g} & molecular & 1.075 & 1 & 1.0e9 & on & 2.553E-12 & 1.500E-08 & 7.850 & 0.6712\\
+\case{scalar\_kzz1e9/HeH1.09}\textsuperscript{g} & molecular & 1.09 & 1 & 1.0e9 & on & 2.090E-12 & 1.260E-08 & 7.850 & 0.6814\\
+\case{scalar\_kzz1e9/HeH1.12}\textsuperscript{g} & molecular & 1.12 & 1 & 1.0e9 & on & 8.226E-13 & 8.120E-09 & 7.860 & 0.7013\\
+\case{scalar\_kzz1e9/HeH1.15}\textsuperscript{g} & molecular & 1.15 & 1 & 1.0e9 & on & 9.272E-13 & 9.490E-09 & 7.860 & 0.7207\\
+\case{scalar\_kzz1e9/HeH1.168}\textsuperscript{g} & molecular & 1.168 & 1 & 1.0e9 & on & 9.653E-13 & 1.070E-08 & 7.860 & 0.7322\\
+\case{scalar\_kzz1e9/HeH1.186}\textsuperscript{g} & molecular & 1.186 & 1 & 1.0e9 & on & 9.740E-13 & 7.990E-09 & 7.860 & 0.7435\\
+\case{scalar\_kzz1e9/HeH1.223}\textsuperscript{d} & molecular & 1.223 & 1 & 1.0e9 & on & 1.834E-12 & 1.250E-08 & 7.870 & 0.7621\\
+\case{scalar\_kzz1e9/HeH1.30}\textsuperscript{d} & molecular & 1.30 & 1 & 1.0e9 & on & 1.768E-12 & 1.960E-08 & 7.880 & 0.8076\\
+\case{scalar\_kzz1e9/HeH1.45}\textsuperscript{d} & molecular & 1.45 & 1 & 1.0e9 & on & 3.437E-12 & 3.220E-08 & 7.890 & 0.8896\\
 \case{scalar\_kzz1e9/HeH1.52}\textsuperscript{a} & molecular & 1.52 & 1 & 1.0e9 & on & 2.068E-12 & 7.337E-09 & 7.890 & 1.0149\\
 \case{scalar\_kzz1e9/HeH1.6}\textsuperscript{a} & molecular & 1.6 & 1 & 1.0e9 & on & 1.441E-12 & 1.167E-08 & 7.900 & 1.0577\\
 \case{scalar\_kzz1e9/HeH1.8}\textsuperscript{a} & molecular & 1.8 & 1 & 1.0e9 & on & 4.134E-12 & 8.818E-09 & 7.910 & 1.1550\\
 \case{scalar\_kzz1e9/HeH2.13}\textsuperscript{a} & molecular & 2.13 & 1 & 1.0e9 & on & 3.364E-11 & 1.266E-08 & 7.930 & 1.2902\\
 \case{scalar\_kzz1e9/HeH9.7}\textsuperscript{c} & molecular & 9.7 & 1 & 1.0e9 & on & 3.491E-11 & 2.580E-08 & 7.940 & 2.4060\\
+\case{scalar\_wellmixed/HeH0.1}\textsuperscript{g} & molecular & 0.1 & 1 & none & off & 9.526E-11 & 8.570E-09 & 7.150 & 0.1167\\
+\case{scalar\_wellmixed/HeH0.12}\textsuperscript{g} & molecular & 0.12 & 1 & none & off & 8.428E-12 & 1.900E-08 & 7.190 & 0.1426\\
+\case{scalar\_wellmixed/HeH0.14}\textsuperscript{g} & molecular & 0.14 & 1 & none & off & 6.625E-12 & 1.320E-08 & 7.220 & 0.1677\\
+\case{scalar\_wellmixed/HeH0.16}\textsuperscript{g} & molecular & 0.16 & 1 & none & off & 1.779E-10 & 2.280E-08 & 7.260 & 0.1933\\
+\case{scalar\_wellmixed/HeH0.19}\textsuperscript{i} & molecular & 0.19 & 1 & none & off & 1.939E-10 & 1.110E-08 & 7.310 & 0.2280\\
+\case{scalar\_wellmixed/HeH0.22}\textsuperscript{g} & molecular & 0.22 & 1 & none & off & 7.416E-12 & 8.620E-09 & 7.360 & 0.2753\\
+\case{scalar\_wellmixed/HeH0.26}\textsuperscript{g} & molecular & 0.26 & 1 & none & off & 4.177E-12 & 8.550E-09 & 7.420 & 0.3351\\
+\case{scalar\_wellmixed/HeH0.3}\textsuperscript{g} & molecular & 0.3 & 1 & none & off & 3.016E-12 & 1.540E-08 & 7.480 & 0.4025\\
+\case{scalar\_wellmixed/HeH0.3169}\textsuperscript{g} & molecular & 0.3169 & 1 & none & off & 3.552E-12 & 1.140E-08 & 7.490 & 0.4340\\
+\case{scalar\_wellmixed/HeH0.3347}\textsuperscript{g} & molecular & 0.3347 & 1 & none & off & 2.630E-12 & 5.030E-09 & 7.510 & 0.4692\\
+\case{scalar\_wellmixed/HeH0.3659}\textsuperscript{g} & molecular & 0.3659 & 1 & none & off & 2.831E-12 & 1.390E-08 & 7.540 & 0.5247\\
+\case{scalar\_wellmixed/HeH0.4}\textsuperscript{g} & molecular & 0.4 & 1 & none & off & 2.078E-12 & 1.400E-08 & 7.570 & 0.5754\\
+\case{scalar\_wellmixed/HeH0.55}\textsuperscript{e} & molecular & 0.55 & 1 & none & off & 9.797E-12 & 1.282E-08 & 7.660 & 0.7562\\
+\case{scalar\_wellmixed/HeH0.6116}\textsuperscript{g} & molecular & 0.6116 & 1 & none & off & 1.511E-12 & 9.050E-09 & 7.690 & 0.8268\\
+\case{scalar\_wellmixed/HeH0.68}\textsuperscript{h} & molecular & 0.68 & 1 & none & off & 1.328E-12 & 1.300E-08 & 7.730 & 0.9487\\
+\case{scalar\_wellmixed/HeH0.7603}\textsuperscript{h} & molecular & 0.7603 & 1 & none & off & 1.066E-12 & 7.880E-09 & 7.750 & 1.0274\\
+\case{scalar\_wellmixed/HeH0.85}\textsuperscript{h} & molecular & 0.85 & 1 & none & off & 7.789E-13 & 1.130E-08 & 7.780 & 1.1074\\
+\case{scalar\_wellmixed/HeH1.1}\textsuperscript{h} & molecular & 1.1 & 1 & none & off & 1.551E-12 & 9.940E-09 & 7.830 & 1.2915\\
+\case{scalar\_wellmixed/HeH1.4}\textsuperscript{h} & molecular & 1.4 & 1 & none & off & 2.509E-10 & 9.480E-09 & 7.870 & 1.4543\\
+\case{scalar\_wellmixed/HeH1.8}\textsuperscript{h} & molecular & 1.8 & 1 & none & off & 3.991E-11 & 9.140E-09 & 7.900 & 1.6043\\
+\case{scalar\_wellmixed/HeH2.13}\textsuperscript{d,r} & molecular & 2.13 & 1 & none & off & 1.139E-11 & 3.070E-08 & 7.910 & 1.5845\\
 \bottomrule
 \end{longtable}\normalsize
 
@@ -571,6 +689,46 @@ passes); its \texttt{not\_solved.md} stays beside the case and describes
 that re-solve, not the state listed here. The $du$ and $\lVert R\rVert$ of
 this row are that re-solve's, as the rule of the column paragraph above
 gives them.
+\textsuperscript{d}~Certified under \texttt{EXHALE\_6dd54955.x}, md5
+\texttt{6dd549556910351a7f857708b4853a69} (the binary of record), with the
+base boundary model v4 (\texttt{\ldots\_face\_at\_level\_v4}) on the
+face-at-level grid and the enthalpy flux of the transported carriers on.
+The two photochemical rows were solved in \url{.P1/audit_F1/photo9_v4_F1}
+and \url{.P1/audit_F1/photo209_v5_F1} (generations
+\texttt{g0006\_20260929T054534Z\_c399da20} and
+\texttt{g0001\_20260929T055054Z\_689dcef6}); the others are $K_{zz}=10^{9}$
+continuation rungs of \url{.P1/s2_continuation/} and \url{.P1/audit_F1/}.
+\textsuperscript{e}~Certified under \texttt{EXHALE\_3c22c63e.x}, md5
+\texttt{3c22c63e787a017e7bbd88186cbc8b09}, the Intel build of the source
+with the discrete-equilibrium base boundary, model v5
+(\texttt{\ldots\_discrete\_equilibrium\_v5}), on the face-at-level grid and
+with the enthalpy flux of the transported carriers on; its source list is
+\url{.P1/v5_test/BINARY_MANIFEST_3c22c63e787a.txt}. Solved in
+\url{.P1/v5_test/wm4_0.55_v5} and \url{.P1/v5_test/kzz8_0.55_v5}.
+\textsuperscript{g}~A continuation rung certified on 2026-09-27 to 2026-09-29
+on the face-at-level grid with the base boundary model v4 and without the
+enthalpy flux of the transported carriers (the term did not yet exist),
+under \texttt{EXHALE\_b037d586.x}, \texttt{EXHALE\_8dbc44fb.x},
+\texttt{EXHALE\_a7255a03.x} or \texttt{EXHALE\_2dd9a865.x}, as the case's
+generation manifest and \texttt{REPRODUCE.md} name.
+\textsuperscript{h}~A well-mixed continuation rung certified on 2026-09-26
+under \texttt{EXHALE\_7db5afe9.x} on the grid before the face-at-level change
+(boundary model v3) and without the carrier enthalpy flux.
+\textsuperscript{i}~Certified under \texttt{EXHALE\_b029a1e8.x}, the gfortran
+build used to measure the carrier enthalpy flux (term on, boundary v4); no
+binary manifest was written for it.
+\textsuperscript{r}~The no-step evaluate pass of the same binary, which made
+the advection-corrected profiles, does not reproduce the stationary claim of
+the published state; the index keeps the solve's certificate, and the
+refusing evaluation was not published (published, it would take the
+certified reference away, \texttt{LHS1140b/MODELS.md} section 9.8). On
+\case{photochem\_kzzprofile/HeH2.09} the reloaded state's cell-1 mass row
+reads $1.25\times10^{-8}$ against its tolerance $6.6\times10^{-9}$, where the
+solve's own certificate read $2.77\times10^{-9}$ (MEASURED); the reload
+re-derives the two lower ghost rows. Why a reload moves the base cell's mass
+row past its tolerance is open.
+Every row published on 2026-09-29 is the solved pair byte for byte, with its
+own \texttt{run.log}; the scripts are in \url{.P1/publish_rows/}.
 Every unmarked row is of the physics before the corrections.
 
 \section{The molecular $K_{zz}=10^{9}$ family across the observed line}
@@ -595,7 +753,11 @@ catalog were not re-solved and are of the physics before the audit; the
 1.45 row is of the second round of corrections (\texttt{EXHALE\_b059a4be.x},
 EW 0.9387). Under the third round (\texttt{EXHALE\_50aa18d7.x}) neither its
 re-solve nor its rung from 1.52 certified before its time ceiling, and it
-was not attempted under the binary of record.
+was not attempted under the binary of record. (Both the 0.55 and the 1.45
+case have published a later generation since, on 2026-09-29, from the
+continuation (EW 0.1972 and 0.8896, section~4); this section does not use
+them, and neither changes the pair of rungs that straddles the observed
+width.)
 
 \paragraph{The rungs.} He/H~=~1.8 and 2.13 were re-solved from their
 certified states of the previous physics, and 1.6 and 1.52 as rungs from
@@ -803,9 +965,12 @@ equivalent width, so the shift is a tenth of the spacing the ladder measures
 a composition with.
 
 Against the measurement it is smaller still. The observed red-pair equivalent
-width is $1.108 \pm 0.030$~\%\,\AA\ (Cherubim et al.\ 2026), and the two
-states differ by 0.018~\%\,\AA,
-which is 0.60 of one standard deviation. For a comparison with the data the
+width is $1.108 \pm 0.029$~\%\,\AA, integrated from the spectrum Cherubim
+et al.\ (2026) released, with the error of the same estimator under
+independent sample errors (our number, not the paper's; the tables and figures
+of this document were drawn with $\pm 0.030$, the error before the estimator
+was given its own trapezoidal weights on 2026-09-29), and the two states
+differ by 0.018~\%\,\AA, which is 0.62 of one standard deviation. For a comparison with the data the
 two states are the same model: the refused one would be read as the same
 answer. What the certification buys is not a different observable but the
 statement that the state solves the elemental transport equation everywhere,
