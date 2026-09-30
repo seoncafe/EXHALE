@@ -3500,20 +3500,21 @@
 	! ------------------------------------------------------------- !
 
 	! Fraction of the photons emitted in a cell that the cell itself absorbs,
-	! 1 - exp(-tau), for a cell optical depth tau >= 0. Evaluated by its series
-	! below tau = 1e-4, where 1 - exp(-tau) loses all but a few digits to
-	! cancellation; the series is truncated where its next term is below the
-	! double-precision epsilon of the result. Returns 0 for a non-positive tau,
-	! which the ionization solve can hand it as a small negative trace density.
+	! 1 - exp(-tau), for a cell optical depth tau >= 0. Formed as
+	! tau (1 - exp(-tau))/tau with the quotient from one_minus_exp_over_x
+	! (utilities.f90): 1 - exp(-tau) itself cancels as tau -> 0, with a
+	! relative error of about eps/tau and a staircase in tau of the same
+	! size, while the quotient is evaluated without cancellation at every
+	! tau and the product with tau costs one rounding. Returns 0 for a
+	! non-positive tau, which the ionization solve can hand it as a small
+	! negative trace density.
 	pure function absorbed_photon_fraction(tau) result(f_abs)
 	real*8, intent(in) :: tau
 	real*8 :: f_abs
 	if (tau .le. 0.0d0) then
 		f_abs = 0.0d0
-	else if (tau .lt. 1.0d-4) then
-		f_abs = tau*(1.0d0 - 0.5d0*tau*(1.0d0 - tau/3.0d0))
 	else
-		f_abs = 1.0d0 - exp(-tau)
+		f_abs = tau*one_minus_exp_over_x(tau)
 	endif
 	end function absorbed_photon_fraction
 
@@ -3585,20 +3586,17 @@
 
 	! (1 - exp(-tau))/tau for tau >= 0, the fraction of a cell's photons the
 	! cell absorbs divided by its optical depth: 1 at tau -> 0, 1/tau at
-	! tau -> infinity, with no division singularity; by its series below
-	! tau = 1e-4 (absorbed_photon_fraction holds the same guard). The rate
-	! at which one absorber of cross section sigma takes photons emitted at
-	! P per unit volume is P sigma dl times this.
+	! tau -> infinity, with no division singularity. Evaluated by
+	! one_minus_exp_over_x (utilities.f90), which avoids the cancellation
+	! of the closed form below tau = 1e-2 (the former series here switched
+	! at 1e-4, where the closed form still carried a relative error of
+	! 2.2e-12 and the three-term series one of 4e-14). The rate at which
+	! one absorber of cross section sigma takes photons emitted at P per
+	! unit volume is P sigma dl times this.
 	pure function absorbed_fraction_over_tau(tau) result(g)
 	real*8, intent(in) :: tau
 	real*8 :: g
-	if (tau .le. 0.0d0) then
-		g = 1.0d0
-	else if (tau .lt. 1.0d-4) then
-		g = 1.0d0 - 0.5d0*tau*(1.0d0 - tau/3.0d0)
-	else
-		g = (1.0d0 - exp(-tau))/tau
-	endif
+	g = one_minus_exp_over_x(tau)
 	end function absorbed_fraction_over_tau
 
 	! ------------------------------------------------------------- !

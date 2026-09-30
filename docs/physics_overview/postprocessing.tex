@@ -17,7 +17,21 @@ temperature: conduction \eqref{eq:transport_coeff} couples each cell to both
 neighbors, so after the marching sweep the corrected cells are solved
 together by a Newton iteration on the column (banded Jacobian, conductivity
 and enthalpy flux divergence re-evaluated at each iterate); cells that keep
-the run's temperature are fixed values of that solve.  Without these terms
+the run's temperature are fixed values of that solve.  That iteration stops
+when no temperature moves by more than $10^{-10}$ of itself (or after 100
+iterations), and the column is then judged on its residual: the energy row
+of every unknown, formed again at the final profile with the transport terms
+of that profile, must be within $10\,\epsilon\sum|{\rm terms}| + 10^{-6}S_E$,
+$S_E$ the largest of its physically grouped terms and $10^{-6}$ the energy
+tolerance of the stationary certification.  It is rejected when the banded
+solve fails, a residual, step or term is not finite, a temperature is not
+positive, or the residual test fails; a rejected column keeps the marching
+profile and every one of its cells is written \texttt{failed}, and the
+outcome, the reason, the triggering cell and the worst residual are recorded
+in the \texttt{\# adv\_derived\_state:} line of the \texttt{\_adv} headers.
+The ten outer passes are not tested for convergence, so an accepted column is
+recorded as \texttt{converged\_on\_residual} and the outer iteration as
+\texttt{unverified}.  Without these terms
 the corrected temperature of a conduction-dominated layer answers another
 equation (7900~K against the run's 5500~K at 1.2~$R_p$ on the fiducial
 LHS~1140~b atomic case).

@@ -31,6 +31,7 @@
 	use utils_ion_eq
 	use composition, only: he_ground_singlet_density
 	use output_write
+	use, intrinsic :: ieee_arithmetic, only: ieee_is_finite
 	use caloric_eos, only: h2_particle_fraction, internal_energy_of_mixture
 	use equation_T
 	use opacity_models           ! opacity_pT_factor for the 'P' model
@@ -43,10 +44,14 @@
 	use steady_residual_mod, only: assemble_residual, residual_row_scale,  &
 	                               row_terms_describe_state,               &
 	                               carrier_enthalpy_divergence
-	use certification,       only: cert_scale_floor
+	use certification,       only: cert_scale_floor, cert_tol_energy
 	! The species the reconstruction below omits, for the cell class it does
 	! not model (see adv_unsupported).
 	use ionization_equilibrium, only: nmol_eq, nox_eq
+	! The molecular channels that destroy the H/He populations this
+	! post-process solves, for the composition class (see where it is formed).
+	use mol_rates, only: rk_R10_Hp_H2v4, rk_R13_Hp_H2_M,                &
+	                     rk_R17_Hep_H2_diss, rk_R23_H2_Hep_cx
 	! The transport terms of the run's energy equation (heat conduction and
 	! the enthalpy flux of the element and carrier fluxes), which the
 	! advected balance keeps with the corrected temperature (the energy
@@ -160,6 +165,32 @@
 	real*8, save :: pp_xHII_fix   = 0.0d0
 	real*8, save :: pp_xHeII_fix  = 0.0d0
 	real*8, save :: pp_xHeIII_fix = 0.0d0
+
+	! MEASUREMENT ONLY, default off: EXHALE_ADV_TEST_REJECT=<reason>, with
+	! <reason> one of the names of adv_column_reason_name (linear_solve,
+	! nonfinite, non_positive_T, residual_above_tolerance), makes every
+	! column energy solve of the post-process end rejected with that reason
+	! and its first unknown as the triggering cell, after the solve itself
+	! has run, so that the handling of a rejection (the rows written
+	! adv_failed, the derived-state record, the exit status of the
+	! evaluation) can be tested on a state whose column is accepted. Read
+	! once, at the first call of post_process_adv; unset, it changes
+	! nothing.
+	integer, save :: adv_test_reject_reason = -1
+	! MEASUREMENT ONLY, default off, read with the key above.
+	! EXHALE_ADV_COLUMN_FLOOR_IT=<n>: after the column iteration has met its
+	! step test, take n further Newton steps before the final rows are
+	! formed, so that the residual the log reports is the stagnation level
+	! of the iteration (the rounding floor the margin of atol_E is anchored
+	! on) and not the level the step test happened to stop at.
+	! EXHALE_ADV_COLUMN_EXCLUDE_UNROOTED=1: the cells whose cell-by-cell
+	! energy step found no admissible root in the marching sweep are fixed
+	! values of the column solve (at the run's own temperature, written
+	! adv_failed) instead of unknowns of it, which is how the column was
+	! built until 2026-10-01 (energy_column_newton says why they are
+	! unknowns by default).
+	integer, save :: adv_column_floor_it = 0
+	logical, save :: adv_column_exclude_unrooted = .false.
 
 	contains
 
@@ -277,7 +308,8 @@
 	subroutine post_process_adv(rho,v,p,T_in,heat,cool,eta,   &
                                   nhi_in,nhii_in,		    &
                                   nhei_in,nheii_in,nheiii_in,   &
-                                  nheiTR_in, nm_in, f_sp_in)
+                                  nheiTR_in, nm_in, f_sp_in,       &
+                                  derived_state)
 
 
 	real*8, dimension(1-Ng:N+Ng), intent(in) :: rho,v,p,T_in
@@ -293,6 +325,10 @@
    ! below: its energy row reads the composition (the interdiffusion
    ! enthalpy flux of a diffusing mixture). Only the mass row is read here.
    real*8, dimension(1-Ng:N+Ng,n_species), intent(in) :: f_sp_in
+   ! How the solves that produced the written rows ended, as a whole
+   ! (adv_derived_state, output_write): handed to the caller and written
+   ! into the header of both _adv files.
+   type(adv_derived_state), intent(out) :: derived_state
 	
 	integer j,k
 	integer :: n_pp_reject       ! cell-by-cell T solves rejected as non-physical
@@ -309,6 +345,8 @@
 	integer :: n_T_res_root
 	integer :: Neq_adv,lwa_adv   ! advection system size (metal-independent)
 	integer :: Neq_mpp,lwa_mpp   ! metal re-solve system size (pp_metals=2)
+	! Passes of the post-process (the outer loop below).
+	integer, parameter :: n_pp_passes = 10
 	 
 	real*8, dimension(1-Ng:N+Ng) ::  T_K,p_out,T_out     ! Dimensional temperature
 	real*8, dimension(1-Ng:N+Ng) ::  nh,nhe,ne,n_tot
@@ -485,6 +523,15 @@
 	! carries, for the cell class it does not model (adv_unsupported).
 	real*8  :: n_omitted, n_carried
 	logical, dimension(1-Ng:N+Ng) :: cell_class_modelled
+	! The loss rates [s^-1] of one solved population by the molecular
+	! channels the reconstruction omits and by the channels it carries, for
+	! the composition class (formed with the cell class).
+	real*8  :: loss_omitted, loss_carried, n_h2_cell
+	! Cells whose particle count or the balance of one solved population is
+	! carried more by the omitted species than by those the reconstruction
+	! holds: neither the composition nor the temperature of such a row is a
+	! statement about that gas, and both fields are unsupported.
+	integer :: n_species_class_refused
 	! The same statement about the ENERGY equation (see where it is formed):
 	! the heating and cooling of the run's own state that this post-process
 	! does not carry, against those it does, and the verdict of each cell.
@@ -538,10 +585,34 @@
    logical :: pp_transport_on, pp_newton_mode
    real*8, dimension(N) :: pp_cond_lo, pp_cond_di, pp_cond_up
    real*8, dimension(1-Ng:N+Ng) :: pp_heat_rel, pp_T_nbr, pp_T_march
+   ! The two parts of pp_heat_rel, entered as heating: the enthalpy flux
+   ! divergence of the element fluxes and of the carrier fluxes.
+   real*8, dimension(1-Ng:N+Ng) :: pp_heat_elem, pp_heat_carr
    real*8  :: pp_T_bath
    logical, dimension(1-Ng:N+Ng) :: pp_bdf2_used
-   integer :: n_col_newton_it, n_col_newton_fail
+   integer :: n_col_newton_it
    real*8  :: col_newton_step
+   ! How the column energy solve of the pass ended (adv_col_* of
+   ! output_write), why it was rejected, the cell that triggered the
+   ! rejection, the number of its unknowns, and the passes whose column was
+   ! rejected.
+   integer :: col_outcome, col_reason, col_cell, col_unknowns
+   integer :: n_col_passes_rejected
+   ! The column solve in progress has failed a test (reject_column), and
+   ! the temperature of the triggering cell at that test [code units].
+   logical :: col_bad
+   real*8  :: col_T_trigger
+   ! The terms of one cell's energy row (energy_row_terms_of_cell), and
+   ! the seven physically grouped terms the acceptance of the column is
+   ! measured against (energy_row_grouped_terms).
+   integer, parameter :: n_row_terms = 14, n_row_groups = 7
+   ! The worst energy row of the column of the pass (energy_column_newton):
+   ! its cell, |R| [erg cm^-3 s^-1], |R|/S_E, and the tolerance over S_E.
+   integer :: col_worst_cell
+   real*8  :: col_worst_R, col_worst_rel, col_worst_tol_rel
+   ! Physical cells of the column of the pass whose marching energy step
+   ! found no root (energy_column_newton).
+   integer :: n_col_unrooted
    ! Width the right-hand side of a step is multiplied by, g h_j or h_j
    ! [code units], and the histories of the density and of the specific
    ! internal energy that step differences against.
@@ -561,6 +632,10 @@
       
    ! Numerical tolerance for system solution
    tol = sqrt(dpmpar(1))
+
+   ! The measurement-only rejection of the column solve (see the
+   ! declaration of adv_test_reject_reason), read once.
+   if (adv_test_reject_reason .lt. 0) call read_test_reject_reason()
 
    ! Advection system size. The advection-correction systems
    ! (adv_implicit_H/HeH/HeH_TR) solve only H/He fractions and never
@@ -671,6 +746,16 @@
 	n_metal_noconv = 0
 	n_T_noconv     = 0
 	n_T_res_root   = 0
+	! The column energy solve: nothing solved yet, no pass rejected.
+	col_outcome  = adv_col_not_run
+	col_reason   = adv_col_reason_none
+	col_cell     = 0
+	col_unknowns = 0
+	n_col_passes_rejected = 0
+	col_worst_cell  = 0
+	col_worst_R     = 0.0d0
+	col_worst_rel   = 0.0d0
+	col_worst_tol_rel = 0.0d0
 
 	! The weights of the step into each cell. The two lowest rows have no
 	! two cells below them and are never the target of a BDF2 step.
@@ -685,8 +770,10 @@
 		                      bdf2_step_ratio_limit*(r(j-1) - r(j-2)))
 	enddo
 
-	! Iterate the post processing
-	do k = 1,10	! Usually 10 gives a good convergence
+	! Iterate the post processing: a fixed number of passes, with no test of
+	! convergence between them, so the outer iteration of the product is
+	! never verified (adv_outer_unverified).
+	do k = 1,n_pp_passes
 
 	n_bdf2_comp = 0;  n_be_comp = 0;  n_bdf2_comp_retaken = 0
 	n_bdf2_T    = 0;  n_be_T    = 0;  n_bdf2_T_retaken    = 0
@@ -708,8 +795,12 @@
 	! Ionized fraction handed to the photoelectron partition: the TOTAL free
 	! electron density over the H and He nuclei, the quantity Dalgarno, Yan &
 	! Liu (1999) section 7 define ("the number density ratio of the electrons
-	! to the hydrogen and helium nuclei").  Reused for both PH_heat calls
-	! below (nhi/nheii/nheiii unchanged between them).  On this path the
+	! to the hydrogen and helium nuclei").  This one is of the composition
+	! the pass STARTS from, and serves the photoionization rates that drive
+	! the composition sweep; the sweep and the metal re-solve change the
+	! densities, so the heating of the composition they return is formed
+	! with the ratio of that composition, recomputed after them (THE COUNTS
+	! OF THE COMPOSITION, below).  On this path the
 	! molecular-ion electrons are missing from ne for the reason just given,
 	! so a molecular run's post-process carries a slightly low ratio; the
 	! equilibrium pass, which does have them, does not.
@@ -994,6 +1085,62 @@
 			enddo
 		endif
 
+		! THE COMPOSITION CLASS: the same statement about the BALANCE of each
+		! population the advection systems solve. They are molecule-free, so
+		! the destruction of H+, He+ and He(2^3S) by H2 (R10 and R13; R17 and
+		! R23; the He(2^3S) + H2 ionization) is absent from them, and in a
+		! cell where that omitted loss of one population exceeds the loss the
+		! systems carry for it, the corrected population answers another
+		! balance than the gas has. MEASURED 2026-10-01 on the molecular
+		! photochemical conduction state: at 1.005 to 1.08 R_p, where x(H2)
+		! falls from 0.38 to 4e-3, the corrected n(He 2^3S) was 70 to 5600
+		! times the run's, whose balance holds the He(2^3S) + H2 channel;
+		! those rows passed the particle-count class above. The comparison is
+		! between two rates of the same population of the same cell, on the
+		! state handed in, and carries no threshold. A row this class
+		! refuses carries the run's own composition and temperature
+		! (adv_unsupported in both fields).
+		n_species_class_refused = 0
+		if (thereis_mol) then
+			do j = 1-Ng,N+Ng
+				n_h2_cell = nmol_eq(j,1)
+				if (.not. (n_h2_cell > 0.0d0)) cycle
+				if (.not. cell_class_modelled(j)) cycle
+				! H+: R10 (H+ + H2(v>=4)) and R13 (H+ + H2 + M) against
+				! recombination.
+				loss_omitted = (rk_R10_Hp_H2v4(T_K(j))                      &
+				             + rk_R13_Hp_H2_M(n_part_state(j)))*n_h2_cell
+				loss_carried = rchiiB(j)*ne(j)
+				if (.not. (loss_omitted <= loss_carried))                  &
+					cell_class_modelled(j) = .false.
+				if (thereis_He) then
+					! He+: R17 (dissociative) and R23 (charge transfer) with
+					! H2 against recombination and ionization to He++.
+					loss_omitted = (rk_R17_Hep_H2_diss(T_K(j))                &
+					             + rk_R23_H2_Hep_cx())*n_h2_cell
+					rec_HeII_tot = rcheiiB(j)
+					if (thereis_HeITR) rec_HeII_tot = rec_HeII_tot + rcheiTR(j)
+					loss_carried = P_HeII(j)                                  &
+					             + (rec_HeII_tot + a_ion_HeII(j))*ne(j)
+					if (.not. (loss_omitted <= loss_carried))              &
+						cell_class_modelled(j) = .false.
+				endif
+				if (thereis_HeITR) then
+					! He(2^3S): its ionization by H2 against every loss the
+					! He 2^3S row of the advection system holds (the
+					! He(2^3S) relaxation rate of the validity block).
+					loss_omitted = ioniz_HeI23S_H2(T_K(j))*n_h2_cell
+					loss_carried = A31 + P_HeITR(j)                           &
+					     + (q31g(j) + q31a(j) + q31b(j) + a_ion_HeITR(j))*ne(j) &
+					     + Q31(j)*nhi(j)
+					if (.not. (loss_omitted <= loss_carried))              &
+						cell_class_modelled(j) = .false.
+				endif
+				if (.not. cell_class_modelled(j))                          &
+					n_species_class_refused = n_species_class_refused + 1
+			enddo
+		endif
+
 		! THE ENERGY CLASS THE RECONSTRUCTION MODELS. The energy equation
 		! solved below balances the heating and cooling this post-process
 		! assembles for an H/He + trace-metal gas; the run's own energy
@@ -1153,6 +1300,11 @@
 			if (adv_correction_valid(j)) n_stationarity_only = n_stationarity_only + 1
 			adv_correction_valid(j) = .false.
 		endif
+		! The cell class the reconstruction does not model (particle count
+		! or the balance of a solved population, formed with the stationarity
+		! condition): the composition of the row is the run's own, and the
+		! upwind cascade takes the run's composition as its history there.
+		if (.not. cell_class_modelled(j)) adv_correction_valid(j) = .false.
 		if (.not. adv_correction_valid(j)) n_adv_eq = n_adv_eq + 1
 		! The composition of a cell any of the four conditions refuses is the
 		! equilibrium one the run converged to: the run's own value, kept.
@@ -1163,6 +1315,8 @@
 		! no steady energy equation -- and the energy loop adds the rest.
 		if (adv_correction_valid(j)) then
 			adv_comp_status(j) = adv_corrected
+		else if (.not. cell_class_modelled(j)) then
+			adv_comp_status(j) = adv_unsupported
 		else
 			adv_comp_status(j) = adv_retained
 		endif
@@ -1343,17 +1497,13 @@
       
    !---- Update densities and temperature ----!
 	
-	! Number densities      
+	! Number densities of the H/He the sweep returned, and the free electron
+	! density of that H/He with the metal split the pass started from: the
+	! electron density the charge-exchange coefficients of the metal
+	! re-solve below are set at. The counts every later step reads are
+	! formed after that re-solve (THE COUNTS OF THE COMPOSITION, below).
    nhei = nheiS + nheiTR
 	call hydrogen_helium_nuclei_density(nhi,nhii,nhei,nheii,nheiii,nh,nhe)
-
-   ! Total number density (incl. metal nuclei under eos_metals). Molecular
-   ! species are excluded -- the post-process does not carry them (see the
-   ! module-header composition note).
-   call calc_ntot(nhi,nhii,nhei,nheii,nheiii,n_tot,nm_w)
-
-   ! Free electron density (assuming overall neutrality; incl. metal
-   ! electrons under eos_metals; molecular-ion electrons excluded, as above)
    call calc_ne(nhii,nheii,nheiii,ne,nm_w)
 
 	!----------------------------------!
@@ -1372,6 +1522,12 @@
 	if (pp_metal_mode == 2 .and. thereis_metals .and. thereis_He) then
 		do j = 1-Ng,N+Ng
 			if (nh(j) <= 0.0d0) cycle
+			! A row whose composition is refused carries the run's own
+			! composition, the metal stages included.
+			if (adv_comp_status(j) .ne. adv_corrected) then
+				nm_w(j,:) = nm_in(j,:)*n0
+				cycle
+			endif
 
 			! Charge-exchange rate coefficients for this cell's temperature
 			! and electron density.
@@ -1408,14 +1564,22 @@
 			pp_xHeII_fix  = nheii(j)/max(nhe(j),1.0d-300)
 			pp_xHeIII_fix = nheiii(j)/max(nhe(j),1.0d-300)
 
-			! Named-field cell state for the residual: only n_h, n_he are
-			! consumed once rows 1-3 are pinned (the H/He rates drop out). pp
+			! Named-field cell state for the residual: once rows 1-3 are
+			! pinned the H/He rates drop out, and the metal rows consume n_h,
+			! n_he and the charge-exchange temperature T_K. pp
 			! runs serially on the master thread, so this master threadprivate
 			! copy is the one read by ion_system_HeH_metals inside the wrapper.
 			! params stays only the MINPACK transport argument (unread).
 			params    = 0.0d0
 			ieq_cell%nh  = nh(j)
 			ieq_cell%nhe = nhe(j)
+			! The temperature the residual's charge exchange is evaluated at
+			! (cx_add_to_fvec) is ieq_cell%T_K, which has to be the
+			! temperature cx_set_cell filled the coefficients at, this cell's.
+			! Left unset it was the last cell of the equilibrium sweep, and
+			! the charge-exchange guard aborted every pp_metals=2 run (found
+			! 2026-10-01 on backup/regression/wasp_full with pp_metals 2).
+			ieq_cell%T_K = T_K(j)
 
 			! Initial guess: pinned H/He fractions + current metal split.
 			sys_x(1) = pp_xHII_fix
@@ -1463,6 +1627,26 @@
 
 	!----------------------------------!
 
+	!---- THE COUNTS OF THE COMPOSITION THE PASS NOW HOLDS ----!
+	! Every composition update of the pass is final here: the H/He sweep,
+	! with its cells restored to equilibrium, and under pp_metals=2 the
+	! metal re-solve, with its cells restored to the equilibrium split. The
+	! metal stages carry electrons, so the free electron density, the
+	! particle count and the mean molecular weight are formed again from
+	! that composition before anything reads them: the ionized fraction of
+	! the photoelectron partition, the heating, the energy solve (its
+	! caloric energy, its thermal Damkohler number, the mean molecular
+	! weight of its histories) and the output pressure. Total number
+	! density and electrons include the metal nuclei and electrons under
+	! eos_metals; the molecular species are excluded, the post-process does
+	! not carry them (see the module-header composition note).
+	call calc_ntot(nhi,nhii,nhei,nheii,nheiii,n_tot,nm_w)
+	call calc_ne(nhii,nheii,nheiii,ne,nm_w)
+	call calc_mmw(nh,nhe,ne,mmw,nm_w)
+	! The ionized fraction of the photoelectron partition, of the same
+	! composition (the definition at the top of the pass).
+	xion = min(max(ne/max(nh + nhe, 1.0d-99), 0.0d0), 1.0d0)
+
 	!---- Heating of the advection-corrected composition ----!
 	! (heating_of_current_composition, below)
 	call heating_of_current_composition(theat)
@@ -1476,11 +1660,10 @@
 	! Initialize temperature at ghost cells
 	T_out = T_K/T0
 	
-	! Calculate mean molecular weight. nm_w adds the metal mass/nuclei under
-	! the eos_metals policy, so the _adv temperature solve uses the same
-	! composition as the main loop (ne above already carries the metal
-	! electrons via calc_ne).
-	call calc_mmw(nh,nhe,ne,mmw,nm_w)
+	! The mean molecular weight the solve reads is the one formed above
+	! from the final composition of the pass: nm_w adds the metal mass and
+	! nuclei under the eos_metals policy, so the _adv temperature solve
+	! uses the same composition as the main loop.
 
 	! Line transfer of the ground-term fine-structure lines, from the
 	! incoming profile, so the cell-by-cell energy solve balances the same
@@ -1598,7 +1781,18 @@
 	                  associated(carrier_enthalpy_divergence)
 	pp_newton_mode  = .false.
 	pp_bdf2_used    = .false.
-	if (k .eq. 1) n_col_newton_fail = 0
+	! The column outcome is of THIS pass: a pass without a column to solve
+	! says so, whatever the pass before it did.
+	col_outcome     = adv_col_not_run
+	col_reason      = adv_col_reason_none
+	col_cell        = 0
+	col_unknowns    = 0
+	n_col_newton_it = 0
+	col_worst_cell  = 0
+	col_worst_R     = 0.0d0
+	col_worst_rel   = 0.0d0
+	col_worst_tol_rel = 0.0d0
+	n_col_unrooted  = 0
 	if (pp_transport_on) then
 		pp_T_nbr = T_out
 		call transport_terms_of_profile(T_out)
@@ -1623,7 +1817,7 @@
 		! post-process omits (the energy class, formed with the stationarity
 		! condition above): the row keeps the run's own temperature, and the
 		! field says the closure does not cover it.
-		if (.not. energy_class_modelled(j)) then
+		if (.not. energy_class_modelled(j) .or. .not. cell_class_modelled(j)) then
 			T_out(j)        = T_in(j)
 			adv_T_status(j) = adv_unsupported
 			cycle
@@ -1805,6 +1999,16 @@
 	   ' cells (reported, not a refusal; level ',                             &
 	   enthalpy_ratio_report_level, ').'
 
+	! Report the cells in which the balance of a solved population is
+	! carried more by the omitted molecular channels than by those the
+	! advection systems hold (the composition class).
+	if (n_species_class_refused > 0)                                        &
+		write(*,'(a,i0,a,i0,a)') ' (post_process_adv) composition class: ',  &
+		   n_species_class_refused, ' of ', N+2*Ng,                         &
+		   ' cells lose H+, He+ or He(2^3S) faster to H2 than to the'//     &
+		   ' channels the advection systems carry; they keep the run'//     &
+		   ' composition and temperature.'
+
 	! Report the cells whose energy balance the post-process does not carry
 	! (the energy class, formed on the state handed in).
 	if (n_energy_class_refused > 0)                                         &
@@ -1883,10 +2087,99 @@
 
    !----------------------------------!
       
+   ! THE DERIVED STATE (adv_derived_state, output_write): how the solves
+   ! that produced the rows about to be written ended, as a whole. The
+   ! column fields are those of the last pass, which is the pass the rows
+   ! are; the row counts are of the two fields as written. The verdict is
+   ! a rejection when the column of the last pass was rejected or any row
+   ! is failed; otherwise the product is unverified, never accepted.
+   ! WHAT IS TESTED: the energy row of every column unknown at the final
+   ! profile of the last pass (energy_column_newton), with the transport
+   ! coefficients formed there -- but the conductivity and the enthalpy
+   ! divergences of the INPUT composition f_sp_in, and the fine-structure
+   ! escape probabilities of the profile the pass started from: lagged
+   ! coefficients, not those of the derived composition. WHAT IS NOT: the
+   ! full energy residual of the state on one derived composition with
+   ! every coefficient its own, the convergence of the outer iteration
+   ! (a fixed number of passes, outer=unverified), and the momentum
+   ! balance of the corrected pressure (rho and v are written back
+   ! unchanged).
+   derived_state%recorded             = .true.
+   derived_state%n_chem_solves_failed = n_adv_noconv + n_metal_noconv
+   if (any(adv_comp_status .eq. adv_failed)) then
+      derived_state%chemistry = adv_chem_cells_failed
+   else
+      derived_state%chemistry = adv_chem_complete
+   endif
+   derived_state%column                 = col_outcome
+   derived_state%column_reason          = col_reason
+   derived_state%column_iterations      = n_col_newton_it
+   derived_state%column_cell            = col_cell
+   derived_state%column_unknowns        = col_unknowns
+   derived_state%column_worst_cell         = col_worst_cell
+   derived_state%column_worst_residual     = col_worst_R
+   derived_state%column_worst_residual_rel = col_worst_rel
+   derived_state%cells_marching_unrooted   = n_col_unrooted
+   derived_state%passes                 = n_pp_passes
+   derived_state%column_passes_rejected = n_col_passes_rejected
+   ! Physical cells 1..N only: the ghost rows are written but are not
+   ! cells of the column, and the census does not count them.
+   derived_state%cells_failed      = count(adv_T_status(1:N) .eq. adv_failed &
+                                     .or. adv_comp_status(1:N) .eq. adv_failed)
+   derived_state%cells_retained    = count(adv_T_status(1:N) .eq. adv_retained &
+                                     .or. adv_comp_status(1:N) .eq. adv_retained)
+   derived_state%cells_unsupported = count(adv_T_status(1:N) .eq. adv_unsupported &
+                                     .or. adv_comp_status(1:N) .eq. adv_unsupported)
+   derived_state%outer             = adv_outer_unverified
+   ! A failed ghost row is not a failed cell, but it can only be failed as
+   ! an unknown of a rejected column, which the first clause already holds.
+   derived_state%rejected = (col_outcome .eq. adv_col_rejected) .or.        &
+                            (derived_state%cells_failed .gt. 0)
+
    ! Write updated thermodynamic and ionization profiles. Metals are written
    ! in dimensionless (n0) units, matching the other species; zero in the
    ! metal-free mode, frozen/re-solved eq densities otherwise.
    nm_out = nm_w/n0
+
+   ! A REFUSED ROW CARRIES THE RUN'S OWN STATE, as the file legend states,
+   ! and it carries the very numbers the run wrote, not a round trip of
+   ! them through the cgs arrays of this routine: a composition field that
+   ! is not corrected (retained, failed, unsupported, not evaluated) is the
+   ! handed-in composition in every species column, the metal stages
+   ! included whatever pp_metals is; a temperature field that is retained,
+   ! unsupported or not evaluated is the handed-in temperature; and a row
+   ! whose two fields are both refused carries the handed-in pressure,
+   ! heating and cooling as well, since nothing of it was solved here. The
+   ! one exception is the temperature of a failed (2) row of a rejected
+   ! column energy solve, which is the marching profile of that pass
+   ! (the legend says so).
+   do j = 1-Ng,N+Ng
+      if (adv_comp_status(j) .ne. adv_corrected) then
+         nhi_w(j)    = nhi_in(j)
+         nhii_w(j)   = nhii_in(j)
+         nhei_w(j)   = 0.0d0
+         nheii_w(j)  = 0.0d0
+         nheiii_w(j) = 0.0d0
+         nheiTR_w(j) = 0.0d0
+         if (thereis_He) then
+            nhei_w(j)   = nhei_in(j)
+            nheii_w(j)  = nheii_in(j)
+            nheiii_w(j) = nheiii_in(j)
+            if (thereis_HeITR) nheiTR_w(j) = nheiTR_in(j)
+         endif
+         if (thereis_metals) nm_out(j,:) = nm_in(j,:)
+      endif
+      if (adv_T_status(j) .eq. adv_retained .or.                        &
+          adv_T_status(j) .eq. adv_unsupported .or.                     &
+          adv_T_status(j) .eq. adv_not_evaluated) T_out(j) = T_in(j)
+      if (adv_T_status(j) .ne. adv_corrected .and.                      &
+          adv_T_status(j) .ne. adv_failed .and.                         &
+          adv_comp_status(j) .ne. adv_corrected) then
+         p_out(j) = p(j)
+         theat(j) = heat(j)
+         tcool(j) = cool(j)
+      endif
+   enddo
    ! The two status fields say, row by row, whether the temperature and the
    ! composition of that row are the steady correction or the run's own
    ! state, so a reader of the file (and of a spectrum built from it) can
@@ -1894,7 +2187,7 @@
    call write_output(rho,v,p_out,T_out,theat,tcool,eta,                &
                      nhi_w,nhii_w,nhei_w,nheii_w,nheiii_w,              &
                      nheiTR_w,nm_out,'ad', adv_T_status, adv_comp_status,  &
-                     adv_mass_row)
+                     adv_mass_row, derived_state)
 
 	contains
 
@@ -2215,7 +2508,9 @@
 	! the operator holds in the ghost (conduction_base_level_T).
 	real*8, dimension(1-Ng:N+Ng), intent(in) :: Tprof
 	real*8, dimension(1-Ng:N+Ng) :: s_elem, s_carr
-	pp_heat_rel = 0.0d0
+	pp_heat_rel  = 0.0d0
+	pp_heat_elem = 0.0d0
+	pp_heat_carr = 0.0d0
 	if (conduction_active()) then
 		call thermal_conduction_coeffs(Tprof, f_sp_in, pp_cond_lo,        &
 		                               pp_cond_di, pp_cond_up)
@@ -2227,11 +2522,13 @@
 	if (interdiffusion_enthalpy_active()) then
 		call interdiffusion_enthalpy_divergence_of_state(rho, Tprof,      &
 		                                                 f_sp_in, s_elem)
-		pp_heat_rel = pp_heat_rel - s_elem
+		pp_heat_elem = -s_elem
+		pp_heat_rel  = pp_heat_rel - s_elem
 	endif
 	if (associated(carrier_enthalpy_divergence)) then
 		call carrier_enthalpy_divergence(rho, Tprof, f_sp_in, s_carr)
-		pp_heat_rel = pp_heat_rel - s_carr
+		pp_heat_carr = -s_carr
+		pp_heat_rel  = pp_heat_rel - s_carr
 	endif
 	end subroutine transport_terms_of_profile
 
@@ -2319,30 +2616,118 @@
 	! step), its own and one above (conduction), so the Jacobian is banded
 	! with two sub- and one super-diagonal. It is formed by one-sided
 	! differences at fixed transport coefficients, and the conductivity and
-	! the enthalpy flux divergence are re-evaluated at every iterate, so
-	! the converged profile satisfies the equation with the transport terms
-	! of its own temperature. A step moves no temperature by more than
-	! 30 per cent of itself. The solve ends when no temperature moves by
-	! more than 1e-10 of itself; one that does not end in 100 iterations,
-	! or leaves a temperature that is not positive (or outside the band of
-	! the metal-cooled residual), returns the marching profile and is
-	! counted.
+	! the enthalpy flux divergence are re-evaluated at every iterate. A step
+	! moves no temperature by more than 30 per cent of itself.
+	!
+	! HOW IT STOPS AND HOW IT IS JUDGED. The iteration stops when no
+	! temperature moves by more than 1e-10 of itself, or after 100
+	! iterations: that is its stopping rule and decides nothing. The column
+	! is then judged on its RESIDUAL. With the transport coefficients and
+	! the enthalpy divergences formed again at the final profile (the state
+	! the rows describe), the energy row of every unknown is evaluated in
+	! erg cm^-3 s^-1, R = q0 fvec/(mup mum dr_step), together with its seven
+	! physically grouped terms (energy_row_grouped_terms: the advective
+	! energy divergence div(rho e v) as one term, the p div(v) work, the
+	! heating, the cooling, the conduction divergence and the two enthalpy
+	! divergences). The column CONVERGES ON ITS RESIDUAL when, in every
+	! unknown,
+	!     |R| <= atol_E + rtol_E S_E ,  rtol_E = cert_tol_energy (1e-6),
+	!     S_E = max |grouped term| ,
+	!     atol_E = 10 eps ( sum |grouped terms| + |rho v e_j| + |rho v e_hist|
+	!                       + |c_lo T_below| + |c_di T| + |c_up T_above| ) ,
+	! the energy row's own tolerance in the stationary certification, over
+	! the largest physical term of that row, and atol_E the rounding floor of
+	! the row: eps times the parts the row is ASSEMBLED from, the two halves
+	! of the advective difference and the three face terms of the conduction
+	! divergence among them. MEASURED 2026-10-01 on the three LHS 1140 b
+	! conduction states (fiducial atomic, molecular photochemical s1,
+	! molecular scalar He/H 1.45 s1), with the iteration continued three
+	! Newton steps past its step test (EXHALE_ADV_COLUMN_FLOOR_IT=3): the
+	! stagnated |R| is at most 0.82, 0.99 and 0.73 eps of that sum, so the
+	! margin 10 is a factor 10 above the measured floor. The grouped sum
+	! alone under-states the floor by 1e3 to 1e5 (the same runs: |R| up to
+	! 4.6e4, 1.4e4 and 4.1e3 eps of it), because the conduction divergence
+	! is a small difference of three large face terms. The log line of
+	! every column reports both measures. It is REJECTED, in the order the
+	! tests are made, when
+	!   linear_solve   the banded LU of the Jacobian fails (col_cell: the
+	!                  unknown of the zero pivot);
+	!   nonfinite      a residual, a step or a term of the final rows is not
+	!                  a finite number (col_cell: the first such unknown);
+	!   non_positive_T a temperature of the result is not positive;
+	!   residual_above_tolerance  the test above fails (col_cell: the unknown
+	!                  with the largest |R|/(atol_E + rtol_E S_E)).
+	! NO TEMPERATURE BAND. Until 2026-10-01 a result outside 0.5 to 2 times
+	! the run's own temperature was rejected when metal cooling is on. That
+	! band guards the cell-by-cell Brent solve (energy_step) against the
+	! spurious hot root of the non-monotone metal-cooled residual, and that
+	! solve keeps it. Applied to the conduction-coupled column it refused a
+	! root of the corrected equation: MEASURED on the molecular
+	! photochemical conduction state, cell 437 (10.35 R_p) at 2445 K against
+	! the run's 1218 K closed to 9.5e-12 of its largest term, compression
+	! work against photoheating and conduction with the cooling four orders
+	! below them (md/Update_EXHALE_stage3.md section 55).
+	! THE CELLS THE MARCHING STEP FOUND NO ROOT FOR are unknowns too. The
+	! cell-by-cell energy step brackets its root in [0.05, 4] T_in (Brent)
+	! or refuses a root outside [0.5, 2] T_in (the metal-cooled residual),
+	! guards of that one-cell solve against the spurious hot root. Where the
+	! conduction-coupled column puts the root outside them, the cell has no
+	! marching root although the column has one: MEASURED on the molecular
+	! photochemical conduction state, three cells at 24.5 to 28.5 R_p with
+	! their column root at 4.0 to 4.3 T_in. Such a cell starts from the run's
+	! own temperature, the residual test decides it with the rest, and a
+	! converged column writes it adv_corrected; the record counts them
+	! (cells_marching_unrooted). EXHALE_ADV_COLUMN_EXCLUDE_UNROOTED=1 makes
+	! them fixed values again (measurement only).
+	! A rejected solve returns the marching profile of the pass, and EVERY
+	! unknown of the rejected set is written adv_failed: the coupled solve
+	! failed as one, so no row of it carries a correction the solve
+	! produced.
 	integer, parameter :: kl = 2, ku = 1, ldab = 2*kl + ku + 1
 	integer, parameter :: it_max = 100
 	integer, allocatable :: cells(:), pos(:), ipiv_c(:)
 	real*8,  allocatable :: ab_c(:,:), g0(:), dT(:)
-	integer :: nc, i, m, jr, it, info_c, jm
-	real*8  :: h, gp, lam_c, dmax
-	logical :: bad
+	integer :: nc, i, m, jr, it, info_c
+	real*8  :: h, gp, lam_c, dmax, step_rel
+	! The energy row of the worst unknown (energy_row_terms_of_cell), at the
+	! column's temperature and with that cell at the run's own, printed
+	! when the residual test rejects the column.
+	real*8  :: row_terms_rejected(n_row_terms), row_terms_run_T(n_row_terms)
+	real*8  :: T_keep
+	! The residual test of the final rows: the terms of one row, its
+	! grouped terms, S_E, sum |terms|, |R| and its tolerance; the measure
+	! of the rounding floor, |R|/(eps sum|terms|), of every unknown (with
+	! and without the two halves of the advective difference in the sum).
+	real*8  :: row_t(n_row_terms), row_g(n_row_groups)
+	real*8  :: S_E, sum_abs, R_abs, tol_cell, q_cell, q_worst
+	real*8, allocatable :: floor_units(:), floor_units_raw(:)
+	integer :: i_worst
+	! Newton steps taken after the step test was first met.
+	integer :: n_floor_steps
 	nc = 0
 	allocate(pos(1-Ng:N+Ng));  pos = 0
+	! The unknowns: the cells the marching sweep corrected and, unless
+	! adv_column_exclude_unrooted, the cells whose marching energy step
+	! found no admissible root (adv_failed at this point; see the
+	! statement at the top of the routine), counted apart.
+	n_col_unrooted = 0
 	do jr = 3-Ng, N+Ng
-		if (adv_T_status(jr) .eq. adv_corrected) then
+		if (adv_T_status(jr) .eq. adv_corrected .or.                     &
+		    (.not. adv_column_exclude_unrooted .and.                      &
+		     adv_T_status(jr) .eq. adv_failed)) then
 			nc = nc + 1;  pos(jr) = nc
+			if (adv_T_status(jr) .eq. adv_failed .and. jr .ge. 1 .and.    &
+			    jr .le. N) n_col_unrooted = n_col_unrooted + 1
 		endif
 	enddo
 	n_col_newton_it = 0
 	col_newton_step = 0.0d0
+	col_outcome     = adv_col_not_run
+	col_reason      = adv_col_reason_none
+	col_cell        = 0
+	! The census counts physical cells only: the upper ghost rows the sweep
+	! reaches are unknowns of the solve but not cells of the column.
+	col_unknowns    = count(pos(1:N) .gt. 0)
 	if (nc .eq. 0) then
 		deallocate(pos);  return
 	endif
@@ -2352,12 +2737,19 @@
 	enddo
 	pp_T_march = T_out
 	pp_newton_mode = .true.
-	bad = .false.
+	col_bad = .false.
+	n_floor_steps = 0
 	do it = 1, it_max
 		call transport_terms_of_profile(T_out)
 		do i = 1, nc
 			g0(i) = energy_residual_of_cell(cells(i))
 		enddo
+		do i = 1, nc
+			if (.not. ieee_is_finite(g0(i))) then
+				call reject_column(adv_col_reason_nonfinite, cells(i));  exit
+			endif
+		enddo
+		if (col_bad) exit
 		ab_c = 0.0d0
 		do i = 1, nc
 			m = cells(i)
@@ -2375,8 +2767,21 @@
 		dT = -g0
 		call dgbsv(nc, kl, ku, 1, ab_c, ldab, ipiv_c, dT, nc, info_c)
 		if (info_c .ne. 0) then
-			bad = .true.;  exit
+			! info_c > 0 is the zero pivot U(info_c,info_c); info_c < 0 an
+			! illegal argument, which names no cell.
+			if (info_c .gt. 0) then
+				call reject_column(adv_col_reason_linear_solve, cells(info_c))
+			else
+				call reject_column(adv_col_reason_linear_solve, 0)
+			endif
+			exit
 		endif
+		do i = 1, nc
+			if (.not. ieee_is_finite(dT(i))) then
+				call reject_column(adv_col_reason_nonfinite, cells(i));  exit
+			endif
+		enddo
+		if (col_bad) exit
 		lam_c = 1.0d0
 		do i = 1, nc
 			m = cells(i)
@@ -2387,32 +2792,354 @@
 		do i = 1, nc
 			m = cells(i)
 			T_out(m) = T_out(m) + lam_c*dT(i)
-			dmax = max(dmax, abs(lam_c*dT(i))/max(T_out(m), 1.0d-30))
+			step_rel = abs(lam_c*dT(i))/max(T_out(m), 1.0d-30)
+			if (step_rel .gt. dmax) then
+				dmax = step_rel
+			endif
 		enddo
 		n_col_newton_it = it
 		col_newton_step = dmax
-		if (dmax .lt. 1.0d-10) exit
-	enddo
-	do i = 1, nc
-		m = cells(i)
-		if (.not. (T_out(m) .gt. 0.0d0)) bad = .true.
-		if (pp_metal_on) then
-			if (T_out(m) .gt. 2.0d0*T_in(m) .or. T_out(m) .lt. 0.5d0*T_in(m)) &
-				bad = .true.
+		if (dmax .lt. 1.0d-10) then
+			! The measurement-only continuation (adv_column_floor_it).
+			n_floor_steps = n_floor_steps + 1
+			if (n_floor_steps .gt. adv_column_floor_it) exit
 		endif
 	enddo
-	if (col_newton_step .ge. 1.0d-10) bad = .true.
-	if (bad) then
+	if (.not. col_bad) then
+		do i = 1, nc
+			if (.not. ieee_is_finite(T_out(cells(i)))) then
+				call reject_column(adv_col_reason_nonfinite, cells(i))
+				exit
+			endif
+			if (.not. (T_out(cells(i)) .gt. 0.0d0)) then
+				call reject_column(adv_col_reason_non_positive_T, cells(i))
+				exit
+			endif
+		enddo
+	endif
+	! THE RESIDUAL OF THE FINAL ROWS (the statement at the top of the
+	! routine), with the transport terms of the final profile.
+	if (.not. col_bad) then
+		call transport_terms_of_profile(T_out)
+		allocate(floor_units(nc), floor_units_raw(nc))
+		q_worst = -1.0d0
+		i_worst = 1
+		do i = 1, nc
+			call energy_row_terms_of_cell(cells(i), row_t)
+			call energy_row_grouped_terms(row_t, row_g, S_E, sum_abs)
+			R_abs = abs(row_t(11))
+			if (.not. (ieee_is_finite(R_abs) .and. ieee_is_finite(sum_abs))) then
+				call reject_column(adv_col_reason_nonfinite, cells(i))
+				exit
+			endif
+			tol_cell = 10.0d0*epsilon(1.0d0)*(sum_abs + abs(row_t(12))       &
+			           + abs(row_t(13)) + row_t(14)) + cert_tol_energy*S_E
+			q_cell   = R_abs/max(tol_cell, tiny(1.0d0))
+			floor_units(i)     = R_abs/max(epsilon(1.0d0)*sum_abs, tiny(1.0d0))
+			floor_units_raw(i) = R_abs/max(epsilon(1.0d0)*(sum_abs           &
+			                     + abs(row_t(12)) + abs(row_t(13)) + row_t(14)),  &
+			                     tiny(1.0d0))
+			if (q_cell .gt. q_worst) then
+				q_worst = q_cell;  i_worst = i
+				col_worst_cell    = cells(i)
+				col_worst_R       = R_abs
+				col_worst_rel     = R_abs/max(S_E, tiny(1.0d0))
+				col_worst_tol_rel = tol_cell/max(S_E, tiny(1.0d0))
+			endif
+		enddo
+		if (.not. col_bad) then
+			call write_rounding_floor_measure(floor_units, floor_units_raw)
+			if (q_worst .gt. 1.0d0)                                         &
+				call reject_column(adv_col_reason_residual_above_tolerance,   &
+				                   cells(i_worst))
+		endif
+		deallocate(floor_units, floor_units_raw)
+	endif
+	! The measurement-only rejection (adv_test_reject_reason).
+	if (.not. col_bad .and. adv_test_reject_reason .gt. adv_col_reason_none)    &
+		call reject_column(adv_test_reject_reason, cells(1))
+	! THE ENERGY ROW OF THE CELL THE RESIDUAL TEST REJECTS, term by term, at
+	! the temperature the column solve returned and with that cell at the
+	! run's own temperature (the rest of the profile at the solve's), so a
+	! reader can see which terms fail to balance. Printed only.
+	if (col_bad .and. col_reason .eq. adv_col_reason_residual_above_tolerance &
+	    .and. col_cell .ge. 1 .and. col_cell .le. N+Ng) then
+		call transport_terms_of_profile(T_out)
+		call energy_row_terms_of_cell(col_cell, row_terms_rejected)
+		T_keep = T_out(col_cell)
+		T_out(col_cell) = T_in(col_cell)
+		call transport_terms_of_profile(T_out)
+		call energy_row_terms_of_cell(col_cell, row_terms_run_T)
+		T_out(col_cell) = T_keep
+		call write_energy_row_terms(col_cell, row_terms_rejected,        &
+		                            row_terms_run_T)
+	endif
+	! Every unknown of a column that converges is a corrected cell, the
+	! cells whose marching step found no root included: the column
+	! supplied their root.
+	if (.not. col_bad) then
+		do i = 1, nc
+			adv_T_status(cells(i)) = adv_corrected
+		enddo
+	endif
+	if (col_bad) then
 		T_out = pp_T_march
-		n_col_newton_fail = n_col_newton_fail + 1
+		do i = 1, nc
+			adv_T_status(cells(i)) = adv_failed
+		enddo
+		col_outcome = adv_col_rejected
+		n_col_passes_rejected = n_col_passes_rejected + 1
+	else
+		col_outcome = adv_col_converged_on_residual
 	endif
 	pp_newton_mode = .false.
-	write(*,'(A,I0,A,I0,A,ES10.3,A,L1)') ' (post_process_adv) transport'//&
-	     ' terms: column solve of ', nc, ' corrected cells, ',             &
+	write(*,'(A,I0,A,I0,A,I0,A,I0,A,ES10.3,A,L1,A,A,A,A,A,I0,A)')          &
+	     ' (post_process_adv) transport terms: column solve of ',          &
+	     col_unknowns, ' cells (', n_col_unrooted, ' with no marching'//   &
+	     ' root; and ', nc - col_unknowns, ' ghost rows), ',              &
 	     n_col_newton_it, ' iterations, last relative step ',              &
-	     col_newton_step, '; marching profile kept: ', bad
+	     col_newton_step, '; marching profile kept: ', col_bad, ' (',          &
+	     trim(adv_column_outcome_name(col_outcome)), ', reason ',          &
+	     trim(adv_column_reason_name(col_reason)), ', cell ', col_cell, ')'
+	if (col_worst_cell .ne. 0)                                             &
+		write(*,'(A,I0,A,F9.5,A,ES10.3,A,ES10.3,A,ES10.3,A)')              &
+		     '   worst energy row: cell ', col_worst_cell, ' (r = ',        &
+		     r(col_worst_cell), ' Rp), |R| = ', col_worst_R,                &
+		     ' erg cm^-3 s^-1, |R|/S_E = ', col_worst_rel,                  &
+		     ' against the tolerance ', col_worst_tol_rel,                  &
+		     ' (atol_E/S_E + cert_tol_energy)'
+	if (col_bad .and. col_cell .ge. 1-Ng .and. col_cell .le. N+Ng)         &
+		write(*,'(A,I0,A,F9.5,A,ES12.5,A,ES12.5,A)') '   cell ', col_cell,   &
+		     ' at r = ', r(col_cell), ' Rp: T = ', col_T_trigger*T0,       &
+		     ' K at the rejection, the run''s own T = ', T_in(col_cell)*T0, ' K'
 	deallocate(pos, cells, ipiv_c, ab_c, g0, dT)
 	end subroutine energy_column_newton
+
+	subroutine energy_row_terms_of_cell(jc, terms)
+	! THE ENERGY ROW OF CELL jc TERM BY TERM [erg cm^-3 s^-1], at the
+	! current profile T_out and the transport coefficients of the last
+	! transport_terms_of_profile. The residual of T_equation is the row
+	! multiplied by mup*mum*dr_step in code units, so every term below is
+	! q0 * (its part of fvec)/(mup*mum*dr_step), the sign of each as it
+	! stands in the equation
+	!     rho v de/dr - p v dln(rho)/dr + h div(rho v)
+	!       = heating + conduction + enthalpy divergences - cooling .
+	!   terms(1)  T [K]
+	!   terms(2)  rho v de/dr, the advective term
+	!   terms(3)  -p v dln(rho)/dr, the compression term of the residual
+	!   terms(4)  h div(rho v), the enthalpy flux of the mass divergence
+	!   terms(5)  p div(v) = terms(3) + (p/rho) div(rho v)
+	!   terms(6)  photoheating
+	!   terms(7)  radiative cooling
+	!   terms(8)  heat conduction divergence, entered as heating
+	!   terms(9)  enthalpy flux divergence of the element fluxes (heating)
+	!   terms(10) enthalpy flux divergence of the carrier fluxes (heating)
+	!   terms(11) the residual of the row, left side minus right side
+	!   terms(12) rho v e_j, the first half of the advective difference
+	!   terms(13) rho v e_hist, its second half (terms(2) = 12 - 13, over
+	!             the step width): the two numbers whose difference the
+	!             rounding of the advective term is set by
+	!   terms(14) |c_lo T_below| + |c_di T| + |c_up T_above|, the magnitudes
+	!             of the three parts the conduction divergence is the sum of
+	!             (the face fluxes whose difference sets its rounding)
+	! The cooling is the remainder of the residual T_equation returns once
+	! the other terms are taken out, which is the cooling that equation
+	! holds; its rounding is that of the largest term.
+	integer, intent(in) :: jc
+	real*8,  intent(out) :: terms(n_row_terms)
+	real*8 :: fv, Mw, Tc, e_c, T_below, T_above, cond
+	fv = energy_residual_of_cell(jc)
+	Mw = teq_cell%mup*teq_cell%mum*teq_cell%dr_step
+	Tc = T_out(jc)
+	e_c = internal_energy_of_mixture(teq_cell%x_h2, Tc)
+	if (jc .eq. 1) then
+		T_below = pp_T_bath
+	else
+		T_below = T_out(jc-1)
+	endif
+	T_above = 0.0d0
+	if (jc .lt. N+Ng) T_above = T_out(jc+1)
+	cond = 0.0d0
+	terms(14) = 0.0d0
+	if (jc .ge. 1 .and. jc .le. N) then
+		cond = pp_cond_lo(jc)*T_below + pp_cond_up(jc)*T_above             &
+		     + pp_cond_di(jc)*Tc
+		terms(14) = abs(pp_cond_lo(jc)*T_below) + abs(pp_cond_up(jc)*T_above) &
+		          + abs(pp_cond_di(jc)*Tc)
+	endif
+	terms(1)  = Tc*T0
+	terms(2)  = (teq_cell%mum*teq_cell%rhov*e_c                          &
+	           - teq_cell%mup*teq_cell%mum*teq_cell%rhov*teq_cell%e_hist)/Mw
+	terms(3)  = -teq_cell%coeff*Tc/Mw
+	terms(4)  = teq_cell%mum*teq_cell%dr_step*teq_cell%div_rhov*(e_c + Tc)/Mw
+	terms(5)  = terms(3) + teq_cell%div_rhov*Tc/teq_cell%mup
+	terms(6)  = teq_cell%heaold
+	terms(8)  = cond
+	terms(9)  = pp_heat_elem(jc)
+	terms(10) = pp_heat_carr(jc)
+	terms(11) = fv/Mw
+	terms(7)  = terms(11) - terms(2) - terms(3) - terms(4)                &
+	          + terms(6) + terms(8) + terms(9) + terms(10)
+	terms(12) = teq_cell%mum*teq_cell%rhov*e_c/Mw
+	terms(13) = teq_cell%mup*teq_cell%mum*teq_cell%rhov*teq_cell%e_hist/Mw
+	terms(2:14) = terms(2:14)*q0
+	end subroutine energy_row_terms_of_cell
+
+	subroutine energy_row_grouped_terms(terms, grouped, S_E, sum_abs)
+	! THE PHYSICALLY GROUPED TERMS OF ONE ENERGY ROW (terms of
+	! energy_row_terms_of_cell), whose signed sum is the residual:
+	!     div(rho e v) + p div(v) - heating + cooling - conduction
+	!       - element enthalpy - carrier enthalpy = R ,
+	! with div(rho e v) = rho v de/dr + e div(rho v) the advective energy
+	! divergence as ONE term (the three terms of the residual regrouped:
+	! h div(rho v) = e div(rho v) + (p/rho) div(rho v), and p div(v) =
+	! -p v dln(rho)/dr + (p/rho) div(rho v)). S_E is the largest magnitude
+	! among them and sum_abs the sum of their magnitudes.
+	real*8, intent(in)  :: terms(n_row_terms)
+	real*8, intent(out) :: grouped(n_row_groups), S_E, sum_abs
+	grouped(1) = terms(2) + terms(3) + terms(4) - terms(5)
+	grouped(2) = terms(5)
+	grouped(3) = terms(6)
+	grouped(4) = terms(7)
+	grouped(5) = terms(8)
+	grouped(6) = terms(9)
+	grouped(7) = terms(10)
+	S_E     = maxval(abs(grouped))
+	sum_abs = sum(abs(grouped))
+	end subroutine energy_row_grouped_terms
+
+	subroutine write_rounding_floor_measure(fu, fu_raw)
+	! THE ROUNDING FLOOR OF THE FINAL ROWS, in units of eps sum|terms|: the
+	! measurement that anchors the margin 10 of atol_E (energy_column_newton).
+	! Printed for every column: the largest, the median and how many of
+	! the unknowns exceed 1, 3 and 10; and the largest and the median when
+	! the parts the row is assembled from are added to the sum: the two
+	! halves of the advective difference and the three parts of the
+	! conduction divergence (the floor of a row whose terms are small
+	! differences of large ones).
+	real*8, intent(in) :: fu(:), fu_raw(:)
+	real*8, allocatable :: srt(:), srt_raw(:)
+	integer :: n
+	n = size(fu)
+	allocate(srt(n), srt_raw(n))
+	srt = fu;  srt_raw = fu_raw
+	call sort_ascending(srt)
+	call sort_ascending(srt_raw)
+	write(*,'(A,I0,A,ES10.3,A,ES10.3,A,3(I0,A))')                          &
+	     '   rounding floor |R|/(eps sum|terms|) over the ', n,             &
+	     ' unknowns: max ', srt(n), ', median ', srt((n+1)/2),              &
+	     '; above 1 / 3 / 10: ', count(fu .gt. 1.0d0), ' / ',              &
+	     count(fu .gt. 3.0d0), ' / ', count(fu .gt. 1.0d1), ''
+	write(*,'(A,ES10.3,A,ES10.3,A,3(I0,A))')                              &
+	     '   the same with the advective halves and the conduction parts'//  &
+	     ' in the sum: max ', srt_raw(n), ', median ', srt_raw((n+1)/2),    &
+	     '; above 1 / 3 / 10: ', count(fu_raw .gt. 1.0d0), ' / ',          &
+	     count(fu_raw .gt. 3.0d0), ' / ', count(fu_raw .gt. 1.0d1), ''
+	deallocate(srt, srt_raw)
+	end subroutine write_rounding_floor_measure
+
+	subroutine sort_ascending(x)
+	! Insertion sort in place (the columns hold a few hundred unknowns).
+	real*8, intent(inout) :: x(:)
+	real*8  :: v
+	integer :: a, b
+	do a = 2, size(x)
+		v = x(a);  b = a - 1
+		do while (b .ge. 1)
+			if (x(b) .le. v) exit
+			x(b+1) = x(b);  b = b - 1
+		enddo
+		x(b+1) = v
+	enddo
+	end subroutine sort_ascending
+
+	subroutine write_energy_row_terms(jc, t_rej, t_run)
+	! The two sets of terms of energy_row_terms_of_cell, side by side, and
+	! each residual against S_E, the largest of its grouped terms
+	! (energy_row_grouped_terms).
+	integer, intent(in) :: jc
+	real*8,  intent(in) :: t_rej(n_row_terms), t_run(n_row_terms)
+	character(len=44), parameter :: lbl(2:11) = [character(len=44) ::    &
+	     'rho v de/dr (advective)', '-p v dln(rho)/dr (compression)',     &
+	     'h div(rho v) (mass divergence)', 'p div(v) (= compression + p/rho div(rho v))', &
+	     'photoheating', 'radiative cooling, net (enters with -)',       &
+	     'conduction divergence (as heating)',                            &
+	     'element enthalpy divergence (as heating)',                      &
+	     'carrier enthalpy divergence (as heating)', 'residual of the row']
+	integer :: it
+	real*8  :: g_rej(n_row_groups), g_run(n_row_groups)
+	real*8  :: S_rej, S_run, sa_rej, sa_run
+	write(*,'(A,I0,A,F9.5,A)') '   energy row of cell ', jc, ' (r = ',     &
+	     r(jc), ' Rp) [erg cm^-3 s^-1], R = q0 fvec/(mup mum dr_step):'
+	write(*,'(5X,A44,2(1X,A13))') ' ', 'column T', 'run''s own T'
+	write(*,'(5X,A44,2(1X,ES13.5))') 'T [K]', t_rej(1), t_run(1)
+	do it = 2, 11
+		write(*,'(5X,A44,2(1X,ES13.5))') lbl(it), t_rej(it), t_run(it)
+	enddo
+	call energy_row_grouped_terms(t_rej, g_rej, S_rej, sa_rej)
+	call energy_row_grouped_terms(t_run, g_run, S_run, sa_run)
+	write(*,'(5X,A44,2(1X,ES13.5))') 'div(rho e v) (advective, one term)',   &
+	     g_rej(1), g_run(1)
+	write(*,'(5X,A44,2(1X,ES13.5))') '|residual| / S_E (largest grouped term)', &
+	     abs(t_rej(11))/max(S_rej, 1.0d-300),                             &
+	     abs(t_run(11))/max(S_run, 1.0d-300)
+	end subroutine write_energy_row_terms
+
+	subroutine reject_column(reason, cell)
+	! The first test the column solve fails names the reason and the cell
+	! (energy_column_newton); the solve reads col_bad.
+	integer, intent(in) :: reason, cell
+	col_bad    = .true.
+	col_reason = reason
+	col_cell   = cell
+	! The temperature of that cell at the rejection, for the log.
+	col_T_trigger = 0.0d0
+	if (cell .ge. 1-Ng .and. cell .le. N+Ng) col_T_trigger = T_out(cell)
+	end subroutine reject_column
+
+	subroutine read_test_reject_reason()
+	! EXHALE_ADV_TEST_REJECT (see adv_test_reject_reason): the reason by
+	! its name, or none. A value that names no reason stops the run, since
+	! a measurement that silently did not take place is worse than none.
+	! The two column measurement keys (adv_column_floor_it,
+	! adv_column_exclude_unrooted) are read here too.
+	character(len=64) :: env_value
+	integer :: ir, ios_key
+	adv_test_reject_reason = adv_col_reason_none
+	call get_environment_variable('EXHALE_ADV_COLUMN_FLOOR_IT', env_value)
+	if (len_trim(env_value) .gt. 0) then
+		read(env_value, *, iostat=ios_key) adv_column_floor_it
+		if (ios_key .ne. 0 .or. adv_column_floor_it .lt. 0) then
+			write(*,'(A,A)') ' (post_process_adv) EXHALE_ADV_COLUMN_FLOOR_IT=', &
+			     trim(env_value)//' is not a nonnegative integer.'
+			error stop 1
+		endif
+		write(*,'(A,I0,A)') ' (post_process_adv) EXHALE_ADV_COLUMN_FLOOR_IT=', &
+		     adv_column_floor_it, ': further Newton steps after the step'//   &
+		     ' test (measurement only).'
+	endif
+	call get_environment_variable('EXHALE_ADV_COLUMN_EXCLUDE_UNROOTED', env_value)
+	adv_column_exclude_unrooted = (trim(env_value) .eq. '1')
+	if (adv_column_exclude_unrooted)                                      &
+		write(*,'(A)') ' (post_process_adv) EXHALE_ADV_COLUMN_EXCLUDE_UNROOTED=1:'//&
+		     ' cells the marching energy step found no root for are fixed'//  &
+		     ' values of the column (measurement only).'
+	call get_environment_variable('EXHALE_ADV_TEST_REJECT', env_value)
+	if (len_trim(env_value) .eq. 0) return
+	do ir = adv_col_reason_linear_solve, adv_col_reason_residual_above_tolerance
+		if (trim(env_value) .eq. trim(adv_column_reason_name(ir))) then
+			adv_test_reject_reason = ir
+			write(*,'(A,A,A)') ' (post_process_adv) EXHALE_ADV_TEST_REJECT=', &
+			     trim(env_value), ': every column energy solve is'//         &
+			     ' rejected with this reason (measurement only).'
+			return
+		endif
+	enddo
+	write(*,'(A,A,A)') ' (post_process_adv) EXHALE_ADV_TEST_REJECT=',       &
+	     trim(env_value), ' names no rejection reason (linear_solve,'//      &
+	     ' nonfinite, non_positive_T, residual_above_tolerance).'
+	error stop 1
+	end subroutine read_test_reject_reason
 
 	! End of subroutine
 	end subroutine post_process_adv

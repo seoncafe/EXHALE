@@ -203,10 +203,13 @@
    !                     do not belong to one discretization, and a changed
    !                     Jupiter radius is a changed physical grid; a
    !                     conservative remap is a separate workflow.
-   !   options           compared EXACTLY. The tokens are the switches that
-   !                     decide WHICH EQUATIONS the state solves, so a
-   !                     difference means the file's state is a solution of
-   !                     another system.
+   !   options           compared EXACTLY, token by token
+   !                     (compare_options_field). The tokens are the
+   !                     switches that decide WHICH EQUATIONS the state
+   !                     solves, so a difference means the file's state is a
+   !                     solution of another system; the one reading that is
+   !                     not a text comparison is a legacy F7.5 continuation
+   !                     factor, which states an interval of factors.
    !   species_columns   reported, not refused: the loader maps species by
    !                     the label on the '# columns' line, and an element
    !                     the file does not carry is built from the abundance
@@ -261,6 +264,13 @@
    ! new state's block, so a rung of a ladder states what it was reached
    ! from instead of the change being silent.
    integer, parameter :: n_opt = 23
+   ! THE LENGTH OF ONE TOKEN'S VALUE, the same on every path the value
+   ! takes: the writer (opt_value), the reader (opt_field_value), the
+   ! comparison (compare_options_field) and the value a token has in a file
+   ! written before the token existed (opt_value_when_absent). The longest
+   ! value written is a continuation factor, the 23 characters of ES23.16E3
+   ! (factor_token_text); a longer value in a file is refused, never cut.
+   integer, parameter :: opt_value_len = 32
    character(len=16), parameter :: opt_name(n_opt) = [ character(len=16) :: &
         'He23S', 'metals', 'eos_metals', 'mol', 'molbase', 'oxychem',       &
         'carrier', 'carrier_newton', 'iontrans', 'he_diff',                 &
@@ -322,10 +332,35 @@
    ! as F; so does carrier_enth (the enthalpy flux of the transported
    ! carriers, 2026-09-29). An empty entry means the token has always been written, and its
    ! absence from a file of this schema is refused as before.
-   character(len=8), parameter :: opt_value_when_absent(n_opt) = [          &
-        character(len=8) ::                                                 &
+   character(len=opt_value_len), parameter ::                               &
+        opt_value_when_absent(n_opt) = [ character(len=opt_value_len) ::    &
         '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '',     &
         '', '', '', '', '', 'F', 'F' ]
+   ! THE TOKENS THAT CARRY A CONTINUATION FACTOR. cond and interdiff_enth
+   ! state T for the equation, F for no term, and the factor s itself where
+   ! 0 <= s < 1 (conduction_scale, interdiffusion_enthalpy_scale; the two
+   ! functions refuse a factor outside [0, 1]). The factor is written
+   ! ES23.16E3 (factor_token_text): seventeen significant digits, so two
+   ! different factors are two different tokens and the text reads back as
+   ! the same double. The files written from 2026-09-29 until the factor
+   ! was written this way carry it F7.5 ('0.50000'), which maps every
+   ! factor of an interval 1e-5 wide onto one token; such a LEGACY token is
+   ! recognized for these two tokens only (factor_token_kind) and compared
+   ! as the interval it stands for (compare_options_field).
+   logical, parameter :: opt_is_continuation_factor(n_opt) = [              &
+        .false., .false., .false., .false., .false., .false.,               &
+        .false., .false., .false., .false.,                                 &
+        .false., .false., .false., .false., .false.,                        &
+        .false., .false., .false., .true.,  .false., .false.,               &
+        .true.,  .false. ]
+   ! Half the width of the rounding interval of a legacy F7.5 token: F7.5
+   ! writes v for every factor s with |s - v| <= 5e-6.
+   real*8, parameter :: legacy_factor_half_width = 5.0d-6
+   ! What factor_token_kind finds a factor token's value to be.
+   integer, parameter :: factor_kind_malformed = 0
+   integer, parameter :: factor_kind_switch    = 1
+   integer, parameter :: factor_kind_exact     = 2
+   integer, parameter :: factor_kind_legacy    = 3
    ! The tokens the input named as allowed to differ, set by input_read
    ! from "Restart option change:" (which is where an unknown token and a
    ! layout token are refused, the input file being what states them).
@@ -348,6 +383,11 @@
    logical :: ic_option_change_inert   = .false.
    ! Did the load change the ROUTE, that is the carrier_newton token?
    logical :: ic_route_change_applied  = .false.
+   ! Did the load read a legacy factor token as a change of representation
+   ! only (the requested factor inside the token's rounding interval)? The
+   ! state then loads as a seed and its inherited claim is dropped
+   ! (legacy_factor_token).
+   logical :: ic_legacy_factor_migrated = .false.
    ! THE ROUTE THAT PRODUCED THE STATE THIS RUN WRITES. True once the
    ! transported balances are unknowns of the Newton vector: from the first
    ! pass under "Coupled carrier solve: True" (carrier_in_newton), or from
@@ -631,6 +671,14 @@
       if (ic_option_change_applied .and. ic_certified) then
          ic_certified   = .false.
          ic_cert_reason = 'option_change_seed'
+      endif
+      ! A legacy factor token names an interval of factors and not the one
+      ! the state was solved at, so the state is not known to be a solution
+      ! of this run's equations even where the requested factor lies inside
+      ! that interval: it loads as a seed, and the claim is not carried.
+      if (ic_legacy_factor_migrated .and. ic_certified) then
+         ic_certified   = .false.
+         ic_cert_reason = 'legacy_factor_token'
       endif
 
       composition_changed_here = .false.
@@ -1535,6 +1583,7 @@
       ! text is compared as the number it stands for.
       character(len=meta_len), intent(out) :: blk(n_meta)
       character(len=meta_len) :: s
+      character(len=opt_value_len) :: val
       integer :: e, i, ncol
       blk = ''
 
@@ -1619,10 +1668,20 @@
       ! The names come from opt_name and the values from opt_value, so the
       ! vocabulary the comparison and the input key use is the vocabulary
       ! the field is written with.
+      ! The field is held to meta_len characters, and a token that would not
+      ! fit stops the run instead of being cut off the end of the field.
       blk(imeta_options) = trim(meta_tag(imeta_options))
       do i = 1, n_opt
+         val = opt_value(opt_name(i))
+         if (len_trim(blk(imeta_options)) + len_trim(opt_name(i)) +        &
+             len_trim(val) + 2 .gt. meta_len) then
+            write(*,'(A,I0,A)') ' (load_IC) ERROR: the options field'//    &
+                 ' does not hold its token "'//trim(opt_name(i))//         &
+                 '" within ', meta_len, ' characters.'
+            error stop 1
+         endif
          blk(imeta_options) = trim(blk(imeta_options))//' '//              &
-              trim(opt_name(i))//'='//trim(opt_value(opt_name(i)))
+              trim(opt_name(i))//'='//trim(val)
       enddo
 
       ! The clock of the state. Zero, and meaningless, for a state written
@@ -1685,7 +1744,7 @@
 
       !-------------------------------------!
 
-      character(len=8) function opt_value(name)
+      character(len=opt_value_len) function opt_value(name)
       ! THE VALUE OF ONE OPTION TOKEN, one statement per token. The names
       ! live in opt_name and the values here, so a token that has a name
       ! and no value stops the run the first time a state file is written,
@@ -1714,11 +1773,12 @@
       case ('visc');           opt_value = tf(visc_on)
       ! A continuation factor s /= 1 on the conductivity
       ! (EXHALE_CONDUCTION_SCALE, conduction_scale) is another energy
-      ! equation: the token then carries s itself (F7.5) in place of T.
+      ! equation: the token then carries s itself (factor_token_text) in
+      ! place of T.
       case ('cond')
          opt_value = tf(cond_on)
          if (cond_on .and. conduction_scale() .ne. 1.0d0)                  &
-            write(opt_value,'(F7.5)') conduction_scale()
+            opt_value = factor_token_text(conduction_scale())
       case ('jlya');           write(opt_value,'(I0)') jlya_mode
       case ('wellbal');        opt_value = tf(well_balanced)
       ! The interdiffusion enthalpy flux enters the equations only where the
@@ -1727,14 +1787,14 @@
       ! the key: a run without He_diffusion writes F whatever the key says.
       ! A continuation factor s /= 1 on the term (EXHALE_INTERDIFF_ENTH_SCALE,
       ! interdiffusion_enthalpy_scale) is another energy equation, so the
-      ! token then carries s itself (F7.5) in place of T: a state of a
-      ! continuation step can never be read as one of the model.
+      ! token then carries s itself (factor_token_text) in place of T: a
+      ! state of a continuation step can never be read as one of the model.
       case ('interdiff_enth')
          opt_value = tf(he_diffusion .and. thereis_He                      &
                         .and. interdiffusion_enthalpy_flux)
          if (opt_value .eq. 'T' .and.                                       &
              interdiffusion_enthalpy_scale() .ne. 1.0d0)                    &
-            write(opt_value,'(F7.5)') interdiffusion_enthalpy_scale()
+            opt_value = factor_token_text(interdiffusion_enthalpy_scale())
       ! The enthalpy flux of the molecular carriers enters where they are
       ! transported (diffusive_photochemistry, carrier_enthalpy_active: the
       ! molecular carriers are solved exactly when the network exists and
@@ -1751,14 +1811,17 @@
 
       !-------------------------------------!
 
-      character(len=16) function opt_field_value(s, name)
+      character(len=opt_value_len) function opt_field_value(s, name)
       ! The value of '<name>=' in an options field, or '<absent>' when the
-      ! field does not carry that token at all. Every token of the field is
-      ! preceded by a blank (the field begins with its own tag), so the
-      ! search is for ' <name>=' and 'mol=' cannot be found inside
-      ! 'mol_ir=' or 'carrier=' inside 'carrier_newton='.
+      ! field does not carry that token at all, or '<overlong>' when its
+      ! value is longer than opt_value_len (which compare_options_field
+      ! refuses: a value cut to the length of the variable could equal
+      ! another value). Every token of the field is preceded by a blank (the
+      ! field begins with its own tag), so the search is for ' <name>=' and
+      ! 'mol=' cannot be found inside 'mol_ir=' or 'carrier=' inside
+      ! 'carrier_newton='.
       character(len=*), intent(in) :: s, name
-      integer :: p, q
+      integer :: p, q, e
       opt_field_value = '<absent>'
       p = index(s, ' '//trim(name)//'=')
       if (p .le. 0) return
@@ -1766,11 +1829,86 @@
       if (p .gt. len_trim(s)) return
       q = index(trim(s(p:)), ' ')
       if (q .le. 0) then
-         opt_field_value = adjustl(s(p:len_trim(s)))
+         e = len_trim(s)
       else
-         opt_field_value = adjustl(s(p:p+q-2))
+         e = p + q - 2
+      endif
+      if (e - p + 1 .gt. opt_value_len) then
+         opt_field_value = '<overlong>'
+      else
+         opt_field_value = adjustl(s(p:e))
       endif
       end function opt_field_value
+
+      !-------------------------------------!
+
+      character(len=opt_value_len) function factor_token_text(s)
+      ! The text of a continuation factor 0 <= s < 1 in the options field.
+      ! ES23.16E3 carries seventeen significant digits, so two different
+      ! doubles give two different texts and the text reads back as the
+      ! same double; the field is exactly wide enough for s >= 0, and
+      ! adjustl keeps the token free of blanks whatever the processor pads.
+      real*8, intent(in) :: s
+      write(factor_token_text,'(ES23.16E3)') s
+      factor_token_text = adjustl(factor_token_text)
+      end function factor_token_text
+
+      !-------------------------------------!
+
+      integer function factor_token_kind(text, s)
+      ! WHAT THE VALUE OF A FACTOR TOKEN (cond, interdiff_enth) IS, and the
+      ! factor it states:
+      !   factor_kind_switch    T (the equation, s = 1) or F (no term, s
+      !                         not defined and returned as 0);
+      !   factor_kind_exact     the text factor_token_text writes for a
+      !                         factor 0 <= s < 1, and only that text: it is
+      !                         read and written again, and must come back
+      !                         character for character;
+      !   factor_kind_legacy    the F7.5 text of the files written before
+      !                         (one digit, a point, five digits, no
+      !                         exponent) of a value 0 <= v <= 1. s is v,
+      !                         the center of the token's rounding interval
+      !                         and NOT the factor the state was solved at,
+      !                         which the token does not carry;
+      !   factor_kind_malformed anything else.
+      character(len=*), intent(in)  :: text
+      real*8,           intent(out) :: s
+      real*8  :: x
+      integer :: ios, k
+      logical :: digits
+      s = 0.0d0
+      factor_token_kind = factor_kind_malformed
+      if (trim(text) .eq. 'T') then
+         s = 1.0d0
+         factor_token_kind = factor_kind_switch
+         return
+      endif
+      if (trim(text) .eq. 'F') then
+         factor_token_kind = factor_kind_switch
+         return
+      endif
+      if (len_trim(text) .eq. 7) then
+         digits = (text(2:2) .eq. '.')
+         do k = 1, 7
+            if (k .eq. 2) cycle
+            if (index('0123456789', text(k:k)) .eq. 0) digits = .false.
+         enddo
+         if (digits) then
+            read(text(1:7), *, iostat=ios) x
+            if (ios .eq. 0 .and. x .ge. 0.0d0 .and. x .le. 1.0d0) then
+               s = x
+               factor_token_kind = factor_kind_legacy
+            endif
+            return
+         endif
+      endif
+      read(text, *, iostat=ios) x
+      if (ios .ne. 0) return
+      if (.not. (x .ge. 0.0d0 .and. x .lt. 1.0d0)) return
+      if (trim(factor_token_text(x)) .ne. trim(text)) return
+      s = x
+      factor_token_kind = factor_kind_exact
+      end function factor_token_kind
 
       !-------------------------------------!
 
@@ -1808,7 +1946,8 @@
       t = adjustl(line)
       if (t(1:1) .eq. '#') t = adjustl(t(2:))
       if (index(t, 'option_change ') .ne. 1 .and.                         &
-          index(t, 'route_change ')  .ne. 1) return
+          index(t, 'route_change ')  .ne. 1 .and.                         &
+          index(t, 'legacy_factor_token ') .ne. 1) return
       call append_option_change(trim(t))
       end subroutine collect_option_change_line
 
@@ -1836,6 +1975,15 @@
       endif
       do i = 1, n_meta
          if (trim(tok) .eq. trim(meta_tag(i))) then
+            ! A field longer than the variable that holds it would be
+            ! compared cut, so it is refused and never shortened.
+            if (len_trim(t) .gt. meta_len) then
+               write(*,'(A,I0,A,I0,A)') ' (load_IC) ERROR: the metadata'// &
+                    ' field "'//trim(meta_tag(i))//'" of the restart'//    &
+                    ' files is ', len_trim(t), ' characters long; ',       &
+                    meta_len, ' are compared.'
+               error stop 1
+            endif
             blk(i) = trim(t)
             return
          endif
@@ -2001,25 +2149,48 @@
       ! A file carrying a token this version has no name for is refused as a
       ! whole: a comparison that silently skips part of the field is the one
       ! thing the block exists to prevent.
+      !
+      ! A CONTINUATION FACTOR TOKEN (cond, interdiff_enth;
+      ! opt_is_continuation_factor) is compared as the factor it states. Its
+      ! value in the file must be one this code writes or wrote
+      ! (factor_token_kind); any other value is refused whatever the input
+      ! names. A LEGACY value (F7.5) states an interval of factors
+      ! [v - 5e-6, v + 5e-6] and not one factor. Where the factor this run
+      ! requests lies inside it, the difference is one of representation
+      ! and not of physics: the load proceeds, the state loads as a seed
+      ! with its inherited claim dropped (ic_legacy_factor_migrated, load_IC)
+      ! and the file's token is recorded as a 'legacy_factor_token' line;
+      ! the factor the state was solved at is never inferred from it. Where
+      ! the requested factor lies outside, it is a physics change and the
+      ! rule of every other token applies: allowed if named, else refused.
       character(len=*), intent(in) :: s_file, s_run, s_source
-      character(len=16) :: vf, vr
+      character(len=opt_value_len) :: vf, vr
       character(len=meta_len) :: chg_from, chg_to, refused, seeded
-      character(len=meta_len) :: rte_from, rte_to
-      integer :: i, nch, nref, nsame, nef, ner, nseed, nrte
-      ic_option_change_applied = .false.
-      ic_option_change_inert   = .false.
-      ic_route_change_applied  = .false.
+      character(len=meta_len) :: rte_from, rte_to, malformed
+      character(len=meta_len) :: leg_from, leg_to
+      integer :: i, nch, nref, nsame, nef, ner, nseed, nrte, nbad, nleg
+      integer :: kf, kr
+      real*8  :: sf, sr
+      ic_option_change_applied  = .false.
+      ic_option_change_inert    = .false.
+      ic_route_change_applied   = .false.
+      ic_legacy_factor_migrated = .false.
       nch   = 0
       nref  = 0
       nsame = 0
       nseed = 0
       nrte  = 0
-      seeded   = ''
-      chg_from = ''
-      chg_to   = ''
-      refused  = ''
-      rte_from = ''
-      rte_to   = ''
+      nbad  = 0
+      nleg  = 0
+      seeded    = ''
+      chg_from  = ''
+      chg_to    = ''
+      refused   = ''
+      rte_from  = ''
+      rte_to    = ''
+      malformed = ''
+      leg_from  = ''
+      leg_to    = ''
       ! One token carries one '=' sign, so the count of them is the count of
       ! tokens: two fields of the same schema version with different counts
       ! do not carry the same vocabulary.
@@ -2050,9 +2221,40 @@
              len_trim(opt_value_when_absent(i)) .gt. 0)                     &
             vf = opt_value_when_absent(i)
          vr = opt_field_value(s_run,  opt_name(i))
+         if (trim(vf) .eq. '<overlong>') then
+            nbad = nbad + 1
+            malformed = trim(malformed)//' '//trim(opt_name(i))//          &
+                 ': a value longer than the compared length;'
+            cycle
+         endif
          if (trim(vf) .eq. trim(vr)) then
             if (restart_option_change_named(i)) nsame = nsame + 1
             cycle
+         endif
+         if (opt_is_continuation_factor(i)) then
+            kf = factor_token_kind(vf, sf)
+            if (kf .eq. factor_kind_malformed) then
+               nbad = nbad + 1
+               malformed = trim(malformed)//' '//trim(opt_name(i))//'='//  &
+                    trim(vf)//';'
+               cycle
+            endif
+            kr = factor_token_kind(vr, sr)
+            ! The factor this run requests: s itself, or 1 for T. A run
+            ! without the term (F) requests no factor, and its difference
+            ! from any factor is a physics change.
+            if (kf .eq. factor_kind_legacy .and.                           &
+                (kr .eq. factor_kind_exact .or. trim(vr) .eq. 'T')) then
+               if (abs(sr - sf) .le. legacy_factor_half_width) then
+                  nleg = nleg + 1
+                  leg_from = trim(leg_from)//' '//trim(opt_name(i))//'='// &
+                       trim(vf)
+                  leg_to   = trim(leg_to)//' '//trim(opt_name(i))//'='//   &
+                       trim(vr)
+                  if (restart_option_change_named(i)) nsame = nsame + 1
+                  cycle
+               endif
+            endif
          endif
          if (molecular_seed_option_may_differ(opt_name(i))) then
             ! A seed conversion ADDS the molecular rows; it writes an
@@ -2080,6 +2282,20 @@
                  trim(vf)//' -> '//trim(vr)//';'
          endif
       enddo
+
+      if (nbad .gt. 0) then
+         write(*,'(A)') ' (load_IC) ERROR: metadata field "options":'//    &
+              ' the restart files carry a value this code does not'//      &
+              ' write and never wrote:'
+         write(*,'(A)') '  '//trim(malformed)
+         write(*,'(A)') '   A continuation factor token (cond,'//          &
+              ' interdiff_enth) is T, F, the ES23.16E3 text of a factor'
+         write(*,'(A)') '   0 <= s < 1, or the F7.5 text of the files'//   &
+              ' written before (one digit, a point and five digits,'
+         write(*,'(A)') '   0 to 1). The state is not loaded, whatever'//  &
+              ' "Restart option change:" names.'
+         error stop 1
+      endif
 
       if (nref .gt. 0) then
          write(*,'(A)') ' (load_IC) ERROR: metadata field "options"'//     &
@@ -2123,6 +2339,20 @@
               ' is not is approached by the other algorithm.'
          call append_option_change('route_change '//                       &
               trim(adjustl(rte_from))//' ->'//trim(rte_to)//              &
+              ' at restart of '//trim(source_body(s_source)))
+      endif
+
+      if (nleg .gt. 0) then
+         ic_legacy_factor_migrated = .true.
+         write(*,'(A)') ' (load_IC) legacy factor token: '//               &
+              trim(adjustl(leg_from))//' ->'//trim(leg_to)//               &
+              ': the requested factor lies inside the rounding interval'// &
+              ' [v-5e-6, v+5e-6] of the F7.5 token, a change of'//         &
+              ' representation; the factor the state was solved at is'//   &
+              ' not inferred, and the state loads as a seed with its'//    &
+              ' inherited claim dropped (legacy_factor_token).'
+         call append_option_change('legacy_factor_token '//                &
+              trim(adjustl(leg_from))//' ->'//trim(leg_to)//              &
               ' at restart of '//trim(source_body(s_source)))
       endif
 

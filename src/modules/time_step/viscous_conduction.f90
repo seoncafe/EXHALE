@@ -120,7 +120,9 @@
       ! Below 200 K the rotational heat capacity freezes out and (4'')
       ! overestimates (+7.6 per cent at 150 K, +20 per cent at 100 K); above
       ! 2000 K it is an EXTRAPOLATION of the fitted form (no tabulated
-      ! value).  The
+      ! value).  E is evaluated as x^2 e^-x/(1 - e^-x)^2, which cannot
+      ! overflow at large x (low T), and by its Taylor series in x below
+      ! x = 0.05, where 1 - e^-x loses digits (einstein_heat_capacity).  The
       ! molecular ions (H2+, H3+, HeH+) are trace particles and enter only
       ! through n and n_e.
       !
@@ -252,7 +254,7 @@
       public :: thermal_conduction_coeffs
       public :: viscous_conduction_step
       public :: conduction_base_level_T, conduction_base_heat_flux
-      public :: conduction_scale, h2_conductivity
+      public :: conduction_scale, h2_conductivity, einstein_heat_capacity
 
       ! THE BUDGET ENTRY OF THE BASE BOUNDARY CONDITION of this operator:
       ! the conductive heat flux through the base face at the last
@@ -362,6 +364,9 @@
       ! spacing of H2 (Roueff et al. 2019).
       real*8, parameter :: kappa_H2_A = 272.523d0, kappa_H2_s = 0.735652d0
       real*8, parameter :: kappa_H2_c = 0.370446d0, theta_v_H2 = 5987.0d0
+      ! Below this x = theta_v/T the Einstein function is its Taylor series
+      ! (einstein_heat_capacity).
+      real*8, parameter :: einstein_series_x = 0.05d0
       ! Chapman-Enskog/Eucken ratio for a monatomic gas: kappa = eucken k_B mu/m.
       real*8, parameter :: eucken      = 3.75d0        ! = 15/4
 
@@ -460,7 +465,7 @@
                           trim(env)//'".'
                error stop 1
             endif
-            write(*,'(A,F8.5,A)') ' (conduction) heat conduction scaled'//  &
+            write(*,'(A,ES13.6,A)') ' (conduction) heat conduction scaled'//&
                  ' by', scale, ' (continuation factor'//                   &
                  ' EXHALE_CONDUCTION_SCALE; 1 is the equation)'
          endif
@@ -485,7 +490,7 @@
       real*8, dimension(1-Ng:N+Ng,n_mion) :: nm_w
       real*8, dimension(1-Ng:N+Ng,4) :: nmol_w
       real*8, dimension(1-Ng:N+Ng,3) :: nox_w
-      real*8 :: to_code, TK
+      real*8 :: to_code, TK, kap_H2
       integer :: j, im
       if (.not. conduction_active()) then
          kap = 0.0d0
@@ -528,10 +533,15 @@
          xe(j)  = ne_w(j)/(ne_w(j) + nt_w(j))
          xH(j)  = f_sp(j,isp_HI)/(ne_w(j) + nt_w(j))
          xHe(j) = nhe0(j)/(ne_w(j) + nt_w(j))
+         ! The H2 term only where there is H2, so that its coefficient is
+         ! never evaluated for a mixture that does not carry it.
+         kap_H2 = 0.0d0
+         if (nh2(j) .gt. 0.0d0)                                           &
+            kap_H2 = nh2(j)/(ne_w(j) + nt_w(j))*h2_conductivity(TK)
          kap(j) = to_code*( xe(j)*kappa_ei_coef*TK**kappa_ei_expo         &
                           + xH(j)*kappa_H_coef*TK**kappa_n_expo           &
                           + xHe(j)*kappa_He_coef*TK**kappa_n_expo         &
-                          + nh2(j)/(ne_w(j) + nt_w(j))*h2_conductivity(TK))
+                          + kap_H2)
       enddo
       end subroutine thermal_conductivity
 
@@ -542,15 +552,48 @@
       ! TK [K], Eq. (4''): valid 200-2000 K, an extrapolation outside
       ! (section 2 of the header).
       real*8, intent(in) :: TK
-      real*8 :: x, einstein
-      x = theta_v_H2/TK
-      if (x .gt. 700.0d0) then
-         einstein = 0.0d0
-      else
-         einstein = x*x*exp(x)/(exp(x) - 1.0d0)**2
+      if (.not. (TK .gt. 0.0d0 .and. TK .le. huge(TK))) then
+         write(*,'(A,ES24.16)') ' (conduction) ERROR: H2 conductivity'//   &
+              ' asked for at a temperature that is not positive and'//     &
+              ' finite, TK [K] =', TK
+         error stop 1
       endif
-      h2_conductivity = kappa_H2_A*TK**kappa_H2_s*(1.0d0 + kappa_H2_c*einstein)
+      h2_conductivity = kappa_H2_A*TK**kappa_H2_s                          &
+                        *(1.0d0 + kappa_H2_c                               &
+                                  *einstein_heat_capacity(theta_v_H2/TK))
       end function h2_conductivity
+
+      ! ------------------------------------------------------!
+
+      pure real*8 function einstein_heat_capacity(x)
+      ! Einstein function E(x) = x^2 e^x/(e^x - 1)^2 of Eq. (4''), the
+      ! vibrational heat capacity of one oscillator in units of k_B, at
+      ! x = theta_v/T >= 0.  Written with e^-x, x^2 e^-x/(1 - e^-x)^2, so
+      ! that no factor overflows.  In the e^x form (e^x - 1)^2 overflows
+      ! above x ~ 355 (T < 16.9 K for H2), where that form returned 0 in
+      ! place of E < 1e-148, and x^2 e^x above x = 696.69, where it
+      ! returned NaN (Inf/Inf) up to x = 700, i.e. for
+      ! 8.553 K <= T < 8.593 K.  Beyond x = 700 E < 1e-298 and is set to
+      ! zero, which keeps e^-x out of the subnormal range.  Below
+      ! x = einstein_series_x = 0.05 the difference 1 - e^-x cancels
+      ! (relative rounding ~ eps/x) and E is its Taylor series
+      !   E = 1 - x^2/12 + x^4/240 - x^6/6048 + O(x^8/172800),
+      ! whose truncation error there is below 2.3e-16 relative.  The two
+      ! forms agree at the switch to 6.7e-16 relative (gfortran and ifx;
+      ! test einstein_series_continuity, src/tests/energy_update).
+      real*8, intent(in) :: x
+      real*8 :: x2, em
+      if (x .lt. einstein_series_x) then
+         x2 = x*x
+         einstein_heat_capacity = 1.0d0 - x2*(1.0d0/12.0d0                 &
+                                  - x2*(1.0d0/240.0d0 - x2/6048.0d0))
+      else if (x .gt. 700.0d0) then
+         einstein_heat_capacity = 0.0d0
+      else
+         em = exp(-x)
+         einstein_heat_capacity = x*x*em/(1.0d0 - em)**2
+      endif
+      end function einstein_heat_capacity
 
       ! ------------------------------------------------------!
 

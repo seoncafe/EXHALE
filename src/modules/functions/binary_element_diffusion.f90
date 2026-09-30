@@ -4031,7 +4031,7 @@
                           trim(env)//'".'
                error stop 1
             endif
-            write(*,'(A,F8.5,A)') ' (diffusion) interdiffusion enthalpy'//   &
+            write(*,'(A,ES13.6,A)') ' (diffusion) interdiffusion enthalpy'// &
                  ' flux scaled by', enthalpy_scale, ' (continuation factor'//&
                  ' EXHALE_INTERDIFF_ENTH_SCALE; 1 is the equation)'
          endif

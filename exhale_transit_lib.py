@@ -753,9 +753,11 @@ def refused_line_center_tau_share(lines, r_grid, Rp, data_r, data_v, data_T,
 	impact parameter b is exactly tau(b) = sum_k w_k I_k, with I_k the integrand
 	of row k and w_k that row's trapezoid weight.  The sum is additive over
 	rows, so a subset of the rows carries the exact share
-	sum_{k in subset} w_k I_k / tau(b).  Here the subset is the rows whose
-	steady advective correction was refused (`adv_T_status != 0`), which carry
-	the run's own temperature and its equilibrium composition instead.
+	sum_{k in subset} w_k I_k / tau(b).  Here the subset is the refused rows
+	of read_adv_validity (`adv_T_status != 0` or `adv_comp_status == 2`).
+	Most of them carry the run's own temperature and its equilibrium
+	composition; a failed row of a rejected column energy solve carries the
+	marching profile of the post-process instead.
 
 	The result is a CONTRIBUTION, not an uncertainty on transit depth: the
 	disk-averaged transmission is an average of exp(-tau) and is nonlinear in
@@ -879,11 +881,27 @@ def read_adv_validity(path):
 	          each 0 corrected, 1 retained, 2 failed, 3 unsupported,
 	          4 not_evaluated, and the `adv_mass_row` column, the measure both
 	          were decided by.  A row is refused for the census when its
-	          temperature field is not zero; its composition field is reported
-	          beside it.  A corrected row is a CONDITIONAL correction accurate
-	          to `adv_conditional_tol` of itself in the mass flux, and both the
-	          fraction and the row's own measure come back so that the spectrum
-	          carries the condition of the rows it stands on.
+	          temperature field is not zero OR its composition field is
+	          failed (2): a corrected temperature on a composition whose solve
+	          did not converge is not a corrected row.  A retained (1)
+	          composition under a corrected temperature is not refused; it is
+	          reported beside the census.  `refused_reason` gives, row by row,
+	          the value that refuses it (2 when either field is failed, else
+	          the temperature field: 1 retained, 3 unsupported, 4
+	          not_evaluated; 0 for a row that is not refused), so a numerical
+	          failure, a closure that does not cover the cell and a justified
+	          retention stay apart.  A corrected row is a CONDITIONAL
+	          correction accurate to `adv_conditional_tol` of itself in the
+	          mass flux, and both the fraction and the row's own measure come
+	          back so that the spectrum carries the condition of the rows it
+	          stands on.
+
+	          The `# adv_derived_state:` line, when present, is the record of
+	          how the solves that produced the rows ended as a whole (the
+	          column energy solve of the transport terms and the outer
+	          iteration); it comes back as the dict `derived_state` of its
+	          name=value fields, and as None when the file has no such line.
+	          None is UNKNOWN, never a product that passed.
 	schema 1  the single `adv_status` column, one field mixing temperature and
 	          composition; a row is refused when it is not zero.
 	schema 0  neither an `adv_schema` line nor a status column: the validity of
@@ -894,7 +912,8 @@ def read_adv_validity(path):
 	Columns are located by the `# columns` header line, so a file that gains or
 	reorders columns is read by name.
 
-	returns a dict; `refused` is None exactly when `schema` is 0.
+	returns a dict; `refused` and `refused_reason` are None exactly when
+	`schema` is 0.
 	"""
 	head         = header_comment_statements(path)
 	cols         = []
@@ -905,6 +924,7 @@ def read_adv_validity(path):
 	coupling     = None
 	counts       = None
 	legend_seen  = False
+	derived      = None
 	# The writer wraps a statement of the block over several comment lines,
 	# the continuations carrying no key of their own, so a statement read one
 	# line at a time is a sentence cut in half.  `text` names the field the
@@ -942,6 +962,14 @@ def read_adv_validity(path):
 					cond_tol = None
 		elif w[0] == 'adv_status_counts':
 			counts = ' '.join(w[1:])
+			key = None
+		elif w[0].rstrip(':') == 'adv_derived_state':
+			# name=value fields; its continuation lines are prose.
+			derived = {}
+			for f in w[1:]:
+				if '=' in f:
+					k_, v_ = f.split('=', 1)
+					derived[k_] = v_
 			key = None
 		elif w[0] in ('adv_status', 'adv_T_status', 'adv_comp_status',
 		              'adv_mass_row', 'adv_product'):
@@ -997,13 +1025,25 @@ def read_adv_validity(path):
 			             'line, and its own "%s" is a certification of the run '
 			             'state, not of the post-processed rows' % coupling)
 
+	refused        = None
+	refused_reason = None
+	if T_status is not None:
+		ts = np.asarray(T_status).astype(int)
+		refused_reason = np.where(ts != 0, ts, 0)
+		if schema >= 2 and comp_status is not None:
+			cs = np.asarray(comp_status).astype(int)
+			refused_reason = np.where((ts == 2) | (cs == 2), 2,
+			                          refused_reason)
+		refused = refused_reason != 0
+
 	return {'path':                   path,
 	        'schema':                 schema,
 	        'columns':                cols,
 	        'T_status':               T_status,
 	        'comp_status':            comp_status,
-	        'refused':                None if T_status is None
-	                                  else (np.asarray(T_status) != 0),
+	        'refused':                refused,
+	        'refused_reason':         refused_reason,
+	        'derived_state':          derived,
 	        'status_names':           ADV_STATUS_NAMES_2 if schema >= 2
 	                                  else ADV_STATUS_NAMES_1,
 	        'input_certified':        certified,
@@ -1014,6 +1054,37 @@ def read_adv_validity(path):
 	        'model_restrictions':     restrictions,
 	        'status_counts':          counts,
 	        'provenance':             provenance}
+
+
+def adv_derived_state_verdict(adv):
+	"""The verdict of the derived-state record of an `_adv` profile.
+
+	'rejected' or 'unverified' as the record states it, and 'unknown' when
+	there is no record (a file written before the line existed, or a record
+	the writer marks unknown).  'unverified' is the best a record can say.
+	What IS tested before it: the energy row of every unknown of the
+	column energy solve at its final profile (column=converged_on_residual),
+	with transport coefficients formed on the INPUT composition and the
+	fine-structure escape probabilities of the start of the pass, i.e.
+	lagged coefficients.  What is NOT: the full energy residual of the state
+	on one derived composition with its own coefficients, the convergence of
+	the outer iteration (outer=unverified), and the momentum balance of the
+	corrected pressure.  So no value means the derived equations were shown
+	to close.
+	"""
+	d = None if adv is None else adv.get('derived_state')
+	if not d:
+		return 'unknown'
+	v = d.get('verdict', 'unknown')
+	return v if v in ('rejected', 'unverified') else 'unknown'
+
+
+def adv_derived_state_text(adv):
+	"""The record as one line of name=value fields, or the word absent."""
+	d = None if adv is None else adv.get('derived_state')
+	if not d:
+		return 'absent (verdict UNKNOWN, which is not a pass)'
+	return ' '.join('%s=%s' % kv for kv in d.items())
 
 
 def transit_tool_identity(paths):
@@ -1220,7 +1291,8 @@ def transit_metadata_block(adv, tool_identity, overrides, census,
 
 	adv           the record of read_adv_validity for the profile the spectrum
 	              was built from, or None if none was read.
-	census        {'sampled', 'refused', 'above_cap', 'reasons', 'comp'} over
+	census        {'sampled', 'refused', 'above_cap', 'reasons', 'refused_by',
+	              'comp'} over
 	              the rows the chords sample, or None when the input states no
 	              row validity.
 	line_census   (b [Rp], share, max share, b of the maximum) for THIS line:
@@ -1290,6 +1362,23 @@ def transit_metadata_block(adv, tool_identity, overrides, census,
 				         % (float(np.nanmax(_m)), _m.size))
 		if adv['model_restrictions']:
 			L.append('adv_model_restrictions %s' % adv['model_restrictions'])
+		# The record of the derived product as a whole, for a profile that
+		# states row validity at all (an `_adv` file); a solved state has
+		# none and none is written for it.
+		if adv['schema'] >= 2 or adv.get('derived_state') is not None:
+			L.append('adv_derived_state %s' % adv_derived_state_text(adv))
+			if adv_derived_state_verdict(adv) == 'rejected':
+				L.append('adv_derived_state_refusal the derived product is '
+				         'REJECTED by its own record; this curve was written '
+				         'in the diagnostic mode (EXHALE_TRANSIT_DIAGNOSTIC=1) '
+				         'and is diagnostic data, not a result')
+			elif adv_derived_state_verdict(adv) == 'unknown':
+				L.append('adv_derived_state_unknown the profile states no '
+				         'derived-state record (a file written before the '
+				         'record existed), so its derived state is UNKNOWN, '
+				         'which is not a pass; this curve was written in the '
+				         'diagnostic mode (EXHALE_TRANSIT_DIAGNOSTIC=1) and is '
+				         'diagnostic data, not a result')
 		for p in adv['provenance']:
 			L.append('input_%s' % p)
 	L.append('transit_tool %s' % tool_identity)
@@ -1302,6 +1391,8 @@ def transit_metadata_block(adv, tool_identity, overrides, census,
 		         % (census['sampled'], census['refused'], census['above_cap']))
 		if census.get('reasons'):
 			L.append('census_refusal_reasons %s' % census['reasons'])
+		if census.get('refused_by'):
+			L.append('census_refused_by %s' % census['refused_by'])
 		if census.get('comp'):
 			L.append('census_composition %s' % census['comp'])
 	if line_census is not None:

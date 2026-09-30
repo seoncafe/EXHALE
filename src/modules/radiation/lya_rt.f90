@@ -109,6 +109,9 @@
    !   J_lya = J_int + J_star.
 
    use global_parameters
+   ! (1 - e^-x)/x, evaluated once for the code (the Sobolev escape
+   ! probability beta_sob of the Ly-alpha closure).
+   use utils, only: one_minus_exp_over_x
    use hydrogen_n2_rates, only: lA_lya, nu_lya, A_2p1s, g1s, g2p, C_lya,     &
                                 c1s2p_rate, alpha_B_hydrogen,                &
                                 n2p_destruction_rate
@@ -685,7 +688,12 @@
       ! the static wing escape: the photon Doppler-shifts out of resonance
       ! over the Sobolev length. |dv/dr| in cgs = (v0/R0)|d v_in/d r|.
       ! (1 - exp(-tau_S))/tau_S is the Sobolev (1960) escape probability on
-      ! the RADIAL ray; the angle average over the direction dependence of
+      ! the RADIAL ray, evaluated by one_minus_exp_over_x (utilities.f90):
+      ! 1 at tau_S -> 0 and 1/tau_S at large tau_S. The former closed form
+      ! (1 - exp(-min(tau_S,200)))/max(tau_S,1e-30) carried a relative error
+      ! of eps/tau_S and returned 0 instead of 1 for tau_S below about
+      ! 1e-16, where 1 - exp(-tau_S) rounds to zero; the angle average over
+      ! the direction dependence of
       ! the Sobolev depth in a spherical flow is not taken. Neufeld (1990)
       ! is a static solution and supplies nothing for this channel: his
       ! title says static, and his Appendix C states the assumption as
@@ -693,7 +701,7 @@
       jm = max(j-1, 1-Ng); jp = min(j+1, N+Ng)
       dvdr     = (v0/R0)*abs(v_in(jp) - v_in(jm))/max(abs(r(jp) - r(jm)),1.0d-30)
       tau_sob  = C_sob*max(nhi(j),0.0d0)/max(dvdr,1.0d-30)
-      beta_sob = min(1.0d0,(1.0d0 - exp(-min(tau_sob,200.0d0)))/max(tau_sob,1.0d-30))
+      beta_sob = min(1.0d0, one_minus_exp_over_x(tau_sob))
       ! Total escape: out of the static slab OR out of resonance through the
       ! velocity gradient.  Written as the union of two independent chances
       ! rather than as 1 - (1-beta_esc)(1-beta_sob): the latter forms 1 - x

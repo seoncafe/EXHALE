@@ -3249,6 +3249,50 @@ cells) at He/H\,$=1.6$ (\texttt{md/Update\_EXHALE\_stage3.md} section~29.10).
 \textbf{Equivalent widths quoted from \texttt{\_adv} files written before
 2026-09-27 are those of the first-order recursion.}
 
+\paragraph{The state of the derived product as a whole.} The row fields say
+what each row is; the \texttt{\# adv\_derived\_state:} line of both
+\texttt{\_adv} headers says how the solves that produced the rows ended. Its
+fields: \texttt{verdict} (\texttt{rejected} or \texttt{unverified}),
+\texttt{chemistry} (\texttt{complete} or \texttt{cells\_failed}), the column
+energy solve of the transport terms (\texttt{column}: \texttt{not\_run},
+\texttt{rejected} or \texttt{converged\_on\_residual}; \texttt{reason}:
+\texttt{linear\_solve}, \texttt{nonfinite}, \texttt{non\_positive\_T} or
+\texttt{residual\_above\_tolerance}; the iterations, the triggering cell, the
+number of unknowns, and the worst energy row: \texttt{column\_worst\_cell},
+\texttt{column\_worst\_residual} in erg\,cm$^{-3}$\,s$^{-1}$ and
+\texttt{column\_worst\_residual\_rel}), the passes whose column was
+rejected, the cell counts, and \texttt{outer=unverified}; every count is of
+physical cells, the ghost rows excluded. The column iteration stops when no
+temperature moves by more than $10^{-10}$ of itself (or after 100
+iterations), and is then judged on its residual: with the transport terms
+formed again at the final profile, every unknown's energy row
+$R = q_0 f/(\mu_+\mu_-\Delta r)$ must satisfy $|R| \le 10\,\epsilon
+\sum|{\rm terms}| + 10^{-6} S_E$, with $S_E$ the largest of its physically
+grouped terms (the advective energy divergence as one term, the $p\,{\rm
+div}\,v$ work, heating, cooling, the conduction divergence and the two
+enthalpy divergences) and $10^{-6}$ the energy tolerance of the stationary
+certification. Since 2026-10-01 the column is no longer tested against a
+temperature band: the 0.5--2 times band of the cell-by-cell Brent solve
+refused a root of the conduction-coupled column. A
+\texttt{residual\_above\_tolerance} rejection prints the energy row of the
+worst cell term by term. The post-process takes a fixed ten passes with no
+convergence test, so no record says more than \texttt{unverified}. A rejected column keeps the marching profile of that
+pass in the numeric columns and writes every one of its unknowns
+\texttt{adv\_T\_status}\,$=2$ (\texttt{failed}); the verdict is
+\texttt{rejected} when the column of the last pass was rejected or any row is
+failed. A file without the line has an UNKNOWN derived state, which is not
+a pass. The
+\texttt{Restart intent: stationary evaluate} route exits 7 when the record is
+rejected and the input is not refused, 2 when the certification refuses the
+input (whatever the record says; the record is written either way), and 0
+otherwise. \texttt{EXHALE\_transit.py} refuses an \texttt{adv} spectrum
+whose record is rejected, or that has no record (a file written before the
+record existed; its derived state is unknown), with exit 7 unless
+\texttt{EXHALE\_TRANSIT\_DIAGNOSTIC=1}, which makes it as diagnostic data and
+writes the refusal or the unknown verdict into the metadata of every saved
+curve; its row census refuses a row whose temperature field is not
+zero or whose composition field is failed.
+
 \subsection{\texttt{Hydro\_ioniz.txt} / \texttt{Hydro\_ioniz\_adv.txt}}
 \label{sec:hydroioniz}
 Thermodynamic profiles (7 columns, and three more in the \texttt{\_adv} file). The

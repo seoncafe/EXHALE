@@ -358,7 +358,20 @@ for bit.
   whole input state passed the stationary certification is a separate
   statement in the same header (`# adv_input_certified`), and the product is
   declared there as a one-way correction on a fixed density and velocity
-  field, so a spectrum built on a breathing base is labeled as such
+  field, so a spectrum built on a breathing base is labeled as such. The
+  `# adv_derived_state:` line of the same header records how the solves that
+  produced the rows ended as a whole: the column energy solve of the
+  transport terms (rejected, with its reason and triggering cell, or
+  `converged_on_residual`: every unknown's energy row, formed again at the
+  final profile, within 10 eps sum|terms| + 1e-6 of its largest term, with
+  the worst cell and residual in the record), the chemistry, the row counts and
+  `outer=unverified`; a rejected column writes every one of its cells
+  `failed` and keeps the marching profile in the numeric columns. The
+  `stationary evaluate` route exits 7 when that record is rejected (2 stays
+  the certification refusal of the input), and `EXHALE_transit.py` refuses an
+  `adv` spectrum from a rejected record, or from a file with no record (written
+  before the record existed: an UNKNOWN derived state), with exit 7 unless
+  `EXHALE_TRANSIT_DIAGNOSTIC=1`
 
 ---
 
@@ -550,4 +563,4 @@ the Markdown memos of the development record.
 
 Kwang-Il Seon (KASI / UST)
 
-Last updated: 2026-09-30 20:17 KST
+Last updated: 2026-10-01 05:45 KST

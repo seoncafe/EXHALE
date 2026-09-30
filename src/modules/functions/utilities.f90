@@ -627,31 +627,72 @@
 
 	! ------------------------------------------------------!
 
+	! (1 - exp(-x))/x for x >= 0, the ONE evaluation of that quotient in the
+	! code. It is the same mathematical function behind several physical
+	! quantities, each of which keeps its own name, limits and meaning and
+	! is evaluated through this: the fraction of the photons entering a
+	! cell that the cell absorbs per unit of its own optical depth
+	! (absorbed_fraction_per_unit_depth below, and through it the XUV cell
+	! mean and the FUV H2O/OH band rates), the same fraction for the locally
+	! absorbed recombination radiation (util_ion_eq.f90,
+	! absorbed_fraction_over_tau and absorbed_photon_fraction), the one-face
+	! escape probability of a uniformly emitting slab (Cool_coeff.f90,
+	! line_escape_probability_one_face) and the Sobolev escape probability
+	! of Ly-alpha (lya_rt.f90, beta_sob). x <= 0 returns the limit 1.
+	!
+	! THREE BRANCHES, AND WHY THE CLOSED FORM STARTS ONLY AT x = 1e-2.
+	! The closed form subtracts two numbers that approach each other as
+	! x -> 0: exp(-x) is rounded to a double near 1, whose spacing is
+	! eps/2 = 1.1e-16, so 1 - exp(-x) carries an absolute error of that
+	! size and the quotient a relative error of about eps/x. That error is
+	! not only an inaccuracy. As x moves continuously the rounded exp(-x)
+	! jumps from one double to the next, so the closed form is a STAIRCASE
+	! in x with relative steps of about eps/x, i.e. a discontinuous function
+	! of the densities x is formed from. MEASURED at x ~ 1.5e-7 (the H I
+	! threshold depth of an LHS 1140 b wind cell): steps of 4-5e-11 in the
+	! photoionization rate every 1.7e-11 in n(H I), enough for the
+	! composition iteration of the steady residual to find no fixed point
+	! and alternate between two states on either side of a step.
+	!   x < 1e-8          the three-term Taylor series 1 - x/2 + x^2/6,
+	!                     truncated at x^3/24, i.e. 4.2e-26 at x = 1e-8;
+	!   1e-8 <= x < 1e-2  the Taylor series through x^8, in Horner form,
+	!                     truncated at x^9/10!, i.e. below 3e-25 at
+	!                     x = 1e-2; its rounding is a few ulps and it is
+	!                     smooth to the last bit;
+	!   x >= 1e-2         the closed form, whose error eps/x is then at most
+	!                     2.2e-14 and falls as x grows; exp(-x) underflows
+	!                     harmlessly to 0 for large x, leaving 1/x.
+	! The switch at 1e-2 is where the closed form's error has fallen to
+	! 2.2e-14 while the series needs only nine terms to stay below 3e-25;
+	! the three branches agree to 1e-14 at both switch points.
+	elemental double precision function one_minus_exp_over_x(x) result(g)
+	real*8, intent(in) :: x
+	if (x .le. 0.0d0) then
+		g = 1.0d0
+	else if (x .lt. 1.0d-8) then
+		g = 1.0d0 - 0.5d0*x + x*x/6.0d0
+	else if (x .lt. 1.0d-2) then
+		g = 1.0d0 - x*(1.0d0/2.0d0 - x*(1.0d0/6.0d0 - x*(1.0d0/24.0d0    &
+		  - x*(1.0d0/120.0d0 - x*(1.0d0/720.0d0 - x*(1.0d0/5040.0d0      &
+		  - x*(1.0d0/40320.0d0 - x/362880.0d0)))))))
+	else
+		g = (1.0d0 - exp(-x))/x
+	endif
+	end function one_minus_exp_over_x
+
+	! ------------------------------------------------------!
+
 	! (1 - exp(-d))/d, the fraction of the photons entering a cell that the
 	! cell absorbs, per unit of its own optical depth d.  This is the ONLY
 	! definition of that quantity: the XUV beam takes it through
 	! cell_mean_attenuation below, and the FUV bands take it from here for
-	! the H2O and OH rates (water_photolysis.f90).
-	!
-	! THE SERIES BRANCH AND ITS SWITCH POINT.  The closed form subtracts two
-	! numbers that approach each other as d -> 0, so its relative error is
-	! about eps/d with eps = 2.2e-16 the double-precision round-off: it is
-	! 1e-8 just above the switch point and falls as d grows.  The Taylor
-	! series 1 - d/2 + d^2/6 truncates at d^3/24 in relative terms, i.e.
-	! 4e-25 at d = 1e-8, and is used below that.  The largest relative error
-	! of the pair is therefore about 1e-8, attained on the closed-form side
-	! of the switch, and the value there is 1 to within that; the rates that
-	! consume it are set by cross sections known to a few per cent.
+	! the H2O and OH rates (water_photolysis.f90). The quotient is evaluated
+	! by one_minus_exp_over_x above (branches, switch points and errors
+	! there); the limit at a cell of no optical depth, d <= 0, is 1.
 	elemental double precision function absorbed_fraction_per_unit_depth(d) &
 	                                   result(fr)
 	real*8, intent(in) :: d
-	if (d .le. 0.0d0) then
-		fr = 1.0d0
-	else if (d .lt. 1.0d-8) then
-		fr = 1.0d0 - 0.5d0*d + d*d/6.0d0
-	else
-		fr = (1.0d0 - exp(-d))/d
-	endif
+	fr = one_minus_exp_over_x(d)
 	end function absorbed_fraction_per_unit_depth
 
 	! ------------------------------------------------------!

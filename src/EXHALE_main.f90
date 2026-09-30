@@ -245,6 +245,10 @@
       ! (element_census; inert unless EXHALE_ELEMENT_ASSERT is set).
       type(element_census_state) :: cen_main
 
+      ! How the advection post-process ended as a whole (adv_derived_state,
+      ! output_write), returned by post_process_adv to both of its callers.
+      type(adv_derived_state) :: adv_state
+
       ! Logical variables
       logical :: l_isnan = .false.
       logical :: in_plm_stage = .false.   ! true while in the stage-1 (PLM) phase of a two-stage PLM->WENO3 run
@@ -4577,9 +4581,15 @@
       write(*,*) '(EXHALE_main.f90) Starting the post processing routine..'
 
       call post_process_adv(rho,v,p,T,heat,cool,eta,    &
-                            nhi,nhii,nhei,nheii,nheiii,nheiTR,nm,f_sp)
+                            nhi,nhii,nhei,nheii,nheiii,nheiTR,nm,f_sp, &
+                            adv_state)
       
       write(*,*) '(EXHALE_main.f90) Post processing routine done.'
+      ! The record is in the _adv headers and in the log. The marching
+      ! route's exit status stays the verdict on the solved state it wrote
+      ! (certification_stop_uncertified below); a reader of the _adv
+      ! products reads their own record.
+      call adv_derived_state_report(adv_state, 'EXHALE_main')
 
       ! Cells at which the ground singlet n(1^1S) = n(He I) - n(2^3S) came out
       ! negative and was floored at zero (he_ground_singlet_density in
@@ -6062,8 +6072,10 @@
          write(*,*) '(EXHALE_main.f90) Starting the post processing'//      &
               ' routine..'
          call post_process_adv(rho,v,p,T,heat,cool,eta,                     &
-                               nhi,nhii,nhei,nheii,nheiii,nheiTR,nm,f_sp)
+                               nhi,nhii,nhei,nheii,nheiii,nheiTR,nm,f_sp,   &
+                               adv_state)
          write(*,*) '(EXHALE_main.f90) Post processing routine done.'
+         call adv_derived_state_report(adv_state, 'EXHALE_main')
          if (n_cells_he_singlet_clamped .gt. 0)                             &
             write(*,'(A,I0,A)')                                             &
                '     helium ground singlet: ',                              &
@@ -6093,7 +6105,28 @@
               ' state and'
          write(*,'(A)') '   the profiles derived from it were written,'//   &
               ' and no step and no solve were taken.'
+         ! THE EXIT STATUS OF AN EVALUATION: 2 when the loaded state claimed
+         ! to be stationary and the certification refuses it (the input
+         ! product), 7 when the input is not refused but the derived product
+         ! is (a rejected column energy solve or a failed row of the _adv
+         ! files), 0 otherwise. The refusal of the input stands above that of
+         ! the product derived from it, so both refused exits 2; the record
+         ! of the derived product is in the _adv headers either way.
+         ! 7 is used by no other stop of this code (1 errors, 2 the
+         ! certification refusal and the exhausted retry budget, 3 the
+         ! measurement stop of the pass-state publication, 4 and 701/704 the
+         ! Wind-AE solver); a gfortran runtime error also exits 2 and an ifx
+         ! one exits with its message number modulo 256, of which the
+         ! numbers congruent to 7 (263, 519, 775) are not severe errors
+         ! this code can raise.
          call certification_stop_uncertified
+         if (adv_state%rejected .or. .not. adv_state%recorded) then
+            write(*,'(A)') ' (EXHALE_main) the advection-derived product'//  &
+                 ' is REJECTED (adv_derived_state above); the evaluation'//  &
+                 ' exits with status 7.'
+            flush(6)
+            stop 7
+         endif
          stop
       endif
 

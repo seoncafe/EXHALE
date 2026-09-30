@@ -60,6 +60,7 @@ from exhale_transit_lib import (
     chord_shell_indices, refused_line_center_tau_share,
     first_data_row_ncol,
     read_adv_validity, transit_metadata_block, transit_tool_identity,
+    adv_derived_state_verdict, adv_derived_state_text,
     transit_environment_overrides, transit_state_files,
     state_pair_difference, file_identity, state_provenance_statements,
     transit_state_oi_levels,
@@ -393,12 +394,15 @@ r,rho,v,p,T,heat,cool = loadtxt_cells(Hydro_file, usecols = range(7),
                                       unpack = True)
 # The validity of the rows the spectrum is built from.  The advection
 # post-process REFUSES the steady correction where an assumption of the steady
-# equations fails in a cell, and that row then carries the run's own
-# temperature and its equilibrium composition, so a spectrum built from such
-# rows is a spectrum of the uncorrected state there.  read_adv_validity reads
-# the profile's schema: schema 2 states temperature and composition validity
-# separately (a row is refused here when its temperature field is nonzero, and
-# its composition field is reported beside it), schema 1 states one mixed
+# equations fails in a cell, and such a row carries the run's own temperature
+# and its equilibrium composition, so a spectrum built from it is a spectrum
+# of the uncorrected state there -- except for a row that was an unknown of a
+# rejected column energy solve (the transport terms), whose temperature is the
+# MARCHING profile of the post-process, a number no equation was solved for.
+# read_adv_validity reads the profile's schema: schema 2 states temperature
+# and composition validity separately (a row is refused here when its
+# temperature field is nonzero or its composition field is failed, and a
+# retained composition is reported beside it), schema 1 states one mixed
 # field, and a profile whose header states neither leaves the validity of
 # every row UNKNOWN, which is not the same as no row refused.  A corrected row
 # is a CONDITIONAL correction, accurate to the fraction of itself in the mass
@@ -446,6 +450,44 @@ else:
 _adv_refused  = _adv['refused']
 _adv_T_status = _adv['T_status']
 _adv_comp     = _adv['comp_status']
+# THE DERIVED PRODUCT AS A WHOLE.  The `_adv` profile carries a record of how
+# the solves that produced it ended (the column energy solve of the transport
+# terms, the chemistry, the outer iteration).  A profile whose record says
+# rejected is not an advection-corrected state, and no spectrum is made from
+# it as an ordinary result; EXHALE_TRANSIT_DIAGNOSTIC=1 makes it anyway, as
+# diagnostic data, with the refusal written into the metadata of every saved
+# curve.  A profile without the record (written before it existed) has an
+# UNKNOWN derived state, which is not a pass either: it is refused the same
+# way (exit 7) unless EXHALE_TRANSIT_DIAGNOSTIC=1, and then the metadata says
+# the curve stands on a profile that states no derived state.
+_adv_verdict = (adv_derived_state_verdict(_adv) if _state_selection == 'adv'
+                else None)
+if _adv_verdict is not None:
+	print('(TPM) derived state of the adv profile: %s'
+	      % adv_derived_state_text(_adv))
+	if _adv_verdict == 'rejected':
+		if _tenv('DIAGNOSTIC', '0').strip() == '1':
+			print('(TPM) the adv product is REJECTED by its own record; '
+			      'EXHALE_TRANSIT_DIAGNOSTIC=1, so the spectrum is made as '
+			      'DIAGNOSTIC data and says so in its metadata.')
+		else:
+			print('(TPM) the adv product is REJECTED by its own record, so no '
+			      'spectrum is made from it (EXHALE_TRANSIT_DIAGNOSTIC=1 makes '
+			      'one as diagnostic data).')
+			# 7, the status the evaluation itself exits with for the same
+			# verdict (EXHALE_main, evaluate route).
+			sys.exit(7)
+	elif _adv_verdict == 'unknown':
+		print('(TPM) the adv profile states no derived-state record (a file '
+		      'written before the record existed): its derived state is '
+		      'UNKNOWN, which is not a pass.')
+		if _tenv('DIAGNOSTIC', '0').strip() == '1':
+			print('(TPM) EXHALE_TRANSIT_DIAGNOSTIC=1, so the spectrum is made '
+			      'as DIAGNOSTIC data and says so in its metadata.')
+		else:
+			print('(TPM) no spectrum is made from it '
+			      '(EXHALE_TRANSIT_DIAGNOSTIC=1 makes one as diagnostic data).')
+			sys.exit(7)
 # Ion_species.txt: read only the first 7 columns (r + H/He). In EXHALE
 # this file also carries trace-metal columns (C/N/O), so we slice rather
 # than unpack all of them.
@@ -1201,7 +1243,9 @@ METAL_DOUBLETS = [
 #
 # A row whose steady advective correction was refused carries the run's own
 # temperature and the equilibrium composition at that temperature, so the
-# transmission of the chords crossing it is built on the uncorrected state.
+# transmission of the chords crossing it is built on the uncorrected state;
+# a failed row of a rejected column energy solve carries the marching profile
+# of the post-process instead, and only the diagnostic mode reads one.
 # How much optical depth those rows carry is a CONTRIBUTION, printed as such:
 # the disk-averaged transmission is an average of exp(-tau), nonlinear in tau,
 # so a large share is not an error bar on the depth.
@@ -1245,6 +1289,20 @@ else:
 	    if np.any(_adv_T_status[_sampled] == _k))
 	if len(_reasons) > 0:
 		print('      temperature: ' + _reasons)
+	# What refuses each refused row, over both fields: a failed temperature
+	# or composition (2), else the temperature field (retained, unsupported,
+	# not_evaluated), so a numerical failure is not counted as a retention.
+	_refused_by = ''
+	if _adv.get('refused_reason') is not None:
+		_rr = np.asarray(_adv['refused_reason'])[_sampled]
+		_refused_by = ', '.join(
+		    '%s: %d rows' % (_names[_k], int(np.count_nonzero(_rr == _k)))
+		    for _k in range(1, len(_names)) if np.any(_rr == _k))
+		if len(_refused_by) > 0:
+			print('      refused by: ' + _refused_by)
+	# The record of the derived product as a whole, next to the row counts.
+	if _state_selection == 'adv':
+		print('      derived state: ' + adv_derived_state_text(_adv))
 	# Schema 2 states the composition validity of a row separately from its
 	# temperature: a corrected temperature can sit on a retained composition,
 	# and the lower-level densities of every line come from that composition.
@@ -1271,11 +1329,12 @@ else:
 		else:
 			print('      a corrected row is accurate to %.1e of itself in '
 			      'the mass flux' % _adv['conditional_tol'])
-	_census_summary = {'sampled':   _n_sampled,
-	                   'refused':   _n_refused,
-	                   'above_cap': _n_cap,
-	                   'reasons':   _reasons,
-	                   'comp':      _comp}
+	_census_summary = {'sampled':    _n_sampled,
+	                   'refused':    _n_refused,
+	                   'above_cap':  _n_cap,
+	                   'reasons':    _reasons,
+	                   'refused_by': _refused_by,
+	                   'comp':       _comp}
 
 	# Same mirrored (night + day) chord array as every density above.
 	_data_refused = np.concatenate((np.flip(_refused_row), _refused_row))

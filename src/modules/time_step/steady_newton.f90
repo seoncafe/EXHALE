@@ -17,7 +17,8 @@
 
       use global_parameters
       use species_table,  only: n_mion, isp_H2, isp_H2p, isp_H3p,   &
-                                isp_HeHp, isp_HI, isp_HII,           &
+                                isp_HeHp, isp_HI, isp_HII, isp_HeI,  &
+                                isp_HeII, isp_HeTR,                  &
                                 isp_OH, isp_H2O, isp_CO, iel_O, iel_C
       use Conversion,      only: U_to_W, U_to_W_interior
       use composition,     only: get_species_densities, comp_T_from_p
@@ -33,6 +34,7 @@
                  ieq_sweep_ledger_last, xuv_self_field_passes,        &
                  ieq_sweep_state_kind,                                 &
                  ieq_report_cell,                                      &
+                 ieq_cell_dump_requested, set_ieq_cell_dump_tags,      &
                  molecular_decay_rate_of_the_cell,                     &
                  set_molecular_decay_cells
       use excited_hydrogen,       only: excited_H_update
@@ -4299,7 +4301,12 @@
       ! those are evaluated without `admissible`, and there the event still
       ! stops the run.
       call set_ioniz_eq_state_may_be_refused(present(admissible))
+      ! The labels a dumped cell's records carry (EXHALE_IEQ_DUMP_CELL):
+      ! which residual evaluation and which composition pass of it.
+      if (ieq_cell_dump_requested())                                     &
+         call set_ieq_cell_dump_tags(n_resid_eval, it_eq)
       call ioniz_eq(T,rho,f_sp,heat,cool,eta,sweep)
+      if (ieq_cell_dump_requested()) call set_ieq_cell_dump_tags(0, 0)
       call set_ioniz_eq_state_may_be_refused(.false.)
       ! Refresh the particle count from the equilibrium fractions, exactly as
       ! the marching loop does before its transport stage, so the residual's
@@ -9213,9 +9220,9 @@
       real*8, dimension(nvar_jac*N) :: Fvec_a, Fvec_b, Fvec_d
       real*8, dimension(1-Ng:N+Ng)  :: heat, cool
       real*8, dimension(1-Ng:N+Ng)  :: heat_a_prof, cool_a_prof
-      real*8  :: rna, rnb, rnd, rc(3), dfa, dfb, dab, seed_scale
+      real*8  :: rna, rnb, rnd, rc(3), dfa, dfb, dab, seed_scale, d_h, d_he
       integer :: k, npass, ja, sa, jb, sb, jab, sab, acc4a, acc6a, acc4b, acc6b
-      character(len=16) :: env
+      character(len=16) :: env, seed_b_kind
 
       call get_environment_variable('EXHALE_RESID_SC_TRACE', env)
       if (len_trim(env) .eq. 0) return
@@ -9225,20 +9232,78 @@
 
       comp_a = f_sp
       comp_b = f_sp
-      ! Seed B is either the column's own composition shifted by five cells
-      ! (a seed no cell is the equilibrium of, but one the network can
-      ! describe) or the same composition with the molecular hydrogen
-      ! fraction scaled, which is the small-perturbation direction the basin
-      ! scan uses.
+      ! SEED B, one of three (EXHALE_RESID_SC_TRACE_SEED, the value named in
+      ! the first line of the trace):
+      !   shift      the column's own composition shifted by five cells, a
+      !              seed no cell is the equilibrium of but one the network
+      !              can describe. The default when no scale is given. f_sp
+      !              is a number per unit mass, so this seed also carries
+      !              the nuclei of cell k+5 per unit mass into cell k: it
+      !              moves each cell's ELEMENTAL inventory wherever that
+      !              varies along the column, and the two seeds are then two
+      !              different elemental problems.
+      !   h2         the same composition with the molecular hydrogen
+      !              fraction scaled by 1 + EXHALE_RESID_SC_TRACE_SCALE, the
+      !              small-perturbation direction the basin scan uses. The
+      !              default when a scale is given (and a copy of seed A in
+      !              an atomic run, which has no H2).
+      !   partition  every cell's elemental inventory kept and ONLY its
+      !              ionization partition moved: a fraction s =
+      !              EXHALE_RESID_SC_TRACE_SCALE (default 1e-3, |s| <= 1)
+      !              of H I into H II and the same fraction of He I into
+      !              He II (s < 0 moves |s| of H II and He II back), the
+      !              He 2^3S population kept at its share of He I. No
+      !              stage goes negative. The electron density is not a
+      !              state variable: eval_residual forms it from these
+      !              fractions (get_species_densities), as the solve does,
+      !              so the charge closure holds by construction.
+      seed_scale = 0.0d0
+      seed_b_kind = ''
       call get_environment_variable('EXHALE_RESID_SC_TRACE_SCALE', env)
-      if (len_trim(env) .gt. 0) then
-         read(env,*) seed_scale
-         comp_b(1:N,isp_H2) = f_sp(1:N,isp_H2)*(1.0d0 + seed_scale)
-      else
+      if (len_trim(env) .gt. 0) read(env,*) seed_scale
+      call get_environment_variable('EXHALE_RESID_SC_TRACE_SEED', env)
+      seed_b_kind = trim(env)
+      if (len_trim(seed_b_kind) .eq. 0) then
+         seed_b_kind = 'shift'
+         if (seed_scale .ne. 0.0d0) seed_b_kind = 'h2'
+      endif
+      select case (trim(seed_b_kind))
+      case ('shift')
          do k = 1, N
             comp_b(k,:) = f_sp(min(N, k+5),:)
          enddo
-      endif
+      case ('h2')
+         comp_b(1:N,isp_H2) = f_sp(1:N,isp_H2)*(1.0d0 + seed_scale)
+      case ('partition')
+         if (seed_scale .eq. 0.0d0) seed_scale = 1.0d-3
+         if (abs(seed_scale) .gt. 1.0d0)                                   &
+            error stop 'trace_composition_elimination: |'//               &
+                       'EXHALE_RESID_SC_TRACE_SCALE| > 1 for the'//        &
+                       ' partition seed'
+         do k = 1, N
+            if (seed_scale .ge. 0.0d0) then
+               d_h  = seed_scale*f_sp(k,isp_HI)
+               d_he = seed_scale*f_sp(k,isp_HeI)
+            else
+               d_h  = seed_scale*f_sp(k,isp_HII)
+               d_he = seed_scale*f_sp(k,isp_HeII)
+            endif
+            comp_b(k,isp_HI)   = f_sp(k,isp_HI)   - d_h
+            comp_b(k,isp_HII)  = f_sp(k,isp_HII)  + d_h
+            if (thereis_He) then
+               comp_b(k,isp_HeI)  = f_sp(k,isp_HeI)  - d_he
+               comp_b(k,isp_HeII) = f_sp(k,isp_HeII) + d_he
+               if (thereis_HeITR .and. f_sp(k,isp_HeI) .gt. 0.0d0)         &
+                  comp_b(k,isp_HeTR) = f_sp(k,isp_HeTR)                    &
+                                     *(comp_b(k,isp_HeI)/f_sp(k,isp_HeI))
+            endif
+         enddo
+      case default
+         error stop 'trace_composition_elimination: '//                   &
+                    'EXHALE_RESID_SC_TRACE_SEED is shift, h2 or partition'
+      end select
+      write(*,'(A,A,A,ES10.3)') ' (sc_trace) seed B: ', trim(seed_b_kind), &
+           '   scale ', seed_scale
 
       write(*,'(A)') ' (sc_trace) pass | seed A: d(comp) cell sp  amnesty'// &
            '(4/6) | seed B: d(comp) cell sp  amnesty(4/6) |'//               &

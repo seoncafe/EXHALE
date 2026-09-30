@@ -47,7 +47,8 @@
 	                             equilibrium_from_molecular_limit
    use charge_exchange, only: cx_set_cell, cx_metal_base,  &   ! Huang Table 4 charge exchange
                               he_h_cx_rates,               &   ! He <-> H pair (group B)
-                              cx_add_to_turnover               ! cx bound of a row's turnover
+                              cx_add_to_turnover,          &   ! cx bound of a row's turnover
+                              he_h_charge_exchange             ! whether the He <-> H pair is on
    use System_H
    use newton_solver, only: solve_ieq   ! Task 2: analytic-Jacobian Newton (+ hybrd1 fallback)
    use opacity_models            ! opacity_pT_factor for the 'P' model
@@ -183,6 +184,27 @@
 	! most negative integer and no cell can equal it.
 	integer, parameter :: ieq_report_no_cell = -huge(1)
 	integer, save :: ieq_report_cell = ieq_report_no_cell
+	! EVERY SOLVE OF ONE CELL IN THE ATOMIC He 2^3S BRANCH, written out with
+	! everything its reaction rows read (record_heh_tr_cell_solve), so that
+	! the rows can be re-evaluated offline in another precision and the
+	! coefficient sets of successive composition passes compared. Cell index
+	! from EXHALE_IEQ_DUMP_CELL (ieq_cell_dump_requested, read once); the
+	! file is ieq_cell_dump.txt in the run directory. Measurement only:
+	! nothing in the solution reads what is written. The two tags are set
+	! by the caller of the sweep that knows them (eval_residual of
+	! steady_newton: its residual-evaluation count and composition pass),
+	! and stay 0 for a sweep no such caller made; the sweep count is this
+	! module's own.
+	integer, save :: ieq_dump_cell      = ieq_report_no_cell
+	logical, save :: ieq_dump_cell_read = .false.
+	! newunit= hands out a negative unit number, so whether the file is
+	! open is kept apart from the unit.
+	integer, save :: ieq_dump_unit      = 0
+	logical, save :: ieq_dump_open      = .false.
+	integer, save :: ieq_dump_eval_tag  = 0
+	integer, save :: ieq_dump_pass_tag  = 0
+	integer, save :: ieq_dump_sweep     = 0
+	integer, save :: ieq_dump_record    = 0
 	! THE CELLS THE CHEMICAL-DECAY DIAGNOSTIC MEASURES AT, and what it
 	! measured there. The reaction Jacobian of a cell can only be formed
 	! where that cell's own rate coefficients are live, which is inside the
@@ -1256,6 +1278,8 @@
    ! also the starting point of the solve for every step after the first,
    ! so it is built once per cell and used for both.
    real*8, dimension(n_x_max) :: x_entry
+   ! The start vector of a dumped solve (ieq_dump_cell); untouched otherwise.
+   real*8, dimension(n_x_max) :: x_ieq_dump_start
 
    ! THE CELL'S OWN FIELD, SOLVED WITH THE CELL'S OWN COMPOSITION
    ! (xuv_self_field_passes).  it_self counts the passes, x_self holds the
@@ -1347,6 +1371,9 @@
               ' in place of ', tol
    endif
    tol = ieq_inner_tol
+   ! The sweep count of the cell dump (ieq_dump_cell), counted only when a
+   ! cell is named.
+   if (ieq_cell_dump_requested()) ieq_dump_sweep = ieq_dump_sweep + 1
 
 	! ---- THE COMPOSITION THE LOWER GHOST CELLS ENTER THIS SWEEP WITH ----
 	!
@@ -2075,7 +2102,7 @@
 		!$omp          nh2_entry, NH2col_face, nheii, nheiS_face, nheiTR, nhi,        &
 		!$omp          nm, Nm_face, NTR_face, P_H2, P_H2_dd, P_H2_di, P_H2_nd,        &
 		!$omp          P_HeI, P_HeII, P_HeITR, P_HI, P_m, P_m2, q, sec_on_xuv,        &
-		!$omp          xion)                                                          &
+		!$omp          xion, ieq_dump_cell)                                           &
 		!$omp   private(j, Pm_row, h1m_row, chan_row, heat_row, q_abs_row, &
 		!$omp           Pm2_row)                                           &
 		!$omp   if(marching_step > 0)
@@ -2094,6 +2121,17 @@
 			P_m(j,:)  = Pm_row
 			P_m2(j,:) = Pm2_row
 			h1_m(j,:) = h1m_row
+			! The dumped cell's field, re-evaluated at its own inputs and
+			! at perturbed ones (ieq_dump_cell; measurement only).
+			if (j .eq. ieq_dump_cell)                                    &
+				call probe_photoionization_rates_of_the_cell(j,          &
+				         N1_face(j),N15_face(j),N2_face(j),NTR_face(j),    &
+				         NH2col_face(j),Nm_face(j,:),                      &
+				         nhi(j),nheiS_face(j),nheii(j),nheiTR(j),          &
+				         nh2_entry(j), nm(j,:), xion(j), f_vib_quench(j),  &
+				         e_vib_bound(j), has_h2_xuv, sec_on_xuv,           &
+				         mol_sec_xuv, D0_H2_xuv, E_ker_H2_dd_xuv,          &
+				         P_HI(j), P_HeI(j), P_HeITR(j))
 		enddo
 		!$omp end parallel do
 
@@ -2175,6 +2213,7 @@
 		!$omp          ieq_cell_acceptance_class, ieq_decay_ncell, ieq_met_coef,      &
 		!$omp          ieq_ne_cell, ieq_ntot_cell, ieq_rate_cell,                     &
 		!$omp          ieq_report_cell, ieq_state_may_be_refused, ieq_TK_cell,        &
+		!$omp          ieq_dump_cell,                                                 &
 		!$omp          ionization_transport, iox, j_h2o_fuv, j_oh_fuv, jb_hi,         &
 		!$omp          jb_lo, k_lw_diss, lwa, marching_step, mbase, mol_sec_xuv,      &
 		!$omp          N, N15_face, N1_face, N2_face, N_eq, n_in_dim, n_o1d_eq,       &
@@ -2203,7 +2242,8 @@
 		!$omp           ghost_closure_move, ghost_closure_res, ghost_closed,         &
 		!$omp           ghost_cell_closure, x_h2_secant_prev, f_h2_secant_prev,      &
 		!$omp           x_h2_map, f_h2_map, x_h2_secant, have_h2_secant_prev,        &
-		!$omp           Pm_row, h1m_row, chan_row, heat_row, q_abs_row, Pm2_row)     &
+		!$omp           Pm_row, h1m_row, chan_row, heat_row, q_abs_row, Pm2_row,     &
+		!$omp           x_ieq_dump_start)                                            &
 		!$omp   reduction(+:n_mol_clamped,n_mol_info,n_ieq_reseed,n_ieq_retry, &
 		!$omp               n_ieq_unphys,n_ieq_fail,n_acc,hist_conv,hist_uncv, &
 		!$omp               n_cce_attempt,n_cce_root,n_cce_solve,cce_seconds,  &
@@ -3225,7 +3265,8 @@
 				endif
 				if (last_self .and. j .eq. ieq_report_cell)                &
 					call report_accepted_cell_state(j, acc_class, acc_res, &
-					                                info, sys_x, N_eq)
+					                                info, sys_x, N_eq,     &
+					                                'x(H2 nuclei)')
 				! The chemical decay rates of the accepted state, for the
 				! cells a diagnostic named: the coefficients of this cell
 				! are live only here.
@@ -3277,10 +3318,20 @@
 						conv_ieq = (info .eq. 1)
 						info_ieq = info
 					else if (thereis_HeITR) then
+						if (j .eq. ieq_dump_cell)                         &
+							x_ieq_dump_start(1:N_eq) = sys_x(1:N_eq)
 						call hybrd1(ion_system_HeH_TR,N_eq,sys_x,sys_sol, &
 						            tol,info,wa,lwa,params)
 						conv_ieq = (info .eq. 1)
 						info_ieq = info
+						if (j .eq. ieq_dump_cell)                         &
+							call record_heh_tr_cell_solve(j, iatt, it_self,&
+							     x_ieq_dump_start, sys_x, N_eq, info, tol, &
+							     T_K(j), n_in_dim(j), n_tot(j), ne(j),     &
+							     xion(j), nhi(j), nhii(j), nhei(j),        &
+							     nheii(j), nheiii(j), nheiTR(j),           &
+							     N1_face(j), N15_face(j), N2_face(j),      &
+							     NTR_face(j), dP_HI_hrc(j), dP_HeI_hrc(j))
 					else if (thereis_metals) then
 						call solve_ieq(ion_system_HeH_metals,             &
 						            jac_system_HeH_metals,                &
@@ -3425,7 +3476,8 @@
 				endif
 				if (last_self .and. j .eq. ieq_report_cell)                &
 					call report_accepted_cell_state(j, acc_class, acc_res, &
-					                                info_ieq, sys_x, N_eq)
+					                                info_ieq, sys_x, N_eq, &
+					                                unknown_4_name_atomic())
 			endif
 
 			! Extract solution profiles
@@ -4420,7 +4472,7 @@
 	!----------------------------------!
 
 	double precision function normalized_reaction_residual(x,n,mbase,       &
-	                                              n_e_ref,row_out) result(res)
+	                                    n_e_ref,row_out,scale_out) result(res)
 	! Dimensionless reaction imbalance of a candidate equilibrium state: the
 	! residual vector of the SAME system the cell solve used, evaluated at x,
 	! with each balance row measured against its turnover scale -- the rate
@@ -4462,6 +4514,9 @@
 	real*8,  intent(in) :: x(n)
 	real*8,  intent(in) :: n_e_ref
 	real*8,  intent(out), optional :: row_out(n)
+	! scale_out (optional) returns the turnover scale each row is divided
+	! by, after the vanishing-scale rule below (a scale <= 0 counts as 1).
+	real*8,  intent(out), optional :: scale_out(n)
 	real*8  :: fv(n), srow(n), cxb(n), par(60), el_tot(12)
 	real*8  :: nH, nHe, ne, cx_heh, cx_hepp, s
 	integer :: iflag, i, e, ix
@@ -4594,6 +4649,7 @@
 		if (s .le. 0.0d0) s = 1.0d0
 		res = max(res, abs(fv(i))/s)
 		if (present(row_out)) row_out(i) = abs(fv(i))/s
+		if (present(scale_out)) scale_out(i) = s
 	enddo
 
 	end function normalized_reaction_residual
@@ -4944,20 +5000,321 @@
 	!----------------------------------!
 
 	subroutine report_accepted_cell_state(j, acc_class, acc_res, info_solver,&
-	                                      x, nx)
+	                                      x, nx, name_x4)
 	! The accepted equilibrium state of ONE cell, written by every sweep that
 	! solves it. The normalized reaction residual is the quantity the
 	! acceptance is taken on (ieq_res_tol), so it says how wide the band of
 	! compositions this cell would have accepted is; the hydrogen partition
-	! says where in that band this sweep landed.
+	! says where in that band this sweep landed. The second fraction printed
+	! is unknown min(4,nx), whose meaning depends on the system solved, so
+	! the caller names it (x(H2 nuclei) in the molecular layout, the He 2^3S
+	! fraction in the atomic triplet layout; unknown_4_name_atomic).
 	integer, intent(in) :: j, acc_class, info_solver, nx
 	real*8,  intent(in) :: acc_res
 	real*8,  intent(in) :: x(nx)
+	character(len=*), intent(in) :: name_x4
 	write(*,'(A,I5,A,I2,A,ES11.3,A,I2,A,ES22.15,A,ES22.15)')               &
 	     ' (ieq_cell_report) cell ', j, ' class ', acc_class,              &
 	     ' reaction residual ', acc_res, ' solver info ', info_solver,      &
-	     ' x(H+) ', x(1), ' x(H2 nuclei) ', x(min(4,nx))
+	     ' x(H+) ', x(1), ' '//trim(name_x4)//' ', x(min(4,nx))
 	end subroutine report_accepted_cell_state
+
+	!----------------------------------!
+
+	! What unknown min(4,N_eq) of the ATOMIC layouts is: the He 2^3S
+	! fraction wherever the triplet is tracked (System_HeH_TR and
+	! System_HeH_TR_metals), the C+ fraction of carbon in System_HeH_metals
+	! (first metal element, first ionized stage), and the He III fraction
+	! of System_HeH, whose three unknowns end there.
+	function unknown_4_name_atomic() result(name_x4)
+	character(len=16) :: name_x4
+	if (thereis_HeITR) then
+		name_x4 = 'x(He 2^3S)'
+	else if (thereis_metals) then
+		name_x4 = 'x(C+ of C)'
+	else
+		name_x4 = 'x(He III)'
+	endif
+	end function unknown_4_name_atomic
+
+	!----------------------------------!
+
+	! WHETHER A CELL'S SOLVES ARE TO BE WRITTEN OUT (EXHALE_IEQ_DUMP_CELL),
+	! read once for the run and announced only when set.
+	logical function ieq_cell_dump_requested()
+	character(len=32) :: env
+	if (.not. ieq_dump_cell_read) then
+		call get_environment_variable('EXHALE_IEQ_DUMP_CELL', env)
+		if (len_trim(env) .gt. 0) read(env,*) ieq_dump_cell
+		ieq_dump_cell_read = .true.
+		if (ieq_dump_cell .ne. ieq_report_no_cell)                        &
+			write(*,'(A,I6,A)') ' (ioniz_eq) EXHALE_IEQ_DUMP_CELL: every'// &
+			     ' He 2^3S-branch solve of cell', ieq_dump_cell,           &
+			     ' is written to ieq_cell_dump.txt'
+	endif
+	ieq_cell_dump_requested = (ieq_dump_cell .ne. ieq_report_no_cell)
+	end function ieq_cell_dump_requested
+
+	! The caller's labels of the sweep about to run (see ieq_dump_cell).
+	subroutine set_ieq_cell_dump_tags(eval_tag, pass_tag)
+	integer, intent(in) :: eval_tag, pass_tag
+	ieq_dump_eval_tag = eval_tag
+	ieq_dump_pass_tag = pass_tag
+	end subroutine set_ieq_cell_dump_tags
+
+	!----------------------------------!
+
+	subroutine record_heh_tr_cell_solve(j, iatt, it_self, x_start, x_ret, &
+	           nx, info_solver, tol_solver, T_cell, n_dim_cell, n_tot_cell,&
+	           ne_cell, xion_cell, nhi_c, nhii_c, nhei_c, nheii_c,         &
+	           nheiii_c, nheiTR_c, N1_c, N15_c, N2_c, NTR_c, dPHI_hrc_c,   &
+	           dPHeI_hrc_c)
+	! ONE SOLVE OF THE DUMPED CELL IN THE ATOMIC He 2^3S BRANCH
+	! (ion_system_HeH_TR, four unknowns x(H+), x(He+), x(He++), x(He 2^3S)).
+	! Written from inside the parallel cell sweep, under a critical section,
+	! so the record is whole. It re-evaluates the rows at the returned
+	! vector with the same routine and the same cell state the solve used,
+	! and forms the forward-difference Jacobian with the step MINPACK's
+	! fdjac1 takes inside hybrd1 (epsfcn = 0: h = sqrt(eps_mach)|x_k|, or
+	! sqrt(eps_mach) where x_k = 0). hybrd1 keeps no Jacobian it could hand
+	! out (it carries a Broyden-updated QR factor), and this branch has no
+	! analytic Jacobian, so the finite-difference one is the only one the
+	! solve has. Nothing in the solution reads what is written; the cell
+	! state (ieq_cell) is read and left as it was.
+	integer, intent(in) :: j, iatt, it_self, nx, info_solver
+	real*8,  intent(in) :: x_start(nx), x_ret(nx), tol_solver
+	real*8,  intent(in) :: T_cell, n_dim_cell, n_tot_cell, ne_cell
+	real*8,  intent(in) :: xion_cell, nhi_c, nhii_c, nhei_c, nheii_c
+	real*8,  intent(in) :: nheiii_c, nheiTR_c, N1_c, N15_c, N2_c, NTR_c
+	real*8,  intent(in) :: dPHI_hrc_c, dPHeI_hrc_c
+	real*8  :: fv(nx), fp(nx), xp(nx), rowres(nx), srow(nx), fjac(nx,nx)
+	real*8  :: par(40), res, h, eps_fd, ne_ret, gph_gnd, dP_hrc(2)
+	integer :: iflag, k, ios
+	integer :: iflags(12)
+	character(len=40) :: fmt_rec
+	double precision, external :: dpmpar
+
+	eps_fd = sqrt(dpmpar(1))
+	par(:) = 0.0d0
+	iflag  = 1
+	call ion_system_HeH_TR(nx, x_ret, fv, iflag, par)
+	res = normalized_reaction_residual(x_ret, nx, 5, ne_cell,           &
+	                                   row_out=rowres, scale_out=srow)
+	do k = 1, nx
+		xp(1:nx) = x_ret(1:nx)
+		h = eps_fd*abs(x_ret(k))
+		if (h .eq. 0.0d0) h = eps_fd
+		xp(k) = x_ret(k) + h
+		call ion_system_HeH_TR(nx, xp, fp, iflag, par)
+		fjac(1:nx,k) = (fp(1:nx) - fv(1:nx))/h
+	enddo
+	ne_ret = x_ret(1)*ieq_cell%nh + (x_ret(2) + 2.0d0*x_ret(3))*ieq_cell%nhe
+	gph_gnd = -1.0d0
+	if (use_excited_H .and. allocated(gph_ground_HI)) gph_gnd = gph_ground_HI(j)
+	dP_hrc = 0.0d0
+	if (use_he_rec_coupling .or. use_h_rec_escape) then
+		dP_hrc(1) = dPHI_hrc_c
+		dP_hrc(2) = dPHeI_hrc_c
+	endif
+
+	iflags(1)  = ieq_dump_eval_tag
+	iflags(2)  = ieq_dump_pass_tag
+	iflags(3)  = ieq_dump_sweep
+	iflags(4)  = ieq_sweep_state_kind
+	iflags(5)  = merge(1, 0, ieq_state_may_be_refused)
+	iflags(6)  = it_self
+	iflags(7)  = iatt
+	iflags(8)  = info_solver
+	iflags(9)  = merge(1, 0, he_h_charge_exchange)
+	iflags(10) = merge(1, 0, ieq_cell%x_hp_fixed)
+	iflags(11) = merge(1, 0, ieq_cell%x_heii_fixed)
+	iflags(12) = merge(1, 0, ieq_cell%x_heiii_fixed)
+
+	!$omp critical (ieq_cell_dump)
+	if (.not. ieq_dump_open) then
+		open(newunit=ieq_dump_unit, file='ieq_cell_dump.txt',             &
+		     status='replace', action='write', iostat=ios)
+		ieq_dump_open = .true.
+		write(ieq_dump_unit,'(A)')                                        &
+		 '# ieq_cell_dump: every solve of one cell in the atomic He 2^3S'// &
+		 ' branch (System_HeH_TR, hybrd1). One line = one solve.'
+		write(ieq_dump_unit,'(A)') '# columns (1-based):'
+		write(ieq_dump_unit,'(A)')                                        &
+		 '#  1 record  2 cell j  3 eval (residual evaluation count of'//   &
+		 ' steady_newton, 0 outside eval_residual)  4 pass it_eq'//        &
+		 ' (composition pass in eval_residual, 0 outside)  5 sweep'//      &
+		 ' (ioniz_eq calls since the key was read)  6 state kind'//        &
+		 ' (1 marching, 2 steady iterate, 3 steady candidate/probe)'//     &
+		 '  7 may_be_refused (1 = candidate a caller can refuse)'//       &
+		 '  8 it_self  9 iatt (1 guess, 2 fixed-n_e balance, 3 neutral)'// &
+		 '  10 hybrd1 info  11 He-H charge exchange on  12 x_hp_fixed'//   &
+		 '  13 x_heii_fixed  14 x_heiii_fixed'
+		write(ieq_dump_unit,'(A)')                                        &
+		 '#  15 tol (hybrd1 xtol)  16 T_K [K]  17 n_in_dim [cm^-3]'//     &
+		 '  18 n_tot [cm^-3]  19 n_e entering the sweep [cm^-3] (turnover'//&
+		 ' bound; the rows form n_e from the trial fractions)  20 xion'//  &
+		 ' (ionized fraction entering the secondary-ionization partition)'//&
+		 '  21 n_H [cm^-3]  22 n_He [cm^-3]  23-28 entry n(HI) n(HII)'//   &
+		 ' n(HeI, summed) n(HeII) n(HeIII) n(He 2^3S) [cm^-3]'//           &
+		 '  29-32 star-ward columns N(HI) N(HeI 1^1S) N(HeII)'//           &
+		 ' N(He 2^3S) at the cell face [cm^-2]'
+		write(ieq_dump_unit,'(A)')                                        &
+		 '#  33 P_HI  34 P_HeI  35 P_HeII  36 P_HeITR [s^-1] (with'//     &
+		 ' secondary ionization and the additions below)  37 rchiiB'//     &
+		 '  38 rcheiiB  39 rcheiiiB  40 rcheiTR  41 a_ion_HI'//            &
+		 '  42 a_ion_HeI  43 a_ion_HeII  44 a_ion_HeITR  45 q13'//         &
+		 '  46 q31g  47 q31a  48 q31b  49 Q31 [cm^3 s^-1]  50 A31 [s^-1]'//&
+		 '  51 kcx_He0_Hp  52 kcx_Hep_H0  53 kcx_Hepp_H0 [cm^3 s^-1]'//    &
+		 '  54 f_penning_HeI23S  55 gph_ground_HI [s^-1] (-1: excited H'// &
+		 ' off)  56 dP_HI_hrc  57 dP_HeI_hrc [s^-1] (0: recombination'//   &
+		 ' coupling off)'
+		write(ieq_dump_unit,'(A)')                                        &
+		 '#  58-61 start vector x(1:4)  62-65 returned vector x(1:4)'//   &
+		 '  66 n_e of the returned vector [cm^-3]  67-70 rows fvec(1:4)'// &
+		 ' at the returned vector [cm^-3 s^-1]  71-74 turnover bounds'//   &
+		 ' srow(1:4) [cm^-3 s^-1]  75 normalized reaction residual'//     &
+		 '  76-91 forward-difference Jacobian dfvec(i)/dx(k), column-'//   &
+		 'major (k outer), fdjac1 step [cm^-3 s^-1]'
+		flush(ieq_dump_unit)
+	endif
+	ieq_dump_record = ieq_dump_record + 1
+	write(fmt_rec,'(A)') '(I8,I6,12I9,77(1X,ES25.17E3))'
+	write(ieq_dump_unit,fmt_rec) ieq_dump_record, j, iflags,              &
+	     tol_solver, T_cell, n_dim_cell, n_tot_cell, ne_cell, xion_cell,   &
+	     ieq_cell%nh, ieq_cell%nhe, nhi_c, nhii_c, nhei_c, nheii_c,        &
+	     nheiii_c, nheiTR_c, N1_c, N15_c, N2_c, NTR_c,                     &
+	     ieq_cell%P_HI, ieq_cell%P_HeI, ieq_cell%P_HeII, ieq_cell%P_HeITR, &
+	     ieq_cell%rchiiB, ieq_cell%rcheiiB, ieq_cell%rcheiiiB,            &
+	     ieq_cell%rcheiTR, ieq_cell%a_ion_HI, ieq_cell%a_ion_HeI,         &
+	     ieq_cell%a_ion_HeII, ieq_cell%a_ion_HeITR, ieq_cell%q13,         &
+	     ieq_cell%q31g, ieq_cell%q31a, ieq_cell%q31b, ieq_cell%Q31,        &
+	     ieq_cell%A31, ieq_cell%kcx_He0_Hp, ieq_cell%kcx_Hep_H0,          &
+	     ieq_cell%kcx_Hepp_H0, f_penning_HeI23S, gph_gnd, dP_hrc,          &
+	     x_start(1:4), x_ret(1:4), ne_ret, fv(1:4), srow(1:4), res,        &
+	     fjac(1:4,1:4)
+	flush(ieq_dump_unit)
+	!$omp end critical (ieq_cell_dump)
+	end subroutine record_heh_tr_cell_solve
+
+	!----------------------------------!
+
+	subroutine probe_photoionization_rates_of_the_cell(j, N1o, N15o, N2o, &
+	           NTRo, NH2o, Nmo, nhi_j, nheiS_j, nheii_j, nheiTR_j, nh2_j,  &
+	           nm_j, xion_j, fvq_j, evq_j, has_h2, sec_on, mol_sec, D0_eV,  &
+	           Eker_eV, P_HI_used, P_HeI_used, P_HeITR_used)
+	! THE PHOTOIONIZATION RATES OF THE DUMPED CELL AS A FUNCTION OF ITS
+	! ENTRY STATE. photoionization_field_at_cell_HHe is called again with
+	! the inputs the sweep used (a repeat, which must return the same bits)
+	! and then with ONE input perturbed at a time by a relative step delta:
+	! the ionized fraction handed to the secondary-ionization partition
+	! (xion), the cell's own H I density (its own optical depth and the
+	! partition's target density), and the star-ward H I column. The
+	! stellar-field rates are written before the Balmer and recombination
+	! additions, which the sweep adds afterwards. One line per perturbation
+	! in ieq_cell_rate_probe.txt:
+	!   sweep, input (0 repeat, 1 xion, 2 n_HI, 3 N_HI column), delta,
+	!   P_HI, P_HeI, P_HeITR [s^-1], and d ln P_HI / d ln(input);
+	!   input 4 lines (the n_HI scan below): sweep, 4, delta, P_HI,
+	!   P_HeI of the primary field, P_HI of the primary field, n_HI.
+	! Measurement only; the rates of the sweep are not touched.
+	integer, intent(in) :: j
+	real*8,  intent(in) :: N1o, N15o, N2o, NTRo, NH2o, Nmo(n_mphot)
+	real*8,  intent(in) :: nhi_j, nheiS_j, nheii_j, nheiTR_j, nh2_j
+	real*8,  intent(in) :: nm_j(n_mion), xion_j, fvq_j, evq_j
+	logical, intent(in) :: has_h2, sec_on, mol_sec
+	real*8,  intent(in) :: D0_eV, Eker_eV, P_HI_used, P_HeI_used
+	real*8,  intent(in) :: P_HeITR_used
+	real*8  :: pHI, pHeI, pHeII, pTR, pm(n_mion), pm2(n_mion)
+	real*8  :: pH2, pH2di, pH2dd, pH2nd, h1a, h1b, h1c, h1d, h1e
+	real*8  :: h1m(n_mion), heat_l, chan_l(6), q_l, qabs_l
+	real*8  :: xin, nhin, n1in, dl
+	real*8, parameter :: deltas(6) = (/ 1.0d-12, -1.0d-12, 1.0d-10,      &
+	                                    -1.0d-10, 1.0d-7, -1.0d-7 /)
+	integer :: iin, id, nd, ios
+	integer, save :: probe_unit = 0
+	logical, save :: probe_open = .false.
+
+	!$omp critical (ieq_rate_probe)
+	if (.not. probe_open) then
+		open(newunit=probe_unit, file='ieq_cell_rate_probe.txt',          &
+		     status='replace', action='write', iostat=ios)
+		probe_open = .true.
+		write(probe_unit,'(A)') '# ieq_cell_rate_probe: stellar-field'//  &
+		 ' photoionization rates of the dumped cell at its entry state'//  &
+		 ' and at one input perturbed by a relative delta'
+		write(probe_unit,'(A)') '# columns: sweep  input (0 repeat,'//    &
+		 ' 1 xion, 2 n_HI of the cell, 3 star-ward N_HI column)  delta'//  &
+		 '  P_HI  P_HeI  P_HeITR [s^-1]  dlnP_HI/dln(input)'//             &
+		 '  (input 0 line: P_HI, P_HeI, P_HeITR the sweep used)'
+		write(probe_unit,'(A,I6,A,ES25.17E3)') '# cell ', j,              &
+		 '  (first line of each sweep: the rates the sweep used)', 0.0d0
+	endif
+	write(probe_unit,'(I8,I3,5(1X,ES25.17E3))') ieq_dump_sweep, -1,      &
+	     0.0d0, P_HI_used, P_HeI_used, P_HeITR_used, 0.0d0
+	do iin = 0, 3
+		nd = 6
+		if (iin .eq. 0) nd = 1
+		do id = 1, nd
+			dl   = deltas(id)
+			if (iin .eq. 0) dl = 0.0d0
+			xin  = xion_j
+			nhin = nhi_j
+			n1in = N1o
+			if (iin .eq. 1) xin  = xion_j*(1.0d0 + dl)
+			if (iin .eq. 2) nhin = nhi_j*(1.0d0 + dl)
+			if (iin .eq. 3) n1in = N1o*(1.0d0 + dl)
+			call photoionization_field_at_cell_HHe(j,                      &
+			         n1in, N15o, N2o, NTRo, NH2o, Nmo,                     &
+			         nhin, nheiS_j, nheii_j, nheiTR_j, nh2_j,              &
+			         nm_j, xin, fvq_j, evq_j,                              &
+			         has_h2, sec_on, mol_sec, D0_eV, Eker_eV,              &
+			         pHI, pHeI, pHeII, pTR, pm,                            &
+			         pH2, pH2di, pH2dd, pH2nd,                             &
+			         h1a, h1b, h1c, h1d, h1e,                              &
+			         h1m, heat_l, chan_l, q_l, qabs_l, pm2)
+			if (iin .eq. 0) then
+				write(probe_unit,'(I8,I3,5(1X,ES25.17E3))') ieq_dump_sweep, &
+				     iin, dl, pHI, pHeI, pTR, 0.0d0
+			else
+				write(probe_unit,'(I8,I3,5(1X,ES25.17E3))') ieq_dump_sweep, &
+				     iin, dl, pHI, pHeI, pTR,                               &
+				     (pHI/P_HI_used - 1.0d0)/dl
+			endif
+		enddo
+	enddo
+	! A scan of the cell's own H I density over 41 steps of 1e-12 (input
+	! 4), with the secondary ionization on (the column after delta is the
+	! P_HI the sweep would use) and off (the primary rate alone, written in
+	! the P_HeITR column's place): which part of P_HI carries the structure
+	! the perturbations above show at this scale.
+	do id = -20, 20
+		dl   = dble(id)*1.0d-12
+		nhin = nhi_j*(1.0d0 + dl)
+		call photoionization_field_at_cell_HHe(j,                          &
+		         N1o, N15o, N2o, NTRo, NH2o, Nmo,                          &
+		         nhin, nheiS_j, nheii_j, nheiTR_j, nh2_j,                  &
+		         nm_j, xion_j, fvq_j, evq_j,                               &
+		         has_h2, sec_on, mol_sec, D0_eV, Eker_eV,                  &
+		         pHI, pHeI, pHeII, pTR, pm,                                &
+		         pH2, pH2di, pH2dd, pH2nd,                                 &
+		         h1a, h1b, h1c, h1d, h1e,                                  &
+		         h1m, heat_l, chan_l, q_l, qabs_l, pm2)
+		xin = pHI
+		call photoionization_field_at_cell_HHe(j,                          &
+		         N1o, N15o, N2o, NTRo, NH2o, Nmo,                          &
+		         nhin, nheiS_j, nheii_j, nheiTR_j, nh2_j,                  &
+		         nm_j, xion_j, fvq_j, evq_j,                               &
+		         has_h2, .false., .false., D0_eV, Eker_eV,                 &
+		         pHI, pHeI, pHeII, pTR, pm,                                &
+		         pH2, pH2di, pH2dd, pH2nd,                                 &
+		         h1a, h1b, h1c, h1d, h1e,                                  &
+		         h1m, heat_l, chan_l, q_l, qabs_l, pm2)
+		write(probe_unit,'(I8,I3,5(1X,ES25.17E3))') ieq_dump_sweep, 4,     &
+		     dl, xin, pHeI, pHI, nhin
+	enddo
+	flush(probe_unit)
+	!$omp end critical (ieq_rate_probe)
+	end subroutine probe_photoionization_rates_of_the_cell
 
 	!----------------------------------!
 

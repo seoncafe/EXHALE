@@ -124,14 +124,22 @@
       ! upstream state.
       integer, parameter :: adv_retained = 1
       ! The correction was attempted and its solve did not converge, or its
-      ! root left the range a state of this gas can occupy.
+      ! root left the range a state of this gas can occupy.  The row then
+      ! carries the run's own value, EXCEPT for the temperature of a row
+      ! that is an unknown of a rejected column energy solve (the transport
+      ! terms, adv_derived_state): that row carries the marching profile of
+      ! the pass, which is diagnostic data and not a solution.
       integer, parameter :: adv_failed = 2
       ! The closure does not cover this row.  The post-process reconstructs
       ! an H/He + trace-metal gas and omits the molecular (H2 H2+ H3+ HeH+)
       ! and oxygen (OH H2O CO) carriers from its particle and electron
       ! counts, so a cell in which those omitted species carry more of the
       ! particle count than the species it does carry is a cell class it does
-      ! not model.  For the TEMPERATURE the same holds of the energy balance:
+      ! not model; so is a cell in which one population the advection
+      ! systems solve (H+, He+, He(2^3S)) is destroyed faster by H2 than by
+      ! the channels those molecule-free systems carry (the composition
+      ! class of post_process_adv).  Such a row carries the run's own
+      ! composition and temperature.  For the TEMPERATURE the same holds of the energy balance:
       ! a row whose heating and cooling in the run are carried more by the
       ! omitted molecular and oxygen channels than by the channels the
       ! post-process assembles keeps the run's own temperature with this
@@ -161,6 +169,111 @@
       ! different statements about the same measure and the file carries
       ! both.
       real*8, parameter :: adv_conditional_tol = 1.0d-2
+
+      ! THE STATE OF THE DERIVED PRODUCT AS A WHOLE, beside the two fields
+      ! of each row.  The row fields say what each row is; this record says
+      ! how the solves that produced the rows ended, which no row field can
+      ! carry: the column energy solve of the transport terms couples every
+      ! corrected cell to its neighbors, so its rejection is a statement
+      ! about the whole set of its unknowns, and the outer iteration of the
+      ! post-process (a fixed number of passes, with no convergence test) is
+      ! a statement about the profile and not about any one row.
+      !
+      ! post_process_adv fills it and hands it to both of its callers, and
+      ! the writer states it in the '# adv_derived_state:' line of both _adv
+      ! files (write_adv_derived_state_line).  A file without that line, or
+      ! a record that was never filled (recorded = .false.), has an UNKNOWN
+      ! derived state, which is not an accepted one.
+      !
+      ! How the column energy solve of the transport terms ended:
+      !   adv_col_not_run    no transport term is active, or no cell was
+      !                      corrected by the marching sweep, so there was
+      !                      no column to solve;
+      !   adv_col_rejected   the solve was rejected (the reason below); the
+      !                      marching profile is kept in the arrays and
+      !                      every unknown of the rejected set is written
+      !                      adv_failed;
+      !   adv_col_converged_on_residual  the energy row of every unknown,
+      !                      formed again at the final profile with the
+      !                      transport terms of that profile, is within
+      !                      atol_E + cert_tol_energy S_E of its own terms
+      !                      (energy_column_newton states the test);
+      !   adv_col_step_passed_unverified  the iteration stopped on its step
+      !                      test and the residual could not be formed.
+      !                      The current solve always forms it, so this
+      !                      value is not produced; it is kept so that a
+      !                      record never calls an unmeasured column
+      !                      converged.
+      integer, parameter :: adv_col_not_run = 0, adv_col_rejected = 1,    &
+                            adv_col_step_passed_unverified = 2,           &
+                            adv_col_converged_on_residual = 3
+      ! Why a column solve was rejected, in the order the solve tests them.
+      ! (Until 2026-10-01 there were two more: a metal temperature band,
+      ! 0.5 to 2 times the run's own temperature, and the iteration cap.
+      ! The band is the guard of the cell-by-cell Brent solve against the
+      ! spurious hot root of the metal-cooled residual, which that solve
+      ! keeps; applied to the conduction-coupled column it refused a root
+      ! of the corrected equation, md/Update_EXHALE_stage3.md section 55.
+      ! The cap is now the stopping rule of the iteration only: the
+      ! residual decides.)
+      integer, parameter :: adv_col_reason_none = 0,                      &
+                            adv_col_reason_linear_solve = 1,              &
+                            adv_col_reason_nonfinite = 2,                 &
+                            adv_col_reason_non_positive_T = 3,            &
+                            adv_col_reason_residual_above_tolerance = 4
+      ! How the cell composition solves of the last pass ended: every one of
+      ! them converged, or at least one row's composition is adv_failed.
+      integer, parameter :: adv_chem_complete = 0, adv_chem_cells_failed = 1
+      ! How the outer iteration ended.  The post-process takes a fixed
+      ! number of passes and tests nothing between them, so the only value
+      ! is "not verified".
+      integer, parameter :: adv_outer_unverified = 0
+
+      type adv_derived_state
+         ! .false. until post_process_adv has filled the record: an
+         ! unfilled record is UNKNOWN, never an accepted product.
+         logical :: recorded = .false.
+         ! The chemistry of the last pass, and the cell composition solves
+         ! (advection systems and metal re-solve) that did not converge,
+         ! summed over every pass.
+         integer :: chemistry = adv_chem_complete
+         integer :: n_chem_solves_failed = 0
+         ! The column energy solve of the LAST pass: its outcome, the reason
+         ! of a rejection, the iterations it took, the cell that triggered
+         ! the rejection (0 when none) and the number of its unknowns that
+         ! are physical cells (on a rejection, the set written adv_failed;
+         ! the ghost rows the solve also carries are written failed too and
+         ! are not counted).
+         integer :: column = adv_col_not_run
+         integer :: column_reason = adv_col_reason_none
+         integer :: column_iterations = 0
+         integer :: column_cell = 0
+         integer :: column_unknowns = 0
+         ! The worst energy row of the column at its final profile: the
+         ! cell with the largest |R|/(atol_E + rtol_E S_E), its |R| in
+         ! erg cm^-3 s^-1 and its |R|/S_E (energy_column_newton).  Zero
+         ! when no residual was formed.
+         integer :: column_worst_cell = 0
+         real*8  :: column_worst_residual = 0.0d0
+         real*8  :: column_worst_residual_rel = 0.0d0
+         ! Physical cells of the column of the last pass whose cell-by-cell
+         ! marching energy step found no root: the roots the column supplied
+         ! when it converged (they are then written adv_corrected).
+         integer :: cells_marching_unrooted = 0
+         ! The passes taken and how many of them rejected their column.
+         integer :: passes = 0
+         integer :: column_passes_rejected = 0
+         ! Physical cells (1..N; the ghost rows are not counted) whose
+         ! temperature OR composition field holds the value named (a cell
+         ! can count in more than one).
+         integer :: cells_failed = 0
+         integer :: cells_retained = 0
+         integer :: cells_unsupported = 0
+         integer :: outer = adv_outer_unverified
+         ! The verdict: .true. when the column of the last pass was
+         ! rejected or any written row is adv_failed.
+         logical :: rejected = .false.
+      end type adv_derived_state
 
       ! The C library rename(3), which replaces the target name in one step
       ! within a file system (POSIX), so a reader of the target sees the old
@@ -327,7 +440,7 @@
       subroutine write_output(rho,v,p,T,heat,cool,eta,                &
                               nhi,nhii,nhei,nheii,nheiii,nheiTR,      &
                               nm,flag,adv_T_status,adv_comp_status,        &
-                              adv_mass_row)
+                              adv_mass_row, derived_state)
       ! Metal ion densities are passed as the 2D array nm(:, 1:n_mion),
       ! one column per metal ion stage in the canonical species_table
       ! order (CI, CII, CIII, OI, ..., MgIII). This keeps the argument
@@ -363,6 +476,10 @@
       ! One group with the two fields above: the advection-corrected write
       ! passes all three.
       real*8, dimension(1-Ng:N+Ng), intent(in), optional :: adv_mass_row
+      ! The state of the derived product as a whole (adv_derived_state),
+      ! stated in the header of both _adv files; the advection-corrected
+      ! write passes it with the three above.
+      type(adv_derived_state), intent(in), optional :: derived_state
       ! That measure as written, zero where the post-process did not form
       ! it (a row it never reached).
       real*8, dimension(1-Ng:N+Ng) :: mrow
@@ -391,10 +508,12 @@
       endif
       call write_hydro_state_file(trim(hyd_path), flag, rho, v, p, T,     &
                                   heat, cool, mrow, adv_T_status,         &
-                                  adv_comp_status)
+                                  adv_comp_status,                        &
+                                  derived_state = derived_state)
       call write_species_state_file(trim(ion_path), flag, nhi, nhii,      &
                                     nhei, nheii, nheiii, nheiTR, nm,      &
-                                    adv_T_status, adv_comp_status)
+                                    adv_T_status, adv_comp_status,        &
+                                    derived_state = derived_state)
 
       !---- Lyman-Werner photodissociation diagnostic ----!
       ! Written only for a molecular run that carries a Lyman-Werner band
@@ -527,7 +646,7 @@
       subroutine write_hydro_state_file(path, flag, rho, v, p, T, heat,   &
                                         cool, mrow, adv_T_status,         &
                                         adv_comp_status, pass_statement,  &
-                                        ios_open, state_id)
+                                        ios_open, state_id, derived_state)
       ! THE THERMODYNAMIC HALF OF A STATE, to the file named: r, rho, v, p,
       ! T, heat and cool of every row, ghosts included, under the header a
       ! restart reads (the coupling line, provenance, boundary reservoir,
@@ -553,6 +672,8 @@
       character(len=*), intent(in), optional :: pass_statement
       integer, intent(out), optional :: ios_open
       character(len=*), intent(in), optional :: state_id
+      ! The state of the derived product as a whole, for the _adv write.
+      type(adv_derived_state), intent(in), optional :: derived_state
       integer :: unit_h, j
 
       if (present(ios_open)) then
@@ -612,7 +733,8 @@
          ! input was judged by, what the product is, and how many rows carry
          ! each value (see the routine).
          if (present(adv_T_status))                                         &
-            call write_adv_validity_header(unit_h, adv_T_status, adv_comp_status)
+            call write_adv_validity_header(unit_h, adv_T_status,       &
+                                           adv_comp_status, derived_state)
          ! Real columns in ES25.17E3, which reads back to the same binary64
          ! value (see write_species_state_file); the advection rows carry two
          ! integer status columns before the measure.
@@ -649,7 +771,7 @@
                                           nheii, nheiii, nheiTR, nm,       &
                                           adv_T_status, adv_comp_status,   &
                                           pass_statement, ios_open,        &
-                                          state_id)
+                                          state_id, derived_state)
       ! THE COMPOSITION HALF OF A STATE, to the file named: every species
       ! density of every row, ghosts included. The molecular and oxygen
       ! columns are read from nmol_eq and nox_eq, so a caller refreshes them
@@ -666,6 +788,8 @@
       character(len=*), intent(in), optional :: pass_statement
       integer, intent(out), optional :: ios_open
       character(len=*), intent(in), optional :: state_id
+      ! The state of the derived product as a whole, for the _adv write.
+      type(adv_derived_state), intent(in), optional :: derived_state
       integer :: unit_i, j, i, n_real
       ! Every real column in ES25.17E3, which reads back to the same binary64
       ! value (17 significant digits); list-directed output leaves the digit
@@ -750,7 +874,8 @@
       ! configurations is refused rather than half-loaded.
       call write_restart_metadata_header(unit_i)
       if (present(adv_T_status))                                         &
-         call write_adv_validity_header(unit_i, adv_T_status, adv_comp_status)
+         call write_adv_validity_header(unit_i, adv_T_status,           &
+                                        adv_comp_status, derived_state)
       do j = 1-Ng,N+Ng
 
          if (present(adv_T_status)) then
@@ -1135,7 +1260,8 @@
 
       ! ------------------------------------------------------------------ !
 
-      subroutine write_adv_validity_header(unit, T_status, comp_status)
+      subroutine write_adv_validity_header(unit, T_status, comp_status,  &
+                                           derived_state)
       ! WHAT THE ADVECTION-CORRECTED FILES ARE, AND WHICH ROWS OF THEM CAN
       ! BE READ AS A STEADY SOLUTION.  One author for the block, so that
       ! Hydro_ioniz_adv.txt and Ion_species_adv.txt cannot disagree about
@@ -1157,6 +1283,9 @@
       !   what the product is, and the closure's own restrictions.
       integer, intent(in) :: unit
       integer, dimension(1-Ng:N+Ng), intent(in) :: T_status, comp_status
+      ! The state of the product as a whole (adv_derived_state); absent,
+      ! the line says unknown.
+      type(adv_derived_state), intent(in), optional :: derived_state
       integer, dimension(0:4) :: nT, nc
       integer :: j, ist
 
@@ -1177,10 +1306,14 @@
                      ' below, or the local radiative balance rather'
       write(unit,'(A)') '#   than the flow sets it, or the gas enters'//   &
                      ' the cell), 2 failed (the cell solve did not'
-      write(unit,'(A)') '#   converge or returned an out-of-band'//        &
-                     ' root), 3 unsupported (the closure does not'
-      write(unit,'(A)') '#   cover this cell class), 4 not_evaluated'//    &
-                     ' (the post-process did not reach this row).'
+      write(unit,'(A)') '#   converge or returned an out-of-band root,'//  &
+                     ' and the row carries the run''s own T; or the'
+      write(unit,'(A)') '#   row is an unknown of a rejected column'//     &
+                     ' energy solve, and it carries the marching'
+      write(unit,'(A)') '#   profile of that pass), 3 unsupported (the'//  &
+                     ' closure does not cover this cell class),'
+      write(unit,'(A)') '#   4 not_evaluated (the post-process did not'//  &
+                     ' reach this row).'
       write(unit,'(A)') '# adv_comp_status the same five values for the'// &
                      ' COMPOSITION of the row: 0 the steady'
       write(unit,'(A)') '#   advection-ionization solution, 1 the'//       &
@@ -1191,9 +1324,19 @@
                      ' above 0, 1 and 2, which name the flow and the'
       write(unit,'(A)') '#   solve; the two fields are independent, so'//  &
                      ' a corrected T can carry a retained'
-      write(unit,'(A)') '#   composition and the reverse.'
+      write(unit,'(A)') '#   composition and the reverse. A row whose'//   &
+                     ' composition field is not 0 carries the run''s'
+      write(unit,'(A)') '#   own composition in every species column,'//   &
+                     ' a row whose T field is 1, 3 or 4 the run''s own'
+      write(unit,'(A)') '#   T, and a row refused in both fields the'//    &
+                     ' run''s p, heat and cool as well. Class 3 is'
+      write(unit,'(A)') '#   the particle count, or the balance of H+,'//  &
+                     ' He+ or He(2^3S), carried more by the omitted'
+      write(unit,'(A)') '#   molecular species than by those the'//        &
+                     ' reconstruction holds.'
       write(unit,'(A,5(1x,i0),A,5(1x,i0))') '# adv_status_counts T',       &
                      (nT(ist), ist = 0,4), ' comp', (nc(ist), ist = 0,4)
+      call write_adv_derived_state_line(unit, derived_state)
       write(unit,'(A)') '# adv_mass_row the measure both fields were'//    &
                      ' decided by, for every row of'
       write(unit,'(A)') '#   Hydro_ioniz_adv.txt: the operator below,'//   &
@@ -1263,6 +1406,153 @@
                      ' approximation.'
 
       end subroutine write_adv_validity_header
+
+      !-------------------------------------------------------------!
+
+      function adv_column_outcome_name(outcome) result(nm)
+      ! The word the header and the log use for a column outcome.
+      integer, intent(in) :: outcome
+      character(len=24) :: nm
+      select case (outcome)
+      case (adv_col_not_run)
+         nm = 'not_run'
+      case (adv_col_rejected)
+         nm = 'rejected'
+      case (adv_col_step_passed_unverified)
+         nm = 'step_passed_unverified'
+      case (adv_col_converged_on_residual)
+         nm = 'converged_on_residual'
+      case default
+         nm = 'unknown'
+      end select
+      end function adv_column_outcome_name
+
+      function adv_column_reason_name(reason) result(nm)
+      ! The word the header and the log use for a column rejection reason;
+      ! also the value EXHALE_ADV_TEST_REJECT accepts.
+      integer, intent(in) :: reason
+      character(len=24) :: nm
+      select case (reason)
+      case (adv_col_reason_none)
+         nm = 'none'
+      case (adv_col_reason_linear_solve)
+         nm = 'linear_solve'
+      case (adv_col_reason_nonfinite)
+         nm = 'nonfinite'
+      case (adv_col_reason_non_positive_T)
+         nm = 'non_positive_T'
+      case (adv_col_reason_residual_above_tolerance)
+         nm = 'residual_above_tolerance'
+      case default
+         nm = 'unknown'
+      end select
+      end function adv_column_reason_name
+
+      function adv_derived_state_fields(ds) result(txt)
+      ! The record as one line of name=value fields, the same text for the
+      ! file header and the log.  An unfilled record says unknown and
+      ! nothing else, so it cannot be read as a product that passed.
+      type(adv_derived_state), intent(in) :: ds
+      character(len=512) :: txt
+      character(len=16)  :: verdict, chem
+      if (.not. ds%recorded) then
+         txt = 'verdict=unknown'
+         return
+      endif
+      if (ds%rejected) then
+         verdict = 'rejected'
+      else
+         verdict = 'unverified'
+      endif
+      if (ds%chemistry .eq. adv_chem_complete) then
+         chem = 'complete'
+      else
+         chem = 'cells_failed'
+      endif
+      write(txt,'(20A)') 'verdict=', trim(verdict),                       &
+           ' chemistry=', trim(chem),                                     &
+           ' chemistry_solves_failed=', trim(int_text(ds%n_chem_solves_failed)), &
+           ' column=', trim(adv_column_outcome_name(ds%column)),          &
+           ' reason=', trim(adv_column_reason_name(ds%column_reason)),    &
+           ' column_iterations=', trim(int_text(ds%column_iterations)),   &
+           ' column_cell=', trim(int_text(ds%column_cell)),               &
+           ' column_unknowns=', trim(int_text(ds%column_unknowns)),       &
+           ' column_passes_rejected=',                                    &
+           trim(int_text(ds%column_passes_rejected))
+      txt = trim(txt)//' column_worst_cell='//                             &
+           trim(int_text(ds%column_worst_cell))//                          &
+           ' column_worst_residual='//trim(real_text(ds%column_worst_residual))// &
+           ' column_worst_residual_rel='//                                 &
+           trim(real_text(ds%column_worst_residual_rel))
+      txt = trim(txt)//' passes='//trim(int_text(ds%passes))//            &
+           ' cells_failed='//trim(int_text(ds%cells_failed))//            &
+           ' cells_retained='//trim(int_text(ds%cells_retained))//        &
+           ' cells_unsupported='//trim(int_text(ds%cells_unsupported))//  &
+           ' cells_marching_unrooted='//                                   &
+           trim(int_text(ds%cells_marching_unrooted))//                    &
+           ' outer=unverified'
+      contains
+      function int_text(i) result(t)
+      integer, intent(in) :: i
+      character(len=12) :: t
+      write(t,'(I0)') i
+      end function int_text
+      function real_text(x) result(t)
+      real*8, intent(in) :: x
+      character(len=16) :: t
+      write(t,'(ES11.4)') x
+      t = adjustl(t)
+      end function real_text
+      end function adv_derived_state_fields
+
+      subroutine write_adv_derived_state_line(unit, ds)
+      ! THE DERIVED STATE IN THE HEADER OF BOTH _adv FILES: the record line
+      ! and the sentences that fix what its fields mean.  Comment lines
+      ! only; the columns and the adv_schema line are unchanged, so a reader
+      ! that predates the line reads the file as before and a reader that
+      ! knows it reads a file without it as UNKNOWN.
+      integer, intent(in) :: unit
+      type(adv_derived_state), intent(in), optional :: ds
+      type(adv_derived_state) :: unknown_ds
+      if (present(ds)) then
+         write(unit,'(A)') '# adv_derived_state: '//                        &
+                        trim(adv_derived_state_fields(ds))
+      else
+         write(unit,'(A)') '# adv_derived_state: '//                        &
+                        trim(adv_derived_state_fields(unknown_ds))
+      endif
+      write(unit,'(A)') '#   verdict=rejected when the column energy'//    &
+                     ' solve of the last pass was rejected or a row is'
+      write(unit,'(A)') '#   failed (2). column=converged_on_residual:'//  &
+                     ' the energy row of every unknown, formed again at'
+      write(unit,'(A)') '#   the final profile, is within 10 eps of the'// &
+                     ' sum of the parts it is assembled from + 1e-6 of'
+      write(unit,'(A)') '#   its largest term (column_worst_residual'
+      write(unit,'(A)') '#   [erg cm^-3 s^-1] and _rel of the worst cell);'//&
+                     ' the verdict is still unverified, because the'
+      write(unit,'(A)') '#   outer iteration is a fixed number of passes'//&
+                     ' with no convergence test (outer=unverified).'
+      write(unit,'(A)') '#   cells_marching_unrooted: cells whose'//      &
+                     ' cell-by-cell energy step found no root, solved'
+      write(unit,'(A)') '#   as unknowns of the column (written corrected'//&
+                     ' when it converges).'
+      write(unit,'(A)') '#   A rejected column keeps'//                    &
+                     ' the MARCHING profile of that pass in the'
+      write(unit,'(A)') '#   numeric columns and writes every one of its'//&
+                     ' unknowns adv_failed; column_cell is the cell'
+      write(unit,'(A)') '#   that triggered the rejection. Every count'//  &
+                     ' is of physical cells (ghost rows excluded).'
+      write(unit,'(A)') '#   verdict=unknown, or no such line, is not'//   &
+                     ' a pass.'
+      end subroutine write_adv_derived_state_line
+
+      subroutine adv_derived_state_report(ds, where)
+      ! The record in the log, one line, the same fields as the header.
+      type(adv_derived_state), intent(in) :: ds
+      character(len=*), intent(in) :: where
+      write(*,'(A)') ' ('//trim(where)//') advection-derived state: '//     &
+                     trim(adv_derived_state_fields(ds))
+      end subroutine adv_derived_state_report
 
       !-------------------------------------------------------------!
 

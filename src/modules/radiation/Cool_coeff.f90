@@ -19,6 +19,10 @@
    ! (ground_capture_milne). Private here, so that a module using this one
    ! does not see them a second time.
    use Cross_sections, only: sigma, sigma_HeI
+   ! (1 - e^-x)/x, evaluated once for the code (the thin-line escape
+   ! probability of line_escape_probability_one_face and the
+   ! stimulated-emission factor of line_center_opacity_lte).
+   use utils, only: one_minus_exp_over_x
    use species_table, only: n_mion, melem_A_u,                          &
                             mion_iscool, mion_stage, mion_z2, mion_ethr,   &
                             iel_C, iel_N, iel_O,                           &
@@ -2810,12 +2814,40 @@
    end function l_mixing_2s2p_pengelly_seaton
 
    ! Lower incomplete gamma functions gamma(3,x) = 2 - e^-x (x^2 + 2x + 2)
-   ! and gamma(2,x) = 1 - e^-x (1 + x), by their series below x = 1e-2
-   ! (where the closed forms lose digits to cancellation).
+   ! and gamma(2,x) = 1 - e^-x (1 + x), x >= 0.
+   !
+   ! THE CLOSED FORMS CANCEL WHERE THE VALUES ARE SMALL. gamma(n,x) ~ x^n/n
+   ! as x -> 0 while the two terms of the closed form stay of order 1, so
+   ! the closed form carries an absolute error of a few 1e-16 and a
+   ! relative error of about 4.4e-16/x^2 (gamma 2) and 1.3e-15/x^3
+   ! (gamma 3), and is a staircase in x of that size. Below a switch both
+   ! are evaluated by their power series
+   !   gamma(n,x) = x^n sum_k (-1)^k x^k / (k! (k + n)),
+   ! in Horner form. THE SWITCH IS WHERE THE TWO ERRORS MEET. With the
+   ! series through x^12 (k <= 10) for gamma(2,x) and x = 0.25: closed form
+   ! 7e-15, first omitted term 9e-16 (relative); with the series through
+   ! x^17 (k <= 14) for gamma(3,x) and x = 0.5: closed form 1.1e-14, first
+   ! omitted term 4e-18. (Through x^8 alone the two errors of gamma(2,x)
+   ! cannot both be pushed below about 2e-13 at any switch.) The former
+   ! three-term series, used below 1e-2, stopped at x^4 and x^5: relative
+   ! truncation x^3/15 and x^3/12, 7e-8 and 8e-8 at their switch, a jump of
+   ! that size there.
    pure double precision function lower_gamma_3(x)
    real*8, intent(in) :: x
-   if (x .lt. 1.0d-2) then
-      lower_gamma_3 = x**3*(1.0d0/3.0d0 - x/4.0d0 + x*x/10.0d0)
+   integer, parameter :: nk = 14
+   integer :: k
+   real*8  :: c(0:nk), f, acc
+   if (x .lt. 0.5d0) then
+      f = 1.0d0
+      do k = 0, nk
+         if (k .gt. 0) f = f*dble(k)
+         c(k) = (-1.0d0)**k/(f*dble(k + 3))
+      enddo
+      acc = c(nk)
+      do k = nk-1, 0, -1
+         acc = c(k) + x*acc
+      enddo
+      lower_gamma_3 = x**3*acc
    else
       lower_gamma_3 = 2.0d0 - exp(-x)*(x*x + 2.0d0*x + 2.0d0)
    endif
@@ -2823,8 +2855,20 @@
 
    pure double precision function lower_gamma_2(x)
    real*8, intent(in) :: x
-   if (x .lt. 1.0d-2) then
-      lower_gamma_2 = x**2*(0.5d0 - x/3.0d0 + x*x/8.0d0)
+   integer, parameter :: nk = 10
+   integer :: k
+   real*8  :: c(0:nk), f, acc
+   if (x .lt. 0.25d0) then
+      f = 1.0d0
+      do k = 0, nk
+         if (k .gt. 0) f = f*dble(k)
+         c(k) = (-1.0d0)**k/(f*dble(k + 2))
+      enddo
+      acc = c(nk)
+      do k = nk-1, 0, -1
+         acc = c(k) + x*acc
+      enddo
+      lower_gamma_2 = x**2*acc
    else
       lower_gamma_2 = 1.0d0 - exp(-x)*(1.0d0 + x)
    endif
@@ -4358,8 +4402,12 @@
    Ts  = max(T, 1.0d0)
    lam = hc_over_k/Ek
    vth = sqrt(2.0d0*kb_erg*Ts/(atomic_weight_u*amu))
+   ! The stimulated-emission factor 1 - e^-y, y = Ek/T, as y (1 - e^-y)/y
+   ! with the quotient from one_minus_exp_over_x (utilities.f90): the
+   ! closed form cancels for y -> 0 (hot gas, a far-infrared line), where
+   ! the factor tends to its Rayleigh-Jeans limit y = hnu/kT.
    line_center_opacity_lte = lam**3/(8.0d0*pi*sqrt(pi))*gu_gl*A_ul     &
-                             *n_low*(1.0d0 - exp(-Ek/Ts))/vth
+                             *n_low*((Ek/Ts)*one_minus_exp_over_x(Ek/Ts))/vth
    end function line_center_opacity_lte
 
    ! Line-center opacity [cm^-1] of one ground-term fine-structure line.
@@ -4452,11 +4500,15 @@
    real*8 :: x, tau_c
    x = a*tau
    tau_c = sqrt(pi)*exp(0.25d0*a*a)
-   if (.not. (x .gt. 1.0d-8)) then
-      line_escape_probability_one_face                                  &
-                     = 0.5d0*(1.0d0 - 0.5d0*max(x,0.0d0))  ! series limit
+   ! The thin branch is (1/2)(1 - e^-x)/x with its quotient from
+   ! one_minus_exp_over_x (utilities.f90), free of the cancellation of the
+   ! closed form below x = 1e-2 (the former closed form, used from x = 1e-8,
+   ! carried a relative error of eps/x, up to 2e-8, and a staircase in tau
+   ! of that size). A non-positive or undefined x returns the limit 1/2.
+   if (.not. (x .gt. 0.0d0)) then
+      line_escape_probability_one_face = 0.5d0
    else if (tau .lt. tau_c) then
-      line_escape_probability_one_face = 0.5d0*((1.0d0 - exp(-x))/x)
+      line_escape_probability_one_face = 0.5d0*one_minus_exp_over_x(x)
    else
       line_escape_probability_one_face                                  &
                      = 0.5d0*(1.0d0/(2.0d0*tau*sqrt(log(tau/sqrt(pi)))))

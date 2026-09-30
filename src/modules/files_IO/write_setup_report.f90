@@ -25,7 +25,8 @@
 	                     ic_restart_schema_present, n_opt, opt_name,    &
 	                     restart_option_change_named,                   &
 	                     restart_option_change_given,                   &
-	                     ic_option_change_applied, ic_option_change_inert
+	                     ic_option_change_applied, ic_option_change_inert, &
+	                     ic_legacy_factor_migrated
 	use Read_input,      only: base_level_source, carrier_newton_on_stall
 	use grid_construction, only: domain_outer_radius, mixed_stretch_ratio, &
 	                     outer_shells_width_ratio
@@ -408,6 +409,16 @@
          ' state and this run'
 			endif
 		endif
+		! A legacy F7.5 factor token read as a change of representation
+		! (compare_options_field): the state is a seed, whatever the key.
+		if (ic_legacy_factor_migrated) then
+			write(outfile,*) &
+         ' - Restart legacy factor token: the state files carry a'// &
+         ' continuation factor in the F7.5 form (the "#'// &
+         ' legacy_factor_token" line of the output state names it); the'// &
+         ' requested factor lies inside its rounding interval, so the'// &
+         ' state is loaded as a seed and its inherited claim is dropped'
+		endif
 	endif
 	! Atomic H/He rate set. Reported only when the published set is in
 	! force: it is the statement that this run is not on EXHALE's own rates.
@@ -602,7 +613,7 @@
 		write(outfile,*) '    Eucken-form fit to Incropera et al. 2007 Table A.4,'// &
 			' valid 200-2000 K)'
 		if (conduction_scale() .ne. 1.0d0)                                 &
-			write(outfile,'(A,F8.5,A)') '  - CONTINUATION FACTOR on the'//   &
+			write(outfile,'(A,ES13.6,A)') '  - CONTINUATION FACTOR on the'// &
 			' conductivity: ', conduction_scale(),                         &
 			' (EXHALE_CONDUCTION_SCALE; a step, not the model)'
 	endif
@@ -616,7 +627,7 @@
 			write(outfile,*) '    element fluxes, Cook 2009 eqs. 11-13,'//   &
 				' in the marching update and the stationary energy row)'
 			if (interdiffusion_enthalpy_scale() .ne. 1.0d0)                &
-				write(outfile,'(A,F8.5,A)') '  - CONTINUATION FACTOR on'//    &
+				write(outfile,'(A,ES13.6,A)') '  - CONTINUATION FACTOR on'//  &
 				' that term: ', interdiffusion_enthalpy_scale(),               &
 				' (EXHALE_INTERDIFF_ENTH_SCALE; a step, not the model)'
 		else

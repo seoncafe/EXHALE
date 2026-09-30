@@ -33,7 +33,7 @@
 
    use global_parameters
    use species_table, only: n_mion, mion_fsp, isp_H2p, isp_HeHp
-   use utils, only: calc_ne, write_row_layout_header
+   use utils, only: calc_ne, write_row_layout_header, one_minus_exp_over_x
    ! The two dissociative recombinations of the molecular network that leave
    ! one hydrogen atom in n = 2, and the excitation energy the heat ledger
    ! subtracts for them. Reading the source from the module that owns the
@@ -202,7 +202,12 @@
       N_HI_tot = N_HI_tot                                                  &
                + 0.5d0*(nhi(j) + nhi(j+1))*(r(j+1) - r(j))*R0
    enddo
-   abs_frac = 1.0d0 - exp(-sigma_LyC*N_HI_tot)
+   ! Fraction of the incident Lyman continuum the column absorbs,
+   ! 1 - e^-tau with tau = sigma_LyC N_HI, formed as tau (1 - e^-tau)/tau
+   ! with the quotient from one_minus_exp_over_x (utilities.f90): the
+   ! closed form cancels for a thin column, where the fraction tends to
+   ! tau itself.
+   abs_frac = (sigma_LyC*N_HI_tot)*one_minus_exp_over_x(sigma_LyC*N_HI_tot)
    F_LyC    = xi*F_inc*abs_frac
 
    ! ----- Ly-alpha mean intensity J_lya(r) ----- !

@@ -3877,7 +3877,7 @@ EW from 1.57 to 0.65 (x0.41); the He/H at which the model EW crosses the
 observed value (1.5 in the catalog, section 14) will move. The previous EW
 of every conduction run is superseded by this operator.
 
-\subsection{50. A floor of the energy row near convergence (2026-09-30; located in section 53)}\label{50-a-floor-of-the-energy-row-near-convergence-2026-09-30-located-in-section-53}
+\subsection{50. A floor of the energy row near convergence (2026-09-30; located in section 53, explained and removed in section 58)}\label{50-a-floor-of-the-energy-row-near-convergence-2026-09-30-located-in-section-53-explained-and-removed-in-section-58}
 
 Two chains slow down on rungs whose hydrodynamic solve ends at the
 400-iteration cap (info = 1): the 0.0624 conduction rung at factor 0.751
@@ -3905,7 +3905,7 @@ was stopped after pass 1. The switch is kept (it changes nothing on the
 fixtures and is the standard terminal phase), with this record that it did
 not cure the stall.
 
-\subsection{51. The molecular photochemical fiducial case with conduction: the EW falls onto the observation (2026-09-30)}\label{51-the-molecular-photochemical-fiducial-case-with-conduction-the-ew-falls-onto-the-observation-2026-09-30}
+\subsection{51. The molecular photochemical fiducial case with conduction (2026-09-30; EW corrected by section 54)}\label{51-the-molecular-photochemical-fiducial-case-with-conduction-2026-09-30-ew-corrected-by-section-54}
 
 \texttt{molecular\_photochem\_gj1132\_kzzprofile/HeH9} (fiducial XUV; the molecular
 network with the element and carrier enthalpy fluxes, section 46) reached
@@ -3937,13 +3937,18 @@ critical point / Kn at the outer boundary & none (Mach 0.57) / 0.059 & none (Mac
 }
 
 (Figure \texttt{.P1/atomic97/diag\_R/cond\_on\_off\_molecular\_photochem\_fiducial.png}.)
-The observed EW is 1.108 +- 0.029 (\texttt{he10830\_equivalent\_width.py}): with
-conduction this case lies on it; without, 1.66 times above. With the atomic
+The observed EW is 1.108 +- 0.029 (\texttt{he10830\_equivalent\_width.py}).
+\textbf{Correction (section 54):} in this evaluation all ten column energy
+solves of the advected profile were rejected (\texttt{marching\ profile\ kept:\ T},
+\texttt{.P1/fiducial\_conduction/ew\_M2\_s1/eval.log}). The 1.103 is therefore the EW
+of the retained marching profile, not of a converged corrected-energy
+profile, and its agreement with the observation is not established. With the atomic
 fiducial case (section 49, 1.57 -\textgreater{} 0.65) conduction lowers the model EW by
 a factor 0.4 to 0.6 at the fiducial XUV, so the catalog\textquotesingle s inference of the
 He/H that reproduces the observation (the crossing near 1.5 of section 14,
-molecular scalar family) is superseded; the molecular scalar He/H 1.45 case
-is on its way (section 46). Both hydrodynamic results stay UNVALIDATED on
+molecular scalar family) no longer holds. Where the crossing now lies is
+undetermined: this case and the molecular scalar He/H 1.45 case of section
+52 belong to different families. Both hydrodynamic results stay UNVALIDATED on
 the grounds of section 48 (no critical point in the domain, Kn up to 1 in
 the acceleration region).
 
@@ -3987,7 +3992,7 @@ He/H that reproduces the observation is higher than the catalog\textquotesingle 
 between 1.45 and 9 on these two families (not the same family; not yet
 bracketed on one).
 
-\subsection{53. Where the energy-row floor of section 50 comes from (2026-09-30)}\label{53-where-the-energy-row-floor-of-section-50-comes-from-2026-09-30}
+\subsection{53. Where the energy-row floor of section 50 comes from (2026-09-30; the cause is in section 58)}\label{53-where-the-energy-row-floor-of-section-50-comes-from-2026-09-30-the-cause-is-in-section-58}
 
 The floor of section 50 (hydrodynamic solves ending at the iteration cap
 with \textbar\textbar R\textbar\textbar{} 1e-5 to 1e-4 against the energy tolerance 1e-6) was measured on
@@ -4075,11 +4080,12 @@ cell alternating between two values on successive passes,
 
 each returned with a reaction residual of 1e-16 and solver info 1; with the
 per-cell tolerance at 1e-15 the two values are the same to the last digit
-and the solver returns info 4 (no further progress). The per-cell reaction
-residual reaches its double-precision floor over an interval of x(H+) of
-width \textasciitilde1e-11 at this cell, and the elimination alternates between two
-points of it. Why the per-cell residual is that flat in x(H+) at x \textasciitilde{} 0.5
-was not established.
+and the solver returns info 4 (no further progress). \emph{Likely} the elimination alternates between two nearby states. It is
+not established that the per-cell residual is flat (section 54): the
+printed residual is the normalized one, whose hydrogen turnover bound
+includes the Penning term with the total He density, and successive
+passes change the coefficients of the cell problem (T, n\_e, attenuation),
+so the two x values can be roots of two slightly different problems.
 
 \textbf{The amplification.} An indeterminacy of 1e-11 in the composition is an
 indeterminacy of 1e-11 in the particle count and in T = p/((n\_tot + n\_e) k).
@@ -4117,13 +4123,17 @@ layer: it is the largest of the row\textquotesingle s terms, and the conduction 
 itself the difference of two face fluxes that are, by the first and second
 differences above, \textasciitilde30 times larger; measured against the face fluxes the
 same jump would be \textasciitilde2e-7 of scale (an estimate from those differences, not
-measured). Neither was changed.
+measured). Neither was changed. Remedy (ii) is withdrawn (section 54): a
+larger denominator admits a 30 times larger absolute imbalance and does not
+make the physical residual smaller.
 
 \textbf{Also seen.} \texttt{EXHALE\_RESID\_SC\_TRACE=8} from a second seed (the column\textquotesingle s
 composition shifted by five cells) converges at fixed Y to a different
 composition (max relative difference 4.8 at cell 266, \textbar\textbar R\textbar\textbar{} 1.78 against
-3.9e-5): the elimination has more than one fixed point on this state. Not
-pursued.
+3.9e-5). The shifted seed changes the elemental totals too (hydrogen at
+cell 144 by 37 per cent, section 54), so the two runs solve different
+elemental problems. They do not show multiple fixed points of one
+problem.
 
 \textbf{Code.} \texttt{EXHALE\_JV\_FRESH\_WEIGHTS=1} (steady\_newton.f90, measurement only)
 and the band and ladder printout of \texttt{EXHALE\_LINEAR\_ROWS} (one residual
@@ -4132,6 +4142,361 @@ unchanged (iteration 1 of the diagnostic run reproduces \textbar\textbar R\textb
 The comment of \texttt{residual\_norms} (steady\_residual.f90) said the two regions\textquotesingle{}
 rows are made dimensionless by different physics; \texttt{residual\_row\_scale} has
 no region switch, and the comment now says so. The chains were not touched.
+
+\subsection{54. The review of the 2026-09-30 handoff: findings checked (2026-09-30)}\label{54-the-review-of-the-2026-09-30-handoff-findings-checked-2026-09-30}
+
+The review is \texttt{md/session\_handoff\_20260930\_review.md} (source tree
+60a90fb). Each finding was checked against the code or the saved products
+before being accepted. The plan that carries them out is
+\texttt{md/PLAN\_20260930.md}, revised as \texttt{md/PLAN\_20260930\_rev1.md} after its review \texttt{md/PLAN\_20260930\_review.md}, and as \texttt{md/PLAN\_20260930\_rev2.md} after \texttt{md/PLAN\_20260930\_rev1\_review.md}; \texttt{md/PLAN\_20260930\_rev3.md} is revision 2 re-checked against the code and the stored runs (the ionization-transport route\textquotesingle s failed 09-23 attempt on this planet, the chains untouched by the derived-state exit code, He 2\^{}3S transport expected). No code was changed at this step; the statements
+of sections 51 and 53 and of the handoff that the review showed to be
+wrong were corrected in place.
+
+{\def\LTcaptype{none} % do not increment counter
+{\small
+\begin{longtable}[]{@{}lll@{}}
+\toprule\noalign{}
+review item & checked & verdict \\
+\midrule\noalign{}
+\endhead
+\bottomrule\noalign{}
+\endlastfoot
+4.3 column rejection not propagated & \texttt{ew\_M2\_s1/eval.log}: \texttt{marching\ profile\ kept:\ T} on 10 of 10 passes; \texttt{ew2\_fid\_atomic\_full} and \texttt{ew\_M1\_s1} 0 of 10. The failure path of \texttt{energy\_column\_newton} restores \texttt{pp\_T\_march} and counts \texttt{n\_col\_newton\_fail}; no status is changed and the counter is read by nothing & CONFIRMED. The EW 1.103 of section 51 is the retained marching profile\textquotesingle s. The last step there was 6.6e-11, so the rejection came from the positivity or the metal temperature-band check (\texttt{pp\_metal\_on}; the case runs \texttt{System\_HeH\_mol\_metals}); which cell and which check was not identified \\
+4.1 transport on the input composition & \texttt{transport\_terms\_of\_profile} passes \texttt{f\_sp\_in} to \texttt{thermal\_conduction\_coeffs}, the element and the carrier enthalpy divergences & CONFIRMED \\
+4.2 step-only convergence & exit on \texttt{dmax\ \textless{}\ 1e-10}; no final residual evaluation & CONFIRMED \\
+4.4 fixed ten outer passes & \texttt{do\ k\ =\ 1,10} with no convergence test & CONFIRMED \\
+10.1 metal re-solve leaves an outdated n\_e & \texttt{calc\_ne} before the metal re-solve; \texttt{calc\_mmw} and \texttt{p\_out} after it use that n\_e (only \texttt{pp\_metals=2}); \texttt{xion} assigned once before the sweep & CONFIRMED (conditional on \texttt{pp\_metals=2} for n\_e; the \texttt{xion} lag applies to every mode) \\
+5 factor serialization & \texttt{write(opt\_value,\textquotesingle{}(F7.5)\textquotesingle{})}: 0.773561 and 0.773564 give one token & CONFIRMED \\
+7 EW launcher & \texttt{ew\_of\_state.sh} defaults to \texttt{EXHALE\_e37b8e27.x}, continues after a failed evaluation or transit, labels percent-angstrom as \texttt{mA?} & CONFIRMED \\
+10.3 wrapper exit & \texttt{launch\_full\_equation\_from.sh} ends \texttt{exit\ 0} after the XUV descent & CONFIRMED \\
+8 control bytes & \texttt{factor\_continuation\_chain.sh} line 56 has literal 0x01 and 0x02 in place of \texttt{\textbackslash{}1}, \texttt{\textbackslash{}2} & CONFIRMED (log text only; acceptance reads \texttt{cert} and \texttt{ex}) \\
+10.2 H2 conductivity overflow & \texttt{x*x*exp(x)/(exp(x)-1)**2} guarded only at x \textgreater{} 700; exp(x)**2 overflows above x \textasciitilde{} 355, i.e. T \textless{} 16.9 K & CONFIRMED by reading (outside the 200-2000 K fit range) \\
+2.1 label & \texttt{report\_accepted\_cell\_state} prints x(min(4,nx)) as \texttt{x(H2\ nuclei)}; in the atomic He 2\^{}3S branch x(4) is the He 2\^{}3S fraction & CONFIRMED \\
+1 shifted seed & \texttt{comp\_b(k,:)\ =\ f\_sp(min(N,k+5),:)} moves elemental totals & CONFIRMED; the "more than one fixed point" of section 53 is withdrawn \\
+2 rounding-floor interpretation & the printed residual is \texttt{normalized\_reaction\_residual}; passes change T, n\_e and attenuation & ACCEPTED: the flat-residual cause is a hypothesis, not a finding; section 53 corrected \\
+2.2 composition stopping measure omits transport & \texttt{increment\_of\_what\_the\_residual\_reads} reads particle count, H2 share, net radiative source only & CONFIRMED \\
+3 face-flux certification scale & - & ACCEPTED: remedy (ii) of section 53 withdrawn \\
+6 crossing inference across families & - & ACCEPTED: sections 51 and handoff corrected \\
+\end{longtable}
+}
+}
+
+\subsection{55. One failure contract for the advection-derived product (2026-10-01)}\label{55-one-failure-contract-for-the-advection-derived-product-2026-10-01}
+
+Plan \texttt{md/PLAN\_20260930\_rev3.md} A1, A2 and A6; the defect is finding 4.3 of
+section 54 (a rejected column energy solve left its rows labeled corrected
+and the evaluation exited 0). Implemented by the worker and checked on the
+diff and the runs.
+
+\textbf{The column solve} (\texttt{energy\_column\_newton}, \texttt{post\_process\_adv.f90})
+returns an outcome: \emph{rejected} with its reason (linear solve, nonfinite,
+non-positive T, metal temperature band, iteration cap) and the triggering
+cell, or \emph{step\_passed\_unverified} (the step test passed; no residual is
+formed after the last step, so it is not called converged). A rejected
+column keeps the marching profile and writes its WHOLE unknown set
+\texttt{adv\_failed} (decision D2(i): no schema change; the ghost rows are written
+failed but not counted). For a metal-band rejection the log prints the
+triggering cell\textquotesingle s energy row term by term in erg cm\^{}-3 s\^{}-1, at the column\textquotesingle s
+T and at the run\textquotesingle s T (R = q0 fv/(mup mum dr\_step), the scaling of
+\texttt{T\_equation}).
+
+\textbf{The derived-state record.} \texttt{post\_process\_adv} returns \texttt{adv\_derived\_state}
+(chemistry, column outcome and reason, physical-cell counts, \texttt{outer\ =\ unverified}: the outer loop is still ten fixed passes, \texttt{n\_pp\_passes}); both
+callers print it and \texttt{write\_output} writes it as \texttt{\#\ adv\_derived\_state:\ ...}
+into both \texttt{*\_adv} headers (schema and columns unchanged; the regression
+comparison excludes \texttt{\#} lines). The evaluate route exits 7 when the record
+is rejected (2 stays the certification refusal of the input state, written
+first; 7 is used by nothing else in \texttt{src/} or the shell consumers).
+\texttt{read\_adv\_validity} (\texttt{exhale\_transit\_lib.py}) refuses a row when
+\texttt{adv\_T\_status\ /=\ 0} OR \texttt{adv\_comp\_status\ =\ 2}, returns \texttt{refused\_reason} and
+\texttt{derived\_state} (None = unknown); \texttt{EXHALE\_transit.py} prints the record and
+refuses a rejected \texttt{adv} spectrum unless \texttt{EXHALE\_TRANSIT\_DIAGNOSTIC=1}, which
+writes the refusal into the spectrum metadata. \texttt{ew\_of\_state.sh} requires the
+binary, a fresh work directory, checks every step, records the md5 and
+\texttt{state\_id} of both state files, the binary md5 and the \texttt{EXHALE\_*} overrides,
+judges \texttt{solution} and \texttt{adv} separately, and states the EW in
+percent-angstrom (the former \texttt{mA?} was wrong). \texttt{run\_case.sh} accepts 7 as
+"solved state certified, adv product refused": the state is published with
+its certification, the refusal and the verdict line go into \texttt{run.json}
+(\texttt{adv\_product}, \texttt{adv\_derived\_state}), REPRODUCE.md and the last log line,
+the transit pass is skipped (the transit tool itself exits 7 on a rejected
+record) and earlier \texttt{tpm\_*} products of the case are moved to
+\texttt{superseded\_case\_products/} so that none can be read as this run\textquotesingle s line
+measure; an unknown exit still fails the pass. Launcher tests
+(\texttt{LHS1140b/models/tests/}): \texttt{evaluate\_entry.sh} 25/25 (the five exit-7
+checks fail on the former tools), \texttt{runner\_records.sh} 18/18 after a fixture
+defect of its own was fixed (its synthetic tree lacked
+\texttt{he10830\_equivalent\_width.py} and the observation CSV that \texttt{status.py}
+imports; 14/18 on the former fixture), and the other five launcher suites
+unchanged.
+
+\textbf{A6.} After every composition update (the H/He sweep, the metal re-solve
+and its failure branch) \texttt{n\_tot}, \texttt{n\_e}, \texttt{mmw} and the caloric quantities are
+refreshed, then \texttt{xion}, then heating, the energy solve and \texttt{p\_out}.
+\texttt{wasp\_full} with \texttt{pp\_metals\ 2}: max \textbar p - (n\_tot + n\_e) k T\textbar/p of the written
+composition 4.4e-8 -\textgreater{} 7.8e-16; the \texttt{\_adv} T column moves by 1.0e-6. The
+\texttt{xion} refresh acts in every mode: on the fiducial atomic full-equation
+state the outer passes now reach their fixed point (column iterations
+20..4 -\textgreater{} 20..1 over the ten passes) and the \texttt{\_adv} T moves by 2.9e-10.
+\textbf{Separate defect found and fixed:} the \texttt{pp\_metals\ =\ 2} metal re-solve
+never set \texttt{ieq\_cell\%T\_K}, so its charge exchange ran at the temperature of
+the last equilibrium cell and the \texttt{cx\_require\_cell} guard aborted every
+\texttt{pp\_metals\ =\ 2} run (reproduced on \texttt{wasp\_full}; one line).
+
+\textbf{The M2 rejection explained.} \texttt{ew\_M2\_s1} (molecular photochemical
+fiducial, section 51): reason \texttt{metal\_T\_band} at cell 437 (r = 10.35 R\_p) on
+10 of 10 passes: the column\textquotesingle s T 2445 K is 2.007 times the run\textquotesingle s 1218 K. The
+row at 2445 K closes to 9.5e-12 of its largest term (compression work
+5.6e-13 = photoheating 3.7e-13 + conduction 1.6e-13; radiative cooling
+1e-16), and with that cell alone put back at 1218 K the conduction from its
+neighbors (7.9e-10) leaves a residual equal to the largest term. So 2445 K
+is a root of the corrected, conduction-coupled equation and only the band
+refuses it; the band is a guard of the cell-by-cell Brent solve against
+spurious hot metal-cooling roots and has no stated validity for the column
+solve. Whether the column is to be accepted on its residual instead (plan
+B2) is held for the user; the band is unchanged and the case stays
+rejected (EW 1.1032 diagnostic; the \texttt{solution} spectrum 8.563 is a result).
+
+\textbf{Checks.} \texttt{src/tests/adv\_static\_limit}: 53 -\textgreater{} 63 PASS, 0 FAIL, with the
+gfortran and the ifx binary (rows K: a stored certified state evaluated
+plain and with each of the five injected rejections,
+\texttt{EXHALE\_ADV\_TEST\_REJECT=\textless{}reason\textgreater{}}, measurement-only; rows L: the reader on
+composition-only failure, retained/unsupported/not-evaluated kept apart, an
+absent record read as unknown). Evaluate-only reruns in
+\texttt{.P1/fiducial\_conduction/verify\_w1/}: M2 exit 7 with the record above;
+fiducial atomic exit 0, \texttt{step\_passed\_unverified}, EW 0.6491 unchanged.
+Known and left as it is: a gfortran runtime error exits 2, the code of the
+certification refusal (TO\_BE\_DONE (o)).
+
+\subsection{56. Continuation factors written exactly; legacy F7.5 tokens read as intervals (2026-10-01)}\label{56-continuation-factors-written-exactly-legacy-f75-tokens-read-as-intervals-2026-10-01}
+
+Finding 5 of section 54 (plan A3). \texttt{load\_IC.f90} writes a factor s /= 1 of
+\texttt{cond} and \texttt{interdiff\_enth} as \texttt{ES23.16E3} (\texttt{factor\_token\_text}, \texttt{adjustl};
+s = 1 stays \texttt{T}), and the writer, reader, comparison and absent-token values
+share one length, 32 (previously 8/16/16/8); with both factors the options
+field is 296 of its 1024 characters, and a field or token that would not fit
+is refused, never cut. A legacy F7.5 token (\texttt{factor\_token\_kind}, these two
+tokens only) states the interval {[}v - 5e-6, v + 5e-6{]}: a requested factor
+inside it loads the state as a seed with the claim dropped
+(\texttt{legacy\_factor\_token}, one printed line, a \texttt{\#\ legacy\_factor\_token} history
+line keeping the original text); a factor outside it is a physics change
+under the existing rule (named on \texttt{Restart\ option\ change:}, or refused).
+Malformed values are refused even when named. The run log
+(\texttt{conduction\_scale}, \texttt{interdiffusion\_enthalpy\_scale}) and the setup report
+print the factor \texttt{ES13.6} and the report names a migration. gfortran and
+ifx write 0.773561, 1e-6, 1 - 1e-12 and 0 as the same token text and each
+reloads the other\textquotesingle s state at the same factor. Test \texttt{restart\_factor}
+(grid\_and\_gates 25): 38/38 PASS with both compilers (15 of the first 27
+FAIL on 60a90fb); the gate tests of section 39 unchanged (gfortran 119
+PASS, 11 XFAIL, 0 FAIL; the 16 ifx FAILs are the fixtures\textquotesingle{} 1-ulp compiler
+difference, present before). \texttt{grid\_and\_gates/run.sh} uses \texttt{-module} and
+\texttt{-qmkl} for ifx (before, ifx could not link the Fortran drivers). Round
+trip: rho, v, p bitwise (gfortran) or 1 ulp (ifx), T and species 1-3 ulp,
+the loader\textquotesingle s own arithmetic. States written on 2026-09-29/30 with F7.5
+tokens (every chain rung) keep them and load only as seeds.
+
+\subsection{57. The H2 conductivity without overflow (2026-10-01)}\label{57-the-h2-conductivity-without-overflow-2026-10-01}
+
+Finding 10.2 of section 54 (plan A4). \texttt{h2\_conductivity} evaluated
+E(x) = x\^{}2 e\^{}x/(e\^{}x - 1)\^{}2 (x = 5987 K/T) as written: (e\^{}x - 1)\^{}2 overflows
+above x \textasciitilde{} 355 (T \textless{} 16.9 K), where the form returned 0 in place of
+E \textless{} 1e-148, and x\^{}2 e\^{}x above x = 696.69, so 8.553 K \textless= T \textless{} 8.593 K gave
+NaN, and \texttt{thermal\_conductivity} added n\_H2 x NaN even where n\_H2 = 0. (The
+review and section 54 had said "NaN above x \textasciitilde{} 355"; the NaN interval is the
+narrow one.) E is now \texttt{einstein\_heat\_capacity}: x\^{}2 e\^{}-x/(1 - e\^{}-x)\^{}2 for
+x \textgreater= 0.05, the series 1 - x\^{}2/12 + x\^{}4/240 - x\^{}6/6048 below (truncation
+\textless{} 2.3e-16; the two agree at the switch to 6.7e-16), 0 above x = 700;
+\texttt{h2\_conductivity} stops on a non-positive or non-finite T; the H2 term is
+formed only where n\_H2 \textgreater{} 0, in the same summation order, so an atomic
+mixture is bitwise unchanged. Fit and range (200-2000 K) unchanged.
+\texttt{src/tests/energy\_update}: 54 -\textgreater{} 69 PASS (8.57 K = 1.3235866213750098e3,
+200/748/2000 K unchanged to 1e-14, the 1e6 K series limit, continuity,
+n\_H2 = 0 mixture bitwise atomic). Stationary evaluate of the molecular
+scalar He/H 1.45 conduction state, HEAD against HEAD + fix (ifx):
+\texttt{Hydro\_ioniz} and \texttt{Ion\_species} bitwise; \texttt{*\_adv} at rounding (T 7e-14).
+
+\subsection{58. The energy-row floor was a rounding staircase of the absorbed fraction (2026-10-01)}\label{58-the-energy-row-floor-was-a-rounding-staircase-of-the-absorbed-fraction-2026-10-01}
+
+Plan C1-C3, on the state of section 53 (\texttt{diag\_R/floor\_jvadd}). Keys added,
+default off: \texttt{EXHALE\_IEQ\_DUMP\_CELL=\textless{}j\textgreater{}} writes every He 2\^{}3S-branch solve of
+cell j to \texttt{ieq\_cell\_dump.txt} (tags, T, densities, every rate coefficient,
+start and returned vectors, dimensional rows, turnover bounds, normalized
+residual, the forward-difference Jacobian) and the cell\textquotesingle s photoionization
+rates at perturbed entry states to \texttt{ieq\_cell\_rate\_probe.txt};
+\texttt{EXHALE\_RESID\_SC\_TRACE\_SEED=shift\textbar{}h2\textbar{}partition} selects seed B of the
+two-seed trace (\texttt{partition}: the elemental inventory and the charge closure
+kept, a fraction of H I and He I moved into H II and He II). A5:
+\texttt{report\_accepted\_cell\_state} names unknown 4 by the system (He 2\^{}3S in the
+atomic triplet branch). With every key unset the outputs equal the HEAD
+build\textquotesingle s.
+
+\textbf{Verdict: hypothesis (b) of section 53, and the cause.} At cell 307 the
+elimination alternated between x(H+) = 0.50307588606921 and
+0.50307588605993 (1.8e-11 apart). The dumped rows are reproduced from the
+dumped coefficients in binary64 (146 records, to 1.8e-17 of the turnover
+bound). Each returned x is the 50-digit root of ITS OWN pass\textquotesingle s coefficients
+to 1 ulp and 1.4e-11 (normalized) from the other\textquotesingle s; the binary64 residual is
+monotone across 41 ulps, not flat. The coefficients differ because P\_HI,
+the cell\textquotesingle s photoionization rate, is a staircase function of the cell\textquotesingle s own
+entry n(H I): steps of 4-5e-11 relative every 1.7e-11 in n(H I).
+Cause: \texttt{absorbed\_fraction\_per\_unit\_depth} (\texttt{utilities.f90}) took the closed
+form (1 - e\^{}-d)/d for d \textgreater= 1e-8, whose rounding is a staircase with
+relative steps eps/d (1.5e-9 at this cell\textquotesingle s d = 1.5e-7). The smooth
+composition map contracts (-0.073 per pass, measured with the partition
+seed), but its fixed point lay on a step, so a period-2 orbit resulted, and
+that orbit was the floor: two seeds end on it in opposite phase,
+\textbar\textbar R\_B - R\_A\textbar\textbar{} = 1.7e-5. The "flat residual" of section 53 is withdrawn.
+
+\textbf{Fix.} The Taylor series through d\^{}8 (Horner) for 1e-8 \textless= d \textless{} 1e-2
+(truncation \textless{} 3e-25), the closed form above (error \textless= 2.2e-14); the old
+comment\textquotesingle s truncation figure for the three-term series at 1e-8 was 4e-25 and
+is 4.2e-26. Kahan\textquotesingle s (1 - u)/(-ln u) does not work: ifx -O3 -xHost folds
+ln(exp(-d)) to -d and the output was bitwise the closed form\textquotesingle s. Reach: every
+XUV photoionization and photoheating rate (\texttt{photoionization\_field\_at\_cell\_H}
+and \texttt{\_HHe} through \texttt{cell\_mean\_attenuation}, the a\_tau = 0 branch) and the
+H2O/OH FUV band rates. Profiles move by \textless= 8e-11 (x(H+)), 1.3e-11 (T),
+2.7e-10 (mean mass flux): far below the 0.1 per cent rule.
+
+\textbf{Result.} floor\_jvadd with the chain settings (\texttt{EXHALE\_PTC\_SER=2}, cap
+400, omega 1, factor 0.773561): ONE outer pass, 2 JFNK steps, info = 0,
+CERTIFIED, energy row 1.16e-7 (tolerance 1e-6), 1.3 s; the HEAD build with
+the same settings: 400 iterations, info = 1, energy row 3.56e-5, still
+9.0e-6 after three passes, never certified. Test \texttt{absorbed\_fraction\_switch}
+(physics\_probe 28): 14 assertions (quad-precision error on each side,
+continuity at both switches, mpmath at 1.5e-7, 1e-3, 0.1, 1, 10, no
+staircase over 41 points at 1.5e-7), all pass with gfortran and ifx at -O0;
+the former form fails 5. Runs in \texttt{diag\_R/w4\_*}; figures in
+\texttt{diag\_R/w4\_figures/}.
+
+Consequence for the chains (stopped 2026-10-01, section 55 of the handoff):
+their slow rungs were this staircase, not the acceptance rule or the
+stopping measure of the elimination (plan C4, which stays a comment defect
+of that measure, not a cure).
+
+\subsection{59. One (1 - e\^{}-x)/x for the code, and the other small-value forms (2026-10-01)}\label{59-one-1---e-xx-for-the-code-and-the-other-small-value-forms-2026-10-01}
+
+\texttt{one\_minus\_exp\_over\_x} (\texttt{utilities.f90}: the series through x\^{}8 below 1e-2,
+the closed form above, error \textless= 2.2e-14) is now the only evaluation of the
+quotient. Evaluated through it, each with its own name, limits and meaning:
+\texttt{absorbed\_fraction\_per\_unit\_depth} (section 58), \texttt{absorbed\_fraction\_over\_tau}
+and \texttt{absorbed\_photon\_fraction} (\texttt{util\_ion\_eq.f90}: the case-A/B ground
+capture weights and the on-the-spot absorption of recombination radiation;
+former switch 1e-4 with errors 2.2e-12 and 4e-14), the thin branch of
+\texttt{line\_escape\_probability\_one\_face} (\texttt{Cool\_coeff.f90}, the metal and helium
+fine-structure line escape; former closed form from 1e-8, error up to
+2e-8), and the Ly-alpha Sobolev escape \texttt{beta\_sob} (\texttt{lya\_rt.f90}), which
+returned 0 in place of 1 for tau\_S below \textasciitilde1e-16 and at tau\_S = 0 (a limit
+defect; reached only with excited hydrogen on, which the LHS 1140 b runs do
+not have). Then the three forms that lose accuracy where their value is
+small: the stimulated-emission factor 1 - e\^{}-Ek/T of
+\texttt{line\_center\_opacity\_lte} and the absorbed Lyman-continuum fraction of
+\texttt{excited\_hydrogen.f90} as y (1 - e\^{}-y)/y (limit y), and the lower
+incomplete gamma functions of the l-mixing rate, \texttt{lower\_gamma\_2} and
+\texttt{lower\_gamma\_3}, as their power series in Horner form below 0.25 (through
+x\^{}12) and 0.5 (through x\^{}17), closed form above, errors \textless= 1.1e-14 (the
+former three-term series switched at 1e-2 with jumps of 6.7e-8 and 8.4e-8
+there). \texttt{fine\_structure\_escape\_probability} takes its thin reference in
+quadruple precision (its double reference was the cancelling form).
+Test \texttt{one\_minus\_exp\_over\_x\_sites} (physics\_probe 46): 87 assertions
+(mpmath values, continuity at every switch, no staircase over 41-point
+scans, the limits), all pass with gfortran and ifx at -O0; the former code
+fails 36. Evaluate-only: floor\_jvadd moves \textless= 5.7e-14 beyond section 58;
+the molecular photochemical s1 state \textless= 1.2e-10 (H II, O II at a ghost
+cell), CERTIFIED before and after (mass 2.7e-9, energy 2.3e-8); the last
+three forms change neither run (excited hydrogen off; y of order 0.1-1 on
+the closed-form side).
+
+\subsection{60. The combined build and the tests of sections 55-59 (2026-10-01)}\label{60-the-combined-build-and-the-tests-of-sections-55-59-2026-10-01}
+
+The tree with every edit of sections 55-59 built with gfortran (md5
+a68670605f8d55c3a84e8c5ce4e04ca8) and ifx (fe48f7b774aac4490bd00334644fca6b);
+the suites the edits touch, run once on that tree: \texttt{energy\_update} 69 PASS,
+0 FAIL; \texttt{grid\_and\_gates} 423 PASS, 12 XFAIL, 0 FAIL (every program passed);
+\texttt{adv\_static\_limit} 63 PASS, 0 FAIL with the gfortran binary and 63/63 with
+the ifx binary; \texttt{physics\_probe} 2295 PASS, 0 FAIL. After section 61 the tree
+is rebuilt (\texttt{EXHALE.x} aacba6fd93e4a547902ae732ad0b9bb2, \texttt{EXHALE\_ifx.x}
+bff027c3c4ab416a429b30b5b70e9a00) and \texttt{adv\_static\_limit} (62 PASS, rows K
+with five reasons), \texttt{energy\_update} and \texttt{evaluate\_entry.sh} rerun on it
+(counts in section 61). The launcher suites of \texttt{LHS1140b/models/tests/} were run
+by the worker of section 55 (\texttt{evaluate\_entry.sh} 25/25, \texttt{runner\_records.sh}
+18/18, five others unchanged). The regression matrix was not run and no
+golden was touched (user instruction of 2026-09-29; the measured movements
+of every change are below 1e-6 relative, sections 55-59). The workers\textquotesingle{}
+intermediate binaries (\texttt{EXHALE\_w*.x}, \texttt{build\_w*/}, \texttt{diag\_R/w4\_bin/}) are
+superseded by these two.
+
+\subsection{61. The column energy solve accepted on its residual; the refused rows carry the solution (2026-10-01)}\label{61-the-column-energy-solve-accepted-on-its-residual-the-refused-rows-carry-the-solution-2026-10-01}
+
+User decision of 2026-10-01 ("잔차"): the conduction-coupled column of the
+advected profile is judged on its residual, not on the metal temperature
+band (TO\_BE\_DONE (p), plan rev3 B2). Implemented by the worker of section
+55 and checked on the diff, the tests and the three evaluate-only runs.
+
+\textbf{Acceptance.} After the iteration stops (step 1e-10 or 100 iterations, a
+stopping rule only) the transport terms are formed again at the final
+profile, and every unknown\textquotesingle s energy row R = q0 fv/(mup mum dr\_step) must
+satisfy \textbar R\textbar{} \textless= atol\_E + cert\_tol\_energy S\_E, with S\_E the largest of the
+grouped terms (div(rho e v) as one term, p div v, heating, cooling, the
+conduction divergence, the element and the carrier enthalpy divergences)
+and atol\_E = 10 eps times the parts the row is assembled from (the grouped
+terms, the two advective halves, the three conduction face terms). MEASURED:
+the stagnated floor is 0.73 to 0.99 eps of that sum on the three conduction
+states, while the grouped sum alone under-states it by 1e3 to 1e5, the
+conduction divergence being a small difference of three large face terms.
+Today the absolute term never decides: the achieved \textbar R\textbar{} is 1e4 below
+rtol S\_E. The {[}0.5, 2{]} T\_in band is removed from the column (it guards the
+cell-by-cell Brent solve, which keeps it, and had refused a root, section
+55). Outcome \texttt{converged\_on\_residual}; reason \texttt{residual\_above\_tolerance}
+with the worst cell\textquotesingle s term table; record fields \texttt{column\_worst\_cell},
+\texttt{column\_worst\_residual}, \texttt{column\_worst\_residual\_rel}.
+
+\textbf{Cells without a marching root.} Cells whose marching Brent step finds no
+root (its bracket {[}0.05, 4{]} T\_in) are column unknowns by default and the
+residual decides (\texttt{cells\_marching\_unrooted} in the record;
+\texttt{EXHALE\_ADV\_COLUMN\_EXCLUDE\_UNROOTED=1} restores the old set, measurement
+only). On the photochemical s1 state three cells at 24.5-28.5 R\_p have
+their roots at 4.0-4.3 T\_in; with them in the column every pass solves the
+same set (the 354/351 alternation is gone).
+
+\textbf{Refused rows carry the solution.} The status-3 rows of that product
+(1.0-1.09 R\_p) were T-unsupported but composition-corrected, and their
+corrected n(He 2\^{}3S) was 70 to 5600 times the run\textquotesingle s: the molecule-free
+advection systems omit the He(2\^{}3S) + H2 destruction that the solution\textquotesingle s
+balance includes. A composition class (formed with the particle-count class
+on the state handed in, no threshold) now refuses a cell whose H+, He+ or
+He(2\^{}3S) loses faster to H2 (R10 + R13, R17 + R23, \texttt{ioniz\_HeI23S\_H2}, from
+\texttt{mol\_rates}) than to the carried channels; the class is applied inside the
+passes, so the cascade takes the run\textquotesingle s composition as its history there;
+the metal re-solve of \texttt{pp\_metals\ =\ 2} skips refused cells; and every refused
+row is written with the run\textquotesingle s exact numbers (species and metal stages when
+the composition field is refused; T when the T field is 1, 3 or 4; p, heat,
+cool when both are refused): max relative difference 0 against the
+solution\textquotesingle s columns on the three states. The transit census still counts
+them as refused (173 rows to 1.089 R\_p, photochemical; 246 rows to 1.322
+R\_p, scalar He/H 1.45).
+
+\textbf{Results} (evaluate-only, \texttt{ew\_of\_state.sh}, tree ifx binary; EW in
+percent-angstrom, adv / solution):
+
+\textbar{} state \textbar{} column \textbar{} unknowns (unrooted) \textbar{} worst \textbar R\textbar/S\_E \textbar{} EW adv \textbar{} EW solution \textbar{}
+\textbar-\/-\/-\textbar-\/-\/-\textbar-\/-\/-\textbar-\/-\/-\textbar-\/-\/-\textbar-\/-\/-\textbar{}
+\textbar{} fiducial atomic full-equation \textbar{} converged \textbar{} 500 (0) \textbar{} 2.8e-11 \textbar{} 0.6491 \textbar{} 7.5179 \textbar{}
+\textbar{} molecular photochemical He/H 9, conduction \textbar{} converged \textbar{} 329 (3) \textbar{} 1.6e-11 \textbar{} \textbf{0.7705} \textbar{} 8.5630 \textbar{}
+\textbar{} molecular scalar He/H 1.45, conduction \textbar{} converged \textbar{} 256 (0) \textbar{} 2.9e-12 \textbar{} \textbf{0.1408} \textbar{} 2.1471 \textbar{}
+
+All three exit 0 with the derived product accepted (\texttt{outer\ =\ unverified}
+still: the outer iteration is the fixed ten passes, plan B3). The
+photochemical adv EW of an ACCEPTED corrected profile is 0.7705 against
+1.1032 of the refused marching profile (section 51, now superseded) and
+the observed 1.108 +- 0.029: 30 per cent low. Its He 10830 line-center
+optical depth peaks at 0.59 at b = 1.2 R\_p (the solution\textquotesingle s at 1.45), 85 per
+cent of it from 1.1-3 R\_p, where T\_adv/T\_run is 1.00-1.04 and n(He 2\^{}3S)
+is 0.93 to 0.60 of the solution\textquotesingle s (the advected, non-equilibrium
+population); T\_adv reaches 2 to 4.4 T\_run beyond 10 R\_p, which carries
+under 1 per cent of tau. The correction of the scalar He/H 1.45 product
+moved from 0.1525 to 0.1408 (-7.7 per cent) because its composition class
+reaches 1.32 R\_p. Tests: \texttt{adv\_static\_limit} 62 PASS (63 before: rows K
+have five reasons now), \texttt{evaluate\_entry.sh} 25/25.
 
 \appendix
 \input{Update_EXHALE_appendix}
