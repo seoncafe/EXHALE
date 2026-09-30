@@ -6,10 +6,15 @@ mass loss from irradiated exoplanets. It solves the spherically symmetric Euler
 equations together with the ionization and thermal balance of a hydrogen/helium
 atmosphere carrying trace metals and, optionally, molecules, and returns the
 mass-loss rate, the wind structure, and the transit transmission spectra that
-follow from it. EXHALE is a heavily extended fork of the ATES code (Caldiroli
-et al. 2021; Biassoni et al. 2024): the metal chemistry and cooling, the
-molecular and lower-atmosphere layers, the diffusive separation of helium, the
-Ly-alpha radiative transfer, and the Newton-Krylov steady-state solver are new.
+follow from it. EXHALE started from the ATES code (Caldiroli et al. 2021;
+Biassoni et al. 2024), of which it keeps the outline of the time-marching
+hydrodynamic loop; almost everything else was written for
+EXHALE, and the code is essentially a new one: the metal chemistry and
+cooling, the molecular and lower-atmosphere layers, the diffusive separation
+of the elements, the Ly-alpha radiative transfer, the well-balanced
+reconstruction and the base boundary, the certification of a steady state,
+the Newton-Krylov steady-state solver with its partitioned composition
+iteration, the heat conduction, and the transit synthesis.
 Every extension that adds a species, a transport process or a field is
 opt-in; corrections to the physics of the ATES problem itself (the He 2^3S
 triplet, secondary ionization, case A/B recombination, the He/H charge
@@ -297,14 +302,21 @@ for bit.
   one `PASS|FAIL <name> measured= reference= tol=` line per assertion
 - A restart is a contract, not a file copy. Both state files carry a
   `restart_schema 1` metadata block (reservoir, species columns, grid,
-  constants, twenty option switches, physical time, source), and a load whose
+  constants, twenty-three option switches, physical time, source), and a load whose
   grid, reservoir, constants or options disagree with the input is refused by
   name rather than silently accepted. `Restart intent:` says what the loaded
   state is (`trajectory`, `relaxation`, `stationary`, which enters the steady
   solver with no time step, or `stationary evaluate`, which measures the state
   and takes no step at all and writes the advection-corrected profiles and the
   mass-loss line from that measurement), and `Restart option change:` names the
-  option tokens a deliberate ladder is allowed to differ in. A file with no
+  option tokens a deliberate ladder is allowed to differ in. The two
+  continuation-factor tokens, `cond` (`EXHALE_CONDUCTION_SCALE`) and
+  `interdiff_enth` (`EXHALE_INTERDIFF_ENTH_SCALE`), carry a factor other than
+  1 as `ES23.16E3`, so two factors are two states; a five-decimal token
+  written before 2026-10-01 stands for the interval [v - 5e-6, v + 5e-6], and
+  a requested factor inside it loads the state as a seed with its claim
+  dropped (`legacy_factor_token`), one outside it is a physics change to be
+  named. A file with no
   block is legacy, loaded as before and marked `provenance unknown`, and that
   mark is inherited by everything the run writes. The two files state the mass
   density twice -- the `rho` column, and the species densities that weigh it --
@@ -363,10 +375,21 @@ for bit.
   produced the rows ended as a whole: the column energy solve of the
   transport terms (rejected, with its reason and triggering cell, or
   `converged_on_residual`: every unknown's energy row, formed again at the
-  final profile, within 10 eps sum|terms| + 1e-6 of its largest term, with
-  the worst cell and residual in the record), the chemistry, the row counts and
-  `outer=unverified`; a rejected column writes every one of its cells
-  `failed` and keeps the marching profile in the numeric columns. The
+  final profile, within 10 eps times the sum of the parts it is assembled
+  from + 1e-6 of its largest term, with
+  the worst cell and residual in the record), the chemistry, the row counts,
+  the cells whose own marching energy step found no root (unknowns of the
+  column by default) and `outer=unverified`; a rejected column writes every
+  one of its cells `failed` and keeps the marching profile in the numeric
+  columns. `unverified` is the best a record says: the column is solved with
+  its transport coefficients formed on the input composition and the
+  fine-structure escape probabilities of the start of the pass, and neither
+  the full energy residual of the derived state, nor the convergence of the
+  ten outer passes, nor the momentum balance of the corrected pressure is
+  tested. A row where H+, He+ or He(2^3S) loses faster to H2 than to the
+  channels the molecule-free advection systems carry keeps the run's state
+  (status 3), and every refused field carries the run's own numbers exactly
+  (the temperature of a failed row of a rejected column excepted). The
   `stationary evaluate` route exits 7 when that record is rejected (2 stays
   the certification refusal of the input), and `EXHALE_transit.py` refuses an
   `adv` spectrum from a rejected record, or from a file with no record (written
@@ -563,4 +586,4 @@ the Markdown memos of the development record.
 
 Kwang-Il Seon (KASI / UST)
 
-Last updated: 2026-10-01 05:45 KST
+Last updated: 2026-10-01 06:25 KST

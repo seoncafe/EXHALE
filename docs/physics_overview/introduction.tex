@@ -22,13 +22,14 @@ attenuated along the radial column, photoionizes and heats the gas, and the
 gas cools through recombination, collisional and line processes whose rates
 depend on the composition the ionization solve returns.
 
-The code is a heavily extended fork of ATES v2.0 \citep{Caldiroli2021,
-Biassoni2024}.  The hydrodynamic core, the finite-volume discretization, the
-three-stage strong-stability-preserving Runge-Kutta integration and the
-choice of approximate Riemann solvers are recognizably those of ATES; the
-equation of state, the lower boundary condition, the reconstruction, the
-steady-state solvers, the transported species and essentially all of the
-chemistry are not.  Every physics extension is selected at run time by the
+The code started from ATES v2.0 \citep{Caldiroli2021, Biassoni2024} and is
+by now essentially a new code.  The finite-volume discretization, the
+three-stage strong-stability-preserving Runge-Kutta
+integration and the choice of approximate Riemann solvers are recognizably
+those of ATES; the equation of state, the lower boundary condition, the
+reconstruction, the steady-state solvers and their certification, the
+transported species, the heat conduction, the transit synthesis and
+essentially all of the chemistry were written for EXHALE.  Every physics extension is selected at run time by the
 presence of a key in \texttt{input.inp} or of a companion file
 (\texttt{metals.inp}, \texttt{opacity.inp}, \texttt{base.inp}).  Every
 option that adds a species, a transport process or an external field defaults

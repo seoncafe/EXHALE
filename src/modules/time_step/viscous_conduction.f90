@@ -126,10 +126,12 @@
       ! molecular ions (H2+, H3+, HeH+) are trace particles and enter only
       ! through n and n_e.
       !
-      ! VALIDITY.  (4) and (5) are the NEUTRAL atomic-hydrogen values.  Above
-      ! the ionization front the electron (Spitzer) conductivity, ~ T^{5/2},
-      ! is much larger, and Coulomb collisions raise the ion viscosity; that
-      ! regime is NOT covered here.  The terms are included for the dense,
+      ! VALIDITY.  (5) is the NEUTRAL atomic-hydrogen viscosity; Coulomb
+      ! collisions raise the ion viscosity above the ionization front and
+      ! that regime is NOT covered by (5).  The conductivity is the mixture
+      ! value (4') since 2026-09-30, which carries the electron (Spitzer)
+      ! term, the neutral H and He terms and the H2 term of (4''), so the
+      ! ionized wind IS covered by it.  The terms are included for the dense,
       ! largely neutral base region (r <~ 1.1 R_p), which is where the
       ! momentum imbalance they are meant to damp lives; in the tenuous
       ! ionized wind they are numerically negligible either way (Koskinen et
@@ -145,7 +147,9 @@
       ! Substituting into (1)-(3) leaves the expressions form-invariant with
       !
       !   mu_code    = mu_cgs   /(rho0 v0 R0)          (= 1/Reynolds)
-      !   kappa_code = kappa_cgs T0/(rho0 v0^3 R0) = (15/4) mu_code .
+      !   kappa_code = kappa_cgs T0/(rho0 v0^3 R0)
+      !              (= (15/4) mu_code only for the Watson value (4) of a
+      !              neutral atomic gas; not for the mixture value (4')).
       !
       ! -------------------------------------------------------------------
       ! 4. Discretization and boundary conditions
@@ -182,7 +186,9 @@
       !   "Viscosity: <mu0> [<s>]" -> visc_mu0 > 0, diagnostic power-law
       !                            override mu = visc_mu0 T^visc_s in CODE
       !                            units (unchanged legacy meaning)
-      !   "Conduction: True"    -> cond_on, calibrated kappa(T) of (4)
+      !   "Conduction: True"    -> cond_on, the mixture kappa of (4'), with
+      !                            EXHALE_CONDUCTION_SCALE as its
+      !                            continuation factor
       !
       ! -------------------------------------------------------------------
       ! 5. What the transport stage returns, and what it refuses to return

@@ -428,15 +428,23 @@ $\theta_v = 5987$~K (the $v=0\to1$ spacing of H$_2$ in the
 \citet{Roueff2019} ladder), an Eucken form fitted to the tabulated
 conductivity of \citet{Incropera2007}, Table~A.4, over 200--2000~K (largest
 deviation 2.5 per cent, rms 1.05 per cent); it is valid there and an
-extrapolation outside.  The molecular ions enter through $n$ and $n_e$
-only.  A continuation factor $s$ on $\kappa$
+extrapolation outside.  The Einstein function is evaluated as
+$x^2e^{-x}/(1-e^{-x})^2$, which cannot overflow at low $T$, by its Taylor
+series $1-x^2/12+x^4/240-x^6/6048$ below $x = 0.05$, where $1-e^{-x}$ loses
+digits, and as zero above $x = 700$ (\texttt{einstein\_heat\_capacity}; the
+$e^{x}$ form returned 0 below 16.9~K and NaN at 8.55--8.59~K until
+2026-10-01); the H$_2$ term is formed only where $n_{\rm H_2}>0$.  The
+molecular ions enter through $n$ and $n_e$ only.  A continuation factor $s$ on $\kappa$
 (\texttt{EXHALE\_CONDUCTION\_SCALE}) is part of the state identity (the
-\texttt{cond} token carries it).  The viscosity keeps the hydrogen value tied
+\texttt{cond} token carries it to seventeen significant digits, so two
+factors are two states).  The viscosity keeps the hydrogen value tied
 to the Watson conductivity by the Chapman--Enskog/Eucken relation for a
 monatomic gas, Prandtl number $2/3$,
 $\mu(T) = \frac{4}{15}\frac{m_{\rm H}}{k_B}\,4.45\times10^{4}(T/1000\,\mathrm{K})^{0.7}$.  In code units
 $\mu_{\rm code} = \mu_{\rm cgs}/(n_0 m_{\rm H} v_0 R_0)$, the inverse Reynolds
-number, and $\kappa_{\rm code} = \tfrac{15}{4}\mu_{\rm code}$.
+number, and $\kappa_{\rm code} = \kappa_{\rm cgs}T_0/(n_0m_{\rm H}v_0^3R_0)$
+(equal to $\tfrac{15}{4}\mu_{\rm code}$ only for the Watson value the
+viscosity is tied to, not for the mixture conductivity).
 
 Both operators are assembled once as tridiagonal coefficient triplets on the
 same faces and volumes as \eqref{eq:geom}, and the same triplets serve as the

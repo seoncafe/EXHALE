@@ -1051,7 +1051,7 @@ Restart intent: relaxation          # trajectory | relaxation | stationary [eval
 A restart is checked against the state it loads, not merely read. Both state
 files carry an eight-line metadata block above their column line
 (`# restart_schema 1`, then `reservoir`, `species_columns`, `grid`,
-`constants`, `options` with twenty switches, `t_phys[s]`, `source`), written
+`constants`, `options` with twenty-three switches, `t_phys[s]`, `source`), written
 and parsed in one place (`load_IC.f90`), every number in `ES23.16`. At the
 load:
 
@@ -1060,7 +1060,7 @@ load:
 | `reservoir` (He/H and every trace element) | refused, beyond `heh_dev_tol` = 1e-6 relative, or if an element is in one reservoir and not the other |
 | `grid` (cell count, `R0`, first and last cell center, construction) | refused. A changed Jupiter radius is a changed physical grid |
 | `constants` (the set, with `RJ` and `k_B`) | refused |
-| `options` (the twenty switches that decide which equations the state solves) | refused token by token, naming the token and its `from -> to`, unless `Restart option change:` permits that token |
+| `options` (the twenty-three switches that decide which equations the state solves) | refused token by token, naming the token and its `from -> to`, unless `Restart option change:` permits that token |
 | `species_columns`, `source` | reported, not refused; species are restored by label |
 
 A pair with no block is legacy: it loads as before and the run is marked
@@ -1145,6 +1145,23 @@ a `# route_change` line. The permitted change is written into the new state as o
 the rungs after it, and `EXHALE_setup.out` states the restart provenance and
 the permitted changes.
 
+**Continuation factors.** `EXHALE_CONDUCTION_SCALE=<s>` and
+`EXHALE_INTERDIFF_ENTH_SCALE=<s>` (s in [0, 1], 1 when unset) scale the heat
+conduction and the interdiffusion enthalpy flux. They change the equations,
+so they are part of the state identity: the `cond` and `interdiff_enth`
+tokens read `F` without the term, `T` at s = 1 and s itself otherwise,
+written `ES23.16E3` (seventeen significant digits; gfortran and ifx write the
+same text), so a restart across a change of s names the token on
+`Restart option change:`. A token in the five-decimal F7.5 form of the states
+written 2026-09-29/30 stands for the interval [v - 5e-6, v + 5e-6], not one
+factor: a requested factor inside it is a change of representation, the
+state loads as a seed with its certification claim dropped
+(`cert_reason=legacy_factor_token`) and the states this run writes carry a
+`# legacy_factor_token <from> -> <to> at restart of <source>` line; a factor
+outside it is a physics change under the rule above. A value this code never
+wrote is refused even when named. The run log and `EXHALE_setup.out` print
+the factor in `ES13.6`.
+
 One practical consequence: **states written before the Jupiter-radius
 unification cannot be reloaded at all** (every cell center moved, so the grid
 guard refuses them). That covers the stored `heh_*` case directories (renamed 2026-09-16), the planet
@@ -1181,6 +1198,13 @@ can be measured instead of argued. Read the exact behavior at the
 | `EXHALE_L22B_JAC_RECON=1` | assemble the advective entries of the carrier Jacobian as a central difference of the face-flux divergence itself, limiter and reconstruction included, restricted to the tridiagonal band, instead of the first-order donor-cell linearization | `diffusive_photochemistry.f90` |
 | `EXHALE_L22B_JAC_ACTION=<file>` | write, at the first Jacobian assembly of the run, the action of the assembled matrix on a direction against a central difference of the full carrier residual along the same direction, row by row | `diffusive_photochemistry.f90` |
 | `EXHALE_L22B_JAC_CELLS=<lo>,<hi>` | the cells the probe direction of `EXHALE_L22B_JAC_ACTION` is carried on (the whole column by default) | `diffusive_photochemistry.f90` |
+| `EXHALE_IEQ_DUMP_CELL=<j>` | write every He 2^3S-branch composition solve of cell j (temperature, densities, every rate coefficient, start and returned vectors, dimensional rows, normalized residual, forward-difference Jacobian) to `ieq_cell_dump.txt`, and the cell's photoionization rates at perturbed entry states to `ieq_cell_rate_probe.txt`. `EXHALE_IEQ_REPORT_CELL=<j>` prints the accepted state of cell j at every sweep, its second fraction named by the system solved (He 2^3S in the atomic triplet system, the H2 nuclei in the molecular one) | `ionization_equilibrium.f90` |
+| `EXHALE_RESID_SC_TRACE=<n>`, `EXHALE_RESID_SC_TRACE_SEED=shift\|h2\|partition` | trace the composition elimination of the steady residual for n passes from two seeds in lockstep, and **STOP** the run; seed B is the composition shifted by five cells (`shift`), the H2 fraction scaled by 1 + `EXHALE_RESID_SC_TRACE_SCALE` (`h2`), or the elemental inventory and charge closure kept with a fraction of H I and He I moved into H II and He II (`partition`) | `steady_newton.f90` |
+| `EXHALE_JV_FRESH_WEIGHTS=1` | take the products of the Newton model with the WENO3 weights recomputed instead of frozen | `steady_newton.f90` |
+| `EXHALE_LINEAR_ROWS=1`, `EXHALE_LINEAR_ROWS_CELLS=<lo>,<hi>` | print row by row the linear residual the Krylov solve left against the rows of F, and over the band lo..hi (default 290,312) the energy row, the model's F + J dY, the row found at Y + dY and difference quotients along the step | `steady_newton.f90` |
+| `EXHALE_ADV_TEST_REJECT=<reason>` | make every column energy solve of the advection post-process end rejected with that reason (`linear_solve`, `nonfinite`, `non_positive_T`, `residual_above_tolerance`) after it has run, to test the rejection handling (rows `failed`, the record, exit 7) | `post_process_adv.f90` |
+| `EXHALE_ADV_COLUMN_FLOOR_IT=<n>` | take n further Newton steps of that column solve past its step test, so the reported residual is its rounding floor | `post_process_adv.f90` |
+| `EXHALE_ADV_COLUMN_EXCLUDE_UNROOTED=1` | make the cells whose marching energy step found no root fixed values of the column (written `failed`) instead of unknowns, as before 2026-10-01 | `post_process_adv.f90` |
 | `EXHALE_L22B_DISPLACEMENT=1` | report what the composition a relaxation pass hands back did to the state the wind reads: the largest relative movement of the pressure, the temperature, the mean mass per particle and the particle count, each with the cell that carries it | `diffusive_photochemistry.f90` |
 
 ## Output files
@@ -1191,7 +1215,7 @@ All output is written to `output/` in the run directory.
 |------|----------|
 | `Hydro_ioniz.txt` | Radius, number density, velocity, pressure, temperature, heating rate, cooling rate (columns vs. radius) |
 | `Ion_species.txt` | Number densities of H I, H II, He I, He II, He III, He 2^3S, and the metal ionization stages (33 species; zero columns when a species is off) |
-| `Hydro_ioniz_adv.txt` | `Hydro_ioniz.txt` re-solved as the steady ionization and energy equations along the recorded flow, plus three further columns: `adv_T_status` and `adv_comp_status`, the validity of the row's temperature and of its composition separately (0 corrected, 1 retained, 2 failed, 3 unsupported, 4 not evaluated), and `adv_mass_row`, the measure both were decided by. A corrected row is a CONDITIONAL correction, accurate to the fraction of itself in the mass flux that the file's own `# adv_conditional_tol` line states; whether the whole input state passed the stationary certification is a separate statement, in its `# adv_input_certified` line, and how the solves that produced the rows ended as a whole (the column energy solve of the transport terms, the chemistry, the outer iteration) is the `# adv_derived_state:` line (`verdict=rejected` or `unverified`; no line is UNKNOWN). The conditions, the two fields, the measure and both numbers are defined once, in manual section 4 ("Validity range of the advection correction"); read them there rather than from a second copy |
+| `Hydro_ioniz_adv.txt` | `Hydro_ioniz.txt` re-solved as the steady ionization and energy equations along the recorded flow, plus three further columns: `adv_T_status` and `adv_comp_status`, the validity of the row's temperature and of its composition separately (0 corrected, 1 retained, 2 failed, 3 unsupported, 4 not evaluated), and `adv_mass_row`, the measure both were decided by. A corrected row is a CONDITIONAL correction, accurate to the fraction of itself in the mass flux that the file's own `# adv_conditional_tol` line states; whether the whole input state passed the stationary certification is a separate statement, in its `# adv_input_certified` line, and how the solves that produced the rows ended as a whole (the column energy solve of the transport terms, the chemistry, the outer iteration) is the `# adv_derived_state:` line (`verdict=rejected` or `unverified`; no line is UNKNOWN, and `EXHALE_transit.py` refuses both a rejected and an UNKNOWN record with exit 7 unless `EXHALE_TRANSIT_DIAGNOSTIC=1`). The conditions, the two fields, the measure and both numbers are defined once, in manual section 4 ("Validity range of the advection correction"); read them there rather than from a second copy |
 | `Ion_species_adv.txt` | Post-processed version of `Ion_species.txt`, carrying the same two validity fields as its last two columns and the same header block |
 | `pass_state/current`, `pass_state/<state_id>/{Hydro_ioniz,Ion_species,manifest}.txt` | only on the stationary route (`Restart intent: stationary` and the partitioned outer iteration): the state the next outer pass starts from, published as one generation after every pass that is not the last, so that a run stopped from outside keeps its last completed pass; `current` names the generation to take. Same columns and headers as `Hydro_ioniz.txt` / `Ion_species.txt` plus `state_id=` on the coupling line of both, a restartable pair once copied to the `_IC` names, never certified (`certified=F cert_reason=pass_snapshot_p<pass>` in both halves). Replaces `Hydro_ioniz_last_pass.txt` / `Ion_species_last_pass.txt` (until 2026-09-29). See "Restart a run" |
 | `Cooling_breakdown.txt` | Radiative cooling by channel vs. radius: six atomic channels (recombination and collisional ionization, which include the energies of the metal ions; collisional excitation of H I, He I and He II; free-free), the H3+ infrared channel, the H2, H2O and CO infrared bands (net rates), then one column for each metal ion's line cooling. With the He 2^3S tracked the He I column is the net 1^1S <-> 2^3S exchange plus the metastable's own channels, negative where the superelastic collisions heat the gas |
@@ -1282,6 +1306,22 @@ metals-on run and are skipped otherwise). A 3-D Roche-equipotential geometry is 
 `geometry = 'triaxial'` (`roche_recon.py`).
 -> manual section 5.2, `docs/transmission_spectrum.pdf`.
 
+**When no spectrum is made.** The tool prints the `# adv_derived_state:`
+record of the `_adv` profile and exits with status 7, making no spectrum,
+when the record says `verdict=rejected` or when the profile has none (a file
+written before the record existed: an UNKNOWN derived state).
+`EXHALE_TRANSIT_DIAGNOSTIC=1` makes it anyway, as diagnostic data, and the
+metadata of every saved curve then says so (`adv_derived_state_refusal` /
+`adv_derived_state_unknown`). `verdict=unverified` is read. Inside the
+profile the row census refuses a row whose temperature field is not 0 or
+whose composition field is `failed` (2); refused rows carry the run's own
+numbers and enter the spectrum, and the share of the line-center depth they
+carry is printed as a contribution. The `stationary evaluate` route of the
+solver exits 7 for the same rejected product (2 when the certification
+refuses the input state). An equivalent width integrated from these curves
+(excess absorption in percent over wavelength in A, as
+`LHS1140b/he10830_equivalent_width.py` does) is in percent-angstrom, not mA.
+
 ### Where the star and planet parameters come from
 
 `EXHALE_transit.py` takes the whole system from the `input.inp` of the run
@@ -1289,8 +1329,13 @@ directory, so the spectra always describe the same system as the simulation.
 Each parameter is resolved as
 
 ```
-EXHALE_TRANSIT_* environment override  >  ./input.inp  >  built-in default
+EXHALE_TRANSIT_* environment override  >  ./EXHALE_resolved.out  >  ./input.inp  >  built-in default
 ```
+
+`EXHALE_resolved.out` is written by the wind solver after a `base.inp` or a
+lower-atmosphere profile has moved the base, so it carries the `R_p`, `M_p`,
+`T_0`, `a`, `M_star` and He/H the wind actually used; the stellar radius and
+`T_eff` are not in it and come from `input.inp` (manual section 5.2).
 
 | Quantity | `input.inp` label | Override |
 |----------|-------------------|----------|

@@ -1531,7 +1531,11 @@
       write(unit,'(A)') '#   [erg cm^-3 s^-1] and _rel of the worst cell);'//&
                      ' the verdict is still unverified, because the'
       write(unit,'(A)') '#   outer iteration is a fixed number of passes'//&
-                     ' with no convergence test (outer=unverified).'
+                     ' with no convergence test (outer=unverified),'
+      write(unit,'(A)') '#   the transport coefficients of the column are'//&
+                     ' formed on the composition handed in, and the'
+      write(unit,'(A)') '#   momentum balance of the corrected pressure'//&
+                     ' is not measured.'
       write(unit,'(A)') '#   cells_marching_unrooted: cells whose'//      &
                      ' cell-by-cell energy step found no root, solved'
       write(unit,'(A)') '#   as unknowns of the column (written corrected'//&

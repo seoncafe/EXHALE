@@ -4354,8 +4354,10 @@ is 4.2e-26. Kahan\textquotesingle s (1 - u)/(-ln u) does not work: ifx -O3 -xHos
 ln(exp(-d)) to -d and the output was bitwise the closed form\textquotesingle s. Reach: every
 XUV photoionization and photoheating rate (\texttt{photoionization\_field\_at\_cell\_H}
 and \texttt{\_HHe} through \texttt{cell\_mean\_attenuation}, the a\_tau = 0 branch) and the
-H2O/OH FUV band rates. Profiles move by \textless= 8e-11 (x(H+)), 1.3e-11 (T),
-2.7e-10 (mean mass flux): far below the 0.1 per cent rule.
+H2O/OH FUV band rates. Effect on that state (max over
+physical cells, new against the control): x(H+) 7.8e-11, T 1.3e-11, rho
+1.6e-10, v 2.2e-6 at the base cell only (below 1e-9 elsewhere), the mean
+rho v r\^{}2 over r \textgreater= 1.1 R\_p 2.7e-10.
 
 \textbf{Result.} floor\_jvadd with the chain settings (\texttt{EXHALE\_PTC\_SER=2}, cap
 400, omega 1, factor 0.773561): ONE outer pass, 2 JFNK steps, info = 0,
@@ -4420,8 +4422,9 @@ with five reasons), \texttt{energy\_update} and \texttt{evaluate\_entry.sh} reru
 (counts in section 61). The launcher suites of \texttt{LHS1140b/models/tests/} were run
 by the worker of section 55 (\texttt{evaluate\_entry.sh} 25/25, \texttt{runner\_records.sh}
 18/18, five others unchanged). The regression matrix was not run and no
-golden was touched (user instruction of 2026-09-29; the measured movements
-of every change are below 1e-6 relative, sections 55-59). The workers\textquotesingle{}
+golden was touched (user instruction of 2026-09-29; the measured effects
+are stated with each change, the largest 2.2e-6 in v at the base cell of
+the diagnostic state, section 58). The workers\textquotesingle{}
 intermediate binaries (\texttt{EXHALE\_w*.x}, \texttt{build\_w*/}, \texttt{diag\_R/w4\_bin/}) are
 superseded by these two.
 
@@ -4470,8 +4473,11 @@ passes, so the cascade takes the run\textquotesingle s composition as its histor
 the metal re-solve of \texttt{pp\_metals\ =\ 2} skips refused cells; and every refused
 row is written with the run\textquotesingle s exact numbers (species and metal stages when
 the composition field is refused; T when the T field is 1, 3 or 4; p, heat,
-cool when both are refused): max relative difference 0 against the
-solution\textquotesingle s columns on the three states. The transit census still counts
+cool when both are refused): the restored fields equal the solution\textquotesingle s
+columns to 0 relative on the three states; a row with corrected T and
+refused composition is not the solution as a whole. The class is a
+threshold rule on the input state and does not bound the omitted H2
+contribution. The transit census still counts
 them as refused (173 rows to 1.089 R\_p, photochemical; 246 rows to 1.322
 R\_p, scalar He/H 1.45).
 
@@ -4484,8 +4490,10 @@ percent-angstrom, adv / solution):
 \textbar{} molecular photochemical He/H 9, conduction \textbar{} converged \textbar{} 329 (3) \textbar{} 1.6e-11 \textbar{} \textbf{0.7705} \textbar{} 8.5630 \textbar{}
 \textbar{} molecular scalar He/H 1.45, conduction \textbar{} converged \textbar{} 256 (0) \textbar{} 2.9e-12 \textbar{} \textbf{0.1408} \textbar{} 2.1471 \textbar{}
 
-All three exit 0 with the derived product accepted (\texttt{outer\ =\ unverified}
-still: the outer iteration is the fixed ten passes, plan B3). The
+All three exit 0 with the COLUMN accepted; the derived state as a whole
+stays \texttt{unverified}: the transport coefficients are formed on the input
+composition (plan B1), the outer iteration is the fixed ten passes (B3)
+and the momentum balance is not measured (B4). The
 photochemical adv EW of an ACCEPTED corrected profile is 0.7705 against
 1.1032 of the refused marching profile (section 51, now superseded) and
 the observed 1.108 +- 0.029: 30 per cent low. Its He 10830 line-center
@@ -4497,6 +4505,64 @@ under 1 per cent of tau. The correction of the scalar He/H 1.45 product
 moved from 0.1525 to 0.1408 (-7.7 per cent) because its composition class
 reaches 1.32 R\_p. Tests: \texttt{adv\_static\_limit} 62 PASS (63 before: rows K
 have five reasons now), \texttt{evaluate\_entry.sh} 25/25.
+
+\subsection{62. The Codex review of the 2026-10-01 summary, applied (2026-10-01)}\label{62-the-codex-review-of-the-2026-10-01-summary-applied-2026-10-01}
+
+\texttt{md/code\_improvements\_20261001.md} summarizes sections 53-61; Codex
+reviewed it in place (its comments R1-R8 stay in that file). Its
+statements were checked against the tree before anything was changed.
+
+\begin{itemize}
+\tightlist
+\item
+  R2, R5, R8 (wording): "exact root" is agreement to floating-point
+  accuracy (0.65 and 1.64 ulp on the last two records; the two x(H+) are
+  9.2e-12 apart, 1.8e-11 relative); refusal of an \texttt{\_adv} row is per field
+  (composition, or T), so a row with corrected T and refused composition is
+  not the solution as a whole, and the H2 class is a threshold rule that
+  does not bound the omitted contribution; "profiles move by \textless= 1e-10" was
+  false as a general statement: on the diagnostic state the maximum
+  relative change over physical cells is x(H+) 7.8e-11, T 1.3e-11, rho
+  1.6e-10, v 2.2e-6 (the base cell only), the mean rho v r\^{}2 over
+  r \textgreater= 1.1 R\_p 2.7e-10. The summary, sections 58, 60 and 61 and the
+  handoff now say so.
+\item
+  R3 (HIGH, correct): what section 61 accepts is the column subproblem
+  with lagged coefficients (the transport coefficients on the input
+  composition, the fine-structure escape probabilities of the start of the
+  pass); the full-state energy residual on one derived composition (plan
+  B1), the outer iteration (B3) and the momentum balance (B4) are not
+  tested. The stale comments of \texttt{post\_process\_adv.f90} (the derived-state
+  block) and of \texttt{adv\_derived\_state\_verdict} (\texttt{exhale\_transit\_lib.py}),
+  which still said the column residual is untested, now list what is and
+  is not tested.
+\item
+  R4 (MEDIUM, correct): \texttt{EXHALE\_transit.py} continued on an \texttt{unknown}
+  derived-state verdict (no record) with a warning; it now exits 7 unless
+  \texttt{EXHALE\_TRANSIT\_DIAGNOSTIC=1}, as for a rejected record, and the
+  metadata carries \texttt{adv\_derived\_state\_unknown} and the override.
+  \texttt{ew\_of\_state.sh} passes the key on an unknown record in its diagnostic
+  mode; the manual and the READMEs say so. adv\_static\_limit rows M (the
+  rows-K product with its record stripped): refused without the key, a
+  curve with the key stating the unknown record; 64 PASS (62 + 2).
+  Left as it is: \texttt{run\_case.sh} calls the transit without the key, so a
+  product written by a binary older than the record would fail its case;
+  the current binary always writes the record.
+\item
+  R6 (correct): the two bitwise rows of \texttt{absorbed\_fraction\_switch}
+  (H2O and OH band rates against the XUV cell mean) fail under ifx -O3
+  -xHost by 1 ulp because the optimizer reassociates the test\textquotesingle s reference
+  product; they now assert 2 ulps (\texttt{...\_to\_2ulp}, 4.5e-16) with a
+  DIAGNOSTIC line of the bitwise-unequal counts: 14/14 with the suite\textquotesingle s
+  -O0 flags, with gfortran -O3 (0 unequal) and with ifx -O3 -xHost (552
+  and 405 unequal of 1506, max 2.2e-16). A second copy of the function
+  would still be caught (its difference is the closed form\textquotesingle s 1e-9 to
+  1e-14 error below d = 1e-2).
+\item
+  R7: the saved EWs reintegrate to 0.6490803760 / 7.5179432737,
+  0.7705246807 / 8.5629850578, 0.1407893262 / 2.1470782882 (adv /
+  solution); recorded in the summary.
+\end{itemize}
 
 \appendix
 \input{Update_EXHALE_appendix}

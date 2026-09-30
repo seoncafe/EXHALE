@@ -106,7 +106,11 @@ Key & Default & What it selects, and where \\
   Older synonym of \texttt{IC mode: hot\_parker}. \\
 \texttt{Restart intent:} & relaxation &
   What a loaded state is continued as: \texttt{trajectory},
-  \texttt{relaxation} or \texttt{stationary} (\texttt{load\_IC.f90}). \\
+  \texttt{relaxation}, \texttt{stationary}, or \texttt{stationary evaluate}
+  (measure the state and write its products, exit 2 on a refused input and 7
+  on a refused \texttt{\_adv} product), or \texttt{stationary equilibrate}
+  (the loaded composition put on its own fixed point first)
+  (\texttt{load\_IC.f90}). \\
 \midrule
 \multicolumn{3}{l}{\itshape Convergence and the stationary solvers}\\
 \midrule
@@ -282,7 +286,9 @@ Key & Default & What it selects, and where \\
   Radial viscous force and its dissipation \eqref{eq:viscous}
   (\texttt{viscous\_conduction.f90}). \\
 \texttt{Conduction:} & off &
-  Heat conduction with the mixture $\kappa$ of \eqref{eq:transport_coeff}. \\
+  Heat conduction with the mixture $\kappa$ of \eqref{eq:transport_coeff};
+  the continuation factor \texttt{EXHALE\_CONDUCTION\_SCALE} is part of the
+  state identity (the \texttt{cond} token). \\
 \end{longtable}
 }
 

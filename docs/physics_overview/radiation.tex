@@ -320,8 +320,19 @@ and
 \label{eq:rad:cellmean}
 \end{equation}
 the second factor being \texttt{absorbed\_fraction\_per\_unit\_depth}, which
-switches to its series $1-\Delta\tau/2+\Delta\tau^{2}/6$ below
-$\Delta\tau = 10^{-8}$. Only this mean makes the photons the cell absorbs
+the H$_2$O and OH far-ultraviolet band rates take as well. The quotient
+$(1-e^{-x})/x$ has one evaluation in the code,
+\texttt{one\_minus\_exp\_over\_x} (\texttt{utilities.f90}), and every site
+that needs it goes through it (the recombination radiation below, the
+ground-capture weights of \eqref{eq:ion:netalpha}, the fine-structure line
+escape of Sec.~\ref{sec:thermal}, the Sobolev escape of Ly$\alpha$ in
+Sec.~\ref{sec:ionization:n2}): its Taylor series through $x^{8}$ in Horner
+form below $x = 10^{-2}$ (the three-term series below $10^{-8}$), the closed
+form above, with an error of at most $2.2\times10^{-14}$. The closed form
+alone does not do below the switch: $e^{-x}$ is rounded to a double next to 1,
+so $(1-e^{-x})/x$ is a staircase in $x$ with relative steps of about
+$\epsilon/x$, a discontinuous function of the densities $\Delta\tau$ is formed
+from (2026-10-01, Sec.~\ref{sec:steady:jfnk}). Only this mean makes the photons the cell absorbs
 equal the photons the beam loses across it; a one-point rule at the inner
 face is low by 42 percent at $\Delta\tau=1$, the depth a cell carries at the
 ionization front. The optional \texttt{alpha} form of the 2-D approximation replaces
@@ -494,7 +505,9 @@ Three fields in the code are not the direct stellar beam.
 H\,{\sc ii}, He\,{\sc ii} and He\,{\sc iii} recombine are absorbed on the
 spot (\texttt{recombination\_radiation\_absorbed} in
 \texttt{util\_ion\_eq.f90}): each cell keeps the fraction $1-e^{-\tau}$ of
-every channel at its own optical depth and shares it among H\,{\sc i},
+every channel at its own optical depth (\texttt{absorbed\_photon\_fraction},
+formed as $\tau$ times the quotient of \eqref{eq:rad:cellmean} so that a thin
+cell keeps its digits) and shares it among H\,{\sc i},
 He\,{\sc i}, He\,{\sc ii}, H$_2$ and the metals in the ratio of their
 absorption coefficients; the part re-absorbed by the recombined species
 itself is the on-the-spot cancellation of the net coefficients

@@ -17,21 +17,61 @@ temperature: conduction \eqref{eq:transport_coeff} couples each cell to both
 neighbors, so after the marching sweep the corrected cells are solved
 together by a Newton iteration on the column (banded Jacobian, conductivity
 and enthalpy flux divergence re-evaluated at each iterate); cells that keep
-the run's temperature are fixed values of that solve.  That iteration stops
-when no temperature moves by more than $10^{-10}$ of itself (or after 100
-iterations), and the column is then judged on its residual: the energy row
-of every unknown, formed again at the final profile with the transport terms
-of that profile, must be within $10\,\epsilon\sum|{\rm terms}| + 10^{-6}S_E$,
-$S_E$ the largest of its physically grouped terms and $10^{-6}$ the energy
-tolerance of the stationary certification.  It is rejected when the banded
-solve fails, a residual, step or term is not finite, a temperature is not
-positive, or the residual test fails; a rejected column keeps the marching
-profile and every one of its cells is written \texttt{failed}, and the
-outcome, the reason, the triggering cell and the worst residual are recorded
-in the \texttt{\# adv\_derived\_state:} line of the \texttt{\_adv} headers.
-The ten outer passes are not tested for convergence, so an accepted column is
-recorded as \texttt{converged\_on\_residual} and the outer iteration as
-\texttt{unverified}.  Without these terms
+the run's temperature are fixed values of that solve, while a cell whose
+own marching energy step found no root (outside the Brent bracket
+$[0.05, 4]\,T_{\rm in}$, or the $[0.5, 2]\,T_{\rm in}$ band that guards the
+metal-cooled residual against its spurious hot root) is an unknown of it,
+started from the run's temperature and decided by the residual like the
+rest (\texttt{cells\_marching\_unrooted} in the record;
+\texttt{EXHALE\_ADV\_COLUMN\_EXCLUDE\_UNROOTED=1} makes such cells fixed
+values again, for measurement).  That iteration stops when no temperature
+moves by more than $10^{-10}$ of itself, or after 100 iterations, which is a
+stopping rule and decides nothing; the column is then judged on its
+residual: the energy row $R$ of every unknown, formed again at the final
+profile with the transport terms of that profile, must satisfy
+$|R| \le a_E + 10^{-6}S_E$, $S_E$ the largest of its physically grouped terms
+(the advective energy divergence as one term, the $p\,{\rm div}\,v$ work,
+heating, cooling, the conduction divergence and the two enthalpy
+divergences), $10^{-6}$ the energy tolerance of the stationary
+certification, and $a_E = 10\,\epsilon$ times the sum of the magnitudes of
+the parts the row is assembled from (the grouped terms, the two halves of
+the advective difference and the three face terms of the conduction
+divergence; the stagnated $|R|$ MEASURED on three LHS~1140\,b conduction
+states is 0.73--0.99\,$\epsilon$ of that sum).  The temperature band of the
+cell-by-cell solve is not applied to the column: it refused a root of the
+conduction-coupled equation (a cell at 10.35~$R_p$ whose row closes to
+$9.5\times10^{-12}$ of its largest term at twice the run's temperature).
+The column is rejected when the banded solve fails, a residual, step or
+term is not finite, a temperature is not positive, or the residual test
+fails; a rejected column keeps the marching profile and every one of its
+unknowns is written \texttt{failed}, and the outcome, the reason, the
+triggering cell, the worst residual and the number of cells without a
+marching root are recorded in the \texttt{\# adv\_derived\_state:} line of
+both \texttt{\_adv} headers.
+
+What that acceptance covers is the column subproblem as it is solved, with
+lagged coefficients: the conductivity and the element and carrier enthalpy
+divergences are formed on the \emph{input} composition and not on the
+derived one, and the fine-structure escape probabilities are those of the
+profile the pass started from, which the cooling written after the last
+column forms again.  Three things are not tested: the full energy residual
+of the derived state on one composition with its own coefficients, the
+convergence of the ten outer passes, and the momentum balance of the
+corrected pressure on the supplied $\rho$ and $v$.  An accepted column is
+therefore recorded as \texttt{converged\_on\_residual} and the product as
+\texttt{verdict=unverified}, \texttt{outer=unverified}, never as more; the
+verdict is \texttt{rejected} when the column of the last pass was rejected
+or any written row is \texttt{failed}, and a file without the line has an
+unknown derived state, which is not a pass either.  After every
+composition update of a pass (the H/He sweep with its cells restored to
+equilibrium, and under \texttt{pp\_metals = 2} the metal re-solve and its
+failure branch) the particle count, the electron density and the mean
+molecular weight are formed again from that composition, then the ionized
+fraction of the photoelectron partition, and only then the heating, the
+energy solve and the output pressure (the written $p$ equals
+$(n_{\rm tot}+n_e)kT$ of the written composition to $7.8\times10^{-16}$,
+MEASURED on \texttt{wasp\_full} with \texttt{pp\_metals = 2}, against
+$4.4\times10^{-8}$ before 2026-10-01).  Without these terms
 the corrected temperature of a conduction-dominated layer answers another
 equation (7900~K against the run's 5500~K at 1.2~$R_p$ on the fiducial
 LHS~1140~b atomic case).
@@ -117,7 +157,18 @@ Three properties of that pass are worth stating.
   \texttt{adv\_T\_status} $=3$ (\texttt{unsupported}); MEASURED on the
   LHS~1140\,b molecular states, 196/389/776 rows on 500/1000/2000 cells, up
   to $1.134$--$1.137\,R_p$, with an equivalent-width change of at most
-  $1.2\times10^{-4}$ of itself.
+  $1.2\times10^{-4}$ of itself.  The balance of each population the
+  advection systems solve is judged the same way (the composition class):
+  the systems are molecule-free, so where H$^+$, He$^+$ or He($2^3$S) loses
+  faster to H$_2$ (R10 and R13; R17 and R23; the He($2^3$S)\,$+$\,H$_2$
+  ionization) than to the channels the systems carry, on the state handed in,
+  the row keeps the run's composition and temperature with status 3 in both
+  fields, and the metal re-solve of \texttt{pp\_metals = 2} skips it.
+  MEASURED on the LHS~1140\,b molecular photochemical state, the rows it
+  refuses at 1.005--1.08~$R_p$ had carried an $n({\rm He}\,2^3{\rm S})$ 70 to
+  5600 times the run's.  The comparison has no free parameter, and passing it
+  does not bound the omitted H$_2$ loss to a small error: it says only that
+  the omitted loss is not the larger one.
 \end{itemize}
 
 The first of those gates has a fourth companion: wherever $v\le0$ in the cell
@@ -130,6 +181,17 @@ population is destroyed and re-formed, and the \emph{minimum} over the
 species the system solves is taken, because He($2^3$S) relaxes orders of
 magnitude more slowly than hydrogen ($A_{31} = 1.272\times10^{-4}$\,s$^{-1}$
 sets the floor) and the vector is only as local as its slowest member.
+
+\paragraph{What a refused row carries.}  A refused field is written with
+the run's own numbers, exactly: a composition field that is not
+\texttt{corrected} carries the handed-in species and metal columns, a
+temperature field that is retained, unsupported or not evaluated the
+handed-in temperature, and a row whose composition is refused and whose
+temperature is refused but not failed carries the handed-in pressure,
+heating and cooling too.  The one exception is the temperature of a
+\texttt{failed} row of a rejected column, which is the marching profile of
+that pass.  A row with a corrected temperature and a refused composition is
+therefore not the solution as a whole.
 
 \subsection{The mass-loss rate}
 \label{sec:postprocessing:mdot}
@@ -165,7 +227,11 @@ state's advection-corrected products are made by \texttt{Restart intent:
 stationary evaluate}, which loads the state, derives its pressure and
 temperature from the loaded conserved state, runs the ionization sweep,
 evaluates the certification and writes every product from that work state
-without entering the time integration. The route this replaced took one time
+without entering the time integration. It exits with status 2 when the
+loaded state claims to be stationary and the certification refuses it, 7
+when the input is not refused but the derived product is (a
+\texttt{rejected} or absent derived-state record), and 0 otherwise; the
+record is written into the \texttt{\_adv} headers either way. The route this replaced took one time
 step at \texttt{CFL:\ 1.0e-12} with \texttt{Do only PP:\ True}, which
 suppressed the movement but did not remove it, reconstructed with whatever
 \texttt{Reconstruction scheme:} stated rather than with the scheme the
@@ -259,7 +325,17 @@ selection are read together, the O\,{\sc i} ground-term populations
 included: the temperature of one state with the composition of the other
 solves neither set of equations.  Every saved curve carries the selection,
 the path, md5 and size of each file read, and the state's own provenance,
-coupling, boundary model and reservoir lines.
+coupling, boundary model and reservoir lines.  The \texttt{\_adv}
+selection is refused with exit status 7 when the profile's
+\texttt{\# adv\_derived\_state:} record says \texttt{rejected} or when the
+profile has no record (an unknown derived state), unless
+\texttt{EXHALE\_TRANSIT\_DIAGNOSTIC=1}, which makes the curves as diagnostic
+data and writes the refusal or the unknown record into their metadata.
+Within a profile that passes, the row census refuses a row whose
+temperature field is not \texttt{corrected} or whose composition field is
+\texttt{failed}; a refused row enters the spectrum with the run's own
+numbers (Sec.~\ref{sec:postprocessing:adv}), and the share of the
+line-center depth it carries is reported as a contribution.
 
 What the choice costs was MEASURED on \texttt{wasp\_full}, which carries
 both states, as the peak transit depth relative to itself (before the

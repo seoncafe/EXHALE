@@ -192,7 +192,7 @@ by the Python loaders except where noted.
 | K41 | `Newton solver` | word 3 == `False` | flag | - | `use_newton_ieq=.true.` | `use_newton_ieq` | Ionization-equilibrium Newton solver toggle. |
 | K42 | `Brent solver` | word 3 == `False` | flag | - | `use_brent_tsolve=.true.` | `use_brent_tsolve` | Temperature Brent solver toggle. |
 | K43 | `Restart intent` | word 3, and word 4 with `stationary` | string | - | `trajectory` with `Run mode: phys`, else `relaxation` | `restart_intent`, `stationary_evaluate_only`, `stationary_equilibrate_loaded` | What a loaded state is continued as. `trajectory`: the clock continues from the state file's `t_phys`. `relaxation`: march toward stationarity, then the solver hand-off (what every restart did before the key existed). `stationary`: rebuild the derived quantities without a step, measure the stationary residual and the certification of the state AS LOADED, then enter the stationary solve at once; the second word `evaluate` writes the measured state back and stops instead, and `equilibrate` puts the loaded composition on its own fixed point before the measurement. Three refusals: the key without `Load IC? True`, `trajectory` with `Run mode: init`, `stationary` without `Solver: Newton`. |
-| K44 | `Restart option change` | the rest of the line, tokens separated by commas, blanks or tabs | string list | - | no option may differ | `restart_option_change_named` (`IC_load`) | Which tokens of the state file's `# options` line are ALLOWED to differ between the loaded state and this run (decision 21, option a). The restart contract otherwise refuses any option difference, which forbids the restart ladder this project converges with: converge without an option, restart with it on, converge again. Naming a token permits exactly that token to differ; every other difference still refuses the load and states the token. A named token that does not differ is reported and nothing else. The change is written into the state this run produces as one `# option_change` line (appendix D.2) and inherited by the rungs that follow. Refusals: an unknown token; a token that decides how many unknowns the state has (`metals`, `mol`, `oxychem`, `carrier`, `iontrans`) -- the rows of the file are then not the rows of this run, which is a cold start and not a restart; a word naming the grid, the reservoir or the constant set instead of an option; the key without `Load IC? True`. `carrier_newton` is not in that list: it names the ROUTE and not the equation set (K15e), and a difference in it is admissible without being named. |
+| K44 | `Restart option change` | the rest of the line, tokens separated by commas, blanks or tabs | string list | - | no option may differ | `restart_option_change_named` (`IC_load`) | Which tokens of the state file's `# options` line are ALLOWED to differ between the loaded state and this run (decision 21, option a). The restart contract otherwise refuses any option difference, which forbids the restart ladder this project converges with: converge without an option, restart with it on, converge again. Naming a token permits exactly that token to differ; every other difference still refuses the load and states the token. A named token that does not differ is reported and nothing else. The change is written into the state this run produces as one `# option_change` line (appendix D.2) and inherited by the rungs that follow. Refusals: an unknown token; a token that decides how many unknowns the state has (`metals`, `mol`, `oxychem`, `carrier`; `opt_changes_layout` in `load_IC.f90`) -- the rows of the file are then not the rows of this run, which is a cold start and not a restart (`iontrans` is not one of them and may be named: the three ionization stages have a column in every state file, and the key changes whether it is a local root or a transported partition); a word naming the grid, the reservoir or the constant set instead of an option; the key without `Load IC? True`. `carrier_newton` is not in that list: it names the ROUTE and not the equation set (K15e), and a difference in it is admissible without being named. The continuation-factor tokens `cond` and `interdiff_enth` are compared as the factor they state, and a legacy five-decimal value as the interval it stands for (appendix D.2). |
 | K45 | `Run mode` | word 3 | string | - | `init` | `run_mode`, `run_mode_given` | What this run is doing, stated rather than inferred. `init`: initialization or continuation, which claims no elapsed time and permits local pseudo-time, pseudo-transient continuation and a chemistry that is not at its root, as numerical devices; the physical clock `t_phys` stays where it started and no output reports it. `phys`: physical integration, one global `dt` per step, the clock advanced only by a step accepted in full, the temporal error estimate of the step sampled every 20 accepted steps (`attempted_step.f90`), and the certification refusing a state whose chemistry has no root. `init` is the default in every configuration, and a value other than `init` or `phys` is a fatal `error stop 1`. Refusals: `phys` with `Time stepping: Local`, since cells advanced by different intervals do not form one trajectory. The mode also sets the default of K43 (`trajectory` under `phys`, `relaxation` otherwise), is written into the state file's metadata block as `mode` and read back on a restart (a `phys` run loading a file that states `mode=phys` without a finite non-negative `t_phys` is refused), and is stated in `EXHALE_setup.out` together with whether it was given or defaulted. |
 | K46 | `Well balanced` | word 3 == `True`/`true` | flag | - | `.false.` | `well_balanced` | The reconstruction, the Riemann jumps and the pressure force carry the DEPARTURE from the cell's own local hydrostatic equilibrium instead of the state itself. Within cell `j` that equilibrium is the constant-density one through the cell's own density and pressure, `p_eq,j(r) = p_j - rho_j (phi(r) - phi(r_j))`, so no thermal, entropy or compositional stratification is assumed. The pressure stencil acts on the departure of a neighboring cell's pressure from that equilibrium continued THROUGH the face between them (this cell's density up to the face, the neighbor's beyond it), which is what vanishes at a discrete equilibrium, with the same limiter, the same smoothness indicators and the same volume shares as the state does; the momentum row is then assembled from the face pressure measured against that equilibrium and `source` returns `S(2,j) = 0`. The equilibrium's flux difference and its gravitational source cancel in the algebra instead of in floating point, so a discrete hydrostatic equilibrium is preserved to rounding (Kaeppeli and Mishra 2016, A&A 587, A94, sections 2.1.1 and 2.1.3; the face-pressure-difference form of the source is Kaeppeli and Mishra 2014, J. Comput. Phys. 259, 199, eq. 2.26). Exact preservation also needs a numerical flux that resolves a stationary contact discontinuity: it holds with `Numerical flux: ROE` and `HLLC` (core line 17) and NOT with `LLF`, and not at a face the positivity repair has replaced with a first-order flux, where the departure pair is re-formed by subtracting two O(1) pressures. Applies to both reconstructions (core line 18) and to the PLM -> WENO3 continuation (K13b), which blends two well-balanced operators. **Turning it on moves every result**: the pressure/gravity pair is in every run, and the two discretizations are both second-order consistent with neither a subset of the other. Off by default, and with it off every path is the one the goldens were taken with. Stated in `EXHALE_setup.out`, with a warning there when the flux is `LLF`, carried in `EXHALE_resolved.out` and in the parse dump, and written as the option token `wellbal` (the 21st) in a state file's `# options` line, where `Restart option change` (K44) may name it: it does not decide how many unknowns a state has. See `hydrostatic_equilibrium_of_each_cell` and `well_balanced_face_departures` (`src/modules/states/Reconstruction.f90`). |
 | K47 | `Low Mach velocity jump` | word 5 == `True`/`true` | flag | - | `.false.` | `low_mach_velocity_jump` (`Numerical_Fluxes`) | ROE branch only: the normal velocity jump entering the two acoustic expansion coefficients `a1` and `a3` of the Roe dissipation is scaled by `min(|U_Roe|/a_Roe, 1)`, the one-dimensional form of Rieper (2011, J. Comput. Phys. 230, 5263) eq. 3.15 with the local Mach number of his eq. 3.16 built from the Roe averages. Without it the upwind velocity jump carries an artificial viscosity of the momentum one order in the Mach number larger than the momentum update it damps (his eq. 2.14); with it the viscosity returns to the order of the update (his eq. 3.17). The eigenvalues, the eigenvectors, the central flux, the well-balanced pressure departure `dp_wb` and the admissibility test are untouched, and at a face with `Ma_Roe >= 1` the factor is exactly 1. Validity: his section 3.2 assumes the local and the global Mach number do not deviate substantially; his section 5 states that the stiffness of the equations is NOT removed and that an HLLC adaptation needs its own derivation, which is why the option exists on the ROE branch alone and has no effect under `HLLC` or `LLF` (core line 17), where `EXHALE_setup.out` says so. Off by default and bit-identical with it off. See `src/modules/flux/Num_Fluxes.f90`. |
@@ -714,6 +714,15 @@ lines are comments; `load_IC` skips them, except for two it reads:
 | `# boundary_model <identity>` | both files | `parse_boundary_model_line` | which LOWER BOUNDARY MODEL produced the state. Informational: the boundary is rebuilt from the physical column and this run's own reservoir whatever the file says, and the loader reports whether the two models agree. A state written before the line existed carries none, and the loader says so. The identity a run states depends on the reconstruction (`base_boundary_model_id` in `base_boundary.f90`): with `Well balanced: True` it is `characteristic_face_ps_reservoir_C_minus_contact_upwind_ghost_fixed_point_seed_reservoir_row_face_at_level_discrete_equilibrium_v5` (the first cell carried to the level face by its own constant-density equilibrium and the ghosts continuing that discrete equilibrium below it), without it `..._face_at_level_v4` (the first cell and the ghosts continued along hydrostatic isentropes). Both are the (p, s) reservoir stated at the level face, the linearized C- relation of the first interior cell, the contact upwinded on the direction the matching returns with the reservoir owning the level at rest, and the ghost composition held to a fixed point of its own solve from a stated seed. Earlier: `..._row_v3` (the face half a cell above the level), `..._upwind_v2` (no stated ghost seed), `..._smoothstep_v1` (the entropy source handed over by a cubic smoothstep whose value at zero flow was the average of the two isentropes). A state carries the residual and the certificate of the model it was written under, and neither transfers across the two; the loader says so and loads the state |
 | `# boundary_reservoir version <v> p[p0] T[T0] nhat[n0/rho0] r_level[Rp] <four numbers>` | both files | reported | the PRESCRIBED reservoir the boundary was built on, with the version of that prescription. It is the only boundary input the physical column cannot reconstruct, which is why it travels with the state; the four numbers are written at seventeen significant digits and round trip a double exactly |
 
+The advection-corrected `Hydro_ioniz_adv.txt` / `Ion_species_adv.txt` are not
+state files and are never loaded: they carry a `# derived_from:` line in place
+of the coupling line, and a `# adv_derived_state: verdict=... chemistry=...
+column=... reason=... ... cells_marching_unrooted=... outer=unverified` record
+of how the solves that produced them ended (manual section 4, "The state of the
+derived product as a whole"). A file without that line has an UNKNOWN derived
+state; `EXHALE_transit.py` refuses it, as it refuses `verdict=rejected`, with
+exit 7 unless `EXHALE_TRANSIT_DIAGNOSTIC=1`.
+
 **THE GHOST ROWS OF THE PAIR ARE NOT READ.** Both files carry `N + 2*Ng` rows
 and the first `Ng` of them are the cells below the base. Those rows are the
 boundary's own output: `load_IC` replaces them with the composition of the
@@ -861,6 +870,37 @@ was restarted from, oldest first, so the rungs of a restart ladder can be read
 back from its last state; the history holds 32 lines, and a history that has
 lost older lines carries one line saying how many.
 
+**The continuation-factor tokens.** `cond` and `interdiff_enth` (the factors
+`EXHALE_CONDUCTION_SCALE` and `EXHALE_INTERDIFF_ENTH_SCALE`, both in [0, 1])
+are the two tokens of the field that carry a number: `F` without the term,
+`T` with it at factor 1, and the factor s itself otherwise, written
+`ES23.16E3` and left-adjusted (`factor_token_text`), e.g.
+`cond=7.7356100000000005E-001`. Writer, reader and comparison share one
+length, 32 characters; a field or token that would not fit is refused, never
+cut. States written 2026-09-29/30 carry the factor in F7.5 (`cond=0.77356`),
+which maps every factor of an interval 1e-5 wide onto one token; such a
+LEGACY value (`factor_token_kind`, these two tokens only) is compared as the
+interval [v - 5e-6, v + 5e-6]:
+
+- a requested factor inside it (or `T`, i.e. 1, inside it) is a change of
+  representation: the load proceeds, the state loads as a seed with its
+  inherited claim dropped (`cert_reason=legacy_factor_token`), and one line
+  of the same kind as the option-change history is written into the states
+  this run produces,
+
+  ```
+  # legacy_factor_token cond=0.77356 -> cond=7.7356100000000005E-001 at restart of <source>
+  ```
+
+  (the factor the state was solved at is never inferred from the token);
+- a requested factor outside it is a physics change under the rule of every
+  other token: allowed if named on `Restart option change:`, refused
+  otherwise.
+
+A value this code does not write and never wrote is refused even when named.
+The run log and `EXHALE_setup.out` print the factor `ES13.6`, and the setup
+report names a legacy-token migration.
+
 Every number in the block is written with `ES23.16`, seventeen significant
 digits, which round trips a double exactly, so a field compared as text is
 compared as the number it stands for. The lines are `#` comments, so no
@@ -869,10 +909,10 @@ numeric parse and no golden verdict changes.
 ### D.3 The molecular seed from a solved atomic state
 
 A molecular run carries four unknowns an atomic run does not (`H2`, `H2p`,
-`H3p`, `HeHp`), so the `options` tokens `mol`, `molbase`, `carrier`,
-`oxychem` and `iontrans` are among the ones D.2 refuses
-and `Restart option change:` may never name (K44): an atomic state file does
-not carry the molecular columns, so nothing can be loaded for them. The
+`H3p`, `HeHp`), so the `options` token `mol` (with `carrier` and `oxychem`
+where they apply) is among the four that `Restart option change:` may never
+name (K44): an atomic state file does not carry the molecular columns, so
+nothing can be loaded for them. The
 opening is to WRITE them. A run started with the environment variable
 
 ```

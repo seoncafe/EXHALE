@@ -1,6 +1,8 @@
 %% H-alpha transmission in EXHALE\_transit.py: method and implementation
 %% Updated 2026-09-10: the row-validity reader, the chord census and the
 %% metadata block every saved curve now carries.
+%% Updated 2026-10-01: the refusal of a failed composition, the derived-state
+%% record of the profile and the exit status 7.
 %% Author: Kwang-Il Seon
 \documentclass[english,a4paper]{my_memo}
 \synctex=1
@@ -31,7 +33,7 @@
 H$\alpha$/H$\beta$ from the Non-LTE $n=2$ Population,\\
 and the Metal Resonance Doublets}
 \author{Kwang-Il Seon}
-\date{2026-06-12 (updated 2026-09-10)}
+\date{2026-06-12 (updated 2026-10-01)}
 \maketitle
 
 \tableofcontents
@@ -432,7 +434,7 @@ reorders columns is still read correctly.
 \verb|adv_schema| & What the file carries & Row decision \\
 \midrule
 2 & \verb|adv_T_status|, \verb|adv_comp_status|, \verb|adv_mass_row|
-  & refused when \verb|adv_T_status| $\neq 0$ \\
+  & refused when \verb|adv_T_status| $\neq 0$ or \verb|adv_comp_status| $= 2$ \\
 1 & one \verb|adv_status| column & refused when it is nonzero \\
 absent & no schema line and no status column & every row UNKNOWN \\
 \bottomrule
@@ -440,10 +442,17 @@ absent & no schema line and no status column & every row UNKNOWN \\
 \end{center}
 
 Under schema~2 each status field takes one of five values, 0 corrected,
-1 retained, 2 failed, 3 unsupported, 4 not\_evaluated. The temperature field
-is what the census refuses on; the composition field is reported beside it,
-because a corrected temperature can sit on a retained composition and the
-lower-level density of every line comes from that composition.
+1 retained, 2 failed, 3 unsupported, 4 not\_evaluated. The census refuses a
+row whose temperature field is not zero, or whose composition field is
+failed: a corrected temperature on a composition whose solve did not
+converge is not a corrected row (\verb|refused_reason| is 2 when either field
+is failed, else the temperature field). A retained composition under a
+corrected temperature is not refused; the composition field is reported
+beside the census, because the lower-level density of every line comes from
+that composition. A refused field of the profile carries the run's own
+numbers exactly, except the temperature of a failed row of a rejected column
+energy solve, which is the marching profile of the post-process; such a row
+exists only in a profile whose record is rejected (below).
 
 A corrected row is a \emph{conditional} correction, not a certified one. The
 profile states the fraction it is accurate to in the mass flux,
@@ -456,6 +465,20 @@ separate: it is the certification's verdict on the run state, at the much
 tighter \verb|cert_tol_mass|, not a verdict on the post-processed rows. The
 reader returns the tolerance, its header text and the measure column, so the
 spectrum can carry the condition of the rows it stands on.
+
+\paragraph{The derived-state record.} Beside the row fields the profile
+carries one \verb|# adv_derived_state:| line, the record of how the solves
+that produced the rows ended as a whole (the column energy solve of the
+transport terms, the chemistry, the outer iteration), read back as the dict
+\verb|derived_state| and judged by \verb|adv_derived_state_verdict|:
+\verb|rejected|, \verb|unverified| (the best a record says: the outer
+iteration is a fixed number of passes and the column is solved with lagged
+coefficients), or \verb|unknown| when the file has no such line. A
+\verb|rejected| or \verb|unknown| profile gives no spectrum:
+\verb|EXHALE_transit.py| exits with status 7, the status the evaluation
+itself exits with for a rejected product, unless
+\verb|EXHALE_TRANSIT_DIAGNOSTIC=1|, which makes the curves as diagnostic
+data. The solution selection has no such record and is not judged by one.
 
 A legacy profile is read as UNKNOWN and said to be UNKNOWN. It is not read
 as ``corrected'': a writer that did not state its refusals says nothing
@@ -521,6 +544,10 @@ block carries, in order:
     \verb|adv_conditional_tol| text and the largest \verb|adv_mass_row| over
     its rows, and its model restrictions, all copied out of the profile's
     own header, so a reader of the curve alone can tell what it stands on;
+  \item for an \verb|_adv| profile, its derived-state record
+    (\verb|adv_derived_state|), and in the diagnostic mode an
+    \verb|adv_derived_state_refusal| or \verb|adv_derived_state_unknown| line
+    saying that the curve is diagnostic data and not a result;
   \item the profile's provenance lines;
   \item the tool's own identity, by git hash and file modification times;
   \item the census for this line: sampled rows, refused rows, rows above the

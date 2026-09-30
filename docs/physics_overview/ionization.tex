@@ -304,7 +304,9 @@ that cancel. The coefficients of the rows are therefore
 \end{equation}
 $y_r = 1 - n_r\sigma_r\,\Delta r\,(1-e^{-\tau})/\tau$ the fraction of the
 photons not re-absorbed by $r$ in the cell, $\tau$ the cell optical depth
-at the edge of every absorber (\texttt{ground\_capture\_escape\_weights}).
+at the edge of every absorber (\texttt{ground\_capture\_escape\_weights}),
+with $(1-e^{-\tau})/\tau$ from the one evaluation of that quotient
+(Sec.~\ref{sec:radiation:transfer}, at \eqref{eq:rad:cellmean}).
 $y\to0$ is case B, where the gas is thick at the edge; $y\to1$ case A, in
 the thin outer wind. \texttt{H\_rec\_escape} (default on) governs
 $y_{\rm HI}$ and \texttt{He\_rec\_coupling} (default on) the two helium
@@ -608,7 +610,13 @@ Maxwell-averaged in closed form with their cut-off
 $R_c = \min(1.12\hbar v/\Delta E, 0.72v\tau, R_D)$; the Lamb shift and the
 fine structure set $\Delta E$ ($2s_{1/2}$--$2p_{1/2}$ 0.035\,cm$^{-1}$,
 --$2p_{3/2}$ 0.331\,cm$^{-1}$), which is the smallest cut-off below
-$n_e\sim4\times10^{12}$\,cm$^{-3}$. The proton coefficient is
+$n_e\sim4\times10^{12}$\,cm$^{-3}$. The closed form holds the lower
+incomplete gamma functions $\gamma(2,x) = 1-e^{-x}(1+x)$ and
+$\gamma(3,x) = 2-e^{-x}(x^{2}+2x+2)$, which cancel where they are small
+($\gamma(n,x)\sim x^{n}/n$), so below $x = 0.25$ and $0.5$ respectively they
+are evaluated by their power series in Horner form (\texttt{lower\_gamma\_2},
+\texttt{lower\_gamma\_3} in \texttt{Cool\_coeff.f90}; error at most
+$1.1\times10^{-14}$ on either side of the switch). The proton coefficient is
 $4.8\times10^{-4}$\,cm$^3$\,s$^{-1}$ at $10^4$\,K, 8.3 times the electron
 one, so $2s$ is mixed into $2p$ faster than it decays by two photons
 wherever \mbox{$n_e = n_{\rm p}\gtrsim1.5\times10^4$\,cm$^{-3}$}. The removal of a $2p$
@@ -681,7 +689,18 @@ photon is emitted $1+\langle N\rangle$ times before it leaves; this is exact
 at both ends and needs no join between the thin and thick limits. Under
 $R_{\rm II}$-A redistribution $\langle N\rangle$ is independent of $a$, so
 the Voigt parameter survives only in the one-flight penetration of the
-stellar beam. The trapped internal field and the stellar term are
+stellar beam. A second channel runs beside the static one: the photon
+Doppler-shifts out of resonance over the Sobolev length of the radial
+velocity gradient, with the escape probability
+$\beta_{\rm S} = (1-e^{-\tau_{\rm S}})/\tau_{\rm S}$,
+$\tau_{\rm S} = (\pi e^{2}/m_ec)f_{\rm Ly\alpha}\lambda_{\rm Ly\alpha}
+n_{\rm HI}/|{\rm d}v/{\rm d}r|$, on the radial ray (the angle average over
+the direction dependence of the Sobolev depth is not taken). Its quotient
+comes from the one evaluation of $(1-e^{-x})/x$ at \eqref{eq:rad:cellmean},
+so $\beta_{\rm S}\to1$ as $\tau_{\rm S}\to0$ (the closed form used until
+2026-10-01 returned 0 below $\tau_{\rm S}\approx10^{-16}$). The two combine
+as $\beta_{\rm tot} = \beta + \beta_{\rm S}(1-\beta)$, and $\beta_{\rm tot}$
+is the $\beta$ of \eqref{eq:ion:jlya}. The trapped internal field and the stellar term are
 \begin{equation}
 J_{\rm int} = \frac{2h\nu^{3}}{c^{2}}\frac{g_{1s}}{g_{2p}}
    \frac{P\left(1-\beta\right)}{\left(A_{2p1s}\beta+D_{2p}\right)n_{\rm HI}},

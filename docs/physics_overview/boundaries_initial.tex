@@ -595,7 +595,14 @@ loaded state, or \texttt{equilibrate} to bring the composition to equilibrium
 before the solve.  \texttt{Restart option change:} names the entries of the
 state file's option line that are allowed to differ from this run's, and a
 token that decides how many unknowns the state has is refused: naming it
-cannot make the file's rows this run's rows.
+cannot make the file's rows this run's rows.  The two tokens of a
+continuation factor, \texttt{cond} and \texttt{interdiff\_enth}, carry a
+factor $s\ne1$ as \texttt{ES23.16E3} (\texttt{T} at $s = 1$), so two factors
+are two states.  A five-decimal (F7.5) token, written until 2026-10-01,
+stands for the interval $[v-5\times10^{-6}, v+5\times10^{-6}]$ and not for
+one factor: a requested factor inside it loads the state as a seed with its
+certification claim dropped (\texttt{legacy\_factor\_token}), and a factor
+outside it is a change of the equations under the rule of every other token.
 
 Every state file carries the lower boundary as well as the state: one line
 names the boundary model that built it and one states the prescribed

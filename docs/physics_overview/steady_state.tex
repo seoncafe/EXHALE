@@ -237,7 +237,19 @@ every residual evaluation.  The ionization state and the temperature are
 eliminated \emph{locally} inside the residual, that is, given $Y$ the
 equilibrium sweep of Sec.~\ref{sec:ionization:solve} re-solves the composition
 and returns the consistent heating and cooling of Sec.~\ref{sec:thermal}, so that $F(Y)$ is a residual of size $n_{\rm var}N$ and not of the
-full chemical system.
+full chemical system.  That makes $F$ a function of $Y$ only if the
+elimination has one fixed point for one $Y$, and it needs the rates of a
+cell to be smooth in the cell's own densities: the absorbed fraction
+$(1-e^{-\Delta\tau})/\Delta\tau$ of \eqref{eq:rad:cellmean} in closed form is
+a rounding staircase at small $\Delta\tau$, and on the LHS~1140\,b
+conduction states (cell depth $\Delta\tau\approx1.5\times10^{-7}$ at the H\,{\sc i}
+edge where $x({\rm H^+})$ crosses 0.5) the fixed point of the elimination lay
+on a step, the elimination alternated between two compositions
+$1.8\times10^{-11}$ apart in $x({\rm H^+})$, and the energy rows stalled at
+$10^{-5}$--$10^{-4}$ against the tolerance $10^{-6}$.  With the series
+evaluation of Sec.~\ref{sec:radiation:transfer} the same state certifies in
+one outer pass (MEASURED 2026-10-01, \texttt{md/Update\_EXHALE\_stage3.md}
+section~58).
 
 The solve is a Jacobian-free Newton-Krylov iteration in the sense of
 \citet{Knoll2004}: the Krylov method needs only the action of the Jacobian on

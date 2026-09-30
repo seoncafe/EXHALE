@@ -991,6 +991,55 @@ Variable & Effect \\
   (\path{ion_residual_core.f90}). The rows run
   inside the cell sweep, so the order of the lines is deterministic only with
   one thread. \\
+\texttt{EXHALE\_CONDUCTION\_SCALE=}$\langle s\rangle$ & The continuation
+  factor $s\in[0,1]$ on the heat conductivity (1 when unset). It changes the
+  equations, so it is part of the state identity: the \texttt{cond} token of
+  the \texttt{\# options} line carries it (\S\ref{sec:factortokens}). \\
+\texttt{EXHALE\_INTERDIFF\_ENTH\_SCALE=}$\langle s\rangle$ & The same for
+  the interdiffusion enthalpy flux, carried by the \texttt{interdiff\_enth}
+  token. \\
+\texttt{EXHALE\_IEQ\_DUMP\_CELL=}$\langle j\rangle$ & Measurement only.
+  Write every He\,$2^3$S-branch composition solve of cell $j$ to
+  \path{ieq_cell_dump.txt} (temperature, densities, every rate coefficient,
+  the start and returned vectors, the dimensional rows, the normalized
+  residual, the forward-difference Jacobian) and the cell's photoionization
+  rates at perturbed entry states to \path{ieq_cell_rate_probe.txt}.
+  \texttt{EXHALE\_IEQ\_REPORT\_CELL=}$\langle j\rangle$ prints the accepted
+  state of cell $j$ at every sweep; its second fraction is unknown 4 of the
+  system solved and is named by it (He\,$2^3$S in the atomic triplet
+  system, the H$_2$ nuclei in the molecular one). \\
+\texttt{EXHALE\_RESID\_SC\_TRACE=}$\langle n\rangle$ &
+  Measurement only; stops the run. Trace the composition elimination of the
+  steady residual for $n$ passes from two seeds in lockstep.
+  \texttt{EXHALE\_RESID\_SC\_TRACE\_SEED=shift$|$h2$|$partition} selects seed
+  B: the
+  composition shifted by five cells (\texttt{shift}, the default without a
+  scale), the H$_2$ fraction scaled by
+  $1+$\texttt{EXHALE\_RESID\_SC\_TRACE\_SCALE} (\texttt{h2}), or the
+  elemental inventory and the charge closure kept and a fraction of H\,I and
+  He\,I moved into H\,II and He\,II (\texttt{partition}). \\
+\texttt{EXHALE\_JV\_FRESH\_WEIGHTS=1} & Measurement only. Take the products
+  of the Newton model with the WENO3 weights recomputed instead of frozen. \\
+\texttt{EXHALE\_LINEAR\_ROWS=1} &
+  Measurement only. Print, row by row, the linear residual the Krylov solve
+  left against the rows of $F$, and cell by cell over the band
+  \texttt{EXHALE\_LINEAR\_ROWS\_CELLS=}$lo,hi$ (default 290,312) the energy row, the model's $F+J\,\delta Y$, the
+  row found at $Y+\delta Y$ and difference quotients along the step. \\
+\texttt{EXHALE\_ADV\_TEST\_REJECT=}$\langle reason\rangle$ & Measurement only.
+  Make every column energy solve of the advection post-process end rejected
+  with that reason (\texttt{linear\_solve}, \texttt{nonfinite},
+  \texttt{non\_positive\_T}, \texttt{residual\_above\_tolerance}) after it
+  has run, to test the handling of a rejection (the rows written
+  \texttt{failed}, the derived-state record, exit status 7). \\
+\texttt{EXHALE\_ADV\_COLUMN\_FLOOR\_IT=}$\langle n\rangle$ & Measurement only.
+  Take $n$ further Newton steps of the column energy solve past its step
+  test, so that the residual reported is the rounding floor the margin of
+  $a_E$ is anchored on (\S\ref{sec:advvalidity}). \\
+\begin{tabular}[t]{@{}l@{}}\texttt{EXHALE\_ADV\_COLUMN\_EXCLUDE\_}\\
+  \quad\texttt{UNROOTED=1}\end{tabular} & Measurement only. Make
+  the cells whose marching energy step found no root fixed values of the
+  column energy solve (written \texttt{failed}) instead of unknowns of it,
+  the set the column had until 2026-10-01. \\
 \end{longtable}
 }
 
@@ -2070,7 +2119,8 @@ defaults restore the standard behavior).}\label{tab:inp-opt}\\
   +n_{\rm HeI}\,299\,T^{0.69}+n_{\rm H_2}k_{\rm H_2}(T)]/n$\,erg\,cm$^{-1}$s$^{-1}$K$^{-1}$
   (Banks \& Kockarts 1973 as Salz et al.\ 2015 and Sutton et al.\ 2015 state
   it; $k_{\rm H_2}$ an Eucken-form fit to Incropera et al.\ 2007 Table A.4,
-  valid 200--2000 K; $n$ all particles). Off $=$ byte-identical. \\
+  valid 200--2000 K; $n$ all particles). Off $=$ byte-identical. Its
+  continuation factor: \S\ref{sec:factortokens}. \\
 \texttt{Caloric EOS:} & \texttt{ladder} $|$ \texttt{monatomic}
   (def.\ \texttt{ladder}) & The caloric equation of state. \texttt{ladder}:
   every atom, ion and electron stores $\tfrac32 kT$ and H$_2$ its
@@ -2111,6 +2161,27 @@ defaults restore the standard behavior).}\label{tab:inp-opt}\\
   \texttt{inputdata/windae\_grid/}. Omitted $=$ nothing is written. \\
 \end{longtable}
 
+\paragraph{The continuation-factor tokens of a state file.}\label{sec:factortokens}
+\texttt{EXHALE\_CONDUCTION\_SCALE} and \texttt{EXHALE\_INTERDIFF\_ENTH\_SCALE}
+(\S\ref{sec:envvars}) scale the heat conduction and the interdiffusion
+enthalpy flux by a factor $s\in[0,1]$. They change the equations, so the
+\texttt{cond} and \texttt{interdiff\_enth} tokens of the \texttt{\# options}
+line carry them: \texttt{F} without the term, \texttt{T} at $s = 1$, and $s$
+itself otherwise, written \texttt{ES23.16E3} (seventeen significant digits,
+so two factors are two states and the text reads back as the same double;
+gfortran and ifx write the same text), and a restart across a change of $s$
+names the token on \texttt{Restart option change:}. A token written in the
+five-decimal F7.5 form (the states of 2026-09-29/30) stands for the interval
+$[v-5\times10^{-6}, v+5\times10^{-6}]$ and not for one factor. A requested
+factor inside it is a change of representation: the state loads as a seed
+with its certification claim dropped (\texttt{cert\_reason=legacy\_factor\_token}),
+the log says so in one line, and the states this run writes carry a
+\texttt{\# legacy\_factor\_token <from> -> <to> at restart of <source>}
+history line. A factor outside it is a physics change and must be named like
+any other token. A value this code never wrote is refused even when named.
+The run log and \texttt{EXHALE\_setup.out} print the factor in
+\texttt{ES13.6}, and the report names a legacy-token migration.
+
 \subsection{\texttt{metals.inp}: trace-metal abundances}
 \texttt{metals.inp} is \emph{optional}: if absent, the run is metals-off (H/He
 only). If present, it lists the total elemental abundance $n_X/n_{\rm H}$ (summed
@@ -2121,7 +2192,11 @@ may be stated once; a second line for it stops the run. Six control keys
 are also accepted: \texttt{pp\_metals} (metal treatment in the advection
 post-process: \texttt{0}=metal-free, \texttt{1}=frozen at the converged
 equilibrium (default), \texttt{2}=re-solve the metal stages inside the post-process
-iteration, at fixed element totals),
+iteration, at fixed element totals, after which the electron density, the
+particle count and the mean molecular weight are formed again; cells the
+composition class of \S\ref{sec:advvalidity} refuses are skipped; until
+2026-10-01 the re-solve never set the cell temperature and every such run
+stopped in the charge-exchange guard),
 \texttt{cx\_full} (\texttt{1} adds groups~C (metal$+$He/He$^+$) and D
 (metal$+$metal) of the Huang et al.\ 2023 Table~4 reaction list to the
 metal$+$H/H$^+$ group~A that is always active; it does not gate the
@@ -3261,22 +3336,43 @@ energy solve of the transport terms (\texttt{column}: \texttt{not\_run},
 number of unknowns, and the worst energy row: \texttt{column\_worst\_cell},
 \texttt{column\_worst\_residual} in erg\,cm$^{-3}$\,s$^{-1}$ and
 \texttt{column\_worst\_residual\_rel}), the passes whose column was
-rejected, the cell counts, and \texttt{outer=unverified}; every count is of
-physical cells, the ghost rows excluded. The column iteration stops when no
+rejected, the cell counts, \texttt{cells\_marching\_unrooted}, and
+\texttt{outer=unverified}; every count is of physical cells, the ghost rows
+excluded. The column iteration stops when no
 temperature moves by more than $10^{-10}$ of itself (or after 100
 iterations), and is then judged on its residual: with the transport terms
 formed again at the final profile, every unknown's energy row
-$R = q_0 f/(\mu_+\mu_-\Delta r)$ must satisfy $|R| \le 10\,\epsilon
-\sum|{\rm terms}| + 10^{-6} S_E$, with $S_E$ the largest of its physically
+$R = q_0 f/(\mu_+\mu_-\Delta r)$ must satisfy $|R| \le a_E + 10^{-6} S_E$,
+with $a_E = 10\,\epsilon$ times the sum of the magnitudes of the parts the
+row is assembled from (the grouped terms, the two halves of the advective
+difference and the three face terms of the conduction divergence; the
+stagnated $|R|$ is 0.73--0.99\,$\epsilon$ of that sum on three LHS\,1140\,b
+conduction states), $S_E$ the largest of its physically
 grouped terms (the advective energy divergence as one term, the $p\,{\rm
 div}\,v$ work, heating, cooling, the conduction divergence and the two
 enthalpy divergences) and $10^{-6}$ the energy tolerance of the stationary
 certification. Since 2026-10-01 the column is no longer tested against a
 temperature band: the 0.5--2 times band of the cell-by-cell Brent solve
-refused a root of the conduction-coupled column. A
+refused a root of the conduction-coupled column. A cell whose own marching
+energy step finds no root (its bracket $[0.05, 4]\,T_{\rm in}$, or that
+band) is an unknown of the column by default, started from the run's
+temperature and written \texttt{corrected} when the column converges
+(\texttt{cells\_marching\_unrooted}). A
 \texttt{residual\_above\_tolerance} rejection prints the energy row of the
-worst cell term by term. The post-process takes a fixed ten passes with no
-convergence test, so no record says more than \texttt{unverified}. A rejected column keeps the marching profile of that
+worst cell term by term. What the acceptance tests is the column
+subproblem with lagged coefficients: the conductivity and the element and
+carrier enthalpy divergences are formed on the \emph{input} composition,
+not the derived one, and the fine-structure escape probabilities are those
+of the start of the pass, which the cooling written after the last column
+forms again. Not tested: the full energy residual of the derived state on
+one composition with its own coefficients, the convergence of the fixed ten
+outer passes, and the momentum balance of the corrected pressure on the
+supplied $\rho$ and $v$. So no record says more than \texttt{unverified}.
+After every composition update of a pass (the H/He sweep, the metal
+re-solve and its failure branch) the particle count, $n_e$ and the mean
+molecular weight are formed again, then the ionized fraction of the
+photoelectron partition, and only then the heating, the energy solve and
+the output pressure. A rejected column keeps the marching profile of that
 pass in the numeric columns and writes every one of its unknowns
 \texttt{adv\_T\_status}\,$=2$ (\texttt{failed}); the verdict is
 \texttt{rejected} when the column of the last pass was rejected or any row is
@@ -3285,7 +3381,8 @@ a pass. The
 \texttt{Restart intent: stationary evaluate} route exits 7 when the record is
 rejected and the input is not refused, 2 when the certification refuses the
 input (whatever the record says; the record is written either way), and 0
-otherwise. \texttt{EXHALE\_transit.py} refuses an \texttt{adv} spectrum
+otherwise (7 also when no record was filled); a gfortran runtime error
+also exits 2, so a 2 is to be read with the log. \texttt{EXHALE\_transit.py} refuses an \texttt{adv} spectrum
 whose record is rejected, or that has no record (a file written before the
 record existed; its derived state is unknown), with exit 7 unless
 \texttt{EXHALE\_TRANSIT\_DIAGNOSTIC=1}, which makes it as diagnostic data and
@@ -3347,10 +3444,15 @@ Value & Name & Meaning \\
 1 & \texttt{retained} & the run's own value was kept: $m_j$ above the fraction below, the
    local radiative balance rather than the flow sets $T$ (thermal Damk\"ohler $>1$), or
    the gas enters the cell \\
-2 & \texttt{failed} & the cell solve did not converge, or its root was out of band \\
+2 & \texttt{failed} & the cell solve did not converge or its root was out of band,
+   or (temperature) the cell is an unknown of a rejected column energy solve,
+   whose temperature is then the marching profile of the pass \\
 3 & \texttt{unsupported} & the closure does not cover this cell class. Composition:
    the omitted molecular and oxygen carriers hold more of the particle count than the
-   species the reconstruction carries. Temperature: the heating and cooling channels the
+   species the reconstruction carries, or one population the advection systems solve
+   (H$^+$, He$^+$, He\,$2^3$S) loses faster to H$_2$ than to the channels those
+   molecule-free systems carry, on the state handed in (the composition class; both
+   fields are then 3). Temperature: the heating and cooling channels the
    molecule-free post-process omits (molecular chemistry heat, H$_3^+$ and molecular band
    cooling) exceed the ones it carries, so the run's own $T$ is kept (below about
    1.13~$R_p$ on the LHS~1140~b molecular states) \\
@@ -3360,9 +3462,16 @@ Value & Name & Meaning \\
 \end{tabular}
 \end{center}
 
-\noindent A retained quantity is the run's own value \emph{exactly}, not to a tolerance:
-the composition of such a row is the ionization equilibrium at the run's temperature, which
-is what the uncorrected file carries. A \texttt{corrected} row is a \emph{conditional}
+\noindent A refused field is the run's own value \emph{exactly}, not to a tolerance:
+a composition field that is not \texttt{corrected} carries the handed-in species and metal
+columns, a temperature field that is retained, unsupported or not evaluated the handed-in
+temperature, and a row whose composition is refused and whose temperature is refused but
+not failed carries the handed-in pressure, heating and cooling as well. The exception is the
+temperature of a \texttt{failed} row of a rejected column, the marching profile of the
+pass. A row with a corrected temperature and a refused composition is therefore not the
+run's solution as a whole. The composition class compares two losses of one population
+with no free parameter; passing it does not bound the omitted H$_2$ loss to a small
+error, only says that it is not the larger one. A \texttt{corrected} row is a \emph{conditional}
 correction, accurate to \texttt{adv\_conditional\_tol} of itself in the mass flux, and
 column~10 carries the $m_j$ it was judged by, so a reader can weigh a corrected row rather
 than only count it.
@@ -3379,7 +3488,8 @@ self-consistent solution and a profile assembled from corrected and retained row
 satisfy any interface balance, and \texttt{\# adv\_model\_restrictions}, that the molecular
 and oxygen columns are the equilibrium solution, that those species are absent from the
 particle and electron counts every equation here is solved with, and that the H$_3^+$
-infrared cooling is absent from its energy balance. A file written before the schema
+infrared cooling is absent from its energy balance; and the \texttt{\# adv\_derived\_state:}
+record of the product as a whole (\S\ref{sec:advvalidity}). A file written before the schema
 carries no \texttt{\# adv\_schema} line, and the validity of its rows is UNKNOWN, not
 corrected.
 
@@ -3913,6 +4023,24 @@ populations below, because the temperature of one state with the composition
 of the other solves neither set of equations.  Every saved curve carries the
 selection, the path, md5 and size of each file it read, and the state's own
 provenance, coupling, boundary model and reservoir lines.
+
+\paragraph{When an \texttt{adv} profile is refused (\texttt{EXHALE\_TRANSIT\_DIAGNOSTIC}).}
+The tool prints the \texttt{\# adv\_derived\_state:} record of the profile
+(\S\ref{sec:advvalidity}) and makes no spectrum, exiting with status 7, when
+the record says \texttt{verdict=rejected} or when the profile has no record
+(a file written before the record existed, whose derived state is unknown).
+\texttt{EXHALE\_TRANSIT\_DIAGNOSTIC=1} makes the spectrum anyway, as
+diagnostic data: every saved curve then carries the record and an
+\texttt{adv\_derived\_state\_refusal} or \texttt{adv\_derived\_state\_unknown}
+line in its metadata. \texttt{verdict=unverified} is the best a record says,
+and such a profile is read. Inside it the row census refuses a row whose
+temperature field is not zero or whose composition field is \texttt{failed};
+a refused row enters the spectrum with the run's own numbers, and the share of
+the line-center depth it carries is printed as a contribution, not an error
+bar. An equivalent width integrated from these curves, excess absorption in
+per cent over wavelength in \AA\ (as \path{LHS1140b/he10830_equivalent_width.py}
+does), is in per cent\,\AA, not m\AA. The solution selection carries no such record and
+is not tested against one.
 
 On a marching case that carries both states the choice is small but not
 negligible.  MEASURED on the \texttt{wasp\_full} configuration (before the

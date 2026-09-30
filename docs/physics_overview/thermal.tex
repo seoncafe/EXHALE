@@ -306,7 +306,15 @@ the lines involved.
 
 The line trapping $\beta_{ul}$ of these fine-structure lines is the
 line-center escape probability formed from the columns above and below the
-cell (\texttt{fine\_structure\_line\_transfer}), and it enters \emph{inside}
+cell (\texttt{fine\_structure\_line\_transfer}): the sum over the two faces
+of the one-face probability of a thermally broadened slab
+(\texttt{line\_escape\_probability\_one\_face}), whose thin branch
+$(1-e^{-a\tau})/(2a\tau)$, $a = 2.34$, takes its quotient from the one
+evaluation of $(1-e^{-x})/x$ at \eqref{eq:rad:cellmean}. The line-center
+opacity carries the stimulated-emission factor $1-e^{-y}$, $y = E_{ul}/T$,
+formed as $y$ times the same quotient (\texttt{line\_center\_opacity\_lte}),
+so that it tends to $y$ in hot gas for a far-infrared line instead of
+cancelling. $\beta_{ul}$ enters \emph{inside}
 the statistical equilibrium as $A_{ul}\to\beta_{ul}A_{ul}$ rather than as a
 factor on the result: in the subcritical limit the cooling is set by the
 collisional excitation rate and is independent of $\beta$, and in the
