@@ -49,9 +49,28 @@ too large and the molecular chemical heat 21.6 per cent too large.  No
 measurement of He as a third body for this reaction exists, so He is given
 argon's coefficient, and that entry remains an upper bound: a monatomic third
 body has no internal modes to take up the released energy. Two
-further limits in a helium-dominated gas, the R16, R18 and R19 differences
+further limits in a helium-dominated gas, the R16 and R18 differences
 of order unity to ten with \citet{GarciaMunoz2025}, are recorded at the code
 site rather than patched.
+
+R19, ${\rm HeH^+}+{\rm H}\to{\rm H_2^+}+{\rm He}$, is not the Table~1
+constant $9.1\times10^{-10}$\,cm$^3$\,s$^{-1}$, a measurement near 300~K that
+held at every temperature of the wind is an extrapolation. The code carries
+the thermal rate of \citet{Esposito2015}, quantum close-coupling cross
+sections for the lowest states and quasi-classical trajectories for the rest,
+Boltzmann-averaged over all 178 rovibrational states of HeH$^+$, in the
+authors' fit $k=\sum_{i=0}^{6}a_i(\log_{10}T)^i$ (maximum error 2.5\%;
+read in the accepted manuscript). It is $1.09\times10^{-9}$ at 300~K,
+$1.52\times10^{-9}$ at 1000~K and $2.00\times10^{-9}$ near 6000~K, close to
+the Langevin value $2.09\times10^{-9}$, and lies within 1--6\% of the exact
+quantum reactive rate of \citet{DeFazio2014} from 100 to 2000~K; above 1000~K
+it is 1.7--2.2 times the Table~1 constant. The fit is held at its 10 and
+15000~K ends outside that range, the authors call the rate questionable above
+about $10^4$~K, and the thermal average assumes HeH$^+$ internal states in
+equilibrium at the gas temperature. On the hot-Uranus fixtures the change
+lowers $n({\rm HeH^+})$ by up to 46\% and leaves the gas temperature,
+velocity and density within $4\times10^{-5}$ (Update log stage 3,
+section 64).
 
 \textbf{Two entries of Table~1 are not transcribed as printed.} The first is
 R17, ${\rm He^+}+{\rm H_2}\to{\rm H^+}+{\rm H}+{\rm He}$, the dissociative
@@ -629,11 +648,16 @@ element fluxes are left as they are.  The same identity then gives
 \end{equation}
 %
 with $h_c$ the enthalpy of one carrier particle and $\bar h_{\rm el}$ the
-enthalpy of the non-carrier species of element el per nucleus (for hydrogen
-H\,I, H$^+$, H$_2^+$, H$_3^+$ and the hydrogen share of HeH$^+$; for O and C
-their atomic stages where the metals are in the mixture), each particle with
-the electrons its charge gave up; an element with no non-carrier species in a
-cell recoils with its neutral atom.  An H$_2$ molecule rising through atomic
+enthalpy per nucleus of el of the species that take up the recoil, each
+particle with the electrons its charge gave up.  These are exactly the species
+whose densities the composition update rescales (\texttt{carrier\_write\_back}),
+so the energy row moves the enthalpy of the nuclei the composition rows move:
+for hydrogen the species of hydrogen nuclei alone that the flow does not carry,
+H\,I, H$_2^+$, H$_3^+$, and H$^+$ unless ionization transport carries it; HeH$^+$
+never recoils, since rescaling it would move a helium nucleus with the
+hydrogen one; for O and C their atomic stages where the metals are in the
+equation of state.  An element with no recoiling species in a cell recoils
+with its neutral atom.  An H$_2$ molecule rising through atomic
 hydrogen at zero hydrogen flux thus carries $h_{\rm H_2} - 2h_{\rm H} =
 k(u_{\rm rv} - 5T/2)$, about $-1.5\,kT$ at 1000\,K.  $\Phi_c$ is the carrier
 operator's own face flux for the state in hand (\texttt{carrier\_enthalpy\_face\_flux}

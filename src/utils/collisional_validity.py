@@ -11,8 +11,9 @@ equations were integrated through a region in which they do not hold: the
 result is then reported as UNVALIDATED.  It is not reported as an
 overestimate.  Which way a collisionless critical region moves the answer is
 not decided by the continuum solution that assumed it away; it takes a
-kinetic or transitional-flow calculation, and the Jeans estimate below is
-only a scale against which the continuum number is read.
+kinetic or transitional-flow calculation.  The static-Maxwellian (Jeans)
+expression of section 3 is a formal comparison on the same profile, not a
+bound on either.
 
 --------------------------------------------------------------------------
 1. Collision model
@@ -25,13 +26,16 @@ wind cannot drift apart:
 
     neutral-neutral    hard-sphere (Banks & Kockarts 1973)      D ~ T^(1/2)/n
     ion-neutral        induced-dipole (Langevin) polarization
-                       and the rigid core, frictions added      (both)
+                       and the rigid core, 1/D = 1/D_pol + 1/D_hs
+                       (an interpolation between the two limits,
+                       not a collision integral of the combined
+                       potential)                               (both)
     ion-ion, ion-e     screened Coulomb, Spitzer ln(Lambda)     D ~ T^(5/2)/n
 
 Every formula and every constant below is transcribed from
-`src/modules/functions/binary_element_diffusion.f90` (function bodies at
-lines 860-1002, constants at lines 253-283), with the source line cited at
-each definition.  Python cannot call the Fortran, so this is a second
+`src/modules/functions/binary_element_diffusion.f90`, with the Fortran
+function or parameter named at each definition (names rather than line
+numbers, which move as that file is edited).  Python cannot call the Fortran, so this is a second
 implementation of the same expressions and nothing else: no constant is
 re-chosen here, and the two are meant to be read side by side.
 
@@ -50,27 +54,43 @@ enters.  The routines below are therefore called with ntot = 1, which
 returns Dhat directly and leaves them identical to the Fortran otherwise.
 
 Species.  H I, H II, He I, He II, He III, e, plus the molecular carriers
-H2, H2+, H3+ and HeH+ when a run tracks them (same carrier lists as the Fortran, and the
-same masses counted per collision partner: an H2 is one partner of mass 2 m_H).
-He I 2^3S is NOT a separate species -- it is an excited level inside the
-He I column (`species_table.f90` bsp_is_excited_level), and counting it
-again would double count those atoms.  METALS ARE EXCLUDED as trace: at the
-solar-scaled abundances of these runs they carry <1e-3 of the particles and
-of the momentum, so they change no mean free path here.  They are kept in
-the electron budget, where charge neutrality has to close exactly.
+H2, H2+, H3+ and HeH+ when a run tracks them. The diagnostic adds HeH+ and
+electrons to the Fortran H/He friction lists; HeH+ is not a friction carrier
+in the production element diffusion operator. The masses use the same
+species table: an H2 is one
+partner of mass 2 m_H, a helium atom or ion m_He/m_H = 3.9715259 as in the
+species table).  He I 2^3S is NOT a separate species -- it is an excited
+level inside the He I column (`species_table.f90` bsp_is_excited_level),
+and counting it again would double count those atoms.  METALS (and the
+oxygen-chemistry molecules OH, H2O, CO) ARE EXCLUDED as collision partners.
+They are kept in the electron budget, where charge neutrality has to close
+exactly, and their largest mass and particle fractions on the profile read
+are computed and reported, so the size of the omission is measured on each
+run rather than assumed.
 
-Two omissions, both in the direction of a LONGER mean free path, i.e. a
-LARGER Knudsen number, i.e. a more conservative verdict:
+Omitted channels, all in the direction of a LONGER mean free path, i.e. a
+LARGER Knudsen number, i.e. a more conservative verdict.  Omitting a
+collision channel can only lower a collision frequency (the frictions of
+separate partners add), so every mean free path below is an overestimate
+of the one with the channel included:
 
+This monotonic statement holds with the retained coefficients fixed. It
+does not establish an upper bound on the physical mean free path: the
+polarization-plus-core interpolation and the estimates for resonant pairs
+still require independent validation.
+
+  * the METALS and the oxygen-chemistry molecules, as partners (above).
   * RESONANT charge exchange (H+ + H, He+ + He) is not a channel.  The
     Fortran excludes it because a binary ELEMENT diffusion coefficient is
     driven by friction between the elements and both partners of a resonant
     pair carry the same element.  Here the like-element ion-neutral pair is
     a real momentum-transfer channel and it is computed, but with the
-    non-resonant (polarization + core) cross section, which is the smaller
-    one: resonant CX at 1e4 K is ~2e-15 cm^2 for H+ + H against the
-    ~1e-15 cm^2 rigid core.  The mean free paths of H I and H II in the
-    partially ionized layer are therefore upper limits.
+    non-resonant (polarization + core) coefficient, whose friction is the
+    smaller one: charge transfer at thermal energies makes the momentum
+    transfer of a resonant pair exceed the non-resonant estimate.  The mean
+    free paths of H I and H II in the partially ionized layer are therefore
+    upper limits.  (The size of the resonant momentum-transfer cross section
+    was not checked against a published table in this repository.)
   * ELECTRON-NEUTRAL momentum transfer is not in the collision model (the
     Fortran never needs it; an electron carries neither element).  The
     electron Knudsen number is therefore meaningful only where the gas is
@@ -88,11 +108,13 @@ the frictions add, which is the same rule as Blanc's law in the operator):
     nu_s = sum_t nu_st,   lambda_s = vbar_s / nu_s,   1/lambda_s = sum_t 1/lambda_st
 
 with vbar_s = sqrt(8 k T / (pi m_s)) the mean thermal speed.  Note nu_st is
-the Chapman-Enskog momentum-transfer frequency, which for rigid spheres is
-1.6x the elementary n sigma vbar; lambda_s is correspondingly 1.6x SHORTER
-than the textbook 1/(n sigma).  The verdict threshold below (0.1) carries
-that factor with room to spare, and the convention is stated so a number
-quoted from here is not compared against a differently defined one.
+the Chapman-Enskog momentum-transfer frequency, which for rigid spheres of
+diameter d is (4/3) n_t pi d^2 gbar_st, gbar_st = sqrt(8 k T/(pi mu_st))
+the mean relative speed.  In a gas of like particles lambda_s is therefore
+4/3 shorter than Maxwell's 1/(sqrt(2) n pi d^2) and 1.9x shorter than the
+elementary 1/(n pi d^2).  The verdict threshold below (0.1) carries that
+factor with room to spare, and the convention is stated so a number quoted
+from here is not compared against a differently defined one.
 
 Local structure scale, the length over which the state the continuum
 closure expands about actually varies.  That state is the local Maxwellian,
@@ -110,11 +132,12 @@ vector (d/H_rho, d/H_T, ...), and the length of that vector is the RMS
 above.  Two consequences, both wanted: L is never longer than the shortest
 individual scale (each term enters 1/L^2 with a positive sign), and a field
 that happens to go logarithmically flat contributes zero rather than
-removing itself from a minimum.  A minimum rule has the opposite behaviour
+removing itself from a minimum.  A minimum rule has the opposite behavior
 -- if the field it is currently taken from flattens, L jumps to the next
 one, discontinuously and by whatever factor separates them.  That is not
-hypothetical: the pressure alone was used here until 2026-08-28, and across
-the heating peak of the LHS 1140 b runs d ln p/dr passes through a broad
+hypothetical: with the pressure scale alone, across the heating peak of the
+LHS 1140 b run `LHS1140b/archive_20260830/exhale/heh0p55` (section 2 of
+`md/collisional_validity.md`) d ln p/dr passes through a broad
 near-zero (rho falls and T rises with nearly the same log slope, so the
 front is close to isobaric while the gas state changes fast), H_p ran up to
 3.05e8 cm at 1.0486 R_p, 15x longer than the H_T = 1.80e7 and
@@ -129,9 +152,9 @@ first-order term the continuum closure drops is the viscous stress, whose
 size relative to the pressure is ~ lambda |dv/dr| / vbar: a change of the
 bulk velocity distorts the distribution function in proportion to the
 THERMAL speed, not to the local bulk speed.  Normalizing by v instead
-diverges at every stagnation point -- the cell-centred velocity of the
+diverges at every stagnation point -- the cell-centered velocity of the
 base cells crosses v = 0 repeatedly, through the collocated two-cell
-odd-even mode those cells carry (a mode of the cell-centred field, not a
+odd-even mode those cells carry (a mode of the cell-centered field, not a
 wave of the solution: the Riemann face mass flux there is the wind's own)
 -- which is what an ad-hoc Mach floor was patching before.  c_s is used in place of vbar so that L stays one length,
 common to all species; the two differ by an O(1) factor.
@@ -154,19 +177,31 @@ species (electrons excluded, see above), and Kn_bulk = lambda_bulk / L.
                      reported as such, not extrapolated.
 
     CRITICAL POINT r_s : the sonic point, v = c_s with c_s = sqrt(gamma p /
-                     rho) and gamma = 5/3.  This is the code's own sound
-                     speed, not a re-definition: `eval_dt.f90:29` computes
-                     cs = sqrt(g*p/rho) with g = 1.666666666667
-                     (`parameters.f90:385`), and p, rho are the cgs columns
+                     rho) and gamma = 5/3.  p and rho are the cgs columns
                      of the output file, so the mean molecular weight is
-                     whatever the solution carries.
+                     whatever the solution carries.  In atomic gas this is
+                     the code's own sound speed (`eval_dt.f90`,
+                     cs = sqrt(gamma_ad*p/rho), gamma_ad = 5/3 in
+                     parameters.f90).  Where H2 is present and the caloric
+                     EOS is active the code uses gamma_eff(T, composition)
+                     of `caloric_eos.f90` instead, which is smaller than
+                     5/3; this tool does not, so in H2-bearing cells its
+                     c_s is the monatomic value, too large by
+                     sqrt(5/3 / gamma_eff).  A critical point inside the
+                     molecular layer would be misplaced by that factor in
+                     c_s; the size of the effect on the verdicts was not
+                     measured.
 
     CRITICAL REGION : from the radius of peak volumetric heating to the
                      sonic point -- the region that heats and accelerates
                      the wind and sets its topology.  "The critical region
                      is collisional" means max(Kn) < 0.1 across it, taken
                      over the bulk and over every species that carries at
-                     least `TRACE_FRACTION` of the mass.
+                     least `TRACE_FRACTION` of the mass.  When the domain
+                     holds no critical point the solution is a subsonic
+                     breeze, its mass flux is set by the outer boundary
+                     condition, and the region runs from peak heating to
+                     the outer boundary.
 
 Coupling times: tau_s = 1/nu_s against the flow time r/|v|; and the
 electron-ion ENERGY coupling time, which is longer than the momentum one by
@@ -180,35 +215,37 @@ the energy equation is itself unvalidated, independently of the Knudsen
 number.
 
 --------------------------------------------------------------------------
-3. The kinetic bound
+3. Formal static-Maxwellian (Jeans) comparison
 --------------------------------------------------------------------------
 
-Where the verdict is UNVALIDATED, the collisionless escape rate through the
-same exobase is computed for scale.  Jeans (1925), in the standard form of
-Chamberlain & Hunten (1987, "Theory of Planetary Atmospheres", eq. 7.2.5):
-a Maxwellian at the exobase loses, per unit area,
+Where the collisional criterion is not met, the Jeans (1925) escape flux of
+a static Maxwellian is evaluated at the diagnosed exobase, or at the outer
+boundary (flagged) when the exobase is outside the grid:
 
-    Phi_J,s = n_s vbar_s / (2 sqrt(pi)) (1 + lambda_J,s) exp(-lambda_J,s),
-    lambda_J,s = G M_p m_s / (k T r_exo)     (the Jeans escape parameter)
+    Phi_J,s = n_s vbar_s / 4 (1 + lambda_J,s) exp(-lambda_J,s),
+    vbar_s  = sqrt(8 k T / (pi m_s))          (mean speed)
+    lambda_J,s = G M_p m_s / (k T r_exo)      (the Jeans escape parameter)
 
-and Mdot_Jeans = 4 pi r_exo^2 sum_s m_s Phi_J,s.
+and Mdot_Jeans = 4 pi r_exo^2 sum_s m_s Phi_J,s.  With the most probable
+speed v_mp = sqrt(2 k T / m_s) the same prefactor reads n_s v_mp/(2 sqrt(pi)).
+It is the outward flux of an isotropic Maxwellian through a surface,
+integrated over v_r > 0 and speeds above the escape speed
+v_esc = sqrt(2 G M_p / r):
 
-How it bounds the hydrodynamic number.  Jeans escape is the rate a STATIC,
-collisional-below/collisionless-above atmosphere loses through a Maxwellian
-exobase with no bulk velocity there.  It is therefore the floor of the
-kinetic problem, not its answer: a real transitional flow arrives at the
-exobase with an outward drift and escapes faster.  The two numbers bracket
-the physically admissible range only in the sense that
+    Phi = n (m/(2 pi k T))^(3/2) 2 pi int_{v_esc}^inf v^3 exp(-m v^2/(2kT)) dv
+          int_0^1 mu dmu
+        = n vbar/4 (1 + lambda_J) exp(-lambda_J).
 
-    Mdot_Jeans <= Mdot_kinetic,   and   Mdot_hydro is not constrained by
-    either unless the flow is collisional through r_s.
-
-So the statement the diagnostic makes is: if Mdot_hydro >> Mdot_Jeans while
-r_s > r_exo, the continuum answer rests entirely on a continuum assumption
-that fails at the point that sets it, and the ratio measures how far it
-rests on it.  If lambda_J at the exobase is small (<~ 2-3) the atmosphere is
-in hydrodynamic blow-off, the Jeans form is not applicable at all, and that
-is reported instead of a number.
+The expression assumes zero bulk drift at the evaluation radius, a
+Maxwellian, a point-mass potential and independent escape of each species.
+The diagnostic applies it formally to all heavy species, ions included,
+and so cannot account for the ambipolar potential or for the wind's own
+velocity at that radius.  Its ratio to the continuum mass flux compares two
+formulas on the same profile; it is not a bound on, nor an error estimate
+for, a kinetic solution.  At small lambda_J (<~ 2-3) the escaping part is
+no longer a small tail of the distribution and the usual interpretation of
+the Jeans rate does not apply; the number is still printed and labeled
+formal.
 
 --------------------------------------------------------------------------
 Which state this reads
@@ -228,18 +265,23 @@ local photoionization equilibrium the wind was solved with -- for which the
 momentum equation was never re-solved.  A sound speed formed from its
 pressure and the solution's density, and a Mach number formed from that and
 the solution's velocity, therefore belong to no single state.  Measured on
-the LHS 1140 b 45 R_p wind: the
-solution crosses its critical point at 40.06 R_p, and the `_adv` pair, whose
-temperature in the outer wind is 3.5 to 4 times the solution's, reports no
-critical point in the domain at all.
+the LHS 1140 b wind with a 45 R_p outer boundary, `LHS1140b/models/.L8/r45`:
+the solution crosses its critical point at 40.06 R_p; the `_adv` pair,
+whose temperature is 1.5, 2.5 and 3.7 times the solution's at 10, 20 and
+30 R_p, puts a "critical point" at 32.5 R_p that no state has.  When
+ionization-stage transport
+is on in the wind solve (`ionization_transport T` in EXHALE_resolved.out),
+the solution itself carries transported ion fractions and its composition
+is not the local photoionization equilibrium.
 
 `--adv` reads the `_adv` pair anyway, which is the right question to ask of
 the COMPOSITION: the mean free path is set by how much of the gas is
 neutral, and in a wind whose ionization cannot relax over a flow time the
 advected composition is the physical one while the equilibrium composition
 the solution carries is not.  The two answers bracket the exobase rather
-than agreeing: on that same wind the solution puts Kn_bulk = 1 above the
-outer boundary and the `_adv` composition puts it at 29.0 R_p.  The report
+than agreeing: on that same run the solution puts Kn_bulk = 1 above the
+outer boundary (Kn_bulk = 0.11 at 43.4 R_p) and the `_adv` composition puts
+it at 29.0 R_p.  The report
 names which state it read; neither is a self-consistent state above the
 radius where the ionization stops relaxing, and that is a limitation of the
 run, not of this diagnostic.
@@ -257,6 +299,11 @@ Usage
                       (r, T, v, c_s, L, lambda_s, Kn_s) as a text table
 
 A case directory is a run directory: it holds `input.inp` and `output/`.
+The planet radius and mass are those the run was solved with, which
+`exhale_io.load_run` takes from the run's `EXHALE_resolved.out` (the
+lower-atmosphere profile handoff, for one, moves the base radius away from
+`input.inp`'s `Planet radius`); the report prints the values used and the
+file they came from.
 """
 
 import argparse
@@ -276,17 +323,27 @@ import exhale_io as eio     # noqa: E402  (path set above)
 
 kb_erg = 1.380649e-16       # CODATA 2018, parameters.f90 kb_erg
 m_H_g = eio.mu              # hydrogen ATOM mass [g], parameters.f90 mu
-m_e_g = 9.1093837015e-28    # electron mass [g], CODATA 2018
-G_cgs = 6.67430e-8          # CODATA 2018 gravitational constant
+m_e_g = 9.1093837015e-28    # electron mass [g], CODATA 2018, parameters.f90 m_e
+G_cgs = 6.67430e-8          # CODATA 2018, parameters.f90 Gc
+# parameters.f90:879 m_He_atom (helium-4 atom [g]) and :884 amu (CODATA 2018 [g]).
+# The Fortran's m_He_over_m_H = m_He_atom/mu is the mass of every helium
+# stage in the species table (bsp_mass) and in the diffusion operator
+# (hecar_m), and amu_over_m_H = amu/mu turns an atomic weight in u into the
+# code's hydrogen-atom mass unit.
+m_He_over_m_H = 6.6464790722e-24 / m_H_g
+amu_over_m_H = 1.66053906660e-24 / m_H_g
 
-# binary_element_diffusion.f90:262 -- CODATA 2018 exact coulomb value.
+# binary_element_diffusion.f90 e_esu -- CODATA 2018 exact coulomb value.
 e_esu = 4.803204713e-10
-# binary_element_diffusion.f90:265-266 -- Banks & Kockarts (1973) hard-sphere
-# prefactor; equivalent to a rigid-sphere collision diameter d = 2.7 Angstrom
-# put through the Chapman-Enskog integral (that file's own consistency note).
+# binary_element_diffusion.f90 bk_hs_pref -- Banks & Kockarts (1973)
+# hard-sphere prefactor.  Put through the Chapman-Enskog first
+# approximation, D = 3/(8 n d^2) (k T/(2 pi mu))^(1/2), it is a rigid-sphere
+# collision diameter d = 2.99 Angstrom (a diameter of 2.7 Angstrom would
+# give a prefactor of 1.86e18).
 bk_hs_pref = 1.52e18
-# binary_element_diffusion.f90:277-280 -- static dipole polarizabilities of
-# the neutral partners, in a_0^3 converted with a_0^3 = 1.481847e-25 cm^3.
+# binary_element_diffusion.f90 alpha_HI / alpha_HeI / alpha_H2 -- static
+# dipole polarizabilities of the neutral partners, in a_0^3 converted with
+# a_0^3 = 1.481847e-25 cm^3.
 # alpha(H) = 4.5 a_0^3 is the exact nonrelativistic ground-state value; He and
 # H2 are Schwerdtfeger & Nagle (2019, Mol. Phys. 117, 1200).
 a0cub_cm3 = 1.481847e-25
@@ -294,22 +351,24 @@ alpha_HI = 4.500 * a0cub_cm3
 alpha_HeI = 1.383 * a0cub_cm3
 alpha_H2 = 5.315 * a0cub_cm3
 
-# Species: name -> (mass [m_H units, PER COLLISION PARTNER], charge,
-# neutral polarizability [cm^3] or 0 for a charged partner).  Masses and
-# charges are the carrier lists of binary_element_diffusion.f90:286-297
-# (hcar_*) extended by the helium stages; the electron is added because the
-# Coulomb channel needs it and the Fortran, which transports elements, does
-# not.  He I 2^3S is deliberately absent: it is inside the He I column.
+# Species: name -> (mass [m_H units, counted for each collision partner],
+# charge, neutral polarizability [cm^3] or 0 for a charged partner).  Masses
+# and charges are the carrier lists of binary_element_diffusion.f90
+# (hcar_* for hydrogen, hecar_* for the helium stages, whose mass is
+# m_He_over_m_H) and HeH+ = 1 + m_He_over_m_H as in species_table.f90
+# bsp_mass; the electron is added because the Coulomb channel needs it and
+# the Fortran, which transports elements, does not.  He I 2^3S is
+# deliberately absent: it is inside the He I column.
 COLLIDERS = {
     'HI':    (1.0, 0.0, alpha_HI),
     'HII':   (1.0, 1.0, 0.0),
-    'HeI':   (4.0, 0.0, alpha_HeI),
-    'HeII':  (4.0, 1.0, 0.0),
-    'HeIII': (4.0, 2.0, 0.0),
+    'HeI':   (m_He_over_m_H, 0.0, alpha_HeI),
+    'HeII':  (m_He_over_m_H, 1.0, 0.0),
+    'HeIII': (m_He_over_m_H, 2.0, 0.0),
     'H2':    (2.0, 0.0, alpha_H2),
     'H2p':   (2.0, 1.0, 0.0),
     'H3p':   (3.0, 1.0, 0.0),
-    'HeHp':  (5.0, 1.0, 0.0),
+    'HeHp':  (1.0 + m_He_over_m_H, 1.0, 0.0),
     'e':     (m_e_g / m_H_g, -1.0, 0.0),
 }
 HEAVY = [s for s in COLLIDERS if s != 'e']
@@ -321,11 +380,49 @@ for _m in eio.METAL_IONS:
     METAL_CHARGE[_m] = {'I': 0, 'II': 1, 'III': 2}[
         _m[len(_m.rstrip('I')):] or 'I']
 
-gamma_ad = 1.666666666667   # parameters.f90:385, the code's polytropic index
+gamma_ad = 5.0 / 3.0        # parameters.f90 gamma_ad, the monatomic value
 
 # A species below this mass fraction is not asked to validate the solution:
 # its Knudsen number is reported but does not enter the verdict.
 TRACE_FRACTION = 1.0e-3
+
+# Standard atomic weights [u] of the metal elements, a copy of
+# species_table.f90:97 melem_A_u (same element order C O N Mg Si Ca Na K S Fe),
+# converted below to the code's hydrogen-atom unit exactly as the Fortran
+# forms melem_A = amu_over_m_H*melem_A_u.  Keep the two in step.
+METAL_ATOMIC_WEIGHT_U = dict(zip(
+    ('C', 'O', 'N', 'Mg', 'Si', 'Ca', 'Na', 'K', 'S', 'Fe'),
+    (12.011, 15.999, 14.007, 24.305, 28.085, 40.078, 22.990, 39.098,
+     32.06, 55.845)))
+# Metal nuclei carried by the oxygen-chemistry molecules (species_table.f90
+# bsp_nO, bsp_nC); their hydrogen is counted with the hydrogen.
+MOLECULE_METAL_NUCLEI = {'OH': {'O': 1}, 'H2O': {'O': 1},
+                         'CO': {'C': 1, 'O': 1}}
+
+
+def omitted_partner_fractions(ion, rho_over_mH, heavy_particles):
+    """Mass and particle fractions of the species this collision model
+    leaves out: every metal atom and ion, and the oxygen-chemistry molecules
+    OH, H2O and CO.  Mass fraction = metal-nucleus mass / rho (the H in
+    those molecules is hydrogen mass); particle fraction = omitted particles
+    / (omitted + heavy partners).  Returns two radial arrays."""
+    mass = np.zeros_like(rho_over_mH)
+    particles = np.zeros_like(rho_over_mH)
+    for element, weight_u in METAL_ATOMIC_WEIGHT_U.items():
+        stages = [element + 'I', element + 'II', element + 'III']
+        for s in stages:
+            if s in ion:
+                mass = mass + amu_over_m_H * weight_u * ion[s]
+                particles = particles + ion[s]
+    for mol, nuclei in MOLECULE_METAL_NUCLEI.items():
+        if mol in ion:
+            for element, count in nuclei.items():
+                mass = mass + (amu_over_m_H * METAL_ATOMIC_WEIGHT_U[element]
+                               * count * ion[mol])
+            particles = particles + ion[mol]
+    mass_frac = mass / np.maximum(rho_over_mH, 1.0e-300)
+    part_frac = particles / np.maximum(particles + heavy_particles, 1.0e-300)
+    return mass_frac, part_frac
 
 
 # --------------------------------------------------------------------------
@@ -336,7 +433,7 @@ TRACE_FRACTION = 1.0e-3
 def hard_sphere_pair_diffusion(TK, ntot, A_s, A_t):
     """NEUTRAL-NEUTRAL.  Banks & Kockarts (1973):
     D = 1.52e18 (1/A_s + 1/A_t)^(1/2) T^(1/2) / n  [cm^2/s].
-    Fortran: binary_element_diffusion.f90:860-874."""
+    Fortran: binary_element_diffusion.f90 hard_sphere_pair_diffusion."""
     return bk_hs_pref * np.sqrt(1.0 / A_s + 1.0 / A_t) * np.sqrt(TK) / ntot
 
 
@@ -344,7 +441,7 @@ def polarization_pair_diffusion(TK, ntot, alpha_n, mu_g):
     """ION-NEUTRAL, induced-dipole (Langevin) channel:
     D = k T / (2.21 pi e n (alpha_n mu)^(1/2))  [cm^2/s], the low-energy
     limit -- never used alone, see ion_neutral_pair_diffusion.
-    Fortran: binary_element_diffusion.f90:878-912."""
+    Fortran: binary_element_diffusion.f90 polarization_pair_diffusion."""
     return kb_erg * TK / (2.21 * np.pi * e_esu * ntot
                           * np.sqrt(np.maximum(alpha_n * mu_g, 1.0e-60)))
 
@@ -352,7 +449,7 @@ def polarization_pair_diffusion(TK, ntot, alpha_n, mu_g):
 def coulomb_logarithm(TK, ne, zz):
     """ln(Lambda) = ln(3 k T lambda_D / (Z_s Z_t e^2)) with the electron
     Debye length (Spitzer 1962, section 5.2), floored at 1.
-    Fortran: binary_element_diffusion.f90:940-956."""
+    Fortran: binary_element_diffusion.f90 coulomb_logarithm."""
     lam_D = np.sqrt(kb_erg * TK / (4.0 * np.pi * np.maximum(ne, 1.0)
                                    * e_esu * e_esu))
     return np.maximum(np.log(3.0 * kb_erg * TK * lam_D
@@ -363,7 +460,7 @@ def coulomb_pair_diffusion(TK, ntot, ne, Z_s, Z_t, mu_g):
     """ION-ION (and ion-electron).  Screened Coulomb through the
     Chapman-Enskog integral:
     D = 3 (kT)^(5/2) / [4 (2 pi mu)^(1/2) n (Z_s Z_t e^2)^2 ln(Lambda)].
-    Fortran: binary_element_diffusion.f90:918-936."""
+    Fortran: binary_element_diffusion.f90 coulomb_pair_diffusion."""
     zz = abs(Z_s * Z_t)
     return (3.0 * (kb_erg * TK) ** 2.5
             / (4.0 * np.sqrt(2.0 * np.pi * mu_g) * ntot
@@ -371,9 +468,13 @@ def coulomb_pair_diffusion(TK, ntot, ne, Z_s, Z_t, mu_g):
 
 
 def ion_neutral_pair_diffusion(TK, ntot, alpha_n, A_s, A_t, mu_g):
-    """ION-NEUTRAL, non-resonant: polarization and rigid core taken
-    together, 1/D = 1/D_pol + 1/D_hs (the frictions of one potential add).
-    Fortran: binary_element_diffusion.f90:962-1002."""
+    """ION-NEUTRAL, non-resonant: polarization and rigid core combined as
+    1/D = 1/D_pol + 1/D_hs.  This is an interpolation between the two
+    limits (it recovers each where the other is negligible), not a
+    collision integral of the combined polarization-plus-core potential;
+    in the crossover it can overstate the friction by up to a factor of 2
+    against the stronger estimate alone.
+    Fortran: binary_element_diffusion.f90 ion_neutral_pair_diffusion."""
     Dpol = polarization_pair_diffusion(TK, ntot, alpha_n, mu_g)
     Dhs = hard_sphere_pair_diffusion(TK, ntot, A_s, A_t)
     return 1.0 / (1.0 / np.maximum(Dpol, 1.0e-99)
@@ -383,7 +484,7 @@ def ion_neutral_pair_diffusion(TK, ntot, alpha_n, A_s, A_t, mu_g):
 def pair_diffusion(TK, ntot, ne, s, t):
     """The pair coefficient in whichever of the three limits the pair
     belongs to -- the Python twin of `stage_pair_diffusion`
-    (binary_element_diffusion.f90:1006-1032)."""
+    (binary_element_diffusion.f90)."""
     m_s, Z_s, al_s = COLLIDERS[s]
     m_t, Z_t, al_t = COLLIDERS[t]
     mu_g = m_s * m_t / (m_s + m_t) * m_H_g
@@ -402,8 +503,10 @@ def pair_diffusion(TK, ntot, ne, s, t):
 
 def momentum_transfer_frequency(TK, ne, dens, s, t):
     """nu_st = n_t k T / (mu_st Dhat_st) [s^-1], the momentum-transfer
-    frequency of one particle of s against the gas of t, from the same
+    frequency defined by F_s = n_s mu_st nu_st (v_t - v_s), from the same
     binary diffusion coefficient the wind's diffusion operator uses.  The
+    velocity relaxation rate of s against fixed t is (mu_st/m_s) nu_st;
+    the mean-free-path diagnostic uses nu_st itself as its convention. The
     total carrier density cancels, so `pair_diffusion` is called with
     ntot = 1 and returns Dhat = n D."""
     m_s = COLLIDERS[s][0] * m_H_g
@@ -495,7 +598,9 @@ def _first_upcrossing(r, f):
 
 def sonic_point(r, v, cs):
     """Critical point: v = c_s, c_s = sqrt(gamma p/rho), gamma = 5/3 -- the
-    code's own sound speed (eval_dt.f90:29, parameters.f90:385)."""
+    code's own sound speed in atomic gas (eval_dt.f90); in H2-bearing cells
+    with the caloric EOS active the code uses gamma_eff < 5/3 (module
+    header, CRITICAL POINT)."""
     return _first_upcrossing(r, v - cs)
 
 
@@ -505,21 +610,23 @@ def exobase(r, Kn_bulk):
 
 
 def jeans_escape(r_exo_cm, TK, dens, Mp_g):
-    """Collisionless escape through a Maxwellian exobase (Jeans 1925;
-    Chamberlain & Hunten 1987 eq. 7.2.5):
+    """Formal static-Maxwellian (Jeans 1925) escape at radius r_exo_cm
+    (module header, section 3):
 
-        Phi_J,s = n_s vbar_s/(2 sqrt(pi)) (1 + lambda_J) exp(-lambda_J),
+        Phi_J,s = n_s vbar_s/4 (1 + lambda_J) exp(-lambda_J),
+        vbar_s  = sqrt(8 k T/(pi m_s)),
         lambda_J,s = G M_p m_s/(k T r_exo).
 
     Returns (Mdot [g/s], {species: lambda_J}, {species: Phi [cm^-2 s^-1]}).
-    Heavy species only: the electrons are held by the ambipolar field."""
+    Heavy species only, each treated as escaping on its own; the ambipolar
+    field that holds the electrons and acts on the ions is not modeled."""
     Mdot, lam_J, phi = 0.0, {}, {}
     for s in HEAVY:
         if s not in dens:
             continue
         m_s = COLLIDERS[s][0] * m_H_g
         lj = G_cgs * Mp_g * m_s / (kb_erg * TK * r_exo_cm)
-        f = (dens[s] * mean_thermal_speed(TK, s) / (2.0 * np.sqrt(np.pi))
+        f = (dens[s] * mean_thermal_speed(TK, s) / 4.0
              * (1.0 + lj) * np.exp(-lj))
         lam_J[s], phi[s] = lj, f
         Mdot += 4.0 * np.pi * r_exo_cm ** 2 * m_s * f
@@ -543,6 +650,8 @@ def collisional_diagnosis(case_dir, adv=False, kn_threshold=0.1,
     # The ghost rows are already gone: exhale_io returns the physical cells
     # (exhale_io.physical_cell_rows).  Cutting them again here would take
     # four more solution cells off each end.
+    # Rp_RJ and Mp_MJ are the radius and mass the run was solved with:
+    # load_run takes them from EXHALE_resolved.out (see exhale_io.load_run).
     Rp_cm = run.inp['Rp_RJ'] * eio.RJ
     Mp_g = run.inp['Mp_MJ'] * eio.MJ
     r = run.r
@@ -555,6 +664,10 @@ def collisional_diagnosis(case_dir, adv=False, kn_threshold=0.1,
 
     ion = dict(run.ion)
     dens = {s: ion[s] for s in COLLIDERS if s in ion and s != 'e'}
+    heavy_particles = sum((dens[s] for s in HEAVY if s in dens),
+                          np.zeros_like(T))
+    omit_mass, omit_part = omitted_partner_fractions(ion, run.n,
+                                                     heavy_particles)
     # Electron density from charge neutrality over EVERY tracked ion, metals
     # included: the collisions treat the metals as trace, the charge budget
     # must not.
@@ -627,8 +740,19 @@ def collisional_diagnosis(case_dir, adv=False, kn_threshold=0.1,
                 * energy_equipartition_frequency(T, ne, dens, 'e', s)
     tau_E_ei = 1.0 / np.maximum(nuE_ei, 1.0e-300)
 
+    def flag(key):
+        v = run.resolved.get(key)
+        return {'T': True, 'F': False}.get(v) if v is not None else None
+
     res = dict(
         case=case_dir, adv=adv, kn_threshold=kn_threshold,
+        planet_source=run.inp.get('planet_source'),
+        Rp_RJ=run.inp['Rp_RJ'], Mp_MJ=run.inp['Mp_MJ'],
+        Rp_RJ_input=run.inp.get('Rp_RJ_input'),
+        carrier_transport=flag('carrier_transport'),
+        ionization_transport=flag('ionization_transport'),
+        omitted_mass_fraction_max=float(np.max(omit_mass)),
+        omitted_particle_fraction_max=float(np.max(omit_part)),
         Rp_cm=Rp_cm, Mp_g=Mp_g,
         r=r, T=T, v=v, cs=cs, mach=mach, p=p, rho=rho, ne=ne,
         L=L, scales=scales, lam=lam, Kn=Kn,
@@ -677,7 +801,7 @@ def validity_statement(res):
         lines.append(
             "NO CRITICAL POINT IN THE DOMAIN: the solution stays subsonic "
             "out to %.2f R_p (max Mach %.3g), so it is not a transonic wind "
-            "and its mass flux is set at the outer boundary, where "
+            "and its mass flux is set by the outer boundary condition, where "
             "Kn_bulk = %.3g." % (res['r_top'], res['mach_max'],
                                  res['Kn_top']))
         collisional_through_crit = False
@@ -698,16 +822,16 @@ def validity_statement(res):
             "(threshold %.2g)."
             % (r_s, exo_txt, res['r_heat_peak'], r_s, kn, thr))
     else:
-        lines.append("The %s; max Kn from peak heating (%.3f R_p) to the "
+        lines.append("%s; max Kn from peak heating (%.3f R_p) to the "
                      "outer boundary (%.3f R_p) is %.3g (threshold %.2g)."
-                     % (exo_txt, res['r_heat_peak'], res['r_top'], kn, thr))
+                     % (exo_txt[0].upper() + exo_txt[1:], res['r_heat_peak'],
+                        res['r_top'], kn, thr))
 
     if collisional_through_crit:
         lines.append(
-            "HYDRODYNAMIC RESULT VALIDATED through its critical point: the "
-            "gas is collisional (Kn < %.2g) everywhere the wind is heated and "
-            "accelerated, and the critical point lies below the exobase, so "
-            "the continuum equations hold where the solution is set. "
+            "COLLISIONAL CRITERION MET through the critical point, in this "
+            "collision model: Kn < %.2g across the heating and acceleration "
+            "region, and the critical point lies below the exobase. "
             "log10 Mdot = %.3f."
             % (thr, res['log10_Mdot']))
     else:
@@ -721,36 +845,30 @@ def validity_statement(res):
         if r_s is None:
             why.append("the domain holds no critical point")
         lines.append(
-            "HYDRODYNAMIC RESULT UNVALIDATED: " + "; ".join(why) + ". "
-            "The sign and size of the error are NOT determined by this "
-            "solution -- it is unvalidated, not overestimated. "
+            "COLLISIONAL CRITERION NOT MET: " + "; ".join(why) + ". "
+            "The hydrodynamic result is unvalidated, not overestimated: the "
+            "sign and size of the error are not determined by this solution. "
             "log10 Mdot = %.3f." % res['log10_Mdot'])
         lam_b = res['lambda_J_bulk']
         ratio = 10.0 ** res['log10_Mdot'] / max(res['Mdot_jeans'], 1e-300)
         lines.append(
-            "Kinetic scale: Jeans escape through the %s (T = %.0f K, "
-            "lambda_J = %.2f for the lightest heavy species) gives "
-            "Mdot_Jeans = %.3g g/s, a factor %.2g below the continuum Mdot."
+            "Formal static-Maxwellian (Jeans) rate at the %s (T = %.0f K, "
+            "lambda_J = %.2f for the lightest heavy species): "
+            "Mdot_Jeans = %.3g g/s; the continuum Mdot is %.2g times it. "
+            "That ratio compares two formulas on one profile; it is neither "
+            "a bound on nor an error estimate for a kinetic solution."
             % (res['jeans_at'], res['T_jeans'], lam_b, res['Mdot_jeans'],
                ratio))
         if lam_b is not None and lam_b < 3.0:
             lines.append(
-                "That number is a SCALE, not a bound: at lambda_J = %.2f the "
-                "exobase is barely gravitationally bound, the Jeans integral "
-                "is no longer the small escaping tail of a Maxwellian but "
-                "most of it, and the atmosphere is in hydrodynamic blow-off. "
-                "What it does say is that the continuum Mdot is within a "
-                "factor of a few of what a collisionless outer atmosphere at "
-                "the same density and temperature would lose, so the failure "
-                "of the continuum assumption is not hiding an order of "
-                "magnitude." % lam_b)
+                "At lambda_J = %.2f the escaping part is not a small tail of "
+                "the Maxwellian, so the usual reading of the Jeans rate does "
+                "not apply either." % lam_b)
         else:
             lines.append(
-                "Jeans is the floor of the kinetic problem (static exobase, "
-                "no bulk drift), so it bounds the kinetic answer from below "
-                "and does not bound the continuum one at all; the ratio "
-                "measures how far the reported Mdot rests on the continuum "
-                "assumption that fails at the critical point.")
+                "The expression assumes zero bulk drift at that radius and "
+                "omits the ambipolar potential of escaping ions; the "
+                "physical escape rate needs a kinetic calculation.")
     return "  ".join(lines)
 
 
@@ -763,20 +881,41 @@ _SCALAR_KEYS = ['r_sonic', 'r_exobase', 'r_heat_peak', 'r_Tmax', 'T_max',
                 'r_kn_threshold', 'Kn_crit_max',
                 'Kn_crit_bulk_max', 'Kn_top', 'r_top', 'log10_Mdot',
                 'jeans_at', 'r_jeans', 'T_jeans', 'Mdot_jeans',
-                'lambda_J_bulk', 'tau_E_over_tau_heat_crit']
+                'lambda_J_bulk', 'tau_E_over_tau_heat_crit',
+                'planet_source', 'Rp_RJ', 'Mp_MJ', 'Rp_RJ_input',
+                'carrier_transport', 'ionization_transport',
+                'omitted_mass_fraction_max', 'omitted_particle_fraction_max']
 
 
 def report(res):
+    if res['adv']:
+        state = ('advection-corrected _adv profiles: the solution\'s density'
+                 ' and velocity with a temperature and composition from a'
+                 ' closure the momentum equation was not re-solved for')
+    elif res['ionization_transport'] is None:
+        state = ('the solution; whether its ion fractions are transported is'
+                 ' not recorded (EXHALE_resolved.out absent or without an'
+                 ' ionization_transport line)')
+    elif res['ionization_transport']:
+        state = ('the solution; its H/He ion fractions are transported by'
+                 ' the wind, not local photoionization equilibrium')
+    else:
+        state = ('the solution; its composition is the local photoionization'
+                 ' equilibrium, which the mean free path inherits')
     print('=' * 74)
-    print('case: %s   (%s)'
-          % (res['case'],
-             'advection-corrected _adv profiles: the solution\'s density and'
-             ' velocity with a temperature and composition from a closure the'
-             ' momentum equation was not re-solved for'
-             if res['adv'] else
-             'the solution; its composition is the local photoionization'
-             ' equilibrium, which the mean free path inherits'))
+    print('case: %s   (%s)' % (res['case'], state))
     print('=' * 74)
+    src = res['planet_source'] or 'unknown'
+    print('  planet radius          %.9g R_J   mass %.9g M_J   (from %s)'
+          % (res['Rp_RJ'], res['Mp_MJ'], src))
+    if res['Rp_RJ_input'] is not None and res['Rp_RJ_input'] != res['Rp_RJ']:
+        print('                         (input.inp Planet radius %.9g R_J,'
+              ' ratio %.6f)' % (res['Rp_RJ_input'],
+                                res['Rp_RJ'] / res['Rp_RJ_input']))
+    print('  omitted partners (metals, OH/H2O/CO): max mass fraction %.3g,'
+          ' max particle fraction %.3g'
+          % (res['omitted_mass_fraction_max'],
+             res['omitted_particle_fraction_max']))
     print('  peak heating at        %8.3f R_p' % res['r_heat_peak'])
     print('  T max                  %8.3f R_p   %.0f K'
           % (res['r_Tmax'], res['T_max']))
@@ -805,7 +944,7 @@ def report(res):
         for s in COLLIDERS if s in res['Kn_crit_species']))
     print('  max tau_E(e-ion)/tau_heat in critical region  %.3g'
           % res['tau_E_over_tau_heat_crit'])
-    print('  log10 Mdot(hydro) = %.3f   Mdot_Jeans = %.3g g/s (%s)'
+    print('  log10 Mdot(hydro) = %.3f   formal Mdot_Jeans = %.3g g/s (%s)'
           % (res['log10_Mdot'], res['Mdot_jeans'], res['jeans_at']))
     print()
     print('  ' + res['validity_statement'].replace('  ', '\n  '))

@@ -48,9 +48,15 @@
    ! 31.675 eV, so 19.725 eV is on the receding nuclei.  e_rad_H2_neutral is
    ! the internal excitation of the H(2p) + H(2s) pair the neutral window
    ! leaves (Chung, Lee, Masuoka & Samson 1993), which departs as prompt
-   ! Ly-alpha and two-photon continuum and is not heat.
+   ! Ly-alpha and two-photon continuum and is not heat.  The recombination
+   ! photons absorbed on the spot by H2 take the same channel cross sections
+   ! (h2_photoabsorption_cross_sections) and the same recipients.
    use h2_photo_channels, only: h2_double_fragment_kinetic_energy,        &
-                                e_rad_H2_neutral
+                                e_rad_H2_neutral, n_h2_channels,          &
+                                ICH_S, ICH_D, ICH_N,                      &
+                                h2_photoabsorption_cross_sections,        &
+                                h2_channel_energy_recipients,             &
+                                h2_double_ionization_model
    ! Degradation of a fast photoelectron in a partly ionized H/H2/He gas:
    ! Shull & van Steenberg (1985) for the ionization energy budget, Dalgarno,
    ! Yan & Liu (1999) for everything that depends on molecular hydrogen.
@@ -251,6 +257,17 @@
 	real*8,  save :: otsp_met_dbind(n_mion,n_otsp_ch)  = 0.0d0
 	real*8,  save :: otsp_met_fmulti(n_mion,n_otsp_ch) = 0.0d0
 	logical, save :: otsp_ready  = .false.
+	! The H2 share of each channel split into the four final states of
+	! h2_photo_channels (M, S, D, N), otsp_h2_sig(:,c) [1e-18 cm^2], which
+	! sums to otsp_sab(4,c), and the heat [eV] one absorption in each
+	! final state deposits at the channel energy, the photoelectron plus
+	! the fragment kinetic energy of h2_channel_energy_recipients. The
+	! channel selection depends on two run switches (the neutral window,
+	! the double-ionization model), recorded with the table.
+	real*8,  save :: otsp_h2_sig(n_h2_channels,n_otsp_ch)  = 0.0d0
+	real*8,  save :: otsp_h2_heat(n_h2_channels,n_otsp_ch) = 0.0d0
+	logical, save :: otsp_h2_neutral = .false.
+	character(len=16), save :: otsp_h2_double = ''
 
 	! ----- The metal photoabsorption of the photon grid, shell by shell ----- !
 	! Built by metal_photoabsorption_spectral_tables on the grid e_v it was
@@ -3607,30 +3624,43 @@
 	! not photo-ionizable). Each is zero below its own threshold, so an
 	! absorber that cannot take a photon drops out of that channel without
 	! a test. Formed on the first call and again only if a switch that
-	! selects a cross section ("ATES photoionization rate", the metals)
-	! has changed. The fill is a critical region that re-tests the flag, and
-	! the flag is published with sequentially consistent atomic accesses (as
-	! in metal_photoabsorption_spectral_tables), so a first call from inside
-	! a parallel region is safe; both callers run it serially before their
+	! selects a cross section ("ATES photoionization rate", the metals, the
+	! H2 neutral window and double-ionization model) has changed. The fill
+	! is a critical region that re-tests the flag, and the flag is published
+	! with sequentially consistent atomic accesses (as in
+	! metal_photoabsorption_spectral_tables), so a first call from inside a
+	! parallel region is safe; both callers run it serially before their
 	! own parallel loops.
 	subroutine on_the_spot_cross_sections
-	integer :: ic, im, k, is
+	integer :: ic, im, k, is, ich
 	real*8  :: sg, eth, eaug, pmul, efl, eim
+	real*8  :: e_res, e_ele, e_frg, e_rad
 	logical :: current
 	!$omp atomic read seq_cst
 	current = otsp_ready
 	if (current .and. (otsp_ates .eqv. ates_photoion_rate)              &
-	    .and. (otsp_metals .eqv. thereis_metals)) return
+	    .and. (otsp_metals .eqv. thereis_metals)                        &
+	    .and. (otsp_h2_neutral .eqv. h2_neutral_dissociation)           &
+	    .and. otsp_h2_double .eq. h2_double_ionization_model) return
 	!$omp critical (on_the_spot_cross_section_table)
 	!$omp atomic read seq_cst
 	current = otsp_ready
 	if (.not. (current .and. (otsp_ates .eqv. ates_photoion_rate)       &
-	           .and. (otsp_metals .eqv. thereis_metals))) then
+	           .and. (otsp_metals .eqv. thereis_metals)                 &
+	           .and. (otsp_h2_neutral .eqv. h2_neutral_dissociation)    &
+	           .and. otsp_h2_double .eq. h2_double_ionization_model)) then
 	do ic = 1,n_otsp_ch
 		otsp_sab(1,ic) = sigma(otsp_E(ic), 1.0d0, e_th_HI)
 		otsp_sab(2,ic) = sigma_HeI(otsp_E(ic))
 		otsp_sab(3,ic) = sigma(otsp_E(ic), 2.0d0, e_th_HeII)
 		otsp_sab(4,ic) = sigma_H2(otsp_E(ic))
+		call h2_photoabsorption_cross_sections(otsp_E(ic), otsp_sab(4,ic), &
+		                         h2_neutral_dissociation, otsp_h2_sig(:,ic))
+		do ich = 1,n_h2_channels
+			call h2_channel_energy_recipients(ich, otsp_E(ic), e_res,     &
+			                                  e_ele, e_frg, e_rad)
+			otsp_h2_heat(ich,ic) = e_ele + e_frg
+		enddo
 		otsp_smet(:,ic)       = 0.0d0
 		otsp_met_dbind(:,ic)  = 0.0d0
 		otsp_met_fmulti(:,ic) = 0.0d0
@@ -3659,6 +3689,8 @@
 	enddo
 	otsp_ates   = ates_photoion_rate
 	otsp_metals = thereis_metals
+	otsp_h2_neutral = h2_neutral_dissociation
+	otsp_h2_double  = h2_double_ionization_model
 	!$omp atomic write seq_cst
 	otsp_ready  = .true.
 	endif
@@ -3694,12 +3726,17 @@
 	! is the recombined species of a ground-capture channel (1 H I, 2 He I,
 	! 3 He II), whose share is the on-the-spot cancellation and is skipped,
 	! 0 for every other channel. Adds the rate per absorber particle
-	! [s^-1] of H I, He I, H2 and each metal ion, the part of each metal
-	! rate that ejects two or more electrons (dP_m2, nonzero only where the
-	! balance carries that jump) and the photoelectron heat [erg cm^-3
-	! s^-1]: a metal absorption heats with the photoelectron and the Auger
+	! [s^-1] of H I, He I, H2 and each metal ion, the H2 rate split into
+	! its four final states (dP_H2_chan, M S D N of h2_photo_channels,
+	! summing to the dP_H2 increment), the part of each metal rate that
+	! ejects two or more electrons (dP_m2, nonzero only where the balance
+	! carries that jump) and the photoelectron heat [erg cm^-3 s^-1]: a
+	! metal absorption heats with the photoelectron and the Auger
 	! electrons of the shells the photon opens, E - mion_ethr -
-	! otsp_met_dbind (on_the_spot_cross_sections).
+	! otsp_met_dbind (on_the_spot_cross_sections); an H2 absorption with
+	! the photoelectron(s) and the fragment kinetic energy of its final
+	! state (otsp_h2_heat), the formation energy the products store and
+	! the n = 2 excitation the neutral window radiates not being heat.
 	!
 	! A RESONANCE LINE (the He I 584 A photons: kap_line present, the line
 	! opacity n(He I) sigma_bar in the units of kap) is scattered by He I
@@ -3723,15 +3760,16 @@
 	! caller to put through the 2^1S two-photon channel.
 	pure subroutine absorb_recombination_channel(ic, P, Ek, i_self,       &
 	                   nhi, nhei, nheii, nh2, nm, dl,                     &
-	                   dP_HI, dP_HeI, dP_H2, dP_m, dP_m2, heat,           &
-	                   kap_line, eps_line, P_conv)
+	                   dP_HI, dP_HeI, dP_H2, dP_H2_chan, dP_m, dP_m2,     &
+	                   heat, kap_line, eps_line, P_conv)
 	integer, intent(in)    :: ic, i_self
 	real*8,  intent(in)    :: P, Ek, nhi, nhei, nheii, nh2, nm(n_mion), dl
-	real*8,  intent(inout) :: dP_HI, dP_HeI, dP_H2, dP_m(n_mion),         &
+	real*8,  intent(inout) :: dP_HI, dP_HeI, dP_H2,                       &
+	                          dP_H2_chan(n_h2_channels), dP_m(n_mion),    &
 	                          dP_m2(n_mion), heat
 	real*8,  intent(in),    optional :: kap_line, eps_line
 	real*8,  intent(inout), optional :: P_conv
-	real*8  :: kap, g_dl, Eph, rate_s, heat_c
+	real*8  :: kap, g_dl, Eph, rate_s, heat_c, rate_ch(n_h2_channels)
 	real*8  :: tau_t, a_t, e_t, q_c, q_l, D_t
 	integer :: im
 	if (.not. (P > 0.0d0)) return
@@ -3772,9 +3810,19 @@
 		heat_c = heat_c + rate_s*nhei*(Eph - e_th_HeI)
 	endif
 	if (otsp_sab(4,ic) > 0.0d0) then
-		rate_s = P*otsp_sab(4,ic)*g_dl
-		dP_H2  = dP_H2 + rate_s
-		heat_c = heat_c + rate_s*nh2*(Eph - e_th_H2)
+		! Each final state is charged the heat of h2_channel_energy_
+		! recipients at the channel energy E_c, and the capture kinetic
+		! energy Ek on top of it in every final state: in M, S and D it is
+		! more photoelectron energy (the Coulomb-explosion release of D is
+		! fixed by the vertical threshold), in N more recoil of the two
+		! atoms. Every channel with Ek > 0 lies outside the neutral window,
+		! so the last case does not arise with the present channels.
+		rate_s     = P*otsp_sab(4,ic)*g_dl
+		rate_ch    = P*otsp_h2_sig(:,ic)*g_dl
+		dP_H2      = dP_H2 + rate_s
+		dP_H2_chan = dP_H2_chan + rate_ch
+		heat_c     = heat_c + nh2*(sum(rate_ch*otsp_h2_heat(:,ic))       &
+		                           + rate_s*Ek)
 	endif
 	if (thereis_metals) then
 		do im = 1,n_mion
@@ -3797,9 +3845,10 @@
 	! the recombination coefficients the ionization balance should use
 	! (rchiiB_new, rcheiiB_new, rcheiiiB_new [cm^3 s^-1]), the extra
 	! photoionization rates [s^-1] of H I, He I (ground), H2 and every
-	! metal ion (dP_HI, dP_HeI, dP_H2, dP_m), and the photoelectron heating
-	! [erg cm^-3 s^-1] of the composition passed in (dheat). With both
-	! switches off it returns the case-B coefficients and zeros.
+	! metal ion (dP_HI, dP_HeI, dP_H2, dP_m), the final-state subsets of
+	! the H2 rate (dP_H2_di, dP_H2_dd, dP_H2_nd), and the photoelectron
+	! heating [erg cm^-3 s^-1] of the composition passed in (dheat). With
+	! both switches off it returns the case-B coefficients and zeros.
 	!
 	! WHICH SPECIES ABSORBS A PHOTON. Every channel emits photons of one
 	! representative energy E_c; the cell keeps the fraction 1 - exp(-tau_c)
@@ -3888,6 +3937,25 @@
 	! below its 30 eV threshold anyway, except for the He III ground capture
 	! (40.8 eV on H I) and the He II Ly-alpha on H I (27.2 eV).
 	!
+	! H2. An absorption by H2 ends in one of the four final states of
+	! h2_photo_channels, H2+ + e- (M), H + H+ + e- (S), H+ + H+ + 2e- (D)
+	! or H + H (N), in the ratio of the channel cross sections the stellar
+	! field uses at the same energy (h2_photoabsorption_cross_sections,
+	! with the run's neutral-window and double-ionization switches); the
+	! total, dP_H2, is the absorption itself and is not changed by the
+	! split. At the channel energies, M is open from 15.4 eV, S from
+	! 18.08 eV (He I 2^3S line and 584 A, He I ground capture, the two
+	! upper He II two-photon bands, He II Ly-alpha and ground capture), N
+	! over the 32-41.5 eV window (He II Ly-alpha at 40.8 eV), D above
+	! 51.4 eV (the He II ground capture at 54.4 eV). The heat of one
+	! absorption is that of h2_channel_energy_recipients at E_c: the
+	! photoelectron(s) and the fragment kinetic energy, not the formation
+	! and ionization energy the products store (accounted by the reactions
+	! that later consume them, as for the stellar field) nor the n = 2
+	! excitation the N fragments radiate; the capture kinetic energy of a
+	! continuum channel is added in every final state
+	! (absorb_recombination_channel).
+	!
 	! VALIDITY. (i) LOCAL absorption: a photon that leaves the cell is
 	! dropped rather than followed, so its absorption in some outer cell is
 	! not counted; the escape weight is therefore a property of the cell
@@ -3923,15 +3991,21 @@
 	! lengthens its path and so raises the share the cell keeps, is not
 	! followed. (iv) The He 2^3S metastable is not an absorber (its density
 	! is 1e-6 to 1e-3 of He I), and the He I absorber density is the summed
-	! He I column the caller passes. (v) The H2 share of every channel makes
-	! H2+ only; the dissociative and double-ionization branches that the
-	! He III photons (40.8, 54.4 eV) would open in H2 are not split off:
-	! He III and H2 do not coexist in these winds.
+	! He I column the caller passes. (v) The H2 final-state shares, and the
+	! heat of each, are those at the representative energy E_c of the
+	! channel, not averaged over the capture continuum above an edge; the
+	! H2+ vibrational excitation the M channel leaves is inside the
+	! measured cross section and is not followed, as in the stellar field.
+	! The photoelectrons are not passed through the secondary-ionization
+	! partition (ENERGY above); of the H2 events only those of the He II
+	! ground capture (54.4 eV) carry an electron above its 30 eV threshold
+	! (39.0 eV in M, 36.3 eV in S, plus the capture kinetic energy).
 	subroutine recombination_radiation_absorbed(T_K, nhi, nhii, nh2,      &
 	                           nhei, nheii, nheiii, nheiTR, ne, nm,       &
 	                           A31, q31a, q31b,                           &
 	                           rchiiB_new, rcheiiB_new, rcheiiiB_new,     &
-	                           dP_HI, dP_HeI, dP_H2, dP_m, dheat, dP_m2)
+	                           dP_HI, dP_HeI, dP_H2, dP_m, dheat, dP_m2, &
+	                           dP_H2_di, dP_H2_dd, dP_H2_nd)
 	real*8, dimension(1-Ng:N+Ng), intent(in)  :: T_K, nhi, nhii, nh2,    &
 	                                              nhei, nheii, nheiii,   &
 	                                              nheiTR, ne, q31a, q31b
@@ -3944,13 +4018,19 @@
 	! The part of dP_m that ejects two or more electrons and that the
 	! balance carries as a two-stage jump (absorb_recombination_channel).
 	real*8, dimension(1-Ng:N+Ng,n_mion), intent(out), optional :: dP_m2
+	! The parts of dP_H2 that end in H + H+ + e- (S), H+ + H+ + 2e- (D)
+	! and H + H (N): SUBSETS of the total H2 absorption rate dP_H2, the
+	! same convention as P_H2_di, P_H2_dd and P_H2_nd of the stellar field,
+	! so that dP_H2 minus the three is the H2+ (M) share.
+	real*8, dimension(1-Ng:N+Ng), intent(out), optional :: dP_H2_di,     &
+	                                                       dP_H2_dd, dP_H2_nd
 
 	real*8, dimension(1-Ng:N+Ng) :: y_HI, y_gnd, y_HeII
 	real*8, dimension(1-Ng:N+Ng) :: aB2, aB3, a1H, a1He, a1He2, a2He2
 	real*8, dimension(1-Ng:N+Ng) :: E1_H, E1_He, E1_He2, E2_He2
 	real*8  :: dl, t3, qa_c, qb_c, D_exit, f2s, mix, P2q, P_c
 	real*8  :: dPm_cell(n_mion), dPm2_cell(n_mion), nm_cell(n_mion)
-	real*8  :: kap_584, P_584_conv
+	real*8  :: kap_584, P_584_conv, h2_chan(n_h2_channels)
 	logical :: h_on, he_on
 	integer :: j
 
@@ -3973,6 +4053,9 @@
 	dP_H2  = 0.0d0
 	dP_m   = 0.0d0
 	if (present(dP_m2)) dP_m2 = 0.0d0
+	if (present(dP_H2_di)) dP_H2_di = 0.0d0
+	if (present(dP_H2_dd)) dP_H2_dd = 0.0d0
+	if (present(dP_H2_nd)) dP_H2_nd = 0.0d0
 	dheat  = 0.0d0
 	if (.not. (h_on .or. he_on)) return
 
@@ -3995,19 +4078,21 @@
 	! and the result does not depend on their number.
 	!$omp parallel do default(shared) schedule(static)                    &
 	!$omp    private(j, dl, P_c, t3, qa_c, qb_c, D_exit, f2s, mix, P2q,   &
-	!$omp            dPm_cell, dPm2_cell, nm_cell, kap_584, P_584_conv)
+	!$omp            dPm_cell, dPm2_cell, nm_cell, kap_584, P_584_conv,   &
+	!$omp            h2_chan)
 	do j = 1-Ng,N+Ng
 		dl = dr_j(j)*R0*1.0d-18
 		nm_cell   = nm(j,:)
 		dPm_cell  = 0.0d0
 		dPm2_cell = 0.0d0
+		h2_chan   = 0.0d0
 
 		! ---- H II -> H I ----
 		if (h_on) then
 			P_c = a1H(j)*nhii(j)*ne(j)
 			call absorb_recombination_channel(ic_gnd_HI, P_c, E1_H(j), 1, &
 			        nhi(j), nhei(j), nheii(j), nh2(j), nm_cell, dl,       &
-			        dP_HI(j), dP_HeI(j), dP_H2(j), dPm_cell, dPm2_cell, dheat(j))
+			        dP_HI(j), dP_HeI(j), dP_H2(j), h2_chan, dPm_cell, dPm2_cell, dheat(j))
 		endif
 
 		if (he_on) then
@@ -4019,7 +4104,7 @@
 			P_c = a1He(j)*nheii(j)*ne(j)
 			call absorb_recombination_channel(ic_gnd_HeI, P_c, E1_He(j), 2, &
 			        nhi(j), nhei(j), nheii(j), nh2(j), nm_cell, dl,       &
-			        dP_HI(j), dP_HeI(j), dP_H2(j), dPm_cell, dPm2_cell, dheat(j))
+			        dP_HI(j), dP_HeI(j), dP_H2(j), h2_chan, dPm_cell, dPm2_cell, dheat(j))
 			if (.not. thereis_HeITR) then
 				! atomic mode: the case-B captures through their exits (see
 				! CHANNELS above); t3 of them end in 2^3S, which radiates
@@ -4037,42 +4122,42 @@
 				call absorb_recombination_channel(ic_19_HeI,  &
 				        t3*A_HeI_23S_11S/D_exit*P_c, 0.0d0, 0,            &
 				        nhi(j), nhei(j), nheii(j), nh2(j), nm_cell, dl,   &
-				        dP_HI(j), dP_HeI(j), dP_H2(j), dPm_cell, dPm2_cell, dheat(j))
+				        dP_HI(j), dP_HeI(j), dP_H2(j), h2_chan, dPm_cell, dPm2_cell, dheat(j))
 				call absorb_recombination_channel(ic_584_HeI, &
 				        ((1.0d0 - t3)*2.0d0/3.0d0                         &
 				         + t3*ne(j)*qb_c/D_exit)*P_c, 0.0d0, 0,           &
 				        nhi(j), nhei(j), nheii(j), nh2(j), nm_cell, dl,   &
-				        dP_HI(j), dP_HeI(j), dP_H2(j), dPm_cell, dPm2_cell, dheat(j), &
+				        dP_HI(j), dP_HeI(j), dP_H2(j), h2_chan, dPm_cell, dPm2_cell, dheat(j), &
 				        kap_584, eps_HeI_21P_21S, P_584_conv)
 				call absorb_recombination_channel(ic_2q_HeI,  &
 				        f_2q_HeI*((1.0d0 - t3)/3.0d0                      &
 				         + t3*ne(j)*qa_c/D_exit)*P_c, 0.0d0, 0,           &
 				        nhi(j), nhei(j), nheii(j), nh2(j), nm_cell, dl,   &
-				        dP_HI(j), dP_HeI(j), dP_H2(j), dPm_cell, dPm2_cell, dheat(j))
+				        dP_HI(j), dP_HeI(j), dP_H2(j), h2_chan, dPm_cell, dPm2_cell, dheat(j))
 			else
 				! metastable mode: the explicit exits
 				P_c = alpha_rec_HeII_excited_singlets(T_K(j))*nheii(j)*ne(j)
 				call absorb_recombination_channel(ic_584_HeI, 2.0d0/3.0d0*P_c, &
 				        0.0d0, 0, nhi(j), nhei(j), nheii(j), nh2(j),      &
-				        nm_cell, dl, dP_HI(j), dP_HeI(j), dP_H2(j),       &
+				        nm_cell, dl, dP_HI(j), dP_HeI(j), dP_H2(j), h2_chan,       &
 				        dPm_cell, dPm2_cell, dheat(j),                    &
 				        kap_584, eps_HeI_21P_21S, P_584_conv)
 				call absorb_recombination_channel(ic_2q_HeI, f_2q_HeI/3.0d0*P_c, &
 				        0.0d0, 0, nhi(j), nhei(j), nheii(j), nh2(j),      &
-				        nm_cell, dl, dP_HI(j), dP_HeI(j), dP_H2(j),       &
+				        nm_cell, dl, dP_HI(j), dP_HeI(j), dP_H2(j), h2_chan,       &
 				        dPm_cell, dPm2_cell, dheat(j))
 				call absorb_recombination_channel(ic_19_HeI, A31*nheiTR(j), &
 				        0.0d0, 0, nhi(j), nhei(j), nheii(j), nh2(j),      &
-				        nm_cell, dl, dP_HI(j), dP_HeI(j), dP_H2(j),       &
+				        nm_cell, dl, dP_HI(j), dP_HeI(j), dP_H2(j), h2_chan,       &
 				        dPm_cell, dPm2_cell, dheat(j))
 				call absorb_recombination_channel(ic_2q_HeI,  &
 				        f_2q_HeI*q31a(j)*ne(j)*nheiTR(j), 0.0d0, 0,       &
 				        nhi(j), nhei(j), nheii(j), nh2(j), nm_cell, dl,   &
-				        dP_HI(j), dP_HeI(j), dP_H2(j), dPm_cell, dPm2_cell, dheat(j))
+				        dP_HI(j), dP_HeI(j), dP_H2(j), h2_chan, dPm_cell, dPm2_cell, dheat(j))
 				call absorb_recombination_channel(ic_584_HeI, &
 				        q31b(j)*ne(j)*nheiTR(j), 0.0d0, 0,                &
 				        nhi(j), nhei(j), nheii(j), nh2(j), nm_cell, dl,   &
-				        dP_HI(j), dP_HeI(j), dP_H2(j), dPm_cell, dPm2_cell, dheat(j), &
+				        dP_HI(j), dP_HeI(j), dP_H2(j), h2_chan, dPm_cell, dPm2_cell, dheat(j), &
 				        kap_584, eps_HeI_21P_21S, P_584_conv)
 			endif
 			! The 584 A photons the He I scattering converted to 2^1S
@@ -4082,18 +4167,18 @@
 			call absorb_recombination_channel(ic_2q_HeI,                  &
 			        f_2q_HeI*P_584_conv, 0.0d0, 0,                        &
 			        nhi(j), nhei(j), nheii(j), nh2(j), nm_cell, dl,       &
-			        dP_HI(j), dP_HeI(j), dP_H2(j), dPm_cell, dPm2_cell, dheat(j))
+			        dP_HI(j), dP_HeI(j), dP_H2(j), h2_chan, dPm_cell, dPm2_cell, dheat(j))
 
 			! ---- He III -> He II ----
 			if (nheiii(j) > 0.0d0) then
 				P_c = a1He2(j)*nheiii(j)*ne(j)
 				call absorb_recombination_channel(ic_gnd_HeII, P_c, E1_He2(j), 3, &
 				        nhi(j), nhei(j), nheii(j), nh2(j), nm_cell, dl,   &
-				        dP_HI(j), dP_HeI(j), dP_H2(j), dPm_cell, dPm2_cell, dheat(j))
+				        dP_HI(j), dP_HeI(j), dP_H2(j), h2_chan, dPm_cell, dPm2_cell, dheat(j))
 				call absorb_recombination_channel(ic_n2_HeII, &
 				        a2He2(j)*nheiii(j)*ne(j), E2_He2(j), 0,           &
 				        nhi(j), nhei(j), nheii(j), nh2(j), nm_cell, dl,   &
-				        dP_HI(j), dP_HeI(j), dP_H2(j), dPm_cell, dPm2_cell, dheat(j))
+				        dP_HI(j), dP_HeI(j), dP_H2(j), h2_chan, dPm_cell, dPm2_cell, dheat(j))
 				f2s = case_b_2s_fraction_hydrogenic(T_K(j), 2.0d0)
 				mix = nhii(j)*l_mixing_2s2p_pengelly_seaton(T_K(j),       &
 				          ne(j), 2.0d0, 1.0d0, mu_HeII_p, dE_2s2p12_HeII, &
@@ -4106,23 +4191,26 @@
 				call absorb_recombination_channel(ic_lya_HeII, &
 				        P_c*(1.0d0 - f2s*P2q), 0.0d0, 0,                  &
 				        nhi(j), nhei(j), nheii(j), nh2(j), nm_cell, dl,   &
-				        dP_HI(j), dP_HeI(j), dP_H2(j), dPm_cell, dPm2_cell, dheat(j))
+				        dP_HI(j), dP_HeI(j), dP_H2(j), h2_chan, dPm_cell, dPm2_cell, dheat(j))
 				call absorb_recombination_channel(ic_2q_HeII_lo, &
 				        f_2q_HeII_lo*f2s*P2q*P_c, 0.0d0, 0,               &
 				        nhi(j), nhei(j), nheii(j), nh2(j), nm_cell, dl,   &
-				        dP_HI(j), dP_HeI(j), dP_H2(j), dPm_cell, dPm2_cell, dheat(j))
+				        dP_HI(j), dP_HeI(j), dP_H2(j), h2_chan, dPm_cell, dPm2_cell, dheat(j))
 				call absorb_recombination_channel(ic_2q_HeII_mid, &
 				        f_2q_HeII_mid*f2s*P2q*P_c, 0.0d0, 0,              &
 				        nhi(j), nhei(j), nheii(j), nh2(j), nm_cell, dl,   &
-				        dP_HI(j), dP_HeI(j), dP_H2(j), dPm_cell, dPm2_cell, dheat(j))
+				        dP_HI(j), dP_HeI(j), dP_H2(j), h2_chan, dPm_cell, dPm2_cell, dheat(j))
 				call absorb_recombination_channel(ic_2q_HeII_hi, &
 				        f_2q_HeII_hi*f2s*P2q*P_c, 0.0d0, 0,               &
 				        nhi(j), nhei(j), nheii(j), nh2(j), nm_cell, dl,   &
-				        dP_HI(j), dP_HeI(j), dP_H2(j), dPm_cell, dPm2_cell, dheat(j))
+				        dP_HI(j), dP_HeI(j), dP_H2(j), h2_chan, dPm_cell, dPm2_cell, dheat(j))
 			endif
 		endif
 		dP_m(j,:) = dPm_cell
 		if (present(dP_m2)) dP_m2(j,:) = dPm2_cell
+		if (present(dP_H2_di)) dP_H2_di(j) = h2_chan(ICH_S)
+		if (present(dP_H2_dd)) dP_H2_dd(j) = h2_chan(ICH_D)
+		if (present(dP_H2_nd)) dP_H2_nd(j) = h2_chan(ICH_N)
 	enddo
 	!$omp end parallel do
 

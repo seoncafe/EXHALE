@@ -5636,11 +5636,21 @@
       !    q_car = sum_c Phi_c [ h_c - sum_el nu_{c,el} hbar_el ] ,
       !
       ! h_c the enthalpy of one carrier particle and hbar_el the enthalpy
-      ! of the non-carrier species of element el per nucleus of el
-      ! (H: HI, H+, H2+, H3+ and the hydrogen share of HeH+; O and C: their
-      ! atomic stages where the metals are in the mixture), each particle
-      ! with the electrons its charge gave up, as in
-      ! component_specific_enthalpies.  Per particle h_s = e_s + kT with
+      ! per nucleus of el of the species that take up the recoil, each
+      ! particle with the electrons its charge gave up, as in
+      ! component_specific_enthalpies.
+      !
+      ! THE RECOILING SPECIES ARE THOSE WHOSE DENSITIES THE COMPOSITION
+      ! UPDATE RESCALES, carrier_write_back, and no others: the energy row
+      ! must move the enthalpy of the nuclei the composition rows move.
+      ! Hydrogen recoils in the species made of hydrogen nuclei alone that
+      ! the flow does not carry: HI, H2+, H3+, and H+ unless "Ionization
+      ! transport" carries it (carrier_solved(ic_Hp)), in which case the
+      ! write-back sets H+ from its own transported row and H+ takes no
+      ! part of the recoil.  HeH+ never recoils: rescaling it would move a
+      ! helium nucleus with the hydrogen one, so the write-back leaves it
+      ! where it is.  O and C recoil in their atomic stages where the
+      ! metals are in the equation of state.  Per particle h_s = e_s + kT with
       ! e_s of the caloric EOS: gamma_ad/(gamma_ad - 1) kT (1 + Z_s), H2
       ! adding its rovibrational energy k u_rv (zero under "Caloric EOS:
       ! monatomic").  An element with no non-carrier species in a cell
@@ -5672,7 +5682,7 @@
       real(dp), dimension(0:N,n_carrier_max) :: Agrd, Bdrf
       integer,  dimension(0:N,n_carrier_max) :: updrf
       logical  :: car_bsp(n_bsp)
-      real(dp) :: cp_part, kTe, urv, crv, hs, dens, nnuc
+      real(dp) :: cp_part, kTe, urv, crv, hs, dens
       real(dp) :: eH, nHnuc, eO, nOnuc, eC, nCnuc, hbH, hbO, hbC, hc
       real(dp) :: Jfc, dJl, dJr
       integer  :: j, ic, ib, isp, im
@@ -5730,20 +5740,21 @@
          eH = 0.0d0;  nHnuc = 0.0d0
          eO = 0.0d0;  nOnuc = 0.0d0
          eC = 0.0d0;  nCnuc = 0.0d0
+         ! The hydrogen recoil set of carrier_write_back: species of
+         ! hydrogen nuclei alone, not carriers, and not a carried stage.
+         ! Each such particle of nH nuclei moves nH nuclei and its own
+         ! enthalpy hs.
          do ib = 1, n_bsp
             if (bsp_is_excited_level(ib) .or. car_bsp(ib)) cycle
+            if (bsp_nH(ib) .le. 0) cycle
+            if (bsp_nHe(ib) + bsp_nO(ib) + bsp_nC(ib) .gt. 0) cycle
+            if (bsp_fsp(ib) .eq. isp_HII .and. carrier_solved(ic_Hp)) cycle
             dens = f_sp(j,bsp_fsp(ib))
             if (dens .le. 0.0d0) cycle
-            nnuc = dble(bsp_nH(ib) + bsp_nHe(ib) + bsp_nO(ib) + bsp_nC(ib))
-            if (nnuc .le. 0.0d0) cycle
             hs = cp_part*kTe*(1.0d0 + dble(bsp_charge(ib)))
             if (bsp_fsp(ib) .eq. isp_H2) hs = hs + kb_erg*urv
-            eH = eH + dens*hs*dble(bsp_nH(ib))/nnuc
-            eO = eO + dens*hs*dble(bsp_nO(ib))/nnuc
-            eC = eC + dens*hs*dble(bsp_nC(ib))/nnuc
+            eH = eH + dens*hs
             nHnuc = nHnuc + dens*dble(bsp_nH(ib))
-            nOnuc = nOnuc + dens*dble(bsp_nO(ib))
-            nCnuc = nCnuc + dens*dble(bsp_nC(ib))
          enddo
          if (eos_include_metals .and. thereis_metals) then
             do im = 1, n_mion

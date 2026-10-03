@@ -665,7 +665,7 @@
          endif
          k15 = rk_R15_3body_H2(T, n_third)
          k16 = rk_R16_HeHp_dr(T);      k17 = rk_R17_Hep_H2_diss(T,ntot(j))
-         k18 = rk_R18_HeHp_H2();       k19 = rk_R19_HeHp_H()
+         k18 = rk_R18_HeHp_H2();       k19 = rk_R19_HeHp_H(T)
          k_h2p_he = rk_H2p_He_HeHp(T); k23 = rk_R23_H2_Hep_cx()
          ! THE THERMALIZED SHARE OF AN INTERNAL EXCITATION, and only that.
          ! The function is Hollenbach & McKee's (1 + n_cr/n)^-1 with the

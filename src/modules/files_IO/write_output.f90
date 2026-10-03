@@ -2,6 +2,8 @@
       ! Write the output to the standard output files
 
       use global_parameters
+      use conserved_state_restart, only: write_conserved_state,          &
+                                         remove_conserved_state
       use utils, only: write_row_layout_header,                        &
                        write_coupling_state_header,                      &
                        coupling_state_fields,                            &
@@ -440,7 +442,8 @@
       subroutine write_output(rho,v,p,T,heat,cool,eta,                &
                               nhi,nhii,nhei,nheii,nheiii,nheiTR,      &
                               nm,flag,adv_T_status,adv_comp_status,        &
-                              adv_mass_row, derived_state)
+                              adv_mass_row, derived_state, conserved_u,   &
+                              conserved_f)
       ! Metal ion densities are passed as the 2D array nm(:, 1:n_mion),
       ! one column per metal ion stage in the canonical species_table
       ! order (CI, CII, CIII, OI, ..., MgIII). This keeps the argument
@@ -480,6 +483,14 @@
       ! stated in the header of both _adv files; the advection-corrected
       ! write passes it with the three above.
       type(adv_derived_state), intent(in), optional :: derived_state
+      ! The conserved state and composition the equilibrium pair describes,
+      ! for the exact code-unit file beside it (conserved_state_restart).
+      ! Passed by every write of a final or periodic state; a write without
+      ! them (the molecular seed, whose u is not yet formed) removes an
+      ! exact file left at that path by an earlier state.
+      real*8, intent(in), optional :: conserved_u(3,1-Ng:N+Ng)
+      real*8, intent(in), optional :: conserved_f(1-Ng:N+Ng,n_species)
+      character(len=48) :: exact_path
       ! That measure as written, zero where the post-process did not form
       ! it (a row it never reached).
       real*8, dimension(1-Ng:N+Ng) :: mrow
@@ -514,6 +525,24 @@
                                     nhei, nheii, nheiii, nheiTR, nm,      &
                                     adv_T_status, adv_comp_status,        &
                                     derived_state = derived_state)
+
+      !---- The exact code-unit state of the same pair ----!
+      if (flag .eq. 'eq') then
+         if (molecular_seed_on()) then
+            exact_path = './output/conserved_state_IC.txt'
+         else
+            exact_path = './output/conserved_state.txt'
+         endif
+         if (present(conserved_u) .neqv. present(conserved_f))            &
+            error stop 'write_output: conserved_u and conserved_f go together'
+         if (present(conserved_u)) then
+            call write_conserved_state(trim(exact_path), trim(hyd_path),  &
+                                       trim(ion_path), conserved_u,        &
+                                       conserved_f)
+         else
+            call remove_conserved_state(trim(exact_path))
+         endif
+      endif
 
       !---- Lyman-Werner photodissociation diagnostic ----!
       ! Written only for a molecular run that carries a Lyman-Werner band
@@ -931,12 +960,13 @@
       subroutine publish_pass_state_generation(pass_now, pass_statement, &
                                        rho, v, p, T, heat, cool, nhi,     &
                                        nhii, nhei, nheii, nheiii, nheiTR, &
-                                       nm, f_sp, written, published_id)
+                                       nm, f_sp, written, published_id, u)
       ! THE STATE ONE OUTER PASS OF THE STATIONARY ITERATION HANDS TO THE
       ! NEXT, published as ONE GENERATION:
       !
       !    output/pass_state/<gen>/Hydro_ioniz.txt
       !    output/pass_state/<gen>/Ion_species.txt
+      !    output/pass_state/<gen>/conserved_state.txt  (when writable)
       !    output/pass_state/<gen>/manifest.txt
       !    output/pass_state/current          (one line: <gen>)
       !
@@ -944,6 +974,7 @@
       ! name one generation. A run stopped from outside (a wall-clock
       ! timeout, a kill) leaves the state of its last published pass behind
       ! instead of nothing. Copied to Hydro_ioniz_IC.txt / Ion_species_IC.txt
+      ! (and conserved_state.txt to conserved_state_IC.txt, when present)
       ! the pair of the generation 'current' names is a "Load IC? True"
       ! restart like any other state file: the writers, header lines and
       ! restart tokens are the ones of the solved state
@@ -994,8 +1025,11 @@
       real*8, dimension(1-Ng:N+Ng), intent(in) :: nheiTR
       real*8, dimension(1-Ng:N+Ng,n_mion), intent(in) :: nm
       real*8, dimension(1-Ng:N+Ng,n_species), intent(in) :: f_sp
+      ! The conserved state of the pass, for the exact code-unit file.
+      real*8, dimension(3,1-Ng:N+Ng), intent(in) :: u
       logical, intent(out) :: written
       character(len=*), intent(out) :: published_id
+      logical :: exact_written
       character(len=*), parameter :: hyd_leaf = 'Hydro_ioniz.txt'
       character(len=*), parameter :: ion_leaf = 'Ion_species.txt'
       character(len=*), parameter :: manifest_leaf = 'manifest.txt'
@@ -1058,6 +1092,11 @@
                                        pass_statement = pass_statement,   &
                                        ios_open = ios_i,                  &
                                        state_id = trim(gen_name))
+      exact_written = .false.
+      if (ios_h .eq. 0 .and. ios_i .eq. 0)                               &
+         call write_conserved_state(trim(tmp_dir)//'/conserved_state.txt', &
+              trim(tmp_dir)//'/'//hyd_leaf, trim(tmp_dir)//'/'//ion_leaf,  &
+              u, f_sp, exact_written)
 
       if (thereis_mol)     nmol_eq = nmol_hold
       if (thereis_oxychem) nox_eq  = nox_hold
@@ -1087,6 +1126,8 @@
             write(unit_m,'(A,I0)') 'hydro_bytes=', bytes_h
             write(unit_m,'(A)') 'species_file='//ion_leaf
             write(unit_m,'(A,I0)') 'species_bytes=', bytes_i
+            if (exact_written)                                             &
+               write(unit_m,'(A)') 'conserved_state=conserved_state.txt'
             write(unit_m,'(A)') 'certified=F'
             write(unit_m,'(A)') 'cert_reason='//trim(snap_reason)
             close(unit_m, iostat = ios_m)
@@ -1209,8 +1250,9 @@
       ! ------------------------------------------------------------------ !
 
       subroutine remove_pass_state_directory(dir_path)
-      ! Remove a directory of the pass state: the three files a generation
-      ! holds, by their names, and then the directory, which remove(3)
+      ! Remove a directory of the pass state: the files a generation holds
+      ! (the state pair, the exact code-unit state, the manifest), by their
+      ! names, and then the directory, which remove(3)
       ! removes only when it is empty. Nothing is removed by a pattern, so a
       ! file this writer did not put there stops the removal of the
       ! directory, and that is reported.
@@ -1218,6 +1260,7 @@
       integer(c_int) :: rc_rm
       rc_rm = posix_remove(trim(dir_path)//'/Hydro_ioniz.txt'//c_null_char)
       rc_rm = posix_remove(trim(dir_path)//'/Ion_species.txt'//c_null_char)
+      rc_rm = posix_remove(trim(dir_path)//'/conserved_state.txt'//c_null_char)
       rc_rm = posix_remove(trim(dir_path)//'/manifest.txt'//c_null_char)
       rc_rm = posix_remove(trim(dir_path)//c_null_char)
       if (rc_rm .ne. 0)                                                    &

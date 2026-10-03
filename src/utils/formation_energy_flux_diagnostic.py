@@ -291,7 +291,10 @@ def analyse(label, outdir, inputfile, plot_dir=None):
     ion_path = os.path.join(outdir, 'Ion_species.txt')
     h = eio.load_hydro(hydro_path, ghost=True)
     r_all, ion = eio.load_ions(ion_path, ghost=True)
-    inp = eio.read_input(inputfile)
+    # The planet radius the run was solved with (EXHALE_resolved.out, which
+    # load_run reads), not input.inp's, which the lower-atmosphere profile
+    # or base.inp can override.
+    inp = eio.load_run(outdir, inputfile, adv=False, ghost=True).inp
     rp = inp['Rp_RJ'] * eio.RJ                       # [cm]
 
     if not np.allclose(r_all, h['r'], rtol=1e-12, atol=0.0):

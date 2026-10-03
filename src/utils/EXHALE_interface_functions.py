@@ -1063,6 +1063,15 @@ def start_func(*args):
 			new_ioniz = os.path.join(cdir, 'Ion_species_IC.txt')      
 			copyfile(old_hydro, new_hydro)
 			copyfile(old_ioniz, new_ioniz)
+			# The exact code-unit state belongs to the pair just copied. A
+			# conserved_state_IC.txt left from an earlier state is removed,
+			# so the restart reads the dimensional pair alone.
+			old_conserved = os.path.join(cdir, 'conserved_state.txt')
+			new_conserved = os.path.join(cdir, 'conserved_state_IC.txt')
+			if os.path.isfile(old_conserved):
+				copyfile(old_conserved, new_conserved)
+			elif os.path.lexists(new_conserved):
+				os.remove(new_conserved)
 
 		do_only_PP = gui.onlyPP_var.get()
 		if do_only_PP == 0:

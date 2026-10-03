@@ -628,6 +628,27 @@ def keep_solve_generation(iter_dir, ending, log):
     return os.path.join(iter_dir, kept) if kept else iter_dir
 
 
+def copy_solved_state_to_ic(source_output, target_output):
+    """Carry a solved state, unchanged, into the next run as its restart.
+
+    The pair goes to the `_IC` names, and the exact code-unit state
+    `conserved_state.txt` written beside it goes to `conserved_state_IC.txt`,
+    so the next run starts from the bits this one ended on.  A state without
+    that file is refused when the target still holds an older one, which
+    would belong to another state.
+    """
+    exact_source = os.path.join(source_output, 'conserved_state.txt')
+    exact_target = os.path.join(target_output, 'conserved_state_IC.txt')
+    if not os.path.isfile(exact_source) and os.path.lexists(exact_target):
+        raise ClosureStop('the selected solve has no conserved_state.txt, but '
+                          'the target retains conserved_state_IC.txt')
+    for name in ('Hydro_ioniz.txt', 'Ion_species.txt'):
+        shutil.copyfile(os.path.join(source_output, name), os.path.join(
+            target_output, name.replace('.txt', '_IC.txt')))
+    if os.path.isfile(exact_source):
+        shutil.copyfile(exact_source, exact_target)
+
+
 def solve_escape_wind(cfg, iter_dir, seed_output, log):
     """The wind: the seed solution becomes the initial condition, the solver
     runs, then a post-processing pass on the solved state.  `output/` must
@@ -639,6 +660,14 @@ def solve_escape_wind(cfg, iter_dir, seed_output, log):
     """
     out_dir = os.path.join(iter_dir, 'output')
     os.makedirs(out_dir, exist_ok=True)
+    # The seed of an iteration is an initialization state (a new profile and
+    # reservoir), restarted from its dimensional pair; an exact code-unit
+    # state already in this output belongs to another state.
+    for leaf in ('conserved_state.txt', 'conserved_state_IC.txt'):
+        if os.path.lexists(os.path.join(out_dir, leaf)):
+            raise ClosureStop('the new iteration output already contains %s; '
+                              'a previous exact state cannot be combined '
+                              'with a new initialization seed' % leaf)
 
     # WHICH GENERATION THE SEED IS (D8).  Where the seed directory publishes
     # a state index, it is resolved ONCE here and both halves of the seed
@@ -774,9 +803,7 @@ def solve_escape_wind(cfg, iter_dir, seed_output, log):
             'written state of %s is reloaded at EXHALE_PTC_DTAU0=%s'
             % (os.path.basename(kept), dtau0))
         os.makedirs(out_dir, exist_ok=True)
-        for name in ('Hydro_ioniz.txt', 'Ion_species.txt'):
-            shutil.copyfile(os.path.join(kept, 'output', name), os.path.join(
-                out_dir, name.replace('.txt', '_IC.txt')))
+        copy_solved_state_to_ic(os.path.join(kept, 'output'), out_dir)
         env2 = dict(env)
         env2['EXHALE_PTC_DTAU0'] = dtau0
         with open(runlog, 'w') as fh:
@@ -795,15 +822,16 @@ def solve_escape_wind(cfg, iter_dir, seed_output, log):
                           'info=%s); see %s' % (rc, info, runlog))
 
     # post-processing pass on the solved state
-    for name in ('Hydro_ioniz.txt', 'Ion_species.txt'):
-        shutil.copyfile(os.path.join(out_dir, name),
-                        os.path.join(out_dir, name.replace('.txt', '_IC.txt')))
-    # The advection-corrected profiles are wanted, not another solve: a
-    # stationary restart intent would take the run back into the solver and
-    # never reach them, and the marching hand-off would polish the state the
-    # solve just wrote.
-    write_input_keys(inp, (('Do only PP:', 'True'),),
-                     drop=('Restart intent', 'Solver'))
+    copy_solved_state_to_ic(out_dir, out_dir)
+    # The advection-corrected profiles are wanted, not another solve. The
+    # stationary evaluation measures the saved state as loaded (from its
+    # exact code-unit file), takes no step, writes the state with the
+    # certificate of that measurement and derives the `_adv` profiles and
+    # the mass-loss line from it; its exit status is 2 when the state
+    # claimed to be stationary and the measurement refuses it.
+    write_input_keys(inp, (('Do only PP:', 'False'),
+                           ('Restart intent:', 'stationary evaluate'),
+                           ('Solver:', 'Newton')))
     # The post-processing pass runs WITHOUT the PTC variables, exactly as
     # `finish_case.sh` does (there they are set inline on the JFNK command
     # alone).  With EXHALE_PTC=1 still set the binary re-enters the steady

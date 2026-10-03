@@ -332,17 +332,52 @@ for bit.
   `src/utils/map_state_to_grid.py <src> <target_grid_file> <out> --ic`
   (`--reservoir El/H <value>` rescales an element, `--uniform` sets it to one
   ratio in every row)
+- Beside every equilibrium state pair (`Hydro_ioniz.txt`, `Ion_species.txt`,
+  including the pass-state generations and the `EXHALE_DUMP_IC=1` dump) the
+  run writes `output/conserved_state.txt`, the exact code-unit state: the
+  conserved variables (rho, rho v, E) and every species fraction of every
+  cell, ghosts included, as `ES25.17E3` text, which reproduces each binary64
+  value exactly. It is copied with the pair to `conserved_state_IC.txt`, and
+  a restart that finds it starts from the bits the run ended on instead of
+  converting the dimensional pair (the conversion from physical units, the
+  species fractions recovered from densities and the energy rebuilt from `p`
+  move the last digits: 146 of 500 conserved rows and all 500 composition rows
+  of a 20-step `wasp_he23off` state). The file records the format version, the
+  shape (`N`, `Ng`, number of species), the rolling checksums of the two
+  dimensional files it was written with, the reservoir and options fields of
+  the restart metadata, the base boundary model, the species order, the
+  normalization constants, checksums of the physical input files (spectrum,
+  lower-atmosphere profile or `base.inp`, `metals.inp`, the opacity
+  parameters and tables) and of the gravity and irradiation fields, the cell
+  and face radii, and a checksum of its own data. It is used only when all of
+  them agree with the run; otherwise, or when the load applied a `Restart
+  option change:`, migrated a legacy factor token or read a pair without
+  metadata, it is ignored with a printed notice and the restart proceeds from
+  the dimensional pair, which stays the state of record for analysis and the
+  restart contract. A molecular-seed conversion and a seed projected with
+  `EXHALE_SEED_HYDROSTATIC_CELLS` never read it. Physical cells and the upper
+  ghosts are restored; the lower ghosts are rebuilt by the boundary from the
+  run's reservoir. A state that cannot be written exactly (a nonfinite value,
+  a nonpositive density or internal energy, a negative species fraction) is
+  not written, any older file at that path is removed, a warning is printed
+  and the run's exit status is unaffected; a write of a pair without the
+  conserved state (the molecular seed) also removes the older file. The
+  graphical interface copies the file with the pair and deletes a stale
+  `conserved_state_IC.txt` when the state has none;
+  `src/utils/map_state_to_grid.py` refuses a destination that already holds
+  one, since a mapped state is a new state
 - A stationary run that alternates a wind solve with a composition relaxation
   publishes the state of every completed outer pass as one generation,
   `output/pass_state/<state_id>/` (`Hydro_ioniz.txt`, `Ion_species.txt`,
-  `manifest.txt`), written by the final-state writers, with
+  `conserved_state.txt` when it can be written, `manifest.txt`), written by
+  the final-state writers, with
   `<state_id> = r<run identity>_p<pass>`; the one-line file
   `output/pass_state/current` names the generation to take, and it is
   replaced by a single rename only after that generation is complete, so a
   run stopped from outside at any moment leaves `current` naming a whole
   state. The generation `current` named before is kept and older ones are
-  removed. Copy the pair `current` names to the `_IC` names to continue from
-  that pass. The pair is never a certified state: both halves say
+  removed. Copy the pair `current` names (and its `conserved_state.txt`) to
+  the `_IC` names to continue from that pass. The pair is never a certified state: both halves say
   `certified=F cert_reason=pass_snapshot_p<n> ... state_id=<state_id>`
   (`load_IC` refuses halves of two generations), and a `# pass_snapshot`
   line records the carrier movement bound and the element under-relaxation
@@ -586,4 +621,4 @@ the Markdown memos of the development record.
 
 Kwang-Il Seon (KASI / UST)
 
-Last updated: 2026-10-01 06:25 KST
+Last updated: 2026-10-03 15:23 KST

@@ -233,7 +233,7 @@
 	mk16 = rk_R16_HeHp_dr(T)
 	mk17 = rk_R17_Hep_H2_diss(T)
 	mk18 = rk_R18_HeHp_H2()
-	mk19 = rk_R19_HeHp_H()
+	mk19 = rk_R19_HeHp_H(T)
 	mk_h2p_he = rk_H2p_He_HeHp(T)
 	mk23 = rk_R23_H2_Hep_cx()
 	mk_ion_H2 = ioniz_HeI23S_H2(T)     ! He(2^3S)+H2 total ionization

@@ -14,9 +14,9 @@
    use opacity_models           ! A/C/P/T dispatcher
    ! The four mutually exclusive final-state channels of the H2 absorption
    ! cross section, and the switch that selects the double-ionization model.
-   use h2_photo_channels, only: h2_channel_cross_sections, n_h2_channels,  &
-                                h2_double_ionization_model,                &
-                                ICH_M, ICH_S, ICH_D, ICH_N
+   use h2_photo_channels, only: h2_photoabsorption_cross_sections,         &
+                                n_h2_channels, h2_double_ionization_model, &
+                                ICH_S, ICH_D, ICH_N
 
    implicit none
 
@@ -84,9 +84,8 @@
 	! written so far.
 	real*8, dimension(:), allocatable :: e_edge
 	integer :: k_edge
-	! The four H2 channel cross sections at one energy, and their ionizing
-	! part (channels M + S + D).
-	real*8 :: sig4(n_h2_channels), sig_ion
+	! The four H2 channel cross sections at one energy.
+	real*8 :: sig4(n_h2_channels)
 
 	! Set the energy band of the spectrum.
 	!
@@ -306,47 +305,23 @@
 	! The final-state channels of that same absorption. Every one of them
 	! destroys one H2, and each is a SHARE of s_h2 rather than an addition
 	! to it, so s_h2 -- the opacity and the total H2 destruction rate -- is
-	! the same in every branch below. What differs is which fragments the
-	! source terms of the molecular system are told to make:
+	! the same whichever channels are resolved. What differs is which
+	! fragments the source terms of the molecular system are told to make:
 	!   s_h2_di  H2 + hv -> H  + H+ + e-    (threshold 18.08 eV)
 	!   s_h2_dd  H2 + hv -> H+ + H+ + 2e-   (threshold 51.4  eV)
 	!   s_h2_nd  H2 + hv -> H  + H          (33-41 eV window, no ion)
 	! and s_h2 minus the three of them drives the H2+ row.
+	! The selection by the two run switches (the neutral window and the
+	! double-ionization model) is h2_photoabsorption_cross_sections, which
+	! the recombination photons absorbed on the spot use as well.
 	h2_double_ionization_model = h2_double_ionization
-	if (.not. h2_neutral_dissociation .and.                              &
-	    trim(h2_double_ionization) .eq. 'off') then
-		! Neither of the two channels beyond the single dissociative one is
-		! resolved. The split is then the single branching
-		! frac_H2_dissociative_ionization, evaluated exactly as it was
-		! before the channels existed, so this default reproduces the
-		! previous arithmetic bit for bit.
-		s_h2_di = (/ (sigma_H2(e_v(i))                                   &
-		              *frac_H2_dissociative_ionization(e_v(i)), i = 1,Nl) /)
-		s_h2_dd = 0.0d0
-		s_h2_nd = 0.0d0
-	else
-		do i = 1,Nl
-			call h2_channel_cross_sections(e_v(i), s_h2(i), sig4)
-			if (.not. h2_neutral_dissociation) then
-				! Fold the neutral share back into the three ionizing
-				! channels in their own proportion, i.e. restore the unit
-				! photoionization yield the pre-E1 code assumed. Each of
-				! the three is linear in the ionizing part of the cross
-				! section, so rescaling them is the same as evaluating
-				! them with a neutral fraction of zero.
-				sig_ion = sig4(ICH_M) + sig4(ICH_S) + sig4(ICH_D)
-				if (sig_ion .gt. 0.0d0) then
-					sig4(ICH_M) = sig4(ICH_M)*s_h2(i)/sig_ion
-					sig4(ICH_S) = sig4(ICH_S)*s_h2(i)/sig_ion
-					sig4(ICH_D) = sig4(ICH_D)*s_h2(i)/sig_ion
-				endif
-				sig4(ICH_N) = 0.0d0
-			endif
-			s_h2_di(i) = sig4(ICH_S)
-			s_h2_dd(i) = sig4(ICH_D)
-			s_h2_nd(i) = sig4(ICH_N)
-		enddo
-	endif
+	do i = 1,Nl
+		call h2_photoabsorption_cross_sections(e_v(i), s_h2(i),           &
+		                                       h2_neutral_dissociation, sig4)
+		s_h2_di(i) = sig4(ICH_S)
+		s_h2_dd(i) = sig4(ICH_D)
+		s_h2_nd(i) = sig4(ICH_N)
+	enddo
 
 	! Metal photoionization cross sections (Verner+1996), stored in the
 	! photo cross-section table in species_table iphot order.

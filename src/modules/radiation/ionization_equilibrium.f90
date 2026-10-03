@@ -707,7 +707,7 @@
 	! elimination inside a steady residual evaluation is a Picard iteration
 	! whose fixed point is the composition c*(Y) the residual R(Y) = L(Y) +
 	! S(Y,c*(Y)) is defined at, and a cell accepted under the relaxation
-	! amnesty (class 4) or above its cap (class 6, the entry composition
+	! amnesty (class 4) or refused (class 6, the entry composition
 	! kept) is a cell that has no root at this state: the elimination then
 	! carries the seed and the residual is not a function of Y. A caller that
 	! has to know that about one sweep reads it here.
@@ -822,7 +822,10 @@
 	! entered the sweep with (acceptance class 6), which is a state the run
 	! already held, and the sweep goes on. It is not a stop, and the streak
 	! that ends a run resting on a non-root counts class 6 exactly as it
-	! counts class 4.
+	! counts class 4. Class 6 also takes the candidate that has no
+	! admissible state at all: a projection onto the element budget that
+	! still lies outside the simplex once the transported fractions are
+	! imposed on it.
 	! MEASURED on the sixteen default regression cases, 2026-09-06. Fifteen
 	! of them accept NO non-root at all; every amnesty event of the matrix
 	! belongs to the step-0 sweep of oxygen_chemistry, and its 115 events
@@ -849,13 +852,14 @@
 	! whose rechecked residual still marks a root, (4) NON-ROOT states
 	! accepted under the relaxation amnesty, (5) roots of the constrained
 	! element-conserving continuation solve
-	! (constrained_chemical_equilibrium), (6) NON-ROOT candidates above the
-	! amnesty cap, for which the cell kept the composition it entered the
-	! sweep with, with the largest normalized
-	! reaction residual each class carried; the residual-decade histograms of
-	! the physical iterates (converged and not), which locate the gap between
-	! roots and non-roots the tolerance sits in; and the cost of the
-	! constrained solve.
+	! (constrained_chemical_equilibrium), (6) refused candidates (residual
+	! above the amnesty cap, or no admissible state after the projection
+	! onto the element budget), for which the cell kept the composition it
+	! entered the sweep with, with the largest normalized reaction residual
+	! of the state each class left the cell with; the residual-decade
+	! histograms of the physical iterates (converged and not), which locate
+	! the gap between roots and non-roots the tolerance sits in; and the
+	! cost of the constrained solve.
 
 	! Print budget of the acceptance report lines: a pathological run must
 	! not flood the log; the ledgers keep the full population. Only states
@@ -1190,6 +1194,9 @@
    ! photoionization rates the absorbed photons add.
    real*8, dimension(1-Ng:N+Ng) ::  rchiiB_hrc,rcheiiB_hrc,rcheiiiB_hrc
    real*8, dimension(1-Ng:N+Ng) ::  dP_HI_hrc,dP_HeI_hrc,dP_H2_hrc,dheat_hrc
+   ! The final-state subsets of dP_H2_hrc (H + H+ + e-, H+ + H+ + 2e-,
+   ! H + H), added to P_H2_di, P_H2_dd and P_H2_nd.
+   real*8, dimension(1-Ng:N+Ng) ::  dP_H2_di_hrc,dP_H2_dd_hrc,dP_H2_nd_hrc
    ! Metal share of the recombination photons, added to P_m, and the part
    ! of it that is a jump to X++, added to P_m2
    real*8, dimension(1-Ng:N+Ng,n_mion) ::  dP_m_hrc, dP_m2_hrc
@@ -1273,8 +1280,9 @@
    logical :: have_nonroot, have_clamp
    ! The composition the cell ENTERED the sweep with: the previous adopted
    ! step's, or the initial condition at step 0. It is the state a cell
-   ! keeps when the only candidate the solve produced is a non-root whose
-   ! residual is above ieq_nonroot_res_cap (acceptance class 6), and it is
+   ! keeps when the candidate the solve produced is refused (acceptance
+   ! class 6: a non-root above ieq_nonroot_res_cap, or no admissible
+   ! state), and it is
    ! also the starting point of the solve for every step after the first,
    ! so it is built once per cell and used for both.
    real*8, dimension(n_x_max) :: x_entry
@@ -1777,7 +1785,9 @@
 		                     ne, nm, A31, q31a, q31b,                      &
 		                     rchiiB_hrc, rcheiiB_hrc, rcheiiiB_hrc,        &
 		                     dP_HI_hrc, dP_HeI_hrc, dP_H2_hrc, dP_m_hrc,   &
-		                     dheat_hrc, dP_m2=dP_m2_hrc)
+		                     dheat_hrc, dP_m2=dP_m2_hrc,                   &
+		                     dP_H2_di=dP_H2_di_hrc, dP_H2_dd=dP_H2_dd_hrc, &
+		                     dP_H2_nd=dP_H2_nd_hrc)
 		rchiiB   = rchiiB_hrc
 		if (use_he_rec_coupling .and. thereis_He) then
 			rcheiiB  = rcheiiB_hrc
@@ -1788,21 +1798,21 @@
 		! the sweep below, where the stellar field of that cell has just been
 		! evaluated.
 		!
-		! THE H2 SHARE IS NOT SPLIT INTO THE DISSOCIATIVE CHANNEL,
-		! deliberately. These photons sit at 19.8-24.6 eV, where the
-		! dissociative branching of frac_H2_dissociative_ionization is
-		! 1.9-2.3%; splitting off that much of a channel that is itself a
-		! correction would be well inside the +/-4-5% the measured branching
-		! carries. The whole of dP_H2_hrc therefore makes H2+. The same holds
-		! for the two channels added later: the He II photons are far below
-		! the 51.4 eV double-ionization threshold and outside the 33-41 eV
-		! neutral window, so of the four channels only the H2+ one can
-		! receive them, and P_H2_dd / P_H2_nd stay untouched. The He III
-		! photons (He II Ly-alpha at 40.8 eV, the ground capture at 54.4 eV)
-		! would reach those windows, but they are emitted where He III
-		! exists, in the ionized wind, and H2 exists only in the molecular
-		! base; their H2 share is also sent to H2+ (validity (v) of
-		! recombination_radiation_absorbed).
+		! dP_H2_hrc is the TOTAL H2 absorption of these photons and, like
+		! the stellar P_H2, the H2 destruction rate. Its parts that end in
+		! H + H+ + e-, H+ + H+ + 2e- and H + H (dP_H2_di/dd/nd_hrc) are
+		! added to the stellar P_H2_di/dd/nd, so the molecular system makes
+		! H2+ from the remainder only, P_H2 - P_H2_di - P_H2_dd - P_H2_nd,
+		! as it does for the stellar photons. The split is that of the
+		! stellar channel cross sections at the representative energy of
+		! each recombination channel (VALIDITY (v) of
+		! recombination_radiation_absorbed): the He II and He III
+		! recombination photons at 19.8-31.1 eV open the dissociative
+		! channel (1.9-6.3 percent of the absorptions), He II Ly-alpha at
+		! 40.8 eV also the neutral window (11.4 and 1.1 percent), and the
+		! He III -> He II ground capture at 54.4 eV also double ionization
+		! (17.0 and 0.37 percent; both with the default neutral window and
+		! 'chung80' double-ionization model).
 	endif
 
 	! Capture the ground-state H proton-budget coefficients on
@@ -2153,7 +2163,7 @@
 			endif
 
 			! Recombination radiation, absorbed locally.
-			if (use_he_rec_coupling .or. use_h_rec_escape) then
+			if (use_h_rec_escape .or. (use_he_rec_coupling .and. thereis_He)) then
 				! Count where the coupling out-ionizes the stellar field by
 				! three decades, before P_HI absorbs it (diagnostic; silent
 				! when zero).
@@ -2175,10 +2185,15 @@
 				! The He II and He III photons absorbed by He I (the ground
 				! singlet): an addition to its photoionization rate.
 				P_HeI(j) = P_HeI(j) + dP_HeI_hrc(j)
-				! The same photons absorbed by H2: an addition to the H2
-				! photoionization rate, which drives the H2 destruction row
-				! and the H2+ formation row of the molecular system.
-				if (thereis_mol) P_H2(j) = P_H2(j) + dP_H2_hrc(j)
+				! The same photons absorbed by H2: an addition to the total
+				! H2 photodestruction rate and to its three final-state
+				! subsets; the molecular system makes H2+ from the rest.
+				if (thereis_mol) then
+					P_H2(j)    = P_H2(j)    + dP_H2_hrc(j)
+					P_H2_di(j) = P_H2_di(j) + dP_H2_di_hrc(j)
+					P_H2_dd(j) = P_H2_dd(j) + dP_H2_dd_hrc(j)
+					P_H2_nd(j) = P_H2_nd(j) + dP_H2_nd_hrc(j)
+				endif
 				! And the share each metal ion takes of the same photons,
 				! an addition to its photoionization rate (and the part of
 				! it that ends in X++ to the jump rate).
@@ -2206,6 +2221,7 @@
 		!$omp   shared(A31, a_ion_HeI, a_ion_HeII, a_ion_HeITR, a_ion_HI,             &
 		!$omp          aion_m, bg_cell, bg_ready, carrier_transport, D0_H2_xuv,       &
 		!$omp          do_load_IC, dP_H2_hrc, dP_HeI_hrc, dP_HI_hrc, dP_m2_hrc,       &
+		!$omp          dP_H2_dd_hrc, dP_H2_di_hrc, dP_H2_nd_hrc,                      &
 		!$omp          dP_m_hrc, E_ker_H2_dd_xuv, e_vib_bound, f_vib_quench,          &
 		!$omp          ghost_acc_res_cell, ghost_closure_pass_cell,                   &
 		!$omp          ghost_closure_res_cell, gph_balmer_HI, gph_ground_HI,          &
@@ -2262,8 +2278,7 @@
 			! adopted step's composition, or the initial condition at step
 			! 0. Two things read it. It is the starting point of the solve
 			! for every step after the first, and it is the state a cell
-			! KEEPS when the only candidate the solve produced is a
-			! non-root whose residual is above ieq_nonroot_res_cap
+			! KEEPS when the candidate the solve produced is refused
 			! (acceptance class 6). Built here, once, so that the guess and
 			! the kept state are one object -- and OUTSIDE the self-field
 			! loop below, so that the state a cell keeps is the one it
@@ -2370,10 +2385,16 @@
 					gph_ground_HI(j) = P_HI(j)
 					P_HI(j) = P_HI(j) + gph_balmer_HI(j)
 				endif
-				if (use_he_rec_coupling .or. use_h_rec_escape) then
+				if (use_h_rec_escape .or.                                  &
+				    (use_he_rec_coupling .and. thereis_He)) then
 					P_HI(j)  = P_HI(j)  + dP_HI_hrc(j)
 					P_HeI(j) = P_HeI(j) + dP_HeI_hrc(j)
-					if (thereis_mol) P_H2(j) = P_H2(j) + dP_H2_hrc(j)
+					if (thereis_mol) then
+						P_H2(j)    = P_H2(j)    + dP_H2_hrc(j)
+						P_H2_di(j) = P_H2_di(j) + dP_H2_di_hrc(j)
+						P_H2_dd(j) = P_H2_dd(j) + dP_H2_dd_hrc(j)
+						P_H2_nd(j) = P_H2_nd(j) + dP_H2_nd_hrc(j)
+					endif
 					if (thereis_metals) then
 						P_m(j,:)  = P_m(j,:)  + dP_m_hrc(j,:)
 						P_m2(j,:) = P_m2(j,:) + dP_m2_hrc(j,:)
@@ -2940,6 +2961,12 @@
 					n_mol_info(max(0,min(5,info))) =                     &
 						n_mol_info(max(0,min(5,info))) + 1
 
+					! The transported fractions are data: hybrd1 can stop
+					! inside its tolerance with a constraint row not met to
+					! round-off, so the imposed values are restored before
+					! the state is judged, and the state judged is the one
+					! written back.
+					call impose_transported_fractions(sys_x, N_eq, iox)
 					phys_ieq = ionization_fractions_physical(sys_x,N_eq,mbase)
 					if (iatt .eq. 1 .and. .not.phys_ieq)                &
 						n_ieq_unphys = n_ieq_unphys + 1
@@ -3030,6 +3057,7 @@
 						  + dble(clk_end - clk_beg)/dble(clk_rate)
 					n_cce_solve = n_cce_solve + n_cce_fs
 					if (cce_full) then
+						call impose_transported_fractions(x_cce, N_eq, iox)
 						phys_ieq =                                     &
 						  ionization_fractions_physical(x_cce,N_eq,mbase)
 						if (.not.phys_ieq) then
@@ -3044,6 +3072,8 @@
 							             mbase) .le. 1.0d-6) then
 								call clamp_fractions_to_element_budget(&
 								             x_cce,N_eq,mbase)
+								call impose_transported_fractions(     &
+								             x_cce,N_eq,iox)
 								phys_ieq =                             &
 								  ionization_fractions_physical(x_cce, &
 								                        N_eq,mbase)
@@ -3066,9 +3096,14 @@
 				! root, 4 = non-root under the relaxation amnesty
 				! (nonroot_streak_update reports it and stops the run if it
 				! persists), 5 = root of the constrained element-conserving
-				! continuation solve just above, 6 = non-root whose residual
-				! is above ieq_nonroot_res_cap, for which the cell keeps the
-				! composition it entered the sweep with.
+				! continuation solve just above, 6 = refused candidate, for
+				! which the cell keeps the composition it entered the sweep
+				! with: a non-root whose residual is above
+				! ieq_nonroot_res_cap, or a projection onto the element
+				! budget that leaves no admissible state (outside the
+				! simplex once the transported fractions are imposed). The
+				! residual a class-6 cell records is that of the kept
+				! composition.
 				! THE CONTRACT EVERY CONSUMER READS: classes 1, 2, 3 and 5
 				! are ROOTS of the requested equations -- each one passed the
 				! same two tests, a state inside the element simplex and a
@@ -3110,11 +3145,26 @@
 					! projection changes.
 					sys_x(1:N_eq) = x_root_best(1:N_eq)
 					call clamp_fractions_to_element_budget(sys_x,N_eq,mbase)
+					call impose_transported_fractions(sys_x, N_eq, iox)
 					n_mol_clamped = n_mol_clamped + 1
-					acc_res   = normalized_reaction_residual(sys_x,N_eq,   &
-					                                         mbase,ne(j))
-					acc_class = 3
-					if (acc_res .gt. ieq_res_tol) acc_class = 4
+					if (ionization_fractions_physical(sys_x,N_eq,mbase)) then
+						acc_res   = normalized_reaction_residual(sys_x,N_eq,   &
+						                                         mbase,ne(j))
+						acc_class = 3
+						if (acc_res .gt. ieq_res_tol) acc_class = 4
+					else
+						! The projection cannot meet the element budget with the
+						! transported fractions held: no admissible state exists
+						! at this candidate. It is refused, the cell keeps its
+						! entry composition, and the violation of the refused
+						! state is recorded.
+						viol_best = max(viol_best,                            &
+						                element_budget_violation(sys_x,N_eq,mbase))
+						sys_x(1:N_eq) = x_entry(1:N_eq)
+						acc_res   = normalized_reaction_residual(sys_x,N_eq,   &
+						                                         mbase,ne(j))
+						acc_class = 6
+					endif
 				endif
 				! A residual that is not a finite number is not a small
 				! one: the state has driven a balance row of the network
@@ -3137,8 +3187,11 @@
 				! built after the sweep are those of THAT composition.
 				if (acc_class .eq. 4) then
 					acc_class = nonroot_acceptance_class(acc_res)
-					if (acc_class .eq. 6)                                  &
+					if (acc_class .eq. 6) then
 						sys_x(1:N_eq) = x_entry(1:N_eq)
+						acc_res = normalized_reaction_residual(sys_x,N_eq,     &
+						                                       mbase,ne(j))
+					endif
 				endif
 				! Has the cell's own field stopped moving its own composition
 				! (xuv_self_field_passes).  The comparison is between two
@@ -3345,6 +3398,9 @@
 						conv_ieq = (info_ieq .eq. 1)
 					endif
 
+					! The transported stages are data; the state judged is the
+					! one written back (as in the molecular block above).
+					call impose_transported_fractions(sys_x, N_eq, 0)
 					phys_ieq = ionization_fractions_physical(sys_x,N_eq,mbase)
 					if (iatt .eq. 1 .and. .not.phys_ieq)                &
 						n_ieq_unphys = n_ieq_unphys + 1
@@ -3405,8 +3461,11 @@
 					! Every attempt left the physical simplex. Rather than
 					! propagate negative densities, hand back the uncoupled
 					! ionization balance, which is admissible by
-					! construction, and recheck its residual under the
-					! coupled system.
+					! construction until transported stages are imposed on
+					! it, and recheck its residual under the coupled system.
+					! With the transported stages imposed it can leave the
+					! simplex; it is then refused (class 6) and the cell
+					! keeps its entry composition.
 					! How far outside the simplex the rejected iterate
 					! lay, measured before it is replaced: the size of the
 					! excursion is what a caller probing this state needs
@@ -3414,11 +3473,21 @@
 					viol_best = element_budget_violation(sys_x,N_eq,mbase)
 					call ionization_balance_at_fixed_ne(sys_x,N_eq,   &
 					                                    mbase,ne(j))
+					call impose_transported_fractions(sys_x, N_eq, 0)
 					n_ieq_fail = n_ieq_fail + 1
-					acc_res   = normalized_reaction_residual(sys_x,N_eq,   &
-					                                         mbase,ne(j))
-					acc_class = 3
-					if (acc_res .gt. ieq_res_tol) acc_class = 4
+					if (ionization_fractions_physical(sys_x,N_eq,mbase)) then
+						acc_res   = normalized_reaction_residual(sys_x,N_eq,   &
+						                                         mbase,ne(j))
+						acc_class = 3
+						if (acc_res .gt. ieq_res_tol) acc_class = 4
+					else
+						viol_best = max(viol_best,                            &
+						                element_budget_violation(sys_x,N_eq,mbase))
+						sys_x(1:N_eq) = x_entry(1:N_eq)
+						acc_res   = normalized_reaction_residual(sys_x,N_eq,   &
+						                                         mbase,ne(j))
+						acc_class = 6
+					endif
 				endif
 				! Same rule as the molecular branch above: a non-finite
 				! residual is a non-root and stays out of the statistic.
@@ -3434,8 +3503,11 @@
 				! built after the sweep are those of THAT composition.
 				if (acc_class .eq. 4) then
 					acc_class = nonroot_acceptance_class(acc_res)
-					if (acc_class .eq. 6)                                  &
+					if (acc_class .eq. 6) then
 						sys_x(1:N_eq) = x_entry(1:N_eq)
+						acc_res = normalized_reaction_residual(sys_x,N_eq,     &
+						                                       mbase,ne(j))
+					endif
 				endif
 				! Has the cell's own field stopped moving its own composition
 				! (xuv_self_field_passes).  The comparison is between two
@@ -3484,15 +3556,16 @@
 			if (thereis_mol) then
 				! guard tiny negatives from the NL solve
 				sys_x(1:N_eq) = max(sys_x(1:N_eq), 0.0d0)
-				! A TRANSPORTED H2 IS HANDED TO THIS SWEEP, NOT SOLVED BY
-				! IT.  A root meets the imposed value through its own
-				! row, but a non-root acceptance (class 4) or a clamp
-				! onto the element budget (class 3) can return another
-				! x(4), and writing that back rewrote the carrier the
-				! transport solve owns, cell by cell.  The imposed value
-				! is written; the atomic hydrogen below takes the
-				! remainder of the budget.
-				if (ieq_cell%x_h2_fixed) sys_x(4) = ieq_cell%x_h2_fix
+				! A TRANSPORTED FRACTION IS HANDED TO THIS SWEEP, NOT
+				! SOLVED BY IT (H2, the oxygen carriers, the ionization
+				! stages).  A root meets the imposed value through its own
+				! row, but a non-root acceptance (class 4) or a clamp onto
+				! the element budget (class 3) can return another value,
+				! and writing that back rewrote what the transport solve
+				! owns, cell by cell; the floor at zero just above can
+				! move it too.  The imposed values are written; the atomic
+				! hydrogen below takes the remainder of the budget.
+				call impose_transported_fractions(sys_x, N_eq, iox)
 				nhii(j)   = nh(j)*sys_x(1)
 				nmol_eq(j,1) = 0.5d0*sys_x(4)*nh(j)
 				nmol_eq(j,2) = 0.5d0*sys_x(5)*nh(j)
@@ -3515,12 +3588,15 @@
 				              - nmol_eq(j,4), 0.0d0)
 				if (thereis_HeITR) nheiTR(j) = nhe(j)*sys_x(8)
 			else
-			nhi(j)    = nh(j)*(1.0 - sys_x(1))
-			nhii(j)   = nh(j)*sys_x(1)
-			nhei(j)   = nhe(j)*(1.0 - sys_x(2) - sys_x(3))
-			nheii(j)  = nhe(j)*sys_x(2)
-			nheiii(j) = nhe(j)*sys_x(3)
-			if (thereis_HeITR) nheiTR(j) = nhe(j)*sys_x(4)
+				! The transported stages are written as imposed (as in the
+				! molecular branch above).
+				call impose_transported_fractions(sys_x, N_eq, 0)
+				nhi(j)    = nh(j)*(1.0d0 - sys_x(1))
+				nhii(j)   = nh(j)*sys_x(1)
+				nhei(j)   = nhe(j)*(1.0d0 - sys_x(2) - sys_x(3))
+				nheii(j)  = nhe(j)*sys_x(2)
+				nheiii(j) = nhe(j)*sys_x(3)
+				if (thereis_HeITR) nheiTR(j) = nhe(j)*sys_x(4)
 			endif
 			if (thereis_metals) then
 				do im = 1,n_melem
@@ -4900,9 +4976,10 @@
 		if (led%acc_n(6) .gt. 0)                                          &
 			write(*,'(A,I0,A,ES9.2,A,ES9.2,A)')                           &
 			'     ioniz-eq acceptance WARNING: ', led%acc_n(6),           &
-			' cell state(s) were NON-ROOTS above the amnesty cap (max'//  &
-			' res ', led%acc_resmax(6), ', cap ', ieq_nonroot_res_cap,    &
-			'); each kept the composition it entered the sweep with'
+			' candidate(s) refused (residual above the amnesty cap '//     &
+			'or no admissible state); each cell kept its entry '//        &
+			'composition (max res of the kept state ', led%acc_resmax(6), &
+			', cap ', ieq_nonroot_res_cap, ')'
 		if (led%acc_n(5) .gt. 0)                                          &
 			write(*,'(A,I0,A,ES9.2,A)')                                   &
 			'     ioniz-eq acceptance: ', led%acc_n(5),                   &
@@ -5421,7 +5498,7 @@
 	real*8  :: A(nx,nx), wr(nx), wi(nx), vdum(1,1)
 	real*8  :: work(8*nx+64), conv(nx), lam, lo, hi
 	integer :: iflag, i, l, e, ix, islot, info, lwork, nsub, ksub(nx)
-	logical :: keep(nx), h2_fix, hp_fix, ox_fix
+	logical :: keep(nx), h2_fix, hp_fix, ox_fix, heii_fix, heiii_fix
 	if (.not. thereis_mol) return
 	! The molecular block is seven rows before any option adds to it and
 	! the rate conversion below names all seven; a shorter system is not
@@ -5476,12 +5553,20 @@
 			conv(i) = conv(i)/mol_inv_turnover(i)
 	enddo
 
-	h2_fix = ieq_cell%x_h2_fixed
-	hp_fix = ieq_cell%x_hp_fixed
-	ox_fix = ieq_cell%x_ox_fixed
-	ieq_cell%x_h2_fixed = .false.
-	ieq_cell%x_hp_fixed = .false.
-	ieq_cell%x_ox_fixed = .false.
+	! The rates measured are those of the chemistry: every row a transport
+	! solve owns is a constraint x - x_fix = 0 whose derivative is not a
+	! chemical rate, so all of them are released while the matrix is formed
+	! (the H2 and oxygen carriers and the three ionization stages).
+	h2_fix    = ieq_cell%x_h2_fixed
+	hp_fix    = ieq_cell%x_hp_fixed
+	heii_fix  = ieq_cell%x_heii_fixed
+	heiii_fix = ieq_cell%x_heiii_fixed
+	ox_fix    = ieq_cell%x_ox_fixed
+	ieq_cell%x_h2_fixed    = .false.
+	ieq_cell%x_hp_fixed    = .false.
+	ieq_cell%x_heii_fixed  = .false.
+	ieq_cell%x_heiii_fixed = .false.
+	ieq_cell%x_ox_fixed    = .false.
 
 	par   = 0.0d0
 	iflag = 1
@@ -5499,9 +5584,11 @@
 		enddo
 	enddo
 
-	ieq_cell%x_h2_fixed = h2_fix
-	ieq_cell%x_hp_fixed = hp_fix
-	ieq_cell%x_ox_fixed = ox_fix
+	ieq_cell%x_h2_fixed    = h2_fix
+	ieq_cell%x_hp_fixed    = hp_fix
+	ieq_cell%x_heii_fixed  = heii_fix
+	ieq_cell%x_heiii_fixed = heiii_fix
+	ieq_cell%x_ox_fixed    = ox_fix
 
 	! The molecules' own rates: the diagonal of the rate matrix, which is
 	! the rate at which that molecule's own population relaxes when nothing
@@ -5589,9 +5676,10 @@
 	! whose accepted state is a root (classes 1-3, and class 5, the root of
 	! the constrained element-conserving continuation solve) resets its
 	! streak; a cell whose state is NOT a root -- class 4, the non-root
-	! adopted under the amnesty, and class 6, the non-root above
-	! ieq_nonroot_res_cap for which the cell kept the composition it
-	! entered the sweep with -- is reported loudly, counted, and
+	! adopted under the amnesty, and class 6, the refused candidate (a
+	! non-root above ieq_nonroot_res_cap, or no admissible state) for which
+	! the cell kept the composition it entered the sweep with -- is
+	! reported loudly, counted, and
 	! allowed to continue for at most ieq_nonroot_streak_stop consecutive
 	! sweeps -- the measured signature of a cold-start transient that the
 	! next sweeps repair (see ieq_res_tol / ieq_nonroot_streak_stop above).
@@ -5624,7 +5712,7 @@
 	ieq_nonroot_streak(j) = ieq_nonroot_streak(j) + 1
 	if (acc_class .eq. 6) then
 		call report_acceptance_event(                                     &
-			'NON-ROOT above the amnesty cap, entry composition kept',     &
+			'candidate refused, entry composition kept',                 &
 			j,step,radius,T,info,viol,res)
 	else
 		call report_acceptance_event(                                     &
@@ -5645,7 +5733,7 @@
 			'   solver info ', info, '  element violation ', viol,        &
 			'  normalized reaction residual ', res,                       &
 			'  (tolerance ', ieq_res_tol, ')'
-		write(*,'(A)') '   candidate stage fractions:'
+		write(*,'(A)') '   retained stage fractions:'
 		write(*,'(6ES12.4)') x(1:n)
 		write(*,'(A)') '   Bounds and element conservation are necessary'//&
 			' conditions, not reaction equilibrium; continuing with a'

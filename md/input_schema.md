@@ -702,7 +702,14 @@ two companion readers follow opposite case conventions.
 
 `Load IC? True` reads `output/Hydro_ioniz_IC.txt` and
 `output/Ion_species_IC.txt`, which are copies of the `Hydro_ioniz.txt` and
-`Ion_species.txt` a previous run wrote. Both are plain column files whose `#`
+`Ion_species.txt` a previous run wrote. A third file,
+`output/conserved_state_IC.txt` (a copy of `conserved_state.txt`, the exact
+code-unit state written beside every equilibrium pair), is used in place of
+converting the pair when it matches the run and is otherwise ignored with a
+notice; it needs no `input.inp` key, and its format and rules are documented
+in `README.md` (the bullet on `conserved_state.txt`) and in
+`docs/EXHALE_user_manual.tex`, section "Output files", subsection
+`conserved_state.txt`. The two state files are plain column files whose `#`
 lines are comments; `load_IC` skips them, except for two it reads:
 
 | line | in | read by | meaning |

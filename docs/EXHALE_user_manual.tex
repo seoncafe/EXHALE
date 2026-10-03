@@ -3180,6 +3180,9 @@ alternates a wind solve with a composition relaxation also keeps the state of
 its last completed outer pass, the generation
 \path{output/pass_state/<state_id>/} named by \path{output/pass_state/current}
 (\S\ref{sec:passstate}), a restartable pair that is never a certified state.
+Every equilibrium pair is accompanied by \texttt{conserved\_state.txt}, the
+same state in code units to the last bit, which a restart uses in place of
+converting the pair when it matches the run (\S\ref{sec:conservedstate}).
 
 \paragraph{Caveat: the \texttt{\_adv} profile at a ``breathing'' base.}
 The advection-corrected (\texttt{*\_adv.txt}) \emph{temperature and ionization}
@@ -3623,6 +3626,67 @@ $n({\rm O\,\textsc{i}})+n({\rm O\,\textsc{ii}})+n({\rm O\,\textsc{iii}})
 +n({\rm OH})+n({\rm H_2O})+n({\rm CO})$, and the same holds for carbon with
 CO.
 
+\subsection{\texttt{conserved\_state.txt}: the exact code-unit state}
+\label{sec:conservedstate}
+\emph{What}: the conserved variables $(\rho,\ \rho v,\ E)$ and every species
+fraction $f_{\rm sp}$ of every cell, ghosts included, in code units, written
+as \texttt{ES25.17E3} text; 17 significant digits reproduce a binary64 value
+exactly on reading. \emph{When}: with every equilibrium pair the run writes
+(the periodic and final states of every route, the \texttt{EXHALE\_DUMP\_IC=1}
+dump, and each pass-state generation, \S\ref{sec:passstate}), after the two
+dimensional files are closed. \emph{Why}: a restart from the dimensional pair
+converts physical units back to code units, recovers the species fractions
+from densities and rebuilds the energy from the pressure through the caloric
+equation of state, which moves the last digits of the state (on a 20-step
+\texttt{wasp\_he23off} state, 146 of the 500 conserved rows and all 500
+composition rows of the physical cells); from this file the restart starts
+from the bits the run ended on.
+
+\emph{Restart}: copy it with the pair, to
+\texttt{output/conserved\_state\_IC.txt}, and run with \texttt{Load IC?\ True}.
+After \texttt{load\_IC} has accepted the pair, the file is used only when every
+recorded line agrees with the run: the format version; the shape
+($N$, $N_g$, number of species); the rolling checksums of the two dimensional
+files it was written with (\texttt{PAIR\_CHECKSUM}); the reservoir and options
+fields of the restart metadata (\texttt{CONFIG}); the base boundary model
+(\texttt{BOUNDARY}); the species order (\texttt{SPECIES}); the normalization
+constants and planetary parameters (\texttt{NORMALIZATION}); checksums of the
+physical input files (\texttt{SOURCE\_CHECKSUM}: the spectrum file, the
+lower-atmosphere profile or \texttt{base.inp}, \texttt{metals.inp}, the
+opacity model and coefficients, the opacity tables) and of the gravitational
+potential and irradiation field (\texttt{FIELD\_CHECKSUM}); the cell and face
+radii (\texttt{R}, \texttt{E} rows); the data rows (\texttt{U}, \texttt{F})
+with their checksum (\texttt{DATA\_CHECKSUM}); and the end marker. The
+checksums are rolling sums for detecting accidental mismatches, not
+cryptographic digests. A mismatch, a truncated or damaged file, a nonfinite
+value, a nonpositive density or internal energy in a physical cell, a negative
+species fraction, or a load that applied a \texttt{Restart option change:},
+migrated a legacy factor token or read a pair without restart metadata,
+leaves the file unused: a notice framed by asterisks names the reason and the
+restart proceeds from the dimensional pair, which \texttt{load\_IC} has
+already accepted and which remains the state of record. A molecular-seed
+conversion (its atomic state is read from the seed directory) and a seed whose
+lower layer is projected with \texttt{EXHALE\_SEED\_HYDROSTATIC\_CELLS} never
+read it. What is restored: the physical cells and the upper ghosts; the lower
+ghosts are rebuilt by the boundary condition from the restored interior and
+the run's reservoir, and their composition is the one \texttt{load\_IC}
+formed. MEASURED: two successive write--reload--write cycles through
+\texttt{EXHALE\_DUMP\_IC=1} reproduce $u$ and $f_{\rm sp}$ of all 500
+physical cells of that state bitwise.
+
+\emph{Writing never changes the exit status.} A state that cannot be written
+exactly (a nonfinite value, a nonpositive density or internal energy in a
+physical cell, a negative species fraction in any row, an unreadable input
+file, an I/O failure) is not written; any older file at that path is removed,
+because it would describe another state, and a warning names the reason. The
+dimensional pair is then the restart. A write of a pair without the conserved
+state, the molecular-seed conversion, removes an older
+\texttt{conserved\_state\_IC.txt} beside the pair it writes. The graphical
+interface copies \texttt{conserved\_state.txt} with the pair and deletes a
+stale \texttt{conserved\_state\_IC.txt} when the state has none;
+\texttt{src/utils/map\_state\_to\_grid.py} refuses a destination that already
+holds such a file, since a mapped state is a new state.
+
 \subsection{\texttt{pass\_state/}: the state of every outer pass}
 \label{sec:passstate}
 The state of the last completed outer pass of the stationary route
@@ -3653,6 +3717,7 @@ for the generations on \texttt{iontrans\_metals} and \texttt{hp\_front},
 \begin{quote}\ttfamily\small
 output/pass\_state/<state\_id>/Hydro\_ioniz.txt\\
 output/pass\_state/<state\_id>/Ion\_species.txt\\
+output/pass\_state/<state\_id>/conserved\_state.txt\\
 output/pass\_state/<state\_id>/manifest.txt\\
 output/pass\_state/current
 \end{quote}
@@ -3664,10 +3729,12 @@ number never name one generation. \texttt{manifest.txt} states, one
 \texttt{key=value} a line, the \texttt{state\_id}, the \texttt{run\_identity},
 the \texttt{pass}, the \texttt{previous\_state\_id} (the generation
 \texttt{current} named when this one was published), the two file names with
-their sizes in bytes, and the certification pair. \texttt{current} is one line,
+their sizes in bytes, \texttt{conserved\_state=conserved\_state.txt} when
+the exact state of the pass was written (\S\ref{sec:conservedstate}), and the
+certification pair. \texttt{current} is one line,
 the \texttt{state\_id} of the generation a restart takes.
 
-\emph{The order of publication}: (1) the three files are written and closed in
+\emph{The order of publication}: (1) the files are written and closed in
 \path{output/pass_state/.<state_id>.tmp/}; (2) that directory is renamed onto
 \path{output/pass_state/<state_id>}; (3) \path{output/pass_state/current.part}
 is written with the new \texttt{state\_id} and renamed onto
@@ -3705,7 +3772,11 @@ names to \texttt{output/Hydro\_ioniz\_IC.txt} /
 G=$(cat output/pass_state/current)
 cp output/pass_state/$G/Hydro_ioniz.txt output/Hydro_ioniz_IC.txt
 cp output/pass_state/$G/Ion_species.txt output/Ion_species_IC.txt
+cp output/pass_state/$G/conserved_state.txt output/conserved_state_IC.txt
 \end{lstlisting}
+(the last line where the generation holds the file; otherwise remove an older
+\texttt{output/conserved\_state\_IC.txt}, which the restart would ignore with
+a notice)
 and run with \texttt{Load IC?\ True} as from any state file (the restart
 contract of \S\ref{sec:inputs} applies unchanged). The carrier movement bound
 and the element under-relaxation factor the run had reached are \emph{not}

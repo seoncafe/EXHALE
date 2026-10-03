@@ -121,6 +121,7 @@ SRC := \
   src/modules/files_IO/lower_atmosphere_profile.f90 \
   src/modules/files_IO/input_read.f90 \
   src/modules/files_IO/load_IC.f90 \
+  src/modules/files_IO/conserved_state_restart.f90 \
   src/modules/files_IO/write_output.f90 \
   src/modules/files_IO/write_setup_report.f90 \
   src/modules/functions/grav_field.f90 \

@@ -4559,8 +4559,10 @@
                                        n_no_chem_root_last)
             ! The worst reaction residual of a cell the chemistry does not
             ! describe, over BOTH non-root classes: 4, the state kept under
-            ! the relaxation amnesty, and 6, the candidate above the amnesty
-            ! cap for which the cell kept its entry composition. The count
+            ! the relaxation amnesty, and 6, a refused candidate (above the
+            ! amnesty cap, or a constrained projection outside the element
+            ! budget) for which the cell kept its entry composition; the
+            ! class-6 residual is that of the retained entry state. The count
             ! this residual belongs to (n_cells_without_chemical_root) is the
             ! sum of the two, so class 4 alone reported zero for a sweep
             ! whose non-root cells were all class 6.

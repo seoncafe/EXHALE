@@ -184,7 +184,9 @@ class Run:
         self.adv_mass_row = None
         self.adv_conditional_tol = None
         self.ion = {}          # ion name -> number density [cm^-3]
-        self.inp = {}          # parsed input.inp (see read_input)
+        self.inp = {}          # parsed input.inp (see read_input); Rp_RJ and
+                               # Mp_MJ are the solved values (see load_run)
+        self.resolved = {}     # EXHALE_resolved.out key -> value string
 
     @property
     def v_kms(self):
@@ -572,8 +574,10 @@ def load_lower_atmosphere_profile(path):
 def read_input(path):
     """Parse an input.inp into a dict. Captures the numeric planet/star
     parameters and the optional keyword block. Values are floats where possible.
-    Keys: Rp_RJ, Mp_MJ, T0, a_AU, r_esc, HeH, Mstar_Msun, LX, LEUV,
-    n0_log10, plus any 'Domain mode', 'Outer radius', etc. by label."""
+    Keys: Rp_RJ, Mp_MJ, T0, a_AU, r_esc, HeH, Mstar_Msun, LEUV, n0_log10,
+    spherical, and 'raw' holding every 'label: value' line by label.
+    Rp_RJ and Mp_MJ here are the input.inp values, which the run starts
+    from; load_run replaces them by the solved ones (EXHALE_resolved.out)."""
     inp = {}
     with open(path) as f:
         for line in f:
@@ -606,14 +610,88 @@ def read_input(path):
     )
 
 
+# --- the planet the run was solved for ------------------------------------
+# `Planet radius` and `Planet mass` in input.inp are the values the run STARTS
+# from, not necessarily the ones it was solved with: the lower-atmosphere
+# profile handoff sets R0 to the radius of its matching level
+# (input_read.f90, `lap_value_at_match('r', ...)`), and base.inp can override
+# the base state as well.  The Fortran writes the values in effect to
+# EXHALE_resolved.out in the run directory (write_resolved_config,
+# write_setup_report.f90: keys `planet_radius_RJ`, `planet_mass_MJ`), and the
+# radius column of every profile is in units of that R0.  load_run puts those
+# values in run.inp['Rp_RJ'] / run.inp['Mp_MJ'], so every dimensional
+# quantity formed from a loaded run (mdot_log10, mdot_Mp_per_Gyr, r in cm)
+# uses the radius and mass the solution was computed with.
+RESOLVED_CONFIG_FILE = 'EXHALE_resolved.out'
+_PROFILE_R0 = re.compile(r'R0\[cm\]\s+(\S+)')
+
+
+def read_resolved_config(path):
+    """EXHALE_resolved.out -> {key: value string}.  The file is '# '
+    comments, then one 'key value' pair per line; a value may contain spaces
+    (the notes keys) and is kept whole.  Only `planet_radius_RJ` and
+    `planet_mass_MJ` are required (they are written by every version of the
+    writer); a file without them, or with a nonpositive or nonfinite value,
+    is refused rather than silently replaced by input.inp."""
+    vals = {}
+    with open(path) as fh:
+        for line in fh:
+            words = line.split(None, 1)
+            if not words or words[0].startswith('#'):
+                continue
+            vals[words[0]] = words[1].strip() if len(words) > 1 else ''
+    for key in ('planet_radius_RJ', 'planet_mass_MJ'):
+        try:
+            x = float(vals[key])
+        except KeyError:
+            raise ValueError('%s: no %s line' % (path, key))
+        except ValueError:
+            raise ValueError('%s: %s = %r is not a number'
+                             % (path, key, vals[key]))
+        if not (np.isfinite(x) and x > 0.0):
+            raise ValueError('%s: %s = %r is not a positive finite number'
+                             % (path, key, vals[key]))
+    return vals
+
+
+def profile_base_radius_cm(path):
+    """R0 [cm] that a profile file states in its '# grid ... R0[cm] X'
+    header line (load_IC.f90 writes it), or None if the file predates it."""
+    with open(path) as fh:
+        for line in fh:
+            if not line.startswith('#'):
+                break
+            m = _PROFILE_R0.search(line)
+            if m:
+                return float(m.group(1))
+    return None
+
+
 def load_run(outdir, inputfile, adv=True, ghost=False):
     """Load a full run: hydro + ions (+ parsed input). Uses the _adv
     (advection-corrected) files by default; set adv=False for the eq files.
-    Physical cells only unless ghost=True."""
+    Physical cells only unless ghost=True.
+
+    Planet radius and mass.  run.inp['Rp_RJ'] and run.inp['Mp_MJ'] are the
+    values the run was solved with, read from EXHALE_resolved.out in the run
+    directory (the parent of `outdir`, independently of `inputfile`);
+    the input.inp values are kept as
+    run.inp['Rp_RJ_input'] / run.inp['Mp_MJ_input'] and run.inp['planet_source']
+    names the file the values came from.  Without EXHALE_resolved.out the
+    input.inp values are used and a note is printed: they are the run's
+    values only when neither the lower-atmosphere profile nor base.inp
+    changed the base.  The parsed file is run.resolved ({} when absent).
+
+    The resolved file is the record of the LAST run in that directory.
+    Where the profile header states its own R0 (the '# grid' line), the two
+    radii are compared and a mismatch is refused: it means the output
+    directory and the resolved file belong to different runs."""
     import os
+    import sys
     suf = '_adv' if adv else ''
     run = Run()
-    h = load_hydro(os.path.join(outdir, 'Hydro_ioniz%s.txt' % suf), ghost)
+    hydro_path = os.path.join(outdir, 'Hydro_ioniz%s.txt' % suf)
+    h = load_hydro(hydro_path, ghost)
     run.r, run.n, run.v = h['r'], h['n'], h['v']
     run.p, run.T, run.heat, run.cool = h['p'], h['T'], h['heat'], h['cool']
     # Present in the _adv file only (see load_hydro); None for the eq file,
@@ -631,6 +709,32 @@ def load_run(outdir, inputfile, adv=True, ghost=False):
                            ghost)
     if inputfile:
         run.inp = read_input(inputfile)
+    run_dir = os.path.dirname(os.path.abspath(outdir.rstrip(os.sep)))
+    run.inp['Rp_RJ_input'] = run.inp.get('Rp_RJ')
+    run.inp['Mp_MJ_input'] = run.inp.get('Mp_MJ')
+    res_path = os.path.join(run_dir, RESOLVED_CONFIG_FILE)
+    if os.path.isfile(res_path):
+        run.resolved = read_resolved_config(res_path)
+        run.inp['Rp_RJ'] = float(run.resolved['planet_radius_RJ'])
+        run.inp['Mp_MJ'] = float(run.resolved['planet_mass_MJ'])
+        run.inp['planet_source'] = res_path
+        r0_cm = profile_base_radius_cm(hydro_path)
+        if r0_cm is not None and abs(r0_cm / (run.inp['Rp_RJ'] * RJ) - 1.0) \
+                > 1.0e-9:
+            raise ValueError(
+                '%s states R0 = %.10e cm but %s gives %.10e cm: the output '
+                'directory and the resolved configuration are not of the '
+                'same run' % (hydro_path, r0_cm, res_path,
+                              run.inp['Rp_RJ'] * RJ))
+    else:
+        run.resolved = {}
+        run.inp['planet_source'] = inputfile or None
+        if inputfile:
+            print('exhale_io: no %s in %s; planet radius and mass taken from '
+                  '%s, which is the solved planet only if no lower-atmosphere '
+                  'profile or base.inp changed the base'
+                  % (RESOLVED_CONFIG_FILE, run_dir, inputfile),
+                  file=sys.stderr)
     return run
 
 
@@ -665,15 +769,26 @@ def _mdot_factor(method):
             "Mdot, Mdot/4, Rate/2[ + Mdot/2], Rate/4[ + Mdot], alpha" % method)
 
 
+def _planet_value(run, key):
+    """run.inp[key] for 'Rp_RJ' / 'Mp_MJ'; refused when the run carries
+    neither an input.inp value nor a resolved one, instead of assuming a
+    Jupiter."""
+    x = run.inp.get(key)
+    if x is None:
+        raise ValueError('%s unknown for this run: load it with its input.inp '
+                         'or next to its EXHALE_resolved.out' % key)
+    return x
+
+
 def mdot_log10(run, j_from_top=20):
     """log10 of the steady-state mass-loss rate [g/s], 4*pi*rho*v*r^2 evaluated
     near the outer boundary, with the 2D-approximation factor from input.inp's
     '2D approximate method'. Mirrors EXHALE_main.f90, which evaluates it at the
-    PHYSICAL cell j = N - j_from_top (EXHALE_main.f90:1514) -- 0-based index
-    len(r) - 1 - j_from_top of a ghost-free array. It used to be indexed
-    len(r) - j_from_top on an array that still carried the ghost rows, i.e.
-    three cells further out than the run's own Mdot."""
-    Rp = run.inp.get('Rp_RJ', 1.0) * RJ
+    PHYSICAL cell j = N - j_from_top (EXHALE_main.f90, subroutine
+    steady_mass_loss_rate) -- 0-based index len(r) - 1 - j_from_top of a
+    ghost-free array.  The radius is the solved R0 (run.inp['Rp_RJ'], set by
+    load_run from EXHALE_resolved.out), the one the Fortran multiplies by."""
+    Rp = _planet_value(run, 'Rp_RJ') * RJ
     j = len(run.r) - 1 - j_from_top
     mdot = 4.0 * np.pi * run.n[j] * mu * run.v[j] * (run.r[j] * Rp) ** 2
     method = run.inp.get('raw', {}).get('2D approximate method', '')
@@ -682,6 +797,7 @@ def mdot_log10(run, j_from_top=20):
 
 
 def mdot_Mp_per_Gyr(run, j_from_top=20):
-    """Steady-state Mdot in units of the planet mass per Gyr."""
-    Mp = run.inp.get('Mp_MJ', 1.0) * MJ
+    """Steady-state Mdot in units of the planet mass per Gyr (the solved
+    planet mass, run.inp['Mp_MJ'], see load_run)."""
+    Mp = _planet_value(run, 'Mp_MJ') * MJ
     return 10.0 ** mdot_log10(run, j_from_top) * GYR / Mp

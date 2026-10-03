@@ -675,7 +675,11 @@
       ! partition, which is the zero-gradient condition written on the face
       ! the gas actually crosses.  Which of the two a carrier gets is
       ! declared with it.
-      integer, parameter :: n_car_max = 8
+      ! A carrier is a species of the species table (advected_carrier_register
+      ! takes its mass from bsp_mass), so the table's independent species
+      ! bound the count; an excited level is part of its atom and is never
+      ! one.
+      integer, parameter :: n_car_max = count(.not.bsp_is_excited_level)
       integer :: car_isp(n_car_max)  = 0
       real*8  :: car_mass(n_car_max) = 0.0d0
       logical :: car_base_imposed(n_car_max) = .false.
@@ -1963,8 +1967,9 @@
       ! symmetric in the two species, so one number serves He-in-H and
       ! H-in-He.  Consistency check of the framework: the rigid-sphere
       ! collision integral Omega^(1,1) = pi d^2 (kT/2 pi mu)^(1/2) put into
-      ! the Chapman-Enskog D above returns exactly this expression with the
-      ! collision diameter d = 2.7 Angstrom, so (8), (9) and (10) are the same
+      ! the Chapman-Enskog D above returns this expression with the
+      ! collision diameter d = 2.99 Angstrom (3/(8 d^2) (k/2 pi m_H)^(1/2) =
+      ! 1.52e18 for d = 2.990e-8 cm), so (8), (9) and (10) are the same
       ! approximation and not three unrelated fits.
       real*8, intent(in) :: TK, ntot, A_s, A_t
       hard_sphere_pair_diffusion = bk_hs_pref*sqrt(1.0d0/A_s + 1.0d0/A_t)  &
@@ -1992,17 +1997,20 @@
       !
       ! alpha_n [cm^3] is the neutral partner's static dipole polarizability,
       ! e is in esu and mu_g the reduced mass in grams.  Note D ~ T, not
-      ! T^(1/2): the polarization coupling weakens as the pair gets faster.
+      ! T^(1/2): the momentum-transfer rate coefficient of the polarization
+      ! interaction is independent of the relative speed, so the friction
+      ! coefficient k T/(n D) of the pair does not depend on T.
       ! Valid for NON-RESONANT pairs only; a resonant pair (H+ + H, He+ + He)
       ! is charge-exchange dominated and never appears here, because both of
       ! its partners carry the same element (see the module header).
       !
       ! TEMPERATURE RANGE.  This is the LOW-energy limit of the ion-neutral
       ! interaction: it keeps only the induced-dipole attraction and no
-      ! repulsive core, so its friction weakens as T^-1 where a rigid core
-      ! would hold it at T^-1/2.  It is therefore NOT called on its own --
-      ! ion_neutral_pair_diffusion below adds it to the rigid-core channel,
-      ! which is what keeps the friction from vanishing at high temperature.
+      ! repulsive core.  Its friction coefficient is constant in T, while that
+      ! of a rigid core grows as T^(1/2) (1/D falls as T^-1 and T^-1/2), so at
+      ! high temperature the core dominates the friction.  It is therefore NOT
+      ! called on its own -- ion_neutral_pair_diffusion below combines it with
+      ! the rigid-core estimate.
       real*8, intent(in) :: TK, ntot, alpha_n, mu_g
       polarization_pair_diffusion = kb_erg*TK                              &
            /(2.21d0*pi*e_esu*ntot*sqrt(max(alpha_n*mu_g, 1.0d-60)))
@@ -2058,23 +2066,27 @@
 
       real*8 function ion_neutral_pair_diffusion(TK, ntot, alpha_n,        &
                                                  A_s, A_t, mu_g)
-      ! ION-NEUTRAL, NON-RESONANT: the induced-dipole (polarization) channel
-      ! and the rigid-core channel taken TOGETHER,
+      ! ION-NEUTRAL, NON-RESONANT: the induced-dipole (polarization) estimate
+      ! and the rigid-core estimate combined as
       !
       !    1/D_in = 1/D_polarization + 1/D_hard sphere .
       !
-      ! Reason: the two are momentum-transfer cross sections of the same
-      ! encounter -- the long-range attraction and the short-range repulsion
-      ! of one interaction potential -- and to first order their Q^(1) add,
-      ! so their collision integrals add, so their FRICTIONS add.  Adding
-      ! frictions is adding inverse diffusion coefficients (D = 3kT/(16 n mu
-      ! Omega^(1,1)) is linear in 1/Omega), which is the same rule
-      ! stage_mixture_diffusion uses across stages.  The physical content is
-      ! that opening a second channel cannot make a pair MORE mobile: D_in is
-      ! bounded above by the weaker-friction channel and can never exceed
-      ! either limit.
+      ! THIS IS AN INTERPOLATION BETWEEN TWO LIMITS, NOT A COLLISION INTEGRAL.
+      ! The long-range attraction and the short-range repulsion are two parts
+      ! of ONE interaction potential; the deflection of an encounter is set
+      ! by the whole potential, so their momentum-transfer cross sections do
+      ! not add in general (for an r^-4 attraction with a rigid core a
+      ! captured orbit reaches the core, so by the classical-orbit argument
+      ! the cross section is expected nearer the larger of the two than their
+      ! sum; this was not computed here).  Summing inverse D is
+      ! summing the two friction coefficients.  It recovers each limit, and
+      ! where the two coefficients are equal it gives twice the friction of
+      ! either one, so in the crossover it can overstate the friction by up
+      ! to a factor of 2 against taking the stronger estimate alone.  No
+      ! collision integral of a combined polarization-plus-core potential has
+      ! been compared with it.
       !
-      ! Both limits are reproduced exactly.  D_pol ~ T and D_hs ~ T^(1/2), so
+      ! The limits.  D_pol ~ T and D_hs ~ T^(1/2), so
       ! their ratio crosses unity near 1.5e3 K for an H/He pair: below that
       ! the polarization term dominates the friction and D_in -> D_pol; above
       ! it the rigid core does and D_in -> D_hs.  At the 1e4 K of an ionized
@@ -2084,10 +2096,10 @@
       ! settle correspondingly faster through the partially ionized layer,
       ! which is where ion-neutral pairs carry the friction at all.
       !
-      ! The rigid-core channel uses the same Banks & Kockarts collision
+      ! The rigid-core estimate uses the same Banks & Kockarts collision
       ! diameter as the neutral-neutral pair: no separate ion-neutral core
-      ! radius is available, and the ionic radius differs from the atomic one
-      ! by much less than the factor the combination is settling.
+      ! radius is available, so the atomic diameter stands in for the ionic
+      ! one.
       real*8, intent(in) :: TK, ntot, alpha_n, A_s, A_t, mu_g
       real*8 :: Dpol, Dhs
 

@@ -346,24 +346,29 @@
    subroutine free_outflow_ghost(W,k,Wg)
    ! One outer ghost CELL AVERAGE of the free-outflow boundary.
    !
-   ! No characteristic enters the domain at an outflowing outer face, so the
-   ! boundary imposes no condition and the ghost is a continuation of the
-   ! interior. It is stated ONCE, for every reconstruction: which
-   ! characteristics cross a face is a property of the flow and not of the
-   ! scheme that reads the ghost.
+   ! At an outflowing outer face the characteristics u + c and u leave the
+   ! domain. The acoustic characteristic u - c leaves too only where the
+   ! outflow is supersonic; where it is subsonic, u - c enters, and one
+   ! condition has to be supplied from outside. The continuation below
+   ! supplies it implicitly, so at a subsonic outer edge it is a physical
+   ! outer condition that can set the interior mass flux, and its validity
+   ! is a property of the outer boundary placement, not of the scheme. It
+   ! is stated ONCE, for every reconstruction.
    !
-   ! THE CONTINUATION is the isothermal hydrostatic one,
+   ! THE CONTINUATION is hydrostatic at fixed p/rho,
    !
    !    rho_g = rho_N exp[-(phi_g - phi_N)/(p_N/rho_N)],  p_g = p_N x (same),
    !
    ! the state of rest the last physical cell carries outward under the code's
    ! own potential, with p/rho -- the isothermal sound speed squared of the
    ! mixture -- held at cell N's value. Since rho and p are scaled by the same
-   ! factor, p_g/rho_g = p_N/rho_N: the ghost is at the SAME TEMPERATURE as
-   ! cell N and differs from it only in density, so everything downstream that
-   ! reads a ghost (the ionization sweep, the column integral of
-   ! calc_column_dens, the sound speed of eval_dt) sees the temperature it saw
-   ! before, at the density the stratification gives.
+   ! factor, p_g/rho_g = p_N/rho_N. At the composition of cell N this is the
+   ! temperature of cell N; a later update of the ghost composition changes
+   ! the particle count per unit mass and so the temperature p/(n_tot + n_e)
+   ! inferred from the same p and rho. Everything downstream that reads a
+   ! ghost (the ionization sweep, the column integral of calc_column_dens,
+   ! the sound speed of eval_dt) reads this p and rho with the ghost's
+   ! current composition.
    !
    ! WHY A GRADIENT AND NOT A COPY. A zero-gradient ghost asserts dp/dr = 0 at
    ! the outer face, which is a hydrostatic imbalance of the order of the
@@ -428,10 +433,14 @@
    ! cell of 500 that moves by more than 1e-4; the mass flux above r_flux is
    ! unchanged to 1.9e-8 and `du` to five digits.
    !
-   ! The continuation therefore matters where the outer edge is SUBSONIC, and
-   ! that is the state it is built for: there gravity is the leading term of
-   ! dp/dr, the ram contribution rho v dv/dr being smaller than rho dphi/dr by
-   ! the square of the Mach number.
+   ! The continuation neglects the inertial term of the momentum equation
+   ! in the ghost cells: it is the stratification dp/dr = -rho dphi/dr, valid
+   ! where |v dv/dr| << |dphi/dr| across the extension. With
+   ! v dv/dr ~ v^2/L_v and dphi/dr ~ c^2/H, the ratio is M^2 H/L_v, so a
+   ! subsonic Mach number M is not sufficient by itself: the velocity
+   ! gradient length L_v has to be compared with the pressure scale height
+   ! H as well. The incoming acoustic condition of a subsonic edge is not
+   ! justified by this approximation and needs its own physical argument.
    !
    ! FALLBACK. The exponential of a finite argument with p_N/rho_N > 0 is
    ! positive, so an admissible cell N gives an admissible ghost. A cell N

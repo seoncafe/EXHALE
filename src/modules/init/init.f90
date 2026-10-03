@@ -16,6 +16,9 @@
       use omp_lib
       use blas_thread_policy, only: blas_threads_set_policy, blas_threads_report
       use IC_load
+      use conserved_state_restart, only: read_conserved_state,           &
+                                         conserved_state_not_read
+      use molecular_seed, only: molecular_seed_on
       use initial_conditions
       use composition, only: get_species_densities
       use species_table, only: n_mion
@@ -43,6 +46,10 @@
       real*8, dimension(3,1-Ng:N+Ng),intent(out) :: W,u
       logical :: ex_outdir
       integer :: rc_outdir
+      ! Was the state restored from the exact code-unit file
+      ! (conserved_state_restart)? Then u is the state and W follows from it.
+      logical :: exact_restart
+      character(len=64) :: seed_projection
       
       write(*,*) '(init.f90) Initializing the simulation..'
 
@@ -152,6 +159,7 @@
       !------------------------------------------------!
       
       !---- Initial conditions ----!
+      exact_restart = .false.
       
       if (ic_mode .eq. 4 .and. .not. do_load_IC) then
 
@@ -177,6 +185,25 @@
 	      ! Load thermodynamic profiles
 	      call load_IC(rho,v,p,T,f_sp,W)
 
+         ! The exact code-unit state of the same pair, when one was written
+         ! with it (conserved_state_IC.txt; conserved_state_restart.f90).
+         ! A molecular-seed conversion reads its atomic state from the seed
+         ! directory, and a seed whose lower layer is projected below is a
+         ! new state, so neither reads the file.
+         if (.not. molecular_seed_on()) then
+            call get_environment_variable('EXHALE_SEED_HYDROSTATIC_CELLS', &
+                                          seed_projection)
+            if (len_trim(seed_projection) .eq. 0) then
+               call read_conserved_state('./output/conserved_state_IC.txt', &
+                    './output/Hydro_ioniz_IC.txt',                         &
+                    './output/Ion_species_IC.txt', u, f_sp, exact_restart)
+            else
+               call conserved_state_not_read(                              &
+                    './output/conserved_state_IC.txt', 'the lower layer'// &
+                    ' of the seed is projected (EXHALE_SEED_HYDROSTATIC_CELLS)')
+            endif
+         endif
+
 	      ! A seed mapped onto this grid from another one may have its
 	      ! lower layer projected onto the discrete hydrostatic equilibrium
 	      ! of this grid (measurement key, off unless set).
@@ -201,12 +228,20 @@
       ! (which stop right after init) see. On HD 189733 b the placeholder made
       ! the old ghost pressure disagree with the interior by 4.4%, which the
       ! base face read as a contact discontinuity.
+      ! On an exact restart the density is the restored u(1,:) and the
+      ! primitive state follows from u through the caloric mixture this call
+      ! forms; otherwise u follows from the primitive state.
       nhei = 0.0d0;  nheii = 0.0d0;  nheiii = 0.0d0;  nheiTR = 0.0d0
+      if (exact_restart) W(1,:) = u(1,:)
       call get_species_densities(W(1,:),f_sp,nhi,nhii,nhei,nheii,           &
                                  nheiii,nheiTR,nm,ne,n_tot)
 
       ! Apply BC to initial condition
-      call W_to_U(W,u)
+      if (exact_restart) then
+         call U_to_W(u,W)
+      else
+         call W_to_U(W,u)
+      endif
       call Apply_BC(u)
 
       write(*,*) '(init.f90) Done.'

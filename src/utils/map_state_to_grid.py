@@ -878,6 +878,13 @@ def main():
         if h.startswith('# grid '):
             tgt_grid_line = h
 
+    # A mapped grid or changed reservoir is a new state. A sidecar from an
+    # earlier state in the destination would be an invalid exact restart.
+    stale_conserved = os.path.join(
+        out, 'conserved_state_IC.txt' if as_ic else 'conserved_state.txt')
+    if os.path.lexists(stale_conserved):
+        refuse(f'{stale_conserved} already exists: mapping cannot retain an exact '
+               'checkpoint for a changed state; choose a fresh output directory')
     os.makedirs(out, exist_ok=True)
     for n, hdr, arr, p, res in (('Hydro_ioniz', hdr_h, b, src_file('Hydro_ioniz'), res_h),
                                 ('Ion_species', hdr_s, d, src_file('Ion_species'), res_s)):

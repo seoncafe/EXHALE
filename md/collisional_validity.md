@@ -22,17 +22,20 @@ quoted by the wind cannot drift apart.
 
 | pair | limit | coefficient | source |
 |---|---|---|---|
-| neutral-neutral | rigid sphere (d = 2.7 A) | `D = 1.52e18 (1/A_s + 1/A_t)^(1/2) T^(1/2)/n` | Banks & Kockarts (1973); `binary_element_diffusion.f90:860-874` |
-| ion-neutral, non-resonant | induced dipole (Langevin) **and** rigid core, frictions added: `1/D = 1/D_pol + 1/D_hs` | `D_pol = kT/(2.21 pi e n (alpha_n mu)^(1/2))` | `binary_element_diffusion.f90:878-912, 962-1002` |
-| ion-ion, ion-electron | screened Coulomb, Spitzer `ln Lambda` | `D = 3(kT)^(5/2)/[4(2 pi mu)^(1/2) n (Z_s Z_t e^2)^2 ln Lambda]` | Spitzer (1962) sec. 5.2, Paquette et al. (1986) sec. II; `binary_element_diffusion.f90:918-956` |
+| neutral-neutral | rigid sphere; the prefactor is a collision diameter d = 2.99 A in the Chapman-Enskog first approximation | `D = 1.52e18 (1/A_s + 1/A_t)^(1/2) T^(1/2)/n` | Banks & Kockarts (1973); `binary_element_diffusion.f90` `hard_sphere_pair_diffusion` |
+| ion-neutral, non-resonant | induced dipole (Langevin) **and** rigid core, combined as `1/D = 1/D_pol + 1/D_hs`. This is an interpolation between the polarization and rigid-core limits (it recovers each where the other is negligible), not a collision integral of the combined potential; in the crossover it can overstate the friction by up to a factor of 2 against the stronger estimate alone | `D_pol = kT/(2.21 pi e n (alpha_n mu)^(1/2))` | `binary_element_diffusion.f90` `polarization_pair_diffusion`, `ion_neutral_pair_diffusion` |
+| ion-ion, ion-electron | screened Coulomb, Spitzer `ln Lambda` | `D = 3(kT)^(5/2)/[4(2 pi mu)^(1/2) n (Z_s Z_t e^2)^2 ln Lambda]` | Spitzer (1962) sec. 5.2, Paquette et al. (1986) sec. II; `binary_element_diffusion.f90` `coulomb_pair_diffusion`, `coulomb_logarithm` |
 
 Python cannot call the Fortran, so the four routines are transcribed, with
-the source line cited at each definition and every constant taken from that
-file's comments rather than re-chosen: `e_esu = 4.803204713e-10` (CODATA
-2018), `1.52e18` (Banks & Kockarts), `alpha(H) = 4.5 a_0^3` (exact
-nonrelativistic), `alpha(He) = 1.383 a_0^3`, `alpha(H2) = 5.315 a_0^3`
-(Schwerdtfeger & Nagle 2019).  The two implementations are meant to be read
-side by side.
+the Fortran function or parameter named at each definition and every
+constant taken from that file rather than re-chosen: `e_esu =
+4.803204713e-10` (CODATA 2018), `1.52e18` (Banks & Kockarts),
+`alpha(H) = 4.5 a_0^3` (exact nonrelativistic), `alpha(He) = 1.383 a_0^3`,
+`alpha(H2) = 5.315 a_0^3` (Schwerdtfeger & Nagle 2019), and the helium mass
+`m_He/m_H = 3.9715259` of the species table.  The two implementations are
+meant to be read side by side.  (The Banks & Kockarts prefactor put through
+`D = 3/(8 n d^2) (kT/(2 pi mu))^(1/2)` gives d = 2.99 A; a 2.7 A diameter
+would give 1.86e18.)
 
 **From D to a collision frequency.**  The friction force density between two
 species is `F_s = (n_s n_t kT)/(n D_st) (v_t - v_s) = n_s mu_st nu_st
@@ -44,32 +47,53 @@ nu_st = n_t k T / (mu_st Dhat_st),      Dhat_st = n D_st
 
 and the total carrier density cancels: only the partner density enters.
 `nu_st` is the Chapman-Enskog momentum-transfer frequency, which for rigid
-spheres is 1.6x the elementary `n sigma vbar`; the mean free path below is
-correspondingly 1.6x **shorter** than a textbook `1/(n sigma)`.  The
-threshold used for the verdict (0.1) carries that factor with room to
-spare, and the convention is stated so a number from here is not compared
-against a differently defined one.
+spheres of diameter `d` is `(4/3) n_t pi d^2 gbar_st`, with
+`gbar_st = sqrt(8kT/(pi mu_st))` the mean relative speed.  In a gas of like
+particles the mean free path below is therefore 4/3 **shorter** than
+Maxwell's `1/(sqrt(2) n pi d^2)` and 1.9x shorter than the elementary
+`1/(n pi d^2)`.  The threshold used for the verdict (0.1) carries that
+factor with room to spare, and the convention is stated so a number from
+here is not compared against a differently defined one.
 
 **Species.**  H I, H II, He I, He II, He III, e, plus H2, H2+, H3+, HeH+
-when a run tracks them (same carrier lists as the Fortran, and the same
-masses counted per collision partner: an H2 is one partner of mass 2 m_H).  He I 2^3S is **not** a
+when a run tracks them. The diagnostic adds HeH+ and electrons to the
+Fortran H/He friction lists; HeH+ is not a friction carrier in the production
+element diffusion operator. The masses use the same species table:
+an H2 is one partner of mass
+2 m_H).  He I 2^3S is **not** a
 separate species -- it is an excited level inside the He I column
 (`species_table.f90` `bsp_is_excited_level`), and counting it again would
-count those atoms twice.  **Metals are excluded as trace**: at the
-solar-scaled abundances of these runs they carry less than 1e-3 of the
-particles and of the momentum.  They are kept in the electron budget, where
-charge neutrality has to close exactly.
+count those atoms twice.  **Metals are excluded as collision partners**,
+and so are the oxygen-chemistry molecules OH, H2O and CO.  They are kept in
+the electron budget, where charge neutrality has to close exactly, and the
+tool computes and prints their largest mass and particle fractions on the
+profile it reads (atomic weights from `species_table.f90` `melem_A_u`).
+Measured on the solution profiles: 1.1e-3 by mass and 2.1e-4 by particle
+count on `LHS1140b/models/molecular_photochem_gj1132_kzzprofile/HeH2.09`;
+2.6e-3 and 3.0e-4 on `LHS1140b/archive_20260830/exhale/flux_closure/hi/k06`;
+1.1e-2 and 8.3e-4 on the HD 209458 b state
+`backup/phase_d_baseline/new_kzz1e9_d3b` (the `_adv` pairs give the same
+maxima to the digits quoted).
 
-**Two omissions, both toward a longer mean free path, i.e. a larger Knudsen
-number, i.e. a more conservative verdict.**  (i) *Resonant* charge exchange
-(H+ + H, He+ + He) is not a channel: like-element ion-neutral pairs are
-computed with the non-resonant cross section, the smaller one (resonant CX
-for H+ + H at 1e4 K is ~2e-15 cm^2 against the ~1e-15 cm^2 rigid core), so
-the H I and H II paths in the partially ionized layer are upper limits.
-(ii) Electron-neutral momentum transfer is not in the model, so the electron
-Knudsen number is meaningful only where the gas is ionized -- reported with
-that caveat, and never used for the bulk, which is built from the heavy
-particles.
+**Omitted channels, all toward a longer mean free path, i.e. a larger
+Knudsen number, i.e. a more conservative verdict within the retained
+collision model.** This monotonic statement holds with retained coefficients
+fixed. It does not prove an upper bound on the physical mean free path:
+the polarization-plus-core interpolation and the estimates for resonant
+pairs still require independent validation. Omitting a collision
+channel can only lower a collision frequency, because the frictions of
+separate partners add; every mean free path here is therefore an
+overestimate of the one with the channel included.  (i) The metals and
+oxygen-chemistry molecules as partners (above).  (ii) *Resonant* charge
+exchange (H+ + H, He+ + He) is not a channel: like-element ion-neutral
+pairs are computed with the non-resonant (polarization + core) coefficient,
+whose friction is the smaller one, so the H I and H II paths in the
+partially ionized layer are upper limits.  The size of the resonant
+momentum-transfer cross section was not checked against a published table
+in this repository.  (iii) Electron-neutral momentum transfer is not in the
+model, so the electron Knudsen number is meaningful only where the gas is
+ionized -- reported with that caveat, and never used for the bulk, which is
+built from the heavy particles.
 
 ## 2. Definitions
 
@@ -104,7 +128,8 @@ an isobaric front, which is precisely where it fails as a structure scale.
 That failure was in this tool until 2026-08-28, when `L` was
 `min(H_p, L_v, r)`: across the heating peak of the LHS 1140 b runs
 `d ln p/dr` passes through a broad near-zero, because `rho` falls and `T`
-rises with nearly the same log slope.  In `LHS1140b/exhale/heh0p55`, `H_p`
+rises with nearly the same log slope.  In
+`LHS1140b/archive_20260830/exhale/heh0p55`, `H_p`
 ran from 9.13e6 cm at 1.0244 `R_p` to **3.05e8 cm** at 1.0486 `R_p`, while
 at 1.0453 `R_p` -- where it is already 2.55e8 -- `H_T` is 1.80e7 and
 `H_rho` 1.68e7 cm, fifteen times shorter; `L` followed the pressure,
@@ -119,9 +144,9 @@ first-order term the closure drops is the viscous stress, whose size
 relative to the pressure is `~ lambda |dv/dr| / vbar`: a change of the bulk
 velocity distorts the distribution function in proportion to the *thermal*
 speed, not to the local bulk speed.  Normalizing by `v` diverges at every
-stagnation point -- the cell-centred velocity of the base cells crosses
+stagnation point -- the cell-centered velocity of the base cells crosses
 `v = 0` repeatedly, through the collocated two-cell odd-even mode those cells
-carry (a mode of the cell-centred field, not a wave of the solution: the
+carry (a mode of the cell-centered field, not a wave of the solution: the
 Riemann face mass flux there is the wind's own, MEASURED 2026-09-24,
 `md/lhs1140b_element_row_terms_20260924.md`) -- which is what an ad-hoc
 Mach-number floor used to patch; that
@@ -134,7 +159,7 @@ claiming one is measuring the mesh.  It binds in 3 of 500 cells in one of
 the four runs below, all at `r < 1.002 R_p`, where `Kn ~ 1e-5` -- four
 orders of magnitude below the verdict threshold -- and in no critical
 region.  The residual cell-to-cell scatter of `Kn` at `r < 1.01 R_p` is the
-same odd-even mode of the cell-centred fields of the base cells, present in
+same odd-even mode of the cell-centered fields of the base cells, present in
 `rho`, `T` and `p` alike; it is not a defect of the definition and it is far below any
 radius the verdict uses (every critical region here starts at the heating
 peak, 1.05-1.11 `R_p`).
@@ -142,7 +167,7 @@ peak, 1.05-1.11 `R_p`).
 | quantity | definition |
 |---|---|
 | **exobase** `r_exo` | `Kn_bulk = 1`, first crossing from below. If `Kn_bulk < 1` throughout, reported as *above the outer boundary*, never extrapolated. |
-| **critical point** `r_s` | the sonic point, `v = c_s`, `c_s = sqrt(gamma p/rho)`, `gamma = 5/3`. This is the **code's own** sound speed: `eval_dt.f90:29` computes `cs = sqrt(g*p/rho)` with `g = 1.666666666667` (`parameters.f90:385`), and `p`, `rho` are the cgs columns of the output file, so the mean molecular weight is whatever the solution carries. |
+| **critical point** `r_s` | the sonic point, `v = c_s`, `c_s = sqrt(gamma p/rho)`, `gamma = 5/3`; `p`, `rho` are the cgs columns of the output file, so the mean molecular weight is whatever the solution carries. In atomic gas this is the **code's own** sound speed (`eval_dt.f90`, `cs = sqrt(gamma_ad*p/rho)`, `gamma_ad = 5/3` in `parameters.f90`). Where H2 is present and the caloric EOS is active the code uses `gamma_eff(T, composition) < 5/3` (`caloric_eos.f90`) and this tool does not, so its `c_s` there is too large by `sqrt(5/3 / gamma_eff)`; the effect on the verdicts was not measured. |
 | **critical region** | peak volumetric heating to the sonic point -- the region that heats and accelerates the wind and sets its topology. |
 | **collisional** | `max Kn < 0.1` across the critical region, over the bulk and over every species carrying at least 1e-3 of the mass. |
 | **coupling times** | `tau_s = 1/nu_s` against the flow time `r/|v|`; electron-ion energy coupling `nu^E_st = 2 mu_st/(m_s+m_t) nu_st` against the heating time `(3/2) n_tot k T / Q`. |
@@ -169,27 +194,43 @@ neutral.  Until 2026-09-13 the default was the `_adv` pair and the flag was
 `--eq` with the opposite sense; every table below states which pair it was
 measured on.  The
 loaders are `examples/exhale_io.py`; no second column parser was written.
-The `Ng = 2` ghost cells at each end (`parameters.f90:15`) are dropped.
+The `Ng = 2` ghost cells at each end (`parameters.f90` `Ng`) are dropped.
+
+**Planet radius and mass.**  The radius the profiles are scaled by, and the
+mass in the escape parameter, are those the run was solved with.
+`exhale_io.load_run` reads them from the run's `EXHALE_resolved.out`
+(`planet_radius_RJ`, `planet_mass_MJ`, written by `write_resolved_config` in
+`write_setup_report.f90`) and falls back to `input.inp` only when that file
+is absent, with a printed note; a resolved file without those two keys, or
+whose radius disagrees with the `R0[cm]` the profile header states, is
+refused.  The lower-atmosphere profile handoff moves the base radius to its
+matching level (`input_read.f90`, `lap_value_at_match('r', ...)`): on
+`LHS1140b/models/molecular_photochem_gj1132_kzzprofile/HeH2.09` the solved
+radius is 0.1625085 R_J against `Planet radius` 0.157692 R_J in `input.inp`
+(3.05% larger), which moves `log10 Mdot` from 8.033 to 8.059 (the run's own
+report: 8.06).  The report prints the radius and mass used and their source.
 `log10 Mdot` is `exhale_io.mdot_log10`, i.e. `4 pi rho v r^2` twenty cells
-from the top with the `2D approximate method` factor -- so it can differ by
-a few per cent from a number quoted from a flux-window median (7.474 here
-against 7.500 in the closure history for `flux_closure/hi/k06`; the
-elemental-flux window spread of that run is 0.9%).
+from the top with the `2D approximate method` factor, so it can differ by
+a few per cent from a number quoted from a flux-window median.
 
 ## 4. Results
 
 Run as
 `python3 src/utils/collisional_validity.py <case_dir> [<case_dir> ...]`.
-Measured 2026-08-27 on the existing outputs and recomputed 2026-08-28 with
-the structure scale of section 2; nothing was rebuilt or re-run, and no
-verdict moved.
+The tables of this section are historical: they were measured with an
+earlier version of this tool (input.inp radius, helium mass 4 m_H) on the
+LHS 1140 b outputs now under `LHS1140b/archive_20260830/exhale/` and on
+`backup/phase_d_baseline/new_kzz1e9_d3b`.  The current tool on those
+outputs gives the same verdicts but not the same digits (exobase of
+`heh0p55` 23.84 against 23.73 `R_p`, of `flux_closure/hi/k06` 19.40
+against 18.84), so each number describes the state as it was measured.
 
 | case | planet | peak heat | T max | critical point | exobase | `Kn = 0.1` at | max Kn in crit. region | verdict |
 |---|---|---|---|---|---|---|---|---|
-| `LHS1140b/exhale/heh0p55` (diffusion off) | LHS 1140 b | 1.053 | 1.490 (4532 K) | **none in domain**, max Mach 0.540 at 29.05 | 23.73 | 6.72 | 2.3 (H I) | **unvalidated** |
-| `LHS1140b/exhale/heh2p13_diff_kzz1e9` | LHS 1140 b | 1.050 | 1.398 (5330 K) | **none in domain**, max Mach 0.565 | 25.44 | 7.10 | 2.0 (H I) | **unvalidated** |
-| `LHS1140b/exhale/flux_closure/hi/k06` (converged closure) | LHS 1140 b | 1.105 | 1.340 (3944 K) | **none in domain**, max Mach 0.550 | 18.84 | 5.80 | 3.1 (H I) | **unvalidated** |
-| `backup/phase_d_baseline/new_kzz1e9_d3b` | HD 209458 b | 1.111 | 1.500 (8353 K) | **4.085** (2574 K) | above 4.15 (`Kn_top = 2.0e-3`) | -- | **0.019** (H I) | **validated** |
+| `LHS1140b/archive_20260830/exhale/heh0p55` (diffusion off) | LHS 1140 b | 1.053 | 1.490 (4532 K) | **none in domain**, max Mach 0.540 at 29.05 | 23.73 | 6.72 | 2.3 (H I) | **criterion not met** |
+| `LHS1140b/archive_20260830/exhale/heh2p13_diff_kzz1e9` | LHS 1140 b | 1.050 | 1.398 (5330 K) | **none in domain**, max Mach 0.565 | 25.44 | 7.10 | 2.0 (H I) | **criterion not met** |
+| `LHS1140b/archive_20260830/exhale/flux_closure/hi/k06` (converged closure) | LHS 1140 b | 1.105 | 1.340 (3944 K) | **none in domain**, max Mach 0.550 | 18.84 | 5.80 | 3.1 (H I) | **criterion not met** |
+| `backup/phase_d_baseline/new_kzz1e9_d3b` | HD 209458 b | 1.111 | 1.500 (8353 K) | **4.085** (2574 K) | above 4.15 (`Kn_top = 2.0e-3`) | -- | **0.019** (H I) | **criterion met** |
 
 Radii in `R_p`.  The LHS 1140 b domain ends at 30 `R_p`, HD 209458 b's at
 4.15 `R_p`.
@@ -221,12 +262,12 @@ so the single-temperature energy equation is not what fails.
 
 **LHS 1140 b's wind never reaches its critical point inside the
 computational domain.**  In all three representative solutions the flow is
-subsonic out to 30 `R_p` (max Mach 0.54-0.57), so the mass flux is set at
-the outer boundary rather than at a critical point -- and by 30 `R_p` the
+subsonic out to 30 `R_p` (max Mach 0.54-0.57), so the mass flux is set by
+the outer boundary condition rather than at a critical point -- and by 30 `R_p` the
 gas is already collisionless (`Kn_bulk` = 1.4-2.4 there, exobase at
 18.8-25.4 `R_p`).
 
-[Added 2026-09-23: the three runs above predate the 2026-09-13 re-solve of
+[Note: the three runs above predate the 2026-09-13 re-solve of
 the LHS 1140 b catalog with `Well balanced: True`, whose outer wind is
 denser. MEASURED with this tool on current states (the certified
 `molecular_scalar_gj1132_kzz1e9/HeH2.13` and `HeH9.7`,
@@ -237,8 +278,8 @@ Mach 0.45-0.52), but `Kn_bulk` at the top cell (29.03 `R_p`) is only
 0.055-0.142 and the exobase lies ABOVE the domain; the largest species
 Knudsen number in the critical region is 0.41-0.59, and `Kn_bulk` passes
 0.1 at 8.7 `R_p` on the audit state. So the outer wind of the current
-states is transitional, not collisionless, and the verdict UNVALIDATED
-stands on that ground. The numbers of this section describe the runs named
+states is transitional, not collisionless, and the verdict (criterion not
+met) stands on that ground. The numbers of this section describe the runs named
 in its table.]
 
 Against the p-winds retrieval, whose isothermal Parker solution places the
@@ -253,7 +294,7 @@ molecular.
 
 HD 209458 b is the control: sonic point at 4.085 `R_p` with `Kn` reaching
 only 0.019 anywhere between the heating peak and the critical point, and no
-exobase inside the domain -- a hydrodynamic solution validated through its
+exobase inside the domain -- the collisional criterion is met through its
 critical point.  The contrast is a factor of ~100 in `Kn`, and it is what
 one expects from the two winds' scales, not a marginal call.
 
@@ -280,40 +321,61 @@ ionized, and Coulomb collisions there are far stronger than the neutral ones
 from. The tables above are the `_adv` pair (`--adv`) unless marked
 otherwise.
 
-### Kinetic scale
+### Formal static-Maxwellian (Jeans) comparison
 
-Jeans (1925), in the form of Chamberlain & Hunten (1987, eq. 7.2.5):
+The Jeans (1925) flux of a static Maxwellian, evaluated at the diagnosed
+exobase or, flagged, at the outer boundary:
 
 ```
-Phi_J,s   = n_s vbar_s/(2 sqrt(pi)) (1 + lambda_J,s) exp(-lambda_J,s)
+Phi_J,s    = n_s vbar_s/4 (1 + lambda_J,s) exp(-lambda_J,s)
+vbar_s     = sqrt(8 k T/(pi m_s))          (mean speed)
 lambda_J,s = G M_p m_s/(k T r_exo)
 Mdot_Jeans = 4 pi r_exo^2 sum_s m_s Phi_J,s
 ```
 
+With the most probable speed `v_mp = sqrt(2kT/m_s)` the prefactor reads
+`n_s v_mp/(2 sqrt(pi))`.  It is the outward flux of an isotropic Maxwellian
+through a surface, integrated over `v_r > 0` and speeds above the escape
+speed (checked against direct numerical integration of that flux).  The
+historical rates below were computed with `vbar_s/(2 sqrt(pi))`, the
+most-probable-speed factor applied to the mean speed, which overstates every
+formal rate by `2/sqrt(pi) = 1.128`.
+
+Historical values (the `_adv` pair, earlier tool, states named in the
+results table).  `Mdot_hydro` and the other columns describe those states as
+measured; the formal Jeans rate and the ratio carried the factor 1.128 and
+are superseded:
+
 | case | `r_exo` | `T(r_exo)` | `lambda_J(H)` | `lambda_J(He)` | `Mdot_Jeans` | `Mdot_hydro` | ratio |
 |---|---|---|---|---|---|---|---|
-| `heh0p55` | 23.73 | 1233 K | 0.84 | 3.36 | 1.8e7 g/s | 10^7.764 | 3.2 |
-| `heh2p13_diff_kzz1e9` | 25.44 | 1158 K | 0.83 | 3.33 | 2.0e7 g/s | 10^7.806 | 3.3 |
-| `flux_closure/hi/k06` | 18.84 | 853 K | 1.53 | 6.11 | 1.0e7 g/s | 10^7.474 | 3.0 |
-| HD 209458 b | (no exobase; evaluated at 4.15) | 2508 K | 10.85 | 43.4 | 1.1e6 g/s | 10^10.056 | 1.0e4 |
+| `heh0p55` | 23.73 | 1233 K | 0.84 | 3.36 | ~~1.8e7 g/s~~ superseded | 10^7.764 | ~~3.2~~ superseded |
+| `heh2p13_diff_kzz1e9` | 25.44 | 1158 K | 0.83 | 3.33 | ~~2.0e7 g/s~~ superseded | 10^7.806 | ~~3.3~~ superseded |
+| `flux_closure/hi/k06` | 18.84 | 853 K | 1.53 | 6.11 | ~~1.0e7 g/s~~ superseded | 10^7.474 | ~~3.0~~ superseded |
+| HD 209458 b | (no exobase; evaluated at 4.15) | 2508 K | 10.85 | 43.4 | ~~1.1e6 g/s~~ superseded | 10^10.056 | ~~1.0e4~~ superseded |
 
-How this bounds -- and does not bound -- the continuum number.  Jeans escape
-is what a *static* atmosphere loses through a Maxwellian exobase with no
-bulk drift, so it is the floor of the kinetic problem and not its answer; a
-real transitional flow arrives at the exobase already drifting outward and
-escapes faster.  It bounds the continuum result from below **only** when the
-exobase is well bound.  On LHS 1140 b it is not: `lambda_J(H) = 0.83-1.53`
-means the exobase is barely gravitationally bound, the Jeans integral is no
-longer the small escaping tail of a Maxwellian but most of it, and the
-atmosphere is in hydrodynamic blow-off.  The number is then a **scale**, not
-a bound -- and the scale says the continuum `Mdot` is within a factor of
-about three of what a collisionless outer atmosphere at the same density and
-temperature would lose.  The failure of the continuum assumption on this
-planet is therefore not hiding an order of magnitude; it is hiding a factor
-of a few, in an undetermined direction.  On HD 209458 b, where
-`lambda_J = 10.8` and the flow is validated through its critical point, the
-hydrodynamic rate exceeds Jeans by 1e4 -- the expected signature of a wind
-that is genuinely driven, not evaporating.
+The same four states measured with the current tool (`--adv`, corrected
+prefactor, the solved radius from `EXHALE_resolved.out`, helium mass
+`m_He/m_H = 3.9715`), on the outputs at the paths of the results table:
+
+| case | `r_exo` | `T(r_exo)` | `lambda_J(H)` | `lambda_J(He)` | `Mdot_Jeans` | `log10 Mdot_hydro` | ratio |
+|---|---|---|---|---|---|---|---|
+| `heh0p55` | 23.84 | 1239 K | 0.81 | 3.23 | 1.69e7 g/s | 7.776 | 3.5 |
+| `heh2p13_diff_kzz1e9` | 26.12 | 1163 K | 0.79 | 3.14 | 1.92e7 g/s | 7.824 | 3.5 |
+| `flux_closure/hi/k06` (solved radius 1.0299 x input) | 19.40 | 854 K | 1.41 | 5.59 | 1.04e7 g/s | 7.519 | 3.2 |
+| HD 209458 b `new_kzz1e9_d3b` | (no exobase; evaluated at 4.15) | 2508 K | 10.61 | 42.1 | 1.25e6 g/s | 10.075 | 9.5e3 |
+
+The expression assumes a stationary Maxwellian at the evaluation radius
+(zero bulk drift), a point-mass potential and independent escape of each
+species; the tool applies it to all heavy species, ions included, without
+the ambipolar electric field.  Its ratio to the continuum mass flux is a
+comparison of two formulas on the same profile.  It is not a bound on a
+kinetic escape rate, not an error estimate for the continuum solution, and
+not by itself evidence for a particular escape regime.  On LHS 1140 b,
+`lambda_J(H) = 0.8-1.4` at the exobase: the escaping part is not a small
+tail of the Maxwellian there, and the usual reading of the Jeans rate does
+not apply.  On HD 209458 b, where `lambda_J(H) = 10.6` and the collisional
+criterion is met through the critical point, the continuum rate is about
+1e4 times the formal Jeans rate at the outer boundary.
 
 ### What the 2026-08-28 change of `L` moved
 
@@ -331,7 +393,7 @@ Nothing that carries a conclusion moved.
 | LHS 1140 b, exobase | 19.8-26.7 `R_p` | 18.8-25.4 `R_p` |
 | LHS 1140 b, `Kn_bulk` at 8-9.5 `R_p` | 0.14-0.30 | 0.13-0.29 |
 | LHS 1140 b, `Kn_bulk` at 1.1 `R_p` | 4e-5 - 1.2e-4 | 2.5e-4 - 4.2e-4 |
-| LHS 1140 b, `Mdot_Jeans` | 1.0-2.0e7 g/s | 1.0-2.0e7 g/s |
+| LHS 1140 b, formal `Mdot_Jeans` | superseded (prefactor 1.128 too large) | superseded (prefactor 1.128 too large) |
 | max Mach, `log10 Mdot`, coupling times | -- | unchanged (independent of `L`) |
 
 Two directions, both expected.  Inside 1.1 `R_p` the new `Kn` is up to 3x

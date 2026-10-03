@@ -123,6 +123,7 @@
       private
 
       public :: h2_channel_cross_sections
+      public :: h2_photoabsorption_cross_sections
       public :: h2_channel_stoichiometry
       public :: frac_H2_neutral_dissociation
       public :: frac_H2_double_of_proton_events
@@ -150,11 +151,15 @@
       !  e_th_H2_di : Chung et al. (1993) Table II first row, 18.076 eV.
       !  e_th_H2_dd : Yan et al. (1998) sec. 4, "has a vertical threshold of
       !               51.4 eV".
-      !  33.0       : the low edge of the measured neutral window; the channel
-      !               has no threshold of its own, this is where f_n turns on,
-      !               so it is not an ionization threshold and stays here.
+      !  32.0       : where f_n turns on, the lower continuity anchor of
+      !               frac_H2_neutral_dissociation, one eV below the first
+      !               measured row (33 eV). The channel has no threshold of
+      !               its own, so this is not an ionization threshold and
+      !               stays here; it has to be the turn-on of f_n, or the
+      !               32-33 eV events would have a cross section and no
+      !               energy recipients.
       real*8, parameter :: h2_channel_threshold(n_h2_channels) =          &
-           (/ e_th_H2, e_th_H2_di, e_th_H2_dd, 33.000d0 /)
+           (/ e_th_H2, e_th_H2_di, e_th_H2_dd, 32.000d0 /)
 
       ! Excitation energy of H(n = 2) above the ground state [eV], the
       ! Bohr value (3/4) I(H) = 10.19883 eV.  It is the internal energy each
@@ -231,7 +236,8 @@
       real*8 function frac_H2_neutral_dissociation(E)
       ! sigma_n/sigma(abs), the share of H2 photoabsorptions that leave two
       ! neutral H atoms and no ion.  Chung et al. (1993) Table 1, linearly
-      ! interpolated in E, zero outside 33-41 eV.  See the range note in
+      ! interpolated in E, zero outside 32-41.5 eV (the measured 33-41 eV
+      ! rows and the two continuity anchors below).  See the range note in
       ! the module header: zero outside the window is the source's
       ! assumption of unit ionization yield, not a measurement.
       real*8, intent(in) :: E
@@ -377,6 +383,53 @@
       sig(ICH_D) = q_D*f_di*s_ion
 
       end subroutine h2_channel_cross_sections
+
+      !--------------!
+
+      subroutine h2_photoabsorption_cross_sections(E, sigma_tot,          &
+                                                   resolve_neutral, sig)
+      ! The channel cross sections a run actually uses at photon energy E,
+      ! given the TOTAL H2 absorption cross section sigma_tot there: the
+      ! selection of h2_channel_cross_sections by the two run switches, the
+      ! neutral window (resolve_neutral) and h2_double_ionization_model.
+      ! Both the stellar field (set_energy_vectors) and the recombination
+      ! photons absorbed on the spot (util_ion_eq) take their channels from
+      ! here, so the two fields destroy H2 into the same final states.
+      ! sum(sig) = sigma_tot to round-off in every branch.
+      real*8,  intent(in)  :: E, sigma_tot
+      logical, intent(in)  :: resolve_neutral
+      real*8,  intent(out) :: sig(n_h2_channels)
+      real*8 :: sig_ion
+
+      if (.not. resolve_neutral .and.                                    &
+          trim(h2_double_ionization_model) .eq. 'off') then
+         ! Neither of the two channels beyond the single dissociative one
+         ! is resolved. The split is then the single branching
+         ! frac_H2_dissociative_ionization, the (M)/(S) split written
+         ! directly, without the neutral and double shares that are zero.
+         sig        = 0.0d0
+         sig(ICH_S) = sigma_tot*frac_H2_dissociative_ionization(E)
+         sig(ICH_M) = sigma_tot - sig(ICH_S)
+         return
+      endif
+
+      call h2_channel_cross_sections(E, sigma_tot, sig)
+      if (.not. resolve_neutral) then
+         ! Fold the neutral share back into the three ionizing channels in
+         ! their own proportion, i.e. a unit photoionization yield. Each of
+         ! the three is linear in the ionizing part of the cross section,
+         ! so rescaling them is the same as evaluating them with a neutral
+         ! fraction of zero.
+         sig_ion = sig(ICH_M) + sig(ICH_S) + sig(ICH_D)
+         if (sig_ion .gt. 0.0d0) then
+            sig(ICH_M) = sig(ICH_M)*sigma_tot/sig_ion
+            sig(ICH_S) = sig(ICH_S)*sigma_tot/sig_ion
+            sig(ICH_D) = sig(ICH_D)*sigma_tot/sig_ion
+         endif
+         sig(ICH_N) = 0.0d0
+      endif
+
+      end subroutine h2_photoabsorption_cross_sections
 
       !--------------!
 
@@ -550,8 +603,8 @@
       !        E_21 = (3/4) I(H) is the Bohr n = 1 to n = 2 energy, the same
       !        number as e_th_HI - e_th_HI_n2 in the Balmer continuum module.
       !      e_fragment  = E - D0(H2) - 2 E_21, the recoil of the two atoms.
-      !        Positive throughout the 33-41 eV window, where the smallest
-      !        value is 33 - 24.876 = 8.1 eV.
+      !        Positive wherever f_n is nonzero (32-41.5 eV), where the
+      !        smallest value is 32 - 24.876 = 7.1 eV.
       !      e_electron  = 0: the channel makes no electron.
       ! ==================================================================
 

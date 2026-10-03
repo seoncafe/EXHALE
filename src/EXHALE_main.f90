@@ -1296,7 +1296,8 @@
          call molecular_carrier_densities_from_state(rho,f_sp)
          heat = 0.0d0; cool = 0.0d0; eta = 0.0d0
          call write_output(rho,v,p,T,heat,cool,eta,                    &
-                           nhi,nhii,nhei,nheii,nheiii,nheiTR,nm,'eq')
+                           nhi,nhii,nhei,nheii,nheiii,nheiTR,nm,'eq',  &
+                           conserved_u=u, conserved_f=f_sp)
          write(*,*) '(EXHALE_main) EXHALE_DUMP_IC=1: IC state written, stopping.'
          stop
       endif
@@ -1349,6 +1350,11 @@
          ! statement is at the evaluate route's assembly
          ! (stationary_state_of_the_loaded_restart).
          if (.not. boundary_rebuild_suppressed()) call Apply_BC(u)
+         ! The boundary rewrote the ghost density: the particle counts and
+         ! the caloric mixture the residual reads are formed at it.
+         rho = u(1,:)
+         call get_species_densities(rho,f_sp,nhi,nhii,nhei,nheii,      &
+                                    nheiii,nheiTR,nm,ne,n_tot)
          call report_base_face_state_consistency(                       &
               'EXHALE_RESIDUAL_at_assemble_residual', u)
          call assemble_residual(u, n_tot + ne, f_sp, heat, cool, Rres)
@@ -1839,8 +1845,10 @@
          call molecular_carrier_densities_from_state(rho,f_sp)
          call certify_the_state_to_be_written(j .eq. 0,                  &
               'direct_steady_route_final_certification')
+         call boundary_gas_state_from_conserved
          call write_output(rho,v,p,T,heat,cool,eta,                    &
-                           nhi,nhii,nhei,nheii,nheiii,nheiTR,nm,'eq')
+                           nhi,nhii,nhei,nheii,nheiii,nheiTR,nm,'eq',  &
+                           conserved_u=u, conserved_f=f_sp)
          call assert_written_state_is_the_accepted_one
          ! The direct steady route stops here, so the resolved-configuration
          ! record is written on this route too -- element_budget.py and the
@@ -3822,6 +3830,9 @@
                ! bit, so the marched state is untouched; on an atomic mixture
                ! it reproduces the standing boundary exactly.
                call Apply_BC(u)
+               rho = u(1,:)
+               call get_species_densities(rho,f_sp,nhi,nhii,nhei,nheii, &
+                                          nheiii,nheiTR,nm,ne,n_tot)
                call assemble_residual(u, n_tot + ne, f_sp, heat, cool, Rres)
                call residual_norms(Rres, u, resid_c)
                resid_max   = maxval(resid_c)
@@ -4342,9 +4353,12 @@
                   ! them from THIS state first, so one row is one state (the lower
                   ! ghosts' rho moves after the sweep; see the routine).
                   call molecular_carrier_densities_from_state(rho,f_sp)
+                  ! The residual gate above may have rebuilt the ghosts.
+                  call boundary_gas_state_from_conserved
                   call write_output(rho,v,p,T,heat,cool,eta,             &
                                     nhi,nhii,nhei,nheii,nheiii,          &
-                                    nheiTR,nm,'eq')
+                                    nheiTR,nm,'eq',                      &
+                                    conserved_u=u, conserved_f=f_sp)
                                    
             endif     
             
@@ -4543,6 +4557,9 @@
       ! 'certified=' field of the '# coupling:' header is a statement about
       ! the file it stands in. The residual is assembled here from that same
       ! state, and heat and cool are the ones the state carries.
+      rho = u(1,:)
+      call get_species_densities(rho,f_sp,nhi,nhii,nhei,nheii,             &
+                                 nheiii,nheiTR,nm,ne,n_tot)
       call assemble_residual(u, n_tot + ne, f_sp, heat, cool, Rres)
       call certification_evaluate(cert_context_stationary, u, Rres, f_sp,  &
                resid_th, n_cells_without_chemical_root(last_sweep%acc_n), &
@@ -4552,8 +4569,10 @@
       ! them from THIS state first, so one row is one state (the lower
       ! ghosts' rho moves after the sweep; see the routine).
       call molecular_carrier_densities_from_state(rho,f_sp)
+      call boundary_gas_state_from_conserved
       call write_output(rho,v,p,T,heat,cool,eta,                         &
-                        nhi,nhii,nhei,nheii,nheiii,nheiTR,nm,'eq')
+                        nhi,nhii,nhei,nheii,nheiii,nheiTR,nm,'eq',       &
+                        conserved_u=u, conserved_f=f_sp)
 
       call assert_written_state_is_the_accepted_one
 
@@ -5779,6 +5798,12 @@
       character(len=*), intent(in) :: tag
       call certification_note_stationarity_claim(stationary_claim)
       if (.not. boundary_rebuild_suppressed()) call Apply_BC(u)
+      ! The order of the Newton residual (steady_newton.f90): the particle
+      ! counts and the caloric mixture are formed from the conserved state
+      ! after the boundary has written the ghost cells.
+      rho = u(1,:)
+      call get_species_densities(rho,f_sp,nhi,nhii,nhei,nheii,             &
+                                 nheiii,nheiTR,nm,ne,n_tot)
       call report_base_face_state_consistency(tag, u)
       call assemble_residual(u, n_tot + ne, f_sp, heat, cool, Rres)
       call certification_evaluate(cert_context_stationary, u, Rres, f_sp,   &
@@ -5786,6 +5811,37 @@
                .true., cert_now)
       call certification_report_write(cert_now, 'final state, as written')
       end subroutine certify_the_state_to_be_written
+
+      ! ------------------------------------------------------!
+
+      subroutine boundary_gas_state_from_conserved
+      ! THE GHOST ROWS OF A WRITTEN STATE DESCRIBE THE CONSERVED GHOST CELLS.
+      ! Apply_BC writes the ghost cells of u only; the primitive arrays the
+      ! output routines read (rho, v, p, T, the species and carrier
+      ! densities) keep the ghost values of the last conversion, which may
+      ! precede the last boundary call. Here the ghost density is taken from
+      ! u, the species densities, n_e, n_tot and the caloric mixture are
+      ! formed at it (get_species_densities), the ghost velocity and
+      ! pressure follow from u through that mixture (U_to_W), and the ghost
+      ! temperature is T = p/(n_tot + n_e) (comp_T_from_p). Physical cells
+      ! keep their rho, v, p and T; their species densities are re-formed
+      ! from the same (rho, f_sp) and so do not move.
+      real*8, dimension(3,1-Ng:N+Ng) :: w_from_u
+      real*8, dimension(1-Ng:N+Ng)   :: t_from_p_ghost
+      rho(1-Ng:0)   = u(1,1-Ng:0)
+      rho(N+1:N+Ng) = u(1,N+1:N+Ng)
+      call get_species_densities(rho,f_sp,nhi,nhii,nhei,nheii,             &
+                                 nheiii,nheiTR,nm,ne,n_tot)
+      call U_to_W(u, w_from_u)
+      v(1-Ng:0)     = w_from_u(2,1-Ng:0)
+      v(N+1:N+Ng)   = w_from_u(2,N+1:N+Ng)
+      p(1-Ng:0)     = w_from_u(3,1-Ng:0)
+      p(N+1:N+Ng)   = w_from_u(3,N+1:N+Ng)
+      call comp_T_from_p(p,n_tot,ne,t_from_p_ghost)
+      T(1-Ng:0)     = t_from_p_ghost(1-Ng:0)
+      T(N+1:N+Ng)   = t_from_p_ghost(N+1:N+Ng)
+      call molecular_carrier_densities_from_state(rho,f_sp)
+      end subroutine boundary_gas_state_from_conserved
 
       ! ------------------------------------------------------!
 
@@ -5996,6 +6052,9 @@
       ! 31.24 to 3.09 (He/H 9.7) and 19.04 to 0.08 (the L22 state), and the
       ! atomic states of the same planet and grid do not move.
       if (.not. boundary_rebuild_suppressed()) call Apply_BC(u)
+      rho = u(1,:)
+      call get_species_densities(rho,f_sp,nhi,nhii,nhei,nheii,             &
+                                 nheiii,nheiTR,nm,ne,n_tot)
       call report_base_face_state_consistency(                            &
            'evaluate_route_at_assemble_residual', u)
       ! The boundary this evaluation stands on, as it was built: the model,
@@ -6038,6 +6097,10 @@
       call stationary_claim_and_work_state_verdict
 
       if (stationary_evaluate_only) then
+         ! The certification above measured the elemental flux windows
+         ! (write_setup_report.f90); the resolved-configuration record is
+         ! written after it, before this route stops.
+         call write_resolved_config
          ! WHAT THIS ROUTE WRITES, AND WHICH STATE EACH PRODUCT DESCRIBES.
          ! The conserved variables are the file's own and no step and no
          ! solve is taken, so what is written is a measurement of the state
@@ -6053,8 +6116,10 @@
          call write_run_counter_report
          call element_census_reservoir('output (stationary evaluation)',    &
                                        rho, f_sp)
+         call boundary_gas_state_from_conserved
          call write_output(rho,v,p,T,heat,cool,eta,                         &
-                           nhi,nhii,nhei,nheii,nheiii,nheiTR,nm,'eq')
+                           nhi,nhii,nhei,nheii,nheiii,nheiTR,nm,'eq',       &
+                           conserved_u=u, conserved_f=f_sp)
          call assert_written_state_is_the_accepted_one
          ! The same channel diagnostics the marching write emits, of the
          ! same state: a route that writes a heat and a cool column has to
@@ -6163,9 +6228,14 @@
       ! ONE COMPOSITION, ONE BOUNDARY, ONE RESIDUAL (the routine's comment).
       call certify_the_state_to_be_written(info_jfnk .eq. 0,              &
            'stationary_restart_final_certification')
+      call boundary_gas_state_from_conserved
       call write_output(rho,v,p,T,heat,cool,eta,                            &
-                        nhi,nhii,nhei,nheii,nheiii,nheiTR,nm,'eq')
+                        nhi,nhii,nhei,nheii,nheiii,nheiTR,nm,'eq',          &
+                        conserved_u=u, conserved_f=f_sp)
       call assert_written_state_is_the_accepted_one
+      ! The certification above measured the elemental flux windows; the
+      ! resolved-configuration record is written after it.
+      call write_resolved_config
       write(*,'(A,I0,A)') ' (EXHALE_main) Restart intent: stationary --'//  &
            ' the stationary solve returned info = ', info_jfnk,             &
            '; output written.'
@@ -6906,25 +6976,21 @@
 
 
       subroutine assert_written_state_is_the_accepted_one
-      ! THE STATE THE GATES ACCEPTED IS THE STATE THAT WAS JUST WRITTEN.
+      ! THE FLUX SPREAD OF THE WRITTEN STATE BESIDE THE ONE THE SOLVE
+      ! ACCEPTED.
       !
-      ! Nothing between solve_steady_jfnk's return and write_output touches
-      ! u. Inside steady_wind_with_element_diffusion the refresh recomputes
-      ! rho, v, p FROM u (U_to_W) and moves only the composition, heat, cool
-      ! and T; the rest of the marching-loop body and the block between the
-      ! loop and the final write read u without assigning it. So rho*v*r^2
-      ! cannot move, and the flux gate's number is a property of the file the
-      ! user reads.
-      !
-      ! That is a property of the call graph, not of any one run, so it is
-      ! ASSERTED on every run rather than left as a claim: the flux spread is
-      ! re-measured on the state as written and printed beside the value the
-      ! solve accepted, and a difference is a loud warning. It costs one pass
-      ! over the wind window.
-      !
-      ! (What DID differ, and is not a state change at all, is reading the
-      ! output FILE without dropping its ghost rows -- see the row header
-      ! write_output now emits and section 133.6.)
+      ! The spread (flux_spread_of_state, steady_residual.f90) is formed from
+      ! the Riemann face mass flux F_{j+1/2} r_{j+1/2}^2 (face_mass_flux_r2),
+      ! not from rho v r^2 at the cell centers. A face flux is a function of
+      ! the reconstructed face states, so it depends on u and also on the
+      ! composition, the caloric map from energy to pressure and the ghost
+      ! cells the boundary writes. The steady solve does not assign u after
+      ! its return, but the final certification rebuilds the boundary and
+      ! the composition refresh moves the caloric map, so the two numbers
+      ! can differ while u in the physical cells is unchanged. A difference
+      ! is therefore reported as a warning to inspect, not as proof that u
+      ! changed; the certification of the written state is made separately
+      ! (certify_the_state_to_be_written and the final marching write).
       real*8 :: fspread_now, fmean_now
       if (gate_fspread_accepted .lt. 0.0d0) return   ! no steady solve ran
       call flux_spread_of_state(u, fspread_now, fmean_now)
@@ -6936,21 +7002,22 @@
            'window: r>=1.03', fspread_103, '   r>=1.10', fspread_110,      &
            '  (reporting only; the gate is the r>=r_flux window above)'
       ! The comparison carries an ABSOLUTE floor beside the relative one:
-      ! the spread is a difference of O(1) numbers (rho v r^2 over the
-      ! window) divided by their mean, so two evaluations of one state
-      ! agree only to the rounding of that difference, of order N epsilon
-      ! ~ 1e-13. MEASURED (2026-09-11, the partitioned hot-Uranus carrier
-      ! reload): a state flat to fourteen digits reads 3.0982e-14 as written
-      ! against 2.7487e-14 accepted, and a relative test alone called that
-      ! a change of u. 1e-12 stands a decade above that rounding and four
-      ! decades below the smallest spread a gate has ever accepted (1.5e-15
-      ! is the well-balanced wasp_full_newton's, and that state is flat to
-      ! the last bit); a real change of u moves the spread by far more.
+      ! the spread is a difference of O(1) face fluxes over the window
+      ! divided by their mean, so two evaluations of one state agree only to
+      ! the rounding of that difference, of order N epsilon ~ 1e-13.
+      ! Measured on the partitioned hot-Uranus carrier reload: a state flat
+      ! to fourteen digits reads 3.0982e-14 as written against 2.7487e-14
+      ! accepted, which a relative test alone reports as a change. The floor
+      ! 1e-12 stands a decade above that rounding; accepted spreads reach
+      ! the rounding level itself (1.5e-15 on the well-balanced
+      ! wasp_full_newton state), so no relative test can separate rounding
+      ! from a change at those values.
       if (abs(fspread_now - gate_fspread_accepted) .gt.                   &
           max(1.0d-10*abs(gate_fspread_accepted), 1.0d-12))               &
-         write(*,'(A)') ' (EXHALE_main) WARNING: the written state is '// &
-              'NOT the state the gates accepted -- something between the'//&
-              ' steady solve and write_output changed u.'
+         write(*,'(A)') ' (EXHALE_main) WARNING: the face-flux spread '// &
+              'of the written state differs from the value the solve'//   &
+              ' accepted; inspect the conserved state, the composition'// &
+              ' and the boundary evaluation.'
       end subroutine assert_written_state_is_the_accepted_one
 
       ! ------------------------------------------------!
@@ -7509,6 +7576,9 @@
          ! taken at. The statement is at the evaluate route's assembly
          ! (stationary_state_of_the_loaded_restart).
          if (.not. boundary_rebuild_suppressed()) call Apply_BC(u)
+         rho = u(1,:)
+         call get_species_densities(rho,f_sp,nhi,nhii,nhei,nheii,          &
+                                    nheiii,nheiTR,nm,ne,n_tot)
          call report_base_face_state_consistency(                         &
               'steady_wind_joint_test_at_assemble_residual', u)
          if (stage_export_on) then
@@ -8996,7 +9066,7 @@
                                  T_pass, heat, cool, nhi_pass, nhii_pass, &
                                  nhei_pass, nheii_pass, nheiii_pass,      &
                                  nheiTR_pass, nm_pass, f_sp, pair_written,&
-                                 pass_state_id)
+                                 pass_state_id, u)
       call restore_caloric_mixture(mixture_hold)
       n_part_cell1 = npart1_hold
       if (pair_written)                                                   &

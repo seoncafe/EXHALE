@@ -1092,7 +1092,9 @@ different blocks is refused.
   runs never name one generation). The generation holds `Hydro_ioniz.txt`,
   `Ion_species.txt` and `manifest.txt` (state_id, run identity, pass, the
   generation before it, the two file names with their byte sizes, the
-  certification reason). It is written in `output/pass_state/.<state_id>.tmp/`,
+  certification reason), and `conserved_state.txt`, the exact code-unit state
+  of the same pass, whenever it could be written (the manifest then names it).
+  It is written in `output/pass_state/.<state_id>.tmp/`,
   renamed onto its name, and then published by writing
   `output/pass_state/current.part` and renaming it onto
   `output/pass_state/current`, one line naming the generation. So a kill at
@@ -1100,12 +1102,18 @@ different blocks is refused.
   before the first publication). The generation `current` named before is
   kept, older ones are removed. The pair is written by the writer of the
   final state, with the same headers, so copying the pair `current` names to
-  `Hydro_ioniz_IC.txt` / `Ion_species_IC.txt` continues the run from that
-  pass:
+  `Hydro_ioniz_IC.txt` / `Ion_species_IC.txt`, with its
+  `conserved_state.txt` as `conserved_state_IC.txt`, continues the run from
+  that pass; without the third file the restart reads the dimensional pair,
+  and a stale `conserved_state_IC.txt` of another state must be removed
+  (its pair checksum would not match, and it would be ignored with a notice):
 
       G=$(cat output/pass_state/current)
       cp output/pass_state/$G/Hydro_ioniz.txt output/Hydro_ioniz_IC.txt
       cp output/pass_state/$G/Ion_species.txt output/Ion_species_IC.txt
+      rm -f output/conserved_state_IC.txt
+      [ -f output/pass_state/$G/conserved_state.txt ] && \
+          cp output/pass_state/$G/conserved_state.txt output/conserved_state_IC.txt
 
   It is never a certified state: both halves carry
   `certified=F cert_reason=pass_snapshot_p<pass> ... state_id=<state_id>` on

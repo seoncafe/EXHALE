@@ -4564,6 +4564,287 @@ statements were checked against the tree before anything was changed.
   solution); recorded in the summary.
 \end{itemize}
 
+\subsection{63. The reviewed part of the LHS 1140 b EW worktree, taken into the tree (2026-10-03)}\label{63-the-reviewed-part-of-the-lhs-1140-b-ew-worktree-taken-into-the-tree-2026-10-03}
+
+\texttt{md/lhs1140b\_ew\_codex\_review\_20261003.md} reviews the changes an autonomous
+Codex run made in the detached worktree \texttt{../LHS1140b\_EW\_20261001/code}
+(same base, 3152b74). Its sections 3.1 and 3.2 (accept; fix first) and 4
+(a defect of this tree) are applied here; section 3.3 (molecular-ion
+transport, joint species-flux modules, metastable balance diagnostic,
+HeH+ Newton rows) is not. Each item was re-derived against this tree\textquotesingle s
+code, not copied.
+
+\textbf{Physics corrected.}
+
+\begin{itemize}
+\tightlist
+\item
+  Recombination photons absorbed by H2 (\texttt{util\_ion\_eq.f90}
+  \texttt{recombination\_radiation\_absorbed}, \texttt{ionization\_equilibrium.f90}): the
+  whole H2 share made H2+ and heated with one threshold. It is now split
+  into the four final states of \texttt{h2\_photo\_channels} (M H2+, S dissociative
+  ionization, D double ionization, N neutral dissociation) in the ratio of
+  the channel cross sections the stellar field uses
+  (\texttt{h2\_photoabsorption\_cross\_sections}, shared with \texttt{set\_energy\_vectors}),
+  total absorption unchanged, heat = photoelectron(s) + fragment kinetic
+  energy of the channel. The capture kinetic energy of a continuum channel
+  goes to every final state (energy conservation; the Codex version gave it
+  to the ionizing ones only). Channel shares at the default switches,
+  MEASURED: S 1.9-6.3\% at 19.8-31.1 eV; S 11.4\% and N 1.1\% at 40.8 eV
+  (He II Ly-alpha, inside the neutral window the old comment said it was
+  outside of); S 17.0\% and D 0.37\% at 54.4 eV.
+\item
+  \texttt{h2\_channel\_threshold} of N: 33 -\textgreater{} 32 eV, the lower continuity anchor
+  where \texttt{frac\_H2\_neutral\_dissociation} turns on (32-33 eV absorptions had a
+  cross section and no energy recipient). No current recombination channel
+  lies in 32-33 eV.
+\item
+  The recombination-coupling condition at the two sweep sites is
+  \texttt{use\_h\_rec\_escape\ .or.\ (use\_he\_rec\_coupling\ .and.\ thereis\_He)}; the old
+  form could read the \texttt{\_hrc} arrays unset in a helium-free run.
+\item
+  Carrier enthalpy flux (\texttt{diffusive\_photochemistry.f90}
+  \texttt{carrier\_enthalpy\_face\_flux}): the recoil set of the energy row is now the
+  set \texttt{carrier\_write\_back} rescales. Before, H+ took part of the hydrogen
+  recoil although a carried H+ (\texttt{Ionization\ transport:\ True}) is written from
+  its own row, and HeH+ took part although the write-back never moves it.
+  Physics document \texttt{docs/physics\_overview/molecules\_metals.tex} updated.
+\item
+  Class 6 of the ionization sweep: a constrained projection that fails
+  \texttt{ionization\_fractions\_physical} keeps the entry composition and records
+  the element-budget violation (it was accepted as a root); the class-6
+  residual is that of the retained state (also stated in
+  \texttt{steady\_newton.f90}). \texttt{impose\_transported\_fractions} is applied before the
+  admissibility test and at write-back. The decay-rate diagnostic releases
+  the He II / He III fixed flags as well.
+\item
+  Jeans escape flux of \texttt{collisional\_validity.py}: n vbar/4 (1+lambda)e\^{}-lambda;
+  the old prefactor was 2/sqrt(pi) = 1.128 too large. The planet radius and
+  mass of a run are read from its \texttt{EXHALE\_resolved.out} by one rule in
+  \texttt{examples/exhale\_io.py} \texttt{load\_run} (the lower-atmosphere profile and
+  \texttt{base.inp} overwrite R0); \texttt{collisional\_validity.py} and
+  \texttt{formation\_energy\_flux\_diagnostic.py} use it. He mass 3.9715 m\_H (the
+  table\textquotesingle s), not 4.
+\end{itemize}
+
+\textbf{Restart and output.}
+
+\begin{itemize}
+\tightlist
+\item
+  Exact code-unit restart: \texttt{conserved\_state.txt} (new
+  \texttt{conserved\_state\_restart.f90}) beside every \textquotesingle eq\textquotesingle{} write and every pass-state
+  generation, read as \texttt{conserved\_state\_IC.txt} when it belongs to the IC pair
+  (checksums, grid, species, boundary). A state that cannot be written
+  exactly is not written (warning, existing file removed); a file that does
+  not match, an option-change restart and a seed run use the dimensional pair
+  with a notice. Exit statuses unchanged. README, manual (\texttt{conserved\_state.txt}
+  subsection), \texttt{README\_HOWTO.md} pass-state restore, \texttt{md/input\_schema.md},
+  GUI copy, mapper refusal and \texttt{element\_flux\_closure.py} (post-processing
+  step = \texttt{Restart\ intent:\ stationary\ evaluate}) follow.
+\item
+  Species densities re-formed after \texttt{Apply\_BC} at the six output and
+  evaluation sites (the Newton residual\textquotesingle s order); ghost output rows formed
+  from the conserved ghost cells by the tree\textquotesingle s own routines
+  (\texttt{boundary\_gas\_state\_from\_conserved}); \texttt{write\_resolved\_config} after the
+  certification on both branches of the loaded-restart route.
+\item
+  Comments corrected: subsonic outflow ghost (one incoming characteristic),
+  ion-neutral friction (Langevin friction independent of T, rigid core
+  as T\^{}(1/2); \texttt{1/D\ =\ 1/D\_pol\ +\ 1/D\_hs} stated as an interpolation, up to a
+  factor 2 in friction at the crossover), the Banks \& Kockarts diameter
+  (2.99 A, not 2.7 A; also \texttt{md/binary\_diffusion\_design.md}), mol\_rates R14
+  and R19 sources (coefficients unchanged), \texttt{n\_car\_max} derived from the
+  species table.
+\end{itemize}
+
+\textbf{Not taken, with reason.} The element eddy-flux outputs (no caller once
+the row dumps of 3.3 are left out); the \texttt{spherical\_flux\_divergence}
+refactor (stops on a NaN trial; the loop stays); the Codex wording that
+weakened two correct statements of \texttt{collisional\_validity}.
+
+\textbf{Tests.} Four builds from one source (\texttt{3152b74}; all changes; the
+enthalpy recoil set only; the recombination channels and chemistry only),
+run single-threaded on copies of \texttt{hp\_front} (100 steps) and
+\texttt{carrier\_model\_a\_newton} (stationary restart), MEASURED largest relative
+change over physical cells against the control build:
+
+{\def\LTcaptype{none} % do not increment counter
+{\small
+\begin{longtable}[]{@{}lll@{}}
+\toprule\noalign{}
+case & change & largest relative change \\
+\midrule\noalign{}
+\endhead
+\bottomrule\noalign{}
+\endlastfoot
+hp\_front & enthalpy recoil set & v 3.0e-7, HeH+ 1.2e-8 \\
+hp\_front & recombination channels & H2+ 1.1e-4, H3+ 7.0e-6, HeH+ 8.8e-7, cool 7.5e-7 \\
+carrier\_model\_a\_newton & enthalpy recoil set & HeH+ 1.6e-4, cool 1.5e-4, T 7.0e-5, rho 4.2e-5 \\
+carrier\_model\_a\_newton & recombination channels & 0 (\texttt{He\_rec\_coupling:\ False}) \\
+\end{longtable}
+}
+}
+
+Both are snapshots, not converged states, so these are the changes of one
+evaluation and not of a solution. Full profiles (T, v, rho, H2, H+, H2+,
+H3+, HeH+, He 2\^{}3S) overlaid and inspected (session scratch
+\texttt{cmp/cmp\_*.pdf}).
+
+\texttt{make\ test} on the merged tree (\texttt{EXHALE.x} 60bd2895135134813116b4b0ac63fcaa):
+44 of 48 entries PASS; \texttt{steady\_completion\_flag} and
+\texttt{steady\_selfconsistent\_residual} fail without \texttt{EXHALE\_STEADY\_RUNLOGS} (they
+read the logs of a steady run and have no default; not a code result);
+\texttt{boundary\_state} and \texttt{physics\_probe} failed on the test defects below and
+pass after them (\texttt{physics\_probe} 2295 PASS, 0 FAIL). \texttt{carrier\_enthalpy\_flux}
+gains section (e): a column with H+ (a third of the atomic hydrogen) and
+HeH+ (1e-3), checked face by face against Phi\_H2 {[}h\_H2 - 2 hbar\_H{]} with H+
+local and with H+ carried; both rows pass (1.8e-15) and both FAIL on the
+3152b74 code (1.2e-3 from HeH+ alone; 1.11 with H+ carried, the old flux
+being about twice the right one there). Three test defects found and
+corrected: \texttt{contact\_law\_at\_the\_base.f90} called
+\texttt{thermal\_conduction\_source} without the composition argument added in
+60a90fb (compile error); \texttt{helium\_584\_resonance\_line.f90} called
+\texttt{absorb\_recombination\_channel} without the new channel-split argument; \texttt{boundary\_of\_the\_installed\_composition.sh}
+asserted a bitwise zero face-state gap, which the density re-formation
+after \texttt{Apply\_BC} moves to rounding (MEASURED 1.6e-15; the entry-composition
+order it guards against leaves 7.5e-7), now a 1e-13 relative bound.
+The exact restart was exercised on \texttt{wasp\_he23off} inputs: two write-reload
+round trips bitwise in u and f\_sp; a negative ghost fraction is not written
+and the run exits 0; stale and mismatched files are ignored with a notice.
+Not run: molecular-seed, pass-state generation, the closure driver, GUI.
+
+\textbf{Open, for the user.} R19 (HeH+ + H -\textgreater{} H2+ + He): 9.1e-10 cm\^{}3 s\^{}-1 is a
+room-temperature measurement; De Fazio et al. (2014) Table 2 gives 1.54e-9
+(1000 K) and 1.65e-9 (2000 K), Esposito (2015) via Sil et al. (2025)
+1.82e-9 exp(-121/T); not changed. Esposito, Coppola \& De Fazio (2015) was
+then read in its accepted manuscript (the published version could not be
+obtained): a Boltzmann average over all 178 rovibrational states of HeH+,
+10-15000 K, with the authors\textquotesingle{} own polynomial fit (1.52e-9 at 1000 K, a
+maximum 2.00e-9 near 6000 K; 1-6\% from De Fazio up to 2000 K; the Sil
+Arrhenius form is 9-11\% below it at 4000-8000 K). The R19 comment of
+\texttt{mol\_rates.f90} now states this. The constant is kept because it is the
+Koskinen et al. (2022) Table 1 entry the Model A comparison uses; the
+replacement is the user\textquotesingle s decision (decided the same day: section 64). \texttt{python/paper\_data.py} still reads the
+input.inp planet radius.
+
+\subsection{64. R19 is the thermal rate of Esposito, Coppola \& De Fazio (2015) (2026-10-03)}\label{64-r19-is-the-thermal-rate-of-esposito-coppola--de-fazio-2015-2026-10-03}
+
+HeH+ + H -\textgreater{} H2+ + He (\texttt{mol\_rates.f90} \texttt{rk\_R19\_HeHp\_H}) was the Koskinen et
+al. (2022) Table 1 constant 9.1e-10 cm\^{}3 s\^{}-1, a measurement near 300 K
+(Karpas et al. 1979) held at every wind temperature. By the user\textquotesingle s decision
+of 2026-10-03 it is now the thermal rate of Esposito, Coppola \& De Fazio
+(2015, J. Phys. Chem. A 119, 12615), read in the accepted manuscript (the
+published version could not be obtained): close-coupling cross sections for
+v = 0, j = 0-5 and quasi-classical trajectories for the other states,
+Boltzmann-averaged over all 178 rovibrational states of HeH+, in the
+authors\textquotesingle{} fit k = sum\_\{i=0\}\^{}\{6\} a\_i (log10 T)\^{}i (max error 2.5\%; their eq 4
+prints the upper limit 7 with seven coefficients, and the seven reproduce
+their Fig. 6). T is held to the authors\textquotesingle{} 10-15000 K (the polynomial is
+negative below about 6 K and above about 3e4 K). The function now takes T;
+its two callers (\texttt{System\_HeH\_mol.f90} \texttt{set\_mol\_coeffs},
+\texttt{molecular\_reaction\_heat.f90}) pass the temperature they already pass to
+the other rates.
+
+MEASURED values of the built function: 1.088e-9 (300 K), 1.524e-9
+(1000 K), 1.753e-9 (2000 K), 1.997e-9 (5354 K), 2.004e-9 (6000 K), held
+1.571e-9 above 15000 K and 5.25e-11 below 10 K; 1-6\% from De Fazio (2014)
+Table 2 at 100-2000 K, within 3\% of Garcia Munoz (2025) Table A.6 at
+500-5000 K. The Sil et al. (2025) Arrhenius form of the same rate is not
+used (9-11\% below it at 4000-8000 K).
+
+Effect, MEASURED against the build of section 63 (same source but R19),
+single-threaded, largest relative change over physical cells; full profiles
+of T, v, rho, H2, H+, H2+, H3+, HeH+ and He+ overlaid and inspected
+(session scratch \texttt{cmp/r19\_*.pdf}):
+
+{\def\LTcaptype{none} % do not increment counter
+{\small
+\begin{longtable}[]{@{}>{\raggedright\arraybackslash}p{\dimexpr(\linewidth-12\tabcolsep)/6\relax}>{\raggedright\arraybackslash}p{\dimexpr(\linewidth-12\tabcolsep)/6\relax}>{\raggedright\arraybackslash}p{\dimexpr(\linewidth-12\tabcolsep)/6\relax}>{\raggedright\arraybackslash}p{\dimexpr(\linewidth-12\tabcolsep)/6\relax}>{\raggedright\arraybackslash}p{\dimexpr(\linewidth-12\tabcolsep)/6\relax}>{\raggedright\arraybackslash}p{\dimexpr(\linewidth-12\tabcolsep)/6\relax}@{}}
+\toprule\noalign{}
+case & HeH+ & H2+ & H3+ & H2 & T, v, rho \\
+\midrule\noalign{}
+\endhead
+\bottomrule\noalign{}
+\endlastfoot
+hp\_front (100 steps) & -46\% & +68\% (outer wind) & -18\% & +1.4\% & \textless= 5.8e-7 \\
+carrier\_model\_a\_newton & -35\% & +0.07\% & -0.02\% & +0.02\% & \textless= 3.7e-5 \\
+\end{longtable}
+}
+}
+
+\texttt{docs/physics\_overview/molecules\_metals.tex} gains the R19 paragraph and
+the two references; \texttt{docs/koskinen2022\_model\_a\_comparison.tex} now says
+that its "matched reactions" row holds for the runs of that document and
+that the code departs from Table 1 in R12, R15, R17, R19 and R20.
+
+\texttt{make\ test} on this tree (\texttt{EXHALE.x} 3d27cc49f507582c6cdc9683e6aedca7): 46 of
+48 entries PASS (5176 PASS lines, 11 XFAIL); the two that fail are
+\texttt{steady\_completion\_flag} and \texttt{steady\_selfconsistent\_residual}, which need
+\texttt{EXHALE\_STEADY\_RUNLOGS} (section 63).
+
+\subsection{65. The Codex review of sections 63-64, checked (2026-10-03)}\label{65-the-codex-review-of-sections-63-64-checked-2026-10-03}
+
+Codex reviewed sections 63-64 and the documents of the day in
+\texttt{md/claude\_code\_physics\_review\_20261003.md} (with \texttt{\_checks.json},
+\texttt{\_timescales.json}, \texttt{\_profiles.pdf}, \texttt{\_carrier\_test.txt}, \texttt{\_r19\_probe.txt})
+and changed five files (\texttt{examples/exhale\_io.py}, the two md documents,
+\texttt{src/utils/collisional\_validity.py} and the scattering assessment). Each
+change was checked against the code.
+
+\begin{itemize}
+\tightlist
+\item
+  \texttt{examples/exhale\_io.py} \texttt{load\_run}: \texttt{EXHALE\_resolved.out} is now read from
+  the parent of the output directory, not from the directory of the input
+  file. Correct: EXHALE writes the resolved file in the run directory and
+  the outputs in its \texttt{output/}, so an input file from elsewhere could pair
+  an output with another run\textquotesingle s radius and mass (Codex reproduced a factor 2
+  in Mdot/M\_p with a foreign file). Exercised on \texttt{lower\_profile} with and
+  without an input file: both read that run\textquotesingle s own resolved file.
+\item
+  \texttt{md/binary\_diffusion\_design.md}, \texttt{md/collisional\_validity.md},
+  \texttt{src/utils/collisional\_validity.py}: HeH+ is stated not to be a friction
+  carrier of the element operator (true: \texttt{binary\_element\_diffusion.f90}
+  leaves it out of both carrier lists), and the "omitted channels are
+  conservative" statement is limited to the retained coefficients. Both
+  correct.
+\item
+  \texttt{md/lhs1140b\_ew\_codex\_scattering\_assessment\_20261003.md}: Codex added a
+  qualification. Its substance was right: the lifetime had been compared
+  with bulk advection only. The diffusion and drift times are now MEASURED
+  on the same state (HeH+ diffusion by Blanc\textquotesingle s law from the pair
+  coefficients of \texttt{collisional\_validity.py}, K\_zz = 1e9, settling in
+  gravity and the ambipolar field eE = -kT d ln(n\_e T)/dr plus gradient
+  drift, n\_e the production charge budget): at the He 2\^{}3S column peak
+  t\_chem = 11 s against t\_adv 2.8e5, t\_diff 4.9e7 and t\_drift 1.2e7 s, so
+  Da stays 2.5e4, also with every Coulomb partner dropped (D 30 times
+  larger; t\_drift 3.9e5 s). Advection is the shortest transport time except
+  in 210 cells of the slow base layer below 1.18 R\_p (diffusion shorter;
+  0.4\% of the radial He 2\^{}3S column). The qualification is replaced by these
+  numbers and the overstated sentences are corrected.
+  Two Codex follow-ups in the same review file then showed that the
+  ambipolar field adds to gravity in 197 of the 500 cells (a field-free
+  drift is not an upper bound; eE/mg down to -0.92 with the metal-ion
+  electrons, -0.49 without), that the neutral-only row is a sensitivity and
+  not a bound on the pair law, that the opening claim was too categorical,
+  and that the first field-inclusive table still carried field-free drift
+  times and a wrong count ("advection shortest in all but one cell", which
+  had missed the cells where diffusion is shortest). All were reproduced and
+  corrected; the assessment states the field, the margin at the peak (D 43
+  times larger for drift to reach advection, 1.1e6 times for it to reach
+  chemistry), the local scope of the claim, and that the column shares are
+  radial, not EW weights. Da at the column peak is 2.5e4 throughout.
+\end{itemize}
+
+Points of the review that stand as open items: the recombination
+photoelectrons of \texttt{util\_ion\_eq.f90} heat locally with no secondary
+ionization or excitation, where the stellar path partitions the
+photoelectron energy (stated at the code site; at 54.4 eV an H2 channel
+leaves a photoelectron above the secondary-ionization threshold; effect not
+measured); and the thermal R19 rate assumes HeH+ internal states in
+equilibrium, which chemical relaxation does not show.
+
 \appendix
 \input{Update_EXHALE_appendix}
 \end{document}

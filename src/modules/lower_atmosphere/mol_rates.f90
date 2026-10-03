@@ -8,7 +8,7 @@
       ! T = heavy-particle temperature [K]; Te = electron temperature [K]
       ! (EXHALE uses a common T).
       !
-      ! R1-R11, R13, R14, R16, R18, R19 and R23 are the Table-1 expressions
+      ! R1-R11, R13, R14, R16, R18 and R23 are the Table-1 expressions
       ! as printed.  The entries that are NOT, each argued at its own
       ! function:
       !   R12  the thermal dissociation of H2, built by detailed balance
@@ -21,6 +21,8 @@
       !   R17  the measured two-body total of Boehringer & Arnold (1986)
       !        less the radiative branch R23, plus the Table-1 Arrhenius
       !        term;
+      !   R19  the thermal rate of Esposito, Coppola & De Fazio (2015) in
+      !        place of the room-temperature constant Table 1 prints;
       !   R20  not carried: its cited source bounds the channel far below
       !        the Table-1 value (the retired-R20 block below);
       !   R21, R22  not in this module: the He <-> H charge-exchange pair
@@ -91,9 +93,12 @@
       !     the other HeH+ source and the molecular system carries it
       !     (row 7 of mol_heh_rows).
       !   * HeH+ destruction. Against the Garcia Munoz (2025) Table A.6
-      !     values, R16 is 3.4-8.6x smaller, R18 1.2x larger and R19
-      !     1.4-2.6x smaller.  Both compilations are published and the
-      !     differences are of order unity to ten; no entry is overruled.
+      !     values, R16 is 3.4-8.6x smaller and R18 1.2x larger.  Both
+      !     compilations are published and the differences are of order
+      !     unity to ten; neither entry is overruled.  R19 now agrees with
+      !     that table within 3% at 500-5000 K and is 18% below it at
+      !     10000 K, where the table's 2.33e-9 exceeds the Langevin value
+      !     (rk_R19_HeHp_H).
       !   * He+ + H2 BELOW ~650 K.  R17 is the dissociative charge transfer,
       !     and the Koskinen Table-1 form for it, 1e-9 exp(-5700/T) (Moses
       !     & Bass 2000), is an extrapolation there: three thermal
@@ -978,9 +983,54 @@
       k = 1.5d-9
       end function
 
-      ! R19: HeH+ + H -> H2+ + He               (Karpas et al. 1979)
-      double precision function rk_R19_HeHp_H() result(k)
-      k = 9.1d-10
+      ! R19: HeH+ + H -> H2+ + He     (Esposito, Coppola & De Fazio 2015)
+      !   THE THERMAL RATE OF THE REACTION, not the room-temperature
+      !   constant 9.1e-10 cm^3 s^-1 of Koskinen et al. (2022) Table 1
+      !   (Karpas et al. 1979, measured near 300 K), which held at every
+      !   temperature of the wind was an extrapolation and not a
+      !   measurement: the rate rises to near the Langevin value
+      !   2.09e-9 at a few thousand kelvin, so the constant was 1.7 to 2.2
+      !   times too small above 1000 K.
+      !
+      !   Esposito, Coppola & De Fazio (2015, J. Phys. Chem. A 119, 12615;
+      !   read in the accepted manuscript, the published version not
+      !   obtained) average over a Boltzmann population of all 178 bound
+      !   and quasi-bound rovibrational states of HeH+ (their eq 3), with
+      !   quantum close-coupling cross sections for v = 0, j = 0-5 and
+      !   quasi-classical trajectories for the other states, 10-15000 K.
+      !   Their fit (eq 4), k = sum_{i=0}^{6} a_i (log10 T)^i, max error
+      !   2.5%; their eq 4 prints the upper limit as 7 with seven
+      !   coefficients, and these seven reproduce their Fig. 6.  It gives
+      !   1.09e-9 at 300 K, 1.52e-9 at 1000 K, 1.75e-9 at 2000 K and a
+      !   maximum 2.00e-9 near 6000 K, and lies within 1-6% of the exact
+      !   quantum reactive rate of De Fazio (2014, PCCP 16, 11662, Table 2,
+      !   all internal states) from 100 to 2000 K.  The Arrhenius form of
+      !   Sil et al. (2025, A&A 695, A244, Table A.1 R4), 1.82e-9
+      !   exp(-121/T), fitted to the same rate, misses the maximum (9-11%
+      !   below it at 4000-8000 K, 12% above it at 300 K) and is not used.
+      !
+      !   VALIDITY.  (i) The thermal average assumes HeH+ internal states in
+      !   equilibrium at the gas temperature; HeH+ formed hot by a
+      !   reaction and destroyed before it relaxes is outside it.  (ii) The
+      !   authors call the rate questionable above about 10000 K
+      !   (non-adiabatic channels, non-equilibrium internal populations
+      !   under thermal dissociation).  (iii) The polynomial is negative
+      !   below about 6 K and above about 3e4 K, so T is held to the
+      !   authors' 10-15000 K: outside it the rate is the value at the
+      !   nearer end, not a calculation.
+      double precision function rk_R19_HeHp_H(T) result(k)
+      double precision, intent(in) :: T
+      double precision, parameter :: a(0:6) = (/ -4.45164d-9,             &
+           1.49207d-8, -1.97946d-8, 1.32296d-8, -4.60313d-9, 8.08319d-10,   &
+           -5.67934d-11 /)
+      double precision, parameter :: T_lo = 10.0d0, T_hi = 1.5d4
+      double precision :: x
+      integer :: i
+      x = log10(min(max(T, T_lo), T_hi))
+      k = a(6)
+      do i = 5, 0, -1
+         k = k*x + a(i)
+      enddo
       end function
 
       ! ------------------------------------------------------------------ !
@@ -1120,16 +1170,29 @@
       !        and its large dipole moment suggest a large rate coefficient"),
       !        and adopting an unmeasured 1978 estimate into a channel is
       !        what put R20 in this network in the first place.
-      !        WHAT IT WOULD DO, measured so the omission is bounded and not
-      !        merely noted (first cell at 1023 K): 1e-18 n(H+)
-      !        n(He) = 55 cm^-3 s^-1 against 0.15 for reaction (12), so it
-      !        would be the dominant HeH+ source and would raise n(HeH+)
-      !        from 7.7e-05 to ~3e-02 cm^-3.  It changes nothing observable:
-      !        HeH+ would still be 1e-13 of the helium, and the H2 loss it
-      !        drives through R18 would be 0.8 percent of the total instead
-      !        of 0.002.  Resolving it needs a computed radiative-association
-      !        rate for H+ + He, which exists (e.g. the He+ + H channel of
-      !        Courtney et al. 2021, ApJ 919, 70) and was not obtained here.
+      !        WHAT BLACK'S 1e-18 WOULD DO on one earlier model profile
+      !        (first cell at 1023 K; not re-measured for the present
+      !        equations): 1e-18 n(H+) n(He) = 55 cm^-3 s^-1 against 0.15
+      !        for reaction (12), so it would be the dominant HeH+ source and
+      !        would raise n(HeH+) from 7.7e-05 to ~3e-02 cm^-3, still 1e-13
+      !        of the helium, and the H2 loss it drives through R18 would be
+      !        0.8 percent of the total instead of 0.002.  These numbers
+      !        bound the proposed coefficient, not the physical channel.
+      !        A COMPUTED RATE EXISTS and is not used here: Courtney et al.
+      !        (2021), ApJ 919, 70, Sect. 2.1, compute the radiative
+      !        association He + H+ -> HeH+ + hv (their reaction 5; rate
+      !        coefficients in Fig. 1, LTE fit in Table 2), in the LTE and
+      !        the zero-density non-LTE limits of the quasi-bound entrance
+      !        states (the two converge at high temperature, their Sect. 2.1).
+      !        Their LTE fit (eq. 17, Table 2) gives 7.2e-20 at 1000 K and
+      !        3.0e-20 at 3000 K (DERIVED from the fit), 14 and 33 times below
+      !        Black's 1e-18, so the numbers above overstate the channel.  It
+      !        is not inserted here, and the effect of its omission on the
+      !        present profiles has not been measured.  The other radiative
+      !        association of the same paper, He+ + H -> HeH+ + hv (their
+      !        reaction 7), is a different reaction, as is reaction R1 of
+      !        Sil et al. (2025), A&A 695, A244, Table A.1 (He+ + H,
+      !        2.32e-16 exp(-122/T)).
       double precision function rk_H2p_He_HeHp(T) result(k)
       real*8, intent(in) :: T
       k = 3.0d-10*exp(-6717.0d0/T)
