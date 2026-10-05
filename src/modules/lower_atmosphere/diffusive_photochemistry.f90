@@ -7,8 +7,11 @@
       !   Phi_i = - n_tot (D_i + K_zz) d f_i/dr
       !           - n_i D_i [ 1/H_i - 1/H_atm ]        (f_i = n_i/n_tot)
       !
-      ! for i = H2, OH, H2O, CO.  This header states what was built and what
-      ! was measured, not what was intended.
+      ! for the molecular carriers i = H2, OH, H2O, CO, and, in the same
+      ! block system, the carried ionization stages of hydrogen and helium
+      ! (H+, He+, He++) and the He 2^3S level, whose rows are the stage
+      ! fluxes of ionization_stage_transport (section 2).  This header
+      ! states what was built and what was measured, not what was intended.
       !
       ! ---------------------------------------------------------------
       ! 1. WHY THE CARRIERS CANNOT BE A LOCAL STEADY STATE
@@ -43,8 +46,23 @@
       ! ---------------------------------------------------------------
       ! 2. WHICH SPECIES ARE TRANSPORTED, AND WHY THE OTHERS ARE NOT
       !
-      ! Transported: H2, OH, H2O, CO.  Between them they carry every H
-      ! nucleus that is not atomic or in a molecular ion, and every O and C
+      ! THE SET IS A PROPERTY OF THE RUN (carrier_set_init), up to eight
+      ! rows a cell (n_carrier_max):
+      !  - H2, with "Molecular carrier transport: True" in a molecular run;
+      !    OH, H2O and CO behind it when the oxygen chemistry is on;
+      !  - H+, and with helium He+ and He++, with "Ionization transport:
+      !    True".  They are written as fractions of their element's nuclei
+      !    and ride on the element nucleus flux, with the eddy term of the
+      !    stage (ionization_stage_transport, equation 1); H I and He I are
+      !    the closing stages, one minus the carried ones, and not rows;
+      !  - the He 2^3S level, with "He 2^3S transport: True" on top of the
+      !    carried helium stages, as a fourth state of the helium partition.
+      ! A configuration that solves a later row without an earlier one (the
+      ! stages without the molecular carriers, say) keeps the unsolved rows
+      ! as identity rows (carrier_solved).
+      !
+      ! THE MOLECULAR CARRIERS.  Between them H2, OH, H2O and CO carry every
+      ! H nucleus that is not atomic or in a molecular ion, and every O and C
       ! nucleus that is not a free atom.  OH is in the set even though its
       ! lifetime is short: measured over the H2 layer of the HD 189733 b
       ! run, OH lives 4.0e-3 to 0.40 s against O1 plus its photolysis while
@@ -66,18 +84,24 @@
       !  - O(1D).  Its lifetime is 1.6e-3 s at the HD 189733 b base and it
       !    has one sink; the design's sec. 2.3 states the case, and it is the
       !    same argument as above rather than a different one.
-      !  - H I / H II and the ion stages of every element.  Their balance is
-      !    local, and gate G2 requires that limit to be reproduced.  They are
-      !    where the transported carriers' nuclei come from and go to: the
+      !  - the ion stages of the metals, and the hydrogen and helium stages
+      !    in a run without "Ionization transport".  Their balance is local,
+      !    and gate G2 requires that limit to be reproduced.  They are where
+      !    the transported carriers' nuclei come from and go to: the
       !    write-back below moves nuclei between a carrier and the closure
       !    species of its element, so no element can drift.
       !
       ! The one term this drops that is not small everywhere is the AMBIPOLAR
-      ! field.  All four transported species are neutral, so eq. (2) of the
-      ! design has no (Z e E)/(k T) term for any of them; the field is not
-      ! neglected, it is absent.  Had the molecular ions been transported it
-      ! would not be, and settling_coefficient in binary_element_diffusion
-      ! already builds it.
+      ! field.  The four molecular carriers are neutral, so eq. (2) of the
+      ! design has no (Z e E)/(k T) term for any of them; for them the field
+      ! is not neglected, it is absent.  The carried ionization stages ARE
+      ! charged, and for them it is neglected: they move with their
+      ! element's nucleus flux plus the eddy term, with no molecular
+      ! diffusion and no ambipolar drift against their own neutral
+      ! (carrier_diffusivities sets their D to zero; the validity
+      ! of the one-velocity approximation is measured in
+      ! ionization_stage_transport).  settling_coefficient in
+      ! binary_element_diffusion builds the field for the element operator.
       !
       ! ---------------------------------------------------------------
       ! 3. THE COEFFICIENTS
@@ -169,11 +193,17 @@
       ! handoff legitimately supplies, and they are imposed where they always
       ! were -- through melem_ab, the base density and the EOS.  The split of
       ! each element among its carriers is what this option exists to
-      ! compute, so it is not imposed anywhere: the base face carries zero
-      ! diffusive flux, and the advective inflow, which is now the base face
+      ! compute, so the operator does not impose it: the base face carries
+      ! zero diffusive flux, and the advective inflow, which is the base face
       ! mass flux times the ghost composition, carries the base cell's own
       ! partition because the ghost is given that partition (df/dr = 0 at the
-      ! face), which is the same statement.
+      ! face), which is the same statement.  The one exception is data from
+      ! below: where a handoff states the base H2 partition (base.inp
+      ! q_H2_base, or the profile's value at the matching level), the inner
+      ! ghosts hold that partition and the inflowing base face carries it in
+      ! (carrier_set_init, base_h2_composition_imposed).  The carried
+      ! ionization stages are never stated by a handoff and keep the
+      ! zero-gradient ghost in every configuration.
       !
       ! That is what makes the A/B gate of design sec. 6.2 a test.  Had the
       ! base H2 fraction been pinned from the same handoff the gate compares
@@ -189,7 +219,8 @@
       !
       ! Cell-centred f_i, face-centred fluxes on r_edg, one backward-Euler
       ! step per call, Newton with a backtracking line search, block
-      ! tridiagonal in space (4x4 blocks: the transport is diagonal in
+      ! tridiagonal in space (n_carrier_max x n_carrier_max = 8x8 blocks,
+      ! the unsolved rows identity rows: the transport is diagonal in
       ! species and the chemistry is dense within a cell).  Faces 0 and N
       ! carry zero diffusive flux.  The drift term switches from central to
       ! donor-cell on the same Peclet test the element operator uses.
@@ -292,7 +323,7 @@
       use co_self_shielding_table, only: co_shield_tex_limit_K
       use System_HeH_mol, only: set_mol_coeffs, set_oxygen_coeffs,       &
                                 mol_heh_rows, oxygen_carrier_rows,       &
-                                oj3, oj4, oj5, oj7
+                                oj3, oj4, oj5, oj7, mk_ion_H2
       use water_photolysis, only: n_fuv_band
       use utils_ion_eq, only: fuv_lw_photon_field
       use utils, only: calc_ne
@@ -307,7 +338,8 @@
       ! local sweep solves there (System_HeH_TR and System_HeH reach them
       ! through ion_residual_core), so that a stage source and the sweep's
       ! own balance are one expression and cannot drift apart.
-      use ion_residual_core, only: heh_tr_rows
+      use ion_residual_core, only: heh_tr_rows, tr_triplet_row_channels
+      use molecular_reaction_heat, only: species_formation_energy
       ! He <-> H charge exchange, Huang et al. (2023) Table 4 group B. It is
       ! a term of the H+ and He+ balances in EVERY system that carries
       ! helium, so it is a term of the stage rows too.
@@ -412,8 +444,13 @@
       public :: thermochemical_state
       public :: save_thermochemical_state, restore_thermochemical_state
       public :: carrier_steady_residual
-      public :: carrier_enthalpy_active, carrier_enthalpy_face_flux,      &
-                carrier_enthalpy_divergence_of_state
+      public :: carrier_enthalpy_active, carrier_enthalpy_divergence_of_state
+      ! The two parts of that enthalpy flux, public for the tests
+      ! (src/tests/carrier_enthalpy_flux, src/tests/ionization_stage_enthalpy_flux).
+      public :: molecular_carrier_enthalpy_active,                       &
+                molecular_carrier_enthalpy_face_flux,                    &
+                ionization_stage_enthalpy_active,                        &
+                ionization_stage_enthalpy_face_flux
       ! Test only: the diffusion coefficients the carrier face flux is
       ! formed from (src/tests/carrier_enthalpy_flux).
       public :: carrier_diffusivities
@@ -445,7 +482,7 @@
       ! box is formed.
       public :: carrier_headroom_set_for_test
       public :: n_carrier, carrier_name, ic_H2, ic_OH, ic_H2O, ic_CO
-      public :: ic_Hp, ic_HeII, ic_HeIII, carrier_solved
+      public :: ic_Hp, ic_HeII, ic_HeIII, ic_HeTR, carrier_solved
       ! The stage sum identity of the last stationary evaluation: the
       ! certification reports it beside the rows it was measured with.
       public :: ionization_stage_sum_measure
@@ -457,6 +494,10 @@
       ! helium rows ride on the HELIUM nucleus flux and the two helium
       ! stages share one simplex and one closing stage.
       public :: carrier_is_ionization_stage, carrier_stage_element
+      public :: carrier_is_nucleus_fraction
+      ! The energy the transported He 2^3S population carries in its
+      ! excitation, measured against the energy row (certification).
+      public :: helium_metastable_excitation_energy_divergence
       public :: carrier_nucleus_reference, carrier_stage_face_state
       ! THE HELIUM THE TWO IONIZED STAGES MAY HOLD, and the neutral helium
       ! a trial partition of them leaves.  They are the admissible set of
@@ -668,11 +709,13 @@
       ! stay at zero -- the species behind them do not exist without the
       ! oxygen chemistry -- so the whole-array statements below are exact.
       !
-      ! THE IONIZATION STAGES ARE THE LAST THREE, AND THAT IS FOR A REASON.
+      ! THE IONIZATION STAGES ARE THE NEXT THREE, AND THAT IS FOR A REASON.
       ! Their indices have to be constants -- the ionization rows, the
       ! write-back and the element budget all name them -- and the four
       ! molecular indices have to keep the values they have, so the only
-      ! place left is behind them.
+      ! place left is behind them.  The He 2^3S level ("He 2^3S
+      ! transport") is the last, behind the stages it shares the helium
+      ! simplex with.
       ! That makes the solved set non-contiguous in the one configuration
       ! that carries H2 and the stages without the oxygen cycle, which is why
       ! carrier_solved exists below: n_carrier is the LAST index solved and
@@ -685,19 +728,31 @@
       ! closing stage of each element is not a row: it is one minus the
       ! carried ones, which is what makes the stage fluxes of an element
       ! sum to that element's own nucleus flux.
-      integer, parameter :: n_carrier_max = 7
+      !
+      ! THE He 2^3S LEVEL IS A FOURTH STATE OF THE HELIUM PARTITION, not a
+      ! stage: it has the charge of He I.  Carried ("He 2^3S transport"),
+      ! x3 = n(2^3S)/n(He nuclei) rides on the helium nucleus flux in the
+      ! same variable as the two ionized stages, and the closing state of
+      ! helium is then the ground singlet, one minus the three carried
+      ! ones (and the helium of HeH+).  carrier_is_nucleus_fraction is the
+      ! set of carriers written that way; carrier_is_ionization_stage the
+      ! three of them that are ionization stages.
+      integer, parameter :: n_carrier_max = 8
       integer, save      :: n_carrier = 4   ! set by carrier_set_init
       integer, parameter :: ic_H2 = 1, ic_OH = 2, ic_H2O = 3, ic_CO = 4
       integer, parameter :: ic_Hp = 5
       integer, parameter :: ic_HeII = 6, ic_HeIII = 7
-      character(len=4), parameter :: carrier_name(n_carrier_max) =       &
-           (/ 'H2  ', 'OH  ', 'H2O ', 'CO  ', 'H+  ',                    &
-              'He+ ', 'He++' /)
+      integer, parameter :: ic_HeTR = 8
+      ! Names without blanks: the row-term record and the logs write them
+      ! as one whitespace-delimited field.
+      character(len=6), parameter :: carrier_name(n_carrier_max) =       &
+           (/ 'H2    ', 'OH    ', 'H2O   ', 'CO    ', 'H+    ',          &
+              'He+   ', 'He++  ', 'He2^3S' /)
       ! Which of 1..n_carrier this run solves. A carrier that is not solved
       ! keeps the identity row nrho/dt on the diagonal and a zero residual,
       ! so its unknown does not move and the block structure the Thomas
-      ! sweep needs is unchanged; it costs one 5x5 block instead of one 2x2
-      ! and no chemistry evaluation. Set once by carrier_set_init.
+      ! sweep needs is unchanged; it costs one n_carrier_max-square block
+      ! entry and no chemistry evaluation. Set once by carrier_set_init.
       logical, save :: carrier_solved(n_carrier_max) = .true.
 
       ! Background collision partners for Blanc's law: the species whose
@@ -800,7 +855,8 @@
       ! THE ENDINGS OF A RELAXATION PASS.  MOVEMENT_BOUND: the returned
       ! state lies inside the bound and the shortest admissible trial would
       ! leave it.  FIXED_POINT: a full-length step no longer moves the
-      ! state.  STEP_BUDGET: relax_maxstep trials were taken without
+      ! state and the steady carrier residual of the present rows is at or
+      ! below carrier_accept_tol.  STEP_BUDGET: relax_maxstep trials were taken without
       ! either.  INTERVAL_REFUSED: the shortest admissible trial still could
       ! not be covered by the transport step, so the state inside the bound
       ! is what stands.  NO_CARRIERS: the
@@ -1611,9 +1667,17 @@
             carrier_solved(ic_HeIII) = .true.
          endif
       endif
+      ! THE He 2^3S POPULATION, as a fourth helium state of the same
+      ! partition: it rides on the helium nucleus flux the two ionized
+      ! stages ride on, and its ground singlet closes against them, so it
+      ! is carried only with them (input_read refuses the key otherwise).
+      if (he23s_transport .and. ionization_transport .and. thereis_He    &
+          .and. thereis_HeITR) carrier_solved(ic_HeTR) = .true.
       ! n_carrier is the last index in the solved set: the loops run
       ! 1..n_carrier and skip the ones carrier_solved leaves out.
-      if (ionization_transport) then
+      if (carrier_solved(ic_HeTR)) then
+         n_carrier = ic_HeTR            ! ..., H+, He+, He++, He 2^3S
+      else if (ionization_transport) then
          n_carrier = ic_HeIII           ! [H2 [, OH, H2O, CO],] H+, He+, He++
       else if (thereis_oxychem) then
          n_carrier = ic_CO              ! H2, OH, H2O, CO
@@ -1629,7 +1693,9 @@
       if (thereis_mol .and. .not. h2_thermochemistry_ready())             &
          call h2_thermochemistry_init
 
-      ! THE ENTHALPY THE CARRIERS CARRY enters the stationary energy row
+      ! THE ENTHALPY THE CARRIERS CARRY (the molecular carriers relative
+      ! to their elements, the carried ionization stages relative to their
+      ! element) enters the stationary energy row
       ! through the one procedure the residual module holds for it (that
       ! module cannot use this one, which uses it): registered here, where
       ! the carrier set is decided, and read by assemble_residual.  A run
@@ -1674,6 +1740,12 @@
             call advected_carrier_register(isp_HeII, .false.)
          if (carrier_solved(ic_HeIII))                                   &
             call advected_carrier_register(isp_HeIII, .false.)
+         ! Registered last, so the register order stays the order of the
+         ! carrier indices (carrier_state reads the advected columns in
+         ! that order).  No handoff states a 2^3S fraction below the base:
+         ! the inner ghosts take the base cell's own, as for the stages.
+         if (carrier_solved(ic_HeTR))                                    &
+            call advected_carrier_register(isp_HeTR, .false.)
       endif
       end subroutine carrier_set_init
 
@@ -2814,14 +2886,13 @@
       ! THE CARRIER ROWS OF THE LAST ASSEMBLY, TERM BY TERM.  One line per
       ! (cell, solved carrier): the transport terms, the chemical
       ! production and loss separately, the radiative part of the loss, the
-      ! row itself, and the row measured on two scales --
-      !
-      !   scale_net    |transport| + |production - loss| + floor, and
-      !   scale_terms  |transport| + production + loss + floor,
-      !
-      ! the second being the sum of the magnitudes of the terms the row
-      ! actually contains.  Both are printed so that a reader can see what
-      ! the difference does where the chemistry is fast.
+      ! row itself, and the row measured on ONE scale, rowdump_scale: the
+      ! row's own physical scale that the acceptance and the certification
+      ! divide by (row_terms_phys), the magnitudes of the two face fluxes and
+      ! of the advective terms, the reaction terms and the 1e-20
+      ! free-element floor.  The file header states the same.  For a helium
+      ! stage the production and loss columns are the positive and negative
+      ! parts of the net source, not gross reaction rates.
       subroutine carrier_row_terms_write(fname)
       character(len=*), intent(in) :: fname
       integer :: u, j, ic, k
@@ -3092,13 +3163,17 @@
       ! only a run with ionization_transport lets the solve move it.  Its
       ! unknown is the fraction of the HYDROGEN NUCLEI in H II, which is
       ! the variable whose flux the element's own nucleus flux carries
-      ! (carrier_is_ionization_stage).
+      ! (carrier_is_nucleus_fraction).
       fc(:,ic_Hp)  = f_sp(:,isp_HII)*nd/max(cbg_nHnuc, 1.0d-300)
       ! The two ionized helium stages, per HELIUM nucleus, from the same
       ! count.  Filled whether or not they are solved, for the reason the
       ! proton column above is.
       fc(:,ic_HeII)  = f_sp(:,isp_HeII) *nd/max(cbg_nHenuc, 1.0d-300)
       fc(:,ic_HeIII) = f_sp(:,isp_HeIII)*nd/max(cbg_nHenuc, 1.0d-300)
+      ! The He 2^3S level, per helium nucleus, from the same count.
+      fc(:,ic_HeTR) = 0.0d0
+      if (thereis_HeITR)                                                 &
+         fc(:,ic_HeTR) = f_sp(:,isp_HeTR)*nd/max(cbg_nHenuc, 1.0d-300)
 
       ! THE ADVECTED CARRIERS ARE THE STATE THIS STEP STARTS FROM.  The
       ! material advection of every solved carrier was taken with the mass
@@ -3138,7 +3213,7 @@
             ! (nH_free, taken from this same f_sp), so the two agree; a
             ! nucleus count taken from the advected columns alone would
             ! not, because those columns are not the whole element.
-            if (carrier_is_ionization_stage(ic)) then
+            if (carrier_is_nucleus_fraction(ic)) then
                do j = 1-Ng, N+Ng
                   fc(j,ic) = fcadv(j,k)*nd(j)                            &
                        /max(carrier_stage_nucleus_density(ic, j),        &
@@ -3998,6 +4073,13 @@
          nmax = element_box_side(isp_HeII, ien_He, nHe_nuc)
       case (ic_HeIII)
          nmax = element_box_side(isp_HeIII, ien_He, nHe_nuc)
+      case (ic_HeTR)
+         ! One He 2^3S atom holds one helium nucleus, the nucleus of the
+         ! He I atom it is a level of.  The element inventory counts that
+         ! nucleus once, through He I, and gives the level none of its own
+         ! (bsp_is_excited_level), so element_box_side refuses the level;
+         ! its side of the box is the helium nucleus density itself.
+         nmax = nHe_nuc
       case (ic_OH)
          nmax = element_box_side(isp_OH, ien_O, nO_free)
       case (ic_H2O)
@@ -4101,8 +4183,8 @@
          ! term of the stage flux, and is already inside the face flux that
          ! row is the divergence of; taking it a second time on the bulk
          ! face mass flux would advect the stage twice and on the wrong
-         ! flux (carrier_is_ionization_stage).
-         if (carrier_is_ionization_stage(ic)) cycle
+         ! flux (carrier_is_nucleus_fraction).
+         if (carrier_is_nucleus_fraction(ic)) cycle
          mc = carrier_mass_amu(ic)
          call carrier_face_mass_fraction(fc, msum, ic, Y)
          call species_face_fraction(Y, Frho, Yf)
@@ -4336,7 +4418,7 @@
             ! to the charge of what it mixes.  Adding the ambipolar
             ! coefficient is a physics decision of its own and is not taken
             ! here.
-            if (carrier_is_ionization_stage(ic)) then
+            if (carrier_is_nucleus_fraction(ic)) then
                Dco(j,ic) = 0.0d0
                cycle
             endif
@@ -4412,6 +4494,8 @@
          isp = isp_HeII
       case (ic_HeIII)
          isp = isp_HeIII
+      case (ic_HeTR)
+         isp = isp_HeTR
       case default
          write(*,'(a,i0,a)') ' (carrier_species_index) carrier index ',   &
             ic, ' names no species'
@@ -4450,11 +4534,26 @@
                                .or. (ic .eq. ic_HeIII)
       end function carrier_is_ionization_stage
 
+      ! WHETHER CARRIER ic IS A FRACTION OF ITS ELEMENT'S NUCLEI riding on
+      ! that element's nucleus flux: the three ionization stages, and the
+      ! He 2^3S level, which is a state of the helium partition with the
+      ! charge of He I.  Every property the transport of a stage rests on
+      ! -- the variable, the face flux, the reference density, the absence
+      ! of a molecular diffusion and settling drift of its own -- holds for
+      ! the level in the same form, so these are the carriers that take the
+      ! stage flux of ionization_stage_transport.  What separates the level
+      ! from the stages is its charge, which enters only the electron
+      ! budget and the stage enthalpy flux, and those name the stages.
+      logical function carrier_is_nucleus_fraction(ic) result(nucfrac)
+      integer, intent(in) :: ic
+      nucfrac = carrier_is_ionization_stage(ic) .or. (ic .eq. ic_HeTR)
+      end function carrier_is_nucleus_fraction
+
       ! ------------------------------------------------------------- !
 
       ! THE ELEMENT WHOSE NUCLEI AN IONIZATION STAGE PARTITIONS, as the
       ! index of the element inventory: hydrogen for x(H II), helium for
-      ! x(He II) and x(He III).  One table, read by the nucleus density
+      ! x(He II), x(He III) and the He 2^3S level.  One table, read by the nucleus density
       ! the row is written against, by the face flux it rides on and by
       ! the identity that sums the stages of one element.
       integer function carrier_stage_element(ic) result(ien)
@@ -4495,7 +4594,7 @@
                                result(nref)
       integer,  intent(in) :: ic, j
       real(dp), intent(in) :: nrho_j
-      if (carrier_is_ionization_stage(ic)) then
+      if (carrier_is_nucleus_fraction(ic)) then
          nref = carrier_stage_nucleus_density(ic, j)
       else
          nref = nrho_j
@@ -4585,7 +4684,7 @@
          ! ionization_stage_transport written on its element's nucleus
          ! flux, and a gradient coefficient left nonzero here would put the
          ! eddy transport of that stage into the row a second time.
-         if (carrier_is_ionization_stage(ic)) cycle
+         if (carrier_is_nucleus_fraction(ic)) cycle
          ! Settling coefficient of this carrier, G = (m_i - m_bar) g/(k T).
          do j = 1-Ng, N+Ng
             Gco(j) = (carrier_mass_amu(ic)*mu - mbar(j))*gphys(j)   &
@@ -4672,6 +4771,12 @@
       stg_Nel(:,ic_HeIII)  = N_He
       stg_nelf(:,ic_HeII)  = n_Hef
       stg_nelf(:,ic_HeIII) = n_Hef
+      ! The He 2^3S level moves with the helium nucleus flux, i.e. at the
+      ! element's velocity like the rest of He I; a drift of the
+      ! metastable against ground-state He I is not carried
+      ! (md/He23S_transport_design_20261003.md section 4).
+      stg_Nel(:,ic_HeTR)  = N_He
+      stg_nelf(:,ic_HeTR) = n_Hef
       stg_Kf  = Kf
       stg_drf = drf
 
@@ -4768,7 +4873,7 @@
       real(dp), dimension(:,:), allocatable :: xion, xf, Fk, Ek
       real(dp), dimension(0:N)              :: xclose, Fclose
       real(dp) :: d, sc, Fsum, sprime, eddy, gworst
-      integer  :: j, k, nk, ics(2), icf
+      integer  :: j, k, nk, ics(3), icf
 
       dmax   = 0.0d0
       jworst = 0
@@ -4785,6 +4890,13 @@
          nk     = 2
          ics(1) = ic_HeII
          ics(2) = ic_HeIII
+         ! The carried He 2^3S level is a third carried state of the
+         ! helium partition; its flux is part of the helium nucleus flux,
+         ! and the closing state is then the ground singlet.
+         if (carrier_solved(ic_HeTR)) then
+            nk     = 3
+            ics(3) = ic_HeTR
+         endif
       endif
       icf = ics(1)
       allocate(xion(nk,1-Ng:N+Ng), xf(nk,0:N), Fk(nk,0:N), Ek(nk,0:N))
@@ -4970,13 +5082,15 @@
       !   of the inventory, x(He II) = 0.60 and x(He III) = 0.35 pass a
       !   bound of one and leave an inventory of 1.05.
       !
-      !   the population of the He 2^3S metastable (cbg_nheiTR).  The
-      !   level is a sub-population of He I, not a fourth stage and not a
-      !   nucleus of its own, and this step holds it frozen: the chemistry
-      !   rows read the ground singlet as n(He I) - n(He 2^3S), so a
-      !   partition leaving less neutral helium than the frozen level
-      !   holds has a negative singlet, which is not a state the rows may
-      !   be evaluated at.
+      !   the population of the He 2^3S metastable (cbg_nheiTR), where
+      !   the step holds it frozen.  The level is a sub-population of He I
+      !   and not a nucleus of its own: the chemistry rows read the ground
+      !   singlet as n(He I) - n(He 2^3S), so a partition leaving less
+      !   neutral helium than the frozen level holds has a negative
+      !   singlet, which is not a state the rows may be evaluated at.
+      !   Where "He 2^3S transport" carries the level it is not frozen and
+      !   not reserved: it is the third carried state of the same simplex
+      !   (the paragraph above carrier_helium_available_to_stages).
       !
       ! Reserving both makes the neutral singlet of a trial the difference
       ! of this density and the two ionized stages, which is nonnegative on
@@ -4996,10 +5110,15 @@
 
       ! ------------------------------------------------------------- !
 
+      ! WITH THE He 2^3S LEVEL CARRIED ("He 2^3S transport") it is not
+      ! reserved: it is the third carried state of the same simplex, and
+      ! reserving its frozen population as well would count it twice.  The
+      ! helium of HeH+ stays reserved in either case.
       double precision function carrier_helium_available_to_stages(j)    &
                                 result(nHe)
       integer, intent(in) :: j
-      nHe = cbg_nHenuc(j) - cbg_nHemol(j) - cbg_nheiTR(j)
+      nHe = cbg_nHenuc(j) - cbg_nHemol(j)
+      if (.not. carrier_solved(ic_HeTR)) nHe = nHe - cbg_nheiTR(j)
       if (nHe .lt. 0.0d0) nHe = 0.0d0
       end function carrier_helium_available_to_stages
 
@@ -5020,13 +5139,24 @@
       ! (carrier_helium_singlet_under_zero); this routine is called from
       ! inside the threaded Jacobian assembly and keeps no record of its
       ! own.
+      !
+      ! n_heiTR is the He 2^3S population of the trial: the carried
+      ! unknown where "He 2^3S transport" carries it, the frozen one of
+      ! the step otherwise.  In the first case the available helium holds
+      ! the level (carrier_helium_available_to_stages) and the singlet is
+      ! what the three carried states leave; in the second the level is
+      ! reserved there and the singlet is what the two ionized stages
+      ! leave.  Either way n_hei = n_heiSI + n_heiTR is the whole neutral
+      ! stage.
       subroutine carrier_helium_neutral_of_partition(j, n_heii, n_heiii, &
-                                                     n_hei, n_heiSI)
+                                                     n_heiTR, n_hei,     &
+                                                     n_heiSI)
       integer,  intent(in)  :: j
-      real(dp), intent(in)  :: n_heii, n_heiii
+      real(dp), intent(in)  :: n_heii, n_heiii, n_heiTR
       real(dp), intent(out) :: n_hei, n_heiSI
       n_heiSI = carrier_helium_available_to_stages(j) - n_heii - n_heiii
-      n_hei   = n_heiSI + cbg_nheiTR(j)
+      if (carrier_solved(ic_HeTR)) n_heiSI = n_heiSI - n_heiTR
+      n_hei   = n_heiSI + n_heiTR
       end subroutine carrier_helium_neutral_of_partition
 
       ! ------------------------------------------------------------- !
@@ -5057,7 +5187,7 @@
       select case (ic)
       case (ic_H2, ic_Hp)
          nref = nH_free
-      case (ic_HeII, ic_HeIII)
+      case (ic_HeII, ic_HeIII, ic_HeTR)
          ! THE HELIUM NUCLEUS COUNT OF THE CELL, which bounds a helium
          ! stage from above.  What a stage can actually reach is less by
          ! the helium held in HeH+ and in the frozen He 2^3S level
@@ -5131,9 +5261,11 @@
       ! every correction made to a row once it had returned.  Where the chemistry is fast the two
       ! cancel to many digits and |src| stands orders below either, so a row
       ! that reads as one term is not a row with one term; the record of
-      ! EXHALE_CARRIER_ROW_TERMS exists to tell those apart.  Diagnostic
-      ! only: nothing in the solution reads them, and the row scale is
-      ! formed from src as it always was (carrier_residual).
+      ! EXHALE_CARRIER_ROW_TERMS exists to tell those apart.  The physical
+      ! scale of each row (row_terms_phys, carrier_residual), which the
+      ! acceptance and the certification divide by, takes sprod + sloss as
+      ! its reaction terms; the solution itself, and the Newton's own scale,
+      ! read src alone.
       real(dp), optional, intent(out) :: sprod(n_carrier_max)
       real(dp), optional, intent(out) :: sloss(n_carrier_max)
       real(dp), optional, intent(out) :: sphot(n_carrier_max)
@@ -5153,6 +5285,8 @@
       real(dp) :: n_hi, n_hii, n_h2p, n_h3p, n_hehp
       real(dp) :: n_hei, n_heii, n_heiii, n_heiTR, n_heiSI, n_e, n_o0
       real(dp) :: h2chan(n_h2chan)
+      ! The two halves of the He 2^3S row (tr_triplet_row_channels).
+      real(dp) :: hetr_prod, hetr_loss
       ! The metal charge exchange as stoichiometric stage sources
       ! [cm^-3 s^-1]: the net source of each hydrogen and helium stage and
       ! the gross production and loss the same reactions give them.  The
@@ -5178,7 +5312,13 @@
       n_h2p   = cbg_nh2p(j)
       n_h3p   = cbg_nh3p(j)
       n_hehp  = cbg_nhehp(j)
+      ! THE He 2^3S POPULATION IS FROZEN BACKGROUND OR THE TRIAL UNKNOWN,
+      ! for the reason the proton is: carried ("He 2^3S transport"), its
+      ! row is solved here, and the triplet photoionization, collisional
+      ! ionization and Penning terms of the He II, H II and singlet rows
+      ! below then see the population the row is moving.
       n_heiTR = cbg_nheiTR(j)
+      if (carrier_solved(ic_HeTR)) n_heiTR = nc(ic_HeTR)
       ! THE TWO IONIZED HELIUM STAGES ARE EITHER FROZEN BACKGROUND OR THE
       ! TRIAL UNKNOWNS, for the reason the proton is: with the helium
       ! ionization state carried, n(He+) and n(He++) are what this Newton
@@ -5198,7 +5338,8 @@
          n_heii  = nc(ic_HeII)
          n_heiii = nc(ic_HeIII)
          call carrier_helium_neutral_of_partition(j, n_heii, n_heiii,    &
-                                                  n_hei, n_heiSI)
+                                                  n_heiTR, n_hei,        &
+                                                  n_heiSI)
       else
          ! The frozen background's own partition.  Its singlet is the
          ! floored difference of the two columns the sweep wrote, the
@@ -5330,9 +5471,9 @@
       ! The triplet coefficients are zero where the level is not tracked
       ! (ionization_equilibrium fills the cell state either way), and the
       ! four rows then reduce term by term to the H/He balances of
-      ! System_HeH.  Row (4), the He 2^3S balance, is not a stage of the
-      ! element partition -- the metastable is a sublevel inside He I and
-      ! stays with the sweep -- and is not read here.
+      ! System_HeH.  Row (4) is the He 2^3S balance (tr_triplet_row); it
+      ! is read where "He 2^3S transport" carries the level, and left to
+      ! the sweep's local root otherwise.
       call heh_tr_rows(fv, n_hi, n_hii, n_heiSI, n_heiTR, n_heii,        &
                        n_heiii, n_e,                                     &
                        ieq_cell%P_HI, ieq_cell%P_HeI, ieq_cell%P_HeII,   &
@@ -5473,6 +5614,25 @@
             src(ic_HeIII) =  fv(3)         + cx_sHe(2)
          endif
       endif
+      ! THE He 2^3S ROW IS THE LEVEL BALANCE THE SWEEP SOLVES, taken
+      ! whole: tr_triplet_row (ion_residual_core), row (4) of the atomic
+      ! rows and row (8) of the molecular ones, the latter with the
+      ! He(2^3S) + H2 quench.  Production positive, as the stage rows.
+      ! A transition between 2^3S and the singlet moves no nucleus out of
+      ! He I, so the summed He I balance of row (2) and hence the He II
+      ! source above are the same whichever of the two levels the neutral
+      ! sits in; what the level changes there is which of its own channels
+      ! (triplet photoionization, collisional ionization) runs, at the
+      ! trial n_heiTR.  The metal charge exchange has no 2^3S channel
+      ! (its helium reactant is the ground singlet).
+      src(ic_HeTR) = 0.0d0
+      if (carrier_solved(ic_HeTR)) then
+         if (thereis_mol) then
+            src(ic_HeTR) = fv(8)
+         else
+            src(ic_HeTR) = fv(4)
+         endif
+      endif
 
       ! THE SAME ROWS AS SUMS OF MAGNITUDES.  Every term of a row is
       ! sign-definite in the trial densities, so the sum of the magnitudes
@@ -5480,6 +5640,25 @@
       ! the like-signed terms therefore loses nothing.  CO has no formation
       ! channel in the one-sided model above, so its two loss channels are
       ! its whole scale.
+      !
+      ! THE He 2^3S ROW CARRIES ITS TWO GROSS HALVES.  Unlike the
+      ! stage rows its balance is one closed expression of sign-definite
+      ! channels (tr_triplet_row), so the halves are formed from the
+      ! same terms by tr_triplet_row_channels, with the He(2^3S) + H2
+      ! quench of the molecular row on the loss side; sprod - sloss is
+      ! src to the rounding of the two sums.  Where the level is in
+      ! near-local balance the net is orders below either half, which is
+      ! what this record has to show.
+      if (carrier_solved(ic_HeTR) .and.                            &
+          (present(sprod) .or. present(sloss))) then
+         call tr_triplet_row_channels(hetr_prod, hetr_loss,            &
+              n_hi, n_heiSI, n_heiTR, n_heii, n_e,                     &
+              ieq_cell%P_HeITR, ieq_cell%rcheiTR, ieq_cell%q13,        &
+              ieq_cell%q31g, ieq_cell%q31a, ieq_cell%q31b,             &
+              ieq_cell%Q31, ieq_cell%A31, ieq_cell%a_ion_HeITR)
+         if (thereis_mol)                                             &
+            hetr_loss = hetr_loss + mk_ion_H2*n_heiTR*nc(ic_H2)
+      endif
       if (present(sprod)) then
          sprod        = 0.0d0
          sprod(ic_H2) = pH2 + pH2ox
@@ -5527,6 +5706,7 @@
             sprod(ic_HeII)  = max(src(ic_HeII),  0.0d0)
             sprod(ic_HeIII) = max(src(ic_HeIII), 0.0d0)
          endif
+         if (carrier_solved(ic_HeTR)) sprod(ic_HeTR) = hetr_prod
       endif
       if (present(sloss)) then
          sloss        = 0.0d0
@@ -5545,6 +5725,7 @@
             sloss(ic_HeII)  = max(-src(ic_HeII),  0.0d0)
             sloss(ic_HeIII) = max(-src(ic_HeIII), 0.0d0)
          endif
+         if (carrier_solved(ic_HeTR)) sloss(ic_HeTR) = hetr_loss
       endif
       if (present(sh2chan)) then
          sh2chan = 0.0d0
@@ -5595,16 +5776,21 @@
 
       ! ------------------------------------------------------------- !
 
-      ! WHETHER THE ENERGY EQUATION CARRIES THE ENTHALPY OF THE CARRIER
-      ! FLUXES: where a molecular carrier (H2, OH, H2O, CO) is transported
-      ! relative to the gas, unless "Interdiffusion enthalpy flux: False"
-      ! removes the enthalpy of relative transport altogether (the one key
-      ! for the element and the carrier terms, parameters.f90).  The
-      ! ionization stages carried by "Ionization transport" are not covered:
-      ! their face flux is a stage flux with the element's advection inside
-      ! it, and the relative part that would carry enthalpy is not formed
-      ! here (an open item, md/TO_BE_DONE.md (j)).
+      ! WHETHER THE ENERGY EQUATION CARRIES THE ENTHALPY OF THE RELATIVE
+      ! TRANSPORT OF THIS OPERATOR'S CARRIERS: the molecular carriers
+      ! moving relative to the rest of their elements, and the ionization
+      ! stages that "Ionization transport" carries moving relative to their
+      ! own element.  Both are removed, with the element term, by
+      ! "Interdiffusion enthalpy flux: False" (the one key for the enthalpy
+      ! of relative transport, parameters.f90).
       logical function carrier_enthalpy_active() result(on)
+      on = molecular_carrier_enthalpy_active() .or.                      &
+           ionization_stage_enthalpy_active()
+      end function carrier_enthalpy_active
+
+      ! The molecular part: where a molecular carrier (H2, OH, H2O, CO) is
+      ! transported relative to the gas.
+      logical function molecular_carrier_enthalpy_active() result(on)
       integer :: ic
       on = .false.
       if (.not. (interdiffusion_enthalpy_flux .and. thereis_mol .and.     &
@@ -5612,11 +5798,109 @@
       do ic = ic_H2, ic_CO
          if (carrier_solved(ic)) on = .true.
       enddo
-      end function carrier_enthalpy_active
+      end function molecular_carrier_enthalpy_active
+
+      ! The stage part: where the ionized stages are carried, each with its
+      ! own eddy term relative to its element (ionization_stage_transport,
+      ! equation 1).
+      logical function ionization_stage_enthalpy_active() result(on)
+      on = interdiffusion_enthalpy_flux .and. ionization_transport .and.  &
+           carrier_solved(ic_Hp)
+      end function ionization_stage_enthalpy_active
 
       ! ------------------------------------------------------------- !
 
-      subroutine carrier_enthalpy_face_flux(rho, Tcode, f_sp, q)
+      ! Which species of the table are the transported molecular carriers
+      ! of this run.
+      subroutine molecular_carrier_species(car_bsp)
+      logical, intent(out) :: car_bsp(n_bsp)
+      integer :: ic, ib, isp
+      car_bsp = .false.
+      do ic = ic_H2, ic_CO
+         if (.not. carrier_solved(ic)) cycle
+         isp = carrier_species_index(ic)
+         do ib = 1, n_bsp
+            if (bsp_fsp(ib) .eq. isp) car_bsp(ib) = .true.
+         enddo
+      enddo
+      end subroutine molecular_carrier_species
+
+      ! ------------------------------------------------------------- !
+
+      subroutine recoiling_nucleus_enthalpies(f_sp, j, kTe, urv, car_bsp, &
+                                              hbH, hbO, hbC)
+      ! THE SENSIBLE ENTHALPY PER NUCLEUS OF THE SPECIES THAT TAKE UP A
+      ! RECOIL in one cell [erg per nucleus], for hydrogen, oxygen and
+      ! carbon.  When a carrier (a molecule, or a carried ionization stage)
+      ! moves nuclei across a face that its element's flux does not move,
+      ! the same nuclei move the other way in the species the composition
+      ! update rescales to keep the element total (carrier_write_back), and
+      ! in no others: the energy row must move the enthalpy of the nuclei
+      ! the composition rows move.
+      !
+      ! Hydrogen recoils in the species made of hydrogen nuclei alone that
+      ! the flow does not carry: H I, H2+, H3+, and H+ unless "Ionization
+      ! transport" carries it (carrier_solved(ic_Hp)), in which case the
+      ! write-back sets H+ from its own transported row and H+ takes no
+      ! part of the recoil.  The molecular carriers (car_bsp) take none:
+      ! their densities are their own rows'.  HeH+ never recoils: rescaling
+      ! it would move a helium nucleus with the hydrogen one, so the
+      ! write-back leaves it where it is.  O and C recoil in their atomic
+      ! stages where the metals are in the equation of state.  Per particle
+      ! h_s = e_s + kT with e_s of the caloric EOS: gamma_ad/(gamma_ad - 1)
+      ! kT (1 + Z_s), each particle with the electrons its charge gave up,
+      ! H2 adding its rovibrational energy k u_rv (urv, zero under "Caloric
+      ! EOS: monatomic").  An element with no recoiling species in the cell
+      ! recoils with its neutral ground atom, gamma_ad/(gamma_ad - 1) kT.
+      ! j is the cell and kTe its kT [erg].
+      real(dp), dimension(1-Ng:N+Ng,n_species), intent(in) :: f_sp
+      integer,  intent(in)  :: j
+      real(dp), intent(in)  :: kTe, urv
+      logical,  intent(in)  :: car_bsp(n_bsp)
+      real(dp), intent(out) :: hbH, hbO, hbC
+      real(dp) :: cp_part, hs, dens
+      real(dp) :: eH, nHnuc, eO, nOnuc, eC, nCnuc
+      integer  :: ib, im
+
+      cp_part = gamma_ad/(gamma_ad - 1.0d0)
+      eH = 0.0d0;  nHnuc = 0.0d0
+      eO = 0.0d0;  nOnuc = 0.0d0
+      eC = 0.0d0;  nCnuc = 0.0d0
+      ! Each recoiling particle of nH nuclei moves nH nuclei and its own
+      ! enthalpy hs.
+      do ib = 1, n_bsp
+         if (bsp_is_excited_level(ib) .or. car_bsp(ib)) cycle
+         if (bsp_nH(ib) .le. 0) cycle
+         if (bsp_nHe(ib) + bsp_nO(ib) + bsp_nC(ib) .gt. 0) cycle
+         if (bsp_fsp(ib) .eq. isp_HII .and. carrier_solved(ic_Hp)) cycle
+         dens = f_sp(j,bsp_fsp(ib))
+         if (dens .le. 0.0d0) cycle
+         hs = cp_part*kTe*(1.0d0 + dble(bsp_charge(ib)))
+         if (bsp_fsp(ib) .eq. isp_H2) hs = hs + kb_erg*urv
+         eH = eH + dens*hs
+         nHnuc = nHnuc + dens*dble(bsp_nH(ib))
+      enddo
+      if (eos_include_metals .and. thereis_metals) then
+         do im = 1, n_mion
+            dens = f_sp(j,mion_fsp(im))
+            if (dens .le. 0.0d0) cycle
+            hs = cp_part*kTe*(1.0d0 + dble(mion_stage(im)))
+            if (mion_elem(im) .eq. iel_O) then
+               eO = eO + dens*hs;  nOnuc = nOnuc + dens
+            else if (mion_elem(im) .eq. iel_C) then
+               eC = eC + dens*hs;  nCnuc = nCnuc + dens
+            endif
+         enddo
+      endif
+      hbH = cp_part*kTe;  hbO = cp_part*kTe;  hbC = cp_part*kTe
+      if (nHnuc .gt. 0.0d0) hbH = eH/nHnuc
+      if (nOnuc .gt. 0.0d0) hbO = eO/nOnuc
+      if (nCnuc .gt. 0.0d0) hbC = eC/nCnuc
+      end subroutine recoiling_nucleus_enthalpies
+
+      ! ------------------------------------------------------------- !
+
+      subroutine molecular_carrier_enthalpy_face_flux(rho, Tcode, f_sp, q)
       ! THE SENSIBLE ENTHALPY FLUX OF THE MOLECULAR CARRIERS at the faces
       ! f = 0 ... N [erg cm^-2 s^-1], positive outward (code audit of
       ! 2026-09-29, md/CODE_AUDIT_20260929.md F1).
@@ -5637,28 +5921,19 @@
       !
       ! h_c the enthalpy of one carrier particle and hbar_el the enthalpy
       ! per nucleus of el of the species that take up the recoil, each
-      ! particle with the electrons its charge gave up, as in
-      ! component_specific_enthalpies.
-      !
-      ! THE RECOILING SPECIES ARE THOSE WHOSE DENSITIES THE COMPOSITION
-      ! UPDATE RESCALES, carrier_write_back, and no others: the energy row
-      ! must move the enthalpy of the nuclei the composition rows move.
-      ! Hydrogen recoils in the species made of hydrogen nuclei alone that
-      ! the flow does not carry: HI, H2+, H3+, and H+ unless "Ionization
-      ! transport" carries it (carrier_solved(ic_Hp)), in which case the
-      ! write-back sets H+ from its own transported row and H+ takes no
-      ! part of the recoil.  HeH+ never recoils: rescaling it would move a
-      ! helium nucleus with the hydrogen one, so the write-back leaves it
-      ! where it is.  O and C recoil in their atomic stages where the
-      ! metals are in the equation of state.  Per particle h_s = e_s + kT with
-      ! e_s of the caloric EOS: gamma_ad/(gamma_ad - 1) kT (1 + Z_s), H2
-      ! adding its rovibrational energy k u_rv (zero under "Caloric EOS:
-      ! monatomic").  An element with no non-carrier species in a cell
-      ! recoils with its neutral ground atom.  So an H2 molecule rising
-      ! through atomic hydrogen at zero hydrogen flux carries
-      ! h_H2 - 2 h_H = k (u_rv - 5 T/2) upward per molecule.  Formation
-      ! energy is not in these enthalpies, for the reason
-      ! component_specific_enthalpies gives.
+      ! particle with the electrons its charge gave up
+      ! (recoiling_nucleus_enthalpies states the recoil set: the species
+      ! carrier_write_back rescales, and no others).  Per particle
+      ! h_s = e_s + kT with e_s of the caloric EOS: gamma_ad/(gamma_ad - 1)
+      ! kT (1 + Z_s), H2 adding its rovibrational energy k u_rv (zero under
+      ! "Caloric EOS: monatomic").  So an H2 molecule rising through atomic
+      ! hydrogen at zero hydrogen flux carries h_H2 - 2 h_H = k (u_rv -
+      ! 5 T/2) upward per molecule.  Formation energy is not in these
+      ! enthalpies, for the reason component_specific_enthalpies gives.
+      ! The ionization stages that "Ionization transport" carries are the
+      ! other carriers of this operator; their term is
+      ! ionization_stage_enthalpy_face_flux, and the two share the recoil
+      ! set, so no nucleus is counted by both.
       !
       ! THE FLUX IS THE CARRIER OPERATOR'S OWN, for the state in hand: the
       ! coefficients of carrier_face_coefficients from carrier_diffusivities
@@ -5682,23 +5957,15 @@
       real(dp), dimension(0:N,n_carrier_max) :: Agrd, Bdrf
       integer,  dimension(0:N,n_carrier_max) :: updrf
       logical  :: car_bsp(n_bsp)
-      real(dp) :: cp_part, kTe, urv, crv, hs, dens
-      real(dp) :: eH, nHnuc, eO, nOnuc, eC, nCnuc, hbH, hbO, hbC, hc
+      real(dp) :: cp_part, kTe, urv, crv
+      real(dp) :: hbH, hbO, hbC, hc
       real(dp) :: Jfc, dJl, dJr
       integer  :: j, ic, ib, isp, im
 
       q = 0.0d0
-      if (.not. carrier_enthalpy_active()) return
+      if (.not. molecular_carrier_enthalpy_active()) return
 
-      ! Which species of the table are carriers of this run.
-      car_bsp = .false.
-      do ic = ic_H2, ic_CO
-         if (.not. carrier_solved(ic)) cycle
-         isp = carrier_species_index(ic)
-         do ib = 1, n_bsp
-            if (bsp_fsp(ib) .eq. isp) car_bsp(ib) = .true.
-         enddo
-      enddo
+      call molecular_carrier_species(car_bsp)
 
       cp_part = gamma_ad/(gamma_ad - 1.0d0)
       nd = rho*n0
@@ -5737,41 +6004,8 @@
          kTe = kb_erg*TK(j)
          urv = 0.0d0
          call h2_rovibrational_energy_and_heat_capacity(TK(j), urv, crv)
-         eH = 0.0d0;  nHnuc = 0.0d0
-         eO = 0.0d0;  nOnuc = 0.0d0
-         eC = 0.0d0;  nCnuc = 0.0d0
-         ! The hydrogen recoil set of carrier_write_back: species of
-         ! hydrogen nuclei alone, not carriers, and not a carried stage.
-         ! Each such particle of nH nuclei moves nH nuclei and its own
-         ! enthalpy hs.
-         do ib = 1, n_bsp
-            if (bsp_is_excited_level(ib) .or. car_bsp(ib)) cycle
-            if (bsp_nH(ib) .le. 0) cycle
-            if (bsp_nHe(ib) + bsp_nO(ib) + bsp_nC(ib) .gt. 0) cycle
-            if (bsp_fsp(ib) .eq. isp_HII .and. carrier_solved(ic_Hp)) cycle
-            dens = f_sp(j,bsp_fsp(ib))
-            if (dens .le. 0.0d0) cycle
-            hs = cp_part*kTe*(1.0d0 + dble(bsp_charge(ib)))
-            if (bsp_fsp(ib) .eq. isp_H2) hs = hs + kb_erg*urv
-            eH = eH + dens*hs
-            nHnuc = nHnuc + dens*dble(bsp_nH(ib))
-         enddo
-         if (eos_include_metals .and. thereis_metals) then
-            do im = 1, n_mion
-               dens = f_sp(j,mion_fsp(im))
-               if (dens .le. 0.0d0) cycle
-               hs = cp_part*kTe*(1.0d0 + dble(mion_stage(im)))
-               if (mion_elem(im) .eq. iel_O) then
-                  eO = eO + dens*hs;  nOnuc = nOnuc + dens
-               else if (mion_elem(im) .eq. iel_C) then
-                  eC = eC + dens*hs;  nCnuc = nCnuc + dens
-               endif
-            enddo
-         endif
-         hbH = cp_part*kTe;  hbO = cp_part*kTe;  hbC = cp_part*kTe
-         if (nHnuc .gt. 0.0d0) hbH = eH/nHnuc
-         if (nOnuc .gt. 0.0d0) hbO = eO/nOnuc
-         if (nCnuc .gt. 0.0d0) hbC = eC/nCnuc
+         call recoiling_nucleus_enthalpies(f_sp, j, kTe, urv, car_bsp,   &
+                                           hbH, hbO, hbC)
          do ib = 1, n_bsp
             if (.not. car_bsp(ib)) cycle
             hc = cp_part*kTe*(1.0d0 + dble(bsp_charge(ib)))
@@ -5795,14 +6029,161 @@
             q(j) = q(j) + Jfc*0.5d0*(dh(j,ic) + dh(j+1,ic))
          enddo
       enddo
-      end subroutine carrier_enthalpy_face_flux
+      end subroutine molecular_carrier_enthalpy_face_flux
+
+      ! ------------------------------------------------------------- !
+
+      subroutine ionization_stage_enthalpy_face_flux(rho, Tcode, f_sp, q)
+      ! THE SENSIBLE ENTHALPY THE IONIZATION STAGES CARRY BY MOVING
+      ! RELATIVE TO THEIR OWN ELEMENT, at the faces f = 0 ... N
+      ! [erg cm^-2 s^-1], positive outward.
+      !
+      ! With "Ionization transport" stage k of an element crosses a face
+      ! with the flux (ionization_stage_transport, equation 1)
+      !
+      !    F_k = x_k(f) N_el(f) + E_k ,
+      !    E_k = - n_el(f) K(f) [x_k(j+1) - x_k(j)]/dr(f) ,
+      !
+      ! the first term moving the stage with its element and E_k, the
+      ! stage's own eddy term, moving it relative to the element; the
+      ! closing (neutral) stage carries - sum_k E_k, so the E_k move no
+      ! nucleus.  The enthalpy of the element's own motion is carried by the
+      ! hydrodynamic flux (E + p) u and, relative to the mass-weighted
+      ! velocity, by the element term (interdiffusion_enthalpy_face_flux,
+      ! whose h_He averages over the stages of the cell); what neither
+      ! carries is the enthalpy of the E_k.  By q_d = sum_s h_s J_s (Cook
+      ! 2009, Phys. Fluids 21, 055109, eqs. 11-13) it is
+      !
+      !    q_st = sum_el sum_k E_k [ h_k - hbar_el ] ,
+      !
+      ! h_k the sensible enthalpy of one particle of stage k with the Z_k
+      ! electrons its charge gave up and hbar_el the enthalpy per nucleus of
+      ! the species that take up the recoil, those whose densities the
+      ! composition update rescales (carrier_write_back;
+      ! recoiling_nucleus_enthalpies): hydrogen recoils in H I, H2+ and H3+
+      ! (H+ is the carried stage itself and H2 a carrier with its own flux
+      ! and its own term, molecular_carrier_enthalpy_face_flux, so no
+      ! hydrogen nucleus is counted by both), helium in He I with the He
+      ! 2^3S level inside it (HeH+ is reserved from the stages and never
+      ! rescaled).  Where "He 2^3S transport" carries the level it is a
+      ! carried state with charge 0 and the sensible enthalpy of a neutral
+      ! atom, so h_3 - hbar_He = 0 and its eddy term adds nothing here; the
+      ! E_HeII and E_HeIII below do not depend on whether the level is
+      ! carried (equation 1 of ionization_stage_transport: E_k is a
+      ! function of x_k alone).  Its excitation energy is chemical energy
+      ! (helium_metastable_excitation_energy_divergence).
+      !
+      ! WHAT A STAGE EXCHANGE CARRIES.  Per particle h = e + kT with e of
+      ! the caloric EOS (component_specific_enthalpies): gamma_ad/(gamma_ad
+      ! - 1) kT for every atom, ion and electron, so the heavy particle of
+      ! every stage of an element carries the same enthalpy, and the stage
+      ! of charge Z_k adds the Z_k electrons the zero-current closure makes
+      ! follow it.  A stage exchange at fixed element flux therefore moves
+      ! the electrons' enthalpy alone: with the recoil in the neutral atom,
+      !
+      !    q_st = h_e sum_el sum_k Z_k E_k ,  h_e = gamma_ad/(gamma_ad - 1) kT,
+      !
+      ! (5/2) kT for each electron of the net electron flux sum_k Z_k E_k
+      ! relative to the nuclei.  For helium that is exact here (He II and
+      ! He III against He I: h_e E_HeII + 2 h_e E_HeIII); for hydrogen the
+      ! recoil also takes H2+ (one electron per two nuclei) and H3+ (one per
+      ! three), whose share lowers hbar_H, and that is carried as it stands.
+      !
+      ! FORMATION (IONIZATION) ENERGY IS NOT IN q_st, for the reason
+      ! component_specific_enthalpies gives: the conserved energy of this
+      ! code is kinetic plus sensible, and the stationary energy row books
+      ! chemical energy only as the heating and cooling of the reactions
+      ! where the ions are made and where they recombine.
+      !
+      ! VALIDITY.  (i) Zero current: the electrons move with the ions,
+      ! n_e w_e = sum_s Z_s n_s w_s, the ambipolar closure of every enthalpy
+      ! flux of this code.  (ii) No stage drift beyond the eddy term: a
+      ! stage moves relative to its element by E_k alone, the one-velocity
+      ! approximation of ionization_stage_transport, whose header measures
+      ! the ion-neutral drift it leaves out at 0.02 to 0.6 of the advective
+      ! stage flux outward of about 1.2 R_p on LHS 1140 b; the enthalpy of
+      ! that drift is absent with the drift.  (iii) One temperature for
+      ! electrons, ions and neutrals: h_e is that of the gas T.  (iv) As in
+      ! Cook (2009), the Dufour flux and the kinetic energy of the relative
+      ! motion are left out.
+      !
+      ! THE FLUX IS THE STAGE ROWS' OWN.  E_k is returned by
+      ! ionization_stage_face_flux (Ek_out) on the face nucleus density, eddy
+      ! coefficient and spacing of hydrogen_and_helium_nucleus_face_flux and
+      ! the fractions x_k = n_k/n_el of the state passed, which is how the
+      ! stage rows form it (carrier_state, carrier_stage_face_state); E_k
+      ! does not depend on the element flux N_el, so no face mass flux is
+      ! handed over.  E_k is zero at faces 0 and N (the element crosses them
+      ! only with the gas), so q(0) = q(N) = 0 and the term moves energy
+      ! within the column only.  Face values of h_k - hbar_el are the
+      ! arithmetic means of their two cells, as in the molecular term.
+      ! Writes no module state.
+      real(dp), dimension(1-Ng:N+Ng),           intent(in)  :: rho, Tcode
+      real(dp), dimension(1-Ng:N+Ng,n_species), intent(in)  :: f_sp
+      real(dp), dimension(0:N),                 intent(out) :: q
+
+      real(dp), dimension(1-Ng:N+Ng) :: Fnone, N_H, N_He, nHc, nHec, nd
+      real(dp), dimension(1-Ng:N+Ng) :: hgas, dhHp
+      real(dp), dimension(0:N)       :: n_Hf, n_Hef, Kf, drf
+      real(dp), dimension(0:N)       :: xclose, Fclose
+      real(dp), dimension(1,1-Ng:N+Ng) :: xH
+      real(dp), dimension(2,1-Ng:N+Ng) :: xHe
+      real(dp), dimension(1,0:N)     :: xfH, FkH, EH
+      real(dp), dimension(2,0:N)     :: xfHe, FkHe, EHe
+      logical  :: car_bsp(n_bsp)
+      real(dp) :: cp_part, TKc, kTe, urv, crv, hbH, hbO, hbC
+      integer  :: j
+
+      q = 0.0d0
+      if (.not. ionization_stage_enthalpy_active()) return
+
+      Fnone = 0.0d0
+      call hydrogen_and_helium_nucleus_face_flux(rho, Tcode, f_sp, Fnone, &
+                    N_H, N_He, n_Hf, n_Hef, Kf, drf,                      &
+                    n_H_cell = nHc, n_He_cell = nHec)
+      nd = rho*n0
+      xH(1,:) = f_sp(:,isp_HII)*nd/max(nHc, 1.0d-300)
+      call ionization_stage_face_flux(xH, N_H, n_Hf, Kf, drf, xfH,        &
+                                      xclose, FkH, Fclose, Ek_out = EH)
+      EHe = 0.0d0
+      if (carrier_solved(ic_HeII) .and. carrier_solved(ic_HeIII)) then
+         xHe(1,:) = f_sp(:,isp_HeII) *nd/max(nHec, 1.0d-300)
+         xHe(2,:) = f_sp(:,isp_HeIII)*nd/max(nHec, 1.0d-300)
+         call ionization_stage_face_flux(xHe, N_He, n_Hef, Kf, drf, xfHe, &
+                                         xclose, FkHe, Fclose,            &
+                                         Ek_out = EHe)
+      endif
+
+      ! h_k - hbar_el of every carried stage, cell by cell [erg]: H II
+      ! against the hydrogen recoil, He II and He III against He I, whose
+      ! enthalpy per nucleus is that of a neutral atom.
+      cp_part = gamma_ad/(gamma_ad - 1.0d0)
+      call molecular_carrier_species(car_bsp)
+      do j = 1-Ng, N+Ng
+         TKc = max(Tcode(j)*T0, 1.0d0)
+         kTe = kb_erg*TKc
+         urv = 0.0d0
+         if (thereis_mol)                                                &
+            call h2_rovibrational_energy_and_heat_capacity(TKc, urv, crv)
+         call recoiling_nucleus_enthalpies(f_sp, j, kTe, urv, car_bsp,   &
+                                           hbH, hbO, hbC)
+         hgas(j) = cp_part*kTe
+         dhHp(j) = 2.0d0*hgas(j) - hbH
+      enddo
+      do j = 0, N
+         q(j) = EH(1,j)*0.5d0*(dhHp(j) + dhHp(j+1))                      &
+              + (EHe(1,j) + 2.0d0*EHe(2,j))*0.5d0*(hgas(j) + hgas(j+1))
+      enddo
+      end subroutine ionization_stage_enthalpy_face_flux
 
       ! ------------------------------------------------------------- !
 
       subroutine carrier_enthalpy_divergence_of_state(rho, Tcode, f_sp,  &
                                                       divq, q_out)
-      ! The divergence of carrier_enthalpy_face_flux in every cell 1 ... N
-      ! of the carrier column, in the code units of the energy row
+      ! The divergence of the enthalpy flux of this operator's carriers,
+      ! molecular_carrier_enthalpy_face_flux plus
+      ! ionization_stage_enthalpy_face_flux, in every cell 1 ... N of the
+      ! carrier column, in the code units of the energy row
       ! (q0 = n0 mu v0^3/R0), on the carrier rows' own geometry
       ! (spherical_face_area_and_cell_volume):
       !
@@ -5810,28 +6191,122 @@
       !
       ! Cell 1 is included: the carrier column, unlike the element column
       ! (whose cell 1 is the prescribed reservoir), carries a balance in
-      ! every cell 1 ... N.  With q(0) = q(N) = 0, sum_j V_j divq(j) = 0 to
-      ! rounding.  The ghosts are returned as zero.  Zero, with no
-      ! arithmetic, unless carrier_enthalpy_active().  q_out (optional)
-      ! returns the face flux [erg cm^-2 s^-1].
+      ! every cell 1 ... N, stage rows included.  With q(0) = q(N) = 0,
+      ! sum_j V_j divq(j) = 0 to rounding.  The ghosts are returned as zero.
+      ! Zero, with no arithmetic, unless carrier_enthalpy_active().  q_out
+      ! (optional) returns the face flux [erg cm^-2 s^-1].
       real(dp), dimension(1-Ng:N+Ng),           intent(in)  :: rho, Tcode
       real(dp), dimension(1-Ng:N+Ng,n_species), intent(in)  :: f_sp
       real(dp), dimension(1-Ng:N+Ng),           intent(out) :: divq
       real(dp), dimension(0:N), optional,       intent(out) :: q_out
-      real(dp), dimension(0:N) :: q, fa
+      real(dp), dimension(0:N) :: q, qst, fa
       real(dp), dimension(1:N) :: cv
       integer :: j
 
       divq = 0.0d0
       if (present(q_out)) q_out = 0.0d0
       if (.not. carrier_enthalpy_active()) return
-      call carrier_enthalpy_face_flux(rho, Tcode, f_sp, q)
+      call molecular_carrier_enthalpy_face_flux(rho, Tcode, f_sp, q)
+      if (ionization_stage_enthalpy_active()) then
+         call ionization_stage_enthalpy_face_flux(rho, Tcode, f_sp, qst)
+         q = q + qst
+      endif
       call spherical_face_area_and_cell_volume(fa, cv)
       do j = 1, N
          divq(j) = (fa(j)*q(j) - fa(j-1)*q(j-1))/(cv(j)*R0*q0)
       enddo
       if (present(q_out)) q_out = q
       end subroutine carrier_enthalpy_divergence_of_state
+
+      ! ------------------------------------------------------------- !
+
+      subroutine helium_metastable_excitation_energy_divergence(rho,     &
+                                        Tcode, f_sp, divq, q_out)
+      ! THE EXCITATION ENERGY THE CARRIED He 2^3S POPULATION MOVES BY
+      ! MOVING RELATIVE TO He I, at the faces and as a divergence in the
+      ! code units of the energy row (q0 = n0 mu v0^3/R0), on the carrier
+      ! rows' geometry (the formula of carrier_enthalpy_divergence_of_state).
+      !
+      ! With "He 2^3S transport" the level crosses a face with the flux of
+      ! ionization_stage_transport equation (1), F_3 = x3(f) N_He(f) + E_3,
+      ! and He I (the singlet with the level inside it) with
+      ! F_I = x_I(f) N_He(f) + E_I, E_I = -(E_HeII + E_HeIII) the eddy
+      ! term of the whole neutral stage.  The advective halves move the
+      ! level at the velocity of He I, so the flux of the level RELATIVE to
+      ! He I is the eddy part alone,
+      !
+      !    q_x(f) = eps_3 [ E_3(f) - (x3/x_I)(f) E_I(f) ] ,
+      !
+      ! eps_3 = 19.82 eV the energy of 2^3S above the ground singlet
+      ! (species_formation_energy), face fractions the arithmetic means of
+      ! their two cells.  q_x is zero at faces 0 and N (no eddy term there).
+      !
+      ! IT IS NOT A TERM OF THE ENERGY EQUATION OF THIS CODE, and this
+      ! routine is a measurement.  The conserved energy is kinetic plus
+      ! sensible; the energy of the 2^3S level is chemical energy, booked
+      ! where the reactions that make and destroy the level run: the
+      ! 1^1S -> 2^3S excitation cools with q13 and the de-excitation heats
+      ! with q31g at the transported population (radiative_cooling_of_cell;
+      ! lambda_coex_HeI_except_23S leaves that transition out so its
+      ! 19.82 eV is counted once), and the Penning and associative quench
+      ! deposit their heat at the transported population too
+      ! (util_ion_eq, heat_chan 11).  A population carried from where it was
+      ! made to where it is destroyed therefore carries its excitation
+      ! energy in the reaction terms, and q_x added to the energy row
+      ! would count it twice.  It is the same statement
+      ! ionization_stage_enthalpy_face_flux makes of the ionization energy
+      ! of the stages.  Its size, MEASURED on the certified LHS 1140 b
+      ! validation state (energy-coupled He/H 2.09 closure, K_zz = 1e9
+      ! cm^2 s^-1; md/He23S_transport_design_20261003.md section 11):
+      ! max |div q_x| over the energy row's largest term is 3.0e-7 over the
+      ! column (cell 198, r = 1.14 R_p) and 6.6e-9 in the gated wind
+      ! r >= 1.2 R_p (cell 263, r = 1.45 R_p), so it would be negligible
+      ! even as a term.
+      real(dp), dimension(1-Ng:N+Ng),           intent(in)  :: rho, Tcode
+      real(dp), dimension(1-Ng:N+Ng,n_species), intent(in)  :: f_sp
+      real(dp), dimension(1-Ng:N+Ng),           intent(out) :: divq
+      real(dp), dimension(0:N), optional,       intent(out) :: q_out
+
+      real(dp), dimension(1-Ng:N+Ng) :: Fnone, N_H, N_He, nHc, nHec, nd
+      real(dp), dimension(1-Ng:N+Ng) :: xHeI_cell, xmeta_cell
+      real(dp), dimension(0:N)       :: n_Hf, n_Hef, Kf, drf, q, fa
+      real(dp), dimension(0:N)       :: xclose, Fclose
+      real(dp), dimension(1:N)       :: cv
+      real(dp), dimension(3,1-Ng:N+Ng) :: xHe
+      real(dp), dimension(3,0:N)     :: xfHe, FkHe, EHe
+      real(dp) :: eps3_erg, x3f, xIf
+      integer  :: j
+
+      divq = 0.0d0
+      q    = 0.0d0
+      if (present(q_out)) q_out = 0.0d0
+      if (.not. carrier_solved(ic_HeTR)) return
+
+      Fnone = 0.0d0
+      call hydrogen_and_helium_nucleus_face_flux(rho, Tcode, f_sp, Fnone, &
+                    N_H, N_He, n_Hf, n_Hef, Kf, drf,                      &
+                    n_H_cell = nHc, n_He_cell = nHec)
+      nd = rho*n0
+      xHe(1,:) = f_sp(:,isp_HeII) *nd/max(nHec, 1.0d-300)
+      xHe(2,:) = f_sp(:,isp_HeIII)*nd/max(nHec, 1.0d-300)
+      xHe(3,:) = f_sp(:,isp_HeTR) *nd/max(nHec, 1.0d-300)
+      call ionization_stage_face_flux(xHe, N_He, n_Hef, Kf, drf, xfHe,    &
+                                      xclose, FkHe, Fclose, Ek_out = EHe)
+      xmeta_cell = xHe(3,:)
+      xHeI_cell  = f_sp(:,isp_HeI)*nd/max(nHec, 1.0d-300)
+      eps3_erg = species_formation_energy(isp_HeTR)/erg2eV
+      do j = 0, N
+         x3f = 0.5d0*(xmeta_cell(j) + xmeta_cell(j+1))
+         xIf = 0.5d0*(xHeI_cell(j) + xHeI_cell(j+1))
+         if (xIf .le. 0.0d0) cycle
+         q(j) = eps3_erg*(EHe(3,j) + (x3f/xIf)*(EHe(1,j) + EHe(2,j)))
+      enddo
+      call spherical_face_area_and_cell_volume(fa, cv)
+      do j = 1, N
+         divq(j) = (fa(j)*q(j) - fa(j-1)*q(j-1))/(cv(j)*R0*q0)
+      enddo
+      if (present(q_out)) q_out = q
+      end subroutine helium_metastable_excitation_energy_divergence
 
       ! ------------------------------------------------------------- !
 
@@ -5986,7 +6461,7 @@
          ! its material advection in adv(j,ic) above.  Both end in the same
          ! array, so the divergence below and the block assembly of
          ! solve_carriers are written once for the two kinds of row.
-         if (carrier_is_ionization_stage(ic)) then
+         if (carrier_is_nucleus_fraction(ic)) then
             call carrier_stage_face_flux(ic, fc, Jf(:,ic), dJl(:,ic),    &
                                          dJr(:,ic))
             cycle
@@ -6083,7 +6558,25 @@
             endif
             rr  = rr - src(ic)
             dsc = dsc + abs(src(ic))
-            dph = dph + abs(src(ic))
+            ! THE REACTION TERMS OF THE PHYSICAL SCALE ARE THE ROW'S OWN
+            ! PRODUCTION AND LOSS, srcp + srcl, as the declaration of
+            ! carrier_accept_tol states the measure ("the transport flux
+            ! divergence and the reaction production and loss").  Where a
+            ! row hands out only its net (the helium stages, the proton of an
+            ! atomic gas) srcp + srcl is |src| bit for bit and nothing moves.
+            ! Where it hands out its channels the net is not one of the
+            ! row's terms but their difference: the He 2^3S level at
+            ! 1.23 R_p on the 2000-cell LHS 1140 b He/H 0.65 state has
+            ! production and loss 41.25 cm^-3 s^-1 each, net 8.8e-7 and
+            ! transport 8.8e-7 (MEASURED, md/Update_EXHALE_stage3.md
+            ! section 94), so a scale of |J| + |net| stood 5e-8 below the
+            ! row's terms and asked the coupled state for 4e-13 of its
+            ! channel rates; any change of the background at the
+            ! convergence level of the wind solve moved the measure across
+            ! 1e-5 and back from pass to pass.  The Newton's own scale dsc
+            ! keeps |src|: it sets the step and the stop of the iteration
+            ! on the cell's own row, not the statement about the state.
+            dph = dph + srcp(ic) + srcl(ic)
             ! ABSOLUTE FLOOR ON THE ROW SCALE, and it is not cosmetic. A
             ! relative residual with no floor asks a row whose species is
             ! 1e-28 of its element to balance to 1e-12 of ITSELF: measured on
@@ -6351,7 +6844,7 @@
                if (j .lt. N) then
                   bb(j,ic,ic) = bb(j,ic,ic) + Kj*sR*dJl(j,ic)
                   cc(j,ic,ic) = cc(j,ic,ic) + Kj*sR*dJr(j,ic)
-               else if (carrier_is_ionization_stage(ic)) then
+               else if (carrier_is_nucleus_fraction(ic)) then
                   ! The outer ghost is cell N continued (carrier_outflow_
                   ! ghost), so both derivatives of the outer face are
                   ! derivatives of the same unknown and land together on
@@ -6364,14 +6857,14 @@
                if (j .gt. 1) then
                   bb(j,ic,ic) = bb(j,ic,ic) - Kj*sL*dJr(j-1,ic)
                   aa(j,ic,ic) = aa(j,ic,ic) - Kj*sL*dJl(j-1,ic)
-               else if (carrier_is_ionization_stage(ic)) then
+               else if (carrier_is_nucleus_fraction(ic)) then
                   bb(1,ic,ic) = bb(1,ic,ic)                              &
                               - Kj*sL*(dJl(0,ic) + dJr(0,ic))
                endif
                ! An ionization stage's advection is inside the face flux
                ! above; the entries below are the molecular rows' material
                ! advection on the bulk face mass flux and are not its.
-               if (carrier_is_ionization_stage(ic)) cycle
+               if (carrier_is_nucleus_fraction(ic)) cycle
                ! THE ADVECTIVE ENTRIES ARE THE DONOR-CELL LINEARIZATION OF
                ! THE FACE-FLUX DIVERGENCE the row now carries.  With the
                ! face composition taken from the cell the face mass flux
@@ -6496,10 +6989,19 @@
                ! and not the chemistry.  The difference is taken inward
                ! there, which is the same derivative of the same row, and
                ! only while the stage itself stays nonnegative.
-               if (kc .eq. ic_HeII .or. kc .eq. ic_HeIII) then
-                  if (nc(ic_HeII) + nc(ic_HeIII) + dn .gt.               &
+               ! With the He 2^3S level carried it is the third state of
+               ! the same simplex and enters the same sum.
+               if (kc .eq. ic_HeII .or. kc .eq. ic_HeIII .or.            &
+                   kc .eq. ic_HeTR) then
+                  if (carrier_solved(ic_HeTR)) then
+                     if (nc(ic_HeII) + nc(ic_HeIII) + nc(ic_HeTR) + dn   &
+                         .gt. carrier_helium_available_to_stages(j)      &
+                         .and. nc(kc) .gt. dn) dn = -dn
+                  else if (nc(ic_HeII) + nc(ic_HeIII) + dn .gt.          &
                       carrier_helium_available_to_stages(j) .and.        &
-                      nc(kc) .gt. dn) dn = -dn
+                      nc(kc) .gt. dn) then
+                     dn = -dn
+                  endif
                endif
                nc(kc) = nc(kc) + dn
                call carrier_source(j, nc, nH_free(j), nO_free(j), s1)
@@ -6922,6 +7424,7 @@
       real(dp), dimension(1-Ng:N+Ng,n_carrier_max), intent(inout) :: fc
       real(dp), dimension(1,1-Ng:N+Ng) :: x1
       real(dp), dimension(2,1-Ng:N+Ng) :: x2
+      real(dp), dimension(3,1-Ng:N+Ng) :: x3s
       real(dp), dimension(1-Ng:N+Ng)   :: xmax
       real(dp) :: over
       integer  :: j
@@ -6977,6 +7480,27 @@
             xmax(j) = carrier_helium_available_to_stages(j)              &
                      /max(cbg_nHenuc(j), 1.0d-300)
          enddo
+         ! WITH THE He 2^3S LEVEL CARRIED the simplex is three-dimensional,
+         !    x(He II) + x(He III) + x3 <= 1 - n_HeH+/n_He,nuc,
+         ! the level no longer reserved in the bound (it is one of the
+         ! states being bounded) and the ground singlet the remainder.
+         if (carrier_solved(ic_HeTR)) then
+            do j = 1, N+Ng
+               over = fc(j,ic_HeII) + fc(j,ic_HeIII) + fc(j,ic_HeTR)     &
+                    - xmax(j)
+               if (over .le. 0.0d0) cycle
+               pct_worst_limit = max(pct_worst_limit, over)
+               pct_cell_constrained(j) = .true.
+               if (over .gt. limit_report) pct_limited = pct_limited + 1
+            enddo
+            x3s(1,:) = fc(:,ic_HeII)
+            x3s(2,:) = fc(:,ic_HeIII)
+            x3s(3,:) = fc(:,ic_HeTR)
+            call stage_simplex_projection(x3s, xmax)
+            fc(:,ic_HeII)  = x3s(1,:)
+            fc(:,ic_HeIII) = x3s(2,:)
+            fc(:,ic_HeTR)  = x3s(3,:)
+         else
          do j = 1, N+Ng
             over = fc(j,ic_HeII) + fc(j,ic_HeIII) - xmax(j)
             if (over .le. 0.0d0) cycle
@@ -6989,6 +7513,7 @@
          call stage_simplex_projection(x2, xmax)
          fc(:,ic_HeII)  = x2(1,:)
          fc(:,ic_HeIII) = x2(2,:)
+         endif
       endif
       end subroutine carrier_ionization_stage_projection
 
@@ -7009,7 +7534,7 @@
       real(dp), dimension(1-Ng:N+Ng),           intent(in)    :: nC_free
       real(dp), dimension(1-Ng:N+Ng,n_species), intent(inout) :: f_sp
       real(dp) :: nd, nH2n, nOHn, nH2On, nCOn, nHpn, rest, held, sc
-      real(dp) :: nHeIIn, nHeIIIn
+      real(dp) :: nHeIIn, nHeIIIn, nHeTRn
       integer  :: j, k, i0
 
       ! THE LOWER GHOSTS ARE NOT WRITTEN.  They hold the composition of the
@@ -7085,10 +7610,11 @@
          ! OTHER element with it.  It is therefore taken out of the
          ! remainder, from the same frozen count the simplex reserved it
          ! with, so the element total of the cell is exactly what it was.
-         ! He 2^3S is a level inside He I, so it is rescaled by the same
-         ! factor and keeps its share of the neutral helium, which is the
-         ! right starting point for the sweep that re-solves the level a
-         ! moment later.
+         ! He 2^3S is a level inside He I.  Left to the sweep, it is
+         ! rescaled by the same factor and keeps its share of the neutral
+         ! helium, which is the right starting point for the sweep that
+         ! re-solves the level a moment later; carried ("He 2^3S
+         ! transport"), it is written from its own row below.
          !
          ! THE REMAINDER IS NONNEGATIVE ON THE ADMISSIBLE SET and is not
          ! clipped: the state handed here has been through the projection,
@@ -7107,6 +7633,21 @@
             f_sp(j,isp_HeIII) = nHeIIIn/nd
             rest = carrier_nucleus_reference(ic_HeII, j, nrho(j))        &
                  - nHeIIn - nHeIIIn - cbg_nHemol(j)
+            ! THE CARRIED He 2^3S LEVEL IS WRITTEN FROM ITS OWN ROW, and
+            ! He I, which holds it, takes the whole remainder: the level is
+            ! not rescaled with He I (that would undo its transport), and
+            ! the singlet is rest - n(2^3S), nonnegative on the
+            ! three-dimensional simplex the projection returned.
+            if (carrier_solved(ic_HeTR)) then
+               nHeTRn = fc(j,ic_HeTR)                                    &
+                       *carrier_nucleus_reference(ic_HeTR, j, nrho(j))
+               f_sp(j,isp_HeTR) = nHeTRn/nd
+               if (rest - nHeTRn .lt. 0.0d0)                             &
+                  carrier_helium_singlet_under_zero =                    &
+                     max(carrier_helium_singlet_under_zero,              &
+                         (nHeTRn - rest)/max(cbg_nHenuc(j), 1.0d-300))
+               f_sp(j,isp_HeI) = rest/nd
+            else
             if (rest - cbg_nheiTR(j) .lt. 0.0d0)                         &
                carrier_helium_singlet_under_zero =                       &
                   max(carrier_helium_singlet_under_zero,                 &
@@ -7124,6 +7665,7 @@
                ! inside it starts the next sweep empty.
                f_sp(j,isp_HeI) = rest/nd
                if (thereis_HeITR) f_sp(j,isp_HeTR) = 0.0d0
+            endif
             endif
          endif
 
@@ -7754,23 +8296,26 @@
 
       ! ------------------------------------------------------------- !
 
-      ! The largest change of a solved carrier column between two carrier
-      ! states, over the physical cells.  ONE number for the whole grid: the
-      ! drift a pass reports and the test that the carriers have stopped
-      ! moving, neither of which is the movement bound above.
-      real(dp) function carrier_composition_displacement(fa, fb)
+      ! The largest change of a solved carrier between two carrier states,
+      ! each carrier against its OWN scale xref (the largest fraction that
+      ! carrier holds), over the physical cells: max over carriers of
+      ! max_j |fa - fb|/xref.  The fixed-point test of a relaxation pass;
+      ! relax_photochemical_composition states why each carrier is taken on
+      ! its own scale.
+      real(dp) function carrier_displacement_on_own_scale(fa, fb, xref)
       real(dp), dimension(1-Ng:N+Ng,n_carrier_max), intent(in) :: fa, fb
+      real(dp), dimension(n_carrier_max), intent(in) :: xref
       real(dp) :: d
       integer  :: j, ic
       d = 0.0d0
       do ic = 1, n_carrier
          if (.not. carrier_solved(ic)) cycle
          do j = 1, N
-            d = max(d, abs(fa(j,ic) - fb(j,ic)))
+            d = max(d, abs(fa(j,ic) - fb(j,ic))/xref(ic))
          enddo
       enddo
-      carrier_composition_displacement = d
-      end function carrier_composition_displacement
+      carrier_displacement_on_own_scale = d
+      end function carrier_displacement_on_own_scale
 
       ! ------------------------------------------------------------- !
 
@@ -8099,16 +8644,30 @@
       ! bound below that nothing is kept.
       !
       ! THE FIXED POINT is one at which a full-length trial no longer moves
-      ! the carriers, with the chemistry closed on each side of it: the
-      ! largest change of any solved carrier over one step, against x_ref,
-      ! the largest fraction any solved carrier holds at the pass entry.
-      ! x_ref is taken over the SOLVED carriers and not over H2 alone: a
-      ! run with transported ionization stages and no molecular network
-      ! holds no H2, its H2 maximum is zero, and the 1e-30 floor that stood
-      ! in for it made the fixed-point test unreachable (a step change
-      ! below 1e-40), so such a relaxation could only end on the bound or
-      ! on its step budget, and the displacement it reported was ~1e28
-      ! (MEASURED, backup/regression/iontrans_metals run.log).
+      ! the carriers, with the chemistry closed on each side of it: for
+      ! EVERY solved carrier, the largest change of that carrier over one
+      ! step against xref_carrier, the largest fraction THAT carrier holds
+      ! at the pass entry (carrier_displacement_on_own_scale).  Each
+      ! carrier is judged on its own scale because the carriers span ten
+      ! decades: the He 2^3S level is carried as n(2^3S)/n(He nuclei),
+      ! 5e-11 at 1.2 R_p on the LHS 1140 b states, while the helium stages
+      ! hold fractions of order one.  Against the largest fraction of all
+      ! carriers (the test this replaces) a step that moved the level by
+      ! 20 % of itself read 1e-11 and passed relax_tol = 1e-10, so a pass
+      ! declared the carrier block closed after ONE transport step with the
+      ! level row still at 9e-5 of its own terms (MEASURED, the 2000-cell
+      ! He/H 0.65 state, phase6/grid2000/continued, every pass), and the
+      ! row then sat at 2e-5 to 2e-3 for 300 passes instead of closing.
+      ! A displacement test alone does not close the row either (the step
+      ! residual is bounded only by n/dt; the loop below states why), so the
+      ! fixed point also asks the steady residual of the rows.
+      ! x_ref, the largest fraction of all solved carriers, is still what
+      ! the reported drift and the retired fraction bound are written on.
+      ! It is taken over the SOLVED carriers and not over H2 alone: a run
+      ! with transported ionization stages and no molecular network holds
+      ! no H2, its H2 maximum is zero, and a 1e-30 floor standing in for it
+      ! made a step change of 1e-40 the test (MEASURED,
+      ! backup/regression/iontrans_metals run.log).
       subroutine relax_photochemical_composition(u, v, f_sp, p, T,       &
                                                  heat, cool, eta,         &
                                                  trust, drift, nstep,     &
@@ -8150,6 +8709,17 @@
       ! back together or not at all.
       type(thermochemical_state) :: held
       real(dp) :: drj, tdiff, tadv, grow, tscale, dmax, x_ref
+      ! The largest fraction each solved carrier holds at the pass entry,
+      ! the scale its own displacement is judged against at the fixed point.
+      real(dp) :: xref_carrier(n_carrier_max)
+      ! The steady residual of the carrier rows at the fixed wind, the
+      ! measure of the certification (|res|/row_terms_phys over the cells
+      ! where the carrier is present), read when a step no longer moves the
+      ! carriers.
+      real(dp) :: rsteady_rlx, steady_rlx
+      integer  :: jsteady_rlx, icsteady_rlx
+      real(dp), dimension(1:N,n_carrier_max) :: res_rlx, terms_rlx
+      logical,  dimension(1:N,n_carrier_max) :: absent_rlx
       ! The cell that stands furthest outside the movement bound, and by
       ! how much, when a trial is refused on it.
       integer  :: jbnd, icbnd
@@ -8201,9 +8771,12 @@
       dt_code(1-Ng:0)   = dt_code(1)
       dt_code(N+1:N+Ng) = dt_code(N)
       x_ref  = 1.0d-30
+      xref_carrier = 1.0d-30
       do ic = 1, n_carrier
-         if (carrier_solved(ic))                                         &
+         if (carrier_solved(ic)) then
             x_ref = max(x_ref, maxval(fentry(1:N,ic)))
+            xref_carrier(ic) = max(1.0d-30, maxval(fentry(1:N,ic)))
+         endif
       enddo
       ! The primitive state of the entry composition at u: what is handed
       ! back when no step is kept.
@@ -8387,10 +8960,46 @@
                     ', omitted set ', l22_last_d_omit, ' at cell ',       &
                     l22_last_j_omit
          endif
-         dmax  = carrier_composition_displacement(fnow, fprev)
-         if (dmax/x_ref .lt. relax_tol .and. grow .ge. 1.0d0) then
-            ending = carrier_relax_fixed_point
-            exit
+         dmax  = carrier_displacement_on_own_scale(fnow, fprev,          &
+                                                   xref_carrier)
+         ! A STEP THAT NO LONGER MOVES THE CARRIERS IS NOT YET A CLOSED
+         ! BLOCK.  An implicit step of length dt leaves the steady residual
+         ! r = (n_new - n_old)/dt, so a displacement below relax_tol bounds
+         ! r only by relax_tol n/dt, and in a row whose own terms are far
+         ! below n/dt -- a level in near-local balance whose transport
+         ! flux changes sign, as He 2^3S at 1.2-1.25 R_p on the LHS 1140 b
+         ! states, row terms 2e-6 cm^-3 s^-1 against n/dt ~ 3e-2 -- that
+         ! bound says nothing: the pass ended after one step with the row at
+         ! 5e-5 to 9e-5 of its terms (MEASURED, phase6/grid2000).  The
+         ! fixed point is therefore also asked of the residual itself: the
+         ! steady carrier residual on the certification's measure, over the
+         ! cells where the carrier is present, at or below
+         ! carrier_accept_tol, the residual the step's own Newton accepts.
+         ! Until it is, the steps go on growing (grow below), which is the
+         ! pseudo-transient continuation to the steady block.
+         if (dmax .lt. relax_tol .and. grow .ge. 1.0d0) then
+            call carrier_steady_residual(rho, v, f_sp, rsteady_rlx,       &
+                                         jsteady_rlx, icsteady_rlx,       &
+                                         res_out = res_rlx,               &
+                                         terms_out = terms_rlx,           &
+                                         absent_out = absent_rlx)
+            steady_rlx = 0.0d0
+            do ic = 1, n_carrier
+               if (.not. carrier_solved(ic)) cycle
+               do j = 1, N
+                  if (absent_rlx(j,ic)) cycle
+                  steady_rlx = max(steady_rlx, abs(res_rlx(j,ic))         &
+                                   /max(terms_rlx(j,ic), 1.0d-300))
+               enddo
+            enddo
+            if (carrier_debug_on())                                       &
+               write(*,'(A,I0,A,ES10.3)') '      trial ', k,              &
+                    ': steady carrier residual of the present rows ',     &
+                    steady_rlx
+            if (steady_rlx .le. carrier_accept_tol) then
+               ending = carrier_relax_fixed_point
+               exit
+            endif
          endif
          fprev = fnow
          if (grow .lt. 1.0d12) grow = grow*1.5d0

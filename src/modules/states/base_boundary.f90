@@ -124,6 +124,7 @@
    ! base_boundary_states refuses a grid whose first face is not the level.
 
    use global_parameters
+   use lower_atmosphere_profile, only: lap_in_use, lap_value_at_radius
    use grav_func, only: phi
    use caloric_eos, only: internal_energy_per_particle,                  &
                           heat_capacity_per_particle,                    &
@@ -1597,12 +1598,30 @@
    ! continuation; during a reverse flow the two differ and this is the one
    ! the bath states.
    !
-   ! VALIDITY is continue_hydrostatic_isentrope's: the midpoint heat
-   ! capacity makes the density exact to third order in ln(T/T_base), which
-   ! holds over the two ghost cells below the level this is asked for and
-   ! not over a scale height.
+   ! WHERE A LOWER-ATMOSPHERE PROFILE IS HANDED OVER, the bath's temperature
+   ! at rq is the profile's own temperature there (lap_value_at_radius), in
+   ! units of T0: the gas below the level is the profile's column, which on
+   ! the LHS 1140 b photochem profiles is an isotherm at the clima skin
+   ! temperature, not an adiabat; the isentrope put the bath 3.5 K above it
+   ! one ghost cell down (188.89 K against 185.42 K on the He/H 9 conduction
+   ! state) and lowered the conductive flux into the level by about 4.6% at
+   ! a fixed cell-1 temperature.  At the level itself the two agree, T0
+   ! being the profile's temperature at the matching level.
+   !
+   ! Without a profile, VALIDITY is continue_hydrostatic_isentrope's: the
+   ! midpoint heat capacity makes the density exact to third order in
+   ! ln(T/T_base), which holds over the two ghost cells below the level this
+   ! is asked for and not over a scale height.
    real*8, intent(in) :: rq
-   real*8 :: rho_q
+   real*8 :: rho_q, T_prof_K
+   logical :: have_T
+   if (lap_in_use) then
+      call lap_value_at_radius('T', rq*R0/RJ, T_prof_K, have_T)
+      if (have_T .and. T_prof_K .gt. 0.0d0) then
+         T_res = T_prof_K/T0
+         return
+      endif
+   endif
    call continue_hydrostatic_isentrope(0, base_reservoir_nhat,            &
                                        r_base_level,                      &
                                        base_reservoir_p                   &

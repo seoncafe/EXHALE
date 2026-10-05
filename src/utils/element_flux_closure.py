@@ -39,8 +39,10 @@ element_flux_profile.txt carried the face mean of the cell-centred rho and
 v, which carries the collocated odd-even velocity mode of the base.  The
 file now carries the Riemann face mass flux, and on a stationary state that
 flux is constant to 1e-8 through the whole column (MEASURED 2026-09-24 on
-the certified LHS 1140 b kzz1e9 states); the overlap spreads of a
-lower-profile run have not been re-measured on it.]  This driver
+the certified LHS 1140 b kzz1e9 states).  On the energy-coupled He/H 2.09
+lower-profile reference the overlap window is 1.00058-1.01892 R_p, 82
+faces, with spreads 3.8e-9 (H) and 3.1e-9 (He) (MEASURED 2026-10-04,
+update log stage 3 section 84).]  This driver
 therefore reads the overlap window first and falls back on the steady one
 when the overlap is unmeasurable or its spread exceeds the tolerance,
 recording in the iteration log which window supplied the number and why.
@@ -48,11 +50,38 @@ The substitution is never silent.  Section 6.2's honesty rule stands: a
 residual smaller than the spread of the window it was measured on is not a
 converged closure, and is reported UNRESOLVED rather than converged.
 
+Energy coupling (configuration key `energy_coupling`, default false).  The
+wind conducts heat into the column through its base face, and on a cold
+column that heat changes the matching-level temperature the wind is built
+on (update log stage 3, section 75: about 1e-3 percent-angstrom of He 10830
+EW per kelvin of it).  With the key on, the closure carries a third
+variable, the conductive flux F_cond [erg cm^-2 s^-1] the column is solved
+under (`photochem_to_lower_profile.py --conducted-heat-flux`): each wind
+solve writes the flux it conducts into the lower atmosphere
+(`base_conductive_flux_cgs` of EXHALE_resolved.out, positive into the
+column), and the next iteration's column takes the damped value
+
+    F^(k+1) = F^(k) + omega_E ( F_meas^(k) - F^(k) ),
+
+omega_E = `energy_coupling_omega` (default 0.5).  The history gains the
+columns F_cond_trial, F_cond_meas and T_match (the profile's temperature at
+the match), and convergence then also requires
+|T_match(k) - T_match(k-1)| < `T_match_tol` [K] (default 6 K: the numerical
+EW target 0.0058 percent-angstrom over the measured sensitivity, section
+75) and the undamped conducted-flux residual
+|F_cond_meas - F_cond_trial| / |F_cond_meas| <= `tol`, the tolerance of the
+elemental fluxes (`conducted_flux_residual`): the flux the column was
+solved under must be the flux the wind returns, which the T_match test
+alone does not measure.  The first trial F_cond is
+`--fcond0`, or, when that is not given, the `base_conductive_flux_cgs` of
+the seed's run directory.  With the key off nothing here changes: no flux is
+passed, the history keeps its fifteen columns.
+
 Usage
 -----
     python3 element_flux_closure.py <case_dir> --phi0-H <g/s> [--phi0-He <g/s>]
         [--omega 0.5] [--tol 0.05] [--kmax 8] [--seed <dir>] [--config <file>]
-        [--resume] [--dry-run]
+        [--fcond0 <erg/cm2/s>] [--resume] [--dry-run]
 
 `--dry-run <case_dir>` exercises only the reading and measurement path
 against an existing EXHALE run directory; nothing is executed.
@@ -97,7 +126,7 @@ import numpy as np
 # Configuration
 # --------------------------------------------------------------------------
 
-CONFIG_TEMPLATE = """{
+CONFIG_TEMPLATE = r"""{
   "comment": "Fixed part of both command lines for one planet. Everything the closure does not vary between iterations lives here (design section 6.4).",
 
   "python_comment": "Optional. Omitted, the chemistry runs in the interpreter this driver runs under, which is expected to be the one Photochem is installed into (README_photochem.md). Name an interpreter here only to reproduce a result made on a different Photochem build, and say in the comment which one.",
@@ -129,7 +158,12 @@ CONFIG_TEMPLATE = """{
   "input_keys": [],
 
   "exhale_env": {"EXHALE_PTC": "1", "EXHALE_PTC_JFNK": "1",
-                 "EXHALE_PTC_DTAU0": "1.0"}
+                 "EXHALE_PTC_DTAU0": "1.0"},
+
+  "energy_coupling_comment": "Optional, default false. True passes the wind's conductive base flux (EXHALE_resolved.out base_conductive_flux_cgs, damped by energy_coupling_omega) to the chemistry as --conducted-heat-flux, records F_cond and T_match, and requires |T_match(k) - T_match(k-1)| < T_match_tol [K] for convergence (6 K: update log stage 3 section 75). Needs an EXHALE that writes the flux and Conduction on.",
+  "energy_coupling": false,
+  "energy_coupling_omega": 0.5,
+  "T_match_tol": 6.0
 }
 """
 
@@ -153,6 +187,13 @@ CONFIG_DEFAULTS = {
     # exactly as it was.
     'input_keys': [],
     'input_drop': None,
+    # The energy coupling (module docstring); off leaves every command line
+    # and record as it was.
+    'energy_coupling': False,
+    'energy_coupling_omega': 0.5,
+    # 6 K: the numerical EW target 0.0058 percent-angstrom over the measured
+    # 1.0e-3 percent-angstrom per kelvin (update log stage 3, section 75).
+    'T_match_tol': 6.0,
 }
 
 
@@ -297,6 +338,23 @@ def _or_nan(x):
     return float('nan') if x is None else x
 
 
+def flux_window_resolved(measurement, tol):
+    """Both elemental fluxes need finite values and measured radial spreads."""
+    if measurement is None:
+        return False
+    try:
+        if int(measurement.nface) < 1:
+            return False
+    except (TypeError, ValueError):
+        return False
+    values = (measurement.F_H, measurement.F_He,
+              measurement.spread_H, measurement.spread_He)
+    if any(value is None or not np.isfinite(value) for value in values):
+        return False
+    return (0.0 <= measurement.spread_H <= tol and
+            0.0 <= measurement.spread_He <= tol)
+
+
 def overlap_flux_window(keys):
     """The window the closure is defined on: from the first face at which
     the face mass flux of the state is constant up to the profile top
@@ -347,21 +405,21 @@ def select_flux_window(keys, tol):
     the number, and never silently.  Returns (measurement, note, missing)."""
     missing = missing_keys(keys, OVERLAP_KEYS + STEADY_KEYS)
     overlap, state = overlap_flux_window(keys)
-    if overlap is not None and overlap.spread <= tol:
+    if flux_window_resolved(overlap, tol):
         return overlap, overlap.reason, missing
 
     if overlap is None:
         why = ('the overlap window is not measurable on this run '
                '(lower_profile_flux_state = %s)' % state)
     else:
-        why = ('the overlap window is measurable but its spread %.3G '
-               'exceeds tol = %.3G, so the flux is not flat across it'
-               % (overlap.spread, tol))
+        why = ('the overlap window has no finite, sufficiently flat H and He'
+               ' flux measurements on at least one face (spread H %.3G,'
+               ' He %.3G; tol %.3G)'
+               % (_or_nan(overlap.spread_H), _or_nan(overlap.spread_He), tol))
 
     steady = steady_flux_window(keys)
-    if steady is None:
-        return None, why + '; and the steady window was not written either', \
-            missing
+    if not flux_window_resolved(steady, tol):
+        return None, why + '; the steady window is also unresolved', missing
     steady.reason = why + '; the number comes from the ' + steady.reason
     return steady, steady.reason, missing
 
@@ -418,7 +476,8 @@ def tail_of(path, nlines=40):
     return '\n'.join(lines[-nlines:])
 
 
-def solve_photochemical_lower_profile(cfg, iter_dir, k, phi_H, phi_He, log):
+def solve_photochemical_lower_profile(cfg, iter_dir, k, phi_H, phi_He, log,
+                                      fcond=None):
     """The chemistry: the adapter, run with cwd = the iteration directory,
     writes `lower_atmosphere_profile.dat` and `base.inp` there.  A nonzero
     exit is a refusal or a non-steady chemistry solution, and neither has an
@@ -430,6 +489,8 @@ def solve_photochemical_lower_profile(cfg, iter_dir, k, phi_H, phi_He, log):
             '--iteration', str(k)]
     if cfg.get('p_top_bar') is not None:
         cmd += ['--p-top-bar', repr(float(cfg['p_top_bar']))]
+    if fcond is not None:
+        cmd += ['--conducted-heat-flux', repr(float(fcond))]
 
     log('  chemistry: ' + ' '.join(cmd))
     logpath = os.path.join(iter_dir, 'adapter.log')
@@ -769,6 +830,10 @@ def solve_escape_wind(cfg, iter_dir, seed_output, log):
                              stdout=fh, stderr=subprocess.STDOUT)
     info = wind_solve_info(tail_of(runlog, 10**7))
     log('  wind: solve done rc=%d info=%s' % (rc, info))
+    if rc != 0:
+        log(tail_of(runlog))
+        raise ClosureStop('EXHALE exited %d before a certified stationary'
+                          ' solve was accepted; see %s' % (rc, runlog))
     # HOW THE SOLVE ENDED, CLASSIFIED BEFORE ANYTHING IS DECIDED ON IT, BY
     # THE SAME RULE THE CATALOG RUNNER USES.  That rule is written once, in
     # the policy block of LHS1140b/models/run_case.sh, and is SOURCED here
@@ -813,12 +878,16 @@ def solve_escape_wind(cfg, iter_dir, seed_output, log):
         ending, reason, _ = classify_solve_ending(runlog, out_dir, env, log)
         log('  wind: continuation done rc=%d info=%s, ended %s: %s'
             % (rc, info, ending, reason))
+        if rc != 0:
+            log(tail_of(runlog))
+            raise ClosureStop('EXHALE continuation exited %d; see %s'
+                              % (rc, runlog))
     elif info != 0:
         log('  wind: the pseudo-time continuation addresses '
             'hydrodynamic_refusal and nothing else, so none is taken')
-    if info != 0:
+    if rc != 0 or info != 0:
         log(tail_of(runlog))
-        raise ClosureStop('EXHALE did not report `done info=0` (rc=%d, '
+        raise ClosureStop('EXHALE did not finish successfully (rc=%d, '
                           'info=%s); see %s' % (rc, info, runlog))
 
     # post-processing pass on the solved state
@@ -875,6 +944,8 @@ HISTORY_COLUMNS = ('k trial_F_H trial_F_He meas_F_H meas_F_He eps_H eps_He'
                    ' omega window_used window_spread_H window_spread_He'
                    ' HeH_match log10_Mdot solution_id exhale_info')
 
+ENERGY_HISTORY_COLUMNS = ' F_cond_trial F_cond_meas T_match'
+
 HISTORY_HEADER = (
     '# EXHALE elemental-flux closure history\n'
     '# fluxes [g/s], eps and spreads [-], HeH_match = He/H number ratio at'
@@ -891,11 +962,19 @@ def history_path(case_dir):
 def append_history_row(case_dir, row):
     path = history_path(case_dir)
     new = not os.path.isfile(path)
+    energy = 'F_cond_trial' in row
     with open(path, 'a') as fh:
         if new:
-            fh.write(HISTORY_HEADER)
+            if energy:
+                fh.write(HISTORY_HEADER.replace(
+                    HISTORY_COLUMNS, HISTORY_COLUMNS + ENERGY_HISTORY_COLUMNS)
+                    .replace('# window_used', '# F_cond [erg cm^-2 s^-1],'
+                             ' positive into the column; T_match [K]\n'
+                             '# window_used'))
+            else:
+                fh.write(HISTORY_HEADER)
         fh.write('%4d %18.10E %18.10E %18.10E %18.10E %12.5E %12.5E'
-                 ' %8.4f %-8s %12.5E %12.5E %14.7E %8.3f %s %s\n'
+                 ' %8.4f %-8s %12.5E %12.5E %14.7E %8.3f %s %s'
                  % (row['k'], row['trial_F_H'], row['trial_F_He'],
                     row['meas_F_H'], row['meas_F_He'],
                     row['eps_H'], row['eps_He'], row['omega'],
@@ -903,6 +982,11 @@ def append_history_row(case_dir, row):
                     _or_nan(row['window_spread_He']), row['HeH_match'],
                     row['log10_Mdot'], row['solution_id'],
                     row['exhale_info']))
+        if energy:
+            fh.write(' %14.7E %14.7E %10.4f' % (row['F_cond_trial'],
+                                               row['F_cond_meas'],
+                                               row['T_match']))
+        fh.write('\n')
 
 
 def read_history(case_dir):
@@ -929,6 +1013,10 @@ def read_history(case_dir):
                          'HeH_match': float(f[11]),
                          'log10_Mdot': float(f[12]),
                          'solution_id': f[13], 'exhale_info': f[14]})
+            if len(f) >= 18:
+                rows[-1].update(F_cond_trial=float(f[15]),
+                                F_cond_meas=float(f[16]),
+                                T_match=float(f[17]))
     return rows
 
 
@@ -978,14 +1066,66 @@ def measure_iteration(iter_dir, tol, log):
     return keys, meas
 
 
+def conducted_flux_of_run(keys):
+    """The heat the wind conducted into the lower atmosphere through its
+    base face [erg cm^-2 s^-1, positive into the column], as the run wrote
+    it (heat_conducted_into_lower_atmosphere, viscous_conduction.f90); None
+    when the run did not measure it."""
+    if keys.get('base_conduction_state') != 'measured':
+        return None
+    return real_key(keys, 'base_conductive_flux_cgs')
+
+
+def matching_level_temperature(profile):
+    vals = profile_values_at_match(profile)
+    return float(vals['T']) if vals and 'T' in vals else float('nan')
+
+
+def conducted_flux_residual(trial, measured):
+    """|F_meas - F_trial| / |F_meas| of the conducted base heat flux.
+
+    inf when either value is missing or non-finite, or when the measured
+    flux is zero and the trial is not; 0 when both are exactly zero, which
+    is a legitimate fixed point (no heat conducted into the column) and
+    must be acceptable like any other exact agreement."""
+    if trial is None or measured is None or not np.isfinite(trial) or \
+            not np.isfinite(measured):
+        return float('inf')
+    if measured == 0.0:
+        return 0.0 if trial == 0.0 else float('inf')
+    return abs(measured - trial)/abs(measured)
+
+
 def run_closure(case_dir, cfg, phi_H, phi_He, omega, tol, kmax, seed,
-                resume, log):
+                resume, log, fcond=None):
+    energy = bool(cfg.get('energy_coupling'))
+    omega_E = float(cfg.get('energy_coupling_omega', 0.5))
+    T_tol = float(cfg.get('T_match_tol', 6.0))
+    T_match_prev = None
     history = read_history(case_dir) if resume else []
     k0 = 0
     eps_prev = None
     eps_H = eps_He = float('nan')
     if history:
         last = history[-1]
+        if (last['window_used'] not in ('overlap', 'steady') or
+                any(not np.isfinite(last[key]) or last[key] < 0.0 or
+                    last[key] > tol for key in
+                    ('window_spread_H', 'window_spread_He')) or
+                any(not np.isfinite(last[key]) for key in
+                    ('trial_F_H', 'trial_F_He', 'meas_F_H', 'meas_F_He',
+                     'eps_H', 'eps_He'))):
+            raise ClosureStop('the last history row has no resolved H and He'
+                              ' flux measurement at the requested tolerance')
+        saved_dir = iteration_directory(case_dir, last['k'])
+        _, saved_meas = measure_iteration(saved_dir, tol, log)
+        if (saved_meas.window != last['window_used'] or
+                not np.isclose(saved_meas.F_H, last['meas_F_H'], rtol=1e-9,
+                               atol=0.0) or
+                not np.isclose(saved_meas.F_He, last['meas_F_He'], rtol=1e-9,
+                               atol=0.0)):
+            raise ClosureStop('the last history row does not match the saved'
+                              ' wind flux measurement')
         k0 = last['k'] + 1
         omega = relaxation_after(last['omega'],
                                  max(last['eps_H'], last['eps_He']),
@@ -997,10 +1137,22 @@ def run_closure(case_dir, cfg, phi_H, phi_He, omega, tol, kmax, seed,
                                           last['meas_F_H'], omega)
         phi_He = damped_picard_flux_update(last['trial_F_He'],
                                            last['meas_F_He'], omega)
+        if energy:
+            if 'F_cond_trial' not in last:
+                raise ClosureStop('resume with energy_coupling on, but the'
+                                  ' history carries no F_cond columns')
+            fcond = damped_picard_flux_update(last['F_cond_trial'],
+                                              last['F_cond_meas'], omega_E)
+            T_match_prev = last['T_match']
         log('resume: %d completed iterations, continuing at k=%d with'
             ' omega=%.4f, Phi_H=%.6E, Phi_He=%.6E'
-            % (len(history), k0, omega, phi_H, phi_He))
-        if eps_prev <= tol:
+            % (len(history), k0, omega, phi_H, phi_He)
+            + (', F_cond=%.6E' % fcond if energy else ''))
+        T_ok = (not energy or (len(history) > 1 and abs(
+            last['T_match'] - history[-2]['T_match']) < T_tol and
+            conducted_flux_residual(last['F_cond_trial'],
+                                    last['F_cond_meas']) <= tol))
+        if eps_prev <= tol and T_ok:
             log('resume: the last recorded residual %.3G already meets'
                 ' tol=%.3G; nothing to do.' % (eps_prev, tol))
             return 0
@@ -1016,9 +1168,13 @@ def run_closure(case_dir, cfg, phi_H, phi_He, omega, tol, kmax, seed,
                 % (k, stale))
         os.makedirs(os.path.join(iter_dir, 'output'))
         log('k=%d: Phi_H = %.6E g/s, Phi_He = %.6E g/s, omega = %.4f'
-            % (k, phi_H, phi_He, omega))
+            % (k, phi_H, phi_He, omega)
+            + (', F_cond = %.6E erg/cm2/s, omega_E = %.4f' % (fcond, omega_E)
+               if energy else ''))
 
-        solve_photochemical_lower_profile(cfg, iter_dir, k, phi_H, phi_He, log)
+        profile = solve_photochemical_lower_profile(
+            cfg, iter_dir, k, phi_H, phi_He, log,
+            fcond=(fcond if energy else None))
 
         seed_output = seed if k == k0 and seed else \
             os.path.join(iteration_directory(case_dir, k - 1), 'output')
@@ -1037,7 +1193,25 @@ def run_closure(case_dir, cfg, phi_H, phi_He, omega, tol, kmax, seed,
             (eps_H, eps_He))
 
         heh = real_key(keys, 'HeH_number_ratio')
-        append_history_row(case_dir, {
+        row_energy = {}
+        if energy:
+            fmeas = conducted_flux_of_run(keys)
+            if fmeas is None:
+                raise ClosureStop(
+                    'energy_coupling is on, but %s carries no measured'
+                    ' base_conductive_flux_cgs (an EXHALE that does not write'
+                    ' it, or Conduction off)' % iter_dir)
+            T_match = matching_level_temperature(profile)
+            dT_match = (abs(T_match - T_match_prev)
+                        if T_match_prev is not None else float('inf'))
+            log('  energy: F_cond trial %.6E, measured %.6E erg/cm2/s'
+                ' (into the column); T_match = %.3f K, change %s'
+                % (fcond, fmeas, T_match,
+                   '%.3f K' % dT_match if T_match_prev is not None
+                   else 'n/a (first iterate)'))
+            row_energy = dict(F_cond_trial=fcond, F_cond_meas=fmeas,
+                              T_match=T_match)
+        append_history_row(case_dir, dict({
             'k': k, 'trial_F_H': phi_H, 'trial_F_He': phi_He,
             'meas_F_H': meas.F_H, 'meas_F_He': meas.F_He,
             'eps_H': eps_H, 'eps_He': eps_He, 'omega': omega,
@@ -1047,7 +1221,7 @@ def run_closure(case_dir, cfg, phi_H, phi_He, omega, tol, kmax, seed,
             'HeH_match': heh if heh is not None else float('nan'),
             'log10_Mdot': log10_mdot,
             'solution_id': keys.get('lower_profile_solution_id', 'unknown'),
-            'exhale_info': str(info)})
+            'exhale_info': str(info)}, **row_energy))
 
         # Section 6.2's honesty rule.  The flux is only defined to within its
         # own radial spread, so a window whose spread exceeds the tolerance
@@ -1056,7 +1230,7 @@ def run_closure(case_dir, cfg, phi_H, phi_He, omega, tol, kmax, seed,
         # and says so, rather than converging on a number it cannot resolve.
         # This is a statement about the WINDOW, not about the iterate, so it
         # is tested every iteration and independently of how far eps is.
-        if np.isfinite(meas.spread) and meas.spread > tol:
+        if not flux_window_resolved(meas, tol):
             raise ClosureStop(
                 'UNRESOLVED on this configuration: the %s window that'
                 ' supplied the flux has a radial spread %.3G above tol %.3G'
@@ -1066,9 +1240,24 @@ def run_closure(case_dir, cfg, phi_H, phi_He, omega, tol, kmax, seed,
                 % (meas.window, meas.spread, tol, _or_nan(meas.spread_H),
                    _or_nan(meas.spread_He), tol, meas.F_H, meas.F_He))
 
-        if eps <= tol:
+        # The conducted heat flux is a fixed-point variable of the coupled
+        # problem exactly as the elemental fluxes are, so its own residual
+        # |F_meas - F_trial|/F_meas is held to the same tolerance; the
+        # T_match test alone measures the column's response, not whether
+        # the flux the column was solved under is the flux the wind returns.
+        eps_E = conducted_flux_residual(fcond, fmeas) if energy else 0.0
+        T_ok = (not energy) or (dT_match < T_tol and eps_E <= tol)
+        if eps <= tol and not T_ok:
+            log('  the elemental fluxes meet tol; the energy coupling does'
+                ' not (T_match moved %.3f K against %.3G K, conducted-flux'
+                ' residual %.4G against %.4G): continuing'
+                % (dT_match, T_tol, eps_E, tol))
+        if eps <= tol and T_ok:
             log('CONVERGED at k=%d: max residual %.4G <= tol %.4G'
-                % (k, eps, tol))
+                % (k, eps, tol)
+                + ('; T_match moved %.3f K < %.3G K; conducted-flux residual'
+                   ' %.4G <= %.4G' % (dT_match, T_tol, eps_E, tol)
+                   if energy else ''))
             log('  elemental fluxes at the match: F_H = %.6E g/s,'
                 ' F_He = %.6E g/s; He/H = %s; log10 Mdot = %.3f'
                 % (meas.F_H, meas.F_He, heh, log10_mdot))
@@ -1078,6 +1267,9 @@ def run_closure(case_dir, cfg, phi_H, phi_He, omega, tol, kmax, seed,
         eps_prev = eps
         phi_H = damped_picard_flux_update(phi_H, meas.F_H, omega)
         phi_He = damped_picard_flux_update(phi_He, meas.F_He, omega)
+        if energy:
+            fcond = damped_picard_flux_update(fcond, fmeas, omega_E)
+            T_match_prev = T_match
 
     raise ClosureStop(
         'k_max = %d iterations (k = 0 .. %d) exhausted without convergence;'
@@ -1104,6 +1296,10 @@ def report_measurement_only(run_dir, tol):
             print('  %-28s %s' % (k, keys[k]))
     meas, note, _ = select_flux_window(keys, tol)
     print('window selection: ' + note)
+    fc = conducted_flux_of_run(keys)
+    print('conductive flux into the lower atmosphere: %s'
+          % ('%.6E erg/cm2/s' % fc if fc is not None
+             else 'not measured by this run'))
     if meas is None:
         print('RESULT: neither window is usable; the closure would report'
               ' UNRESOLVED on this run.')
@@ -1144,6 +1340,11 @@ def main():
                     help='converged output/ directory seeding iteration 0')
     ap.add_argument('--config', default=None,
                     help='JSON with the fixed part of both command lines')
+    ap.add_argument('--fcond0', type=float, default=None,
+                    help='with energy_coupling on: the first trial'
+                         ' conductive flux into the column [erg cm^-2 s^-1];'
+                         ' default is base_conductive_flux_cgs of the seed\'s'
+                         ' run directory (the parent of --seed)')
     ap.add_argument('--resume', action='store_true',
                     help='continue from the last completed iteration')
     ap.add_argument('--dry-run', action='store_true',
@@ -1191,9 +1392,26 @@ def main():
         % (cfg['python'],
            'named by the config' if cfg['python_named_by_config']
            else "this driver's own interpreter"))
+    fcond0 = a.fcond0
+    if cfg.get('energy_coupling') and fcond0 is None and not a.resume:
+        seed_run = os.path.dirname(os.path.abspath(a.seed))
+        try:
+            fcond0 = conducted_flux_of_run(
+                read_resolved_configuration(seed_run)[0])
+        except SystemExit:
+            fcond0 = None
+        if fcond0 is None:
+            raise SystemExit('energy_coupling is on and neither --fcond0 nor'
+                             ' a measured base_conductive_flux_cgs in %s'
+                             ' gives the first trial flux' % seed_run)
+    if cfg.get('energy_coupling'):
+        log('energy coupling on: F_cond(0) = %s erg/cm2/s, omega_E = %.3f,'
+            ' T_match_tol = %.3G K'
+            % (('%.6E' % fcond0) if fcond0 is not None else 'from history',
+               float(cfg['energy_coupling_omega']), float(cfg['T_match_tol'])))
     try:
         rc = run_closure(a.case_dir, cfg, a.phi0_H, a.phi0_He, a.omega,
-                         a.tol, a.kmax, a.seed, a.resume, log)
+                         a.tol, a.kmax, a.seed, a.resume, log, fcond=fcond0)
     except ClosureStop as exc:
         log('STOPPED: %s' % exc)
         rc = 1

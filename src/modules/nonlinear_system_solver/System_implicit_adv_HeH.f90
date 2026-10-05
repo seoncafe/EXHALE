@@ -1,7 +1,8 @@
 	module System_implicit_adv_HeH
 	! Advection-corrected ionization system for H and He without the He 2^3S
 	! metastable: one step of the backward differentiation formula for
-	! v dx/dr = R(x) in the fractions, taken by post_process_adv (the step is
+	! v_el dx/dr = R(x) in the fractions, each element's rows on the
+	! velocity of its own nuclei, taken by post_process_adv (the step is
 	! stated at the adv_rates type of ion_cell_state).
 	
 	use global_parameters
@@ -21,7 +22,7 @@
 	real*8  :: xhi,xhii
 	real*8  :: xheiS,xheii,xheiii
 	real*8  :: xe
-	real*8  :: c1
+	real*8  :: c1, c1_he
 	real*8  :: n_h
 	real*8  :: ahii,aheii,aheiii
 	real*8  :: ionhi,ionhei,ionheii
@@ -30,7 +31,8 @@
 
 	! Coefficients of the system
 
- 	c1         = adv_cell%c1    ! = g*h_j/v_j, the rate weight of the step
+ 	c1         = adv_cell%c1    ! = g*h_j/v_H, the rate weight of the H row
+ 	c1_he      = adv_cell%c1_he ! = g*h_j/v_He, the rate weight of the He rows
  	xhi_hist    = adv_cell%xhi_hist    ! history of n_HI/n_H
  	xheiS_hist  = adv_cell%xheiS_hist   ! history of n_HeI/n_He (all He I is the singlet here)
  	xheiii_hist = adv_cell%xheiii_hist    ! history of n_HeIII/n_He
@@ -71,17 +73,17 @@
   	        + c1*(-(ghi + ionhi*xe*n_h)*xhi    + ahii*xhii*xe*n_h)
 
   	fvec(2) =  xheiS_hist - xheiS 					  		    &
-  		    + c1*(-(ghei + ionhei*xe*n_h)*xheiS + aheii*xheii*xe*n_h)
+  		    + c1_he*(-(ghei + ionhei*xe*n_h)*xheiS + aheii*xheii*xe*n_h)
 
   	fvec(3) =  xheiii_hist - xheiii					  			&
-  	        + c1*((gheii + ionheii*xe*n_h)*xheii - aheiii*xheiii*xe*n_h)
+  	        + c1_he*((gheii + ionheii*xe*n_h)*xheii - aheiii*xheiii*xe*n_h)
 
 	! He <-> H charge exchange (Huang Table 4 group B) on the H (row 1) and
 	! He I (row 2) rows, both written neutral-gain positive here, and He2+ +
 	! H0 on rows 1 and 3 (He III gain positive). Without the
 	! metastable the whole He I population is the ground singlet, so xheiS is
 	! the He I fraction (n_HeI/n_he) the reaction sees.
-	call he_h_cx_fvec_adv(fvec, c1, xhi, xhii, xheiS, xheii, xheiii,       &
+	call he_h_cx_fvec_adv(fvec, c1, c1_he, xhi, xhii, xheiS, xheii, xheiii,       &
 	                      heh_loc, n_h, adv_cell%kcx_He0_Hp,              &
 	                      adv_cell%kcx_Hep_H0, adv_cell%kcx_Hepp_H0)
 

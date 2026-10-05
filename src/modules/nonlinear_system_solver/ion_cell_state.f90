@@ -158,6 +158,14 @@
 		!                are carried is the set the transport operator
 		!                registered, and a flag per stage is what states
 		!                that set to the residual.
+		!   x_hetr_fixed the He 2^3S population, owned by the transported
+		!                level (He 2^3S transport: True), per helium
+		!                NUCLEUS:
+		!                x_hetr_fix = n(He 2^3S) / n_He(nuclei) -> x(x_hetr_row)
+		!                x_hetr_row is the row of the level balance in the
+		!                system the run solves (4 atomic, 8 molecular;
+		!                ieq_triplet_row), set with the flag, because this
+		!                module and ion_residual_core cannot ask the sweep.
 		!
 		!                Rows 2 and 3 exist in every system solved where
 		!                helium is in the mixture; the one system that
@@ -175,6 +183,30 @@
 		real*8 :: x_hp_fix = 0.0d0
 		real*8 :: x_heii_fix = 0.0d0
 		real*8 :: x_heiii_fix = 0.0d0
+		logical :: x_hetr_fixed = .false.
+		integer :: x_hetr_row = 0
+		real*8 :: x_hetr_fix = 0.0d0
+		! THE H2 PARTITION OF THE NON-IONIZED HYDROGEN, stated by the
+		! lower-boundary reservoir (the base handoff) for a lower ghost.
+		! The handoff gives x2 = 2 n(H2)/(2 n(H2) + n(H I)), the fraction
+		! of the NEUTRAL hydrogen nuclei bound in H2 (the lower-atmosphere
+		! model never saw the wind's ionizing field); the ionized fraction
+		! is the ghost's own. The row the H2 balance (4) is replaced by is
+		! therefore
+		!     x(4) - x2 (1 - x_ion(x)) = 0,
+		!     x_ion = x(1) + x(5) + x(6) + x(7)
+		! (h2_fraction_of_reservoir), solved TOGETHER with the ionization
+		! rows: x_ion is an unknown of the same solve, not the value of a
+		! previous pass. Pinning x(4) at x2 (1 - x_ion) of a previous
+		! state leaves 1 - x(4) of the hydrogen for H I and the ions, and
+		! where the ionization balance asks for more than that room no
+		! composition satisfies the rows (md/Update_EXHALE_stage3.md
+		! section 105: 0.0315 of ions against 0.0302 of room in the
+		! LHS 1140 b He/H 2e4 ghost). In the implicit row the neutral
+		! hydrogen left is (1 - x2)(1 - x_ion) >= 0 at every x_ion, so the
+		! row never empties the simplex. Exclusive with x_h2_fixed.
+		logical :: x_h2_neutral_partition_fixed = .false.
+		real*8 :: x_h2_neutral_partition = 0.0d0
 	end type ion_rates
 
 	type(ion_rates), save :: ieq_cell
@@ -192,14 +224,23 @@
 	! formula for dx/dr = R(x)/v in the fractions x (post_process_adv,
 	! variable_step_bdf2_weights):
 	!
-	!     x_j - x_hist = c1 R_j(x_j) ,   c1 = g h_j / v_j ,
+	!     x_j - x_hist = c1 R_j(x_j) ,   c1 = g h_j / v_el,j ,
 	!
 	! with x_hist = a1 x_{j-1} - a2 x_{j-2} and h_j = r_j - r_{j-1}. The
 	! second-order step has the variable-step BDF2 weights (a1, a2, g); the
 	! first step of the recursion, and a step retaken for positivity, is
 	! backward Euler, a1 = g = 1 and a2 = 0, for which x_hist is the
-	! upstream fraction x_{j-1}. The rates R_j and the velocity v_j are both
+	! upstream fraction x_{j-1}. The rates R_j and the velocity are both
 	! those of the cell the step lands on.
+	!
+	! THE VELOCITY IS THAT OF THE ELEMENT'S NUCLEI. x is a fraction of the
+	! nuclei of one element, and those nuclei move with their own velocity
+	! v_el = v + w_el, w_el the diffusive (gradient, eddy, settling) drift
+	! of the element against the mass-weighted velocity v: with the element
+	! continuity div(n_el v_el) = 0 the steady stage balance
+	! div(x n_el v_el) = S becomes v_el dx/dr = S/n_el. c1 weights the
+	! hydrogen row with v_H and c1_he the helium rows with v_He; without
+	! element diffusion both velocities are v.
 	!
 	! xheiS_hist is the history of the GROUND SINGLET He(1^1S) alone, not of
 	! the summed He I: the advection systems carry the singlet and the
@@ -208,7 +249,8 @@
 	! once the metastable holds most of the neutral He). Without the triplet
 	! the two coincide, all He I being in the singlet.
 	type adv_rates
-		real*8 :: c1
+		real*8 :: c1      ! g h_j/v_H, the rate weight of the hydrogen row
+		real*8 :: c1_he   ! g h_j/v_He, the rate weight of the helium rows
 		real*8 :: xhi_hist
 		real*8 :: xheiS_hist
 		real*8 :: xheiii_hist
@@ -331,5 +373,27 @@
 
 	type(teq_state), save :: teq_cell
 	!$omp threadprivate(teq_cell)
+
+	contains
+
+	! Fraction of a cell's hydrogen nuclei that is ionized, in the
+	! molecular layout: H+ (x(1)) and the hydrogen nuclei held in the
+	! molecular ions, two in H2+ (x(5)), three in H3+ (x(6)) and one in
+	! HeH+ (x(7)), the multiplicities those unknowns already carry.
+	pure double precision function ionized_hydrogen_nuclei_fraction(x)     &
+	                                                          result(x_ion)
+	real*8, intent(in) :: x(:)
+	x_ion = x(1) + x(5) + x(6) + x(7)
+	end function ionized_hydrogen_nuclei_fraction
+
+	! The H2 row of a reservoir cell whose neutral hydrogen partition x2
+	! is stated (x_h2_neutral_partition_fixed): x(4) = x2 (1 - x_ion),
+	! the H2 nuclei fraction of ALL the hydrogen when x2 of the
+	! non-ionized hydrogen is bound in H2 and x_ion is ionized.
+	pure double precision function h2_fraction_of_reservoir(x2, x_ion)     &
+	                                                         result(x_h2)
+	real*8, intent(in) :: x2, x_ion
+	x_h2 = x2*(1.0d0 - x_ion)
+	end function h2_fraction_of_reservoir
 
 	end module ion_cell_state

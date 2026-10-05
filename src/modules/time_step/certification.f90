@@ -86,7 +86,8 @@
                                           carrier_history_certifiable,   &
                                           carrier_row_terms_on,          &
                                           carrier_row_terms_write,       &
-                                          ionization_stage_sum_measure
+                                          ionization_stage_sum_measure, &
+                       helium_metastable_excitation_energy_divergence
       use ionization_equilibrium,   only: bg_ready, ieq_nonroot_streak,   &
                                           finite_real, ieq_res_tol,       &
                                           ieq_triplet_row,                &
@@ -149,7 +150,8 @@
                                           n_conduction_floor_cells,       &
                                           conduction_last_status,         &
                                           conduction_last_cell,           &
-                                          CONDUCTION_OK
+                                          CONDUCTION_OK,                  &
+                                    heat_conducted_into_lower_atmosphere
       use utils,                    only: set_state_certified, calc_rho
       use stationary_operator,      only: face_mass_flux_budget
       ! The direction the base contact was upwinded on at its last
@@ -444,6 +446,17 @@
       ! It is NOT a certification tolerance.
       real*8, save, public :: cert_resid_tol_of_run = -1.0d0
 
+      ! WHETHER THE CERTIFICATION IN PROGRESS IS THE RUN'S VERDICT. A
+      ! certification that is the verdict records what it measured: the
+      ! certified pair of the state files, the last report the exit status
+      ! is read from, the heat conducted into the lower atmosphere that the
+      ! resolved-configuration record carries, and the row-term and flux
+      ! profile files. A certification made only to be REPORTED beside the
+      ! verdict (the stationary evaluation's re-measurement after a
+      ! composition sweep) records none of that, so no file and no exit
+      ! status can carry the verdict of a state that was not written.
+      logical, save :: cert_records_verdict = .true.
+
       type, public :: cert_entry
          character(len=52) :: name        = ''
          integer           :: status      = cert_not_applicable
@@ -719,6 +732,7 @@
       end type cert_step_verdict
 
       public :: certification_evaluate, certification_report_write
+      public :: certification_reports_side_by_side
       public :: certification_active_equation_count
       public :: certification_row_measure
       public :: certification_row_measure_over
@@ -1352,7 +1366,8 @@
 
       subroutine certification_evaluate(context, u, Res, f_sp,            &
                                         resid_tol, n_no_chem_root,        &
-                                        chem_root_known, rep)
+                                        chem_root_known, rep,             &
+                                        record_verdict)
       ! THE EVALUATOR. Builds the active-equation inventory from the
       ! configuration flags, measures what can be measured on the state
       ! given, and takes the verdict.
@@ -1373,6 +1388,9 @@
       integer,                        intent(in)  :: n_no_chem_root
       logical,                        intent(in)  :: chem_root_known
       type(cert_report),              intent(out) :: rep
+      ! .false.: a measurement reported beside the verdict, which records
+      ! nothing (cert_records_verdict); absent or .true.: the verdict.
+      logical, optional,              intent(in)  :: record_verdict
 
       integer :: k, ic, i, j, itr, imel
       real*8, dimension(1:N,n_carrier_max) :: cres, cterms
@@ -1401,11 +1419,20 @@
       ! the only thing that says which entry a call created.
       integer :: ient
       logical :: ssum_known
+      ! The excitation energy flux of the carried He 2^3S level and its
+      ! largest ratio to the energy row's largest term, over the column
+      ! and in the wind (reported only).
+      real*8, dimension(1-Ng:N+Ng) :: xdivq
+      real*8  :: xrat_all, xrat_wind, xsc
+      integer :: jx_all, jx_wind
       character(len=76) :: clo_why, n2_why
       ! The verdict as certification_report_verdict returns it, held apart
       ! from rep until it is written into it (rep is that routine's input).
       logical :: verdict_certified
       integer :: verdict_n_failing
+
+      cert_records_verdict = .true.
+      if (present(record_verdict)) cert_records_verdict = record_verdict
 
       rep%context         = context
       rep%n               = 0
@@ -1439,10 +1466,53 @@
       call mass_closure_of_state(Wcert(1,:), f_sp, rep%mass_closure,      &
                                  rep%j_mass_closure)
 
+      ! ---- the heat conducted into the lower atmosphere (recorded) ----
+      ! The base face's conductive flux of THIS state, for the resolved-
+      ! configuration record that the energy coupling of the elemental-flux
+      ! closure reads, measured here for the reason the elemental flux
+      ! windows are: the certification is the one evaluation that is made
+      ! on the state about to be written. Gates nothing.
+      if (cert_records_verdict)                                            &
+         call heat_conducted_into_lower_atmosphere(Tcert, f_sp)
+
       ! ---- the hydrodynamic rows: always present ----
       call hydro_row_entry(rep, 1, 'hydrodynamic mass row',      u, Res)
       call hydro_row_entry(rep, 2, 'hydrodynamic momentum row',  u, Res)
       call hydro_row_entry(rep, 3, 'hydrodynamic energy row',    u, Res)
+
+      ! ---- the excitation energy of the carried He 2^3S level (reported) ----
+      ! With "He 2^3S transport" the level moves relative to He I by its
+      ! eddy term, and the 19.82 eV it holds moves with it. That energy is
+      ! chemical energy, booked by the reactions of the level where they
+      ! run (helium_metastable_excitation_energy_divergence states why), so
+      ! the flux is not a term of the energy row; its divergence is
+      ! measured here against the row's largest term and gates nothing.
+      if (he23s_transport .and. row_terms_describe_state(u)) then
+         call helium_metastable_excitation_energy_divergence(Wcert(1,:),   &
+                                                    Tcert, f_sp, xdivq)
+         xrat_all = 0.0d0;  jx_all = 0
+         xrat_wind = 0.0d0; jx_wind = 0
+         do j = 1, N
+            xsc = residual_row_scale(3, j, u)
+            if (xsc .le. 0.0d0) cycle
+            if (abs(xdivq(j))/xsc .gt. xrat_all) then
+               xrat_all = abs(xdivq(j))/xsc
+               jx_all   = j
+            endif
+            if (r(j) .ge. cert_regime_wind_r .and.                         &
+                abs(xdivq(j))/xsc .gt. xrat_wind) then
+               xrat_wind = abs(xdivq(j))/xsc
+               jx_wind   = j
+            endif
+         enddo
+         write(*,'(A,ES10.3,A,I0,A,ES10.3,A,I0)')                          &
+              ' (certification) He 2^3S excitation energy moved relative'//&
+              ' to He I: max |div q_x|/(energy row largest term) =',       &
+              xrat_all, ' at cell ', jx_all, '; r >= wind gate:',          &
+              xrat_wind, ' at cell ', jx_wind
+         write(*,'(A)') '   reported only: chemical energy, booked by the'//&
+              ' reactions of the level; not a term of the energy row'
+      endif
 
       ! ---- the transported carrier balances ----
       ! The set is carrier_set_init's, fixed once after the keys are parsed;
@@ -1524,10 +1594,11 @@
          ! lower-atmosphere profile is in use.  Files and the closure
          ! windows of the resolved-configuration record only; nothing the
          ! verdict or the solution reads.
-         if (he_ok .and. element_row_terms_on())                           &
+         if (cert_records_verdict .and. he_ok .and.                        &
+             element_row_terms_on())                                       &
             call element_row_terms_write('output/element_row_terms.txt',   &
                                          ehe_terms)
-         if (element_flux_profile_on())                                    &
+         if (cert_records_verdict .and. element_flux_profile_on())         &
             call write_element_flux_profile(Wcert(1,:), Tcert, f_sp,       &
                                             Frho_cert)
       endif
@@ -1560,11 +1631,21 @@
       ! say whether it is the level that is out.
       call ionization_closure_residual_profile(Wcert(1,:), f_sp, clo_res,  &
                                                clo_tr, clo_ok, clo_why)
+      ! WITH THE LEVEL CARRIED ("He 2^3S transport") its local balance is
+      ! not an equation of the run: the sweep's row is the constraint
+      ! x = x_carried, and the level's equation is the transported balance
+      ! measured above as 'carrier balance He2^3S'.
       itr = ieq_triplet_row()
+      if (he23s_transport) then
+         call add_entry(rep, 'level balance He 2^3S', cert_not_applicable, &
+              'the level is carried (He 2^3S transport); its equation'//   &
+              ' is the carrier balance He2^3S', ient)
+      else
       call unit_scale_entry(rep, 'level balance He 2^3S',                   &
                thereis_He .and. thereis_HeITR, clo_ok .and. (itr .gt. 0),   &
                clo_tr, cert_tol_level, clo_why,                             &
                'the row''s own turnover rate; dimensionless, scale 1')
+      endif
 
       ! ---- the H(n=2) level balance ----
       call excited_hydrogen_level_residual(Tcert, Wcert(1,:), f_sp,        &
@@ -1630,7 +1711,8 @@
          enddo
       endif
 
-      if (context .eq. cert_context_stationary) then
+      if (context .eq. cert_context_stationary .and. cert_records_verdict)  &
+      then
          if (rep%certified) then
             ! WHAT THE FILE SAYS ABOUT A STATE CERTIFIED WITH SPECIES
             ! ROWS: those rows were judged in the wind alone, so the
@@ -1646,8 +1728,65 @@
          endif
          cert_last = rep
       endif
+      cert_records_verdict = .true.
 
       end subroutine certification_evaluate
+
+      ! ------------------------------------------------------!
+
+      subroutine certification_reports_side_by_side(rep_a, label_a,       &
+                                                    rep_b, label_b)
+      ! TWO CERTIFICATIONS OF ONE INVENTORY, ENTRY BESIDE ENTRY: for every
+      ! entry evaluated in either, the largest row measure and its cell in
+      ! each, and, where the tolerance is taken cell by cell (the mass row),
+      ! the measure at the binding cell, its tolerance and its distance (the
+      ! measure over the tolerance, 1 the edge). Printed only; it decides
+      ! nothing and records nothing.
+      type(cert_report), intent(in) :: rep_a, rep_b
+      character(len=*),  intent(in) :: label_a, label_b
+      integer :: i
+      write(*,'(A)') ' '
+      write(*,'(A)') ' (certification) two certifications side by side'
+      write(*,'(A,A)') '   (a) ', trim(label_a)
+      write(*,'(A,A)') '   (b) ', trim(label_b)
+      if (rep_a%n .ne. rep_b%n) then
+         write(*,'(A,I0,A,I0,A)') '   the two inventories differ (',      &
+              rep_a%n, ' and ', rep_b%n, ' entries); not compared'
+         return
+      endif
+      do i = 1, rep_a%n
+         if (rep_a%e(i)%status .ne. cert_evaluated .and.                   &
+             rep_b%e(i)%status .ne. cert_evaluated) cycle
+         if (rep_a%e(i)%name .ne. rep_b%e(i)%name) then
+            write(*,'(A,I0,A)') '   entry ', i, ': the two inventories'//  &
+                 ' name it differently; not compared'
+            cycle
+         endif
+         write(*,'(A,A)') '   ', trim(rep_a%e(i)%name)
+         call side_line('(a)', rep_a%e(i))
+         call side_line('(b)', rep_b%e(i))
+      enddo
+      write(*,'(A,L1,A,L1)') '   verdict: (a) certified=',                &
+           rep_a%certified, '   (b) certified=', rep_b%certified
+      contains
+         subroutine side_line(tag, e)
+         character(len=*), intent(in) :: tag
+         type(cert_entry), intent(in) :: e
+         if (e%status .ne. cert_evaluated) then
+            write(*,'(A,A,A)') '     ', tag, ' not evaluated'
+         else if (e%jbind .gt. 0) then
+            write(*,'(A,A,A,ES12.5,A,I0,A,I0,A,ES12.5,A,ES10.3,A,      &
+                 &ES10.3,A,L1)') '     ', tag, ' max ', e%row_max,          &
+                 ' at cell ', e%jworst, '; binding cell ', e%jbind, ': ',   &
+                 e%row_at_bind, ' against ', e%tol, ', distance ',          &
+                 e%dist_bind, '; within ', e%within_tol
+         else
+            write(*,'(A,A,A,ES12.5,A,I0,A,ES10.3,A,L1)') '     ', tag,     &
+                 ' max ', e%row_max, ' at cell ', e%jworst, ', tol ',       &
+                 e%tol, '; within ', e%within_tol
+         endif
+         end subroutine side_line
+      end subroutine certification_reports_side_by_side
 
       ! ------------------------------------------------------!
 
@@ -1732,7 +1871,7 @@
       ! THIS evaluation, so it is written here and not left for a later
       ! assembly to overwrite.  It is a file, not module state, so it is
       ! outside the round trip asserted below.
-      if (carrier_row_terms_on())                                        &
+      if (cert_records_verdict .and. carrier_row_terms_on())             &
          call carrier_row_terms_write('output/carrier_row_terms.txt')
       call restore_carrier_module_state(ws)
       ! The round trip is ASSERTED, not assumed: a measurement that changed
@@ -2231,6 +2370,8 @@
       endif
       nk = 1
       if (ien .eq. ien_He) nk = 2
+      ! The carried He 2^3S level is a third carried state of helium.
+      if (ien .eq. ien_He .and. he23s_transport) nk = 3
       gm = -1.0d0
       if (present(g)) gm = g
       call add_entry(rep, 'ionization stage nucleus sum '//               &

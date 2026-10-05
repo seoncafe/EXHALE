@@ -139,8 +139,23 @@ ever used over half a cell and over the two ghost cells, where that logarithm
 is below $0.1$ and the density error is below $10^{-7}$ relative.  It is not
 a general isentrope integrator over a scale height and is not used as one.
 The same routine gives, under both models, the temperature of the reservoir
-continued below the level, which the ghost cells carry and the conduction
-operator reads as the bath's temperature.  The isentropic continuation
+continued below the level, which the ghost cells carry.  The conduction
+operator reads its bath at the ghost center $r(0)$ from
+\texttt{base\_reservoir\_temperature\_at}: where a lower-atmosphere profile
+is handed over, the bath is the profile's own temperature at that radius
+(\texttt{lap\_value\_at\_radius} in \texttt{lower\_atmosphere\_profile.f90},
+linear in $r$ between the bracketing levels), because the gas below the level
+is the profile's column and not an isentrope (on the LHS~1140\,b Photochem
+profiles an isotherm at the skin temperature, which the isentrope missed by
+3.5\,K one ghost cell down, 188.89 against 185.42\,K, lowering the conductive
+flux into the level by about 4.6 per cent at a fixed cell-1 temperature;
+MEASURED, update log stage~3 section~70); without a profile it is the
+isentropic continuation, and a reservoir that returns no positive
+temperature leaves the ghost's own (\texttt{conduction\_base\_level\_T} in
+\texttt{viscous\_conduction.f90}).  The ghost cells of the advection keep
+their own isentrope in both cases.  The bath is the reservoir's at rest, at
+inflow and during a reverse flow alike, so the conduction boundary does not
+follow the direction the contact is upwinded on.  The isentropic continuation
 balances an atmosphere that is isentropic between the level and the center of
 cell 1 and no other rest state exactly: hydrostatic balance does not imply
 constant entropy, and the continuation starts from a point state while cell 1
@@ -350,7 +365,15 @@ model that distance appears at the base face as $P_{\rm dn}(1) - p_{\rm res}$
 (MEASURED on the analytic isothermal column, face-0 flux $3.1\times10^{-4}$ of
 $(\rho c)_{\rm res}$ on the coarsest base grid, falling at order 2.0).  A seed
 has to be projected onto the discrete equilibrium for its lower layer to be
-at rest.
+at rest.  The measurement key \texttt{EXHALE\_SEED\_HYDROSTATIC\_CELLS=}$K$
+(off unless set; it requires \texttt{Well balanced: True}) does that for a
+seed at load (\texttt{seed\_layer\_in\_discrete\_equilibrium},
+\texttt{init.f90}): holding $p/\rho$ and the mass fractions of every cell, it
+sets cell 1 so that its constant-density equilibrium reaches the reservoir
+pressure at the level face, cells $2\ldots K$ so that the equilibrium
+mismatch of faces $1\ldots K-1$ vanishes, and scales every cell above $K$ by
+the one factor that balances face $K$; a seed so projected is a new state,
+and its exact code-unit file is not read.
 
 The base Mach number is recorded every step and a first crossing into
 supersonic inflow is warned about, as a validity check on the boundary that is
@@ -446,10 +469,15 @@ the boundary report and the identity travels in every state file
 \subsection{The upper boundary}
 \label{sec:bcic:top}
 
-No characteristic enters the domain at an outflowing outer face, so the
-boundary imposes no condition and the ghost is a continuation of the interior.
-The rule is stated once, for every reconstruction: which characteristics cross
-a face is a property of the flow and not of the scheme that reads the ghost.
+At an outflowing outer face the characteristics $v+c$ and $v$ leave the
+domain; $v-c$ leaves too only where the outflow is supersonic.  Where it is
+subsonic, $v-c$ enters and one condition has to be supplied from outside, and
+the ghost, a continuation of the interior, supplies it implicitly: at a
+subsonic outer edge the continuation is a physical outer condition that can
+set the interior mass flux, and its validity is a property of where the outer
+face is placed.  The rule is stated once, for every reconstruction: which
+characteristics cross a face is a property of the flow and not of the scheme
+that reads the ghost (\texttt{Apply\_BC.f90}).
 The continuation (\texttt{free\_outflow\_ghost}) is the isothermal hydrostatic
 one,
 %
@@ -481,35 +509,54 @@ stays a copy: the outgoing characteristics carry it out of the domain and the
 boundary has nothing of its own to say about it; a gradient-carrying ghost
 velocity either drives the run into a base-breathing limit cycle or divides by
 a ghost density the stratification can make arbitrarily small.  A ghost that leaves the
-admissible set falls back on the zero-gradient copy and is counted.
+admissible set falls back on the zero-gradient copy and is counted.  The
+continuation neglects the inertial term in the ghost cells, which holds where
+$M^2H/L_v \ll 1$ with $L_v$ the length over which the velocity varies; a
+subsonic Mach number alone is not sufficient, and the incoming acoustic
+condition of a subsonic edge is not justified by this approximation, which
+is why the outer face is placed beyond the sonic point where a run can place
+it.
 
 For the reconstructed face states, \texttt{Rec\_BC} extrapolates outward with
-a zero-gradient copy under PLM and a linear extrapolation under WENO3.
+a zero-gradient copy under PLM and a linear extrapolation under WENO3.  The
+diffusive operators carry zero flux through the outer face: heat conduction
+(\texttt{thermal\_conduction\_coeffs} forms no right-face term in cell $N$,
+Sec.~\ref{sec:hydro:transport}), the binary element operator and the eddy
+part of the carrier and stage fluxes; the gas crosses that face only with the
+advective flux.
 
 \subsection{Initial conditions}
 \label{sec:bcic:ic}
 
-\texttt{set\_IC.f90} builds four families, selected by \texttt{IC mode:} (or
-by the older \texttt{Transonic IC} and \texttt{Hot Parker IC} keys, which take
-precedence).
+\texttt{IC mode:} selects among \texttt{cold}, \texttt{transonic},
+\texttt{hot\_parker}, \texttt{auto} and \texttt{windae}
+(\texttt{input\_read.f90}; an unknown word is warned about and taken as
+\texttt{cold}); the older \texttt{Transonic IC} and \texttt{Hot Parker IC}
+keys select the same families and take precedence over \texttt{auto}.
+\texttt{set\_IC.f90} builds the first three, \texttt{auto} chooses between
+the first two, and \texttt{windae} is built in \texttt{init.f90}.
 
 \paragraph{Cold hydrostatic (\texttt{cold}, the default).}
 An isothermal hydrostatic atmosphere at the base temperature,
 %
 \begin{equation}
-  \rho(r) = \rho_{\rm bc}\,\exp\bigl[-b_{\rm eff}\bigl(\Phi_c(r) - \Phi_c(0)\bigr)\bigr],
+  \rho(r) = \rho_{\rm bc}\,\exp\bigl[-b_{\rm eff}\bigl(\Phi_c(r) - \Phi(1)\bigr)\bigr],
   \qquad
-  p = \frac{\hat n_{\rm bc}}{\rho_{\rm bc}}\,\rho,
+  p = \frac{\hat n_{\rm bc} + \delta_{\rm bc}}{\rho_{\rm bc}}\,\rho,
   \qquad
   T = 1,
   \label{eq:cold_ic}
 \end{equation}
 %
-with a small linear velocity seed $v = \tfrac12(r - r_0)$ and a nearly neutral
+with $\rho_{\rm bc}$ the density at the base level $r=1$ (the ghosts take the
+same stratification continued downward), $\delta_{\rm bc} = 10^{-10}$ the hydrogen
+ionization fraction of the seed, whose electrons it adds, a small linear velocity seed
+$v = \tfrac12(r - 1)$ that vanishes at the level, and a nearly neutral
 composition.  The factor $b_{\rm eff}$ starts at 1 and is raised in steps of
-$0.2$ until the mid-domain density falls below $10^{-8}$, so that a
-low-gravity planet does not start with a domain at uniform density; the value
-used is reported.  This is the ATES initial condition.
+$0.2$ until the density at the cell nearest the middle of the domain falls
+below $10^{-8}$, so that a low-gravity planet does not start with a domain at
+uniform density; the value used is reported, and densities below $10^{-8}$
+are then floored there.  This is the ATES initial condition.
 
 \paragraph{Transonic (\texttt{transonic}).}
 The steady isothermal-wind profile obtained from the algebraic Bernoulli
@@ -559,7 +606,8 @@ Every family fills the whole species vector, and a molecular run seeds the
 $\mathrm{H}_2$ column from the same two functions the inflowing ghost uses:
 the handoff value where a lower atmosphere states one
 (Sec.~\ref{sec:mol:handoff}), and the chemical-equilibrium mixing ratio
-\eqref{eq:mol:qh2} at $(p_{\rm base}, T_0)$ otherwise, clipped at the
+\eqref{eq:mol:qh2} at the local pressure of each cell of the seed and $T_0$
+otherwise, clipped at the
 element-ratio ceiling $q_{\max} = 0.5/(0.5 + y)$.  The reason is that
 the optically thick base equilibrium is strongly molecular, and a zero-$\mathrm{H}_2$
 start makes the base composition solve land on the spurious atomic root.
@@ -582,27 +630,77 @@ abundances, which is reported.  An element the file does not carry, or carries
 as identically zero, is initialized from its abundance exactly as a cold start
 does.  An element whose reservoir a lower-atmosphere handoff states has its
 loaded column renormalized onto that reservoir by one factor common to all its
-ionization stages.  The file's own He/H ratio is compared against the input's,
-and a state written at a different element ratio is rescaled or refused rather
-than silently adopted, the input file being the authority on composition.
+ionization stages (a file with the metadata block arrives within the He/H
+tolerance below, its \texttt{\# reservoir} line being compared first, so the
+factor is 1 for it; a state bound for another reservoir is carried there by
+\texttt{map\_state\_to\_grid.py --reservoir} first).  The file's own He/H
+ratio is compared against the input's to $10^{-6}$ relative
+(\texttt{heh\_dev\_tol}), and a state written at a different element ratio is
+rescaled or refused rather than silently adopted, the input file being the
+authority on composition.
 
+\paragraph{The exact state.} Beside the dimensional pair every written state
+has \texttt{output/conserved\_state.txt}
+(\texttt{conserved\_state\_restart.f90}): the conserved variables $u$ and
+every species fraction of every cell in code units, written to 17
+significant digits, which read back as the same binary64 values.  Read as
+\texttt{output/conserved\_state\_IC.txt} beside the two \texttt{\_IC} files,
+it restores the physical cells and the upper ghosts at the bits the run ended
+on, where the dimensional route rebuilds $(\rho,\rho v,\mathcal{E})$ from
+16-digit $\rho$, $v$, $p$ with the energy re-formed from $p$ through the
+caloric equation of state.  It is used only when every recorded condition
+matches the present run (format, $N$, $N_g$ and the species count, the
+checksums of the two dimensional files it was written with, the reservoir
+and option fields, the boundary model, the species order, the normalization
+constants, the input files, the gravity and irradiation fields, the cell and
+face radii, and a checksum of its own data); any mismatch, a load that
+changed an option or migrated a legacy token, or a seed whose lower layer is
+projected leaves it unused with a printed notice, and the restart proceeds
+from the dimensional pair.  The lower ghosts are derived again by the
+boundary in either case.  A state whose bits matter, the input of a
+stationary evaluation in particular, is to be loaded with it: MEASURED, a
+certified state reloaded from the text pair alone moved its rounding-level
+mass row past its tolerance at one cell ($3.316\times10^{-12}$ against $3.0\times10^{-12}$),
+and reloaded exactly it certified (update log stage~3 section~83).
+
+\paragraph{The intent of a restart.}
 \texttt{Restart intent:} states what the loaded state is continued as, and is
 refused when no state is being loaded.  \texttt{trajectory} continues the
-history, including its elapsed time; \texttt{relaxation} treats the state as a
-numerical iterate; \texttt{stationary} asks for a stationary solve from it, and
-takes a second word, \texttt{evaluate} to only measure the residual of the
-loaded state, or \texttt{equilibrate} to bring the composition to equilibrium
-before the solve.  \texttt{Restart option change:} names the entries of the
-state file's option line that are allowed to differ from this run's, and a
-token that decides how many unknowns the state has is refused: naming it
-cannot make the file's rows this run's rows.  The two tokens of a
+history, including its elapsed time, and is refused with \texttt{Run mode:
+init}; \texttt{relaxation} treats the state as a numerical iterate and
+marches toward stationarity; \texttt{stationary} measures the loaded state
+and enters the stationary solve from it at once (pseudo-time $1.0$, no CFL
+step), and requires \texttt{Solver: Newton}.  Absent the key, a physical run
+continues the trajectory and any other run relaxes.  \texttt{stationary}
+takes a second word: \texttt{evaluate} certifies the stored pair, writes the
+products from it and stops without a step
+(Sec.~\ref{sec:postprocessing:files}), and \texttt{equilibrate} puts the
+loaded composition on its own fixed point before the solve.  The
+stationary solve of a loaded state writes no \texttt{\_adv} products
+(Sec.~\ref{sec:postprocessing:transit}).
+
+\texttt{Restart option change:} names the entries of the state file's option
+line that are allowed to differ from this run's (\texttt{load\_IC.f90},
+\texttt{opt\_name}).  A token that decides which species the state files
+carry (\texttt{metals}, \texttt{mol}, \texttt{oxychem}, \texttt{carrier}) is
+refused: naming it cannot make the file's rows this run's rows.
+\texttt{iontrans} and \texttt{he23strans} are not of that kind, since the
+stage and the $2^3$S columns exist either way and the key decides whether
+they are a local root or a carried population, so they may be named.
+\texttt{carrier\_newton} is a token of the route and not of the equations and
+may differ unnamed (the difference is reported and recorded as a
+\texttt{route\_change} line).  A token absent from a file written before it
+existed (\texttt{interdiff\_enth}, \texttt{carrier\_enth},
+\texttt{lowE\_partition}, \texttt{stage\_enth}, \texttt{he23strans}) reads as
+\texttt{F}, the equations of the code that wrote it.  The two tokens of a
 continuation factor, \texttt{cond} and \texttt{interdiff\_enth}, carry a
 factor $s\ne1$ as \texttt{ES23.16E3} (\texttt{T} at $s = 1$), so two factors
-are two states.  A five-decimal (F7.5) token, written until 2026-10-01,
-stands for the interval $[v-5\times10^{-6}, v+5\times10^{-6}]$ and not for
-one factor: a requested factor inside it loads the state as a seed with its
-certification claim dropped (\texttt{legacy\_factor\_token}), and a factor
-outside it is a change of the equations under the rule of every other token.
+are two states.  A five-decimal (F7.5) token, written from 2026-09-29 until
+2026-10-01, stands for the interval $[v-5\times10^{-6}, v+5\times10^{-6}]$
+and not for one factor: a requested factor inside it loads the state as a
+seed with its certification claim dropped (\texttt{legacy\_factor\_token}),
+and a factor outside it is a change of the equations under the rule of every
+other token.
 
 Every state file carries the lower boundary as well as the state: one line
 names the boundary model that built it and one states the prescribed
@@ -621,15 +719,49 @@ written before 2026-09-27 (boundary model v3 or older) is nevertheless
 refused, by the grid check and not by the boundary model: every cell center
 has moved since the face was put on the level (by half a cell on the
 \texttt{Mixed} grid), and the loader
-compares the file's centers with the run's to $10^{-10}$.  Such a state enters
-a run only as an initialization seed mapped onto the new grid by
-\texttt{src/utils/map\_state\_to\_grid.py --ic}, which writes
-\texttt{mode=init t\_phys=0 certified=F cert\_reason=mapped\_seed} into it,
-and the run has to solve it again.
+compares the file's centers with the run's over the physical cells to
+$10^{-10}$ relative (\texttt{verify\_restart\_radii}, \texttt{load\_IC.f90});
+a non-finite center is a mismatch and is refused, not a match.  A state on
+another grid enters a run only as an initialization seed mapped onto the new
+grid by \texttt{src/utils/map\_state\_to\_grid.py} (\texttt{--ic} writes the
+\texttt{\_IC} names), which writes
+\texttt{mode=init t\_phys=0 certified=F cert\_reason=mapped\_seed} into its
+\texttt{\# coupling} line, and the run has to solve it again.  The mapper
+interpolates in $\ln r$ ($\rho$, $p$ and the source rates in $\log_{10}$, $v$
+and $T$ linearly) and carries each species as its ratio $n_s/n_{\rm H}$ to
+the hydrogen-nucleus density, so a ratio uniform in the source stays uniform
+to rounding; it is not a conservative remap.  The first physical cells are
+mapped from physical cells: the source's lower ghost rows are the reservoir,
+boundary data that the loader does not read, so a target center between the
+base face and the source's first center (the first cell of a refined base
+block) takes the source's cell~1 values instead of an interpolation across
+the face against the reservoir row; the upper ghosts are the free-outflow
+continuation and stay interpolation partners.  \texttt{--reservoir El/H v}
+multiplies every stage column of the element by one factor, the ratio of the
+new value to the source's \texttt{\# reservoir} line, at fixed pressure (the
+density and the temperature follow the added nuclei).  The hydrogen-nucleus
+density of every row is held: for helium the factor $k$ multiplies HeH$^+$
+too, and the $(k-1)\,n({\rm HeH^+})$ hydrogen nuclei that brings are taken
+out of H\,I, H\,II, H$_2$, H$_2^+$ and H$_3^+$ by one factor
+$g = 1-(k-1)\,n({\rm HeH^+})/n_{\rm H}^{\rm H\text{-}only}$, so that every
+row carries $k$ times its source He/H and its source ratio of every other
+element exactly.  Left in, that hydrogen moves each element ratio of the row
+by $-(k-1)\,n({\rm HeH^+})/n_{\rm H}$, $1.5\times10^{-6}$ for
+$n({\rm HeH^+})/n_{\rm H}=2.0\times10^{-6}$ and $k=1.75$ (the LHS\,1140\,b
+He/H ascent).  The map is refused when the base rows do not come out at the
+new ratio within \texttt{BASE\_ROW\_RATIO\_TOL} $=10^{-6}$ relative, the
+tolerance of the loader that reads the file, which catches a species holding
+nuclei of two elements that the factor does not move (the oxygen carriers
+OH, H$_2$O and CO the tool does not multiply).
+\texttt{--extrapolate-beyond} continues a state above a stated radius at
+constant temperature, isothermal hydrostatic density, constant mass flux and
+frozen composition, a seed and not a solution of the steady equations.
 
 A stationary run that alternates a wind solve with a composition relaxation
 also leaves a restartable pair of its last completed outer pass, the
 generation \texttt{output/pass\_state/<id>/} that
 \texttt{output/pass\_state/current} names
 (Sec.~\ref{sec:steady:partitioned}); copied to the \texttt{\_IC} names it is
-loaded like any state file, and it is never a certified state.
+loaded like any state file, and it is never a certified state.  The periodic
+write of the marching loop (every 1000 steps) is written \texttt{certified=F}
+with \texttt{cert\_reason=marching\_snapshot\_s<step>} for the same reason.

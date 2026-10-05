@@ -7,6 +7,8 @@
                             mion_isphot, mion_elem, mion_iphot
    use electron_energy_degradation, only: photoelectron_energy_grid,      &
                                           n_abs_fixed
+   use low_energy_electron_degradation, only:                            &
+                                          low_energy_electron_energy_grid
    use sed_reader
    use J_incident
    use Cross_sections
@@ -377,6 +379,10 @@
 		eth_abs(n_abs_fixed+i) = mion_ethr(i)
 	enddo
 	call photoelectron_energy_grid(e_v, eth_abs)
+	! The same E0 against the rows of the low-energy tables, and the band
+	! each bin falls in (above E_sec_ion, from 10.2 eV to it, below 10.2 eV),
+	! decided once here for every absorber (low_energy_electron_degradation).
+	call low_energy_electron_energy_grid(e_v, eth_abs, E_sec_ion)
 
 	! End of subroutine
     end subroutine set_energy_vectors

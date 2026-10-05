@@ -276,9 +276,22 @@
       !   the Shull & van Steenberg (1985) amplitudes times the Dalgarno, Yan &
       !   Liu (1999) energy dependence W(x, 1 keV)/W(x, E0), redistributed over
       !   the local composition, and the DYL99 heating fraction
-      !   (electron_energy_degradation.f90); x = n_e/(n_H + n_He).  .false. =
-      !   full thermalization (the pre-2026 behavior).
+      !   (electron_energy_degradation.f90); x = n_e/(n_H + n_He). The
+      !   photoelectrons of the recombination radiation absorbed on the spot
+      !   are partitioned by the same rule (util_ion_eq,
+      !   recombination_radiation_absorbed).  .false. = full thermalization
+      !   (the pre-2026 behavior).
       logical :: use_sec_ion = .true.
+      ! Photoelectrons of 10.2 eV to E_sec_ion ("Low-energy electron
+      ! partition").
+      !  .false. (default) = deposited whole as heat (the statement at
+      !   E_sec_ion below).
+      !  .true. ("Furlanetto2010") = partitioned into heat, H I and He I
+      !   secondary ionizations and escaping H I line radiation by the tables
+      !   of Furlanetto & Stoever (2010), in a cell with no H2, wherever the
+      !   secondary-ionization coupling above is applied
+      !   (low_energy_electron_degradation.f90).
+      logical :: use_low_energy_partition = .false.
       ! Runtime state of the SvS85 coupling: .true. only once it is actually
       ! applied. From a cold IC the secondary-ionization base feedback amplifies
       ! the startup transient into a runaway, so the coupling is switched on only
@@ -522,9 +535,10 @@
       ! both. Read by the Picard loop and by steady_gates_met.
       real*8  ::  carrier_resid_th = 1.0d-3
       logical :: carrier_transport_stated = .false.
-      ! TRANSPORT THE HYDROGEN IONIZATION STATE: H+ carried with the flow as
-      ! a fifth transported species, instead of being re-solved every step
-      ! as a local photoionization/recombination equilibrium.
+      ! TRANSPORT THE IONIZATION STATE: x(H II) per hydrogen nucleus and
+      ! x(He II), x(He III) per helium nucleus carried with the flow on their
+      ! elements' nucleus fluxes, instead of being re-solved every step as a
+      ! local photoionization/recombination equilibrium.
       !
       ! Key "Ionization transport: True|False", DEFAULT FALSE.
       !
@@ -544,9 +558,22 @@
       ! It is OFF by default because for the hot Jupiters the local closure
       ! was built for P r/|v| is large and the equilibrium holds, and because
       ! turning it on changes every ionization-dependent number of a run.
-      ! Requires "Molecular carrier transport: True": the operator that
-      ! carries it is the molecular carrier solve.
+      ! It applies to an atomic gas and to a molecular one; in a molecular
+      ! gas it requires "Molecular carrier transport: True" (input_read
+      ! states why).
       logical :: ionization_transport = .false.
+      ! TRANSPORT THE He 2^3S POPULATION: x3 = n(2^3S)/n(He nuclei) carried
+      ! as a fourth helium state of the same operator, on the helium nucleus
+      ! flux, with the balance of tr_triplet_row (ion_residual_core) as its
+      ! source, instead of the local root of that balance in every cell.
+      ! This is the steady advection balance of Oklopcic & Hirata (2018,
+      ! ApJL 855, L11, Eq. 15) and Lampon et al. (2020, A&A 636, A13,
+      ! Eq. 11), with the eddy term of the stage flux added.
+      !
+      ! Key "He 2^3S transport: True|False", DEFAULT FALSE. Requires
+      ! "Include He23S: True" and "Ionization transport: True" (input_read).
+      ! Design and validation: md/He23S_transport_design_20261003.md.
+      logical :: he23s_transport = .false.
       ! Band-integrated stellar flux AT THE PLANET'S ORBIT in the two FUV
       ! continuum bands of the oxygen chemistry [erg cm^-2 s^-1]:
       !   B3 1231-1450 A   "Stellar FUV B3 flux [erg/cm2/s]: <F>"
@@ -665,9 +692,11 @@
       ! and it moves n(H2+) by 25 percent of the channel's own effect.
       character(len=16) :: h2_double_ionization = 'chung80'
       ! h2_neutral_dissociation resolves H2 + hv -> H + H, the absorptions
-      ! that leave no ion. It is nonzero ONLY over the 33-41 eV window of
-      ! Chung et al. (1993) Table 1, where the measured photoionization
-      ! yield falls below unity; outside that window the source ASSUMES a
+      ! that leave no ion. It is nonzero ONLY over 32-41.5 eV: the 33-41 eV
+      ! rows of Chung et al. (1993) Table 1, where the measured
+      ! photoionization yield falls below unity, ramped to zero at the
+      ! continuity anchors 32 and 41.5 eV (frac_H2_neutral_dissociation);
+      ! outside that window the source ASSUMES a
       ! unit yield rather than measuring one, so the channel is set to
       ! zero there.
       !
@@ -989,8 +1018,9 @@
       real*8,parameter ::  e_th_HeII_erg = e_th_HeII/erg2eV
       real*8,parameter ::  e_th_HeTR_erg = e_th_HeTR/erg2eV
       ! Photoelectron energy above which the energy partition of
-      ! electron_energy_degradation is applied; below it the photoelectron is
-      ! taken to deposit all of its energy as heat.
+      ! electron_energy_degradation is applied; below it the photoelectron
+      ! deposits all of its energy as heat, unless the low-energy option
+      ! below partitions it.
       !
       ! 30 eV is the LOWEST PRIMARY ENERGY AT WHICH ANY COEFFICIENT OF THAT
       ! PARTITION IS PUBLISHED: Dalgarno, Yan & Liu (1999) tabulate 30, 50,
@@ -1000,12 +1030,21 @@
       ! another code, not a physical threshold, and it sat between the two
       ! sources rather than on either.)
       !
-      ! WHAT IS STILL DISCARDED, AND WHY. A photoelectron of 13.6-30 eV can
-      ! ionize hydrogen, and in the hot-Uranus band those photons carry 18%
-      ! of the incident XUV energy; here they are still treated as depositing
-      ! all of their energy as heat. That is a limit of the tables, not a
-      ! physical threshold: no source consulted resolves the partition below
-      ! 30 eV, and extrapolating into it would be unsupported.
+      ! BELOW 30 eV. A photoelectron of 10.2-30 eV can excite and ionize
+      ! H I (and He I above 19.8 and 24.6 eV), and in the hot-Uranus band
+      ! those photons carry 18% of the incident XUV energy, so depositing it
+      ! whole as heat is physically wrong. By default it is still deposited
+      ! that way. The partition below 30 eV is available as the option
+      ! "Low-energy electron partition: Furlanetto2010"
+      ! (use_low_energy_partition): the Monte Carlo tables of Furlanetto &
+      ! Stoever (2010, MNRAS 404, 1869) for a primordial H/He gas, 10.2 eV
+      ! to this threshold, in cells without H2, on the stellar and the
+      ! recombination photoelectrons alike (low_energy_electron_degradation.
+      ! f90 states what the tables are and their validity). Where the cell
+      ! holds H2 the heat-only treatment stays: no source consulted covers
+      ! H2 at 10-30 eV. Electrons below 10.2 eV only heat, which is
+      ! physical. The rows carried must reach this threshold
+      ! (low_energy_electron_energy_grid refuses a value above 32.167 eV).
       real*8, parameter :: E_sec_ion = 30.0d0
       real*8,parameter ::  e_th_MgI  = 7.646d0   ! Threshold for MgI ionization
       real*8,parameter ::  e_th_MgII = 15.035d0  ! Threshold for MgII ionization
@@ -1180,7 +1219,12 @@
       !  conductivity.
       logical :: visc_on = .false.
       ! "Conduction: True" -- heat conduction (1/r^2) d/dr(r^2 kappa dT/dr)
-      !  with kappa(T) = 4.45e4 (T/1000 K)^0.7 erg cm^-1 s^-1 K^-1.
+      !  with the mixture conductivity kappa = (n_e kappa_ei + n_HI kappa_H
+      !  + n_HeI kappa_He + n_H2 kappa_H2)/n (Banks & Kockarts 1973
+      !  coefficients as quoted by Salz et al. 2015 and Sutton et al. 2015,
+      !  and a fit to the tabulated H2 conductivity; thermal_conductivity in
+      !  viscous_conduction.f90 states each term and its validity), times
+      !  the continuation factor EXHALE_CONDUCTION_SCALE.
       logical :: cond_on = .false.
       ! "Viscosity: <mu0> [<s>]" -- diagnostic power-law override in CODE
       !  units, mu = visc_mu0*T^visc_s (visc_mu0 > 0 takes precedence over

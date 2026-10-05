@@ -1422,9 +1422,13 @@
       ! against the one cx_set_cell filled cx_kc at.
       subroutine cx_add_to_fvec(N_eq, fvec, nm0, nm1, nm2,                 &
                                 n_hi, n_hii, n_hei, n_heii, n_heiii,       &
-                                he_row_sign, T_cell)
+                                he_row_sign, T_cell, gross)
       integer, intent(in)    :: N_eq
       real*8,  intent(inout) :: fvec(N_eq)
+      ! The gross rate of each row [cm^-3 s^-1], to which every reaction
+      ! adds its magnitude on both rows it reaches (the normalization of
+      ! the molecular systems, System_HeH_mol).
+      real*8,  optional, intent(inout) :: gross(N_eq)
       real*8,  intent(in)    :: nm0(:), nm1(:), nm2(:)
       real*8,  intent(in)    :: n_hi, n_hii, n_hei, n_heii, n_heiii
       real*8,  intent(in)    :: he_row_sign, T_cell
@@ -1447,6 +1451,10 @@
          sacc = cx_he_i_boundary_sign(ae, as-1, he_row_sign)
          fvec(idon) = fvec(idon) + sdon*rrate(i)
          fvec(iacc) = fvec(iacc) - sacc*rrate(i)
+         if (present(gross)) then
+            gross(idon) = gross(idon) + abs(rrate(i))
+            gross(iacc) = gross(iacc) + abs(rrate(i))
+         endif
       enddo
       end subroutine cx_add_to_fvec
 
@@ -2744,8 +2752,11 @@
       ! heii_row_is_stage_source says which. The H row gains +R3 in both.
       subroutine he_h_cx_fvec(fvec, k1, k2, k3, n_hi, n_hii, n_hei,       &
                               n_heii, n_heiii, he_row_sign,               &
-                              heii_row_is_stage_source)
+                              heii_row_is_stage_source, gross)
       real*8              :: fvec(*)
+      ! The gross rate of rows 1-3, to which each reaction adds its
+      ! magnitude on the rows it reaches (System_HeH_mol).
+      real*8, optional, intent(inout) :: gross(*)
       real*8, intent(in)  :: k1, k2, k3, n_hi, n_hii, n_hei, n_heii
       real*8, intent(in)  :: n_heiii, he_row_sign
       logical, intent(in) :: heii_row_is_stage_source
@@ -2763,6 +2774,12 @@
       fvec(2) = fvec(2) + he_row_sign*(R1 - R2)
       if (heii_row_is_stage_source) fvec(2) = fvec(2) + R3
       fvec(3) = fvec(3) - R3
+      if (present(gross)) then
+         gross(1) = gross(1) + abs(R1) + abs(R2) + abs(R3)
+         gross(2) = gross(2) + abs(R1) + abs(R2)
+         if (heii_row_is_stage_source) gross(2) = gross(2) + abs(R3)
+         gross(3) = gross(3) + abs(R3)
+      endif
       end subroutine he_h_cx_fvec
 
       ! Analytic-Jacobian counterpart of he_h_cx_fvec for the systems that
@@ -2818,10 +2835,13 @@
       ! x(2), the singlet unknown of its row 2.
       ! Row 3 of both systems is the He III fraction balance, written He
       ! III-gain positive (per n_he), which He2+ + H0 -> He+ + H+ empties.
-      subroutine he_h_cx_fvec_adv(fvec, c1, xhi, xhii, xhei, xheii,       &
-                                  xheiii, heh_loc, n_h, k1, k2, k3)
+      subroutine he_h_cx_fvec_adv(fvec, c1, c1_he, xhi, xhii, xhei,       &
+                                  xheii, xheiii, heh_loc, n_h, k1, k2, k3)
+      ! c1 and c1_he are the rate weights of the hydrogen and helium rows
+      ! (g h_j over the velocity of that element's nuclei, ion_cell_state).
       real*8              :: fvec(*)
-      real*8, intent(in)  :: c1, xhi, xhii, xhei, xheii, xheiii, heh_loc
+      real*8, intent(in)  :: c1, c1_he, xhi, xhii, xhei, xheii, xheiii
+      real*8, intent(in)  :: heh_loc
       real*8, intent(in)  :: n_h, k1, k2, k3
       real*8 :: rr1, rr2, rr3
       if (.not. he_h_charge_exchange) return
@@ -2833,9 +2853,9 @@
       ! (-R2, -R3); /n_h.
       fvec(1) = fvec(1) + c1*heh_loc*(rr1 - rr2 - rr3)
       ! He row (HeI-gain positive): B2 makes HeI (+R2), B1 destroys HeI (-R1); /n_he.
-      fvec(2) = fvec(2) + c1*(rr2 - rr1)
+      fvec(2) = fvec(2) + c1_he*(rr2 - rr1)
       ! He III row (HeIII-gain positive): B3 destroys HeIII (-R3); /n_he.
-      fvec(3) = fvec(3) - c1*rr3
+      fvec(3) = fvec(3) - c1_he*rr3
       end subroutine he_h_cx_fvec_adv
 
       ! ================================================================

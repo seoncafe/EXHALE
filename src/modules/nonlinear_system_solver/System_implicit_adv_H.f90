@@ -26,7 +26,7 @@
 	
 	
 	! Coefficients of the system
- 	c1      = adv_cell%c1    ! = g*h_j/v_j, the rate weight of the step
+ 	c1      = adv_cell%c1    ! = g*h_j/v_H, the rate weight of the step
  	xhi_hist = adv_cell%xhi_hist    ! history of n_HI/n_H
  	n_h     = adv_cell%nh    ! = nh
  	ghi     = adv_cell%P_HI    ! = P_HI  

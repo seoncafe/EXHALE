@@ -3,6 +3,10 @@
 %% metadata block every saved curve now carries.
 %% Updated 2026-10-01: the refusal of a failed composition, the derived-state
 %% record of the profile and the exit status 7.
+%% Updated 2026-10-05: the state selection (EXHALE_TRANSIT_STATE), the
+%% environment-variable table, the triaxial impact-parameter range, and the
+%% comparison with an observed line (width matching, the EW operator, the
+%% overlay-only line-of-sight shift).
 %% Author: Kwang-Il Seon
 \documentclass[english,a4paper]{my_memo}
 \synctex=1
@@ -33,7 +37,7 @@
 H$\alpha$/H$\beta$ from the Non-LTE $n=2$ Population,\\
 and the Metal Resonance Doublets}
 \author{Kwang-Il Seon}
-\date{2026-06-12 (updated 2026-10-01)}
+\date{2026-06-12 (updated 2026-10-05)}
 \maketitle
 
 \tableofcontents
@@ -73,7 +77,10 @@ behavior is unchanged.
 This memo also documents the \textbf{metal resonance doublets}
 (Mg\,II\,h\&k, Ca\,II\,H\&K, Na\,I\,D; \S\ref{sec:metals}), which are
 computed by the same line-of-sight integration and produce the same three-curve
-spectrum figures as the H/He lines.
+spectrum figures as the H/He lines, and the convention by which a model line
+is compared with an observed transit profile: the width-matching velocity
+convolution, the equivalent-width operator and the line-of-sight shift used
+only in figures (\S\ref{sec:obscompare}).
 
 %=============================================================================
 \section{The $n=2$ hydrogen population (Christie et~al.~2013)}
@@ -342,8 +349,9 @@ The stellar radius and $T_{\rm eff}$ are not in that file and keep the
 precedence above.
 
 \begin{itemize}
-  \item \texttt{n2\_populations(T,n1s,nHII,ne,Jlya,G2s,G2p)} solves the
-    $2\times2$ system above and returns $(n_{2s},n_{2p},n_2)$ in
+  \item \texttt{n2\_populations(T, n1s, nHII, nHeII, nHeIII, ne, Jlya,
+    G2s, G2p, nH2p, nHeHp, rate\_set)} (\texttt{exhale\_transit\_lib.py})
+    solves the $2\times2$ system above and returns $(n_{2s},n_{2p},n_2)$ in
     cm$^{-3}$. The Ly$\alpha$-pump constants $B_{1s\to2p}$, $B_{2p\to1s}$
     are precomputed.
   \item $J_{\rm Ly\alpha}$ is read from \texttt{Jlya\_file} if present,
@@ -378,7 +386,8 @@ precedence above.
 
 Every line carries one key (\texttt{He10830}, \texttt{Lya},
 \texttt{Halpha}, \texttt{Hbeta}, \texttt{MgII}, \texttt{CaII},
-\texttt{NaI}), and both products of a line are named from that key and
+\texttt{NaI}, and \texttt{OI} for the O\,I 1302 triplet when the run wrote
+\texttt{OI\_levels\_adv.txt}), and both products of a line are named from that key and
 land in the run directory:
 
 \begin{center}
@@ -407,13 +416,106 @@ of the rows the chords sampled, and the overrides in effect
 (\S\ref{sec:metadata}). They are comments, so the four numerical columns
 are what they always were.
 
+Two further files carry the same metadata block.
+\texttt{tpm\_He10830\_metrics.txt} holds the He\,10830 line metrics of the
+three-Gaussian extractor \texttt{he\_line\_metrics.fit\_metrics} (the
+model of Cherubim et~al.\ 2026: three Gaussians at the fixed triplet
+positions with one shared width and one shared shift), fitted in the air
+frame to the excess $(\max T_\lambda - T_\lambda)/\max T_\lambda$ of the
+instrument-convolved curve (column~3): \texttt{red\_depth},
+\texttt{blue\_depth}, \texttt{red\_blue}, \texttt{fwhm\_A} (of the blended
+red pair), \texttt{shift\_A}, \texttt{sigma\_A}. A failed fit is reported
+and is not fatal. \texttt{tpm\_OI\_band\_depths.txt} holds the O\,I band
+depths and the published HD\,209458\,b values they are compared with.
+
+\subsection{Which state the spectrum is built from}\label{sec:stateselect}
+
+A run can hold two states of one column, and the tool reads one pair of files
+from one of them, never the temperature of one and the composition of the
+other (\texttt{transit\_state\_files}, \texttt{exhale\_transit\_lib.py}).
+\texttt{EXHALE\_TRANSIT\_STATE} selects it:
+\begin{sloppypar}
+\begin{itemize}
+  \item \texttt{adv} (default; also \texttt{post\_process},
+    \texttt{corrected}): \texttt{output/Hydro\_ioniz\_adv.txt} and
+    \texttt{output/Ion\_species\_adv.txt}, the advection-corrected profile,
+    a post-process of the state that is an independent discretization of the
+    same column;
+  \item \texttt{solution} (also \texttt{solved}, \texttt{state}):
+    \texttt{output/Hydro\_ioniz.txt} and \texttt{output/Ion\_species.txt},
+    the state the wind solver produced and the certification judged. With
+    \texttt{Ionization transport: True} its composition is the transported
+    partition of the ionization stages.
+\end{itemize}
+\end{sloppypar}
+A stationary solve writes no \texttt{\_adv} pair; the evaluation of a
+solved state (\texttt{Restart intent: stationary evaluate}) runs the
+post-process and writes it. A selection whose pair is missing is refused by
+name (the script exits with the message), and the other state is never read
+in its place. The derived-state refusal of \S\ref{sec:advvalidity} (exit
+status~7) is applied to the \texttt{adv} selection only. Every saved file
+records the selection (\texttt{state\_selection}), the two file paths, the
+md5 and size of each file read (\texttt{state\_file\_identity}), the
+provenance lines copied from the state's own header, and the largest relative
+distance from the run's other state over the rows both carry, in $T$,
+$n_{\rm H\,I}$ and $n_{\rm He(2^3S)}$ (\texttt{state\_difference}), or a
+line saying that distance is UNKNOWN when the other state is absent or on
+another grid.
+
+\subsection{Environment variables}\label{sec:envvars}
+
+\begin{sloppypar}
+Every override is read as \texttt{EXHALE\_TRANSIT\_<name>}, with the old
+\texttt{TPM\_<name>} still accepted (\texttt{\_tenv} in
+\texttt{exhale\_transit\_lib.py}); the overrides in effect are written into
+every product. The full set that \texttt{EXHALE\_transit.py} and
+\texttt{exhale\_transit\_lib.py} read:
+\end{sloppypar}
+
+\begin{center}\small
+\begin{tabular}{@{}p{0.27\textwidth}p{0.17\textwidth}p{0.48\textwidth}@{}}
+\toprule
+\texttt{EXHALE\_TRANSIT\_}\ldots & default & meaning \\
+\midrule
+\texttt{PATH} & \texttt{.} & run directory (\texttt{input.inp},
+  \texttt{output/}); products land there \\
+\texttt{STATE} & \texttt{adv} & state selection, \S\ref{sec:stateselect} \\
+\texttt{SAVE\_PREFIX}, \texttt{FIG\_PREFIX} & empty & curve-name prefix;
+  figure prefix (figures written only when set) \\
+\texttt{DIAGNOSTIC} & \texttt{0} & \texttt{1} makes curves from a rejected or
+  record-less \texttt{adv} profile, as diagnostic data \\
+\texttt{RES\_HETR} & $8\times10^4$ & resolving power, He\,10830 (CARMENES;
+  LHS\,1140\,b uses 68\,000, \texttt{LHS1140b/winered\_hires\_y.sh}) \\
+\texttt{RES\_HI} & $5\times10^4$ & Ly$\alpha$ \\
+\texttt{RES\_HA}, \texttt{RES\_HB} & $1.15\times10^5$ & H$\alpha$, H$\beta$ \\
+\texttt{RES\_MGII} & $3\times10^4$ & Mg\,II \\
+\texttt{RES\_CAII}, \texttt{RES\_NAI} & \texttt{RES\_HA} & Ca\,II, Na\,I \\
+\texttt{RES\_OI} & $10^3$ & O\,I 1302 \\
+\texttt{HE\_LMIN}, \texttt{HE\_LMAX}, \texttt{HE\_N} & 10828.2, 10831.2, 201
+  & He window [\AA, air] and its sampling (widened automatically for a fast
+  wind, unless either bound is set) \\
+\texttt{RSTAR\_RSUN}, \texttt{TSTAR}, \texttt{ROTP} & \texttt{input.inp} &
+  stellar radius, $T_{\rm eff}$, planet spin period (default
+  $P_{\rm orb}$) \\
+\texttt{ROT\_NPHI} & 64 & azimuthal samples of the rotation integral \\
+\texttt{TURB} & \texttt{0} & \texttt{1} adds the p-winds turbulence
+  $v_{\rm turb}^2 = (5/6)kT/m$ in quadrature to the thermal width \\
+\texttt{OI\_WEIGHT}, \texttt{OI\_STAR\_FWHM\_A}, \texttt{OI\_STAR\_PEAKS},
+  \texttt{OI\_NSCALE} & \texttt{star}; 0.2; \texttt{1.0,1.5,1.17}; 1.0 & O\,I band
+  weight (stellar line profile or \texttt{flat}), its width and peaks, and a
+  level-density scale for curve-of-growth tests \\
+\bottomrule
+\end{tabular}
+\end{center}
+
 %=============================================================================
 \section{What the spectrum is built on: row validity, the census, and the
          metadata block}
 \label{sec:validity}
 %=============================================================================
 
-The spectra are integrated over the \verb|*_adv.txt| profiles, and those
+By default the spectra are integrated over the \verb|*_adv.txt| profiles
+(\S\ref{sec:stateselect}), and those
 profiles do not carry one uniform product: the steady advective correction
 is applied to some rows and refused on others. Since the profiles began
 stating that row by row, the transit tool reads the statement, reports what
@@ -582,7 +684,8 @@ H$\alpha$/H$\beta$ ratio reflects saturation (both optically thick). The
 Ly$\alpha$ branch in the same run saturates ($\sim100\%$ core absorption)
 and He\,I behaves as before. A worked comparison against the
 Jensen et~al.~(2012) HD\,209458b observation is provided in the notebook
-\texttt{Halpha\_compare\_HD209458b.ipynb}.
+\texttt{HD209458b/Halpha\_compare\_HD209458b.ipynb} (and
+\texttt{HD189733b/Halpha\_compare\_HD189733b.ipynb} for HD\,189733\,b).
 
 %=============================================================================
 \section{Metal resonance doublets (Mg II h\&k, Ca II H\&K, Na I D)}
@@ -624,17 +727,27 @@ are written under the same \texttt{tpm\_<line>} naming as the H/He lines
 species & component & $\lambda_0$ [\AA{}] & $f$ & $A_{21}$ [s$^{-1}$] & window / $R_{\rm instr}$ \\
 \midrule
 Mg\,II & k & 2796.352 & 0.608 & $2.60\times10^8$ &
-  2790--2810\,\AA{} / $3\times10^4$ \\
+  2790--2810\,\AA{} / \texttt{RES\_MGII} \\
        & h & 2803.531 & 0.303 & $2.57\times10^8$ & \\
 Ca\,II & K & 3933.663 & 0.6267 & $1.47\times10^8$ &
-  3927--3975\,\AA{} / \texttt{Instr\_res\_Ha} \\
+  3927--3975\,\AA{} / \texttt{RES\_CAII} \\
        & H & 3968.469 & 0.3116 & $1.40\times10^8$ & \\
 Na\,I  & D2 & 5889.951 & 0.641 & $6.16\times10^7$ &
-  5884--5902\,\AA{} / \texttt{Instr\_res\_Ha} \\
+  5884--5902\,\AA{} / \texttt{RES\_NAI} \\
        & D1 & 5895.924 & 0.320 & $6.14\times10^7$ & \\
 \bottomrule
 \end{tabular}
 \end{table}
+
+\noindent The resolving powers are the \texttt{EXHALE\_TRANSIT\_RES\_*}
+values of \S\ref{sec:envvars}: $3\times10^4$ for Mg\,II, and the H$\alpha$
+value, $1.15\times10^5$, for Ca\,II and Na\,I. The same list carries the
+O\,I 1302 triplet (1302.168, 1304.858, 1306.029\,\AA{}, vacuum, NIST), the
+one entry whose three components absorb out of three different lower levels,
+the $^3P_{2,1,0}$ fine-structure populations of \texttt{OI\_levels\_adv.txt};
+its band depths are compared with the HD\,209458\,b measurements in
+\texttt{tpm\_OI\_band\_depths.txt} (user manual, the O\,I paragraph of the
+\texttt{EXHALE\_transit.py} section).
 
 Alongside the spectra, the script prints the validated
 \emph{single-component} depth table (line-center and 4\,\AA{}-band
@@ -652,7 +765,10 @@ For a Roche-lobe run the 3-D equipotential reconstruction
 (\texttt{geometry = 'triaxial'}, \texttt{roche\_recon.py}) replaces the
 spherical chords by the full Roche geometry with an LOS velocity for each sector
 $v_{\rm sub}(r_{\rm eff})\,x/r-\Omega y$ (wind $+$ tidally locked
-rotation) and reports the same depth table.
+rotation) and reports the same depth table. Its impact parameters run from
+$1$ to $R_{\rm ib} = \min(r_N, R_\star/R_p)$, the outer edge of the annulus
+the depth is normalized on, so no chord beyond the stellar radius enters the
+mean transmission of that annulus.
 
 \subsection{Example spectra}
 
@@ -680,6 +796,131 @@ theoretical, instrument-convolved, and instrument$+$rotation-convolved
 transmission, as for the H/He lines.}
 \label{fig:metalspec}
 \end{figure}
+
+
+%=============================================================================
+\section{Comparison with an observed line profile}
+\label{sec:obscompare}
+%=============================================================================
+
+The convention below applies to every planet and every line whose model is
+compared with an observed transit profile (user decision of 2026-10-04,
+recorded in update log stage~3, section~87, and in the project
+\texttt{CLAUDE.md}). So far it is implemented for one line of one planet,
+He\,10830 of LHS\,1140\,b: the observed width, the window and the samples are
+constants of \texttt{LHS1140b/he10830\_equivalent\_width.py}. Another planet
+or line takes the same steps with its own observation, its own extractor and
+its own window. \texttt{EXHALE\_transit.py} itself applies none of them; its
+curves are the unbroadened, unshifted model.
+
+\subsection{The model line is matched to the observed width}
+\label{sec:widthmatch}
+
+A 1-D steady solution produces a line narrower than the measured one (on
+LHS\,1140\,b He\,10830 about three times: model FWHM about 0.27\,\AA{}
+against 0.841\,\AA{}, as recorded in \texttt{CLAUDE.md}). The model is
+therefore convolved with an added Gaussian line-of-sight velocity
+distribution whose width is fixed by the data, model by model:
+\begin{enumerate}
+  \item the excess absorption $E_\lambda = (\max T_\lambda -
+    T_\lambda)/\max T_\lambda$ [\%] is formed from column~3 of
+    \texttt{tpm\_He10830.txt}, the curve convolved with the instrument's own
+    resolving power ($R = 68\,000$ for the WINERED HIRES-Y observation of
+    LHS\,1140\,b), on its air-wavelength grid
+    (\texttt{transit\_file\_air\_excess});
+  \item $E_\lambda$ is convolved with a Gaussian of FWHM $f$ in velocity,
+    in the planet rest frame and without shift,
+    $\sigma_\lambda = f\times10830\,\text{\AA}/(2.35482\,c)$
+    (\texttt{broaden\_excess}: \texttt{scipy.ndimage.gaussian\_filter1d},
+    reflecting boundary, kernel truncated at $4\sigma$, on the median grid
+    spacing). The instrument kernel is already in the curve and Gaussians
+    commute, so this equals broadening before the instrument;
+  \item depth, width and red/blue ratio of the broadened curve are read with
+    the extractor used on the data (\texttt{he\_line\_metrics.fit\_metrics},
+    air frame); the width is the FWHM of the blended red pair;
+  \item $f$ is the root of $\mathrm{FWHM}(f) = 0.841$\,\AA{}, the same
+    extractor's width of the released spectrum (\texttt{FWHM\_OBS\_A}),
+    found by Brent's method on $1 \le f \le 60$\,km\,s$^{-1}$ with tolerance
+    $10^{-3}$\,km\,s$^{-1}$ (\texttt{width\_matching\_fwhm\_kms});
+  \item the equivalent width compared with the observation is the window
+    equivalent width of the broadened curve (\S\ref{sec:ewoperator}), and
+    any fit of a planet parameter (He/H, $\dot M$, \ldots) to the observed
+    equivalent width is judged on it.
+\end{enumerate}
+The kernel stands for a velocity field the 1-D model does not contain. It is
+not a computed physics term: it carries no energy or momentum and moves no
+absorber, and every result that uses it reports $f$ and says so. The
+reflecting boundary conserves the absorption summed over the grid; the window
+equivalent width falls as $f$ grows because the wings carry absorption out of
+the window. On the LHS\,1140\,b solutions $f$ is about 22\,km\,s$^{-1}$
+(21.9--22.1\,km\,s$^{-1}$ at He/H 1.8--3.0 in update log section~87, and
+22.22\,km\,s$^{-1}$ on the 2026-09 solutions of
+\texttt{docs/lhs1140b\_exhale\_vs\_pwinds.tex},
+section ``The broadening the data demand, measured''; values read from
+those records, not re-measured here).
+
+\paragraph{Tools.} \texttt{python3 LHS1140b/he10830\_equivalent\_width.py
+--width-matched <tpm\_He10830.txt> <output> [f]} writes the broadened excess
+(\texttt{width\_matched\_product}: columns air wavelength, excess, broadened
+excess; the header carries $f$, $\sigma$, the criterion, and the EW, depths
+and width before and after) and prints \texttt{fwhm\_kms}, \texttt{sigma\_kms},
+\texttt{EW\_kernel}, \texttt{EW\_nokernel}, \texttt{red}, \texttt{blue},
+\texttt{red\_blue}, \texttt{fwhm\_A}; a given \texttt{f} [km\,s$^{-1}$]
+replaces the root. The evaluation script
+\texttt{LHS1140b/models/.P1/fiducial\_conduction/ew\_of\_state.sh <state dir>
+<work dir> <binary>} runs \texttt{Restart intent: stationary evaluate} on a
+copy of the state (with \texttt{conserved\_state.txt} staged as the exact
+code-unit state when present), then \texttt{EXHALE\_transit.py} at
+$R = 68\,000$ on both selections (\texttt{transit\_adv/},
+\texttt{transit\_solution/}), and writes \texttt{EW.txt}. With
+\texttt{EW\_NONTHERMAL\_KERNEL=width\_match} (or a FWHM in km\,s$^{-1}$) each
+product line of \texttt{EW.txt} gains \texttt{kernel: fwhm\_kms= sigma\_kms=
+EW\_kernel= EW\_nokernel= \ldots} and \texttt{tpm\_He10830\_broadened.txt} is
+written; \texttt{EW=} stays the unbroadened window EW, and the EW compared
+with the observation is \texttt{EW\_kernel}. Unset, nothing changes.
+\texttt{EW.txt} also records the md5 of the consumed files, whether the exact
+state was staged and read, the evaluate exit status (0; 2, the input state
+refused; 7, the \texttt{adv} record rejected), the \texttt{adv\_derived\_state}
+record, and \texttt{written\_state certified=T|F}, the certification of the
+state the evaluate wrote, which is the stored pair it loaded. Each product is
+labeled \texttt{result}, \texttt{conditional} (an \texttt{adv} record that is
+\texttt{unverified}), \texttt{uncertified} (a solution product on a state not
+written \texttt{certified=T}) or \texttt{diagnostic}.
+
+\subsection{The equivalent-width operator}
+\label{sec:ewoperator}
+
+\begin{sloppypar}
+The observation and every model go through one operator
+(\texttt{model\_equivalent\_width}, \texttt{observed\_equivalent\_width}):
+the excess [\%] is interpolated linearly onto the observation's own
+wavelength samples inside the window, vacuum wavelengths in the planet rest
+frame (LHS\,1140\,b: 10832.60--10834.20\,\AA{}, 44 samples), and integrated
+with the trapezoid weights of those samples, in \%\,\AA{}. A model curve in
+air is converted with the red-pair ratio $10832.057/10829.09114$. A curve that
+does not span the samples, is not finite or is not strictly ordered returns
+no value instead of an extrapolated one. The observational error is the
+error of the same linear estimator, $\sigma^2 = \sum_i (w_i\sigma_i)^2$ for
+independent samples, without covariance or continuum-fit uncertainty, which
+the released spectrum does not provide; MEASURED with the module on
+2026-10-05, $\mathrm{EW}_{\rm obs} = 1.1084 \pm 0.0289$\,\%\,\AA{}. The
+operator applies no line-of-sight velocity and no detector-bin response:
+models and data are compared unshifted.
+\end{sloppypar}
+
+\subsection{The line-of-sight shift is for figures only}
+\label{sec:vwindoverlay}
+
+Neither \texttt{EXHALE\_transit.py} nor the p-winds comparison spectra apply
+a bulk line-of-sight velocity, so the model lines sit at the planet rest
+frame while the measured line is redshifted. In overlay figures the model
+curves of LHS\,1140\,b are shifted by $v_{\rm wind} = +2.26$\,km\,s$^{-1}$
+(the Cherubim et~al.\ 2026 fit value), that is by
+$\Delta\lambda = (v_{\rm wind}/c)\times10830$\,\AA{} in air
+(\texttt{V\_WIND\_KMS} and \texttt{dlam\_air} in
+\texttt{LHS1140b/make\_memo\_figures.py}).
+Every equivalent width, width and depth is computed from the unshifted
+arrays; the shift enters no number.
 
 %=============================================================================
 \section{Caveats}

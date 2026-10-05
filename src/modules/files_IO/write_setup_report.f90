@@ -17,7 +17,9 @@
 	use caloric_eos,     only: caloric_eos_state_line
 	use Numerical_Fluxes, only: low_mach_velocity_jump
 	use binary_element_diffusion, only: interdiffusion_enthalpy_scale
-	use viscous_conduction, only: conduction_scale
+	use viscous_conduction, only: conduction_scale, conduction_active,  &
+		lower_atmosphere_heat_measured, lower_atmosphere_heat_flux_cgs,   &
+		lower_atmosphere_bath_T_K, lower_atmosphere_cell1_T_K
 	use species_table,   only: melem_name
 	use IC_load,         only: melem_from_abundance,                    &
 	                     ic_coupling_present, ic_sec_ion_active,        &
@@ -27,7 +29,8 @@
 	                     restart_option_change_given,                   &
 	                     ic_option_change_applied, ic_option_change_inert, &
 	                     ic_legacy_factor_migrated
-	use Read_input,      only: base_level_source, carrier_newton_on_stall
+	use Read_input,      only: base_level_source, carrier_newton_on_stall,  &
+	                           base_density_key_overridden_n0
 	use grid_construction, only: domain_outer_radius, mixed_stretch_ratio, &
 	                     outer_shells_width_ratio
 	use composition,     only: h2_mixing_ratio_base, h2_mixing_ratio_ceiling
@@ -284,6 +287,14 @@
       ' channels where the level is tracked -- the same rows the'//       &
       ' equilibrium sweep of this gas solves'
 		endif
+		if (he23s_transport) then
+			write(outfile,*) &
+      '- The He 2^3S POPULATION is TRANSPORTED as well: x3 ='//            &
+      ' n(2^3S)/n(He nuclei) rides on the helium nucleus flux with its'// &
+      ' own eddy term, its source is the level balance the sweep solves'//&
+      ' (tr_triplet_row), and the ground singlet closes the helium'//     &
+      ' simplex x(He II) + x(He III) + x3'
+		endif
 	endif
 	if (thereis_oxychem) then
 		write(outfile,*) &
@@ -337,6 +348,22 @@
          ' - Photoelectron secondary ionization: STAGED -- applied only'// &
          ' after the first du convergence, so a run stopped before that'// &
          ' never applies it'
+	endif
+	! The photoelectrons below the 30 eV threshold of that partition. Only
+	! the non-default choice is reported, so a run without the key writes
+	! exactly what it wrote before.
+	if (use_low_energy_partition) then
+		if (use_sec_ion) then
+			write(outfile,*) &
+         ' - Photoelectrons of 10.2-30 eV: Furlanetto & Stoever (2010)'// &
+         ' partition in cells without H2, applied with the secondary'// &
+         ' ionization above'
+		else
+			write(outfile,*) &
+         ' - Photoelectrons of 10.2-30 eV: Furlanetto & Stoever (2010)'// &
+         ' partition selected, but secondary ionization is off, so it'// &
+         ' is never applied'
+		endif
 	endif
 	! Whether the staging was overruled by the restart file. A file written
 	! by a run that had already armed the coupling restarts with it armed;
@@ -565,6 +592,11 @@
 		n0*kb_erg*T0*ntot_bc*1.0d-6, ' bar (level from '//                  &
 		trim(base_level_source)//')'
 71	format(1X,A,ES11.4,A,ES11.4,A)
+	if (base_density_key_overridden_n0 .gt. 0.0d0)                          &
+		write(outfile,71) '  WARNING: the density key asked for n0 = ',   &
+			base_density_key_overridden_n0, ' cm^-3 -> p = ',               &
+			base_density_key_overridden_n0*kb_erg*T0*ntot_bc*1.0d-6,        &
+			' bar; "Base BC: pressure" overrides it (no handoff)'
 	write(outfile,*) '- Caloric EOS (energy <-> pressure): ',              &
 		trim(caloric_eos_state_line())
 	if (thereis_mol) then
@@ -872,6 +904,10 @@
 	call put_l('legacy_hhe_rates', legacy_hhe_rates)
 	call put_l('atomic_rate_set_k22', atomic_rate_set_k22)
 	call put_l('use_sec_ion', use_sec_ion)
+	! Only when selected, so that every parse-corpus case without the key
+	! dumps exactly what it dumped before.
+	if (use_low_energy_partition)                                        &
+		call put_l('use_low_energy_partition', use_low_energy_partition)
 	call put_l('use_he_rec_coupling', use_he_rec_coupling)
 	call put_l('use_h_rec_escape', use_h_rec_escape)
 	call put_l('he_h_charge_exchange', he_h_charge_exchange)
@@ -886,6 +922,9 @@
 	call put_l('carrier_in_newton', carrier_in_newton)
 	call put_l('carrier_newton_on_stall', carrier_newton_on_stall)
 	call put_l('ionization_transport', ionization_transport)
+	! Written only for the non-default value, so the dump of every run
+	! without the key is the one it was.
+	if (he23s_transport) call put_l('he23s_transport', he23s_transport)
 	call put_r('F_FUV_B3', F_FUV_B3)
 	call put_r('F_FUV_B4', F_FUV_B4)
 	call put_l('molecular_base', molecular_base)
@@ -1079,6 +1118,11 @@
 		else
 			write(u,'(A)')     'photoelectron_heating     excess'
 		endif
+	! The partition of the 10.2-30 eV photoelectrons. Written only when it is
+	! selected, so that a run without the key writes the record it wrote
+	! before; absent means none (deposited whole as heat).
+	if (use_low_energy_partition)                                        &
+		write(u,'(A)')     'low_energy_electron_partition Furlanetto2010'
 	! Oxygen chemistry (the A2 option). oxygen_chemistry says whether the
 	! O I column means FREE ATOMIC oxygen (it does when this is T) and
 	! whether the OH / H2O / CO columns of Ion_species.txt exist;
@@ -1097,6 +1141,10 @@
 	if (composition_update_holds_pressure)                              &
 		write(u,'(A)')     'composition_update_holds  pressure'
 	write(u,'(A,L1)')     'ionization_transport      ', ionization_transport
+	! Written only for the non-default value; a file without the line is a
+	! run whose He 2^3S population is the local root of each cell.
+	if (he23s_transport)                                                 &
+		write(u,'(A,L1)') 'he23s_transport           ', he23s_transport
 	write(u,'(A,L1)')     'oxygen_chemistry          ', thereis_oxychem
 	if (thereis_oxychem) then
 		write(u,'(A)')     'oxygen_reaction_set       a2_v1'
@@ -1226,6 +1274,29 @@
 				lap_steady_Mdot_median
 			write(u,'(A,ES23.15E3)')  'steady_Mdot_spread        ',         &
 				lap_steady_Mdot_spread
+		endif
+	endif
+	! THE HEAT THE WIND CONDUCTS INTO THE LOWER ATMOSPHERE through the base
+	! face, on the state the certification measured
+	! (heat_conducted_into_lower_atmosphere, viscous_conduction.f90).
+	! Written whenever conduction is on; before the wind exists it says
+	! unmeasured rather than print a zero.  The energy coupling of the
+	! elemental-flux closure (element_flux_closure.py) reads the flux.
+	if (conduction_active()) then
+		if (lower_atmosphere_heat_measured) then
+			write(u,'(A)') 'base_conduction_state     measured'
+			write(u,'(A)') '# base_conductive_flux_cgs [erg cm^-2 s^-1]:'//  &
+				' q = -kappa_face (T_1 - T_bath)/(r_1 - r_0),'
+			write(u,'(A)') '# positive = heat leaving the wind into the'//  &
+				' lower atmosphere; T_bath at the ghost centre r(0)'
+			write(u,'(A,ES23.15E3)') 'base_conductive_flux_cgs  ',         &
+				lower_atmosphere_heat_flux_cgs
+			write(u,'(A,ES23.15E3)') 'base_conduction_T_bath_K  ',         &
+				lower_atmosphere_bath_T_K
+			write(u,'(A,ES23.15E3)') 'base_conduction_T_cell1_K ',         &
+				lower_atmosphere_cell1_T_K
+		else
+			write(u,'(A)') 'base_conduction_state     unmeasured'
 		endif
 	endif
 	! THE DOMAIN OF THE ONE-SIDED CO DESTRUCTION MODEL, CUMULATIVE OVER

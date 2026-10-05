@@ -2509,10 +2509,11 @@
       ! enumeration follows that type: a field added there and not added
       ! here would leave a piece of the sweep's cell state unchecked, so
       ! the two are kept side by side deliberately and this comment says
-      ! so. 38 real*8 and 5 logical, in declaration order but for the fields
-      ! added after the enumeration was first written, which follow it with
-      ! the next primes; the integer jcell, the label a diagnostic written
-      ! from inside the sweep uses, carries no state and is left out.
+      ! so. 40 real*8, 7 logical and the integer x_hetr_row, in declaration
+      ! order but for the fields added after the enumeration was first
+      ! written, which follow it with the next primes; the integer jcell,
+      ! the label a diagnostic written from inside the sweep uses, carries
+      ! no state and is left out.
       type(ion_rates), intent(in) :: x
       h =        x%P_HI       + 3.0d0*x%P_HeI      + 5.0d0*x%P_HeII       &
         + 7.0d0*x%rchiiB      + 11.0d0*x%rcheiiB   + 13.0d0*x%rcheiiiB    &
@@ -2534,6 +2535,14 @@
       if (x%x_hp_fixed) h = h + 157.0d0
       if (x%x_heii_fixed)  h = h + 181.0d0
       if (x%x_heiii_fixed) h = h + 191.0d0
+      ! The carried He 2^3S level (He 2^3S transport); zero terms where the
+      ! option is off, so the hash of every other run is the one it had.
+      h = h + 197.0d0*x%x_hetr_fix + 199.0d0*dble(x%x_hetr_row)
+      if (x%x_hetr_fixed)  h = h + 211.0d0
+      ! The reservoir's H2 partition of the non-ionized hydrogen (a lower
+      ! ghost with a base handoff); zero terms everywhere else.
+      h = h + 223.0d0*x%x_h2_neutral_partition
+      if (x%x_h2_neutral_partition_fixed) h = h + 227.0d0
       end function ion_rates_hash
 
       real*8 function ledger_hash(g) result(h)

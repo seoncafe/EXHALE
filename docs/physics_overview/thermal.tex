@@ -24,11 +24,11 @@ equation and be missing from the breakdown.
      the Balmer continuum, \eqref{eq:ion:balmer}\\
 8  & \texttt{heat\_Hdx[Lya-deexc]} & collisional de-excitation of the
      Ly$\alpha$-pumped $n=2$ atoms (\texttt{incl\_deexc\_heat}, default on)\\
-9  & \texttt{heat\_He\_recomb} & photoelectrons of the H\,{\sc i},
-     He\,{\sc i}, H$_2$ and metal ionizations, and the fragment kinetic
-     energy of the H$_2$ final states, driven by recombination
-     radiation absorbed on the spot (He\,{\sc ii} and He\,{\sc iii}, and
-     the H\,{\sc ii} ground captures taken by metals)\\
+9  & \texttt{heat\_He\_recomb} & the heat share of the photoelectrons of
+     the H\,{\sc i}, He\,{\sc i}, H$_2$ and metal ionizations, and the
+     fragment kinetic energy of the H$_2$ final states, driven by the
+     recombination radiation of H\,{\sc ii}, He\,{\sc ii} and He\,{\sc iii}
+     absorbed on the spot (\texttt{recombination\_radiation\_absorbed})\\
 10--12 & \texttt{heat\_He23S\_*} & He($2^3$S)$+$H Penning and associative
      branches, and He($2^3$S)$+$H$_2$ Penning\\
 13--14 & \texttt{heat\_H2\_LW\_*} & kinetic energy of the Lyman-Werner
@@ -50,7 +50,16 @@ equation and be missing from the breakdown.
 
 Channels 1--6 are the photoheating integrals of
 Sec.~\ref{sec:radiation:rates}, already carrying the heating efficiency
-$f_{\rm heat}$ of \eqref{eq:rad:fheat}. Channel 15 exists because the return
+$f_{\rm heat}$ of \eqref{eq:rad:fheat}. Channel 9 carries the same
+partition: each photoelectron of the recombination radiation is split at
+the energy of its channel by the partition of
+Sec.~\ref{sec:radiation:secondary}, under the switches of the stellar path
+(the secondary-ionization coupling as applied, and below 30\,eV the
+low-energy partition where \texttt{Low-energy electron partition} selects
+it), and only $f_{\rm heat}$ of it is heat; the fragment kinetic energy is
+heat at once. Neither partition adds a channel: a photoelectron's
+secondary ionizations go to the rates, and its heat to the channel of the
+photon that freed it. Channel 15 exists because the return
 path that makes ionization energy a non-channel in an atomic gas is different
 in a molecular one (\texttt{molecular\_reaction\_heat.f90}). Follow one
 closed cycle:
@@ -106,10 +115,23 @@ a shallower or cooler layer is not, and the form is stated with that validity
 where it is used. \texttt{EXHALE\_REACTION\_HEAT\_RECIPIENTS=0} restores the
 prompt-deposit behavior for comparison.
 
+\paragraph{What the list does not hold.} The terms of the energy equation
+that move energy rather than deposit it are not heating channels and are
+not in \texttt{Heating\_breakdown.txt}: the viscous dissipation and the
+conduction divergence of Sec.~\ref{sec:hydro:transport}, and the divergence
+of the interdiffusion enthalpy flux $q_d$ of
+Sec.~\ref{sec:mol:interdiffusion}. They enter the stationary energy row
+beside $\mathcal{H}-\Lambda$ (\texttt{steady\_residual.f90}), and the
+advected-profile energy solve writes each of them as its own term
+(Sec.~\ref{sec:postprocessing:adv}). The heat a conducting wind gives to the
+lower atmosphere through the base face, \eqref{eq:qbase}, is the one boundary
+term of that budget and is written to \texttt{EXHALE\_resolved.out}.
+
 \subsection{The cooling channels}
 \label{sec:thermal:cool}
 
-\texttt{eval\_cool} (\texttt{util\_ion\_eq.f90}) assembles the cooling rate
+\texttt{eval\_cool} (\texttt{util\_ion\_eq.f90}, through
+\texttt{eval\_cool\_cells}) assembles the cooling rate
 of every cell, the atomic, ionic and metal channels through the one routine
 \texttt{radiative\_cooling\_of\_cell} (\texttt{Cool\_coeff.f90}) that the
 post-process temperature root also calls, as
@@ -125,7 +147,10 @@ balance uses (\texttt{calc\_ne}), molecular donors included, since inside a
 deep molecular base H$_3^+$ is the dominant ion. The breakdown written to
 \texttt{output/Cooling\_breakdown.txt} is read straight off the arrays
 \eqref{eq:th:cooltotal} is built from, so the columns sum to $\Lambda$
-exactly.
+exactly: $10+n_{\rm ion}$ channels (\texttt{n\_cool\_chan}), recombination,
+collisional ionization, collisional excitation of H\,{\sc i}, He\,{\sc i} and
+He\,{\sc ii}, free-free, the four molecular channels H$_3^+$, H$_2$, H$_2$O
+and CO, and one line channel for each metal ion.
 
 \paragraph{Recombination.} $\Lambda_{\rm rec} =
 \lambda_{\rm HII}n_{\rm HII}+\lambda_{\rm HeII}n_{\rm HeII}
@@ -168,7 +193,10 @@ ionization its measured potential in erg,
 the He\,{\sc i} term acting on the ground \emph{singlet}
 $n(1^1{\rm S}) = n({\rm He\,I}) - n(2^3{\rm S})$, because the metastable
 sits 19.8\,eV up and carries its own 4.8\,eV threshold ($\beta_{2^3{\rm
-S}}$ from \citealt{Black1981}, eq.~12). The metal term charges each
+S}} = 8.38\times10^{-10}\,T^{1/2}e^{-55338\,{\rm K}/T}$\,cm$^3$\,s$^{-1}$,
+\citealt{Black1981}, eq.~12, stated for $10^3$--$10^5$\,K and evaluated
+unclamped outside; \texttt{ionization\_rate\_HeI\_23S}, the energy charged
+being the potential of the level). The metal term charges each
 collisional ionization the measured potential of the ion; with it and the
 metal recombination term above, the electron gas, the ionization energy and
 the recombination radiation close for the metals as for H and He.
@@ -208,10 +236,22 @@ built.
 With the metastable tracked, the He\,{\sc i} sum leaves out the
 $1^1$S$\to2^3$S transition, which is the network's own rate $q_{13}$, and the
 exchange between the two levels is charged with that rate and its
-detailed-balance reverse $q_{31g}$,
+detailed-balance reverse, the electron de-excitation
+$2^3{\rm S}\to1^1{\rm S}$,
+$q_{31g} = q_{13}(g_1/g_3)e^{E(2^3{\rm S})/kT}$ formed with the Boltzmann
+factor cancelled from the same \citet{Bray2000} strength
+(\texttt{deexcitation\_rate\_HeI\_23S\_11S}, \texttt{Cool\_coeff.f90}):
 $E(2^3{\rm S})\left[q_{13}n(1^1{\rm S})-q_{31g}n(2^3{\rm S})\right]$,
-negative (a heating) wherever the metastable is overpopulated against its
-Boltzmann ratio to the ground. The excitations $1^1$S$\to n^3L$ into the
+negative (a heating, the superelastic collisions giving the level's energy
+to the electrons) wherever the metastable is overpopulated against its
+Boltzmann ratio to the ground. The same $q_{31g}$ is a loss of the triplet
+row (\texttt{HeITR\_coeffs}, Sec.~\ref{sec:ionization:cellsystem}) and one of
+the exits of the level in the on-the-spot recombination coupling.
+\citet{Oklopcic2018} leave it out as less probable than the excitations to
+the singlets; that holds at $10^4$\,K, where
+$q_{31g}/(q_{31a}+q_{31b}) = 0.055$, and not in cooler gas (0.56 at 3000\,K,
+2.7 at 2000\,K; MEASURED with these strengths, stated at the rates in
+\texttt{Cool\_coeff.f90}). The excitations $1^1$S$\to n^3L$ into the
 higher triplets, which feed $2^3$S through their cascade (in $q_{13}$ of the
 triplet row), are charged their full energy by the He\,{\sc i} sum, of
 which $E(n^3L)-E(2^3{\rm S})$ is radiated in the cascade and $E(2^3{\rm S})$
@@ -435,7 +475,16 @@ at $r_j$,
 \label{eq:th:teq}
 \end{equation}
 with $e$ the internal energy per unit mass and $h = e+p/\rho$ the enthalpy
-per unit mass. The history of the step carries each upstream cell's specific internal
+per unit mass. In a run that solved heat conduction or the enthalpy flux of
+the element, carrier and stage fluxes, $\mathcal{H}$ holds those terms too,
+as heating (\texttt{transport\_terms\_of\_profile},
+\texttt{set\_transport\_terms\_of\_cell}): the conduction of the two
+neighbors and the enthalpy divergences as a fixed part, the cell's own
+conduction coefficient times its trial temperature as the part that varies.
+Conduction then couples the cells, so the cell-by-cell root below is the
+first sweep of a Newton iteration on the whole column, which
+Sec.~\ref{sec:postprocessing:adv} states with its acceptance on the energy
+residual. The history of the step carries each upstream cell's specific internal
 energy formed at that cell's composition and temperature, not this cell's
 caloric state evaluated at $T_{\rm up}$: the rovibrational heat capacity
 belongs to the gas that holds the molecules, so across a dissociation front
@@ -447,8 +496,12 @@ $\max(0.05T_{\rm guess},1\,{\rm K})$ to $4T_{\rm guess}$ locate the
 the bracket to $2\epsilon|b|+{\rm tol}/2$ with ${\rm tol}=10^{-10}$ in
 $T/T_0$, which is what keeps the solve off the hot spurious root; the
 cooling it balances is \texttt{radiative\_cooling\_of\_cell}, the assembly
-\texttt{eval\_cool} reports; a cell with no bracket keeps its converged
-equilibrium temperature and is counted as rejected. Without the metals, or
+\texttt{eval\_cool} reports. A BDF2 step that finds no admissible root is
+retaken by backward Euler; a cell with no bracket then keeps the run's own
+temperature, is written \texttt{failed} and is counted as rejected, except
+that in a run with conduction or the enthalpy fluxes it is an unknown of the
+column solve (Sec.~\ref{sec:postprocessing:adv}), which may place its root
+outside the bracket of this one-cell solve. Without the metals, or
 with \texttt{Brent solver: False}, the root is MINPACK \texttt{hybrd1} on
 the same residual (\texttt{post\_process\_adv.f90}). The metal densities and
 the fine-structure escape probabilities are held fixed while the root finder
@@ -456,8 +509,10 @@ varies $T$, the latter because the optical depth is a column over the whole
 atmosphere and not a function of this cell's trial temperature.
 
 \paragraph{The heating efficiency.} The diagnostic $\eta_{\rm heat}$ of
-\eqref{eq:rad:eta}, written as column \texttt{eta} by
-\texttt{write\_output.f90}, is a property of the composition the sweep
-returned and is not a free parameter anywhere in the code; the closed-form
+\eqref{eq:rad:eta}, which the sweep \texttt{ioniz\_eq} returns beside the
+heating and cooling, is a property of the composition the sweep returned and
+is not a free parameter anywhere in the code. It is passed to
+\texttt{write\_output.f90} but written to no output file (the columns of
+\texttt{Hydro\_ioniz.txt} are $r$, $\rho$, $v$, $p$, $T$, heat and cool); the closed-form
 parameterizations of the same quantity that the literature uses are
 reproduced offline by \texttt{eta\_approx.py} for comparison only.

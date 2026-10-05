@@ -35,14 +35,35 @@ source files have the same number of rows and the same radii to 1e-12
 relative; the `# columns` lines carry the species the hydrogen-nucleus
 count needs; the hydrogen-nucleus density is positive in every source row;
 and every PHYSICAL target center (rows 3 to n-2) lies inside the source's
-support, ghost rows included (the ghost rows are part of the state: the
-lower ones carry the inflow reservoir composition of the molecular
-handoff, so they are interpolated like every other row, never rebuilt from
-the physical cells). A violation is refused with exit status 2 and a
-message; nothing is written. Only a target GHOST row may lie outside the
-source's range: it is extrapolated linearly in ln r from the two nearest
-source rows, and the mapping line says so. That is the only extrapolation
-the tool makes unless `--extrapolate-beyond` is given.
+rows, ghost rows included. A violation is refused with exit status 2 and a
+message; nothing is written.
+
+THE FIRST PHYSICAL CELLS ARE MAPPED FROM PHYSICAL CELLS. The source's
+lower ghost rows are the reservoir: boundary data, not cells of the flow (on
+a molecular handoff a gas 150 K colder than cell 1, joined to it across the
+base face rather than by a smooth profile), and `load_IC.f90` does not read
+them at all. So a target physical center that lies between the base face and
+the source's first physical center (the first cell of a refined base
+block: 500 -> 1000 cells puts a center at 1.0000491 R_p, below the source's
+first center 1.0000967 R_p) is inside the source's first cell and takes
+that cell's values (its average over the volume that holds the target
+center, a first-order reconstruction there); it is never interpolated
+against the reservoir row across the face, which put 536 K into a cell whose
+neighbors read 576 K and above. Every other physical target row is
+interpolated between the two source rows that bracket it. At the top the
+upper ghost rows are the free-outflow continuation of the flow (the
+isothermal hydrostatic extrapolation `free_outflow_ghost` writes), not
+another gas, so a physical center above the source's last center keeps
+being interpolated against them, which is exact for an isothermal
+stratification. A mapping onto the source's own centers holds no row and is
+unchanged. The `# mapped:` line counts the rows that took cell 1's values.
+
+The target GHOST rows are written from every source row, ghosts included
+(the lower ones are not read by `load_IC`, which derives them from the
+reservoir; the upper ones seed the free-outflow continuation). A target
+ghost row may lie outside the source's range: it is extrapolated linearly in
+ln r from the two nearest source rows, and the mapping line says so. That is
+the only extrapolation the tool makes unless `--extrapolate-beyond` is given.
 
 `--extrapolate-beyond <r/R_p>` EXTENDS the state above `r` instead of
 interpolating it there, so that a solution on a 30 R_p domain can seed a run
@@ -76,23 +97,32 @@ anchor, the derived GM, and how many rows were filled this way.
 `--reservoir <El>/H <value>` MAKES THE STATE A SEED FOR ANOTHER
 COMPOSITION. It may be given once per element -- `--reservoir He/H 2.13
 --reservoir C/H 2.7780e-4` -- and every element it names is carried
-independently. The columns of that element (He I, He II, He III and the
-He 2^3S level for helium, the ionization stages El I, El II, El III for one
-of the ten metals of `species_table`) are multiplied by
+independently. The columns of that element (He I, He II, He III, the
+He 2^3S level and HeH+ for helium, the ionization stages El I, El II, El III
+for one of the ten metals of `species_table`) are multiplied by
 k = value / (the El/H of the source's `# reservoir` line) in every row,
-ghosts included; the hydrogen columns and every element the option does not
-name are left as they are, so each cell's n_s/n_H is carried exactly as the
-mapping above carries it and the ionization split of the element is
-untouched. The `# reservoir` line of both output files then states the new
+ghosts included; every element the option does not name is left as it is,
+so each cell's n_s/n_H is carried exactly as the mapping above carries it
+and the ionization split of the element is untouched. The hydrogen-nucleus
+count n_H of every row is held: HeH+ holds one hydrogen nucleus, so
+multiplying it by k brings (k - 1) n(HeH+) hydrogen nuclei with it, and
+those are taken out of the species holding only hydrogen (H I, H II, H2,
+H2+, H3+), each multiplied by the one factor
+g = 1 - (k - 1) n(HeH+)/(the hydrogen nuclei those species hold). Every row
+then carries El/H = k x its source El/H for the element named and its
+source El/H for every other, exactly and in whatever order the elements are
+named. Left in, the added hydrogen moves each El/H of the row by
+-(k - 1) n(HeH+)/n_H, which a state with HeH+/H 2e-6 at cell 1 (the
+LHS 1140 b He/H 4e4 states) turns into 1.5e-6 for k = 1.75, past the
+tolerance the loader holds He/H to. The `# reservoir` line of both output files then states the new
 ratios, and the `# mapped:` line records each rescaling, its factor and the
 measured El/H of the base rows and of the column.
 
 `--uniform` (with `--reservoir`) sets the element to the named ratio in EVERY
 row instead of multiplying the column by one factor: the factor of a row is
-(value (n_H - Hs) - X)/(S - value Hs), S and Hs the nuclei of the element
-and of hydrogen the rescaled columns hold (HeH+ holds one of each) and X
-those of the element in the other columns, so that the row's El/H comes out
-at the value exactly. This is the seed of a run whose element
+(value n_H - X)/S, S the nuclei of the element the rescaled columns hold and
+X those of the element in the other columns, n_H held as above, so that the
+row's El/H comes out at the value exactly. This is the seed of a run whose element
 does not separate (helium with `He_diffusion` off, which load_IC refuses at
 any He/H other than the input's in any row) made from a state that was
 solved with separation.
@@ -127,11 +157,14 @@ the composition it no longer carries:
             particle of that column carries), the weights `calc_rho` uses:
             3.9715259 per free helium nucleus, 4.9715259 per HeH+, and
             amu_over_m_H x A_El per metal nucleus, A_El the standard atomic
-            weight in u (`species_table` melem_A_u, melem_A)
+            weight in u (`species_table` melem_A_u, melem_A); plus
+            (g - 1) x the mass of the hydrogen-only species (1 per hydrogen
+            nucleus)
     T    = T_src x n_src/(n_src + dn),  n_src = p/(k_B T_src) read off the
            source state, dn the particles and electrons the added nuclei
            bring (He I 1, He II 2, He III 3, HeH+ 2; a metal stage El^(k+)
-           1 + k)
+           1 + k) and the hydrogen-only species give up (H I 1, H II 2,
+           H2 1, H2+ 2, H3+ 2)
 
 n_src is taken from the source's own p and T, so every species the file
 carries is inside it, and k_B is the value the state's `# constants` line
@@ -143,12 +176,20 @@ The rescaling of an element is refused when the source states no reservoir
 such a file itself, by its own rule), when the source's `# reservoir` line
 does not name that element, when the species file carries no column of it,
 when the value is not positive and finite, or when the base rows do not come
-out at the new El/H. The last is the test that catches a species carrying
-nuclei of two elements at once: HeH+ holds one helium and one hydrogen
-nucleus, so multiplying it changes the hydrogen count as well and no single
-factor sets both, which is the same reason `load_IC` refuses a molecular
-restart at a composition other than its own; the oxygen-chemistry carriers
-OH, H2O and CO do the same for O and for C.
+out at the new El/H within BASE_ROW_RATIO_TOL = 1e-6 relative, or when the
+species holding only hydrogen do not hold the hydrogen a HeH+ carry has to
+take from them. The base-row test catches a species carrying nuclei of two
+elements that the one factor does not move: the oxygen-chemistry carriers
+OH, H2O and CO, which this tool does not multiply, hold O and C. The tolerance is the consumer's:
+`load_IC.f90` compares the loaded He/H with the input's within its
+`heh_dev_tol` = 1e-6, and renormalizes every metal column the handoff states
+by one factor formed at the base cell, so a metal arrives at the run's El/H
+there whatever the mapper wrote. The factor here is new/old, the ratio of the
+two `# reservoir` lines, so a base row that the solved source holds a part in
+1e12 away from its own reservoir line (the converged state of a closure
+iteration does) comes out the same part in 1e12 away from the new value,
+which the loader accepts. The check only has to catch a gross failure, a
+shared species that one factor cannot move.
 
 HOW THE VALUES ARE MAPPED. The hydrodynamic columns are interpolated in
 ln r: density, pressure and the heating/cooling rates in log10 (values at
@@ -217,6 +258,25 @@ CARRIER_NUC = {'OH': {'O': 1}, 'H2O': {'O': 1}, 'CO': {'C': 1, 'O': 1}}
 # state's own '# constants' line is used instead where it states one.
 KB = 1.380649e-16
 REQUIRED_SPECIES = ('HI', 'HII')
+# The species that hold hydrogen nuclei and no nucleus of another element,
+# with the mass of one particle in hydrogen masses (species_table bsp_mass:
+# one per nucleus) and what it contributes to n_tot + n_e (itself plus the
+# electron a molecular ion has released). When a helium carry multiplies
+# HeH+, the hydrogen nuclei it brings with it are taken out of these, in
+# proportion, so that the hydrogen-nucleus count of the cell is unchanged.
+H_ONLY_MASS = {'HI': 1.0, 'HII': 1.0, 'H2': 2.0, 'H2p': 2.0, 'H3p': 3.0}
+H_ONLY_PARTICLES = {'HI': 1.0, 'HII': 2.0, 'H2': 1.0, 'H2p': 2.0, 'H3p': 2.0}
+# The relative departure of a base row's El/H from the value --reservoir
+# names, above which the carry is refused. It is the consumer's tolerance:
+# load_IC.f90 heh_dev_tol = 1.0d-6, the bound within which it accepts the
+# loaded He/H. A metal needs no tighter bound, because load_IC renormalizes
+# every handoff metal column by one factor formed at the base cell (the
+# "elements the handoff states" loop). The check catches a gross failure: a
+# species holding nuclei of two elements (OH, H2O, CO for O and C) that the
+# one factor of the element does not move with it. HeH+ is not one: it is
+# multiplied with helium and the hydrogen it holds is taken back out of the
+# species holding only hydrogen, so the row's hydrogen count is unchanged.
+BASE_ROW_RATIO_TOL = 1.0e-6
 
 
 def refuse(msg):
@@ -291,6 +351,19 @@ def map_column(lr_new, lr_old_phys, y_phys, log=False):
         out = 10.0**out
         if small.any():
             out[out <= 10.0*TINY] = np.asarray(y_phys)[small][0]
+    return out
+
+
+def map_rows(lr_new, lr_old, y, held, first, log=False):
+    """One column onto every target row by the rule of the module header
+    (THE FIRST PHYSICAL CELLS ARE MAPPED FROM PHYSICAL CELLS): every row as
+    map_column writes it, except the target physical rows `held` (a boolean
+    mask: their centers lie between the base face and the source's first
+    physical center), which take the value of the source's first physical
+    row `first`, the cell whose volume holds them.  With no such row (every
+    unrefined mapping) the result is map_column's, byte for byte."""
+    out = map_column(lr_new, lr_old, y, log=log)
+    out[held] = np.asarray(y, dtype=float)[first]
     return out
 
 
@@ -414,9 +487,10 @@ def element_nuclei_in(name, el):
 def element_stage_columns(el, scols):
     """The indices of the ionization-stage columns of element `el`: the ones
     the rescaling multiplies. A species holding nuclei of two elements at
-    once (HeH+, OH, H2O, CO) is not among them for the metals -- no single
-    factor sets two element counts -- and for helium the whole HE_NUC set is
-    taken, HeH+ included, so that the base-row test refuses it."""
+    once (OH, H2O, CO) is not among them for the metals -- no single factor
+    sets two element counts -- and for helium the whole HE_NUC set is taken,
+    HeH+ included, the hydrogen it holds being given back by the hydrogen-only
+    species (main, the carry of an element)."""
     if el == 'He':
         return [j for j, name in enumerate(scols) if name in HE_NUC]
     return [j for j, name in enumerate(scols)
@@ -683,22 +757,31 @@ def main():
     else:
         shift = float('nan')
 
+    # The target physical rows whose centers lie below the source's first
+    # physical center, i.e. between the base face and that center (the rule
+    # of the module header): they take the first physical cell's values.
+    held = np.zeros(r_new.size, dtype=bool)
+    held[NGHOST:r_new.size - NGHOST] = r_new[NGHOST:r_new.size - NGHOST] < r_h[NGHOST]
+    n_held = int(np.sum(held))
+
     # ---- hydro ----
     b = np.empty((r_new.size, a.shape[1])); b[:, 0] = r_new
     for j in range(1, a.shape[1]):
         lin = cols[j].startswith('v[') or cols[j].startswith('T[')
-        b[:, j] = map_column(lr_new, lr_old, a[ph_old, j], log=not lin)
+        b[:, j] = map_rows(lr_new, lr_old, a[ph_old, j], held, NGHOST,
+                           log=not lin)
     rho_new = b[:, 1]
     # ---- species as ratios to the hydrogen nuclei ----
     mu_old = a[ph_old, 1]/nH_old[ph_old]
-    nH_new = rho_new/map_column(lr_new, lr_old, mu_old)
+    nH_new = rho_new/map_rows(lr_new, lr_old, mu_old, held, NGHOST)
     d = np.empty((r_new.size, c.shape[1])); d[:, 0] = r_new
     for j in range(1, c.shape[1]):
         col = c[ph_old, j]
         if (col <= TINY).all():
             d[:, j] = col[0]
         else:
-            d[:, j] = map_column(lr_new, lr_old, col/nH_old[ph_old])*nH_new
+            d[:, j] = map_rows(lr_new, lr_old, col/nH_old[ph_old], held,
+                               NGHOST)*nH_new
 
     # ---- the state above the anchor, when the target reaches past the source --
     ext_note = ''
@@ -801,18 +884,20 @@ def main():
             el_cols = element_stage_columns(el, scols)
             if not el_cols:
                 refuse(f'--reservoir {key}: the species file carries no {el} column')
+            # The rescaled columns hold S nuclei of the element and Hs
+            # hydrogen nuclei (HeH+ holds one of each; the metal stages hold
+            # none), the other columns X nuclei of the element and nH0
+            # hydrogen nuclei in all.
+            nEl0, nH0 = element_to_h(d, scols, el)
+            S = sum(element_nuclei_in(scols[j], el)*d[:, j] for j in el_cols)
+            Hs = sum(H_NUC.get(scols[j], 0)*d[:, j] for j in el_cols)
             if uniform:
-                # The factor of each row that puts its El/H at the value.
-                # The rescaled columns hold S nuclei of the element and Hs
-                # hydrogen nuclei (HeH+ holds one of each), the others X of
-                # the element: (f S + X)/(nH - Hs + f Hs) = value.
-                nEl0, nH0 = element_to_h(d, scols, el)
-                S = sum(element_nuclei_in(scols[j], el)*d[:, j] for j in el_cols)
-                Hs = sum(H_NUC.get(scols[j], 0)*d[:, j] for j in el_cols)
-                den = S - val*Hs
-                if not np.all(den > 0.0):
+                # The factor of each row that puts its El/H at the value,
+                # the hydrogen-nucleus count of the row held (below):
+                # (f S + X)/nH0 = value.
+                if not np.all(S > 0.0):
                     refuse(f'--uniform {key}: a row cannot reach the value by its {el} columns')
-                fac = (val*(nH0 - Hs) - (nEl0 - S))/den
+                fac = (val*nH0 - (nEl0 - S))/S
                 if not np.all(fac > 0.0):
                     refuse(f'--uniform {key}: the other {el} carriers already exceed '
                            f'the value in some row')
@@ -822,6 +907,35 @@ def main():
                 d_rho += element_mass_weight(scols[j], el)*d[:, j]*(fac - 1.0)
                 d_part += element_particle_weight(scols[j], el)*d[:, j]*(fac - 1.0)
                 d[:, j] *= fac
+            # THE HYDROGEN-NUCLEUS COUNT OF EVERY ROW IS HELD. Multiplying
+            # HeH+ by the helium factor brings (fac - 1) Hs hydrogen nuclei
+            # with it; left in, they raise n_H of the row by that much and
+            # move every El/H of the row, He/H itself and each metal the call
+            # does not touch, by -(fac - 1) Hs/n_H (MEASURED on the LHS 1140 b
+            # He/H 3.997e4 state: HeH+/H 2.02e-6 at cell 1, so a carry to
+            # 6.99e4 put C/H 1.52e-6 and to 1e5 3.04e-6 off the value asked
+            # for). The added hydrogen is a bookkeeping artifact of the one
+            # factor, not hydrogen the new composition holds, so it is taken
+            # out of the species that hold only hydrogen, in proportion to
+            # their hydrogen nuclei, which keeps their ionization and
+            # molecular split. Every row then has El/H = fac x its source El/H
+            # exactly for the element carried and its source El/H for every
+            # other, whatever the order the elements are carried in.
+            if np.any(Hs > 0.0):
+                h_cols = [j for j, name in enumerate(scols) if name in H_ONLY_MASS]
+                P = sum(H_NUC[scols[j]]*d[:, j] for j in h_cols) if h_cols else 0.0*nH0
+                dH = (fac - 1.0)*Hs
+                g = 1.0 - dH/np.where(P > 0.0, P, 1.0)
+                if not np.all((P > 0.0) | (dH == 0.0)) or not np.all(g > 0.0):
+                    refuse(f'--reservoir {key}: the {el} species holding hydrogen nuclei '
+                           'cannot be multiplied by the factor while the hydrogen-nucleus '
+                           'count of the row is held: the species holding hydrogen alone '
+                           'do not carry the hydrogen it would take')
+                for j in h_cols:
+                    name = scols[j]
+                    d_rho += H_ONLY_MASS[name]*d[:, j]*(g - 1.0)
+                    d_part += H_ONLY_PARTICLES[name]*d[:, j]*(g - 1.0)
+                    d[:, j] *= g
             carried[key] = (el, old, val, fac)
         b[:, rho_cols[0]] = b[:, rho_cols[0]] + d_rho
         # The pressure is held and the temperature follows the particle count,
@@ -831,12 +945,12 @@ def main():
         if not np.all(n_src + d_part > 0.0):
             refuse('--reservoir: the rescaled particle count is not positive in every row')
         b[:, j_T_r[0]] = T_src*n_src/(n_src + d_part)
-        # The base rows come out at the new ratio, or the state carries a
-        # species holding nuclei of two elements at once and one factor cannot
-        # set both counts. For helium the base rows are the two inner ghosts
-        # and cell 1, where the element-diffusion operator holds its Dirichlet
-        # He/H; for a metal it is cell 1, the row load_IC.f90 forms its own
-        # renormalization factor at.
+        # The base rows come out at the new ratio within BASE_ROW_RATIO_TOL,
+        # or the state carries a species holding nuclei of two elements at
+        # once and one factor cannot set both counts. For helium the base
+        # rows are the two inner ghosts and cell 1, where the element-
+        # diffusion operator holds its Dirichlet He/H; for a metal it is
+        # cell 1, the row load_IC.f90 forms its own renormalization factor at.
         notes = []
         for key, (el, old, val, fac) in carried.items():
             nEl, nH = element_to_h(d, scols, el)
@@ -846,14 +960,16 @@ def main():
             else:
                 base, where = q[NGHOST:NGHOST + 1], 'first physical cell'
             dev = float(np.max(np.abs(base - val)))/val
-            if dev > 1e-12:
+            if dev > BASE_ROW_RATIO_TOL:
                 refuse(f'--reservoir {key}: the {where} come out at {key} {base.min():.6E} '
                        f'to {base.max():.6E} instead of {val:.6E} (relative departure '
-                       f'{dev:.2E}). A state carrying a species with nuclei of two elements '
-                       'at once is the case in point: HeH+ holds one helium and one hydrogen '
-                       'nucleus, and OH, H2O and CO hold oxygen and carbon, so multiplying '
-                       'the ionization stages alone does not move the element count by the '
-                       'factor asked for')
+                       f'{dev:.2E}, above the tolerance {BASE_ROW_RATIO_TOL:.0E}, which is '
+                       'heh_dev_tol of load_IC.f90, the bound within which the run accepts '
+                       'the loaded He/H). A state carrying a species with nuclei of two metal '
+                       'elements, or of a metal and hydrogen, is the case in point: OH and H2O '
+                       'hold oxygen and CO oxygen and carbon, and they are not multiplied with '
+                       'the ionization stages, so multiplying the stages alone does not move the '
+                       'element count by the factor asked for')
             phys = q[NGHOST:r_new.size - NGHOST]
             if uniform:
                 notes.append(f'the {el} was set to {key} {val:.6E} in every row (--uniform: '
@@ -873,6 +989,13 @@ def main():
         res_h = reservoir_line_at(hdr_h, res_new)
         res_s = reservoir_line_at(hdr_s, res_new)
 
+    held_note = ''
+    if n_held:
+        held_note = (f'; {n_held} physical row(s) between the base face and the first '
+                     f'physical center of the source take that cell\'s values (physical '
+                     f'cells are mapped from physical cells, never against the reservoir '
+                     f'ghost rows)')
+
     tgt_grid_line = ''
     for h in hdr_t:
         if h.startswith('# grid '):
@@ -889,7 +1012,7 @@ def main():
     for n, hdr, arr, p, res in (('Hydro_ioniz', hdr_h, b, src_file('Hydro_ioniz'), res_h),
                                 ('Ion_species', hdr_s, d, src_file('Ion_species'), res_s)):
         hdr = rewrite_coupling(hdr, tgt, p, shift, r_new.size, n_ghost_extrap,
-                               ext_note + res_note, tgt_grid_line, res)
+                               held_note + ext_note + res_note, tgt_grid_line, res)
         dst = os.path.join(out, n + ('_IC' if as_ic else '') + '.txt')
         with open(dst, 'w') as f:
             f.write('\n'.join(hdr) + '\n')

@@ -182,7 +182,7 @@
                                as_reject_injected,                      &
                                as_reject_carrier, as_reject_element,     &
                                as_reject_hydro_stage, as_reject_int_error, &
-                               as_reject_energy,                         &
+                               as_reject_energy, as_reject_conduction,   &
                                as_reject_source_fixed_point,             &
                                integration_error, err_class_name,        &
                                n_err_class, err_inner_fraction,          &
@@ -196,7 +196,8 @@
                                certification_report_write,               &
                                certification_entry_index,                &
                                certification_note_stationarity_claim,    &
-                               certification_stop_uncertified
+                               certification_stop_uncertified,           &
+                               certification_reports_side_by_side
       use stationary_operator, only: select_stationary_reconstruction,   &
                                stationary_face_mass_flux,                &
                                face_mass_flux_budget
@@ -204,7 +205,10 @@
                                     n_conduction_floor_hits,                &
                                     n_conduction_floor_cells,               &
                                     conduction_floor_first_step,            &
-                                    conduction_floor_last_step
+                                    conduction_floor_last_step,             &
+                                    CONDUCTION_OK, conduction_reason_text,  &
+                                    conduction_last_reason,                 &
+                                    conduction_last_cell
       use steady_newton, only: neq_newton, pack_U, unpack_U, newton_residual, &
                                eval_residual, frozen_residual,              &
                                build_banded_jac, band_matvec,               &
@@ -340,6 +344,10 @@
       logical               :: cert_first = .true.
       logical               :: cert_was_certified = .false.
       character(len=48)     :: cert_label
+      ! The run's certified pair, kept aside while a marching snapshot is
+      ! written with a pair of its own (the periodic write of the loop).
+      logical               :: cert_pair_kept
+      character(len=32)     :: cert_reason_kept, snapshot_reason
 
       ! P54/(AD) mass-flux time series (env EXHALE_P54_TS = step interval,
       ! 0 = off).  One line per sampled step: the Riemann FACE mass flux
@@ -839,6 +847,10 @@
       ! is what says whether such a skip returns the same fixed point.
       logical, dimension(:), allocatable :: csm_at_rest
       integer :: i_csm, csm_passes, csm_energy_status
+      ! Verdict of the Crank-Nicolson transport stage of the attempt
+      ! (viscous_conduction, CONDUCTION_*).
+      integer :: cond_stage_status
+      character(len=72) :: cond_reason_text
       integer :: csm_n_moving, csm_n_woke
       logical :: csm_ok
       real*8  :: csm_dT, csm_dcomp, csm_mass_resid, csm_uform_frac
@@ -2762,11 +2774,14 @@
             endif
 
             ! THE ENTHALPY THE CARRIER STEP MOVED, as the element step's
-            ! above: the carriers crossed the faces relative to the rest of
-            ! their elements and took their sensible enthalpy with them
-            ! (diffusive_photochemistry, carrier_enthalpy_face_flux), so the
-            ! thermal energy of every cell changes by dt div(q_car), formed
-            ! from the carrier fluxes of the composition the step returned.
+            ! above: the molecular carriers crossed the faces relative to
+            ! the rest of their elements, and the carried ionization stages
+            ! relative to their own element, and took their sensible
+            ! enthalpy with them (diffusive_photochemistry,
+            ! molecular_carrier_enthalpy_face_flux and
+            ! ionization_stage_enthalpy_face_flux), so the thermal energy of
+            ! every cell changes by dt div(q_car), formed from the carrier
+            ! fluxes of the composition the step returned.
             ! The step itself is backward Euler over substeps, so the fluxes
             ! of its end state times dt are the step's own to first order in
             ! dt, and exactly the flux of the stationary energy row at a
@@ -3285,12 +3300,26 @@
             ! down. No-op unless "Viscosity:"/"Conduction:" were given, so a
             ! run without those keys is byte-identical to the inviscid code.
             ! Serial: the tridiagonal solves recur along r.
+            ! A FAILED STAGE REFUSES THE ATTEMPT IN BOTH MODES, as a failed
+            ! energy update does: the stage returned no state (a solved
+            ! temperature below the floor, a non-finite value, a broken
+            ! elimination), so there is nothing to march on. The
+            ! controller restores the checkpoint and retakes the step at
+            ! half dt; the Crank-Nicolson overshoot that drives a cell below
+            ! the floor shrinks with the step (viscous_conduction.f90,
+            ! header section 5).
             if (transport_active()) then
                call U_to_W(u,W)
                rho = W(1,:);  v = W(2,:);  p = W(3,:)
                call comp_T_from_p(p,n_tot,ne,T)
                call viscous_conduction_step(u,W,T,n_tot+ne,f_sp,dt_loc,       &
-                                            marching_step)
+                                            marching_step,                    &
+                                            status=cond_stage_status)
+               if (cond_stage_status .ne. CONDUCTION_OK) then
+                  as_trial_reason = as_reject_conduction
+                  as_trial_op     = as_op_conduction
+                  exit trial
+               endif
                call Apply_BC(u)
             endif
 
@@ -3357,6 +3386,12 @@
                if (as_trial_reason .eq. as_reject_energy) then
                   as_verd%what   = 'the energy update found no'//          &
                                    ' temperature for at least one cell'
+               else if (as_trial_reason .eq. as_reject_conduction) then
+                  call conduction_reason_text(conduction_last_reason,      &
+                                              cond_reason_text)
+                  write(as_verd%what,'(A,A,I0)') 'transport stage: ',      &
+                       trim(cond_reason_text)//', cell ',                 &
+                       conduction_last_cell
                else
                   as_verd%what   = 'the temperature and the composition'// &
                                    ' were still moving at the pass cap'
@@ -4355,10 +4390,26 @@
                   call molecular_carrier_densities_from_state(rho,f_sp)
                   ! The residual gate above may have rebuilt the ghosts.
                   call boundary_gas_state_from_conserved
+                  ! A CERTIFICATE BELONGS TO THE STATE IT WAS MEASURED ON.
+                  ! The run's certified pair is the verdict of the last
+                  ! certification of the marching loop, made at a monitor
+                  ! step on the state of that step, and the state written
+                  ! here is a later one that nothing has measured. The
+                  ! snapshot is therefore written certified=F with a reason
+                  ! naming it, as the pass-state snapshot is
+                  ! (publish_pass_state_generation, write_output.f90), and
+                  ! the run's pair is put back after the write.
+                  cert_pair_kept   = state_is_certified
+                  cert_reason_kept = state_certification_reason
+                  write(snapshot_reason,'(A,I0)') 'marching_snapshot_s',     &
+                        marching_step
+                  call set_state_certified(.false., trim(snapshot_reason))
                   call write_output(rho,v,p,T,heat,cool,eta,             &
                                     nhi,nhii,nhei,nheii,nheiii,          &
                                     nheiTR,nm,'eq',                      &
                                     conserved_u=u, conserved_f=f_sp)
+                  call set_state_certified(cert_pair_kept,                   &
+                                           trim(cert_reason_kept))
                                    
             endif     
             
@@ -4736,38 +4787,40 @@
 
       ! ------------------------------------------------------!
 
-      subroutine stationary_claim_and_work_state_verdict
-      ! TWO ANSWERS, AND THEY ARE NOT THE SAME QUESTION.
+      subroutine stationary_claim_and_work_state_verdict(rep_stored,       &
+                                                         rep_swept)
+      ! THE ANSWERS OF A STATIONARY EVALUATION, AND WHICH STATE EACH IS OF.
       !
       !   (a) DOES THE FILE'S OWN STATIONARY CLAIM REPRODUCE?  A state file
-      !       written as certified states a stationary claim about itself,
-      !       as the pair (certified=, cert_reason=) of its '# coupling:'
-      !       header; the loader keeps that pair as ic_certified and
-      !       ic_cert_reason and never promotes it to a verdict of this run.
-      !       Re-measuring the state the file carries either confirms the
-      !       claim or refuses it.  A file that claimed nothing has no claim
-      !       to reproduce, and measuring it refuses nothing.
+      !       written as certified states a stationary claim about the pair
+      !       it stores, as the pair (certified=, cert_reason=) of its
+      !       '# coupling:' header; the loader keeps that pair as
+      !       ic_certified and ic_cert_reason.  The certification of the
+      !       STORED pair (rep_stored) answers it, and it is the verdict this
+      !       run records: the certified pair of the files it writes and the
+      !       exit status of the evaluation.  A file that claimed nothing has
+      !       no claim to reproduce, and measuring it refuses nothing.
       !
-      !   (b) DOES THE WORK STATE PASS ITS OWN EVALUATION?  That is the
-      !       verdict this run just made, and it is the pair written into
-      !       the state this run emits.
+      !   (b) WHAT DOES THE CERTIFICATION READ ONE COMPOSITION SWEEP LATER?
+      !       rep_swept, the work state's.  It is a measure of how
+      !       stationary the stored composition is under its own field,
+      !       REPORTED ONLY: it sets no header and no exit status, and on the
+      !       evaluate route the work state is not written.
       !
-      ! They are reported side by side because a passing work state must
-      ! never be read as a confirmation of a claim that did not reproduce:
-      ! the model can have moved under the file, and then (b) is about the
-      ! equations of THIS executable while (a) is about the ones the file
-      ! was written under.
+      ! A passing (b) is never a confirmation of a refused (a): the claim is
+      ! about the stored pair, and the sweep has moved the composition.
+      type(cert_report), intent(in) :: rep_stored, rep_swept
       write(*,'(A)') ' '
-      write(*,'(A)') ' (EXHALE_main) the two answers of this evaluation:'
+      write(*,'(A)') ' (EXHALE_main) the answers of this evaluation:'
       if (ic_certified) then
          write(*,'(A,A)') '   original claim of the file: certified=T'//    &
               ' cert_reason=', trim(ic_cert_reason)
-         if (state_is_certified) then
+         if (rep_stored%certified) then
             write(*,'(A)') '   original claim: REPRODUCED -- the'//         &
-                 ' evaluation of the state the file carries certifies it'
+                 ' certification of the stored pair certifies it'
          else
             write(*,'(A)') '   original claim: NOT REPRODUCED -- the'//     &
-                 ' evaluation of the state the file carries refuses it'
+                 ' certification of the stored pair refuses it'
          endif
       else
          write(*,'(A,A)') '   original claim of the file: certified=F'//    &
@@ -4775,20 +4828,27 @@
          write(*,'(A)') '   original claim: NONE MADE -- the file states'// &
               ' no stationary claim, so nothing is reproduced or refused'
       endif
-      ! The verdict and the PAIR WRITTEN are two statements and are printed
-      ! as two: a run that measures a state whose file claimed nothing
-      ! refuses nothing, so the written reason is 'no_stationary_claim'
-      ! however the entries came out, and the entries that refuse the work
-      ! state are named by the certification report above.
-      if (state_is_certified) then
-         write(*,'(A)') '   work state verdict: CERTIFIED -- every'//       &
+      if (rep_stored%certified) then
+         write(*,'(A)') '   stored pair verdict: CERTIFIED -- every'//      &
               ' active equation of the inventory is within its tolerance'
       else
-         write(*,'(A)') '   work state verdict: NOT CERTIFIED -- the'//     &
-              ' certification report above names the entries that refuse it'
+         write(*,'(A)') '   stored pair verdict: NOT CERTIFIED -- the'//    &
+              ' certification report of the stored pair names the entries'
       endif
-      write(*,'(A,A1,A,A)') '   the pair written into the state:'//         &
-           ' certified=', merge('T','F',state_is_certified),                &
+      if (rep_swept%certified) then
+         write(*,'(A)') '   after one composition sweep (reported only):'// &
+              ' CERTIFIED'
+      else
+         write(*,'(A)') '   after one composition sweep (reported only):'// &
+              ' NOT CERTIFIED -- its report above names the entries'
+      endif
+      ! The verdict and the PAIR RECORDED are two statements and are printed
+      ! as two: a run that measures a state whose file claimed nothing
+      ! refuses nothing, so the recorded reason is 'no_stationary_claim'
+      ! however the entries came out.
+      write(*,'(A,A1,A,A)') '   the pair this evaluation records (the'//    &
+           ' stored pair''s): certified=',                                 &
+           merge('T','F',state_is_certified),                              &
            ' cert_reason=', trim(state_certification_reason)
       end subroutine stationary_claim_and_work_state_verdict
 
@@ -5149,10 +5209,10 @@
       ! coefficients are defined, and it is not a reservoir: returning it in
       ! place of the solved temperature would put c_v (T_floor - T_solved) per
       ! volume into the state that no term of the equation supplied. So no
-      ! state is built there either, the counters below are ATTEMPTS, and in
-      ! production the run stops at the first of them; more than one can only
-      ! be reached by a test driver that suppresses the stop
-      ! (conduction_stop_on_failure). Silent for a run whose transport stage
+      ! state is built there either, and the counters below are ATTEMPTS:
+      ! each one refused its attempted step, which was retaken at half dt
+      ! (a run that exhausted its retry budget has stopped before this
+      ! report). Silent for a run whose transport stage
       ! stayed above the floor, and for every run without the
       ! "Viscosity:"/"Conduction:" keys, which never enters the stage.
       if (n_conduction_floor_hits .gt. 0) then
@@ -5781,6 +5841,94 @@
 
       ! ------------------------------------------------------!
 
+      subroutine sources_and_ghosts_of_the_held_composition(            &
+                 temperature_derived)
+      ! THE QUANTITIES DERIVED FROM A STATE (u, f_sp), REBUILT FROM THAT
+      ! STATE ALONE: the temperature from u through the caloric map of f_sp,
+      ! the heating and cooling of that composition in the field it
+      ! attenuates at that temperature, and the composition of the two lower
+      ! ghost cells, solved by the sweep and derived by the boundary.  One
+      ! sweep with the composition of the cells above the lower ghosts held
+      ! (ioniz_eq_sources_of_held_composition) builds the rates from the
+      ! held composition, contracts them with its densities and hands it
+      ! back bit for bit (asserted); every rate is then a function of that
+      ! composition and T (xuv_field_block_cells = 0,
+      ! xuv_self_field_passes = 1).
+      !
+      ! WHY ONE ROUTINE FOR EVERY CERTIFICATE.  The base continuity row is a
+      ! near-cancellation of two face fluxes at a Mach number of 1e-6, so it
+      ! reads the lower ghost with a gain of order 1/Mach: on the LHS 1140 b
+      ! Roche state (phase6/roche) the ghost a solve had left from its last
+      ! sweep, taken at the temperature of an earlier iterate, and the ghost
+      ! the reload solved at the state's own temperature differed by 1.8e-12
+      ! in temperature, and the cell-1 mass row read 3.101e-9 in the solve
+      ! and 3.514e-9 on the reload of the same bits, against the cell's
+      ! rounding anchor 3.3e-9 (MEASURED, md/Update_EXHALE_stage3.md section
+      ! 94).  A certificate taken on quantities that depend on the iteration
+      ! history is not a statement about the state written, so the stored-
+      ! pair evaluation, the joint test of every stationary pass and the
+      ! certification of the state to be written all rebuild them here.
+      ! .true. when the caller has just derived the primitive state and the
+      ! temperature from (u, f_sp) in the order below (the stored-pair
+      ! evaluation does, at its step (1)); the derivation is then not
+      ! repeated.
+      logical, intent(in) :: temperature_derived
+      real*8, dimension(1-Ng:N+Ng,n_species) :: f_sp_held
+      integer :: j_h, k_h, n_moved_held
+      ! The temperature of the state, from u through the caloric map of its
+      ! composition, with the boundary of that composition.
+      if (.not. temperature_derived) then
+         rho = u(1,:)
+         call get_species_densities(rho,f_sp,nhi,nhii,nhei,nheii,          &
+                                    nheiii,nheiTR,nm,ne,n_tot)
+         call Apply_BC(u)
+         call U_to_W(u,W)
+         rho = W(1,:);  v = W(2,:);  p = W(3,:)
+         call get_species_densities(rho,f_sp,nhi,nhii,nhei,nheii,          &
+                                    nheiii,nheiTR,nm,ne,n_tot)
+         call comp_T_from_p(p,n_tot,ne,T)
+      endif
+      f_sp_held = f_sp
+      if (xuv_self_field_passes .ne. 1)                                     &
+         write(*,'(A,I0,A)') '   NOTE: xuv_self_field_passes = ',           &
+              xuv_self_field_passes, '; the cell''s own depth in the'//     &
+              ' rates of the held composition is then the swept one''s'
+      if (use_excited_H) call excited_H_update(T,rho,f_sp,v,exc_rel)
+      call ioniz_eq_sources_of_held_composition(.true.)
+      call ioniz_eq(T,rho,f_sp,heat,cool,eta,last_sweep)
+      call ioniz_eq_sources_of_held_composition(.false.)
+      ! The invariant of the held sweep: the cells above the lower ghosts
+      ! come back with the bits they were handed.
+      n_moved_held = 0
+      do j_h = 1, N+Ng
+         do k_h = 1, n_species
+            if (f_sp(j_h,k_h) .ne. f_sp_held(j_h,k_h))                      &
+               n_moved_held = n_moved_held + 1
+         enddo
+      enddo
+      if (n_moved_held .gt. 0) then
+         write(*,'(A,I0,A)') ' (EXHALE_main) ERROR: the sweep that holds'// &
+              ' the composition moved ', n_moved_held,                      &
+              ' species fractions above the lower ghosts'
+         stop 1
+      endif
+      ! The quantities derived from the pair at the held conserved state:
+      ! the physical cells keep their bits, and the ghost pressure follows
+      ! the ghost composition the sweep solved. The boundary is derived from
+      ! that composition by the caller, where the residual is assembled.
+      rho = u(1,:)
+      call get_species_densities(rho,f_sp,nhi,nhii,nhei,nheii,             &
+                                 nheiii,nheiTR,nm,ne,n_tot)
+      call U_to_W(u,W)
+      rho = W(1,:);  v = W(2,:);  p = W(3,:)
+      call get_species_densities(rho,f_sp,nhi,nhii,nhei,nheii,             &
+                                 nheiii,nheiTR,nm,ne,n_tot)
+      call comp_T_from_p(p,n_tot,ne,T)
+      call molecular_carrier_densities_from_state(rho,f_sp)
+      end subroutine sources_and_ghosts_of_the_held_composition
+
+      ! ------------------------------------------------------!
+
       subroutine certify_the_state_to_be_written(stationary_claim, tag)
       ! THE CERTIFICATION OF THE STATE A STEADY ROUTE IS ABOUT TO WRITE, made
       ! on that state and nothing else: the claim the route makes, the
@@ -5797,6 +5945,11 @@
       logical,          intent(in) :: stationary_claim
       character(len=*), intent(in) :: tag
       call certification_note_stationarity_claim(stationary_claim)
+      ! The temperature, the sources and the lower ghost of the state to be
+      ! written, from that state alone: what a reload of the written pair
+      ! rebuilds, so the certificate written is the one a stored-pair
+      ! evaluation of the file measures.
+      call sources_and_ghosts_of_the_held_composition(.false.)
       if (.not. boundary_rebuild_suppressed()) call Apply_BC(u)
       ! The order of the Newton residual (steady_newton.f90): the particle
       ! counts and the caloric mixture are formed from the conserved state
@@ -5806,6 +5959,13 @@
                                  nheiii,nheiTR,nm,ne,n_tot)
       call report_base_face_state_consistency(tag, u)
       call assemble_residual(u, n_tot + ne, f_sp, heat, cool, Rres)
+      ! The same measurement records the stationary evaluation writes
+      ! (default off), so the certification of a written state and that of
+      ! its reload can be compared cell by cell.
+      call evaluation_state_dump('final_certification', u, f_sp, p, T)
+      call base_mass_rows_of_this_evaluation('final_certification', u,     &
+                                             Rres)
+      call ghost_record_of_this_evaluation('final_certification', u, Rres)
       call certification_evaluate(cert_context_stationary, u, Rres, f_sp,   &
                resid_th, n_cells_without_chemical_root(last_sweep%acc_n),   &
                .true., cert_now)
@@ -5866,32 +6026,46 @@
       ! state's; then the primitive variables and the temperature. That is
       ! the order rebuild_state_from_checkpoint uses, for the same reason.
       !
-      ! THE LOADED COMPOSITION IS NOT PUT ON ITS OWN FIXED POINT FIRST. The
-      ! residual contains one equilibrium sweep from the composition it is
-      ! given (eval_residual does exactly this), so the sweep below is part
-      ! of the residual's definition and not a change of the state. What
+      ! THE LOADED COMPOSITION IS NOT PUT ON ITS OWN FIXED POINT FIRST, AND
+      ! THE VERDICT IS TAKEN ON THE PAIR AS STORED. A file's stationary claim
+      ! is a claim about the pair it stores, so the certification that answers
+      ! it is made on that pair, with the sources of that composition (step
+      ! 2 below), before any sweep moves the composition. One composition
+      ! sweep from the stored pair is then taken and measured (step 3): how
+      ! far the composition moves, and what the certification entries read
+      ! after it. That measurement is REPORTED and gates nothing; it is the
+      ! start of the stationary solve on the solve route. What
       ! equilibrate_loaded_composition would do instead is iterate that
       ! sweep to a fixed point and rebuild the conserved state from the
       ! result, which moves u: a state whose composition is not the sweep's
       ! own fixed point is a FINDING about the file, reported here as the
-      ! particle-count change of the single sweep, and hiding it would make
-      ! the measurement answer for a state the file does not carry. It is
+      ! movement of the single sweep, and hiding it would make the
+      ! measurement answer for a state the file does not carry. It is
       ! available, and reported when taken, as the second word "equilibrate".
-      real*8, dimension(1-Ng:N+Ng) :: npart_entry
+      !
+      ! THE RULE OF THE PRODUCTS. "Restart intent: stationary evaluate"
+      ! writes the stored pair and nothing else, and every certificate a
+      ! written file carries is the one measured on the state written in it:
+      ! Hydro_ioniz.txt, Ion_species.txt, conserved_state.txt and the
+      ! channel breakdowns carry the stored pair and the stored pair's
+      ! certificate, the _adv pair is derived from the stored pair and carries
+      ! its certificate as provenance, and the exit status is the stored
+      ! pair's verdict. The swept composition is never written; its entries
+      ! are in the run log only.
       ! THE LOADED STATE, KEPT.  The conserved variables and the composition
       ! the two files carry.  Nothing below writes to them: they are what the
       ! file's own stationary claim is a claim about, and what every product
       ! of this route is labeled against.
       real*8, dimension(3,1-Ng:N+Ng)         :: u_loaded
       real*8, dimension(1-Ng:N+Ng,n_species) :: f_sp_loaded
-      real*8, dimension(1-Ng:N+Ng) :: p_loaded, T_loaded, T_at_held_p
-      ! The temperature the sweep was evaluated at, for the thermal part of
-      ! the work state's closure defect.
-      real*8, dimension(1-Ng:N+Ng) :: T_sweep
-      real*8  :: dnp, dp_fixed_u, dT_fixed_u, dT_closure, chem_closure
-      integer :: jj, info_jfnk, kk
-      ! r_f^2 (rho v)_f of the work state under the stationary operator.
+      real*8, dimension(1-Ng:N+Ng) :: p_loaded, T_loaded
+      integer :: jj, info_jfnk
+      real*8  :: dp_held, dT_held
+      ! r_f^2 (rho v)_f of the stored pair under the stationary operator.
       type(face_mass_flux_budget) :: face_budget
+      ! The two certifications of this route: the stored pair's, which is
+      ! the verdict, and the one after a composition sweep, reported only.
+      type(cert_report) :: cert_stored, cert_swept
 
       write(*,'(A)') ' (EXHALE_main) Restart intent: stationary -- the'//   &
            ' loaded state is measured as it stands; no CFL step is taken.'
@@ -5932,125 +6106,51 @@
       call evaluation_state_dump('loaded', u_loaded, f_sp_loaded,        &
                                  p_loaded, T_loaded)
 
-      npart_entry = n_tot + ne
-      T_sweep     = T
-      if (use_excited_H) call excited_H_update(T,rho,f_sp,v,exc_rel)
-      call ioniz_eq(T,rho,f_sp,heat,cool,eta,last_sweep)
-
-      ! (2) THE WORK STATE, AND WHAT IS HELD FIXED IN IT.  The conserved
-      ! density, momentum and total energy are the loaded state's, untouched;
-      ! the composition is the one the sweep returned, and the pressure and
-      ! the temperature are derived from THAT composition at THAT conserved
-      ! energy through the caloric equation of state.  It is the contract
-      ! pressure_and_temperature_at_fixed_conserved_state states for the
-      ! molecular relaxation, and it is the only one under which the
-      ! evaluation is an evaluation of the state the file carries: holding
-      ! the pressure instead and recomputing the temperature alone assigns
-      ! the refreshed composition a thermal energy that is not the file's,
-      ! which is a change of the conserved state and not a measurement of it.
-      ! The two rules coincide exactly wherever the mixture is atomic, where
-      ! the caloric map is (gamma_ad - 1) rho e and carries no composition.
-      call get_species_densities(rho,f_sp,nhi,nhii,nhei,nheii,             &
-                                 nheiii,nheiTR,nm,ne,n_tot)
-      do jj = 1-Ng, N+Ng
-         p(jj) = pressure_from_energy_density(jj, u(1,jj),                 &
-                    u(3,jj) - 0.5d0*u(2,jj)*u(2,jj)/u(1,jj))
-      enddo
-      call comp_T_from_p(p,n_tot,ne,T)
-      ! The temperature the discarded rule would have given, at the same
-      ! refreshed particle count: reported below so that the state says which
-      ! rule produced it and by how much the other one differs.
-      call comp_T_from_p(p_loaded,n_tot,ne,T_at_held_p)
-      call molecular_carrier_densities_from_state(rho,f_sp)
-
-      dp_fixed_u = 0.0d0
-      dT_fixed_u = 0.0d0
+      ! (2) THE STORED PAIR: ITS SOURCES AND ITS CERTIFICATION, WHICH IS THE
+      ! VERDICT OF THIS EVALUATION.
+      !
+      ! The residual's energy row needs the heating and the cooling, and the
+      ! sources of the stored pair are those OF THE STORED COMPOSITION in the
+      ! field THAT COMPOSITION attenuates, at the state's own temperature.
+      ! One sweep with the composition of the cells above the lower ghosts
+      ! held (ioniz_eq_sources_of_held_composition) builds the rates from the
+      ! stored composition, contracts them with the stored densities and
+      ! hands the composition back unchanged; the two lower ghosts, which no
+      ! file stores, are solved by that sweep and derived by the boundary as
+      ! on every route. The mass and momentum rows are functions of (u, f_sp)
+      ! alone and so read the stored pair's own rows.
+      !
+      ! WHY NOT AFTER A SWEEP. The cell solve stops at a relative step of
+      ! sqrt(machine epsilon), so a sweep from a stored composition moves it
+      ! by that order, and the mass row of the wind is a rounding-level
+      ! quantity judged against a rounding-anchored tolerance. MEASURED on the
+      ! LHS 1140 b He/H 3.0 state (md/Update_EXHALE_stage3.md section 88):
+      ! the solve certified its state with the mass row at cell 246 at
+      ! 3.686e-12 against 3.7e-12; a verdict taken after one sweep read
+      ! 3.936e-12 there and refused, and the swept state, written and
+      ! evaluated again, read 3.686e-12 and certified. A verdict taken after
+      ! the sweep is therefore not a function of the stored state.
+      call sources_and_ghosts_of_the_held_composition(.true.)
+      dp_held = 0.0d0
+      dT_held = 0.0d0
       do jj = 1, N
-         dp_fixed_u = max(dp_fixed_u, abs(p(jj) - p_loaded(jj))            &
-                                      /max(abs(p_loaded(jj)), 1.0d-99))
-         dT_fixed_u = max(dT_fixed_u, abs(T(jj) - T_at_held_p(jj))         &
-                                      /max(abs(T_at_held_p(jj)), 1.0d-99))
+         dp_held = max(dp_held, abs(p(jj) - p_loaded(jj)))
+         dT_held = max(dT_held, abs(T(jj) - T_loaded(jj)))
       enddo
-      write(*,'(A)') '   the work state: the conserved density, momentum'// &
-           ' and energy of the loaded state are held and p, T follow the'
-      write(*,'(A,ES10.3,A,ES10.3)') '     refreshed composition.'//        &
-           '  Against the rule that holds p instead: max |dp|/p =',         &
-           dp_fixed_u, ', max |dT|/T =', dT_fixed_u
-      if (.not. caloric_mixture_active)                                     &
-         write(*,'(A)') '     (the mixture is atomic on every cell, where'//&
-              ' the two rules are the same map)'
-
-      ! HOW FAR THE FILE'S COMPOSITION IS FROM THE SWEEP'S OWN ROOT AT THIS
-      ! (rho, T). At a state the sweep reproduces, this is the round-off of
-      ! the file's own digits; anything larger is a property of the state
-      ! that was written and is reported as such, never removed here.
-      dnp = 0.0d0
-      do jj = 1, N
-         dnp = max(dnp, abs((n_tot(jj) + ne(jj) - npart_entry(jj))          &
-                            /max(npart_entry(jj), 1.0d-99)))
-      enddo
-      write(*,'(A,ES10.3)') '   the loaded composition against the'//       &
-           ' sweep''s own root: max |d(n_tot+n_e)|/(n_tot+n_e) =', dnp
-
-      ! THE CLOSURE DEFECT OF THE WORK STATE.  One sweep is a single Picard
-      ! step of a nonlocal coupling and not a closed chemical and thermal
-      ! fixed point, so "refreshed" is not "closed" and the state says how
-      ! far from closed it is.  Two numbers, both formed already:
-      !   chemical -- the largest normalized reaction residual the sweep
-      !     accepted a cell state at, over the acceptance classes
-      !     (acc_resmax, the same ledger the certification reads its
-      !     rootless-cell count from), so it is the residual on the
-      !     composition the sweep RETURNED and not on the one it was given;
-      !   thermal  -- the sweep solved each cell at the temperature of the
-      !     loaded state, while the work state's temperature is the one the
-      !     returned composition has at the held conserved energy; the
-      !     fractional distance between the two is the thermal part of the
-      !     defect, and it vanishes only at a fixed point of the pair.
-      chem_closure = 0.0d0
-      do kk = 1, 6
-         chem_closure = max(chem_closure, last_sweep%acc_resmax(kk))
-      enddo
-      dT_closure = 0.0d0
-      do jj = 1, N
-         dT_closure = max(dT_closure, abs(T(jj) - T_sweep(jj))             &
-                                      /max(abs(T_sweep(jj)), 1.0d-99))
-      enddo
-      write(*,'(A)') '   the work state is one sweep from the loaded'//     &
-           ' composition and is NOT a closed fixed point; its defect:'
-      write(*,'(A,ES10.3,A,I0,A)') '     chemical: largest accepted'//      &
-           ' reaction residual =', chem_closure, ', cells without a'//      &
-           ' chemical root: ',                                             &
-           n_cells_without_chemical_root(last_sweep%acc_n), ''
-      write(*,'(A,ES10.3)') '     thermal: max |T_work - T_sweep|/T_sweep'//&
-           ' =', dT_closure
+      write(*,'(A,ES10.3,A,ES10.3)') '   the stored pair, its sources'//    &
+           ' rebuilt: max |p - p_loaded| =', dp_held,                       &
+           ', max |T - T_loaded| =', dT_held
+      write(*,'(A)') '     (code units, physical cells; zero is the'//      &
+           ' statement that nothing of the stored state moved)'
 
       resid_max = resid_th
       if (resid_max .le. 0.0d0) resid_max = 1.0d-5
 
-      ! ONE COMPOSITION, ONE BOUNDARY, ONE RESIDUAL.
-      !
-      ! The Apply_BC above ran before the sweep, because U_to_W needs a ghost
-      ! density to divide by and ioniz_eq needs a ghost pressure, so the ghost
-      ! conserved state it left and the base face state it cached in BC_Apply
-      ! carry the composition the state was LOADED with. The residual below
-      ! takes its sources, its pressure map and its sound speeds from the
-      ! composition the sweep RETURNED, and Rec_BC puts the cached face state
-      ! straight into the left slot of the base face. Under the caloric
-      ! equation of state those are two different gases, and a residual
-      ! assembled across them is the residual of neither.
-      !
-      ! The boundary is therefore derived once more, from the composition the
-      ! residual is assembled with. It is the same call the JFNK residual
-      ! makes for the same reason (steady_newton.f90, the second Apply_BC of
-      ! eval_residual) and the same order the marching loop has always had.
-      ! It costs nothing but the call: Apply_BC writes the ghosts and returns
-      ! the interior bit for bit unchanged.
-      !
-      ! MEASURED on the cell-1 continuity row of the loaded restarts, in
-      ! floors of that row's own rounding floor (gate ten): the hot-Uranus
-      ! molecular states of LHS 1140 b go from 15.98 to 9.06 (He/H 2.13),
-      ! 31.24 to 3.09 (He/H 9.7) and 19.04 to 0.08 (the L22 state), and the
-      ! atomic states of the same planet and grid do not move.
+      ! ONE COMPOSITION, ONE BOUNDARY, ONE RESIDUAL: the boundary derived
+      ! from the composition the residual is assembled with (the same call
+      ! the JFNK residual makes, steady_newton.f90, the second Apply_BC of
+      ! eval_residual). Apply_BC writes the ghosts and returns the interior
+      ! bit for bit unchanged.
       if (.not. boundary_rebuild_suppressed()) call Apply_BC(u)
       rho = u(1,:)
       call get_species_densities(rho,f_sp,nhi,nhii,nhei,nheii,             &
@@ -6066,35 +6166,33 @@
       call base_mass_rows_of_this_evaluation('C_residual_rows', u, Rres)
       call ghost_record_of_this_evaluation('C_residual_rows', u, Rres)
       call residual_norms(Rres, u, resid_c)
-      write(*,'(A)') '   stationary residual of the work state'//           &
-           ' (conserved variables as loaded, sources of the refreshed'//    &
-           ' composition; max over cells of |R|/scale):'
+      write(*,'(A)') '   stationary residual of the stored pair'//          &
+           ' (conserved variables and composition as loaded, sources of'//  &
+           ' that composition; max over cells of |R|/scale):'
       do jj = 1,3
          write(*,'(A,I2,4X,ES16.6)') '     k=', jj, resid_c(jj)
       enddo
       write(*,'(A,ES12.4)') '     ||R|| = max_k : ', maxval(resid_c)
       call write_residual_breakdown(Rres, u, heat, cool,                    &
-           'work state of the loaded restart (stationary intent)')
+           'the stored pair of the loaded restart (stationary intent)')
 
       ! THE CLAIM THIS EVALUATION ANSWERS IS THE FILE'S OWN. A state written
       ! as certified is a stationary claim about itself, and re-measuring it
       ! either confirms the claim or refuses it, which is what the exit
-      ! status says. A relaxation snapshot claimed
-      ! nothing, and measuring it refuses nothing.
+      ! status says. A relaxation snapshot claimed nothing, and measuring it
+      ! refuses nothing.
       call certification_note_stationarity_claim(ic_certified)
       call certification_evaluate(cert_context_stationary, u, Rres, f_sp,   &
                resid_th, n_cells_without_chemical_root(last_sweep%acc_n),   &
-               .true., cert_now)
+               .true., cert_stored)
       ! THE MASS FLUX THE SAME OPERATOR PUTS THROUGH EVERY FACE OF THE SAME
       ! STATE. On a stationary state r_f^2 (rho v)_f is the wind's own flux
       ! at every face; the budget is reported beside the hydrodynamic rows
       ! and gates nothing.
       call stationary_face_mass_flux(u, f_sp, face_budget)
-      call certification_report_write(cert_now,                             &
-           'work state of the loaded restart (Restart intent: stationary)', &
-           face_budget)
-
-      call stationary_claim_and_work_state_verdict
+      call certification_report_write(cert_stored,                          &
+           'the stored pair of the loaded restart (Restart intent:'//       &
+           ' stationary); the verdict', face_budget)
 
       if (stationary_evaluate_only) then
          ! The certification above measured the elemental flux windows
@@ -6102,17 +6200,19 @@
          ! written after it, before this route stops.
          call write_resolved_config
          ! WHAT THIS ROUTE WRITES, AND WHICH STATE EACH PRODUCT DESCRIBES.
-         ! The conserved variables are the file's own and no step and no
-         ! solve is taken, so what is written is a measurement of the state
+         ! The conserved variables and the composition are the file's own,
+         ! and no step, no solve and no composition sweep is taken before
+         ! the products, so what is written is a measurement of the state
          ! the file carries and not a continuation of it.
          !
-         !   Hydro_ioniz.txt, Ion_species.txt, the channel breakdowns and the
-         !     'certified=' pair of their header: the WORK state;
+         !   Hydro_ioniz.txt, Ion_species.txt, conserved_state.txt, the
+         !     channel breakdowns and the 'certified=' pair of their header:
+         !     the STORED pair, with its sources, and its own certificate;
          !   Hydro_ioniz_adv.txt, Ion_species_adv.txt: the composition the
-         !     post-process DERIVES from the work state, carrying the work
-         !     state's certificate as provenance and claiming nothing of its
+         !     post-process DERIVES from the stored pair, carrying the stored
+         !     pair's certificate as provenance and claiming nothing of its
          !     own (write_output, the 'ad' rows);
-         !   the mass-loss rate: 4 pi rho v r^2 of the work state.
+         !   the mass-loss rate: 4 pi rho v r^2 of the stored pair.
          call write_run_counter_report
          call element_census_reservoir('output (stationary evaluation)',    &
                                        rho, f_sp)
@@ -6129,34 +6229,31 @@
          call write_heat_breakdown_eq(T,rho,f_sp)
          if (use_excited_H) call write_excited_H
 
-         ! (3) THE ADVECTION-DERIVED COMPOSITION, from the work state and
-         ! from nothing else.  The post-process is a function of the state it
-         ! is handed, so it is handed the work state directly; the time
+         ! THE ADVECTION-DERIVED COMPOSITION, from the stored pair and from
+         ! nothing else.  The post-process is a function of the state it is
+         ! handed, so it is handed the stored pair directly; the time
          ! integration is not entered, and no step is taken to reach it.
-         call evaluation_state_dump('work_before_products', u, f_sp, p, T)
-         write(*,*) '(EXHALE_main.f90) Starting the post processing'//      &
+         call evaluation_state_dump('stored_before_products', u, f_sp, p, T)
+         write(*,*) '(EXHALE_main) Starting the post processing'//          &
               ' routine..'
          call post_process_adv(rho,v,p,T,heat,cool,eta,                     &
                                nhi,nhii,nhei,nheii,nheiii,nheiTR,nm,f_sp,   &
                                adv_state)
-         write(*,*) '(EXHALE_main.f90) Post processing routine done.'
+         write(*,*) '(EXHALE_main) Post processing routine done.'
          call adv_derived_state_report(adv_state, 'EXHALE_main')
          if (n_cells_he_singlet_clamped .gt. 0)                             &
             write(*,'(A,I0,A)')                                             &
                '     helium ground singlet: ',                              &
                n_cells_he_singlet_clamped,                                  &
                ' cell evaluation(s) floored at zero'
-         call evaluation_state_dump('work_after_products', u, f_sp, p, T)
-         call evaluation_state_dump('loaded_kept', u_loaded, f_sp_loaded,   &
-                                    p_loaded, T_loaded)
+         call evaluation_state_dump('stored_after_products', u, f_sp, p, T)
 
          call steady_mass_loss_rate
 
-         ! MEASUREMENT ONLY, default off, and LAST so that nothing a run
-         ! writes stands downstream of it: the residual re-assembled on the
+         ! MEASUREMENT ONLY, default off: the residual re-assembled on the
          ! SAME conserved array after the face-flux report has installed a
-         ! boundary of its own. The cached face state carries no validity, so
-         ! the rows below need not reproduce the rows above.
+         ! boundary of its own. The cached face state carries no validity,
+         ! so the rows below need not reproduce the rows above.
          if (boundary_trace_armed()) then
             call assemble_residual(u, n_tot + ne, f_sp, heat, cool, Rres)
             call base_mass_rows_of_this_evaluation(                        &
@@ -6165,18 +6262,32 @@
                  'evaluate_route_after_the_face_flux_report', u)
          endif
 
+         ! (3) ONE COMPOSITION SWEEP FROM THE STORED PAIR, MEASURED AND
+         ! REPORTED, after every product is written so that nothing written
+         ! stands downstream of it.
+         call composition_sweep_movement_of_the_stored_pair(u_loaded,      &
+                                         f_sp_loaded, p_loaded, cert_swept)
+         call certification_reports_side_by_side(cert_stored,              &
+              'the stored pair: the verdict, and the state written',       &
+              cert_swept, 'one composition sweep from it: reported only,'//&
+              ' not written')
+         call stationary_claim_and_work_state_verdict(cert_stored,         &
+                                                      cert_swept)
+         call evaluation_state_dump('loaded_kept', u_loaded, f_sp_loaded,   &
+                                    p_loaded, T_loaded)
+
          write(*,'(A)') ' (EXHALE_main) Restart intent: stationary'//       &
-              ' evaluate -- the loaded state was measured, the work'//      &
-              ' state and'
-         write(*,'(A)') '   the profiles derived from it were written,'//   &
-              ' and no step and no solve were taken.'
+              ' evaluate -- the stored pair was measured and written, with'
+         write(*,'(A)') '   the profiles derived from it; no step and no'// &
+              ' solve were taken, and the swept composition was measured only.'
          ! THE EXIT STATUS OF AN EVALUATION: 2 when the loaded state claimed
-         ! to be stationary and the certification refuses it (the input
-         ! product), 7 when the input is not refused but the derived product
-         ! is (a rejected column energy solve or a failed row of the _adv
-         ! files), 0 otherwise. The refusal of the input stands above that of
-         ! the product derived from it, so both refused exits 2; the record
-         ! of the derived product is in the _adv headers either way.
+         ! to be stationary and the certification of the stored pair refuses
+         ! it (the input product), 7 when the input is not refused but the
+         ! derived product is (a rejected column energy solve or a failed row
+         ! of the _adv files), 0 otherwise. The refusal of the input stands
+         ! above that of the product derived from it, so both refused exits
+         ! 2; the record of the derived product is in the _adv headers either
+         ! way. The certification after the sweep never sets the status.
          ! 7 is used by no other stop of this code (1 errors, 2 the
          ! certification refusal and the exhausted retry budget, 3 the
          ! measurement stop of the pass-state publication, 4 and 701/704 the
@@ -6195,6 +6306,14 @@
          stop
       endif
 
+      ! (3) THE WORK STATE THE SOLVE STARTS FROM: one composition sweep from
+      ! the stored pair, with its movement and its entries reported.
+      call composition_sweep_movement_of_the_stored_pair(u_loaded,         &
+                                      f_sp_loaded, p_loaded, cert_swept)
+      call certification_reports_side_by_side(cert_stored,                 &
+           'the stored pair: the answer to the file''s claim', cert_swept, &
+           'one composition sweep from it: the start of the solve')
+      call stationary_claim_and_work_state_verdict(cert_stored, cert_swept)
       ! THE SOLVE, ENTERED AT ONCE. dt here is not a step: eval_dt gives the
       ! CFL interval, which is the pseudo-time the continuation starts from
       ! (the direct steady route uses the same number for the same purpose).
@@ -6242,6 +6361,182 @@
       call certification_stop_uncertified
       stop
       end subroutine stationary_state_of_the_loaded_restart
+
+      ! ------------------------------------------------------!
+
+      subroutine composition_sweep_movement_of_the_stored_pair(u_stored,   &
+                                          f_stored, p_stored, cert_swept)
+      ! ONE COMPOSITION SWEEP FROM THE STORED PAIR: THE WORK STATE, HOW FAR
+      ! ITS COMPOSITION MOVED, AND WHAT THE CERTIFICATION READS ON IT.
+      ! REPORTED; IT NEVER SETS A VERDICT, A FILE HEADER OR AN EXIT STATUS.
+      !
+      ! The sweep is the one the residual of the stationary solve contains
+      ! (eval_residual): from the stored composition at the stored
+      ! temperature, the same secondary-ionization arming and excited
+      ! hydrogen refresh. It is entered at the loaded state as step 1 of
+      ! stationary_state_of_the_loaded_restart left it, lower ghosts
+      ! included (u_stored, f_stored), and not at the ghosts the held sweep
+      ! solved, so the work state is the one every earlier version of this
+      ! route measured, and the start of the stationary solve. The work state
+      ! holds the conserved density,
+      ! momentum and total energy of the stored pair, takes the composition
+      ! the sweep returned, and derives p and T from THAT composition at THAT
+      ! conserved energy through the caloric equation of state (the contract
+      ! pressure_and_temperature_at_fixed_conserved_state states for the
+      ! molecular relaxation). Holding p instead would assign the refreshed
+      ! composition a thermal energy that is not the file's; the two rules
+      ! coincide wherever the mixture is atomic.
+      !
+      ! What it measures is how stationary the stored COMPOSITION is under
+      ! its own field: a composition that is the sweep's fixed point does not
+      ! move, and one written by a solve moves by the cell solve's stopping
+      ! tolerance (a relative step of sqrt(machine epsilon)) and by the
+      ! thermal lag of the last sweep the solve took. The certification of
+      ! the work state is formed without recording anything
+      ! (record_verdict = .false.), and on the solve route the work state is
+      ! where the solve starts.
+      real*8, dimension(3,1-Ng:N+Ng),         intent(in) :: u_stored
+      real*8, dimension(1-Ng:N+Ng,n_species), intent(in) :: f_stored
+      real*8, dimension(1-Ng:N+Ng), intent(in) :: p_stored
+      type(cert_report), intent(out) :: cert_swept
+      real*8, dimension(1-Ng:N+Ng) :: npart_entry, T_sweep, T_at_held_p
+      real*8  :: dnp, dp_fixed_u, dT_fixed_u, dT_closure, chem_closure
+      real*8  :: df_rel, df_l1, dl1
+      integer :: jm, km, j_rel, k_rel, j_l1
+
+      write(*,'(A)') ' '
+      write(*,'(A)') ' (EXHALE_main) one composition sweep from the stored'//&
+           ' pair: reported, gates nothing'
+      ! The loaded state, as step 1 left it.
+      u    = u_stored
+      f_sp = f_stored
+      call U_to_W(u,W)
+      rho = W(1,:);  v = W(2,:);  p = W(3,:)
+      call get_species_densities(rho,f_sp,nhi,nhii,nhei,nheii,             &
+                                 nheiii,nheiTR,nm,ne,n_tot)
+      call comp_T_from_p(p,n_tot,ne,T)
+      npart_entry = n_tot + ne
+      T_sweep     = T
+      if (use_excited_H) call excited_H_update(T,rho,f_sp,v,exc_rel)
+      call ioniz_eq(T,rho,f_sp,heat,cool,eta,last_sweep)
+      call get_species_densities(rho,f_sp,nhi,nhii,nhei,nheii,             &
+                                 nheiii,nheiTR,nm,ne,n_tot)
+      do jm = 1-Ng, N+Ng
+         p(jm) = pressure_from_energy_density(jm, u(1,jm),                 &
+                    u(3,jm) - 0.5d0*u(2,jm)*u(2,jm)/u(1,jm))
+      enddo
+      call comp_T_from_p(p,n_tot,ne,T)
+      ! The temperature the discarded rule would have given, at the same
+      ! refreshed particle count.
+      call comp_T_from_p(p_stored,n_tot,ne,T_at_held_p)
+      call molecular_carrier_densities_from_state(rho,f_sp)
+
+      ! THE MOVEMENT OF THE COMPOSITION, in the physical cells. Two
+      ! measures: the largest relative change of a species carrying at least
+      ! 1e-12 of the cell's mass (smaller fractions sit at the solve's
+      ! absolute floor and a relative change of them says nothing), and the
+      ! largest summed absolute change of the mass fractions of a cell, which
+      ! weighs every species by the mass it carries.
+      df_rel = 0.0d0;  j_rel = 0;  k_rel = 0
+      df_l1  = 0.0d0;  j_l1  = 0
+      do jm = 1, N
+         dl1 = 0.0d0
+         do km = 1, n_species
+            dl1 = dl1 + abs(f_sp(jm,km) - f_stored(jm,km))
+            if (f_stored(jm,km) .ge. 1.0d-12) then
+               if (abs(f_sp(jm,km) - f_stored(jm,km))/f_stored(jm,km)       &
+                   .gt. df_rel) then
+                  df_rel = abs(f_sp(jm,km) - f_stored(jm,km))/f_stored(jm,km)
+                  j_rel  = jm
+                  k_rel  = km
+               endif
+            endif
+         enddo
+         if (dl1 .gt. df_l1) then
+            df_l1 = dl1
+            j_l1  = jm
+         endif
+      enddo
+      write(*,'(A,ES10.3,A,I0,A,I0,A)') '   composition movement: max'//    &
+           ' |df|/f (f >= 1e-12) =', df_rel, ' at cell ', j_rel,            &
+           ', f_sp column ', k_rel, ' (the Ion_species column order)'
+      write(*,'(A,ES10.3,A,I0)') '   composition movement: max over'//      &
+           ' cells of sum_k |df_k| =', df_l1, ' at cell ', j_l1
+
+      dp_fixed_u = 0.0d0
+      dT_fixed_u = 0.0d0
+      do jm = 1, N
+         dp_fixed_u = max(dp_fixed_u, abs(p(jm) - p_stored(jm))            &
+                                      /max(abs(p_stored(jm)), 1.0d-99))
+         dT_fixed_u = max(dT_fixed_u, abs(T(jm) - T_at_held_p(jm))         &
+                                      /max(abs(T_at_held_p(jm)), 1.0d-99))
+      enddo
+      write(*,'(A)') '   the work state: the conserved density, momentum'// &
+           ' and energy of the stored pair are held and p, T follow the'
+      write(*,'(A,ES10.3,A,ES10.3)') '     refreshed composition.'//        &
+           '  Against the rule that holds p instead: max |dp|/p =',         &
+           dp_fixed_u, ', max |dT|/T =', dT_fixed_u
+      if (.not. caloric_mixture_active)                                     &
+         write(*,'(A)') '     (the mixture is atomic on every cell, where'//&
+              ' the two rules are the same map)'
+
+      ! HOW FAR THE STORED COMPOSITION IS FROM THE SWEEP'S OWN ROOT AT THIS
+      ! (rho, T), in the particle count.
+      dnp = 0.0d0
+      do jm = 1, N
+         dnp = max(dnp, abs((n_tot(jm) + ne(jm) - npart_entry(jm))          &
+                            /max(npart_entry(jm), 1.0d-99)))
+      enddo
+      write(*,'(A,ES10.3)') '   the stored composition against the'//       &
+           ' sweep''s own root: max |d(n_tot+n_e)|/(n_tot+n_e) =', dnp
+
+      ! THE CLOSURE DEFECT OF THE WORK STATE.  One sweep is a single Picard
+      ! step of a nonlocal coupling and not a closed chemical and thermal
+      ! fixed point, so "refreshed" is not "closed":
+      !   chemical -- the largest normalized reaction residual the sweep
+      !     accepted a cell state at, over the acceptance classes
+      !     (acc_resmax, the ledger the certification reads its rootless-
+      !     cell count from);
+      !   thermal  -- the sweep solved each cell at the temperature of the
+      !     stored pair, while the work state's temperature is the one the
+      !     returned composition has at the held conserved energy.
+      chem_closure = 0.0d0
+      do km = 1, 6
+         chem_closure = max(chem_closure, last_sweep%acc_resmax(km))
+      enddo
+      dT_closure = 0.0d0
+      do jm = 1, N
+         dT_closure = max(dT_closure, abs(T(jm) - T_sweep(jm))             &
+                                      /max(abs(T_sweep(jm)), 1.0d-99))
+      enddo
+      write(*,'(A)') '   the work state is one sweep from the stored'//     &
+           ' composition and is NOT a closed fixed point; its defect:'
+      write(*,'(A,ES10.3,A,I0,A)') '     chemical: largest accepted'//      &
+           ' reaction residual =', chem_closure, ', cells without a'//      &
+           ' chemical root: ',                                             &
+           n_cells_without_chemical_root(last_sweep%acc_n), ''
+      write(*,'(A,ES10.3)') '     thermal: max |T_work - T_sweep|/T_sweep'//&
+           ' =', dT_closure
+
+      ! ONE COMPOSITION, ONE BOUNDARY, ONE RESIDUAL, as for the stored pair.
+      if (.not. boundary_rebuild_suppressed()) call Apply_BC(u)
+      rho = u(1,:)
+      call get_species_densities(rho,f_sp,nhi,nhii,nhei,nheii,             &
+                                 nheiii,nheiTR,nm,ne,n_tot)
+      call assemble_residual(u, n_tot + ne, f_sp, heat, cool, Rres)
+      call residual_norms(Rres, u, resid_c)
+      write(*,'(A)') '   stationary residual of the work state'//           &
+           ' (max over cells of |R|/scale):'
+      do jm = 1,3
+         write(*,'(A,I2,4X,ES16.6)') '     k=', jm, resid_c(jm)
+      enddo
+      call certification_evaluate(cert_context_stationary, u, Rres, f_sp,   &
+               resid_th, n_cells_without_chemical_root(last_sweep%acc_n),   &
+               .true., cert_swept, record_verdict = .false.)
+      call certification_report_write(cert_swept,                           &
+           'the work state one composition sweep from the stored pair'//    &
+           ' (REPORTED ONLY: not the verdict, not written)')
+      end subroutine composition_sweep_movement_of_the_stored_pair
 
       ! ------------------------------------------------------!
 
@@ -7207,12 +7502,26 @@
       logical :: element_update_ran, update_on_bound, bound_throttled
       logical :: pass_without_progress, hydro_failure_after_solved
       logical :: bound_step_harmed
+      ! WHERE THE UPDATE A SOLVE CONSUMED MOVED THE GAS, and whether the
+      ! cell that carries the joint distance is one of those places.
+      ! update_count_move(j) is |Delta(n_tot + n_e)|/(n_tot + n_e) of cell j
+      ! over the last carrier relaxation (the quantity its movement bound is
+      ! written on), update_count_move_max its largest value over the
+      ! column, and prog_cell the cell at which the joint distance
+      ! prog_worst is read (0 where no entry names one).  A rise of the
+      ! joint distance is attributed to a bound-limited step only where
+      ! the step moved the gas at that cell (the rule at bound_step_harmed).
+      real*8, allocatable :: update_count_move(:)
+      real*8  :: update_count_move_max
+      integer :: prog_cell
+      logical :: rise_at_moved_cell
       ! HOW FAR A RELATIVE MEASURE MAY RISE ON A THROTTLED PASS AND STILL
       ! COUNT AS FLAT. A pass whose carrier update the bound limited is read
       ! as throttled, and the bound lengthened, only while the joint
       ! distance stays below this factor times its previous value; a larger
-      ! rise on a solved wind says the step itself made the state worse, and
-      ! the bound is halved instead. MEASURED: the throttled He++ measure of
+      ! rise on a solved wind, at a cell the update moved at the scale of
+      ! its step (rise_at_moved_cell), says the step itself made the state
+      ! worse, and the bound is halved instead. MEASURED: the throttled He++ measure of
       ! the LHS 1140 b He/H = 1.8 transported-stage state moved by +1.4
       ! percent over its flat stretch (2.17e-2 to 2.20e-2); the H2 row at the
       ! outer cells of the molecular He/H = 0.083 continuation rose by 20
@@ -7406,6 +7715,11 @@
       carrier_outcome       = carrier_relax_nothing_to_advance
       element_update_ran    = .false.
       hydro_info_prev       = 0
+      if (allocated(update_count_move)) deallocate(update_count_move)
+      allocate(update_count_move(1:N))
+      update_count_move     = 0.0d0
+      update_count_move_max = 0.0d0
+      prog_cell             = 0
 
       block_now       = carrier_in_newton
       handed_over     = .false.
@@ -7574,7 +7888,11 @@
          ! derived from the composition the sweep above returned, which is
          ! the composition this residual and every row measured on it are
          ! taken at. The statement is at the evaluate route's assembly
-         ! (stationary_state_of_the_loaded_restart).
+         ! (stationary_state_of_the_loaded_restart). The temperature, the
+         ! sources and the lower ghost are rebuilt from the state itself
+         ! first (sources_and_ghosts_of_the_held_composition), so that the
+         ! state this test accepts is certified as its reload will be.
+         call sources_and_ghosts_of_the_held_composition(.false.)
          if (.not. boundary_rebuild_suppressed()) call Apply_BC(u)
          rho = u(1,:)
          call get_species_densities(rho,f_sp,nhi,nhii,nhei,nheii,          &
@@ -7610,11 +7928,13 @@
          n_unjudged = 0
          unjudged_name = 'none';  unjudged_why = ''
          prog_worst = 0.0d0
+         prog_cell  = 0
          hydro_worst_dist = 0.0d0
          do icert = 1, cert_now%n
             if (cert_now%e(icert)%status .eq. cert_unavailable) then
                n_unjudged = n_unjudged + 1
                prog_worst = huge(1.0d0)
+               prog_cell  = 0
                if (n_unjudged .eq. 1) then
                   unjudged_name = cert_now%e(icert)%name
                   unjudged_why  = cert_now%e(icert)%reason
@@ -7625,6 +7945,7 @@
             if (.not. cert_now%e(icert)%finite) then
                rows_finite = .false.
                prog_worst  = huge(1.0d0)
+               prog_cell   = 0
             endif
             if (cert_now%e(icert)%regime_gated) then
                row_here  = cert_now%e(icert)%row_max_gate
@@ -7645,6 +7966,7 @@
             else
                dist_here = row_here/cert_now%e(icert)%tol
             endif
+            if (dist_here .gt. prog_worst) prog_cell = cell_here
             prog_worst = max(prog_worst, dist_here)
             ! The largest distance a HYDRODYNAMIC row of this state stands
             ! at, in the same units as prog_worst, so the progress control
@@ -7802,15 +8124,18 @@
          ! of the measure, and the bound is lengthened (below) as long as it
          ! can still grow. At its largest value, or with the bound held, or
          ! when the solve that consumed the update failed, or when the joint
-         ! distance rose by more than throttled_flat_band (the step then
-         ! made the state worse, which a throttle does not), the pass is
-         ! judged by the two measures as any other.
+         ! distance rose by more than throttled_flat_band at a cell the
+         ! update moved (the step then made the state worse, which a
+         ! throttle does not), the pass is judged by the two measures as
+         ! any other.
          !
          ! THE STEP LENGTHS OF THE COMPOSITION HALF ANSWER TO THE SOLVE
          ! THAT CONSUMES THE UPDATE. The movement bound doubles, up to
          ! carrier_trust_max, after a converged solve (info = 0) that
          ! consumed an update the bound had limited, unless the joint
-         ! distance rose past throttled_flat_band, when it is halved; it is
+         ! distance rose past throttled_flat_band at a cell the update
+         ! moved at the scale of its step (rise_at_moved_cell), when it is
+         ! halved; it is
          ! halved after the first failed solve following a converged one,
          ! when the update it consumed ended on the bound. The failure does
          ! not lower the largest value the bound may grow back to: the size
@@ -7845,9 +8170,52 @@
                  transported_rows_exist() .and. .not. block_now
             hydro_failure_after_solved = (hydro_info .ne. 0) .and.         &
                  (hydro_info_prev .eq. 0) .and. (it_diff .gt. 1)
+            ! A RISE IS HARM OF THE STEP ONLY WHERE THE STEP MOVED THE GAS.
+            ! The update the bound limited is a composition move at the
+            ! cells the bound held back; the wind solve that consumed it
+            ! responds everywhere, and at a cell whose own composition the
+            ! update hardly moved a row then reads the frozen-composition
+            ! response of that cell to a wind changed elsewhere.  Where that
+            ! row is a near-cancelling fast balance (high Damkohler number)
+            ! the response is amplified by the ratio of the gross rates to
+            ! the transport term, and the next relaxation, which is not
+            ! bound-limited at that cell, removes it.  Such a rise measures
+            ! the size of the step, not harm done by it; halving the bound
+            ! on it and doubling it on the fall that follows is a limit
+            ! cycle of this control that keeps the bound-limited cells from
+            ! ever reaching their fixed point.  MEASURED on LHS 1140 b,
+            ! molecular photochemical He/H 2.09 with conduction, ionization
+            ! transport switched on (.P2/ew_fit/phase3/iontrans_diag): every
+            ! relaxation ended on the bound at 5.7-13.8 R_p, the joint
+            ! distance sat on the H2 row at 1.20-1.33 R_p, the bound
+            ! alternated 1e-2 ... 4e-2 for twelve passes and the run was
+            ! refused, while the same equations with the bound held at 0.32
+            ! certified in 24 passes.  At each of the five halvings the
+            ! update had moved the particle count of the joint-distance cell
+            ! by 0.002 to 0.17 of its largest move in the column.  So a rise
+            ! counts as harm only where the cell that carries the joint
+            ! distance is one the update moved at the scale of the step: by
+            ! at least half its largest relative move of n_tot + n_e (the
+            ! quantity the bound is written on).  Where no entry names a
+            ! cell, or no move was recorded, the rise counts as before.
+            rise_at_moved_cell = .true.
+            if (prog_cell .ge. 1 .and. prog_cell .le. N .and.              &
+                update_count_move_max .gt. 0.0d0)                          &
+               rise_at_moved_cell = update_count_move(prog_cell) .ge.      &
+                                    0.5d0*update_count_move_max
             bound_step_harmed = update_on_bound .and.                     &
                  (hydro_info .eq. 0) .and. (.not. carrier_trust_held) .and.&
-                 (prog_worst/throttled_flat_band .gt. prog_worst_prev)
+                 (prog_worst/throttled_flat_band .gt. prog_worst_prev)     &
+                 .and. rise_at_moved_cell
+            if (update_on_bound .and. (hydro_info .eq. 0) .and.            &
+                (.not. carrier_trust_held) .and.                           &
+                (prog_worst/throttled_flat_band .gt. prog_worst_prev)      &
+                .and. (.not. rise_at_moved_cell))                          &
+               write(*,'(A,I0,A,ES9.2,A,ES9.2,A)') '    -> the joint'//    &
+                    ' distance rose at cell ', prog_cell, ', which the'//  &
+                    ' update moved by', update_count_move(prog_cell),     &
+                    ' against its largest move', update_count_move_max,  &
+                    ': the wind''s response there, not harm of the step'
             bound_throttled = update_on_bound .and. (hydro_info .eq. 0)    &
                  .and. (.not. carrier_trust_held) .and.                   &
                  (trust_pass .lt. carrier_trust_max) .and.                &
@@ -8006,8 +8374,10 @@
               ' pass'
          ! The ending of the relaxation of THIS pass, so that a pass in
          ! which no relaxation runs cannot be read as one that ended on
-         ! the movement bound.
+         ! the movement bound, nor as one that moved any cell.
          carrier_outcome     = carrier_relax_nothing_to_advance
+         update_count_move     = 0.0d0
+         update_count_move_max = 0.0d0
          ! WHETHER A CARRIER RELAXATION RAN ON THIS PASS AT ALL. The pass
          ! that ends the iteration reaches no update, so on it the token
          ! above is the reset value and not an ending; only a pass in
@@ -8110,6 +8480,13 @@
                ! forms the same pressure by the same equation of state,
                ! so the conserved variables the next solve consumes and
                ! the primitive state beside them describe one gas.
+               ! The particle count of every cell at the entry of the
+               ! relaxation, held in update_count_move until the relaxation
+               ! returns and turned there into the relative move of each
+               ! cell, which the progress control of the next pass reads.
+               call get_species_densities(u(1,:),f_sp,nhi,nhii,nhei,nheii,&
+                                          nheiii,nheiTR,nm,ne,n_tot)
+               update_count_move = n_tot(1:N) + ne(1:N)
                call relax_photochemical_composition(u,v,f_sp,p,T,         &
                                               heat,cool,eta,              &
                                               trust_pass,                 &
@@ -8120,6 +8497,13 @@
                call get_species_densities(rho,f_sp,nhi,nhii,nhei,nheii,   &
                                           nheiii,nheiTR,nm,ne,n_tot)
                call comp_T_from_p(p,n_tot,ne,T)
+               where (update_count_move .gt. 0.0d0)
+                  update_count_move = abs((n_tot(1:N) + ne(1:N))          &
+                                          /update_count_move - 1.0d0)
+               elsewhere
+                  update_count_move = 0.0d0
+               end where
+               update_count_move_max = maxval(update_count_move)
                kd = max(kd, kc)
                carrier_steps_last = kc
                carrier_relaxation_ran = .true.

@@ -1,8 +1,9 @@
 	module System_implicit_adv_HeH_TR
 	! Advection-corrected ionization system for H, He and the He 2^3S
 	! metastable: one step of the backward differentiation formula for
-	! v dx/dr = R(x) in the fractions, taken by post_process_adv (the step
-	! is stated at the adv_rates type of ion_cell_state).
+	! v_el dx/dr = R(x) in the fractions, each element's rows on the
+	! velocity of its own nuclei, taken by post_process_adv (the step is
+	! stated at the adv_rates type of ion_cell_state).
 	!
 	! Unknowns (all fractions; He fractions per He nucleus):
 	!   x(1) = n_HI    /n_H
@@ -53,7 +54,7 @@
 	real*8  :: xheii,xheiii
 	real*8  :: xheiTR, xheiS
 	real*8  :: xe
-	real*8  :: c1
+	real*8  :: c1, c1_he
 	real*8  :: n_h
 	real*8  :: ahii,aheii,aheiii,aheiTR
 	real*8  :: ionhi,ionhei,ionheii,ionheiTR
@@ -62,7 +63,8 @@
    real*8  :: A31,q13,q31g,q31a,q31b,Q31
 	
 	! Coefficients of the system
- 	c1         = adv_cell%c1    ! = g*h_j/v_j, the rate weight of the step
+ 	c1         = adv_cell%c1    ! = g*h_j/v_H, the rate weight of the H row
+ 	c1_he      = adv_cell%c1_he ! = g*h_j/v_He, the rate weight of the He rows
  	xhi_hist    = adv_cell%xhi_hist    ! history of n_HI/n_H
  	xheiS_hist  = adv_cell%xheiS_hist   ! history of n_He(1^1S)/n_He (ground singlet)
  	xheiii_hist = adv_cell%xheiii_hist    ! history of n_HeIII/n_He
@@ -129,20 +131,20 @@
   	! the He(2^3S)+H0 ionizing collisions Q31, whose Penning branch leaves
   	! He(1^1S)+H+ + e- and whose associative branch makes HeH+ that
   	! dissociatively recombines back to ground-state He (see ion_residual_core).
-  	fvec(2) =  xheiS_hist - xheiS + c1*(                     &
+  	fvec(2) =  xheiS_hist - xheiS + c1_he*(                  &
   		       xheii*aheii*xe*n_h                            &
   		     - xheiS*(ghei + (ionhei + q13)*xe*n_h)          &
   		     + xheiTR*((q31g + q31a + q31b)*xe*n_h           &
   		               + A31 + xhi*Q31*n_h))
   	 	      	 	    
-  	fvec(3) =  xheiii_hist - xheiii + c1*(	    &
+  	fvec(3) =  xheiii_hist - xheiii + c1_he*(  &
   	           (gheii + ionheii*xe*n_h)*xheii  & 
   	          - aheiii*xheiii*xe*n_h) 
   	           
 	! - xheiTR*ionheiTR*xe*n_h: electron-impact ionization of He(2^3S) removes
 	! the triplet (He(2^3S)+e- -> He+ + 2e-). The Q31 sink below takes the
 	! TOTAL He(2^3S)+H ionization rate: Penning and associative both quench.
-	fvec(4) =    xheiTR_hist - xheiTR + c1*(   &
+	fvec(4) =    xheiTR_hist - xheiTR + c1_he*(   &
 		     - gheiTR*xheiTR				         &
 		     + (xheii*aheiTR + xheiS*q13    	&
 		     -  xheiTR*(q31g + q31a + q31b))*xe*n_h	&
@@ -164,7 +166,7 @@
 	! Row 2 is the ground-singlet balance, so the singlet loss the pair
 	! reports is charged to the row that owns the singlet, exactly as the
 	! equilibrium systems charge it.
-	call he_h_cx_fvec_adv(fvec, c1, xhi, xhii, xheiS, xheii, xheiii,       &
+	call he_h_cx_fvec_adv(fvec, c1, c1_he, xhi, xhii, xheiS, xheii, xheiii,       &
 	                      heh_loc, n_h, adv_cell%kcx_He0_Hp,              &
 	                      adv_cell%kcx_Hep_H0, adv_cell%kcx_Hepp_H0)
 

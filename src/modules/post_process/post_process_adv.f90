@@ -60,7 +60,9 @@
 	                              thermal_conduction_coeffs,              &
 	                              conduction_base_level_T
 	use binary_element_diffusion, only: interdiffusion_enthalpy_active,   &
-	                              interdiffusion_enthalpy_divergence_of_state
+	                              interdiffusion_enthalpy_divergence_of_state, &
+	                              helium_diffusive_face_flux,             &
+	                              element_mass_fractions, mixture_mass_sum
 
 	implicit none
 
@@ -468,6 +470,16 @@
 	! just before the ionization loop, where the three conditions are stated).
 	logical, dimension(1-Ng:N+Ng) :: adv_correction_valid
 	real*8  :: t_cross        ! residence time of the gas in the cell [s]
+	real*8  :: t_cross_He     ! the same for the helium nuclei [s]
+	real*8  :: nu_relax_He    ! slowest relaxation rate of the helium rows
+	! THE VELOCITY OF EACH ELEMENT'S NUCLEI [code units], v_el = v + w_el
+	! (see where they are formed): the hydrogen row of the advection
+	! systems is stepped on v_nuc_H, the helium rows on v_nuc_He.
+	real*8, dimension(1-Ng:N+Ng) :: v_nuc_H, v_nuc_He
+	real*8, dimension(0:N) :: J_he_face
+	real*8, dimension(1-Ng:N+Ng,1+n_melem) :: Y_elem
+	real*8, dimension(1-Ng:N+Ng) :: msum_pp
+	real*8  :: J_he_cell, rho_cgs_cell
 	real*8  :: nu_relax       ! relaxation rate of the slowest species [1/s]
 	real*8  :: rec_HeII_tot   ! total He II -> He I recombination coefficient
 	real*8  :: Da_slowest     ! Damkohler number of that species
@@ -662,6 +674,56 @@
    Neq_mpp = 3 + 2*n_melem
    lwa_mpp = (Neq_mpp*(3*Neq_mpp + 13))/2
 
+   ! THE VELOCITY OF EACH ELEMENT'S NUCLEI. The fractions the advection
+   ! systems step are fractions of the nuclei of ONE element, and with
+   ! He_diffusion those nuclei do not move with the mass-weighted velocity
+   ! v: helium drifts against the rest of the gas with the diffusive mass
+   ! flux J (gradient, eddy and settling; helium_diffusive_face_flux, the
+   ! flux the element row of the run is the divergence of), so
+   !
+   !    v_He = v + J/(rho Y) ,   v_H = v - J/(rho (1 - Y)) ,
+   !
+   ! Y the helium mass fraction and component 1 (hydrogen with the metals
+   ! and the heavy nuclei of the molecules) carrying -J. With the element
+   ! continuity div(n_el v_el) = 0 of a steady state, the stage balance
+   ! div(x n_el v_el) = S of ionization_stage_transport.f90 (its
+   ! equation (1) without the stage eddy term) is v_el dx/dr = S/n_el,
+   ! which is the step the advection systems take with c1 = g h_j/v_el.
+   ! Stepping every element on v instead gives each the residence time of
+   ! the mixture: MEASURED on the LHS 1140 b He/H 2.09 reference
+   ! (Update_EXHALE_stage3 section 82), v_He/v = 0.82-0.97 and
+   ! v_H/v = 2.1-1.08 at 1.3-4 R_p, and the He+ fraction, frozen in beyond
+   ! 2 R_p, came out 3.5 % low and H+ 6 % high against the transported
+   ! stages of the solution.
+   ! J is a face flux; the cell value is the mean of the two faces, and
+   ! faces 0 and N carry none (the operator's own boundary: the element
+   ! crosses either end only with the gas). Ghost cells keep v.
+   !
+   ! NOT CARRIED: the stage's own eddy term -n_el K dx/dr of (1), which is
+   ! second order in r and has no place in a marching step. Its size
+   ! against the advective stage flux, K |dln x/dr|/v_el, MEASURED on the
+   ! same state (K = 1e9 cm^2 s^-1): He+ 0.035 at 1.3 R_p, 0.005 at
+   ! 1.5 R_p, below 0.001 beyond 1.75 R_p; H+ 0.007 and 0.001 there. The
+   ! step is therefore valid where v_el >> K |dln x/dr|, which holds over
+   ! the corrected rows of that state; a run with a larger K or a slower
+   ! wind has to be checked against it.
+   v_nuc_H  = v
+   v_nuc_He = v
+   if (thereis_He .and. he_diffusion) then
+      call helium_diffusive_face_flux(rho, T_in, f_sp_in, J_he_face)
+      call element_mass_fractions(f_sp_in, Y_elem)
+      call mixture_mass_sum(f_sp_in, msum_pp)
+      do j = 1, N
+         J_he_cell    = 0.5d0*(J_he_face(j-1) + J_he_face(j))
+         rho_cgs_cell = rho(j)*n0*mu*msum_pp(j)
+         if (Y_elem(j,1) .gt. 0.0d0)                                    &
+            v_nuc_He(j) = v(j) + J_he_cell/(rho_cgs_cell*Y_elem(j,1))/v0
+         if (Y_elem(j,1) .lt. 1.0d0)                                    &
+            v_nuc_H(j)  = v(j) - J_he_cell/                              &
+                          (rho_cgs_cell*(1.0d0 - Y_elem(j,1)))/v0
+      enddo
+   endif
+
    !----------------------------------!
 	
 	! Preliminary profiles extraction
@@ -827,10 +889,14 @@
 
    ! Calculate the photoionization rates
 
+	! nh2_solved: the solved state's H2 decides the molecular gate of the
+	! low-energy photoelectron partition (low_energy_electron_partition),
+	! as it does in the equilibrium solve; this gas carries no H2 itself.
 	if (thereis_He) then
 		call PH_heat_HHe(nhi,nhei,nheii,nheiTR, nm_w, xion,     &
 					 P_HI,P_HeI,P_HeII,P_HeITR, P_m,        &
-					 dum_v1,dum_v2, P_m2=P_m2)
+					 dum_v1,dum_v2, P_m2=P_m2,              &
+					 nh2_solved=nmol_eq(:,1))
   	else
 	  	call PH_heat_H(nhi, xion, P_HI,dum_v1,dum_v2)
   	endif
@@ -867,7 +933,8 @@
 		                     A31, q31a, q31b,                              &
 		                     rchiiB_hrc, rcheiiB_hrc, rcheiiiB_hrc,        &
 		                     dP_HI_hrc, dP_HeI_hrc, dP_H2_hrc, dP_m_hrc,   &
-		                     dheat_hrc, dP_m2=dP_m2_hrc)
+		                     dheat_hrc, dP_m2=dP_m2_hrc, xion=xion,        &
+		                     nh2_solved=nmol_eq(:,1))
 		rchiiB = rchiiB_hrc
 		if (use_he_rec_coupling .and. thereis_He) then
 			rcheiiB  = rcheiiB_hrc
@@ -1190,12 +1257,14 @@
 	! conditions make that replacement carry no information; where any of them
 	! holds the cell keeps the converged equilibrium ionization instead.
 	!
-	!  (i)   Inflow, v <= 0 in the cell or the one below it -- PHYSICAL. The
-	!        step takes the upstream state from the cells below, which are not
-	!        upstream when the gas moves inward (the breathing base). The
-	!        residence time h/v is then negative as well.
+	!  (i)   Inflow, v <= 0 in the cell or the one below it, or the same for
+	!        the nuclei of hydrogen or helium (v_nuc_H, v_nuc_He) -- PHYSICAL.
+	!        The step takes the upstream state from the cells below, which are
+	!        not upstream when the gas (or one element) moves inward (the
+	!        breathing base, or helium settling faster than the wind lifts
+	!        it). The residence time h/v is then negative as well.
 	!
-	!  (ii)  Da = (dr/v)*nu_relax > Da_local_equilibrium -- PHYSICAL. The
+	!  (ii)  Da = (dr/v_el)*nu_relax > Da_local_equilibrium -- PHYSICAL. The
 	!        Damkohler number compares the time the gas spends in the cell with
 	!        the relaxation time of the level populations. Da >> 1 means the
 	!        populations relax to local equilibrium many times over while the
@@ -1215,6 +1284,10 @@
 	!        (the He(2^3S) row is exactly the loss side of fvec(4) of
 	!        adv_implicit_HeH_TR, with the same rate coefficients from
 	!        HeITR_coeffs / eval_cool -- no rate is redefined here.)
+	!
+	!        Each element's rates are taken with the residence time of that
+	!        element's nuclei, h/v_H for the hydrogen row and h/v_He for the
+	!        helium rows, the times their steps use.
 	!
 	!        Taking the minimum is what makes the gate a statement about the
 	!        cell rather than about one species: the systems solve the whole
@@ -1265,14 +1338,20 @@
 	n_adv_eq = 0
 	n_stationarity_only = 0
 	do j = 2-Ng,N+Ng
-		if (v(j) <= 0.0d0 .or. v(j-1) <= 0.0d0) then
+		if (v(j) <= 0.0d0 .or. v(j-1) <= 0.0d0 .or.                       &
+		    v_nuc_H(j) <= 0.0d0 .or. v_nuc_H(j-1) <= 0.0d0 .or.           &
+		    v_nuc_He(j) <= 0.0d0 .or. v_nuc_He(j-1) <= 0.0d0) then
+			! The gas, or the nuclei of one element, enter the cell from
+			! above: the outward step has no upstream state.
 			adv_correction_valid(j) = .false.
 		else
-			! The residence time of the gas in the cell, h_j/v_j: the
-			! velocity of the cell the rates are evaluated in, as in the step
-			! (bdf2_step_ratio_limit).
-			t_cross  = (r(j) - r(j-1))*R0/(v(j)*v0)
+			! The residence time of the nuclei of each element in the cell,
+			! h_j/v_el: the velocity of the cell the rates are evaluated in,
+			! as in the step (bdf2_step_ratio_limit).
+			t_cross    = (r(j) - r(j-1))*R0/(v_nuc_H(j)*v0)
+			t_cross_He = (r(j) - r(j-1))*R0/(v_nuc_He(j)*v0)
 			nu_relax = P_HI(j) + (a_ion_HI(j) + rchiiB(j))*ne(j)
+			Da_slowest = t_cross*nu_relax
 			if (thereis_He) then
 				! He II -> He I recombination: with the triplet on, rcheiiB is
 				! the singlet channel alone (HeITR_coeffs overwrites it) and
@@ -1280,15 +1359,15 @@
 				! residuals adds them.
 				rec_HeII_tot = rcheiiB(j)
 				if (thereis_HeITR) rec_HeII_tot = rec_HeII_tot + rcheiTR(j)
-				nu_relax = min(nu_relax,                                    &
+				nu_relax_He = min(                                          &
 				     P_HeI(j)  + (a_ion_HeI(j)  + rec_HeII_tot)*ne(j),      &
 				     P_HeII(j) + (a_ion_HeII(j) + rcheiiiB(j) )*ne(j))
 				if (thereis_HeITR)                                          &
-					nu_relax = min(nu_relax, A31 + P_HeITR(j)                &
+					nu_relax_He = min(nu_relax_He, A31 + P_HeITR(j)          &
 					     + (q31g(j) + q31a(j) + q31b(j) + a_ion_HeITR(j))*ne(j) &
 					     + Q31(j)*nhi(j))
+				Da_slowest = min(Da_slowest, t_cross_He*nu_relax_He)
 			endif
-			Da_slowest = t_cross*nu_relax
 			xHII_eq = nhii_in(j)/max(nhi_in(j) + nhii_in(j), 1.0d-300)
 			if (Da_slowest > Da_local_equilibrium .or.                     &
 			    xHII_eq < xHII_adv_min)                                    &
@@ -2236,7 +2315,8 @@
 		                 heat_of_one_HeII = h1_HeII_pp,             &
 		                 heat_of_one_HeTR = h1_HeTR_pp,             &
 		                 heat_of_one_H2   = h1_H2_pp,               &
-		                 heat_of_one_mion = h1_m_pp)
+		                 heat_of_one_mion = h1_m_pp,                &
+		                 nh2_solved = nmol_eq(:,1))
   	else
 	  	call PH_heat_H(nhi, xion, dum_v1,dum_v6,dum_v2,             &
 	  	               heat_of_one_HI = h1_HI_pp)
@@ -2262,7 +2342,8 @@
 	         h1_HI_pp,h1_HeI_pp,h1_HeII_pp,h1_HeTR_pp,h1_H2_pp,h1_m_pp,   &
 	         A31,q31a,q31b,Q31,                                           &
 	         k_lw_pp, p_lw_pp, k_co_pp, j_fuv_pp, j_fuv_pp,               &
-	         .false., .false., heat_out, heat_chan_pp)
+	         .false., .false., heat_out, heat_chan_pp,                    &
+	         nh2_solved=nmol_eq(:,1))
 
 	! Adimensionalize
 	heat_out = heat_out/q0
@@ -2305,14 +2386,17 @@
 	end function specific_internal_energy
 
 	! ONE STEP OF THE IONIZATION RECURSION INTO CELL jc: the history of the
-	! step and its rate weight c1 = (g) h_j/v_j, then the cell's advection
-	! system solved from the fractions of the last pass. The rates of the
-	! cell are loaded by the caller; the result is left in sys_x and info.
+	! step and its rate weights c1 = (g) h_j/v_H and c1_he = (g) h_j/v_He,
+	! each element's rows on the velocity of its own nuclei, then the
+	! cell's advection system solved from the fractions of the last pass.
+	! The rates of the cell are loaded by the caller; the result is left in
+	! sys_x and info.
 	subroutine composition_step(jc, bdf2)
 	integer, intent(in) :: jc
 	logical, intent(in) :: bdf2
 
-	adv_cell%c1       = step_width(jc, bdf2)*R0/(v(jc)*v0)
+	adv_cell%c1       = step_width(jc, bdf2)*R0/(v_nuc_H(jc)*v0)
+	adv_cell%c1_he    = step_width(jc, bdf2)*R0/(v_nuc_He(jc)*v0)
 	adv_cell%xhi_hist = history_of_fraction(nhi, nh, jc, bdf2)
 	sys_x(1) = nhi(jc)/nh(jc)
 	if (.not. thereis_He) then

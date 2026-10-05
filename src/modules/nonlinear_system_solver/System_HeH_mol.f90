@@ -92,12 +92,13 @@
 	                        ith_H, ith_H2, ith_O, ith_OH, ith_H2O,        &
 	                        n_fuv_band, qy_H2O_OH_H, qy_H2O_H2_O1D,       &
 	                        qy_H2O_O_H_H, rk_D1_Hep_CO
-	use ion_residual_core, only: tr_triplet_row,                        &
+	use ion_residual_core, only: tr_triplet_row, tr_triplet_row_channels, &
 	                            impose_transported_ionization_fractions, &
 	                            n_stage_chan, n_stage_state_mol,         &
 	                            stage_chan_ncell, stage_chan_asked,      &
 	                            stage_channels_watch, stage_channels_append
-	use ion_cell_state, only: ieq_cell
+	use ion_cell_state, only: ieq_cell, h2_fraction_of_reservoir,         &
+	                          ionized_hydrogen_nuclei_fraction
 	use charge_exchange, only: he_h_cx_fvec
 	use Cooling_Coefficients, only: ioniz_HeI23S_H2,      &
 	                               f_penning_HeI23S
@@ -163,50 +164,103 @@
 	real*8, save :: ok1, ok1r, ok2, ok2r, ok6
 	real*8, save :: oj3, oj4, oj5, oj7
 
-	! Reciprocal turnover scale of each balance row.  A row of this system is
-	! a production-loss balance in cm^-3 s^-1; its turnover scale is the rate
-	! at which the species it balances can be produced or destroyed in this
-	! cell.  Every row is multiplied by the reciprocal below before hybrd1
-	! sees it, so the residual the solver works on is the RELATIVE imbalance
-	! of each species balance rather than an absolute reaction rate.
+	! THE NORMALIZATION OF THE BALANCE ROWS.  A row of this system is a
+	! production-loss balance P - L in cm^-3 s^-1 of one species.  Before
+	! hybrd1 sees it, every row is divided by the CHEMICAL TURNOVER OF ITS
+	! ELEMENT at a composition x0,
+	!     r_i = (P_i - L_i)/G_E(x0),   G_E = sum over the rows of element E
+	!                                        of (P_j + L_j),
+	! the gross rates P + L being the sums of the magnitudes of each row's
+	! own terms (mol_heh_rows, oxygen_carrier_rows, metal_rows,
+	! cx_add_to_fvec and he_h_cx_fvec return them beside the rows;
+	! element_turnover_reciprocal groups them: hydrogen is H+, H2, H2+,
+	! H3+ and HeH+, helium He+, He++ and He 2^3S, each metal its two stage
+	! rows, oxygen with OH and H2O).  x0 is the starting point of each
+	! solve, and the scale is held through it (mol_row_scale below); a
+	! candidate is judged with x0 = the candidate itself
+	! (normalized_reaction_residual, set_element_turnover_scales of
+	! System_HeH_mol_metals).  r_i is then the imbalance of the nucleus flux
+	! into one species against the flux of all the chemistry of its
+	! element, which is what the acceptance tolerance of 1e-6 is stated in.
+	! A positive scaling of a row has the same zeros, so this changes the
+	! path to a root and the measure of a root, not the root.
 	!
-	! Why the system needs it.  The magnitude of a row is set by the element
-	! that carries it: the helium rows (2, 3, 8) run as n_He times a rate and
-	! the hydrogen and molecular rows (1, 4-7) as n_H times a rate, with a
-	! second density inside every bilinear term.  At He/H = 10^3 the two
-	! blocks of one residual vector therefore differ by about 10^6.  MINPACK's
-	! hybrd1 scales the variables (its internal diag) but never the rows: the
-	! dogleg step minimizes ||J dx + f||_2, in which a block 10^6 below the
-	! other carries no weight, so the unknowns that block determines -- the
-	! molecular fractions -- are left wherever the helium block puts them.
-	! That is the route by which a converged root leaves the physical simplex
-	! and has to be clamped onto the element budget.  A positive diagonal
-	! scaling of the residual has exactly the same zeros, so this changes the
-	! path to the root and not the root.
+	! Why the system needs one.  The magnitude of a row is set by the
+	! element that carries it: the helium rows run as n_He times a rate and
+	! the hydrogen and molecular rows as n_H times a rate, with a second
+	! density inside every bilinear term.  MINPACK's hybrd1 scales the
+	! variables (its internal diag) but never the rows: the dogleg step
+	! minimizes ||J dx + f||_2, in which a row far below the others carries
+	! no weight, so the unknowns it determines are left wherever the other
+	! rows put them.
 	!
-	! What the scale is.  The sum of the magnitudes the terms of the row reach
-	! when every species is set to the whole of its element: each rate
-	! coefficient of the row times the reference densities n_H, n_He, n_e and
-	! n_tot of the cell.  It is an upper bound on the row, strictly positive
-	! whenever the row carries any reaction, and constant across the cell's
-	! solve -- so the scaled residual is the same smooth function of x that
-	! the finite-difference Jacobian of hybrd1 assumes.  Rows 9.. (the metal
-	! block of System_HeH_mol_metals) are filled by that module; rows left
-	! unset keep the 1 that set_mol_turnover_rates writes over the whole
-	! array, which leaves them untouched.  The array carries no declaration
-	! initializer on purpose: it is threadprivate, where an initializer
-	! reaches the master thread only, and every entry is written per cell by
-	! set_mol_turnover_rates before any residual reads it.
+	! WHY THE TURNOVER OF THE STATE AND NOT A BOUND.  The scale was the
+	! upper bound the row's terms reach with every species at the whole of
+	! its element.  Where a trace ion of one element reacts with another
+	! element, that bound places the ion at the whole element and exceeds
+	! the turnover by the inverse of the ion's fraction.  The H+ row carries
+	! He+ + H2 -> H+ + H + He (R17) and He(2^3S) + H -> He + H+ + e (Q31)
+	! with He+ and He(2^3S) at all of the helium: in the LHS 1140 b He/H 2e4
+	! base ghost that bound was 3.9e12 cm^-3 s^-1 against a gross H+ rate of
+	! 1.3e3 at the root (MEASURED, md/Update_EXHALE_stage3.md section 105),
+	! so the H+ row reached the solve and the acceptance test with 3e-10 of
+	! its weight: the Jacobian singular value along H+ was 1e-10, Newton
+	! steps from one perturbation off the root asked for 12 per cent moves
+	! of H+, ten per cent of H+ off the root moved the row by 2.7e-11, and
+	! the tolerance admitted an H+ imbalance of 3e3 times its gross rate.
+	! The He+, H2+, H3+ and HeH+ rows carry the same construction.
 	!
-	! set_mol_turnover_rates below MIRRORS mol_heh_rows term by term.  A
-	! reaction added to a row must be added to its scale as well; a missing
-	! term only makes the scale a weaker bound, it cannot make the root wrong.
+	! WHY THE ELEMENT AND NOT THE ROW'S OWN GROSS RATE.  Divided by its own
+	! P + L, a row asks for the balance of a species of 1e-22 of its element
+	! (H3+ in the outer wind) to one part in 1e6 of that species, which
+	! neither matters to the gas nor is resolved by a solve whose unknowns
+	! are fractions of order one: measured on the same run, 350 cells were
+	! left without a root, the wind cells with hybrd1 stopped (info 1) at
+	! H2+, H3+ and HeH+ rows of 1e-6 - 5e-1.  Against the turnover of the
+	! element the error of a trace species counts in the units that
+	! matter, the nucleus flux it misplaces, and the H+ row of the ghost
+	! keeps its full weight.
+	!
+	! mol_inv_turnover below is the reciprocal of the bound, kept for the
+	! rows that carry no reaction at the evaluated state (gross rate exactly
+	! zero: an absent element's identity row x = 0, the pinned X++ of a
+	! two-stage element), which are multiplied by it as before (it is 1 for
+	! the identity rows).  set_mol_turnover_rates MIRRORS mol_heh_rows term
+	! by term.  The array carries no declaration initializer on purpose: it
+	! is threadprivate, where an initializer reaches the master thread only,
+	! and every entry is written per cell by set_mol_turnover_rates before
+	! any residual reads it.
 	! >= largest N_eq: 7 molecular + 1 triplet + 2 per metal element (10).
 	integer, parameter :: n_mol_rows_max = 40
 	real*8, save :: mol_inv_turnover(n_mol_rows_max)
+	! THE ROWS AS VOLUME RATES. Set by a caller that needs dn/dt itself
+	! (measure_molecular_decay_rates of ionization_equilibrium, which forms
+	! the rate matrix) for the duration of its evaluations: the systems then
+	! return P - L [cm^-3 s^-1] without the normalization above. False in
+	! every solve.
+	logical, save :: mol_rows_as_volume_rates = .false.
+	! THE SCALE A SOLVE WORKS WITH. mol_row_scale(i) = 1/G_E of row i at
+	! the composition the scale was taken at (element_turnover_reciprocal;
+	! the cell sweep takes it at each starting point, and at each candidate
+	! it judges), and it is HELD while hybrd1 runs: a scale that followed
+	! the iterate would make every row bounded, |r_i| <= 1, and leave the
+	! solve no gradient back from an iterate far outside the simplex
+	! (MEASURED on the mol_metals regression gate from its cold start: the
+	! initial composition sweep left 214 of its cells without a root, with
+	! attempts out to fractions of 2e5, and the ghost fixed point failed;
+	! with the scale held, none). With mol_rows_by_element_turnover false
+	! the rows are multiplied by mol_inv_turnover, which
+	! set_mol_turnover_rates restores for every caller that does not take a
+	! scale of its own. mol_row_gross holds the gross rate of every row of
+	! the last evaluation, which is what the scale is taken from.
+	logical, save :: mol_rows_by_element_turnover = .false.
+	real*8,  save :: mol_row_scale(n_mol_rows_max)
+	real*8,  save :: mol_row_gross(n_mol_rows_max)
 	!$omp threadprivate(mk5,mk6,mk7,mk8,mk9,mk10,mk11,mk12,mk13,mk14,mk15, &
 	!$omp                mk16,mk17,mk18,mk19,mk_h2p_he,mk23,mk_ion_H2,     &
-	!$omp                mk_third_body_resolved,                           &
+	!$omp                mk_third_body_resolved, mol_rows_as_volume_rates, &
+	!$omp                mol_rows_by_element_turnover, mol_row_scale,      &
+	!$omp                mol_row_gross,                                    &
 	!$omp                ok1,ok1r,ok2,ok2r,ok6,oj3,oj4,oj5,oj7,            &
 	!$omp                mol_inv_turnover)
 
@@ -386,6 +440,8 @@
 	do i = 1,nrow
 		if (s(i) .gt. 0.0d0) mol_inv_turnover(i) = 1.0d0/s(i)
 	enddo
+	! A new cell: no element-turnover scale has been taken for it yet.
+	mol_rows_by_element_turnover = .false.
 
 	end subroutine set_mol_turnover_rates
 
@@ -517,7 +573,7 @@
 	subroutine oxygen_carrier_rows(fvec, iox, n_hi, n_h2, n_oh, n_h2o,    &
 	                               n_o0, pj3, pj4, pj5, pj7,               &
 	                               p_OH, l_OH, p_H2O, l_H2O,               &
-	                               p_H2_oxy, l_H2_oxy)
+	                               p_H2_oxy, l_H2_oxy, gross)
 	real*8 :: fvec(*)
 	integer, intent(in) :: iox
 	real*8, intent(in)  :: n_hi, n_h2, n_oh, n_h2o, n_o0
@@ -527,6 +583,9 @@
 	! l_H2_oxy are what the oxygen cycle adds to the H2 row.
 	real*8, optional, intent(out) :: p_OH, l_OH, p_H2O, l_H2O
 	real*8, optional, intent(out) :: p_H2_oxy, l_H2_oxy
+	! The gross rates of the two carrier rows, and the oxygen cycle's
+	! exchange added to that of the H2 row (mol_heh_rows), as in fvec.
+	real*8, optional, intent(inout) :: gross(*)
 	real*8 :: prod_oh, loss_oh_o1, loss_oh_o2r, loss_oh_j7
 	real*8 :: prod_h2o, loss_h2o_o1r, loss_h2o_j
 	real*8 :: prod_h2_oxy, loss_h2_oxy
@@ -559,8 +618,80 @@
 	        + prod_h2_oxy
 	if (present(p_H2_oxy)) p_H2_oxy = prod_h2_oxy
 	if (present(l_H2_oxy)) l_H2_oxy = loss_h2_oxy
+	if (present(gross)) then
+		gross(iox)   = abs(prod_oh) + abs(loss_oh_o1) + abs(loss_oh_o2r)   &
+		             + abs(loss_oh_j7)
+		gross(iox+1) = abs(prod_h2o) + abs(loss_h2o_o1r) + abs(loss_h2o_j)
+		gross(4)     = gross(4) + abs(loss_h2_oxy) + abs(prod_h2_oxy)
+	endif
 
 	end subroutine oxygen_carrier_rows
+
+	!----------------------------------!
+
+	! THE RECIPROCAL CHEMICAL TURNOVER OF THE ELEMENT OF EVERY ROW, from the
+	! gross rates of the rows at one composition (the normalization stated
+	! at mol_inv_turnover): inv(i) = 1/G_E, G_E the sum of the gross rates
+	! P + L of every row whose species carries element E -- hydrogen: H+,
+	! H2, H2+, H3+, HeH+ (rows 1, 4-7); helium: He+, He++, He 2^3S (rows 2,
+	! 3, 8); each metal its two stage rows, oxygen together with OH and H2O.
+	! A row that carries no reaction at all (gross rate zero: an absent
+	! element's identity row x = 0, the pinned X++ of a two-stage element),
+	! or of an element with no turnover, keeps fallback, the reciprocal
+	! bound (1 for an identity row).
+	!   mbase    first metal row (n + 1 where the system has none)
+	!   nmetal   metal elements in canonical order from mbase, two rows each
+	!   io_metal first metal row of oxygen, iox the OH row (0: none)
+	subroutine element_turnover_reciprocal(n, gross, fallback, mbase,     &
+	                                       nmetal, io_metal, iox, inv)
+	integer, intent(in)  :: n, mbase, nmetal, io_metal, iox
+	real*8,  intent(in)  :: gross(n), fallback(n)
+	real*8,  intent(out) :: inv(n)
+	integer :: i, e, blk(n)
+	real*8  :: g_elem(2+nmetal)
+	! Element of each row: 1 hydrogen, 2 helium, 2+e metal e.
+	blk(:) = 1
+	if (n .ge. 2) blk(2) = 2
+	if (n .ge. 3) blk(3) = 2
+	if (thereis_HeITR .and. n .ge. 8) blk(8) = 2
+	do e = 1, nmetal
+		i = mbase + 2*(e-1)
+		if (i .le. n)   blk(i)   = 2 + e
+		if (i+1 .le. n) blk(i+1) = 2 + e
+	enddo
+	if (iox .gt. 0 .and. io_metal .gt. 0 .and. iox+1 .le. n) then
+		blk(iox)   = blk(io_metal)
+		blk(iox+1) = blk(io_metal)
+	endif
+	g_elem(:) = 0.0d0
+	do i = 1, n
+		g_elem(blk(i)) = g_elem(blk(i)) + gross(i)
+	enddo
+	do i = 1, n
+		if (gross(i) .gt. 0.0d0 .and. g_elem(blk(i)) .gt. 0.0d0) then
+			inv(i) = 1.0d0/g_elem(blk(i))
+		else
+			inv(i) = fallback(i)
+		endif
+	enddo
+	end subroutine element_turnover_reciprocal
+
+	! The scale of the rows of one evaluation: the held element-turnover
+	! scale where one has been taken for this cell, the bound otherwise,
+	! none in the volume-rate mode. The gross rates are kept for the next
+	! scale to be taken from.
+	subroutine scale_molecular_rows(n, fvec, gross)
+	integer, intent(in)    :: n
+	real*8,  intent(inout) :: fvec(n)
+	real*8,  intent(in)    :: gross(n)
+	mol_row_gross(1:n) = gross(1:n)
+	if (mol_rows_as_volume_rates) return
+	if (mol_rows_by_element_turnover) then
+		fvec(1:n) = fvec(1:n)*mol_row_scale(1:n)
+	else
+		fvec(1:n) = fvec(1:n)*mol_inv_turnover(1:n)
+	endif
+	end subroutine scale_molecular_rows
 
 	! O(1D) number density [cm^-3] from its local steady state, for the
 	! diagnostic output only: production oj4*n_H2O against the single sink
@@ -590,6 +721,8 @@
 	real*8  :: n_h,n_he,n_e,T,ntot
 	real*8  :: n_hi,n_hii,n_h2,n_h2p,n_h3p,n_hehp
 	real*8  :: n_hei,n_heii,n_heiii,n_heiTR,n_heiSI
+	! Gross rate of every row at x (scale_molecular_rows).
+	real*8  :: gross(Neq)
 
 	g_hi    = ieq_cell%P_HI
 	g_hei   = ieq_cell%P_HeI
@@ -639,13 +772,14 @@
 	! Electron density (each molecular ion carries +1)
 	n_e = n_hii + n_h2p + n_h3p + n_hehp + n_heii + 2.0d0*n_heiii
 
+	gross(1:Neq) = 0.0d0
 	call mol_heh_rows(fvec, n_hi, n_hii, n_h2, n_h2p, n_h3p, n_hehp,   &
 	                  n_heiSI, n_heiTR, n_heii, n_heiii, n_e, ntot,     &
 	                  g_hi, g_hei, g_heii, g_heiTR, g_h2, g_h2_di,      &
 	                  g_h2_dd, g_h2_nd, g_lw,                           &
 	                  a_hii, a_heii, a_heiii, a_heiTR,                  &
 	                  b_hi, b_hei, b_heii, b_heiTR,                     &
-	                  q13, q31g, q31a, q31b, Q31, A31)
+	                  q13, q31g, q31a, q31b, Q31, A31, gross=gross)
 
 	! He <-> H charge exchange (Huang Table 4 group B, and He2+ + H0). Row
 	! 1 (H+ balance) and row 2 (He+ balance) are both written production
@@ -655,19 +789,27 @@
 	call he_h_cx_fvec(fvec, ieq_cell%kcx_He0_Hp, ieq_cell%kcx_Hep_H0,   &
 	                  ieq_cell%kcx_Hepp_H0,                             &
 	                  n_hi, n_hii, n_heiSI, n_heii, n_heiii, 1.0d0,      &
-	                  .true.)
+	                  .true., gross=gross)
 
-	! Each row divided by its own turnover rate (set_mol_turnover_rates), so
-	! the helium and molecular blocks reach hybrd1 with the same weight.
-	fvec(1:Neq) = fvec(1:Neq)*mol_inv_turnover(1:Neq)
+	! Each row against the chemical turnover of its element, so the helium,
+	! hydrogen and molecular rows reach hybrd1 with the same weight
+	! (mol_inv_turnover and mol_row_scale above).
+	call scale_molecular_rows(Neq, fvec, gross)
 
 	! Where the H2 partition is imposed rather than solved -- transported
 	! carriers, or the lower-boundary reservoir composition -- this row is
 	! handed the answer (see the same block in System_HeH_mol_metals, which
 	! is the system the oxygen chemistry actually reaches -- oxygen is a
 	! metal element, so a run without metals is refused). Applied after the
-	! turnover scaling so the row is exactly x - x_fix.
+	! normalization so the row is exactly x - x_fix.
 	if (ieq_cell%x_h2_fixed) fvec(4) = x(4) - ieq_cell%x_h2_fix
+	! The lower-boundary reservoir states the H2 partition of the
+	! NON-IONIZED hydrogen, and x_ion is an unknown of this same solve
+	! (ion_cell_state, x_h2_neutral_partition_fixed).
+	if (ieq_cell%x_h2_neutral_partition_fixed)                            &
+		fvec(4) = x(4) - h2_fraction_of_reservoir(                        &
+		          ieq_cell%x_h2_neutral_partition,                        &
+		          ionized_hydrogen_nuclei_fraction(x))
 	! The transported ionization fractions, where the flow carries them
 	! and not this cell's local balance (ion_residual_core). The H2
 	! partition just above is imposed for its own reasons and keeps its
@@ -694,7 +836,7 @@
 	                        b_hi, b_hei, b_heii, b_heiTR,                    &
 	                        q13, q31g, q31a, q31b, Q31, A31,                 &
 	                        p_Hp, l_Hp, p_H2, l_H2, l_H2_phot, h2_chan,    &
-	                        chan)
+	                        chan, gross)
 
 	real*8 :: fvec(*)
 	real*8, intent(in) :: n_hi,n_hii,n_h2,n_h2p,n_h3p,n_hehp
@@ -739,7 +881,13 @@
 	! src(He II) = fvec(2), src(He III) = fvec(3), and the signed channel
 	! sums reproduce them.  Diagnostic only.
 	real*8, optional, intent(out) :: chan(*)
+	! THE GROSS RATE OF EACH ROW, P + L [cm^-3 s^-1]: the sum of the
+	! magnitudes of the terms the row is built from, written from the same
+	! factors (the normalization of the rows, mol_inv_turnover above). Rows
+	! 1-7, and 8 where the metastable is tracked.
+	real*8, optional, intent(out) :: gross(*)
 	real*8  :: cloc(n_stage_chan), stt(n_stage_state_mol)
+	real*8  :: tr_prod, tr_loss
 	logical :: wrec
 	real*8  :: k5,k6,k7,k8,k9,k10,k11,k12,k13,k14,k15
 	real*8  :: k16,k17,k18,k19,k_h2p_he,k23,k_ion_H2
@@ -939,6 +1087,39 @@
 		! associative branch: both quench the metastable, and neither makes
 		! He+, so there is no He+ row term. Garcia Munoz (2025) Table A.5.
 		fvec(8) = fvec(8) - k_ion_H2*n_heiTR*n_h2
+	endif
+
+	! The gross rate of every row, term by term from the expressions above.
+	if (present(gross)) then
+		gross(1) = abs(prod_hp) + abs(loss_hp_rec) + abs(loss_hp_h2)
+		gross(2) = abs((g_hei + b_hei*n_e)*n_heiSI) + abs(g_heiTR*n_heiTR) &
+		         + abs(b_heiTR*n_e*n_heiTR) + abs(a_heiii*n_e*n_heiii)       &
+		         + abs((a_heii + a_heiTR)*n_e*n_heii)                       &
+		         + abs((g_heii + b_heii*n_e)*n_heii)                        &
+		         + abs((k17 + k23)*n_heii*n_h2) + abs(k_co_hep*n_heii)
+		gross(3) = abs((g_heii + b_heii*n_e)*n_heii)                        &
+		         + abs(a_heiii*n_e*n_heiii)
+		gross(4) = abs(prod_h2) + abs(loss_h2)
+		gross(5) = abs((g_h2 - g_h2_di - g_h2_dd - g_h2_nd)*n_h2)           &
+		         + abs(k10*n_hii*n_h2) + abs(k11*n_h3p*n_hi)                &
+		         + abs(k19*n_hehp*n_hi) + abs(k23*n_heii*n_h2)              &
+		         + abs(f_penning_HeI23S*k_ion_H2*n_heiTR*n_h2)              &
+		         + abs((k5*n_e + k8*n_h2 + k9*n_hi                          &
+		                + k_h2p_he*n_heiSI)*n_h2p)
+		gross(6) = abs(k8*n_h2p*n_h2) + abs(k13*n_hii*n_h2)                 &
+		         + abs(k18*n_hehp*n_h2)                                     &
+		         + abs(((k6 + k7)*n_e + k11*n_hi)*n_h3p)
+		gross(7) = abs(k_h2p_he*n_heiSI*n_h2p)                              &
+		         + abs((1.0d0 - f_penning_HeI23S)*n_heiTR                   &
+		               *(Q31*n_hi + k_ion_H2*n_h2))                         &
+		         + abs((k16*n_e + k18*n_h2 + k19*n_hi)*n_hehp)
+		if (thereis_HeITR) then
+			call tr_triplet_row_channels(tr_prod, tr_loss, n_hi, n_heiSI, &
+			        n_heiTR, n_heii, n_e, g_heiTR, a_heiTR, q13, q31g,     &
+			        q31a, q31b, Q31, A31, b_heiTR)
+			gross(8) = abs(tr_prod) + abs(tr_loss)                         &
+			         + abs(k_ion_H2*n_heiTR*n_h2)
+		endif
 	endif
 
 	! The three ion-stage rows term by term, and the record of them when

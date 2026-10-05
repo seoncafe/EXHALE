@@ -53,6 +53,7 @@
       ! ---- entry points -------------------------------------------------- !
       public :: read_lower_atmosphere_profile
       public :: lap_value_at_match
+      public :: lap_value_at_radius
       public :: lap_element_ratio_at_match
       public :: eddy_diffusion_on_grid
       public :: lap_report_provenance
@@ -453,6 +454,43 @@
       val   = value_at_pressure(icol, lap_p_match_bar)
       found = .true.
       end subroutine lap_value_at_match
+
+      ! ------------------------------------------------------------------ !
+
+      subroutine lap_value_at_radius(nm, r_RJ, val, found)
+      ! Value of a named column at radius r_RJ [R_J], linear in r between
+      ! the two profile levels that bracket it (the levels are ordered from
+      ! the deepest, so r increases with the level index).  Outside the
+      ! profile the nearer end is returned and found stays .true.: the
+      ! callers ask for radii within a cell of the matching level, which the
+      ! profile spans by construction (validate_table).
+      character(len=*), intent(in)  :: nm
+      real*8,           intent(in)  :: r_RJ
+      real*8,           intent(out) :: val
+      logical,          intent(out) :: found
+      integer :: icol, ilev
+      real*8  :: wgt
+      val   = 0.0d0
+      found = .false.
+      if (.not. lap_in_use) return
+      icol = column_index(nm)
+      if (icol .eq. 0 .or. ic_r .eq. 0) return
+      found = .true.
+      if (r_RJ .le. coltab(1, ic_r)) then
+         val = coltab(1, icol)
+         return
+      endif
+      if (r_RJ .ge. coltab(nlev, ic_r)) then
+         val = coltab(nlev, icol)
+         return
+      endif
+      do ilev = 1, nlev - 1
+         if (r_RJ .le. coltab(ilev+1, ic_r)) exit
+      enddo
+      wgt = (r_RJ - coltab(ilev, ic_r))                                     &
+            /(coltab(ilev+1, ic_r) - coltab(ilev, ic_r))
+      val = coltab(ilev, icol) + wgt*(coltab(ilev+1, icol) - coltab(ilev, icol))
+      end subroutine lap_value_at_radius
 
       ! ------------------------------------------------------------------ !
 

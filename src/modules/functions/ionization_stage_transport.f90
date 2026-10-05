@@ -8,8 +8,12 @@
       ! CLOSING one and is not a row, it is one minus the sum of the others.
       ! Hydrogen carries x(H II) and closes on x(H I); helium carries
       ! x(He II) and x(He III) and closes on x(He I).  The He 2^3S level is a
-      ! sublevel inside He I and not a stage of this partition
-      ! (species_table.f90 bsp_is_excited_level), so it is not carried.
+      ! sublevel inside He I (species_table.f90 bsp_is_excited_level) and
+      ! not an ionization stage; where "He 2^3S transport" carries it, it is
+      ! a third carried state of the helium partition in the same variable,
+      ! x3 = n(2^3S)/n_He, with the same flux (1), and helium then closes on
+      ! the ground singlet.  Nothing below depends on the charge of a
+      ! carried state, so the equations hold for it unchanged.
       !
       ! THE FACE FLUX.  At the face f between cells j and j+1,
       !
@@ -104,17 +108,21 @@
       ! approximation there.  An ambipolar stage drift is a separate physical
       ! term, not a refinement of this one.
       !
-      ! RELATION TO THE PROTON CARRIER.  The transported proton of
-      ! "Ionization transport: True" (diffusive_photochemistry.f90, carrier
-      ! ic_Hp) is the same physical object as the hydrogen row here, written
-      ! in the other variable: a fraction per unit MASS carried on the BULK
-      ! face mass flux, with the whole mixing-ratio eddy flux inside it.
-      ! That is correct exactly while the bulk mass flux carries no eddy term
-      ! of its own, and it stops being correct the moment the advective half
-      ! becomes the element nucleus flux, which does.  This module is the
-      ! replacement, not a second transport:
-      ! there is to be ONE spelling of the stage flux, and the carrier
-      ! operator's ionization rows are to be formed from (1) here.
+      ! RELATION TO THE CARRIER OPERATOR.  The carried stages of
+      ! "Ionization transport: True" (diffusive_photochemistry.f90, carriers
+      ! ic_Hp, ic_HeII, ic_HeIII, and ic_HeTR for the He 2^3S level) ARE the
+      ! rows of (1): their face fluxes are formed here
+      ! (carrier_stage_face_flux calls ionization_stage_face_flux on the
+      ! element nucleus flux and the face nucleus density of
+      ! carrier_stage_face_state), and the energy rows take E_k from the same
+      ! call.  There is ONE spelling of the stage flux, and this is it.
+      !
+      ! THE ENERGY THE STAGE EDDY TERM CARRIES.  E_k moves stage k relative
+      ! to its element, and with it the sensible enthalpy of the electrons
+      ! its charge gave up; the energy rows carry that flux through
+      ! diffusive_photochemistry, ionization_stage_enthalpy_face_flux, which
+      ! takes E_k from ionization_stage_face_flux (Ek_out) and states the
+      ! derivation and its validity.
 
       use global_parameters
       use grid_construction, only: spherical_face_area_and_cell_volume

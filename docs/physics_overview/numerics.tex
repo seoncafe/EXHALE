@@ -477,13 +477,24 @@ with the state after each one carried into the next
 \item the conversion to primitive variables, the composition-dependent
       particle and electron counts, and the temperature
       \eqref{eq:thermal_eos};
-\item the advective half of the element transport written into the species
-      vector, followed by the implicit diffusive half
-      (\texttt{binary\_element\_diffusion.f90}, Sec.~\ref{sec:mol:diffusion}),
-      active only with \texttt{He\_diffusion};
-\item the vertical transport of the molecular carriers with their chemistry
-      (\texttt{diffusive\_photochemistry.f90}, Sec.~\ref{sec:mol:carrier}),
-      active only with the carrier transport option;
+\item the advected element composition written into the species vector
+      (\texttt{species\_advection\_project}), followed by the implicit
+      diffusive half of the element transport
+      (\texttt{element\_diffusion\_step} in
+      \texttt{binary\_element\_diffusion.f90}, Sec.~\ref{sec:mol:diffusion}),
+      active only with \texttt{He\_diffusion}, and, on an accepted element
+      step, the energy update $\mathcal{E} \leftarrow \mathcal{E} - \Delta
+      t\,\nabla\!\cdot q_d$ from the element face fluxes of that step
+      (Sec.~\ref{sec:mol:interdiffusion});
+\item the vertical transport of the carriers with their chemistry
+      (\texttt{photochemical\_transport\_step} in
+      \texttt{diffusive\_photochemistry.f90}, Sec.~\ref{sec:mol:carrier}):
+      the molecular carriers with \texttt{Molecular carrier transport}, the
+      ionization stages with \texttt{Ionization transport} and He\,$2^3$S with
+      \texttt{He 2\^{}3S transport}, followed, where that interval was
+      covered, by $\mathcal{E} \leftarrow \mathcal{E} - \Delta
+      t\,\nabla\!\cdot q_c$ from the composition the step returned
+      (\texttt{carrier\_enthalpy\_divergence\_of\_state});
 \item the refresh of the lagged $\mathrm{H}(n{=}2)$ populations and their
       Balmer source (\texttt{excited\_hydrogen.f90},
       Sec.~\ref{sec:ionization:n2});
@@ -501,7 +512,21 @@ with the state after each one carried into the next
       condition again.
 \end{enumerate}
 %
-Steps 3, 4, 8 and 9 are no-ops unless their key is present.  The Shapiro
+Steps 3, 4, 8 and 9 are no-ops unless their key is present, and the two
+enthalpy updates also need \texttt{Interdiffusion enthalpy flux} (on by
+default).  In a physical-mode run (a trajectory with a clock) a refused element
+step or a carrier interval the transport operator could not cover refuses the
+whole attempted step, which is restored from its checkpoint and retaken
+with a reduced step (\texttt{attempted\_step\_reduced\_dt}) up to a retry
+budget whose exhaustion stops the run; while
+the run is reaching a state the refusal is counted and the step goes on.  A
+step whose energy update found no temperature, or whose Crank-Nicolson stage
+failed (a temperature below the floor of the equation of state, a non-finite
+solution, a pivot breakdown; \texttt{viscous\_conduction\_step} prints the
+cell, the solved value and the energy a floor would have injected), has no
+state to march on and is refused in both modes: it is restored and retaken
+at half the interval within the same budget, whose exhaustion stops the run
+with exit status~2 (Sec.~\ref{sec:hydro:transport}).  The Shapiro
 filter is the 1-2-1 low-pass pass
 $u_j \leftarrow u_j + \tfrac14\epsilon(u_{j-1} - 2u_j + u_{j+1})$ applied
 every \texttt{shapiro\_every} steps, the way CETIMB damps the base sound wave
@@ -553,7 +578,10 @@ and the flux level stable; $\mathrm{dtu} < \texttt{dtu\_th} = 10^{-8}$;
 \texttt{du} settled on a plateau over \texttt{N\_stall} steps (default 2000)
 within \texttt{stall\_tol} (default $10^{-6}$); the steady gates of
 Sec.~\ref{sec:steady:gates} where \texttt{Resid tol:} was stated; the Newton
-finish returning a state; or the hard cap \texttt{count\_max} ($10^6$).  The
+finish returning a state; the step cap \texttt{EXHALE\_MAXSTEPS} where it is
+set (a relaxation snapshot, which the regression cases that are not converged
+solutions pin in their \texttt{maxsteps} file); or the hard cap
+\texttt{count\_max} ($10^6$).  The
 triggers are \emph{armed} the first time the measure is seen at or above its
 threshold, so only a descending crossing can fire them and a run whose initial
 condition already carries a flat mass flux, which a transonic one does, cannot
@@ -562,4 +590,9 @@ only: the du and dtu stops are disabled and the loop hands over once
 \texttt{du} falls below \texttt{newton\_du\_switch} (default $10^{-2}$) or
 plateaus near it.  Both measures can be small at a premature balance of the
 operator split while the energy residual is of order 30, so for a quantitative
-mass-loss rate the stationary finish is not optional.
+mass-loss rate the stationary finish is not optional.  Every thousandth step
+the marching loop writes the state it holds; that write is a snapshot and not
+the run's answer, and carries \texttt{certified=F
+cert\_reason=marching\_snapshot\_s<step>}, the run's own certificate being
+restored after it, because the last certificate the run measured belongs to
+another state.

@@ -20,7 +20,22 @@ $\mathrm{HeH}^+$ and, optionally, the oxygen carriers OH, $\mathrm{H_2O}$ and
 CO.  The radiative source term couples the two: the stellar spectrum is
 attenuated along the radial column, photoionizes and heats the gas, and the
 gas cools through recombination, collisional and line processes whose rates
-depend on the composition the ionization solve returns.
+depend on the composition the ionization solve returns.  By default the
+ionization state of each cell is the local balance of its rates; on request
+the ionization stages of hydrogen and helium (\texttt{Ionization transport})
+and the He\,$2^3$S level (\texttt{He 2\^{}3S transport}) are carried by the
+flow on their elements' nucleus fluxes instead, beside the transported
+molecular carriers and the diffusive separation of helium from hydrogen.
+Heat conduction and viscosity add the Navier-Stokes terms, conduction
+exchanging heat with the lower atmosphere through the base face.  The lower
+atmosphere itself is not solved by the code: it is handed over as scalars or
+as a profile, and an offline closure (\texttt{src/utils/element\_flux\_closure.py})
+iterates the wind against a Photochem column until the elemental fluxes agree,
+with the option (\texttt{energy\_coupling}, default off) of passing the heat
+the wind conducts into the column back to the column's steady energy balance
+(\texttt{photochem\_to\_lower\_profile.py --conducted-heat-flux}, solved by
+\texttt{src/utils/conducted\_heat\_column\_balance.py}), which makes the
+coupling two-way in energy as well as in the elements.
 
 The code started from ATES v2.0 \citep{Caldiroli2021, Biassoni2024} and is
 by now essentially a new code.  The finite-volume discretization, the
@@ -36,9 +51,12 @@ option that adds a species, a transport process or an external field defaults
 to off, so that a configuration that states none of them solves the atomic
 H/He problem; the keys that default to on are parts of the physics of what is
 already selected, which a key can only turn off for comparison (among them the
-He/H charge exchange, secondary ionization, the molecular reaction heat, the
-resolved H$_2$ photoabsorption channels, and the interdiffusion enthalpy flux
-of a run with \texttt{He\_diffusion}; Table~\ref{tab:keys}).
+He\,$2^3$S level, the He/H charge exchange, secondary ionization, the
+recombination radiation absorbed on the spot, the collisional de-excitation
+heat of H($n{=}2$), the rovibrational caloric equation of state of H$_2$, the
+molecular reaction heat, the resolved H$_2$ photoabsorption channels, and the
+interdiffusion enthalpy flux of a run whose elements, molecular carriers or
+ionization stages move relative to the gas; Table~\ref{tab:keys}).
 
 \subsection{Units}
 \label{sec:intro:units}
@@ -77,13 +95,20 @@ the Jeans escape parameter at the base.  Only three further dimensionless
 numbers enter the potential and the domain: $\tilde a = a_{\rm orb}/R_0$, the
 mass ratio $M_\star/M_p$, and the outer radius.
 
-The base level itself may be stated in three ways, and a run that states two
-that disagree is stopped at startup: \texttt{Log10 lower boundary number
-density} gives $n_0$ directly; \texttt{Base BC: pressure} states the base
-pressure in microbar and $n_0$ follows from
+The base level itself may be stated in three ways: \texttt{Log10 lower
+boundary number density} gives $n_0$ directly; \texttt{Base BC: pressure}
+states the base pressure in microbar and $n_0$ follows from
 $n_0 = p_{\rm base}/(k_B T_0\,\hat n_{\rm bc})$; and a lower-atmosphere
 handoff (\texttt{base.inp} or a profile file) states $p_{\rm base}$ in bar
-and $n_0$ follows the same way.  Here $\hat n_{\rm bc}$ is the base particle
+and $n_0$ follows the same way.  A run that states none is stopped at
+startup, and so is one whose handoff level disagrees with \texttt{Base BC:
+pressure} (by more than a part in $10^{6}$) or with the density key (by more
+than 1 per cent in the pressure it implies).  Without a handoff,
+\texttt{Base BC: pressure} takes precedence over a density key stated beside
+it, and $n_0$ is the one the pressure gives; the conflict is not silent: the
+run prints a WARNING naming both levels ($n_0$ and the pressure of each) and
+the one used, and the setup report repeats it under the base level
+(\texttt{input\_read.f90}, \texttt{write\_setup\_report.f90}).  Here $\hat n_{\rm bc}$ is the base particle
 count per H+He nucleus, which the composition module derives from the
 element ratios and, with a molecular base, from the H nuclei bound into
 $\mathrm{H}_2$ (Sec.~\ref{sec:hydro:eos}).

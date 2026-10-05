@@ -212,13 +212,37 @@
       ! the same triplets, and the state would carry an unbudgeted accepted
       ! correction.
       !
-      ! INTERIM ACTION ON FAILURE.  This module stops the run (error stop 1)
-      ! after printing the diagnostics.  Step B3a replaces that stop by a
-      ! REJECTION of the whole attempted step: the controller restores the
-      ! checkpoint and retries with a shorter step, and this routine will
-      ! then only report the status.  Until it exists no recovery is
-      ! claimed here and stopping is the stop-safe action.
+      ! ACTION ON FAILURE.  The stage prints the diagnostics, leaves its
+      ! verdict in conduction_last_status and the optional `status`
+      ! argument, and returns without touching the state.  The marching
+      ! loop (EXHALE_main) then REFUSES THE WHOLE ATTEMPTED STEP with
+      ! reason as_reject_conduction at operation as_op_conduction, exactly
+      ! as it refuses a failed energy update: the checkpoint of the step is
+      ! restored and the step is retaken at half the interval
+      ! (attempted_step_reduced_dt).  The retry budget is the controller's
+      ! own, n_step_retry_max = 8 halvings, i.e. a floor of dt/2^8; a stage
+      ! that still fails there stops the run with exit status 2 and the
+      ! retry history (stop_on_exhausted_retry_budget).  Nothing is clamped
+      ! and no state is built from a failed stage.
       !
+      ! WHY A SHORTER STEP IS THE REMEDY FOR A FLOOR FAILURE.  For a mode of
+      ! the conduction operator with decay rate lambda/dt the
+      ! Crank-Nicolson update multiplies the mode by
+      ! (1 - lambda/2)/(1 + lambda/2), which is negative for lambda > 2:
+      ! over a step longer than twice the diffusion time of a cell, the
+      ! update overshoots, and a cold cell beside a hot one can be driven
+      ! below the floor although the exact solution over the same interval
+      ! stays above it.  Halving dt halves lambda; once every mode that
+      ! matters has lambda < 2 the update is free of that overshoot.  A
+      ! failure that survives every halving of the budget is therefore not
+      ! a step-size effect, and the run stops instead of looking further.
+      !
+      ! TEST HOOK, default off: EXHALE_CONDUCTION_REFUSE_DT_ABOVE = t [s]
+      ! makes the stage return the status CONDUCTION_INJECTED for every
+      ! attempt whose longest cell interval exceeds t, without solving.  It
+      ! exists only so that src/tests/conduction_retry can show the refusal,
+      ! the halving and the exhaustion stop on a whole-binary run.
+
       ! CONSERVATION.  The two operators are assembled in flux form: the
       ! coefficient of the face between cells j and j+1 is built from the
       ! same interpolated coefficient, the same face area and the same
@@ -268,6 +292,27 @@
       ! inward.  Zero bulk velocity does not make it zero, which is why it
       ! is measured and not assumed.
       real*8 :: conduction_base_heat_flux = 0.0d0
+      ! THE HEAT THE WIND CONDUCTS INTO THE LOWER ATMOSPHERE, measured on a
+      ! named state by heat_conducted_into_lower_atmosphere (the
+      ! certification calls it on the state it certifies) and written to
+      ! EXHALE_resolved.out, where the energy coupling of the elemental-flux
+      ! closure reads it.  It is the same face term as
+      ! conduction_base_heat_flux, but held apart from it: that variable
+      ! follows the last residual evaluation, which inside a Newton solve is
+      ! a perturbed state, while these describe the state that is written.
+      ! cgs, SIGN: positive is heat leaving the wind through the base face,
+      ! i.e. entering the lower atmosphere (the opposite of
+      ! conduction_base_heat_flux).  The two temperatures are the ones the
+      ! face formula uses: the bath at the ghost centre r(0)
+      ! (conduction_base_level_T) and cell 1.
+      logical :: lower_atmosphere_heat_measured = .false.
+      real*8  :: lower_atmosphere_heat_flux_cgs = 0.0d0
+      real*8  :: lower_atmosphere_bath_T_K      = 0.0d0
+      real*8  :: lower_atmosphere_cell1_T_K     = 0.0d0
+      public :: heat_conducted_into_lower_atmosphere
+      public :: lower_atmosphere_heat_measured
+      public :: lower_atmosphere_heat_flux_cgs
+      public :: lower_atmosphere_bath_T_K, lower_atmosphere_cell1_T_K
       public :: n_conduction_floor_hits, n_conduction_floor_cells
       public :: n_conduction_floor_hits_family
       public :: conduction_floor_first_step, conduction_floor_last_step
@@ -289,17 +334,21 @@
       public :: conduction_last_cell, conduction_last_step
       public :: conduction_last_T_solution, conduction_last_T_floor
       public :: conduction_last_energy_deficit, conduction_last_nfail
-      public :: conduction_stop_on_failure
-      public :: conduction_temperature_floor
+      public :: CONDUCTION_INJECTED, CONDUCTION_REASON_INJECTED
+      public :: conduction_temperature_floor, conduction_reason_text
 
       ! Status of the Crank-Nicolson transport stage, reported through the
       ! optional `status` argument of viscous_conduction_step and left in
-      ! conduction_last_status, so the physical-step context and the B3a
-      ! controller read a verdict instead of inferring one from the state.
+      ! conduction_last_status, so the marching loop and the
+      ! attempted-step controller read a verdict instead of inferring one
+      ! from the state.
       integer, parameter :: CONDUCTION_OK           = 0
       integer, parameter :: CONDUCTION_FLOOR        = 1
       integer, parameter :: CONDUCTION_NONFINITE    = 2
       integer, parameter :: CONDUCTION_SOLVE_FAILED = 3
+      ! Refused by the test hook EXHALE_CONDUCTION_REFUSE_DT_ABOVE (section
+      ! 5 of the header); never returned by a run that does not set it.
+      integer, parameter :: CONDUCTION_INJECTED     = 4
 
       ! Reasons, one per way the stage can fail. NONFINITE_SOLUTION and
       ! PIVOT_BREAKDOWN share the SOLVE_FAILED status and say different
@@ -311,13 +360,11 @@
       integer, parameter :: CONDUCTION_REASON_NONFINITE_INPUT    = 2
       integer, parameter :: CONDUCTION_REASON_NONFINITE_SOLUTION = 3
       integer, parameter :: CONDUCTION_REASON_PIVOT_BREAKDOWN    = 4
-
-      ! Set .false. ONLY by the test drivers that exercise the failure
-      ! statuses on purpose. Production runs stop.
-      logical, save :: conduction_stop_on_failure = .true.
+      integer, parameter :: CONDUCTION_REASON_INJECTED           = 5
 
       ! Verdict of the last call, for a caller that reads it after the fact
-      ! (EXHALE_main does not pass `status` today).
+      ! (the step verdict of certification.f90; EXHALE_main reads the
+      ! `status` argument).
       !   T_solution        the temperature the operator solved for in the
       !                     failing cell, code units, unclamped
       !   T_floor           the floor it fell below, code units
@@ -673,8 +720,10 @@
       real*8 function conduction_base_level_T(Tcell) result(Tb)
       ! THE BASE BOUNDARY CONDITION OF THERMAL CONDUCTION, stated here and
       ! not inherited from the advective ghost: a prescribed temperature at
-      ! the base ghost cell, equal to the lower atmosphere's own temperature
-      ! at that radius on the reservoir's hydrostatic isentrope.
+      ! the base ghost cell, the lower atmosphere's own temperature at that
+      ! radius (base_reservoir_temperature_at): the handed-over profile's
+      ! temperature where a profile is in use, otherwise the reservoir's
+      ! hydrostatic isentrope continued from the level.
       !
       ! WHY THE RESERVOIR AND NOT THE GHOST THE ADVECTION LEAVES.  The lower
       ! atmosphere below the base level is a heat bath on the time scales of
@@ -823,6 +872,43 @@
 
       ! ------------------------------------------------------!
 
+      subroutine heat_conducted_into_lower_atmosphere(Tcell, f_sp)
+      ! The conductive heat flux through the base face of the state
+      ! (Tcell, f_sp), in erg cm^-2 s^-1, positive INTO the lower
+      ! atmosphere:
+      !
+      !     q = -kappa_{1/2} (T_1 - T_b)/(r_1 - r_0) ,
+      !
+      ! T_b the bath at the ghost centre r(0) (conduction_base_level_T),
+      ! kappa_{1/2} the mixture conductivity interpolated to the face, both
+      ! exactly as the operator forms them: the value is the base face's own
+      ! term of row 1 of thermal_conduction_coeffs, blo(1) (T_b - T_1),
+      ! times the volume of cell 1 over the area of the base face, sign
+      ! reversed.  Code to cgs: the code flux unit is the energy density
+      ! unit times the velocity unit, p0 v0 = n0 mu v0^3 (the same unit the
+      ! conductivity's kappa_code = kappa_cgs T0/(n0 mu v0^3 R0) implies).
+      ! Without conduction nothing is measured, and the record says so.
+      real*8, dimension(1-Ng:N+Ng), intent(in) :: Tcell
+      real*8, dimension(1-Ng:N+Ng,n_species), intent(in) :: f_sp
+      real*8, dimension(N) :: blo, bdi, bup
+      real*8 :: Tb, q_into_wind
+      lower_atmosphere_heat_measured = .false.
+      lower_atmosphere_heat_flux_cgs = 0.0d0
+      lower_atmosphere_bath_T_K      = 0.0d0
+      lower_atmosphere_cell1_T_K     = 0.0d0
+      if (.not. conduction_active()) return
+      call thermal_conduction_coeffs(Tcell, f_sp, blo, bdi, bup)
+      Tb = conduction_base_level_T(Tcell)
+      q_into_wind = blo(1)*(Tb - Tcell(1))                                  &
+           *((r_edg(1)**3 - r_edg(0)**3)/3.0d0)/(r_edg(0)*r_edg(0))
+      lower_atmosphere_heat_flux_cgs = -q_into_wind*p0*v0
+      lower_atmosphere_bath_T_K      = Tb*T0
+      lower_atmosphere_cell1_T_K     = Tcell(1)*T0
+      lower_atmosphere_heat_measured = .true.
+      end subroutine heat_conducted_into_lower_atmosphere
+
+      ! ------------------------------------------------------!
+
       subroutine viscous_conduction_sources(vel, Tcell, f_sp, Smom, Sene)
       ! The pair that enters the conserved-variable equations:
       !   Smom = F_mu                          (momentum, Eq. 1)
@@ -900,6 +986,36 @@
 
       ! ------------------------------------------------------!
 
+      real*8 function conduction_refuse_dt_above_s()
+      ! The interval [s] of the test hook EXHALE_CONDUCTION_REFUSE_DT_ABOVE
+      ! (section 5 of the header); 0 when unset, which disables it. Read
+      ! once.
+      real*8,  save :: dt_refuse = 0.0d0
+      logical, save :: dt_refuse_read = .false.
+      character(len=32) :: env
+      integer :: st
+      if (.not. dt_refuse_read) then
+         dt_refuse_read = .true.
+         call get_environment_variable('EXHALE_CONDUCTION_REFUSE_DT_ABOVE',&
+                                       env, status=st)
+         if (st .eq. 0 .and. len_trim(env) .gt. 0) then
+            read(env,*,iostat=st) dt_refuse
+            if (st .ne. 0 .or. .not. (dt_refuse .gt. 0.0d0)) then
+               write(*,*) '(conduction) ERROR: EXHALE_CONDUCTION_REFUSE'// &
+                          '_DT_ABOVE takes a positive interval in'//       &
+                          ' seconds, not "'//trim(env)//'".'
+               error stop 1
+            endif
+            write(*,'(A,ES13.6,A)') ' (conduction) TEST HOOK: the'//      &
+                 ' transport stage refuses every attempt longer than',     &
+                 dt_refuse, ' s (EXHALE_CONDUCTION_REFUSE_DT_ABOVE)'
+         endif
+      endif
+      conduction_refuse_dt_above_s = dt_refuse
+      end function conduction_refuse_dt_above_s
+
+      ! ------------------------------------------------------!
+
       subroutine conduction_reason_text(reason_in, text)
       integer, intent(in) :: reason_in
       character(len=*), intent(out) :: text
@@ -912,6 +1028,8 @@
          text = 'non-finite solution of the Crank-Nicolson system'
       case (CONDUCTION_REASON_PIVOT_BREAKDOWN)
          text = 'zero or non-finite pivot in the tridiagonal elimination'
+      case (CONDUCTION_REASON_INJECTED)
+         text = 'refusal injected by EXHALE_CONDUCTION_REFUSE_DT_ABOVE'
       case default
          text = 'admissible'
       end select
@@ -921,9 +1039,9 @@
 
       subroutine conduction_report(stat, reason, j_bad, nfail, step,      &
                                    T_sol, T_flr, deficit, status)
-      ! Record the verdict of one call, hand it to the caller, and take the
-      ! interim action on a failure (print the diagnostics and stop). B3a
-      ! replaces the stop by a rejection of the whole attempted step.
+      ! Record the verdict of one call, hand it to the caller, and print the
+      ! diagnostics of a failure.  The caller refuses the attempted step on
+      ! it (section 5 of the header); nothing here stops the run.
       integer, intent(in) :: stat, reason, j_bad, nfail, step
       real*8,  intent(in) :: T_sol, T_flr, deficit
       integer, intent(out), optional :: status
@@ -956,12 +1074,9 @@
          write(*,'(a)') '   That energy has no source term behind it, so'
          write(*,'(a)') '   the floor value is not returned as a state.'
       endif
-      write(*,'(a)') '   The transport stage returns no state for this step.'
-      if (conduction_stop_on_failure) then
-         write(*,'(a)') '   Stopping: B3a will reject and retry the step'
-         write(*,'(a)') '   instead.'
-         error stop 1
-      endif
+      write(*,'(a)') '   The transport stage returns no state for this'//  &
+                     ' step; the attempted step is refused and retaken'//  &
+                     ' at half the interval.'
       end subroutine conduction_report
 
       ! ------------------------------------------------------!
@@ -1053,6 +1168,19 @@
          call conduction_report(stat, reason, j_bad, nfail, step,         &
                                 0.0d0, T_flr, 0.0d0, status)
          return
+      endif
+
+      ! ---- test hook (section 5 of the header), default off ----
+      if (conduction_refuse_dt_above_s() .gt. 0.0d0) then
+         if (maxval(dt(1:N))*R0/v0 .gt. conduction_refuse_dt_above_s()) then
+            write(*,'(a,es23.16,a,es23.16)') ' (conduction) TEST HOOK:'//  &
+                 ' longest cell interval [s] ', maxval(dt(1:N))*R0/v0,     &
+                 ' above ', conduction_refuse_dt_above_s()
+            call conduction_report(CONDUCTION_INJECTED,                   &
+                                   CONDUCTION_REASON_INJECTED, 1, N,      &
+                                   step, 0.0d0, T_flr, 0.0d0, status)
+            return
+         endif
       endif
 
       ! ---- (i) viscous momentum diffusion ----

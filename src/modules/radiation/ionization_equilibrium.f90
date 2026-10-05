@@ -3,7 +3,8 @@
 
 	use mol_rates, only: h2_thermochemistry_init, h2_thermochemistry_ready
 	use global_parameters
-   use ion_cell_state, only: ieq_cell, ion_rates
+   use ion_cell_state, only: ieq_cell, ion_rates, h2_fraction_of_reservoir, &
+                             ionized_hydrogen_nuclei_fraction
    use species_table, only: n_mion, mion_fsp, n_melem, melem_i0,        &
                             melem_top, mion_stage,                       &
                             isp_HII, isp_HeII, isp_HeIII,                &
@@ -233,36 +234,26 @@
 	! The handoff states the molecular partition of the NON-IONIZED
 	! hydrogen, so what it imposes on a ghost is x_H2 = x2 (1 - x_ion), and
 	! x_ion is the ionization the wind's field produces in that same ghost:
-	! the two are one system and neither is data for the other. Closed here
-	! by the cell's own passes -- impose, solve the ghost's ionization
-	! balance against it, impose again at the ionization the solve returned
-	! -- and NOT by alternation across sweeps, which is what left the ghost
-	! carrying an iteration history of the composition the state was entered
-	! with (9.06 rounding floors of the base continuity row on the hot-Uranus
-	! molecular state).
+	! the two are one system and neither is data for the other. They are
+	! solved as one: the H2 row of the ghost's molecular system IS that
+	! equation (ion_cell_state, x_h2_neutral_partition_fixed), with x_ion
+	! an unknown of the same solve, so the pair is closed by the solve and
+	! neither by passes of the cell nor by alternation across sweeps.
 	!
 	! THE TOLERANCE IS ON THE STATED EQUATION and is absolute in x_H2, a
 	! fraction of the cell's hydrogen nuclei: the pair is closed when
-	! |x_H2 - x2 (1 - x_ion)| at the state the pass returned is below this.
-	! The passes reach the root by a secant step on that scalar equation
-	! (the ghost reservoir block of the sweep). What the solve underneath
-	! resolves is MEASURED on the LHS 1140 b molecular seed ghosts: the
-	! secant takes the residual to 2e-16 to 6e-16 in 10 or 11 passes, so the
-	! tolerance asks nothing the ionization solve cannot deliver -- provided
-	! the solve starts from the imposed value (impose_transported_fractions):
-	! started from the previous pass's state, hybrd1 can return a move
-	! below about 3e-8 untouched and the residual then stalls at the size
-	! of that move (MEASURED 2026-09-26, 1e-9 - 3e-8, with a zero move).
+	! |x_H2 - x2 (1 - x_ion)| at the state the solve returned is below
+	! this. impose_transported_fractions places the returned state on the
+	! row, so a closed pair is the ordinary outcome and the residual is
+	! rounding; the test stays as the statement of what the boundary is
+	! built on.
 	!
-	! A FAILURE IS A REFUSED BOUNDARY. Exhausting the passes without reaching
-	! the tolerance means the pair has no fixed point the sweep can reach,
-	! and the ghost composition would then be an arbitrary iterate. At a
-	! state the run holds, the run stops and says so rather than handing the
-	! boundary a state nothing stands behind; at a candidate whose caller
-	! refuses what the sweep reports inadmissible, that caller refuses it
-	! (ieq_state_may_be_refused).
+	! A FAILURE IS A REFUSED BOUNDARY. A returned ghost off the row is an
+	! arbitrary iterate. At a state the run holds, the run stops and says so
+	! rather than handing the boundary a state nothing stands behind; at a
+	! candidate whose caller refuses what the sweep reports inadmissible,
+	! that caller refuses it (ieq_state_may_be_refused).
 	real*8,  parameter :: base_ghost_closure_tol    = 1.0d-10
-	integer, parameter :: base_ghost_closure_passes = 30
 	! What the closure reached in this sweep: the largest residual of
 	! x_H2 - x2 (1 - x_ion) left in a lower ghost, and the most passes any
 	! of them took. Reduced over the cell loop and handed to base_boundary,
@@ -768,6 +759,21 @@
 	logical, save :: interior_held_read = .false.
 	real*8, allocatable, save :: f_sp_interior_entry(:,:)
 
+	! THE SOURCES OF A HELD COMPOSITION (set by the caller through
+	! ioniz_eq_sources_of_held_composition, default off). The cells above
+	! the two lower ghosts are handed back as they came, exactly as under
+	! EXHALE_INTERIOR_COMPOSITION_HELD, and in addition the heating and the
+	! cooling are assembled from THAT composition: the rates and the
+	! attenuated field are the ones built from the entry composition (with
+	! xuv_field_block_cells = 0, a parameter, and xuv_self_field_passes = 1,
+	! the default, every rate of the sweep is a function of the entry
+	! composition and of T alone), and the densities they are contracted with are the entry
+	! densities, so heat and cool are the sources of the state the caller
+	! holds. The lower ghosts keep the composition the sweep solved: the
+	! boundary is derived, never stored. This is what a certification of a
+	! stored (u, f_sp) pair needs, and it changes no composition.
+	logical, save :: held_composition_sources = .false.
+
 	! THE STOPPING TOLERANCE OF THE COMPOSITION'S INNER SOLVE, and the hook
 	! that replaces it for a whole run (EXHALE_IEQ_TOL=<x>, default off).
 	! The value the sweep uses is sqrt(dpmpar(1)) = 1.49e-8, MINPACK's own
@@ -915,8 +921,17 @@
 		     'INTERIOR_COMPOSITION_HELD: the sweep returns the composition'//&
 		     ' it was given on every cell above the two lower ghosts'
 	endif
-	interior_composition_is_held = interior_held_on
+	interior_composition_is_held = interior_held_on .or.                   &
+	                               held_composition_sources
 	end function interior_composition_is_held
+
+
+	! THE SWITCH OF held_composition_sources: on before the one sweep that
+	! is to return the sources of the composition it is handed, off after it.
+	subroutine ioniz_eq_sources_of_held_composition(on)
+	logical, intent(in) :: on
+	held_composition_sources = on
+	end subroutine ioniz_eq_sources_of_held_composition
 
 
 	subroutine ioniz_eq_allocate_arrays
@@ -1307,17 +1322,11 @@
    ! the closure passes of the base handoff for a lower ghost that carries
    ! one (see the ghost reservoir block of the sweep).
    integer :: n_self_max
-   ! Ionized hydrogen-nucleus fraction of a lower-boundary ghost, against
-   ! which the base handoff's molecular partition is stated, the partition
-   ! imposed from it, and the residual of the pair at the state the cell
-   ! returned (see the ghost reservoir block of the sweep).
-   real*8  :: x_ion_ghost, x_h2_imposed, ghost_closure_move
-   ! The fixed-point map of that closure at the previous pass, for the
-   ! secant step on it: the partition imposed then and the residual
-   ! x2 (1 - x_ion) - x_H2 it returned (see the ghost reservoir block).
-   real*8  :: x_h2_secant_prev, f_h2_secant_prev, x_h2_map, f_h2_map
-   real*8  :: x_h2_secant
-   logical :: have_h2_secant_prev
+   ! Ionized hydrogen-nucleus fraction of a lower-boundary ghost at the
+   ! state the cell returned, against which the base handoff's molecular
+   ! partition is stated, and the residual of the pair there (see the ghost
+   ! reservoir block of the sweep).
+   real*8  :: x_ion_ghost
    real*8  :: ghost_closure_res
    logical :: ghost_closed, ghost_cell_closure
    real*8, dimension(n_x_max) :: x_self
@@ -1787,7 +1796,7 @@
 		                     dP_HI_hrc, dP_HeI_hrc, dP_H2_hrc, dP_m_hrc,   &
 		                     dheat_hrc, dP_m2=dP_m2_hrc,                   &
 		                     dP_H2_di=dP_H2_di_hrc, dP_H2_dd=dP_H2_dd_hrc, &
-		                     dP_H2_nd=dP_H2_nd_hrc)
+		                     dP_H2_nd=dP_H2_nd_hrc, xion=xion)
 		rchiiB   = rchiiB_hrc
 		if (use_he_rec_coupling .and. thereis_He) then
 			rcheiiB  = rcheiiB_hrc
@@ -2230,7 +2239,7 @@
 		!$omp          ieq_ne_cell, ieq_ntot_cell, ieq_rate_cell,                     &
 		!$omp          ieq_report_cell, ieq_state_may_be_refused, ieq_TK_cell,        &
 		!$omp          ieq_dump_cell,                                                 &
-		!$omp          ionization_transport, iox, j_h2o_fuv, j_oh_fuv, jb_hi,         &
+		!$omp          ionization_transport, he23s_transport, iox, j_h2o_fuv, j_oh_fuv, jb_hi,         &
 		!$omp          jb_lo, k_lw_diss, lwa, marching_step, mbase, mol_sec_xuv,      &
 		!$omp          N, N15_face, N1_face, N2_face, N_eq, n_in_dim, n_o1d_eq,       &
 		!$omp          n_tot, nCO_cell, ne, nh, NH2col_face, nhe, nhei, nheii,        &
@@ -2254,10 +2263,8 @@
 		!$omp           clk_beg, clk_end, clk_rate,                                  &
 		!$omp           it_self, last_self, state_is_recorded, self_moved,           &
 		!$omp           x_self, n_self_max,                                         &
-		!$omp           nheiS_it, nh2_it, x_ion_ghost, x_h2_imposed,                 &
-		!$omp           ghost_closure_move, ghost_closure_res, ghost_closed,         &
-		!$omp           ghost_cell_closure, x_h2_secant_prev, f_h2_secant_prev,      &
-		!$omp           x_h2_map, f_h2_map, x_h2_secant, have_h2_secant_prev,        &
+		!$omp           nheiS_it, nh2_it, x_ion_ghost,                               &
+		!$omp           ghost_closure_res, ghost_closed, ghost_cell_closure,         &
 		!$omp           Pm_row, h1m_row, chan_row, heat_row, q_abs_row, Pm2_row,     &
 		!$omp           x_ieq_dump_start)                                            &
 		!$omp   reduction(+:n_mol_clamped,n_mol_info,n_ieq_reseed,n_ieq_retry, &
@@ -2315,27 +2322,17 @@
 				enddo
 			endif
 
-			! THE PASSES THIS CELL MAY TAKE. Every cell takes the
-			! self-field passes the run asked for. A lower ghost whose
-			! molecular partition is stated by the base handoff takes as
-			! many more as its closure needs: the imposed partition and the
-			! ghost's own ionization balance are one system (see the ghost
-			! reservoir block below and base_ghost_closure_tol), and a cell
-			! that leaves after one pass leaves it unclosed. The radiation
-			! field is recomputed on the self-field passes alone, so the
-			! closure passes solve the same cell against the same field.
+			! THE PASSES THIS CELL MAY TAKE: the self-field passes the run
+			! asked for. A lower ghost whose molecular partition is stated
+			! by the base handoff solves that partition and its own
+			! ionization balance in one system (the ghost reservoir block
+			! below and base_ghost_closure_tol), so it needs no passes of
+			! its own.
 			ghost_cell_closure = thereis_mol .and. j .le. 0 .and.         &
 			                     base_h2_composition_imposed()
 			n_self_max = xuv_self_field_passes
-			if (ghost_cell_closure) n_self_max =                          &
-			     max(n_self_max, base_ghost_closure_passes)
 			ghost_closed       = .not. ghost_cell_closure
-			ghost_closure_move = 0.0d0
 			ghost_closure_res  = 0.0d0
-			x_h2_imposed       = 0.0d0
-			have_h2_secant_prev = .false.
-			x_h2_secant_prev    = 0.0d0
-			f_h2_secant_prev    = 0.0d0
 
 			self_field_HHe: do it_self = 1, n_self_max
 
@@ -2510,6 +2507,8 @@
 				ieq_cell%x_h2_fixed     = .false.
 				ieq_cell%x_ox_fixed     = .false.
 				ieq_cell%x_h2_fix       = 0.0d0
+				ieq_cell%x_h2_neutral_partition_fixed = .false.
+				ieq_cell%x_h2_neutral_partition       = 0.0d0
 				ieq_cell%x_oh_fix       = 0.0d0
 				ieq_cell%x_h2o_fix      = 0.0d0
 				! With the carriers transported, their partition is not a
@@ -2570,116 +2569,42 @@
 				! balance and the handoff fraction x2 applies to the
 				! hydrogen nuclei that are left. The row this sweep solves
 				! is x(4) = 2 n(H2)/n_H over ALL the hydrogen nuclei, so
-				! what is imposed on it is x2 (1 - x_ion).
+				! the equation is x(4) = x2 (1 - x_ion), with x_ion the
+				! ionized hydrogen-nucleus fraction: H+ and the nuclei held
+				! in H2+, H3+ and HeH+ with the multiplicities x(5), x(6),
+				! x(7) carry.
 				!
-				! x2 OF EVERY NUCLEUS IS AN OVER-PRESCRIPTION, and one that
-				! nothing checked. It leaves 1 - x2 of the hydrogen for H+,
-				! H2+, H3+ and HeH+ together -- 1.7e-5 at the Koskinen 2022
-				! handoff x2 = 0.99998 -- while the ionization balance of a
-				! reservoir the wind has warmed asks for its own x(H+),
-				! measured at 3.2e-4 there, 19 times the room. The system
-				! is then infeasible: the solve breaks the pinned row to
-				! pay for the ionization and the sweep reports the cell as
-				! resting on a non-root. x2 (1 - x_ion) instead leaves
-				! (1 - x2)(1 - x_ion) + x_ion, which is never less than the
-				! ionized fraction itself, so the prescription and the
-				! ionization always fit in the hydrogen the cell has.
+				! x_ion IS AN UNKNOWN OF THE SAME SOLVE, so the row is the
+				! equation itself (x_h2_neutral_partition_fixed, written by
+				! the molecular systems) and not a value pinned at the x_ion
+				! of a previous state. A pinned x(4) leaves 1 - x(4) of the
+				! hydrogen for H I and every ion, and where the ionization
+				! balance asks for more ions than that room -- the He+ +
+				! H2 -> H+ + H + He source grows with He/H while the
+				! hydrogen shrinks -- no composition satisfies the rows: on
+				! the LHS 1140 b ghost at He/H 2e4 the first sweep pinned
+				! x(4) = 0.9698 (room 0.0302) against a root with
+				! x_ion = 0.0315 (MEASURED, md/Update_EXHALE_stage3.md
+				! section 105), the only root hybrd1 found had
+				! negative H I and O+/O = 1.04, and every bounded iterate
+				! was a non-root. The implicit row leaves
+				! (1 - x2)(1 - x_ion) >= 0 of neutral atomic hydrogen at
+				! every x_ion, so it can never be the row that empties
+				! the simplex, and the pair is closed by the one solve.
 				!
-				! x_ion is the ionized hydrogen-nucleus fraction of the
-				! state this sweep was handed, so the pair (partition,
-				! ionization) is reached by the alternation and is exact at
-				! a stationary state. The molecular ions carry hydrogen
-				! nuclei too -- two in H2+, three in H3+, one in HeH+ --
-				! and they are ionized, so they count here with the same
-				! multiplicities the unknowns x(5), x(6), x(7) carry.
+				! x_h2_fix is not read by the rows here; the starting
+				! composition is placed on the row by
+				! impose_transported_fractions. The flag that pins a value
+				! (x_h2_fixed, set above where the carriers are
+				! transported) is cleared, because the reservoir's
+				! partition is the boundary model's statement and not the
+				! transported carrier's.
 				if (base_h2_composition_imposed() .and. j .le. 0) then
-					x_ion_ghost = (nhii(j) + 2.0d0*nmol_eq(j,2)           &
-					            + 3.0d0*nmol_eq(j,3) + nmol_eq(j,4))      &
-					            /nh(j)
-					if (.not. (x_ion_ghost .ge. 0.0d0)) x_ion_ghost = 0.0d0
-					if (x_ion_ghost .gt. 1.0d0) x_ion_ghost = 1.0d0
-					ieq_cell%x_h2_fixed = .true.
-					! THE FIXED POINT IS REACHED BY A SECANT STEP, NOT BY
-					! SUBSTITUTION. Imposing x2 (1 - x_ion) at the x_ion
-					! the previous pass returned is the map
-					! x -> g(x) = x2 (1 - x_ion(x)), and its slope
-					! g' = -x2 dx_ion/dx is positive (more H2 at fixed T
-					! leaves less ionized hydrogen): measured 0.74 on
-					! the ghost of the LHS 1140 b molecular seed at
-					! He/H = 2.13 and 0.90 at He/H = 9.7, a monotone
-					! contraction that substitution would need about 60
-					! and 180 passes to take to 1e-10 (extrapolated
-					! from those ratios at pass 30). The root of
-					! F(x) = g(x) - x is a scalar equation, and the
-					! secant through the last two evaluations solves it
-					! superlinearly. It is used only when both
-					! evaluations were made in the same radiation field
-					! (it_self - 1 past the self-field passes), only
-					! where F falls through the pair (the slope of F is
-					! g' - 1 < 0, so the root is on the side the two
-					! residuals point to) and only when its point is a
-					! partition the prescription can take, 0 <= x <= x2;
-					! otherwise the pass substitutes. The room the
-					! solve needs is not checked against the x_ion of
-					! the previous pass: at the secant point the linear
-					! model of g gives x_ion = 1 - x/x2, and x plus that
-					! is 1 - x (1 - x2)/x2 <= 1 for every x2 <= 1.
-					x_h2_map = base_h2_nuclei_fraction()                  &
-					         *(1.0d0 - x_ion_ghost)
-					ieq_cell%x_h2_fix = x_h2_map
-					if (it_self .gt. 1) then
-						f_h2_map = x_h2_map - x_h2_imposed
-						if (have_h2_secant_prev .and.                     &
-						    (f_h2_map - f_h2_secant_prev)                 &
-						    *(x_h2_imposed - x_h2_secant_prev)            &
-						    .lt. 0.0d0) then
-							x_h2_secant = x_h2_imposed - f_h2_map         &
-							     *(x_h2_imposed - x_h2_secant_prev)       &
-							     /(f_h2_map - f_h2_secant_prev)
-							if (x_h2_secant .ge. 0.0d0 .and.              &
-							    x_h2_secant .le.                          &
-							         base_h2_nuclei_fraction())           &
-								ieq_cell%x_h2_fix = x_h2_secant
-						endif
-						if (it_self - 1 .ge. xuv_self_field_passes) then
-							have_h2_secant_prev = .true.
-							x_h2_secant_prev    = x_h2_imposed
-							f_h2_secant_prev    = f_h2_map
-						endif
-					endif
-					! The partition this pass imposes, kept so that the
-					! closure below can measure what the solve made of it
-					! and how far one more pass would move it.
-					ghost_closure_move = abs(ieq_cell%x_h2_fix            &
-					                         - x_h2_imposed)
-					x_h2_imposed       = ieq_cell%x_h2_fix
-					! AND THE PRESCRIPTION IS CHECKED AGAINST THE CELL'S
-					! OWN HYDROGEN, which is what the over-prescription
-					! above never was. The room the pinned row leaves is
-					! 1 - x_h2_fix and the hydrogen already held in ions is
-					! x_ion; a prescription that leaves less room than that
-					! cannot be satisfied by any composition, and is
-					! refused here by name instead of reaching the solver
-					! and being reported as a streak of non-roots.
-					if (x_h2_map + x_ion_ghost .gt. 1.0d0) then
-						!$omp critical (ieq_acc_report)
-						write(*,'(A)') ' (ioniz_eq) STOP: the base '//    &
-							'handoff prescribes more H2 than the '//      &
-							'reservoir has non-ionized hydrogen'
-						write(*,'(A,I0,A,ES12.5)') '   ghost cell ', j,   &
-							'   imposed 2 n(H2)/n_H ', x_h2_map
-						write(*,'(A,ES12.5,A,ES12.5)')                    &
-							'   ionized hydrogen fraction it must make '//&
-							'room for ', x_ion_ghost,                     &
-							'   room left by the prescription ',          &
-							1.0d0 - x_h2_map
-						write(*,'(A,ES12.5)')                             &
-							'   handoff x2 = base_h2_nuclei_fraction() ', &
-							base_h2_nuclei_fraction()
-						flush(6)
-						!$omp end critical (ieq_acc_report)
-						error stop 'ioniz_eq: infeasible base H2 handoff'
-					endif
+					ieq_cell%x_h2_fixed = .false.
+					ieq_cell%x_h2_fix   = 0.0d0
+					ieq_cell%x_h2_neutral_partition_fixed = .true.
+					ieq_cell%x_h2_neutral_partition =                     &
+					                       base_h2_nuclei_fraction()
 				endif
 			endif
 
@@ -2691,6 +2616,9 @@
 			ieq_cell%x_hp_fix       = 0.0d0
 			ieq_cell%x_heii_fix     = 0.0d0
 			ieq_cell%x_heiii_fix    = 0.0d0
+			ieq_cell%x_hetr_fixed   = .false.
+			ieq_cell%x_hetr_row     = 0
+			ieq_cell%x_hetr_fix     = 0.0d0
 			! THE IONIZATION STAGES THE FLOW CARRIES, on their own
 			! gate. They are stages of an element, not molecular
 			! carriers: their transport is the element nucleus flux of
@@ -2729,6 +2657,15 @@
 					ieq_cell%x_heiii_fixed = .true.
 					ieq_cell%x_heii_fix    = nheii(j) /nhe(j)
 					ieq_cell%x_heiii_fix   = nheiii(j)/nhe(j)
+					! The He 2^3S level, per helium nucleus, where the
+					! flow carries it (He 2^3S transport): its balance
+					! row is then the constraint, in the row it holds
+					! in the system this sweep solves.
+					if (he23s_transport .and. thereis_HeITR) then
+						ieq_cell%x_hetr_fixed = .true.
+						ieq_cell%x_hetr_row   = ieq_triplet_row()
+						ieq_cell%x_hetr_fix   = nheiTR(j)/nhe(j)
+					endif
 				endif
 			endif
 
@@ -2945,6 +2882,10 @@
 						n_ieq_retry = n_ieq_retry + 1
 					endif
 					call impose_transported_fractions(sys_x, N_eq, iox)
+					! The scale this solve holds: the turnover of each
+					! element at its starting point (System_HeH_mol,
+					! mol_row_scale).
+					call set_element_turnover_scales(sys_x, N_eq, mbase)
 
 					if (thereis_metals) then
 						! Metals appended above the molecular unknowns; point
@@ -3211,12 +3152,13 @@
 				! their rows carry. The pair is closed when that residual
 				! is below the tolerance.
 				if (ghost_cell_closure) then
-					x_ion_ghost = sys_x(1) + sys_x(5) + sys_x(6)          &
-					            + sys_x(7)
+					x_ion_ghost =                                         &
+					     ionized_hydrogen_nuclei_fraction(sys_x(1:N_eq))
 					if (.not. (x_ion_ghost .ge. 0.0d0)) x_ion_ghost = 0.0d0
 					if (x_ion_ghost .gt. 1.0d0) x_ion_ghost = 1.0d0
 					ghost_closure_res = abs(sys_x(4)                      &
-					     - base_h2_nuclei_fraction()*(1.0d0 - x_ion_ghost))
+					     - h2_fraction_of_reservoir(                      &
+					           base_h2_nuclei_fraction(), x_ion_ghost))
 					ghost_closed = (ghost_closure_res .le.                &
 					                base_ghost_closure_tol)
 				endif
@@ -3266,19 +3208,10 @@
 					endif
 					write(*,'(A,I0,A,I0,A)') '   ghost cell ', j,         &
 						'   passes ', it_self, ''
-					write(*,'(A,ES12.5,A,ES12.5)') '   last move of the'//&
-						' imposed 2 n(H2)/n_H ', ghost_closure_move,      &
-						'   tolerance ', base_ghost_closure_tol
-					write(*,'(A,ES12.5)') '   residual of x_H2 -'//       &
+					write(*,'(A,ES12.5,A,ES12.5)') '   residual of x_H2 -'//&
 						' x2 (1 - x_ion) at the returned state ',         &
-						ghost_closure_res
-					! The pin error tells a pair without a fixed point
-					! (pin error ~0, residual left) from a solve that did not
-					! apply the imposition (pin error = residual).
-					if (ieq_cell%x_h2_fixed)                              &
-						write(*,'(A,ES12.5)') '   pin error |x(4) -'//    &
-							' imposed x_H2| of the returned solve ',      &
-							abs(sys_x(4) - ieq_cell%x_h2_fix)
+						ghost_closure_res, '   tolerance ',               &
+						base_ghost_closure_tol
 					flush(6)
 					!$omp end critical (ieq_acc_report)
 					if (.not. ieq_state_may_be_refused)                   &
@@ -3897,6 +3830,37 @@
 	! the steady residual all took a heating that belonged to a composition
 	! this routine no longer returns. They are therefore assembled here,
 	! from the post-sweep densities and the pre-sweep rates.
+
+	! THE HELD COMPOSITION'S OWN DENSITIES (held_composition_sources): the
+	! cells above the lower ghosts contract the rates with the densities
+	! they entered with, so the heating and the cooling below, the electron
+	! and particle counts they use and the composition handed back are of
+	! one state, the held one. The ghosts keep what the sweep solved.
+	if (held_composition_sources) then
+		nhi(1:N+Ng)  = f_sp_interior_entry(:,1)*n_in_dim(1:N+Ng)
+		nhii(1:N+Ng) = f_sp_interior_entry(:,2)*n_in_dim(1:N+Ng)
+		if (thereis_He) then
+			nhei(1:N+Ng)   = f_sp_interior_entry(:,3)*n_in_dim(1:N+Ng)
+			nheii(1:N+Ng)  = f_sp_interior_entry(:,4)*n_in_dim(1:N+Ng)
+			nheiii(1:N+Ng) = f_sp_interior_entry(:,5)*n_in_dim(1:N+Ng)
+			nheiTR(1:N+Ng) = f_sp_interior_entry(:,6)*n_in_dim(1:N+Ng)
+		endif
+		do im = 1, n_mion
+			nm(1:N+Ng,im) = f_sp_interior_entry(:,mion_fsp(im))           &
+			                *n_in_dim(1:N+Ng)
+		enddo
+		if (thereis_mol) then
+			nmol_eq(1:N+Ng,1) = f_sp_interior_entry(:,isp_H2)  *n_in_dim(1:N+Ng)
+			nmol_eq(1:N+Ng,2) = f_sp_interior_entry(:,isp_H2p) *n_in_dim(1:N+Ng)
+			nmol_eq(1:N+Ng,3) = f_sp_interior_entry(:,isp_H3p) *n_in_dim(1:N+Ng)
+			nmol_eq(1:N+Ng,4) = f_sp_interior_entry(:,isp_HeHp)*n_in_dim(1:N+Ng)
+		endif
+		if (thereis_oxychem) then
+			nox_eq(1:N+Ng,1) = f_sp_interior_entry(:,isp_OH) *n_in_dim(1:N+Ng)
+			nox_eq(1:N+Ng,2) = f_sp_interior_entry(:,isp_H2O)*n_in_dim(1:N+Ng)
+			nox_eq(1:N+Ng,3) = f_sp_interior_entry(:,isp_CO) *n_in_dim(1:N+Ng)
+		endif
+	endif
 
 	! Electron and gas-particle densities of the post-sweep composition. The
 	! heating channels below and the cooling need these, not the entry ones.
@@ -4558,14 +4522,11 @@
 	! bounds and conservation alone say nothing about it, which is why the
 	! acceptance test of ioniz_eq requires BOTH.
 	!
-	! The molecular systems already reach hybrd1 with their rows divided by
-	! the turnover scale (set_mol_turnover_rates, set_mol_metal_turnover_-
-	! rates), so their residual is used as returned, widened only by the
-	! metal <-> H/He charge-exchange bound that the solver scale leaves out
-	! of its rows: one contribution among several for the solver's path, but
-	! in the wind, where charge exchange couples a trace metal's rows to the
-	! whole H reservoir, the dominant term of the row's turnover -- judging a
-	! candidate against a scale without it would reject roots. The atomic
+	! The molecular systems already reach hybrd1 with every row divided by
+	! the chemical turnover of its element at x, charge exchange included
+	! (System_HeH_mol, mol_inv_turnover), so their residual is used as
+	! returned: each entry is the imbalance of one species balance against
+	! the turnover of its element at the candidate itself. The atomic
 	! systems are unscaled inside the solver (scaling would change the
 	! MINPACK path and the byte-identical history for no physical need), so
 	! the same style of scale is built here from this cell's own
@@ -4593,7 +4554,8 @@
 	! scale_out (optional) returns the turnover scale each row is divided
 	! by, after the vanishing-scale rule below (a scale <= 0 counts as 1).
 	real*8,  intent(out), optional :: scale_out(n)
-	real*8  :: fv(n), srow(n), cxb(n), par(60), el_tot(12)
+	real*8  :: fv(n), srow(n), par(60), el_tot(12), scale_held(n)
+	logical :: scaled_held
 	real*8  :: nH, nHe, ne, cx_heh, cx_hepp, s
 	integer :: iflag, i, e, ix
 
@@ -4617,22 +4579,21 @@
 		           + (ieq_cell%a_ion_HI + ieq_cell%rchiiB)*n_e_ref)       &
 		          *ieq_cell%nh
 	else if (thereis_mol) then
+		! Against the turnover of each element AT THE CANDIDATE, whatever
+		! scale the solve that produced it held; the scale in force is
+		! put back afterwards.
+		scale_held  = mol_row_scale(1:n)
+		scaled_held = mol_rows_by_element_turnover
+		call set_element_turnover_scales(x, n, mbase)
 		if (thereis_metals) then
 			cx_metal_base = mbase
 			call ion_system_HeH_mol_metals(n,x,fv,iflag,par)
-			! Charge-exchange bound of each row (absolute), converted to
-			! the dimensionless factor (s_solver + s_cx)/s_solver each
-			! already-scaled row is divided by. Rows charge exchange never
-			! reaches keep exactly 1.
-			cxb(1:n) = 0.0d0
-			call cx_add_to_turnover(cxb, el_tot)
 			cx_metal_base = 4
-			do i = 1,n
-				srow(i) = 1.0d0 + cxb(i)*mol_inv_turnover(i)
-			enddo
 		else
 			call ion_system_HeH_mol(n,x,fv,iflag,par)
 		endif
+		mol_row_scale(1:n)           = scale_held
+		mol_rows_by_element_turnover = scaled_held
 	else
 		! Atomic layouts: raw balance rows [cm^-3 s^-1] of the system the
 		! solve used, then the turnover scale of each row.
@@ -5067,7 +5028,18 @@
 	if (ieq_cell%x_hp_fixed    .and. nx .ge. 1) x(1) = ieq_cell%x_hp_fix
 	if (ieq_cell%x_heii_fixed  .and. nx .ge. 2) x(2) = ieq_cell%x_heii_fix
 	if (ieq_cell%x_heiii_fixed .and. nx .ge. 3) x(3) = ieq_cell%x_heiii_fix
+	if (ieq_cell%x_hetr_fixed .and. ieq_cell%x_hetr_row .gt. 0 .and.     &
+	    ieq_cell%x_hetr_row .le. nx)                                     &
+		x(ieq_cell%x_hetr_row) = ieq_cell%x_hetr_fix
 	if (ieq_cell%x_h2_fixed    .and. nx .ge. 4) x(4) = ieq_cell%x_h2_fix
+	! The reservoir's partition of the non-ionized hydrogen is a row of the
+	! solve, not a value: the starting point is placed on it at its own
+	! ionized fraction, and so is the returned state, which removes the
+	! tolerance-level slack hybrd1 can leave in that row exactly as for the
+	! pinned values above.
+	if (ieq_cell%x_h2_neutral_partition_fixed .and. nx .ge. 7)           &
+		x(4) = h2_fraction_of_reservoir(ieq_cell%x_h2_neutral_partition,  &
+		                                ionized_hydrogen_nuclei_fraction(x))
 	if (ieq_cell%x_ox_fixed .and. iox .gt. 0 .and. iox + 1 .le. nx) then
 		x(iox)   = ieq_cell%x_oh_fix
 		x(iox+1) = ieq_cell%x_h2o_fix
@@ -5469,13 +5441,14 @@
 	! Jacobian on the subspace transverse to the conservation modes, and no
 	! projection is applied or needed.
 	!
-	! THE MATRIX. The residual routine returns each molecular row divided by
-	! its turnover scale (set_mol_turnover_rates), and that scale is the
-	! row's nucleus total times a rate, s_k = N_k r_k. The rate matrix is
-	!    A(k,l) = (c_k/N_k) (1/miu_k) dfv_k/dx_l         [s^-1]
-	! with miu_k = mol_inv_turnover(k) and c_k the stoichiometric factor of
-	! the fraction the row balances (1 for a stage fraction, 2 for x(H2) and
-	! x(H2+), 3 for x(H3+)), because fv_k = miu_k dn_k/dt and
+	! THE MATRIX. The residual routine is asked for its rows as volume
+	! rates, fv_k = dn_k/dt [cm^-3 s^-1] (mol_rows_as_volume_rates of
+	! System_HeH_mol; the solve itself works on their normalized form).
+	! The rate matrix is
+	!    A(k,l) = (c_k/N_k) dfv_k/dx_l         [s^-1]
+	! with N_k the nucleus total of the row's element and c_k the
+	! stoichiometric factor of the fraction the row balances (1 for a stage
+	! fraction, 2 for x(H2) and x(H2+), 3 for x(H3+)), because
 	! dot x_k = c_k (dn_k/dt)/N_k. dfv/dx is a central difference of the
 	! production routine the solve itself uses.
 	!
@@ -5498,7 +5471,8 @@
 	real*8  :: A(nx,nx), wr(nx), wi(nx), vdum(1,1)
 	real*8  :: work(8*nx+64), conv(nx), lam, lo, hi
 	integer :: iflag, i, l, e, ix, islot, info, lwork, nsub, ksub(nx)
-	logical :: keep(nx), h2_fix, hp_fix, ox_fix, heii_fix, heiii_fix
+	logical :: keep(nx), h2_fix, hp_fix, ox_fix, heii_fix, heiii_fix, &
+	           hetr_fix, h2_res_fix
 	if (.not. thereis_mol) return
 	! The molecular block is seven rows before any option adds to it and
 	! the rate conversion below names all seven; a shorter system is not
@@ -5510,8 +5484,7 @@
 	enddo
 	if (islot .eq. 0) return
 
-	! The conversion of each row into a rate: c_k/N_k times the turnover
-	! scale the residual routine already divided the row by.
+	! The conversion of each row into a rate: c_k/N_k.
 	conv = 0.0d0
 	keep = .false.
 	conv(1) = 1.0d0/max(ieq_cell%nh,  1.0d-300)
@@ -5548,29 +5521,33 @@
 			endif
 		enddo
 	endif
-	do i = 1, nx
-		if (mol_inv_turnover(i) .gt. 0.0d0)                            &
-			conv(i) = conv(i)/mol_inv_turnover(i)
-	enddo
-
 	! The rates measured are those of the chemistry: every row a transport
 	! solve owns is a constraint x - x_fix = 0 whose derivative is not a
 	! chemical rate, so all of them are released while the matrix is formed
-	! (the H2 and oxygen carriers and the three ionization stages).
+	! (the H2 and oxygen carriers, the three ionization stages and the
+	! carried He 2^3S level), and so is the reservoir's partition of the
+	! non-ionized hydrogen in a lower ghost.
 	h2_fix    = ieq_cell%x_h2_fixed
+	h2_res_fix = ieq_cell%x_h2_neutral_partition_fixed
 	hp_fix    = ieq_cell%x_hp_fixed
 	heii_fix  = ieq_cell%x_heii_fixed
 	heiii_fix = ieq_cell%x_heiii_fixed
+	hetr_fix  = ieq_cell%x_hetr_fixed
 	ox_fix    = ieq_cell%x_ox_fixed
 	ieq_cell%x_h2_fixed    = .false.
+	ieq_cell%x_h2_neutral_partition_fixed = .false.
 	ieq_cell%x_hp_fixed    = .false.
 	ieq_cell%x_heii_fixed  = .false.
 	ieq_cell%x_heiii_fixed = .false.
+	ieq_cell%x_hetr_fixed  = .false.
 	ieq_cell%x_ox_fixed    = .false.
 
 	par   = 0.0d0
 	iflag = 1
 	A     = 0.0d0
+	! The rows as volume rates dn/dt [cm^-3 s^-1], not the relative
+	! imbalances the solve works on (System_HeH_mol), for the derivatives.
+	mol_rows_as_volume_rates = .true.
 	do l = 1, nx
 		! A step of the size of the unknown, with a floor so that a stage
 		! sitting at none is still sampled.
@@ -5583,11 +5560,14 @@
 			A(i,l) = conv(i)*(fvp(i) - fvm(i))/(2.0d0*h)
 		enddo
 	enddo
+	mol_rows_as_volume_rates = .false.
 
 	ieq_cell%x_h2_fixed    = h2_fix
+	ieq_cell%x_h2_neutral_partition_fixed = h2_res_fix
 	ieq_cell%x_hp_fixed    = hp_fix
 	ieq_cell%x_heii_fixed  = heii_fix
 	ieq_cell%x_heiii_fixed = heiii_fix
+	ieq_cell%x_hetr_fixed  = hetr_fix
 	ieq_cell%x_ox_fixed    = ox_fix
 
 	! The molecules' own rates: the diagonal of the rate matrix, which is
@@ -5646,6 +5626,7 @@
 		call ion_system_HeH_mol(n, x, fv, iflag, par)
 	endif
 	end subroutine molecular_network_rows
+
 
 	! ------------------------------------------------------!
 

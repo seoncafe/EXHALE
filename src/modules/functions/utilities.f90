@@ -237,7 +237,7 @@
       character(len=512) :: fields
       character(len=1) :: s, c
       character(len=48) :: why
-      character(len=16) :: ptr
+      character(len=32) :: ptr
       character(len=64) :: mtok
       character(len=32) :: tbuf
       character(len=16) :: sbuf
@@ -251,6 +251,10 @@
       ! file a run without it produces is unchanged, byte for byte.
       ptr = ''
       if (ionization_transport) ptr = ' iontrans=T'
+      ! he23strans: the He 2^3S column is a population the flow carried
+      ! (He 2^3S transport), not the local root of its cell's balance.
+      ! Written only when the option is on, for the reason above.
+      if (he23s_transport) ptr = trim(ptr)//' he23strans=T'
       ! certified: the stationary certification of A2 was made on this state
       ! and every active equation it could evaluate was within its tolerance,
       ! none of them was unavailable, no cell of the state was without a

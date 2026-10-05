@@ -6,7 +6,7 @@
       ! This module exists so that adding a metal becomes "add rows to a
       ! table" rather than "thread N new arguments through M subroutines."
       ! The ordering of the metal ions here MUST match the f_sp species
-      ! columns 7..30 set up elsewhere (ionization_equilibrium, write_output,
+      ! columns 7..33 set up elsewhere (ionization_equilibrium, write_output,
       ! set_IC), i.e.
       !
       !     index  ion    f_sp col   element  stage

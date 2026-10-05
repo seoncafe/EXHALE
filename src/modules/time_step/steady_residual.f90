@@ -369,8 +369,10 @@
          R(3,:) = R(3,:) + Sidf
       endif
       ! THE ENTHALPY THE CARRIER FLUXES CARRY, the same physics for the
-      ! relative motion of a carrier within its own elements (diffusive_
-      ! photochemistry, carrier_enthalpy_face_flux states it).  Added into
+      ! relative motion of a molecular carrier within its own elements and
+      ! of a carried ionization stage within its own element (diffusive_
+      ! photochemistry, molecular_carrier_enthalpy_face_flux and
+      ! ionization_stage_enthalpy_face_flux state it).  Added into
       ! Sidf, the one record of the enthalpy of relative transport that the
       ! row terms and the conservation budget report.  Its column sum is
       ! zero: both ends of the carrier column are closed.

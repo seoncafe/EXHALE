@@ -122,6 +122,8 @@
    ! state carried? Absent from the header means no, which is what every
    ! file written before the option existed means as well.
    logical :: ic_ionization_transport = .false.
+   ! The same statement of the He 2^3S population (He 2^3S transport).
+   logical :: ic_he23s_transport = .false.
    real*8  :: ic_base_flux_const    = -1.0d0
    ! WHICH RUN STATE PRODUCED THE STATE IN THE FILE, and its clock. A file
    ! written before the field existed carries no statement, and the only
@@ -263,7 +265,7 @@
    ! refused by name, and the change that was allowed is written into the
    ! new state's block, so a rung of a ladder states what it was reached
    ! from instead of the change being silent.
-   integer, parameter :: n_opt = 23
+   integer, parameter :: n_opt = 26
    ! THE LENGTH OF ONE TOKEN'S VALUE, the same on every path the value
    ! takes: the writer (opt_value), the reader (opt_field_value), the
    ! comparison (compare_options_field) and the value a token has in a file
@@ -276,7 +278,8 @@
         'carrier', 'carrier_newton', 'iontrans', 'he_diff',                 &
         'he_metal_diff', 'sec_ion', 'caloric_mono', 'excH', 'base_ir',      &
         'mol_ir', 'mol_heat', 'visc', 'cond', 'jlya', 'wellbal',            &
-        'interdiff_enth', 'carrier_enth' ]
+        'interdiff_enth', 'carrier_enth', 'lowE_partition', 'stage_enth',   &
+        'he23strans' ]
    ! WHICH TOKENS MAY NEVER BE NAMED, and why: these four decide WHICH
    ! SPECIES THE STATE FILES CARRY. metals adds the metal ionization
    ! stages, mol the four molecular carriers, oxychem the three oxygen
@@ -298,12 +301,17 @@
    ! time"). It is a change of the equations, so it must still be named on
    ! a "Restart option change:" line and is written into the new state's
    ! block; it is not a change of what the file holds.
+   !
+   ! he23strans is not one either, for the same reason: n(He 2^3S) has a
+   ! column in every state file written with the level tracked, and the
+   ! key changes whether that column is the local root of its cell or a
+   ! population the flow carried.
    logical, parameter :: opt_changes_layout(n_opt) = [                      &
         .false., .true.,  .false., .true.,  .false., .true.,                &
         .true.,  .false., .false., .false.,                                 &
         .false., .false., .false., .false., .false.,                        &
         .false., .false., .false., .false., .false., .false.,               &
-        .false., .false. ]
+        .false., .false., .false. , .false., .false. ]
    ! A ROUTE TOKEN: the same equations, solved by another algorithm.
    ! carrier_newton says whether the transported balances are unknowns of
    ! the Newton vector, solved together with the wind as one block, or are
@@ -322,7 +330,7 @@
         .false., .true.,  .false., .false.,                                 &
         .false., .false., .false., .false., .false.,                        &
         .false., .false., .false., .false., .false., .false.,               &
-        .false., .false. ]
+        .false., .false., .false. , .false., .false. ]
    ! THE VALUE A TOKEN HAS IN A FILE WRITTEN BEFORE THE TOKEN EXISTED. A
    ! token added to the vocabulary is absent from every state written
    ! earlier, and what such a state solved is known: the equations of the
@@ -330,12 +338,17 @@
    ! interdiffusion enthalpy flux of the energy equation, He_diffusion) did
    ! not exist before, so an older state was solved without it and reads
    ! as F; so does carrier_enth (the enthalpy flux of the transported
-   ! carriers, 2026-09-29). An empty entry means the token has always been written, and its
-   ! absence from a file of this schema is refused as before.
+   ! molecular carriers), lowE_partition (the Furlanetto & Stoever 2010
+   ! partition of the 10.2-30 eV photoelectrons) and stage_enth (the
+   ! enthalpy flux of the carried ionization stages relative to their
+   ! element) and he23strans (the transported He 2^3S population), which
+   ! older states were solved without. An empty entry means
+   ! the token has always been written, and its absence from a file of this
+   ! schema is refused as before.
    character(len=opt_value_len), parameter ::                               &
         opt_value_when_absent(n_opt) = [ character(len=opt_value_len) ::    &
         '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '',     &
-        '', '', '', '', '', 'F', 'F' ]
+        '', '', '', '', '', 'F', 'F', 'F' , 'F', 'F' ]
    ! THE TOKENS THAT CARRY A CONTINUATION FACTOR. cond and interdiff_enth
    ! state T for the equation, F for no term, and the factor s itself where
    ! 0 <= s < 1 (conduction_scale, interdiffusion_enthalpy_scale; the two
@@ -352,7 +365,7 @@
         .false., .false., .false., .false.,                                 &
         .false., .false., .false., .false., .false.,                        &
         .false., .false., .false., .true.,  .false., .false.,               &
-        .true.,  .false. ]
+        .true.,  .false., .false. , .false., .false. ]
    ! Half the width of the rounding interval of a legacy F7.5 token: F7.5
    ! writes v for every factor s with |s - v| <= 5e-6.
    real*8, parameter :: legacy_factor_half_width = 5.0d-6
@@ -563,6 +576,20 @@
          write(*,*) '   state being restarted was produced without it, so'
          write(*,*) '   its H+ column is a local equilibrium. The transport'
          write(*,*) '   starts from it and relaxes over the ionization time.'
+      endif
+      if (ic_he23s_transport .and. .not. he23s_transport) then
+         write(*,*) ' (load_IC) NOTE: this state was written with'
+         write(*,*) '   "He 2^3S transport: True" and is being restarted'
+         write(*,*) '   without it. Its He 2^3S column is a transported'
+         write(*,*) '   population and the first sweep will replace it by'
+         write(*,*) '   the local root of each cell.'
+      endif
+      if (he23s_transport .and. ic_coupling_present .and.                   &
+          .not. ic_he23s_transport) then
+         write(*,*) ' (load_IC) NOTE: "He 2^3S transport: True", but the'
+         write(*,*) '   state being restarted was produced without it, so'
+         write(*,*) '   its He 2^3S column is the local root of each cell.'
+         write(*,*) '   The transport starts from it.'
       endif
       if (nrec .ne. N + 2*Ng) then
          write(*,'(A,I0,A,I0,A)')                                            &
@@ -1765,6 +1792,11 @@
       case ('he_diff');        opt_value = tf(he_diffusion)
       case ('he_metal_diff');  opt_value = tf(he_metal_diffusion)
       case ('sec_ion');        opt_value = tf(use_sec_ion)
+      ! The partition of the 10.2-30 eV photoelectrons is a term only where
+      ! the secondary ionization it belongs to is on, so the token states
+      ! the term and not the key, as interdiff_enth does.
+      case ('lowE_partition'); opt_value = tf(use_low_energy_partition     &
+                                              .and. use_sec_ion)
       case ('caloric_mono');   opt_value = tf(caloric_eos_monatomic)
       case ('excH');           opt_value = tf(use_excited_H)
       case ('base_ir');        opt_value = tf(base_ir_field)
@@ -1801,6 +1833,15 @@
       ! its transport is selected), with the same key.
       case ('carrier_enth');   opt_value = tf(interdiffusion_enthalpy_flux  &
                                        .and. thereis_mol .and. carrier_transport)
+      ! The enthalpy flux of the ionization stages moving relative to their
+      ! own element enters where "Ionization transport" carries them
+      ! (diffusive_photochemistry, ionization_stage_enthalpy_active), with
+      ! the same key.
+      case ('stage_enth');     opt_value = tf(interdiffusion_enthalpy_flux  &
+                                       .and. ionization_transport)
+      ! The He 2^3S population carried by the flow (He 2^3S transport)
+      ! instead of the local root of its balance.
+      case ('he23strans');     opt_value = tf(he23s_transport)
       case default
          write(*,'(A)') ' (load_IC) ERROR: the option token "'//           &
               trim(name)//'" is named in opt_name and has no value in'//   &
@@ -2759,6 +2800,8 @@
             ic_rec_method = trim(val)
          case ('iontrans')
             ic_ionization_transport = (trim(val) .eq. 'T')
+         case ('he23strans')
+            ic_he23s_transport = (trim(val) .eq. 'T')
          case ('mode')
             ic_run_mode_present = .true.
             if (trim(val) .eq. 'phys') then
@@ -2915,6 +2958,10 @@
       j_worst = 1
       do j = 1, N
          d = abs(r_file(j) - r(j))/max(abs(r(j)), 1.0d-30)
+         ! A non-finite center (NaN or Inf read from the file) is a grid
+         ! mismatch, not a match: a NaN compares false against every bound,
+         ! so without this it would leave d_max at zero and pass the guard.
+         if (.not. (d .le. huge(d))) d = huge(d)
          if (d .gt. d_max) then
             d_max   = d
             j_worst = j

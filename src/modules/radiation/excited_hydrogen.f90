@@ -8,9 +8,12 @@
    ! which leave one of their hydrogen fragments in n = 2 rather than in the
    ! ground state (the term is formed by molecular_reaction_heat, which
    ! subtracts the same excitation energy from the chemical heat) --
-   ! with the Ly-alpha mean intensity J_lya either (a) estimated as in Huang
-   ! et al. (2017, ApJ 851, 150) Eq. (6), J_lya ~ 0.1 F_LyC/Dnu_D, attenuated
-   ! by 1/(1+tau_lya) below the Ly-alpha photosphere, or (b) read from an
+   ! with the Ly-alpha mean intensity J_lya either (a) estimated from the
+   ! order-of-magnitude estimate of Huang et al. (2017, ApJ 851, 150),
+   ! Section 2, text after their Eq. (6), J_lya ~ 0.1 F_LyC/Dnu_D, with
+   ! two closures of EXHALE's own that the paper does not make: F_LyC the
+   ! flux the whole neutral-H column absorbs, and the attenuation
+   ! 1/(1+tau_lya) below the Ly-alpha photosphere; or (b) read from an
    ! external Ly-alpha RT profile (selected by jlya_mode).  Every stellar
    ! Ly-alpha field a cell is pumped by is the MEAN of that field over the
    ! cell's own line-centre optical depth (lya_rt.f90).
@@ -190,9 +193,11 @@
    gamma2_bal = xi*gamma_n2_balmer()
    hpe2_bal   = xi*heat_n2_balmer()
 
-   ! ----- Deposited Ly-continuum flux F_LyC (Huang+2017 Eq. 6 input) ----- !
+   ! ----- Deposited Ly-continuum flux F_LyC (the input of the estimate of
+   ! Huang+2017, text after their Eq. 6) ----- !
    ! Single deposited flux from the total neutral-H column, matching
-   ! EXHALE_transit.py:
+   ! EXHALE_transit.py (EXHALE's choice: Huang+2017 quote F_LyC ~ 1e4
+   ! erg cm^-2 s^-1 deposited near the photoionization peak):
    ! each absorbed LyC photon balanced by a recombination -> Ly-alpha photon.
    a_cm  = a_orb                                   ! a_orb already in cm
    F_inc = 10.0d0**LEUV/(4.0d0*pi*a_cm**2.0)       ! incident stellar LyC [erg cm^-2 s^-1]
@@ -227,8 +232,9 @@
       call jlya_escape_prob(T_K, nhi, nhii, nheii, nheiii, ne, v_in,     &
                             Jlya_arr, taulya)
    else
-      ! (a) Parameterized J_lya = 0.1 F_LyC/Dnu_D (Huang+2017 Eq. 6), attenuated
-      ! by 1/(1+tau_lya) with tau_lya the top-down line-centre Ly-alpha optical
+      ! (a) Parameterized J_lya = 0.1 F_LyC/Dnu_D (Huang+2017, Section 2, text
+      ! after their Eq. 6), attenuated by 1/(1+tau_lya), a closure of EXHALE's
+      ! own not in that paper, with tau_lya the top-down line-centre Ly-alpha optical
       ! depth, so the pumping vanishes below the Ly-alpha photosphere. This is
       ! an approximate staging estimate; the accurate field is jlya_mode=1.
       !

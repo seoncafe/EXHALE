@@ -390,6 +390,37 @@ def write_profile(path, cols, header, column_order=None):
         for key in ('measured_flux_H', 'measured_flux_He'):
             if header.get(key) is not None:
                 f.write('# %s %.17E\n' % (key, header[key]))
+        # Optional, and written only for a column solved under the heat flux
+        # the wind conducts into it (photochem_to_lower_profile.py
+        # --conducted-heat-flux): the flux, the treatment of the band
+        # emission and the matching-level temperature it gave.  Additive to
+        # the format for the reason the pair above is.
+        if header.get('conducted_heat_flux_cgs') is not None:
+            f.write('# conducted_heat_flux_cgs %.17E\n'
+                    % header['conducted_heat_flux_cgs'])
+            f.write('# column_energy_treatment %s\n'
+                    % header['column_energy_treatment'])
+            f.write('# column_T_match_K %.17E\n' % header['column_T_match_K'])
+            # the analog of the estimated NH3 nu2 + H2 rate, for the
+            # treatment that uses it ('nlte')
+            if header.get('nh3_h2_rate_analog') is not None:
+                f.write('# nh3_h2_rate_analog %s\n'
+                        % header['nh3_h2_rate_analog'])
+            # how the band emission leaves the column, written off the
+            # default 'thin' only
+            if header.get('column_band_transfer') is not None:
+                f.write('# column_band_transfer %s\n'
+                        % header['column_band_transfer'])
+            # the thin treatment's validity flag: T when more than 10 per
+            # cent of a significant bin's emission excess is absorbed above
+            # (the state is kept, outside the treatment's stated validity)
+            if header.get('thin_layer_limit_exceeded') is not None:
+                f.write('# thin_layer_limit_exceeded %s\n'
+                        % header['thin_layer_limit_exceeded'])
+                f.write('# thin_layer_max_absorbed_fraction %.6E\n'
+                        % header['thin_layer_max_absorbed_fraction'])
+                f.write('# thin_layer_max_absorbed_bin %s\n'
+                        % header['thin_layer_max_absorbed_bin'])
         f.write('# iteration %d\n' % header['iteration'])
         f.write('# reached_steady_state %s\n'
                 % ('T' if header['reached_steady_state'] else 'F'))

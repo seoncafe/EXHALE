@@ -18,6 +18,8 @@
 \begin{document}
 \maketitle
 
+\noindent\textit{Stale note (2026-10-05): the coupling is no longer one-way in energy: \texttt{element\_flux\_closure.py} with \texttt{energy\_coupling} passes the heat the wind conducts into the column (\texttt{base\_conductive\_flux\_cgs}) to \texttt{photochem\_to\_lower\_profile.py -{}-conducted-heat-flux}, which solves the column energy balance below the match (\texttt{md/Update\_EXHALE\_stage3.md} sections 76-78); the radiation half (the transmitted XUV handed down) is still not implemented.}
+
 \section{Motivation and current state}
 
 EXHALE's lower boundary is the $\sim$1\,$\ubar$ level: the input ``Planet radius'' is the

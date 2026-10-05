@@ -146,7 +146,7 @@ in \texttt{input.inp} states it (\texttt{Stellar LW flux},
 \texttt{Stellar FUV B4 flux}), and a stated value, zero included, always
 stands. Where no key is given and the spectrum is a loaded file
 (\texttt{Spectrum type: Load}), the three continuum bands are integrated
-from that file by \texttt{sed\_band\_integrated\_flux} (\texttt{sed\_read.f90}),
+from that file by \texttt{sed\_band\_fluxes} (\texttt{sed\_read.f90}),
 \begin{equation}
 F_{\rm band} = \int_{\lambda_{\rm lo}}^{\lambda_{\rm hi}} F_\lambda\,d\lambda,
 \label{eq:rad:bandflux}
@@ -377,14 +377,17 @@ of these one-particle rates with the composition,
 \end{equation}
 performed in exactly one place (\texttt{photoheating\_of\_cell}) and split
 by absorber into the six columns H\,{\sc i}, He\,{\sc i}, He\,{\sc ii},
-He\,$2^3$S, H$_2$, metals. The heating efficiency written to the output is
+He\,$2^3$S, H$_2$, metals. The heating efficiency the code forms is
 \begin{equation}
 \eta_{\rm heat} = \frac{\mathcal{H}}{\displaystyle\sum_k \mathcal{F}_k
         \Big(\sum_a \sigma_{a,k} n_a\Big)\Delta E_k\times 10^{-18}},
 \label{eq:rad:eta}
 \end{equation}
 the ratio of the energy deposited to the energy absorbed, set to zero in a
-transparent or unilluminated cell.
+transparent or unilluminated cell. It is passed to \texttt{write\_output}
+(\texttt{write\_output.f90}) but written to no output file
+(\texttt{Hydro\_ioniz.txt} carries $r$, $\rho$, $v$, $p$, $T$, the heating
+and the cooling).
 
 \paragraph{Molecular channels.} H$_2$ absorption is resolved into four
 mutually exclusive final states whose cross sections are \emph{shares} of
@@ -492,9 +495,58 @@ the base feedback amplifies the startup transient into a runaway
 met, and again before the JFNK handover so that Newton is never asked to
 solve a system the marched state does not approximately satisfy).
 \texttt{Secondary\_ionization: Immediate} applies it from step 0 and
-\texttt{False} disables it entirely. Photoelectrons between 13.6 and 30\,eV
-are still treated as depositing all their energy as heat, which is a limit
-of the published tables and not a physical threshold.
+\texttt{False} disables it entirely.
+
+\paragraph{Photoelectrons below 30\,eV.} By default a photoelectron below
+$E_{\rm sec}$ deposits all its energy as heat. Above 10.2\,eV that is a
+limit of the tables of the partition above and not a physical threshold;
+below 10.2\,eV it is physical, no excitation or ionization being open to the
+electron. The key \texttt{Low-energy electron partition: Furlanetto2010}
+(default \texttt{none}; \texttt{use\_low\_energy\_partition} in
+\texttt{parameters.f90}, the physics in
+\texttt{low\_energy\_electron\_degradation.f90}) partitions the
+photoelectrons of 10.2--30\,eV by the Monte Carlo deposition tables of
+\citet{Furlanetto2010}, their electronic tables at the 14 ionized fractions
+from $10^{-4}$ to 0.999, interpolated linearly in $E_0$ and in
+$x = n_e/(n_{\rm H}+n_{\rm He})$, the $x$ the partition above is given
+(\texttt{low\_energy\_electron\_tables.f90}). Its heat share
+$f_{\rm heat}E_0$ is heat; its numbers of H\,{\sc i} and He\,{\sc i}
+ionizations per primary are added to the secondary rates of
+\eqref{eq:rad:secrate}, their branching renormalized to the cell's neutral
+densities by the rule of \eqref{eq:rad:sec_split} with the tables' reference
+composition $r_{\rm ref} = 0.08/0.92$ in place of 0.1; and the energy of the
+collisionally excited H\,{\sc i} lines leaves the cell, as the excitation
+share of the partition above does. An electron below the 10.2\,eV row is
+heat whole (the authors' interpolator ramps from their 10.0\,eV row, which
+the physics does not), $x$ is clamped into the tabulated range, and the heat
+is clamped into $[0,1-f_{\rm ion}]$. The partition applies only where the
+secondary-ionization coupling is applied (\texttt{use\_sec\_ion} and, under
+the staged default, \texttt{sec\_ion\_active}), on the stellar path
+(\texttt{photoelectron\_partition\_on\_grid}) and the recombination path
+(\texttt{photoelectron\_partition\_at\_energy}) alike, and only in a cell
+whose \emph{solved} state holds no H$_2$: one gate,
+\texttt{low\_energy\_electron\_partition}, decides it, and the
+advection-corrected post-process, whose reconstructed gas carries no
+molecules, passes the H$_2$ density of the solved state it corrects. The
+option is recorded in the state file (token \texttt{lowE\_partition}), so a
+state is not restarted under the other setting.
+
+The validity of the option is limited in three ways that the code states and
+does not repair. (i) The tables describe an atomic H/He gas of He/H
+$=0.087$; only the H\,{\sc i}/He\,{\sc i} branching is renormalized, the heat
+and the total ionization share being those of that gas, so in a
+helium-rich gas, which has fewer H\,{\sc i} atoms per electron at the same
+$x$, the tables understate the heat below 19.8\,eV. (ii) The gate is
+discontinuous in the H$_2$ abundance: an arbitrarily small $n({\rm H_2})$
+sends the whole 10.2--30\,eV power back to heat, no source covering the
+partition in H$_2$ at these energies; a continuous treatment of a partly
+molecular gas is an open design item (\texttt{md/TO\_BE\_DONE.md}, item
+(AJ)), and the option is off in every stored LHS~1140\,b run. (iii) The
+trapping of the H\,{\sc i} line photons in a Ly$\alpha$-thick cell is not
+followed, so there the heat below 30\,eV is a lower bound. At 30\,eV, where
+the source changes, $f_{\rm heat}$ steps by $-0.011$ at $x=10^{-4}$ and
+by zero at $x\ge0.5$ (atomic gas, update log stage~3 section~69); the step
+is not smoothed.
 
 \subsection{Reprocessed and non-stellar fields}
 \label{sec:radiation:internal}
@@ -539,11 +591,22 @@ it destroys H$_2$ at the whole absorbed rate, and H$_2^+$ is made only by
 what the dissociative, double-ionization and neutral states leave. The
 dissociative state opens for the photons from 19.8\,eV up, the neutral
 window for He\,{\sc ii} Ly$\alpha$ and double ionization for the
-He\,{\sc iii} ground capture. Each state heats with its photoelectron(s)
+He\,{\sc iii} ground capture. Each state releases its photoelectron(s)
 and fragment kinetic energy at the channel energy, plus the mean kinetic
 energy of the captured electron for a continuum channel; the formation
 energy the products store and the $n=2$ excitation the neutral fragments
-radiate are not heat.
+radiate are not heat. Every photoelectron of these channels, of H\,{\sc i},
+He\,{\sc i}, H$_2$ and the metal ions goes through the partition of
+Sec.~\ref{sec:radiation:secondary} at its own energy, the representative
+energy of its channel and not an average over the capture continuum
+(\texttt{photoelectron\_partition\_at\_energy}, the bracket and interpolation
+of the stellar path), under the same switches as
+the stellar ones, the photoelectron and the Auger electron of an inner-shell
+metal absorption separately: above 30\,eV (the He\,{\sc iii} ground capture on
+H\,{\sc i}, He\,{\sc i}, H$_2$ and the metals below 24.4\,eV, He\,{\sc ii}
+Ly$\alpha$ on the metals below 10.8\,eV) it heats with $f_{\rm heat}$ and
+adds its secondary ionizations to the same rates; the fragment kinetic
+energy is heat at once.
 
 \paragraph{Lyman-Werner band.} The 912--1201\,\AA{} beam is solved once for
 all of its absorbers together (\texttt{fuv\_lw\_photon\_field}), because an

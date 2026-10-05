@@ -381,8 +381,31 @@
 	      - n_heiTR*(A31 + n_hi*Q31)
 	end subroutine tr_triplet_row
 
-	! TR-form four H/He/triplet residual rows (Oklopcic form, no collisional
-	! ionization). Writes fvec(1), fvec(2), fvec(3) in this exact order, then
+	! The same balance as its two sign-definite halves, production
+	! (recombination into the triplets and collisional excitation from the
+	! ground singlet) and loss (photoionization, electron-impact transfer
+	! and ionization, radiative decay and the He(2^3S) + H quench), from the
+	! terms of tr_triplet_row: ftr = prod - loss to rounding.  A record of
+	! the channels, for the row-term record of the transported level; the
+	! residual is tr_triplet_row's.
+	subroutine tr_triplet_row_channels(prod, loss, n_hi, n_heiSI, n_heiTR, &
+	                                   n_heii, n_e, g_heiTR, a_heiTR, q13, &
+	                                   q31g, q31a, q31b, Q31, A31, b_heiTR)
+	real*8, intent(out) :: prod, loss
+	real*8, intent(in)  :: n_hi, n_heiSI, n_heiTR, n_heii, n_e
+	real*8, intent(in)  :: g_heiTR, a_heiTR, q13, q31g, q31a, q31b, Q31, A31
+	real*8, intent(in)  :: b_heiTR
+
+	prod = n_e*(n_heii*a_heiTR + n_heiSI*q13)
+	loss = n_heiTR*g_heiTR                                          &
+	     + n_e*n_heiTR*(q31g + q31a + q31b + b_heiTR)              &
+	     + n_heiTR*(A31 + n_hi*Q31)
+	end subroutine tr_triplet_row_channels
+
+	! TR-form four H/He/triplet residual rows (the Oklopcic & Hirata 2018
+	! form, with the electron-impact ionization of H I, of He I from the
+	! ground singlet and from 2^3S, and of He II added: b_hi, b_hei,
+	! b_heiTR, b_heii). Writes fvec(1), fvec(2), fvec(3) in this exact order, then
 	! obtains fvec(4) from tr_triplet_row so the triplet expression lives in
 	! one place. Verbatim-shared by System_HeH_TR and System_HeH_TR_metals;
 	! n_e is an INPUT, so the metals system can pass its metal-inclusive
@@ -547,7 +570,8 @@
 	! only X0<->X+ and pin the unused upper unknown. Expression order is
 	! verbatim from the System_HeH_metals residual.
 	subroutine metal_rows(fvec, x, base, nelem, mtot, mg0, mg1, mg02,  &
-	                      mb0, mb1, ma1, ma2, mtop, nm0, nm1, nm2, n_e)
+	                      mb0, mb1, ma1, ma2, mtop, nm0, nm1, nm2, n_e,    &
+	                      gross)
 	integer, intent(in) :: base, nelem
 	real*8 :: fvec(*)
 	real*8, intent(in)  :: x(*)
@@ -564,10 +588,25 @@
 	integer, intent(in) :: mtop(nelem)
 	real*8, intent(in)  :: nm0(nelem), nm1(nelem), nm2(nelem)
 	real*8, intent(in)  :: n_e
+	! The gross rate of each row, the sum of the magnitudes of its terms
+	! [cm^-3 s^-1] (System_HeH_mol, mol_inv_turnover); zero for an identity
+	! row, which carries no reaction.
+	real*8, optional, intent(inout) :: gross(*)
 	integer :: e, ix
 
 	do e = 1,nelem
 		ix = base + 2*(e-1)
+		if (present(gross)) then
+			gross(ix)   = 0.0d0
+			gross(ix+1) = 0.0d0
+			if (mtot(e) .gt. 1.0d-30) then
+				gross(ix) = abs(nm0(e)*mg0(e)) + abs(nm0(e)*mb0(e)*n_e)     &
+				          + abs(ma1(e)*nm1(e)*n_e)
+				if (mtop(e) .ge. 2) gross(ix+1) = abs(nm1(e)*mg1(e))         &
+				          + abs(nm0(e)*mg02(e)) + abs(nm1(e)*mb1(e)*n_e)    &
+				          + abs(ma2(e)*nm2(e)*n_e)
+			endif
+		endif
 		if (mtot(e) .le. 1.0d-30) then
 			fvec(ix)   = x(ix)
 			fvec(ix+1) = x(ix+1)
@@ -630,6 +669,13 @@
 	! be imposed, so these two rows exist wherever the flags can be set.
 	if (cell%x_heii_fixed)  fvec(2) = x(2) - cell%x_heii_fix
 	if (cell%x_heiii_fixed) fvec(3) = x(3) - cell%x_heiii_fix
+	! The He 2^3S level per He nucleus, carried by the transported level
+	! (He 2^3S transport), in the row its balance holds in this system
+	! (tr_triplet_row: row 4 of the atomic triplet systems, row 8 of the
+	! molecular ones). The flag is set only where the system carries the
+	! level, so the row named is that balance.
+	if (cell%x_hetr_fixed .and. cell%x_hetr_row .gt. 0)                  &
+		fvec(cell%x_hetr_row) = x(cell%x_hetr_row) - cell%x_hetr_fix
 	end subroutine impose_transported_ionization_fractions
 
 	! End of module

@@ -185,6 +185,8 @@ SRC := \
   src/modules/radiation/J_inc.f90 \
   src/modules/radiation/Cool_coeff.f90 \
   src/modules/radiation/electron_energy_degradation.f90 \
+  src/modules/radiation/low_energy_electron_tables.f90 \
+  src/modules/radiation/low_energy_electron_degradation.f90 \
   src/modules/radiation/util_ion_eq.f90 \
   src/modules/radiation/ionization_equilibrium.f90 \
   src/modules/radiation/hydrogen_n2_rates.f90 \

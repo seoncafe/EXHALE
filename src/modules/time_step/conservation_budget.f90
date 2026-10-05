@@ -533,11 +533,12 @@
            ' w*F_mu + q_mu + conduction, as viscous_conduction_sources'//&
            ' returns it; the three are not separated at this point'
       write(uu,'(A)') '# Sidf is the divergence of the interdiffusion'// &
-           ' enthalpy flux q_d = sum_s h_s J_s of the element and'//  &
-           ' carrier fluxes, ADDED to R_energy: R_energy = dF_energy'//  &
-           ' - S_energy - (heat - cool) - Sene + Sidf; zero unless'//    &
-           ' He_diffusion moves the elements or a molecular carrier'//   &
-           ' is transported (schema 2 adds this column)'
+           ' enthalpy flux q_d = sum_s h_s J_s of the element, carrier'//&
+           ' and carried ionization-stage fluxes, ADDED to R_energy:'//  &
+           ' R_energy = dF_energy - S_energy - (heat - cool) - Sene'//   &
+           ' + Sidf; zero unless He_diffusion moves the elements, a'//   &
+           ' molecular carrier is transported or Ionization transport'//&
+           ' carries the stages (schema 2 adds this column)'
       write(uu,'(A)') '# Sidf of cell 1 is zero for the ELEMENT fluxes:'//&
            ' cell 1 is the element reservoir, whose steady composition'//&
            ' makes the face-0 supply equal the face-1 flux (A_0 q_0 ='//  &

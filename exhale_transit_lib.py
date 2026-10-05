@@ -389,7 +389,8 @@ def n2_populations(T, n1s, nHII, nHeII, nHeIII, ne, Jlya, G2s=0.0, G2p=0.0,
 	#
 	# WHAT THIS DOES NOT SHARE WITH THE SOLVER is the field: J_lya and
 	# G2s/G2p are the caller's (EXHALE_transit.py: a J_lya file or the
-	# Huang et al. 2017 estimate, and a diluted blackbody Balmer continuum),
+	# order-of-magnitude estimate in the text after Eq. (6) of Huang et al.
+	# 2017, and a diluted blackbody Balmer continuum),
 	# because the solver writes neither to the profiles this tool reads.
 	T   = np.maximum(np.asarray(T, dtype=float), 1.0)
 	n1s, nHII, nHeII, nHeIII, ne = (np.maximum(q, 0.0) for q in
@@ -1139,8 +1140,9 @@ def transit_state_files(path, selection, require=True):
 	``adv``       ``output/Hydro_ioniz_adv.txt`` and
 	              ``output/Ion_species_adv.txt``, the advection-corrected
 	              profile, an INDEPENDENT discretization of the same column
-	              (second-order BDF2 marching at the bulk velocity, no eddy
-	              term, no element drift).  It is what this tool has always
+	              (second-order BDF2 marching, each element on the velocity
+	              of its own nuclei, no stage eddy term, no drift of a stage
+	              against its element).  It is what this tool has always
 	              read, and it stays the default.
 
 	The two are kept apart on purpose: reading one for the temperature and

@@ -11,6 +11,8 @@
 \usepackage{graphicx}
 \usepackage{babel}
 \emergencystretch=3em
+\newcommand{\stalenote}[1]{\par\noindent\fbox{\parbox{0.97\textwidth}{\small
+  \textbf{Note added 2026-10-04.} #1}}\par\medskip}
 
 \title{Reproducing the LHS\,1140\,b helium line with a solved wind:
        how far EXHALE gets, and what is missing}
@@ -21,7 +23,41 @@
 \maketitle
 
 \begin{center}
-\fbox{\parbox{0.92\textwidth}{\textbf{Stale since 2026-09-24.} Every EXHALE
+\fbox{\parbox{0.92\textwidth}{\textbf{Updated 2026-10-04: the current answer
+is in Sects.~\ref{sec:oct2026}--\ref{sec:open2026}.} They report the
+LHS\,1140\,b equivalent-width campaign of 2026-10-03/04
+(\texttt{md/PLAN\_20261003\_lhs1140b\_ew.md}, sections 8 and 9;
+\texttt{md/Update\_EXHALE\_stage3.md} sections 63--92). Every EXHALE state,
+equivalent width, crossing and escape rate in
+Sects.~\ref{sec:old_answer}, \ref{sec:whatchanged}, \ref{sec:scan},
+\ref{sec:disagree}, \ref{sec:ew}, \ref{sec:width}, \ref{sec:best},
+\ref{sec:gj699}, \ref{sec:closure}, \ref{sec:validity}
+and~\ref{sec:oldstatus} is of the physics of 2026-09-16 and is superseded.
+That text is kept unchanged as the record, and each of those sections opens
+with a note saying what in it no longer holds. Four conclusions changed
+sign. (1)~On the photochemical column the equivalent width rose with He/H
+in 2026-09 ($1.4765$\,\%\,\AA{} at $\mathrm{He/H} = 2.09$ to $2.2289$ at
+$12.01$, unbroadened); it now falls as He/H rises. (2)~At $\mathrm{He/H} =
+2.09$ the line was $33$ per cent too strong and is now $34$ per cent too
+weak ($0.7334$, unbroadened), so where every 2026-09 solution overshot the
+measurement, no He/H now reaches it. (3)~The line-forming gas was
+collisional ($\mathrm{Kn} \le 0.012$ at $1.1$--$3\,R_p$) and the critical
+point lay outside the domain; now $31$--$40$ per cent of the equivalent
+width forms beyond $\mathrm{Kn}_{\rm bulk} = 0.1$ and the sonic point lies
+inside the domain. (4)~The solution's own composition was unusable above
+$4\,R_p$ (a factor $13$ between its equivalent width and the
+advection-corrected one); with the ionization stages transported the two
+agree to $1$ per cent. What still stands: the width demand,
+$f \approx 22$\,km\,s$^{-1}$, and the convention of
+Sect.~\ref{sec:broadening} that measures it, which is now the adopted rule
+for every model line compared with an observation; the reproduction of the
+paper's p-winds model; the literature sections; the inputs
+(Sect.~\ref{sec:inputs}).}}
+\end{center}
+
+\begin{center}
+\fbox{\parbox{0.92\textwidth}{\small\textbf{Earlier banner (2026-09-25,
+kept as the record).} \textbf{Stale since 2026-09-24.} Every EXHALE
 state, equivalent width and composition in this memo is of the physics before
 the atomic-data audit of 2026-09-24 (\texttt{md/Update\_EXHALE\_stage3.md}
 sections 17 and 18). The largest correction for this line is the
@@ -33,7 +69,782 @@ this memo reads from the line are low. The p-winds side is unaffected. The
 EXHALE side is being re-solved, the molecular $K_{zz}=10^{9}$ family first.}}
 \end{center}
 
-\section{Goal, and the answer up front}
+\section{Goal, and the answer of 2026-10}
+\label{sec:oct2026}
+
+The question is whether a wind that is solved, rather than assumed,
+reproduces the measured He\,\textsc{i} $10830$\,\AA{} transit line of
+LHS\,1140\,b (Cherubim et al.\ 2026, hereafter C26). The model is EXHALE, a
+one-dimensional calculation of photoionization-driven escape in which the
+temperature, the velocity and the composition come out of the solution. The
+measured quantity is the window equivalent width,
+$1.1084 \pm 0.0289$\,\%\,\AA{} (vacuum $10832.60$--$10834.20$\,\AA, the
+observation's samples, trapezoid weights; quoted as $1.108 \pm 0.030$ in the
+older sections).
+
+\medskip
+\noindent\textbf{Answer.} With the present equation set no helium abundance
+reproduces the line. The width-matched equivalent width rises as He/H
+falls, but it stays below the measurement: the largest converged model,
+$\mathrm{He/H} = 0.65$, gives $0.8529$\,\%\,\AA, $8.8\sigma$ below. Fits
+over the four models with $\mathrm{He/H} \le 1.2$, continued to
+$\mathrm{He/H} = 0$, give $0.877$ (linear) and $0.905$ (quadratic). These are
+extrapolations, and they are upper estimates of the maximum only if the
+slope does not steepen below $0.65$ (an assumption, since the equivalent
+width must vanish at $\mathrm{He/H} = 0$). Even the bound stays $7$--$8\sigma$
+below the measurement. There is no crossing in He/H. At $\mathrm{He/H} =
+0.65$ the deficit survives every numerical and physical item that was
+measured (Table~\ref{tab:oct_budget}): all the items that raise the
+equivalent width together reach at most $0.870$, $8.2\sigma$ below. The
+velocity spread that the line asks for is unchanged from 2026-09:
+$f = 21.9$--$22.3$\,km\,s$^{-1}$ FWHM on every state.
+
+The $\sigma$ counts here use the independent-sample error of the window
+equivalent width; the released spectrum does not carry the covariance or the
+continuum-fit uncertainty that a complete significance would need. The
+missing amount is $0.2555$\,\%\,\AA, $30$ per cent of the
+$\mathrm{He/H} = 0.65$ value. As a scale of the missing opacity, and not as
+a model, a uniform factor $1.30$ on the stored $n(2\,^3S)$ of that state,
+with every other field held fixed, gives a width-matched equivalent width of
+$1.0957$, inside the observed interval (factor $1.50$: $1.2545$;
+\texttt{md/LHS1140b\_NH3\_CH4\_EW\_REVIEW\_20261004.md} section 1, update
+log section 93). Those scaled profiles are not atmospheric solutions.
+
+All numbers in Sects.~\ref{sec:oct2026}--\ref{sec:open2026} are MEASURED and
+read from the run records named with them unless marked READ (taken from a
+publication or dataset) or DERIVED. Equivalent widths are in \%\,\AA.
+Every wind and equivalent-width verdict of phases 5 and 6 was made with the
+binary \texttt{LHS1140b/models/.P2/EXHALE\_99a76cb0.x} (md5
+\texttt{99a76cb05e56ad3a6ee80e6c433814fd}).
+
+\subsection{The equation set}
+\label{sec:oct_equations}
+
+The states of the campaign carry the following physics (the
+\texttt{input.inp} and the coupling line of the accepted state; plan
+\texttt{md/PLAN\_20261003\_lhs1140b\_ew.md}, section 9):
+\begin{itemize}\itemsep0.2ex
+\item Hydrodynamics: HLLC fluxes, the well-balanced reconstruction, the
+      stationary residual assembled with WENO3, the JFNK stationary solve,
+      a spherical domain of $500$ cells with its outer face at
+      $29.27\,R_p$ (decision 3 of the plan).
+\item Heat conduction with the conductivity of the gas mixture
+      (\texttt{md/Update\_EXHALE\_stage3.md} section 41), the bath below the
+      matching level at the profile's temperature (section 70), and the
+      conducted flux written into the lower atmosphere (section 76).
+\item The lower atmosphere: a Photochem column handed over as a profile at
+      $1\,\mu$bar, closed with the wind on the elemental fluxes of H and He
+      (tolerance $0.05$) and coupled in energy (the column's energy balance
+      under the conducted flux, matching-level temperature tolerance
+      $6$\,K; sections 76--80). Since update log section 93 the
+      acceptance also holds the conducted heat flux to the same tolerance
+      as the elemental fluxes; every stored converged closure meets it
+      ($0.0001$--$0.0375$), so no verdict in this memo changes. The column balance uses the published
+      vibrational-translational rates, the NH$_3$ $\nu_2$ + H$_2$ rate from
+      the CD$_4$ bending analog (no measurement exists), and the band
+      transfer \texttt{cooling\_to\_space}, which includes the absorption
+      by the overlying column (Dickinson 1972, Eq.~33, as cited in
+      section 89).
+\item Ionization transport of the H and He stages, with their enthalpy
+      flux (sections 67 and 72), and He($2\,^3S$) transport, the metastable
+      carried as a fourth helium state on the helium nucleus flux
+      (section 81).
+\item Molecular chemistry (H$_2$, H$_2^+$, H$_3^+$, HeH$^+$) with H$_2$
+      carrier transport; He/H element diffusion with $K_{zz}$ from the
+      profile; the element and carrier enthalpy fluxes;
+      \texttt{Secondary\_ionization: Immediate}.
+\item The stellar spectrum \texttt{lhs1140\_sed\_gj1132\_at\_b.txt}, the
+      GJ\,1132 proxy of C26.
+\item The line: \texttt{EXHALE\_transit.py} at $R = 68{,}000$, and the
+      width-matching Gaussian kernel of Sect.~\ref{sec:broadening}
+      (section 87). The kernel's FWHM $f$ is solved for each model so that
+      the three-Gaussian extractor returns the observed red-pair FWHM,
+      $0.841$\,\AA; the equivalent width is then the window equivalent width
+      of the broadened curve. The kernel stands for a velocity field that
+      the one-dimensional model does not contain. It is not a computed
+      physics term, and every result that uses it reports $f$.
+\end{itemize}
+
+\subsection{The He/H scan}
+\label{sec:oct_scan}
+
+Each He/H was solved as a full energy-coupled closure (climate, chemistry,
+wind and spectrum), started by continuation in He/H from a neighboring
+certified state. Table~\ref{tab:oct_scan} and Fig.~\ref{fig:oct_ew} give the
+result (run notes \texttt{phase5/NOTES.md} under
+\texttt{LHS1140b/models/.P2/ew\_fit/}, sections 2, 7
+and 8, \texttt{phase5/lowHeH\_numbers.txt}; update log sections 86, 89
+and 90).
+
+\begin{table}[htbp]\centering\small
+\caption{The He/H scan of 2026-10 (deep He/H; observed $1.1084 \pm 0.0289$).
+EW$_f$: width-matched window EW of the solution product, with its kernel
+FWHM $f$; EW$_0$: the same without the kernel. $T_{\rm match}$: the
+temperature at the $1\,\mu$bar matching level; $F_{\rm cond}$: the heat
+conducted into the column [erg\,cm$^{-2}$\,s$^{-1}$]; $\dot M$ at cell
+$N-20$; $r_{\rm Kn}$: the radius where $\mathrm{Kn}_{\rm bulk} = 0.1$;
+$r_{\rm s}$: the sonic point. The states at $2.09$ and $1.8$ carry the
+optically thin column treatment; the cooling-to-space transfer would raise
+their $T_{\rm match}$ by $2.05$ and $2.40$\,K (update log section 90). The
+rows in brackets are not converged closures and are diagnostic.}
+\label{tab:oct_scan}
+\begin{tabular}{lrrrrrrrr}
+\toprule
+He/H & EW$_f$ & $f$ [km\,s$^{-1}$] & EW$_0$ & $\log_{10}\dot M$ [g\,s$^{-1}$] &
+$T_{\rm match}$ [K] & $F_{\rm cond}$ & $r_{\rm Kn}$ [$R_p$] & $r_{\rm s}$ [$R_p$] \\
+\midrule
+(3.0, k01) & (0.6746) & (21.92) & (0.6977) & (7.8246) & (350.9) & (6.70) & (5.06) & (24.54) \\
+2.09 & 0.7091 & 22.02 & 0.7334 & 7.8854 & 349.88 & 9.63 & 5.69 & 25.69 \\
+1.8  & 0.7710 & 22.05 & 0.7975 & 7.9359 & 359.55 & 11.65 & 6.11 & 26.26 \\
+1.5  & 0.8050 & 22.09 & 0.8327 & 7.9770 & 375.98 & 13.87 & 6.55 & 26.83 \\
+1.2  & 0.8308 & 22.14 & 0.8593 & 8.0218 & 386.37 & 17.16 & 7.08 & 27.45 \\
+1.0  & 0.8368 & 22.17 & 0.8655 & 8.0531 & 399.39 & 19.82 & 7.50 & 27.89 \\
+0.8  & 0.8444 & 22.21 & 0.8734 & 8.0930 & 410.53 & 22.95 & 8.04 & 28.40 \\
+0.65 & 0.8529 & 22.24 & 0.8822 & 8.1325 & 412.59 & 25.87 & 8.57 & 28.79 \\
+(0.5, k00) & (0.8482) & (22.28) & (0.8773) & (8.179) & (398.51) & (29.51) & (9.24) & none \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure}[htbp]\centering
+\includegraphics[width=0.75\textwidth]{figures/lhs1140b_oct2026_ew_vs_heh.png}
+\caption{Width-matched equivalent width against the deep He/H, solution
+(filled) and advection-corrected (open) products, with the linear and
+quadratic fits over $\mathrm{He/H} \le 1.2$ and their continuation to
+$\mathrm{He/H} = 0$ (extrapolation, red). The triangle is the unconverged
+$\mathrm{He/H} = 0.5$ closure. Grey band: the observed equivalent width and
+its $1\sigma$ interval. Source: \texttt{phase5/fig\_ew\_vs\_heh.png}.}
+\label{fig:oct_ew}
+\end{figure}
+
+The equivalent width rises as He/H falls, by shrinking steps: $0.07$--$0.21$
+per unit He/H between $2.09$ and $1.2$, and $0.04$--$0.06$ per unit He/H
+below $1.2$. Reaching $1.108$ would need about $0.39$ per unit He/H below
+$0.65$, seven to ten times the measured slope. Three forms with
+$\mathrm{EW}(0) = 0$ and a maximum fit the four low models with an rms of
+$0.008$--$0.010$, five times their scatter: the models show no turnover down
+to $\mathrm{He/H} = 0.65$. The advection-corrected product sits $0.003$--$0.007$
+above the solution product throughout.
+
+$\mathrm{He/H} = 0.5$ did not converge in four attempts, all kept. The last
+two stopped after the full $60$ outer passes on the He($2\,^3S$) carrier
+balance at the first gated cell ($r = 1.248\,R_p$; $1.1\times10^{-4}$ and
+$1.6\times10^{-4}$ against $10^{-5}$), and no tolerance was loosened. Its
+first closure iterate gives $0.8482$ and has no sonic point inside the
+domain: the sonic point moves outward as He/H falls and leaves the
+$30\,R_p$ domain between $0.65$ and $0.5$. $\mathrm{He/H} = 3.0$ stopped at
+its second iterate unconverged (the evaluate of that time refused the mass
+row at its rounding floor, the defect fixed in update log section 88) and has
+not been resumed.
+
+Along the scan the escape rate rises by $0.25$\,dex and the heat conducted
+into the column by a factor $2.7$, which warms the matching level from $350$
+to $413$\,K. Lower He/H also moves the $\mathrm{Kn}_{\rm bulk} = 0.1$ radius
+outward, from $5.69$ to $8.57\,R_p$. The column's optically thin treatment
+is past its validity limit at every He/H (the absorbed share of the upward
+band emission is $0.279$--$0.377$ against the limit $0.10$ on
+$\mathrm{He/H} = 1.2$--$0.65$; update log section 90), which is why the
+cooling-to-space transfer is used. What that transfer changes is small:
+$+4.4$ to $+6.2$\,K in $T_{\rm match}$ at $\mathrm{He/H} = 1.0$--$0.65$,
+and $0.0009$ in the width-matched equivalent width at $1.5$.
+
+\subsection{The line against the observation}
+\label{sec:oct_line}
+
+Figure~\ref{fig:oct_line} sets the $\mathrm{He/H} = 0.65$ line against the
+released C26 spectrum (\texttt{phase6/NOTES.md} section 2; update log
+section 92). Measured with the three-Gaussian extractor used on the data,
+the width-matched model ($f = 22.24$\,km\,s$^{-1}$) has red-pair depth
+$0.985$ against the observed $1.254$\,\%, blue depth $0.128$ against
+$0.198$\,\%, and red/blue $7.67$ against $6.35$; its FWHM equals the
+observed $0.841$\,\AA{} by construction. Without the kernel the red pair is
+$3.306$\,\% deep and $0.251$\,\AA{} wide. The window $\chi^2$ is $136$ for
+$44$ samples, against $1962$ for a zero model. The deficit sits in the red
+pair: the mean residual is $0.224 \pm 0.025$\,\% over
+$10832.9$--$10833.7$\,\AA{} and $0.051 \pm 0.031$\,\% over the blue
+component. In 2026-09 the same convolution put depth, blue depth and
+red/blue inside the observed $1\sigma$ interval at once, but there the
+equivalent width had been matched by choosing He/H. Now, with the
+equivalent width short, the shape is right and the line is $21$ per cent too
+shallow.
+
+The kernel width is the same on every state, $21.92$--$22.28$\,km\,s$^{-1}$
+(Table~\ref{tab:oct_scan}; $22.22$ on the 2026-09 solutions). Broadening
+lowers the window equivalent width by $3.3$ per cent, because the wings
+carry absorption out of the window, so the kernel moves every model further
+below the measurement (\texttt{phase5/nonthermal\_kernel/NOTES.md}; update
+log section 87).
+
+\begin{figure}[htbp]\centering
+\includegraphics[width=0.85\textwidth]{figures/lhs1140b_oct2026_line_heh065_vs_observed.png}
+\caption{The $\mathrm{He/H} = 0.65$ solution line, width matched
+($f = 22.24$\,km\,s$^{-1}$, red) and without the kernel (blue dashed,
+scaled by $0.3$), against the C26 spectrum (points; vacuum wavelength,
+planet rest frame). As in every earlier figure of this memo, the model
+curves are moved by the fitted $v_{\rm wind} = +2.26$\,km\,s$^{-1}$ for
+the overlay only (the model carries no line-of-sight bulk velocity); every
+number is computed from the unshifted spectra. Grey: the equivalent-width
+window. Lower panel: observed minus the moved model. Source: \texttt{phase6/observation/HeH0.65\_k02\_solution.png}.}
+\label{fig:oct_line}
+\end{figure}
+
+\emph{The rest frame.} The equivalent-width operator assumes that the
+observation is in the planet rest frame and that the model carries no
+line-of-sight velocity. The model line has none ($-0.04$\,km\,s$^{-1}$; the
+spherical outflow is symmetric). The observed line is redshifted. The
+three-Gaussian fit gives $+2.85$\,km\,s$^{-1}$, and fitting the model
+shape in shift gives $+2.24$\,km\,s$^{-1}$ under independent errors. The
+published fit with correlated noise gives $2.0^{+2.0}_{-2.2}$\,km\,s$^{-1}$
+(READ, the dataset README), consistent with zero at $1\sigma$. The window is
+not symmetric about the red pair, so a shift moves the equivalent width:
+the model moved by $+0.081$ to $+0.104$\,\AA{} gains $0.0115$ to $0.0137$.
+This is carried as a systematic in Table~\ref{tab:oct_budget}.
+
+\subsection{Robustness at He/H 0.65, and the limits of validity}
+\label{sec:oct_budget}
+
+Phase 6 tested the model with the largest equivalent width, against a
+numerical target of $0.0058$ for each test (Table~\ref{tab:oct_budget};
+\texttt{phase6/NOTES.md} sections 1 and 3; update log section 92). The
+reference is $0.852918$.
+
+\begin{table}[htbp]\centering\small
+\caption{Changes of the width-matched equivalent width at
+$\mathrm{He/H} = 0.65$ (\%\,\AA). Target $0.0058$ for each test. The items
+are separate measurements and are not combined into one interval; any
+interval formed from them is conditional on their independence.}
+\label{tab:oct_budget}
+\begin{tabular}{lrr}
+\toprule
+item & change & / target \\
+\midrule
+grid $500 \to 1000$ cells (certified) & $-0.00726$ & $1.25$ (not met) \\
+grid $1000 \to 2000$ cells (diagnostic) & $-0.00404$ & $0.70$ \\
+grid $500$ cells $\to$ continuum (Richardson, DERIVED, not established) & $-0.0164$ & $2.8$ \\
+JFNK target $4\times10^{-6} \to 10^{-8}$ & $0$ & $0$ \\
+closure $0.05$/$6$\,K $\to$ $0.01$/$2$\,K & $+0.00038$ & $0.06$ \\
+domain $30\,R_p$ $\to$ L1 ($37.6\,R_p$) & $+0.00195$ & $0.34$ \\
+NH$_3$ $\nu_2$ + H$_2$ rate, water analog / no H$_2$ term & $-0.00037$ / $+0.00105$ & $0.06$ / $0.18$ \\
+ion-neutral drift of He\,\textsc{i}, cases A / B & $+0.000037$ / $+0.000034$ & $0.006$ \\
+tide, Roche-consistent flow and synthesis (diagnostic) & $-0.0324$ & $5.6$ \\
+frame, observed $+2.2$--$2.9$\,km\,s$^{-1}$ shift & $+0.0115$ to $+0.0137$ & $2.0$--$2.4$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{itemize}\itemsep0.2ex
+\item \emph{Grid.} Halving every spacing (outer face kept) lowers the
+      equivalent width by $0.00726$, $1.25$ times the target, so the grid
+      test fails. A further halving gives $-0.00404$ (that state is not
+      certified: the He($2\,^3S$) carrier row at the first gated cell stays
+      at $4.7\times10^{-5}$ after $300$ passes, while the equivalent width
+      does not move between pass $150$ and $300$). Taken at face value the
+      three grids give an order of $0.85$ and a Richardson continuum of
+      $0.8366$, $0.016$ below the $500$-cell value. Because the $2000$-cell
+      state, the solve and its continuation alike, ended uncertified
+      (solver info 1 with exit status zero), the continuum value and the
+      order are not established. Every refinement moves the equivalent width down,
+      away from the observation. The error enters through the steep base
+      layer, which sets $\dot M$: $\dot M$ falls by $0.8$ and then $0.4$
+      per cent with each halving.
+\item \emph{Solver and closure.} The JFNK reaches its rounding floor
+      ($\|R\| = 1.2$--$1.6\times10^{-8}$) at every target, and the
+      certification gates are compile-time, so tightening the target
+      changes nothing. The tight closure converged at the fixed point
+      $F_{\rm H} = 6.4803\times10^{7}$, $F_{\rm He} = 7.0914\times10^{7}$\,g\,s$^{-1}$,
+      $T_{\rm match} = 415.86$\,K, $\log_{10}\dot M = 8.130$, with
+      $25.83$\,erg\,cm$^{-2}$\,s$^{-1}$ conducted into the column.
+\item \emph{Domain and tide.} Extending the domain to L1 leaves the sonic
+      point ($28.80$ against $28.79\,R_p$) and $\dot M$ unchanged. The
+      Roche-consistent re-solve with a Roche synthesis gives $0.8205$, so
+      the geometric interval is $[0.8205, 0.8529]$; this value is
+      diagnostic, because the evaluate of the reloaded Roche state refuses
+      it on the mass row of cell 1 ($1.05$ times its rounding anchor).
+\item \emph{Rates and drift.} At $\mathrm{He/H} = 0.65$ the equivalent
+      width is nearly insensitive to $T_{\rm match}$ ($+39$\,K moves it by
+      $+0.001$), so the NH$_3$ $\nu_2$ + H$_2$ bracket is $15$--$40$ times
+      smaller than at $2.09$. The ion-neutral drift, estimated at fixed
+      background, changes $n(2\,^3S)$ by $+0.1$ per cent at $5$--$10\,R_p$
+      and by $-1$ to $-4$ per cent at $20$--$29\,R_p$.
+\end{itemize}
+
+\noindent\emph{Validity limits.} $31.4$ per cent of the width-matched
+equivalent width forms beyond $\mathrm{Kn}_{\rm bulk} = 0.1$
+($8.57\,R_p$), $9.1$ per cent beyond $R_*/R_p = 12.87$, and $0.01$ per cent
+beyond the exobase ($28.63\,R_p$), which lies just below the sonic point
+($28.79\,R_p$). The largest Kn in the heating and acceleration region is
+$1.3$. A third of the line therefore forms where the continuum description
+is past $\mathrm{Kn} = 0.1$. That is the dominant validity limit, and no
+test here removes it (at $\mathrm{He/H} = 2.09$ the share was $39.8$ per
+cent of the unbroadened equivalent width, phase 4). The single-velocity stage transport neglects an
+ion-neutral drift that reaches $0.2$--$1.5$ of the helium velocity beyond
+$5\,R_p$; its measured effect is in Table~\ref{tab:oct_budget}, but where
+the drift is comparable to the velocity it is itself outside the first
+Chapman--Enskog approximation. The column's optically thin treatment is
+flagged (absorbed share $0.377$), and the exchange inside the warmed layer
+that the cooling-to-space transfer neglects moves $T_{\rm match}$ by
+$0.64$\,K. The NH$_3$ $\nu_2$ + H$_2$ rate is unmeasured and only
+bracketed. The tide is an interval, not resolved. The width kernel is not
+a computed term.
+
+\subsection{What changed from the 2026-09 answer}
+\label{sec:oct_change}
+
+On the 2026-09 physics the flux-consistent solution at
+$\mathrm{He/H} = 2.0924$ gave $1.4765$ (unbroadened). The present state at
+$2.09$ gives $0.7334$, half of it. Between the two, the code gained the
+following, each recorded with its own measured effect:
+\begin{itemize}\itemsep0.2ex
+\item the $2\,^3S \to 1\,^1S$ electron-impact de-excitation of the
+      2026-09-24 atomic-data audit (about $-20$ per cent on the certified
+      molecular states; the earlier banner, update log sections 17--18);
+\item heat conduction in the model. Without it, the $\mathrm{He/H} = 2.09$
+      state of that time gave $1.50$ (update log section 66), and on three
+      earlier fiducial cases conduction lowered the equivalent width to
+      $0.18$--$0.60$ of its value (plan, phase 5 item 1);
+\item the energy coupling to Photochem, which raises it again: $0.5793 \to
+      0.7255$ at $2.09$ (update log section 79);
+\item carried ionization stages, and He($2\,^3S$) transport ($0.7255 \to
+      0.7334$; update log section 81).
+\end{itemize}
+The sign of $\mathrm{d\,EW}/\mathrm{d(He/H)}$ reversed over the range
+where the two sequences overlap. Which of these changes reversed it was
+measured at the two ends of the present scan (Sect.~\ref{sec:dew}, last
+paragraph): with heat conduction in the wind removed the equivalent width
+falls again as He/H falls. Section~\ref{sec:dew} measures what sets the
+present sign. The high-He/H side ($> 2.09$) has not been solved with the
+present equations (Sect.~\ref{sec:open2026}).
+
+\section{Why the line strengthens as He/H falls}
+\label{sec:dew}
+
+The explanation put forward first was that lower He/H gives a denser,
+cooler outer wind with more electrons and more He$^+$, and that
+$n(2\,^3S)$ follows $n_e\,n({\rm He^+})$. It was tested by decomposing the
+change of the width-matched equivalent width between the four certified
+states $\mathrm{He/H} = 2.09$, $1.8$, $1.2$ and $0.65$
+(\texttt{phase5/dEW\_decomposition/NOTES.md}; update log section 91). The
+stored states were only read.
+
+\subsection{Method}
+
+The He\,\textsc{i} $10830$ branch of \texttt{EXHALE\_transit.py} was restated
+as a function of $(r, T, v, n_3, R_0)$, with $n_3 \equiv n(2\,^3S)$. On the
+four stored states it reproduces the stored instrument-convolved curve to
+$4.4\times10^{-16}$, and the equivalent width, the width-matched equivalent
+width and $f$ of the records. On three profiles with substituted fields,
+\texttt{EXHALE\_transit.py} itself agrees with it to $2\times10^{-14}$. The
+kernel FWHM $f$ is solved again for every synthesized profile
+($22.02$--$22.24$\,km\,s$^{-1}$).
+
+The metastable density is written as $n_3 = C\,n_{3,\rm loc}$, where
+$n_{3,\rm loc}$ is the local root of the code's own level balance (the
+\texttt{tr\_triplet\_row} terms plus the H$_2$ sink), evaluated with the
+code's rate functions from \texttt{Cool\_coeff.f90}, and $C$ carries the
+transport. $C = 0.9955$--$1.0072$ over $1.2$--$8\,R_p$ and up to $1.18$
+above $8\,R_p$. The $2\,^3S$ photoionization rate $P_3$, which the code
+does not write, was measured from the carrier-row terms of each state; it is
+the same in the four states to $0.3$ per cent. The level is fed by
+recombination alone: the collisional feed from $1\,^1S$ is below
+$10^{-14}$ of the gain wherever $n_3$ matters.
+
+The change is attributed with Shapley values over nine factor fields,
+radial profiles swapped whole between two states: $n_{\rm H}$ (the density),
+the local $y = n_{\rm He}/n_{\rm H}$, the helium ionization fractions, the
+hydrogen fractions, $n_e$, $T$ (rates and thermal width), $v$, the transport
+($C$ and $P_3$), and $R_0$. That takes 512 syntheses for each pair of
+states. The values do not depend on the order of substitution and sum to
+the change exactly (residual $3\times10^{-16}$ on every pair). A second Shapley
+decomposition runs over the terms of the balance,
+\begin{equation}
+  n_3 = C\,\frac{n_e\,n_{\rm HeII}\,\alpha_{\rm eff}(T)}
+               {L_P + L_e + L_r},
+  \label{eq:n3balance}
+\end{equation}
+with $L_P = n_{\rm HI}\,Q_{31}$ the destruction by neutral hydrogen
+(He($2\,^3S$) + H $\to$ He + H$^+$ + e, and the associative channel to
+HeH$^+$; called Penning below), $L_e$ the electron collisions, and $L_r$
+the sum of $A_{31}$, $P_3$ and the H$_2$ sink. The
+factors interact: single substitutions ``alone from A'' and ``last into B''
+differ by up to $0.55$ for $y$. That is why the Shapley values, not single
+substitutions, carry the attribution, and why the radial split in
+Fig.~\ref{fig:dew_factors} (right) is a first-order one.
+
+\subsection{Contributions of the gas fields}
+
+\begin{table}[htbp]\centering\small
+\caption{Shapley contributions to the change of the width-matched
+equivalent width (\%\,\AA) between the deep He/H values named in the
+header (\texttt{phase5/dEW\_decomposition/dEW\_table.txt}).}
+\label{tab:dew_factors}
+\begin{tabular}{lrrrr}
+\toprule
+factor & $2.09 \to 1.8$ & $1.8 \to 1.2$ & $1.2 \to 0.65$ & $2.09 \to 0.65$ \\
+\midrule
+$n_{\rm H}$ (density)        & $+0.0624$ & $+0.1353$ & $+0.1510$ & $+0.3524$ \\
+$y = n_{\rm He}/n_{\rm H}$, local & $-0.0566$ & $-0.2223$ & $-0.3428$ & $-0.6261$ \\
+He ionization fractions      & $-0.0257$ & $-0.0489$ & $-0.0652$ & $-0.1406$ \\
+H fractions                  & $-0.0005$ & $-0.0016$ & $-0.0025$ & $-0.0046$ \\
+$n_e$                        & $+0.0645$ & $+0.1273$ & $+0.1761$ & $+0.3687$ \\
+$T$                          & $+0.0189$ & $+0.0708$ & $+0.1030$ & $+0.1946$ \\
+$v$                          & $-0.0000$ & $-0.0001$ & $-0.0001$ & $-0.0002$ \\
+transport ($C$, $P_3$)       & $-0.0019$ & $-0.0040$ & $-0.0043$ & $-0.0112$ \\
+$R_0$                        & $+0.0009$ & $+0.0032$ & $+0.0069$ & $+0.0109$ \\
+\midrule
+$\Delta$EW                   & $+0.0619$ & $+0.0598$ & $+0.0221$ & $+0.1438$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The change is a small difference of large terms (Table~\ref{tab:dew_factors},
+Fig.~\ref{fig:dew_factors}). Between $2.09$ and $0.65$ the denser gas, its
+electrons and its lower temperature add $+0.92$. Two things remove $-0.77$:
+the lower helium abundance of the flow, since diffusion lowers $y$ at the
+top of the domain from $0.59$ to $0.28$, and the lower He$^+$ share of the
+helium. By radius (Shapley over zones) the rise comes from beyond
+$6\,R_p$ ($+0.177$). Inside $3.5\,R_p$ the line weakens ($-0.059$): the
+$n_3$ peak falls from $52.5$\,cm$^{-3}$ at $1.40\,R_p$ to $22.5$\,cm$^{-3}$
+at $1.67\,R_p$. Absorbers inside $6\,R_p$ give $63$ per cent of the
+width-matched equivalent width at $\mathrm{He/H} = 2.09$ and $48$ per cent
+at $0.65$.
+
+\begin{figure}[htbp]\centering
+\includegraphics[width=\textwidth]{figures/lhs1140b_oct2026_dew_factors.png}
+\caption{Left: Shapley contributions of the nine factor fields to the
+change of the width-matched equivalent width, for the three adjacent pairs
+and for $2.09 \to 0.65$. Right: $2.09 \to 0.65$ split by radial zone,
+first order for each factor (bars), with the zone Shapley value of all
+factors together (diamonds). Source:
+\texttt{phase5/dEW\_decomposition/fig\_dEW\_factors.png}.}
+\label{fig:dew_factors}
+\end{figure}
+
+\subsection{Does $n(2\,^3S)$ follow $n_e\,n({\rm He^+})$?}
+
+Only in part (Table~\ref{tab:dew_balance}, Fig.~\ref{fig:dew_balance}).
+The product $n_e\,n_{\rm HeII}$ is the largest positive term, $+0.703$ from
+$2.09$ to $0.65$. The Penning loss by neutral hydrogen cancels $95$ per
+cent of it ($-0.666$). Over $1.5$--$8\,R_p$, where most of the line forms,
+He($2\,^3S$) + H takes $50$--$70$ per cent of the loss rate at
+$\mathrm{He/H} = 2.09$ and $73$--$93$ per cent at $0.65$; $A_{31}$ carries
+more than half of the loss only above $9.9\,R_p$ ($2.09$) to
+$13.8\,R_p$ ($0.65$). At fixed $r$, between $2.09$ and $0.65$,
+$n_e\,n_{\rm HeII}$ rises by $1.2$--$2.9$ times but $n_{\rm HI}$ by
+$3.3$--$4.6$ times. So $n_3/(n_e\,n_{\rm HeII})$ at $0.65$ is
+$0.41$--$0.51$ of its $2.09$ value over $2$--$8\,R_p$ and reaches it only
+above about $20\,R_p$.
+
+\begin{table}[htbp]\centering\small
+\caption{Shapley contributions of the terms of
+Eq.~(\ref{eq:n3balance}) to the change of the width-matched equivalent
+width (\%\,\AA).}
+\label{tab:dew_balance}
+\begin{tabular}{lrrrr}
+\toprule
+term & $2.09 \to 1.8$ & $1.8 \to 1.2$ & $1.2 \to 0.65$ & $2.09 \to 0.65$ \\
+\midrule
+$n_e\,n_{\rm HeII}$ (recombination product) & $+0.1475$ & $+0.2444$ & $+0.2920$ & $+0.7034$ \\
+$\alpha_{\rm eff}(T)$                  & $+0.0137$ & $+0.0538$ & $+0.0844$ & $+0.1557$ \\
+$L_P = n_{\rm HI}\,Q_{31}$ (Penning)   & $-0.0850$ & $-0.2229$ & $-0.3388$ & $-0.6656$ \\
+$L_e$ (electron collisions)            & $-0.0129$ & $-0.0133$ & $-0.0160$ & $-0.0448$ \\
+$L_r$ ($A_{31}$, $P_3$, H$_2$) and $C$ & $-0.0019$ & $-0.0040$ & $-0.0042$ & $-0.0109$ \\
+$T$ in the thermal width               & $-0.0004$ & $-0.0014$ & $-0.0021$ & $-0.0050$ \\
+$v$                                    & $-0.0000$ & $-0.0001$ & $-0.0001$ & $-0.0002$ \\
+$R_0$                                  & $+0.0009$ & $+0.0032$ & $+0.0069$ & $+0.0113$ \\
+\midrule
+$\Delta$EW                             & $+0.0619$ & $+0.0598$ & $+0.0221$ & $+0.1438$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure}[htbp]\centering
+\includegraphics[width=\textwidth]{figures/lhs1140b_oct2026_he23s_balance.png}
+\caption{The He($2\,^3S$) balance of the four states. Top left: $n_3$.
+Top right: Shapley split of $\ln n_3^{0.65} - \ln n_3^{2.09}$ at each
+radius. Bottom left: share of the $2\,^3S$ loss rate taken by He($2\,^3S$)
++ H (solid), electron collisions (dashed) and $A_{31}$ (dotted). Bottom
+right: $n_3/(n_e\,n_{\rm He^+})$. Source:
+\texttt{phase5/dEW\_decomposition/fig\_n3\_balance.png}.}
+\label{fig:dew_balance}
+\end{figure}
+
+The net rise, $+0.144$, is therefore carried by two things. One is the
+cooler gas, whose larger recombination coefficient gives $+0.156$. The
+other is the outer wind beyond about $10$--$14\,R_p$, where $A_{31}$, which
+does not grow with the density, replaces the hydrogen loss. The velocity
+contributes nothing ($-0.0002$) and the thermal width $-0.005$. The first
+explanation is right that lower He/H gives a denser, cooler wind with a
+larger $n_e\,n_{\rm HeII}$. It is not right that $n_3$ tracks that product
+in the line-forming region ($2$--$12\,R_p$), because the same denser, more
+neutral hydrogen quenches the level.
+
+\subsection{What sets the density and $\dot M$}
+
+From $2.09$ to $0.65$, $\dot M$ rises from $7.68\times10^{7}$ to
+$1.36\times10^{8}$\,g\,s$^{-1}$ (\texttt{mdot\_drivers.txt}). In all four
+states the net heating minus the conducted loss equals the energy the flow
+carries out to $0.04$--$0.62$ per cent, at $1.95$--$1.98\times10^{12}$\,erg\,g$^{-1}$
+against $GM_p/R_0 = 1.91$--$1.92\times10^{12}$. $\dot M$ is therefore set
+by the heat that is not conducted down. The heat deposited below
+$1.02\,R_p$, mostly the molecular-chemistry channel, is close to the
+conducted loss ($1.57$ against $1.63\times10^{20}$\,erg\,s$^{-1}$ at $2.09$;
+$4.63$ against $4.43\times10^{20}$ at $0.65$). The conducted loss rises
+by a factor $2.7$ but does not drive the wind. The heat deposited above
+$1.02\,R_p$ rises by a factor $1.41$, and $\dot M$ for each unit of it by
+$1.26$, so $\dot M$ rises by $1.77$. The heating rate per gram in the wind
+is nearly unchanged. The heat is deposited higher instead: the radius that
+halves it moves from $1.35$ to $1.53\,R_p$, the mean mass per particle at
+$T_{\max}$ falls from $2.62$ to $1.91\,m_{\rm H}$, and the scale height
+there rises from $0.174$ to $0.215\,R_p$. Beyond $2\,R_p$ the mass density
+is $2.0$--$2.2$ times larger at $0.65$ than at $2.09$.
+
+\emph{Not verified (interpretation).} The chain ``lighter gas, larger scale
+height, heat deposited higher over more mass, larger $\dot M$ at the same
+energy per gram'' fits every number above, but it is an interpretation. The
+code does not write the absorbed stellar XUV power, so it was not measured
+whether the total absorbed power changes or only its radial distribution,
+and no solve that changes the mean molecular weight alone was run. The rate
+coefficients of the decomposition were evaluated from the working tree, not
+from the build that solved the states; that they agree is inferred from the
+smooth, state-independent measured $P_3$.
+
+\paragraph{Which physics makes $\dot M$ depend on composition.} Measured by
+solving both He/H with one term removed at a time, everything else held
+(\texttt{mdot\_attribution/NOTES.md}; update log section 100): B, the
+uncoupled column (no conducted heat into it); C, no heat conduction in the
+wind; D, conduction on without the element, carrier and stage enthalpy
+fluxes. $\dot M(0.65)/\dot M(2.09)$ is $1.76$ (full), $2.11$ (B), $1.31$
+(C) and $1.99$ (D). Heat conduction in the wind is what makes $\dot M$
+depend strongly on composition: it lowers $\log_{10}\dot M$ by $0.247$ at
+$2.09$ and by $0.038$ at $0.65$, and $\dot M$ follows the net heat of the
+gas above $1.02\,R_p$ (B/C $0.59$ at $2.09$, $0.93$ at $0.65$), which at
+$2.09$ loses heating and gains H$_3^+$ infrared cooling in a cool layer the
+conduction keeps above $1.02\,R_p$. The energy coupling works the other
+way ($-0.079$ dex on the ratio) and the enthalpy fluxes add $+0.026$ dex.
+Without conduction the width-matched equivalent width falls as He/H falls
+($1.351 \to 1.076$, $\Delta{\rm EW} = -0.275$): no factor of the
+decomposition changes sign, but the helium-abundance term doubles
+($-1.14$ against $-0.47$) and the electron term halves ($+0.20$ against
+$+0.42$), because the $2.09$ wind then carries more helium (escaping He/H
+$0.73$ against $0.50$). \emph{Not verified:} the winds without conduction
+stay subsonic inside the $30\,R_p$ domain (Mach at most $0.68$), so their
+$\dot M$ depends on the outer boundary, which was held fixed; the remainder
+$1.31$ without conduction is consistent with the lighter-gas chain above
+but was not isolated, and the cool-layer mechanism is an interpretation of
+the measured budgets.
+
+\section{Open points of the 2026-10 campaign}
+\label{sec:open2026}
+
+\begin{enumerate}\itemsep0.3ex
+\item \emph{NH$_3$ and CH$_4$ in the overlap region}
+      (\texttt{md/NH3\_CH4\_ISSUES\_20261004.md}; TO\_BE\_DONE (AI)). The
+      region just above the $1\,\mu$bar matching level is described twice,
+      and the two descriptions disagree. The column energy balance absorbs
+      the band emission of the warmed layer in the Photochem NH$_3$ and
+      CH$_4$ above the match: $86$--$93$ per cent of the gas that absorbs
+      that emission lies in the wind's domain (measured on the
+      $\mathrm{He/H} = 1.8$ profile), and $87$--$90$ per cent of the thin
+      absorbed share comes from it. The wind, which carries C, N and O as
+      atoms, neither emits nor absorbs in those bands. A resolution must
+      first decide whether NH$_3$ and CH$_4$ survive there at the wind's
+      temperature and radiation field, and then use one description of the
+      region for both codes. The problem grows toward low He/H.
+      Three corrections to what had been said about it (review
+      \texttt{md/LHS1140b\_NH3\_CH4\_EW\_REVIEW\_20261004.md}; update log
+      section 93). First, the molecular emission estimate quoted for the
+      wind's lowest cells ($5.5\times10^{-6}$ to
+      $3.8\times10^{-5}$\,erg\,cm$^{-3}$\,s$^{-1}$, phase 1) was computed on
+      the older $\mathrm{He/H} = 9.0103$ state and sums six molecules
+      (CH$_4$, NH$_3$, H$_2$O, C$_2$H$_2$, CO, CO$_2$), with fixed
+      abundances in optically thin LTE. It is neither an NH$_3$+CH$_4$ rate
+      nor a measurement on a current state, and emission alone does not
+      establish net cooling. Second, the lower-column tests (the NH$_3$
+      $\nu_2$ + H$_2$ bracket of Table~\ref{tab:oct_budget}) move the
+      equivalent width by at most $0.41$ per cent of the missing amount;
+      they say nothing about the cooling missing in the wind. Third, the
+      sign of a wind response to NH$_3$/CH$_4$ cannot be assumed. Cooling
+      changes the recombination coefficient, $n_e$, the helium ionization,
+      the hydrogen quenching of $2\,^3S$, the scale height, the conduction
+      and $\dot M$ together. Section~\ref{sec:dew} shows the competition:
+      the cooler, denser wind of low He/H has a smaller inner $n_3$ peak.
+      A cooler profile does not by itself predict a larger equivalent
+      width.
+\item \emph{The He($2\,^3S$) carrier row at $1.2\,R_p$.} The carrier
+      balance at the first gated cell decided every hard ending of the
+      campaign: $\mathrm{He/H} = 0.5$, the closure iterate at the tight
+      tolerance, the first $1000$-cell run, the $2000$-cell run, and the
+      first jump to $0.8$. The accepted state passed it at
+      $9.65\times10^{-6}$ against $10^{-5}$. The stall is not diagnosed,
+      and no tolerance was loosened.
+\item \emph{Grid error.} The $500$-cell scan fails the grid target
+      ($-0.00726$, $1.25$ times it), and every refinement widens the
+      deficit. The $2000$-cell solve and its continuation both ended
+      uncertified, so the order ($0.85$ at face value) and the continuum
+      value ($0.8366$, DERIVED) are not established. The scan was not
+      re-solved on a finer grid.
+\item \emph{The Roche-mode evaluate} refuses the reloaded state that the
+      solve certified (mass row of cell 1), so the Roche-consistent
+      equivalent width is diagnostic. In spherical mode the evaluate
+      reproduces the solve's verdict.
+\item \emph{Next routes}
+      (\texttt{md/PLAN\_20261004\_lhs1140b\_heh\_high\_and\_xuv.md}).
+      Route A: He/H above $2.09$, first closing $3.0$ and then $5$, $10$,
+      $30$, $100$, to test whether the equivalent width passes a minimum
+      and rises where the gas is mostly helium; the 2026-09 sequence rose
+      there, but on other physics.
+      Route B, step 1 (run; update log section 95,
+      \texttt{LHS1140b/models/.P2/ew\_fit/route\_xuv/NOTES.md}): the
+      GJ\,699 proxy spectrum (F$_{\rm XUV}$ $169.93$ against
+      $33.45$\,erg\,cm$^{-2}$\,s$^{-1}$ at the orbit) gives a width-matched
+      equivalent width of $3.3$--$3.7$ at every He/H tried ($0.65$--$10$),
+      three times the measurement and weakly dependent on He/H; the
+      measurement lies between the two proxies.
+      Route B, step 2 (run; update log section 98,
+      \texttt{LHS1140b/models/.P2/ew\_fit/route\_xuv\_scaled/NOTES.md}): at
+      $\mathrm{He/H} = 2.09$, the GJ\,1132 spectrum with its flux at
+      $\lambda \le 911.75$\,\AA{} (X-ray and hydrogen-ionizing EUV)
+      multiplied by $s$ and the rest by one factor that holds the
+      bolometric flux, so that the He($2\,^3S$) photoionizing band
+      ($911.75$--$2600$\,\AA) keeps its shape. This is a sensitivity
+      construction, not a stellar model. Every closure converged and
+      certified ($s = 1.3$, $1.36$, $1.4$, $1.5$, $2$, $4$). The
+      width-matched equivalent width rises monotonically with $s$:
+      $0.711$ ($s = 1$), $1.045$ ($1.3$), $1.107$ ($1.36$), $1.147$
+      ($1.4$), $1.244$ ($1.5$), $1.670$ ($2$), $2.792$ ($4$), with
+      $\log_{10}\dot M$ from $7.886$ to $8.607$ and $f$ from $22.0$ to
+      $21.7$\,km\,s$^{-1}$. The measurement $1.108 \pm 0.029$ is matched
+      for $s = 1.33$--$1.39$, i.e.\ F$_{\rm EUV}(100$--$911$\,\AA$) =
+      13.4$--$14.0$\,erg\,cm$^{-2}$\,s$^{-1}$ at the orbit (crossing at
+      $s = 1.36$, $13.7$, which is $0.195$ of the GJ\,699 value $70.2$;
+      $\log_{10}\dot M = 8.065$ there). The converged $s = 1.36$ state
+      lies $0.0013$ from the measurement; its width-matched red peak is
+      $1.278$ per cent against the observed $1.275$ (expected once the
+      equivalent width and the FWHM are both matched), its red/blue ratio
+      $7.51$, and its peak $0.15$\,\AA{} blueward of the observed one, as
+      at every $s$. The interval carries the observational $1\sigma$ only,
+      not the grid error or the other model uncertainties, and has been
+      computed at $\mathrm{He/H} = 2.09$ only. A moderate rise of the EUV
+      over the GJ\,1132 reconstruction, well inside the factor of seven
+      between the two proxies, appears sufficient to reproduce the
+      measured equivalent width on the present equations (interpretation;
+      a sensitivity result, not a measurement of the star).
+      Route B, step 3 (run; update log section 99, the same NOTES,
+      section 6): the same search at $\mathrm{He/H} = 0.65$, $1.2$ and
+      $5$, seeded from the converged GJ\,1132 states of the same He/H
+      ($14$ closures, all converged and certified, sonic point inside the
+      domain in every state). The measurement is crossed at $s = 1.300$,
+      $1.280$, $1.361$ and $1.336$ for $\mathrm{He/H} = 0.65$, $1.2$,
+      $2.09$ and $5$, i.e.\ F$_{\rm EUV}(100$--$911$\,\AA$) = 13.07$,
+      $12.86$, $13.68$ and $13.43$\,erg\,cm$^{-2}$\,s$^{-1}$, with
+      $1\sigma$ intervals $12.71$--$13.43$, $12.55$--$13.17$,
+      $13.40$--$13.97$ and $13.16$--$13.70$
+      (Fig.~\ref{fig:feuv_match}); every He/H has a converged state within
+      $0.005$ of the measurement. The four crossings scatter by
+      $\pm3$ per cent about $13.3$, comparable to the $\pm2$--$3$ per cent
+      $1\sigma$ half-width of each, and do not vary monotonically with
+      He/H (lowest at $1.2$). Along this line $\log_{10}\dot M$ falls from
+      $8.24$ to $8.00$ and the peak temperature rises from $3630$ to
+      $6190$\,K as He/H rises from $0.65$ to $5$. The matched lines are
+      nearly identical (Fig.~\ref{fig:feuv_match_line}): red/blue depth
+      ratio $7.60$, $7.56$, $7.51$, $7.46$ against the observed $6.35$
+      (same extractor; $16$--$84$ percentiles $5.25$--$7.89$ from a Monte
+      Carlo of the tabulated errors treated as independent), and the red
+      peak $0.14$--$0.15$\,\AA{} blueward of the observed one at every
+      He/H. Interpretation: on the present equations the measured
+      equivalent width fixes F$_{\rm EUV}(100$--$911$\,\AA$)$ at about
+      $13.3 \pm 0.7$\,erg\,cm$^{-2}$\,s$^{-1}$ at the orbit and leaves the
+      deep He/H undetermined over $0.65$--$5$; neither unfitted line
+      property separates the He/H. Not computed for these states: the
+      column checks, the grid error and the Roche-mode evaluate.
+      (The route-B records of sections 95 and 98 quoted an observed red/blue of $7.6$; the
+      observed value from the extractor is $6.35$, corrected in the
+      records.)
+\begin{figure}[htbp]\centering
+\includegraphics[width=0.7\textwidth]{figures/lhs1140b_oct2026_feuv_match_vs_heh.png}
+\caption{F$_{\rm EUV}(100$--$911$\,\AA$)$ at the orbit at which the
+width-matched equivalent width equals the measurement, against the deep
+He/H: the GJ\,1132 spectrum with its flux at $\lambda \le 911.75$\,\AA{}
+multiplied by $s$ (bolometric flux held; a sensitivity construction, not a
+stellar model). Linear interpolation in $\ln s$ between bracketing
+converged states; solution (circles) and advection-corrected (squares)
+products; grey band, the $1\sigma$ of the measurement; dotted, the
+unscaled GJ\,1132 product; right axis, the factor over the GJ\,1132 value
+($s$). Update log sections 98 and 99.}
+\label{fig:feuv_match}
+\end{figure}
+      Route B, step 4 (run; update log sections 102 and 108, NOTES section 7):
+      the same search at $\mathrm{He/H} = 0.1$, $0.2$, $0.3$, $0.45$, $14$,
+      $100$, $10^{3}$, $10^{4}$ and $10^{5}$ (every closure converged and
+      certified; a converged state within $0.0058$ of the measurement at every
+      He/H). The crossings are at $s = 2.532$, $1.656$, $1.448$, $1.339$,
+      $1.271$, $1.331$, $1.253$, $1.143$ and $1.015$, i.e.\
+      F$_{\rm EUV}(100$--$911$\,\AA$) = 25.45$, $16.65$, $14.56$, $13.46$,
+      $12.77$, $13.38$, $12.60$, $11.49$ and $10.20$\,erg\,cm$^{-2}$\,s$^{-1}$
+      (Fig.~\ref{fig:feuv_match_wide}). The required F$_{\rm EUV}$ exceeds
+      the GJ\,1132 value ($10.05$) at every He/H, by $1.5$ per cent at
+      $10^{5}$, $14$ per cent at $10^{4}$ and by a factor $2.5$ at
+      $\mathrm{He/H} = 0.1$; it is nearly flat ($12.6$--$13.7$) over
+      $\mathrm{He/H} = 0.45$--$10^{3}$, rises steeply below $0.45$ (the $s = 1$
+      equivalent width falls below $\mathrm{He/H} = 0.65$, so the same EUV
+      gives less line) and falls above $10^{3}$ (where the $s = 1$ equivalent
+      width has turned up, update log section 101; at $10^{5}$ the unscaled
+      GJ\,1132 spectrum is within $2$ per cent of the measured equivalent
+      width). The $1\sigma$ intervals carry the observed error only. At
+      $\mathrm{He/H} = 0.1$ the cooling-to-space column transfer reached its
+      stated validity bound (the exchange it neglects shifts $T_{\rm match}$
+      by $1.003$\,K against $1$\,K); the transfer option that solves that
+      exchange was added (update log section 102) and the $\mathrm{He/H} = 0.1$
+      closure runs with it. The ascent above $10^{4}$ ($2\times10^{4}$ to
+      $10^{5}$ at $s = 1.14$, then an $s$ scan at $10^{5}$) was run with the
+      binary that carries the corrected reservoir composition of the lower
+      ghost cells (update log section 105); the equivalent widths at
+      $s = 1.14$ are $1.129$, $1.161$, $1.208$ and $1.243$ at
+      $\mathrm{He/H} = 2\times10^{4}$, $4\times10^{4}$, $7\times10^{4}$ and
+      $10^{5}$.
+\begin{figure}[htbp]\centering
+\includegraphics[width=0.7\textwidth]{figures/lhs1140b_oct2026_euv_match_vs_heh_wide.png}
+\caption{As Fig.~\ref{fig:feuv_match} for deep $\mathrm{He/H} = 0.1$ to
+$10^{5}$ (thirteen He/H; solution product; a point is an open circle only if no
+converged state lies within $0.0058$ of the measurement): F$_{\rm EUV}(100$--$911$\,\AA$)$ at
+which the width-matched equivalent width equals the measurement; grey band,
+the $1\sigma$ of the measurement; dotted, the unscaled GJ\,1132 product;
+right axis, the factor over the GJ\,1132 value ($s$). GJ\,699 (unscaled) has
+$70.2$, off the scale. Update log sections 102 and 108.}
+\label{fig:feuv_match_wide}
+\end{figure}
+\begin{figure}[htbp]\centering
+\includegraphics[width=0.8\textwidth]{figures/lhs1140b_oct2026_line_feuv_match.png}
+\caption{Width-matched excess absorption of the converged state nearest
+the measured equivalent width at each deep He/H (route B, steps 2 and 3),
+over the observed spectrum (vacuum wavelength, planet rest frame; grey
+band, the equivalent-width window). The model curves are moved by the fitted
+$v_{\rm wind} = +2.26$\,km\,s$^{-1}$ for the overlay only, as in the earlier
+figures; every equivalent width and metric is from the unshifted spectra.
+The kernel FWHM $f$ is chosen for each
+curve to reproduce the observed FWHM; it stands for a velocity field the
+one-dimensional model does not contain.}
+\label{fig:feuv_match_line}
+\end{figure}
+\item \emph{The region beyond $\mathrm{Kn}_{\rm bulk} = 0.1$}, which
+      carries a third of the line, needs a kinetic treatment that is
+      outside the plan.
+\end{enumerate}
+
+\section{The answer of 2026-09-16 (superseded)}
+\label{sec:old_answer}
+
+\stalenote{This section is the answer as of 2026-09-16 and is superseded by
+Sect.~\ref{sec:oct2026}. Its EXHALE numbers predate heat conduction in the
+model, the energy coupling to Photochem, the carried ionization stages,
+He($2\,^3S$) transport and the 2026-09-24 atomic-data audit. No longer true:
+that the solved photochemical column overshoots the measurement and that
+its equivalent width rises with He/H (it now falls and stays below); that
+the line-forming gas is collisional and the critical point outside the
+domain; that the solution's own composition is unusable above $4\,R_p$.
+Still true: the width demand of about $22$\,km\,s$^{-1}$ and everything
+said here about the p-winds model.}
+
 
 The question is whether a wind that is solved, rather than assumed,
 reproduces the measured He\,\textsc{i} $10830$\,\AA{} transit line of
@@ -286,6 +1097,9 @@ likelihood grid. Every number and figure here can be regenerated from the
 files listed in Appendix~\ref{app:repro}.
 \section{What changed since 2026-08-30}
 \label{sec:whatchanged}
+
+\stalenote{The history of the 2026-09 re-solves. The corrections described here are in the code; the numbers they produced are superseded by Sect.~\ref{sec:oct2026}. The frozen-in composition of Sect.~\ref{sec:frozencomp} is now carried by ionization transport, and the solution and advection-corrected equivalent widths agree to $1$ per cent.}
+
 
 Every EXHALE number in this memo was re-solved between 2026-09-13 and
 2026-09-16. This section says why the older answers were discarded, what was
@@ -788,6 +1602,8 @@ $\mathrm{He/H} = 1.511$ between the certified $1.45$ and $1.52$
 molecular cases are not certified and are not quoted.
 
 \section{Inputs, and how each was pinned}
+\label{sec:inputs}
+
 \subsection{System}
 Planet and star from Cadieux et al.\ (2024) as quoted by C26:
 $R_p = 1.730 \pm 0.025\,R_\oplus$, $M_p = 5.60 \pm 0.19\,M_\oplus$,
@@ -1231,6 +2047,9 @@ physical default, which is how it is implemented.
 \section{Searching for a match: the composition scan}
 \label{sec:scan}
 
+\stalenote{The crossings of this section (prescribed metal-free base, 2026-09 physics without heat conduction in the model) were not recomputed with the present equations. On the present equations with the solved photochemical column there is no crossing (Sect.~\ref{sec:oct_scan}).}
+
+
 Once the star, the planet and the spectrum are fixed, composition is the free
 parameter left to search over. This section searches it in the well-mixed
 limit, with element diffusion off, so that the ratio in the reservoir is also
@@ -1315,6 +2134,10 @@ Fig.~4.}
 \label{fig:fig4}
 \end{figure}
 \section{Why the two models disagree}
+\label{sec:disagree}
+
+\stalenote{The EXHALE profiles of this section are 2026-09 states; the p-winds side is unaffected. The present profiles are cooler at the line-forming radii and carry their ionization by transport (Sects.~\ref{sec:oct2026} and~\ref{sec:dew}).}
+
 
 At the same composition the two models are not small perturbations of each
 other. The \emph{total} metastable column is comparable (at
@@ -1453,6 +2276,9 @@ equilibrium. Dotted vertical line: the stellar radius.}
 \section{What can be matched: the equivalent width}
 \label{sec:ew}
 
+\stalenote{The equivalent widths here are of the 2026-09 states. On the present equations the amount of absorption is not matched at any He/H (Table~\ref{tab:oct_scan}).}
+
+
 Depth and width trade against each other under any broadening, but the
 equivalent width does not: it is unchanged by the instrument profile, by the
 turbulence term and by the phase averaging. It is therefore the quantity on
@@ -1510,6 +2336,9 @@ on top are where the spacing brackets the measurement directly.}
 \section{What cannot be matched: the profile}
 \label{sec:width}
 
+\stalenote{The conclusion of this section stands: the width demand on every 2026-10 state is $f = 21.92$--$22.28$\,km\,s$^{-1}$ (Sect.~\ref{sec:oct_line}). Its EXHALE numbers are of the 2026-09 states. One statement no longer holds: the broadened line now has the right shape but is $21$ per cent too shallow, because the equivalent width is no longer matched.}
+
+
 Matching the equivalent width is not matching the line. At the crossing
 $\mathrm{He/H} = 0.4044$ the profile is $3.3$ times too deep ($4.09\%$
 against $1.254\%$) and $3.3$ times too narrow ($0.253$ against
@@ -1549,6 +2378,9 @@ escape speed, and no choice of composition supplies it.
 
 \subsection{The broadening the data demand, measured}
 \label{sec:broadening}
+
+\stalenote{The convention of this subsection is now the adopted rule (user decision 2026-10-04): every model line compared with an observed transit profile is convolved with a Gaussian whose FWHM $f$ is solved so that the extractor returns the observed width, and its equivalent width is the window equivalent width of that broadened curve (update log section 87). The numbers in the table below are of the 2026-09 solution at $\mathrm{He/H} = 0.40$.}
+
 
 The three routes above can be replaced by one measurement. Take the EXHALE
 profile matched on equivalent width as solved, convolve it with a Gaussian of
@@ -2606,6 +3438,10 @@ width is what tells us whether the line-forming gas is the gas either model
 thinks it is.
 
 \section{The best each model can do}
+\label{sec:best}
+
+\stalenote{The EXHALE model of this section is a 2026-09 state; the best present model is $\mathrm{He/H} = 0.65$ (Sect.~\ref{sec:oct_line}, Fig.~\ref{fig:oct_line}).}
+
 
 Figure~\ref{fig:best} puts only the two best models on the measurement: the
 paper's p-winds model at its own best fit (the MCMC medians), and the EXHALE
@@ -2656,6 +3492,9 @@ ionization fractions. Dotted vertical line: the stellar radius.}
 \end{figure}
 \section{The other proxy: five times the XUV}
 \label{sec:gj699}
+
+\stalenote{2026-09 physics. The GJ\,699 spectrum has since been run with the present equations (route B of the plan in Sect.~\ref{sec:open2026}, update log sections 95 and 98): a width-matched equivalent width of $3.3$--$3.7$ at He/H $0.65$--$10$, and the measurement matched by the GJ\,1132 spectrum with $1.33$--$1.39$ times its ionizing XUV at He/H $2.09$.}
+
 
 The first item on the list above, more energy, can be tested without adding
 any physics, because the paper itself runs two proxy spectra. Both stand in
@@ -2804,6 +3643,9 @@ $0.4044$ to $0.0526$ when the assumed spectrum is changed.}
 
 \section{Closing the loop: the composition as an output}
 \label{sec:closure}
+
+\stalenote{The closure procedure of this section is the one used in 2026-10, now with the energy coupling. Its flux-consistent sequence (equivalent width rising with He/H, every solution above the measurement) is superseded: on the present equations the sequence falls with He/H over $0.65$--$2.09$ and every solution lies below the measurement (Sect.~\ref{sec:oct_scan}).}
+
 
 Every number above took the helium abundance as an input. The scans of
 Sects.~\ref{sec:scan} and~\ref{sec:diffbroad} chose it, solved the wind, and
@@ -4143,6 +4985,9 @@ in Figs.~\ref{fig:pccol} and~\ref{fig:pccol2}.}
 \section{Is the wind collisional where it is set?}
 \label{sec:validity}
 
+\stalenote{Changed. The 2026-09 solutions had the critical point at $40\,R_p$, outside the domain, and the line-forming layer at $\mathrm{Kn} \le 0.012$. The 2026-10 states have the sonic point inside the domain ($25.7$--$28.8\,R_p$), and $31.4$ per cent ($\mathrm{He/H} = 0.65$, width matched) to $39.8$ per cent ($2.09$, unbroadened) of the equivalent width forms beyond $\mathrm{Kn}_{\rm bulk} = 0.1$ (Sect.~\ref{sec:oct_budget}).}
+
+
 Everything above reads the solutions as continuum solutions. A flow is a
 hydrodynamic wind only where the gas is collisional on the scale over which
 it varies, and in particular through its critical point, where the topology
@@ -4366,7 +5211,11 @@ wind rather than an evaporating atmosphere.
       constrains what the escape rate may be quoted as, not what the line
       says.
 \end{itemize}
-\section{Status against the goal}
+\section{Status against the goal (2026-09-16)}
+\label{sec:oldstatus}
+
+\stalenote{The status of 2026-09-16. The current status is Sects.~\ref{sec:oct2026}--\ref{sec:open2026}: the amount of absorption is not matched at any He/H on the present equations, and the width demand is unchanged.}
+
 
 The line is not reproduced. What stands:
 
@@ -4653,6 +5502,31 @@ Sect.~\ref{sec:lit}. \\
 \end{tabular}
 \end{table}
 % ===================================================================== %
+\subsection{The 2026-10 campaign}
+\label{app:oct2026}
+
+\begin{sloppypar}
+The runs of Sects.~\ref{sec:oct2026}--\ref{sec:open2026} live under
+\texttt{LHS1140b/models/.P2/ew\_fit/}, each directory with its own
+\texttt{NOTES.md}: \texttt{phase3/he23s\_transport/} (the
+$\mathrm{He/H} = 2.09$ reference and its acceptance), \texttt{phase4/}
+(outer domain, Roche geometry), \texttt{phase5/} (the He/H scan,
+\texttt{HeH<v>/}; the width kernel, \texttt{nonthermal\_kernel/}; the column
+transfer, \texttt{column\_transfer/}; the decomposition,
+\texttt{dEW\_decomposition/}) and \texttt{phase6/} (grid, tolerance,
+closure, domain, Roche, drift, NH$_3$ + H$_2$, observation). The accepted
+$\mathrm{He/H} = 0.65$ state is \texttt{phase5/HeH0.65/k02}, the tight
+closure \texttt{phase6/closure\_direct/k01}. Binary
+\texttt{LHS1140b/models/.P2/EXHALE\_99a76cb0.x}, manifest
+\texttt{.P2/BINARY\_MANIFEST\_99a76cb05e56.txt}. Equivalent widths come from
+\texttt{.P1/fiducial\_conduction/ew\_of\_state.sh} with
+\texttt{EW\_NONTHERMAL\_KERNEL=width\_match}. The records are
+\texttt{md/PLAN\_20261003\_lhs1140b\_ew.md} (sections 8 and 9) and
+\texttt{md/Update\_EXHALE\_stage3.md} sections 63--92. The four figures of
+those sections are copies of the run-directory PNGs named in their
+captions.
+\end{sloppypar}
+
 \begin{thebibliography}{99}\small
 \setlength{\itemsep}{0.3ex}
 \setlength{\parskip}{0pt}

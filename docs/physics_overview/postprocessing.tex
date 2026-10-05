@@ -5,15 +5,24 @@
 \label{sec:postprocessing:adv}
 
 For the reason given in Sec.~\ref{sec:ionization:advected},
-\texttt{post\_process\_adv.f90} re-solves the profile once, at the end of the
-run, with the ionization advected: the systems \eqref{eq:ion:advh}--\eqref{eq:ion:advhe2} are solved cell by cell
+\texttt{post\_process\_adv.f90} re-solves the profile at the end of a
+marching run (its Newton finish included) and in a stationary evaluation,
+in ten outer passes (\texttt{n\_pp\_passes}), with the ionization advected:
+the systems \eqref{eq:ion:advh}--\eqref{eq:ion:advhe2} are solved cell by cell
 from the base outward, each cell taking its history $x^{\rm up}$ from the
-solved fractions of the two cells below it, and the temperature is then
-re-solved on the steady internal-energy equation \eqref{eq:th:teq} with the
-Brent bracket of Sec.~\ref{sec:thermal:tsolve}.  In a run that solved heat
-conduction or the enthalpy flux of the element and carrier fluxes, the
-heating of that equation holds them too, evaluated with the corrected
-temperature: conduction \eqref{eq:transport_coeff} couples each cell to both
+solved fractions of the two cells below it and each element's stages
+stepping on the velocity of that element's nuclei (below), and the
+temperature is then re-solved on the steady internal-energy equation
+\eqref{eq:th:teq} with the Brent bracket of Sec.~\ref{sec:thermal:tsolve}.
+In a run that solved heat conduction or an enthalpy flux of the element, the
+molecular carrier or the carried stage fluxes
+(Sec.~\ref{sec:mol:interdiffusion}), the heating of that equation holds them
+too, evaluated with the corrected temperature
+(\texttt{transport\_terms\_of\_profile}; the stage term enters with the
+carrier term, \texttt{carrier\_enthalpy\_divergence\_of\_state}), and cell 1
+conducts against the bath the run's conduction operator holds at the base
+(\texttt{conduction\_base\_level\_T}, Sec.~\ref{sec:bcic:base}):
+conduction \eqref{eq:transport_coeff} couples each cell to both
 neighbors, so after the marching sweep the corrected cells are solved
 together by a Newton iteration on the column (banded Jacobian, conductivity
 and enthalpy flux divergence re-evaluated at each iterate); cells that keep
@@ -32,7 +41,8 @@ profile with the transport terms of that profile, must satisfy
 $|R| \le a_E + 10^{-6}S_E$, $S_E$ the largest of its physically grouped terms
 (the advective energy divergence as one term, the $p\,{\rm div}\,v$ work,
 heating, cooling, the conduction divergence and the two enthalpy
-divergences), $10^{-6}$ the energy tolerance of the stationary
+divergences, of the element fluxes and of the carrier and stage fluxes),
+$10^{-6}$ the energy tolerance of the stationary
 certification, and $a_E = 10\,\epsilon$ times the sum of the magnitudes of
 the parts the row is assembled from (the grouped terms, the two halves of
 the advective difference and the three face terms of the conduction
@@ -50,8 +60,8 @@ marching root are recorded in the \texttt{\# adv\_derived\_state:} line of
 both \texttt{\_adv} headers.
 
 What that acceptance covers is the column subproblem as it is solved, with
-lagged coefficients: the conductivity and the element and carrier enthalpy
-divergences are formed on the \emph{input} composition and not on the
+lagged coefficients: the conductivity and the element, carrier and stage
+enthalpy divergences are formed on the \emph{input} composition and not on the
 derived one, and the fine-structure escape probabilities are those of the
 profile the pass started from, which the cooling written after the last
 column forms again.  Three things are not tested: the full energy residual
@@ -171,7 +181,8 @@ Three properties of that pass are worth stating.
   the omitted loss is not the larger one.
 \end{itemize}
 
-The first of those gates has a fourth companion: wherever $v\le0$ in the cell
+The first of those gates has a fourth companion: wherever $v\le0$, or the
+velocity of the hydrogen or helium nuclei is $\le0$, in the cell
 or the one below it, the cell keeps the converged equilibrium ionization and
 temperature, because the step takes its history from the cells below, which
 are not upstream when the gas moves inward, and the residence time $h/v$ is
@@ -180,7 +191,37 @@ entering the Damk\"ohler number is the total rate at which each solved
 population is destroyed and re-formed, and the \emph{minimum} over the
 species the system solves is taken, because He($2^3$S) relaxes orders of
 magnitude more slowly than hydrogen ($A_{31} = 1.272\times10^{-4}$\,s$^{-1}$
-sets the floor) and the vector is only as local as its slowest member.
+sets the floor) and the vector is only as local as its slowest member. Each
+element's rates are weighed with the residence time of that element's
+nuclei, $h/v_{\rm H}$ or $h/v_{\rm He}$, the times its step uses.
+
+\paragraph{The velocity of each element's nuclei.} The fractions the
+advection systems step are fractions of one element's nuclei, and with
+\texttt{He\_diffusion} those nuclei do not move with the mass-averaged
+velocity: with $J$ the diffusive helium mass flux of the state
+(\texttt{helium\_diffusive\_face\_flux}, the flux the element row of the run
+is the divergence of; the cell value is the mean of its two faces, and faces
+0 and $N$ carry none) and $Y$ the helium mass fraction,
+\begin{equation}
+v_{\rm He} = v + \frac{J}{\rho Y},\qquad
+v_{\rm H} = v - \frac{J}{\rho(1-Y)},
+\label{eq:pp:vnuc}
+\end{equation}
+and the hydrogen row of each step takes $c_1 = g\,h_j/v_{\rm H}$, the helium
+rows $c_1 = g\,h_j/v_{\rm He}$ (both equal $v$ without element diffusion;
+the ghost cells keep $v$).  With element continuity
+$\nabla\cdot(n_{\rm el}v_{\rm el}) = 0$ the steady stage balance is then
+$v_{\rm el}\,{\rm d}x/{\rm d}r = S/n_{\rm el}$.  MEASURED on the LHS~1140\,b
+He/H\,$=2.09$ reference, $v_{\rm He}/v = 0.82$--0.97 and
+$v_{\rm H}/v = 2.1$--1.08 over 1.3--4\,$R_p$, and stepping both elements on
+$v$ had put the frozen-in He$^+$ fraction 3.5 per cent low and H$^+$ 6 per
+cent high against the transported stages of the solution (update log
+stage~3 section~82).  The stage's own eddy term $-n_{\rm el}K\,\partial
+x/\partial r$ is not in the step, which is second order in $r$; the step is
+valid where $v_{\rm el} \gg K|{\rm d}\ln x/{\rm d}r|$, a ratio MEASURED on
+the same state at 0.035 (He$^+$) at 1.3\,$R_p$ and below $10^{-3}$ beyond
+1.75\,$R_p$ for $K = 10^9$\,cm$^2$\,s$^{-1}$, and a run with a larger $K$
+or a slower wind has to be checked against it.
 
 \paragraph{What a refused row carries.}  A refused field is written with
 the run's own numbers, exactly: a composition field that is not
@@ -197,7 +238,9 @@ therefore not the solution as a whole.
 \label{sec:postprocessing:mdot}
 
 The quantity the run reports as \texttt{Log10 of steady-state Mdot} is
-measured at one radius, in \texttt{EXHALE\_main.f90}:
+measured at one radius, by \texttt{steady\_mass\_loss\_rate} in
+\texttt{EXHALE\_main.f90}, on the state each route writes (the stored pair in
+a stationary evaluation), and appended to \texttt{EXHALE\_setup.out}:
 \begin{equation}
 \dot M = 4\pi\,\rho(j)\,v(j)\,r(j)^{2}\,n_0v_0m_{\rm H} R_0^{2}
 \qquad\text{at}\qquad j = \max(N-20,\,1),
@@ -222,16 +265,41 @@ regression matrix uses.
 \subsection{Output files}
 \label{sec:postprocessing:files}
 
-\paragraph{Which state the products are built from (2026-09-17).} A solved
+\paragraph{Which state the products are built from.} A solved
 state's advection-corrected products are made by \texttt{Restart intent:
-stationary evaluate}, which loads the state, derives its pressure and
-temperature from the loaded conserved state, runs the ionization sweep,
-evaluates the certification and writes every product from that work state
-without entering the time integration. It exits with status 2 when the
-loaded state claims to be stationary and the certification refuses it, 7
-when the input is not refused but the derived product is (a
-\texttt{rejected} or absent derived-state record), and 0 otherwise; the
-record is written into the \texttt{\_adv} headers either way. The route this replaced took one time
+stationary evaluate} (\texttt{stationary\_state\_of\_the\_loaded\_restart} in
+\texttt{EXHALE\_main.f90}), which loads the state (with its exact code-unit
+file, Sec.~\ref{sec:bcic:restart}), certifies the stored pair and writes
+every product from that pair without entering the time integration.  The
+stored pair is the conserved state and the composition exactly as loaded,
+with the temperature from $u$ through the caloric map of that composition and
+the heating, the cooling and the two lower ghosts from one sweep that holds
+the composition of the cells above the ghosts and hands it back bit for bit
+(\texttt{sources\_and\_ghosts\_of\_the\_held\_composition},
+\texttt{ioniz\_eq\_sources\_of\_held\_composition}).  The same routine
+rebuilds these quantities for the joint test of every stationary outer pass
+and for the certification of every state a steady route writes
+(\texttt{certify\_the\_state\_to\_be\_written}), so a certificate is a
+statement about the state in the file and its reload measures the same
+numbers: the base continuity row reads the lower ghost with a gain of order
+the inverse base Mach number, and a ghost left by the last sweep of a solve
+at the temperature of an earlier iterate had moved a cell-1 mass row by 13
+per cent of its rounding-anchored tolerance between a solve and its reload (MEASURED, update
+log stage~3 section~94).  The products are \texttt{Hydro\_ioniz.txt},
+\texttt{Ion\_species.txt}, \texttt{conserved\_state.txt}, the channel
+breakdowns and the mass-loss rate of the stored pair, the \texttt{\_adv} pair
+derived from it, and \texttt{EXHALE\_resolved.out}.  One composition sweep
+from the loaded state is then taken, and its movement and certification are
+printed beside the stored pair's, entry by entry; it is neither written nor
+the verdict. The evaluation exits with status 2 when the loaded state claims
+to be stationary and the certification of the stored pair refuses it, 7 when
+the input is not refused but the derived product is (a \texttt{rejected} or
+absent derived-state record: a rejected column energy solve or a failed row
+of the \texttt{\_adv} files), and 0 otherwise; the record is written into the
+\texttt{\_adv} headers either way, and 7 is used by no other stop of the
+code. The marching route keeps its exit status for the state it solved and
+records the derived product only in the \texttt{\_adv} headers and the log.
+The route this replaced took one time
 step at \texttt{CFL:\ 1.0e-12} with \texttt{Do only PP:\ True}, which
 suppressed the movement but did not remove it, reconstructed with whatever
 \texttt{Reconstruction scheme:} stated rather than with the scheme the
@@ -262,6 +330,8 @@ energy equation itself used, so the channel sum and the \texttt{heat} or
 round-off; \texttt{Excited\_H.txt}, \texttt{Lyman\_Werner.txt},
 \texttt{FUV\_bands.txt}, \texttt{Oxygen\_chemistry.txt} and
 \texttt{OI\_levels.txt} carry the optional physics;
+\texttt{conserved\_state.txt} is the exact code-unit state beside every
+written pair (Sec.~\ref{sec:bcic:restart});
 the generation \texttt{pass\_state/<id>/} named by \texttt{pass\_state/current}
 is the state of the last completed outer pass of an alternating stationary
 run, never certified (Sec.~\ref{sec:steady:partitioned}). The two \texttt{\_adv} files carry a
@@ -274,6 +344,30 @@ claim about the numbers in the file. The Python loader
 (\texttt{exhale\_io.Run('output/')} gives \texttt{.r}, \texttt{.T},
 \texttt{.Mdot} and the rest), and it should be used in place of any new
 column parser.
+
+\texttt{EXHALE\_resolved.out}, written in the run directory and not in
+\texttt{output/} (\texttt{write\_resolved\_config},
+\texttt{write\_setup\_report.f90}), is the machine-readable record of the
+configuration the wind actually uses after \texttt{input.inp} and the
+lower-atmosphere handoff are resolved (radius, mass, base temperature, He/H,
+orbit, the grid and the physics switches), as \texttt{key value} lines to full
+double precision; \texttt{EXHALE\_transit.py} reads it in place of
+\texttt{input.inp}.  It is written at startup and again after the
+certification of the written state, and then also carries the elemental
+fluxes over the overlap window of that state and, when conduction is on, the
+heat the wind conducts into the lower atmosphere through the base face,
+$q = -\kappa_{1/2}(T_1 - T_{\rm bath})/(r_1 - r_0)$ in
+erg\,cm$^{-2}$\,s$^{-1}$, positive leaving the wind
+(\texttt{base\_conductive\_flux\_cgs}, with \texttt{base\_conduction\_T\_bath\_K}
+and \texttt{base\_conduction\_T\_cell1\_K}; \texttt{base\_conduction\_state}
+says \texttt{unmeasured} before the wind exists).  That flux is the base
+face's own term of the conduction operator, $T_{\rm bath}$ the bath at
+$r(0)$ of Sec.~\ref{sec:bcic:base}, measured on the state the certification
+is made on (\texttt{heat\_conducted\_into\_lower\_atmosphere},
+\texttt{viscous\_conduction.f90}) and not on the last residual evaluation,
+which inside a Newton solve is a perturbed state; it is what the energy
+coupling of the elemental-flux closure with the lower atmosphere reads
+(Sec.~\ref{sec:mol:handoff}).
 
 \subsection{The transmission spectrum}
 \label{sec:postprocessing:transit}
@@ -297,7 +391,7 @@ Sec.~\ref{sec:ionization:n2} (transcribed in \texttt{exhale\_transit\_lib.py},
 \texttt{n2\_populations}, and equal to them to $3\times10^{-13}$ relative), but with a field
 of its own, because neither the solver's Ly$\alpha$ field nor its Balmer
 rate is in the profiles the tool reads: $J_{\rm Ly\alpha}$ from a file or
-the estimate of Huang et al.\ (2017), and a diluted stellar blackbody for
+the estimate of \citet{Huang2017}, and a diluted stellar blackbody for
 the Balmer continuum. An
 optional triaxial Roche geometry comes from \texttt{roche\_recon.py}.
 Overrides are environment variables (\texttt{EXHALE\_TRANSIT\_*}: resolving
@@ -309,18 +403,23 @@ repeated here.
 
 \paragraph{Which state the spectrum is built from.}
 The two selections are two answers for one column and not two formats of one
-answer.  The \texttt{\_adv} pair is a post-process of a marching state: a
+answer.  The \texttt{\_adv} pair is a post-process of a written state (the
+end state of a marching run or the stored pair of a stationary evaluation): a
 steady advective correction cell by cell, second order in the cell width
-(variable-step BDF2 along the flow at the bulk velocity), with no eddy term and no element drift, refused in a cell where an
+(variable-step BDF2 along the flow, each element's stages at the velocity of
+its own nuclei), with no stage eddy term, refused in a cell where an
 assumption of the steady equations fails.  It is an independent
 discretization of the same column and no equation of the run was solved for
 it.  The solved pair is the state the solver produced and the certification
 judged; where the ionization stages are transported its composition is the
 partition the stage transport itself produced, so an advective correction on
 top of it would be a second and different transport approximation of the same
-stages.  A stationary route therefore writes no \texttt{\_adv} products,
-none are manufactured for one, and the default selection refuses by name and
-names the other selection rather than reading it.  The two files of a
+stages.  The stationary solve of a loaded state (\texttt{Restart intent:
+stationary}) therefore writes no \texttt{\_adv} products and none are
+manufactured for it by the transit tool; the evaluation of a solved state
+(\texttt{stationary evaluate}) runs the post-process on its stored pair and
+writes them, and where they are absent the default selection refuses by name
+and names the other selection rather than reading it.  The two files of a
 selection are read together, the O\,{\sc i} ground-term populations
 included: the temperature of one state with the composition of the other
 solves neither set of equations.  Every saved curve carries the selection,
@@ -350,3 +449,66 @@ moves that column outward (column-weighted mean radius $1.2941$ against
 $1.3112\,R_p$) and a saturated line's disk-averaged depth follows how far
 the absorbing shell reaches; H$\beta$ moves most because it is the line still
 on the linear part of the curve of growth (item P6f).
+
+\subsection{A model transit line against an observed one: the width-matching kernel}
+\label{sec:postprocessing:widthmatch}
+
+A one-dimensional steady model has no line-of-sight velocity field beyond
+its radial outflow and its thermal motion, and its transit lines come out
+narrower than the observed ones (on LHS~1140\,b He\,{\sc i} 10830 the model
+red pair has a FWHM of about 0.27\,\AA{} against the measured 0.841\,\AA).
+For every planet and every line compared with an observed transit profile the
+model is therefore compared with the observation through one convention: the
+line \emph{width} is matched by a Gaussian velocity convolution, and the
+model is fitted to the observed \emph{equivalent width} of that
+width-matched curve.  The convention is written once, for LHS~1140\,b
+He\,{\sc i} 10830, in \texttt{LHS1140b/he10830\_equivalent\_width.py}, and a
+comparison on another planet or line generalizes it rather than introducing
+another.
+\begin{enumerate}
+\item The excess absorption $(\max T - T)/\max T$ is formed from the
+  synthetic transit depth of \texttt{tpm\_He10830.txt} (column~3), which is
+  already convolved with the planet rotation and the instrument at the
+  instrument's own resolving power, on its own air-wavelength grid
+  (\texttt{transit\_file\_air\_excess}).
+\item That excess is convolved with a Gaussian of FWHM $f$ in velocity, in
+  the planet rest frame and with no shift,
+  $\sigma_\lambda = f\lambda_0/(2.35482\,c)$ with $\lambda_0 = 10830$\,\AA{}
+  in air (\texttt{broaden\_excess}, \texttt{scipy.ndimage.gaussian\_filter1d}
+  with its reflecting boundary, which conserves the absorption summed over the
+  grid).  The instrument kernel is already inside the curve and Gaussians
+  commute, so the order of the two convolutions does not matter.
+\item $f$ is chosen for each model separately so that the extractor applied
+  to the observation (for He\,{\sc i} 10830 the three-Gaussian
+  \texttt{he\_line\_metrics.fit\_metrics}, whose width is the FWHM of the
+  blended red pair) returns the observed FWHM of the same feature
+  (\texttt{width\_matching\_fwhm\_kms}: Brent's method on $f$ in
+  $[1, 60]$\,km\,s$^{-1}$ to $10^{-3}$\,km\,s$^{-1}$; on LHS~1140\,b
+  $f\approx 22$\,km\,s$^{-1}$).
+\item The equivalent width of the model is the window equivalent width of the
+  broadened curve through the same operator as the observed one: the curve,
+  converted to vacuum wavelengths, is interpolated linearly onto the
+  observation's own samples inside the window (on LHS~1140\,b vacuum
+  10832.60--10834.20\,\AA{} in the planet rest frame) and integrated with
+  their trapezoid weights (\texttt{model\_equivalent\_width}).  Any fit of a
+  planet parameter to the observed equivalent width (He/H, $\dot M$, the
+  stellar EUV) is judged on this width-matched value.
+\end{enumerate}
+\texttt{he10830\_equivalent\_width.py --width-matched <tpm\_He10830.txt>
+<output> [f]} writes the broadened excess with its record (the kernel FWHM,
+the criterion, and the equivalent width and line metrics with and without the
+kernel; \texttt{width\_matched\_product}).  In the equivalent-width record of
+a state (\texttt{LHS1140b/models/.P1/fiducial\_conduction/ew\_of\_state.sh}),
+\texttt{EW\_NONTHERMAL\_KERNEL=width\_match} adds \texttt{fwhm\_kms=} and
+\texttt{EW\_kernel=} to each line of \texttt{EW.txt}, and \texttt{EW=} stays
+the unbroadened window equivalent width; a number in place of
+\texttt{width\_match} applies a given $f$.
+
+The kernel stands for a velocity field that the one-dimensional model does
+not contain.  It is not a computed physics term: it carries no energy or
+momentum budget and moves no absorber, and its width is measured from the
+data for each model rather than being a parameter of the model.  Every result
+that uses it states $f$ and says so.  Because the reflecting convolution
+conserves the absorption summed over the grid, the window equivalent width
+falls as $f$ grows only by the absorption the broadened wings carry out of
+the window.

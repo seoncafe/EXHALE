@@ -96,8 +96,10 @@ start = time.time()
 #   the `_adv` profile is a POST-PROCESS of a marching state.  It takes the
 #   marched temperature and composition and applies a steady advective
 #   correction cell by cell, second order in the cell width (variable-step
-#   BDF2 along the flow at the bulk velocity), with
-#   no eddy term and no element drift, and it refuses that correction where
+#   BDF2 along the flow, each element stepped on the velocity of its own
+#   nuclei, v plus its diffusive drift where He_diffusion is on; update log
+#   stage 3 section 82), with no stage eddy term and no drift of a stage
+#   against its element, and it refuses that correction where
 #   an assumption of the steady equations fails in a cell.  It is an
 #   independent discretization of the same column, and it is not what any
 #   equation of the run was solved for.
@@ -291,13 +293,17 @@ Instr_res_OI   = float(_tenv('RES_OI',   '1.0e3'))
 #                             center [erg s^-1 cm^-2 Hz^-1 sr^-1]
 #      (linearly interpolated onto the EXHALE grid, clamped at the ends).
 #
-#  (2) Otherwise J_lya is estimated with the simple assumption of
-#      Huang et al. (2017, ApJ 851, 150), Eq.(6) and related text:
+#  (2) Otherwise J_lya is estimated with the order-of-magnitude estimate of
+#      Huang et al. (2017, ApJ 851, 150), Section 2, in the text after
+#      their Eq. (6) (page 3), which they state for the peak of the H
+#      photoionization:
 #         J_lya(r) ~ 0.1 * F_LyC / Dnu_D(r)
 #      where Dnu_D = nu_Lya*sqrt(2 kB T/m_p)/c is the local Ly-alpha
 #      Doppler width and F_LyC is the DEPOSITED (absorbed) Lyman-continuum
 #      flux (each LyC ionization balanced by a recombination -> Ly-alpha
-#      photon; Huang+2017 page 11). F_LyC is computed from the actual
+#      photon; Huang+2017 page 3). Applying it at every radius, and the
+#      column-integrated F_LyC below, are this tool's choices, not the
+#      paper's. F_LyC is computed from the actual
 #      stellar input: the incident EUV-band (E>13.6 eV) flux at the
 #      planet, 10^LEUV/(4*pi*a^2), times the fraction absorbed by the
 #      atmosphere, (1 - exp(-tau_LyC)) with tau_LyC = sigma_LyC * N_HI
@@ -598,7 +604,7 @@ if do_Ha:
 		if len(Jlya_file) > 0:
 			print('(TPM) WARNING: Jlya_file "%s" not found; '
 			      'using Huang(2017) estimate.' % Jlya_file)
-		# (2) Simple estimate (Huang et al. 2017, Eq.(6) & related text):
+		# (2) Estimate of Huang et al. 2017, Section 2, text after Eq. (6):
 		#     J_lya ~ 0.1 * F_LyC / Dnu_D, with Dnu_D the local Ly-alpha
 		#     Doppler width (proton thermal speed) and F_LyC the deposited
 		#     (absorbed) Lyman-continuum flux.
@@ -1579,7 +1585,12 @@ if geometry == 'triaxial':
 		nu0  = c_light/lam0
 		l_onde = np.linspace((lam0_A-half_A)*1e-10, (lam0_A+half_A)*1e-10, nlam)
 		nu_l   = c_light/l_onde
-		b_grid = np.array([r_hi**(j/(n_b-1)) for j in range(n_b)])   # 1 -> r_hi
+		# The impact parameters end where the annulus of the normalization
+		# below ends, R_ib = min(r_N, R_star/R_p): the depth is
+		# (A_atm - A_planet) times the mean transmission of that annulus,
+		# and chords beyond the stellar radius do not cross the disk.
+		b_top  = min(r_hi, Rib)
+		b_grid = np.array([b_top**(j/(n_b-1)) for j in range(n_b)])  # 1 -> R_ib
 		x_los  = np.linspace(-1.5*recon.L1, 1.5*recon.L1, n_x)        # [R_p]
 		x_phys = x_los*Rp
 		ang    = (np.arange(n_sectors) + 0.5)*2.0*np.pi/n_sectors
@@ -1606,10 +1617,10 @@ if geometry == 'triaxial':
 				      * wofz(X - (vlos/vth)[:, None] + 1j*a_v[:, None]).real
 				tau = np.trapz(n_l[:, None]*Vo, x=x_phys, axis=0)
 				radial[ia, ib, :] = np.exp(-np.abs(tau))
-		# azimuthal mean of the radial (impact-parameter) integral / (r_hi^2-1)
+		# azimuthal mean of the radial (impact-parameter) integral / (R_ib^2-1)
 		prob = np.array([np.mean([np.trapz(2.0*b_grid*radial[ia, :, l], b_grid)
 		                          for ia in range(n_sectors)])
-		                 for l in range(nlam)])/(r_hi**2 - 1.0)
+		                 for l in range(nlam)])/(b_top**2 - 1.0)
 		avg = ((A_star - A_atm) + (A_atm - A_planet)*prob)/A_star
 		avg = avg*A_star/(A_star - A_planet)
 		FWHM = lam0/instr_res

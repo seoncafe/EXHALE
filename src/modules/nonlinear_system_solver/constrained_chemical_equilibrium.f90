@@ -131,7 +131,7 @@
 	use global_parameters, only: thereis_HeITR, thereis_metals,           &
 	                             thereis_oxychem, HeH
 	use species_table,     only: n_melem, iel_O
-	use ion_cell_state,    only: ieq_cell
+	use ion_cell_state,    only: ieq_cell, h2_fraction_of_reservoir
 	use ion_residual_core, only: metal_rows, metal_electron_sum
 	use System_HeH_mol,    only: mol_heh_rows, oxygen_carrier_rows,        &
 	                             mol_inv_turnover,                         &
@@ -412,7 +412,13 @@
 	integer, save :: metal_base, oxygen_base
 	real*8,  save :: field_scale            ! lambda of the rung being solved
 	logical, save :: h2_is_fixed, oxygen_carriers_are_fixed, hp_is_fixed
-	logical, save :: heii_is_fixed, heiii_is_fixed
+	! The lower-boundary reservoir's H2 partition of the non-ionized
+	! hydrogen (ion_cell_state, x_h2_neutral_partition_fixed): H2 stays an
+	! unknown and its balance row is replaced by 2 n(H2)/n_H =
+	! x2 (1 - x_ion), the same row the fraction system solves.
+	logical, save :: h2_is_reservoir_partition
+	real*8,  save :: h2_reservoir_partition
+	logical, save :: heii_is_fixed, heiii_is_fixed, hetr_is_fixed
 	real*8,  save :: nuclei_H, nuclei_He, nuclei_O
 	logical, save :: element_carried(n_melem)
 	! Does the cell carry this species at all (an absent element, the pinned
@@ -475,6 +481,8 @@
 	!$omp               metal_base, oxygen_base, field_scale,              &
 	!$omp               h2_is_fixed, oxygen_carriers_are_fixed,            &
 	!$omp               hp_is_fixed, heii_is_fixed, heiii_is_fixed,        &
+	!$omp               hetr_is_fixed,                                     &
+	!$omp               h2_is_reservoir_partition, h2_reservoir_partition, &
 	!$omp               nuclei_H, nuclei_He, nuclei_O,                     &
 	!$omp               species_exists, species_fixed, row_of_species,     &
 	!$omp               species_held,                                      &
@@ -754,24 +762,17 @@
 	! unchanged).
 	!
 	! It then builds row_scale, the reciprocal turnover this module's own
-	! residual divides by, which is NOT the same as mol_inv_turnover: it is
-	! mol_inv_turnover widened by the metal <-> H/He charge-exchange bound
-	! (cx_add_to_turnover), exactly as normalized_reaction_residual widens it
-	! at acceptance time.
-	!
-	! The widening is not a refinement here, it is the difference between a
-	! solvable and an unsolvable rung. set_mol_metal_turnover_rates leaves
-	! charge exchange out of the metal rows deliberately -- for the fraction
-	! systems it is one contribution among several to the solver's path. But
-	! in a shielded molecular base the O I <-> O II row is DOMINATED by the
-	! resonant O + H+ <-> O+ + H pair, so dividing that row by a scale built
-	! from photoionization and recombination alone leaves a residual that no
-	! composition can push below the rung tolerance: measured, the rung
-	! stalled at 3e-2 on precisely that row, at every field down to 1e-12.
-	! Widening it also makes this module drive down exactly the quantity the
-	! caller's acceptance judge measures, which is the property that lets a
-	! reached rung mean anything. A positive diagonal scaling has the same
-	! zeros, so it changes the path and not the root.
+	! residual divides by: mol_inv_turnover widened by the metal <-> H/He
+	! charge-exchange bound (cx_add_to_turnover). In a shielded molecular
+	! base the O I <-> O II row is DOMINATED by the resonant O + H+ <-> O+ + H
+	! pair, so dividing that row by a scale built from photoionization and
+	! recombination alone leaves a residual that no composition can push
+	! below the rung tolerance: measured, the rung stalled at 3e-2 on
+	! precisely that row, at every field down to 1e-12. A positive diagonal
+	! scaling has the same zeros, so it changes the path and not the root.
+	! It is the continuation's path only; the candidate it returns is judged
+	! by normalized_reaction_residual, against the chemical turnover of each
+	! element (System_HeH_mol).
 	real*8, intent(in) :: n_e_ref, photo_scale
 	real*8  :: cxb(n_fraction_rows_max), el_tot(12)
 	integer :: i
@@ -830,10 +831,13 @@
 	oxygen_base    = iox
 
 	h2_is_fixed               = ieq_cell%x_h2_fixed
+	h2_is_reservoir_partition = ieq_cell%x_h2_neutral_partition_fixed
+	h2_reservoir_partition    = ieq_cell%x_h2_neutral_partition
 	oxygen_carriers_are_fixed = ieq_cell%x_ox_fixed
 	hp_is_fixed               = ieq_cell%x_hp_fixed
 	heii_is_fixed             = ieq_cell%x_heii_fixed
 	heiii_is_fixed            = ieq_cell%x_heiii_fixed
+	hetr_is_fixed             = ieq_cell%x_hetr_fixed
 	nuclei_H  = ieq_cell%nh
 	nuclei_He = ieq_cell%nhe
 	nuclei_O  = ieq_cell%n_ofam
@@ -892,6 +896,9 @@
 	! root and be measured against rows that were never asked for it.
 	if (heii_is_fixed)  species_fixed(is_HeII)  = .true.
 	if (heiii_is_fixed) species_fixed(is_HeIII) = .true.
+	! The He 2^3S level carried by the flow (He 2^3S transport): row 8 is
+	! the constraint x(8) = x_hetr_fix, for the same reason.
+	if (hetr_is_fixed .and. thereis_HeITR) species_fixed(is_HeITR) = .true.
 	if (oxygen_carriers_are_fixed .and. thereis_oxychem) then
 		species_fixed(is_OH)  = .true.
 		species_fixed(is_H2O) = .true.
@@ -1238,11 +1245,24 @@
 	                  sden(is_HI), sden(is_HII), sden(is_HeI_SI),         &
 	                  sden(is_HeII), sden(is_HeIII), 1.0d0, .true.)
 
-	! Each row against its own turnover rate, in the normalization the
-	! caller's acceptance judge uses (set_turnover_scales_at_field).
+	! Each row against its own turnover bound (set_turnover_scales_at_field).
+	! This is the path of the continuation and not the judge: the candidate
+	! it returns is judged by normalized_reaction_residual against the
+	! chemical turnover of each element, as every other candidate is.
 	do i = 1,n_fraction_row
 		fvec(i) = fvec(i)*row_scale(i)
 	enddo
+
+	! The reservoir's partition of the non-ionized hydrogen replaces the H2
+	! balance, in the fraction units of the system it is judged by: x(4)
+	! = 2 n(H2)/n_H against x2 (1 - x_ion), with x_ion the hydrogen nuclei
+	! in H+, H2+ (two), H3+ (three) and HeH+ (one).
+	if (h2_is_reservoir_partition) then
+		fvec(4) = 2.0d0*sden(is_H2)/nuclei_H                              &
+		        - h2_fraction_of_reservoir(h2_reservoir_partition,        &
+		            (sden(is_HII) + 2.0d0*sden(is_H2p)                    &
+		             + 3.0d0*sden(is_H3p) + sden(is_HeHp))/nuclei_H)
+	endif
 
 	end subroutine network_balance_rows
 
@@ -1547,8 +1567,12 @@
 	integer :: e, i
 
 	! --- hydrogen: H2 partition, then the atomic remainder ionized ---
+	! The reservoir's partition is stated for the non-ionized hydrogen, and
+	! the seed is neutral before its remainder is ionized below.
 	if (h2_is_fixed) then
 		x_h2 = ieq_cell%x_h2_fix
+	else if (h2_is_reservoir_partition) then
+		x_h2 = h2_reservoir_partition
 	else
 		qh2  = q_h2_equilibrium(p_bar, ieq_cell%T_K)
 		x_h2 = 2.0d0*qh2*(1.0d0 + HeH)/(1.0d0 + qh2)
@@ -1617,6 +1641,11 @@
 		            + ieq_cell%a_ion_HeITR)*n_e
 		if (drain_tr .gt. 0.0d0) f_tr = min(                           &
 			n_e*(f1*ieq_cell%rcheiTR + f0*ieq_cell%q13)/drain_tr, f0)
+		! Where the flow carries the level the seed takes the carried
+		! value, for the reason the transported stages above are seeded
+		! at theirs; it lies in the neutral stage it is a level of.
+		if (hetr_is_fixed)                                             &
+			f_tr = min(max(ieq_cell%x_hetr_fix, 0.0d0), f0)
 	endif
 	sden(is_HeITR)  = f_tr*nuclei_He
 	sden(is_HeI_SI) = (f0 - f_tr)*nuclei_He
@@ -1845,6 +1874,9 @@
 			            ieq_cell%x_heiii_fixed,            &
 			            ieq_cell%x_heii_fix,               &
 			            ieq_cell%x_heiii_fix
+			write(iu,*) ieq_cell%x_hetr_fixed,             &
+			            ieq_cell%x_hetr_row,               &
+			            ieq_cell%x_hetr_fix
 			write(iu,*) met_nelem
 			do e = 1,met_nelem
 				write(iu,*) met_ntot(e), met_g0(e), met_g1(e),     &
@@ -1855,6 +1887,10 @@
 			! The direct X0 -> X++ rate of each element, appended
 			! last so that a dump without it is still read.
 			write(iu,*) met_g02(1:met_nelem)
+			! The reservoir's neutral-hydrogen H2 partition, appended
+			! after it for the same reason.
+			write(iu,*) ieq_cell%x_h2_neutral_partition_fixed,     &
+			            ieq_cell%x_h2_neutral_partition
 			close(iu)
 			write(*,'(A,I0,A,A)') ' (constrained_chemical_'//  &
 				'equilibrium) cell state of cell ', ieq_cell%jcell,  &
@@ -2131,6 +2167,9 @@
 	! The two transported helium stages, appended for the same reason.
 	read(iu,*) ieq_cell%x_heii_fixed, ieq_cell%x_heiii_fixed,             &
 	           ieq_cell%x_heii_fix, ieq_cell%x_heiii_fix
+	! The transported He 2^3S level, appended for the same reason.
+	read(iu,*) ieq_cell%x_hetr_fixed, ieq_cell%x_hetr_row,               &
+	           ieq_cell%x_hetr_fix
 	read(iu,*) nel
 	do e = 1,nel
 		read(iu,*) mg_ntot(e), mg_g0(e), mg_g1(e), mg_b0(e), mg_b1(e), &
@@ -2140,6 +2179,16 @@
 	mg_g02 = 0.0d0
 	read(iu,*,iostat=ios) mg_g02(1:nel)
 	if (ios .ne. 0) mg_g02 = 0.0d0
+	ieq_cell%x_h2_neutral_partition_fixed = .false.
+	ieq_cell%x_h2_neutral_partition       = 0.0d0
+	if (ios .eq. 0) then
+		read(iu,*,iostat=ios) ieq_cell%x_h2_neutral_partition_fixed,      &
+		                      ieq_cell%x_h2_neutral_partition
+		if (ios .ne. 0) then
+			ieq_cell%x_h2_neutral_partition_fixed = .false.
+			ieq_cell%x_h2_neutral_partition       = 0.0d0
+		endif
+	endif
 	close(iu)
 
 	if (thereis_oxychem) then

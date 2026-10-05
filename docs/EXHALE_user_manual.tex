@@ -103,7 +103,17 @@ its reverse, and the radiative He$^{2+}$\,$+$\,H capture) acts in every
 helium-bearing ionization system. When the metastable He\,$2\,^3$S
 triplet is included the code adds its explicit collisional-excitation cooling
 (the 10830\,\AA\ channel) and the He\,$2\,^3$S\,$+$\,H / H$_2$ Penning
-ionization that removes the metastable. The converged run yields the radial
+ionization that removes the metastable. Optional terms, each off by default
+except where stated, add to the energy equation heat conduction with the
+conductivity of the mixture (\texttt{Conduction}), viscosity, and, when the
+elements diffuse, the enthalpy that the element, molecular-carrier and
+ionization-stage fluxes carry (\texttt{Interdiffusion enthalpy flux}, on by
+default); and the composition can be carried with the flow instead of being
+the local root of each cell: the molecular carriers
+(\texttt{Molecular carrier transport}, on by default with the oxygen
+chemistry), the ionization stages of H and He
+(\texttt{Ionization transport}) and the He\,$2\,^3$S population
+(\texttt{He 2\^{}3S transport}). The converged run yields the radial
 profiles of density, velocity,
 temperature, and the ionization state, plus the steady-state \emph{mass-loss
 rate} $\dot M$. A post-processing pass adds advection to the ionization balance,
@@ -540,9 +550,24 @@ gives one), and \texttt{--ic} names the outputs
 states \texttt{mode=init t\_phys=0 certified=F cert\_reason=mapped\_seed}
 whatever the source said, because an interpolated state is neither the
 certified state nor the physical clock of the run that wrote it; the new run
-has to be solved again. Two further options of the tool change the
+has to be solved again. A physical cell of the target is interpolated between
+the source's physical cells only: a target center between the base face and
+the source's first center (the first cell of a refined base block) takes the
+source's first cell, never a value interpolated against the lower ghost rows,
+which are the reservoir (boundary data that the loader does not read). Two further options of the tool change the
 composition on purpose: \texttt{--reservoir El/H <value>} multiplies every
-row of that element by one factor, keeping the shape of its profile, and
+row of that element by one factor, keeping the shape of its profile, with
+the hydrogen-nucleus count of every row held: HeH$^+$ is multiplied with
+helium and the hydrogen nucleus it holds is taken back out of H\,I, H\,II,
+H$_2$, H$_2^+$ and H$_3^+$ in proportion, so every element ratio of the row
+other than the one named is left exactly as it was (left in, that hydrogen
+put C/H $1.5\times10^{-6}$ off the value in the LHS\,1140\,b He/H ascent
+from $4\times10^4$ to $7\times10^4$). The carry is refused when a base row
+comes out more than $10^{-6}$ relative from the value, the
+\texttt{heh\_dev\_tol} within which \texttt{load\_IC} accepts the loaded
+He/H (an oxygen carrier OH, H$_2$O or CO, which holds nuclei of two elements
+and is not multiplied, is what produces such a departure), or when the
+hydrogen-only species do not hold the hydrogen a HeH$^+$ carry takes, and
 \texttt{--uniform} (with \texttt{--reservoir}) sets the element to that ratio
 in every row instead, which is the seed of a run whose element does not
 separate (helium with \texttt{He\_diffusion} off, for which \texttt{load\_IC}
@@ -669,7 +694,17 @@ evaluator builds an inventory of every balance the configuration activates
 and returns, for each, a status (\texttt{not\_applicable} /
 \texttt{evaluated} / \texttt{unavailable}), the row measure (the maximum over
 physical cells of $|{\rm res}|/\max({\rm scale},{\rm floor})$), the volume
-average, the worst cell and the scale it was divided by. The tolerances are
+average, the worst cell and the scale it was divided by. The scale of a
+carrier row is the sum of the magnitudes of its own terms: the two face
+fluxes, the advective terms and the reaction production and loss as the row
+hands them out (the gross channels of H$_2$, of the molecular proton row, of
+the oxygen carriers and of the He\,$2\,^3$S level; the net of the helium
+stages and of the atomic proton row, which come as one balance), with an
+absolute floor of $10^{-20}$ of the element. The temperature, the sources and
+the lower ghost cells a certificate reads are rebuilt from the state being
+certified (a sweep that holds its composition), in the solve's passes, at the
+write and in a stationary evaluation alike, so a written state and its reload
+are certified by the same numbers. The tolerances are
 $3\times10^{-12}$ for the mass row, $10^{-8}$ for momentum and $10^{-6}$ for
 energy, the level balances and the eliminated-species closures.
 
@@ -769,7 +804,14 @@ implements the ``Newton from an existing state'' recipe of \S\ref{sec:newton}
 \texttt{EXHALE\_CARRIER\_TRUST} / \texttt{EXHALE\_DIFF\_OMEGA}, which set the
 starting step lengths of the stationary outer passes and are how a run
 continued from a pass snapshot takes over the step lengths it had reached
-(\S\ref{sec:passstate}). Typical usage:
+(\S\ref{sec:passstate}), \texttt{EXHALE\_PTC\_SER}, which changes how the
+pseudo-transient solve accepts its steps, and the two continuation factors
+\texttt{EXHALE\_CONDUCTION\_SCALE} / \texttt{EXHALE\_INTERDIFF\_ENTH\_SCALE},
+which change the equations and are therefore written into the state
+identity (\S\ref{sec:factortokens}). The table is not exhaustive: the
+measurement keys a single investigation needed are documented at their code
+sites (a \texttt{get\_environment\_variable} call with a comment stating the
+key). Typical usage:
 \begin{lstlisting}[style=sh]
 EXHALE_RESIDUAL=1 ./EXHALE.x                      # rank a "converged" state
 EXHALE_PTC=1 EXHALE_PTC_JFNK=1 EXHALE_PTC_DTAU0=1.0 ./EXHALE.x   # re-converge it
@@ -824,7 +866,10 @@ Variable & Effect \\
 \texttt{EXHALE\_PTC\_DTAU0=}$\langle v\rangle$ & With \texttt{EXHALE\_PTC=1}:
   override the initial pseudo-time step $\Delta\tau_0$ (default: the CFL
   $\Delta t$ of the loaded state). A large value (e.g.\ \texttt{1.0}) probes
-  the pure-Newton regime directly. \\
+  the pure-Newton regime directly. The stationary restart
+  (\texttt{Restart intent: stationary}) starts at $\Delta\tau_0=1$ instead,
+  as the marching hand-off to the Newton finish does, and this key replaces
+  that start too (the marching hand-off does not read it). \\
 \texttt{EXHALE\_PTC\_NFIX=}$\langle n\rangle$ & With \texttt{EXHALE\_PTC=1}:
   anchor the first $n$ physical cells (frozen-base experiment; solves the
   wind on top of a fixed base). \\
@@ -1040,6 +1085,49 @@ Variable & Effect \\
   the cells whose marching energy step found no root fixed values of the
   column energy solve (written \texttt{failed}) instead of unknowns of it,
   the set the column had until 2026-10-01. \\
+\midrule
+\texttt{EXHALE\_PTC\_SER=}$\langle$1$|$2$\rangle$ & Accept the steps of the
+  pseudo-transient solve by the pseudo-time control instead of by merit
+  descent (\path{steady_newton.f90}, \texttt{ptc\_ser\_on}; Kelley \& Keyes
+  1998, SIAM J.\ Numer.\ Anal.\ 35, 508). A trial is accepted when it is
+  admissible (positive, finite, a chemical root in every cell) and no cell's
+  density or total energy moves by more than
+  \texttt{EXHALE\_PTC\_SER\_MAX\_CHANGE} (default 0.3) of itself; otherwise
+  $\lambda$ is halved. \texttt{1}: $\Delta\tau$ follows the residual
+  reduction, $\Delta\tau\leftarrow\Delta\tau\min(2,\max(1/2,
+  f_2/f_{2,\rm try}))$; \texttt{2}: $\Delta\tau$ doubles on a full step; both
+  multiply it by $\lambda$ on a shortened one. The returns to the best
+  iterate, the stagnation stop and the damped Gauss--Newton escape are not
+  taken, and the solve hands back its \emph{last} iterate unless the best one
+  met the gates. Once $\|R\|$ falls below \texttt{EXHALE\_PTC\_SER\_RNORM}
+  (default $10^{-3}$) the merit line search accepts the steps again (the
+  terminal Newton phase). Unset: the merit line search throughout. The
+  LHS\,1140\,b continuation chains run with \texttt{2}
+  (\texttt{md/Update\_EXHALE\_stage3.md} sections 42 and 50). \\
+\texttt{EXHALE\_CARRIER\_ROW\_TERMS=1} & Write the carrier rows of the last
+  assembly term by term to \path{output/carrier_row_terms.txt}: the
+  diffusive and advective transport, production, loss, photolytic loss, net
+  source, residual, floor, the row's own physical scale and the measure the
+  certification divides by; the H$_2$ row reaction by reaction; both faces
+  of every row separately. For a helium stage the production and loss
+  columns are the positive and negative parts of its net source; for the
+  He\,$2^3S$ level they are its gross channels
+  (\path{diffusive_photochemistry.f90}). \\
+\texttt{EXHALE\_ELEMENT\_ROW\_TERMS=1} & Write the helium element row of
+  every state the certification measures, term by term, to
+  \path{output/element_row_terms.txt} (\path{binary_element_diffusion.f90}). \\
+\texttt{EXHALE\_CONSERVATION\_BUDGET=}$\langle n\rangle$ & Export every term
+  of the three finite-volume rows of every cell (face fluxes, geometry,
+  potential, sources, conduction, viscous and enthalpy-flux terms) for the
+  next $n$ assemblies of the stationary residual, so that a reader sharing
+  no arithmetic with the code can rebuild each cell's balance
+  (\path{conservation_budget.f90}, whose header states the four momentum
+  branches and the sign of the gravitational work). \\
+\texttt{EXHALE\_EVAL\_STATE\_DUMP=1} & Write the state and the
+  composition-derived module state (particle and electron counts) at named
+  points of the stationary evaluation and of the final certification to
+  \path{output/eval_state_dump.txt}, for an in-memory comparison of the
+  loaded and the written state. \\
 \end{longtable}
 }
 
@@ -1666,22 +1754,19 @@ defaults restore the standard behavior).}\label{tab:inp-opt}\\
   \texttt{t\_phys} the state file records. \texttt{relaxation}: march toward
   stationarity and then hand off to the solver, which is what every restart
   did before this key existed. \texttt{stationary}: rebuild the derived
-  quantities of the loaded state without taking a step, measure its stationary
-  residual and its certification \emph{as loaded}, and enter the stationary
-  solve at once; the second word \texttt{evaluate} writes the measured state
-  back with its certification and stops, and \texttt{equilibrate} puts the
-  loaded composition on its own fixed point before the measurement (a change
-  of the state, reported when taken). This is the route that certifies a
-  written state without the two CFL steps a marching hand-off takes first.
-  Since 2026-09-17 (item L9) \texttt{evaluate} also names the three states it
-  handles apart (the state as loaded, the work state whose pressure and
-  temperature are derived from the loaded conserved state, and the
-  advection-derived one) and writes every product a solved case is read for
-  from the work state with no time update: the two state files, the heating and
-  cooling breakdowns, the \texttt{*\_adv} profiles and the mass-loss line.
-  The \texttt{*\_adv} files carry a \texttt{\# derived\_from:} provenance
-  line rather than a \texttt{\# coupling:} header, because they describe a
-  composition the certification was not made on.
+  quantities of the loaded state without taking a step, measure the stationary
+  residual and the certification of the \emph{stored pair} (the conserved
+  state and the composition exactly as loaded, with the heating and cooling
+  of that composition in the field it attenuates), then take one composition
+  sweep from it, report how far the composition moved and what the
+  certification reads after the sweep (reported only, never the verdict), and
+  enter the stationary solve from the swept state. The second word
+  \texttt{evaluate} stops instead of solving, and \texttt{equilibrate} puts
+  the loaded composition on its own fixed point before the measurement (a
+  change of the state, reported when taken). This is the route that certifies
+  a written state without the two CFL steps a marching hand-off takes first.
+  What \texttt{evaluate} writes and which verdict it returns:
+  \S\ref{sec:evaluate}.
   Refused: the key with \texttt{Load IC?\ False}, \texttt{trajectory} with
   \texttt{Run mode: init}, \texttt{stationary} without \texttt{Solver:
   Newton}. \\
@@ -1708,9 +1793,12 @@ defaults restore the standard behavior).}\label{tab:inp-opt}\\
   of the file not the rows of this run and is a cold start and not a restart
   (\texttt{iontrans} is not one of them: the three ionization stages have a
   column in every state file, and the key changes whether that column is a
-  local root or a transported partition, so it may be named); a
+  local root or a transported partition, so it may be named; nor is
+  \texttt{he23strans}, the He\,$2^3S$ column being in every state file
+  written with the level tracked); a
   word naming the grid, the reservoir or the constant set; the key with
-  \texttt{Load IC?\ False}. See \texttt{md/input\_schema.md} appendix D.2.
+  \texttt{Load IC?\ False}. The 26 tokens: \S\ref{sec:factortokens}. See
+  \texttt{md/input\_schema.md} appendix D.2.
   \\
 \texttt{Low-Mach damping:} & real $\varepsilon_4$ [, real $M_{\rm th}$]
   (def.\ $-1$, i.e.\ off; $M_{\rm th}=10^{-3}$) & Artificial dissipation of the
@@ -1810,6 +1898,30 @@ defaults restore the standard behavior).}\label{tab:inp-opt}\\
   wind first converges without it, then the run re-converges. \texttt{False}
   restores full photoelectron thermalization, bit-identical to the legacy
   path; \texttt{Immediate} applies it from step~0 (A/B tests only). \\
+\texttt{Low-energy electron partition:} & \texttt{none} $|$
+  \texttt{Furlanetto2010} (def.\ \texttt{none}) & The photoelectrons of
+  $10.2\,{\rm eV}\le E_0\le 30\,$eV, below the range of the partition above,
+  are by default deposited whole as heat. \texttt{Furlanetto2010} partitions
+  them by the Monte Carlo tables of Furlanetto \& Stoever (2010, MNRAS 404,
+  1869; the authors' electronic tables, interpolated linearly in $E_0$ and in
+  $x$ as their \texttt{elec\_interp.c} does, $x$ clamped to $[10^{-4},0.999]$):
+  $f_{\rm heat}E_0$ is heat, the H\,I and He\,I ionizations per primary are
+  added to the secondary ionization rates (their branching renormalized to
+  the cell's neutral densities with the tables' He/H $=0.087$ as reference),
+  and the H\,I line photons it makes leave the cell. Same $x$ as
+  \texttt{Secondary\_ionization}, applied where and when that coupling is,
+  on the stellar and the on-the-spot recombination photoelectrons, and only
+  in cells with no H$_2$ (no source covers H$_2$ at 10--30\,eV); the
+  advection-corrected post-process, whose own gas carries no H$_2$, takes the
+  H$_2$ of the solved state for that test, so both products apply it in the
+  same cells. The gate is any $n({\rm H_2})>0$, so the deposition changes
+  discontinuously between a cell without H$_2$ and one with a trace of it
+  (an open item, \texttt{md/TO\_BE\_DONE.md} (AJ)). The heat share is that of a primordial gas and is not corrected
+  for a helium-rich one. Option token \texttt{lowE\_partition} of the
+  restart contract (a state written before the token existed reads as
+  \texttt{F}); recorded in \texttt{EXHALE\_resolved.out} as
+  \texttt{low\_energy\_electron\_partition Furlanetto2010}, a line written
+  only when the option is on. Any other word stops the run. \\
 \texttt{He\_rec\_coupling:} & logical (def.\ \texttt{True}) & Absorb the
   ionizing recombination radiation of He\,II\,$\to$\,He\,I and
   He\,III\,$\to$\,He\,II on the spot (\S\ref{sec:data}). He\,II: the ground
@@ -1828,8 +1940,14 @@ defaults restore the standard behavior).}\label{tab:inp-opt}\\
   He\,I scattering of the 584\,\AA\ line lowers $z$). He\,III: the ground
   capture, the direct capture into $n=2$, He\,II Ly$\alpha$ and the $2s$
   two-photon continuum (Nussbaumer \& Schmutz 1984), with the $2s$--$2p$
-  mixing of He\,II by ion impact. All the photoelectron energy is heat
-  (channel \texttt{heat\_He\_recomb}). With the He\,$2\,^3$S network on,
+  mixing of He\,II by ion impact. The photoelectrons are partitioned as the
+  stellar ones are (\texttt{Secondary\_ionization}, with its staging, and
+  \texttt{Low-energy electron partition}), each at the energy of its channel
+  plus the mean capture kinetic energy: above 30\,eV (the He\,III ground
+  capture on H\,I, He\,I, H$_2$ and the low-threshold metals, He\,II
+  Ly$\alpha$ on the metals below 10.8\,eV) into heat (channel
+  \texttt{heat\_He\_recomb}), secondary ionizations and escaping line
+  radiation; with the coupling off all of it is heat. With the He\,$2\,^3$S network on,
   case~B is split into triplet and singlet captures with Hummer \& Storey
   (1998) Table~5 in both settings of the key. \texttt{False} $=$ case~B for
   both recombinations with the cascade photons lost. \\
@@ -1901,12 +2019,17 @@ defaults restore the standard behavior).}\label{tab:inp-opt}\\
   the helium (and, with \texttt{He\_metal\_diffusion}, each metal) carries as
   it moves against hydrogen, and the sensible enthalpy each transported
   molecular carrier (H$_2$; OH, H$_2$O, CO with the oxygen chemistry) carries
-  relative to the rest of its elements, in the marching energy update and in
-  the stationary energy row alike (\S\ref{sec:hediff}). It acts with
+  relative to the rest of its elements, and, with \texttt{Ionization
+  transport: True}, the sensible enthalpy the carried ionization stages move
+  relative to their element (in effect the electrons' $\gamma/(\gamma-1)kT$
+  times $\sum_k Z_k E_k$, $E_k$ the eddy part of the stage flux), in the
+  marching energy update, in the stationary energy row and in the
+  advection-corrected column alike (\S\ref{sec:hediff}). It acts with
   \texttt{He\_diffusion: True} and helium in the gas, or with
   \texttt{Molecular carrier transport: True}; otherwise the key is inert, bit
   for bit. A restart from a state written without the carrier term names the
-  token \texttt{carrier\_enth} on a \texttt{Restart option change:} line. \textbf{On by default, because the term belongs to the
+  token \texttt{carrier\_enth}, and one written without the stage term the
+  token \texttt{stage\_enth}, on a \texttt{Restart option change:} line. \textbf{On by default, because the term belongs to the
   energy equation of any mixture whose components move relative to one
   another}; \texttt{False} exists only to reproduce published escape models
   that omit it (Koskinen et al.\ 2013, 2022; Yelle 2004). MEASURED on the
@@ -1970,7 +2093,9 @@ defaults restore the standard behavior).}\label{tab:inp-opt}\\
   \texttt{Molecular chemistry: True}, not with \texttt{Oxygen chemistry}:
   H$_2$ is the first carrier and is transported with or without the oxygen
   cycle, which only adds OH, H$_2$O and CO to the set, and
-  \texttt{Ionization transport} adds H$^+$. With the molecular network off
+  \texttt{Ionization transport} adds the ionization stages H$^+$, He$^+$
+  and He$^{2+}$ (and \texttt{He 2\^{}3S transport} the He\,$2^3S$ level).
+  With the molecular network off
   there are no carriers and the key changes nothing; \texttt{input\_read}
   reports that at startup rather than refusing the run, the state produced
   being the correct atomic one (\S\ref{sec:oxychem}). \\
@@ -2020,38 +2145,63 @@ defaults restore the standard behavior).}\label{tab:inp-opt}\\
   iteration and not an equation set: a stationary state is stationary under
   either. Any other word stops the run. \\
 \texttt{Ionization transport:} & \texttt{True}/\texttt{False}
-  (def.\ \texttt{False}) & Carry the hydrogen ionization state with the flow:
-  H$^+$ becomes a fifth transported carrier of the same operator that carries
-  H$_2$, and the ionization sweep is handed the transported fraction instead
-  of solving the H/H$^+$ partition as a local root. The local partition is the
+  (def.\ \texttt{False}) & Carry the ionization state with the flow:
+  $x({\rm H\,II}) = n({\rm H\,II})/n_{\rm H}$, $x({\rm He\,II})$ and
+  $x({\rm He\,III})$ per helium nucleus become rows of the transport-chemistry
+  operator that carries the molecular carriers, each riding on its element's
+  nucleus face flux, $F = x\,N_{\rm el} - n_{\rm el} K_{zz}\,\partial x/\partial
+  r$, and every ionization sweep is handed the transported fractions instead
+  of solving those partitions as local roots. The neutral stage of each
+  element closes its simplex and is not a row. The local partition is the
   right answer only where a parcel is ionized faster than it leaves its shell,
   $P\,r/|v| \gg 1$. On the Koskinen et al.\ (2022) Model~A comparison that
   ratio is 0.15--0.35 above 1.5\,$r_{\rm base}$, and the local root then gives
   $x(\mathrm{H^+}) = 0.129/0.327/0.585$ at $2.0/2.4/3.0\,r_{\rm base}$ where
   integrating along the same flow gives $0.057/0.078/0.106$ and Model~A, which
   advects every species, has $0.020/0.055/0.080$
-  (\texttt{md/k22\_electron\_density\_excess.md} \S7). The proton's
-  molecular diffusion is set to zero, an ion in a neutral gas being
-  ambipolar- or Coulomb-limited rather than hard-sphere and the term this
-  option exists for being the bulk advection, while the eddy coefficient
-  $K_{zz}$ still applies, it being a bulk mixing coefficient. There is no base
+  (\texttt{md/k22\_electron\_density\_excess.md} \S7). No molecular diffusion
+  and no ion-neutral drift of a stage is carried; the eddy coefficient
+  $K_{zz}$ applies, it being a bulk mixing coefficient. There is no base
   Dirichlet value, no handoff stating an ionization fraction, so the lower
-  ghost cells stay with the sweep. \textbf{It requires \texttt{Molecular
-  carrier transport: True} and \texttt{Molecular chemistry: True}}; each is a
-  fatal refusal at startup. With \texttt{Solver: Newton} both stationary
-  routes carry it: with \texttt{Coupled carrier solve: True} the stationary
-  system carries the proton's row and the sweep is handed the Newton unknown;
-  without it the route is the partitioned alternation, whose hydrodynamic
-  solves hold the composition and whose sweeps are handed the transported
-  proton fraction of that composition, the carrier relaxation between the
-  solves transporting it (until 2026-09-12 this combination was refused, on
-  the premise, true of the plain Newton finish and not of the alternation,
-  that the last sweep would put the proton back on its local root). Marching
-  requires neither. The direct steady route (\texttt{EXHALE\_PTC=1}) is
-  refused outright. Recorded in \texttt{EXHALE\_resolved.out} as
-  \texttt{ionization\_transport} and in a restart file's \texttt{\# coupling:}
-  line as \texttt{iontrans=T}. Default off: it changes every
-  ionization-dependent number of a run (\S\ref{sec:oxychem}). \\
+  ghost cells stay with the sweep. It applies to an atomic gas as well as a
+  molecular one (the stage sources are the balances the local sweep of that
+  gas solves). \textbf{Refused at startup}: a mixture without helium;
+  \texttt{Molecular chemistry: True} without \texttt{Molecular carrier
+  transport: True}; \texttt{Coupled carrier solve: True} or \texttt{On stall}
+  (its row registry carries a carrier as a mass fraction, a stage is a
+  fraction per nucleus); and the direct steady route \texttt{EXHALE\_PTC=1}.
+  With \texttt{Solver: Newton} the route is the partitioned alternation,
+  whose hydrodynamic solves hold the composition and whose sweeps are handed
+  the transported fractions, the carrier relaxation between the solves
+  transporting them. Marching requires none of these. Recorded in
+  \texttt{EXHALE\_resolved.out} as \texttt{ionization\_transport} and in a
+  restart file's \texttt{\# coupling:} line as \texttt{iontrans=T}. Default
+  off: it changes every ionization-dependent number of a run
+  (\S\ref{sec:oxychem}). \\
+\texttt{He 2\^{}3S transport:} & \texttt{True}/\texttt{False}
+  (def.\ \texttt{False}) & Carry the He\,$2^3S$ population with the flow
+  instead of solving it as the local root of its level balance in every cell:
+  $x_3 = n(2^3S)/n_{\rm He}$ becomes a fourth helium state of the
+  \texttt{Ionization transport} operator, riding on the helium nucleus flux
+  with the same face flux, with the level balance of the sweep
+  (\texttt{tr\_triplet\_row}) as its source, and the ground singlet closing
+  the helium simplex $x({\rm He\,II}) + x({\rm He\,III}) + x_3 \le 1 -
+  n({\rm HeH^+})/n_{\rm He}$. It is the steady advection balance of Oklopcic
+  \& Hirata (2018, Eq.~15) and Lamp\'on et al.\ (2020, Eq.~11) with the eddy
+  term added. The level moves at the velocity of He\,I (no drift of $2^3S$
+  against ground-state helium). Its 19.82\,eV excitation energy is booked by
+  the reactions of the level where they run, so no excitation-energy flux
+  enters the energy row; the certification prints its size against the energy
+  row as a reported-only line. Certification entry \texttt{carrier balance
+  He2\^{}3S} (gated at $10^{-5}$ in the wind); \texttt{level balance He 2\^{}3S}
+  is then not applicable. \textbf{Requires \texttt{Include He23S: True} and
+  \texttt{Ionization transport: True}}; each is a fatal refusal at startup.
+  Recorded in \texttt{EXHALE\_resolved.out} as \texttt{he23s\_transport}
+  (written only when on), in a restart file's \texttt{\# coupling:} line as
+  \texttt{he23strans=T} and in its \texttt{\# options} line as
+  \texttt{he23strans}, which \texttt{Restart option change:} may name in
+  either direction. Default off. Design and validation:
+  \texttt{md/He23S\_transport\_design\_20261003.md}. \\
 \texttt{Lower atmosphere:} & \texttt{none} $|$ \texttt{analytic} $|$
   \texttt{vulcan} [, real ($R_J$)] (def.\ \texttt{none}) & Lower-atmosphere
   pre-step run before the wind: generate the base composition over the 1-bar to
@@ -2091,7 +2241,11 @@ defaults restore the standard behavior).}\label{tab:inp-opt}\\
   characteristic boundary (\S\ref{sec:basebc}) then holds that pressure and
   $T_0$ at the level, the lower face of cell~1, and $\rho$ follows. It is a
   re-parameterization of the same reservoir, whose physical effect is a much
-  less dense base. \\
+  less dense base. Without a lower-atmosphere handoff, \texttt{pressure}
+  beside a \texttt{Log10 lower boundary number density} key is followed and
+  the density key is ignored, with a WARNING on standard output and in the
+  setup report naming both levels and the one used; with a handoff, both are
+  checked against its level instead. \\
 \texttt{Shapiro filter:} & real $\varepsilon$ [, int $n$]
   (def.\ $-1$, i.e.\ off; $n=4$) & Apply a weak Shapiro (1970) 1--2--1 low-pass
   filter $u_j \mathrel{+}= (\varepsilon/4)(u_{j-1}-2u_j+u_{j+1})$ to the
@@ -2108,7 +2262,9 @@ defaults restore the standard behavior).}\label{tab:inp-opt}\\
   $(\nabla\!\cdot\!\tau)_r$ and its dissipation $q_\mu =
   \tfrac43\mu(\partial_r v - v/r)^2$ with the calibrated
   $\mu(T)=\tfrac{4}{15}(m_{\rm H}/k_B)\kappa(T)$ (monatomic Chapman--Enskog at
-  Prandtl $2/3$, tied to the Watson et al.\ 1981 conductivity): the molecular
+  Prandtl $2/3$, tied to the Watson et al.\ 1981 neutral-hydrogen
+  conductivity $4.45\times10^4(T/1000\,{\rm K})^{0.7}$, whatever the
+  composition; \texttt{Conduction} uses the mixture conductivity instead): the molecular
   transport that damps the near-base momentum imbalance the inviscid HLLC
   scheme lacks. A numeric value is instead a diagnostic power law
   $\mu=\mu_0T^{s}$ in code units ($s=0.7$ by default), kept for sensitivity
@@ -2119,8 +2275,18 @@ defaults restore the standard behavior).}\label{tab:inp-opt}\\
   +n_{\rm HeI}\,299\,T^{0.69}+n_{\rm H_2}k_{\rm H_2}(T)]/n$\,erg\,cm$^{-1}$s$^{-1}$K$^{-1}$
   (Banks \& Kockarts 1973 as Salz et al.\ 2015 and Sutton et al.\ 2015 state
   it; $k_{\rm H_2}$ an Eucken-form fit to Incropera et al.\ 2007 Table A.4,
-  valid 200--2000 K; $n$ all particles). Off $=$ byte-identical. Its
-  continuation factor: \S\ref{sec:factortokens}. \\
+  valid 200--2000 K; $n$ all particles). Off $=$ byte-identical. The base
+  boundary condition is a heat bath at the base ghost centre $r(0)$
+  (\texttt{conduction\_base\_level\_T}, \path{viscous_conduction.f90}): the
+  temperature of the lower-atmosphere profile at that radius when a profile
+  is in use (\S\ref{sec:lowerprofile}), otherwise the reservoir's hydrostatic
+  isentrope continued below the level; the outer face carries no conductive
+  flux. The heat conducted into the lower atmosphere through the base face is
+  written into \texttt{EXHALE\_resolved.out} (\S\ref{sec:resolvedout}), which
+  is what the energy coupling of the elemental-flux closure reads. The same
+  conduction terms enter the advection-corrected temperature
+  (\S\ref{sec:advvalidity}). Option token \texttt{cond}; its continuation
+  factor: \S\ref{sec:factortokens}. \\
 \texttt{Caloric EOS:} & \texttt{ladder} $|$ \texttt{monatomic}
   (def.\ \texttt{ladder}) & The caloric equation of state. \texttt{ladder}:
   every atom, ion and electron stores $\tfrac32 kT$ and H$_2$ its
@@ -2161,7 +2327,45 @@ defaults restore the standard behavior).}\label{tab:inp-opt}\\
   \texttt{inputdata/windae\_grid/}. Omitted $=$ nothing is written. \\
 \end{longtable}
 
-\paragraph{The continuation-factor tokens of a state file.}\label{sec:factortokens}
+\paragraph{What a stationary evaluate writes, and the verdict it returns.}\label{sec:evaluate}
+\texttt{evaluate} writes every product a solved case is read for from the
+stored pair, with no time update: the two state files and
+\texttt{conserved\_state.txt} (whose \texttt{certified=} pair is the
+stored pair's verdict), the heating and cooling breakdowns, the
+\texttt{*\_adv} profiles derived from the stored pair and the mass-loss
+line; its exit status is the stored pair's verdict (0; 2 when the stored
+pair's certification refuses the file's claim; 7 when that claim stands and
+the derived \texttt{\_adv} record is rejected, \S\ref{sec:advvalidity}),
+and the swept composition is never written (2026-10-04; until then the products and the
+verdict were of the swept state, and the mass row of the wind, a quantity at
+its rounding floor, could refuse there a state its solve had certified).
+An evaluate of an evaluate's output writes the same data again. The same
+evaluation (\texttt{sources\_and\_ghosts\_of\_}\allowbreak\texttt{the\_held\_composition},
+\path{EXHALE_main.f90}: the temperature from $u$ through the caloric map of
+the composition, the heating, cooling and lower ghost from one sweep that
+returns the interior composition bit for bit) is also the joint test of
+every stationary outer pass and the certification of every state a solve
+writes, so that a certificate stands on the numbers its reload measures and
+not on the ghost and sources of an earlier iterate (2026-10-04).
+The \texttt{*\_adv} files carry a \texttt{\# derived\_from:} provenance
+line rather than a \texttt{\# coupling:} header, because they describe a
+composition the certification was not made on.
+
+\paragraph{The option tokens of a state file, and the continuation factors.}\label{sec:factortokens}
+The \texttt{\# options} line of a state file carries 26 tokens
+(\texttt{opt\_name}, \path{load_IC.f90}), the vocabulary of
+\texttt{Restart option change:}: \texttt{He23S}, \texttt{metals},
+\texttt{eos\_metals}, \texttt{mol}, \texttt{molbase}, \texttt{oxychem},
+\texttt{carrier}, \texttt{carrier\_newton}, \texttt{iontrans},
+\texttt{he\_diff}, \texttt{he\_metal\_diff}, \texttt{sec\_ion},
+\texttt{caloric\_mono}, \texttt{excH}, \texttt{base\_ir}, \texttt{mol\_ir},
+\texttt{mol\_heat}, \texttt{visc}, \texttt{cond}, \texttt{jlya},
+\texttt{wellbal}, \texttt{interdiff\_enth}, \texttt{carrier\_enth},
+\texttt{lowE\_partition}, \texttt{stage\_enth} and \texttt{he23strans}.
+\texttt{metals}, \texttt{mol}, \texttt{oxychem} and \texttt{carrier} decide
+which columns the state files carry and can never be named;
+\texttt{carrier\_newton} names a route and differs without being named; the
+last five read as \texttt{F} in a file written before they existed.
 \texttt{EXHALE\_CONDUCTION\_SCALE} and \texttt{EXHALE\_INTERDIFF\_ENTH\_SCALE}
 (\S\ref{sec:envvars}) scale the heat conduction and the interdiffusion
 enthalpy flux by a factor $s\in[0,1]$. They change the equations, so the
@@ -3113,6 +3317,99 @@ reduced over a radial window, and the two are iterated (under-relaxed) until
 they agree, at which point the base composition is an output of the coupled
 problem instead of an input to it.
 
+\paragraph{The energy coupling: the column below the level under the heat the
+wind conducts.} With \texttt{Conduction} on, the wind conducts heat into the
+lower atmosphere through its base face (\texttt{base\_conductive\_flux\_cgs}
+of \texttt{EXHALE\_resolved.out}, \S\ref{sec:resolvedout}). On a cold column
+that heat raises the matching-level temperature the wind is built on, so the
+two models are also coupled in energy. \texttt{photochem\_to\_lower\_profile.py
+-{}-conducted-heat-flux} $F$ [erg\,cm$^{-2}$\,s$^{-1}$, positive into the
+column; default 0, which writes the profile without it] solves the column
+energy balance below $p_{\rm match}$
+(\path{src/utils/conducted_heat_column_balance.py}),
+\begin{equation*}
+\frac{1}{r^2}\frac{\rm d}{{\rm d}z}\Big(r^2\kappa\frac{{\rm d}T}{{\rm d}z}\Big)
+= C(T,p)-C(T_0(p),p),\qquad
+\kappa\frac{{\rm d}T}{{\rm d}z}=F\ \text{at}\ p_{\rm match},\quad T=T_0\ \text{at the bottom},
+\end{equation*}
+with $\kappa$ the mixture conductivity of \texttt{Conduction}, $C$ the band
+emission of CH$_4$, NH$_3$, H$_2$O, C$_2$H$_2$, CO and CO$_2$ from the climate
+model's own $k$-distributions and $T_0(p)$ the climate temperature (so $F=0$
+returns the climate column bit for bit), and iterates it with the chemistry
+(the chemistry re-solved on the new $T$ until $T_{\rm match}$ moves by less than
+\texttt{-{}-column-energy-tolerance}, default 1\,K, at most
+\texttt{-{}-column-energy-max-iterations}, default 8). The options:
+\begin{itemize}\itemsep1pt
+\item \texttt{-{}-column-energy-treatment} \texttt{nlte} (default; a
+  vibrational band with published V--T rates is a two-level system, the rest
+  in LTE), \texttt{nlte\_partial} (two-level also for a band whose rate set
+  misses a partner, a lower bound on its emission), \texttt{lte} (every band
+  in LTE, an upper bound on the cooling) or \texttt{rotational} (rotational
+  bands only, a lower bound). The published rates and their ranges are
+  tabulated, with their sources, in the module's PUBLISHED RATES section.
+\item \texttt{-{}-nh3-h2-rate-analog} \texttt{cd4\_bending} (default) or
+  \texttt{water\_bending\_overtone}: the analog whose measured
+  $k({\rm H_2})/k({\rm He})$ turns the measured NH$_3$\,$\nu_2$\,$+$\,He
+  rate into the unmeasured NH$_3$\,$\nu_2$\,$+$\,H$_2$ one (\texttt{nlte}
+  only).
+\item \texttt{-{}-column-band-transfer} \texttt{thin} (default: all of the
+  band emission leaves; where more than 10\% of a significant bin's emission
+  excess would be absorbed by the column above, the state is kept and
+  \emph{flagged}, \texttt{thin\_layer\_limit\_exceeded T}),
+  \texttt{cooling\_to\_space} (the upward half escapes through the column
+  above with the $k$-distribution transmission, Dickinson 1972 Eq.~33,
+  refused, \texttt{ColumnTransferRefusal}, when the neglected exchange inside
+  the warmed layer moves $T_{\rm match}$ by more than
+  \texttt{-{}-column-exchange-shift-max}, default 1\,K) or
+  \texttt{cooling\_to\_space\_exchange} (the same with that exchange solved,
+  so it has no such bound).
+\item \texttt{-{}-top-pressure-passes} (default 6): the largest number of
+  re-pinned solves of the Photochem model top; the agreement they must reach
+  ($10^{-5}$) does not change with it. Once two successive moves of the top
+  have opposite signs it is pinned at their mean.
+\item \texttt{-{}-climate-t-deep-guess} (default 400\,K): only the starting
+  value of the climate root solve for the deep temperature, raised where the
+  default does not bracket the root (a warm deep column); the root does not
+  depend on it.
+\end{itemize}
+The profile header then carries \texttt{conducted\_heat\_flux\_cgs},
+\texttt{column\_energy\_treatment} and \texttt{column\_T\_match\_K}, with
+\texttt{nh3\_h2\_rate\_analog} for \texttt{nlte},
+\texttt{column\_band\_transfer} off the default \texttt{thin}, and under
+\texttt{thin} the flag \texttt{thin\_layer\_}\allowbreak\texttt{limit\_exceeded} \texttt{T}$|$\texttt{F},
+\texttt{thin\_layer\_max\_}\allowbreak\texttt{absorbed\_fraction} and
+\texttt{thin\_layer\_max\_}\allowbreak\texttt{absorbed\_bin}; the column solution is recorded in
+\texttt{conducted\_heat\_column.txt}. The flux, the treatment, the
+matching-level temperature and (off \texttt{thin}) the transfer enter the
+\texttt{solution\_id}; the analog does not. The producer's own elemental
+fluxes across its top may also appear as \texttt{measured\_flux\_H} /
+\texttt{measured\_flux\_He}. EXHALE has no consumer for any of these keys and
+ignores them. In \texttt{element\_flux\_closure.py} the configuration key
+\texttt{energy\_coupling} (default false) makes the conducted flux a third
+fixed-point variable: each iteration's column is solved under
+$F^{(k+1)}=F^{(k)}+\omega_E(F^{(k)}_{\rm meas}-F^{(k)})$,
+$\omega_E=$ \texttt{energy\_coupling\_omega} (default 0.5), started from
+\texttt{-{}-fcond0} or from the seed run's \texttt{base\_conductive\_flux\_cgs};
+the history gains \texttt{F\_cond\_trial}, \texttt{F\_cond\_meas} and
+\texttt{T\_match}; and convergence also requires the conducted-flux residual
+$|F_{\rm meas}-F|/|F_{\rm meas}|\le$ \texttt{tol} (0 for two exact zeros)
+and $|T_{\rm match}^{(k)}-T_{\rm match}^{(k-1)}|<$ \texttt{T\_match\_tol}
+(default 6\,K). A \texttt{-{}-resume} refuses a last history row without a
+resolved H and He measurement at the requested tolerance, or one that the
+saved wind's own measurement does not reproduce, and an EXHALE that exits
+non-zero stops the closure before anything is measured on it. Each wind
+solve of the closure is seeded by \path{src/utils/map_state_to_grid.py}
+\texttt{-{}-ic}, which carries the previous state onto the new reservoir and
+radius: the output is an initialization seed (\texttt{certified=F
+cert\_reason=mapped\_seed}); a target cell centred between the base face and
+the source's first cell centre takes that cell's values and is never
+interpolated against the reservoir ghost row; \texttt{-{}-reservoir El/H v}
+rescales an element's stages (for helium HeH$^+$ as well, the hydrogen it
+holds taken back from the hydrogen-only species so that $n_{\rm H}$ of every
+row is held) and refuses a base row that departs from $v$ by
+more than $10^{-6}$ (\texttt{BASE\_ROW\_RATIO\_TOL}, the tolerance the loader
+itself accepts He/H with).
+
 \paragraph{See also.} \texttt{examples/17\_lower\_profile/} is a ready-to-run
 HD209458b case whose \texttt{make\_example\_profile.py} regenerates the
 synthetic column it ships (\S\ref{sec:exinputs}). The authoritative
@@ -3327,6 +3624,26 @@ cells) at He/H\,$=1.6$ (\texttt{md/Update\_EXHALE\_stage3.md} section~29.10).
 \textbf{Equivalent widths quoted from \texttt{\_adv} files written before
 2026-09-27 are those of the first-order recursion.}
 
+The fractions the steps carry are fractions of one element's nuclei, which
+move with that element's velocity: with element continuity
+${\rm div}(n_{\rm el}v_{\rm el})=0$ the steady stage balance is
+$v_{\rm el}\,{\rm d}x/{\rm d}r=S/n_{\rm el}$. So every hydrogen row is stepped
+with the residence time $h_j/v_{\rm H}$ and every helium row with
+$h_j/v_{\rm He}$,
+\begin{equation*}
+v_{\rm He}=v+\frac{J}{\rho Y},\qquad v_{\rm H}=v-\frac{J}{\rho(1-Y)},
+\end{equation*}
+$J$ the diffusive helium mass flux of the state (\texttt{helium\_diffusive\_face\_flux},
+the mean of the two faces of the cell) and $Y$ the helium mass fraction; both
+equal $v$ without \texttt{He\_diffusion}, where the product is unchanged bit
+for bit. The validity conditions above use the same two velocities (inflow of
+either element refuses the cell; each element's Damk\"ohler number takes its
+own residence time). The stage's own eddy term $-n_{\rm el}K\,{\rm d}x/{\rm d}r$
+is not carried; its size is written at the code site
+(\path{post_process_adv.f90}). \textbf{Every \_adv product of a run with
+\texttt{He\_diffusion: True} written before 2026-10-04 stepped every element
+on the bulk velocity} (\texttt{md/Update\_EXHALE\_stage3.md} section 82).
+
 \paragraph{The state of the derived product as a whole.} The row fields say
 what each row is; the \texttt{\# adv\_derived\_state:} line of both
 \texttt{\_adv} headers says how the solves that produced the rows ended. Its
@@ -3382,8 +3699,8 @@ pass in the numeric columns and writes every one of its unknowns
 failed. A file without the line has an UNKNOWN derived state, which is not
 a pass. The
 \texttt{Restart intent: stationary evaluate} route exits 7 when the record is
-rejected and the input is not refused, 2 when the certification refuses the
-input (whatever the record says; the record is written either way), and 0
+rejected and the input is not refused, 2 when the certification of the
+stored pair refuses the input (whatever the record says; the record is written either way), and 0
 otherwise (7 also when no record was filled); a gfortran runtime error
 also exits 2, so a 2 is to be read with the log. \texttt{EXHALE\_transit.py} refuses an \texttt{adv} spectrum
 whose record is rejected, or that has no record (a file written before the
@@ -3522,7 +3839,15 @@ PLM\,$\to$\,WENO3 continuation is armed; whether the state passed the
 stationary certification, with \texttt{cert\_reason=} beside it whenever the
 verdict is qualified (\texttt{no\_stationary\_claim} for a run that ended on
 a cap, \texttt{certified\_in\_wind} for a state whose species rows were gated
-at $r\ge1.20$ only); and the \texttt{Run mode} the run declared. Two fields
+at $r\ge1.20$ only; the states written \texttt{certified=F} on purpose name
+what they are: \texttt{marching\_snapshot\_s<step>} for the periodic write of
+a marching run, measured by nothing at that step, \texttt{pass\_snapshot\_p<k>}
+for a pass state, \texttt{projected\_seed}, \texttt{option\_change\_seed} after
+a named \texttt{Restart option change:}, \texttt{legacy\_factor\_token},
+\texttt{molecular\_seed}, and \texttt{mapped\_seed} for the output of
+\path{map_state_to_grid.py}); and the \texttt{Run mode} the run declared.
+The coupling line also carries \texttt{iontrans=T} and \texttt{he23strans=T}
+when those transports are on. Two fields
 that used to follow \texttt{sec\_ion\_step}, \texttt{valve} and
 \texttt{fluxconst}, were the switches the old base closure chose for itself
 and are gone with it (\S\ref{sec:basebc}); a reader of an older file still
@@ -3766,8 +4091,8 @@ written before the field existed) is read as before. The final state files of
 a run carry no \texttt{state\_id}.
 
 \emph{Restarting from them}: copy the pair of the generation \texttt{current}
-names to \texttt{output/Hydro\_ioniz\_IC.txt} /
-\texttt{output/Ion\_species\_IC.txt},
+names to \texttt{output/}\allowbreak\texttt{Hydro\_ioniz\_IC.txt} and
+\texttt{output/}\allowbreak\texttt{Ion\_species\_IC.txt},
 \begin{lstlisting}[style=sh]
 G=$(cat output/pass_state/current)
 cp output/pass_state/$G/Hydro_ioniz.txt output/Hydro_ioniz_IC.txt
@@ -4021,7 +4346,27 @@ mass, base temperature, He/H, orbital distance and stellar mass in effect;
 \texttt{mass\_per\_H\_amu} and \texttt{ntot\_bc\_per\_H}; one
 \texttt{abundance\_<El>} line per element; and, with a profile in use
 (\S\ref{sec:lowerprofile}), the profile's provenance and the measured
-elemental fluxes. It exists so that consumers do not re-parse
+elemental fluxes (\texttt{lower\_profile\_flux\_state}, the overlap window
+\texttt{lower\_profile\_flux\_r\_lo\_Rp} / \texttt{\_r\_hi\_Rp},
+\texttt{lower\_profile\_F\_H\_median}, \texttt{\_F\_He\_median},
+\texttt{\_Mdot\_median} with their spreads, and the same set over the steady
+window \texttt{steady\_*}). The transport switches are recorded as
+\texttt{carrier\_transport}, \texttt{carrier\_in\_newton},
+\texttt{carrier\_newton\_on\_stall} and \texttt{ionization\_transport};
+\texttt{he23s\_transport} and
+\texttt{low\_energy\_electron\_partition Furlanetto2010} are written only
+when those options are on, so a run without them writes the record it wrote
+before. With \texttt{Conduction} on it also records the heat the
+wind conducts into the lower atmosphere through the base face, measured by
+the certification on the state the run writes:
+\texttt{base\_conduction\_state} (\texttt{unmeasured} before the wind
+exists, then \texttt{measured}), \texttt{base\_conductive\_flux\_cgs}
+[erg\,cm$^{-2}$\,s$^{-1}$], $q=-\kappa_{1/2}(T_1-T_{\rm bath})/(r_1-r_0)$,
+\emph{positive for heat leaving the wind into the lower atmosphere}, and the
+two temperatures of that face formula, \texttt{base\_conduction\_T\_bath\_K}
+(the bath at the ghost centre $r(0)$) and
+\texttt{base\_conduction\_T\_cell1\_K}; the energy coupling of the
+elemental-flux closure reads the flux from here. It exists so that consumers do not re-parse
 \texttt{input.inp} and inherit a value the handoff has since moved:
 \texttt{EXHALE\_transit.py} reads it in preference to \texttt{input.inp}
 (\S\ref{sec:tpm}), and \texttt{src/utils/element\_budget.py} and
@@ -4075,9 +4420,11 @@ The tool reads one of two state pairs, and the selection is a physical choice
 rather than a filename convenience.  \texttt{adv}, the default, reads
 \texttt{Hydro\_ioniz\_adv.txt} and \texttt{Ion\_species\_adv.txt}: a
 post-process of a marching state, a steady advective correction cell by cell,
-second order in the cell width (variable-step BDF2 along the flow at the bulk
-velocity), with no eddy term and no element
-drift, refused in a cell where an assumption of the steady equations fails.
+second order in the cell width (variable-step BDF2 along the flow, each
+element's stages on the velocity of that element's nuclei, which is the bulk
+velocity without \texttt{He\_diffusion}; \S\ref{sec:advvalidity}), with no
+stage eddy term and no ion--neutral drift, refused in a cell where an
+assumption of the steady equations fails.
 It is an independent discretization of the same column and no equation of the
 run was solved for it.  \texttt{EXHALE\_TRANSIT\_STATE=solution} reads
 \texttt{Hydro\_ioniz.txt} and \texttt{Ion\_species.txt}: the state the
@@ -4255,10 +4602,10 @@ directory unless \texttt{EXHALE\_TRANSIT\_PATH} names the run directory:
   \texttt{Hydro\_ioniz.txt} $\to$ \texttt{Hydro\_ioniz\_IC.txt} and likewise
   for \texttt{Ion\_species}, set \texttt{Load IC?\ True} and
   \texttt{Restart intent: stationary evaluate} in \texttt{input.inp}, and run
-  \texttt{./EXHALE.x} once (seconds): that route loads the state, derives its
-  pressure and temperature from the loaded conserved state, runs the
-  ionization sweep, evaluates the certification and writes every product from
-  that work state without entering the time integration.
+  \texttt{./EXHALE.x} once (seconds): that route loads the state, certifies
+  the stored pair with the sources of its own composition, and writes every
+  product from that pair without entering the time integration (the
+  composition sweep it then takes is measured and reported, not written).
 \item \emph{Set what describes the observation}, if the defaults do not: the
   instrument resolutions and wavelength windows
   (\texttt{EXHALE\_TRANSIT\_RES\_*}, \texttt{\_HE\_LMIN/LMAX/N}), the azimuthal
@@ -4305,6 +4652,45 @@ $R_{\rm eff}/R_\star=\sqrt{(R_p/R_\star)^2+h}$. The metal NUV lines (Mg\,II) are
 quoted in a 4\,\AA\ bin, while the optical lines (Ca\,II, H$\alpha$, Na) are
 line-center; line-center vs.\ 4\,\AA\ can differ by $\sim3\times$ for an
 optically-thick line, so always compare in the same definition.
+
+\paragraph{Comparing a model line with an observed profile: the line width
+and the equivalent width.} The 1-D model has no velocity field across the
+line of sight beyond its radial outflow, and its lines are narrower than the
+observed ones (He\,10830 of LHS\,1140\,b: model FWHM about 0.27\,\AA\ against
+the observed 0.841\,\AA). For every planet and every line compared with an
+observed transit profile the convention is (user decision 2026-10-04): the
+excess absorption $({\rm max}\,T-T)/{\rm max}\,T$ of the instrument-convolved
+curve (column 3 of \texttt{tpm\_<line>.txt}, at the instrument's own resolving
+power) is convolved with a Gaussian of FWHM $f$ in velocity, planet rest
+frame; $f$ is chosen for each model so that the extractor used on that
+planet's data returns the observed FWHM of the same feature; and the model
+EW is the window EW of that broadened curve through the same operator as the
+observed one (interpolated onto the observation's samples in its window,
+trapezoid weights). Any fit of a planet parameter to the observed EW is judged
+on this width-matched EW, and every result that uses it reports $f$. The
+kernel stands for a velocity field the 1-D model does not contain; it is not
+a computed physics term. For LHS\,1140\,b He\,10830 the code is
+\path{LHS1140b/he10830_equivalent_width.py} (\texttt{broaden\_excess},
+\texttt{width\_matching\_fwhm\_kms}, \texttt{width\_matched\_product}; the
+command line \texttt{-{}-width-matched <tpm\_He10830.txt> <out> [f]} writes
+the broadened curve with its record), the window vacuum
+10832.60--10834.20\,\AA\ and the three-Gaussian extractor
+\texttt{he\_line\_metrics.fit\_metrics}; and
+\path{LHS1140b/models/.P1/fiducial_conduction/ew_of_state.sh}
+\texttt{<state dir> <work dir> <binary>} runs the stationary evaluate of a
+stored state (with its exact \texttt{conserved\_state.txt} staged) and both
+spectra, and writes \texttt{EW.txt}: the provenance of what it consumed, the
+evaluate exit status, \texttt{exact\_state\_read}, the
+\texttt{adv\_derived\_state} record, \texttt{written\_state certified=T|F}
+(the stored pair's own verdict) and one line for each product; with
+\texttt{EW\_NONTHERMAL\_KERNEL=width\_match} (or a FWHM in km\,s$^{-1}$)
+each product line gains \texttt{kernel: fwhm\_kms=\dots\ EW\_kernel=\dots},
+while \texttt{EW=} stays the unbroadened EW. A model shifted in wavelength on
+a figure (LHS\,1140\,b: the fitted $v_{\rm wind}=+2.26$\,km\,s$^{-1}$) is
+shifted for the overlay only; every EW, metric and $\chi^2$ is computed from
+the unshifted spectrum. The full statement, with the EW operator and its
+error: \texttt{docs/transmission\_spectrum.pdf}, section ``Comparison with an
+observed line profile''.
 
 \subsection{\texttt{exhale\_io.py}: named, physical-unit loaders}
 \label{sec:atesio}
@@ -4520,7 +4906,7 @@ holds \texttt{Include He23S? False} on purpose: in both bases and in every
 rung whose signature option is something else (\texttt{02}, \texttt{04},
 \texttt{05}, \texttt{09}--\texttt{12}), so that atomic helium is the
 baseline and \texttt{06\_he23s} remains a one-line difference. Outside the
-ladder (\texttt{tutorial/}, \texttt{13}--\texttt{16}, the planet folders) the
+ladder (\texttt{tutorial/}, \texttt{13}--\texttt{19}, the planet folders) the
 triplet is on.
 \texttt{11\_windae\_ic} (HD189733b) exercises the self-consistent-BC
 continuation: its Wind-AE ramp converges and writes the IC, though EXHALE's own
@@ -4531,11 +4917,13 @@ turn on the He/metal diffusive separation (\S\ref{sec:hediff}) and the full
 molecular network (\S\ref{sec:loweratm}) respectively, on HD209458b, and
 \texttt{16\_molecular\_metals} adds a \texttt{metals.inp} to the latter. \texttt{17\_lower\_profile} replaces the scalar
 \texttt{base.inp} handoff by the profile of \S\ref{sec:lowerprofile}.
+\texttt{18\_oxygen\_chemistry} adds the oxygen chemistry to \texttt{16} and
+\texttt{19\_molecular\_ir\_bands} the molecular infrared bands to \texttt{18}.
 
 {\small
 \begin{longtable}{@{}lp{4.6cm}p{5.6cm}@{}}
 \caption{Ready-made example configurations under \texttt{examples/}
-(\texttt{01}--\texttt{11} are HD189733b; \texttt{12}, \texttt{14}--\texttt{17}
+(\texttt{01}--\texttt{11} are HD189733b; \texttt{12}, \texttt{14}--\texttt{19}
 are HD209458b; \texttt{13} spans four planets). The Wind-AE IC ramp converges
 for both of the planets that use it (HD\,189733\,b (\texttt{11}) and
 HD\,209458\,b (\texttt{12})), and \texttt{11}, being far from the seed,
@@ -4646,6 +5034,23 @@ regenerates it & \texttt{14\_diffusion} $+$ \texttt{Lower atmosphere
 profile: lower\_atmosphere\_profile.dat}, \emph{minus} \texttt{He\_Kzz}
 (the profile carries $K_{zz}$) and \emph{minus} \texttt{metals.inp}
 (the profile carries C/N/O) \\
+\texttt{18\_oxygen\_chemistry} & oxygen chemistry (HD209458b;
+  \S\ref{sec:oxychem}): OH, H$_2$O and CO in the coupled system with the
+  molecular network, the FUV photolysis of H$_2$O and OH, and the molecular
+  carriers transported (the default with the oxygen cycle), so the base
+  H$_2$/H partition is computed rather than imported. HD\,209458\,b's hot base
+  is not the regime the option exists for (there collisional dissociation
+  sets the partition); it is the example because it is a molecular
+  configuration that converges & \texttt{16\_molecular\_metals} $+$
+  \texttt{Oxygen chemistry: True}, \texttt{Stellar FUV B3/B4 flux},
+  \texttt{Stellar Lya flux}, \texttt{Stellar LW flux: 480.9} \\
+\texttt{19\_molecular\_ir\_bands} & molecular infrared bands (HD209458b):
+  \texttt{18} plus the H$_2$ quadrupole and magnetic-dipole lines and the
+  H$_2$O and CO vibration--rotation bands, each the net exchange with the
+  diluted $B_\nu(T_0)$ that \texttt{Base IR field} supplies; writes the
+  \texttt{H2\_IR}, \texttt{H2O\_IR} and \texttt{CO\_IR} columns of
+  \texttt{Cooling\_breakdown.txt} & \texttt{18} $+$ \texttt{Base IR field:
+  True}, \texttt{Molecular IR bands: True} \\
 \end{longtable}}
 
 % ===================================================================== %
@@ -4813,7 +5218,8 @@ line trapping & the eight ground-term fine-structure lines & line-center escape 
 validity floor of the coronal fits & all CHIANTI-derived coefficients & the coronal part is cut off smoothly below $10^{3}$\,K (the lower end of the fitted range), continuous in value and $dT$-slope and bit-identical above it; only the explicitly solved ground-term fine-structure terms survive below. The roll-off is $\exp(-x^2)$ with $x=(T_{\rm floor}/T-1)/w$ and $w=0.1$ by default, settable as \texttt{Coronal cutoff width:}. With the C/N/O ground-term fine-structure floors saturated no coronal cooling survives below the floor for the guard to remove, and the base-cell balance temperature of all four paper planets is identical over $w = 0.02$--$1.2$. Not applied to the legacy AIOLOS branch (\texttt{cno\_cool 0}) \\
 \midrule
 \multicolumn{3}{@{}l}{\textbf{Photoelectric heating}}\\[2pt]
-secondary ionization (def.\ on, \texttt{Secondary\_}\allowbreak\texttt{ionization}) & H\,I, He\,I, H$_2$ & Shull \& van Steenberg (1985) $f_{\rm ion}(x)$ fits with the Dalgarno, Yan \& Liu (1999) energy dependence, and Dalgarno et al.'s heating fraction $f_{\rm heat}(x,E_0)$, H$_2$ target channel and molecular heat returns; photoelectrons with $E_0>30\,$eV drive secondary H\,I / He\,I / H$_2$ ionizations, heating scaled to $f_{\rm heat}$; the He\,$2^3$S photoelectron and the metal photoelectrons and Auger electrons feed the same heating and secondary-source budget \\
+secondary ionization (def.\ on, \texttt{Secondary\_}\allowbreak\texttt{ionization}) & H\,I, He\,I, H$_2$ & Shull \& van Steenberg (1985) $f_{\rm ion}(x)$ fits with the Dalgarno, Yan \& Liu (1999) energy dependence, and Dalgarno et al.'s heating fraction $f_{\rm heat}(x,E_0)$, H$_2$ target channel and molecular heat returns; photoelectrons with $E_0>30\,$eV drive secondary H\,I / He\,I / H$_2$ ionizations, heating scaled to $f_{\rm heat}$; the He\,$2^3$S photoelectron and the metal photoelectrons and Auger electrons feed the same heating and secondary-source budget, and so do the photoelectrons of the recombination radiation absorbed on the spot \\
+photoelectrons of 10.2--30\,eV (opt-in, \texttt{Low-energy}\allowbreak\texttt{ electron partition}) & H\,I, He\,I & Furlanetto \& Stoever (2010) Monte Carlo tables of $f_{\rm heat}$ and of the H\,I and He\,I ionizations per primary, primordial He/H; the H\,I line photons leave the cell; stellar and recombination photoelectrons; cells whose solved state holds no H$_2$ only; default: deposited whole as heat \\
 \midrule
 \multicolumn{3}{@{}l}{\textbf{Excited hydrogen H($n{=}2$) and Ly$\alpha$}}\\[2pt]
 $2s/2p$ rate equilibrium & H($n{=}2$) & the level balance of Christie, Arras \& Li (2013, eqs.~12--13); $A(2p\to1s)=6.2649\times10^8$\,s$^{-1}$ (NIST), $A(2s\to1s)=8.22461$\,s$^{-1}$ (Drake 1986, eq.~27); $1s\leftrightarrow2s,2p$ collisions from the CHIANTI~11.0.2 h\_1 strengths and their detailed-balance reverses; $2s$--$2p$ mixing by electrons, Seaton (1955) eq.~(55), and by H$^+$, He$^+$ and He$^{2+}$, Pengelly \& Seaton (1964) with their cut-off; in a molecular run the H$_2^+$ and HeH$^+$ dissociative recombinations as an $n{=}2$ source \\

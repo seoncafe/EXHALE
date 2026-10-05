@@ -8,16 +8,21 @@
 %% \end{document} of its own.  Edit this file directly, then regenerate the
 %% typeset log.
 %%
-%% Every number below is reprinted by
+%% The totals, the diff counts, every row of the two module tables and the
+%% byte-identical list of Table tab:untouched are reprinted by
 %%     python3 src/utils/codesize.py
-%% from the repository root, together with the byte-identical list of
-%% Table tab:untouched.  Rerun it and update this file in the same pass.
+%% from the repository root.  The split of the core into the simulation build
+%% and src/tests/, the line counts of each of the ten heaviest modified files and
+%% the documentation line count are not printed by it; they were measured on
+%% 2026-10-05 with its own functions (code_lines, norm_lines and the same
+%% difflib opcodes) and, for the documentation, with wc -l over the .md and
+%% .tex files of docs/ and md/.  Rerun and update this file in the same pass.
 %%
 %% Moved here on 2026-09-11 from docs/Update_EXHALE_stage1.tex, where the two
 %% sections were the appendices of the stage-1 log.
 
 % ===================================================================== %
-\section{Code-size summary: EXHALE vs.\ the original ATES (2026-06-07; updated 2026-09-22)}
+\section{Code-size summary: EXHALE vs.\ the original ATES (2026-06-07; updated 2026-10-05)}
 % ===================================================================== %
 A line-by-line comparison of the Fortran source against the pristine upstream code
 (\texttt{ATES/ATES-Code-main}) quantifies the extent of the in-house extension.
@@ -25,31 +30,35 @@ A line-by-line comparison of the Fortran source against the pristine upstream co
 stripper is string-aware, so a \texttt{!} inside a quoted string is not treated as
 a comment); the line-by-line diff additionally normalizes whitespace and case, so
 reformatting and comment-only edits are \emph{not} counted as changes. The
-measurement script is \texttt{src/utils/codesize.py}, which reprints every
-number of this appendix and the byte-identical list of
-Table~\ref{tab:untouched}. Measured 2026-09-22, i.e.\ after the whole of
-stage 1 and of the stage-2 series through section 16 of the stage 2 log
-(\texttt{md/Update\_EXHALE\_stage2.md}): the
-acceptance and certification contracts, the attempted-step controller, the
+measurement script is \texttt{src/utils/codesize.py}, which reprints the
+totals, the diff counts, every row of the two module tables and the
+byte-identical list of Table~\ref{tab:untouched}; the split of the core into
+the simulation build and the test drivers and the figures of the ten heaviest
+modified files are formed with its own counting functions. All numbers of this appendix are MEASURED on the
+working tree of 2026-10-05, after section 102 of the stage 3 log
+(\texttt{md/Update\_EXHALE\_stage3.md}). Up to 2026-09-22 (the previous
+edition, after section 16 of the stage 2 log) the extension comprised
+the acceptance and certification contracts, the attempted-step controller, the
 partitioned stationary solver, the oxygen and carbon chemistry, the molecular
 infrared bands, the ionization-stage transport and the charge-exchange rows,
 the base contact boundary and its trace, the molecular seed taken from an
 atomic state, the transition into the coupled carrier solve, the discrete
 conservation ledger, and the test suites those series brought with them.
-
-\noindent\emph{Not yet re-measured for stage 3.} The numbers of this
-appendix are those of 2026-09-22; the code changes of stage 3 (among them
-the atomic-data audit and its repairs, sections 17 to 19 of the stage 3 log)
-are not in them. They are re-measured with \texttt{src/utils/codesize.py} when that
-series is closed.
+Stage 3 added the atomic-data audit and its repairs, the exact code-unit
+restart file (\texttt{conserved\_state\_restart.f90}), heat conduction with
+the conductivity of the mixture, the interdiffusion enthalpy flux, the
+enthalpy flux of the carried ionization stages and molecular carriers, the
+10.2--30\,eV photoelectron partition of Furlanetto \& Stoever (2010), the
+He\,2$^3$S transport, the advection-corrected systems stepped on the velocity
+of each element's nuclei, and 25 new test drivers.
 
 \paragraph{What the script counts as \emph{core}.} Every \texttt{.f90} file
 under \texttt{src/} except those in \texttt{src/modules/wind\_ae/}, which is
 the ported Wind-AE IC generator and is listed separately. That rule puts the
 standalone drivers under \texttt{src/tests/} in the core figure, and they are
 now the larger part of it by file count, so the table splits the core row
-into the simulation build and those drivers. Of the 102 files outside
-\texttt{src/tests/}, 101 are the \texttt{SRC} list of the \texttt{Makefile} and
+into the simulation build and those drivers. Of the 105 files outside
+\texttt{src/tests/}, 104 are in the \texttt{SRC} list of the \texttt{Makefile} and
 are compiled into \texttt{EXHALE.x}; the one exception is
 \texttt{nonlinear\_\allowbreak system\_\allowbreak solver/\allowbreak constrained\_\allowbreak equilibrium\_\allowbreak probe.f90},
 which is built on its own. Each test suite likewise builds its own driver
@@ -61,29 +70,29 @@ from \texttt{src/tests/<suite>/run.sh}.
  & Fortran files & code lines (SLOC) \\
 \midrule
 Original ATES (\texttt{ATES-Code-main}) & 47 & 3\,514 \\
-EXHALE core (excl.\ Wind-AE port)       & 208 & 93\,928 \\
-\quad of which the simulation build     & 102 & 61\,129 ($\approx17.4\times$) \\
-\quad of which the \texttt{src/tests/} drivers & 106 & 32\,799 \\
+EXHALE core (excl.\ Wind-AE port)       & 236 & 109\,539 \\
+\quad of which the simulation build     & 105 & 70\,592 ($\approx20.1\times$) \\
+\quad of which the \texttt{src/tests/} drivers & 131 & 38\,947 \\
 \midrule
-net change (core) & $+161$ & $+90\,414$ ($\approx26.7\times$) \\
+net change (core) & $+189$ & $+106\,025$ ($\approx31.2\times$) \\
 \midrule
 Wind-AE IC-generator port (\texttt{wind\_ae/}) & $+36$ & $+4\,756$ \\
-EXHALE total & 244 & 98\,684 ($\approx28.1\times$) \\
+EXHALE total & 272 & 114\,295 ($\approx32.5\times$) \\
 \bottomrule
 \end{tabular}
 \end{center}
 
 \noindent
 \textbf{Line-by-line diff, core} (comments + blanks excluded; whitespace/case
-normalized): \textbf{91\,633} code lines added in EXHALE (new modules + the new
-side of modified lines) and \textbf{1\,219} removed from the original (deleted + the
-old side of modified lines), for \textbf{92\,852} total changed lines. At the file
+normalized): \textbf{107\,432} code lines added in EXHALE (new modules + the new
+side of modified lines) and \textbf{1\,407} removed from the original (deleted + the
+old side of modified lines), for \textbf{108\,839} total changed lines. At the file
 level, of the 47 original files \textbf{38 were modified}, \textbf{8 are
 unchanged} (all eight byte-for-byte; the list is Table~\ref{tab:untouched}) and
 \textbf{one was removed}: \texttt{flux/\allowbreak speed\_\allowbreak estimate\_\allowbreak HLLC.f90}, Toro's
 adaptive $p_\star$ estimate, was \texttt{use}d by \texttt{Num\_\allowbreak Fluxes.f90} and
 never called, because the HLLC branch builds its own Davis/Einfeldt speeds
-inline. \textbf{162 new core modules} were added. Of those, 56 are part of the
+inline. \textbf{190 new core modules} were added. Of those, 59 are part of the
 simulation build:
 
 {\footnotesize
@@ -96,70 +105,73 @@ New module & Purpose & SLOC \\
 New module & Purpose & SLOC \\
 \midrule
 \endhead
-\texttt{time\_\allowbreak step/\allowbreak steady\_\allowbreak newton.f90} & stationary solve of the hydrodynamic rows: residual $F(Y)=0$ on the physical cells, Newton/Krylov with pseudo-transient continuation, line search, best-iterate ledger & 10796 \\
-\texttt{lower\_\allowbreak atmosphere/\allowbreak diffusive\_\allowbreak photochemistry.f90} & vertical transport of the molecular carriers (H$_2$, OH, H$_2$O, CO) and of the transported ionization stages (H$^+$, He\,II, He\,III), solved together with the chemistry that makes and destroys them & 4152 \\
+\texttt{time\_\allowbreak step/\allowbreak steady\_\allowbreak newton.f90} & stationary solve of the hydrodynamic rows: residual $F(Y)=0$ on the physical cells, Newton/Krylov with pseudo-transient continuation, line search, best-iterate ledger & 11122 \\
+\texttt{lower\_\allowbreak atmosphere/\allowbreak diffusive\_\allowbreak photochemistry.f90} & vertical transport of the molecular carriers (H$_2$, OH, H$_2$O, CO) and of the transported ionization stages (H$^+$, He\,II, He\,III) and He\,2$^3$S level, solved together with the chemistry that makes and destroys them, with the enthalpy fluxes they carry & 4587 \\
+\texttt{functions/\allowbreak binary\_\allowbreak element\_\allowbreak diffusion.f90} & conservative binary H/He element transport (stage-resolved pair coefficients, donor-cell drift, metals slaved to H) and the interdiffusion enthalpy flux it carries & 2610 \\
 \texttt{lower\_\allowbreak atmosphere/\allowbreak molecular\_\allowbreak infrared\_\allowbreak data.f90} & band and line data of the molecular infrared coolant (generated by \texttt{cooling\_data/molecular\_infrared\_bands.py}) & 2182 \\
-\texttt{functions/\allowbreak binary\_\allowbreak element\_\allowbreak diffusion.f90} & conservative binary H/He element transport (stage-resolved pair coefficients, donor-cell drift, metals slaved to H) & 2173 \\
-\texttt{time\_\allowbreak step/\allowbreak certification.f90} & one evaluator of the equations a run actually solves, and the contexts that read its verdict & 1696 \\
-\texttt{time\_\allowbreak step/\allowbreak attempted\_\allowbreak step.f90} & the attempted-step controller: one checkpoint, one trial, one adoption boundary, and the rollback contract & 1608 \\
-\texttt{nonlinear\_\allowbreak system\_\allowbreak solver/\allowbreak constrained\_\allowbreak chemical\_\allowbreak equilibrium.f90} & chemical equilibrium of the molecular H/He network in logarithmic number densities, element conservation as explicit residual rows & 1209 \\
+\texttt{time\_\allowbreak step/\allowbreak certification.f90} & one evaluator of the equations a run actually solves, and the contexts that read its verdict & 1991 \\
+\texttt{time\_\allowbreak step/\allowbreak attempted\_\allowbreak step.f90} & the attempted-step controller: one checkpoint, one trial, one adoption boundary, and the rollback contract & 1630 \\
+\texttt{radiation/\allowbreak low\_\allowbreak energy\_\allowbreak electron\_\allowbreak tables.f90} & the electronic tables of Furlanetto \& Stoever (2010), energies 10.0--32.2\,eV at their 14 ionized fractions (generated by \texttt{src/utils/furlanetto2010\_tables\_to\_fortran.py}) & 1502 \\
+\texttt{radiation/\allowbreak charge\_\allowbreak exchange.f90} & charge-exchange network (Huang et al.\ 2023, Table 4), as residual rows and as the stoichiometric sources of the transported stages & 1498 \\
+\texttt{nonlinear\_\allowbreak system\_\allowbreak solver/\allowbreak constrained\_\allowbreak chemical\_\allowbreak equilibrium.f90} & chemical equilibrium of the molecular H/He network in logarithmic number densities, element conservation as explicit residual rows & 1238 \\
 \texttt{lower\_\allowbreak atmosphere/\allowbreak h2\_\allowbreak self\_\allowbreak shielding\_\allowbreak table.f90} & H$_2$ Lyman--Werner dissociation cross section with overlapping lines, and its two branching ratios & 952 \\
-\texttt{states/\allowbreak base\_\allowbreak boundary.f90} & the lower boundary as a characteristic condition at the face, the number of conditions set by the Mach number there & 598 \\
-\texttt{radiation/\allowbreak charge\_\allowbreak exchange.f90} & charge-exchange network (Huang et al.\ 2023, Table 4), as residual rows and as the stoichiometric sources of the transported stages & 560 \\
+\texttt{states/\allowbreak base\_\allowbreak boundary.f90} & the lower boundary as a characteristic condition at the face, the number of conditions set by the Mach number there & 723 \\
+\texttt{time\_\allowbreak step/\allowbreak viscous\_\allowbreak conduction.f90} & Navier--Stokes viscous momentum force, its dissipation, and thermal conduction with the conductivity of the mixture (Crank--Nicolson) & 671 \\
+\texttt{init/\allowbreak molecular\_\allowbreak seed\_\allowbreak from\_\allowbreak atomic\_\allowbreak state.f90} & the molecular state a solved atomic state of the same wind implies, written as an initialization file: an imposed H$_2$ partition capped by each cell's own neutral hydrogen, closed on the caloric equation of state at fixed pressure or at fixed temperature & 595 \\
+\texttt{time\_\allowbreak step/\allowbreak steady\_\allowbreak residual.f90} & finite-volume stationary residual $R = \mathrm{d}u/\mathrm{d}t$ and its norms, shared by the diagnostic, the convergence monitor and the stationary solver & 580 \\
 \texttt{time\_\allowbreak step/\allowbreak energy\_\allowbreak semi\_\allowbreak implicit.f90} & implicit source step for the thermal energy of a cell, at fixed composition and heating & 535 \\
-\texttt{time\_\allowbreak step/\allowbreak viscous\_\allowbreak conduction.f90} & Navier--Stokes viscous momentum force, its dissipation, and thermal conduction (Crank--Nicolson) & 529 \\
-\texttt{time\_\allowbreak step/\allowbreak steady\_\allowbreak residual.f90} & finite-volume stationary residual $R = \mathrm{d}u/\mathrm{d}t$ and its norms, shared by the diagnostic, the convergence monitor and the stationary solver & 528 \\
-\texttt{init/\allowbreak molecular\_\allowbreak seed\_\allowbreak from\_\allowbreak atomic\_\allowbreak state.f90} & the molecular state a solved atomic state of the same wind implies, written as an initialization file: an imposed H$_2$ partition capped by each cell's own neutral hydrogen, closed on the caloric equation of state at fixed pressure or at fixed temperature & 516 \\
-\texttt{radiation/\allowbreak excited\_\allowbreak hydrogen.f90} & non-LTE H($n{=}2$) 2s/2p equilibrium (Christie, Arras \& Li 2013) and the Balmer feedback & 502 \\
+\texttt{radiation/\allowbreak excited\_\allowbreak hydrogen.f90} & non-LTE H($n{=}2$) 2s/2p equilibrium (Christie, Arras \& Li 2013) and the Balmer feedback & 508 \\
+\texttt{time\_\allowbreak step/\allowbreak conservation\_\allowbreak budget.f90} & every term of the three finite-volume conservation rows of one assembly, with the geometry, the potential and the gravitational work the energy flux difference carries inside it & 493 \\
+\texttt{files\_\allowbreak IO/\allowbreak conserved\_\allowbreak state\_\allowbreak restart.f90} & the exact code-unit state $(\rho, \rho v, E, f_{\rm sp})$ written beside the dimensional pair, and read back only when every recorded condition matches, so that a restart starts at the bits the run ended on & 466 \\
 \texttt{lower\_\allowbreak atmosphere/\allowbreak element\_\allowbreak inventory.f90} & one stoichiometric map of the H, He, O and C nuclei of a cell, and the three constraints a composition state is judged by & 448 \\
-\texttt{nonlinear\_\allowbreak system\_\allowbreak solver/\allowbreak System\_\allowbreak HeH\_\allowbreak mol.f90} & coupled H/He $+$ molecular (H$_2$/H$_2^+$/H$_3^+$/HeH$^+$) system, turnover-scaled rows, with the gross production and loss of each row on request & 439 \\
+\texttt{nonlinear\_\allowbreak system\_\allowbreak solver/\allowbreak System\_\allowbreak HeH\_\allowbreak mol.f90} & coupled H/He $+$ molecular (H$_2$/H$_2^+$/H$_3^+$/HeH$^+$) system, turnover-scaled rows, with the gross production and loss of each row on request & 448 \\
 \texttt{lower\_\allowbreak atmosphere/\allowbreak molecular\_\allowbreak reaction\_\allowbreak heat.f90} & net chemical heat of the collisional reactions of the H$_2$/He network, with the dissociative recombinations that leave a product excited charged to that level and not to the gas & 416 \\
-\texttt{files\_\allowbreak IO/\allowbreak lower\_\allowbreak atmosphere\_\allowbreak profile.f90} & lower-atmosphere profile reader: log-$p$ interpolation, elemental reservoirs, $K_{zz}(p)$ & 367 \\
-\texttt{nonlinear\_\allowbreak system\_\allowbreak solver/\allowbreak ion\_\allowbreak residual\_\allowbreak core.f90} & shared ionization-residual rows and analytic-Jacobian pieces of the \texttt{System\_*} family & 361 \\
-\texttt{states/\allowbreak caloric\_\allowbreak eos.f90} & caloric equation of state: internal energy density, pressure and temperature, with the H$_2$ level ladder & 340 \\
+\texttt{files\_\allowbreak IO/\allowbreak lower\_\allowbreak atmosphere\_\allowbreak profile.f90} & lower-atmosphere profile reader: log-$p$ interpolation, elemental reservoirs, $K_{zz}(p)$ & 396 \\
+\texttt{nonlinear\_\allowbreak system\_\allowbreak solver/\allowbreak ion\_\allowbreak residual\_\allowbreak core.f90} & shared ionization-residual rows and analytic-Jacobian pieces of the \texttt{System\_*} family & 387 \\
+\texttt{states/\allowbreak caloric\_\allowbreak eos.f90} & caloric equation of state: internal energy density, pressure and temperature, with the H$_2$ level ladder & 367 \\
 \texttt{lower\_\allowbreak atmosphere/\allowbreak oxygen\_\allowbreak rates.f90} & rate coefficients and thermodynamic data of the oxygen-hydrogen chemistry, with their validity ranges & 316 \\
 \texttt{functions/\allowbreak element\_\allowbreak census.f90} & one definition of the elemental and charge content of a composition state, and the invariant checks built on it & 307 \\
+\texttt{radiation/\allowbreak electron\_\allowbreak energy\_\allowbreak degradation.f90} & degradation of a fast photoelectron in a partly ionized H/H$_2$/He gas: the heat fraction and the ionizations of each target & 305 \\
 \texttt{time\_\allowbreak step/\allowbreak coupled\_\allowbreak block\_\allowbreak handover.f90} & the state at which the wind-composition alternation stops on its movement bound, and the one recorded pair $(u, f_{\rm sp})$ the coupled carrier solve is entered from & 298 \\
-\texttt{radiation/\allowbreak electron\_\allowbreak energy\_\allowbreak degradation.f90} & degradation of a fast photoelectron in a partly ionized H/H$_2$/He gas: the heat fraction and the ionizations of each target & 287 \\
-\texttt{radiation/\allowbreak lya\_\allowbreak rt.f90} & Ly$\alpha$ transfer by the escape-probability closure, evaluated in line each step & 257 \\
-\texttt{time\_\allowbreak step/\allowbreak conservation\_\allowbreak budget.f90} & every term of the three finite-volume conservation rows of one assembly, with the geometry, the potential and the gravitational work the energy flux difference carries inside it & 252 \\
+\texttt{radiation/\allowbreak lya\_\allowbreak rt.f90} & Ly$\alpha$ transfer by the escape-probability closure, evaluated in line each step & 261 \\
 \texttt{functions/\allowbreak ionization\_\allowbreak stage\_\allowbreak transport.f90} & transport of the ionization stages of one element on that element's own nucleus flux, the neutral stage closing the simplex, so that moving charge between stages moves no nucleus & 235 \\
+\texttt{radiation/\allowbreak low\_\allowbreak energy\_\allowbreak electron\_\allowbreak degradation.f90} & partition of the 10.2--30\,eV photoelectrons into heat, H\,I and He\,I ionizations and escaping line radiation (Furlanetto \& Stoever 2010), the option \texttt{Low-energy electron partition} & 234 \\
 \texttt{lower\_\allowbreak atmosphere/\allowbreak molecular\_\allowbreak infrared\_\allowbreak cooling.f90} & infrared exchange of the molecular layer: H$_2$O and CO vibration-rotation bands, H$_2$ quadrupole and magnetic-dipole lines & 231 \\
-\texttt{lower\_\allowbreak atmosphere/\allowbreak h3p\_\allowbreak cooling.f90} & optically thin H$_3^+$ infrared cooling (Miller et al.\ 2013) & 229 \\
-\texttt{lower\_\allowbreak atmosphere/\allowbreak mol\_\allowbreak rates.f90} & molecular reaction rates (Koskinen et al.\ 2022, Table 1) & 216 \\
-\texttt{functions/\allowbreak h2\_\allowbreak photo\_\allowbreak channels.f90} & H$_2$ photoabsorption resolved into mutually exclusive final-state channels, with one stoichiometric table & 199 \\
-\texttt{lower\_\allowbreak atmosphere/\allowbreak lyman\_\allowbreak werner.f90} & H$_2$ photodissociation in the Lyman and Werner bands (the Solomon process) & 195 \\
+\texttt{lower\_\allowbreak atmosphere/\allowbreak h3p\_\allowbreak cooling.f90} & optically thin H$_3^+$ infrared cooling (Miller et al.\ 2013) & 228 \\
+\texttt{functions/\allowbreak h2\_\allowbreak photo\_\allowbreak channels.f90} & H$_2$ photoabsorption resolved into mutually exclusive final-state channels, with one stoichiometric table & 224 \\
+\texttt{lower\_\allowbreak atmosphere/\allowbreak mol\_\allowbreak rates.f90} & molecular reaction rates (Koskinen et al.\ 2022, Table 1) & 206 \\
+\texttt{files\_\allowbreak IO/\allowbreak metals\_\allowbreak input\_\allowbreak read.f90} & parse \texttt{metals.inp}: trace-metal abundances at runtime & 191 \\
 \texttt{radiation/\allowbreak opacity\_\allowbreak models.f90} & opacity-model dispatcher for the photoionization cross sections (A/C/P/T) & 180 \\
-\texttt{files\_\allowbreak IO/\allowbreak metals\_\allowbreak input\_\allowbreak read.f90} & parse \texttt{metals.inp}: trace-metal abundances at runtime & 177 \\
-\texttt{states/\allowbreak boundary\_\allowbreak state\_\allowbreak trace.f90} & the distance between the cached base face state and the one the installed composition would give now, measured and never decided on & 172 \\
+\texttt{states/\allowbreak boundary\_\allowbreak state\_\allowbreak trace.f90} & the distance between the cached base face state and the one the installed composition would give now, measured and never decided on & 175 \\
+\texttt{nonlinear\_\allowbreak system\_\allowbreak solver/\allowbreak System\_\allowbreak HeH\_\allowbreak metals.f90} & coupled H/He$+$metals ionization ($+$\,analytic Jacobian) & 166 \\
 \texttt{flux/\allowbreak species\_\allowbreak face\_\allowbreak flux.f90} & advection of the species mass fractions on the same faces, with the same mass flux, as the density & 163 \\
 \texttt{functions/\allowbreak composition.f90} & single point turning $(\rho, f_{\rm sp})$ into every species density, $n_e$ and $n_{\rm tot}$, and converting pressure and temperature & 162 \\
 \texttt{time\_\allowbreak step/\allowbreak hydrodynamic\_\allowbreak rows.f90} & the hydrodynamic rows of the stationary residual in double precision, instantiated from the kind-generic text & 161 \\
 \texttt{lower\_\allowbreak atmosphere/\allowbreak h2\_\allowbreak vibrational\_\allowbreak relaxation.f90} & the fate and the size of the vibrational energy left in an H$_2$ molecule, for both of its drivers & 155 \\
-\texttt{nonlinear\_\allowbreak system\_\allowbreak solver/\allowbreak System\_\allowbreak HeH\_\allowbreak metals.f90} & coupled H/He$+$metals ionization ($+$\,analytic Jacobian) & 153 \\
-\texttt{nonlinear\_\allowbreak system\_\allowbreak solver/\allowbreak System\_\allowbreak HeH\_\allowbreak mol\_\allowbreak metals.f90} & molecular $+$ metals merged ionization system & 143 \\
-\texttt{init/\allowbreak species\_\allowbreak table.f90} & metadata table of the metal stages and of the base, molecular and oxygen species & 128 \\
+\texttt{nonlinear\_\allowbreak system\_\allowbreak solver/\allowbreak System\_\allowbreak HeH\_\allowbreak mol\_\allowbreak metals.f90} & molecular $+$ metals merged ionization system & 147 \\
+\texttt{lower\_\allowbreak atmosphere/\allowbreak lyman\_\allowbreak werner.f90} & H$_2$ photodissociation in the Lyman and Werner bands (the Solomon process) & 142 \\
 \texttt{lower\_\allowbreak atmosphere/\allowbreak co\_\allowbreak photodissociation.f90} & CO photodissociation on the 912--1201\,\AA\ band & 127 \\
 \texttt{nonlinear\_\allowbreak system\_\allowbreak solver/\allowbreak newton\_\allowbreak solver.f90} & damped Newton with an analytic Jacobian for the ionization systems, with the MINPACK \texttt{hybrd1} retry & 127 \\
+\texttt{init/\allowbreak species\_\allowbreak table.f90} & metadata table of the metal stages and of the base, molecular and oxygen species & 126 \\
 \texttt{lower\_\allowbreak atmosphere/\allowbreak water\_\allowbreak photolysis.f90} & H$_2$O and OH photodissociation in the four far-ultraviolet bands of the oxygen option & 111 \\
 \texttt{lower\_\allowbreak atmosphere/\allowbreak co\_\allowbreak self\_\allowbreak shielding\_\allowbreak table.f90} & CO self-shielding function $\Theta[N({\rm CO}), N({\rm H_2})]$ (Visser, van Dishoeck \& Black 2009) & 110 \\
+\texttt{nonlinear\_\allowbreak system\_\allowbreak solver/\allowbreak ion\_\allowbreak cell\_\allowbreak state.f90} & named-field cell state of the ionization residuals, in place of the position-packed \texttt{params} & 110 \\
 \texttt{states/\allowbreak stationary\_\allowbreak operator.f90} & the spatial operator a stationary state is a state of, and the face mass flux $r^2 (\rho v)_f$ it puts through every face & 107 \\
-\texttt{nonlinear\_\allowbreak system\_\allowbreak solver/\allowbreak ion\_\allowbreak cell\_\allowbreak state.f90} & named-field cell state of the ionization residuals, in place of the position-packed \texttt{params} & 98 \\
+\texttt{radiation/\allowbreak hydrogen\_\allowbreak n2\_\allowbreak rates.f90} & atomic data and rate coefficients of the H $n{=}2$ manifold and of the Ly$\alpha$ line, in one place & 99 \\
 \texttt{flux/\allowbreak low\_\allowbreak mach\_\allowbreak dissipation.f90} & gated fourth-difference stress damping the two-cell velocity mode a contact-resolving flux leaves undamped & 87 \\
 \texttt{lower\_\allowbreak atmosphere/\allowbreak lower\_\allowbreak column.f90} & analytic lower-atmosphere column from the 1-bar level to the base pressure (Koskinen et al.\ 2022) & 87 \\
 \texttt{files\_\allowbreak IO/\allowbreak opacity\_\allowbreak input\_\allowbreak read.f90} & parse \texttt{opacity.inp} & 85 \\
-\texttt{radiation/\allowbreak hydrogen\_\allowbreak n2\_\allowbreak rates.f90} & atomic data and rate coefficients of the H $n{=}2$ manifold and of the Ly$\alpha$ line, in one place & 76 \\
 \texttt{init/\allowbreak blas\_\allowbreak thread\_\allowbreak policy.f90} & the thread count of the LAPACK library the binary links, resolved at run time and set to one unless the run states it & 73 \\
-\texttt{nonlinear\_\allowbreak system\_\allowbreak solver/\allowbreak System\_\allowbreak HeH\_\allowbreak TR\_\allowbreak metals.f90} & merged He\,2$^3$S$+$metals system & 70 \\
+\texttt{nonlinear\_\allowbreak system\_\allowbreak solver/\allowbreak System\_\allowbreak HeH\_\allowbreak TR\_\allowbreak metals.f90} & merged He\,2$^3$S$+$metals system & 72 \\
 \texttt{nonlinear\_\allowbreak system\_\allowbreak solver/\allowbreak constrained\_\allowbreak equilibrium\_\allowbreak probe.f90} & standalone re-evaluation of one saved constrained-equilibrium state, without the hydrodynamics & 15 \\
 \midrule
-\multicolumn{2}{r}{simulation-build new-module total} & 36\,696 \\
+\multicolumn{2}{r}{simulation-build new-module total} & 42\,168 \\
 \bottomrule
 \end{longtable}
 }
 
 \noindent
-The other 106 are the standalone test drivers under \texttt{src/tests/}, which
+The other 131 are the standalone test drivers under \texttt{src/tests/}, which
 did not exist in ATES at all. They state what a routine is allowed to return
 and are run by suite, not by the production binary:
 
@@ -173,139 +185,164 @@ Test driver & What it asserts & SLOC \\
 Test driver & What it asserts & SLOC \\
 \midrule
 \endhead
-\texttt{tests/\allowbreak krylov\_\allowbreak and\_\allowbreak dogleg/\allowbreak krylov\_\allowbreak and\_\allowbreak dogleg\_\allowbreak tests.f90} & what the linear solve and the step geometry of the stationary solver are allowed to return & 2751 \\
+\texttt{tests/\allowbreak krylov\_\allowbreak and\_\allowbreak dogleg/\allowbreak krylov\_\allowbreak and\_\allowbreak dogleg\_\allowbreak tests.f90} & what the linear solve and the step geometry of the stationary solver are allowed to return & 2755 \\
 \texttt{tests/\allowbreak steady\_\allowbreak species\_\allowbreak rows/\allowbreak steady\_\allowbreak species\_\allowbreak rows\_\allowbreak tests.f90} & the unknown space of the stationary system, one row per transported balance & 1826 \\
 \texttt{tests/\allowbreak ionization\_\allowbreak stage\_\allowbreak flux/\allowbreak ionization\_\allowbreak stage\_\allowbreak flux\_\allowbreak tests.f90} & the stage fluxes sum to the element nucleus flux at every face, against the formula of the derivation and not against the module itself & 1536 \\
 \texttt{tests/\allowbreak carrier\_\allowbreak retry/\allowbreak carrier\_\allowbreak retry.f90} & the carrier-local checkpoint and the rejection-and-retry controller, on a real molecular column & 1463 \\
-\texttt{tests/\allowbreak diffusion\_\allowbreak tests.f90} & the binary H/He element-diffusion operator: analytic limits and conservation & 1055 \\
-\texttt{tests/\allowbreak certification/\allowbreak certification\_\allowbreak contexts.f90} & the certification evaluator and its contexts, against the predicates they replace & 1050 \\
+\texttt{tests/\allowbreak certification/\allowbreak certification\_\allowbreak contexts.f90} & the certification evaluator and its contexts, against the predicates they replace & 1156 \\
+\texttt{tests/\allowbreak diffusion\_\allowbreak tests.f90} & the binary H/He element-diffusion operator: analytic limits and conservation & 1043 \\
 \texttt{tests/\allowbreak grid\_\allowbreak and\_\allowbreak gates/\allowbreak hydrostatic\_\allowbreak residual.f90} & the momentum row returns zero on a hydrostatic state & 1031 \\
+\texttt{tests/\allowbreak charge\_\allowbreak exchange\_\allowbreak detailed\_\allowbreak balance/\allowbreak charge\_\allowbreak exchange\_\allowbreak detailed\_\allowbreak balance.f90} & the forward and reverse rate coefficients of every charge-exchange pair obey microscopic reversibility with the partition functions of the four species & 950 \\
+\texttt{tests/\allowbreak element\_\allowbreak operator/\allowbreak element\_\allowbreak operator\_\allowbreak tests.f90} & the boundary the element transport operator is measured under & 945 \\
+\texttt{tests/\allowbreak stage\_\allowbreak row\_\allowbreak balance/\allowbreak stage\_\allowbreak row\_\allowbreak balance\_\allowbreak tests.f90} & the signed sum of the gross channels of an ion-stage row is that stage's source, in molecular and in atomic gas and with the He\,2$^3$S level tracked and untracked & 898 \\
 \texttt{tests/\allowbreak carrier\_\allowbreak retry/\allowbreak closure\_\allowbreak returned\_\allowbreak state.f90} & what the thermochemical closure hands back on a molecular column: the composition, its chemical residual, the conditioning, and the state a refused trial puts back & 890 \\
-\texttt{tests/\allowbreak stage\_\allowbreak row\_\allowbreak balance/\allowbreak stage\_\allowbreak row\_\allowbreak balance\_\allowbreak tests.f90} & the signed sum of the gross channels of an ion-stage row is that stage's source, in molecular and in atomic gas and with the He\,2$^3$S level tracked and untracked & 874 \\
-\texttt{tests/\allowbreak element\_\allowbreak operator/\allowbreak element\_\allowbreak operator\_\allowbreak tests.f90} & the boundary the element transport operator is measured under & 852 \\
 \texttt{tests/\allowbreak physics\_\allowbreak probe/\allowbreak molecular\_\allowbreak energy\_\allowbreak recipients.f90} & the enthalpy of a reaction is untouched by where its energy goes: heat, radiation and internal energy close on the one formation table, and the R12/R15 pair stays in detailed balance collider by collider & 750 \\
 \texttt{tests/\allowbreak grid\_\allowbreak and\_\allowbreak gates/\allowbreak base\_\allowbreak boundary\_\allowbreak continuity\_\allowbreak probe.f90} & the base face density does not move along a perturbation of the wind window once the branch is decided, and the two limits coincide at a vanishing window & 592 \\
 \texttt{tests/\allowbreak h2\_\allowbreak level\_\allowbreak ladder/\allowbreak h2\_\allowbreak ladder\_\allowbreak model.f90} & a reduced statistical equilibrium of the H$_2$ ground-state ladder from the published level, radiative and collisional data, which brackets the scalar thermalized fraction & 561 \\
 \texttt{tests/\allowbreak species\_\allowbreak face\_\allowbreak flux/\allowbreak species\_\allowbreak face\_\allowbreak flux\_\allowbreak tests.f90} & species advection on the face mass fluxes, and the element rows of the diffusion operator & 549 \\
 \texttt{tests/\allowbreak low\_\allowbreak mach\_\allowbreak stress\_\allowbreak energy/\allowbreak low\_\allowbreak mach\_\allowbreak stress\_\allowbreak energy\_\allowbreak form.f90} & the discrete kinetic-energy quadratic form of the gated fourth-difference stress, and the sign a coefficient carried outside both differences does not have & 519 \\
+\texttt{tests/\allowbreak energy\_\allowbreak update/\allowbreak conduction\_\allowbreak floor\_\allowbreak tests.f90} & what the Crank--Nicolson transport stage returns, refuses and conserves & 482 \\
 \texttt{tests/\allowbreak physics\_\allowbreak probe/\allowbreak weno3\_\allowbreak reconstruction\_\allowbreak order.f90} & convergence order of the face reconstruction against the exact face value & 482 \\
+\texttt{tests/\allowbreak helium\_\allowbreak metastable\_\allowbreak transport/\allowbreak helium\_\allowbreak metastable\_\allowbreak transport.f90} & the He\,2$^3$S population carried as a fourth helium state: the carried simplex, the write-back, the local limit, the source ledger and a manufactured three-state helium column & 438 \\
+\texttt{tests/\allowbreak charge\_\allowbreak exchange\_\allowbreak rows/\allowbreak reaction\_\allowbreak source\_\allowbreak orientation.f90} & one electron transfer moves $-R$, $+R$, $-R$, $+R$ over four stages, creates no nucleus and makes no net charge, in each of the three equation bases & 428 \\
+\texttt{tests/\allowbreak grid\_\allowbreak and\_\allowbreak gates/\allowbreak base\_\allowbreak reservoir\_\allowbreak discrete\_\allowbreak equilibrium.f90} & whether the base boundary shares one discrete hydrostatic equilibrium with the well-balanced reconstruction, on static columns above the reservoir & 420 \\
+\texttt{tests/\allowbreak charge\_\allowbreak exchange\_\allowbreak rows/\allowbreak transported\_\allowbreak stage\_\allowbreak sources.f90} & the charge-exchange source of a transported ionization stage is the source the local systems' rows carry, in each of the three bases the metal systems assemble & 419 \\
 \texttt{tests/\allowbreak spectrum\_\allowbreak type/\allowbreak loaded\_\allowbreak sed\_\allowbreak table\_\allowbreak semantics.f90} & what a row of a loaded SED table means, and what the production consumers make of it & 417 \\
 \texttt{tests/\allowbreak attempted\_\allowbreak step/\allowbreak attempted\_\allowbreak step\_\allowbreak tests.f90} & the checkpoint and the step-size policy of the attempted-step controller & 415 \\
 \texttt{tests/\allowbreak a2\_\allowbreak m1/\allowbreak a2\_\allowbreak m1\_\allowbreak rate\_\allowbreak check.f90} & the oxygen rate coefficients against their published sources & 406 \\
-\texttt{tests/\allowbreak charge\_\allowbreak exchange\_\allowbreak rows/\allowbreak transported\_\allowbreak stage\_\allowbreak sources.f90} & the charge-exchange source of a transported ionization stage is the source the local systems' rows carry, in each of the three bases the metal systems assemble & 399 \\
-\texttt{tests/\allowbreak charge\_\allowbreak exchange\_\allowbreak rows/\allowbreak reaction\_\allowbreak source\_\allowbreak orientation.f90} & one electron transfer moves $-R$, $+R$, $-R$, $+R$ over four stages, creates no nucleus and makes no net charge, in each of the three equation bases & 395 \\
 \texttt{tests/\allowbreak spectrum\_\allowbreak type/\allowbreak balmer\_\allowbreak band\_\allowbreak quadrature.f90} & quadrature of the Balmer-continuum band integrals of \texttt{excited\_hydrogen} & 367 \\
-\texttt{tests/\allowbreak energy\_\allowbreak update/\allowbreak conduction\_\allowbreak floor\_\allowbreak tests.f90} & what the Crank--Nicolson transport stage returns, refuses and conserves & 360 \\
 \texttt{tests/\allowbreak coupled\_\allowbreak block\_\allowbreak jacobian/\allowbreak coupled\_\allowbreak block\_\allowbreak linear\_\allowbreak system.f90} & the directional action of the coupled block on one frozen iterate: its repeatability, and its perturbation ladder row group by row group & 353 \\
 \texttt{tests/\allowbreak physics\_\allowbreak probe/\allowbreak metal\_\allowbreak photoionization\_\allowbreak fits.f90} & every metal photoionization cross section against the published fit, and only where it is valid & 343 \\
 \texttt{tests/\allowbreak element\_\allowbreak census\_\allowbreak tests.f90} & the elemental and charge invariants of a composition state & 340 \\
+\texttt{tests/\allowbreak interdiffusion\_\allowbreak enthalpy\_\allowbreak flux/\allowbreak interdiffusion\_\allowbreak enthalpy\_\allowbreak flux\_\allowbreak tests.f90} & the interdiffusion enthalpy flux $\sum_s h_s J_s$ (Cook 2009): conservative, zero where the element fluxes are, equal to the hand-evaluated face value, and absent with its key off & 336 \\
 \texttt{tests/\allowbreak energy\_\allowbreak update/\allowbreak energy\_\allowbreak update\_\allowbreak tests.f90} & the residual-controlled temperature solve of the implicit energy source step & 334 \\
 \texttt{tests/\allowbreak grid\_\allowbreak and\_\allowbreak gates/\allowbreak base\_\allowbreak closure\_\allowbreak candidates\_\allowbreak probe.f90} & two discriminants for the same characteristic base condition, read on one state under the production stationary operator & 328 \\
+\texttt{tests/\allowbreak physics\_\allowbreak probe/\allowbreak recombination\_\allowbreak photoelectron\_\allowbreak partition.f90} & the photoelectrons of the recombination radiation absorbed on the spot pass through the partition of the stellar photoelectrons & 326 \\
+\texttt{tests/\allowbreak boundary\_\allowbreak state/\allowbreak contact\_\allowbreak law\_\allowbreak at\_\allowbreak the\_\allowbreak base.f90} & the lower boundary as a contact: a column on the reservoir isentrope stays at rest, a pressure mismatch launches the acoustic response, and the entropy is upwinded on the matched face velocity & 316 \\
 \texttt{tests/\allowbreak carrier\_\allowbreak helium\_\allowbreak inventory/\allowbreak carrier\_\allowbreak helium\_\allowbreak inventory.f90} & the helium a cell holds is the helium it had: the admissible stage partition leaves out the nucleus inside HeH$^+$ and the population in He\,2$^3$S & 310 \\
+\texttt{tests/\allowbreak charge\_\allowbreak exchange\_\allowbreak rows/\allowbreak he\_\allowbreak h\_\allowbreak pair\_\allowbreak reservoir.f90} & the He $\leftrightarrow$ H charge-exchange pair reacts from the ground singlet, the same one in every system carrying helium and a metastable & 304 \\
 \texttt{tests/\allowbreak spectrum\_\allowbreak type/\allowbreak loaded\_\allowbreak sed\_\allowbreak threshold\_\allowbreak edges.f90} & the photon grid built from a loaded SED, and the rates formed on it & 304 \\
-\texttt{tests/\allowbreak boundary\_\allowbreak state/\allowbreak contact\_\allowbreak law\_\allowbreak at\_\allowbreak the\_\allowbreak base.f90} & the lower boundary as a contact: a column on the reservoir isentrope stays at rest, a pressure mismatch launches the acoustic response, and the entropy is upwinded on the matched face velocity & 292 \\
-\texttt{tests/\allowbreak ionization\_\allowbreak imposed\_\allowbreak fractions/\allowbreak imposed\_\allowbreak ionization\_\allowbreak rows.f90} & an imposed ionization row is the identity $x - x_{\rm fix}$ and is one number in all seven systems, and nothing depends on the carried values where nothing is imposed & 288 \\
+\texttt{tests/\allowbreak grid\_\allowbreak and\_\allowbreak gates/\allowbreak low\_\allowbreak mach\_\allowbreak face\_\allowbreak mass\_\allowbreak flux.f90} & the face mass flux stays accurate relative to the wind as the Mach number of the lower layer falls to $10^{-9}$ & 303 \\
+\texttt{tests/\allowbreak ionization\_\allowbreak imposed\_\allowbreak fractions/\allowbreak imposed\_\allowbreak ionization\_\allowbreak rows.f90} & an imposed ionization row is the identity $x - x_{\rm fix}$ and is one number in all seven systems, and nothing depends on the carried values where nothing is imposed & 289 \\
 \texttt{tests/\allowbreak coupled\_\allowbreak block\_\allowbreak handover/\allowbreak coupled\_\allowbreak block\_\allowbreak handover\_\allowbreak contract.f90} & the transition into the coupled carrier solve is reached once and from the recorded entry state bit for bit, never from a live token the stalling pass cannot carry & 285 \\
 \texttt{tests/\allowbreak h2\_\allowbreak level\_\allowbreak ladder/\allowbreak h2\_\allowbreak ladder\_\allowbreak statistical\_\allowbreak equilibrium.f90} & the solved ladder against the first-event branching fraction: detailed balance and the thermal limit, and the four ways an injected formation energy leaves & 275 \\
 \texttt{tests/\allowbreak physics\_\allowbreak probe/\allowbreak species\_\allowbreak formation\_\allowbreak energy\_\allowbreak table.f90} & the formation-energy table of the energy ledger, and the reaction energies that are its differences & 275 \\
 \texttt{tests/\allowbreak spectrum\_\allowbreak type/\allowbreak wasp121b\_\allowbreak sed\_\allowbreak sensitivity.f90} & the production band quantities of the three WASP-121\,b spectrum candidates & 273 \\
 \texttt{tests/\allowbreak physics\_\allowbreak probe/\allowbreak lya\_\allowbreak band\_\allowbreak transmission.f90} & the stellar Ly$\alpha$ band reaching a cell through the atomic hydrogen column above it & 272 \\
+\texttt{tests/\allowbreak physics\_\allowbreak probe/\allowbreak one\_\allowbreak minus\_\allowbreak exp\_\allowbreak over\_\allowbreak x\_\allowbreak sites.f90} & $(1-e^{-x})/x$ of the whole code and the four quantities formed from it besides the absorbed fraction & 263 \\
 \texttt{tests/\allowbreak coupled\_\allowbreak source\_\allowbreak step/\allowbreak coupled\_\allowbreak source\_\allowbreak tests.f90} & the coupled temperature-composition source step & 260 \\
-\texttt{tests/\allowbreak charge\_\allowbreak exchange\_\allowbreak rows/\allowbreak he\_\allowbreak h\_\allowbreak pair\_\allowbreak reservoir.f90} & the He $\leftrightarrow$ H charge-exchange pair reacts from the ground singlet, the same one in every system carrying helium and a metastable & 253 \\
+\texttt{tests/\allowbreak grid\_\allowbreak and\_\allowbreak gates/\allowbreak base\_\allowbreak equilibrium\_\allowbreak columns.f90} & the static and the wind-carrying columns, and the one production evaluation, shared by the two measurements of the discrete equilibrium of the base & 256 \\
+\texttt{tests/\allowbreak physics\_\allowbreak probe/\allowbreak inner\_\allowbreak shell\_\allowbreak photoabsorption\_\allowbreak ledger.f90} & the relaxation of an inner-shell metal vacancy (Kaastra \& Mewe 1993), the energy ledger of the event, and the two-stage jump in the metal rows & 246 \\
+\texttt{tests/\allowbreak charge\_\allowbreak exchange\_\allowbreak rows/\allowbreak metal\_\allowbreak helium\_\allowbreak reservoir.f90} & the metal $+$ He reactions of group C react from the ground singlet, the same one in the three systems that assemble them & 235 \\
+\texttt{tests/\allowbreak physics\_\allowbreak probe/\allowbreak lya\_\allowbreak beam\_\allowbreak cell\_\allowbreak mean.f90} & the stellar Ly$\alpha$ field of a cell is the beam mean over the cell's own optical depth & 234 \\
 \texttt{tests/\allowbreak physics\_\allowbreak probe/\allowbreak lyman\_\allowbreak werner\_\allowbreak cell\_\allowbreak mean.f90} & the Lyman--Werner rate a cell carries is the mean of the local rate over that cell & 234 \\
-\texttt{tests/\allowbreak charge\_\allowbreak exchange\_\allowbreak rows/\allowbreak metal\_\allowbreak helium\_\allowbreak reservoir.f90} & the metal $+$ He reactions of group C react from the ground singlet, the same one in the three systems that assemble them & 231 \\
-\texttt{tests/\allowbreak physics\_\allowbreak probe/\allowbreak lya\_\allowbreak beam\_\allowbreak cell\_\allowbreak mean.f90} & the stellar Ly$\alpha$ field of a cell is the beam mean over the cell's own optical depth & 229 \\
 \texttt{tests/\allowbreak spectrum\_\allowbreak type/\allowbreak balmer\_\allowbreak continuum\_\allowbreak field.f90} & the two scalar Balmer-continuum rates of H($n{=}2$) & 227 \\
 \texttt{tests/\allowbreak carrier\_\allowbreak returned\_\allowbreak state\_\allowbreak acceptance/\allowbreak carrier\_\allowbreak returned\_\allowbreak state\_\allowbreak acceptance.f90} & what makes a returned carrier state a solution, and what does not & 225 \\
 \texttt{tests/\allowbreak physics\_\allowbreak probe/\allowbreak positivity\_\allowbreak limiter\_\allowbreak scaling.f90} & the positivity scaling of the reconstructed face states (Zhang \& Shu 2010) & 223 \\
+\texttt{tests/\allowbreak physics\_\allowbreak probe/\allowbreak ground\_\allowbreak capture\_\allowbreak and\_\allowbreak cascade\_\allowbreak data.f90} & the atomic data of the recombination and $n{=}2$ physics against the published tables they come from & 222 \\
+\texttt{tests/\allowbreak low\_\allowbreak energy\_\allowbreak electron\_\allowbreak degradation/\allowbreak low\_\allowbreak energy\_\allowbreak electron\_\allowbreak partition.f90} & the 10.2--30\,eV photoelectron partition against the authors\' own interpolator of the same tables, and the energy budget the tables close & 216 \\
 \texttt{tests/\allowbreak grid\_\allowbreak and\_\allowbreak gates/\allowbreak photon\_\allowbreak grid\_\allowbreak threshold\_\allowbreak edges.f90} & every active absorber's threshold against the bin partition of the photon grid & 213 \\
 \texttt{tests/\allowbreak physics\_\allowbreak probe/\allowbreak photoionization\_\allowbreak field\_\allowbreak substitution.f90} & the order in which the field and the composition that attenuates it are brought into agreement & 209 \\
-\texttt{tests/\allowbreak adv\_\allowbreak static\_\allowbreak limit/\allowbreak stationarity\_\allowbreak by\_\allowbreak the\_\allowbreak mass\_\allowbreak row.f90} & which test decides that the state the post-process was handed is stationary in a cell & 199 \\
+\texttt{tests/\allowbreak adv\_\allowbreak static\_\allowbreak limit/\allowbreak enthalpy\_\allowbreak flux\_\allowbreak of\_\allowbreak mass\_\allowbreak divergence.f90} & the third term of the advected energy equation & 202 \\
+\texttt{tests/\allowbreak adv\_\allowbreak static\_\allowbreak limit/\allowbreak stationarity\_\allowbreak by\_\allowbreak the\_\allowbreak mass\_\allowbreak row.f90} & which test decides that the state the post-process was handed is stationary in a cell & 202 \\
+\texttt{tests/\allowbreak charge\_\allowbreak exchange\_\allowbreak rows/\allowbreak advection\_\allowbreak pair\_\allowbreak reservoir.f90} & the advection-corrected system hands the He $\leftrightarrow$ H pair the same ground singlet the equilibrium system does & 199 \\
+\texttt{tests/\allowbreak carrier\_\allowbreak enthalpy\_\allowbreak flux/\allowbreak carrier\_\allowbreak enthalpy\_\allowbreak flux.f90} & the sensible enthalpy flux of the transported molecular carriers: zero at the column ends, conservative, the carrier operator\'s own face flux times the H$_2$ enthalpy, and absent with its key off & 198 \\
 \texttt{tests/\allowbreak carrier\_\allowbreak outer\_\allowbreak boundary/\allowbreak carrier\_\allowbreak outer\_\allowbreak boundary.f90} & the carrier column is closed to diffusion at both ends, one outflow ghost rule serves every evaluation, and the advective band entries are the operator's own derivative & 196 \\
 \texttt{tests/\allowbreak physics\_\allowbreak probe/\allowbreak co\_\allowbreak destruction.f90} & the CO destruction rates, the shielding table, the deposited energies and the cell mean & 195 \\
 \texttt{tests/\allowbreak carrier\_\allowbreak reference\_\allowbreak scales/\allowbreak carrier\_\allowbreak reference\_\allowbreak scales.f90} & the element a transported carrier is made of, and whether its chemistry rows can be differentiated & 191 \\
-\texttt{tests/\allowbreak physics\_\allowbreak probe/\allowbreak recombination\_\allowbreak coefficient\_\allowbreak fits.f90} & every recombination coefficient against the published fit & 189 \\
+\texttt{tests/\allowbreak ionization\_\allowbreak stage\_\allowbreak enthalpy\_\allowbreak flux/\allowbreak ionization\_\allowbreak stage\_\allowbreak enthalpy\_\allowbreak flux.f90} & the sensible enthalpy the carried ionization stages move relative to their element, against a manufactured column & 186 \\
 \texttt{tests/\allowbreak spectrum\_\allowbreak type/\allowbreak photon\_\allowbreak grid\_\allowbreak n2\_\allowbreak floor.f90} & the photon grid built when the excited-hydrogen coupling is armed & 184 \\
-\texttt{tests/\allowbreak charge\_\allowbreak exchange\_\allowbreak rows/\allowbreak advection\_\allowbreak pair\_\allowbreak reservoir.f90} & the advection-corrected system hands the He $\leftrightarrow$ H pair the same ground singlet the equilibrium system does & 182 \\
 \texttt{tests/\allowbreak carrier\_\allowbreak constraint\_\allowbreak attribution/\allowbreak carrier\_\allowbreak constraint\_\allowbreak attribution.f90} & which residuals belong to the solver and which to a constraint & 179 \\
-\texttt{tests/\allowbreak adv\_\allowbreak static\_\allowbreak limit/\allowbreak enthalpy\_\allowbreak flux\_\allowbreak of\_\allowbreak mass\_\allowbreak divergence.f90} & the third term of the advected energy equation & 178 \\
+\texttt{tests/\allowbreak physics\_\allowbreak probe/\allowbreak recombination\_\allowbreak radiation\_\allowbreak on\_\allowbreak the\_\allowbreak spot.f90} & the escape weights of the ground captures and the photon and energy accounting of the recombination radiation absorbed where it is emitted & 176 \\
 \texttt{tests/\allowbreak grid\_\allowbreak and\_\allowbreak gates/\allowbreak base\_\allowbreak branch\_\allowbreak discriminant.f90} & what the base contact reads its direction off: the wind window wherever it carries one flux, the matched face velocity elsewhere, never the first cell's own product & 174 \\
 \texttt{tests/\allowbreak grid\_\allowbreak and\_\allowbreak gates/\allowbreak free\_\allowbreak outflow\_\allowbreak boundary.f90} & the outer free-outflow boundary on a supersonic wind, and its ghost state & 174 \\
 \texttt{tests/\allowbreak spectrum\_\allowbreak type/\allowbreak planck\_\allowbreak photon\_\allowbreak field.f90} & the incident flux put on the photon grid for the photospheric blackbody type & 173 \\
+\texttt{tests/\allowbreak physics\_\allowbreak probe/\allowbreak lya\_\allowbreak escape\_\allowbreak probability.f90} & the escape probability of the two-level closure against the published slab solution & 169 \\
+\texttt{tests/\allowbreak physics\_\allowbreak probe/\allowbreak recombination\_\allowbreak coefficient\_\allowbreak fits.f90} & every recombination coefficient against the published fit & 169 \\
 \texttt{tests/\allowbreak carrier\_\allowbreak boundary\_\allowbreak jacobian/\allowbreak carrier\_\allowbreak boundary\_\allowbreak jacobian.f90} & the boundary derivatives of the carrier advection, a copied ghost carrying one and a stated one carrying none & 165 \\
 \texttt{tests/\allowbreak a2\_\allowbreak m2/\allowbreak a2\_\allowbreak m2\_\allowbreak kinetics\_\allowbreak check.f90} & the kinetics quantities the oxygen option adds on top of the rate audit & 163 \\
-\texttt{tests/\allowbreak physics\_\allowbreak probe/\allowbreak lya\_\allowbreak escape\_\allowbreak probability.f90} & the escape probability of the two-level closure against the published slab solution & 163 \\
 \texttt{tests/\allowbreak e1\_\allowbreak h2/\allowbreak e1\_\allowbreak h2\_\allowbreak channel\_\allowbreak check.f90} & the mutually exclusive H$_2$ photoabsorption channels & 161 \\
-\texttt{tests/\allowbreak adv\_\allowbreak static\_\allowbreak limit/\allowbreak upstream\_\allowbreak caloric\_\allowbreak energy.f90} & the upstream energy of the advected energy equation & 154 \\
 \texttt{tests/\allowbreak physics\_\allowbreak probe/\allowbreak roe\_\allowbreak low\_\allowbreak mach\_\allowbreak velocity\_\allowbreak jump.f90} & the low-Mach scaling of the normal velocity jump on the ROE branch, against the analytic three-wave flux (Rieper 2011) & 152 \\
 \texttt{tests/\allowbreak physics\_\allowbreak probe/\allowbreak photoionization\_\allowbreak field\_\allowbreak self\_\allowbreak consistency.f90} & the field one cell is solved in, against the composition that cell returns & 148 \\
 \texttt{tests/\allowbreak physics\_\allowbreak probe/\allowbreak co\_\allowbreak helium\_\allowbreak ion\_\allowbreak sink.f90} & He$^+$ $+$ CO as a species sink, not only as a heat source & 147 \\
 \texttt{tests/\allowbreak physics\_\allowbreak probe/\allowbreak h3p\_\allowbreak cooling\_\allowbreak limits.f90} & the limits, the continuities and the published values of the H$_3^+$ cooling rate & 147 \\
 \texttt{tests/\allowbreak grid\_\allowbreak and\_\allowbreak gates/\allowbreak photon\_\allowbreak grid\_\allowbreak quadrature.f90} & the photoionization rates of one unattenuated cell against the band quadrature & 146 \\
 \texttt{tests/\allowbreak physics\_\allowbreak probe/\allowbreak riemann\_\allowbreak wave\_\allowbreak speeds.f90} & signal speeds at a face, and the state one conservative update with that flux leaves behind & 143 \\
+\texttt{tests/\allowbreak physics\_\allowbreak probe/\allowbreak helium\_\allowbreak level\_\allowbreak cooling\_\allowbreak ledger.f90} & which helium level each cooling channel of \texttt{eval\_cool} is charged to & 140 \\
 \texttt{tests/\allowbreak physics\_\allowbreak probe/\allowbreak molecular\_\allowbreak third\_\allowbreak body\_\allowbreak in\_\allowbreak the\_\allowbreak chemistry.f90} & the three-body collider sum of the R12/R15 pair is one number for the composition and for the energy, and is not the total density & 140 \\
-\texttt{tests/\allowbreak physics\_\allowbreak probe/\allowbreak helium\_\allowbreak level\_\allowbreak cooling\_\allowbreak ledger.f90} & which helium level each cooling channel of \texttt{eval\_cool} is charged to & 139 \\
 \texttt{tests/\allowbreak physics\_\allowbreak probe/\allowbreak heating\_\allowbreak channel\_\allowbreak closure.f90} & one assembly of the volumetric heating rate, and the closure of its channels & 138 \\
+\texttt{tests/\allowbreak adv\_\allowbreak static\_\allowbreak limit/\allowbreak upstream\_\allowbreak caloric\_\allowbreak energy.f90} & the upstream energy of the advected energy equation & 137 \\
 \texttt{tests/\allowbreak acceptance\_\allowbreak classes/\allowbreak acceptance\_\allowbreak class\_\allowbreak contract.f90} & one meaning of the ionization acceptance classes for every consumer & 132 \\
+\texttt{tests/\allowbreak physics\_\allowbreak probe/\allowbreak metal\_\allowbreak ionization\_\allowbreak energy\_\allowbreak ledger.f90} & the energy metal collisional ionization and recombination take from the electron gas, and the ledger of electron gas, ionization energy and radiation they close & 128 \\
+\texttt{tests/\allowbreak physics\_\allowbreak probe/\allowbreak absorbed\_\allowbreak fraction\_\allowbreak switch.f90} & $(1-e^{-d})/d$, the fraction of the photons entering a cell that the cell absorbs & 126 \\
 \texttt{tests/\allowbreak physics\_\allowbreak probe/\allowbreak opacity\_\allowbreak model\_\allowbreak p\_\allowbreak ledger.f90} & the radiative ledger of a cell whose cross sections are broadened by opacity model P & 124 \\
+\texttt{tests/\allowbreak physics\_\allowbreak probe/\allowbreak helium\_\allowbreak 584\_\allowbreak resonance\_\allowbreak line.f90} & the fate of the He\,I 584\,\AA\ recombination photons in a cell with He\,I (Wood, Mathis \& Ercolano 2004) & 123 \\
+\texttt{tests/\allowbreak grid\_\allowbreak and\_\allowbreak gates/\allowbreak outer\_\allowbreak shells\_\allowbreak base\_\allowbreak identity.f90} & the outer shells leave the constructed grid unchanged bit for bit, close on the stated face and widen in geometric progression & 122 \\
+\texttt{tests/\allowbreak physics\_\allowbreak probe/\allowbreak cooling\_\allowbreak assembly\_\allowbreak identity.f90} & the cooling the post-process temperature root balances is the cooling \texttt{eval\_cool} reports, channel for channel & 118 \\
 \texttt{tests/\allowbreak physics\_\allowbreak probe/\allowbreak photoevent\_\allowbreak energy\_\allowbreak ledger.f90} & the energy an isolated photoabsorption event has to account for & 117 \\
 \texttt{tests/\allowbreak physics\_\allowbreak probe/\allowbreak xuv\_\allowbreak cell\_\allowbreak mean\_\allowbreak attenuation.f90} & the beam attenuation the photoionization rate of a cell is evaluated with & 115 \\
+\texttt{tests/\allowbreak adv\_\allowbreak element\_\allowbreak velocity/\allowbreak element\_\allowbreak velocity\_\allowbreak rate\_\allowbreak weights.f90} & each element\'s rows of the advection-corrected systems are stepped on the velocity of that element\'s nuclei & 112 \\
+\texttt{tests/\allowbreak physics\_\allowbreak probe/\allowbreak helium\_\allowbreak bray\_\allowbreak collision\_\allowbreak strengths.f90} & the electron-impact collision strengths of the He\,I metastable network against Bray et al.\ (2000), Tables 2 and 3 & 105 \\
 \texttt{tests/\allowbreak grid\_\allowbreak and\_\allowbreak gates/\allowbreak grid\_\allowbreak window\_\allowbreak indices.f90} & the two index statements that decide which cells a quantity is read from & 101 \\
 \texttt{tests/\allowbreak grid\_\allowbreak and\_\allowbreak gates/\allowbreak base\_\allowbreak cell\_\allowbreak width\_\allowbreak provenance.f90} & the base cell width is written as a decimal that reads back to the same bits, and the default and the pinned line state the widths their runs were made on & 98 \\
 \texttt{tests/\allowbreak physics\_\allowbreak probe/\allowbreak h2\_\allowbreak rovibrational\_\allowbreak identity.f90} & the identities tying the H$_2$ partition function of the chemistry to the internal energy of the caloric EOS & 96 \\
 \texttt{tests/\allowbreak adv\_\allowbreak static\_\allowbreak limit/\allowbreak stationary\_\allowbreak flux\_\allowbreak refusal.f90} & the sensitivity of the advected energy correction to a non-stationary mass flux & 91 \\
 \texttt{tests/\allowbreak physics\_\allowbreak probe/\allowbreak ionization\_\allowbreak threshold\_\allowbreak turn\_\allowbreak on.f90} & one definition of each ionization threshold, and every cross section turning on exactly there & 90 \\
 \texttt{tests/\allowbreak grid\_\allowbreak and\_\allowbreak gates/\allowbreak base\_\allowbreak grid\_\allowbreak pinned\_\allowbreak width.f90} & which grid each of the four base cell widths builds, compared on the bits of every cell center & 86 \\
+\texttt{tests/\allowbreak physics\_\allowbreak probe/\allowbreak voronov\_\allowbreak table\_\allowbreak rows.f90} & every Voronov (1997) electron-impact ionization fit of the code against the published row & 84 \\
 \texttt{tests/\allowbreak grid\_\allowbreak and\_\allowbreak gates/\allowbreak grid\_\allowbreak width\_\allowbreak identity.f90} & the cell-width and total-width identities of the radial grid & 83 \\
 \texttt{tests/\allowbreak physics\_\allowbreak probe/\allowbreak h2\_\allowbreak channel\_\allowbreak detector\_\allowbreak ratio.f90} & the measured proton-to-H$_2^+$ ratio of Chung et al.\ (1993) against the four channels & 83 \\
-\texttt{tests/\allowbreak physics\_\allowbreak probe/\allowbreak fine\_\allowbreak structure\_\allowbreak escape\_\allowbreak probability.f90} & the escape probability of the ground-term fine-structure lines, and the depth it is fed & 80 \\
+\texttt{tests/\allowbreak physics\_\allowbreak probe/\allowbreak helium\_\allowbreak metastable\_\allowbreak detailed\_\allowbreak balance.f90} & the He\,I $1^1$S$\leftrightarrow 2^3$S electron collisions in detailed balance, finite where the excitation underflows & 83 \\
+\texttt{tests/\allowbreak physics\_\allowbreak probe/\allowbreak fine\_\allowbreak structure\_\allowbreak escape\_\allowbreak probability.f90} & the escape probability of the ground-term fine-structure lines, and the depth it is fed & 82 \\
+\texttt{tests/\allowbreak physics\_\allowbreak probe/\allowbreak hydrogen\_\allowbreak helium\_\allowbreak excitation\_\allowbreak data.f90} & the collisional-excitation cooling of H\,I, He\,I and He\,II against the coronal sums it is fitted to, and the shared H($n{=}2$) rate set & 81 \\
 \texttt{tests/\allowbreak physics\_\allowbreak probe/\allowbreak atomic\_\allowbreak mass\_\allowbreak and\_\allowbreak radius\_\allowbreak constants.f90} & the helium mass and the astronomical constants of the input readers, one definition each & 79 \\
+\texttt{tests/\allowbreak physics\_\allowbreak probe/\allowbreak recombination\_\allowbreak energy\_\allowbreak loss.f90} & the kinetic energy the recombination cooling removes in each capture onto H\,II, He\,II and He\,III, $kT\alpha\,(3/2 + {\rm d}\ln\alpha/{\rm d}\ln T)$ & 79 \\
 \texttt{tests/\allowbreak physics\_\allowbreak probe/\allowbreak assertion\_\allowbreak report.f90} & one printed verdict line per assertion, and the failure count the driver exits on & 74 \\
 \texttt{tests/\allowbreak adv\_\allowbreak static\_\allowbreak limit/\allowbreak thermal\_\allowbreak damkohler\_\allowbreak limit.f90} & the validity condition of the advection-corrected energy solve, as a function of the flow speed & 72 \\
 \texttt{tests/\allowbreak a2\_\allowbreak m2/\allowbreak a2\_\allowbreak m2\_\allowbreak g3\_\allowbreak run\_\allowbreak check.f90} & with every photolysis rate at zero, the solved O/OH/H$_2$O partition is the chemical equilibrium & 71 \\
-\texttt{tests/\allowbreak physics\_\allowbreak probe/\allowbreak absorbed\_\allowbreak fraction\_\allowbreak switch.f90} & $(1-e^{-d})/d$, the fraction of the photons entering a cell that the cell absorbs & 71 \\
 \texttt{tests/\allowbreak constrained\_\allowbreak network\_\allowbreak layout/\allowbreak transported\_\allowbreak proton\_\allowbreak constraint\_\allowbreak layout.f90} & which species are unknowns of the continuation, and whether the system built is square & 71 \\
 \texttt{tests/\allowbreak test\_\allowbreak columns.f90} & synthetic columns whose species carry the mass density they are measured against & 67 \\
 \texttt{tests/\allowbreak physics\_\allowbreak probe/\allowbreak h2\_\allowbreak infrared\_\allowbreak line\_\allowbreak populations.f90} & the LTE populations weighting the H$_2$ quadrupole lines are those of the caloric EOS ladder & 65 \\
-\texttt{tests/\allowbreak charge\_\allowbreak exchange\_\allowbreak rows/\allowbreak turnover\_\allowbreak cell\_\allowbreak rates.f90} & the charge-exchange turnover bound is the loaded cell's, carries no history, and is each thread's own & 62 \\
+\texttt{tests/\allowbreak charge\_\allowbreak exchange\_\allowbreak rows/\allowbreak turnover\_\allowbreak cell\_\allowbreak rates.f90} & the charge-exchange turnover bound is the loaded cell's, carries no history, and is each thread's own & 63 \\
 \texttt{tests/\allowbreak physics\_\allowbreak probe/\allowbreak wind\_\allowbreak ae\_\allowbreak bridge\_\allowbreak composition.f90} & the composition an EXHALE \texttt{input.inp} hands the Wind-AE solver & 54 \\
 \texttt{tests/\allowbreak spectrum\_\allowbreak type/\allowbreak fuv\_\allowbreak band\_\allowbreak quadrature.f90} & the band integral of a loaded spectrum against closed-form answers, with the band edges inside segments, on nodes and at the table ends & 53 \\
-\texttt{tests/\allowbreak physics\_\allowbreak probe/\allowbreak voronov\_\allowbreak carbon\_\allowbreak ionization.f90} & the electron-impact ionization of C$^0$ and C$^+$ against the published Voronov (1997) rows & 51 \\
+\texttt{tests/\allowbreak physics\_\allowbreak probe/\allowbreak voronov\_\allowbreak carbon\_\allowbreak ionization.f90} & the electron-impact ionization of C$^0$ and C$^+$ against the published Voronov (1997) rows & 52 \\
 \texttt{tests/\allowbreak physics\_\allowbreak probe/\allowbreak water\_\allowbreak photolysis\_\allowbreak lyman\_\allowbreak alpha\_\allowbreak yields.f90} & the H$_2$O branching on the band that contains Ly$\alpha$, against the published yields & 49 \\
 \texttt{tests/\allowbreak physics\_\allowbreak probe/\allowbreak h3p\_\allowbreak recombination\_\allowbreak branching.f90} & the two product channels of H$_3^+$ dissociative recombination & 44 \\
 \texttt{tests/\allowbreak energy\_\allowbreak update/\allowbreak cooling\_\allowbreak models.f90} & analytic cooling laws for the tests of the implicit energy update & 43 \\
 \texttt{tests/\allowbreak species\_\allowbreak masses/\allowbreak carrier\_\allowbreak background\_\allowbreak masses.f90} & the mass the carrier transport gives each of its background collision partners & 36 \\
-\texttt{tests/\allowbreak charge\_\allowbreak exchange\_\allowbreak rows/\allowbreak stale\_\allowbreak cell\_\allowbreak rates\_\allowbreak refused.f90} & a residual assembled at a temperature the rate coefficients were not filled at is refused & 30 \\
+\texttt{tests/\allowbreak charge\_\allowbreak exchange\_\allowbreak rows/\allowbreak stale\_\allowbreak cell\_\allowbreak rates\_\allowbreak refused.f90} & a residual assembled at a temperature the rate coefficients were not filled at is refused & 31 \\
+\texttt{tests/\allowbreak charge\_\allowbreak exchange\_\allowbreak rows/\allowbreak stale\_\allowbreak cell\_\allowbreak turnover\_\allowbreak refused.f90} & a turnover bound taken at a temperature the rate coefficients were not filled at is refused & 27 \\
 \texttt{tests/\allowbreak certification/\allowbreak certification\_\allowbreak capacity.f90} & one equation past a full certification report is refused by name, before any field is written & 26 \\
-\texttt{tests/\allowbreak charge\_\allowbreak exchange\_\allowbreak rows/\allowbreak stale\_\allowbreak cell\_\allowbreak turnover\_\allowbreak refused.f90} & a turnover bound taken at a temperature the rate coefficients were not filled at is refused & 26 \\
-\texttt{tests/\allowbreak charge\_\allowbreak exchange\_\allowbreak rows/\allowbreak stale\_\allowbreak cell\_\allowbreak stage\_\allowbreak sources\_\allowbreak refused.f90} & a stage source evaluated at a temperature the rate coefficients were not filled at is refused & 23 \\
+\texttt{tests/\allowbreak restart\_\allowbreak radius\_\allowbreak guard/\allowbreak restart\_\allowbreak radius\_\allowbreak guard\_\allowbreak probe.f90} & a restart whose recorded cell centers are not finite or differ from the run\'s grid is refused & 26 \\
+\texttt{tests/\allowbreak charge\_\allowbreak exchange\_\allowbreak rows/\allowbreak stale\_\allowbreak cell\_\allowbreak stage\_\allowbreak sources\_\allowbreak refused.f90} & a stage source evaluated at a temperature the rate coefficients were not filled at is refused & 24 \\
 \midrule
-\multicolumn{2}{r}{test-driver total} & 32\,799 \\
+\multicolumn{2}{r}{test-driver total} & 38\,947 \\
 \midrule
-\multicolumn{2}{r}{new-module total} & 69\,495 \\
+\multicolumn{2}{r}{new-module total} & 81\,115 \\
 \bottomrule
 \end{longtable}
 }
 
 \noindent
-So the 162 new core modules contribute 69\,495 of the 91\,633 added code lines;
-the remaining 22\,138 added (and 1\,150 of the 1\,219 removed, the other 69
+So the 190 new core modules contribute 81\,115 of the 107\,432 added code lines;
+the remaining 26\,317 added (and 1\,338 of the 1\,407 removed, the other 69
 being the deleted HLLC estimator) are edits spread across the 38 modified
 files. The ten heaviest, by added code lines, are the main driver
-(\texttt{EXHALE\_\allowbreak main.f90}, 4\,396 added, 246 $\to$ 4\,511 SLOC: the marching
+(\texttt{EXHALE\_\allowbreak main.f90}, 5\,110 added, 246 $\to$ 5\,225 SLOC: the marching
 loop, the attempted-step adoption boundary, the run-mode contracts and the
 written-state assertions), the cooling module
-(\texttt{Cool\_\allowbreak coeff.f90}, 3\,560 added, 228 $\to$ 3\,691 SLOC: CHIANTI
+(\texttt{Cool\_\allowbreak coeff.f90}, 3\,837 added, 228 $\to$ 3\,882 SLOC: CHIANTI
 metal-line fits, Fe tables, fine-structure statistical equilibrium, Penning
 and molecular rate coefficients), the ionization equilibrium and its diagnostics
-(\texttt{ionization\_\allowbreak equilibrium.f90} 2\,767 and \texttt{util\_\allowbreak ion\_\allowbreak eq.f90}
-1\,813: the metal, molecular and oxygen networks, the acceptance classes, the
+(\texttt{ionization\_\allowbreak equilibrium.f90} 3\,243 and \texttt{util\_\allowbreak ion\_\allowbreak eq.f90}
+2\,139: the metal, molecular and oxygen networks, the acceptance classes, the
 photoionization field and the heating channels), input parsing
-(\texttt{input\_\allowbreak read.f90}, 1\,871), the state reader and writer
-(\texttt{load\_\allowbreak IC.f90} 1\,529, \texttt{write\_\allowbreak output.f90} 989,
-\texttt{write\_\allowbreak setup\_\allowbreak report.f90} 858), the advection-corrected post-processor
-(\texttt{post\_\allowbreak process\_\allowbreak adv.f90}, 665) and the cross sections
-(\texttt{cross\_\allowbreak sec.f90}, 438). Those ten carry 18\,886 of the 22\,138. The rest
+(\texttt{input\_\allowbreak read.f90}, 1\,986), the state reader and writer
+(\texttt{load\_\allowbreak IC.f90} 1\,774, \texttt{write\_\allowbreak output.f90} 1\,562,
+\texttt{write\_\allowbreak setup\_\allowbreak report.f90} 989), the advection-corrected post-processor
+(\texttt{post\_\allowbreak process\_\allowbreak adv.f90}, 1\,533) and the cross sections
+(\texttt{cross\_\allowbreak sec.f90}, 596). Those ten carry 22\,769 of the 26\,317. The rest
 of the edits are in the reconstruction, the fluxes, the boundary conditions,
 the grid, the time step, the energy equation and the \texttt{System\_*}
 ionization systems, which wire the metals, the molecules, the opacity
@@ -313,25 +350,26 @@ dispatcher, the Roche potential, the transonic/auto/Wind-AE IC, the
 excited-H and Ly$\alpha$ physics, the element diffusion and the Brent/Newton
 solver upgrades into the original solver.
 
-In total the EXHALE core is now $\approx$26.7$\times$ the original code base
-(3\,514\,$\to$\,93\,928 SLOC), or $\approx$17.4$\times$ counting only the
-simulation build (61\,129 SLOC), touching almost all of the original files (38
-of 47 modified, one deleted, plus 162 new); with the ported Wind-AE IC
-generator the full Fortran tree is 244 files / 98\,684 SLOC
-($\approx$28.1$\times$). Beyond Fortran, the tree also carries the Python
+In total the EXHALE core is now $\approx$31.2$\times$ the original code base
+(3\,514\,$\to$\,109\,539 SLOC), or $\approx$20.1$\times$ counting only the
+simulation build (70\,592 SLOC), touching almost all of the original files (38
+of 47 modified, one deleted, plus 190 new); with the ported Wind-AE IC
+generator the full Fortran tree is 272 files / 114\,295 SLOC
+($\approx$32.5$\times$). Beyond Fortran, the tree also carries the Python
 tooling (GUI, the \texttt{EXHALE\_transit.py} transmission post-processor,
 plotting/analysis, the lower-atmosphere adapters and the elemental-flux
-closure driver) and 304\,946 lines of documentation (390 md/tex files, notebook
+closure driver) and 351\,309 lines of documentation (460 md/tex files, notebook
 checkpoints excluded: the memos, the manual, the dated audit directories and
-the update logs) under \texttt{docs/}.
+the update logs) under \texttt{docs/} and \texttt{md/} (the Markdown memos
+moved to \texttt{md/} on 2026-09-25).
 
 
 % ===================================================================== %
 \section{Fortran source inherited unchanged from ATES}\label{sec:untouched}
 % ===================================================================== %
 Of the 47 upstream Fortran files (\texttt{ATES/ATES-Code-main}), \textbf{8 are
-byte-for-byte identical} in EXHALE (re-measured 2026-09-22, and the same eight
-as on 2026-09-11: nothing entered or left the set in between): the numerics
+byte-for-byte identical} in EXHALE (re-measured 2026-10-05, and the same eight
+as on 2026-09-11 and 2026-09-22: nothing entered or left the set in between): the numerics
 EXHALE reuses without touching, which are now the linear-algebra part of the
 included \textsc{MINPACK} nonlinear solver plus the gravity pre-evaluation.
 Table~\ref{tab:untouched} lists them with their role. No file is identical
@@ -384,7 +422,7 @@ state is reported rather than given a square root of a negative ratio.
 \begin{table}[h]
 \centering\small
 \caption{The 8 Fortran files byte-identical between the original ATES
-(\texttt{ATES-Code-main}) and EXHALE (measured 2026-09-22), grouped by role.}
+(\texttt{ATES-Code-main}) and EXHALE (measured 2026-10-05), grouped by role.}
 \label{tab:untouched}
 \begin{tabular}{@{}l p{0.60\linewidth}@{}}
 \toprule

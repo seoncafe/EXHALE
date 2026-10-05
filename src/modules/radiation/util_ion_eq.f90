@@ -30,7 +30,8 @@
    use Cross_sections, only: sigma, sigma_HeI, sigma_H2,              &
                              metal_photoion_sigma,                    &
                              metal_shell_photoion_sigma,              &
-                             metal_shell_relaxation, mph_n_sub
+                             metal_shell_relaxation, mph_n_sub,       &
+                             n_metal_subshell
    use composition, only: he_ground_singlet_density
    use charge_exchange, only: charge_exchange_heating
    ! D0(H2) in eV. The bond energy has one definition in this code
@@ -53,7 +54,7 @@
    ! (h2_photoabsorption_cross_sections) and the same recipients.
    use h2_photo_channels, only: h2_double_fragment_kinetic_energy,        &
                                 e_rad_H2_neutral, n_h2_channels,          &
-                                ICH_S, ICH_D, ICH_N,                      &
+                                ICH_M, ICH_S, ICH_D, ICH_N,               &
                                 h2_photoabsorption_cross_sections,        &
                                 h2_channel_energy_recipients,             &
                                 h2_double_ionization_model
@@ -69,6 +70,19 @@
                             iabs_HI, iabs_HeI, iabs_HeII, iabs_HeTR,     &
                             iabs_H2, iabs_H2_di, dissoc_ion_per_H2p,     &
                             n_dal_E, dalgarno_energy_node_weights
+   ! The photoelectrons of 10.2 eV to E_sec_ion: Furlanetto & Stoever
+   ! (2010), under "Low-energy electron partition", and the one routine
+   ! that decides, bin by bin, which of the three energy bands a
+   ! photoelectron falls in (photoelectron_partition_on_grid).
+   ! The photoelectrons of single energies (the recombination photons
+   ! absorbed on the spot) go through the same bands, one electron at a
+   ! time (photoelectron_partition_at_energy).
+   use low_energy_electron_degradation, only: low_energy_partition_t,    &
+                            low_energy_electron_partition,               &
+                            photoelectron_partition_on_grid,             &
+                            photoelectron_partition_of_cell_t,           &
+                            photoelectron_partition_at_energy,           &
+                            low_energy_row_weights, n_lee_E, lee_E_lowest
    ! H2 Lyman-Werner photodissociation, for the heating breakdown diagnostic
    use water_photolysis, only: n_fuv_band, ib_LW, ib_B2,             &
                        ib_B3, ib_B4,                                    &
@@ -266,6 +280,22 @@
 	! the double-ionization model), recorded with the table.
 	real*8,  save :: otsp_h2_sig(n_h2_channels,n_otsp_ch)  = 0.0d0
 	real*8,  save :: otsp_h2_heat(n_h2_channels,n_otsp_ch) = 0.0d0
+	! The two parts of otsp_h2_heat [eV]: the photoelectron energy (both
+	! electrons of the double channel), which the photoelectron partition
+	! acts on, and the fragment kinetic energy, which is heat at once.
+	real*8,  save :: otsp_h2_ele(n_h2_channels,n_otsp_ch)  = 0.0d0
+	real*8,  save :: otsp_h2_frg(n_h2_channels,n_otsp_ch)  = 0.0d0
+	! The electrons of a metal absorption of each channel's photon, shell
+	! by shell (is = 0 the outer shell, 1..mph_n_sub the subshells;
+	! metal_shell_relaxation), for the photoelectron partition:
+	! otsp_met_ws(is,i,c) the share of the absorptions of ion i that open
+	! shell is (its partial cross section over the total), and
+	! otsp_met_ee(1:2,is,i,c) the energies [eV] of its photoelectron,
+	! E_c - E_th,s, and of its Auger electron (zero where the vacancy
+	! radiates). Summed with the shares, the energies are E_c - mion_ethr -
+	! otsp_met_dbind, the electron energy the heat-only treatment deposits.
+	real*8,  save :: otsp_met_ws(0:n_metal_subshell,n_mion,n_otsp_ch)  = 0.0d0
+	real*8,  save :: otsp_met_ee(2,0:n_metal_subshell,n_mion,n_otsp_ch) = 0.0d0
 	logical, save :: otsp_h2_neutral = .false.
 	character(len=16), save :: otsp_h2_double = ''
 
@@ -276,7 +306,9 @@
 	!   mpa_sig_multi(i,k)  the cross section [Mb] of the absorptions that
 	!                       eject two or more electrons (Auger decay);
 	!   mpa_w(i,0,k)        the energy [eV] of the electrons at or below
-	!                       E_sec_ion, which thermalize whole, and
+	!                       E_sec_ion, which thermalize whole unless the
+	!                       low-energy partition takes those from 10.2 eV
+	!                       up (mpa_wle, mpa_wln below), and
 	!   mpa_w(i,m,k)        m = 1..n_dal_E, the energy of those above it
 	!                       on the node m of the Dalgarno energy grid
 	!                       (dalgarno_energy_node_weights),
@@ -286,9 +318,21 @@
 	! coefficients they give its metal photoheating and secondary
 	! ionizations for any number of electrons (photoionization_field_at_
 	! cell_HHe).
+	! The electrons at or below E_sec_ion are split again for the
+	! low-energy partition (low_energy_electron_degradation), on the rows of
+	! its tables instead of the Dalgarno nodes:
+	!   mpa_wle(i,0,k)      the energy [eV] of those below 10.2 eV, which
+	!                       only heat,
+	!   mpa_wle(i,r,k)      r = 1..n_lee_E, the energy of those from 10.2 eV
+	!                       to E_sec_ion on row r (low_energy_row_weights),
+	!   mpa_wln(i,r,k)      the NUMBER of the same electrons on row r,
+	! weighted and divided as mpa_w. mpa_wle(:,0,k) + sum_r mpa_wle(:,r,k)
+	! is mpa_w(:,0,k). The heat of an electron is its energy times f_heat,
+	! its ionizations a number per electron, hence the two weightings.
 	real*8,  allocatable, save :: mpa_e_v(:)
 	real*8,  allocatable, save :: mpa_sig_multi(:,:)
 	real*8,  allocatable, save :: mpa_w(:,:,:)
+	real*8,  allocatable, save :: mpa_wle(:,:,:), mpa_wln(:,:,:)
 	logical, save :: mpa_ready = .false.
 	logical, save :: otsp_ates   = .false.
 	logical, save :: otsp_metals = .false.
@@ -866,6 +910,7 @@
 	subroutine metal_photoabsorption_spectral_tables
 	integer :: k, is, i, ie
 	real*8  :: E, sg, eth, eaug, pmul, efl, eim, Ee(2), wt(n_dal_E)
+	real*8  :: wtl(n_lee_E)
 	logical :: current
 
 	!$omp atomic read seq_cst
@@ -884,10 +929,15 @@
 		if (allocated(mpa_e_v))       deallocate(mpa_e_v)
 		if (allocated(mpa_sig_multi)) deallocate(mpa_sig_multi)
 		if (allocated(mpa_w))         deallocate(mpa_w)
+		if (allocated(mpa_wle))       deallocate(mpa_wle)
+		if (allocated(mpa_wln))       deallocate(mpa_wln)
 		allocate(mpa_e_v(Nl), mpa_sig_multi(Nl,n_mphot),                 &
-		         mpa_w(Nl,0:n_dal_E,n_mphot))
+		         mpa_w(Nl,0:n_dal_E,n_mphot),                            &
+		         mpa_wle(Nl,0:n_lee_E,n_mphot), mpa_wln(Nl,n_lee_E,n_mphot))
 		mpa_sig_multi = 0.0d0
 		mpa_w         = 0.0d0
+		mpa_wle       = 0.0d0
+		mpa_wln       = 0.0d0
 		do k = 1,n_mphot
 			do i = 1,Nl
 				E = e_v(i)
@@ -907,6 +957,15 @@
 							                     + sg*Ee(ie)*wt/E
 						else
 							mpa_w(i,0,k) = mpa_w(i,0,k) + sg*Ee(ie)/E
+							if (Ee(ie) .lt. lee_E_lowest) then
+								mpa_wle(i,0,k) = mpa_wle(i,0,k) + sg*Ee(ie)/E
+							else
+								call low_energy_row_weights(Ee(ie), wtl)
+								mpa_wle(i,1:n_lee_E,k) = mpa_wle(i,1:n_lee_E,k) &
+								                       + sg*Ee(ie)*wtl/E
+								mpa_wln(i,1:n_lee_E,k) = mpa_wln(i,1:n_lee_E,k) &
+								                       + sg*wtl/E
+							endif
 						endif
 					enddo
 				enddo
@@ -1048,9 +1107,10 @@
 	! and its heating efficiency.
 	real*8,  intent(out) :: P_HI_j, h1_HI_j, heat_j, q_j
 
-	real*8, dimension(Nl) :: acc_secHI, fhv, fh_v, fiHI
+	real*8, dimension(Nl) :: acc_secHI, fhv, fiHI
 	real*8, dimension(Nl) :: fiHeI_dum, fiH2_dum
 	type(photoelectron_partition_t) :: pep
+	type(low_energy_partition_t) :: lep
 	real*8 :: Psec_HI
 	real*8 :: PIR_1, Hea_1, q_abs
 	real*8, dimension(Nl) :: tauE_out, dtauE
@@ -1100,19 +1160,24 @@
 		! hydrogen, and fiHI comes back per H I atom [cm^3]. With no molecular
 		! hydrogen the H2 terms are identically absent and the heat fraction is
 		! Dalgarno's H-He heating efficiency, closed at x = 1.
+		! Heating fraction fhv and the H I secondary-ionization coefficient
+		! fiHI, bin by bin: the existing partition above E_sec_ion, the
+		! low-energy partition from 10.2 eV to E_sec_ion where it is selected,
+		! full thermalization otherwise (photoelectron_partition_on_grid).
+		! fhv = 1 when the coupling is off, so the heating integrand is
+		! bit-identical to the legacy path.
+		lep%active = .false.
+		fhv = 1.0d0
+		fiHI = 0.0d0
 		if (sec_on) then
 			call photoelectron_energy_partition(xion_j, nhi_j, 0.0d0,     &
 			                                  0.0d0, 0.0d0, 0.0d0, pep)
-			call photoelectron_shares(pep, iabs_HI, fh_v, fiHI,            &
-			                          fiHeI_dum, fiH2_dum)
-		else
-			fh_v = 1.0d0; fiHI = 0.0d0
+			if (use_low_energy_partition)                                 &
+				call low_energy_electron_partition(xion_j, nhi_j, 0.0d0,  &
+				                                   0.0d0, lep)
+			call photoelectron_partition_on_grid(pep, lep, iabs_HI, fhv,   &
+			                          fiHI, fiHeI_dum, fiH2_dum)
 		endif
-		! Heating fraction: fh_v above the E_sec_ion photoelectron threshold, 1
-		! (full thermalization) below it. fhv = 1 when the coupling is off, so
-		! the heating integrand is bit-identical to the legacy path.
-		fhv = 1.0d0
-		if (sec_on) fhv = merge(fh_v, 1.0d0, e_v > e_th_HI + E_sec_ion)
 		! The heating integrand carries NO density: Hea_1 is the heating rate
 		! of one H I atom, and the contraction with the composition is done
 		! below. The absorbed-energy integrand keeps its density, because the
@@ -1133,8 +1198,7 @@
 		! Add the H I secondary-ionization rate from fast photoelectrons.
 		! fiHI is per H I atom, so the integral is already a rate [1/s].
 		if (sec_on) then
-			acc_secHI = int_f*s_hi*nhi_j/e_v * &
-			     merge(fiHI*(e_v-e_th_HI)/e_th_HI, 0.0d0, e_v > e_th_HI + E_sec_ion)
+			acc_secHI = int_f*s_hi*nhi_j/e_v * (fiHI*(e_v-e_th_HI)/e_th_HI)
 			Psec_HI = sum(acc_secHI*de_v)*1.0d-18*erg2eV
 			P_HI_j = P_HI_j + Psec_HI
 		endif
@@ -1245,7 +1309,7 @@
 	             P_HI_j,P_HeI_j,P_HeII_j,P_HeITR_j,Pm_j,                  &
 	             P_H2_j,P_H2_di_j,P_H2_dd_j,P_H2_nd_j,                    &
 	             h1_HI_j,h1_HeI_j,h1_HeII_j,h1_HeTR_j,h1_H2_j,h1m_j,      &
-	             heat_j, chan_j, q_j, q_abs_j, Pm2_j)
+	             heat_j, chan_j, q_j, q_abs_j, Pm2_j, nh2_solved_j)
 	! The attenuated stellar XUV field of ONE cell, and every rate it drives
 	! there: the photoionization rate of each absorber, the photoheating rate
 	! of one particle of each of them, the absorbed energy and the heating
@@ -1294,6 +1358,12 @@
 	! Share of an H2 vibrational excitation collisionally de-excited into
 	! heat, and the mean internal energy [eV] one B or C fluorescence leaves.
 	real*8, intent(in) :: fvq_j,evq_j
+	! The H2 density of the cell's SOLVED state, which decides the
+	! molecular gate of the low-energy partition (low_energy_electron_
+	! partition); absent, nh2_j where the run carries H2 (has_h2) and zero
+	! otherwise, which is that density on the equilibrium path. The
+	! advection-corrected post-process, whose gas carries no H2, passes it.
+	real*8, intent(in), optional :: nh2_solved_j
 	! Does this run carry molecular hydrogen; is the secondary-ionization
 	! coupling on; does it have a molecular target.  Resolved once by the
 	! caller, not per cell.
@@ -1342,7 +1412,12 @@
 	real*8, dimension(Nl,n_dal_E) :: wsec_m
 	integer :: m
 	type(photoelectron_partition_t) :: pep
+	type(low_energy_partition_t) :: lep
+	! The metal electron number of the cell on each row of the low-energy
+	! tables, sum_i n_i mpa_wln(:,r,k(i)).
+	real*8, dimension(Nl,n_lee_E) :: wlsec
 	real*8 :: Psec_HI,Psec_HeI,Psec_H2,Psec_H2_di
+	real*8 :: nh2_gate
 
 	!----------------------------------!
 
@@ -1452,15 +1527,29 @@
 		! heat fraction vanish identically when the run carries no H2.
 		! Derivation, limits and the parts of the partition that are still
 		! composition-blind: electron_energy_degradation.f90.
+		!
+		! The photoelectrons of 10.2 eV to E_sec_ion, under "Low-energy
+		! electron partition": Furlanetto & Stoever (2010) on the same x and
+		! the same neutral densities, the H I / He I branching renormalized
+		! by the same rule, and only where the cell holds no H2 (the
+		! molecular branch keeps them as heat; low_energy_electron_
+		! degradation.f90 states the tables and their validity).
+		lep%active = .false.
 		if (sec_on) then
+			nh2_gate = 0.0d0
 			if (has_h2) then
 				call photoelectron_energy_partition(xion_j, nhi_j,     &
 				                       nheiS_j, nh2_j, fvq_j, evq_j,  &
 				                       pep)
+				nh2_gate = nh2_j
 			else
 				call photoelectron_energy_partition(xion_j, nhi_j,     &
 				                       nheiS_j, 0.0d0, 0.0d0, 0.0d0, pep)
 			endif
+			if (present(nh2_solved_j)) nh2_gate = nh2_solved_j
+			if (use_low_energy_partition)                             &
+				call low_energy_electron_partition(xion_j, nhi_j,     &
+				                       nheiS_j, nh2_gate, lep)
 		else
 			fiHI = 0.0d0; fiHeI = 0.0d0; fiH2 = 0.0d0
 		endif
@@ -1473,75 +1562,70 @@
 		! it, and the composition enters only in the contraction after the
 		! loop. Where a photoelectron energy E0 = e_v - E_th exceeds
 		! E_sec_ion, only f_heat(x) of its excess is deposited as heat (fhv)
-		! and the balance drives H I / He I secondary ionizations; below the
-		! threshold it thermalizes fully. fhv = 1 when the coupling is off.
+		! and the balance drives H I / He I secondary ionizations; from
+		! 10.2 eV to the threshold the low-energy partition does the same
+		! where it is selected, and otherwise the electron thermalizes fully
+		! (photoelectron_partition_on_grid). fhv = 1 when the coupling is
+		! off.
 		! He I triplet photoionization (threshold e_th_HeTR = 4.8 eV)
 		! deposits its photoelectron energy here as well, consistently with
 		! its opacity and its P_HeITR rate. The secondary-ionization
 		! integrands below DO carry the absorber densities: they are rates of
 		! the field the entry composition makes, not one-particle quantities.
 		fhv = 1.0d0
-		if (sec_on) then
-			call photoelectron_shares(pep, iabs_HI, fh_v, fiHI, fiHeI, fiH2)
-			fhv = merge(fh_v, 1.0d0, e_v > e_th_HI + E_sec_ion)
-		endif
+		if (sec_on) call photoelectron_partition_on_grid(pep, lep,  &
+		                     iabs_HI, fhv, fiHI, fiHeI, fiH2)
 		acc_HI = photoelectron_share(e_th_HI,e_v)*fhv*s_hi
 		if (sec_on) then
 			acc_secHI  = acc_secHI  + s_hi*nhi_j/e_v *                       &
-			     merge(fiHI *(e_v-e_th_HI)/e_th_HI , 0.0d0, e_v > e_th_HI + E_sec_ion)
+			     (fiHI *(e_v-e_th_HI)/e_th_HI)
 			acc_secHeI = acc_secHeI + s_hi*nhi_j/e_v *                       &
-			     merge(fiHeI*(e_v-e_th_HI)/e_th_HeI, 0.0d0, e_v > e_th_HI + E_sec_ion)
+			     (fiHeI*(e_v-e_th_HI)/e_th_HeI)
 		endif
 		if (mol_sec) acc_secH2 = acc_secH2 + s_hi*nhi_j/e_v *                &
-			     merge(fiH2 *(e_v-e_th_HI)/e_th_H2 , 0.0d0, e_v > e_th_HI + E_sec_ion)
+			     (fiH2 *(e_v-e_th_HI)/e_th_H2)
 
 		fhv = 1.0d0
-		if (sec_on) then
-			call photoelectron_shares(pep, iabs_HeI, fh_v, fiHI, fiHeI, fiH2)
-			fhv = merge(fh_v, 1.0d0, e_v > e_th_HeI + E_sec_ion)
-		endif
+		if (sec_on) call photoelectron_partition_on_grid(pep, lep,  &
+		                     iabs_HeI, fhv, fiHI, fiHeI, fiH2)
 		acc_HeI = photoelectron_share(e_th_HeI,e_v)*fhv*s_hei
 		if (sec_on) then
 			acc_secHI  = acc_secHI  + s_hei*nheiS_j/e_v *                    &
-			     merge(fiHI *(e_v-e_th_HeI)/e_th_HI , 0.0d0, e_v > e_th_HeI + E_sec_ion)
+			     (fiHI *(e_v-e_th_HeI)/e_th_HI)
 			acc_secHeI = acc_secHeI + s_hei*nheiS_j/e_v *                    &
-			     merge(fiHeI*(e_v-e_th_HeI)/e_th_HeI, 0.0d0, e_v > e_th_HeI + E_sec_ion)
+			     (fiHeI*(e_v-e_th_HeI)/e_th_HeI)
 		endif
 		if (mol_sec) acc_secH2 = acc_secH2 + s_hei*nheiS_j/e_v *             &
-			     merge(fiH2 *(e_v-e_th_HeI)/e_th_H2 , 0.0d0, e_v > e_th_HeI + E_sec_ion)
+			     (fiH2 *(e_v-e_th_HeI)/e_th_H2)
 
 		fhv = 1.0d0
-		if (sec_on) then
-			call photoelectron_shares(pep, iabs_HeII, fh_v, fiHI, fiHeI, fiH2)
-			fhv = merge(fh_v, 1.0d0, e_v > e_th_HeII + E_sec_ion)
-		endif
+		if (sec_on) call photoelectron_partition_on_grid(pep, lep,  &
+		                     iabs_HeII, fhv, fiHI, fiHeI, fiH2)
 		acc_HeII = photoelectron_share(e_th_HeII,e_v)*fhv*s_heii
 		if (sec_on) then
 			acc_secHI  = acc_secHI  + s_heii*nheii_j/e_v *                   &
-			     merge(fiHI *(e_v-e_th_HeII)/e_th_HI , 0.0d0, e_v > e_th_HeII + E_sec_ion)
+			     (fiHI *(e_v-e_th_HeII)/e_th_HI)
 			acc_secHeI = acc_secHeI + s_heii*nheii_j/e_v *                   &
-			     merge(fiHeI*(e_v-e_th_HeII)/e_th_HeI, 0.0d0, e_v > e_th_HeII + E_sec_ion)
+			     (fiHeI*(e_v-e_th_HeII)/e_th_HeI)
 		endif
 		if (mol_sec) acc_secH2 = acc_secH2 + s_heii*nheii_j/e_v *            &
-			     merge(fiH2 *(e_v-e_th_HeII)/e_th_H2 , 0.0d0, e_v > e_th_HeII + E_sec_ion)
+			     (fiH2 *(e_v-e_th_HeII)/e_th_H2)
 
 		! He I 2^3S (triplet): photoelectron energy hv - 4.8 eV, same
 		! secondary partition as the other absorbers.
 		if (thereis_HeITR) then
 			fhv = 1.0d0
-			if (sec_on) then
-				call photoelectron_shares(pep, iabs_HeTR, fh_v, fiHI, fiHeI, fiH2)
-				fhv = merge(fh_v, 1.0d0, e_v > e_th_HeTR + E_sec_ion)
-			endif
+			if (sec_on) call photoelectron_partition_on_grid(pep, lep,  &
+			                     iabs_HeTR, fhv, fiHI, fiHeI, fiH2)
 			acc_HeTR = photoelectron_share(e_th_HeTR,e_v)*fhv*s_heiTR
 			if (sec_on) then
 				acc_secHI  = acc_secHI  + s_heiTR*nheiTR_j/e_v *             &
-				     merge(fiHI *(e_v-e_th_HeTR)/e_th_HI , 0.0d0, e_v > e_th_HeTR + E_sec_ion)
+				     (fiHI *(e_v-e_th_HeTR)/e_th_HI)
 				acc_secHeI = acc_secHeI + s_heiTR*nheiTR_j/e_v *             &
-				     merge(fiHeI*(e_v-e_th_HeTR)/e_th_HeI, 0.0d0, e_v > e_th_HeTR + E_sec_ion)
+				     (fiHeI*(e_v-e_th_HeTR)/e_th_HeI)
 			endif
 			if (mol_sec) acc_secH2 = acc_secH2 + s_heiTR*nheiTR_j/e_v *      &
-				     merge(fiH2 *(e_v-e_th_HeTR)/e_th_H2 , 0.0d0, e_v > e_th_HeTR + E_sec_ion)
+				     (fiH2 *(e_v-e_th_HeTR)/e_th_H2)
 		endif
 
 		! The molecular absorber, in its four final-state channels. Each
@@ -1557,38 +1641,34 @@
 		! options are on, so the arithmetic below is unchanged by default.
 		if (has_h2) then
 			fhv = 1.0d0
-			if (sec_on) then
-				call photoelectron_shares(pep, iabs_H2, fh_v, fiHI, fiHeI, fiH2)
-				fhv = merge(fh_v, 1.0d0, e_v > e_th_H2 + E_sec_ion)
-			endif
+			if (sec_on) call photoelectron_partition_on_grid(pep, lep,  &
+			                     iabs_H2, fhv, fiHI, fiHeI, fiH2)
 			acc_H2 = photoelectron_share(e_th_H2,e_v)*fhv*(s_h2 - s_h2_di - s_h2_dd - s_h2_nd)
 			if (sec_on) then
 				acc_secHI  = acc_secHI  + (s_h2 - s_h2_di - s_h2_dd - s_h2_nd)*nh2_j/e_v *       &
-				     merge(fiHI *(e_v-e_th_H2)/e_th_HI , 0.0d0, e_v > e_th_H2 + E_sec_ion)
+				     (fiHI *(e_v-e_th_H2)/e_th_HI)
 				acc_secHeI = acc_secHeI + (s_h2 - s_h2_di - s_h2_dd - s_h2_nd)*nh2_j/e_v *       &
-				     merge(fiHeI*(e_v-e_th_H2)/e_th_HeI, 0.0d0, e_v > e_th_H2 + E_sec_ion)
+				     (fiHeI*(e_v-e_th_H2)/e_th_HeI)
 			endif
 			if (mol_sec) acc_secH2 = acc_secH2 + (s_h2 - s_h2_di - s_h2_dd - s_h2_nd)*nh2_j/e_v *&
-				     merge(fiH2 *(e_v-e_th_H2)/e_th_H2 , 0.0d0, e_v > e_th_H2 + E_sec_ion)
+				     (fiH2 *(e_v-e_th_H2)/e_th_H2)
 
 			! Dissociative ionization H2 + hv -> H + H+ + e-. The 2.68 eV
 			! between the two thresholds goes into breaking the bond and is
 			! not available as heat, exactly as every other channel here is
 			! charged its own ionization potential.
 			fhv = 1.0d0
-			if (sec_on) then
-				call photoelectron_shares(pep, iabs_H2_di, fh_v, fiHI, fiHeI, fiH2)
-				fhv = merge(fh_v, 1.0d0, e_v > e_th_H2_di + E_sec_ion)
-			endif
+			if (sec_on) call photoelectron_partition_on_grid(pep, lep,  &
+			                     iabs_H2_di, fhv, fiHI, fiHeI, fiH2)
 			acc_H2 = acc_H2 + photoelectron_share(e_th_H2_di,e_v)*fhv*s_h2_di
 			if (sec_on) then
 				acc_secHI  = acc_secHI  + s_h2_di*nh2_j/e_v *                &
-				     merge(fiHI *(e_v-e_th_H2_di)/e_th_HI , 0.0d0, e_v > e_th_H2_di + E_sec_ion)
+				     (fiHI *(e_v-e_th_H2_di)/e_th_HI)
 				acc_secHeI = acc_secHeI + s_h2_di*nh2_j/e_v *                &
-				     merge(fiHeI*(e_v-e_th_H2_di)/e_th_HeI, 0.0d0, e_v > e_th_H2_di + E_sec_ion)
+				     (fiHeI*(e_v-e_th_H2_di)/e_th_HeI)
 			endif
 			if (mol_sec) acc_secH2 = acc_secH2 + s_h2_di*nh2_j/e_v *         &
-				     merge(fiH2 *(e_v-e_th_H2_di)/e_th_H2 , 0.0d0, e_v > e_th_H2_di + E_sec_ion)
+				     (fiH2 *(e_v-e_th_H2_di)/e_th_H2)
 
 			! Double ionization H2 + hv -> H+ + H+ + 2e-, charged its own
 			! 51.4 eV threshold. The excess e_v - 51.4 eV is the TOTAL
@@ -1651,7 +1731,7 @@
 			! Ly-alpha and two-photon continuum. What is left, the remainder
 			! of the photon, is the kinetic energy of the two atoms, i.e.
 			! heat (h2_channel_energy_recipients). The channel is nonzero
-			! only over 33-41 eV, well above D0 + 2 E(n=1 to 2) = 24.876 eV,
+			! only over 32-41.5 eV, well above D0 + 2 E(n=1 to 2) = 24.876 eV,
 			! so the bracket is positive throughout.
 			acc_H2 = acc_H2                                               &
 			       + (1.0d0-(D0_H2_eV+e_rad_H2_neutral)/e_v)*s_h2_nd
@@ -1673,28 +1753,37 @@
 			if (.not. mion_isphot(i)) cycle
 			k = mion_iphot(i)
 			fhv = 1.0d0
-			if (sec_on) then
-				call photoelectron_shares(pep, n_abs_fixed+i, fh_v,       &
-				                          fiHI, fiHeI, fiH2)
-				fhv = merge(fh_v, 1.0d0, e_v > mion_ethr(i) + E_sec_ion)
-			endif
+			if (sec_on) call photoelectron_partition_on_grid(pep, lep,  &
+			                     n_abs_fixed+i, fhv, fiHI, fiHeI, fiH2)
 			acc_mion   = photoelectron_share(mion_ethr(i),e_v)*fhv*sigma_tab(:,k)
 			h1m_loc(i) = sum(int_f*acc_mion*de_v)*1.0d-18
 			if (sec_on) then
 				acc_secHI  = acc_secHI  + sigma_tab(:,k)*nm_j(i)/e_v *        &
-				     merge(fiHI *(e_v-mion_ethr(i))/e_th_HI , 0.0d0, e_v > mion_ethr(i) + E_sec_ion)
+				     (fiHI *(e_v-mion_ethr(i))/e_th_HI)
 				acc_secHeI = acc_secHeI + sigma_tab(:,k)*nm_j(i)/e_v *        &
-				     merge(fiHeI*(e_v-mion_ethr(i))/e_th_HeI, 0.0d0, e_v > mion_ethr(i) + E_sec_ion)
+				     (fiHeI*(e_v-mion_ethr(i))/e_th_HeI)
 			endif
 			if (mol_sec) acc_secH2 = acc_secH2 + sigma_tab(:,k)*nm_j(i)/e_v * &
-				     merge(fiH2 *(e_v-mion_ethr(i))/e_th_H2 , 0.0d0, e_v > mion_ethr(i) + E_sec_ion)
+				     (fiH2 *(e_v-mion_ethr(i))/e_th_H2)
 		enddo
 		else
 		wsec_m = 0.0d0
+		if (lep%active) wlsec = 0.0d0
 		do i = 1,n_mion
 			if (.not. mion_isphot(i)) cycle
 			k = mion_iphot(i)
-			acc_mion = mpa_w(:,0,k)
+			if (lep%active) then
+				! The electrons at or below E_sec_ion, split: below 10.2 eV
+				! they heat, above it each row heats with its f_heat and
+				! counts its electrons for the ionizations below.
+				acc_mion = mpa_wle(:,0,k)
+				do m = 1,n_lee_E
+					acc_mion   = acc_mion + lep%f_heat(m)*mpa_wle(:,m,k)
+					wlsec(:,m) = wlsec(:,m) + nm_j(i)*mpa_wln(:,m,k)
+				enddo
+			else
+				acc_mion = mpa_w(:,0,k)
+			endif
 			if (sec_on) then
 				do m = 1,n_dal_E
 					acc_mion    = acc_mion + pep%f_heat(m)*mpa_w(:,m,k)
@@ -1714,6 +1803,15 @@
 				if (mol_sec) acc_secH2 = acc_secH2                            &
 				                       + pep%c_ion_H2(m)/e_th_H2*wsec_m(:,m)
 			enddo
+			! The rows of the low-energy tables carry the NUMBER of
+			! ionizations per electron per target particle (lep%k_*), and
+			! wlsec the number of electrons, so no threshold divides here.
+			if (lep%active) then
+				do m = 1,n_lee_E
+					acc_secHI  = acc_secHI  + lep%k_HI(m) *wlsec(:,m)
+					acc_secHeI = acc_secHeI + lep%k_HeI(m)*wlsec(:,m)
+				enddo
+			endif
 		endif
 		endif
 		! Absorbed energy integral (this one is a property of the entry
@@ -1845,7 +1943,8 @@
 				     heat_chan,                                     &
 				     heat_of_one_HI, heat_of_one_HeI,               &
 				     heat_of_one_HeII, heat_of_one_HeTR,            &
-				     heat_of_one_H2, heat_of_one_mion, P_m2)
+				     heat_of_one_H2, heat_of_one_mion, P_m2,        &
+				     nh2_solved)
 	! Computes photoionization rates and heating rates for an
 	!	atmosphere composed of H, He, and (optionally) metals.
 	! Metal ion densities arrive as nm(:,1:n_mion) in canonical
@@ -1908,6 +2007,11 @@
 	! Supplied by the molecular path together with f_vibq; where it is
 	! absent f_vibq is absent too and the channel it feeds is zero.
 	real*8, dimension(1-Ng:N+Ng), intent(in),  optional :: e_vibq
+	! The H2 density of the cell's SOLVED state, for the molecular gate of
+	! the low-energy partition (photoionization_field_at_cell_HHe); passed
+	! by the advection-corrected post-process, which calls this routine
+	! without nh2.
+	real*8, dimension(1-Ng:N+Ng), intent(in),  optional :: nh2_solved
 	real*8, dimension(1-Ng:N+Ng) :: nheiS
    real*8, dimension(1-Ng:N+Ng) ::  N1,N15,N2,NTR
    real*8, dimension(1-Ng:N+Ng,n_mphot) :: Nm_col
@@ -1918,7 +2022,7 @@
 	! cell quantities the field routine returns one at a time.
 	real*8 :: N1o,N15o,N2o,NTRo,NH2o
 	real*8 :: Nmo(n_mphot)
-	real*8 :: nh2_cell
+	real*8 :: nh2_cell, nh2_gate_cell
 	real*8 :: Pm_row(n_mion), h1m_row(n_mion), Pm2_row(n_mion)
 	real*8 :: P_H2_c,P_H2_di_c,P_H2_dd_c,P_H2_nd_c
 	real*8 :: chan_c(6)
@@ -2013,7 +2117,7 @@
 	!$OMP PARALLEL DO &
 	!$OMP SHARED ( P_HI,P_HeI,P_HeII,P_HeITR,P_m, sec_on, mol_sec, fvq, evq, &
 	!$OMP          D0_H2_eV, E_ker_H2_dd_eV ) &
-	!$OMP PRIVATE ( j, N1o,N15o,N2o,NTRo,NH2o,Nmo, nh2_cell,                 &
+	!$OMP PRIVATE ( j, N1o,N15o,N2o,NTRo,NH2o,Nmo, nh2_cell, nh2_gate_cell,  &
 	!$OMP           Pm_row,h1m_row, P_H2_c,P_H2_di_c,P_H2_dd_c,P_H2_nd_c,    &
 	!$OMP           chan_c, Pm2_row )
 	do j = 1-Ng,N+Ng
@@ -2038,6 +2142,8 @@
 
 		nh2_cell = 0.0d0
 		if (present(nh2)) nh2_cell = nh2(j)
+		nh2_gate_cell = nh2_cell
+		if (present(nh2_solved)) nh2_gate_cell = nh2_solved(j)
 
 		call photoionization_field_at_cell_HHe(j,                          &
 		         N1o,N15o,N2o,NTRo,NH2o,Nmo,                               &
@@ -2047,7 +2153,8 @@
 		         P_HI(j),P_HeI(j),P_HeII(j),P_HeITR(j),Pm_row,             &
 		         P_H2_c,P_H2_di_c,P_H2_dd_c,P_H2_nd_c,                     &
 		         h1_HI(j),h1_HeI(j),h1_HeII(j),h1_HeTR(j),h1_H2(j),h1m_row,&
-		         heat(j), chan_c, q(j), q_abs_cell(j), Pm2_row)
+		         heat(j), chan_c, q(j), q_abs_cell(j), Pm2_row,            &
+		         nh2_solved_j=nh2_gate_cell)
 
 		P_m(j,:)  = Pm_row
 		if (present(P_m2)) P_m2(j,:) = Pm2_row
@@ -2181,7 +2288,7 @@
 	         nhi,nhii,nhei,nheii,nheiii,nheiTR, nm, nmol, nox, ne, n_tot, &
 	         h1_HI,h1_HeI,h1_HeII,h1_HeTR,h1_H2,h1_m,                     &
 	         A31,q31a,q31b,Q31, k_lw, p_lw, k_co, j_h2o, j_oh,            &
-	         with_molecules, with_oxygen, heat, heat_chan)
+	         with_molecules, with_oxygen, heat, heat_chan, nh2_solved)
 	! Volumetric heating rate of a composition [erg cm^-3 s^-1], channel by
 	! channel, and its total.
 	!
@@ -2250,6 +2357,11 @@
 	! Deposits in the order of heat_channel_name. Not optional: the total is
 	! their sum, so a caller that wants the total has the columns too.
 	real*8, dimension(1-Ng:N+Ng,n_heat_channel),intent(out) :: heat_chan
+	! The H2 density of the cell's solved state, for the molecular gate of
+	! the low-energy partition of the recombination photoelectrons
+	! (recombination_radiation_absorbed); absent, nmol(:,1). Passed by the
+	! advection-corrected post-process, whose composition carries no H2.
+	real*8, dimension(1-Ng:N+Ng),intent(in),optional :: nh2_solved
 
 	! Scratch of the He recombination coupling: only its heating is kept
 	! here, the rate corrections belong to the sweep that solved with them.
@@ -2262,6 +2374,10 @@
 	! Production of O(1D) [cm^-3 s^-1] through the H2O + hv -> H2 + O(1D)
 	! branch, the flux its local steady state carries into the O6 sink.
 	real*8, dimension(1-Ng:N+Ng) :: flux_o1d
+	! The ionized fraction of this composition, n_e/(n_H + n_He) by the one
+	! definition of the nucleus totals, for the partition of the
+	! recombination photoelectrons.
+	real*8, dimension(1-Ng:N+Ng) :: xion_c, nh_c, nhe_c
 	integer :: ib
 
 	heat_chan = 0.0d0
@@ -2294,12 +2410,16 @@
 	! absorbers, so it is evaluated at the composition this routine was
 	! given and only the heating is kept.
 	if (use_h_rec_escape .or. (use_he_rec_coupling .and. thereis_He)) then
-		call recombination_radiation_absorbed(T_K, nhi, nhii, nmol(:,1),   &
-		                     nhei, nheii, nheiii, nheiTR, ne, nm,          &
-		                     A31, q31a, q31b,                              &
-		                     rchiiB_hrc, rcheiiB_hrc, rcheiiiB_hrc,        &
-		                     dP_HI_hrc, dP_HeI_hrc, dP_H2_hrc, dP_m_hrc,   &
-		                     heat_chan(:,9))
+		call hydrogen_helium_nuclei_density(nhi,nhii,nhei,nheii,nheiii,     &
+		                                    nh_c,nhe_c,nmol,nox)
+		xion_c = min(max(ne/max(nh_c + nhe_c, 1.0d-99), 0.0d0), 1.0d0)
+		call recombination_radiation_absorbed(T_K, nhi, nhii, nmol(:,1),     &
+		                     nhei, nheii, nheiii, nheiTR, ne, nm,              &
+		                     A31, q31a, q31b,                                  &
+		                     rchiiB_hrc, rcheiiB_hrc, rcheiiiB_hrc,            &
+		                     dP_HI_hrc, dP_HeI_hrc, dP_H2_hrc, dP_m_hrc,       &
+		                     heat_chan(:,9), xion=xion_c,                      &
+		                     nh2_solved=nh2_solved)
 		heat = heat + heat_chan(:,9)
 	endif
 
@@ -3473,8 +3593,9 @@
 	! 0.33 at 2e4 K). q31g is the detailed-balance reverse of the DIRECT
 	! excitation, 2^3S -> 1^1S; q31a excites 2^3S -> 2^1S, and q31b
 	! 2^3S -> 2^1P plus every singlet level above it (Cool_coeff:
-	! excitation_rate_HeI_23S_singlets_n3; 0.023 of q31a + q31b at 1e4 K,
-	! 0.09 at 2e4 K), whose cascades end in 1^1S as 2^1P's does.
+	! excitation_rate_HeI_23S_singlets_n3; 0.019 of the direct q31a + q31b
+	! at 1e4 K, 0.079 at 2e4 K, evaluated from the coded fits of
+	! Cool_coeff), whose cascades end in 1^1S as 2^1P's does.
 	! A31 = 1.272e-4 s^-1 is the 2^3S -> 1^1S magnetic-dipole decay rate
 	! (Drake 1971, as used by Oklopcic & Hirata 2018). rcheiTR is the
 	! capture into the triplets (all of which end in 2^3S) and rcheii the
@@ -3660,10 +3781,14 @@
 			call h2_channel_energy_recipients(ich, otsp_E(ic), e_res,     &
 			                                  e_ele, e_frg, e_rad)
 			otsp_h2_heat(ich,ic) = e_ele + e_frg
+			otsp_h2_ele(ich,ic)  = e_ele
+			otsp_h2_frg(ich,ic)  = e_frg
 		enddo
 		otsp_smet(:,ic)       = 0.0d0
 		otsp_met_dbind(:,ic)  = 0.0d0
 		otsp_met_fmulti(:,ic) = 0.0d0
+		otsp_met_ws(:,:,ic)   = 0.0d0
+		otsp_met_ee(:,:,:,ic) = 0.0d0
 		if (thereis_metals) then
 			do im = 1,n_mion
 				if (.not. mion_isphot(im)) cycle
@@ -3683,6 +3808,18 @@
 					    melem_top(mion_elem(im)) .ge. 2)                  &
 						otsp_met_fmulti(im,ic) = otsp_met_fmulti(im,ic)  &
 						     + sg*pmul/otsp_smet(im,ic)
+				enddo
+				! The electrons of each shell, the outer one included, as
+				! metal_photoabsorption_spectral_tables forms them for the
+				! stellar photons.
+				do is = 0,mph_n_sub(k)
+					sg = metal_shell_photoion_sigma(k, is, otsp_E(ic))
+					if (.not. (sg > 0.0d0)) cycle
+					call metal_shell_relaxation(k, is, eth, eaug, pmul,  &
+					                            efl, eim)
+					otsp_met_ws(is,im,ic)   = sg/otsp_smet(im,ic)
+					otsp_met_ee(1,is,im,ic) = otsp_E(ic) - eth
+					otsp_met_ee(2,is,im,ic) = max(eaug, 0.0d0)
 				enddo
 			enddo
 		endif
@@ -3738,6 +3875,23 @@
 	! state (otsp_h2_heat), the formation energy the products store and
 	! the n = 2 excitation the neutral window radiates not being heat.
 	!
+	! THE PHOTOELECTRONS, where the cell's partition cp is present and
+	! applied (cp%sec_on): every electron the channel releases, at its own
+	! representative energy (the channel energy plus the capture kinetic
+	! energy Ek, which is photoelectron energy in every ionizing final
+	! state), is divided by photoelectron_partition_at_energy, the bands of
+	! the stellar path, into heat, H I, He I and H2 ionizations (added to
+	! dP_HI, dP_HeI and, where cp%h2_target, dP_H2) and the excitation
+	! energy that leaves as line radiation (recombination_photoelectron_
+	! deposit). Electron by electron as the stellar path: an H2 absorption
+	! partitions its photoelectron (M, S), or both electrons of the double
+	! channel by the stellar rule for that channel (the shares of the
+	! dissociative absorber at the same photon energy, applied above
+	! E_sec_ion only), and heats with the fragment kinetic energy at once; a
+	! metal absorption partitions the photoelectron and the Auger electron
+	! of each shell it opens (otsp_met_ws, otsp_met_ee), Ek going to the
+	! photoelectron. Otherwise every electron heats whole.
+	!
 	! A RESONANCE LINE (the He I 584 A photons: kap_line present, the line
 	! opacity n(He I) sigma_bar in the units of kap) is scattered by He I
 	! as it crosses the cell, and each scattering either re-emits it (the
@@ -3761,7 +3915,7 @@
 	pure subroutine absorb_recombination_channel(ic, P, Ek, i_self,       &
 	                   nhi, nhei, nheii, nh2, nm, dl,                     &
 	                   dP_HI, dP_HeI, dP_H2, dP_H2_chan, dP_m, dP_m2,     &
-	                   heat, kap_line, eps_line, P_conv)
+	                   heat, kap_line, eps_line, P_conv, cp)
 	integer, intent(in)    :: ic, i_self
 	real*8,  intent(in)    :: P, Ek, nhi, nhei, nheii, nh2, nm(n_mion), dl
 	real*8,  intent(inout) :: dP_HI, dP_HeI, dP_H2,                       &
@@ -3769,10 +3923,17 @@
 	                          dP_m2(n_mion), heat
 	real*8,  intent(in),    optional :: kap_line, eps_line
 	real*8,  intent(inout), optional :: P_conv
+	! The cell's photoelectron partition (recombination_radiation_absorbed,
+	! ENERGY); absent or not applied, every electron heats whole.
+	type(photoelectron_partition_of_cell_t), intent(in), optional :: cp
 	real*8  :: kap, g_dl, Eph, rate_s, heat_c, rate_ch(n_h2_channels)
 	real*8  :: tau_t, a_t, e_t, q_c, q_l, D_t
-	integer :: im
+	real*8  :: sec_H2, n_ev, E_dd, E_di, fh, kHI, kHeI, kH2
+	integer :: im, is, ich, ich_e
+	logical :: part
 	if (.not. (P > 0.0d0)) return
+	part = .false.
+	if (present(cp)) part = cp%sec_on
 	kap = nhi*otsp_sab(1,ic) + nhei*otsp_sab(2,ic) + nheii*otsp_sab(3,ic) &
 	    + nh2*otsp_sab(4,ic)
 	if (thereis_metals) then
@@ -3799,15 +3960,28 @@
 	endif
 	Eph    = otsp_E(ic) + Ek
 	heat_c = 0.0d0
+	! H2 ionizations by the secondary electrons of this channel, per H2
+	! molecule [s^-1], from the electrons of every absorber.
+	sec_H2 = 0.0d0
 	if (i_self .ne. 1 .and. otsp_sab(1,ic) > 0.0d0) then
 		rate_s = P*otsp_sab(1,ic)*g_dl
 		dP_HI  = dP_HI + rate_s
-		heat_c = heat_c + rate_s*nhi*(Eph - e_th_HI)
+		if (part) then
+			call recombination_photoelectron_deposit(Eph - e_th_HI,       &
+			         rate_s*nhi, cp, heat_c, dP_HI, dP_HeI, sec_H2)
+		else
+			heat_c = heat_c + rate_s*nhi*(Eph - e_th_HI)
+		endif
 	endif
 	if (i_self .ne. 2 .and. otsp_sab(2,ic) > 0.0d0) then
 		rate_s = P*otsp_sab(2,ic)*g_dl
 		dP_HeI = dP_HeI + rate_s
-		heat_c = heat_c + rate_s*nhei*(Eph - e_th_HeI)
+		if (part) then
+			call recombination_photoelectron_deposit(Eph - e_th_HeI,      &
+			         rate_s*nhei, cp, heat_c, dP_HI, dP_HeI, sec_H2)
+		else
+			heat_c = heat_c + rate_s*nhei*(Eph - e_th_HeI)
+		endif
 	endif
 	if (otsp_sab(4,ic) > 0.0d0) then
 		! Each final state is charged the heat of h2_channel_energy_
@@ -3821,8 +3995,44 @@
 		rate_ch    = P*otsp_h2_sig(:,ic)*g_dl
 		dP_H2      = dP_H2 + rate_s
 		dP_H2_chan = dP_H2_chan + rate_ch
-		heat_c     = heat_c + nh2*(sum(rate_ch*otsp_h2_heat(:,ic))       &
-		                           + rate_s*Ek)
+		if (part) then
+			! The fragments heat at once in every final state; N has no
+			! electron and its Ek is recoil.
+			heat_c = heat_c + nh2*(sum(rate_ch*otsp_h2_frg(:,ic))         &
+			                       + rate_ch(ICH_N)*Ek)
+			! The photoelectron of H2+ (M) and of H + H+ (S).
+			do ich = 1,2
+				ich_e = merge(ICH_M, ICH_S, ich .eq. 1)
+				if (.not. (rate_ch(ich_e) > 0.0d0)) cycle
+				call recombination_photoelectron_deposit(                 &
+				         otsp_h2_ele(ich_e,ic) + Ek, rate_ch(ich_e)*nh2,  &
+				         cp, heat_c, dP_HI, dP_HeI, sec_H2)
+			enddo
+			! The double channel as the stellar path partitions it: the
+			! two electrons share E_dd, which is partitioned with the
+			! shares of ONE electron of the dissociative absorber at the
+			! same photon energy, E_di = E - e_th_H2_di, where E_dd >
+			! E_sec_ion, and heats whole below (photoionization_field_at_
+			! cell_HHe states that approximation and its bias).
+			if (rate_ch(ICH_D) > 0.0d0) then
+				n_ev = rate_ch(ICH_D)*nh2
+				E_dd = otsp_h2_ele(ICH_D,ic) + Ek
+				if (E_dd .gt. E_sec_ion) then
+					E_di = Eph - e_th_H2_di
+					call photoelectron_partition_at_energy(cp, E_di, fh,  &
+					                                      kHI, kHeI, kH2)
+					heat_c = heat_c + n_ev*fh*E_dd
+					dP_HI  = dP_HI  + n_ev*kHI *E_dd/E_di
+					dP_HeI = dP_HeI + n_ev*kHeI*E_dd/E_di
+					sec_H2 = sec_H2 + n_ev*kH2 *E_dd/E_di
+				else
+					heat_c = heat_c + n_ev*E_dd
+				endif
+			endif
+		else
+			heat_c = heat_c + nh2*(sum(rate_ch*otsp_h2_heat(:,ic))       &
+			                       + rate_s*Ek)
+		endif
 	endif
 	if (thereis_metals) then
 		do im = 1,n_mion
@@ -3830,12 +4040,64 @@
 			rate_s     = P*otsp_smet(im,ic)*g_dl
 			dP_m(im)   = dP_m(im) + rate_s
 			dP_m2(im)  = dP_m2(im) + rate_s*otsp_met_fmulti(im,ic)
-			heat_c     = heat_c + rate_s*nm(im)                           &
-			           *(Eph - mion_ethr(im) - otsp_met_dbind(im,ic))
+			if (part) then
+				do is = 0,n_metal_subshell
+					if (.not. (otsp_met_ws(is,im,ic) > 0.0d0)) cycle
+					n_ev = rate_s*nm(im)*otsp_met_ws(is,im,ic)
+					call recombination_photoelectron_deposit(             &
+					         otsp_met_ee(1,is,im,ic) + Ek, n_ev, cp,      &
+					         heat_c, dP_HI, dP_HeI, sec_H2)
+					if (otsp_met_ee(2,is,im,ic) > 0.0d0)                  &
+						call recombination_photoelectron_deposit(         &
+						         otsp_met_ee(2,is,im,ic), n_ev, cp,       &
+						         heat_c, dP_HI, dP_HeI, sec_H2)
+				enddo
+			else
+				! The photoelectron and the Auger electrons of the shells
+				! the photon opens, heating whole: E - mion_ethr - dbind.
+				heat_c     = heat_c + rate_s*nm(im)                       &
+				           *(Eph - mion_ethr(im) - otsp_met_dbind(im,ic))
+			endif
 		enddo
+	endif
+	! The H2 ionized by the secondary electrons, as on the stellar path: a
+	! rate per H2 molecule that leaves H2+ (M), plus the dissociative
+	! ionizations they make in addition, one per 22 H2+ ions (Dalgarno, Yan
+	! & Liu 1999; electron_energy_degradation, dissoc_ion_per_H2p), which
+	! leave H + H+ (S). dP_H2 stays the sum of its final states.
+	! (part is .true. only where cp is present; cp is read inside.)
+	if (part) then
+		if (cp%h2_target) then
+			dP_H2             = dP_H2 + sec_H2 + dissoc_ion_per_H2p*sec_H2
+			dP_H2_chan(ICH_M) = dP_H2_chan(ICH_M) + sec_H2
+			dP_H2_chan(ICH_S) = dP_H2_chan(ICH_S) + dissoc_ion_per_H2p*sec_H2
+		endif
 	endif
 	heat = heat + heat_c/erg2eV
 	end subroutine absorb_recombination_channel
+
+	! ------------------------------------------------------------- !
+
+	! THE PHOTOELECTRONS OF n_ev ABSORPTIONS per unit volume and time, each
+	! of energy E0 [eV], in a cell whose photoelectron partition cp is
+	! applied: f_heat E0 of each is heat [eV cm^-3 s^-1 into heat_c], and
+	! each makes k_HI, k_HeI and k_H2 ionizations per H I, He I and H2
+	! particle, added to the rates per particle dP_HI, dP_HeI and sec_H2
+	! [s^-1]; (1 - f_heat - f_ion) E0 leaves as line radiation. The bands
+	! and the partition are those of the stellar photoelectrons
+	! (photoelectron_partition_at_energy, photoelectron_partition_on_grid).
+	pure subroutine recombination_photoelectron_deposit(E0, n_ev, cp,     &
+	                                 heat_c, dP_HI, dP_HeI, sec_H2)
+	real*8, intent(in) :: E0, n_ev
+	type(photoelectron_partition_of_cell_t), intent(in) :: cp
+	real*8, intent(inout) :: heat_c, dP_HI, dP_HeI, sec_H2
+	real*8 :: fh, kHI, kHeI, kH2
+	call photoelectron_partition_at_energy(cp, E0, fh, kHI, kHeI, kH2)
+	heat_c = heat_c + n_ev*fh*E0
+	dP_HI  = dP_HI  + n_ev*kHI
+	dP_HeI = dP_HeI + n_ev*kHeI
+	sec_H2 = sec_H2 + n_ev*kH2
+	end subroutine recombination_photoelectron_deposit
 
 	! ------------------------------------------------------------- !
 
@@ -3931,11 +4193,49 @@
 	! channel the mean kinetic energy of the captured electron (E1 = beta/
 	! alpha from the capture relation of Cool_coeff, capture_energy_loss_
 	! rate), which the recombination cooling charges to every capture it
-	! counts (lambda_rec_*: the net coefficients). All of it is deposited as
-	! heat: it is not passed through the secondary-ionization partition of
-	! the stellar photoelectrons, which that partition would leave as heat
-	! below its 30 eV threshold anyway, except for the He III ground capture
-	! (40.8 eV on H I) and the He II Ly-alpha on H I (27.2 eV).
+	! counts (lambda_rec_*: the net coefficients). Its fate is decided by the
+	! bands of the stellar path, one electron at a time, at that fixed
+	! representative energy (photoelectron_partition_at_energy, the same
+	! bands photoelectron_partition_on_grid decides on the photon grid), on
+	! the cell's x (xion) and neutral densities (H I, the He I ground
+	! singlet, H2), under the switch of the stellar path, the
+	! secondary-ionization coupling with its staging (use_sec_ion and
+	! sec_ion_active); with it off every electron heats whole:
+	!  - below 10.2 eV it is deposited whole as heat, as on the stellar
+	!    path; this is physical (no level of H or He can be reached);
+	!  - from 10.2 eV to E_sec_ion (30 eV), under "Low-energy electron
+	!    partition: Furlanetto2010", f_heat of it is heat and its H I and
+	!    He I ionizations are added to dP_HI and dP_HeI by the same tables,
+	!    x, composition rule and molecular gate as on the stellar path
+	!    (low_energy_electron_degradation.f90); the H I line photons it
+	!    makes leave the cell. Without the option it is deposited whole as
+	!    heat, the approximation stated at E_sec_ion (parameters.f90). This
+	!    band holds the photoelectrons of the He I ground capture on H I
+	!    (11.0 eV plus the capture energy), of the He II Ly-alpha on H I
+	!    (27.2 eV), on He I (16.2 eV) and on H2 (25.4 eV in H2+, 22.7 eV in
+	!    H + H+), and of the upper He II two-photon band on H I (17.5 eV at
+	!    its mean energy); the He I 584 A and 19.8 eV lines, the He I and the
+	!    two lower He II two-photon bands and the H and He II n = 2 captures
+	!    give electrons below 10.2 eV on H I, He I and H2. A metal ion of low
+	!    threshold (Mg I 7.6 eV) takes electrons in this band from several
+	!    of those channels too;
+	!  - above E_sec_ion the electron is partitioned as the stellar
+	!    photoelectrons are (electron_energy_degradation: Shull & van
+	!    Steenberg 1985 for the ionization budget, Dalgarno, Yan & Liu 1999
+	!    for the heat and the H2 terms): f_heat of it is heat, its H I, He I
+	!    and H2 ionizations are added to dP_HI, dP_HeI and dP_H2 (with the
+	!    dissociative ionizations, one per 22 H2+, in dP_H2_di), the rest
+	!    leaves as line radiation. Those are the photoelectrons of the
+	!    He III ground capture (54.4 eV): on H I (40.8 eV), on He I
+	!    (29.8 eV plus the capture kinetic energy, at or just above the
+	!    threshold), on H2 (39.0 eV in H2+, 36.3 eV in H + H+) and on the
+	!    metal ions whose thresholds lie below 24.4 eV; and of He II
+	!    Ly-alpha (40.8 eV) on the metal ions whose thresholds lie below
+	!    10.8 eV (Na I, Ca I, Mg I, Fe I).
+	! A metal absorption whose photon opens an inner shell hands its energy
+	! to a photoelectron and an Auger electron of that shell, each
+	! partitioned at its own energy, as the stellar path does
+	! (absorb_recombination_channel).
 	!
 	! H2. An absorption by H2 ends in one of the four final states of
 	! h2_photo_channels, H2+ + e- (M), H + H+ + e- (S), H+ + H+ + 2e- (D)
@@ -3996,16 +4296,23 @@
 	! channel, not averaged over the capture continuum above an edge; the
 	! H2+ vibrational excitation the M channel leaves is inside the
 	! measured cross section and is not followed, as in the stellar field.
-	! The photoelectrons are not passed through the secondary-ionization
-	! partition (ENERGY above); of the H2 events only those of the He II
-	! ground capture (54.4 eV) carry an electron above its 30 eV threshold
-	! (39.0 eV in M, 36.3 eV in S, plus the capture kinetic energy).
+	! (vi) The photoelectron partition (ENERGY above) is evaluated at the
+	! channel's representative energy E_c plus the mean capture kinetic
+	! energy, not averaged over the capture continuum; the He III ground
+	! capture's electron on He I sits 0.2-1 eV above E_sec_ion (MEASURED
+	! E1 at 1e4 K in the physics probe), where the partition of the
+	! Dalgarno grid is read at its 30 eV row, and the partition changes
+	! source across that threshold (low_energy_electron_degradation,
+	! measured jump in f_heat at most 0.011). The metal shell shares are
+	! those at E_c. Of the H2 events only those of the He II ground
+	! capture carry an electron above E_sec_ion; below it an H2 event heats
+	! whole, since a cell with H2 is outside the low-energy partition.
 	subroutine recombination_radiation_absorbed(T_K, nhi, nhii, nh2,      &
 	                           nhei, nheii, nheiii, nheiTR, ne, nm,       &
 	                           A31, q31a, q31b,                           &
 	                           rchiiB_new, rcheiiB_new, rcheiiiB_new,     &
 	                           dP_HI, dP_HeI, dP_H2, dP_m, dheat, dP_m2, &
-	                           dP_H2_di, dP_H2_dd, dP_H2_nd)
+	                           dP_H2_di, dP_H2_dd, dP_H2_nd, xion, nh2_solved)
 	real*8, dimension(1-Ng:N+Ng), intent(in)  :: T_K, nhi, nhii, nh2,    &
 	                                              nhei, nheii, nheiii,   &
 	                                              nheiTR, ne, q31a, q31b
@@ -4024,8 +4331,26 @@
 	! so that dP_H2 minus the three is the H2+ (M) share.
 	real*8, dimension(1-Ng:N+Ng), intent(out), optional :: dP_H2_di,     &
 	                                                       dP_H2_dd, dP_H2_nd
+	! The ionized fraction n_e/(n_H + n_He) of the composition passed in,
+	! the x the stellar photoelectron partition is handed (ENERGY above).
+	real*8, dimension(1-Ng:N+Ng), intent(in) :: xion
+	! The H2 density of the cell's SOLVED state, which decides the
+	! molecular gate of the low-energy partition (low_energy_electron_
+	! partition); absent, the nh2 passed in, which is that density on the
+	! equilibrium path. The advection-corrected post-process, whose
+	! reconstructed gas carries no H2 (nh2 = 0), passes it.
+	real*8, dimension(1-Ng:N+Ng), intent(in), optional :: nh2_solved
 
 	real*8, dimension(1-Ng:N+Ng) :: y_HI, y_gnd, y_HeII
+	! The cell's photoelectron partition, and what it is formed from: the
+	! He I ground singlet (the target of the stellar partition), the
+	! collisionally quenched share of an H2 vibrational excitation and the
+	! mean internal energy of one B or C fluorescence (ionization_
+	! equilibrium forms the same two for the stellar field).
+	type(photoelectron_partition_of_cell_t) :: cp
+	real*8, dimension(1-Ng:N+Ng) :: nheS, fvq, evq
+	real*8  :: nh2_gate
+	logical :: sec_rec, lee_on, h2_tgt
 	real*8, dimension(1-Ng:N+Ng) :: aB2, aB3, a1H, a1He, a1He2, a2He2
 	real*8, dimension(1-Ng:N+Ng) :: E1_H, E1_He, E1_He2, E2_He2
 	real*8  :: dl, t3, qa_c, qb_c, D_exit, f2s, mix, P2q, P_c
@@ -4036,6 +4361,15 @@
 
 	h_on  = use_h_rec_escape
 	he_on = use_he_rec_coupling .and. thereis_He
+	! The photoelectron partition acts here under the switches that govern
+	! it on the stellar path: the secondary-ionization coupling applied
+	! (use_sec_ion and its staging, sec_ion_active), and below E_sec_ion
+	! the low-energy partition selected; the H2 secondary ionizations feed
+	! the molecular target where the run carries H2 (mol_sec_xuv of
+	! ionization_equilibrium).
+	sec_rec = use_sec_ion .and. sec_ion_active
+	lee_on  = use_low_energy_partition .and. sec_rec
+	h2_tgt  = sec_rec .and. thereis_He .and. thereis_mol
 
 	call on_the_spot_cross_sections
 
@@ -4074,25 +4408,52 @@
 	E1_He2 = capture_kinetic_energy_eV(T_K, 3)
 	E2_He2 = capture_kinetic_energy_eV(T_K, 4)
 
+	if (sec_rec) then
+		nheS = nhei
+		if (thereis_HeITR) nheS = he_ground_singlet_density(nhei, nheiTR)
+		fvq = 0.0d0
+		evq = 0.0d0
+		if (thereis_He .and. thereis_mol) then
+			fvq = h2_vibrational_heat_fraction(T_K, nhi, nh2, nheS)
+			evq = h2_energy_per_bound_fluorescence_eV(T_K)
+		endif
+	endif
+
 	! Every quantity is cell-local, so the cells are shared among threads
 	! and the result does not depend on their number.
 	!$omp parallel do default(shared) schedule(static)                    &
 	!$omp    private(j, dl, P_c, t3, qa_c, qb_c, D_exit, f2s, mix, P2q,   &
 	!$omp            dPm_cell, dPm2_cell, nm_cell, kap_584, P_584_conv,   &
-	!$omp            h2_chan)
+	!$omp            h2_chan, cp, nh2_gate)
 	do j = 1-Ng,N+Ng
 		dl = dr_j(j)*R0*1.0d-18
 		nm_cell   = nm(j,:)
 		dPm_cell  = 0.0d0
 		dPm2_cell = 0.0d0
 		h2_chan   = 0.0d0
+		! The cell's photoelectron partition: not applied unless the
+		! secondary-ionization coupling is; below E_sec_ion only where
+		! selected and the cell's solved state holds no H2.
+		cp%sec_on     = sec_rec
+		cp%h2_target  = h2_tgt
+		cp%lep%active = .false.
+		if (sec_rec) then
+			call photoelectron_energy_partition(xion(j), nhi(j), nheS(j), &
+			                     nh2(j), fvq(j), evq(j), cp%pep)
+			if (lee_on) then
+				nh2_gate = nh2(j)
+				if (present(nh2_solved)) nh2_gate = nh2_solved(j)
+				call low_energy_electron_partition(xion(j), nhi(j),       &
+				                     nheS(j), nh2_gate, cp%lep)
+			endif
+		endif
 
 		! ---- H II -> H I ----
 		if (h_on) then
 			P_c = a1H(j)*nhii(j)*ne(j)
 			call absorb_recombination_channel(ic_gnd_HI, P_c, E1_H(j), 1, &
 			        nhi(j), nhei(j), nheii(j), nh2(j), nm_cell, dl,       &
-			        dP_HI(j), dP_HeI(j), dP_H2(j), h2_chan, dPm_cell, dPm2_cell, dheat(j))
+			        dP_HI(j), dP_HeI(j), dP_H2(j), h2_chan, dPm_cell, dPm2_cell, dheat(j), cp=cp)
 		endif
 
 		if (he_on) then
@@ -4104,7 +4465,7 @@
 			P_c = a1He(j)*nheii(j)*ne(j)
 			call absorb_recombination_channel(ic_gnd_HeI, P_c, E1_He(j), 2, &
 			        nhi(j), nhei(j), nheii(j), nh2(j), nm_cell, dl,       &
-			        dP_HI(j), dP_HeI(j), dP_H2(j), h2_chan, dPm_cell, dPm2_cell, dheat(j))
+			        dP_HI(j), dP_HeI(j), dP_H2(j), h2_chan, dPm_cell, dPm2_cell, dheat(j), cp=cp)
 			if (.not. thereis_HeITR) then
 				! atomic mode: the case-B captures through their exits (see
 				! CHANNELS above); t3 of them end in 2^3S, which radiates
@@ -4122,18 +4483,18 @@
 				call absorb_recombination_channel(ic_19_HeI,  &
 				        t3*A_HeI_23S_11S/D_exit*P_c, 0.0d0, 0,            &
 				        nhi(j), nhei(j), nheii(j), nh2(j), nm_cell, dl,   &
-				        dP_HI(j), dP_HeI(j), dP_H2(j), h2_chan, dPm_cell, dPm2_cell, dheat(j))
+				        dP_HI(j), dP_HeI(j), dP_H2(j), h2_chan, dPm_cell, dPm2_cell, dheat(j), cp=cp)
 				call absorb_recombination_channel(ic_584_HeI, &
 				        ((1.0d0 - t3)*2.0d0/3.0d0                         &
 				         + t3*ne(j)*qb_c/D_exit)*P_c, 0.0d0, 0,           &
 				        nhi(j), nhei(j), nheii(j), nh2(j), nm_cell, dl,   &
 				        dP_HI(j), dP_HeI(j), dP_H2(j), h2_chan, dPm_cell, dPm2_cell, dheat(j), &
-				        kap_584, eps_HeI_21P_21S, P_584_conv)
+				        kap_584, eps_HeI_21P_21S, P_584_conv, cp=cp)
 				call absorb_recombination_channel(ic_2q_HeI,  &
 				        f_2q_HeI*((1.0d0 - t3)/3.0d0                      &
 				         + t3*ne(j)*qa_c/D_exit)*P_c, 0.0d0, 0,           &
 				        nhi(j), nhei(j), nheii(j), nh2(j), nm_cell, dl,   &
-				        dP_HI(j), dP_HeI(j), dP_H2(j), h2_chan, dPm_cell, dPm2_cell, dheat(j))
+				        dP_HI(j), dP_HeI(j), dP_H2(j), h2_chan, dPm_cell, dPm2_cell, dheat(j), cp=cp)
 			else
 				! metastable mode: the explicit exits
 				P_c = alpha_rec_HeII_excited_singlets(T_K(j))*nheii(j)*ne(j)
@@ -4141,24 +4502,24 @@
 				        0.0d0, 0, nhi(j), nhei(j), nheii(j), nh2(j),      &
 				        nm_cell, dl, dP_HI(j), dP_HeI(j), dP_H2(j), h2_chan,       &
 				        dPm_cell, dPm2_cell, dheat(j),                    &
-				        kap_584, eps_HeI_21P_21S, P_584_conv)
+				        kap_584, eps_HeI_21P_21S, P_584_conv, cp=cp)
 				call absorb_recombination_channel(ic_2q_HeI, f_2q_HeI/3.0d0*P_c, &
 				        0.0d0, 0, nhi(j), nhei(j), nheii(j), nh2(j),      &
 				        nm_cell, dl, dP_HI(j), dP_HeI(j), dP_H2(j), h2_chan,       &
-				        dPm_cell, dPm2_cell, dheat(j))
+				        dPm_cell, dPm2_cell, dheat(j), cp=cp)
 				call absorb_recombination_channel(ic_19_HeI, A31*nheiTR(j), &
 				        0.0d0, 0, nhi(j), nhei(j), nheii(j), nh2(j),      &
 				        nm_cell, dl, dP_HI(j), dP_HeI(j), dP_H2(j), h2_chan,       &
-				        dPm_cell, dPm2_cell, dheat(j))
+				        dPm_cell, dPm2_cell, dheat(j), cp=cp)
 				call absorb_recombination_channel(ic_2q_HeI,  &
 				        f_2q_HeI*q31a(j)*ne(j)*nheiTR(j), 0.0d0, 0,       &
 				        nhi(j), nhei(j), nheii(j), nh2(j), nm_cell, dl,   &
-				        dP_HI(j), dP_HeI(j), dP_H2(j), h2_chan, dPm_cell, dPm2_cell, dheat(j))
+				        dP_HI(j), dP_HeI(j), dP_H2(j), h2_chan, dPm_cell, dPm2_cell, dheat(j), cp=cp)
 				call absorb_recombination_channel(ic_584_HeI, &
 				        q31b(j)*ne(j)*nheiTR(j), 0.0d0, 0,                &
 				        nhi(j), nhei(j), nheii(j), nh2(j), nm_cell, dl,   &
 				        dP_HI(j), dP_HeI(j), dP_H2(j), h2_chan, dPm_cell, dPm2_cell, dheat(j), &
-				        kap_584, eps_HeI_21P_21S, P_584_conv)
+				        kap_584, eps_HeI_21P_21S, P_584_conv, cp=cp)
 			endif
 			! The 584 A photons the He I scattering converted to 2^1S
 			! (each leaving a 2.06 um photon of 0.60 eV to escape) decay
@@ -4167,18 +4528,18 @@
 			call absorb_recombination_channel(ic_2q_HeI,                  &
 			        f_2q_HeI*P_584_conv, 0.0d0, 0,                        &
 			        nhi(j), nhei(j), nheii(j), nh2(j), nm_cell, dl,       &
-			        dP_HI(j), dP_HeI(j), dP_H2(j), h2_chan, dPm_cell, dPm2_cell, dheat(j))
+			        dP_HI(j), dP_HeI(j), dP_H2(j), h2_chan, dPm_cell, dPm2_cell, dheat(j), cp=cp)
 
 			! ---- He III -> He II ----
 			if (nheiii(j) > 0.0d0) then
 				P_c = a1He2(j)*nheiii(j)*ne(j)
 				call absorb_recombination_channel(ic_gnd_HeII, P_c, E1_He2(j), 3, &
 				        nhi(j), nhei(j), nheii(j), nh2(j), nm_cell, dl,   &
-				        dP_HI(j), dP_HeI(j), dP_H2(j), h2_chan, dPm_cell, dPm2_cell, dheat(j))
+				        dP_HI(j), dP_HeI(j), dP_H2(j), h2_chan, dPm_cell, dPm2_cell, dheat(j), cp=cp)
 				call absorb_recombination_channel(ic_n2_HeII, &
 				        a2He2(j)*nheiii(j)*ne(j), E2_He2(j), 0,           &
 				        nhi(j), nhei(j), nheii(j), nh2(j), nm_cell, dl,   &
-				        dP_HI(j), dP_HeI(j), dP_H2(j), h2_chan, dPm_cell, dPm2_cell, dheat(j))
+				        dP_HI(j), dP_HeI(j), dP_H2(j), h2_chan, dPm_cell, dPm2_cell, dheat(j), cp=cp)
 				f2s = case_b_2s_fraction_hydrogenic(T_K(j), 2.0d0)
 				mix = nhii(j)*l_mixing_2s2p_pengelly_seaton(T_K(j),       &
 				          ne(j), 2.0d0, 1.0d0, mu_HeII_p, dE_2s2p12_HeII, &
@@ -4191,19 +4552,19 @@
 				call absorb_recombination_channel(ic_lya_HeII, &
 				        P_c*(1.0d0 - f2s*P2q), 0.0d0, 0,                  &
 				        nhi(j), nhei(j), nheii(j), nh2(j), nm_cell, dl,   &
-				        dP_HI(j), dP_HeI(j), dP_H2(j), h2_chan, dPm_cell, dPm2_cell, dheat(j))
+				        dP_HI(j), dP_HeI(j), dP_H2(j), h2_chan, dPm_cell, dPm2_cell, dheat(j), cp=cp)
 				call absorb_recombination_channel(ic_2q_HeII_lo, &
 				        f_2q_HeII_lo*f2s*P2q*P_c, 0.0d0, 0,               &
 				        nhi(j), nhei(j), nheii(j), nh2(j), nm_cell, dl,   &
-				        dP_HI(j), dP_HeI(j), dP_H2(j), h2_chan, dPm_cell, dPm2_cell, dheat(j))
+				        dP_HI(j), dP_HeI(j), dP_H2(j), h2_chan, dPm_cell, dPm2_cell, dheat(j), cp=cp)
 				call absorb_recombination_channel(ic_2q_HeII_mid, &
 				        f_2q_HeII_mid*f2s*P2q*P_c, 0.0d0, 0,              &
 				        nhi(j), nhei(j), nheii(j), nh2(j), nm_cell, dl,   &
-				        dP_HI(j), dP_HeI(j), dP_H2(j), h2_chan, dPm_cell, dPm2_cell, dheat(j))
+				        dP_HI(j), dP_HeI(j), dP_H2(j), h2_chan, dPm_cell, dPm2_cell, dheat(j), cp=cp)
 				call absorb_recombination_channel(ic_2q_HeII_hi, &
 				        f_2q_HeII_hi*f2s*P2q*P_c, 0.0d0, 0,               &
 				        nhi(j), nhei(j), nheii(j), nh2(j), nm_cell, dl,   &
-				        dP_HI(j), dP_HeI(j), dP_H2(j), h2_chan, dPm_cell, dPm2_cell, dheat(j))
+				        dP_HI(j), dP_HeI(j), dP_H2(j), h2_chan, dPm_cell, dPm2_cell, dheat(j), cp=cp)
 			endif
 		endif
 		dP_m(j,:) = dPm_cell

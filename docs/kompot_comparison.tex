@@ -33,6 +33,8 @@ model comparison and implementation-path analysis}
 \begin{document}
 \maketitle
 
+\noindent\textit{Stale note (2026-10-05): \texttt{Conduction: True} no longer uses the Watson et al.\ (1981) neutral-hydrogen conductivity; it uses the conductivity of the mixture (electrons, H\,I, He\,I, H$_2$; \texttt{thermal\_conductivity}, \texttt{viscous\_conduction.f90}), and only the viscosity keeps the Watson value; see \texttt{md/Update\_EXHALE\_stage3.md} section 41 and \texttt{docs/EXHALE\_user\_manual.pdf}.}
+
 \section{Purpose and summary}
 
 This memo compares the \Kompot\ Code, as documented across its four defining papers, with

@@ -16,13 +16,13 @@ column(s) & species & note\\
 3--5   & He\,{\sc i}, He\,{\sc ii}, He\,{\sc iii} & fractions of the helium
          nuclei; column 3 \emph{contains} the metastable\\
 6      & He\,$2^3$S & the metastable triplet, tracked when
-         \texttt{Include He23S?} is true (default on)\\
+         \texttt{Include He23S} is true (default on)\\
 7--33  & the 27 metal ion stages & C, O, N, Mg, Si, Ca, Fe in three stages;
          Na, K, S in two\\
 34--37 & H$_2$, H$_2^+$, H$_3^+$, HeH$^+$ & molecular option
-         (\texttt{thereis\_mol}, default off)\\
-38--40 & OH, H$_2$O, CO & oxygen option (\texttt{thereis\_oxychem},
-         default off)\\
+         (\texttt{Molecular chemistry}, \texttt{thereis\_mol}, default off)\\
+38--40 & OH, H$_2$O, CO & oxygen option (\texttt{Oxygen chemistry},
+         \texttt{thereis\_oxychem}, default off)\\
 \bottomrule
 \end{tabular}
 \end{center}
@@ -103,9 +103,12 @@ the second row being replaced by $x_{X^{2+}}=0$ for a two-stage element, and
 the whole pair by $x_{X^+}=x_{X^{2+}}=0$ for an element with zero abundance.
 
 \paragraph{The triplet row.} With the metastable tracked, the He rows are
-rewritten in the form of \citet{Oklopcic2018} (rows 2 and 3 summed, the triplet and the
-singlet ground state distinguished) and the fourth row is the $2^3$S
-balance,
+rewritten in the form of \citet{Oklopcic2018} (\texttt{heh\_tr\_rows}): row 2
+is the summed He\,{\sc i} balance, the sum of their singlet and triplet
+equations, in which the singlet ground state and the triplet are
+distinguished, and the fourth row is the $2^3$S balance
+(\texttt{tr\_triplet\_row}, the one expression of it, read by the atomic and
+molecular systems and by the transport operator alike),
 \begin{equation}
 0 = -n_{2^3{\rm S}}\Gamma_{2^3{\rm S}}
     + n_e\left[n_{\rm HeII}\alpha_{2^3{\rm S}}
@@ -120,13 +123,18 @@ ground state: the direct excitation $1^1$S$\to2^3$S plus the excitation of
 every higher triplet term $n\le5$ of \citet[Table~2]{Bray2000}, each of which cascades
 into $2^3$S within the triplets (0.019 of the direct rate at 5000\,K, 0.107
 at $10^4$\,K, 0.331 at $2\times10^4$\,K); $q_{31g} =
-q^{\rm direct}_{13}(g_1/g_3)e^{E_{13}/kT}$ is the detailed-balance reverse of
-the direct excitation (written with the Boltzmann factor cancelled, so it
-stays finite where $q_{13}$ underflows, and not negligible in cool gas:
-$q_{31g}/(q_{31a}+q_{31b}) = 0.055$ at $10^4$\,K, 0.15 at 5000\,K, 0.56 at
-3000\,K and 2.7 at 2000\,K); $q_{31a}$ and $q_{31b}$ are the
+q^{\rm direct}_{13}(g_1/g_3)e^{E_{13}/kT}$ is the electron-impact
+(super-elastic) de-excitation $2^3$S$\to1^1$S, the detailed-balance reverse of
+the direct excitation, so that the electron collisions between the two levels
+drive them toward their Boltzmann ratio $3e^{-19.82\,{\rm eV}/kT}$
+(\texttt{deexcitation\_rate\_HeI\_23S\_11S}, written with the Boltzmann factor
+cancelled, so it stays finite where $q_{13}$ underflows, and not negligible
+in cool gas: $q_{31g}/(q_{31a}+q_{31b}) = 0.054$ at $10^4$\,K, 0.15 at
+5000\,K, 0.56 at 3000\,K and 2.7 at 2000\,K, MEASURED 2026-10-05 from the
+coded rates); $q_{31a}$ and $q_{31b}$ are the
 collisional conversions to $2^1$S and to $2^1$P, the latter together with
-every singlet level above it (0.019 of $q_{31a}+q_{31b}$ at $10^4$\,K), all
+every singlet level above it (\texttt{excitation\_rate\_HeI\_23S\_singlets\_n3},
+0.019 of $q_{31a}+q_{31b}$ at $10^4$\,K, MEASURED 2026-10-05), all
 of the form $C\,\Upsilon\,e^{-E/kT}/(g_i\sqrt{T})$ with the Maxwellian
 constant $C = h^2/[(2\pi m_e)^{3/2}k^{1/2}] = 8.629132\times10^{-6}$
 cm$^3$\,s$^{-1}$\,K$^{1/2}$, the effective collision strengths of
@@ -144,7 +152,10 @@ $f_{\rm P}=0.9$ leaves a lasting proton, and it appears as the source
 $f_{\rm P}Q_{31}n_{2^3{\rm S}}n_{\rm HI}$ in the H$^+$ row. The remaining
 10 percent is associative ionization to HeH$^+$, which the atomic systems
 drop (in an atomic gas HeH$^+$ dissociatively recombines straight back) and
-the molecular system carries explicitly.
+the molecular system carries explicitly. In the molecular system the row
+also loses $k^{\rm ion}_{\rm H_2}n_{\rm H_2}n_{2^3{\rm S}}$, the total
+He($2^3$S)$+$H$_2$ ionization, whose two branches both quench the level and
+neither makes He$^+$.
 
 \paragraph{The molecular rows.} \texttt{mol\_heh\_rows} adds four species
 balances on the \citet{Koskinen2022} Table 1 network
@@ -152,11 +163,11 @@ balances on the \citet{Koskinen2022} Table 1 network
 $k_n$ for the Table-1 coefficients,
 \begin{align}
 \text{H}_2:\quad 0 &= k_6 n_e n_{\rm H_3^+} + k_9 n_{\rm H_2^+}n_{\rm HI}
-   + k_{11}n_{\rm H_3^+}n_{\rm HI} + k_{15}n_{\rm HI}^{2}
+   + k_{11}n_{\rm H_3^+}n_{\rm HI} + k_{15}n_Mn_{\rm HI}^{2}
    \nonumber\\ &\quad
    - \big[g_{\rm H_2} + g_{\rm LW} + (k_{10}+k_{13})n_{\rm HII}
-          + k_{12}n_{\rm tot} + k_{14}n_e + k_8 n_{\rm H_2^+}
-          + (k_{17}+k_{20}+k_{23})n_{\rm HeII} + k_{18}n_{\rm HeH^+}
+          + k_{12}n_M + k_{14}n_e + k_8 n_{\rm H_2^+}
+          + (k_{17}+k_{23})n_{\rm HeII} + k_{18}n_{\rm HeH^+}
           + k^{\rm ion}_{\rm H_2}n_{2^3{\rm S}}\big]n_{\rm H_2},
    \label{eq:ion:h2row}\\
 \text{H}_2^+:\quad 0 &=
@@ -165,13 +176,14 @@ $k_n$ for the Table-1 coefficients,
    + k_{19}n_{\rm HeH^+}n_{\rm HI} + k_{23}n_{\rm HeII}n_{\rm H_2}
    \nonumber\\ &\quad
    + f_{\rm P}k^{\rm ion}_{\rm H_2}n_{2^3{\rm S}}n_{\rm H_2}
-   - \left(k_5 n_e + k_8 n_{\rm H_2} + k_9 n_{\rm HI}\right)n_{\rm H_2^+},
+   - \left(k_5 n_e + k_8 n_{\rm H_2} + k_9 n_{\rm HI}
+           + k_{\rm He}n_{1^1{\rm S}}\right)n_{\rm H_2^+},
    \label{eq:ion:h2prow}\\
 \text{H}_3^+:\quad 0 &= k_8 n_{\rm H_2^+}n_{\rm H_2}
    + k_{13}n_{\rm HII}n_{\rm H_2} + k_{18}n_{\rm HeH^+}n_{\rm H_2}
    - \left[(k_6+k_7)n_e + k_{11}n_{\rm HI}\right]n_{\rm H_3^+},
    \label{eq:ion:h3prow}\\
-\text{HeH}^+:\quad 0 &= k_{20}n_{\rm HeII}n_{\rm H_2}
+\text{HeH}^+:\quad 0 &= k_{\rm He}n_{1^1{\rm S}}n_{\rm H_2^+}
    + (1-f_{\rm P})n_{2^3{\rm S}}
      \left(Q_{31}n_{\rm HI}+k^{\rm ion}_{\rm H_2}n_{\rm H_2}\right)
    - \left(k_{16}n_e+k_{18}n_{\rm H_2}+k_{19}n_{\rm HI}\right)n_{\rm HeH^+},
@@ -183,7 +195,16 @@ $(g^{\rm di}+2g^{\rm dd})n_{\rm H_2} + k_9 n_{\rm H_2^+}n_{\rm HI}
  - (k_{10}+k_{13})n_{\rm HII}n_{\rm H_2}$. The factor 2 on the double
 photoionization branch is the stoichiometry, two protons out of one event,
 while the H$_2$ destroyed is still one per event, which is why
-\eqref{eq:ion:h2row} is not doubled with it.
+\eqref{eq:ion:h2row} is not doubled with it. $n_M$ is the H$_2$-equivalent
+third-body density of the association R15 and of its reverse R12, the same
+density in both directions (\texttt{h2\_third\_body\_density}; the total
+particle density with \texttt{EXHALE\_REACTION\_HEAT\_RECIPIENTS=0},
+Sec.~\ref{sec:mol:network}); $k_{\rm He}$ is
+${\rm H_2^+}+{\rm He}\to{\rm HeH^+}+{\rm H}$ \citep{Black1978} on the ground
+singlet $n_{1^1{\rm S}}$, the HeH$^+$ source that replaces the retired
+Table~1 entry R20 (Sec.~\ref{sec:mol:network}); and the He$^+$ row loses
+$(k_{17}+k_{23})n_{\rm HeII}n_{\rm H_2}$ (with the oxygen option also the
+He$^+$$+$CO destruction below).
 
 \paragraph{The oxygen rows.} With the oxygen option
 (Sec.~\ref{sec:mol:oxygen}; \texttt{thereis\_oxychem}, solved only by
@@ -240,12 +261,48 @@ the \citet{Visser2009} shielding of the star-ward CO and H$_2$ columns, both
 inside the carrier step; the cell system sees the CO of the cell as a frozen
 background and takes the He$^+$ it consumes, $-k_{\rm D1}n_{\rm CO}n_{\rm
 HeII}$, in the He$^+$ row, so the one reaction is complete over the pair of
-operators and counted once in each. Each oxygen row is divided by its own
-turnover rate $n_{\rm O}[(k_1+k_{1r}+k_2+k_{2r})n_{\rm H}+J_3+J_4+J_7]$ (OH)
-and $n_{\rm O}[(k_1+k_{1r})n_{\rm H}+J_3+J_4+J_5]$ (H$_2$O) before the Newton
-solve, as the molecular rows are, because the oxygen family is
-$\sim10^{-4}$ of the hydrogen and the block would otherwise sit far below the
-helium one.
+operators and counted once in each.
+
+\paragraph{Normalization of the rows.} Before the Newton solve every row of
+the molecular system, the oxygen, metal and charge-exchange terms included,
+is divided by the chemical turnover of its element at a composition $x_0$,
+\begin{equation}
+r_i = \frac{P_i - L_i}{G_E(x_0)},\qquad G_E = \sum_{j\in E}\,(P_j + L_j),
+\label{eq:ion:element_turnover}
+\end{equation}
+with $P_j+L_j$ the sum of the magnitudes of the terms of row $j$ and $E$ the
+element the row's species carries (hydrogen: H$^+$, H$_2$, H$_2^+$, H$_3^+$,
+HeH$^+$; helium: He$^+$, He$^{++}$, He($2^3$S); each metal its two stage
+rows, oxygen together with OH and H$_2$O; \texttt{element\_turnover\_reciprocal},
+\texttt{System\_HeH\_mol.f90}). $x_0$ is the starting point of each solve and
+the scale is held through it (\texttt{set\_element\_turnover\_scales},
+\texttt{System\_HeH\_mol\_metals.f90}): a scale that followed the iterate
+would bound every row by one and leave the solve no gradient back from an
+iterate far outside the simplex, which on the cold start of the
+\texttt{mol\_metals} regression gate left 214 cells without a root. A
+candidate is judged with $x_0$ the candidate itself. A row that carries no reaction at the
+evaluated state (an absent element's identity row) keeps the reciprocal of the
+upper bound with every species at the whole of its element, which is 1 there.
+The blocks of one residual vector differ by the element abundances, and the
+dogleg step of \texttt{hybrd1} weights rows by their size, so a row far below
+the others would not determine its unknown. The upper bound itself is not the
+scale: where a trace ion of one element reacts with another element it
+exceeds the turnover by the inverse of the ion's fraction (the H$^+$ row
+carries He$^+$+H$_2$ and He($2^3$S)+H with He$^+$ and the metastable at all of
+the helium, $3.9\times10^{12}$ against a gross rate of
+$1.3\times10^{3}$\,cm$^{-3}$\,s$^{-1}$ at the root of the LHS\,1140\,b He/H
+$=2\times10^4$ base ghost, MEASURED), which left the H$^+$ row at
+$3\times10^{-10}$ of its weight in the solve and in the acceptance test: ten
+per cent of H$^+$ off the root moved it by $2.7\times10^{-11}$, against
+$5.4\times10^{-2}$ in the normalization of Eq.~\eqref{eq:ion:element_turnover}. The row's own $P+L$ is not the scale
+either: it asks a species at $10^{-22}$ of its element to balance to one part
+in $10^6$ of itself, which neither matters to the gas nor is resolved by a
+solve whose unknowns are fractions of order one. Against $G_E$ the error of a
+species counts as the nucleus flux it misplaces, which is what the
+acceptance tolerance \texttt{ieq\_res\_tol} $=10^{-6}$ is stated in
+(\texttt{normalized\_reaction\_residual}). The zeros of the rows are
+unchanged. The constrained continuation below keeps the bound on its own
+path; the candidate it returns is judged by the same measure.
 
 \subsection{The rate coefficients}
 \label{sec:ionization:rates}
@@ -311,7 +368,13 @@ $y\to0$ is case B, where the gas is thick at the edge; $y\to1$ case A, in
 the thin outer wind. \texttt{H\_rec\_escape} (default on) governs
 $y_{\rm HI}$ and \texttt{He\_rec\_coupling} (default on) the two helium
 weights; a switch that is off sets its weight to zero. The photons taken by
-other absorbers ionize them (Sec.~\ref{sec:radiation:internal}). The metal stages take Badnell RR $+$ adf09
+other absorbers ionize them (Sec.~\ref{sec:radiation:internal},
+\texttt{recombination\_radiation\_absorbed}), and the photoelectrons of those
+ionizations go through the same partition as the stellar photoelectrons, at
+the representative energy of each channel and under the same switches
+(Sec.~\ref{sec:radiation:secondary}): their secondary ionizations of H\,{\sc
+i}, He\,{\sc i} and H$_2$ are added to the photoionization rates $\Gamma$ of
+the rows. The metal stages take Badnell RR $+$ adf09
 DR through the same two forms, with the one gap (Ca\,{\sc ii}, K-like)
 handled separately and noted at the code site.
 
@@ -404,25 +467,55 @@ $4.41\times10^{-17}$).  The rate is tabulated from 300\,K to $10^5$\,K
 interpolated linearly in $\ln k$ against $1/T$, the first chord continued
 below 300\,K and the $10^5$\,K value held above.  The non-radiative channel
 is 3.3 per cent of the radiative one at $10^4$\,K and 5.9 per cent at
-$10^3$\,K, so He$^+$ + H is removed almost entirely by radiative charge
-transfer; the reverse ${\rm He} + {\rm H}^+ \to {\rm He}^+ + {\rm H}$ is the
-detailed-balance reverse of the non-radiative channel alone.
+$10^3$\,K (MEASURED 2026-10-05 from \texttt{he\_h\_cx\_rates}), so He$^+$ + H
+is removed almost entirely by radiative charge transfer; the reverse
+${\rm He} + {\rm H}^+ \to {\rm He}^+ + {\rm H}$ is the detailed-balance
+reverse of the non-radiative channel alone, and its helium reactant is the
+ground singlet $n(1^1{\rm S})$, because the rate carries the barrier
+$e^{-10.989\,{\rm eV}/kT}$ of ground-state helium (the metastable's own
+charge exchange is a different reaction, not carried).
+
+The third reaction of the pair is the radiative capture
+${\rm He}^{2+} + {\rm H} \to {\rm He}^+(1s) + {\rm H}^+ + h\nu$
+(\texttt{radiative\_electron\_capture\_Hepp\_from\_H}), the Maxwellian average
+of the radiative charge-transfer cross section to He$^+(1s)$ of
+\citet[Figs.~4--6, digitized, resolved resonances included; the paper gives
+no rate coefficient]{West1982},
+tabulated over $10^2$--$10^5$\,K and held at the ends:
+$2.0\times10^{-13}$\,cm$^3$\,s$^{-1}$ at $10^3$\,K and $1.65\times10^{-13}$ at
+$10^4$\,K (MEASURED 2026-10-05); over $10^3$--$3\times10^4$\,K it is 16--20
+times the constant $1.0\times10^{-14}$ of Kingdon \& Ferland (1996) carried
+before 2026-09-26, which is the default value their section~2 assigns to every
+reaction without a significant non-radiative channel and not an average of
+these cross sections.
+The table is a calculation above $10^3$\,K and an extrapolation below. The
+photon carries the whole 40.81\,eV defect, so the reaction has no
+collisional reverse and deposits no heat. It removes He$^{2+}$ from the He$^{2+}$
+row, adds a proton to the H$^+$ row and, where row 2 is the He$^+$ stage
+source (the molecular systems), adds He$^+$ there. All three are applied by
+\texttt{he\_h\_cx\_fvec} under \texttt{He\_H\_charge\_exchange}, and by
+\texttt{he\_h\_cx\_fvec\_adv} in the advection systems.
 
 \paragraph{Penning ionization of the metastable.} The total
-He($2^3$S)$+$H ionization rate coefficient is the Maxwell-Boltzmann average
-of the \citet{Cohen1971} and \citet{Morgner1979} cross sections as collected
-by \citet{GarciaMunoz2025},
+He($2^3$S)$+$H ionization rate coefficient (\texttt{ioniz\_HeI23S\_H}) is the
+Maxwell-Boltzmann average of the \citet[Fig.~10]{Movre1997} total ionization cross
+sections in the closed form \citet[Fig.~5 and network rows 198--199]{GarciaMunoz2025}
+publishes,
 \begin{equation}
 Q_{31}(T) = 10^{-9}\exp\!\left[-\frac{86.4804}{T}
    - 0.286766\ln T + 0.0868445\left(\ln T\right)^{2}
    - 5.73001\times10^{-3}\left(\ln T\right)^{3}\right]\ \mathrm{cm^{3}\,s^{-1}},
 \label{eq:ion:penning}
 \end{equation}
-smooth, positive and single-peaked at $3.8\times10^{3}$\,K. The code notes
-at that site why the two-branch power law of \citet{Taylor2025} Table 2 is
-\emph{not} used: it jumps by a factor 1.5724 at 4000\,K,
-which a rate coefficient cannot do, and it disagrees with that paper's own
-Figure 19; the expression above agrees with Figure 19 to 10--20 percent.
+smooth, positive and single-peaked at $3.8\times10^{3}$\,K, within 2 per cent
+of the cross-section average over 200--$10^4$\,K by the paper's statement and
+evaluated unclamped outside that range, where no accuracy is claimed. The
+code notes at that site why the two-branch power law of \citet{Taylor2025}
+Table 2 is \emph{not} used: it jumps by a factor 1.5724 at 4000\,K, which a
+rate coefficient cannot do, and it disagrees with that paper's own Figure 19,
+the average of the \citet{Cohen1971} and \citet{Morgner1979} cross sections;
+the expression above agrees with Figure 19 to 10--20 percent, so the two
+independent calculations agree and the published fit is the outlier.
 The corresponding He($2^3$S)$+$H$_2$ coefficient is
 $k = aT^{b}e^{c/T}$ with the \citet{Cohen1977} amplitudes of the
 \citet{GarciaMunoz2025} network file, reproducing its Table A.5 to 0.13
@@ -450,17 +543,27 @@ takes the temperature and the total density as \emph{inputs} and overwrites
 the species fractions in place; chemistry rearranges nucleons and electrons
 and creates no mass, so the mass density is never corrected by this step and
 the mass sum of the returned composition is a check against it
-(\texttt{rho\_recon}), never a correction. The grid is traversed from the
-top down in blocks; the columns of \eqref{eq:rad:column} are advanced with
-the composition already solved, so the field each cell is solved at is
-self-consistent with the states above it in one traversal. Inside a cell
-the pair (field, composition) is iterated at most
-\texttt{xuv\_self\_field\_passes} times, stopping when the accepted stage
-fractions move by less than \texttt{xuv\_self\_field\_tol}. Cells within a
-block are independent and the sweep is OpenMP-parallel with the per-cell
-scratch declared \texttt{threadprivate}; blocks are of fixed even length so
-that the vectorized transcendental calls pair the same lanes at any thread
-count.
+(\texttt{rho\_recon}), never a correction. A cell's photoionization rates
+depend on the columns \eqref{eq:rad:column} outside it and on its own depth.
+The sweep runs from the top down in field blocks of
+\texttt{xuv\_field\_block\_cells} cells, a compile-time constant that is zero,
+one block of the whole grid: every cell is solved in the field of the
+composition the sweep was handed, and a positive width would carry the
+columns of the cells already solved from one block to the next. Inside a cell
+the pair (own attenuation, composition) is solved
+\texttt{xuv\_self\_field\_passes} times, one by default, the loop stopping
+early when the accepted stage fractions move by less than
+\texttt{xuv\_self\_field\_tol} $=10^{-9}$. Neither setting changes a fixed
+point: at the fixed point of the coupled source step the composition a cell
+enters with and the one it returns are the same state, so every width and
+pass count builds the same field, and only the number of passes of the
+coupled loop differs (the measured costs that decided both defaults are at
+their declarations in \texttt{ionization\_equilibrium.f90}). Cells within a
+block are independent and the sweep is OpenMP-parallel with the cell
+scratch declared \texttt{threadprivate}; the rate coefficients are evaluated
+in blocks of a fixed even length (\texttt{xuv\_rate\_block},
+\texttt{util\_ion\_eq.f90}), so that the vectorized transcendental calls pair
+the same lanes at any thread count.
 
 \paragraph{Acceptance classes.} Every cell's returned state carries a class,
 and the contract is that classes 1, 2, 3 and 5 are \emph{roots} of the
@@ -504,12 +607,21 @@ front), the solve is a natural-parameter continuation \citep{Allgower2003} in th
 radiation field:
 $\lambda$ scales the field from six decades below the cell's own, where the
 composition is known in closed form from the H$_2$ dissociation equilibrium
-of the local $p,T$, up to $\lambda=1$, each rung starting from the previous
-rung's root and a failed rung being bisected geometrically. The rungs use the
+of the local $p,T$, up to $\lambda=1$ on the rungs $\lambda = 10^{-6}$,
+$10^{-4}$, $10^{-2}$, 0.1, 0.3, 1, each rung starting from the previous
+rung's root and a failed rung being bisected geometrically toward the last
+root (down to a field step of $10^{-12}$, at most 40 solves for one cell).
+$\lambda=0$ is not a starting point: the trace ionization stages of a shielded
+base are linear in $\lambda$, their logarithms diverge there and the
+Jacobian columns they own vanish. The rungs use the
 general MINPACK \texttt{hybrd} and not \texttt{hybrd1}, whose fixed initial
 trust radius $100\|x\|$ would open a first step of $e^{10^{4}}$ in every
-density when $\|u\|\sim130$. A transported fraction, when one is imposed,
-enters as a further constraint row.
+density when $\|u\|\sim130$. A species whose fraction is imposed from outside
+the cell (H$_2$ by the lower-boundary reservoir, the oxygen carriers by
+carrier transport, H$^+$, He$^+$, He$^{2+}$ and He\,$2^3$S by the transported
+ionization state of Sec.~\ref{sec:ionization:advected}) is marked fixed: it
+appears in every reaction and conservation row it belongs to, but it is not an
+unknown and its own balance row is removed, so the system stays square.
 
 \subsection{Ionization carried by the flow}
 \label{sec:ionization:advected}
@@ -520,13 +632,26 @@ places in the code carry the ionization state along the flow instead.
 
 \paragraph{The implicit advection systems.} \texttt{System\_implicit\_adv\_H},
 \texttt{\_HeH} and \texttt{\_HeH\_TR} each take one step of
-$v\,{\rm d}x/{\rm d}r = R(x)$ into cell $j$, per hydrogen nucleus, with the
+$v_{\rm el}\,{\rm d}x/{\rm d}r = R(x)$ into cell $j$, with the
 variable-step second-order backward differentiation formula (BDF2):
 $x^{\rm up} \equiv a_1 x_{j-1} - a_2 x_{j-2}$ is the history of the step and
-$c_1 = g\,h_j/v_j$ its rate weight, $h_j = r_j - r_{j-1}$,
+$c_1 = g\,h_j/v_{{\rm H},j}$ (hydrogen row) and
+$c_1^{\rm He} = g\,h_j/v_{{\rm He},j}$ (helium rows) its rate weights,
+$h_j = r_j - r_{j-1}$,
 $w = h_j/h_{j-1}$, $a_1 = (1+w)^2/(1+2w)$, $a_2 = w^2/(1+2w)$,
 $g = (1+w)/(1+2w)$, so that the rates and the velocity are both those of
-cell $j$. The first step of the recursion, and every step after a cell it
+cell $j$. Each fraction is a fraction of one element's nuclei, which move
+with that element's velocity: with element continuity
+$\nabla\cdot(n_{\rm el}v_{\rm el}) = 0$ the steady stage balance
+$\nabla\cdot(x\,n_{\rm el}v_{\rm el}) = S$ is
+$v_{\rm el}\,{\rm d}x/{\rm d}r = S/n_{\rm el}$, with
+$v_{\rm He} = v + J/(\rho Y)$ and $v_{\rm H} = v - J/[\rho(1-Y)]$, $J$ the
+diffusive helium mass flux of the state and $Y$ the helium mass fraction
+(both equal $v$ without element diffusion). The stage's own eddy term of
+the transported stages is not in the step; its size against the advective
+stage flux, $K_{zz}|{\rm d}\ln x/{\rm d}r|/v_{\rm el}$, is 0.035 at
+1.3\,$R_p$ and below $10^{-3}$ beyond 1.75\,$R_p$ on the LHS~1140\,b
+reference (MEASURED, update log stage~3 section~82). The first step of the recursion, and every step after a cell it
 does not integrate, is backward Euler ($a_1 = g = 1$, $a_2 = 0$;
 $x^{\rm up} = x_{j-1}$), as is a BDF2 step whose populations come out
 negative. BDF2 is L-stable, so a population that relaxes within the cell
@@ -540,27 +665,164 @@ solve
               + \alpha_{\rm HII}x_{\rm HII}x_e n_{\rm H}\right],
    \label{eq:ion:advh}\\
 0 &= x^{\rm up}_{\rm HeI}-x_{\rm HeI}
-   + c_1\left[-\left(\Gamma_{\rm HeI}+\beta_{\rm HeI}x_e n_{\rm H}\right)x_{\rm HeI}
+   + c_1^{\rm He}\left[-\left(\Gamma_{\rm HeI}+\beta_{\rm HeI}x_e n_{\rm H}\right)x_{\rm HeI}
               + \alpha_{\rm HeII}x_{\rm HeII}x_e n_{\rm H}\right],
    \label{eq:ion:advhe}\\
 0 &= x^{\rm up}_{\rm HeIII}-x_{\rm HeIII}
-   + c_1\left[\left(\Gamma_{\rm HeII}+\beta_{\rm HeII}x_e n_{\rm H}\right)x_{\rm HeII}
+   + c_1^{\rm He}\left[\left(\Gamma_{\rm HeII}+\beta_{\rm HeII}x_e n_{\rm H}\right)x_{\rm HeII}
               - \alpha_{\rm HeIII}x_{\rm HeIII}x_e n_{\rm H}\right],
    \label{eq:ion:advhe2}
 \end{align}
 with $x_e = x_{\rm HII} + ({\rm He/H})_{\rm local}(x_{\rm HeII}+2x_{\rm HeIII})
 + x_e^{\rm metal}$, and the same He$\leftrightarrow$H charge-exchange terms
-on rows 1 and 2. The helium ratio is the global one on the legacy path and
+on rows 1, 2 and 3. The helium ratio is the global one on the legacy path and
 the \emph{local}, radius-dependent one when the element diffusion is on,
-since the global value would misstate $n_e$ by the separation factor. These
+since the global value would misstate $n_e$ by the separation factor. In
+\texttt{System\_implicit\_adv\_HeH\_TR} the neutral helium unknown of row 2
+is the ground singlet $x(1^1{\rm S})$, whose row is the summed He\,{\sc i}
+balance less the metastable's, and the fourth row is the step of the $2^3$S
+fraction with the terms of \eqref{eq:ion:tripletrow} on $c_1^{\rm He}$; the
+singlet is an unknown of its own rather than a difference, which in a
+strongly ionized cell whose neutral helium sits mostly in the metastable
+loses every digit. The He$\leftrightarrow$H terms, the He$^{2+}+$H capture
+included, are \texttt{he\_h\_cx\_fvec\_adv}. These
 are the systems of the \texttt{\_adv} post-process
 (Sec.~\ref{sec:postprocessing:adv}).
 
-\paragraph{Transported protons.} With \texttt{Ionization transport} (default
-off) H$^+$ is carried as a fifth transported species on the hydrodynamic
-face mass flux inside the Runge-Kutta stages \eqref{eq:ssprk3}, in the same
-way the molecular carriers are (Sec.~\ref{sec:mol:carrier}), and its local balance is then a constraint rather
-than a closure.
+\paragraph{Transported ionization stages.} With \texttt{Ionization
+transport: True} (default off) the ionization state of hydrogen and helium is
+carried by the flow instead of being re-solved in every cell as a local
+equilibrium. The carried fractions are fractions of the element's
+\emph{nuclei}, $x_k = n_k/n_{\rm el}$: $x({\rm H\,II})$ of hydrogen and
+$x({\rm He\,II})$, $x({\rm He\,III})$ of helium, carriers \texttt{H+},
+\texttt{He+} and \texttt{He++} of the transport-chemistry operator
+(Sec.~\ref{sec:mol:carrier}, \texttt{diffusive\_photochemistry.f90}); the
+neutral stage of each element is the remainder and is not a row. The two
+elements are carried together, because the electrons of a transported
+hydrogen partition would otherwise meet a helium partition that never saw the
+flow. The key needs helium in the mixture, and in a molecular gas it needs
+\texttt{Molecular carrier transport: True} (the stage sources are then rows
+(1)--(3) of the molecular network, whose molecular sinks are written at the
+transported molecular densities); it is refused with \texttt{Coupled carrier
+solve} (and its \texttt{On stall} form), whose coupled unknowns are mass
+fractions and not fractions of the element's nuclei. It applies to an atomic
+gas and to a gas with metals (\texttt{input\_read.f90}).
+
+Stage $k$ of an element crosses the face $f$ between cells $j$ and $j+1$ with
+(\texttt{ionization\_stage\_transport.f90}, equation 1)
+\begin{equation}
+F_k(f) = x_k(f)\,N_{\rm el}(f)
+ - n_{\rm el}(f)K(f)\,\frac{x_k(j+1)-x_k(j)}{\Delta r(f)},
+\label{eq:ion:stageflux}
+\end{equation}
+with $N_{\rm el}$ the nucleus face flux of the element operator
+(\texttt{element\_nucleus\_face\_flux}: advection, gradient, eddy and settling
+drift in one object, Sec.~\ref{sec:mol:diffusion}), $x_k(f)$ the face
+fraction of the reconstruction, limiter and donor rule the element mass
+fractions take, with the donor side chosen by the sign of $N_{\rm el}$ for
+every stage alike, and the second term the stage's own eddy term relative to
+its element (the element's eddy flux is already in $N_{\rm el}$). The closing
+stage takes one minus the carried face fractions and minus the sum of their
+eddy terms, so that $\sum_k F_k = N_{\rm el}$ at every face to rounding:
+moving charge between stages moves no nucleus. The eddy term is zero at faces
+0 and $N$, where the element crosses only with the gas. Every stage of an
+element moves with the element's velocity; the drift of an ion against its
+neutral in the ambipolar field is not carried, which the code bounds at the
+routine: exact inside about $1.2\,R_p$ on the certified LHS~1140\,b atomic
+state and of order 0.02--0.6 of the advective stage flux outward of it
+(MEASURED, READ from the module header). The source of each row is the
+balance the local sweep solves for the same gas, evaluated at the trial stage
+densities on the frozen background of the last sweep: the rows of
+\eqref{eq:ion:hrow}--\eqref{eq:ion:he2row} in their triplet form or the
+molecular rows (1)--(3), the He$\leftrightarrow$H pair and the metal charge
+exchange of the same reaction set and coefficients
+(\texttt{charge\_exchange\_stage\_sources}).
+
+The admissible set of the carried fractions is the simplex and not a box
+(\texttt{stage\_simplex\_projection}): each $x_k\ge0$, and their sum is at
+most the share of the element the stages may hold, one for hydrogen (whose
+molecular nuclei the molecular carriers hold separately) and
+$1-(n_{\rm HeH^+}+n_{2^3{\rm S}})/n_{\rm He}$ for helium, the HeH$^+$ bond and
+a metastable the step holds frozen being no nuclei of the stage rows
+(\texttt{carrier\_helium\_available\_to\_stages}). A carrier step that leaves
+the set is returned to it by raising negatives to zero and then scaling the
+carried fractions by the bound over their sum, which keeps their ratios and
+so the charge sum they set; the amounts moved are measured and reported
+(\texttt{stage\_simplex\_sum\_over\_limit}, \texttt{stage\_fraction\_under\_zero}),
+never hidden.
+
+In the sweep, every physical cell $j\ge1$ of a run with the key, once a
+transport background exists or on a restart, has its $x({\rm H\,II})$,
+$x({\rm He\,II})$ and $x({\rm He\,III})$ rows replaced by the constraints
+$x - x^{\rm carried} = 0$, and the solve starts at the imposed values
+(\texttt{impose\_transported\_ionization\_fractions},
+\texttt{impose\_transported\_fractions}); the two lower ghosts are the inflow
+reservoir, for which no key states an ionized fraction, and keep the sweep's
+local root. In the marching loop the advection of the carried stages is the
+divergence of the hydrodynamic face mass flux taken with the mass row inside
+the Runge-Kutta stages \eqref{eq:ssprk3}, and the operator-split carrier step
+then carries the element's diffusive part, the stage eddy term and the
+chemistry; in the fixed-wind relaxation of the stationary partitioned route
+(Sec.~\ref{sec:steady:partitioned}) the rows carry the whole nucleus flux
+\eqref{eq:ion:stageflux}, and every sweep of the hydrodynamic solve is handed
+the transported fractions. The certification
+(Sec.~\ref{sec:steady:certification}) carries the entries \texttt{carrier
+balance H+}, \texttt{He+}, \texttt{He++}, gated at $10^{-5}$ in the wind
+cells, each row's residual against the sum of its own terms (the face-flux
+divergence and the gross production and loss; a stage row that hands out only
+its net reads $|S|$ there), and \texttt{ionization stage nucleus sum H} and
+\texttt{He}, the identity $\sum_kF_k = N_{\rm el}$ gated at its floating-point
+bound. The enthalpy the stage eddy terms carry is
+\eqref{eq:mol:qst} of Sec.~\ref{sec:mol:interdiffusion}.
+
+\paragraph{The transported metastable.} With \texttt{He 2\^{}3S transport:
+True} (default off; it requires \texttt{Include He23S} and \texttt{Ionization
+transport}, and is refused otherwise) the population of $2^3$S is carried as
+a fourth helium state of the same operator, carrier \texttt{He2\^{}3S},
+$x_3 = n_{2^3{\rm S}}/n_{\rm He}$ on the helium nucleus flux with the face flux
+\eqref{eq:ion:stageflux},
+\begin{equation}
+\frac{\partial (n_{\rm He}x_3)}{\partial t}
+ + \frac{1}{r^2}\frac{\partial}{\partial r}\Bigl[r^2\Bigl(x_3N_{\rm He}
+   - n_{\rm He}K_{zz}\frac{\partial x_3}{\partial r}\Bigr)\Bigr]
+ = S_3 ,
+\label{eq:ion:triplettransport}
+\end{equation}
+with $S_3$ the right-hand side of \eqref{eq:ion:tripletrow} (and the
+He($2^3$S)$+$H$_2$ quench in a molecular gas), evaluated at the trial
+population with the singlet $n_{1^1{\rm S}} = n_{\rm He} - n_{\rm HeII} -
+n_{\rm HeIII} - n_{2^3{\rm S}} - n_{\rm HeH^+}$ closing the three carried
+helium states; the helium simplex is then three-dimensional and reserves the
+HeH$^+$ bond alone. In a steady state with $N_{\rm He} = n_{\rm He}v$ (no
+element diffusion) and $K_{zz}=0$ this is the advection balance of
+\citet[eq.~15]{Oklopcic2018}; the sweep's row
+\eqref{eq:ion:tripletrow} becomes the constraint $x_3 = x_3^{\rm carried}$,
+in row 4 of the atomic systems and row 8 of the molecular one
+(\texttt{ieq\_triplet\_row}). A drift of the metastable against ground-state
+He\,{\sc i} is not carried: the level moves at the velocity of the helium
+nuclei. Its 19.82\,eV are chemical energy, booked by the reactions of the
+level where they run (the $q_{13}$ cooling, the $q_{31g}$ heating, the Penning
+heat), so no excitation-energy flux enters the energy equation; the
+certification reports that flux relative to He\,{\sc i} without gating on it
+($3\times10^{-7}$ of the energy row's largest term at most on the LHS~1140\,b
+validation state, MEASURED, update log stage~3 section~81). The level's
+certification entry is \texttt{carrier balance He2\^{}3S} at the carrier
+tolerance, and \texttt{level balance He 2\^{}3S} is not applicable under the
+key. Its row is one closed expression of sign-definite channels, so the scale
+of its measure is the gross production
+$n_e(n_{\rm HeII}\alpha_{2^3{\rm S}}+n_{1^1{\rm S}}q_{13})$ plus the gross loss
+(\texttt{tr\_triplet\_row\_channels}) and the transport divergence, not the
+net source: in the wind the two halves cancel to $10^{-8}$ at
+1.2--1.4\,$R_p$, and a measure on the net asked the coupled state for
+$4\times10^{-13}$ of the channel rates (MEASURED, update log stage~3
+section~94). For the same reason the carrier relaxation judges the fixed
+point of each carrier against that carrier's own largest fraction
+(\texttt{carrier\_displacement\_on\_own\_scale}) and asks in addition that
+the steady carrier residual stand at or below \texttt{carrier\_accept\_tol},
+since an implicit step's displacement bounds its residual only by $n/\Delta
+t$. The option is verified on the stationary route in a molecular gas; the
+marching route with it and an atomic gas end to end were not exercised (update
+log stage~3 section~81).
 
 \subsection{\texorpdfstring{Excited hydrogen and the Ly$\alpha$ field}{Excited hydrogen and the Lyman-alpha field}}
 \label{sec:ionization:n2}
@@ -577,7 +839,14 @@ n_{2p} = \frac{S_{2p}L_{2s}+M_{12}S_{2s}}{L_{2p}L_{2s}-M_{12}M_{21}},
 \label{eq:ion:n2pop}
 \end{equation}
 whose sources are the recombination cascade, collisional excitation from
-$1s$ and radiative pumping by the Ly$\alpha$ mean intensity, and whose
+$1s$, radiative pumping by the Ly$\alpha$ mean intensity and, in a molecular
+gas, the dissociative recombinations ${\rm H_2^+}+e$ and ${\rm HeH^+}+e$ that
+leave one hydrogen atom in $n=2$,
+$k_5n_{\rm H_2^+}n_e+k_{16}n_{\rm HeH^+}n_e$
+(\texttt{dissociative\_recombination\_n2\_source}, the rate coefficients of
+the chemistry; zero when \texttt{EXHALE\_REACTION\_HEAT\_RECIPIENTS=0}, and
+with the level off the 10.199\,eV it carries leave as radiation,
+Sec.~\ref{sec:thermal:heat}), and whose
 sinks are radiative decay, the two-photon continuum, collisional
 de-excitation, $\ell$-mixing and photoionization by the stellar Balmer
 continuum. The atomic data are in one place
@@ -659,13 +928,40 @@ smooth Planck field is a composite five-point Gauss-Legendre rule on a
 geometric subdivision used. The feedback is lagged-explicit: it is computed
 once per timestep before the ionization and energy solve, and the frozen
 arrays are read inside \texttt{ioniz\_eq} and never inside its Newton
-iteration. The whole module is gated by \texttt{use\_excited\_H}, which is
+iteration. What that lag leaves is measured, not assumed: the certification
+entry \texttt{level balance H(n=2)} is the production less the destruction of
+each level for the populations held, at the composition of the certified
+state (\texttt{excited\_hydrogen\_level\_residual}). The whole module is gated by \texttt{use\_excited\_H}, which is
 armed by supplying \texttt{Stellar Teff [K]:} and
 \texttt{Stellar radius [R\_sun]:}; it is \emph{off} by default.
 
-\paragraph{The Ly$\alpha$ field.} \texttt{lya\_rt.f90} closes the line with
-an escape probability rather than a Monte Carlo, because the columns
-involved reach $\tau_0 \sim 10^{8}$ at line center. With
+\paragraph{The Ly$\alpha$ field.} The mean intensity that pumps $n=2$ has
+three forms, selected by \texttt{jlya\_mode} (\texttt{excited\_H\_update}).
+The default, mode 0, takes the estimate
+$J_{\rm Ly\alpha} = 0.1\,F_{\rm LyC}/\Delta\nu_{\rm D}$ that
+\citet[section~2, in the text after their eq.~6]{Huang2017} make near the
+peak of the H photoionization, where $F_{\rm LyC}$ is the deposited Lyman
+continuum flux and each ionization is assumed to be balanced by a
+recombination producing a Ly$\alpha$ photon; EXHALE evaluates it at every
+cell with
+$F_{\rm LyC} = \xi_{\rm day}F_{\rm inc}(1-e^{-\sigma_{\rm LyC}N_{\rm HI}})$,
+$F_{\rm inc} = L_{\rm EUV}/(4\pi a_{\rm orb}^2)$, the ionizing flux the whole
+vertical H\,{\sc i} column absorbs, times the cell mean of
+$1/(1+\tau)$ over the cell's own top-down line-center depth
+(\texttt{lya\_photosphere\_attenuation\_cell\_mean}), so the pumping vanishes
+below the Ly$\alpha$ photosphere. The column-integrated $F_{\rm LyC}$ and the
+factor $1/(1+\tau)$ are EXHALE's own choices, not taken from
+\citet{Huang2017}, who use the estimate only for an order of magnitude
+($J_{\rm Ly\alpha} \sim 10^{-8}$\,erg\,cm$^{-2}$\,s$^{-1}$\,Hz$^{-1}$) and
+compute the field itself by Monte Carlo transfer; mode 0 is an approximate
+estimate.
+Mode 1, selected by \texttt{Jlya RT file:}, reads an externally computed
+$J_{\rm Ly\alpha}(r)$, for instance from the LaRT Monte Carlo code, and
+interpolates it onto the grid. Mode 2, selected by \texttt{Jlya escape-prob:
+True} and refused without \texttt{Stellar Lya flux [erg/cm2/s]:} $>0$, is the
+in-line transfer of \texttt{lya\_rt.f90}, which closes the line with an
+escape probability rather than a Monte Carlo, because the columns involved
+reach $\tau_0 \sim 10^{8}$ at line center. With
 $\Delta\nu_{\rm D} = \nu_{\rm Ly\alpha}\sqrt{2kT/m_{\rm H}}/c$, the Voigt
 parameter $a = (A_{2p1s}/4\pi)/\Delta\nu_{\rm D}$ and the line-center depth
 accumulated cell by cell from $n_{\rm HI}C_{\rm Ly\alpha}/\Delta\nu_{\rm D}$,
@@ -683,7 +979,12 @@ the escape probability of a photon emitted at the cell center is
 \end{equation}
 which is \citet{Neufeld1990} eq.~(3.27) at zero continuum
 destruction, reducing for a mid-plane source to \citet{Harrington1973}
-eq.~(40), $\langle N\rangle = 0.909316\,B$. The form $1/(1+\langle N\rangle)$ and not $1/\langle N\rangle$ is used
+eq.~(40), $\langle N\rangle = 0.909316\,B$. $\tau_{\rm up}$ is the depth of
+the cell center from the top. By default the planet-ward face is a mirror,
+$\tau_{\rm dn}=\tau_{\rm up}$ (Harrington's $B=\tau_{\rm up}$); with
+\texttt{Lya absorbing bottom: True} (default off, mode 2 only) it is the rest
+of the column down to the inner boundary, the molecular layer below acting as
+a sink rather than a mirror. The form $1/(1+\langle N\rangle)$ and not $1/\langle N\rangle$ is used
 because $\langle N\rangle$ counts absorptions per photon generated, so a
 photon is emitted $1+\langle N\rangle$ times before it leaves; this is exact
 at both ends and needs no join between the thin and thick limits. Under
@@ -713,12 +1014,13 @@ J_{\rm Ly\alpha} = J_{\rm int}+J_\star,
 \end{equation}
 with $P = \alpha_{\rm B}n_e n_{\rm HII} + C_{1s2p}n_e n_{\rm HI}$ the
 internal production, $T_s = {\rm erfc}\!\left(x_1/\sqrt2 X_s\right)$ the
-fraction of the broad stellar profile whose wings reach depth $\tau$, and
-$\langle\cdot\rangle$ the mean of the beam over the cell's own optical
-depth. The published solution requires $(a\tau)^{1/3}>10$
+fraction of the broad stellar profile (Gaussian of Doppler width
+$X_s$ set by \texttt{Lya stellar halfwidth [km/s]:}, default 70) whose wings
+reach depth $\tau$, $E = 1+(b-1)(1-\beta_{\rm tot})T_s$ the bounded trapping
+buildup of the penetrating stellar photons, with $b$ = \texttt{Lya stellar
+boost [-]:} (default 5, an empirical factor the code states as tuned to
+\citealt{Huang2023} Fig.~11, not a computed quantity), and
+$\langle\cdot\rangle$ the mean over the cell's own optical depth. The published solution requires $(a\tau)^{1/3}>10$
 (\citeauthor{Neufeld1990} section Va); cells outside that are counted by
 \texttt{lya\_wing\_domain\_record} and are carried there by the thin limit
-$\beta\to1$, which \eqref{eq:ion:neufeld} reaches smoothly. The alternative
-\texttt{jlya\_mode = 1} reads an externally computed $J_{\rm Ly\alpha}(r)$,
-for instance from the LaRT Monte Carlo code, and interpolates it onto the
-grid.
+$\beta\to1$, which \eqref{eq:ion:neufeld} reaches smoothly.

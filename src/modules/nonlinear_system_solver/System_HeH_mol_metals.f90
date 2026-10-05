@@ -43,18 +43,25 @@
 	! Solved with hybrd1 (numerical Jacobian), matching the molecular system;
 	! no analytic Jacobian is written for the merged residual.
 
-	use global_parameters, only: thereis_HeITR, thereis_oxychem
-	use ion_cell_state,    only: ieq_cell
+	use global_parameters, only: thereis_HeITR, thereis_oxychem, thereis_metals
+	use ion_cell_state,    only: ieq_cell, h2_fraction_of_reservoir,      &
+	                             ionized_hydrogen_nuclei_fraction
 	use ion_residual_core, only: metal_fractions, metal_electron_sum,     &
 	                             metal_rows,                              &
 	                             impose_transported_ionization_fractions
 	use System_HeH_mol,    only: mol_heh_rows, mol_inv_turnover,          &
+	                             scale_molecular_rows,                    &
+	                             element_turnover_reciprocal,             &
+	                             mol_row_gross, mol_row_scale,            &
+	                             mol_rows_by_element_turnover,            &
+	                             mol_rows_as_volume_rates,                &
+	                             ion_system_HeH_mol,                      &
 	                             oxygen_carrier_rows,                     &
 	                             oj3, oj4, oj5, oj7
 	use System_HeH_metals, only: met_nelem, met_ntot, met_g0, met_g1,     &
 	                             met_b0, met_b1, met_a1, met_a2, met_top, met_g02
 	use species_table,     only: iel_O
-	use charge_exchange,   only: cx_add_to_fvec, he_h_cx_fvec
+	use charge_exchange,   only: cx_add_to_fvec, he_h_cx_fvec, cx_metal_base
 
 	implicit none
 
@@ -123,6 +130,50 @@
 
 	end subroutine set_mol_metal_turnover_rates
 
+	subroutine set_element_turnover_scales(x, n, mbase)
+	! TAKE THE SCALE OF THE MOLECULAR ROWS AT THE COMPOSITION x and hold it
+	! (System_HeH_mol, mol_row_scale): the system of the cell -- with the
+	! metal block where the run carries metals -- is evaluated once as
+	! volume rates, the gross rate of each row is summed over the rows of
+	! its element, and every row is from then on divided by the turnover of
+	! its element at x, until a scale is taken again. mbase is the first
+	! metal row of the layout (metal_row_base()).
+	integer, intent(in) :: n, mbase
+	real*8,  intent(in) :: x(n)
+	real*8  :: xl(n), fv(n), par(60), inv(n)
+	integer :: iflag, iox_l, io_metal, nmet, cx_base_entry
+	xl    = x
+	par   = 0.0d0
+	iflag = 1
+	mol_rows_as_volume_rates = .true.
+	if (thereis_metals) then
+		cx_base_entry = cx_metal_base
+		cx_metal_base = mbase
+		call ion_system_HeH_mol_metals(n, xl, fv, iflag, par)
+		cx_metal_base = cx_base_entry
+	else
+		call ion_system_HeH_mol(n, xl, fv, iflag, par(1:40))
+	endif
+	mol_rows_as_volume_rates = .false.
+	iox_l    = 0
+	io_metal = 0
+	nmet     = 0
+	if (thereis_metals) then
+		nmet = met_nelem
+		if (thereis_oxychem) then
+			iox_l    = oxygen_row_base()
+			io_metal = mbase + 2*(iel_O-1)
+		endif
+	endif
+	call element_turnover_reciprocal(n, mol_row_gross(1:n),               &
+	                                 mol_inv_turnover(1:n), mbase, nmet,  &
+	                                 io_metal, iox_l, inv)
+	mol_row_scale(1:n) = inv
+	mol_rows_by_element_turnover = .true.
+	end subroutine set_element_turnover_scales
+
+	!----------------------------------!
+
 	subroutine ion_system_HeH_mol_metals(N_eq,x,fvec,iflag,params)
 
 	integer :: N_eq,iflag
@@ -143,6 +194,8 @@
 	! Each element's metal densities (neutral/+/++); charge exchange later.
 	real*8  :: nm0(met_nelem),nm1(met_nelem),nm2(met_nelem)
 	integer :: mbase,iox
+	! Gross rate of every row at x (System_HeH_mol, scale_molecular_rows).
+	real*8  :: gross(N_eq)
 
 	! Unpack the cell state (same named fields as System_HeH_mol)
 	g_hi    = ieq_cell%P_HI
@@ -229,6 +282,7 @@
 	! system's sum), then the metal charges.
 	n_e = n_hii + n_h2p + n_h3p + n_hehp + n_heii + 2.0d0*n_heiii
 	call metal_electron_sum(n_e, met_nelem, nm1, nm2)
+	gross(1:N_eq) = 0.0d0
 
 	! --- Molecular network rows (System_HeH_mol, metal-inclusive n_e) ---
 	call mol_heh_rows(fvec, n_hi, n_hii, n_h2, n_h2p, n_h3p, n_hehp,   &
@@ -237,7 +291,7 @@
 	                  g_h2_dd, g_h2_nd, g_lw,                           &
 	                  a_hii, a_heii, a_heiii, a_heiTR,                  &
 	                  b_hi, b_hei, b_heii, b_heiTR,                     &
-	                  q13, q31g, q31a, q31b, Q31, A31)
+	                  q13, q31g, q31a, q31b, Q31, A31, gross=gross)
 
 	! --- Oxygen-carrier rows, and the oxygen cycle's exchange with H2 ---
 	! Called after mol_heh_rows, which it adds to (fvec(4)). nm0(iel_O) is
@@ -247,13 +301,14 @@
 	! continuation of constrained_chemical_equilibrium.
 	if (thereis_oxychem)                                                  &
 		call oxygen_carrier_rows(fvec, iox, n_hi, n_h2, n_oh, n_h2o,      &
-		                         nm0(iel_O), oj3, oj4, oj5, oj7)
+		                         nm0(iel_O), oj3, oj4, oj5, oj7,          &
+		                         gross=gross)
 
 	! --- Metal rows (System_HeH_metals, shifted to mbase..) ---
 	call metal_rows(fvec, x, mbase, met_nelem, met_ntot, met_g0, met_g1, &
 	                met_g02,                                           &
 	                met_b0, met_b1, met_a1, met_a2, met_top,             &
-	                nm0, nm1, nm2, n_e)
+	                nm0, nm1, nm2, n_e, gross=gross)
 
 	! Charge exchange (Huang Table 4) on the H, He and metal rows. The
 	! driver sets cx_metal_base = mbase before this solve. Rows 1 and 2 are
@@ -269,7 +324,7 @@
 	! that the singlet is formed from.
 	call cx_add_to_fvec(N_eq, fvec, nm0, nm1, nm2,                       &
 	                    n_hi, n_hii, n_heiSI, n_heii, n_heiii,           &
-	                    1.0d0, ieq_cell%T_K)
+	                    1.0d0, ieq_cell%T_K, gross=gross)
 
 	! He <-> H charge exchange (Huang Table 4 group B); rows 1 and 2 are
 	! production positive here, so he_row_sign = +1. Group B is excluded
@@ -277,11 +332,12 @@
 	call he_h_cx_fvec(fvec, ieq_cell%kcx_He0_Hp, ieq_cell%kcx_Hep_H0,    &
 	                  ieq_cell%kcx_Hepp_H0,                              &
 	                  n_hi, n_hii, n_heiSI, n_heii, n_heiii, 1.0d0,       &
-	                  .true.)
+	                  .true., gross=gross)
 
-	! Each row divided by its own turnover rate, molecular block and metal
-	! block alike (set_mol_turnover_rates, set_mol_metal_turnover_rates).
-	fvec(1:N_eq) = fvec(1:N_eq)*mol_inv_turnover(1:N_eq)
+	! Each row against the chemical turnover of its element, molecular
+	! block and metal block alike, charge exchange inside the gross rates
+	! (System_HeH_mol, mol_inv_turnover).
+	call scale_molecular_rows(N_eq, fvec, gross)
 
 	! IMPOSED CARRIER PARTITIONS. Where a partition is not a local root, the
 	! balance row that would have computed it is replaced by the value,
@@ -294,6 +350,13 @@
 	! carrier transport OR by the lower-boundary reservoir composition, the
 	! oxygen carriers only by carrier transport.
 	if (ieq_cell%x_h2_fixed) fvec(4) = x(4) - ieq_cell%x_h2_fix
+	! The lower-boundary reservoir states the H2 partition of the
+	! NON-IONIZED hydrogen, and x_ion is an unknown of this same solve
+	! (ion_cell_state, x_h2_neutral_partition_fixed).
+	if (ieq_cell%x_h2_neutral_partition_fixed)                            &
+		fvec(4) = x(4) - h2_fraction_of_reservoir(                        &
+		          ieq_cell%x_h2_neutral_partition,                        &
+		          ionized_hydrogen_nuclei_fraction(x))
 	! The transported ionization fractions, where the flow carries them
 	! and not this cell's local balance (ion_residual_core). The H2
 	! partition just above is imposed for its own reasons and keeps its

@@ -48,9 +48,18 @@ sources of Sec.~\ref{sec:hydro:transport}, both off unless a run asks for
 them.  $q_d = \sum_s h_sJ_s$ is the interdiffusion enthalpy flux of a mixture
 whose elements or transported carriers move relative to the mass-averaged
 velocity $v$ \citep[eqs.~11--13]{Cook2009}: it exists where
-\texttt{He\_diffusion} moves helium against hydrogen and where a molecular
-carrier is transported, and is written out in
-Sec.~\ref{sec:mol:interdiffusion}.  The factor $4\pi$ that would appear in the face areas and the cell
+\texttt{He\_diffusion} moves helium against hydrogen, where a molecular
+carrier is transported and where \texttt{Ionization transport} carries the
+ionization stages, and is written out in
+Sec.~\ref{sec:mol:interdiffusion}: the element part is
+\texttt{interdiffusion\_enthalpy\_face\_flux}
+(\texttt{binary\_element\_diffusion.f90}), the carrier and stage parts are
+\texttt{molecular\_carrier\_enthalpy\_face\_flux} and
+\texttt{ionization\_stage\_enthalpy\_face\_flux}
+(\texttt{diffusive\_photochemistry.f90}), and their divergences enter the
+stationary energy row (\texttt{steady\_residual.f90}), the marching update
+after an accepted element or carrier step (\texttt{EXHALE\_main.f90}) and the
+advected-profile energy solve (Sec.~\ref{sec:postprocessing:adv}).  The factor $4\pi$ that would appear in the face areas and the cell
 volume cancels between them and is simply not carried.
 
 \subsection{The discrete divergence}
@@ -143,7 +152,7 @@ PLM branch of \eqref{eq:source} is the second term of \eqref{eq:sphp}.
 The three physical terms of the momentum equation, the ram divergence, the
 spherical pressure gradient and the weight $\rho\,\partial\Phi/\partial r$,
 are gathered out of these pieces by
-\texttt{momentum\_row\_terms\_of\_cell} in the same file and stored.  They are
+\texttt{momentum\_row\_terms\_of\_cell} (\texttt{RK\_rhs.f90}) and stored.  They are
 not $dF_2$ and $S_2$: under PLM each of those holds a part of order $2p/r$
 that cancels against the other, so a magnitude built from them alone reads
 $2p/r$ on a uniform pressure at rest, where the physical force is zero.  The
@@ -419,7 +428,9 @@ $n$ the number density of all particles and $T$ in K; ions contribute through
 $n$ only.  The hydrogen term is the atomic hydrogen conductivity of
 \citet{Watson1981}, $4.45\times10^{4}(T/1000\,\mathrm{K})^{0.7}$, to within
 2 per cent between 300 and 7000~K; at He/H $=9.7$ the helium term decides
-$\kappa$ (0.81 of the hydrogen value on the LHS~1140~b states), and it
+$\kappa$ (the coefficients stand in the ratio $299/379 = 0.79$; the mixture
+value is 0.81 of the hydrogen one on the LHS~1140~b He/H\,$=9.7$ state,
+MEASURED, update log stage~3 section~41), and it
 agrees with the tabulated helium conductivity of \citet{Incropera2007}
 (Table~A.4) to 1 per cent at 300 and 1000~K.  None of these sources gives an
 H$_2$ coefficient: $k_{\rm H_2}(T) = A\,T^{s}\,[1 + c\,E(\theta_v/T)]$,
@@ -428,16 +439,22 @@ $\theta_v = 5987$~K (the $v=0\to1$ spacing of H$_2$ in the
 \citet{Roueff2019} ladder), an Eucken form fitted to the tabulated
 conductivity of \citet{Incropera2007}, Table~A.4, over 200--2000~K (largest
 deviation 2.5 per cent, rms 1.05 per cent); it is valid there and an
-extrapolation outside.  The Einstein function is evaluated as
+extrapolation outside (below 200~K, where the rotational heat capacity
+freezes out, it overestimates, by 20 per cent at 100~K).  The Einstein function is evaluated as
 $x^2e^{-x}/(1-e^{-x})^2$, which cannot overflow at low $T$, by its Taylor
 series $1-x^2/12+x^4/240-x^6/6048$ below $x = 0.05$, where $1-e^{-x}$ loses
 digits, and as zero above $x = 700$ (\texttt{einstein\_heat\_capacity}; the
 $e^{x}$ form returned 0 below 16.9~K and NaN at 8.55--8.59~K until
 2026-10-01); the H$_2$ term is formed only where $n_{\rm H_2}>0$.  The
-molecular ions enter through $n$ and $n_e$ only.  A continuation factor $s$ on $\kappa$
-(\texttt{EXHALE\_CONDUCTION\_SCALE}) is part of the state identity (the
-\texttt{cond} token carries it to seventeen significant digits, so two
-factors are two states).  The viscosity keeps the hydrogen value tied
+molecular ions enter through $n$ and $n_e$ only.  A continuation factor
+$0\le s\le1$ on $\kappa$ (\texttt{EXHALE\_CONDUCTION\_SCALE},
+\texttt{conduction\_scale}; 1 when unset, any other value stops the run at
+startup) multiplies the conductivity in the stationary row and the marching
+update alike; a state solved at $s<1$ is a step of a continuation and not a
+prediction of the model.  The factor is part of the state identity: wherever
+$s\ne1$ the \texttt{cond} token of the options field carries $s$ itself to
+seventeen significant digits (\texttt{factor\_token\_text},
+\texttt{load\_IC.f90}), so two factors are two states.  The viscosity keeps the hydrogen value tied
 to the Watson conductivity by the Chapman--Enskog/Eucken relation for a
 monatomic gas, Prandtl number $2/3$,
 $\mu(T) = \frac{4}{15}\frac{m_{\rm H}}{k_B}\,4.45\times10^{4}(T/1000\,\mathrm{K})^{0.7}$.  In code units
@@ -447,16 +464,81 @@ number, and $\kappa_{\rm code} = \kappa_{\rm cgs}T_0/(n_0m_{\rm H}v_0^3R_0)$
 viscosity is tied to, not for the mixture conductivity).
 
 Both operators are assembled once as tridiagonal coefficient triplets on the
-same faces and volumes as \eqref{eq:geom}, and the same triplets serve as the
-source entering the stationary residual and as the matrix of a Crank-Nicolson
-update in the marching loop, so the marched fixed point and the zero of the
-residual are the same state.  The inner boundary takes the flux through the
-base face from the anchored ghost, held fixed during the implicit step; the
-outer boundary carries zero diffusive flux, which is the condition an
-extrapolated outflow ghost admits.  A step whose solve leaves a cell below
-the temperature floor of the equation of state fails with a named status
-rather than returning the floor, because returning it would add energy with
-no source behind it.
+same faces and volumes as \eqref{eq:geom} (\texttt{viscous\_momentum\_coeffs},
+\texttt{thermal\_conduction\_coeffs}), and the same triplets serve as the
+source entering the stationary residual (\texttt{viscous\_conduction\_sources},
+called by \texttt{steady\_residual.f90}, so every stationary solver of
+Sec.~\ref{sec:steady} sees the terms) and as the matrix of a Crank-Nicolson
+update in the marching loop (\texttt{viscous\_conduction\_step}, an
+operator-split stage of each step), so the marched fixed point and the zero
+of the residual are the same state.  The face coefficient is the cell
+coefficient interpolated linearly in $r$ to the face, the same on both sides
+of a face, so the operator is in flux form and its column sum telescopes to
+the two boundary fluxes.
+
+The outer boundary carries zero diffusive flux, which is the condition an
+extrapolated outflow ghost admits.  At the inner boundary the viscous stress
+is taken against the velocity of the anchored ghost, held fixed during the
+implicit step.  The heat flux through the base face is taken against a
+prescribed bath, not against the temperature the advective ghost happens to
+carry: the lower atmosphere below the level is a heat bath on the time scale
+of a stationary solution, whichever way the contact is upwinded.  The bath
+temperature is \texttt{conduction\_base\_level\_T}, the lower atmosphere's own
+temperature at the ghost center $r(0)$ (\texttt{base\_reservoir\_temperature\_at},
+\texttt{base\_boundary.f90}): where a lower-atmosphere profile is handed over
+(Sec.~\ref{sec:mol:handoff}) it is the profile's temperature at that radius,
+linear in $r$ between its levels, and otherwise the reservoir's hydrostatic
+isentrope continued from the level (Sec.~\ref{sec:bcic:base}); a reservoir
+that returns no positive temperature leaves the ghost's own value.  The
+conductivity of the ghost is evaluated at the same bath temperature, so the
+coefficient and the temperature it acts on belong to one boundary condition.
+The two choices agree at the level itself; one ghost cell down they differed
+by 3.5\,K on the LHS~1140\,b photochemical profiles (188.89 against
+185.42\,K), which moved the conductive flux into the level by about 4.6 per
+cent at a fixed cell-1 temperature (MEASURED, update log stage~3
+section~70).
+
+The conduction operator is therefore conservative up to one named boundary
+flux, the heat exchanged with the lower atmosphere through the base face,
+\begin{equation}
+  q_{\rm base} = -\kappa_{1/2}\,\frac{T_1 - T_{\rm bath}}{r_1 - r_0}
+  \quad\text{(positive into the lower atmosphere)},
+  \label{eq:qbase}
+\end{equation}
+the base face's own term of the first row of the triplets, sign reversed.
+\texttt{heat\_conducted\_into\_lower\_atmosphere} forms it on the state the
+certification measures (Sec.~\ref{sec:steady:certification}), that is on the state
+about to be written and not on a perturbed Newton iterate, and
+\texttt{write\_setup\_report.f90} writes it to \texttt{EXHALE\_resolved.out}
+whenever conduction is on: \texttt{base\_conduction\_state}
+(\texttt{unmeasured} before a certification has measured it, then
+\texttt{measured}), \texttt{base\_conductive\_flux\_cgs} in
+erg\,cm$^{-2}$\,s$^{-1}$, and the two temperatures of
+\eqref{eq:qbase}, \texttt{base\_conduction\_T\_bath\_K} and
+\texttt{base\_conduction\_T\_cell1\_K}.  The energy coupling of the
+elemental-flux closure with the lower atmosphere reads this flux
+(Sec.~\ref{sec:mol:handoff}).  On the LHS~1140\,b states it carried 35 to 52
+per cent of the wind's absorbed heat (MEASURED, update log stage~3
+section~76).
+
+The Crank-Nicolson stage returns a state only when both tridiagonal
+eliminations completed, every solved value is finite and every solved
+temperature is at or above the floor of the equation of state (the floor of
+the implicit energy step, Sec.~\ref{sec:thermal:tsolve}).  Otherwise it fails
+with a named status and reason and returns no state
+(\texttt{conduction\_report}).  The marching loop then refuses the whole
+attempted step, in both run modes, exactly as it refuses a failed energy
+update: the checkpoint is restored and the step is retaken at half the
+interval, up to the retry budget of the attempted-step controller (eight
+halvings, \texttt{n\_step\_retry\_max}); a stage that still fails at
+$\Delta t/2^8$ stops the run with exit status~2 and the retry history
+(Sec.~\ref{sec:numerics:rk}).  A shorter step is the remedy for the failure the
+large step produces: a mode of the conduction operator with decay rate
+$\lambda/\Delta t$ is multiplied by $(1-\lambda/2)/(1+\lambda/2)$, which is
+negative for $\lambda>2$, so over a step longer than twice the diffusion time
+of a cell the update overshoots, and halving $\Delta t$ halves $\lambda$.  The
+floor value is never returned, because returning it would add energy with no
+source behind it.
 
 \subsection{The two-dimensional approximation}
 \label{sec:hydro:2d}
@@ -512,7 +594,8 @@ so that the cell-mean attenuation becomes
 which is the cell-mean attenuation \eqref{eq:rad:cellmean} with the further
 factor inside the integral; it has no closed form and is integrated by
 composite three-point Gauss-Legendre on segments of optical depth at most
-$0.25$.  With $\alpha = 0$, the default and the only value for which the field
+$0.25$, at most 256 of them (\texttt{cell\_mean\_attenuation},
+\texttt{utilities.f90}).  With $\alpha = 0$, the default and the only value for which the field
 is a pure exponential, it reduces to \eqref{eq:rad:cellmean} itself.
 
 The range of validity is stated at the routine: $\xi = 1/2$ is the

@@ -410,35 +410,15 @@ print('wrote lhs1140b_bestfit_structure.pdf')
 # ask which f reproduces the measured line width.  Depth, width and the
 # red/blue ratio are then read off with the same three-Gaussian extractor
 # used on the data, and the equivalent width over the same vacuum window.
-from scipy.ndimage import gaussian_filter1d
 from he_line_metrics import fit_metrics
+# The kernel, the extractor, the width criterion and the window are defined
+# once, in he10830_equivalent_width.py, which the EW chain uses as well.
+from he10830_equivalent_width import (
+    FWHM_OBS_A as FWHM_OBS, broaden_excess as broaden,
+    broadened_line_metrics as broadened_metrics,
+    width_matching_fwhm_kms as matched_kernel_curve)
 
-FWHM_OBS = 0.841                      # A, measured red-pair width
 RED_OBS, RED_ERR_LO, RED_ERR_HI = 1.254, 0.23, 0.22   # %, C26 MCMC
-
-def broaden(lam, exc, fwhm_kms, lam0=10830.0):
-    """Extra Gaussian velocity broadening, FWHM in km/s.
-
-    lam0 converts the velocity width to a wavelength width; use the line
-    position in the frame of `lam` (10830 A in air, 10833 A in vacuum).
-    """
-    if fwhm_kms <= 0.0:
-        return exc
-    dl = np.median(np.diff(lam))
-    return gaussian_filter1d(exc, fwhm_kms/C_KMS*lam0/2.35482/dl)
-
-def broadened_metrics(lam, exc, fwhm_kms, frame='air', lam0=10830.0):
-    e = broaden(lam, exc, fwhm_kms, lam0)
-    d = fit_metrics(lam, e, frame=frame)
-    lv = lam*AIR if frame == 'air' else lam
-    v = HEW.model_equivalent_width(lv, e)
-    d['ew'] = np.nan if v is None else v
-    return d
-
-def matched_kernel_curve(lam, exc, frame='air', lam0=10830.0):
-    """Added kernel FWHM [km/s] at which the line reaches the measured width."""
-    return brentq(lambda f: broadened_metrics(lam, exc, f, frame, lam0)['fwhm_A']
-                  - FWHM_OBS, 1.0, 60.0, xtol=1e-3)
 
 def matched_kernel(tag, sub=''):
     c = exhale_curve(tag, sub)

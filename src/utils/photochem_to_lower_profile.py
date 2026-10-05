@@ -199,6 +199,24 @@ def hydrogen_carrier_split(pc, counts):
     return nuc_H/nuc_tot
 
 
+# Atomic-H share of the hydrogen nuclei at the model top below which the
+# whole elemental hydrogen flux is imposed on H2 (the dominant-carrier
+# approximation), and the largest difference allowed between the share the
+# boundary condition carries and the share of the converged top: either way
+# at most 1% of the hydrogen flux leaves on the wrong carrier.
+CARRIER_SHARE_TOL = 0.01
+# Re-impositions of the measured split allowed before the adapter refuses.
+CARRIER_ROUNDS = 8
+# The carrier decision of the most recent imposition (set by
+# impose_elemental_escape_flux).
+LAST_IMPOSITION = {}
+# The atomic share a carrier round imposes (key 'H'): the share of the
+# CONVERGED top.  None measures it on the composition the imposition sees;
+# a re-solve on a new temperature first re-initializes the composition from
+# the climate grid, whose top no longer carries the converged share.
+CARRIER_SHARE_STATED = {'H': None}
+
+
 def impose_elemental_escape_flux(pc, counts, phi_H_gs, phi_He_gs):
     """Impose the elemental escape fluxes as a flux upper boundary condition.
 
@@ -225,7 +243,12 @@ def impose_elemental_escape_flux(pc, counts, phi_H_gs, phi_He_gs):
     atomic-H share of the hydrogen nuclei at the model top is below 1%; the
     share is printed with the imposition.  Above 1% the flux is split
     between H and H2 in proportion to the nuclei each carries there, so the
-    approximation never silently covers a dissociated top.
+    approximation never silently covers a dissociated top.  The share is
+    that of the composition the imposition sees (the initial one on the
+    first solve) unless a carrier round states it (CARRIER_SHARE_STATED);
+    main() compares the share the boundary condition carries with that of
+    the converged top and, where they differ by more than
+    CARRIER_SHARE_TOL, re-imposes the measured split and re-solves.
 
     A zero flux sets no boundary condition at all, so the closed-top
     solution is reproduced bit for bit.
@@ -235,8 +258,10 @@ def impose_elemental_escape_flux(pc, counts, phi_H_gs, phi_He_gs):
     imposed = {}
     if phi_H_gs != 0.0:
         phi_H = phi_H_gs/(sch.ATOMIC_WEIGHT['H']*sch.MAMU)/area
-        f_atomic = hydrogen_carrier_split(pc, counts)
-        if f_atomic > 0.01:
+        f_atomic = (hydrogen_carrier_split(pc, counts)
+                    if CARRIER_SHARE_STATED.get('H') is None
+                    else CARRIER_SHARE_STATED['H'])
+        if f_atomic > CARRIER_SHARE_TOL:
             pc.set_upper_bc('H', bc_type='flux', flux=phi_H*f_atomic)
             pc.set_upper_bc('H2', bc_type='flux',
                             flux=phi_H*(1.0 - f_atomic)/2.0)
@@ -248,6 +273,10 @@ def impose_elemental_escape_flux(pc, counts, phi_H_gs, phi_He_gs):
                    'the hydrogen nuclei at the top)' % f_atomic)
         imposed['H'] = phi_H
         imposed['H_atomic_share'] = f_atomic
+        # The atomic share the boundary condition actually carries (0 on the
+        # dominant-carrier branch); main() compares it with the converged top.
+        LAST_IMPOSITION['H_atomic_share_used'] = (
+            f_atomic if f_atomic > CARRIER_SHARE_TOL else 0.0)
         print('  imposed elemental H escape: %.6e g/s -> %.6e nuclei/cm^2/s '
               'at r_top = %.6e cm, %s' % (phi_H_gs, phi_H, r_top, how))
     if phi_He_gs != 0.0:
@@ -430,7 +459,8 @@ def photochemical_steady_state(args, wdir, flux_file, mech, thermo,
                    'solution has no elemental flux to hand over'
                    % (reached, give_up))
 
-    steady_state_at_stated_model_top(pc, toa, args.blocks)
+    steady_state_at_stated_model_top(pc, toa, args.blocks,
+                                     passes=args.top_pressure_passes)
     return pc, reached, truncation, toa, imposed, r_top_imposed
 
 
@@ -473,6 +503,16 @@ def steady_state_at_stated_model_top(pc, toa, blocks,
     while `top_atmos` is the domain edge, and the half cell between them is
     about 9 % in pressure at this resolution.
 
+    The iteration is the map z -> z'(z) of the domain top: pin at z, converge,
+    read off the altitude z' at which the solution reaches the stated
+    pressure.  Where its slope is near -1 the passes alternate about the
+    fixed point without contracting (He/H 0.5 on LHS 1140 b: +-6.2e-03 for
+    eight passes).  Once two successive moves have opposite signs, the top
+    is therefore pinned at the mean of z' and the previous top, (z + z')/2,
+    the averaged iteration of the same map: it has the same fixed point and
+    contracts where the slope is near -1 (on that column: 1.8e-06 after
+    nine passes).  The test is unchanged.
+
     FAILURE IS A REFUSAL, not a fall-back to the unpinned grid.  A column the
     chemistry could not re-converge on, or one whose grid will not settle, is
     not a solution of the stated problem; writing it anyway would put back
@@ -485,9 +525,16 @@ def steady_state_at_stated_model_top(pc, toa, blocks,
     from photochem import PhotoException
 
     previous = None
+    z_top = None
+    moves = []
     for attempt in range(1, passes + 1):
         try:
             pc.update_vertical_grid(TOA_pressure=toa)
+            averaged = (len(moves) >= 2 and moves[-1]*moves[-2] < 0.0)
+            if averaged:
+                pc.update_vertical_grid(
+                    TOA_alt=0.5*(float(pc.var.top_atmos) + z_top))
+            z_top = float(pc.var.top_atmos)
         except PhotoException as exc:
             sch.refuse('the model top could not be pinned at the stated '
                        '%.3e dyn/cm^2: %s' % (toa, exc))
@@ -503,11 +550,12 @@ def steady_state_at_stated_model_top(pc, toa, blocks,
         p_top = float(pc.wrk.pressure_hydro[-1])
         moved = float('nan') if previous is None else p_top/previous - 1.0
         print('  pinned pass %d: t = %.3e s, top cell %.6e dyn/cm2, moved '
-              '%s from the previous pass%s%s'
+              '%s from the previous pass%s%s%s'
               % (attempt, pc.wrk.tn, p_top,
                  'n/a' if previous is None else '%+.3e' % moved,
                  '  STEADY' if reached else '',
-                 '  GAVE UP' if give_up else ''), flush=True)
+                 '  GAVE UP' if give_up else '',
+                 '  (top averaged)' if averaged else ''), flush=True)
         if give_up or not reached:
             sch.refuse('the chemistry did not re-reach steady state on the '
                        'grid pinned at the stated model top %.3e dyn/cm^2 '
@@ -515,6 +563,8 @@ def steady_state_at_stated_model_top(pc, toa, blocks,
                        '%s)' % (toa, attempt, passes, reached, give_up))
         if previous is not None and abs(moved) <= tol:
             return p_top, attempt
+        if previous is not None:
+            moves.append(moved)
         previous = p_top
     sch.refuse('the grid will not settle: after %d re-pinned solves the model '
                'top still moves by %+.3e between passes, against a tolerance '
@@ -540,6 +590,319 @@ def species_element_counts(pc):
         if c:
             counts[sp] = c
     return counts
+
+
+# --------------------------------------------------------------------------
+# The heat the escape wind conducts into the column (--conducted-heat-flux)
+# --------------------------------------------------------------------------
+# The column's own response to that flux is solved by
+# conducted_heat_column_balance.py; this part couples it to the chemistry.
+#
+# Levels inserted into the T(p) column handed to the chemistry, so that the
+# temperature structure the response puts below the match (e-folding depth
+# 0.07-0.14 pressure scale heights on LHS 1140 b) reaches the chemistry's
+# own grid rather than an interpolation across the climate grid's 0.36 H.
+CHEMISTRY_LEVEL_SPACING = 0.05      # in ln p
+CHEMISTRY_LEVEL_DEPTH = 8.0         # scale heights below p_match
+# Levels of the written profile: every node of the column solution whose
+# temperature rise exceeds this, so that the bath temperature EXHALE reads
+# half a cell below its base face (linear in r between levels) is the
+# solved one and not an interpolation across the chemistry grid.
+PROFILE_LEVEL_DT_MIN = 1.0e-3       # K
+COLUMN_TEMPERATURE_TOL = 1.0        # K, default of --column-energy-tolerance
+
+
+def column_with_inserted_levels(P, T, Kzz, p_match_bar):
+    """(P, T, Kzz) deep to shallow with levels added every
+    CHEMISTRY_LEVEL_SPACING in ln p over CHEMISTRY_LEVEL_DEPTH scale heights
+    below the match, T and K_zz linear in ln p (the climate stratosphere is
+    an isotherm there, so the temperature profile is unchanged)."""
+    pm = p_match_bar*sch.BAR
+    x_new = np.log(pm) + np.arange(0.0, CHEMISTRY_LEVEL_DEPTH + 1e-9,
+                                   CHEMISTRY_LEVEL_SPACING)
+    lnP = np.log(P)
+    keep = (x_new < lnP[0]) & (x_new > lnP[-1])
+    x_new = x_new[keep]
+    x_new = np.array([x for x in x_new
+                      if np.min(np.abs(lnP - x)) > 1.0e-6])
+    x_all = np.sort(np.concatenate([lnP, x_new]))[::-1]
+    T_all = np.interp(x_all, lnP[::-1], T[::-1])
+    K_all = (np.interp(x_all, lnP[::-1], Kzz[::-1]) if Kzz is not None
+             else None)
+    return np.exp(x_all), T_all, K_all
+
+
+def temperature_rise_at(res, p_dyn):
+    """The solved rise Delta T at pressures p_dyn [dyn/cm^2]: the column
+    solution inside its domain, its value at the match above it (the
+    reference column is an isotherm there), zero below it."""
+    s = res['domain']['s']
+    x = -np.log(np.asarray(p_dyn, dtype=float))
+    out = np.interp(x, s, res['dT'], left=0.0, right=res['dT_match'])
+    return out
+
+
+def conducted_heat_column_state(pc, args, counts, emission, T_reference,
+                                p_floor_bar):
+    """Solve the column's temperature under the conducted flux with the
+    composition the chemistry currently holds.  T_reference(p_dyn) is the
+    climate temperature: the reference state, never the warmed one."""
+    import conducted_heat_column_balance as chb
+    sol = pc.return_atmosphere()
+    p_dyn = np.asarray(sol['pressure'], dtype=float)
+    p_bar = p_dyn/sch.BAR
+    nparticles = int(pc.dat.np)
+    particles = set(list(pc.dat.species_names)[:nparticles])
+    gas = {sp: np.asarray(y, dtype=float) for sp, y in sol.items()
+           if sp in counts and sp not in particles}
+    mu = sch.mean_molecular_weight(gas, counts)
+    T0 = T_reference(p_dyn)
+    r_cm = sch.hydrostatic_radius(p_bar, T0, mu, args.mp, args.r_ref,
+                                  args.p_ref)*sch.RJ
+    mix = {sp: gas[sp] for sp in ('He', 'H2', 'H') + chb.EMITTERS
+           if sp in gas}
+    col = chb.ColumnResponse(p_bar, T0, r_cm, mu*sch.MAMU, mix,
+                             args.mp*sch.MJ, args.p_match, emission=emission,
+                             nh3_h2_rate_analog=args.nh3_h2_rate_analog)
+    if args.column_band_transfer == 'thin':
+        return col.solve(args.conducted_heat_flux,
+                         treatment=args.column_energy_treatment,
+                         p_floor_bar=p_floor_bar)
+    if args.column_band_transfer == 'cooling_to_space_exchange':
+        return col.solve_with_included_exchange(
+            args.conducted_heat_flux, treatment=args.column_energy_treatment,
+            p_floor_bar=p_floor_bar)
+    return col.solve(args.conducted_heat_flux,
+                     treatment=args.column_energy_treatment,
+                     p_floor_bar=p_floor_bar,
+                     transfer=args.column_band_transfer,
+                     exchange_shift_max_K=args.column_exchange_shift_max)
+
+
+def chemistry_on_new_temperature(pc, args, counts, Pc, Tc, Kc, toa):
+    """Re-solve the chemistry on the temperature Tc of the climate grid Pc,
+    starting from the solution it holds (`reinitialize_to_new_climate_PT`
+    with the current mixing ratios), with the same escape boundary condition
+    and the same grid pinning as the first solve."""
+    nparticles = int(pc.dat.np)
+    names = list(pc.dat.species_names)
+    nsl = int(pc.dat.nsl)
+    gas_names = names[nparticles:len(names) - 2 - nsl]
+    clim = pc.return_atmosphere_climate_grid()
+    mix = {sp: np.asarray(clim[sp], dtype=float) for sp in gas_names}
+    pc.reinitialize_to_new_climate_PT(Pc, Tc, Kc, mix)
+    impose_elemental_escape_flux(pc, counts, args.trial_flux_H,
+                                 args.trial_flux_He)
+    pc.initialize_robust_stepper(pc.wrk.usol)
+    give_up = reached = False
+    for n in range(args.blocks):
+        for _ in range(100):
+            give_up, reached = pc.robust_step()
+            if give_up or reached:
+                break
+        if give_up or reached:
+            break
+    print('  chemistry on the warmed column: t = %.3e s%s%s'
+          % (pc.wrk.tn, '  STEADY' if reached else '',
+             '  GAVE UP' if give_up else ''), flush=True)
+    if give_up or not reached:
+        sch.refuse('the chemistry did not reach steady state on the column '
+                   'warmed by the conducted heat flux (reached_steady_state '
+                   '= %s, gave_up = %s)' % (reached, give_up))
+    steady_state_at_stated_model_top(pc, toa, args.blocks,
+                                     passes=args.top_pressure_passes)
+
+
+def reference_column_on_chemistry_grid(pc, args, column):
+    """(T_reference(p), Pc, Tc, Kc): the reference column (P, T, K) [dyn/cm2,
+    K, cm2/s], interpolated in ln p onto the climate grid Pc of the chemistry;
+    K from the eddy-coefficient arguments when they state one."""
+    P_ref, T_ref = column[0], column[1]
+    lnP_ref = np.log(P_ref)[::-1]
+    T_ref_asc = T_ref[::-1]
+
+    def T_reference(p_dyn):
+        return np.interp(np.log(p_dyn), lnP_ref, T_ref_asc)
+
+    Pc = np.asarray(pc.gdat.P_clima_grid, dtype=float)
+    Tc = T_reference(Pc)
+    Kc = sch.eddy_diffusion_coefficient(Pc/sch.BAR, args)
+    if Kc is None:
+        Kc = np.interp(np.log(Pc), lnP_ref, column[2][::-1])
+    return T_reference, Pc, Tc, Kc
+
+
+def conducted_heat_iteration(pc, args, column, toa, p_floor_bar):
+    """Temperature and composition of the column under the conducted flux,
+    iterated to agreement: column energy balance with the chemistry's
+    composition, chemistry re-solved on the new temperature, until the
+    matching-level temperature moves by less than
+    --column-energy-tolerance [K].  Returns the last column solution and the
+    record of the iterations."""
+    import conducted_heat_column_balance as chb
+    T_reference, Pc, Tc_ref, Kc = reference_column_on_chemistry_grid(
+        pc, args, column)
+    counts = species_element_counts(pc)
+    emission = chb.LTEBandEmission()
+    history = []
+    previous = None
+    for it in range(args.column_energy_max_iterations):
+        res = conducted_heat_column_state(pc, args, counts, emission,
+                                          T_reference, p_floor_bar)
+        history.append(res['T_match'])
+        print('  column energy balance %d: F = %.4g erg/cm2/s, treatment %s,'
+              ' T_match = %.3f K (rise %.3f K, e-folding %.3f H, domain %.2f H,'
+              ' %d Newton iterations)'
+              % (it, args.conducted_heat_flux, args.column_energy_treatment,
+                 res['T_match'], res['dT_match'], res['e_folding_H'],
+                 res['depth_H'], res['newton_iterations']), flush=True)
+        tl = res.get('thin_layer')
+        if tl is not None and tl['exceeded'] and \
+                args.column_band_transfer == 'thin':
+            print('  WARNING: ' + tl['message'] + ' (thin_layer_limit_exceeded'
+                  ' T; largest absorbed fraction %.4f, %s %s bin %.0f-%.0f'
+                  ' cm^-1)' % (tl['max_absorbed'], tl['species'], tl['band'],
+                               tl['bin_cm'][0], tl['bin_cm'][1]), flush=True)
+        if 'exchange' in res and res['exchange'].get('included'):
+            print('    transfer %s: the exchange inside the warmed layer is'
+                  ' solved, T_match %.3f K above the cooling-to-space value'
+                  % (args.column_band_transfer, res['exchange']['shift_K']),
+                  flush=True)
+        elif 'exchange' in res:
+            print('    transfer %s: neglected exchange shifts T_match by'
+                  ' %.3f K to first order (bound %.3g K)'
+                  % (args.column_band_transfer, res['exchange']['shift_K'],
+                     res['exchange']['shift_max_K']), flush=True)
+        if previous is not None and \
+                abs(res['T_match'] - previous) < args.column_energy_tolerance:
+            res['iterations'] = it + 1
+            res['T_match_history'] = history
+            res['T_reference_fn'] = T_reference
+            return res
+        previous = res['T_match']
+        Tc_new = Tc_ref + temperature_rise_at(res, Pc)
+        chemistry_on_new_temperature(pc, args, counts, Pc, Tc_new, Kc, toa)
+    sch.refuse('the column temperature and the chemistry did not agree to '
+               '%.3g K at the match in %d iterations (T_match history %s)'
+               % (args.column_energy_tolerance,
+                  args.column_energy_max_iterations,
+                  ', '.join('%.2f' % t for t in history)))
+
+
+def column_heat_note(args, res):
+    """The notes sentence of a profile written under a conducted flux."""
+    shares = sorted(res['band_shares'], key=lambda r: -abs(r[4]))[:3]
+    return ('Column energy balance below p_match under the conducted heat'
+            ' flux %.4g erg/cm2/s (conducted_heat_column_balance.py, %s%s):'
+            ' T_match %.2f K, rise %.2f K, e-folding %.3f H; bands %s;'
+            ' %d chemistry-temperature iterations.'
+            % (args.conducted_heat_flux, args.column_energy_treatment,
+               '' if args.column_band_transfer == 'thin'
+               else ', transfer ' + args.column_band_transfer,
+               res['T_match'], res['dT_match'], res['e_folding_H'],
+               ', '.join('%s %s %.0f%%' % (r[0], r[1], 100*r[4])
+                         for r in shares), res['iterations']))
+
+
+def write_column_heat_record(args, res):
+    """`conducted_heat_column.txt` beside the profile: the column solution
+    on its own nodes, with the band shares, the optical depths and the
+    energy budget in the header."""
+    d = res['domain']
+    path = os.path.join(args.run_dir, 'conducted_heat_column.txt')
+    q = res['q']
+    q_nodes = np.concatenate([[q[0]], 0.5*(q[1:] + q[:-1]),
+                              [args.conducted_heat_flux]])
+    with open(path, 'w') as f:
+        f.write('# column energy balance under the conducted heat flux'
+                ' (conducted_heat_column_balance.py)\n')
+        f.write('# conducted_heat_flux_cgs %.10E\n' % args.conducted_heat_flux)
+        f.write('# treatment %s\n' % args.column_energy_treatment)
+        if args.column_energy_treatment == 'nlte':
+            f.write('# nh3_h2_rate_analog %s\n' % args.nh3_h2_rate_analog)
+        if args.column_band_transfer == 'thin':
+            tl = res['thin_layer']
+            f.write('# thin_layer_limit_exceeded %s\n'
+                    % ('T' if tl['exceeded'] else 'F'))
+            f.write('# thin_layer_max_absorbed_fraction %.6E (limit %.2f) at'
+                    ' %s %s bin %.0f-%.0f cm^-1\n'
+                    % (tl['max_absorbed'], tl['limit'], tl['species'],
+                       tl['band'].replace(' ', '_'), tl['bin_cm'][0],
+                       tl['bin_cm'][1]))
+        if args.column_band_transfer != 'thin':
+            f.write('# transfer %s\n' % args.column_band_transfer)
+            x = res['exchange']
+            if x.get('included'):
+                f.write('# exchange included: T_match shift %.4f K from the'
+                        ' exchange (solved, %d iterations), heating/F %.4e,'
+                        ' nodes from %.4e bar\n'
+                        % (x['shift_K'], x['iterations'],
+                           x['heating_over_F'], x['p_k0_bar']))
+            else:
+                f.write('# exchange neglected: first-order T_match shift'
+                        ' %.4f K (bound %.3g K), heating/F %.4e, nodes from'
+                        ' %.4e bar\n'
+                        % (x['shift_K'], x['shift_max_K'],
+                           x.get('heating_over_F', 0.0),
+                           x.get('p_k0_bar', 0.0)))
+            for e in res['escape']:
+                f.write('# escape %-5s %-22s beta(match) %.5f'
+                        ' beta_min(warmed) %.5f\n'
+                        % (e['species'], e['band'], e['beta_match'],
+                           e['beta_min_warm']))
+        f.write('# T_match_K %.10E\n' % res['T_match'])
+        f.write('# dT_match_K %.10E\n' % res['dT_match'])
+        f.write('# e_folding_H %.6f\n' % res['e_folding_H'])
+        f.write('# domain_depth_H %.4f (limited by the floor: %s)\n'
+                % (res['depth_H'], res['depth_limited_by_floor']))
+        f.write('# iterations %d, T_match history %s\n'
+                % (res['iterations'],
+                   ' '.join('%.4f' % t for t in res['T_match_history'])))
+        b = res['budget']
+        f.write('# budget [r^2 erg cm^-2 s^-1, r in cm]: emission excess %.10E,'
+                ' bottom flux %.10E, top flux %.10E, relative error %.3E\n'
+                % (b['excess'], b['bottom_flux'], b['top'],
+                   b['relative_error']))
+        for r in res['band_shares']:
+            f.write('# band %-5s %-22s %-4s share %.5f\n'
+                    % (r[0], r[1], r[2], r[4]))
+        for o in res['optical_depth']:
+            f.write('# tau %-5s %-22s tau_bar(match) %.3e tau_max_g(match)'
+                    ' %.3e absorbed fraction of the excess %.3e\n'
+                    % (o['species'], o['band'], o['tau_bar_at_match'],
+                       o['tau_max_g_at_match'],
+                       o['absorbed_fraction_of_excess']))
+        f.write('# columns: p[bar] T_reference[K] T[K] dT[K]'
+                ' q_down[erg/cm2/s]\n')
+        for i in range(d['s'].size):
+            f.write('%25.17E %25.17E %25.17E %25.17E %25.17E\n'
+                    % (d['p_bar'][i], d['T0'][i], res['T'][i], res['dT'][i],
+                       q_nodes[i]))
+    print('wrote %s' % path)
+
+
+def profile_with_column_temperature(cols, res, args):
+    """The written profile under the conducted flux: levels added at the
+    nodes of the column solution whose rise exceeds PROFILE_LEVEL_DT_MIN, the
+    temperature of the column solution at every level (the reference plus
+    the rise; composition as the chemistry left it, linear in ln p at the
+    added levels), n_tot = p/(k T), rho = n_tot mu m_u at the level's mean
+    molecular weight, and r re-integrated hydrostatically from the reference
+    level on the new temperature."""
+    d = res['domain']
+    add = d['p_bar'][np.abs(res['dT']) >= PROFILE_LEVEL_DT_MIN]
+    for p in add:
+        cols = sch.insert_level(cols, float(p))
+    p_bar = cols['p']
+    mu = cols['rho']/(cols['n_tot']*sch.MAMU)
+    T_ref_cols = res['T_reference_fn'](p_bar*sch.BAR)
+    T = T_ref_cols + temperature_rise_at(res, p_bar*sch.BAR)
+    cols['T'] = T
+    cols['n_tot'] = p_bar*sch.BAR/(sch.KB*T)
+    cols['rho'] = cols['n_tot']*mu*sch.MAMU
+    cols['r'] = sch.hydrostatic_radius(p_bar, T, mu, args.mp, args.r_ref,
+                                       args.p_ref)
+    return cols
 
 
 def cold_trap_note(p_bar, ratios_gas, ratios_all, p_match, sol,
@@ -651,6 +1014,68 @@ def main():
     ap.add_argument('--t-max', type=float, default=None,
                     help='truncate the column above this temperature')
     ap.add_argument('--blocks', type=int, default=400)
+    ap.add_argument('--conducted-heat-flux', type=float, default=0.0,
+                    help='heat flux the escape wind conducts into the column'
+                         ' through the matching level [erg cm^-2 s^-1],'
+                         ' positive into the column (EXHALE_resolved.out'
+                         ' base_conductive_flux_cgs). Nonzero solves the'
+                         ' column energy balance below p_match'
+                         ' (conducted_heat_column_balance.py) and iterates'
+                         ' it with the chemistry; 0 (default) writes the'
+                         ' profile without it')
+    ap.add_argument('--column-energy-treatment', default='nlte',
+                    choices=('nlte', 'nlte_partial', 'lte', 'rotational'),
+                    help='band emission of the column energy balance: nlte'
+                         ' (default; vibrational bands with published V-T'
+                         ' rates as two-level systems, the rest in LTE),'
+                         ' lte (every band in LTE, an upper bound on the'
+                         ' cooling), rotational (rotational bands only, a'
+                         ' lower bound), nlte_partial (two-level also for a'
+                         ' band whose rates miss a partner, a lower bound on'
+                         ' its emission)')
+    ap.add_argument('--nh3-h2-rate-analog',
+                    default='cd4_bending',
+                    choices=('cd4_bending', 'water_bending_overtone'),
+                    help='the analog whose measured k(H2)/k(He) turns the'
+                         ' measured NH3 nu2 + He de-excitation rate into the'
+                         ' unmeasured NH3 nu2 + H2 one (treatment nlte only):'
+                         ' cd4_bending (default; CD4 bending modes, Siddles'
+                         ' et al. 1994 Tables 1-2, 27.5-49), or'
+                         ' water_bending_overtone (H2O 2nu2 at 295 K, Zittel'
+                         ' & Masturzo 1991 Table I over Hovis & Moore 1980'
+                         ' Table III, 9.06, held constant in T)')
+    ap.add_argument('--column-band-transfer', default='thin',
+                    choices=('thin', 'cooling_to_space',
+                             'cooling_to_space_exchange'),
+                    help='how the band emission of the column energy balance'
+                         ' leaves the column: thin (default; all of it;'
+                         ' flagged, not refused, when more than 10 per cent'
+                         ' of a bin\'s excess is absorbed above: a WARNING'
+                         ' and thin_layer_limit_exceeded T in the header) or'
+                         ' cooling_to_space (the'
+                         ' upward half escapes through the column above with'
+                         ' the k-distribution transmission, Dickinson 1972'
+                         ' Eq. 33; refused when the neglected exchange inside'
+                         ' the warmed layer moves T_match by more than'
+                         ' --column-exchange-shift-max) or'
+                         ' cooling_to_space_exchange (cooling_to_space with'
+                         ' that exchange solved instead of neglected: no such'
+                         ' bound)')
+    ap.add_argument('--column-exchange-shift-max', type=float,
+                    default=1.0,
+                    help='validity bound of cooling_to_space [K] (default 1)')
+    ap.add_argument('--top-pressure-passes', type=int,
+                    default=TOP_PRESSURE_PASSES,
+                    help='largest number of re-pinned solves of the model top'
+                         ' (default %d); the agreement they must reach,'
+                         ' TOP_PRESSURE_TOL, is not changed by it. A grid whose'
+                         ' top converges by alternating passes needs more of'
+                         ' them' % TOP_PRESSURE_PASSES)
+    ap.add_argument('--column-energy-tolerance', type=float,
+                    default=COLUMN_TEMPERATURE_TOL,
+                    help='agreement of the matching-level temperature between'
+                         ' successive column solutions [K] (default 1)')
+    ap.add_argument('--column-energy-max-iterations', type=int, default=8)
     ap.add_argument('--workdir', default=None,
                     help='where the mechanism and flux files are written'
                          ' (default <run_dir>/photochem_work)')
@@ -700,9 +1125,67 @@ def main():
         sys.stdout.flush()
         column = (climate['P_dyn'], climate['T'], None)
 
+    conducted = args.conducted_heat_flux != 0.0
+    if conducted:
+        # The reference column the conducted heat is added to, on levels
+        # fine enough below the match for the chemistry to see the response.
+        if column is None:
+            P0, T0c, K0 = read_tp_file(args.tp_file, args.p_unit)
+        else:
+            P0, T0c, K0 = column
+        column = column_with_inserted_levels(P0, T0c, K0, args.p_match)
+
     pc, reached, truncation, toa, imposed, r_top_imposed = \
         photochemical_steady_state(args, wdir, flux_file, mech, thermo,
                                    data_dir, abundances, column=column)
+
+    column_heat = None
+    if conducted:
+        p_floor = climate['P_trop_bar'] if climate is not None else None
+        column_heat = conducted_heat_iteration(pc, args, column, toa, p_floor)
+        write_column_heat_record(args, column_heat)
+
+    # The hydrogen carrier split of the escape boundary condition, made
+    # self-consistent: the split is decided on the composition the
+    # imposition sees, and photochemistry dissociates H2 as it runs, so the
+    # converged top can carry more atomic H than the boundary condition put
+    # the flux on.  Where the two shares differ by more than
+    # CARRIER_SHARE_TOL the measured split is re-imposed and the chemistry
+    # re-solved (under the conducted heat, the whole column iteration).
+    carrier_rounds = 0
+    if 'H_atomic_share' in imposed:
+        for _ in range(CARRIER_ROUNDS):
+            f_now = hydrogen_carrier_split(pc, species_element_counts(pc))
+            used = LAST_IMPOSITION['H_atomic_share_used']
+            if abs(f_now - used) <= CARRIER_SHARE_TOL:
+                break
+            carrier_rounds += 1
+            # The converged share falls as the share put on atomic H rises
+            # (MEASURED at deep He/H 30 on the GJ 699 spectrum: 0 -> 0.098,
+            # 0.098 -> 0.025, 0.025 -> 0.079, 0.079 -> 0.039, slope about
+            # -0.75), so substituting the converged share alternates about
+            # the fixed point; once a split is imposed the next one is the
+            # mean of the imposed and the converged share (slope about
+            # +0.13 there).
+            CARRIER_SHARE_STATED['H'] = (f_now if used == 0.0
+                                         else 0.5*(used + f_now))
+            print('  carrier round %d: the converged top carries %.4e of its'
+                  ' hydrogen nuclei as atomic H, the boundary condition %.4e;'
+                  ' the split %.4e is imposed and the chemistry re-solved'
+                  % (carrier_rounds, f_now, used, CARRIER_SHARE_STATED['H']),
+                  flush=True)
+            if conducted:
+                column_heat = conducted_heat_iteration(pc, args, column, toa,
+                                                       p_floor)
+                write_column_heat_record(args, column_heat)
+            else:
+                ref = column if column is not None else \
+                    read_tp_file(args.tp_file, args.p_unit)
+                _, Pc, Tc, Kc = reference_column_on_chemistry_grid(pc, args,
+                                                                   ref)
+                chemistry_on_new_temperature(pc, args,
+                                             species_element_counts(pc),
+                                             Pc, Tc, Kc, toa)
 
     sol = pc.return_atmosphere()
     counts = species_element_counts(pc)
@@ -713,25 +1196,29 @@ def main():
                            args.trial_flux_H, args.trial_flux_He))
     print('  ' + flux_note)
     if 'H_atomic_share' in imposed:
-        # The carrier split had to be decided before the column was stepped,
-        # so it was measured on the initial composition.  Photochemistry
-        # dissociates as it runs; if the CONVERGED top carries more than 1%
-        # of its hydrogen nuclei as atomic H, the flux was drained from the
-        # wrong carrier and the solution is not the one that was asked for.
+        # The guard after the carrier rounds above: if the share the
+        # boundary condition carries still differs from the converged top's
+        # by more than CARRIER_SHARE_TOL, more than 1% of the hydrogen flux
+        # was drained from the wrong carrier and the solution is not the one
+        # that was asked for.
         f_final = hydrogen_carrier_split(pc, counts)
+        used = LAST_IMPOSITION['H_atomic_share_used']
         print('  atomic-H share of the hydrogen nuclei at the model top: '
               '%.3e at the imposition, %.3e converged'
               % (imposed['H_atomic_share'], f_final))
-        if f_final > 0.01 >= imposed['H_atomic_share']:
+        if abs(f_final - used) > CARRIER_SHARE_TOL:
             sch.refuse('the converged model top carries %.3f of its hydrogen'
-                       ' nuclei as atomic H, but the elemental flux was'
-                       ' imposed entirely on H2 because the initial'
-                       ' composition carried %.3e. The dominant-carrier'
-                       ' approximation does not hold on this solution'
-                       % (f_final, imposed['H_atomic_share']))
+                       ' nuclei as atomic H, but the boundary condition put'
+                       ' %.3f of the elemental flux on atomic H after %d'
+                       ' carrier rounds'
+                       % (f_final, used, carrier_rounds))
         flux_note += ('; atomic-H share of the hydrogen nuclei at the top '
                       '%.3e imposed, %.3e converged'
                       % (imposed['H_atomic_share'], f_final))
+        if carrier_rounds:
+            flux_note += ('; the measured carrier split was re-imposed in %d'
+                          ' round(s), atomic share of the boundary condition'
+                          ' %.4e' % (carrier_rounds, used))
     if imposed and abs(r_top/r_top_imposed - 1.0) > 5.0e-3:
         # The imposed number is a flux DENSITY; the grid the solver settles
         # on need not be the grid it started from, so the mass flux the
@@ -797,6 +1284,8 @@ def main():
     p_deep = args.p_deep if args.p_deep else p_bar.max()
     p_top = args.p_top if args.p_top else p_bar.min()
     cols = sch.clip_table(sch.sort_deep_to_shallow(cols), p_deep, p_top)
+    if column_heat is not None:
+        cols = profile_with_column_temperature(cols, column_heat, args)
 
     fp = dict(
         source_code='photochem',
@@ -830,6 +1319,16 @@ def main():
                   climate_T_deep=climate['T_deep'],
                   climate_P_trop_bar=climate['P_trop_bar'],
                   climate_T_trop=climate['T_trop'])
+    if column_heat is not None:
+        # Only with a conducted flux, so that a run without one keeps its
+        # solution_id: the flux, the treatment of the bands and the
+        # temperature they gave at the match name a different solution.
+        fp.update(conducted_heat_flux=args.conducted_heat_flux,
+                  column_energy_treatment=args.column_energy_treatment,
+                  column_T_match=column_heat['T_match'])
+        if args.column_band_transfer != 'thin':
+            # only off the default, so a thin solution keeps its id
+            fp.update(column_band_transfer=args.column_band_transfer)
     try:
         import photochem
         version = 'photochem %s' % photochem.__version__
@@ -847,6 +1346,8 @@ def main():
     notes += cold_trap_note(p_bar, ratios_gas, ratios_all, args.p_match,
                             sol, climate)
     notes += ' ' + truncation
+    if column_heat is not None:
+        notes += ' ' + column_heat_note(args, column_heat)
     header = dict(
         solution_id=sch.solution_fingerprint(fp),
         source_code='photochem',
@@ -861,6 +1362,22 @@ def main():
         measured_flux_H=measured['H'], measured_flux_He=measured['He'],
         iteration=args.iteration, reached_steady_state=bool(reached),
         notes=notes.strip())
+    if column_heat is not None:
+        header.update(conducted_heat_flux_cgs=args.conducted_heat_flux,
+                      column_energy_treatment=args.column_energy_treatment,
+                      column_T_match_K=column_heat['T_match'])
+        if args.column_energy_treatment == 'nlte':
+            header['nh3_h2_rate_analog'] = args.nh3_h2_rate_analog
+        if args.column_band_transfer != 'thin':
+            header['column_band_transfer'] = args.column_band_transfer
+        else:
+            tl = column_heat['thin_layer']
+            header['thin_layer_limit_exceeded'] = 'T' if tl['exceeded'] \
+                else 'F'
+            header['thin_layer_max_absorbed_fraction'] = tl['max_absorbed']
+            header['thin_layer_max_absorbed_bin'] = '%s_%s_%.0f-%.0f' % (
+                tl['species'], tl['band'].replace(' ', '_'),
+                tl['bin_cm'][0], tl['bin_cm'][1])
 
     deepest = {el: float(v[0]) for el, v in ratios.items()}
     want = {el: abundances[el]/abundances['H'] for el in abundances

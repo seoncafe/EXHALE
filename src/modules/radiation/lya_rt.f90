@@ -580,8 +580,10 @@
                   lya_photosphere_attenuation_cell_mean(tau_out, dtau)      &
                   result(f)
    ! MEAN over one cell of the parameterized Ly-alpha photosphere factor
-   ! 1/(1 + tau) of Huang et al. (2017) Eq. (6), which the jlya_mode = 0
-   ! field is attenuated by:
+   ! 1/(1 + tau), which the jlya_mode = 0 field is attenuated by.  The
+   ! factor is EXHALE's own closure, not Huang et al. (2017): their
+   ! estimate J ~ 0.1 F_LyC/Dnu_D (Section 2, text after their Eq. 6) is
+   ! stated at the photoionization peak and carries no attenuation.
    !
    !   (1/dtau) int_{tau_out}^{tau_out+dtau} dtau/(1 + tau)
    !     = ln[(1 + tau_out + dtau)/(1 + tau_out)]/dtau ,

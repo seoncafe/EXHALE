@@ -58,6 +58,12 @@
    ! Which input stated the level, named once here so the setup report and
    ! the refusal messages below cannot disagree about it.
    character(len=64), save, public :: base_level_source = 'the density key'
+   ! THE DENSITY KEY THAT "Base BC: pressure" OVERRODE. With no handoff, a
+   ! run that states both the density key and "Base BC: pressure" puts its
+   ! base where the pressure puts it; the n0 the density key asked for is
+   ! kept here (cm^-3, 0 when there was no such conflict) so that the
+   ! warning on stdout and the setup report name both values.
+   real*8, save, public :: base_density_key_overridden_n0 = 0.0d0
 
    ! ---- what a restart continues ------------------------------------- !
    ! WHAT A RESTART IS FOR, stated once and checked against the other keys.
@@ -155,11 +161,12 @@
       'Lya stellar boost', 'Lya absorbing bottom',                           &
       'du_th', 'ATES_photoionization_rate',                                  &
       'Legacy_HHe_rates', 'Secondary_ionization', 'He_rec_coupling',         &
+      'Low-energy electron partition',                                       &
       'H_rec_escape',                                                        &
       'He_H_charge_exchange', 'Atomic rate set',                             &
       'Molecular chemistry', 'Molecular base', 'Stellar LW flux',           &
       'Oxygen chemistry', 'Molecular carrier transport',                   &
-      'Ionization transport',                                                  &
+      'Ionization transport', 'He 2^3S transport',                             &
       'Coupled carrier solve',                                             &
       'Composition update holds',                                          &
       'Oxygen transport',                                                  &
@@ -468,6 +475,7 @@
 		atomic_rate_set_k22 = .false. ! default: EXHALE's own atomic H/He rates
 		use_sec_ion        = .true.   ! default: SvS85 secondary ionization ON
 		sec_ion_immediate  = .false.  ! default: staged (applied after 1st converge)
+		use_low_energy_partition = .false. ! default: 10.2-30 eV electrons heat
 		use_he_rec_coupling = .true.  ! default: He rec. photons ionize/heat H
 		use_h_rec_escape    = .true.  ! default: escaping H ground captures
 		he_h_charge_exchange = .true. ! default: He <-> H charge exchange (group B) ON
@@ -620,6 +628,29 @@
 					use_sec_ion       = .true.
 					sec_ion_immediate = .true.
 				endif
+			else if (lbl_match(line, 'Low-energy electron partition')) then
+				! The photoelectrons of 10.2 eV to E_sec_ion (30 eV), which by
+				! default are deposited whole as heat (parameters.f90,
+				! E_sec_ion). "Furlanetto2010" partitions them into heat, H I and
+				! He I secondary ionizations and escaping H I line radiation by
+				! the tables of Furlanetto & Stoever (2010, MNRAS 404, 1869), in
+				! cells without H2 and wherever the secondary-ionization coupling
+				! is applied (low_energy_electron_degradation.f90); "none" is the
+				! default. Value at word 4.
+				str = get_word(line, 4)
+				if (str .eq. 'Furlanetto2010' .or. str .eq. 'furlanetto2010') then
+					use_low_energy_partition = .true.
+					write(*,'(A)') ' (input_read) Low-energy electron'//      &
+					   ' partition: Furlanetto & Stoever (2010) tables for'// &
+					   ' photoelectrons of 10.2-30 eV in cells without H2'
+				else if (str .eq. 'none' .or. str .eq. 'None') then
+					use_low_energy_partition = .false.
+				else
+					write(*,*) '(input_read) ERROR: "Low-energy electron'//   &
+					   ' partition" must be Furlanetto2010 or none. Got: '//  &
+					   trim(str)
+					error stop 1
+				endif
 			else if (lbl_match(line, 'He_rec_coupling')) then
 				! He II and He III recombination radiation absorbed on the
 				! spot (utils_ion_eq: recombination_radiation_absorbed).
@@ -705,6 +736,16 @@
 				! requirements are checked below, after every key is parsed.
 				str = get_word(line, 3)
 				ionization_transport = (str .eq. 'True' .or. str .eq. 'true')
+			else if (lbl_match(line, 'He 2^3S transport')) then
+				! "He 2^3S transport: True|False" -- carry the He 2^3S
+				! population x3 = n(2^3S)/n(He nuclei) on the helium
+				! nucleus flux of the ionization-stage operator, with the
+				! level balance of tr_triplet_row as its source, instead
+				! of the local root of that balance in every cell.
+				! Default False. Requires "Include He23S: True" and
+				! "Ionization transport: True", checked below.
+				str = get_word(line, 4)
+				he23s_transport = (str .eq. 'True' .or. str .eq. 'true')
 			else if (lbl_match(line, 'Coupled carrier solve')) then
 				! "Coupled carrier solve: True|False", DEFAULT False -- solve
 				! n(H2) (and the diffused element fractions) as Newton
@@ -1210,9 +1251,11 @@
 			else if (lbl_match(line, 'H2 neutral dissociation')) then
 				! "H2 neutral dissociation: True|False" resolves
 				! H2 + hv -> H + H, the absorptions that make no ion. It is
-				! nonzero ONLY over 33-41 eV, the window in which Chung,
-				! Lee, Masuoka & Samson (1993) Table 1 measures a
-				! photoionization yield below unity; outside it their source
+				! nonzero ONLY over 32-41.5 eV: the 33-41 eV rows in which
+				! Chung, Lee, Masuoka & Samson (1993) Table 1 measures a
+				! photoionization yield below unity, ramped to zero at the
+				! two continuity anchors 32 and 41.5 eV
+				! (frac_H2_neutral_dissociation); outside it their source
 				! ASSUMES unit yield rather than measuring it, so the
 				! channel is set to zero there. DEFAULT True: sigma_n is a
 				! measurement. The key exists to TURN THE CHANNEL OFF, and
@@ -1224,7 +1267,7 @@
 					(str .eq. 'True' .or. str .eq. 'true')
 				if (.not. h2_neutral_dissociation) then
 					write(*,'(A)') ' (input_read) WARNING H2 neutral'//     &
-					   ' dissociation OFF: over 33-41 eV up to 7.4 per'
+					   ' dissociation OFF: over 32-41.5 eV up to 7.4 per'
 					write(*,'(A)') '   cent of the absorptions are given'// &
 					   ' an H2+ and an electron the event does not make.'
 				endif
@@ -2262,6 +2305,25 @@
    ! here and is added by the ghost BC later.) This is the CETIMB 1-microbar
    ! lower boundary: a much less dense base, hence a weaker rho*g source.
    if (base_bc_mode .eq. 1) then
+      ! Two statements of the level and no handoff: the pressure is
+      ! followed (it is the key that names the base condition), and the
+      ! density key it overrides is reported, never dropped in silence.
+      ! With a handoff the density key was checked against the handoff
+      ! level above, and "Base BC: pressure" against it too.
+      if (.not. base_level_from_handoff .and. base_density_key_given) then
+         base_density_key_overridden_n0 = n0
+         write(*,*) '(input_read) WARNING: the base level is stated twice'//&
+                    ' and no lower-atmosphere handoff fixes it.'
+         write(*,'(A,ES12.4,A,ES12.4,A)') '   "Log10 lower boundary'//     &
+            ' number density" gives n0 = ', n0, ' cm^-3 (p = ',            &
+            n0*kb_erg*T0*ntot_bc*1.0d-6, ' bar)'
+         write(*,'(A,ES12.4,A,ES12.4,A)') '   "Base BC: pressure"'//       &
+            ' gives p = ', base_p_ubar*1.0d-6, ' bar (n0 = ',              &
+            base_p_ubar/(kb_erg*T0*ntot_bc), ' cm^-3)'
+         write(*,*) '  USED: "Base BC: pressure". The density key is'//    &
+                    ' ignored; delete one of the two'
+         write(*,*) '  lines from '//trim(inp_file)//' to silence this.'
+      endif
       n0 = base_p_ubar/(kb_erg*T0*ntot_bc)
       if (.not. base_level_from_handoff)                                  &
          base_level_source = '"Base BC: pressure"'
@@ -2456,6 +2518,38 @@
             ' hydrodynamic solve are handed the transported x(H II),'//   &
             ' x(He II) and x(He III); the carrier relaxation'//           &
             ' transports them.'
+   endif
+
+   ! WHAT "He 2^3S transport: True" REQUIRES, refused rather than repaired.
+   ! The carried population is a level of He I: it needs the level to be
+   ! tracked at all, and it rides on the helium nucleus flux and in the
+   ! helium simplex of the ionization-stage operator, whose singlet closes
+   ! the He 2^3S row. Carrying 2^3S while the ionization stages stay on
+   ! their local root would put the singlet between a transported and a
+   ! local partition of the same cell.
+   if (he23s_transport) then
+      if (.not. thereis_HeITR) then
+         write(*,*) '(input_read) ERROR: "He 2^3S transport: True" needs'
+         write(*,*) '  "Include He23S: True": there is no He 2^3S'
+         write(*,*) '  population to carry when the level is not'
+         write(*,*) '  tracked. Aborting.'
+         error stop 1
+      endif
+      if (.not. ionization_transport) then
+         write(*,*) '(input_read) ERROR: "He 2^3S transport: True" needs'
+         write(*,*) '  "Ionization transport: True". The level is carried'
+         write(*,*) '  as a fourth helium state of the ionization-stage'
+         write(*,*) '  operator, on its helium nucleus flux, and the ground'
+         write(*,*) '  singlet that closes its row is the remainder of the'
+         write(*,*) '  carried He II and He III; with the stages on their'
+         write(*,*) '  local root that remainder would mix a transported'
+         write(*,*) '  and a local partition of one cell. Aborting.'
+         error stop 1
+      endif
+      if (use_newton_solver)                                              &
+         write(*,'(A)') ' (input_read) He 2^3S transport: the sweeps of'//  &
+            ' the hydrodynamic solve are handed the transported'//         &
+            ' n(2^3S)/n(He); the carrier relaxation transports it.'
    endif
 
    ! A COUPLED STEADY SOLVE MAY NOT ELIMINATE H2.

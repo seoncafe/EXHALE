@@ -139,8 +139,147 @@ def transit_file_equivalent_width(path):
     return model_equivalent_width(*le)
 
 
+# ----- THE ADDED VELOCITY BROADENING (width-matching kernel) -----
+# What it stands for: a Gaussian line-of-sight velocity distribution that the
+# 1-D steady model does not contain (the measured line is about three times
+# wider than any solved profile).  It is NOT a computed physics term: it
+# carries no energy or momentum budget and moves no absorber.  Its width is
+# not a parameter of the model; it is MEASURED from the data, for each model,
+# as the value at which the broadened model reaches the measured line width
+# (docs/lhs1140b_exhale_vs_pwinds.tex, Sect. "The broadening the data demand,
+# measured", sec:broadening; the definitions below were moved here unchanged
+# from make_memo_figures.py, which imports them, so the memo and the EW chain
+# apply one rule).
+#
+# The convention, step by step:
+#   1. excess = (max T - T)/max T [%] from column 3 of tpm_He10830.txt
+#      (T_instr), the synthetic spectrum convolved with the instrument
+#      profile (R = 68,000) only, WITHOUT planet rotation (column 4,
+#      T_rot+instr, carries it; for LHS 1140 b, v_rot ~ 0.03 km/s, the two
+#      give EWs equal to 1e-6 %A, measured 2026-10-05 at He/H 0.1, s = 2.53), on its own uniform AIR wavelength grid (transit_file_excess
+#      without the vacuum conversion);
+#   2. that excess is convolved with a Gaussian of FWHM f in VELOCITY,
+#      sigma_lambda = f/(2.35482 c) x 10830 A, by scipy's gaussian_filter1d
+#      (reflecting boundary, kernel truncated at 4 sigma), planet rest frame,
+#      no shift; the instrument kernel is already inside the curve and
+#      Gaussians commute, so this is the same as broadening before it;
+#   3. depth, width and red/blue are read with the three-Gaussian extractor
+#      used on the data (he_line_metrics.fit_metrics, air frame); the width is
+#      the FWHM of the blended red pair;
+#   4. f is chosen so that this FWHM equals the measured 0.841 A
+#      (FWHM_OBS_A, the same extractor on the released spectrum), by brentq
+#      on f in [1, 60] km/s with xtol 1e-3;
+#   5. the equivalent width is model_equivalent_width of the broadened curve,
+#      i.e. interpolated onto the observation's vacuum samples in
+#      [EW_LO, EW_HI] and integrated with their trapezoid weights.
+# The reflecting boundary conserves the absorption summed over the grid; the
+# window EW falls with f because the wings carry absorption out of the
+# window, not because absorbing power is lost.
+# Reference only: the width audit (md/lhs1140b_width_measurement_audit.md)
+# put the like-for-like requirement at sigma = 9.33 km/s (FWHM 21.96 km/s);
+# the memo found f = 22.22 km/s (sigma 9.44) on the 2026-09 solutions.
+FWHM_OBS_A = 0.841                       # A, measured red-pair width
+C_KMS = 2.99792458e5
+FWHM_PER_SIGMA = 2.35482
+NONTHERMAL_SIGMA_REFERENCE_KMS = 9.33    # width audit, for comparison only
+
+
+def broaden_excess(lam, exc, fwhm_kms, lam0=10830.0):
+    """Extra Gaussian velocity broadening, FWHM in km/s.
+
+    lam0 converts the velocity width to a wavelength width; use the line
+    position in the frame of `lam` (10830 A in air, 10833 A in vacuum).
+    """
+    from scipy.ndimage import gaussian_filter1d
+    if fwhm_kms <= 0.0:
+        return exc
+    dl = np.median(np.diff(lam))
+    return gaussian_filter1d(exc, fwhm_kms/C_KMS*lam0/FWHM_PER_SIGMA/dl)
+
+
+def _fit_metrics():
+    root = os.path.dirname(HERE)
+    if root not in __import__('sys').path:
+        __import__('sys').path.insert(0, root)
+    from he_line_metrics import fit_metrics
+    return fit_metrics
+
+
+def broadened_line_metrics(lam, exc, fwhm_kms, frame='air', lam0=10830.0):
+    """Three-Gaussian metrics and window EW of the broadened excess."""
+    e = broaden_excess(lam, exc, fwhm_kms, lam0)
+    d = _fit_metrics()(lam, e, frame=frame)
+    lv = lam*AIR if frame == 'air' else lam
+    v = model_equivalent_width(lv, e)
+    d['ew'] = np.nan if v is None else v
+    return d
+
+
+def width_matching_fwhm_kms(lam, exc, frame='air', lam0=10830.0):
+    """Added kernel FWHM [km/s] at which the line reaches the measured width."""
+    from scipy.optimize import brentq
+    return brentq(lambda f: broadened_line_metrics(lam, exc, f, frame,
+                                                   lam0)['fwhm_A']
+                  - FWHM_OBS_A, 1.0, 60.0, xtol=1e-3)
+
+
+def transit_file_air_excess(path):
+    """(air wavelength [A], excess [%]) of column 3 of a tpm_He10830.txt."""
+    s = np.loadtxt(path)
+    return s[:, 0], (s[:, 2].max() - s[:, 2])/s[:, 2].max()*100.0
+
+
+def width_matched_product(path, out_path, fwhm_kms=None):
+    """Broaden a tpm_He10830.txt to the measured width (or by a given FWHM)
+    and write the broadened excess with its record.  Returns the record."""
+    lam, exc = transit_file_air_excess(path)
+    criterion = 'given'
+    if fwhm_kms is None:
+        fwhm_kms = width_matching_fwhm_kms(lam, exc)
+        criterion = ('width_match: three-Gaussian blended red-pair FWHM of '
+                     'the broadened curve = %.3f A (measured)' % FWHM_OBS_A)
+    m0 = broadened_line_metrics(lam, exc, 0.0)
+    m = broadened_line_metrics(lam, exc, fwhm_kms)
+    rec = dict(fwhm_kms=fwhm_kms, sigma_kms=fwhm_kms/FWHM_PER_SIGMA,
+               criterion=criterion, ew0=m0['ew'], ew=m['ew'],
+               red=m['red_depth'], blue=m['blue_depth'],
+               red_blue=m['red_blue'], fwhm_A=m['fwhm_A'],
+               red0=m0['red_depth'], fwhm0_A=m0['fwhm_A'])
+    head = ['he10830_broadened: the excess of column 3 of %s convolved with '
+            'an added Gaussian line-of-sight velocity distribution' % path,
+            'standing for the velocity field of the outflow that the 1-D '
+            'model does not contain (not a computed physics term)',
+            'kernel FWHM_kms %.6f sigma_kms %.6f (reference: width audit '
+            'sigma %.2f km/s)' % (rec['fwhm_kms'], rec['sigma_kms'],
+                                   NONTHERMAL_SIGMA_REFERENCE_KMS),
+            'criterion %s' % criterion,
+            'convention he10830_equivalent_width.py (docs/'
+            'lhs1140b_exhale_vs_pwinds.tex sec:broadening)',
+            'unbroadened: EW %.6f red %.6f FWHM_A %.6f' % (rec['ew0'],
+                                                         rec['red0'],
+                                                         rec['fwhm0_A']),
+            'broadened:   EW %.6f red %.6f blue %.6f red/blue %.4f FWHM_A '
+            '%.6f' % (rec['ew'], rec['red'], rec['blue'], rec['red_blue'],
+                      rec['fwhm_A']),
+            'EW in percent-angstrom through the window operator; depths in %',
+            'lambda_air[A]  excess[%]  excess_broadened[%]']
+    np.savetxt(out_path, np.c_[lam, exc, broaden_excess(lam, exc, fwhm_kms)],
+               header='\n'.join(head))
+    return rec
+
+
 if __name__ == '__main__':
     import sys
+    if len(sys.argv) >= 4 and sys.argv[1] == '--width-matched':
+        # --width-matched <tpm_He10830.txt> <output> [FWHM km/s]
+        r = width_matched_product(sys.argv[2], sys.argv[3],
+                                  float(sys.argv[4]) if len(sys.argv) > 4
+                                  else None)
+        print('fwhm_kms=%.4f sigma_kms=%.4f EW_kernel=%.4f EW_nokernel=%.4f '
+              'red=%.4f blue=%.4f red_blue=%.3f fwhm_A=%.4f'
+              % (r['fwhm_kms'], r['sigma_kms'], r['ew'], r['ew0'], r['red'],
+                 r['blue'], r['red_blue'], r['fwhm_A']))
+        sys.exit(0)
     ew, err = observed_equivalent_width()
     print('observation: EW = %.10f +/- %.10f %%A over %d samples, '
           '%.6f to %.6f A (vacuum)' % (ew, err, SAMPLES.size, SAMPLES[0],

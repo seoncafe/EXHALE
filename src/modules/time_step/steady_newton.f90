@@ -2384,11 +2384,16 @@
       ! empty and the 3-unknown path is untouched, which is what keeps every
       ! run without a transported balance bit-for-bit unchanged.
       !
-      ! The transported set is the one carrier_set_init fixed once the keys
-      ! were parsed (H2 always; OH, H2O and CO under the oxygen chemistry;
-      ! H+ under the ionization transport), read here through
-      ! carrier_solved so that the stationary system and the transport
-      ! operator cannot disagree about which balances exist.
+      ! The rows are, in this order: the helium element (He_diffusion), the
+      ! trace-metal elements that have a reservoir (the metal diffusion
+      ! key), and the carriers. The carrier set is the one carrier_set_init
+      ! fixed once the keys were parsed (H2; OH, H2O and CO under the
+      ! oxygen chemistry; H+, He+ and He++ under the ionization transport;
+      ! He 2^3S under its transport key), read here through carrier_solved
+      ! so that the stationary system and the transport operator cannot
+      ! disagree about which balances exist. Carrier rows are registered
+      ! only in a molecular run with "Molecular carrier transport"; the
+      ! carried stages of an atomic run have no row in this system.
       logical, intent(in) :: on
       integer :: ic, im
       ! Whether the line below about an empty registry has been printed:

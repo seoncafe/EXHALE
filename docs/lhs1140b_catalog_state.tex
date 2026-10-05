@@ -11,12 +11,11 @@
 \renewcommand{\arraystretch}{1.0}
 \title{The LHS 1140 b catalog: what is certified and what is not}
 \author{EXHALE}
-\date{2026-09-29}
 \begin{document}
 \maketitle
 
 \begin{center}
-\fbox{\parbox{0.92\textwidth}{\textbf{Two physics in this summary.} Section~5
+\fbox{\parbox{0.92\textwidth}{\textbf{The physics of this summary.} Section~5
 (the molecular $K_{zz}=10^{9}$ family) was rewritten on 2026-09-26 from
 states certified under the atomic data as corrected on 2026-09-24 to
 2026-09-26 (\texttt{md/Update\_EXHALE\_stage3.md} sections 17 to 27). Every
@@ -38,7 +37,22 @@ discrete hydrostatic equilibrium (boundary model
 up to $10^{4}$ times a weak wind. Two continuation states certified under
 the previous boundary re-certified under it in 2 and 4 passes (MEASURED).
 By the user's decision of 2026-09-26 certified rows are not re-solved after
-each change; the models that did not solve come first (section~3).}}
+each change; the models that did not solve come first (section~3).
+\textbf{From 2026-09-30 to 2026-10-05 the equation set itself changed}
+(sections 39 to 102 of the same log): heat conduction with the conductivity
+of the mixture (\texttt{Conduction: True}), the ionization stages carried as
+transported species (\texttt{Ionization transport: True}) with their
+enthalpy, He~$2^3S$ carried as a fourth helium state (\texttt{He 2\^{}3S
+transport: True}), the advected product stepping each element on the
+velocity of its own nuclei, and a Photochem column coupled to the wind in
+energy as well as in the elemental fluxes. No catalog row was re-solved
+under these changes; the inventory, re-run read-only on 2026-10-05, is
+unchanged. Heat conduction alone lowers the mass-loss rate of the three
+fiducial-XUV catalog cases re-solved with it by factors 0.38 to 0.69 (log
+sections 48, 51 and 52, taken from the log), and their He~10830 EWs move
+with it (sections 49 to 61), so every EW and crossing of sections 3 to 5 is
+of a model without heat conduction. The models solved with the full
+equation set stand outside the catalog, in section~\ref{sec:fullequation}.}}
 \end{center}
 
 \noindent
@@ -63,7 +77,8 @@ the continuation of \texttt{md/Update\_EXHALE\_stage3.md} sections 29.13,
 carriers) and \case{scalar\_wellmixed/HeH0.55} under
 \texttt{EXHALE\_3c22c63e.x} (the discrete-equilibrium boundary model v5),
 as the table notes of section~4 say. The counts below are MEASURED by
-\texttt{models/status.py inventory}, re-run read-only on 2026-09-29, which
+\texttt{models/status.py inventory}, re-run read-only on 2026-09-29 and
+again on 2026-10-05 (the same counts), which
 names \texttt{EXHALE\_6dd54955.x}, md5
 \texttt{6dd549556910351a7f857708b4853a69}, as the binary of record:
 \textbf{210 state indexes, 155 certified} (158 and 103 earlier on
@@ -99,7 +114,13 @@ wavelength samples: the instrument-convolved model is interpolated onto the 44
 samples of the measurement inside the window and integrated with their
 trapezoid weights, the same operator that gives the observed
 $1.108$~\%\,\AA\ (\texttt{LHS1140b/he10830\_equivalent\_width.py}, adopted
-2026-09-23). Integrated on its own finer grid instead, a model differs by at
+2026-09-23). Every EW of the tables of sections 3 and 4 is that window EW
+of the instrument-convolved model with no added velocity kernel ($f = 0$,
+the \texttt{EW=} field of an \texttt{EW.txt}); the width-matched EW, the
+convention adopted on 2026-10-04 for every comparison with an observed line
+(the model's excess absorption convolved with a Gaussian of FWHM $f$ in
+velocity, $f$ chosen so that the red-pair FWHM is the measured
+0.841~\AA), is quoted with its $f$ in sections 5 and~\ref{sec:fullequation}. Integrated on its own finer grid instead, a model differs by at
 most $1.5\times10^{-4}$~\%\,\AA\ over the catalog, which moves 15 of the
 91 certified rows below in the fourth decimal (MEASURED 2026-09-24). The XUV column is the factor the stellar spectrum is scaled
 by; $K_{zz}$ is the eddy coefficient of the base, \emph{profile} where a
@@ -292,10 +313,22 @@ Read by mechanism, the ten fall into three kinds.
       $3.7\times10^{-3}$ and $8\times10^{-7}$ on the 0.06 seed, and the energy
       row, about 1, is what remains: the heat of the base cell and the
       interdiffusion enthalpy flux of a composition that is not in its
-      diffusive steady state near the base. Stationary solves from the
-      projected seeds are running
+      diffusive steady state near the base
       (\texttt{md/atomic\_heh97\_reduced\_xuv\_20260929.md}, its review, and
-      \texttt{md/Update\_EXHALE\_stage3.md} sections 35 to 37).
+      \texttt{md/Update\_EXHALE\_stage3.md} sections 35 to 38). From the
+      projected seeds, with the element interdiffusion enthalpy flux off,
+      0.06 and 0.0624 then certified, and continuation chains switched on
+      heat conduction by its factor (sections 38 to 47; taken from the log):
+      the chains were stopped by hand on 2026-09-30 at 23:57 with the last
+      certified rungs at conduction factor 0.668 (0.06) and 0.751 (0.0624)
+      and the photochemical XUV descent at 0.0833 of the fiducial XUV
+      (\texttt{md/session\_handoff\_20260930.md} section~8; the later rungs
+      in \url{.P1/atomic97/} end \texttt{NOT CERTIFIED} in their
+      \texttt{run.log}, READ 2026-10-05). None of these states is published
+      to the catalog. With conduction the photochemical case at 0.10 of
+      the fiducial XUV becomes a conductive thermosphere below an exobase at
+      1.5~$R_p$, outside the validity of the hydrodynamic solution (log
+      section 45).
 \item \textbf{The composition half of the solve refuses} the two
       molecular models: the H$_2$ carrier balance in both, and in
       \case{scalar\_kzz1e9/HeH0.083} also the elemental He/H row. The wind
@@ -500,7 +533,9 @@ by the no-step evaluate pass of the binary that solved it.
       with the carrier enthalpy flux was reloaded and certified again in 4
       passes (\texttt{EXHALE\_3c22c63e.x}); that state is the published one.
 \item \textbf{Still unsolved}: $K_{zz}=10^{9}$ below He/H~=~0.19,
-      well-mixed below 0.1, and the four atomic He/H~=~9.7 models above.
+      well-mixed below 0.1, and the four atomic He/H~=~9.7 models above (in
+      the catalog's equation set; see the first item of the list above for
+      the off-catalog chains with conduction, stopped 2026-09-30).
 \end{itemize}
 
 \section{The models that are certified}
@@ -922,6 +957,187 @@ He~\textsc{ii}, He~\textsc{iii} and HeH$^+$ for helium), their ratio
 $n({\rm He})/n({\rm H})$, the H~\textsc{ii} fraction, $n({\rm He}\,2^3S)$
 and the H$_2$ fraction against radius.}
 \label{fig:molrungsfinal}
+\end{figure}
+
+\clearpage
+\section{The He~10830 EW with the full equation set (outside the catalog)}\label{sec:fullequation}
+
+\paragraph{What is solved.} None of the states of this section is published
+to the catalog; they are the runs of the EW plans
+\texttt{md/PLAN\_20261003\_lhs1140b\_ew.md} and
+\texttt{md/PLAN\_20261004\_lhs1140b\_heh\_high\_and\_xuv.md}, under
+\url{LHS1140b/models/.P2/ew_fit/} (log sections 63 to 102). READ from the
+input template and the \texttt{closure.json} of each case
+(\url{route_heh_high/HeH10.0/} shown here; the other cases differ only in
+He/H, the spectrum, the binary and the column options named below): the
+molecular network with carrier transport, binary H/He diffusion,
+\texttt{Conduction: True}, \texttt{Ionization transport: True},
+\texttt{He 2\^{}3S transport: True}, \texttt{Secondary\_ionization:
+Immediate}, \texttt{Well balanced: True}, \texttt{Domain mode: Spherical} to
+30~$R_p$, and a Photochem column below the 1~microbar matching level handed
+over as a profile (\texttt{Lower atmosphere profile:}) with
+$K_{zz}=10^{9}$~cm$^2$\,s$^{-1}$ in the column, its energy treatment
+\texttt{nlte} and the conducted heat flux of the wind in its energy balance.
+Column and wind are iterated by \texttt{src/utils/element\_flux\_closure.py}
+with \texttt{energy\_coupling} on (\texttt{energy\_coupling\_omega} 0.5,
+\texttt{T\_match\_tol} 6~K; elemental-flux tolerance 0.05, from the log). The
+EWs are READ from the \texttt{EW.txt} that
+\url{.P1/fiducial_conduction/ew_of_state.sh} wrote with
+\texttt{EW\_NONTHERMAL\_KERNEL=width\_match} for the last closure iterate
+(\texttt{written\_state certified=T} in every file read): \emph{EW} is the
+unbroadened \texttt{EW=} of the solution product, \emph{EW wm} the
+width-matched \texttt{EW\_kernel=} and $f$ its \texttt{fwhm\_kms=}. The
+kernel stands for a velocity field the 1-D model does not contain; it is not
+a computed physics term. Observed: $1.1084\pm0.0289$~\%\,\AA.
+
+\paragraph{The EW against deep He/H on the GJ~1132 spectrum.} READ from
+\url{phase5/lowHeH_numbers.txt} (He/H $\le 1.8$) and
+\url{route_heh_high/route_heh_high_numbers.txt} (He/H $\ge 2.09$), the tables
+the comparison scripts measured from the case directories; the EW columns
+were checked against the \texttt{EW.txt} of He/H~=~0.65, 2.09 and 7000. The
+column is the band transfer of the Photochem column balance
+(\texttt{--column-band-transfer}). Rows marked $^{\dagger}$ were solved by
+\texttt{EXHALE\_99a76cb0.x} (1.8: \texttt{EXHALE\_8cc7b546.x}) before the
+hydrogen carrier split of the escape boundary condition was made
+self-consistent (log section 95); the others by \texttt{EXHALE\_c37b3671.x}
+(\texttt{exhale\_bin} of \texttt{closure.json}). Every listed closure
+converged and every wind state is certified.
+
+\scriptsize\linespread{1.0}\selectfont\begin{longtable}{@{}r r l r r r r r@{}}
+\toprule
+deep He/H & closure $k$ & column transfer & $T_{\rm match}$ [K] & $\log_{10}\dot M$ & EW & EW wm & $f$ [km\,s$^{-1}$]\\
+\midrule
+\endhead
+0.65$^{\dagger}$ & 2 & cooling to space & 412.59 & 8.1325 & 0.8822 & 0.8529 & 22.24\\
+0.8$^{\dagger}$ & 1 & cooling to space & 410.53 & 8.0930 & 0.8734 & 0.8444 & 22.21\\
+1.0$^{\dagger}$ & 1 & cooling to space & 399.39 & 8.0531 & 0.8655 & 0.8368 & 22.17\\
+1.2$^{\dagger}$ & 1 & cooling to space & 386.37 & 8.0218 & 0.8593 & 0.8308 & 22.14\\
+1.5$^{\dagger}$ & 1 & cooling to space & 375.98 & 7.9770 & 0.8327 & 0.8050 & 22.09\\
+1.8$^{\dagger}$ & 3 & thin & 359.55 & 7.9359 & 0.7975 & 0.7710 & 22.05\\
+2.09 & 1 & cooling to space & 350.71 & 7.8864 & 0.7353 & 0.7109 & 22.02\\
+3.0 & 1 & cooling to space & 332.83 & 7.8255 & 0.6993 & 0.6761 & 21.92\\
+4.0 & 1 & cooling to space & 326.05 & 7.8007 & 0.7054 & 0.6820 & 21.85\\
+5.0 & 1 & cooling to space & 321.73 & 7.8012 & 0.7399 & 0.7154 & 21.80\\
+7.0 & 1 & cooling to space & 328.84 & 7.8135 & 0.8058 & 0.7791 & 21.73\\
+10 & 1 & cooling to space & 334.06 & 7.8136 & 0.8398 & 0.8121 & 21.67\\
+14 & 1 & cooling to space & 335.13 & 7.8067 & 0.8493 & 0.8212 & 21.62\\
+20 & 1 & cooling to space & 343.02 & 7.7936 & 0.8416 & 0.8137 & 21.57\\
+30 & 1 & cooling to space & 357.62 & 7.7749 & 0.8212 & 0.7941 & 21.53\\
+40 & 2 & cooling to space & 371.07 & 7.7661 & 0.8137 & 0.7868 & 21.51\\
+60 & 2 & cooling to space & 394.30 & 7.7599 & 0.8130 & 0.7862 & 21.48\\
+80 & 2 & cooling to space & 412.25 & 7.7579 & 0.8160 & 0.7891 & 21.47\\
+100 & 2 & cooling to space & 428.94 & 7.7576 & 0.8201 & 0.7931 & 21.46\\
+200 & 1 & cooling to space & 484.29 & 7.7596 & 0.8362 & 0.8086 & 21.44\\
+400 & 1 & cooling to space & 546.76 & 7.7657 & 0.8573 & 0.8291 & 21.44\\
+700 & 1 & cooling to space & 602.09 & 7.7731 & 0.8779 & 0.8491 & 21.44\\
+1000 & 1 & cooling to space & 635.41 & 7.7781 & 0.8913 & 0.8621 & 21.44\\
+1400 & 1 & cooling to space & 667.00 & 7.7833 & 0.9047 & 0.8750 & 21.44\\
+2000 & 1 & cooling to space & 703.55 & 7.7897 & 0.9205 & 0.8904 & 21.44\\
+3000 & 1 & cooling to space & 748.33 & 7.7979 & 0.9406 & 0.9098 & 21.44\\
+4000 & 1 & cooling to space & 779.89 & 7.8038 & 0.9550 & 0.9238 & 21.45\\
+6000 & 1 & cooling to space & 816.20 & 7.8108 & 0.9725 & 0.9407 & 21.45\\
+7000 & 1 & cooling to space & 826.69 & 7.8131 & 0.9781 & 0.9461 & 21.45\\
+8000 & 1 & cooling to space & 837.95 & 7.8153 & 0.9836 & 0.9515 & 21.45\\
+$10^{4}$ & 1 & cooling to space & 855.53 & 7.8188 & 0.9923 & 0.9600 & 21.45\\
+\midrule
+observed & & & & & $1.1084\pm0.0289$ & $1.1084\pm0.0289$ & \\
+\bottomrule
+\end{longtable}\normalsize
+
+\noindent
+On this spectrum no deep He/H from 0.65 to $10^{4}$ reaches the observed EW
+(Fig.~\ref{fig:fullequationheh}): the width-matched EW has a minimum of
+0.676 at He/H~=~3, rises to 0.853 at 0.65 and to 0.960 at $10^{4}$. The
+closure at He/H~=~0.5 did not converge (diagnostic EW wm 0.8482, the open
+circle of the figure; READ, \url{phase5/lowHeH_numbers.txt}). The phase-3
+reference at He/H~=~2.09 with the optically thin column
+(\url{phase3/he23s_transport/solve/}, \texttt{EXHALE\_4c0e8603.x}) gave EW
+0.7334 and EW wm 0.7091 (READ, \url{phase5/lowHeH_numbers.txt}); the
+2.09 row above is its successor on the cooling-to-space column and the
+binary of log section 94. The width-matching kernel is 21.4 to 22.2~km\,s$^{-1}$
+on every state and lowers the window EW by about 3.3 per cent.
+
+\paragraph{Numerical and observational checks at He/H~=~0.65} (log section
+92, taken from the log, \url{phase6/NOTES.md}): halving every spacing
+(1000 cells, certified) lowers EW wm by 0.0073, a further halving
+(diagnostic) by 0.0040, a Richardson continuum 0.016 below the 500-cell
+value; a tighter wind tolerance changes nothing, a tighter closure
+$+0.0004$, the domain to L1 $+0.0020$; the Roche-consistent geometry gives
+0.8205 against the spherical 0.8529. Every positive item together reaches
+at most 0.870, 8.2$\sigma$ below the observation.
+
+\paragraph{The EUV that matches the observed EW.} Holding the bolometric
+flux, the GJ~1132 spectrum shortward of 911.75~\AA\ is scaled by $s$ (a
+sensitivity construction, not a stellar model; log sections 98, 99 and 102).
+READ from \url{route_xuv_scaled/euv_match_vs_heh.txt}: $s$ at which the
+width-matched EW interpolated in $\ln s$ reaches 1.1084 (in brackets the
+values for $1.1084\mp0.0289$), and $F_{\rm EUV}(100$--$911~\mbox{\AA})$ at the
+orbit in erg\,cm$^{-2}$\,s$^{-1}$; GJ~1132 itself gives 10.05 (READ,
+\url{route_xuv_scaled/xuv_scaled_numbers.txt}, $s=1$). Every He/H has a
+converged state within 0.0058 of the observation (the last column); a
+value marked $^{*}$ lies outside the bracket of converged states and is
+extrapolated along the end slope, as the file marks it; the
+He/H~=~0.1 closure uses \texttt{--column-band-transfer
+cooling\_to\_space\_exchange} and 24 top-pressure passes, the others
+\texttt{cooling\_to\_space} (\texttt{closure.json}, READ).
+
+\begin{center}
+\footnotesize
+\begin{tabular}{@{}r r r r@{}}
+\toprule
+deep He/H & $s$ & $F_{\rm EUV}$ & nearest converged state: $s$, EW wm $-$ observed\\
+\midrule
+0.1 & 2.532$^{*}$ [2.430, 2.636$^{*}$] & 25.45 [24.42, 26.50] & 2.53, $-0.0005$\\
+0.2 & 1.656 [1.599, 1.715$^{*}$] & 16.65 [16.07, 17.23] & 1.66, $+0.0020$\\
+0.3 & 1.448 [1.402, 1.494$^{*}$] & 14.56 [14.09, 15.02] & 1.45, $+0.0012$\\
+0.45 & 1.339 [1.300, 1.379] & 13.46 [13.07, 13.86] & 1.34, $+0.0006$\\
+0.65 & 1.300 [1.264, 1.337] & 13.07 [12.71, 13.43] & 1.30, $0.0000$\\
+1.2 & 1.280 [1.249, 1.311] & 12.86 [12.55, 13.18] & 1.28, $+0.0004$\\
+2.09 & 1.361 [1.333, 1.390] & 13.68 [13.40, 13.97] & 1.36, $-0.0013$\\
+5 & 1.336 [1.309, 1.363] & 13.43 [13.16, 13.70] & 1.34, $+0.0045$\\
+14 & 1.271 [1.241, 1.302] & 12.77 [12.48, 13.08] & 1.27, $-0.0008$\\
+100 & 1.331 [1.298, 1.365] & 13.38 [13.04, 13.72] & 1.33, $-0.0008$\\
+1000 & 1.253 [1.223$^{*}$, 1.286] & 12.60 [12.29, 12.92] & 1.25, $-0.0031$\\
+$10^{4}$ & 1.143 [1.115, 1.173] & 11.49 [11.20, 11.79] & 1.14, $-0.0031$\\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\noindent
+The observed line needs 1.14 to 2.5 times the EUV of GJ~1132, nearly flat
+at 12.8 to 13.7~erg\,cm$^{-2}$\,s$^{-1}$ over He/H~0.45 to 100
+(Fig.~\ref{fig:fullequationeuv}). The states at He/H~=~0.65 and $s=1.3$
+(EW wm 1.1084, $f = 22.20$~km\,s$^{-1}$) and at 2.09 and $s = 1.36$ (1.1071,
+21.97~km\,s$^{-1}$) were checked in their \texttt{EW.txt}.
+
+\paragraph{The GJ~699 spectrum.} READ from
+\url{route_xuv/route_xuv_numbers.txt} (log section 95): on the GJ~699 proxy
+spectrum at He/H~=~2.09 the closure was not iterated past $k = 0$ (EW wm
+3.698, $f = 21.52$); with GJ~699 shortward of 2600~\AA\ and GJ~1132 above
+(``split''), converged at He/H~=~0.65, 2.09, 5 and 10, EW wm 3.707, 3.388,
+3.427 and 3.328 ($f$ 21.3 to 21.6~km\,s$^{-1}$), three times the observation;
+at He/H~=~0.65 the unsplit GJ~699 closure was refused at $k = 0$ by the
+exchange bound of the cooling-to-space column transfer. The $F_{\rm EUV}$ of
+GJ~699 is 70.2 (log section 102).
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.85\textwidth]{../LHS1140b/models/.P2/ew_fit/route_heh_high/fig_heh_high_ew_vs_heh.png}
+\caption{Width-matched He~10830 EW against deep He/H on the GJ~1132
+spectrum with the full equation set (the table above), against the observed
+$1.1084\pm0.0289$ (grey). Figure of \url{route_heh_high/}, made by
+\texttt{compare\_route\_heh\_high.py}.}
+\label{fig:fullequationheh}
+\end{figure}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.85\textwidth]{../LHS1140b/models/.P2/ew_fit/route_xuv_scaled/fig_euv_match_vs_heh.png}
+\caption{$F_{\rm EUV}(100$--$911$~\AA) at which the width-matched EW reaches
+the observed value, against deep He/H (the table above; grey, the observed
+$1\sigma$). Right axis: the factor $s$ over GJ~1132. Figure of
+\url{route_xuv_scaled/}, made by \texttt{compare\_euv\_match\_vs\_heh.py}.}
+\label{fig:fullequationeuv}
 \end{figure}
 
 \section{What the flux-spread criterion misses, on one certified case}

@@ -95,10 +95,11 @@
       ! the whole grid.
       !
       !  * f_n: measured 33-41 eV only (Chung et al. Table 1, twelve rows,
-      !    their yields taken from Backx, Wight & van der Wiel).  Set to
+      !    their yields taken from Backx, Wight & van der Wiel), ramped
+      !    linearly to zero at the continuity anchors 32 and 41.5 eV and
       !    zero outside.  Chung et al.: "No yield measurements were made
       !    above 28 eV because it was assumed that the ionization yield
-      !    would be unity at higher energies."  Zero outside 33-41 eV is
+      !    would be unity at higher energies."  Zero outside 32-41.5 eV is
       !    therefore an assumption of the source, not a measurement.
       !  * r, equivalently f_di: measured 18.076-124 eV (Table II).  Above
       !    124 eV it is HELD at its 124 eV value; the source quotes nothing

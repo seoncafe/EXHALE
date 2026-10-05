@@ -676,10 +676,12 @@
       ! the gas actually crosses.  Which of the two a carrier gets is
       ! declared with it.
       ! A carrier is a species of the species table (advected_carrier_register
-      ! takes its mass from bsp_mass), so the table's independent species
-      ! bound the count; an excited level is part of its atom and is never
-      ! one.
-      integer, parameter :: n_car_max = count(.not.bsp_is_excited_level)
+      ! takes its mass from bsp_mass), so the table bounds the count.  An
+      ! excited level is counted too: the He 2^3S level is a carrier where
+      ! "He 2^3S transport" carries it.  It is a part of its atom, so it
+      ! moves within the element budget like the ionization stages and is
+      ! never a member of the normalized element set.
+      integer, parameter :: n_car_max = n_bsp
       integer :: car_isp(n_car_max)  = 0
       real*8  :: car_mass(n_car_max) = 0.0d0
       logical :: car_base_imposed(n_car_max) = .false.

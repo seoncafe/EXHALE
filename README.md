@@ -96,7 +96,17 @@ for bit.
   type, the source of the band below 13.6 eV, and the integrated grid flux
 - Secondary ionization by fast photoelectrons: the ionization budget of
   Shull & van Steenberg (1985), with the heating fraction, its dependence on
-  the photoelectron energy and the H2 channels from Dalgarno, Yan & Liu (1999)
+  the photoelectron energy and the H2 channels from Dalgarno, Yan & Liu (1999),
+  above 30 eV. Below it the photoelectrons are deposited whole as heat by
+  default; the opt-in key `Low-energy electron partition: Furlanetto2010`
+  partitions those of 10.2-30 eV into heat, H I and He I ionizations and
+  escaping H I line radiation by the Monte Carlo tables of Furlanetto &
+  Stoever (2010), in cells without H2 (a cell with any n(H2) > 0 keeps the
+  heat-only treatment: the tables are those of an atomic H/He gas;
+  `src/modules/radiation/low_energy_electron_degradation.f90`). The
+  photoelectrons of the recombination radiation absorbed on the spot pass,
+  at their representative energy, through the same bands and partition as
+  the stellar ones
 - Non-LTE H(n=2) populations and Ly-alpha radiative transfer, from either a
   fast Neufeld escape-probability closure or a field imported from the LaRT
   Monte Carlo code, including the Ly-alpha emitted in situ within the wind
@@ -127,11 +137,26 @@ for bit.
   because an eliminated H2 content is one the local equilibrium cannot
   determine and the stationary residual is then not a function of its
   unknowns. The
-  hydrogen ionization state can ride the same operator (`Ionization
-  transport: True`, default off): H+ becomes a fifth carrier and the sweep is
-  handed the transported fraction where a parcel leaves its shell faster
-  than it ionizes (`P r/|v| < 1`), which is what the Koskinen et al. (2022)
-  comparison of `md/k22_electron_density_excess.md` needed
+  ionization stages can ride the same operator (`Ionization transport:
+  True`, default off), in an atomic gas as well as a molecular one: x(H II)
+  per hydrogen nucleus and x(He II), x(He III) per helium nucleus are carried
+  on their own element's nucleus face flux with the local ionization balance
+  as their source, the neutral stage closing each simplex, and every
+  equilibrium sweep is handed the transported fractions instead of putting
+  them back on their local root. It needs helium in the mixture, in a
+  molecular gas also `Molecular carrier transport: True`, and is refused with
+  `Coupled carrier solve: True` or `On stall`. The local root is wrong where
+  a parcel leaves its shell faster than it ionizes (`P r/|v| < 1`), which is
+  what the Koskinen et al. (2022) comparison of
+  `md/k22_electron_density_excess.md` needed
+- He 2^3S transport (`He 2^3S transport: True`, default off; needs
+  `Include He23S: True` and `Ionization transport: True`): the metastable
+  population n(2^3S)/n(He nuclei) is carried as a fourth helium state of the
+  same operator, on the helium nucleus flux, with the level balance of the
+  coupled system as its source (the steady advection balance of Oklopcic &
+  Hirata 2018 and Lampon et al. 2020, with the eddy term of the stage flux),
+  instead of the local root of that balance in every cell; its certification
+  entry is `carrier balance He2^3S`
 - Thermal infrared field of the atmosphere below the base, so the molecular
   and fine-structure coolants return the net rate rather than the vacuum limit
 - Molecular infrared bands (`Molecular IR bands`): the H2 quadrupole and
@@ -170,9 +195,11 @@ for bit.
   interdiffusion enthalpy flux `q_d = sum_s h_s J_s` (Cook 2009, eqs. 11-13),
   in the marching update and the stationary energy row alike
   and the enthalpy the transported molecular carriers (H2, OH, H2O, CO) carry
-  relative to the rest of their elements
-  (`Interdiffusion enthalpy flux:`, on by default whenever `He_diffusion` is or
-  a molecular carrier is transported;
+  relative to the rest of their elements, and, with `Ionization transport:
+  True`, the enthalpy the carried ionization stages move relative to their
+  own element
+  (`Interdiffusion enthalpy flux:`, on by default whenever `He_diffusion` is,
+  a molecular carrier is transported or the stages are carried;
   `False` only to reproduce published models that omit it; 13-26 percent of
   the local energy budget at 1.1-5 R_p on the LHS 1140 b diffusion states)
 
@@ -221,7 +248,20 @@ for bit.
   is not resolvable to one number in both
 - Molecular transport: the Navier-Stokes viscous force, its dissipation, and
   heat conduction, integrated Crank-Nicolson and entering the steady residual
-  with the same operator
+  with the same operator. `Conduction: True` (default off) uses the
+  conductivity of the mixture, `kappa = (n_e 1.2e-6 T^2.5 + n_HI 379 T^0.69 +
+  n_HeI 299 T^0.69 + n_H2 k_H2(T))/n` erg cm^-1 s^-1 K^-1 (Salz et al. 2015;
+  Sutton et al. 2015; an Eucken-form fit to the tabulated H2 conductivity,
+  valid 200-2000 K), with the base face held at the bath temperature of the
+  lower atmosphere (the profile's own temperature when a lower-atmosphere
+  profile is handed over, the reservoir's isentrope otherwise). The heat the
+  wind conducts into the lower atmosphere through that face is measured on
+  the certified state and written to `EXHALE_resolved.out`
+  (`base_conductive_flux_cgs`, positive into the lower atmosphere, with
+  `base_conduction_T_bath_K` and `base_conduction_T_cell1_K`).
+  `EXHALE_CONDUCTION_SCALE=s` (0 <= s <= 1, unset = 1) multiplies the
+  conductivity, a continuation factor for reaching a state with conduction
+  from one solved without it, carried in the state's `cond` token
 - Low-Mach damping, a gated fourth-difference stress for a shell that has
   stopped flowing, and an optional Shapiro filter for a breathing base
 - Roche-potential geometry, in either a spherical or a Roche-lobe domain
@@ -264,6 +304,45 @@ for bit.
   schema, certification verdict and provenance, the census of rows the line
   took its depth from that were refused a correction, and the
   `EXHALE_TRANSIT_*` overrides in effect, so a curve says what it stands on
+- A model line compared with an observed transit profile is fitted to the
+  observed equivalent width with its width matched by an added Gaussian
+  velocity kernel, for every planet: the excess absorption of the
+  instrument-convolved spectrum is convolved with a Gaussian of FWHM `f` in
+  velocity, `f` chosen for each model so that the extractor used on the data
+  returns the observed FWHM, and the EW is the window EW of that curve on the
+  observation's samples (trapezoid weights). The kernel stands for a velocity
+  field the 1-D model does not contain, not a computed physics term, and every
+  result that uses it reports `f`. For LHS 1140 b He 10830 the code is
+  `LHS1140b/he10830_equivalent_width.py` (`broaden_excess`,
+  `width_matching_fwhm_kms`, `width_matched_product`, CLI `--width-matched`)
+  and `LHS1140b/models/.P1/fiducial_conduction/ew_of_state.sh`, whose
+  `EW_NONTHERMAL_KERNEL=width_match` adds `EW_kernel=` and `fwhm_kms=` to
+  `EW.txt` (`EW=` stays the unbroadened value); the script evaluates the state
+  with `Restart intent: stationary evaluate`, stages its
+  `conserved_state.txt` and records the written state's certificate as
+  `written_state`
+- Lower atmosphere from Photochem with a two-way coupling:
+  `src/utils/photochem_to_lower_profile.py` writes the lower-atmosphere profile
+  and, with `--conducted-heat-flux F` (default 0, profile unchanged), solves
+  the energy balance of the column below the matching level under the heat
+  the wind conducts into it (`src/utils/conducted_heat_column_balance.py`:
+  mixture conductivity, band emission of CH4, NH3, H2O, C2H2, CO and CO2 from
+  the climate model's k-distributions, published V-T rates for the
+  two-level bands; `--column-energy-treatment nlte|nlte_partial|lte|rotational`,
+  `--nh3-h2-rate-analog cd4_bending|water_bending_overtone`,
+  `--column-band-transfer thin|cooling_to_space|cooling_to_space_exchange`
+  with its validity bound `--column-exchange-shift-max`), re-solving the
+  chemistry on the new temperature; the profile header records
+  `conducted_heat_flux_cgs`, `column_energy_treatment`, `column_T_match_K`,
+  `nh3_h2_rate_analog` (treatment `nlte`), `column_band_transfer` (off the
+  default `thin`) or, under `thin`, the `thin_layer_*` record of the
+  optically thin validity check (the column is kept and flagged past its
+  10 percent limit). `src/utils/element_flux_closure.py` iterates wind and
+  chemistry to one elemental flux at the matching level and, with
+  `energy_coupling` on, passes the wind's `base_conductive_flux_cgs` to the
+  next column (damped by `energy_coupling_omega`), converging only when the
+  elemental fluxes and the conducted flux agree within `tol` and `T_match`
+  moves less than `T_match_tol` (default 6 K)
 - An independent conservation audit of the discrete rows, off by default.
   `EXHALE_CONSERVATION_BUDGET=<n>` exports the next `n` stationary residual
   assemblies to `output/conservation_budget_<nnnn>.txt`: per cell the face
@@ -296,19 +375,41 @@ for bit.
 - Python loaders (`examples/exhale_io.py`) driven by the `# columns` schema
   header every output file carries; a regression harness over a
   seventeen-case physics matrix (`make check`, bitwise first, else within a
-  stated relative tolerance); and 44 assertion suites (`src/tests/*/run.sh`)
+  stated relative tolerance); and 52 assertion suites (every executable `src/tests/*/run.sh`)
   plus the standalone `element_census_tests`, `diffusion_tests` and
   `residual_determinism` (`make test`), which print
-  one `PASS|FAIL <name> measured= reference= tol=` line per assertion
+  one `PASS|FAIL <name> measured= reference= tol=` line per assertion.
+  Suites of the stage-3 physics: `conducted_heat_column` (the column energy
+  balance under the conducted heat: the zero-flux identity, a manufactured
+  column against its analytic solution, the energy budget, the published
+  V-T rates, the band transfer options), `low_energy_electron_degradation`
+  (the 10.2-30 eV partition against the authors' tables),
+  `ionization_stage_enthalpy_flux` (the enthalpy the carried stages move
+  relative to their element), `helium_metastable_transport` (the carried
+  He 2^3S level: simplex, write-back, local limit, source ledger, a
+  manufactured column), `adv_element_velocity` (the `_adv` rows stepped on
+  each element's nuclei velocity), `restart_radius_guard` (a non-finite
+  restart center refused), `state_mapper` (`map_state_to_grid.py`, including
+  the first refined cell and the reservoir rescaling) and
+  `element_flux_closure` (the closure's window, resume and solve-exit
+  refusals and the conducted-flux residual); the exact-factor tokens and the
+  stored-pair evaluate are rows of `grid_and_gates`
 - A restart is a contract, not a file copy. Both state files carry a
   `restart_schema 1` metadata block (reservoir, species columns, grid,
-  constants, twenty-three option switches, physical time, source), and a load whose
+  constants, twenty-six option switches, physical time, source), and a load whose
   grid, reservoir, constants or options disagree with the input is refused by
   name rather than silently accepted. `Restart intent:` says what the loaded
   state is (`trajectory`, `relaxation`, `stationary`, which enters the steady
-  solver with no time step, or `stationary evaluate`, which measures the state
-  and takes no step at all and writes the advection-corrected profiles and the
-  mass-loss line from that measurement), and `Restart option change:` names the
+  solver with no time step, or `stationary evaluate`, which certifies the stored
+  pair as loaded, takes no step at all and writes the state, the
+  advection-corrected profiles and the mass-loss line from that pair, its exit
+  status being the stored pair's verdict; one composition sweep from the
+  loaded state is then taken and its movement and certification reported
+  beside the verdict, never written. The same held-composition evaluation,
+  the temperature, sources and lower ghost of the stored composition from one
+  sweep that returns the interior composition bit for bit, is what every
+  stationary outer pass and every written file is certified on, so a file's
+  certificate is the one its reload measures), and `Restart option change:` names the
   option tokens a deliberate ladder is allowed to differ in. The two
   continuation-factor tokens, `cond` (`EXHALE_CONDUCTION_SCALE`) and
   `interdiff_enth` (`EXHALE_INTERDIFF_ENTH_SCALE`), carry a factor other than
@@ -331,7 +432,9 @@ for bit.
   written before then is refused; it enters a run only as a seed mapped with
   `src/utils/map_state_to_grid.py <src> <target_grid_file> <out> --ic`
   (`--reservoir El/H <value>` rescales an element, `--uniform` sets it to one
-  ratio in every row)
+  ratio in every row; a target cell whose center lies between the base face
+  and the source's first cell center takes that cell's values, never an
+  interpolation with the reservoir ghost)
 - Beside every equilibrium state pair (`Hydro_ioniz.txt`, `Ion_species.txt`,
   including the pass-state generations and the `EXHALE_DUMP_IC=1` dump) the
   run writes `output/conserved_state.txt`, the exact code-unit state: the
@@ -392,7 +495,13 @@ for bit.
   the steady ionization and energy equations along the recorded flow, second
   order in the cell width (variable-step BDF2 since 2026-09-27; the
   first-order recursion before it put 1-4 percent into the He 10830
-  equivalent width of the LHS 1140 b states), and the
+  equivalent width of the LHS 1140 b states), each element's stages stepped
+  on the velocity of that element's nuclei (`v_H`, `v_He`, which differ from
+  the bulk velocity when `He_diffusion` moves the elements), with the heat
+  conduction and the element, carrier and stage enthalpy flux divergences of
+  the run kept in the energy equation it re-solves (the conduction couples
+  neighboring cells, so the corrected column is solved together by a Newton
+  iteration and accepted on its residual), and the
   flow it integrates along changes its face mass flux by a fraction of itself
   across each cell; the correction is first order in that fraction, so a row
   at or below the `# adv_conditional_tol` of the file is corrected and is a
@@ -519,7 +628,8 @@ schemas, convergence recipes, post-processing) is in
   update log (stage 3, from 2026-09-23; source `md/Update_EXHALE_stage3.md`).
   It carries the code-size appendix against the original ATES and the list of
   source inherited unchanged from it (`docs/Update_EXHALE_appendix.tex`,
-  measured 2026-09-22 with `src/utils/codesize.py`, before the code of stage 3);
+  measured 2026-10-05, after section 102, with `src/utils/codesize.py`: 236
+  core Fortran files, 109,539 code lines, 31 times the 3,514 of ATES);
   [`docs/Update_EXHALE_stage2.pdf`](docs/Update_EXHALE_stage2.pdf): sections
   1-17 (2026-09-05 to 09-22);
   [`docs/Update_EXHALE_stage1.pdf`](docs/Update_EXHALE_stage1.pdf): sections 1-171, the dated changelog against
@@ -621,4 +731,4 @@ the Markdown memos of the development record.
 
 Kwang-Il Seon (KASI / UST)
 
-Last updated: 2026-10-03 15:23 KST
+Last updated: 2026-10-06 07:22 KST
