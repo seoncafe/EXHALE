@@ -89,7 +89,8 @@ def curve_file(path):
     if not os.path.isfile(path):
         return None
     s = np.loadtxt(path)
-    return s[:, 0], (s[:, 2].max() - s[:, 2])/s[:, 2].max()*100   # air, %
+    t = s[:, HEW.TRANSIT_COLUMN]   # T_rot+instr, as the EW operator reads it
+    return s[:, 0], (t.max() - t)/t.max()*100   # air, %
 
 
 MODELS = 'models'

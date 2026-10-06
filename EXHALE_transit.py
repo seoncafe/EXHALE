@@ -1761,12 +1761,15 @@ if 'OI' in metal_spec and len(oi_result) > 0:
 # ----- He 10830 line metrics (three-Gaussian, Cherubim et al. 2026) ----- #
 # Astrophysical metrics of the modeled He triplet: blended-red depth, blue
 # depth, red/blue amplitude ratio, FWHM of the blended feature, and the
-# shared Doppler shift.  Fit on the instrument-convolved curve, in the AIR
-# wavelength frame this script uses.  A fit failure is reported, not fatal.
+# shared Doppler shift.  Fit on the planet-rotation and instrument-convolved
+# curve (column 4 of tpm_He10830.txt, the one the equivalent-width and
+# width-matching tools read; before 2026-10-06 the instrument-only column 3),
+# in the AIR wavelength frame this script uses.  A fit failure is reported,
+# not fatal.
 try:
 	from he_line_metrics import fit_metrics as _he_fit_metrics
-	_he_excess = (convolved_avg_prob_HeTR.max() - convolved_avg_prob_HeTR) \
-	    / convolved_avg_prob_HeTR.max() * 100.0
+	_he_excess = (convolved_rot_prob_HeTR.max() - convolved_rot_prob_HeTR) \
+	    / convolved_rot_prob_HeTR.max() * 100.0
 	_hm = _he_fit_metrics(l_plot_HeTR, _he_excess, frame='air')
 	with open(_save_prefix + 'tpm_He10830_metrics.txt', 'w') as _fh:
 		for _ml in transit_metadata_block(_adv, _tool_identity, _overrides,
@@ -1775,7 +1778,7 @@ try:
 		                                  state=_state_record):
 			_fh.write('# %s\n' % _ml)
 		_fh.write('# He 10830 line metrics (three-Gaussian fit, air frame,\n'
-		          '# instrument-convolved curve; he_line_metrics.py)\n')
+		          '# planet-rotation and instrument-convolved curve; he_line_metrics.py)\n')
 		for _k in ('red_depth', 'blue_depth', 'red_blue', 'fwhm_A',
 		           'shift_A', 'sigma_A'):
 			_fh.write('%-12s %14.6e\n' % (_k, _hm[_k]))

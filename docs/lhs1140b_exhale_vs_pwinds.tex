@@ -2289,7 +2289,9 @@ Over the blended red pair (vacuum $10832.6$--$10834.2$\,\AA), the released
 spectrum gives $EW = 1.108 \pm 0.030$\,\%\,\AA: the trapezoid over its own 44
 samples in the window ($10832.622$ to $10834.175$\,\AA). Since 2026-09-23
 every model equivalent width in this memo is measured through that same
-operator: the instrument-convolved model is interpolated linearly onto those
+operator: the model curve (instrument-convolved until 2026-10-06, since then
+the planet-rotation and instrument-convolved column~4; the two differ by
+$10^{-6}$\,\%\AA{} for this planet) is interpolated linearly onto those
 44 samples and integrated with their trapezoid weights. Before that date each
 model was integrated with a trapezoid on its own, finer grid inside the
 nominal window. The two differ by at most $1.5\times10^{-4}$\,\%\,\AA{} on the
@@ -2386,7 +2388,9 @@ The three routes above can be replaced by one measurement. Take the EXHALE
 profile matched on equivalent width as solved, convolve it with a Gaussian of
 FWHM $f$ in velocity, and ask which $f$ reproduces the measured line. The
 convolution is applied to the excess absorption $(\max T - T)/\max T$ built
-from the instrument-convolved synthetic spectrum. Depth, width and the
+from the planet-rotation and instrument-convolved synthetic spectrum (column~4
+of the curve file; the instrument-only column~3 up to 2026-10-05, the two
+differ by $10^{-6}$\,\%\AA{} for this planet). Depth, width and the
 red/blue ratio are then read off with the same three-Gaussian extractor used
 on the data, and the equivalent width through the same operator as the
 observed one (Sect.~\ref{sec:ew}): the broadened curve interpolated onto the

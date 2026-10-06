@@ -422,7 +422,8 @@ three-Gaussian extractor \texttt{he\_line\_metrics.fit\_metrics} (the
 model of Cherubim et~al.\ 2026: three Gaussians at the fixed triplet
 positions with one shared width and one shared shift), fitted in the air
 frame to the excess $(\max T_\lambda - T_\lambda)/\max T_\lambda$ of the
-instrument-convolved curve (column~3): \texttt{red\_depth},
+planet-rotation and instrument-convolved curve (column~4; the instrument-only
+column~3 until 2026-10-06): \texttt{red\_depth},
 \texttt{blue\_depth}, \texttt{red\_blue}, \texttt{fwhm\_A} (of the blended
 red pair), \texttt{shift\_A}, \texttt{sigma\_A}. A failed fit is reported
 and is not fatal. \texttt{tpm\_OI\_band\_depths.txt} holds the O\,I band
@@ -823,9 +824,11 @@ therefore convolved with an added Gaussian line-of-sight velocity
 distribution whose width is fixed by the data, model by model:
 \begin{enumerate}
   \item the excess absorption $E_\lambda = (\max T_\lambda -
-    T_\lambda)/\max T_\lambda$ [\%] is formed from column~3 of
-    \texttt{tpm\_He10830.txt}, the curve convolved with the instrument's own
-    resolving power ($R = 68\,000$ for the WINERED HIRES-Y observation of
+    T_\lambda)/\max T_\lambda$ [\%] is formed from column~4 of
+    \texttt{tpm\_He10830.txt}, the curve convolved with the planet's rotation
+    and the instrument's own resolving power (column~3, instrument only, until
+    2026-10-06; for LHS\,1140\,b the two equivalent widths differ by
+    $10^{-6}$\,\%\AA{}, $v_{\rm rot}\approx0.03$\,km\,s$^{-1}$) ($R = 68\,000$ for the WINERED HIRES-Y observation of
     LHS\,1140\,b), on its air-wavelength grid
     (\texttt{transit\_file\_air\_excess});
   \item $E_\lambda$ is convolved with a Gaussian of FWHM $f$ in velocity,

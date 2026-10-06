@@ -467,8 +467,10 @@ comparison on another planet or line generalizes it rather than introducing
 another.
 \begin{enumerate}
 \item The excess absorption $(\max T - T)/\max T$ is formed from the
-  synthetic transit depth of \texttt{tpm\_He10830.txt} (column~3), which is
-  already convolved with the planet rotation and the instrument at the
+  synthetic transit depth of \texttt{tpm\_He10830.txt} (column~4,
+  \texttt{T\_rot+instr}; user decision 2026-10-06, before it the
+  instrument-only column~3), which is convolved with the planet rotation
+  (tidally locked, the azimuthal disk average) and the instrument at the
   instrument's own resolving power, on its own air-wavelength grid
   (\texttt{transit\_file\_air\_excess}).
 \item That excess is convolved with a Gaussian of FWHM $f$ in velocity, in

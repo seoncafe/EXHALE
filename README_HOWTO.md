@@ -1580,8 +1580,9 @@ the model is compared on the observed EQUIVALENT WIDTH with its width matched
 by an added Gaussian velocity kernel, as written for LHS 1140 b He 10830 in
 `LHS1140b/he10830_equivalent_width.py`:
 
-1. the excess `(max T - T)/max T` of the instrument-convolved curve (column 3
-   of `tpm_He10830.txt`, the instrument's own resolving power) is convolved
+1. the excess `(max T - T)/max T` of the planet-rotation and instrument-convolved
+   curve (column 4 `T_rot+instr` of `tpm_He10830.txt`, at the instrument's own
+   resolving power; before 2026-10-06 column 3, instrument only) is convolved
    with a Gaussian of FWHM `f` in velocity, planet rest frame, no shift
    (`broaden_excess`, `scipy.ndimage.gaussian_filter1d`, reflecting
    boundary);

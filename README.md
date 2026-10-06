@@ -307,7 +307,8 @@ for bit.
 - A model line compared with an observed transit profile is fitted to the
   observed equivalent width with its width matched by an added Gaussian
   velocity kernel, for every planet: the excess absorption of the
-  instrument-convolved spectrum is convolved with a Gaussian of FWHM `f` in
+  spectrum convolved with the planet's rotation and the instrument (column 4,
+  `T_rot+instr`) is convolved with a Gaussian of FWHM `f` in
   velocity, `f` chosen for each model so that the extractor used on the data
   returns the observed FWHM, and the EW is the window EW of that curve on the
   observation's samples (trapezoid weights). The kernel stands for a velocity
@@ -731,4 +732,4 @@ the Markdown memos of the development record.
 
 Kwang-Il Seon (KASI / UST)
 
-Last updated: 2026-10-06 07:22 KST
+Last updated: 2026-10-06 11:12 KST

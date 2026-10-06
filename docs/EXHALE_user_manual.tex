@@ -4659,9 +4659,10 @@ line of sight beyond its radial outflow, and its lines are narrower than the
 observed ones (He\,10830 of LHS\,1140\,b: model FWHM about 0.27\,\AA\ against
 the observed 0.841\,\AA). For every planet and every line compared with an
 observed transit profile the convention is (user decision 2026-10-04): the
-excess absorption $({\rm max}\,T-T)/{\rm max}\,T$ of the instrument-convolved
-curve (column 3 of \texttt{tpm\_<line>.txt}, at the instrument's own resolving
-power) is convolved with a Gaussian of FWHM $f$ in velocity, planet rest
+excess absorption $({\rm max}\,T-T)/{\rm max}\,T$ of the planet-rotation and
+instrument-convolved curve (column 4 of \texttt{tpm\_<line>.txt}, at the
+instrument's own resolving power; the instrument-only column 3 until
+2026-10-06) is convolved with a Gaussian of FWHM $f$ in velocity, planet rest
 frame; $f$ is chosen for each model so that the extractor used on that
 planet's data returns the observed FWHM of the same feature; and the model
 EW is the window EW of that broadened curve through the same operator as the

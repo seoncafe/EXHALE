@@ -41,6 +41,10 @@ OBS_CSV = os.path.join(HERE, 'Cherubim_2026',
 # Vacuum over air wavelength of the red pair (10832.057 A vacuum,
 # 10829.09114 A air); EXHALE_transit.py writes air wavelengths.
 AIR = 10832.057/10829.09114
+# Column (0-based) of tpm_He10830.txt the EW and the width-matching kernel read:
+# T_rot+instr, the transit depth convolved with the planet's rotation and the
+# instrument profile (user decision 2026-10-06; earlier 2, T_instr).
+TRANSIT_COLUMN = 3
 # The integration window, vacuum wavelengths in the planet rest frame [A].
 EW_LO, EW_HI = 10832.60, 10834.20
 
@@ -113,19 +117,20 @@ def model_equivalent_width(lam_vac, excess_percent):
 
 def transit_file_excess(path):
     """(vacuum wavelength [A], excess absorption [%]) from an EXHALE
-    `tpm_He10830.txt`: column 1 is the air wavelength and column 3 the
-    instrument-convolved transit depth, whose maximum over the file is the
-    continuum."""
+    `tpm_He10830.txt`: column 1 is the air wavelength and column 4
+    (`T_rot+instr`, index TRANSIT_COLUMN) the transit depth convolved with the
+    planet's rotation and the instrument profile, whose maximum over the file
+    is the continuum."""
     s = np.loadtxt(path)
-    if s.ndim != 2 or s.shape[1] < 3:
+    if s.ndim != 2 or s.shape[1] <= TRANSIT_COLUMN:
         return None
-    if not np.all(np.isfinite(s[:, [0, 2]])):
+    if not np.all(np.isfinite(s[:, [0, TRANSIT_COLUMN]])):
         return None
-    cont = s[:, 2].max()
+    cont = s[:, TRANSIT_COLUMN].max()
     if not cont > 0.0:
         return None
     lam = s[:, 0]*AIR
-    exc = (cont - s[:, 2])/cont*100.0
+    exc = (cont - s[:, TRANSIT_COLUMN])/cont*100.0
     return lam, exc
 
 
@@ -152,11 +157,15 @@ def transit_file_equivalent_width(path):
 # apply one rule).
 #
 # The convention, step by step:
-#   1. excess = (max T - T)/max T [%] from column 3 of tpm_He10830.txt
-#      (T_instr), the synthetic spectrum convolved with the instrument
-#      profile (R = 68,000) only, WITHOUT planet rotation (column 4,
-#      T_rot+instr, carries it; for LHS 1140 b, v_rot ~ 0.03 km/s, the two
-#      give EWs equal to 1e-6 %A, measured 2026-10-05 at He/H 0.1, s = 2.53), on its own uniform AIR wavelength grid (transit_file_excess
+#   1. excess = (max T - T)/max T [%] from column 4 of tpm_He10830.txt
+#      (T_rot+instr, user decision 2026-10-06): the synthetic spectrum
+#      convolved with the planet's rotation (tidally locked, the transit
+#      tool's azimuthal disk average) and the instrument profile (R = 68,000);
+#      the rotation is a computed term of the model, the kernel below only
+#      stands for the velocity field the model does not contain. (Before
+#      2026-10-06 column 3, T_instr, instrument only, was read; for LHS 1140 b,
+#      v_rot ~ 0.03 km/s, the two EWs differ by 1e-6 %A, measured at
+#      He/H 0.1, s = 2.53.), on its own uniform AIR wavelength grid (transit_file_excess
 #      without the vacuum conversion);
 #   2. that excess is convolved with a Gaussian of FWHM f in VELOCITY,
 #      sigma_lambda = f/(2.35482 c) x 10830 A, by scipy's gaussian_filter1d
@@ -224,9 +233,11 @@ def width_matching_fwhm_kms(lam, exc, frame='air', lam0=10830.0):
 
 
 def transit_file_air_excess(path):
-    """(air wavelength [A], excess [%]) of column 3 of a tpm_He10830.txt."""
+    """(air wavelength [A], excess [%]) of column 4 (T_rot+instr) of a
+    tpm_He10830.txt."""
     s = np.loadtxt(path)
-    return s[:, 0], (s[:, 2].max() - s[:, 2])/s[:, 2].max()*100.0
+    t = s[:, TRANSIT_COLUMN]
+    return s[:, 0], (t.max() - t)/t.max()*100.0
 
 
 def width_matched_product(path, out_path, fwhm_kms=None):
@@ -245,7 +256,7 @@ def width_matched_product(path, out_path, fwhm_kms=None):
                red=m['red_depth'], blue=m['blue_depth'],
                red_blue=m['red_blue'], fwhm_A=m['fwhm_A'],
                red0=m0['red_depth'], fwhm0_A=m0['fwhm_A'])
-    head = ['he10830_broadened: the excess of column 3 of %s convolved with '
+    head = ['he10830_broadened: the excess of column 4 (T_rot+instr) of %s convolved with '
             'an added Gaussian line-of-sight velocity distribution' % path,
             'standing for the velocity field of the outflow that the 1-D '
             'model does not contain (not a computed physics term)',

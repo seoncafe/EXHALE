@@ -8874,6 +8874,41 @@ The EW of states above He/H 1e4 was evaluated with f6945afb
 scripts with the binary name changed). Record: \texttt{NOTES.md} section 7 of
 \texttt{LHS1140b/models/.P2/ew\_fit/route\_xuv\_scaled/}.
 
+\subsection{109. The equivalent width and the width-matching kernel read the planet-rotation column (user decision 2026-10-06)}\label{109-the-equivalent-width-and-the-width-matching-kernel-read-the-planet-rotation-column-user-decision-2026-10-06}
+
+\texttt{tpm\_He10830.txt} carries four columns: \texttt{T\_theo}, \texttt{T\_instr} (instrument
+profile only) and \texttt{T\_rot+instr} (the tidally locked planet\textquotesingle s rotation, an
+azimuthal disk average, and the instrument profile). The EW operator, the
+width-matching kernel and the memo figures read column 3 (\texttt{T\_instr}); a
+literature check (Huang et al. 2023 section 4.3; Taylor et al. 2025 and 2026;
+Biassoni et al. 2024 section 2, whose transit tool is the ancestor of
+\texttt{EXHALE\_transit.py}) shows that published He and metal-line transit models do
+add the planet\textquotesingle s rotation as a computed broadening, and keep any remaining
+width shortfall as a separate non-thermal term. The convention of CLAUDE.md
+("Line width ... every planet") therefore now reads column 4: the rotation is
+a computed term of the model and the Gaussian velocity kernel stands only for
+the velocity field the one-dimensional model does not contain.
+
+Code: \texttt{LHS1140b/he10830\_equivalent\_width.py} defines \texttt{TRANSIT\_COLUMN\ =\ 3}
+(0-based) and uses it in \texttt{transit\_file\_excess} and \texttt{transit\_file\_air\_excess}
+(and so in the EW, \texttt{-\/-width-matched} and \texttt{ew\_of\_state.sh});
+\texttt{LHS1140b/make\_memo\_figures.py} \texttt{curve\_file} reads the same column;
+\texttt{EXHALE\_transit.py} fits the \texttt{tpm\_He10830\_metrics.txt} three-Gaussian metrics
+on the rotation-and-instrument curve as well (it fitted the instrument-only
+curve). All 1560 stored \texttt{tpm\_He10830.txt} files have four columns. Tests
+\texttt{transit\_state} and \texttt{transit\_census} pass.
+
+Effect, MEASURED: on the converged He/H 1e5, s = 1.015 state the width-matched
+EW is 1.10816 (column 3: 1.1082) and f = 21.4743 km/s (21.4803); at He/H 0.1,
+s = 2.53 the unbroadened EW and the kernel differ by 1e-6 \%A and 0.01 km/s
+(LHS 1140 b: v\_rot = 0.03 km/s). Every EW and every figure of this memo series
+is therefore unchanged at the printed precision; they were computed from
+column 3 and are not recomputed. For a planet with a fast spin the two
+columns differ materially and column 4 is the one to use. The documents that
+described the column (\texttt{CLAUDE.md}, README, README\_HOWTO, user manual,
+\texttt{transmission\_spectrum.tex}, \texttt{physics\_overview/postprocessing.tex}, the
+LHS 1140 b memo) are updated.
+
 \appendix
 \input{Update_EXHALE_appendix}
 \end{document}
