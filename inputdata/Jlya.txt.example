@@ -1,0 +1,22 @@
+# Example Ly-alpha mean-intensity profile for the TPM.py H-alpha module.
+# Set  Jlya_file = path + '/Jlya.txt'  in TPM.py and copy this file there.
+#
+# Two whitespace-separated columns:
+#   col 1 : r / R_p   -- radial coordinate, SAME as ATES output (r column
+#                        of Ion_species/Hydro_ioniz; r/R_p, starts near 1)
+#   col 2 : J_lya     -- Ly-alpha mean intensity J_nu at line center,
+#                        in cgs: erg s^-1 cm^-2 Hz^-1 sr^-1
+#
+# J_lya drives the 1s->2p radiative pumping (Christie, Arras & Li 2013,
+# ApJ 772, 144), which sets the n=2 hydrogen population and hence the
+# H-alpha absorption. Values are interpolated onto the ATES grid and
+# clamped to the endpoints outside this file's range.
+#
+# (The numbers below are an illustrative ~1/r decline; replace with your
+#  own radiative-transfer / Christie-style estimate of J_lya(r).)
+  1.00   3.00e-11
+  1.50   2.00e-11
+  2.00   1.50e-11
+  3.00   1.00e-11
+  5.00   6.00e-12
+ 10.00   3.00e-12

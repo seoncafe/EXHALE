@@ -1,0 +1,127 @@
+# Shared state of the EXHALE Tk interface: the widget dictionary, the planet
+# parameter table and the physical constants the interface writes into
+# input.inp.  init() allocates them; EXHALE_interface_main and
+# EXHALE_interface_functions import this module as `gui`.
+
+import os
+import sys
+
+try:                        
+	import tkinter as tk    # python 3 
+	from tkinter import ttk
+except ImportError:			# python 2
+	import Tkinter as tk
+	from Tkinter import ttk
+
+# The Jupiter radius is defined once, in examples/exhale_io.py (RJ_CM), and
+# imported here rather than written down again: the radius this interface
+# writes into input.inp has to mean the length EXHALE's parameters.f90 reads
+# it back as.  The directory is APPENDED to sys.path, never prepended, so
+# that nothing in it can shadow a standard-library module.
+_EXAMPLES_DIR = os.path.join(
+	os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+	'examples')
+if _EXAMPLES_DIR not in sys.path:
+	sys.path.append(_EXAMPLES_DIR)
+from exhale_io import RJ_CM                                # noqa: E402
+
+def init():
+	
+	# Globals allocation
+	global f_table
+	global widgets, frame_list, lbl_spectrum
+	global pl_names,sp_type,grid_type,num_flux,rec_meth
+	global pl_params_list,pl_params
+	global empty_lbl, PLind_spfile_lbl,resc_lbl
+	global appx_meth
+	global onlyEUV_var,LoadIC_var,He23S_var,onlyPP_var,force_var
+	global MJ,RJ,AU,Msun,Gc,mu,kb
+	global hp_eV,c_light   
+	global current_spec
+	global elow,emid,ehigh,ephot
+	global EUV_band_lbl,Xray_band_lbl
+	
+	# Widget dictionaries
+	widgets = {}
+	
+	# List of physical parameters
+	pl_names = []
+	appxmth = []
+	pl_params = { 'Rp' : [],
+			  'Mp' : [],
+			  'T0' : [],
+			  'LX' : [],
+			  'LEUV' : [],
+			  'a' : [],
+			  'Ms' : []}
+	
+	# lit of specific planetary parameters
+	pl_params_list = ['Rp',
+				'Mp',
+				'T0',
+				'LX',
+				'LEUV',
+				'a',
+				'Ms']
+				 
+	
+	# --- Predefined inputs --- #
+	
+	# Spectrum evaluation
+	sp_type = ['Load from file..',
+		     'Power-law',
+		     'Monochromatic']
+	
+	# Grid_types
+	grid_type = ['Uniform','Mixed','Stretched']
+	
+	# Numerical fluxes
+	num_flux = ['HLLC', 
+				'ROE', 
+				'LLF']
+	      	
+	# Reconstruction Methods
+	rec_meth = ['PLM', 'WENO3']
+	      	
+	# 3D approximation method
+	appx_meth = ['Mdot/4','Rate/2 + Mdot/2',
+			 	 'Rate/4 + Mdot','alpha = ']      
+	
+	# Empty labels
+	empty_lbl = { 'rho' : u'\u03C1\u209A: ',
+			  	  'b0'  : u'\u03B2\u2080 = ', 
+			  	  'phi' : u'log(\u03A6\u209A) = ',
+			  	  'rochel'  : 'Roche lobe: '}
+	
+	# List of frames
+	frame_list = ['Planet_params',
+			  	  'Stellar_params',
+			  	  'Others_params',
+				  'Bands_info',
+				  'Derived_parameters',
+				  'Numerical_params',
+				  'Tick_options',
+				  'Buttons']	
+			  
+	# Current spectrum type
+	current_spec = []
+	
+	# Labels for EUV info bands
+	EUV_band_lbl  = u"EUV band:\n" + \
+					u"[100,912] \u212B \u2263 [13.6,124] eV"
+	Xray_band_lbl = u"X-ray band:\n" + \
+					u"[10,100] \u212B \u2263 [124,1240] eV"
+					 
+	# Define useful constants
+	MJ      = 1.898e30           # Jupiter mass (g)
+	RJ      = RJ_CM              # Jupiter radius (cm), see the import above
+	AU      = 1.495978707e13     # Astronomical unit (cm)
+	Msun    = 1.989e33           # Sun mass (g)
+	# These mirror parameters.f90 -- keep the two in step (CODATA 2018).
+	Gc      = 6.67430e-8         # Gravitational constant
+	mu      = 1.67353284e-24     # Hydrogen atom mass (the density unit)
+	kb      = 1.380649e-16       # Boltzmann constant
+	hp_eV   = 4.135667696e-15    # Planck constant in eV
+	c_light = 2.99792458e10      # Speed of light in cm/s
+
+# ----

@@ -1,0 +1,79 @@
+
+=================== CI (3-level ground term, amu = 12.011) ===================
+  level 1: g = 1  E/k = 0.0000 K
+  level 2: g = 3  E/k = 23.6204 K
+  level 3: g = 5  E/k = 62.4631 K
+  A(2->1) = 7.9600e-08 s^-1   (609.12 um)
+  A(3->2) = 2.6600e-07 s^-1   (370.41 um)
+  log10 Ups(1,2) = -0.066939801*x**4 + 0.32574003*x**3 + -0.44730464*x**2 + 0.2677744*x**1 + -0.36997513   (max err 6.78%)
+  log10 Ups(1,3) = -0.13898642*x**4 + 0.39395787*x**3 + -0.29369201*x**2 + 0.12443835*x**1 + -0.58761698   (max err 8.21%)
+  log10 Ups(2,3) = -0.10999838*x**4 + 0.36015847*x**3 + -0.35985595*x**2 + 0.19117637*x**1 + 0.04798486   (max err 7.50%)
+  log10 kH(2->1) = -9.6487495 + 0.27178113*u + 0.110106*u^2,  u = log10(T/1e3), T clamped to [50,10000] K   (max err 3.20%)
+  log10 kH(3->1) = -9.7250154 + 0.35123928*u + 0.032556919*u^2,  u = log10(T/1e3), T clamped to [50,10000] K   (max err 3.03%)
+  log10 kH(3->2) = -9.2461144 + 0.34543127*u + 0.053368443*u^2,  u = log10(T/1e3), T clamped to [50,10000] K   (max err 3.05%)
+  remainder fit (4 terms), max err 2.45%:
+    A = 1.63414350e-18   Ti = 16371.1
+    A = 4.47668751e-18   Ti = 22644.4
+    A = 4.27846098e-17   Ti = 59981.7
+    A = 2.88107272e-16   Ti = 156387
+  remainder, ground-only vs Boltzmann weighting: max dev 1.4%
+  low-density SE vs coronal within-term channel: max dev 7.77%
+  high-density SE vs exact LTE emission: max dev 4.44e-14%
+
+=================== CII (2-level ground term, amu = 12.011) ===================
+  level 1: g = 2  E/k = 0.0000 K
+  level 2: g = 4  E/k = 91.2141 K
+  A(2->1) = 2.2900e-06 s^-1   (157.74 um)
+  log10 Ups(1,2) = 0.10606931*x**4 + -0.061985731*x**3 + -0.17963499*x**2 + 0.11624658*x**1 + 0.34358283   (max err 2.03%)
+  log10 kH(2->1) = -8.9730551 + 0.19760195*u + 0.048910789*u^2,  u = log10(T/1e3), T clamped to [60,2000] K   (max err 0.41%)
+  remainder fit (4 terms), max err 1.09%:
+    A = 2.62718417e-17   Ti = 61536.5
+    A = 1.07377677e-17   Ti = 69811.7
+    A = 3.29228566e-16   Ti = 123223
+    A = 1.39114570e-15   Ti = 247558
+  remainder, ground-only vs Boltzmann weighting: max dev 1.4%
+  low-density SE vs coronal within-term channel: max dev 2.03%
+  high-density SE vs exact LTE emission: max dev 4.44e-14%
+
+=================== NII (3-level ground term, amu = 14.007) ===================
+  level 1: g = 1  E/k = 0.0000 K
+  level 2: g = 3  E/k = 70.0684 K
+  level 3: g = 5  E/k = 188.1920 K
+  A(2->1) = 2.0800e-06 s^-1   (205.34 um)
+  A(3->2) = 7.4600e-06 s^-1   (121.80 um)
+  log10 Ups(1,2) = 0.031565297*x**4 + -0.038977811*x**3 + 0.015109843*x**2 + 0.07672821*x**1 + -0.42450591   (max err 1.57%)
+  log10 Ups(1,3) = -0.0075761571*x**4 + -0.17640487*x**3 + 0.012785755*x**2 + 0.40068378*x**1 + -0.7278854   (max err 2.60%)
+  log10 Ups(2,3) = 0.0297447*x**4 + -0.031838155*x**3 + -0.068085615*x**2 + 0.068443207*x**1 + 0.16134799   (max err 0.68%)
+  log10 kH(2->1) = -9.5141594 + 0.11153196*u + 0.11112557*u^2,  u = log10(T/1e3), T clamped to [50,10000] K   (max err 2.61%)
+  log10 kH(3->1) = -9.4220729 + 0.29532393*u + 0.022835614*u^2,  u = log10(T/1e3), T clamped to [50,10000] K   (max err 1.42%)
+  log10 kH(3->2) = -8.990019 + 0.28444121*u + 0.0409254*u^2,  u = log10(T/1e3), T clamped to [50,10000] K   (max err 0.30%)
+  remainder fit (4 terms), max err 0.60%:
+    A = 7.71532491e-18   Ti = 23578.5
+    A = 6.44871941e-18   Ti = 49880.2
+    A = 1.40104558e-16   Ti = 125780
+    A = 7.13236468e-16   Ti = 247915
+  remainder, ground-only vs Boltzmann weighting: max dev 1.7%
+  low-density SE vs coronal within-term channel: max dev 1.94%
+  high-density SE vs exact LTE emission: max dev 4.44e-14%
+
+=================== OI (3-level ground term, amu = 15.999) ===================
+  level 1: g = 5  E/k = 0.0000 K
+  level 2: g = 3  E/k = 227.7080 K
+  level 3: g = 1  E/k = 326.5693 K
+  A(2->1) = 8.5420e-05 s^-1   (63.19 um)
+  A(3->1) = 1.3800e-10 s^-1   (44.06 um)
+  A(3->2) = 1.6430e-05 s^-1   (145.53 um)
+  log10 Ups(1,2) = 0.049940423*x**4 + 0.061602392*x**3 + -0.22731732*x**2 + 0.18660187*x**1 + -2.0708554   (max err 3.25%)
+  log10 Ups(1,3) = 0.045163335*x**4 + 0.063243772*x**3 + -0.22162813*x**2 + 0.18267434*x**1 + -2.4228892   (max err 3.02%)
+  log10 Ups(2,3) = -0.0033242401*x**4 + 0.13841574*x**3 + -0.30036307*x**2 + 0.27572369*x**1 + -3.9241026   (max err 2.18%)
+  log10 kH(2->1) = -9.0268259 + 0.45769694*u + 0.050610554*u^2,  u = log10(T/1e3), T clamped to [50,1000] K   (max err 3.12%)
+  log10 kH(3->1) = -9.1067415 + 0.43724931*u + 0.05693361*u^2,  u = log10(T/1e3), T clamped to [50,1000] K   (max err 3.60%)
+  log10 kH(3->2) = -8.9724741 + 0.034669741*u + -0.35264943*u^2,  u = log10(T/1e3), T clamped to [50,1000] K   (max err 4.92%)
+  remainder fit (4 terms), max err 2.80%:
+    A = 2.63734982e-19   Ti = 23770.4
+    A = 1.18242203e-18   Ti = 30965.4
+    A = 4.96806093e-18   Ti = 58929.4
+    A = 3.12665954e-17   Ti = 160409
+  remainder, ground-only vs Boltzmann weighting: max dev 1.9%
+  low-density SE vs coronal within-term channel: max dev 3.17%
+  high-density SE vs exact LTE emission: max dev 4.44e-14%

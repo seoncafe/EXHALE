@@ -1,0 +1,26 @@
+# Proposed upper-focused finite-duration settings; not universal physical accuracy.
+# Lower and transition limits are relaxed; upper limits remain strict.
+# Merge into a complete input.inp, replacing existing keys instead of duplicating them.
+Run mode: phys
+Regional convergence: True
+Regional lower radius: 1.3
+Regional upper radius: 1.85
+Regional window seconds: 87965.04804471003
+Regional maximum seconds: 0
+Regional settling seconds: 0
+Regional validation windows: 4
+Regional confirmation factor: 2
+Regional minimum samples: 40
+Regional lower mean limit: 0.10
+Regional upper mean limit: 0.01
+Regional transition mean limit: 0.10
+Regional lower range limit: 0.20
+Regional upper range limit: 0.05
+Regional transition range limit: 0.20
+Regional lower inventory limit: 0.05
+Regional transition inventory limit: 0.05
+Regional upper inventory limit: 0.01
+Regional lower mass flow limit: 0.05
+Regional transition mass flow limit: 0.05
+Regional upper mass flow limit: 0.01
+Regional profile interval: 40
