@@ -1,5 +1,5 @@
 	module ion_residual_core
-	! Pure, stateless helpers for the standard H/He ionization residual rows
+	! Helpers for the standard H/He ionization residual rows
 	! (with collisional ionization) and their analytic-Jacobian pieces, plus
 	! the TR-form H/He/triplet rows (Oklopcic form; electron-impact ionization
 	! of H0/He(1^1S)/He+ and of the He 2^3S metastable is included).
@@ -20,11 +20,32 @@
 	! rate coefficient itself so it has a single definition.
 	use Cooling_Coefficients, only: f_penning_HeI23S
 	! The cell state is READ, never written: the imposed-fraction routine
-	! below takes the cell as an argument, so this module holds no state of
-	! its own and stays safe to call from the OpenMP cell sweep.
+	! below takes the cell as an argument. The state this module does hold
+	! (the gross rates of the last evaluation, ionization_row_gross, and the
+	! stage-channel record below) is threadprivate or written under a
+	! critical section, so it stays safe to call from the OpenMP cell sweep.
 	use ion_cell_state, only: ion_rates, ieq_cell
+	! The density below which an element is absent from the cell, one
+	! definition for the rows and their layout.
+	use chemical_row_layout, only: absent_element_density, n_layout_rows_max
 
 	implicit none
+
+	! ---- THE GROSS RATE OF EVERY ROW OF THE LAST EVALUATION ------------
+	! P + L of each row [cm^-3 s^-1], the sum of the magnitudes of the
+	! terms the row is built from, at the composition and electron density
+	! of that evaluation, charge exchange included: every system of the
+	! sweep (System_H, System_HeH*, System_HeH_mol*) writes it beside its
+	! rows, from the same factors, and normalized_reaction_residual
+	! (ionization_equilibrium) measures each row against the turnover of
+	! its element group summed from it; the molecular solve takes its held
+	! scale from it (System_HeH_mol_metals, set_element_turnover_scales).
+	! Entries above the row count of the last evaluation are not defined.
+	! Threadprivate, with no declaration initializer for the reason stated
+	! at mol_inv_turnover (System_HeH_mol): every evaluation writes the
+	! entries it defines before any reader looks at them.
+	real*8, save :: ionization_row_gross(n_layout_rows_max)
+	!$omp threadprivate(ionization_row_gross)
 
 	! ---- THE GROSS CHANNELS OF THE THREE ION-STAGE ROWS ----------------
 	! Production and loss of H II, He II and He III reaction by reaction,
@@ -286,11 +307,15 @@
 	! metal-inclusive electron density.
 	subroutine heh_rows(fvec, n_hi, n_hii, n_hei, n_heii, n_heiii, n_e,  &
 	                    g_hi, g_hei, g_heii, a_hii, a_heii, a_heiii,      &
-	                    b_hi, b_hei, b_heii, chan)
+	                    b_hi, b_hei, b_heii, chan, gross)
 	real*8 :: fvec(*)
 	real*8, intent(in) :: n_hi, n_hii, n_hei, n_heii, n_heiii, n_e
 	real*8, intent(in) :: g_hi, g_hei, g_heii, a_hii, a_heii, a_heiii
 	real*8, intent(in) :: b_hi, b_hei, b_heii
+	! The gross rate of each of the three rows, the sum of the magnitudes
+	! of its terms (ionization_row_gross); charge exchange, applied by the
+	! caller, adds its own.
+	real*8, optional, intent(inout) :: gross(*)
 	! The gross channels of the three stages, written from the same
 	! factors as the rows above (declaration of n_stage_chan).  This form
 	! carries no metastable, so the triplet channels are zero; row (2) here
@@ -301,6 +326,13 @@
 	fvec(1) = n_hi*g_hi + (n_hi*b_hi - a_hii*n_hii)*n_e
 	fvec(2) = n_hei*g_hei + (n_hei*b_hei - a_heii*n_heii)*n_e
 	fvec(3) = n_heii*g_heii + (n_heii*b_heii - a_heiii*n_heiii)*n_e
+	if (present(gross)) then
+		gross(1) = abs(n_hi*g_hi) + abs(n_hi*b_hi*n_e) + abs(a_hii*n_hii*n_e)
+		gross(2) = abs(n_hei*g_hei) + abs(n_hei*b_hei*n_e)                 &
+		         + abs(a_heii*n_heii*n_e)
+		gross(3) = abs(n_heii*g_heii) + abs(n_heii*b_heii*n_e)              &
+		         + abs(a_heiii*n_heiii*n_e)
+	endif
 	if (present(chan)) then
 		chan(1:n_stage_chan) = 0.0d0
 		chan(1)  = n_hi*g_hi
@@ -415,7 +447,7 @@
 	                       a_hii, a_heii, a_heiii, a_heiTR,                &
 	                       b_hi, b_hei, b_heii, b_heiTR,                   &
 	                       q13, q31g, q31a, q31b, Q31, A31, chan,         &
-	                       transport_operator)
+	                       transport_operator, gross)
 	real*8 :: fvec(*)
 	real*8, intent(in) :: n_hi, n_hii, n_heiSI, n_heiTR, n_heii, n_heiii, n_e
 	real*8, intent(in) :: g_hi, g_hei, g_heii, g_heiTR
@@ -437,7 +469,13 @@
 	! of one cell can be told apart afterwards as the molecular branch's
 	! already can.
 	logical, optional, intent(in) :: transport_operator
+	! The gross rate of each of the four rows, the sum of the magnitudes of
+	! its terms (ionization_row_gross); the He 2^3S row's as its production
+	! and loss halves (tr_triplet_row_channels), as the molecular systems
+	! form it. Charge exchange, applied by the caller, adds its own.
+	real*8, optional, intent(inout) :: gross(*)
 	real*8  :: cloc(n_stage_chan), stt(n_stage_state_common)
+	real*8  :: tr_prod, tr_loss
 	logical :: wrec, from_operator
 
 	! Penning ionization source He(2^3S)+H0 -> He(1^1S) + H+ + e-: the same
@@ -473,6 +511,20 @@
 	call tr_triplet_row(fvec(4), n_hi, n_heiSI, n_heiTR, n_heii, n_e,     &
 	                    g_heiTR, a_heiTR, q13, q31g, q31a, q31b, Q31,     &
 	                    A31, b_heiTR)
+
+	if (present(gross)) then
+		gross(1) = abs(n_hi*g_hi) + abs(f_penning_HeI23S*n_heiTR*n_hi*Q31)  &
+		         + abs(n_hi*b_hi*n_e) + abs(a_hii*n_hii*n_e)
+		gross(2) = abs(n_heii*(a_heiTR + a_heii)*n_e) + abs(n_heiSI*g_hei)  &
+		         + abs(n_heiTR*g_heiTR) + abs(n_heiSI*b_hei*n_e)           &
+		         + abs(n_heiTR*b_heiTR*n_e)
+		gross(3) = abs(n_heii*g_heii) + abs(n_heii*b_heii*n_e)              &
+		         + abs(a_heiii*n_heiii*n_e)
+		call tr_triplet_row_channels(tr_prod, tr_loss, n_hi, n_heiSI,      &
+		        n_heiTR, n_heii, n_e, g_heiTR, a_heiTR, q13, q31g, q31a,   &
+		        q31b, Q31, A31, b_heiTR)
+		gross(4) = abs(tr_prod) + abs(tr_loss)
+	endif
 
 	! The same terms one by one, and the record of them when this cell was
 	! named.  The rows above are untouched by either.
@@ -599,7 +651,7 @@
 		if (present(gross)) then
 			gross(ix)   = 0.0d0
 			gross(ix+1) = 0.0d0
-			if (mtot(e) .gt. 1.0d-30) then
+			if (mtot(e) .gt. absent_element_density) then
 				gross(ix) = abs(nm0(e)*mg0(e)) + abs(nm0(e)*mb0(e)*n_e)     &
 				          + abs(ma1(e)*nm1(e)*n_e)
 				if (mtop(e) .ge. 2) gross(ix+1) = abs(nm1(e)*mg1(e))         &
@@ -607,7 +659,7 @@
 				          + abs(ma2(e)*nm2(e)*n_e)
 			endif
 		endif
-		if (mtot(e) .le. 1.0d-30) then
+		if (mtot(e) .le. absent_element_density) then
 			fvec(ix)   = x(ix)
 			fvec(ix+1) = x(ix+1)
 		else

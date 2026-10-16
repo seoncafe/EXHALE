@@ -311,7 +311,7 @@
 
 111   j_min = j
 
-      ! Guard: if the escape radius lies outside the (L1-truncated) domain,
+      ! Guard: if the escape radius lies outside the domain,
       ! NO cell satisfies r>=r_esc and the DO loop above leaves j = N+Ng+1,
       ! so j_min > N and the convergence range [j_min:N] is EMPTY. maxval /
       ! minval over an empty array return -/+HUGE, giving du = Inf and
@@ -329,8 +329,8 @@
          write(*,'(A,F6.3,A,F6.3,A)')                                       &
             '    (define_grid.f90) WARNING: escape radius r_esc = ', r_esc,  &
             ' R_p >= domain r_max = ', domain_outer_radius(), ' R_p.'
-         write(*,*) '       The escape radius is outside the L1-truncated ' //&
-                    'domain; the constant-momentum'
+         write(*,*) '       The escape radius is outside the domain; ' //&
+                    'the constant-momentum'
          write(*,*) '       convergence range would be empty. Clamping it ' //&
                     'to mid-domain (r >= '
          write(*,'(A,F6.3,A)') '        ',                                   &

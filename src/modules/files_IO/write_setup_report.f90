@@ -33,7 +33,12 @@
 	                           base_density_key_overridden_n0
 	use grid_construction, only: domain_outer_radius, mixed_stretch_ratio, &
 	                     outer_shells_width_ratio
-	use composition,     only: h2_mixing_ratio_base, h2_mixing_ratio_ceiling
+	use composition,     only: h2_mixing_ratio_base, h2_mixing_ratio_ceiling, &
+	                           base_h2_composition_imposed,               &
+	                           base_h2_nuclei_fraction
+	use diffusive_photochemistry, only: base_face_h2_measured,           &
+	                           base_face_h2_flux_adv_cgs,                 &
+	                           base_face_h2_flux_dif_cgs
 	use diffusive_photochemistry, only: carrier_co_domain_record,        &
 	                     carrier_co_domain_f_dom
 	use lower_atmosphere_profile, only: lap_in_use, lap_report_provenance, &
@@ -46,7 +51,9 @@
 	                     lap_steady_r_lo_Rp, lap_steady_nface,            &
 	                     lap_steady_FH_median,  lap_steady_FH_spread,     &
 	                     lap_steady_FHe_median, lap_steady_FHe_spread,    &
-	                     lap_steady_Mdot_median, lap_steady_Mdot_spread
+	                     lap_steady_Mdot_median, lap_steady_Mdot_spread,  &
+	                     lap_FHnuc_median, lap_FHnuc_spread,              &
+	                     lap_steady_FHnuc_median, lap_steady_FHnuc_spread
 
 	implicit none
 	contains
@@ -124,10 +131,17 @@
 		write(outfile,*) &
          '- Domain mode: Spherical (pure planetary potential, '          // &
          'tidal/centrifugal dropped, extended to user outer radius)'
+	else if (r_out_user .gt. 1.0d0) then
+		! input_read takes an explicit outer radius in Roche mode as the
+		! domain, in place of the Hill radius (3 M_star/M_p)^(-1/3) a.
+		write(outfile,'(A,F8.4,A,F8.4,A)')                                  &
+         ' - Domain mode: Roche (full tidal potential), extended to the'//  &
+         ' user outer radius ', r_out_user, ' R_p; Hill radius ',            &
+         (3.0d0*Mrapp)**(-1.0d0/3.0d0)*atilde, ' R_p'
 	else
-		write(outfile,*) &
-         '- Domain mode: Roche (full tidal potential, truncated at '     // &
-         'the Hill/L1 radius)'
+		write(outfile,'(A,F8.4,A)')                                         &
+         ' - Domain mode: Roche (full tidal potential, truncated at '    // &
+         'the Hill radius ', (3.0d0*Mrapp)**(-1.0d0/3.0d0)*atilde, ' R_p)'
 	endif
 	if (thereis_He) then
 		write(outfile,11) & 
@@ -332,8 +346,8 @@
 	write(outfile,'(A,I0)') &
       ' - Coupled equilibrium system size: N_eq = ', N_eq
 	! Photoelectron secondary ionization. The STAGED default is reported
-	! explicitly because it is not a synonym for "on": the coupling is
-	! applied only after the wind first converges without it, so a run that
+	! explicitly because "Staged" is not a synonym for "on": the coupling is
+	! then applied only after the wind first settles without it, so a run that
 	! is stopped at a fixed step count before converging never applies it at
 	! all. That is what silently excluded every molecular regression case
 	! from this physics until 2026-09-02.
@@ -342,12 +356,12 @@
          ' - Photoelectron secondary ionization: off'
 	else if (sec_ion_immediate) then
 		write(outfile,*) &
-         ' - Photoelectron secondary ionization: on from step 0 (Immediate)'
+         ' - Photoelectron secondary ionization: on from step 0'
 	else
 		write(outfile,*) &
          ' - Photoelectron secondary ionization: STAGED -- applied only'// &
-         ' after the first du convergence, so a run stopped before that'// &
-         ' never applies it'
+         ' once the marching state has settled without it, so a run'// &
+         ' stopped before that never applies it'
 	endif
 	! The photoelectrons below the 30 eV threshold of that partition. Only
 	! the non-default choice is reported, so a run without the key writes
@@ -824,6 +838,11 @@
 	call put_r('HeH', HeH)
 	call put_l('thereis_He', thereis_He)
 	call put_s('appx_mth', appx_mth)
+	! The stellar energy per unit face area the wind takes, xi_w F
+	! (parameters.f90, dayside_dilution): the column models at the matching
+	! surface take the same (photochem_to_lower_profile.py, --face-geometry
+	! wind; user decision 2026-10-10).
+	call put_r('dayside_dilution', dayside_dilution())
 	call put_r('a_tau', a_tau)
 	call put_r('Mstar', Mstar)
 	call put_s('sp_type', sp_type)
@@ -945,7 +964,7 @@
 	call put_l('use_local_dt', use_local_dt)
 	call put_r('lev_th', lev_th)
 	call put_l('use_newton_solver', use_newton_solver)
-	call put_r('newton_du_switch', newton_du_switch)
+	call put_r('newton_flux_switch', newton_flux_switch)
 	call put_r('shapiro_eps', shapiro_eps)
 	call put_i('shapiro_every', shapiro_every)
 	call put_r('lowmach_damp_eps', lowmach_damp_eps)
@@ -1062,6 +1081,12 @@
 	write(u,'(A,ES23.15E3)') 'HeH_number_ratio          ', HeH
 	write(u,'(A,ES23.15E3)') 'orbital_distance_AU       ', a_orb/AU
 	write(u,'(A,ES23.15E3)') 'star_mass_Msun            ', Mstar/Msun
+	! The stellar energy per unit face area the wind takes, xi_w F
+	! (dayside_dilution), read by the closure to cross-check the geometry
+	! it hands the column models (update log stage 3 section 129), and the
+	! JFNK hand-off threshold on the face mass-flux spread (section 131).
+	write(u,'(A,ES23.15E3)') 'dayside_dilution          ', dayside_dilution()
+	write(u,'(A,ES23.15E3)') 'newton_flux_switch        ', newton_flux_switch
 	write(u,'(A,L1)')     'base_inp_present          ', base_present
 	! With element diffusion on, He/H is a solved profile and the number
 	! above is the reservoir the base is held at, not a column invariant.
@@ -1246,6 +1271,10 @@
 					lap_FH_median
 				write(u,'(A,ES23.15E3)')  'lower_profile_F_H_spread  ',     &
 					lap_FH_spread
+				write(u,'(A,ES23.15E3)')  'lower_profile_F_Hnuc_median ',   &
+					lap_FHnuc_median
+				write(u,'(A,ES23.15E3)')  'lower_profile_F_Hnuc_spread ',   &
+					lap_FHnuc_spread
 				write(u,'(A,ES23.15E3)')  'lower_profile_F_He_median ',     &
 					lap_FHe_median
 				write(u,'(A,ES23.15E3)')  'lower_profile_F_He_spread ',     &
@@ -1266,6 +1295,10 @@
 				lap_steady_FH_median
 			write(u,'(A,ES23.15E3)')  'steady_F_H_spread         ',         &
 				lap_steady_FH_spread
+			write(u,'(A,ES23.15E3)')  'steady_F_Hnuc_median      ',         &
+				lap_steady_FHnuc_median
+			write(u,'(A,ES23.15E3)')  'steady_F_Hnuc_spread      ',         &
+				lap_steady_FHnuc_spread
 			write(u,'(A,ES23.15E3)')  'steady_F_He_median        ',         &
 				lap_steady_FHe_median
 			write(u,'(A,ES23.15E3)')  'steady_F_He_spread        ',         &
@@ -1286,7 +1319,7 @@
 		if (lower_atmosphere_heat_measured) then
 			write(u,'(A)') 'base_conduction_state     measured'
 			write(u,'(A)') '# base_conductive_flux_cgs [erg cm^-2 s^-1]:'//  &
-				' q = -kappa_face (T_1 - T_bath)/(r_1 - r_0),'
+				' q = kappa_face (T_1 - T_bath)/(r_1 - r_0),'
 			write(u,'(A)') '# positive = heat leaving the wind into the'//  &
 				' lower atmosphere; T_bath at the ghost centre r(0)'
 			write(u,'(A,ES23.15E3)') 'base_conductive_flux_cgs  ',         &
@@ -1297,6 +1330,34 @@
 				lower_atmosphere_cell1_T_K
 		else
 			write(u,'(A)') 'base_conduction_state     unmeasured'
+		endif
+	endif
+	! THE H2 THE WIND EXCHANGES WITH THE LOWER ATMOSPHERE through the base
+	! face, where a handoff states the base partition and the carrier
+	! operator transports H2: the advective inflow of the stated ghost
+	! partition plus the eddy, molecular and settling flux against it
+	! (carrier_face_coefficients), on the certified state.  The
+	! elemental-flux closure hands it to the top of the lower atmosphere
+	! as that model's H2 flux, the rest of the elemental hydrogen flux on
+	! atomic H (md/AN_overlap_structural_design_20261008.md).
+	if (carrier_transport .and. base_h2_composition_imposed()) then
+		write(u,'(A,ES23.15E3)') 'base_ghost_h2_nuclei_fraction ',       &
+			base_h2_nuclei_fraction()
+		if (base_face_h2_measured) then
+			write(u,'(A)') 'base_face_carrier_state   measured'
+			write(u,'(A)') '# base_face_H2_flux_cgs [molecules cm^-2'//   &
+				' s^-1] through r_edg(0), positive outward = advective'//  &
+				' + diffusive'
+			write(u,'(A,ES23.15E3)') 'base_face_H2_flux_cgs     ',      &
+				base_face_h2_flux_adv_cgs + base_face_h2_flux_dif_cgs
+			write(u,'(A,ES23.15E3)') 'base_face_H2_flux_adv_cgs ',      &
+				base_face_h2_flux_adv_cgs
+			write(u,'(A,ES23.15E3)') 'base_face_H2_flux_dif_cgs ',      &
+				base_face_h2_flux_dif_cgs
+			write(u,'(A,ES23.15E3)') 'base_face_radius_cm       ',      &
+				r_edg(0)*R0
+		else
+			write(u,'(A)') 'base_face_carrier_state   unmeasured'
 		endif
 	endif
 	! THE DOMAIN OF THE ONE-SIDED CO DESTRUCTION MODEL, CUMULATIVE OVER

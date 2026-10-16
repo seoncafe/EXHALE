@@ -75,6 +75,7 @@
                                           mass_row_rounding_floor,        &
                                           row_terms_describe_state
       use diffusive_photochemistry, only: carrier_steady_residual,        &
+                                          carrier_record_base_face_flux, &
                                           n_carrier, n_carrier_max,       &
                                           carrier_name, carrier_solved,   &
                                           carrier_co_domain_record,       &
@@ -117,7 +118,7 @@
                                           isp_CO
       ! The H3+ cooling model's own domain records. The counters
       ! are the EVALUATIONS of the whole run whose collider density or
-      ! temperature left the range the published fits and tables cover;
+      ! temperature left the range the published tables cover;
       ! the three classifying functions beside them answer the same
       ! question for one argument, with no counter behind them, and are
       ! what the map of a single state is taken with. Category (2) of B1a
@@ -125,12 +126,12 @@
       use h3p_cooling,              only:                                &
                                     h3p_evaluations_below_collider,      &
                                     h3p_evaluations_above_collider,      &
-                                    h3p_evaluations_below_fit_T,         &
-                                    h3p_evaluations_above_fit_T,         &
+                                    h3p_evaluations_below_lte_T,         &
+                                    h3p_evaluations_above_lte_T,         &
                                     h3p_evaluations_outside_nonlte_T,    &
                                     h3p_evaluations_nonfinite_T,         &
                                     h3p_evaluations_nonfinite_collider,  &
-                                    h3p_fit_temperature_domain,          &
+                                    h3p_lte_temperature_domain,          &
                                     h3p_nonlte_row_temperature_domain,   &
                                     h3p_collider_domain,                 &
                                     H3P_DOMAIN_BELOW, H3P_DOMAIN_ABOVE,  &
@@ -610,8 +611,8 @@
          ! Evaluations over the run, like the field above.
          integer :: n_h3p_evaluations_below_collider     = 0
          integer :: n_h3p_evaluations_above_collider     = 0
-         integer :: n_h3p_evaluations_below_fit_T        = 0
-         integer :: n_h3p_evaluations_above_fit_T        = 0
+         integer :: n_h3p_evaluations_below_lte_T        = 0
+         integer :: n_h3p_evaluations_above_lte_T        = 0
          integer :: n_h3p_evaluations_outside_nonlte_T   = 0
          integer :: n_h3p_evaluations_nonfinite_T        = 0
          integer :: n_h3p_evaluations_nonfinite_collider = 0
@@ -628,8 +629,8 @@
          integer :: n_h3p_cells_evaluated              =  0
          integer :: n_h3p_cells_collisional_limit      =  0
          integer :: n_h3p_cells_above_collider         =  0
-         integer :: n_h3p_cells_below_fit_T            =  0
-         integer :: n_h3p_cells_above_fit_T            =  0
+         integer :: n_h3p_cells_below_lte_T            =  0
+         integer :: n_h3p_cells_above_lte_T            =  0
          integer :: n_h3p_cells_outside_nonlte_T       =  0
          integer :: n_h3p_cells_nonfinite              =  0
          ! The domain record of the one-sided CO destruction model, reported
@@ -759,6 +760,7 @@
       integer, parameter, public :: contact_direction_window_disagrees      = 3
       public :: certification_last_report, certification_stop_uncertified
       public :: certification_note_stationarity_claim
+      public :: certification_note_stationary_solve_failed
       public :: trial_state_is_admissible, probe_direction_is_usable
       public :: certification_evaluate_physical_step
       public :: cert_step_verdict
@@ -776,6 +778,14 @@
       ! DECLARED a stationary state and then failed the certification exits
       ! nonzero. Set by the caller that knows which stop fired.
       logical, save :: stationarity_claimed = .false.
+      ! A STEADY ROUTE WHOSE STATIONARY SOLVE FAILED (info /= 0 on the
+      ! stationary restart or the direct steady route) makes no claim either,
+      ! but its state is the solver's last iterate, not a relaxation
+      ! snapshot: it is written with the reason 'stationary_solve_failed'
+      ! and the run exits 3 (user decision 2026-10-10; until then it was
+      ! written as a "relaxation snapshot" and exited 0, which hid the
+      ! failure from scripts). Set by the caller that knows the solve's info.
+      logical, save :: stationary_solve_failed = .false.
 
       contains
 
@@ -851,6 +861,15 @@
 
       ! ------------------------------------------------------!
 
+      subroutine certification_note_stationary_solve_failed(failed)
+      ! Whether the stationary solve of a steady route returned info /= 0
+      ! (see stationary_solve_failed at its declaration).
+      logical, intent(in) :: failed
+      stationary_solve_failed = failed
+      end subroutine certification_note_stationary_solve_failed
+
+      ! ------------------------------------------------------!
+
       subroutine certification_stop_uncertified()
       ! A RUN WHOSE FINAL STATE IS NOT CERTIFIED EXITS NONZERO, after its
       ! outputs are written and after the failing entries are named, so that
@@ -858,12 +877,25 @@
       ! was merely written (a user decision). The status is
       ! 2, chosen to be distinct from the 1 that a Fortran error stop leaves.
       ! It belongs ONLY to a run that declared a stationary state and then
-      ! failed the certification; a run that made no such claim exits 0.
+      ! failed the certification; a run that made no such claim exits 0,
+      ! except a steady route whose stationary solve failed, which exits 3
+      ! (stationary_solve_failed). Under the acceptance by the precision of
+      ! the observable (md/acceptance_by_observable_precision_20261009.md)
+      ! status 2 is a flag, not a refusal: callers continue with it.
       ! The files are complete when this runs: the regression harness
       ! compares file contents and reads its verdict from those, so the
       ! nonzero status changes what a caller sees from the shell and not what
       ! the harness compares.
       if (cert_last%certified) return
+      if (stationary_solve_failed) then
+         write(*,'(A)') ' (certification) the STATIONARY SOLVE FAILED '//  &
+              '(info /= 0): the state written is the solver''s last'
+         write(*,'(A)') '   iterate, not a solution; it is written '//     &
+              'certified=F with the reason "stationary_solve_failed"'
+         write(*,'(A)') '   and the run exits with status 3.'
+         flush(6)
+         stop 3
+      endif
       if (.not. stationarity_claimed) then
          write(*,'(A)') ' (certification) the state written is a '//       &
               'relaxation snapshot: the run made no stationary claim, so'
@@ -1644,7 +1676,8 @@
       call unit_scale_entry(rep, 'level balance He 2^3S',                   &
                thereis_He .and. thereis_HeITR, clo_ok .and. (itr .gt. 0),   &
                clo_tr, cert_tol_level, clo_why,                             &
-               'the row''s own turnover rate; dimensionless, scale 1')
+               'the turnover of the row''s element group at the state; '// &
+               'dimensionless')
       endif
 
       ! ---- the H(n=2) level balance ----
@@ -1669,7 +1702,8 @@
               'eliminated-species closure '//trim(system_variant_name(i)),  &
               i .eq. active_system_variant(), clo_ok, clo_res,              &
               cert_tol_closure, clo_why,                                    &
-              'the row''s own turnover rate; dimensionless, scale 1')
+              'kinetic rows: the turnover of the element group at the '//  &
+              'state; constraint rows: their own tolerance')
       enddo
 
       ! ---- the validity states ----
@@ -1721,6 +1755,8 @@
             ! is certified over its whole column and carries no token.
             call set_state_certified(.true.,                              &
                  trim(wind_certification_token(rep)))
+         else if (stationary_solve_failed) then
+            call set_state_certified(.false., 'stationary_solve_failed')
          else if (.not. stationarity_claimed) then
             call set_state_certified(.false., 'no_stationary_claim')
          else
@@ -1861,11 +1897,17 @@
       logical, dimension(1:N,n_carrier_max),  intent(out) :: cabsent
       type(carrier_module_state) :: ws
       real*8  :: rcmax, rvol
+      real*8  :: bff(n_carrier_max,2)
       integer :: jworst, icworst
       call save_carrier_module_state(ws)
       call carrier_steady_residual(rho, v, f_sp, rcmax, jworst, icworst,  &
                                    rvol=rvol, res_out=cres,              &
-                                   terms_out=cterms, absent_out=cabsent)
+                                   terms_out=cterms, absent_out=cabsent, &
+                                   base_face_flux=bff)
+      ! The H2 the state exchanges with the lower atmosphere through the
+      ! base face, recorded for the resolved configuration on the state the
+      ! certification writes (carrier_record_base_face_flux).
+      if (cert_records_verdict) call carrier_record_base_face_flux(bff)
       ! The terms of the rows just measured, on request
       ! (EXHALE_CARRIER_ROW_TERMS=1, default off): the record belongs to
       ! THIS evaluation, so it is written here and not left for a later
@@ -2242,8 +2284,8 @@
       rep%n_h3p_cells_evaluated         = 0
       rep%n_h3p_cells_collisional_limit = 0
       rep%n_h3p_cells_above_collider    = 0
-      rep%n_h3p_cells_below_fit_T       = 0
-      rep%n_h3p_cells_above_fit_T       = 0
+      rep%n_h3p_cells_below_lte_T       = 0
+      rep%n_h3p_cells_above_lte_T       = 0
       rep%n_h3p_cells_outside_nonlte_T  = 0
       rep%n_h3p_cells_nonfinite         = 0
       do j = 1, N
@@ -2252,7 +2294,7 @@
          nH2  = rho(j)*f_sp(j,isp_H2)*n0
          T_K  = T(j)*T0
          rep%n_h3p_cells_evaluated = rep%n_h3p_cells_evaluated + 1
-         ct   = h3p_fit_temperature_domain(T_K)
+         ct   = h3p_lte_temperature_domain(T_K)
          crow = h3p_nonlte_row_temperature_domain(T_K)
          cn   = h3p_collider_domain(nH2)
          if (ct .eq. H3P_DOMAIN_NONFINITE .or.                            &
@@ -2260,9 +2302,9 @@
             rep%n_h3p_cells_nonfinite = rep%n_h3p_cells_nonfinite + 1
          endif
          if (ct .eq. H3P_DOMAIN_BELOW)                                    &
-            rep%n_h3p_cells_below_fit_T = rep%n_h3p_cells_below_fit_T + 1
+            rep%n_h3p_cells_below_lte_T = rep%n_h3p_cells_below_lte_T + 1
          if (ct .eq. H3P_DOMAIN_ABOVE)                                    &
-            rep%n_h3p_cells_above_fit_T = rep%n_h3p_cells_above_fit_T + 1
+            rep%n_h3p_cells_above_lte_T = rep%n_h3p_cells_above_lte_T + 1
          if (crow .eq. H3P_DOMAIN_BELOW .or. crow .eq. H3P_DOMAIN_ABOVE)  &
             rep%n_h3p_cells_outside_nonlte_T =                            &
                  rep%n_h3p_cells_outside_nonlte_T + 1
@@ -2530,8 +2572,8 @@
       if (thereis_mol) rep%n_out_of_domain_evaluations =                  &
            h3p_evaluations_below_collider                                 &
            + h3p_evaluations_above_collider                               &
-           + h3p_evaluations_below_fit_T                                  &
-           + h3p_evaluations_above_fit_T                                  &
+           + h3p_evaluations_below_lte_T                                  &
+           + h3p_evaluations_above_lte_T                                  &
            + h3p_evaluations_outside_nonlte_T                             &
            + h3p_evaluations_nonfinite_T                                  &
            + h3p_evaluations_nonfinite_collider
@@ -2539,10 +2581,10 @@
            h3p_evaluations_below_collider
       rep%n_h3p_evaluations_above_collider     =                          &
            h3p_evaluations_above_collider
-      rep%n_h3p_evaluations_below_fit_T        =                          &
-           h3p_evaluations_below_fit_T
-      rep%n_h3p_evaluations_above_fit_T        =                          &
-           h3p_evaluations_above_fit_T
+      rep%n_h3p_evaluations_below_lte_T        =                          &
+           h3p_evaluations_below_lte_T
+      rep%n_h3p_evaluations_above_lte_T        =                          &
+           h3p_evaluations_above_lte_T
       rep%n_h3p_evaluations_outside_nonlte_T   =                          &
            h3p_evaluations_outside_nonlte_T
       rep%n_h3p_evaluations_nonfinite_T        =                          &
@@ -2886,9 +2928,9 @@
               '         collider below the table: ',                       &
               rep%n_h3p_evaluations_below_collider,                        &
               ', above it: ', rep%n_h3p_evaluations_above_collider,        &
-              ', temperature below the fits: ',                            &
-              rep%n_h3p_evaluations_below_fit_T,                           &
-              ', above them: ', rep%n_h3p_evaluations_above_fit_T
+              ', temperature below the LTE table: ',                       &
+              rep%n_h3p_evaluations_below_lte_T,                           &
+              ', above it: ', rep%n_h3p_evaluations_above_lte_T
          write(*,'(A,I0,A,I0,A,I0)')                                       &
               '         outside the non-LTE range: ',                      &
               rep%n_h3p_evaluations_outside_nonlte_T,                      &
@@ -2936,9 +2978,9 @@
          write(*,'(A,I0,A,I0,A,I0,A,I0,A,I0)')                             &
               '         outside a tabulated domain: collider above the'//  &
               ' table ', rep%n_h3p_cells_above_collider,                   &
-              ', temperature below the fits ',                             &
-              rep%n_h3p_cells_below_fit_T,                                 &
-              ', above them ', rep%n_h3p_cells_above_fit_T,                &
+              ', temperature below the LTE table ',                        &
+              rep%n_h3p_cells_below_lte_T,                                 &
+              ', above it ', rep%n_h3p_cells_above_lte_T,                &
               ', outside the non-LTE rows ',                               &
               rep%n_h3p_cells_outside_nonlte_T,                            &
               ', nonfinite argument ', rep%n_h3p_cells_nonfinite

@@ -5,11 +5,13 @@
       ! Physics this module carries
       ! ---------------------------
       ! A lower-atmosphere model (photochemistry + climate) solves the same
-      ! gas EXHALE solves, over a pressure interval that reaches ABOVE the
-      ! level where EXHALE places its base.  Where the two overlap, both are
-      ! defined, and the composition, the temperature and the eddy mixing are
-      ! properties of that shared gas rather than of either code.  This module
-      ! reads that solution and hands EXHALE
+      ! gas EXHALE solves, over a pressure interval that reaches UP TO the
+      ! level where EXHALE places its base (the matching surface, its top
+      ! face; a file may also reach above it, and EXHALE then reads nothing
+      ! from the part above but K_zz, see eddy_diffusion_on_grid).  The
+      ! composition, the temperature and the eddy mixing at the surface are
+      ! properties of the gas both models meet there.  This module reads that
+      ! solution and hands EXHALE
       !
       !   - the state at the matching level p_match (T, r, q_H2, the elemental
       !     nuclei ratios He/H and El/H), which is what the base EOS and the
@@ -91,6 +93,8 @@
       public :: lap_steady_FH_median, lap_steady_FH_spread
       public :: lap_steady_FHe_median, lap_steady_FHe_spread
       public :: lap_steady_Mdot_median, lap_steady_Mdot_spread
+      public :: lap_FHnuc_median, lap_FHnuc_spread
+      public :: lap_steady_FHnuc_median, lap_steady_FHnuc_spread
 
       logical            :: lap_in_use = .false.
       character(len=256) :: lap_file   = ''
@@ -134,6 +138,14 @@
       real*8  :: lap_steady_FH_median   = 0.0d0, lap_steady_FH_spread   = 0.0d0
       real*8  :: lap_steady_FHe_median  = 0.0d0, lap_steady_FHe_spread  = 0.0d0
       real*8  :: lap_steady_Mdot_median = 0.0d0, lap_steady_Mdot_spread = 0.0d0
+      ! THE HYDROGEN-NUCLEUS MASS FLUX [g/s] of the same windows. F_H is the
+      ! mass flux of component 1 of the binary split (hydrogen carriers plus
+      ! the trace metals and the C, O bound in molecules); the chemistry
+      ! takes a flux of hydrogen NUCLEI, so the closure reads this one
+      ! (2026-10-10, update log stage 3 section 134; until then the metal
+      ! mass, 0.44% on LHS 1140 b, was handed over as hydrogen).
+      real*8  :: lap_FHnuc_median = 0.0d0, lap_FHnuc_spread = 0.0d0
+      real*8  :: lap_steady_FHnuc_median = 0.0d0, lap_steady_FHnuc_spread = 0.0d0
 
       ! ---- the table ----------------------------------------------------- !
       integer :: nlev = 0, ncol = 0
@@ -370,9 +382,13 @@
          call refuse('the header does not state "p_match_bar"')
       if (lap_p_top_bar .le. 0.0d0)                                        &
          call refuse('the header does not state "p_top_bar"')
-      if (lap_p_top_bar .ge. lap_p_match_bar)                              &
-         call refuse('p_top_bar >= p_match_bar: the file stops at or below'&
-                     //' the match, so the two models never overlap')
+      ! p_top_bar = p_match_bar is the matching surface as the lower
+      ! model's top (md/AN_overlap_structural_design_20261008.md): above it
+      ! the wind alone describes the gas.  A file that stops below the
+      ! match states nothing at the level the wind starts from.
+      if (lap_p_top_bar .gt. lap_p_match_bar)                              &
+         call refuse('p_top_bar > p_match_bar: the file stops below the'// &
+                     ' matching level')
       if (lap_p_match_bar .gt. p_deepest .or.                              &
           lap_p_match_bar .lt. p_shallow)                                  &
          call refuse('p_match_bar lies outside the pressures the table'//  &

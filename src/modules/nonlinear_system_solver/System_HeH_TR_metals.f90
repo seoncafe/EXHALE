@@ -39,7 +39,8 @@
 	use charge_exchange,    only: cx_add_to_fvec, he_h_cx_fvec
 	use ion_residual_core,  only: metal_fractions, metal_electron_sum,    &
 	                              metal_rows, heh_tr_rows,             &
-	                              impose_transported_ionization_fractions
+	                              impose_transported_ionization_fractions, &
+	                              ionization_row_gross
 	use System_HeH_metals,  only: met_nelem, met_ntot, met_g0, met_g1,    &
 	                              met_b0, met_b1, met_a1, met_a2, met_top, met_g02
 
@@ -63,6 +64,8 @@
 	real*8  :: n_heii,n_heiii,n_heiTR,n_heiSI
 	! Each element's metal densities (neutral/+/++); charge exchange added later.
 	real*8  :: nm0(met_nelem),nm1(met_nelem),nm2(met_nelem)
+	! Gross rate of every row at x (ion_residual_core, ionization_row_gross).
+	real*8  :: gross(N_eq)
 
 	! Unpack H/He coefficients
 	g_hi    = ieq_cell%P_HI       ! = P_HI
@@ -106,17 +109,18 @@
 	call metal_electron_sum(n_e, met_nelem, nm1, nm2)
 
 	! --- H/He/triplet rows (verbatim System_HeH_TR, n_e now metal-inclusive) ---
+	gross(1:N_eq) = 0.0d0
 	call heh_tr_rows(fvec, n_hi, n_hii, n_heiSI, n_heiTR, n_heii, n_heiii,  &
 	                 n_e, g_hi, g_hei, g_heii, g_heiTR,                      &
 	                 a_hii, a_heii, a_heiii, a_heiTR,                        &
 	                 b_hi, b_hei, b_heii, b_heiTR,                           &
-	                 q13, q31g, q31a, q31b, Q31, A31)
+	                 q13, q31g, q31a, q31b, Q31, A31, gross=gross)
 
 	! --- Metal rows (verbatim System_HeH_metals, shifted to rows 5..) ---
 	call metal_rows(fvec, x, 5, met_nelem, met_ntot, met_g0, met_g1,     &
 	                met_g02,                                           &
 	                met_b0, met_b1, met_a1, met_a2, met_top,             &
-	                nm0, nm1, nm2, n_e)
+	                nm0, nm1, nm2, n_e, gross=gross)
 
 	! Charge exchange (Huang Table 4) on the H, He and metal rows. The metal
 	! rows are at base 5 here; the driver sets cx_metal_base = 5 before this
@@ -134,7 +138,7 @@
 	! He I this row balances.
 	call cx_add_to_fvec(N_eq, fvec, nm0, nm1, nm2,                       &
 	                    n_hi, n_hii, n_heiSI, n_heii, n_heiii,           &
-	                    -1.0d0, ieq_cell%T_K)
+	                    -1.0d0, ieq_cell%T_K, gross=gross)
 
 	! He <-> H charge exchange (Huang Table 4 group B). The He reactant of
 	! He + H+ -> He+ + H is the GROUND SINGLET He(1^1S), n_heiSI: the rate
@@ -153,7 +157,8 @@
 	call he_h_cx_fvec(fvec, ieq_cell%kcx_He0_Hp, ieq_cell%kcx_Hep_H0,    &
 	                  ieq_cell%kcx_Hepp_H0,                              &
 	                  n_hi, n_hii, n_heiSI, n_heii, n_heiii, -1.0d0,      &
-	                  .false.)
+	                  .false., gross=gross)
+	ionization_row_gross(1:N_eq) = gross(1:N_eq)
 
 	! The transported ionization fractions, where the flow carries them
 	! and not this cell's local balance (ion_residual_core).

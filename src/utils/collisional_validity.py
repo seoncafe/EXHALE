@@ -19,20 +19,26 @@ bound on either.
 1. Collision model
 --------------------------------------------------------------------------
 
-The momentum-transfer collisions are the SAME four limits the element
-diffusion operator uses, in the same Chapman-Enskog first approximation, so
-that a mean free path quoted here and a diffusion coefficient quoted by the
-wind cannot drift apart:
+The momentum-transfer collisions of every pair the element diffusion
+operator uses are the SAME four limits it uses, in the same Chapman-Enskog
+first approximation, so that a mean free path quoted here and a diffusion
+coefficient quoted by the wind cannot drift apart:
 
     neutral-neutral    hard-sphere (Banks & Kockarts 1973)      D ~ T^(1/2)/n
-    ion-neutral        induced-dipole (Langevin) polarization
-                       and the rigid core, 1/D = 1/D_pol + 1/D_hs
-                       (an interpolation between the two limits,
-                       not a collision integral of the combined
-                       potential)                               (both)
+    ion-neutral        induced-dipole (Langevin) polarization,
+                       non-resonant pairs, Schunk & Nagy (1980)
+                       eq. 17 with the ion charge Z         D ~ T/(Z n)
     ion-ion, ion-e     screened Coulomb, Spitzer ln(Lambda)     D ~ T^(5/2)/n
 
-Every formula and every constant below is transcribed from
+The two RESONANT pairs, an ion with its own parent atom, are not pairs of the
+element operator (both partners carry the same element) and take published
+resonant charge-exchange coefficients instead, defined below
+(`resonant_charge_exchange_rate_coefficient`):
+
+    H+  + H            Glassgold, Krstic & Schultz (2005) eq. (3.19)
+    He+ + He           Schunk & Nagy (1980) Table 5
+
+Every other formula and every constant below is transcribed from
 `src/modules/functions/binary_element_diffusion.f90`, with the Fortran
 function or parameter named at each definition (names rather than line
 numbers, which move as that file is edited).  Python cannot call the Fortran, so this is a second
@@ -76,21 +82,19 @@ of the one with the channel included:
 
 This monotonic statement holds with the retained coefficients fixed. It
 does not establish an upper bound on the physical mean free path: the
-polarization-plus-core interpolation and the estimates for resonant pairs
-still require independent validation.
+polarization form of the non-resonant ion-neutral pairs is 12-25% above the
+quantum-mechanical H+ + He coefficient of Kimura et al. (1993, ApJ 405, 801,
+Table 2), a residual the published sources do not explain
+(md/AK_ambipolar_stage_drift_derivation_20261006.md section 6.3), and no
+other non-resonant pair has been checked against a calculation.
 
   * the METALS and the oxygen-chemistry molecules, as partners (above).
-  * RESONANT charge exchange (H+ + H, He+ + He) is not a channel.  The
-    Fortran excludes it because a binary ELEMENT diffusion coefficient is
-    driven by friction between the elements and both partners of a resonant
-    pair carry the same element.  Here the like-element ion-neutral pair is
-    a real momentum-transfer channel and it is computed, but with the
-    non-resonant (polarization + core) coefficient, whose friction is the
-    smaller one: charge transfer at thermal energies makes the momentum
-    transfer of a resonant pair exceed the non-resonant estimate.  The mean
-    free paths of H I and H II in the partially ionized layer are therefore
-    upper limits.  (The size of the resonant momentum-transfer cross section
-    was not checked against a published table in this repository.)
+  * the DRIFT dependence of the H+ + H coefficient: it is evaluated at zero
+    ion-neutral drift (w = 0); the published K grows with the drift as
+    v_rms^0.75, v_rms = (vbar^2 + w^2)^(1/2).
+  * RESONANT charge exchange of the molecular ion with its parent molecule
+    (H2+ + H2) is computed with the non-resonant polarization
+    coefficient; no published resonant value was checked for it.
   * ELECTRON-NEUTRAL momentum transfer is not in the collision model (the
     Fortran never needs it; an electron carries neither element).  The
     electron Knudsen number is therefore meaningful only where the gas is
@@ -437,12 +441,14 @@ def hard_sphere_pair_diffusion(TK, ntot, A_s, A_t):
     return bk_hs_pref * np.sqrt(1.0 / A_s + 1.0 / A_t) * np.sqrt(TK) / ntot
 
 
-def polarization_pair_diffusion(TK, ntot, alpha_n, mu_g):
-    """ION-NEUTRAL, induced-dipole (Langevin) channel:
-    D = k T / (2.21 pi e n (alpha_n mu)^(1/2))  [cm^2/s], the low-energy
-    limit -- never used alone, see ion_neutral_pair_diffusion.
+def polarization_pair_diffusion(TK, ntot, alpha_n, Z_ion, mu_g):
+    """ION-NEUTRAL, non-resonant: the induced-dipole (Langevin) form of
+    Schunk & Nagy (1980, RvGSP 18, 813) eq. 17, which they use alone for
+    every non-resonant pair (Table 6), with the ion charge Z_ion entering
+    the potential -alpha Z^2 e^2/(2 r^4):
+    D = k T / (2.21 pi |Z_ion| e n (alpha_n mu)^(1/2))  [cm^2/s].
     Fortran: binary_element_diffusion.f90 polarization_pair_diffusion."""
-    return kb_erg * TK / (2.21 * np.pi * e_esu * ntot
+    return kb_erg * TK / (2.21 * np.pi * abs(Z_ion) * e_esu * ntot
                           * np.sqrt(np.maximum(alpha_n * mu_g, 1.0e-60)))
 
 
@@ -467,18 +473,45 @@ def coulomb_pair_diffusion(TK, ntot, ne, Z_s, Z_t, mu_g):
                * (zz * e_esu * e_esu) ** 2 * coulomb_logarithm(TK, ne, zz)))
 
 
-def ion_neutral_pair_diffusion(TK, ntot, alpha_n, A_s, A_t, mu_g):
-    """ION-NEUTRAL, non-resonant: polarization and rigid core combined as
-    1/D = 1/D_pol + 1/D_hs.  This is an interpolation between the two
-    limits (it recovers each where the other is negligible), not a
-    collision integral of the combined polarization-plus-core potential;
-    in the crossover it can overstate the friction by up to a factor of 2
-    against the stronger estimate alone.
-    Fortran: binary_element_diffusion.f90 ion_neutral_pair_diffusion."""
-    Dpol = polarization_pair_diffusion(TK, ntot, alpha_n, mu_g)
-    Dhs = hard_sphere_pair_diffusion(TK, ntot, A_s, A_t)
-    return 1.0 / (1.0 / np.maximum(Dpol, 1.0e-99)
-                  + 1.0 / np.maximum(Dhs, 1.0e-99))
+# The ion-parent-atom pairs whose momentum transfer is dominated by resonant
+# charge exchange, with the coefficient that replaces (is not added to) the
+# non-resonant polarization value for them.
+RESONANT_PAIRS = {frozenset(('HII', 'HI')): 'H',
+                  frozenset(('HeII', 'HeI')): 'He'}
+
+
+def resonant_charge_exchange_rate_coefficient(TK, element):
+    """Momentum-transfer rate coefficient K [cm^3/s] of an ion with its own
+    parent atom, in the convention F_s = n_s n_t mu_st K (v_t - v_s), i.e.
+    nu_st = n_t K, the convention of `momentum_transfer_frequency`.
+
+    H+ + H: Glassgold, Krstic & Schultz (2005, ApJ 621, 808) eq. (3.19),
+        K = 2.13e-9 (v_rms / km s^-1)^0.75,  v_rms = (vbar^2 + w^2)^(1/2)
+        (their eq. 3.15), vbar = (8 k T/(pi mu))^(1/2) with mu = m_H/2 the
+        reduced mass (their vbar(100 K) = 2.05 km/s), w the ion-neutral
+        drift; their drag force is f_d = n_j n_k m_jk w_jk K_jk (eq. 3.1),
+        the convention above.  Quantum-mechanical elastic + charge-transfer
+        scattering of indistinguishable protons; accuracy 10-15% for
+        v_rms > 1 km/s (their section 3.3), i.e. T > ~24 K at w = 0.  The
+        drift is not known here and w = 0 is used, the smallest K.
+    He+ + He: Schunk & Nagy (1980, Rev. Geophys. Space Phys. 18, 813)
+        Table 5, nu_in = 8.73e-11 n(He) T_r^(1/2) (1 - 0.093 log10 T_r)^2
+        s^-1, T_r = (T_i + T_n)/2 = T here, valid for T_r > 50 K.  Their
+        frequencies obey n_s m_s nu_st = n_t m_t nu_ts (their eq. 19), so
+        nu_in = n_n mu K/m_i and, for equal masses, K = 2 nu_in/n(He).
+        Basis: measured charge-exchange cross sections with q_D = 2 q_E
+        (Banks 1966, Planet. Space Sci. 14, 1105).
+    Conversion worked in md/AK_ambipolar_stage_drift_derivation_20261006.md
+    section 6.1; values against Banks 1966 in its section 6.4."""
+    TK = np.asarray(TK, dtype=float)
+    if element == 'H':
+        mu_g = 0.5 * m_H_g
+        vbar_kms = np.sqrt(8.0 * kb_erg * TK / (np.pi * mu_g)) * 1.0e-5
+        return 2.13e-9 * vbar_kms ** 0.75
+    if element == 'He':
+        return (2.0 * 8.73e-11 * np.sqrt(TK)
+                * (1.0 - 0.093 * np.log10(TK)) ** 2)
+    raise ValueError('no resonant coefficient for ' + element)
 
 
 def pair_diffusion(TK, ntot, ne, s, t):
@@ -493,8 +526,8 @@ def pair_diffusion(TK, ntot, ne, s, t):
     if Z_s != 0.0 and Z_t != 0.0:
         return coulomb_pair_diffusion(TK, ntot, ne, Z_s, Z_t, mu_g)
     if Z_s == 0.0:
-        return ion_neutral_pair_diffusion(TK, ntot, al_s, m_s, m_t, mu_g)
-    return ion_neutral_pair_diffusion(TK, ntot, al_t, m_s, m_t, mu_g)
+        return polarization_pair_diffusion(TK, ntot, al_s, Z_t, mu_g)
+    return polarization_pair_diffusion(TK, ntot, al_t, Z_s, mu_g)
 
 
 # --------------------------------------------------------------------------
@@ -508,7 +541,11 @@ def momentum_transfer_frequency(TK, ne, dens, s, t):
     velocity relaxation rate of s against fixed t is (mu_st/m_s) nu_st;
     the mean-free-path diagnostic uses nu_st itself as its convention. The
     total carrier density cancels, so `pair_diffusion` is called with
-    ntot = 1 and returns Dhat = n D."""
+    ntot = 1 and returns Dhat = n D.  A resonant pair (RESONANT_PAIRS)
+    takes nu_st = n_t K from its published coefficient instead."""
+    element = RESONANT_PAIRS.get(frozenset((s, t)))
+    if element is not None:
+        return dens[t] * resonant_charge_exchange_rate_coefficient(TK, element)
     m_s = COLLIDERS[s][0] * m_H_g
     m_t = COLLIDERS[t][0] * m_H_g
     mu_g = m_s * m_t / (m_s + m_t)

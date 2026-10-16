@@ -176,7 +176,7 @@ table 4b the physics and the diagnostics.
 | Molecules | Through the code's chemistry | H2, H2+, H3+, HeH+ (2026, for HD 189733 b and GJ 1214 b only) | None | Same four species; 22 reactions (their Table 1) | Same four species inside the coupled system, with Lyman-Werner photodissociation; *opt-in* |
 | He↔H charge exchange | Through the code's chemistry | Yes | Yes | **Absent from the network** | Huang et al. (2023) Table 4, rows B1/B2: a non-radiative and a radiative channel, separately |
 | Cooling | Recombination + Lyα (paper); Black (1981) line/free-free + H3+ (code) | Recombination + H I lines + H3+ | **Lyα only** | Lyα + H3+ only; recombination cooling checked and left off | Lyα, recombination, free-free, CHIANTI metal lines with fine-structure line trapping, H3+ infrared |
-| H3+ cooling form | Black (1981) (code) | Miller et al. (2013) | - | Miller et al. (2013), LTE, emission into vacuum; zero above 5000 K | Miller et al. (2013) with the non-LTE departure factor; net exchange with a diluted base field, *opt-in* |
+| H3+ cooling form | Black (1981) (code) | Miller et al. (2013) | - | Miller et al. (2013), LTE, emission into vacuum; zero above 5000 K | MiZATeP cooling function (Mizus et al. 2017; the Miller et al. 2013 LTE fit until 2026-10-10) with the Miller et al. (2013) non-LTE departure factor; net exchange with a diluted base field, *opt-in* |
 | He(2³S) 10830 | Not a focus | In-loop non-LTE | Post-processed (Yan et al. 2022) | **Not in the network** | In-loop non-LTE (default on) + `EXHALE_transit.py` |
 | H(n=2)/Hα | Not a focus | Non-LTE + Lyα Monte Carlo | Post-processed | Not computed | Non-LTE (Christie et al. 2013) + Lyα escape probability or an imported field |
 | Viscosity / conduction | - | Molecular + eddy diffusion, conduction | Collisional drag | Heat conduction (García-Muñoz 2007); no viscosity | Navier-Stokes viscosity and heat conduction (Crank-Nicolson); *opt-in* |
@@ -419,9 +419,14 @@ forbids testing the pair against detailed balance.
 
 ### 6.5 H3+ infrared cooling
 
-Both codes take the cooling function from Miller, Stallard, Tennyson & Melin (2013), and
-EXHALE's 800-1800 K coefficients are the same seven numbers as Frelikh's Equation (13).
-Three things differ.
+Frelikh takes the cooling function from Miller, Stallard, Tennyson & Melin (2013), and so did
+EXHALE until 2026-10-10 (its 800-1800 K coefficients were the same seven numbers as Frelikh's
+Equation (13)). EXHALE now takes the LTE emission from the MiZATeP cooling function of Mizus
+et al. (2017, MNRAS 468, 1717), tabulated at 1 K from 20 to 5000 K: the Miller fit lies above
+it by 1.10, 1.48, 1.89 and 2.1 at 900, 1500, 2000 and 3000 K, and the NMT line list Miller et
+al. state they summed agrees with MiZATeP to 1% over 300-2000 K (update log stage 3 section
+132; `md/h3p_cooling_cause_20261010.md`). So at the temperatures of Frelikh's wind the two
+codes now differ in the cooling function itself. Three further things differ.
 
 First, **Frelikh radiates into vacuum and EXHALE can exchange with a field**. Frelikh's
 volumetric rate is Λ_H3+ = 4π E(T) n_H3+ × 1e7 erg cm⁻³ s⁻¹, with no incident term, no
@@ -435,9 +440,10 @@ T = T_rad and W_dil = 1. **But W_dil is reached only through the key `Base IR fi
 defaults to off**, so EXHALE's default behavior is Frelikh's.
 
 Second, EXHALE carries the **non-LTE departure factor** s(T, n_H2) of Miller et al.'s Table
-6 and all four published temperature segments (30-300, 300-800, 800-1800, 1800-5000 K);
-Frelikh is pure LTE and implements only the upper two, so its H3+ cooling is undefined below
-800 K and is set to zero above 5000 K.
+6 and an LTE emission defined from 20 to 5000 K (the MiZATeP table; before 2026-10-10 all four
+published Miller segments, 30-300, 300-800, 800-1800, 1800-5000 K); Frelikh is pure LTE and
+implements only the upper two Miller segments, so its H3+ cooling is undefined below 800 K
+and is set to zero above 5000 K.
 
 Third, and recorded here because it will confuse anyone reading the paper against the code:
 **Frelikh's Equations (13) and (14) are printed without their logarithm**, as
@@ -840,7 +846,8 @@ rather than as converged.
 **(E) Molecular chemistry and H3+ cooling: adopted.**
 H2, H2+, H3+ and HeH+ are unknowns of the same coupled system as H, He and the metals
 (`System_HeH_mol.f90`, `System_HeH_mol_metals.f90`), so the molecular and metal blocks share
-one electron density. H3+ infrared cooling follows Miller et al. (2013), in LTE with the
+one electron density. H3+ infrared cooling is the MiZATeP LTE cooling function (Mizus et
+al. 2017; the Miller et al. 2013 fit until 2026-10-10) with the Miller et al. (2013)
 non-LTE departure factor and with absorption of the ambient infrared field so the rate
 returned is the net one (`lower_atmosphere/h3p_cooling.f90`). H2 photodissociation in the
 Lyman-Werner bands uses Draine & Bertoldi (1996) self-shielding
@@ -989,7 +996,7 @@ Appendix D runs a Monte Carlo of 1000 Lyα photons through the converged profile
 which is what licenses the optically thin Lyα cooling rate; repeating it from deeper in the
 molecular layer gives 36/27/37 and they say so. Their section 3.4 checks H3+ optical
 thinness against ExoCross cross sections at the computed column. EXHALE has the ingredients
-for both: the LaRT coupling for the first, the Miller et al. data for the second, and uses
+for both: the LaRT coupling for the first, the H3+ cooling data for the second, and uses
 neither as a check on its own closures.
 
 ## 10. What was not verified

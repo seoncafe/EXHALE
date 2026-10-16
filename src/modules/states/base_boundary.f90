@@ -1598,15 +1598,22 @@
    ! continuation; during a reverse flow the two differ and this is the one
    ! the bath states.
    !
-   ! WHERE A LOWER-ATMOSPHERE PROFILE IS HANDED OVER, the bath's temperature
-   ! at rq is the profile's own temperature there (lap_value_at_radius), in
-   ! units of T0: the gas below the level is the profile's column, which on
-   ! the LHS 1140 b photochem profiles is an isotherm at the clima skin
-   ! temperature, not an adiabat; the isentrope put the bath 3.5 K above it
-   ! one ghost cell down (188.89 K against 185.42 K on the He/H 9 conduction
-   ! state) and lowered the conductive flux into the level by about 4.6% at
-   ! a fixed cell-1 temperature.  At the level itself the two agree, T0
-   ! being the profile's temperature at the matching level.
+   ! WHERE A LOWER-ATMOSPHERE PROFILE IS HANDED OVER, the temperature at rq
+   ! is the profile's own temperature there (lap_value_at_radius), in units
+   ! of T0: the gas below the level is the profile's column, whose T(p) is
+   ! the climate column with the rise the column energy balance gives it
+   ! under the heat the wind conducts into it
+   ! (conducted_heat_column_balance.py): on the energy-coupled LHS 1140 b
+   ! profiles it climbs from the 185 K stratosphere to T_match within about
+   ! 0.1 scale height below the level, so it is neither an isotherm nor an
+   ! adiabat: the isentrope through (p_base, T_base) stands 100 K above it
+   ! in the two ghost cells (417-422 K against 253-327 K, MEASURED,
+   ! md/AN_matching_surface_diagnosis_20261007.md section 2).  It is the
+   ! ONE ghost temperature of the boundary: the conduction bath at r(0)
+   ! (conduction_base_level_T) and the advective ghost cells
+   ! (base_ghost_averages) both read it.  At the level itself the profile
+   ! and the reservoir agree, T0 being the profile's temperature at the
+   ! matching level.
    !
    ! Without a profile, VALIDITY is continue_hydrostatic_isentrope's: the
    ! midpoint heat capacity makes the density exact to third order in
@@ -1633,6 +1640,39 @@
 
    !------------------------------------------!
 
+   real*8 function hydrostatic_pressure_on_profile(nhat, r_f, p_f, rq)     &
+                                                   result(p_q)
+   ! The pressure at rq <= r_f of a column at rest whose temperature is the
+   ! handed-over profile's T(r) (base_reservoir_temperature_at), continued
+   ! down from the pressure p_f at r_f:
+   !
+   !     d ln p/dr = -(dphi/dr)/(nhat T(r)) ,
+   !
+   ! integrated by Simpson's rule in 1/T over n_sub equal panels, each
+   ! panel's potential difference taken whole, (phi(b) - phi(a)) (1/T_a +
+   ! 4/T_m + 1/T_b)/6, which is exact for a uniform field over the panel.
+   ! The profile's T(r) is piecewise linear between its levels; over the
+   ! two ghost cells (4e-4 R0 on the LHS 1140 b grids) the panels resolve
+   ! it to well below the 1e-6 relative of the isentrope it replaces.
+   real*8, intent(in) :: nhat, r_f, p_f, rq
+   integer, parameter :: n_sub = 32
+   real*8 :: a, b, hstep, s
+   integer :: i
+   s = 0.0d0
+   hstep = (r_f - rq)/dble(n_sub)
+   do i = 1, n_sub
+      b = r_f - dble(i-1)*hstep
+      a = b - hstep
+      s = s + (phi(b) - phi(a))                                           &
+              *(1.0d0/base_reservoir_temperature_at(a)                    &
+                + 4.0d0/base_reservoir_temperature_at(0.5d0*(a + b))      &
+                + 1.0d0/base_reservoir_temperature_at(b))/6.0d0
+   enddo
+   p_q = p_f*exp(s/nhat)
+   end function hydrostatic_pressure_on_profile
+
+   !------------------------------------------!
+
    subroutine base_ghost_averages(Wface, Wghost, Wface_lower)
    ! Ghost CELL AVERAGES that are consistent with the face state, and the
    ! point state at the next face down.
@@ -1644,6 +1684,10 @@
    ! Writing the face value into the ghost instead is the half-cell error
    ! this module removes; the two differ by dr/(2H), which is first order in
    ! dr in the state and ZEROTH order in the momentum residual it produces.
+   ! Where a lower-atmosphere profile is handed over, the gas below the
+   ! level is the profile's column and not an isentrope: the ghosts carry
+   ! its temperature and the hydrostatic pressure of a column at that T(r)
+   ! (the first branch below).
    !
    ! The quadrature is 8-point Gauss-Legendre, volume weighted, which is far
    ! beyond the reconstruction's order and costs two cells per boundary call.
@@ -1667,6 +1711,40 @@
    T_face  = Wface(3)/(base_reservoir_nhat*Wface(1))
    flux_r2 = Wface(1)*Wface(2)*r_edg(0)*r_edg(0)
 
+   if (lap_in_use) then
+      ! THE GAS BELOW THE LEVEL IS THE PROFILE'S COLUMN.  Each ghost holds
+      ! the profile's temperature at its centre, the one ghost temperature
+      ! the conduction bath reads too (base_reservoir_temperature_at), and
+      ! the volume average of the hydrostatic pressure of that column
+      ! continued down from the face pressure at the profile's T(r)
+      ! (hydrostatic_pressure_on_profile); the density is the pressure over
+      ! nhat T at that temperature.  The well-balanced block below then
+      ! moves p and rho together at the same ratio chi_j = nhat T_j.
+      do j = 1-Ng, 0
+         if (j .eq. 1-Ng) then
+            a_ = r(j) - 0.5d0*dr_j(j);  b_ = r_edg(j)
+         else
+            a_ = r_edg(j-1);  b_ = r_edg(j)
+         endif
+         num_p = 0.0d0;  den = 0.0d0
+         do k = 1, 8
+            xx = 0.5d0*(a_ + b_) + 0.5d0*(b_ - a_)*xg(k)
+            num_p = num_p + wg(k)*hydrostatic_pressure_on_profile(       &
+                               base_reservoir_nhat, r_edg(0), Wface(3),   &
+                               xx)*xx*xx
+            den   = den   + wg(k)*xx*xx
+         enddo
+         T_q = base_reservoir_temperature_at(r(j))
+         Wghost(3,j) = num_p/den
+         Wghost(1,j) = Wghost(3,j)/(base_reservoir_nhat*T_q)
+         Wghost(2,j) = flux_r2/(Wghost(1,j)*r(j)*r(j))
+      enddo
+      T_l   = base_reservoir_temperature_at(r_edg(1-Ng))
+      rho_l = hydrostatic_pressure_on_profile(base_reservoir_nhat,        &
+                                              r_edg(0), Wface(3),         &
+                                              r_edg(1-Ng))                &
+              /(base_reservoir_nhat*T_l)
+   else
    do j = 1-Ng, 0
       if (j .eq. 1-Ng) then
          a_ = r(j) - 0.5d0*dr_j(j);  b_ = r_edg(j)
@@ -1693,6 +1771,7 @@
    call continue_hydrostatic_isentrope(0, base_reservoir_nhat, r_edg(0),  &
                                        Wface(1), T_face, r_edg(1-Ng),     &
                                        rho_l, T_l)
+   endif
 
    if (well_balanced) then
       ! ONE DISCRETE EQUILIBRIUM.  The well-balanced reconstruction measures
@@ -1706,9 +1785,10 @@
       !
       !     P_up(0)  = p_b ,          P_up(-1) = P_dn(0) ,
       !
-      ! each ghost keeping the ratio chi_j = p_j/rho_j it carries on the
-      ! reservoir-side isentrope above (its temperature at the particle
-      ! count the reservoir states), so that
+      ! each ghost keeping the ratio chi_j = p_j/rho_j it carries above
+      ! (its temperature at the particle count the reservoir states: the
+      ! reservoir-side isentrope's, or the profile's T(r) where a profile
+      ! is handed over), so that
       !
       !     p_j = P_up(j) / (1 - (phi_i(j) - phi_c(j))/chi_j) ,  rho_j = p_j/chi_j .
       !
@@ -1752,8 +1832,8 @@
          endif
       enddo
       ! The face below ghost 0 carries P_dn(0) = P_up(-1) (the P_up of the
-      ! lowest ghost, which the loop leaves in P_up_j), at the
-      ! reservoir-side isentrope's temperature there.
+      ! lowest ghost, which the loop leaves in P_up_j), at the temperature
+      ! of the gas below the level there (T_l above).
       Wface_lower(3) = P_up_j
       Wface_lower(1) = Wface_lower(3)/(base_reservoir_nhat*T_l)
       Wface_lower(2) = flux_r2/(Wface_lower(1)*r_edg(1-Ng)*r_edg(1-Ng))

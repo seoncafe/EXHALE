@@ -211,30 +211,40 @@ physically inconsistent), so it need not be set separately for a Tier-2 run.]} E
 
 \subsection{Tier 2 foundation: \texttt{h3p\_cooling.f90} and \texttt{mol\_rates.f90}}\label{sub:t2}
 
-\paragraph{H$_3^+$ infrared cooling.} Optically thin cooling per molecule from Miller et
-al.\ (2013, Table~5, $z(T)$ fits, archived as
-\texttt{references/Miller\_2013\_JPCA\_117\_9770.pdf}):
+\paragraph{H$_3^+$ infrared cooling.} Optically thin cooling per molecule. The LTE
+emission $W(T)$ of one molecule into one steradian [W\,molecule$^{-1}$\,sr$^{-1}$] is the
+cooling function of the MiZATeP line list (Mizus et al.\ 2017, MNRAS 468, 1717, section~5
+and Table~7; \texttt{references/Mizus\_2017MNRAS\_468\_1717.pdf}), tabulated at 1\,K steps
+from 20 to 5000\,K in the ExoMol file \texttt{1H3\_p\_\_MiZATeP.cf} and carried as the
+module \texttt{h3p\_mizatep\_cooling\_table} (generator
+\texttt{src/utils/h3p\_mizatep\_cooling\_table.py}). Between the nodes $\ln W$ is linear in
+$1/T$ (a local Boltzmann factor, monotone); below 20\,K the first interval's Boltzmann form
+is continued, so $W\to0$ as $T\to0$; above 5000\,K the 5000\,K value is held (H$_3^+$ is
+destroyed well below). The volumetric rate is
 \begin{equation}
-  \ln E(\mathrm{H_3^+},T) = \sum_n C_n T^{\,n}
-  \qquad [E\ \mathrm{in\ W\,molecule^{-1}\,sr^{-1}}],
-\end{equation}
-piecewise over 30--300, 300--800, 800--1800, and 1800--5000\,K (fit errors $<0.1\%$ over
-300--5000\,K), held frozen above 5000\,K (H$_3^+$ is destroyed well below). The
-volumetric rate is
-\begin{equation}
-  \Lambda_{\mathrm{H_3^+}} = n_{\mathrm{H_3^+}}\;4\pi\,E(T)\;
+  \Lambda_{\mathrm{H_3^+}} = n_{\mathrm{H_3^+}}\;4\pi\,W(T)\;
   s_\mathrm{nonLTE}(T,n_{\mathrm{H_2}})\times10^{7}
   \quad[\mathrm{erg\,s^{-1}\,cm^{-3}}],
 \end{equation}
 where $s_\mathrm{nonLTE}$ is the departure factor of Miller et al.\ (2013, Table~6; their
-Oka \& Epp detailed-balance approach), implemented as a bilinear interpolation in
-$(T,\log_{10}n_\mathrm{H_2})$ over $T=300$--5000\,K and $n_\mathrm{H_2}=10^{6}$--$10^{14}$
-cm$^{-3}$; $s\to1$ (LTE) at high density, and the tabulated values are upper limits per
-the paper's caveat on the proton-hopping rate. Both interpolators use the NaN-safe
+Oka \& Epp detailed-balance approach; \texttt{references/Miller\_2013\_JPCA\_117\_9770.pdf}),
+a ratio of two vibrational-level sums normalized by its own LTE sum, so it multiplies the
+MiZATeP $W$ unchanged. It is interpolated as a power law in $n_\mathrm{H_2}$ between the
+columns $n_\mathrm{H_2}=10^{6}$--$10^{14}$\,cm$^{-3}$ and linearly in $T$ between the rows
+$T=300$--5000\,K; below $10^{6}$\,cm$^{-3}$ the collisional limit
+$s=s(T,10^{6})\,n_\mathrm{H_2}/10^{6}$ is used, above $10^{14}$\,cm$^{-3}$ the table edge is
+held (\texttt{h3p\_nonlte\_factor}). The tabulated values are upper limits per the paper's
+caveat on the proton-hopping rate. Both interpolators use the NaN-safe
 \texttt{.not.(x>edge)} bracketing adopted after the 2026-07-02 code review.
-\textbf{Validation:} the fits reproduce the paper's Table-4 anchors at
-$T=500/1000/2000/3000/5000$\,K to $<$0.5\%, and $s(1000\,\mathrm{K},10^{10}\,
-\mathrm{cm^{-3}})=0.4955$, $s(2000\,\mathrm{K},10^{12})=0.9499$ exactly.
+\textbf{Why not the Miller et al.\ (2013) LTE fit.} Their Table~5 fits, used here until
+2026-10-10 (update log stage 3 section 132), lie above MiZATeP by factors 1.10, 1.48, 1.89
+and 2.1 at 900, 1500, 2000 and 3000\,K; the NMT line list they state they summed, summed in
+LTE with their own partition function, agrees with MiZATeP to 1\% over 300--2000\,K, so the
+fit is the outlier (\texttt{md/h3p\_cooling\_cause\_20261010.md}; header of
+\texttt{h3p\_cooling.f90}). From 50 to 700\,K the two agree to 4\%.
+\textbf{Validation:} the built module returns $W = 2.92879\times10^{-20}$,
+$1.29793\times10^{-19}$, $3.19812\times10^{-19}$, $9.54546\times10^{-19}$\,W\,sr$^{-1}$ at
+1000, 1500, 2000, 3000\,K, the ExoMol values (update log stage 3 section 132).
 
 \paragraph{Molecular reaction rates.} \texttt{mol\_rates.f90} provides the full
 H$_2$/H$_2^+$/H$_3^+$/HeH$^+$ thermochemical network of Koskinen et al.\ (2022, Table~1;
@@ -656,7 +666,17 @@ wind's base state, and the wind's own elemental flux is measured face by face by
   F_{\rm H}=4\pi r^2(\rho(1-X)v - J),
 \]
 and reduced to one median and one relative spread per element over a radial
-window. The solution is the fixed point $\Phi_{\rm El}=F_{\rm El}(\Phi_{\rm El})$,
+window. $F_{\rm H}$ is the mass flux of component~1 of the binary split, the
+hydrogen carriers together with the trace metals and the C and O bound in
+molecules, so $F_{\rm H}+F_{\rm He}=\dot M$; the chemistry divides
+\texttt{-{}-trial-flux-H} by $m_{\rm H}$, so the closure hands it the
+hydrogen-nucleus part $F_{\rm H,nuc}=s_{\rm H}F_{\rm H}$, with
+$s_{\rm H}=m_{\rm H}n_{\rm H}/m_1$ the hydrogen-nucleus share of component~1's
+mass in the upwind cell of each face (\texttt{lower\_profile\_F\_Hnuc\_*} and
+\texttt{steady\_F\_Hnuc\_*} in \texttt{EXHALE\_resolved.out}; update log
+stage~3 section~134: before 2026-10-10 the metal mass was counted as hydrogen,
+0.44 percent on LHS~1140\,b, and $F_{\rm H,nuc}/F_{\rm H}=0.988$ on the
+\texttt{lower\_profile} case with solar metals). The solution is the fixed point $\Phi_{\rm El}=F_{\rm El}(\Phi_{\rm El})$,
 reached by an under-relaxed update $\Phi^{(k+1)}=\Phi^{(k)}+\omega(F^{(k)}-\Phi^{(k)})$
 with $\omega=0.5$ halved (floor $0.125$) whenever the residual fails to fall. The
 convergence test reads the \emph{undamped} residual, so a small $\omega$ cannot
@@ -796,7 +816,7 @@ The first Newton-converged molecular solutions were obtained on the hot-Uranus
 gate (\texttt{lower\_atmosphere\_figs/data\_g2/input.inp}, the configuration the
 \texttt{mol\_base\_handoff} regression case runs, $\qHH^\mathrm{base}=0.75$) once
 the H$_3^+$ infrared cooling was moved inside \texttt{eval\_cool}
-(\texttt{docs/Update\_EXHALE.pdf} \S54), so that the marching temperature update
+(\texttt{docs/Update\_EXHALE\_stage1.pdf} \S54), so that the marching temperature update
 and the steady residual balance the same cooling function.
 
 \paragraph{Recipe.} Three keys, and they are the whole change:
@@ -1032,20 +1052,23 @@ stops cooling at its own radiative equilibrium temperature, 575.8\,K (C\,I
 609\,$\mu$m) to 641.7\,K ([O\,I] 44\,$\mu$m) for $T_0=1140$\,K and half-sky
 coverage, and heats below it.
 
-For H$_3^+$ there is no line list (Miller et al.\ (2013) fit the \emph{total}
-emission), so the absorption is taken from that fit at the radiating
-temperature, which is what Kirchhoff's law makes of an emission integral:
+For H$_3^+$ the emission is a total cooling function, not a set of lines resolved in the
+code, so the absorption is taken from the same function at the radiating temperature, which
+is what Kirchhoff's law makes of an emission integral:
 $\Lambda_\mathrm{net}=n(\mathrm{H_3^+})\,4\pi\,s(T,n_{\mathrm{H_2}})
-\,[E(T)-W\,E(T_0)]$. This is the same net-exchange form the H$_2$, H$_2$O and CO
-channels use (\S\ref{sec:molir}), and it is bounded at every temperature. Its
-radiative equilibrium temperature is 975.4\,K at the base for $T_0=1140$\,K.
+\,[W(T)-W_\mathrm{dil}\,W(T_0)]$, with $W(T)$ the MiZATeP cooling function and
+$W_\mathrm{dil}$ the dilution of the field. This is the same net-exchange form the H$_2$,
+H$_2$O and CO channels use (\S\ref{sec:molir}), and it is bounded at every temperature. Its
+radiative equilibrium temperature is 958.5\,K for $T_0=1140$\,K and $W_\mathrm{dil}=1/2$
+on the MiZATeP table (header of \texttt{h3p\_cooling.f90}); with the Miller et al.\ (2013)
+fit used until 2026-10-10 it was 975.4\,K.
 Between 2026-08-13 and 2026-08-31 the exchange was instead closed on one
 effective band, the $\nu_2$ fundamental at 2521.3\,cm$^{-1}$ ($E/k=3627.5$\,K),
 as $\Lambda_\mathrm{net}=\Lambda_\mathrm{emit}(T)\,[1+\bar n-\bar n\,e^{E/kT}]$,
 with equilibrium temperatures of 936.1\,K and then 941.2\,K. Pairing a total
 emission fit with the Boltzmann factor of one of its transitions diverges below
 about 150\,K and is wrong by a factor 1.5--1.9 over 400--1000\,K; \S112 of
-\texttt{docs/Update\_EXHALE.pdf} measures it and records what moved.
+\texttt{docs/Update\_EXHALE\_stage1.pdf} measures it and records what moved.
 The approximations and where they break are written at
 \texttt{h3p\_net\_cooling\_rate}
 (\texttt{src/modules/lower\_atmosphere/h3p\_cooling.f90}) and at
@@ -1083,7 +1106,7 @@ mass-flux spread, $r>1.2$ & $2.4\!\times\!10^{-3}$ & $2.4\!\times\!10^{-3}$ & $2
 \noindent\textbf{Stale, and not re-measurable from here: the field-on columns
 and the predicted floors below were computed with the single-band H$_3^+$
 closure, which was replaced on 2026-08-31 (\S112 of
-\texttt{docs/Update\_EXHALE.pdf}).} The converged solutions they restart from no
+\texttt{docs/Update\_EXHALE\_stage1.pdf}).} The converged solutions they restart from no
 longer exist as run directories, so the table is left as the record of what that
 closure gave. The same four-way comparison re-measured with the current closure,
 at the 12000-step protocol of the \texttt{mol\_ir\_bands} regression case, is in
@@ -1471,7 +1494,7 @@ far-infrared band the same omission would be an order-unity error. The
 single-band H$_3^+$ form the 941\,K belongs to was itself replaced the same day
 (a total emission fit cannot be paired with the Boltzmann factor of one
 transition at all temperatures), and the H$_3^+$ column below is the
-replacement's (\S112 of \texttt{docs/Update\_EXHALE.pdf}).
+replacement's (\S112 of \texttt{docs/Update\_EXHALE\_stage1.pdf}).
 
 Each channel therefore has its own radiative equilibrium temperature, and it is
 the fixed point rather than the magnitude that answers item~(G):
@@ -1481,17 +1504,21 @@ the fixed point rather than the magnitude that answers item~(G):
 \toprule
 $T_0$ & H$_2$O & CO & H$_2$ & (H$_3^+$) \\
 \midrule
- 900\,K & 705\,K & 752\,K & 783\,K  & 780.9\,K \\
-1140\,K & 889\,K & 918\,K & 984\,K  & 975.4\,K \\
-1183\,K & 922\,K & 947\,K & 1019\,K & 1010.7\,K \\
-1450\,K & 1120\,K & 1120\,K & 1226\,K & 1231.6\,K \\
-1800\,K & 1369\,K & 1338\,K & 1486\,K & 1517.6\,K \\
-2358\,K & 1749\,K & 1668\,K & 1883\,K & 1938.6\,K \\
+ 900\,K & 705\,K & 752\,K & 783\,K  & 775.7\,K \\
+1140\,K & 889\,K & 918\,K & 984\,K  & 958.5\,K \\
+1183\,K & 922\,K & 947\,K & 1019\,K & 991.0\,K \\
+1450\,K & 1120\,K & 1120\,K & 1226\,K & 1191.4\,K \\
+1800\,K & 1369\,K & 1338\,K & 1486\,K & 1451.6\,K \\
+2358\,K & 1749\,K & 1668\,K & 1883\,K & 1857.0\,K \\
 \bottomrule
 \end{tabular}
 \end{center}
 
-\noindent (half-sky coverage, $W=\tfrac12$). How much rests on that assumption
+\noindent (half-sky coverage, $W=\tfrac12$; the H$_3^+$ column solves
+$W_{\rm MiZATeP}(T_{\rm eq}) = \tfrac12 W_{\rm MiZATeP}(T_0)$ on the table and
+interpolation of \texttt{h3p\_lte\_emission\_mizatep}, recomputed 2026-10-10 after
+the cooling function changed; with the Miller et al.\ 2013 fit it read 780.9, 975.4,
+1010.7, 1231.6, 1517.6 and 1938.6\,K). How much rests on that assumption
 is measurable: for H$_2$O at $T_0=1183$\,K the equilibrium temperature is
 726.5 / 922.1 / 1065.0 / 1183.0\,K at $W=0.25/0.5/0.75/1$, and CO 784.7 /
 946.5 / 1073.1 / 1183.0\,K, at $W=1$ both are exactly $T_0$, the closure's
@@ -1607,7 +1634,7 @@ $2.7\times10^{-5}$\,erg\,cm$^{-3}$\,s$^{-1}$ at $r=1.005$ against a total of
 $7.5\times10^{-5}$, and a 12000-step A/B moves the base from 760.2 to 829.1\,K
 and $x_{\rm H_2}$ from 0.330 to 0.483, both toward the photochemical
 reference (864\,K, 0.910). Neither of those runs is converged;
-\texttt{docs/Update\_EXHALE.md} \S110 carries the full statement and its
+\texttt{md/Update\_EXHALE\_stage1.md} \S110 carries the full statement and its
 caveats.
 
 \paragraph{What is assumed.}

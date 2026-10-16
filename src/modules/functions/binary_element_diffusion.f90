@@ -76,10 +76,30 @@
       ! diffusive flux is independent; the helium one is
       !
       !    J = -rho (D_12 + K_zz) dX/dr  -  rho D_12 G X (1-X)
-      !    G = [ (m_He - m_c1) m_H g - (Zbar_He - Zbar_c1) eE ] / (k T)
+      !    G = [ (m_He - m_c1) m_H g_eff - (Zbar_He - Zbar_c1) eE ] / (k T)
       !        + alpha_T dlnT/dr  -  dln(psi)/dr                      [1/cm]
+      !    g_eff = -(1/rho) dp/dr                                    [cm/s^2]
       !
-      ! and the hydrogen-component flux is its negative.  The masses and
+      ! and the hydrogen-component flux is its negative.
+      !
+      ! THE SETTLING FORCE IS SET BY THE PRESSURE GRADIENT, NOT BY GRAVITY.
+      ! Each species obeys n_s m_s Du_s/Dt = -grad p_s + n_s m_s G
+      ! + n_s e_s E + friction (Schunk 1977, RvGSP 15, 429, eq. 24b).  With
+      ! the drift inertia neglected (u_s ~ u), the sum over species gives
+      ! the mixture equation rho a = -grad p + rho G, and eliminating the
+      ! bulk acceleration a = Du/Dt leaves the driving force of species s
+      ! against the mixture as -grad p_s + (rho_s/rho) grad p + n_s e_s E:
+      ! gravity, the same per unit mass for every species, cancels, and the
+      ! pressure gradient carries it together with the acceleration of the
+      ! wind (md/AK_ambipolar_stage_drift_derivation_20261006.md, eq. 2.1;
+      ! the Chapman-Cowling pressure-diffusion form).  In the binary form
+      ! above this is the gravity term with g replaced by
+      ! g_eff = -(1/rho) dp/dr = g + Du/Dt, which equals g in a hydrostatic
+      ! column, exceeds it where the wind accelerates outward (g + v dv/dr
+      ! in a steady wind; v dv/dr reaches g near a sonic point) and is
+      ! formed from the state's own total pressure p = (n_tot + n_e) k T
+      ! (mixture_pressure_acceleration).  Viscous stress, which is not part
+      ! of this first-order closure, is left out of the mixture balance.  The masses and
       ! charges in G are CARRIER quantities: m_c1 is the mass of component 1
       ! per collision partner and Zbar_c1 its mean charge per collision
       ! partner (see CARRIERS below), which in the atomic region are the mass
@@ -155,8 +175,8 @@
       ! into each molecule) and mu_st the reduced mass, evaluated
       ! in the limit the pair belongs to (routines below):
       !   neutral-neutral   hard_sphere_pair_diffusion    ~ T^(1/2)/n
-      !   ion-neutral       ion_neutral_pair_diffusion    (polarization and
-      !                                                    rigid core added)
+      !   ion-neutral       polarization_pair_diffusion   ~ T/n (induced
+      !                                                    dipole, non-resonant)
       !   ion-ion           coulomb_pair_diffusion        ~ T^(5/2)/n
       ! and the element-element coefficient is the stage-fraction weighted
       ! harmonic sum (frictions add; Blanc's law across stages)
@@ -189,8 +209,8 @@
       !              stages, so it reduces to D(He,H) in the atomic region and
       !              to D(He,H2) in a fully molecular one, and interpolates
       !              between (test T7);
-      !   forces     gravity and the ambipolar field act on the particles that
-      !              actually collide, so G uses the mean carrier mass m_c1
+      !   forces     the settling force m g_eff and the ambipolar field act
+      !              on the particles that actually collide, so G uses the mean carrier mass m_c1
       !              and mean carrier charge Zbar_c1 of the hydrogen component
       !              (per nucleus the weight of H2 equals that of H; per
       !              collision partner it is twice), and the trace-metal loop
@@ -303,7 +323,6 @@
       ! entered, so flag-off runs are byte-identical to before.
 
       use global_parameters
-      use grav_func,     only: Dphi
       ! The one spherical geometry of this grid: face areas r_edg^2 and the
       ! exact shell volumes.  Every divergence below divides by these, so
       ! the advective and the diffusive halves of one element row are the
@@ -318,7 +337,8 @@
                                n_mion, mion_fsp, mion_stage, mion_elem,   &
                                n_melem, melem_i0, melem_top, melem_A,      &
                                melem_name, iel_C, iel_O
-      use composition,   only: mass_per_H_nucleus_without_He
+      use composition,   only: mass_per_H_nucleus_without_He,            &
+                               gas_particle_density
       ! The rovibrational energy of H2 of the caloric equation of state, the
       ! one internal energy the sensible enthalpy of the components adds to
       ! (5/2) kT per particle (component_specific_enthalpies).
@@ -338,7 +358,9 @@
                           lap_steady_r_lo_Rp, lap_steady_nface,           &
                           lap_steady_FH_median,  lap_steady_FH_spread,    &
                           lap_steady_FHe_median, lap_steady_FHe_spread,   &
-                          lap_steady_Mdot_median, lap_steady_Mdot_spread
+                          lap_steady_Mdot_median, lap_steady_Mdot_spread, &
+                          lap_FHnuc_median, lap_FHnuc_spread,             &
+                          lap_steady_FHnuc_median, lap_steady_FHnuc_spread
 
       implicit none
       private
@@ -515,7 +537,10 @@
       ! operator uses -- there is no second copy of the friction anywhere.
       public :: helium_hydrogen_diffusion
       public :: hard_sphere_pair_diffusion, polarization_pair_diffusion
-      public :: ion_neutral_pair_diffusion
+      ! The settling acceleration -(1/rho) dp/dr of the state, exposed so the
+      ! acceptance tests can compare it with the gravity of a hydrostatic
+      ! column and with g + a of an accelerating one.
+      public :: mixture_pressure_acceleration
       public :: coulomb_pair_diffusion, coulomb_logarithm
       public :: alpha_HI, alpha_HeI
       ! Exposed so an acceptance test reads the masses this operator closes
@@ -851,7 +876,7 @@
       real*8, dimension(1-Ng:N+Ng) :: rp, nH_phys, ntot_phys, dmeff
       real*8, dimension(1-Ng:N+Ng) :: nX, nXold, DcoX, GcoX, zb1, Frho
       real*8, dimension(1-Ng:N+Ng) :: cadvf, wYtr, cadvX
-      real*8, dimension(1-Ng:N+Ng) :: eEf, ne_phys, zbHe, ne_rel
+      real*8, dimension(1-Ng:N+Ng) :: eEf, ne_phys, zbHe, ne_rel, geff
       real*8, dimension(1-Ng:N+Ng,n_hcar)    :: yH
       real*8, dimension(0:N)       :: Agrd, Bdrf, Jf, PLX, PRX
       real*8, dimension(1-Ng:N+Ng) :: fXnew
@@ -948,7 +973,7 @@
 
       ! --- settling coefficient G [1/cm] (gravity + ambipolar field + thermal)
       call settling_coefficient(rho, Tcode, f_sp, Gco, dmeff, zb1, eEf,   &
-                                dlnpsi)
+                                dlnpsi, geff)
 
       ! --- THE BASE BOUNDARY CONDITION OF THIS OPERATOR, stated here and
       ! independent of what the advective boundary does with the contact.
@@ -1091,7 +1116,7 @@
             i0m = melem_i0(im)
             top = melem_top(im)
             call trace_element_transport_coefficients(im, f_sp, rho, TK,   &
-                     ntot_phys, ne_phys, yH, mcarH, zb1, eEf, dlnpsi,      &
+                     ntot_phys, ne_phys, yH, mcarH, zb1, eEf, geff, dlnpsi,      &
                      nX, nXold, DcoX, GcoX)
             fXbase = nXold(1)/nH_phys(1)                  ! reservoir metal/H
             ! The element's MASS fraction per unit of the mixing ratio the
@@ -1980,42 +2005,56 @@
 
       ! ------------------------------------------------------------------ !
 
-      real*8 function polarization_pair_diffusion(TK, ntot, alpha_n, mu_g)
-      ! ION-NEUTRAL, NON-RESONANT.  The ion polarizes the neutral, giving the
-      ! Langevin interaction V = -alpha_n e^2/(2 r^4).  For that potential the
-      ! product g Q^(1)(g) is independent of the relative speed,
+      real*8 function polarization_pair_diffusion(TK, ntot, alpha_n,       &
+                                                  Z_ion, mu_g)
+      ! ION-NEUTRAL, NON-RESONANT.  The ion of charge Z_ion e polarizes the
+      ! neutral, giving the induced-dipole interaction
+      ! V = -alpha_n Z_ion^2 e^2/(2 r^4).  For that potential the product
+      ! g Q^(1)(g) is independent of the relative speed,
       !
-      !    g Q^(1) = 2.21 pi e (alpha_n/mu)^(1/2),
+      !    g Q^(1) = 2.21 pi Z_ion e (alpha_n/mu)^(1/2),
       !
-      ! the constant behind the non-resonant ion-neutral momentum-transfer
-      ! collision frequency of Schunk & Nagy (Ionospheres, eq. 4.88),
-      ! nu_in = 2.21 pi (n_n m_n/(m_i+m_n)) (gamma_n e^2/mu_in)^(1/2).  The
-      ! textbook is not in references/, so the constant below was re-derived
-      ! from the Chapman-Enskog integral rather than copied: with
-      ! Q^(1) = C/g the integral gives Omega^(1,1) = 3 C/16, and the 3/16 of
-      ! the Chapman-Enskog D cancels it exactly, leaving
+      ! which is the non-resonant ion-neutral momentum-transfer collision
+      ! frequency of Schunk & Nagy (1980, RvGSP 18, 813, eq. 17, after
+      ! Dalgarno et al. 1958), nu_in = 2.21 pi n_n m_n/(m_i + m_n)
+      ! (eta_n e^2/mu_in)^(1/2), checked on the rendered page of the
+      ! published article; Z_ion = 1 there.  A charge Z_ion e enters the
+      ! potential as Z_ion^2 e^2, so the frequency scales as Z_ion.  Schunk &
+      ! Nagy use this form ALONE for every non-resonant pair: they describe
+      ! the interaction as a long-range polarization attraction coupled with
+      ! a short-range repulsion and still give its momentum-transfer
+      ! frequency as (17), tabulated as nu_in = C_in n_n in their Table 6.
+      ! No rigid-core term is added: one built with the neutral-neutral
+      ! diameter puts the H+/He friction at 3 to 6 times the quantum-mechanical
+      ! momentum-transfer rate coefficient of Kimura, Lane, Dalgarno & Dixson
+      ! (1993, ApJ 405, 801, Table 2: 1.05e-9 cm^3/s at 50-5000 K, 1.17e-9 at
+      ! 1e4 K), against which this form is 12-24% high (1.306e-9 cm^3/s at
+      ! every T, MEASURED, acceptance test T12e).  That 12-24% is not
+      ! explained by the published sources: neither Kimura et al. nor the
+      ! method papers they cite define the thermal average of their table
+      ! (md/AK_ambipolar_stage_drift_derivation_20261006.md, section 6.3).
       !
-      !    D = k T / (2.21 pi e n (alpha_n mu)^(1/2))        [cm^2/s]
+      ! With Q^(1) = C/g the Chapman-Enskog integral gives
+      ! Omega^(1,1) = 3 C/16, and the 3/16 of D = 3 k T/(16 n mu Omega)
+      ! cancels it exactly, leaving
+      !
+      !    D = k T / (2.21 pi Z_ion e n (alpha_n mu)^(1/2))        [cm^2/s]
       !
       ! alpha_n [cm^3] is the neutral partner's static dipole polarizability,
-      ! e is in esu and mu_g the reduced mass in grams.  Note D ~ T, not
-      ! T^(1/2): the momentum-transfer rate coefficient of the polarization
-      ! interaction is independent of the relative speed, so the friction
-      ! coefficient k T/(n D) of the pair does not depend on T.
+      ! e is in esu and mu_g the reduced mass in grams.  D ~ T: the
+      ! momentum-transfer rate coefficient K = k T/(n D mu) of the
+      ! polarization interaction is independent of T.  Schunk & Nagy give
+      ! the form for ionospheric conditions; at the 1e4 K of an ionized wind
+      ! the published H+/He coefficient of Kimura et al. lies only 11% above
+      ! its 50-5000 K value, so the data support no stronger T dependence
+      ! for that pair (its rise to 1.44e-9 at 5e4 K is not carried).
       ! Valid for NON-RESONANT pairs only; a resonant pair (H+ + H, He+ + He)
       ! is charge-exchange dominated and never appears here, because both of
       ! its partners carry the same element (see the module header).
-      !
-      ! TEMPERATURE RANGE.  This is the LOW-energy limit of the ion-neutral
-      ! interaction: it keeps only the induced-dipole attraction and no
-      ! repulsive core.  Its friction coefficient is constant in T, while that
-      ! of a rigid core grows as T^(1/2) (1/D falls as T^-1 and T^-1/2), so at
-      ! high temperature the core dominates the friction.  It is therefore NOT
-      ! called on its own -- ion_neutral_pair_diffusion below combines it with
-      ! the rigid-core estimate.
-      real*8, intent(in) :: TK, ntot, alpha_n, mu_g
+      real*8, intent(in) :: TK, ntot, alpha_n, Z_ion, mu_g
       polarization_pair_diffusion = kb_erg*TK                              &
-           /(2.21d0*pi*e_esu*ntot*sqrt(max(alpha_n*mu_g, 1.0d-60)))
+           /(2.21d0*pi*abs(Z_ion)*e_esu*ntot                               &
+             *sqrt(max(alpha_n*mu_g, 1.0d-60)))
       end function polarization_pair_diffusion
 
       ! ------------------------------------------------------------------ !
@@ -2066,54 +2105,6 @@
 
       ! ------------------------------------------------------------------ !
 
-      real*8 function ion_neutral_pair_diffusion(TK, ntot, alpha_n,        &
-                                                 A_s, A_t, mu_g)
-      ! ION-NEUTRAL, NON-RESONANT: the induced-dipole (polarization) estimate
-      ! and the rigid-core estimate combined as
-      !
-      !    1/D_in = 1/D_polarization + 1/D_hard sphere .
-      !
-      ! THIS IS AN INTERPOLATION BETWEEN TWO LIMITS, NOT A COLLISION INTEGRAL.
-      ! The long-range attraction and the short-range repulsion are two parts
-      ! of ONE interaction potential; the deflection of an encounter is set
-      ! by the whole potential, so their momentum-transfer cross sections do
-      ! not add in general (for an r^-4 attraction with a rigid core a
-      ! captured orbit reaches the core, so by the classical-orbit argument
-      ! the cross section is expected nearer the larger of the two than their
-      ! sum; this was not computed here).  Summing inverse D is
-      ! summing the two friction coefficients.  It recovers each limit, and
-      ! where the two coefficients are equal it gives twice the friction of
-      ! either one, so in the crossover it can overstate the friction by up
-      ! to a factor of 2 against taking the stronger estimate alone.  No
-      ! collision integral of a combined polarization-plus-core potential has
-      ! been compared with it.
-      !
-      ! The limits.  D_pol ~ T and D_hs ~ T^(1/2), so
-      ! their ratio crosses unity near 1.5e3 K for an H/He pair: below that
-      ! the polarization term dominates the friction and D_in -> D_pol; above
-      ! it the rigid core does and D_in -> D_hs.  At the 1e4 K of an ionized
-      ! wind D_pol is 2.6 to 4.7 times D_hs, so the combined value sits within
-      ! 20-30% of the hard sphere -- taking the polarization value alone there
-      ! would understate the friction by a factor of a few and let an element
-      ! settle correspondingly faster through the partially ionized layer,
-      ! which is where ion-neutral pairs carry the friction at all.
-      !
-      ! The rigid-core estimate uses the same Banks & Kockarts collision
-      ! diameter as the neutral-neutral pair: no separate ion-neutral core
-      ! radius is available, so the atomic diameter stands in for the ionic
-      ! one.
-      real*8, intent(in) :: TK, ntot, alpha_n, A_s, A_t, mu_g
-      real*8 :: Dpol, Dhs
-
-      Dpol = polarization_pair_diffusion(TK, ntot, alpha_n, mu_g)
-      Dhs  = hard_sphere_pair_diffusion(TK, ntot, A_s, A_t)
-      ion_neutral_pair_diffusion = 1.0d0                                   &
-           /(1.0d0/max(Dpol, 1.0d-99) + 1.0d0/max(Dhs, 1.0d-99))
-
-      end function ion_neutral_pair_diffusion
-
-      ! ------------------------------------------------------------------ !
-
       real*8 function stage_pair_diffusion(TK, ntot, ne, Z_s, m_s, al_s,   &
                                                        Z_t, m_t, al_t)
       ! The pair coefficient of two ionization stages, in whichever of the
@@ -2131,11 +2122,11 @@
          stage_pair_diffusion = coulomb_pair_diffusion(TK, ntot, ne,       &
                                                        Z_s, Z_t, mu_g)
       else if (Z_s .eq. 0.0d0) then
-         stage_pair_diffusion = ion_neutral_pair_diffusion(TK, ntot,       &
-                                                 al_s, m_s, m_t, mu_g)
+         stage_pair_diffusion = polarization_pair_diffusion(TK, ntot,      &
+                                                 al_s, Z_t, mu_g)
       else
-         stage_pair_diffusion = ion_neutral_pair_diffusion(TK, ntot,       &
-                                                 al_t, m_s, m_t, mu_g)
+         stage_pair_diffusion = polarization_pair_diffusion(TK, ntot,      &
+                                                 al_t, Z_s, mu_g)
       endif
 
       end function stage_pair_diffusion
@@ -2337,18 +2328,19 @@
       ! ------------------------------------------------------------------ !
 
       subroutine settling_coefficient(rho, Tcode, f_sp, Gco, dmeff, zb1,   &
-                                      eEout, dlnpsi_out)
-      ! The settling coefficient G of the header, and the gravity-normalized
-      ! relative settling mass it comes from,
+                                      eEout, dlnpsi_out, geff_out)
+      ! The settling coefficient G of the header, and the relative settling
+      ! mass it comes from, normalized to the settling acceleration
+      ! g_eff = -(1/rho) dp/dr of the mixture (module header):
       !
-      !   dmeff = (m_He - m_c1) - (Zbar_He - Zbar_c1) eE/(m_H g) [m_H units]
-      !   G     = dmeff m_H g/(k T) + alpha_T dlnT/dr            [1/cm]
+      !   dmeff = (m_He - m_c1) - (Zbar_He - Zbar_c1) eE/(m_H g_eff)  [m_H]
+      !   G     = dmeff m_H g_eff/(k T) + alpha_T dlnT/dr        [1/cm]
       !
       ! with CARRIER quantities: m_c1 = m_1 mcarH is the mass of component 1
       ! per collision partner (m_1 is its mass per hydrogen nucleus and mcarH
       ! the hydrogen nuclei bound into one carrier), and Zbar_c1, Zbar_He are
-      ! the mean charges per carrier.  Gravity and the ambipolar field act on
-      ! the particles that collide, so an H2 molecule weighs twice an H atom
+      ! the mean charges per carrier.  The settling force and the ambipolar
+      ! field act on the particles that collide, so an H2 molecule weighs twice an H atom
       ! here even though it carries the same mass per nucleus (memo section
       ! 5).  In the atomic region mcarH = 1 and this is the nucleus form.
       !
@@ -2356,9 +2348,13 @@
       ! ends).  dmeff is returned so the ambipolar limits can be tested
       ! against (m_He/m_H - 1) neutral, (m_He/m_H - 3/2) in an H+ plasma and
       ! (2 m_He/3 m_H - 1) in a He++ plasma (2.9715, 2.4715, 1.6477 with
-      ! m_He/m_H = 3.9715) without a second definition of the field anywhere.  Where the local gravity
-      ! vanishes dmeff is reported as zero (it is a ratio to g); G itself is
-      ! always built from the forces, never from dmeff.  dmeff is the FORCE
+      ! m_He/m_H = 3.9715) without a second definition of the field anywhere.
+      ! In an isothermal column of uniform composition these limits hold
+      ! whatever the density profile, because eE and g_eff are then the same
+      ! centred difference of ln p (the electron pressure is a fixed share
+      ! of p).  Where g_eff vanishes dmeff is reported as zero (it is a ratio
+      ! to g_eff); G itself is always built from the forces, never from
+      ! dmeff.  dmeff is the FORCE
       ! ratio only: the chemistry term -dln(psi)/dr that G also carries in the
       ! molecular region is not a mass and does not belong in it.
       !
@@ -2366,16 +2362,17 @@
       ! one hydrogen nucleus over: 1 in the atomic region, 1/2 where the
       ! hydrogen is H2.  Its gradient is the mole-fraction driver of the
       ! module header, and it is returned (dlnpsi_out) so that the trace-metal
-      ! loop uses the one definition of it.
+      ! loop uses the one definition of it, and so is g_eff (geff_out).
       real*8, dimension(1-Ng:N+Ng),           intent(in)  :: rho, Tcode
       real*8, dimension(1-Ng:N+Ng,n_species), intent(in)  :: f_sp
       real*8, dimension(1-Ng:N+Ng),           intent(out) :: Gco, dmeff, zb1
       real*8, dimension(1-Ng:N+Ng), optional, intent(out) :: eEout
       real*8, dimension(1-Ng:N+Ng), optional, intent(out) :: dlnpsi_out
+      real*8, dimension(1-Ng:N+Ng), optional, intent(out) :: geff_out
 
       real*8, dimension(1-Ng:N+Ng) :: carH, carHe, mcarH, zbHe, ne_rel
       real*8, dimension(1-Ng:N+Ng) :: ne_phys, mc1, lnmcar, dlnpsi
-      real*8, dimension(1-Ng:N+Ng) :: TK, gphys, eEf, lnpe
+      real*8, dimension(1-Ng:N+Ng) :: TK, geff, eEf, lnpe
       real*8, dimension(1-Ng:N+Ng) :: nucH, nucHe, mass1, msum
       real*8 :: m_1, dr2
       integer :: j
@@ -2400,9 +2397,7 @@
       TK = Tcode*T0
       where (TK .lt. 1.0d0) TK = 1.0d0
       ne_phys = ne_rel*rho*n0
-      do j = 1-Ng, N+Ng
-         gphys(j) = Dphi(r(j))*v0*v0/R0                    ! [cm/s^2], inward
-      enddo
+      call mixture_pressure_acceleration(rho, Tcode, f_sp, geff)
 
       ! Ambipolar field eE = -k T dln(n_e T)/dr [erg/cm].
       eEf = 0.0d0
@@ -2430,12 +2425,12 @@
       dlnpsi(N+Ng) = dlnpsi(N+Ng-1)
 
       do j = 1-Ng, N+Ng
-         Gco(j) = ((m_He_amu - mc1(j))*mu*gphys(j)                   &
+         Gco(j) = ((m_He_amu - mc1(j))*mu*geff(j)                    &
                    - (zbHe(j) - zb1(j))*eEf(j))/(kb_erg*TK(j))            &
                   - dlnpsi(j)
-         if (abs(gphys(j)) .gt. 0.0d0) then
+         if (abs(geff(j)) .gt. 0.0d0) then
             dmeff(j) = (m_He_amu - mc1(j))                                &
-                       - (zbHe(j) - zb1(j))*eEf(j)/(mu*gphys(j))
+                       - (zbHe(j) - zb1(j))*eEf(j)/(mu*geff(j))
          else
             dmeff(j) = 0.0d0
          endif
@@ -2454,14 +2449,61 @@
       ! and there is no second, cruder copy of it anywhere in the module.
       if (present(eEout)) eEout = eEf
       if (present(dlnpsi_out)) dlnpsi_out = dlnpsi
+      if (present(geff_out))   geff_out   = geff
 
       end subroutine settling_coefficient
 
       ! ------------------------------------------------------------------ !
 
+      subroutine mixture_pressure_acceleration(rho, Tcode, f_sp, geff)
+      ! The settling acceleration of the mixture,
+      !
+      !    g_eff = -(1/rho) dp/dr = -(p/rho) dln(p)/dr        [cm/s^2, inward]
+      !
+      ! with p = (n_tot + n_e) k T the total thermal pressure of the state,
+      ! the particle count being the equation of state's own
+      ! (gas_particle_density), and rho the mass the species carry
+      ! (mixture_mass_sum).  By the mixture momentum equation
+      ! rho Du/Dt = -grad p + rho G it is g + Du/Dt: gravity in a
+      ! hydrostatic column, gravity plus the outward acceleration of the
+      ! wind where the wind accelerates (module header).
+      !
+      ! Discretization: the centred difference of ln p over the two
+      ! neighbours, the same stencil and the same logarithmic form as the
+      ! ambipolar field eE = -k T dln(n_e T)/dr, so the two are one
+      ! difference of one pressure where the electrons are a fixed share of
+      ! it, and an isothermal barometric column gives g_eff exactly.  The
+      ! two end cells copy their neighbours, as the field does.
+      real*8, dimension(1-Ng:N+Ng),           intent(in)  :: rho, Tcode
+      real*8, dimension(1-Ng:N+Ng,n_species), intent(in)  :: f_sp
+      real*8, dimension(1-Ng:N+Ng),           intent(out) :: geff
+
+      real*8, dimension(1-Ng:N+Ng) :: npart, msum, TK, lnp
+      real*8  :: dr2
+      integer :: j
+
+      call gas_particle_density(rho, f_sp, npart)
+      call mixture_mass_sum(f_sp, msum)
+      TK  = max(Tcode*T0, 1.0d0)
+      lnp = log(max(npart*n0*kb_erg*TK, 1.0d-300))
+      geff = 0.0d0
+      do j = 2-Ng, N+Ng-1
+         dr2 = (r(j+1) - r(j-1))*R0
+         ! p/rho = n_part k T/(rho n0 mu msum), n_part in code units.
+         geff(j) = -(npart(j)*kb_erg*TK(j)                                &
+                     /(max(rho(j), 1.0d-300)*mu*msum(j)))                 &
+                   *(lnp(j+1) - lnp(j-1))/dr2
+      enddo
+      geff(1-Ng) = geff(2-Ng)
+      geff(N+Ng) = geff(N+Ng-1)
+
+      end subroutine mixture_pressure_acceleration
+
+      ! ------------------------------------------------------------------ !
+
       function relative_settling_mass(rho, Tcode, f_sp) result(dmeff)
-      ! Diagnostic: the gravity-normalized relative settling mass of helium
-      ! against component 1, in m_H units: m_He/m_H - 1 neutral,
+      ! Diagnostic: the relative settling mass of helium against component 1,
+      ! normalized to g_eff = -(1/rho) dp/dr, in m_H units: m_He/m_H - 1 neutral,
       ! m_He/m_H - 3/2 in an H+ plasma, 2 m_He/(3 m_H) - 1 in a fully ionized
       ! He++ plasma (2.9715, 2.4715, 1.6477).  Same definition the operator
       ! uses, there is no second copy of the ambipolar field.
@@ -3305,7 +3347,8 @@
       real*8, dimension(1-Ng:N+Ng) :: rho_phys, TK, Dco, Gco, dt_stat
       real*8, dimension(1-Ng:N+Ng) :: rp, rep, nH_phys, ntot_phys, dmeff
       real*8, dimension(1-Ng:N+Ng) :: nX, nXold, DcoX, GcoX, zb1
-      real*8, dimension(1-Ng:N+Ng) :: Dneut, eEf, ne_phys, zbHe, ne_rel
+      real*8, dimension(1-Ng:N+Ng) :: Dneut, eEf, ne_phys, zbHe, ne_rel,  &
+                                      geff
       real*8, dimension(1-Ng:N+Ng) :: mres, resc, dscc, fX, fXold
       ! The face terms of the helium row and its face composition, and the
       ! face mass flux in g cm^-2 s^-1, for the record he_terms.
@@ -3363,7 +3406,7 @@
       ! the transport terms alone.  Same device as the carrier balance.
       dt_stat = 1.0d30
       call settling_coefficient(rho, Tcode, f_sp, Gco, dmeff, zb1, eEf,   &
-                                dlnpsi)
+                                dlnpsi, geff)
       X_base = m_He_amu*HeH/(m_1 + m_He_amu*HeH)
       call drift_and_gradient_face_coefficients(rho_phys, Dco, Gco, rp,   &
                                                 Agrd, Bdrf, updrf)
@@ -3452,7 +3495,7 @@
       sc_tr = 1.0d-300
       do im = 1, n_melem
          call trace_element_transport_coefficients(im, f_sp, rho, TK,     &
-                  ntot_phys, ne_phys, yH, mcarH, zb1, eEf, dlnpsi,        &
+                  ntot_phys, ne_phys, yH, mcarH, zb1, eEf, geff, dlnpsi,        &
                   nX, nXold, DcoX, GcoX)
          fX     = nX/max(nH_phys, 1.0d-30)
          fXbase = nXold(1)/nH_phys(1)
@@ -3701,7 +3744,8 @@
 
       real*8, dimension(1-Ng:N+Ng) :: nucH, nucHe, nH_phys, ntot_phys
       real*8, dimension(1-Ng:N+Ng) :: carH, carHe, mcarH, dlnpsi, TK, rp
-      real*8, dimension(1-Ng:N+Ng) :: Gco, dmeff, zb1, eEf, zbHe, ne_rel
+      real*8, dimension(1-Ng:N+Ng) :: Gco, dmeff, zb1, eEf, zbHe, ne_rel, &
+                                      geff
       real*8, dimension(1-Ng:N+Ng) :: ne_phys, nX, nXold, DcoX, GcoX, fX
       real*8, dimension(1-Ng:N+Ng,n_hcar) :: yH
       real*8, dimension(0:N) :: PL, PR
@@ -3714,7 +3758,7 @@
       where (TK .lt. 1.0d0) TK = 1.0d0
       rp = r*R0
       call settling_coefficient(rho, Tcode, f_sp, Gco, dmeff, zb1, eEf,   &
-                                dlnpsi)
+                                dlnpsi, geff)
       call element_nucleus_counts(f_sp, nucH, nucHe)
       nH_phys = nucH*rho*n0
       where (nH_phys .lt. 1.0d-30) nH_phys = 1.0d-30
@@ -3726,7 +3770,7 @@
       call carrier_fractions(f_sp, n_hcar, hcar_isp, yH)
       do im = 1, n_melem
          call trace_element_transport_coefficients(im, f_sp, rho, TK,     &
-                  ntot_phys, ne_phys, yH, mcarH, zb1, eEf, dlnpsi,        &
+                  ntot_phys, ne_phys, yH, mcarH, zb1, eEf, geff, dlnpsi,        &
                   nX, nXold, DcoX, GcoX)
          fX = nX/max(nH_phys, 1.0d-30)
          call trace_face_coefficients(nH_phys, DcoX, GcoX, rp, PL, PR)
@@ -4113,7 +4157,7 @@
       ! ------------------------------------------------------------------ !
 
       subroutine trace_element_transport_coefficients(im, f_sp, rho, TK,   &
-                     ntot_phys, ne_phys, yH, mcarH, zb1, eEf, dlnpsi,       &
+                     ntot_phys, ne_phys, yH, mcarH, zb1, eEf, geff, dlnpsi, &
                      nX, nXold, DcoX, GcoX)
       ! The transport coefficients of ONE trace element against the hydrogen
       ! background: its density and mean charge from the species vector, the
@@ -4130,6 +4174,7 @@
       real*8, dimension(1-Ng:N+Ng,n_hcar),    intent(in)  :: yH
       real*8, dimension(1-Ng:N+Ng),           intent(in)  :: mcarH, zb1
       real*8, dimension(1-Ng:N+Ng),           intent(in)  :: eEf, dlnpsi
+      real*8, dimension(1-Ng:N+Ng),           intent(in)  :: geff
       real*8, dimension(1-Ng:N+Ng),           intent(out) :: nX, nXold
       real*8, dimension(1-Ng:N+Ng),           intent(out) :: DcoX, GcoX
 
@@ -4178,9 +4223,10 @@
                                          alXs(1:top+1),                    &
                                          n_hcar, yH, hcar_Z, hcar_m,       &
                                          hcar_alpha, DcoX)
-            ! Same ambipolar field as helium, computed from the electron
-            ! pressure gradient (memo 3a) -- NOT the hydrogen-plasma constant
-            ! eE = m_H g/2 this loop used to assume, which is wrong wherever
+            ! Same settling acceleration g_eff = -(1/rho) dp/dr as helium
+            ! (settling_coefficient), and the same ambipolar field, computed
+            ! from the electron pressure gradient (memo 3a) rather than the
+            ! hydrogen-plasma constant eE = m_H g/2, which is wrong wherever
             ! helium or the metals carry a significant share of the electrons.
             ! The partner mass is the mean HYDROGEN mass per carrier: a metal
             ! atom settles against the particles it collides with, which are H
@@ -4191,7 +4237,7 @@
             ! the hydrogen carriers, n_X/n_1c, while the transported variable
             ! is the mixing ratio n_X/n_H (module header).
             do j = 1-Ng, N+Ng
-               GcoX(j) = ((mX - mcarH(j))*mu*(Dphi(r(j))*v0*v0/R0)   &
+               GcoX(j) = ((mX - mcarH(j))*mu*geff(j)                 &
                           - (zbX(j) - zb1(j))*eEf(j))/(kb_erg*TK(j))      &
                          - dlnpsi(j)
             enddo
@@ -5123,7 +5169,11 @@
       integer, dimension(1-Ng:N+Ng):: idom
       real*8, dimension(0:N)       :: Fadv, Jdif, n_el, m_one
       real*8  :: area, adv, adv_H, dmf, Df, Dnf, sv_exc
-      real*8, dimension(1:N) :: FH_win, FHe_win, M_win, r_win
+      real*8, dimension(1:N) :: FH_win, FHe_win, M_win, r_win, FHn_win
+      ! The share of component 1's mass that is hydrogen nuclei, by cell
+      ! (mixture_mass_split), taken on the upwind side of each face.
+      real*8, dimension(1-Ng:N+Ng) :: hshare
+      real*8  :: hs_face
       integer :: j, uu, is, it, nwin, sv_bnd
 
       if (.not. thereis_He) return
@@ -5185,6 +5235,7 @@
          '[g/cm2/s] F_adv[g/cm2/s] F_He[g/s] F_H[g/s]'//                  &
          ' Mdot_face[g/s] dmeff_face'//                                   &
          ' D_eff[cm2/s] D_neutral[cm2/s] D_eff/D_neutral dominant_pair'
+      hshare = m_H_amu*nucH/max(mass1, 1.0d-300)   ! the split made above
       do j = 1, N-1
          area  = 4.0d0*pi*rep(j)**2
          adv   = Fadv(j)
@@ -5207,25 +5258,36 @@
             FHe_win(nwin) = area*(adv + Jdif(j))
             FH_win(nwin)  = area*(adv_H - Jdif(j))
             M_win(nwin)   = area*Frho_f(j)
+            ! The metals of component 1 move with its hydrogen (they
+            ! share its advective and diffusive flux in this binary
+            ! operator), so the nucleus part is the upwind cell's share.
+            if (Frho_f(j) .ge. 0.0d0) then
+               hs_face = hshare(j)
+            else
+               hs_face = hshare(j+1)
+            endif
+            FHn_win(nwin) = hs_face*FH_win(nwin)
          endif
       enddo
       close(uu)
 
       if (lap_in_use) call reduce_element_flux_windows(nwin, r_win, FH_win,&
-                                                       FHe_win, M_win)
+                                                       FHe_win, M_win,    &
+                                                       FHn_win)
 
       end subroutine write_element_flux_profile
 
       ! ------------------------------------------------------------------ !
 
-      subroutine reduce_element_flux_windows(nf, r_f, FH_f, FHe_f, M_f)
+      subroutine reduce_element_flux_windows(nf, r_f, FH_f, FHe_f, M_f,  &
+                                             FHn_f)
       ! Reduce the face-resolved elemental fluxes to one median and one
       ! relative spread over each of the two windows described above, and
       ! leave them in the lower_atmosphere_profile module for
       ! write_resolved_config.  Nothing here recomputes a flux: it only
       ! selects faces and takes order statistics of the state's own fluxes.
       integer, intent(in) :: nf
-      real*8, dimension(nf), intent(in) :: r_f, FH_f, FHe_f, M_f
+      real*8, dimension(nf), intent(in) :: r_f, FH_f, FHe_f, M_f, FHn_f
       real*8, dimension(nf) :: a
       real*8  :: r_lo, r_hi, sprd, med
       integer :: i, i1, i2, n
@@ -5279,6 +5341,8 @@
          call median_and_spread(a(1:n), lap_FHe_median, lap_FHe_spread)
          a(1:n) = M_f(i1:i2)
          call median_and_spread(a(1:n), lap_Mdot_median, lap_Mdot_spread)
+         a(1:n) = FHn_f(i1:i2)
+         call median_and_spread(a(1:n), lap_FHnuc_median, lap_FHnuc_spread)
       endif
 
       ! ---- (b) steady-flux window, r >= r_esc --------------------------- !
@@ -5303,6 +5367,9 @@
          a(1:n) = M_f(i1:i2)
          call median_and_spread(a(1:n), lap_steady_Mdot_median,           &
                                         lap_steady_Mdot_spread)
+         a(1:n) = FHn_f(i1:i2)
+         call median_and_spread(a(1:n), lap_steady_FHnuc_median,          &
+                                        lap_steady_FHnuc_spread)
       endif
 
       end subroutine reduce_element_flux_windows

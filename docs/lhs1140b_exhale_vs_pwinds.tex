@@ -55,6 +55,8 @@ paper's p-winds model; the literature sections; the inputs
 (Sect.~\ref{sec:inputs}).}}
 \end{center}
 
+\noindent\textbf{Stale (2026-10-07).} The Knudsen numbers, $\mathrm{Kn}_{\rm bulk}=0.1$ radii and exobase radii in this passage were computed before the resonant H$^+$\,+\,H and He$^+$\,+\,He momentum-transfer coefficients entered \texttt{collisional\_validity.py} (Update\_EXHALE\_stage3 section 110). On the 102 stored LHS\,1140\,b states the $\mathrm{Kn}_{\rm bulk}=0.1$ radius moves out by 1.0--5.9\,\%, the exobase out by 0.4--5.7\,\% and the largest Kn down by 0--16\,\%; $\mathrm{Kn}(\mathrm{H_2})$ and the sonic point do not move and no verdict changes. Not re-measured for the states quoted here.
+
 \begin{center}
 \fbox{\parbox{0.92\textwidth}{\small\textbf{Earlier banner (2026-09-25,
 kept as the record).} \textbf{Stale since 2026-09-24.} Every EXHALE
@@ -71,6 +73,19 @@ EXHALE side is being re-solved, the molecular $K_{zz}=10^{9}$ family first.}}
 
 \section{Goal, and the answer of 2026-10}
 \label{sec:oct2026}
+
+\noindent\fbox{\parbox{0.97\textwidth}{\textbf{STALE (2026-10-07).} Every
+energy-coupled molecular state of this section and of section~\ref{sec:oct2026}'s
+sequels (the He/H scan, the EUV match of Figs.~5--7, the ascent to
+$\mathrm{He/H} = 10^{5}$) was computed with a code defect found on
+2026-10-07: with the oxygen chemistry off, the transported H$_2$ row kept the
+loss O\,+\,H$_2 \to$ OH\,+\,H without its production, reverse or reaction
+heat (\texttt{diffusive\_photochemistry.f90}, \texttt{oxygen\_carrier\_rows}
+called without the oxygen-chemistry guard). It made 72--95\% of the H$_2$
+destruction, and the resulting H\,+\,H\,+\,M recombination heat was
+63--69\% of the wind's heating (\texttt{md/AN\_matching\_surface\_diagnosis\_20261007.md}).
+The numbers below are kept as the record of those runs and are being
+recomputed with the corrected code; they are not results.}}
 
 The question is whether a wind that is solved, rather than assumed,
 reproduces the measured He\,\textsc{i} $10830$\,\AA{} transit line of
@@ -206,6 +221,8 @@ $T_{\rm match}$ [K] & $F_{\rm cond}$ & $r_{\rm Kn}$ [$R_p$] & $r_{\rm s}$ [$R_p$
 \end{tabular}
 \end{table}
 
+\noindent\textbf{Stale (2026-10-07).} The Knudsen numbers, $\mathrm{Kn}_{\rm bulk}=0.1$ radii and exobase radii in this passage were computed before the resonant H$^+$\,+\,H and He$^+$\,+\,He momentum-transfer coefficients entered \texttt{collisional\_validity.py} (Update\_EXHALE\_stage3 section 110). On the 102 stored LHS\,1140\,b states the $\mathrm{Kn}_{\rm bulk}=0.1$ radius moves out by 1.0--5.9\,\%, the exobase out by 0.4--5.7\,\% and the largest Kn down by 0--16\,\%; $\mathrm{Kn}(\mathrm{H_2})$ and the sonic point do not move and no verdict changes. Not re-measured for the states quoted here.
+
 \begin{figure}[htbp]\centering
 \includegraphics[width=0.75\textwidth]{figures/lhs1140b_oct2026_ew_vs_heh.png}
 \caption{Width-matched equivalent width against the deep He/H, solution
@@ -247,6 +264,8 @@ $\mathrm{He/H} = 1.2$--$0.65$; update log section 90), which is why the
 cooling-to-space transfer is used. What that transfer changes is small:
 $+4.4$ to $+6.2$\,K in $T_{\rm match}$ at $\mathrm{He/H} = 1.0$--$0.65$,
 and $0.0009$ in the width-matched equivalent width at $1.5$.
+
+\noindent\textbf{Stale (2026-10-07).} The Knudsen numbers, $\mathrm{Kn}_{\rm bulk}=0.1$ radii and exobase radii in this passage were computed before the resonant H$^+$\,+\,H and He$^+$\,+\,He momentum-transfer coefficients entered \texttt{collisional\_validity.py} (Update\_EXHALE\_stage3 section 110). On the 102 stored LHS\,1140\,b states the $\mathrm{Kn}_{\rm bulk}=0.1$ radius moves out by 1.0--5.9\,\%, the exobase out by 0.4--5.7\,\% and the largest Kn down by 0--16\,\%; $\mathrm{Kn}(\mathrm{H_2})$ and the sonic point do not move and no verdict changes. Not re-measured for the states quoted here.
 
 \subsection{The line against the observation}
 \label{sec:oct_line}
@@ -386,6 +405,8 @@ that the cooling-to-space transfer neglects moves $T_{\rm match}$ by
 $0.64$\,K. The NH$_3$ $\nu_2$ + H$_2$ rate is unmeasured and only
 bracketed. The tide is an interval, not resolved. The width kernel is not
 a computed term.
+
+\noindent\textbf{Stale (2026-10-07).} The Knudsen numbers, $\mathrm{Kn}_{\rm bulk}=0.1$ radii and exobase radii in this passage were computed before the resonant H$^+$\,+\,H and He$^+$\,+\,He momentum-transfer coefficients entered \texttt{collisional\_validity.py} (Update\_EXHALE\_stage3 section 110). On the 102 stored LHS\,1140\,b states the $\mathrm{Kn}_{\rm bulk}=0.1$ radius moves out by 1.0--5.9\,\%, the exobase out by 0.4--5.7\,\% and the largest Kn down by 0--16\,\%; $\mathrm{Kn}(\mathrm{H_2})$ and the sonic point do not move and no verdict changes. Not re-measured for the states quoted here.
 
 \subsection{What changed from the 2026-09 answer}
 \label{sec:oct_change}
@@ -1046,6 +1067,8 @@ $0.68$--$0.71$ at $29\,R_p$, while the He\,$10830$ layer at
 $1.1$--$3\,R_p$ sits at $\mathrm{Kn} \le 0.012$ and the line analysis is
 untouched.
 
+\noindent\textbf{Stale (2026-10-07).} The Knudsen numbers, $\mathrm{Kn}_{\rm bulk}=0.1$ radii and exobase radii in this passage were computed before the resonant H$^+$\,+\,H and He$^+$\,+\,He momentum-transfer coefficients entered \texttt{collisional\_validity.py} (Update\_EXHALE\_stage3 section 110). On the 102 stored LHS\,1140\,b states the $\mathrm{Kn}_{\rm bulk}=0.1$ radius moves out by 1.0--5.9\,\%, the exobase out by 0.4--5.7\,\% and the largest Kn down by 0--16\,\%; $\mathrm{Kn}(\mathrm{H_2})$ and the sonic point do not move and no verdict changes. Not re-measured for the states quoted here.
+
 \medskip
 \noindent One further caveat attaches to the composition. Above about
 $4\,R_p$ the ionization state of this wind is frozen into the flow. The
@@ -1270,6 +1293,8 @@ runs. The exobase of the extended solutions sits at $29.0\,R_p$, below the
 critical point, so the continuum model fixes its own topology in gas it
 cannot describe. The insensitivity of the mass flux is a statement about the
 discrete problem and not a physical validation.
+
+\noindent\textbf{Stale (2026-10-07).} The Knudsen numbers, $\mathrm{Kn}_{\rm bulk}=0.1$ radii and exobase radii in this passage were computed before the resonant H$^+$\,+\,H and He$^+$\,+\,He momentum-transfer coefficients entered \texttt{collisional\_validity.py} (Update\_EXHALE\_stage3 section 110). On the 102 stored LHS\,1140\,b states the $\mathrm{Kn}_{\rm bulk}=0.1$ radius moves out by 1.0--5.9\,\%, the exobase out by 0.4--5.7\,\% and the largest Kn down by 0--16\,\%; $\mathrm{Kn}(\mathrm{H_2})$ and the sonic point do not move and no verdict changes. Not re-measured for the states quoted here.
 
 \subsection{The composition above 4\,$R_p$}
 \label{sec:frozencomp}
@@ -4683,6 +4708,9 @@ these numbers come from also carry the caveats of Sect.~\ref{sec:validity} in
 full: their domain stops inside the critical point, and nothing in their
 profiles above about $10\,R_p$ is usable. The He\,10830 layer is not
 affected: it sits at $\mathrm{Kn} \le 0.011$.
+
+\noindent\textbf{Stale (2026-10-07).} The Knudsen numbers, $\mathrm{Kn}_{\rm bulk}=0.1$ radii and exobase radii in this passage were computed before the resonant H$^+$\,+\,H and He$^+$\,+\,He momentum-transfer coefficients entered \texttt{collisional\_validity.py} (Update\_EXHALE\_stage3 section 110). On the 102 stored LHS\,1140\,b states the $\mathrm{Kn}_{\rm bulk}=0.1$ radius moves out by 1.0--5.9\,\%, the exobase out by 0.4--5.7\,\% and the largest Kn down by 0--16\,\%; $\mathrm{Kn}(\mathrm{H_2})$ and the sonic point do not move and no verdict changes. Not re-measured for the states quoted here.
+
 \subsection{The outer region a converged wind inherits}
 \label{sec:outerinherit}
 
@@ -4786,6 +4814,8 @@ Sect.~\ref{sec:validity}: that is the three-case range of
 Table~\ref{tab:validity}, whose cases are two runs with a prescribed base and
 the flux-consistent run at $2.09$. For this pair it is $11.81\,R_p$ for the
 one reached in one jump and $14.73$ for the control.
+
+\noindent\textbf{Stale (2026-10-07).} The Knudsen numbers, $\mathrm{Kn}_{\rm bulk}=0.1$ radii and exobase radii in this passage were computed before the resonant H$^+$\,+\,H and He$^+$\,+\,He momentum-transfer coefficients entered \texttt{collisional\_validity.py} (Update\_EXHALE\_stage3 section 110). On the 102 stored LHS\,1140\,b states the $\mathrm{Kn}_{\rm bulk}=0.1$ radius moves out by 1.0--5.9\,\%, the exobase out by 0.4--5.7\,\% and the largest Kn down by 0--16\,\%; $\mathrm{Kn}(\mathrm{H_2})$ and the sonic point do not move and no verdict changes. Not re-measured for the states quoted here.
 
 Putting the corrected radii together: for the solution being discarded the
 whole differing region lies outside its own exobase, where $\mathrm{Kn} > 1$;
@@ -4991,6 +5021,8 @@ in Figs.~\ref{fig:pccol} and~\ref{fig:pccol2}.}
 
 \stalenote{Changed. The 2026-09 solutions had the critical point at $40\,R_p$, outside the domain, and the line-forming layer at $\mathrm{Kn} \le 0.012$. The 2026-10 states have the sonic point inside the domain ($25.7$--$28.8\,R_p$), and $31.4$ per cent ($\mathrm{He/H} = 0.65$, width matched) to $39.8$ per cent ($2.09$, unbroadened) of the equivalent width forms beyond $\mathrm{Kn}_{\rm bulk} = 0.1$ (Sect.~\ref{sec:oct_budget}).}
 
+\noindent\textbf{Stale (2026-10-07).} The Knudsen numbers, $\mathrm{Kn}_{\rm bulk}=0.1$ radii and exobase radii in this passage were computed before the resonant H$^+$\,+\,H and He$^+$\,+\,He momentum-transfer coefficients entered \texttt{collisional\_validity.py} (Update\_EXHALE\_stage3 section 110). On the 102 stored LHS\,1140\,b states the $\mathrm{Kn}_{\rm bulk}=0.1$ radius moves out by 1.0--5.9\,\%, the exobase out by 0.4--5.7\,\% and the largest Kn down by 0--16\,\%; $\mathrm{Kn}(\mathrm{H_2})$ and the sonic point do not move and no verdict changes. Not re-measured for the states quoted here.
+
 
 Everything above reads the solutions as continuum solutions. A flow is a
 hydrodynamic wind only where the gas is collisional on the scale over which
@@ -5093,6 +5125,8 @@ validated \\
 \end{tabular}
 \end{table}
 
+\noindent\textbf{Stale (2026-10-07).} The Knudsen numbers, $\mathrm{Kn}_{\rm bulk}=0.1$ radii and exobase radii in this passage were computed before the resonant H$^+$\,+\,H and He$^+$\,+\,He momentum-transfer coefficients entered \texttt{collisional\_validity.py} (Update\_EXHALE\_stage3 section 110). On the 102 stored LHS\,1140\,b states the $\mathrm{Kn}_{\rm bulk}=0.1$ radius moves out by 1.0--5.9\,\%, the exobase out by 0.4--5.7\,\% and the largest Kn down by 0--16\,\%; $\mathrm{Kn}(\mathrm{H_2})$ and the sonic point do not move and no verdict changes. Not re-measured for the states quoted here.
+
 \noindent The wind of LHS\,1140\,b does reach a critical point, and the
 domain stops short of it. All three solutions stay subsonic out to
 $29\,R_p$, at $\mathcal{M}_{\max} = 0.34$--$0.37$, so inside the domain the
@@ -5115,6 +5149,8 @@ cannot describe. The escape rates quoted throughout this memo,
 $\log_{10}\dot M \simeq 7.8$--$7.9$, are unvalidated in the collisional
 sense, and their insensitivity to the domain size is a statement about the
 discrete problem rather than a physical validation.
+
+\noindent\textbf{Stale (2026-10-07).} The Knudsen numbers, $\mathrm{Kn}_{\rm bulk}=0.1$ radii and exobase radii in this passage were computed before the resonant H$^+$\,+\,H and He$^+$\,+\,He momentum-transfer coefficients entered \texttt{collisional\_validity.py} (Update\_EXHALE\_stage3 section 110). On the 102 stored LHS\,1140\,b states the $\mathrm{Kn}_{\rm bulk}=0.1$ radius moves out by 1.0--5.9\,\%, the exobase out by 0.4--5.7\,\% and the largest Kn down by 0--16\,\%; $\mathrm{Kn}(\mathrm{H_2})$ and the sonic point do not move and no verdict changes. Not re-measured for the states quoted here.
 
 The p-winds retrieval sits in the same regime. Its isothermal Parker solution
 places its sonic point at $8$--$9.5\,R_p$, where $\mathrm{Kn}_{\rm bulk}$ is
@@ -5142,6 +5178,8 @@ four to five orders of magnitude more tightly and the electrons three.}
 \label{fig:knudsen}
 \end{figure}
 
+\noindent\textbf{Stale (2026-10-07).} The Knudsen numbers, $\mathrm{Kn}_{\rm bulk}=0.1$ radii and exobase radii in this passage were computed before the resonant H$^+$\,+\,H and He$^+$\,+\,He momentum-transfer coefficients entered \texttt{collisional\_validity.py} (Update\_EXHALE\_stage3 section 110). On the 102 stored LHS\,1140\,b states the $\mathrm{Kn}_{\rm bulk}=0.1$ radius moves out by 1.0--5.9\,\%, the exobase out by 0.4--5.7\,\% and the largest Kn down by 0--16\,\%; $\mathrm{Kn}(\mathrm{H_2})$ and the sonic point do not move and no verdict changes. Not re-measured for the states quoted here.
+
 \paragraph{Which species sets it.} Neutral hydrogen decides the bulk number,
 and the line-forming layer is unaffected. In the critical region of the
 well-mixed solution the species split is H\,\textsc{i} $1.03$,
@@ -5158,6 +5196,8 @@ The unvalidated quantity is the mass flux of the wind solution. The
 absorption that Sects.~\ref{sec:ew}--\ref{sec:width} measure, and the
 $22$\,km\,s$^{-1}$ of missing width, are asked for at radii where the
 continuum description is secure.
+
+\noindent\textbf{Stale (2026-10-07).} The Knudsen numbers, $\mathrm{Kn}_{\rm bulk}=0.1$ radii and exobase radii in this passage were computed before the resonant H$^+$\,+\,H and He$^+$\,+\,He momentum-transfer coefficients entered \texttt{collisional\_validity.py} (Update\_EXHALE\_stage3 section 110). On the 102 stored LHS\,1140\,b states the $\mathrm{Kn}_{\rm bulk}=0.1$ radius moves out by 1.0--5.9\,\%, the exobase out by 0.4--5.7\,\% and the largest Kn down by 0--16\,\%; $\mathrm{Kn}(\mathrm{H_2})$ and the sonic point do not move and no verdict changes. Not re-measured for the states quoted here.
 
 \paragraph{The energy equation.} The single-temperature energy equation is
 not where the description fails. Electron-ion energy coupling is fast
@@ -5215,6 +5255,9 @@ wind rather than an evaporating atmosphere.
       constrains what the escape rate may be quoted as, not what the line
       says.
 \end{itemize}
+
+\noindent\textbf{Stale (2026-10-07).} The Knudsen numbers, $\mathrm{Kn}_{\rm bulk}=0.1$ radii and exobase radii in this passage were computed before the resonant H$^+$\,+\,H and He$^+$\,+\,He momentum-transfer coefficients entered \texttt{collisional\_validity.py} (Update\_EXHALE\_stage3 section 110). On the 102 stored LHS\,1140\,b states the $\mathrm{Kn}_{\rm bulk}=0.1$ radius moves out by 1.0--5.9\,\%, the exobase out by 0.4--5.7\,\% and the largest Kn down by 0--16\,\%; $\mathrm{Kn}(\mathrm{H_2})$ and the sonic point do not move and no verdict changes. Not re-measured for the states quoted here.
+
 \section{Status against the goal (2026-09-16)}
 \label{sec:oldstatus}
 
@@ -5373,6 +5416,8 @@ The line is not reproduced. What stands:
       read from a molecular group here. What they wait on is the step that
       lets the transported H$_2$ settle.
 \end{itemize}
+
+\noindent\textbf{Stale (2026-10-07).} The Knudsen numbers, $\mathrm{Kn}_{\rm bulk}=0.1$ radii and exobase radii in this passage were computed before the resonant H$^+$\,+\,H and He$^+$\,+\,He momentum-transfer coefficients entered \texttt{collisional\_validity.py} (Update\_EXHALE\_stage3 section 110). On the 102 stored LHS\,1140\,b states the $\mathrm{Kn}_{\rm bulk}=0.1$ radius moves out by 1.0--5.9\,\%, the exobase out by 0.4--5.7\,\% and the largest Kn down by 0--16\,\%; $\mathrm{Kn}(\mathrm{H_2})$ and the sonic point do not move and no verdict changes. Not re-measured for the states quoted here.
 
 \noindent Four axes have now been walked: the assumed XUV spectrum, the
 mixing assumption with its eddy coefficient, composition itself, and what is

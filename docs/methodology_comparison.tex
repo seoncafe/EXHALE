@@ -330,8 +330,9 @@ left off & \Lya, recombination, free-free, CHIANTI metal lines with
 fine-structure line trapping, \Hth\ infrared \\
 \Hth\ cooling form & Black (1981) (code) & Miller et al.\ (2013) & - &
 Miller et al.\ (2013), LTE, emission into vacuum; zero above 5000\,K &
-Miller et al.\ (2013) with the non-LTE departure factor; net exchange with a
-diluted base field, \emph{opt-in} \\
+MiZATeP cooling function (Mizus et al.\ 2017; the Miller et al.\ 2013 LTE fit
+until 2026-10-10) with the Miller et al.\ (2013) non-LTE departure factor; net
+exchange with a diluted base field, \emph{opt-in} \\
 He($2^3$S) 10830 & Not a focus & In-loop non-LTE & Post-processed
 (Yan et al.\ 2022) & \textbf{Not in the network} & In-loop non-LTE (default
 on) $+$ \texttt{EXHALE\_transit.py} \\
@@ -643,9 +644,17 @@ which is why the module forbids testing the pair against detailed balance.
 \subsection{\texorpdfstring{\Hth}{H3+} infrared cooling}
 \label{sec:h3p}
 
-Both codes take the cooling function from Miller, Stallard, Tennyson \& Melin
-(2013), and \EXHALE's 800--1800~K coefficients are the same seven numbers as
-Frelikh's Equation~(13). Three things differ.
+Frelikh takes the cooling function from Miller, Stallard, Tennyson \& Melin
+(2013), and so did \EXHALE\ until 2026-10-10 (its 800--1800~K coefficients
+were the same seven numbers as Frelikh's Equation~(13)). \EXHALE\ now takes
+the LTE emission from the MiZATeP cooling function of Mizus et al.\ (2017,
+MNRAS 468, 1717), tabulated at 1~K from 20 to 5000~K: the Miller fit lies
+above it by 1.10, 1.48, 1.89 and 2.1 at 900, 1500, 2000 and 3000~K, and the
+NMT line list Miller et al.\ state they summed agrees with MiZATeP to 1\,\%
+over 300--2000~K (update log stage~3 section~132;
+\texttt{md/h3p\_cooling\_cause\_20261010.md}). So at the temperatures of
+Frelikh's wind the two codes now differ in the cooling function itself. Three
+further things differ.
 
 First, \textbf{Frelikh radiates into vacuum and \EXHALE\ can exchange with a
 field}. Frelikh's volumetric rate is
@@ -664,9 +673,10 @@ the key \texttt{Base IR field}, which defaults to off}, so \EXHALE's default
 behavior is Frelikh's.
 
 Second, \EXHALE\ carries the \textbf{non-LTE departure factor}
-$s(T, n_{\Htwo})$ of Miller et al.'s Table~6 and all four published
-temperature segments (30--300, 300--800, 800--1800, 1800--5000~K); Frelikh is
-pure LTE and implements only the upper two, so its \Hth\ cooling is undefined
+$s(T, n_{\Htwo})$ of Miller et al.'s Table~6 and an LTE emission defined
+from 20 to 5000~K (the MiZATeP table; before 2026-10-10 all four published
+Miller segments, 30--300, 300--800, 800--1800, 1800--5000~K); Frelikh is pure
+LTE and implements only the upper two Miller segments, so its \Hth\ cooling is undefined
 below 800~K and is set to zero above 5000~K.
 
 Third, and recorded here because it will confuse anyone reading the paper
@@ -830,9 +840,12 @@ a flux limiter.''
 The bearing on \EXHALE\ is that \EXHALE\ already owns a less blunt instrument
 for the same problem. \texttt{Base IR field} gives the \Hth\ band a radiative
 equilibrium fixed point at $T_{\rm rad} = 1140$~K, $W_{\rm dil} = 1/2$, i.e.\
-975.4~K, instead of letting it run the layer down; it is off by default
+958.5~K on the MiZATeP cooling function (975.4~K with the Miller et al.\ 2013
+fit used until 2026-10-10; header of \texttt{h3p\_cooling.f90}), instead of
+letting it run the layer down; it is off by default
 (Section~\ref{sec:h3p}). The reservation is that the temperature trough
-measured in the molecular gate cases reaches 865~K, \emph{below} that fixed
+measured in the molecular gate cases (before the cooling function changed;
+not re-measured since) reaches 865~K, \emph{below} that fixed
 point, so \Hth\ alone does not account for it and the other channels in that
 region have not been separated.
 
@@ -1223,8 +1236,9 @@ unresolved rather than as converged.
 H$_2$, H$_2^+$, H$_3^+$ and HeH$^+$ are unknowns of the same coupled system as
 H, He and the metals (\texttt{System\_HeH\_mol.f90},
 \texttt{System\_HeH\_mol\_metals.f90}), so the molecular and metal blocks share
-one electron density. H$_3^+$ infrared cooling follows Miller et al.\ (2013),
-in LTE with the non-LTE departure factor and with absorption of the ambient
+one electron density. H$_3^+$ infrared cooling is the MiZATeP LTE cooling
+function (Mizus et al.\ 2017; the Miller et al.\ 2013 fit until 2026-10-10)
+with the Miller et al.\ (2013) non-LTE departure factor and with absorption of the ambient
 infrared field so the rate returned is the net one
 (\texttt{lower\_atmosphere/h3p\_cooling.f90}). H$_2$ photodissociation in the
 Lyman--Werner bands uses Draine \& Bertoldi (1996) self-shielding
@@ -1407,7 +1421,7 @@ thermalized, which is what licenses the optically thin \Lya\ cooling rate;
 repeating it from deeper in the molecular layer gives 36/27/37 and they say so.
 Their Section~3.4 checks \Hth\ optical thinness against ExoCross cross
 sections at the computed column. \EXHALE\ has the ingredients for both (the
-LaRT coupling for the first, the Miller et al.\ data for the second), and
+LaRT coupling for the first, the \Hth\ cooling data for the second), and
 uses neither as a check on its own closures.
 
 \section{What was not verified}

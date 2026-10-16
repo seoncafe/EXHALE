@@ -267,20 +267,29 @@ operators and counted once in each.
 the molecular system, the oxygen, metal and charge-exchange terms included,
 is divided by the chemical turnover of its element at a composition $x_0$,
 \begin{equation}
-r_i = \frac{P_i - L_i}{G_E(x_0)},\qquad G_E = \sum_{j\in E}\,(P_j + L_j),
+r_i = \frac{P_i - L_i}{G_E(x_0)},\qquad G_E = \sum_{j\in E,\ j\ \mathrm{kinetic}}\,(P_j + L_j),
 \label{eq:ion:element_turnover}
 \end{equation}
 with $P_j+L_j$ the sum of the magnitudes of the terms of row $j$ and $E$ the
 element the row's species carries (hydrogen: H$^+$, H$_2$, H$_2^+$, H$_3^+$,
 HeH$^+$; helium: He$^+$, He$^{++}$, He($2^3$S); each metal its two stage
-rows, oxygen together with OH and H$_2$O; \texttt{element\_turnover\_reciprocal},
+rows, oxygen together with OH and H$_2$O: the acceptance groups of
+\texttt{chemical\_row\_layout.f90}; \texttt{turnover\_or\_bound\_reciprocal},
 \texttt{System\_HeH\_mol.f90}). $x_0$ is the starting point of each solve and
 the scale is held through it (\texttt{set\_element\_turnover\_scales},
 \texttt{System\_HeH\_mol\_metals.f90}): a scale that followed the iterate
 would bound every row by one and leave the solve no gradient back from an
 iterate far outside the simplex, which on the cold start of the
-\texttt{mol\_metals} regression gate left 214 cells without a root. A
-candidate is judged with $x_0$ the candidate itself. A row that carries no reaction at the
+\texttt{mol\_metals} regression gate left 214 cells without a root. The
+groups and the kinetic sum are those of the acceptance measure below: a
+constraint row of the cell (a transported fraction or He($2^3$S) level, the
+carried or reservoir H$_2$ partition, the carried oxygen carriers, an identity
+row) replaces a kinetic balance that is not an equation of the cell, so its
+gross rate enters no $G_E$, and the row itself is written $x - x_{\rm fix}$
+after the scaling (\texttt{mark\_constraint\_rows\_of\_cell},
+\texttt{chemical\_row\_layout.f90}; until 2026-10-07 the solve scale counted
+the replaced balances, update log stage~3 section~116). The judgment of a
+candidate uses the same turnover at the candidate itself. A row that carries no reaction at the
 evaluated state (an absent element's identity row) keeps the reciprocal of the
 upper bound with every species at the whole of its element, which is 1 there.
 The blocks of one residual vector differ by the element abundances, and the
@@ -300,7 +309,7 @@ in $10^6$ of itself, which neither matters to the gas nor is resolved by a
 solve whose unknowns are fractions of order one. Against $G_E$ the error of a
 species counts as the nucleus flux it misplaces, which is what the
 acceptance tolerance \texttt{ieq\_res\_tol} $=10^{-6}$ is stated in
-(\texttt{normalized\_reaction\_residual}). The zeros of the rows are
+(\texttt{normalized\_reaction\_residual}, below). The zeros of the rows are
 unchanged. The constrained continuation below keeps the bound on its own
 path; the candidate it returns is judged by the same measure.
 
@@ -527,11 +536,43 @@ branch.
 
 \paragraph{The solver.} \texttt{solve\_ieq} (\texttt{newton\_solver.f90})
 tries a damped Newton iteration with an \emph{analytic} Jacobian first
-(\texttt{newton\_dense}: backtracking Armijo line search on
-$\|f\|_2$, at most 60 iterations and 20 line-search steps), and on any
-failure restores the entry guess and calls the in-tree MINPACK
-\texttt{hybrd1} from the same guess, so the result can never be worse than
-the forward-difference solve. Each residual routine ships its own exact
+(\texttt{newton\_dense}, at most 60 iterations and 20 halvings of the step),
+and on failure restores the entry guess, calls the in-tree MINPACK
+\texttt{hybrd1} from the same guess and continues the Newton from
+\texttt{hybrd1}'s result. The systems without an analytic Jacobian (the
+molecular and the He~$2^3$S layouts) are solved by \texttt{hybrd1} followed
+by the same Newton with a forward-difference Jacobian
+(\texttt{hybrd1\_resolving\_every\_unknown}). The solve has converged when
+the Newton correction $\delta x=-J^{-1}f$ at the returned state resolves
+\emph{every} unknown relative to its own magnitude,
+%
+\begin{equation}
+  |\delta x_i| \le \tau\,|x_i| + \epsilon \qquad\text{for every } i,
+  \label{eq:ion:stop}
+\end{equation}
+%
+with $\tau=\sqrt{\epsilon_{\rm mach}}=1.5\times10^{-8}$ the tolerance of the
+sweep (\texttt{EXHALE\_IEQ\_TOL} names another) and $\epsilon=2.2\times
+10^{-16}$ the resolution of a fraction at its element total, below which no
+change of a fraction moves a sum of its element (the resolution floor of the
+acceptance measure below). The correction is the Newton estimate of the
+remaining error of each unknown, so a state that meets
+Eq.~\eqref{eq:ion:stop} is resolved to about $\tau^2$ of each unknown, far
+inside the acceptance of every kinetic row. A trial step $x+\lambda\,\delta x$
+($\lambda$ halved from 1) is taken when it lowers $\|f\|_2$ (Armijo) or
+when the simplified correction at the trial point, $J^{-1}f(x+\lambda\,\delta
+x)$ with the Jacobian of $x$ and measured relative to each unknown, falls
+below $(1-\lambda/4)$ of that of the step; the second test is what lets a
+trace unknown be resolved once the large rows sit at their rounding and the
+residual norm, which they dominate, can no longer decrease. Neither stop that
+stood before was a statement about each unknown: an absolute step of
+$10^{-11}(1+\max_i|x_i|)$ left a stage whose root is of that order at a
+relative error of order one, and \texttt{hybrd1}'s relative step on the
+scaled norm of all unknowns, which the $O(1)$ fractions dominate, left
+H$_3^+$ in molecular gas out of balance by up to a few per cent of its own
+gross rate (update log stage~3 sections 116 and 120: the H$_3^+$ non-roots of
+\texttt{hp\_zero\_seed}, 11992 over the run, are all gone).
+Each residual routine ships its own exact
 Jacobian; the photoionization rates are constants of the solve, so those
 Jacobians are exact for the system actually solved
 (Sec.~\ref{sec:radiation:rates}). Run-wide counters record how many cells each
@@ -565,6 +606,136 @@ in blocks of a fixed even length (\texttt{xuv\_rate\_block},
 \texttt{util\_ion\_eq.f90}), so that the vectorized transcendental calls pair
 the same lanes at any thread count.
 
+\paragraph{The acceptance measure.} A candidate composition is a root when it
+lies inside the element simplex and the normalized reaction residual
+$\max_i m_i$ of the system the cell solve used, evaluated at the candidate,
+is at or below \texttt{ieq\_res\_tol} $=10^{-6}$
+(\texttt{normalized\_reaction\_residual}, \texttt{ionization\_equilibrium.f90}).
+Every row of every layout (H only, H/He, H/He with He($2^3$S), each with or
+without metals, molecular, molecular with metals and the oxygen chemistry) has
+a declared kind and acceptance group (\texttt{chemical\_row\_layout.f90}, which
+also carries the nuclear stoichiometry of every species, kept apart from the
+grouping: HeH$^+$ carries H and He but is measured against hydrogen, OH and
+H$_2$O carry H and O and are measured against oxygen). A \emph{kinetic} row
+(a species balance, a stage-boundary flow, the summed He\,I balance of the
+He($2^3$S) systems) is measured against the chemical turnover of its group at
+the candidate,
+\begin{equation}
+m_i = \frac{|P_i - L_i|}{G_E},\qquad G_E = \sum_{j\in E,\ j\ \mathrm{kinetic}} (P_j + L_j),
+\label{eq:ion:acceptance}
+\end{equation}
+with the gross rates $P_j+L_j$ written by the row routines themselves from the
+same factors as the rows, at the candidate's own composition and electron
+density, charge exchange included (\texttt{ionization\_row\_gross}). The
+groups are hydrogen, helium and each metal element; in the atomic layouts H$^+$
+is the only hydrogen row, so its measure is its imbalance over its own gross
+rate, and the helium group holds the He\,I$\leftrightarrow$He\,II (or summed
+He\,I), He\,II$\leftrightarrow$He\,III and He($2^3$S) rows. A
+\emph{constraint} row (an absent element's identity row, the unused X$^{++}$
+of a two-stage element, a transported fraction $x-x_{\rm fix}$, the imposed
+reservoir partition of a lower ghost) is dimensionless and has no chemical
+turnover: it is judged in its own units against \texttt{constraint\_row\_tol}
+$=10^{-6}$ of the element's nuclei and never enters a $G_E$. A row or a
+turnover that is not a finite number makes the measure NaN, and a kinetic row
+of a group with no turnover and a nonzero imbalance makes it \texttt{huge()}
+(a finite non-root above \texttt{ieq\_nonroot\_res\_cap}, so class 6); a group
+with no turnover and no imbalance is balanced.
+
+Two further statements complete the measure (update log stage~3
+section~116). The H$_3^+$ row of the molecular layouts is also judged against
+its own gross rate,
+\begin{equation}
+m_{\rm H_3^+} = \max\!\left(\frac{|f|}{G_{\rm H}},\;
+\frac{|f|}{P+L}\,\frac{\texttt{ieq\_res\_tol}}{\texttt{h3p\_row\_balance\_tol}}\right),
+\qquad \texttt{h3p\_row\_balance\_tol} = 10^{-3},
+\label{eq:ion:h3p_own_row}
+\end{equation}
+because the group norm admits a relative error of a species up to about
+\texttt{ieq\_res\_tol} over its share of the group turnover, and H$_3^+$ is
+the one species measured to carry a share small enough (down to
+$2\times10^{-11}$) for that to reach a tenth of its density where it carries
+1 to 100 per cent of the cooling (\texttt{oxygen\_chemistry}, $r =
+1.017$--$1.040\,R_p$; \texttt{mol\_lyman\_werner}). And a kinetic row above
+the tolerance is accepted when its remaining imbalance is below what the
+composition resolves (the \emph{resolution floor}): its Newton correction
+along its own unknown, $\delta x_i = |f_i|/|\partial f_i/\partial x_i|$
+(a forward difference), is at most $\epsilon = 2.2\times10^{-16}$, the spacing
+of the floating-point numbers at the element total (every unknown is a
+fraction of the nuclei of an element, and a smaller change moves none of the
+element's sums; a correction below $\epsilon|x_i|$ is the special case of
+it), or the species and its root both stand below
+\texttt{absent\_element\_density} in nuclei, $(|x_i|+\delta x_i)\,n_E \le
+10^{-30}$\,cm$^{-3}$ (\texttt{fraction\_resolution},
+\texttt{chemical\_row\_layout.f90}). On the column without ionizing radiation
+of the regression case \texttt{hydrostatic\_column} the H$^+$ row above
+$1.0097\,R_p$ has $x({\rm H^+}) \le 4\times10^{-17}$ and an imbalance of
+$10^{-6}$ to $10^{-3}$ of its gross rate whose correction is of the order of
+$x({\rm H^+})$ itself; the floor accepts it and refuses nothing a
+representable composition could improve. Until 2026-10-07 the atomic
+layouts were measured against an upper bound of each row's rates with every
+reactant at the whole of its element; on the LHS\,1140\,b atomic state
+\texttt{ew\_fid\_atomic\_nocond} that bound exceeded the gross H$^+$ rate by
+$3.9\times10^{12}$ at the base and $2.1\times10^{2}$ at 26\,$R_p$, so a 1 per
+cent move of H$^+$ was admitted inside about 1.35\,$R_p$ (MEASURED,
+\texttt{src/tests/acceptance\_scale}). A slow row inside a fast group (a
+small share $(P_i+L_i)/G_E$) is admitted with a relative error of its species
+up to about \texttt{ieq\_res\_tol}$/((P_i+L_i)/G_E)$; the measurement of those
+shares on the molecular states and the decision taken on it (the group norm for
+every species, with the own-row criterion of
+Eq.~\eqref{eq:ion:h3p_own_row} for H$_3^+$) are in update log stage 3
+sections 112 and 116.
+
+\paragraph{The element simplex.} Every unknown is the fraction of one
+element's nuclei in one species, so a physical state has every fraction
+$x_i\ge0$ and, for each element, the tracked species summing to at most its
+nuclei, the neutral remainder $1-s$ being nonnegative
+(\texttt{ionization\_fractions\_physical}, \texttt{ionization\_equilibrium.f90}).
+The rows are polynomials in the fractions and have roots outside this set. One
+is the mirror root of a stage whose electrons are its own ions: with
+$n_e=x\,n_{\rm H}$ the H$^+$ row of an H-only cell,
+$n_{\rm H}g(1-x)-n_{\rm H}^2\alpha_B x^2$, has beside $x^\ast$ the root
+$-x^\ast$ to $O(x^{\ast2})$, with $n({\rm H^+})=n_e<0$; it solves the row
+and passes the acceptance measure (its imbalance is $1.7\times10^{-16}$ of its
+gross rate in the fixture of \texttt{src/tests/acceptance\_scale}, section
+viii), so only the simplex can refuse it. The bound is the resolution of a
+fraction at its element total: the rounding of a number keeps its sign, so a
+fraction whose root is zero or positive comes out negative only through a sum
+or difference formed at the scale of the element total, whose spacing is
+$\epsilon=2.2\times10^{-16}$ (\texttt{fraction\_resolution}). A candidate
+is therefore outside the simplex when a fraction is below $-\epsilon$, or
+when the $k$ fractions of one element sum above $1+k\epsilon$ (the neutral
+remainder has the same resolution, and forming the sum of $k$ terms each at
+most one adds at most $(k-1)\epsilon/2$; a fraction converted into another
+element's budget, HeH$^+$ into helium, OH and H$_2$O into hydrogen, counts as
+one term each). A state admitted inside that band is on the face of the
+simplex to the resolution of the composition, and its densities are written
+on the face: no negative density leaves the sweep. A candidate outside the
+simplex is not a root, whatever its residual. It is projected onto the
+simplex (negative fractions raised to zero, an element's species scaled to
+its nuclei) and the measure is taken again at the projected state: a root on
+a face, which the solve resolves to $\epsilon$ of its element and can return
+that far outside it, is a root once projected (class 3; with \texttt{hybrd1}
+alone, excursions of $4\times10^{-14}$ to $2\times10^{-13}$ of the element on
+\texttt{wasp\_full\_newton}). The mirror root projects to $x=0$, where
+the imbalance of the row is its whole production, and is no root. A
+projected root is taken only when no starting point (the guess built from
+the previous state, the uncoupled ionization balance at the incoming $n_e$,
+all nuclei neutral; in the molecular layouts the dissociation equilibrium
+in place of the last) gives a root without projection. Failing that, the
+atomic layouts make a fourth solve, the first bounded non-root of the three
+re-solved by \texttt{hybrd1} and the Newton after it, and the molecular layouts take the
+constrained continuation; then the bounded non-root under the relaxation
+amnesty, or the projection of the closest candidate with its residual
+rechecked (molecular) or the uncoupled balance (atomic) when no attempt
+stayed inside the simplex (classes 3 to 6 below). On the regression case
+\texttt{hydrostatic\_column} a band of $10^{-10}$ admitted the mirror root as
+a converged root in 70 cells ($x=-8.0\times10^{-12}$, $n({\rm
+H^+})=-8.9\times10^{-2}$\,cm$^{-3}$ at $1.31\,R_p$); with the bound above
+and the fourth attempt every cell ends on the positive root, the non-roots of
+the whole run fall from 2695 to none, and the H$^+$ profile agrees with the
+one the case had before the acceptance measure of update log stage~3
+section~112 to $8.8\times10^{-11}$ (update log stage~3 section~118).
+
 \paragraph{Acceptance classes.} Every cell's returned state carries a class,
 and the contract is that classes 1, 2, 3 and 5 are \emph{roots} of the
 requested equations (each passed the same two tests, a state inside the
@@ -578,7 +749,7 @@ class & meaning\\
 \midrule
 1 & root of the last attempt made\\
 2 & root of the best earlier attempt\\
-3 & root after projecting the closest attempt onto the element budget\\
+3 & root after projecting an attempt outside the element simplex onto it\\
 4 & not a root; accepted under the relaxation amnesty and reported\\
 5 & root of the constrained element-conserving continuation solve\\
 6 & not a root, residual above \texttt{ieq\_nonroot\_res\_cap}: the cell
@@ -587,10 +758,19 @@ class & meaning\\
 \end{tabular}
 \end{center}
 
-A residual that is not a finite number is a class-4 non-root by
-construction, since NaN passes every tolerance test. A consumer counting
+A residual that is not a finite number is a non-root by construction
+(the sweep tests it explicitly, since NaN fails every comparison), and it
+falls in class 6: the cell keeps its entry composition. A consumer counting
 states its chemistry does not describe counts classes 4 and 6 and nothing
 else.
+
+The hydrogen-only layout (\texttt{System\_H}, a mixture without helium)
+faces the same judge: its one row is measured against its own gross rate
+(the H$^+$ row is the whole hydrogen group), the candidate must lie in
+$[-\epsilon,1+\epsilon]$, and a cell is solved from the guess built from the
+previous state and, failing a root, from the positive root of its quadratic
+balance in closed form (\texttt{hydrogen\_ionization\_balance\_root}); the
+classes, the ledger and the non-root streak are those of the other layouts.
 
 \paragraph{The constrained continuation.}
 \texttt{constrained\_chemical\_equilibrium.f90} is the second formulation of

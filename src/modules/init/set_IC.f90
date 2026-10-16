@@ -43,6 +43,9 @@
 	! Hot-Parker warm-seed IC: Parker velocity head-start kept in temp arrays
 	! while the density is the (stable, balanced) cold hydrostatic profile.
 	real*8, dimension(1-Ng:N+Ng) :: rho_p, v_p
+	! Running maximum of the potential from the innermost cell outward, the
+	! potential the hydrostatic IC density is stratified in.
+	real*8, dimension(1-Ng:N+Ng) :: phi_hs
 	real*8 :: swin
 	real*8, dimension(3,1-Ng:N+Ng), intent(out) :: W
 	real*8, dimension(1-Ng:N+Ng),   intent(out) :: T
@@ -108,12 +111,31 @@
 	! (hot-Parker keeps this stable density; only T/ionization/velocity are warmed).
 	if (hot_parker_ic .or. .not. wind_ok) then
 		! Density (isothermal hydrostatic)
+		! The stratification stands on the running maximum of the potential
+		! from the innermost cell outward, phi_hs(r) = max_{r' <= r} phi(r').
+		! Inside the potential ridge (the L1 point of the Roche potential,
+		! where dphi/dr changes sign) phi increases outward, phi_hs = phi and
+		! the profile is the isothermal hydrostatic atmosphere. Past the
+		! ridge the net force points away from the planet, toward the star,
+		! and no atmosphere at rest exists there: exp(-(phi - phi(1))) of
+		! the falling potential would make the density RISE outward without
+		! bound (MEASURED: 5e43 cm^-3 at 15 R_p for HD 209458 b, Roche,
+		! cold IC). That gas is unbound and leaves in the steady state, so
+		! the starting density beyond the ridge is held at its value on the
+		! ridge (in practice the 1e-8 floor below); the outflow it starts
+		! from is set by the velocity seed and found by the evolution. In a
+		! spherical potential, or a Roche domain ending inside the ridge,
+		! phi_hs = phi identically.
+		phi_hs(1-Ng) = Gphi_c(1-Ng)
+		do j = 2-Ng, N+Ng
+			phi_hs(j) = max(phi_hs(j-1), Gphi_c(j))
+		enddo
 		b0_eff = 1.0d0	! Change if the planet b0 is too low - only for IC
 		do
 			! rho_bc is the density AT THE BASE LEVEL r = 1, the first face
 			! of the grid (define_grid); the ghosts below it take the same
 			! stratification continued downward.
-			W(1,:) = (/ (rho_bc*exp(b0_eff*(-Gphi_c(j) + phi(1.0d0))), 	&
+			W(1,:) = (/ (rho_bc*exp(b0_eff*(-phi_hs(j) + phi(1.0d0))), 	&
 					j = 1-Ng,N+Ng) /)
 
 			! Density at mid-domain, the smallest density of a bound
@@ -412,9 +434,9 @@
 		if (Kr .le. hmin) then
 			v_w(j) = cs                        ! at (or numerically at) rc
 		else if (rj .lt. rc) then
-			v_w(j) = wind_root(Kr, c2, cs, .false.)   ! subsonic root in (0,cs)
+			v_w(j) = isothermal_wind_speed(Kr, c2, cs, .false.)   ! subsonic root in (0,cs)
 		else
-			v_w(j) = wind_root(Kr, c2, cs, .true.)    ! supersonic root in (cs,inf)
+			v_w(j) = isothermal_wind_speed(Kr, c2, cs, .true.)    ! supersonic root in (cs,inf)
 		endif
 	enddo
 
@@ -425,9 +447,9 @@
 	if (Kr .le. hmin) then
 		vbase = cs
 	else if (1.0d0 .lt. rc) then
-		vbase = wind_root(Kr, c2, cs, .false.)
+		vbase = isothermal_wind_speed(Kr, c2, cs, .false.)
 	else
-		vbase = wind_root(Kr, c2, cs, .true.)
+		vbase = isothermal_wind_speed(Kr, c2, cs, .true.)
 	endif
 	Mdot  = rho_bc*vbase
 	do j = 1-Ng, N+Ng
@@ -492,55 +514,6 @@
 
 	! End of subroutine
 	end subroutine find_sonic
-
-	!-------------------------------------------------------!
-
-	double precision function wind_root(Kr, c2, cs, supersonic)
-	! Solve h(v) = 1/2 v^2 - c2*ln v = Kr for v on the requested branch.
-	! h decreases on (0,cs) and increases on (cs,inf), so each branch has a
-	! single root; bisection is unconditionally robust.
-	real*8, intent(in)  :: Kr, c2, cs
-	logical, intent(in) :: supersonic
-	real*8 :: vlo, vhi, vmid, hmid
-	integer :: it
-
-	if (supersonic) then
-		vlo = cs
-		vhi = max(2.0d0*cs, sqrt(2.0d0*max(Kr, c2)))
-		! grow the upper bracket until h(vhi) > Kr
-		do it = 1, 200
-			if (0.5d0*vhi*vhi - c2*log(vhi) .gt. Kr) exit
-			vhi = 2.0d0*vhi
-		enddo
-	else
-		vhi = cs
-		vlo = cs*1.0d-12                  ! h -> +inf as v -> 0, so a root exists
-	endif
-
-	do it = 1, 200
-		vmid = 0.5d0*(vlo + vhi)
-		hmid = 0.5d0*vmid*vmid - c2*log(vmid)
-		if (supersonic) then
-			! h increasing: if h<Kr the root is to the right
-			if (hmid .lt. Kr) then
-				vlo = vmid
-			else
-				vhi = vmid
-			endif
-		else
-			! h decreasing: if h<Kr the root is to the left (smaller v)
-			if (hmid .lt. Kr) then
-				vhi = vmid
-			else
-				vlo = vmid
-			endif
-		endif
-		if (abs(vhi - vlo) .lt. 1.0d-12*max(vmid,1.0d-30)) exit
-	enddo
-	wind_root = 0.5d0*(vlo + vhi)
-
-	! End of function
-	end function wind_root
 
 	! End of module
 	end module initial_conditions

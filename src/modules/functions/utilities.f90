@@ -538,6 +538,18 @@
 	subroutine calc_column_dens(nhi,nhei,nheii,nheiTR,N1,N15,N2,NTR)
 	! Calculates the column densities for given ionization profiles
 	! 	by method of rectangles
+	!
+	! THE COLUMN STARTS AT THE OUTER FACE OF THE DOMAIN, r_edg(N). Nothing
+	! is assumed to absorb beyond it: the stellar beam reaches the outer
+	! face unattenuated, the statement every escape model with a finite
+	! domain makes. The outer ghost cells N+1 .. N+Ng are a boundary
+	! closure for the reconstruction stencil, not gas on the line of
+	! sight; their column is zero (they see the unattenuated beam), and
+	! they add no depth to the cells below. Counting them made the depth of
+	! the domain depend on the ghost rule: a hydrostatic ghost past the
+	! Roche L1 ridge of 1e41 cm^-3 (MEASURED, WASP-52 b at 10 R_p, frozen
+	! f8a38866) shadowed every cell from the XUV. Cell j's column includes
+	! its own width (rectangle rule), N1(j) - N1(j+1) = n_HI(j) dr_j(j).
     
 	integer :: j
 	real*8, dimension(1-Ng:N+Ng), intent(in)  :: nhi
@@ -552,17 +564,10 @@
 	N2  = 0.0
 	NTR = 0.0
 	
-	! Outer point (opa_pf weights the opacity for the 'P' model; =1 otherwise)
-	N1(N+Ng)  = dr_j(N+Ng)*R0*nhi(N+Ng)*opa_pf(N+Ng)
-	if (thereis_He) then
-
-		N15(N+Ng) = dr_j(N+Ng)*R0*nhei(N+Ng)*opa_pf(N+Ng)
-		N2(N+Ng)  = dr_j(N+Ng)*R0*nheii(N+Ng)*opa_pf(N+Ng)
-		if(thereis_HeITR) NTR(N+Ng) = dr_j(N+Ng)*R0*nheiTR(N+Ng)*opa_pf(N+Ng)
-
-	endif
-
-	do j = N+Ng-1,1-Ng,-1
+	! Outer ghosts: zero column (initialized above). From the last physical
+	! cell inward (opa_pf weights the opacity for the 'P' model; =1
+	! otherwise); N1(N+1) = 0 starts the sum at the outer face.
+	do j = N,1-Ng,-1
 
 	    ! Spacing
 	    dr = dr_j(j)*R0*opa_pf(j)
@@ -584,14 +589,15 @@
 	! ------------------------------------------------------!
 
 	subroutine calc_column_dens_one(nsp, Ncol)
-	! Column density of a single species (same rectangle rule and
-	! opa_pf weighting as calc_column_dens).  Used for N_H2 (molecular).
+	! Column density of a single species (same rectangle rule, opa_pf
+	! weighting and start at the outer face r_edg(N) as calc_column_dens,
+	! whose header states why the outer ghosts carry no column). Used for
+	! N_H2 (molecular).
 	integer :: j
 	real*8, dimension(1-Ng:N+Ng), intent(in)  :: nsp
 	real*8, dimension(1-Ng:N+Ng), intent(out) :: Ncol
 	Ncol = 0.0
-	Ncol(N+Ng) = dr_j(N+Ng)*R0*nsp(N+Ng)*opa_pf(N+Ng)
-	do j = N+Ng-1,1-Ng,-1
+	do j = N,1-Ng,-1
 		Ncol(j) = Ncol(j+1) + nsp(j)*dr_j(j)*R0*opa_pf(j)
 	enddo
 	end subroutine calc_column_dens_one
@@ -599,7 +605,8 @@
 	! ------------------------------------------------------!
 
 	subroutine calc_column_dens_metals(nm, Nm_col)
-	! Column densities for metals (same scheme as calc_column_dens).
+	! Column densities for metals (same scheme as calc_column_dens,
+	! starting at the outer face r_edg(N); the outer ghosts carry none).
 	! nm(:,1:n_mion) holds the metal ion densities in canonical
 	! species_table order; Nm_col(:,1:n_mphot) returns the column
 	! density of each photo-ionizable metal ion in iphot order.
@@ -611,14 +618,9 @@
 
 	Nm_col = 0.0
 
-	! Outer point (opa_pf weights the opacity for the 'P' model)
-	do i = 1,n_mion
-	   if (.not. mion_isphot(i)) cycle
-	   k = mion_iphot(i)
-	   Nm_col(N+Ng,k) = dr_j(N+Ng)*R0*nm(N+Ng,i)*opa_pf(N+Ng)
-	enddo
-
-	do j = N+Ng-1,1-Ng,-1
+	! From the last physical cell inward (opa_pf weights the opacity for
+	! the 'P' model)
+	do j = N,1-Ng,-1
 	   dr = dr_j(j)*R0*opa_pf(j)
 	   do i = 1,n_mion
 	      if (.not. mion_isphot(i)) cycle

@@ -15,15 +15,16 @@ continuum solution that assumed it away.
 
 ## 1. Collision model
 
-The momentum-transfer collisions are the same four limits, in the same
-Chapman-Enskog first approximation, that the binary element-diffusion
-operator uses, so a mean free path quoted here and a diffusion coefficient
+For every pair the binary element-diffusion operator uses, the
+momentum-transfer collisions are the same four limits, in the same
+Chapman-Enskog first approximation, that the operator uses, so a mean free path quoted here and a diffusion coefficient
 quoted by the wind cannot drift apart.
 
 | pair | limit | coefficient | source |
 |---|---|---|---|
 | neutral-neutral | rigid sphere; the prefactor is a collision diameter d = 2.99 A in the Chapman-Enskog first approximation | `D = 1.52e18 (1/A_s + 1/A_t)^(1/2) T^(1/2)/n` | Banks & Kockarts (1973); `binary_element_diffusion.f90` `hard_sphere_pair_diffusion` |
 | ion-neutral, non-resonant | induced dipole (Langevin) **and** rigid core, combined as `1/D = 1/D_pol + 1/D_hs`. This is an interpolation between the polarization and rigid-core limits (it recovers each where the other is negligible), not a collision integral of the combined potential; in the crossover it can overstate the friction by up to a factor of 2 against the stronger estimate alone | `D_pol = kT/(2.21 pi e n (alpha_n mu)^(1/2))` | `binary_element_diffusion.f90` `polarization_pair_diffusion`, `ion_neutral_pair_diffusion` |
+| ion-neutral, resonant (H+ + H, He+ + He; not pairs of the element operator) | charge exchange with the parent atom; the published coefficient REPLACES the non-resonant one, in the convention `nu_st = n_t K` | H+ + H: `K = 2.13e-9 (v_rms/km s^-1)^0.75 cm^3 s^-1`, `v_rms = vbar = (8kT/(pi mu))^(1/2)`, `mu = m_H/2`, evaluated at zero ion-neutral drift (the drift raises K); He+ + He: `K = 2 nu_in/n(He)`, `nu_in = 8.73e-11 n(He) T^(1/2) (1 - 0.093 log10 T)^2 s^-1` | Glassgold, Krstic & Schultz (2005, ApJ 621, 808) eqs. (3.1), (3.15), (3.19), accuracy 10-15% for v_rms > 1 km/s; Schunk & Nagy (1980, Rev. Geophys. Space Phys. 18, 813) Table 5 (T_r > 50 K) with their eq. (19) convention; conversion in `md/AK_ambipolar_stage_drift_derivation_20261006.md` section 6.1; `collisional_validity.py` `resonant_charge_exchange_rate_coefficient` |
 | ion-ion, ion-electron | screened Coulomb, Spitzer `ln Lambda` | `D = 3(kT)^(5/2)/[4(2 pi mu)^(1/2) n (Z_s Z_t e^2)^2 ln Lambda]` | Spitzer (1962) sec. 5.2, Paquette et al. (1986) sec. II; `binary_element_diffusion.f90` `coulomb_pair_diffusion`, `coulomb_logarithm` |
 
 Python cannot call the Fortran, so the four routines are transcribed, with
@@ -79,18 +80,17 @@ maxima to the digits quoted).
 Knudsen number, i.e. a more conservative verdict within the retained
 collision model.** This monotonic statement holds with retained coefficients
 fixed. It does not prove an upper bound on the physical mean free path:
-the polarization-plus-core interpolation and the estimates for resonant
-pairs still require independent validation. Omitting a collision
+the polarization-plus-core interpolation of the non-resonant ion-neutral
+pairs still requires independent validation (for H+ + He it overstates the
+friction 3-6 times against Kimura et al. 1993, ApJ 405, 801, Table 2;
+`md/AK_ambipolar_stage_drift_derivation_20261006.md` section 6.3). Omitting a collision
 channel can only lower a collision frequency, because the frictions of
 separate partners add; every mean free path here is therefore an
 overestimate of the one with the channel included.  (i) The metals and
-oxygen-chemistry molecules as partners (above).  (ii) *Resonant* charge
-exchange (H+ + H, He+ + He) is not a channel: like-element ion-neutral
-pairs are computed with the non-resonant (polarization + core) coefficient,
-whose friction is the smaller one, so the H I and H II paths in the
-partially ionized layer are upper limits.  The size of the resonant
-momentum-transfer cross section was not checked against a published table
-in this repository.  (iii) Electron-neutral momentum transfer is not in the
+oxygen-chemistry molecules as partners (above).  (ii) The drift dependence
+of the H+ + H coefficient: it is taken at zero drift, the smallest K.  The
+resonant pair H2+ + H2 keeps the non-resonant coefficient (no published
+resonant value was checked).  (iii) Electron-neutral momentum transfer is not in the
 model, so the electron Knudsen number is meaningful only where the gas is
 ionized -- reported with that caveat, and never used for the bulk, which is
 built from the heavy particles.
@@ -224,6 +224,15 @@ LHS 1140 b outputs now under `LHS1140b/archive_20260830/exhale/` and on
 outputs gives the same verdicts but not the same digits (exobase of
 `heh0p55` 23.84 against 23.73 `R_p`, of `flux_closure/hi/k06` 19.40
 against 18.84), so each number describes the state as it was measured.
+**Stale (2026-10-07):** every number of this section was also computed
+before the resonant H+ + H and He+ + He coefficients (section 1;
+`md/Update_EXHALE_stage3.md` section 110).  Re-measured on the 102 stored
+LHS 1140 b states of `LHS1140b/models/.P2/ew_fit/`, the change moves the
+`Kn_bulk = 0.1` radius out by 1.0-5.9%, the exobase out by 0.4-5.7% and
+the largest Kn of the critical region down by 0-16%; Kn(H2) and the
+sonic point do not move and no verdict changes.  On the ionized WASP-121 b
+regression case `backup/regression/wasp_full_newton` the largest Kn of the
+region read falls 31% (2.58e-5 to 1.78e-5).  The tables below were not re-measured.
 
 | case | planet | peak heat | T max | critical point | exobase | `Kn = 0.1` at | max Kn in crit. region | verdict |
 |---|---|---|---|---|---|---|---|---|

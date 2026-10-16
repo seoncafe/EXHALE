@@ -11,7 +11,8 @@
                             isp_OH, isp_H2O, isp_CO
    use utils
    use Cooling_Coefficients      ! Various functions for cooling coefficients
-   ! Miller+2013 H3+ infrared cooling, emitted and net of the lower-atmosphere field
+   ! H3+ infrared cooling (MiZATeP LTE emission, Miller+2013 non-LTE factor),
+   ! emitted and net of the lower-atmosphere field
    use h3p_cooling, only: h3p_cooling_rate, h3p_net_cooling_rate
    ! H2 quadrupole/magnetic-dipole lines and the H2O and CO bands, net of the
    ! infrared field of the lower atmosphere (`Molecular IR bands`)
@@ -985,8 +986,9 @@
 	! Carries the column of each absorber inward across the cells j_hi down
 	! to j_lo, by the same rectangle rule and the same opa_pf opacity weight
 	! calc_column_dens, calc_column_dens_one and calc_column_dens_metals use,
-	! and in the same order: a column entering at j_hi and leaving at j_lo
-	! reproduces those routines cell for cell, bit for bit.
+	! and in the same order, starting at the outer face r_edg(N): a column
+	! entering at j_hi = N+Ng with zero and leaving at j_lo reproduces those
+	! routines cell for cell, bit for bit.
 	!
 	! N*_c enter as the column of everything OUTSIDE j_hi and leave as the
 	! column of everything outside j_lo, the cells of the range included.
@@ -1029,44 +1031,28 @@
 
 		dr = dr_j(j)*R0*opa_pf(j)
 
-		! The outermost cell of the grid is the one calc_column_dens starts
-		! its integral at, and it groups the width and the density the other
-		! way round; the column entering there is zero, so adding its term in
-		! that grouping reproduces that first value exactly.
-		if (j .eq. N+Ng) then
-			N1_c = N1_c + dr_j(j)*R0*nhi(j)*opa_pf(j)
-			if (thereis_He) then
-				N15_c = N15_c + dr_j(j)*R0*nheiS(j)*opa_pf(j)
-				N2_c  = N2_c  + dr_j(j)*R0*nheii(j)*opa_pf(j)
-				if (thereis_HeITR) NTR_c = NTR_c                          &
-				                 + dr_j(j)*R0*nheiTR(j)*opa_pf(j)
-			endif
-			if (has_h2) NH2_c = NH2_c + dr_j(j)*R0*nh2(j)*opa_pf(j)
-			if (thereis_metals) then
-				do i = 1,n_mion
-					if (.not. mion_isphot(i)) cycle
-					k = mion_iphot(i)
-					Nm_c(k) = Nm_c(k) + dr_j(j)*R0*nm(j,i)*opa_pf(j)
-				enddo
-			endif
-		else
-			N1_c = N1_c + nhi(j)*dr
-			if (thereis_He) then
-				N15_c = N15_c + nheiS(j)*dr
-				N2_c  = N2_c  + nheii(j)*dr
-				if (thereis_HeITR) NTR_c = NTR_c + nheiTR(j)*dr
-			endif
-			! calc_column_dens_one multiplies the width in cell by cell
-			! rather than hoisting it; the same grouping is kept here.
-			if (has_h2) NH2_c = NH2_c                                     &
-			                  + nh2(j)*dr_j(j)*R0*opa_pf(j)
-			if (thereis_metals) then
-				do i = 1,n_mion
-					if (.not. mion_isphot(i)) cycle
-					k = mion_iphot(i)
-					Nm_c(k) = Nm_c(k) + nm(j,i)*dr
-				enddo
-			endif
+		! The outer ghosts N+1 .. N+Ng are no gas on the line of sight: the
+		! column starts at the outer face r_edg(N), as in calc_column_dens
+		! (whose header states why). They record the column entering the
+		! domain and add none.
+		if (j .gt. N) cycle
+
+		N1_c = N1_c + nhi(j)*dr
+		if (thereis_He) then
+			N15_c = N15_c + nheiS(j)*dr
+			N2_c  = N2_c  + nheii(j)*dr
+			if (thereis_HeITR) NTR_c = NTR_c + nheiTR(j)*dr
+		endif
+		! calc_column_dens_one multiplies the width in cell by cell
+		! rather than hoisting it; the same grouping is kept here.
+		if (has_h2) NH2_c = NH2_c                                     &
+		                  + nh2(j)*dr_j(j)*R0*opa_pf(j)
+		if (thereis_metals) then
+			do i = 1,n_mion
+				if (.not. mion_isphot(i)) cycle
+				k = mion_iphot(i)
+				Nm_c(k) = Nm_c(k) + nm(j,i)*dr
+			enddo
 		endif
 
 	enddo
@@ -2721,9 +2707,9 @@
          ! THE ABSORBERS OF THE BEAM ARE THE ONES THE COLUMNS RECORD, so a
          ! cell's absorber count here is its own column increment and not
          ! its written density times the cell width. The column at cell j
-         ! already contains cell j, so that increment is N(j) - N(j+1), and
-         ! N(N+Ng) is the outermost cell's own content because nothing sits
-         ! above it. The two forms agree wherever the state written is the
+         ! already contains cell j, so that increment is N(j) - N(j+1); the
+         ! columns start at the outer face r_edg(N), so N(j) = 0 above cell N
+         ! and the outer ghosts contribute nothing. The two forms agree wherever the state written is the
          ! state the photon field was built on; where they do not, the beam
          ! and its own record are the pair that has to balance, and the
          ! drift between the two states is reported on its own line below.
@@ -3245,10 +3231,11 @@
 
 	!-- H3+ infrared cooling (molecular layer) --!
 
-	! Optically thin rotational-vibrational emission of H3+, Miller et al.
-	! (2013) LTE emission per molecule with their Table-6 non-LTE departure
-	! factor s(T, n_H2) (h3p_cooling module -- ONE definition, shared with
-	! every caller of eval_cool). Inside a molecular base at T ~ 1e3 K this is
+	! Optically thin rotational-vibrational emission of H3+, the MiZATeP LTE
+	! emission of one molecule (Mizus et al. 2017) with the Table-6 non-LTE
+	! departure factor s(T, n_H2) of Miller et al. (2013) (h3p_cooling
+	! module -- ONE definition, shared with every caller of eval_cool).
+	! Inside a molecular base at T ~ 1e3 K this is
 	! the dominant coolant: the atomic channels are all exponentially
 	! suppressed there, so leaving it out of `cool` leaves that gas with no
 	! radiative loss at all. It lives here, not on top of eval_cool's return
@@ -3468,7 +3455,7 @@
 	if (mol_ir_bands .and. thereis_oxychem) then
 		tau_h2o = 0.0d0
 		tau_co  = 0.0d0
-		do j = N+Ng-1,1-Ng,-1
+		do j = N,1-Ng,-1   ! from the outer face r_edg(N), as calc_column_dens
 			tau_h2o(j) = tau_h2o(j+1)                                    &
 			  + molecular_planck_cross_section(1, T_K(j))*nox(j,2)        &
 			    *(r(j+1) - r(j))*R0

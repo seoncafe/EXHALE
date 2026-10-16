@@ -68,6 +68,9 @@
       real*8, dimension(3) :: tau
       real*8, dimension(3) :: S0,S1
       real*8, dimension(1-Ng:N+Ng) :: C1,C2,D1,D2
+      ! The amplitude of a component over the three-point stencil and the
+      ! floor of its smoothness indicators (see THE FLOOR eps below).
+      real*8 :: qs, eps_k
 
       ! Well-balanced option: the cell's own equilibrium is formed first, the
       ! reconstruction below then works on the departure from it.
@@ -122,27 +125,38 @@
             ! discontinuity is still nullified.  Eq. (62) is the two
             ! together.
             !
-            ! The floor used here, eps = dr_j^2, has that h^2 scaling and
-            ! reads "O(Dx^2)" as the LOCAL cell width, which is the reading
-            ! a grid whose spacing varies by a factor of 20 across the
-            ! domain admits and which the published uniform-grid analysis
-            ! does not distinguish.  What it drops is the solution scale of
-            ! Eq. (65).  It is not dimensionally inconsistent (r is in R0
-            ! and rho, v, p in n0, v0, p0, so both sides are
-            ! dimensionless), but it is not invariant under a rescaling of
-            ! the solution, which Eq. (65) is written to secure.  Two
-            ! measurements bound what that costs.  In a smooth region it
-            ! costs nothing: with eps = (kappa dr_j)^2 the face error and
-            ! the convergence rate on the production grid are flat for
-            ! kappa from 1e-1 to 1e3 (L_inf 2.99e-8 at N = 800, rate 2.991)
-            ! and deteriorate only below kappa near 1e-2
-            ! (weno3_reconstruction_order, MEASURED).  Where the choice
-            ! bites is the ENO stencil biasing: on the WASP-121b reference
-            ! output the density ratio beta_r/eps runs from 8.4e3 at the
-            ! base to 2.2e-6 at the top of the domain, and a third of the
-            ! cells sit below 1e-2, where S0 and S1 are within a percent of
-            ! 1 and no biasing is left.  Eq. (65) with the base density as
-            ! the scale would put a single eps = 4e-6 on the whole grid.
+            ! The floor used here is eps_k = (dr_j q_s,k)^2 for component k,
+            ! with q_s,k the largest |W_k| of cells j-1, j, j+1 of the
+            ! cell-average primitive (for the pressure the cell pressure,
+            ! also under the well-balanced option, where the data the
+            ! stencil reconstructs are departures from the cell's
+            ! equilibrium): the h^2 scaling of Eq. (62) read with the LOCAL
+            ! cell width, which a grid whose spacing varies by a factor of
+            ! 20 admits, and the solution scale of Eq. (65) read with the
+            ! local amplitude of the component, the same floor
+            ! Reconstruct_scalar uses.  A stencil of zeros has tau = 0 and
+            ! b = 0 and takes the linear weights, S = 1.  The face values
+            ! then commute with a rescaling W_k -> c W_k (MEASURED,
+            ! src/tests/weno3_primitive_floor: departure <= 4.3e-16 for
+            ! c = 1e-12 .. 1e12), which the floor eps = dr_j^2 used before
+            ! 2026-10-09 did not (2.3e-4 to 6.0e-3 on smooth and stored
+            ! states, 1.7e3 at a step): in the outer layer, where rho and p
+            ! are 1e-10 in code units against dr_j^2 of 1e-2 to 0.2, that
+            ! floor made the weights linear and a jump there was
+            ! reconstructed with an overshoot of 1/6 of the jump and a
+            ! negative face (md/weno3_primitive_floor_tests_20261008.md).
+            ! On smooth data both floors keep the third order of the face
+            ! values without the well-balanced option (rate 3.00-3.01).
+            ! WITH `Well balanced: True` THE PRESSURE FACE VALUES ARE
+            ! SECOND ORDER (rate 1.99-2.06 on a heated and on a hydrostatic
+            ! profile, MEASURED, for either floor): the reconstruction of
+            ! the departure from each cell's own equilibrium, continued
+            ! through the face with the cell's density on one side and the
+            ! neighbour's on the other, is the second-order well-balanced
+            ! construction of Kaeppeli and Mishra (2016, A&A 587, A94); the
+            ! floor does not set that.  Neither floor keeps a face positive
+            ! across a jump of ratio above about 1/dr^2;
+            ! positivity_limited_faces remains necessary.
             !
             ! WHAT THIS IS NOT.  The ESWENO scheme of that paper is its
             ! Eq. (9) with P, Q and S of Eqs. (31) and (35) to (37)
@@ -203,7 +217,7 @@
             ! the arithmetic of a cell is unchanged and the result is
             ! bitwise identical at any number of threads.
             !$omp parallel do default(shared) schedule(static)          &
-            !$omp   private(j,k,dWp,dWm,b0,b1,tau,S0,S1,Wc)
+            !$omp   private(j,k,dWp,dWm,b0,b1,tau,S0,S1,Wc,qs,eps_k)
             do j = 0,N+1
 
                dWp = dW(:,j)
@@ -232,13 +246,17 @@
                   S0 = S0sav(j,:)
                   S1 = S1sav(j,:)
                else
-                  do k = 1,3
-                     b0(k) = dWp(k)*dWp(k) + dr_j(j)*dr_j(j)
-                     b1(k) = dWm(k)*dWm(k) + dr_j(j)*dr_j(j)
-                  enddo
                   tau = dWp - dWm
-                  S0 = 1.0 + tau*tau/b0
-                  S1 = 1.0 + tau*tau/b1
+                  do k = 1,3
+                     qs    = max(abs(W(k,j-1)), abs(W(k,j)), abs(W(k,j+1)))
+                     eps_k = (dr_j(j)*qs)**2
+                     b0(k) = dWp(k)*dWp(k) + eps_k
+                     b1(k) = dWm(k)*dWm(k) + eps_k
+                     S0(k) = 1.0d0
+                     S1(k) = 1.0d0
+                     if (b0(k) .gt. 0.0d0) S0(k) = 1.0d0 + tau(k)*tau(k)/b0(k)
+                     if (b1(k) .gt. 0.0d0) S1(k) = 1.0d0 + tau(k)*tau(k)/b1(k)
+                  enddo
                   if (weno_mode .eq. 1) then
                      S0sav(j,:) = S0
                      S1sav(j,:) = S1
@@ -447,9 +465,9 @@
 
       subroutine Reconstruct_scalar(q,qL,qR)
       ! Reconstruct ONE cell-centered scalar to the two sides of every face
-      ! with the reconstruction the run uses for the primitive variables, so
-      ! that a species mass fraction and the density whose face flux carries
-      ! it are extrapolated to a face by the same scheme.
+      ! with the same scheme, face geometry and smoothness floor as the
+      ! primitive variables: in WENO3 the floor of both is (dr_j q_s)**2,
+      ! q_s the local amplitude of the reconstructed quantity.
       !
       ! qL(j) is the state on the left of face r_edg(j) and qR(j) the state
       ! on its right, the pairing WL/WR use.
@@ -464,7 +482,7 @@
       real*8, dimension(1-Ng:N+Ng), intent(out) :: qL,qR
 
       real*8, dimension(1-Ng:N+Ng) :: dq,C1,C2,D1,D2
-      real*8  :: dqp,dqm,b0,b1,tau,S0,S1
+      real*8  :: dqp,dqm,b0,b1,tau,S0,S1,qs,eps_q
       integer :: j
 
       select case (rec_method)
@@ -475,12 +493,27 @@
 
          case ('WENO3')
 
-            ! Same WENO3 weights and same face formula as the primitive
-            ! reconstruction in Reconstruct above, on one component; keep
-            ! the two in step.  The frozen-weight mode of the steady solver
-            ! is not read here: the stored factors belong to the primitive
-            ! variables, and a mass fraction has smoothness indicators of
-            ! its own.
+            ! Same face formula as the primitive reconstruction in
+            ! Reconstruct above, on one component.  The frozen-weight mode
+            ! of the steady solver is not read here: the stored factors
+            ! belong to the primitive variables, and a mass fraction has
+            ! smoothness indicators of its own.
+            !
+            ! THE SMOOTHNESS INDICATORS CARRY THE UNITS OF q**2, and so does
+            ! the term that keeps them positive: (dr q_s)**2, with q_s the
+            ! largest |q| of the cell's three-point stencil.  The face value
+            ! then commutes with a scaling of the scalar (q -> c q gives
+            ! c qL, c qR), which a stage fraction of 1e-5 and a mass
+            ! fraction of 0.5 need alike.  The primitive form, dr**2 added
+            ! to a squared jump of q, makes the weights of every scalar
+            ! whose jumps are below dr (code units) the linear ones: the
+            ! unlimited three-point interpolant, which is not bounded by
+            ! the two cells of the face.  At a local minimum of a trace
+            ! stage it put the neighbours' value on the minimum's own
+            ! outflow face: He++ at 6e-12 of the helium between 3.4e-6 and
+            ! 5.6e-5 (LHS 1140 b, r = 2.0 R_p) left its cell at a face
+            ! fraction of 1.8e-5, an outflow 3e6 times what the cell held
+            ! (md/Update_EXHALE_stage3.md section 121).
             dq(1-Ng:N+Ng-1) = q(2-Ng:N+Ng) - q(1-Ng:N+Ng-1)
             dq(N+Ng) = 0.0
 
@@ -496,11 +529,17 @@
                dqp = dq(j)
                dqm = dq(j-1)
 
-               b0  = dqp*dqp + dr_j(j)*dr_j(j)
-               b1  = dqm*dqm + dr_j(j)*dr_j(j)
+               qs  = max(abs(q(j-1)), abs(q(j)), abs(q(j+1)))
+               eps_q = (dr_j(j)*qs)**2
+               b0  = dqp*dqp + eps_q
+               b1  = dqm*dqm + eps_q
                tau = dqp - dqm
-               S0  = 1.0 + tau*tau/b0
-               S1  = 1.0 + tau*tau/b1
+               ! A stencil of zeros has tau = 0 and b = 0: the linear
+               ! weights, S = 1.
+               S0  = 1.0d0
+               S1  = 1.0d0
+               if (b0 .gt. 0.0d0) S0 = 1.0d0 + tau*tau/b0
+               if (b1 .gt. 0.0d0) S1 = 1.0d0 + tau*tau/b1
 
                ! Cell j's own volume share on each jump (see Reconstruct).
                qL(j) = q(j)                                              &

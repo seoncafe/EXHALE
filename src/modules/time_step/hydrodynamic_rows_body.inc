@@ -431,7 +431,10 @@
       ! Third-order WENO reconstruction with the nonlinear weights of
       ! Yamaleev and Carpenter (2009, J. Comput. Phys. 228, 3025), eqs. (18),
       ! (20) to (22), on the primitive variables; the floor of the smoothness
-      ! indicators is dr_j^2.  weno_mode 0 fresh, 1 fresh and stored, 2 the
+      ! indicators of component k is (dr_j q_s,k)^2, q_s,k the largest |W_k|
+      ! of cells j-1, j, j+1, and S = 1 where the stencil is all zeros, as
+      ! in Reconstruct (the reasons are stated there).  weno_mode 0 fresh,
+      ! 1 fresh and stored, 2 the
       ! stored factors (frozen weights).  The stored factors are the double
       ! arrays of Reconstruction_step, so the two schemes cannot disagree
       ! about which weights are frozen.
@@ -451,7 +454,7 @@
       real(fv), dimension(3,1-Ng:N+Ng) :: W, dW
       real(fv), dimension(1-Ng:N+Ng)   :: C1, C2, D1, D2
       real(fv), dimension(3) :: dWp, dWm, b0, b1, tau, S0, S1, Wc
-      real(fv) :: drc
+      real(fv) :: drc, qs, eps_k
       integer  :: j, k
       logical  :: wb
 
@@ -471,7 +474,7 @@
       endif
 
       !$omp parallel do default(shared) schedule(static)                 &
-      !$omp   private(j,k,dWp,dWm,b0,b1,tau,S0,S1,drc,Wc)
+      !$omp   private(j,k,dWp,dWm,b0,b1,tau,S0,S1,drc,Wc,qs,eps_k)
       do j = 0,N+1
 
          dWp = dW(:,j)
@@ -494,13 +497,17 @@
             S1 = real(S1sav(j,:), fv)
          else
             drc = real(dr_j(j), fv)
-            do k = 1,3
-               b0(k) = dWp(k)*dWp(k) + drc*drc
-               b1(k) = dWm(k)*dWm(k) + drc*drc
-            enddo
             tau = dWp - dWm
-            S0 = 1.0_fv + tau*tau/b0
-            S1 = 1.0_fv + tau*tau/b1
+            do k = 1,3
+               qs    = max(abs(W(k,j-1)), abs(W(k,j)), abs(W(k,j+1)))
+               eps_k = (drc*qs)**2
+               b0(k) = dWp(k)*dWp(k) + eps_k
+               b1(k) = dWm(k)*dWm(k) + eps_k
+               S0(k) = 1.0_fv
+               S1(k) = 1.0_fv
+               if (b0(k) .gt. 0.0_fv) S0(k) = 1.0_fv + tau(k)*tau(k)/b0(k)
+               if (b1(k) .gt. 0.0_fv) S1(k) = 1.0_fv + tau(k)*tau(k)/b1(k)
+            enddo
             if (weno_mode .eq. 1) then
                S0sav(j,:) = real(S0, kind(1.0d0))
                S1sav(j,:) = real(S1, kind(1.0d0))

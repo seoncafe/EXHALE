@@ -367,16 +367,29 @@ a blackbody at $T_0$ covering the sky fraction the base subtends, through
 the photon occupation number $\bar n_{ul}$; this gives the layer a radiative
 equilibrium floor instead of letting it cool into vacuum.
 
-\paragraph{Molecular infrared.} $\Lambda_{\rm H_3^+}$ is the
-\citet{Miller2013} emission of one H$_3^+$ molecule in LTE,
+\paragraph{Molecular infrared.} $\Lambda_{\rm H_3^+}$ is built on the
+emission $W(T)$ of one H$_3^+$ molecule in LTE into one steradian,
 \begin{equation}
-\Lambda_{\rm H_3^+} = 4\pi\,n_{\rm H_3^+}\,E(T)\,s(T,n_{\rm H_2}),
-\qquad
-\ln E(T) = \sum_n C_n T^{n}\ \ \mathrm{[W\,molecule^{-1}\,sr^{-1}]},
+\Lambda_{\rm H_3^+} = 4\pi\,n_{\rm H_3^+}\,W(T)\,s(T,n_{\rm H_2})
+\quad \mathrm{[W\,molecule^{-1}\,sr^{-1}\ for\ }W\mathrm{]},
 \label{eq:th:h3p}
 \end{equation}
-their Table 5 (the ``using $z(t)$'' column) with the non-LTE departure
-factor $s$ of their Table 6, whose only collider is H$_2$ through the
+where $W(T)$ is the cooling function of the MiZATeP line list
+\citep[][section 5 and Table 7]{Mizus2017}, tabulated at 1\,K steps from
+20 to 5000\,K in the ExoMol file \texttt{1H3\_p\_\_MiZATeP.cf} and carried as
+\texttt{h3p\_mizatep\_cooling\_table} (\texttt{h3p\_lte\_emission\_mizatep}).
+Between the nodes $\ln W$ is linear in $1/T$, a local Boltzmann factor, so
+the interpolant is monotone; below 20\,K the first interval's Boltzmann form
+is continued ($W\to0$ as $T\to0$) and above 5000\,K the 5000\,K value is
+held. The LTE fit of \citet{Miller2013} (their Table 5), used before, is
+removed: it lies above MiZATeP by factors 1.10, 1.48, 1.89 and 2.1 at 900,
+1500, 2000 and 3000\,K, and the NMT line list it was stated to sum, summed
+in LTE, agrees with MiZATeP to 1\% over 300--2000\,K (header of
+\texttt{h3p\_cooling.f90}; \texttt{md/h3p\_cooling\_cause\_20261010.md}).
+The non-LTE departure
+factor $s$ is that of \citet{Miller2013} Table 6, a ratio of two
+vibrational-level sums normalized by its own LTE sum, so it multiplies
+the MiZATeP $W$ unchanged. Its only collider is H$_2$ through the
 proton-hopping reaction with the \citet{Oka2004} coefficient
 $2\times10^{-15}$\,m$^{3}$\,s$^{-1}$. Table 6 covers
 $n({\rm H_2}) = 10^{6}$--$10^{14}$\,cm$^{-3}$ in steps of two decades.
@@ -392,7 +405,15 @@ the linear low-collider limit $s(T,n) = s(T,10^{6})\,n/10^{6}$ and records
 the cell as evaluated outside the tabulated range. This is the dominant
 coolant of a molecular base: the atomic channels above are all exponentially
 suppressed at $T\sim10^{3}$\,K, so leaving it out leaves that gas with no
-radiative loss at all.
+radiative loss at all. With \texttt{Base IR field: True} the rate is the net
+exchange with the thermal infrared of the lower atmosphere
+(\texttt{h3p\_net\_cooling\_rate}),
+$\Lambda^{\rm net}_{\rm H_3^+} = 4\pi\,n_{\rm H_3^+}\,s\,[W(T)-W_{\rm dil}\,W(T_{\rm rad})]$:
+by Kirchhoff's law the absorption of a blackbody at $T_{\rm rad}$ is the
+LTE emission at $T_{\rm rad}$, so the one cooling function serves both terms,
+and the rate vanishes at $T=T_{\rm rad}$, $W_{\rm dil}=1$. Its radiative
+equilibrium temperature on the MiZATeP table is 958.5\,K for
+$T_{\rm rad}=1140$\,K, $W_{\rm dil}=1/2$ (header of \texttt{h3p\_cooling.f90}).
 
 With \texttt{Molecular IR bands: True} (default off) three further net
 exchanges are added (\texttt{molecular\_infrared\_cooling.f90}): the H$_2$

@@ -1,5 +1,7 @@
 # Explicit viscosity and heat conduction
 
+> Note (2026-10-11): `vulcan_work/hd209_wind_response/`, cited below, was deleted (HD 209458 b runs invalid by item P35 of `md/TO_BE_DONE.md`, base ghost temperature). The numbers here remain the record.
+
 Molecular transport in the bulk (single-fluid) radial equations: the viscous
 momentum force, its dissipation, and thermal conduction. This is the
 Navier-Stokes level that CETIMB (Koskinen et al. 2013a, Icarus 226, 1678;

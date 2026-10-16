@@ -474,7 +474,7 @@
 		legacy_hhe_rates   = .false.  ! default: Badnell/Milne + Voronov H/He rates
 		atomic_rate_set_k22 = .false. ! default: EXHALE's own atomic H/He rates
 		use_sec_ion        = .true.   ! default: SvS85 secondary ionization ON
-		sec_ion_immediate  = .false.  ! default: staged (applied after 1st converge)
+		sec_ion_immediate  = .true.   ! default: applied from step 0 (2026-10-09)
 		use_low_energy_partition = .false. ! default: 10.2-30 eV electrons heat
 		use_he_rec_coupling = .true.  ! default: He rec. photons ionize/heat H
 		use_h_rec_escape    = .true.  ! default: escaping H ground captures
@@ -528,8 +528,10 @@
 			else if (lbl_match(line, 'du_th')) then
 				! "du_th [PLM,WENO3]: <du1> [<du2>]". How the numbers are used is
 				! decided by "Reconstruction scheme:" (parsed above):
-				!   PLM+WENO3 -> two-stage: PLM until du<du1, then WENO3 until du<du2.
-				!   PLM or WENO3 -> single-stage at du1; any second number is ignored.
+				!   PLM+WENO3 -> two-stage: PLM until du<du1, then WENO3 to the
+				!     marching stop (face spread and state change; du2 > 0 is
+				!     only what marks the run two-stage, update log stage 3 127).
+				!   PLM or WENO3 -> single-stage; any second number is ignored.
 				str = get_word(line, 3);  read(str,*) du_th      ! first threshold
 				str = get_word(line, 4)                          ! optional second
 				if (recon_two_stage) then
@@ -616,17 +618,32 @@
 					error stop 1
 				endif
 			else if (lbl_match(line, 'Secondary_ionization')) then
-				! SvS85 secondary ionization (default ON, staged: applied only
-				! after the wind first converges without the coupling).
+				! SvS85 secondary ionization (default ON, applied from step 0
+				! since 2026-10-09, update log stage 3 section 127).
 				! "Secondary_ionization: False"     -> off entirely
-				! "Secondary_ionization: Immediate"  -> on from step 0
-				!    (restores the pre-staging behavior, for A/B tests only)
+				! "Secondary_ionization: True"      -> on from step 0 (default)
+				! "Secondary_ionization: Immediate" -> the same
+				! "Secondary_ionization: Staged"    -> on once the marching has
+				!    settled without it (state change over a monitor window
+				!    below march_change_th; EXHALE_main), the earlier default
+				!    kept as an option: the cold-start runaway it was made for
+				!    no longer occurs (MEASURED 2026-10-09: wasp_full and
+				!    wasp_full_newton from their cold ICs with the coupling on
+				!    from step 0, 20000 steps, no NaN; the Newton finish at
+				!    log10 Mdot 13.29 as with staging).
 				str = get_word(line, 2)
 				if (str .eq. 'False' .or. str .eq. 'false') use_sec_ion = .false.
-				if (str .eq. 'True'  .or. str .eq. 'true' ) use_sec_ion = .true.
+				if (str .eq. 'True'  .or. str .eq. 'true' ) then
+					use_sec_ion       = .true.
+					sec_ion_immediate = .true.
+				endif
 				if (str .eq. 'Immediate' .or. str .eq. 'immediate') then
 					use_sec_ion       = .true.
 					sec_ion_immediate = .true.
+				endif
+				if (str .eq. 'Staged' .or. str .eq. 'staged') then
+					use_sec_ion       = .true.
+					sec_ion_immediate = .false.
 				endif
 			else if (lbl_match(line, 'Low-energy electron partition')) then
 				! The photoelectrons of 10.2 eV to E_sec_ion (30 eV), which by
@@ -1066,16 +1083,16 @@
 				str = get_word(line, 3);  read(str,*) lev_th
 				write(*,'(A,ES9.2)') ' (input_read) Level-stability tol =', lev_th
 			else if (lbl_match(line, 'Solver')) then
-				! "Solver: Newton [du_switch]" = marching warm-up until the
-				! flux metric du (radial spread of rho*v*r^2) < du_switch
-				! (default 1e-2), then the JFNK steady solve polishes to du<du_th.
+				! "Solver: Newton [switch]" = marching warm-up until the
+				! face mass-flux spread < switch (parameters.f90,
+				! newton_flux_switch), then the JFNK steady solve finishes.
 				str = get_word(line, 2)
 				if (str .eq. 'Newton') then
 					use_newton_solver = .true.
 					str = get_word(line, 3)
-					if (len_trim(str) .gt. 0) read(str,*) newton_du_switch
+					if (len_trim(str) .gt. 0) read(str,*) newton_flux_switch
 					write(*,'(A,ES9.2)') ' (input_read) Solver: Newton, '// &
-						'JFNK hand-off at du <', newton_du_switch
+						'JFNK hand-off at face mass-flux spread <', newton_flux_switch
 				endif
 			else if (lbl_match(line, 'Valve eps')) then
 				call retired_base_key('Valve eps')
@@ -3276,6 +3293,12 @@
    real*8  :: val
    logical :: got
    integer :: ie
+   ! The hydrogen census at the matching level (h_atomic_share_base):
+   ! the profile's q_H, n_tot and rho there, and the mass of the gas per
+   ! hydrogen nucleus in hydrogen-atom masses, 1 + sum_El (El/H) m_El/m_H
+   ! over the elements the profile states.
+   real*8  :: qH_m, ntot_m, rho_m, mass_per_Hnuc, Hnuc_per_particle
+   logical :: got_qH, got_n, got_rho
 
    if (.not. lap_in_use) return
 
@@ -3302,11 +3325,13 @@
       q_h2_base = val
       write(*,'(A,F8.5)') '   profile: q_H2(base) -> ', q_h2_base
    endif
+   mass_per_Hnuc = 1.0d0
    call lap_element_ratio_at_match('He', val, got)
    if (got) then
       HeH = val
       if (HeH .gt. 0.0d0) thereis_He = .true.
       write(*,'(A,F8.5)') '   profile: He/H -> ', HeH
+      mass_per_Hnuc = mass_per_Hnuc + HeH*m_He_over_m_H
    endif
    do ie = 1, n_melem
       call lap_element_ratio_at_match(trim(melem_name(ie)), val, got)
@@ -3314,8 +3339,42 @@
          call set_element_abundance(ie, val)
          write(*,'(A,A,A,ES10.3)') '   profile: ',                        &
             trim(melem_name(ie)), '/H -> ', val
+         mass_per_Hnuc = mass_per_Hnuc + val*melem_A(ie)
       endif
    enddo
+
+   ! THE HYDROGEN CENSUS OF THE GAS BELOW THE BASE.  The atomic share of the
+   ! hydrogen nuclei is q_H n_tot/n_H(nuclei), and the nuclei per particle
+   ! follow from the profile's own mean particle mass rho/n_tot and the
+   ! element ratios: n_H(nuclei)/n_tot = (rho/(n_tot m_H))/mass_per_Hnuc.
+   ! That counts the hydrogen of EVERY species of the lower model, the
+   ! molecules the profile lists as q_ columns and the ones it does not
+   ! (on the LHS 1140 b profiles it agrees with the sum over the listed
+   ! q_ columns to 2e-5).  The share is the profile's, and every other
+   ! hydrogen nucleus goes onto H2 (base_h2_nuclei_fraction).  A census
+   ! outside [0, 1] is a profile whose columns describe different gas and
+   ! is refused.
+   call lap_value_at_match('q_H',   qH_m,   got_qH)
+   call lap_value_at_match('n_tot', ntot_m, got_n)
+   call lap_value_at_match('rho',   rho_m,  got_rho)
+   if (got_qH .and. got_n .and. got_rho .and. ntot_m .gt. 0.0d0 .and.    &
+       rho_m .gt. 0.0d0) then
+      Hnuc_per_particle = rho_m/(ntot_m*mu)/mass_per_Hnuc
+      h_atomic_share_base = qH_m/Hnuc_per_particle
+      if (.not. (h_atomic_share_base .ge. 0.0d0 .and.                    &
+                 h_atomic_share_base .le. 1.0d0)) then
+         write(*,'(A,ES12.4,A)') ' (input_read) ERROR: the profile''s'//   &
+            ' atomic hydrogen share at the match is ',                    &
+            h_atomic_share_base, ' (q_H n_tot/n_H, n_H from rho, n_tot'//  &
+            ' and the X_ columns),'
+         write(*,'(A)') '   outside [0, 1]: its columns do not describe'// &
+            ' one gas.'
+         error stop 1
+      endif
+      write(*,'(A,ES12.5,A,ES12.5,A)') '   profile: atomic share of the'// &
+         ' hydrogen nuclei -> ', h_atomic_share_base,                     &
+         ' (H nuclei per particle ', Hnuc_per_particle, ')'
+   endif
 
    write(*,'(A,A,A,I0,A)') '   profile: source ', trim(lap_source_code),  &
       ', closure iteration ', lap_iteration,                              &

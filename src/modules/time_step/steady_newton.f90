@@ -20,7 +20,8 @@
                                 isp_HeHp, isp_HI, isp_HII, isp_HeI,  &
                                 isp_HeII, isp_HeTR,                  &
                                 isp_OH, isp_H2O, isp_CO, iel_O, iel_C
-      use Conversion,      only: U_to_W, U_to_W_interior
+      use Conversion,      only: U_to_W, U_to_W_interior,              &
+                                 admissible_conserved_cell
       use composition,     only: get_species_densities, comp_T_from_p
       use BC_Apply,        only: Apply_BC
       use ionization_equilibrium, only: ioniz_eq, ioniz_eq_ledger,      &
@@ -131,6 +132,9 @@
 
       implicit none
       private
+      ! build_banded_jac_full is public for the trial-admissibility test of
+      ! EXHALE_main (EXHALE_TRIAL_ADMISSIBILITY_TEST).
+      public :: build_banded_jac_full
       public :: neq_newton, pack_U, unpack_U, newton_residual,         &
                 pack_species_rows, write_species_rows_into_composition, &
                 cell_state_scales, cell_row_scales,                     &
@@ -576,7 +580,7 @@
          integer :: n_trial_no_chem_root  = 0
          integer :: no_chem_root_cell_max = 0
          real*8  :: no_chem_root_res_max  = 0.0d0
-         integer :: n_eval_refusal(0:7)   = 0
+         integer :: n_eval_refusal(0:8)   = 0
       end type solve_refusal_statistics
 
       ! WITH THE SPECIES ROWS THE GEOMETRY CHANGES, so these are set once per
@@ -756,6 +760,12 @@
       ! handoff partition of a ghost, or the ghost composition fixed point),
       ! so the boundary the rows are built on is an iterate.
       integer, parameter :: refuse_lower_boundary_open      = 7
+      ! A cell of the trial's conserved state (rho, rho v, E) is not a gas:
+      ! not finite, rho <= 0, or rho e = E - (rho v)^2/(2 rho) <= 0
+      ! (admissible_conserved_cell). Such a state has no temperature, so no
+      ! equation of state, boundary state or rate coefficient is evaluated
+      ! at it; the trial is refused before any of them.
+      integer, parameter :: refuse_conserved_state_inadmissible = 8
       integer :: eval_refusal        = refuse_none
       integer :: eval_refusal_cell   = 0
       integer :: eval_refusal_row    = 0
@@ -770,12 +780,16 @@
       ! the top of a solve; a probe's refusal counts, because a refused
       ! probe is a Newton column or a Krylov direction the solve did not
       ! get.
-      integer :: n_eval_refusal(0:7) = 0
+      integer :: n_eval_refusal(0:8) = 0
       ! Jacobian-vector products this solve had to take on the BACKWARD side
       ! of the direction because no forward step along it landed on a
       ! describable state (jv_product). Zero over a solve is the statement
       ! that every Krylov direction was sampled forward.
       integer :: n_jv_backward_sample = 0
+      ! Colors of the finite-difference banded Jacobian (build_banded_jac_full)
+      ! this solve had to sample on the BACKWARD side because no forward
+      ! step of any length landed on a describable state.
+      integer :: n_jac_backward_color = 0
       ! AND THE SAME MEASURE OF THE STATE THE SOLVE HOLDS -- its current
       ! iterate, or the trial it has just adopted. That is what the
       ! acceptance gate and the best-iterate ledger have to read, and it is
@@ -3914,6 +3928,7 @@
                                state_is_discarded,                          &
                                rowmax_judged, cells_judged, which_judged, &
                                cells_outside_judged, cell_outside_judged)
+      use, intrinsic :: ieee_arithmetic, only: ieee_value, ieee_quiet_nan
       ! Full steady residual F(Y) with local ionization-equilibrium
       ! elimination, AND the heat/cool it used (so the caller can FREEZE the
       ! radiation when building the banded Jacobian).
@@ -4107,6 +4122,75 @@
       eval_refusal_cell = 0;  eval_refusal_row = 0
       eval_refusal_value = 0.0d0
       n_species_at_lower_bound = 0
+      ! THE CONSERVED STATE IS A GAS, OR NOTHING BELOW IS EVALUATED.
+      ! The temperature of a cell is p/(n_tot + n_e) with p from rho e =
+      ! E - (rho v)^2/(2 rho), so a cell with rho e <= 0 (or rho <= 0, or a
+      ! component that is not a finite number) has no temperature: the
+      ! equation of state, the base boundary state Apply_BC builds from cell
+      ! 1, and every rate coefficient of the sweep would be evaluated at
+      ! T <= 0. MEASURED on the open-face LHS 1140 b route B closure
+      ! (md/osc_diagnosis_20261008.md section 5): a trial reached the sweep
+      ! with cell 2 at T = -1.4356e-5 K and stopped the run inside the
+      ! charge-exchange turnover. The trial is therefore refused HERE, after
+      ! the unpacking and before anything else, with the one definition of
+      ! admissibility the marching route and the restart reader use
+      ! (admissible_conserved_cell); the temperature is never clipped.
+      ! A refused trial has no residual: Fvec is a quiet NaN, the radiative
+      ! pair and the particle count zero, the composition the seed, the
+      ! judged measures larger than any state's, and the module products a
+      ! discarded evaluation would put back are put back. Every caller that
+      ! asks for `admissible` reads it before any of these. A caller that
+      ! does not ask evaluates the iterate the solve holds, which is
+      ! admissible by construction (the solves screen their entry state,
+      ! conserved_state_of_the_entry_is_a_gas, and adopt only admitted
+      ! trials), so meeting an inadmissible state there is a defect of the
+      ! solver and stops the run with its name.
+      do jj4 = 1, N
+         if (admissible_conserved_cell(u(:,jj4))) cycle
+         eval_refusal      = refuse_conserved_state_inadmissible
+         eval_refusal_cell = jj4
+         if (.not. (u(1,jj4) .gt. 0.0d0) .or.                             &
+             .not. (abs(u(1,jj4)) .le. huge(1.0d0))) then
+            eval_refusal_row   = 1
+            eval_refusal_value = u(1,jj4)
+         else if (.not. (abs(u(2,jj4)) .le. huge(1.0d0))) then
+            eval_refusal_row   = 2
+            eval_refusal_value = u(2,jj4)
+         else
+            eval_refusal_row   = 3
+            eval_refusal_value = u(3,jj4) - 0.5d0*u(2,jj4)*(u(2,jj4)/u(1,jj4))
+         endif
+         if (.not. present(admissible)) then
+            write(*,'(A,I0,A,I0,A,ES12.4)') ' (steady_newton) ERROR: the'//&
+                 ' state evaluated as the iterate of the solve is not a'// &
+                 ' gas at cell ', jj4, ' (component ', eval_refusal_row,   &
+                 ' of rho, rho v, E; rho or rho e =', eval_refusal_value
+            write(*,'(A)') '    an iterate is admissible by construction;'//&
+                 ' this evaluation was asked for without the admissibility'//&
+                 ' flag. Aborting.'
+            error stop 1
+         endif
+         admissible = .false.
+         n_eval_refusal(refuse_conserved_state_inadmissible) =            &
+              n_eval_refusal(refuse_conserved_state_inadmissible) + 1
+         Fvec = ieee_value(0.0d0, ieee_quiet_nan)
+         heat = 0.0d0;  cool = 0.0d0
+         if (present(n_part)) n_part = 0.0d0
+         ! The judged measures are the square root of the largest real:
+         ! larger than any measure of a state, and still finite after the
+         ! division by a tolerance (distance_from_certification).
+         if (present(rows_judged))          rows_judged = sqrt(huge(1.0d0))
+         if (present(resid_relnorm_judged))                               &
+            resid_relnorm_judged = sqrt(huge(1.0d0))
+         if (present(rowmax_judged))        rowmax_judged = sqrt(huge(1.0d0))
+         if (present(cells_judged))         cells_judged  = jj4
+         if (present(which_judged))         which_judged  = 0
+         if (present(cells_outside_judged)) cells_outside_judged = N
+         if (present(cell_outside_judged))  cell_outside_judged  = jj4
+         if (put_products_back)                                           &
+            call put_back_residual_evaluation_products(products_at_entry)
+         return
+      enddo
       if (nspec_row .gt. 0) then
          do jj4 = 1, N
          do ii4 = 1, nspec_row
@@ -4816,6 +4900,38 @@
             if (probe_ok) exit
             hstep = 0.5d0*hstep
          enddo
+         ! THE OTHER SIDE OF THE COLUMN, when no forward step of any length
+         ! lands on a state the residual describes. The base point is
+         ! admitted, and the admissible set is open (positive rho and rho e,
+         ! admissible_conserved_cell; nonnegative species unknowns), so a
+         ! forward probe refused at every length means the base point lies
+         ! within the shortest probe of a face of that set in the direction
+         ! of the column: a cell whose internal energy is a fraction below
+         ! about 2^-6 sqrt(eps) of its kinetic energy, probed along its
+         ! momentum, is one. [F(Y) - F(Y - h e)]/h is a sample of the same
+         ! derivative, first-order accurate in h as the forward quotient is,
+         ! and moves away from that face. It is tried only where every
+         ! forward length was refused, so no column the forward probe
+         ! resolves can move; a color refused on both sides is left at zero
+         ! and counted as unresolved, as before.
+         if (.not. probe_ok) then
+            hstep = sqrt(epsilon(1.0d0))
+            do ish = 0, n_probe_step_halvings
+               Yp  = Y;  dYc = 0.0d0
+               do jcol = color, neq, ncolor_jac
+                  dYc(jcol) = -hstep*Dsc(jcol)
+                  Yp(jcol)  = Y(jcol) + dYc(jcol)
+               enddo
+               call eval_residual(Yp, f_sp_base, fwork, Fp, heat, cool,   &
+                                  admissible=probe_ok,                    &
+                                  may_be_adopted=.false.,                 &
+                                  state_is_discarded=.true.,              &
+                                  n_eq_sweeps_fixed=n_eq_sweeps_model)
+               if (probe_ok) exit
+               hstep = 0.5d0*hstep
+            enddo
+            if (probe_ok) n_jac_backward_color = n_jac_backward_color + 1
+         endif
          if (.not. probe_ok) then
             n_color_unresolved = n_color_unresolved + 1
             cycle
@@ -4958,7 +5074,8 @@
       txt = ''
       if (eval_refusal_cell .gt. 0 .and. eval_refusal_row .gt. 0) then
          i = nvar_jac*(eval_refusal_cell-1) + 3 + eval_refusal_row
-         if (eval_refusal .eq. refuse_row_nonfinite)                      &
+         if (eval_refusal .eq. refuse_row_nonfinite .or.                  &
+             eval_refusal .eq. refuse_conserved_state_inadmissible)       &
             i = nvar_jac*(eval_refusal_cell-1) + eval_refusal_row
          call name_of_unknown(i, txt)
       endif
@@ -4992,6 +5109,17 @@
          write(*,'(A,A,I0,A)') tag, '      refused: ',                    &
               int(eval_refusal_value), ' lower-boundary solve(s) of the'//&
               ' sweep left open (ghost partition or ghost fixed point)'
+      case (refuse_conserved_state_inadmissible)
+         if (eval_refusal_row .eq. 3) then
+            write(*,'(A,A,I0,A,ES11.3,A)') tag, '      refused: the'//    &
+                 ' conserved state of cell ', eval_refusal_cell,          &
+                 ' is not a gas, rho e =', eval_refusal_value,            &
+                 ' (code units) is not positive or not finite'
+         else
+            write(*,'(A,A,I0,A,A,A,ES11.3)') tag, '      refused: the'//  &
+                 ' conserved state of cell ', eval_refusal_cell,          &
+                 ' is not a gas, ', trim(txt), ' =', eval_refusal_value
+         endif
       end select
       end subroutine write_last_evaluation_refusal
 
@@ -5815,9 +5943,12 @@
                                   cool,                                   &
                                   admissible=okres,                       &
                                   state_is_discarded=.true.)
-               if (merit_is_on_the_model_row_scaling()) then
+               ! A refused point has no residual (eval_residual), so no
+               ! merit is formed from it.
+               f2t = huge(1.0d0)
+               if (okres .and. merit_is_on_the_model_row_scaling()) then
                   f2t = sqrt(sum((Ftry/Drow)**2))
-               else
+               else if (okres) then
                   f2t = sqrt(sum((Ftry/D)**2))
                endif
                if (okres .and. f2t .lt. f2_new) then
@@ -11588,6 +11719,32 @@
 
       ! ------------------------------------------------------!
 
+      logical function conserved_state_of_the_entry_is_a_gas(u)          &
+                       result(ok)
+      ! Whether every cell of the state a stationary solve is entered at is
+      ! a gas, by the one definition (admissible_conserved_cell: finite,
+      ! rho > 0, rho e > 0). The solve evaluates that state without asking
+      ! for admissibility, because a solve adopts only admitted trials and
+      ! so holds admissible iterates by construction; this is the statement
+      ! that makes the construction start. A state that is not a gas is not
+      ! solved from: the solve returns at once as not converged (info = 1),
+      ! with the cell named, and no rate is evaluated at it.
+      real*8, dimension(3,1-Ng:N+Ng), intent(in) :: u
+      integer :: j
+      ok = .true.
+      do j = 1, N
+         if (admissible_conserved_cell(u(:,j))) cycle
+         ok = .false.
+         write(*,'(A,I0,A,3ES12.4)') ' (steady_newton) the state this'//  &
+              ' solve is entered at is not a gas at cell ', j,            &
+              ': (rho, rho v, E) =', u(1,j), u(2,j), u(3,j)
+         write(*,'(A)') '    the solve is not attempted (info = 1).'
+         return
+      enddo
+      end function conserved_state_of_the_entry_is_a_gas
+
+      ! ------------------------------------------------------!
+
       subroutine solve_steady_ptc(u, f_sp, resid_tol, maxit, dtau0, info)
       ! NOT AVAILABLE WITH THE CARRIER UNKNOWN. This route builds its
       ! Jacobian from frozen_residual, which by construction does no
@@ -11633,6 +11790,11 @@
 
       ! The identifier every record of THIS solve carries.
       n_stationary_solve = n_stationary_solve + 1
+      ! The entry state is the iterate every later evaluation is measured
+      ! against, so it has to be a gas (conserved_state_of_the_entry_is_a_gas).
+      if (.not. conserved_state_of_the_entry_is_a_gas(u)) then
+         info = 1;  return
+      endif
 
       if (nspec_row .gt. 0) then
          write(*,'(A)') ' (PTC) the carrier unknown is a JFNK-only'//&
@@ -11745,7 +11907,8 @@
                 minval(Wtry(3,1:N)) .gt. 0.0d0) then
                call eval_residual(Ytry, f_sp, f_sp_j, Ftry, heat0, cool0, &
                                   admissible=try_ok)
-               f2_try = sqrt(sum(Ftry*Ftry))
+               f2_try = huge(1.0d0)
+               if (try_ok) f2_try = sqrt(sum(Ftry*Ftry))
                ! A trial the code cannot describe is not a descent
                ! candidate whatever its merit evaluates to; it is rejected
                ! and the step is halved, exactly as a negative density is.
@@ -16548,7 +16711,7 @@
       ray_verdict = tr_step_taken;  merit_reproducibility = 0.0d0
       merit_first = 0.0d0;  n_passes_first = 0
       Ftrial = F
-      n_refused_at_entry = sum(n_eval_refusal(1:7))
+      n_refused_at_entry = sum(n_eval_refusal(1:8))
 
       ! THE REFERENCE MERIT IS MEASURED IN THE SAME MODE AS THE TRIALS.
       ! The caller's f2 is the merit of this iterate with the WENO3 weights
@@ -17271,7 +17434,11 @@
                             admissible=okres,                             &
                             state_is_discarded=.true.)
          ok_ray = okres
-         f2p = 0.5d0*sum((Ftry/Drow)**2)
+         ! A refused probe has no residual; its merit is set to the
+         ! iterate's, which makes no slope, and ok_ray carries the refusal
+         ! into the verdict (ray_slope_verdict reads it first).
+         f2p = 0.5d0*f2_ref*f2_ref
+         if (okres) f2p = 0.5d0*sum((Ftry/Drow)**2)
          ! A CENTRAL DIFFERENCE DOES NOT EXIST ON A FACE OF THE FEASIBLE
          ! SET. Where the step moves a species unknown UP off its lower
          ! bound the minus ray moves it below that bound, at every hray, and
@@ -17302,7 +17469,8 @@
                                admissible=okres,                          &
                                state_is_discarded=.true.)
             ok_ray = ok_ray .and. okres
-            f2m = 0.5d0*sum((Ftry/Drow)**2)
+            f2m = 0.5d0*f2_ref*f2_ref
+            if (okres) f2m = 0.5d0*sum((Ftry/Drow)**2)
             fslope = (f2p - f2m)/(2.0d0*hray)
          endif
          call ray_slope_verdict(mslope, fslope, f2p, f2m, ok_ray, ratio,  &
@@ -17379,7 +17547,7 @@
               ', ratio ', ratio, ', ||s|| ', snorm
          write(*,'(A,A,A,I0)') ' (JFNK) [diag 6]   exit: ', trim(why_txt),&
               ', samples refused during this step ',                      &
-              sum(n_eval_refusal(1:7)) - n_refused_at_entry
+              sum(n_eval_refusal(1:8)) - n_refused_at_entry
          ! AND WHAT THE CONSTRAINED STEP DID WITH THE SHARED ROWS: how many
          ! of them the projection was taken on, how many cells the
          ! restoration moved, and the violation magnitude it removed.
@@ -17800,6 +17968,11 @@
 
       ! The identifier every record of THIS solve carries.
       n_stationary_solve = n_stationary_solve + 1
+      ! The entry state is the iterate every later evaluation is measured
+      ! against, so it has to be a gas (conserved_state_of_the_entry_is_a_gas).
+      if (.not. conserved_state_of_the_entry_is_a_gas(u)) then
+         info = 1;  return
+      endif
 
       neq  = nvar_jac*N
       ldab = 2*kl_jac + ku_jac + 1
@@ -17877,6 +18050,7 @@
       call pack_species_rows(u, f_sp, Y)
       n_trial_headroom = 0;  n_resid_eval = 0
       n_eval_refusal = 0;  n_jv_backward_sample = 0
+      n_jac_backward_color = 0
       n_budget_face_at_the_iterate = 0
       n_elem_row_dropped_for_rank = 0
       n_elem_row_target_at_the_iterate = 0
@@ -18803,9 +18977,11 @@
                call eval_residual(Ytry, f_sp, f_sp_j, Ftry, heat0, cool0, &
                                   admissible=try_ok, rows_judged=rows_try)
                dj_try = distance_from_certification(rows_try)
-               if (merit_is_on_the_model_row_scaling()) then
+               ! A refused trial has no residual (eval_residual): no merit.
+               f2_try = huge(1.0d0)
+               if (try_ok .and. merit_is_on_the_model_row_scaling()) then
                   f2_try = sqrt(sum((Ftry/Drow)**2))
-               else
+               else if (try_ok) then
                   f2_try = sqrt(sum((Ftry/D)**2))
                endif
                ! A trial state the code cannot describe is rejected here,
@@ -18916,9 +19092,11 @@
                call eval_residual(Ytry, f_sp, f_sp_j, Ftry, heat0, cool0, &
                                   admissible=try_ok, rows_judged=rows_try)
                dj_try = distance_from_certification(rows_try)
-               if (merit_is_on_the_model_row_scaling()) then
+               ! A refused trial has no residual (eval_residual): no merit.
+               f2_try = huge(1.0d0)
+               if (try_ok .and. merit_is_on_the_model_row_scaling()) then
                   f2_try = sqrt(sum((Ftry/Drow)**2))
-               else
+               else if (try_ok) then
                   f2_try = sqrt(sum((Ftry/D)**2))
                endif
                ok  = try_ok
@@ -18941,7 +19119,8 @@
                                            cool0, admissible=try_ok,      &
                                            rows_judged=rows_try)
                         dj_try = distance_from_certification(rows_try)
-                        f2_try = sqrt(sum((Ftry/Drow)**2))
+                        f2_try = huge(1.0d0)
+                        if (try_ok) f2_try = sqrt(sum((Ftry/Drow)**2))
                      else
                         try_ok = .false.;  f2_try = huge(1.0d0)
                         dj_try = huge(1.0d0)
@@ -19725,6 +19904,26 @@
            ' (JFNK) flux spread by window: r>=1.03', fspread_103,         &
            '   r>=1.10', fspread_110, '   r>=r_flux', fspread,            &
            '  (only the last is the gate)'
+      ! THE REFUSAL CENSUS OF A SOLVE WITHOUT SPECIES ROWS, so that the
+      ! named refusals of every route are on its record (the solve with
+      ! species rows writes the full census below).
+      if (nspec_row .le. 0) then
+         write(*,'(A,I0,A,I0,A,I0,A,I0,A,I0,A,I0)') ' (JFNK) residual'//  &
+              ' samples: admitted ', n_eval_refusal(0),                   &
+              ', refused for a conserved state that is not a gas ',       &
+              n_eval_refusal(refuse_conserved_state_inadmissible),        &
+              ', a non-finite sweep ',                                    &
+              n_eval_refusal(refuse_sweep_nonfinite),                     &
+              ', a non-finite row ',                                      &
+              n_eval_refusal(refuse_row_nonfinite),                       &
+              ', no chemical root ',                                      &
+              n_eval_refusal(refuse_no_chemical_root),                    &
+              ', an open lower boundary ',                                &
+              n_eval_refusal(refuse_lower_boundary_open)
+         write(*,'(A,I0,A,I0)') ' (JFNK) samples taken on the backward'// &
+              ' side: Jacobian-vector products ', n_jv_backward_sample,   &
+              ', banded-Jacobian colors ', n_jac_backward_color
+      endif
       if (nspec_row .gt. 0) then
          write(*,'(A,ES10.2,A,ES10.2,A,I4,A,I0)') ' (JFNK) carrier row '//&
               'of the returned state: volume-weighted',                  &
@@ -19750,6 +19949,12 @@
               n_eval_refusal(refuse_row_nonfinite),                       &
               ', no chemical root ',                                      &
               n_eval_refusal(refuse_no_chemical_root)
+         if (n_eval_refusal(refuse_conserved_state_inadmissible) .gt. 0)  &
+            write(*,'(A,I0,A)') ' (JFNK) residual samples refused for a'//&
+                 ' conserved state that is not a gas (rho <= 0 or'//      &
+                 ' rho e <= 0 in a cell): ',                              &
+                 n_eval_refusal(refuse_conserved_state_inadmissible),     &
+                 ' (no rate was evaluated at them)'
          if (n_eval_refusal(refuse_lower_boundary_open) .gt. 0)           &
             write(*,'(A,I0,A)') ' (JFNK) residual samples refused for a'//&
                  ' lower boundary the sweep left open: ',                 &
@@ -19759,6 +19964,10 @@
               ' the backward side of their direction: ',                  &
               n_jv_backward_sample, ' (no forward step along them landed'//&
               ' on a describable state)'
+         if (n_jac_backward_color .gt. 0)                                 &
+            write(*,'(A,I0,A)') ' (JFNK) banded-Jacobian colors sampled'//&
+                 ' on the backward side: ', n_jac_backward_color,         &
+                 ' (no forward step of any length was admitted)'
          write(*,'(A,A,A,I0,A)') ' (JFNK) species unknown space: ',       &
               trim(species_unknown_space_text()),                         &
               '; trials written onto the faces of the species box: ',     &

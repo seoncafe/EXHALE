@@ -96,10 +96,14 @@
 	                            impose_transported_ionization_fractions, &
 	                            n_stage_chan, n_stage_state_mol,         &
 	                            stage_chan_ncell, stage_chan_asked,      &
-	                            stage_channels_watch, stage_channels_append
+	                            stage_channels_watch, stage_channels_append, &
+	                            ionization_row_gross
 	use ion_cell_state, only: ieq_cell, h2_fraction_of_reservoir,         &
 	                          ionized_hydrogen_nuclei_fraction
 	use charge_exchange, only: he_h_cx_fvec
+	use chemical_row_layout, only: chemical_row_layout_of_cell,           &
+	                               n_layout_rows_max, turnover_of_group,  &
+	                               element_group_turnover_reciprocal
 	use Cooling_Coefficients, only: ioniz_HeI23S_H2,      &
 	                               f_penning_HeI23S
 	! The control key of the collider-resolved third body, read from the one
@@ -168,14 +172,15 @@
 	! production-loss balance P - L in cm^-3 s^-1 of one species.  Before
 	! hybrd1 sees it, every row is divided by the CHEMICAL TURNOVER OF ITS
 	! ELEMENT at a composition x0,
-	!     r_i = (P_i - L_i)/G_E(x0),   G_E = sum over the rows of element E
-	!                                        of (P_j + L_j),
+	!     r_i = (P_i - L_i)/G_E(x0),   G_E = sum over the kinetic rows of
+	!                                        element E of (P_j + L_j),
 	! the gross rates P + L being the sums of the magnitudes of each row's
 	! own terms (mol_heh_rows, oxygen_carrier_rows, metal_rows,
-	! cx_add_to_fvec and he_h_cx_fvec return them beside the rows;
-	! element_turnover_reciprocal groups them: hydrogen is H+, H2, H2+,
-	! H3+ and HeH+, helium He+, He++ and He 2^3S, each metal its two stage
-	! rows, oxygen with OH and H2O).  x0 is the starting point of each
+	! cx_add_to_fvec and he_h_cx_fvec return them beside the rows; the
+	! acceptance groups of chemical_row_layout group them: hydrogen is H+,
+	! H2, H2+, H3+ and HeH+, helium He+, He++ and He 2^3S, each metal its
+	! two stage rows, oxygen with OH and H2O; turnover_or_bound_reciprocal
+	! below forms the reciprocals).  x0 is the starting point of each
 	! solve, and the scale is held through it (mol_row_scale below); a
 	! candidate is judged with x0 = the candidate itself
 	! (normalized_reaction_residual, set_element_turnover_scales of
@@ -240,7 +245,7 @@
 	! every solve.
 	logical, save :: mol_rows_as_volume_rates = .false.
 	! THE SCALE A SOLVE WORKS WITH. mol_row_scale(i) = 1/G_E of row i at
-	! the composition the scale was taken at (element_turnover_reciprocal;
+	! the composition the scale was taken at (turnover_or_bound_reciprocal;
 	! the cell sweep takes it at each starting point, and at each candidate
 	! it judges), and it is HELD while hybrd1 runs: a scale that followed
 	! the iterate would make every row bounded, |r_i| <= 1, and leave the
@@ -251,16 +256,15 @@
 	! with the scale held, none). With mol_rows_by_element_turnover false
 	! the rows are multiplied by mol_inv_turnover, which
 	! set_mol_turnover_rates restores for every caller that does not take a
-	! scale of its own. mol_row_gross holds the gross rate of every row of
-	! the last evaluation, which is what the scale is taken from.
+	! scale of its own. ionization_row_gross (ion_residual_core) holds the
+	! gross rate of every row of the last evaluation, which is what the
+	! scale is taken from.
 	logical, save :: mol_rows_by_element_turnover = .false.
 	real*8,  save :: mol_row_scale(n_mol_rows_max)
-	real*8,  save :: mol_row_gross(n_mol_rows_max)
 	!$omp threadprivate(mk5,mk6,mk7,mk8,mk9,mk10,mk11,mk12,mk13,mk14,mk15, &
 	!$omp                mk16,mk17,mk18,mk19,mk_h2p_he,mk23,mk_ion_H2,     &
 	!$omp                mk_third_body_resolved, mol_rows_as_volume_rates, &
 	!$omp                mol_rows_by_element_turnover, mol_row_scale,      &
-	!$omp                mol_row_gross,                                    &
 	!$omp                ok1,ok1r,ok2,ok2r,ok6,oj3,oj4,oj5,oj7,            &
 	!$omp                mol_inv_turnover)
 
@@ -629,52 +633,35 @@
 
 	!----------------------------------!
 
-	! THE RECIPROCAL CHEMICAL TURNOVER OF THE ELEMENT OF EVERY ROW, from the
-	! gross rates of the rows at one composition (the normalization stated
-	! at mol_inv_turnover): inv(i) = 1/G_E, G_E the sum of the gross rates
-	! P + L of every row whose species carries element E -- hydrogen: H+,
-	! H2, H2+, H3+, HeH+ (rows 1, 4-7); helium: He+, He++, He 2^3S (rows 2,
-	! 3, 8); each metal its two stage rows, oxygen together with OH and H2O.
-	! A row that carries no reaction at all (gross rate zero: an absent
-	! element's identity row x = 0, the pinned X++ of a two-stage element),
-	! or of an element with no turnover, keeps fallback, the reciprocal
-	! bound (1 for an identity row).
-	!   mbase    first metal row (n + 1 where the system has none)
-	!   nmetal   metal elements in canonical order from mbase, two rows each
-	!   io_metal first metal row of oxygen, iox the OH row (0: none)
-	subroutine element_turnover_reciprocal(n, gross, fallback, mbase,     &
-	                                       nmetal, io_metal, iox, inv)
-	integer, intent(in)  :: n, mbase, nmetal, io_metal, iox
-	real*8,  intent(in)  :: gross(n), fallback(n)
-	real*8,  intent(out) :: inv(n)
-	integer :: i, e, blk(n)
-	real*8  :: g_elem(2+nmetal)
-	! Element of each row: 1 hydrogen, 2 helium, 2+e metal e.
-	blk(:) = 1
-	if (n .ge. 2) blk(2) = 2
-	if (n .ge. 3) blk(3) = 2
-	if (thereis_HeITR .and. n .ge. 8) blk(8) = 2
-	do e = 1, nmetal
-		i = mbase + 2*(e-1)
-		if (i .le. n)   blk(i)   = 2 + e
-		if (i+1 .le. n) blk(i+1) = 2 + e
-	enddo
-	if (iox .gt. 0 .and. io_metal .gt. 0 .and. iox+1 .le. n) then
-		blk(iox)   = blk(io_metal)
-		blk(iox+1) = blk(io_metal)
-	endif
-	g_elem(:) = 0.0d0
-	do i = 1, n
-		g_elem(blk(i)) = g_elem(blk(i)) + gross(i)
-	enddo
-	do i = 1, n
-		if (gross(i) .gt. 0.0d0 .and. g_elem(blk(i)) .gt. 0.0d0) then
-			inv(i) = 1.0d0/g_elem(blk(i))
+	! THE SCALE RECIPROCAL OF EVERY ROW OF A SOLVE, from the gross rates of
+	! the rows at one composition (the normalization stated at
+	! mol_inv_turnover): inv(i) = 1/G_E, G_E the chemical turnover of the
+	! acceptance group of row i (chemical_row_layout: hydrogen H+, H2, H2+,
+	! H3+, HeH+; helium He+, He++, He 2^3S; each metal its two stage rows;
+	! oxygen with OH and H2O), summed over the KINETIC rows of the group:
+	! the constraint rows the layout marks (mark_constraint_rows_of_cell)
+	! neither contribute nor receive a turnover, as in the acceptance. A
+	! constraint row, a row that carries no reaction at all (gross rate
+	! zero), a row of a group with no turnover, or one whose gross rate or
+	! group turnover is not a finite number, keeps bound_reciprocal, the
+	! reciprocal bound (1 for an identity row).
+	subroutine turnover_or_bound_reciprocal(layout, gross,               &
+	                                        bound_reciprocal, inv)
+	type(chemical_row_layout_of_cell), intent(in) :: layout
+	real*8,  intent(in)  :: gross(*), bound_reciprocal(*)
+	real*8,  intent(out) :: inv(*)
+	real*8  :: inv_g(n_layout_rows_max)
+	integer :: status(n_layout_rows_max), i
+	call element_group_turnover_reciprocal(layout, gross, inv_g, status,  &
+	                                       .true.)
+	do i = 1, layout%n_rows
+		if (status(i) .eq. turnover_of_group) then
+			inv(i) = inv_g(i)
 		else
-			inv(i) = fallback(i)
+			inv(i) = bound_reciprocal(i)
 		endif
 	enddo
-	end subroutine element_turnover_reciprocal
+	end subroutine turnover_or_bound_reciprocal
 
 	! The scale of the rows of one evaluation: the held element-turnover
 	! scale where one has been taken for this cell, the bound otherwise,
@@ -684,7 +671,7 @@
 	integer, intent(in)    :: n
 	real*8,  intent(inout) :: fvec(n)
 	real*8,  intent(in)    :: gross(n)
-	mol_row_gross(1:n) = gross(1:n)
+	ionization_row_gross(1:n) = gross(1:n)
 	if (mol_rows_as_volume_rates) return
 	if (mol_rows_by_element_turnover) then
 		fvec(1:n) = fvec(1:n)*mol_row_scale(1:n)

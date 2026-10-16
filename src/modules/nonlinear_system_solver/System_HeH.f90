@@ -28,7 +28,8 @@
 	use global_parameters
 	use ion_cell_state, only: ieq_cell
 	use ion_residual_core, only: heh_rows, heh_crow, heh_jac_local,   &
-	                            impose_transported_ionization_fractions
+	                            impose_transported_ionization_fractions, &
+	                            ionization_row_gross
 	use charge_exchange, only: he_h_cx_fvec, he_h_cx_jac
 
 	implicit none
@@ -46,6 +47,8 @@
 	real*8  :: n_h,n_he,n_e
 	real*8  :: n_hi,n_hii
 	real*8  :: n_hei,n_heii,n_heiii
+	! Gross rate of every row at x (ion_residual_core, ionization_row_gross).
+	real*8  :: gross(N_eq)
 	
 	! Coefficients of the system
 
@@ -73,9 +76,10 @@
       
       
       ! System of equations (standard H/He rows, shared helper)
+	gross(1:N_eq) = 0.0d0
 	call heh_rows(fvec, n_hi, n_hii, n_hei, n_heii, n_heiii, n_e,  &
 	              g_hi, g_hei, g_heii, a_hii, a_heii, a_heiii,      &
-	              b_hi, b_hei, b_heii)
+	              b_hi, b_hei, b_heii, gross=gross)
 
 	! He <-> H charge exchange (Huang Table 4 group B, and He2+ + H0). He
 	! row is written HeI->HeII (ionization) positive here, so he_row_sign
@@ -83,7 +87,8 @@
 	call he_h_cx_fvec(fvec, ieq_cell%kcx_He0_Hp, ieq_cell%kcx_Hep_H0,  &
 	                  ieq_cell%kcx_Hepp_H0,                            &
 	                  n_hi, n_hii, n_hei, n_heii, n_heiii, 1.0d0,       &
-	                  .false.)
+	                  .false., gross=gross)
+	ionization_row_gross(1:N_eq) = gross(1:N_eq)
 
 	! The transported ionization fractions, where the flow carries them
 	! and not this cell's local balance (ion_residual_core).

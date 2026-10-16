@@ -1,0 +1,52 @@
+Planet name: WASP-121b_HuangB
+# Base radius = radius of the 1 microbar level, R0 = sqrt(G M_p / g) from
+# Huang et al. 2023 Table 3 "log g @ 1 microbar" (g = G M_p / r^2).
+Planet radius [R_J]: 2.418
+Planet mass [M_J]: 1.1824
+# Base temperature at 1 microbar, READ from the first point of the
+# published temperature profile of this case (see ../README.md).
+Equilibrium temperature [K]: 2690.0
+Orbital distance [AU]: 0.02545
+Escape radius [R_p]: 1.50
+He/H number ratio: 0.0851
+2D approximate method: Rate/4 + Mdot
+Parent star mass [M_sun]: 1.3521
+Spectrum type: Load from file..
+Spectrum file: ../../../inputdata/sed/wasp121b_composite_lyc_huang2023.txt
+Use only EUV? False
+[E_low,E_mid,E_high] = [ 13.60 , 123.98 , 1.24e3 ]
+# The two luminosity lines below are mandatory input, but the loaded SED
+# supersedes their values: read_sed recomputes LX and LEUV by integrating
+# the photon grid it builds from the file (bands split at E_mid).
+Log10 of X-ray luminosity [erg/s]: 29.46
+Log10 of EUV luminosity [erg/s]: 30.42
+Grid type: Mixed
+Grid cells: 580
+Numerical flux: HLLC
+Reconstruction scheme: PLM+WENO3
+Include He23S? False
+Load IC? False
+Do only PP: False
+Force start: False
+# Roche potential (no Domain mode line), domain extended past L1
+# Outer face: Huang et al. 2023 section 2.3 puts it 31.7 R_J above the 1 microbar
+# level (14.110 R0 here); that face stops this binary at the outermost cell on
+# step 0-1 (failed_outer_face_31p7RJ/, ../README.md). Used instead: 11.0 R_px = 11.0 x 1.945/2.418 R0, the extent of Huang Fig. 20,
+# past the sonic point.
+Outer radius [R_p]: 8.850
+Base BC: pressure 1.0
+IC mode: auto
+Stellar Teff [K]: 6459.0
+Stellar radius [R_sun]: 1.4572
+Jlya escape-prob: True
+Stellar Lya flux [erg/cm2/s]: 1.0e5
+Lya stellar halfwidth [km/s]: 70
+Lya stellar boost [-]: 5
+Deexc heat: True
+Secondary_ionization: False
+H_rec_escape: False
+He_rec_coupling: False
+Conduction: True
+Viscosity: True
+du_th [PLM,WENO3]: 0.5 1.0e-3
+Solver: Newton

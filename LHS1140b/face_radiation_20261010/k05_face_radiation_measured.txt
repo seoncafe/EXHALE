@@ -1,0 +1,43 @@
+# MEASURED on k05 with the stand-in face file k05_wind_face_optical_depth_standin.txt (sha256 1fa73e2ffcddd5bd)
+# H2 layers: 4.358e+18 cm^-2 at 315 K, 3.597e+18 cm^-2 at 470 K, 3.845e+18 cm^-2 at 665 K, 3.820e+18 cm^-2 at 945 K, 3.861e+18 cm^-2 at 1420 K
+
+## 1. Band powers at normal incidence [erg cm^-2 s^-1]: the star, and what crosses the wind for each model (energy-weighted over its slants)
+band                     star | per_model: Photochem  climate | wind: Photochem  climate    
+X-ray 0.9-10 nm    9.4389e+00 |    1.9811e+00    1.9493e+00 |    2.4239e+00    2.4239e+00
+EUV 10-80.4 nm     1.0045e+01 |    7.9974e-14    9.0116e-11 |    1.2015e-09    1.2015e-09
+80.4-91.2 nm       2.9870e-02 |    4.5288e-05    1.0782e-04 |    3.7404e-04    3.7404e-04
+LW 91.2-100 nm     1.9472e-01 |    6.6071e-02    6.2622e-02 |    8.1311e-02    8.1311e-02
+LW 100-120.1 nm    8.8641e-01 |    6.2291e-01    6.1186e-01 |    6.6065e-01    6.6065e-01
+LW 91.2-120.1 nm at mu = 1: lines only 0.7409, continuum only 0.9089, both 0.6863 of 1.0811e+00
+geometry per_model: horizontal energy factor Photochem 0.3346 (zenith 48.00 deg, diurnal None), climate 0.2500
+geometry wind     : horizontal energy factor Photochem 1.0000 (zenith 0.00 deg, diurnal 1.0), climate 1.0000
+
+# column: 202 levels 1.000e-06-1.673e+01 bar; at the match q_H2 0.1926 q_He 0.8072 q_CH4 1.048e-04 q_NH3 2.977e-05 T 241.0 K n 3.006e+13
+
+## 2. Photons absorbed in the column below 120.1 nm [cm^-2 s^-1], Photochem geometry, Photochem cross sections (quantum yield 1)
+per_model whole column         He 6.689e+10 -> 9.844e+08 (98.5% removed); H2 1.945e+10 -> 4.749e+09 (75.6% removed); CH4 1.003e+10 -> 8.246e+09 (17.8% removed); NH3 2.494e+09 -> 2.030e+09 (18.6% removed); H2O 5.293e+09 -> 4.440e+09 (16.1% removed); C2H2 4.964e+00 -> 3.957e+00 (20.3% removed); HCN 1.497e+01 -> 1.254e+01 (16.2% removed)
+per_model above p_match e^0.5  He 6.545e+10 -> 3.360e+08 (99.5% removed); H2 1.920e+10 -> 4.598e+09 (76.1% removed); CH4 3.494e+09 -> 2.759e+09 (21.0% removed); NH3 8.151e+08 -> 6.388e+08 (21.6% removed); H2O 1.997e+06 -> 1.582e+06 (20.8% removed); C2H2 5.062e+05 -> 3.828e+05 (24.4% removed); HCN 2.059e+06 -> 1.682e+06 (18.3% removed)
+per_model Photochem 0.00-80.4 nm: 6.5186e+00 -> 6.6281e-01 erg cm^-2 s^-1 on the horizontal (4.9436e+10 photons -> 7.0750e+08)
+per_model Photochem 80.38-91.2 nm: 9.9935e-03 -> 1.5152e-05 erg cm^-2 s^-1 on the horizontal (4.3140e+08 photons -> 6.4085e+05)
+per_model Photochem 91.20-120.1 nm: 3.6171e-01 -> 2.3051e-01 erg cm^-2 s^-1 on the horizontal (1.9828e+10 photons -> 1.2975e+10)
+wind      whole column         He 1.338e+11 -> 2.797e+09 (97.9% removed); H2 3.890e+10 -> 1.142e+10 (70.6% removed); CH4 2.007e+10 -> 1.702e+10 (15.2% removed); NH3 4.987e+09 -> 4.192e+09 (15.9% removed); H2O 1.059e+10 -> 9.112e+09 (13.9% removed); C2H2 9.929e+00 -> 8.221e+00 (17.2% removed); HCN 2.993e+01 -> 2.573e+01 (14.0% removed)
+wind      above p_match e^0.5  He 1.296e+11 -> 9.800e+08 (99.2% removed); H2 3.814e+10 -> 1.093e+10 (71.3% removed); CH4 4.969e+09 -> 4.048e+09 (18.5% removed); NH3 1.160e+09 -> 9.368e+08 (19.2% removed); H2O 2.865e+06 -> 2.299e+06 (19.8% removed); C2H2 7.252e+05 -> 5.685e+05 (21.6% removed); HCN 2.908e+06 -> 2.434e+06 (16.3% removed)
+wind      Photochem 0.00-80.4 nm: 1.9484e+01 -> 2.4239e+00 erg cm^-2 s^-1 on the horizontal (1.4776e+11 photons -> 2.9726e+09)
+wind      Photochem 80.38-91.2 nm: 2.9870e-02 -> 3.7404e-04 erg cm^-2 s^-1 on the horizontal (1.2894e+09 photons -> 1.5919e+07)
+wind      Photochem 91.20-120.1 nm: 1.0811e+00 -> 7.4196e-01 erg cm^-2 s^-1 on the horizontal (5.9264e+10 photons -> 4.1556e+10)
+
+## 3. Photoionizing radiation the wind transmits (< 80.38 nm), deposited in the column
+  Spencer-Fano at E0 =   30 eV (x_He 0.807, x_H2 0.193, x_e 1e-08, T_e 241 K): heat share 0.2679 = f_heat 0.0965 + rot 0.0505 + vib 0.1209; ionization 0.2359, He excitation 0.1926, H2 electronic 0.2156, H2 dissociation (chemical) 0.0806
+  Spencer-Fano at E0 =  100 eV (x_He 0.807, x_H2 0.193, x_e 1e-08, T_e 241 K): heat share 0.1641 = f_heat 0.0595 + rot 0.0311 + vib 0.0735; ionization 0.4251, He excitation 0.1853, H2 electronic 0.1712, H2 dissociation (chemical) 0.0488
+  Spencer-Fano at E0 =  300 eV (x_He 0.807, x_H2 0.193, x_e 1e-08, T_e 241 K): heat share 0.1385 = f_heat 0.0493 + rot 0.0265 + vib 0.0627; ionization 0.4881, He excitation 0.1797, H2 electronic 0.1500, H2 dissociation (chemical) 0.0391
+  Spencer-Fano at E0 = 1000 eV (x_He 0.807, x_H2 0.193, x_e 1e-08, T_e 241 K): heat share 0.1287 = f_heat 0.0461 + rot 0.0245 + vib 0.0580; ionization 0.5053, He excitation 0.1772, H2 electronic 0.1486, H2 dissociation (chemical) 0.0357
+  Spencer-Fano at E0 = 1300 eV (x_He 0.807, x_H2 0.193, x_e 1e-08, T_e 241 K): heat share 0.1273 = f_heat 0.0459 + rot 0.0242 + vib 0.0572; ionization 0.5033, He excitation 0.1753, H2 electronic 0.1542, H2 dissociation (chemical) 0.0352
+per_model (climate beams, energy factor 0.250): incident 4.8733e-01, absorbed 4.8666e-01 (He 0.94, H2 0.05, NH3 0.01, N2 0.00), heat 6.1691e-02 erg cm^-2 s^-1 (share 0.1268)
+          heat above p_match e^0.5 1.3596e-02, above 1e-5 bar 4.5575e-02, above 1e-4 bar 6.0748e-02, above 1e-3 bar 6.1691e-02; half of it above 3.604e-06 bar
+wind      (climate beams, energy factor 1.000): incident 2.4239e+00, absorbed 2.4209e+00 (He 0.95, H2 0.05, NH3 0.01, N2 0.00), heat 3.0743e-01 erg cm^-2 s^-1 (share 0.1270)
+          heat above p_match e^0.5 6.8985e-02, above 1e-5 bar 2.1673e-01, above 1e-4 bar 3.0002e-01, above 1e-3 bar 3.0743e-01; half of it above 3.694e-06 bar
+
+## 4. clima, absorbed stellar flux at the top for the two geometries (k05 climate inputs copied to scratch, unattenuated spectrum)
+per_model TOA (absorbed stellar, OLR) at T_deep 400 K: 1.3266e+05, 6.7961e+04 erg cm^-2 s^-1; bolometric 5.4484e+05
+wind      TOA (absorbed stellar, OLR) at T_deep 400 K: 5.3522e+05, 6.7961e+04 erg cm^-2 s^-1; bolometric 1.0897e+06
+ratio of absorbed stellar flux wind/per_model: 4.0345

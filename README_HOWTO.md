@@ -56,9 +56,10 @@ and the code builds and runs. The system preset list is stored in
 `src/utils/params_table.txt` and can be extended with the **Add planet**
 button.
 
-The GUI writes the original ATES-format `input.inp`, which runs with the
-legacy convergence behavior (single-stage marching to `du < 1e-3`, no Newton
-finish). All EXHALE extensions are opt-in keys appended to `input.inp`
+The GUI writes the original ATES-format `input.inp`, which runs single-stage
+marching with no Newton finish (the marching stops on the face mass-flux
+spread and the state change of every run, see below, not on the `du < 1e-3`
+of ATES). All EXHALE extensions are opt-in keys appended to `input.inp`
 (`du_th [PLM,WENO3]`, `Solver: Newton`, `Domain mode`, ...) or separate runtime
 files (`metals.inp`, `opacity.inp`, `base.inp`), so to use them either add the
 lines by hand or start from `examples/` (Option B).
@@ -90,9 +91,10 @@ GNU build links; unset, the binary sets it to 1 at startup (README, Build).
 ```
 # input.inp
 Reconstruction scheme:    PLM+WENO3    # two-stage; PLM (or WENO3) alone is single-stage
-du_th [PLM,WENO3]:        0.5 1.0e-3   # PLM until du<0.5, then WENO3 until du<1e-3
+du_th [PLM,WENO3]:        0.5 1.0e-3   # PLM until du<0.5, then WENO3 (the second value only selects the two-stage mode)
 # Reconstruction continuation: 0.02    # OFF by default; walks the hand-off
-Solver: Newton                         # optional residual-tightening finish
+Solver: Newton                         # JFNK finish once the face mass-flux spread < 0.1
+Outer radius [R_p]:       2.0          # put the outer face past the sonic point (see below)
 # Shapiro filter:  -1                  # OFF by default; opt-in only for breathing cases
 # Low-Mach damping:  2.0e-2            # OFF by default; for a cooling-stalled shell
 # Max steps:  1000000                  # hard iteration cap (this IS the default)
@@ -102,48 +104,95 @@ make                                   # build ./EXHALE.x once at the repo root
 cd examples/tutorial && ../../EXHALE.x # run in a self-contained run dir
 ```
 
-`Reconstruction scheme: PLM+WENO3` enables the two-stage PLM -> WENO3 marching
-(PLM to the first `du_th` value, WENO3 to the second); `Reconstruction scheme:
-PLM` (or `WENO3`) alone is single-stage and uses only the first `du_th` value.
-Then the JFNK Newton finish runs. If the flux metric plateaus just above the
-hand-off threshold (seen with He diffusion), the hand-off now fires on the
-plateau automatically. A quantitative Mdot always needs the Newton finish.
--> manual sections 2.4 and 2.7.
+`Reconstruction scheme: PLM+WENO3` enables the two-stage PLM -> WENO3 marching:
+PLM until the cell-centered spread `du` of `rho*v*r^2` falls below the first
+`du_th` value (or plateaus), then WENO3. The second `du_th` value only has to be
+smaller than the first, which selects the two-stage mode; since 2026-10-09 it no
+longer stops anything. `Reconstruction scheme: PLM` (or `WENO3`) alone is
+single-stage. Then the JFNK Newton finish runs. A quantitative Mdot always needs
+the Newton finish. Worked recipes with run times and outputs:
+`examples/recipe_*/README.md`. -> manual sections 2.4 and 2.7.
 
-**Convergence criterion (flux-based).** Convergence is judged on the *flux*
-criterion of the reference codes: the fractional spread of the mass flux,
-`dMdot/Mdot < du_th` (in the code `du` *is* the radial spread of `rho*v*r^2`,
-not a velocity change). This is the ATES test (Caldiroli 2021, `< 1e-3`) and is
-equivalent to the CETIMB requirement (Koskinen 2013a) that `F_c = rho*v*r^2` be
-constant with altitude. So the two lines above are the whole recipe: the
-two-stage run switches PLM to WENO3 at `du < 0.5` and **stops when
-`du < 1e-3`** (flux-converged). The `Solver: Newton` key is **optional** and
-does *not* change this criterion.
+**The marching stop (face mass flux and state change).** The marching stops
+when two conditions hold at one monitor step (every 500 steps):
+- the NUMERICAL face mass flux `r^2 F_rho` (the Riemann flux the update uses)
+  is flat over `r >= r_flux = 1.2 R_p` to a spread below **`4e-4`**
+  (`march_flux_spread_th`); this is the flux criterion of the reference codes
+  (ATES, Caldiroli 2021; CETIMB, Koskinen 2013a: `F_c = rho*v*r^2` constant with
+  altitude), taken on the faces;
+- the state has stopped changing: over the last monitor window no cell's
+  density or total energy moved by more than **`1e-4`** relative, nor its
+  momentum by more than `1e-4 sqrt(rho E)` (`march_change_th`).
 
-**About `Solver: Newton` (optional).** `du` (a mass-flux flatness) and the
-steady residual `||R|| = ||du/dt||` (mass + momentum + energy) are *different*
-quantities: `du` can reach `1e-3` while `||R||` is still larger (an
-operator-split or energy imbalance). When `Solver: Newton` is set, the WENO3
-stage does **not** stop at `du < 1e-3`; instead it warms up until the flux
-metric `du < newton_du_switch` (default `1e-2`, the du-keyed hand-off) and then
-the JFNK solver drives the **residual** `||R||` (not `du`) toward the run's
-`Resid tol`: a stricter, separate check, not a repeat of the `du` test. The
-hand-off point is adjustable with an optional third token on the key:
-`Solver: Newton 5e-3` hands off later; bare `Solver: Newton` keeps the `1e-2`
-default. `||R||` is otherwise computed and reported **for reference only**
-(volume-weighted by default, since the L-inf max is dominated by the small
-near-base cells) and gates the marching stop only if you set `Resid tol:`.
-The residual rows are divided by a bound on their own largest term, not by
+Both numbers are printed at every monitor step on a line
+`[stop] step N  face mass-flux spread ... (stop below 4.000E-04)  state change
+over the window ... at cell j (stop below 1.000E-04)`, and the final
+`-> stopped:` line names the stop that fired. A state that has settled while its
+face flux no longer falls (less than 1% drop from one window to the next, for
+`N_stall` = 2000 steps) ends as "stall, target not met". The cell-centered `du`
+is printed on the `[diag]` line as a DIAGNOSTIC only: it has a
+resolution-dependent floor set by the cells next to the outer ghost (3.6e-3 on a
+certified 500-cell `wasp_full` state whose face spread is 5e-13; update log stage
+3 section 127), so it is not a measure of stationarity. The thresholds come from
+a measurement: marching `wasp_full` on from face spread 4e-4 to 1.9e-5 moved rho
+by at most 1.45e-3, v by 1.24e-3, T by 3.3e-4 and log10 Mdot by less than 0.005
+(section 127.2). For measurement only, `EXHALE_MARCH_FLUX_TH`,
+`EXHALE_MARCH_CHANGE_TH` and `EXHALE_MONITOR_STEPS` replace the two thresholds
+and the window (`EXHALE_MARCH_FLUX_TH <= 0` stops on the state change alone).
+Before 2026-10-09 the run stopped at `du < du_th`; an input written for that rule
+now stops on the rule above.
+
+**`Solver: Newton [switch]`.** When set, the WENO3 stage does not stop on the
+marching rule; it warms up until the FACE mass-flux spread falls below `switch`
+(default **`0.1`**, the hand-off armed once a monitor step has seen the spread at
+or above the switch), or settles within 5 times the switch, and then the JFNK
+solver drives the residual `||R||` (mass + momentum + energy) toward the run's
+`Resid tol`. **The meaning of the optional value changed on 2026-10-10:** it was
+a `du` threshold (default `1e-2`) and is now a face-spread threshold, because
+`du` with the outer face at 2 R_p never falls below its floor of 1.04e-2 and the
+`du` hand-off came only through the stall clause after 45 118 steps. MEASURED on
+`wasp_full_newton` (section 131): switch 0.2, 0.1, 0.03 hand off at steps 11 500,
+16 500, 21 500, all reaching JFNK `info = 0` at log10 Mdot 13.28. An input that
+carried a `du` value here (e.g. `Solver: Newton 5.0e-2`) now hands off at that
+face spread; restate the value. `||R||` is otherwise computed and reported **for
+reference only** (volume-weighted by default, since the L-inf max is dominated by
+the small near-base cells) and gates the marching stop only if you set `Resid
+tol:`. The residual rows are divided by a bound on their own largest term, not by
 `|u|`, so a `Resid tol` here is 1e-2 times its pre-2026-09-03 equivalent; the
-default the steady solver takes when the key is absent is `1e-5`. A second
-gate `Flux spread tol:` must be met as well before a steady solve is
-accepted; its default is **`2e-5` over `r >= 1.2 R_p`** on the conserved FACE
-flux, the geometric middle of the interval that separates every state a JFNK
-accepted (1e-10 to 4e-6) from every state stopped on `du` alone (1.1e-4 to
-3.2e-2). A run that stops on `du` without meeting either is still
-flux-converged by the reference standard; it is not a failure, but the Mdot
-then carries the `du`-stop path dependence of a few percent, so quote a
+default the steady solver takes when the key is absent is `1e-5`. A second gate
+`Flux spread tol:` must be met as well before a steady solve is accepted; its
+default is **`2e-5` over `r >= 1.2 R_p`** on the conserved FACE flux, the
+geometric middle of the interval that separates every state a JFNK accepted
+(1e-10 to 4e-6) from every state stopped on `du` alone (1.1e-4 to 3.2e-2). A
+marching state stopped at face spread `4e-4` is far from those gates and makes
+no stationary claim (a relaxation snapshot, exit status 0, see below); quote a
 Newton-converged value where one is available.
+
+**Put the outer face past the sonic point.** Every run prints, with its Mdot,
+`---> Mach number of the outermost cell = M (r = ... R_p)`, and below `M = 1.1` a
+note: at a subsonic outer face one acoustic characteristic enters the domain and
+the outer ghost condition (a hydrostatic continuation with the velocity copied)
+supplies it, so it can select Mdot. The default outer face of a Roche domain is
+the L1 point; for a transonic wind whose sonic point lies outside it, set
+`Outer radius [R_p]:` past the sonic point. Below Mach 1.1 the run labels its
+Mdot "NOT A QUANTITATIVE MDOT" (run log and `EXHALE_setup.out`); there is no
+other treatment of a subsonic face (decision 2026-10-12,
+`md/outer_boundary_subsonic_review_20261009.md` section 6). MEASURED on `wasp_full_newton`
+(`md/outer_boundary_subsonic_review_20261009.md` section 5, 500 cells, JFNK
+`info = 0` in every run; binary of before update log stage 3 section 138,
+whose columns still counted the outer ghosts):
+
+| outer radius | log10 Mdot | Mach of the outermost cell |
+|---|---|---|
+| L1 = 1.574 R_p (default) | 13.29 | 0.950 |
+| 2 R_p | 13.28 | 1.499 |
+| 3 R_p | 13.27 | 2.882 |
+
+The L1 run differs from the 2 R_p run by up to 15% in rho and 17% in v near
+1.31 R_p (log10 Mdot by 0.01), five times the grid effect between the two
+supersonic domains (2.7%, 3.4%). The `wasp_*` regression cases therefore run
+with `Outer radius [R_p]: 2.0`. A cold hydrostatic IC on the 3 R_p domain failed
+at step 0 in the energy update; those runs used `IC mode: auto`.
 
 **A steady state is CERTIFIED, or it is not.** `Resid tol` is what the SOLVER
 was asked for. Whether the state that came back is a steady state of the
@@ -166,10 +215,38 @@ balance is a cancellation of advective terms in the wind and of eddy and
 settling terms in the layer, and the two are not resolvable to one number:
 the same equation on the same state reads 2 to 11 times smaller in the wind.
 The band `1.10 <= r < 1.20` is reported and does not gate. An atomic
-three-unknown run certifies; **no configuration carrying a species row (an
-element row from `He_diffusion`, a carrier row from the molecular carriers)
-has yet reached its tolerance on any route**, so a mass-loss rate from such a
-run is quoted with that qualification.
+three-unknown run certifies. A configuration carrying a species row (an
+element row from `He_diffusion`, a carrier or ionization-stage row) certifies
+on some states and not on others: `iontrans_metals` is accepted at its outer
+pass 15, and the LHS 1140 b He/H 2.09 closure state certifies (update log
+stage 3 sections 122, 125), while route B and He/H 0.65 end with an
+ionization-stage carrier row near its tolerance scale (section 126.4).
+
+**Acceptance by the precision of the observable; the certification is a
+diagnostic.** Since 2026-10-09 (user decision;
+`md/acceptance_by_observable_precision_20261009.md`) a state is accepted as a
+result for an observable when (A1) continuing the solve moves the observable
+by less than its budget (proposed: 0.3% in Mdot, 0.002 %A in the LHS 1140 b
+width-matched He 10830 EW), (A2) its mass and energy budgets close over the
+region that forms the observable, and (A3) T, v, n_e and the absorber density
+change by less than 1% there under the same continuation, shown as overlaid
+profiles. The certification is still computed and printed for every state; a
+failure no longer refuses a result but is carried as the flag "not certified,
+O stable to X", and a row far above its scale (a factor 100 is proposed) is
+investigated as a possible defect first.
+
+**Exit statuses.**
+
+| status | meaning |
+|---|---|
+| `0` | the written state is certified, or the run made no stationary claim (the marching stop of the previous section, a step cap, a stall, a NaN, `Do only PP`): a state the certification refuses is then written `certified=F cert_reason=no_stationary_claim` |
+| `2` | the run declared a stationary state and it is not certified: written in full, the failing rows named; a FLAG, callers continue with it. Two stops declare one: the residual gate met while marching (`Resid tol:`) and a Newton finish with `info = 0` (`EXHALE_main.f90`, `certification_note_stationarity_claim(newton_finished .or. steady_gates_converged)`). The marching stop is not a claim: its face threshold `4e-4` is twenty times the steady gate, so a marching state stopped there exits 0 whatever its certification (update log stage 3 section 135). The last line is `(certification) the state was written in full; the run exits with status 2 because it is not certified.` A gfortran runtime error also exits 2; it lacks that line |
+| `3` | the stationary solve of a steady route (a stationary restart, the direct steady route) returned `info /= 0`: the solver's last iterate is written `certified=F cert_reason=stationary_solve_failed` (before 2026-10-10 such a state was written as a relaxation snapshot with status 0) |
+
+`src/utils/element_flux_closure.py`, `LHS1140b/models/run_case.sh` and
+`LHS1140b/models/.P1/fiducial_conduction/ew_of_state.sh` read these statuses
+this way (status 2 continues, labeled uncertified; status 3 stops the
+closure; status 2 without the closing line is fatal).
 
 Full-physics cases (He 2^3S + metals, secondary ionization, a `base.inp`
 handoff) that used to abort at `info = 2` around `||R|| ~ 2.8e-3` now reach
@@ -442,10 +519,12 @@ He_Kzz: 1.0e9               # eddy-diffusion coefficient [cm^2/s], default 0
 Default off, so standard runs are unchanged: without the key the He/H ratio is
 frozen at the input value at all radii. With it, hydrogen and helium are
 treated as two components of one gas and the helium mass fraction is
-transported with advection, binary diffusion, gravitational settling against
-the computed ambipolar field, optional thermal diffusion and an optional eddy
-term `He_Kzz`. The binary coefficient is resolved by ionization stage (hard
-sphere for neutral pairs, polarization plus rigid core for ion-neutral,
+transported with advection, binary diffusion, pressure-driven settling
+(the settling acceleration is -(1/rho) dp/dr of the state, i.e. gravity plus
+the acceleration of the wind) against the computed ambipolar field, optional
+thermal diffusion and an optional eddy term `He_Kzz`. The binary coefficient
+is resolved by ionization stage (hard sphere for neutral pairs, the
+polarization form of Schunk & Nagy 1980 for non-resonant ion-neutral pairs,
 Coulomb for ion-ion),
 so settling is suppressed by orders of magnitude above the ionization front. Helium therefore settles
 against the wind drag and He/H declines with altitude as in Taylor et al.
@@ -568,7 +647,8 @@ Molecular chemistry: True
 # there is no need to write it.
 ```
 H2/H2+/H3+/HeH+ join the coupled ionization equilibrium; H2 photoionization
-opacity/heating (Yan+1998) and H3+ IR cooling (Miller+2013) are included;
+opacity/heating (Yan+1998) and H3+ IR cooling (the MiZATeP LTE cooling
+function of Mizus+2017 times the non-LTE factor of Miller+2013) are included;
 `Ion_species*.txt` gains `H2 H2p H3p HeHp` columns. Requires He/H > 0.
 `He_diffusion` may be on: the element transport closes over the molecular
 carriers. A `metals.inp` may be present: the
@@ -637,13 +717,16 @@ log10 Mdot by -1e-6 (`md/Update_EXHALE_stage3.md` section 81). Full reference: `
 **Converging a molecular run needs three more keys than an atomic one:**
 
 ```
-Solver:     Newton 5.0e-2
+Solver:     Newton
 Resid tol:  1.0e-7
 Max steps:  150000
 ```
-`Solver: Newton 5.0e-2` raises the hand-off threshold, because the `du` descent
-of a molecular run is not monotonic and the run can spend its whole step budget
-above the `1e-2` default. `Resid tol: 1.0e-7` (renormalized 2026-09-03 from
+`Solver: Newton` hands the state to JFNK at a face mass-flux spread of 0.1.
+Until 2026-10-10 this recipe carried `Solver: Newton 5.0e-2`, a `du` threshold
+raised above the old `1e-2` default because the `du` descent of a molecular run
+is not monotonic; the value now means a face spread (5e-2 would hand off later
+than the default, not earlier), and the face-spread switch has not been
+re-measured on a molecular run. `Resid tol: 1.0e-7` (renormalized 2026-09-03 from
 `1.0e-5`, section 133) is what converges the molecular
 layer itself: `||R||` is set by the two or three cells just above the base, so a
 run stopped at the `1e-3` default leaves the layer still cooling (HD 209458 b
@@ -874,7 +957,7 @@ python3 \
       --tp-file       vulcan_work/hd209_vulcan/atm/atm_HD209_Kzz.txt \
       --stellar-flux  vulcan_work/hd209_vulcan/atm/stellar_flux/Gueymard_solar.txt \
       --r-star 1.155 --a-orb 0.0480 \
-      --p-match 1e-6 --toa 1e-2 [--atoms H,He,N,O,C,S]
+      --p-match 1e-6 [--atoms H,He,N,O,C,S]
 
 # cross-check: a finished VULCAN run, same options, same schema
 python3 src/utils/vulcan_to_lower_profile.py <run_dir> \
@@ -888,7 +971,47 @@ key in it would stop the run). `--r-ref` is the planet radius at `--p-ref`
 (1 bar by default, the transit radius), from which the radius column is
 integrated hydrostatically; `--p-match` is where EXHALE will place its base;
 `--trial-flux-H`, `--trial-flux-He` and `--iteration` are the closure
-bookkeeping.
+bookkeeping. `--trial-flux-H` is a flux of hydrogen NUCLEI (the adapter divides
+it by m_H): the closure passes the wind's `F_Hnuc` (`lower_profile_F_Hnuc_*`,
+`steady_F_Hnuc_*` in `EXHALE_resolved.out`), the hydrogen-nucleus share of the
+component-1 mass flux `F_H`, which also carries the trace metals and the C and
+O bound in molecules (on the `lower_profile` case F_Hnuc/F_H = 0.988; update
+log stage 3 section 134). Before 2026-10-10 the closure passed `F_H` itself
+(0.44% too much hydrogen on LHS 1140 b); a resumed closure whose history holds
+those fluxes is refused. `F_H` and `F_He` keep their meaning
+(`F_H + F_He = Mdot`).
+
+**The stellar geometry at the matching face** (`--face-geometry`, default
+`wind` since 2026-10-10). The column models take the stellar energy the wind's
+own input states: `xi_w F` at the face, with `xi_w` the wind's
+`dayside_dilution` (1 for `2D approximate method: Mdot` and every method
+without `Rate/2` or `Rate/4`, 1/2 for `Rate/2 ...`, 1/4 for `Rate/4 ...`),
+stated by `--wind-dilution` or by the face file. `per_model` reproduces earlier
+runs (Photochem 0.5 F at 48 deg, the climate column F/4). The closure adds
+`--face-geometry wind --wind-dilution xi_w` unless `adapter_args` names a
+geometry, and refuses a wind run whose `dayside_dilution` differs
+(`check_wind_dilution`): every run writes the value it used to
+`EXHALE_resolved.out` (key `dayside_dilution`, beside `newton_flux_switch`;
+update log stage 3 section 135) and states it in `EXHALE_setup.out` as
+`Dayside dilution applied to every stellar beam`. A run of an older EXHALE
+without the key is logged as "carries no dayside_dilution (an older EXHALE)"
+and not compared. On LHS 1140 b (`Mdot`, xi_w = 1) this moved the k05 matching
+temperature from 240.98 to 248.99 K (section 129).
+
+**Eddy heat transport** (`--eddy-heat-transport`, default `off`). The
+chemistry's `K_zz` is a tracer-mixing coefficient that carries no heat: with
+`on` the climate stratosphere and the column are solved with the eddy heat flux
+`rho c_p K_zz (dT/dz + g/c_p)` (Johnstone et al. 2018, Eq. 44), but a reference
+climate in that balance exists only up to `K_zz` of about 1.4e6 cm^2/s
+(xi_w = 1; 1.8e5 under `per_model`), so the LHS 1140 b closures at `K_zz = 1e9`
+would stop in their first chemistry call. With turbulent dissipation heating
+(Hunten 1974; Osborn 1980) a solution exists but needs 790-1000 times the
+absorbed stellar flux at `K_zz = 1e9`, so that value cannot be a local
+turbulence (sections 130, 133). `on` is kept for heat-diffusivity
+sensitivities and needs `--climate`; its stratosphere solve
+(`stratosphere_energy_balance`, `radiative_convective_column.py`) restores the
+climate object's solution on exit, since clima's `TOA_fluxes_dry` leaves its
+last trial profile in `c.T` (section 134).
 
 **Stating the eddy coefficient.** With none of the options below, each adapter
 keeps whatever `K_zz(p)` its own solution carried, and that is the default:
@@ -931,8 +1054,13 @@ one:
   the carriers at its model top (all of the hydrogen on H2 while atomic H
   carries under 1% of the hydrogen nuclei there, split by the measured share
   above that), so the composition it hands over is that of a column losing
-  what the wind takes. A zero trial flux imposes nothing and reproduces the
-  closed-top solution bit for bit. What the solution then carries across its
+  what the wind takes. With `--trial-flux-H2` [g/s of the hydrogen nuclei H2
+  carries] the hydrogen flux is split as the WIND splits it at the matching
+  surface: H2 carries that part and atomic H the rest (an inflow of atoms
+  where negative, whose recombination heat, D0/2 per atom, then enters the
+  column energy balance). The closure passes it from the wind's
+  `base_face_H2_flux_cgs` (`EXHALE_resolved.out`). A zero trial flux imposes
+  nothing and reproduces the closed-top solution bit for bit. What the solution then carries across its
   own top is measured with `gas_fluxes()` and written as `measured_flux_H` /
   `measured_flux_He` [g/s], so you can check that the boundary condition took;
   on LHS 1140 b an imposed 3.0e7 g/s came back as 3.000e7 g/s. The `F_H` and
@@ -940,7 +1068,9 @@ one:
   the wind's own elemental flux over the overlap and iterating the two models
   to agreement is the closure driver, `src/utils/element_flux_closure.py`
   ("Obtaining Photochem" below and its module docstring; `--print-config-template`
-  writes a commented `closure.json`). The hydrogen flux goes on H2 while the
+  writes a commented `closure.json`). Without `--trial-flux-H2` (the first
+  iteration of a closure whose seed wind did not state the split) the
+  hydrogen flux goes on H2 while the
   converged top carries under 1 per cent of its hydrogen nuclei as atomic H,
   and is split by that share above it; where the converged share and the one
   the boundary condition imposed differ by more than 0.01, the
@@ -949,10 +1079,14 @@ one:
   share (`CARRIER_SHARE_STATED`, `photochem_to_lower_profile.py`). The VULCAN
   cross-check reads a finished `.vul` file and cannot impose anything, so
   it stays one-way.
-- `--p-top-bar` (Photochem only) states the model top in bar directly, in place
-  of `--toa` in dyn/cm^2; the two name the same level and only one may be
-  given. The solution settles within about a factor of three of it, so the
-  table stops near rather than exactly at that pressure.
+- The model top IS the matching level (user decision 2026-10-07,
+  `md/AN_overlap_structural_design_20261008.md`): the Photochem grid's top
+  face is placed at `--p-match` (to 1e-3 in ln p, re-converging the chemistry,
+  `--top-pressure-passes` at most), the table ends at `--p-match` with the
+  face state continued from the two top cell centres, and above it the wind
+  alone describes the gas. `--toa` and `--p-top-bar` are refused. The column
+  energy balance sees no absorber above the match (the wind's gas carries
+  none of the band emitters with its oxygen chemistry off).
 
 The same input twice gives the same `solution_id` and a byte-identical file;
 change the configuration, the abundances, the matching level or a trial flux
@@ -1170,9 +1304,13 @@ unresolved); with `energy_coupling` also when the conducted-flux residual
 `|F_cond_meas - F_cond_trial|/|F_cond_meas|` is at or below the same `--tol`
 (`conducted_flux_residual`: 0 for two exact zeros, infinite for a nonzero
 trial against a zero measurement or a missing or non-finite value) and
-`T_match` moved by less than `T_match_tol`. An EXHALE solve that exits
-nonzero, or reports a JFNK info other than 0, stops the closure before any
-post-processing (`ClosureStop`). The post-processing pass of every
+`T_match` moved by less than `T_match_tol`. The EXHALE exit status is read
+as the binary states it: 0 and 2 (converged, NOT certified) continue, status 2
+carried as a flag under the acceptance by the precision of the observable;
+status 2 without the certification's closing line (a gfortran runtime error),
+status 3 (stationary solve failed), any other status, or a JFNK info other than
+0 stops the closure before any post-processing (`ClosureStop`); the
+pseudo-time continuation of a `hydrodynamic_refusal` ending is tried first. The post-processing pass of every
 iteration is `Restart intent: stationary evaluate` on the solved state, with
 its `conserved_state.txt` staged as the exact restart. `--resume` continues
 from the history only when its last row carries a resolved H and He
@@ -1783,19 +1921,19 @@ and is not in the git remote. It rebuilds, re-runs each case single-threaded
 (`OMP_NUM_THREADS=1`, so the results are deterministic), and bitwise-compares
 `output/Hydro_ioniz.txt` and `output/Ion_species.txt` against
 `backup/regression/golden/`, together with the two `_adv.txt` profiles the
-post-processing pass writes. Default matrix (sixteen cases):
+post-processing pass writes. Default matrix (seventeen cases):
 
 | case | what it guards |
 |---|---|
-| `wasp_full` | WASP-121 b with He 2^3S **and** metals |
-| `wasp_he23off` | the same with He 2^3S off (the HeITR-off branch) |
-| `wasp_full_newton` | the same case with `Solver: Newton`, so the JFNK steady solve is in the matrix and not only the marching stop |
+| `wasp_full` | WASP-121 b with He 2^3S **and** metals, outer face at `Outer radius [R_p]: 2.0` (past the sonic point near 1.6 R_p; the L1 face is subsonic); 15000-step snapshot |
+| `wasp_he23off` | the same with He 2^3S off (the HeITR-off branch); 15000-step snapshot |
+| `wasp_full_newton` | the same case with `Solver: Newton` (hand-off at face spread 0.1), uncapped, so the JFNK steady solve is in the matrix and not only the marching |
 | `mol_base_handoff` | hot-Uranus Tier-2 gate: molecular chemistry + a `base.inp` handoff whose `q_H2_base` drives the photochemical base particle count; 12000-step snapshot |
 | `mol_metals` | the same gate + solar C/N/O/Mg/Ca/Na/Fe: the molecular and metal networks in one system; 12000-step snapshot |
-| `mol_lyman_werner` | the same gate + `Stellar LW flux [erg/cm2/s]: 343.0`: H2 photodissociation and its self-shielding inside the molecular network; 12000-step snapshot |
+| `mol_lyman_werner` | the same gate + `Stellar LW flux [erg/cm2/s]: 480.9`: H2 photodissociation and its self-shielding inside the molecular network; 12000-step snapshot |
 | `mol_diffusion` | the same gate + `He_diffusion: True`, `He_Kzz: 1.0e9`: binary H/He element diffusion across the molecular front, molecular-carrier closure, stage-resolved friction pairs, projection back onto `f_sp`, Coulomb friction above the ionization front; 12000-step snapshot |
 | `mol_ir_bands` | the same gate + solar metals + `Base IR field: True` and `Molecular IR bands: True`: the H2 quadrupole and magnetic dipole line spectrum and the H2O/CO bands as a NET exchange with the diluted `B_nu(T0)`, together with the two-sided fine-structure escape and the H3+ net rate the same field drives; 12000-step snapshot |
-| `mol_sec_ion` | the same gate + `Secondary_ionization: Immediate`: the only case in which a photoelectron is partitioned in molecular gas at all, since the default staged coupling never switches on in a fixed-step snapshot. Guards the H2 secondary-ionization target, the H2 dissociation heat return and the Dalgarno heating fraction; 12000-step snapshot |
+| `mol_sec_ion` | the same gate + `Secondary_ionization: Immediate` (the same as the default `True` since 2026-10-09, when the coupling became on from step 0 in every case; until then the only case in which a photoelectron was partitioned in molecular gas, since the staged coupling never switched on in a fixed-step snapshot). Guards the H2 secondary-ionization target, the H2 dissociation heat return and the Dalgarno heating fraction; 12000-step snapshot |
 | `mol_carrier` | the same gate + `Molecular carrier transport: True`: the only case that runs the H2 carrier transport operator, with its limited advection, face-flux base inflow and headroom budget; 12000-step snapshot |
 | `lower_profile` | HD 209458 b with the lower atmosphere handed over as a **profile** (`Lower atmosphere profile:`) instead of the scalars of `base.inp`: the profile reader, the matching-level base state, the elemental reservoirs the profile carries (metals-on with no `metals.inp`), `K_zz(p)` interpolated onto the grid in place of the scalar `He_Kzz`, the accepting branch of the profile / `base.inp` `solution_id` pairing, and the elemental flux window statistics; 12000-step snapshot |
 | `hydrostatic_column` | a mechanical column: no irradiation, no chemistry, no conduction, no viscosity. It pins the configuration the discrete hydrostatic residual and the spurious base velocity are measured on |
@@ -1809,12 +1947,35 @@ state, read by the `restart_intent` rows, and
 refreshed only together with the golden) and
 `backup/regression/atomic_elem_newton/` (HD 209458 b with eight element rows,
 the diagnostic entry point of the atomic element reload, with its own `IC/`
-reload pair).
+reload pair). `iontrans_metals` (in the default matrix since 2026-09-19; the
+table above omitted it) is a stationary restart, `Restart intent: stationary`,
+of a stored certified `wasp_full_newton` state with `Ionization transport:
+True` and metals: the transported H+, He+, He++ rows; it keeps the Roche L1
+domain of its stored state (outer face at Mach 0.95, reported). Not in the
+default matrix: `wasp_full_converged`, `wasp_full` at 2 R_p with no step cap,
+run to the marching stop (about 74 000 steps from the cold IC, a day on one
+thread; `backup/regression/wasp_full_converged/NOTE.txt`); pass it by name.
 
-The goldens are current as of 2026-09-10: fifteen cases and `roundtrip` were
-re-snapshotted at the Stage D gate (previous set
-`golden_pre_stageD_20260910/`), and `lower_profile` again after the element
-projection was corrected (previous set `golden_pre_n29_20260910/`).
+The goldens were last refreshed on 2026-09-27 (every case, from the tree of
+update log stage 3 section 29; previous set `golden_pre_final_20260927/`) and
+on 2026-09-29 for `mol_carrier`, the three `hp_*` cases and `iontrans_metals`
+(section 34; previous set `golden_pre_F1_20260929/`); `roundtrip` dates from
+2026-09-20 (file dates, MEASURED). **They are stale against the current tree:**
+they predate section 125 and every case moves against them (among the causes:
+secondary ionization from step 0, the face-flux marching stop, the 2 R_p outer
+face of the WASP cases, the MiZATeP H3+ cooling), and they are refreshed once at the end of the
+current change series, not after each change. The state at the checkpoint of
+section 136 (gfortran build af223ef9, one thread, against the matrix of
+section 127.3): `lower_profile`, `hydrostatic_column` and `iontrans_metals`
+bitwise; the seven `mol_*` snapshots at log10 Mdot 10.49-10.52 with rho, T
+within 0.9% (the H3+ cooling); `oxygen_chemistry` (a 1000-step transient) up
+to 38% in T at 1.77 R_p; the `hp_*` cases within 1e-4; `wasp_full`,
+`wasp_he23off` (15 000-step snapshots, log10 Mdot 13.24) and
+`wasp_full_newton` (JFNK info 0, log10 Mdot 13.28, outer Mach 1.50) on their
+new 2 R_p domain. The ifx binary frozen at that checkpoint is
+`LHS1140b/models/.P2/EXHALE_f8a38866.x` (manifest
+`BINARY_MANIFEST_f8a38866c315.txt`; on 2026-10-10 the source tree matched
+every md5 of that manifest).
 
 Any other case directory can be named on the command line. A case that is a
 relaxation snapshot rather than a converged solution pins its step count in
@@ -1878,8 +2039,9 @@ and FAIL without it (`no_log`): they have no default input. Run every suite whos
 you changed, not only the one you were aiming at.
 
 The standing rule this encodes: a refactor with no intended physics change
-must be byte-identical, and a new physics option must default to off so old
-goldens still reproduce.
+must be byte-identical, and a new physics option is on by default when the
+physics requires it, with the goldens refreshed once at the end of the change
+series.
 
 ## Directory layout
 

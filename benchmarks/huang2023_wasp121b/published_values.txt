@@ -1,0 +1,25 @@
+# Huang, Koskinen, Lavvas & Fossati 2023, ApJ 951, 123 (2023ApJ...951..123H)
+# Scalar results READ from the published PDF (references/Huang_2023_ApJ_951_123.pdf),
+# exact values as printed; location given for each. Reading precision: exact (printed numbers).
+#
+# Table 3 (Input Parameters of Each Model and Key Result Features), rows A, B, D:
+# Model Tidal Mp[MJ] Rp[RJ] M*[Msun] R*[Rsun] a[au] dT[K] logg@1ubar XUVmult Lyamult Femult Mdot[Mp/Gyr] Mdot_XUV[Mp/Gyr] Mdot_XUV/K(eta) P@L1[nbar] CaIIK Halpha Hbeta NaD2 MgII chi2/N
+A  N  1.1824  1.766  1.3521  1.4572  0.02545    0  2.84  1     1     1   0.052  0.16  0.55  1.07e-3  0.199  0.201  0.174  0.152  0.182  2.08
+B  Y  1.1824  1.766  1.3521  1.4572  0.02545    0  2.70  1     1     1   0.32   0.16  0.68  2.67     0.200  0.166  0.133  0.141  0.202  2.03
+D  Y  1.1204  1.766  1.3521  1.4572  0.02545  350  2.62  0.74  0.35  4   1.03   0.13  0.59  2.02     0.278  0.185  0.135  0.147  0.302  1.20
+# Table 3 notes: g = G M_p / r at the radius where P = 1 microbar in the substellar direction
+#   (printed "GMp/r"; the case D value reproduces the 1.46 R_p of section 7.1 only as
+#   G M_p / r^2, MEASURED: r = 1.461 R_p); 1 M_p/Gyr = 7.1e13 g/s (note d); case D preferred (note e).
+# Section 3: case A Mdot = 3.72e12 g/s = 0.052 M_p/Gyr.
+# Section 7.1: case D 1 microbar level at 1.46 R_p; pressure at L1 ~2.0 nbar.
+#
+# Markers printed in the figures (vertical lines):
+# Figure 9 (case A, x = R/R_p):    50% H ionization 1.48; tau = 1 at 13.6 eV 1.62; sonic point 4.85; stellar radius 8.03
+# Figure 20 (case B, x = R/R_px):  L1 1.75; sonic point 1.91; 50% H ionization 2.14; tau = 1 2.28; stellar radius 7.29
+# Figure 25 (case D, x = R/R_px):  L1 1.71; sonic point 1.73; 50% H ionization 4.03; tau = 1 4.22; stellar radius 7.24
+# Top-axis pressure at the first (base) tick: Fig. 9 997 nbar, Fig. 20 998 nbar, Fig. 25 999 nbar.
+#
+# Table 2: canonical R_px = 1.945 R_J, R_L1 = 1.748 R_px, R_RL = 2.233 R_J;
+#          better-match set (case D) R_px = 1.959 R_J, R_L1 = 1.705 R_px, R_RL = 2.194 R_J.
+# Section 2.3: 580 stretched cells, dr0 = 10 km, stretch 1.014, upper boundary 31.7 R_J above the
+#   1 microbar level, always outside the sonic point; outflow (constant-slope extrapolation) upper BC.

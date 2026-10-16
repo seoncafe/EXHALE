@@ -23,7 +23,8 @@
       use utils
       use composition, only: get_species_densities, comp_T_from_p,         &
                              comp_p_from_T, element_ratio_HeH,             &
-                             n_cells_he_singlet_clamped
+                             n_cells_he_singlet_clamped,                   &
+                             base_h2_composition_imposed
       ! The caloric equation of state, read directly where a state's pressure
       ! has to be the pressure of a REFRESHED composition at an unchanged
       ! conserved energy (the work state of the stationary evaluation), and
@@ -32,6 +33,7 @@
       ! pressure").
       use caloric_eos, only: pressure_from_energy_density,                 &
                              energy_density_from_pressure,                 &
+                             adiabatic_index_from_state,                   &
                              caloric_mixture_active, molecular_cell,       &
                              caloric_mixture_record,                       &
                              hold_caloric_mixture, restore_caloric_mixture
@@ -196,6 +198,7 @@
                                certification_report_write,               &
                                certification_entry_index,                &
                                certification_note_stationarity_claim,    &
+                               certification_note_stationary_solve_failed, &
                                certification_stop_uncertified,           &
                                certification_reports_side_by_side
       use stationary_operator, only: select_stationary_reconstruction,   &
@@ -222,7 +225,8 @@
                                replay_distance,                           &
                                gate_rnorm_accepted, gate_fspread_accepted, &
                                coupled_block_jacobian_action_requested, &
-                               jacobian_action_against_closure_count_and_probe_arc
+                               jacobian_action_against_closure_count_and_probe_arc, &
+                               build_banded_jac_full
       use Conversion
       use ionization_equilibrium
       use utils_ion_eq, only: ec_prof_on, ec_t, ec_name
@@ -236,6 +240,9 @@
       use Reconstruction_step
       use RK_integration
       use BC_Apply
+      use adiabatic_entropy_transport, only: adiabat_advection_stage,     &
+                                  internal_energy_from_adiabat,           &
+                                  n_cells_internal_energy_from_adiabat
       use output_write
       use post_processing
       use ionization_equilibrium
@@ -285,19 +292,18 @@
       ! and smooth, and its du measures the smoothness of the formula rather than
       ! the wind: measured du(1) = 1.85e-5 for the WASP-121b transonic IC, which
       ! tripped both the Newton hand-off and the secondary-ionization flip on
-      ! step 1 and ran away to NaN. Each of these triggers is therefore armed
-      ! only once du has been seen at or above its own threshold, and fires only
-      ! on the way back down. A state read back with "Load IC? True" was relaxed
-      ! by the marching loop of the run that wrote it, so its du is meaningful
-      ! and both triggers start armed. Cold hydrostatic starts arm on step 1
-      ! anyway (measured du(1) = 0.37 for the WASP regression cases, 7.9 for
-      ! mol_base_handoff), so their behavior is unchanged.
-      logical :: du_stop_armed   = .false.   ! du < du_th convergence stop
+      ! step 1 and ran away to NaN. The Newton hand-off, the one du trigger
+      ! left (the stop and the secondary-ionization flip read the face flux
+      ! and the state change since 2026-10-09), is therefore armed only once du
+      ! has been seen at or above its threshold, and fires only on the way
+      ! back down. A state read back with "Load IC? True" was relaxed by the
+      ! marching loop of the run that wrote it, so its du is meaningful and
+      ! the trigger starts armed.
       ! Set when the JFNK steady solver returned info=0 and its solution is
       ! what ends the run. It is a stop condition of its own -- the marching
       ! loop tests it directly -- because a Newton finish does not have to
-      ! satisfy the du criterion: it hands over at du < newton_du_switch, two
-      ! decades above du_th, and converges on the residual and flux gates
+      ! satisfy the marching stop: it hands over at a face spread below
+      ! newton_flux_switch and converges on the residual and flux gates
       ! instead.
       logical :: newton_finished = .false.
       ! The JFNK finish converged and its RETURNED state does not meet the
@@ -475,6 +481,43 @@
       ! Convergence stall detection (ported from ATES_extended)
       real*8  :: du_prev
       integer :: stall_count
+      ! THE MARCHING STOP (2026-10-09, update log stage 3 section 127). A
+      ! stationary finite-volume wind carries one NUMERICAL mass flux through
+      ! its faces, r_{j+1/2}^2 F_rho,j+1/2; the product of cell averages
+      ! rho_j v_j r_j^2 (du, mass_flux_spread) is a different, resolution-
+      ! dependent quantity, and next to the outer ghost it is not constant
+      ! on a converged state (MEASURED, md/weno3_local_floor_marching_stall_
+      ! diagnosis_20261009.md: a certified stationary wasp_full state with
+      ! face spread 5.3e-13 has du 3.6e-3 on 500 cells and 1.7e-3 on 1000).
+      ! The stop therefore reads the face spread over r >= r_flux
+      ! (fspread_gate, the steady solvers' gate quantity, against its own
+      ! marching threshold march_flux_spread_th) together with
+      ! the state change over one monitor window of N_resid steps:
+      !     chg_win = max over cells j = 1..N of |rho/rho_win - 1|,
+      !               |E/E_win - 1| and |(rho v) - (rho v)_win|/sqrt(rho E)_win.
+      ! Both are formed every N_resid steps in the monitor block; du is
+      ! still formed every step and printed as a diagnostic of the cell
+      ! averages, and it still drives the PLM -> WENO3 switch and the JFNK
+      ! hand-off (see there).  n_settled_windows counts consecutive windows
+      ! with chg_win < march_change_th while the face flux is not flat: the
+      ! stall net.
+      real*8, allocatable :: u_win(:,:)
+      real*8  :: chg_win, march_flux_th
+      logical :: monitor_now, win_ready
+      integer :: n_settled_windows, jj_win, j_chg_win
+      real*8  :: chg_cell
+      ! THE STALL NET ASKS WHETHER THE FACE FLUX IS STILL FALLING. A window
+      ! whose state changes little (chg_win < march_change_th) is a stall
+      ! only if the face mass-flux spread has also stopped falling: it must
+      ! not have dropped by more than flux_fall_min (relative) since the
+      ! previous monitor window. Without this test the net ended wasp_full
+      ! at step 31 500 (both WENO3 floors, 2026-10-09) while the face spread
+      ! was still falling smoothly by 4-5% per 500-step window, from 7.5e-3
+      ! at step 5500 to 4.0e-4 (tmp diag cont_loc/cont_dr2, update log stage
+      ! 3 section 127): a slow relaxation, not a stall.
+      real*8  :: fspread_win_prev
+      real*8, parameter :: flux_fall_min = 1.0d-2
+      logical :: flux_still_falling
 
       ! Optional base-cell startup diagnostic (env EXHALE_DIAG_BASE=1): dumps the
       ! first few cells (r, n, v, T, heat, cool, dC/dT sign) for the first steps,
@@ -602,6 +645,8 @@
       ! not a whole step, and the two counts are reported separately and
       ! never added.
       integer :: n_dt_halve, n_dt_halvings, n_steps_dt_halved
+      ! Cells whose internal energy one accepted step took from the adiabat.
+      integer :: n_adiabat_cells
       integer, parameter :: n_dt_halve_max = 20
 
       ! Did the local first-order flux correction restore the admissible set
@@ -1612,6 +1657,185 @@
          stop
       endif
 
+      ! ---- Trial admissibility of the stationary residual ----
+      ! (env EXHALE_TRIAL_ADMISSIBILITY_TEST = 1, 2 or 3; default off, a
+      ! test of the loaded state that stops the run; driven by
+      ! src/tests/trial_admissibility/run.sh.)
+      !   1  trials whose conserved state is not a gas in one cell (rho e < 0,
+      !      rho e = 0, rho = 0, a NaN energy, an infinite momentum), each
+      !      evaluated as a trial that could be adopted and as a probe: the
+      !      evaluation must answer admissible = F with no radiative pair and
+      !      no particle count, and the iterate evaluated after them must
+      !      give the residual it gave before them, bit for bit. Then the
+      !      finite-difference banded Jacobian at a state whose cell jw holds
+      !      an internal energy 1e-12 of its kinetic energy, where a forward
+      !      momentum probe of any admissible length leaves the gas: no color
+      !      may be left unresolved, and the momentum column of jw must agree
+      !      with a one-sided backward difference of that column alone.
+      !   2  the rho e < 0 trial evaluated WITHOUT asking for admissibility,
+      !      as only the iterate of a solve is: the run must stop with the
+      !      condition named.
+      !   3  a stationary solve entered at a state that is not a gas in one
+      !      cell: it must return at once as not converged.
+      call get_environment_variable('EXHALE_TRIAL_ADMISSIBILITY_TEST',     &
+                                    diag_env)
+      if (trim(diag_env) .eq. '1' .or. trim(diag_env) .eq. '2' .or.       &
+          trim(diag_env) .eq. '3') then
+         block
+           real*8, allocatable :: ta_Y0(:), ta_Y(:), ta_F0(:), ta_F1(:),   &
+                                  ta_F(:), ta_Fm(:), ta_D(:), ta_ab(:,:)
+           real*8, allocatable :: ta_fsp(:,:), ta_h(:), ta_c(:), ta_np(:)
+           real*8, allocatable :: ta_u(:,:), ta_fsp_solve(:,:)
+           real*8  :: ta_kin, ta_e0, ta_h_col, ta_jref, ta_jab, ta_dev,    &
+                      ta_cmax, ta_nan
+           integer :: ta_jt, ta_jw, ta_kind, ta_iprobe, ta_nu, ta_col,    &
+                      ta_row, ta_idx, ta_ndiff, ta_nfin, ta_info
+           logical :: ta_adm, ta_hc0, ta_np0
+           character(len=24) :: ta_name
+           call select_stationary_reconstruction
+           sec_ion_active = use_sec_ion
+           if (sec_ion_active) sec_ion_armed_step = 0
+           call set_transported_species_rows(carrier_in_newton)
+           call read_species_unknown_space_controls
+           allocate(ta_Y0(neq_newton()), ta_Y(neq_newton()),              &
+                    ta_F0(neq_newton()), ta_F1(neq_newton()),             &
+                    ta_F(neq_newton()), ta_Fm(neq_newton()),              &
+                    ta_D(neq_newton()))
+           allocate(ta_ab(2*kl_jac+ku_jac+1, neq_newton()))
+           allocate(ta_fsp(1-Ng:N+Ng,n_species), ta_h(1-Ng:N+Ng),         &
+                    ta_c(1-Ng:N+Ng), ta_np(1-Ng:N+Ng))
+           call pack_U(u, ta_Y0)
+           call pack_species_rows(u, f_sp, ta_Y0)
+           call freeze_species_unknown_box(ta_Y0)
+           ! cell 2, the cell of the measured abort; jw, the cell of
+           ! largest outward velocity (where kinetic energy matters).
+           ta_jt = 2
+           ta_jw = maxloc(u(2,1:N)/u(1,1:N), 1)
+           ta_nan = 0.0d0
+           ta_nan = ta_nan/ta_nan
+           write(*,'(A,I0,A,I0,A,I0)') 'TRIAL_ADMISSIBILITY setup N=', N, &
+                ' nvar=', nvar_jac, ' jw=', ta_jw
+           select case (trim(diag_env))
+           case ('1')
+              call newton_residual(ta_Y0, f_sp, ta_fsp, ta_F0)
+              do ta_kind = 1, 5
+                 do ta_iprobe = 0, 1
+                    ta_Y   = ta_Y0
+                    ta_idx = nvar_jac*(ta_jt-1)
+                    ta_kin = 0.5d0*ta_Y(ta_idx+2)**2/ta_Y(ta_idx+1)
+                    ta_e0  = ta_Y(ta_idx+3)
+                    select case (ta_kind)
+                    case (1)
+                       ta_name = 'rho_e_negative'
+                       ta_Y(ta_idx+3) = ta_kin - 1.0d-6*ta_e0
+                    case (2)
+                       ta_name = 'rho_e_zero'
+                       ta_Y(ta_idx+3) = ta_kin
+                    case (3)
+                       ta_name = 'rho_zero'
+                       ta_Y(ta_idx+1) = 0.0d0
+                    case (4)
+                       ta_name = 'energy_nan'
+                       ta_Y(ta_idx+3) = ta_nan
+                    case (5)
+                       ta_name = 'momentum_infinite'
+                       ta_cmax = huge(1.0d0)
+                       ta_Y(ta_idx+2) = ta_cmax + ta_cmax
+                    end select
+                    ta_adm = .true.
+                    call eval_residual(ta_Y, f_sp, ta_fsp, ta_F, ta_h,    &
+                                       ta_c, n_part=ta_np,                &
+                                       admissible=ta_adm,                 &
+                                       may_be_adopted=(ta_iprobe .eq. 0), &
+                                       state_is_discarded=.true.)
+                    ta_hc0 = all(ta_h .eq. 0.0d0) .and.                   &
+                             all(ta_c .eq. 0.0d0)
+                    ta_np0 = all(ta_np .eq. 0.0d0)
+                    ta_nfin = count(ta_F .eq. ta_F .and.                  &
+                                    abs(ta_F) .le. huge(1.0d0))
+                    write(*,'(A,A,A,A,A,L1,A,L1,A,L1,A,I0)')              &
+                         'TRIAL_ADMISSIBILITY trial ', trim(ta_name), ' ',&
+                         trim(merge('adoptable', 'probe    ',             &
+                                    ta_iprobe .eq. 0)),                   &
+                         ' admissible=', ta_adm, ' radiative_pair_zero=', &
+                         ta_hc0, ' particle_count_zero=', ta_np0,         &
+                         ' finite_rows=', ta_nfin
+                 enddo
+              enddo
+              call newton_residual(ta_Y0, f_sp, ta_fsp, ta_F1)
+              ta_ndiff = count(ta_F1 .ne. ta_F0)
+              write(*,'(A,I0,A,I0)') 'TRIAL_ADMISSIBILITY iterate_after'//&
+                   '_trials differing_entries=', ta_ndiff, ' of ',        &
+                   neq_newton()
+              ! The edge of the gas at cell jw: rho e = 1e-12 of the
+              ! kinetic energy.
+              ta_Y   = ta_Y0
+              ta_idx = nvar_jac*(ta_jw-1)
+              ta_kin = 0.5d0*ta_Y(ta_idx+2)**2/ta_Y(ta_idx+1)
+              ta_Y(ta_idx+3) = ta_kin*(1.0d0 + 1.0d-12)
+              call build_banded_jac_full(ta_Y, f_sp, ta_ab, ta_nu)
+              call cell_state_scales(ta_Y, ta_D)
+              ta_col   = ta_idx + 2
+              ta_h_col = sqrt(epsilon(1.0d0))*ta_D(ta_col)
+              call eval_residual(ta_Y, f_sp, ta_fsp, ta_F, ta_h, ta_c,    &
+                                 admissible=ta_adm, may_be_adopted=.false.,&
+                                 state_is_discarded=.true.)
+              ! The forward probe of that column alone, at the shortest
+              ! length the Jacobian tries (2^-6 of sqrt(eps) times the
+              ! scale): it leaves the gas, which is what the backward side
+              ! of the Jacobian exists for.
+              ta_Y(ta_col) = ta_Y(ta_col) + ta_h_col/64.0d0
+              call eval_residual(ta_Y, f_sp, ta_fsp, ta_Fm, ta_h, ta_c,   &
+                                 admissible=ta_adm, may_be_adopted=.false.,&
+                                 state_is_discarded=.true.)
+              write(*,'(A,L1)') 'TRIAL_ADMISSIBILITY forward_probe_at_'// &
+                   'the_shortest_length_admitted=', ta_adm
+              ta_Y(ta_col) = ta_Y(ta_col) - ta_h_col/64.0d0 - ta_h_col
+              call eval_residual(ta_Y, f_sp, ta_fsp, ta_Fm, ta_h, ta_c,   &
+                                 admissible=ta_adm, may_be_adopted=.false.,&
+                                 state_is_discarded=.true.)
+              ta_dev = 0.0d0;  ta_cmax = 0.0d0;  ta_nfin = 0
+              do ta_row = max(1, ta_col - ku_jac),                        &
+                          min(neq_newton(), ta_col + kl_jac)
+                 ta_jref = (ta_F(ta_row) - ta_Fm(ta_row))/ta_h_col
+                 ta_jab  = ta_ab(kl_jac+ku_jac+1 + ta_row - ta_col, ta_col)
+                 if (.not. (ta_jab .eq. ta_jab .and.                      &
+                            abs(ta_jab) .le. huge(1.0d0)))                &
+                    ta_nfin = ta_nfin + 1
+                 ta_dev  = max(ta_dev, abs(ta_jab - ta_jref))
+                 ta_cmax = max(ta_cmax, abs(ta_jref))
+              enddo
+              write(*,'(A,I0,A,I0,A,ES11.3,A,L1)') 'TRIAL_ADMISSIBILITY'//&
+                   ' jacobian_at_the_edge unresolved_colors=', ta_nu,     &
+                   ' nonfinite_column_entries=', ta_nfin,                 &
+                   ' column_departure_from_backward_difference=',         &
+                   ta_dev/max(ta_cmax, 1.0d-300), ' reference_admitted=', &
+                   ta_adm
+           case ('2')
+              ta_Y   = ta_Y0
+              ta_idx = nvar_jac*(ta_jt-1)
+              ta_kin = 0.5d0*ta_Y(ta_idx+2)**2/ta_Y(ta_idx+1)
+              ta_Y(ta_idx+3) = ta_kin - 1.0d-6*ta_Y0(ta_idx+3)
+              call newton_residual(ta_Y, f_sp, ta_fsp, ta_F)
+              write(*,'(A)') 'TRIAL_ADMISSIBILITY REACHED: an iterate'//  &
+                   ' that is not a gas was evaluated without a stop'
+           case ('3')
+              allocate(ta_u(3,1-Ng:N+Ng), ta_fsp_solve(1-Ng:N+Ng,n_species))
+              ta_u = u;  ta_fsp_solve = f_sp
+              ta_kin = 0.5d0*ta_u(2,ta_jt)**2/ta_u(1,ta_jt)
+              ta_u(3,ta_jt) = ta_kin - 1.0d-6*u(3,ta_jt)
+              ta_info = -99
+              call solve_steady_jfnk(ta_u, ta_fsp_solve, resid_max, 5,    &
+                                     1.0d0, 40, ta_info)
+              write(*,'(A,I0)') 'TRIAL_ADMISSIBILITY solve_entered_at'//  &
+                   '_a_state_that_is_not_a_gas info=', ta_info
+           end select
+         end block
+         call set_transported_species_rows(.false.)
+         write(*,*) '(EXHALE_main) EXHALE_TRIAL_ADMISSIBILITY_TEST: stopping.'
+         stop
+      endif
+
       ! ---- Does the directional derivative depend on the closure count? ----
       ! (env EXHALE_CLOSURE_PROBE=1, default off and diagnostic only.)
       !
@@ -1855,6 +2079,7 @@
          ! them from THIS state first, so one row is one state (the lower
          ! ghosts' rho moves after the sweep; see the routine).
          call molecular_carrier_densities_from_state(rho,f_sp)
+         call certification_note_stationary_solve_failed(j .ne. 0)
          call certify_the_state_to_be_written(j .eq. 0,                  &
               'direct_steady_route_final_certification')
          call boundary_gas_state_from_conserved
@@ -1919,9 +2144,32 @@
 
       mass_flux_converged   = .false.
       step_change_converged = .false.
-      du_plateaued          = .false.
+      relaxation_stalled    = .false.
       du_prev      = huge(1.0d0)
       stall_count  = 0
+      chg_win      = huge(1.0d0)
+      j_chg_win    = 0
+      fspread_win_prev   = huge(1.0d0)
+      flux_still_falling = .false.
+      monitor_now  = .false.
+      win_ready    = .false.
+      n_settled_windows = 0
+      if (allocated(u_win)) deallocate(u_win)
+      allocate(u_win(3,1-Ng:N+Ng))
+      u_win = 0.0d0
+      ! MEASUREMENT AND TEST OVERRIDES, default unset: the settling
+      ! threshold, the face-flux threshold of the marching stop (by default
+      ! march_flux_spread_th) and the monitor interval N_resid.
+      call get_environment_variable('EXHALE_MARCH_CHANGE_TH', diag_env)
+      if (len_trim(diag_env) .gt. 0) read(diag_env,*) march_change_th
+      march_flux_th = march_flux_spread_th
+      call get_environment_variable('EXHALE_MARCH_FLUX_TH', diag_env)
+      if (len_trim(diag_env) .gt. 0) read(diag_env,*) march_flux_th
+      call get_environment_variable('EXHALE_MONITOR_STEPS', diag_env)
+      if (len_trim(diag_env) .gt. 0) read(diag_env,*) N_resid
+      if (N_resid .le. 0) then
+         error stop 'EXHALE_MONITOR_STEPS must be a positive integer'
+      endif
       n_dt_halvings     = 0
       n_steps_dt_halved = 0
       ! The controller's step-size memory: a dt reduced
@@ -2072,17 +2320,18 @@
          endif
       endif
 
-      ! du triggers start armed only for a state loaded from a previous EXHALE
-      ! run (see the declarations); a generated IC has to demonstrate a du above
-      ! the threshold first.
-      du_stop_armed   = do_load_IC
+      ! The du trigger of the JFNK hand-off starts armed only for a state
+      ! loaded from a previous EXHALE run (see the declarations); a generated
+      ! IC has to demonstrate a du above the threshold first.
       du_newton_armed = do_load_IC
 
       ! Two-stage reconstruction setup. input_read sets du_th_plm > 0 only when
       ! "Reconstruction scheme: PLM+WENO3" was given with two du_th values (it
       ! sets du_th_plm = -1 for single-stage PLM/WENO3). So du_th_plm > du_th
       ! means run PLM until du < du_th_plm, then switch reconstruction to WENO3
-      ! and converge at du < du_th; otherwise the run is single-stage with the
+      ! and march to the marching stop (face mass-flux spread and state
+      ! change, march_flux_spread_th / march_change_th; du_th no longer stops
+      ! the run); otherwise the run is single-stage with the
       ! reconstruction set by "Reconstruction scheme:".
       in_plm_stage = (du_th_plm .gt. du_th)
       if (in_plm_stage) then
@@ -2092,8 +2341,8 @@
          ! the rec_method string.
          use_plm    = .true.
          use_weno3  = .false.
-         write(*,'(A,ES9.2,A,ES9.2)') ' (EXHALE_main) Two-stage reconstruction: PLM until du <', &
-                                      du_th_plm, ', then WENO3 until du <', du_th
+         write(*,'(A,ES9.2,A)') ' (EXHALE_main) Two-stage reconstruction: PLM until du <', &
+                                      du_th_plm, ', then WENO3 to the marching stop (face mass-flux spread and state change)'
       endif
 
       ! Fixed-state operator difference at the hand-off (diagnostic, env-gated
@@ -2174,8 +2423,10 @@
       endif
 
       !------ Main temporal loop ------!
-      ! Stop on any of: the mass flux constant (du < du_th), the state no
-      ! longer changing (dtu < dtu_th), the du plateau (stall net), BOTH
+      ! Stop on any of: the marching stop (the state settled, chg_win <
+      ! march_change_th, with the face mass-flux spread below march_flux_th;
+      ! du_th no longer stops the run, update log stage 3 section 127), the
+      ! stall net, BOTH
       ! steady gates met on the marched state ("Resid tol:"), a JFNK finish
       ! that returned info = 0, or the hard iteration cap. EXHALE_MAXSTEPS
       ! and the NaN scan leave from inside the body. Each condition has its
@@ -2183,7 +2434,7 @@
       ! printed is the reason that fired.
       do while( ( .not.mass_flux_converged    .and.                          &
                   .not.step_change_converged  .and.                          &
-                  .not.du_plateaued           .and.                          &
+                  .not.relaxation_stalled           .and.                          &
                   .not.steady_gates_converged .and.                          &
                   .not.newton_finished        .and.                          &
                   marching_step < marching_step_max ) .or. force_start )
@@ -2490,6 +2741,8 @@
             ! the mass flux the density actually used.
             call species_advection_stage(1,u(1,:),u(1,:),u1(1,:),          &
                                          face_flux(1,:),dt_loc)
+            call adiabat_advection_stage(1,u(1,:),u,u1(1,:),               &
+                                         face_flux(1,:),dt_loc)
 
             !----------------------------
 
@@ -2524,6 +2777,8 @@
             call Apply_BC(u2)
 
             call species_advection_stage(2,u(1,:),u1(1,:),u2(1,:),         &
+                                         face_flux(1,:),dt_loc)
+            call adiabat_advection_stage(2,u(1,:),u1,u2(1,:),              &
                                          face_flux(1,:),dt_loc)
 
             !----------------------------
@@ -2562,6 +2817,8 @@
 
             call species_advection_stage(3,u_old(1,:),u2(1,:),u(1,:),      &
                                          face_flux(1,:),dt_loc)
+            call adiabat_advection_stage(3,u_old(1,:),u2,u(1,:),           &
+                                         face_flux(1,:),dt_loc)
 
             ! THE REJECTION PATH, ON DEMAND. A step is refused here exactly
             ! as a positivity violation refuses one: the attempt is discarded,
@@ -2593,6 +2850,15 @@
             step_accepted = .true.
             exit retry_step
             enddo retry_step
+
+            ! THE INTERNAL ENERGY OF COLD, HIGHLY SUPERSONIC EXPANDING CELLS
+            ! from the adiabat the stages carried (adiabatic_entropy_transport
+            ! states the method and its range); the boundary states follow
+            ! the cells they continue.
+            if (step_accepted) then
+               call internal_energy_from_adiabat(u, n_adiabat_cells)
+               if (n_adiabat_cells .gt. 0) call Apply_BC(u)
+            endif
 
             ! ROW 2 IS DONE. Its outcome is DEMOTED: step_accepted no
             ! longer means the step is accepted, it means the three
@@ -3786,16 +4052,8 @@
             ! Arm the du triggers the first time the flux spread is seen at or
             ! above their thresholds; from then on only a descending crossing
             ! can fire them (see the declarations of du_*_armed).
-            if (du .ge. du_th .and. .not.du_stop_armed) then
-               du_stop_armed = .true.
-               write(*,'(A,ES12.4,A,I0)') '    -> du stop armed at du =',   &
-                                          du, ', step ', marching_step
-            endif
-            if (du .ge. newton_du_switch .and. .not.du_newton_armed) then
-               du_newton_armed = .true.
-               write(*,'(A,ES12.4,A,I0)') '    -> Newton hand-off armed '// &
-                                          'at du =', du, ', step ', marching_step
-            endif
+            ! (The JFNK hand-off is armed on the face spread at the monitor
+            ! steps, where that spread is formed; see the hand-off below.)
 
             ! RELATIVE CHANGE OF THE CONSERVED STATE OVER THE STEP, as an
             ! infinity norm over the convergence window:
@@ -3851,7 +4109,34 @@
             ! marching loop accepted a WASP-121b state at a flux spread of
             ! 9.9e-2, twenty times the default threshold the JFNK was
             ! rejecting 1.9e-2 on.
-            if (mod(marching_step, N_resid) .eq. 0) then
+            monitor_now = (mod(marching_step, N_resid) .eq. 0)
+            if (monitor_now) then
+               ! THE STATE CHANGE OVER THE WINDOW (see chg_win at its
+               ! declaration). Density and total energy are positive and
+               ! their changes are relative; the momentum density passes
+               ! through zero near the base, so its change is measured
+               ! against the momentum scale of the cell, sqrt(rho E) (a
+               ! density times a speed of the order of the sound speed),
+               ! which is never zero for an admissible cell.
+               if (win_ready) then
+                  chg_win = 0.0d0;  j_chg_win = 0
+                  do jj_win = 1, N
+                     chg_cell = max(                                        &
+                        abs(u(1,jj_win)/u_win(1,jj_win) - 1.0d0),           &
+                        abs(u(3,jj_win)/u_win(3,jj_win) - 1.0d0),           &
+                        abs(u(2,jj_win) - u_win(2,jj_win))                  &
+                        /sqrt(u_win(1,jj_win)*u_win(3,jj_win)))
+                     if (chg_cell .gt. chg_win) then
+                        chg_win = chg_cell;  j_chg_win = jj_win
+                     endif
+                  enddo
+               else
+                  chg_win = huge(1.0d0)
+               endif
+               u_win     = u
+               win_ready = .true.
+            endif
+            if (monitor_now) then
                ! ONE COMPOSITION, ONE BOUNDARY, ONE RESIDUAL, here as at the
                ! five evaluation sites. The step's last Apply_BC ran before
                ! the composition refresh that closes the step (the
@@ -3885,6 +4170,11 @@
                                                 fspread_gate,               &
                                                 .false., 0.0d0,             &
                                                 n_no_root_now)
+               ! The face spread against the previous monitor window (the
+               ! stall net, see flux_still_falling at its declaration).
+               flux_still_falling = (fspread_gate .lt.                     &
+                                     (1.0d0 - flux_fall_min)*fspread_win_prev)
+               fspread_win_prev   = fspread_gate
                ! THE CERTIFICATION OF THE STATE THIS ROUTE WOULD DECLARE
                ! SOLVED. It measures every equation the configuration makes
                ! independent, on the state Rres was just assembled from, and
@@ -3911,11 +4201,17 @@
                call flux_spread_above_radius(u, 1.10d0, fspread_110, dum)
                write(*,'(A,I0,A,ES10.3,A,ES10.3,A,ES10.3,A,ES10.3,A,ES10.3)') &
                     '   [diag] step ', marching_step,                                 &
-                    '  flux rho*v*r^2 spread=', flux_spread,                  &
-                    ' (gate window ', fspread_gate,                           &
+                    '  cell-centred rho*v*r^2 spread (du, diagnostic)=', flux_spread, &
+                    ' (face spread, gate window ', fspread_gate,              &
                     '; r>=1.03 ', fspread_103,                                &
                     ', r>=1.10 ', fspread_110,                                &
                     ')   ||R||(ref)=', resid_max
+               write(*,'(A,I0,A,ES10.3,A,ES10.3,A,ES10.3,A,I0,A,ES10.3,A)')  &
+                    '   [stop] step ', marching_step,                         &
+                    '  face mass-flux spread ', fspread_gate, ' (stop below', &
+                    march_flux_th, ')  state change over the window ',       &
+                    chg_win, ' at cell ', j_chg_win, ' (stop below',         &
+                    march_change_th, ')'
             endif
 
             ! P54/(AD) time series of the FACE mass flux at fixed radii
@@ -4065,15 +4361,15 @@
                endif
                mass_flux_converged    = .false.
                step_change_converged  = .false.
-               du_plateaued           = .false.
+               relaxation_stalled           = .false.
                steady_gates_converged = .false.
             else if (use_newton_solver) then
                ! Newton warm-up: never stop on du/dtu/stall (du dips are
                ! premature while the energy residual is still large); the
                ! R-based switch below hands over to the JFNK finish.
                ! DO track the du plateau: runs whose flux metric stalls just
-               ! above newton_du_switch (seen with He_diffusion: du frozen at
-               ! ~1.08e-2 vs the 1e-2 switch for 1e6 steps) hand off on stall.
+               ! above the hand-off switch hand off on the settled state (the
+               ! stall clause of the hand-off).
                if (marching_step .gt. 1) then
                   ! THE SENTINEL IS KEPT OUT OF THE ARITHMETIC. du_prev
                   ! starts at huge(1.0d0) and is re-set to it at each stage
@@ -4099,7 +4395,7 @@
                du_prev      = du
                mass_flux_converged    = .false.
                step_change_converged  = .false.
-               du_plateaued           = .false.
+               relaxation_stalled           = .false.
                steady_gates_converged = .false.
             else if (resid_th .gt. 0.0d0) then
                ! Stage 2, residual-based convergence: the STEADY GATES decide
@@ -4146,15 +4442,43 @@
                   endif
                endif
                du_prev    = du
-               du_plateaued = (stall_count .ge. N_stall) .and. is_level_stable
+               ! The stall net on the settled state (see the branch below).
+               if (monitor_now .and. win_ready) then
+                  if (chg_win .lt. march_change_th .and.                    &
+                      .not. flux_still_falling) then
+                     n_settled_windows = n_settled_windows + 1
+                  else
+                     n_settled_windows = 0
+                  endif
+               endif
+               relaxation_stalled = (n_settled_windows*N_resid .ge. N_stall) &
+                                    .and. is_level_stable
             else
                ! Stage 2 (WENO3) or single-stage: normal convergence + stall,
                ! each additionally gated on mass-flux level stability.
-               mass_flux_converged   = (du .lt. du_th) .and. du_stop_armed  &
-                                                       .and. is_level_stable
-               step_change_converged = (dtu .lt. dtu_th) .and. is_level_stable
+               ! THE FACE MASS FLUX FLAT AND THE STATE SETTLED, judged at
+               ! the monitor steps where both are formed (see chg_win). A
+               ! run with the face-flux half disabled (EXHALE_MARCH_FLUX_TH <= 0) is
+               ! stopped on the settling alone.
+               mass_flux_converged = .false.
+               if (monitor_now .and. win_ready) then
+                  if (chg_win .lt. march_change_th .and.                    &
+                      (march_flux_th .le. 0.0d0 .or.                        &
+                       fspread_gate .lt. march_flux_th)) then
+                     mass_flux_converged = is_level_stable
+                     n_settled_windows   = 0
+                  else if (chg_win .lt. march_change_th .and.               &
+                           .not. flux_still_falling) then
+                     n_settled_windows = n_settled_windows + 1
+                  else
+                     n_settled_windows = 0
+                  endif
+               endif
+               step_change_converged = .false.
                steady_gates_converged = .false.
-               ! Stall detection: du settled on a plateau
+               ! du plateau count (stall_count): a diagnostic kept for the
+               ! printed record; the stall net that stops the march is
+               ! relaxation_stalled (face spread and state change, above).
                if (marching_step .gt. 1) then
                   ! THE SENTINEL IS KEPT OUT OF THE ARITHMETIC. du_prev
                   ! starts at huge(1.0d0) and is re-set to it at each stage
@@ -4178,7 +4502,10 @@
                   endif
                endif
                du_prev    = du
-               du_plateaued = (stall_count .ge. N_stall) .and. is_level_stable
+               ! THE STALL NET: the state settled over N_stall steps of
+               ! consecutive windows while the face flux stays above its gate.
+               relaxation_stalled = (n_settled_windows*N_resid .ge. N_stall) &
+                                    .and. is_level_stable
             endif
 
             ! The update map ends on its own step count (update_map_end_step
@@ -4190,29 +4517,44 @@
             ! the physics between two steps of one map.
             if (upmap_n .gt. 0) then
                mass_flux_converged = .false.;  step_change_converged = .false.
-               du_plateaued = .false.;  steady_gates_converged = .false.
+               relaxation_stalled = .false.;  steady_gates_converged = .false.
             endif
 
-            ! Staged secondary ionization: the SvS85 coupling is applied only
-            ! after the wind has first converged without it -- from a cold IC the
+            ! Staged secondary ionization ("Secondary_ionization: Staged";
+            ! the default since 2026-10-09 applies the coupling from step 0,
+            ! and this block is then never entered). The coupling is applied
+            ! only after the wind has relaxed without it -- from a cold IC the
             ! secondary-ionization base feedback amplifies the startup transient
-            ! into a runaway (NaN); from a converged state the coupling is benign
+            ! into a runaway (NaN); on a relaxed state the coupling is benign
             ! and the run re-converges with the full physics included.
+            ! WHEN THE TRANSIENT HAS DECAYED is a statement about the state,
+            ! not about the stop: the switch is made the first time the state
+            ! changes by less than march_change_th over a monitor window
+            ! (chg_win), out of the PLM stage. Until 2026-10-09 it waited for
+            ! a stop flag of the cell-centred du, and a march whose du sat at
+            ! its discretization floor above du_th never switched the
+            ! coupling on (wasp_full with the local WENO3 floor, 26 803 steps;
+            ! update log stage 3 section 127).
             if (use_sec_ion .and. .not.sec_ion_active .and.                   &
-                (mass_flux_converged .or. step_change_converged .or.          &
-                 du_plateaued .or. steady_gates_converged)) then
+                .not. in_plm_stage .and. .not. in_lambda_ramp .and.           &
+                ((monitor_now .and. win_ready .and.                           &
+                  chg_win .lt. march_change_th) .or.                          &
+                 steady_gates_converged)) then
                sec_ion_active = .true.
                sec_flip_step  = marching_step
                sec_ion_armed_step = marching_step
                mass_flux_converged = .false.;  step_change_converged = .false.
-               du_plateaued = .false.;  steady_gates_converged = .false.
+               relaxation_stalled = .false.;  steady_gates_converged = .false.
                stall_count  = 0
                du_prev      = huge(1.0d0)
                ! restart the mass-flux level-stability history
                lev_count    = 0
                is_level_stable = (lev_th .le. 0.0d0)   ! gate disabled => always pass
-               write(*,'(A,I0,A,ES10.2)') '    -> secondary ionization activated at step ', &
-                                          marching_step, ', du =', du
+               n_settled_windows = 0
+               write(*,'(A,I0,A,ES10.2,A,ES10.2)') '    -> secondary'//    &
+                    ' ionization activated at step ', marching_step,       &
+                    ', state change over the window', chg_win,            &
+                    ', cell-centred du (diagnostic)', du
             else if (sec_flip_step .ge. 0 .and.                               &
                      marching_step - sec_flip_step .lt. N_stall) then
                ! Hold any stop for N_stall steps after the flip: du reacts only
@@ -4220,25 +4562,38 @@
                ! formed, so an immediate stop would freeze a state that has not
                ! yet incorporated the secondary-ionization physics.
                mass_flux_converged = .false.;  step_change_converged = .false.
-               du_plateaued = .false.;  steady_gates_converged = .false.
+               relaxation_stalled = .false.;  steady_gates_converged = .false.
             endif
 
             ! Production Newton finish ("Solver: Newton"): once the cheap
-            ! marching warm-up has flattened the wind to du < newton_du_switch
+            ! marching warm-up has flattened the face mass flux to a spread below newton_flux_switch
             ! (the FLUX metric -- the radial spread of rho*v*r^2 -- consistent
             ! with the flux-based convergence decision), hand over to the JFNK
             ! steady solver to polish the rest of the way, refresh the
             ! thermodynamic state from the solved u, and exit the loop (standard
             ! final outputs and post-processing follow). Newton's quadratic local
-            ! convergence tightens du from ~1e-2 to <1e-3 in far fewer steps than
+            ! convergence reaches the steady gate in far fewer steps than
             ! continued marching.
+            ! THE HAND-OFF READS THE FACE MASS-FLUX SPREAD (newton_flux_switch
+            ! at its declaration), armed the first time a monitor step sees it
+            ! at or above the switch, and fired at a monitor step below it;
+            ! a state whose spread has settled (n_settled_windows, the stall
+            ! net of the marching stop) within 5 times the switch is handed
+            ! over too.
+            if (use_newton_solver .and. monitor_now .and. win_ready .and.  &
+                fspread_gate .ge. newton_flux_switch .and.                 &
+                .not.du_newton_armed) then
+               du_newton_armed = .true.
+               write(*,'(A,ES12.4,A,I0)') '    -> Newton hand-off armed '// &
+                    'at face spread =', fspread_gate, ', step ', marching_step
+            endif
             if (use_newton_solver .and. .not.in_plm_stage .and.          &
-                du_newton_armed .and.                                     &
+                du_newton_armed .and. monitor_now .and. win_ready .and.   &
                 (newton_fail_step .lt. 0 .or.                             &
                  marching_step - newton_fail_step .ge. N_stall) .and.             &
-                (du .lt. newton_du_switch .or.                            &
-                 (stall_count .ge. N_stall .and.                          &
-                  du .lt. 5.0d0*newton_du_switch))) then
+                (fspread_gate .lt. newton_flux_switch .or.                &
+                 (n_settled_windows*N_resid .ge. N_stall .and.            &
+                  fspread_gate .lt. 5.0d0*newton_flux_switch))) then
                if (use_sec_ion .and. .not.sec_ion_active) then
                ! Newton may only be asked to solve the system the marched
                ! state approximately satisfies. Flipping the secondary-
@@ -4254,7 +4609,7 @@
                   sec_flip_step  = marching_step
                   sec_ion_armed_step = marching_step
                   mass_flux_converged = .false.;  step_change_converged = .false.
-                  du_plateaued = .false.;  steady_gates_converged = .false.
+                  relaxation_stalled = .false.;  steady_gates_converged = .false.
                   stall_count  = 0
                   du_prev      = huge(1.0d0)
                   lev_count    = 0
@@ -4264,10 +4619,10 @@
                        marching_step, ', du =', du
                else if (sec_flip_step .lt. 0 .or.                         &
                         marching_step - sec_flip_step .ge. N_stall) then
-               if (du .ge. newton_du_switch)                              &
-                  write(*,'(A,ES10.2)') ' (EXHALE_main) du plateaued '//  &
-                       'near the hand-off threshold; engaging JFNK at '// &
-                       'du =', du
+               if (fspread_gate .ge. newton_flux_switch)                  &
+                  write(*,'(A,ES10.2)') ' (EXHALE_main) the face spread'//&
+                       ' settled near the hand-off threshold; engaging'// &
+                       ' JFNK at face spread =', fspread_gate
                resid_max = resid_th
                if (resid_max .le. 0.0d0) resid_max = 1.0d-5
                write(*,'(A,I0,A,ES10.2)') ' (EXHALE_main) Newton finish '// &
@@ -4289,7 +4644,7 @@
                   ! newton_finished is itself a stop condition of the loop,
                   ! so no other flag is set: the run reports the JFNK finish
                   ! and not a du criterion it never had to satisfy.
-                  du_plateaued    = .false.
+                  relaxation_stalled    = .false.
                   newton_finished = .true.
                else if (j .eq. 2) then
                   ! info = 2 IS NOT A SOLVER FAILURE. The solve converged;
@@ -4309,7 +4664,7 @@
                   ! certified=F, name the refusing row, and exit 2. The
                   ! marching stop conditions are left alone; newton_finished
                   ! ends the loop.
-                  du_plateaued    = .false.
+                  relaxation_stalled    = .false.
                   newton_finished = .true.
                   newton_returned_uncertified = .true.
                   write(*,'(A)') ' (EXHALE_main) JFNK returned info = 2:'//&
@@ -4511,17 +4866,22 @@
               ' , "Flux spread tol"', flux_spread_th
       else if (mass_flux_converged) then
          write(*,'(A,ES10.3,A,ES10.3,A)')                                     &
-              '     -> stopped: mass flux rho*v*r^2 constant over the '//     &
-              'wind (du=', du, ' < du_th', du_th, ')'
+              '     -> stopped: face mass flux flat over r >= r_flux '//      &
+              '(spread=', fspread_gate, ' < ', march_flux_th, ')'
+         write(*,'(A,I0,A,ES10.3,A,ES10.3,A)')                                &
+              '        and the state settled (largest relative change over ',&
+              N_resid, ' steps ', chg_win, ' < ', march_change_th, ')'
          call report_marching_stop
       else if (step_change_converged) then
          write(*,'(A,ES10.3,A,ES10.3,A)')                                     &
               '     -> stopped: the state stopped changing (dtu=', dtu,       &
               ' < dtu_th', dtu_th, ')'
          call report_marching_stop
-      else if (du_plateaued) then
-         write(*,'(A,I0,A)') '     -> stopped: du plateau detected '//       &
-              '(stalled ', stall_count, ' steps)'
+      else if (relaxation_stalled) then
+         write(*,'(A,I0,A,ES10.3,A,ES10.3,A)') '     -> stopped: the state'// &
+              ' settled for ', n_settled_windows*N_resid, ' steps (change'//  &
+              ' over the window ', chg_win, ') while the face mass flux is'// &
+              ' NOT flat (spread=', fspread_gate, '): stall, target not met'
          call report_marching_stop
       else if (do_only_pp) then
          write(*,'(A)') '     -> stopped: "Do only PP" -- no time'//         &
@@ -4540,14 +4900,17 @@
                              marching_step_max, ' iterations WITHOUT convergence'
          call report_marching_stop
       endif
-      write(*,'(A,I0,A,ES11.4,A,ES11.4)') '     final: count=', marching_step,         &
-                             '  du=', du, '  dtu=', dtu
+      write(*,'(A,I0,A,ES11.4,A,ES11.4,A,ES11.4,A,ES11.4)')                 &
+           '     final: count=', marching_step, '  face_spread=',             &
+           fspread_gate, '  state_change=', chg_win,                         &
+           '  du(cell-centred, diagnostic)=', du
+      write(*,'(A,ES11.4)') '     final: dtu (one step, diagnostic)=', dtu
       ! The value of the convergence functional the run actually used at its
       ! last step, with the window it was taken over, so that it can be
       ! recomputed from the state this run writes.
       write(*,'(A,I0,A,I0,A,ES23.15)')                                        &
-           '     mass_flux_spread: window cells ', j_min, '..', N,            &
-           '  value=', du
+           '     cell-centred mass_flux_spread (diagnostic): window cells ',  &
+           j_min, '..', N, '  value=', du
 
       call write_run_counter_report
       ! Whether any flux assembly of this run stood on a base face state
@@ -4591,16 +4954,17 @@
       write(*,*) '(EXHALE_main.f90) Writing final results to file..'
       call element_census_reservoir('output (final state)', rho, f_sp)
 
-      ! DID THIS RUN CLAIM A STATIONARY STATE AT ALL? Three stops declare
-      ! one: the du threshold (the flux functional flat to du_th), the
-      ! residual gate met while marching, and the steady finish returning
-      ! info = 0. A stall, a du plateau, a step cap, a NaN and "Do only PP"
-      ! declare nothing, and the state such a run writes is a relaxation
-      ! snapshot: it is written certified=F
-      ! with that as the reason, and the run exits 0, because there was no
-      ! claim to refuse.
+      ! DID THIS RUN CLAIM A STATIONARY STATE AT ALL? Two stops declare one:
+      ! the residual gate met while marching, and the steady finish returning
+      ! info = 0. The marching stop does not: it stops at a face spread of
+      ! 4e-4 (march_flux_spread_th), twenty times the steady gate the
+      ! stationary solvers accept with (update log stage 3 section 135). A
+      ! marching stop, a stall, a step cap, a NaN and "Do only PP" declare
+      ! nothing, and the state such a run writes is a relaxation snapshot:
+      ! unless it certifies it is written certified=F with that as the reason,
+      ! and the run exits 0, because there was no claim to refuse.
       call certification_note_stationarity_claim(newton_finished .or.     &
-                     steady_gates_converged .or. mass_flux_converged)
+                     steady_gates_converged)
 
       ! THE CERTIFICATION OF THE STATE THAT IS ABOUT TO BE WRITTEN. Every
       ! earlier certification was made on a state the run then marched away
@@ -4705,15 +5069,16 @@
       ! complete set of files and never a reason for an incomplete one.
       !
       ! THE STATUS FOLLOWS THE CLAIM, NOT THE RUN MODE. A run that DECLARED a
-      ! stationary state -- the du stop, the marching residual gate, or the
-      ! JFNK finish -- and then wrote a state the certification refused exits
-      ! 2 and names the refusing entries, in EVERY run mode. A run that ended
-      ! on a step cap, a stall, a du plateau or any other bound made no such
-      ! claim and exits 0, in every run mode.
+      ! stationary state -- the marching residual gate or the JFNK finish --
+      ! and then wrote a state the certification refused exits 2 and names
+      ! the refusing entries, in EVERY run mode. A run that ended on the
+      ! marching stop, a step cap, a stall or any other bound made no such
+      ! claim and exits 0, in every run mode; a stationary solve that failed
+      ! exits 3.
       ! The `init` exemption of the run-mode contract (section 2) covers the
       ! PHYSICAL-step claims -- the clock, the budgets, the histories -- which
       ! an initialization run does not make. Stationarity is not one of them:
-      ! a du-stopped initialization run asserts that its written state is
+      ! a Newton-finished initialization run asserts that its written state is
       ! stationary, and the status is what tells a caller whether that
       ! assertion was certified. Which stops count as a claim is recorded by
       ! certification_note_stationarity_claim above, and the routine below
@@ -4744,6 +5109,29 @@
       ! so the routine is called from the marching route and from the
       ! stationary evaluation alike.
       integer :: j_mdot
+      ! THE MACH NUMBER OF THE OUTERMOST PHYSICAL CELL (user decision
+      ! 2026-10-10, md/outer_boundary_subsonic_review_20261009.md). Where the
+      ! outer face is subsonic, one acoustic characteristic enters the
+      ! domain and the outer ghost condition (Apply_BC.f90, free_outflow_ghost)
+      ! supplies it; it can then select the member of the subsonic family and
+      ! with it Mdot. Past the sonic point no outer condition is needed. The
+      ! number is reported with every Mdot, and below mach_outer_supersonic
+      ! the line says what it means.
+      !
+      ! DECISION 2026-10-12 (user): a subsonic outer face gets no other
+      ! treatment. The escape models this code is compared with put the outer
+      ! face past the sonic point and state no incoming condition (Salz et al.
+      ! 2016, A&A 586, A75, sect. 3.2; Murray-Clay et al. 2009, ApJ 693, 23,
+      ! sect. 2.2; Caldiroli et al. 2021, A&A 655, A30, sect. 5). A relaxed
+      ! characteristic condition (Poinsot & Lele 1992, J. Comput. Phys. 101,
+      ! 104) would make Mdot conditional on an exterior pressure that no such
+      ! model states, so it is not implemented (project rule: physics the
+      ! published models do not treat is recorded, not forced in). The Mdot of
+      ! a run whose outermost cell is below mach_outer_supersonic is therefore
+      ! NOT a quantitative result, and both the run log and EXHALE_setup.out
+      ! say so.
+      real*8 :: mach_outer, gam_outer
+      real*8, parameter :: mach_outer_supersonic = 1.1d0
 
       j_mdot   = max(N - 20, 1)
       Mdot_cgs = 4.0*pi*rho(j_mdot)*v(j_mdot)*r(j_mdot)*r(j_mdot)          &
@@ -4762,8 +5150,29 @@
       write(*,*) '----- Results -----'
       write(*,*) ' '
       write(*,*) '---> 2D approximate method: ', appx_mth
+      if (caloric_mixture_active) then
+         gam_outer = adiabatic_index_from_state(N, rho(N), p(N))
+      else
+         gam_outer = gamma_ad
+      endif
+      mach_outer = abs(v(N))/sqrt(gam_outer*p(N)/rho(N))
       if (outflow_at_mdot_cell) then
          write(*,101) ' ---> Log10 of steady-state Mdot = ', Mdot, ' g/s'
+      endif
+      write(*,'(A,F8.3,A,F8.4,A)') ' ---> Mach number of the outermost'//  &
+           ' cell = ', mach_outer, ' (r = ', r(N), ' R_p)'
+      if (mach_outer .lt. mach_outer_supersonic) then
+         write(*,'(A)') ' ---> NOT A QUANTITATIVE MDOT: the outer face is'//&
+              ' subsonic or near sonic, so the outer ghost condition (a gas'
+         write(*,'(A)') '      at rest at the p/rho of the outermost cell)'//&
+              ' supplies the incoming acoustic characteristic and can set'
+         write(*,'(A)') '      Mdot. Place the outer face past the sonic'//  &
+              ' point ("Outer radius [R_p]:"; see'
+         write(*,'(A)') '      md/outer_boundary_subsonic_review_20261009.md'//&
+              ' section 6).'
+      endif
+      if (outflow_at_mdot_cell) then
+         continue
       else
          write(*,'(A,ES11.3,A)') ' ---> no outward mass flux at the '//     &
               'evaluation radius: rho*v*r^2 = ', Mdot_cgs,                  &
@@ -4778,6 +5187,13 @@
          else
             write(outfile,'(A,ES11.3,A)') ' - no outward mass flux at'//   &
                  ' the evaluation radius: rho*v*r^2 = ', Mdot_cgs, ' g/s'
+         endif
+         write(outfile,'(A,F8.3)') ' - Mach number of the outermost cell = ', &
+              mach_outer
+         if (mach_outer .lt. mach_outer_supersonic) then
+            write(outfile,'(A)') ' - NOT A QUANTITATIVE MDOT: the outer'//  &
+                 ' face is subsonic or near sonic and the outer ghost'//     &
+                 ' condition can set Mdot'
          endif
       close(unit = outfile)
 
@@ -5300,6 +5716,11 @@
          ' positivity repair call(s), ', n_faces_flux_positivity_limited,     &
          ' face flux(es) dropped to first order, ',                           &
          n_faces_flux_positivity_limited_accepted, ' of them in accepted steps'
+      ! Cells whose internal energy was taken from the advected adiabat
+      ! (adiabatic_entropy_transport), summed over the accepted steps.
+      write(*,'(A,I0)') '     internal energy from the adiabat (cold'//     &
+         ' supersonic expanding cells), cell-steps: ',                     &
+         n_cells_internal_energy_from_adiabat
 
       ! Faces evaluated with the Lax-Friedrichs flux because the run selected
       ! it. An LLF run prints it even when it is zero, for the same reason the
@@ -6306,6 +6727,49 @@
          stop
       endif
 
+      ! (2b) THE HYDROGEN PARTITION OF THE BASE CELLS OF AN OPEN FACE IS
+      ! THE GHOST'S. With the base face open (base_h2_composition_imposed)
+      ! the lower ghosts carry the stated partition of the matching level,
+      ! and a seed produced under another boundary (a closed-face state, a
+      ! state mapped from another grid) carries its own: n(H I)/n_tot 0.11
+      ! in cell 1 of the route B seed against 1e-5 in the ghost (MEASURED,
+      ! md/cold_base_cell_diagnosis_20261009.md). The jump drives a face-0
+      ! H2 diffusive flux whose relative-transport enthalpy is an energy
+      ! sink no stationary state carries. So the cells of the uniform base
+      ! region (1..N_low_cells, the cells the run resolves the matching
+      ! level with) take the n(H I)/n(H2) of ghost 0 as the boundary sweep of
+      ! step 2 left it, with each cell's hydrogen nuclei and mass unchanged.
+      ! f_sp is a number of particles per unit mass (the mass of a cell is
+      ! sum_i f_i A_i), so f(H I) + 2 f(H2) is held, which holds both the
+      ! hydrogen nuclei and the mass, and f(H I)/f(H2) = r_g, the
+      ! n(H I)/n(H2) of the ghost. Done here, on the stationary route only: a marching
+      ! run evolves the seed in time and relaxes the jump physically, while
+      ! the stationary alternation solves the hydrodynamic rows to a root at
+      ! frozen composition. (A carrier relaxation before the first solve was
+      ! added with this seed and removed on 2026-10-10, update log stage 3
+      ! section 127.5: it never acted.)
+      if (base_h2_composition_imposed() .and. f_sp(0,isp_H2) .gt. 0.0d0) &
+         then
+         block
+           real*8  :: r_g, x_h, x_h2_new
+           integer :: jb, nb
+           r_g = f_sp(0,1)/f_sp(0,isp_H2)
+           nb  = min(N_low_cells, N)
+           write(*,'(A,ES11.4,A,I0,A,ES11.4,A,ES11.4)') ' (EXHALE_main)'//  &
+                ' open base face: the base cells take the ghost''s'//     &
+                ' n(H I)/n(H2) =', r_g, ' in cells 1..', nb,              &
+                '; cell 1 had', f_sp_loaded(1,1)                          &
+                /max(f_sp_loaded(1,isp_H2), 1.0d-300), ', cell nb',       &
+                f_sp_loaded(nb,1)/max(f_sp_loaded(nb,isp_H2), 1.0d-300)
+           do jb = 1, nb
+              x_h      = f_sp_loaded(jb,1) + 2.0d0*f_sp_loaded(jb,isp_H2)
+              x_h2_new = x_h/(r_g + 2.0d0)
+              f_sp_loaded(jb,isp_H2) = x_h2_new
+              f_sp_loaded(jb,1)      = r_g*x_h2_new
+           enddo
+         end block
+      endif
+
       ! (3) THE WORK STATE THE SOLVE STARTS FROM: one composition sweep from
       ! the stored pair, with its movement and its entries reported.
       call composition_sweep_movement_of_the_stored_pair(u_loaded,         &
@@ -6345,6 +6809,7 @@
                                     rho, f_sp)
       call molecular_carrier_densities_from_state(rho,f_sp)
       ! ONE COMPOSITION, ONE BOUNDARY, ONE RESIDUAL (the routine's comment).
+      call certification_note_stationary_solve_failed(info_jfnk .ne. 0)
       call certify_the_state_to_be_written(info_jfnk .eq. 0,              &
            'stationary_restart_final_certification')
       call boundary_gas_state_from_conserved
@@ -7451,6 +7916,13 @@
       integer, parameter :: outer_element_update_refused = 3
       integer, parameter :: outer_no_progress            = 4
       integer, parameter :: outer_pass_budget            = 5
+      ! The hydrodynamic solve failed and no converged wind exists in this
+      ! alternation to return to (the first solve, or every solve so far).
+      integer, parameter :: outer_no_converged_wind      = 6
+      ! A solve failed after a converged one, the converged wind was
+      ! restored, and no step length of the composition update it consumed
+      ! can be shortened: the next pass would repeat the failed one.
+      integer, parameter :: outer_failed_update_unshortenable = 7
       ! How many consecutive passes may leave the joint measure not falling
       ! before the loop ends. A single rise is the alternation's own
       ! feedback and not stagnation: MEASURED on the atomic reload the worst
@@ -7536,6 +8008,48 @@
       character(len=96) :: stage_label
 
       integer :: hydro_info, elem_status, carrier_outcome, outer_ending
+      ! THE LAST CONVERGED WIND OF THIS ALTERNATION, AND ITS COMPOSITION.
+      ! Definition: the conserved state u (ghosts included) and the species
+      ! fractions f_sp of the most recent pass whose hydrodynamic solve
+      ! converged (hydro_info = 0), taken where the joint test of that pass
+      ! takes them, after sources_and_ghosts_of_the_held_composition, with
+      ! the carrier module state (the frozen background the carrier
+      ! relaxation reads) beside them. The pair (u, f_sp) IS the state: the
+      ! primitive, thermal, excited-hydrogen, radiative (heat, cool, eta, the
+      ! sweep ledger) and ghost quantities the outer loop uses are functions
+      ! of it, rebuilt by sources_and_ghosts_of_the_held_composition, which
+      ! holds the composition fixed, so they are not stored twice. The wind
+      ! is a solution FOR THAT COMPOSITION: the composition is restored with
+      ! it, never the wind alone under a newer composition. The boundary
+      ! inputs (the base handoff, the reservoirs, the stellar field) do not
+      ! change inside this routine, and the record lives only for one call
+      ! of it, so it always belongs to the boundary inputs in force.
+      ! After a failed solve the state is put back to this pair, the failure
+      ! stays the flag of that pass, and the next composition update is
+      ! taken from it with a shortened step; where no pass has converged yet
+      ! there is nothing to return to, and the alternation ends
+      ! (outer_no_converged_wind) with the solve's iterate and its flag.
+      real*8, allocatable :: u_wind_conv(:,:), f_sp_wind_conv(:,:)
+      type(carrier_module_state) :: cms_wind_conv
+      logical :: wind_conv_held, wind_restored, step_shortened
+      integer :: first_wind_solves
+      real*8  :: trust_entry_of_control, omega_entry_of_control
+      integer :: pass_wind_conv
+      real*8  :: prog_worst_wind_conv
+      ! The acceptance record of the solve that produced that wind (the
+      ! residual norm and flux spread its gate accepted), restored with it so
+      ! that the record compared against the written state belongs to the
+      ! state written (assert_written_state_is_the_accepted_one).
+      real*8  :: gate_rnorm_wind_conv, gate_fspread_wind_conv
+      ! TEST HOOK (EXHALE_TEST_FAILED_SOLVE_PASS, default unset; driven by
+      ! src/tests/failed_wind_recovery/run.sh): the solves of the listed
+      ! passes are reported failed and their returned internal energy is
+      ! raised by a part in 1e3, the stand-in for an unconverged iterate.
+      ! The lines it prints measure which state the next composition update
+      ! is taken from.
+      integer :: tfs_pass(8), tfs_n, tfs_ios
+      real*8, allocatable :: u_tfs_conv(:,:), u_tfs_failed(:,:)
+      real*8  :: tfs_d_conv, tfs_d_failed
       integer :: n_no_fall, icert, sp_cell, ref_cell, cell_here, pass_cap
       integer :: n_unjudged
       real*8  :: sp_worst, sp_worst_prev, sp_meas, sp_tol, trust_pass
@@ -7733,6 +8247,23 @@
       pass_cap      = merge(outer_pass_cap, 1, species_alternated)
       outer_ending  = outer_running
       hydro_info    = 0
+      wind_conv_held = .false.;  wind_restored = .false.
+      pass_wind_conv = 0;        prog_worst_wind_conv = huge(1.0d0)
+      if (allocated(u_wind_conv)) deallocate(u_wind_conv)
+      if (allocated(f_sp_wind_conv)) deallocate(f_sp_wind_conv)
+      allocate(u_wind_conv(3,1-Ng:N+Ng), f_sp_wind_conv(1-Ng:N+Ng,n_species))
+      tfs_n = 0;  tfs_pass = -1
+      call get_environment_variable('EXHALE_TEST_FAILED_SOLVE_PASS', diag_env)
+      if (len_trim(diag_env) .gt. 0) then
+         do tfs_n = 8, 1, -1
+            read(diag_env,*,iostat=tfs_ios) tfs_pass(1:tfs_n)
+            if (tfs_ios .eq. 0) exit
+         enddo
+         allocate(u_tfs_conv(3,1-Ng:N+Ng), u_tfs_failed(3,1-Ng:N+Ng))
+         u_tfs_conv = u;  u_tfs_failed = u
+         write(*,'(A,8I4)') ' (EXHALE_main) [test] solves reported'//      &
+              ' failed at passes', tfs_pass(1:tfs_n)
+      endif
       n_no_fall     = 0
       sp_worst      = -1.0d0
       sp_worst_prev = huge(1.0d0)
@@ -7756,6 +8287,17 @@
       comp_residual_before = huge(1.0d0)
       n_comp_updates    = 0
 
+      ! NO CARRIER RELAXATION BEFORE PASS 1 ON AN OPEN BASE FACE. One was
+      ! added on 2026-10-09 (change 4 (b), update log stage 3 section 126)
+      ! and removed on 2026-10-10 (section 127.5, user decision): it never
+      ! acted. The seed of change 4 (a) (the base cells take the ghost
+      ! hydrogen partition, which removes the cold base cell) puts all the
+      ! hydrogen of the seeded cells into H2, and a carrier relaxation at
+      ! FROZEN element densities then asks for up to 1.31 times a cell's
+      ! hydrogen (MEASURED, route B k00), so the element limiter clipped
+      ! every trial and every entry relaxation was refused; route B
+      ! converged 49 solves in a row with (a) alone.
+
       do it_diff = 1, pass_cap
          t_pass0 = omp_get_wtime()
          if (stage_export_on) then
@@ -7774,6 +8316,18 @@
          ! state holds the rule's side. A solve that did not converge is not
          ! repeated: its returned state is an iterate, and the next pass
          ! enters from it.
+         ! THE FIRST WIND IS SOLVED AGAIN ONCE BEFORE THE ALTERNATION
+         ! GIVES UP ON IT. Where no solve of this alternation has converged
+         ! there is no wind to restore, but no composition update has been
+         ! taken either, so the iterate the solve returned is a state of the
+         ! SAME equations and continuing the solve from it relabels nothing.
+         ! One further solve is made from it; if that also fails the
+         ! alternation ends (outer_no_converged_wind). MEASURED: the He/H 0.65
+         ! open-face k00 entry, whose first solve stopped at info = 2 with
+         ! the mass row of cell 1 at 7.24e-9 against its tolerance 6.8e-9.
+         first_wind_solves = 0
+         first_wind: do
+         first_wind_solves = first_wind_solves + 1
          contact_solves  = 0
          held_side_given = .false.
          held_given_reverse = .false.
@@ -7864,8 +8418,53 @@
             held_side_given    = .true.
             held_given_reverse = rule_side_reverse
          enddo
+         if (tfs_n .gt. 0) then
+            if (any(tfs_pass(1:tfs_n) .eq. it_diff)) then
+               hydro_info = 1
+               u(3,1:N) = u(3,1:N)*(1.0d0 + 1.0d-3)
+               u_tfs_failed = u
+               write(*,'(A,I0,A)') ' (EXHALE_main) [test] pass ', it_diff, &
+                    ': the solve is reported failed and its returned'//  &
+                    ' internal energy raised by 1e-3'
+            endif
+         endif
+         if (hydro_info .eq. 0 .or. wind_conv_held .or.                   &
+             .not. species_alternated .or. first_wind_solves .ge. 2)     &
+            exit first_wind
+         write(*,'(A,I0,A,I0,A)') ' (EXHALE_main) outer pass ', it_diff,  &
+              ': the solve failed (info ', hydro_info, ') before any'//   &
+              ' wind of this alternation converged; it is solved again'// &
+              ' from its own iterate, at the same composition.'
+         enddo first_wind
          if (stage_export_on)                                             &
             call write_stage_state(it_diff, 'hydro_return', .false.)
+         ! A FAILED SOLVE HANDS ON NOTHING. Its returned state is an
+         ! iterate, not a wind, and a composition update taken on it, or a
+         ! solve entered from it, inherits whatever it carries (MEASURED, the
+         ! open-face LHS 1140 b route B closure: base cells at 2929, 46 and
+         ! 1181 K handed on by the failed pass 3, and the solve entered from
+         ! them evaluated a trial at -1.4e-5 K; md/osc_diagnosis_20261008.md
+         ! sections 2 and 5). The last converged wind and its composition
+         ! (u_wind_conv, defined at its declaration) are put back, every
+         ! quantity the loop reads is rebuilt from them, and hydro_info keeps
+         ! the failure.
+         wind_restored = .false.
+         if (hydro_info .ne. 0 .and. wind_conv_held .and.                 &
+             species_alternated) then
+            u    = u_wind_conv
+            f_sp = f_sp_wind_conv
+            call restore_carrier_module_state(cms_wind_conv)
+            gate_rnorm_accepted   = gate_rnorm_wind_conv
+            gate_fspread_accepted = gate_fspread_wind_conv
+            call sources_and_ghosts_of_the_held_composition(.false.)
+            E = u(3,:)
+            wind_restored = .true.
+            write(*,'(A,I0,A,I0,A,I0,A)') ' (EXHALE_main) outer pass ',    &
+                 it_diff, ': the hydrodynamic solve failed (info ',        &
+                 hydro_info, '); its iterate is discarded and the wind'//  &
+                 ' converged on pass ', pass_wind_conv, ' is restored'//   &
+                 ' WITH ITS COMPOSITION. The pass keeps the failure.'
+         endif
          ! A1: the state this pass would hand on as accepted, against the
          ! reservoirs the run resolved.
          call element_census_reservoir('steady outer pass (accepted '//   &
@@ -7897,6 +8496,18 @@
          rho = u(1,:)
          call get_species_densities(rho,f_sp,nhi,nhii,nhei,nheii,          &
                                     nheiii,nheiTR,nm,ne,n_tot)
+         ! The last converged wind and its composition, as the joint test
+         ! sees them (the definition is at the declaration of u_wind_conv).
+         if (hydro_info .eq. 0) then
+            u_wind_conv    = u
+            f_sp_wind_conv = f_sp
+            call save_carrier_module_state(cms_wind_conv)
+            wind_conv_held = .true.
+            pass_wind_conv = it_diff
+            gate_rnorm_wind_conv   = gate_rnorm_accepted
+            gate_fspread_wind_conv = gate_fspread_accepted
+            if (tfs_n .gt. 0) u_tfs_conv = u
+         endif
          call report_base_face_state_consistency(                         &
               'steady_wind_joint_test_at_assemble_residual', u)
          if (stage_export_on) then
@@ -8013,7 +8624,14 @@
             outer_ending = outer_certified
          else if (.not. rows_finite) then
             outer_ending = outer_state_not_finite
+         else if (hydro_info .ne. 0 .and. .not. wind_conv_held) then
+            outer_ending = outer_no_converged_wind
          endif
+         if (hydro_info .eq. 0) prog_worst_wind_conv = prog_worst
+         if (wind_restored) write(*,'(A,ES12.5,A,I0,A,ES12.5)')            &
+              '    the restored state stands at the joint distance',      &
+              prog_worst, '; pass ', pass_wind_conv, ' recorded',         &
+              prog_worst_wind_conv
 
          ! ---- THE PROGRESS CONTROL, AHEAD OF ANY UPDATE OF THIS PASS ----
          ! The joint measure is what the passes are spent on, and the
@@ -8143,13 +8761,20 @@
          ! on the LHS 1140 b He/H = 1.8 transported-stage state with the
          ! interdiffusion enthalpy flux off, .P1/progress_control: after an
          ! update limited to 1e-2 the solve of pass 2 failed, and held at
-         ! 0.5 the same state converged every solve, a1 and a1h). A failed
-         ! solve that follows another failed solve did
-         ! not start from a solved wind, so the update is not what failed
-         ! it and neither step length is shortened for it (MEASURED: on the
+         ! 0.5 the same state converged every solve, a1 and a1h). Since a
+         ! failed solve puts the last converged wind and its composition
+         ! back (wind_restored), EVERY failed solve after the first
+         ! converged one started from an update of a solved wind, so the
+         ! update is what failed it: the step lengths of that update are
+         ! shortened, the carrier bound whether or not the update ended on
+         ! it, and where neither can be shortened the alternation ends
+         ! (outer_failed_update_unshortenable), because the next pass would
+         ! take the same update from the same wind. A solve that fails
+         ! before any has converged consumed no update of a solved wind and
+         ! ends the alternation (outer_no_converged_wind; MEASURED: on the
          ! atomic He/H = 9.7 rungs at 0.06 and 0.0624 of the GJ 1132
          ! spectrum the solve of the very first pass, which consumed no
-         ! update, already ended info = 2, and every later one did too).
+         ! update, already ended info = 2).
          ! omega shortens on the same attributable failure, and on a pass
          ! judged without progress whose wind was solved (the element update
          ! moved on a solved wind and did not help); it recovers by doubling,
@@ -8168,8 +8793,11 @@
             update_on_bound = carrier_relaxation_ran .and.                 &
                  (carrier_outcome .eq. carrier_relax_movement_bound) .and. &
                  transported_rows_exist() .and. .not. block_now
-            hydro_failure_after_solved = (hydro_info .ne. 0) .and.         &
-                 (hydro_info_prev .eq. 0) .and. (it_diff .gt. 1)
+            hydro_failure_after_solved = wind_restored
+            ! The step lengths before this control, so that whether the
+            ! failure shortened one of them can be read afterwards.
+            trust_entry_of_control = trust_pass
+            omega_entry_of_control = comp_omega
             ! A RISE IS HARM OF THE STEP ONLY WHERE THE STEP MOVED THE GAS.
             ! The update the bound limited is a composition move at the
             ! cells the bound held back; the wind solve that consumed it
@@ -8346,6 +8974,24 @@
                        ' one; under-relaxation omega =', comp_omega
                endif
             endif
+            ! THE CARRIER BOUND OF A FAILED UPDATE THAT DID NOT END ON IT.
+            ! The branches above shorten the bound only where the update
+            ! ended on it; the update a restored pass retries is taken from
+            ! the same wind, so an unshortened one would be the same update.
+            if (wind_restored .and. carrier_relaxation_ran .and.          &
+                .not. carrier_trust_held .and.                            &
+                trust_pass .eq. trust_entry_of_control .and.              &
+                trust_pass .gt. carrier_trust_floor) then
+               trust_pass = max(0.5d0*trust_pass, carrier_trust_floor)
+               write(*,'(A,ES9.2)') '    -> the solve that consumed the'// &
+                    ' carrier update failed; the update is retried from'// &
+                    ' the restored wind with movement bound', trust_pass
+            endif
+            step_shortened = (trust_pass .lt. trust_entry_of_control) .or. &
+                             (comp_omega .lt. omega_entry_of_control)
+            if (wind_restored .and. .not. step_shortened .and.            &
+                outer_ending .eq. outer_running)                          &
+               outer_ending = outer_failed_update_unshortenable
             sp_worst_prev   = sp_worst
             prog_worst_prev = prog_worst
          endif
@@ -8390,6 +9036,18 @@
          if (outer_ending .eq. outer_running .and. it_diff .lt. pass_cap) &
              then
             update_taken = .true.
+            if (tfs_n .gt. 0) then
+               tfs_d_conv = maxval(abs(u(:,1:N) - u_tfs_conv(:,1:N))       &
+                                   /max(abs(u_tfs_conv(:,1:N)), 1.0d-300))
+               tfs_d_failed = maxval(abs(u(:,1:N) - u_tfs_failed(:,1:N))   &
+                                   /max(abs(u_tfs_failed(:,1:N)), 1.0d-300))
+               write(*,'(A,I0,A,ES10.3,A,ES10.3,A,F6.3,A,ES9.2)')          &
+                    ' (EXHALE_main) [test] pass ', it_diff, ': the'//     &
+                    ' update is taken from a state at relative distance', &
+                    tfs_d_conv, ' from the last converged wind and',      &
+                    tfs_d_failed, ' from the last failed iterate; omega', &
+                    comp_omega, ', trust', trust_pass
+            endif
             ! WHAT THE UPDATE HOLDS, taken before anything moves: under
             ! "Composition update holds: pressure" the rho, v and p of the
             ! state certified above, which the rebuild after the two
@@ -9211,6 +9869,28 @@
                  ' restored, so no further pass could differ from this'//  &
                  ' one.'
             return
+         else if (outer_ending .eq. outer_no_converged_wind) then
+            jfnk_info = hydro_info
+            write(*,'(A,I0,A,I0,A)') ' (EXHALE_main) outer pass ',        &
+                 it_diff, ': REFUSED -- the hydrodynamic solve failed'//  &
+                 ' (info ', hydro_info, ') and no solve of this'//        &
+                 ' alternation has converged, also when solved again'//   &
+                 ' from its own iterate, so there is no wind to'//        &
+                 ' return to and no composition update can be taken on'// &
+                 ' one. The state handed back is the solve''s iterate,'// &
+                 ' with its flag.'
+            return
+         else if (outer_ending .eq. outer_failed_update_unshortenable) then
+            jfnk_info = hydro_info
+            write(*,'(A,I0,A,I0,A,I0,A)') ' (EXHALE_main) outer pass ',   &
+                 it_diff, ': REFUSED -- the hydrodynamic solve failed'//  &
+                 ' (info ', hydro_info, '), the wind converged on pass ', &
+                 pass_wind_conv, ' was restored with its composition,'//  &
+                 ' and no step length of the update the solve consumed'// &
+                 ' can be shortened, so the next pass would repeat this'//&
+                 ' one. The state handed back is that restored wind, NOT'//&
+                 ' accepted.'
+            return
          else if (outer_ending .eq. outer_no_progress) then
             jfnk_info = 1
             write(*,'(A,I0,A,I0,A)') ' (EXHALE_main) outer pass ',        &
@@ -9233,6 +9913,10 @@
       ! chosen against an equation and a cell.
       outer_ending = outer_pass_budget
       jfnk_info    = 1
+      if (wind_restored) write(*,'(A,I0,A)') ' (EXHALE_main) the solve'//  &
+           ' of the last pass failed; the state handed back is the wind'// &
+           ' converged on pass ', pass_wind_conv, ', restored with its'//  &
+           ' composition, NOT accepted.'
       write(*,'(A,I0,A,I0,A)') ' (EXHALE_main) the stationary outer'//    &
            ' iteration spent its budget of ', pass_cap, ' passes'//       &
            ' without an accepted state: ', cert_now%n_failing,            &

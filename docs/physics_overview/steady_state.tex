@@ -105,7 +105,12 @@ it.  Four gates:
       state;
 \item the \emph{chemistry gate}, no cell carrying a composition that is not a
       root of the chemical network, that is no cell in acceptance class 4 or 6
-      of Sec.~\ref{sec:ionization:solve}.  Heat and cool in the energy row are
+      of Sec.~\ref{sec:ionization:solve}: every kinetic row balanced to
+      \texttt{ieq\_res\_tol} of the chemical turnover of its element group at
+      the state, H$_3^+$ also to $10^{-3}$ of its own gross rate, a row
+      whose Newton correction is below the resolution of the composition
+      counted as balanced, and every constraint row met to its own tolerance
+      (Eqs.~\ref{eq:ion:acceptance} and \ref{eq:ion:h3p_own_row}).  Heat and cool in the energy row are
       evaluated on the accepted composition, so on such a cell the row is a
       number computed on a state the chemistry does not describe;
 \item the \emph{carrier gate}, where $n(\mathrm{H_2})$ is among the unknowns:
@@ -145,8 +150,16 @@ its transported balance, the entry \texttt{carrier balance He2\^{}3S}.  A
 carrier balance is measured as its steady residual over the sum of the row's
 own terms, the transport flux divergences and the reaction production and
 loss (\texttt{carrier\_residual}, \texttt{diffusive\_photochemistry.f90}).
-For a row whose source is handed out as its net only (the helium stages, the
-proton of an atomic gas) the gross terms are that net; the He\,$2^3$S row
+The ionized stages (the proton and the two helium ions, in atomic and in
+molecular gas) carry their gross production and loss, formed from the gross
+rate $G$ of their rows as $P=(G+f)/2$, $L=(G-f)/2$ (every term of those rows is
+sign-definite; the He$\leftrightarrow$H charge exchange is inside both $G$
+and $f$, the metal charge exchange added on its own sides): with the net
+alone the scale of the He$^+$ row held only the transport where He$^+$ is
+made by photoionization and destroyed by He$^+$+H$_2$ at about
+330\,cm$^{-3}$\,s$^{-1}$ each (net $6\times10^{-3}$, LHS~1140\,b route~B,
+$1.2\,R_p$) and read a state balanced to $5\times10^{-8}$ of its channels as
+$4.2\times10^{-4}$ (MEASURED, update log stage~3 section~116). The He\,$2^3$S row
 records the production $n_e(n_{\rm HeII}\alpha_{2^3{\rm S}} +
 n_{1^1{\rm S}}q_{13})$ and the loss $n_{2^3{\rm S}}[\Gamma_{2^3{\rm S}} +
 n_e(q_{31g}+q_{31a}+q_{31b}+\beta_{2^3{\rm S}}) + A_{31} + n_{\rm HI}Q_{31}]$
@@ -199,6 +212,33 @@ energy booked by the level's reactions and not a term of the energy row.
 These are the numbers the energy coupling of the elemental-flux closure
 reads, and they are measured on the state about to be written for that
 reason.
+
+\paragraph{Exit status and acceptance.}
+The run's exit status reports the certification of the state it wrote
+(\texttt{certification\_stop\_uncertified}, \texttt{certification.f90}): 0
+when that state is certified or when the run made no stationary claim (the
+marching stop of Sec.~\ref{sec:numerics:du}, whose state is a relaxation
+snapshot, a step cap, a stall, a NaN; the refused state is then written
+\texttt{certified=F cert\_reason=no\_stationary\_claim}); 2 when the run
+declared a stationary state (the residual gate met while marching, or a
+Newton or steady finish with info $=0$;
+\texttt{certification\_note\_stationarity\_claim}) and the certification
+refuses it, after the
+state is written in full and the refusing rows named, the last line of the
+log being the certification's closing line (a gfortran runtime error also
+exits 2, without that line); 3 when the stationary solve of a steady route (a
+stationary restart or the direct steady route) returned info $\ne0$, its last
+iterate written with \texttt{cert\_reason=stationary\_solve\_failed}
+(\texttt{certification\_note\_stationary\_solve\_failed}; until 2026-10-10
+that iterate was written as a relaxation snapshot and the run exited 0,
+update log stage~3 section~127.5).  Since 2026-10-09 the certification is a
+diagnostic and not the acceptance of a result: a state is accepted for an
+observable when continuing the solve moves the observable by less than a
+budget set by its precision, its mass and energy budgets close over the
+region that forms it, and its profiles there are stable to 1 percent
+(\texttt{md/acceptance\_by\_observable\_precision\_20261009.md}).  Status 2 is
+therefore a flag its callers continue with; a row far above its scale is
+investigated as a possible defect first.
 
 \paragraph{A certificate belongs to the state written.}
 What a certificate measures includes quantities \emph{derived} from the
@@ -430,6 +470,43 @@ unknown would sit exactly on its own lower bound with no room below, and the
 boundary rule then returns zero for any direction with a component pointing
 there, so the whole Krylov direction would be refused.
 
+\paragraph{A trial that is not a gas is refused before anything is evaluated.}
+Every trial, probe and Jacobian column the solve evaluates is first screened
+cell by cell on its conserved state: finite, $\rho > 0$ and
+$\rho e = E - (\rho v)^2/(2\rho) > 0$, with the one definition the marching
+route and the restart reader use (\texttt{admissible\_conserved\_cell}, which
+also requires the internal energy formed exactly as the conversion to
+primitives forms it to be positive, so that the two cannot disagree within
+rounding).  A cell that fails has no temperature, so \texttt{eval\_residual}
+refuses the trial right after unpacking it, before the equation of state, the
+base boundary state or any rate coefficient is evaluated, as the named
+refusal ``conserved state that is not a gas'' with its own counter in the
+solve's refusal census; the temperature is never clipped.  A refused trial has
+no residual: the residual vector is a quiet NaN, the radiative pair and the
+particle count are zero, the composition is the seed, and the products a
+discarded evaluation would restore are restored; every caller that asks for
+admissibility reads the flag before any of these, and the merit of a refused
+trial is not formed.  An evaluation that does not ask is an evaluation of the
+iterate, which is admissible by construction: each solve screens the state it
+is entered at and returns at once as not converged when that state is not a
+gas, and adopts only admitted trials, so meeting such an iterate stops the run
+with the condition named.  A finite-difference column whose forward probe is
+refused at every length (the base point within the shortest probe of the
+boundary of the gas, e.g.\ a cell whose internal energy is below about
+$2^{-6}\sqrt{\epsilon_{\rm mach}}$ of its kinetic energy, probed along its
+momentum) is sampled on its backward side, $[F(Y) - F(Y - h\,e)]/h$, which is
+the same derivative to first order, exactly as the Jacobian-vector products
+already were; a column refused on both sides stays unresolved and is
+counted.  MEASURED, the open-face LHS~1140\,b route~B closure before this
+screen: a trial reached the composition sweep with cell~2 at
+$T = -1.4\times10^{-5}$\,K and stopped the run inside the charge-exchange
+turnover, whose ``thread holds no cell'' state was a temperature sentinel
+(\texttt{md/osc\_diagnosis\_20261008.md} section~5); that state is now its own
+flag, set with the temperature on every thread, every caller hands the
+turnover bound its cell's temperature, and a cell at a non-positive
+temperature is stopped where its rate coefficients would be formed (update
+log stage~3 section~125).
+
 \paragraph{The ledger and the stop.}
 The best iterate reached so far is kept, with its composition, its flux spread
 and whether it met the gates.  The non-monotone search accepts sideways steps,
@@ -534,9 +611,57 @@ What is accepted is only a state on which the certification of the
 the routine would hand back.  A hydrodynamic solve returning 0 while an
 alternated species row refuses is not an accepted state: that flag is a
 statement about the rows in the Newton registry, and the alternated rows
-stand outside it by construction.  Conversely a nonzero hydrodynamic flag does
-not end the loop by itself, because the composition update that follows it
-still makes progress.
+stand outside it by construction.
+
+\emph{A failed hydrodynamic solve hands on nothing.}  Its returned state is an
+iterate and not a wind, so neither the next composition update nor the next
+solve is taken from it.  The last converged wind of the alternation is
+defined as the conserved state (ghosts included) and the species fractions
+of the most recent pass whose solve converged, taken where that pass's joint
+test takes them, with the frozen carrier background and the acceptance record
+of that solve (its residual norm and flux spread) beside them; every other
+quantity the loop reads (primitive state, temperature, excited hydrogen, the
+radiative heating and cooling and the sweep ledger, the ghosts) is rebuilt
+from that pair at held composition.  The wind is a solution \emph{for its
+composition}, so the two are restored together: an old wind is never given a
+newer composition and called its solution.  The boundary inputs do not change
+inside one call of the alternation, and the record does not outlive it.  After
+a failed solve the pair is restored, the pass keeps its failure flag, and the
+next composition update is taken from the restored wind with a shorter step;
+where no step length of that update can be shortened the alternation ends,
+because the next pass would repeat the failed one.  Where no solve of the
+alternation has converged yet there is no wind to restore and no composition
+update has been consumed, so the solve is repeated once from its own iterate
+(the same equations; nothing is relabeled), and if that fails as well the
+alternation ends with that iterate and its flag.  MEASURED before this rule,
+on the open-face LHS~1140\,b route~B closure: the failed pass-3 iterate,
+handed on, carried base cells at 2929, 46 and 1181\,K into the pass-4 solve,
+which evaluated the trial at $-1.4\times10^{-5}$\,K
+(\texttt{md/osc\_diagnosis\_20261008.md} sections~2 and~5).
+
+\emph{An open base face starts from a seed that agrees with its ghost.}  With
+the H$_2$ partition of the lower ghosts stated (the open face of the matching
+surface), a seed produced under another boundary carries another hydrogen
+partition in its base cells (route~B: $n({\rm H\,I})/n_{\rm tot} = 0.11$ in
+cell~1 against $10^{-5}$ in the ghost), and the jump drives a face-0 H$_2$
+diffusive flux whose relative-transport enthalpy is an energy sink of cell~1
+that no stationary composition carries; a hydrodynamic solve at that frozen
+composition balances it by cooling and compressing the cell until three-body
+H$_2$ formation heat cancels it (MEASURED: 57\,K, sink 19.67 and heat 19.31
+code units; \texttt{md/cold\_base\_cell\_diagnosis\_20261009.md}).  One rule
+follows, (a) of that note.  On the stationary restart route the cells of the uniform base
+region ($1..N_{\rm low}$) take the $n({\rm H\,I})/n({\rm H}_2)$ of ghost~0,
+each cell keeping its hydrogen nuclei and its mass ($f({\rm H\,I}) +
+2f({\rm H}_2)$ held, $f$ a number per unit mass); a marching run is not
+changed, since it evolves the seed in time.  MEASURED (update log stage~3
+section~126): (a) removes the cold cell~1 (route~B 57\,K $\to$ 335\,K, sink
+$19.67\to-9\times10^{-4}$); the jump moves to the top of the base region at
+pass~1 (cell~51 at 55\,K) and leaves the grid in the following passes, route~B
+converging 49 solves in a row.  A carrier relaxation before the first solve,
+added with (a), was removed (section~127.5): the seed puts all the hydrogen of
+the seeded cells into H$_2$, so a carrier relaxation at frozen element
+densities asks for up to 1.31 times a cell's hydrogen and the element limiter
+refused every entry.
 
 \paragraph{The progress control.}
 A pass makes progress when the joint distance of the state to the
@@ -546,7 +671,9 @@ passes without progress end the loop rather than spend the budget (20 passes,
 \texttt{EXHALE\_OUTER\_PASSES}) on a fixed point the alternation is not
 approaching.  The endings are named: the joint certification passes; a row of
 the state is not finite; the element composition update is refused; the
-joint measure stops falling; the pass budget ends uncertified.
+joint measure stops falling; the pass budget ends uncertified; no solve has
+converged (twice from the entry composition); a failed update cannot be
+shortened.
 
 The two step lengths of the composition half, the element under-relaxation
 $\omega$ (start $0.5$, \texttt{EXHALE\_DIFF\_OMEGA}; floor $0.125$; it doubles
@@ -567,20 +694,22 @@ same state with the bound held at $0.5$ certified in 14 passes.  Such a pass
 is neither counted toward the ending nor allowed to shorten a step, and the
 bound doubles, up to $0.5$.  The bound halves when a bound-limited update
 raised the joint distance of a solved wind by more than $1.1$, when it
-preceded the first failed solve after a converged one, and when a pass
+preceded a failed solve (the update is retried from the restored wind, so
+whether or not it ended on the bound), and when a pass
 without progress moved the carriers short of the bound on a solved wind; a
 relaxation that kept no step leaves it where it is.  $\omega$ halves on a pass
-without progress whose wind was solved and on the first failed solve after a
-converged one, and doubles back toward its starting value after a converged
+without progress whose wind was solved and on a failed solve that consumed an
+element update, and doubles back toward its starting value after a converged
 solve on a pass with progress.  The element half is often the pace of the
 alternation: MEASURED on certified LHS~1140\,b conduction rungs, the elemental
 He/H row fell by $0.505$ a pass, which is $1-\omega$, while at
 \texttt{EXHALE\_DIFF\_OMEGA=1.0} it fell by about a decade a pass and three
 rungs certified in 6 or 7 passes instead of 21 or 22 or a refusal (update log
 stage~3 section~44); the continuation chains of that planet run at
-$\omega = 1$, and the default is unchanged.  A failed solve that follows another failed
-solve did not start from a solved wind, so the update is not what failed it
-and neither step is shortened.  \texttt{EXHALE\_CARRIER\_TRUST\_HOLD} freezes
+$\omega = 1$, and the default is unchanged.  Since a failed solve restores
+the last converged wind, every failed solve after the first converged one
+started from an update of a solved wind, and that update is what is
+shortened.  \texttt{EXHALE\_CARRIER\_TRUST\_HOLD} freezes
 the bound for every pass.  Recorded as open (\texttt{md/TO\_BE\_DONE.md} item (AL)): the starting bound for
 transported stages (the state above certifies from $0.5$ and not from
 $10^{-2}$), and the molecular He/H\,$=0.083$ continuation, where a growing

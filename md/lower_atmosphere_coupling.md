@@ -111,9 +111,13 @@ recombination (R6/R7, Larsson 2008), HeH⁺ chain (R16-R20), three-body H₂ for
   correction factor (Koskinen et al. 2009) with a documented caveat: same
   fit-first/refine-later pattern as our CHIANTI cooling work;
   [2026-08-15: the non-LTE factor was not deferred. `h3p_nonlte_factor(T, nH2)`
-  in `src/modules/lower_atmosphere/h3p_cooling.f90` bilinearly interpolates the
-  Miller et al. (2013) Table 6 departure factor, which the LTE emission is
-  multiplied by.]
+  in `src/modules/lower_atmosphere/h3p_cooling.f90` interpolates the
+  Miller et al. (2013) Table 6 departure factor (a power law in n_H₂ between its
+  columns, linear in T between its rows), which the LTE emission is multiplied by.
+  2026-10-10 (update log stage 3 section 132): the LTE emission is no longer the
+  Miller fit but the MiZATeP cooling function of Mizus et al. (2017, MNRAS 468,
+  1717), tabulated at 1 K from 20 to 5000 K; the Miller fit lies above it by 1.10,
+  1.48, 1.89 and 2.1 at 900, 1500, 2000 and 3000 K (`md/h3p_cooling_cause_20261010.md`).]
 - optional interim step (**Tier 2a, ~days**): promote the Wind-AE port's *passive*
   molecular-base treatment (μ-blend `molec_adjust` + bolometric heating/cooling +
   automatic shutoff) into EXHALE's base cells, no chemistry, but the correct μ and
@@ -254,7 +258,7 @@ He_rec_coupling, He-H charge exchange).
 | Tier | Deliverable | Status | Validation |
 |---|---|---|---|
 | 1 | `lower_column.f90`: hypsometric column, Visscher chem-eq H₂/H/He (+ fully-atomic bracket); key `Lower column: <R_1bar RJ>` reports r₀(1 μbar), base q_H₂/q_H/q_He/μ vs the input "Planet radius" | **done** | Koskinen 2022 Model A gate: r₀/R₁ᵦₐᵣ = 1.343 (paper 1.34), q_H₂ = 0.838 (0.84), q_H = 0.027 (0.026) |
-| 2 (foundation) | `h3p_cooling.f90`: Miller+2013 Table-5 LTE emission fits + Table-6 non-LTE factor s(T,n_H₂), bilinear; `mol_rates.f90`, Koskinen 2022 Table-1 rates R1-R23 (verified against the PDF, saved as `references/Miller_2013_JPCA_117_9770.pdf` / `Koskinen_2022...`) | **done (standalone)** | fit reproduces Miller Table-4 anchors at 500-5000 K to <0.5%; s(1000 K, 10¹⁰ cm⁻³)=0.4955 exact |
+| 2 (foundation) | `h3p_cooling.f90`: Miller+2013 Table-5 LTE emission fits (replaced 2026-10-10 by the MiZATeP cooling function, Mizus et al. 2017; update log stage 3 section 132) + Table-6 non-LTE factor s(T,n_H₂), bilinear (now a power law in n_H₂, linear in T); `mol_rates.f90`, Koskinen 2022 Table-1 rates R1-R23 (verified against the PDF, saved as `references/Miller_2013_JPCA_117_9770.pdf` / `Koskinen_2022...`) | **done (standalone)** | fit reproduces Miller Table-4 anchors at 500-5000 K to <0.5%; s(1000 K, 10¹⁰ cm⁻³)=0.4955 exact |
 | 2 (core) | **`System_HeH_mol.f90`**: coupled H⁺/He⁺/He⁺⁺(+2³S) + H₂/H₂⁺/H₃⁺/HeH⁺ equilibrium (7-8 unknowns, hybrd1; atomic rows use EXHALE's own rates so the molecule-free limit reproduces the atomic systems); **σ_H₂** (Yan+1998 Eqs. 17-19, `cross_sec.f90`) wired into opacity/photoionization/heating (`PH_heat_HHe`); H₃⁺ cooling **inside `eval_cool`**, with its own `Cooling_breakdown` column, so the marching temperature update and the steady residual balance the same cooling function (2026-08-13); EOS (`calc_ne/ntot/rho`, `composition`) molecule-aware, and the cooling (`eval_cool`) reads the same `calc_ne` electron density as the equilibrium solver, molecular ions included (2026-08-13); output/IC columns H2/H2p/H3p/HeHp; key `Molecular chemistry: True`; trace metals may be solved in the same system (`System_HeH_mol_metals`, 2026-08-13) | **done (core)** | σ_H₂ reproduces Yan Table 7 (0.04761/0.006169/0.001739 Mb at 100/200/300 eV); Gate 0: mol-off byte-equivalent (molecular chemistry off reproduces the atomic systems); Gate 1 (HD209 mol-on): fully molecular base (x_H₂≈0.996) + sharp H₂→H front at r=1.020 R_p, wind above the front ≈ atomic; below the front the molecular base suppresses He2³S by orders of magnitude (He2³S+H₂ Penning destruction, ~10⁴× at the front, rising back to the atomic value above ~1.3 R_p); Gate 2 (hot-Uranus-like: 0.0457 M_J, R_p=0.49 R_J, T_eq=1140 K, HD209 orbit/spectrum): front at r=1.156, H₃⁺ active in the molecular layer (peak ~7×10⁴ cm⁻³ at r≈1.04). The H₂→H fronts and molecular base composition are essentially unchanged from the 2026-07-16 gates (front 1.019→1.020, 1.166→1.156), confirming the dissociation-front result is robust to the 2026-07-23 production defaults (staged secondary ionization, He_rec_coupling, He-H charge exchange). Gate numbers refreshed 2026-07-23 at a shared 12000-step relaxation-snapshot convention: both HD209 runs read Ṁ = log₁₀ 10.58 (relaxation snapshots, not flux-flat converged, under these defaults the HD209 atomic gate plateaus near 4% mass-flux spread). Gate inputs pinned at `lower_atmosphere_figs/data_g*/input.inp` (Update_EXHALE_stage1 §35). 2026-08-13 (Update_EXHALE_stage1 §54): the H₃⁺ cooling moved inside `eval_cool`, so the **marching temperature update feels it for the first time**, H₃⁺ carries >99% of the radiative cooling from the base to the front (7.3× the local photoheating at r≈1.04) on the metals-off gate. At the 12000-step convention the gate observables are unchanged to <0.1% (front, H₃⁺ peak, Ṁ) because the layer's H₃⁺ cooling time is 200-2000 t_s; T has only begun to fall (−0.5% at r≈1.08). The converged molecular thermal structure is therefore **not** pinned by this gate |
 | 2 (Lyman-Werner) | **`Stellar LW flux [erg/cm2/s]:`**, H₂ + hν(912-1110 Å) → H + H in the coupled network, with the temperature-dependent self-shielding of the star-ward H₂ column from Richings, Schaye & Oppenheimer (2014) eqs. (3.12)-(3.15) and 0.4 eV of heating per dissociation (Black & Dalgarno 1977). New module `src/modules/lower_atmosphere/lyman_werner.f90`; diagnostic `output/Lyman_Werner.txt`. Default off (band flux 0) | **done** | section "H₂ photodissociation in the Lyman-Werner bands" below |
 | 2 (remaining) | local-equilibrium caveat (no molecular *advection*: Koskinen's high-altitude H₂ replenishment not reproduced); dissociative/double photoionization channels (P4/P5); 4.48 eV dissociation energy sink; diatomic γ; `_adv` post-process; GJ 1214 b He-halving validation (full M-dwarf setup) | open | gates defined in §Tier-2 |
@@ -529,12 +533,15 @@ line then stops cooling at its own radiative equilibrium temperature,
 575.8 K (C I 609 μm) to 641.7 K (O I 44 μm) for T₀ = 1140 K and half-sky
 coverage, and heats below it.
 
-For H₃⁺ there is no line list: Miller et al. (2013) fit the total emission, so
-the absorption is taken from that fit at the radiating temperature, which is
-what Kirchhoff's law makes of an emission integral:
-Λ_net = n(H₃⁺) 4π s(T,n_H₂) [E(T) − W E(T₀)]. This is the same net-exchange form
+For H₃⁺ the emission is a total cooling function (the MiZATeP cooling function of
+Mizus et al. 2017, which replaced the Miller et al. 2013 LTE fit on 2026-10-10, update
+log stage 3 section 132), not a set of lines resolved in the code, so the absorption is
+taken from the same function at the radiating temperature, which is what Kirchhoff's
+law makes of an emission integral:
+Λ_net = n(H₃⁺) 4π s(T,n_H₂) [W(T) − W_dil W(T₀)]. This is the same net-exchange form
 the H₂, H₂O and CO channels use (§10), and it is bounded at every temperature.
-Its radiative equilibrium temperature is 975.4 K at the base for T₀ = 1140 K.
+Its radiative equilibrium temperature is 958.5 K for T₀ = 1140 K and W_dil = ½ on the
+MiZATeP table (header of `h3p_cooling.f90`; 975.4 K with the Miller fit).
 **Between 2026-08-13 and 2026-08-31 this exchange was instead closed on ONE
 effective band, the ν₂ fundamental at 2521.3 cm⁻¹ (E/k = 3627.5 K), as
 Λ_net = Λ_emit(T)[1 + n̄ − n̄ exp(E/T)], with equilibrium temperatures of 936.1 K
@@ -938,14 +945,17 @@ the fixed point rather than the magnitude that answers item (G):
 
 | `T0` | H₂O | CO | H₂ | (H₃⁺, for comparison) |
 |---|---|---|---|---|
-| 900 K | 705 K | 752 K | 783 K | 780.9 K |
-| 1140 K | 889 K | 918 K | 984 K | 975.4 K |
-| 1183 K | 922 K | 947 K | 1019 K | 1010.7 K |
-| 1450 K | 1120 K | 1120 K | 1226 K | 1231.6 K |
-| 1800 K | 1369 K | 1338 K | 1486 K | 1517.6 K |
-| 2358 K | 1749 K | 1668 K | 1883 K | 1938.6 K |
+| 900 K | 705 K | 752 K | 783 K | 775.7 K |
+| 1140 K | 889 K | 918 K | 984 K | 958.5 K |
+| 1183 K | 922 K | 947 K | 1019 K | 991.0 K |
+| 1450 K | 1120 K | 1120 K | 1226 K | 1191.4 K |
+| 1800 K | 1369 K | 1338 K | 1486 K | 1451.6 K |
+| 2358 K | 1749 K | 1668 K | 1883 K | 1857.0 K |
 
-(half-sky coverage, `W = ½`). How much rests on that assumption is measurable:
+(half-sky coverage, `W = ½`; the H₃⁺ column solves W(T_eq) = ½ W(T0) on the MiZATeP
+table with the interpolation of `h3p_lte_emission_mizatep`, recomputed 2026-10-10 after the
+cooling function changed; with the Miller et al. 2013 fit it read 780.9, 975.4, 1010.7,
+1231.6, 1517.6 and 1938.6 K). How much rests on that assumption is measurable:
 for H₂O at `T0 = 1183 K` the equilibrium temperature is 726.5 / 922.1 / 1065.0 /
 1183.0 K at `W = 0.25 / 0.5 / 0.75 / 1`, and CO 784.7 / 946.5 / 1073.1 /
 1183.0 K, at `W = 1` both are exactly `T0`, the closure's fixed point recovered

@@ -97,7 +97,10 @@ for bit.
 - Secondary ionization by fast photoelectrons: the ionization budget of
   Shull & van Steenberg (1985), with the heating fraction, its dependence on
   the photoelectron energy and the H2 channels from Dalgarno, Yan & Liu (1999),
-  above 30 eV. Below it the photoelectrons are deposited whole as heat by
+  above 30 eV (`Secondary_ionization: True`, the default, applies the
+  coupling from the first step; `Staged` keeps the earlier default, which
+  switched it on only once the marching had settled without it; `False`
+  turns it off). Below 30 eV the photoelectrons are deposited whole as heat by
   default; the opt-in key `Low-energy electron partition: Furlanetto2010`
   partitions those of 10.2-30 eV into heat, H I and He I ionizations and
   escaping H I line radiation by the Monte Carlo tables of Furlanetto &
@@ -111,8 +114,10 @@ for bit.
   fast Neufeld escape-probability closure or a field imported from the LaRT
   Monte Carlo code, including the Ly-alpha emitted in situ within the wind
 - Molecular chemistry: H2, H2+, H3+ and HeH+ in the coupled ionization
-  equilibrium, with H2 photoionization opacity/heating, Miller et al. (2013)
-  H3+ infrared cooling, and H2 photodissociation in the Lyman-Werner bands
+  equilibrium, with H2 photoionization opacity/heating, H3+ infrared cooling
+  (the LTE cooling function of the MiZATeP line list, Mizus et al. 2017,
+  times the non-LTE departure factor of Miller et al. 2013), and H2
+  photodissociation in the Lyman-Werner bands
   from a line-by-line calculation over every Lyman and Werner transition,
   tabulated on our own (T, n_H, N_H2) grid -- the dissociation cross section
   itself, with the line self-shielding and the line overlap inside it and the
@@ -217,6 +222,30 @@ for bit.
   a non-monotone (Grippo) line search and a scaled trust region. The
   stationary system carries a row and an unknown for every transported
   balance the configuration activates, not only the hydrodynamic triple
+- The marching stops when the NUMERICAL face mass flux `r^2 F_rho` is flat
+  over `r >= r_flux` to a spread below 4e-4 (`march_flux_spread_th`) AND the
+  state has stopped changing: over one monitor window of 500 steps no cell's
+  rho or total energy moves by 1e-4 relative, nor its momentum by 1e-4 of
+  `sqrt(rho E)` (`march_change_th`). A `[stop]` line prints both numbers
+  at every monitor step. The cell-centered spread `du` of `rho v r^2` is
+  printed as a diagnostic only (it has a resolution floor next to the outer
+  ghost) and still drives the PLM -> WENO3 switch of `du_th [PLM,WENO3]:`.
+  `Solver: Newton [switch]` hands the state to the JFNK solve once that face
+  spread falls below `switch` (default 0.1; it was a `du` threshold before
+  2026-10-10). `EXHALE_MARCH_FLUX_TH`, `EXHALE_MARCH_CHANGE_TH` and
+  `EXHALE_MONITOR_STEPS` override the two thresholds and the window for
+  measurement
+- The Mach number of the outermost cell is printed with every Mdot, with a
+  note below 1.1, "NOT A QUANTITATIVE MDOT" (also in `EXHALE_setup.out`): at
+  a subsonic outer face one acoustic characteristic enters through the outer
+  ghost condition, which can then set Mdot, and no other subsonic-face
+  treatment exists (decision 2026-10-12). For a
+  quantitative Mdot put the outer face past the sonic point with
+  `Outer radius [R_p]:` (on `wasp_full_newton`, measured before update log
+  stage 3 section 138 changed the columns, the default Roche L1 face,
+  1.574 R_p at Mach 0.95, moves rho and v by up to 15-17% near 1.31 R_p and
+  log10 Mdot by 0.01 against an outer face at 2 R_p;
+  `md/outer_boundary_subsonic_review_20261009.md` section 5)
 - `Composition update holds: pressure` (default `energy`): where the
   stationary solve alternates a hydrodynamic solve with the fixed-wind
   element and carrier relaxations, the composition update keeps the density,
@@ -245,7 +274,21 @@ for bit.
   element and carrier rows at 1e-5 for `r >= 1.20 R_p`, the rows below that
   reported and not gating, because the same balance is a cancellation of
   advective terms in the wind and of eddy and settling terms in the layer and
-  is not resolvable to one number in both
+  is not resolvable to one number in both. The certification is a
+  DIAGNOSTIC, not the acceptance of a result: a state is accepted for an
+  observable when continuing the solve moves that observable by less than a
+  budget set by its precision, its term balance closes and its profiles are
+  stable (`md/acceptance_by_observable_precision_20261009.md`); a state that
+  is not certified carries the flag and its failing rows. Exit statuses: 0
+  for a certified state or a run that made no stationary claim (the marching
+  stop, whose state is a relaxation snapshot, a step cap, a stall, a NaN); 2
+  for a state the run declared stationary (the residual gate met while
+  marching, a JFNK finish with info = 0) that is not certified (a flag, the state is written in full; a gfortran runtime
+  error also exits 2, and is told apart by the certification's closing line
+  `(certification) the state was written in full; the run exits with status 2
+  because it is not certified.`); 3 when the stationary solve of a steady
+  route failed (the solver's last iterate is written with
+  `cert_reason=stationary_solve_failed`)
 - Molecular transport: the Navier-Stokes viscous force, its dissipation, and
   heat conduction, integrated Crank-Nicolson and entering the steady residual
   with the same operator. `Conduction: True` (default off) uses the
@@ -264,7 +307,17 @@ for bit.
   from one solved without it, carried in the state's `cond` token
 - Low-Mach damping, a gated fourth-difference stress for a shell that has
   stopped flowing, and an optional Shapiro filter for a breathing base
-- Roche-potential geometry, in either a spherical or a Roche-lobe domain
+- Roche-potential geometry, in either a spherical or a Roche-lobe domain;
+  `Outer radius [R_p]:` carries a Roche domain past L1 with the full tidal
+  potential (as Huang et al. 2023 and Yan et al. 2022 do). Past the ridge the
+  cold IC holds the density at its ridge value, the ghosts of a supersonic
+  outermost cell are the steady isothermal wind through it, and the absorbing
+  columns start at the outer face `r_edg(N)` in every domain (the outer
+  ghosts carry no column)
+- Dual-energy method for cold, highly supersonic expanding atomic gas
+  (`rho e < 1e-2 E`, M >~ 13): the internal energy from the advected adiabat
+  `p/rho^gamma` instead of `E - rho v^2/2` (Ryu et al. 1993; Bryan et al.
+  1995); the run log prints the reset cell-steps
 - Choice of initial condition: cold hydrostatic, warm Parker seed, an
   automatic selector, or a warm start from an included Wind-AE solver
   (Murray-Clay et al. 2009 / Broome et al. 2025)
@@ -339,7 +392,11 @@ for bit.
   default `thin`) or, under `thin`, the `thin_layer_*` record of the
   optically thin validity check (the column is kept and flagged past its
   10 percent limit). `src/utils/element_flux_closure.py` iterates wind and
-  chemistry to one elemental flux at the matching level and, with
+  chemistry to one elemental flux at the matching level (for hydrogen the
+  hydrogen-nucleus flux `F_Hnuc` of `EXHALE_resolved.out`, not the
+  component-1 mass flux `F_H`, which carries the metals too; the column
+  models take the stellar energy the wind's input states, `--face-geometry
+  wind`, checked against the wind's `dayside_dilution`) and, with
   `energy_coupling` on, passes the wind's `base_conductive_flux_cgs` to the
   next column (damped by `energy_coupling_omega`), converging only when the
   elemental fluxes and the conducted flux agree within `tol` and `T_match`
@@ -586,13 +643,22 @@ copy one as a starting point. `./run_EXHALE.sh` instead opens a Tk interface
 that fills in the planetary parameters and builds and runs for you.
 
 For a quantitative mass-loss rate, converge with the two-stage scheme and the
-Newton finish:
+Newton finish, on a domain whose outer face lies past the sonic point:
 
 ```
 Reconstruction scheme:  PLM+WENO3
 du_th [PLM,WENO3]:      0.5 1.0e-3
 Solver:                 Newton
+Outer radius [R_p]:     2.0
 ```
+
+The first number of `du_th [PLM,WENO3]:` is the `du` at which the PLM stage
+hands over to WENO3; the second only has to be smaller than the first (that
+selects the two-stage mode) and is no longer a stop: the marching stop and
+the JFNK hand-off read the face mass-flux spread (see Features). Check the line `Mach number of the
+outermost cell` in the results: below 1 the outer ghost condition can set
+Mdot, and the outer radius must be moved out. Three run recipes with their
+inputs, commands, run times and outputs are in `examples/recipe_*/README.md`.
 
 An atomic run finished this way certifies. A run that carries a species row,
 an element row from `He_diffusion` or a carrier row from the molecular
@@ -732,4 +798,4 @@ the Markdown memos of the development record.
 
 Kwang-Il Seon (KASI / UST)
 
-Last updated: 2026-10-06 11:12 KST
+Last updated: 2026-10-16 23:23 KST

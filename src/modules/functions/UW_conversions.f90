@@ -176,6 +176,18 @@
       m = uc(2)/s
       e = uc(3)/s
       admissible_conserved_cell = (2.0d0*d*e .gt. m*m)
+      ! AND THE INTERNAL ENERGY THE CONVERSION ITSELF FORMS IS POSITIVE.
+      ! The scaled test above and the expression U_to_W_comp evaluates,
+      ! E - 0.5 m m / rho, can disagree within the rounding of rho e against
+      ! zero, and the conversion is what the temperature is formed from:
+      ! MEASURED, a cell with E set to its kinetic energy passed the scaled
+      ! test while U_to_W gave rho e = 0 exactly, and the sweep was handed
+      ! T = 0 (src/tests/trial_admissibility, kind rho_e_zero). Where the
+      ! expression cannot overflow it is evaluated as the conversion
+      ! evaluates it, and it must be positive too.
+      if (admissible_conserved_cell .and. s .lt. sqrt(huge(1.0d0)))       &
+         admissible_conserved_cell =                                      &
+            (uc(3) - 0.5*uc(2)*uc(2)/uc(1) .gt. 0.0d0)
 
       end function admissible_conserved_cell
 

@@ -283,8 +283,10 @@ Mg II h&k, Ca II H&K, and Na I D two-level terms, and a Fe I table from NIST.
 > closed form (`ioniz_HeI23S_H` in `Cool_coeff.f90`), which replaced the
 > Taylor et al. (2025) fit. The molecular network's rates are Koskinen et al.
 > (2022) Table 1 with the exceptions listed in the header of
-> `src/modules/lower_atmosphere/mol_rates.f90`; Miller et al. (2013) is the
-> H3+ infrared cooling. The Mg II h&k, Ca II H&K and Na I D terms are
+> `src/modules/lower_atmosphere/mol_rates.f90`; the H3+ infrared cooling is
+> the MiZATeP cooling function of Mizus et al. (2017) with the non-LTE factor
+> of Miller et al. (2013) Table 6 (the Miller LTE fit was replaced on
+> 2026-10-10, update log stage 3 section 132). The Mg II h&k, Ca II H&K and Na I D terms are
 > closed-form fits in the coronal (low-density) limit (`cool_MgII_func`,
 > `cool_CaII_func`, `cool_NaI_func`); the density-dependent two-level branch
 > (`use_2lev_cool`) is `.false.` and no input key sets it.

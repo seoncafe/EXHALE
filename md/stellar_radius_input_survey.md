@@ -1,5 +1,7 @@
 # `input.inp` survey: the stellar radius, and a truncated line
 
+> Note (2026-10-11): `backup/HD209458b_test/`, cited below, was deleted (a closed June 2026 study whose inputs carry retired keys). The numbers here remain the record.
+
 **Written 2026-08-23.** Inputs are fixed; **nothing has been recomputed**.
 This is the work list for what still needs to be.
 

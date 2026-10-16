@@ -145,15 +145,18 @@ operator reads its bath at the ghost center $r(0)$ from
 is handed over, the bath is the profile's own temperature at that radius
 (\texttt{lap\_value\_at\_radius} in \texttt{lower\_atmosphere\_profile.f90},
 linear in $r$ between the bracketing levels), because the gas below the level
-is the profile's column and not an isentrope (on the LHS~1140\,b Photochem
-profiles an isotherm at the skin temperature, which the isentrope missed by
-3.5\,K one ghost cell down, 188.89 against 185.42\,K, lowering the conductive
-flux into the level by about 4.6 per cent at a fixed cell-1 temperature;
-MEASURED, update log stage~3 section~70); without a profile it is the
+is the profile's column and not an isentrope: on the energy-coupled
+LHS~1140\,b profiles the column energy balance warms the 185\,K stratosphere
+to $T_{\rm match}$ within about 0.1 scale height below the level
+(Sec.~\ref{sec:mol:handoff}), and the isentrope through $(p_b,T_b)$ stands
+about 100\,K above that in the two ghost cells (417--422 against
+253--327\,K, MEASURED, \texttt{md/AN\_matching\_surface\_diagnosis\_20261007.md});
+without a profile it is the
 isentropic continuation, and a reservoir that returns no positive
 temperature leaves the ghost's own (\texttt{conduction\_base\_level\_T} in
-\texttt{viscous\_conduction.f90}).  The ghost cells of the advection keep
-their own isentrope in both cases.  The bath is the reservoir's at rest, at
+\texttt{viscous\_conduction.f90}).  With a profile the ghost cells of the
+advection carry the same temperature (next paragraph), so the boundary states
+one ghost temperature; without one they keep their own isentrope.  The bath is the reservoir's at rest, at
 inflow and during a reverse flow alike, so the conduction boundary does not
 follow the direction the contact is upwinded on.  The isentropic continuation
 balances an atmosphere that is isentropic between the level and the center of
@@ -327,7 +330,14 @@ downward, with the velocity carrying a constant $\rho v r^2$ so the
 reconstruction sees no spurious velocity gradient.  Without the well-balanced
 reconstruction they are the \emph{volume averages} of the hydrostatic
 isentrope through the face state, continued below it, evaluated by 8-point
-Gauss-Legendre quadrature weighted by $r^2$.  With it they continue the
+Gauss-Legendre quadrature weighted by $r^2$.  Where a lower-atmosphere
+profile is handed over, the gas below the level is the profile's column: each
+ghost carries the profile's temperature at its center, the temperature the
+conduction bath reads (\texttt{base\_reservoir\_temperature\_at}), and the
+volume average of the pressure of the column at rest at that $T(r)$,
+$d\ln p/dr = -(d\Phi/dr)/(\hat n T(r))$, continued down from the face pressure
+(Simpson's rule in $1/T$ over 32 panels, \texttt{hydrostatic\_pressure\_on\_profile}),
+the density being $p/(\hat n T)$.  With it they continue the
 reconstruction's discrete equilibrium below the level,
 %
 \begin{equation}
@@ -338,8 +348,9 @@ reconstruction's discrete equilibrium below the level,
   \label{eq:ghost_wb}
 \end{equation}
 %
-each ghost keeping the ratio $\chi_j = p_j/\rho_j$ of the isentropic average,
-that is the reservoir-side temperature at the particle count the reservoir
+each ghost keeping the ratio $\chi_j = p_j/\rho_j$ of the construction above,
+that is the temperature of the gas below the level (the reservoir-side
+isentrope's, or the profile's) at the particle count the reservoir
 states, so that only its pressure and density move, together, by a factor
 $1 + O[(\Delta r/H)^2]$.  The equilibrium mismatch of face 0 is then
 $P_{\rm dn}(1) - p_b$, the same pressure difference \eqref{eq:lodi} closes,
@@ -478,6 +489,17 @@ set the interior mass flux, and its validity is a property of where the outer
 face is placed.  The rule is stated once, for every reconstruction: which
 characteristics cross a face is a property of the flow and not of the scheme
 that reads the ghost (\texttt{Apply\_BC.f90}).
+The run therefore reports the Mach number of the outermost cell with every
+$\dot M$ and, below $1.1$, states that the outer ghost can set it
+(\texttt{EXHALE\_main.f90}).  MEASURED on \texttt{wasp\_full\_newton}
+(\texttt{md/outer\_boundary\_subsonic\_review\_20261009.md} section~5): with
+the default $L_1$ face at $1.574\,R_p$ (Mach 0.95, sonic point near
+$1.6\,R_p$), $\rho$ and $v$ differ from the solution with the face at
+$2\,R_p$ (Mach 1.50) by up to 15 and 17 percent near $1.31\,R_p$ and
+$\log_{10}\dot M$ by 0.01, five times the grid effect between the $2$ and
+$3\,R_p$ domains, both supersonic.  For a transonic wind the outer face is
+put past the sonic point (\texttt{Outer radius [R\_p]:}); the WASP-121\,b
+regression cases run at $2\,R_p$ (update log stage~3 section~127.6).
 The continuation (\texttt{free\_outflow\_ghost}) is the isothermal hydrostatic
 one,
 %
@@ -493,9 +515,11 @@ one,
 the state of rest the last physical cell carries outward under the code's own
 potential with the isothermal sound speed squared $p/\rho$ held at cell $N$'s
 value.  Since $\rho$ and $p$ are scaled by the same factor, the ghost is at the
-\emph{same} temperature as cell $N$, so the ionization sweep, the column
-integral and the sound speed of the time step all see the temperature they saw
-before, at the density the stratification gives.
+\emph{same} temperature as cell $N$, so the ionization sweep and the sound
+speed of the time step see the temperature they saw before, at the density
+the stratification gives.  The absorbing columns do not read the ghosts at
+all: they start at the outer face $r_{\rm edg}(N)$
+(Sec.~\ref{sec:radiation:transfer}).
 
 A zero-gradient copy would assert $dp/dr = 0$ at the outer face, a hydrostatic
 imbalance of the order of the local weight that no resolution removes, and
@@ -515,7 +539,32 @@ $M^2H/L_v \ll 1$ with $L_v$ the length over which the velocity varies; a
 subsonic Mach number alone is not sufficient, and the incoming acoustic
 condition of a subsonic edge is not justified by this approximation, which
 is why the outer face is placed beyond the sonic point where a run can place
-it.
+it.  No other treatment of a subsonic face is implemented (decision
+2026-10-12): the escape models the code is compared with \citep{Salz2016,
+Caldiroli2021} put the face past the sonic point and state no incoming
+condition, and a relaxed characteristic condition would make $\dot M$ depend on
+an exterior pressure that none of them states.  Below Mach 1.1 the run
+labels its $\dot M$ as not quantitative.
+
+\paragraph{A supersonic cell $N$: the steady-wind ghost.}  Where cell $N$
+flows out faster than its adiabatic sound speed, all three characteristics
+leave and the ghost is the gas the wind carries beyond the face, not a state
+at rest, and \eqref{eq:outflow_ghost} is outside its own validity condition.
+Past the ridge of the Roche potential it is also unbounded: $\Phi$ falls
+outward, the factor $\exp[-(\Phi_g-\Phi_N)/c^2]$ exceeds one, and the ghost
+becomes denser than cell $N$ without bound (MEASURED with the binary of
+before 2026-10-11: $1.7\times10^{6}$\,cm$^{-3}$ in cell $N$ against
+$3.4\times10^{34}$ and $4.9\times10^{63}$ in the ghosts, WASP-121\,b at
+$12\,R_p$, step~0).  The ghost of a supersonic cell $N$ is therefore the
+steady isothermal wind through cell $N$ at $c^2=p_N/\rho_N$: $v_g$ is the
+supersonic root of \eqref{eq:parker} through $(r_N, v_N)$, evaluated at $r_g$
+(\texttt{isothermal\_wind\_speed}, \texttt{grav\_func}, the root solver
+the transonic initial condition uses), $\rho_g = \rho_N v_N r_N^2/(v_g
+r_g^2)$ and $p_g/\rho_g = c^2$, valid in any potential; where a steep rise of
+$\Phi$ leaves no supersonic root the ghost takes $v_g = c$.  The face is
+supersonic, so the ghost enters only cell $N$'s reconstruction slope.  A
+subsonic cell $N$ keeps \eqref{eq:outflow_ghost} (update log stage~3
+sections~127.4 and~138).
 
 For the reconstructed face states, \texttt{Rec\_BC} extrapolates outward with
 a zero-gradient copy under PLM and a linear extrapolation under WENO3.  The
@@ -556,7 +605,13 @@ composition.  The factor $b_{\rm eff}$ starts at 1 and is raised in steps of
 $0.2$ until the density at the cell nearest the middle of the domain falls
 below $10^{-8}$, so that a low-gravity planet does not start with a domain at
 uniform density; the value used is reported, and densities below $10^{-8}$
-are then floored there.  This is the ATES initial condition.
+are then floored there.  This is the ATES initial condition.  In a Roche
+domain carried past L1 the potential in \eqref{eq:cold_ic} is its running
+maximum from the base outward: inside the ridge this is $\Phi_c$ itself, and
+past it the density is held at its value on the ridge (in practice the
+$10^{-8}$ floor) instead of rising as $\exp[+|\Delta\Phi|]$, which reached
+$5\times10^{43}$\,cm$^{-3}$ at $15\,R_p$ for HD\,209458\,b before
+2026-10-11 (update log stage~3 section~138).
 
 \paragraph{Transonic (\texttt{transonic}).}
 The steady isothermal-wind profile obtained from the algebraic Bernoulli

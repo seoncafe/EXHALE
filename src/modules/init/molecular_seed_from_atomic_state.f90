@@ -245,7 +245,7 @@
       ! ------------------------------------------------------!
 
       subroutine molecular_seed_configure()
-      ! Read the two environment variables once, at startup, and refuse an
+      ! Read the three environment variables once, at startup, and refuse an
       ! invariant this module does not implement rather than falling back
       ! to a default the caller did not ask for.
       character(len=512) :: env

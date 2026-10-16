@@ -85,8 +85,13 @@
       ! MEASURED on the certified atomic fiducial LHS1140b/models/.L26/
       ! fid_resolve (LHS 1140 b, He_Kzz = 1e9, He_diffusion on, 500 cells to
       ! 29 R_p), with the code's own non-resonant ion-neutral coefficients
-      ! and the resonant charge-exchange channel they exclude added at
-      ! sigma = 2e-15 cm^2 (md/collisional_validity.md section 1):
+      ! of that time and the resonant charge-exchange channel they exclude
+      ! added at sigma = 2e-15 cm^2 (md/collisional_validity.md section 1).
+      ! STALE (2026-10-07): those non-resonant coefficients carried a rigid
+      ! core that is now removed (md/Update_EXHALE_stage3.md section 115);
+      ! the numbers below were not re-measured, and the derivation note
+      ! md/AK_ambipolar_stage_drift_derivation_20261006.md section 10 holds
+      ! the full-system estimate:
       !
       !   |w/v| stays below 0.1 only inside r = 1.22 R_p (H) and 1.24 R_p
       !   (He); over r >= 1.2 R_p it reaches 0.62 (H) and 0.43 (He) without

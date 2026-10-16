@@ -3,6 +3,7 @@
 
    use global_parameters
    use Conversion
+   use grav_func, only: isothermal_wind_speed
    use caloric_eos, only: adiabatic_index_from_state, caloric_cell_mixture
    use base_boundary, only: base_boundary_states, base_reservoir_p,       &
                             base_reservoir_T, base_reservoir_nhat,        &
@@ -366,9 +367,9 @@
    ! temperature of cell N; a later update of the ghost composition changes
    ! the particle count per unit mass and so the temperature p/(n_tot + n_e)
    ! inferred from the same p and rho. Everything downstream that reads a
-   ! ghost (the ionization sweep, the column integral of calc_column_dens,
-   ! the sound speed of eval_dt) reads this p and rho with the ghost's
-   ! current composition.
+   ! ghost (the ionization sweep, the sound speed of eval_dt) reads this p
+   ! and rho with the ghost's current composition. The absorbing columns do
+   ! not read it: they start at the outer face r_edg(N) (calc_column_dens).
    !
    ! WHY A GRADIENT AND NOT A COPY. A zero-gradient ghost asserts dp/dr = 0 at
    ! the outer face, which is a hydrostatic imbalance of the order of the
@@ -442,6 +443,42 @@
    ! H as well. The incoming acoustic condition of a subsonic edge is not
    ! justified by this approximation and needs its own physical argument.
    !
+   ! SUPERSONIC CELL N: THE STEADY-WIND CONTINUATION. Where the outflow of
+   ! cell N is supersonic (v_N above the adiabatic sound speed, so all three
+   ! characteristics leave through the outer face), the ghost is not a
+   ! state at rest but the gas the wind carries beyond the face, and the
+   ! hydrostatic continuation above is outside its own validity condition
+   ! (|v dv/dr| << |dphi/dr|, the ratio being M^2 H/L_v). Where the
+   ! potential falls outward, past the ridge of the Roche potential at L1,
+   ! a rest state has its pressure RISING outward, exp(+|phi_g - phi_N|/c^2)
+   ! with c^2 = p_N/rho_N, so that continuation makes the ghost denser than
+   ! cell N without bound and the outer face carries mass flux the cell does
+   ! not. MEASURED with the frozen f8a38866 binary: WASP-121 b (Huang 2023
+   ! Case B, outer face 12 R_p) at step 0, rho = 1.7e6 in cell N and 3.4e34,
+   ! 4.9e63 cm^-3 in the two ghosts; WASP-52 b (Yan 2022, 10 R_p) at step
+   ! 6780, 3.3e3 in cell N and 3.6e22, 8.1e41 in the ghosts; the energy
+   ! update then failed in both. The ghost here is therefore the steady
+   ! isothermal wind through cell N at the same c^2: the Bernoulli integral
+   !
+   !    1/2 v^2 - c^2 ln v - 2 c^2 ln r + phi = const
+   !
+   ! on its supersonic branch gives v_g, and mass conservation
+   ! rho_g v_g r_g^2 = rho_N v_N r_N^2 gives rho_g, with p_g/rho_g = c^2:
+   ! the mass flux is constant through the ghosts, and the wind expands
+   ! freely, accelerated by whatever outward force the potential exerts and
+   ! by its own pressure. v_N above the adiabatic speed is above c, so the
+   ! supersonic root exists whenever the level
+   ! h(v_g) = h(v_N) + 2 c^2 ln(r_g/r_N) - (phi_g - phi_N) is at least h(c);
+   ! where a steep rise of phi puts it below, isothermal_wind_speed returns
+   ! c, the sonic speed, and rho_g = rho_N (v_N/c)(r_N/r_g)^2. A supersonic
+   ! face takes no information from the ghost through the Riemann solution
+   ! (DOMAIN above), so the ghost enters only cell N's reconstruction slope.
+   ! A subsonic cell N keeps the hydrostatic continuation: there the ghost
+   ! supplies the incoming acoustic condition, an open question recorded in
+   ! md/outer_boundary_subsonic_review_20261009.md and left to the user
+   ! (update log stage 3 section 127.4); the regression and benchmark
+   ! domains place the outer face past the sonic point instead (127.6).
+   !
    ! FALLBACK. The exponential of a finite argument with p_N/rho_N > 0 is
    ! positive, so an admissible cell N gives an admissible ghost. A cell N
    ! that is not itself an admissible gas state, or a potential difference
@@ -453,11 +490,27 @@
    real*8, intent(in)  :: W(3,1-Ng:N+Ng)
    integer, intent(in) :: k
    real*8, intent(out) :: Wg(3)
-   real*8 :: csq, fac
+   real*8 :: csq, fac, cs_iso, v_ghost, h_ghost
+   logical :: steady_wind_ghost
 
    csq = W(3,N)/W(1,N)
    fac = 0.0d0
-   if (csq .gt. 0.0d0) fac = exp(-(Gphi_c(N+k) - Gphi_c(N))/csq)
+   steady_wind_ghost = .false.
+   if (csq .gt. 0.0d0) then
+      cs_iso = sqrt(csq)
+      steady_wind_ghost = W(2,N)*W(2,N) .gt.                             &
+         adiabatic_index_from_state(N, W(1,N), W(3,N))*csq .and.          &
+         W(2,N) .gt. 0.0d0
+      if (steady_wind_ghost) then
+         h_ghost = 0.5d0*W(2,N)*W(2,N) - csq*log(W(2,N))                 &
+                 + 2.0d0*csq*log(r(N+k)/r(N))                            &
+                 - (Gphi_c(N+k) - Gphi_c(N))
+         v_ghost = isothermal_wind_speed(h_ghost, csq, cs_iso, .true.)
+         fac = (W(2,N)/v_ghost)*(r(N)/r(N+k))**2
+      else
+         fac = exp(-(Gphi_c(N+k) - Gphi_c(N))/csq)
+      endif
+   endif
    Wg(1) = W(1,N)*fac
    Wg(3) = W(3,N)*fac
 
@@ -470,6 +523,7 @@
    endif
 
    Wg(2) = W(2,N)
+   if (steady_wind_ghost) Wg(2) = v_ghost
 
    ! End of subroutine
    end subroutine free_outflow_ghost

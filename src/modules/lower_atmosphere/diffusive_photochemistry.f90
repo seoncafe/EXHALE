@@ -139,8 +139,14 @@
       ! below the homopause.  The run says so at startup rather than
       ! refusing, so that the K_zz = 0 limit stays available as a test.
       !
-      ! SETTLING.  G_i = (m_i - m_bar) g/(k T), with m_bar the mean mass per
-      ! gas particle (rho/n_tot) and g from the same Dphi the hydro uses.
+      ! SETTLING.  G_i = (m_i - m_bar) g_eff/(k T), with m_bar the mean mass
+      ! per gas particle (rho/n_tot) and g_eff = -(1/rho) dp/dr the settling
+      ! acceleration of the mixture (mixture_pressure_acceleration, the one
+      ! the element operator uses): the driving force of a species against
+      ! the mixture is -grad p_i + (rho_i/rho) grad p, so for a trace carrier
+      ! it is -p grad x_i - n_i (m_i - m_bar) g_eff, gravity entering only
+      ! through the pressure gradient it holds up and the acceleration of
+      ! the wind entering with it (binary_element_diffusion module header).
       ! Thermal diffusion is not carried (alpha_T = 0): there is no evaluated
       ! alpha_T for H2O, OH or CO in an H2/He bath, and the element operator
       ! makes the same choice for the same reason.
@@ -189,23 +195,29 @@
       ! carries the same statement without needing a rule.
       !
       ! ELEMENT RESERVOIRS ARE DIRICHLET; THE PARTITION AMONG CARRIERS IS
-      ! NOT.  The H, He, O and C totals at the base are boundary data the
-      ! handoff legitimately supplies, and they are imposed where they always
-      ! were -- through melem_ab, the base density and the EOS.  The split of
-      ! each element among its carriers is what this option exists to
-      ! compute, so the operator does not impose it: the base face carries
-      ! zero diffusive flux, and the advective inflow, which is the base face
-      ! mass flux times the ghost composition, carries the base cell's own
-      ! partition because the ghost is given that partition (df/dr = 0 at the
-      ! face), which is the same statement.  The one exception is data from
-      ! below: where a handoff states the base H2 partition (base.inp
+      ! DIRICHLET ONLY WHERE THE GAS BELOW STATES IT.  The H, He, O and C
+      ! totals at the base are boundary data the handoff legitimately
+      ! supplies, and they are imposed where they always were -- through
+      ! melem_ab, the base density and the EOS.  Where nothing below states
+      ! the split of an element among its carriers, the operator does not
+      ! impose one: the base face carries zero diffusive flux, and the
+      ! advective inflow, which is the base face mass flux times the ghost
+      ! composition, carries the base cell's own partition because the ghost
+      ! is given that partition (df/dr = 0 at the face), so the base cell
+      ! derives it.  Where a handoff states the base H2 partition (base.inp
       ! q_H2_base, or the profile's value at the matching level), the inner
-      ! ghosts hold that partition and the inflowing base face carries it in
-      ! (carrier_set_init, base_h2_composition_imposed).  The carried
-      ! ionization stages are never stated by a handoff and keep the
-      ! zero-gradient ghost in every configuration.
+      ! ghosts hold that partition as a Dirichlet value and the base face
+      ! carries both the advective inflow and the eddy, molecular and
+      ! settling flux against it (carrier_face_coefficients), with K_zz
+      ! continuous across the face: the gas below the face is mixed by the
+      ! same eddies as the gas above it, so the species fluxes of H2 and of
+      ! the atomic hydrogen that recoils against it are exchanged with the
+      ! lower atmosphere (carrier_set_init, base_h2_composition_imposed).
+      ! The carried ionization stages are never stated by a handoff and keep
+      ! the zero-gradient ghost in every configuration.
       !
-      ! That is what makes the A/B gate of design sec. 6.2 a test.  Had the
+      ! Where no handoff states it the base cell derives its own partition,
+      ! which is what makes the A/B gate of design sec. 6.2 a test: had the
       ! base H2 fraction been pinned from the same handoff the gate compares
       ! against, the gate would measure nothing.
       !
@@ -221,8 +233,9 @@
       ! step per call, Newton with a backtracking line search, block
       ! tridiagonal in space (n_carrier_max x n_carrier_max = 8x8 blocks,
       ! the unsolved rows identity rows: the transport is diagonal in
-      ! species and the chemistry is dense within a cell).  Faces 0 and N
-      ! carry zero diffusive flux.  The drift term switches from central to
+      ! species and the chemistry is dense within a cell).  Face N carries
+      ! zero diffusive flux, and so does face 0 unless a handoff states the
+      ! carrier's base partition (section 5).  The drift term switches from central to
       ! donor-cell on the same Peclet test the element operator uses.
       !
       ! THE MATERIAL ADVECTION OF A CARRIER IS NOT IN THESE ROWS.  It is the
@@ -297,7 +310,6 @@
       use global_parameters
       use caloric_eos, only: adiabatic_index_at_T,                        &
                              h2_rovibrational_energy_and_heat_capacity
-      use grav_func,     only: Dphi
       use species_table, only: n_bsp, bsp_fsp, bsp_mass,                 &
                                bsp_nHe, bsp_is_excited_level,            &
                                isp_HI, isp_HII, isp_HeI, isp_HeII,       &
@@ -316,7 +328,8 @@
                           advected_carrier_state_ready,                  &
                           advected_carrier_state_consumed,               &
                           carrier_mass_fractions, mixture_mass_sum,      &
-                          element_nucleus_counts
+                          element_nucleus_counts,                        &
+                          mixture_pressure_acceleration
       use ion_cell_state, only: ieq_cell, ion_rates
       use oxygen_rates, only: rk_D1_Hep_CO,                              &
                               rk_CO_radiative_association
@@ -428,7 +441,7 @@
       public :: carrier_base_composition_imposed
       ! The diagnostic interventions, so that a test driver can state what
       ! each of them does to the operator without running the binary.
-      public :: carrier_face_coefficients
+      public :: carrier_face_coefficients, carrier_face_flux
       public :: l22b_setup, carrier_outflow_ghost
       public :: l22b_advective_band_derivative
       ! Save and restore of the module arrays carrier_steady_residual
@@ -444,6 +457,20 @@
       public :: thermochemical_state
       public :: save_thermochemical_state, restore_thermochemical_state
       public :: carrier_steady_residual
+      ! THE H2 FLUX THROUGH THE BASE FACE OF THE CERTIFIED STATE, recorded
+      ! by the certification (carrier_rows_of_state) for the resolved-
+      ! configuration record, where the elemental-flux closure reads it as
+      ! the wind's H2 flux into the lower atmosphere's top
+      ! (element_flux_closure.py).  Molecules cm^-2 s^-1 at r_edg(0),
+      ! positive outward; the advective and the diffusive (eddy, molecular,
+      ! settling) halves.  Not part of the carrier module state: a record of
+      ! a measurement, like the conducted heat of viscous_conduction.
+      public :: carrier_record_base_face_flux
+      public :: base_face_h2_measured, base_face_h2_flux_adv_cgs,        &
+                base_face_h2_flux_dif_cgs
+      logical  :: base_face_h2_measured     = .false.
+      double precision :: base_face_h2_flux_adv_cgs = 0.0d0
+      double precision :: base_face_h2_flux_dif_cgs = 0.0d0
       public :: carrier_enthalpy_active, carrier_enthalpy_divergence_of_state
       ! The two parts of that enthalpy flux, public for the tests
       ! (src/tests/carrier_enthalpy_flux, src/tests/ionization_stage_enthalpy_flux).
@@ -2623,7 +2650,8 @@
       !     cph_jh2o and cph_joh, and with them the shielding columns they
       !     were built from;
       !   * the transport coefficients Dco, Agrd, Bdrf and the upwind
-      !     directions updrf, the geometry rp and rep, the gravity gphys
+      !     directions updrf, the geometry rp and rep, the settling
+      !     acceleration geff
       !     and the signal rate;
       !   * the face mass flux the advective term rides on and the mixture
       !     mass it is converted with.
@@ -2661,7 +2689,7 @@
 
       real(dp), dimension(1-Ng:N+Ng,n_carrier_max) :: fc, fc_old, fctry
       real(dp), dimension(1-Ng:N+Ng,n_carrier_max) :: Dco
-      real(dp), dimension(1-Ng:N+Ng)           :: ntot, TK, gphys, mbar
+      real(dp), dimension(1-Ng:N+Ng)           :: ntot, TK, geff, mbar
       real(dp), dimension(1-Ng:N+Ng)           :: nrho, wfac
       real(dp), dimension(1-Ng:N+Ng)           :: rp, rep, dt_phys
       real(dp), dimension(1-Ng:N+Ng)           :: sigrate
@@ -2716,13 +2744,14 @@
                          mbar, nH_free, nO_free, nC_free)
       fc_old = fc
 
-      call carrier_geometry(dt_code, rp, rep, dt_phys, gphys)
+      call carrier_geometry(dt_code, rp, rep, dt_phys)
+      call mixture_pressure_acceleration(rho, TK/T0, f_sp, geff)
       call carrier_advective_state(carrier_rows_advect, rho, f_sp,     &
                                    msum, Frho)
       call carrier_diffusivities(f_sp, rho, TK, ntot, Dco)
       if (.not. allocated(pct_Dco)) allocate(pct_Dco(1-Ng:N+Ng,n_carrier_max))
       pct_Dco = Dco
-      call carrier_face_coefficients(ntot, TK, mbar, gphys, Dco, rp,     &
+      call carrier_face_coefficients(ntot, TK, mbar, geff, Dco, rp,      &
                                      Agrd, Bdrf, updrf)
       call carrier_stage_face_state(rho, TK, f_sp, carrier_rows_advect,  &
                                     msum, Frho)
@@ -2890,9 +2919,9 @@
       ! row's own physical scale that the acceptance and the certification
       ! divide by (row_terms_phys), the magnitudes of the two face fluxes and
       ! of the advective terms, the reaction terms and the 1e-20
-      ! free-element floor.  The file header states the same.  For a helium
-      ! stage the production and loss columns are the positive and negative
-      ! parts of the net source, not gross reaction rates.
+      ! free-element floor.  The file header states the same.  The
+      ! production and loss columns are the gross rates of every carrier
+      ! row, the ionization stages included (carrier_source).
       subroutine carrier_row_terms_write(fname)
       character(len=*), intent(in) :: fname
       integer :: u, j, ic, k
@@ -3225,6 +3254,17 @@
          enddo
          call advected_carrier_state_consumed()
       endif
+      ! THE STATED GHOST PARTITION IS THE SWEEP'S, IN EVERY PATH.  Where a
+      ! handoff states a carrier's base partition the inner ghosts are a
+      ! Dirichlet value, pinned by the ionization sweep in f_sp (the
+      ! reservoir row of ionization_equilibrium); the base face flux of
+      ! carrier_residual reads it there, so it is taken from f_sp and not
+      ! from an advected copy.
+      do ic = 1, n_carrier
+         if (.not. carrier_solved(ic)) cycle
+         if (.not. carrier_base_composition_imposed(ic)) cycle
+         fc(1-Ng:0,ic) = f_sp(1-Ng:0,carrier_species_index(ic))
+      enddo
       where (fc .lt. 0.0d0) fc = 0.0d0
 
       ! ---- element headroom -------------------------------------------
@@ -3744,7 +3784,8 @@
       ! are not transported.
       subroutine carrier_steady_residual(rho, v, f_sp, rcmax,            &
                                          jworst, icworst, rvol, rlegacy, &
-                                         res_out, terms_out, absent_out)
+                                         res_out, terms_out, absent_out, &
+                                         base_face_flux)
       real(dp), dimension(1-Ng:N+Ng),           intent(in) :: rho, v
       real(dp), dimension(1-Ng:N+Ng,n_species), intent(in) :: f_sp
       real(dp), intent(out) :: rcmax
@@ -3763,9 +3804,14 @@
       ! certification reports and does not gate.
       logical,  dimension(1:N,n_carrier_max), intent(out), optional ::   &
                                                  absent_out
+      ! The base face flux of every carrier of this state (carrier_residual,
+      ! base_face_out): what the stationary wind exchanges with the lower
+      ! atmosphere through r_edg(0).
+      real(dp), dimension(n_carrier_max,2), intent(out), optional ::     &
+                                                 base_face_flux
 
       real(dp), dimension(1-Ng:N+Ng,n_carrier_max) :: fc, Dco
-      real(dp), dimension(1-Ng:N+Ng) :: ntot, TK, mbar, gphys
+      real(dp), dimension(1-Ng:N+Ng) :: ntot, TK, mbar, geff
       real(dp), dimension(1-Ng:N+Ng) :: nrho, wfac
       real(dp), dimension(1-Ng:N+Ng) :: rp, rep, dt_big, sigrate
       real(dp), dimension(1-Ng:N+Ng) :: msum, Frho
@@ -3781,6 +3827,7 @@
       rcmax = 0.0d0;  jworst = 0;  icworst = 1
       if (present(rvol))      rvol      = 0.0d0
       if (present(rlegacy))   rlegacy   = 0.0d0
+      if (present(base_face_flux)) base_face_flux = 0.0d0
       if (present(res_out))   res_out   = 0.0d0
       if (present(terms_out)) terms_out = 0.0d0
       ! A carrier a run does not solve, or a run that reaches none of this,
@@ -3796,12 +3843,12 @@
       row_terms_phys = 0.0d0
       call carrier_state(rho, f_sp, fc, ntot, nrho, wfac, TK,            &
                          mbar, nH_free, nO_free, nC_free)
-      call carrier_geometry(spread(1.0d0,1,N+2*Ng), rp, rep, dt_big,     &
-                            gphys)
+      call carrier_geometry(spread(1.0d0,1,N+2*Ng), rp, rep, dt_big)
+      call mixture_pressure_acceleration(rho, TK/T0, f_sp, geff)
       call carrier_advective_state(.true., rho, f_sp, msum, Frho)
       dt_big = 1.0d30                 ! kills the time term exactly
       call carrier_diffusivities(f_sp, rho, TK, ntot, Dco)
-      call carrier_face_coefficients(ntot, TK, mbar, gphys, Dco, rp,     &
+      call carrier_face_coefficients(ntot, TK, mbar, geff, Dco, rp,      &
                                      Agrd, Bdrf, updrf)
       call carrier_stage_face_state(rho, TK, f_sp, .true., msum, Frho)
       ! The stage sum identity of THIS state, measured on the same face
@@ -3822,12 +3869,26 @@
       endif
       call carrier_photolysis(rho, TK, f_sp)
       call carrier_signal_rate(v, TK, mbar, sigrate)
-      if (present(absent_out)) then
+      if (present(absent_out) .and. present(base_face_flux)) then
+         call carrier_residual(fc, fc, nrho, wfac, dt_big, rp, rep, msum, &
+                               Frho, .true.,                              &
+                               Agrd, Bdrf, updrf, nH_free, nO_free,       &
+                               nC_free, sigrate, res, Jf, dJl, dJr,       &
+                               rnorm_unused, absent_out = absent_out,     &
+                               base_face_out = base_face_flux)
+      else if (present(absent_out)) then
          call carrier_residual(fc, fc, nrho, wfac, dt_big, rp, rep, msum, &
                                Frho, .true.,                              &
                                Agrd, Bdrf, updrf, nH_free, nO_free,       &
                                nC_free, sigrate, res, Jf, dJl, dJr,       &
                                rnorm_unused, absent_out = absent_out)
+      else if (present(base_face_flux)) then
+         call carrier_residual(fc, fc, nrho, wfac, dt_big, rp, rep, msum, &
+                               Frho, .true.,                              &
+                               Agrd, Bdrf, updrf, nH_free, nO_free,       &
+                               nC_free, sigrate, res, Jf, dJl, dJr,       &
+                               rnorm_unused,                              &
+                               base_face_out = base_face_flux)
       else
          call carrier_residual(fc, fc, nrho, wfac, dt_big, rp, rep, msum, &
                                Frho, .true.,                              &
@@ -3936,6 +3997,21 @@
       if (present(res_out))   res_out   = res(1:N,:)
       if (present(terms_out)) terms_out = row_terms_phys(1:N,:)
       end subroutine carrier_steady_residual
+
+      ! ------------------------------------------------------------- !
+
+      ! The record of the base face flux of H2 (declaration of
+      ! base_face_h2_measured), from the base_face_flux of
+      ! carrier_steady_residual on the certified state.
+      subroutine carrier_record_base_face_flux(bff)
+      real(dp), dimension(n_carrier_max,2), intent(in) :: bff
+      base_face_h2_measured     = carrier_solved(ic_H2)
+      base_face_h2_flux_adv_cgs = 0.0d0
+      base_face_h2_flux_dif_cgs = 0.0d0
+      if (.not. base_face_h2_measured) return
+      base_face_h2_flux_adv_cgs = bff(ic_H2,1)
+      base_face_h2_flux_dif_cgs = bff(ic_H2,2)
+      end subroutine carrier_record_base_face_flux
 
       ! ------------------------------------------------------------- !
 
@@ -4350,19 +4426,15 @@
 
       ! ------------------------------------------------------------- !
 
-      ! Grid, step and gravity in physical units.
-      subroutine carrier_geometry(dt_code, rp, rep, dt_phys, gphys)
+      ! Grid and step in physical units.
+      subroutine carrier_geometry(dt_code, rp, rep, dt_phys)
       real(dp), dimension(1-Ng:N+Ng), intent(in)  :: dt_code
       real(dp), dimension(1-Ng:N+Ng), intent(out) :: rp, rep
-      real(dp), dimension(1-Ng:N+Ng), intent(out) :: dt_phys, gphys
-      integer :: j
+      real(dp), dimension(1-Ng:N+Ng), intent(out) :: dt_phys
       rp      = r*R0
       rep     = r_edg*R0
       dt_phys = dt_code*R0/v0
       where (dt_phys .lt. 1.0d-30) dt_phys = 1.0d-30
-      do j = 1-Ng, N+Ng
-         gphys(j) = Dphi(r(j))*v0*v0/R0
-      enddo
       end subroutine carrier_geometry
 
       ! ------------------------------------------------------------- !
@@ -4623,31 +4695,34 @@
       ! Face gradient and drift coefficients of each carrier, and the
       ! Peclet-hybrid donor switch.  Faces 0 and N are left at zero, which
       ! IS the zero-diffusive-flux boundary of sec. 5.
-      subroutine carrier_face_coefficients(ntot, TK, mbar, gphys, Dco,   &
+      subroutine carrier_face_coefficients(ntot, TK, mbar, geff, Dco,    &
                                            rp, Agrd, Bdrf, updrf)
       real(dp), dimension(1-Ng:N+Ng),           intent(in)  :: ntot, TK
-      real(dp), dimension(1-Ng:N+Ng),           intent(in)  :: mbar, gphys
+      real(dp), dimension(1-Ng:N+Ng),           intent(in)  :: mbar, geff
       real(dp), dimension(1-Ng:N+Ng,n_carrier_max), intent(in)  :: Dco
       real(dp), dimension(1-Ng:N+Ng),           intent(in)  :: rp
       real(dp), dimension(0:N,n_carrier_max),       intent(out) :: Agrd, Bdrf
       integer,  dimension(0:N,n_carrier_max),       intent(out) :: updrf
       real(dp), dimension(1-Ng:N+Ng) :: Gco
       real(dp) :: dr_f, ntf, Df, Gf, Kf
-      integer  :: j, ic, jlast
+      integer  :: j, ic, jfirst, jlast
 
       Agrd  = 0.0d0
       Bdrf  = 0.0d0
       updrf = 0
       call l22b_setup()
-      ! NO DIFFUSIVE, EDDY OR SETTLING FLUX CROSSES EITHER END OF THE
-      ! CARRIER COLUMN.  The loop below runs over the interior faces
-      ! j = 1 .. N-1 alone, so Agrd and Bdrf stay zero at r_{1/2} and at
-      ! r_{N+1/2} and the column is a closed box for that flux.  The rule is
-      ! one rule for the operator, for the certification that measures its
-      ! rows and for the fixed-wind relaxation that drives them to zero.
+      ! NO DIFFUSIVE, EDDY OR SETTLING FLUX CROSSES THE OUTER END OF THE
+      ! CARRIER COLUMN, AND NONE CROSSES THE INNER END UNLESS A HANDOFF
+      ! STATES THE PARTITION THERE.  The loop below runs over the interior
+      ! faces j = 1 .. N-1, and over face 0 as well for a carrier whose base
+      ! partition is stated (carrier_base_composition_imposed); Agrd and
+      ! Bdrf stay zero at r_{N+1/2} always and at r_{1/2} otherwise.  The
+      ! rule is one rule for the operator, for the certification that
+      ! measures its rows and for the fixed-wind relaxation that drives them
+      ! to zero.
       !
       ! THE OUTER FACE.  Molecular diffusion and the settling drift
-      ! G = (m_c - mbar) g/(kT) are Chapman-Enskog coefficients of a
+      ! G = (m_c - mbar) g_eff/(kT) are Chapman-Enskog coefficients of a
       ! COLLISIONAL mixture, and the outermost cells of these domains are
       ! transitional.  MEASURED 2026-09-23 with collisional_validity.py on
       ! the current LHS 1140 b states: Kn_bulk 0.06-0.14 at the top cell
@@ -4669,12 +4744,27 @@
       ! influx of +9.7857e-04, thirty times the largest term of the row,
       ! and the row measure of the cell goes from 2.4619e-02 to 5.0629e-01.
       !
-      ! THE INNER FACE is closed for the reason the base handoff states:
-      ! what the layer below hands over is a COMPOSITION on the inflowing
-      ! base face, carried by the base mass flux, and
-      ! carrier_face_mass_fraction puts it on that face.  A diffusive flux
-      ! through the same face would add a second, independent statement of
-      ! the same handoff.
+      ! THE INNER FACE.  Where a handoff states the carrier's partition
+      ! below the base (base.inp q_H2_base, or the lower-atmosphere
+      ! profile at its matching level), the inner ghosts hold that partition
+      ! as a Dirichlet value and the base face carries the same flux an
+      ! interior face carries, -n (D + K_zz) dX/dr - n D G X, between ghost 0
+      ! and cell 1, with K_zz continuous across the face (kzz_cell of the
+      ! ghost is the profile's coefficient below the level, the scalar
+      ! He_Kzz without a profile).  The gas below the face is the lower
+      ! atmosphere's, mixed by the same eddies as the gas above it; a face
+      ! closed to that flux lets the reservoir partition reach cell 1 only
+      ! by the base mass flux, at 0.2 cm/s against an eddy speed
+      ! K_zz/H = 250 cm/s on LHS 1140 b (MEASURED,
+      ! md/AN_matching_surface_diagnosis_20261007.md section 2), so that the
+      ! atomic hydrogen the wind makes aloft is recombined in cell 1 instead
+      ! of being mixed down into the column that holds it.  The face flux is
+      ! the boundary flux of a Dirichlet condition, not a second statement
+      ! of the handoff: the handoff states the VALUE, and the advective and
+      ! diffusive halves of the face flux are both computed against it.
+      ! Where nothing states the partition the face stays closed and the
+      ! ghost carries the base cell's own partition (zero gradient), so the
+      ! base cell derives it.
       jlast = N - 1
 
       do ic = 1, n_carrier
@@ -4685,12 +4775,15 @@
          ! flux, and a gradient coefficient left nonzero here would put the
          ! eddy transport of that stage into the row a second time.
          if (carrier_is_nucleus_fraction(ic)) cycle
-         ! Settling coefficient of this carrier, G = (m_i - m_bar) g/(k T).
+         ! Settling coefficient of this carrier,
+         ! G = (m_i - m_bar) g_eff/(k T), g_eff = -(1/rho) dp/dr.
          do j = 1-Ng, N+Ng
-            Gco(j) = (carrier_mass_amu(ic)*mu - mbar(j))*gphys(j)   &
+            Gco(j) = (carrier_mass_amu(ic)*mu - mbar(j))*geff(j)    &
                      /(kb_erg*max(TK(j), 1.0d0))
          enddo
-         do j = 1, jlast
+         jfirst = 1
+         if (carrier_base_composition_imposed(ic)) jfirst = 0
+         do j = jfirst, jlast
             dr_f = max(rp(j+1) - rp(j), 1.0d0)
             ntf  = 0.5d0*(ntot(j) + ntot(j+1))
             Df   = 0.5d0*(Dco(j,ic) + Dco(j+1,ic))
@@ -5253,10 +5346,10 @@
       real(dp), intent(out) :: src(n_carrier_max)
       ! THE TERMS OF EACH ROW, NOT THEIR NET.  src is production minus loss;
       ! sprod and sloss are the two separately, both positive, and sphot is
-      ! the radiative part of the loss.  Where the rows hand out no split --
-      ! the helium stages of either gas, and the proton of an atomic gas --
-      ! the entries are the POSITIVE AND NEGATIVE PARTS of the net source
-      ! and not gross channels, and the comments at each say so.  In every
+      ! the radiative part of the loss.  Every carrier row hands out its
+      ! gross production and loss: the H2, OH, H2O and He 2^3S rows as their
+      ! named halves, the proton and the two ionized helium stages from the
+      ! gross rate P + L of their rows (stage_row_gross below).  In every
       ! gas and for every carrier sprod - sloss is the assembled src, after
       ! every correction made to a row once it had returned.  Where the chemistry is fast the two
       ! cancel to many digits and |src| stands orders below either, so a row
@@ -5275,12 +5368,16 @@
       ! [cm^-3 s^-1].  Diagnostic only, like sprod/sloss/sphot.
       real(dp), optional, intent(out) :: sh2chan(n_h2chan)
       real(dp) :: fv(10)
-      real(dp) :: pHp, lHp, pH2, lH2, lH2ph
-      ! What the He <-> H charge-exchange pair adds to the proton row,
-      ! taken as the change it makes to that row rather than rebuilt from
-      ! the two rate expressions, which live in one place
-      ! (charge_exchange).
-      real(dp) :: cx_dHp
+      ! THE GROSS RATE P + L OF THE ION-STAGE ROWS (1)-(3) [cm^-3 s^-1],
+      ! the sum of the magnitudes of their terms, written by the row
+      ! routines from the same factors as the rows (mol_heh_rows or
+      ! heh_tr_rows) and completed by the He <-> H charge-exchange pair
+      ! (he_h_cx_fvec), which adds each of its reactions on the rows it
+      ! reaches.  Every term of these rows is sign-definite in the
+      ! densities, so a row f with gross rate G has production (G + f)/2
+      ! and loss (G - f)/2.
+      real(dp) :: stage_row_gross(10)
+      real(dp) :: pH2, lH2, lH2ph
       real(dp) :: pOH, lOH, pH2O, lH2O, pH2ox, lH2ox
       real(dp) :: n_hi, n_hii, n_h2p, n_h3p, n_hehp
       real(dp) :: n_hei, n_heii, n_heiii, n_heiTR, n_heiSI, n_e, n_o0
@@ -5398,9 +5495,8 @@
       ieq_cell       = bg_cell(j)
 
       fv     = 0.0d0
+      stage_row_gross = 0.0d0
       h2chan = 0.0d0
-      cx_dHp = 0.0d0
-      pHp    = 0.0d0;  lHp   = 0.0d0
       pH2    = 0.0d0;  lH2   = 0.0d0;  lH2ph = 0.0d0
       pOH    = 0.0d0;  lOH   = 0.0d0
       pH2O   = 0.0d0;  lH2O  = 0.0d0
@@ -5430,38 +5526,38 @@
                         ieq_cell%a_ion_HeII, ieq_cell%a_ion_HeITR,       &
                         ieq_cell%q13, ieq_cell%q31g, ieq_cell%q31a,      &
                         ieq_cell%q31b, ieq_cell%Q31, ieq_cell%A31,       &
-                        p_Hp = pHp, l_Hp = lHp, p_H2 = pH2,              &
-                        l_H2 = lH2, l_H2_phot = lH2ph,               &
-                        h2_chan = h2chan)
+                        p_H2 = pH2, l_H2 = lH2, l_H2_phot = lH2ph,       &
+                        h2_chan = h2chan, gross = stage_row_gross)
       ! He <-> H charge exchange, the same pair and the same orientation
       ! System_HeH_mol applies to the rows this operator has just taken
       ! from it: rows (1) and (2) are both written production positive, so
       ! he_row_sign = +1, and the CX reservoir is the ground singlet.
-      !
-      ! THE PAIR MOVES THE PROTON ROW AFTER mol_heh_rows HAS SPLIT IT, so
-      ! the split is completed here.  He+ + H0 -> He0 + H+ makes a proton
-      ! and He0 + H+ -> He+ + H0 removes one; their net is the change this
-      ! call makes to row (1), and it is carried on the side of its own
-      ! sign so that sprod - sloss is the assembled source of the row and
-      ! not the source before the pair was added.  The two directions are
-      ! not separated because the routine returns their difference, which
-      ! is the same statement the helium rows below carry.
       ! Row (2) is the He II stage source here, which He2+ + H0 -> He+ +
-      ! H+ feeds (heii_row_is_stage_source).
-      cx_dHp = fv(1)
+      ! H+ feeds (heii_row_is_stage_source).  Each of the three reactions
+      ! adds its magnitude to the gross rate of every row it moves, so the
+      ! production and loss formed from stage_row_gross below carry them on
+      ! their own sides.
       call he_h_cx_fvec(fv, ieq_cell%kcx_He0_Hp, ieq_cell%kcx_Hep_H0,    &
                         ieq_cell%kcx_Hepp_H0,                            &
                         n_hi, n_hii, n_heiSI, n_heii, n_heiii, 1.0d0,     &
-                        .true.)
-      cx_dHp = fv(1) - cx_dHp
+                        .true., gross = stage_row_gross)
+      ! THE OXYGEN CYCLE ONLY WHERE THE OXYGEN CHEMISTRY IS ON, as in the
+      ! local systems (System_HeH_mol_metals, constrained_chemical_
+      ! equilibrium). Without it OH and H2O are not carried, so the cycle
+      ! has no products to return: evaluated anyway, its O + H2 -> OH + H
+      ! loss would act on the H2 row alone, with no production, no reverse
+      ! and no reaction heat (md/AN_matching_surface_diagnosis_20261007.md).
+      ! Rows 9 and 10 and the oxygen terms of the H2 row then stay at the
+      ! zero they were initialized to above.
       ! The photolysis channels set_oxygen_coeffs built for this cell: the
       ! transport operator evaluates the chemistry at the cell's own,
       ! unscaled radiation field.
-      call oxygen_carrier_rows(fv, 9, n_hi, nc(ic_H2), nc(ic_OH),        &
-                               nc(ic_H2O), n_o0, oj3, oj4, oj5, oj7,     &
-                               p_OH = pOH, l_OH = lOH, p_H2O = pH2O,     &
-                               l_H2O = lH2O, p_H2_oxy = pH2ox,           &
-                               l_H2_oxy = lH2ox)
+      if (thereis_oxychem)                                               &
+         call oxygen_carrier_rows(fv, 9, n_hi, nc(ic_H2), nc(ic_OH),     &
+                                  nc(ic_H2O), n_o0, oj3, oj4, oj5, oj7,  &
+                                  p_OH = pOH, l_OH = lOH, p_H2O = pH2O,  &
+                                  l_H2O = lH2O, p_H2_oxy = pH2ox,        &
+                                  l_H2_oxy = lH2ox)
       src(ic_H2)  = fv(4)
       src(ic_OH)  = fv(9)
       src(ic_H2O) = fv(10)
@@ -5484,7 +5580,8 @@
                        ieq_cell%a_ion_HeII, ieq_cell%a_ion_HeITR,        &
                        ieq_cell%q13, ieq_cell%q31g, ieq_cell%q31a,       &
                        ieq_cell%q31b, ieq_cell%Q31, ieq_cell%A31,        &
-                       transport_operator = .true.)
+                       transport_operator = .true.,                      &
+                       gross = stage_row_gross)
       ! The same pair in the orientation those rows are written in: row (2)
       ! is the summed He I balance, He-I-gain positive, so he_row_sign =
       ! -1.  The reactant of He + H+ -> He+ + H is the GROUND SINGLET
@@ -5497,7 +5594,7 @@
       call he_h_cx_fvec(fv, ieq_cell%kcx_He0_Hp, ieq_cell%kcx_Hep_H0,    &
                         ieq_cell%kcx_Hepp_H0,                            &
                         n_hi, n_hii, n_heiSI, n_heii, n_heiii, -1.0d0,    &
-                        .false.)
+                        .false., gross = stage_row_gross)
       endif
 
       ! THE METAL CHARGE EXCHANGE OF THE SAME TWO BALANCES.  Group A of
@@ -5641,9 +5738,9 @@
       ! channel in the one-sided model above, so its two loss channels are
       ! its whole scale.
       !
-      ! THE He 2^3S ROW CARRIES ITS TWO GROSS HALVES.  Unlike the
-      ! stage rows its balance is one closed expression of sign-definite
-      ! channels (tr_triplet_row), so the halves are formed from the
+      ! THE He 2^3S ROW CARRIES ITS TWO GROSS HALVES.  Its balance is
+      ! one closed expression of sign-definite channels
+      ! (tr_triplet_row), so the halves are formed from the
       ! same terms by tr_triplet_row_channels, with the He(2^3S) + H2
       ! quench of the molecular row on the loss side; sprod - sloss is
       ! src to the rounding of the two sums.  Where the level is in
@@ -5665,46 +5762,46 @@
          sprod(ic_OH) = pOH
          sprod(ic_H2O)= pH2O
          sprod(ic_CO) = 0.0d0
-         ! THE PROTON CARRIES ITS PRODUCTION AND LOSS WHERE THE ROWS HAND
-         ! THEM OUT, and its NET where they do not.  mol_heh_rows splits
-         ! row (1); heh_tr_rows returns the four atomic rows and not their
-         ! halves, so in an atomic gas the record states the balance and
-         ! not two magnitudes it would have to invent.  Putting it on the
-         ! side of its own sign keeps sprod - sloss equal to src for every
-         ! row, which is what a reader of the record needs.
+         ! THE PROTON AND THE TWO IONIZED HELIUM STAGES CARRY THEIR GROSS
+         ! PRODUCTION AND LOSS, from the gross rate G of their rows: every
+         ! term of rows (1)-(3) is sign-definite, so a row f is (G + f)/2
+         ! of production less (G - f)/2 of loss, with the He <-> H
+         ! charge-exchange pair inside both G and f (it was applied to the
+         ! rows and to stage_row_gross above).  The metal charge exchange
+         ! hands out its own gross production and loss of each stage, which
+         ! are added on their own sides.  sprod - sloss is then src to the
+         ! rounding of the two sums.
          !
-         ! THE CORRECTIONS MADE AFTER THE ROWS RETURNED ARE IN IT.  The
-         ! He <-> H charge-exchange pair moves row (1) after mol_heh_rows
-         ! has split it, so its net is added here on the side of its own
-         ! sign; the record of a molecular cell is otherwise the row
-         ! before that pair, and sprod - sloss is not the source the
-         ! residual was assembled from.
+         ! WHY THE GROSS RATES AND NOT THE NET.  The physical scale of the
+         ! row (row_terms_phys) takes sprod + sloss as its reaction terms.
+         ! Where the stage is held by fast chemistry its production and loss
+         ! cancel to many digits: He+ in the molecular layer of the LHS 1140
+         ! b route-B He/H 0.65 state at 1.20 R_p is made by photoionization
+         ! and destroyed by He+ + H2 -> H+ + H + He at about 330 cm^-3 s^-1
+         ! each, net 6e-3, so a scale of the transport and the net stood
+         ! 1.3e-4 below the row's terms and read a state balanced to 5e-8 of
+         ! its channels as 4.2e-4 against 1e-5 (MEASURED,
+         ! md/heplus_carrier_certification_20261007.md).
          !
-         ! THE METAL CHARGE EXCHANGE IS IN IT AS ITS OWN TWO MAGNITUDES.
-         ! Those reactions hand out the gross production and the gross
-         ! loss of the stage separately, so the record states them and
-         ! does not fold them into a net.
-         if (ionization_transport) then
-            if (thereis_mol) then
-               sprod(ic_Hp) = pHp + max(cx_dHp, 0.0d0) + cx_pH(1)
-            else
-               sprod(ic_Hp) = max(src(ic_Hp), 0.0d0)
-            endif
-         endif
-         ! THE HELIUM STAGES CARRY THE NET, ON THE SIDE IT FALLS, AND THE
-         ! TWO ENTRIES ARE PARTS OF THAT NET AND NOT GROSS CHANNELS.
-         ! mol_heh_rows hands out the production/loss split for rows (1)
-         ! and (4) alone; rows (2) and (3) are returned as one balance, so
-         ! what this record can state for them is that balance and not its
-         ! two halves.  Putting it on the side of its own sign keeps
-         ! sprod - sloss equal to src for every row, which is what a reader
-         ! of the record needs; the two separate magnitudes of a helium row
-         ! are not available and the record does not invent them.  A reader
-         ! that needs the gross channels of a helium stage has to take them
-         ! from the rows themselves.
+         ! The atomic rows of heh_tr_rows are written in the boundary-flow
+         ! basis: row (2) is the summed He I balance (He I gain positive)
+         ! and row (3) the He II -> He III flow, so src(He II) =
+         ! -fv(2) - fv(3).  Each reaction of the two rows touches He II
+         ! once and no reaction is in both, so the gross rate of the He II
+         ! stage is the sum of the two rows' gross rates.
+         if (ionization_transport)                                       &
+            sprod(ic_Hp) = 0.5d0*(stage_row_gross(1) + fv(1)) + cx_pH(1)
          if (carrier_solved(ic_HeII)) then
-            sprod(ic_HeII)  = max(src(ic_HeII),  0.0d0)
-            sprod(ic_HeIII) = max(src(ic_HeIII), 0.0d0)
+            if (thereis_mol) then
+               sprod(ic_HeII) = 0.5d0*(stage_row_gross(2) + fv(2))      &
+                              + cx_pHe(1)
+            else
+               sprod(ic_HeII) = 0.5d0*(stage_row_gross(2)                &
+                                       + stage_row_gross(3)              &
+                                       - fv(2) - fv(3)) + cx_pHe(1)
+            endif
+            sprod(ic_HeIII) = 0.5d0*(stage_row_gross(3) + fv(3))        &
+                            + cx_pHe(2)
          endif
          if (carrier_solved(ic_HeTR)) sprod(ic_HeTR) = hetr_prod
       endif
@@ -5714,16 +5811,19 @@
          sloss(ic_OH) = lOH
          sloss(ic_H2O)= lH2O
          sloss(ic_CO) = abs(src(ic_CO))
-         if (ionization_transport) then
-            if (thereis_mol) then
-               sloss(ic_Hp) = lHp + max(-cx_dHp, 0.0d0) + cx_lH(1)
-            else
-               sloss(ic_Hp) = max(-src(ic_Hp), 0.0d0)
-            endif
-         endif
+         if (ionization_transport)                                       &
+            sloss(ic_Hp) = 0.5d0*(stage_row_gross(1) - fv(1)) + cx_lH(1)
          if (carrier_solved(ic_HeII)) then
-            sloss(ic_HeII)  = max(-src(ic_HeII),  0.0d0)
-            sloss(ic_HeIII) = max(-src(ic_HeIII), 0.0d0)
+            if (thereis_mol) then
+               sloss(ic_HeII) = 0.5d0*(stage_row_gross(2) - fv(2))      &
+                              + cx_lHe(1)
+            else
+               sloss(ic_HeII) = 0.5d0*(stage_row_gross(2)                &
+                                       + stage_row_gross(3)              &
+                                       + fv(2) + fv(3)) + cx_lHe(1)
+            endif
+            sloss(ic_HeIII) = 0.5d0*(stage_row_gross(3) - fv(3))        &
+                            + cx_lHe(2)
          endif
          if (carrier_solved(ic_HeTR)) sloss(ic_HeTR) = hetr_loss
       endif
@@ -5942,17 +6042,18 @@
       ! particle count are those of the state passed (Tcode and the particle
       ! count of its composition, calc_ntot's), not the frozen background of
       ! a carrier step, so the term follows the iterate of a steady solve.
-      ! Only the faces 1 ... N-1 carry a carrier flux (both ends of the
-      ! carrier column are closed, carrier_face_coefficients), so q(0) =
-      ! q(N) = 0 and the term moves energy within the column only.  Face
-      ! values of h are the arithmetic means of their two cells.  Writes no
-      ! module state (l22b_setup reads its options once).
+      ! The faces 1 ... N-1 carry a carrier flux, and face 0 does where a
+      ! handoff states the carrier's base partition (the Dirichlet ghost of
+      ! carrier_face_coefficients); q(N) = 0, and q(0) is then the enthalpy
+      ! the base face exchanges with the lower atmosphere, zero elsewhere.
+      ! Face values of h are the arithmetic means of their two cells.  Writes
+      ! no module state (l22b_setup reads its options once).
       real(dp), dimension(1-Ng:N+Ng),           intent(in)  :: rho, Tcode
       real(dp), dimension(1-Ng:N+Ng,n_species), intent(in)  :: f_sp
       real(dp), dimension(0:N),                 intent(out) :: q
 
       real(dp), dimension(1-Ng:N+Ng) :: nd, ntot, TK, mbar, wfac
-      real(dp), dimension(1-Ng:N+Ng) :: rp, rep, dtd, dtp, gphys
+      real(dp), dimension(1-Ng:N+Ng) :: rp, rep, dtd, dtp, geff
       real(dp), dimension(1-Ng:N+Ng,n_carrier_max) :: Dco, dh
       real(dp), dimension(0:N,n_carrier_max) :: Agrd, Bdrf
       integer,  dimension(0:N,n_carrier_max) :: updrf
@@ -5960,7 +6061,7 @@
       real(dp) :: cp_part, kTe, urv, crv
       real(dp) :: hbH, hbO, hbC, hc
       real(dp) :: Jfc, dJl, dJr
-      integer  :: j, ic, ib, isp, im
+      integer  :: j, ic, ib, isp, im, jfirst
 
       q = 0.0d0
       if (.not. molecular_carrier_enthalpy_active()) return
@@ -5992,9 +6093,10 @@
          wfac(j) = nd(j)/max(ntot(j), 1.0d-99)
       enddo
       dtd = 1.0d0
-      call carrier_geometry(dtd, rp, rep, dtp, gphys)
+      call carrier_geometry(dtd, rp, rep, dtp)
+      call mixture_pressure_acceleration(rho, Tcode, f_sp, geff)
       call carrier_diffusivities(f_sp, rho, TK, ntot, Dco)
-      call carrier_face_coefficients(ntot, TK, mbar, gphys, Dco, rp,     &
+      call carrier_face_coefficients(ntot, TK, mbar, geff, Dco, rp,      &
                                      Agrd, Bdrf, updrf)
 
       ! The enthalpy difference of every carrier against the nuclei that
@@ -6022,7 +6124,9 @@
       do ic = ic_H2, ic_CO
          if (.not. carrier_solved(ic)) cycle
          isp = carrier_species_index(ic)
-         do j = 1, N-1
+         jfirst = 1
+         if (carrier_base_composition_imposed(ic)) jfirst = 0
+         do j = jfirst, N-1
             call carrier_face_flux(f_sp(j,isp), f_sp(j+1,isp), wfac(j),   &
                                    wfac(j+1), Agrd(j,ic), Bdrf(j,ic),     &
                                    updrf(j,ic), Jfc, dJl, dJr)
@@ -6191,8 +6295,11 @@
       !
       ! Cell 1 is included: the carrier column, unlike the element column
       ! (whose cell 1 is the prescribed reservoir), carries a balance in
-      ! every cell 1 ... N, stage rows included.  With q(0) = q(N) = 0,
-      ! sum_j V_j divq(j) = 0 to rounding.  The ghosts are returned as zero.
+      ! every cell 1 ... N, stage rows included.  q(N) = 0, and q(0) = 0
+      ! unless a handoff states the H2 partition below the base (then it is
+      ! the enthalpy exchanged with the lower atmosphere), so
+      ! sum_j V_j divq(j) = -A_0 q(0)/(R0 q0) to rounding.  The ghosts are
+      ! returned as zero.
       ! Zero, with no arithmetic, unless carrier_enthalpy_active().  q_out
       ! (optional) returns the face flux [erg cm^-2 s^-1].
       real(dp), dimension(1-Ng:N+Ng),           intent(in)  :: rho, Tcode
@@ -6319,7 +6426,7 @@
                                   updrf,                                 &
                                   nH_free, nO_free, nC_free, sigrate,    &
                                   res, Jf, dJl, dJr, rnorm, rnorm_phys,   &
-                                  absent_out)
+                                  absent_out, base_face_out)
       ! advect: whether the row carries the material advective term.  The
       ! MARCHING rows do not, because the advection of a carrier is the
       ! divergence of the hydrodynamic face mass flux and is taken with the
@@ -6366,6 +6473,13 @@
       ! and the reference density of its element together.
       logical, dimension(1:N,n_carrier_max), optional, intent(out) ::     &
                                                              absent_out
+      ! THE PARTICLE FLUX DENSITY OF EVERY CARRIER THROUGH THE BASE FACE
+      ! [cm^-2 s^-1, positive outward], the advective half (column 1, zero
+      ! where the rows carry no advective term) and the diffusive, eddy and
+      ! settling half (column 2), exactly as the row of cell 1 differences
+      ! them: what the wind exchanges with the lower atmosphere.
+      real(dp), dimension(n_carrier_max,2), optional, intent(out) ::      &
+                                                          base_face_out
       ! Cell and species carrying the worst relative row imbalance, for the
       ! debug line: a Newton that stops short says WHERE it stopped.
       real(dp) :: nc(n_carrier_max), src(n_carrier_max)
@@ -6472,9 +6586,16 @@
                                    Bdrf(j,ic), updrf(j,ic),              &
                                    Jf(j,ic), dJl(j,ic), dJr(j,ic))
          enddo
-         ! Jf(0) and Jf(N) stay at their initialized zero: the two end
-         ! faces of the column carry no diffusive, eddy or settling flux
-         ! (carrier_face_coefficients states why).
+         ! The base face carries the flux against the stated ghost
+         ! partition where a handoff states it; Jf(N), and Jf(0) where
+         ! nothing states the partition, stay at their initialized zero
+         ! (carrier_face_coefficients states why).  fc(0,ic) is the ghost's
+         ! Dirichlet value and not an unknown, so only dJr(0) enters the
+         ! Jacobian (solve_carriers).
+         if (carrier_base_composition_imposed(ic))                       &
+            call carrier_face_flux(fc(0,ic), fc(1,ic), wfac(0), wfac(1), &
+                                   Agrd(0,ic), Bdrf(0,ic), updrf(0,ic),  &
+                                   Jf(0,ic), dJl(0,ic), dJr(0,ic))
       enddo
 
       ! CELL-LOCAL, AND THE ONE THING THAT WAS NOT.  Every term of a carrier
@@ -6561,10 +6682,9 @@
             ! THE REACTION TERMS OF THE PHYSICAL SCALE ARE THE ROW'S OWN
             ! PRODUCTION AND LOSS, srcp + srcl, as the declaration of
             ! carrier_accept_tol states the measure ("the transport flux
-            ! divergence and the reaction production and loss").  Where a
-            ! row hands out only its net (the helium stages, the proton of an
-            ! atomic gas) srcp + srcl is |src| bit for bit and nothing moves.
-            ! Where it hands out its channels the net is not one of the
+            ! divergence and the reaction production and loss").  Every
+            ! carrier row hands out its gross production and loss
+            ! (carrier_source); the net is not one of the
             ! row's terms but their difference: the He 2^3S level at
             ! 1.23 R_p on the 2000-cell LHS 1140 b He/H 0.65 state has
             ! production and loss 41.25 cm^-3 s^-1 each, net 8.8e-7 and
@@ -6674,6 +6794,17 @@
          enddo outer
       endif
       if (present(rnorm_phys)) rnorm_phys = rnormp
+      if (present(base_face_out)) then
+         base_face_out = 0.0d0
+         do ic = 1, n_carrier
+            if (.not. carrier_solved(ic)) cycle
+            if (carrier_is_nucleus_fraction(ic)) cycle
+            ! advfin(1) is the base face's term of cell 1, per unit volume;
+            ! times V_1 over A_0 it is the flux density through the face.
+            base_face_out(ic,1) = -advfin(1,ic)*cv(1)*R0/fa(0)
+            base_face_out(ic,2) = Jf(0,ic)
+         enddo
+      endif
       end subroutine carrier_residual
 
       ! ------------------------------------------------------------- !
@@ -6830,9 +6961,11 @@
                ! rule stays where the flux states it.
                !
                ! For a molecular carrier the guards ARE the rule: its face
-               ! flux is diffusive, eddy and settling only, and those are
-               ! zero at both ends (carrier_face_coefficients), so the
-               ! entries they would write are zero anyway.
+               ! flux is diffusive, eddy and settling only, zero at the
+               ! outer end and zero at the base unless a handoff states the
+               ! partition there (carrier_face_coefficients); where it does,
+               ! the base face reads the Dirichlet ghost and cell 1, and
+               ! only the cell-1 derivative is an entry.
                !
                ! At j = 1 the base face's donor derivative lands on the
                ! diagonal because nothing below the base states an
@@ -6860,6 +6993,10 @@
                else if (carrier_is_nucleus_fraction(ic)) then
                   bb(1,ic,ic) = bb(1,ic,ic)                              &
                               - Kj*sL*(dJl(0,ic) + dJr(0,ic))
+               else if (carrier_base_composition_imposed(ic)) then
+                  ! The stated ghost is a Dirichlet value: the base face
+                  ! flux depends on the unknown of cell 1 alone.
+                  bb(1,ic,ic) = bb(1,ic,ic) - Kj*sL*dJr(0,ic)
                endif
                ! An ionization stage's advection is inside the face flux
                ! above; the entries below are the molecular rows' material

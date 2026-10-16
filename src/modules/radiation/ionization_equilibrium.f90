@@ -17,6 +17,23 @@
 	use System_HeH_TR
 	use System_HeH_mol            ! molecular network
 	use System_HeH_mol_metals     ! merged molecular network + metals
+	! The rows of the cell systems: their kinds, element groups and the
+	! turnover of each group (normalized_reaction_residual), and the
+	! density below which an element is absent from the cell.
+	use chemical_row_layout, only: absent_element_density,                &
+	                               chemical_row_layout_of_cell,           &
+	                               ionization_row_layout,                 &
+	                               mark_constraint_rows_of_cell,          &
+	                               element_group_turnover_reciprocal,     &
+	                               is_constraint_row, finite_number,      &
+	                               constraint_row_tol,                    &
+	                               fraction_resolution,                   &
+	                               h3p_row_balance_tol, slot_H3p,         &
+	                               turnover_of_group,                     &
+	                               turnover_row_without_reaction,         &
+	                               turnover_group_without_reaction,       &
+	                               n_layout_rows_max
+	use ion_residual_core, only: ionization_row_gross
 	use lower_column, only: q_h2_equilibrium
 	! The lower boundary's own module, for the two quantities this sweep
 	! MEASURES in the ghost it solves: the ghost's particle counts and the
@@ -51,7 +68,7 @@
                               cx_add_to_turnover,          &   ! cx bound of a row's turnover
                               he_h_charge_exchange             ! whether the He <-> H pair is on
    use System_H
-   use newton_solver, only: solve_ieq   ! Task 2: analytic-Jacobian Newton (+ hybrd1 fallback)
+   use newton_solver, only: solve_ieq, hybrd1_resolving_every_unknown
    use opacity_models            ! opacity_pT_factor for the 'P' model
 
    implicit none
@@ -777,11 +794,13 @@
 	! THE STOPPING TOLERANCE OF THE COMPOSITION'S INNER SOLVE, and the hook
 	! that replaces it for a whole run (EXHALE_IEQ_TOL=<x>, default off).
 	! The value the sweep uses is sqrt(dpmpar(1)) = 1.49e-8, MINPACK's own
-	! scale: hybrd1 reads it as xtol, a RELATIVE STEP criterion, and
-	! newton_dense reads it as ftol, a criterion on the residual norm of the
-	! cell's network (newton_solver.f90 lines 84 to 140), so on either route
-	! the returned composition is pinned only to about that, and the number
-	! of inner iterations changes with the state. The composition is
+	! scale: hybrd1 reads it as xtol, a RELATIVE STEP criterion on the
+	! scaled norm of all the unknowns, and the Newton of newton_solver
+	! (newton_dense; after hybrd1, hybrd1_resolving_every_unknown) as the
+	! relative size of its correction of EACH unknown, |dx_i| <= tol |x_i|
+	! + epsilon(1), so the returned composition is pinned to about tol^2
+	! of each unknown, and the number of inner iterations changes with
+	! the state. The composition is
 	! therefore a PIECEWISE map of the state and the residual assembled from
 	! it carries a non-smoothness floor far above its own rounding, which is
 	! what the finite-difference Jacobian action of the stationary solve
@@ -884,6 +903,22 @@
 	! and read by nothing inside it: it is for a caller that must not read a
 	! non-root cell as a solution, such as the molecular seed's own-row root.
 	integer, allocatable, save :: ieq_cell_acceptance_class(:)
+	! The normalized reaction residual of that accepted state, cell by cell.
+	real*8,  allocatable, save :: ieq_cell_acceptance_res(:)
+	! EXHALE_IEQ_CLASS_RECORD set (to anything): after every sweep the
+	! class and residual of each cell are rewritten to
+	! output/ieq_acceptance_classes.txt, so the file holds the last sweep
+	! of the run, with, row by row at the accepted state, the share of its
+	! group's turnover each kinetic row carries and the row against its own
+	! gross rate (normalized_reaction_residual, turnover_share_out and
+	! own_row_out). A measurement for comparing two builds cell by cell and
+	! for the materiality of the group norm; nothing reads it. Read once
+	! for the run (ieq_class_record_requested).
+	logical, save :: ieq_class_record_read = .false.
+	logical, save :: ieq_class_record_on   = .false.
+	integer, save :: ieq_class_record_nrow = 0
+	real*8, allocatable, save :: ieq_cell_row_share(:,:)
+	real*8, allocatable, save :: ieq_cell_row_own(:,:)
 
 	contains
 
@@ -1284,7 +1319,7 @@
    integer :: n_acc(6), hist_conv(0:15), hist_uncv(0:15)
    real*8  :: acc_resmax(6)
    integer :: acc_class
-   real*8  :: acc_res, res_att
+   real*8  :: acc_res, res_att, res_rec
    ! Root selection (section 113): residual of the kept rank-1/2 root, the
    ! first bounded iterate whose residual failed the tolerance (the state
    ! of last resort, matching the old rank-1 order), and whether any
@@ -1293,6 +1328,12 @@
    real*8, dimension(n_x_max) :: x_nonroot
    integer :: info_best, info_nonroot
    logical :: have_nonroot, have_clamp
+   ! Atomic layouts: the first candidate outside the element simplex whose
+   ! projection onto it is a root (acceptance class 3), its residual and
+   ! the excursion the projection removed.
+   real*8, dimension(n_x_max) :: x_projected
+   real*8  :: res_projected, viol_projected
+   logical :: have_projected
    ! The composition the cell ENTERED the sweep with: the previous adopted
    ! step's, or the initial condition at step 0. It is the state a cell
    ! keeps when the candidate the solve produced is refused (acceptance
@@ -1875,6 +1916,46 @@
 	NH2_col_xuv = 0.0d0
 	Nm_col_xuv  = 0.0d0
 	jb_hi       = N+Ng
+	! Failed-cell counters (combined via the reductions of the two sweeps
+	! below, with and without helium); reset once per equilibrium sweep. n_mol_clamped counts molecular cells whose roots
+	! were all outside the physical simplex; the n_ieq_* counters are the
+	! atomic root validation (see the declarations above).
+	n_mol_clamped = 0
+	n_mol_info(:) = 0
+	n_ieq_reseed = 0
+	n_ieq_retry  = 0
+	n_ieq_unphys = 0
+	n_ieq_fail   = 0
+	n_acc(:)      = 0
+	acc_resmax(:) = 0.0d0
+	if (.not. allocated(ieq_cell_acceptance_class))                   &
+		allocate(ieq_cell_acceptance_class(1-Ng:N+Ng))
+	ieq_cell_acceptance_class = 0
+	if (.not. allocated(ieq_cell_acceptance_res))                     &
+		allocate(ieq_cell_acceptance_res(1-Ng:N+Ng))
+	ieq_cell_acceptance_res = 0.0d0
+	if (ieq_class_record_requested()) then
+		if (.not. allocated(ieq_cell_row_share)) then
+			allocate(ieq_cell_row_share(n_layout_rows_max,1-Ng:N+Ng))
+			allocate(ieq_cell_row_own(n_layout_rows_max,1-Ng:N+Ng))
+		endif
+		ieq_cell_row_share = 0.0d0
+		ieq_cell_row_own   = 0.0d0
+		ieq_class_record_nrow = N_eq
+	endif
+	hist_conv(:)  = 0
+	hist_uncv(:)  = 0
+	n_cce_attempt = 0
+	n_cce_root    = 0
+	n_cce_solve   = 0
+	cce_seconds   = 0.0d0
+	n_res_nonfinite  = 0
+	viol_sweep_worst = 0.0d0
+	! What the base handoff's closure reaches in this sweep, reduced
+	! over the cells of every block.
+	ghost_closure_res_sweep  = 0.0d0
+	ghost_closure_pass_sweep = 0
+
 	if (.not.thereis_He) then ! If no helium
 
 		xuv_block_H: do while (jb_hi .ge. 1-Ng)
@@ -1938,11 +2019,22 @@
 		!$omp parallel do default(none) schedule(dynamic,8)                  &
 		!$omp   shared(a_ion_HI, gph_balmer_HI, gph_ground_HI, h1_HI,                 &
 		!$omp          ieq_ne_cell, ieq_ntot_cell, ieq_rate_cell, ieq_TK_cell,        &
-		!$omp          jb_hi, jb_lo, lwa, marching_step, N1_face, N_eq, ne, nh,       &
-		!$omp          nhi, nhii, P_HI, q, r, rchiiB, sec_on_xuv, T_K, tol,           &
+		!$omp          ieq_cell_acceptance_class, ieq_cell_acceptance_res,            &
+		!$omp          ieq_class_record_on, ieq_cell_row_share, ieq_cell_row_own,     &
+		!$omp          jb_hi, jb_lo, lwa, marching_step, N1_face, N_eq, n_in_dim,     &
+		!$omp          ne, nh, nhi, nhii, P_HI, q, r, rchiiB, sec_on_xuv,             &
+		!$omp          sweep_advances_the_streak, T_K, tol,                           &
 		!$omp          use_excited_H, xion, xuv_self_field_passes)                    &
 		!$omp   private(params, usednt, it_self, last_self, self_moved,        &
-		!$omp           x_self, heat_row) if(marching_step > 0)
+		!$omp           x_self, heat_row, iatt, info_ieq, ok_rank, best_rank,  &
+		!$omp           conv_ieq, phys_ieq, x_root_best, x_entry, acc_class,   &
+		!$omp           acc_res, res_att, res_rec, res_best, res_nonroot,      &
+		!$omp           x_nonroot, info_best, info_nonroot, have_nonroot,      &
+		!$omp           x_projected, res_projected, viol_projected,            &
+		!$omp           have_projected, viol_best, state_is_recorded)          &
+		!$omp   reduction(+:n_ieq_retry,n_ieq_unphys,n_ieq_fail,n_acc,         &
+		!$omp               hist_conv,hist_uncv,n_res_nonfinite)               &
+		!$omp   reduction(max:acc_resmax,viol_sweep_worst) if(marching_step > 0)
 		do j = jb_hi, jb_lo, -1
 
 			! Lazily allocate this thread's threadprivate NL scratch.
@@ -1986,9 +2078,130 @@
 
 			endif
 
-		 	! Analytic-Jacobian Newton (Task 2); hybrd1 fallback inside solve_ieq.
-			call solve_ieq(ion_system_H,jac_system_H,N_eq,sys_x,    &
-				      params,tol,wa,lwa,usednt)
+			! The composition the cell entered the sweep with, kept by a
+			! refused candidate (class 6).
+			x_entry(1) = 0.0d0
+			if (nh(j) .gt. 0.0d0) x_entry(1) = nhii(j)/nh(j)
+
+			! THE SAME JUDGE AS THE He BRANCHES. A candidate is a root when
+			! it lies in the element simplex (ionization_fractions_physical:
+			! 0 <= x(H+) <= 1 to the resolution of a fraction) and its row,
+			! measured against its own gross rate P + L (the H+ row is the
+			! only hydrogen row, normalized_reaction_residual), is within
+			! ieq_res_tol or below the resolution floor. Two starting
+			! points:
+			!   1  the guess built above (previous state / radius),
+			!   2  the positive root of the H I <-> H II balance in closed
+			!      form (hydrogen_ionization_balance_root), from which the
+			!      solve only resolves the rounding of the formula;
+			! a candidate outside the simplex is projected onto it and
+			! judged again (class 3), and a cell without a root keeps the
+			! first bounded non-root under the amnesty (class 4) or, above
+			! its cap, its entry composition (class 6), counted in the
+			! ledger and the non-root streak exactly as in the He branches.
+			best_rank = 0
+			res_best  = 0.0d0
+			info_best = 0
+			have_nonroot   = .false.
+			have_projected = .false.
+			do iatt = 1,2
+				if (iatt .eq. 2) then
+					sys_x(1) = hydrogen_ionization_balance_root()
+					n_ieq_retry = n_ieq_retry + 1
+				endif
+				call impose_transported_fractions(sys_x, N_eq, 0)
+				call solve_ieq(ion_system_H,jac_system_H,N_eq,sys_x,      &
+				               params,tol,wa,lwa,usednt,info_ieq)
+				conv_ieq = (info_ieq .eq. 1)
+				call impose_transported_fractions(sys_x, N_eq, 0)
+				phys_ieq = ionization_fractions_physical(sys_x,N_eq,0)
+				if (iatt .eq. 1 .and. .not.phys_ieq)                    &
+					n_ieq_unphys = n_ieq_unphys + 1
+				res_att = 0.0d0
+				if (phys_ieq) then
+					res_att = normalized_reaction_residual(sys_x,N_eq,0)
+					if (conv_ieq) then
+						hist_conv(residual_decade(res_att)) =             &
+							hist_conv(residual_decade(res_att)) + 1
+					else
+						hist_uncv(residual_decade(res_att)) =             &
+							hist_uncv(residual_decade(res_att)) + 1
+					endif
+				endif
+				ok_rank = 0
+				if (phys_ieq .and. res_att .le. ieq_res_tol) ok_rank = 1
+				if (ok_rank .eq. 1 .and. conv_ieq) ok_rank = 2
+				if (ok_rank .gt. best_rank) then
+					best_rank = ok_rank
+					x_root_best(1:N_eq) = sys_x(1:N_eq)
+					res_best  = res_att
+					info_best = info_ieq
+				else if (best_rank .eq. 0 .and. phys_ieq                  &
+				         .and. .not. have_nonroot) then
+					have_nonroot = .true.
+					x_nonroot(1:N_eq) = sys_x(1:N_eq)
+					res_nonroot  = res_att
+					info_nonroot = info_ieq
+				endif
+				if (.not. phys_ieq .and. best_rank .eq. 0 .and.           &
+				    .not. have_projected) then
+					x_projected(1:N_eq) = sys_x(1:N_eq)
+					call clamp_fractions_to_element_budget(x_projected,   &
+					                                       N_eq,0)
+					call impose_transported_fractions(x_projected,N_eq,0)
+					if (ionization_fractions_physical(x_projected,N_eq,0))&
+					then
+						res_projected = normalized_reaction_residual(     &
+						                     x_projected,N_eq,0)
+						if (res_projected .le. ieq_res_tol) then
+							have_projected = .true.
+							viol_projected =                             &
+							     element_budget_violation(sys_x,N_eq,0)
+						endif
+					endif
+				endif
+				if (ok_rank .eq. 2) exit
+			enddo
+
+			viol_best = 0.0d0
+			if (best_rank .eq. 2) then
+				acc_class = 1
+				acc_res   = res_att
+			else if (best_rank .eq. 1) then
+				sys_x(1:N_eq) = x_root_best(1:N_eq)
+				acc_class = 2
+				acc_res   = res_best
+				info_ieq  = info_best
+			else if (have_projected) then
+				sys_x(1:N_eq) = x_projected(1:N_eq)
+				acc_class = 3
+				acc_res   = res_projected
+				viol_best = viol_projected
+			else if (have_nonroot) then
+				sys_x(1:N_eq) = x_nonroot(1:N_eq)
+				acc_class = 4
+				acc_res   = res_nonroot
+				info_ieq  = info_nonroot
+			else
+				! Neither attempt stayed in the simplex nor projects onto a
+				! root: the entry composition is kept.
+				viol_best = element_budget_violation(sys_x,N_eq,0)
+				n_ieq_fail = n_ieq_fail + 1
+				sys_x(1:N_eq) = x_entry(1:N_eq)
+				acc_res   = normalized_reaction_residual(sys_x,N_eq,0)
+				acc_class = 6
+			endif
+			if (.not. finite_real(acc_res)) then
+				acc_class = 4
+				n_res_nonfinite = n_res_nonfinite + 1
+			endif
+			if (acc_class .eq. 4) then
+				acc_class = nonroot_acceptance_class(acc_res)
+				if (acc_class .eq. 6) then
+					sys_x(1:N_eq) = x_entry(1:N_eq)
+					acc_res = normalized_reaction_residual(sys_x,N_eq,0)
+				endif
+			endif
 
 			! Has the cell's own field stopped moving its own composition.
 			self_moved = 1.0d0
@@ -1997,8 +2210,33 @@
 			x_self(1:N_eq) = sys_x(1:N_eq)
 			last_self = (it_self .ge. xuv_self_field_passes)                &
 			            .or. (self_moved .le. xuv_self_field_tol)
+			state_is_recorded = last_self .and. sweep_advances_the_streak
 
-			! Extract solution profiles
+			! The ledger records the state the cell accepted (as in the He
+			! branches).
+			if (last_self) then
+				n_acc(acc_class) = n_acc(acc_class) + 1
+				ieq_cell_acceptance_class(j) = acc_class
+				ieq_cell_acceptance_res(j)   = acc_res
+				if (ieq_class_record_on)                                   &
+					res_rec = normalized_reaction_residual(sys_x,N_eq,0,   &
+					     turnover_share_out=ieq_cell_row_share(1:N_eq,j),  &
+					     own_row_out=ieq_cell_row_own(1:N_eq,j))
+				if (finite_real(acc_res))                                  &
+					acc_resmax(acc_class) = max(acc_resmax(acc_class),     &
+					                            acc_res)
+				viol_sweep_worst = max(viol_sweep_worst, viol_best)
+				if (state_is_recorded)                                     &
+					call nonroot_streak_update(acc_class,j,marching_step,  &
+					                           r(j),T_K(j),n_in_dim(j),    &
+					                           ne(j),info_ieq,viol_best,   &
+					                           acc_res,sys_x,N_eq)
+			endif
+
+			! Extract solution profiles. An admitted state lies within
+			! fraction_resolution of the simplex; inside that band it is on
+			! the face and is written there.
+			sys_x(1) = min(max(sys_x(1), 0.0d0), 1.0d0)
 			nhi(j)    = nh(j)*(1.0 - sys_x(1))
 			nhii(j)   = nh(j)*sys_x(1)
 
@@ -2055,33 +2293,6 @@
 		! cx_metal_base is broadcast (copyin) and toggled 4<->5 per cell. All the
 		! subroutine-local scratch is private. marching_step==0 stays serial (neighbor
 		! warm-start).
-		! Failed-cell counters (combined via the reduction below); reset once
-		! per equilibrium sweep. n_mol_clamped counts molecular cells whose roots
-		! were all outside the physical simplex; the n_ieq_* counters are the
-		! atomic root validation (see the declarations above).
-		n_mol_clamped = 0
-		n_mol_info(:) = 0
-		n_ieq_reseed = 0
-		n_ieq_retry  = 0
-		n_ieq_unphys = 0
-		n_ieq_fail   = 0
-		n_acc(:)      = 0
-		acc_resmax(:) = 0.0d0
-		if (.not. allocated(ieq_cell_acceptance_class))                   &
-			allocate(ieq_cell_acceptance_class(1-Ng:N+Ng))
-		ieq_cell_acceptance_class = 0
-		hist_conv(:)  = 0
-		hist_uncv(:)  = 0
-		n_cce_attempt = 0
-		n_cce_root    = 0
-		n_cce_solve   = 0
-		cce_seconds   = 0.0d0
-		n_res_nonfinite  = 0
-		viol_sweep_worst = 0.0d0
-		! What the base handoff's closure reaches in this sweep, reduced
-		! over the cells of every block.
-		ghost_closure_res_sweep  = 0.0d0
-		ghost_closure_pass_sweep = 0
 
 		xuv_block_HHe: do while (jb_hi .ge. 1-Ng)
 
@@ -2236,6 +2447,8 @@
 		!$omp          ghost_closure_res_cell, gph_balmer_HI, gph_ground_HI,          &
 		!$omp          h1_H2, h1_HeI, h1_HeII, h1_HeTR, h1_HI, h1_m, has_h2_xuv,      &
 		!$omp          ieq_cell_acceptance_class, ieq_decay_ncell, ieq_met_coef,      &
+		!$omp          ieq_cell_acceptance_res, ieq_class_record_on,                  &
+		!$omp          ieq_cell_row_share, ieq_cell_row_own,                          &
 		!$omp          ieq_ne_cell, ieq_ntot_cell, ieq_rate_cell,                     &
 		!$omp          ieq_report_cell, ieq_state_may_be_refused, ieq_TK_cell,        &
 		!$omp          ieq_dump_cell,                                                 &
@@ -2256,9 +2469,10 @@
 		!$omp           meg_b0, meg_b1, meg_a1, meg_a2, meg_top, meg_g02,            &
 		!$omp           pbar_loc, viol, viol_best,                                  &
 		!$omp           iatt, info_ieq, ok_rank, best_rank, conv_ieq, phys_ieq,      &
-		!$omp           x_root_best, x_entry, acc_class, acc_res, res_att,          &
+		!$omp           x_root_best, x_entry, acc_class, acc_res, res_att, res_rec, &
 		!$omp           res_best, res_nonroot, x_nonroot, info_best, info_nonroot,   &
 		!$omp           have_nonroot, have_clamp,                                    &
+		!$omp           x_projected, res_projected, viol_projected, have_projected, &
 		!$omp           x_cce, cce_full, cce_root, n_cce_fs, res_cce,                &
 		!$omp           clk_beg, clk_end, clk_rate,                                  &
 		!$omp           it_self, last_self, state_is_recorded, self_moved,           &
@@ -2851,7 +3065,9 @@
 				! ieq_res_tol above).
 				!
 				! A cell that finds such a root takes it (a solver-converged
-				! one immediately). A cell that does not keeps the first
+				! one immediately). Failing that, the first iterate outside
+				! the simplex whose projection onto it is a root is taken
+				! (class 3). A cell that has neither keeps the first
 				! bounded iterate as a MARKED non-root under the relaxation
 				! amnesty (nonroot_streak_update), and when NONE of the
 				! attempts even stayed inside the simplex it clamps the one
@@ -2867,6 +3083,7 @@
 				res_best  = 0.0d0
 				info_best = 0
 				have_nonroot = .false.
+				have_projected = .false.
 				have_clamp   = .false.
 				! Gas pressure p = (n_tot + n_e) kB T [bar], the same ideal-gas
 				! law the EOS uses (comp_p_from_T).
@@ -2891,11 +3108,13 @@
 						! Metals appended above the molecular unknowns; point
 						! charge exchange at their rows for this solve.
 						cx_metal_base = mbase
-						call hybrd1(ion_system_HeH_mol_metals,N_eq,sys_x,  &
+						call hybrd1_resolving_every_unknown(                &
+						            ion_system_HeH_mol_metals,N_eq,sys_x,  &
 						            sys_sol,tol,info,wa,lwa,params)
 						cx_metal_base = 4
 					else
-						call hybrd1(ion_system_HeH_mol,N_eq,sys_x,sys_sol, &
+						call hybrd1_resolving_every_unknown(                &
+						            ion_system_HeH_mol,N_eq,sys_x,sys_sol, &
 						            tol,info,wa,lwa,params)
 					endif
 					conv_ieq = (info .eq. 1)
@@ -2917,7 +3136,7 @@
 					res_att = 0.0d0
 					if (phys_ieq) then
 						res_att = normalized_reaction_residual(sys_x,     &
-						                              N_eq,mbase,ne(j))
+						                              N_eq,mbase)
 						if (conv_ieq) then
 							hist_conv(residual_decade(res_att)) =         &
 								hist_conv(residual_decade(res_att)) + 1
@@ -2955,6 +3174,28 @@
 								viol_best  = viol
 								x_root_best(1:N_eq) = sys_x(1:N_eq)
 							endif
+							! And project it now: a root on a face that
+							! hybrd1 delivered a little outside it is a root
+							! once projected (class 3, before the
+							! continuation and the bounded non-root; the
+							! atomic branch below states the rule).
+							if (.not. have_projected) then
+								x_projected(1:N_eq) = sys_x(1:N_eq)
+								call clamp_fractions_to_element_budget(  &
+								              x_projected,N_eq,mbase)
+								call impose_transported_fractions(        &
+								              x_projected,N_eq,iox)
+								if (ionization_fractions_physical(        &
+								              x_projected,N_eq,mbase)) then
+									res_projected =                       &
+									  normalized_reaction_residual(       &
+									              x_projected,N_eq,mbase)
+									if (res_projected .le. ieq_res_tol) then
+										have_projected = .true.
+										viol_projected = viol
+									endif
+								endif
+							endif
 						endif
 					endif
 					if (ok_rank .eq. 2) exit
@@ -2985,7 +3226,7 @@
 				! fraction layout can only satisfy one at a time.
 				cce_root = .false.
 				res_cce  = 0.0d0
-				if (best_rank .eq. 0) then
+				if (best_rank .eq. 0 .and. .not. have_projected) then
 					n_cce_attempt = n_cce_attempt + 1
 					x_cce(1:N_eq) = 0.0d0
 					call system_clock(count=clk_beg, count_rate=clk_rate)
@@ -3023,7 +3264,7 @@
 						if (phys_ieq) then
 							res_cce =                                  &
 							  normalized_reaction_residual(x_cce,N_eq, &
-							                        mbase,ne(j))
+							                        mbase)
 							if (res_cce .le. ieq_res_tol)              &
 								cce_root = .true.
 						endif
@@ -3061,6 +3302,11 @@
 					acc_class = 2
 					acc_res   = res_best
 					info      = info_best
+				else if (have_projected) then
+					sys_x(1:N_eq) = x_projected(1:N_eq)
+					acc_class = 3
+					acc_res   = res_projected
+					viol_best = viol_projected
 				else if (cce_root) then
 					sys_x(1:N_eq) = x_cce(1:N_eq)
 					acc_class = 5
@@ -3090,7 +3336,7 @@
 					n_mol_clamped = n_mol_clamped + 1
 					if (ionization_fractions_physical(sys_x,N_eq,mbase)) then
 						acc_res   = normalized_reaction_residual(sys_x,N_eq,   &
-						                                         mbase,ne(j))
+						                                         mbase)
 						acc_class = 3
 						if (acc_res .gt. ieq_res_tol) acc_class = 4
 					else
@@ -3103,7 +3349,7 @@
 						                element_budget_violation(sys_x,N_eq,mbase))
 						sys_x(1:N_eq) = x_entry(1:N_eq)
 						acc_res   = normalized_reaction_residual(sys_x,N_eq,   &
-						                                         mbase,ne(j))
+						                                         mbase)
 						acc_class = 6
 					endif
 				endif
@@ -3131,7 +3377,7 @@
 					if (acc_class .eq. 6) then
 						sys_x(1:N_eq) = x_entry(1:N_eq)
 						acc_res = normalized_reaction_residual(sys_x,N_eq,     &
-						                                       mbase,ne(j))
+						                                       mbase)
 					endif
 				endif
 				! Has the cell's own field stopped moving its own composition
@@ -3238,6 +3484,12 @@
 				if (last_self) then
 					n_acc(acc_class) = n_acc(acc_class) + 1
 					ieq_cell_acceptance_class(j) = acc_class
+					ieq_cell_acceptance_res(j)   = acc_res
+					if (ieq_class_record_on)                               &
+						res_rec = normalized_reaction_residual(sys_x,N_eq, &
+						     mbase,                                        &
+						     turnover_share_out=ieq_cell_row_share(1:N_eq,j),&
+						     own_row_out=ieq_cell_row_own(1:N_eq,j))
 					if (finite_real(acc_res))                              &
 						acc_resmax(acc_class) =                            &
 							max(acc_resmax(acc_class),acc_res)
@@ -3270,7 +3522,27 @@
 				! three starting points and the best root is kept:
 				!   1  the guess built above (previous state / neighbor),
 				!   2  the uncoupled ionization balance at the incoming n_e,
-				!   3  the optically thick limit, all nuclei neutral.
+				!   3  the optically thick limit, all nuclei neutral,
+				! and, when none of them is a root, a fourth solve:
+				!   4  the first bounded non-root of 1-3, re-solved by
+				!      hybrd1 and the Newton after it.
+				! A candidate outside the element simplex is projected
+				! onto it and judged again; a projection that is a root
+				! is kept (class 3) when no attempt gives a root without
+				! one, and the fourth solve is then not made.
+				! WHY THE FOURTH SOLVE. The analytic-Jacobian Newton of
+				! solve_ieq is a damped Newton from one starting point; an
+				! attempt can end on a bounded non-root (the Newton without
+				! an admissible step, hybrd1 from the same guess leaving a
+				! basin) or on the mirror root x = -x* of a stage whose
+				! electrons are its own ions, outside the element simplex
+				! (ionization_fractions_physical) and refused. The bounded
+				! non-root is a different starting point, from which
+				! hybrd1's trust region and the Newton after it (its
+				! correction resolves every unknown, newton_solver) reach
+				! the root; the result faces the same judge as every other
+				! attempt, and a cell that has a root among attempts 1-3
+				! never reaches it.
 				! Attempt 1 is accepted as it stands whenever it converges to
 				! a physical root within tolerance, so a healthy cell takes
 				! exactly the same solver path as before.
@@ -3279,17 +3551,38 @@
 				info_best = 0
 				viol_best = 0.0d0
 				have_nonroot = .false.
-				do iatt = 1,3
+				have_projected = .false.
+				do iatt = 1,4
 					if (iatt .eq. 2) then
 						call ionization_balance_at_fixed_ne(sys_x,N_eq,   &
 						                                    mbase,ne(j))
 						n_ieq_retry = n_ieq_retry + 1
 					else if (iatt .eq. 3) then
 						sys_x(1:N_eq) = 0.0d0
+					else if (iatt .eq. 4) then
+						if (best_rank .gt. 0 .or. have_projected .or.     &
+						    .not. have_nonroot) exit
+						sys_x(1:N_eq) = x_nonroot(1:N_eq)
+						n_ieq_retry = n_ieq_retry + 1
 					endif
 					call impose_transported_fractions(sys_x, N_eq, 0)
 
-					if (thereis_HeITR .and. thereis_metals) then
+					if (iatt .eq. 4 .and. .not. thereis_HeITR) then
+						! The re-solve of the bounded non-root (above); the
+						! He 2^3S systems below are solved by hybrd1 in every
+						! attempt.
+						if (thereis_metals) then
+							call hybrd1_resolving_every_unknown(           &
+							            ion_system_HeH_metals,N_eq,sys_x, &
+							            sys_sol,tol,info,wa,lwa,params)
+						else
+							call hybrd1_resolving_every_unknown(           &
+							            ion_system_HeH,N_eq,sys_x,sys_sol,&
+							            tol,info,wa,lwa,params)
+						endif
+						conv_ieq = (info .eq. 1)
+						info_ieq = info
+					else if (thereis_HeITR .and. thereis_metals) then
 						! Merged He-triplet + metals: triplet at sys_x(4),
 						! metals at sys_x(5..). The cell-by-cell metal
 						! coefficients (set_metal_coeffs) and charge-exchange
@@ -3298,7 +3591,8 @@
 						! exchange at the shifted metal rows for the merged
 						! solve.
 						cx_metal_base = 5
-						call hybrd1(ion_system_HeH_TR_metals,N_eq,sys_x,  &
+						call hybrd1_resolving_every_unknown(                &
+						            ion_system_HeH_TR_metals,N_eq,sys_x,  &
 						            sys_sol,tol,info,wa,lwa,params)
 						cx_metal_base = 4
 						conv_ieq = (info .eq. 1)
@@ -3306,7 +3600,8 @@
 					else if (thereis_HeITR) then
 						if (j .eq. ieq_dump_cell)                         &
 							x_ieq_dump_start(1:N_eq) = sys_x(1:N_eq)
-						call hybrd1(ion_system_HeH_TR,N_eq,sys_x,sys_sol, &
+						call hybrd1_resolving_every_unknown(                &
+						            ion_system_HeH_TR,N_eq,sys_x,sys_sol, &
 						            tol,info,wa,lwa,params)
 						conv_ieq = (info .eq. 1)
 						info_ieq = info
@@ -3342,7 +3637,7 @@
 					res_att = 0.0d0
 					if (phys_ieq) then
 						res_att = normalized_reaction_residual(sys_x,     &
-						                              N_eq,mbase,ne(j))
+						                              N_eq,mbase)
 						if (conv_ieq) then
 							hist_conv(residual_decade(res_att)) =         &
 								hist_conv(residual_decade(res_att)) + 1
@@ -3370,6 +3665,37 @@
 						res_nonroot  = res_att
 						info_nonroot = info_ieq
 					endif
+					! A CANDIDATE OUTSIDE THE SIMPLEX IS PROJECTED ONTO IT
+					! AND JUDGED AGAIN. A root on a face (a stage at a
+					! fraction near zero, a neutral remainder of a fully
+					! ionized metal) is resolved to epsilon(1) of its
+					! element (newton_solver) and can come back that far
+					! outside it (MEASURED with hybrd1 alone, on
+					! wasp_full_newton: excursions of 4e-14 to 2e-13 of
+					! the element). The projection (clamp_fractions_to_element_
+					! budget) moves it onto the face, and it is a root when
+					! the measure at the projected state says so (class 3,
+					! the molecular rule). The mirror root of a stage whose
+					! electrons are its own ions projects to x = 0, where
+					! the row is its whole production: not a root.
+					if (.not. phys_ieq .and. best_rank .eq. 0 .and.       &
+					    .not. have_projected) then
+						x_projected(1:N_eq) = sys_x(1:N_eq)
+						call clamp_fractions_to_element_budget(          &
+						              x_projected,N_eq,mbase)
+						call impose_transported_fractions(x_projected,    &
+						              N_eq, 0)
+						if (ionization_fractions_physical(x_projected,    &
+						                           N_eq,mbase)) then
+							res_projected = normalized_reaction_residual( &
+							              x_projected,N_eq,mbase)
+							if (res_projected .le. ieq_res_tol) then
+								have_projected = .true.
+								viol_projected =                         &
+								  element_budget_violation(sys_x,N_eq,mbase)
+							endif
+						endif
+					endif
 					if (ok_rank .eq. 2) exit
 				enddo
 
@@ -3385,6 +3711,11 @@
 					acc_class = 2
 					acc_res   = res_best
 					info_ieq  = info_best
+				else if (have_projected) then
+					sys_x(1:N_eq) = x_projected(1:N_eq)
+					acc_class = 3
+					acc_res   = res_projected
+					viol_best = viol_projected
 				else if (have_nonroot) then
 					sys_x(1:N_eq) = x_nonroot(1:N_eq)
 					acc_class = 4
@@ -3410,7 +3741,7 @@
 					n_ieq_fail = n_ieq_fail + 1
 					if (ionization_fractions_physical(sys_x,N_eq,mbase)) then
 						acc_res   = normalized_reaction_residual(sys_x,N_eq,   &
-						                                         mbase,ne(j))
+						                                         mbase)
 						acc_class = 3
 						if (acc_res .gt. ieq_res_tol) acc_class = 4
 					else
@@ -3418,7 +3749,7 @@
 						                element_budget_violation(sys_x,N_eq,mbase))
 						sys_x(1:N_eq) = x_entry(1:N_eq)
 						acc_res   = normalized_reaction_residual(sys_x,N_eq,   &
-						                                         mbase,ne(j))
+						                                         mbase)
 						acc_class = 6
 					endif
 				endif
@@ -3439,7 +3770,7 @@
 					if (acc_class .eq. 6) then
 						sys_x(1:N_eq) = x_entry(1:N_eq)
 						acc_res = normalized_reaction_residual(sys_x,N_eq,     &
-						                                       mbase,ne(j))
+						                                       mbase)
 					endif
 				endif
 				! Has the cell's own field stopped moving its own composition
@@ -3468,6 +3799,12 @@
 				if (last_self) then
 					n_acc(acc_class) = n_acc(acc_class) + 1
 					ieq_cell_acceptance_class(j) = acc_class
+					ieq_cell_acceptance_res(j)   = acc_res
+					if (ieq_class_record_on)                               &
+						res_rec = normalized_reaction_residual(sys_x,N_eq, &
+						     mbase,                                        &
+						     turnover_share_out=ieq_cell_row_share(1:N_eq,j),&
+						     own_row_out=ieq_cell_row_own(1:N_eq,j))
 					if (finite_real(acc_res))                              &
 						acc_resmax(acc_class) =                            &
 							max(acc_resmax(acc_class),acc_res)
@@ -3523,10 +3860,15 @@
 			else
 				! The transported stages are written as imposed (as in the
 				! molecular branch above).
+				! An admitted state lies within fraction_resolution of the
+				! simplex (ionization_fractions_physical); a fraction or a
+				! neutral remainder inside that band is on the face, and is
+				! written there, never as a negative density.
+				sys_x(1:N_eq) = max(sys_x(1:N_eq), 0.0d0)
 				call impose_transported_fractions(sys_x, N_eq, 0)
-				nhi(j)    = nh(j)*(1.0d0 - sys_x(1))
+				nhi(j)    = nh(j)*max(1.0d0 - sys_x(1), 0.0d0)
 				nhii(j)   = nh(j)*sys_x(1)
-				nhei(j)   = nhe(j)*(1.0d0 - sys_x(2) - sys_x(3))
+				nhei(j)   = nhe(j)*max(1.0d0 - sys_x(2) - sys_x(3), 0.0d0)
 				nheii(j)  = nhe(j)*sys_x(2)
 				nheiii(j) = nhe(j)*sys_x(3)
 				if (thereis_HeITR) nheiTR(j) = nhe(j)*sys_x(4)
@@ -3537,11 +3879,15 @@
 					nm(j,i0+1) = nm_tot(j,im)*sys_x(mbase+2*(im-1))
 					if (melem_top(im) .ge. 2) then
 						nm(j,i0+2) = nm_tot(j,im)*sys_x(mbase+1+2*(im-1))
-						nm(j,i0)   = nm_tot(j,im)                            &
-						           *(1.0 - sys_x(mbase+2*(im-1)) - sys_x(mbase+1+2*(im-1)))
+						! The neutral remainder, on the face where the
+						! admitted state is within its resolution of it.
+						nm(j,i0)   = nm_tot(j,im)*max(1.0d0                  &
+						           - sys_x(mbase+2*(im-1))                     &
+						           - sys_x(mbase+1+2*(im-1)), 0.0d0)
 					else
 						! Two-stage element: neutral = total - singly ionized.
-						nm(j,i0)   = nm_tot(j,im)*(1.0 - sys_x(mbase+2*(im-1)))
+						nm(j,i0)   = nm_tot(j,im)*max(1.0d0                  &
+						           - sys_x(mbase+2*(im-1)), 0.0d0)
 					endif
 				enddo
 				! O I means FREE ATOMIC neutral oxygen with the oxygen
@@ -3601,58 +3947,60 @@
 				n_mol_clamped, ' cell(s), clamped onto the element budget'
 		endif
 
-		! One summary line per sweep whenever a state left the physical
-		! simplex: how many cells had their stored state rejected as a
-		! starting point, how many first roots were outside the simplex, and
-		! how many ended on the ionization balance because no starting point
-		! produced an admissible root. A cell that is merely retried because
-		! the solver did not reach its tolerance is routine and stays silent
-		! here; it is counted in the run-wide totals reported at the end.
-		if (n_ieq_reseed + n_ieq_unphys + n_ieq_fail .gt. 0) then
-			write(*,'(A,I0,A,I0,A,I0,A,I0,A)')                             &
-				' (ioniz_eq) step ', marching_step,                                &
-				': ionization roots - ', n_ieq_reseed,                     &
-				' stored state(s) rejected, ', n_ieq_unphys,               &
-				' root(s) outside the simplex, no admissible root at ',    &
-				n_ieq_fail, ' cell(s)'
-		endif
-
-		! This sweep's totals, then into the ledger of the state kind the
-		! sweep was tagged with. A steady-solver probe never reaches the
-		! ledgers of the states the run holds.
-		ledger_sweep%n_sweep       = 1
-		ledger_sweep%n_reseed      = n_ieq_reseed
-		ledger_sweep%n_retry       = n_ieq_retry
-		ledger_sweep%n_unphys      = n_ieq_unphys
-		ledger_sweep%n_noroot      = n_ieq_fail
-		ledger_sweep%n_mol_clamped = n_mol_clamped
-		ledger_sweep%n_mol_info(:) = n_mol_info(:)
-		ledger_sweep%acc_n(:)      = n_acc(:)
-		ledger_sweep%acc_resmax(:) = acc_resmax(:)
-		ledger_sweep%hist_conv(:)  = hist_conv(:)
-		ledger_sweep%hist_uncv(:)  = hist_uncv(:)
-		ledger_sweep%n_cce_attempt = n_cce_attempt
-		ledger_sweep%n_cce_root    = n_cce_root
-		ledger_sweep%n_cce_solve   = n_cce_solve
-		ledger_sweep%cce_seconds   = cce_seconds
-		ledger_sweep%n_nonfinite   = n_res_nonfinite
-		! Every cell at which no starting point stayed inside the element
-		! simplex: the molecular clamp and the atomic handback are the two
-		! ways that ends.
-		ledger_sweep%n_offsimplex  = n_mol_clamped + n_ieq_fail
-		ledger_sweep%viol_worst    = viol_sweep_worst
-		ledger_sweep%n_ghost_open  = n_ghost_h2_open
-
-		! The non-root streak counts CONSECUTIVE sweeps of a state the run
-		! holds; a probe sweep leaves it alone (nonroot_streak_update), so
-		! its peak belongs to the two ledgers of held states and stays zero
-		! in the probe ledger.
-		if (ieq_sweep_state_kind .ne. ieq_state_steady_candidate)          &
-			ledger_sweep%streak_peak = maxval(ieq_nonroot_streak)
-
-		call add_to_ioniz_eq_ledger(ledger_sweep)
-
 	endif
+
+	! One summary line per sweep whenever a state left the physical
+	! simplex: how many cells had their stored state rejected as a
+	! starting point, how many first roots were outside the simplex, and
+	! how many ended on the ionization balance because no starting point
+	! produced an admissible root. A cell that is merely retried because
+	! the solver did not reach its tolerance is routine and stays silent
+	! here; it is counted in the run-wide totals reported at the end.
+	if (n_ieq_reseed + n_ieq_unphys + n_ieq_fail .gt. 0) then
+		write(*,'(A,I0,A,I0,A,I0,A,I0,A)')                             &
+			' (ioniz_eq) step ', marching_step,                                &
+			': ionization roots - ', n_ieq_reseed,                     &
+			' stored state(s) rejected, ', n_ieq_unphys,               &
+			' root(s) outside the simplex, no admissible root at ',    &
+			n_ieq_fail, ' cell(s)'
+	endif
+
+	! This sweep's totals, then into the ledger of the state kind the
+	! sweep was tagged with. A steady-solver probe never reaches the
+	! ledgers of the states the run holds.
+	ledger_sweep%n_sweep       = 1
+	ledger_sweep%n_reseed      = n_ieq_reseed
+	ledger_sweep%n_retry       = n_ieq_retry
+	ledger_sweep%n_unphys      = n_ieq_unphys
+	ledger_sweep%n_noroot      = n_ieq_fail
+	ledger_sweep%n_mol_clamped = n_mol_clamped
+	ledger_sweep%n_mol_info(:) = n_mol_info(:)
+	ledger_sweep%acc_n(:)      = n_acc(:)
+	ledger_sweep%acc_resmax(:) = acc_resmax(:)
+	ledger_sweep%hist_conv(:)  = hist_conv(:)
+	ledger_sweep%hist_uncv(:)  = hist_uncv(:)
+	ledger_sweep%n_cce_attempt = n_cce_attempt
+	ledger_sweep%n_cce_root    = n_cce_root
+	ledger_sweep%n_cce_solve   = n_cce_solve
+	ledger_sweep%cce_seconds   = cce_seconds
+	ledger_sweep%n_nonfinite   = n_res_nonfinite
+	! Every cell at which no starting point stayed inside the element
+	! simplex: the molecular clamp and the atomic handback are the two
+	! ways that ends.
+	ledger_sweep%n_offsimplex  = n_mol_clamped + n_ieq_fail
+	ledger_sweep%viol_worst    = viol_sweep_worst
+	ledger_sweep%n_ghost_open  = n_ghost_h2_open
+
+	! The non-root streak counts CONSECUTIVE sweeps of a state the run
+	! holds; a probe sweep leaves it alone (nonroot_streak_update), so
+	! its peak belongs to the two ledgers of held states and stays zero
+	! in the probe ledger.
+	if (ieq_sweep_state_kind .ne. ieq_state_steady_candidate)          &
+		ledger_sweep%streak_peak = maxval(ieq_nonroot_streak)
+
+	call add_to_ioniz_eq_ledger(ledger_sweep)
+
+	call record_acceptance_classes_of_sweep()
 
 	if (present(sweep_ledger)) sweep_ledger = ledger_sweep
 	ieq_sweep_ledger_last = ledger_sweep
@@ -4254,6 +4602,50 @@
 
 	!----------------------------------!
 
+	subroutine record_acceptance_classes_of_sweep()
+	! The acceptance class and the normalized reaction residual of every
+	! cell the last sweep solved, written over output/ieq_acceptance_
+	! classes.txt when EXHALE_IEQ_CLASS_RECORD is set (declaration of
+	! ieq_class_record_on). Called once per sweep, outside the cell loop.
+	integer :: jc, ju, ios, nr, i
+	character(len=64) :: fmt_rec
+	if (.not. ieq_class_record_requested()) return
+	if (.not. allocated(ieq_cell_acceptance_class)) return
+	open(newunit=ju, file='output/ieq_acceptance_classes.txt',             &
+	     status='replace', action='write', iostat=ios)
+	if (ios .ne. 0) return
+	nr = ieq_class_record_nrow
+	write(ju,'(A,I0,A,I0,A)') '# columns: cell r[R_p] acceptance_class '// &
+	     'normalized_reaction_residual, then for rows 1..', nr,            &
+	     ' the share of the group turnover (P+L)_i/G_E, then for rows 1..',&
+	     nr, ' |f_i|/(P+L)_i (0 for a constraint row or a row without '// &
+	     'reaction)'
+	write(fmt_rec,'(A,I0,A)') '(I6,ES24.15E3,I3,ES24.15E3,', 2*nr,     &
+	                          'ES12.4E3)'
+	do jc = lbound(ieq_cell_acceptance_class,1),                           &
+	        ubound(ieq_cell_acceptance_class,1)
+		if (ieq_cell_acceptance_class(jc) .eq. 0) cycle
+		write(ju,fmt_rec) jc, r(jc), ieq_cell_acceptance_class(jc),        &
+		      ieq_cell_acceptance_res(jc),                                 &
+		      (ieq_cell_row_share(i,jc), i=1,nr),                          &
+		      (ieq_cell_row_own(i,jc), i=1,nr)
+	enddo
+	close(ju)
+	end subroutine record_acceptance_classes_of_sweep
+
+	logical function ieq_class_record_requested()
+	! Whether EXHALE_IEQ_CLASS_RECORD is set; read once for the run.
+	character(len=32) :: env
+	if (.not. ieq_class_record_read) then
+		call get_environment_variable('EXHALE_IEQ_CLASS_RECORD', env)
+		ieq_class_record_on   = (len_trim(env) .gt. 0)
+		ieq_class_record_read = .true.
+	endif
+	ieq_class_record_requested = ieq_class_record_on
+	end function ieq_class_record_requested
+
+	!----------------------------------!
+
 	logical function ionization_fractions_physical(x,n,mbase) result(ok)
 	! Is a root of the equilibrium system a physically admissible state?
 	!
@@ -4263,23 +4655,38 @@
 	!   (ii) for each element, the tracked ionized stages summing to <= 1,
 	!        the neutral stage being the remainder 1 - sum.
 	! The residuals are polynomials in the fractions and do admit roots
-	! outside this simplex; such a root gives a negative neutral density and
-	! is not a solution of the physical problem, however small the residual.
-	! Downstream it poisons the photoionization integrals (a negative
-	! absorber column gives negative photoheating) and the element budget.
+	! outside this simplex, and such a root is not a solution of the
+	! physical problem however small its residual: a negative density. The
+	! mirror root of a stage whose electrons are its own ions is one: with
+	! n_e = x n_H the H+ row n_H g (1 - x) - n_H^2 alpha x^2 has the root
+	! x = -x* beside x* (to O(x*^2)), with n(H+) = n_e < 0 (on
+	! hydrostatic_column, x = -8e-12, n(H+) = -8.9e-2 cm^-3 at 1.31 R_p;
+	! update log stage 3 sections 116.3 and 118). Downstream it poisons the
+	! photoionization integrals (a negative absorber column gives negative
+	! photoheating), the electron density and the element budget.
 	!
-	! The comparisons carry a small tolerance so that a root sitting on a
-	! face of the simplex (a fully neutral or fully ionized element) is not
-	! rejected for round-off; it is far below the violations this test is
-	! meant to catch (fractions of ~1e-6 to ~1e-1 outside the simplex).
-	!
-	! Widening it to the solver's own xtol = sqrt(machine epsilon) was tried
-	! and measured: it lets a cell stop on a root that sits just outside a
-	! face instead of retrying from another starting point, and the retried
-	! root is the better one. On examples/15 (HD 209458 b, molecular, cold)
-	! the wider band turns info = 0 at ||R|| = 6.105e-6 in 89 outer
-	! iterations into info = 2 at 1.112e-4 in 133, so the band stays at
-	! round-off.
+	! THE BOUND IS THE RESOLUTION OF A FRACTION AT ITS ELEMENT TOTAL. The
+	! rounding of a number keeps its sign, so a fraction whose root is
+	! zero or positive comes out negative only through a sum or difference
+	! formed at the scale of the element total, whose spacing is
+	! fraction_resolution = epsilon(1) = 2.2e-16 (chemical_row_layout): a
+	! root on a face of the simplex (a fully neutral or fully ionized
+	! element, an absent stage) delivered to that resolution. A fraction
+	! below -fraction_resolution is a negative density and the candidate
+	! is not a root. The neutral remainder 1 - s is a fraction of the same
+	! element with the same resolution, and forming s from k terms, each
+	! at most one, adds at most (k - 1) epsilon/2 of rounding, so the
+	! tracked stages may exceed 1 by at most k fraction_resolution (k the
+	! number of terms summed, the converted ones counted like the others:
+	! a product rounds to epsilon of itself). A state admitted with a
+	! fraction in [-fraction_resolution, 0) or a remainder in
+	! [-k fraction_resolution, 0) is on that face to the resolution of the
+	! composition, and the densities extracted from it are written on the
+	! face (ioniz_eq, extraction). A refused candidate is not a root: the
+	! sweep retries the cell from its other starting points and, failing
+	! those, takes the constrained continuation (positive densities by
+	! construction) or projects the closest candidate onto the simplex and
+	! rechecks its residual (acceptance classes 3 to 6).
 	!
 	! Layout: x(1) = H II / H, x(2) = He II / He, x(3) = He III / He,
 	! x(4) = He 2^3S / He when the triplet is tracked (x(8) in the molecular
@@ -4288,8 +4695,7 @@
 
 	integer, intent(in) :: n, mbase
 	real*8,  intent(in) :: x(n)
-	real*8, parameter   :: ftol = 1.0d-10
-	integer :: im, ix, iy
+	integer :: im, ix, iy, k
 	real*8  :: s
 
 	ok = .false.
@@ -4301,19 +4707,22 @@
 	! the helium budget below. Leaving them out lets a root whose free
 	! atomic H is negative pass the test, and the extraction then clips it
 	! to zero and loses the nuclei.
-	if (x(1) .lt. -ftol) return
+	if (x(1) .lt. -fraction_resolution) return
 	s = x(1)
+	k = 1
 	if (thereis_mol) then
 		do ix = 4,7
-			if (x(ix) .lt. -ftol) return
+			if (x(ix) .lt. -fraction_resolution) return
 			s = s + x(ix)
 		enddo
+		k = k + 4
 	endif
 	if (thereis_oxychem .and. ieq_cell%nh .gt. 0.0d0) then
 		iy = oxygen_row_base()
 		s = s + (x(iy) + 2.0d0*x(iy+1))*ieq_cell%n_ofam/ieq_cell%nh
+		k = k + 2
 	endif
-	if (s .gt. 1.0d0 + ftol) return
+	if (s .gt. 1.0d0 + dble(k)*fraction_resolution) return
 
 	! Helium nuclei: He II, He III, the 2^3S metastable (which the systems
 	! carry as a separate level inside the neutral stage) and, in the
@@ -4322,18 +4731,22 @@
 	! that negative is inadmissible even when x2 + x3 <= 1; x(7) is HeH+ per
 	! H nucleus, hence the n_H/n_He conversion from this cell's state.
 	if (thereis_He) then
-		if (x(2) .lt. -ftol) return
-		if (x(3) .lt. -ftol) return
+		if (x(2) .lt. -fraction_resolution) return
+		if (x(3) .lt. -fraction_resolution) return
 		s = x(2) + x(3)
+		k = 2
 		if (thereis_HeITR) then
 			ix = 4
 			if (thereis_mol) ix = 8
-			if (x(ix) .lt. -ftol) return
+			if (x(ix) .lt. -fraction_resolution) return
 			s = s + x(ix)
+			k = k + 1
 		endif
-		if (thereis_mol .and. ieq_cell%nhe .gt. 0.0d0)                &
+		if (thereis_mol .and. ieq_cell%nhe .gt. 0.0d0) then
 			s = s + x(7)*ieq_cell%nh/ieq_cell%nhe
-		if (s .gt. 1.0d0 + ftol) return
+			k = k + 1
+		endif
+		if (s .gt. 1.0d0 + dble(k)*fraction_resolution) return
 	endif
 
 	! Each metal element separately: X+ (+ X++ for the three-stage elements).
@@ -4343,19 +4756,22 @@
 	if (thereis_metals) then
 		do im = 1,n_melem
 			ix = mbase + 2*(im-1)
-			if (x(ix) .lt. -ftol) return
+			if (x(ix) .lt. -fraction_resolution) return
 			s = x(ix)
+			k = 1
 			if (melem_top(im) .ge. 2) then
-				if (x(ix+1) .lt. -ftol) return
+				if (x(ix+1) .lt. -fraction_resolution) return
 				s = s + x(ix+1)
+				k = k + 1
 			endif
 			if (thereis_oxychem .and. im .eq. iel_O) then
 				iy = oxygen_row_base()
-				if (x(iy)   .lt. -ftol) return
-				if (x(iy+1) .lt. -ftol) return
+				if (x(iy)   .lt. -fraction_resolution) return
+				if (x(iy+1) .lt. -fraction_resolution) return
 				s = s + x(iy) + x(iy+1)
+				k = k + 2
 			endif
-			if (s .gt. 1.0d0 + ftol) return
+			if (s .gt. 1.0d0 + dble(k)*fraction_resolution) return
 		enddo
 	endif
 
@@ -4512,184 +4928,312 @@
 	!----------------------------------!
 
 	double precision function normalized_reaction_residual(x,n,mbase,       &
-	                                    n_e_ref,row_out,scale_out) result(res)
-	! Dimensionless reaction imbalance of a candidate equilibrium state: the
-	! residual vector of the SAME system the cell solve used, evaluated at x,
-	! with each balance row measured against its turnover scale -- the rate
-	! at which the species that row balances can be produced or destroyed in
-	! this cell (the section-93 convention: every species set to the whole of
-	! its element). A root has res -> 0 to the accuracy of the solve; element
+	                                    row_out,scale_out,refusal_reason,   &
+	                                    turnover_share_out,own_row_out,     &
+	                                    resolution_floor_out) result(res)
+	! THE MEASURE A CANDIDATE COMPOSITION IS JUDGED A ROOT BY: the residual
+	! vector of the SAME system the cell solve used, evaluated at x, each
+	! kinetic row against the chemical turnover of its element group AT THE
+	! CANDIDATE, each constraint row in its own units against its own
+	! tolerance. A root has res -> 0 to the accuracy of the solve; element
 	! bounds and conservation alone say nothing about it, which is why the
 	! acceptance test of ioniz_eq requires BOTH.
 	!
-	! The molecular systems already reach hybrd1 with every row divided by
-	! the chemical turnover of its element at x, charge exchange included
-	! (System_HeH_mol, mol_inv_turnover), so their residual is used as
-	! returned: each entry is the imbalance of one species balance against
-	! the turnover of its element at the candidate itself. The atomic
-	! systems are unscaled inside the solver (scaling would change the
-	! MINPACK path and the byte-identical history for no physical need), so
-	! the same style of scale is built here from this cell's own
-	! coefficients (ieq_cell, met_*): photo- and collisional ionization,
-	! recombination, charge exchange, and the He 2^3S kinetics where the
-	! triplet is tracked. n_e_ref is the cell's incoming electron density,
-	! as in set_mol_turnover_rates. A row whose scale vanishes carries no
-	! reaction: its residual is exactly zero and the scale is left at 1, as
-	! are the dimensionless identity rows (absent elements, the pinned X++
-	! of a two-stage element, a transported carrier's x - x_fix row).
+	! KINETIC ROWS (chemical_row_layout: species balances, stage-boundary
+	! flows, the summed He I balance) are production-loss balances
+	! P - L [cm^-3 s^-1]. The gross rate P + L of every row is formed by the
+	! row routines themselves, term by term from the same factors as the
+	! row, at the candidate's own composition and electron density, charge
+	! exchange included (ion_residual_core ionization_row_gross; the
+	! molecular systems with their rows as volume rates). Row i of group E
+	! is measured as
+	!     m_i = |f_i| / G_E ,   G_E = sum over the KINETIC rows j of E of
+	!                                 (P_j + L_j),
+	! the imbalance of the nucleus flux into one species against the flux of
+	! all the chemistry of its element (System_HeH_mol, mol_inv_turnover,
+	! states why the element and not the row's own gross rate). Groups:
+	! hydrogen, helium, each metal element; HeH+ is measured with hydrogen
+	! and OH, H2O with oxygen (chemical_row_layout). In the atomic layouts H+
+	! is the only hydrogen row, so its measure is |f_1|/(P_1 + L_1).
 	!
-	! Serves the He-branch acceptance only; the H-only system (System_H) has
-	! a single analytic balance with a unique root in [0,1] and no
-	! acceptance ladder.
+	! The scale is the turnover at the candidate and not an upper bound on
+	! it. The bound that stood here (every reactant at the whole of its
+	! element, the He 2^3S level at all of the helium in the Penning term)
+	! exceeded the gross H+ rate of the LHS 1140 b atomic state by 3.9e12 at
+	! its base and 2.1e2 at 26 R_p (MEASURED, md/Update_EXHALE_stage3.md
+	! section 106.4), so the tolerance admitted an H+ move of 1 per cent
+	! inside about 1.35 R_p.
 	!
-	! row_out (optional) returns the same measure ROW BY ROW,
-	! |fvec(i)|/srow(i), so that a caller can name the balance that is out
-	! rather than only its largest value: the He 2^3S level row of B1a
-	! section 2.5 is one row of this vector, and the certification reports
-	! it beside the closure it belongs to.
+	! CONSTRAINT ROWS (an absent element's identity rows, the unused X++ of
+	! a two-stage element, a transported fraction x - x_fix, the lower
+	! ghost's imposed reservoir partition) are dimensionless and carry no
+	! chemical turnover: they are judged as |f_i| against
+	! constraint_row_tol, written on the scale of the kinetic rows as
+	!     m_i = |f_i| ieq_res_tol / constraint_row_tol ,
+	! so that m_i <= ieq_res_tol exactly when |f_i| <= constraint_row_tol,
+	! and they do not enter any group turnover (the kinetic balance a
+	! constraint replaced is not an equation of the cell).
+	!
+	! REFUSALS. A row or a group turnover that is not a finite number makes
+	! the whole measure NaN (refusal_reason 1): the state has driven a
+	! balance of the network out of the reals, and the callers' finite test
+	! (finite_real) counts it and refuses it. A kinetic row of a group with
+	! no turnover at all and a nonzero imbalance makes the measure huge()
+	! (refusal_reason 2): no reaction can balance it, and huge() is a
+	! finite non-root above ieq_nonroot_res_cap, which the sweep refuses to
+	! class 6. A zero imbalance of a group with no turnover is a balanced
+	! row (m_i = 0). The maximum over the rows is taken only after both
+	! tests, never through max() on a NaN (max drops a NaN operand
+	! compiler- and order-dependently).
+	!
+	! THE H3+ ROW ALSO AGAINST ITS OWN GROSS RATE (layouts with molecules):
+	!     m_H3+ = max( |f|/G_H , (|f|/(P + L)) ieq_res_tol/h3p_row_balance_tol ),
+	! so that it passes only when |f| <= 1e-6 G_H and |f| <= 1e-3 (P + L).
+	! The group norm admits a relative error of a species up to about
+	! ieq_res_tol over its share of the group turnover, and H3+ is the one
+	! species measured to carry a share small enough for that to reach a
+	! tenth of its density where it carries the cooling
+	! (chemical_row_layout, h3p_row_balance_tol).
+	!
+	! THE RESOLUTION FLOOR. A kinetic row above the tolerance is accepted
+	! when the imbalance it has left is below what the composition can
+	! resolve: the Newton correction of its own unknown x_i,
+	!     dx_i = |f_i| / |df_i/dx_i|   (df_i/dx_i by a forward difference),
+	! is at most fraction_resolution = epsilon(1), the spacing of the
+	! floating-point numbers at the element total (every x is a fraction of
+	! the nuclei of an element, and a smaller change moves none of the
+	! element's sums: the neutral, the electrons; a correction below
+	! epsilon(1) |x_i|, below the resolution of x_i itself, is the special
+	! case of it), or the species and its root both stand below
+	! absent_element_density in nuclei, (|x_i| + dx_i) n_E <= 1e-30 cm^-3
+	! (the species is absent). Such a row is at its root to the resolution
+	! of the state, and no representable composition is closer to it: on
+	! the column without ionizing radiation (regression case
+	! hydrostatic_column) x(H+) <= 4e-17 above 1.0097 R_p carries an H+ row
+	! out of balance by 1e-6 to 1e-3 of its gross rate, whose correction is
+	! of the order of x(H+) itself (MEASURED, md/Update_EXHALE_stage3.md
+	! section 112.5). A row of a group with no turnover and a nonzero
+	! imbalance, and a nonfinite row, are never floored. The row's measure
+	! is then 0 and resolution_floor_out marks it.
+	!
+	! Optional outputs, row by row:
+	!   row_out             m_i (0 for a row accepted by the resolution
+	!                       floor)
+	!   scale_out           what |f_i| is divided by: G_E for a kinetic
+	!                       row, constraint_row_tol/ieq_res_tol for a
+	!                       constraint row
+	!   refusal_reason      0 none, 1 nonfinite, 2 zero turnover with a
+	!                       nonzero imbalance
+	!   turnover_share_out  (P_i + L_i)/G_E of a kinetic row (0 for a
+	!                       constraint row): the share of its group's
+	!                       turnover a row carries, which bounds the
+	!                       relative error of its species the group norm
+	!                       admits (the record of EXHALE_IEQ_CLASS_RECORD)
+	!   own_row_out         |f_i|/(P_i + L_i), the row against its own
+	!                       gross rate (0 where the row carries none)
+	!   resolution_floor_out  .true. for a row accepted by the resolution
+	!                       floor
 	integer, intent(in) :: n, mbase
 	real*8,  intent(in) :: x(n)
-	real*8,  intent(in) :: n_e_ref
-	real*8,  intent(out), optional :: row_out(n)
-	! scale_out (optional) returns the turnover scale each row is divided
-	! by, after the vanishing-scale rule below (a scale <= 0 counts as 1).
-	real*8,  intent(out), optional :: scale_out(n)
-	real*8  :: fv(n), srow(n), par(60), el_tot(12), scale_held(n)
-	logical :: scaled_held
-	real*8  :: nH, nHe, ne, cx_heh, cx_hepp, s
-	integer :: iflag, i, e, ix
+	real*8,  intent(out), optional :: row_out(n), scale_out(n)
+	integer, intent(out), optional :: refusal_reason
+	real*8,  intent(out), optional :: turnover_share_out(n), own_row_out(n)
+	logical, intent(out), optional :: resolution_floor_out(n)
+	real*8  :: fv(n), gross(n), inv(n), g_group(n), m(n)
+	real*8  :: fp(n), gp(n), xp(n), own, h, dfdx, dx, n_elem
+	integer :: status(n), i, nmet, reason, e
+	logical :: floored(n)
+	real*8  :: no_metal_ntot(1)
+	integer :: no_metal_top(1)
+	type(chemical_row_layout_of_cell) :: layout
+	real*8, parameter :: constraint_weight = ieq_res_tol/constraint_row_tol
+	real*8, parameter :: h3p_own_weight    = ieq_res_tol/h3p_row_balance_tol
 
-	par(:)    = 0.0d0                 ! transport argument only, unread
-	iflag     = 1
-	srow(1:n) = 1.0d0
+	nmet   = 0
+	if (thereis_metals) nmet = met_nelem
 
+	! The rows [cm^-3 s^-1] and their gross rates at x, from the system the
+	! cell solve used.
+	call rows_as_volume_rates(x, fv, gross)
+
+	call ionization_row_layout(layout, n, thereis_He, thereis_HeITR,       &
+	                           thereis_mol,                                &
+	                           thereis_oxychem .and. thereis_metals, nmet)
 	if (thereis_metals) then
-		el_tot(:) = 0.0d0
-		el_tot(1:met_nelem) = met_ntot(1:met_nelem)
-		el_tot(11) = ieq_cell%nh      ! cx_H
-		el_tot(12) = ieq_cell%nhe     ! cx_He
+		call mark_constraint_rows_of_cell(layout, ieq_cell, met_ntot,      &
+		                                  met_top)
+	else
+		! No metal rows: the element arrays are not read.
+		call mark_constraint_rows_of_cell(layout, ieq_cell, no_metal_ntot, &
+		                                  no_metal_top)
+	endif
+	call element_group_turnover_reciprocal(layout, gross, inv, status,     &
+	                                       .true., g_group)
+
+	reason = 0
+	do i = 1,n
+		if (is_constraint_row(layout%kind(i))) then
+			m(i) = abs(fv(i))*constraint_weight
+			if (present(scale_out)) scale_out(i) = 1.0d0/constraint_weight
+		else
+			if (present(scale_out)) scale_out(i) = g_group(i)
+			select case (status(i))
+			case (turnover_of_group, turnover_row_without_reaction)
+				m(i) = abs(fv(i))*inv(i)
+			case (turnover_group_without_reaction)
+				if (fv(i) .eq. 0.0d0) then
+					m(i) = 0.0d0
+				else
+					m(i) = huge(1.0d0)
+					if (reason .eq. 0) reason = 2
+				endif
+			case default
+				m(i)   = quiet_nan()
+				reason = 1
+			end select
+		endif
+		if (.not. finite_number(fv(i))) then
+			m(i)   = quiet_nan()
+			reason = 1
+		endif
+	enddo
+
+	! The H3+ row against its own gross rate as well (a NaN measure stays
+	! NaN: the comparison is false).
+	if (layout%has_molecules) then
+		do i = 1,n
+			if (layout%species(i) .ne. slot_H3p) cycle
+			if (is_constraint_row(layout%kind(i))) cycle
+			if (.not. (gross(i) .gt. 0.0d0 .and.                           &
+			           finite_number(gross(i)))) cycle
+			own = abs(fv(i))/gross(i)*h3p_own_weight
+			if (own .gt. m(i)) m(i) = own
+		enddo
 	endif
 
-	if (.not. thereis_He) then
-		! The H-only system: one balance row, and its turnover is the rate
-		! at which the cell can make or unmake a proton -- photoionization
-		! and collisional ionization of H0, radiative recombination.
-		call ion_system_H(n,x,fv,iflag,par)
-		srow(1) = (ieq_cell%P_HI                                          &
-		           + (ieq_cell%a_ion_HI + ieq_cell%rchiiB)*n_e_ref)       &
-		          *ieq_cell%nh
-	else if (thereis_mol) then
-		! Against the turnover of each element AT THE CANDIDATE, whatever
-		! scale the solve that produced it held; the scale in force is
-		! put back afterwards.
-		scale_held  = mol_row_scale(1:n)
-		scaled_held = mol_rows_by_element_turnover
-		call set_element_turnover_scales(x, n, mbase)
-		if (thereis_metals) then
-			cx_metal_base = mbase
-			call ion_system_HeH_mol_metals(n,x,fv,iflag,par)
-			cx_metal_base = 4
-		else
-			call ion_system_HeH_mol(n,x,fv,iflag,par)
-		endif
-		mol_row_scale(1:n)           = scale_held
-		mol_rows_by_element_turnover = scaled_held
-	else
-		! Atomic layouts: raw balance rows [cm^-3 s^-1] of the system the
-		! solve used, then the turnover scale of each row.
-		if (thereis_HeITR .and. thereis_metals) then
-			cx_metal_base = 5
-			call ion_system_HeH_TR_metals(n,x,fv,iflag,par)
-			cx_metal_base = 4
-		else if (thereis_HeITR) then
-			call ion_system_HeH_TR(n,x,fv,iflag,par)
-		else if (thereis_metals) then
-			call ion_system_HeH_metals(n,x,fv,iflag,par)
-		else
-			call ion_system_HeH(n,x,fv,iflag,par)
-		endif
-
-		nH  = ieq_cell%nh
-		nHe = ieq_cell%nhe
-		ne  = n_e_ref
-		cx_heh = (ieq_cell%kcx_He0_Hp + ieq_cell%kcx_Hep_H0)*nH*nHe
-		! He2+ + H0 -> He+ + H+ reaches rows (1) and (3) (boundary flows).
-		cx_hepp = ieq_cell%kcx_Hepp_H0*nH*nHe
-		! (1) H+ : photo- and collisional ionization of H0, radiative
-		!     recombination, He <-> H charge exchange; with the triplet
-		!     tracked, the Penning ionization source of heh_tr_rows.
-		srow(1) = (ieq_cell%P_HI                                          &
-		           + (ieq_cell%a_ion_HI + ieq_cell%rchiiB)*ne)*nH + cx_heh &
-		         + cx_hepp
-		if (thereis_HeITR) then
-			srow(1) = srow(1) + f_penning_HeI23S*ieq_cell%Q31*nHe*nH
-			! (2) summed He I balance of heh_tr_rows: both photoionization
-			!     channels, collisional ionization of ground and metastable
-			!     He I, and both recombination paths back into He I.
-			srow(2) = (ieq_cell%P_HeI + ieq_cell%P_HeITR                  &
-			           + (ieq_cell%a_ion_HeI + ieq_cell%a_ion_HeITR       &
-			              + ieq_cell%rcheiTR + ieq_cell%rcheiiB)*ne)*nHe  &
-			        + cx_heh
-			! (3) He+ <-> He++, and He2+ + H0 -> He+ + H+.
-			srow(3) = (ieq_cell%P_HeII                                    &
-			           + (ieq_cell%a_ion_HeII + ieq_cell%rcheiiiB)*ne)*nHe&
-			        + cx_hepp
-			! (4) He 2^3S: populated from He+ recombination and 1^1S
-			!     excitation, drained by photoionization, A31,
-			!     de-excitation, electron-impact and Penning ionization.
-			srow(4) = (ieq_cell%P_HeITR + ieq_cell%A31                    &
-			           + (ieq_cell%rcheiTR + ieq_cell%q13 + ieq_cell%q31g &
-			              + ieq_cell%q31a + ieq_cell%q31b                 &
-			              + ieq_cell%a_ion_HeITR)*ne)*nHe                 &
-			        + ieq_cell%Q31*nHe*nH
-		else
-			! (2)(3) the standard heh_rows balances.
-			srow(2) = (ieq_cell%P_HeI                                     &
-			           + (ieq_cell%a_ion_HeI + ieq_cell%rcheiiB)*ne)*nHe  &
-			        + cx_heh
-			srow(3) = (ieq_cell%P_HeII                                    &
-			           + (ieq_cell%a_ion_HeII + ieq_cell%rcheiiiB)*ne)*nHe&
-			        + cx_hepp
-		endif
-		if (thereis_metals) then
-			! X0 <-> X+ and X+ <-> X++ of each element (the metal_rows
-			! balances), plus the charge-exchange bound on every row it
-			! reaches; identity rows are then forced back to their
-			! dimensionless scale of 1.
-			do e = 1,met_nelem
-				ix = mbase + 2*(e-1)
-				if (met_ntot(e) .le. 1.0d-30) cycle
-				srow(ix) = met_ntot(e)*(met_g0(e)                         &
-				           + (met_b0(e) + met_a1(e))*ne)
-				if (met_top(e) .ge. 2)                                    &
-					srow(ix+1) = met_ntot(e)*((met_g1(e) + met_g02(e))    &
-					             + (met_b1(e) + met_a2(e))*ne)
-			enddo
-			cx_metal_base = mbase
-			call cx_add_to_turnover(srow, el_tot)
-			cx_metal_base = 4
-			do e = 1,met_nelem
-				ix = mbase + 2*(e-1)
-				if (met_ntot(e) .le. 1.0d-30) then
-					srow(ix)   = 1.0d0
-					srow(ix+1) = 1.0d0
-				else if (met_top(e) .lt. 2) then
-					srow(ix+1) = 1.0d0
-				endif
-			enddo
-		endif
+	! The resolution floor (header). Only a finite kinetic measure above
+	! the tolerance of a group with turnover is examined; the extra system
+	! evaluation is made for such a row alone.
+	floored = .false.
+	if (reason .ne. 1) then
+		do i = 1,n
+			if (is_constraint_row(layout%kind(i))) cycle
+			if (status(i) .ne. turnover_of_group .and.                     &
+			    status(i) .ne. turnover_row_without_reaction) cycle
+			if (.not. (m(i) .gt. ieq_res_tol)) cycle
+			! a step relative to x_i (a trace fraction of 1e-43 is
+			! differenced at its own size); an x_i of exactly zero is
+			! stepped by sqrt(eps) of the resolution
+			xp = x
+			h  = sqrt(fraction_resolution)*abs(x(i))
+			if (h .eq. 0.0d0)                                             &
+				h = sqrt(fraction_resolution)*fraction_resolution
+			xp(i) = x(i) + h
+			call rows_as_volume_rates(xp, fp, gp)
+			dfdx = (fp(i) - fv(i))/(xp(i) - x(i))
+			if (.not. (finite_number(dfdx) .and. dfdx .ne. 0.0d0)) cycle
+			dx = abs(fv(i)/dfdx)
+			e = layout%acceptance_group(i)
+			if (e .eq. 1) then
+				n_elem = ieq_cell%nh
+			else if (e .eq. 2) then
+				n_elem = ieq_cell%nhe
+			else if (e - 2 .le. nmet) then
+				n_elem = met_ntot(e - 2)
+			else
+				n_elem = huge(1.0d0)
+			endif
+			if (dx .le. fraction_resolution .or.                          &
+			    (abs(x(i)) + dx)*n_elem .le. absent_element_density) then
+				floored(i) = .true.
+				m(i) = 0.0d0
+			endif
+		enddo
+		! the gross rates of the candidate itself, for any reader of the
+		! array after this function
+		ionization_row_gross(1:n) = gross(1:n)
 	endif
 
 	res = 0.0d0
-	do i = 1,n
-		s = srow(i)
-		if (s .le. 0.0d0) s = 1.0d0
-		res = max(res, abs(fv(i))/s)
-		if (present(row_out)) row_out(i) = abs(fv(i))/s
-		if (present(scale_out)) scale_out(i) = s
-	enddo
+	if (reason .eq. 1) then
+		res = quiet_nan()
+	else
+		do i = 1,n
+			if (m(i) .gt. res) res = m(i)
+		enddo
+	endif
+
+	if (present(row_out)) row_out(1:n) = m(1:n)
+	if (present(refusal_reason)) refusal_reason = reason
+	if (present(turnover_share_out)) then
+		do i = 1,n
+			turnover_share_out(i) = 0.0d0
+			if (.not. is_constraint_row(layout%kind(i)) .and.              &
+			    status(i) .eq. turnover_of_group)                          &
+				turnover_share_out(i) = gross(i)*inv(i)
+		enddo
+	endif
+	if (present(own_row_out)) then
+		do i = 1,n
+			own_row_out(i) = 0.0d0
+			if (.not. is_constraint_row(layout%kind(i)) .and.              &
+			    gross(i) .gt. 0.0d0 .and. finite_number(gross(i)))         &
+				own_row_out(i) = abs(fv(i))/gross(i)
+		enddo
+	endif
+	if (present(resolution_floor_out)) resolution_floor_out(1:n) = floored
+
+	contains
+
+	! The rows of the system the cell solve used at the composition xv, as
+	! volume rates [cm^-3 s^-1], and their gross rates.
+	subroutine rows_as_volume_rates(xv, fvv, gv)
+	real*8, intent(in)  :: xv(n)
+	real*8, intent(out) :: fvv(n), gv(n)
+	real*8  :: xl(n), par(60)
+	integer :: iflag
+	logical :: volume_rates_held
+	xl     = xv
+	par(:) = 0.0d0                 ! transport argument only, unread
+	iflag  = 1
+	if (.not. thereis_He) then
+		call ion_system_H(n,xl,fvv,iflag,par)
+	else if (thereis_mol) then
+		volume_rates_held        = mol_rows_as_volume_rates
+		mol_rows_as_volume_rates = .true.
+		if (thereis_metals) then
+			cx_metal_base = mbase
+			call ion_system_HeH_mol_metals(n,xl,fvv,iflag,par)
+			cx_metal_base = 4
+		else
+			call ion_system_HeH_mol(n,xl,fvv,iflag,par)
+		endif
+		mol_rows_as_volume_rates = volume_rates_held
+	else
+		if (thereis_HeITR .and. thereis_metals) then
+			cx_metal_base = 5
+			call ion_system_HeH_TR_metals(n,xl,fvv,iflag,par)
+			cx_metal_base = 4
+		else if (thereis_HeITR) then
+			call ion_system_HeH_TR(n,xl,fvv,iflag,par)
+		else if (thereis_metals) then
+			call ion_system_HeH_metals(n,xl,fvv,iflag,par)
+		else
+			call ion_system_HeH(n,xl,fvv,iflag,par)
+		endif
+	endif
+	gv(1:n) = ionization_row_gross(1:n)
+	end subroutine rows_as_volume_rates
 
 	end function normalized_reaction_residual
+
+	!----------------------------------!
+
+	double precision function quiet_nan()
+	! A quiet NaN, formed from its bit pattern so that no arithmetic on a
+	! NaN is needed (and none can be folded away).
+	quiet_nan = transfer(int(z'7FF8000000000000', 8), 1.0d0)
+	end function quiet_nan
 
 	!----------------------------------!
 
@@ -5147,7 +5691,7 @@
 	par(:) = 0.0d0
 	iflag  = 1
 	call ion_system_HeH_TR(nx, x_ret, fv, iflag, par)
-	res = normalized_reaction_residual(x_ret, nx, 5, ne_cell,           &
+	res = normalized_reaction_residual(x_ret, nx, 5,                    &
 	                                   row_out=rowres, scale_out=srow)
 	do k = 1, nx
 		xp(1:nx) = x_ret(1:nx)
@@ -5512,7 +6056,7 @@
 		do e = 1, met_nelem
 			ix = mbase + 2*(e-1)
 			if (ix+1 .gt. nx) cycle
-			if (met_ntot(e) .le. 1.0d-30) cycle
+			if (met_ntot(e) .le. absent_element_density) cycle
 			conv(ix) = 1.0d0/met_ntot(e)
 			keep(ix) = .true.
 			if (met_top(e) .ge. 2) then
@@ -5966,7 +6510,7 @@
 		ix = mbase + 2*(im-1)
 		x(ix)   = 0.0d0
 		x(ix+1) = 0.0d0
-		if (met_ntot(im) .le. 1.0d-30) cycle
+		if (met_ntot(im) .le. absent_element_density) cycle
 		top = met_top(im)
 		u0  = met_g0(im) + met_b0(im)*n_e
 		d1  = met_a1(im)*n_e
@@ -6247,7 +6791,7 @@
 	call save_ieq_closure_scratch(ws)
 	call ieq_install_cell(j)
 	res = normalized_reaction_residual(x, nx, ieq_mbase_stored,          &
-	                                   ieq_ne_cell(j), rowres)
+	                                   rowres)
 	call restore_ieq_closure_scratch(ws)
 	if (.not. ieq_closure_scratch_matches(ws))                           &
 		write(*,'(A)') ' (closure residual) WARNING: the cell scratch '// &
@@ -6329,7 +6873,7 @@
 		call ieq_state_vector(j, rho, f_sp, xv, nx)
 		call ieq_install_cell(j)
 		res(j) = normalized_reaction_residual(xv(1:nx), nx,               &
-		                    ieq_mbase_stored, ieq_ne_cell(j), rv(1:nx))
+		                    ieq_mbase_stored, rv(1:nx))
 		if (itr .gt. 0 .and. itr .le. nx) res_triplet(j) = rv(itr)
 	enddo
 	call restore_ieq_closure_scratch(ws)

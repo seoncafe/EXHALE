@@ -135,6 +135,7 @@ SRC := \
   src/modules/functions/binary_element_diffusion.f90 \
   src/modules/functions/ionization_stage_transport.f90 \
   src/modules/lower_atmosphere/lower_column.f90 \
+  src/modules/lower_atmosphere/h3p_mizatep_cooling_table.f90 \
   src/modules/lower_atmosphere/h3p_cooling.f90 \
   src/modules/lower_atmosphere/molecular_infrared_data.f90 \
   src/modules/lower_atmosphere/molecular_infrared_cooling.f90 \
@@ -158,6 +159,7 @@ SRC := \
   src/modules/time_step/steady_newton.f90 \
   src/modules/time_step/coupled_block_handover.f90 \
   src/modules/nonlinear_system_solver/ion_cell_state.f90 \
+  src/modules/nonlinear_system_solver/chemical_row_layout.f90 \
   src/modules/nonlinear_system_solver/ion_residual_core.f90 \
   src/modules/nonlinear_system_solver/dogleg.f90 \
   src/modules/nonlinear_system_solver/enorm.f90 \
@@ -206,6 +208,7 @@ SRC := \
   src/modules/flux/Num_Fluxes.f90 \
   src/modules/flux/low_mach_dissipation.f90 \
   src/modules/flux/species_face_flux.f90 \
+  src/modules/flux/adiabatic_entropy_transport.f90 \
   src/modules/time_step/RK_rhs.f90 \
   src/modules/time_step/eval_dt.f90 \
   src/modules/time_step/energy_semi_implicit.f90 \
@@ -341,7 +344,7 @@ element_census_tests: $(ECT_EXE)
 # Empty (the default) leaves the case list to the script, which then runs its
 # DEFAULT_CASES. The reference directory and the tolerance are the script's
 # own environment variables (REGRESSION_GOLDEN_DIR, REGRESSION_REL_TOL), so
-#     make check CASES=wasp_full REGRESSION_GOLDEN_DIR=$(PWD)/backup/regression/baseline_post170_20260905
+#     make check CASES=wasp_full REGRESSION_GOLDEN_DIR=$(PWD)/backup/regression/<scratch_baseline>
 # compares that one case against the scratch baseline instead of golden/.
 CASES ?=
 check: $(EXE)

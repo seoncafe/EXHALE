@@ -258,9 +258,18 @@ F_E(r) = F_E(a)\,e^{-\tau_E(r)},
 \label{eq:rad:continuous_tau}
 \end{equation}
 the sum running over every photoionizing absorber $a$ and the column
-starting at zero at the outer edge of the grid, $r_{\rm top} = r(N+N_g)$:
-no absorber is carried beyond the domain, which is where these expressions
-differ from Eq.~(4) of \citet{Caldiroli2021}, whose integral runs to $a$.
+starting at zero at the outer face of the domain, $r_{\rm top} = r_{\rm
+edg}(N)$: no absorber is carried beyond the domain, which is where these
+expressions differ from Eq.~(4) of \citet{Caldiroli2021}, whose integral runs
+to $a$. The two outer ghost cells are a closure of the reconstruction
+stencil, not gas on the line of sight: they see the unattenuated beam and add
+no depth to the cells below (\texttt{calc\_column\_dens},
+\texttt{utilities.f90}; the same start holds for the Ly$\alpha$ line-centre
+depth of \texttt{lya\_rt.f90} and the fine-structure escape column of
+\texttt{Cool\_coeff.f90}). Until 2026-10-11 the column started at
+$r(N+N_g)$ and counted the ghosts; past the Roche ridge a hydrostatic ghost
+of $10^{41}$\,cm$^{-3}$ then shielded the whole domain (update log stage~3
+section~138).
 The photoionization rate of one particle of absorber $a$ and the
 photoheating rate of the gas are then
 \begin{equation}
@@ -292,7 +301,7 @@ each absorber \emph{outside} the cell is accumulated from the top down by
 \texttt{advance\_starward\_columns} (\texttt{util\_ion\_eq.f90}) on the same
 rectangle rule the grid uses,
 \begin{equation}
-N_a^{\rm out}(j) = \sum_{j'>j} n_a(j')\,\Delta r_{j'}R_0\,f(p_{j'}),
+N_a^{\rm out}(j) = \sum_{j<j'\le N} n_a(j')\,\Delta r_{j'}R_0\,f(p_{j'}),
 \label{eq:rad:column}
 \end{equation}
 and the cell's \emph{own} depth is formed from its own density rather than
@@ -485,17 +494,23 @@ P^{\rm sec}_{\rm HI} = \sum_k \mathcal{F}_k\,
 and likewise for He\,{\sc i} and H$_2$; the H$_2$ secondaries additionally
 make one proton per 22 H$_2^+$ ions \citep[after their eq.~10]{Dalgarno1999}, which is an added yield and not a share.
 
-\paragraph{Staged activation.} The key \texttt{Secondary\_ionization} is
-\emph{on} by default (\texttt{use\_sec\_ion = .true.}) but \emph{staged}:
-the runtime flag \texttt{sec\_ion\_active} stays false until the wind has
-first converged without the coupling, because from a cold initial condition
-the base feedback amplifies the startup transient into a runaway
-(\texttt{EXHALE\_main.f90}, the block that sets \texttt{sec\_ion\_active =
-.true.} once any of the mass-flux, step-change, plateau or steady gates is
-met, and again before the JFNK handover so that Newton is never asked to
-solve a system the marched state does not approximately satisfy).
-\texttt{Secondary\_ionization: Immediate} applies it from step 0 and
-\texttt{False} disables it entirely.
+\paragraph{Activation.} The key \texttt{Secondary\_ionization} is
+\emph{on} by default (\texttt{use\_sec\_ion = .true.}) and, since 2026-10-09,
+applied from step 0 (\texttt{True} or \texttt{Immediate},
+\texttt{sec\_ion\_immediate = .true.}; update log stage~3 section~127).
+\texttt{Secondary\_ionization: Staged} keeps the earlier default: the runtime
+flag \texttt{sec\_ion\_active} stays false until the marching has settled
+without the coupling (the state change over a monitor window below
+\texttt{march\_change\_th}, out of the PLM stage, or the steady gates met;
+\texttt{EXHALE\_main.f90}), and it is set again before a JFNK hand-off so
+that Newton is never asked to solve a system the marched state does not
+approximately satisfy. Staging was introduced because from a cold initial
+condition the base feedback had amplified the startup transient into a
+runaway on high-gravity cases; with the present code that runaway did not
+occur (MEASURED on \texttt{wasp\_full} and \texttt{wasp\_full\_newton} from
+their cold initial conditions with the coupling on from step 0: 20\,000 steps
+without a NaN, and the Newton finish at $\log_{10}\dot M=13.29$ as with
+staging). \texttt{False} disables the coupling entirely.
 
 \paragraph{Photoelectrons below 30\,eV.} By default a photoelectron below
 $E_{\rm sec}$ deposits all its energy as heat. Above 10.2\,eV that is a
@@ -521,7 +536,7 @@ heat whole (the authors' interpolator ramps from their 10.0\,eV row, which
 the physics does not), $x$ is clamped into the tabulated range, and the heat
 is clamped into $[0,1-f_{\rm ion}]$. The partition applies only where the
 secondary-ionization coupling is applied (\texttt{use\_sec\_ion} and, under
-the staged default, \texttt{sec\_ion\_active}), on the stellar path
+\texttt{Staged}, \texttt{sec\_ion\_active}), on the stellar path
 (\texttt{photoelectron\_partition\_on\_grid}) and the recombination path
 (\texttt{photoelectron\_partition\_at\_energy}) alike, and only in a cell
 whose \emph{solved} state holds no H$_2$: one gate,

@@ -1,5 +1,7 @@
 # VULCAN and Photochem as the EXHALE lower-atmosphere pre-step
 
+> Note (2026-10-11): `vulcan_work/pc_compare_p1/exhale_hd209/` and `vulcan_work/hd209_wind_response/`, cited below, was deleted (HD 209458 b runs invalid by item P35 of `md/TO_BE_DONE.md`, base ghost temperature). The numbers here remain the record.
+
 - Date: 2026-08-09
 - Planet: HD 189733 b
 - Codes: VULCAN (Tsai et al. 2017, 2021) and Photochem (Wogan et al. 2023, 2024)

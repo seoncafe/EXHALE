@@ -66,7 +66,6 @@ FROZEN_ROOTS = (
     'LHS1140b/models_20260914_preL21',
     'LHS1140b/models_20260915_db87',
     'LHS1140b/examples',
-    'backup/HD209458b_test',
     'backup/phase_d_baseline',
     'backup/lart_runs',
     'backup/example_HD209458b',

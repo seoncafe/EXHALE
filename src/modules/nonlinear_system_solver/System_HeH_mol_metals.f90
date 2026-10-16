@@ -48,11 +48,12 @@
 	                             ionized_hydrogen_nuclei_fraction
 	use ion_residual_core, only: metal_fractions, metal_electron_sum,     &
 	                             metal_rows,                              &
-	                             impose_transported_ionization_fractions
+	                             impose_transported_ionization_fractions, &
+	                             ionization_row_gross
 	use System_HeH_mol,    only: mol_heh_rows, mol_inv_turnover,          &
 	                             scale_molecular_rows,                    &
-	                             element_turnover_reciprocal,             &
-	                             mol_row_gross, mol_row_scale,            &
+	                             turnover_or_bound_reciprocal,            &
+	                             mol_row_scale,                           &
 	                             mol_rows_by_element_turnover,            &
 	                             mol_rows_as_volume_rates,                &
 	                             ion_system_HeH_mol,                      &
@@ -62,6 +63,10 @@
 	                             met_b0, met_b1, met_a1, met_a2, met_top, met_g02
 	use species_table,     only: iel_O
 	use charge_exchange,   only: cx_add_to_fvec, he_h_cx_fvec, cx_metal_base
+	use chemical_row_layout, only: chemical_row_layout_of_cell,           &
+	                               ionization_row_layout,                 &
+	                               mark_constraint_rows_of_cell,          &
+	                               absent_element_density
 
 	implicit none
 
@@ -113,7 +118,7 @@
 	mbase = metal_row_base()
 	do e = 1,met_nelem
 		ix = mbase + 2*(e-1)
-		if (met_ntot(e) .le. 1.0d-30) cycle      ! identity rows, scale 1
+		if (met_ntot(e) .le. absent_element_density) cycle  ! identity rows, scale 1
 		! X0 <-> X+ : photoionization, electron-impact ionization and
 		! radiative recombination of the first stage.
 		sc = met_ntot(e)*(photo_scale*met_g0(e)                      &
@@ -137,11 +142,32 @@
 	! volume rates, the gross rate of each row is summed over the rows of
 	! its element, and every row is from then on divided by the turnover of
 	! its element at x, until a scale is taken again. mbase is the first
-	! metal row of the layout (metal_row_base()).
+	! metal row of the layout (metal_row_base()). The groups are the
+	! acceptance groups of chemical_row_layout, and a group's turnover is
+	! summed over its KINETIC rows only, as the acceptance sums it
+	! (normalized_reaction_residual): the constraint rows of this cell
+	! (transported ionization fractions and He 2^3S level, the carried or
+	! reservoir H2 partition, the carried oxygen carriers, the identity rows
+	! of absent elements and unused X++ stages; mark_constraint_rows_of_cell)
+	! replace a kinetic balance that is not an equation of the cell, so
+	! that balance's gross rate is not chemistry the other rows of the
+	! element must answer to. Counted, it outweighed the rows that are
+	! solved: with H+ and H2 pinned the H3+ row reached hybrd1 divided by a
+	! hydrogen turnover dominated by the two replaced balances, and the
+	! solve stopped at its step tolerance (info 1) with H3+ out of balance
+	! by 1e-5 to 3.5e-2 of its own gross rate (MEASURED,
+	! md/Update_EXHALE_stage3.md section 112.5). A constraint row is
+	! written x - x_fix after the scaling (ion_system_HeH_mol*), so the
+	! entry it keeps here (the bound) is never applied to it.
 	integer, intent(in) :: n, mbase
 	real*8,  intent(in) :: x(n)
 	real*8  :: xl(n), fv(n), par(60), inv(n)
-	integer :: iflag, iox_l, io_metal, nmet, cx_base_entry
+	integer :: iflag, nmet, cx_base_entry
+	! The element arrays of a run without metals, which the constraint
+	! marking does not read.
+	real*8  :: no_metal_ntot(1)
+	integer :: no_metal_top(1)
+	type(chemical_row_layout_of_cell) :: layout
 	xl    = x
 	par   = 0.0d0
 	iflag = 1
@@ -155,19 +181,21 @@
 		call ion_system_HeH_mol(n, xl, fv, iflag, par(1:40))
 	endif
 	mol_rows_as_volume_rates = .false.
-	iox_l    = 0
-	io_metal = 0
-	nmet     = 0
+	nmet = 0
+	if (thereis_metals) nmet = met_nelem
+	call ionization_row_layout(layout, n, .true., thereis_HeITR, .true.,  &
+	                           thereis_oxychem .and. thereis_metals, nmet)
 	if (thereis_metals) then
-		nmet = met_nelem
-		if (thereis_oxychem) then
-			iox_l    = oxygen_row_base()
-			io_metal = mbase + 2*(iel_O-1)
-		endif
+		call mark_constraint_rows_of_cell(layout, ieq_cell, met_ntot,     &
+		                                  met_top)
+	else
+		no_metal_ntot = 0.0d0
+		no_metal_top  = 0
+		call mark_constraint_rows_of_cell(layout, ieq_cell,               &
+		                                  no_metal_ntot, no_metal_top)
 	endif
-	call element_turnover_reciprocal(n, mol_row_gross(1:n),               &
-	                                 mol_inv_turnover(1:n), mbase, nmet,  &
-	                                 io_metal, iox_l, inv)
+	call turnover_or_bound_reciprocal(layout, ionization_row_gross(1:n),  &
+	                                  mol_inv_turnover(1:n), inv)
 	mol_row_scale(1:n) = inv
 	mol_rows_by_element_turnover = .true.
 	end subroutine set_element_turnover_scales

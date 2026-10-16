@@ -1,0 +1,53 @@
+radial columns above R0 [cm^-2]: HI 7.974e+17, HII 5.825e+15, HeI 8.271e+19, HeII 2.333e+15, HeITR 2.973e+10, H2 1.948e+19, H3p 6.741e+11, CI 1.093e+16, NI 3.256e+15, OI 2.005e+13, CII 1.154e+14, NII 2.799e+11, OII 5.457e+10
+
+band                                    F_top    abs. wind      share
+X-ray 0.9-10 nm                    9.3745e+00   6.9695e+00     0.7434
+EUV 10-50.4 nm (He I edge)         9.8746e+00   9.8746e+00     1.0000
+EUV 50.4-91.2 nm                   1.7640e-01   1.7640e-01     1.0000
+LW 91.2-100 nm                     1.9276e-01          nan        nan
+LW 100-120.1 nm                    8.5731e-01          nan        nan
+Ly alpha 121.0-122.2 nm            1.1830e+01   0.0000e+00     0.0000
+FUV 120.1-200 nm (excl. Ly a)      1.0017e+01   0.0000e+00     0.0000
+NUV 200-400 nm                     1.0030e+03   0.0000e+00     0.0000
+400-3000 nm                        5.4289e+05   0.0000e+00     0.0000
+total SED 0.9-3000 nm: 5.4394e+05 erg cm^-2 s^-1
+LW band 91.2-120.1 nm: F_top 1.0537e+00 (code F_LW_star 1.0897), absorbed by Solomon pumping (k_LW n_H2 / 0.135 x 11.7354 eV) 1.2474e+00 erg cm^-2 s^-1 (share 1.184); dissociations 8.956e+09 cm^-2 s^-1
+below 91.2 nm: F_top 1.9481e+01, absorbed in the wind 1.7076e+01 (share 0.8765), transmitted 2.4051e+00
+below 100 nm: F_top 1.9674e+01, absorbed (continua; LW lines 91.2-100 excluded) 1.7109e+01
+  tau_wind(  1.0 nm) = 1.369e-02  (He I 1.36e-02, H2 2.18e-05, H I 4.47e-06)
+  tau_wind(  2.0 nm) = 1.432e-01  (He I 1.32e-01, H2 1.07e-02, H I 4.44e-05)
+  tau_wind(  5.0 nm) = 2.262e+00  (He I 2.22e+00, H2 4.29e-02, H I 8.85e-04)
+  tau_wind( 10.0 nm) = 1.814e+01  (He I 1.77e+01, H2 3.90e-01, H I 7.92e-03)
+  tau_wind( 20.0 nm) = 1.132e+02  (He I 1.08e+02, H2 4.91e+00, H I 6.64e-02)
+  tau_wind( 30.0 nm) = 2.593e+02  (He I 2.40e+02, H2 1.91e+01, H I 2.22e-01)
+  tau_wind( 50.0 nm) = 6.727e+02  (He I 5.86e+02, H2 8.57e+01, H I 9.67e-01)
+  tau_wind( 60.0 nm) = 1.261e+02  (He I 0.00e+00, H2 1.24e+02, H I 1.61e+00)
+  tau_wind( 80.0 nm) = 5.845e+01  (He I 0.00e+00, H2 5.47e+01, H I 3.55e+00)
+  tau_wind( 90.0 nm) = 1.345e+02  (He I 0.00e+00, H2 1.29e+02, H I 4.86e+00)
+Ly alpha line-centre tau of N(H I) at 1000 K: 1.487e+05
+Ly alpha band 1.1830e+01 erg cm^-2 s^-1; flux at tau_HI > 1: 0.0000e+00 (share 0.000), F(1-exp(-tau)): 2.6872e+00
+column absorption of the transmitted by the wind 0.9-91.2 nm (2.4051e+00 erg cm^-2 s^-1 at normal incidence):
+   p <= 1.649e-06 bar: absorbed 5.7132e-01, remaining 1.8338e+00
+   p <= 1.000e-05 bar: absorbed 1.7645e+00, remaining 6.4054e-01
+   p <= 1.000e-04 bar: absorbed 2.3635e+00, remaining 4.1613e-02
+   p <= 1.000e-03 bar: absorbed 2.4051e+00, remaining 6.7900e-08
+   p <= 1.000e-02 bar: absorbed 2.4051e+00, remaining 4.0231e-57
+   p <= 1.000e-01 bar: absorbed 2.4051e+00, remaining 2.3713e-304
+   p <= 1.000e+00 bar: absorbed 2.4051e+00, remaining 2.3713e-304
+column absorption of the unattenuated (what Photochem takes) 0.9-91.2 nm (1.9481e+01 erg cm^-2 s^-1 at normal incidence):
+   p <= 1.649e-06 bar: absorbed 1.6415e+01, remaining 3.0663e+00
+   p <= 1.000e-05 bar: absorbed 1.8796e+01, remaining 6.8568e-01
+   p <= 1.000e-04 bar: absorbed 1.9439e+01, remaining 4.2389e-02
+   p <= 1.000e-03 bar: absorbed 1.9481e+01, remaining 6.8774e-08
+   p <= 1.000e-02 bar: absorbed 1.9481e+01, remaining 4.0729e-57
+   p <= 1.000e-01 bar: absorbed 1.9481e+01, remaining 1.9208e-303
+   p <= 1.000e+00 bar: absorbed 1.9481e+01, remaining 1.9208e-303
+column absorption of the unattenuated (what Photochem takes) 91.2-120.1 nm (1.0537e+00 erg cm^-2 s^-1 at normal incidence):
+   p <= 1.649e-06 bar: absorbed 5.5670e-01, remaining 4.9701e-01
+   p <= 1.000e-05 bar: absorbed 1.0170e+00, remaining 3.6728e-02
+   p <= 1.000e-04 bar: absorbed 1.0537e+00, remaining 9.2359e-12
+   p <= 1.000e-03 bar: absorbed 1.0537e+00, remaining 1.2461e-114
+   p <= 1.000e-02 bar: absorbed 1.0537e+00, remaining 1.0389e-304
+   p <= 1.000e-01 bar: absorbed 1.0537e+00, remaining 1.0389e-304
+   p <= 1.000e+00 bar: absorbed 1.0537e+00, remaining 1.0389e-304
+wind heating total (Heating_breakdown col4) per face area: 1.0546e+01 erg cm^-2 s^-1

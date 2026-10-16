@@ -1,0 +1,20 @@
+# Huang et al. 2023 section 2.4: twelve elements H, He, Mg, Fe, Si, O, C, N,
+# S, Ca, Na, K at solar abundances (Asplund et al. 2009, ARA&A 47, 481,
+# Table 1 photospheric log eps: C 8.43, N 7.83, O 8.69, Na 6.24, Mg 7.60,
+# Si 7.51, S 7.12, K 5.03, Ca 6.34, Fe 7.50). Values are TOTAL element
+# abundances n_X/n_H. Case D multiplies Fe by 4 (Table 3 "Multiplier Fe").
+C     2.69e-4
+N     6.76e-5
+O     4.90e-4
+Mg    3.98e-5
+Si    3.24e-5
+S     1.32e-5
+Ca    2.19e-6
+Na    1.74e-6
+K     1.07e-7
+Fe    1.264e-4
+# Huang Table 4 charge exchange: metal+H (always on), plus metal+He and
+# metal+metal; the two Barragan et al. 2006 rows not in Table 4 are left out.
+cx_full 1
+cx_O2p_H 0
+cx_N2p_H 0

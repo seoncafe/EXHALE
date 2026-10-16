@@ -390,6 +390,17 @@ def write_profile(path, cols, header, column_order=None):
         for key in ('measured_flux_H', 'measured_flux_He'):
             if header.get(key) is not None:
                 f.write('# %s %.17E\n' % (key, header[key]))
+        # Optional, and written only where the hydrogen of the escape flux
+        # was split as the wind states it (photochem_to_lower_profile.py
+        # --trial-flux-H2): the hydrogen nuclei H2 was asked to carry
+        # through the top face and what it carries [g/s, outward positive],
+        # the rest being atomic H, and the heat the inflowing atoms release
+        # in the column on recombining [erg cm^-2 s^-1].  Additive to the
+        # format for the reason the pair above is.
+        for key in ('trial_flux_H2', 'measured_flux_H2',
+                    'recombination_heat_flux_cgs'):
+            if header.get(key) is not None:
+                f.write('# %s %.17E\n' % (key, header[key]))
         # Optional, and written only for a column solved under the heat flux
         # the wind conducts into it (photochem_to_lower_profile.py
         # --conducted-heat-flux): the flux, the treatment of the band
@@ -424,6 +435,16 @@ def write_profile(path, cols, header, column_order=None):
         f.write('# iteration %d\n' % header['iteration'])
         f.write('# reached_steady_state %s\n'
                 % ('T' if header['reached_steady_state'] else 'F'))
+        # Optional, and written only when a steady-state pass of the
+        # producer reached its steady state on the single retry from a
+        # stalled integration (photochem_to_lower_profile.py,
+        # steady_state_with_stall_retry): the retry tolerance and the passes.
+        # The state is steady under the unchanged checks, so
+        # reached_steady_state stays T; additive to the format for the
+        # reason the measured pair above is.
+        if header.get('steady_state_retry') is not None:
+            f.write('# steady_state_retry %s\n'
+                    % header['steady_state_retry'])
         # The reader holds 1000 characters (`lap_notes`), which is what a
         # climate solve's record needs; the file itself is not truncated
         # more tightly than the reader is.
@@ -563,15 +584,17 @@ def write_handoff(args, cols, header, column_order, element_input=None,
     p_deep = float(cols['p'][0])
     p_top = float(cols['p'][-1])
     p_match = float(header['p_match_bar'])
-    if not (p_deep >= p_match > p_top):
+    # p_top = p_match is the matching surface as the lower model's top
+    # (md/AN_overlap_structural_design_20261008.md); a table that stops
+    # below the match states nothing at the level the wind starts from.
+    if not (p_deep >= p_match >= p_top):
         refuse('the matching pressure %.3e bar is not inside the table '
                '(%.3e .. %.3e bar)' % (p_match, p_deep, p_top))
     cols = insert_level(cols, p_match)
     header['p_deep_bar'] = float(cols['p'][0])
     header['p_top_bar'] = float(cols['p'][-1])
-    if header['p_top_bar'] >= p_match:
-        refuse('p_top_bar >= p_match_bar: the file stops at or below the '
-               'match, so the two models never overlap')
+    if header['p_top_bar'] > p_match:
+        refuse('p_top_bar > p_match_bar: the file stops below the match')
 
     # The adapter's own carrier-summation check (section 4.2).  It is stated
     # at the deepest level, because that is the only level where the elemental

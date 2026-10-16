@@ -190,12 +190,17 @@
       ! names actually held, so the loop's exit and the line the run prints
       ! are the same statement. The residual/flux pair is one flag because
       ! steady_gates_met is one test (steady_residual.f90).
-      logical :: mass_flux_converged    = .false. ! du  < du_th: the radial
-                                          !  spread of the face mass flux
-      logical :: step_change_converged  = .false. ! dtu < dtu_th: the largest
-                                          !  relative change of u in one step
-      logical :: du_plateaued           = .false. ! du settled on a plateau
-                                          !  (stall net), target NOT reached
+      logical :: mass_flux_converged    = .false. ! the FACE mass flux flat over
+                                          !  r >= r_flux (< march_flux_spread_th)
+                                          !  AND the state settled over the
+                                          !  monitor window (< march_change_th)
+      logical :: step_change_converged  = .false. ! retired 2026-10-09: the
+                                          !  one-step dtu stop (dtu stays a
+                                          !  printed diagnostic); never set
+      logical :: relaxation_stalled     = .false. ! the state settled over the
+                                          !  monitor window while the face
+                                          !  flux is NOT flat: stall net,
+                                          !  target NOT reached
       logical :: steady_gates_converged = .false. ! "Resid tol:": BOTH gates
                                           !  met on the marched state
       logical :: hit_max_steps          = .false. ! env EXHALE_MAXSTEPS cap
@@ -293,18 +298,18 @@
       !   (low_energy_electron_degradation.f90).
       logical :: use_low_energy_partition = .false.
       ! Runtime state of the SvS85 coupling: .true. only once it is actually
-      ! applied. From a cold IC the secondary-ionization base feedback amplifies
-      ! the startup transient into a runaway, so the coupling is switched on only
-      ! after the wind has first converged without it (set in serial code only --
-      ! no threadprivate).
+      ! applied. Applied from step 0 by default; with "Secondary_ionization:
+      ! Staged" it is switched on once the marching has settled without it
+      ! (set in serial code only -- no threadprivate).
       logical :: sec_ion_active = .false.
       ! Step at which sec_ion_active was last switched on (-1 = it was never
       ! staged in, i.e. it is either off or was on from step 0). Written into
       ! the restart file's coupling header and read back from it.
       integer :: sec_ion_armed_step = -1
-      ! Input override "Secondary_ionization: Immediate": apply the coupling from
-      ! step 0 (pre-staging behavior), for A/B tests only.
-      logical :: sec_ion_immediate = .false.
+      ! Apply the coupling from step 0 ("Secondary_ionization: True" or
+      ! "Immediate", the default since 2026-10-09); .false. is
+      ! "Secondary_ionization: Staged".
+      logical :: sec_ion_immediate = .true.
       ! He recombination radiation absorbed on the spot ("He_rec_coupling";
       ! utils_ion_eq: recombination_radiation_absorbed).
       !  .true. (default) = the He II -> He I and He III -> He II ground-
@@ -429,6 +434,18 @@
       ! no handoff value, the fit is used and the species partition is left
       ! free, so a base.inp without the key behaves as before.
       real*8  :: q_h2_base  = -1.0d0
+      ! Fraction of the base's NON-IONIZED HYDROGEN NUCLEI that are atomic H,
+      ! counted over every hydrogen-bearing species of the lower atmosphere
+      ! at the matching level: q_H n_tot/n_H(nuclei), with the nuclei per
+      ! particle from the profile's own mass density and element ratios
+      ! (apply_lower_atmosphere_profile).  Set only where a lower-atmosphere
+      ! profile is in use; then base_h2_nuclei_fraction is 1 minus it, so
+      ! that the hydrogen of the trace molecules the wind does not carry
+      ! (CH4, NH3, H2O) goes onto H2, the inert majority carrier, and not
+      ! onto atomic H, the reactive trace species.  Negative (default) = not
+      ! stated, and the base partition follows from q_h2_base for an
+      ! H, H2, He mixture (base.inp).
+      real*8  :: h_atomic_share_base = -1.0d0
       ! Pressure level of the lower-atmosphere handoff [bar] ("p_base" in
       ! base.inp; --pbase of src/utils/vulcan_to_base.py).  The
       ! chemical-equilibrium fit is evaluated at this level, so the fit and
@@ -808,9 +825,10 @@
       real*8  :: recon_lambda_dtu_tol = 1.2d0 ! lambda advances while dtu <= tol * dtu at the ramp start
       logical :: recon_lambda_adaptive = .true. ! .false. = ramp with no step control
       logical :: spherical_domain = .false. ! Domain mode (set via input.inp):
-                                          !  .false. = full Roche potential
-                                          !   truncated at the Hill/L1 radius
-                                          !   (default ATES behavior);
+                                          !  .false. = full Roche potential,
+                                          !   domain truncated at the Hill
+                                          !   radius (default ATES behavior)
+                                          !   or extended to r_out_user;
                                           !  .true.  = pure planetary potential
                                           !   (-b0/r), tidal + centrifugal terms
                                           !   dropped, domain extended to
@@ -1051,8 +1069,8 @@
 
 	   ! Numerical constants
       real*8 ::  CFL    = 0.6d0       ! CFL number; settable in input.inp via "CFL:" (lower = smaller dt, may damp a numerical limit cycle)
-      real*8 ::  du_th     = 1.0d-3   ! final (stage-2 / WENO3) escape-momentum threshold; settable in input.inp via "du_th [PLM,WENO3]:". 1e-3 is the original ATES-Code-main value (EXHALE had loosened it to 2e-2, accepting ~2% mass-flux spread).
-      real*8 ::  du_th_plm = -1.0d0   ! stage-1 (PLM) threshold; if > du_th the run is two-stage: PLM until du<du_th_plm, then switch reconstruction to WENO3 and converge at du<du_th. <=0 => single-stage at du_th.
+      real*8 ::  du_th     = 1.0d-3   ! second number of "du_th [PLM,WENO3]:"; since 2026-10-10 it no longer stops the run (the marching stop is the face mass-flux spread and the state change, march_flux_spread_th / march_change_th, update log stage 3 section 127); it only decides with du_th_plm whether the run is two-stage.
+      real*8 ::  du_th_plm = -1.0d0   ! stage-1 (PLM) threshold; if > du_th the run is two-stage: PLM until du<du_th_plm, then WENO3 to the marching stop. <=0 => single-stage.
       real*8,parameter ::  dtu_th = 1.0d-8      ! Threshold variation of time deriv.
       real*8           ::  du                   ! Initial momentum variation
       real*8           ::  dtu                  ! Norm of time derivative
@@ -1085,7 +1103,7 @@
       ! without a validated "truth" to anchor the tolerance to.
       real*8  :: lev_th = -1.0d0
 
-      ! Production steady-solver wiring ("Solver: Newton [du_switch]").
+      ! Production steady-solver wiring ("Solver: Newton [switch]").
       ! When .true., the normal marching loop (including the automatic
       ! two-stage PLM->WENO3) runs as a WARM-UP; the JFNK steady solver then
       ! finishes the run to ||R|| < resid_th (default 1e-5 if "Resid tol:" was
@@ -1094,15 +1112,16 @@
       ! retired ("Valve eps:" is refused by input_read); the base boundary is
       ! the characteristic face state of base_boundary.f90.
       logical :: use_newton_solver = .false.
-      ! Hand-off to JFNK is keyed on the FLUX metric du (the radial spread of
-      ! rho*v*r^2), consistent with the flux-based convergence decision: once the
-      ! cheap marching has flattened the wind to du < newton_du_switch the Newton
-      ! solver polishes it the rest of the way (Newton's quadratic convergence
-      ! tightens du 1e-2 -> 1e-3 far faster than continued marching). Settable as
-      ! "Solver: Newton [du_switch]". (Earlier revisions keyed the hand-off on the
-      ! residual itself, ||R|| < 5e-2; the du-based key is equivalent in practice
-      ! and matches the flux-based convergence decision.)
-      real*8  :: newton_du_switch  = 1.0d-2
+      ! THE JFNK HAND-OFF ("Solver: Newton [switch]"): once the marching has
+      ! flattened the NUMERICAL face mass flux r^2 F_rho over r >= r_flux to a
+      ! spread below newton_flux_switch, the JFNK steady solver takes the
+      ! state the rest of the way. Since 2026-10-10 (user decision, update
+      ! log stage 3 section 131) the switch reads the face spread, not the
+      ! cell-centered du: du has a resolution-dependent floor next to the
+      ! outer ghost (1.04e-2 on wasp_full with the outer face at 2 R_p), so a
+      ! du switch at 1e-2 handed over only through the stall clause, after
+      ! 45 118 steps. THE VALUE, MEASURED: see update log section 131.
+      real*8  :: newton_flux_switch  = 1.0d-1
 
       ! WENO3 weight-freezing mode for the steady Newton solver (lagged /
       ! frozen nonlinear weights, the standard FV steady-solve remedy):
@@ -1126,9 +1145,9 @@
       ! not have. Measured: at its own composition it is 4 to 56 times larger
       ! (hot Uranus 2.2e-6 -> 1.3e-5; WASP-121b 6.3e-6 -> 3.9e-5; and 8.9e-6 ->
       ! 1.9e-4 on `wasp_full_newton` before section 152). A state that is
-      ! accepted must satisfy its own residual, so this is not an option to be
-      ! opted into -- turning it OFF is what needs a reason, and the only one
-      ! is reproducing a pre-section-155 number.
+      ! accepted must satisfy its own residual, so this is not an option: no
+      ! input or environment variable sets it to .false., and the only reason
+      ! to do so (reproducing a pre-section-155 number) is not offered.
       !
       ! WHAT IT COSTS. One extra sweep sequence at hand-back, 3 iterations on
       ! the hot Uranus and 9 on WASP-121b, once per solve. `Resid tol` values
@@ -1247,6 +1266,34 @@
       ! Default <= 0 disables (legacy du-based stop, byte-identical).
       real*8  :: resid_th = -1.0d0
       integer :: N_resid  = 500
+      ! THE STATE CHANGE OF THE MARCHING OVER ONE MONITOR WINDOW, the second
+      ! half of the marching stop (EXHALE_main, the monitor block):
+      !     chg_win = max over cells j = 1..N of |rho/rho_win - 1|,
+      !               |E/E_win - 1| and |(rho v) - (rho v)_win| / sqrt(rho E)_win,
+      ! u_win the state N_resid steps before.  The run has relaxed when
+      ! chg_win < march_change_th; the stop also requires the face mass flux
+      ! over r >= r_flux flat to march_flux_spread_th (below).  The same
+      ! settling (chg_win < march_change_th) is when the staged secondary
+      ! ionization is switched on.
+      ! THE VALUE, MEASURED (update log stage 3 section 127): on wasp_full the
+      ! march relaxes exponentially late in the run, chg_win falling by a
+      ! factor 0.88 per 1000 steps (an e-folding of about 8000 steps) with
+      ! either WENO3 floor, so the distance still to go is about 16 chg_win;
+      ! 1e-4 bounds it at about 2e-3 relative.  In practice the face-flux
+      ! half binds: at face spread 4e-4 chg_win was 8.5e-5.
+      ! EXHALE_MARCH_CHANGE_TH replaces it for measurement.
+      real*8  :: march_change_th = 1.0d-4
+      ! THE FACE MASS-FLUX SPREAD AT WHICH THE MARCHING STOPS (user decision
+      ! 2026-10-09). Not the steady gate flux_spread_th (2e-5), which the
+      ! stationary solvers accept with: the marching state is a relaxation
+      ! snapshot, and a quantitative result is accepted by the precision of
+      ! its observable or comes from the Newton finish. MEASURED on wasp_full
+      ! (LOCAL floor, secondary ionization off; update log stage 3 section
+      ! 127): marching on from face spread 4.0e-4 to 1.9e-5 (27 500 further
+      ! steps) changes rho by at most 1.45e-3, v by 1.24e-3, T by 3.3e-4
+      ! (median 2e-4 to 5e-4) and log10 Mdot by less than 0.005.
+      ! EXHALE_MARCH_FLUX_TH replaces it for measurement.
+      real*8  :: march_flux_spread_th = 4.0d-4
 
       ! Energy source-term integrator: .true. = semi-implicit backward-Euler
       ! cell solve (EXHALE default); .false. = original explicit forward
@@ -1302,8 +1349,8 @@
       real*8  ::  flux_spread_th = flux_spread_th_default
       real*8  ::  r_flux         = 1.2d0
       real*8  ::  a_orb       ! Orbital distance
-      real*8  ::  r_max       ! Maximum radius = Roche Lobe dimension
-      real*8  ::  r_out_user  ! User-set outer radius [R_p], spherical mode only
+      real*8  ::  r_max       ! Radius the grid is constructed for [R_p]: r_out_user, or the Hill radius in Roche mode without one
+      real*8  ::  r_out_user  ! User-set outer radius [R_p]: the domain in spherical mode, and in Roche mode when > 1
       real*8  ::  HeH         ! He/H ratio
       real*8  ::  X_C         ! C/H number ratio (solar ~ 2.69e-4)
       real*8  ::  X_N         ! N/H number ratio (solar ~ 6.76e-5)

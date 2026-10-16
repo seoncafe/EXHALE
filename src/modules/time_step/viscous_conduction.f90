@@ -723,7 +723,9 @@
       ! the base ghost cell, the lower atmosphere's own temperature at that
       ! radius (base_reservoir_temperature_at): the handed-over profile's
       ! temperature where a profile is in use, otherwise the reservoir's
-      ! hydrostatic isentrope continued from the level.
+      ! hydrostatic isentrope continued from the level.  With a profile it
+      ! is also the temperature the advective ghost cells carry
+      ! (base_ghost_averages), so the boundary states ONE ghost temperature.
       !
       ! WHY THE RESERVOIR AND NOT THE GHOST THE ADVECTION LEAVES.  The lower
       ! atmosphere below the base level is a heat bath on the time scales of
@@ -877,7 +879,10 @@
       ! (Tcell, f_sp), in erg cm^-2 s^-1, positive INTO the lower
       ! atmosphere:
       !
-      !     q = -kappa_{1/2} (T_1 - T_b)/(r_1 - r_0) ,
+      !     q = kappa_{1/2} (T_1 - T_b)/(r_1 - r_0) ,
+      !
+      ! the Fourier flux -kappa dT/dr taken positive in the -r direction,
+      ! i.e. down through the base face into the lower atmosphere,
       !
       ! T_b the bath at the ghost centre r(0) (conduction_base_level_T),
       ! kappa_{1/2} the mixture conductivity interpolated to the face, both

@@ -564,10 +564,16 @@ lower bound by about as much as the correction it applies.
 
 The one place where EXHALE does not assume LTE is the H$_3^+$ infrared
 cooling, and it is worth stating because it runs the other way from
-\S\ref{sec:ir}. \texttt{h3p\_cooling.f90} multiplies the Miller et al.\
-(2013) LTE emission fit by the departure factor $s(T, n_{\rm H_2})$ of their
-Table~6, bilinearly interpolated in $(T, \log_{10} n_{\rm H_2})$, clamped at
-the table edges and set to $1$ for $n_{\rm H_2} \geq 10^{14}$~cm$^{-3}$. Here
+\S\ref{sec:ir}. \texttt{h3p\_cooling.f90} multiplies the LTE emission
+$E(T)$ of one H$_3^+$ molecule, the MiZATeP cooling function of Mizus et al.\
+(2017, tabulated 20--5000~K; it replaced the Miller et al.\ (2013) LTE fit on
+2026-10-10, update log stage 3 section 132, because that fit lies above it by
+1.10--2.1 at 900--3000~K), by the departure factor $s(T, n_{\rm H_2})$ of
+Miller et al.\ (2013) Table~6, interpolated as a power law in $n_{\rm H_2}$
+between its columns and linearly in $T$ between its rows; below
+$10^{6}$~cm$^{-3}$ the collisional limit $s \propto n_{\rm H_2}$ is used and
+above $10^{14}$~cm$^{-3}$ the table edge ($s = 0.9985$--$1$) is held
+(\texttt{h3p\_nonlte\_factor}). Here
 H$_2$ enters as the collider density that sets how far the H$_3^+$ levels
 depart from a Boltzmann distribution.
 
@@ -594,8 +600,8 @@ and whose $1\%$ edge sat at $4.42\times10^{9}$~cm$^{-3}$, $r = 1.172\,R_{\rm
 p}$; the state the goldens now hold spans $5.15\times10^{12}$ down to
 $4.48\times10^{9}$~cm$^{-3}$ over $1.0002$--$1.075\,R_{\rm p}$
 (\S\ref{sec:layer}). Re-measuring them means evaluating
-\texttt{h3p\_departure} of \texttt{h3p\_cooling.f90} on the two ends of that
-layer; the density range still sits inside the Miller et al.\ table, so the
+\texttt{h3p\_nonlte\_factor} of \texttt{h3p\_cooling.f90} on the two ends of that
+layer; the density range still sits inside the Miller et al.\ Table~6, so the
 verdict of Table~\ref{tab:validity} does not turn on it.
 
 The table is a vacuum departure factor (collisions against spontaneous
@@ -1202,15 +1208,18 @@ Band fraction $A$ from DB96 eq.~(39)
   & \textbf{Above the authors' own cap} by $8.4$--$10.5\%$; clamped at $1$ in
     the code \\
 \addlinespace
-H$_3^+$ emission fit $E(T)$
-  & Miller et al.\ (2013) Table 5, piecewise $30$--$5000$~K; frozen above
+H$_3^+$ LTE emission $E(T)$
+  & MiZATeP cooling function (Mizus et al.\ 2017), 1~K nodes $20$--$5000$~K;
+    held above
   & $874$--$1221$~K
-  & Inside. The published segments do not join; each is used on its own range
-    \\
+  & Inside (the layer temperatures were taken with the Miller et al.\ 2013
+    fit, which this function replaced on 2026-10-10; the range lies well
+    inside the table either way) \\
 \addlinespace
 H$_3^+$ departure factor $s(T, n_{\rm H_2})$
   & Table 6 grid $T = 300$--$5000$~K, $\log_{10} n_{\rm H_2} = 6$--$14$;
-    clamped, $s = 1$ above $10^{14}$
+    edge held above $10^{14}$ ($s = 0.9985$--$1$), $s \propto n_{\rm H_2}$
+    below $10^{6}$
   & $T = 874$--$1221$~K, $n_{\rm H_2} = 4.5\times10^{9}$--$5.2\times10^{12}$
   & Inside; $s = 0.44$--$0.996$ across the layer, both values stale
     (\S\ref{sec:h3p}) \\
@@ -1422,6 +1431,11 @@ ApJ 929, 52 (2022).
 F.~Le Petit, C.~Nehm\'e, J.~Le Bourlot \& E.~Roueff,
 \emph{A model for atomic and molecular interstellar gas: the Meudon PDR code},
 ApJS 164, 506 (2006).
+
+\bibitem[Mizus et al.\ (2017)]{Mizus2017}
+I.~I.~Mizus, A.~Alijah, N.~F.~Zobov et al.,
+\emph{ExoMol molecular line lists -- XX. A comprehensive line list for H$_3^+$},
+MNRAS 468, 1717 (2017).
 
 \bibitem[Miller et al.\ (2013)]{Miller2013}
 S.~Miller, T.~Stallard, J.~Tennyson \& H.~Melin,

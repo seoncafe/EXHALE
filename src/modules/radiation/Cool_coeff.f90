@@ -4343,13 +4343,13 @@
    !     approximation, not zero.
    !   - Fe II is a precomputed 2-D statistical-equilibrium table
    !     (cool_FeII_ne), which cannot take a radiation field as an argument.
-   !   - H3+ (h3p_cooling) is the Miller et al. (2013) fit to the TOTAL
-   !     optically thin emission of an LTE molecule, so it has no line list
-   !     either -- but its 3-4 um bands ARE within reach of a 1.2e3 K
-   !     blackbody, and with metals off it carries 100% of the cooling of
+   !   - H3+ (h3p_cooling) is the MiZATeP cooling function (Mizus et al.
+   !     2017), the TOTAL optically thin emission of an LTE molecule, so it
+   !     carries no line list either -- but its 3-4 um bands ARE within
+   !     reach of a 1.2e3 K blackbody, and with metals off it carries 100% of the cooling of
    !     the molecular base, so leaving it emitting into vacuum is not a
    !     small omission. Under the same switch its absorption is taken from
-   !     the emission fit itself, at the radiating temperature, which is
+   !     the emission function itself, at the radiating temperature, which is
    !     what Kirchhoff's law makes of a total emission integral; the
    !     approximation and its range are written at h3p_net_cooling_rate.
    !
@@ -4605,6 +4605,10 @@
                                      nm(j,fsline_ion(k)))*dl, 0.0d0)
       enddo
    enddo
+   ! The upward column starts at the outer face r_edg(N), as the continuum
+   ! columns do (calc_column_dens in utilities.f90 states why): the outer
+   ! ghosts are no gas on the line of sight and carry no depth.
+   dtau(N+1:N+Ng,:) = 0.0d0
    ! Column downward, from the bottom of the domain up
    col = 0.0d0
    do j = 1-Ng,N+Ng

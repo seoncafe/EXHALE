@@ -35,10 +35,12 @@
 
 	use global_parameters
 	use ion_cell_state, only: ieq_cell
+	use chemical_row_layout, only: absent_element_density
 	use ion_residual_core, only: heh_rows, heh_crow, heh_jac_local,       &
 	                             metal_fractions, metal_electron_sum,     &
 	                             metal_rows,                             &
-	                             impose_transported_ionization_fractions
+	                             impose_transported_ionization_fractions, &
+	                             ionization_row_gross
 	use charge_exchange, only: cx_add_to_fvec, cx_add_to_jac,             &
 	                           he_h_cx_fvec, he_h_cx_jac
 
@@ -119,6 +121,8 @@
 	real*8  :: nm0(met_nelem),nm1(met_nelem),nm2(met_nelem)
 	real*8  :: n_X
 	integer :: e,ix
+	! Gross rate of every row at x (ion_residual_core, ionization_row_gross).
+	real*8  :: gross(N_eq)
 
 	! Unpack H/He coefficients
 	g_hi    = ieq_cell%P_HI
@@ -154,9 +158,10 @@
 
 	! HI <-> HII, HeI <-> HeII, HeII <-> HeIII (standard H/He rows, shared
 	! helper; n_e here already includes the metal electrons).
+	gross(1:N_eq) = 0.0d0
 	call heh_rows(fvec, n_hi, n_hii, n_hei, n_heii, n_heiii, n_e,  &
 	              g_hi, g_hei, g_heii, a_hii, a_heii, a_heiii,      &
-	              b_hi, b_hei, b_heii)
+	              b_hi, b_hei, b_heii, gross=gross)
 
 	! Metal ionization balance, one element at a time (force-zero if the
 	! element is absent; otherwise normal balance). Three-stage elements
@@ -165,7 +170,7 @@
 	call metal_rows(fvec, x, 4, met_nelem, met_ntot, met_g0, met_g1,   &
 	                met_g02,                                           &
 	                met_b0, met_b1, met_a1, met_a2, met_top,           &
-	                nm0, nm1, nm2, n_e)
+	                nm0, nm1, nm2, n_e, gross=gross)
 
 	! Add charge exchange (Huang Table 4) to the H, He and metal balance
 	! rows. Rates were stored per cell by cx_set_cell, at the temperature
@@ -175,14 +180,15 @@
 	! he_row_sign = +1 and every row takes the generic orientation.
 	call cx_add_to_fvec(N_eq, fvec, nm0, nm1, nm2,                  &
 	                    n_hi, n_hii, n_hei, n_heii, n_heiii,        &
-	                    1.0d0, ieq_cell%T_K)
+	                    1.0d0, ieq_cell%T_K, gross=gross)
 
 	! He <-> H charge exchange (Huang Table 4 group B). Standard He row
 	! (HeI->HeII positive), so he_row_sign = +1.
 	call he_h_cx_fvec(fvec, ieq_cell%kcx_He0_Hp, ieq_cell%kcx_Hep_H0,  &
 	                  ieq_cell%kcx_Hepp_H0,                            &
 	                  n_hi, n_hii, n_hei, n_heii, n_heiii, 1.0d0,       &
-	                  .false.)
+	                  .false., gross=gross)
+	ionization_row_gross(1:N_eq) = gross(1:N_eq)
 
 	! The transported ionization fractions, where the flow carries them
 	! and not this cell's local balance (ion_residual_core).
@@ -237,7 +243,7 @@
                  n_heiii, a_hii, a_heii, a_heiii, b_hi, b_hei, b_heii)
    do e=1,met_nelem
       ix=4+2*(e-1)
-      if (met_ntot(e) .gt. 1.0d-30) then
+      if (met_ntot(e) .gt. absent_element_density) then
          Crow(ix) = nm0(e)*met_b0(e) - met_a1(e)*nm1(e)
          if (met_top(e) .ge. 2) Crow(ix+1) = nm1(e)*met_b1(e) - met_a2(e)*nm2(e)
       endif
@@ -290,7 +296,7 @@
    ! both stages; two-stage elements pin the unused X++ unknown.
    do e=1,met_nelem
       ix=4+2*(e-1)
-      if (met_ntot(e) .le. 1.0d-30) then
+      if (met_ntot(e) .le. absent_element_density) then
          fjac(ix,:)   = 0.0d0;  fjac(ix,ix)     = 1.0d0
          fjac(ix+1,:) = 0.0d0;  fjac(ix+1,ix+1) = 1.0d0
       else if (met_top(e) .lt. 2) then

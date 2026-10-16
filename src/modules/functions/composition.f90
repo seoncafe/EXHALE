@@ -29,6 +29,7 @@
       implicit none
       private
       public :: get_species_densities, comp_T_from_p, comp_p_from_T
+      public :: gas_particle_density
       public :: comp_mass_per_H, comp_ntot_bc, comp_rho_bc
       public :: mass_per_H_nucleus_without_He
       public :: element_ratio_HeH
@@ -73,8 +74,6 @@
       real*8, dimension(1-Ng:N+Ng),          intent(inout) :: nheiii, nheiTR
       real*8, dimension(1-Ng:N+Ng,n_mion),   intent(out)   :: nm
       real*8, dimension(1-Ng:N+Ng),          intent(out)   :: ne, n_tot
-      real*8, dimension(1-Ng:N+Ng,4) :: nmol_l   ! molecules
-      real*8, dimension(1-Ng:N+Ng,3) :: nox_l    ! OH H2O CO
       integer :: im
 
       nhi  = rho*f_sp(:,isp_HI)
@@ -88,6 +87,46 @@
       do im = 1, n_mion
          nm(:,im) = rho*f_sp(:,mion_fsp(im))
       enddo
+
+      call electron_and_particle_densities(rho, f_sp, nhi, nhii, nhei,  &
+                                           nheii, nheiii, nm, ne, n_tot)
+
+      ! Particle count of the first interior cell, kept where n_tot and n_e are
+      ! defined so the lower boundary cannot disagree with the EOS about what a
+      ! particle is. Read by the characteristic base face state
+      ! (base_boundary_states, through Apply_BC), which needs
+      ! T(1) = p(1)/n_part_cell1 and nhat(1) = n_part_cell1/rho(1).
+      n_part_cell1 = n_tot(1) + ne(1)
+
+      ! Caloric half of the equation of state.  It reads the same
+      ! (rho, f_sp, n_e, n_tot) as the thermal half above, from here, so the
+      ! two cannot describe different gas -- and, being refreshed only where
+      ! the composition is refreshed, the map from energy to pressure never
+      ! depends on a previous state.
+      call caloric_state_from_composition(rho, f_sp, ne, n_tot)
+
+      end subroutine get_species_densities
+
+      ! ------------------------------------------------------!
+
+      subroutine electron_and_particle_densities(rho, f_sp, nhi, nhii,  &
+                                                 nhei, nheii, nheiii,   &
+                                                 nm, ne, n_tot)
+      ! The free-electron density ne and the gas-particle density n_tot of
+      ! the thermal equation of state, p = (n_tot + ne) k T, from the atomic
+      ! and metal densities already extracted and the molecular and
+      ! oxygen-chemistry columns of f_sp.  The one statement of what a gas
+      ! particle is: get_species_densities and gas_particle_density both
+      ! read it from here.
+      real*8, dimension(1-Ng:N+Ng),          intent(in)  :: rho
+      real*8, dimension(1-Ng:N+Ng,n_species),intent(in)  :: f_sp
+      real*8, dimension(1-Ng:N+Ng),          intent(in)  :: nhi, nhii
+      real*8, dimension(1-Ng:N+Ng),          intent(in)  :: nhei, nheii
+      real*8, dimension(1-Ng:N+Ng),          intent(in)  :: nheiii
+      real*8, dimension(1-Ng:N+Ng,n_mion),   intent(in)  :: nm
+      real*8, dimension(1-Ng:N+Ng),          intent(out) :: ne, n_tot
+      real*8, dimension(1-Ng:N+Ng,4) :: nmol_l   ! molecules
+      real*8, dimension(1-Ng:N+Ng,3) :: nox_l    ! OH H2O CO
 
       ! molecular species: include their electrons and their (one
       ! particle each) contribution to the EOS particle count.  nmol_l is
@@ -121,21 +160,42 @@
          call calc_ntot(nhi, nhii, nhei, nheii, nheiii, n_tot, nm)
       endif
 
-      ! Particle count of the first interior cell, kept where n_tot and n_e are
-      ! defined so the lower boundary cannot disagree with the EOS about what a
-      ! particle is. Read by the characteristic base face state
-      ! (base_boundary_states, through Apply_BC), which needs
-      ! T(1) = p(1)/n_part_cell1 and nhat(1) = n_part_cell1/rho(1).
-      n_part_cell1 = n_tot(1) + ne(1)
+      end subroutine electron_and_particle_densities
 
-      ! Caloric half of the equation of state.  It reads the same
-      ! (rho, f_sp, n_e, n_tot) as the thermal half above, from here, so the
-      ! two cannot describe different gas -- and, being refreshed only where
-      ! the composition is refreshed, the map from energy to pressure never
-      ! depends on a previous state.
-      call caloric_state_from_composition(rho, f_sp, ne, n_tot)
+      ! ------------------------------------------------------!
 
-      end subroutine get_species_densities
+      subroutine gas_particle_density(rho, f_sp, n_part)
+      ! n_part = n_tot + n_e, the particle density of the thermal equation
+      ! of state p = n_part k T [code units, as rho f_sp], for a state that
+      ! is only being measured: unlike get_species_densities it refreshes
+      ! neither n_part_cell1 nor the caloric state.
+      real*8, dimension(1-Ng:N+Ng),          intent(in)  :: rho
+      real*8, dimension(1-Ng:N+Ng,n_species),intent(in)  :: f_sp
+      real*8, dimension(1-Ng:N+Ng),          intent(out) :: n_part
+      real*8, dimension(1-Ng:N+Ng) :: nhi, nhii, nhei, nheii, nheiii
+      real*8, dimension(1-Ng:N+Ng) :: ne, n_tot
+      real*8, dimension(1-Ng:N+Ng,n_mion) :: nm
+      integer :: im
+
+      nhi    = rho*f_sp(:,isp_HI)
+      nhii   = rho*f_sp(:,isp_HII)
+      nhei   = 0.0d0
+      nheii  = 0.0d0
+      nheiii = 0.0d0
+      if (thereis_He) then
+         nhei   = rho*f_sp(:,isp_HeI)
+         nheii  = rho*f_sp(:,isp_HeII)
+         nheiii = rho*f_sp(:,isp_HeIII)
+      endif
+      do im = 1, n_mion
+         nm(:,im) = rho*f_sp(:,mion_fsp(im))
+      enddo
+      call electron_and_particle_densities(rho, f_sp, nhi, nhii, nhei,  &
+                                           nheii, nheiii, nm, ne, n_tot)
+      n_part = n_tot + ne
+
+      end subroutine gas_particle_density
+
 
       ! ------------------------------------------------------!
 
@@ -333,7 +393,22 @@
       ! ------------------------------------------------------!
 
       real*8 function base_h2_nuclei_fraction()
-      ! Fraction x2 of the base HYDROGEN NUCLEI that are bound into H2,
+      ! Fraction x2 of the base's non-ionized HYDROGEN NUCLEI that are bound
+      ! into H2.
+      !
+      ! WHERE A LOWER-ATMOSPHERE PROFILE STATES THE HYDROGEN CENSUS,
+      ! x2 = 1 - h_atomic_share_base: the atomic share is the profile's own,
+      ! counted over every hydrogen-bearing species it carries
+      ! (apply_lower_atmosphere_profile), and every hydrogen nucleus that is
+      ! not atomic is put on H2, the one molecular carrier of hydrogen the
+      ! wind has.  The hydrogen of CH4, NH3 and H2O (1.3e-3 of the nuclei at
+      ! the LHS 1140 b match) then sits on H2 and not on atomic H, whose
+      ! abundance it would otherwise exceed sixtyfold there (ghost x_H 6.6e-4
+      ! against the profile's 1.1e-5, md/AN_matching_surface_diagnosis_
+      ! 20261007.md section 2).
+      !
+      ! OTHERWISE (base.inp, or the equilibrium fit) the mixture is H, H2 and
+      ! He alone, and
       !
       !     x2 = 2 q (1+He/H)/(1+q),   q = h2_mixing_ratio_base(),
       !
@@ -348,6 +423,10 @@
       ! the inflowing ghosts (ionization_equilibrium). One number, so the two
       ! cannot describe different gas.
       real*8 :: q
+      if (h_atomic_share_base .ge. 0.0d0) then
+         base_h2_nuclei_fraction = 1.0d0 - h_atomic_share_base
+         return
+      endif
       q = h2_mixing_ratio_base()
       base_h2_nuclei_fraction = 2.0d0*q*(1.0d0 + HeH)/(1.0d0 + q)
       end function base_h2_nuclei_fraction

@@ -163,8 +163,9 @@
    ! Ly-alpha line-centre optical depth of the stellar beam, cell by cell.
    ! T_K [K] and nhi [cm^-3] are physical cell-by-cell arrays.
    !
-   !   tau(j)     depth from the star down to the INNER (planet-ward) face
-   !              of cell j,
+   !   tau(j)     depth from the outer face of the domain, r_edg(N), down
+   !              to the INNER (planet-ward) face of cell j (zero in the
+   !              outer ghosts),
    !   dtau(j)    cell j's OWN line-centre depth (optional),
    !   tau_out(j) depth at cell j's star-ward face (optional), so that
    !              tau_out(j) + dtau(j) = tau(j) and tau_out(N+Ng) = 0.
@@ -199,6 +200,10 @@
       dt_cell(j) = max(nhi(j),0.0d0)*C_lya/max(DnuD(j),1.0d-30)             &
                  *dr_j(j)*R0
    enddo
+   ! The depth starts at the outer face r_edg(N), as every continuum column
+   ! does (calc_column_dens states why): the outer ghosts are no gas on the
+   ! line of sight and carry no depth.
+   dt_cell(N+1:N+Ng) = 0.0d0
 
    tau(N+Ng) = dt_cell(N+Ng)
    do j = N+Ng-1, 1-Ng, -1

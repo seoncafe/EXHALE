@@ -15,6 +15,10 @@
 %% composition_restart_and_base_handoff.tex and the checkpoint rebuild order
 %% is recorded here. The empirical matrix at the end is a record of the
 %% retired ghost closure and is labeled as such.
+%% Updated 2026-10-11 for update log stage 3 section 138: the ghosts of a
+%% supersonic outermost cell are the steady isothermal wind, the cold IC
+%% stands on the running maximum of the potential, the absorbing columns
+%% start at the outer face r_edg(N), and a Roche domain can extend past L1.
 %% Author: Kwang-Il Seon
 \documentclass[english,a4paper]{my_memo}
 \synctex=1
@@ -1005,12 +1009,17 @@ the writer-to-loader round trip return the state (\S\ref{sec:loadic}).
 \section{Upper boundary: free outflow}
 \label{sec:upper}
 
-No characteristic enters the domain at an outflowing outer face, so the
-boundary imposes no condition and the ghost is a continuation of the
-interior. The rule is stated once, in \texttt{free\_outflow\_ghost}
+At an outflowing outer face the characteristics $v+c$ and $v$ leave the
+domain; $v-c$ leaves too only where the outflow is supersonic. Where it is
+subsonic, $v-c$ enters and one condition has to be supplied from outside;
+the ghost, a continuation of the interior, supplies it implicitly, so it can
+then set the mass flux, and the outer face is placed past the sonic point
+where a run can place it (update log stage~3 sections 127.4 and 127.6). The
+rule is stated once, in \texttt{free\_outflow\_ghost}
 (\texttt{Apply\_BC.f90}), for every reconstruction: which characteristics
 cross a face is a property of the flow, not of the scheme that reads the
-ghost. The continuation is the isothermal hydrostatic one,
+ghost. For a subsonic outermost cell the continuation is the isothermal
+hydrostatic one,
 \begin{equation}
 \rho_g = \rho_N \exp\!\left[-\frac{\phi_g - \phi_N}{p_N/\rho_N}\right],
 \qquad
@@ -1023,9 +1032,36 @@ own potential, with $p/\rho$, the isothermal sound speed squared of the
 mixture, held at cell~$N$'s value. Since $\rho$ and $p$ are scaled by the
 same factor, $p_g/\rho_g = p_N/\rho_N$: the ghost is at the \emph{same
 temperature} as cell~$N$ and differs from it only in density, so everything
-downstream that reads a ghost (the ionization sweep, the column integral of
-\texttt{calc\_column\_dens}, the sound speed of \texttt{eval\_dt}) sees the
-temperature it saw before, at the density the stratification gives.
+downstream that reads a ghost (the ionization sweep, the sound speed of
+\texttt{eval\_dt}) sees the temperature it saw before, at the density the
+stratification gives. The absorbing columns do not read the ghosts
+(\S\ref{sec:adjacent}).
+
+\paragraph{A supersonic outermost cell: the steady-wind ghost.}
+Where $v_N$ exceeds the adiabatic sound speed of cell~$N$, the ghost is the
+gas the wind carries beyond the face, not a state at rest, and the
+hydrostatic continuation is outside its validity condition ($M^2H/L_v\ll1$).
+Past the ridge of the Roche potential (L1) it is also unbounded: $\phi$ falls
+outward and the factor above exceeds one. MEASURED with the binary of before
+2026-10-11: WASP-121\,b at $12\,R_p$, step~0, $1.7\times10^6$\,cm$^{-3}$ in
+cell~$N$ against $3.4\times10^{34}$ and $4.9\times10^{63}$ in the ghosts;
+WASP-52\,b at $10\,R_p$, step 6780, $3.3\times10^3$ against
+$3.6\times10^{22}$ and $8.1\times10^{41}$, after which the energy update
+failed. The ghost of a supersonic cell~$N$ is therefore the steady isothermal
+wind through it at $c^2=p_N/\rho_N$:
+\begin{equation}
+\tfrac12 v_g^2 - c^2\ln v_g = \tfrac12 v_N^2 - c^2\ln v_N
+   + 2c^2\ln\frac{r_g}{r_N} - (\phi_g-\phi_N),
+\qquad
+\rho_g = \rho_N\frac{v_N r_N^2}{v_g r_g^2},
+\qquad
+\frac{p_g}{\rho_g} = c^2,
+\end{equation}
+with $v_g$ the supersonic root (\texttt{isothermal\_wind\_speed} in
+\texttt{grav\_func}, the solver of the transonic IC) and $v_g=c$ where a
+steep rise of $\phi$ leaves no supersonic root. The mass flux is constant
+through the ghosts in any potential. The face is supersonic, so the ghost
+enters only cell~$N$'s reconstruction slope.
 
 \paragraph{Why a gradient and not a copy.}
 A zero-gradient ghost asserts $\mathrm{d}p/\mathrm{d}r = 0$ at the outer
@@ -1132,13 +1168,16 @@ are boundary choices of the model and are easily confused with BCs.
 
 The stellar EUV/X-ray flux enters through the \emph{outer} boundary.
 The column densities that attenuate the ionizing flux are integrated
-top-down (\texttt{calc\_column\_dens}, \texttt{utilities.f90}): the
-outermost ghost cell is assigned its own local column
-$N(N{+}N_g) = n\,\Delta r$, and the recursion
-$N(j) = N(j{+}1) + n_j\,\Delta r_j$ proceeds inward, i.e.\ the optical
-depth is (essentially) zero at the top of the grid and grows toward
-the base. This is the radiative-transfer analogue of a boundary
-condition: the unattenuated stellar spectrum is imposed at $r_{\max}$,
+top-down (\texttt{calc\_column\_dens}, \texttt{utilities.f90}) from the
+outer face $r_{\rm edg}(N)$: the outer ghost cells carry no column, and the
+recursion $N(j) = N(j{+}1) + n_j\,\Delta r_j$ starts at cell~$N$ and
+proceeds inward, so the optical depth is zero at the outer face and grows
+toward the base. The ghosts are a closure of the reconstruction stencil, not
+gas on the line of sight; until 2026-10-11 the recursion started at the
+outermost ghost, and past the Roche ridge an exploding hydrostatic ghost
+then shielded the whole domain (update log stage~3 section~138). This is the
+radiative-transfer analogue of a boundary condition: the unattenuated
+stellar spectrum is imposed at $r_{\max}$,
 and the base receives whatever survives the overlying column. Because
 the base column is huge, the lower boundary is effectively in
 radiative shadow: consistent with holding it at $(n_0, T_0)$.
@@ -1197,12 +1236,14 @@ the widened window would reject solutions that are correct.
 
 \subsection{Domain truncation (where the upper boundary sits)}
 
-In Roche mode the grid is truncated at the Hill radius
-$r_{\max} = (3 M_*/M_p)^{-1/3}\tilde a \approx$ L1; in spherical mode
-at the user-supplied \texttt{Outer radius [R\_p]:}. The choice changes
-where the free-outflow BC is applied, and hence how defensible the
-supersonic assumption is (\S\ref{sec:upper}); it does not change the
-BC itself.
+In Roche mode the grid ends by default at the Hill radius
+$r_{\max} = (3 M_*/M_p)^{-1/3}\tilde a \approx$ L1, and at the
+user-supplied \texttt{Outer radius [R\_p]:} when that key is given, with
+the full Roche potential kept past L1 (as Huang et al.\ 2023 and Yan et
+al.\ 2022 do); in spherical mode at \texttt{Outer radius}. The choice
+changes where the free-outflow BC is applied and whether cell~$N$ is
+supersonic, and hence which of the two ghost rules of \S\ref{sec:upper}
+applies.
 
 \section{Initial conditions (\texttt{set\_IC.f90})}
 \label{sec:ic}
@@ -1329,11 +1370,17 @@ with one deliberate distortion: $b_{0,\rm eff}$ starts at the physical
 value ($1$ in code units, the potential already carrying the Jeans
 parameter $b_0$) and is increased in steps of $0.2$ until the density
 at the domain midpoint $r_{1/2} = (1 + r_{\max})/2$ falls below
-$10^{-8}$ (\texttt{set\_IC.f90}, lines 85--101). For low-gravity
+$10^{-8}$ (\texttt{set\_IC.f90}). For low-gravity
 planets the true isothermal atmosphere would not decay enough across
 the domain; the loop artificially \emph{steepens} the initial
 atmosphere so that the outer half of the grid starts effectively
-empty. The profile is then floored at $\rho = 10^{-8}$ (line 112).
+empty. The profile is then floored at $\rho = 10^{-8}$. In a Roche domain
+carried past L1, $\phi$ in Eq.~(\ref{eq:ic-hydro}) is its running maximum
+from the base outward, $\max_{r'\le r}\phi(r')$: inside the ridge this is
+$\phi$ itself and the profile is unchanged bit for bit; past it the density
+is held at its ridge value (in practice the floor) instead of rising as
+$\exp[+|\Delta\phi|]$, which reached $5\times10^{43}$\,cm$^{-3}$ at
+$15\,R_p$ for HD\,209458\,b (update log stage~3 section~138).
 Equation~(\ref{eq:ic-hydro}) with $b_{0,\rm eff} > 1$ is therefore
 \emph{not} an equilibrium: it is a concentrated cold reservoir that
 the subsequent heating will evaporate.

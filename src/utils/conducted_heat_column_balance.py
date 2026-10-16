@@ -6,8 +6,10 @@ THE PROBLEM.  The wind solved by EXHALE above the matching level p_match
 conducts a heat flux F [erg cm^-2 s^-1] down through its base face
 (`base_conductive_flux_cgs` of EXHALE_resolved.out).  The column below is the
 climate solution of `radiative_convective_column.py`, whose stratosphere is
-an isotherm at the skin temperature and which has no energy equation of its
-own that could take that flux.  This module solves the steady energy balance
+an isotherm at the skin temperature (eddy heat transport off) or the solution
+of its own radiative, molecular and eddy energy balance with no
+non-radiative flux through the match (on), and which has no wind flux in
+it.  This module solves the steady energy balance
 of the column below p_match with the flux as its upper boundary condition:
 
     (1/r^2) d/dz ( r^2 kappa(T) dT/dz ) = C(T, p) - C(T0(p), p) ,
@@ -17,9 +19,21 @@ of the column below p_match with the flux as its upper boundary condition:
 
 with T0(p) the climate temperature (the state the column is in without the
 flux), kappa the thermal conductivity of the He/H2 mixture and C the net
-radiative cooling per unit volume.  Only the DIFFERENCE C(T) - C(T0) enters,
-so whatever heating holds the climate state (absorbed starlight, upwelling
-infrared) is held at its climate value, and F = 0 returns T = T0 exactly.
+radiative cooling per unit volume.  The equation is the TOTAL energy
+equation of the column gas with one held term: the climate's radiative
+heating (absorbed starlight, upwelling infrared) is held at its climate
+value, so only the DIFFERENCE C(T) - C(T0) enters.  The conduction is the
+total one: F is the TOTAL conductive flux at the match, and the conduction
+of the climate's own gradient is a term of the equation (the climate column,
+radiative_convective_column.py, has no conduction), so T0 is NOT its
+solution at F = 0 where T0 has a gradient (the tropopause kink).  The
+excess dT = T - T0 is the unknown for precision only, through the exact
+discrete rewrite of `balance_terms` (the perturbation flux with both of its
+terms, and the reference source S0 explicit).  Reference fluxes: at the top
+q0_top = q0_{M-1/2}, zero to the interpolation of T0 where the climate is
+an isotherm at the match; at the bottom the face flux is reported as q0_{1/2}
+(the climate's own conduction) plus dq_{1/2} (the leak of the response).
+Interface decision: md/interface_definitions_step3_20261009.md section 2.
 
 COORDINATE.  The equation is solved in s = -ln p at fixed pressure levels.
 A layer between two levels holds the column mass dp/g whatever its
@@ -33,9 +47,18 @@ A = r^2 the shell area, q_X the number fraction of the emitter X and e_X its
 net cooling per molecule [erg s^-1].  Discretized conservatively on nodes
 s_0 (bottom) .. s_M (= -ln p_match), the discrete sum of the right-hand side
 equals A_M F - A_{1/2} q_{1/2} exactly at the solution, which is the energy
-budget the tests check.  r is the reference profile's radius and is held: a
-warming of a few hundred kelvin over a few scale heights moves r by ~1e-3 of
-itself, which changes A by ~2e-3.
+budget the tests check.
+
+GEOMETRY AND COMPOSITION ARE HELD.  r (hence A, g and the column masses w)
+is the reference profile's radius, from the hydrostatic integration of T0
+by the caller; the composition is the chemistry's current one.  The
+reference flux q0 is formed with the SAME composition and geometry as q, so
+the subtraction is an algebraic rewrite and neither enters it.  What holding
+r neglects is the change of the geometry with T: on the LHS 1140 b k05
+column the warmed layer raises the match by dr = 8.05e4 cm (dA/A =
+1.39e-4), and moving the geometry with T at a fixed conducted power and
+recombination heat changes T_match by -6.4e-3 K (MEASURED,
+md/column_conduction_and_latent_heat_20261010.md section 3).
 
 CONDUCTIVITY.  The mixture rule and the coefficients of
 `src/modules/time_step/viscous_conduction.f90` (Eqs. 4' and 4''): kappa =
@@ -43,6 +66,34 @@ x_He 299 T^0.69 + x_H 379 T^0.69 + x_H2 kappa_H2(T), the number fractions
 over all particles; the trace molecules carry no conductivity of their own.
 The same conductivity the wind uses at its base face, so the flux leaving the
 wind and the flux entering the column are one law.
+
+EDDY HEAT FLUX (ColumnResponse kzz; adapter --eddy-heat-transport, OFF by
+default since 2026-10-10: K_zz is used as a tracer-mixing coefficient;
+update log stage 3 sections 130 and 133).  The turbulence that mixes the chemistry with
+K_zz carries heat down the gradient of the potential temperature theta =
+T (p0/p)^(k/(m c_p)):
+
+    q_e = rho c_p K (T/theta) dtheta/dz = rho c_p K (dT/dz + g/c_p) ,
+
+downward positive (Johnstone et al. 2018, A&A 617, A107, Eq. 44, with
+kappa_eddy = rho c_p K_E, which they take from Hunten 1974; the form in theta
+follows from hydrostatic balance and the ideal gas).  An isotherm carries
+rho K g downward, an adiabat nothing.  In s it is (rho c_p K/H) dT/ds +
+rho K g: the face coefficient c gains rho c_p K m g/(k T) and the face flux
+an offset b = rho K g (`conduction_face_functions`), which enters the
+excess form as b(T_f) - b(T0_f) and its reference value q0 (`balance_terms`).
+c_p: NIST-JANAF rows for H2, CH4, H2O, NH3, N2, 5/2 k for He and H
+(`JANAF_CP`).  VALIDITY: K is the chemistry's eddy coefficient, assumed to
+mix heat with the same coefficient (turbulent Prandtl number 1); the heating
+by the dissipation of the turbulence that does this mixing (Hunten 1974, read
+in its abstract only) is NOT included, and on LHS 1140 b it decides whether
+the reference column exists at all (md/eddy_heat_transport_column_20261010.md).
+With the eddy flux on, the reference T0 is no longer the climate's isotherm
+but the solution of its own energy balance (radiation, molecular and eddy
+conduction; radiative_convective_column.stratosphere_energy_balance), and its
+net radiative heating is held (ColumnResponse reference_radiative_flux), so
+that S0, the reference's own imbalance, is zero up to the composition and
+geometry differences between the two solves.
 
 EMISSION.  Optically thin band emission of CH4, NH3, H2O, C2H2, CO and CO2
 from the k-distributions the climate model itself reads
@@ -55,9 +106,17 @@ mid-infrared, and the error that makes is measured against the two-level band
 formula in the report of `band_strength_report`.)
 
 LTE AND NON-LTE.  Every bin is assigned to one band of its species
-(`BANDS`).  Rotational bands are in LTE: the NH3 rotation-inversion lines
-have A <= 4.8 s^-1 while their pressure-broadening (collision) rate is
-1.4e4 s^-1 at 1 microbar (`ROTATIONAL_LTE_NOTE`).  A vibrational band is a two-level system,
+(`BANDS`).  Rotational bands are taken in LTE.  This is an estimate, not a
+measured result: the NH3 rotation-inversion lines have A <= 4.8 s^-1
+(HITRAN), and the rotational critical density follows from state-to-state
+NH3-H2 rate coefficients of about 1e-10 cm^3 s^-1 (Demes et al. 2023, to
+500 K) as about 5e10 cm^-3, against about 2e13 cm^-3 at 1 microbar and 400 K.
+The HITRAN pressure-broadening rate (1.4e4 s^-1 at 1 microbar) is NOT a
+rotational population relaxation rate (broadening counts every collision that
+interrupts the phase of the line) and is not evidence for LTE.  The
+excitation data in hand, their temperature ranges (none covers the wind) and
+the critical-density estimate are in md/AI_stage1_inventory_20261006.md
+section 4 (`ROTATIONAL_LTE_NOTE`).  A vibrational band is a two-level system,
 
     e = eps (e_LTE(T) - a) ,   eps = C10/(C10 + A10) ,
     C10 = sum_M k_M(T) n_M      (M = He, H2) ,
@@ -156,15 +215,24 @@ ends (the population excess of a two-level band is eps_beta times the LTE
 one when the absorbed field is held); exact for LTE bands.
 `solve_with_exchange` solves the balance with the full exchange of the whole
 domain (fixed-point iteration on the exchange heating) to test it.
-THE OVERLYING GAS.  Both transfers take the column above p_match from the
-lower-atmosphere profile, i.e. the Photochem CH4 and NH3 above the match.
-Above the match the gas is the wind's, which carries C, N and O as atoms
-and is warmer, so that absorber is not in the coupled model.  On LHS 1140 b
-(deep He/H 1.8, 1.5 and 1.2, F = 11.4, 13.8 and 16.5 erg cm^-2 s^-1) it
-makes 87-88 per cent of the thin test's absorbed fraction (22.2 -> 2.9, 25.2
--> 3.1 and 27.9 -> 3.3 per cent without it) and 95-96 per cent of the
-cooling-to-space rise of T_match (+2.42 -> +0.12, +3.08 -> +0.13 and +3.68
--> +0.14 K) (MEASURED, include_gas_above_match = False, update log stage 3).
+THE OVERLYING GAS IS THE WIND'S.  Above p_match the gas is described by
+the escape wind alone (user decision 2026-10-07,
+md/AN_overlap_structural_design_20261008.md), which carries C, N and O as
+atoms and no CH4, NH3, H2O, CO2 or C2H2 with its oxygen chemistry off, so
+the column above the match absorbs none of these bands: both transfers start
+their escape at p_match (`include_gas_above_match = False`, the default).
+With the wind's oxygen chemistry on, its H2O and CO would absorb above the
+match and are not counted here (an approximation; (AI) stage 3 poses the
+molecules above the match on the wind's state).  The attribute set True
+takes the overlying column from the profile instead (the profile's gas above
+the match, plus the hydrostatic column x p/(m g) above its top level at the
+top level's mixing ratio): the former treatment, kept as a diagnostic.  On
+LHS 1140 b (deep He/H 1.8, 1.5 and 1.2, F = 11.4, 13.8 and 16.5 erg cm^-2
+s^-1, profiles reaching 1e-8 bar) that gas made 87-88 per cent of the thin
+test's absorbed fraction (22.2 -> 2.9, 25.2 -> 3.1 and 27.9 -> 3.3 per cent
+without it) and 95-96 per cent of the cooling-to-space rise of T_match
+(+2.42 -> +0.12, +3.08 -> +0.13 and +3.68 -> +0.14 K) (MEASURED, update log
+stage 3).
 
 WHAT IS HELD.  Composition (number fractions at fixed pressure), the
 absorption, r(p), gravity.  The caller iterates composition and temperature
@@ -216,6 +284,151 @@ def mixture_conductivity(T, x_He, x_H2, x_H):
 
 
 # --------------------------------------------------------------------------
+# Eddy heat transport (module docstring, EDDY HEAT FLUX)
+# --------------------------------------------------------------------------
+# Isobaric heat capacities [J mol^-1 K^-1], NIST-JANAF Thermochemical Tables
+# (Chase 1998, J. Phys. Chem. Ref. Data Monograph 9; tables H-050 H2(ref),
+# C-067 CH4, H-064 H2O, H-083 NH3, N-023 N2(ref), copies in
+# references/NIST_JANAF/), the rows 100-1000 K.  Linear between rows, held
+# at the end rows outside them: below 100 K that holds the 100 K value, the
+# translational plus rotational value of every listed molecule there
+# (H2 3.39 R, CH4 4.00 R, H2O 4.01 R, NH3 4.00 R, N2 3.50 R).
+JANAF_CP = {
+    'H2': ((100., 200., 250., 298.15, 300., 350., 400., 450., 500., 600.,
+            700., 800., 900., 1000.),
+           (28.154, 27.447, 28.344, 28.836, 28.849, 29.081, 29.181, 29.229,
+            29.260, 29.327, 29.441, 29.624, 29.881, 30.205)),
+    'CH4': ((100., 200., 250., 298.15, 300., 350., 400., 450., 500., 600.,
+             700., 800., 900., 1000.),
+            (33.258, 33.473, 34.216, 35.639, 35.708, 37.874, 40.500, 43.374,
+             46.342, 52.227, 57.794, 62.932, 67.601, 71.795)),
+    'H2O': ((100., 200., 298.15, 300., 400., 500., 600., 700., 800., 900.,
+             1000.),
+            (33.299, 33.349, 33.590, 33.596, 34.262, 35.226, 36.325, 37.495,
+             38.721, 39.987, 41.268)),
+    'NH3': ((100., 200., 298.15, 300., 400., 500., 600., 700., 800., 900.,
+             1000.),
+            (33.284, 33.757, 35.652, 35.701, 38.716, 42.048, 45.293, 48.354,
+             51.235, 53.948, 56.491)),
+    'N2': ((100., 200., 250., 298.15, 300., 350., 400., 450., 500., 600.,
+            700., 800., 900., 1000.),
+           (29.104, 29.107, 29.111, 29.124, 29.125, 29.165, 29.249, 29.387,
+            29.580, 30.110, 30.754, 31.433, 32.090, 32.697)),
+}
+R_GAS_J = 8.314462618               # J mol^-1 K^-1
+# Atoms: 5/2 k.  Linear molecules without a JANAF row here (CO, CO2, C2H2):
+# 7/2 k, translation and rotation with the vibrations frozen, an
+# approximation that only these traces (number fractions <= 1e-4 on the
+# columns this module is used on) carry.
+CP_OVER_K_FIXED = {'He': 2.5, 'H': 2.5, 'CO': 3.5, 'CO2': 3.5, 'C2H2': 3.5}
+
+
+def heat_capacity_per_particle(species, T, derivative=False):
+    """c_p [erg K^-1] of one particle of `species` at T [K]; with
+    derivative, (c_p, dc_p/dT), the slope of the row interval T lies in
+    (zero outside the rows)."""
+    T = np.asarray(T, dtype=float)
+    if species in JANAF_CP:
+        Tt, cp = (np.asarray(v, dtype=float) for v in JANAF_CP[species])
+        val = np.interp(T, Tt, cp)/R_GAS_J*KB
+        if not derivative:
+            return val
+        k = np.clip(np.searchsorted(Tt, T, side='right') - 1, 0, Tt.size - 2)
+        slope = (cp[k+1] - cp[k])/(Tt[k+1] - Tt[k])/R_GAS_J*KB
+        slope = np.where((T < Tt[0]) | (T > Tt[-1]), 0.0, slope)
+        return val, slope
+    if species in CP_OVER_K_FIXED:
+        val = np.full(T.shape, CP_OVER_K_FIXED[species]*KB)
+        return (val, np.zeros_like(val)) if derivative else val
+    raise ValueError('no heat capacity for %s' % species)
+
+
+def specific_heat(T, mix, m_g, derivative=False):
+    """c_p per gram [erg g^-1 K^-1] of a mixture at T: the number-weighted
+    mean particle heat capacity of the species in `mix` ({species: number
+    fraction}, normalized over the species given) over the mean particle
+    mass m_g [g]; with derivative, (c_p, dc_p/dT)."""
+    T = np.asarray(T, dtype=float)
+    num = np.zeros_like(T)
+    dnum = np.zeros_like(T)
+    den = np.zeros_like(T)
+    for sp, x in mix.items():
+        x = np.asarray(x, dtype=float)
+        v, dv = heat_capacity_per_particle(sp, T, derivative=True)
+        num += x*v
+        dnum += x*dv
+        den += x
+    m_g = np.asarray(m_g, dtype=float)
+    if derivative:
+        return num/den/m_g, dnum/den/m_g
+    return num/den/m_g
+
+
+def conduction_face_functions(geom, p_face_dyn, g_face, mix_face,
+                              K_face=None):
+    """The face coefficient c(T_f) and the face offset b(T_f) of the
+    conductive flux q = c dT/ds + b (downward positive, s = -ln p) of a gas
+    with molecular and eddy conduction.
+
+    MOLECULAR: c_mol = kappa(T_f) m g/(k T_f) (`mixture_conductivity`,
+    number fractions 'He', 'H2', 'H' of `mix_face`), b_mol = 0.
+    EDDY: q_e = rho c_p K (dT/dz + g/c_p) (Johnstone et al. 2018, A&A 617,
+    A107, Eq. 44, kappa_eddy = rho c_p K_E), with dT/dz = (m g/(k T)) dT/ds
+    and rho = p m/(k T):
+        c_e = (p/g) (m g/k)^2 c_p(T_f) K/T_f^2 ,   b_e = p (m g/k) K/T_f ,
+    c_p per gram (`specific_heat` of `mix_face`).  K_face None: no eddy term
+    (b is then None).  geom.mg_face is m g/k at the faces; m = mg k/g.
+    Returns (c, b): c(Tf) -> (c, dc/dTf), b(Tf) -> (b, db/dTf) or None."""
+    mg = geom.mg_face
+    xf = {k: mix_face.get(k, np.zeros_like(mg)) for k in ('He', 'H2', 'H')}
+    eddy = K_face is not None
+    if eddy:
+        p = np.asarray(p_face_dyn, dtype=float)
+        g = np.asarray(g_face, dtype=float)
+        K = np.asarray(K_face, dtype=float)
+        m = mg*KB/g
+        cp_mix = {sp: v for sp, v in mix_face.items()
+                  if sp in JANAF_CP or sp in CP_OVER_K_FIXED}
+
+    def c(Tf):
+        kap = mixture_conductivity(Tf, xf['He'], xf['H2'], xf['H'])
+        h = 1e-4*Tf
+        dkap = (mixture_conductivity(Tf + h, xf['He'], xf['H2'], xf['H'])
+                - mixture_conductivity(Tf - h, xf['He'], xf['H2'], xf['H'])
+                )/(2*h)
+        cc = kap*mg/Tf
+        dcc = dkap*mg/Tf - kap*mg/Tf**2
+        if eddy:
+            cp, dcp = specific_heat(Tf, cp_mix, m, derivative=True)
+            a = (p/g)*mg*mg*K
+            cc = cc + a*cp/Tf**2
+            dcc = dcc + a*(dcp/Tf**2 - 2.0*cp/Tf**3)
+        return cc, dcc
+
+    if not eddy:
+        return c, None
+
+    def b(Tf):
+        a = p*mg*K
+        return a/Tf, -a/Tf**2
+    return c, b
+
+
+def held_heating_of_flux(s, area, F_up):
+    """The heating of each node's control interval by a held upward flux
+    F_up(s) [erg cm^-2 s^-1] (net radiative flux, upward positive, a
+    function of s = -ln p), in the units of A w D: H_i = A_i [F_up(s_{i-1/2})
+    - F_up(s_{i+1/2})], the top node's interval ending at s_M itself and the
+    bottom (Dirichlet) node carrying none."""
+    s = np.asarray(s, dtype=float)
+    faces = np.concatenate([0.5*(s[1:] + s[:-1]), [s[-1]]])
+    Ff = np.asarray(F_up(faces), dtype=float)
+    H = np.zeros_like(s)
+    H[1:] = np.asarray(area, dtype=float)[1:]*(Ff[:-1] - Ff[1:])
+    return H
+
+
+# --------------------------------------------------------------------------
 # The generic solver: conduction against a local net cooling, in s = -ln p
 # --------------------------------------------------------------------------
 
@@ -251,26 +464,133 @@ def control_interval_widths(s):
     return width
 
 
-def assemble_balance(geom, F, T, face_coefficient, net_cooling):
-    """Residual R (nodes 0..M, R[0] unused), banded Jacobian on T_1..T_M and
-    face fluxes q of the discrete balance of `solve_conducted_response`."""
+def balance_terms(geom, F, T, face_coefficient, net_cooling,
+                  T_reference=None, face_offset=None, reference_heating=None):
+    """The discrete balance of `solve_conducted_response` split into the
+    response to the reference column and the reference column's own terms.
+
+    TOTAL AND EXCESS FLUX.  The column solves the TOTAL energy equation of
+    its gas (the conductive flux of the whole temperature T; the climate's
+    radiative heating is the one term held at its reference value, which is
+    why the cooling enters as the excess D).  The excess unknown dT = T - T0
+    is used for precision only, through the exact discrete identity on the
+    same faces and the same coefficient c (composition and geometry of the
+    current column for both):
+
+        q_{i+1/2}  = c(T_f) (T_{i+1} - T_i)/ds_i                (total flux)
+        q0_{i+1/2} = c(T0_f) (T0_{i+1} - T0_i)/ds_i             (reference)
+        dq_{i+1/2} = q - q0 = c(T_f) (dT_{i+1} - dT_i)/ds_i
+                     + [c(T_f) - c(T0_f)] (T0_{i+1} - T0_i)/ds_i ,
+
+    the discrete form of delta q = -kappa(T) grad(T - T0) - [kappa(T) -
+    kappa(T0)] grad(T0) in the downward-positive convention of this module.
+    The second term is not zero when kappa depends on T and T0 has a
+    gradient; dropping it changes the equation.
+
+    THE REFERENCE SOURCE.  The residual of node i = 1..M is
+
+        R_i = A_{i+1/2} dq_{i+1/2} - A_{i-1/2} dq_{i-1/2} + S0_i
+              - A_i w_i D_i ,
+        S0_i = A_{i+1/2} q0_{i+1/2} - A_{i-1/2} q0_{i-1/2} ,
+
+    S0 the convergence of the reference column's own conductive flux (the
+    climate column has no conduction, so S0 is a real term of the total
+    equation and T0 is not its solution at zero input when T0 has a
+    gradient).  With a held reference heating H0 (`reference_heating`, the
+    reference column's net radiative heating, units of A w D) S0_i gains
+    H0_i: S0 is then the reference's own imbalance, zero where T0 solves its
+    energy balance with the same conduction.  EDDY OFFSET: `face_offset`
+    b(T_f) (the eddy flux's rho K g) is added to q, its change b(T_f) -
+    b(T0_f) to dq and b(T0_f) to q0.  TOP: the datum is the TOTAL flux,
+    A_{M+1/2} q_{M+1/2} := A_M F; its reference part q0_top := q0_{M-1/2}
+    (the reference column is an isotherm at the match, so q0_top is zero to
+    the interpolation of T0), or 0 with H0 (the balanced reference has no
+    non-radiative flux through the match), and its response part dq_top =
+    F - q0_top.  BOTTOM: Dirichlet T = T0;
+    the bottom face flux is q0_{1/2} + dq_{1/2}.  With T_reference None the
+    reference is T0 = 0 and q0 = 0 (the total form, used by the generic
+    tests).
+
+    Returns a dict: q, q0, dq (faces 1/2 .. M-1/2), q0_top, S0 and
+    R_response (the dq part, nodes 0..M, entry 0 unused), emission
+    (A_i w_i D_i), R (the residual), and the face Jacobian factors."""
     M = geom.M
     Af, ds = geom.area_face, geom.ds
+    T = np.asarray(T, dtype=float)
     Tf = 0.5*(T[1:] + T[:-1])
     c, dc = face_coefficient(Tf)
-    dT = T[1:] - T[:-1]
-    q = c*dT/ds                                   # faces 1/2 .. M-1/2
-    dq_dlo = (-c + 0.5*dc*dT)/ds                  # d q / d T_i
-    dq_dhi = (c + 0.5*dc*dT)/ds                   # d q / d T_{i+1}
+    if T_reference is None:
+        T0 = np.zeros_like(T)
+        q0 = np.zeros(M)
+        dTh = T
+        dq = c*(dTh[1:] - dTh[:-1])/ds
+    else:
+        T0 = np.asarray(T_reference, dtype=float)
+        T0f = 0.5*(T0[1:] + T0[:-1])
+        c0, _ = face_coefficient(T0f)
+        g0 = (T0[1:] - T0[:-1])/ds
+        q0 = c0*g0
+        dTh = T - T0
+        dq = c*(dTh[1:] - dTh[:-1])/ds + (c - c0)*g0
+    db = np.zeros(M)
+    if face_offset is not None:
+        # the eddy flux's adiabatic part rho K g, a function of T_f alone:
+        # its change over the reference joins dq, its reference value q0
+        b, db = face_offset(Tf)
+        if T_reference is None:
+            dq = dq + b
+        else:
+            b0, _ = face_offset(T0f)
+            q0 = q0 + b0
+            dq = dq + (b - b0)
+    # The reference column's flux through the top face.  Without a held
+    # reference heating the reference is the climate column, an isotherm at
+    # the match: q0_top := q0_{M-1/2}, zero to the interpolation of T0.
+    # With it the reference is the solution of its own energy balance
+    # (radiative heating, molecular and eddy conduction) with no
+    # non-radiative flux through the match (radiative_convective_column.py,
+    # `stratosphere_energy_balance`): q0_top := 0.  q0_top only splits the
+    # TOTAL top datum A_M F into its reference and response parts and
+    # cancels in R.
+    if reference_heating is not None:
+        q0_top = 0.0
+    else:
+        q0_top = q0[M-1] if M >= 1 else 0.0
+    S0 = np.zeros(M + 1)
+    S0[:M] += Af*q0
+    S0[M] += geom.area[M]*q0_top
+    S0[1:] -= Af*q0
+    if reference_heating is not None:
+        S0 += np.asarray(reference_heating, dtype=float)
+    S0[0] = 0.0
+    Rr = np.zeros(M + 1)
+    Rr[:M] += Af*dq
+    Rr[M] += geom.area[M]*(F - q0_top)
+    Rr[1:] -= Af*dq
+    Rr[0] = 0.0
     D, dD = net_cooling(T)
+    emission = geom.area*geom.w*D
     R = np.zeros(M + 1)
-    # flux into node i from above minus out below
-    top = np.zeros(M + 1)
-    top[:M] = Af*q
-    top[M] = geom.area[M]*F
-    bot = np.zeros(M + 1)
-    bot[1:] = Af*q
-    R[1:] = (top - bot - geom.area*geom.w*D)[1:]
+    R[1:] = (Rr + S0 - emission)[1:]
+    dTt = T[1:] - T[:-1]
+    return dict(q=q0 + dq, q0=q0, dq=dq, q0_top=float(q0_top), S0=S0,
+                R_response=Rr, emission=emission, R=R,
+                dq_dlo=(-c + 0.5*dc*dTt)/ds + 0.5*db,   # d q / d T_i
+                dq_dhi=(c + 0.5*dc*dTt)/ds + 0.5*db,    # d q / d T_{i+1}
+                dD=dD)
+
+
+def assemble_balance(geom, F, T, face_coefficient, net_cooling,
+                     T_reference=None, face_offset=None,
+                     reference_heating=None):
+    """Residual R (nodes 0..M, R[0] unused), banded Jacobian on T_1..T_M and
+    TOTAL face fluxes q of the discrete balance (`balance_terms`).  q0 is
+    constant, so the Jacobian of dq is that of q."""
+    M = geom.M
+    Af = geom.area_face
+    t = balance_terms(geom, F, T, face_coefficient, net_cooling, T_reference,
+                      face_offset, reference_heating)
+    dq_dlo, dq_dhi = t['dq_dlo'], t['dq_dhi']
     # banded Jacobian on the unknowns T_1..T_M
     ab = np.zeros((3, M))
     diag = np.zeros(M + 1)
@@ -282,20 +602,39 @@ def assemble_balance(geom, F, T, face_coefficient, net_cooling):
     # bottom face of node i (i >= 1): -A q_{i-1/2}
     diag[1:] -= Af*dq_dhi
     lower[1:] -= Af*dq_dlo
-    diag -= geom.area*geom.w*dD
+    diag -= geom.area*geom.w*t['dD']
     ab[1, :] = diag[1:]
     ab[0, 1:] = upper[1:M]
     ab[2, :-1] = lower[2:]
-    return R, ab, q
+    return t['R'], ab, t['q']
+
+
+def balance_scale(geom, F, T, face_coefficient, net_cooling,
+                  T_reference=None, face_offset=None, reference_heating=None):
+    """The scale of the residual: the largest absolute term of the balance
+    at T, max(A_M |F|, max |A q0|, sum |S0|, sum |A w D|, sum |H0|).  At
+    T = T0 the fourth is the total of any heating held inside D (D is an
+    excess, zero at T0 without held heating) and H0 the held reference
+    heating.  Defined for F = 0."""
+    t = balance_terms(geom, F, T, face_coefficient, net_cooling, T_reference,
+                      face_offset, reference_heating)
+    held = (float(np.sum(np.abs(np.asarray(reference_heating)[1:])))
+            if reference_heating is not None else 0.0)
+    return max(abs(geom.area[geom.M]*F),
+               float(np.max(np.abs(geom.area_face*t['q0']))),
+               float(np.sum(np.abs(t['S0']))),
+               float(np.sum(np.abs(t['emission'][1:]))), held, 1e-300)
 
 
 def linear_temperature_response(geom, F, T, face_coefficient, net_cooling,
-                                heating):
+                                heating, T_reference=None, face_offset=None,
+                                reference_heating=None):
     """First-order change of the node temperatures when a heating
     `heating`_i [the units of A_i w_i D_i] is added to the balance at the
     solution T: delta T = -J^-1 heating, J the Jacobian of the residual."""
     from scipy.linalg import solve_banded
-    _, ab, _ = assemble_balance(geom, F, T, face_coefficient, net_cooling)
+    _, ab, _ = assemble_balance(geom, F, T, face_coefficient, net_cooling,
+                                T_reference, face_offset, reference_heating)
     out = np.zeros_like(T)
     out[1:] = solve_banded((1, 1), ab, -np.asarray(heating, float)[1:])
     return out
@@ -303,7 +642,8 @@ def linear_temperature_response(geom, F, T, face_coefficient, net_cooling,
 
 def solve_conducted_response(geom, F, T_bottom, T_guess, face_coefficient,
                              net_cooling, tol=1e-10, max_iter=200,
-                             verbose=False):
+                             verbose=False, T_reference=None,
+                             face_offset=None, reference_heating=None):
     """Newton solve of the discrete balance.
 
     face_coefficient(T_face) -> (c, dc/dT) per face: the conductive flux
@@ -312,26 +652,34 @@ def solve_conducted_response(geom, F, T_bottom, T_guess, face_coefficient,
     net_cooling(T) -> (D, dD/dT) per node: the net cooling EXCESS per unit
         column mass, D_i = sum_X (q_X/m) [e_X(T_i) - e_X(T0_i)]
         [erg g^-1 s^-1] for the physical column.
+    T_reference: the reference temperature on the nodes (`balance_terms`);
+        None for the total form with no reference column.
+    face_offset(T_face) -> (b, db/dT): the part of the face flux that does
+        not multiply the gradient (the eddy flux's rho K g); None: none.
+    reference_heating: the held heating of the reference column on the
+        nodes (units of A w D), part of S0 (`balance_terms`); None: none.
 
-    Residual of node i = 1..M (node 0 is held at T_bottom):
-        R_i = A_{i+1/2} q_{i+1/2} - A_{i-1/2} q_{i-1/2} - A_i w_i D_i ,
-    with A_{M+1/2} q_{M+1/2} := A_M F at the top.  Returns T and the face
-    fluxes; raises RuntimeError if Newton does not converge.
+    Residual of node i = 1..M (node 0 is held at T_bottom): `balance_terms`,
+    with A_{M+1/2} q_{M+1/2} := A_M F (total flux) at the top.  Converged
+    when max |R_i| is below tol times `balance_scale` at the initial T.
+    Returns T and the TOTAL face fluxes; raises RuntimeError if Newton does
+    not converge.
     """
     from scipy.linalg import solve_banded
-    M = geom.M
     T = np.array(T_guess, dtype=float)
     T[0] = T_bottom
 
     def assemble(T):
-        return assemble_balance(geom, F, T, face_coefficient, net_cooling)
+        return assemble_balance(geom, F, T, face_coefficient, net_cooling,
+                                T_reference, face_offset, reference_heating)
 
-    scale = max(abs(geom.area[M]*F), 1e-300)
+    scale = balance_scale(geom, F, T, face_coefficient, net_cooling,
+                          T_reference, face_offset, reference_heating)
     for it in range(max_iter):
         R, ab, q = assemble(T)
         res = np.max(np.abs(R[1:]))/scale
         if verbose:
-            print('    newton %d  max|R|/(A F) = %.3e' % (it, res))
+            print('    newton %d  max|R|/scale = %.3e' % (it, res))
         if res < tol:
             return T, q, it
         dx = solve_banded((1, 1), ab, -R[1:])
@@ -343,14 +691,15 @@ def solve_conducted_response(geom, F, T_bottom, T_guess, face_coefficient,
         if np.any(~np.isfinite(T)) or np.any(T[1:] <= 0.0):
             raise RuntimeError('the column solve left the physical range')
     raise RuntimeError('the column solve did not converge in %d Newton '
-                       'iterations (max|R|/(A F) = %.3e)' % (max_iter, res))
+                       'iterations (max|R|/scale = %.3e)' % (max_iter, res))
 
 
 def discrete_energy_budget(geom, T, q, F, net_cooling):
     """(sum_i A_i w_i D_i over the free nodes, A_{1/2} q_{1/2}, A_M F): the
-    emission excess of the column, the flux leaving through its bottom and
-    the flux entering at its top.  At a solution the first two sum to the
-    third to the Newton tolerance."""
+    emission excess of the column, the TOTAL flux leaving through its bottom
+    and the flux entering at its top.  At a solution the first two sum to
+    the third to the Newton tolerance (the reference source S0 telescopes
+    into the total bottom flux; `solve` reports its parts)."""
     D, _ = net_cooling(T)
     excess = float(np.sum((geom.area*geom.w*D)[1:]))
     leak = float(geom.area_face[0]*q[0])
@@ -620,11 +969,19 @@ def tabulated_in_T(T_tab, v_tab):
 #   p tau(CH4-H2) = 0.12 microsecond atm, i.e. 3.4e-13 at room temperature.
 #
 # A10: the dyad band coefficient with the rotational levels thermalized,
-#   from the HITRAN line list (sum of g' A e^(-E'/kT) over the nu2 and nu4
-#   upper levels over sum of g' e^(-E'/kT); main isotopologue, hitran.org
-#   2026-10-03): 2.04, 1.96, 1.77, 1.55, 1.43 s^-1 at 150, 185, 296, 500,
-#   700 K.  Published nu4 alone: 2.12 s^-1, Yelle (1991, ApJ 383, 380)
-#   Table 2.
+#   from the HITRAN line list: for every upper rotational level of nu4 and
+#   nu2 its total A to the ground vibrational state (sum over its P, Q, R
+#   lines), averaged with weights g' e^(-E'/kT) over the levels of both
+#   modes (main isotopologue 12CH4, hitran.org line-by-line API, 800-2000
+#   cm^-1, retrieved 2026-10-07; the nu4 band intensity of that set, 5.141e-18
+#   cm^-1/(molecule cm^-2), is the HITRAN_BAND_INTENSITY_296K sum):
+#   2.11, 2.04, 1.86, 1.68, 1.59 s^-1 at 150, 185, 296, 500, 700 K.  The
+#   average falls with T because nu2 (A = 0.04-0.12 s^-1, Coriolis-induced)
+#   takes a growing share of the dyad population.  nu4 alone, the same
+#   average: 2.26, 2.25, 2.24, 2.20, 2.18 s^-1.  Published nu4: 2.12 s^-1,
+#   Yelle (1991, ApJ 383, 380) Table 2 (6 per cent below the HITRAN value);
+#   the band intensity gives A(nu4) = 8 pi c nu0^2 S/(3 x abundance) =
+#   2.23 s^-1 at 296 K, which agrees with the line sum.
 HC_OVER_K = 1.4387769                     # cm K
 
 
@@ -642,7 +999,7 @@ k_vt_ch4_dyad_h2 = LandauTellerRate([193.0, 296.0], [1.44e-13, 3.68e-13])
 
 NLTE_BANDS[('CH4', 'nu4+nu2 dyad')] = dict(
     A10=tabulated_in_T([150.0, 185.0, 296.0, 500.0, 700.0],
-                       [2.04, 1.96, 1.77, 1.55, 1.43]),
+                       [2.11, 2.04, 1.86, 1.68, 1.59]),
     k_vt={'He': k_vt_ch4_dyad_he, 'H2': k_vt_ch4_dyad_h2},
     k_vt_estimated={},
     source='He: Siddles et al. 1994 Table 5; H2: Menard-Bourcin et al. '
@@ -676,7 +1033,9 @@ NLTE_BANDS[('CH4', 'nu4+nu2 dyad')] = dict(
 #   et al. (1994), Tables 1 and 2: 27.5 (295 K), 36 (240 K), 49 (190 K),
 #   interpolated linearly in T, held at 27.5 above 295 K and at 49 below
 #   190 K.  The CH4 dyad gives 22-27 (Menard-Bourcin et al. Table 4).  NH3
-#   relaxes 16 times faster with He than CD4 does.
+#   relaxes 10 to 15 times faster with He than CD4 does: 2.8e-13 (293 K)
+#   against 2.8e-14 (295 K), and 1.1e-13 (198 K) against 7.5e-15 (190 K)
+#   (Hovis & Moore 1980 Table I; Siddles et al. 1994 Table 1, 4He).
 #
 #   'water_bending_overtone': the H2O bending overtone 2nu2 (3151 cm^-1
 #   level, relaxing by 1556-1595 cm^-1 steps), 295 K: k(H2) = 2.9e-12
@@ -693,7 +1052,10 @@ NLTE_BANDS[('CH4', 'nu4+nu2 dyad')] = dict(
 #   water relaxes about 280 times faster with itself than with He (Hovis &
 #   Moore 1980 Table III, 293-296 K), so this analog is a hydride like NH3
 #   but a less close one in quantum than CD4.
-# A10: HITRAN line list as for CH4: 13.46, 13.21, 12.56, 11.89, 11.37 s^-1
+# A10: HITRAN line list as for CH4 (both inversion components of nu2 to
+#   both of the ground state, main isotopologue 14NH3, 500-1700 cm^-1,
+#   retrieved 2026-10-07; band intensity of that set 2.245e-17, the
+#   HITRAN_BAND_INTENSITY_296K sum): 14.64, 14.69, 14.85, 15.11, 15.36 s^-1
 #   at 150, 185, 296, 500, 700 K.  Published: 15 s^-1, Weaver & Mumma
 #   (1984, ApJ 276, 782) Table 4, from a single band intensity.
 k_vt_nh3_nu2_he = LandauTellerRate(
@@ -724,7 +1086,7 @@ def _nh3_nu2_h2_estimate_of(analog):
 # column (`ColumnResponse(nh3_h2_rate_analog=...)`).
 NLTE_BANDS[('NH3', 'nu2')] = dict(
     A10=tabulated_in_T([150.0, 185.0, 296.0, 500.0, 700.0],
-                       [13.46, 13.21, 12.56, 11.89, 11.37]),
+                       [14.64, 14.69, 14.85, 15.11, 15.36]),
     k_vt={'He': k_vt_nh3_nu2_he},
     k_vt_estimated={'H2': {a: _nh3_nu2_h2_estimate_of(a)
                            for a in NH3_H2_RATE_ANALOGS}},
@@ -776,8 +1138,10 @@ EXCHANGE_POINT_TAU = 1.0e-6
 # gamma p is then 1.4e4 s^-1 at 1 microbar: even if only a tenth of it were
 # rotationally inelastic and He broadened four times less, the de-excitation
 # rate would stand 400 times above the largest A, and rises with depth.
-ROTATIONAL_LTE_NOTE = ('NH3 rotation: A <= 4.8 s^-1, broadening rate '
-                       '1.4e4 s^-1 at 1 microbar (HITRAN)')
+ROTATIONAL_LTE_NOTE = ('rotational bands in LTE, an estimate: NH3 '
+                       'rotation A <= 4.8 s^-1, critical density ~5e10 '
+                       'cm^-3 from NH3-H2 rates ~1e-10 cm^3/s; see '
+                       'md/AI_stage1_inventory_20261006.md section 4')
 
 THIN_ESCAPE_MIN = 0.9      # validity threshold of the thin treatment: upward
                            # escaping fraction of a bin's emission excess
@@ -834,11 +1198,23 @@ class ColumnResponse(object):
     'H2', 'H' and the emitters; planet_mass_g; p_match_bar;
     nh3_h2_rate_analog: the analog of the estimated NH3 nu2 + H2 rate
     (`NH3_H2_RATE_ANALOGS`), used by treatment 'nlte' only.
+    kzz: a function p [bar] -> K_zz [cm^2 s^-1], the eddy coefficient the
+    chemistry is solved with; given, the column conducts heat by eddy
+    transport as well (`conduction_face_functions`), None: molecular only.
+    reference_radiative_flux: a function p [bar] -> the net upward radiative
+    flux [erg cm^-2 s^-1] of the reference column T0 (the climate's, held);
+    given, its convergence is the held radiative heating of the reference
+    and part of S0 (`balance_terms`), so that T0, solved by
+    radiative_convective_column.stratosphere_energy_balance with the same
+    conduction, has S0 = 0 up to the composition and geometry differences
+    between that solve and this column.  None: no held reference heating
+    (the reference is the climate's isothermal stratosphere).
     """
 
     def __init__(self, p_bar, T0, r_cm, mbar_g, mix, planet_mass_g,
                  p_match_bar, emission=None, dlnp=0.01,
-                 nh3_h2_rate_analog=NH3_H2_RATE_ANALOG_DEFAULT):
+                 nh3_h2_rate_analog=NH3_H2_RATE_ANALOG_DEFAULT, kzz=None,
+                 reference_radiative_flux=None):
         if nh3_h2_rate_analog not in NH3_H2_RATE_ANALOGS:
             raise ValueError('nh3_h2_rate_analog must be one of %s'
                              % (tuple(NH3_H2_RATE_ANALOGS),))
@@ -852,6 +1228,8 @@ class ColumnResponse(object):
         self.Mp = float(planet_mass_g)
         self.p_match = float(p_match_bar)
         self.dlnp = float(dlnp)
+        self.kzz = kzz
+        self.reference_radiative_flux = reference_radiative_flux
         self.em = emission if emission is not None else LTEBandEmission()
         self.emitters = [sp for sp in self.em.tables if sp in self.mix_prof]
         # the column of each emitter above every pressure, N_X(p) =
@@ -872,14 +1250,13 @@ class ColumnResponse(object):
         # 'cooling_to_space' and the thin test); 1 is the physical column, 0
         # its optically thin limit (a test).
         self.transmission_scale = 1.0
-        # DIAGNOSTIC: False removes the profile's gas above p_match from the
-        # overlying column (tau_above_match is zero, so the escape of both
-        # the thin test and the cooling-to-space transfer starts at p_match,
-        # and the reported N_above is measured from p_match).  Above the
-        # match the gas belongs to the wind, which carries C, N, O as atoms
-        # and is warmer; the switch measures how much of the absorption
-        # comes from molecules the wind model does not contain.
-        self.include_gas_above_match = True
+        # THE OVERLYING COLUMN IS THE WIND'S (module docstring): the escape
+        # of both the thin test and the cooling-to-space transfer starts at
+        # p_match, tau_above_match is zero and N_above is measured from
+        # p_match.  True takes the profile's gas above p_match instead, a
+        # diagnostic of how much of the absorption comes from molecules the
+        # wind model does not contain.
+        self.include_gas_above_match = False
         self._tau_above = {}
 
     # ---- the domain ----------------------------------------------------- #
@@ -913,6 +1290,18 @@ class ColumnResponse(object):
         geom = ColumnGeometry(s, d['r']**2, p_bar*BAR/g*width,
                               d['m']*g/KB)
         d['geom'] = geom
+        sf = 0.5*(s[1:] + s[:-1])
+        d['p_face_dyn'] = np.exp(-sf)
+        d['g_face'] = 0.5*(g[1:] + g[:-1])
+        d['mix_face'] = {k: 0.5*(v[1:] + v[:-1]) for k, v in d['mix'].items()}
+        d['K_face'] = (np.asarray(self.kzz(d['p_face_dyn']/BAR), dtype=float)
+                       if self.kzz is not None else None)
+        if self.reference_radiative_flux is not None:
+            Fref = self.reference_radiative_flux
+            d['H0'] = held_heating_of_flux(
+                s, geom.area, lambda sq: Fref(np.exp(-sq)/BAR))
+        else:
+            d['H0'] = None
         return d
 
     # ---- the physics on the nodes --------------------------------------- #
@@ -1225,35 +1614,42 @@ class ColumnResponse(object):
         return H, dict(k0=k0, bins_total=len(jobs))
 
     def face_coefficient_function(self, d):
-        xf = {k: 0.5*(d['mix'].get(k, 0.0*d['s'])[1:]
-                      + d['mix'].get(k, 0.0*d['s'])[:-1])
-              for k in ('He', 'H2', 'H')}
-        mg = d['geom'].mg_face
-
-        def c(Tf):
-            kap = mixture_conductivity(Tf, xf['He'], xf['H2'], xf['H'])
-            h = 1e-4*Tf
-            dkap = (mixture_conductivity(Tf + h, xf['He'], xf['H2'], xf['H'])
-                    - mixture_conductivity(Tf - h, xf['He'], xf['H2'], xf['H'])
-                    )/(2*h)
-            cc = kap*mg/Tf
-            return cc, (dkap*mg/Tf - kap*mg/Tf**2)
+        """c(T_f) of the face flux: molecular conduction, plus the eddy
+        conduction rho c_p K_zz when the column was given kzz."""
+        c, _ = conduction_face_functions(d['geom'], d['p_face_dyn'],
+                                         d['g_face'], d['mix_face'],
+                                         d['K_face'])
         return c
+
+    def face_offset_function(self, d):
+        """b(T_f) = rho K_zz g of the eddy flux, None without kzz."""
+        _, b = conduction_face_functions(d['geom'], d['p_face_dyn'],
+                                         d['g_face'], d['mix_face'],
+                                         d['K_face'])
+        return b
 
     # ---- the solve ------------------------------------------------------- #
     def solve(self, F, treatment='nlte', depth_H=6.0, depth_step_H=3.0,
               p_floor_bar=None, dT_bottom_max=1e-3, leak_max=1e-6,
               verbose=False, transfer='thin',
-              exchange_shift_max_K=EXCHANGE_SHIFT_MAX_K, heating=None):
+              exchange_shift_max_K=EXCHANGE_SHIFT_MAX_K, heating=None,
+              chemical_heating=None):
         """Solve for the flux F [erg cm^-2 s^-1] into the column at p_match.
 
         The domain starts depth_H scale heights deep and is deepened by
         depth_step_H until the response at the node above the bottom is
-        below dT_bottom_max [K] and the bottom flux below leak_max of F, or
+        below dT_bottom_max [K] and the response's bottom flux dq_{1/2}
+        below leak_max of the input (A_M |F| plus the held heatings), or
         the bottom reaches p_floor_bar (the tropopause, where the climate
         isotherm ends; default the profile's deepest level).  transfer: one
-        of TRANSFERS.  heating: a function (d, T) -> extra heating in the
-        units of A w D (the full-exchange solve).  Returns a dict.
+        of TRANSFERS.  heating: a function (d) -> the exchange heating held
+        by the full-exchange solve, in the units of A w D.
+        chemical_heating: a function (d) -> a heating held at fixed
+        pressure, in the same units, that the column receives besides the
+        conducted flux (the recombination of the atomic hydrogen the wind
+        mixes down through the match, photochem_to_lower_profile.py); it is
+        part of the balance whatever the transfer, and res['chemical_heating']
+        records its column total.  Returns a dict.
         """
         if treatment not in TREATMENTS:
             raise ValueError('treatment must be one of %s' % (TREATMENTS,))
@@ -1270,23 +1666,38 @@ class ColumnResponse(object):
             D = self.net_cooling_function(d, treatment, transfer)
             if heating is not None:
                 D = self._with_heating(d, D, heating)
+            if chemical_heating is not None:
+                D = self._with_heating(d, D, chemical_heating)
             c = self.face_coefficient_function(d)
+            b = self.face_offset_function(d)
+            H0 = d['H0']
             if T_prev is None:
                 guess = d['T0'].copy()
             else:
                 guess = d['T0'] + np.interp(d['s'], T_prev[0],
                                             T_prev[1], left=0.0)
-            if F == 0.0:
-                T = d['T0'].copy()
-                q = np.zeros(geom.M)
-                nit = 0
-            else:
-                T, q, nit = self._solve_with_continuation(
-                    geom, F, d['T0'][0], guess, c, D, verbose)
+            # No shortcut at zero input: the reference column is not a
+            # solution of the total equation where it carries a conductive
+            # flux of its own (S0 of `balance_terms`).
+            T, q, nit = self._solve_with_continuation(
+                geom, F, d['T0'][0], guess, c, D, verbose, d['T0'], b, H0)
             dT = T - d['T0']
-            leak = abs(geom.area_face[0]*q[0])/max(geom.area[-1]*abs(F), 1e-300)
+            terms = balance_terms(geom, F, T, c, D, d['T0'], b, H0)
+            # The depth test is on the RESPONSE: its bottom flux dq_{1/2}
+            # against the input the column is given (A_M |F| plus the held
+            # heatings, which D carries at T0), not on the total bottom flux,
+            # which holds the reference column's own conduction and can
+            # exceed any fraction of F.
+            held = float(np.sum(np.abs((geom.area*geom.w*D(d['T0'])[0])[1:])))
+            imposed = geom.area[-1]*abs(F) + held
+            if imposed <= 0.0:
+                # no input: the response is to S0 alone, judged against the
+                # scale of the balance
+                imposed = balance_scale(geom, F, d['T0'], c, D, d['T0'], b,
+                                        H0)
+            leak = abs(geom.area_face[0]*terms['dq'][0])/imposed
             ok_depth = (abs(dT[1]) <= dT_bottom_max and leak <= leak_max)
-            if (ok_depth or depth >= depth_cap - 1e-12 or F == 0.0
+            if (ok_depth or depth >= depth_cap - 1e-12
                     or depth_step_H <= 0.0):
                 break
             T_prev = (d['s'], dT)
@@ -1296,11 +1707,34 @@ class ColumnResponse(object):
                    newton_iterations=nit, depth_H=depth,
                    depth_limited_by_floor=not ok_depth, leak_fraction=leak)
         excess, leak_abs, top = discrete_energy_budget(geom, T, q, F, D)
-        res['budget'] = dict(excess=excess, bottom_flux=leak_abs, top=top,
-                             relative_error=((excess + leak_abs - top)
-                                             / max(abs(top), 1e-300)))
+        held_ref = (float(np.sum(H0[1:])) if H0 is not None else 0.0)
+        # The budget in r^2 units: emission excess (net of held heating) +
+        # total bottom flux = A_M F + the held radiative heating of the
+        # reference.  The bottom flux in its two parts, the reference
+        # column's own conduction A q0_{1/2} and the leak of the response
+        # A dq_{1/2}; S0 its column sum, A_M q0_top - A q0_{1/2} + sum H0.
+        res['budget'] = dict(
+            excess=excess, bottom_flux=leak_abs, top=top,
+            bottom_flux_reference=float(geom.area_face[0]*terms['q0'][0]),
+            bottom_flux_response=float(geom.area_face[0]*terms['dq'][0]),
+            reference_source=float(np.sum(terms['S0'][1:])),
+            reference_radiative_heating=held_ref,
+            top_reference=float(geom.area[-1]*terms['q0_top']),
+            relative_error=((excess + leak_abs - top - held_ref)
+                            / max(abs(top), balance_scale(
+                                geom, F, d['T0'], c, D, d['T0'], b, H0))))
+        # The reference's own imbalance on this column (zero where T0 solves
+        # its energy balance with this conduction) and the eddy and molecular
+        # parts of the flux through the face below the match.
+        res['reference_imbalance'] = dict(
+            max_abs_S0=float(np.max(np.abs(terms['S0'][1:]))),
+            S0=terms['S0'].copy())
+        res['face_fluxes_below_match'] = self.flux_parts(d, T)
         res['T_match'] = float(T[-1])
         res['dT_match'] = float(dT[-1])
+        res['chemical_heating'] = (
+            float(np.sum(chemical_heating(d)[1:])/geom.area[-1])
+            if chemical_heating is not None else 0.0)
         if dT[-1] != 0.0:
             x = -np.log(d['p_bar']/self.p_match)          # <= 0 below
             f = dT/dT[-1]
@@ -1318,7 +1752,7 @@ class ColumnResponse(object):
             res['escape'] = self.escape_record(d, T, treatment)
             if heating is None:
                 res['exchange'] = self.exchange_validity(
-                    d, T, F, treatment, c, D, exchange_shift_max_K)
+                    d, T, F, treatment, c, D, exchange_shift_max_K, b, H0)
         return res
 
     @staticmethod
@@ -1332,7 +1766,8 @@ class ColumnResponse(object):
             return v - Hn, dv
         return D2
 
-    def exchange_validity(self, d, T, F, treatment, c, D, shift_max):
+    def exchange_validity(self, d, T, F, treatment, c, D, shift_max,
+                          b=None, H0=None):
         """The first-order shift of T_match by the exchange inside the
         domain that 'cooling_to_space' neglects, over the nodes warmed by
         more than EXCHANGE_NODE_RISE_MIN of the rise at the match; refused
@@ -1344,7 +1779,9 @@ class ColumnResponse(object):
                           * abs(dT[-1]))[0][0])
         k0 = max(k0, 1)
         H, rec = self.exchange_heating(d, T, treatment, k0=k0)
-        dTr = linear_temperature_response(d['geom'], F, T, c, D, H)
+        dTr = linear_temperature_response(d['geom'], F, T, c, D, H,
+                                          T_reference=d['T0'], face_offset=b,
+                                          reference_heating=H0)
         out = dict(k0=k0, p_k0_bar=float(d['p_bar'][k0]),
                    shift_K=float(dTr[-1]), shift_max_K=shift_max,
                    heating_over_F=float(np.sum(H[1:])
@@ -1440,18 +1877,45 @@ class ColumnResponse(object):
             iterations=len(hist) - 1)
         return res
 
-    def _solve_with_continuation(self, geom, F, Tb, guess, c, D, verbose):
+    def _solve_with_continuation(self, geom, F, Tb, guess, c, D, verbose,
+                                 T_reference, b=None, H0=None):
         """Newton at F; on failure, continuation in F from zero."""
         try:
             return solve_conducted_response(geom, F, Tb, guess, c, D,
-                                            verbose=verbose)
+                                            verbose=verbose,
+                                            T_reference=T_reference,
+                                            face_offset=b,
+                                            reference_heating=H0)
         except RuntimeError:
             pass
         T = guess.copy()
         for frac in np.linspace(0.1, 1.0, 10):
             T, q, nit = solve_conducted_response(geom, frac*F, Tb, T, c, D,
-                                                 verbose=verbose)
+                                                 verbose=verbose,
+                                                 T_reference=T_reference,
+                                                 face_offset=b,
+                                                 reference_heating=H0)
         return T, q, nit
+
+    def flux_parts(self, d, T):
+        """The molecular and eddy parts of the TOTAL downward flux through
+        every face at T and at T0 [erg cm^-2 s^-1]: dict of arrays (faces
+        1/2 .. M-1/2) mol, eddy, mol0, eddy0, and p_face [bar]."""
+        geom = d['geom']
+        mol_only, _ = conduction_face_functions(geom, d['p_face_dyn'],
+                                                d['g_face'], d['mix_face'])
+        c = self.face_coefficient_function(d)
+        b = self.face_offset_function(d)
+        out = dict(p_face=d['p_face_dyn']/BAR)
+        for tag, TT in (('', T), ('0', d['T0'])):
+            Tf = 0.5*(TT[1:] + TT[:-1])
+            g = (TT[1:] - TT[:-1])/geom.ds
+            cm, _ = mol_only(Tf)
+            ct, _ = c(Tf)
+            out['mol' + tag] = cm*g
+            out['eddy' + tag] = ((ct - cm)*g + b(Tf)[0] if b is not None
+                                 else np.zeros_like(g))
+        return out
 
     # ---- diagnostics ----------------------------------------------------- #
     def band_shares(self, d, T, treatment, transfer='thin'):
@@ -1599,9 +2063,14 @@ HITRAN_BAND_INTENSITY_296K = {
 # thermalized, from the same HITRAN lines, at 185 K, and the band origins
 # and upper-level degeneracies of the two-level emission h c nu0 A10 g1
 # exp(-h c nu0/k T) used to check the k-table emission of a fundamental.
+# The CH4 entry is the nu4 level ALONE (g1 = 3, nu0 = 1306 cm^-1; nu2 adds
+# 0.2-1.6 per cent of the emission over 185-500 K), 2.25 s^-1, so it is not the dyad
+# average of NLTE_BANDS (2.04 s^-1 at 185 K), whose population includes
+# nu2; the two come from one line list (see the A10 note of NLTE_BANDS).
+# A10 varies by 2-3 per cent over 185-500 K, the range of the check.
 TWO_LEVEL_CHECK = {
-    ('NH3', 'nu2'): dict(nu0=950.0, A10=13.21, g1=1),
-    ('CH4', 'nu4+nu2 dyad'): dict(nu0=1306.0, A10=2.16, g1=3),
+    ('NH3', 'nu2'): dict(nu0=950.0, A10=14.69, g1=1),
+    ('CH4', 'nu4+nu2 dyad'): dict(nu0=1306.0, A10=2.25, g1=3),
 }
 
 

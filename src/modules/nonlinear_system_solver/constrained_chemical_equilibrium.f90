@@ -133,6 +133,7 @@
 	use species_table,     only: n_melem, iel_O
 	use ion_cell_state,    only: ieq_cell, h2_fraction_of_reservoir
 	use ion_residual_core, only: metal_rows, metal_electron_sum
+	use chemical_row_layout, only: absent_element_density
 	use System_HeH_mol,    only: mol_heh_rows, oxygen_carrier_rows,        &
 	                             mol_inv_turnover,                         &
 	                             set_mol_turnover_rates,                   &
@@ -794,7 +795,7 @@
 		el_tot(12) = nuclei_He      ! cx_He
 		cxb(1:n_fraction_row) = 0.0d0
 		cx_metal_base = metal_base
-		call cx_add_to_turnover(cxb, el_tot)
+		call cx_add_to_turnover(cxb, el_tot, ieq_cell%T_K)
 		cx_metal_base = 4
 		do i = 1,n_fraction_row
 			row_scale(i) = mol_inv_turnover(i)                     &
@@ -845,7 +846,7 @@
 	element_carried(:) = .false.
 	if (thereis_metals) then
 		do e = 1,met_nelem
-			element_carried(e) = (met_ntot(e) .gt. 1.0d-30)
+			element_carried(e) = (met_ntot(e) .gt. absent_element_density)
 		enddo
 	endif
 

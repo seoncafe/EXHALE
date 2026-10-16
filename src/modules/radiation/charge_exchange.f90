@@ -865,15 +865,20 @@
       integer, save :: cx_nact = 0
       integer, allocatable, save :: cx_act(:)
       real*8,  allocatable, save :: cx_kc(:)
-      ! Temperature [K] the thread's cx_kc was filled at by cx_set_cell. The
-      ! negative initial value is "this thread holds no cell", which no
-      ! temperature can match, so an assembly that skipped cx_set_cell is
-      ! refused rather than run on another cell's rates. It is threadprivate
-      ! with cx_kc because it labels cx_kc, and it is deliberately NOT in the
-      ! copyin list of the cell sweep: a worker entering the region holds no
-      ! cell until it loads one.
-      real*8, save :: cx_cell_T = -1.0d0
-      !$omp threadprivate(cx_kc, cx_metal_base, cx_cell_T)
+      ! Whether the thread's cx_kc holds a cell at all, and the temperature
+      ! [K] cx_set_cell filled it at. They are two statements and two
+      ! variables: "this thread holds no cell" is cx_cell_loaded = .false.,
+      ! not a sentinel value of the temperature, so a cell whose temperature
+      ! is itself out of range is reported as that and never as a thread
+      ! that holds nothing (md/osc_diagnosis_20261008.md section 5: a trial
+      ! temperature of -1.4e-5 K read as the sentinel). cx_set_cell writes
+      ! the pair together, so on every thread the flag and the temperature
+      ! agree. Both are threadprivate with cx_kc because they label cx_kc,
+      ! and both are deliberately NOT in the copyin list of the cell sweep:
+      ! a worker entering the region holds no cell until it loads one.
+      logical, save :: cx_cell_loaded = .false.
+      real*8,  save :: cx_cell_T = 0.0d0
+      !$omp threadprivate(cx_kc, cx_metal_base, cx_cell_T, cx_cell_loaded)
 
       ! Upper clamp on any evaluated rate [cm^3 s^-1], far above any capture
       ! rate, so that a fit evaluated outside its range cannot run away. The
@@ -1377,13 +1382,24 @@
       ! so each worker thread allocates its own on first use here (cx_nact is the
       ! shared, setup-once active-reaction count).
       if (.not. allocated(cx_kc)) allocate(cx_kc(cx_nact))
+      ! A rate coefficient is a thermal average over a Maxwellian at T, so
+      ! it exists only for a finite T > 0. A cell outside that range is
+      ! reported as itself, not clipped into the range of the fits.
+      if (.not. (T .gt. 0.0d0 .and. T .le. huge(1.0d0))) then
+         write(*,*) '(charge_exchange) ERROR: cx_set_cell was handed a', &
+                    ' cell at T =', T, ' K;'
+         write(*,*) '  a charge-exchange rate coefficient exists only at', &
+                    ' a finite positive temperature. Aborting.'
+         error stop 1
+      endif
       do i = 1, cx_nact
          kc = cx_rate(cx_act(i), T, n_e)
          cx_kc(i) = min(max(kc, 0.0d0), cx_kc_max)
       enddo
       ! The rates now belong to this cell; the assembly routines check
       ! that the cell they are handed is this one by its temperature.
-      cx_cell_T = T
+      cx_cell_T      = T
+      cx_cell_loaded = .true.
       end subroutine cx_set_cell
 
       ! Refuse an assembly whose rate coefficients belong to another cell.
@@ -1394,6 +1410,14 @@
       subroutine cx_require_cell(T_cell, caller)
       real*8,           intent(in) :: T_cell
       character(len=*), intent(in) :: caller
+      if (.not. cx_cell_loaded) then
+         write(*,*) '(charge_exchange) ERROR: ', trim(caller),            &
+                    ' was called for a cell at T =', T_cell, ' K'
+         write(*,*) '  on a thread that holds no cell: cx_set_cell was', &
+                    ' never called on this thread.'
+         write(*,*) '  Aborting.'
+         error stop 1
+      endif
       if (cx_cell_T .ne. T_cell) then
          write(*,*) '(charge_exchange) ERROR: ', trim(caller),            &
                     ' was called for a cell at T =', T_cell, ' K,'
@@ -1620,24 +1644,17 @@
       ! coefficients at: the bound is kc(T) times two element counts, so
       ! rates belonging to another cell would normalize this cell's residual
       ! by another cell's turnover, and the acceptance verdict a caller then
-      ! reads would depend on the order the cells were handed out.
+      ! reads would depend on the order the cells were handed out. It is
+      ! required, as it is of cx_add_to_fvec and cx_add_to_jac: every caller
+      ! names the cell it bounds.
       subroutine cx_add_to_turnover(srow, el_tot, T_cell)
       real*8, intent(inout) :: srow(*)
       real*8, intent(in)    :: el_tot(12)
-      real*8, optional, intent(in) :: T_cell
+      real*8, intent(in)    :: T_cell
       integer :: i, r, idon, iacc
       real*8  :: bound
 
-      if (present(T_cell)) then
-         call cx_require_cell(T_cell, 'cx_add_to_turnover')
-      else if (cx_cell_T .lt. 0.0d0) then
-         write(*,*) '(charge_exchange) ERROR: cx_add_to_turnover was',    &
-                    ' called on a thread that holds no cell.'
-         write(*,*) '  cx_kc is filled cell by cell; call cx_set_cell(T)', &
-                    ' for the cell being judged, on this thread, first.'
-         write(*,*) '  Aborting.'
-         error stop 1
-      endif
+      call cx_require_cell(T_cell, 'cx_add_to_turnover')
 
       do i = 1, cx_nact
          r     = cx_act(i)

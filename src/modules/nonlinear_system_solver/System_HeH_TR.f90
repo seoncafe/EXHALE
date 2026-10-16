@@ -4,7 +4,8 @@
 	use global_parameters
 	use ion_cell_state, only: ieq_cell
 	use ion_residual_core, only: heh_tr_rows,                            &
-	                            impose_transported_ionization_fractions
+	                            impose_transported_ionization_fractions, &
+	                            ionization_row_gross
 	use charge_exchange, only: he_h_cx_fvec
 
 	implicit none
@@ -23,6 +24,8 @@
 	real*8  :: n_h,n_he,n_e
 	real*8  :: n_hi,n_hii
 	real*8  :: n_heii,n_heiii,n_heiTR,n_heiSI
+	! Gross rate of every row at x (ion_residual_core, ionization_row_gross).
+	real*8  :: gross(Neq)
 	
 	! Coefficients of the system
 
@@ -63,11 +66,12 @@
    n_e = n_hii + n_heii + 2.0*n_heiii
 
     ! System of equations (verbatim TR-form rows now live in ion_residual_core)
+	gross(1:Neq) = 0.0d0
 	call heh_tr_rows(fvec, n_hi, n_hii, n_heiSI, n_heiTR, n_heii, n_heiii,  &
 	                 n_e, g_hi, g_hei, g_heii, g_heiTR,                      &
 	                 a_hii, a_heii, a_heiii, a_heiTR,                        &
 	                 b_hi, b_hei, b_heii, b_heiTR,                           &
-	                 q13, q31g, q31a, q31b, Q31, A31)
+	                 q13, q31g, q31a, q31b, Q31, A31, gross=gross)
 
 	! He <-> H charge exchange (Huang Table 4 group B). The He reactant of
 	! He + H+ -> He+ + H is the GROUND SINGLET He(1^1S), n_heiSI: the rate
@@ -84,7 +88,8 @@
 	call he_h_cx_fvec(fvec, ieq_cell%kcx_He0_Hp, ieq_cell%kcx_Hep_H0,  &
 	                  ieq_cell%kcx_Hepp_H0,                            &
 	                  n_hi, n_hii, n_heiSI, n_heii, n_heiii, -1.0d0,    &
-	                  .false.)
+	                  .false., gross=gross)
+	ionization_row_gross(1:Neq) = gross(1:Neq)
 
 	! The transported ionization fractions, where the flow carries them
 	! and not this cell's local balance (ion_residual_core).

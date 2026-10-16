@@ -179,8 +179,10 @@ synchronously rotating planet,
 in code units, which is Eq.~(2) of \citet{Caldiroli2021}:
 the planetary term, the stellar tidal term and the centrifugal term about the
 center of mass.  With \texttt{Domain mode: Spherical} the last two terms are
-dropped and $\Phi = -b_0/r$, which is what allows the domain to be carried
-past the L1 radius.  The analytic derivative $d\Phi/dr$ is provided beside it
+dropped and $\Phi = -b_0/r$.  Either potential can be carried past the L1
+radius with \texttt{Outer radius}; past the ridge of \eqref{eq:roche} the
+potential falls outward, which the initial condition and the outer ghost
+take into account (Secs.~\ref{sec:bcic:top} and~\ref{sec:bcic:ic}).  The analytic derivative $d\Phi/dr$ is provided beside it
 and is used by the initial-condition sonic-point search; the flux assembly
 itself never differentiates $\Phi$, it differences the tabulated $\Phi_i$ and
 $\Phi_c$, which are evaluated once at startup at the true face and center
@@ -188,7 +190,9 @@ radii.
 
 The default outer radius in Roche mode is the L1 (Hill) radius
 $r_{\max} = (3\mathcal{M})^{-1/3}\tilde a$; \texttt{Outer radius} overrides
-it.
+it and keeps the full Roche potential, as the extended domains of
+\citet{Huang2023} and \citet{Yan2022} do, and a transonic wind needs it
+past the sonic point (Sec.~\ref{sec:bcic:top}).
 
 \subsection{Equation of state}
 \label{sec:hydro:eos}
@@ -501,7 +505,7 @@ section~70).
 The conduction operator is therefore conservative up to one named boundary
 flux, the heat exchanged with the lower atmosphere through the base face,
 \begin{equation}
-  q_{\rm base} = -\kappa_{1/2}\,\frac{T_1 - T_{\rm bath}}{r_1 - r_0}
+  q_{\rm base} = \kappa_{1/2}\,\frac{T_1 - T_{\rm bath}}{r_1 - r_0}
   \quad\text{(positive into the lower atmosphere)},
   \label{eq:qbase}
 \end{equation}

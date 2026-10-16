@@ -347,6 +347,8 @@ Read by mechanism, the ten fall into three kinds.
       and not models of their own.
 \end{itemize}
 
+\noindent\textbf{Stale (2026-10-07).} The Knudsen numbers, $\mathrm{Kn}_{\rm bulk}=0.1$ radii and exobase radii in this passage were computed before the resonant H$^+$\,+\,H and He$^+$\,+\,He momentum-transfer coefficients entered \texttt{collisional\_validity.py} (Update\_EXHALE\_stage3 section 110). On the 102 stored LHS\,1140\,b states the $\mathrm{Kn}_{\rm bulk}=0.1$ radius moves out by 1.0--5.9\,\%, the exobase out by 0.4--5.7\,\% and the largest Kn down by 0--16\,\%; $\mathrm{Kn}(\mathrm{H_2})$ and the sonic point do not move and no verdict changes. Not re-measured for the states quoted here.
+
 \paragraph{What the two numbers say.} $du$ is the fractional spread of the
 mass flux $\rho v r^2$ over the wind window, the quantity a marching run stops
 on, and $\lVert R\rVert$ is the stationary operator's residual norm. The
@@ -768,6 +770,13 @@ Every unmarked row is of the physics before the corrections.
 
 \section{The molecular $K_{zz}=10^{9}$ family across the observed line}
 
+\noindent\textbf{STALE (2026-10-07).} Every molecular state run with
+\texttt{Molecular carrier transport: True} and the oxygen chemistry off
+carries a code defect found on 2026-10-07: the transported H$_2$ row kept the
+loss O\,+\,H$_2\to$ OH\,+\,H without production, reverse or reaction heat
+(\texttt{md/AN\_matching\_surface\_diagnosis\_20261007.md}). The numbers of such
+states below are records of those runs, not results, until recomputed.
+
 \paragraph{What changed, and on which binary.} The atomic data of EXHALE
 were checked against their original sources on 2026-09-24 to 2026-09-26
 (\texttt{md/Update\_EXHALE\_stage3.md} sections 17 to 26). The corrections
@@ -961,6 +970,13 @@ and the H$_2$ fraction against radius.}
 
 \clearpage
 \section{The He~10830 EW with the full equation set (outside the catalog)}\label{sec:fullequation}
+
+\noindent\textbf{STALE (2026-10-07).} Every molecular state run with
+\texttt{Molecular carrier transport: True} and the oxygen chemistry off
+carries a code defect found on 2026-10-07: the transported H$_2$ row kept the
+loss O\,+\,H$_2\to$ OH\,+\,H without production, reverse or reaction heat
+(\texttt{md/AN\_matching\_surface\_diagnosis\_20261007.md}). The numbers of such
+states below are records of those runs, not results, until recomputed.
 
 \paragraph{What is solved.} None of the states of this section is published
 to the catalog; they are the runs of the EW plans

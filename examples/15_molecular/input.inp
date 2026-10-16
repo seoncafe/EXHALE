@@ -25,7 +25,10 @@ Do only PP: False
 Force start: False
 Molecular chemistry: True
 du_th [PLM,WENO3]: 0.5 1.0e-3
-Solver: Newton 5.0e-2
+# The JFNK hand-off reads the face mass-flux spread (default 0.1) since
+# 2026-10-10; the 5.0e-2 this example carried before was a du threshold
+# (update log stage 3 section 131).
+Solver: Newton
 # Resid tol renormalized 2026-09-03, docs/Update_EXHALE_stage1.pdf section 133 (was 1.0e-5)
 Resid tol: 1.0e-7
 Max steps: 150000

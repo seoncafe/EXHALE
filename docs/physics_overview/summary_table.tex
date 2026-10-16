@@ -62,7 +62,9 @@ Key & Default & What it selects, and where \\
   \eqref{eq:roche} (\texttt{grav\_field.f90}). \\
 \texttt{Outer radius [R\_p]:} & L1 radius &
   Outer boundary; required in spherical mode
-  (\texttt{input\_read.f90}). \\
+  (\texttt{input\_read.f90}). A transonic wind needs it past the sonic
+  point; the Mach number of the outermost cell is reported with $\dot M$
+  (\texttt{EXHALE\_main.f90}). \\
 \texttt{Outer shells [r\_face,cells]:} & none &
   Cells appended beyond the constructed grid out to the face
   \texttt{r\_face}, the cells below unchanged bit for bit
@@ -143,8 +145,11 @@ Key & Default & What it selects, and where \\
 \multicolumn{3}{l}{\itshape Convergence and the stationary solvers}\\
 \midrule
 \texttt{du\_th [PLM,WENO3]:} & $10^{-3}$ &
-  Threshold on the mass-flux spread \eqref{eq:du}; a second value makes the
-  run two-stage (\texttt{EXHALE\_main.f90}). \\
+  Threshold on the cell-centred spread \eqref{eq:du} at which PLM hands over
+  to WENO3; a second, smaller value makes the run two-stage. Stops nothing
+  since 2026-10-09: the marching stops on the face spread below
+  $4\times10^{-4}$ and $\chi$ \eqref{eq:chi} below $10^{-4}$
+  (\texttt{EXHALE\_main.f90}). \\
 \texttt{Escape radius [R\_p]:} & mandatory &
   Inner edge of the window \eqref{eq:du} is taken over
   (\texttt{define\_grid.f90}). \\
@@ -155,10 +160,12 @@ Key & Default & What it selects, and where \\
   The flux gate of the acceptance test
   (\texttt{steady\_residual.f90}). \\
 \texttt{Solver:} & marching only &
-  \texttt{Newton [<du>]} hands over to the stationary solve once the spread
-  falls below $du$, default $10^{-2}$ (\texttt{steady\_newton.f90}). \\
+  \texttt{Newton [<switch>]} hands over to the stationary solve once the
+  face mass-flux spread falls below the switch, default $0.1$ (a $du$
+  threshold, default $10^{-2}$, until 2026-10-10; \texttt{EXHALE\_main.f90}). \\
 \texttt{Stall:} & $10^{-6}$, 2000 steps &
-  Plateau detector of the marching stop (\texttt{EXHALE\_main.f90}). \\
+  Plateau detector of the PLM stage; \texttt{N\_stall} is also the length of
+  the stall net of the marching stop (\texttt{EXHALE\_main.f90}). \\
 \texttt{Level tol:} & off &
   Mass-flux level stability required beside every marching stop. \\
 \texttt{Max steps:} & $10^{6}$ &
@@ -184,9 +191,10 @@ Key & Default & What it selects, and where \\
 \texttt{Atomic rate set:} & \texttt{default} &
   \texttt{Koskinen2022} swaps four atomic H/He rate coefficients
   (\texttt{Cool\_coeff.f90}, \texttt{mol\_rates.f90}). \\
-\texttt{Secondary\_ionization} & on, staged &
-  Secondary ionization by fast photoelectrons above 30\,eV; \texttt{Immediate}
-  applies it from step 0, \texttt{False} not at all
+\texttt{Secondary\_ionization} & on, from step 0 &
+  Secondary ionization by fast photoelectrons above 30\,eV; \texttt{Staged}
+  (the default until 2026-10-09) applies it once the marching has settled,
+  \texttt{False} not at all
   (\texttt{electron\_energy\_degradation.f90}). \\
 \texttt{Low-energy electron partition:} & \texttt{none} &
   \texttt{Furlanetto2010} partitions the photoelectrons of 10.2--30\,eV,
@@ -430,6 +438,10 @@ Black, J.~H. 1981, MNRAS, 197, 553
 \bibitem[Bray et al.(2000)]{Bray2000}
 Bray, I., Burgess, A., Fursa, D.~V., \& Tully, J.~A. 2000, A\&AS, 146, 481
 
+\bibitem[Bryan et al.(1995)]{Bryan1995}
+Bryan, G.~L., Norman, M.~L., Stone, J.~M., Cen, R., \& Ostriker, J.~P. 1995,
+Comput. Phys. Commun., 89, 149
+
 \bibitem[Caldiroli et al.(2021)]{Caldiroli2021}
 Caldiroli, A., Haardt, F., Gallo, E., et al. 2021, A\&A, 655, A30
 
@@ -543,6 +555,11 @@ Huang, C., Arras, P., Christie, D., \& Li, Z.-Y. 2017, ApJ, 851, 150
 \bibitem[Huang et al.(2023)]{Huang2023}
 Huang, C., Koskinen, T., Lavvas, P., \& Fossati, L. 2023, ApJ, 951, 123
 
+\bibitem[Huber \& Herzberg(1979)]{HuberHerzberg1979}
+Huber, K.~P., \& Herzberg, G. 1979, Molecular Spectra and Molecular
+Structure IV. Constants of Diatomic Molecules (New York: Van Nostrand
+Reinhold)
+
 \bibitem[Hui \& Gnedin(1997)]{Hui1997}
 Hui, L., \& Gnedin, N.~Y. 1997, MNRAS, 292, 27
 
@@ -552,6 +569,9 @@ Hummer, D.~G. 1994, MNRAS, 268, 109
 \bibitem[Hummer \& Storey(1998)]{Hummer1998}
 Hummer, D.~G., \& Storey, P.~J. 1998, MNRAS, 297, 1073
 
+\bibitem[Hunten(1974)]{Hunten1974}
+Hunten, D.~M. 1974, J. Geophys. Res., 79, 2533
+
 \bibitem[Jameson et al.(1981)]{Jameson1981}
 Jameson, A., Schmidt, W., \& Turkel, E. 1981, AIAA Paper 81-1259
 
@@ -560,6 +580,9 @@ K\"appeli, R., \& Mishra, S. 2014, J. Comput. Phys., 259, 199
 
 \bibitem[K\"appeli \& Mishra(2016)]{Kaeppeli2016}
 K\"appeli, R., \& Mishra, S. 2016, A\&A, 587, A94
+
+\bibitem[Kimura et al.(1993)]{Kimura1993}
+Kimura, M., Lane, N.~F., Dalgarno, A., \& Dixson, R.~G. 1993, ApJ, 405, 801
 
 \bibitem[Knoll \& Keyes(2004)]{Knoll2004}
 Knoll, D.~A., \& Keyes, D.~E. 2004, J. Comput. Phys., 193, 357
@@ -593,6 +616,9 @@ J. Phys. Chem. A, 109, 3111
 
 \bibitem[Millar et al.(2024)]{Millar2024}
 Millar, T.~J., Walsh, C., Van de Sande, M., \& Markwick, A.~J. 2024, A\&A, 682, A109
+
+\bibitem[Mizus et al.(2017)]{Mizus2017}
+Mizus, I.~I., Alijah, A., Zobov, N.~F., et al. 2017, MNRAS, 468, 1717
 
 \bibitem[Miller et al.(2013)]{Miller2013}
 Miller, S., Stallard, T., Tennyson, J., \& Melin, H. 2013,
@@ -646,6 +672,9 @@ Roueff, E., Abgrall, H., Czachorowski, P., et al. 2019, A\&A, 630, A58
 \bibitem[Rusanov(1961)]{Rusanov1961}
 Rusanov, V.~V. 1961, J. Comput. Math. Phys. USSR, 1, 267
 
+\bibitem[Ryu et al.(1993)]{Ryu1993}
+Ryu, D., Ostriker, J.~P., Kang, H., \& Cen, R. 1993, ApJ, 414, 1
+
 \bibitem[Incropera et al.(2007)]{Incropera2007}
 Incropera, F.~P., DeWitt, D.~P., Bergman, T.~L., \& Lavine, A.~S. 2007,
 Fundamentals of Heat and Mass Transfer, 6th ed. (Hoboken: Wiley)
@@ -673,6 +702,12 @@ Johnsen, R., Chen, A., \& Biondi, M.~A. 1980, J. Chem. Phys., 72, 3085
 
 \bibitem[Schauer et al.(1989)]{Schauer1989}
 Schauer, M.~M., Jefferts, S.~R., Barlow, S.~E., \& Dunn, G.~H. 1989, J. Chem. Phys., 91, 4593
+
+\bibitem[Schunk(1977)]{Schunk1977}
+Schunk, R.~W. 1977, Rev. Geophys. Space Phys., 15, 429
+
+\bibitem[Schunk \& Nagy(1980)]{Schunk1980}
+Schunk, R.~W., \& Nagy, A.~F. 1980, Rev. Geophys. Space Phys., 18, 813
 
 \bibitem[Seaton(1955)]{Seaton1955}
 Seaton, M.~J. 1955, Proc. Phys. Soc. A, 68, 457
@@ -736,6 +771,9 @@ Yamaleev, N.~K., \& Carpenter, M.~H. 2009, J. Comput. Phys., 228, 3025
 
 \bibitem[Yan et al.(1998)]{Yan1998}
 Yan, M., Sadeghpour, H.~R., \& Dalgarno, A. 1998, ApJ, 496, 1044
+
+\bibitem[Yan et al.(2022)]{Yan2022}
+Yan, D., Seon, K.-i., Guo, J., Chen, G., \& Li, L. 2022, ApJ, 936, 177
 
 \bibitem[Yan \& Babb(2023)]{YanBabb2023}
 Yan, P.-G., \& Babb, J.~F. 2023, MNRAS, 518, 6004

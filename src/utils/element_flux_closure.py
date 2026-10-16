@@ -77,11 +77,35 @@ alone does not measure.  The first trial F_cond is
 the seed's run directory.  With the key off nothing here changes: no flux is
 passed, the history keeps its fifteen columns.
 
+Species fluxes of hydrogen (user decision 2026-10-07,
+md/AN_overlap_structural_design_20261008.md).  The matching surface is the
+wind's base face and the chemistry column's top face; where the wind
+transports H2 against a handoff partition it writes the H2 flux through that
+face (`base_face_H2_flux_cgs` of EXHALE_resolved.out, the advective inflow of
+the ghost partition plus the eddy and molecular flux against it).  The
+closure carries a fourth variable, Phi_H2 [g/s of the hydrogen nuclei H2
+carries through the surface], handed to the chemistry as
+`--trial-flux-H2`, so that its top takes the H2 flux and the atomic H flux
+(Phi_H - Phi_H2, an inflow where negative) separately, with the damped
+update of the other variables and the residual
+eps_H2 = |F_H2,meas - Phi_H2|/|F_H,meas| held to `tol`; the elemental flux
+is its scale because the atomic share can pass through zero.  The first
+Phi_H2 is `--phi0-H2`, or Phi_H (all hydrogen on H2) when not given.  A
+wind that writes no H2 face flux leaves Phi_H2 = Phi_H.  The history gains
+the columns trial_F_H2 meas_F_H2 eps_H2.
+
+The overlap window: with the chemistry column's top at the matching level
+(the adapter's convention) the profile reaches no radius above the wind's
+base, the overlap window is empty by construction, and the flux is taken
+from the steady window r >= r_esc, where the elemental flux of a stationary
+state is the flux through the surface.
+
 Usage
 -----
     python3 element_flux_closure.py <case_dir> --phi0-H <g/s> [--phi0-He <g/s>]
-        [--omega 0.5] [--tol 0.05] [--kmax 8] [--seed <dir>] [--config <file>]
-        [--fcond0 <erg/cm2/s>] [--resume] [--dry-run]
+        [--phi0-H2 <g/s>] [--omega 0.5] [--tol 0.05] [--kmax 8]
+        [--seed <dir>] [--config <file>] [--fcond0 <erg/cm2/s>] [--resume]
+        [--dry-run]
 
 `--dry-run <case_dir>` exercises only the reading and measurement path
 against an existing EXHALE run directory; nothing is executed.
@@ -108,6 +132,9 @@ import sys
 import time
 
 import numpy as np
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import lower_profile_schema as sch                       # noqa: E402
 
 # --------------------------------------------------------------------------
 # The interpreter that runs the chemistry
@@ -355,6 +382,23 @@ def flux_window_resolved(measurement, tol):
             0.0 <= measurement.spread_He <= tol)
 
 
+def hydrogen_nucleus_flux(keys, prefix):
+    """The hydrogen flux the chemistry is handed: the mass flux of hydrogen
+    NUCLEI `<prefix>_F_Hnuc_*` (2026-10-10, update log stage 3 section 134).
+    `<prefix>_F_H_*` is the mass flux of component 1 of the binary split, the
+    hydrogen carriers together with the trace metals (0.44% of it on
+    LHS 1140 b), which the adapter divided by m_H as if it were hydrogen.  An
+    older EXHALE writes no F_Hnuc; its F_H is then used and the reason says
+    so.  Returns (median, spread, note)."""
+    med = real_key(keys, prefix + '_F_Hnuc_median')
+    if med is not None:
+        return med, real_key(keys, prefix + '_F_Hnuc_spread'), \
+            'hydrogen-nucleus flux'
+    return real_key(keys, prefix + '_F_H_median'), \
+        real_key(keys, prefix + '_F_H_spread'), \
+        'component-1 mass flux (an EXHALE without F_Hnuc: metals included)'
+
+
 def overlap_flux_window(keys):
     """The window the closure is defined on: from the first face at which
     the face mass flux of the state is constant up to the profile top
@@ -363,20 +407,20 @@ def overlap_flux_window(keys):
     state = keys.get('lower_profile_flux_state', 'unmeasured')
     if state != 'measured':
         return None, state
-    F_H = real_key(keys, 'lower_profile_F_H_median')
+    F_H, sH, hnote = hydrogen_nucleus_flux(keys, 'lower_profile')
     F_He = real_key(keys, 'lower_profile_F_He_median')
     if F_H is None or F_He is None:
         return None, 'unmeasured'
     m = FluxMeasurement(
         'overlap', F_H, F_He,
-        real_key(keys, 'lower_profile_F_H_spread'),
+        sH,
         real_key(keys, 'lower_profile_F_He_spread'),
         real_key(keys, 'lower_profile_Mdot_median'),
         real_key(keys, 'lower_profile_Mdot_spread'),
         keys.get('lower_profile_flux_nface', '?'),
         keys.get('lower_profile_flux_r_lo_Rp', '?'),
-        'measured over the overlap window (r_lo source %s)'
-        % keys.get('lower_profile_flux_r_lo_source', '?'))
+        'measured over the overlap window (r_lo source %s; H: %s)'
+        % (keys.get('lower_profile_flux_r_lo_source', '?'), hnote))
     return m, state
 
 
@@ -385,19 +429,19 @@ def steady_flux_window(keys):
     mass flux is flat.  It is not where the two models match, so a number
     taken here is an extrapolation of the closure variable to the match and
     the log must say so."""
-    F_H = real_key(keys, 'steady_F_H_median')
+    F_H, sH, hnote = hydrogen_nucleus_flux(keys, 'steady')
     F_He = real_key(keys, 'steady_F_He_median')
     if F_H is None or F_He is None:
         return None
     return FluxMeasurement(
         'steady', F_H, F_He,
-        real_key(keys, 'steady_F_H_spread'),
+        sH,
         real_key(keys, 'steady_F_He_spread'),
         real_key(keys, 'steady_Mdot_median'),
         real_key(keys, 'steady_Mdot_spread'),
         keys.get('steady_flux_window_nface', '?'),
         keys.get('steady_flux_window_r_lo_Rp', '?'),
-        'steady far-field window (r >= r_esc)')
+        'steady far-field window (r >= r_esc; H: %s)' % hnote)
 
 
 def select_flux_window(keys, tol):
@@ -408,7 +452,10 @@ def select_flux_window(keys, tol):
     if flux_window_resolved(overlap, tol):
         return overlap, overlap.reason, missing
 
-    if overlap is None:
+    if overlap is None and state == 'window_empty':
+        why = ('the profile reaches no radius above the wind\'s base (its'
+               ' top is the matching level), so there is no overlap window')
+    elif overlap is None:
         why = ('the overlap window is not measurable on this run '
                '(lower_profile_flux_state = %s)' % state)
     else:
@@ -476,14 +523,58 @@ def tail_of(path, nlines=40):
     return '\n'.join(lines[-nlines:])
 
 
+def wind_dayside_dilution(cfg, log):
+    """xi_w of the wind this closure runs: the rule of
+    `dayside_dilution` (parameters.f90) applied to the template's
+    `2D approximate method:` (Rate/4 -> 0.25, Rate/2 -> 0.5, anything else
+    -> 1).  Every wind run also writes the value it used
+    (EXHALE_resolved.out `dayside_dilution`); check_wind_dilution compares
+    the two so that the copies of the rule cannot drift apart unseen."""
+    appx = ''
+    with open(cfg['input_template']) as fh:
+        for line in fh:
+            if line.split(':')[0].strip() == '2D approximate method':
+                appx = line.split(':', 1)[1].strip()
+    if 'Rate/4' in appx:
+        return 0.25
+    if 'Rate/2' in appx:
+        return 0.5
+    return 1.0
+
+
+def check_wind_dilution(cfg, run_dir, log):
+    """Refuse a wind run whose dayside dilution differs from the one the
+    chemistry was handed (wind_dayside_dilution)."""
+    try:
+        keys, path = read_resolved_configuration(run_dir)
+    except SystemExit:
+        return
+    if 'dayside_dilution' not in keys:
+        log('  geometry: %s carries no dayside_dilution (an older EXHALE)'
+            % path)
+        return
+    xi_run = float(keys['dayside_dilution'])
+    xi_cfg = wind_dayside_dilution(cfg, log)
+    if abs(xi_run - xi_cfg) > 1e-12:
+        raise ClosureStop('the wind ran with dayside_dilution %.6g but the'
+                          ' chemistry was given %.6g (%s)'
+                          % (xi_run, xi_cfg, path))
+
+
 def solve_photochemical_lower_profile(cfg, iter_dir, k, phi_H, phi_He, log,
-                                      fcond=None):
+                                      fcond=None, phi_H2=None):
     """The chemistry: the adapter, run with cwd = the iteration directory,
     writes `lower_atmosphere_profile.dat` and `base.inp` there.  A nonzero
     exit is a refusal or a non-steady chemistry solution, and neither has an
     elemental flux to hand over (design section 4.2)."""
     cmd = [cfg['python'], cfg['adapter'], cfg['adapter_run_dir']]
     cmd += [str(a) for a in cfg['adapter_args']]
+    # ONE GEOMETRY FOR EVERY FLUX CROSSING THE FACE (user decision
+    # 2026-10-10): the column models take the stellar energy the wind's own
+    # input states, unless the configuration names a geometry itself.
+    if '--face-geometry' not in cmd:
+        cmd += ['--face-geometry', 'wind',
+                '--wind-dilution', repr(wind_dayside_dilution(cfg, log))]
     cmd += ['--trial-flux-H', repr(float(phi_H)),
             '--trial-flux-He', repr(float(phi_He)),
             '--iteration', str(k)]
@@ -491,6 +582,8 @@ def solve_photochemical_lower_profile(cfg, iter_dir, k, phi_H, phi_He, log,
         cmd += ['--p-top-bar', repr(float(cfg['p_top_bar']))]
     if fcond is not None:
         cmd += ['--conducted-heat-flux', repr(float(fcond))]
+    if phi_H2 is not None:
+        cmd += ['--trial-flux-H2', repr(float(phi_H2))]
 
     log('  chemistry: ' + ' '.join(cmd))
     logpath = os.path.join(iter_dir, 'adapter.log')
@@ -516,6 +609,17 @@ def solve_photochemical_lower_profile(cfg, iter_dir, k, phi_H, phi_He, log,
 # characteristic face condition, and `input_read` stops on the retired key,
 # so a template that still carries it would fail at startup.
 INPUT_DROP = ('du_th', 'Solver', 'IC mode', 'Valve eps')
+
+# Exit statuses with which EXHALE has written a complete state (see the
+# wind solve below): 0, 2 (not certified, a flag), 3 (stationary solve failed).
+WRITTEN_STATE_STATUSES = (0, 2, 3)
+
+
+def state_written_in_full(logpath):
+    """Exit 2 is also what a gfortran runtime error leaves: the binary's
+    status 2 is told apart by the certification's closing line."""
+    return '(certification) the state was written in full' in tail_of(
+        logpath, 10**7)
 
 # The solver configuration of
 # `LHS1140b/archive_20260830/exhale/finish_case.sh`: load the seed, PLM, the
@@ -830,10 +934,24 @@ def solve_escape_wind(cfg, iter_dir, seed_output, log):
                              stdout=fh, stderr=subprocess.STDOUT)
     info = wind_solve_info(tail_of(runlog, 10**7))
     log('  wind: solve done rc=%d info=%s' % (rc, info))
-    if rc != 0:
+    check_wind_dilution(cfg, iter_dir, log)
+    # THE EXIT STATUSES OF A WRITTEN STATE (certification.f90, user decision
+    # 2026-10-10): 0 certified or no claim; 2 converged, written, NOT
+    # certified, a flag under the acceptance by the precision of the
+    # observable (md/acceptance_by_observable_precision_20261009.md), not a
+    # refusal; 3 the stationary solve failed (info /= 0), state written, which
+    # the classification below handles as it handled info /= 0 before. Any
+    # other status is an error of the run.
+    if rc not in WRITTEN_STATE_STATUSES:
         log(tail_of(runlog))
-        raise ClosureStop('EXHALE exited %d before a certified stationary'
-                          ' solve was accepted; see %s' % (rc, runlog))
+        raise ClosureStop('EXHALE exited %d without writing a state; see %s'
+                          % (rc, runlog))
+    if rc == 2 and not state_written_in_full(runlog):
+        log(tail_of(runlog))
+        raise ClosureStop('EXHALE exited 2 without the certification\'s '
+                          'closing line (a runtime error); see %s' % runlog)
+    if rc == 2:
+        log('  wind: converged but NOT certified (exit 2): carried as a flag')
     # HOW THE SOLVE ENDED, CLASSIFIED BEFORE ANYTHING IS DECIDED ON IT, BY
     # THE SAME RULE THE CATALOG RUNNER USES.  That rule is written once, in
     # the policy block of LHS1140b/models/run_case.sh, and is SOURCED here
@@ -878,17 +996,17 @@ def solve_escape_wind(cfg, iter_dir, seed_output, log):
         ending, reason, _ = classify_solve_ending(runlog, out_dir, env, log)
         log('  wind: continuation done rc=%d info=%s, ended %s: %s'
             % (rc, info, ending, reason))
-        if rc != 0:
+        if rc not in WRITTEN_STATE_STATUSES:
             log(tail_of(runlog))
             raise ClosureStop('EXHALE continuation exited %d; see %s'
                               % (rc, runlog))
     elif info != 0:
         log('  wind: the pseudo-time continuation addresses '
             'hydrodynamic_refusal and nothing else, so none is taken')
-    if rc != 0 or info != 0:
+    if info != 0 or rc == 3:
         log(tail_of(runlog))
-        raise ClosureStop('EXHALE did not finish successfully (rc=%d, '
-                          'info=%s); see %s' % (rc, info, runlog))
+        raise ClosureStop('the stationary solve failed (rc=%d, info=%s); '
+                          'see %s' % (rc, info, runlog))
 
     # post-processing pass on the solved state
     copy_solved_state_to_ic(out_dir, out_dir)
@@ -913,7 +1031,12 @@ def solve_escape_wind(cfg, iter_dir, seed_output, log):
         rc = subprocess.call([cfg['exhale_bin']], cwd=iter_dir, env=pp_env,
                              stdout=fh, stderr=subprocess.STDOUT)
     log('  wind: post-processing pass rc=%d' % rc)
-    if rc != 0:
+    if rc == 2 and state_written_in_full(pplog):
+        log('  wind: the evaluated state is NOT certified (exit 2): carried'
+            ' as a flag')
+    elif rc == 2:
+        rc = -2   # a runtime error: refused below
+    if rc not in (0, 2):
         log(tail_of(pplog))
         raise ClosureStop('the post-processing pass exited %d; see %s'
                           % (rc, pplog))
@@ -946,6 +1069,8 @@ HISTORY_COLUMNS = ('k trial_F_H trial_F_He meas_F_H meas_F_He eps_H eps_He'
 
 ENERGY_HISTORY_COLUMNS = ' F_cond_trial F_cond_meas T_match'
 
+SPLIT_HISTORY_COLUMNS = ' trial_F_H2 meas_F_H2 eps_H2'
+
 HISTORY_HEADER = (
     '# EXHALE elemental-flux closure history\n'
     '# fluxes [g/s], eps and spreads [-], HeH_match = He/H number ratio at'
@@ -963,16 +1088,29 @@ def append_history_row(case_dir, row):
     path = history_path(case_dir)
     new = not os.path.isfile(path)
     energy = 'F_cond_trial' in row
+    split = 'trial_F_H2' in row
     with open(path, 'a') as fh:
         if new:
+            header = HISTORY_HEADER
             if energy:
-                fh.write(HISTORY_HEADER.replace(
-                    HISTORY_COLUMNS, HISTORY_COLUMNS + ENERGY_HISTORY_COLUMNS)
+                header = header.replace(
+                    HISTORY_COLUMNS, HISTORY_COLUMNS + ENERGY_HISTORY_COLUMNS)\
                     .replace('# window_used', '# F_cond [erg cm^-2 s^-1],'
                              ' positive into the column; T_match [K]\n'
-                             '# window_used'))
-            else:
-                fh.write(HISTORY_HEADER)
+                             '# window_used')
+            if split:
+                # the split columns follow the energy columns, which hold
+                # nan where the energy coupling is off
+                header = header.replace(
+                    '# columns: ' + HISTORY_COLUMNS
+                    + (ENERGY_HISTORY_COLUMNS if energy else ''),
+                    '# columns: ' + HISTORY_COLUMNS
+                    + ENERGY_HISTORY_COLUMNS + SPLIT_HISTORY_COLUMNS)\
+                    .replace('# window_used', '# F_H2 [g/s of the hydrogen'
+                             ' nuclei H2 carries through the matching'
+                             ' surface], eps_H2 on the measured F_H\n'
+                             '# window_used')
+            fh.write(header)
         fh.write('%4d %18.10E %18.10E %18.10E %18.10E %12.5E %12.5E'
                  ' %8.4f %-8s %12.5E %12.5E %14.7E %8.3f %s %s'
                  % (row['k'], row['trial_F_H'], row['trial_F_He'],
@@ -986,6 +1124,14 @@ def append_history_row(case_dir, row):
             fh.write(' %14.7E %14.7E %10.4f' % (row['F_cond_trial'],
                                                row['F_cond_meas'],
                                                row['T_match']))
+        elif split:
+            # the split columns sit after the energy columns; without the
+            # energy coupling they are written in their place
+            fh.write(' %14s %14s %10s' % ('nan', 'nan', 'nan'))
+        if split:
+            fh.write(' %18.10E %18.10E %12.5E' % (row['trial_F_H2'],
+                                                 row['meas_F_H2'],
+                                                 row['eps_H2']))
         fh.write('\n')
 
 
@@ -1013,10 +1159,14 @@ def read_history(case_dir):
                          'HeH_match': float(f[11]),
                          'log10_Mdot': float(f[12]),
                          'solution_id': f[13], 'exhale_info': f[14]})
-            if len(f) >= 18:
+            if len(f) >= 18 and f[15] != 'nan':
                 rows[-1].update(F_cond_trial=float(f[15]),
                                 F_cond_meas=float(f[16]),
                                 T_match=float(f[17]))
+            if len(f) >= 21:
+                rows[-1].update(trial_F_H2=float(f[18]),
+                                meas_F_H2=float(f[19]),
+                                eps_H2=float(f[20]))
     return rows
 
 
@@ -1096,8 +1246,37 @@ def conducted_flux_residual(trial, measured):
     return abs(measured - trial)/abs(measured)
 
 
+def hydrogen_in_h2_of_run(keys):
+    """The hydrogen nuclei H2 carries through the wind's base face [g/s,
+    outward positive]: base_face_H2_flux_cgs [molecules cm^-2 s^-1] times
+    two nuclei, the face area 4 pi base_face_radius_cm^2 and the hydrogen
+    mass the chemistry turns the number back into nuclei with
+    (lower_profile_schema ATOMIC_WEIGHT['H'] MAMU).  None when the run did
+    not measure it (no H2 transport against a stated base partition)."""
+    if keys.get('base_face_carrier_state') != 'measured':
+        return None
+    phi = real_key(keys, 'base_face_H2_flux_cgs')
+    rf = real_key(keys, 'base_face_radius_cm')
+    if phi is None or rf is None:
+        return None
+    return phi*2.0*4.0*np.pi*rf*rf*sch.ATOMIC_WEIGHT['H']*sch.MAMU
+
+
+def hydrogen_split_residual(measured_H2, trial_H2, measured_H):
+    """|F_H2,meas - Phi_H2| / |F_H,meas|: on the elemental hydrogen flux,
+    because the atomic share Phi_H - Phi_H2 can pass through zero."""
+    if measured_H2 is None or trial_H2 is None or measured_H is None or \
+            not np.isfinite(measured_H2) or not np.isfinite(trial_H2) or \
+            not np.isfinite(measured_H) or measured_H == 0.0:
+        return float('inf')
+    return abs(measured_H2 - trial_H2)/abs(measured_H)
+
+
 def run_closure(case_dir, cfg, phi_H, phi_He, omega, tol, kmax, seed,
-                resume, log, fcond=None):
+                resume, log, fcond=None, phi_H2=None):
+    # phi_H2: the hydrogen the chemistry's top is asked to pass on H2 [g/s];
+    # None leaves the chemistry its own rule (everything on H2) until a wind
+    # solution states the split.
     energy = bool(cfg.get('energy_coupling'))
     omega_E = float(cfg.get('energy_coupling_omega', 0.5))
     T_tol = float(cfg.get('T_match_tol', 6.0))
@@ -1144,6 +1323,9 @@ def run_closure(case_dir, cfg, phi_H, phi_He, omega, tol, kmax, seed,
             fcond = damped_picard_flux_update(last['F_cond_trial'],
                                               last['F_cond_meas'], omega_E)
             T_match_prev = last['T_match']
+        if 'trial_F_H2' in last and np.isfinite(last['meas_F_H2']):
+            phi_H2 = damped_picard_flux_update(last['trial_F_H2'],
+                                               last['meas_F_H2'], omega)
         log('resume: %d completed iterations, continuing at k=%d with'
             ' omega=%.4f, Phi_H=%.6E, Phi_He=%.6E'
             % (len(history), k0, omega, phi_H, phi_He)
@@ -1152,7 +1334,8 @@ def run_closure(case_dir, cfg, phi_H, phi_He, omega, tol, kmax, seed,
             last['T_match'] - history[-2]['T_match']) < T_tol and
             conducted_flux_residual(last['F_cond_trial'],
                                     last['F_cond_meas']) <= tol))
-        if eps_prev <= tol and T_ok:
+        split_ok = ('eps_H2' not in last or last['eps_H2'] <= tol)
+        if eps_prev <= tol and T_ok and split_ok:
             log('resume: the last recorded residual %.3G already meets'
                 ' tol=%.3G; nothing to do.' % (eps_prev, tol))
             return 0
@@ -1172,9 +1355,16 @@ def run_closure(case_dir, cfg, phi_H, phi_He, omega, tol, kmax, seed,
             + (', F_cond = %.6E erg/cm2/s, omega_E = %.4f' % (fcond, omega_E)
                if energy else ''))
 
+        if phi_H2 is not None:
+            log('  hydrogen split at the matching surface: Phi_H2 = %.6E g/s'
+                ' on H2, %.6E g/s on atomic H'
+                % (phi_H2, phi_H - phi_H2))
+        else:
+            log('  hydrogen split at the matching surface: not stated yet,'
+                ' the chemistry puts the elemental flux on H2')
         profile = solve_photochemical_lower_profile(
             cfg, iter_dir, k, phi_H, phi_He, log,
-            fcond=(fcond if energy else None))
+            fcond=(fcond if energy else None), phi_H2=phi_H2)
 
         seed_output = seed if k == k0 and seed else \
             os.path.join(iteration_directory(case_dir, k - 1), 'output')
@@ -1211,6 +1401,21 @@ def run_closure(case_dir, cfg, phi_H, phi_He, omega, tol, kmax, seed,
                    else 'n/a (first iterate)'))
             row_energy = dict(F_cond_trial=fcond, F_cond_meas=fmeas,
                               T_match=T_match)
+        # The hydrogen the wind passes through its base face on H2.
+        F_H2_meas = hydrogen_in_h2_of_run(keys)
+        trial_H2 = phi_H2 if phi_H2 is not None else phi_H
+        eps_H2 = 0.0
+        if F_H2_meas is not None:
+            eps_H2 = hydrogen_split_residual(F_H2_meas, trial_H2, meas.F_H)
+            log('  hydrogen split: H2 carries %.6E g/s of the wind\'s base'
+                ' face hydrogen flux (atomic H %.6E g/s), trial %.6E;'
+                ' eps_H2 = %.4G'
+                % (F_H2_meas, meas.F_H - F_H2_meas, trial_H2, eps_H2))
+            row_energy.update(trial_F_H2=trial_H2, meas_F_H2=F_H2_meas,
+                              eps_H2=eps_H2)
+        else:
+            log('  hydrogen split: this wind writes no base face H2 flux;'
+                ' the chemistry keeps its own rule')
         append_history_row(case_dir, dict({
             'k': k, 'trial_F_H': phi_H, 'trial_F_He': phi_He,
             'meas_F_H': meas.F_H, 'meas_F_He': meas.F_He,
@@ -1247,6 +1452,10 @@ def run_closure(case_dir, cfg, phi_H, phi_He, omega, tol, kmax, seed,
         # the flux the column was solved under is the flux the wind returns.
         eps_E = conducted_flux_residual(fcond, fmeas) if energy else 0.0
         T_ok = (not energy) or (dT_match < T_tol and eps_E <= tol)
+        if eps_H2 > tol:
+            T_ok = False
+            log('  the hydrogen split does not meet tol (eps_H2 %.4G against'
+                ' %.4G): continuing' % (eps_H2, tol))
         if eps <= tol and not T_ok:
             log('  the elemental fluxes meet tol; the energy coupling does'
                 ' not (T_match moved %.3f K against %.3G K, conducted-flux'
@@ -1267,6 +1476,8 @@ def run_closure(case_dir, cfg, phi_H, phi_He, omega, tol, kmax, seed,
         eps_prev = eps
         phi_H = damped_picard_flux_update(phi_H, meas.F_H, omega)
         phi_He = damped_picard_flux_update(phi_He, meas.F_He, omega)
+        if F_H2_meas is not None:
+            phi_H2 = damped_picard_flux_update(trial_H2, F_H2_meas, omega)
         if energy:
             fcond = damped_picard_flux_update(fcond, fmeas, omega_E)
             T_match_prev = T_match
@@ -1326,6 +1537,12 @@ def main():
                     help='initial trial elemental H flux [g/s]')
     ap.add_argument('--phi0-He', type=float, default=0.0,
                     help='initial trial elemental He flux [g/s] (default 0)')
+    ap.add_argument('--phi0-H2', type=float, default=None,
+                    help='initial trial hydrogen carried by H2 through the'
+                         ' matching surface [g/s of hydrogen nuclei];'
+                         ' default: none stated until the first wind'
+                         ' solution states it (the chemistry then puts the'
+                         ' elemental flux on H2)')
     ap.add_argument('--omega', type=float, default=0.5,
                     help='initial under-relaxation (default 0.5; halved on'
                          ' any iteration whose residual fails to fall,'
@@ -1411,7 +1628,8 @@ def main():
                float(cfg['energy_coupling_omega']), float(cfg['T_match_tol'])))
     try:
         rc = run_closure(a.case_dir, cfg, a.phi0_H, a.phi0_He, a.omega,
-                         a.tol, a.kmax, a.seed, a.resume, log, fcond=fcond0)
+                         a.tol, a.kmax, a.seed, a.resume, log, fcond=fcond0,
+                         phi_H2=a.phi0_H2)
     except ClosureStop as exc:
         log('STOPPED: %s' % exc)
         rc = 1

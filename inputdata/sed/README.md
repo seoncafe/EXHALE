@@ -92,9 +92,11 @@ one component that is a point sample:
 | `lhs1140b_gj1132_cherubim2026.txt` | Mega-MUSCLES v23 const-res SED of GJ 1132 | the same product family and the same convention, 1 A bins |
 | `wasp121b_wasp17_huang2023.txt` | MUSCLES v24 const-res SED of WASP-17 | the same, 1 A bins |
 | `hd209458b_solar_whi2008.txt` | WHI 2008 solar reference spectrum | bin average, 1 A bins: the rows sit at 0.5, 1.5, 2.5 A, the centres of the 1 A intervals the reference spectrum is tabulated on |
+| `hd209458b_solar_salz2016.txt` | WHI 2008 solar reference spectrum, rescaled region by region | the same rows and convention as `hd209458b_solar_whi2008.txt` |
 | `hot_uranus_solar_koskinen2022.txt` | Ribas band fluxes on the Gueymard composite | bin average, 10 A bins: the Gueymard file is tabulated at 0.5, 1.5, 2.5 nm, the centres of its 1 nm intervals |
 | `hd189733b_bourrier2020.txt` | the released Bourrier et al. 2020 DEM reconstruction, 0.016 A rows, with the eps Eri photosphere above 1600 A | the released `readme_MNRAS.txt` states only "the wavelength, in angstroms" and "the stellar flux, in erg/cm2/A/s" and gives no bin convention. At 0.016 A the two readings differ by less than 1e-9 of a row, far below anything the reader resolves; above 1600 A the file is the 1 A eps Eri bin average |
 | `wasp121b_composite_huang2023.txt` | WHI 2008 below 1700 A; the MUSCLES v24 const-res SED of WASP-17 above it | bin average throughout, 1 A bins: both components are bin averages on a 1 A step, the WHI rows at 0.5, 1.5, ... A and the MUSCLES rows at 1700.0, 1701.0, ... A |
+| `wasp121b_composite_lyc_huang2023.txt`, `wasp121b_composite_lyc_huang2023_caseD.txt` | the construction of `wasp121b_composite_huang2023.txt` with a different factor below 1700 A | bin average throughout, 1 A bins, as that file |
 | `wasp121b_solar_huang2023.txt` | WHI 2008 below 1700 A; `pi B_lambda(6459 K) (R_star/a)^2` above it | bin average below 1700 A; **point sample** above it, the blackbody evaluated at 1700.5, 1701.5, ... A by `build_wasp121b_solar_huang.py`. For a curve this smooth the point value and the 1 A bin average differ by order `(dl/l)^2 ~ 3e-7` |
 
 **The consequence, measured.** A bin-averaged table is exact for the band
@@ -144,22 +146,27 @@ scaling step are stated in the file header and in the inventory row.
 
 | Planet | Reference for the SED | Proxy / construction | Data in workspace | Status | File |
 |---|---|---|---|---|---|
-| WASP-52 b | Yan et al. 2022, ApJ 936, 177 (`2022ApJ...936..177Y`) | eps Eri (MUSCLES v22), x (d/a)^2 | yes (MUSCLES v22 FITS, local holdings) | **BUILT** | `wasp52b_epseri_yan2022.txt` |
+| WASP-52 b | Yan et al. 2022, ApJ 936, 177 (`2022ApJ...936..177Y`) | eps Eri (MUSCLES v22), x (d/a)^2 | yes (MUSCLES v22 FITS, local holdings) | **IN USE** by `benchmarks/yan2022_wasp52b/` (1 F0 cases) | `wasp52b_epseri_yan2022.txt` |
+| WASP-52 b (Yan F_XUV study) | the same paper, section 2.1 (F_XUV = 0.25-8 F0) and section 2.3 (one 912-2600 A spectrum) | the file above with the rows shortward of 912 A times 0.5 or 2, the rows from 912 A up unchanged (`build/build_wasp52b_epseri_xuv_scaled.py <factor>`) | yes (built from the file above) | **IN USE** by `benchmarks/yan2022_wasp52b/` (0.5 F0 and 2 F0 cases) | `wasp52b_epseri_yan2022_xuv0p5.txt`, `wasp52b_epseri_yan2022_xuv2.txt` |
 | hot Uranus (Koskinen Model A) | Koskinen et al. 2022, ApJ 929, 52 (`2022ApJ...929...52K`) | mean solar, Ribas 2005 band fluxes on a Gueymard composite, at 0.05 au | partly (the true SOLAR2000 + Woods and Rottman spectrum is not here) | **BUILT** (stand-in, coverage extended to 2995 A) | `hot_uranus_solar_koskinen2022.txt` |
+| HD 209458 b (Salz benchmark) | Salz et al. 2016, A&A 586, A75 (`2016A&A...586A..75S`), section 2.2 and Table 3 | WHI 2008 solar minimum for the shape of every region; the X-ray (5-100 A) and EUV (100-912 A) regions normalized to Salz's Table 3 luminosities and the Ly-alpha line to his L_Lya, at a = 0.04723 au; longward of 912 A only (1 au/a)^2, the Sun's surface flux in place of his 6065 K blackbody, whose connection point is not stated | yes (WHI reference spectrum, p-winds reference data) | **IN USE** by `benchmarks/salz2016_hd209458b/` (plan rev4 step E) | `hd209458b_solar_salz2016.txt` |
 | HD 209458 b | Oklopcic and Hirata 2018, ApJL 855, L11 (`2018ApJ...855L..11O`) | solar irradiance at minimum (WHI 2008), x (1 au/a)^2 | yes (WHI reference spectrum, p-winds reference data) | **IN USE** by `HD209458b/` and `benchmarks/hd209/` (switched 2026-09-06, step C3) | `hd209458b_solar_whi2008.txt` |
 | LHS 1140 b | Cherubim et al. 2026, Science, doi:10.1126/science.aea9708 | GJ 1132 (Mega-MUSCLES v23) normalized to the measured X-ray flux, x (d/a)^2 | yes (already built under `LHS1140b/sed/`) | **BUILT** (copy with header) | `lhs1140b_gj1132_cherubim2026.txt` |
-| HD 189733 b | Salz et al. 2016, A&A 586, A75 (`2016A&A...586A..75S`) | eps Eri (MUSCLES v22) for the shapes, each of Salz's four regions normalized to his Table 3 luminosities, x (d/a)^2 | yes (MUSCLES v22 FITS, local holdings) | **IN USE** by `HD189733b/` and `benchmarks/hd189/` as the run of record (switched 2026-09-06, step C3); the Bourrier file is the observed-star alternative | `hd189733b_epseri_salz2016.txt` |
+| HD 189733 b | Salz et al. 2016, A&A 586, A75 (`2016A&A...586A..75S`) | eps Eri (MUSCLES v22) for the shapes, each of Salz's four regions normalized to his Table 3 luminosities, x (d/a)^2 | yes (MUSCLES v22 FITS, local holdings) | **IN USE** by `HD189733b/` and `benchmarks/hd189/` as the run of record (switched 2026-09-06, step C3), and by `benchmarks/salz2016_hd189733b/` (plan rev4 step E); the Bourrier file is the observed-star alternative | `hd189733b_epseri_salz2016.txt` |
 | HD 189733 b (recommended literature SED) | Bourrier et al. 2020, MNRAS 493, 559 (`2020MNRAS.493..559B`), MOVES III | the authors' own DEM reconstruction, mean of Visits B-E, x (1 au/a)^2 at Salz's a = 0.031 AU, eps Eri photosphere above 1600 A | yes (the four released tables, `references/Bourrier2020_supplemental_files/`) | **BUILT** | `hd189733b_bourrier2020.txt` |
-| WASP-121 b | Huang et al. 2023, ApJ 951, 123 (`2023ApJ...951..123H`) | solar SED (WHI 2008) below 1700 A rescaled to F_XUV = 1.6e6; 6459 K blackbody above 1700 A in place of LLmodels | yes (WHI reference spectrum) | **BUILT** (candidate, recommended) | `wasp121b_solar_huang2023.txt` |
+| WASP-121 b (Huang benchmark) | Huang et al. 2023, ApJ 951, 123 (`2023ApJ...951..123H`), section 2.2 and Table 3 | the composite construction below, everything below 1700 A scaled so that F(1-912 A) = 2.69e5, the Lyman-continuum flux the paper states for the spectrum its model used (its 70-80, 80-91.2 and 91.2-117 nm band fluxes, its Figure 1 and its Table 3 M_XUV = 0.16 M_p/Gyr all agree with 2.69e5 and not with the F_XUV = 1.6e6 it quotes from Salz et al. 2019); Ly-alpha line 1.0e5. Case D: everything below 1700 A x 0.74 (section 6.1, "the stellar flux at wavelengths shorter than 1700 A" to 74%; the Ly-alpha x 0.35 of the same section applies to the Ly-alpha transfer and is the `Stellar Lya flux` key of the run, not this file) | yes (both components already built) | **IN USE**: the first by `WASP-121b/` and `benchmarks/wasp121/` as the run of record (switched 2026-10-12, user decision) and by `benchmarks/huang2023_wasp121b/` cases A and B, the second by case D (plan rev4 step E) | `wasp121b_composite_lyc_huang2023.txt`, `wasp121b_composite_lyc_huang2023_caseD.txt` |
+| WASP-121 b | Huang et al. 2023, ApJ 951, 123 (`2023ApJ...951..123H`) | solar SED (WHI 2008) below 1700 A rescaled to F_XUV = 1.6e6; 6459 K blackbody above 1700 A in place of LLmodels | yes (WHI reference spectrum) | **BUILT** (candidate). The 1.6e6 normalization is the number the paper quotes, not the flux its model was driven by (2.69e5, row above): this file and the two below are about 6x brighter below 912 A than Huang's spectrum | `wasp121b_solar_huang2023.txt` |
 | WASP-121 b (alternative) | the same paper | WASP-17 (MUSCLES v24, F6V) throughout, same three normalizations | yes (MUSCLES v24 FITS, local holdings) | **BUILT** (candidate) | `wasp121b_wasp17_huang2023.txt` |
-| WASP-121 b (provisional composite) | the same paper | candidate A's solar (WHI 2008) XUV below 1700 A, candidate B's bolometrically scaled WASP-17 photosphere above it, neither renormalized to close the join | yes (both components already built) | **IN USE** by `WASP-121b/` and `benchmarks/wasp121/`, labelled provisional (switched 2026-09-06, step C3); candidates A and B stay as the sensitivity inputs | `wasp121b_composite_huang2023.txt` |
+| WASP-121 b (provisional composite) | the same paper | candidate A's solar (WHI 2008) XUV below 1700 A, candidate B's bolometrically scaled WASP-17 photosphere above it, neither renormalized to close the join | yes (both components already built) | **BUILT**; the run of record of `WASP-121b/` and `benchmarks/wasp121/` from 2026-09-06 to 2026-10-12, replaced by the Lyman-continuum file (row above), whose normalization is the spectrum Huang et al. computed with | `wasp121b_composite_huang2023.txt` |
 
 Measured band fluxes of the built files (trapezoid on the stored bins,
 `build/sed_coverage_and_order_check.py`; erg cm^-2 s^-1):
 
 | File | F(1-100 A) | F(100-912 A) | F(1-912 A) | F(10-912 A) | F(912-2600 A) | beta_m | last row |
 |---|---|---|---|---|---|---|---|
-| `wasp52b_epseri_yan2022.txt` | 7.471e3 | 2.680e4 | 3.431e4 | 3.396e4 | 2.633e5 | 0.218 | 3699.9 A |
+| `wasp52b_epseri_yan2022.txt` | 7.471e3 | 2.685e4 | 3.436e4 | 3.401e4 | 2.633e5 | 0.217 | 3699.9 A |
+| `wasp52b_epseri_yan2022_xuv0p5.txt` | 3.735e3 | 1.343e4 | 1.718e4 | 1.700e4 | 2.633e5 | 0.217 | 3699.9 A |
+| `wasp52b_epseri_yan2022_xuv2.txt` | 1.494e4 | 5.371e4 | 6.873e4 | 6.801e4 | 2.633e5 | 0.217 | 3699.9 A |
 | `hot_uranus_solar_koskinen2022.txt` | 3.986e2 | 1.191e3 | 1.600e3 | 1.541e3 | 1.154e6 | 0.249 | 2995.0 A |
 | `hd209458b_solar_whi2008.txt` | 1.075e2 | 1.232e3 | 1.340e3 | 1.340e3 | 1.194e6 | 0.080 | 4999.5 A |
 | `lhs1140b_gj1132_cherubim2026.txt` | 9.430 | 1.005e1 | 1.948e1 | 1.941e1 | 2.642e1 | 0.484 | 30000.0 A |
@@ -167,6 +174,9 @@ Measured band fluxes of the built files (trapezoid on the stored bins,
 | `wasp121b_solar_huang2023.txt` | 1.283e5 | 1.470e6 | 1.600e6 | 1.599e6 | 1.833e8 | 0.080 | 4999.5 A |
 | `wasp121b_wasp17_huang2023.txt` | 1.620e5 | 1.438e6 | 1.600e6 | 1.600e6 | 1.205e8 | 0.101 | 5000.0 A |
 | `wasp121b_composite_huang2023.txt` | 1.283e5 | 1.470e6 | 1.600e6 | 1.599e6 | 1.028e8 | 0.080 | 5000.0 A |
+| `wasp121b_composite_lyc_huang2023.txt` | 2.157e4 | 2.472e5 | 2.690e5 | 2.689e5 | 9.962e7 | 0.080 | 5000.0 A |
+| `wasp121b_composite_lyc_huang2023_caseD.txt` | 1.596e4 | 1.829e5 | 1.991e5 | 1.990e5 | 9.944e7 | 0.080 | 5000.0 A |
+| `hd209458b_solar_salz2016.txt` | 4.005e1 | 1.103e3 | 1.144e3 | 1.143e3 | 1.193e6 | 0.035 | 4999.5 A |
 | `hd189733b_bourrier2020.txt` | 1.008e4 | 2.070e4 | 3.078e4 | 2.748e4 | 1.846e5 | 0.327 | 4999.9 A |
 
 `beta_m = F(1-100)/F(1-912)`, the hardness ratio Yan et al. define. The
@@ -240,6 +250,8 @@ user downloaded them from a browser session; they are in
 
 ```
 python3 build/build_wasp52b_epseri.py
+python3 build/build_wasp52b_epseri_xuv_scaled.py 0.5
+python3 build/build_wasp52b_epseri_xuv_scaled.py 2
 python3 build/build_hot_uranus_solar.py
 python3 build/build_hd209458b_solar_whi.py
 python3 build/build_lhs1140b_gj1132.py
@@ -247,6 +259,11 @@ python3 build/build_hd189733b_epseri_salz.py
 python3 build/build_wasp121b_solar_huang.py
 python3 build/build_wasp121b_wasp17.py
 python3 build/build_hd189733b_bourrier2020.py
+python3 build/build_wasp121b_composite.py
+python3 build/build_wasp121b_composite_lyc_huang.py
+python3 build/build_wasp121b_composite_lyc_huang.py --xuv-multiplier 0.74 \
+    --out wasp121b_composite_lyc_huang2023_caseD.txt
+python3 build/build_hd209458b_solar_salz.py
 python3 build/sed_coverage_and_order_check.py      # exits nonzero on any failure
 ```
 
