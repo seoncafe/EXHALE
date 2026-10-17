@@ -123,10 +123,8 @@
                                      face_mass_flux_of_state,           &
                                      mass_row_rounding_floor,           &
                                      n_cells_without_chemical_root
-      ! MEASUREMENT ONLY, default off (EXHALE_BOUNDARY_TRACE,
-      ! EXHALE_TRACE_EXPERIMENT).
+      ! MEASUREMENT ONLY, default off (EXHALE_BOUNDARY_TRACE).
       use boundary_state_trace_mod, only: boundary_trace_armed,          &
-                                     boundary_rebuild_suppressed,       &
                                      base_mass_row_trace,               &
                                      report_base_face_state_consistency,&
                                      ghost_record_armed, write_ghost_record
@@ -1405,7 +1403,7 @@
          ! again from the composition this residual is assembled with. The
          ! statement is at the evaluate route's assembly
          ! (stationary_state_of_the_loaded_restart).
-         if (.not. boundary_rebuild_suppressed()) call Apply_BC(u)
+         call Apply_BC(u)
          ! The boundary rewrote the ghost density: the particle counts and
          ! the caloric mixture the residual reads are formed at it.
          rho = u(1,:)
@@ -6176,7 +6174,7 @@
       ! rebuilds, so the certificate written is the one a stored-pair
       ! evaluation of the file measures.
       call sources_and_ghosts_of_the_held_composition
-      if (.not. boundary_rebuild_suppressed()) call Apply_BC(u)
+      call Apply_BC(u)
       ! The order of the Newton residual (steady_newton.f90): the particle
       ! counts and the caloric mixture are formed from the conserved state
       ! after the boundary has written the ghost cells.
@@ -6387,7 +6385,7 @@
       ! the JFNK residual makes, steady_newton.f90, the second Apply_BC of
       ! eval_residual). Apply_BC writes the ghosts and returns the interior
       ! bit for bit unchanged.
-      if (.not. boundary_rebuild_suppressed()) call Apply_BC(u)
+      call Apply_BC(u)
       rho = u(1,:)
       call get_species_densities(rho,f_sp,nhi,nhii,nhei,nheii,             &
                                  nheiii,nheiTR,nm,ne,n_tot)
@@ -6804,7 +6802,7 @@
            ' =', dT_closure
 
       ! ONE COMPOSITION, ONE BOUNDARY, ONE RESIDUAL, as for the stored pair.
-      if (.not. boundary_rebuild_suppressed()) call Apply_BC(u)
+      call Apply_BC(u)
       rho = u(1,:)
       call get_species_densities(rho,f_sp,nhi,nhii,nhei,nheii,             &
                                  nheiii,nheiTR,nm,ne,n_tot)
@@ -7169,7 +7167,7 @@
          ! again from the composition this residual is assembled with. The
          ! statement is at the evaluate route's assembly
          ! (stationary_state_of_the_loaded_restart).
-         if (.not. boundary_rebuild_suppressed()) call Apply_BC(u)
+         call Apply_BC(u)
          call report_base_face_state_consistency(                          &
               'update_map_at_the_steady_residual', u)
          call assemble_residual(u, n_tot + ne, f_sp, heat, cool, R_um)
@@ -8284,7 +8282,7 @@
          ! first (sources_and_ghosts_of_the_held_composition), so that the
          ! state this test accepts is certified as its reload will be.
          call sources_and_ghosts_of_the_held_composition
-         if (.not. boundary_rebuild_suppressed()) call Apply_BC(u)
+         call Apply_BC(u)
          rho = u(1,:)
          call get_species_densities(rho,f_sp,nhi,nhii,nhei,nheii,          &
                                     nheiii,nheiTR,nm,ne,n_tot)
@@ -9186,8 +9184,6 @@
                stall_evidence%progress_reference = prog_worst
                stall_evidence%n_no_fall          = n_no_fall
                stall_evidence%n_bound_endings    = n_bound_endings
-               stall_evidence%boundary_rebuild_suppressed =               &
-                    boundary_rebuild_suppressed()
                stall_evidence%reconstruction_operator =                   &
                     reconstruction_operator_label()
                stall_evidence%reconstruction_is_plm =                     &
@@ -9554,7 +9550,7 @@
             rho = u(1,:)
             call get_species_densities(rho,f_sp,nhi,nhii,nhei,nheii,      &
                                        nheiii,nheiTR,nm,ne,n_tot)
-            if (.not. boundary_rebuild_suppressed()) call Apply_BC(u)
+            call Apply_BC(u)
             call U_to_W(u,W)
             rho = W(1,:);  v = W(2,:);  p = W(3,:);  E = u(3,:)
             call comp_T_from_p(p,n_tot,ne,T)
@@ -10101,7 +10097,7 @@
             n_rebuilt_cells = n_rebuilt_cells + 1
          endif
       enddo
-      if (.not. boundary_rebuild_suppressed()) call Apply_BC(u)
+      call Apply_BC(u)
       call U_to_W(u,W)
       rho = W(1,:);  v = W(2,:);  p = W(3,:);  E = u(3,:)
       call comp_T_from_p(p,n_tot,ne,T)

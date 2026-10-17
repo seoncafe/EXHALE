@@ -133,14 +133,11 @@
          real*8  :: progress_reference = 0.0d0
          integer :: n_no_fall       = 0
          integer :: n_bound_endings = 0
-         ! THE BOUNDARY AND RECONSTRUCTION STATE THE COUPLED SOLVE WILL
-         ! CONSUME: whether the boundary is rebuilt from the composition
-         ! at each assembly, and which discrete operator the faces are
-         ! taken with, by the name of the operator the run is solving with
-         ! and by the endpoint the assembly selects. All three belong to
-         ! the recorded state because all three change the residual the
-         ! block starts from.
-         logical           :: boundary_rebuild_suppressed = .false.
+         ! THE RECONSTRUCTION STATE THE COUPLED SOLVE WILL CONSUME: which
+         ! discrete operator the faces are taken with, by the name of the
+         ! operator the run is solving with and by the endpoint the
+         ! assembly selects. Both belong to the recorded state because both
+         ! change the residual the block starts from.
          character(len=32) :: reconstruction_operator = 'not recorded'
          logical           :: reconstruction_is_plm = .false.
       end type alternation_stall_evidence
