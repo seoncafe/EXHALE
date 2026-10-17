@@ -73,8 +73,8 @@
    ! It is NOT a cryptographic digest and is deliberately not called one: two
    ! independent modular rolling sums,
    !     h_i <- mod( h_i * a_i + byte, 2^31 - 1 ),   a = (131, 8191),
-   ! packed into one 62-bit integer. Both moduli are prime and every
-   ! intermediate stays below 2^38, so the arithmetic is exact in integer(8)
+   ! packed into one 62-bit integer. Each rolling multiply-add stays below
+   ! 2^44 and the packed result below 2^62, so the arithmetic is exact in integer(8)
    ! on every compiler -- which a 64-bit FNV or CRC written in standard
    ! Fortran is not, since they rely on unsigned wraparound the language does
    ! not define.

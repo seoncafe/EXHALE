@@ -23,6 +23,9 @@
       use Conversion,      only: U_to_W, U_to_W_interior,              &
                                  admissible_conserved_cell
       use composition,     only: get_species_densities, comp_T_from_p
+      use caloric_eos,     only: caloric_mixture_record,                 &
+                                 hold_caloric_mixture,                   &
+                                 restore_caloric_mixture
       use BC_Apply,        only: Apply_BC
       use ionization_equilibrium, only: ioniz_eq, ioniz_eq_ledger,      &
                  set_ioniz_eq_sweep_state_kind, ieq_state_marching,      &
@@ -36,6 +39,7 @@
                  ieq_sweep_state_kind,                                 &
                  ieq_report_cell,                                      &
                  ieq_cell_dump_requested, set_ieq_cell_dump_tags,      &
+                 ieq_rate_state,save_ieq_rate_state,restore_ieq_rate_state, &
                  molecular_decay_rate_of_the_cell,                     &
                  set_molecular_decay_cells
       use excited_hydrogen,       only: excited_H_update
@@ -59,7 +63,9 @@
       ! stopping tolerance costs the inner solve.
       use newton_solver,          only: nt_calls, nt_fallback
       use eval_time_step,         only: eval_dt
-      use steady_residual_mod,    only: assemble_residual,             &
+      use steady_residual_mod,    only: conservation_row_record, &
+                                        hold_conservation_rows,restore_conservation_rows, &
+                                        assemble_residual,             &
                                         reconstruction_continuation_rhs, &
                                         face_mass_flux_of_state,       &
                                         residual_row_scale,            &
@@ -560,7 +566,25 @@
          integer :: n_eq_sweeps_last   = 0
          integer :: n_no_chem_root_last = 0
          type(carrier_module_state) :: carrier
+         ! The rate state of the sweep (oxygen FUV photolysis rates
+         ! included), the conserved-row scales of the assembly, the caloric
+         ! mixture, and the conserved state with ghosts and the composition
+         ! the residual was assembled on.
+         type(ieq_rate_state) :: chemical_rates
+         type(conservation_row_record) :: conservation_rows
+         type(caloric_mixture_record) :: caloric_mixture
+         real*8, allocatable :: evaluated_conserved(:,:)
+         real*8, allocatable :: evaluated_composition(:,:)
       end type residual_evaluation_products
+
+      ! THE CONSERVED STATE, GHOSTS INCLUDED, AND THE COMPOSITION THE LAST
+      ! RESIDUAL WAS ASSEMBLED ON. A packed Newton vector carries the
+      ! physical cells only; a caller that rebuilds the ghosts with Apply_BC
+      ! does so with whatever caloric mixture and particle count the modules
+      ! hold at that moment, which need not be those the residual read.
+      ! conserved_ghosts_of_evaluated_state puts these ghosts back instead.
+      real*8, allocatable :: evaluated_state_conserved(:,:)
+      real*8, allocatable :: evaluated_state_composition(:,:)
 
       ! THE REFUSAL AND COST STATISTICS OF A SOLVE, held aside around a
       ! DIAGNOSTIC.
@@ -900,7 +924,9 @@
       real*8  :: closure_amplification_at_the_base = 1.0d0
       ! The closure increment the last adaptive sweep exited on, so that the
       ! error the sweep certified can be read from outside it. Zero after a
-      ! fixed-count evaluation, which takes no such test.
+      ! fixed-count evaluation, which takes no such test. The default adaptive
+      ! measure is huge until a previous radiative field can be compared;
+      ! a one-pass cap therefore cannot report a measured closure.
       real*8  :: eq_sweep_increment_last = 0.0d0
       ! The measure this replaced, kept switchable for measurement
       ! (EXHALE_EQ_MEASURE=species): the largest relative change of any
@@ -1468,9 +1494,9 @@
       ! to ask only for the forcing term). In the judged rows the
       ! right-hand side IS the vector of distances from the tolerances, so
       ! "the linear residual is inside the tolerances" is the statement
-      ! ||r||_2 < 1, and it is the statement the certification makes of the
-      ! state the step produces. It has no meaning without the judged row
-      ! scaling and is not applied without it.
+      ! ||r||_2 < 1 for the shifted linear model only. The nonlinear state
+      ! is still judged separately. This target has no meaning without the
+      ! judged row scaling and is not applied without it.
       !
       ! IT IS OFF BY DEFAULT, and the measurement that put it there is the
       ! one that refuted the whole route: with the target reached to
@@ -1494,8 +1520,8 @@
       !
       ! WHAT THE TWO ROUTES DO. With a species row the merit, the linear
       ! model and the gate are one scaling (cell_row_scales,
-      ! merit_row_scale_from_certification), so descending the merit is
-      ! descending the gate. Without one the merit is || F/D ||_2 on the
+      ! merit_row_scale_from_certification). A smaller 2-norm does not imply
+      ! a smaller maximum or a passing gate. Without one, || F/D ||_2 is on
       ! state column scales (cell_state_scales) while the gate is
       ! max_k,j |F| / (tol_k s_k): two functionals, and a rule that bounds
       ! the first bounds nothing about the second. MEASURED on the LHS 1140 b
@@ -2678,8 +2704,8 @@
       !
       ! Row scaling for the linear algebra and certification normalization
       ! are ONE thing here: the merit the step control descends is then the
-      ! 2-norm of the quantities the gate takes a maximum of, and descending
-      ! the merit is descending the gate.
+      ! 2-norm uses the same row denominators as the physical measures.
+      ! Its decrease does not guarantee a smaller maximum or a passing gate.
       real*8, intent(in) :: cert_scale, to_code_units
       s = max(cert_scale, cert_scale_floor)*to_code_units
       end function merit_row_scale_from_certification
@@ -2868,8 +2894,8 @@
       ! statement of it for both routes.
       !
       ! FOUR-UNKNOWN ROUTE: the certification row scales (cell_row_scales),
-      ! which are also the merit's there, so that descending the merit is
-      ! descending the gate.
+      ! which are also the merit's there. A smaller 2-norm does not imply a
+      ! smaller maximum; physical acceptance is checked separately.
       !
       ! THREE-UNKNOWN ROUTE: the size each hydrodynamic row is JUDGED at,
       ! tol_k(j) s_k(j) (judged_size_of_the_hydrodynamic_rows), so that the
@@ -3148,6 +3174,13 @@
       p%n_eq_sweeps_last   = n_eq_sweeps_last
       p%n_no_chem_root_last = n_no_chem_root_last
       call save_carrier_module_state(p%carrier)
+      call save_ieq_rate_state(p%chemical_rates)
+      call hold_conservation_rows(p%conservation_rows)
+      call hold_caloric_mixture(p%caloric_mixture)
+      if (allocated(evaluated_state_conserved)) then
+         p%evaluated_conserved   = evaluated_state_conserved
+         p%evaluated_composition = evaluated_state_composition
+      endif
       end subroutine hold_residual_evaluation_products
 
       ! ------------------------------------------------------!
@@ -3197,6 +3230,15 @@
       n_eq_sweeps_last     = p%n_eq_sweeps_last
       n_no_chem_root_last  = p%n_no_chem_root_last
       call restore_carrier_module_state(p%carrier)
+      call restore_ieq_rate_state(p%chemical_rates)
+      call restore_conservation_rows(p%conservation_rows)
+      call restore_caloric_mixture(p%caloric_mixture)
+      if (allocated(p%evaluated_conserved)) then
+         evaluated_state_conserved   = p%evaluated_conserved
+         evaluated_state_composition = p%evaluated_composition
+      else if (allocated(evaluated_state_conserved)) then
+         deallocate(evaluated_state_conserved, evaluated_state_composition)
+      endif
       end subroutine put_back_residual_evaluation_products
 
       ! ------------------------------------------------------!
@@ -3621,12 +3663,14 @@
          endif
          do i = 1, nspec_row
             if (srow_kind(i) .ne. srow_carrier) cycle
-            ! A CARRIER MASS FRACTION IS WRITTEN ONTO [0,1] HERE, for the
-            ! same reason the element fractions above are and by the same
-            ! rule: it is a mass fraction, its bounds are physical, and the
-            ! trial that left it outside them has already been recorded by
-            ! the positivity screen of eval_residual, so nothing is hidden
-            ! by evaluating the clamped state. Every consumer of the carrier
+            ! A CARRIER NUMBER DENSITY IS BOUNDED ON [0,rho] HERE, in code
+            ! density units; the shared nucleus constraints and the species
+            ! box impose the tighter composition bounds. Dividing by rho
+            ! gives the f_sp column (a number density per unit mass), not a
+            ! species mass fraction. The trial that left it outside these
+            ! bounds has already been recorded by the positivity screen of
+            ! eval_residual, so nothing is hidden by evaluating the bounded
+            ! state. Every consumer of the carrier
             ! fraction is linear in it -- the H2 opacity and self-shielding
             ! column, the H2 share of the caloric mixture, the reaction rates
             ! of the molecular network -- so a negative value is not an
@@ -3931,6 +3975,7 @@
                                 cells_outside_judged, cell_outside_judged
 
       real*8, dimension(3)           :: rmx_j
+      real*8, dimension(3)           :: evaluated_rows
       integer, dimension(3)          :: jcl_j, iwh_j
       real*8, dimension(3,1-Ng:N+Ng) :: u, W, R
       real*8, dimension(1-Ng:N+Ng)   :: rho, v, p, T
@@ -4342,14 +4387,29 @@
                     npart_pass, xh2_now, xh2_pass, heat(1:N), cool(1:N),  &
                     heat_pass, cool_pass, radiative_field_of_previous_pass,&
                     df_eq, jworst_eq, kworst_eq)
+            ! The first pass has no previous heat/cool field. Particle
+            ! count convergence alone does not bound the energy-source
+            ! change. Keep the closure unmeasured until the next pass,
+            ! including when an explicit one-pass cap exhausts the loop.
+            if (.not.radiative_field_of_previous_pass) then
+               df_eq = huge(1.0d0)
+               jworst_eq = 0
+               kworst_eq = eq_channel_radiative
+            endif
          endif
          if (eq_measure_trace) then
             eq_channel_txt = 'species fraction'
             if (.not. eq_measure_is_species_fraction)                     &
                call eq_channel_name(kworst_eq, eq_channel_txt)
-            write(*,'(A,I4,A,ES10.3,A,I5,A,A)') ' (eq_measure) pass',     &
-                 it_eq, '  increment ', df_eq, '  cell ', jworst_eq,      &
-                 '  channel ', trim(eq_channel_txt)
+            if (.not.eq_measure_is_species_fraction.and. &
+                .not.radiative_field_of_previous_pass) then
+               write(*,'(A,I4,A)') ' (eq_measure) pass',it_eq, &
+                    ' radiative comparison unavailable; closure unmeasured'
+            else
+               write(*,'(A,I4,A,ES10.3,A,I5,A,A)') ' (eq_measure) pass', &
+                    it_eq,'  increment ',df_eq,'  cell ',jworst_eq, &
+                    '  channel ',trim(eq_channel_txt)
+            endif
          endif
          eq_sweep_increment_last = df_eq
          if (df_eq .le. eq_sweep_reltol) exit
@@ -4392,6 +4452,9 @@
       rho = W(1,:)
       call get_species_densities(rho,f_sp,nhi,nhii,nhei,nheii,         &
                                  nheiii,nheiTR,nm,ne,n_tot)
+      ! The state the residual below is assembled on, ghosts included.
+      evaluated_state_conserved   = u
+      evaluated_state_composition = f_sp
 
       if (resid_capture_operator_state) then
          ! The inputs of the evaluation, kept for the jump scan before the
@@ -4589,10 +4652,17 @@
          n_eval_refusal(eval_refusal) = n_eval_refusal(eval_refusal) + 1
       endif
 
-      if (present(rows_judged)) call certified_row_measures(Fvec, u,     &
-                                        rows_judged, resid_relnorm_judged, &
-                                        cells_outside_judged,              &
-                                        cell_outside_judged)
+      ! Each optional measure is independently callable: a scalar norm or
+      ! a cell count must also be formed when rows_judged is absent.
+      if (present(rows_judged) .or. present(resid_relnorm_judged) .or.   &
+          present(cells_outside_judged) .or.                             &
+          present(cell_outside_judged)) then
+         call certified_row_measures(Fvec, u, evaluated_rows,            &
+                                     resid_relnorm_judged,               &
+                                     cells_outside_judged,               &
+                                     cell_outside_judged)
+         if (present(rows_judged)) rows_judged = evaluated_rows
+      endif
       if (present(rowmax_judged) .or. present(cells_judged) .or.         &
           present(which_judged)) then
          call row_maxima_of_the_certification(Fvec, u, rmx_j, jcl_j, iwh_j)
@@ -4627,10 +4697,11 @@
       subroutine frozen_residual(Y, n_part, f_sp_frozen, heat, cool, Fvec)
       ! FROZEN-radiation residual: the hydro flux/gravity residual at Y with
       ! heat/cool held FIXED (no ioniz_eq, no column-density recompute). This
-      ! is strictly local (WENO3 stencil) and hence exactly banded, so the
-      ! colored finite-difference Jacobian of THIS residual is exact. It is
-      ! the approximate Jacobian / preconditioner for the inexact Newton: the
-      ! weakly non-local radiation response is left to the outer iteration.
+      ! is intended to have a local WENO3 stencil. Finite differences and
+      ! coloring must be checked numerically; they are not exact derivatives.
+      ! It serves the EXHALE_JAC_TEST self-test and the band diagnostic
+      ! what_the_band_omits_of_the_jacobian. The production solver calls
+      ! build_banded_jac_full on the live thermochemical residual.
       real*8, dimension(nvar_jac*N),       intent(in)  :: Y
       real*8, dimension(1-Ng:N+Ng), intent(in)  :: n_part, heat, cool
       ! The composition held with the radiation: the energy row reads it
@@ -4696,23 +4767,42 @@
       real*8, dimension(1-Ng:N+Ng),         intent(in)  :: n_part, heat, cool
       real*8, dimension(1-Ng:N+Ng,n_species), intent(in) :: f_sp_frozen
       real*8, dimension(2*kl_jac+ku_jac+1, nvar_jac*N), intent(out) :: ab
-      real*8, dimension(nvar_jac*N) :: F0, Fp, Yp, dYc
-      integer :: neq, color, jcol, irow, ilo, ihi
-      real*8  :: sqeps
+      real*8, dimension(nvar_jac*N) :: F0, Fp, Yp, dYc, Dsc
+      integer :: neq, color, jcol, irow, ilo, ihi, ish, jgas, offset
+      real*8  :: sqeps, hstep
+      logical :: gas_ok
 
       neq   = nvar_jac*N
       sqeps = sqrt(epsilon(1.0d0))
       ab    = 0.0d0
 
+      call cell_state_scales(Y, Dsc)
       call frozen_residual(Y, n_part, f_sp_frozen, heat, cool, F0)
 
       do color = 1, ncolor_jac
-         Yp  = Y
-         dYc = 0.0d0
-         do jcol = color, neq, ncolor_jac
-            dYc(jcol) = sqeps*max(abs(Y(jcol)), 1.0d0)
-            Yp(jcol)  = Y(jcol) + dYc(jcol)
+         ! The frozen diagnostic needs the same dimensional column scales
+         ! as the full residual. A unit floor perturbs outer wind densities
+         ! by order unity and can remove all internal energy from a probe.
+         hstep = sqeps
+         do ish=0,60
+            Yp=Y; dYc=0.0d0
+            do jcol=color,neq,ncolor_jac
+               Yp(jcol)=Y(jcol)+hstep*Dsc(jcol)
+               dYc(jcol)=Yp(jcol)-Y(jcol)
+            enddo
+            gas_ok=.true.
+            do jgas=1,N
+               offset=nvar_jac*(jgas-1)
+               if (.not. admissible_conserved_cell(                    &
+                          Yp(offset+1:offset+3))) gas_ok=.false.
+            enddo
+            if (gas_ok) exit
+            hstep=0.5d0*hstep
          enddo
+         if (.not. gas_ok .or. any(dYc(color:neq:ncolor_jac) .eq. 0.0d0)) then
+            write(*,'(A,I0)') ' ERROR: no admissible frozen Jacobian color ',color
+            stop 1
+         endif
          call frozen_residual(Yp, n_part, f_sp_frozen, heat, cool, Fp)
          do jcol = color, neq, ncolor_jac
             ilo = max(1,   jcol - ku_jac)
@@ -4730,11 +4820,11 @@
 
       subroutine build_banded_jac_full(Y, f_sp_base, ab, n_color_unresolved)
       ! Colored-FD banded Jacobian of the FULL residual (eval_residual, i.e.
-      ! including the local ionization-equilibrium + heat/cool response). The
-      ! frozen version omits the dominant local d(heat-cool)/dE coupling, so
-      ! Newton has no descent direction even near the solution; this version
-      ! captures it. The weakly non-local column-density coupling slightly
-      ! contaminates same-color columns (treated as preconditioner error).
+      ! including ionization-equilibrium and heat/cool feedback). A frozen
+      ! coefficient model omits that feedback. This model includes it, but
+      ! does not guarantee a descent direction for the nonlinear residual.
+      ! Nonlocal column-density responses can mix same-color columns; their
+      ! magnitude must be measured for the chosen preconditioner and state.
       ! Each probe restores f_sp from the base copy (ioniz_eq mutates it).
       real*8, dimension(nvar_jac*N),                  intent(in) :: Y
       real*8, dimension(1-Ng:N+Ng,n_species),  intent(in) :: f_sp_base
@@ -4760,9 +4850,9 @@
       call cell_state_scales(Y, Dsc)
 
       ! THE BASE POINT AND EVERY COLUMN ARE THE SAME MAP: a fixed number of
-      ! composition passes, not a converged one. A converged elimination
-      ! would take a different number of passes at Y and at Y + h, and the
-      ! difference of two maps divided by h is not a derivative.
+      ! composition passes. This differentiates the finite-pass map; a
+      ! derivative of the converged implicit map requires controlling its
+      ! closure error at both states relative to the finite-difference step.
       call eval_residual(Y, f_sp_base, fwork, F0, heat, cool,             &
                          admissible=probe_ok,                             &
                          may_be_adopted=.false.,                          &
@@ -5449,6 +5539,7 @@
       integer :: j, k, i, is, jw, k_merit, k_gate
       logical :: fin
       character(len=24) :: what, what_gate
+      character(len=48) :: measure_label
       share = 0.0d0;  worst = 0.0d0;  cell_worst = 0
       do j = 1, N
          do k = 1, min(nvar_jac, 3 + n_species_row_max)
@@ -5502,8 +5593,10 @@
                  ', its own measure ', rc(k)
          else
             is = k - 3
-            ! The row's own certification measure, which is what the state
-            ! is judged by; it is not in ||R||.
+            measure_label = ', its own measure '
+            ! Element rows have individual certification measures here;
+            ! the saved carrier measure is a maximum across all species.
+            ! Neither contributes to the hydrodynamic ||R||.
             q = 0.0d0;  jw = 0
             if (srow_kind(is) .eq. srow_element_he) then
                if (allocated(escale_he))                                  &
@@ -5517,13 +5610,16 @@
                        erow_tr(1:N,srow_idx(is)),                         &
                        escale_tr(1:N,srow_idx(is)), q, jw, fin)
             else
+               ! These saved values describe the largest carrier measure
+               ! across all species, not the individual carrier above.
                q = carrier_cellmax_last;  jw = carrier_cell_worst
+               measure_label = ', largest carrier measure (all species) '
             endif
             write(*,'(A,A,A,A,F8.4,A,ES11.3,A,I0,A,ES11.3,A,I0)') tag,    &
                  ' [diag 7]   ', trim(what), ': merit share ',            &
                  share(k)/max(total,1.0d-300), ', worst scaled row ',     &
                  worst(k), ' at cell ', cell_worst(k),                    &
-                 ', its own measure ', q, ' at cell ', jw
+                 trim(measure_label)//' ', q, ' at cell ', jw
          endif
       enddo
       end subroutine write_row_kind_shares
@@ -6289,6 +6385,23 @@
 
       ! ------------------------------------------------------!
 
+      subroutine conserved_ghosts_of_evaluated_state(u, f_sp)
+      ! A packed Newton vector carries the physical conserved cells only.
+      ! Return the ghosts of the residual evaluation of the same state, not
+      ! a separate boundary reconstruction at another caloric mixture or
+      ! particle count. Applied only when the physical u and the complete
+      ! composition are bitwise those of that evaluation.
+      real*8, intent(inout) :: u(3,1-Ng:N+Ng)
+      real*8, intent(in)    :: f_sp(1-Ng:N+Ng,n_species)
+      if (.not. allocated(evaluated_state_conserved)) return
+      if (any(u(:,1:N) .ne. evaluated_state_conserved(:,1:N))) return
+      if (any(f_sp .ne. evaluated_state_composition)) return
+      u(:,1-Ng:0)   = evaluated_state_conserved(:,1-Ng:0)
+      u(:,N+1:N+Ng) = evaluated_state_conserved(:,N+1:N+Ng)
+      end subroutine conserved_ghosts_of_evaluated_state
+
+      ! ------------------------------------------------------!
+
       subroutine certify_returned_state(F, u, f_sp, resid_tol,            &
                                         n_no_chem_root, label)
       ! THE STATIONARY CERTIFICATION CONTEXT at a point where this solver
@@ -6299,7 +6412,7 @@
       ! refuses certification is still written; what it may not do is be
       ! called certified.
       real*8, dimension(:),                   intent(in) :: F
-      real*8, dimension(3,1-Ng:N+Ng),         intent(in) :: u
+      real*8, dimension(3,1-Ng:N+Ng),      intent(inout) :: u
       real*8, dimension(1-Ng:N+Ng,n_species), intent(in) :: f_sp
       real*8,  intent(in) :: resid_tol
       integer, intent(in) :: n_no_chem_root
@@ -6307,6 +6420,7 @@
       real*8, dimension(3,1-Ng:N+Ng) :: Rrows
       type(cert_report) :: rep
       integer :: jj, kk
+      call conserved_ghosts_of_evaluated_state(u,f_sp)
       Rrows = 0.0d0
       do jj = 1, N
          do kk = 1, 3
@@ -6376,18 +6490,18 @@
       call hold_solve_refusal_statistics(statistics_at_entry)
       call eval_residual(Y, f_sp_base, fwork, Fb, heatw, coolw,           &
                          may_be_adopted=.false.,                          &
-                         state_is_discarded=.true.)
+                         state_is_discarded=.false.)
       call eval_residual(Y, f_sp_base, fwork, Fa, heatw, coolw,           &
                          may_be_adopted=.false.,                          &
-                         state_is_discarded=.true.)
+                         state_is_discarded=.false.)
       closure_error = eq_sweep_increment_last
       na            = n_eq_sweeps_last
       call eval_residual(Y, f_sp_base, fwork, Fc, heatw, coolw,           &
                          may_be_adopted=.false.,                          &
-                         state_is_discarded=.true.)
+                         state_is_discarded=.false.)
       call eval_residual(Y, f_sp_base, fwork, Fb, heatw, coolw,           &
                          may_be_adopted=.false.,                          &
-                         state_is_discarded=.true.,                       &
+                         state_is_discarded=.false.,                       &
                          n_eq_sweeps_fixed=na+3)
       base_change = 0.0d0
       base_repro  = 0.0d0
@@ -6408,7 +6522,9 @@
       ! amplification stays at one and the line below says so.
       q             = 0.0d0
       amplification = 1.0d0
-      if (closure_error .gt. 0.0d0 .and. base_change .gt. base_repro) then
+      if (closure_error .gt. 0.0d0 .and. &
+          closure_error .lt. huge(1.0d0) .and. &
+          base_change .gt. base_repro) then
          q = base_change/closure_error
          ! A QUOTIENT BELOW ONE IS AN ATTENUATION AND NOT AN AMPLIFICATION,
          ! and then the target is already a bound on what the outer residual
@@ -7694,13 +7810,18 @@
       ! THE OUTER GHOST RULE, both evaluations. The composition is the one
       ! the last full evaluation of THIS state produced; the state is the
       ! one the rows above were assembled on.
+      ! This reference evaluation's products are kept until the row
+      ! comparison is complete; the enclosing hold restores the run's at
+      ! return. Rebuilding the ghosts with Apply_BC from another caloric
+      ! mixture would compare two different finite-volume states.
       call eval_residual(Y, f_sp_base, fwork, F0, heatw, coolw,           &
                          admissible=okp, may_be_adopted=.false.,          &
-                         state_is_discarded=.true.,                       &
+                         state_is_discarded=.false.,                      &
                          n_eq_sweeps_fixed=n_eq_sweeps_model)
       uloc = 0.0d0
       call unpack_U(Y, uloc)
       call Apply_BC(uloc)
+      call conserved_ghosts_of_evaluated_state(uloc, fwork)
       call U_to_W(uloc, Wloc)
       rho_w = Wloc(1,:)
       vel_w = Wloc(2,:)
@@ -7989,7 +8110,7 @@
       ! the rows of the system this solve carries. Nothing is written here;
       ! the caller states in one line which row refuses.
       real*8, dimension(:),                   intent(in) :: F
-      real*8, dimension(3,1-Ng:N+Ng),         intent(in) :: u
+      real*8, dimension(3,1-Ng:N+Ng),      intent(inout) :: u
       real*8, dimension(1-Ng:N+Ng,n_species), intent(in) :: f_sp
       real*8,  intent(in)  :: resid_tol
       integer, intent(in)  :: n_no_chem_root
@@ -8000,6 +8121,7 @@
       real*8, dimension(3,1-Ng:N+Ng) :: Rrows
       logical :: none_measured
       integer :: jj, kk, n_read
+      call conserved_ghosts_of_evaluated_state(u,f_sp)
       Rrows = 0.0d0
       do jj = 1, N
          do kk = 1, 3
@@ -11090,12 +11212,10 @@
       ! one, and the step to the surface is -c/(a . v) where a . v is
       ! positive.
       !
-      ! A ROW WHOSE ITERATE ALREADY STANDS OUTSIDE ITS OWN BUDGET LIMITS
-      ! NOTHING. The budget is frozen at the iterate and depends on the very
-      ! unknowns it constrains, so the iterate itself can stand above it;
-      ! a rule that returned zero there would refuse every neighborhood of
-      ! the point the step starts from. It is the raised target of
-      ! elem_row_target, applied to a step length.
+      ! The frozen target may coincide with the current constraint value.
+      ! An outward direction then has zero allowed length. An inward or
+      ! tangent direction is not limited by that row; av <= 0 is handled
+      ! separately below. Zero room must not remove an active constraint.
       !
       ! huge(1) where no row is formed, which is every solve without a
       ! carrier unknown.
@@ -11116,7 +11236,8 @@
             room = elem_row_target(j,k) - elem_row_budget(j,k)            &
                  - elem_row_c(j,k)
             room = max(room, 0.0d0)
-            if (room .le. 0.0d0) cycle
+            ! An outward direction on the constraint surface has no room.
+            ! Skipping that row would incorrectly make it unrestricted.
             tmax = min(tmax, room/av)
          enddo
       enddo
@@ -11674,6 +11795,7 @@
       ! The certification of the state handed back, read back so that the
       ! completion flag and the printed refusal are the same record.
       type(cert_report) :: cert_out
+      type(residual_evaluation_products) :: products_at_adopted_state
       logical :: rows_ok, rows_unmeasured, gate_is_cert
       integer :: i_row
       ! How many rows of the certification the stop test read at the iterate
@@ -11716,9 +11838,11 @@
       ! convention: the seed is named in the call.
       call eval_residual(Y, f_sp, f_sp_j, F, heat0, cool0)
       f_sp = f_sp_j
+      call conserved_ghosts_of_evaluated_state(u,f_sp)
       n_eq_sweeps_model = n_eq_sweeps_last
       n_no_chem_root_state = n_no_chem_root_last
       call keep_background_of_adopted_state
+      call conserved_ghosts_of_evaluated_state(u,f_sp)
       call resid_relnorm(F, u, rc, rnorm)
       f2 = sqrt(sum(F*F))                ! smooth line-search merit
       write(*,'(A,ES11.3,A,3ES10.2,A,ES10.2)') ' (PTC) start ||R||=',rnorm, &
@@ -11798,6 +11922,7 @@
             call U_to_W_interior(utry, Wtry)   ! ghosts of utry are not set
             if (minval(Wtry(1,1:N)) .gt. 0.0d0 .and.                    &
                 minval(Wtry(3,1:N)) .gt. 0.0d0) then
+               call hold_residual_evaluation_products(products_at_adopted_state)
                call eval_residual(Ytry, f_sp, f_sp_j, Ftry, heat0, cool0, &
                                   admissible=try_ok)
                f2_try = huge(1.0d0)
@@ -11808,6 +11933,7 @@
                if (try_ok .and. f2_try .lt. (1.0d0 - 1.0d-4*lam)*f2) then
                   ok = .true.;  exit
                endif
+               call put_back_residual_evaluation_products(products_at_adopted_state)
             endif
             lam = 0.5d0*lam
          enddo
@@ -11820,6 +11946,7 @@
             ! frozen background now describes the state just adopted.
             call keep_background_of_adopted_state
             call unpack_U(Y, u);  call Apply_BC(u)
+            call conserved_ghosts_of_evaluated_state(u,f_sp)
             call resid_relnorm(F, u, rc, rnorm)
             ! SER ramp on the merit ratio, scaled by the accepted step.
             dtau = min(dtau*max(lam,0.1d0)*(f2/max(f2_try,1.0d-30)),     &
@@ -11838,6 +11965,7 @@
       enddo
 
       call unpack_U(Y, u);  call Apply_BC(u)
+      call conserved_ghosts_of_evaluated_state(u,f_sp)
       call resid_relnorm(F, u, rc, rnorm)
       call set_ioniz_eq_sweep_state_kind(ieq_state_marching)
       call install_background_of_adopted_state
@@ -12834,8 +12962,11 @@
 
       subroutine residual_terms_in_evaluation_order(Y, f_sp_base, jcell, &
                      q, qname, nq, ok)
-      ! EVERY QUANTITY THE ROW OF ONE CELL IS BUILT FROM, in the order the
-      ! evaluation builds them:
+      ! SELECTED HYDRODYNAMIC AND RADIATIVE QUANTITIES of one cell, in the
+      ! order the evaluation builds them. This diagnostic does not output
+      ! the additional conduction/viscous source Sene or relative-transport
+      ! enthalpy divergence Sidf. When transport is active, its dF, S, heat
+      ! and cool records alone do not reconstruct the complete energy row.
       !
       !   unknowns -> ghost cells (Apply_BC and the base boundary)
       !            -> temperature and particle count of the sweep
@@ -15338,9 +15469,9 @@
             ! step was taken on D, so the column scale cancels the step
             ! and what is left is the difference over the step alone.
             acol = (Fp - Fa)/hstep/Drow
-            ! The same column with the radiation held fixed, which is
-            ! exactly banded: whatever the full column carries beyond the
-            ! stencil and this one does not is the non-local response.
+            ! Compare the same column with material coefficients held.
+            ! Radiation feedback is removed, but a global contact closure
+            ! can still contribute outside the local reconstruction stencil.
             call frozen_residual(Yp, npartw, f_frz, heat_frz, cool_frz, Fp)
             w = (Fp - fcol)/hstep/Drow
             call column_split_against_the_band(acol, icol, ab, s_in,     &
@@ -16245,6 +16376,31 @@
 
       ! ------------------------------------------------------!
 
+      subroutine squared_residual_directional_derivative(base,plus,minus,h, &
+                                                         plus_valid,minus_valid,slope,usable)
+      ! Derivative of half the squared scaled residual norm. Both admitted
+      ! points give a central quotient; a single admitted point gives its
+      ! forward or backward quotient. An invalid point is never a sample.
+      real*8,intent(in) :: base,plus,minus,h
+      logical,intent(in) :: plus_valid,minus_valid
+      real*8,intent(out) :: slope
+      logical,intent(out) :: usable
+      slope=0d0;usable=.false.
+      if(.not.finite_real(base).or..not.finite_real(h).or.h.le.0d0) return
+      if(plus_valid.and..not.finite_real(plus)) return
+      if(minus_valid.and..not.finite_real(minus)) return
+      if(plus_valid.and.minus_valid) then
+         slope=(plus-minus)/(2d0*h)
+      else if(plus_valid) then
+         slope=(plus-base)/h
+      else if(minus_valid) then
+         slope=(base-minus)/h
+      else
+         return
+      endif
+      usable=finite_real(slope)
+      end subroutine squared_residual_directional_derivative
+
       subroutine ray_slope_verdict(mslope, fslope, f2p, f2m, ok_probes,   &
                                    ratio, merit_reproducibility,          &
                                    ray_floor, ray_verdict, model_ok,      &
@@ -16255,7 +16411,7 @@
       ! mslope is the model's directional derivative along the step, fslope
       ! the difference quotient of the true merit along the same ray, f2p
       ! and f2m the two probe merits the quotient was built from, ok_probes
-      ! whether both probes are states the equilibrium sweep could describe,
+      ! whether an admitted central or one-sided quotient was formed,
       ! ratio the actual reduction over the predicted one at the FULL step,
       ! and merit_reproducibility the measured spread of the merit over two
       ! evaluations of one state.
@@ -16494,7 +16650,7 @@
       integer :: it, saved_mode
       logical :: okres, on_boundary, ok_state
       ! Both ray probes describable states (see the ray test below).
-      logical :: ok_ray
+      logical :: ok_ray, ray_plus_admissible, ray_minus_admissible
       ! The radius floor exists so that a solve that cannot move says so
       ! instead of grinding the radius to zero. The acceptance threshold
       ! eta_accept is at module scope, beside the constants of the ray test
@@ -17325,10 +17481,11 @@
          call eval_residual(Ytry, f_sp, fwork, Ftry, heat, cool,          &
                             admissible=okres,                             &
                             state_is_discarded=.true.)
-         ok_ray = okres
+         ray_plus_admissible = okres
+         ray_minus_admissible = .false.
          ! A refused probe has no residual; its merit is set to the
          ! iterate's, which makes no slope, and ok_ray carries the refusal
-         ! into the verdict (ray_slope_verdict reads it first).
+         ! into the admitted-stencil selection below.
          f2p = 0.5d0*f2_ref*f2_ref
          if (okres) f2p = 0.5d0*sum((Ftry/Drow)**2)
          ! A CENTRAL DIFFERENCE DOES NOT EXIST ON A FACE OF THE FEASIBLE
@@ -17355,16 +17512,18 @@
          endif
          if (n_ray_out .gt. 0) then
             f2m    = 0.5d0*f2_ref*f2_ref
-            fslope = (f2p - f2m)/hray
+
          else
             call eval_residual(Ytry, f_sp, fwork, Ftry, heat, cool,       &
                                admissible=okres,                          &
                                state_is_discarded=.true.)
-            ok_ray = ok_ray .and. okres
+            ray_minus_admissible = okres
             f2m = 0.5d0*f2_ref*f2_ref
             if (okres) f2m = 0.5d0*sum((Ftry/Drow)**2)
-            fslope = (f2p - f2m)/(2.0d0*hray)
          endif
+         call squared_residual_directional_derivative( &
+              0.5d0*f2_ref*f2_ref,f2p,f2m,hray, &
+              ray_plus_admissible,ray_minus_admissible,fslope,ok_ray)
          call ray_slope_verdict(mslope, fslope, f2p, f2m, ok_ray, ratio,  &
                                 merit_reproducibility, ray_floor,         &
                                 ray_verdict, model_ok, refuse)
@@ -18008,6 +18167,7 @@
       ! It reads the rows the evaluation above formed, with nothing in
       ! between.
       call row_cancellation_and_the_rounding_floor(f_sp, u)
+      call conserved_ghosts_of_evaluated_state(u,f_sp)
       call resid_relnorm(F, u, rc, rnorm)
       call cell_state_scales(Y, D)
       call row_scaling_of_the_linear_model(Y, D, Drow, u)
@@ -18494,8 +18654,9 @@
             dtau = max(dtau*0.25d0, dtau_floor);  cycle
          endif
 
-         ! The window on the judged quantity, formed here because both step
-         ! controls below are bounded by it (see jhist).
+         ! The window on judged residuals is a diagnostic comparison (jhist).
+         ! Working steps follow their merit criterion; the returned best
+         ! state and final verdict use the physical equation tolerances.
          if (monotone_search) then
             jref = dj
          else
@@ -18677,9 +18838,9 @@
          ! With the rows divided by tol_k(j) s_k(j) the right-hand side is
          ! the state's distances from the tolerances, so a linear residual
          ! whose 2-norm is below ONE is inside every row's tolerance in
-         ! every cell -- the infinity norm is bounded by the 2-norm -- and
-         ! the step cannot carry a row that entered at its floor outside
-         ! it. A RELATIVE tolerance cannot say this: MEASURED on the pass-2
+         ! every cell of the shifted linear model. The nonlinear stationary
+         ! residual still needs its own check; it may remain outside.
+         ! A relative target gives no such bound: measured on the pass-2
          ! entry state of the LHS 1140 b C/N/O case, the judged residual is
          ! 1.1e+05 and the tenth the cycle is allowed to leave is 1.1e+04
          ! in the same units, four decades above the tolerances, so the
@@ -18718,6 +18879,7 @@
                   lin_row(kk) = maxval(abs(r_lin(kk::nvar_jac)))
                   f_row(kk)   = maxval(abs(F(kk::nvar_jac)))
                enddo
+               call conserved_ghosts_of_evaluated_state(u,f_sp)
                call resid_relnorm(F, u, rc_diag, rnorm_diag)
                write(*,'(A,3ES11.3)')                                      &
                     ' (JFNK) hydrodynamic rows entering the step'//         &
@@ -18781,12 +18943,12 @@
                                      may_be_adopted=.false.,               &
                                      state_is_discarded=.true.)
                   weno_mode = lr_saved_mode
-                  write(*,'(A,ES9.1,L2,40ES11.3E3)') ' (JFNK) [lin] t=',    &
+                  write(*,'(A,ES9.1,L2,*(ES11.3E3))') ' (JFNK) [lin] t=',    &
                        10.0d0**lr_ios, lr_ok,                              &
                        ((F_lr(nvar_jac*(lr_j-1)+3)                         &
                          - F(nvar_jac*(lr_j-1)+3))/(10.0d0**lr_ios),       &
                         lr_j = lr_lo, lr_hi)
-                  write(*,'(A,ES9.1,40ES11.3E3)') ' (JFNK) [lin] heat, cool'//&
+                  write(*,'(A,ES9.1,*(ES11.3E3))') ' (JFNK) [lin] heat, cool'//&
                        ' change over t at the band: t=', 10.0d0**lr_ios,   &
                        ((heat_lr(lr_j)/max(heat0(lr_j),1.0d-300) - 1.0d0)  &
                         /(10.0d0**lr_ios), lr_j = lr_lo, lr_hi),            &
@@ -18890,9 +19052,8 @@
                ! trading one row against the others. The place the
                ! judgement belongs is the ledger that chooses the state to
                ! hand back, and that is where it now is.
-               if (try_ok .and. dj_try .gt. jref .and.                   &
-                   f2_try .lt. (1.0d0 - 1.0d-4*lam)*f2ref)               &
-                    n_judged_excursions = n_judged_excursions + 1
+               ! Count the adopted state below, after either step control
+               ! has made its actual acceptance decision.
                if (ptc_ser_phase) then
                   ! THE PSEUDO-TIME STEP IS ACCEPTED WHEN IT IS ADMISSIBLE
                   ! AND BOUNDED (ptc_ser_on): no merit descent is asked of
@@ -19050,10 +19211,12 @@
             n_eq_sweeps_model    = max(n_eq_sweeps_model, n_eq_sweeps_last)
             call keep_background_of_adopted_state
             call unpack_U(Y, u);  call Apply_BC(u)
+            call conserved_ghosts_of_evaluated_state(u,f_sp)
             call resid_relnorm(F, u, rc, rnorm)
             ! The judged distance of the state just adopted, from the rows
             ! the evaluation that accepted it measured.
             dj = dj_try
+            if(dj.gt.jref) n_judged_excursions=n_judged_excursions+1
             ! THE RAMP. The pseudo-time DOUBLES on a step the line search
             ! did not have to cut (lam >= lam_of_a_full_step), which is the
             ! growth the published practice allows a favorably converging
@@ -19265,6 +19428,7 @@
             ! residuals printed above, this is what separates a Krylov
             ! tolerance that was not reached from a step the nonlinear model
             ! got wrong.
+            call conserved_ghosts_of_evaluated_state(u,f_sp)
             call resid_relnorm(F, u, rc_diag, rnorm_diag)
             write(*,'(A,3ES11.3)')                                         &
                  ' (JFNK) hydrodynamic rows now (mass, momentum,'//        &
@@ -19674,6 +19838,7 @@
       f_sp_best = f_sp_j
       f_sp = f_sp_best
       rnorm_handback_prev = rnorm
+      call conserved_ghosts_of_evaluated_state(u,f_sp)
       call resid_relnorm(F, u, rc, rnorm)
       if (nspec_row .gt. 0) then
          carrier_relnorm_best = carrier_relnorm_last

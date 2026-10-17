@@ -1262,7 +1262,8 @@
 		fvec(4) = 2.0d0*sden(is_H2)/nuclei_H                              &
 		        - h2_fraction_of_reservoir(h2_reservoir_partition,        &
 		            (sden(is_HII) + 2.0d0*sden(is_H2p)                    &
-		             + 3.0d0*sden(is_H3p) + sden(is_HeHp))/nuclei_H)
+		             + 3.0d0*sden(is_H3p) + sden(is_HeHp))/nuclei_H,      &
+		            (sden(is_OH) + 2.0d0*sden(is_H2O))/nuclei_H)
 	endif
 
 	end subroutine network_balance_rows

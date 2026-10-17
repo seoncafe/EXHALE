@@ -188,13 +188,15 @@
 		real*8 :: x_hetr_fix = 0.0d0
 		! THE H2 PARTITION OF THE NON-IONIZED HYDROGEN, stated by the
 		! lower-boundary reservoir (the base handoff) for a lower ghost.
-		! The handoff gives x2 = 2 n(H2)/(2 n(H2) + n(H I)), the fraction
-		! of the NEUTRAL hydrogen nuclei bound in H2 (the lower-atmosphere
-		! model never saw the wind's ionizing field); the ionized fraction
-		! is the ghost's own. The row the H2 balance (4) is replaced by is
-		! therefore
-		!     x(4) - x2 (1 - x_ion(x)) = 0,
-		!     x_ion = x(1) + x(5) + x(6) + x(7)
+		! The handoff gives x2, the fraction of the NEUTRAL hydrogen nuclei
+		! that are not atomic (base_h2_nuclei_fraction; it includes the
+		! hydrogen of OH and H2O where the oxygen chemistry carries them);
+		! the lower-atmosphere model never saw the wind's ionizing field, so
+		! the ionized fraction is the ghost's own. The row the H2 balance
+		! (4) is replaced by is therefore
+		!     x(4) - [x2 (1 - x_ion(x)) - x_O(x)] = 0,
+		!     x_ion = x(1) + x(5) + x(6) + x(7),
+		!     x_O   = (n(OH) + 2 n(H2O))/n_H
 		! (h2_fraction_of_reservoir), solved TOGETHER with the ionization
 		! rows: x_ion is an unknown of the same solve, not the value of a
 		! previous pass. Pinning x(4) at x2 (1 - x_ion) of a previous
@@ -387,13 +389,32 @@
 	end function ionized_hydrogen_nuclei_fraction
 
 	! The H2 row of a reservoir cell whose neutral hydrogen partition x2
-	! is stated (x_h2_neutral_partition_fixed): x(4) = x2 (1 - x_ion),
+	! is stated (x_h2_neutral_partition_fixed): x(4) = x2 (1 - x_ion) - x_O,
 	! the H2 nuclei fraction of ALL the hydrogen when x2 of the
-	! non-ionized hydrogen is bound in H2 and x_ion is ionized.
-	pure double precision function h2_fraction_of_reservoir(x2, x_ion)     &
-	                                                         result(x_h2)
+	! non-ionized hydrogen is non-atomic, x_ion is ionized, and x_O is the
+	! hydrogen held by explicit OH and H2O. The handoff's x2 is one minus
+	! the atomic share (composition.f90, base_h2_nuclei_fraction), so it
+	! already includes that hydrogen; adding OH/H2O on top of x2 (1 - x_ion)
+	! would count those nuclei twice.
+	pure double precision function h2_fraction_of_reservoir(x2, x_ion,     &
+	                                         x_oxygen) result(x_h2)
 	real*8, intent(in) :: x2, x_ion
+	real*8, optional, intent(in) :: x_oxygen
+	! Validity: admissible compositions have x2*(1-x_ion) >= x_oxygen.
 	x_h2 = x2*(1.0d0 - x_ion)
+	if (present(x_oxygen)) x_h2 = x_h2 - x_oxygen
 	end function h2_fraction_of_reservoir
+
+	! Hydrogen nuclei in OH and H2O as a fraction of all hydrogen nuclei,
+	! from the oxygen-family fractions x(iox) = n(OH)/n_O and
+	! x(iox+1) = n(H2O)/n_O. Zero where the oxygen rows are absent.
+	pure double precision function hydrogen_nuclei_in_oxygen_carriers(    &
+	                   x, iox, n_oxygen, n_hydrogen) result(x_oxygen)
+	real*8, intent(in) :: x(:), n_oxygen, n_hydrogen
+	integer, intent(in) :: iox
+	x_oxygen = 0.0d0
+	if (iox .gt. 0 .and. iox+1 .le. size(x) .and. n_hydrogen .gt. 0.0d0) &
+		x_oxygen = (x(iox) + 2.0d0*x(iox+1))*n_oxygen/n_hydrogen
+	end function hydrogen_nuclei_in_oxygen_carriers
 
 	end module ion_cell_state

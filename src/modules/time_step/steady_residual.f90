@@ -1,5 +1,5 @@
       module steady_residual_mod
-      ! Finite-volume STEADY residual  R = du/dt  (zero at a true steady
+      ! Finite-volume STEADY residual  R = -du/dt  (zero at a true steady
       ! state), shared by the EXHALE_RESIDUAL diagnostic, the in-loop
       ! convergence monitor, and the steady-state Newton/PTC solver.
       !
@@ -142,6 +142,19 @@
       real*8, dimension(:),   allocatable :: energy_largest_term
       real*8, dimension(:,:), allocatable :: state_of_row_terms
 
+      ! The five arrays above, held aside and put back around a residual
+      ! evaluation whose state the caller discards (steady_newton,
+      ! residual_evaluation_products), allocation status included.
+      public :: conservation_row_record, hold_conservation_rows,         &
+                restore_conservation_rows
+      type :: conservation_row_record
+         real*8, allocatable :: mass_flux_area(:)
+         real*8, allocatable :: mass_flux(:)
+         real*8, allocatable :: momentum_scale(:)
+         real*8, allocatable :: energy_scale(:)
+         real*8, allocatable :: conserved(:,:)
+      end type conservation_row_record
+
       ! Whether the continuity row's rounding-floor measurement is inside
       ! its own perturbed assembly, so the hook does not re-enter, and
       ! whether it has already reported: it is a property of a state and
@@ -150,6 +163,52 @@
       logical, save :: mass_floor_scan_reported = .false.
 
       contains
+
+      ! ------------------------------------------------------!
+
+      subroutine hold_conservation_rows(record)
+      type(conservation_row_record), intent(out) :: record
+      if (allocated(face_mass_flux_r2))                                  &
+         record%mass_flux_area = face_mass_flux_r2
+      if (allocated(face_mass_flux)) record%mass_flux = face_mass_flux
+      if (allocated(momentum_largest_term))                              &
+         record%momentum_scale = momentum_largest_term
+      if (allocated(energy_largest_term))                                &
+         record%energy_scale = energy_largest_term
+      if (allocated(state_of_row_terms))                                 &
+         record%conserved = state_of_row_terms
+      end subroutine hold_conservation_rows
+
+      ! ------------------------------------------------------!
+
+      subroutine restore_conservation_rows(record)
+      type(conservation_row_record), intent(in) :: record
+      if (allocated(record%mass_flux_area)) then
+         face_mass_flux_r2 = record%mass_flux_area
+      else if (allocated(face_mass_flux_r2)) then
+         deallocate(face_mass_flux_r2)
+      endif
+      if (allocated(record%mass_flux)) then
+         face_mass_flux = record%mass_flux
+      else if (allocated(face_mass_flux)) then
+         deallocate(face_mass_flux)
+      endif
+      if (allocated(record%momentum_scale)) then
+         momentum_largest_term = record%momentum_scale
+      else if (allocated(momentum_largest_term)) then
+         deallocate(momentum_largest_term)
+      endif
+      if (allocated(record%energy_scale)) then
+         energy_largest_term = record%energy_scale
+      else if (allocated(energy_largest_term)) then
+         deallocate(energy_largest_term)
+      endif
+      if (allocated(record%conserved)) then
+         state_of_row_terms = record%conserved
+      else if (allocated(state_of_row_terms)) then
+         deallocate(state_of_row_terms)
+      endif
+      end subroutine restore_conservation_rows
 
       ! ------------------------------------------------------!
 

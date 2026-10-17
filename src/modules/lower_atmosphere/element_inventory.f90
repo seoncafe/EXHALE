@@ -345,6 +345,15 @@
          inv%remainder(ie) = inv%element_free(ie) - inv%n_carried(ie)
          call relative_breach(inv%n_carried(ie), inv%carrier_budget(ie),  &
                               inv%violation(ie), inv%occupancy(ie))
+         ! Clamping a negative available budget to zero cannot make a
+         ! state whose fixed nuclei exceed the element admissible. Helium
+         ! is held by no carrier and has no such budget.
+         if (ie .ne. ien_He) then
+            if (inv%n_reserved(ie) .gt. free(ie))                         &
+               inv%violation(ie) = max(inv%violation(ie),                 &
+                  (inv%n_reserved(ie) - free(ie))                         &
+                  /max(abs(free(ie)), tiny(1.0d0)))
+         endif
          call relative_breach(inv%n_carried(ie),                          &
                               inv%budget_less_reserved(ie),              &
                               inv%violation_less_reserved(ie),           &

@@ -1828,6 +1828,17 @@
    endif
 
    if (thereis_oxychem) then
+      ! OH, H2O and CO carry O and C nuclei, and their mass is counted in
+      ! the cell mass; with eos_metals 0 the free metal stages are not, so
+      ! the cell mass would change as chemistry moves the same nuclei.
+      if (.not. eos_include_metals) then
+         write(*,'(A)') ' (input_read) ERROR: oxygen chemistry requires'// &
+                        ' metal mass in the EOS (eos_metals 1).'
+         write(*,'(A)') '  OH/H2O/CO carry O/C mass; excluding the free'// &
+                        ' metal stages changes the mass of a cell when'
+         write(*,'(A)') '  the chemistry moves the same nuclei. Aborting.'
+         error stop 1
+      endif
       if (.not. thereis_mol) then
          write(*,*) '(input_read) ERROR: "Oxygen chemistry: True" needs'// &
                     ' "Molecular chemistry: True".'

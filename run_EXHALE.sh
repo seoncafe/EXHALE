@@ -79,8 +79,10 @@ fi
 
 #------- ... and execute -------#
 "$DIR_MAIN/EXHALE.x"
+exhale_exit_status=$?
 
 # Print when execution is over
 echo "
 ----- EXHALE shutdown -----"
 echo '=============================================='
+exit "$exhale_exit_status"

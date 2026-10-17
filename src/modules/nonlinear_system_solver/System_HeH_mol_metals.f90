@@ -384,7 +384,8 @@
 	if (ieq_cell%x_h2_neutral_partition_fixed)                            &
 		fvec(4) = x(4) - h2_fraction_of_reservoir(                        &
 		          ieq_cell%x_h2_neutral_partition,                        &
-		          ionized_hydrogen_nuclei_fraction(x))
+		          ionized_hydrogen_nuclei_fraction(x),                    &
+		          (n_oh + 2.0d0*n_h2o)/n_h)
 	! The transported ionization fractions, where the flow carries them
 	! and not this cell's local balance (ion_residual_core). The H2
 	! partition just above is imposed for its own reasons and keeps its

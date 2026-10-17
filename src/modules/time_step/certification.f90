@@ -987,8 +987,11 @@
       ! it, and the cell's own rounding floor times the measured margin
       ! where it does not.
       !
-      !   tol(j) = max( cert_tol_mass,
-      !                 min( ceiling, c_round * floor(j) ) )
+      ! For a finite rounding estimate with c_round * floor(j) < ceiling:
+      !   tol(j) = max( cert_tol_mass, c_round * floor(j) )
+      ! An estimate at or above the ceiling, or a nonfinite one, is
+      ! unresolved and cannot pass (mass_row_cell_verdict): the ceiling is
+      ! not a passing tolerance.
       !
       ! A state is therefore never asked to resolve its mass row below the
       ! rounding of its own base layer, and never allowed to do worse than
@@ -1484,10 +1487,13 @@
       ! state.
       cn_hei = 0.0d0;  cn_heii = 0.0d0;  cn_heiii = 0.0d0
       cn_heitr = 0.0d0
-      call U_to_W(u, Wcert)
-      call get_species_densities(Wcert(1,:), f_sp, cn_hi, cn_hii, cn_hei,  &
+      ! The composition (and with it the caloric mixture) of THIS state is
+      ! installed before the conserved-to-primitive conversion, which reads
+      ! that mixture; u(1,:) is already the density.
+      call get_species_densities(u(1,:), f_sp, cn_hi, cn_hii, cn_hei,      &
                                  cn_heii, cn_heiii, cn_heitr, cn_m,        &
                                  cn_e, cn_tot)
+      call U_to_W(u, Wcert)
       call comp_T_from_p(Wcert(3,:), cn_tot, cn_e, Tcert)
 
       ! ---- the mass closure of the composition (reported) ----

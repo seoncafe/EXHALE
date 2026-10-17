@@ -4,6 +4,7 @@
 	use mol_rates, only: h2_thermochemistry_init, h2_thermochemistry_ready
 	use global_parameters
    use ion_cell_state, only: ieq_cell, ion_rates, h2_fraction_of_reservoir, &
+                             hydrogen_nuclei_in_oxygen_carriers,         &
                              ionized_hydrogen_nuclei_fraction
    use species_table, only: n_mion, mion_fsp, n_melem, melem_i0,        &
                             melem_top, mion_stage,                       &
@@ -72,6 +73,7 @@
    use opacity_models            ! opacity_pT_factor for the 'P' model
 
    implicit none
+   private :: stable_chemical_decay_spectrum
 
 	! WIDTH, IN CELLS, OF THE BLOCK THE XUV FIELD IS HELD FIXED OVER while
 	! the equilibrium sweep solves it (ioniz_eq, xuv_block_H / xuv_block_HHe).
@@ -502,6 +504,7 @@
 	! state: an array that was not allocated when the snapshot was taken
 	! is deallocated again.
 	type :: ieq_rate_state
+		real*8, allocatable :: h2o_fuv(:,:), oh_fuv(:,:)
 		type(ion_rates), allocatable :: rate_cell(:)
 		real*8,  allocatable :: ne_cell(:), TK_cell(:), ntot_cell(:)
 		real*8,  allocatable :: met_coef(:,:,:)
@@ -2738,7 +2741,11 @@
 				! state already carries them and re-solving it locally would
 				! throw the transported partition away -- which is what the
 				! round-trip gate G6 measures.
-				if (thereis_mol .and. carrier_transport                   &
+				! The transport operator owns cells 1..N+Ng, not the lower
+				! ghosts: pinning a ghost without a stated reservoir
+				! partition makes its H2/OH/H2O depend on the previous sweep
+				! or the restart seed.
+				if (thereis_mol .and. carrier_transport .and. j .ge. 1     &
 				    .and. (bg_ready .or. do_load_IC)) then
 					ieq_cell%x_h2_fixed = .true.
 					ieq_cell%x_h2_fix  = 2.0d0*nmol_eq(j,1)/nh(j)
@@ -3390,8 +3397,9 @@
 					                        - x_self(1:N_eq)))
 				x_self(1:N_eq) = sys_x(1:N_eq)
 				! THE BASE HANDOFF'S OWN EQUATION, AT THE STATE THIS PASS
-				! RETURNED. The ghost owes x_H2 = x2 (1 - x_ion) with the
-				! x_ion of its own ionization balance, and the residual of
+				! RETURNED. The ghost owes x_H2 = x2 (1 - x_ion) - x_O with the
+				! x_ion of its own ionization balance and x_O the hydrogen of
+				! its OH and H2O, and the residual of
 				! that equation is measured on the solved state: x(4) is
 				! the solved partition and x(1), x(5), x(6), x(7) hold the
 				! hydrogen nuclei that are ionized, with the multiplicities
@@ -3404,7 +3412,10 @@
 					if (x_ion_ghost .gt. 1.0d0) x_ion_ghost = 1.0d0
 					ghost_closure_res = abs(sys_x(4)                      &
 					     - h2_fraction_of_reservoir(                      &
-					           base_h2_nuclei_fraction(), x_ion_ghost))
+					           base_h2_nuclei_fraction(), x_ion_ghost,    &
+					           hydrogen_nuclei_in_oxygen_carriers(        &
+					             sys_x(1:N_eq), iox, ieq_cell%n_ofam,     &
+					             nh(j))))
 					ghost_closed = (ghost_closure_res .le.                &
 					                base_ghost_closure_tol)
 				endif
@@ -4010,8 +4021,10 @@
 
 	! THE COMPOSITION THIS SWEEP RETURNS WEIGHS THE DENSITY IT WAS GIVEN.
 	!
-	! The mass fractions of a state are f_i = n_i m_i / rho, so
-	! sum_i f_i A_i = 1 is the DEFINITION of f_sp and not a tolerance. The
+	! The stored abundances are f_sp(i) = n_i / (rho / m_H), so
+	! sum_i A_i f_sp(i) = 1 is their mass normalization, with A_i the
+	! species mass in units of m_H; f_sp(i) itself is not a mass fraction.
+	! The
 	! sweep holds the density fixed (T2.1: it is an input the sweep may not
 	! write) and solves the chemistry cell by cell, and what it returns
 	! weighs that density only to the arithmetic of the cell solves: the
@@ -4040,7 +4053,7 @@
 	! It runs before the heating and the cooling below, so those are
 	! contracted with the composition that is returned and written, and
 	! before the calc_rho that normalizes f_sp_io, which then reads one to
-	! the last bit. EXHALE_MASS_PROJECTION=0 restores the old behaviour for
+	! the last bit. EXHALE_MASS_PROJECTION=0 restores the old behavior for
 	! a control experiment; nothing else reads that variable.
 	!
 	! THE PROJECTION IS BOUNDED, AND IT REFUSES RATHER THAN HIDES.  A
@@ -4065,10 +4078,10 @@
 	! non-finite or non-positive mixture mass is not a composition and
 	! multiplying by it would put the NaN into every species column.
 	!
-	! WHAT THE PROJECTION MOVES, reported with it: every element total moves
-	! by exactly |s - 1| in ABSOLUTE nucleus density, because the factor is
-	! common to every species -- which is why no element RATIO moves at all,
-	! and why the ratio is the wrong thing to report here.
+	! WHAT THE PROJECTION MOVES, reported with it: every element nucleus
+	! density n_X changes by (s - 1) n_X, so |s - 1| is the magnitude of its
+	! RELATIVE change, not a density. The factor is common to every species,
+	! so no element ratio and no ionization fraction moves.
 	if (mass_projection_of_the_sweep()) then
 		block
 		real*8, dimension(1-Ng:N+Ng) :: m_of_comp, s_close
@@ -4090,15 +4103,19 @@
 		s_worst = 0.0d0
 		j_worst = 0
 		do im_p = 1-Ng, N+Ng
-			if (m_of_comp(im_p) .gt. 0.0d0 .and.                      &
-			    m_of_comp(im_p) .eq. m_of_comp(im_p) .and.            &
-			    n_in_dim(im_p)  .gt. 0.0d0 .and.                      &
-			    n_in_dim(im_p)  .eq. n_in_dim(im_p)) then
+			! x .eq. x lets an infinity through; finite_number does not.
+			if (finite_number(m_of_comp(im_p)) .and.                  &
+			    m_of_comp(im_p) .gt. 0.0d0 .and.                      &
+			    finite_number(n_in_dim(im_p)) .and.                   &
+			    n_in_dim(im_p) .gt. 0.0d0) then
 				s_close(im_p) = n_in_dim(im_p)/m_of_comp(im_p)
 			else
+				! An unusable input refuses the projection of this sweep;
+				! the unit factor only keeps the densities it was given.
 				s_close(im_p) = 1.0d0
+				s_ok = .false.
 			endif
-			if (s_close(im_p) .ne. s_close(im_p) .or.                 &
+			if (.not. finite_number(s_close(im_p)) .or.               &
 			    s_close(im_p) .le. 0.0d0) then
 				s_close(im_p) = 1.0d0
 				s_ok = .false.
@@ -4123,24 +4140,24 @@
 			n_ieq_mass_projection_refused =                           &
 			   n_ieq_mass_projection_refused + 1
 			write(*,'(A,ES10.3,A,I0,A,ES10.3,A)')                     &
-			   ' (ioniz_eq) mass projection REFUSED: the composition'//&
-			   ' this sweep returns weighs its own density to ',      &
+			   ' (ioniz_eq) mass projection REFUSED: the'//           &
+			   ' pre-projection mixture differs from the density by ', &
 			   s_worst, ' at cell ', j_worst, ', above ',             &
 			   ieq_mass_projection_refuse, '.'
-			write(*,'(A)') '   That is a failure of the cell solve'// &
-			   ' and not the rounding this projection removes, so'//  &
-			   ' the composition is handed'
-			write(*,'(A)') '   back as the solve left it and the'//   &
+			write(*,'(A)') '   This exceeds the projection limit;'//  &
+			   ' the composition is handed back unprojected and the'// &
 			   ' certification''s mass-closure line reports it.'
+			write(*,'(A)') '   The error may already be present in'// &
+			   ' the input composition; its origin needs a separate check.'
 			s_close = 1.0d0
 		else if (s_worst .gt. ieq_mass_projection_report) then
 			write(*,'(A,ES10.3,A,I0,A)') ' (ioniz_eq) mass'//         &
 			   ' projection: the composition this sweep returns'//    &
 			   ' weighs its own density to ', s_worst, ' at cell ',   &
-			   j_worst, '; every element total is moved by that'//    &
-			   ' much in absolute'
-			write(*,'(A)') '   nucleus density, and no element ratio'//&
-			   ' by anything (the factor is common to every species).'
+			   j_worst, '; this is the relative change of every'//    &
+			   ' element nucleus density.'
+			write(*,'(A)') '   Element ratios are unchanged because'//&
+			   ' the factor is common to every species.'
 		endif
 		nhi    = nhi   *s_close
 		nhii   = nhii  *s_close
@@ -5580,14 +5597,17 @@
 	! solve, not a value: the starting point is placed on it at its own
 	! ionized fraction, and so is the returned state, which removes the
 	! tolerance-level slack hybrd1 can leave in that row exactly as for the
-	! pinned values above.
-	if (ieq_cell%x_h2_neutral_partition_fixed .and. nx .ge. 7)           &
-		x(4) = h2_fraction_of_reservoir(ieq_cell%x_h2_neutral_partition,  &
-		                                ionized_hydrogen_nuclei_fraction(x))
+	! pinned values above. It is placed after the oxygen carriers, whose
+	! hydrogen it subtracts.
 	if (ieq_cell%x_ox_fixed .and. iox .gt. 0 .and. iox + 1 .le. nx) then
 		x(iox)   = ieq_cell%x_oh_fix
 		x(iox+1) = ieq_cell%x_h2o_fix
 	endif
+	if (ieq_cell%x_h2_neutral_partition_fixed .and. nx .ge. 7)           &
+		x(4) = h2_fraction_of_reservoir(ieq_cell%x_h2_neutral_partition,  &
+		          ionized_hydrogen_nuclei_fraction(x),                    &
+		          hydrogen_nuclei_in_oxygen_carriers(                     &
+		             x, iox, ieq_cell%n_ofam, ieq_cell%nh))
 	end subroutine impose_transported_fractions
 
 	!----------------------------------!
@@ -5936,12 +5956,12 @@
 	! 3 H3+, 4 HeH+):
 	!   lam_row   the molecule's own decay rate, -dA(k,k) of the local
 	!             reaction system, attributable to that one molecule [s^-1];
-	!   lam_slow  the smallest |Re lambda| of the whole local spectrum, the
+	!   lam_slow  the smallest -Re lambda of a strictly stable spectrum, the
 	!             mode that decides whether the closure may eliminate the
 	!             system at all [s^-1];
 	!   lam_fast  the largest, which is the stiffness of the same system.
-	! have is false where the cell was not armed or carries no molecular
-	! network.
+	! have is false where the cell was not selected, carries no molecular
+	! network, or its measured spectrum is nonfinite or not strictly stable.
 	integer,          intent(in)  :: j, k
 	character(len=*), intent(out) :: name
 	real*8,           intent(out) :: lam_row, lam_slow, lam_fast
@@ -6013,8 +6033,9 @@
 	real*8,  intent(in) :: x(nx), n_e_ref
 	real*8  :: xp(nx), fvp(nx), fvm(nx), par(60), h
 	real*8  :: A(nx,nx), wr(nx), wi(nx), vdum(1,1)
-	real*8  :: work(8*nx+64), conv(nx), lam, lo, hi
+	real*8  :: work(8*nx+64), conv(nx), lo, hi
 	integer :: iflag, i, l, e, ix, islot, info, lwork, nsub, ksub(nx)
+	logical :: spectrum_stable
 	logical :: keep(nx), h2_fix, hp_fix, ox_fix, heii_fix, heiii_fix, &
 	           hetr_fix, h2_res_fix
 	if (.not. thereis_mol) return
@@ -6027,6 +6048,9 @@
 		if (ieq_decay_cells(i) .eq. j) islot = i
 	enddo
 	if (islot .eq. 0) return
+	! A measurement that does not complete leaves no rates of an earlier
+	! state behind.
+	ieq_decay_have(islot) = .false.
 
 	! The conversion of each row into a rate: c_k/N_k.
 	conv = 0.0d0
@@ -6138,17 +6162,39 @@
 	call dgeev('N','N', nsub, A(1:nsub,1:nsub), nsub, wr, wi, vdum, 1,     &
 	           vdum, 1, work, lwork, info)
 	if (info .ne. 0) return
-	lo =  huge(1.0d0);  hi = 0.0d0
-	do i = 1, nsub
-		lam = abs(wr(i))
-		if (lam .le. 0.0d0) cycle
-		lo = min(lo, lam);  hi = max(hi, lam)
-	enddo
-	if (hi .le. 0.0d0) return
+	call stable_chemical_decay_spectrum(wr(1:nsub), wi(1:nsub),         &
+	                                    lo, hi, spectrum_stable)
+	if (.not. spectrum_stable) then
+		write(*,'(A,I6,A)') ' (chemical_decay) cell ', j,                 &
+		     ' has no verified strictly stable chemical decay spectrum'
+		return
+	endif
 	ieq_decay_slow(islot) = lo
 	ieq_decay_fast(islot) = hi
 	ieq_decay_have(islot) = .true.
 	end subroutine measure_molecular_decay_rates
+
+	!----------------------------------!
+
+	subroutine stable_chemical_decay_spectrum(wr, wi, slow, fast, stable)
+	! The decay rates of a finite reaction Jacobian spectrum with the
+	! conservation modes removed. A decay requires Re(lambda) < 0; a
+	! positive or zero real part establishes no relaxation and may not
+	! become a positive rate through an absolute value. An oscillatory
+	! stable mode decays at -Re(lambda).
+	real*8,  intent(in)  :: wr(:), wi(:)
+	real*8,  intent(out) :: slow, fast
+	logical, intent(out) :: stable
+	integer :: i
+	slow = 0.0d0;  fast = 0.0d0;  stable = .false.
+	if (size(wr) .eq. 0 .or. size(wr) .ne. size(wi)) return
+	do i = 1, size(wr)
+		if (.not. finite_number(wr(i)) .or. .not. finite_number(wi(i)))  &
+			return
+		if (wr(i) .ge. 0.0d0) return
+	enddo
+	slow = minval(-wr);  fast = maxval(-wr);  stable = .true.
+	end subroutine stable_chemical_decay_spectrum
 
 	!----------------------------------!
 
@@ -6895,6 +6941,8 @@
 	if (allocated(ieq_met_coef))       s%met_coef       = ieq_met_coef
 	if (allocated(ieq_nonroot_streak)) s%nonroot_streak =                 &
 	                                              ieq_nonroot_streak
+	if (allocated(j_h2o_fuv))          s%h2o_fuv        = j_h2o_fuv
+	if (allocated(j_oh_fuv))           s%oh_fuv         = j_oh_fuv
 	s%rates_ready  = ieq_rates_ready
 	s%neq_stored   = ieq_neq_stored
 	s%mbase_stored = ieq_mbase_stored
@@ -6924,6 +6972,16 @@
 		ieq_nonroot_streak = s%nonroot_streak
 	else if (allocated(ieq_nonroot_streak)) then
 		deallocate(ieq_nonroot_streak)
+	endif
+	if (allocated(s%h2o_fuv)) then
+		j_h2o_fuv = s%h2o_fuv
+	else if (allocated(j_h2o_fuv)) then
+		deallocate(j_h2o_fuv)
+	endif
+	if (allocated(s%oh_fuv)) then
+		j_oh_fuv = s%oh_fuv
+	else if (allocated(j_oh_fuv)) then
+		deallocate(j_oh_fuv)
 	endif
 	ieq_rates_ready  = s%rates_ready
 	ieq_neq_stored   = s%neq_stored

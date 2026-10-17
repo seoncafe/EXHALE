@@ -24,6 +24,7 @@
       ! "reservoir" field compared first, so that factor bites on a
       ! provenance-unknown file. Everything else is unchanged.
 
+      use, intrinsic :: ieee_arithmetic, only: ieee_is_finite
       use global_parameters
       use species_table, only: isp_HI, isp_HII, isp_HeI, isp_HeII,    &
                                isp_H2, isp_H2p, isp_H3p, isp_HeHp,     &
@@ -31,7 +32,9 @@
                                n_mion, n_melem, mion_fsp, mion_name,   &
                                mion_elem, melem_i0, melem_top,         &
                                melem_name, isp_OH, isp_H2O, isp_CO,     &
-                               iel_O, iel_C
+                               iel_O, iel_C, melem_A, n_bsp, bsp_fsp,   &
+                               bsp_nH, bsp_nHe, bsp_nO, bsp_nC,         &
+                               bsp_mass, bsp_is_excited_level
       use utils, only: calc_rho, state_certification_reason
       ! How molecular the base is, the single definition the equation of
       ! state and the inflowing ghost share (composition.f90).
@@ -1459,7 +1462,8 @@
       real*8, intent(out) :: f_row(n_species)
       real*8  :: nH_1, nHe_1, nH_r, nHe_r, s_he, x2
       real*8  :: n_hehp, n_h2, n_h2p, n_h3p, n_hii, n_oh, n_h2o, n_co
-      real*8  :: nE_1, s_E, sO, sC, x_ion_seed
+      real*8  :: nE_1, s_E, sO, sC
+      real*8  :: n_h_available, n_h_molecular, n_h_oxygen, oxygen_scale
       integer :: e, k, c, i0
 
       f_row = 0.0d0
@@ -1483,6 +1487,7 @@
          do e = 1, n_melem
             f_row(mion_fsp(melem_i0(e))) = melem_ab(e)/mass_per_H
          enddo
+         call verify_reservoir_nuclei(f_row)
          return
       endif
 
@@ -1567,30 +1572,52 @@
       !      ionization, and the neutral remainder -------------------------
       !
       ! WHAT THE HANDOFF STATES IS THE PARTITION OF THE NON-IONIZED
-      ! HYDROGEN, x_H2 = x2 (1 - x_ion), which is the prescription the sweep
-      ! imposes on this cell and closes against its own balance. Taking x2 of
-      ! EVERY nucleus instead over-subscribes the budget wherever the base is
-      ! fully molecular: at the element-ratio ceiling x2 = 1 and the ionized
-      ! hydrogen the first cell contributes would be hydrogen the cell does
-      ! not have. Here x_ion is the H nuclei the seed puts into ionized
-      ! species, and the neutral atomic hydrogen is what the molecular
-      ! partition and the oxygen carriers leave of the rest.
+      ! HYDROGEN: x2 is its non-atomic share (base_h2_nuclei_fraction), and
+      ! that share includes the hydrogen bound in OH and H2O. Those carriers
+      ! therefore take their hydrogen from x2 of the non-ionized budget
+      ! before H2 is assigned, and the (1 - x2) share stays atomic. Taking
+      ! x2 of EVERY nucleus instead over-subscribes the budget wherever the
+      ! base is fully molecular, and adding the OH/H2O hydrogen on top of
+      ! x2 counts those nuclei twice.
       n_hii = f_cell1(isp_HII)*nH_r/nH_1
       n_h2  = 0.0d0;  n_h2p = 0.0d0;  n_h3p = 0.0d0
       if (thereis_mol) then
          n_h2p = f_cell1(isp_H2p)*nH_r/nH_1
          n_h3p = f_cell1(isp_H3p)*nH_r/nH_1
       endif
-      x_ion_seed = (n_hii + 2.0d0*n_h2p + 3.0d0*n_h3p + n_hehp)/nH_r
-      if (x_ion_seed .gt. 1.0d0) x_ion_seed = 1.0d0
+      n_h_available = max(nH_r - n_hii - 2.0d0*n_h2p - 3.0d0*n_h3p        &
+                          - n_hehp, 0.0d0)
+      x2 = 1.0d0
       if (thereis_mol) then
          if (base_h2_composition_imposed()) then
             x2 = base_h2_nuclei_fraction()
          else
-            x2 = 2.0d0*f_cell1(isp_H2)/nH_1
+            ! No handoff fixes x2: the first cell's H2 and oxygen carriers
+            ! state its non-atomic share of the NON-IONIZED hydrogen.
+            x2 = (2.0d0*f_cell1(isp_H2) + f_cell1(isp_OH)                &
+                  + 2.0d0*f_cell1(isp_H2O))                              &
+                 /max(nH_1 - f_cell1(isp_HII) - 2.0d0*f_cell1(isp_H2p)   &
+                      - 3.0d0*f_cell1(isp_H3p) - f_cell1(isp_HeHp),      &
+                      tiny(1.0d0))
          endif
-         n_h2 = 0.5d0*x2*(1.0d0 - x_ion_seed)*nH_r
       endif
+      n_h_molecular = x2*n_h_available
+      n_h_oxygen = n_oh + 2.0d0*n_h2o
+      if (n_h_oxygen .gt. n_h_molecular) then
+         ! The oxygen carriers draw from the non-atomic budget; the excess
+         ! oxygen returns to its neutral stage, keeping the atomic H share.
+         oxygen_scale = n_h_molecular/n_h_oxygen
+         f_row(mion_fsp(melem_i0(iel_O))) =                               &
+              f_row(mion_fsp(melem_i0(iel_O)))                            &
+              + (1.0d0 - oxygen_scale)*(n_oh + n_h2o)
+         n_oh  = n_oh*oxygen_scale
+         n_h2o = n_h2o*oxygen_scale
+         f_row(isp_OH)  = n_oh
+         f_row(isp_H2O) = n_h2o
+         n_h_oxygen = n_oh + 2.0d0*n_h2o
+      endif
+      ! H2 takes the part of the non-atomic budget OH and H2O do not hold.
+      if (thereis_mol) n_h2 = 0.5d0*max(n_h_molecular - n_h_oxygen, 0.0d0)
       f_row(isp_HII) = n_hii
       f_row(isp_H2)  = n_h2
       f_row(isp_H2p) = n_h2p
@@ -1599,7 +1626,54 @@
                            - 3.0d0*n_h3p - n_hehp - n_oh - 2.0d0*n_h2o,   &
                            0.0d0)
 
+      ! Where H I or a neutral stage was clipped at zero the row no longer
+      ! holds the reservoir's nuclei; that is refused, not written.
+      call verify_reservoir_nuclei(f_row)
+
       end subroutine base_reservoir_composition_row
+
+      !-------------------------------------!
+
+      subroutine verify_reservoir_nuclei(f_row)
+      ! THE RESERVOIR ROW HOLDS THE RESERVOIR'S NUCLEI AND WEIGHS ONE, checked
+      ! on this one row from the species table, the same stoichiometric
+      ! source the element census reads. A violation beyond 256 eps stops
+      ! the run.
+      real*8, intent(in) :: f_row(n_species)
+      real*8  :: nuclei(2+n_melem), expected(2+n_melem), rho_comp, tol
+      integer :: ib, im, e, k
+      nuclei   = 0.0d0
+      rho_comp = 0.0d0
+      do ib = 1, n_bsp
+         if (bsp_is_excited_level(ib)) cycle
+         k = bsp_fsp(ib)
+         nuclei(1)       = nuclei(1)       + dble(bsp_nH(ib))*f_row(k)
+         nuclei(2)       = nuclei(2)       + dble(bsp_nHe(ib))*f_row(k)
+         nuclei(2+iel_O) = nuclei(2+iel_O) + dble(bsp_nO(ib))*f_row(k)
+         nuclei(2+iel_C) = nuclei(2+iel_C) + dble(bsp_nC(ib))*f_row(k)
+         rho_comp        = rho_comp + bsp_mass(ib)*f_row(k)
+      enddo
+      do im = 1, n_mion
+         nuclei(2+mion_elem(im)) = nuclei(2+mion_elem(im))                &
+                                 + f_row(mion_fsp(im))
+         if (eos_include_metals .and. thereis_metals)                     &
+            rho_comp = rho_comp + melem_A(mion_elem(im))*f_row(mion_fsp(im))
+      enddo
+      expected(1) = 1.0d0/mass_per_H
+      expected(2) = 0.0d0
+      if (thereis_He) expected(2) = HeH/mass_per_H
+      do e = 1, n_melem
+         expected(2+e) = melem_ab(e)/mass_per_H
+      enddo
+      tol = 256.0d0*epsilon(1.0d0)
+      if (.not. all(ieee_is_finite(f_row)) .or. any(f_row .lt. 0.0d0) .or. &
+          any(abs(nuclei - expected) .gt. tol*max(expected, 1.0d-30)) .or. &
+          abs(rho_comp - 1.0d0) .gt. tol) then
+         write(*,'(A)') ' ERROR: reservoir composition violates the'//    &
+              ' reservoir nuclei or the mass normalization'
+         stop 1
+      endif
+      end subroutine verify_reservoir_nuclei
 
       !-------------------------------------!
 

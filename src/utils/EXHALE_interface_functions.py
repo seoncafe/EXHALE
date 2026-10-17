@@ -3,6 +3,7 @@ import numpy as np
 import EXHALE_interface_state as gui
 import os
 from shutil import copyfile
+from exhale_input_options import retained_input_options
 
 try:                        
 	import tkinter as tk    # python 3 
@@ -241,12 +242,8 @@ def reset_func(*args):
 # Load old input file
 def load_input(*args):
 	
-	# Look which file to open
-	if os.path.isfile('input.inp'):	# From old run simulation - rename
-		os.rename('input.inp', 'input_temp.inp')
-
-	# Input file
-	inp_file = 'input_temp.inp'
+	# Reading existing settings must not move or replace the user's input.
+	inp_file = 'input.inp' if os.path.isfile('input.inp') else 'input_temp.inp'
 			
 	# Go through file and read keyword by keyword	
 	f = open(inp_file,'r')
@@ -919,6 +916,10 @@ def close_func():
 # Start function: Write datas to file
 def start_func(*args):
 
+	# Keep options absent from the graphical form, including regional criteria.
+	original = 'input.inp' if os.path.isfile('input.inp') else 'input_temp.inp'
+	retained = retained_input_options(original)
+
 	# Open input file and clean contents
 	open('input_temp.inp', 'w').close()
 
@@ -1088,6 +1089,11 @@ def start_func(*args):
 	# Close file
 	f.close()
 	
+	# Append unchanged options that the interface does not edit.
+	with open('input_temp.inp', 'a') as f:
+		if retained:
+			f.write('\n' + '\n'.join(retained) + '\n')
+
 	# Rename file only if started
 	os.rename('input_temp.inp', 'input.inp')
 
