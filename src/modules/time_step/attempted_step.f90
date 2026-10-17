@@ -167,11 +167,11 @@
       ! ---------------------------------------------------------------- !
       ! WHY AN ATTEMPT WAS REFUSED.
       ! Codes 0 to 9 ARE certification's cert_step_* codes, so that the
-      ! controller and the evaluator name a refusal with one number. 10 to
-      ! 13 are the controller's own: the integration error, the injected
-      ! refusal of the tests, the exhaustion of the nested hydrodynamic
-      ! retry, and the coupled source step that did not reach its fixed
-      ! point, none of which is a statement about an equation. The last one
+      ! controller and the evaluator name a refusal with one number. 10,
+      ! 12 and 13 are the controller's own: the integration error, the
+      ! exhaustion of the nested hydrodynamic retry, and the coupled source
+      ! step that did not reach its fixed point, none of which is a
+      ! statement about an equation (11 is not assigned). The last one
       ! is separate from as_reject_energy, which IS a statement about the
       ! energy equation: an exhausted fixed point means the temperature and
       ! the composition do not belong to each other, while a failed energy
@@ -186,7 +186,6 @@
       integer, parameter, public :: as_reject_chem_root   = 8
       integer, parameter, public :: as_reject_hydro_row   = 9
       integer, parameter, public :: as_reject_int_error   = 10
-      integer, parameter, public :: as_reject_injected    = 11
       integer, parameter, public :: as_reject_hydro_stage = 12
       integer, parameter, public :: as_reject_source_fixed_point = 13
       ! 14 is the thermal closure of the source step: the change of thermal
@@ -408,61 +407,6 @@
       ! one, and it cannot use this module.
 
       ! ---------------------------------------------------------------- !
-      ! TEST HOOKS. Each forces one named thing to happen; all default off,
-      ! so a run without them is the run an unguarded build gives. They are
-      ! named for what they do, not for the test that uses them.
-      !
-      ! Refuse the attempt immediately after this operation of the fourteen
-      ! (0 = never). Set from EXHALE_REJECT_AFTER_OP.
-      integer, save, public :: reject_after_operation = 0
-      ! ... and only at this step count (-1 = at every step).
-      integer, save, public :: reject_at_step = -1
-      ! ... this many leading attempts of it (1 = one attempt, so the retry
-      ! succeeds; a number above n_step_retry_max drives the exhaustion).
-      integer, save, public :: reject_leading_attempts = 1
-      ! ... and only in this pass of an error-control macrostep, 1 for the
-      ! full step and 2 and 3 for the two halves (0 = in whichever pass
-      ! comes first). It exists because a refusal in a half pass and a
-      ! refusal in the full pass are different statements about the
-      ! transaction and each has to be reachable on demand. Set from
-      ! EXHALE_AS_REJECT_IN_PASS.
-      integer, save, public :: reject_in_pass = 0
-      ! WHICH PASS OF THE ERROR-CONTROL MACROSTEP IS RUNNING: 1 the full
-      ! step, 2 and 3 the two halves of the same interval, 0 outside a
-      ! sampled macrostep. Written by the marching loop of EXHALE_main,
-      ! which owns the passes; read here only by the injected refusal.
-      integer, save, public :: err_pass_index = 0
-      ! How many injected refusals have been served at the current step.
-      integer, save :: injected_served = 0
-      integer, save :: injected_at_count = -2
-      ! Add this relative offset to the thermal energy recorded at the exit
-      ! of the source step, so that the closure below is asked a question
-      ! whose answer is known: the step then carries a thermal-energy change
-      ! that its sources did not produce, and the gate has to refuse it.
-      ! Set from EXHALE_INJECT_SOURCE_ENERGY; 0 is the unguarded run.
-      real*8, save, public :: inject_source_energy_offset = 0.0d0
-      ! Multiply the FIRST integration-error estimate of the run by this,
-      ! so that the acceptance gate below is asked a question whose answer
-      ! is known: a large value puts the estimate above one with every
-      ! local solve succeeding, and the macrostep has to be refused for its
-      ! integration error and nothing else. Set from EXHALE_AS_ERR_INJECT;
-      ! 0 is the unguarded run.
-      real*8, save, public :: err_inject_factor = 0.0d0
-      ! ... on this many leading estimates of the run (1 = the first, so
-      ! the shortened retry is judged on its own error and the run goes on;
-      ! a number above n_step_retry_max drives the macrostep to the named
-      ! exhaustion on its integration error). Set from
-      ! EXHALE_AS_ERR_INJECT_COUNT.
-      integer, save, public :: err_inject_estimates = 1
-      ! FORCE THE RESOLUTION TEST TO FAIL on this many leading estimates of
-      ! the run, so that the named UNRESOLVED outcome is reachable on
-      ! demand: every class that carries a difference is reported
-      ! unresolved, whatever its inner error actually was. It exists
-      ! because the rule that an estimate whose inner nonlinear error is
-      ! not below the difference it measures judges NOTHING cannot be
-      ! tested on a run whose solves happen to be tight enough. Set from
-      ! EXHALE_AS_FORCE_UNRESOLVED; 0 is the unguarded run.
-      integer, save, public :: force_unresolved_estimates = 0
       ! A PRESCRIBED STEP IN SECONDS in place of the CFL step, read by the
       ! marching loop of EXHALE_main. It exists so that one interval can be
       ! covered by one step, by two, by four and by eight from the same
@@ -735,9 +679,7 @@
       public :: attempted_step_checkpoint_restore
       public :: attempted_step_checkpoint_matches
       public :: attempted_step_checkpoint_checksum
-      public :: attempted_step_perturb_checkpointed_state_for_test
       public :: attempted_step_evaluate
-      public :: attempted_step_injected_refusal
       public :: attempted_step_note_step
       public :: attempted_step_reduced_dt
       public :: attempted_step_bound_next_dt
@@ -1159,70 +1101,6 @@
       h = h + t_phys + dble(n_steps_accepted)
       end function attempted_step_checkpoint_checksum
 
-      ! ---------------------------------------------------------------- !
-
-      subroutine attempted_step_perturb_checkpointed_state_for_test(u,     &
-                             f_sp, heat, cool, eta)
-      ! Moves EVERY item of the checkpoint list to a distinct value, so
-      ! that a restore that misses one is caught. Allocates nothing: an
-      ! array the configuration leaves unallocated stays unallocated, which
-      ! is itself part of the state the restore has to reproduce.
-      real*8, dimension(3,1-Ng:N+Ng),          intent(inout) :: u
-      real*8, dimension(1-Ng:N+Ng,n_species),  intent(inout) :: f_sp
-      real*8, dimension(1-Ng:N+Ng),            intent(inout) :: heat,cool,eta
-      integer :: j
-      real*8  :: s
-      s = 1.0d0
-      call bump_r2(u, s);      call bump_r2(f_sp, s)
-      call bump_r1f(heat, s);  call bump_r1f(cool, s); call bump_r1f(eta, s)
-      call bump_r1(gph_balmer_HI, s);  call bump_r1(heat_balmer, s)
-      call bump_r1(Jlya_arr, s);       call bump_r1(n2s_arr, s)
-      call bump_r1(n2p_arr, s);        call bump_r1(Sproton_arr, s)
-      call bump_r1(Hpe_arr, s);        call bump_r1(Hdx_arr, s)
-      call bump_r1(jlya_rt_grid, s);   call bump_r1(Tdiag, s)
-      call bump_r1(nhidiag, s);        call bump_r1(nediag, s)
-      call bump_r1(nhiidiag, s);       call bump_r1(taulya, s)
-      call bump_r1(jint_arr, s);       call bump_r1(jstar_arr, s)
-      jlya_rt_loaded        = .not. jlya_rt_loaded
-      excited_H_field_ready = .not. excited_H_field_ready
-      call bump_r2(nmol_eq, s)
-      call bump_r1(NH2_col_lw, s);     call bump_r1(f_shield_lw, s)
-      call bump_r1(k_lw_diss, s);      call bump_r1(p_lw_single, s)
-      call bump_r1(p_lw_absorbed, s);  call bump_r1(tr_lines_lw, s)
-      call bump_r1(P_H2_eq, s);        call bump_r2(nox_eq, s)
-      call bump_r1(n_o1d_eq, s);       call bump_r1(NH2O_col, s)
-      call bump_r1(NOH_col, s);        call bump_r2(j_h2o_fuv, s)
-      call bump_r1(NCO_col, s);        call bump_r1(k_co_diss, s)
-      call bump_r1(theta_co_shield, s)
-      call bump_r2(j_oh_fuv, s);       call bump_r2(tau_fuv, s)
-      call bump_r1(heat_fuv, s);       call bump_r1(heat_chem, s)
-      call bump_r2(heat_channel_state, s)
-      call bump_ir(bg_cell, s);        call bump_ir(bg_cell_adopted, s)
-      call bump_ir(bg_cell_best, s);   call bump_ir(ieq_rate_cell, s)
-      call bump_r1(ieq_ne_cell, s);    call bump_r1(ieq_TK_cell, s)
-      call bump_r1(ieq_ntot_cell, s);  call bump_r3(ieq_met_coef, s)
-      if (allocated(ieq_nonroot_streak)) then
-         do j = lbound(ieq_nonroot_streak,1), ubound(ieq_nonroot_streak,1)
-            ieq_nonroot_streak(j) = ieq_nonroot_streak(j) + 7
-         enddo
-      endif
-      ieq_sweep_state_kind = ieq_sweep_state_kind + 1
-      ieq_acc_nprint       = ieq_acc_nprint + 3
-      ieq_marching_ledger(1)%n_sweep = ieq_marching_ledger(1)%n_sweep + 11
-      ieq_marching_ledger(2)%n_sweep = ieq_marching_ledger(2)%n_sweep + 13
-      ieq_steady_iterate_ledger%n_sweep   =                                &
-           ieq_steady_iterate_ledger%n_sweep + 17
-      ieq_steady_candidate_ledger%n_sweep =                                &
-           ieq_steady_candidate_ledger%n_sweep + 19
-      ieq_rates_ready  = .not. ieq_rates_ready
-      ieq_neq_stored   = ieq_neq_stored + 1
-      ieq_mbase_stored = ieq_mbase_stored + 1
-      ieq_iox_stored   = ieq_iox_stored + 1
-      t_phys           = t_phys + 1.0d0
-      n_steps_accepted = n_steps_accepted + 1
-      ledger_family    = 3 - ledger_family
-      end subroutine attempted_step_perturb_checkpointed_state_for_test
-
       ! ================================================================ !
       ! 2. THE ACCEPTANCE PREDICATE AT THE ADOPTION BOUNDARY
       ! ================================================================ !
@@ -1298,11 +1176,6 @@
       real*8, dimension(1-Ng:N+Ng),   intent(in) :: dt_cell, heat, cool
       integer :: j
       uth_after_sources = thermal_energy_sum(u)
-      ! The injected inconsistency of the tests: a thermal energy the
-      ! sources did not produce. Off unless asked.
-      if (inject_source_energy_offset .ne. 0.0d0)                          &
-         uth_after_sources = uth_after_sources                             &
-              *(1.0d0 + inject_source_energy_offset)
       q_ext_dt_sources = 0.0d0
       do j = 1, N
          q_ext_dt_sources = q_ext_dt_sources                               &
@@ -1526,31 +1399,6 @@
 
       ! ---------------------------------------------------------------- !
 
-      logical function attempted_step_injected_refusal(op) result(fire)
-      ! THE INJECTED FAILURE, one operation at a time. It exists because
-      ! the rule that a rejected trial restores the state and advances no
-      ! physical accumulation cannot be tested on a run that never rejects
-      ! a step, and the run's own rejections depend on its state. Rows 0
-      ! and 13 are outside the trial: asking for a refusal there is a
-      ! refusal of the request, reported by the caller.
-      integer, intent(in) :: op
-      fire = .false.
-      if (reject_after_operation .le. 0) return
-      if (op .ne. reject_after_operation) return
-      if (reject_at_step .ge. 0 .and. marching_step .ne. reject_at_step) return
-      if (reject_in_pass .gt. 0 .and. err_pass_index .ne. reject_in_pass) &
-         return
-      if (marching_step .ne. injected_at_count) then
-         injected_at_count = marching_step
-         injected_served   = 0
-      endif
-      if (injected_served .ge. reject_leading_attempts) return
-      injected_served = injected_served + 1
-      fire = .true.
-      end function attempted_step_injected_refusal
-
-      ! ---------------------------------------------------------------- !
-
       subroutine attempted_step_note_step(verd)
       ! One rejection, recorded. The physical accumulations are restored by
       ! the checkpoint; only the attempt statistics move here.
@@ -1757,20 +1605,6 @@
          endif
       enddo
 
-      ! The test hook, on the leading estimates of the run. It multiplies
-      ! the bounds as well as the point value, so a forced rejection is a
-      ! rejection of the gate the run reads and not only of the number it
-      ! reports.
-      if (err_inject_factor .gt. 0.0d0 .and.                               &
-          n_error_estimates .lt. err_inject_estimates) then
-         est%e       = est%e*err_inject_factor
-         est%e_lower = est%e_lower*err_inject_factor
-         est%e_upper = est%e_upper*err_inject_factor
-         do k = 1, n_err_class
-            est%e_class(k) = est%e_class(k)*err_inject_factor
-         enddo
-      endif
-
       ! THE VERDICT THE GATE READS. A macrostep whose error is above one
       ! even at the bottom of the interval is refused; one whose error is
       ! below one even at the top is accepted; between the two the
@@ -1780,21 +1614,6 @@
       ! refuse a step.
       est%e_resolved = est%e_lower
       est%resolved   = (est%e_lower .gt. 1.0d0) .or. (est%e_upper .le. 1.0d0)
-      ! The test hook: an inner error large enough to swallow the whole
-      ! difference, on this many leading estimates, so that the named
-      ! UNRESOLVED outcome is reachable on a run whose solves are tight.
-      if (n_error_estimates .lt. force_unresolved_estimates) then
-         est%e_lower    = 0.0d0
-         est%e_resolved = 0.0d0
-         est%e_upper    = max(est%e_upper, 2.0d0)
-         est%resolved   = .false.
-         do k = 1, n_err_class
-            if (est%class_present(k) .and. est%d_class(k) .gt. 0.0d0) then
-               est%class_resolved(k) = .false.
-               if (est%unresolved_class .eq. 0) est%unresolved_class = k
-            endif
-         enddo
-      endif
       last_error_estimate = est%e_resolved
       if (est%deciding_class .gt. 0)                                       &
          last_error_order_p = err_order_p(est%deciding_class)
@@ -1995,44 +1814,16 @@
       ! ---------------------------------------------------------------- !
 
       subroutine attempted_step_read_environment()
-      ! The probes and the duty cycle, all off unless asked. The duty cycle
-      ! defaults to 20 in phys mode and to off in
+      ! The duty cycle of the error estimate and the prescribed step. The
+      ! duty cycle defaults to 20 in phys mode and to off in
       ! init, where a run makes no statement about a trajectory and
       ! therefore has no integration error to bound.
       character(len=64) :: env
       if (run_mode .eq. run_mode_phys) n_err_every = 20
       call get_environment_variable('EXHALE_ERR_EVERY', env)
       if (len_trim(env) .gt. 0) read(env,*) n_err_every
-      call get_environment_variable('EXHALE_REJECT_AFTER_OP', env)
-      if (len_trim(env) .gt. 0) read(env,*) reject_after_operation
-      call get_environment_variable('EXHALE_REJECT_AT_STEP', env)
-      if (len_trim(env) .gt. 0) read(env,*) reject_at_step
-      call get_environment_variable('EXHALE_REJECT_ATTEMPTS', env)
-      if (len_trim(env) .gt. 0) read(env,*) reject_leading_attempts
-      call get_environment_variable('EXHALE_INJECT_SOURCE_ENERGY', env)
-      if (len_trim(env) .gt. 0) read(env,*) inject_source_energy_offset
-      call get_environment_variable('EXHALE_AS_REJECT_IN_PASS', env)
-      if (len_trim(env) .gt. 0) read(env,*) reject_in_pass
-      call get_environment_variable('EXHALE_AS_ERR_INJECT', env)
-      if (len_trim(env) .gt. 0) read(env,*) err_inject_factor
-      call get_environment_variable('EXHALE_AS_ERR_INJECT_COUNT', env)
-      if (len_trim(env) .gt. 0) read(env,*) err_inject_estimates
       call get_environment_variable('EXHALE_AS_FIXED_DT', env)
       if (len_trim(env) .gt. 0) read(env,*) as_fixed_dt_seconds
-      call get_environment_variable('EXHALE_AS_FORCE_UNRESOLVED', env)
-      if (len_trim(env) .gt. 0) read(env,*) force_unresolved_estimates
-      if (reject_after_operation .gt. 0) then
-         if (reject_after_operation .lt. as_op_checkpoint .or.             &
-             reject_after_operation .gt. as_op_shapiro) then
-            write(*,'(a,i0,a)') ' EXHALE_REJECT_AFTER_OP = ',              &
-                 reject_after_operation, ' is OUTSIDE THE TRIAL.'
-            write(*,'(a)') '   Operation 0 sets the step and operation'//  &
-                 ' 13 reads the adopted state; only'
-            write(*,'(a)') '   operations 1 to 12 are part of the'//       &
-                 ' attempted step and can be refused.'
-            error stop 1
-         endif
-      endif
       end subroutine attempted_step_read_environment
 
       ! ---------------------------------------------------------------- !
@@ -2119,7 +1910,6 @@
       character(len=64) :: s
       select case (reason)
          case (as_reject_int_error);  s = 'the integration error was too big'
-         case (as_reject_injected);   s = 'a refusal was injected on demand'
          case (as_reject_source_fixed_point); s =                          &
               'the coupled source step did not reach its fixed point'
          case (as_reject_source_energy); s =                               &
@@ -2201,16 +1991,6 @@
          h = h + dble(j)*a(j)
       enddo
       end subroutine hash_r1f
-
-      subroutine bump_r1f(a, s)
-      real*8, intent(inout) :: a(:)
-      real*8, intent(inout) :: s
-      integer :: j
-      do j = 1, size(a)
-         s = s + 1.0d0
-         a(j) = a(j) + s
-      enddo
-      end subroutine bump_r1f
 
       subroutine save_r1(dst, src)
       real*8, allocatable, intent(inout) :: dst(:)
@@ -2568,60 +2348,5 @@
                + dble(107 + i)*dble(g%hist_uncv(i))
       enddo
       end function ledger_hash
-
-      ! ---- perturbation helpers, for the rollback test ----------------
-
-      subroutine bump_r1(a, s)
-      real*8, allocatable, intent(inout) :: a(:)
-      real*8, intent(inout) :: s
-      integer :: j
-      if (.not. allocated(a)) return
-      do j = lbound(a,1), ubound(a,1)
-         s = s + 1.0d0
-         a(j) = a(j) + s
-      enddo
-      end subroutine bump_r1
-
-      subroutine bump_r2(a, s)
-      real*8, intent(inout) :: a(:,:)
-      real*8, intent(inout) :: s
-      integer :: i, j
-      do j = 1, size(a,2)
-         do i = 1, size(a,1)
-            s = s + 1.0d0
-            a(i,j) = a(i,j) + s
-         enddo
-      enddo
-      end subroutine bump_r2
-
-      subroutine bump_r3(a, s)
-      real*8, allocatable, intent(inout) :: a(:,:,:)
-      real*8, intent(inout) :: s
-      integer :: i, j, k
-      if (.not. allocated(a)) return
-      do k = lbound(a,3), ubound(a,3)
-         do j = lbound(a,2), ubound(a,2)
-            do i = lbound(a,1), ubound(a,1)
-               s = s + 1.0d0
-               a(i,j,k) = a(i,j,k) + s
-            enddo
-         enddo
-      enddo
-      end subroutine bump_r3
-
-      subroutine bump_ir(a, s)
-      type(ion_rates), allocatable, intent(inout) :: a(:)
-      real*8, intent(inout) :: s
-      integer :: j
-      if (.not. allocated(a)) return
-      do j = lbound(a,1), ubound(a,1)
-         s = s + 1.0d0
-         a(j)%P_HI  = a(j)%P_HI + s
-         a(j)%T_K   = a(j)%T_K + s
-         a(j)%ntot  = a(j)%ntot + s
-         a(j)%n_co  = a(j)%n_co + s
-         a(j)%x_h2_fixed = .not. a(j)%x_h2_fixed
-      enddo
-      end subroutine bump_ir
 
       end module attempted_step

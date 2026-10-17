@@ -17,7 +17,7 @@ module byte for byte.
 |---|---|---|
 | `abs/abs_T####.npz` | `sigma_pump(N)`, `p_single(N)` on the 39-point column axis, one file per temperature of the grid (700 to 3200 K) | `run_abs.py <T>` (this directory), 2026-09-03 |
 | `abs/abs_*.log` | the run lines of those nine calls | same |
-| `cloudy_grid3/*.rat` | the 27 CLOUDY `save h2 rates` files read for the trapping ratio `p_eff/p_single` only, plus the deck abundance file and the diagnostic patch applied to CLOUDY c25 for them | CLOUDY c25 runs of 2026-09-03 (P38 stage 2) |
+| `cloudy_grid3/*.rat` | the 27 CLOUDY `save h2 rates` files read for the trapping ratio `p_eff/p_single` only; the decks that wrote them, their abundance file and the diagnostic patch applied to CLOUDY c25 for them are `src/utils/h2_shielding_cloudy_decks/` (one copy, 2026-10-17) | CLOUDY c25 runs of 2026-09-03 (P38 stage 2) |
 | `lbl.py` | line list and level data reader, LTE populations, the overlapping-line shielding curve | written for P38 |
 | `lbl_table.py` | `absolute_curves`: `sigma_pump` and `p_single` per unit incident photon fluence of a flat `F_lambda` band | written for P38 |
 | `run_abs.py`, `grid_lbl.py` | the drivers that wrote `abs/` and the normalized curves of the memo | written for P38 |

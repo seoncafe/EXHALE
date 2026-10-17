@@ -165,19 +165,6 @@ module energy_semi_implicit
    !   chemistry, not the temperature bracket.
    real*8, parameter :: T_ceiling_K = 1.0d7
 
-   ! TEST HOOK, default off, named for what it does. It makes the update
-   ! REPORT a failure at one step count, for a given number of leading
-   ! calls, so that the controller's handling of a failed energy update can
-   ! be exercised on a configuration that does not happen to produce one.
-   ! Nothing else changes: the solve runs as it would have, and only the
-   ! status of the first physical cell is overwritten, so what the caller
-   ! then does is what it would do for a real failure. Set from
-   ! EXHALE_ENERGY_FAIL_AT_STEP and EXHALE_ENERGY_FAIL_CALLS
-   ! (energy_update_read_environment).
-   integer, save :: energy_fail_at_step = -1
-   integer, save :: energy_fail_calls   = 1
-   integer, save :: energy_fail_served  = 0
-
    ! Verdict of the last call, for a caller that reads it after the fact
    ! rather than through the optional `status` argument.
    integer, save :: energy_update_last_status   = ENERGY_UPDATE_OK
@@ -833,15 +820,6 @@ contains
       enddo
       call energy_balance_finish(s)
 
-      ! The forced failure of the test hook, if it was asked for.
-      if (energy_fail_at_step .ge. 0 .and. step .eq. energy_fail_at_step   &
-          .and. energy_fail_served .lt. energy_fail_calls) then
-         energy_fail_served = energy_fail_served + 1
-         s%status(1)     = ENERGY_UPDATE_NONFINITE
-         s%reason(1)     = ENERGY_REASON_NONFINITE_INPUT
-         s%res_scaled(1) = huge(1.0d0)
-      endif
-
       ! Verdict.
       ! The verdict of the update is the status of the first failing cell in
       ! index order; n_fail says how many cells failed.
@@ -934,17 +912,5 @@ contains
       endif
 
    end subroutine solve_energy_semi_implicit
-
-   ! ------------------------------------------------------!
-
-   subroutine energy_update_read_environment()
-   ! The test hook of this module, off unless asked for, so that a run
-   ! without the two variables is the run an unguarded build gives.
-   character(len=64) :: env
-   call get_environment_variable('EXHALE_ENERGY_FAIL_AT_STEP', env)
-   if (len_trim(env) .gt. 0) read(env,*) energy_fail_at_step
-   call get_environment_variable('EXHALE_ENERGY_FAIL_CALLS', env)
-   if (len_trim(env) .gt. 0) read(env,*) energy_fail_calls
-   end subroutine energy_update_read_environment
 
 end module energy_semi_implicit

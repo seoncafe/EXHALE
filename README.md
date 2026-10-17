@@ -433,7 +433,7 @@ for bit.
 - Python loaders (`examples/exhale_io.py`) driven by the `# columns` schema
   header every output file carries; a regression harness over a
   seventeen-case physics matrix (`make check`, bitwise first, else within a
-  stated relative tolerance); and 52 assertion suites (every executable `src/tests/*/run.sh`)
+  stated relative tolerance); and 61 assertion suites (every executable `src/tests/*/run.sh`)
   plus the standalone `element_census_tests`, `diffusion_tests` and
   `residual_determinism` (`make test`), which print
   one `PASS|FAIL <name> measured= reference= tol=` line per assertion.
@@ -446,11 +446,10 @@ for bit.
   relative to their element), `helium_metastable_transport` (the carried
   He 2^3S level: simplex, write-back, local limit, source ledger, a
   manufactured column), `adv_element_velocity` (the `_adv` rows stepped on
-  each element's nuclei velocity), `restart_radius_guard` (a non-finite
-  restart center refused), `state_mapper` (`map_state_to_grid.py`, including
+  each element's nuclei velocity), `state_mapper` (`map_state_to_grid.py`, including
   the first refined cell and the reservoir rescaling) and
-  `element_flux_closure` (the closure's window, resume and solve-exit
-  refusals and the conducted-flux residual); the exact-factor tokens and the
+  `element_flux_closure` (the closure's window, its resume rule and the
+  conducted-flux residual); the exact-factor tokens and the
   stored-pair evaluate are rows of `grid_and_gates`
 - A restart is a contract, not a file copy. Both state files carry a
   `restart_schema 1` metadata block (reservoir, species columns, grid,
@@ -798,4 +797,4 @@ the Markdown memos of the development record.
 
 Kwang-Il Seon (KASI / UST)
 
-Last updated: 2026-10-16 23:23 KST
+Last updated: 2026-10-17 10:30 KST

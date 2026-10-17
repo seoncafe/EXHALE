@@ -315,7 +315,7 @@
       ! NO cell satisfies r>=r_esc and the DO loop above leaves j = N+Ng+1,
       ! so j_min > N and the convergence range [j_min:N] is EMPTY. maxval /
       ! minval over an empty array return -/+HUGE, giving du = Inf and
-      ! dtu = -HUGE < dtu_th -> a spurious "steady state" exit at step 0.
+      ! dtu = -HUGE, which no convergence measure can be read from.
       ! This bites deep-RLOF cases whose Roche lobe (r_max) is smaller than
       ! the default escape radius (e.g. WASP-121b Case D: r_max ~ 1.35 R_p <
       ! r_esc = 1.5 R_p). Clamp the convergence range to mid-domain and warn

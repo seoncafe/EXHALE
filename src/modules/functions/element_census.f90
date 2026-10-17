@@ -329,7 +329,7 @@
               snap%rho_in(jw), ' -> ', rho(jw)*n0
          write(*,'(A,ES16.8,A,ES16.8)') '     rho(comp) ',                 &
               snap%rho_comp(jw), ' -> ', rho_comp(jw)
-         call report_carriers(jw, ie_worst, snap, f_sp, rho)
+         call report_carriers(jw, ie_worst, f_sp, rho)
       endif
       ! Every element that missed, so a common shift (all of them, equally)
       ! is told apart from a real repartition defect (one or two of them).
@@ -451,10 +451,10 @@
 
       ! ------------------------------------------------------!
 
-      subroutine report_carriers(j, ie, snap, f_sp, rho)
-      ! Every species that carries element ie in cell j, before and after.
+      subroutine report_carriers(j, ie, f_sp, rho)
+      ! Every species that carries element ie in cell j, after the step (the
+      ! caller prints the before-state totals).
       integer,                                intent(in) :: j, ie
-      type(element_census_state),             intent(in) :: snap
       real*8, dimension(1-Ng:N+Ng,n_species), intent(in) :: f_sp
       real*8, dimension(1-Ng:N+Ng),           intent(in) :: rho
       integer :: ib, im, mult
@@ -478,10 +478,6 @@
          write(*,'(A,A,A,ES16.8)') '       ', mion_name(im),              &
               '       ', f_sp(j,mion_fsp(im))*nd
       enddo
-      ! Silence an unused-argument warning while keeping the snapshot in the
-      ! interface: the before-state totals are printed by the caller.
-      if (.false.) write(*,*) snap%taken
-
       end subroutine report_carriers
 
       end module element_census

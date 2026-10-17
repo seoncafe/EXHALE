@@ -600,12 +600,8 @@
       public :: carrier_roundoff_limited_record
       public :: carrier_refused_rows, carrier_refused_row
       public :: carrier_record_refused_rows
-      public :: carrier_perturb_checkpointed_state_for_test
-      public :: carrier_reject_leading_attempts_for_test
-      public :: carrier_history_reset_for_test
       public :: carrier_initial_substep_for_test
       public :: carrier_transport_stop_on_failure
-      public :: carrier_transport_stops_suppressed
 
       integer, parameter :: dp = kind(1.0d0)
       ! ABSOLUTE SMALLNESS OF A CARRIER, one number for the whole module:
@@ -660,9 +656,6 @@
       integer, parameter, public :: carrier_accept_ok           = 0
       integer, parameter, public :: carrier_reject_row_residual  = 1
       integer, parameter, public :: carrier_reject_nonfinite     = 2
-      ! Refused by the test hook below and by nothing else, so a forced
-      ! rejection can never be read in a log as a physical one.
-      integer, parameter, public :: carrier_reject_forced_for_test = 3
       ! NO INTERVAL WAS INTEGRATED IN THIS STEP, so there is no state to
       ! pass a verdict on.  It is the value carrier_step_verdict carries in
       ! a step the operator had nothing to do in (a run with no carriers,
@@ -898,8 +891,8 @@
       ! conserved_state): its cycle budget, its temperature tolerance, the
       ! named reasons it returns, and the run-wide counts the relaxation
       ! report prints (the cost of the closure is measured, not guessed).
-      ! chem_cycles_cap_for_test, when nonnegative,
-      ! replaces the budget so that a test can force exhaustion.
+      ! chem_cycles_cap_for_test, when nonnegative, replaces the budget so
+      ! that a measurement can take a fixed number of closure increments.
       ! THE BUDGET AND THE TOLERANCE, BOTH MEASURED (on
       ! LHS 1140 b molecular_scalar_gj1132_kzz1e9/HeH2.13 with the closure
       ! traced cycle by cycle, EXHALE_CARRIER_DEBUG=1).  The cycle
@@ -1482,20 +1475,13 @@
       real(dp), parameter :: carrier_substep_floor =                     &
                              1.0d0/2.0d0**carrier_retry_max
 
-      ! TEST HOOKS.  Both default to the production behavior, no production
-      ! path writes either.  They exist because the branches they reach --
-      ! restore, halve, exhaust -- cannot otherwise be driven on a column
-      ! that solves, and a column that does not solve would test the
-      ! chemistry and not the controller.
-      !   (a) refuse the leading attempts of every interval, whatever the
-      !       returned state satisfies;
-      integer,  save :: carrier_reject_leading_attempts_for_test = 0
-      !   (b) start the interval at this fraction of dt instead of at 1, so
-      !       that a subdivided integration OVER THE SAME FROZEN BACKGROUND
-      !       is available as the reference a retried result is compared
-      !       with.  Calling the transport step twice with half the step is
-      !       not that reference: it rebuilds the background from the
-      !       half-advanced composition.
+      ! TEST CONTROL, defaulting to the production behavior; no production
+      ! path writes it.  The interval starts at this fraction of dt instead
+      ! of at 1, so that a subdivided integration OVER THE SAME FROZEN
+      ! BACKGROUND is available for the step-doubling measurement of the
+      ! time accuracy.  Calling the transport step twice with half the step
+      ! is not that integration: it rebuilds the background from the
+      ! half-advanced composition.
       real(dp), save :: carrier_initial_substep_for_test = 1.0d0
 
       ! ATTEMPT STATISTICS of the controller, never restored: they count
@@ -1532,15 +1518,11 @@
       logical, save :: carrier_history_certifiable_flag = .true.
 
       ! Whether an uncovered interval ends the run where the run mode says
-      ! it must (physical integration).  Production is .true.; a test
-      ! driver that has to read the status of the refusal writes .false.,
-      ! as the energy update and the conduction update are read.
+      ! it must (physical integration).  The marching loop of EXHALE_main
+      ! writes .false. at startup, because the attempted-step controller
+      ! owns that decision and reads the status of the refusal, as the
+      ! energy update and the conduction update are read.
       logical, save :: carrier_transport_stop_on_failure = .true.
-      ! How many times the run WOULD have ended in this operator and did
-      ! not, because a test driver had suppressed the stop.  Zero in every
-      ! production run, and the only way a test can state that the stop was
-      ! reached.
-      integer, save :: carrier_transport_stops_suppressed = 0
 
       ! WHAT THE TRANSPORT STEP DID WITH THE INTERVAL IT WAS ASKED FOR.
       integer, parameter :: carrier_interval_covered   = 0
@@ -2021,8 +2003,6 @@
          txt = 'every unconstrained row within the returned-state floor'
       case (carrier_reject_nonfinite)
          txt = 'a carrier row of the returned state is not a finite number'
-      case (carrier_reject_forced_for_test)
-         txt = 'the test hook refused this attempt; no physical row failed'
       case (carrier_no_interval)
          txt = 'no carrier interval was integrated in this step'
       case default
@@ -2246,13 +2226,6 @@
       logical function carrier_history_certifiable() result(ok)
       ok = carrier_history_certifiable_flag
       end function carrier_history_certifiable
-
-      ! The history mark put back to its start, for a test driver that
-      ! marks it in one section and needs an unmarked run in the next.  A
-      ! run never calls this: a history once marked stays marked.
-      subroutine carrier_history_reset_for_test()
-      carrier_history_certifiable_flag = .true.
-      end subroutine carrier_history_reset_for_test
 
       ! HOW OFTEN DOUBLE PRECISION, AND NOT THE PHYSICS, SET THE ACCURACY
       ! OF AN ACCEPTED ROW.  nlast is the count in the last accepted
@@ -2587,8 +2560,6 @@
          ' satisfies its balances, so this'
       write(*,'(a)') '   step cannot be accepted.'
       if (carrier_transport_stop_on_failure) error stop 1
-      carrier_transport_stops_suppressed =                                &
-           carrier_transport_stops_suppressed + 1
 
       end subroutine photochemical_transport_step
 
@@ -2704,7 +2675,6 @@
       type(carrier_checkpoint) :: chk_entry, chk_attempt
       real(dp) :: sub, step, frac_left
       integer  :: nhalve, naccepted
-      logical  :: forced
       ! THE CONSTRAINT DIAGNOSTICS OF THE WHOLE INTERVAL, over its ACCEPTED
       ! substeps and no others.  solve_carriers resets pct_limited,
       ! pct_worst_limit and pct_cell_constrained at every call, so after
@@ -2788,12 +2758,6 @@
                              sigrate, nH_free, nO_free, nC_free, verdict)
          nsub = nsub + 1
          carrier_substeps_attempted = carrier_substeps_attempted + 1
-         forced = (nsub .le. carrier_reject_leading_attempts_for_test)
-         if (forced) then
-            verdict%accepted = .false.
-            verdict%reason   = carrier_reject_forced_for_test
-            pct_verdict      = verdict
-         endif
          if (verdict%accepted) then
             fc        = fctry
             frac_left = frac_left - step
@@ -3500,26 +3464,6 @@
       if (ok) ok = all(kept .eqv. live)
       end function same_1d_logical
 
-      subroutine put_back_2d_logical(kept, live)
-      logical, allocatable, intent(in)    :: kept(:,:)
-      logical, allocatable, intent(inout) :: live(:,:)
-      if (allocated(kept)) then
-         live = kept
-      else if (allocated(live)) then
-         deallocate(live)
-      endif
-      end subroutine put_back_2d_logical
-
-      logical function same_2d_logical(kept, live) result(ok)
-      logical, allocatable, intent(in) :: kept(:,:), live(:,:)
-      ok = (allocated(kept) .eqv. allocated(live))
-      if (.not. ok) return
-      if (.not. allocated(kept)) return
-      ok = (size(kept,1) .eq. size(live,1))                               &
-           .and. (size(kept,2) .eq. size(live,2))
-      if (ok) ok = all(kept .eqv. live)
-      end function same_2d_logical
-
       ! ------------------------------------------------------------- !
 
       ! HOLD ASIDE EVERYTHING ONE CARRIER TRANSPORT ATTEMPT WRITES, and put
@@ -3675,95 +3619,6 @@
       end function verdicts_agree
 
       ! ------------------------------------------------------------- !
-
-      ! WRITE A DISTINCT CHANGE INTO EVERY ITEM THE CHECKPOINT COVERS.
-      ! Restoration is a measurement over the whole list, and not over the
-      ! items one particular column happens to move: an item left out of
-      ! carrier_checkpoint_restore is then a failing assertion.  An array
-      ! that is not allocated is allocated here, so the restore is asked to
-      ! give the module its allocation status back and not only its
-      ! numbers.  Test only: no production path calls this.
-      subroutine carrier_perturb_checkpointed_state_for_test(fc)
-      real(dp), dimension(1-Ng:N+Ng,n_carrier_max), intent(inout),        &
-                optional :: fc
-      if (present(fc)) fc = fc + 1.0d0
-      call bump_1d(cbg_nhii,   1-Ng, N+Ng)
-      call bump_1d(cbg_nHnuc,  1-Ng, N+Ng)
-      call bump_1d(cbg_nh2p,   1-Ng, N+Ng)
-      call bump_1d(cbg_nh3p,   1-Ng, N+Ng)
-      call bump_1d(cbg_nhehp,  1-Ng, N+Ng)
-      call bump_1d(cbg_nhei,   1-Ng, N+Ng)
-      call bump_1d(cbg_nheii,  1-Ng, N+Ng)
-      call bump_1d(cbg_nheiii, 1-Ng, N+Ng)
-      call bump_1d(cbg_nheiTR, 1-Ng, N+Ng)
-      call bump_1d(cbg_ne,     1-Ng, N+Ng)
-      call bump_1d(cbg_nOion,  1-Ng, N+Ng)
-      call bump_1d(cbg_nCion,  1-Ng, N+Ng)
-      call bump_1d(cph_klw,    1-Ng, N+Ng)
-      call bump_1d(cph_kco,    1-Ng, N+Ng)
-      call bump_2d(cph_jh2o,   1-Ng, N+Ng, 1, n_fuv_band)
-      call bump_2d(cph_joh,    1-Ng, N+Ng, 1, n_fuv_band)
-      call bump_2d(row_terms,  1, N, 1, n_carrier_max)
-      call bump_2d(row_terms_phys, 1, N, 1, n_carrier_max)
-      call bump_2d(col_scale_car, 1, N, 1, n_carrier_max)
-      call bump_2d(row_scale_car, 1, N, 1, n_carrier_max)
-      call bump_2d(headroom_car,  1, N, 1, n_carrier_max)
-      call bump_2d(pct_Dco,    1-Ng, N+Ng, 1, n_carrier_max)
-      if (.not. allocated(pct_cell_constrained))                          &
-           allocate(pct_cell_constrained(1:N+Ng))
-      pct_cell_constrained = .not. pct_cell_constrained
-      headroom_set   = .not. headroom_set
-      pct_worst_j    = pct_worst_j  + 3
-      pct_worst_ic   = pct_worst_ic + 1
-      pct_newton_steps              = pct_newton_steps + 5
-      pct_newton_resid              = pct_newton_resid + 0.25d0
-      pct_newton_resid_before_limit = pct_newton_resid_before_limit       &
-                                      + 0.5d0
-      pct_limited     = pct_limited    + 7
-      pct_worst_limit = pct_worst_limit + 0.75d0
-      pct_drift_j     = pct_drift_j  + 13
-      pct_drift_ic    = pct_drift_ic + 1
-      pct_verdict%accepted   = .not. pct_verdict%accepted
-      pct_verdict%reason     = pct_verdict%reason  + 1
-      pct_verdict%jworst     = pct_verdict%jworst  + 17
-      pct_verdict%icworst    = pct_verdict%icworst + 1
-      pct_verdict%rworst     = pct_verdict%rworst  + 0.375d0
-      pct_verdict%n_cells_constrained = pct_verdict%n_cells_constrained + 2
-      pct_verdict%n_rows_constrained  = pct_verdict%n_rows_constrained  + 3
-      pct_verdict%n_rows_above        = pct_verdict%n_rows_above        + 4
-      pct_verdict%n_rows_above_beside_constrained =                       &
-           pct_verdict%n_rows_above_beside_constrained + 5
-      pct_verdict%raw_status = pct_verdict%raw_status + 1
-      pct_verdict%stall      = pct_verdict%stall      + 1
-      end subroutine carrier_perturb_checkpointed_state_for_test
-
-      subroutine bump_1d(a, lo, hi)
-      real(dp), allocatable, intent(inout) :: a(:)
-      integer, intent(in) :: lo, hi
-      integer :: k
-      if (.not. allocated(a)) then
-         allocate(a(lo:hi))
-         a = 0.0d0
-      endif
-      do k = lbound(a,1), ubound(a,1)
-         a(k) = a(k) + 1.0d0 + 0.5d0*dble(k)
-      enddo
-      end subroutine bump_1d
-
-      subroutine bump_2d(a, lo1, hi1, lo2, hi2)
-      real(dp), allocatable, intent(inout) :: a(:,:)
-      integer, intent(in) :: lo1, hi1, lo2, hi2
-      integer :: k, m
-      if (.not. allocated(a)) then
-         allocate(a(lo1:hi1,lo2:hi2))
-         a = 0.0d0
-      endif
-      do m = lbound(a,2), ubound(a,2)
-         do k = lbound(a,1), ubound(a,1)
-            a(k,m) = a(k,m) + 1.0d0 + 0.5d0*dble(k) + 0.25d0*dble(m)
-         enddo
-      enddo
-      end subroutine bump_2d
 
       ! Is the state (rho, v, f_sp) a steady state OF THE CARRIER EQUATION,
       ! and where is it least so? The temperature of that state is the one

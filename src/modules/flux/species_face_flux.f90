@@ -78,28 +78,12 @@
       ! Largest relative face-identity residual seen, kept so that a caller or
       ! a test reads the number the operator itself measured.
       real*8,  public :: species_face_identity_residual = 0.0d0
-      public :: species_face_identity_injection
-
-      ! Face at which a deliberate violation of the face identity is injected,
-      ! so that the assertion below can be shown to fire.  Unset (a value
-      ! below 1-Ng) means no injection, which is every production run.
-      integer :: inject_face = -huge(1)
 
       ! The identity is exact in exact arithmetic; what is left is the
       ! round-off of one multiplication and one sum per member of the set.
       real*8, parameter :: identity_tol = 64.0d0*epsilon(1.0d0)
 
       contains
-
-      !-----------------------------------------------!
-
-      subroutine species_face_identity_injection(jface)
-      ! Arm (jface >= 1-Ng) or disarm (any smaller value) the injected
-      ! violation of the face identity.  It exists because an assertion that
-      ! no run has ever made fire is not known to fire.
-      integer, intent(in) :: jface
-      inject_face = jface
-      end subroutine species_face_identity_injection
 
       !-----------------------------------------------!
 
@@ -276,14 +260,6 @@
          call species_face_flux(Frho,Yf(:,q),Fs(:,q))
       enddo
       call species_face_flux(Frho,Yclose,Fclose)
-
-      ! The injected violation is put into the FLUX and not into the
-      ! fraction, so that the fractions still sum to one and only the
-      ! identity below is broken.
-      if (inject_face .ge. 1-Ng .and. inject_face .le. N+Ng .and.         &
-          nq .ge. 1)                                                      &
-         Fs(inject_face,1) = Fs(inject_face,1)                            &
-                           + 1.0d-6*max(abs(Frho(inject_face)),1.0d-30)
 
       ! THE FACE IDENTITY, ASSERTED HERE AND NOT IN A TEST.
       ! It is a statement about every face of every stage of every step, so

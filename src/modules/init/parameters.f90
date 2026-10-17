@@ -194,9 +194,6 @@
                                           !  r >= r_flux (< march_flux_spread_th)
                                           !  AND the state settled over the
                                           !  monitor window (< march_change_th)
-      logical :: step_change_converged  = .false. ! retired 2026-10-09: the
-                                          !  one-step dtu stop (dtu stays a
-                                          !  printed diagnostic); never set
       logical :: relaxation_stalled     = .false. ! the state settled over the
                                           !  monitor window while the face
                                           !  flux is NOT flat: stall net,
@@ -1071,7 +1068,6 @@
       real*8 ::  CFL    = 0.6d0       ! CFL number; settable in input.inp via "CFL:" (lower = smaller dt, may damp a numerical limit cycle)
       real*8 ::  du_th     = 1.0d-3   ! second number of "du_th [PLM,WENO3]:"; since 2026-10-10 it no longer stops the run (the marching stop is the face mass-flux spread and the state change, march_flux_spread_th / march_change_th, update log stage 3 section 127); it only decides with du_th_plm whether the run is two-stage.
       real*8 ::  du_th_plm = -1.0d0   ! stage-1 (PLM) threshold; if > du_th the run is two-stage: PLM until du<du_th_plm, then WENO3 to the marching stop. <=0 => single-stage.
-      real*8,parameter ::  dtu_th = 1.0d-8      ! Threshold variation of time deriv.
       real*8           ::  du                   ! Initial momentum variation
       real*8           ::  dtu                  ! Norm of time derivative
 
@@ -1136,8 +1132,8 @@
       ! RETURNED state carries -- iterating the sweep at fixed Y until it stops
       ! moving -- and the gate is applied to that.
       !
-      ! WHY THIS IS THE DEFAULT. `eval_residual` is a function of two things,
-      ! the unknowns and the composition the equilibrium sweep starts from
+      ! WHY THIS IS THE ONLY MEASURE. `eval_residual` is a function of two
+      ! things, the unknowns and the composition the equilibrium sweep starts from
       ! (section 147 made that explicit in its interface). The line search
       ! measures a trial with the PREVIOUS iterate's composition, which is the
       ! right thing to do while comparing trials; but the number then reported
@@ -1145,16 +1141,16 @@
       ! not have. Measured: at its own composition it is 4 to 56 times larger
       ! (hot Uranus 2.2e-6 -> 1.3e-5; WASP-121b 6.3e-6 -> 3.9e-5; and 8.9e-6 ->
       ! 1.9e-4 on `wasp_full_newton` before section 152). A state that is
-      ! accepted must satisfy its own residual, so this is not an option: no
-      ! input or environment variable sets it to .false., and the only reason
-      ! to do so (reproducing a pre-section-155 number) is not offered.
+      ! accepted must satisfy its own residual, so this is not an option and
+      ! the measure at the previous iterate's composition (which would only
+      ! reproduce a pre-section-155 number) is not offered.
       !
       ! WHAT IT COSTS. One extra sweep sequence at hand-back, 3 iterations on
       ! the hot Uranus and 9 on WASP-121b, once per solve. `Resid tol` values
       ! calibrated against the old measure are correspondingly loose under this
       ! one; the flux gate is unaffected, reading conserved face fluxes that do
       ! not depend on the composition at all.
-      logical :: resid_at_own_composition = .true.
+
       ! Cap on the fixed-Y sweep iteration, and A WORKING LIMIT rather than a
       ! guard. MEASURED on wasp_full_newton (2026-09-06): the sweep
       ! takes 13 to 15 passes from the marching hand-off and 14.09 on

@@ -182,7 +182,7 @@
       ! zero, and the conversion is what the temperature is formed from:
       ! MEASURED, a cell with E set to its kinetic energy passed the scaled
       ! test while U_to_W gave rho e = 0 exactly, and the sweep was handed
-      ! T = 0 (src/tests/trial_admissibility, kind rho_e_zero). Where the
+      ! T = 0 (a trial of kind rho_e_zero). Where the
       ! expression cannot overflow it is evaluated as the conversion
       ! evaluates it, and it must be positive too.
       if (admissible_conserved_cell .and. s .lt. sqrt(huge(1.0d0)))       &

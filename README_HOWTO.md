@@ -1487,11 +1487,7 @@ different blocks is refused.
   refuses a pair whose halves state two different `state_id` values, or in
   which one half states one and the other does not. A run that ends on its
   own writes its final state as before (without a `state_id`), and the
-  generation beside it is then one pass older.
-  `EXHALE_PASS_STATE_STOP_AT=<step>[:<pass>]` stops a run (exit status 3)
-  right after step 1 (temporary directory written), 2 (renamed) or 3
-  (`current` published) of that pass, to measure what an interruption
-  leaves. Until 2026-09-29 the pair was
+  generation beside it is then one pass older. Until 2026-09-29 the pair was
   `output/{Hydro_ioniz,Ion_species}_last_pass.txt`, overwritten half by half
   (`md/Update_EXHALE_stage3.md` section 33).
   `LHS1140b/models/.P1/s2_continuation/config_rung.sh.new` (to replace
@@ -1584,7 +1580,6 @@ can be measured instead of argued. Read the exact behavior at the
 | `EXHALE_RESID_SC_TRACE=<n>`, `EXHALE_RESID_SC_TRACE_SEED=shift\|h2\|partition` | trace the composition elimination of the steady residual for n passes from two seeds in lockstep, and **STOP** the run; seed B is the composition shifted by five cells (`shift`), the H2 fraction scaled by 1 + `EXHALE_RESID_SC_TRACE_SCALE` (`h2`), or the elemental inventory and charge closure kept with a fraction of H I and He I moved into H II and He II (`partition`) | `steady_newton.f90` |
 | `EXHALE_JV_FRESH_WEIGHTS=1` | take the products of the Newton model with the WENO3 weights recomputed instead of frozen | `steady_newton.f90` |
 | `EXHALE_LINEAR_ROWS=1`, `EXHALE_LINEAR_ROWS_CELLS=<lo>,<hi>` | print row by row the linear residual the Krylov solve left against the rows of F, and over the band lo..hi (default 290,312) the energy row, the model's F + J dY, the row found at Y + dY and difference quotients along the step | `steady_newton.f90` |
-| `EXHALE_ADV_TEST_REJECT=<reason>` | make every column energy solve of the advection post-process end rejected with that reason (`linear_solve`, `nonfinite`, `non_positive_T`, `residual_above_tolerance`) after it has run, to test the rejection handling (rows `failed`, the record, exit 7) | `post_process_adv.f90` |
 | `EXHALE_ADV_COLUMN_FLOOR_IT=<n>` | take n further Newton steps of that column solve past its step test, so the reported residual is its rounding floor | `post_process_adv.f90` |
 | `EXHALE_ADV_COLUMN_EXCLUDE_UNROOTED=1` | make the cells whose marching energy step found no root fixed values of the column (written `failed`) instead of unknowns, as before 2026-10-01 | `post_process_adv.f90` |
 | `EXHALE_L22B_DISPLACEMENT=1` | report what the composition a relaxation pass hands back did to the state the wind reads: the largest relative movement of the pressure, the temperature, the mean mass per particle and the particle count, each with the cell that carries it | `diffusive_photochemistry.f90` |
@@ -1997,31 +1992,33 @@ and exits nonzero if any suite failed.
 tree, which is not published, so `make test`,
 `make diffusion_tests` and `make element_census_tests` do not run from a clone
 of this repository; `make` and `make check` are unaffected. What follows
-describes the gate as it runs in the development tree. There are 54 suites
-(the executable `src/tests/<name>/run.sh` files, counted 2026-10-06):
+describes the gate as it runs in the development tree. There are 61 suites
+(the executable `src/tests/<name>/run.sh` files, counted 2026-10-16):
 
 ```
-acceptance_classes  adv_element_velocity  adv_static_limit
-attempted_step  boundary_state  carrier_boundary_jacobian
+acceptance_classes  acceptance_scale  adv_element_velocity
+adv_static_limit  attempted_step  base_hydrogen_census  boundary_state
+carrier_base_face  carrier_boundary_jacobian
 carrier_constraint_attribution  carrier_enthalpy_flux
 carrier_helium_inventory  carrier_outer_boundary
 carrier_reference_scales  carrier_retry
 carrier_returned_state_acceptance  certification
 charge_exchange_detailed_balance  charge_exchange_rows
-conducted_heat_column  conduction_retry  constrained_network_layout
+conducted_heat_column  constrained_network_layout
 coupled_block_handover  coupled_block_jacobian  coupled_source_step
-element_flux_closure  element_operator  energy_update
-executable_identity  fuv_band_ledger  ghost_reservoir_chemistry
-grid_and_gates  h2_level_ladder
+electron_degradation_spencer_fano  element_flux_closure
+element_operator  energy_update  executable_identity  fuv_band_ledger
+ghost_reservoir_chemistry  grid_and_gates  h2_level_ladder
 helium_metastable_transport  interdiffusion_enthalpy_flux
 ionization_imposed_fractions  ionization_stage_enthalpy_flux
 ionization_stage_flux  krylov_and_dogleg
-low_energy_electron_degradation  low_mach_stress_energy  molecular_seed
-physics_probe  residual_determinism  restart_radius_guard  run_mode
+low_energy_electron_degradation  low_mach_stress_energy  marching_stop
+matching_face_radiation  matching_surface  molecular_seed
+open_face_seed  physics_probe  residual_determinism  run_mode
 species_face_flux  species_masses  spectrum_type  stage_row_balance
 state_mapper  steady_completion_flag  steady_selfconsistent_residual
 steady_species_rows  thread_count_identity  transit_census
-transit_state
+transit_state  weno3_primitive_floor
 ```
 
 `ionization_imposed_fractions` measures the one substitution that replaces an

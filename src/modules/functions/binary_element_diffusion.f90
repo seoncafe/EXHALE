@@ -592,17 +592,6 @@
       ! it to decide whether to shorten the step).
       integer, protected :: element_step_last_status = element_step_accepted
       public :: element_step_last_status
-      ! TEST KNOB: the next this many calls report the nonlinear solve
-      ! unsolved whatever it did, so a caller's handling of a refused
-      ! step can be exercised on a column that would not refuse by
-      ! itself (EXHALE_ELEMENT_REFUSE_STEPS, read by the marching loop;
-      ! zero in every production run).
-      integer, public :: element_refuse_leading_steps_for_test = 0
-      ! TEST KNOB: with a value n >= 0, n steps are let through and every
-      ! later one is reported unsolved, so a relaxation that keeps steps and
-      ! then runs out of retries can be exercised; -1 (every production
-      ! run) leaves it off.
-      integer, public :: element_refuse_after_accepted_for_test = -1
       public :: element_step_outcome_text
       ! THE OUTCOME OF A RELAXATION, which is not the outcome of one step.
       ! A relaxation whose composition stopped moving has reached the fixed
@@ -1018,18 +1007,6 @@
       ! to zero is not zeroed and the bounds on X are the converged step's.
       ! The entry composition stands, and the trace metals are not advanced
       ! against a hydrogen background that was never moved.
-      if (element_refuse_leading_steps_for_test .gt. 0) then
-         element_refuse_leading_steps_for_test =                           &
-            element_refuse_leading_steps_for_test - 1
-         solved = .false.
-      endif
-      if (element_refuse_after_accepted_for_test .eq. 0) then
-         solved = .false.
-      else if (element_refuse_after_accepted_for_test .gt. 0 .and. solved) &
-         then
-         element_refuse_after_accepted_for_test =                          &
-            element_refuse_after_accepted_for_test - 1
-      endif
       if (.not. solved) then
          f_sp   = f_entry
          element_step_last_status = element_step_solve_failed

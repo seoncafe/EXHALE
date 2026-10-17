@@ -1067,13 +1067,6 @@ Variable & Effect \\
   \texttt{\# pass\_snapshot} line records, which a restart does not inherit. \\
 \texttt{EXHALE\_OUTER\_PASSES=}$\langle n\rangle$ & The pass budget of the
   stationary outer iteration (default 20). \\
-\texttt{EXHALE\_PASS\_STATE\_STOP\_AT=}$\langle k\rangle$[\texttt{:}$\langle
-  p\rangle$] & A measurement key: stop the run (exit status 3) right after
-  step $k$ of the publication of the pass state of pass $p$ (of every pass
-  when $p$ is not given): $k=1$ after the temporary directory is written,
-  $2$ after it is renamed onto its generation name, $3$ after
-  \path{output/pass_state/current} names it (\S\ref{sec:passstate}). Unset:
-  no effect. \\
 \midrule
 \texttt{EXHALE\_MAXSTEPS=}$\langle n\rangle$ & Deterministic step cap: leave
   the marching loop after $n$ steps and write the outputs. Separate from the
@@ -1239,12 +1232,6 @@ Variable & Effect \\
   left against the rows of $F$, and cell by cell over the band
   \texttt{EXHALE\_LINEAR\_ROWS\_CELLS=}$lo,hi$ (default 290,312) the energy row, the model's $F+J\,\delta Y$, the
   row found at $Y+\delta Y$ and difference quotients along the step. \\
-\texttt{EXHALE\_ADV\_TEST\_REJECT=}$\langle reason\rangle$ & Measurement only.
-  Make every column energy solve of the advection post-process end rejected
-  with that reason (\texttt{linear\_solve}, \texttt{nonfinite},
-  \texttt{non\_positive\_T}, \texttt{residual\_above\_tolerance}) after it
-  has run, to test the handling of a rejection (the rows written
-  \texttt{failed}, the derived-state record, exit status 7). \\
 \texttt{EXHALE\_ADV\_COLUMN\_FLOOR\_IT=}$\langle n\rangle$ & Measurement only.
   Take $n$ further Newton steps of the column energy solve past its step
   test, so that the residual reported is the rounding floor the margin of
@@ -4336,8 +4323,7 @@ file by file under its name. An interruption at any point therefore leaves
 publication in a directory, no \texttt{current}. An interruption before step 2
 leaves a \texttt{.<state\_id>.tmp} directory, one between steps 2 and 3 a
 complete generation no pointer names; neither is read, and neither is removed
-by a later run. \texttt{EXHALE\_PASS\_STATE\_STOP\_AT} (Table~\ref{tab:env})
-stops a run after a chosen step, to measure this.
+by a later run.
 
 \emph{Headers}: both halves carry the \texttt{\# coupling:} line, with
 \texttt{certified=F cert\_reason=pass\_snapshot\_p<n>} for pass $n$ and, as

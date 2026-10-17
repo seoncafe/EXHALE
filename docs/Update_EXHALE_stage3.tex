@@ -9606,7 +9606,9 @@ the new build and with the control build of the entry text: every suite
 passes except \texttt{carrier\_enthalpy\_flux} (3 rows), \texttt{grid\_and\_gates} (the
 stationary-evaluate rows), \texttt{run\_mode}, \texttt{steady\_completion\_flag} and
 \texttt{steady\_selfconsistent\_residual}, whose FAIL rows are identical with the
-control build (pre-existing; the last two need \texttt{EXHALE\_STEADY\_RUNLOGS},
+control build {[}CORRECTED 2026-10-10, section 137: the three \texttt{carrier\_enthalpy\_flux}
+rows were NOT pre-existing; they appeared with the real g\_eff of this section,
+which the test\textquotesingle s reference did not follow{]} (pre-existing; the last two need \texttt{EXHALE\_STEADY\_RUNLOGS},
 \texttt{run\_mode} is the (AM) resolution-floor item). \texttt{certification},
 \texttt{element\_operator}, \texttt{ionization\_stage\_flux} and \texttt{steady\_species\_rows} failed
 on their flat-column fixtures before those were rebuilt at uniform pressure
@@ -11552,7 +11554,9 @@ from the published sources (Thompson 1987, 1990; Poinsot \& Lele 1992;
 Murray-Clay et al. 2009; Salz et al. 2016; Caldiroli et al. 2021): an outer
 face beyond the sonic point for transonic winds, a relaxed characteristic
 condition (whose Mdot is then conditional on an exterior pressure) for edges
-that must stay subsonic. Not implemented; awaits the user.
+that must stay subsonic. Not implemented; awaits the user. DECIDED 2026-10-12
+(section 144): no subsonic-edge treatment; the Mdot of such a run is labeled
+not quantitative.
 
 \subsubsection{127.5 Exit status of a failed stationary solve; change 4 (b) diagnosed (2026-10-10, user decisions)}\label{1275-exit-status-of-a-failed-stationary-solve-change-4-b-diagnosed-2026-10-10-user-decisions}
 
@@ -12017,6 +12021,261 @@ wasp\_full\_newton (2 R\_p, hand-off at face spread 0.1, step 16 500) & 13.29 -\
 The capped WASP snapshots end on their cap with no stationarity claim (exit 0,
 section 135). Steps A-D of plan rev4 are complete; the scope of E, F and G is
 the user\textquotesingle s next decision.
+
+\textbf{136, addendum (2026-10-10).} After the freeze, comments only were corrected
+in \texttt{EXHALE\_main.f90} (which stops claim stationarity; the du-stop wording),
+\texttt{parameters.f90} (du\_th, du\_th\_plm) and \texttt{input\_read.f90} (the du\_th key); no
+executable statement changed, but the line shifts move the md5 of a build
+(tree gfortran build 169a0f2b). The frozen \texttt{EXHALE\_f8a38866.x} stays the A-D
+binary; its manifest differs from the tree by these comments only.
+
+\subsection{137. The six long-failing test rows were stale expectations, not code defects; two rows made stale by section 127.5 (2026-10-10)}\label{137-the-six-long-failing-test-rows-were-stale-expectations-not-code-defects-two-rows-made-stale-by-section-1275-2026-10-10}
+
+Diagnosis: \texttt{md/failing\_rows\_diagnosis\_20261010.md} (worker; scratch
+\texttt{tmp/diag6/}).
+
+\begin{itemize}
+\tightlist
+\item
+  \texttt{carrier\_enthalpy\_flux}, 3 rows: the test\textquotesingle s reference settling drift used
+  the gravity Dphi v0\^{}2/R0, while the operator uses g\_eff = -(1/rho) dp/dr
+  (\texttt{mixture\_pressure\_acceleration}) since section 115; on the test\textquotesingle s isothermal,
+  outward-dissociating column the two differ at O(1), sign included. The code
+  is right; the test reference now calls the same function (test file only).
+  Section 115\textquotesingle s statement that these rows were "pre-existing" was wrong and is
+  annotated there. Now 12 PASS / 0 FAIL.
+\item
+  \texttt{grid\_and\_gates} \texttt{stationary\_evaluate\_*}, 3 rows: the fixture
+  \texttt{backup/regression/wasp\_full\_newton/IC/} (2026-09-27) was no longer a solution
+  of the current equations (changes of sections 66-72, 112, 125, bisected by
+  frozen binaries), and since section 127.6 (outer face 2 R\_p) it no longer
+  matched the case grid at all. Refreshed: the 2 R\_p state re-solved with the
+  tree binary 169a0f2b (certified as loaded, JFNK 1 iteration, info 0,
+  \textbar\textbar R\textbar\textbar{} 9.1e-10); old pair kept in \texttt{IC\_pre\_outer2\_20261010/}, record in
+  \texttt{IC/README.md}.
+\item
+  Two further rows (\texttt{outer\_iteration\_ending\_run}, \texttt{direct\_steady\_setup\_report})
+  had become stale with section 127.5: their bounded stationary solves end with
+  info /= 0 and now exit 3; both accept a written state with status 3.
+  Result on the tree: \texttt{grid\_and\_gates} 427 PASS / 0 FAIL, \texttt{carrier\_enthalpy\_flux}
+  12 / 0. The two other suites that check exit codes (\texttt{species\_face\_flux},
+  \texttt{coupled\_source\_step}) run marching routes, which cannot exit 3 (code path).
+  Also: the header of \texttt{restart\_intent\_and\_metadata.sh} corrected (since section 88
+  the evaluate route writes the stored pair and rebuilds only heat and cool).
+  Not touched: \texttt{iontrans\_metals/IC/} (a copy of the old pair, run on its L1 domain
+  as decided in section 131).
+\end{itemize}
+
+\subsection{138. A Roche domain extended past the potential ridge: the cold IC, the outer ghost and the absorbing columns assumed a potential rising outward (plan rev4 step E, 2026-10-11)}\label{138-a-roche-domain-extended-past-the-potential-ridge-the-cold-ic-the-outer-ghost-and-the-absorbing-columns-assumed-a-potential-rising-outward-plan-rev4-step-e-2026-10-11}
+
+\textbf{Found by} the step-E benchmarks (Salz et al. 2016 HD 209458 b / HD 189733 b, Huang et al. 2023 WASP-121 b Cases B and D, Yan et al. 2022 WASP-52 b), every one a Roche domain with \texttt{Outer\ radius\ {[}R\_p{]}:} well past L1. Diagnosis note: \texttt{md/roche\_outer\_domain\_diagnosis\_20261011.md}. Frozen binary f8a38866 unless stated; MEASURED.
+
+\textbf{Defects.} Past the ridge of the Roche potential (L1) phi falls outward, toward the star; three parts of the code assumed it rises.
+
+\begin{enumerate}
+\def\labelenumi{\arabic{enumi}.}
+\tightlist
+\item
+  Cold hydrostatic IC (\texttt{set\_IC.f90}, rho = rho\_bc exp(-(phi - phi(1)))): the density rises without bound past the ridge (HD 209458 b, 15 R\_p: 5.5e10 cm\^{}-3 at 10.5 R\_p, 5.1e43 at 15 R\_p). Both Salz cold starts failed at step 0.
+\item
+  Outer ghost (\texttt{Apply\_BC.f90}, hydrostatic continuation exp(-(phi\_g - phi\_N)/c\^{}2)): past the ridge the factor exceeds one. Huang B at 12 R\_p, step 0: cell N 1.7e6, ghosts 3.4e34 and 4.9e63 cm\^{}-3; Yan WASP-52 b at step 6780: 3.3e3 against 3.6e22 and 8.1e41. Live runs at 15 / 8.85 / 8.2 R\_p carried ghost/cell-N ratios of 1e5 to 1e14.
+\item
+  The absorbing columns started at N+Ng, so the ghosts were gas on the line of sight (\texttt{calc\_column\_dens} and its two variants in \texttt{utilities.f90}, the sweep in \texttt{util\_ion\_eq.f90}, the Ly-alpha line-center depth in \texttt{lya\_rt.f90}, the fine-structure escape column in \texttt{Cool\_coeff.f90}). An exploding ghost shielded the whole domain: zero heating in every cell of the Yan atomic runs, T to 13 K, energy update failure (exit 2). In a domain with sane ghosts it added a two-cell column of no physical meaning.
+  The regression case \texttt{wasp\_full} (outer face 2.0 R\_p, ridge 1.539 R\_p) carried defect 1: in 200 steps from the cold IC the density rose 2000-fold toward the outer face with inflow at 1.96 R\_p.
+\end{enumerate}
+
+\textbf{Fix} (physics stated at the code):
+
+\begin{itemize}
+\tightlist
+\item
+  IC: stratified on the running maximum of phi from the base outward; bitwise the old IC inside the ridge, held at the ridge value (in practice the 1e-8 floor) past it.
+\item
+  Outer ghost of a supersonic cell N (v\_N above the adiabatic sound speed): the steady isothermal wind through cell N, v\_g from the supersonic Bernoulli root, rho\_g from rho v r\^{}2 constant, p\_g/rho\_g = p\_N/rho\_N; valid in any potential. The subsonic edge keeps the hydrostatic continuation (open user decision, sections 127.4 and 127.6). The Bernoulli root solver has one definition, \texttt{isothermal\_wind\_speed} in \texttt{grav\_func}, shared with the transonic IC.
+\item
+  Every stellar-beam and escape column starts at the outer face r\_edg(N); the outer ghosts carry no depth.
+\item
+  Setup report: a Roche domain with \texttt{Outer\ radius} reads "extended to the user outer radius X R\_p; Hill radius Y R\_p" (it said "truncated at the Hill/L1 radius").
+\item
+  Test drivers \texttt{xuv\_cell\_mean\_attenuation.f90}, \texttt{lya\_beam\_cell\_mean.f90} (new assertion \texttt{lya\_outer\_ghosts\_carry\_no\_depth}), \texttt{lya\_escape\_probability.f90} on the outer-face convention.
+\end{itemize}
+
+\textbf{Tests} (gfortran scratch build of this source): the five failing setups (Salz HD 209458 b and HD 189733 b cold IC at 15 R\_p, Huang B at 14.11 R0, Huang D at 13.28 R0, Yan atomic 92/8 at 10 R\_p) ran 3000-8000 steps with exit 0 and no energy-update failure; outer cells supersonic (Mach 9.4, 12.9, 181, 53, 50), ghosts at or below cell N, rho v r\^{}2 constant through the ghosts (Salz HD 209458 b: 3.49e14 in cell 502 and ghost 504). \texttt{wasp\_full} 200 steps: unchanged below 1.56 R\_p (median 2e-5), the cold-IC rise removed, outer Mach 0.067 -\textgreater{} 0.589. \texttt{mol\_base\_handoff} 200 steps (Hill domain): outermost cell only, at most 3.1e-3. Suites grid\_and\_gates free\_outflow\_boundary and hydrostatic\_residual 82 PASS; physics\_probe no failing assertion. Not done: the column change alone on wasp\_full. Every golden moves (column change); refreshed at step G.
+
+\subsection{139. The internal energy of cold, highly supersonic expanding cells from the advected adiabat (dual-energy method) (plan rev4 step E, 2026-10-11)}\label{139-the-internal-energy-of-cold-highly-supersonic-expanding-cells-from-the-advected-adiabat-dual-energy-method-plan-rev4-step-e-2026-10-11}
+
+\textbf{Found by} the Yan et al. 2022 WASP-52 b atomic runs after section 138 (Roche, 10 R\_p): h98he2\_f1, h92he8\_f1, h98he2\_f0p5 failed at steps 7290, 8795 and \textasciitilde8000, exit 2, "incoming temperature already below the floor" (T\_floor = max(0.01, 1 K/T0) = 13.04 K, \texttt{energy\_semi\_implicit.f90}). Note: \texttt{md/cold\_supersonic\_internal\_energy\_20261011.md}.
+
+\textbf{Cause} (MEASURED, last accepted state of h98he2\_f1): the scheme recovers rho e = E - rho v\^{}2/2; at 9-10 R\_p rho e/(rho v\^{}2/2) = 5.7e-4 to 8.2e-4 (M \textasciitilde{} 50), and the difference carries the truncation error of the kinetic-energy flux. Between 9.03 and 9.14 R\_p the adiabat p/rho\^{}(5/3) drops 7.2-fold (1.00e-15 to 1.38e-16 cgs) where the net source is positive (heating 1e-16, cooling 2e-19 erg cm\^{}-3 s\^{}-1), which an adiabatic flow with heating cannot do. Not round-off, not the outer ghost (the collapse starts \textasciitilde15 cells inside the face). Yan Fig. 23a (READ, digitized) gives 377 K at 9.15 R\_p and 334 K at 9.73 R\_p.
+
+\textbf{Fix} (new module \texttt{adiabatic\_entropy\_transport.f90}; Ryu et al. 1993, ApJ 414, 1; Bryan et al. 1995, CoPhC 89, 149; full texts not read, their threshold values not compared): the adiabat K = p/rho\^{}gamma is carried with the face mass fluxes in every SSP-RK3 stage (donor-cell face value), taken fresh from the state at the start of each step; after an accepted step, rho e is taken from K where rho e \textless{} 0.01 E (M \textgreater\textasciitilde{} 13), div v \textgreater= 0 (no shock) and the gas has the constant gamma (atomic). Heating, cooling, conduction and viscosity are applied after it as before (operator split). Total energy is not conserved in the reset cells by less than 1\% of their E; the run log prints the number of reset cell-steps.
+
+\textbf{Tests}: h98he2\_f1 8000 steps exit 0 (256 080 cell-steps reset; outer T 820-990 K, adiabat 1.05e-15 to 1.12e-15); h92he8\_f1 9000 steps exit 0 (294 429; T 427-527 K at 9-10 R\_p, outer Mach 22); \texttt{wasp\_full} 200 steps bitwise identical to section 138 (0 cells reset). Reached by: every Yan run, Huang B and D (75 and 78 cells, 2.8-13.8 R\_p; Huang B showed the same adiabat fall at its outer face), the Salz production states (22 and 261 cells). Open: in the 98/2 test the base cells flowed at -290 cm/s at step 8000 against +675 cm/s in the control at step 7271 (base breathing or this change, not separated).
+
+\textbf{Benchmark binary}: \texttt{EXHALE\_dualE\_f9047247} (gfortran 16.2, source of sections 136 + 138 + 139, manifest beside it); all step-E runs were restarted on it from their last states (\texttt{Restart\ intent:\ relaxation}) on 2026-10-11 10:15 KST.
+
+\subsection{140. Step-E inputs moved into the tree; documents brought to sections 138-139 (plan rev4 step E, 2026-10-11)}\label{140-step-e-inputs-moved-into-the-tree-documents-brought-to-sections-138-139-plan-rev4-step-e-2026-10-11}
+
+\textbf{SEDs.} \texttt{inputdata/sed/hd209458b\_solar\_salz2016.txt} and its builder \texttt{build/build\_hd209458b\_solar\_salz.py} moved in from the session scratch; the builder run in the tree reproduces the file byte for byte (MEASURED, \texttt{cmp}). The two Huang Lyman-continuum files were already in the tree; \texttt{build/build\_wasp121b\_composite\_lyc\_huang.py} with and without \texttt{-\/-xuv-multiplier\ 0.74} reproduces both byte for byte (MEASURED). \texttt{build/sed\_coverage\_and\_order\_check.py} now checks the three files (file rules, band fluxes) and the three Huang configurations, and asserts the normalizations: Salz F(5-100 A) = 4.0041e1 and F(100-912 A) = 1.1028e3 against log L\_X = 26.40 and log L\_EUV = 27.84 at 0.04723 au; Huang F(1-912 A) = 2.69e5 and 0.74 x 2.69e5 (all PASS, exit 0). \texttt{inputdata/sed/README.md}: bin convention, inventory, band-flux table and build commands for the three files.
+
+\textbf{A finding stated in the inventory.} The WASP-121 b files normalized to F\_XUV = 1.6e6 (\texttt{wasp121b\_solar\_huang2023.txt}, \texttt{\_wasp17\_}, \texttt{\_composite\_}) carry the number Huang et al. 2023 quote, not the flux their model was driven by (2.69e5; benchmark README of \texttt{benchmarks/huang2023\_wasp121b/}): about 6x brighter below 912 A. \texttt{WASP-121b/} and \texttt{benchmarks/wasp121/} still use the 1.6e6 composite; whether they switch is the user\textquotesingle s decision.
+
+\textbf{Case D checked against the paper.} Section 6.1 (READ): "we reduce the stellar flux at wavelengths shorter than 1700 A to 74\% of the reference spectrum ... and weaken the stellar Lya radiation intensity to 35\% of the canonical value", the second being "the Lya flux used in the Lya radiative transfer calculation". The case-D SED (everything below 1700 A x 0.74, Lya line included) with \texttt{Stellar\ Lya\ flux:\ 3.5e4} follows that; no change.
+
+\textbf{Comparison script.} \texttt{benchmarks/benchmark\_profile\_comparison.py} (from the scratch \texttt{compare/}), paths now relative to its own directory: runs under \texttt{benchmarks/\textless{}benchmark\textgreater{}/}, output under \texttt{benchmarks/comparison/}. The scratch copy keeps the scratch layout until the runs move.
+
+\textbf{Documents} (sections 138-139 were in the code only):
+
+\begin{itemize}
+\tightlist
+\item
+  \texttt{docs/physics\_overview/radiation.tex}: the column starts at r\_edg(N), sum over j \textless{} j\textquotesingle{} \textless= N (it said r(N+N\_g)); the ghosts carry no depth.
+\item
+  \texttt{physics\_overview/hydrodynamics.tex}: either potential can be carried past L1 (it said only the spherical one could).
+\item
+  \texttt{physics\_overview/boundaries\_initial.tex}: the steady-wind ghost of a supersonic cell N; the cold IC on the running maximum of phi; the columns do not read the ghosts.
+\item
+  \texttt{physics\_overview/numerics.tex}: the dual-energy method in the operator-split step; Ryu et al. 1993, Bryan et al. 1995 and Yan et al. 2022 added to the bibliography (bibcodes and author lists confirmed on ADS).
+\item
+  \texttt{docs/EXHALE\_BC\_and\_IC.tex}: four stale statements fixed (no incoming characteristic at any outflowing outer face; the outermost ghost given its own column; Roche always truncated at the Hill radius; cold-IC line numbers), plus the steady-wind ghost and the running-maximum IC.
+\item
+  \texttt{docs/EXHALE\_user\_manual.tex}: Roche past L1 paragraph (IC, ghosts, columns), a paragraph on supersonic outer cells and the reset count of the run log; the \texttt{wasp\_full\_newton} outer-face numbers marked as measured before section 138.
+\item
+  \texttt{README.md} (features), \texttt{README\_HOWTO.md} (the same outer-face numbers marked).
+\item
+  \texttt{src/modules/states/Apply\_BC.f90}: the comment of \texttt{free\_outflow\_ghost} listed the column integral among the readers of the ghost; fixed (comment only).
+  All three PDFs built with no undefined reference.
+\end{itemize}
+
+\subsection{141. Stale folders deleted (user decision, 2026-10-11)}\label{141-stale-folders-deleted-user-decision-2026-10-11}
+
+A read-only survey of \texttt{EXHALE\_v1.00/} (three workers, references re-checked by the advisor) sorted every leftover into delete / ask / keep; the user approved the delete list and added \texttt{build/tests/}. 233 paths (list and log: the session scratch \texttt{delete\_list.txt}, \texttt{delete\_stale\_20261011.log}), about 10.6 GB, none tracked by git, none in use by a process on lart2/3/4:
+
+\begin{itemize}
+\tightlist
+\item
+  \texttt{LHS1140b/models/.P1/}: 64 audit, diagnostic and test directories of plan rev2 (binaries before sections 112-139). Kept: \texttt{fiducial\_conduction}, \texttt{v5\_test}, \texttt{audit\_F1} (live), \texttt{atomic97}, \texttt{s2\_continuation}, \texttt{newphys}, \texttt{ghost\_trial\_refusal}, \texttt{publish\_rows}, \texttt{cx\_round4}, \texttt{s1\_remeasure}, \texttt{connectivity} (cited by living documents or open items), and \texttt{iontr\_diag}, \texttt{progress\_control}, \texttt{omp\_scaling\_lart2} (cited as the measurement behind constants in \texttt{EXHALE\_main.f90} and \texttt{init.f90}).
+\item
+  \texttt{LHS1140b/models/.L*}: 14 stage-2 solver diagnostic trees and \texttt{.L8} except \texttt{.L8/r45} (cited by \texttt{src/utils/collisional\_validity.py}); \texttt{.L14}, \texttt{.L22}, \texttt{.L25}, \texttt{.L26}, \texttt{.L34} kept (catalog provenance, \texttt{CLAIMS\_59bfdb3fc4d0.md}). \texttt{LHS1140b/lower\_profile\_vulcan/} pruned to \texttt{vulcan\_work/STOPPED.txt}.
+\item
+  \texttt{backup/regression/}: 28 \texttt{golden\_*} snapshots of closed series, \texttt{baseline\_post170/2a/2b\_20260905}, \texttt{parse\_golden\_blockE\_20260903}, \texttt{parse\_golden\_retired\_20260904}; \texttt{backup/EXHALE\_pre\_handoff\_restart\_rescale.x}. Kept: \texttt{golden/}, \texttt{golden\_pre\_final\_20260927}, \texttt{golden\_pre\_F1\_20260929}, every case and fixture.
+\item
+  \texttt{scratchpad/}; the agent worktree \texttt{.claude/worktrees/agent-a213596977999e418} and its branch (its uncommitted diff and untracked tests saved in the session scratch, \texttt{worktree\_agent-a2135\_record.tgz}; every test file exists in the main tree); \texttt{build\_f6/}, \texttt{build\_ifx/}, \texttt{build\_w1/}, \texttt{build\_w1g/}, \texttt{build\_w2/}, \texttt{build\_w3/}, \texttt{EXHALE\_ifx.x}, \texttt{EXHALE\_w*.x}, \texttt{build\_ifx.log}, \texttt{tp\_mod.mod}, \texttt{pid}; \texttt{build/tests/} (1.1 GB of test products, rebuilt by \texttt{src/tests/*/run.sh}).
+\item
+  Planet, benchmark and example folders: the \texttt{output\_pre\_*} snapshots of the August fixes, the \texttt{tpm\_*} directories of those states, \texttt{output\_jun7}, \texttt{output\_caseA2058\_jun7}, \texttt{output\_nan\_20260810}, \texttt{output\_march1e6\_20260811}, \texttt{WASP-121b/solver\_validation/}, the WASP-52 b \texttt{*\_pre\_kb\_20260815} copies and the variants \texttt{fxuv0p25\_he98\_L1\_noLya}, \texttt{fxuv0p25\_he98\_L1trunc}, \texttt{fxuv1p0\_he98\_rbase}; \texttt{\_\_pycache\_\_/} and \texttt{.ipynb\_checkpoints/} throughout.
+\end{itemize}
+
+Text fixed with it: the inventory tables of \texttt{HD189733b/}, \texttt{HD209458b/}, \texttt{WASP-121b/}, \texttt{benchmarks/hd189/}, \texttt{hd209/}, \texttt{wasp121/} README files (rows removed, one line naming what was deleted), \texttt{WASP-121b/STALE\_P48.md}, \texttt{examples/README.md}, four places in \texttt{md/TO\_BE\_DONE.md}, a header note in the three dated memos that cited \texttt{scratchpad/}. Update logs and dated memos are records and otherwise unchanged. The \texttt{Makefile} comment and the \texttt{backup/regression/run\_check.sh} header that name \texttt{baseline\_post170\_*} and \texttt{golden\_block*} are edited after the regression run that was executing the script ends.
+
+Executed 2026-10-11: 229 paths deleted, 4 entries absent because their parent had gone first; the worktree carried a lock of a dead agent process (pid 61637, lock dated 2026-10-03, no such process on lart2/3/4) and was removed with \texttt{git\ worktree\ remove\ -f\ -f}, its branch deleted. Every kept item checked present afterwards; no git-tracked file deleted.
+
+Second round, 2026-10-11 (user decision): deleted \texttt{LHS1140b/models/.P2/build\_*\_ifx} (20 build trees; the frozen binaries \texttt{EXHALE\_\textless{}md5\textgreater{}.x} and their \texttt{BINARY\_MANIFEST\_*.txt} stay), \texttt{vulcan\_work/hd209\_wind\_response/} and \texttt{vulcan\_work/pc\_compare\_p1/exhale\_hd209/} (the 30 runs invalid by item P35), \texttt{backup/HD209458b\_test/} (closed June study, retired keys), \texttt{lart\_runs/*\_pre\_kb\_20260815/} (8, untracked, unreferenced); compressed \texttt{benchmarks/hd189/rerun\_lyafix.log} and \texttt{run\_20260815\_kb.log} (175 MB to 39 MB, \texttt{.gz}); removed the empty tracked \texttt{input.inp} at the root (re-added by accident in 460ea67; it made the existence check of \texttt{run\_EXHALE.sh} pass on an empty file), which git now shows as deleted. \texttt{LHS1140b/archive\_20260830/} was NOT split: 88 of its 119 run directories are named in the update logs, memos or \texttt{md/TO\_BE\_DONE.md}, and the other 31 are 113 MB. Text fixed: \texttt{src/utils/pin\_base\_grid.py} (FROZEN\_ROOTS), \texttt{backup/regression/run\_parse\_corpus.sh} (header and exclusion list), three places in \texttt{md/TO\_BE\_DONE.md}, a header note in the eight memos that cite the deleted runs. Log: session scratch \texttt{delete\_stale\_20261011\_round2.log}.
+
+\subsection{142. The regression matrix measured across sections 138-139 (2026-10-11/12)}\label{142-the-regression-matrix-measured-across-sections-138-139-2026-10-1112}
+
+Both binaries gfortran 16.2, \texttt{-O3\ -fopenmp}, the 17 default cases single-threaded: the tree build (md5 41af91c7, sections 136-139) against the same source before section 138 (\texttt{T/rochefix/ctrl/EXHALE.x}, md5 72ccde1b; its source differs from the tree only in the files of the 138 and 139 diffs, checked with \texttt{diff\ -rq}). A first control with the frozen ifx binary f8a38866 gave the same numbers to the digits below (compiler effect negligible), except that it refused to load \texttt{iontrans\_metals}: r\_max of the L1 domain differs in the last bit between ifx and gfortran and the case\textquotesingle s \texttt{IC/} (2026-09-27) was written by gfortran.
+
+\begin{itemize}
+\tightlist
+\item
+  Every case ran to completion; \texttt{iontrans\_metals} CERTIFIED in both. The printed log Mdot is the same in every case (13.24, 13.24, 13.28, 10.49-10.52, 9.57, 8.27, 9.40, 10.56).
+\item
+  The dual-energy reset of section 139 acted in no case (0 cell-steps), so every difference is section 138 (columns from the outer face, steady-wind ghost of a supersonic outer cell, IC on the running maximum of phi).
+\item
+  Largest relative differences in the physical cells, MEASURED (\texttt{T/cmp\_phys.py}; cells where both values are below 1e-6 of the column maximum skipped): \texttt{wasp\_*} rho 1.1e-2, heating 2.0e-2, \textbar dv\textbar/c\_s 4.5e-3, all at 1.98 R\_p next to the 2.0 R\_p outer face, median rho 1.3e-4; molecular cases T 3e-3, heating 1.8e-2, \textbar dv\textbar/c\_s 8e-3 at 4.62 R\_p next to the outer face, median rho 7e-7; \texttt{lower\_profile}, \texttt{oxygen\_chemistry}, \texttt{hp\_*} T and heating below 2e-3; \texttt{hydrostatic\_column} round-off (1e-13); \texttt{iontrans\_metals} rho 1.1e-2 at 1.32 R\_p, median 6.4e-4. Relative cooling differences up to 0.4 occur only where the cooling is 1e-4 of the local heating and changes sign (\texttt{mol\_base\_handoff}, 1.74-2.36 R\_p).
+\item
+  Verdict: the change acts where it should (the outermost cells, where the two ghost cells used to add column and where the ghost rule changed), and moves no Mdot at the printed precision. Every golden moves (the column change touches every cell above round-off), so the refresh belongs to plan rev4 step G as planned. Outputs: \texttt{T/reg\_new\_41af91c7/}, \texttt{T/reg\_ctl\_72ccde1b/}, \texttt{T/reg\_ctl\_f8a38866/}.
+\end{itemize}
+
+\subsection{143. WASP-121 b run of record: the spectrum Huang et al. computed with (user decision, 2026-10-12)}\label{143-wasp-121-b-run-of-record-the-spectrum-huang-et-al-computed-with-user-decision-2026-10-12}
+
+\texttt{WASP-121b/input.inp} and \texttt{benchmarks/wasp121/input.inp} now load \texttt{inputdata/sed/wasp121b\_composite\_lyc\_huang2023.txt} (F(1-912 A) = 2.69e5 at the orbit, the Lyman-continuum flux Huang et al. 2023 section 2.2 states for their spectrum) in place of \texttt{wasp121b\_composite\_huang2023.txt} (normalized to the F\_XUV = 1.6e6 the same section quotes from Salz et al. 2019; about 6 x brighter below 912 A; the evidence is in section 140 and the benchmark README). These were the only inputs using a 1.6e6 file. Checked: \texttt{sed\_coverage\_and\_order\_check.py} exit 0, no FAIL (both configurations name the new file); a one-step run of the \texttt{WASP-121b} input (scratch copy, tree build 41af91c7) reads it and prints \texttt{Log\ XUV\ flux\ at\ the\ planet\ distance:\ 5.430}. No stored output was regenerated; both READMEs carry a 2026-10-12 section saying a run with this input is needed.
+
+Found and fixed with it: both READMEs named the authors "Huang, Koskinen, Lavvas and Ben-Jaffel" (ADS: Huang, Koskinen, Lavvas, Fossati) and said Table 1 supplies \texttt{R\_p\ =\ 2.2075\ R\_J} and \texttt{R\_star\ =\ 1.458\ R\_sun}; Table 1 (READ, Delrez et al. 2016 values) gives the optical \texttt{R\_p\ =\ 1.766\ R\_J} and \texttt{R\_star\ =\ 1.4572\ R\_sun}. The input\textquotesingle s \texttt{Planet\ radius\ 2.2075\ R\_J} (1.25 x 1.766) has no identified source; it is a model input and is left for the user (Huang\textquotesingle s Case A base, from log g = 2.84 at 1 microbar, is 2.058 R\_J, the value of \texttt{benchmarks/huang2023\_wasp121b/caseA}).
+
+Follow-up the same day (user decision): \texttt{Planet\ radius\ {[}R\_J{]}} of both inputs 2.2075 -\textgreater{} 2.058 (Huang case A, 1 microbar level from Table 3 log g = 2.84). Only the radius changed: these inputs keep a fixed base density (log n = 12.49) and \texttt{Equilibrium\ temperature\ 2358\ K}, whereas \texttt{benchmarks/huang2023\_wasp121b/caseA} sets the base by \texttt{Base\ BC:\ pressure\ 1.0} (1 microbar) and 3960 K (the first point of Huang\textquotesingle s published T profile); the two base conditions differ and are reported to the user.
+
+\subsection{144. A subsonic outer face: no further treatment; its Mdot labeled not quantitative (user decision, 2026-10-12)}\label{144-a-subsonic-outer-face-no-further-treatment-its-mdot-labeled-not-quantitative-user-decision-2026-10-12}
+
+Decision on the open item of section 127.4 (\texttt{md/outer\_boundary\_subsonic\_review\_20261009.md} section 6): transonic winds keep the outer face past the sonic point; no relaxed characteristic condition is implemented for a subsonic face, because the escape models the code is compared with (Salz et al. 2016, Murray-Clay et al. 2009, Caldiroli et al. 2021) put the face past the sonic point and state no incoming condition, and that condition would make Mdot depend on an exterior pressure none of them states (project rule on physics the published models do not treat).
+
+Code (\texttt{steady\_mass\_loss\_rate}, \texttt{EXHALE\_main.f90}): below Mach 1.1 at the outermost cell the run log prints "NOT A QUANTITATIVE MDOT" with the reason, and \texttt{EXHALE\_setup.out} now carries the same line (it carried only the Mach number). Output text only. Also fixed: the comment of the beam ledger in \texttt{util\_ion\_eq.f90} said the column N(N+Ng) is the outermost cell\textquotesingle s own content; since section 138 the columns start at r\_edg(N) and are zero above cell N. TEST (gfortran, md5 e6f7fcb7): \texttt{hydrostatic\_column} 300 steps in a scratch copy, outer Mach 0.79: both lines written; data rows of \texttt{Hydro\_ioniz.txt} and \texttt{Ion\_species.txt} bitwise identical to the 41af91c7 build (only the provenance time stamp differs). Documents: user manual (new paragraph), physics document (upper boundary), README, README\_HOWTO.
+
+Stored states of record ending subsonic at the default L1 face (estimate from the stored profile, gamma 5/3): \texttt{WASP-121b/} 1.02, \texttt{examples/18\_oxygen\_chemistry} 0.96, regression \texttt{iontrans\_metals} 0.95; \texttt{benchmarks/wasp121} 1.14 just above. Their inputs are unchanged (an input change is the user\textquotesingle s).
+
+Second follow-up the same day (user decision): both WASP-121 b inputs now take the base and outer face of Huang\textquotesingle s case A: \texttt{Equilibrium\ temperature\ 3960\ K}, \texttt{Base\ BC:\ pressure\ 1.0} (1 microbar; the density key removed), \texttt{Outer\ radius\ {[}R\_p{]}:\ 16.403} (Roche potential kept past L1). In \texttt{benchmarks/wasp121/} the VULCAN handoff \texttt{base.inp} (T\_base 2135.9 K, r\_base 1.98187 R\_J, HeH\_base 0.0909, which override T0, R0 and He/H) was renamed \texttt{base\_vulcan\_photochemistry.inp}, so it is no longer read. One-step runs of both inputs (binary e6f7fcb7, scratch copies): p\_base 1 microbar, n0 1.8275e12 / 1.8290e12 cm\^{}-3 (case A benchmark: 1.83e12), planet radius 2.058 R\_J, upper boundary 16.40 R\_p, log F\_XUV 5.430. Stored outputs are not regenerated; both READMEs say so.
+
+\subsection{145. Diagnosis: the base-cell mass row refusal is the known split between the solver merit and the certification scale (2026-10-12)}\label{145-diagnosis-the-base-cell-mass-row-refusal-is-the-known-split-between-the-solver-merit-and-the-certification-scale-2026-10-12}
+
+Note: \texttt{md/base\_mass\_row\_refusal\_diagnosis\_20261012.md}. The Yan WASP-52 b molecular benchmark (cold IC) ended with the wind stationary (face mass-flux spread 1.9e-4, JFNK \textbar\textbar R\textbar\textbar{} 4.4e-10) and was refused by the mass row of base cell 1, 9.3e-3 against 2.2e-11. A stationary evaluation with the boundary trace and the mass-floor scan (lart4) shows face mass fluxes of cells 1-12 differing by 1.4 percent of their mean, 9-10 decades above rounding. Cause, as stated at \texttt{residual\_row\_scale}: the certification divides the mass row by its flux, the Newton merit by the state scale, on which the row reads its fractional flux error times the local Mach number (1.2e-4 here), so JFNK stops at a base layer it cannot see; the marching stop reads only r \textgreater= r\_flux. Not a rounding-anchor problem, and not the Salz HD 209458 b JFNK stall (merit stuck at 1.9). Under the acceptance rule of 2026-10-09 the benchmark Mdot (log 11.76) stands, the base-layer flux differences bounding the base supply\textquotesingle s remaining effect. No code changed: a solver merit on the flux scale is a solver item for the user to decide.
+
+\subsection{146. Section 145 corrected after the Codex review: the refused Yan state is the marching fallback (2026-10-12)}\label{146-section-145-corrected-after-the-codex-review-the-refused-yan-state-is-the-marching-fallback-2026-10-12}
+
+Review: \texttt{md/REVIEW\_20261012\_base\_layer\_mass\_flux\_solver.md} (Codex). Its seven corrections were checked against the code and the publisher PDFs and all hold (table in \texttt{md/PLAN\_20261012\_base\_layer\_mass\_flux\_solver.md} section 0.1): the Newton mass column scale is rho (\texttt{state\_scales\_of\_cell}), the printed \texttt{\textbar{}\textbar{}R\textbar{}\textbar{}} is the gate measure \texttt{rnorm} over the whole column and \texttt{\textbar{}\textbar{}Fs\textbar{}\textbar{}2} the merit; Koskinen et al. 2013a sect. 2.1.1 set only the lower-boundary velocity from the flux constant (READ); Murray-Clay et al. 2009\textquotesingle s six dependent variables do not include Mdot (READ); the 1.4 percent spread is not an Mdot bound. Re-reading the raw log as the review asked: the Yan molecular stationary route converged its hydrodynamic rows (pass 20: base mass row 3.5e-11 against 1.7e-11, \texttt{rnorm} 4.4e-10) and failed on the carrier transport rows (H2 0.41, H+ 0.45, He+ 0.80 against 1e-5); the run fell back to marching and the 9.7e-3 refusal of section 145 is the verdict on that marching state. Section 145\textquotesingle s cause ("the merit cannot see the base mass row") is withdrawn; its benchmark statement for Yan (log Mdot 11.76 accepted by observable precision) stands, without the "1.4 percent bound". Huang Case B and Salz HD 209458 b stalled with interior rows near the measure\textquotesingle s maximum (1.9), far from a root. The review\textquotesingle s redesign (a common-flow constraint) is not started; the plan is rescoped to F1 (carrier rows in the partitioned outer iteration), F2 (the marching stop does not read the base layer), F3 (JFNK stalls far from a root).
+
+\subsection{147. Second Codex review: the F1-F3 plan corrected (rev2) (2026-10-12)}\label{147-second-codex-review-the-f1-f3-plan-corrected-rev2-2026-10-12}
+
+Review: \texttt{md/REVIEW\_20261012\_stationary\_failures\_F1\_F3.md}. Each finding was checked against the logs and the source before it was taken in; all held. Plan rev2: \texttt{md/PLAN\_20261012\_stationary\_failures\_F1\_F3.md} (its section 6 lists every correction with its evidence). The corrections that change what section 146 said:
+
+\begin{itemize}
+\tightlist
+\item
+  The Yan written state is a marching state that fails mass (9.68e-3), momentum (5.65e-4), energy (0.202) and the H2 and H+ carrier rows, not only the base mass row; the marching stop\textquotesingle s state-change part reads all cells (\texttt{EXHALE\_main.f90:4116-4133}).
+\item
+  A stationary evaluation of the same byte-identical restart files does not reproduce the run\textquotesingle s own residual (cell-1 energy flux divergence 4.89e-2 against 3.41e-2; energy row 0.444 against 0.202): reproducing evaluations is now prerequisite P0. The "1.4 percent" base-layer flux difference came from that reload\textquotesingle s trace of raw F without r\^{}2 and is withdrawn.
+\item
+  F1: the carrier relaxation does close its own block (2.39e-10 at pass 18 against \texttt{carrier\_accept\_tol} 1e-8); the alternation with the hydrodynamic solve is what fails. The worst gated cell at r = 1.2002 R\_p is the first cell of the certification gate, which is not a transport boundary; the H2 front is at 1.057 / 1.106 R\_p. The coupled block is refused with ionization transport (\texttt{input\_read.f90:2454-2520}). Pass 20 is not retained (p18, p19 only).
+\item
+  F3: the energy row is multi-term and not bounded by 2 (Salz HD 209458 b starts its JFNK at 2.206); the statement of section 146 that rows near 1.9 mean "terms of opposite sign" is withdrawn. Huang B\textquotesingle s energy row is at r = 5.51 R0 (divergence -1.02e-4 and net heating +9.81e-5 add), its mass row at 1.64 R0.
+\end{itemize}
+
+\subsection{148. Error-testing material deleted from the source and the test set (2026-10-16)}\label{148-error-testing-material-deleted-from-the-source-and-the-test-set-2026-10-16}
+
+User decision 2026-10-16 (\texttt{EXHALE\_v1.10/md/environment\_variable\_options\_survey\_20261016.md}, D1 and D2): every piece of material created for error testing is deleted (fault injection, forced or expected failures, error reproduction, invalid-input and error-path tests, and the routines, variables, drivers, scripts, fixtures and environment controls only they use). Production failure detection, retry, rollback and recovery stay. No replacement error test was written.
+
+\textbf{Deleted from the production source.}
+
+\begin{itemize}
+\tightlist
+\item
+  Environment controls and their injected behavior (19 names): \texttt{EXHALE\_REJECT\_STEP}, \texttt{EXHALE\_ELEMENT\_REFUSE\_STEPS}, \texttt{EXHALE\_TEST\_FAILED\_SOLVE\_PASS}, \texttt{EXHALE\_REJECT\_AFTER\_OP}, \texttt{EXHALE\_REJECT\_AT\_STEP}, \texttt{EXHALE\_REJECT\_ATTEMPTS}, \texttt{EXHALE\_AS\_REJECT\_IN\_PASS}, \texttt{EXHALE\_INJECT\_SOURCE\_ENERGY}, \texttt{EXHALE\_AS\_ERR\_INJECT}, \texttt{EXHALE\_AS\_ERR\_INJECT\_COUNT}, \texttt{EXHALE\_AS\_FORCE\_UNRESOLVED}, \texttt{EXHALE\_CONDUCTION\_REFUSE\_DT\_ABOVE}, \texttt{EXHALE\_ENERGY\_FAIL\_AT\_STEP}, \texttt{EXHALE\_ENERGY\_FAIL\_CALLS}, \texttt{EXHALE\_ADV\_TEST\_REJECT}, \texttt{EXHALE\_TRIAL\_ADMISSIBILITY\_TEST} (the whole trial-admissibility block of \texttt{EXHALE\_main.f90}), \texttt{EXHALE\_PASS\_STATE\_STOP\_AT}, and the two found by the source search, \texttt{EXHALE\_CSM\_GEOM\_REFUSE} and \texttt{EXHALE\_CSM\_EXTRAP\_REFUSE} (the coupled source step refused every error estimate or every extrapolation candidate).
+\item
+  Routines and variables only these used: \texttt{attempted\_step\_injected\_refusal}, the reason code \texttt{as\_reject\_injected} (11 is now unassigned), \texttt{err\_pass\_index}, \texttt{inject\_source\_energy\_offset}, the error-estimate multiplier and the forced unresolved verdict, \texttt{attempted\_step\_perturb\_checkpointed\_state\_for\_test} and its \texttt{bump\_*} helpers, \texttt{element\_refuse\_leading\_steps\_for\_test}, \texttt{element\_refuse\_after\_accepted\_for\_test}, \texttt{conduction\_refuse\_dt\_above\_s} with \texttt{CONDUCTION\_INJECTED}/\texttt{CONDUCTION\_REASON\_INJECTED}, \texttt{energy\_update\_read\_environment}, \texttt{species\_face\_identity\_injection}, \texttt{stop\_if\_pass\_state\_step}, \texttt{carrier\_perturb\_checkpointed\_state\_for\_test} and its \texttt{bump\_*} helpers, \texttt{carrier\_reject\_leading\_attempts\_for\_test} with the reason \texttt{carrier\_reject\_forced\_for\_test}, \texttt{carrier\_history\_reset\_for\_test}, the test-only counter \texttt{carrier\_transport\_stops\_suppressed}, \texttt{lin\_test\_dense\_preconditioner\_fails}, and the public export of \texttt{build\_banded\_jac\_full}.
+\item
+  D2: \texttt{put\_back\_2d\_logical}, \texttt{same\_2d\_logical}; the always-true flag \texttt{resid\_at\_own\_composition} (the sweep to the fixed point now runs unconditionally; the comment in \texttt{parameters.f90} states it as fact, with its measurements); the never-set stop \texttt{step\_change\_converged} with its loop term, its report branch and the parameter \texttt{dtu\_th} (\texttt{dtu} stays a printed diagnostic). The \texttt{if\ (.false.)} line of \texttt{element\_census.f90} went with the dead snapshot argument it silenced, and the commented-out Norcross block of \texttt{cross\_sec.f90} was removed.
+\end{itemize}
+
+\textbf{Kept at the boundaries, renamed for what they carry.} The negative \texttt{as\_inject\_op} that carried the real exhaustion of the nested positivity retry is now the logical \texttt{hydro\_bisections\_exhausted} (named \texttt{hydro\_stage\_retry\_exhausted} until 2026-10-17) (verdict \texttt{as\_reject\_hydro\_stage}, operation \texttt{as\_op\_hydro}). \texttt{read\_test\_reject\_reason} is now \texttt{read\_column\_energy\_solve\_controls}, still reading \texttt{EXHALE\_ADV\_COLUMN\_FLOOR\_IT} and \texttt{EXHALE\_ADV\_COLUMN\_EXCLUDE\_UNROOTED} once, with the logical \texttt{adv\_column\_controls\_read} in place of the \texttt{-1} marker. \texttt{chem\_cycles\_cap\_for\_test} stays as a measurement control (the single closure increments of \texttt{closure\_returned\_state.f90}); \texttt{carrier\_initial\_substep\_for\_test} stays for the step-doubling rows; \texttt{EXHALE\_AS\_FIXED\_DT}, \texttt{EXHALE\_ERR\_EVERY}, \texttt{EXHALE\_RESID\_SC\_MAX} and \texttt{n\_eq\_sweeps\_fixed} stay.
+
+\textbf{Deleted from the test set} (\texttt{src/tests/}, not tracked by git). Whole suites: \texttt{failed\_wind\_recovery}, \texttt{trial\_admissibility}, \texttt{conduction\_retry}, \texttt{restart\_radius\_guard}; files \texttt{certification/certification\_capacity.f90}, \texttt{charge\_exchange\_rows/\{stale\_cell\_rates\_refused,stale\_cell\_stage\_sources\_refused,stale\_cell\_turnover\_refused,cell\_tag\_and\_temperature\}.f90}, \texttt{grid\_and\_gates/\{restart\_grid\_guard,sed\_coverage\_stop\}.sh}. Rows in 27 further suites: the injected refusals and exhaustions of \texttt{attempted\_step} (including \texttt{order\_by\_class}, the temporal-order measurement that needed the error injection), the checkpoint perturbation rows of \texttt{attempted\_step} and \texttt{carrier\_retry}, the forced refusals of \texttt{carrier\_retry} (sections 2, 4, 8, 12, 13) and of \texttt{closure\_returned\_state} (section 4), the face-identity injection of \texttt{species\_face\_flux}, the injected rejection reasons and the no-record transit refusal of \texttt{adv\_static\_limit}, the refused-key, missing-clock and inadmissible-handoff rows of \texttt{run\_mode}, the conflicting-name rows of \texttt{executable\_identity}, the NaN/Inf/negative-input rows of the unit drivers, the expected-failure controls of \texttt{steady\_species\_rows}, and the refused-input rows of \texttt{grid\_and\_gates}, \texttt{state\_mapper}, \texttt{transit\_state}, \texttt{molecular\_seed}, \texttt{spectrum\_type}, \texttt{energy\_update}, \texttt{element\_flux\_closure}, \texttt{matching\_face\_radiation}, \texttt{matching\_surface}, \texttt{conducted\_heat\_column}, \texttt{krylov\_and\_dogleg}, \texttt{coupled\_block\_handover}, \texttt{certification} and \texttt{physics\_probe}. The \texttt{executable\_identity} SUITES list, \texttt{README.md}, \texttt{README\_HOWTO.md} (suite list, 61 suites) and \texttt{docs/EXHALE\_user\_manual.tex} (PDF rebuilt) were updated; the Makefile discovers suites by directory and needed no change.
+
+\textbf{Verification} (all after the edits, once).
+
+\begin{itemize}
+\tightlist
+\item
+  \texttt{make} (gfortran 16.2): no warnings. \texttt{-Wunused-variable\ -Wunused-parameter} on the 13 edited production sources against the same flags on the pristine source: no new warning (the six \texttt{as\_op\_*} imports and \texttt{build\_banded\_jac\_full} it found were removed). Binaries: control (pristine source) md5 51092371..., measured md5 bdd9fe4d....
+\item
+  Regression, 17 default cases single-threaded, control binary in \texttt{backup/regression/\textless{}case\textgreater{}} against the measured binary in sibling copies of the same case directories: the data lines of \texttt{Hydro\_ioniz.txt}, \texttt{Ion\_species.txt} and both \texttt{\_adv} files are bitwise identical in all 17 cases (\texttt{iontrans\_metals} writes no \texttt{\_adv} pair), and the stop and final lines of the 17 logs are identical. \texttt{golden/} was not written.
+\item
+  \texttt{make\ test}, control on a pristine copy of the source (\texttt{git\ archive} plus the untracked \texttt{src/tests} and links to the untracked fixtures) and measured on the tree: no row fails in the measured tree that passes in the control. Measured: 60 PASS, 4 FAIL entries (\texttt{grid\_and\_gates} 4 rows of stationary evaluation and outer-iteration ending, \texttt{residual\_determinism} seed family, \texttt{steady\_completion\_flag}, \texttt{steady\_selfconsistent\_residual}), each failing identically in the control. The two \texttt{residual\_determinism} branch runs (\texttt{atomic\_elem\_newton}) were still marching after 5.5 h in both trees and were stopped by hand. Control-only failures: \texttt{low\_energy\_electron\_degradation} (the copy cannot reach \texttt{../references/}) and the deleted \texttt{run\_mode} rows.
+\item
+  Whole-binary rows of \texttt{attempted\_step} (run separately, they need \texttt{EXHALE\_ATTEMPTED\_STEP\_EXE}): control 164 rows (2 FAIL, the deleted temporal-order rows), measured 64 rows, all PASS, each with the verdict and value it has in the control. \texttt{carrier\_retry}: control 156 rows, measured 84, all PASS and present in the control. \texttt{run\_closure\_returned\_state.sh}: PASSED.
+\item
+  \texttt{grep} of every deleted name in \texttt{src/}, \texttt{Makefile}, \texttt{README*.md} and the user manual: 0.
+\end{itemize}
+
+\textbf{Coverage given up.} The recovery paths are no longer exercised on demand: a refusal after each operation of the trial, retry exhaustion in both run modes, the energy-update, conduction and element-step failures, the failed-solve recovery of the outer alternation, the checkpoint completeness (perturbation) rows, the interrupted publication, and the invalid-input refusals. The temporal order of each row class (RK3 p+1 = 4, species split p+1 = 2), from which \texttt{err\_order\_p} was set, has no direct measurement in the suite any more. Production detection, retry and rollback are unchanged (regression above).
+
+\textbf{Files.} Three \texttt{\_\_pycache\_\_} directories under \texttt{src/} (765 377 bytes) and nine \texttt{.ipynb\_checkpoints} copies byte-identical to their originals (745 623 bytes; in \texttt{docs/}, \texttt{docs/figures/k22\_model\_a/}, \texttt{LHS1140b/}, \texttt{cooling\_data/}; none tracked) were deleted. The other byte-identical groups found by \texttt{md5sum} (audit run states and blocks under \texttt{docs/audit\_20260905/}, the Cloudy decks of \texttt{src/utils/h2\_shielding\_*}, \texttt{inputdata/windae\_grid/}, \texttt{benchmarks/koskinen2022\_model\_a/} restarts, the \texttt{docs/version\_compare/} binaries) are run records or inputs whose identity is itself a recorded result, and were kept. The public verdict variables \texttt{conduction\_last\_nfail}, \texttt{conduction\_last\_T\_floor} and \texttt{conduction\_last\_energy\_deficit} of \texttt{viscous\_conduction.f90}, written and never read once the conduction tests were gone, were deleted on 2026-10-17 (below).
+
+\textbf{Follow-up, 2026-10-17: the two trees made to agree, the write-only conduction verdicts removed, the residual\_determinism branch bounded.} The deletion was made separately in v1.00 and v1.10 (\texttt{EXHALE\_v1.10/md/environment\_variable\_options\_survey\_20261016.md}, "Executed 2026-10-16"), and the two judgments differed. Every suite present in both trees was compared row by row (Fortran \texttt{check*}/\texttt{call\ test\_*}, shell \texttt{PASS\textbar{}FAIL\ \textless{}name\textgreater{}} lines, Python test methods) against the pre-deletion copies of both test sets, and both trees now carry the same rows under one rule: a row that constructs a failing input or state and asserts the failure report, or reproduces a past defect ("red" rows), is deleted; a row that asserts normal behavior stands, even where it was first written as the control of an error row. The test files of the suites present in both trees are now byte-identical, apart from \texttt{carrier\_enthalpy\_flux}, \texttt{interdiffusion\_enthalpy\_flux} and \texttt{steady\_species\_rows}, which differed before the deletion (v1.10 physics) and carry the same rows. Rows deleted in v1.10 to match v1.00: the expected-failure rows of \texttt{energy\_update} (\texttt{test\_no\_bracket}, \texttt{test\_temperature\_floor}, \texttt{conduction\_floor\_tests.f90} \texttt{test\_floor}, with \texttt{cool\_constant} of \texttt{cooling\_models.f90}) and its three defect reproductions (\texttt{falling\_branch\_two\_iteration\_residual\_red}, \texttt{floor\_clamp\_would\_have\_moved\_the\_state\_red}, \texttt{h2\_conductivity\_8p57K\_exp\_form\_nan\_red}); \texttt{inadmissible\_probe\_is\_refused\_at\_any\_ratio} (\texttt{krylov\_and\_dogleg}); the defect rows \texttt{live\_token\_on\_the\_stalling\_pass\_is\_not\_the\_bound} and \texttt{old\_conjunction\_cannot\_hold} (\texttt{coupled\_block\_handover}); \texttt{nh3\_x300\_exchange\_beyond\_its\_bound\_is\_refused} (\texttt{conducted\_heat\_column}). Rows deleted in v1.00 to match v1.10: \texttt{kzz\_1e9\_refused\_out\_of\_the\_table\_range} (\texttt{conducted\_heat\_column}), \texttt{test\_nonzero\_trial\_against\_zero\_measured\_is\_refused} (\texttt{element\_flux\_closure}), the \texttt{hydrogen\_split\_residual(None,\ ...)} assertion and the \texttt{SystemExit} expectation of \texttt{test\_blocks\_is\_the\_step\_budget} (\texttt{matching\_surface}; the step budget is now asserted on a stall followed by a steady retry), and \texttt{reader\_reports\_incomplete\_evidence\_on\_truncated\_final\_solve} with its fixture (\texttt{steady\_selfconsistent\_residual}). Rows restored in v1.00 from v1.10: \texttt{a\_zero\_residual\_norm\_is\_admissible}, \texttt{a\_finite\_positive\_residual\_norm\_is\_admissible}, \texttt{the\_largest\_finite\_residual\_norm\_is\_admissible} (\texttt{carrier\_retry}); \texttt{an\_unread\_healthy\_step\_is\_accepted}, \texttt{an\_unread\_healthy\_step\_moves\_the\_composition} (\texttt{element\_operator}); \texttt{the\_block\_was\_still\_entered\_once} (\texttt{coupled\_block\_handover}); \texttt{the\_increment\_test\_is\_the\_fallback} on the run with no estimate (\texttt{coupled\_source\_step}); and the two covered-SED runs of \texttt{sed\_coverage} (\texttt{sed\_coverage\_covered\_floor\_runs}/\texttt{\_output}, \texttt{sed\_coverage\_balmer\_table\_runs}/\texttt{\_output}, new file \texttt{grid\_and\_gates/sed\_coverage\_covered\_runs.sh}, README section 8). One name each: the \texttt{restart\_continuation\_factor} row is \texttt{factor\_zero\_is\_a\_factor} (its "not T" half was a refusal and is gone), and the \texttt{charge\_exchange\_rows} selector is \texttt{transport\_with\_metals}. Comments, dead imports and unused variables were made the same in both trees; the reference-run row of \texttt{attempted\_step/run.sh}, which in the v1.10 copy printed PASS before its check, now prints one verdict.
+
+Production. The public variables \texttt{conduction\_last\_nfail}, \texttt{conduction\_last\_T\_floor} and \texttt{conduction\_last\_energy\_deficit} of \texttt{viscous\_conduction.f90} were deleted (declaration, export, assignment); \texttt{nfail}, \texttt{T\_flr} and \texttt{deficit} are still computed because \texttt{conduction\_report} prints them in the failure report. \texttt{conduction\_last\_step} is likewise written and never read, and \texttt{conduction\_last\_T\_solution} is read only inside the module; both were left (reported, not deleted). The two names the two deletions gave to one object are now one: the logical carrying the exhaustion of the nested positivity retry is \texttt{hydro\_bisections\_exhausted} (what is exhausted is the bisection of the hydro dt), and the reader of the two column measurement keys is \texttt{read\_column\_energy\_solve\_controls}; \texttt{post\_process\_adv.f90} is now identical in the two trees.
+
+\texttt{residual\_determinism}. The branch runs of \texttt{atomic\_elem\_newton} never ended because \texttt{run\_residual\_determinism.sh} loaded the fixture under the default relaxation intent: the run marched until the face mass-flux spread, read every 500 steps, fell below the hand-off switch 0.1, and the fixture (mapped onto the face-level grid on 2026-09-27) enters at a face spread of 1.82 (measured at step 500; still marching at step 662 after 300 s). The branch run now appends \texttt{Restart\ intent:\ stationary}, which measures the loaded state and enters the stationary solve with no CFL step, which is what the family is about; the report then takes 6 s. Both runs of the script carry \texttt{EXHALE\_MAXSTEPS=1} (no measurement takes a marching step, so 1 is the smallest cap under which both are measured) and \texttt{timeout\ 600}; a run that ends on either limit prints \texttt{==\textgreater{}\ LIMIT\ step\_cap} or \texttt{==\textgreater{}\ LIMIT\ wall\_clock}, and \texttt{run.sh} fails the row with \texttt{measured=step\_cap} or \texttt{measured=wall\_clock} (the step-cap path was exercised on a copy of the script without the intent: it ends in 4 s with that row). Measured 2026-10-17: the suite takes 20 s (v1.00) and 28 s (v1.10), all nine rows PASS in both, the seed family finding one root with a closure spread of 0.1635 of the row tolerance.
+
+Verification (once, after all edits). \texttt{make} in both trees: no warnings, \texttt{make\ -q} clean; binaries v1.00 md5 \texttt{6d7e381a...}, v1.10 \texttt{07d6cef1...}. \texttt{backup/regression/hp\_zero\_seed} (\texttt{EXHALE\_MAXSTEPS=100\ OMP\_NUM\_THREADS=1}), binary of each tree before and after these edits: the data lines of \texttt{Hydro\_ioniz.txt}, \texttt{Ion\_species.txt} and both \texttt{\_adv} files are identical in both trees. The touched suites (those above plus \texttt{adv\_static\_limit}, \texttt{attempted\_step} with its whole-binary rows, \texttt{carrier\_retry} with \texttt{run\_closure\_returned\_state.sh}, \texttt{certification}, \texttt{charge\_exchange\_rows}, \texttt{executable\_identity}, \texttt{grid\_and\_gates}, \texttt{molecular\_seed}, \texttt{physics\_probe}, \texttt{run\_mode}, \texttt{species\_face\_flux}, \texttt{spectrum\_type}, \texttt{state\_mapper}) were run in both trees: every row that existed before keeps its verdict, and every restored row passes. No row went from PASS to FAIL. The failures are the ones that stood before: in \texttt{grid\_and\_gates} the three \texttt{stationary\_evaluate\_*} rows (certification unchanged, exit status, rebuilt within the sweep budget) in both trees and \texttt{outer\_iteration\_ending\_is\_the\_stagnation\_one} in v1.00; \texttt{steady\_selfconsistent\_residual} without a run log (its fixture rows pass in both trees when it is given one); and in v1.10 the rows whose inputs are not in that tree (\texttt{examples/14\_diffusion}, \texttt{examples/15\_molecular}, \texttt{examples/lya\_insitu\_emissivity.py}, the LHS 1140 b model states and SED, the WASP-52b SED: rows of \texttt{adv\_static\_limit}, \texttt{charge\_exchange\_rows}, \texttt{conducted\_heat\_column}, \texttt{grid\_and\_gates} and \texttt{physics\_probe}) and \texttt{carrier\_retry} \texttt{the\_full\_term\_scale\_accepts\_the\_imbalance\_at\_a\_short\_step}, which fails identically in the v1.10 control. Wall time of the slowest suites: \texttt{grid\_and\_gates} 26 min (v1.00) and 50 min (v1.10), \texttt{conducted\_heat\_column} 20 min; \texttt{coupled\_source\_step} with its whole-binary rows (\texttt{EXHALE\_EXE} set) 5.5 min, 44 rows PASS in both trees, measuring 5.05 passes per coupled step against 6.03 for the run with no estimate in both.
 
 \appendix
 \input{Update_EXHALE_appendix}
