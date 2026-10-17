@@ -44,8 +44,7 @@
 
       implicit none
       private
-      public :: boundary_trace_armed, boundary_rebuild_suppressed,        &
-                base_face_state_of_installed_state,                       &
+      public :: boundary_trace_armed, base_face_state_of_installed_state, &
                 report_base_face_state_consistency, base_mass_row_trace,  &
                 ghost_record_armed, write_ghost_record
 
@@ -64,21 +63,6 @@
       call get_environment_variable('EXHALE_BOUNDARY_TRACE', env)
       on = (len_trim(env) .gt. 0 .and. trim(env) .ne. '0')
       end function boundary_trace_armed
-
-      ! ------------------------------------------------------!
-
-      logical function boundary_rebuild_suppressed() result(off)
-      ! EXHALE_TRACE_EXPERIMENT=boundary_from_the_entry_composition, default
-      ! off: the evaluation routes leave the boundary of the composition
-      ! they were ENTERED with standing, instead of deriving it again from
-      ! the composition the sweep returned. It exists so that one binary can
-      ! measure both orders of the same evaluation, which is what the
-      ! boundary_state suite asserts on; with the key unset the boundary is
-      ! always derived from the composition the residual is assembled with.
-      character(len=64) :: env
-      call get_environment_variable('EXHALE_TRACE_EXPERIMENT', env)
-      off = (index(env, 'boundary_from_the_entry_composition') .gt. 0)
-      end function boundary_rebuild_suppressed
 
       ! ------------------------------------------------------!
 
