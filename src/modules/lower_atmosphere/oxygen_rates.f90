@@ -139,8 +139,8 @@
       ! both reactions are deeply in the low-pressure limit -- the measured
       ! reduced pressure at the HD 189733 b base (n = 7.87e12 cm^-3, 864 K)
       ! is 1.2e-8 for O8 and 2.6e-9 for O9 -- so k_inf and the choice of
-      ! falloff function are numerically irrelevant there.  Neither reaction
-      ! is in the minimal set (below), so no code evaluates the falloff.
+      ! falloff function are numerically irrelevant there.  They are carried
+      ! anyway because the option is meant to run down to the 1e-4 bar level.
       !
       ! ---------------------------------------------------------------
       ! VALIDITY RANGE OF THE SET AS A WHOLE
@@ -158,14 +158,12 @@
       ! ---------------------------------------------------------------
       ! REACTIONS NOT IN THIS MODULE, AND WHY
       !
-      ! O8, O9, O10 and O12 below are NOT part of the minimal set the
-      ! measured budget supports, and no code evaluates them: their rate
-      ! functions and the Lindemann combination were removed on 2026-10-17
-      ! with the hand-compiled rate check that was their only caller.  The
-      ! published values and the verdicts stay below so that the audit
-      ! records a value and a verdict rather than an omission.  Their
-      ! measured shares of the dominant channel O1 at the HD 189733 b base
-      ! are 7.8e-9 (O8), 9.7e-8 (O9),
+      ! O8, O9, O10 and O12 below are transcribed but are NOT part of the
+      ! minimal set the measured budget supports: no balance row calls
+      ! them, and their one caller is the rate check of src/tests/a2_m1.
+      ! They are here so that the audit records a value and a verdict
+      ! rather than an omission.  Their measured shares of the dominant
+      ! channel O1 at the HD 189733 b base are 7.8e-9 (O8), 9.7e-8 (O9),
       ! 5.5e-7 (O10) and 2.8e-5 (O12).
       !
       ! O11 of the design -- physical quenching O(1D) + M -> O + M -- has no
@@ -197,7 +195,10 @@
       private
 
       public :: rk_O1_OH_H2_water,    rk_O2_O_H2_hydroxyl,               &
-                rk_O6_O1D_H2_hydroxyl
+                rk_O6_O1D_H2_hydroxyl, rk_O8_O_H_assoc,                  &
+                rk_O9_H_OH_assoc,     rk_O10_OH_OH_water,                &
+                rk_O12_O1D_H2O_hydroxyl,                                 &
+                lindemann_rate
       public :: enthalpy_shomate, entropy_shomate, gibbs_energy_shomate,  &
                 equilibrium_constant_conc, rate_from_detailed_balance,    &
                 co_equilibrium_density, oxygen_chemical_equilibrium_fractions
@@ -635,8 +636,9 @@
       !     J. Phys. Chem. Ref. Data 15, 1087, entry 5,4, data sheet
       !     p. 1111 and summary table p. 1091.
       !
-      ! The low-pressure limit k0.  The oxygen analogue of R15
-      ! (H + H + M -> H2 + M) in mol_rates.f90.
+      ! Returns the low-pressure limit k0; combine with k_inf through
+      ! lindemann_rate.  The oxygen analogue of R15 (H + H + M -> H2 + M)
+      ! in mol_rates.f90.
       !
       ! WHAT THE SOURCE ACTUALLY SAYS.  The data sheet states that there are
       ! no definitive measurements of this rate, that the numbers in the
@@ -649,12 +651,16 @@
       ! source does not give).  Their high-pressure limits differ by a
       ! factor of 10 (1.0e-12 against 1.0e-11) and neither is in Tsang &
       ! Hampson: Photochem's 1.0e-12 is the same placeholder it puts on
-      ! H + H (+M) and O + O (+M).  The VULCAN value would be the k_inf to
-      ! use, and it is numerically irrelevant -- see the THIRD BODY M note
-      ! in the header.
+      ! H + H (+M) and O + O (+M).  The VULCAN value is used below where a
+      ! k_inf is needed, and it is numerically irrelevant -- see the THIRD
+      ! BODY M note in the header.
       !
       ! NOT IN THE MINIMAL SET: measured at 7.8e-9 of O1 at the
       ! HD 189733 b base.
+      double precision function rk_O8_O_H_assoc(T) result(k0)
+      real(dp), intent(in) :: T
+      k0 = 1.3d-29*T**(-1.0d0)
+      end function
 
       ! O9: H + OH + M -> H2O + M
       !     k0(N2)  = 6.1e-26 T^-2.0 cm^6 molecule^-2 s^-1, 300-3000 K,
@@ -714,6 +720,10 @@
       !
       ! NOT IN THE MINIMAL SET: measured at 9.7e-8 of O1 at the HD 189733 b
       ! base with the N2 value adopted here.
+      double precision function rk_O9_H_OH_assoc(T) result(k0)
+      real(dp), intent(in) :: T
+      k0 = 6.1d-26*T**(-2.0d0)
+      end function
 
       ! O10: OH + OH -> H2O + O
       !     k = 5.56e-20 T^2.42 exp(+970/T) cm^3 molecule^-1 s^-1,
@@ -721,13 +731,12 @@
       !     and data sheet p. 1032.
       !
       ! NOT IN THE MINIMAL SET: measured at 5.5e-7 of O1 at the HD 189733 b
-      ! base.  It was transcribed because it is the one reaction in this
+      ! base.  It is transcribed because it is the one reaction in this
       ! module whose reverse is written out explicitly in the other network
       ! (VULCAN id 5, O + H2O -> OH + OH, 8.20e-14 T^0.95 exp(-8570/T),
-      ! 250-2400 K), so the pair was an end-to-end test of
+      ! 250-2400 K), so the pair is an end-to-end test of
       ! rate_from_detailed_balance against two independent transcriptions of
-      ! opposite directions of the same reaction (in the rate check removed
-      ! on 2026-10-17).
+      ! opposite directions of the same reaction.
       !
       ! WHY THE 2005 SUPPLEMENT, AND A MIS-ATTRIBUTION FIXED.  The 1992
       ! evaluation recommends 2.5e-15 T^1.14 exp(-50/T) over 250-2500 K,
@@ -739,6 +748,10 @@
       ! evaluation, which is the one that revised the recommendation.
       ! Measured, the two forms agree to 1.3% at 300 K but the 1992 one is
       ! 2.4x larger at 864 K and 1.3x larger at 2500 K.
+      double precision function rk_O10_OH_OH_water(T) result(k)
+      real(dp), intent(in) :: T
+      k = 5.56d-20*T**2.42d0*exp(970.0d0/T)
+      end function
 
       ! O12: O(1D) + H2O -> OH + OH
       !     k = 2.2e-10 cm^3 molecule^-1 s^-1, independent of temperature
@@ -749,12 +762,27 @@
       ! NOT IN THE MINIMAL SET: the second O(1D) sink after O6, measured at
       ! 2.8e-5 of O1 at the HD 189733 b base and giving O(1D) a lifetime of
       ! 1.1 s there against 1.6e-3 s from O6 -- 685x slower, so it changes
-      ! the O(1D) steady state by 0.15%.  It is recorded so that the
-      ! O(1D) closure has a value for its only competitor rather than an
+      ! the O(1D) steady state by 0.15%.  It is transcribed so that the
+      ! O(1D) closure records a value for its only competitor rather than an
       ! omission.  This is the value zahnle_earth.yaml carries; VULCAN's
       ! id 619 gives 1.62e-10 exp(+65/T) over 235-370 K, 21% below the
       ! evaluation at 300 K.
+      double precision function rk_O12_O1D_H2O_hydroxyl() result(k)
+      k = 2.2d-10
+      end function
 
+      ! Lindemann combination of a low-pressure limit k0 [cm^6 s^-1] and a
+      ! high-pressure limit k_inf [cm^3 s^-1] at third-body density n_M
+      ! [cm^-3], returning the two-body-equivalent rate [cm^3 s^-1]:
+      !     k = k_inf Pr/(1+Pr),   Pr = k0 n_M / k_inf .
+      ! This is what both reference codes reduce to when no Troe parameters
+      ! are supplied, which is the case for O8 and O9.
+      double precision function lindemann_rate(k0, kinf, n_M) result(k)
+      real(dp), intent(in) :: k0, kinf, n_M
+      real(dp) :: Pr
+      Pr = k0*n_M/kinf
+      k  = kinf*Pr/(1.0d0 + Pr)
+      end function
 ! =====================================================================
 !  Thermodynamics and detailed balance
 ! =====================================================================

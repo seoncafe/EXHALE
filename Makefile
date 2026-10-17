@@ -20,6 +20,10 @@
 #
 #  All build artifacts (objects, .mod files, dep/flag stamps) live in
 #  $(OBJDIR)/; source basenames are unique, so a flat object dir is safe.
+#  $(OBJDIR)/*.o is exactly the object set of EXHALE.x: the main program
+#  of every other executable (wind_ae_ic.x, the two test programs, the
+#  equilibrium probe) is compiled into $(PROGDIR)/, so a driver that links
+#  the production modules takes $(OBJDIR)/*.o less EXHALE_main.o.
 #
 #  Changing FC, FFLAGS, or MODFLAG forces a full rebuild: the objects
 #  depend on a stamp file whose NAME encodes a hash of the effective flag
@@ -28,6 +32,7 @@
 
 OBJDIR := build
 MODDIR := $(OBJDIR)
+PROGDIR := $(OBJDIR)/programs
 comma  := ,
 EXE    := EXHALE.x
 
@@ -241,8 +246,9 @@ WAE_DIR := src/modules/wind_ae
 # standalone build EXCLUDES wae_exhale_bridge.f90 (it alone uses EXHALE's
 # global_parameters; it is linked only into EXHALE.x for "IC mode: windae").
 WAE_SRC := $(filter-out $(WAE_DIR)/wae_exhale_bridge.f90, \
-             $(sort $(wildcard $(WAE_DIR)/wae_*.f90))) $(WAE_DIR)/wind_ae_ic.f90
-WAE_OBJ := $(addprefix $(OBJDIR)/,$(notdir $(WAE_SRC:.f90=.o)))
+             $(sort $(wildcard $(WAE_DIR)/wae_*.f90)))
+WAE_OBJ := $(addprefix $(OBJDIR)/,$(notdir $(WAE_SRC:.f90=.o))) \
+           $(PROGDIR)/wind_ae_ic.o
 WAE_EXE := wind_ae_ic.x
 WAE_DEPFILE := $(OBJDIR)/.deps_wae.mk
 vpath %.f90 $(WAE_DIR)
@@ -269,9 +275,9 @@ DIFT_SRC := \
   src/modules/states/Reconstruction.f90 \
   src/modules/flux/species_face_flux.f90 \
   src/modules/init/define_grid.f90 \
-  src/modules/functions/binary_element_diffusion.f90 \
-  src/tests/diffusion_tests.f90
-DIFT_OBJ := $(addprefix $(OBJDIR)/,$(notdir $(DIFT_SRC:.f90=.o)))
+  src/modules/functions/binary_element_diffusion.f90
+DIFT_OBJ := $(addprefix $(OBJDIR)/,$(notdir $(DIFT_SRC:.f90=.o))) \
+            $(PROGDIR)/diffusion_tests.o
 DIFT_EXE := diffusion_tests.x
 DIFT_DEPFILE := $(OBJDIR)/.deps_dift.mk
 vpath %.f90 src/tests
@@ -283,9 +289,9 @@ vpath %.f90 src/tests
 # every module the production binary does (bar the main program), because
 # the carrier write-back reads the ionization sweep's cell state, so it
 # needs LAPACK like cce_probe.x.
-ECT_SRC := $(filter-out src/EXHALE_main.f90,$(SRC)) \
-  src/tests/element_census_tests.f90
-ECT_OBJ := $(addprefix $(OBJDIR)/,$(notdir $(ECT_SRC:.f90=.o)))
+ECT_SRC := $(filter-out src/EXHALE_main.f90,$(SRC))
+ECT_OBJ := $(addprefix $(OBJDIR)/,$(notdir $(ECT_SRC:.f90=.o))) \
+           $(PROGDIR)/element_census_tests.o
 ECT_EXE := element_census_tests.x
 ECT_DEPFILE := $(OBJDIR)/.deps_ect.mk
 
@@ -298,9 +304,9 @@ ECT_DEPFILE := $(OBJDIR)/.deps_ect.mk
 # It links the same modules the equilibrium sweep uses (everything but the
 # main program), so the coefficients it evaluates are the production ones,
 # and it needs LAPACK for the singular values.
-CCE_SRC := $(filter-out src/EXHALE_main.f90,$(SRC)) \
-  src/modules/nonlinear_system_solver/constrained_equilibrium_probe.f90
-CCE_OBJ := $(addprefix $(OBJDIR)/,$(notdir $(CCE_SRC:.f90=.o)))
+CCE_SRC := $(filter-out src/EXHALE_main.f90,$(SRC))
+CCE_OBJ := $(addprefix $(OBJDIR)/,$(notdir $(CCE_SRC:.f90=.o))) \
+           $(PROGDIR)/constrained_equilibrium_probe.o
 CCE_EXE := cce_probe.x
 CCE_DEPFILE := $(OBJDIR)/.deps_cce.mk
 
@@ -454,6 +460,17 @@ $(ECT_OBJ): $(FLAGSTAMP)
 $(OBJDIR)/%.o: %.f90 | $(OBJDIR)
 	$(FC) $(FFLAGS) $(MODFLAG) -c $< -o $@
 
+# The main program of every executable but EXHALE.x, compiled into
+# $(PROGDIR)/ (a program writes no .mod). It depends on every module object
+# of its own link set: the generated dependency files describe the module
+# objects only, and a program is recompiled whenever one of them is.
+$(PROGDIR)/%.o: %.f90 | $(PROGDIR)
+	$(FC) $(FFLAGS) $(MODFLAG) -c $< -o $@
+$(PROGDIR)/wind_ae_ic.o: $(filter-out $(PROGDIR)/%,$(WAE_OBJ))
+$(PROGDIR)/diffusion_tests.o: $(filter-out $(PROGDIR)/%,$(DIFT_OBJ))
+$(PROGDIR)/element_census_tests.o: $(filter-out $(PROGDIR)/%,$(ECT_OBJ))
+$(PROGDIR)/constrained_equilibrium_probe.o: $(filter-out $(PROGDIR)/%,$(CCE_OBJ))
+
 # flag-change stamp: a normal prerequisite of every object so that a change
 # in FC / FFLAGS / MODFLAG (which renames the stamp) forces a full rebuild.
 # The recipe drops any stale sibling stamps, so only the current flag set is
@@ -464,7 +481,7 @@ $(FLAGSTAMP): | $(OBJDIR)
 $(LINKSTAMP): | $(OBJDIR)
 	@rm -f $(OBJDIR)/.linkflags-* && touch $@
 
-$(OBJDIR):
+$(OBJDIR) $(PROGDIR):
 	@mkdir -p $@
 
 # convenience aliases matching the run_EXHALE.sh flags
@@ -473,6 +490,7 @@ ifx:   ; @$(MAKE) --no-print-directory FC=ifx
 
 clean:
 	@rm -f $(OBJ) $(WAE_OBJ) $(DIFT_OBJ) $(CCE_OBJ) $(ECT_OBJ) $(MODDIR)/*.mod
+	@rm -f $(PROGDIR)/*.o
 	@echo "cleaned objects and .mod files in $(OBJDIR)/ (kept $(EXE), $(WAE_EXE))"
 
 distclean:
