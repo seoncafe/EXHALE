@@ -168,18 +168,8 @@
 	real*8, save :: pp_xHeII_fix  = 0.0d0
 	real*8, save :: pp_xHeIII_fix = 0.0d0
 
-	! MEASUREMENT ONLY, default off: EXHALE_ADV_TEST_REJECT=<reason>, with
-	! <reason> one of the names of adv_column_reason_name (linear_solve,
-	! nonfinite, non_positive_T, residual_above_tolerance), makes every
-	! column energy solve of the post-process end rejected with that reason
-	! and its first unknown as the triggering cell, after the solve itself
-	! has run, so that the handling of a rejection (the rows written
-	! adv_failed, the derived-state record, the exit status of the
-	! evaluation) can be tested on a state whose column is accepted. Read
-	! once, at the first call of post_process_adv; unset, it changes
-	! nothing.
-	integer, save :: adv_test_reject_reason = -1
-	! MEASUREMENT ONLY, default off, read with the key above.
+	! MEASUREMENT ONLY, default off; read once, at the first call of
+	! post_process_adv (adv_column_controls_read).
 	! EXHALE_ADV_COLUMN_FLOOR_IT=<n>: after the column iteration has met its
 	! step test, take n further Newton steps before the final rows are
 	! formed, so that the residual the log reports is the stagnation level
@@ -193,6 +183,7 @@
 	! unknowns by default).
 	integer, save :: adv_column_floor_it = 0
 	logical, save :: adv_column_exclude_unrooted = .false.
+	logical, save :: adv_column_controls_read = .false.
 
 	contains
 
@@ -645,9 +636,9 @@
    ! Numerical tolerance for system solution
    tol = sqrt(dpmpar(1))
 
-   ! The measurement-only rejection of the column solve (see the
-   ! declaration of adv_test_reject_reason), read once.
-   if (adv_test_reject_reason .lt. 0) call read_test_reject_reason()
+   ! The two measurement keys of the column energy solve (see the
+   ! declaration of adv_column_floor_it), read once.
+   if (.not. adv_column_controls_read) call read_column_energy_solve_controls()
 
    ! Advection system size. The advection-correction systems
    ! (adv_implicit_H/HeH/HeH_TR) solve only H/He fractions and never
@@ -2939,9 +2930,6 @@
 		endif
 		deallocate(floor_units, floor_units_raw)
 	endif
-	! The measurement-only rejection (adv_test_reject_reason).
-	if (.not. col_bad .and. adv_test_reject_reason .gt. adv_col_reason_none)    &
-		call reject_column(adv_test_reject_reason, cells(1))
 	! THE ENERGY ROW OF THE CELL THE RESIDUAL TEST REJECTS, term by term, at
 	! the temperature the column solve returned and with that cell at the
 	! run's own temperature (the rest of the profile at the solve's), so a
@@ -3181,15 +3169,14 @@
 	if (cell .ge. 1-Ng .and. cell .le. N+Ng) col_T_trigger = T_out(cell)
 	end subroutine reject_column
 
-	subroutine read_test_reject_reason()
-	! EXHALE_ADV_TEST_REJECT (see adv_test_reject_reason): the reason by
-	! its name, or none. A value that names no reason stops the run, since
-	! a measurement that silently did not take place is worse than none.
-	! The two column measurement keys (adv_column_floor_it,
-	! adv_column_exclude_unrooted) are read here too.
+	subroutine read_column_energy_solve_controls()
+	! The two measurement keys of the column energy solve
+	! (adv_column_floor_it, adv_column_exclude_unrooted). A value of the
+	! first that cannot be read stops the run, since a measurement that
+	! silently did not take place is worse than none.
 	character(len=64) :: env_value
-	integer :: ir, ios_key
-	adv_test_reject_reason = adv_col_reason_none
+	integer :: ios_key
+	adv_column_controls_read = .true.
 	call get_environment_variable('EXHALE_ADV_COLUMN_FLOOR_IT', env_value)
 	if (len_trim(env_value) .gt. 0) then
 		read(env_value, *, iostat=ios_key) adv_column_floor_it
@@ -3208,22 +3195,7 @@
 		write(*,'(A)') ' (post_process_adv) EXHALE_ADV_COLUMN_EXCLUDE_UNROOTED=1:'//&
 		     ' cells the marching energy step found no root for are fixed'//  &
 		     ' values of the column (measurement only).'
-	call get_environment_variable('EXHALE_ADV_TEST_REJECT', env_value)
-	if (len_trim(env_value) .eq. 0) return
-	do ir = adv_col_reason_linear_solve, adv_col_reason_residual_above_tolerance
-		if (trim(env_value) .eq. trim(adv_column_reason_name(ir))) then
-			adv_test_reject_reason = ir
-			write(*,'(A,A,A)') ' (post_process_adv) EXHALE_ADV_TEST_REJECT=', &
-			     trim(env_value), ': every column energy solve is'//         &
-			     ' rejected with this reason (measurement only).'
-			return
-		endif
-	enddo
-	write(*,'(A,A,A)') ' (post_process_adv) EXHALE_ADV_TEST_REJECT=',       &
-	     trim(env_value), ' names no rejection reason (linear_solve,'//      &
-	     ' nonfinite, non_positive_T, residual_above_tolerance).'
-	error stop 1
-	end subroutine read_test_reject_reason
+	end subroutine read_column_energy_solve_controls
 
 	! End of subroutine
 	end subroutine post_process_adv

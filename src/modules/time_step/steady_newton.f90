@@ -139,9 +139,6 @@
 
       implicit none
       private
-      ! build_banded_jac_full is public for the trial-admissibility test of
-      ! EXHALE_main (EXHALE_TRIAL_ADMISSIBILITY_TEST).
-      public :: build_banded_jac_full
       public :: neq_newton, pack_U, unpack_U, newton_residual,         &
                 pack_species_rows, write_species_rows_into_composition, &
                 cell_state_scales, cell_row_scales,                     &
@@ -173,7 +170,6 @@
                 predicted_model_decrease,                                 &
                 linear_operator_set_for_test,                             &
                 linear_operator_clear_for_test, lin_test_dense,           &
-                lin_test_dense_preconditioner_fails,                      &
                 lin_test_dense_action_drifts, lin_test_drift_after,       &
                 gm_tolerance_reached, gm_subspace_exhausted,              &
                 gm_no_direction_sampled, gm_jacobian_action_unusable,     &
@@ -1894,9 +1890,7 @@
       ! samples; there is no separate mode for it.
       integer, parameter :: lin_test_absent = 0
       integer, parameter :: lin_test_dense  = 1
-      ! The dense operator with a preconditioner that reports a LAPACK
-      ! failure: the vector is returned untouched and the status is nonzero.
-      integer, parameter :: lin_test_dense_preconditioner_fails = 2
+      ! (2 is not assigned.)
       ! The dense operator whose action STOPS BEING THE SAME LINEAR MAP
       ! after lin_test_drift_after products: from there on the action is
       ! (A + c (k - lin_test_drift_after) I) v with k the number of
@@ -4412,9 +4406,7 @@
       ! passes with no test; an early-exit loop that stopped after k passes
       ! and a fixed count of k are the same map, the test being taken after
       ! the pass.
-      n_sweep_max = 1
-      if (resid_at_own_composition)                                      &
-         n_sweep_max = max(1, n_selfconsistent_max)
+      n_sweep_max = max(1, n_selfconsistent_max)
       if (n_eq_sweeps_cap .ge. 0) n_sweep_max = max(1, n_eq_sweeps_cap)
       eq_fixed_count = .false.
       if (present(n_eq_sweeps_fixed)) then
@@ -7142,9 +7134,9 @@
            digest_of_a_real_array(reshape(f_sp_base,                     &
                                   (/ size(f_sp_base) /))),               &
            ', state digest ', digest_of_a_real_array(Y)
-      write(*,'(A,L1,A,I0,A,I0,A,ES11.3)')                               &
+      write(*,'(A,I0,A,I0,A,ES11.3)')                                    &
            ' (closure_probe) closure policy of the run: sweep to the'//  &
-           ' fixed point ', resid_at_own_composition, ', at most ',      &
+           ' fixed point, at most ',                                     &
            n_selfconsistent_max, ' pass(es), cap ', n_eq_sweeps_cap,     &
            ', increment asked for ', eq_sweep_reltol
       write(*,'(A,I0,A,ES11.3,A,ES11.3,A,L1)')                           &
@@ -11032,7 +11024,7 @@
       ! budget constrains exactly those: a species the solve does not carry
       ! is data of the step and its nuclei are on the other side of the
       ! constraint.
-      integer :: i, isp, k, ie, nel
+      integer :: i, isp, ie, nel
       elem_species_is_carried = .false.
       do i = 1, nspec_row
          if (srow_kind(i) .ne. srow_carrier) cycle
@@ -12738,7 +12730,6 @@
          return
       endif
       info = 0
-      if (lin_test_kind .eq. lin_test_dense_preconditioner_fails) info = 1
       end subroutine banded_preconditioner_solve
 
       ! ------------------------------------------------------!

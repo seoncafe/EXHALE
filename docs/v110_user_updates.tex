@@ -1,0 +1,153 @@
+% User-facing changes in the v1.10 source tree. Keep before the inherited chapters.
+\clearpage
+\section{What changed in v1.10}\label{sec:v110-user}
+
+The chapters following this section were copied from the v1.00 manual. They
+describe the physical options and output schemas of that version. Their
+planet-specific timings, residuals, and convergence examples are historical
+v1.00 measurements; they are not renewed v1.10 results. This section gives the
+current v1.10 behavior where the versions differ. In particular, the older
+use of the word ``converged'' for a marching snapshot does not certify a
+stationary solution.
+
+\subsection{Two levels of convergence}
+
+\textbf{Regional stabilization} is the finite-duration test implemented for
+atomic global physical-time marching. It checks whether upper-atmosphere
+profiles have small variations while lower-atmosphere variations remain within
+the configured bounds. It ends a successful regional run without launching a
+Newton--Krylov solve. \textbf{Stationary convergence} requires the enabled
+fluid, chemical, radiative, and boundary equations to satisfy specified
+stationary residual and consistency tolerances. Regional stabilization alone
+does not imply a stationary root. The numerical method does not define either
+physical criterion.
+
+Enable the regional test with \texttt{Regional convergence: True}. The main
+program accepts it only with \texttt{Run mode: phys} in an atomic calculation
+using global physical time steps, with Newton solving disabled. A local-time
+step, molecular chemistry, stationary restart, or post-processing-only run with
+this option stops at startup. The absence of the key leaves the regional
+monitor disabled. The Huang and Salz settings under
+\texttt{examples/regional\_convergence/} are fragments; merge one into a
+complete planetary \texttt{input.inp}, replacing duplicate keys.
+
+\begin{center}
+\begin{tabular}{lcc}
+\toprule
+Quantity checked & Upper region & Lower/transition regions\\
+\midrule
+Window-mean change and span & 0.01 & 0.10\\
+Full value range & 0.05 & 0.20\\
+Mass and internal-energy inventory & 0.01 & 0.05\\
+Mean actual face mass flow & 0.01 & 0.05\\
+\bottomrule
+\end{tabular}
+\end{center}
+
+These are source defaults, not universal observational accuracy bounds. The
+three configured regions use their own limits. The inventory limit applies to
+both the change and the full range. Mass flow is checked through its window
+means and their span; its instantaneous range is recorded but is not a stop
+gate. All criteria must hold over four validation windows times a confirmation
+factor of two, for eight consecutive windows, with at least 40 accepted
+endpoints in each. Rejected time steps do not advance the confirmation clock.
+When a candidate fails, the test starts a new candidate with a new fixed
+reference; it does not combine favorable windows from different candidates.
+
+The radial cuts, window duration, settling time, total time budget, thresholds,
+and profile cadence are editable with \texttt{Regional ...} input lines. The
+complete v1.10 set is:
+
+\begin{lstlisting}[style=cfg]
+Regional convergence: True
+Regional lower radius: 1.3
+Regional upper radius: 1.85
+Regional window seconds: 87965.04804471003
+Regional maximum seconds: 0
+Regional settling seconds: 0
+Regional validation windows: 4
+Regional confirmation factor: 2
+Regional minimum samples: 40
+Regional lower mean limit: 0.10
+Regional transition mean limit: 0.10
+Regional upper mean limit: 0.01
+Regional lower range limit: 0.20
+Regional transition range limit: 0.20
+Regional upper range limit: 0.05
+Regional lower inventory limit: 0.05
+Regional transition inventory limit: 0.05
+Regional upper inventory limit: 0.01
+Regional lower mass flow limit: 0.05
+Regional transition mass flow limit: 0.05
+Regional upper mass flow limit: 0.01
+Regional profile interval: 40
+\end{lstlisting}
+
+This fragment shows the Huang radial cuts and window; it is not a complete
+input file. A common \texttt{Regional inventory limit} or
+\texttt{Regional mass flow limit} may replace the three corresponding regional
+limits. An explicit regional value takes precedence over the common value
+regardless of line order. Unknown \texttt{Regional ...} labels stop the run.
+If \texttt{Regional window seconds: 0}, the duration is twice the initial
+outward acoustic travel time. If \texttt{Regional maximum seconds: 0}, the
+budget is the settling time plus two complete confirmation intervals; zero
+does not mean unlimited time. The initial lower and upper cuts default to
+$1.2\,R_{\rm p}$ when no cuts are supplied, so an empty transition region is
+allowed. The cuts and duration should be stated when comparing calculations.
+
+\subsection{Progress records and plotting}
+
+The regional monitor writes three files:
+\begin{itemize}
+\item \path{output/regional_convergence.csv}: criterion history;
+\item \path{output/regional_convergence_status.txt}: effective settings and
+current outcome;
+\item \path{output/regional_profile_history.txt}: profiles with region labels.
+\end{itemize}
+The monitor evaluates every accepted step. Profiles and the collecting status
+are updated every 40 accepted steps by default, with initial and terminal
+profile records. The status file reports
+\path{convergence_level=regional_stabilization} only after a complete
+successful candidate and \path{stationary_root_claim=False} in that case.
+An incomplete run reports \path{convergence_level=none}. When regional
+monitoring is enabled but the specified criteria are not met by normal
+finalization, the program exits with status 4; a separate startup or runtime
+failure can end earlier.
+
+Run the plotter from the calculation directory after output appears:
+
+\begin{lstlisting}[style=sh]
+python3 /path/to/EXHALE_v1.10/EXHALE_plots.py --regional --live 60
+python3 /path/to/EXHALE_v1.10/EXHALE_plots.py --regional --save output/regional
+\end{lstlisting}
+
+The first invocation refreshes the display every 60 seconds. The second
+writes PDF figures. The regional view shows physical profiles and progress
+separately for the lower, transition, and upper regions. The plotter reads
+existing output; it does not advance a calculation. The old profile view is
+available with \texttt{--profiles}.
+
+\subsection{Stationary lower-boundary closure and current scope}
+
+The v1.10 stationary residual closes the lower ghost composition and
+thermodynamics at a fixed column. Certification of the stored state also
+checks the boundary result; an unclosed boundary cannot establish a certified
+stationary state. The relevant modules are
+\texttt{src/modules/states/stationary\_boundary\_chemistry.f90} and
+\texttt{reservoir\_composition.f90}. This implementation does not by itself
+establish stationary convergence for the historical Yan, Huang, or Salz
+states. No such claim follows from the new regional test.
+
+The older \texttt{Max steps} input and \path{EXHALE_MAXSTEPS}
+environment control set separate caps. Similarly,
+\path{EXHALE_MARCH_FLUX_TH} changes the marching stop, while
+\texttt{Flux spread tol} belongs to stationary acceptance. These values must
+not be substituted for one another. \path{EXHALE_MONITOR_STEPS} must be a
+positive integer in the current source. The copied v1.00 descriptions of
+experimental environment settings do not establish that they are documented
+user inputs in v1.10.
+
+The v1.10 tree lacks the v1.00 regression harness. Its \texttt{make check}
+target reports the missing harness as a failure. The README in this tree
+describes source-build requirements and the status of the paused calculation
+sequence. No model run was made to produce this documentation update.

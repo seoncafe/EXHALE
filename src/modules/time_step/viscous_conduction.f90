@@ -236,12 +236,6 @@
       ! matters has lambda < 2 the update is free of that overshoot.  A
       ! failure that survives every halving of the budget is therefore not
       ! a step-size effect, and the run stops instead of looking further.
-      !
-      ! TEST HOOK, default off: EXHALE_CONDUCTION_REFUSE_DT_ABOVE = t [s]
-      ! makes the stage return the status CONDUCTION_INJECTED for every
-      ! attempt whose longest cell interval exceeds t, without solving.  It
-      ! exists only so that src/tests/conduction_retry can show the refusal,
-      ! the halving and the exhaustion stop on a whole-binary run.
 
       ! CONSERVATION.  The two operators are assembled in flux form: the
       ! coefficient of the face between cells j and j+1 is built from the
@@ -332,9 +326,7 @@
       public :: CONDUCTION_REASON_PIVOT_BREAKDOWN
       public :: conduction_last_status, conduction_last_reason
       public :: conduction_last_cell, conduction_last_step
-      public :: conduction_last_T_solution, conduction_last_T_floor
-      public :: conduction_last_energy_deficit, conduction_last_nfail
-      public :: CONDUCTION_INJECTED, CONDUCTION_REASON_INJECTED
+      public :: conduction_last_T_solution
       public :: conduction_temperature_floor, conduction_reason_text
 
       ! Status of the Crank-Nicolson transport stage, reported through the
@@ -346,9 +338,6 @@
       integer, parameter :: CONDUCTION_FLOOR        = 1
       integer, parameter :: CONDUCTION_NONFINITE    = 2
       integer, parameter :: CONDUCTION_SOLVE_FAILED = 3
-      ! Refused by the test hook EXHALE_CONDUCTION_REFUSE_DT_ABOVE (section
-      ! 5 of the header); never returned by a run that does not set it.
-      integer, parameter :: CONDUCTION_INJECTED     = 4
 
       ! Reasons, one per way the stage can fail. NONFINITE_SOLUTION and
       ! PIVOT_BREAKDOWN share the SOLVE_FAILED status and say different
@@ -360,25 +349,19 @@
       integer, parameter :: CONDUCTION_REASON_NONFINITE_INPUT    = 2
       integer, parameter :: CONDUCTION_REASON_NONFINITE_SOLUTION = 3
       integer, parameter :: CONDUCTION_REASON_PIVOT_BREAKDOWN    = 4
-      integer, parameter :: CONDUCTION_REASON_INJECTED           = 5
 
       ! Verdict of the last call, for a caller that reads it after the fact
       ! (the step verdict of certification.f90; EXHALE_main reads the
       ! `status` argument).
       !   T_solution        the temperature the operator solved for in the
       !                     failing cell, code units, unclamped
-      !   T_floor           the floor it fell below, code units
-      !   energy_deficit    c_v (T_floor - T_solution) per volume, erg/cm3:
-      !                     the energy a floor would have injected into that
-      !                     cell with no source term behind it
+      ! The floor it fell below and the energy a floor would have injected
+      ! there are printed by conduction_report.
       integer, save :: conduction_last_status = CONDUCTION_OK
       integer, save :: conduction_last_reason = CONDUCTION_REASON_NONE
       integer, save :: conduction_last_cell   = 0
       integer, save :: conduction_last_step   = -1
-      integer, save :: conduction_last_nfail  = 0
       real*8,  save :: conduction_last_T_solution     = 0.0d0
-      real*8,  save :: conduction_last_T_floor        = 0.0d0
-      real*8,  save :: conduction_last_energy_deficit = 0.0d0
 
       ! ATTEMPTS at the temperature floor of the Crank-Nicolson transport
       ! stage. A cell whose solved temperature falls below the floor is a
@@ -991,36 +974,6 @@
 
       ! ------------------------------------------------------!
 
-      real*8 function conduction_refuse_dt_above_s()
-      ! The interval [s] of the test hook EXHALE_CONDUCTION_REFUSE_DT_ABOVE
-      ! (section 5 of the header); 0 when unset, which disables it. Read
-      ! once.
-      real*8,  save :: dt_refuse = 0.0d0
-      logical, save :: dt_refuse_read = .false.
-      character(len=32) :: env
-      integer :: st
-      if (.not. dt_refuse_read) then
-         dt_refuse_read = .true.
-         call get_environment_variable('EXHALE_CONDUCTION_REFUSE_DT_ABOVE',&
-                                       env, status=st)
-         if (st .eq. 0 .and. len_trim(env) .gt. 0) then
-            read(env,*,iostat=st) dt_refuse
-            if (st .ne. 0 .or. .not. (dt_refuse .gt. 0.0d0)) then
-               write(*,*) '(conduction) ERROR: EXHALE_CONDUCTION_REFUSE'// &
-                          '_DT_ABOVE takes a positive interval in'//       &
-                          ' seconds, not "'//trim(env)//'".'
-               error stop 1
-            endif
-            write(*,'(A,ES13.6,A)') ' (conduction) TEST HOOK: the'//      &
-                 ' transport stage refuses every attempt longer than',     &
-                 dt_refuse, ' s (EXHALE_CONDUCTION_REFUSE_DT_ABOVE)'
-         endif
-      endif
-      conduction_refuse_dt_above_s = dt_refuse
-      end function conduction_refuse_dt_above_s
-
-      ! ------------------------------------------------------!
-
       subroutine conduction_reason_text(reason_in, text)
       integer, intent(in) :: reason_in
       character(len=*), intent(out) :: text
@@ -1033,8 +986,6 @@
          text = 'non-finite solution of the Crank-Nicolson system'
       case (CONDUCTION_REASON_PIVOT_BREAKDOWN)
          text = 'zero or non-finite pivot in the tridiagonal elimination'
-      case (CONDUCTION_REASON_INJECTED)
-         text = 'refusal injected by EXHALE_CONDUCTION_REFUSE_DT_ABOVE'
       case default
          text = 'admissible'
       end select
@@ -1056,10 +1007,7 @@
       conduction_last_reason         = reason
       conduction_last_cell           = j_bad
       conduction_last_step           = step
-      conduction_last_nfail          = nfail
       conduction_last_T_solution     = T_sol
-      conduction_last_T_floor        = T_flr
-      conduction_last_energy_deficit = deficit
       if (present(status)) status = stat
       if (stat .eq. CONDUCTION_OK) return
 
@@ -1173,19 +1121,6 @@
          call conduction_report(stat, reason, j_bad, nfail, step,         &
                                 0.0d0, T_flr, 0.0d0, status)
          return
-      endif
-
-      ! ---- test hook (section 5 of the header), default off ----
-      if (conduction_refuse_dt_above_s() .gt. 0.0d0) then
-         if (maxval(dt(1:N))*R0/v0 .gt. conduction_refuse_dt_above_s()) then
-            write(*,'(a,es23.16,a,es23.16)') ' (conduction) TEST HOOK:'//  &
-                 ' longest cell interval [s] ', maxval(dt(1:N))*R0/v0,     &
-                 ' above ', conduction_refuse_dt_above_s()
-            call conduction_report(CONDUCTION_INJECTED,                   &
-                                   CONDUCTION_REASON_INJECTED, 1, N,      &
-                                   step, 0.0d0, T_flr, 0.0d0, status)
-            return
-         endif
       endif
 
       ! ---- (i) viscous momentum diffusion ----

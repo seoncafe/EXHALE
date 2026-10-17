@@ -615,11 +615,10 @@
       ! background; the bridge joins them continuously.  Threshold (E<4.78 eV)
       ! and the high-E tail are handled by wing A/B themselves (no hard cutoff).
       ! See docs/photoion_cross_sections.tex (sec. "He 2^3S as two VFKY96
-      ! forms") and docs/Update_EXHALE.  The former Norcross broken-PL +
-      ! TOPbase-tail implementation is retained, commented out, below.
-      !	Fit of data from Norcross (1971)
+      ! forms") and docs/Update_EXHALE.  The wings refit the former Norcross
+      ! (1971) broken power law with a TOPbase tail.
       ! Note: Oklopcic calculations include HeITR only in the
-      !	range [4.8-13.6] eV
+      ! range [4.8-13.6] eV
 	
       double precision function sigma_HeI23S(E)
       real*8, intent(in) :: E
@@ -657,31 +656,6 @@
          mb  = (y4b - y3b)/(x4 - x3)
          sigma_HeI23S = 10.0d0**(mb*(logE - x3) + y3b)
       endif
-
-      ! ================================================================
-      ! FORMER implementation (Norcross 1971 broken power law + re-aimed
-      ! last segment + TOPbase tail), retained for reference:
-      ! ----------------------------------------------------------------
-      !   real*8 :: logsigma, a1,c1,a2,c2,a3,c3, x1,x2,xJ, y3,y4,m,
-      !  &          a3n,c3n,ptail,ctail,tailJ
-      !   x1 = log10(hp_eV*c_light/(2593.01*1e-8))*0.9999   ! ~4.78 eV
-      !   x2 = log10(hp_eV*c_light/(1655.63*1e-8))          ! ~7.49 eV
-      !   xJ = log10(70.0d0)                                ! 70 eV junction
-      !   a1=-0.8134; a2=-1.772; a3=-3.039; c1=1.240
-      !   c2 = c1 + x2*(a1-a2); c3 = 5.470                  ! continuity
-      !   y3 = a2*x3 + c2; y4 = a3*x4 + c3; m = (y4-y3)/(x4-x3)
-      !   ptail=-2.9964; ctail=5.4623; tailJ=ptail*xJ+ctail
-      !   a3n=(tailJ-y4)/(xJ-x4); c3n=y4-a3n*x4
-      !   if (logE .lt. x1) then; sigma_HeI23S=0.0; return; endif
-      !   if (logE .le. x2)                    logsigma = a1*logE + c1
-      !   if (logE .gt. x2 .and. logE .le. x3) logsigma = a2*logE + c2
-      !   if (logE .gt. x3 .and. logE .lt. x4) logsigma = m*(logE-x3) + y3
-      !   if (logE .ge. x4 .and. logE .le. xJ) logsigma = a3n*logE + c3n
-      !   if (logE .gt. xJ)                    logsigma = ptail*logE + ctail
-      !   sigma_HeI23S = 10.0**logsigma
-      !   [pre-extension variant: hard cutoff at x5=log10(59.2 eV),
-      !    last segment slope a3=-3.039]
-      ! ================================================================
 
       ! End of function
       end function sigma_HeI23S

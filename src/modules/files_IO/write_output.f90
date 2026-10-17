@@ -311,7 +311,7 @@
       private :: pass_state_safe_name, pass_state_generation_name_valid,  &
                  pass_state_current_generation,                           &
                  pass_state_previous_generation,                          &
-                 remove_pass_state_directory, stop_if_pass_state_step
+                 remove_pass_state_directory
 
       ! THE IDENTITY OF THIS RUN, unique across runs and hosts: the wall
       ! clock of the run start to the millisecond and the count of the
@@ -1009,10 +1009,7 @@
       ! An interruption before step 2 leaves a .<gen>.tmp directory, one
       ! between 2 and 3 a complete generation no pointer names; neither is
       ! read by anything, and neither is removed by a later run (only names
-      ! read from a manifest are removed). EXHALE_PASS_STATE_STOP_AT=
-      ! <step>[:<pass>] stops the run (stop 3) right after step 1, 2 or 3
-      ! of the pass named (of every pass if none is), so what an
-      ! interruption at each point leaves can be measured.
+      ! read from a manifest are removed).
       !
       ! nmol_eq and nox_eq, which the molecular and oxygen columns are read
       ! from, are refreshed from (rho, f_sp) for the write and put back
@@ -1141,7 +1138,6 @@
          call remove_pass_state_directory(tmp_dir)
          return
       endif
-      call stop_if_pass_state_step(1, pass_now)
 
       ! ---- 2. the complete generation under its own name ----
       rc_gen = posix_rename(trim(tmp_dir)//c_null_char,                   &
@@ -1153,7 +1149,6 @@
               trim(tmp_dir)//' is left, and not published'
          return
       endif
-      call stop_if_pass_state_step(2, pass_now)
 
       ! ---- 3. the publication: one rename of the pointer ----
       open(newunit = unit_m, file = trim(ptr_file)//'.part',              &
@@ -1173,7 +1168,6 @@
               ' generation published before'
          return
       endif
-      call stop_if_pass_state_step(3, pass_now)
 
       ! ---- 4. keep the generation replaced now, remove the one before ----
       if (len_trim(gen_before) .gt. 0) then
@@ -1268,38 +1262,6 @@
               trim(dir_path)//' could not be removed (absent, or it'//    &
               ' holds a file this writer did not write); left as it is'
       end subroutine remove_pass_state_directory
-
-      ! ------------------------------------------------------------------ !
-
-      subroutine stop_if_pass_state_step(step_done, pass_now)
-      ! EXHALE_PASS_STATE_STOP_AT=<step>[:<pass>] (default: unset, no
-      ! effect): stop the run with status 3 right after step <step> of the
-      ! publication of pass <pass> (of every pass when no pass is named),
-      ! the interruption the order of publication is built against. A
-      ! measurement key; a value that cannot be read is ignored.
-      integer, intent(in) :: step_done, pass_now
-      character(len=32) :: stop_text
-      integer :: stop_step, stop_pass, icolon, ios_s
-      call get_environment_variable('EXHALE_PASS_STATE_STOP_AT', stop_text)
-      if (len_trim(stop_text) .eq. 0) return
-      stop_pass = -1
-      icolon = index(stop_text, ':')
-      if (icolon .gt. 0) then
-         read(stop_text(1:icolon-1),*,iostat=ios_s) stop_step
-         if (ios_s .ne. 0) return
-         read(stop_text(icolon+1:),*,iostat=ios_s) stop_pass
-         if (ios_s .ne. 0) return
-      else
-         read(stop_text,*,iostat=ios_s) stop_step
-         if (ios_s .ne. 0) return
-      endif
-      if (stop_step .ne. step_done) return
-      if (stop_pass .ge. 0 .and. stop_pass .ne. pass_now) return
-      write(*,'(A,I0,A,I0,A)') ' (publish_pass_state_generation) stopped'//&
-           ' after step ', step_done, ' of the publication of pass ',     &
-           pass_now, ' (EXHALE_PASS_STATE_STOP_AT)'
-      stop 3
-      end subroutine stop_if_pass_state_step
 
       ! ------------------------------------------------------------------ !
 
@@ -1471,8 +1433,7 @@
       end function adv_column_outcome_name
 
       function adv_column_reason_name(reason) result(nm)
-      ! The word the header and the log use for a column rejection reason;
-      ! also the value EXHALE_ADV_TEST_REJECT accepts.
+      ! The word the header and the log use for a column rejection reason.
       integer, intent(in) :: reason
       character(len=24) :: nm
       select case (reason)
@@ -1666,8 +1627,7 @@
            'mol-ion return R6R9R11' /)
       real*8 :: dr_cm, absph(n_fuv_band), absen(n_fuv_band)
       real*8 :: heat_col(n_fuv_band), bond_col(n_fuv_band)
-      real*8 :: nph_b, relerr, worst, e_lw_abs, e_lw_in, ph_lw
-      real*8 :: NH2_out_lw, tau_out_lw
+      real*8 :: nph_b, relerr, worst, e_lw_abs, e_lw_in
       ! The G4 ledger.  cont_ph and cont_beam carry the H2O and OH continuum
       ! alone -- the part of a band that must close cell by cell -- while
       ! absph and absen carry every rated absorber, so in the shared
@@ -1677,11 +1637,10 @@
       real*8 :: cont_ph(n_fuv_band), cont_beam(n_fuv_band)
       real*8 :: beam_loss(n_fuv_band), tr_line_in(n_fuv_band)
       real*8 :: unrated(n_fuv_band), unrated_f(n_fuv_band)
-      real*8 :: a_cell, dtau_col, dn_h2o, dn_oh, dn_h2, dn_co
       ! How far the H2O density written here has moved from the one the
       ! photon field was built on, as a fraction of the cell's own column
       ! increment, and where the worst cell of the column is.
-      real*8 :: drift_worst, drift_r, dstate
+      real*8 :: drift_worst, drift_r
       ! Line-centre H I Ly-alpha depth of the state this file writes, for the
       ! B2 beam transmission.
       real*8, dimension(1-Ng:N+Ng) :: tau_lya_col

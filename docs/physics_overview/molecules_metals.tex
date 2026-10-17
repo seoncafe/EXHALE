@@ -1,0 +1,1143 @@
+\section{The molecular layer, the trace metals and element transport}
+\label{sec:mol}
+
+Everything in this section is \emph{off} by default. A run acquires the
+molecular layer by asking for it (\texttt{Molecular chemistry: True}, which
+also switches \texttt{Molecular base} on so that the base particle count and
+the chemistry describe one gas), the metals by the presence of \texttt{metals.inp} or of elemental
+abundances in a handoff file, and the element transport by
+\texttt{He\_diffusion}. An atomic, metal-free run never enters any of the
+code described here.
+
+\subsection{\texorpdfstring{The H$_2$/He reaction network}{The H2/He reaction network}}
+\label{sec:mol:network}
+
+\texttt{mol\_rates.f90} carries the reaction rate coefficients of
+\citet{Koskinen2022} Table 1 as published, in cgs
+(cm$^{3}$\,s$^{-1}$, and cm$^{6}$\,s$^{-1}$ for the two three-body entries
+R13 and R15; R13 is multiplied by the total heavy-particle density and R15 by
+a collider-resolved one, below).
+EXHALE carries one temperature, so the heavy-particle and the electron
+temperature of that table are the same variable. The photorates P1--P5 of
+the paper are marked ``SC'' there, computed from cross sections, stellar
+flux and columns; in EXHALE they are the integrals of
+Sec.~\ref{sec:radiation:rates} and are not part of this module.
+
+One entry is deliberately \emph{not} transcribed. R12, the thermal
+dissociation of H$_2$, is built by detailed balance from the R15
+recombination,
+\begin{equation}
+k_{12}(T) = \frac{k_{3b}(T)}{K_{\rm eq}(T)},
+\label{eq:mol:r12}
+\end{equation}
+with $K_{\rm eq}$ the ${\rm H}+{\rm H}\rightleftharpoons{\rm H_2}$
+equilibrium constant built from the same internal partition function
+$Q_{\rm H_2}(T)$ the caloric equation of state uses
+(Sec.~\ref{sec:mol:caloric}), because the two Table-1 entries are the same
+channel in opposite directions and their source measurements do not overlap
+in temperature. The third body of R13 is the total gas-particle density
+excluding electrons, its source (Miller et al.\ 1968) being a single
+coefficient with no collider dependence measured. R12 and R15 are
+collider-resolved (corrected 2026-09-17, item L7g): the association rate is
+the sum $\sum_M k_1(M)\,n_M$ over $M = {\rm H_2}$, H and He with the
+published coefficients of \citet{CohenWestberg1983}, carried in the code as
+an H$_2$-equivalent third-body density so that R12 keeps following R15 by
+\eqref{eq:mol:r12}.  Applying the $M={\rm H_2}$ coefficient to the total
+density, which is what the code did before, over-counts the association: at
+the base of the LHS 1140 b hot-Uranus column it made the R15 rate 22 per cent
+too large and the molecular chemical heat 21.6 per cent too large.  No
+measurement of He as a third body for this reaction exists, so He is given
+argon's coefficient, and that entry remains an upper bound: a monatomic third
+body has no internal modes to take up the released energy. Two
+further limits in a helium-dominated gas, the R16 and R18 differences
+of order unity to ten with \citet{GarciaMunoz2025}, are recorded at the code
+site rather than patched.
+
+R19, ${\rm HeH^+}+{\rm H}\to{\rm H_2^+}+{\rm He}$, is not the Table~1
+constant $9.1\times10^{-10}$\,cm$^3$\,s$^{-1}$, a measurement near 300~K that
+held at every temperature of the wind is an extrapolation. The code carries
+the thermal rate of \citet{Esposito2015}, quantum close-coupling cross
+sections for the lowest states and quasi-classical trajectories for the rest,
+Boltzmann-averaged over all 178 rovibrational states of HeH$^+$, in the
+authors' fit $k=\sum_{i=0}^{6}a_i(\log_{10}T)^i$ (maximum error 2.5\%;
+read in the accepted manuscript). It is $1.09\times10^{-9}$ at 300~K,
+$1.52\times10^{-9}$ at 1000~K and $2.00\times10^{-9}$ near 6000~K, close to
+the Langevin value $2.09\times10^{-9}$, and lies within 1--6\% of the exact
+quantum reactive rate of \citet{DeFazio2014} from 100 to 2000~K; above 1000~K
+it is 1.7--2.2 times the Table~1 constant. The fit is held at its 10 and
+15000~K ends outside that range, the authors call the rate questionable above
+about $10^4$~K, and the thermal average assumes HeH$^+$ internal states in
+equilibrium at the gas temperature. On the hot-Uranus fixtures the change
+lowers $n({\rm HeH^+})$ by up to 46\% and leaves the gas temperature,
+velocity and density within $4\times10^{-5}$ (Update log stage 3,
+section 64).
+
+\textbf{Two further entries of Table~1 are not transcribed as printed.} The first is
+R17, ${\rm He^+}+{\rm H_2}\to{\rm H^+}+{\rm H}+{\rm He}$, the dissociative
+charge transfer. Table~1 gives it as $10^{-9}\exp(-5700/T)$
+\citep{Moses2000}, an Arrhenius form with a $0.49$~eV barrier, and that form
+alone is $2\times10^{4}$ below the directly measured rate at 300~K and 200
+below it at 400~K. The reaction has two mechanisms: at thermal energy it
+proceeds by tunnelling out of a long-lived ${\rm He^+}$--${\rm H_2}$ complex,
+because reactants and products do not correlate adiabatically, and only above
+$\sim400$~K does an over-barrier branch take over
+\citep{Boehringer1986}. The drift-tube measurements give the two-body total
+as $k_2=1.1\times10^{-13}(300/T)^{0.24}$~cm$^3$\,s$^{-1}$ over 18--408~K
+\citep{Boehringer1986}, consistent with $(1.1\pm0.1)\times10^{-13}$ at 330~K
+and $(1.5\pm0.15)\times10^{-13}$ at 78~K \citep{Johnsen1980}. The code
+therefore carries the sum of the two mechanisms, with the tunnelling branch
+taken as the measured total less the radiative branch the network carries
+separately as R23, so that the coded channels sum to the measured total:
+\[
+   k_{\rm R17}(T)=\Bigl[1.1\times10^{-13}\,(300/T)^{0.24}-k_{\rm R23}\Bigr]
+                  +10^{-9}\exp(-5700/T).
+\]
+Against the only measurement of the rising branch \citep[][their Fig.~3,
+carried to an effective temperature of 700~K]{Johnsen1980} the sum is inside
+a factor two from 300 to 700~K. The three-body channel both papers measure,
+$k_3=1.6\times10^{-30}(100/T)^{1.27}$~cm$^6$\,s$^{-1}$, is omitted because
+$k_3n=6\times10^{-19}$~cm$^3$\,s$^{-1}$ at 1000~K and $n=7\times10^{12}$~cm$^{-3}$,
+five decades below the two-body rate.
+
+\textbf{The second is R20.}
+Table~1 gives ${\rm He^+}+{\rm H_2}\to{\rm HeH^+}+{\rm H}$ as
+$4.2\times10^{-13}$~cm$^3$\,s$^{-1}$, citing \citet{Schauer1989}. That paper
+measures the radiative
+(${\rm He^+}+{\rm H_2}\to{\rm He}+{\rm H_2^+}+h\nu$, Table~1's R23) and the
+dissociative (${\rm He^+}+{\rm H_2}\to{\rm He}+{\rm H}+{\rm H^+}$, R17)
+charge transfer over $15\le T\le40$~K and no HeH$^+$ channel; it states that
+the HeH$^+$ channel ``apparently does not become allowed until the collision
+energy approaches 9~eV'', and its H$_3^+$ signal is the \emph{sum} of the
+radiative and the HeH$^+$ channels, which bounds the latter at
+$\le1.0\times10^{-14}$ -- 42 times below the value Table~1 assigns it. R20 is
+therefore not carried. The HeH$^+$ source the network uses instead is the one
+Table~1 omits, ${\rm H_2^+}+{\rm He}\to{\rm HeH^+}+{\rm H}$ at
+$3.0\times10^{-10}\exp(-6717/T)$ \citep{Black1978}, whose coefficient is a
+Maxwellian average over a thermal population of H$_2^+$ vibrational levels.
+
+Measured on LHS~1140~b at ${\rm He/H}=2.13$ with the H$_2$ row written out
+reaction by reaction, the repair rewires the base layer's HeH$^+$ and H$^+$
+budgets -- at the first cell $n({\rm HeH^+})$ falls by a factor $487$ at
+1023~K and $8\times10^4$ at 629~K, and $n({\rm He^+})$ rises by $1.11$ and
+$4.4$ -- and leaves the net H$_2$ destruction there within a per cent,
+because the helium ions of that layer are sink-limited. The same measurement
+shows what sets the H$_2$ of a helium-rich base: the helium-ion and proton
+channels, with the thermal dissociation R12 nine decades below the first
+cell's total H$_2$ loss at 1023~K and twenty-two decades below it at 629~K,
+and nowhere in that layer reaching 0.4 per cent of the loss. The helium-ion channels, not the temperature and not the photons, set
+the H$_2$ content of a helium-rich base in this network.
+
+The eight balance rows the network makes are
+\eqref{eq:ion:h2row}--\eqref{eq:ion:hehprow} together with the H$^+$,
+He$^+$, He$^{2+}$ and He\,$2^3$S rows of Sec.~\ref{sec:ionization:cellsystem}.
+
+\subsection{\texorpdfstring{H$_2$ photoabsorption resolved into channels}{H2 photoabsorption resolved into channels}}
+\label{sec:mol:h2photo}
+
+\texttt{h2\_photo\_channels.f90} splits the one measured cross section
+$\sigma_{\rm H_2}(E)$ into four mutually exclusive final states whose sum is
+identically $\sigma_{\rm H_2}$, so no consumer of the opacity changes and
+the total H$_2$ destruction rate is what it was; what changes is which
+fragments the source terms are told to make.
+\begin{align}
+\sigma_N &= f_n(E)\,\sigma_{\rm H_2}(E)
+  &&{\rm H_2}+h\nu\to{\rm H}+{\rm H}\ \ (33\text{--}41\,{\rm eV\ window}),
+  \label{eq:mol:chanN}\\
+\sigma_M+\sigma_S+\sigma_D &= \left[1-f_n(E)\right]\sigma_{\rm H_2}(E)
+  &&\text{the three ionizing channels},
+  \label{eq:mol:chanMSD}
+\end{align}
+with $f_n$ the neutral fraction of \citet{Chung1993} Table 1, carried as
+a \emph{fraction} so that it rides on this code's $\sigma_{\rm H_2}$
+normalization rather than importing theirs. Inside the ionizing part the
+split follows the \citeauthor{Chung1993} Table II ratio column
+$r(E) = \sigma({\rm H^+})/\sigma({\rm H_2^+})$, a ratio of time-of-flight
+detector signals and therefore a ratio of \emph{events}, one count per event
+and not one per proton;
+\texttt{frac\_H2\_dissociative\_ionization} is that column converted to
+$\sigma({\rm H^+})/[\sigma({\rm H^+})+\sigma({\rm H_2^+})]$ and tabulated at
+69 energies from 18.076 to 124\,eV, linearly interpolated, zero at and below
+threshold and held flat above 124\,eV. The thresholds are 15.4\,eV (M,
+leaves H$_2^+$), 18.076\,eV (S, leaves H\,$+$\,H$^+$), 51.4\,eV (D, two
+protons), and none of its own for N. The D channel is resolved by default
+(\texttt{H2 double ionization: chung80}, the 20 per cent of the H$^+$
+events at and above 80\,eV that \citet{Chung1993} state, ramped linearly from
+the 51.4\,eV threshold, the ramp not being in the source);
+\texttt{yan\_rho} builds it from the double-to-single ratio of
+\citet{Yan1998} instead (at 110\,eV \texttt{chung80} gives 15 per cent more
+double ionization than \texttt{yan\_rho}), and
+\texttt{off} folds it back into S, which reproduces the code before the
+channel existed. The N window is resolved by default as well
+(\texttt{H2 neutral dissociation: True}).
+
+The energy of one absorbed photon is accounted channel by channel by
+\texttt{h2\_channel\_energy\_recipients}, the single statement of what each
+channel charges, and the recipients of each sum to $h\nu$ once. Two entries
+are fixed with no free parameter: the double channel's vertical threshold
+51.4\,eV \citep{Yan1998} exceeds the asymptotic product
+energy $D_0+2I({\rm H}) = 31.675$\,eV by exactly the kinetic energy release
+of the two receding protons, 19.725\,eV; and the neutral window leaves both
+fragments in $n=2$ (the Q2 $^1\Pi_u$ state whose fluorescence curve overlaps
+this cross section), so $2E(n{=}1\to2)$ departs as prompt Ly$\alpha$ and
+two-photon continuum and is not heat.
+
+\subsection{Lyman-Werner photodissociation}
+\label{sec:mol:lw}
+
+\texttt{lyman\_werner.f90} adds the Solomon process,
+${\rm H_2}(X)+h\nu(11.2\text{--}13.6\,{\rm eV})\to{\rm H_2}(B,C)\to{\rm H}+{\rm H}$,
+which the \citeauthor{Koskinen2022} Table-1 network leaves out (their photorates start
+at the 15.4\,eV edge). The band is 912--1201\,\AA{}: 912\,\AA{} is the H
+Lyman edge, and 1201\,\AA{} is both the blue edge of band B2 and the red end
+of the Lyman and Werner line list the shielding table is built from. \citeauthor{Draine1996}'s own 912--1110\,\AA{} is not used, because a planetary base runs
+at 700--3200\,K where the vibrationally excited levels pump in lines longward
+of 1110\,\AA{} that carry about a third of the dissociations at saturation.
+One band, one line list, one normalization.
+
+The optically thin rate is formed from the band-integrated \emph{energy}
+flux at the planet and the mean photon energy of a flat $F_\lambda$ band,
+$\langle h\nu\rangle = 2hc/(912+1201\,\mbox{\AA}) = 11.7354$\,eV:
+\begin{equation}
+k_{\rm LW}^{\rm thin} = \sigma_{\rm LW}\,
+   \frac{\xi_{\rm day}F_{\rm LW}}{\langle h\nu\rangle}.
+\label{eq:mol:klw}
+\end{equation}
+The band-mean $\sigma_{\rm LW}$ is not the effective cross section
+$2.263\times10^{-18}$\,cm$^{2}$ that \citet{Draine1996} Table 1 and 2 imply
+for a flat-$F_\lambda$ field restated per 912--1201\,\AA{} photon: the rate
+is the level-resolved table of \texttt{h2\_self\_shielding\_table.f90},
+normalized per photon of the same band, and that number is only the limit it
+approaches in optically thin interstellar conditions.
+
+That table is a line-by-line calculation with \emph{overlapping} lines, and
+it stores three different counts because three are needed:
+$\sigma_{\rm diss}$, dissociations per unit incident band photon fluence,
+which carries the self-shielding, the line overlap and the trapping of the
+fluorescent photons and sets the rate and the fragment heating;
+$p_{\rm single} = D/(D+\sum A_{ul})$, dissociations per pump with every
+fluorescent photon free to escape, which sets the vibrational heat return
+because a trapped decay plus its re-absorption moves one molecule down and
+another up and deposits nothing; and
+$p_{\rm eff} = D/(D+\sum A_{ul}P_{\rm loss})$, dissociations per photon
+removed from the beam, which is the band photon ledger. They are related by
+$\sigma_{\rm diss} = p_{\rm eff}\,\sigma_{\rm pump}$, and the beam's own loss
+is served from the same table, so the photons the beam loses and the
+dissociations the rate spends are one absorption with one normalization.
+Line overlap is not a correction at these columns: at
+$n_{\rm H}=10^{13}$\,cm$^{-3}$ the surviving pumping relative to a
+one-line-at-a-time calculation is 0.45 at $N_{\rm H_2}=10^{20}$\,cm$^{-2}$
+and 900\,K, and $4.8\times10^{-5}$ at $4.4\times10^{21}$\,cm$^{-2}$ and
+2700\,K, which is where the base of a molecular layer sits. The rate enters
+\eqref{eq:ion:h2row} as $g_{\rm LW}$ and is zero when no band flux is
+supplied.
+
+\subsection{The caloric equation of state}
+\label{sec:mol:caloric}
+
+The caloric equation of state that gives the bound H$_2$ its rovibrational
+heat capacity is \eqref{eq:caloric} of Sec.~\ref{sec:hydro:eos}, where it is
+stated with its validity and its \texttt{Caloric EOS: monatomic} switch.
+\texttt{caloric\_eos.f90} supplies the four maps the hydrodynamics needs,
+$(\rho,\rho e)\to T$, $(\rho,\rho e)\to p$, $(\rho,p)\to\rho e$ and
+$(\rho,p)\to\gamma_{\rm eff}$, and $\gamma_{\rm eff}$ itself for the wave
+speeds.
+
+\subsection{Carrier transport}
+\label{sec:mol:carrier}
+
+Everywhere else in the code the composition of a cell is the root of a local
+algebraic system. A \emph{carrier} is a species the code does not fix that
+way: one whose chemical time can exceed the flow time, so that its density
+in a cell is what the flow brought there and not what the cell's own
+equilibrium would give. \texttt{diffusive\_photochemistry.f90} solves, for
+the carriers, the continuity equation of the neutral molecular carriers
+H$_2$, OH, H$_2$O and CO,
+\begin{equation}
+\frac{\partial n_i}{\partial t}
+ + \frac{1}{r^{2}}\frac{\partial}{\partial r}
+   \left[r^{2}\left(n_i v + J_i\right)\right] = P_i - L_i,
+\qquad
+J_i = -n_{\rm tot}\left(D_i+K_{zz}\right)\frac{\partial f_i}{\partial r}
+         - n_i D_i\left(\frac{1}{H_i}-\frac{1}{H_{\rm atm}}\right),
+\label{eq:mol:carriereq}
+\end{equation}
+with $f_i = n_i/n_{\rm tot}$, H$_2$ alone without the oxygen option. With
+\texttt{Ionization transport} the same operator carries the ionization
+stages as further rows, $x({\rm H\,II})$ per hydrogen nucleus and
+$x({\rm He\,II})$, $x({\rm He\,III})$ per helium nucleus, and with
+\texttt{He 2\^{}3S transport} (which requires it) the He\,$2^3$S level as
+$x_3 = n(2^3{\rm S})/n_{\rm He}$, a fourth state of the helium partition
+with the charge of He\,{\sc i} (Sec.~\ref{sec:ionization:advected}). These
+rows are written on the element's own nucleus face flux and not as
+\eqref{eq:mol:carriereq}: across a face
+$F_k = x_k(f)\,N_{\rm el}(f) - n_{\rm el}(f)K_{zz}(f)\,\Delta x_k/\Delta r$
+(\texttt{ionization\_stage\_transport.f90}), with $N_{\rm el}$ the
+element nucleus flux of the element operator (advection, gradient, eddy and
+settling drift in one object, \texttt{element\_nucleus\_face\_flux}), the
+face fraction upwinded on the sign of $N_{\rm el}$, and the closing stage
+(H\,{\sc i}; the He\,{\sc i} ground singlet, or He\,{\sc i} without the
+carried level) one minus the carried ones and never a row, so that the stage
+fluxes of an element sum to its nucleus flux at every face. The eddy term is
+zero at faces 0 and $N$, through which the element itself crosses only with
+the gas. Every stage of an element moves with that element's velocity: the
+ion--neutral drift in the ambipolar field is not carried, which is exact only
+inside about $1.2\,R_p$ on LHS~1140\,b and a systematic of 0.02--0.6 of the
+advective stage flux outward of it (MEASURED, stated at the module). The
+solved set is fixed once by \texttt{carrier\_set\_init}: H$_2$; H$_2$, OH,
+H$_2$O, CO with the oxygen option; then H$^+$, He$^+$, He$^{2+}$ and
+He\,$2^3$S as the keys add them, at most eight rows.
+
+Between them the four molecular carriers carry every H nucleus
+that is not atomic, ionized or in a molecular ion and every O and C nucleus
+that is not a free atom. H$_2^+$, H$_3^+$, HeH$^+$ and O($^1$D) are left local; on
+the HD\,209458\,b molecular example the three molecular ions together carry
+at most $1.2\times10^{-9}$ of the H nuclei, and the H-nucleus budget is
+closed against the element total rather than against a sum of transported
+species, so whatever they hold is simply not available to the carriers. The
+four molecular carriers are neutral, so the ambipolar field term of the
+general drift-diffusion equation is absent from \eqref{eq:mol:carriereq}
+rather than neglected; for the carried ionization stages it is the drift
+stated above, and it is not carried.
+
+$D_i$ is Blanc's law over the background carriers (H\,{\sc i}, H\,{\sc ii},
+H$_2$, H$_2^+$, H$_3^+$, He\,{\sc i}, He\,{\sc ii}, He\,{\sc iii},
+HeH$^+$), each pair from the rigid-sphere coefficient of \citet{Banks1973}. The ion-neutral polarization enhancement is not added: the
+transported species only exist where the gas is neutral (electron fraction
+per H nucleus at most $10^{-7}$ over the cells that hold H$_2$), so the ion
+pairs carry that share of the Blanc friction sum, and for H$_2$O the
+induced-dipole formula would be the wrong one anyway, a permanent dipole of
+1.85\,D dominating the capture rate. $K_{zz}$ is read from
+\texttt{kzz\_cell} and nowhere else; that array is filled once, from the
+scalar \texttt{He\_Kzz} or from the lower-atmosphere profile's own $K_{zz}$
+column. Settling is $G_i = (m_i-\bar m)g_{\rm eff}/(kT)$ with
+$\bar m = \rho/n_{\rm tot}$ and $g_{\rm eff}=-\rho^{-1}{\rm d}p/{\rm d}r$ the
+settling acceleration of the mixture, the one the element operator uses
+(eq.~\ref{eq:mol:geff}); thermal diffusion is
+not carried ($\alpha_T=0$), there being no evaluated $\alpha_T$ for H$_2$O,
+OH or CO in an H$_2$/He bath.
+
+$P_i-L_i$ is not written in this module: it is obtained by calling the very
+rows the local equilibrium solve uses, \texttt{mol\_heh\_rows} row 4 for
+H$_2$ and \texttt{oxygen\_carrier\_rows} for OH and H$_2$O, at the trial
+densities with the background frozen, and the Jacobian is a forward
+difference of those same calls, so a rate that changes there changes here.
+CO has no chemical source and only its transport moves it, with a ceiling
+from \texttt{limit\_to\_element\_budget} that keeps it from carrying the
+oxygen and the carbon out of the wind, where the molecule cannot survive and
+where the O\,{\sc i} and C\,{\sc ii} lines are the coolant.
+
+The discretization is cell-centered $f_i$, face-centered fluxes on
+\texttt{r\_edg}, one backward-Euler step per call, Newton with a
+backtracking line search, block tridiagonal in space with blocks of the
+carrier count (up to $8\times8$; a carrier the run does not solve keeps an
+identity row, so the block shape is fixed). Face $N$ carries zero
+diffusive flux; the drift term switches from central to donor cell on a
+P\'eclet test. Whether the base face is an inflow is read from the wind's
+face mass flux and not from the velocity of cell~1, which carries a
+collocated odd-even mode. The element reservoirs at the base are
+Dirichlet, imposed through \texttt{melem\_ab}, the base density and the
+equation of state. The \emph{partition} of an element among its carriers is
+imposed only where the gas below states it: without a handoff the ghost
+carries the base cell's own partition, face 0 carries no diffusive flux and
+the base cell derives its partition, which is what makes the comparison
+against a photochemical handoff a test rather than a tautology. Where a
+handoff states the H$_2$ partition (\texttt{q\_H2\_base}, or the profile at
+its matching level), the inner ghosts hold it as a Dirichlet value and the
+base face carries, besides the advective inflow of that partition, the eddy,
+molecular and settling flux against it,
+\begin{equation}
+J_0 = -\bar n_0\,(\bar D_0+\bar K_0)\,\frac{X_1-X_0}{r_1-r_0}
+      - \bar n_0 \bar D_0 \bar G_0\,X_{\rm f},
+\label{eq:mol:baseface}
+\end{equation}
+formed as an interior face is (face means of ghost 0 and cell~1, $K_{zz}$
+continuous across the face), with the atomic hydrogen recoiling against it
+as at every face. The gas below the level is mixed by the same eddies as the
+gas above it: with the face closed the reservoir partition reached cell~1 by
+the base mass flux alone, at $0.2\,{\rm cm\,s^{-1}}$ against an eddy speed
+$K_{zz}/H\approx250\,{\rm cm\,s^{-1}}$ on LHS~1140\,b, and the atomic
+hydrogen the wind makes aloft was recombined in cell~1 instead of being mixed
+down into the column below (MEASURED,
+\texttt{md/AN\_matching\_surface\_diagnosis\_20261007.md}). The H$_2$ flux
+through the base face of the certified state is written to
+\texttt{EXHALE\_resolved.out} (\texttt{base\_face\_H2\_flux\_cgs}, its
+advective and diffusive halves and \texttt{base\_face\_radius\_cm}) for the
+elemental-flux closure.
+
+The material advection of a carrier is \emph{not} in these rows. It is the
+divergence of the hydrodynamic face mass flux, $F_\rho(j)Y_c(j)/m_c$, taken
+with the mass row itself inside the Runge-Kutta stages \eqref{eq:ssprk3} on
+the same faces, areas, volumes and time step
+(\texttt{species\_face\_flux.f90}), so a cell
+can only lose the carrier the mass row says it loses and a uniform partition
+is preserved to round-off; the face composition is reconstructed with the
+limiter of the primitive variables, so it is second order where the profile
+is smooth. The advective half is in the rows only where the balance is the
+whole equation rather than the remainder of a split: in the stationary
+carrier residual, and in the fixed-wind relaxation, which takes many
+transport steps at a wind that does not move (\texttt{carrier\_rows\_advect});
+there the stage rows take their advective part as $x_k(f)N_{\rm el}(f)$, the
+element's advection being inside $N_{\rm el}$, and in the marching loop
+$N_{\rm el}$ carries the element's diffusive half only. That this half must ride on the \emph{face} mass flux is a numerical
+statement about the front: a first-order donor-cell difference on the cell
+velocity carries a numerical diffusivity $|v|\Delta r/2$, which on the
+500-cell hot Uranus grid is 8.5, 20 and 22 times the molecular $D$ of H$_2$
+at 1.15, 1.30 and $1.50\,R_{\rm p}$. The key is
+\texttt{Molecular carrier transport}, default off.
+
+\subsection{The oxygen option}
+\label{sec:mol:oxygen}
+
+With \texttt{thereis\_oxychem} (default off) three neutral carriers OH,
+H$_2$O and CO join the network. \texttt{oxygen\_rates.f90} carries the rate
+coefficients, each transcribed from a named publication and each checked
+against two independent ports of the same literature that are on this
+machine (the Photochem \texttt{zahnle\_earth.yaml} network and the VULCAN
+\texttt{NCHO\_photo\_network.txt}), every disagreement being recorded at the
+coefficient. \texttt{water\_photolysis.f90} supplies the photolysis,
+\[
+{\rm H_2O}+h\nu\to{\rm OH}+{\rm H},\quad
+\to{\rm H_2}+{\rm O}(^1{\rm D}),\quad
+\to{\rm O}+{\rm H}+{\rm H};
+\qquad
+{\rm OH}+h\nu\to{\rm O}+{\rm H},
+\]
+in the four far-ultraviolet bands of Sec.~\ref{sec:radiation:spectrum}
+(the balance rows these rates enter are \eqref{eq:ion:ohrow} and
+\eqref{eq:ion:h2orow}), whose
+edges are fixed by the branching ratios rather than chosen: the three-body
+branch opens only in the interval containing Ly$\alpha$ and is 12 percent
+there, so Ly$\alpha$ needs its own band on branching grounds alone. The first
+branch alone carries 54.5 percent of the H$_2$O loss at the HD\,189733\,b
+base, which makes the OH/H$_2$O cycle catalytic rather than a one-way sink.
+\texttt{co\_photodissociation.f90} destroys CO on the same Lyman-Werner beam,
+using a band-mean dissociation cross section times the band photon flux and
+the \citet{Visser2009} shielding function
+$\Theta(N_{\rm CO},N_{\rm H_2})$ rather than their $k_0\Theta$ form, because
+EXHALE has a band flux and not an interstellar field and $k_0$ is a statement
+about a particular field. The other CO destruction channel is the He$^+$
+charge transfer
+${\rm He^+}+{\rm CO}\to{\rm C^+}+{\rm O}+{\rm He}$ at the Langevin value
+$1.6\times10^{-9}$\,cm$^{3}$\,s$^{-1}$, which appears in the He$^+$ row of
+\eqref{eq:ion:h2prow}'s system and whose $+2.2117$\,eV appears in heating
+channel 18, one event counted once.
+
+\subsection{The lower-atmosphere handoff}
+\label{sec:mol:handoff}
+
+The base of the escape model sits at a stated pressure level, and three
+routes supply the state there.
+
+\paragraph{The analytic column.} \texttt{lower\_column.f90} integrates the
+hypsometric relation from the 1-bar level up to the base pressure (default
+1\,$\mu$bar), isothermal at $T_{\rm eq}$ with spherical gravity, using the
+mean molecular weight of the chemical-equilibrium H$_2$/H/He partition of
+\citet{Visscher2006} as fitted by \citet{Koskinen2022} eqs.~(11)--(13),
+\begin{equation}
+q_{\rm H_2} = \frac{1.9845+10^{u}-\sqrt{10^{u}\left(3.9690+10^{u}\right)}}{2.3670},
+\qquad
+u = -\frac{23672}{T}-\log_{10}p\,[{\rm bar}]+6.2645,
+\label{eq:mol:qh2}
+\end{equation}
+with $q_{\rm He}$ from the elemental He/H and $q_{\rm H} = 1-q_{\rm H_2}-q_{\rm He}$.
+It returns the radius of the base level and the base mixing ratios, and
+also a fully atomic bracket, because in chemical equilibrium
+$q_{\rm H_2}(1\,\mu{\rm bar})$ stays large up to $T\sim2000$\,K while
+photochemistry dissociates H$_2$ there: a large $q_{\rm H_2}$ on a hot planet
+is the signal that a photochemical handoff is needed. The validation case is
+the \citet{Koskinen2022} Model A Uranus-mass planet at 0.05\,au, for which
+the column gives $r_0(1\,\mu{\rm bar}) = 1.34\,R_{1\rm bar}$ with
+$q_{\rm H_2}\simeq0.84$.
+
+\paragraph{\texttt{base.inp}, the scalar handoff.} An optional file of
+``key value'' lines, written by \texttt{src/utils/run\_lower.py} or
+\texttt{src/utils/vulcan\_to\_base.py}. Every key belongs to one of five
+categories and the category states what the value may do to the wind:
+\emph{provenance} (comments only); \emph{EOS boundary}
+(\texttt{T\_base}$\to T_0$, \texttt{r\_base}$\to R_0$, \texttt{p\_base}, and
+\texttt{q\_H2\_base}, the H$_2$ volume mixing ratio of the base gas);
+\emph{elemental reservoir} (\texttt{HeH\_base} and
+\texttt{<El>\_H\_base} for the ten elements, overriding \texttt{metals.inp}
+for that element); \emph{initial guess} (no key today); and \emph{boundary
+constraint} (\texttt{Kzz\_base}$\to$\texttt{he\_kzz}). \texttt{q\_H2\_base}
+is the $q_{\mathrm{H_2}}$ of \eqref{eq:ntotbc} and is imposed on the H$_2$
+partition of the inflowing ghost species as well, as the partition of the
+\emph{non-ionized} hydrogen: with $x_2 = 2q(1+{\rm He/H})/(1+q)$
+(\texttt{base\_h2\_nuclei\_fraction}) the H$_2$ row of a lower ghost is
+$x_{\rm H_2} = x_2(1-x_{\rm ion})$, where $x_{\rm ion}$ is the hydrogen in
+H$^+$, H$_2^+$, H$_3^+$ and HeH$^+$ and is an unknown of the same solve, so
+the neutral hydrogen left, $(1-x_2)(1-x_{\rm ion})$, is never negative
+(\texttt{x\_h2\_neutral\_partition\_fixed}, \texttt{ion\_cell\_state.f90}); it is refused above
+$0.5/(0.5+{\rm He/H})$. Species mixing ratios other than \texttt{q\_H2\_base}
+stay comments: no part of the code consumes them, so presenting them as
+physics would be false. A \texttt{base.inp} that states \texttt{p\_base} fixes the base level and
+$n_0$ is derived from it as in Sec.~\ref{sec:intro:units}, instead of being
+read from \texttt{input.inp}.
+
+\paragraph{\texttt{Lower atmosphere profile}, the tabulated handoff.}
+\texttt{lower\_atmosphere\_profile.f90} reads the lower model's solution
+over an \emph{interval} of pressure that reaches up to the level where
+EXHALE places its base (the matching surface, the lower model's top face, as
+the Photochem adapter writes it; a file reaching above it is read, but
+nothing above the level is taken from it except $K_{zz}$). It supplies the state at the matching level
+$p_{\rm match}$ ($T$, $r$, $q_{\rm H_2}$, and the elemental ratios He/H and
+El/H), which is what the base equation of state and the elemental reservoirs
+are built from, and $K_{zz}$ as a \emph{profile}, because the homopause,
+the only consequential thing $K_{zz}$ does, is where $K_{zz}=D_{12}$, a
+property of two profiles, and the molecular coefficient rises by nearly five
+decades between the base and $1.2\,R_{\rm p}$. Every intensive quantity is
+interpolated linearly in $\log p$, the variable both models solve on;
+extrapolation is never performed, except that above the shallowest level the
+file carries $K_{zz}$ keeps that level's value (\texttt{eddy\_diffusion\_on\_grid}).
+The values go in through exactly the doors
+the scalar keys use, so nothing in the base equation of state changes; $n$
+and $\rho$ carried by the file are \emph{not} imposed, the base density
+remaining $n_0$. The hydrogen partition of the inflowing ghosts is the
+profile's own census at the match: the atomic share of the hydrogen nuclei
+is $f_{\rm H} = q_{\rm H}\,n_{\rm tot}/n_{\rm H}$, with the nuclei per
+particle $n_{\rm H}/n_{\rm tot} = (\rho/n_{\rm tot}m_{\rm H})/(1+\sum_{\rm El}
+X_{\rm El}m_{\rm El}/m_{\rm H})$ from the profile's density and element
+ratios, which counts the hydrogen of every species of the lower model, and
+$x_2 = 1-f_{\rm H}$ (\texttt{h\_atomic\_share\_base},
+\texttt{base\_h2\_nuclei\_fraction}): the hydrogen of the trace molecules
+the wind does not carry (CH$_4$, NH$_3$, H$_2$O, $1.3\times10^{-3}$ of the
+nuclei at the LHS~1140\,b match) goes onto H$_2$, the inert majority
+carrier, and not onto atomic H, whose abundance the H, H$_2$, He mixture
+formula of \texttt{base.inp} would put sixty times above the profile's
+(ghost $x_{\rm H}$ $6.6\times10^{-4}$ against $1.1\times10^{-5}$). One
+quantity is read below the level: the temperature of the gas there. The bath
+temperature that heat conduction holds at the base ghost
+(\texttt{conduction\_base\_level\_T}, Sec.~\ref{sec:hydro:transport}) and
+the temperature of the two advective ghost cells are both the profile's
+temperature at the ghost center (\texttt{base\_reservoir\_temperature\_at}
+through \texttt{lap\_value\_at\_radius}, linear in $r$ between the
+bracketing levels and the nearer end outside them), the ghosts' pressure that
+of the hydrostatic column at that temperature
+(Sec.~\ref{sec:bcic:base}), because the column below the level is the
+profile's and not the reservoir's isentrope; without a profile both are the
+isentrope continued from the level.
+
+\paragraph{The elemental-flux closure.} The handoff is one-way in each
+direction: the photochemical model of the lower atmosphere
+(\texttt{src/utils/photochem\_to\_lower\_profile.py}, which runs Photochem)
+is told elemental escape fluxes $\Phi_{\rm H}$, $\Phi_{\rm He}$ through its
+upper boundary and writes the profile and \texttt{base.inp}, and the wind
+built on that profile carries elemental fluxes of its own. \emph{The top of
+the chemistry column is the matching surface}: its top face is placed at
+$p_{\rm match}$ on the solution's own grid (Photochem's levels are uniform in
+altitude; the face is moved by $H\ln(p_{\rm face}/p_{\rm match})$ and the
+chemistry re-converged until the face is at the match to $10^{-3}$ in $\ln p$,
+\texttt{steady\_state\_with\_top\_face\_at\_match}; every steady-state
+pass runs under the step budget \texttt{-{}-blocks}$\,\times100$, which is
+also Photochem's own step cap, and a pass that stalls is integrated once more
+from its stalled state at a relative tolerance of $10^{-4}$, accepted only
+under the unchanged steady-state, face, flux and conservation checks and
+recorded in the header line \texttt{steady\_state\_retry}; a second stall
+refuses), the profile ends at
+$p_{\rm match}$ with the state of that face continued from the two top cell
+centers (\texttt{level\_at\_top\_face}), and above the match the wind alone
+gives $T(p)$, $r(p)$ and the hydrogen partition. The chemistry runs on the
+climate column with the rise of the column energy balance up to the face, as
+a persistent $T(p)$ of Photochem. The helium flux is imposed on He. The
+hydrogen flux is split as the wind splits it: H$_2$ carries the hydrogen the
+wind passes through its base face on H$_2$ ($\Phi_{\rm H_2}$, the closure
+variable below) and atomic H the rest, $\Phi_{\rm H}-\Phi_{\rm H_2}$,
+negative (an inflow of atoms) where the wind's eddies mix the atomic
+hydrogen it makes aloft down through the surface. Without a statement of the
+wind's split (the first iteration of a closure seeded from a wind that did
+not write it) the hydrogen flux is imposed on H$_2$ alone where atomic H
+carries at most 1 per cent of the hydrogen nuclei at the model top
+(\texttt{CARRIER\_SHARE\_TOL}), and split by the top's own share otherwise,
+made self-consistent in at most \texttt{CARRIER\_ROUNDS}$=8$ rounds. The driver
+\texttt{src/utils/element\_flux\_closure.py} seeks the fixed point
+$\Phi_{\rm El} = F_{\rm El}(\Phi_{\rm El})$, El $=$ H, He, by an
+under-relaxed Picard iteration of the two solves,
+\begin{equation}
+\Phi^{(k+1)} = \Phi^{(k)} + \omega\bigl(F^{(k)}-\Phi^{(k)}\bigr),
+\qquad
+\epsilon_{\rm El} = \frac{|F_{\rm El}-\Phi_{\rm El}|}{|F_{\rm El}|},
+\label{eq:mol:closure}
+\end{equation}
+$\omega = 0.5$ halved (floor 0.125) on every iteration whose residual did not
+fall, convergence read on the \emph{undamped} residual
+$\max\epsilon_{\rm El}\le{\rm tol}$ (default 0.05), at most eight
+iterations by default. $F_{\rm El}$ is the median of the element flux the wind writes
+face by face (\texttt{write\_element\_flux\_profile},
+\texttt{binary\_element\_diffusion.f90}, the Riemann face mass flux times the
+upwinded mass fraction plus the diffusive flux), over the overlap window,
+from the first face of constant mass flux up to the profile top, or, when
+that window is empty (a profile whose top is the matching level), unmeasured
+or not flat, over the steady far-field window
+$r\ge r_{\rm esc}$, where the flux of a stationary state is the flux through
+the surface, the substitution being recorded. The hydrogen flux handed to
+the chemistry is a flux of hydrogen \emph{nuclei}: the windows reduce
+$F_{\rm H}$, the mass flux of component~1 of the binary split (the hydrogen
+carriers together with the trace metals and the C and O bound in molecules,
+so that $F_{\rm H}+F_{\rm He}=\dot M$), and beside it
+$F_{\rm H,nuc}=s_{\rm H}F_{\rm H}$, $s_{\rm H}=m_{\rm H}n_{\rm H}/\rho_1$ the
+hydrogen-nucleus share of component~1's mass in the upwind cell
+(\texttt{lower\_profile\_F\_Hnuc\_*}, \texttt{steady\_F\_Hnuc\_*} in
+\texttt{EXHALE\_resolved.out}), and the closure uses $F_{\rm H,nuc}$
+(\texttt{hydrogen\_nucleus\_flux}; $F_{\rm H}$, with the reason logged, only
+for an EXHALE that writes no $F_{\rm H,nuc}$; update log stage~3 section~134; before 2026-10-10 the metal mass was
+counted as hydrogen, 0.44 percent on LHS~1140\,b). The hydrogen split is a
+fixed-point variable of its own: $\Phi_{\rm H_2}$, the hydrogen nuclei H$_2$
+carries [g\,s$^{-1}$], takes the damped update toward
+$F_{\rm H_2} = 2m_{\rm H}\,4\pi r_0^2\,\phi_{\rm H_2}$ from the wind's
+\texttt{base\_face\_H2\_flux\_cgs} $\phi_{\rm H_2}$, and convergence also
+requires $|F_{\rm H_2}-\Phi_{\rm H_2}|/|F_{\rm H}|\le{\rm tol}$, normalized
+on the elemental flux because the atomic share can pass through zero
+(\texttt{--phi0-H2}, by default unstated until the first wind states it). A measurement is
+accepted only when both elemental fluxes are finite and their radial spreads
+over the window are measured and at most tol
+(\texttt{flux\_window\_resolved}): a residual smaller than the spread of its
+window cannot be decided, and the closure then stops as unresolved rather
+than converged. A nonzero exit of the chemistry, a chemistry that wrote no
+profile, a wind solve or post-processing pass that exits with a status other
+than 0 or 2 (status 2, converged and not certified, is carried as a flag;
+status 2 without the certification's closing line is a runtime error), a
+wind solve that exits 3, and a solve whose verdict is not \texttt{info = 0}
+after the one continuation the ending policy authorizes are refusals, not
+iterates. The chemistry and the climate column take the stellar beam the
+wind's input states (\texttt{-{}-face-geometry wind}, the default since
+2026-10-10): $\xi_wF$ at the face, $\xi_w$ the wind's dayside dilution
+(1, $1/2$ or $1/4$ by its \texttt{2D approximate method}), in place of each
+code's own convention (Photochem $0.5F$ at $48^\circ$, the climate column
+$F/4$; \texttt{per\_model} keeps those); every wind run writes its
+$\xi_w$ as \texttt{dayside\_dilution} to \texttt{EXHALE\_resolved.out}, and
+the closure refuses a run whose value differs from the one the column models
+were given (\texttt{check\_wind\_dilution}; the key is written since update
+log stage~3 section~135, so before it the comparison was never made). The chemistry's $K_{zz}$ is a
+tracer-mixing coefficient that carries no heat
+(\texttt{-{}-eddy-heat-transport off}, the default): as a heat diffusivity no
+reference climate exists above $K_{zz}\approx1.4\times10^{6}$\,cm$^2$\,s$^{-1}$
+on LHS~1140\,b at $\xi_w=1$, and with turbulent dissipation heating
+\citep{Hunten1974} a value of $10^{9}$ would need 790--1000 times the absorbed
+stellar flux (update log stage~3 sections~130 and~133). With the option on,
+the stratosphere solve (\texttt{stratosphere\_energy\_balance},
+\texttt{radiative\_convective\_column.py}) hands the climate object back with
+its own solution, since clima's \texttt{TOA\_fluxes\_dry} leaves its last
+trial profile in it and a second solve on the same object held a drifted
+troposphere (section~134); off, that solve is not made. A resumed closure
+recomputes the measurement of the last recorded iteration from its saved run
+and refuses to continue unless it is resolved at the requested tolerance
+and equals the recorded fluxes to $10^{-9}$, and with the energy coupling
+on it refuses a history that carries no conducted-flux columns.
+
+\paragraph{The energy coupling and the column energy balance.} With
+heat conduction in the wind (Sec.~\ref{sec:hydro:transport}) the wind
+conducts heat into the lower atmosphere through its base face, and that heat
+changes the matching-level temperature $T_{\rm match}$ the wind is built on.
+The certification measures, on the state it certifies, the conductive flux
+through the base face exactly as the operator forms it,
+$F_{\rm cond} = \kappa_{1/2}(T_1-T_{\rm bath})/(r_1-r_0)$, positive into
+the column (\texttt{heat\_conducted\_into\_lower\_atmosphere},
+\texttt{viscous\_conduction.f90}), and writes it with the two temperatures to
+\texttt{EXHALE\_resolved.out} (\texttt{base\_conductive\_flux\_cgs},
+\texttt{base\_conduction\_T\_bath\_K}, \texttt{base\_conduction\_T\_cell1\_K};
+\texttt{base\_conduction\_state unmeasured} before a state has been
+certified). With the closure key \texttt{energy\_coupling} (default false)
+the coupling becomes two-way in energy as well as in the elemental fluxes:
+$F_{\rm cond}$ is a third fixed-point variable, the next chemistry solve
+takes the damped value $F^{(k+1)} = F^{(k)} + \omega_E(F_{\rm meas}^{(k)} -
+F^{(k)})$ ($\omega_E = 0.5$, \texttt{energy\_coupling\_omega}) as
+\texttt{--conducted-heat-flux}, and convergence requires, besides
+\eqref{eq:mol:closure}, that the conducted flux meet the same tolerance in
+its own residual $|F_{\rm meas}-F|/|F_{\rm meas}|$ (zero against zero is
+agreement) and that $T_{\rm match}$ move by less than
+\texttt{T\_match\_tol} (default 6\,K, the numerical He\,10830 EW target over
+the EW sensitivity to $T_{\rm match}$ measured in update log stage~3
+section~75). A run that does not write the flux, or has conduction off,
+stops the coupled closure.
+
+The column below $p_{\rm match}$ takes the flux through
+\texttt{src/utils/conducted\_heat\_column\_balance.py}. Its reference state
+is the climate column $T_0(p)$ of the profile, an isotherm at the skin
+temperature in the stratosphere, which has no energy equation that could
+take the flux; the module solves its steady balance at fixed pressure
+levels in $s = -\ln p$,
+\begin{equation}
+\frac{1}{r^2}\frac{\rm d}{{\rm d}z}\Bigl(r^2\kappa\frac{{\rm d}T}{{\rm d}z}\Bigr)
+ = C(T,p) - C\bigl(T_0(p),p\bigr),
+\qquad
+\kappa\frac{{\rm d}T}{{\rm d}z}\Big|_{p_{\rm match}} = F_{\rm cond},
+\qquad
+T(p_{\rm bottom}) = T_0(p_{\rm bottom}),
+\label{eq:mol:columnbalance}
+\end{equation}
+with $\kappa$ the mixture conductivity of \eqref{eq:transport_coeff} (the
+He, H and H$_2$ terms, the same law at both sides of the matching level) and
+$C$ the net band cooling of CH$_4$, NH$_3$, H$_2$O, C$_2$H$_2$, CO and CO$_2$
+from the k-distribution tables the climate model reads. Only the difference
+$C(T)-C(T_0)$ enters, so whatever radiative heating holds the climate state
+is held at its climate value. The conduction is the total one: $F_{\rm cond}$
+is the total conductive flux at the match, and the conduction of the
+climate's own gradient is a term of the equation (the climate column has
+none), so $T_0$ is not the solution at $F_{\rm cond}=0$ where it has a
+gradient (the tropopause). The unknown is the excess $\delta T=T-T_0$, for
+precision only, through an exact discrete rewrite with the perturbation flux
+in full and the reference source $S_0$, the reference's own imbalance,
+explicit (\texttt{balance\_terms}; update log stage~3 section~128; the
+zero-flux shortcut that returned $T_0$ was removed because it returned a
+non-solution where $T_0$ has a gradient). On the LHS~1140\,b k05 column
+$S_0$ moves $T$ by at most $3.1\times10^{-5}$\,K. Radius, area and gravity
+are those of the reference profile, held; moving them with $T$ changes
+$T_{\rm match}$ by $-6.4\times10^{-3}$\,K there (MEASURED, section~128). The
+discrete balance is conservative, its source sum equal to the flux through
+the two ends. With \texttt{-{}-eddy-heat-transport on} the face flux also
+carries the eddy term $\rho c_pK_{zz}({\rm d}T/{\rm d}z+g/c_p)$ and the
+reference $T_0$ is the stratosphere solved in radiative, molecular and eddy
+balance (the closure paragraph above). The band emission is selected by \texttt{--column-energy-treatment}:
+\texttt{nlte} (default) treats a vibrational band with published V--T
+de-excitation rates as a two-level system,
+$e = \varepsilon\,(e_{\rm LTE}(T)-a)$,
+$\varepsilon = C_{10}/(C_{10}+A_{10})$,
+$C_{10} = \sum_M k_M(T)n_M$ ($M =$ He, H$_2$), $a = e_{\rm LTE}(T_0)/2$ the
+absorption of the upward field of the optically thick stratosphere, with the
+CH$_4$ dyad rates measured for both partners \citep{Siddles1994,
+MenardBourcin2005}, the NH$_3$ $\nu_2$ + He rate measured
+\citep{HovisMoore1980} and the NH$_3$ $\nu_2$ + H$_2$ rate estimated from a
+measured analog ratio $k({\rm H_2})/k({\rm He})$ (\texttt{--nh3-h2-rate-analog},
+CD$_4$ bending modes by default), and the rotational bands and every band
+lacking rates in LTE; \texttt{lte} (every band in LTE, an upper bound on the
+cooling), \texttt{rotational} (a lower bound) and \texttt{nlte\_partial}
+bracket it. The transfer of the band photons is selected by
+\texttt{--column-band-transfer}: \texttt{thin} (default) lets all of the
+emission escape, and is valid while the column above absorbs at most 10 per
+cent of the upward emission excess of any bin carrying more than 1 per cent
+of it; past that the solution is kept and flagged
+(\texttt{thin\_layer\_limit\_exceeded}), not refused.
+\texttt{cooling\_to\_space} follows the absorption by the overlying column in
+the cooling-to-space approximation as generalized to a two-level band by
+\citet[Eqs.~5, 30 and 33]{Dickinson1972}: the downward half is absorbed in
+the thick column below at its climate source function, the upward half
+escapes with the layer integral of $E_2(\tau)$ over the k-distribution
+g-points, $\varepsilon\to C_{10}/(C_{10}+\beta A_{10})$, and the exchange
+inside the warmed layer is neglected and its first-order effect on
+$T_{\rm match}$ measured on every solution, the solve being refused when it
+exceeds \texttt{--column-exchange-shift-max} (default 1\,K).
+\texttt{cooling\_to\_space\_exchange} solves that exchange instead (fixed
+point on the exchange heating with exact slab $E_3$ fractions, at most 100
+iterations), and has no such bound. Composition, absorption, $r(p)$ and
+gravity are held in one balance; the adapter alternates the balance with a
+Photochem solve on the warmed temperature until $T_{\rm match}$ of two
+successive balances agrees to \texttt{--column-energy-tolerance} (default
+1\,K, at most 8 alternations, a refusal otherwise), and writes the solution
+to \texttt{conducted\_heat\_column.txt} beside the profile. The overlying
+gas the transfer sees is the wind's: above the match the wind carries C, N
+and O as atoms and none of the emitters with its oxygen chemistry off, so
+the escape of both transfers starts at $p_{\rm match}$
+(\texttt{include\_gas\_above\_match} false; with the oxygen chemistry on the
+wind's H$_2$O and CO above the match would absorb and are not counted).
+\textit{Recombination heat.} Atomic hydrogen that the wind mixes down through
+the surface, $\phi_{\rm in}$ atoms\,cm$^{-2}$\,s$^{-1}$, leaves the column as
+H$_2$ at steady state, so by Hess's law the column receives
+$F_{\rm chem} = \phi_{\rm in}D_0/2$ ($D_0 = 36118.11\,{\rm cm^{-1}}$,
+\citealt{HuberHerzberg1979}); the wind does not charge it, its atoms leaving
+before they recombine. It enters \eqref{eq:mol:columnbalance} as a heating
+held at fixed pressure with the shape of the column's own
+H\,+\,H\,(+M)\,$\to$\,H$_2$ rate per unit mass, normalized to $F_{\rm chem}$
+(\texttt{recombination\_heating\_of\_inflowing\_atoms}; recorded in
+\texttt{conducted\_heat\_column.txt} and the profile header,
+\texttt{recombination\_heat\_flux\_cgs}). An outflow of atoms carries no such
+term: its dissociation was charged in the wind.
+
+\subsection{Trace metals}
+\label{sec:mol:metals}
+
+\texttt{metals.inp} (\texttt{metals\_input\_read.f90}) sets the elemental
+abundances $n_X/n_{\rm H}$ by number, one ion per line with the neutral label
+naming the element; a second statement of the same element stops the run,
+since two abundances for one element are two answers to one question. The
+same file also carries \texttt{cno\_cool}, \texttt{eos\_metals},
+\texttt{cx\_full} and \texttt{cx\_O2p\_H}. The ionization of each element is
+solved in the same coupled system as hydrogen and helium
+(\texttt{System\_HeH\_metals.f90} and its triplet and molecular
+counterparts), through the rows \eqref{eq:ion:metalrows}; the code carries no
+parallel decoupled metal solver.
+
+\texttt{eos\_metals} (default \emph{on}) puts the metals into the bulk gas
+budget consistently: their mass in $\rho$ and hence in $\mu$, $v_0$, $p_0$;
+their electrons in $n_e$; and their nuclei in $n_{\rm tot}$ and in the ghost
+pressure, matching the charge balance the ionization systems already use.
+The legacy trace approximation (metals in the ionization and cooling but not
+in the bulk gas) is \texttt{eos\_metals 0}. A metals-off run is identical
+either way, every metal sum vanishing.
+
+\subsection{Binary element transport}
+\label{sec:mol:diffusion}
+
+\texttt{binary\_element\_diffusion.f90} treats the gas as two components
+moving through each other with the single mass-averaged velocity of the
+hydrodynamics: component 1 is the hydrogen carriers together with the trace
+metals and the heavy nuclei bound in the molecular carriers, and component
+He is helium in all stages. Since $\rho_1+\rho_{\rm He}=\rho$ exactly, the
+two diffusive mass fluxes close, $J_1=-J_{\rm He}$, and the composition
+update creates no mass. The transported variable is the helium \emph{mass}
+fraction $X = \rho_{\rm He}/\rho\in[0,1]$, which is bounded at both ends
+unlike the ratio $n_{\rm He}/n_{\rm H}$ that the earlier trace kernel
+carried and that diverges exactly in the helium-rich limit this operator
+exists for. The equation is
+\begin{equation}
+\frac{\partial(\rho X)}{\partial t}
+ + \frac{1}{r^{2}}\frac{\partial}{\partial r}
+   \left[r^{2}\left(\rho X v + J\right)\right] = 0,
+\qquad
+J = -\rho\left(D_{12}+K_{zz}\right)\frac{\partial X}{\partial r}
+    - \rho D_{12}\,G\,X(1-X),
+\label{eq:mol:hediff}
+\end{equation}
+\begin{equation}
+G = \frac{\left(m_{\rm He}-m_{c1}\right)m_{\rm H}g_{\rm eff}
+          -\left(\bar Z_{\rm He}-\bar Z_{c1}\right)eE}{kT}
+   + \alpha_T\frac{{\rm d}\ln T}{{\rm d}r}
+   - \frac{{\rm d}\ln\psi}{{\rm d}r}\qquad[{\rm cm^{-1}}].
+\label{eq:mol:hedriftG}
+\end{equation}
+The masses and charges in $G$ are \emph{carrier} quantities:
+$\psi = n_{1c}/n_{\rm H}$ is the number of collision partners each hydrogen
+nucleus is spread over (1 atomic, $1/2$ fully molecular) and
+$m_{c1}=m_1/\psi$. The gradient coefficient collapses to $\rho D_{12}$ for
+any $\psi$, so the Fickian term is the same in the molecular and the atomic
+region; the piece of the mole-fraction gradient the chemistry carries does
+not cancel and rides in $G$ as $-{\rm d}\ln\psi/{\rm d}r$, which vanishes
+identically wherever $\psi$ is constant. The ambipolar field is computed and
+not assumed, following \citet{Koskinen2013} section 2.1,
+\begin{equation}
+eE = -\frac{1}{n_e}\frac{{\rm d}(n_ekT)}{{\rm d}r}
+   = -kT\frac{{\rm d}\ln(n_eT)}{{\rm d}r},
+\label{eq:mol:ambipolar}
+\end{equation}
+in the logarithmic form, which is exact for the barometric stratification of
+the base and the same second-order central difference elsewhere. It is
+gated by \texttt{he\_ambipolar} (default on); $\alpha_T$ is 0 by default
+(\texttt{He\_alphaT}).
+
+\paragraph{The settling acceleration.}
+The force that separates the elements is set by the pressure gradient, not by
+gravity. Each species obeys
+$n_sm_s\,{\rm D}u_s/{\rm D}t = -\nabla p_s + n_sm_s\mathbf{G} + n_se_s\mathbf{E}
++ \sum_t n_sm_s\nu_{st}(\mathbf{u}_t-\mathbf{u}_s)$ \citep[eq.~24b]{Schunk1977}.
+With the drift inertia neglected the sum over all species, electrons included,
+is the momentum equation of the mixture,
+$\rho\,{\rm D}\mathbf{u}/{\rm D}t = -\nabla p + \rho\mathbf{G}$, and
+eliminating the bulk acceleration leaves the force that drives species $s$
+against the mixture as $-\nabla p_s + (\rho_s/\rho)\nabla p + n_se_s\mathbf{E}$:
+gravity, the same per unit mass for every species, cancels, and the pressure
+gradient carries it together with the acceleration of the wind (the
+Chapman--Cowling pressure-diffusion form). In eq.~\eqref{eq:mol:hedriftG}
+this is the gravity term with
+\begin{equation}
+g_{\rm eff} = -\frac{1}{\rho}\frac{{\rm d}p}{{\rm d}r}
+            = -\frac{p}{\rho}\frac{{\rm d}\ln p}{{\rm d}r}
+            = g + \frac{{\rm D}u}{{\rm D}t},
+\qquad p = (n_{\rm tot}+n_e)kT,
+\label{eq:mol:geff}
+\end{equation}
+which equals $g$ in a hydrostatic column, exceeds it where the wind
+accelerates outward ($g + v\,{\rm d}v/{\rm d}r$ in a steady wind; $v\,{\rm
+d}v/{\rm d}r$ reaches $g$ near a sonic point), and is formed
+(\texttt{mixture\_pressure\_acceleration}) from the state's own total pressure,
+with the particle count of the equation of state, by the same centred
+difference of a logarithm over the two neighbours as the ambipolar field
+\eqref{eq:mol:ambipolar}, so that an isothermal barometric column returns $g$
+exactly. In a column of uniform composition the electron pressure is a fixed
+share of $p$, $eE = \bar m\,m_{\rm H}\,g_{\rm eff}$, and the relative settling
+mass $(m_{\rm He}-m_{c1}) - (\bar Z_{\rm He}-\bar Z_{c1})eE/(m_{\rm H}g_{\rm eff})$
+reaches its plasma limits (2.47 for an H$^+$ plasma, 1.65 for He$^{++}$)
+whatever the density profile. The same $g_{\rm eff}$ drives the trace metals
+and the molecular carriers. Viscous stress, which is not part of this
+first-order closure, is left out of the mixture balance. On the LHS~1140~b
+atomic states $v\,{\rm d}v/{\rm d}r$ reaches at most 5--6\% of $g$, at
+19\,$R_p$ (MEASURED,
+\texttt{md/AK\_ambipolar\_stage\_drift\_derivation\_20261006.md} section 2.1).
+
+\paragraph{The binary coefficient.}
+$D_{12}$ is built pair by pair over the ionization stages and carriers of the
+two components, each pair in the Chapman--Enskog first approximation
+$D_{st} = 3kT/(16\,n\mu_{st}\Omega^{(1,1)}_{st})$, and combined by Blanc's law,
+$1/D_{12} = \sum_{s\in{\rm He}}\sum_{t\in 1} y_sy_t/D_{st}$ with $y$ the
+carrier fractions. Neutral--neutral pairs take the rigid-sphere coefficient of
+\citet{Banks1973}; ion--ion pairs the screened Coulomb coefficient
+\citep[eq.~C2]{Schunk1977}; non-resonant ion--neutral pairs the induced-dipole
+(polarization) form alone,
+\begin{equation}
+D_{\rm in} = \frac{kT}{2.21\,\pi\,Z_ie\,n\,(\alpha_n\mu_{\rm in})^{1/2}},
+\label{eq:mol:polarization}
+\end{equation}
+which is eq.~17 of \citet{Schunk1980} with the ion charge $Z_ie$ entering the
+potential $-\alpha_nZ_i^2e^2/(2r^4)$, $\alpha_n$ the static dipole
+polarizability of the neutral. \citet{Schunk1980} describe the non-resonant
+interaction as a long-range polarization attraction coupled with a short-range
+repulsion and still give its momentum-transfer frequency in this form alone
+(their Table~6); no rigid-core term is added. The momentum-transfer rate
+coefficient $K = kT/(nD\mu)$ it gives is $1.306\times10^{-9}$ (H$^+$/He) and
+$2.355\times10^{-9}\,{\rm cm^3\,s^{-1}}$ (He$^+$/H) at every $T$, 1.6\% and
+0.6\% from their Table~6 (MEASURED, acceptance test T12e). Against the
+quantum-mechanical H$^+$/He coefficient of \citet{Kimura1993}, $1.05\times10^{-9}$
+at 1000--5000\,K and $1.17\times10^{-9}$ at $10^4$\,K, it is 12--24\% high;
+that residual is not explained by the published sources, which do not define
+the thermal average of the table. Resonant pairs (H$^+$/H, He$^+$/He) never
+enter: both partners carry the same element, and $D_{12}$ is the friction
+between the elements.
+
+The equation is split. The advection of the element mass fraction is a
+divergence of the same face mass flux the density rides on and is carried
+inside the Runge-Kutta stages \eqref{eq:ssprk3}, so each element's nucleus total over the
+domain changes only by its boundary fluxes to round-off. What is left for
+the implicit step here is
+$\rho(X^{\rm new}-X^{\rm adv})/\Delta t = -r^{-2}\partial_r(r^{2}J)$, taken
+at the composition the stages advected; the operator advects only when it is
+\emph{given} the face mass flux, which happens in the fixed-wind relaxation
+that has no stages to ride on.
+
+The discrete operator is one backward-Euler step with frozen coefficients,
+faces carrying $r^{2}$ areas, Newton on a tridiagonal Jacobian (the step is
+nonlinear in $X$ through the product $X(1-X)$). The gradient term is central;
+the drift term keeps a P\'eclet hybrid, central where
+$|B|\Delta r \le 2(A+E)$ and donor cell otherwise. The two factors of
+$X(1-X)$ come from \emph{opposite} sides of the face, because the drift is a
+counter-flow and a donor-cell rule must take each element's mass fraction
+from the cell that element leaves:
+\begin{equation}
+J_{\rm drift}(f) =
+\begin{cases}
+ -B_f\,X(j{+}1)\left[1-X(j)\right], & B_f\ge0\ \ (\text{helium inward}),\\
+ -B_f\,X(j)\left[1-X(j{+}1)\right], & B_f<0.
+\end{cases}
+\label{eq:mol:driftface}
+\end{equation}
+A donor at $X=0$ then sends nothing and an acceptor at $X=1$ receives
+nothing, so a cell on either end of the axis cannot be pushed past it; with
+the P\'eclet switch the same holds in the central branch, and the row
+argument (time term, gradient flux, upwind advection and drift all of one
+sign at a cell that first touches an end) gives $0\le X\le1$ on the residual
+itself rather than through a comparison principle. Measured, the worst excursion outside $[0,1]$ before the assertion clip is
+$-1.05\times10^{-1}$.
+
+\texttt{project\_elements} then rebuilds the species vector on the new
+element totals: helium-bearing species are scaled by
+$r_{\rm He}=n_{\rm He}^{\rm new}/n_{\rm He}^{\rm old}$, component-1 species
+by $r_1$, and a species carrying a nucleus of each (HeH$^+$) by
+$\min(r_1,r_{\rm He})$, the nuclei this undercounts for the element with the
+larger factor being deposited into that element's neutral ground species.
+Every operation is a multiplication by a nonnegative factor or an addition,
+so no negative intermediate can arise and both element totals are met
+exactly. The invariant is that the species handed back carry the mass the
+species handed in carried, to round-off, which requires $r_1$ to be the ratio
+of the two component-1 \emph{masses} read from the cell. The result is the
+initial guess for \texttt{ioniz\_eq}, which owns the split \emph{within} an
+element while this step owns the element totals.
+
+\paragraph{The base of the operator, and what crosses it.}
+The gradient and drift coefficients are built on the faces 1 to $N-1$, and
+faces 0 and $N$ are left at zero, so \textbf{the diffusive flux at the base
+face is zero by construction and not by the state}: an element crosses either
+end of the column with the gas alone.  The flux the Dirichlet reservoir
+composition drives sits at the first solved face, which is face 1 while the
+operator solves rows 2 to $N$ against the reservoir, and face 0 where a
+closed base makes cell 1 an unknown.  The record
+\texttt{element\_base\_flux} carries both faces rather than leaving either
+to be assumed: the advective and the diffusive half at the base face and at
+the first solved face, in ${\rm g\,cm^{-2}\,s^{-1}}$ positive outward
+(toward increasing $r$), together with the index of the first solved face and
+a count of the operator evaluations that produced a composition.  A report
+reads the evaluation the numbers belong to, and a count of zero means no
+operator has run, which is not a flux of zero.  The evaluation matters
+because the base entry is not steady while the base is: MEASURED on the
+\texttt{lower\_profile} configuration, the advective half at the base face
+reads $+4.47\times10^{-8}$ at evaluation 1079, $-3.35\times10^{-10}$ at
+11220 and $+6.29\times10^{-10}$ at 12000, as the base sound wave turns the
+face flux over in sign (item P6e).
+
+The whole operator is gated by \texttt{He\_diffusion}, default off. With
+\texttt{he\_metal\_diffusion} (default off) each trace element additionally
+carries its own mass fraction and its own binary coefficient; otherwise the
+metals are frozen to hydrogen, i.e.\ they ride in component 1 at the
+metal/H ratio the cell holds, and what \texttt{project\_elements} preserves
+for them is that ratio and not the density.
+
+The Dirichlet composition sits at the \emph{center} of cell~1, half a cell
+above the base level, which since 2026-09-27 is the lower face of the grid
+(Sec.~\ref{sec:bcic:base}).  That offset is a first-order term in the cell
+width which is recorded and not changed; the He/H change near the base is
+$1.5\times10^{-4}$ (\texttt{md/Update\_EXHALE\_stage3.md} section 29.11).
+
+\subsection{The interdiffusion enthalpy flux}
+\label{sec:mol:interdiffusion}
+
+Particles that move relative to the mass-averaged velocity carry their
+enthalpy with them.  In a mixture whose species move with velocities
+$v + w_s$, the energy equation is
+%
+\begin{equation}
+  \frac{\partial\mathcal{E}}{\partial t}
+  + \nabla\!\cdot\!\bigl[(\mathcal{E}+p)\mathbf{v}\bigr]
+  = \ldots - \nabla\!\cdot q_d,
+  \qquad
+  q_d = \sum_s h_s J_s,\quad J_s = \rho_s w_s,\quad \sum_s J_s = 0,
+  \label{eq:mol:qd}
+\end{equation}
+%
+\citep[eqs.~11--13, the Dufour flux and the kinetic energy of the relative
+motion left out there and here]{Cook2009}.  Because $J_s$ is a flux relative
+to the \emph{mass}-weighted velocity, $h_s$ is the specific enthalpy and not
+the internal energy.  With the binary element model of
+Sec.~\ref{sec:mol:diffusion} every species moves with its element and the
+electrons with their ions, so $J_1 = -J_{\rm He}$ and
+%
+\begin{equation}
+  q_d = J_{\rm He}\,\bigl(h_{\rm He} - h_1\bigr)
+      + \sum_X J_X\,\bigl(h_X - h_{\rm H}\bigr),
+  \label{eq:mol:qdbinary}
+\end{equation}
+%
+the metal sum present only where \texttt{He\_metal\_diffusion} moves each
+metal against hydrogen (taken against $h_{\rm H}$, component 1 without its
+metals, the group that recoils) and the metals carry mass in the mixture.
+The $h_c$ are \emph{sensible} specific enthalpies built from the caloric
+equation of state (\texttt{component\_specific\_enthalpies} in
+\texttt{binary\_element\_diffusion.f90}): per particle
+$h = e + kT = kT\,\gamma/(\gamma-1)$ for every atom, ion and molecular ion,
+each ion counted with the $Z$ electrons the ambipolar field makes follow it,
+and H$_2$ adding its rovibrational energy of Sec.~\ref{sec:mol:caloric};
+HeH$^+$ is shared between the two components in the proportion of its
+nuclei.  Formation energy is not in them: the energy update books chemical
+energy through the formation-energy density, whose reference in the source
+step is the composition the element transport has just written, so the
+formation energy of the moved nuclei rides with them already, and the
+stationary energy row holds chemical energy only as the reaction heating and
+cooling inside $\mathcal{H}-\Lambda$.  $J$ is the operator's whole diffusive
+flux, gradient, eddy and settling drift together, since eddy mixing carries
+enthalpy as it carries the elements.  Face values of $h_c$ are the
+arithmetic means of the two cells, the face rule of every coefficient of the
+operator, and the flux is zero wherever $J$ is, in particular at faces 0 and
+$N$.
+
+The divergence is taken on the face areas and volumes of the element rows,
+$[A_+q_d(j) - A_-q_d(j-1)]/V_j$ for $j = 2\ldots N$, so an interior face
+cancels between its two cells and the energy the term moves telescopes over
+the column; cell~1, the Dirichlet reservoir of the element operator, carries
+no element equation and no interdiffusion energy.  Both routes carry it: the
+marching step subtracts $\Delta t\,\nabla\!\cdot q_d$, formed from the element
+fluxes the accepted element step itself carried, from the thermal energy
+before the coupled source step starts (\texttt{EXHALE\_main.f90}); the
+stationary energy row adds $\nabla\!\cdot q_d$ formed from the element fluxes
+of the state itself \eqref{eq:residual}.
+
+\paragraph{The transported carriers.}  A molecular carrier moved by the
+carrier operator of Sec.~\ref{sec:mol:carrier} (H$_2$, and OH, H$_2$O, CO
+with the oxygen chemistry) moves relative to the rest of its own elements as
+well: its diffusive, eddy and settling number flux $\Phi_c$ moves nuclei that
+the element fluxes do not, and the nuclei of the same elements held by the
+species that are not carriers move the other way, nucleus for nucleus, so the
+element fluxes are left as they are.  The same identity then gives
+%
+\begin{equation}
+  q_{\rm car} = \sum_c \Phi_c\,\Bigl[h_c - \sum_{\rm el}\nu_{c,\rm el}\,
+  \bar h_{\rm el}\Bigr],
+  \label{eq:mol:qcar}
+\end{equation}
+%
+with $h_c$ the enthalpy of one carrier particle and $\bar h_{\rm el}$ the
+enthalpy per nucleus of el of the species that take up the recoil, each
+particle with the electrons its charge gave up.  These are exactly the species
+whose densities the composition update rescales (\texttt{carrier\_write\_back}),
+so the energy row moves the enthalpy of the nuclei the composition rows move:
+for hydrogen the species of hydrogen nuclei alone that the flow does not carry,
+H\,I, H$_2^+$, H$_3^+$, and H$^+$ unless ionization transport carries it; HeH$^+$
+never recoils, since rescaling it would move a helium nucleus with the
+hydrogen one; for O and C their atomic stages where the metals are in the
+equation of state.  An element with no recoiling species in a cell recoils
+with its neutral atom.  An H$_2$ molecule rising through atomic
+hydrogen at zero hydrogen flux thus carries $h_{\rm H_2} - 2h_{\rm H} =
+k(u_{\rm rv} - 5T/2)$, about $-1.5\,kT$ at 1000\,K.  $\Phi_c$ is the carrier
+operator's own face flux for the state in hand
+(\texttt{molecular\_carrier\_enthalpy\_face\_flux} in
+\texttt{diffusive\_photochemistry.f90}), with the temperature and particle
+count of that state; the outer end of the carrier column is closed, so
+$q_{\rm car}(N) = 0$, and so is the base unless a handoff states the H$_2$
+partition there, when $q_{\rm car}(0)$ is the enthalpy the base face
+exchanges with the lower atmosphere; the divergence, taken over cells
+$1\ldots N$ on the carrier rows' geometry, sums to $-A_0q_{\rm car}(0)$ over
+the column.  The
+stationary energy row adds $\nabla\!\cdot q_{\rm car}$ beside $\nabla\!\cdot q_d$;
+the marching step subtracts $\Delta t\,\nabla\!\cdot q_{\rm car}$ after an
+accepted carrier step, from the fluxes of the composition that step returned
+(its own fluxes to first order in $\Delta t$, exactly at a fixed point).
+MEASURED on the certified well-mixed He/H\,$=0.19$ state of
+LHS~1140\,b before the term existed: $|\nabla\!\cdot q_{\rm car}|$ is a median
+1.8 per cent of the heating over $1.001 < r/R_p < 1.03$, up to 10 per cent,
+comparable to the net heating where heating and cooling cancel, and that
+state is no longer stationary with the term (the carrier row stands at
+$7\times10^{-3}$ on the first pass).  The key
+\texttt{Interdiffusion enthalpy flux:} is \textbf{on by default} whenever
+\texttt{He\_diffusion} moves helium, a molecular carrier is transported or
+\texttt{Ionization transport} carries the stages, and controls all three
+terms (the stage term is below), because the term belongs to the energy
+equation of any mixture whose components move relative to one another;
+\texttt{False} exists to reproduce published escape models that omit it
+\citep[eq.~3]{Koskinen2013}, \citep[eq.~B3]{Koskinen2022}.  With
+\texttt{He\_diffusion} off the element term is identically zero with no
+arithmetic, and so is the carrier term without transported carriers.
+The environment variable \texttt{EXHALE\_INTERDIFF\_ENTH\_SCALE} $=s$,
+$0\le s\le1$ (1 when unset), multiplies the element term
+$\nabla\!\cdot q_d$ (\texttt{interdiffusion\_enthalpy\_scale} in
+\texttt{binary\_element\_diffusion.f90}); it is a continuation factor and not
+physics, used to reach the state of the full equation ($s=1$) in steps from
+one solved without the term, and since it changes the energy equation the
+state token \texttt{interdiff\_enth} carries the value of $s$ wherever
+$s\ne1$, so a state of a continuation step is never read as one of the
+model.
+MEASURED on the LHS~1140\,b \texttt{He\_diffusion} states: the divergence
+reaches 13 to 26 per cent of the local energy budget at 1.1--5\,$R_p$, and on
+the molecular He/H\,$=1.8$ state (24 outer passes with the term, not yet
+certified) it lowers $T$ by a median 166\,K over 1.3--2\,$R_p$ and He/H by
+3.1 per cent, and moves $\log_{10}\dot M$ by $+0.002$.
+
+\paragraph{The carried ionization stages.}  With \texttt{Ionization
+transport} the stage $k$ of an element crosses a face with
+$F_k = x_k(f)\,N_{\rm el}(f) + E_k$, $E_k = -n_{\rm el}K\,\partial x_k/\partial r$
+(\texttt{ionization\_stage\_transport.f90}, equation~1): the first term
+moves the stage with its element, whose enthalpy is in $(\mathcal{E}+p)v$ and
+in \eqref{eq:mol:qdbinary}, and the stage's own eddy term $E_k$ moves it
+relative to the element, the neutral stage carrying $-\sum_k E_k$.  By
+\eqref{eq:mol:qd} that relative motion carries
+%
+\begin{equation}
+  q_{\rm st} = \sum_{\rm el}\sum_k E_k\,\bigl[h_k - \bar h_{\rm el}\bigr],
+  \label{eq:mol:qst}
+\end{equation}
+%
+with $h_k$ the enthalpy of one particle of stage $k$ with its $Z_k$ electrons
+and $\bar h_{\rm el}$ the enthalpy per nucleus of the recoiling species, the
+same set as for the molecular carriers: hydrogen in H\,I, H$_2^+$, H$_3^+$
+(H$^+$ is the carried stage, H$_2$ a carrier with its own term, so no nucleus
+is counted twice), helium in He\,I with the He\,$2^3$S level inside it
+(where \texttt{He 2\^{}3S transport} carries the level, it has charge 0 and
+the sensible enthalpy of He\,I, so its own eddy term adds nothing to
+$q_{\rm st}$, and its excitation energy is chemical energy booked by its
+reactions; MEASURED on the certified LHS~1140\,b validation state, that
+excitation-energy flux relative to He\,I would be at most
+$3\times10^{-7}$ of the energy row's largest term).
+Since every heavy particle carries the same $kT\,\gamma/(\gamma-1)$, a stage
+exchange at fixed element flux moves only the electrons' enthalpy: with the
+recoil in the neutral atom $q_{\rm st} = h_e\sum_{\rm el}\sum_k Z_kE_k$,
+$h_e = kT\,\gamma/(\gamma-1)$, exactly so for helium; H$_2^+$ and H$_3^+$ in
+the hydrogen recoil lower $\bar h_{\rm H}$ by their share of one electron per
+two and three nuclei.  Ionization energy is not in $q_{\rm st}$, for the reason
+given above.  The term holds under zero current (the electrons follow the
+ions), one temperature for electrons, ions and neutrals, and no stage drift
+beyond $E_k$: the ion--neutral drift that the one-velocity stage transport
+leaves out (0.02--0.6 of the advective stage flux outward of
+$\approx1.2\,R_p$ on LHS~1140\,b) is absent together with its enthalpy.
+$E_k$ is the stage rows' own (\texttt{ionization\_stage\_face\_flux}), zero at
+faces 0 and $N$, so the column sum of the divergence vanishes
+(\texttt{ionization\_stage\_enthalpy\_face\_flux}); the divergence enters the
+stationary energy row, the marching update and the advected-profile energy
+solve together with the molecular term, under the same key, and the state
+token \texttt{stage\_enth} records it.  MEASURED on the certified He/H\,$=2.09$
+conduction state with carried stages (\texttt{.P2/ew\_fit/phase3}): the term
+reaches $1.7\times10^{-3}$ of the energy-row scale at $1.16\,R_p$ and exceeds
+the $10^{-6}$ tolerance in 369 of 500 cells, so that state is not stationary
+with it.

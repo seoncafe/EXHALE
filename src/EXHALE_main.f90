@@ -46,7 +46,6 @@
                                           element_step_last_status,      &
                                           element_step_accepted,         &
                                           element_step_outcome_text,     &
-                                          element_refuse_leading_steps_for_test, &
                                           relax_element_composition,      &
                                           element_transport_residual_norm,&
                                           residual_norm_is_admissible,    &
@@ -161,7 +160,6 @@
                                attempted_step_evaluate,                  &
                                attempted_step_thermal_energy_before_sources,&
                                attempted_step_thermal_energy_after_sources, &
-                               attempted_step_injected_refusal,          &
                                attempted_step_note_step,                 &
                                attempted_step_reduced_dt,                &
                                attempted_step_bound_next_dt,             &
@@ -181,9 +179,8 @@
                                as_op_ioniz_eq, as_op_composition,         &
                                as_op_energy, as_op_bc, as_op_conduction, &
                                as_op_shapiro, as_op_boundary,           &
-                               as_fixed_dt_seconds, err_pass_index,     &
+                               as_fixed_dt_seconds,                     &
                                attempted_step_checkpoint_checksum,      &
-                               as_reject_injected,                      &
                                as_reject_carrier, as_reject_element,     &
                                as_reject_hydro_stage, as_reject_int_error, &
                                as_reject_energy, as_reject_conduction,   &
@@ -229,8 +226,7 @@
                                replay_distance,                           &
                                gate_rnorm_accepted, gate_fspread_accepted, &
                                coupled_block_jacobian_action_requested, &
-                               jacobian_action_against_closure_count_and_probe_arc, &
-                               build_banded_jac_full
+                               jacobian_action_against_closure_count_and_probe_arc
       use Conversion
       use ionization_equilibrium
       use utils_ion_eq, only: ec_prof_on, ec_t, ec_name
@@ -441,7 +437,7 @@
       real*8, allocatable :: Ytry3(:), Jvd(:), vdir(:), Ddet(:), Drdet(:)
       real*8, dimension(:,:), allocatable :: f_sp_w
       integer :: nbitdiff_b, nbitdiff_c, nvj_det, nbitdiff_ctrl
-      real*8  :: dmax_b, dmax_c, det_rs, det_sc_ctrl
+      real*8  :: det_rs
       ! The replay's distance in each row class, and the cell and the slot
       ! that carry it: three numbers say where a residual moved, one does
       ! not.
@@ -459,7 +455,7 @@
       ! --- lightweight phase profiler (gated by env EXHALE_PROFILE=1) ---
       logical :: do_profile = .false.
       integer :: jj_ec
-      real*8  :: tp_step0, tp_a, tp_ion = 0.0d0, tp_hyd = 0.0d0, tp_tot = 0.0d0
+      real*8  :: tp_step0, tp_a, tp_ion = 0.0d0, tp_tot = 0.0d0
       ! finer phases of the marching step (EXHALE_PROFILE=1): the three RK
       ! stages together, the carrier transport operator, the semi-implicit
       ! energy update, and everything else by difference.
@@ -675,7 +671,6 @@
       ! full step held aside while the two halves are taken).
       type(attempted_step_checkpoint) :: as_chk, as_entry, as_full
       type(attempted_step_verdict)    :: as_verd
-      type(carrier_verdict)           :: as_cv
       real*8, dimension(:,:), allocatable :: L_hyd, u_err_full, u_hyd
       ! THE FULL-PASS STATE THE COMPARISON IS TAKEN AGAINST, on every row
       ! class of the estimate: the conservative rows, the species
@@ -703,7 +698,11 @@
       ! its tolerances are written in.
       real*8, dimension(:), allocatable :: csm_inner_c, csm_inner_T
       real*8  :: csm_inner_fac
-      integer :: n_step_retry, i_err, n_err_passes, as_inject_op, i_ecl
+      integer :: n_step_retry, i_err, n_err_passes, i_ecl
+      ! The nested positivity retry of the Runge-Kutta stages (row 2) spent
+      ! its n_dt_halve_max bisections of the hydro dt in the current trial,
+      ! which leaves the trial before the adoption boundary.
+      logical :: hydro_bisections_exhausted
       ! Retries of the WHOLE macrostep. A rejection inside a sampled
       ! macrostep cannot be repaired by shortening one pass, because the
       ! three passes would then no longer share an endpoint, so it restarts
@@ -712,8 +711,7 @@
       integer :: n_macro_retry, n_retry_now
       character(len=20) :: err_pass_name
       ! A refusal raised INSIDE the trial by an operation that knows its own
-      ! reason (the coupled source step of rows 7 to 9), as opposed to the
-      ! injected refusals, which only know where they fired. Zero means the
+      ! reason (the coupled source step of rows 7 to 9). Zero means the
       ! trial ran to the adoption boundary.
       integer :: as_trial_reason, as_trial_op
       ! THE RETRY HISTORY OF ONE STEP, printed when the budget is exhausted:
@@ -734,9 +732,7 @@
       ! from the entry composition the step restored): counted for the
       ! final report, so a refusal never passes silently in either mode.
       integer :: n_element_refused_init = 0
-      character(len=64) :: as_env
-      real*8  :: as_frac_done
-      integer :: as_nsub, as_carrier_status
+      integer :: as_carrier_status
       ! The ledger family in force around a stationary solve, which is
       ! continuation and writes to the initialization family.
       integer :: ledger_family_held
@@ -744,10 +740,6 @@
       ! and the clock after it, so that the elapsed time a run reports can be
       ! checked against the sum of the steps it took.
       logical :: trace_step_clock = .false.
-      ! EXHALE_REJECT_STEP=<n>: refuse the first attempt of the step taken at
-      ! marching_step = n through the positivity retry path, so that the
-      ! branch can be exercised on demand. -1 (the default) never fires.
-      integer :: reject_step_probe = -1
 
       ! Value of n_faces_flux_positivity_limited when the current attempt at
       ! the step began. The repairs of an attempt that the dt bisection
@@ -1017,12 +1009,6 @@
       ! increments have reached round-off.  A bound exceeded on one step
       ! in 300 is not a bound, which is why 2 is not the value.
       real*8 :: csm_err_safety = 3.0d0
-      ! TEST HOOK, default off: report no estimate on any pass.  The
-      ! stopping test then falls back to the increment on every pass, which
-      ! IS the test this loop applied before item COST7, and the suite
-      ! asserts that this run and a run whose first usable pass is put out
-      ! of reach are the same run.
-      logical :: csm_geom_refuse_all = .false.
       ! DIAGNOSTIC HOOK, default off: one line for each pass sequence the
       ! estimate is measured from and one for each candidate taken.
       logical :: csm_geom_debug = .false.
@@ -1110,10 +1096,6 @@
       ! same 6.09 passes. The budget is kept as a number rather than
       ! removed because it is what makes that statement checkable.
       integer :: csm_extrap_max   = 1
-      ! TEST HOOK, default off: refuse every candidate at the guard stage,
-      ! so that a run can show what a refused extrapolation costs (nothing:
-      ! no pass is spent and the iterate is untouched).
-      logical :: csm_extrap_refuse_all = .false.
       ! MEASUREMENT HOOK, default off: undo a candidate whenever its own
       ! next pass did not beat the pass it replaced, instead of undoing it
       ! only where that pass made no progress at all.  The two rules are
@@ -1690,185 +1672,6 @@
          stop
       endif
 
-      ! ---- Trial admissibility of the stationary residual ----
-      ! (env EXHALE_TRIAL_ADMISSIBILITY_TEST = 1, 2 or 3; default off, a
-      ! test of the loaded state that stops the run; driven by
-      ! src/tests/trial_admissibility/run.sh.)
-      !   1  trials whose conserved state is not a gas in one cell (rho e < 0,
-      !      rho e = 0, rho = 0, a NaN energy, an infinite momentum), each
-      !      evaluated as a trial that could be adopted and as a probe: the
-      !      evaluation must answer admissible = F with no radiative pair and
-      !      no particle count, and the iterate evaluated after them must
-      !      give the residual it gave before them, bit for bit. Then the
-      !      finite-difference banded Jacobian at a state whose cell jw holds
-      !      an internal energy 1e-12 of its kinetic energy, where a forward
-      !      momentum probe of any admissible length leaves the gas: no color
-      !      may be left unresolved, and the momentum column of jw must agree
-      !      with a one-sided backward difference of that column alone.
-      !   2  the rho e < 0 trial evaluated WITHOUT asking for admissibility,
-      !      as only the iterate of a solve is: the run must stop with the
-      !      condition named.
-      !   3  a stationary solve entered at a state that is not a gas in one
-      !      cell: it must return at once as not converged.
-      call get_environment_variable('EXHALE_TRIAL_ADMISSIBILITY_TEST',     &
-                                    diag_env)
-      if (trim(diag_env) .eq. '1' .or. trim(diag_env) .eq. '2' .or.       &
-          trim(diag_env) .eq. '3') then
-         block
-           real*8, allocatable :: ta_Y0(:), ta_Y(:), ta_F0(:), ta_F1(:),   &
-                                  ta_F(:), ta_Fm(:), ta_D(:), ta_ab(:,:)
-           real*8, allocatable :: ta_fsp(:,:), ta_h(:), ta_c(:), ta_np(:)
-           real*8, allocatable :: ta_u(:,:), ta_fsp_solve(:,:)
-           real*8  :: ta_kin, ta_e0, ta_h_col, ta_jref, ta_jab, ta_dev,    &
-                      ta_cmax, ta_nan
-           integer :: ta_jt, ta_jw, ta_kind, ta_iprobe, ta_nu, ta_col,    &
-                      ta_row, ta_idx, ta_ndiff, ta_nfin, ta_info
-           logical :: ta_adm, ta_hc0, ta_np0
-           character(len=24) :: ta_name
-           call select_stationary_reconstruction
-           sec_ion_active = use_sec_ion
-           if (sec_ion_active) sec_ion_armed_step = 0
-           call set_transported_species_rows(carrier_in_newton)
-           call read_species_unknown_space_controls
-           allocate(ta_Y0(neq_newton()), ta_Y(neq_newton()),              &
-                    ta_F0(neq_newton()), ta_F1(neq_newton()),             &
-                    ta_F(neq_newton()), ta_Fm(neq_newton()),              &
-                    ta_D(neq_newton()))
-           allocate(ta_ab(2*kl_jac+ku_jac+1, neq_newton()))
-           allocate(ta_fsp(1-Ng:N+Ng,n_species), ta_h(1-Ng:N+Ng),         &
-                    ta_c(1-Ng:N+Ng), ta_np(1-Ng:N+Ng))
-           call pack_U(u, ta_Y0)
-           call pack_species_rows(u, f_sp, ta_Y0)
-           call freeze_species_unknown_box(ta_Y0)
-           ! cell 2, the cell of the measured abort; jw, the cell of
-           ! largest outward velocity (where kinetic energy matters).
-           ta_jt = 2
-           ta_jw = maxloc(u(2,1:N)/u(1,1:N), 1)
-           ta_nan = 0.0d0
-           ta_nan = ta_nan/ta_nan
-           write(*,'(A,I0,A,I0,A,I0)') 'TRIAL_ADMISSIBILITY setup N=', N, &
-                ' nvar=', nvar_jac, ' jw=', ta_jw
-           select case (trim(diag_env))
-           case ('1')
-              call newton_residual(ta_Y0, f_sp, ta_fsp, ta_F0)
-              do ta_kind = 1, 5
-                 do ta_iprobe = 0, 1
-                    ta_Y   = ta_Y0
-                    ta_idx = nvar_jac*(ta_jt-1)
-                    ta_kin = 0.5d0*ta_Y(ta_idx+2)**2/ta_Y(ta_idx+1)
-                    ta_e0  = ta_Y(ta_idx+3)
-                    select case (ta_kind)
-                    case (1)
-                       ta_name = 'rho_e_negative'
-                       ta_Y(ta_idx+3) = ta_kin - 1.0d-6*ta_e0
-                    case (2)
-                       ta_name = 'rho_e_zero'
-                       ta_Y(ta_idx+3) = ta_kin
-                    case (3)
-                       ta_name = 'rho_zero'
-                       ta_Y(ta_idx+1) = 0.0d0
-                    case (4)
-                       ta_name = 'energy_nan'
-                       ta_Y(ta_idx+3) = ta_nan
-                    case (5)
-                       ta_name = 'momentum_infinite'
-                       ta_cmax = huge(1.0d0)
-                       ta_Y(ta_idx+2) = ta_cmax + ta_cmax
-                    end select
-                    ta_adm = .true.
-                    call eval_residual(ta_Y, f_sp, ta_fsp, ta_F, ta_h,    &
-                                       ta_c, n_part=ta_np,                &
-                                       admissible=ta_adm,                 &
-                                       may_be_adopted=(ta_iprobe .eq. 0), &
-                                       state_is_discarded=.true.)
-                    ta_hc0 = all(ta_h .eq. 0.0d0) .and.                   &
-                             all(ta_c .eq. 0.0d0)
-                    ta_np0 = all(ta_np .eq. 0.0d0)
-                    ta_nfin = count(ta_F .eq. ta_F .and.                  &
-                                    abs(ta_F) .le. huge(1.0d0))
-                    write(*,'(A,A,A,A,A,L1,A,L1,A,L1,A,I0)')              &
-                         'TRIAL_ADMISSIBILITY trial ', trim(ta_name), ' ',&
-                         trim(merge('adoptable', 'probe    ',             &
-                                    ta_iprobe .eq. 0)),                   &
-                         ' admissible=', ta_adm, ' radiative_pair_zero=', &
-                         ta_hc0, ' particle_count_zero=', ta_np0,         &
-                         ' finite_rows=', ta_nfin
-                 enddo
-              enddo
-              call newton_residual(ta_Y0, f_sp, ta_fsp, ta_F1)
-              ta_ndiff = count(ta_F1 .ne. ta_F0)
-              write(*,'(A,I0,A,I0)') 'TRIAL_ADMISSIBILITY iterate_after'//&
-                   '_trials differing_entries=', ta_ndiff, ' of ',        &
-                   neq_newton()
-              ! The edge of the gas at cell jw: rho e = 1e-12 of the
-              ! kinetic energy.
-              ta_Y   = ta_Y0
-              ta_idx = nvar_jac*(ta_jw-1)
-              ta_kin = 0.5d0*ta_Y(ta_idx+2)**2/ta_Y(ta_idx+1)
-              ta_Y(ta_idx+3) = ta_kin*(1.0d0 + 1.0d-12)
-              call build_banded_jac_full(ta_Y, f_sp, ta_ab, ta_nu)
-              call cell_state_scales(ta_Y, ta_D)
-              ta_col   = ta_idx + 2
-              ta_h_col = sqrt(epsilon(1.0d0))*ta_D(ta_col)
-              call eval_residual(ta_Y, f_sp, ta_fsp, ta_F, ta_h, ta_c,    &
-                                 admissible=ta_adm, may_be_adopted=.false.,&
-                                 state_is_discarded=.true.)
-              ! The forward probe of that column alone, at the shortest
-              ! length the Jacobian tries (2^-6 of sqrt(eps) times the
-              ! scale): it leaves the gas, which is what the backward side
-              ! of the Jacobian exists for.
-              ta_Y(ta_col) = ta_Y(ta_col) + ta_h_col/64.0d0
-              call eval_residual(ta_Y, f_sp, ta_fsp, ta_Fm, ta_h, ta_c,   &
-                                 admissible=ta_adm, may_be_adopted=.false.,&
-                                 state_is_discarded=.true.)
-              write(*,'(A,L1)') 'TRIAL_ADMISSIBILITY forward_probe_at_'// &
-                   'the_shortest_length_admitted=', ta_adm
-              ta_Y(ta_col) = ta_Y(ta_col) - ta_h_col/64.0d0 - ta_h_col
-              call eval_residual(ta_Y, f_sp, ta_fsp, ta_Fm, ta_h, ta_c,   &
-                                 admissible=ta_adm, may_be_adopted=.false.,&
-                                 state_is_discarded=.true.)
-              ta_dev = 0.0d0;  ta_cmax = 0.0d0;  ta_nfin = 0
-              do ta_row = max(1, ta_col - ku_jac),                        &
-                          min(neq_newton(), ta_col + kl_jac)
-                 ta_jref = (ta_F(ta_row) - ta_Fm(ta_row))/ta_h_col
-                 ta_jab  = ta_ab(kl_jac+ku_jac+1 + ta_row - ta_col, ta_col)
-                 if (.not. (ta_jab .eq. ta_jab .and.                      &
-                            abs(ta_jab) .le. huge(1.0d0)))                &
-                    ta_nfin = ta_nfin + 1
-                 ta_dev  = max(ta_dev, abs(ta_jab - ta_jref))
-                 ta_cmax = max(ta_cmax, abs(ta_jref))
-              enddo
-              write(*,'(A,I0,A,I0,A,ES11.3,A,L1)') 'TRIAL_ADMISSIBILITY'//&
-                   ' jacobian_at_the_edge unresolved_colors=', ta_nu,     &
-                   ' nonfinite_column_entries=', ta_nfin,                 &
-                   ' column_departure_from_backward_difference=',         &
-                   ta_dev/max(ta_cmax, 1.0d-300), ' reference_admitted=', &
-                   ta_adm
-           case ('2')
-              ta_Y   = ta_Y0
-              ta_idx = nvar_jac*(ta_jt-1)
-              ta_kin = 0.5d0*ta_Y(ta_idx+2)**2/ta_Y(ta_idx+1)
-              ta_Y(ta_idx+3) = ta_kin - 1.0d-6*ta_Y0(ta_idx+3)
-              call newton_residual(ta_Y, f_sp, ta_fsp, ta_F)
-              write(*,'(A)') 'TRIAL_ADMISSIBILITY REACHED: an iterate'//  &
-                   ' that is not a gas was evaluated without a stop'
-           case ('3')
-              allocate(ta_u(3,1-Ng:N+Ng), ta_fsp_solve(1-Ng:N+Ng,n_species))
-              ta_u = u;  ta_fsp_solve = f_sp
-              ta_kin = 0.5d0*ta_u(2,ta_jt)**2/ta_u(1,ta_jt)
-              ta_u(3,ta_jt) = ta_kin - 1.0d-6*u(3,ta_jt)
-              ta_info = -99
-              call solve_steady_jfnk(ta_u, ta_fsp_solve, resid_max, 5,    &
-                                     1.0d0, 40, ta_info)
-              write(*,'(A,I0)') 'TRIAL_ADMISSIBILITY solve_entered_at'//  &
-                   '_a_state_that_is_not_a_gas info=', ta_info
-           end select
-         end block
-         call set_transported_species_rows(.false.)
-         write(*,*) '(EXHALE_main) EXHALE_TRIAL_ADMISSIBILITY_TEST: stopping.'
-         stop
-      endif
-
       ! ---- Does the directional derivative depend on the closure count? ----
       ! (env EXHALE_CLOSURE_PROBE=1, default off and diagnostic only.)
       !
@@ -2193,7 +1996,6 @@
       exc_rel = 1.0d0
 
       mass_flux_converged   = .false.
-      step_change_converged = .false.
       relaxation_stalled    = .false.
       du_prev      = huge(1.0d0)
       stall_count  = 0
@@ -2228,12 +2030,6 @@
       dt_last_accepted        = -1.0d0
       dt_bounded_by_rejection = .false.
       call attempted_step_read_environment()
-      ! Test knob of the element step (see binary_element_diffusion):
-      ! refuse the first n element steps so the controller's handling of
-      ! a refused step can be exercised. Zero in every production run.
-      call get_environment_variable('EXHALE_ELEMENT_REFUSE_STEPS', as_env)
-      if (len_trim(as_env) .gt. 0) read(as_env,*) element_refuse_leading_steps_for_test
-      call energy_update_read_environment()
       ! THE CONTROLLER OWNS THE DECISION on an uncovered carrier interval
       ! (see the call site in the step), so the operator's own stop is off
       ! for the whole run.
@@ -2456,11 +2252,9 @@
               upmap_n, ' production step(s), state restored between them'
       endif
 
-      ! The step clock and the rejection probe (see their declarations).
+      ! The step clock (see its declaration).
       call get_environment_variable('EXHALE_STEP_CLOCK', diag_env)
       if (trim(diag_env) .eq. '1') trace_step_clock = .true.
-      call get_environment_variable('EXHALE_REJECT_STEP', diag_env)
-      if (len_trim(diag_env) .gt. 0) read(diag_env,*) reject_step_probe
 
       ! Activate base-cell startup diagnostic if requested
       call get_environment_variable('EXHALE_P54_TS', diag_env)
@@ -2503,7 +2297,6 @@
       ! own flag and its own line in the stop report below, so the reason
       ! printed is the reason that fired.
       do while( ( .not.mass_flux_converged    .and.                          &
-                  .not.step_change_converged  .and.                          &
                   .not.relaxation_stalled           .and.                          &
                   .not.steady_gates_converged .and.                          &
                   .not.newton_finished        .and.                          &
@@ -2513,9 +2306,9 @@
             ! dt_loc = cell-by-cell pseudo-dt ("Time stepping: Local"), or
             ! uniformly the global dt (default; bit-identical updates).
             call eval_dt(W,dt,dt_loc)
-            ! TEST HOOK, default off (EXHALE_AS_FIXED_DT, seconds): the
-            ! step is prescribed instead of taken from the CFL condition,
-            ! so that one interval can be covered by one step, by two, by
+            ! Numerical-accuracy control, default off (EXHALE_AS_FIXED_DT,
+            ! seconds): the step is prescribed instead of taken from the CFL
+            ! condition, so that one interval can be covered by one step, by two, by
             ! four and by eight and the order of the complete split update
             ! read off the successive differences. The code's time unit is
             ! R0/v0, and a prescribed step is uniform over the grid: local
@@ -2617,12 +2410,6 @@
 
             err_pass: do i_err = 1, n_err_passes
 
-            if (n_err_passes .eq. 3) then
-               err_pass_index = i_err
-            else
-               err_pass_index = 0
-            endif
-
             if (i_err .eq. 1) then
                dt = dt_macro;  dt_loc = dtloc_macro
                err_pass_name = 'the full step'
@@ -2673,7 +2460,7 @@
                                                 cool, eta, n_dt_halve,    &
                                                 n_dt_halvings,            &
                                                 n_steps_dt_halved)
-            as_inject_op  = 0
+            hydro_bisections_exhausted = .false.
             as_trial_reason = 0
             as_trial_op     = 0
             as_carrier_ok = .true.
@@ -2690,9 +2477,6 @@
             if (upmap_n .gt. 0) call update_map_begin_step
 
             u_old = u
-            if (attempted_step_injected_refusal(as_op_checkpoint)) then
-               as_inject_op = as_op_checkpoint;  exit trial
-            endif
 
             ! Positivity of the RK3 + HLLC step.
             !
@@ -2896,25 +2680,6 @@
             call adiabat_advection_stage(3,u_old(1,:),u2,u(1,:),           &
                                          face_flux(1,:),dt_loc)
 
-            ! THE REJECTION PATH, ON DEMAND. A step is refused here exactly
-            ! as a positivity violation refuses one: the attempt is discarded,
-            ! dt is halved and the step is retaken from u_old. It exists
-            ! because the rule that a rejected trial advances no clock and no
-            ! ledger cannot be tested on a run that never rejects a step, and
-            ! the run's own rejections depend on the state. Unset, the probe
-            ! is -1 and the branch is never entered, so a run without it is
-            ! the run an unguarded build gives.
-            if (marching_step .eq. reject_step_probe .and. n_dt_halve .eq. 0) then
-               n_steps_dt_halved = n_steps_dt_halved + 1
-               n_dt_halve    = n_dt_halve + 1
-               n_dt_halvings = n_dt_halvings + 1
-               dt     = 0.5d0*dt
-               dt_loc = 0.5d0*dt_loc
-               write(*,'(A,I0,A)') '   EXHALE_REJECT_STEP: attempt at '//  &
-                    'step ', marching_step, ' refused; retaken at half dt'
-               cycle retry_step
-            endif
-
             ! The step is accepted here: all three stages held rho > 0,
             ! rho e > 0, so the repairs made since this attempt began belong
             ! to the trajectory the run keeps.
@@ -2972,11 +2737,8 @@
                ! The nested positivity retry gave up after n_dt_halve_max
                ! bisections. That is an outer rejection with the operation
                ! named, not a state the step controller may adopt.
-               as_inject_op = -as_op_hydro
+               hydro_bisections_exhausted = .true.
                exit trial
-            endif
-            if (attempted_step_injected_refusal(as_op_hydro)) then
-               as_inject_op = as_op_hydro;  exit trial
             endif
 
             ! Update-map snapshots sit BETWEEN operator-split stages, never
@@ -3006,9 +2768,6 @@
             ! Temperature profile
             call comp_T_from_p(p,n_tot,ne,T)
 
-            if (attempted_step_injected_refusal(as_op_primitives)) then
-               as_inject_op = as_op_primitives;  exit trial
-            endif
 
             ! He/H diffusive separation, in two halves.  The ADVECTIVE half
             ! rode on the face mass fluxes inside the Runge-Kutta stages
@@ -3071,9 +2830,6 @@
                u(3,1:N) = u(3,1:N) - dt_loc(1:N)*div_q_id(1:N)
             endif
 
-            if (attempted_step_injected_refusal(as_op_diffusion)) then
-               as_inject_op = as_op_diffusion;  exit trial
-            endif
 
             ! Vertical transport of the molecular carriers (H2, OH, H2O,
             ! CO) with their chemistry, in the same operator-split slot the
@@ -3137,17 +2893,11 @@
                                                          div_q_car)
                u(3,1:N) = u(3,1:N) - dt_loc(1:N)*div_q_car(1:N)
             endif
-            if (attempted_step_injected_refusal(as_op_carriers)) then
-               as_inject_op = as_op_carriers;  exit trial
-            endif
 
             ! Refresh the lagged H(n=2) Balmer source + heating from
             ! the current state before the ionization/energy solve.
             if (use_excited_H) call excited_H_update(T,rho,f_sp,v,exc_rel)
 
-            if (attempted_step_injected_refusal(as_op_excited_H)) then
-               as_inject_op = as_op_excited_H;  exit trial
-            endif
 
             !------------------------------------------------!
             ! THE COUPLED SOURCE STEP (rows 7 to 9 of the enumerated step).
@@ -3577,22 +3327,6 @@
                     ' passes: dT/T= ', csm_dT, '  dcomp= ', csm_dcomp
             endif
 
-            ! The injection points of the attempted-step controller. They sit
-            ! after the coupled step because the loop calls each of the two
-            ! solves more than once and a refusal is a statement about the
-            ! operation, not about one of its passes. Row 8 no longer holds
-            ! the composition projection -- it is the point at which the
-            ! composition and the energy have become one state.
-            if (attempted_step_injected_refusal(as_op_ioniz_eq)) then
-               as_inject_op = as_op_ioniz_eq;  exit trial
-            endif
-            if (attempted_step_injected_refusal(as_op_composition)) then
-               as_inject_op = as_op_composition;  exit trial
-            endif
-            if (attempted_step_injected_refusal(as_op_energy)) then
-               as_inject_op = as_op_energy;  exit trial
-            endif
-
             ! THE ENERGY UPDATE REFUSES THE ATTEMPT IN BOTH MODES. A
             ! status other than ENERGY_UPDATE_OK means the solve found no
             ! temperature at all for at least one cell: nothing was
@@ -3628,9 +3362,6 @@
 
 		call Apply_BC(u)
 
-            if (attempted_step_injected_refusal(as_op_bc)) then
-               as_inject_op = as_op_bc;  exit trial
-            endif
 
             if (upmap_n .gt. 0) u_umC = u
 
@@ -3665,9 +3396,6 @@
                call Apply_BC(u)
             endif
 
-            if (attempted_step_injected_refusal(as_op_conduction)) then
-               as_inject_op = as_op_conduction;  exit trial
-            endif
 
             if (upmap_n .gt. 0) u_umD = u
 
@@ -3685,9 +3413,6 @@
                n_shapiro_applied = n_shapiro_applied + 1
             endif
 
-            if (attempted_step_injected_refusal(as_op_shapiro)) then
-               as_inject_op = as_op_shapiro;  exit trial
-            endif
 
             exit trial
             enddo trial
@@ -3738,22 +3463,14 @@
                   as_verd%what   = 'the temperature and the composition'// &
                                    ' were still moving at the pass cap'
                endif
-            else if (as_inject_op .ne. 0) then
-               ! The trial left early: either a refusal was injected after a
-               ! named operation, or the nested positivity retry exhausted
-               ! its own budget (as_inject_op < 0).
+            else if (hydro_bisections_exhausted) then
+               ! The trial left early: the nested positivity retry exhausted
+               ! its own budget of bisections.
                as_verd%accepted  = .false.
-               if (as_inject_op .gt. 0) then
-                  as_verd%reason    = as_reject_injected
-                  as_verd%operation = as_inject_op
-                  as_verd%what      = 'a refusal was injected after this'//&
-                                      ' operation'
-               else
-                  as_verd%reason    = as_reject_hydro_stage
-                  as_verd%operation = -as_inject_op
-                  as_verd%what      = 'the nested positivity retry'//      &
-                                      ' exhausted its bisections'
-               endif
+               as_verd%reason    = as_reject_hydro_stage
+               as_verd%operation = as_op_hydro
+               as_verd%what      = 'the nested positivity retry'//         &
+                                   ' exhausted its bisections'
             else if (.not. as_element_ok) then
                as_verd%accepted  = .false.
                as_verd%reason    = as_reject_element
@@ -4436,7 +4153,6 @@
                   endif
                endif
                mass_flux_converged    = .false.
-               step_change_converged  = .false.
                relaxation_stalled           = .false.
                steady_gates_converged = .false.
             else if (use_newton_solver) then
@@ -4470,7 +4186,6 @@
                endif
                du_prev      = du
                mass_flux_converged    = .false.
-               step_change_converged  = .false.
                relaxation_stalled           = .false.
                steady_gates_converged = .false.
             else if (resid_th .gt. 0.0d0) then
@@ -4493,7 +4208,6 @@
                ! the stop it produces is reported as what it is: a stall with
                ! the gate target unmet, never a converged residual.
                mass_flux_converged    = .false.
-               step_change_converged  = .false.
                steady_gates_converged = gates_met_now
                if (marching_step .gt. 1) then
                   ! THE SENTINEL IS KEPT OUT OF THE ARITHMETIC. du_prev
@@ -4550,7 +4264,6 @@
                      n_settled_windows = 0
                   endif
                endif
-               step_change_converged = .false.
                steady_gates_converged = .false.
                ! du plateau count (stall_count): a diagnostic kept for the
                ! printed record; the stall net that stops the march is
@@ -4586,13 +4299,14 @@
 
             ! The update map ends on its own step count (update_map_end_step
             ! sets max_steps) and on nothing else. Its smallest steps are the
-            ! ones a step-order measurement needs, and on a stationary state
-            ! they fall below dtu_th: the step-change stop ended a six-step map
-            ! after three blocks (measured 2026-09-23). Clearing the flags here
+            ! ones a step-order measurement needs, and a marching stop must
+            ! not end the map early (the former one-step dtu stop ended a
+            ! six-step map after three blocks, measured 2026-09-23; that stop
+            ! was removed on 2026-10-16). Clearing the flags here
             ! also keeps the staged secondary ionization below from switching
             ! the physics between two steps of one map.
             if (upmap_n .gt. 0) then
-               mass_flux_converged = .false.;  step_change_converged = .false.
+               mass_flux_converged = .false.
                relaxation_stalled = .false.;  steady_gates_converged = .false.
             endif
 
@@ -4619,7 +4333,7 @@
                sec_ion_active = .true.
                sec_flip_step  = marching_step
                sec_ion_armed_step = marching_step
-               mass_flux_converged = .false.;  step_change_converged = .false.
+               mass_flux_converged = .false.
                relaxation_stalled = .false.;  steady_gates_converged = .false.
                stall_count  = 0
                du_prev      = huge(1.0d0)
@@ -4637,12 +4351,12 @@
                ! once the base adjustment wave driven by the new coupling has
                ! formed, so an immediate stop would freeze a state that has not
                ! yet incorporated the secondary-ionization physics.
-               mass_flux_converged = .false.;  step_change_converged = .false.
+               mass_flux_converged = .false.
                relaxation_stalled = .false.;  steady_gates_converged = .false.
             endif
 
             if (regional_enabled) then
-               mass_flux_converged=.false.;step_change_converged=.false.
+               mass_flux_converged=.false.
                relaxation_stalled=.false.;steady_gates_converged=.false.
                call regional_state_sample(dt*R0/v0)
                if (regional_passed.or.regional_exhausted) exit
@@ -4691,7 +4405,7 @@
                   sec_ion_active = .true.
                   sec_flip_step  = marching_step
                   sec_ion_armed_step = marching_step
-                  mass_flux_converged = .false.;  step_change_converged = .false.
+                  mass_flux_converged = .false.
                   relaxation_stalled = .false.;  steady_gates_converged = .false.
                   stall_count  = 0
                   du_prev      = huge(1.0d0)
@@ -4966,11 +4680,6 @@
          write(*,'(A,I0,A,ES10.3,A,ES10.3,A)')                                &
               '        and the state settled (largest relative change over ',&
               N_resid, ' steps ', chg_win, ' < ', march_change_th, ')'
-         call report_marching_stop
-      else if (step_change_converged) then
-         write(*,'(A,ES10.3,A,ES10.3,A)')                                     &
-              '     -> stopped: the state stopped changing (dtu=', dtu,       &
-              ' < dtu_th', dtu_th, ')'
          call report_marching_stop
       else if (relaxation_stalled) then
          write(*,'(A,I0,A,ES10.3,A,ES10.3,A)') '     -> stopped: the state'// &
@@ -6097,7 +5806,6 @@
       csm_err_c        = csm_dcomp
       csm_geom_theta_T = 0.0d0
       csm_geom_theta_c = 0.0d0
-      if (csm_geom_refuse_all) return
       if (.not. csm_geom_have_prev) return
       if (i_csm .lt. csm_geom_first_pass) return
 
@@ -6235,23 +5943,20 @@
       if (.not. csm_err_ok) return
 
       n_csm_x_attempt = n_csm_x_attempt + 1
-      geometric = .not. csm_extrap_refuse_all
 
-      if (geometric) then
-         ! THE REACH OF THE MODEL, and this guard is what decides whether
-         ! the extrapolation pays at all.  What the candidate removes is
-         ! the modeled part of the error; what it LEAVES is the part the
-         ! model does not explain, and MEASURED that part is of the same
-         ! order as the modeled part itself unless the sequence is
-         ! already close to its limit (see csm_x_reach).  So the candidate
-         ! is taken only where the estimated error is already inside the
-         ! ball the loop is aiming for, loosened by csm_x_reach: that is
-         ! the stopping test itself at a looser tolerance, and it is why
-         ! the window left to the extrapolation is now only the band
-         ! between the tolerance and csm_x_reach times it.
-         geometric = csm_err_T .le. csm_x_reach*csm_T_tol                 &
-               .and. csm_err_c .le. csm_x_reach*csm_comp_tol
-      endif
+      ! THE REACH OF THE MODEL, and this guard is what decides whether
+      ! the extrapolation pays at all.  What the candidate removes is
+      ! the modeled part of the error; what it LEAVES is the part the
+      ! model does not explain, and MEASURED that part is of the same
+      ! order as the modeled part itself unless the sequence is
+      ! already close to its limit (see csm_x_reach).  So the candidate
+      ! is taken only where the estimated error is already inside the
+      ! ball the loop is aiming for, loosened by csm_x_reach: that is
+      ! the stopping test itself at a looser tolerance, and it is why
+      ! the window left to the extrapolation is now only the band
+      ! between the tolerance and csm_x_reach times it.
+      geometric = csm_err_T .le. csm_x_reach*csm_T_tol                    &
+            .and. csm_err_c .le. csm_x_reach*csm_comp_tol
 
       if (geometric) then
          aT = csm_geom_theta_T/(1.0d0 - csm_geom_theta_T)
@@ -8155,15 +7860,6 @@
       ! that the record compared against the written state belongs to the
       ! state written (assert_written_state_is_the_accepted_one).
       real*8  :: gate_rnorm_wind_conv, gate_fspread_wind_conv
-      ! TEST HOOK (EXHALE_TEST_FAILED_SOLVE_PASS, default unset; driven by
-      ! src/tests/failed_wind_recovery/run.sh): the solves of the listed
-      ! passes are reported failed and their returned internal energy is
-      ! raised by a part in 1e3, the stand-in for an unconverged iterate.
-      ! The lines it prints measure which state the next composition update
-      ! is taken from.
-      integer :: tfs_pass(8), tfs_n, tfs_ios
-      real*8, allocatable :: u_tfs_conv(:,:), u_tfs_failed(:,:)
-      real*8  :: tfs_d_conv, tfs_d_failed
       integer :: n_no_fall, icert, sp_cell, ref_cell, cell_here, pass_cap
       integer :: n_unjudged
       real*8  :: sp_worst, sp_worst_prev, sp_meas, sp_tol, trust_pass
@@ -8366,18 +8062,6 @@
       if (allocated(u_wind_conv)) deallocate(u_wind_conv)
       if (allocated(f_sp_wind_conv)) deallocate(f_sp_wind_conv)
       allocate(u_wind_conv(3,1-Ng:N+Ng), f_sp_wind_conv(1-Ng:N+Ng,n_species))
-      tfs_n = 0;  tfs_pass = -1
-      call get_environment_variable('EXHALE_TEST_FAILED_SOLVE_PASS', diag_env)
-      if (len_trim(diag_env) .gt. 0) then
-         do tfs_n = 8, 1, -1
-            read(diag_env,*,iostat=tfs_ios) tfs_pass(1:tfs_n)
-            if (tfs_ios .eq. 0) exit
-         enddo
-         allocate(u_tfs_conv(3,1-Ng:N+Ng), u_tfs_failed(3,1-Ng:N+Ng))
-         u_tfs_conv = u;  u_tfs_failed = u
-         write(*,'(A,8I4)') ' (EXHALE_main) [test] solves reported'//      &
-              ' failed at passes', tfs_pass(1:tfs_n)
-      endif
       n_no_fall     = 0
       sp_worst      = -1.0d0
       sp_worst_prev = huge(1.0d0)
@@ -8533,16 +8217,6 @@
             held_side_given    = .true.
             held_given_reverse = rule_side_reverse
          enddo
-         if (tfs_n .gt. 0) then
-            if (any(tfs_pass(1:tfs_n) .eq. it_diff)) then
-               hydro_info = 1
-               u(3,1:N) = u(3,1:N)*(1.0d0 + 1.0d-3)
-               u_tfs_failed = u
-               write(*,'(A,I0,A)') ' (EXHALE_main) [test] pass ', it_diff, &
-                    ': the solve is reported failed and its returned'//  &
-                    ' internal energy raised by 1e-3'
-            endif
-         endif
          if (hydro_info .eq. 0 .or. wind_conv_held .or.                   &
              .not. species_alternated .or. first_wind_solves .ge. 2)     &
             exit first_wind
@@ -8623,7 +8297,6 @@
             pass_wind_conv = it_diff
             gate_rnorm_wind_conv   = gate_rnorm_accepted
             gate_fspread_wind_conv = gate_fspread_accepted
-            if (tfs_n .gt. 0) u_tfs_conv = u
          endif
          call report_base_face_state_consistency(                         &
               'steady_wind_joint_test_at_assemble_residual', u)
@@ -9158,18 +8831,6 @@
          if (outer_ending .eq. outer_running .and. it_diff .lt. pass_cap) &
              then
             update_taken = .true.
-            if (tfs_n .gt. 0) then
-               tfs_d_conv = maxval(abs(u(:,1:N) - u_tfs_conv(:,1:N))       &
-                                   /max(abs(u_tfs_conv(:,1:N)), 1.0d-300))
-               tfs_d_failed = maxval(abs(u(:,1:N) - u_tfs_failed(:,1:N))   &
-                                   /max(abs(u_tfs_failed(:,1:N)), 1.0d-300))
-               write(*,'(A,I0,A,ES10.3,A,ES10.3,A,F6.3,A,ES9.2)')          &
-                    ' (EXHALE_main) [test] pass ', it_diff, ': the'//     &
-                    ' update is taken from a state at relative distance', &
-                    tfs_d_conv, ' from the last converged wind and',      &
-                    tfs_d_failed, ' from the last failed iterate; omega', &
-                    comp_omega, ', trust', trust_pass
-            endif
             ! WHAT THE UPDATE HOLDS, taken before anything moves: under
             ! "Composition update holds: pressure" the rho, v and p of the
             ! state certified above, which the rebuild after the two
@@ -10566,8 +10227,6 @@
       if (len_trim(csm_x_env) .gt. 0) read(csm_x_env,*) csm_geom_theta_max
       call get_environment_variable('EXHALE_CSM_GEOM_SAFETY', csm_x_env)
       if (len_trim(csm_x_env) .gt. 0) read(csm_x_env,*) csm_err_safety
-      call get_environment_variable('EXHALE_CSM_GEOM_REFUSE', csm_x_env)
-      csm_geom_refuse_all = (len_trim(csm_x_env) .gt. 0)
       call get_environment_variable('EXHALE_CSM_GEOM_DEBUG', csm_x_env)
       csm_geom_debug = (len_trim(csm_x_env) .gt. 0)
       ! The probe that MEASURES the accepted state against the fixed
@@ -10593,8 +10252,6 @@
          csm_extrap_on = (trim(csm_x_env) .ne. '0')
       call get_environment_variable('EXHALE_CSM_EXTRAP_MAX', csm_x_env)
       if (len_trim(csm_x_env) .gt. 0) read(csm_x_env,*) csm_extrap_max
-      call get_environment_variable('EXHALE_CSM_EXTRAP_REFUSE', csm_x_env)
-      csm_extrap_refuse_all = (len_trim(csm_x_env) .gt. 0)
       call get_environment_variable('EXHALE_CSM_EXTRAP_REACH', csm_x_env)
       if (len_trim(csm_x_env) .gt. 0) read(csm_x_env,*) csm_x_reach
       call get_environment_variable('EXHALE_CSM_EXTRAP_STRICT', csm_x_env)

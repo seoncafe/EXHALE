@@ -1,0 +1,90 @@
+% Physical interpretation and implementation boundaries added for v1.10.
+\section{v1.10 regional stabilization and stationary closure}
+\label{sec:v110-physics}
+
+The preceding physical equations and algorithms were copied from the v1.00
+document. Numerical examples in those inherited sections describe v1.00
+calculations unless explicitly remeasured. The v1.10 additions below describe
+the current source. They separate a finite-duration atmospheric stability
+condition from a stationary residual condition.
+
+\subsection{Finite-duration regional condition}
+
+Let $q_j(t)$ be a physical-cell quantity, assigned to a lower, transition,
+or upper radial region. The monitor partitions accepted physical time into
+windows of length $W$. It forms a time average $\overline q_{j,k}$ in window
+$k$ by linear interpolation between accepted endpoint states, splitting
+intervals exactly at window boundaries. The first complete window fixes the
+reference $\overline q_{j,1}$ for that candidate. The check includes the
+largest deviation of a window mean from this reference, the change between
+neighboring window means, and the span of all window means:
+\[
+ D_j = \max\!\left\{
+ \max_k\frac{|\overline q_{j,k}-\overline q_{j,1}|}{s_j},\;
+ \max_{k>1}\frac{|\overline q_{j,k}-\overline q_{j,k-1}|}{s_j},\;
+ \frac{\max_k\overline q_{j,k}-\min_k\overline q_{j,k}}{s_j}
+ \right\}.
+\]
+The separate full-range check is
+\[
+ A_j=\frac{\max_{t\in\mathrm{candidate}}q_j(t)
+             -\min_{t\in\mathrm{candidate}}q_j(t)}{s_j}.
+\]
+These tests are applied to density, velocity, pressure, temperature, electron
+and total particle number density, and the atomic species populations. Positive
+fluid quantities and regional inventories use their first-window means as
+scales; velocity uses an initial sound-speed scale, and species populations
+use an initial hydrogen-nucleus density scale. Therefore the numerical limits
+are not relative error bounds on a rare population or a near-zero velocity.
+
+The regional inventories are total mass and \emph{internal} energy over the
+physical cells of each region; internal energy subtracts kinetic energy from
+the conserved total energy. The mass-flow quantity is the actual numerical
+face mass flux at the upper face of each region, with the accepted Runge--Kutta
+stage weights $1/6$, $1/6$, and $2/3$. Its window-mean change and span are
+checked, while its instantaneous range is recorded but not used as a stop
+condition. A zero reference flow uses an acoustic-flow scale at machine
+precision to keep the denominator nonzero.
+
+The proposed defaults are $D_j\leq0.01$ and $A_j\leq0.05$ for upper cell
+quantities, and $D_j\leq0.10$, $A_j\leq0.20$ for lower and transition cell
+quantities. Both inventory measures and mass-flow means have limits of 0.01
+above the upper cut and 0.05 below it. Every active condition must hold for
+eight consecutive windows containing at least 40 accepted endpoints each.
+The transition region may be empty, but the lower and upper regions must be
+nonempty. An unsuccessful candidate resets its fixed reference. A settling
+interval, if specified, is excluded from the first candidate's extrema.
+
+The automatic window is twice the initial outgoing acoustic travel time.
+The default maximum duration is the settling interval plus twice the full
+confirmation duration. The accepted endpoint at a window edge is included in
+the last range test. Rejected numerical steps contribute neither time nor
+states. The source reports the effective cuts, limits, sample counts, and
+duration in \texttt{regional\_convergence\_status.txt}.
+
+This finite-duration result supports the statement that the modeled upper
+atmosphere changed by less than the stated limits while lower-atmosphere
+variations remained within their stated limits over the tested duration. It
+does not prove stationarity, infinite-time boundedness, or observational
+accuracy. A separate stationary residual calculation is required for a
+stationary claim.
+
+\subsection{Lower-boundary thermochemical closure in the stationary problem}
+
+The stationary residual in v1.10 evaluates a thermochemical state for the
+lower ghost cells at a fixed physical column. The same boundary calculation
+is queried when the stored state is certified. The routines
+\texttt{stationary\_ghost\_state} and
+\texttt{boundary\_chemistry\_of\_state} are defined in
+\texttt{stationary\_boundary\_chemistry.f90}; the reservoir composition is
+formed in \texttt{reservoir\_composition.f90}. A boundary closure that fails
+its own convergence test cannot be treated as a stationary root, even if a
+different residual or profile diagnostic is small. The enabled fluid,
+composition, radiation, and boundary conditions must all be assessed at the
+same state and under the stated input conditions.
+
+The regional test is evaluated in global physical marching of an atomic
+atmosphere. It does not evaluate the stationary boundary closure or certify a
+Newton--Krylov result, and no automatic transition between the two conditions
+is implemented. Existing Huang and Salz results have not been newly accepted
+by the definitions or thresholds in this section.

@@ -1,0 +1,742 @@
+\section{Numerical scheme}
+\label{sec:numerics}
+
+\subsection{The radial grid}
+\label{sec:numerics:grid}
+
+The domain above the base level $r = 1$ is discretized into $N$ finite-volume cells
+(\texttt{Grid cells:}, default 500) with $N_g = 2$ ghost cells at each end;
+all grid arrays run over $1-N_g \le j \le N+N_g$.  \texttt{define\_grid.f90}
+builds the cell centers $r_j$, the interfaces $r_{j+1/2}$ as their midpoints,
+and the widths $\Delta r_j = r_{j+1/2} - r_{j-1/2}$.  The last is an exact
+identity of the discretization and not an approximation: it is the same face
+pair that forms $\Delta V_j$ in \eqref{eq:geom}, the same pair the
+gravitational source differences, and the same width the column integrals
+$n_j\,\Delta r_j$ and the cell optical depths use.
+
+Three grid types are available, and since 2026-09-27 every one of them
+places the first face exactly on the base level, $r_{\rm edg}(0) = 1$, so
+that the reservoir stated there is the state of that face
+(Sec.~\ref{sec:bcic:base}); the two lower ghost cells lie below the level.
+\texttt{Uniform} takes $\Delta r = (r_{\max}-1)/N$ and
+$r_j = 1 + (j - \tfrac12)\Delta r$, so its faces are $1 + j\,\Delta r$ and the
+outer face of cell $N$ is $r_{\max}$.  \texttt{Stretched} places the centers
+in geometric progression, $r_j = 2x^j/(1+x)$, so that the face between
+$r_0$ and $r_1$ is the level, with $x$ the root of
+$(N+N_g)\ln x - \ln[(1+x)/2] - \ln r_{\max} = 0$ (the center of the outermost
+ghost at $r_{\max}$), found by Newton's method from
+$x = r_{\max}^{1/(N+N_g)}$, which climbs to it monotonically because the
+function is increasing and concave.  \texttt{Mixed}, the type every
+shipped configuration uses, lays $N_{\rm low}$ uniform cells of width
+$\Delta r_{\rm base}$ on the base and then stretches the remaining
+$N_{\rm up} = N - N_{\rm low}$ cells by a factor $k$ that solves
+%
+\begin{equation}
+  \frac{1 - k^{N_{\rm up}}}{1-k}
+  = \frac{r_{\max} - r_{N_{\rm low}}}{\Delta r_{\rm base}}
+  \label{eq:stretch}
+\end{equation}
+%
+by Newton-Raphson to $10^{-8}$, which is Eq.~(10) of \citet{Caldiroli2021}.
+The two numbers are the key \texttt{Base grid [dr,cells]:} and default to
+$\Delta r_{\rm base} = 2\times10^{-4}\,R_p$ and $N_{\rm low} = 50$, the values
+ATES hard-codes.  The widths are then smoothed once by a 1-2-1 pass running
+downward from the junction to the base, the centers are rebuilt from the
+smoothed widths, and the grid is mapped by the affine map that sends its
+first face to $1$ and the center of its outermost ghost to $r_{\max}$, which
+multiplies every width by one factor and so keeps the smoothed shape.  For
+all three types the first ghost center is then restated as the mirror of the
+first cell center, $r_0 = 2 - r_1$, which moves it by rounding only and makes
+the first face exactly $1.0$; the run stops if that face is not 1 or if a
+ghost cell reaches $r \le 0$.  Until 2026-09-27 the level was a ghost
+\emph{center} ($r_0 = 1$ on the \texttt{Mixed} grid, $r_{1-N_g} = 1$ on the
+other two), so every cell center has since moved (by half a cell on the
+\texttt{Mixed} grid, by one and a half on the other two) and a state
+written before then does not load on the present grid
+(Sec.~\ref{sec:bcic:restart}).
+The requirement behind $\Delta r_{\rm base}$ is that the pressure scale
+height $H = k_BT/(\bar m g)$, with $\bar m = \rho/n_{\rm tot}$ the mean
+particle mass, be resolved by several cells at the base; a
+configuration that violates it is the one that produces a base-layer momentum
+imbalance no solver removes.
+
+Two windows are located once, at grid construction: $j_{\min}$, the first
+cell with $r \ge r_{\rm esc}$ (\texttt{Escape radius [R\_p]:}), which the
+marching convergence measure of Sec.~\ref{sec:numerics:du} is taken over, and
+$j_{\rm flux}$, the first cell with $r \ge r_{\rm flux}$ (default
+$1.2\,R_p$), which the stationary flux gate uses.  Both are clamped to
+mid-domain, with a message, where the requested radius lies outside the
+domain: a deep Roche-lobe-filling case can have $r_{\max}$ smaller than the
+default escape radius, and an empty window would make the measure $-\infty$
+and the state converged at step zero.
+
+\subsection{Reconstruction}
+\label{sec:numerics:reconstruction}
+
+Both schemes reconstruct the \emph{primitive} variables $W = (\rho, v, p)$ to
+the two sides of every face, and both write the left state of face $j$ from
+cell $j$ and the right state of face $j$ from cell $j+1$.
+
+\paragraph{PLM.}
+\texttt{PLM\_rec.f90} builds a limited slope from the three cell averages
+$j-1, j, j+1$ and evaluates it at the two faces,
+%
+\begin{equation}
+  W_{L,j+1/2} = W_j + \tfrac12\sigma\,(r_{j+1}-r_j),
+  \qquad
+  W_{R,j-1/2} = W_j - \tfrac12\sigma\,(r_j-r_{j-1}),
+  \label{eq:plm}
+\end{equation}
+%
+with $\sigma$ the generalized minmod (monotonized central) slope of the right,
+left and central difference quotients at $\theta = 2$,
+%
+\begin{equation}
+  \sigma = \mathrm{minmod}\!\left(
+     \theta\,\frac{\Delta W_{j+1/2}}{r_{j+1}-r_j},\;
+     \theta\,\frac{\Delta W_{j-1/2}}{r_j-r_{j-1}},\;
+     \frac{W_{j+1}-W_{j-1}}{r_{j+1}-r_{j-1}}\right),
+  \label{eq:minmod}
+\end{equation}
+%
+the slope being zero whenever the three arguments do not share a sign.  This
+is the generalized minmod limiter as \citet{Kaeppeli2016} state it, at the
+least diffusive value for which the scheme stays total-variation diminishing;
+ATES uses the same limiter and attributes it to \citet{Kurganov2000}.  The
+difference from ATES is that the quotients here are formed on the actual
+center spacing of a stretched grid.  The same scalar limiter is exported as
+\texttt{PLM\_rec\_scalar}, so that a transported mass fraction rides on the
+same discretization as the density whose face flux carries it.
+
+\paragraph{WENO3.}
+\texttt{Reconstruction.f90} uses the third-order WENO reconstruction with the
+nonlinear weights of \citet{Yamaleev2009}.  With
+$\Delta W_{j\pm1/2}$ the two interface jumps bounding cell $j$,
+%
+\begin{equation}
+  \tau = \Delta W_{j+1/2} - \Delta W_{j-1/2},\qquad
+  S_0 = 1 + \frac{\tau^2}{\Delta W_{j+1/2}^2 + \epsilon_j},\qquad
+  S_1 = 1 + \frac{\tau^2}{\Delta W_{j-1/2}^2 + \epsilon_j},
+  \label{eq:weno_weights}
+\end{equation}
+%
+for each primitive component $W = \rho, v, p$, which is their
+$1 + \tau/(\epsilon + \beta_r)$ with their already-squared $\tau$ (their
+Eq.~22) and the floor folded in.  The floor carries the solution scale in
+the units of the component: $\epsilon_j = (\Delta r_j\,W_{s,j})^2$ with
+$W_{s,j}$ the largest $|W|$ of cells $j-1$, $j$, $j+1$ of the cell-average
+primitive (for the pressure the cell pressure, also under the well-balanced
+option), the floor of Eq.~\eqref{eq:weno_scalar_floor} below, and $S=1$ where
+the stencil is all zeros.  The face states are
+%
+\begin{equation}
+  \begin{aligned}
+    W_{L,j+1/2} &= W_j + \frac{S_0\,C_2(j)\,\Delta W_{j+1/2}
+                    + D_1(j)\,S_1\,C_1(j-1)\,\Delta W_{j-1/2}}
+                   {S_0 + D_1(j)\,S_1},\\
+    W_{R,j-1/2} &= W_j - \frac{D_2(j)\,S_0\,C_2(j)\,\Delta W_{j+1/2}
+                    + S_1\,C_1(j-1)\,\Delta W_{j-1/2}}
+                   {D_2(j)\,S_0 + S_1},
+  \end{aligned}
+  \label{eq:weno_faces}
+\end{equation}
+%
+with the purely geometric coefficients
+$C_1(j) = \Delta V_{j+1}/(\Delta V_j + \Delta V_{j+1})$, $C_2 = 1 - C_1$,
+$D_1(j) = \Delta V_{j+1}/(\Delta V_j + \Delta V_{j-1})$ and
+$D_2(j) = \Delta V_{j-1}/(\Delta V_j + \Delta V_{j+1})$.  Each candidate is
+the linear interpolant of two cell averages \emph{in the volume coordinate},
+so the jump to a neighbor is weighted by the cell's own volume share; these
+shares, and not the nonlinear weights, are what set the order on a stretched
+grid.  The ideal weights $d_0 = 2/3$, $d_1 = 1/3$ of the uniform-grid scheme
+enter only through their ratio, which is what $D_1$ and $D_2$ carry: exactly
+$1/2$ on a grid uniform in the volume coordinate and $1/2 + O(h)$ otherwise.
+
+Two limits of the scheme are stated at the routine.  What runs is a
+third-order WENO reconstruction \emph{with} those weights and not the
+energy-stable ESWENO scheme of the same paper, whose extra dissipation flux
+(their Eq.~48) is not computed here.  And the floor is their prescription
+(their Eq.~65, $\epsilon = \max(\|u_0^2\|, \|(u_{0,\xi})^2\|)\,\Delta\xi^2$)
+read with the local amplitude of the stencil and the local cell width.  Until
+2026-10-09 the primitive floor was $\epsilon = \Delta r_j^2$, which has the
+$h^2$ scaling but not the solution scale: its face values were not invariant
+under a rescaling $W\to cW$ (relative departure $2\times10^{-4}$ to
+$6\times10^{-3}$ on smooth and stored LHS~1140~b states, against
+$\le 4\times10^{-16}$ with the present floor), and in the outer domain, where
+$\rho$ and $p$ are $10^{-10}$ in code units against $\Delta r_j^2$ of
+$10^{-2}$ to $0.2$, it made the weights linear, so a jump there was
+reconstructed with an overshoot of $1/6$ of the jump and a negative face that
+only the positivity limiter repaired (MEASURED, the suite
+\texttt{src/tests/weno3\_primitive\_floor}).  Both floors keep the third order
+of the face values on smooth data (rate 3.00--3.01).  With the local floor the
+marching regression case \texttt{wasp\_full} no longer reached the old
+marching stop, a cell-centred spread $du<10^{-3}$ of $\rho_j v_j r_j^2$; that
+was a property of the stop and not of the floor: a certified stationary state
+of the same case has a face mass-flux spread of $5.3\times10^{-13}$ and a
+cell-centred $du$ of $3.6\times10^{-3}$ on 500 cells ($1.7\times10^{-3}$ on
+1000), set by the two cells next to the outer ghost, and the domain-scale
+floor tried meanwhile has a stationary $du$ of $1.8\times10^{-3}$ as well
+(\texttt{md/weno3\_local\_floor\_marching\_stall\_diagnosis\_20261009.md}).
+The marching stop now reads the face mass flux and the change of the state
+(Sec.~\ref{sec:numerics:du}; update log stage~3 sections~125 and~127).
+\emph{With \texttt{Well balanced: True} the pressure face values are second
+order} (rate 1.99--2.06 on a heated and on a hydrostatic profile, for every
+floor tested): the reconstruction of the departure from each cell's own
+hydrostatic equilibrium is the second-order well-balanced construction of
+\citet{Kaeppeli2016}, and the floor does not set that.  No floor keeps a face
+positive across a jump of ratio above about $1/\Delta r_j^2$, which is what
+the positivity limiter below is for.
+
+\paragraph{WENO3 of a transported scalar.}  A mass fraction, an element
+fraction or a stage fraction is reconstructed by \texttt{Reconstruct\_scalar}
+with the same face formula, Eq.~\eqref{eq:weno_faces}, and the floor carries
+the square of the scalar's own scale,
+%
+\begin{equation}
+  \epsilon_j = \left(\Delta r_j\, q_{s,j}\right)^2, \qquad
+  q_{s,j} = \max\left(|q_{j-1}|, |q_j|, |q_{j+1}|\right),
+  \label{eq:weno_scalar_floor}
+\end{equation}
+%
+so that the face values commute with a scaling of the scalar ($q\to c\,q$
+gives $c$ times the faces).  The scale is the local one and not a norm over
+the column as in the published prescription, because a stage fraction spans
+many decades along one column (He$^{++}$ from $9\times10^{-17}$ to
+$7\times10^{-4}$ of the helium on the refused LHS~1140~b He/H~2.09 state) and a column norm would set the floor by its
+largest value.  The primitive reconstruction uses the same floor
+(Eq.~\ref{eq:weno_weights}).  With $\epsilon=\Delta r_j^2$ instead, every scalar whose
+jumps are below $\Delta r_j$ in code units, which is every trace stage, took
+the linear weights: the unlimited three-point interpolant, which is not
+bounded by the two cells of a face.  At a local minimum it put the
+neighbours' value on the minimum's own outflow face (He$^{++}$ at
+$6\times10^{-12}$ of the helium between $3.4\times10^{-6}$ and
+$5.6\times10^{-5}$ left its cell at a face fraction of $1.8\times10^{-5}$),
+which the carried stages of the stationary route could not balance (update
+log stage~3 section~121).
+
+\paragraph{Positivity of the face states.}
+Neither scheme has a positivity property: a face value of $\rho$ or $p$ can
+cross zero while every cell average on the stencil is positive, and at Mach
+60 the thermal pressure is $2\times10^{-4}$ of the total energy density, so a
+reconstruction across a jump tips it negative and the sound speed takes the
+square root of it.  \texttt{positivity\_limited\_faces} therefore scales each
+offending face state \emph{continuously} toward its own cell average,
+%
+\begin{equation}
+  W_{\rm face} \leftarrow W_{\rm avg} + \theta\,(W_{\rm rec} - W_{\rm avg}),
+  \qquad
+  \theta = \min_{q \in \{\rho,\,p\}}
+           \frac{q_{\rm avg} - \varepsilon}{q_{\rm avg} - q_{\rm rec}},
+  \qquad \varepsilon = \epsilon_{\rm mach}\,q_{\rm avg},
+  \label{eq:posface}
+\end{equation}
+%
+which is the linear scaling idea of \citet{Zhang2010} applied to the
+primitive vector, and not their limiter: they scale the conserved vector in
+two steps with $\theta$ the root of a quadratic, one $\theta$ per cell against
+one per face state here, and their floor is absolute against one unit in the
+last place of the cell average here.  What carries over is their Lemma 2.5,
+that a convex combination of an admissible average with the reconstruction is
+admissible; their Theorem 2.1 does not, its hypotheses being a Gauss-Lobatto
+quadrature set and a CFL condition nothing here imposes.  Continuity is the
+point: a hard switch at the crossing is a step discontinuity of the residual
+and no stationary solve can descend across one.  A face whose reconstruction
+is admissible has $\theta = 1$ and is not rewritten.
+
+\paragraph{The PLM to WENO3 continuation.}
+The two-stage recipe \texttt{Reconstruction scheme: PLM+WENO3} marches with
+PLM until the convergence measure falls below the first \texttt{du\_th} value
+(or its plateau is detected) and then continues with WENO3.  Replacing one
+discretization by another between two time steps is a jump of the right-hand
+side, so the key \texttt{Reconstruction continuation:} interpolates instead.
+\texttt{reconstruction\_continuation\_rhs} (\texttt{steady\_residual.f90})
+evaluates the homotopy
+%
+\begin{equation}
+  R_\lambda(u) = (1-\lambda)\,R_{\rm PLM}(u) + \lambda\,R_{\rm WENO3}(u),
+  \label{eq:homotopy}
+\end{equation}
+%
+returning its flux-difference and source parts separately, and blends the
+stored interface fluxes, the face pressures and the three momentum terms on
+the same $\lambda$.  Everything the two schemes disagree about is inside the
+two evaluations: the face reconstruction, the extrapolated reconstructed-face
+boundary states, and the pressure split of Sec.~\ref{sec:hydro:pressure}.
+At $\lambda \le 0$ and $\lambda \ge 1$ a single evaluation is taken and the
+two pure operators are reproduced exactly; only the open interval costs two
+right-hand sides.  Because the admissible set $\rho>0$, $\rho e>0$ is convex
+and each stage is then a convex combination of two forward Euler stages, the
+continuation cannot manufacture a positivity failure that neither scheme has.
+The ramp is adaptive: $\lambda$ advances by $\Delta\lambda$ where the relative
+state change of the step stays below a tolerance and $\Delta\lambda$ is halved
+where it does not.
+
+\subsection{Approximate Riemann solvers}
+\label{sec:numerics:riemann}
+
+\texttt{Num\_Fluxes.f90} carries three fluxes, selected by the mandatory key
+\texttt{Numerical flux:}.  Each side's total energy and sound speed are built
+with its \emph{own} heat capacity, which is what the caloric equation of state
+makes different across a face inside the $\mathrm{H}_2$ front; the physical
+flux is
+%
+\begin{equation}
+  F(W) = \bigl(\rho v,\ \rho v^2 [+\,p],\ v(\mathcal{E}+p)\bigr),
+  \label{eq:physflux}
+\end{equation}
+%
+the bracketed pressure being present under PLM without the well-balanced
+option, as Sec.~\ref{sec:hydro:pressure} requires.
+
+\paragraph{HLLC.}
+The three-wave solver of \citet{Toro1994}, with the Davis/Einfeldt speed
+bounds of \citet{Batten1997},
+%
+\begin{equation}
+  S_L = \min\bigl(0,\, v_L - a_L,\, v_R - a_R\bigr),\qquad
+  S_R = \max\bigl(0,\, v_L + a_L,\, v_R + a_R\bigr),
+  \label{eq:hllc_speeds}
+\end{equation}
+%
+\begin{equation}
+  S_* = \frac{p_R - p_L + \varphi_L v_L - \varphi_R v_R}{\varphi_L - \varphi_R},
+  \qquad \varphi_K = \rho_K (S_K - v_K),
+  \label{eq:sstar}
+\end{equation}
+%
+and the star states
+%
+\begin{equation}
+  u^*_K = \frac{\rho_K(S_K - v_K)}{S_K - S_*}
+  \left(1,\ S_*,\
+        \frac{\mathcal{E}_K}{\rho_K} + (S_* - v_K)\Bigl[S_* + \frac{p_K}{\varphi_K}\Bigr]
+  \right)^{\!\top},
+  \label{eq:hllc_star}
+\end{equation}
+%
+the flux being $F_K$, $F_K + S_K(u^*_K - u_K)$ or the mirror of those
+according to the signs of $S_L$, $S_*$, $S_R$.  Because $S_L$ and $S_R$ are
+clamped at zero, a face with every physical wave moving outward returns
+$F(W_L)$ and never forms an expression in the right state.  The face pressure
+$p_{\rm out}$ that the momentum assembly of \eqref{eq:dF2} needs is the
+pressure of whichever side the branch took.  HLLC is the flux every shipped configuration under \texttt{examples/} and
+\texttt{backup/regression/} states; the key is mandatory and has no default.
+It is not the flux of every run: the seven lowest-XUV cases of the LHS 1140 b
+catalog state \texttt{ROE}, because on a 500-cell grid whose base is subsonic
+to $M\sim10^{-7}$ the HLLC flux does not reach the stationary root there. That
+is a resolution statement about the flux and not about the wind: the same
+unmodified HLLC flux certifies the same case on 1000 cells, and the state it
+reaches is the 500-cell Roe state to 0.1--3 per cent above $1.005\,R_p$
+(measured 2026-09-17).
+
+\paragraph{Roe.}
+The linearized solver of \citet{Roe1981}, with the averages
+%
+\begin{equation}
+  \tilde\rho = \sqrt{\rho_L\rho_R},\qquad
+  \tilde v = s v_L + (1-s) v_R,\qquad
+  \tilde H = s H_L + (1-s) H_R,\qquad
+  s = \frac{\sqrt{\rho_L}}{\sqrt{\rho_L}+\sqrt{\rho_R}},
+  \label{eq:roe_avg}
+\end{equation}
+%
+$\tilde a = \sqrt{(\bar\gamma-1)(\tilde H - \tilde v^2/2)}$, and the flux
+%
+\begin{equation}
+  F_{j+1/2} = \tfrac12\bigl(F_L + F_R\bigr)
+            - \tfrac12\sum_{i=1}^{3}\tilde\alpha_i\,
+              \bigl|\tilde\lambda_i\bigr|\,\tilde K^{(i)},
+  \label{eq:roeflux}
+\end{equation}
+%
+with the wave strengths
+$\tilde\alpha_{1,3} = (\Delta p \mp \tilde\rho\tilde a\,\Delta v)/2\tilde a^2$
+and $\tilde\alpha_2 = \Delta\rho - \Delta p/\tilde a^2$.  The acoustic
+strengths $\tilde\alpha_{1,3}$ may be formed with the velocity jump scaled by
+$\min(\mathrm{Ma},1)$ after \citet{Rieper2011}, which is the published
+low-Mach cure for a flux whose dissipation does not vanish with the Mach
+number; the option is \texttt{Low Mach velocity jump:}, it is off by default,
+and it is not recommended on a near-hydrostatic column. The factor is exactly
+zero where two neighboring velocities cancel in the Roe average, so it removes
+the damping of the odd-even ($2\Delta r$) velocity mode at precisely the faces
+that mode lives on; measured on the LHS 1140 b low-XUV base it turned a solve
+unmodified Roe completes into a nearly pure odd-even mode. Rieper's premise,
+that the local and the global Mach number are comparable, does not hold on a
+column running from $M\sim10^{-8}$ at the base to $10^{-2}$ at the top
+(item L25, 2026-09-17).  The single index
+$\bar\gamma$ is the arithmetic mean of the two face gammas, exact wherever
+the two sides agree; a run whose caloric equation of state makes the index
+vary across the front, that is molecular chemistry with the ladder heat
+capacity, is refused this flux at startup rather than being given a wave
+speed with no bound property.  A Harten-Hyman entropy correction is applied
+to the acoustic eigenvalues from the star state that
+\texttt{speed\_estimate\_ROE.f90} builds (the primitive-variable, two-rarefaction
+and two-shock estimates of \citet{Toro2009} chapter 9, selected by the
+pressure ratio).  Where that estimate has no admissible star state, two
+rarefactions separating fast enough leave vacuum, or no branch returns a
+positive star pressure and positive star densities, the face is given the
+HLLE flux instead,
+%
+\begin{equation}
+  F_{j+1/2} = \frac{S_R F_L - S_L F_R + S_L S_R (u_R - u_L)}{S_R - S_L},
+  \qquad
+  \begin{aligned}
+    S_L &= \min(v_L - a_L,\ \tilde v - \tilde a),\\
+    S_R &= \max(v_R + a_R,\ \tilde v + \tilde a),
+  \end{aligned}
+  \label{eq:hlle}
+\end{equation}
+%
+which is positively conservative under those bounds \citep{Einfeldt1991},
+where the Roe flux is not.  The number of such faces is counted and reported.
+
+\paragraph{Local Lax-Friedrichs.}
+%
+\begin{equation}
+  F_{j+1/2} = \tfrac12\bigl[F_L + F_R - \alpha\,(u_R - u_L)\bigr],
+  \qquad
+  \alpha = \max\bigl(|v_L| + a_L,\ |v_R| + a_R\bigr),
+  \label{eq:llf}
+\end{equation}
+%
+the coefficient being the spectral radius of the flux Jacobian
+\citep{Rusanov1961}.  It is the most diffusive of the three and resolves no
+contact wave; it is also the flux the positivity repair below substitutes at
+a single face, because with cell-average input states it maps positive
+density and positive internal energy to positive density and positive
+internal energy under $\Delta t(|v|+c)/\Delta r \le 1$
+\citep{Perthame1996, Zhang2010b}.
+
+\subsection{Positivity repair of a stage}
+\label{sec:numerics:posflux}
+
+A Runge-Kutta stage can leave the admissible set $\rho>0$, $\rho e>0$ even
+with admissible face states, because the source terms are bounded by no flux
+choice.  \texttt{positivity\_limited\_fluxes} (\texttt{RK\_rhs.f90}) repairs
+such a stage by replacing, at the offending cells only, the high-order
+interface fluxes with the first-order Lax-Friedrichs flux of the neighboring
+cell averages and rebuilding those cells' update from the mixture; the
+replacement is swept until no cell is inadmissible or until both faces of a
+cell are already first order, in which case no flux choice repairs it and the
+caller halves the time step.  Replacing one face rather than all of them is
+the flux correction of \citet{Hu2013}.  The stored face fluxes are written
+back after the repair, because the transported species rows ride on
+$F^\rho$ and a species flux built on a discarded high-order flux would not
+sum to the mass update the density took.  Every count is reported at the end
+of a run, separately for repaired faces belonging to accepted steps, so that
+a run in which nothing fired is identifiable as the run an unguarded build
+gives.
+
+\subsection{Time integration and the time step}
+\label{sec:numerics:rk}
+
+The marching loop of \texttt{EXHALE\_main.f90} advances the hydrodynamics
+with the three-stage strong-stability-preserving Runge-Kutta method
+\citep{Gottlieb1998},
+%
+\begin{equation}
+  \begin{aligned}
+    u^{(1)} &= u^n - \Delta t\,\bigl(dF - S\bigr)\big|_{u^n},\\
+    u^{(2)} &= \tfrac14\Bigl[3u^n + u^{(1)}
+               - \Delta t\,\bigl(dF - S\bigr)\big|_{u^{(1)}}\Bigr],\\
+    u^{n+1} &= \tfrac13\Bigl[u^n + 2u^{(2)}
+               - 2\Delta t\,\bigl(dF - S\bigr)\big|_{u^{(2)}}\Bigr],
+  \end{aligned}
+  \label{eq:ssprk3}
+\end{equation}
+%
+each stage followed by the boundary condition, by the admissibility test of
+Sec.~\ref{sec:numerics:posflux}, and by the species advection sub-step that
+rides on the face mass fluxes that stage built.  A stage that cannot be
+repaired causes the whole step to be discarded and retaken from $u^n$ at half
+$\Delta t$, up to a bounded number of bisections.
+
+The time step is the explicit-stable interval of the scheme actually in use,
+derived at \texttt{eval\_dt.f90} for the spherical finite-volume divergence
+the right-hand side assembles,
+%
+\begin{equation}
+  dF_j = \frac{A_{j+1/2}F_{j+1/2} - A_{j-1/2}F_{j-1/2}}{V_j},
+  \qquad A = r^2, \qquad
+  V_j = \frac{r_{j+1/2}^3 - r_{j-1/2}^3}{3}.
+  \label{eq:fvdiv}
+\end{equation}
+%
+Every stage of \eqref{eq:ssprk3} is a convex combination of forward-Euler
+steps of the same length (the SSP coefficient is 1), so the restriction is
+the forward-Euler one of \eqref{eq:fvdiv}.  Each face flux is a Riemann flux
+of the two states bounding that face, and the fastest signal of that face's
+Riemann problem is bounded by
+$S_{j+1/2} = \max(|v|+c_s)$ over the two cell averages bounding it.  Godunov's
+condition is that the fan opened at a face has not left the cell it enters
+when the step ends; written with the geometry \eqref{eq:fvdiv} uses, the face
+carries signal into cell $j$ at the rate $A_fS_f$ per unit volume $V_j$, so
+%
+\begin{equation}
+  \Delta t = C_{\rm CFL}\,\min_{1\le j\le N}
+  \frac{V_j}{\max\bigl(A_{j-1/2}S_{j-1/2},\ A_{j+1/2}S_{j+1/2}\bigr)},
+  \qquad C_{\rm CFL} = 0.6 \ \text{by default},
+  \label{eq:cfl}
+\end{equation}
+%
+with $c_s = \sqrt{\gamma_{\rm eff}p/\rho}$ from the cell's own composition.
+In the Cartesian uniform limit $A_{j-1/2}=A_{j+1/2}$ and $V_j = A\,\Delta r$,
+and \eqref{eq:cfl} returns $C_{\rm CFL}\Delta r/(|v|+c_s)$, so the number the
+\texttt{CFL:} key carries keeps its usual meaning and nothing is
+recalibrated.  The stricter condition that the two fans of one cell may not
+meet inside it replaces the maximum by the sum of the two face terms, which
+is the same restriction at $C_{\rm CFL}/2$.
+
+Two properties of \eqref{eq:cfl} are worth stating, because the cell-centered
+form $\Delta r_j/(|v_j|+c_{s,j})$ has neither.  In spherical geometry
+$V_j/A_{j+1/2} < \Delta r_j < V_j/A_{j-1/2}$, so the cell-centered width is
+not an upper bound of the interval on either face; on the production base
+grid the two differ by $\Delta r/r = 1.96\times10^{-4}$ (MEASURED, item P6b).
+And the minimum is taken over the evolved cells $1\le j\le N$ alone.  A ghost
+row is overwritten by the boundary condition after every stage, so its own
+width is not a stability requirement, and the lowest ghost does not even
+carry a width of its own; the ghosts nevertheless bound the two boundary
+faces $r_{\rm edg}(0)$ and $r_{\rm edg}(N)$, which are faces of cells 1 and
+$N$, so the base Riemann problem restricts cell~1 with the reservoir's own
+signal speed although no ghost cell is evolved.  Letting the ghosts carry
+widths of their own is not conservative in the other direction either: an
+outer ghost given a sound speed a thousand times the column's shortened the
+step of a 500-cell domain by 89.7 per cent (MEASURED, item P6b).
+
+$S_f$ is formed from the cell averages bounding the face and not from the
+reconstructed face states, which inside a steep cell can carry a larger
+$|v|+c_s$; that margin is the one a Godunov number below unity leaves.
+With \texttt{Time stepping: Local} each cell instead takes its own
+$\Delta t_j$, the same expression without the minimum; since the fixed point
+$dF = S$, $\mathcal{H} = \Lambda$ is independent of the step, this is a
+legitimate acceleration toward a steady state, and it makes the trajectory
+meaningless as a time history.  In the global mode the local array is
+uniformly the global step, which keeps the update arithmetic identical to the
+scalar form.  A ghost row, which is not evolved, is given the interval of the
+evolved cell it borders so that a stage formed over the padded range is
+arithmetic on a physical interval.
+
+\eqref{eq:cfl} is not only a marching quantity: it supplies the stationary
+route's initial pseudo-time and the floor of the JFNK pseudo-transient
+continuation (Sec.~\ref{sec:steady:ptc}), so its value moves solver behavior
+as well as a time step.  The no-step evaluation route does not call it.
+
+\subsection{Operator splitting of one step}
+\label{sec:numerics:split}
+
+One accepted marching step applies the following operators, in this order,
+with the state after each one carried into the next
+(\texttt{EXHALE\_main.f90}):
+%
+\begin{enumerate}
+\item the three Runge-Kutta stages \eqref{eq:ssprk3}, each with its
+      reconstruction, flux assembly, boundary fill, positivity test and
+      species advection sub-step, and the advection of the adiabat
+      $K = p/\rho^\gamma$ on the same face mass fluxes
+      (\texttt{adiabat\_advection\_stage}), after which the internal energy
+      of a cold, highly supersonic expanding cell is taken from $K$
+      (\texttt{internal\_energy\_from\_adiabat}; the dual-energy method,
+      below);
+\item the conversion to primitive variables, the composition-dependent
+      particle and electron counts, and the temperature
+      \eqref{eq:thermal_eos};
+\item the advected element composition written into the species vector
+      (\texttt{species\_advection\_project}), followed by the implicit
+      diffusive half of the element transport
+      (\texttt{element\_diffusion\_step} in
+      \texttt{binary\_element\_diffusion.f90}, Sec.~\ref{sec:mol:diffusion}),
+      active only with \texttt{He\_diffusion}, and, on an accepted element
+      step, the energy update $\mathcal{E} \leftarrow \mathcal{E} - \Delta
+      t\,\nabla\!\cdot q_d$ from the element face fluxes of that step
+      (Sec.~\ref{sec:mol:interdiffusion});
+\item the vertical transport of the carriers with their chemistry
+      (\texttt{photochemical\_transport\_step} in
+      \texttt{diffusive\_photochemistry.f90}, Sec.~\ref{sec:mol:carrier}):
+      the molecular carriers with \texttt{Molecular carrier transport}, the
+      ionization stages with \texttt{Ionization transport} and He\,$2^3$S with
+      \texttt{He 2\^{}3S transport}, followed, where that interval was
+      covered, by $\mathcal{E} \leftarrow \mathcal{E} - \Delta
+      t\,\nabla\!\cdot q_c$ from the composition the step returned
+      (\texttt{carrier\_enthalpy\_divergence\_of\_state});
+\item the refresh of the lagged $\mathrm{H}(n{=}2)$ populations and their
+      Balmer source (\texttt{excited\_hydrogen.f90},
+      Sec.~\ref{sec:ionization:n2});
+\item the coupled source step: a bounded fixed-point iteration alternating
+      the composition equilibrium at the current temperature
+      (\texttt{ioniz\_eq}, Sec.~\ref{sec:ionization:solve}) with the
+      semi-implicit energy update \eqref{eq:th:semiimplicit} at the returned
+      composition, exiting when the temperature and the composition both stop
+      moving;
+\item the boundary condition;
+\item the Crank-Nicolson viscous and conductive stage
+      \eqref{eq:viscous}, where those options are on, and the boundary
+      condition again;
+\item the periodic Shapiro filter, where it is on, and the boundary
+      condition again.
+\end{enumerate}
+%
+Steps 3, 4, 8 and 9 are no-ops unless their key is present, and the two
+enthalpy updates also need \texttt{Interdiffusion enthalpy flux} (on by
+default).  In a physical-mode run (a trajectory with a clock) a refused element
+step or a carrier interval the transport operator could not cover refuses the
+whole attempted step, which is restored from its checkpoint and retaken
+with a reduced step (\texttt{attempted\_step\_reduced\_dt}) up to a retry
+budget whose exhaustion stops the run; while
+the run is reaching a state the refusal is counted and the step goes on.  A
+step whose energy update found no temperature, or whose Crank-Nicolson stage
+failed (a temperature below the floor of the equation of state, a non-finite
+solution, a pivot breakdown; \texttt{viscous\_conduction\_step} prints the
+cell, the solved value and the energy a floor would have injected), has no
+state to march on and is refused in both modes: it is restored and retaken
+at half the interval within the same budget, whose exhaustion stops the run
+with exit status~2 (Sec.~\ref{sec:hydro:transport}).  The Shapiro
+filter is the 1-2-1 low-pass pass
+$u_j \leftarrow u_j + \tfrac14\epsilon(u_{j-1} - 2u_j + u_{j+1})$ applied
+every \texttt{shapiro\_every} steps, the way CETIMB damps the base sound wave
+\citep{Koskinen2013}.  It is off by default and is recorded as a validity
+state of every step it runs on, because unlike the low-Mach term of
+Sec.~\ref{sec:hydro:lowmach} it alters the marched state with no source term
+behind it and therefore has no counterpart in the stationary residual.
+
+\paragraph{The internal energy of a cold, highly supersonic flow.}  The
+scheme carries $\mathcal{E} = \rho e + \tfrac12\rho v^2$ and recovers
+$\rho e$ as the difference, whose ratio to the kinetic term is
+$2/[\gamma(\gamma-1)M^2]$, $1.1\times10^{-3}$ at $M=40$.  There the
+difference carries the truncation error of the kinetic-energy flux (not
+round-off), amplified by that ratio.  MEASURED on the \citet{Yan2022}
+WASP-52\,b atomic run (He/H 98/2, 10\,$R_p$): between 9.03 and 9.14\,$R_p$
+the adiabat $p/\rho^{5/3}$ fell 7.2-fold where the net heating is positive,
+which an adiabatic flow with heating cannot do; the temperature reached the
+floor and the energy update refused the step.  The adiabat is therefore also
+carried, $\partial_t(\rho K) + \nabla\!\cdot(\rho K v) = 0$, on the face mass
+fluxes, volumes and SSP-RK3 weights of the mass row with the donor-cell face
+value of $K$, taken fresh from the state at the start of every step
+(\texttt{adiabatic\_entropy\_transport.f90}; the dual-energy method of
+\citealt{Ryu1993} and \citealt{Bryan1995}, whose threshold values have not
+been compared).  After the stages, in a cell where $\rho e <
+10^{-2}\,\mathcal{E}$ ($M \gtrsim 13$), $\nabla\!\cdot v \ge 0$ (no shock,
+across which $K$ is not conserved) and the gas has the constant $\gamma$ of
+an atomic mixture (the caloric equation of state of molecular gas has no
+single adiabat), $\rho e = K\rho^\gamma/(\gamma-1)$ and $\mathcal{E}$ is
+reset to it plus the kinetic energy.  Heating, cooling, conduction and
+viscosity follow as before, operator split.  Total energy is not conserved in
+the reset cells, by less than $10^{-2}$ of their $\mathcal{E}$, the size of
+the error it replaces; the run log prints the number of reset cell-steps.  A
+run whose every cell is below that Mach number or compressive is unchanged
+(update log stage~3 section~139).
+
+\subsection{The marching convergence measure and the stop conditions}
+\label{sec:numerics:du}
+
+Since 2026-10-09 the marching stops on the \emph{numerical} mass flux, the
+conserved flux through the faces, and on the change of the state.  A
+stationary finite-volume wind carries one numerical mass flux,
+$\Phi_{j+1/2} = r_{j+1/2}^2\,\widehat F_{\rho,j+1/2}$, through every face;
+its spread over the faces at $r\ge r_{\rm flux}$ is the flux gate of the
+steady solvers (Sec.~\ref{sec:steady:gates}), and the stop reads the same
+quantity against its own threshold \texttt{march\_flux\_spread\_th}
+($4\times10^{-4}$), not the steady gate \texttt{flux\_spread\_th}
+($2\times10^{-5}$): a marching state is a relaxation snapshot, accepted by the
+precision of its observable or finished by the stationary solve.  The second half is the change of the state over one
+monitor window of $N_{\rm resid}=500$ steps,
+%
+\begin{equation}
+  \chi = \max_{1\le j\le N}\max\left(
+     \left|\frac{\rho_j}{\rho_j^{\rm w}}-1\right|,
+     \left|\frac{E_j}{E_j^{\rm w}}-1\right|,
+     \frac{|(\rho v)_j-(\rho v)_j^{\rm w}|}{\sqrt{\rho_j^{\rm w}E_j^{\rm w}}}\right),
+  \label{eq:chi}
+\end{equation}
+%
+with the superscript w denoting the state $N_{\rm resid}$ steps before; the
+momentum density passes through zero near the base, so its change is measured
+against the momentum scale $\sqrt{\rho E}$ of the cell.  A run stops (the
+marching stop) when the face spread is below \texttt{march\_flux\_spread\_th}
+and $\chi < $~\texttt{march\_change\_th}~$=10^{-4}$ at a monitor step (out of the
+PLM stage), and stops \emph{without} a claim (the stall net) when $\chi<10^{-4}$
+has held over $N_{\rm stall}=2000$ steps while the face flux is not flat and has
+stopped falling (less than 1 percent drop from one monitor window to the next;
+a face spread still falling is a march still converging); the step cap \texttt{EXHALE\_MAXSTEPS}, the hard
+cap \texttt{count\_max} ($10^6$), the steady gates where \texttt{Resid tol:}
+was stated and the Newton finish stop as before.  The threshold $10^{-4}$ is
+measured: late in the \texttt{wasp\_full} march $\chi$ falls by 0.88 every
+1000 steps with either WENO3 floor, an $e$-folding of 16 windows, so the
+distance still to go is about $16\chi$, $2\times10^{-3}$ at the threshold.
+The face threshold $4\times10^{-4}$ is measured too (update log stage~3
+section~127.2): marching \texttt{wasp\_full} on from a face spread of
+$4.0\times10^{-4}$ to $1.9\times10^{-5}$ (27\,500 further steps, an
+$e$-folding of about 9000 steps) changes $\rho$ by at most
+$1.45\times10^{-3}$, $v$ by $1.24\times10^{-3}$, $T$ by $3.3\times10^{-4}$ and
+$\log_{10}\dot M$ by less than 0.005.  The environment variables
+\texttt{EXHALE\_MARCH\_FLUX\_TH}, \texttt{EXHALE\_MARCH\_CHANGE\_TH} and
+\texttt{EXHALE\_MONITOR\_STEPS} replace the two thresholds and
+$N_{\rm resid}$ for measurement.  The marching stop is \emph{not} a
+stationarity claim: its face threshold is twenty times the steady gate, so the
+state it writes is a relaxation snapshot.  That state is certified like any
+other written state; when the certification refuses it, it is written
+\texttt{certified=F cert\_reason=no\_stationary\_claim} and the run exits~0.
+Only the residual gate met while marching and a Newton finish
+(\texttt{steady\_gates\_converged} or \texttt{newton\_finished},
+\texttt{certification\_note\_stationarity\_claim} in \texttt{EXHALE\_main.f90})
+claim a stationary state, and only they lead to status~2 on a refusal
+(Sec.~\ref{sec:steady:gates}; update log stage~3 section~135).
+
+The cell-centred product of the averages,
+%
+\begin{equation}
+  \mathrm{du} = \frac{\max_{j\ge j_{\min}} F_j - \min_{j\ge j_{\min}} F_j}
+                     {\bigl|\,\overline{F}\,\bigr|},
+  \qquad F_j = \rho_j v_j r_j^2,
+  \label{eq:du}
+\end{equation}
+%
+which the marching stopped on until then (\texttt{du\_th}, $10^{-3}$, the
+ATES criterion $\Delta\dot M/\dot M<10^{-3}$), is still formed every step and
+printed as a diagnostic.  It is not constant on a stationary discrete state:
+a certified stationary \texttt{wasp\_full} state with a face spread of
+$5.3\times10^{-13}$ has $\mathrm{du}=3.6\times10^{-3}$ on 500 cells and
+$1.7\times10^{-3}$ on 1000, set by the two cells next to the outer ghost
+(\texttt{md/weno3\_local\_floor\_marching\_stall\_diagnosis\_20261009.md};
+\texttt{md/outer\_boundary\_subsonic\_review\_20261009.md} reviews that
+boundary).  Conversely, the old stop accepted the control march of
+\texttt{wasp\_full} at step 12\,627 with a face spread of 0.11, and a march
+of the same case with the same floor (secondary ionization held off) was
+still changing by 10 percent per 500 steps at step 12\,000.  The du-type criteria are kept
+where they decide a transition and not a claim: the PLM$\to$WENO3 switch at
+the first \texttt{du\_th} value (0.5, far above any stationary du), with its
+stall alternative.  The JFNK hand-off read $\mathrm{du}<10^{-2}$
+(\texttt{newton\_du\_switch}) until 2026-10-10; with the outer face at
+$2\,R_p$ the du of \texttt{wasp\_full\_newton} never fell below its floor of
+$1.04\times10^{-2}$ and the hand-off came through its stall clause after
+45\,118 steps, so it now reads the face spread (\texttt{newton\_flux\_switch},
+default $0.1$, update log stage~3 section~131; written to
+\texttt{EXHALE\_resolved.out} under that name).  The second \texttt{du\_th} value is read and no longer stops a
+run.  A march from a certified stationary state leaves it at about
+$1.2\times10^{-5}$ in face spread per step, beginning at the base cells, and
+settles near a face spread of $3$--$4\times10^{-4}$ (MEASURED on
+\texttt{wasp\_full}, 7000 steps): the fixed point of the operator-split march
+is not the root of the stationary residual to that level, so a march alone
+normally ends on the stall net and a stationarity claim needs the stationary
+finish.
+
+The largest one-step change of the conserved state over the escape window,
+%
+\begin{equation}
+  \mathrm{dtu} = \max_{k\in\{1,2,3\}}\ \max_{j_{\min}\le j\le N}
+                 \left|1 - \frac{u^{n+1}_{k,j}}{u^{n}_{k,j}}\right|,
+  \label{eq:dtu}
+\end{equation}
+%
+is printed as a diagnostic; it no longer stops a run.  With \texttt{Solver:
+Newton [switch]} the marching is a warm-up only: the hand-off is armed the
+first time a monitor step sees the face spread at or above the switch, and
+fires out of the PLM stage at a monitor step where it is below it, or where
+the spread has settled (the stall net) within five times the switch.
+MEASURED on \texttt{wasp\_full\_newton} at $2\,R_p$: switches of 0.2, 0.1 and
+0.03 hand over at steps 11\,500, 16\,500 and 21\,500, each JFNK solve reaching
+\texttt{info}~$=0$ at $\log_{10}\dot M=13.28$.  Every thousandth step
+the marching loop writes the state it holds; that write is a snapshot and not
+the run's answer, and carries \texttt{certified=F
+cert\_reason=marching\_snapshot\_s<step>}, the run's own certificate being
+restored after it, because the last certificate the run measured belongs to
+another state.
