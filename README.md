@@ -299,8 +299,11 @@ instruction to resume calculations.
   table, CO carried as an oxygen reservoir. The first band is the 912-1201 A
   Lyman-Werner interval, where H2, H2O and OH share one beam: the H2 lines and
   the H2O/OH continuum each attenuate what the other sees, so the interval has
-  one incident flux (`Stellar LW flux`). The molecular carriers H2, OH, H2O and
-  CO are transported by default (`Molecular carrier transport`), an
+  one incident flux (`Stellar LW flux`). With oxygen chemistry, molecular
+  carrier transport is enabled by default (`Molecular carrier transport`);
+  without oxygen chemistry it is disabled by default. The transported
+  carriers are H2, H2+, H3+, HeH+, and, with oxygen chemistry, OH, H2O and
+  CO. They use an
   implicit diffusion-advection solve coupled to their chemistry. A stationary
   solve can take those balances as its own unknowns (`Coupled carrier solve`,
   three-valued: `False` by default, `True`, or `On stall`, which runs the
@@ -318,8 +321,9 @@ instruction to resume calculations.
   as their source, the neutral stage closing each simplex, and every
   equilibrium sweep is handed the transported fractions instead of putting
   them back on their local root. It needs helium in the mixture, in a
-  molecular gas also `Molecular carrier transport: True`, and is refused with
-  `Coupled carrier solve: True` or `On stall`. The local root is wrong where
+  molecular gas also `Molecular carrier transport: True`. An explicit
+  `Coupled carrier solve: True` is accepted in a molecular gas, but refused
+  in an atomic gas; `On stall` is refused with ionization transport. The local root is wrong where
   a parcel leaves its shell faster than it ionizes (`P r/|v| < 1`), which is
   what the Koskinen et al. (2022) comparison of
   `../EXHALE_v1.00/md/k22_electron_density_excess.md` needed
@@ -960,4 +964,4 @@ investigations. The local `md/` directory holds v1.10 development reports.
 
 Kwang-Il Seon (KASI / UST)
 
-Last updated: 2026-10-17 10:30 KST
+Last updated: 2026-10-17 12:51 KST

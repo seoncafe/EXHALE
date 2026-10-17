@@ -178,7 +178,7 @@
 
       implicit none
       private
-      public :: molecular_chemical_heating, formation_energy_report
+      public :: molecular_chemical_heating
       public :: species_formation_energy, molecular_reaction_energy_eV
       public :: isp_eps_electron, isp_eps_H_n2, isp_eps_O1D
       public :: n_mreac, mreac_react, mreac_prod, mreac_name
@@ -1062,54 +1062,6 @@
          + species_formation_energy(isp_eps_O1D) *eV_to_erg*n_O1D
 
       end subroutine formation_energy_density
-
-      ! ------------------------------------------------------!
-
-      subroutine formation_energy_report(iu)
-      ! Write the table and the reaction energies it implies, so that a run
-      ! records the ledger it used rather than leaving it to be re-derived.
-      integer, intent(in) :: iu
-      integer :: ir
-
-      write(iu,'(A)') '# Species formation energies eps_s [eV], zero at'
-      write(iu,'(A)') '# neutral ground-state free atoms and free e- at rest'
-      write(iu,'(A,F10.4)') '#   eps(H+)   = ',                            &
-                            species_formation_energy(isp_HII)
-      write(iu,'(A,F10.4)') '#   eps(He+)  = ',                            &
-                            species_formation_energy(isp_HeII)
-      write(iu,'(A,F10.4)') '#   eps(He++) = ',                            &
-                            species_formation_energy(isp_HeIII)
-      write(iu,'(A,F10.4)') '#   eps(He2^3S) = ',                          &
-                            species_formation_energy(isp_HeTR)
-      write(iu,'(A,F10.4)') '#   eps(H n=2) = ',                           &
-                            species_formation_energy(isp_eps_H_n2)
-      write(iu,'(A,F10.4)') '#   eps(H2)   = ',                            &
-                            species_formation_energy(isp_H2)
-      write(iu,'(A,F10.4)') '#   eps(H2+)  = ',                            &
-                            species_formation_energy(isp_H2p)
-      write(iu,'(A,F10.4)') '#   eps(H3+)  = ',                            &
-                            species_formation_energy(isp_H3p)
-      write(iu,'(A,F10.4)') '#   eps(HeH+) = ',                            &
-                            species_formation_energy(isp_HeHp)
-      write(iu,'(A,F10.4)') '#   eps(OH)   = ',                            &
-                            species_formation_energy(isp_OH)
-      write(iu,'(A,F10.4)') '#   eps(H2O)  = ',                            &
-                            species_formation_energy(isp_H2O)
-      write(iu,'(A,F10.4)') '#   eps(CO)   = ',                            &
-                            species_formation_energy(isp_CO)
-      write(iu,'(A,F10.4)') '#   eps(O 1D) = ',                            &
-                            species_formation_energy(isp_eps_O1D)
-      write(iu,'(A)') '# Heat released [eV] per reaction:'
-      do ir = 1, n_mreac
-         write(iu,'(A,A,A,F9.4)') '#   ', mreac_name(ir), ' : ',           &
-                                  molecular_reaction_energy_eV(ir)
-      enddo
-      do ir = 1, n_oreac
-         write(iu,'(A,A,A,F9.4)') '#   ', oreac_name(ir), ' : ',           &
-                                  oxygen_reaction_energy_eV(ir)
-      enddo
-
-      end subroutine formation_energy_report
 
       ! ------------------------------------------------------!
 

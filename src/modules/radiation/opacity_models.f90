@@ -30,7 +30,6 @@
       public :: photoion_sigma
       public :: opacity_pT_factor
       public :: load_opacity_tables
-      public :: free_opacity_tables
 
       type :: opa_table
          integer                            :: n = 0
@@ -112,19 +111,6 @@
                             ' rows from ', trim(path)
 
       end subroutine load_one
-
-      !----------------------------------------------------------!
-
-      subroutine free_opacity_tables
-      if (allocated(tab_HI%e))    deallocate(tab_HI%e,    tab_HI%sig)
-      if (allocated(tab_HeI%e))   deallocate(tab_HeI%e,   tab_HeI%sig)
-      if (allocated(tab_HeII%e))  deallocate(tab_HeII%e,  tab_HeII%sig)
-      if (allocated(tab_HeITR%e)) deallocate(tab_HeITR%e, tab_HeITR%sig)
-      tab_HI%n    = 0
-      tab_HeI%n   = 0
-      tab_HeII%n  = 0
-      tab_HeITR%n = 0
-      end subroutine free_opacity_tables
 
       !----------------------------------------------------------!
 

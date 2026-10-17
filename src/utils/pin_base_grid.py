@@ -69,7 +69,6 @@ FROZEN_ROOTS = (
     'backup/phase_d_baseline',
     'backup/lart_runs',
     'backup/example_HD209458b',
-    'backup/regression/_quarantined',
     'docs/audit_20260905',
     'docs/lower_atmosphere_figs',
     'docs/version_compare',

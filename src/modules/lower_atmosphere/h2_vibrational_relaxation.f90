@@ -104,7 +104,7 @@
    public :: h2_energy_per_bound_fluorescence_eV,                         &
              h2_energy_per_bound_fluorescence_erg
    public :: e_vib_v1_eV, e_vib_v2_eV, e_vib_v5_eV, e_vib_v6_eV
-   public :: h2_vibrational_heat_fraction, h2_vibrational_critical_density
+   public :: h2_vibrational_heat_fraction
    public :: h2_vibrational_relaxation_init, h2_total_decay_rate_max,     &
              h2_vibrational_relaxation_ready
    ! The three collider coefficients, for the assertions that hold each
@@ -549,18 +549,6 @@
                       + frac*(log(g10_h2_tab(i + 1))                     &
                               - log(g10_h2_tab(i))) )
    end function gamma_10_H2
-
-   ! Critical density against a given collider mix, n_cr = A/gamma_deex
-   ! (Hollenbach & McKee 1979, p. 576) [cm^-3], with A the all-level maximum
-   ! of the cascade. Diagnostic: the heat fraction below does not go through
-   ! it, so that it stays finite when the collider density vanishes.
-   elemental function h2_vibrational_critical_density(T, f_HI) result(ncr)
-      real*8, intent(in) :: T      ! [K]
-      real*8, intent(in) :: f_HI   ! atomic-H share of the collider density
-      real*8 :: ncr, gamma_deex
-      gamma_deex = f_HI*gamma_10_H(T) + (1.0d0 - f_HI)*gamma_10_H2(T)
-      ncr = a_cascade_max/max(gamma_deex, 1.0d-99)
-   end function h2_vibrational_critical_density
 
    ! Fraction of the vibrational excitation energy that becomes HEAT rather
    ! than being radiated away: Hollenbach & McKee's (1 + n_cr/n)^-1, written

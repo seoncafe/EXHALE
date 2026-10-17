@@ -361,16 +361,17 @@
       logical               :: cert_pair_kept
       character(len=32)     :: cert_reason_kept, snapshot_reason
 
-      ! P54/(AD) mass-flux time series (env EXHALE_P54_TS = step interval,
+      ! Face mass-flux time series (env EXHALE_FACE_MASS_FLUX_SERIES = step interval,
       ! 0 = off).  One line per sampled step: the Riemann FACE mass flux
       ! F r^2 at four fixed radii, the cell-centred rho v r^2 at the same
-      ! cells, and the two window spreads item (AD) quotes.  Diagnostic
-      ! only -- it changes no state and is written after the step.
-      integer :: p54_ts_every = 0
-      integer :: p54_ts_unit  = -1
-      logical :: p54_ts_open  = .false.
-      integer, dimension(4) :: p54_ts_face = -1
-      real*8,  dimension(4), parameter :: p54_ts_r = (/1.005d0, 1.03d0,   &
+      ! cells, and the spreads of the cell-centred rho v r^2 over
+      ! r >= 1.03 and r >= 1.10.  Diagnostic only -- it changes no state
+      ! and is written after the step.
+      integer :: face_flux_series_every = 0
+      integer :: face_flux_series_unit  = -1
+      logical :: face_flux_series_open  = .false.
+      integer, dimension(4) :: face_flux_series_face = -1
+      real*8,  dimension(4), parameter :: face_flux_series_r = (/1.005d0, 1.03d0, &
                                                        1.10d0,  1.20d0/)
 
       ! Composition equilibration of a state read from file (see
@@ -408,25 +409,25 @@
 
       ! Complete update-map diagnostic (env EXHALE_UPDATE_MAP, off by
       ! default). See run_update_map_report below.
-      integer :: upmap_n = 0
-      real*8  :: upmap_f(8) = 0.0d0
-      real*8  :: upmap_scale = 1.0d0
+      integer :: update_map_n = 0
+      real*8  :: update_map_f(8) = 0.0d0
+      real*8  :: update_map_scale = 1.0d0
       real*8, dimension(:,:), allocatable :: u_um0, u_umA, u_umB, u_umC,   &
                                              u_umD, u_umSave, R_um
       real*8, dimension(:,:), allocatable :: f_sp_umSave
-      real*8  :: upmap_dfsp = 0.0d0
-      integer :: upmap_unit = -1
-      logical :: upmap_file_open = .false.
-      integer :: upmap_done = 0
-      real*8  :: upmap_bc_interior = 0.0d0
-      ! P158: the same comparison for the CARRIER row -- the one row the
+      real*8  :: update_map_dfsp = 0.0d0
+      integer :: update_map_unit = -1
+      logical :: update_map_file_open = .false.
+      integer :: update_map_done = 0
+      real*8  :: update_map_bc_interior = 0.0d0
+      ! The same comparison for the CARRIER row -- the one row the
       ! conserved-variable map above does not carry.
       real*8, dimension(:), allocatable :: nH2_um0, R_carr_um, T_carr_um
       real*8, dimension(:,:), allocatable :: res_um_all, terms_um_all
-      logical :: upmap_carrier = .false.
+      logical :: update_map_carrier = .false.
       real*8, dimension(:), allocatable :: y_um0, nrho_um0
-      real*8  :: upmap_crmax = 0.0d0
-      integer :: upmap_cj = 0, upmap_cic = 1
+      real*8  :: update_map_crmax = 0.0d0
+      integer :: update_map_cj = 0, update_map_cic = 1
 
       ! Newton-residual self-test scratch (EXHALE_NEWTON_TEST hook)
       real*8, allocatable :: Yvec(:), Fvec(:)
@@ -525,11 +526,11 @@
       real*8, parameter :: flux_fall_min = 1.0d-2
       logical :: flux_still_falling
 
-      ! Optional base-cell startup diagnostic (env EXHALE_DIAG_BASE=1): dumps the
+      ! Optional base-cell startup trace (env EXHALE_BASE_CELL_STARTUP=1): dumps the
       ! first few cells (r, n, v, T, heat, cool, dC/dT sign) for the first steps,
       ! to trace IC-startup transients (e.g. warm-Parker base breakdown). Off by
       ! default => zero effect on normal runs.
-      logical            :: diag_base = .false.
+      logical            :: base_cell_startup_on = .false.
       character(len=64)  :: diag_env
 
       ! Decoupled outer iteration over the excited-H (H n=2) feedback
@@ -2232,7 +2233,7 @@
       if (run_mode .eq. run_mode_phys) call physical_handoff_check
 
       ! One production step per requested time step, and nothing else.
-      if (upmap_n .gt. 0) then
+      if (update_map_n .gt. 0) then
          ! The number of steps is enforced by update_map_end_step, which
          ! caps the loop once it has written its last block; count does not
          ! start from the same value for a cold and a loaded start.
@@ -2249,20 +2250,20 @@
          in_plm_stage = .false.
          du_th_plm    = -1.0d0
          write(*,'(A,I0,A)') ' (EXHALE_main) EXHALE_UPDATE_MAP: ',         &
-              upmap_n, ' production step(s), state restored between them'
+              update_map_n, ' production step(s), state restored between them'
       endif
 
       ! The step clock (see its declaration).
       call get_environment_variable('EXHALE_STEP_CLOCK', diag_env)
       if (trim(diag_env) .eq. '1') trace_step_clock = .true.
 
-      ! Activate base-cell startup diagnostic if requested
-      call get_environment_variable('EXHALE_P54_TS', diag_env)
-      if (len_trim(diag_env) .gt. 0) read(diag_env,*) p54_ts_every
-      call get_environment_variable('EXHALE_DIAG_BASE', diag_env)
+      ! The face mass-flux series and the base-cell startup trace
+      call get_environment_variable('EXHALE_FACE_MASS_FLUX_SERIES', diag_env)
+      if (len_trim(diag_env) .gt. 0) read(diag_env,*) face_flux_series_every
+      call get_environment_variable('EXHALE_BASE_CELL_STARTUP', diag_env)
       if (trim(diag_env) .eq. '1') then
-         diag_base = .true.
-         open(unit=778, file='output/base_diag.txt', status='replace')
+         base_cell_startup_on = .true.
+         open(unit=778, file='output/base_cell_startup.txt', status='replace')
          write(778,'(A)') '# count  j  r[Rp]  n[cm-3]  v[cm/s]  T[K]  heat  cool'
       endif
 
@@ -2270,7 +2271,7 @@
          ! These windows require physical time and a fixed operator.
          if (run_mode.ne.run_mode_phys.or.use_local_dt.or.thereis_mol.or. &
              use_newton_solver.or.in_plm_stage.or.in_lambda_ramp.or. &
-             upmap_n.gt.0.or.do_only_pp) &
+             update_map_n.gt.0.or.do_only_pp)                              &
             error stop 'regional convergence requires atomic global physical marching with fixed reconstruction'
          if (use_sec_ion.and..not.sec_ion_active) &
             error stop 'regional convergence requires secondary ionization active from the start'
@@ -2318,15 +2319,15 @@
                dt     = as_fixed_dt_seconds*v0/R0
                dt_loc = dt
             endif
-            if (upmap_n .gt. 0) then
+            if (update_map_n .gt. 0) then
                ! WHICH BLOCK THIS STEP IS is counted by the diagnostic
                ! itself, not read off the loop counter: count starts at 0 on
                ! a cold start and at 1 on a loaded one, so the loop counter
-               ! indexed upmap_f(0) -- out of bounds -- on every cold start,
+               ! indexed update_map_f(0) -- out of bounds -- on every cold start,
                ! and the step then ran at dt = 0.
-               upmap_scale = upmap_f(min(upmap_done + 1, upmap_n))
-               dt     = dt*upmap_scale
-               dt_loc = dt_loc*upmap_scale
+               update_map_scale = update_map_f(min(update_map_done + 1, update_map_n))
+               dt     = dt*update_map_scale
+               dt_loc = dt_loc*update_map_scale
             endif
             ! ADVISOR DECISION 3: a dt REDUCED BY A REJECTION bounds the
             ! next step, dt_next = min(dt_CFL, 2 dt_accepted). The bound is
@@ -2474,7 +2475,7 @@
             ! BEFORE u_old is taken: the retry loop restarts every attempt
             ! from u_old, so a restore made after this line would be undone
             ! by the first `u = u_old` inside retry_step.
-            if (upmap_n .gt. 0) call update_map_begin_step
+            if (update_map_n .gt. 0) call update_map_begin_step
 
             u_old = u
 
@@ -2748,7 +2749,7 @@
             ! grows to 1e-11 over a converging run: measured 2026-09-03, it broke
             ! the bitwise regression on wasp_full while the diagnostic was off.
             ! Anything measured inside a stage must be measured out of line.
-            if (upmap_n .gt. 0) u_umA = u
+            if (update_map_n .gt. 0) u_umA = u
 
 		!------------------------------------------------!
  		
@@ -3355,15 +3356,15 @@
                exit trial
             endif
 
-            if (upmap_n .gt. 0) then
+            if (update_map_n .gt. 0) then
                u_umB = u
-               upmap_dfsp = maxval(abs(f_sp(1:N,:) - f_sp_umSave(1:N,:)))
+               update_map_dfsp = maxval(abs(f_sp(1:N,:) - f_sp_umSave(1:N,:)))
             endif
 
 		call Apply_BC(u)
 
 
-            if (upmap_n .gt. 0) u_umC = u
+            if (update_map_n .gt. 0) u_umC = u
 
             ! Molecular transport (viscous momentum diffusion + its
             ! dissipation + heat conduction), Crank-Nicolson, as an
@@ -3397,7 +3398,7 @@
             endif
 
 
-            if (upmap_n .gt. 0) u_umD = u
+            if (update_map_n .gt. 0) u_umD = u
 
             ! Periodic Shapiro low-pass filter to damp the gravity-unbalanced
             ! sound waves (base breathing), as in CETIMB (Koskinen et al. 2013a).
@@ -3803,7 +3804,7 @@
                     ' state=', attempted_step_checkpoint_checksum(u,      &
                                         f_sp, heat, cool, eta)
 
-            if (upmap_n .gt. 0) call update_map_end_step
+            if (update_map_n .gt. 0) call update_map_end_step
 
             ! The primitive state is the one the adoption boundary above
             ! evaluated on the state it adopted; only the energy row is
@@ -3819,7 +3820,7 @@
             
             ! Base-cell startup diagnostic (first 500 steps): trace r, n, v, T,
             ! heat, cool for the lowest cells to expose IC-startup transients.
-            if (diag_base .and. marching_step .le. 500) then
+            if (base_cell_startup_on .and. marching_step .le. 500) then
                do j = 1,6
                   write(778,'(I7,I4,1X,F10.6,5(1X,ES13.6))') marching_step, j, r(j), &
                        W(1,j)*n0, W(2,j)*v0, T(j)*T0, heat(j), cool(j)
@@ -4007,13 +4008,13 @@
                     march_change_th, ')'
             endif
 
-            ! P54/(AD) time series of the FACE mass flux at fixed radii
+            ! Time series of the FACE mass flux at fixed radii
             ! (env gate; assemble_residual first so face_flux belongs to
             ! the current u).
-            if (p54_ts_every .gt. 0) then
-               if (mod(marching_step, p54_ts_every) .eq. 0) then
+            if (face_flux_series_every .gt. 0) then
+               if (mod(marching_step, face_flux_series_every) .eq. 0) then
                   call assemble_residual(u, n_tot + ne, f_sp, heat, cool, Rres)
-                  call p54_flux_timeseries_append
+                  call face_mass_flux_series_append
                endif
             endif
 
@@ -4305,7 +4306,7 @@
             ! was removed on 2026-10-16). Clearing the flags here
             ! also keeps the staged secondary ionization below from switching
             ! the physics between two steps of one map.
-            if (upmap_n .gt. 0) then
+            if (update_map_n .gt. 0) then
                mass_flux_converged = .false.
                relaxation_stalled = .false.;  steady_gates_converged = .false.
             endif
@@ -4690,10 +4691,10 @@
       else if (do_only_pp) then
          write(*,'(A)') '     -> stopped: "Do only PP" -- no time'//         &
               ' integration was requested'
-      else if (hit_max_steps .and. upmap_n .gt. 0) then
+      else if (hit_max_steps .and. update_map_n .gt. 0) then
          ! update_map_end_step sets the cap once its last block is written.
          write(*,'(A,I0,A)') '     -> stopped: the update map wrote its ',  &
-              upmap_n, ' requested step(s)'
+              update_map_n, ' requested step(s)'
          call report_marching_stop
       else if (hit_max_steps) then
          write(*,'(A,I0,A)') '     -> stopped: reached EXHALE_MAXSTEPS = ',  &
@@ -7084,18 +7085,18 @@
       character(len=64) :: tok
       ln = len_trim(spec)
       if (trim(spec) .eq. '1') then
-         upmap_n = 3
-         upmap_f(1) = 1.0d0;  upmap_f(2) = 0.1d0;  upmap_f(3) = 0.01d0
+         update_map_n = 3
+         update_map_f(1) = 1.0d0;  update_map_f(2) = 0.1d0;  update_map_f(3) = 0.01d0
          return
       endif
-      upmap_n = 0;  i0 = 1
+      update_map_n = 0;  i0 = 1
       do i = 1, ln+1
          if (i .gt. ln .or. spec(i:i) .eq. ',') then
             if (i .gt. i0) then
                tok = spec(i0:i-1)
-               if (upmap_n .lt. 8) then
-                  read(tok,*,iostat=ios) upmap_f(upmap_n+1)
-                  if (ios .eq. 0) upmap_n = upmap_n + 1
+               if (update_map_n .lt. 8) then
+                  read(tok,*,iostat=ios) update_map_f(update_map_n+1)
+                  if (ios .eq. 0) update_map_n = update_map_n + 1
                endif
             endif
             i0 = i + 1
@@ -7114,7 +7115,7 @@
       ! step that follows this call is the step the run takes, with stop
       ! logic and file output suppressed by the caps set at startup -- and NOT
       ! a copy of it, which is the only way the comparison can be trusted.
-      if (upmap_done .eq. 0) then
+      if (update_map_done .eq. 0) then
          u_umSave    = u
          f_sp_umSave = f_sp
          ! The record below follows the H2 ROW alone, cell by cell, so it
@@ -7123,7 +7124,7 @@
          ! column for every carrier the module can carry, so they are
          ! dimensioned by that count and not by the four molecular ones.
          if (thereis_mol .and. carrier_transport) then
-            upmap_carrier = .true.
+            update_map_carrier = .true.
             allocate(nH2_um0(1:N), R_carr_um(1:N), T_carr_um(1:N))
             allocate(res_um_all(1:N,n_carrier_max),                       &
                      terms_um_all(1:N,n_carrier_max))
@@ -7144,16 +7145,16 @@
          ! primitive variables and back.
          u_umA = u
          call Apply_BC(u)
-         upmap_bc_interior = 0.0d0
+         update_map_bc_interior = 0.0d0
          do j = 1, N
             do k = 1, 3
                if (u_umA(k,j) .ne. 0.0d0)                                  &
-                  upmap_bc_interior = max(upmap_bc_interior,               &
+                  update_map_bc_interior = max(update_map_bc_interior,     &
                        abs(u(k,j)-u_umA(k,j))/abs(u_umA(k,j)))
             enddo
          enddo
          write(*,'(A,ES10.3,A)') ' [update map] Apply_BC moves the'//     &
-              ' INTERIOR by, at most, a relative', upmap_bc_interior,     &
+              ' INTERIOR by, at most, a relative', update_map_bc_interior, &
               ' (required exactly zero: it writes only the ghosts)'
          call U_to_W(u,W)
          rho = W(1,:);  v = W(2,:);  p = W(3,:)
@@ -7174,9 +7175,9 @@
          call assemble_residual(u, n_tot + ne, f_sp, heat, cool, R_um)
          ! The carrier row's steady residual of the SAME state, per cell,
          ! with the row's own terms beside it.
-         if (upmap_carrier) then
-            call carrier_steady_residual(rho, v, f_sp, upmap_crmax,     &
-                 upmap_cj, upmap_cic, res_out=res_um_all,                  &
+         if (update_map_carrier) then
+            call carrier_steady_residual(rho, v, f_sp, update_map_crmax,   &
+                 update_map_cj, update_map_cic, res_out=res_um_all,        &
                  terms_out=terms_um_all)
             R_carr_um = res_um_all(1:N,1)
             T_carr_um = terms_um_all(1:N,1)
@@ -7212,7 +7213,7 @@
          call comp_T_from_p(p,n_tot,ne,T)
       endif
       u_um0 = u
-      if (upmap_carrier) then
+      if (update_map_carrier) then
          call get_species_densities(rho,f_sp,nhi,nhii,nhei,nheii,          &
                                     nheiii,nheiTR,nm,ne,n_tot)
          do j = 1, N
@@ -7393,7 +7394,7 @@
            'boundary ', 'transport', 'filter   '/)
       character(len=8), parameter :: rname(3) = (/'mass    ', 'momentum',   &
            'energy  '/)
-      if (.not. upmap_open()) return
+      if (.not. update_map_open()) return
       dtl = dt
       gmax = 0.0d0;  rmax = 0.0d0;  dmax = 0.0d0;  smax = 0.0d0
       do j = 1, N
@@ -7407,7 +7408,7 @@
             smax(3,k) = max(smax(3,k), abs(u_umC(k,j)-u_umB(k,j))/dt_loc(j))
             smax(4,k) = max(smax(4,k), abs(u_umD(k,j)-u_umC(k,j))/dt_loc(j))
             smax(5,k) = max(smax(5,k), abs(u(k,j)   -u_umD(k,j))/dt_loc(j))
-            write(upmap_unit,'(1X,ES12.5,1X,I5,1X,I2,1X,10(ES16.8,1X))')   &
+            write(update_map_unit,'(1X,ES12.5,1X,I5,1X,I2,1X,10(ES16.8,1X))') &
                  dtl, j, k, r(j), R_um(k,j), g,                            &
                  (u_umA(k,j)-u_um0(k,j))/dt_loc(j),                        &
                  (u_umB(k,j)-u_umA(k,j))/dt_loc(j),                        &
@@ -7416,9 +7417,9 @@
                  (u(k,j)   -u_umD(k,j))/dt_loc(j)
          enddo
       enddo
-      flush(upmap_unit)
+      flush(update_map_unit)
       write(*,'(A,ES11.4,A,ES9.2,A,ES11.4)') ' [update map] dt =', dtl,   &
-           '  (', upmap_scale, ' x CFL)   dt_loc(1) =', dt_loc(1)
+           '  (', update_map_scale, ' x CFL)   dt_loc(1) =', dt_loc(1)
       write(*,'(A)') '   max over cells, code units 1/t_s'
       write(*,'(A)') '   row       |R|        |G_dt|     |G_dt+R|   '//    &
            'hydro      chem       boundary   transport  filter     '//     &
@@ -7427,13 +7428,13 @@
          write(*,'(A,A,A,9(ES11.3))') '   ', rname(k), ' ', rmax(k),       &
               gmax(k), dmax(k), smax(1,k), smax(2,k), smax(3,k),           &
               smax(4,k), smax(5,k),                                        &
-              upmap_bc_interior
+              update_map_bc_interior
       enddo
       write(*,'(A,ES10.3)') '   largest change of any species fraction'//  &
-           ' in the step:', upmap_dfsp
-      if (upmap_carrier) call update_map_carrier_row
-      upmap_done = upmap_done + 1
-      if (upmap_done .ge. upmap_n) max_steps = marching_step
+           ' in the step:', update_map_dfsp
+      if (update_map_carrier) call update_map_carrier_row
+      update_map_done = update_map_done + 1
+      if (update_map_done .ge. update_map_n) max_steps = marching_step
       end subroutine update_map_end_step
 
       ! ------------------------------------------------!
@@ -7468,7 +7469,7 @@
             drel = abs(gc + R_carr_um(j))/max(T_carr_um(j),1.0d-300)
             jr   = j
          endif
-         write(upmap_unit,'(1X,ES12.5,1X,I5,1X,I2,1X,6(ES16.8,1X))')       &
+         write(update_map_unit,'(1X,ES12.5,1X,I5,1X,I2,1X,6(ES16.8,1X))')  &
               dt, j, 4, r(j), R_carr_um(j), gc, gc + R_carr_um(j),         &
               T_carr_um(j),                                                &
               (f_sp(j,isp_H2)*rho(j)*n0 - nH2_um0(j))/(dt_loc(j)*t_s)
@@ -7479,18 +7480,18 @@
            ' r=', r(max(jr,1))
       end subroutine update_map_carrier_row
 
-      logical function upmap_open()
+      logical function update_map_open()
       ! Open output/update_map.txt on first use.
-      if (.not. upmap_file_open) then
-         open(newunit=upmap_unit, file='output/update_map.txt',            &
+      if (.not. update_map_file_open) then
+         open(newunit=update_map_unit, file='output/update_map.txt',       &
               status='replace', action='write')
-         upmap_file_open = .true.
-         write(upmap_unit,'(A)') '# dt j k r  R  G_dt  hydro chem'//       &
+         update_map_file_open = .true.
+         write(update_map_unit,'(A)') '# dt j k r  R  G_dt  hydro chem'//  &
               ' boundary transport filter  (k = 1 mass, 2 momentum,'//     &
               ' 3 energy; all rates in code units 1/t_s)'
       endif
-      upmap_open = .true.
-      end function upmap_open
+      update_map_open = .true.
+      end function update_map_open
 
       subroutine report_marching_stop
       ! A DU, DTU OR PLATEAU STOP IS A MARCHING STOP, NOT AN ACCEPTED STEADY
@@ -10267,7 +10268,7 @@
       L_hyd = 0.0d0;  u_err_full = 0.0d0;  dtloc_macro = 0.0d0
       f_sp_err_full = 0.0d0;  T_err_full = 0.0d0;  ne_err_full = 0.0d0
       allocate(dF(3,1-Ng:N+Ng), S(3,1-Ng:N+Ng))
-      if (upmap_n .gt. 0) then
+      if (update_map_n .gt. 0) then
          allocate(u_um0(3,1-Ng:N+Ng), u_umA(3,1-Ng:N+Ng),                  &
                   u_umB(3,1-Ng:N+Ng), u_umC(3,1-Ng:N+Ng),                  &
                   u_umD(3,1-Ng:N+Ng), u_umSave(3,1-Ng:N+Ng),               &
@@ -10317,44 +10318,44 @@
       end subroutine allocate_state_vectors
 
       ! End of program
-      subroutine p54_flux_timeseries_append
-      ! DIAGNOSTIC ONLY (P54/(AD), env EXHALE_P54_TS).  See the declaration
+      subroutine face_mass_flux_series_append
+      ! DIAGNOSTIC ONLY (env EXHALE_FACE_MASS_FLUX_SERIES).  See the declaration
       ! block for what each column is.  face_flux is RK_integration's cached
       ! Riemann flux; the caller refreshed it with assemble_residual.
       integer :: i, jj
       real*8  :: ff(4), fc(4), sp103, sp110
-      if (.not. p54_ts_open) then
+      if (.not. face_flux_series_open) then
          do i = 1,4
-            p54_ts_face(i) = N
+            face_flux_series_face(i) = N
             do jj = 1, N
-               if (r_edg(jj) .ge. p54_ts_r(i)) then
-                  p54_ts_face(i) = jj
+               if (r_edg(jj) .ge. face_flux_series_r(i)) then
+                  face_flux_series_face(i) = jj
                   exit
                endif
             enddo
          enddo
-         open(newunit=p54_ts_unit, file='output/p54_flux_ts.txt',          &
+         open(newunit=face_flux_series_unit, file='output/face_mass_flux_series.txt', &
               status='replace', action='write')
-         write(p54_ts_unit,'(A)') '# step  F_face(1.005 1.03 1.10 1.20)'// &
+         write(face_flux_series_unit,'(A)') '# step  F_face(1.005 1.03 1.10 1.20)'// &
               '  F_cell(same cells)  spread_cell(r>=1.03) spread_cell(r>=1.10)'
-         p54_ts_open = .true.
+         face_flux_series_open = .true.
       endif
       do i = 1,4
-         jj    = p54_ts_face(i)
+         jj    = face_flux_series_face(i)
          ff(i) = face_flux(1,jj)*r_edg(jj)*r_edg(jj)
          fc(i) = u(2,jj)*r(jj)*r(jj)
       enddo
-      call p54_cell_spread(p54_ts_face(2), sp103)
-      call p54_cell_spread(p54_ts_face(3), sp110)
-      write(p54_ts_unit,'(1X,I8,1X,10(ES20.12,1X))') marching_step,                &
+      call cell_mass_flux_spread_from(face_flux_series_face(2), sp103)
+      call cell_mass_flux_spread_from(face_flux_series_face(3), sp110)
+      write(face_flux_series_unit,'(1X,I8,1X,10(ES20.12,1X))') marching_step, &
            ff(1), ff(2), ff(3), ff(4), fc(1), fc(2), fc(3), fc(4),         &
            sp103, sp110
-      flush(p54_ts_unit)
-      end subroutine p54_flux_timeseries_append
+      flush(face_flux_series_unit)
+      end subroutine face_mass_flux_series_append
 
-      subroutine p54_cell_spread(ja, sp)
-      ! Spread of the CELL-CENTRED rho v r^2 over [ja:N], the functional
-      ! item (AD) quotes, evaluated from an arbitrary inner cell.
+      subroutine cell_mass_flux_spread_from(ja, sp)
+      ! Spread of the CELL-CENTRED rho v r^2 over [ja:N], (max - min)/mean,
+      ! evaluated from an arbitrary inner cell.
       integer, intent(in)  :: ja
       real*8,  intent(out) :: sp
       integer :: jj
@@ -10367,6 +10368,6 @@
          fmx  = max(fmx, f);  fmn = min(fmn, f);  fsum = fsum + f
       enddo
       sp = (fmx - fmn)/max(abs(fsum/dble(N - ja + 1)), 1.0d-30)
-      end subroutine p54_cell_spread
+      end subroutine cell_mass_flux_spread_from
 
       end program Hydro_ioniz

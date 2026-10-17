@@ -17,7 +17,6 @@
       use wae_rnew,        only: rnew_init
       use wae_rrec,        only: rrec_init
       use wae_fe,          only: fe_init
-      use wae_ion_pots,    only: ion_pots_init
       use wae_lc_cii,      only: cii_init
       use wae_lc_ciii,     only: ciii_init
       use wae_lc_oii,      only: oii_init
@@ -57,7 +56,7 @@
 
       ! 2. spectrum + data tables
       call wae_rate_coeffs_init()
-      call rnew_init(); call rrec_init(); call fe_init(); call ion_pots_init()
+      call rnew_init(); call rrec_init(); call fe_init()
       call cii_init(); call ciii_init(); call oii_init(); call oiii_init()
       call wae_load_spectrum(trim(specf))
 

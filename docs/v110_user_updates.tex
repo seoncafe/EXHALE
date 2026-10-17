@@ -27,7 +27,12 @@ program accepts it only with \texttt{Run mode: phys} in an atomic calculation
 using global physical time steps, with Newton solving disabled. A local-time
 step, molecular chemistry, stationary restart, or post-processing-only run with
 this option stops at startup. The absence of the key leaves the regional
-monitor disabled. The Huang and Salz settings under
+monitor disabled.
+The reconstruction must be fixed from the first step: a PLM stage, a
+PLM--WENO3 ramp, or an update map is refused. If secondary ionization is
+enabled, it must also be active from the first step; the default immediate
+secondary-ionization setting meets this condition.
+The Huang and Salz settings under
 \texttt{examples/regional\_convergence/} are fragments; merge one into a
 complete planetary \texttt{input.inp}, replacing duplicate keys.
 

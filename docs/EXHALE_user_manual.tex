@@ -1947,7 +1947,7 @@ defaults restore the standard behavior).}\label{tab:inp-opt}\\
   have to be named: it states the ROUTE and not the equation set, the rows,
   columns and tolerances being the same either way, so a difference in it is
   admissible with nothing named, the load says so and the change is recorded as
-  a \texttt{\# route\_change} line (item L22 increment I3, 2026-09-17). The restart contract otherwise refuses any option
+  a \texttt{\# route\_change} line (since 2026-09-17). The restart contract otherwise refuses any option
   difference, which forbids the ladder of settings this code is converged with:
   converge without an option, restart with it on, converge again. Naming a
   token (\texttt{sec\_ion}, \texttt{He23S}, \texttt{mol\_heat},
@@ -2317,38 +2317,23 @@ defaults restore the standard behavior).}\label{tab:inp-opt}\\
   iteration and not an equation set: a stationary state is stationary under
   either. Any other word stops the run. \\
 \texttt{Ionization transport:} & \texttt{True}/\texttt{False}
-  (def.\ \texttt{False}) & Carry the ionization state with the flow:
-  $x({\rm H\,II}) = n({\rm H\,II})/n_{\rm H}$, $x({\rm He\,II})$ and
-  $x({\rm He\,III})$ per helium nucleus become rows of the transport-chemistry
-  operator that carries the molecular carriers, each riding on its element's
-  nucleus face flux, $F = x\,N_{\rm el} - n_{\rm el} K_{zz}\,\partial x/\partial
-  r$, and every ionization sweep is handed the transported fractions instead
-  of solving those partitions as local roots. The neutral stage of each
-  element closes its simplex and is not a row. The local partition is the
-  right answer only where a parcel is ionized faster than it leaves its shell,
-  $P\,r/|v| \gg 1$. On the Koskinen et al.\ (2022) Model~A comparison that
-  ratio is 0.15--0.35 above 1.5\,$r_{\rm base}$, and the local root then gives
-  $x(\mathrm{H^+}) = 0.129/0.327/0.585$ at $2.0/2.4/3.0\,r_{\rm base}$ where
-  integrating along the same flow gives $0.057/0.078/0.106$ and Model~A, which
-  advects every species, has $0.020/0.055/0.080$
-  (\texttt{md/k22\_electron\_density\_excess.md} \S7). No molecular diffusion
-  and no ion-neutral drift of a stage is carried; the eddy coefficient
-  $K_{zz}$ applies, it being a bulk mixing coefficient. There is no base
-  Dirichlet value, no handoff stating an ionization fraction, so the lower
-  ghost cells stay with the sweep. It applies to an atomic gas as well as a
-  molecular one (the stage sources are the balances the local sweep of that
-  gas solves). \textbf{Refused at startup}: a mixture without helium;
+  (def.\ \texttt{False}) & Advect H\,II, He\,II and He\,III as fractions of
+  their own element nuclei, with eddy mixing but no relative ion diffusion.
+  The neutral stages close the element budgets; the lower ghost ionization
+  fractions remain on their local chemical roots. This option applies to
+  atomic and molecular gases. See the Koskinen et al.\ (2022) comparison in
+  \texttt{md/k22\_electron\_density\_excess.md} \S7.
+  \textbf{Refused at startup}: a mixture without helium;
   \texttt{Molecular chemistry: True} without \texttt{Molecular carrier
-  transport: True}; \texttt{Coupled carrier solve: True} or \texttt{On stall}
-  (its row registry carries a carrier as a mass fraction, a stage is a
-  fraction per nucleus); and the direct steady route \texttt{EXHALE\_PTC=1}.
-  With \texttt{Solver: Newton} the route is the partitioned alternation,
-  whose hydrodynamic solves hold the composition and whose sweeps are handed
-  the transported fractions, the carrier relaxation between the solves
-  transporting them. Marching requires none of these. Recorded in
-  \texttt{EXHALE\_resolved.out} as \texttt{ionization\_transport} and in a
-  restart file's \texttt{\# coupling:} line as \texttt{iontrans=T}. Default
-  off: it changes every ionization-dependent number of a run
+  transport: True}; \texttt{Coupled carrier solve: True} in an atomic gas;
+  \texttt{Coupled carrier solve: On stall}; and the direct steady route
+  \texttt{EXHALE\_PTC=1}. In a molecular gas, an explicit
+  \texttt{Coupled carrier solve: True} uses Newton carrier rows for the
+  ionization stages. Otherwise, \texttt{Solver: Newton} uses the partitioned
+  alternation, while marching transports the stages without a stationary
+  solver. Recorded in \texttt{EXHALE\_resolved.out} as
+  \texttt{ionization\_transport} and in restart files as
+  \texttt{iontrans=T}. It changes ionization-dependent results
   (\S\ref{sec:oxychem}). \\
 \texttt{He 2\^{}3S transport:} & \texttt{True}/\texttt{False}
   (def.\ \texttt{False}) & Carry the He\,$2^3S$ population with the flow
@@ -3163,15 +3148,17 @@ scattering that actually decides how much Ly$\alpha$ reaches a molecular base is
 not applied, so that band's rate is an upper bound. Note also that setting
 \texttt{Stellar Lya flux} for the H($n{=}2$) pumping therefore drives the
 photolysis as well; the startup report prints all four band fluxes so this is
-visible. (iii) The molecular ions H$_2^+$, H$_3^+$ and HeH$^+$ and O($^1D$) are
-closed by their local balance even with the transport on, and the band average
+visible. (iii) With molecular carrier transport enabled, H$_2^+$, H$_3^+$,
+and HeH$^+$ are transported; O($^1D$) remains on its local balance. The band average
 applies one transmission to a whole band, so the rates are lower bounds deep in
 the water layer. Every run writes its own chemical, advective and diffusive time
 scales (\texttt{output/Oxygen\_chemistry.txt}), which say where the answer is
 chemistry, where it is flow, and where the two are comparable.
 
-\textbf{The carriers are transported by default}
-(\texttt{Molecular carrier transport: True}). H$_2$, OH, H$_2$O and CO are advanced by an
+\textbf{Molecular carrier transport is enabled by default with oxygen chemistry}
+(\texttt{Molecular carrier transport: True}) and disabled by default without
+it. H$_2$, H$_2^+$, H$_3^+$, HeH$^+$ and, when oxygen chemistry is enabled,
+OH, H$_2$O and CO are advanced by an
 implicit backward-Euler diffusion-advection step solved together with the same
 chemistry rows the local equilibrium uses, so a rate that changes in one changes
 in the other. The molecular coefficients come from Blanc's law over the
