@@ -178,7 +178,6 @@
       public :: coupled_entry_state_fits
       public :: coupled_entry_refusal_text
       public :: n_coupled_block_entries
-      public :: reset_coupled_block_entry_count
 
       contains
 
@@ -418,13 +417,6 @@
       ! state.
       n = n_block_entries
       end function n_coupled_block_entries
-
-      ! --------------------------------------------------------------- !
-
-      subroutine reset_coupled_block_entry_count()
-      ! Only a test resets it: within a run the count is the run's.
-      n_block_entries = 0
-      end subroutine reset_coupled_block_entry_count
 
       ! --------------------------------------------------------------- !
 

@@ -2417,12 +2417,6 @@
          kf = a * t4**b * (1.0d0 + c*exp(d*t4)) * exp(-Ek/t4)
          end function kf
 
-         ! Power-law form: a * (T/300)^b * exp(-Ek/T4).
-         real*8 function gp(a, b, Ek)
-         real*8, intent(in) :: a, b, Ek
-         gp = a * tr**b * exp(-Ek/t4)
-         end function gp
-
          ! Denominator D_CSi(T) used by the C + Si charge-transfer rows
          ! (Satta 2013).
          real*8 function dcsi(Tk)

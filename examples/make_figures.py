@@ -203,12 +203,12 @@ except Exception as e:
 
 
 # --- Fig 7: TPM transmission spectra montage (WASP-121b, He23S on) ---------- #
-# Source: the regression/tpm_wasp probe (Roche Newton solution with
+# Source: the backup/regression/tpm_wasp probe (Roche Newton solution with
 # Include He23S? True), so the He I 10830 panel shows real absorption;
 # the Case A planet-folder run has He23S off and an empty He line.
 try:
     import shutil
-    TPMW = os.path.join(ROOT, 'regression', 'tpm_wasp')
+    TPMW = os.path.join(ROOT, 'backup', 'regression', 'tpm_wasp')
     names = ['HeI_10830.png', 'Lya.png', 'Halpha.png', 'Hbeta.png']
     imgs = [plt.imread(os.path.join(TPMW, n)) for n in names]
     fig, ax = plt.subplots(2, 2, figsize=(11, 8))

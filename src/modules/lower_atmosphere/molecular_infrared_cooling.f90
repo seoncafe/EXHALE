@@ -139,7 +139,6 @@
       private
 
       public :: molecular_infrared_init
-      public :: molecular_infrared_ready
       public :: h2o_band_emission_lte,  h2o_band_net_cooling_rate
       public :: co_band_emission_lte,   co_band_net_cooling_rate
       public :: h2_line_emission_lte,   h2_line_net_cooling_rate
@@ -265,12 +264,6 @@
       tab_built   = .true.
 
       end subroutine molecular_infrared_init
-
-!------------------------------------------------------------------------------
-      logical function molecular_infrared_ready()
-      implicit none
-      molecular_infrared_ready = tab_built
-      end function molecular_infrared_ready
 
 !------------------------------------------------------------------------------
 ! Band-mean cross sections at one gas temperature, interpolated in log T on the

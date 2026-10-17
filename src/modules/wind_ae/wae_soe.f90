@@ -15,7 +15,6 @@
       use wae_rnew,     only: rnew
       use wae_rrec,     only: rrec
       use wae_fe,       only: fe
-      use wae_ion_pots, only: ion_pots, ionp_nr => ion_pots_nr
       use wae_lc_cii,   only: CII
       use wae_lc_ciii,  only: CIII
       use wae_lc_oii,   only: OII
@@ -48,18 +47,6 @@
       type(wae_i_eqnvars), intent(in) :: v
       rad = par%Rmin + v%q*v%z
       end subroutine wae_get_rad
-
-      real*8 function wae_get_ion_pot(Z, N_e)
-      integer, intent(in) :: Z, N_e
-      integer :: i
-      wae_get_ion_pot = 0.0d0
-      do i = 1, ionp_nr
-         if (int(ion_pots(i,1)) .eq. Z .and. int(ion_pots(i,2)) .eq. N_e) then
-            wae_get_ion_pot = ion_pots(i,3)
-            return
-         end if
-      end do
-      end function wae_get_ion_pot
 
       subroutine wae_get_mu(mu, kv)
       ! mean molecular weight incl. electrons; assumes species 1 = HI.

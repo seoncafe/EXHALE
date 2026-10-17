@@ -442,8 +442,8 @@
       ! The diagnostic interventions, so that a test driver can state what
       ! each of them does to the operator without running the binary.
       public :: carrier_face_coefficients, carrier_face_flux
-      public :: l22b_setup, carrier_outflow_ghost
-      public :: l22b_advective_band_derivative
+      public :: carrier_jacobian_options_setup, carrier_outflow_ghost
+      public :: carrier_advective_band_derivative
       ! Save and restore of the module arrays carrier_steady_residual
       ! overwrites, so that the balance of a state can be MEASURED without
       ! the measurement being an operation on the state.
@@ -956,9 +956,9 @@
       ! excluded from the certification, only from the choice of the trial
       ! interval.
       !
-      ! EXHALE_L22_MASK=<file> lists, one integer per line (blank lines and
+      ! EXHALE_CARRIER_INTERVAL_MASK=<file> lists, one integer per line (blank lines and
       ! lines opening with # ignored), the physical cells OMITTED FROM THE
-      ! INTERVAL SELECTION.  EXHALE_L22_MASK_MODE selects what the omission
+      ! INTERVAL SELECTION.  EXHALE_CARRIER_INTERVAL_MASK_MODE selects what the omission
       ! means:
       !   veto  -- the particle-count bound is still evaluated on the
       !            omitted cells and still refuses the trial, so the
@@ -978,19 +978,24 @@
       ! carrier_relax_mask_safety_stop.  An empty selection set is not a
       ! comparison and ends the relaxation the same way with its own
       ! message.
-      integer, parameter, public :: l22_mask_off   = 0
-      integer, parameter, public :: l22_mask_veto  = 1
-      integer, parameter, public :: l22_mask_waive = 2
-      integer, public :: l22_mask_mode = l22_mask_off
-      logical, save   :: l22_mask_ready = .false.
-      logical, dimension(:), allocatable, save :: l22_mask_omit
-      integer, public :: l22_mask_n_omit = 0, l22_mask_n_select = 0
+      ! WHAT IT CHANGES.  Unset (the default) the mask is off: no cell is
+      ! omitted and every path is the unmasked one.  Set, veto changes only
+      ! which cell the log names as controlling; waive changes the accepted
+      ! trial interval, and therefore the relaxed state, and adds the safety
+      ! stop as a way for the relaxation to end.
+      integer, parameter, public :: interval_mask_off   = 0
+      integer, parameter, public :: interval_mask_veto  = 1
+      integer, parameter, public :: interval_mask_waive = 2
+      integer, public :: interval_mask_mode = interval_mask_off
+      logical, save   :: interval_mask_ready = .false.
+      logical, dimension(:), allocatable, save :: interval_mask_omit
+      integer, public :: interval_mask_n_omit = 0, interval_mask_n_select = 0
       ! What the last trial measured on each of the two sets, for the log:
       ! the largest relative particle-count change of the selection set and
       ! of the omitted set, with the cells attaining them.
-      integer,  public :: l22_last_j_select = 0, l22_last_j_omit = 0
-      real(dp), public :: l22_last_d_select = 0.0d0
-      real(dp), public :: l22_last_d_omit   = 0.0d0
+      integer,  public :: interval_mask_j_select = 0, interval_mask_j_omit = 0
+      real(dp), public :: interval_mask_d_select = 0.0d0
+      real(dp), public :: interval_mask_d_omit   = 0.0d0
 
       ! ---- Measurements of the carrier Jacobian and of what a relaxation
       ! pass hands back, each switched on by an environment key and OFF by
@@ -1003,29 +1008,29 @@
       ! block-tridiagonal Jacobian are the FIRST-ORDER donor-cell
       ! linearization (see the assembly in solve_carriers); the limited
       ! slopes of species_face_fraction are not differentiated.
-      ! EXHALE_L22B_JAC_RECON=1 replaces those entries by a central
+      ! EXHALE_CARRIER_JACOBIAN_RECONSTRUCTION=1 replaces those entries by a central
       ! difference of carrier_advective_divergence itself, restricted to the
       ! tridiagonal band, and reports the weight the band cannot hold.
-      ! EXHALE_L22B_JAC_ACTION=<file> writes, at the first Jacobian assembly
+      ! EXHALE_CARRIER_JACOBIAN_ACTION=<file> writes, at the first Jacobian assembly
       ! of the run, the action of the assembled matrix on a direction
-      ! concentrated on the cells EXHALE_L22B_JAC_CELLS=lo,hi beside a
+      ! concentrated on the cells EXHALE_CARRIER_JACOBIAN_ACTION_CELLS=lo,hi beside a
       ! central difference of the full residual along the same direction.
       !
-      ! (C) EXHALE_L22B_DISPLACEMENT=1 reports what the composition the
+      ! (C) EXHALE_CARRIER_STATE_DISPLACEMENT=1 reports what the composition the
       ! relaxation hands back did to the primitive state the wind reads:
       ! the largest relative change of p, T, the mean mass per particle and
       ! the particle count over the column, with the cells attaining them.
-      logical, public :: l22b_jac_recon        = .false.
-      logical, public :: l22b_jac_action       = .false.
-      logical, public :: l22b_displacement     = .false.
-      integer, public :: l22b_jac_lo = 0, l22b_jac_hi = 0
-      character(len=512), save :: l22b_jac_file = ' '
-      logical, save   :: l22b_ready = .false.
-      logical, save   :: l22b_jac_action_done = .false.
+      logical, public :: carrier_jacobian_reconstruction        = .false.
+      logical, public :: carrier_jacobian_action_on       = .false.
+      logical, public :: carrier_state_displacement_on     = .false.
+      integer, public :: carrier_jacobian_action_lo = 0, carrier_jacobian_action_hi = 0
+      character(len=512), save :: carrier_jacobian_action_file = ' '
+      logical, save   :: carrier_jacobian_options_ready = .false.
+      logical, save   :: carrier_jacobian_action_done = .false.
       ! The largest advective Jacobian entry the tridiagonal band cannot
       ! hold, relative to the band of the same row, over the last assembly
       ! that formed the reconstruction terms.
-      real(dp), public :: l22b_recon_dropped = 0.0d0
+      real(dp), public :: carrier_reconstruction_band_dropped = 0.0d0
 
       ! The ledger counts of the last closure's last sweep (diagnostics).
       integer, public :: chem_last_offsimplex = 0, chem_last_nonfinite = 0
@@ -1041,7 +1046,7 @@
       integer, parameter, public :: carrier_relax_chemistry_refused = 5
       ! The diagnostic interval mask waived the bound on a cell that then
       ! moved by more than a factor two in one trial, or its selection set
-      ! was empty.  Only reachable with EXHALE_L22_MASK set.
+      ! was empty.  Only reachable with EXHALE_CARRIER_INTERVAL_MASK set.
       integer, parameter, public :: carrier_relax_mask_safety_stop = 6
 
       ! The background this step holds frozen: the ion stages, the molecular
@@ -4101,7 +4106,7 @@
       advmag = 0.0d0
       if (present(advin))  advin  = 0.0d0
       if (present(advout)) advout = 0.0d0
-      call l22b_setup()
+      call carrier_jacobian_options_setup()
       call spherical_face_area_and_cell_volume(fa, cv)
       ! Code density times code velocity over code length is a rate in units
       ! of v0/R0, and f_sp counts n0 particles per unit density, so this is
@@ -4565,7 +4570,7 @@
       Agrd  = 0.0d0
       Bdrf  = 0.0d0
       updrf = 0
-      call l22b_setup()
+      call carrier_jacobian_options_setup()
       ! NO DIFFUSIVE, EDDY OR SETTLING FLUX CROSSES THE OUTER END OF THE
       ! CARRIER COLUMN, AND NONE CROSSES THE INNER END UNLESS A HANDOFF
       ! STATES THE PARTITION THERE.  The loop below runs over the interior
@@ -5902,7 +5907,7 @@
       ! carrier_face_coefficients); q(N) = 0, and q(0) is then the enthalpy
       ! the base face exchanges with the lower atmosphere, zero elsewhere.
       ! Face values of h are the arithmetic means of their two cells.  Writes
-      ! no module state (l22b_setup reads its options once).
+      ! no module state (carrier_jacobian_options_setup reads its options once).
       real(dp), dimension(1-Ng:N+Ng),           intent(in)  :: rho, Tcode
       real(dp), dimension(1-Ng:N+Ng,n_species), intent(in)  :: f_sp
       real(dp), dimension(0:N),                 intent(out) :: q
@@ -6362,7 +6367,7 @@
       ! The two advective face terms, filled only for the record.
       real(dp) :: advfin(1:N,n_carrier_max), advfout(1:N,n_carrier_max)
 
-      call l22b_setup()
+      call carrier_jacobian_options_setup()
       call spherical_face_area_and_cell_volume(fa, cv)
       R0sq = R0*R0
       R0cb = R0sq*R0
@@ -6713,7 +6718,7 @@
       ! wind over this solve.
       real(dp), dimension(1:N) :: advj, advm
       ! The banded derivative of the whole advective term,
-      ! formed only when EXHALE_L22B_JAC_RECON is set.
+      ! formed only when EXHALE_CARRIER_JACOBIAN_RECONSTRUCTION is set.
       real(dp), dimension(1:N,n_carrier_max,-1:1) :: dadv
       real(dp) :: rnorm, rprev, rstart, rtry, damp
       ! The same residual on the scale the returned state is judged on.
@@ -6781,8 +6786,8 @@
          aa = 0.0d0
          bb = 0.0d0
          cc = 0.0d0
-         if (carrier_rows_advect .and. l22b_jac_recon)                    &
-            call l22b_advective_band_derivative(fc, msum, Frho, dadv)
+         if (carrier_rows_advect .and. carrier_jacobian_reconstruction)    &
+            call carrier_advective_band_derivative(fc, msum, Frho, dadv)
          ! CELL-LOCAL ASSEMBLY.  Row j of the block-tridiagonal system is
          ! built from cell j's own geometry, its two stored face-flux
          ! derivatives and n_carrier + 1 evaluations of carrier_source at
@@ -6917,12 +6922,12 @@
                ! species_face_fraction and the second-order reconstruction
                ! stay out of the Jacobian as before; these are the FIRST
                ! ORDER donor-cell terms and nothing else.
-               if (carrier_rows_advect .and. l22b_jac_recon) then
+               if (carrier_rows_advect .and. carrier_jacobian_reconstruction) then
                   ! The reconstructed banded Jacobian: the advective entries are
                   ! a central difference of the face-flux divergence itself,
                   ! limiter and reconstruction included, restricted to the
                   ! band a block-tridiagonal matrix can hold.  What falls
-                  ! outside the band is measured in l22b_recon_dropped.
+                  ! outside the band is measured in carrier_reconstruction_band_dropped.
                   if (j .gt. 1) aa(j,ic,ic) = aa(j,ic,ic) + dadv(j,ic,-1)
                   bb(j,ic,ic) = bb(j,ic,ic) + dadv(j,ic,0)
                   if (j .lt. N) cc(j,ic,ic) = cc(j,ic,ic) + dadv(j,ic,1)
@@ -7016,9 +7021,9 @@
          ! difference of the full residual, once per run, on the direction
          ! the keys name.  It reassembles the residual into arrays of its
          ! own, so res and the step below are the ones this iteration built.
-         if (l22b_jac_action .and. .not. l22b_jac_action_done) then
-            l22b_jac_action_done = .true.
-            call l22b_jacobian_action_report(fc, fc_old, nrho, wfac,      &
+         if (carrier_jacobian_action_on .and. .not. carrier_jacobian_action_done) then
+            carrier_jacobian_action_done = .true.
+            call carrier_jacobian_action_report(fc, fc_old, nrho, wfac,    &
                        dt_phys, rp, rep, msum, Frho, Agrd, Bdrf, updrf,   &
                        nH_free, nO_free, nC_free, sigrate, aa, bb, cc)
          endif
@@ -7912,39 +7917,39 @@
       ! ------------------------------------------------------------- !
 
       ! READ THE DIAGNOSTIC INTERVAL MASK ONCE, AND SAY WHAT IT IS.
-      ! The declaration of l22_mask_mode carries what this mask measures and
+      ! The declaration of interval_mask_mode carries what this mask measures and
       ! what it does not certify.  Called at the head of every relaxation;
       ! the file is read on the first call only, so the mask is frozen for
       ! the whole comparison, which is the condition the experiment is read
-      ! under.  With EXHALE_L22_MASK unset the mask is off and every path
+      ! under.  With EXHALE_CARRIER_INTERVAL_MASK unset the mask is off and every path
       ! below is the unmasked one.
-      subroutine l22_interval_mask_setup()
+      subroutine carrier_interval_mask_setup()
       character(len=512) :: fname
       character(len=16)  :: mode
       character(len=256) :: line
       integer :: u_msk, ios, jc, j
-      if (l22_mask_ready) return
-      l22_mask_ready = .true.
-      l22_mask_mode  = l22_mask_off
-      call get_environment_variable('EXHALE_L22_MASK', fname)
+      if (interval_mask_ready) return
+      interval_mask_ready = .true.
+      interval_mask_mode  = interval_mask_off
+      call get_environment_variable('EXHALE_CARRIER_INTERVAL_MASK', fname)
       if (len_trim(fname) .eq. 0) return
-      call get_environment_variable('EXHALE_L22_MASK_MODE', mode)
+      call get_environment_variable('EXHALE_CARRIER_INTERVAL_MASK_MODE', mode)
       select case (trim(mode))
-      case ('veto');  l22_mask_mode = l22_mask_veto
-      case ('waive'); l22_mask_mode = l22_mask_waive
+      case ('veto');  interval_mask_mode = interval_mask_veto
+      case ('waive'); interval_mask_mode = interval_mask_waive
       case default
-         write(*,'(A)') '    (L22 interval mask) EXHALE_L22_MASK_MODE'//  &
+         write(*,'(A)') '    (carrier interval mask) EXHALE_CARRIER_INTERVAL_MASK_MODE'// &
               ' must be veto or waive; the mask is off'
          return
       end select
-      if (.not. allocated(l22_mask_omit)) allocate(l22_mask_omit(1:N))
-      l22_mask_omit = .false.
+      if (.not. allocated(interval_mask_omit)) allocate(interval_mask_omit(1:N))
+      interval_mask_omit = .false.
       open(newunit = u_msk, file = trim(fname), status = 'old',           &
            action = 'read', iostat = ios)
       if (ios .ne. 0) then
-         write(*,'(A,A)') '    (L22 interval mask) cannot read ',         &
+         write(*,'(A,A)') '    (carrier interval mask) cannot read ',      &
               trim(fname)
-         l22_mask_mode = l22_mask_off
+         interval_mask_mode = interval_mask_off
          return
       endif
       do
@@ -7955,32 +7960,32 @@
          if (line(1:1) .eq. '#') cycle
          read(line,*,iostat = ios) jc
          if (ios .ne. 0) cycle
-         if (jc .ge. 1 .and. jc .le. N) l22_mask_omit(jc) = .true.
+         if (jc .ge. 1 .and. jc .le. N) interval_mask_omit(jc) = .true.
       enddo
       close(u_msk)
-      l22_mask_n_omit = 0
+      interval_mask_n_omit = 0
       do j = 1, N
-         if (l22_mask_omit(j)) l22_mask_n_omit = l22_mask_n_omit + 1
+         if (interval_mask_omit(j)) interval_mask_n_omit = interval_mask_n_omit + 1
       enddo
-      l22_mask_n_select = N - l22_mask_n_omit
-      write(*,'(A)') '    (L22 interval mask) THIS RUN IS A DIAGNOSTIC'// &
+      interval_mask_n_select = N - interval_mask_n_omit
+      write(*,'(A)') '    (carrier interval mask) THIS RUN IS A DIAGNOSTIC'// &
            ' EXPERIMENT: the trial interval of the carrier relaxation is'
       write(*,'(A,A)') '      chosen on a subset of the column.  Mask '// &
            'file ', trim(fname)
       write(*,'(A,A,A,I0,A,I0,A)') '      mode ', trim(mode),             &
-           ', omitted from the interval selection ', l22_mask_n_omit,     &
-           ' cell(s), selection set ', l22_mask_n_select, ' cell(s)'
-      if (l22_mask_mode .eq. l22_mask_veto)                               &
+           ', omitted from the interval selection ', interval_mask_n_omit, &
+           ' cell(s), selection set ', interval_mask_n_select, ' cell(s)'
+      if (interval_mask_mode .eq. interval_mask_veto)                      &
          write(*,'(A)') '      veto: the particle-count bound is still'// &
               ' checked on the omitted cells, so the accepted interval'// &
               ' is the unmasked one'
-      if (l22_mask_mode .eq. l22_mask_waive)                              &
+      if (interval_mask_mode .eq. interval_mask_waive)                     &
          write(*,'(A)') '      waive: the particle-count bound is NOT'//  &
               ' checked on the omitted cells; positivity, element and'//  &
               ' charge feasibility, finite thermodynamics and the'//      &
               ' factor-two safety stop hold the trial'
       write(*,'(A)') '      no cell is excluded from the certification'
-      end subroutine l22_interval_mask_setup
+      end subroutine carrier_interval_mask_setup
 
       ! ------------------------------------------------------------- !
 
@@ -7988,7 +7993,7 @@
       ! DIAGNOSTIC MASK DEFINES: the selection set, which chooses the
       ! interval, and the omitted set, which does not.  Same quantity as
       ! carrier_particle_count_change, split by the mask.
-      subroutine l22_particle_count_change_by_set(nsum_now, nsum_entry,   &
+      subroutine particle_count_change_by_mask_set(nsum_now, nsum_entry,   &
                                         jsel, dsel, jomit, domit)
       real(dp), dimension(1-Ng:N+Ng), intent(in)  :: nsum_now, nsum_entry
       integer,  intent(out) :: jsel, jomit
@@ -8000,7 +8005,7 @@
       do j = 1, N
          if (nsum_entry(j) .le. 0.0d0) cycle
          d = abs(nsum_now(j) - nsum_entry(j))/nsum_entry(j)
-         if (l22_mask_omit(j)) then
+         if (interval_mask_omit(j)) then
             if (d .gt. domit) then
                domit = d;  jomit = j
             endif
@@ -8010,51 +8015,51 @@
             endif
          endif
       enddo
-      end subroutine l22_particle_count_change_by_set
+      end subroutine particle_count_change_by_mask_set
 
       ! ------------------------------------------------------------- !
 
       ! The diagnostic keys, read once for the run.  With none of them set
       ! every switch below stays at the value it is declared with and the
       ! operator is unchanged; the declarations carry what each one states.
-      subroutine l22b_setup()
+      subroutine carrier_jacobian_options_setup()
       character(len=512) :: env
       integer :: ios, lo, hi
-      if (l22b_ready) return
-      l22b_ready = .true.
-      call get_environment_variable('EXHALE_L22B_JAC_RECON', env)
-      l22b_jac_recon = (trim(env) .eq. '1')
-      call get_environment_variable('EXHALE_L22B_DISPLACEMENT', env)
-      l22b_displacement = (trim(env) .eq. '1')
-      call get_environment_variable('EXHALE_L22B_JAC_ACTION', env)
-      l22b_jac_file = trim(env)
-      l22b_jac_action = (len_trim(env) .gt. 0)
-      if (l22b_jac_action) then
-         l22b_jac_lo = 1
-         l22b_jac_hi = N
-         call get_environment_variable('EXHALE_L22B_JAC_CELLS', env)
+      if (carrier_jacobian_options_ready) return
+      carrier_jacobian_options_ready = .true.
+      call get_environment_variable('EXHALE_CARRIER_JACOBIAN_RECONSTRUCTION', env)
+      carrier_jacobian_reconstruction = (trim(env) .eq. '1')
+      call get_environment_variable('EXHALE_CARRIER_STATE_DISPLACEMENT', env)
+      carrier_state_displacement_on = (trim(env) .eq. '1')
+      call get_environment_variable('EXHALE_CARRIER_JACOBIAN_ACTION', env)
+      carrier_jacobian_action_file = trim(env)
+      carrier_jacobian_action_on = (len_trim(env) .gt. 0)
+      if (carrier_jacobian_action_on) then
+         carrier_jacobian_action_lo = 1
+         carrier_jacobian_action_hi = N
+         call get_environment_variable('EXHALE_CARRIER_JACOBIAN_ACTION_CELLS', env)
          if (len_trim(env) .gt. 0) then
             read(env,*,iostat=ios) lo, hi
             if (ios .eq. 0) then
-               l22b_jac_lo = max(1, min(N, lo))
-               l22b_jac_hi = max(l22b_jac_lo, min(N, hi))
+               carrier_jacobian_action_lo = max(1, min(N, lo))
+               carrier_jacobian_action_hi = max(carrier_jacobian_action_lo, min(N, hi))
             endif
          endif
       endif
-      if (l22b_jac_recon .or. l22b_jac_action) then
-         write(*,'(A)') '    (L22b) THIS RUN IS A DIAGNOSTIC'//           &
+      if (carrier_jacobian_reconstruction .or. carrier_jacobian_action_on) then
+         write(*,'(A)') '    (carrier Jacobian) THIS RUN IS A DIAGNOSTIC'// &
               ' EXPERIMENT: the carrier operator or its Jacobian is not'
          write(*,'(A)') '      the one the tree integrates.'
-         if (l22b_jac_recon)                                              &
+         if (carrier_jacobian_reconstruction)                              &
             write(*,'(A)') '      advective Jacobian: a central'//        &
                  ' difference of the full face-flux divergence,'//        &
                  ' restricted to the tridiagonal band'
-         if (l22b_jac_action)                                             &
+         if (carrier_jacobian_action_on)                                   &
             write(*,'(A,I0,A,I0,A,A)') '      Jacobian action probe on'// &
-                 ' cells ', l22b_jac_lo, ' to ', l22b_jac_hi, ' -> ',     &
-                 trim(l22b_jac_file)
+                 ' cells ', carrier_jacobian_action_lo, ' to ', carrier_jacobian_action_hi, ' -> ', &
+                 trim(carrier_jacobian_action_file)
       endif
-      end subroutine l22b_setup
+      end subroutine carrier_jacobian_options_setup
 
       ! ------------------------------------------------------------- !
 
@@ -8068,10 +8073,10 @@
       ! The reconstruction stencil reaches cell j-2 as well, and a
       ! block-tridiagonal matrix cannot hold that entry.  Its largest size
       ! relative to the band of the same row is recorded in
-      ! l22b_recon_dropped, so the omission is measured and not assumed
+      ! carrier_reconstruction_band_dropped, so the omission is measured and not assumed
       ! small.  The outer ghosts follow cell N in every perturbed column,
       ! which is the rule the residual uses.
-      subroutine l22b_advective_band_derivative(fc, msum, Frho, dadv)
+      subroutine carrier_advective_band_derivative(fc, msum, Frho, dadv)
       real(dp), dimension(1-Ng:N+Ng,n_carrier_max), intent(in)  :: fc
       real(dp), dimension(1-Ng:N+Ng),               intent(in)  :: msum
       real(dp), dimension(1-Ng:N+Ng),               intent(in)  :: Frho
@@ -8088,7 +8093,7 @@
       dadv = 0.0d0
       bandsum = 0.0d0
       outsum  = 0.0d0
-      l22b_recon_dropped = 0.0d0
+      carrier_reconstruction_band_dropped = 0.0d0
       do ic = 1, n_carrier
          fref(ic) = 0.0d0
          if (.not. carrier_solved(ic)) cycle
@@ -8126,11 +8131,11 @@
       do ic = 1, n_carrier
          if (.not. carrier_solved(ic)) cycle
          do j = 1, N
-            if (bandsum(j,ic) .gt. 0.0d0) l22b_recon_dropped =            &
-               max(l22b_recon_dropped, outsum(j,ic)/bandsum(j,ic))
+            if (bandsum(j,ic) .gt. 0.0d0) carrier_reconstruction_band_dropped = &
+               max(carrier_reconstruction_band_dropped, outsum(j,ic)/bandsum(j,ic))
          enddo
       enddo
-      end subroutine l22b_advective_band_derivative
+      end subroutine carrier_advective_band_derivative
 
       ! ------------------------------------------------------------- !
 
@@ -8143,7 +8148,7 @@
       ! returns.  The row scales row_terms are left describing the probe's
       ! own evaluation rather than the iterate's, which is one reason the
       ! key is a diagnostic one.
-      subroutine l22b_jacobian_action_report(fc, fc_old, nrho, wfac,      &
+      subroutine carrier_jacobian_action_report(fc, fc_old, nrho, wfac,    &
                  dt_phys, rp, rep, msum, Frho, Agrd, Bdrf, updrf,         &
                  nH_free, nO_free, nC_free, sigrate, aa, bb, cc)
       real(dp), dimension(1-Ng:N+Ng,n_carrier_max), intent(in) :: fc, fc_old
@@ -8163,7 +8168,7 @@
       vdir = 0.0d0
       do ic = 1, n_carrier
          if (.not. carrier_solved(ic)) cycle
-         do j = l22b_jac_lo, l22b_jac_hi
+         do j = carrier_jacobian_action_lo, carrier_jacobian_action_hi
             vdir(j,ic) = fc(j,ic)
          enddo
          vdir(N+1:N+Ng,ic) = vdir(N,ic)
@@ -8206,15 +8211,15 @@
          enddo
       enddo
       worst = 0.0d0;  jworst = 0;  icworst = 1
-      open(newunit=u, file=trim(l22b_jac_file), status='replace',         &
+      open(newunit=u, file=trim(carrier_jacobian_action_file), status='replace', &
            action='write')
-      write(u,'(A)') '# L22 step 2b: the assembled Jacobian action'//     &
+      write(u,'(A)') '# The assembled carrier Jacobian action'//           &
                      ' against a central difference of the full residual'
       write(u,'(A,I0,A,I0,A,ES12.5)') '# direction: the carrier'//        &
-           ' fraction of cells ', l22b_jac_lo, ' to ', l22b_jac_hi,       &
+           ' fraction of cells ', carrier_jacobian_action_lo, ' to ', carrier_jacobian_action_hi, &
            ', step ', hstep
       write(u,'(A,I0)') '# advective Jacobian with the reconstruction'//  &
-           ' terms: ', merge(1, 0, l22b_jac_recon)
+           ' terms: ', merge(1, 0, carrier_jacobian_reconstruction)
       write(u,'(A)') '# columns: cell carrier J_action fd_action'//       &
                      ' abs_diff rel_error'
       do j = 1, N
@@ -8232,13 +8237,13 @@
          enddo
       enddo
       close(u)
-      write(*,'(A,ES10.3,A,I0,A,A)') '    (L22b) Jacobian action:'//      &
+      write(*,'(A,ES10.3,A,I0,A,A)') '    (carrier Jacobian) Jacobian action:'// &
            ' worst relative error ', worst, ' at cell ', jworst,          &
            ' carrier ', trim(carrier_name(icworst))
-      if (l22b_jac_recon) write(*,'(A,ES10.3)') '    (L22b) largest'//    &
+      if (carrier_jacobian_reconstruction) write(*,'(A,ES10.3)') '    (carrier Jacobian) largest'// &
            ' advective entry outside the tridiagonal band, relative to'// &
-           ' the band of its row: ', l22b_recon_dropped
-      end subroutine l22b_jacobian_action_report
+           ' the band of its row: ', carrier_reconstruction_band_dropped
+      end subroutine carrier_jacobian_action_report
 
       ! ------------------------------------------------------------- !
 
@@ -8727,7 +8732,7 @@
       logical  :: refused, chem_ok
       ! The diagnostic interval mask's safety stop (default unreachable:
       ! only a waived omitted set can set it).
-      logical  :: l22_safety_tripped
+      logical  :: interval_mask_safety_tripped
       type(element_census_state) :: cen_relax
       ! Why the last trial was undone; the ending names it when the
       ! shortest admissible trial is refused for that reason.
@@ -8746,8 +8751,8 @@
       endif
       call element_census_take('relax_photochemical_composition',         &
                                rho, f_sp, cen_relax)
-      call l22_interval_mask_setup()
-      l22_safety_tripped = .false.
+      call carrier_interval_mask_setup()
+      interval_mask_safety_tripped = .false.
       tscale = R0/v0
       call carrier_state(rho, f_sp, fprev, ntot, nrho, wfac, TK,        &
                          mbar, nH_free, nO_free, nC_free)
@@ -8788,9 +8793,9 @@
       ! An empty selection set is not a comparison: no cell is left to
       ! choose the interval, so the experiment has no reading and the
       ! relaxation says so instead of advancing on an undefined multiplier.
-      if (l22_mask_mode .ne. l22_mask_off .and. l22_mask_n_select .eq. 0) &
+      if (interval_mask_mode .ne. interval_mask_off .and. interval_mask_n_select .eq. 0) &
       then
-         write(*,'(A)') '    (L22 interval mask) the selection set is'//  &
+         write(*,'(A)') '    (carrier interval mask) the selection set is'// &
               ' empty: no cell is left to choose the interval'
          if (present(outcome)) outcome = carrier_relax_mask_safety_stop
          call element_census_verify(cen_relax, rho, f_sp,                 &
@@ -8810,8 +8815,8 @@
          ! so a trial refused before it reports no bound measure.
          dbnd      = 0.0d0
          jbnd      = 0
-         l22_last_d_select = 0.0d0;  l22_last_j_select = 0
-         l22_last_d_omit   = 0.0d0;  l22_last_j_omit   = 0
+         interval_mask_d_select = 0.0d0;  interval_mask_j_select = 0
+         interval_mask_d_omit   = 0.0d0;  interval_mask_j_omit   = 0
          call photochemical_transport_step(rho, v, f_sp, dt_code*grow,    &
                                            step_status, trial = .true.)
          if (step_status .ne. carrier_interval_covered) then
@@ -8842,37 +8847,37 @@
                call pressure_and_temperature_at_fixed_conserved_state(u,  &
                           f_sp, p_try, T_try, ntot_t, ne_t)
                nsum1 = ntot_t + ne_t
-               if (l22_mask_mode .eq. l22_mask_off) then
+               if (interval_mask_mode .eq. interval_mask_off) then
                   call carrier_particle_count_change(nsum1, nsum0, jbnd,  &
                                                      dbnd)
                else
                   ! The diagnostic interval mask: the selection set chooses
                   ! the interval, the omitted set only vetoes it in veto
                   ! mode.  Both measures are kept for the log.
-                  call l22_particle_count_change_by_set(nsum1, nsum0,     &
-                       l22_last_j_select, l22_last_d_select,             &
-                       l22_last_j_omit,   l22_last_d_omit)
-                  if (l22_mask_mode .eq. l22_mask_veto .and.             &
-                      l22_last_d_omit .gt. l22_last_d_select) then
-                     jbnd = l22_last_j_omit;    dbnd = l22_last_d_omit
+                  call particle_count_change_by_mask_set(nsum1, nsum0,     &
+                       interval_mask_j_select, interval_mask_d_select,     &
+                       interval_mask_j_omit,   interval_mask_d_omit)
+                  if (interval_mask_mode .eq. interval_mask_veto .and.     &
+                      interval_mask_d_omit .gt. interval_mask_d_select) then
+                     jbnd = interval_mask_j_omit;    dbnd = interval_mask_d_omit
                   else
-                     jbnd = l22_last_j_select;  dbnd = l22_last_d_select
+                     jbnd = interval_mask_j_select;  dbnd = interval_mask_d_select
                   endif
                   ! The safety stop of the waived set: a factor two in the
                   ! particle count of one cell in one trial is outside any
                   ! regime this experiment can be read in.
-                  if (l22_mask_mode .eq. l22_mask_waive .and.            &
-                      l22_last_d_omit .gt. 1.0d0) l22_safety_tripped =   &
+                  if (interval_mask_mode .eq. interval_mask_waive .and.    &
+                      interval_mask_d_omit .gt. 1.0d0) interval_mask_safety_tripped = &
                       .true.
                endif
                icbnd = ic_H2
             endif
-            if (l22_safety_tripped) then
+            if (interval_mask_safety_tripped) then
                refused = .true.;  refusal = refused_bound
-               write(*,'(A,I0,A,ES10.3)') '    (L22 interval mask)'//     &
-                    ' SAFETY STOP: omitted cell ', l22_last_j_omit,       &
+               write(*,'(A,I0,A,ES10.3)') '    (carrier interval mask)'//  &
+                    ' SAFETY STOP: omitted cell ', interval_mask_j_omit,   &
                     ' moved its particle count by a relative ',           &
-                    l22_last_d_omit
+                    interval_mask_d_omit
             else if (dbnd .gt. trust) then
                refused = .true.;  refusal = refused_bound
                bound_last_j        = jbnd
@@ -8908,14 +8913,14 @@
                     '      trial ', k, ': grow ', grow, ', REFUSED on ',  &
                     trim(carrier_trial_refusal_text(refusal)),            &
                     ', measure ', dbnd, ' at cell ', jbnd
-               if (l22_mask_mode .ne. l22_mask_off)                       &
+               if (interval_mask_mode .ne. interval_mask_off)              &
                   write(*,'(A,ES10.3,A,I0,A,ES10.3,A,I0)')                &
-                       '        selection set ', l22_last_d_select,       &
-                       ' at cell ', l22_last_j_select,                    &
-                       ', omitted set ', l22_last_d_omit, ' at cell ',    &
-                       l22_last_j_omit
+                       '        selection set ', interval_mask_d_select,   &
+                       ' at cell ', interval_mask_j_select,                &
+                       ', omitted set ', interval_mask_d_omit, ' at cell ', &
+                       interval_mask_j_omit
             endif
-            if (l22_safety_tripped) then
+            if (interval_mask_safety_tripped) then
                ending = carrier_relax_mask_safety_stop
                exit
             endif
@@ -8945,12 +8950,12 @@
                  'measure ', dbnd, ' at cell ', jbnd,                     &
                  ', shortest cell interval ',                             &
                  minval(dt_code(1:N))*grow*tscale, ' s'
-            if (l22_mask_mode .ne. l22_mask_off)                          &
+            if (interval_mask_mode .ne. interval_mask_off)                 &
                write(*,'(A,ES10.3,A,I0,A,ES10.3,A,I0)')                   &
-                    '        selection set ', l22_last_d_select,          &
-                    ' at cell ', l22_last_j_select,                       &
-                    ', omitted set ', l22_last_d_omit, ' at cell ',       &
-                    l22_last_j_omit
+                    '        selection set ', interval_mask_d_select,      &
+                    ' at cell ', interval_mask_j_select,                   &
+                    ', omitted set ', interval_mask_d_omit, ' at cell ',   &
+                    interval_mask_j_omit
          endif
          dmax  = carrier_displacement_on_own_scale(fnow, fprev,          &
                                                    xref_carrier)
@@ -9047,14 +9052,14 @@
          enddo
       endif
       ! WHAT THE RETURNED COMPOSITION DID TO THE STATE THE
-      ! WIND READS (EXHALE_L22B_DISPLACEMENT=1, default off).  A carrier
+      ! WIND READS (EXHALE_CARRIER_STATE_DISPLACEMENT=1, default off).  A carrier
       ! relaxation at a FIXED wind may close on its own rows and still hand
       ! back a composition whose pressure, temperature and mean mass per
       ! particle are far from the ones the hydrodynamic rows were last
       ! solved at; those three are what the momentum and energy rows carry,
       ! so their displacement is what says whether the coupled solve that
       ! follows starts inside a regime it can follow.
-      if (l22b_displacement) then
+      if (carrier_state_displacement_on) then
          call pressure_and_temperature_at_fixed_conserved_state(u, f_sp,  &
                                              p, T, ntot_x, ne_x)
          nsum_end = ntot_x + ne_x
@@ -9088,7 +9093,7 @@
                endif
             endif
          enddo
-         write(*,'(A)') '    (L22b) displacement of the primitive state'//&
+         write(*,'(A)') '    (carrier state) displacement of the primitive state'//&
               ' between the pass entry and the composition returned:'
          write(*,'(A,ES10.3,A,I0,A,F8.4,A,ES10.3,A,I0,A,F8.4)')           &
               '      |dp|/p  ', dp_max, ' at cell ', jp_max, ' r ',       &

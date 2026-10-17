@@ -1573,16 +1573,16 @@ can be measured instead of argued. Read the exact behavior at the
 | `EXHALE_CARRIER_DRIFT_IS_DISPLACEMENT=1` | the carrier half of the stationary outer iteration's progress measure reads the DISPLACEMENT the pass kept instead of the carrier residual of the composition it hands back. The displacement is bounded by the movement bound the same loop shortens, so it falls when the loop stops letting the composition move; the key exists to compare the two measures without a rebuild | `EXHALE_main.f90` |
 | `EXHALE_ELEMENT_DRIFT_IS_MAP_DISTANCE=1` | the element half of the same measure reads the distance to the endpoint of the element relaxation's inner map instead of the elemental transport residual of the composition the pass hands back. The inner map can exit on its step budget, so its endpoint is not always a solved fixed point; the key is the same kind of comparison as the one above | `EXHALE_main.f90` |
 | `EXHALE_CARRIER_ROW_TERMS=1` | write `output/carrier_row_terms.txt`, the term-by-term dump of the carrier rows of the last assembly: the diffusive and advective terms, the production, loss and photolysis of each row, the residual and the two row scales | `diffusive_photochemistry.f90` |
-| `EXHALE_L22B_JAC_RECON=1` | assemble the advective entries of the carrier Jacobian as a central difference of the face-flux divergence itself, limiter and reconstruction included, restricted to the tridiagonal band, instead of the first-order donor-cell linearization | `diffusive_photochemistry.f90` |
-| `EXHALE_L22B_JAC_ACTION=<file>` | write, at the first Jacobian assembly of the run, the action of the assembled matrix on a direction against a central difference of the full carrier residual along the same direction, row by row | `diffusive_photochemistry.f90` |
-| `EXHALE_L22B_JAC_CELLS=<lo>,<hi>` | the cells the probe direction of `EXHALE_L22B_JAC_ACTION` is carried on (the whole column by default) | `diffusive_photochemistry.f90` |
+| `EXHALE_CARRIER_JACOBIAN_RECONSTRUCTION=1` | assemble the advective entries of the carrier Jacobian as a central difference of the face-flux divergence itself, limiter and reconstruction included, restricted to the tridiagonal band, instead of the first-order donor-cell linearization | `diffusive_photochemistry.f90` |
+| `EXHALE_CARRIER_JACOBIAN_ACTION=<file>` | write, at the first Jacobian assembly of the run, the action of the assembled matrix on a direction against a central difference of the full carrier residual along the same direction, row by row | `diffusive_photochemistry.f90` |
+| `EXHALE_CARRIER_JACOBIAN_ACTION_CELLS=<lo>,<hi>` | the cells the probe direction of `EXHALE_CARRIER_JACOBIAN_ACTION` is carried on (the whole column by default) | `diffusive_photochemistry.f90` |
 | `EXHALE_IEQ_DUMP_CELL=<j>` | write every He 2^3S-branch composition solve of cell j (temperature, densities, every rate coefficient, start and returned vectors, dimensional rows, normalized residual, forward-difference Jacobian) to `ieq_cell_dump.txt`, and the cell's photoionization rates at perturbed entry states to `ieq_cell_rate_probe.txt`. `EXHALE_IEQ_REPORT_CELL=<j>` prints the accepted state of cell j at every sweep, its second fraction named by the system solved (He 2^3S in the atomic triplet system, the H2 nuclei in the molecular one) | `ionization_equilibrium.f90` |
 | `EXHALE_RESID_SC_TRACE=<n>`, `EXHALE_RESID_SC_TRACE_SEED=shift\|h2\|partition` | trace the composition elimination of the steady residual for n passes from two seeds in lockstep, and **STOP** the run; seed B is the composition shifted by five cells (`shift`), the H2 fraction scaled by 1 + `EXHALE_RESID_SC_TRACE_SCALE` (`h2`), or the elemental inventory and charge closure kept with a fraction of H I and He I moved into H II and He II (`partition`) | `steady_newton.f90` |
 | `EXHALE_JV_FRESH_WEIGHTS=1` | take the products of the Newton model with the WENO3 weights recomputed instead of frozen | `steady_newton.f90` |
 | `EXHALE_LINEAR_ROWS=1`, `EXHALE_LINEAR_ROWS_CELLS=<lo>,<hi>` | print row by row the linear residual the Krylov solve left against the rows of F, and over the band lo..hi (default 290,312) the energy row, the model's F + J dY, the row found at Y + dY and difference quotients along the step | `steady_newton.f90` |
 | `EXHALE_ADV_COLUMN_FLOOR_IT=<n>` | take n further Newton steps of that column solve past its step test, so the reported residual is its rounding floor | `post_process_adv.f90` |
 | `EXHALE_ADV_COLUMN_EXCLUDE_UNROOTED=1` | make the cells whose marching energy step found no root fixed values of the column (written `failed`) instead of unknowns, as before 2026-10-01 | `post_process_adv.f90` |
-| `EXHALE_L22B_DISPLACEMENT=1` | report what the composition a relaxation pass hands back did to the state the wind reads: the largest relative movement of the pressure, the temperature, the mean mass per particle and the particle count, each with the cell that carries it | `diffusive_photochemistry.f90` |
+| `EXHALE_CARRIER_STATE_DISPLACEMENT=1` | report what the composition a relaxation pass hands back did to the state the wind reads: the largest relative movement of the pressure, the temperature, the mean mass per particle and the particle count, each with the cell that carries it | `diffusive_photochemistry.f90` |
 
 ## Output files
 
@@ -1952,9 +1952,10 @@ run to the marching stop (about 74 000 steps from the cold IC, a day on one
 thread; `backup/regression/wasp_full_converged/NOTE.txt`); pass it by name.
 
 The goldens were last refreshed on 2026-09-27 (every case, from the tree of
-update log stage 3 section 29; previous set `golden_pre_final_20260927/`) and
+update log stage 3 section 29) and
 on 2026-09-29 for `mol_carrier`, the three `hp_*` cases and `iontrans_metals`
-(section 34; previous set `golden_pre_F1_20260929/`); `roundtrip` dates from
+(section 34; the two previous sets, `golden_pre_final_20260927/` and
+`golden_pre_F1_20260929/`, were deleted on 2026-10-17); `roundtrip` dates from
 2026-09-20 (file dates, MEASURED). **They are stale against the current tree:**
 they predate section 125 and every case moves against them (among the causes:
 secondary ionization from step 0, the face-flux marching stop, the 2 R_p outer

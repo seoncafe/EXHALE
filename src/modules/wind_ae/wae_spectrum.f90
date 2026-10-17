@@ -1,10 +1,10 @@
       module wae_spectrum
-      ! Spectrum + parameter loading for the Wind-AE port.
-      ! Reads inputs/spectrum.inp (GLQ nodes, cross sections, ion. pots)
-      ! and the header of inputs/guess.inp (mass fractions, atomic masses,
-      ! Ftot) -- exactly the fields wind-ae's init_glq()/set_parameters()
-      ! consume for the rate calculation. Faithful to the C parsing so the
-      ! glq unit gate is meaningful.
+      ! Spectrum loading for the Wind-AE port.
+      ! Reads inputs/spectrum.inp (GLQ nodes, cross sections, ion. pots),
+      ! exactly the fields wind-ae's init_glq() consumes for the rate
+      ! calculation, with the C parsing. The mass fractions, atomic masses
+      ! and Ftot below are copied from the parameter list by
+      ! wae_continuation.
       use wae_config, only: wae_nspecies
       implicit none
 
@@ -71,42 +71,6 @@
       close(u)
       if (i .lt. wae_npts) stop '(wae_load_spectrum) too few data rows'
       end subroutine wae_load_spectrum
-
-      subroutine wae_load_params(fname)
-      ! Mirror of set_parameters() for the fields the rate calc needs:
-      ! HX(:), atomic_mass(:) from "#phys_prms", Ftot from "#plnt_prms".
-      ! phys_prms layout: HX(1),HX(2),name1,name2,amass1,amass2,...
-      ! plnt_prms layout: Mp,Rp,Mstar,a,Ftot,Lstar
-      character(len=*), intent(in) :: fname
-      character(len=8192) :: line
-      integer :: u, ios, p, j
-      character(len=64) :: tok
-
-      open(newunit=u, file=fname, status='old', action='read')
-      do
-         read(u,'(A)',iostat=ios) line
-         if (ios .ne. 0) exit
-         if (index(line,'#phys_prms') .gt. 0) then
-            p = index(line,':') + 1
-            do j = 1, wae_nspecies
-               call next_csv(line, p, tok); read(tok,*) wae_HX(j)
-            end do
-            do j = 1, wae_nspecies            ! skip the species names
-               call next_csv(line, p, tok)
-            end do
-            do j = 1, wae_nspecies
-               call next_csv(line, p, tok); read(tok,*) wae_atomic_mass(j)
-            end do
-         else if (index(line,'#plnt_prms') .gt. 0) then
-            p = index(line,':') + 1
-            do j = 1, 4
-               call next_csv(line, p, tok)   ! Mp, Rp, Mstar, a
-            end do
-            call next_csv(line, p, tok); read(tok,*) wae_Ftot
-         end if
-      end do
-      close(u)
-      end subroutine wae_load_params
 
       ! ---- small CSV/token helpers ----
 

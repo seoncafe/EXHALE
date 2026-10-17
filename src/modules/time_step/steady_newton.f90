@@ -2285,45 +2285,35 @@
       real*8  :: resid_tol_of_solve = -1.0d0
 
       ! WHETHER THE SOLVE PATH IS REPRODUCIBLE AT MORE THAN ONE OPENMP
-      ! THREAD, and where it stops being so. Diagnostic only: every switch
-      ! below is off unless its environment key is set, and with none of
-      ! them set no statement of this block is entered, so the expression
-      ! sequence the solve evaluates is unchanged.
+      ! THREAD, and where it stops being so: the Newton state hash trace.
+      ! Diagnostic only: every switch below is off unless its environment
+      ! key is set, and with none of them set no statement of this block is
+      ! entered, so the expression sequence the solve evaluates is unchanged.
       !
-      !   EXHALE_L15_TRACE=<path>  one record per outer iteration and one
+      !   EXHALE_NEWTON_STATE_HASH_TRACE=<path>  one record per outer iteration and one
       !     per Krylov product, each carrying FNV-1a 64 hashes of the BIT
       !     PATTERNS of the arrays the next evaluation reads (the state, the
       !     composition, the residual, the model base point, the column and
       !     row scales, the active bound set) and the pseudo-time. A hash of
       !     the bits and never a floating sum, so the record cannot itself
       !     carry an order of addition.
-      !   EXHALE_L15_DUMP_AT=<k>  at outer iteration k write those same
+      !   EXHALE_NEWTON_STATE_DUMP_AT=<k>  at outer iteration k write those same
       !     arrays themselves, in stream access, to <path>.dump<k>, so that
       !     two runs can be compared on the values and not only on a hash.
-      !   EXHALE_L15_REPEAT=<k>  at outer iteration k repeat, inside this
-      !     one process and at the same state, the model base residual and
-      !     one action of the Jacobian along a reproducible admissible
-      !     direction, holding and putting back the evaluation products
-      !     around each repeat, and record whether the repeats are bitwise
-      !     equal. A repeat that differs inside one
-      !     process is a shared write or a mutable cache; a repeat that
-      !     agrees while two runs differ is a schedule-dependent order of
-      !     accumulation.
       !
       ! Every record is written AFTER the quantity it records is complete
       ! and outside every loop and reduction of the solve.
-      logical            :: l15_ready      = .false.
-      logical            :: l15_trace_on   = .false.
-      integer            :: l15_unit       = 0
-      integer            :: l15_dump_at    = 0
-      integer            :: l15_repeat_at  = 0
-      integer            :: l15_iter_now   = 0
-      character(len=256) :: l15_path       = ' '
+      logical            :: state_hash_trace_ready      = .false.
+      logical            :: state_hash_trace_on   = .false.
+      integer            :: state_hash_trace_unit       = 0
+      integer            :: newton_state_dump_at    = 0
+      integer            :: state_hash_trace_iteration   = 0
+      character(len=256) :: state_hash_trace_path       = ' '
       ! The FNV-1a 64 constants (Fowler, Noll and Vo), written as signed
       ! 64-bit integers: the offset basis 14695981039346656037 and the
       ! prime 1099511628211.
-      integer*8, parameter :: l15_fnv_basis = -3750763034362895579_8
-      integer*8, parameter :: l15_fnv_prime = 1099511628211_8
+      integer*8, parameter :: fnv1a_offset_basis = -3750763034362895579_8
+      integer*8, parameter :: fnv1a_prime = 1099511628211_8
 
       ! Explicit interfaces for the external LAPACK banded-LU routines used by
       ! the direct/preconditioned Newton solves below (double-precision,
@@ -3211,39 +3201,36 @@
 
       ! ------------------------------------------------------!
 
-      subroutine l15_setup
-      ! Read the three environment keys of the thread-reproducibility trace
+      subroutine state_hash_trace_setup
+      ! Read the two environment keys of the thread-reproducibility trace
       ! once, and open the record file. Called from the places that write;
-      ! with EXHALE_L15_TRACE unset it leaves every switch off and returns.
+      ! with EXHALE_NEWTON_STATE_HASH_TRACE unset it leaves every switch off and returns.
       character(len=256) :: env
       integer :: ios
-      if (l15_ready) return
-      l15_ready = .true.
-      call get_environment_variable('EXHALE_L15_TRACE', env)
+      if (state_hash_trace_ready) return
+      state_hash_trace_ready = .true.
+      call get_environment_variable('EXHALE_NEWTON_STATE_HASH_TRACE', env)
       if (len_trim(env) .eq. 0) return
-      l15_path = env
-      l15_unit = 7315
-      open(unit=l15_unit, file=trim(l15_path), status='replace',          &
+      state_hash_trace_path = env
+      state_hash_trace_unit = 7315
+      open(unit=state_hash_trace_unit, file=trim(state_hash_trace_path), status='replace', &
            action='write', iostat=ios)
       if (ios .ne. 0) then
-         write(*,'(A)') ' (L15) the trace file could not be opened: '//   &
-                        trim(l15_path)
+         write(*,'(A)') ' (state hash trace) the file could not be opened: '// &
+                        trim(state_hash_trace_path)
          return
       endif
-      l15_trace_on = .true.
-      call get_environment_variable('EXHALE_L15_DUMP_AT', env)
-      if (len_trim(env) .gt. 0) read(env,*,iostat=ios) l15_dump_at
-      if (ios .ne. 0) l15_dump_at = 0
-      call get_environment_variable('EXHALE_L15_REPEAT', env)
-      if (len_trim(env) .gt. 0) read(env,*,iostat=ios) l15_repeat_at
-      if (ios .ne. 0) l15_repeat_at = 0
-      write(l15_unit,'(A,I0,A,I0)') '# L15 trace  dump_at ', l15_dump_at, &
-                                    '  repeat_at ', l15_repeat_at
-      end subroutine l15_setup
+      state_hash_trace_on = .true.
+      call get_environment_variable('EXHALE_NEWTON_STATE_DUMP_AT', env)
+      if (len_trim(env) .gt. 0) read(env,*,iostat=ios) newton_state_dump_at
+      if (ios .ne. 0) newton_state_dump_at = 0
+      write(state_hash_trace_unit,'(A,I0)') '# Newton state hash trace  dump_at ', &
+                               newton_state_dump_at
+      end subroutine state_hash_trace_setup
 
       ! ------------------------------------------------------!
 
-      integer*8 function l15_hash_r8(a) result(h)
+      integer*8 function fnv1a_hash_r8(a) result(h)
       ! FNV-1a over the BIT PATTERNS of a double-precision array, taken
       ! eight bytes at a time (the 64-bit word is the unit instead of the
       ! byte, which costs nothing here and is what makes the record cheap
@@ -3253,49 +3240,49 @@
       real*8, dimension(:), intent(in) :: a
       integer*8, allocatable :: w(:)
       integer :: i
-      h = l15_fnv_basis
+      h = fnv1a_offset_basis
       if (size(a) .le. 0) return
       allocate(w(size(a)))
       w = transfer(a, w)
       do i = 1, size(w)
          h = ieor(h, w(i))
-         h = h*l15_fnv_prime
+         h = h*fnv1a_prime
       enddo
       deallocate(w)
-      end function l15_hash_r8
+      end function fnv1a_hash_r8
 
       ! ------------------------------------------------------!
 
-      integer*8 function l15_hash_logical(a) result(h)
+      integer*8 function fnv1a_hash_logical(a) result(h)
       ! The same hash of a set of flags, one 64-bit word per element.
       logical, dimension(:), intent(in) :: a
       integer :: i
-      h = l15_fnv_basis
+      h = fnv1a_offset_basis
       do i = 1, size(a)
          if (a(i)) then
             h = ieor(h, 1_8)
          else
             h = ieor(h, 0_8)
          endif
-         h = h*l15_fnv_prime
+         h = h*fnv1a_prime
       enddo
-      end function l15_hash_logical
+      end function fnv1a_hash_logical
 
       ! ------------------------------------------------------!
 
-      integer*8 function l15_hash_scalar(x) result(h)
+      integer*8 function fnv1a_hash_scalar(x) result(h)
       ! The hash of one double, so that a scalar the next evaluation reads
       ! (the pseudo-time, the merit) enters the record by its bits and not
       ! by a printed decimal.
       real*8, intent(in) :: x
       real*8 :: a(1)
       a(1) = x
-      h = l15_hash_r8(a)
-      end function l15_hash_scalar
+      h = fnv1a_hash_r8(a)
+      end function fnv1a_hash_scalar
 
       ! ------------------------------------------------------!
 
-      integer function l15_number_of_active_bounds() result(nact)
+      integer function number_of_active_species_bounds() result(nact)
       ! How many species unknowns the step may not move.
       integer :: i
       nact = 0
@@ -3303,11 +3290,11 @@
       do i = 1, size(species_bound_is_active)
          if (species_bound_is_active(i)) nact = nact + 1
       enddo
-      end function l15_number_of_active_bounds
+      end function number_of_active_species_bounds
 
       ! ------------------------------------------------------!
 
-      subroutine l15_iteration_record(iter, dtau, Y, f_sp, F, F_jac, D,   &
+      subroutine state_hash_iteration_record(iter, dtau, Y, f_sp, F, F_jac, D, &
                                       Drow, f2, rnorm)
       ! One record of the state the next evaluation of this outer iteration
       ! reads. Written after every one of those quantities is complete.
@@ -3317,34 +3304,34 @@
       real*8, dimension(1-Ng:N+Ng,n_species), intent(in) :: f_sp
       integer*8 :: hact
       integer   :: nact
-      call l15_setup
-      l15_iter_now = iter
-      if (.not. l15_trace_on) return
-      hact = l15_fnv_basis
+      call state_hash_trace_setup
+      state_hash_trace_iteration = iter
+      if (.not. state_hash_trace_on) return
+      hact = fnv1a_offset_basis
       nact = 0
       if (allocated(species_bound_is_active)) then
-         hact = l15_hash_logical(species_bound_is_active)
-         nact = l15_number_of_active_bounds()
+         hact = fnv1a_hash_logical(species_bound_is_active)
+         nact = number_of_active_species_bounds()
       endif
-      write(l15_unit,'(A,I5,8(A,Z16.16),A,I0)')                           &
+      write(state_hash_trace_unit,'(A,I5,8(A,Z16.16),A,I0)')               &
            'iter ', iter,                                                 &
-           ' Y ',    l15_hash_r8(Y),                                      &
-           ' comp ', l15_hash_r8(reshape(f_sp,(/size(f_sp)/))),           &
-           ' F ',    l15_hash_r8(F),                                      &
-           ' Fjac ', l15_hash_r8(F_jac),                                  &
-           ' D ',    l15_hash_r8(D),                                      &
-           ' Drow ', l15_hash_r8(Drow),                                   &
+           ' Y ',    fnv1a_hash_r8(Y),                                     &
+           ' comp ', fnv1a_hash_r8(reshape(f_sp,(/size(f_sp)/))),          &
+           ' F ',    fnv1a_hash_r8(F),                                     &
+           ' Fjac ', fnv1a_hash_r8(F_jac),                                 &
+           ' D ',    fnv1a_hash_r8(D),                                     &
+           ' Drow ', fnv1a_hash_r8(Drow),                                  &
            ' act ',  hact,                                                &
-           ' dtau ', l15_hash_scalar(dtau),                               &
+           ' dtau ', fnv1a_hash_scalar(dtau),                              &
            ' nact ', nact
-      write(l15_unit,'(A,I5,A,ES24.16,A,ES24.16,A,ES24.16)')              &
+      write(state_hash_trace_unit,'(A,I5,A,ES24.16,A,ES24.16,A,ES24.16)')  &
            'meri ', iter, ' f2 ', f2, ' rnorm ', rnorm, ' dtau ', dtau
-      flush(l15_unit)
-      end subroutine l15_iteration_record
+      flush(state_hash_trace_unit)
+      end subroutine state_hash_iteration_record
 
       ! ------------------------------------------------------!
 
-      subroutine l15_krylov_record(iter, jprod, tag, v1, v2)
+      subroutine state_hash_krylov_record(iter, jprod, tag, v1, v2)
       ! One record of a quantity of the linear cycle: the right-hand side,
       ! the preconditioned direction, the raw action of the operator, the
       ! scaled image, or an Arnoldi column. Two vectors so that the input
@@ -3353,22 +3340,22 @@
       character(len=*), intent(in) :: tag
       real*8, dimension(:), intent(in) :: v1
       real*8, dimension(:), intent(in), optional :: v2
-      call l15_setup
-      if (.not. l15_trace_on) return
+      call state_hash_trace_setup
+      if (.not. state_hash_trace_on) return
       if (present(v2)) then
-         write(l15_unit,'(A,I5,A,I4,A,A8,2(A,Z16.16))')                   &
+         write(state_hash_trace_unit,'(A,I5,A,I4,A,A8,2(A,Z16.16))')       &
               'kry  ', iter, ' j ', jprod, ' ', tag,                      &
-              ' in ',  l15_hash_r8(v1), ' out ', l15_hash_r8(v2)
+              ' in ',  fnv1a_hash_r8(v1), ' out ', fnv1a_hash_r8(v2)
       else
-         write(l15_unit,'(A,I5,A,I4,A,A8,A,Z16.16)')                      &
+         write(state_hash_trace_unit,'(A,I5,A,I4,A,A8,A,Z16.16)')          &
               'kry  ', iter, ' j ', jprod, ' ', tag,                      &
-              ' val ', l15_hash_r8(v1)
+              ' val ', fnv1a_hash_r8(v1)
       endif
-      end subroutine l15_krylov_record
+      end subroutine state_hash_krylov_record
 
       ! ------------------------------------------------------!
 
-      subroutine l15_dump_state(iter, Y, f_sp, F, F_jac, D, Drow, dtau)
+      subroutine newton_state_dump(iter, Y, f_sp, F, F_jac, D, Drow, dtau)
       ! The arrays themselves, in stream access, at the outer iteration the
       ! key names. WHAT IS NOT IN IT: the module caches of the residual
       ! assembly that live outside this module (the radiation and chemistry
@@ -3376,17 +3363,16 @@
       ! constrained_chemical_equilibrium and diffusive_photochemistry). They
       ! have no accessor this module may read, so a fresh process cannot be
       ! put back into this state from the file; the comparison that does not
-      ! need them is the repeated evaluation inside one process
-      ! (l15_repeat_check).
+      ! need them is a repeated evaluation inside one process.
       integer, intent(in) :: iter
       real*8,  intent(in) :: dtau
       real*8, dimension(:), intent(in) :: Y, F, F_jac, D, Drow
       real*8, dimension(1-Ng:N+Ng,n_species), intent(in) :: f_sp
       character(len=300) :: fn
       integer :: iu, ios, nact(1)
-      if (.not. l15_trace_on) return
-      if (iter .ne. l15_dump_at) return
-      write(fn,'(A,A,I0)') trim(l15_path), '.dump', iter
+      if (.not. state_hash_trace_on) return
+      if (iter .ne. newton_state_dump_at) return
+      write(fn,'(A,A,I0)') trim(state_hash_trace_path), '.dump', iter
       iu = 7316
       open(unit=iu, file=trim(fn), status='replace', action='write',      &
            access='stream', form='unformatted', iostat=ios)
@@ -3402,97 +3388,13 @@
       if (allocated(species_box_lo)) write(iu) species_box_lo
       if (allocated(species_box_hi)) write(iu) species_box_hi
       if (allocated(species_bound_is_active)) then
-         nact(1) = l15_number_of_active_bounds()
+         nact(1) = number_of_active_species_bounds()
          write(iu) nact(1)
          write(iu) species_bound_is_active
       endif
       close(iu)
-      write(l15_unit,'(A,I0,A,A)') 'dump ', iter, ' ', trim(fn)
-      end subroutine l15_dump_state
-
-      ! ------------------------------------------------------!
-
-      subroutine l15_repeat_check(iter, Y, f_sp, F_jac, D)
-      ! IS ONE PROCESS REPEATABLE AT THIS STATE? The model base residual and
-      ! one action of the Jacobian are evaluated again, twice, at the state
-      ! this outer iteration holds, with the evaluation products held and
-      ! put back around each repeat so that nothing the solve reads later is
-      ! moved. A difference here is a shared write or a cache carried
-      ! between evaluations; agreement here with a difference between two
-      ! runs is an order of accumulation that follows the thread schedule.
-      integer, intent(in) :: iter
-      real*8, dimension(:), intent(in) :: Y, F_jac, D
-      real*8, dimension(1-Ng:N+Ng,n_species), intent(in) :: f_sp
-      type(residual_evaluation_products) :: products_at_entry
-      type(solve_refusal_statistics)     :: statistics_at_entry
-      real*8, dimension(1-Ng:N+Ng,n_species) :: f_sp_r
-      real*8, dimension(1-Ng:N+Ng) :: heat_r, cool_r
-      real*8, allocatable :: Fr(:,:), v(:), Jv(:,:)
-      integer :: neq, k, idiff
-      real*8  :: dmax
-      logical :: ok
-      if (.not. l15_trace_on) return
-      if (iter .ne. l15_repeat_at) return
-      neq = nvar_jac*N
-      allocate(Fr(neq,2), v(neq), Jv(neq,2))
-      call hold_residual_evaluation_products(products_at_entry)
-      call hold_solve_refusal_statistics(statistics_at_entry)
-      do k = 1, 2
-         call eval_residual(Y, f_sp, f_sp_r, Fr(:,k), heat_r, cool_r,     &
-                            n_eq_sweeps_fixed=n_eq_sweeps_model)
-      enddo
-      call put_back_residual_evaluation_products(products_at_entry)
-      call put_back_solve_refusal_statistics(statistics_at_entry)
-      call l15_first_difference(Fr(:,1), Fr(:,2), idiff, dmax)
-      write(l15_unit,'(A,I5,A,I0,A,ES12.4)')                              &
-           'rep  ', iter, ' residual repeat: first differing index ',     &
-           idiff, ', largest |difference| ', dmax
-      call l15_first_difference(Fr(:,1), F_jac, idiff, dmax)
-      write(l15_unit,'(A,I5,A,I0,A,ES12.4)')                              &
-           'rep  ', iter, ' residual against the model base point:'//     &
-           ' first differing index ', idiff, ', largest |difference| ', dmax
-      ! The same question for the action of the Jacobian, along one
-      ! reproducible direction that is admissible for the active bounds.
-      call deterministic_unit_direction(20260916, v)
-      call hold_the_active_bounds_of(v)
-      call hold_residual_evaluation_products(products_at_entry)
-      call hold_solve_refusal_statistics(statistics_at_entry)
-      do k = 1, 2
-         call jacobian_action_of_direction(Y, F_jac, f_sp, D*v, Jv(:,k), ok)
-      enddo
-      call put_back_residual_evaluation_products(products_at_entry)
-      call put_back_solve_refusal_statistics(statistics_at_entry)
-      call l15_first_difference(Jv(:,1), Jv(:,2), idiff, dmax)
-      write(l15_unit,'(A,I5,A,L1,A,I0,A,ES12.4)')                         &
-           'rep  ', iter, ' jacobian action repeat: admissible ', ok,     &
-           ', first differing index ', idiff,                             &
-           ', largest |difference| ', dmax
-      write(l15_unit,'(A,I5,3(A,Z16.16))')                                &
-           'rep  ', iter, ' F1 ', l15_hash_r8(Fr(:,1)),                   &
-           ' F2 ', l15_hash_r8(Fr(:,2)), ' Jv1 ', l15_hash_r8(Jv(:,1))
-      flush(l15_unit)
-      deallocate(Fr, v, Jv)
-      end subroutine l15_repeat_check
-
-      ! ------------------------------------------------------!
-
-      subroutine l15_first_difference(a, b, idiff, dmax)
-      ! The first index at which two vectors differ in any bit, and the
-      ! largest absolute difference. idiff is zero where they are equal
-      ! everywhere.
-      real*8, dimension(:), intent(in)  :: a, b
-      integer,              intent(out) :: idiff
-      real*8,               intent(out) :: dmax
-      integer :: i
-      idiff = 0
-      dmax  = 0.0d0
-      do i = 1, min(size(a), size(b))
-         if (a(i) .ne. b(i)) then
-            if (idiff .eq. 0) idiff = i
-            dmax = max(dmax, abs(a(i) - b(i)))
-         endif
-      enddo
-      end subroutine l15_first_difference
+      write(state_hash_trace_unit,'(A,I0,A,A)') 'dump ', iter, ' ', trim(fn)
+      end subroutine newton_state_dump
 
       ! ------------------------------------------------------!
 
@@ -7814,7 +7716,7 @@
       enddo
       open(newunit=u_out, file=trim(fname), status='replace',             &
            action='write')
-      write(u_out,'(A)') '# L22 step 3, increment I1: the Jacobian'//     &
+      write(u_out,'(A)') '# The Jacobian'//                                &
            ' action of the coupled block against a central difference'//  &
            ' of the full residual'
       write(u_out,'(A,I0,A,I0,A,I0,A,I0)') '# nvar_jac ', nvar_jac,       &
@@ -13729,7 +13631,7 @@
       endif
       ! The residual of the empty subspace is the right-hand side itself.
       res_now = beta
-      call l15_krylov_record(l15_iter_now, 0, 'rhs', b)
+      call state_hash_krylov_record(state_hash_trace_iteration, 0, 'rhs', b)
       if (row_equil_here) then
          V(:,1) = b*model_row_equilibration/beta
       else
@@ -13741,9 +13643,9 @@
          gm_iters = j
          ! z = M^{-1} V(:,j)   (right preconditioning)
          z = V(:,j)
-         call l15_krylov_record(l15_iter_now, j, 'precin', z)
+         call state_hash_krylov_record(state_hash_trace_iteration, j, 'precin', z)
          call banded_preconditioner_solve(abf, ipiv, neq, z, lpinfo)
-         call l15_krylov_record(l15_iter_now, j, 'precout', z)
+         call state_hash_krylov_record(state_hash_trace_iteration, j, 'precout', z)
          if (lpinfo .ne. 0 .or. .not. every_component_is_finite(z)) then
             ! THE PRECONDITIONER IS NOT A MAP HERE. A nonzero LAPACK status
             ! or a nonfinite result means the triangular solution did not
@@ -13765,7 +13667,7 @@
          call project_out_of_the_active_element_constraints(z)
          ! w = A_z z = z*idtau + D^-1 * J*(D z)
          call jacobian_action_of_direction(Y, F0, f_sp_base, D*z, w, jv_ok)
-         call l15_krylov_record(l15_iter_now, j, 'jv', z, w)
+         call state_hash_krylov_record(state_hash_trace_iteration, j, 'jv', z, w)
          if (.not. jv_ok) then
             ! No admissible sample of the residual along this direction:
             ! stop the cycle here rather than feed the Arnoldi recursion a
@@ -13852,7 +13754,7 @@
          endif
          ! The Arnoldi column as built, kept before the rotations overwrite it.
          Hb(1:j+1,j) = Hs(1:j+1,j)
-         call l15_krylov_record(l15_iter_now, j, 'hcol', Hb(1:j+1,j))
+         call state_hash_krylov_record(state_hash_trace_iteration, j, 'hcol', Hb(1:j+1,j))
          ! Apply previous Givens rotations to column j
          do i = 1, j-1
             tmp       =  cs(i)*Hs(i,j) + sn(i)*Hs(i+1,j)
@@ -18425,13 +18327,11 @@
          ! different maps is not a derivative of either.
          call eval_residual(Y, f_sp, f_sp_j, F_jac, heat0, cool0,          &
                             n_eq_sweeps_fixed=n_eq_sweeps_model)
-         ! The record of this outer iteration's state, and the two
-         ! comparisons that separate a shared write from an order of
-         ! accumulation. Off unless EXHALE_L15_TRACE names a file.
-         call l15_iteration_record(iter, dtau, Y, f_sp, F, F_jac, D, Drow, &
+         ! The record of this outer iteration's state. Off unless
+         ! EXHALE_NEWTON_STATE_HASH_TRACE names a file.
+         call state_hash_iteration_record(iter, dtau, Y, f_sp, F, F_jac, D, Drow, &
                                    f2, rnorm)
-         call l15_dump_state(iter, Y, f_sp, F, F_jac, D, Drow, dtau)
-         call l15_repeat_check(iter, Y, f_sp, F_jac, D)
+         call newton_state_dump(iter, Y, f_sp, F, F_jac, D, Drow, dtau)
 
          ! Grippo non-monotone reference: the worst true merit of the last 5
          ! outer iterates, the current one included. Recording it here, and not

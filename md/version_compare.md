@@ -123,6 +123,10 @@ wasp_v2_diff}/`, run `EXHALE_transit.py` (`EXHALE_TRANSIT_PATH` /
 add `EXHALE_TRANSIT_HE_LMIN=10827.5 EXHALE_TRANSIT_HE_LMAX=10832.5
 EXHALE_TRANSIT_HE_N=335` (the broad line overflows the
 default 10828.2-10831.2 Å window), then `python3 docs/version_compare/plot_compare.py`.
+The four `EXHALE.x` copies in those run directories were deleted on 2026-10-17;
+a re-run needs the v1.0 binary built from `ATES/EXHALE_v1.0/` and the "current"
+binary rebuilt from the EXHALE git history of that time (the exact commit is
+not recorded; the deleted copies carried the 2026-08-09 restore date).
 
 *[2026-08-15: two corrections. (i) The environment prefix is `EXHALE_TRANSIT_*`
 since the 2026-07-06 rename; the old `TPM_*` names still work: `_tenv` in

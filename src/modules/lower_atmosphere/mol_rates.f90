@@ -143,9 +143,8 @@
                 rk_R16_HeHp_dr, rk_R17_Hep_H2_diss, rk_R18_HeHp_H2,      &
                 rk_R19_HeHp_H,  rk_H2p_He_HeHp,    rk_R23_H2_Hep_cx
       ! The photon R23 emits, read by the reaction-heat ledger so that a
-      ! radiative channel does not deposit its own photon as heat, and the
-      ! two-body/three-body domain guard of R17.
-      public :: rct_photon_energy_eV, hep_h2_three_body_domain
+      ! radiative channel does not deposit its own photon as heat.
+      public :: rct_photon_energy_eV
       ! H2 thermochemistry: the three-body recombination coefficient that R15
       ! and R12 share, the H + H <-> H2 equilibrium constant that turns one
       ! into the other, and the table builder.  The internal partition
@@ -232,9 +231,6 @@
       ! rounding error: k3 n / k2 = 0.1 is a ten percent rate error, which
       ! is the size of the two-body measurement's own scatter.
       real*8,  parameter :: three_body_warn_ratio = 0.1d0
-      integer, save :: n_hep_h2_evaluations = 0
-      integer, save :: n_hep_h2_three_body  = 0
-      real*8,  save :: hep_h2_worst_ratio   = 0.0d0
       logical, save :: hep_h2_warned        = .false.
       integer, parameter :: n_keq    = 2001
       real*8,  parameter :: T_keq_lo = 1.0d2
@@ -917,8 +913,8 @@
       ! dependence they report IS.  Whether it may be dropped is a statement
       ! about k3 n / k2 in the cell being integrated and nowhere else, so
       ! that ratio is formed here whenever the caller supplies the density,
-      ! and a cell above THREE_BODY_WARN_RATIO is counted and reported
-      ! through hep_h2_three_body_domain rather than passing silently.
+      ! and the first cell above THREE_BODY_WARN_RATIO is reported with a
+      ! warning rather than passing silently.
       !
       ! Garcia Munoz (2025) Table A.7 gives this channel as 3e-14 and
       ! T-independent, which is the Schauer et al. 15-40 K value carried
@@ -946,10 +942,7 @@
       if (present(n_M)) then
          ratio = 1.6d-30*(100.0d0/T)**1.27d0*n_M/max(k, 1.0d-300)
          !$omp critical (hep_h2_three_body_guard)
-         n_hep_h2_evaluations = n_hep_h2_evaluations + 1
-         if (ratio .gt. hep_h2_worst_ratio) hep_h2_worst_ratio = ratio
          if (ratio .gt. three_body_warn_ratio) then
-            n_hep_h2_three_body = n_hep_h2_three_body + 1
             if (.not. hep_h2_warned) then
                hep_h2_warned = .true.
                write(*,'(A,ES10.3,A,F8.1,A,ES10.3)')                      &
@@ -965,18 +958,6 @@
          !$omp end critical (hep_h2_three_body_guard)
       endif
       end function
-
-      ! How the He+ + H2 two-body-only assumption fared over the run: how
-      ! many evaluations were made, how many exceeded the warn ratio, and
-      ! the worst k3 n / k2 seen.  A counter of a stated approximation, so
-      ! that "it was negligible" is a measurement and not an assertion.
-      subroutine hep_h2_three_body_domain(n_eval, n_above, worst)
-      integer, intent(out) :: n_eval, n_above
-      real*8,  intent(out) :: worst
-      n_eval  = n_hep_h2_evaluations
-      n_above = n_hep_h2_three_body
-      worst   = hep_h2_worst_ratio
-      end subroutine
 
       ! R18: HeH+ + H2 -> H3+ + He              (Bohme et al. 1980)
       double precision function rk_R18_HeHp_H2() result(k)
