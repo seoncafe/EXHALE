@@ -161,7 +161,7 @@
                 species_unknowns_outside_their_bounds,                   &
                 hold_the_step_where_it_leaves_the_species_box,            &
                 species_box_set_for_test, species_box_clear_for_test,     &
-                probe_length_of_the_jacobian_action,                      &
+                probe_length_in_the_column_scaled_unknowns,               &
                 freeze_species_unknown_box,                              &
                 read_species_unknown_space_controls, nvar_jac,           &
                 pgmres, dogleg_step,                                      &
@@ -267,10 +267,11 @@
                 resid_jump_scan_on, resid_jump_scan_here,                  &
                 scan_the_residual_along_a_direction,                       &
                 median_of_the_magnitudes, steps_in_a_sampled_row,          &
-                jv_probe_on_the_column_scales, state_column_scale,         &
+                state_column_scale,                                        &
                 jv_probe_arc_scale,                                        &
                 jacobian_action_of_direction,                              &
                 probe_step_on_the_column_scales,                           &
+                norm_in_the_column_scaled_unknowns,                        &
                 jv_probe_length_factor,                                    &
                 measure_the_additivity_of_the_jacobian_action,             &
                 the_point_where_the_step_leaves_the_ball,                  &
@@ -465,22 +466,16 @@
       ! feasible-set decision inside jv_product itself (it does neither).
       ! TEST ONLY: it decides nothing and every product it takes is thrown
       ! away.
-      ! WHETHER THE PROBE DISPLACES EVERY UNKNOWN BY THE SAME FRACTION OF
-      ! ITS OWN SCALE (probe_step_on_the_column_scales) instead of fixing
-      ! the LENGTH of the displacement in the unknowns themselves
-      ! (probe_length_of_the_jacobian_action). Default off, arm
-      ! EXHALE_JV_COLUMN_SCALE=1.
-      logical :: jv_probe_on_the_column_scales = .false.
       logical :: jv_additivity_on   = .false.
       ! Whether THIS outer iteration is one the hook speaks at.
       logical :: jv_additivity_here = .false.
       ! A MULTIPLIER OF THE PROBE ARC, exactly one everywhere but inside the
       ! hook's length scan, where the same three products are taken at a
       ! tenth and at ten times the standard arc. At one the arithmetic of
-      ! probe_length_of_the_jacobian_action is untouched.
+      ! probe_length_in_the_column_scaled_unknowns is untouched.
       real*8  :: jv_probe_length_factor = 1.0d0
       ! A STANDING MULTIPLIER OF THE PROBE ARC (EXHALE_JV_PROBE_ARC=<x>,
-      ! default 1). The arc sqrt(epsilon)(1 + ||Y||) balances the rounding
+      ! default 1). The arc sqrt(epsilon)(1 + ||Dc^-1 Y||) balances the rounding
       ! of the residual against the curvature of it only where the
       ! residual's spread is its own last bit. MEASURED (atomic
       ! element reload): along the PRECONDITIONED Krylov directions the
@@ -7676,11 +7671,18 @@
       real*8, dimension(3,1-Ng:N+Ng) :: Wloc
       real*8, dimension(1-Ng:N+Ng) :: rho_w, vel_w
       real*8, dimension(1:N,n_carrier_max) :: cres_again, cterms_again
-      real*8  :: eps1, eps2, vn, tmax, tscale_code, e1, e2, den
+      real*8  :: eps1, eps2, tmax, tscale_code, e1, e2, den
       real*8  :: cres_code
       real*8  :: sum_rel, worst_rel, entry_recon, rcmax_again, rvol_again
       real*8  :: resp_max, sum_moved, worst_moved
       integer :: n_moved, j_moved, k_moved
+      ! WHAT THE PROBE OF THE ACTION ACTUALLY TOOK (jv_product), beside the
+      ! nominal scalar: the step after the cut to the species box and the
+      ! element constraints and after any halving, the side, and the
+      ! components zeroed where both sides were blocked.
+      real*8  :: probe_taken_nominal, probe_taken_step, ylog2
+      logical :: probe_taken_backward
+      integer :: probe_taken_blocked
       ! A row counts as moved by the direction when its response reaches
       ! this fraction of the largest response in the support.
       real*8, parameter :: moved_floor = 1.0d-3
@@ -7776,16 +7778,15 @@
          i = nvar_jac*(j-1) + kind_wanted
          vdir(i) = Dsc(i)
       enddo
-      vn = sqrt(sum(vdir*vdir))
       tmax = largest_step_inside_the_species_box(Y, vdir, n_blocked)
-      if (jv_probe_on_the_column_scales) then
-         eps1 = probe_step_on_the_column_scales(Y, vdir)
-      else
-         eps1 = probe_length_of_the_jacobian_action(Y)/max(vn, 1.0d-300)
-      endif
+      eps1 = probe_step_on_the_column_scales(Y, vdir)
       eps2 = 0.1d0*eps1
       ! The action the solve itself uses.
       call jacobian_action_of_direction(Y, F0, f_sp_base, vdir, Jv, ok_jv)
+      probe_taken_nominal  = jv_probe_step_nominal_last
+      probe_taken_step     = jv_probe_step_last
+      probe_taken_backward = jv_probe_backward_last
+      probe_taken_blocked  = jv_probe_blocked_last
       ! The central differences of the same map at two lengths.
       call eval_residual(Y + eps1*vdir, f_sp_base, fwork, Fp, heatw,      &
                          coolw, admissible=okp, may_be_adopted=.false.,   &
@@ -7850,6 +7851,22 @@
       ! reader that gates on an arc has to know which of the two it holds.
       write(u_out,'(A,ES14.7,A,ES14.7)') '# probe scalar ', eps1,         &
            '  second scalar ', eps2
+      write(u_out,'(A,ES14.7,A,ES14.7,A,L1,A,I0)') '# probe taken by'//   &
+           ' the action: nominal scalar ', probe_taken_nominal,           &
+           '  scalar taken ', probe_taken_step, '  backward side ',       &
+           probe_taken_backward, '  blocked components ',                 &
+           probe_taken_blocked
+      ! The norm the probe length is made of, and the part of it the
+      ! logarithmic carrier unknowns hold (their column scale is 1, so
+      ! they enter it as |ln n|).
+      ylog2 = 0.0d0
+      do i = 1, neq
+         if (unknown_is_a_logarithm(i)) ylog2 = ylog2 + Y(i)*Y(i)
+      enddo
+      write(u_out,'(A,ES14.7,A,ES14.7,A,ES14.7)') '# norm of the'//        &
+           ' unknowns ', sqrt(sum(Y*Y)), '  in column-scaled'//           &
+           ' coordinates ', norm_in_the_column_scaled_unknowns(Y),        &
+           '  of the logarithmic carrier unknowns ', sqrt(ylog2)
       write(u_out,'(A,ES14.7,A,I0)') '# fraction to the boundary of'//    &
            ' the species box ', tmax, '  blocked components ', n_blocked
       write(u_out,'(A,L1,A,I0)') '# the action was sampled: ', ok_jv,     &
@@ -8717,26 +8734,17 @@
       jv_additivity_on = .false.
       call get_environment_variable('EXHALE_JV_ADDITIVITY', env)
       if (trim(env) .eq. '1') jv_additivity_on = .true.
-      !   EXHALE_JV_COLUMN_SCALE=1       take the probe step of the
-      !                                  matrix-free action on the column
-      !                                  scales, so that every unknown is
-      !                                  displaced by the same fraction of
-      !                                  its own magnitude
-      !                                  (probe_step_on_the_column_scales).
-      jv_probe_on_the_column_scales = .false.
-      call get_environment_variable('EXHALE_JV_COLUMN_SCALE', env)
-      if (trim(env) .eq. '1') jv_probe_on_the_column_scales = .true.
+      !   EXHALE_JV_FRESH_WEIGHTS=1      take the products of the Newton
+      !                                  model with the WENO3 weights
+      !                                  recomputed (jv_fresh_weights).
+      call get_environment_variable('EXHALE_JV_FRESH_WEIGHTS', env)
+      jv_fresh_weights = (trim(env) .eq. '1')
       !   EXHALE_JV_PROBE_ARC=<x>        multiply the probe arc of the
       !                                  matrix-free action by x
       !                                  (jv_probe_arc_scale). A
       !                                  non-positive or unreadable value
       !                                  leaves it at one.
       jv_probe_arc_scale = 1.0d0
-      !   EXHALE_JV_FRESH_WEIGHTS=1      take the products of the Newton
-      !                                  model with the WENO3 weights
-      !                                  recomputed (jv_fresh_weights).
-      call get_environment_variable('EXHALE_JV_FRESH_WEIGHTS', env)
-      jv_fresh_weights = (trim(env) .eq. '1')
       call get_environment_variable('EXHALE_JV_PROBE_ARC', env)
       if (len_trim(env) .gt. 0) then
          xselect = 0.0d0
@@ -12017,103 +12025,128 @@
 
       ! ------------------------------------------------------!
 
-      pure real*8 function probe_length_of_the_jacobian_action(Y)       &
+      real*8 function norm_in_the_column_scaled_unknowns(x) result(xn)
+      ! ||Dc^-1 x||_2, Dc the state column scale (state_column_scale, the
+      ! characteristic magnitude of each unknown, cell_state_scales). Where
+      ! no column scale of this system has been formed yet, Dc is the
+      ! identity and this is ||x||_2.
+      real*8, dimension(nvar_jac*N), intent(in) :: x
+      logical :: have_scale
+      have_scale = allocated(state_column_scale)
+      if (have_scale) have_scale = (size(state_column_scale) .eq. nvar_jac*N)
+      if (have_scale) then
+         xn = sqrt(sum((x/state_column_scale)**2))
+      else
+         xn = sqrt(sum(x*x))
+      endif
+      end function norm_in_the_column_scaled_unknowns
+
+      ! ------------------------------------------------------!
+
+      real*8 function probe_length_in_the_column_scaled_unknowns(Y)       &
                    result(probe_length)
       ! HOW FAR THE MATRIX-FREE PRODUCT MOVES THE STATE, as a length in the
-      ! unknowns themselves. The forward difference is taken at
-      ! Y + eps0 v with eps0 = probe_length/||v||, so the DISPLACEMENT has
-      ! this norm whatever the direction and whatever its length: the
-      ! quotient is homogeneous of degree one in v, which is what makes the
-      ! action a linear map, and the arc the residual is sampled over is a
-      ! property of the iterate alone.
+      ! column-scaled unknowns Dc^-1 Y (norm_in_the_column_scaled_unknowns):
       !
-      ! sqrt(epsilon) (1 + ||Y||) is the standard scaled interval: the
-      ! rounding of the residual, of relative size epsilon, and the
-      ! curvature of the residual over the interval contribute equally to
-      ! the error of the quotient at this length.
+      !     probe_length = sqrt(epsilon) (1 + ||Dc^-1 Y||).
       !
-      ! CONSEQUENCE, MEASURED (atomic element reload): the arc is
-      ! 1.845e-7 with ||Y|| = 11.4, nine decades above the reproducibility
-      ! of the residual, so the action is not noise; and at outer iteration
-      ! 151 the step itself is ||D s|| = 5.0e-10, which is 2.7e-3 of the
-      ! arc, so the model of that step is a secant over an arc the step
-      ! does not reach. Shortening the step cannot shorten the arc.
+      ! The forward difference is taken at Y + eps0 v with
+      ! eps0 = probe_length/||Dc^-1 v|| (probe_step_on_the_column_scales),
+      ! so the displacement Dc^-1 (eps0 v) has this norm whatever the
+      ! direction and whatever its length: the quotient is homogeneous of
+      ! degree one in v, which is what makes the action a linear map, and
+      ! the arc the residual is sampled over is a property of the iterate
+      ! alone. It is a scaled interval of the family Knoll & Keyes (2004,
+      ! JCP 193, 357, section 2.3.1, eqs. 11-14) list, with b =
+      ! sqrt(epsilon) and the magnitude 1 + ||u||, written in the
+      ! coordinates in which each unknown is measured in its own
+      ! characteristic magnitude.
       !
-      ! THE ARC IS SCALED BY jv_probe_length_factor, which is exactly one
-      ! outside the additivity hook's length scan, so the standard arc is
-      ! the expression above unchanged.
+      ! WHY IN THE COLUMN-SCALED COORDINATES AND NOT IN THE UNKNOWNS
+      ! THEMSELVES (the rule before 2026-10-18 was
+      ! sqrt(epsilon)(1 + ||Y||)/||v||; update log stage 3 section 153 and
+      ! EXHALE_v1.10/md/jacobian_probe_length_20261018.md section 7). The
+      ! unknowns are of mixed kind: conserved densities in code units next
+      ! to the logarithm of a carrier density. In the coupled molecular
+      ! block the logarithm carries ||Y|| almost alone (MEASURED on the
+      ! coupled_block_jacobian fixture, LHS 1140 b, one carrier: ||Y|| =
+      ! 475.00 of which 474.92 is the ln n of H2), while the energy
+      ! unknowns of cells 300-312 are about 5e-5 in code units (||v|| =
+      ! 1.7e-4 for the direction v_E = |E| of those 13 cells, from its
+      ! probe scalar), so the unscaled rule moved
+      ! an energy-only direction by 4.2 per cent of E (probe scalar
+      ! 0.04153) and its forward quotient was off by 7.3e-3 of the
+      ! derivative (mean over the rows it moves, against the central
+      ! difference whose two lengths agree best, at a scalar of 2.0e-5). On
+      ! the column scales the same direction moves E by 1.97e-6 of itself
+      ! and the quotient is off by 3.6e-7; the carrier direction, whose
+      ! column scale is 1, keeps its step (1.967e-6 and 1.971e-6 in ln n,
+      ! 2.9e-4 and 3.0e-4 off, against a central difference at 2.0e-3).
+      ! The same rule on v1.10, with four carriers, gives energy 2.15e-2
+      ! against 1.05e-6 and carrier 1.4e-4 against 1.7e-4 (section 7.2 of
+      ! the note), where two rules with logarithms entering at unit
+      ! magnitude were also measured and neither is better in both
+      ! directions: the carrier rows' residual is noisy at about 1e-9 of
+      ! itself, so its best ln n step is about 5e-5, and a step built from
+      ! sqrt(epsilon) times a unit magnitude puts it on the rounding branch.
+      ! No case measured converged worse: on v1.00 iontrans_metals takes
+      ! the same Newton iterations in each of its fourteen solves (152 in
+      ! all) under both rules, info = 0, the two roots equal to 6e-14; the
+      ! rest of the regression matrix is in section 153.
+      !
+      ! LIMITATION. The logarithmic carriers enter
+      ! ||Dc^-1 Y|| as |ln n| (Dc = 1 for them), so the length still
+      ! depends on the density normalization and on how many trace ions are
+      ! carried (||Y|| 475 with H2 alone, 1406 with the four carriers of
+      ! v1.10). On the measured V this moves the carrier step along a branch
+      ! where the error changes in proportion and stays below 3e-4. A rule
+      ! that sets each kind's interval from that kind's own measured noise
+      ! (Knoll & Keyes: b = sqrt(eps_rel) where F is known to eps_rel only)
+      ! would remove the dependence; it is not implemented.
+      !
+      ! THE ARC IS SCALED BY jv_probe_arc_scale (EXHALE_JV_PROBE_ARC) and
+      ! by jv_probe_length_factor, which is exactly one outside the
+      ! additivity hook's length scan, so the standard arc is the
+      ! expression above unchanged.
       real*8, dimension(nvar_jac*N), intent(in) :: Y
-      probe_length = sqrt(epsilon(1.0d0))*(1.0d0 + sqrt(sum(Y*Y)))
+      probe_length = sqrt(epsilon(1.0d0))                                 &
+                     *(1.0d0 + norm_in_the_column_scaled_unknowns(Y))
       if (jv_probe_arc_scale .ne. 1.0d0)                                  &
          probe_length = probe_length*jv_probe_arc_scale
       if (jv_probe_length_factor .ne. 1.0d0)                              &
          probe_length = probe_length*jv_probe_length_factor
-      end function probe_length_of_the_jacobian_action
+      end function probe_length_in_the_column_scaled_unknowns
 
       ! ------------------------------------------------------!
 
       real*8 function probe_step_on_the_column_scales(Y, v) result(eps0)
-      ! THE PROBE STEP THAT DISPLACES EVERY UNKNOWN BY THE SAME FRACTION OF
-      ! ITS OWN SCALE.
+      ! THE PROBE SCALAR OF THE MATRIX-FREE ACTION ALONG v:
       !
       !   eps0 = sqrt(epsilon) (1 + ||Dc^-1 Y||) / ||Dc^-1 v||,
       !
-      ! Dc the state column scale (state_column_scale, the characteristic
-      ! magnitude of each unknown). Written in the coordinates Dc^-1 Y, in
-      ! which every unknown is of order one, this is the same rule
-      ! probe_length_of_the_jacobian_action states in the unknowns
-      ! themselves: the displacement Dc^-1 (eps0 v) has the norm
-      ! sqrt(epsilon)(1 + ||Dc^-1 Y||), so a direction spread over the n
-      ! unknowns moves each of them by about sqrt(epsilon) of its own
-      ! scale, which is the interval at which the truncation of a forward
-      ! difference and the rounding of the residual contribute equally.
-      !
-      ! WHY THE UNSCALED RULE IS NOT THAT. It fixes the length of the
-      ! displacement at sqrt(epsilon)(1 + ||Y||) with ||Y|| the norm of the
-      ! MIXED vector, so the length is set by whichever unknowns are
-      ! largest and every unknown below them is displaced by a smaller
-      ! fraction of itself. MEASURED on the atomic element reload at outer
-      ! iteration 1 (EXHALE_JV_ADDITIVITY): ||Y|| = 11.4 is
-      ! carried by the innermost cells, whose mass unknown is then
-      ! displaced by 2.2e-8 of itself, about sqrt(epsilon); the unknowns of
-      ! the outer cells are displaced by 2e-10 to 6e-10 of themselves, one
-      ! to two decades short of it, and the difference quotient along the
-      ! preconditioned Krylov directions is then rounding and not a
-      ! derivative (the additivity defect rises as the reciprocal of the
-      ! arc, exponent -1.03, and the second difference of the residual sits
-      ! on a floor instead of scaling as the square of the step).
-      !
-      ! VALIDITY. It needs a column scale that is a magnitude of the
-      ! unknown; where none has been formed yet the unscaled rule stands.
-      ! It says nothing about a residual that is non-smooth for a reason
-      ! other than a displacement too short to resolve: a longer step
-      ! raises the truncation error of the forward difference in
-      ! proportion, so this trades one error for the other at their
-      ! balance point and no further.
+      ! so that the displacement eps0 v has the length
+      ! probe_length_in_the_column_scaled_unknowns in the column-scaled
+      ! coordinates. Individual component displacements depend on the
+      ! direction: a direction spread over m unknowns moves each by about
+      ! probe_length/sqrt(m) of its own scale.
       real*8, dimension(nvar_jac*N), intent(in) :: Y, v
-      real*8  :: yn, vn
-      ! NOT n: that name is the grid size N of global_parameters, and
-      ! Fortran does not distinguish the case.
-      integer :: nunk
-      nunk = nvar_jac*N
-      if (.not. allocated(state_column_scale)) then
-         eps0 = probe_length_of_the_jacobian_action(Y)                    &
-                /max(sqrt(sum(v*v)), 1.0d-300)
-         return
-      endif
-      if (size(state_column_scale) .ne. nunk) then
-         eps0 = probe_length_of_the_jacobian_action(Y)                    &
-                /max(sqrt(sum(v*v)), 1.0d-300)
-         return
-      endif
-      yn = sqrt(sum((Y/state_column_scale)**2))
-      vn = sqrt(sum((v/state_column_scale)**2))
-      eps0 = sqrt(epsilon(1.0d0))*(1.0d0 + yn)/max(vn, 1.0d-300)
-      if (jv_probe_arc_scale .ne. 1.0d0)                                  &
-         eps0 = eps0*jv_probe_arc_scale
-      if (jv_probe_length_factor .ne. 1.0d0)                              &
-         eps0 = eps0*jv_probe_length_factor
+      eps0 = probe_length_in_the_column_scaled_unknowns(Y)                &
+             /max(norm_in_the_column_scaled_unknowns(v), 1.0d-300)
       end function probe_step_on_the_column_scales
+
+      ! ------------------------------------------------------!
+
+      logical function unknown_is_a_logarithm(is) result(yes)
+      ! Whether unknown is of the flat Newton vector is the logarithm of a
+      ! carrier density (carrier_unknown_is_logarithmic).
+      integer, intent(in) :: is
+      integer :: k
+      yes = .false.
+      if (.not. carrier_unknown_is_logarithmic) return
+      k = mod(is-1, nvar_jac) + 1 - 3
+      if (k .lt. 1 .or. k .gt. nspec_row) return
+      yes = (srow_kind(k) .eq. srow_carrier)
+      end function unknown_is_a_logarithm
 
       ! ------------------------------------------------------!
 
@@ -12158,11 +12191,7 @@
       call hold_the_active_bounds_of(vh)
       vn = sqrt(sum(vh*vh))
       if (vn .le. 0.0d0) return
-      if (jv_probe_on_the_column_scales) then
-         eps0 = probe_step_on_the_column_scales(Y, vh)
-      else
-         eps0 = probe_length_of_the_jacobian_action(Y)/vn
-      endif
+      eps0 = probe_step_on_the_column_scales(Y, vh)
       ! WHAT THIS PROBE DOES, for the additivity hook to read afterwards.
       ! Written by every product and read by nothing that decides.
       jv_probe_step_nominal_last = eps0
@@ -12522,7 +12551,8 @@
       ! region reads from it are relations of a LINEAR operator. What
       ! jv_product returns is
       !     A(v) = [ F(Y + eps(v) v) - F(Y) ] / eps(v),
-      !     eps(v) = L / ||P(v) v||,   L = probe_length_of_the_jacobian_action,
+      !     eps(v) = L / ||Dc^-1 P(v) v||,
+      !     L = probe_length_in_the_column_scaled_unknowns,
       ! P the hold of the active bounds and eps further cut to the species
       ! box and the element constraints. A(v) is homogeneous of degree one
       ! in v by construction, but additivity is a separate property and it
@@ -12738,11 +12768,7 @@
       vn = sqrt(sum(vs*vs))
       epsz = 0.0d0
       if (vn .gt. 0.0d0) then
-         if (jv_probe_on_the_column_scales) then
-            epsz = probe_step_on_the_column_scales(Y, vs)
-         else
-            epsz = probe_length_of_the_jacobian_action(Y)/vn
-         endif
+         epsz = probe_step_on_the_column_scales(Y, vs)
       endif
       do i = 1, ntop
          j = itop(i)
@@ -13267,7 +13293,7 @@
       neq = nvar_jac*N
       vn  = sqrt(sum(v*v))
       if (vn .le. 0.0d0) return
-      eps0 = probe_length_of_the_jacobian_action(Y)/vn
+      eps0 = probe_step_on_the_column_scales(Y, v)
       if (.not. (eps0 .gt. 0.0d0)) return
       allocate(Fs(neq,n_scan), Fv(neq))
       allocate(heat(1-Ng:N+Ng), cool(1-Ng:N+Ng), n_steps_at_k(n_scan-1))
@@ -14231,7 +14257,7 @@
          ! IS THE ACTION A LINEAR MAP OF THE DIRECTION AT ALL? The Arnoldi
          ! relation is a relation of a LINEAR operator, and the matrix-free
          ! action is a secant of the residual over an arc of fixed length
-         ! (probe_length_of_the_jacobian_action): the quotient is
+         ! (probe_length_in_the_column_scaled_unknowns): the quotient is
          ! homogeneous in the direction by construction, but it is the
          ! secant of a nonlinear residual in the direction sampled, so the
          ! action of a SUM of two directions need not be the sum of their
@@ -14269,8 +14295,9 @@
                        sqrt(sum((w - z)**2))                               &
                        /max(sqrt(sum(w*w)), 1.0d-300),                     &
                        ', probe arc ',                                     &
-                       probe_length_of_the_jacobian_action(Y),             &
-                       ', ||Y|| ', sqrt(sum(Y*Y))
+                       probe_length_in_the_column_scaled_unknowns(Y),      &
+                       ', ||Dc^-1 Y|| ',                                   &
+                       norm_in_the_column_scaled_unknowns(Y)
                endif
             endif
          endif
@@ -17445,19 +17472,24 @@
             ! AND THE LENGTH THE DIRECTIONAL DERIVATIVE IS SAMPLED OVER,
             ! BESIDE THE LENGTH OF THE STEP IT IS THE MODEL OF. The probe
             ! length of the matrix-free action is
-            ! sqrt(epsilon) (1 + ||Y||) as a length in the unscaled
-            ! unknowns, whatever the direction (jv_product: the step is
-            ! eps0 v with eps0 inversely proportional to ||v||). It is a
+            ! sqrt(epsilon) (1 + ||Dc^-1 Y||) as a length in the
+            ! column-scaled unknowns, whatever the direction (jv_product:
+            ! the step is eps0 v with eps0 inversely proportional to
+            ! ||Dc^-1 v||), so the step is measured in the same coordinates,
+            ! ||Dc^-1 D s|| with D s the step in the unknowns. It is a
             ! property of the iterate and not of the step, so once the step
             ! is shorter than it the model of the step is a secant over an
             ! arc the step does not reach, and cutting the radius further
             ! cannot make the two agree.
             write(*,'(A,ES14.6,A,ES14.6,A,ES14.6)')                       &
-                 ' (JFNK) [diag 8]   ||D s|| ', sqrt(sum((D*s)**2)),      &
+                 ' (JFNK) [diag 8]   ||Dc^-1 D s|| ',                     &
+                 norm_in_the_column_scaled_unknowns(D*s),                 &
                  ', probe length ',                                        &
-                 probe_length_of_the_jacobian_action(Y),                  &
-                 ', step over probe ', sqrt(sum((D*s)**2))                &
-                 / max(probe_length_of_the_jacobian_action(Y), 1.0d-300)
+                 probe_length_in_the_column_scaled_unknowns(Y),           &
+                 ', step over probe ',                                     &
+                 norm_in_the_column_scaled_unknowns(D*s)                  &
+                 / max(probe_length_in_the_column_scaled_unknowns(Y),     &
+                       1.0d-300)
             deallocate(As_true)
          endif
          if (pred .le. 0.0d0) then
