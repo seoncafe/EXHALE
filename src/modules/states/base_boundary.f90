@@ -1173,24 +1173,32 @@
    if (base_branch_options_read) return
    base_branch_options_read = .true.
    env = ' '
+   ! EXHALE_BASE_MACH_BLEND: Overrides the base-face Mach blending value when positive. Unset keeps the
+   ! initialized value; can change the boundary state.
    call get_environment_variable('EXHALE_BASE_MACH_BLEND', env)
    if (len_trim(env) .gt. 0) then
       read(env,*,iostat=ios) v
       if (ios .eq. 0 .and. v .gt. 0.0d0) base_face_mach_blend = v
    endif
    env = ' '
+   ! EXHALE_BASE_WIND_SPREAD: Overrides the base-wind width when positive. Unset keeps the initialized
+   ! value; can change the boundary state.
    call get_environment_variable('EXHALE_BASE_WIND_SPREAD', env)
    if (len_trim(env) .gt. 0) then
       read(env,*,iostat=ios) v
       if (ios .eq. 0 .and. v .gt. 0.0d0) base_wind_window_spread = v
    endif
    env = ' '
+   ! EXHALE_BASE_WIND_AMPLITUDE: Overrides the base-wind amplitude when positive. Unset keeps the
+   ! initialized value; can change the boundary state.
    call get_environment_variable('EXHALE_BASE_WIND_AMPLITUDE', env)
    if (len_trim(env) .gt. 0) then
       read(env,*,iostat=ios) v
       if (ios .eq. 0 .and. v .gt. 0.0d0) base_wind_window_amplitude = v
    endif
    env = ' '
+   ! EXHALE_BASE_CONTACT_PER_EVALUATION: Set to 1 to recompute the base contact for each evaluation.
+   ! Unset uses the declared base-boundary rule; changes the boundary state.
    call get_environment_variable('EXHALE_BASE_CONTACT_PER_EVALUATION', env)
    base_contact_per_evaluation = (trim(env) .eq. '1')
    end subroutine read_base_branch_options

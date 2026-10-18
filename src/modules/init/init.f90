@@ -191,6 +191,8 @@
          ! directory, and a seed whose lower layer is projected below is a
          ! new state, so neither reads the file.
          if (.not. molecular_seed_on()) then
+            ! EXHALE_SEED_HYDROSTATIC_CELLS: Selects hydrostatic reconstruction of a seed interval. Unset
+            ! reads the stored conserved state; changes the seed.
             call get_environment_variable('EXHALE_SEED_HYDROSTATIC_CELLS', &
                                           seed_projection)
             if (len_trim(seed_projection) .eq. 0) then

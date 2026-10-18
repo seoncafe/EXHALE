@@ -441,12 +441,16 @@
          write(*,'(A,I0)') ' (stellar_rates) reused physical fields ', &
                            n_stellar_fields_reused
       stellar_reuse_active=.false.
+      ! EXHALE_HELD_STELLAR_RATE_REUSE: Set to 1 to reuse identical held-state stellar rates. Unset
+      ! recalculates them; intended numerical result is unchanged.
       call get_environment_variable('EXHALE_HELD_STELLAR_RATE_REUSE',env)
       if (.not.on.or.trim(env).ne.'1') return
       if (allocated(stellar_fields)) deallocate(stellar_fields)
       allocate(stellar_fields(1:N))
       stellar_fields%valid=.false.
       n_stellar_fields_reused=0
+      ! EXHALE_STELLAR_RATE_REUSE_TRACE: Set to 1 to trace stellar-rate reuse. Unset omits the trace;
+      ! diagnostic only.
       call get_environment_variable('EXHALE_STELLAR_RATE_REUSE_TRACE',env)
       stellar_reuse_trace=trim(env).eq.'1'
       stellar_reuse_active=.true.

@@ -1820,8 +1820,12 @@
       ! therefore has no integration error to bound.
       character(len=64) :: env
       if (run_mode .eq. run_mode_phys) n_err_every = 20
+      ! EXHALE_ERR_EVERY: Number of accepted physical steps between integration-error
+      ! estimates. Unset uses 20 in phys mode and 0 in init mode.
       call get_environment_variable('EXHALE_ERR_EVERY', env)
       if (len_trim(env) .gt. 0) read(env,*) n_err_every
+      ! EXHALE_AS_FIXED_DT: Prescribes the attempted-step interval in seconds.
+      ! Unset leaves it at 0, which uses adaptive step selection.
       call get_environment_variable('EXHALE_AS_FIXED_DT', env)
       if (len_trim(env) .gt. 0) read(env,*) as_fixed_dt_seconds
       end subroutine attempted_step_read_environment

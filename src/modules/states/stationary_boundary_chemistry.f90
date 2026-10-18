@@ -87,6 +87,8 @@
       refusable_before=ieq_state_may_be_refused
       seed_reservoir=.true.
       if (present(canonical_seed)) seed_reservoir=canonical_seed
+      ! EXHALE_STATIONARY_BOUNDARY_SEED: Selects state_file or reservoir boundary composition. Unset uses
+      ! reservoir; changes the boundary state.
       call get_environment_variable('EXHALE_STATIONARY_BOUNDARY_SEED', &
                                      diagnostic_seed)
       if (trim(diagnostic_seed).eq.'state_file') then
@@ -107,8 +109,12 @@
             f_sp(j,:)=f_reservoir
          enddo
       endif
+      ! EXHALE_BOUNDARY_CLOSURE_TRACE: Set to 1 to print the boundary closure trace. Unset omits the
+      ! trace; diagnostic only.
       call get_environment_variable('EXHALE_BOUNDARY_CLOSURE_TRACE',trace_env)
       trace=trim(trace_env).eq.'1'
+      ! EXHALE_BOUNDARY_FULL_SWEEPS: Set to 1 to require full boundary chemistry sweeps. Unset follows
+      ! the XUV controls; can change the evaluated closure.
       call get_environment_variable('EXHALE_BOUNDARY_FULL_SWEEPS',full_env)
       full_sweeps=trim(full_env).eq.'1'.or.xuv_field_block_cells.ne.0.or. &
                    xuv_self_field_passes.ne.1
@@ -117,6 +123,8 @@
       omega_previous=1.0d0
       residual_previous=0.0d0
       iteration_cap=boundary_max_iterations
+      ! EXHALE_BOUNDARY_CLOSURE_MAXITER: Overrides the boundary closure iteration cap within its allowed
+      ! range. Unset uses boundary_max_iterations; can change closure acceptance.
       call get_environment_variable('EXHALE_BOUNDARY_CLOSURE_MAXITER',cap_env)
       if (len_trim(cap_env).gt.0) then
          read(cap_env,*,iostat=ios) iteration_cap

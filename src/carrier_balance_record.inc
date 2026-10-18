@@ -13,6 +13,8 @@
       integer(int64) :: bytes_left
       logical :: source_exists
 
+      ! EXHALE_CARRIER_ROW_TERMS: Set to 1 to write carrier-row terms for this recorded state. Unset
+      ! omits the record; diagnostic only.
       call get_environment_variable('EXHALE_CARRIER_ROW_TERMS', enabled)
       if (trim(enabled) .ne. '1') return
       select case (trim(label))

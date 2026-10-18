@@ -3177,6 +3177,8 @@
 	character(len=64) :: env_value
 	integer :: ios_key
 	adv_column_controls_read = .true.
+	! EXHALE_ADV_COLUMN_FLOOR_IT: Overrides the number of extra column Newton iterations after the step
+	! test. Unset retains the default; measurement only.
 	call get_environment_variable('EXHALE_ADV_COLUMN_FLOOR_IT', env_value)
 	if (len_trim(env_value) .gt. 0) then
 		read(env_value, *, iostat=ios_key) adv_column_floor_it
@@ -3189,6 +3191,8 @@
 		     adv_column_floor_it, ': further Newton steps after the step'//   &
 		     ' test (measurement only).'
 	endif
+	! EXHALE_ADV_COLUMN_EXCLUDE_UNROOTED: Set to 1 to hold column cells where the marching energy solve
+	! found no root. Unset includes them; measurement only.
 	call get_environment_variable('EXHALE_ADV_COLUMN_EXCLUDE_UNROOTED', env_value)
 	adv_column_exclude_unrooted = (trim(env_value) .eq. '1')
 	if (adv_column_exclude_unrooted)                                      &

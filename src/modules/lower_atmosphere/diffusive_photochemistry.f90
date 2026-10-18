@@ -3006,6 +3006,8 @@
 
       logical function carrier_debug_on()
       character(len=8) :: env
+      ! EXHALE_CARRIER_DEBUG: Set to 1 to print carrier or molecular-seed diagnostics. Unset omits them;
+      ! diagnostic only.
       call get_environment_variable('EXHALE_CARRIER_DEBUG', env)
       carrier_debug_on = (trim(env) .eq. '1')
       end function carrier_debug_on
@@ -8255,6 +8257,8 @@
       interval_mask_mode  = interval_mask_off
       call get_environment_variable('EXHALE_CARRIER_INTERVAL_MASK', fname)
       if (len_trim(fname) .eq. 0) return
+      ! EXHALE_CARRIER_INTERVAL_MASK_MODE: Selects the interval-mask decision rule. Unset keeps the
+      ! initialized mode; can change transport acceptance.
       call get_environment_variable('EXHALE_CARRIER_INTERVAL_MASK_MODE', mode)
       select case (trim(mode))
       case ('veto');  interval_mask_mode = interval_mask_veto
@@ -8349,16 +8353,24 @@
       integer :: ios, lo, hi
       if (carrier_jacobian_options_ready) return
       carrier_jacobian_options_ready = .true.
+      ! EXHALE_CARRIER_JACOBIAN_RECONSTRUCTION: Set to 1 to use the reconstruction Jacobian diagnostic.
+      ! Unset leaves it off; diagnostic experiment only.
       call get_environment_variable('EXHALE_CARRIER_JACOBIAN_RECONSTRUCTION', env)
       carrier_jacobian_reconstruction = (trim(env) .eq. '1')
+      ! EXHALE_CARRIER_STATE_DISPLACEMENT: Set to 1 to measure the carrier-state displacement. Unset
+      ! omits that measurement; diagnostic only.
       call get_environment_variable('EXHALE_CARRIER_STATE_DISPLACEMENT', env)
       carrier_state_displacement_on = (trim(env) .eq. '1')
+      ! EXHALE_CARRIER_JACOBIAN_ACTION: Names the carrier Jacobian diagnostic output. Unset disables this
+      ! diagnostic; it does not advance a solution.
       call get_environment_variable('EXHALE_CARRIER_JACOBIAN_ACTION', env)
       carrier_jacobian_action_file = trim(env)
       carrier_jacobian_action_on = (len_trim(env) .gt. 0)
       if (carrier_jacobian_action_on) then
          carrier_jacobian_action_lo = 1
          carrier_jacobian_action_hi = N
+         ! EXHALE_CARRIER_JACOBIAN_ACTION_CELLS: Selects the cell interval of the carrier Jacobian
+         ! diagnostic. Unset uses all cells; diagnostic only.
          call get_environment_variable('EXHALE_CARRIER_JACOBIAN_ACTION_CELLS', env)
          if (len_trim(env) .gt. 0) then
             read(env,*,iostat=ios) lo, hi
