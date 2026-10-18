@@ -3258,6 +3258,8 @@
          return
       endif
       state_hash_trace_on = .true.
+      ! EXHALE_NEWTON_STATE_DUMP_AT: Selects the Newton iteration whose state is written. Unset omits the
+      ! dump; diagnostic only.
       call get_environment_variable('EXHALE_NEWTON_STATE_DUMP_AT', env)
       if (len_trim(env) .gt. 0) read(env,*,iostat=ios) newton_state_dump_at
       if (ios .ne. 0) newton_state_dump_at = 0
@@ -6740,6 +6742,8 @@
          n_dir      = n_dir + 1
          id_species = n_dir
       endif
+      ! EXHALE_CLOSURE_PROBE_DIRECTION: Selects the direction of the closure probe. Unset uses its
+      ! built-in direction; diagnostic only.
       call get_environment_variable('EXHALE_CLOSURE_PROBE_DIRECTION',    &
                                     named_spec)
       if (len_trim(named_spec) .gt. 0) then
@@ -7598,6 +7602,8 @@
       ! the caller has to know there that the block is the system to be
       ! measured; the measurement itself is below, and it stops the run.
       character(len=512) :: env
+      ! EXHALE_COUPLED_JAC_ACTION: Names the coupled Jacobian action report. Unset skips the diagnostic;
+      ! the requested run stops after measurement.
       call get_environment_variable('EXHALE_COUPLED_JAC_ACTION', env)
       on = (len_trim(env) .gt. 0)
       end function coupled_block_jacobian_action_requested
@@ -7705,6 +7711,8 @@
       endif
       jlo = 1
       jhi = N
+      ! EXHALE_COUPLED_JAC_CELLS: Selects the cell interval of the coupled Jacobian report. Unset uses
+      ! the full grid; diagnostic only.
       call get_environment_variable('EXHALE_COUPLED_JAC_CELLS', env)
       if (len_trim(env) .gt. 0) then
          read(env,*,iostat=ios) jlo, jhi
@@ -7719,6 +7727,8 @@
       ! direction that excites everything cannot say which row moved with
       ! which unknown.
       dirspec = 'carrier'
+      ! EXHALE_COUPLED_JAC_DIR: Selects the unknown displaced in the coupled Jacobian report. Unset
+      ! selects a carrier; diagnostic only.
       call get_environment_variable('EXHALE_COUPLED_JAC_DIR', env)
       if (len_trim(env) .gt. 0) dirspec = trim(env)
       select case (trim(dirspec))
@@ -8619,6 +8629,8 @@
       call get_environment_variable('EXHALE_ELEMENT_WRITE_BACK', env)
       if (trim(env) .eq. '0') element_write_back_conserves = .false.
       hold_every_bound = .false.
+      ! EXHALE_SPECIES_BOUND_HOLD: Set to all to hold every species bound. Unset uses the default bound
+      ! rule; can change the Newton step.
       call get_environment_variable('EXHALE_SPECIES_BOUND_HOLD', env)
       if (trim(env) .eq. 'all') hold_every_bound = .true.
       carrier_log_unknown_wanted = .true.
@@ -8835,6 +8847,8 @@
          ptc_ser_on = .true.;  ptc_ser_doubles = .true.
       endif
       ptc_ser_rnorm_switch = 1.0d-3
+      ! EXHALE_PTC_SER_RNORM: Overrides the SER residual switch when nonnegative. Unset uses 1e-3; can
+      ! change PTC acceptance.
       call get_environment_variable('EXHALE_PTC_SER_RNORM', env)
       if (len_trim(env) .gt. 0) then
          read(env,*,iostat=ios_ser) x_ser
@@ -9071,6 +9085,8 @@
    83    continue
          if (iselect .gt. 0) gm_restart_cycles_wanted = iselect
       endif
+      ! EXHALE_GM_CYCLES_FROM: Sets the first outer iteration that permits extra GMRES cycles. Unset
+      ! starts at iteration 1; can change Newton steps.
       call get_environment_variable('EXHALE_GM_CYCLES_FROM', env)
       if (len_trim(env) .gt. 0) then
          iselect = 0
@@ -9330,10 +9346,16 @@
       eq_sweep_reltol = outer_residual_closure_target
       call get_environment_variable('EXHALE_EQ_MEASURE', env)
       eq_measure_is_species_fraction = (trim(env) .eq. 'species')
+      ! EXHALE_EQ_MEASURE_TRACE: Set to 1 to trace the composition-equilibrium measure. Unset omits the
+      ! trace; diagnostic only.
       call get_environment_variable('EXHALE_EQ_MEASURE_TRACE', env)
       eq_measure_trace = (trim(env) .eq. '1')
+      ! EXHALE_XUV_SELF_PASSES: Overrides the XUV self-field pass count when set. Unset retains the
+      ! initialized count; can change the residual.
       call get_environment_variable('EXHALE_XUV_SELF_PASSES', env)
       if (len_trim(env) .gt. 0) read(env,*) xuv_self_field_passes
+      ! EXHALE_IEQ_REPORT_CELL: Selects a cell for equilibrium reporting. Unset retains the initialized
+      ! cell; diagnostic only.
       call get_environment_variable('EXHALE_IEQ_REPORT_CELL', env)
       if (len_trim(env) .gt. 0) read(env,*) ieq_report_cell
       ! The cells the chemical-decay diagnostic measures at are armed here,
@@ -9342,6 +9364,8 @@
       ! live. Nothing is armed unless the diagnostic is asked for, so an
       ! ordinary solve pays no eigenvalue problem.
       ndcell = 0
+      ! EXHALE_RESID_ROW_CONDITION: Set to 1 to report selected residual-row conditions. Unset skips the
+      ! report; diagnostic only.
       call get_environment_variable('EXHALE_RESID_ROW_CONDITION', env)
       if (trim(env) .eq. '1') then
          call cells_of_the_row_report(dcells, ndcell, ncell_row_max)
@@ -16746,6 +16770,8 @@
       logical :: on_boundary_diag, ok_true
       type(solve_refusal_statistics) :: statistics_at_entry
 
+      ! EXHALE_TR_TRACE: Set to 1 to trace the trust-region solve. Unset omits the trace; diagnostic
+      ! only.
       call get_environment_variable('EXHALE_TR_TRACE', tr_trace_env)
       tr_trace = (trim(tr_trace_env) .eq. '1')
       ! The dogleg's Newton leg is solved WITHOUT the pseudo-transient shift
@@ -18092,6 +18118,8 @@
       damped_step_progressed = .false.;  dtau_best = dtau0
       n_damped_run = 0;  n_damped_restarts = 0
       gm_m_used = gm_m
+      ! EXHALE_GM_M: Overrides the GMRES subspace length when set. Unset retains the initialized length;
+      ! can change the Newton step.
       call get_environment_variable('EXHALE_GM_M', gm_env)
       if (len_trim(gm_env) .gt. 0) read(gm_env,*) gm_m_used
       gm_m_used = max(gm_m_used, 1)
@@ -18108,8 +18136,12 @@
       tr_delta = -1.0d0
       tr_dmax  = -1.0d0
       tr_gm_rtol = 1.0d-1
+      ! EXHALE_TR_GMRTOL: Overrides the trust-region GMRES tolerance when set. Unset retains the
+      ! initialized tolerance; can change Newton steps.
       call get_environment_variable('EXHALE_TR_GMRTOL', tr_env)
       if (len_trim(tr_env) .gt. 0) read(tr_env,*) tr_gm_rtol
+      ! EXHALE_TR_DELTA0: Overrides the initial trust radius when set. Unset retains the initialized
+      ! radius; can change Newton steps.
       call get_environment_variable('EXHALE_TR_DELTA0', tr_env)
       if (len_trim(tr_env) .gt. 0) read(tr_env,*) tr_delta
       call reset_no_chem_root_trial_count
@@ -18261,8 +18293,12 @@
       f2_fixed = sqrt(sum((F/Dfix)**2))
       f2_fixed_hist = f2_fixed;  merit_improved = .false.
       merit_fall_min = 1.0d-1
+      ! EXHALE_MERIT_FALL_MIN: Overrides the minimum merit decrease when set. Unset retains the
+      ! initialized limit; can change step acceptance.
       call get_environment_variable('EXHALE_MERIT_FALL_MIN', tr_env)
       if (len_trim(tr_env) .gt. 0) read(tr_env,*) merit_fall_min
+      ! EXHALE_LINEAR_ROWS: Set to 1 to report the linearized rows. Unset skips this report; diagnostic
+      ! only.
       call get_environment_variable('EXHALE_LINEAR_ROWS', lin_env)
       linear_rows_on = (trim(lin_env) .eq. '1')
       if (linear_rows_on) then
@@ -18270,6 +18306,8 @@
          allocate(f_sp_lr(1-Ng:N+Ng,n_species))
          allocate(heat_lr(1-Ng:N+Ng), cool_lr(1-Ng:N+Ng))
          lr_lo = 290;  lr_hi = 312
+         ! EXHALE_LINEAR_ROWS_CELLS: Selects cells for the linear-row report. Unset uses its built-in
+         ! cell selection; diagnostic only.
          call get_environment_variable('EXHALE_LINEAR_ROWS_CELLS', lr_env)
          if (len_trim(lr_env) .gt. 0) then
             do lr_j = 1, len_trim(lr_env)

@@ -1197,6 +1197,8 @@
       call ioniz_eq_allocate_arrays
       ! Read before the state vectors are sized: the diagnostic allocates
       ! its own snapshots inside allocate_state_vectors.
+      ! EXHALE_UPDATE_MAP: Requests a sequence of measured production steps from one state, restoring
+      ! that state between them. Unset skips the diagnostic.
       call get_environment_variable('EXHALE_UPDATE_MAP', diag_env)
       if (len_trim(diag_env) .gt. 0) call parse_update_map_request(diag_env)
 
@@ -1350,6 +1352,8 @@
       ! larger of the two (residual_norms). Used to rank candidate
       ! "converged" states (premature-dip vs true steady).
       ! Evaluated in WENO3 (the production scheme the states converged under).
+      ! EXHALE_RELOAD_EQ: Set to 0 to skip equilibration on reload. Unset equilibrates; this changes the
+      ! evaluated restart state.
       call get_environment_variable('EXHALE_RELOAD_EQ', diag_env)
       if (trim(diag_env) .eq. '0') reload_equilibrate = .false.
       call get_environment_variable('EXHALE_RESIDUAL', diag_env)
@@ -1687,6 +1691,8 @@
          stop
       endif
 
+      ! EXHALE_NEWTON_TEST: Set to 1 to enter the stationary Newton test route. Unset skips it; this
+      ! route evaluates a different run.
       call get_environment_variable('EXHALE_NEWTON_TEST', diag_env)
       if (trim(diag_env) .eq. '1') then
          call select_stationary_reconstruction
@@ -1863,6 +1869,8 @@
             deallocate(Yvec)
             write(*,'(A,I0,A)') ' (EXHALE_main) frozen-base: first ', k, ' cells anchored'
          endif
+         ! EXHALE_PTC_JFNK: Selects the PTC/JFNK route for the stationary call. Unset uses its default
+         ! route; can change returned state.
          call get_environment_variable('EXHALE_PTC_JFNK', diag_env)
          ! Same solve-and-diffuse routine as the marching hand-off below, so
          ! a diffused wind can be brought to a steady state on this route too
@@ -1929,9 +1937,12 @@
       ! Get starting time
       write(*,*) '(EXHALE_main.f90) Starting time integration..'
       start = omp_get_wtime()
+      ! EXHALE_PROFILE: Set to 1 to collect profiling data. Unset omits profiling; diagnostic only.
       call get_environment_variable('EXHALE_PROFILE', prof_env)
       if (trim(prof_env) .eq. '1') do_profile = .true.
       ec_prof_on = do_profile
+      ! EXHALE_MAXSTEPS: Overrides the maximum number of marching steps when set. Unset uses the input
+      ! limit; can change returned state.
       call get_environment_variable('EXHALE_MAXSTEPS', prof_env)
       if (len_trim(prof_env) .gt. 0) read(prof_env,*) max_steps
 
@@ -1961,11 +1972,17 @@
       ! MEASUREMENT AND TEST OVERRIDES, default unset: the settling
       ! threshold, the face-flux threshold of the marching stop (by default
       ! march_flux_spread_th) and the monitor interval N_resid.
+      ! EXHALE_MARCH_CHANGE_TH: Overrides the marching change threshold when set. Unset retains the
+      ! initialized threshold; can change stopping.
       call get_environment_variable('EXHALE_MARCH_CHANGE_TH', diag_env)
       if (len_trim(diag_env) .gt. 0) read(diag_env,*) march_change_th
       march_flux_th = march_flux_spread_th
+      ! EXHALE_MARCH_FLUX_TH: Overrides the marching flux threshold when set. Unset retains the
+      ! initialized threshold; can change stopping.
       call get_environment_variable('EXHALE_MARCH_FLUX_TH', diag_env)
       if (len_trim(diag_env) .gt. 0) read(diag_env,*) march_flux_th
+      ! EXHALE_MONITOR_STEPS: Overrides the monitoring interval when positive. Unset retains the
+      ! initialized interval; can change the marching stop.
       call get_environment_variable('EXHALE_MONITOR_STEPS', diag_env)
       if (len_trim(diag_env) .gt. 0) read(diag_env,*) N_resid
       if (N_resid .le. 0) then
@@ -2143,6 +2160,8 @@
       ! Fixed-state operator difference at the hand-off (diagnostic, env-gated
       ! like the other EXHALE_* probes). 1 = write output/opdiff_profile.txt
       ! and carry on, 2 = write it and stop. See write_operator_difference.
+      ! EXHALE_OPDIFF: Selects the operator-difference mode when set. Unset retains the initialized mode;
+      ! diagnostic measurement.
       call get_environment_variable('EXHALE_OPDIFF', diag_env)
       if (len_trim(diag_env) .gt. 0) read(diag_env,*) opdiff_mode
 
@@ -2202,12 +2221,17 @@
       endif
 
       ! The step clock (see its declaration).
+      ! EXHALE_STEP_CLOCK: Set to 1 to print step timing. Unset omits timing; diagnostic only.
       call get_environment_variable('EXHALE_STEP_CLOCK', diag_env)
       if (trim(diag_env) .eq. '1') trace_step_clock = .true.
 
       ! The face mass-flux series and the base-cell startup trace
+      ! EXHALE_FACE_MASS_FLUX_SERIES: Overrides the interval for the face-mass-flux series. Unset retains
+      ! the initialized interval; diagnostic only.
       call get_environment_variable('EXHALE_FACE_MASS_FLUX_SERIES', diag_env)
       if (len_trim(diag_env) .gt. 0) read(diag_env,*) face_flux_series_every
+      ! EXHALE_BASE_CELL_STARTUP: Set to 1 to write the base-cell startup record. Unset omits that
+      ! record; diagnostic only.
       call get_environment_variable('EXHALE_BASE_CELL_STARTUP', diag_env)
       if (trim(diag_env) .eq. '1') then
          base_cell_startup_on = .true.
@@ -7842,6 +7866,8 @@
       ! entry; after the first solve under a named cap the run does not
       ! enter the solver again, and says so where it would have.
       if (n_stationary_solves_run .eq. 0) then
+         ! EXHALE_JFNK_MAXIT: Overrides the stationary JFNK iteration cap when set. Unset uses the caller
+         ! cap; can change returned state.
          call get_environment_variable('EXHALE_JFNK_MAXIT', jfnk_cap_env)
          jfnk_run_cap_named = (len_trim(jfnk_cap_env) .gt. 0)
       endif
@@ -7885,10 +7911,16 @@
       carrier_ending_text   = 'no carrier relaxation was run on this pass'
       progress_decided_by   = 'not asked on this pass'
 
+      ! EXHALE_CARRIER_TRUST: Overrides the carrier trust bound when set. Unset retains the initialized
+      ! bound; can change accepted carrier updates.
       call get_environment_variable('EXHALE_CARRIER_TRUST', diag_env)
       if (len_trim(diag_env) .gt. 0) read(diag_env,*) carrier_trust
+      ! EXHALE_STAGE_EXPORT: Set to 1 to write stage populations. Unset omits the export; diagnostic
+      ! output only.
       call get_environment_variable('EXHALE_STAGE_EXPORT', diag_env)
       stage_export_on = (trim(diag_env) .eq. '1')
+      ! EXHALE_OUTER_PASSES: Overrides the outer-pass cap when set. Unset retains the initialized cap;
+      ! can change returned state.
       call get_environment_variable('EXHALE_OUTER_PASSES', diag_env)
       if (len_trim(diag_env) .gt. 0) read(diag_env,*) outer_pass_cap
       ! The bound one pass may move the carriers by is shortened by the
@@ -7897,6 +7929,8 @@
       trust_pass = carrier_trust
       carrier_trust_held = .false.
       carrier_trust_hold = 0.0d0
+      ! EXHALE_CARRIER_TRUST_HOLD: Overrides the held carrier trust bound when set. Unset retains the
+      ! initialized bound; can change outer updates.
       call get_environment_variable('EXHALE_CARRIER_TRUST_HOLD', diag_env)
       if (len_trim(diag_env) .gt. 0) then
          read(diag_env,*) carrier_trust_hold
@@ -9300,6 +9334,8 @@
          endif
          if (stage_export_on .and. update_taken)                          &
             call write_stage_state(it_diff, 'composition_return', .false.)
+         ! EXHALE_DIFFUSION_CHECK: Set to 1 to write the diffusion-pass profile. Unset omits the profile;
+         ! diagnostic only.
          call get_environment_variable('EXHALE_DIFFUSION_CHECK', diag_env)
          if (trim(diag_env) .eq. '1')                                    &
             call write_diffusion_pass_profile(it_diff)
@@ -10063,6 +10099,8 @@
       allocate(csm_dT_cell(1-Ng:N+Ng), csm_dc_cell(1-Ng:N+Ng),            &
                csm_at_rest(1-Ng:N+Ng))
       csm_dT_cell = 0.0d0;  csm_dc_cell = 0.0d0;  csm_at_rest = .false.
+      ! EXHALE_CSM_DEBUG: Enables composition-map debug output when nonempty. Unset omits it; diagnostic
+      ! only.
       call get_environment_variable('EXHALE_CSM_DEBUG', csm_dbg_env)
       csm_debug = (len_trim(csm_dbg_env) .gt. 0)
       ! The geometric decay of the pass sequence: the two increments the
@@ -10085,20 +10123,32 @@
       csm_x_pred_dT = 0.0d0;  csm_x_pred_dc = 0.0d0
       csm_x_at_dT   = 0.0d0;  csm_x_at_dc   = 0.0d0
       csm_x_damp    = 0.0d0
+      ! EXHALE_CSM_GEOM_PASS: Overrides the first pass used by the geometric model. Unset retains the
+      ! initialized pass; can change the outer stop.
       call get_environment_variable('EXHALE_CSM_GEOM_PASS', csm_x_env)
       if (len_trim(csm_x_env) .gt. 0) read(csm_x_env,*) csm_geom_first_pass
+      ! EXHALE_CSM_GEOM_MODEL: Overrides geometric-model tolerance when set. Unset retains the
+      ! initialized tolerance; can change the outer stop.
       call get_environment_variable('EXHALE_CSM_GEOM_MODEL', csm_x_env)
       if (len_trim(csm_x_env) .gt. 0) read(csm_x_env,*) csm_geom_model_tol
+      ! EXHALE_CSM_GEOM_THETA: Overrides the geometric-model theta limit. Unset retains the initialized
+      ! limit; can change the outer stop.
       call get_environment_variable('EXHALE_CSM_GEOM_THETA', csm_x_env)
       if (len_trim(csm_x_env) .gt. 0) read(csm_x_env,*) csm_geom_theta_max
+      ! EXHALE_CSM_GEOM_SAFETY: Overrides the geometric error safety factor. Unset retains the
+      ! initialized factor; can change the outer stop.
       call get_environment_variable('EXHALE_CSM_GEOM_SAFETY', csm_x_env)
       if (len_trim(csm_x_env) .gt. 0) read(csm_x_env,*) csm_err_safety
+      ! EXHALE_CSM_GEOM_DEBUG: Enables geometric-model debug output when nonempty. Unset omits it;
+      ! diagnostic only.
       call get_environment_variable('EXHALE_CSM_GEOM_DEBUG', csm_x_env)
       csm_geom_debug = (len_trim(csm_x_env) .gt. 0)
       ! The probe that MEASURES the accepted state against the fixed
       ! point. Its four arrays hold whole states, ghost cells included,
       ! because the pair it restores is the pair the accepted pass was
       ! taken from and the ghost cells are part of it.
+      ! EXHALE_CSM_ERR_PROBE: Enables the composition-map error probe when nonempty. Unset uses the
+      ! normal pass cap; probe changes measurement work.
       call get_environment_variable('EXHALE_CSM_ERR_PROBE', csm_x_env)
       csm_err_probe = (len_trim(csm_x_env) .gt. 0)
       csm_pass_cap = csm_max_pass
@@ -10113,13 +10163,21 @@
       endif
       csm_probe_active = .false.;  csm_probe_replay = .false.
       csm_probe_pass_accepted = 0
+      ! EXHALE_CSM_EXTRAP: Selects composition-map extrapolation when stated. Unset retains its
+      ! initialized setting; can change the outer update.
       call get_environment_variable('EXHALE_CSM_EXTRAP', csm_x_env)
       if (len_trim(csm_x_env) .gt. 0)                                     &
          csm_extrap_on = (trim(csm_x_env) .ne. '0')
+      ! EXHALE_CSM_EXTRAP_MAX: Overrides the maximum composition-map extrapolation when set. Unset
+      ! retains the initialized limit; can change updates.
       call get_environment_variable('EXHALE_CSM_EXTRAP_MAX', csm_x_env)
       if (len_trim(csm_x_env) .gt. 0) read(csm_x_env,*) csm_extrap_max
+      ! EXHALE_CSM_EXTRAP_REACH: Overrides composition-map extrapolation reach when set. Unset retains
+      ! the initialized reach; can change updates.
       call get_environment_variable('EXHALE_CSM_EXTRAP_REACH', csm_x_env)
       if (len_trim(csm_x_env) .gt. 0) read(csm_x_env,*) csm_x_reach
+      ! EXHALE_CSM_EXTRAP_STRICT: Enables strict extrapolation checks when nonempty. Unset disables them;
+      ! can change accepted updates.
       call get_environment_variable('EXHALE_CSM_EXTRAP_STRICT', csm_x_env)
       csm_extrap_strict = (len_trim(csm_x_env) .gt. 0)
       ! The attempted-step controller's two working arrays: the operator the

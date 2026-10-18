@@ -251,6 +251,8 @@
       character(len=512) :: env
       integer :: ios
 
+      ! EXHALE_MOLECULAR_SEED: Names the molecular seed directory. Unset disables this seed; a named seed
+      ! changes the initial state.
       call get_environment_variable('EXHALE_MOLECULAR_SEED', env)
       if (len_trim(env) .eq. 0) then
          seed_on  = .false.
@@ -260,6 +262,8 @@
       seed_on  = .true.
       seed_dir = trim(adjustl(env))
 
+      ! EXHALE_MOLECULAR_SEED_X2: Selects the molecular-seed H2 fraction rule. Unset uses handoff; can
+      ! change the reconstructed seed.
       call get_environment_variable('EXHALE_MOLECULAR_SEED_X2', env)
       if (len_trim(env) .eq. 0) then
          seed_x2_mode   = 'handoff'
@@ -282,6 +286,8 @@
          endif
       endif
 
+      ! EXHALE_MOLECULAR_SEED_INVARIANT: Selects the molecular-seed invariant. Unset selects p; can
+      ! change the reconstructed seed.
       call get_environment_variable('EXHALE_MOLECULAR_SEED_INVARIANT', env)
       if (len_trim(env) .eq. 0) then
          seed_invariant = 'p'
@@ -308,6 +314,8 @@
       ! the switch the carrier operator already uses.  Default off.
       logical function molecular_seed_debug_on()
       character(len=8) :: env
+      ! EXHALE_CARRIER_DEBUG: Set to 1 to print carrier or molecular-seed diagnostics. Unset omits them;
+      ! diagnostic only.
       call get_environment_variable('EXHALE_CARRIER_DEBUG', env)
       molecular_seed_debug_on = (trim(env) .eq. '1')
       end function molecular_seed_debug_on
