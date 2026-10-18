@@ -1778,6 +1778,22 @@
          ! the inner ghosts take the base cell's own, as for the stages.
          if (carrier_solved(ic_HeTR))                                    &
             call advected_carrier_register(isp_HeTR, .false.)
+         ! THE MOLECULAR IONS (P3 of md/changes_v100_to_v110_20261017.md:
+         ! "advected and mixed by eddy diffusion"), in index order after
+         ! He 2^3S.  Until 2026-10-18 they were solved but not registered,
+         ! so carrier_state read their advected columns past the end of
+         ! the declared set: uninitialized memory, and no advection
+         ! (MEASURED: a build with locals initialized to signaling NaN
+         ! trapped there on the first step of hp_zero_seed, and the
+         ! production build gave run-to-run different states). No handoff
+         ! states their base fraction: the inner ghosts take the base
+         ! cell's own, as for the stages.
+         if (carrier_solved(ic_H2p))                                     &
+            call advected_carrier_register(isp_H2p, .false.)
+         if (carrier_solved(ic_H3p))                                     &
+            call advected_carrier_register(isp_H3p, .false.)
+         if (carrier_solved(ic_HeHp))                                    &
+            call advected_carrier_register(isp_HeHp, .false.)
       endif
       end subroutine carrier_set_init
 
@@ -3215,6 +3231,15 @@
           .not. carrier_rows_advect) then
          ncar = advected_carrier_count()
          call advected_carrier_fractions(f_sp, fcadv(:,1:ncar))
+         ! EVERY SOLVED CARRIER IS ONE ADVECTED COLUMN, in index order
+         ! (carrier_set_init); a solved carrier past the declared set would
+         ! read a column nothing wrote.
+         if (count(carrier_solved(1:n_carrier)) .ne. ncar) then
+            write(*,*) 'ERROR: carrier_state: ', count(carrier_solved(1:n_carrier)), &
+                       ' solved carriers against ', ncar,                 &
+                       ' advected columns'
+            error stop 1
+         endif
          k = 0
          do ic = 1, n_carrier
             if (.not. carrier_solved(ic)) cycle
