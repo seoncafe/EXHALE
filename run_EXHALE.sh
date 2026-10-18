@@ -29,7 +29,7 @@ DIR_SRC="$DIR_MAIN/src"
 DIR_UTILS="$DIR_SRC/utils"
 
 #------- Select Fortran compiler (passed through to the Makefile) -------#
-#   ./run_EXHALE.sh            gfortran (default)
+#   ./run_EXHALE.sh            ifx (default)
 #   ./run_EXHALE.sh --ifort    Intel classic
 #   ./run_EXHALE.sh --ifx      Intel LLVM
 case "$1" in

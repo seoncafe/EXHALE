@@ -1,6 +1,46 @@
-# Proposed upper-focused finite-duration settings; not universal physical accuracy.
-# Lower and transition limits are relaxed; upper limits remain strict.
-# Merge into a complete input.inp, replacing existing keys instead of duplicating them.
+# WASP-121 b, Huang et al. (2023) case B; regional stabilization.
+# Copy to input.inp and Huang_metals.inp to metals.inp, then run EXHALE
+# from this directory so the spectrum path resolves.
+# The initial state is generated; no saved restart state is required.
+Planet name: WASP-121b_HuangB
+Planet radius [R_J]: 2.418
+Planet mass [M_J]: 1.1824
+Equilibrium temperature [K]: 2690.0
+Orbital distance [AU]: 0.02545
+Escape radius [R_p]: 1.50
+He/H number ratio: 0.0851
+2D approximate method: Rate/4 + Mdot
+Parent star mass [M_sun]: 1.3521
+Spectrum type: Load from file..
+Spectrum file: ../../inputdata/sed/wasp121b_composite_lyc_huang2023.txt
+Use only EUV? False
+[E_low,E_mid,E_high] = [ 13.60 , 123.98 , 1.24e3 ]
+Log10 of X-ray luminosity [erg/s]: 29.46
+Log10 of EUV luminosity [erg/s]: 30.42
+Grid type: Mixed
+Grid cells: 580
+Numerical flux: HLLC
+Reconstruction scheme: WENO3
+Include He23S? False
+Load IC? False
+Do only PP: False
+Force start: False
+Outer radius [R_p]: 14.11
+Base BC: pressure 1.0
+IC mode: auto
+Stellar Teff [K]: 6459.0
+Stellar radius [R_sun]: 1.4572
+Jlya escape-prob: True
+Stellar Lya flux [erg/cm2/s]: 1.0e5
+Lya stellar halfwidth [km/s]: 70
+Lya stellar boost [-]: 5
+Deexc heat: True
+Secondary_ionization: False
+H_rec_escape: False
+He_rec_coupling: False
+Conduction: True
+Viscosity: True
+
 Run mode: phys
 Regional convergence: True
 Regional lower radius: 1.3

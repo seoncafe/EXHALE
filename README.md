@@ -54,16 +54,18 @@ The monitor is disabled unless `Regional convergence: True` is present.
 Its supported configuration is atomic, global physical-time marching:
 `Run mode: phys`, with local time stepping, molecular chemistry, Newton solving,
 post-processing-only operation, and stationary restart intent disabled.
-Unsupported combinations stop at startup. Use a complete physical input file;
-the two files below are **settings fragments**, not standalone planet inputs:
+Unsupported combinations stop at startup. Complete inputs for the two cases are:
 
-- [Huang regional settings](examples/regional_convergence/Huang.inp): lower
+- [Huang case B input](examples/regional_convergence/Huang.inp): lower
   boundary between regions at 1.3 R_p, upper at 1.85 R_p; window
   87965.04804471003 s.
-- [Salz regional settings](examples/regional_convergence/Salz.inp): both region
+- [Salz input](examples/regional_convergence/Salz.inp): both region
   boundaries at 1.2 R_p, with no transition region; window 57600 s.
 
-Merge the appropriate fragment into `input.inp`, replacing duplicate keys.
+Copy the chosen file to `input.inp` in `examples/regional_convergence/` and
+run the solver from that directory so its relative spectrum path resolves.
+For Huang, also copy `Huang_metals.inp` to `metals.inp`. Run Salz without a
+`metals.inp` in its working directory.
 The proposed default thresholds in the current source are:
 
 | Quantity | Upper region | Lower and transition regions |
@@ -769,14 +771,14 @@ and Python dependencies.
 
 ```bash
 cd /path/to/EXHALE_v1.10
-make                                    # gfortran; make FC=ifort or FC=ifx
+make                                    # ifx; use make FC=gfortran or FC=ifort to override
 # make check requires the v1.00 regression harness, absent from this tree
 make test                               # the assertion suites (physics, grid and gates, ...)
 ```
-The Makefile takes the compiler from `PATH` and, when that compiler's prefix
-carries an OpenBLAS (the conda-forge gfortran 16.2 of this machine does), links
-that prefix's LAPACK and records it in the rpath -- so the binary and its
-LAPACK share one libgfortran runtime; otherwise it links the system `-llapack`
+The Makefile uses `ifx` from `PATH` by default and links its MKL with
+`-qmkl=sequential`. With `make FC=gfortran`, it uses OpenBLAS from the compiler's
+prefix when available (as with the conda-forge gfortran 16.2 on this machine),
+records that path in the rpath, and otherwise links the system `-llapack`
 (`make LAPACK_LIBS='...'` overrides). OpenBLAS runs its own thread pool,
 independent of OpenMP and by default as wide as the machine: at startup the
 binary sets it to one thread unless `OPENBLAS_NUM_THREADS` is stated, and the
@@ -784,18 +786,16 @@ setup report says which library it found and what it set (the band
 factorizations of the stationary solve are too small to gain from a BLAS team:
 MEASURED 16.33 s against 16.32 s on the `wasp_full_newton` reload at 1 and 8
 BLAS threads, 2026-09-13). The compiler's path and version are part
-of the rebuild stamp: objects of one gfortran are never linked by another.
-The Intel compilers (`make FC=ifx`, `FC=ifort`) link MKL (`-qmkl=sequential`)
-by the same rule; `make FC=ifx OBJDIR=build_ifx EXE=EXHALE_ifx.x` builds a
-second binary beside the gfortran one.
+of the rebuild stamp: objects from different compilers are never linked together.
+`make FC=gfortran OBJDIR=build_gfortran EXE=EXHALE_gfortran.x` builds a
+separate GNU Fortran binary beside the default Intel binary.
 ```
 cd /path/to/prepared_run
 /path/to/EXHALE_v1.10/EXHALE.x  # reads ./input.inp, writes ./output/
 ```
 
 The binary always reads `./input.inp` and writes `./output/` relative to the
-current working directory, so a run is simply a directory. The v1.10
-`examples/regional_convergence/` files are partial settings. Complete historical
+current working directory, so a run is simply a directory. Complete historical
 configurations are available in [the v1.00 examples](../EXHALE_v1.00/examples/README.md);
 check their physics, paths, and supported options before adapting them. `./run_EXHALE.sh` instead opens a Tk interface
 that fills in the planetary parameters and builds and runs for you.
@@ -964,4 +964,4 @@ investigations. The local `md/` directory holds v1.10 development reports.
 
 Kwang-Il Seon (KASI / UST)
 
-Last updated: 2026-10-19 06:01 KST
+Last updated: 2026-10-19 08:13
