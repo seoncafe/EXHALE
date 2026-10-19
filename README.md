@@ -54,18 +54,8 @@ The monitor is disabled unless `Regional convergence: True` is present.
 Its supported configuration is atomic, global physical-time marching:
 `Run mode: phys`, with local time stepping, molecular chemistry, Newton solving,
 post-processing-only operation, and stationary restart intent disabled.
-Unsupported combinations stop at startup. Complete inputs for the two cases are:
-
-- [Huang case B input](examples/regional_convergence/Huang.inp): lower
-  boundary between regions at 1.3 R_p, upper at 1.85 R_p; window
-  87965.04804471003 s.
-- [Salz input](examples/regional_convergence/Salz.inp): both region
-  boundaries at 1.2 R_p, with no transition region; window 57600 s.
-
-Copy the chosen file to `input.inp` in `examples/regional_convergence/` and
-run the solver from that directory so its relative spectrum path resolves.
-For Huang, also copy `Huang_metals.inp` to `metals.inp`. Run Salz without a
-`metals.inp` in its working directory.
+Unsupported combinations stop at startup. Configure regional criteria in a
+complete physical `input.inp`.
 The proposed default thresholds in the current source are:
 
 | Quantity | Upper region | Lower and transition regions |
@@ -96,8 +86,7 @@ mass-flow limits override the common `Regional inventory limit` and
 `Regional ...` keys are rejected.
 
 These are proposed finite-duration criteria, not universal physical accuracy
-bounds or a proof that oscillations remain bounded indefinitely. Neither Huang
-nor Salz is accepted by this README update. See
+bounds or a proof that oscillations remain bounded indefinitely. See
 [the definitions](md/CONVERGENCE_LEVELS.md),
 [the default-setting rationale](md/PROPOSAL_20261016_upper_focused_regional_defaults.md),
 and [the completed-results assessment](md/REVIEW_20261016_completed_results_convergence_conditions.md).
@@ -149,8 +138,8 @@ provide the lower-boundary thermochemical calculation used by the stationary
 residual and stored-state certification. `steady_newton.f90` invokes
 `stationary_ghost_state`; `certification.f90` queries its boundary result.
 An unclosed boundary cannot establish a certified stationary solution.
-This implementation does not establish stationary solutions for all historical
-Yan, Huang, or Salz states.
+This implementation does not establish stationary solutions for every
+historical input state.
 
 The boundary design and validation record are in the
 [design](md/DESIGN_20261012_stationary_boundary_closure.md),
@@ -484,7 +473,7 @@ instruction to resume calculations.
   stopped flowing, and an optional Shapiro filter for a breathing base
 - Roche-potential geometry, in either a spherical or a Roche-lobe domain;
   `Outer radius [R_p]:` carries a Roche domain past L1 with the full tidal
-  potential (as Huang et al. 2023 and Yan et al. 2022 do). Past the ridge the
+  potential. Past the ridge the
   cold IC holds the density at its ridge value, the ghosts of a supersonic
   outermost cell are the steady isothermal wind through it, and the absorbing
   columns start at the outer face `r_edg(N)` in every domain (the outer
@@ -900,10 +889,6 @@ refer to historical notes and examples in the neighboring source tree.
   solver behind `IC mode: windae`
 - [`../EXHALE_v1.00/md/viscosity_conduction.md` (v1.00)](../EXHALE_v1.00/md/viscosity_conduction.md), molecular
   viscosity and heat conduction: derivation and where they matter
-- [`../EXHALE_v1.00/docs/code_comparison.pdf` (v1.00)](../EXHALE_v1.00/docs/code_comparison.pdf) and
-  [`../EXHALE_v1.00/docs/methodology_comparison.pdf` (v1.00)](../EXHALE_v1.00/docs/methodology_comparison.pdf):
-  comparison with ATES, Salz, Kubyshkina, Murray-Clay, AIOLOS, Taylor, Xing
-
 `../EXHALE_v1.00/docs/` holds the inherited typeset notes on individual
 investigations. The local `md/` directory holds v1.10 development reports.
 
@@ -964,4 +949,4 @@ investigations. The local `md/` directory holds v1.10 development reports.
 
 Kwang-Il Seon (KASI / UST)
 
-Last updated: 2026-10-19 08:13
+Last updated: 2026-10-19 16:42
