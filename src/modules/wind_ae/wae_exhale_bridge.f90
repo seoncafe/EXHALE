@@ -9,7 +9,7 @@
       use global_parameters, only: Mp, R0, Mstar, a_orb, T0, n0, HeH,    &
                                     J_XUV, b0, T_star_eff, R_star,        &
                                     spherical_domain, r, N, Ng,           &
-                                    windae_seed_file, windae_seed_out
+                                    windae_seed_file, windae_seed_out, output_dir
       use wae_params,      only: par => wae_par
       use wae_spectrum,    only: wae_load_spectrum
       use wae_rate_coeffs, only: wae_rate_coeffs_init
@@ -144,7 +144,7 @@
       ! write the IC onto the EXHALE grid (base anchor = EXHALE n0/T0/Rp/HeH)
       call wae_write_ic(dr, drho, dv, dT, dHI, dHeI, ntot, rgrid, ng_grid, &
                         log10(n0), T0, R0, HeH, par%Mstar/par%Mp,          &
-                        par%semimajor/par%Rp, par%tidalforce, 'output')
+                        par%semimajor/par%Rp, par%tidalforce, trim(output_dir))
       write(*,'(A)') '      (wae bridge) wrote output/{Hydro_ioniz,'//    &
                      'Ion_species}_IC.txt'
       end subroutine wae_generate_ic

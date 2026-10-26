@@ -47,9 +47,9 @@ from exhale_io import RJ_CM                                # noqa: E402
 RJ = RJ_CM
 
 
-def read_input_inp(run_dir):
+def read_input_inp(run_dir, input_file="input.inp"):
     """Pull Mp [g], Teq [K], HeH from an EXHALE input.inp."""
-    path = os.path.join(run_dir, 'input.inp')
+    path = os.path.join(run_dir, input_file)
     txt = open(path).read().splitlines()
     def grab(label, word):
         for ln in txt:
@@ -128,6 +128,8 @@ def integrate_column(Mp, R1bar, Teq, fhe, tmodel, Tint, p_deep=1.0, p_base=1e-6,
 def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument('run_dir')
+    ap.add_argument('--input-file', default='input.inp',
+                    help='input filename relative to run_dir or absolute')
     ap.add_argument('--r1bar', type=float, required=True,
                     help='radius of the 1-bar level [R_J] (e.g. transit radius)')
     ap.add_argument('--guillot', action='store_true',
@@ -136,7 +138,7 @@ def main():
     ap.add_argument('--kzz', type=float, default=1e9, help='K_zz at base [cm2/s]')
     a = ap.parse_args()
 
-    Mp, Teq, HeH = read_input_inp(a.run_dir)
+    Mp, Teq, HeH = read_input_inp(a.run_dir, a.input_file)
     tmodel = 'guillot' if a.guillot else 'iso'
     rb, Tb, q2, qh, qhe = integrate_column(Mp, a.r1bar * RJ, Teq, HeH, tmodel, a.tint)
 

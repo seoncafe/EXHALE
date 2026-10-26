@@ -72,7 +72,9 @@
 	character(len=250) :: optlist
 	integer :: iopt
 
-	write(*,*) '(write_setup_report.f90) Writing the setup report on EXHALE_setup.out..'
+	write(*,'(A)') 'Writing setup report: '//trim(output_dir)//'EXHALE_setup.out'
+	write(outfile,'(A)') 'Input file: '//trim(inp_file)
+	write(outfile,'(A)') 'Output directory: '//trim(output_dir)
 
 	n_met_active = 0
 	if (thereis_metals) then
@@ -822,7 +824,7 @@
 	! Formats: reals ES23.15E3, integers plain, logicals T/F, strings trimmed.
 	integer :: u
 
-	open(newunit=u, file='parse_dump.txt', status='replace', action='write')
+	open(newunit=u, file=trim(output_dir)//'parse_dump.txt', status='replace', action='write')
 
 	write(u,'(A)') '# EXHALE parse dump (EXHALE_PARSE_DUMP=1): variables set by input_read'
 	write(u,'(A)') '# order follows md/input_schema.md; cgs where input_read converts'
@@ -1066,10 +1068,12 @@
 	integer :: co_dom_out, co_dom_hot, co_dom_hep
 	real*8  :: co_dom_ratio, co_dom_r, co_dom_form
 
-	inquire(file='base.inp', exist=base_present)
-	open(newunit=u, file='EXHALE_resolved.out', status='replace',        &
+	inquire(file=companion_path('base.inp'), exist=base_present)
+	open(newunit=u, file=trim(output_dir)//'EXHALE_resolved.out', status='replace',        &
 	     action='write')
 	write(u,'(A)') '# EXHALE resolved configuration (machine-readable).'
+	write(u,'(A)') 'input_file '//trim(inp_file)
+	write(u,'(A)') 'output_directory '//trim(output_dir)
 	write(u,'(A)') '# Values in effect after input.inp + base.inp resolution;'
 	write(u,'(A)') '# these are what the wind solver uses, and what'
 	write(u,'(A)') '# EXHALE_transit.py should use instead of input.inp.'

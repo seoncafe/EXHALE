@@ -247,7 +247,7 @@
       real*8, dimension(1-Ng:N+Ng),   intent(in) :: continuity_scale
       integer, intent(in) :: rows_kind
 
-      character(len=64) :: fname
+      character(len=8192) :: fname
       character(len=32) :: kind_name, state_name, branch_name, recon_name
       integer :: uu, ios, j
       real*8  :: dr, rp, rm, dAp, dAm, dV, dF3p
@@ -435,7 +435,7 @@
          state_name = 'unrecognized'
       end select
 
-      write(fname,'(A,I4.4,A)') 'output/conservation_budget_',           &
+      write(fname,'(A,I4.4,A)') trim(output_dir)//'conservation_budget_',           &
                                 export_index, '.txt'
       open(newunit=uu, file=trim(fname), status='replace',               &
            action='write', iostat=ios)
@@ -479,9 +479,9 @@
       ! exported column by column, and the restart pair this run loaded is
       ! identified by the rolling checksum of its bytes.
       write(uu,'(A,I0,A,I0)') '# state restart_ck_hydro=',               &
-           file_rolling_checksum('output/Hydro_ioniz_IC.txt'),           &
+           file_rolling_checksum(trim(output_dir)//'Hydro_ioniz_IC.txt'),           &
            ' restart_ck_species=',                                       &
-           file_rolling_checksum('output/Ion_species_IC.txt')
+           file_rolling_checksum(trim(output_dir)//'Ion_species_IC.txt')
 
       ! THE NORMALIZATION.  Every column is in code units; these are the
       ! factors that take them to cgs.

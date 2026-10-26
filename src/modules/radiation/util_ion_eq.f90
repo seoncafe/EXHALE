@@ -3515,7 +3515,7 @@
 	write(*,'(a,es9.2)')                                                  &
 		' (write_cool_breakdown_eq) max |sum(channels)/cool - 1| = ', maxrel
 
-	open(unit = 71, file = './output/Cooling_breakdown.txt')
+	open(unit = 71, file = trim(output_dir)//'Cooling_breakdown.txt')
 	write(71,'(a)') '# Radiative cooling rate in each channel [cgs erg cm^-3 s^-1] vs radius.'
 	write(71,'(a)') '# Channel sum reproduces the Hydro_ioniz.txt cool column.'
 	write(71,'(a)') '# col1 r/Rp  col2 T[K]  col3 ne  col4 cool_total  col5 reco'  &
@@ -3635,7 +3635,7 @@
 		enddo
 	endif
 
-	open(unit = 72, file = './output/Heating_breakdown.txt')
+	open(unit = 72, file = trim(output_dir)//'Heating_breakdown.txt')
 	write(72,'(a)') '# Volumetric heating rate in each channel [cgs erg cm^-3 s^-1] vs radius.'
 	write(72,'(a)') '# The channels are those the ionization sweep deposited for the state'  &
 	             // ' written beside it, so their sum is the heat column of Hydro_ioniz.txt.'

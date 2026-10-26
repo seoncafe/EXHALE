@@ -58,8 +58,8 @@
       if (len_trim(run_identity) .eq. 0) call establish_run_identity()
       write(stage_id,'(A,A,A,I0,A,I0,A,A)') 'r', trim(run_identity),     &
            '_s', n_stationary_solves_run, '_p', pass, '_', trim(stage)
-      dir = './output/stage_restart/'//trim(stage_id)
-      rc = stage_mkdir('./output/stage_restart'//c_null_char, 493_c_int)
+      dir = trim(output_dir)//'stage_restart/'//trim(stage_id)
+      rc = stage_mkdir(trim(output_dir)//'stage_restart'//c_null_char, 493_c_int)
       rc = stage_mkdir(trim(dir)//c_null_char, 493_c_int)
       if (rc .ne. 0) then
          write(*,'(A,A)') ' (EXHALE_main) cannot create stage restart ', &

@@ -4653,7 +4653,7 @@
 	character(len=64) :: fmt_rec
 	if (.not. ieq_class_record_requested()) return
 	if (.not. allocated(ieq_cell_acceptance_class)) return
-	open(newunit=ju, file='output/ieq_acceptance_classes.txt',             &
+	open(newunit=ju, file=trim(output_dir)//'ieq_acceptance_classes.txt',             &
 	     status='replace', action='write', iostat=ios)
 	if (ios .ne. 0) return
 	nr = ieq_class_record_nrow
@@ -5772,7 +5772,7 @@
 
 	!$omp critical (ieq_cell_dump)
 	if (.not. ieq_dump_open) then
-		open(newunit=ieq_dump_unit, file='ieq_cell_dump.txt',             &
+		open(newunit=ieq_dump_unit, file=trim(output_dir)//'ieq_cell_dump.txt',             &
 		     status='replace', action='write', iostat=ios)
 		ieq_dump_open = .true.
 		write(ieq_dump_unit,'(A)')                                        &
@@ -5876,7 +5876,7 @@
 
 	!$omp critical (ieq_rate_probe)
 	if (.not. probe_open) then
-		open(newunit=probe_unit, file='ieq_cell_rate_probe.txt',          &
+		open(newunit=probe_unit, file=trim(output_dir)//'ieq_cell_rate_probe.txt',          &
 		     status='replace', action='write', iostat=ios)
 		probe_open = .true.
 		write(probe_unit,'(A)') '# ieq_cell_rate_probe: stellar-field'//  &

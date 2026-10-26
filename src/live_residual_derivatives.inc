@@ -40,7 +40,7 @@
             fheld(nvar_jac*(jl-1)+kl)=Rres(kl,jl)
          enddo
       enddo
-      open(newunit=unit_i,file='output/live_baseline_identity.txt',status='replace')
+      open(newunit=unit_i,file=trim(output_dir)//'live_baseline_identity.txt',status='replace')
       write(unit_i,'(A)') '# cell slot live_R held_R difference (code units)'
       do jl=1,N
          do kl=1,3
@@ -56,12 +56,12 @@
          direction(jl)=sin(0.1d0*dble(jl))
       enddo
       direction=direction/maxval(abs(direction))*dscale
-      open(newunit=unit_s,file='output/live_derivative_steps.txt',status='replace')
+      open(newunit=unit_s,file=trim(output_dir)//'live_derivative_steps.txt',status='replace')
       write(unit_s,'(A,I0)') '# fixed physical composition sweeps: ',chemical_passes
       write(unit_s,'(A)') '# h hp hm usable_plus usable_minus '// &
            'asym_mass asym_mom asym_energy change_mass change_mom '// &
            'change_energy norm_mass norm_mom norm_energy'
-      open(newunit=unit_v,file='output/live_derivative_vectors.txt',status='replace')
+      open(newunit=unit_v,file=trim(output_dir)//'live_derivative_vectors.txt',status='replace')
       write(unit_v,'(A)') '# h cell slot central forward backward (row scaled)'
       have_previous=.false.
       do exponent=4,10

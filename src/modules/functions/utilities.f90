@@ -157,9 +157,9 @@
            ' run='//d_ymd(1:4)//'-'//d_ymd(5:6)//'-'//d_ymd(7:8)//'T'//     &
            d_hms(1:2)//':'//d_hms(3:4)//':'//d_hms(5:6)
       write(unit,'(A,I0,A,I0,A,I0)') '# provenance: ck_input=',             &
-           file_rolling_checksum('input.inp'),                              &
-           ' ck_base=',   file_rolling_checksum('base.inp'),                &
-           ' ck_metals=', file_rolling_checksum('metals.inp')
+           file_rolling_checksum(trim(inp_file)),                              &
+           ' ck_base=',   file_rolling_checksum(companion_path('base.inp')),                &
+           ' ck_metals=', file_rolling_checksum(companion_path('metals.inp'))
       write(unit,'(A,I0)') '# provenance: recon='//                        &
            trim(reconstruction_operator_label())//                          &
            ' base_bc='//trim(bmod)//' carrier='//trim(cmod)//              &

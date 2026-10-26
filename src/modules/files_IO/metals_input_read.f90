@@ -53,7 +53,7 @@
       integer :: quantity_line(n_quantity)
       integer :: iline, iq
 
-      inquire(file = met_inp_file, exist = file_exists)
+      inquire(file = companion_path(met_inp_file), exist = file_exists)
       if (.not. file_exists) then
          write(*,*) '(metals_input) No metals.inp found; no metals', &
                     ' (every abundance stays zero).'
@@ -61,7 +61,7 @@
       endif
 
       write(*,*) '(metals_input) Reading metals.inp..'
-      open(unit = 36, file = met_inp_file, status = 'old', action = 'read')
+      open(unit = 36, file = companion_path(met_inp_file), status = 'old', action = 'read')
 
       n_set = 0
       quantity_line = 0

@@ -783,8 +783,20 @@ cd /path/to/prepared_run
 /path/to/EXHALE_v1.10/EXHALE.x  # reads ./input.inp, writes ./output/
 ```
 
-The binary always reads `./input.inp` and writes `./output/` relative to the
-current working directory, so a run is simply a directory. Complete historical
+Run `EXHALE.x [input_file]`. With no argument, it reads `input.inp` in the
+working directory. A missing input file stops the run and names the path tried.
+Relative paths for `metals.inp`, `base.inp`, `opacity.inp`, the lower-atmosphere
+profile, and the spectrum are resolved from the input file's directory;
+presence of the first three files enables their respective options.
+
+The optional input line `Output directory: <path>` selects an absolute path or
+a path relative to the working directory. Without it, `input.inp` writes to
+`output/` for existing runs; any other input filename writes to a directory
+named after its stem in the working directory. For example,
+`EXHALE.x cases/salz.inp` writes to `salz/`. EXHALE creates the output
+directory when needed. Profiles, restart files, `EXHALE_setup.out`, and
+`EXHALE_resolved.out` are written inside it. The setup and resolved reports
+state the input path and output directory in effect. Complete historical
 configurations are available in [the v1.00 examples](../EXHALE_v1.00/examples/README.md);
 check their physics, paths, and supported options before adapting them. `./run_EXHALE.sh` instead opens a Tk interface
 that fills in the planetary parameters and builds and runs for you.
@@ -949,4 +961,4 @@ investigations. The local `md/` directory holds v1.10 development reports.
 
 Kwang-Il Seon (KASI / UST)
 
-Last updated: 2026-10-19 16:42
+Last updated: 2026-10-27 00:16 KST

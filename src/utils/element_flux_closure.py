@@ -277,24 +277,22 @@ PROVENANCE_KEYS = ('lower_profile_solution_id', 'lower_profile_iteration',
                    'HeH_number_ratio')
 
 
-def resolved_configuration_path(run_dir):
+def resolved_configuration_path(run_dir, output_dir='output'):
     """`write_resolved_config` (write_setup_report.f90) writes
-    `EXHALE_resolved.out` at the run-directory root, not under `output/`,
-    unlike the other run products.  The `output/` path is checked first only
-    as a defensive fallback in case that ever changes; today it is never
-    where the file is found."""
-    for rel in ('output/EXHALE_resolved.out', 'EXHALE_resolved.out'):
-        p = os.path.join(run_dir, rel)
+    `EXHALE_resolved.out` in the output directory. Older runs wrote it
+    at the run-directory root, which remains readable."""
+    for p in (os.path.join(run_dir, output_dir, 'EXHALE_resolved.out'),
+              os.path.join(run_dir, 'EXHALE_resolved.out')):
         if os.path.isfile(p):
             return p
     return None
 
 
-def read_resolved_configuration(run_dir):
+def read_resolved_configuration(run_dir, output_dir='output'):
     """`key<whitespace>value`, one per line, `#` comments.  Returns the raw
     string map; the value of a notes key may contain spaces and is kept
     whole."""
-    path = resolved_configuration_path(run_dir)
+    path = resolved_configuration_path(run_dir, output_dir)
     if path is None:
         raise SystemExit('no EXHALE_resolved.out under %s' % run_dir)
     keys = {}
@@ -1489,10 +1487,10 @@ def run_closure(case_dir, cfg, phi_H, phi_He, omega, tol, kmax, seed,
         % (kmax, kmax - 1, eps_H, eps_He, tol, history_path(case_dir)))
 
 
-def report_measurement_only(run_dir, tol):
+def report_measurement_only(run_dir, tol, output_dir='output'):
     """`--dry-run`: the reading and measurement path against an existing
     EXHALE run directory.  Nothing is executed."""
-    keys, path = read_resolved_configuration(run_dir)
+    keys, path = read_resolved_configuration(run_dir, output_dir)
     print('read %s (%d keys)' % (path, len(keys)))
     lacking = missing_keys(keys, PROVENANCE_KEYS + OVERLAP_KEYS + STEADY_KEYS)
     if lacking:
@@ -1564,6 +1562,8 @@ def main():
                          ' run directory (the parent of --seed)')
     ap.add_argument('--resume', action='store_true',
                     help='continue from the last completed iteration')
+    ap.add_argument('--output-dir', default='output',
+                    help='output directory to read with --dry-run')
     ap.add_argument('--dry-run', action='store_true',
                     help='read and measure an existing run directory only')
     ap.add_argument('--print-config-template', action='store_true',
@@ -1576,7 +1576,7 @@ def main():
     if not a.case_dir:
         ap.error('case_dir is required')
     if a.dry_run:
-        return report_measurement_only(a.case_dir, a.tol)
+        return report_measurement_only(a.case_dir, a.tol, a.output_dir)
 
     if a.phi0_H is None:
         ap.error('--phi0-H is required')

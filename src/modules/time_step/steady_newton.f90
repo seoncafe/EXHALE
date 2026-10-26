@@ -6701,7 +6701,7 @@
             enddo
          endif
       enddo
-      open(newunit=stream,file='output/composition_elimination_pairs.txt', &
+      open(newunit=stream,file=trim(output_dir)//'composition_elimination_pairs.txt', &
            status='new',action='write')
       write(stream,'(A)') '# Same state, seed and checkpoint; fresh reconstruction.'
       write(stream,'(A)') '# sample requested completed admitted nonroot refusal increment'
@@ -9688,7 +9688,7 @@
       ! WHERE the two fixed points differ, cell by cell: the profile is what
       ! says whether the difference is one front cell or a whole region,
       ! which species carries it and which rows of the residual it reaches.
-      open(unit=77, file='sc_trace_profile.txt', status='replace')
+      open(unit=77, file=trim(output_dir)//'sc_trace_profile.txt', status='replace')
       write(77,'(A)') '# columns: j r  f_A(1:n_species)  f_B(1:n_species)'//&
            '  heat_A cool_A heat_B cool_B  Rmass_A Rmom_A Rene_A'//         &
            '  Rmass_B Rmom_B Rene_B'

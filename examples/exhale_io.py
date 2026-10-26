@@ -615,7 +615,7 @@ def read_input(path):
 # profile handoff sets R0 to the radius of its matching level
 # (input_read.f90, `lap_value_at_match('r', ...)`), and base.inp can override
 # the base state as well.  The Fortran writes the values in effect to
-# EXHALE_resolved.out in the run directory (write_resolved_config,
+# EXHALE_resolved.out in the output directory (write_resolved_config,
 # write_setup_report.f90: keys `planet_radius_RJ`, `planet_mass_MJ`), and the
 # radius column of every profile is in units of that R0.  load_run puts those
 # values in run.inp['Rp_RJ'] / run.inp['Mp_MJ'], so every dimensional
@@ -672,8 +672,8 @@ def load_run(outdir, inputfile, adv=True, ghost=False):
     Physical cells only unless ghost=True.
 
     Planet radius and mass.  run.inp['Rp_RJ'] and run.inp['Mp_MJ'] are the
-    values the run was solved with, read from EXHALE_resolved.out in the run
-    directory (the parent of `outdir`, independently of `inputfile`);
+    values the run was solved with, read from EXHALE_resolved.out in the
+    output directory (`outdir`, independently of `inputfile`);
     the input.inp values are kept as
     run.inp['Rp_RJ_input'] / run.inp['Mp_MJ_input'] and run.inp['planet_source']
     names the file the values came from.  Without EXHALE_resolved.out the
@@ -711,7 +711,10 @@ def load_run(outdir, inputfile, adv=True, ghost=False):
     run_dir = os.path.dirname(os.path.abspath(outdir.rstrip(os.sep)))
     run.inp['Rp_RJ_input'] = run.inp.get('Rp_RJ')
     run.inp['Mp_MJ_input'] = run.inp.get('Mp_MJ')
-    res_path = os.path.join(run_dir, RESOLVED_CONFIG_FILE)
+    res_path = os.path.join(outdir, RESOLVED_CONFIG_FILE)
+    if not os.path.isfile(res_path):
+        # Older runs wrote this record beside the output directory.
+        res_path = os.path.join(run_dir, RESOLVED_CONFIG_FILE)
     if os.path.isfile(res_path):
         run.resolved = read_resolved_config(res_path)
         run.inp['Rp_RJ'] = float(run.resolved['planet_radius_RJ'])
@@ -732,7 +735,7 @@ def load_run(outdir, inputfile, adv=True, ghost=False):
             print('exhale_io: no %s in %s; planet radius and mass taken from '
                   '%s, which is the solved planet only if no lower-atmosphere '
                   'profile or base.inp changed the base'
-                  % (RESOLVED_CONFIG_FILE, run_dir, inputfile),
+                  % (RESOLVED_CONFIG_FILE, outdir, inputfile),
                   file=sys.stderr)
     return run
 
@@ -775,7 +778,7 @@ def _planet_value(run, key):
     x = run.inp.get(key)
     if x is None:
         raise ValueError('%s unknown for this run: load it with its input.inp '
-                         'or next to its EXHALE_resolved.out' % key)
+                         'or with its EXHALE_resolved.out' % key)
     return x
 
 

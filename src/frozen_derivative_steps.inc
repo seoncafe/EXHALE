@@ -9,7 +9,7 @@
       real*8 :: dp(size(y_ref)),dm(size(y_ref)),dc(size(y_ref))
       real*8 :: hp,hm,h_requested,scale,errp,errm,errc,asymmetry
       integer :: exponent,unit_d,loc(1),cell_d,slot_d
-      open(newunit=unit_d,file='output/frozen_derivative_steps.txt', &
+      open(newunit=unit_d,file=trim(output_dir)//'frozen_derivative_steps.txt', &
            status='replace',action='write')
       write(unit_d,'(A)') '# requested_h h_plus h_minus error_forward'// &
            ' error_backward error_central asymmetry worst_cell worst_slot'

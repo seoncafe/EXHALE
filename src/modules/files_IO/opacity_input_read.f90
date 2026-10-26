@@ -38,7 +38,7 @@
       character(len = :), allocatable :: trimmed, key, val
       logical :: file_exists
 
-      inquire(file = opa_inp_file, exist = file_exists)
+      inquire(file = companion_path(opa_inp_file), exist = file_exists)
       if (.not. file_exists) then
          write(*,*) '(opacity_input) No opacity.inp found; using defaults (model=', &
                     opacity_model, ').'
@@ -46,7 +46,7 @@
       endif
 
       write(*,*) '(opacity_input) Reading opacity.inp..'
-      open(unit = 38, file = opa_inp_file, status = 'old', action = 'read')
+      open(unit = 38, file = companion_path(opa_inp_file), status = 'old', action = 'read')
 
       n_set = 0
       do
@@ -78,10 +78,10 @@
             case ('OPA_PB_FACTOR');    read(val,*) opa_pb_factor
             case ('OPA_PB_EXPONENT');  read(val,*) opa_pb_exponent
             case ('OPA_PB_PIVOT');     read(val,*) opa_pb_pivot
-            case ('OPA_FILE_HI');      opa_file_HI    = val
-            case ('OPA_FILE_HEI');     opa_file_HeI   = val
-            case ('OPA_FILE_HEII');    opa_file_HeII  = val
-            case ('OPA_FILE_HEITR');   opa_file_HeITR = val
+            case ('OPA_FILE_HI');      opa_file_HI    = companion_path(val)
+            case ('OPA_FILE_HEI');     opa_file_HeI   = companion_path(val)
+            case ('OPA_FILE_HEII');    opa_file_HeII  = companion_path(val)
+            case ('OPA_FILE_HEITR');   opa_file_HeITR = companion_path(val)
             case default
                write(*,*) '  WARN: unknown key: ', trim(key)
                cycle

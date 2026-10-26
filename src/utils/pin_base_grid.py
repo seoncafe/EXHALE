@@ -45,6 +45,11 @@ Usage (from anywhere; paths are relative to the EXHALE_v1.00 root):
     python3 src/utils/pin_base_grid.py --execute  # writes the LIVE pins
     python3 src/utils/pin_base_grid.py --list     # also lists every file
 A second --execute writes nothing: a pinned file carries the key.
+
+To inspect one named run, use --run-dir with --input-file and optionally
+--output-dir. Without --output-dir, the input key or solver filename rule
+selects the output directory. Bulk scanning retains its historical input
+names and output directory detection.
 """
 import argparse
 import collections
@@ -120,7 +125,11 @@ def under(rel, root):
     return rel == root or rel.startswith(root + '/')
 
 
-def has_stored_state(d):
+def has_stored_state(d, output_dir=None):
+    if output_dir is not None:
+        return os.path.isdir(output_dir) and any(
+            f.startswith('Hydro_ioniz') and f.endswith('.txt')
+            for f in os.listdir(output_dir))
     for name in os.listdir(d):
         p = os.path.join(d, name)
         if name.startswith('output') and os.path.isdir(p):
@@ -130,7 +139,7 @@ def has_stored_state(d):
     return False
 
 
-def classify(root, rel):
+def classify(root, rel, output_dir=None):
     """(class, area) of the file at root/rel."""
     parts = rel.split('/')
     if 'states' in parts[:-1] or 'runs' in parts[:-1]:
@@ -146,7 +155,7 @@ def classify(root, rel):
             return 'LIVE', r
     if under(rel, 'examples'):
         d = os.path.dirname(rel)
-        if has_stored_state(os.path.join(root, d)):
+        if has_stored_state(os.path.join(root, d), output_dir):
             return 'LIVE', 'examples'
         if d in EXAMPLE_SEEDED:
             return 'LIVE', 'examples'
@@ -163,6 +172,18 @@ def candidates(root):
             if name in NAMES:
                 rel = os.path.normpath(os.path.join(rel_dir, name))
                 yield rel
+
+
+def selected_output_directory(run_dir, input_path, output_dir, lines):
+    """Resolve the solver's output directory for a selected input file."""
+    if output_dir is None:
+        for line in lines:
+            if not is_comment(line) and label(line, 'Output directory'):
+                output_dir = line.split(':', 1)[1].split('#', 1)[0].strip()
+        if not output_dir:
+            name = os.path.basename(input_path)
+            output_dir = 'output' if name == 'input.inp' else os.path.splitext(name)[0]
+    return os.path.abspath(os.path.join(run_dir, output_dir))
 
 
 def pinned_text(lines):
@@ -187,11 +208,25 @@ def main():
                     help='write the LIVE pins (default: dry run)')
     ap.add_argument('--list', action='store_true',
                     help='list every candidate with its class')
+    ap.add_argument('--run-dir', default=None,
+                    help='select one run directory instead of scanning the tree')
+    ap.add_argument('--input-file', default=None,
+                    help='selected input filename relative to run-dir or absolute')
+    ap.add_argument('--output-dir', default=None,
+                    help='selected output directory relative to run-dir or absolute')
     ap.add_argument('--root', default=os.path.normpath(os.path.join(
         os.path.dirname(os.path.abspath(__file__)), '..', '..')),
         help='the EXHALE_v1.00 directory (default: this script\'s tree)')
     a = ap.parse_args()
     root = a.root
+    selected = any(value is not None for value in
+                   (a.run_dir, a.input_file, a.output_dir))
+    run_dir = os.path.abspath(a.run_dir or '.')
+    input_path = os.path.abspath(os.path.join(run_dir, a.input_file or 'input.inp'))
+    if selected and not os.path.isfile(input_path):
+        ap.error('input file does not exist: %s' % input_path)
+    if selected and os.path.commonpath((os.path.abspath(root), input_path)) != os.path.abspath(root):
+        ap.error('selected input file must be under --root: %s' % input_path)
 
     count = collections.Counter()      # (class, area) -> files needing a pin
     keyed = collections.Counter()      # (class, area) -> Mixed with the key
@@ -199,11 +234,15 @@ def main():
     templates = []
     unclassified = []
     written = 0
-    for rel in sorted(candidates(root)):
-        cls, area = classify(root, rel)
+    entries = ([os.path.relpath(input_path, root)] if selected
+               else sorted(candidates(root)))
+    for rel in entries:
         path = os.path.join(root, rel)
         with open(path, errors='replace', newline='') as fh:
             lines = fh.readlines()
+        output_dir = (selected_output_directory(run_dir, input_path,
+                      a.output_dir, lines) if selected else None)
+        cls, area = classify(root, rel, output_dir)
         gt = grid_type(lines)
         if gt != 'Mixed':
             other[(cls, area)] += 1

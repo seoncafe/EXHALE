@@ -166,10 +166,14 @@ def main(arguments=None):
     parser.add_argument('--regional', action='store_true')
     parser.add_argument('--live', nargs='?', type=float, const=4.0)
     parser.add_argument('--save', type=Path, help='PDF filename prefix; omit for interactive plots')
-    parser.add_argument('--output', type=Path, default=Path('output'))
+    parser.add_argument('--run-dir', type=Path, default=Path('.'))
+    parser.add_argument('--input-file', default='input.inp')
+    parser.add_argument('--output', '--output-dir', type=Path, default=Path('output'))
     args = parser.parse_args(arguments)
     if args.live is not None and args.live <= 0:
         parser.error('--live requires a positive refresh interval')
+    if not args.output.is_absolute():
+        args.output = args.run_dir/args.output
     history = RegionalHistory(args.output/'regional_profile_history.txt')
     while True:
         history.update()

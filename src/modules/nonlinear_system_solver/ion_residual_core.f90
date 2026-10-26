@@ -18,6 +18,7 @@
 	! The one imported quantity is the Penning : associative branching of the
 	! He(2^3S) + H total ionization rate, kept in Cool_coeff.f90 next to the
 	! rate coefficient itself so it has a single definition.
+	use global_parameters, only: output_dir
 	use Cooling_Coefficients, only: f_penning_HeI23S
 	! The cell state is READ, never written: the imposed-fraction routine
 	! below takes the cell as an argument. The state this module does hold
@@ -226,10 +227,10 @@
 	integer :: u, k
 	!$omp critical (stage_channel_record_region)
 	if (stage_chan_opened) then
-		open(newunit = u, file = './output/stage_channels.txt',            &
+		open(newunit = u, file = trim(output_dir)//'stage_channels.txt',            &
 		     status = 'old', position = 'append', action = 'write')
 	else
-		open(newunit = u, file = './output/stage_channels.txt',            &
+		open(newunit = u, file = trim(output_dir)//'stage_channels.txt',            &
 		     status = 'replace', action = 'write')
 		write(u,'(A)') '# gross channels of the ion-stage rows '//        &
 		     '(EXHALE_STAGE_CHANNELS), one line per evaluation'

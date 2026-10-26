@@ -7,6 +7,7 @@ Usage:
     python3 EXHALE_plots.py --regional --live 30
     python3 EXHALE_plots.py --regional --save output/regional
     python3 EXHALE_plots.py --profiles  # original whole-domain profile view
+    python3 EXHALE_plots.py --run-dir cases/hp --output-dir hp
 
 Updated for the EXHALE "schema 2" output files: the '# columns'
 header line is parsed, so the plot adapts to the actual column layout
@@ -25,16 +26,24 @@ import os
 import sys
 import time
 # Regional monitoring has its own explicit CLI; retain the existing profile view.
-_regional_auto = os.path.isfile('output/regional_profile_history.txt')
-if os.path.isfile('input.inp'):
-    with open('input.inp') as _input:
+_location = argparse.ArgumentParser(add_help=False)
+_location.add_argument('--run-dir', default='.')
+_location.add_argument('--output-dir', default='output')
+_location.add_argument('--input-file', default='input.inp')
+_location_args, _unused = _location.parse_known_args()
+_run_dir = os.path.abspath(_location_args.run_dir)
+_output_dir = os.path.join(_run_dir, _location_args.output_dir)
+_input_file = os.path.join(_run_dir, _location_args.input_file)
+_regional_auto = os.path.isfile(os.path.join(_output_dir, 'regional_profile_history.txt'))
+if os.path.isfile(_input_file):
+    with open(_input_file) as _input:
         _regional_auto = any(line.split(':', 1)[0].strip() == 'Regional convergence'
                              and line.split(':', 1)[1].split('#', 1)[0].strip() == 'True'
                              for line in _input if ':' in line)
 if '--regional' in sys.argv[1:] or (_regional_auto and '--profiles' not in sys.argv[1:]):
     sys.path.insert(0, os.path.join(os.path.dirname(os.path.realpath(__file__)), 'src', 'utils'))
     from regional_convergence_plots import main
-    main()
+    main(['--output', _output_dir] + sys.argv[1:])
     raise SystemExit(0)
 if '--profiles' in sys.argv[1:]:
     sys.argv.remove('--profiles')
@@ -57,7 +66,7 @@ sys.path.insert(0, os.path.join(_HERE, 'examples'))
 from exhale_io import loadtxt_cells, RJ_CM
 
 # ---------------------------------------------------------------- options
-_parser = argparse.ArgumentParser(description=__doc__)
+_parser = argparse.ArgumentParser(description=__doc__, parents=[_location])
 _parser.add_argument('--live', nargs='?', type=float, const=4.0)
 _options = _parser.parse_args()
 animate = _options.live is not None
@@ -156,7 +165,7 @@ def read_adv_conditional_tol(path):
 # ---------------------------------------------------------------- input.inp
 R0 = None
 appx_mth = ''
-with open('input.inp') as fh:
+with open(_input_file) as fh:
     for line in fh:
         if line.startswith('Planet radius'):
             R0 = float(line.split(':')[1])*RJ
@@ -166,8 +175,8 @@ if R0 is None:
     raise RuntimeError('Planet radius not found in input.inp')
 
 # ---------------------------------------------------------------- load data
-r, rho, v, p, T = load_hydro('./output/Hydro_ioniz.txt')
-ion = load_ion('./output/Ion_species.txt')
+r, rho, v, p, T = load_hydro(os.path.join(_output_dir, 'Hydro_ioniz.txt'))
+ion = load_ion(os.path.join(_output_dir, 'Ion_species.txt'))
 N = r.size
 
 METALS = ['CI', 'CII', 'OI', 'OII', 'NI', 'NII', 'MgI', 'MgII',
@@ -261,8 +270,8 @@ for a in ax.flat:
     a.set_xlabel('r/R$_P$')
 
 # ------------------------------------------------- post-processed overlay
-adv_hydro = os.path.join(os.getcwd(), 'output', 'Hydro_ioniz_adv.txt')
-adv_ioniz = os.path.join(os.getcwd(), 'output', 'Ion_species_adv.txt')
+adv_hydro = os.path.join(_output_dir, 'Hydro_ioniz_adv.txt')
+adv_ioniz = os.path.join(_output_dir, 'Ion_species_adv.txt')
 if os.path.isfile(adv_hydro) and os.path.isfile(adv_ioniz):
     ra, rhoa, va, pa, Ta = load_hydro(adv_hydro)
     iona = load_ion(adv_ioniz)
@@ -334,8 +343,8 @@ else:
 # ---------------------------------------------------------------- live loop
 while animate:
     try:
-        r, rho, v, p, T = load_hydro('./output/Hydro_ioniz.txt')
-        ion = load_ion('./output/Ion_species.txt')
+        r, rho, v, p, T = load_hydro(os.path.join(_output_dir, 'Hydro_ioniz.txt'))
+        ion = load_ion(os.path.join(_output_dir, 'Ion_species.txt'))
     except Exception:
         time.sleep(sec)        # file being rewritten; retry
         continue

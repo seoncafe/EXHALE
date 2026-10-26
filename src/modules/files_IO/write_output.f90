@@ -325,8 +325,6 @@
       ! generations under this directory (publish_pass_state_generation):
       ! one subdirectory for each pass, and the one-line file 'current'
       ! naming the generation a restart takes.
-      character(len=*), parameter, private :: pass_state_root =           &
-                                              './output/pass_state'
 
       contains
 
@@ -490,13 +488,13 @@
       ! exact file left at that path by an earlier state.
       real*8, intent(in), optional :: conserved_u(3,1-Ng:N+Ng)
       real*8, intent(in), optional :: conserved_f(1-Ng:N+Ng,n_species)
-      character(len=48) :: exact_path
+      character(len=8192) :: exact_path
       ! That measure as written, zero where the post-process did not form
       ! it (a row it never reached).
       real*8, dimension(1-Ng:N+Ng) :: mrow
 
 
-      character(len=40) :: hyd_path, ion_path
+      character(len=8192) :: hyd_path, ion_path
 
       mrow = 0.0d0
       if (present(adv_mass_row)) mrow = adv_mass_row
@@ -507,15 +505,15 @@
             ! The product of a seed run IS the restart input: it is written
             ! under the name a restart reads, so that nothing has to be
             ! renamed between the conversion and the run it seeds.
-            hyd_path = './output/Hydro_ioniz_IC.txt'
-            ion_path = './output/Ion_species_IC.txt'
+            hyd_path = trim(output_dir)//'Hydro_ioniz_IC.txt'
+            ion_path = trim(output_dir)//'Ion_species_IC.txt'
          else
-            hyd_path = './output/Hydro_ioniz.txt'
-            ion_path = './output/Ion_species.txt'
+            hyd_path = trim(output_dir)//'Hydro_ioniz.txt'
+            ion_path = trim(output_dir)//'Ion_species.txt'
          endif
       else	! Change output file after postprocessing
-         hyd_path = './output/Hydro_ioniz_adv.txt'
-         ion_path = './output/Ion_species_adv.txt'
+         hyd_path = trim(output_dir)//'Hydro_ioniz_adv.txt'
+         ion_path = trim(output_dir)//'Ion_species_adv.txt'
       endif
       call write_hydro_state_file(trim(hyd_path), flag, rho, v, p, T,     &
                                   heat, cool, mrow, adv_T_status,         &
@@ -529,9 +527,9 @@
       !---- The exact code-unit state of the same pair ----!
       if (flag .eq. 'eq') then
          if (molecular_seed_on()) then
-            exact_path = './output/conserved_state_IC.txt'
+            exact_path = trim(output_dir)//'conserved_state_IC.txt'
          else
-            exact_path = './output/conserved_state.txt'
+            exact_path = trim(output_dir)//'conserved_state.txt'
          endif
          if (present(conserved_u) .neqv. present(conserved_f))            &
             error stop 'write_output: conserved_u and conserved_f go together'
@@ -565,7 +563,7 @@
       ! matters only when the oxygen chemistry shares the band, and is
       ! reported in output/FUV_bands.txt when it does.
       if (thereis_mol .and. F_LW_star .gt. 0.0d0 .and. flag .eq. 'eq') then
-         open(unit = 4, file = './output/Lyman_Werner.txt')
+         open(unit = 4, file = trim(output_dir)//'Lyman_Werner.txt')
          write(4,'(A)') '# EXHALE schema 2'
          write(4,'(A,ES12.5,A)') '# Lyman-Werner band flux at the planet: ', &
                         F_LW_star, ' erg cm^-2 s^-1 (912-1201 A)'
@@ -641,9 +639,9 @@
               ') max |sum(O I levels)/n(O I) - 1| = ', oi_close
 
          if (flag.eq.'eq') then
-            open(unit = 73, file = './output/OI_levels.txt')
+            open(unit = 73, file = trim(output_dir)//'OI_levels.txt')
          else
-            open(unit = 73, file = './output/OI_levels_adv.txt')
+            open(unit = 73, file = trim(output_dir)//'OI_levels_adv.txt')
          endif
          write(73,'(A)') '# EXHALE schema 2'
          write(73,'(A)') '# O I 2p4 3P ground-term level populations, from '// &
@@ -1033,7 +1031,7 @@
       ! 0755, the mode of a directory the owner writes and others read.
       integer(c_int), parameter :: dir_mode_0755 = 493_c_int
       character(len=96)  :: gen_name, gen_before, gen_retired
-      character(len=192) :: tmp_dir, gen_dir, ptr_file
+      character(len=8192) :: tmp_dir, gen_dir, ptr_file
       character(len=len(state_certification_reason)) :: hold_reason
       character(len=32) :: snap_reason
       logical :: hold_cert
@@ -1048,15 +1046,15 @@
       if (len_trim(run_identity) .eq. 0) call establish_run_identity()
       write(gen_name,'(A,A,I0)') 'r'//trim(run_identity), '_p', pass_now
       gen_name = pass_state_safe_name(gen_name)
-      tmp_dir  = pass_state_root//'/.'//trim(gen_name)//'.tmp'
-      gen_dir  = pass_state_root//'/'//trim(gen_name)
-      ptr_file = pass_state_root//'/current'
+      tmp_dir  = (trim(output_dir)//'pass_state')//'/.'//trim(gen_name)//'.tmp'
+      gen_dir  = (trim(output_dir)//'pass_state')//'/'//trim(gen_name)
+      ptr_file = (trim(output_dir)//'pass_state')//'/current'
       gen_before = pass_state_current_generation()
 
       ! The directory of the generations exists after the first pass; its
       ! mkdir failing on an existing directory is the ordinary case, and a
       ! directory that cannot be created shows in the mkdir that follows.
-      rc_dir = posix_mkdir(pass_state_root//c_null_char, dir_mode_0755)
+      rc_dir = posix_mkdir((trim(output_dir)//'pass_state')//c_null_char, dir_mode_0755)
       rc_dir = posix_mkdir(trim(tmp_dir)//c_null_char, dir_mode_0755)
       if (rc_dir .ne. 0) then
          write(*,'(A,I0,A)') ' (publish_pass_state_generation) the state'// &
@@ -1175,7 +1173,7 @@
          if (len_trim(gen_retired) .gt. 0 .and.                           &
              trim(gen_retired) .ne. trim(gen_before) .and.                &
              trim(gen_retired) .ne. trim(gen_name))                       &
-            call remove_pass_state_directory(pass_state_root//'/'//       &
+            call remove_pass_state_directory((trim(output_dir)//'pass_state')//'/'//       &
                                              trim(gen_retired))
       endif
       written = .true.
@@ -1205,7 +1203,7 @@
       character(len=96) :: gen
       integer :: unit_c, ios_c
       gen = ''
-      open(newunit = unit_c, file = pass_state_root//'/current',          &
+      open(newunit = unit_c, file = (trim(output_dir)//'pass_state')//'/current',          &
            status = 'old', action = 'read', iostat = ios_c)
       if (ios_c .ne. 0) return
       read(unit_c,'(A)', iostat = ios_c) gen
@@ -1225,7 +1223,7 @@
       character(len=256) :: mline
       integer :: unit_c, ios_c
       gen_prev = ''
-      open(newunit = unit_c, file = pass_state_root//'/'//trim(gen)//     &
+      open(newunit = unit_c, file = (trim(output_dir)//'pass_state')//'/'//trim(gen)//     &
            '/manifest.txt', status = 'old', action = 'read',              &
            iostat = ios_c)
       if (ios_c .ne. 0) return
@@ -1660,7 +1658,7 @@
       real*8  :: co_ph, co_en, co_heat, co_share
       real*8 :: rO_worst, rC_worst, TO_worst, TC_worst
 
-      open(unit = 74, file = './output/Oxygen_chemistry.txt')
+      open(unit = 74, file = trim(output_dir)//'Oxygen_chemistry.txt')
       write(74,'(A)') '# EXHALE schema 2'
       write(74,'(A)') '# In-code oxygen chemistry (docs/a2_oxygen_option'// &
                      '_design.md). Densities in cm^-3.'
@@ -2130,7 +2128,7 @@
          enddo
       endif
 
-      open(unit = 75, file = './output/FUV_bands.txt')
+      open(unit = 75, file = trim(output_dir)//'FUV_bands.txt')
       write(75,'(A)') '# EXHALE schema 2'
       write(75,'(A)') '# FUV band penetration for the oxygen chemistry.'// &
                      ' H2O and OH absorb these bands as continua,'

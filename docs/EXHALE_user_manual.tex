@@ -238,8 +238,8 @@ A model run consists of:
 % ===================================================================== %
 
 \subsection{Requirements}
-A Fortran compiler (\texttt{gfortran} by default; Intel \texttt{ifort}/\texttt{ifx}
-supported), \texttt{make}, and (for the GUI and analysis) Python~3 with
+A Fortran compiler (\texttt{ifx} by default; \texttt{ifort} and \texttt{gfortran}
+also supported), \texttt{make}, and (for the GUI and analysis) Python~3 with
 \texttt{tkinter}, \texttt{numpy}, \texttt{scipy}, \texttt{matplotlib}, and
 \texttt{astropy} (the last is used by \texttt{EXHALE\_transit.py} for
 \texttt{astropy.convolution}).
@@ -248,8 +248,8 @@ supported), \texttt{make}, and (for the GUI and analysis) Python~3 with
 \texttt{EXHALE} uses an incremental \texttt{Makefile}; module dependencies
 are auto-generated, so only edited sources and their dependents recompile.
 \begin{lstlisting}[style=sh]
-make                 # build ./EXHALE.x with gfortran
-make FC=ifort        # Intel ifort   (or FC=ifx for the LLVM compiler)
+make                 # build ./EXHALE.x with ifx (default)
+make FC=ifort        # Intel ifort; use FC=gfortran for GNU Fortran
 make wind_ae_ic      # standalone Wind-AE IC generator -> ./wind_ae_ic.x
 make check           # regression against the stored goldens
 make clean           # remove .o/.mod (keeps EXHALE.x)
@@ -263,7 +263,8 @@ writes one, against the stored reference outputs,
 \emph{bitwise} first and otherwise within \texttt{REGRESSION\_REL\_TOL}
 (default $10^{-3}$ relative), the verdict line saying which. The
 standing rule it encodes: a refactor with no intended physics change must be
-byte-identical, and a new physics option must default to off. The harness and
+byte-identical, and a new optional physics term defaults to off unless physical
+necessity requires it. The harness and
 its reference outputs live in \texttt{backup/regression/}; the target reports
 that it found no harness, without failing, in a checkout that does not carry
 it. \texttt{make wind\_ae\_ic} builds the out-of-process IC generator described
@@ -290,7 +291,7 @@ The driver script \texttt{run\_EXHALE.sh} (1) launches a Python/Tk GUI that writ
 \texttt{input.inp}, (2) builds, and (3) runs \texttt{./EXHALE.x}:
 \begin{lstlisting}[style=sh]
 chmod +x run_EXHALE.sh
-./run_EXHALE.sh           # gfortran (GUI -> build -> run)
+./run_EXHALE.sh           # ifx (GUI -> build -> run)
 ./run_EXHALE.sh --ifort   # Intel ifort   (--ifx for ifx)
 \end{lstlisting}
 The GUI writes the legacy core block only: it offers \texttt{Load from file},
@@ -299,11 +300,22 @@ optional key of Table~\ref{tab:inp-opt} (\texttt{Spectrum type: Planck} and
 the two stellar quantities it needs among them) is added to the written file
 by hand or inherited by copying an \texttt{examples/} configuration.
 
-You may equally skip the GUI: place a hand-written \texttt{input.inp} (and
-optional \texttt{metals.inp}/\texttt{opacity.inp}) in a run directory, ensure an
-\texttt{output/} subdirectory exists, and run \texttt{./EXHALE.x} there. Each
-modeled planet typically lives in its own subdirectory holding its
-\texttt{input.inp}, its \texttt{EXHALE.x}, and its \texttt{output*/} folders.
+You may equally skip the GUI: run \texttt{./EXHALE.x [input\_file]}.
+With no argument the solver reads \texttt{input.inp} in the working directory;
+a missing input file stops startup and names the path tried. Relative paths
+for \texttt{metals.inp}, \texttt{base.inp}, \texttt{opacity.inp}, the
+lower-atmosphere profile, and the spectrum are resolved beside the input file.
+Presence of the first three files enables their respective options.
+
+The optional input line \texttt{Output directory: <path>} selects an absolute
+path or a path relative to the working directory. If absent, \texttt{input.inp}
+uses \texttt{output/}; another filename uses its stem in the working directory:
+\texttt{huang.inp} uses \texttt{huang/}, and \texttt{cases/salz.inp} uses
+\texttt{salz/}. The solver creates the directory. All reports and restart
+files, including \texttt{EXHALE\_setup.out} and
+\texttt{EXHALE\_resolved.out}, are written there. Both reports state the
+input path and the output directory in effect.
+
 Progress (iteration counter, the cell-centered mass-flux spread \texttt{du}, and
 the time-derivative norm \texttt{dtu}) is printed to the terminal, and every
 monitor step prints a \texttt{[stop]} line with the two numbers the marching
@@ -1545,6 +1557,8 @@ defaults restore the standard behavior).}\label{tab:inp-opt}\\
 \endhead
 \bottomrule
 \endfoot
+\texttt{Output directory:} & path (optional) & Output location; relative paths
+  start in the working directory. See \S\ref{sec:outputs}. \\
 \texttt{Domain mode:} & \texttt{Spherical} & If present and \texttt{Spherical}:
   pure planetary potential $-b_0/r$, domain extended to \texttt{Outer radius}.
   Absent (default): full Roche (tidal) potential; outer boundary at the Hill/L1
@@ -3705,7 +3719,8 @@ On the EXHALE side (in this repository) the pre-step adds
 % ===================================================================== %
 \section{Output files}\label{sec:outputs}
 % ===================================================================== %
-All profiles are written to \texttt{output/} as plain text, one row per radial
+All profiles are written to the selected output directory (\texttt{output/}
+for the default \texttt{input.inp}) as plain text, one row per radial
 cell, in \emph{cgs} units. Two flavors exist: the equilibrium files
 (\texttt{*.txt}, written during the run) and the advection-corrected files
 (\texttt{*\_adv.txt}, written once at the end by the post-processor, which
@@ -3716,7 +3731,7 @@ the equilibrium files are what they read when the solved state is asked for
 stationary solve wrote no advection-corrected pair. A stationary run that
 alternates a wind solve with a composition relaxation also keeps the state of
 its last completed outer pass, the generation
-\path{output/pass_state/<state_id>/} named by \path{output/pass_state/current}
+\path{<output>/pass_state/<state_id>/} named by \path{<output>/pass_state/current}
 (\S\ref{sec:passstate}), a restartable pair that is never a certified state.
 Every equilibrium pair is accompanied by \texttt{conserved\_state.txt}, the
 same state in code units to the last bit, which a restart uses in place of
@@ -4575,8 +4590,7 @@ reproduce this.
 
 \subsection{\texttt{EXHALE\_resolved.out}: the configuration the wind
 actually used}\label{sec:resolvedout}
-A machine-readable record written in the run directory (next to
-\texttt{input.inp}, not inside \texttt{output/}) by
+A machine-readable record written in the selected output directory by
 \path{write_setup_report.f90} once \texttt{input.inp}, \texttt{metals.inp}
 and any \texttt{base.inp} / lower-atmosphere-profile handoff have been
 resolved. Format: \texttt{\#} comment lines, then one \texttt{key\ value} pair
@@ -4782,7 +4796,7 @@ same system as the simulation. The labels are matched exactly as
 read, in this order:
 \begin{center}
 \texttt{EXHALE\_TRANSIT\_*} environment override $>$
-\texttt{./EXHALE\_resolved.out} $>$ \texttt{./input.inp} $>$ built-in default,
+\texttt{<output>/EXHALE\_resolved.out} $>$ \texttt{<input\_file>} $>$ built-in default,
 \end{center}
 so an explicit override still wins for an experiment. The middle step matters
 whenever a \texttt{base.inp} or a lower-atmosphere profile moved the base:

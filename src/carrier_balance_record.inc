@@ -19,9 +19,9 @@
       if (trim(enabled) .ne. '1') return
       select case (trim(label))
       case ('stored_pair')
-         destination = 'output/carrier_row_terms_stored_pair.txt'
+         destination = trim(output_dir)//'carrier_row_terms_stored_pair.txt'
       case ('final_certification')
-         destination = 'output/carrier_row_terms_final_certification.txt'
+         destination = trim(output_dir)//'carrier_row_terms_final_certification.txt'
       case default
          write(*,'(A,A)') ' (EXHALE_main) unknown carrier balance record: ', &
               trim(label)
@@ -29,14 +29,14 @@
       end select
 
       bytes_left = 0_int64
-      inquire(file='output/carrier_row_terms.txt', exist=source_exists,    &
+      inquire(file=trim(output_dir)//'carrier_row_terms.txt', exist=source_exists,    &
               size=bytes_left, iostat=ios)
       if (ios .ne. 0 .or. .not. source_exists .or. bytes_left .le. 0) then
          write(*,'(A,A)') ' (EXHALE_main) missing carrier terms for ',     &
               trim(label)
          stop 1
       endif
-      open(newunit=input_unit, file='output/carrier_row_terms.txt',        &
+      open(newunit=input_unit, file=trim(output_dir)//'carrier_row_terms.txt',        &
            access='stream', form='unformatted', status='old',              &
            action='read', iostat=ios)
       if (ios .ne. 0) then

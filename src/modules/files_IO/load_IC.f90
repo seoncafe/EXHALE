@@ -433,6 +433,7 @@
       real*8, dimension(1-Ng:N+Ng,3)      :: nox_l
       ! Oxygen-chemistry seeding of a restart file that predates the option.
       logical :: ox_seeded
+      logical :: ex_hyd, ex_ion
       integer :: ic0
       real*8  :: T_K_l, nOtot, nCtot, nCO_l, nOfam, nOH_l, nH2O_l
       real*8  :: f_oh_l, f_h2o_l, sO_l, sC_l, dH_l
@@ -478,7 +479,7 @@
       real*8 :: vals(80)
       ! The two state files this call reads, named once (see the use
       ! statement above).
-      character(len=640) :: f_hyd, f_ion
+      character(len=8192) :: f_hyd, f_ion
 
       character(len=8192) :: line
       ! The restart metadata block of each of the two state files, stored by
@@ -525,7 +526,20 @@
          write(*,'(A)') '   '//trim(f_hyd)
          write(*,'(A)') '   '//trim(f_ion)
       endif
-      open(unit = 1, file = trim(f_hyd))
+      ! A missing pair is reported as missing. An open without status='old'
+      ! would create an empty file and the count below would then report
+      ! "0 data rows", which names the wrong cause (found 2026-10-26).
+      inquire(file = trim(f_hyd), exist = ex_hyd)
+      inquire(file = trim(f_ion), exist = ex_ion)
+      if (.not. ex_hyd .or. .not. ex_ion) then
+         write(*,'(A)') ' (load_IC) ERROR: "Load IC? True" but the IC pair is not there:'
+         if (.not. ex_hyd) write(*,'(A)') '   missing '//trim(f_hyd)
+         if (.not. ex_ion) write(*,'(A)') '   missing '//trim(f_ion)
+         write(*,'(A)') '   Put Hydro_ioniz_IC.txt and Ion_species_IC.txt in the output'//&
+              ' directory, or set "Load IC? False".'
+         error stop 1
+      endif
+      open(unit = 1, file = trim(f_hyd), status = 'old')
       do
          read(1,'(A)',iostat=ios) line
          if (ios .ne. 0) exit
@@ -602,7 +616,7 @@
       endif
 
       ! Load thermodynamic variables (skip any '#' header lines)
-      open(unit = 1, file = trim(f_hyd))
+      open(unit = 1, file = trim(f_hyd), status = 'old')
          read(1,'(A)') line
          do while (is_comment(line))
             read(1,'(A)') line
@@ -624,7 +638,7 @@
       nsp_l       = 0.0d0
       col_present = .false.
 
-      open(unit = 2, file = trim(f_ion))
+      open(unit = 2, file = trim(f_ion), status = 'old')
       read(2,'(A)') line
       has_header = is_comment(line)
 

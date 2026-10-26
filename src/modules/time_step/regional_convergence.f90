@@ -2,6 +2,7 @@
       ! Regional stabilization: finite-duration regional stability.
       ! Stationary convergence requires a separate stationary root test.
       use, intrinsic :: ieee_arithmetic, only: ieee_is_finite
+      use global_parameters, only: output_dir
       implicit none
       private
       public :: regional_read, regional_begin, regional_sample, regional_incomplete
@@ -144,7 +145,7 @@
       if(settling_seconds.gt.0d0) then
          minimum(:,1)=huge(1d0);maximum(:,1)=-huge(1d0)
       endif
-      open(newunit=log_unit,file='output/regional_convergence.csv',status='replace')
+      open(newunit=log_unit,file=trim(output_dir)//'regional_convergence.csv',status='replace')
       write(log_unit,'(A)') 'elapsed_seconds,candidate,windows,region,field,mean_change,range_width,'// &
          'mean_limit,range_limit,passed,minimum_samples_observed,minimum_samples_required'
       flush(log_unit)
@@ -284,7 +285,7 @@
       if(present(measured_time)) time=measured_time
       ! A closed status file is read by the plotter. A concurrent reader may
       ! retry an incomplete replacement; a partial file never grants a stop.
-      open(newunit=unit,file='output/regional_convergence_status.txt',status='replace')
+      open(newunit=unit,file=trim(output_dir)//'regional_convergence_status.txt',status='replace')
       write(unit,'(A)') 'criterion=finite_duration_regional_stability'
       write(unit,'(A)') 'target_convergence_level=regional_stabilization'
       if(regional_passed) then

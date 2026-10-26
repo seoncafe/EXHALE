@@ -536,7 +536,7 @@ def find_input_label(lines, key):
 	return found
 
 
-def read_input_params(path):
+def read_input_params(path, output_dir=None):
 	"""Read the header parameters EXHALE_transit needs from input.inp by LABEL
 	(order-independent), matching the input_read.f90 core block. Rp/Mp/T0/
 	a_orb/Mstar are taken from the labeled lines the Fortran uses, at the same
@@ -614,8 +614,11 @@ def read_input_params(path):
 	# (write_resolved_config) AFTER the base.inp handoff overrides are
 	# applied, so it is the radius/temperature/He ratio the wind actually
 	# used -- input.inp alone is stale whenever base.inp overrides them.
-	resolved_path = os.path.join(os.path.dirname(os.path.abspath(path)),
-	                             'EXHALE_resolved.out')
+	resolved_path = os.path.join(output_dir or os.path.join(
+	    os.path.dirname(os.path.abspath(path)), 'output'), 'EXHALE_resolved.out')
+	if not os.path.isfile(resolved_path):
+		resolved_path = os.path.join(os.path.dirname(os.path.abspath(path)),
+		                             'EXHALE_resolved.out')
 	if os.path.isfile(resolved_path):
 		rv = {}
 		with open(resolved_path, 'r') as f:
@@ -1125,7 +1128,7 @@ def transit_environment_overrides():
 	              if k.startswith('EXHALE_TRANSIT_') or k.startswith('TPM_'))
 
 
-def transit_state_files(path, selection, require=True):
+def transit_state_files(path, selection, require=True, output_dir=None):
 	"""The (hydro, ioniz) pair a transit spectrum is synthesized from.
 
 	Two states of one run describe the same column and are NOT the same
@@ -1162,13 +1165,14 @@ def transit_state_files(path, selection, require=True):
 	Returns (hydro_path, ioniz_path, selection); an unknown selection raises
 	ValueError and a missing required pair raises FileNotFoundError.
 	"""
+	output_dir = output_dir or os.path.join(path, 'output')
 	sel = (selection or 'adv').strip().lower()
 	if sel in ('adv', 'post_process', 'corrected'):
-		pair = (os.path.join(path, 'output', 'Hydro_ioniz_adv.txt'),
-		        os.path.join(path, 'output', 'Ion_species_adv.txt'), 'adv')
+		pair = (os.path.join(output_dir, 'Hydro_ioniz_adv.txt'),
+		        os.path.join(output_dir, 'Ion_species_adv.txt'), 'adv')
 	elif sel in ('solution', 'solved', 'state'):
-		pair = (os.path.join(path, 'output', 'Hydro_ioniz.txt'),
-		        os.path.join(path, 'output', 'Ion_species.txt'), 'solution')
+		pair = (os.path.join(output_dir, 'Hydro_ioniz.txt'),
+		        os.path.join(output_dir, 'Ion_species.txt'), 'solution')
 	else:
 		raise ValueError('(EXHALE_transit) EXHALE_TRANSIT_STATE = %r is '
 		                 'neither "adv" nor "solution"' % (selection,))
@@ -1239,7 +1243,7 @@ def state_provenance_statements(path):
 	return out
 
 
-def transit_state_oi_levels(path, selection):
+def transit_state_oi_levels(path, selection, output_dir=None):
 	"""The O I ground-term level file belonging to a state selection.
 
 	The three-level statistical equilibrium behind the O I 1302 triplet is
@@ -1248,7 +1252,7 @@ def transit_state_oi_levels(path, selection):
 	integrates them with.
 	"""
 	name = ('OI_levels_adv.txt' if selection == 'adv' else 'OI_levels.txt')
-	return os.path.join(path, 'output', name)
+	return os.path.join(output_dir or os.path.join(path, 'output'), name)
 
 
 def state_pair_difference(hydro_a, ioniz_a, hydro_b, ioniz_b):

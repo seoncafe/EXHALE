@@ -327,7 +327,7 @@
 	endif
 
 	! Dump the initial condition (dimensional) for inspection / IC benchmarking.
-	open(unit = 77, file = 'output/IC_dump.txt', status = 'replace')
+	open(unit = 77, file = trim(output_dir)//'IC_dump.txt', status = 'replace')
 	write(77,'(A)') '# r[R_p]        n[cm-3]        v[cm/s]         p[cgs]          T[K]'
 	do j = 1-Ng, N+Ng
 		write(77,'(5(ES15.6,1X))') r(j), W(1,j)*n0, W(2,j)*v0, W(3,j)*p0, T(j)*T0

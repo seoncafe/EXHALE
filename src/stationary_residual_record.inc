@@ -6,7 +6,7 @@
       integer :: unit_r, j, k
       if (.not. boundary_trace_armed()) return
       call face_mass_flux_of_state(u(1,:), Frho)
-      open(newunit=unit_r, file='output/residual_'//trim(label)//'.txt', &
+      open(newunit=unit_r, file=trim(output_dir)//'residual_'//trim(label)//'.txt', &
            status='replace', action='write')
       write(unit_r,'(A)') '# code units; physical cells 1..N'
       write(unit_r,'(A)') '# j r R_mass R_momentum R_energy'//          &
@@ -16,7 +16,7 @@
               (residual_row_scale(k,j,u),k=1,3),heat(j),cool(j)
       enddo
       close(unit_r)
-      open(newunit=unit_r, file='output/face_mass_'//trim(label)//'.txt', &
+      open(newunit=unit_r, file=trim(output_dir)//'face_mass_'//trim(label)//'.txt', &
            status='replace', action='write')
       write(unit_r,'(A)') '# f r_face raw_mass_flux signed_r2_mass_flux'
       write(unit_r,'(A)') '# all physical faces 0..N; code units'
