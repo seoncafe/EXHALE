@@ -1160,6 +1160,7 @@
       !------------------------------------------------! 
       
       ! Read planetary parameters from file
+      call configure_run_paths
       call input_read
 
       ! Optional parse-dump mode (env EXHALE_PARSE_DUMP=1): write every variable
@@ -1184,7 +1185,7 @@
       ! in the same directory had left, so a refused run erased the last
       ! accepted run's report. input_read writes nothing
       ! to this unit, so nothing is lost by opening it here.
-      open(unit = outfile, file = 'EXHALE_setup.out')
+      open(unit = outfile, file = trim(output_dir)//'EXHALE_setup.out')
 
       ! The number of computational cells N is now final ("Grid cells:" in
       ! input.inp, 500 without the key). input_read has already allocated the
@@ -1415,7 +1416,7 @@
            ! constant.
            real*8, dimension(1-Ng:N+Ng) :: Frho_diag
            call face_mass_flux_of_state(W(1,:), Frho_diag)
-           open(newunit=uu, file='output/residual_profile.txt',           &
+           open(newunit=uu, file=trim(output_dir)//'residual_profile.txt',           &
                 status='replace', action='write')
            write(uu,'(A)') '# r[Rp]  n[cm-3]  v[cm/s]  T[K]  '//           &
                 'R_mass  R_mom  R_energy  Phi_lo  Phi_hi'
@@ -1728,7 +1729,7 @@
            integer :: jj, uu
            real*8, dimension(1-Ng:N+Ng) :: Frho_diag
            call face_mass_flux_of_state(u(1,:), Frho_diag)
-           open(newunit=uu, file='output/newton_residual_profile.txt',    &
+           open(newunit=uu, file=trim(output_dir)//'newton_residual_profile.txt',    &
                 status='replace', action='write')
            write(uu,'(A)') '# the T column is 0: this route forms no'//   &
                 ' temperature array (F(Y) forms its own internally)'
@@ -2235,7 +2236,7 @@
       call get_environment_variable('EXHALE_BASE_CELL_STARTUP', diag_env)
       if (trim(diag_env) .eq. '1') then
          base_cell_startup_on = .true.
-         open(unit=778, file='output/base_cell_startup.txt', status='replace')
+         open(unit=778, file=trim(output_dir)//'base_cell_startup.txt', status='replace')
          write(778,'(A)') '# count  j  r[Rp]  n[cm-3]  v[cm/s]  T[K]  heat  cool'
       endif
 
@@ -4905,7 +4906,7 @@
               ' g/s, no steady-state Mdot'
       endif
 
-      open(unit = outfile, file = 'EXHALE_setup.out', access = 'append' )
+      open(unit = outfile, file = trim(output_dir)//'EXHALE_setup.out', access = 'append' )
          write(outfile,101) ' '
          if (outflow_at_mdot_cell) then
             write(outfile,102) ' - Log10 of steady-state Mdot = ', Mdot,   &
@@ -5028,10 +5029,10 @@
       if (trim(dump_env) .eq. '0') return
 
       if (dump_opened) then
-         open(unit = 77, file = './output/eval_state_dump.txt',            &
+         open(unit = 77, file = trim(output_dir)//'eval_state_dump.txt',            &
               status = 'old', position = 'append')
       else
-         open(unit = 77, file = './output/eval_state_dump.txt')
+         open(unit = 77, file = trim(output_dir)//'eval_state_dump.txt')
          write(77,'(A)') '# the state of the stationary evaluation at'//   &
               ' named points, for an in-memory comparison'
          write(77,'(A)') '# columns j u1 u2 u3 p T f_sp(1..n_species)'//   &
@@ -5206,7 +5207,7 @@
       use_weno3       = sav_weno
       recon_lambda_on = sav_lam_on
 
-      open(newunit=uu, file='output/opdiff_profile.txt',                 &
+      open(newunit=uu, file=trim(output_dir)//'opdiff_profile.txt',                 &
            status='replace', action='write')
       write(uu,'(A,I0,A,ES12.4)') '# PLM -> WENO3 operator difference at '//&
            'step ', step_no, ', du = ', du_now
@@ -7384,7 +7385,7 @@
       logical function update_map_open()
       ! Open output/update_map.txt on first use.
       if (.not. update_map_file_open) then
-         open(newunit=update_map_unit, file='output/update_map.txt',       &
+         open(newunit=update_map_unit, file=trim(output_dir)//'update_map.txt',       &
               status='replace', action='write')
          update_map_file_open = .true.
          write(update_map_unit,'(A)') '# dt j k r  R  G_dt  hydro chem'//  &
@@ -9650,7 +9651,7 @@
       first = (pass .eq. 1) .and. (.not. dpp_opened)
       dpp_opened = .true.
       if (first) then
-         open(unit=uu, file='output/diffusion_pass_profiles.txt',          &
+         open(unit=uu, file=trim(output_dir)//'diffusion_pass_profiles.txt',          &
               status='replace')
          write(uu,'(A)') '# outer-pass composition profiles '//            &
               '(EXHALE_DIFFUSION_CHECK=1)'
@@ -9658,7 +9659,7 @@
               'r^2 rho v [n0 mH cm/s Rp^2]  T[K]  x_H2[2nH2/nH]  '//      &
               'n_H3p[cm^-3]  n_HeII[cm^-3]  n_e[cm^-3]'
       else
-         open(unit=uu, file='output/diffusion_pass_profiles.txt',          &
+         open(unit=uu, file=trim(output_dir)//'diffusion_pass_profiles.txt',          &
               status='old', position='append')
       endif
       do j = 1, N
@@ -9703,10 +9704,10 @@
       integer, intent(in)          :: pass
       character(len=*), intent(in) :: stage
       logical, intent(in)          :: with_residual
-      character(len=128) :: fname
+      character(len=8192) :: fname
       integer :: uu, j, ios
 
-      write(fname,'(A,I3.3,A,A,A)') 'output/stage_state_p', pass, '_',    &
+      write(fname,'(A,I3.3,A,A,A)') trim(output_dir)//'stage_state_p', pass, '_',    &
                                     trim(stage), '.txt'
       open(newunit=uu, file=trim(fname), status='replace',               &
            action='write', iostat=ios)
@@ -10257,7 +10258,7 @@
                endif
             enddo
          enddo
-         open(newunit=face_flux_series_unit, file='output/face_mass_flux_series.txt', &
+         open(newunit=face_flux_series_unit, file=trim(output_dir)//'face_mass_flux_series.txt', &
               status='replace', action='write')
          write(face_flux_series_unit,'(A)') '# step  F_face(1.005 1.03 1.10 1.20)'// &
               '  F_cell(same cells)  spread_cell(r>=1.03) spread_cell(r>=1.10)'

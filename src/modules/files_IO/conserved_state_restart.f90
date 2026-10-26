@@ -430,9 +430,9 @@
          if (ck(2) .lt. 0_int64 .and. len_trim(why) .eq. 0)              &
             why = 'the lower-atmosphere profile is unreadable'
       else
-         ck(3) = file_rolling_checksum('base.inp')
+         ck(3) = file_rolling_checksum(companion_path('base.inp'))
       endif
-      ck(4) = file_rolling_checksum('metals.inp')
+      ck(4) = file_rolling_checksum(companion_path('metals.inp'))
       ck(5) = opacity_configuration_checksum(why)
       if (allocated(opa_file_HI)) ck(6) = file_rolling_checksum(opa_file_HI)
       if (allocated(opa_file_HeI)) ck(7) = file_rolling_checksum(opa_file_HeI)

@@ -940,7 +940,7 @@
    ! Figs. 10/26 (heating budget). All quantities cgs; written for the last
    ! converged outer pass.
    integer :: j
-   open(unit = 72, file = './output/Excited_H.txt')
+   open(unit = 72, file = trim(output_dir)//'Excited_H.txt')
    write(72,'(a)') '# Excited hydrogen H(n=2) diagnostic.'
    write(72,'(a,es12.5)') '# Stellar T_eff [K]       = ', T_star_eff
    write(72,'(a,es12.5)') '# Stellar R_star [Rsun]   = ', R_star/Rsun

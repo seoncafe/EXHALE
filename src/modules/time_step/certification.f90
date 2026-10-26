@@ -1634,7 +1634,7 @@
          ! verdict or the solution reads.
          if (cert_records_verdict .and. he_ok .and.                        &
              element_row_terms_on())                                       &
-            call element_row_terms_write('output/element_row_terms.txt',   &
+            call element_row_terms_write(trim(output_dir)//'element_row_terms.txt',   &
                                          ehe_terms)
          if (cert_records_verdict .and. element_flux_profile_on())         &
             call write_element_flux_profile(Wcert(1,:), Tcert, f_sp,       &
@@ -1920,7 +1920,7 @@
       ! assembly to overwrite.  It is a file, not module state, so it is
       ! outside the round trip asserted below.
       if (cert_records_verdict .and. carrier_row_terms_on())             &
-         call carrier_row_terms_write('output/carrier_row_terms.txt')
+         call carrier_row_terms_write(trim(output_dir)//'carrier_row_terms.txt')
       call restore_carrier_module_state(ws)
       ! The round trip is ASSERTED, not assumed: a measurement that changed
       ! the state it measured would move the next transport step, and the

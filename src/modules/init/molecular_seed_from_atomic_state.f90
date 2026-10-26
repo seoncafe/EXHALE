@@ -333,11 +333,11 @@
       ! state of another case directory and writes its own molecular one
       ! into ./output, so the two never collide.
       character(len=*), intent(in) :: base
-      character(len=640) :: path
+      character(len=8192) :: path
       if (seed_on) then
          path = trim(seed_dir)//'/'//trim(base)//'_IC.txt'
       else
-         path = 'output/'//trim(base)//'_IC.txt'
+         path = trim(output_dir)//trim(base)//'_IC.txt'
       endif
       end function molecular_seed_state_file
 

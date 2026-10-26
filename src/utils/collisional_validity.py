@@ -302,7 +302,8 @@ Usage
         [--profile FILE] write the radial profile of the FIRST case
                       (r, T, v, c_s, L, lambda_s, Kn_s) as a text table
 
-A case directory is a run directory: it holds `input.inp` and `output/`.
+A case directory is a run directory. By default it holds `input.inp` and
+`output/`; --input-file and --output-dir select named runs.
 The planet radius and mass are those the run was solved with, which
 `exhale_io.load_run` takes from the run's `EXHALE_resolved.out` (the
 lower-atmosphere profile handoff, for one, moves the base radius away from
@@ -675,13 +676,13 @@ def jeans_escape(r_exo_cm, TK, dens, Mp_g):
 # --------------------------------------------------------------------------
 
 def collisional_diagnosis(case_dir, adv=False, kn_threshold=0.1,
-                          outdir='output'):
+                          outdir='output', input_file='input.inp'):
     """Everything above, on one EXHALE run directory.  Reads
     output/Hydro_ioniz{_adv}.txt and output/Ion_species{_adv}.txt; the
     solution is the default, because the sound speed, the Mach number, the
     critical point and the structure scale are properties of the state that
     satisfies the momentum equation ("Which state this reads", above)."""
-    inp_path = os.path.join(case_dir, 'input.inp')
+    inp_path = os.path.join(case_dir, input_file)
     run = eio.load_run(os.path.join(case_dir, outdir), inp_path, adv=adv)
 
     # The ghost rows are already gone: exhale_io returns the physical cells
@@ -1008,7 +1009,9 @@ def main(argv=None):
     ap.add_argument('--adv', action='store_true',
                     help='read the advection-corrected _adv profiles instead'
                          ' of the solution')
-    ap.add_argument('--outdir', default='output',
+    ap.add_argument('--input-file', default='input.inp',
+                    help='input filename relative to the run directory or absolute')
+    ap.add_argument('--outdir', '--output-dir', default='output',
                     help='output subdirectory of the case (default output)')
     ap.add_argument('--kn-threshold', type=float, default=0.1)
     ap.add_argument('--json', default=None)
@@ -1020,7 +1023,7 @@ def main(argv=None):
     for c in a.case:
         res = collisional_diagnosis(c, adv=a.adv,
                                     kn_threshold=a.kn_threshold,
-                                    outdir=a.outdir)
+                                    outdir=a.outdir, input_file=a.input_file)
         report(res)
         if a.profile and not out:
             write_profile(res, a.profile)

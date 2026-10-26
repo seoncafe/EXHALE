@@ -109,7 +109,9 @@
       integer, parameter :: ledger_family_phys = 2
       integer :: ledger_family = ledger_family_init
 
-      character(len = 9), parameter   :: inp_file = 'input.inp'
+      character(len=4096) :: inp_file = 'input.inp'
+      character(len=4096) :: input_directory = ''
+      character(len=4096) :: output_dir = 'output/'
       character(len = :), allocatable :: p_name
       character(len = :), allocatable :: grid_type
 
@@ -1483,7 +1485,7 @@
       !                    computed every timestep from the current state
       !                    in excited_H_update (see lya_rt.f90).
       integer :: jlya_mode  = 0
-      character(len=200) :: jlya_rt_file = 'jlya_rt.txt'
+      character(len=8192) :: jlya_rt_file = 'jlya_rt.txt'
       ! ----- Ly-alpha radiative transfer ----- !
       !  F_Lya_star -> incident stellar Ly-alpha flux at the planet
       !  [erg cm^-2 s^-1] (the stellar source of J_lya in jlya_mode 2; Case D
@@ -1545,6 +1547,103 @@
       !$omp threadprivate(sys_x, sys_sol, wa, info)
 
       contains
+
+      function companion_path(path) result(resolved)
+      ! Relative companion paths belong to the input file's directory.
+      ! Absolute paths are already resolved; the working directory is unchanged.
+      character(*), intent(in) :: path
+      character(:), allocatable :: resolved
+      if (len_trim(path).eq.0) then
+         resolved = ''
+      else if (path(1:1).eq.'/') then
+         resolved = trim(path)
+      else
+         resolved = trim(input_directory)//trim(path)
+      endif
+      end function companion_path
+
+      function shell_path(path) result(quoted)
+      ! Quote a filesystem path without allowing shell expansion.
+      character(*), intent(in) :: path
+      character(:), allocatable :: quoted
+      integer :: i
+      quoted = achar(39)
+      do i=1,len_trim(path)
+         if (path(i:i).eq.achar(39)) then
+            quoted = quoted//achar(39)//achar(34)//achar(39)//achar(34)//achar(39)
+         else
+            quoted = quoted//path(i:i)
+         endif
+      enddo
+      quoted = quoted//achar(39)
+      end function shell_path
+
+      subroutine configure_run_paths
+      ! Resolve the invocation before any companion is read or output is opened.
+      character(8192) :: line
+      character(:), allocatable :: leaf, destination, value
+      integer :: nchar, ios, unit, slash, dot, colon, hash, noutput, rc, cst
+      if (command_argument_count().gt.1) error stop 'usage: EXHALE.x [input_file]'
+      if (command_argument_count().eq.1) then
+         call get_command_argument(1, length=nchar, status=ios)
+         if (ios.ne.0.or.nchar.lt.1.or.nchar.gt.len(inp_file)) &
+            error stop 'invalid input file path length'
+         call get_command_argument(1, inp_file, status=ios)
+         if (ios.ne.0) error stop 'cannot read input file argument'
+      endif
+      open(newunit=unit,file=trim(inp_file),status='old',action='read',iostat=ios)
+      if (ios.ne.0) then
+         write(*,'(A)') 'Cannot open input file: '//trim(inp_file)
+         error stop 1
+      endif
+      slash=index(trim(inp_file),'/',back=.true.)
+      input_directory=inp_file(:slash)
+      leaf=trim(inp_file(slash+1:))
+      ! Preserve the established default for every existing input.inp run.
+      ! Other input names select their basename without the final extension.
+      if (leaf.eq.'input.inp') then
+         destination='output'
+      else
+         dot=index(leaf,'.',back=.true.)
+         destination=leaf
+         if (dot.gt.1) destination=leaf(:dot-1)
+      endif
+      noutput=0
+      do
+         read(unit,'(A)',iostat=ios) line
+         if (ios.lt.0) exit
+         if (ios.ne.0) error stop 'cannot read input file for output directory'
+         hash=index(line,'#')
+         if (hash.gt.0) line=line(:hash-1)
+         line=adjustl(line)
+         colon=index(line,':')
+         if (colon.le.0) cycle
+         if (trim(line(:colon-1)).ne.'Output directory') cycle
+         noutput=noutput+1
+         if (noutput.gt.1) error stop 'duplicate Output directory key'
+         value=trim(adjustl(line(colon+1:)))
+         if (len(value).eq.0) error stop 'empty Output directory'
+         destination=value
+      enddo
+      close(unit)
+      if (len(destination).eq.0.or.len(destination).ge.len(output_dir)) &
+         error stop 'invalid output directory length'
+      if (destination(len(destination):).ne.'/') destination=destination//'/'
+      output_dir=destination
+      call execute_command_line('mkdir -p -- '//shell_path(destination), &
+           exitstat=rc,cmdstat=cst)
+      if (cst.ne.0.or.rc.ne.0) then
+         write(*,'(A)') 'Cannot create output directory: '//destination
+         error stop 1
+      endif
+      open(newunit=unit,file=trim(output_dir)//'.writable_probe', &
+           status='replace',action='write',iostat=ios)
+      if (ios.ne.0) then
+         write(*,'(A)') 'Cannot write output directory: '//destination
+         error stop 1
+      endif
+      close(unit,status='delete')
+      end subroutine configure_run_paths
 
       ! Dayside dilution of the stellar beams -- the ATES "2D approximate
       ! method", which is the run's one statement about how a 1-D radial

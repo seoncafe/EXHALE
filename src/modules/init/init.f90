@@ -13,6 +13,7 @@
       use initial_conditions
       use Conversion
       use BC_Apply
+      use, intrinsic :: iso_c_binding, only: c_int
       use omp_lib
       use blas_thread_policy, only: blas_threads_set_policy, blas_threads_report
       use IC_load
@@ -26,7 +27,14 @@
       use lower_atmosphere_profile, only: eddy_diffusion_on_grid
       use base_boundary, only: base_reservoir_p
       
-      implicit none 
+      implicit none
+      ! OpenMP's C API takes an int; avoid compiler-dependent LOGICAL encoding.
+      interface
+         subroutine omp_set_dynamic_c(flag) bind(C, name='omp_set_dynamic')
+            import c_int
+            integer(c_int), value :: flag
+         end subroutine omp_set_dynamic_c
+      end interface
       
       contains
       
@@ -53,28 +61,15 @@
       
       write(*,*) '(init.f90) Initializing the simulation..'
 
-      ! Every output of the run -- from the IC dump a few calls below to the
-      ! final profiles -- goes to ./output, and nothing else creates it, so a
-      ! fresh run directory used to die at the first write with a bare
-      ! Fortran runtime error that named neither the directory nor the cure.
-      ! Create it here; if that fails (permissions, a FILE named output),
-      ! stop and say what is missing.
-      !
-      ! The test is "can a file be created inside it", not an INQUIRE on
-      ! the directory: the standard does not define INQUIRE for a
-      ! directory, gfortran answers .true. for 'output/.' and ifx answers
-      ! .false. (measured 2026-09-05: every ifx run stopped here with the
-      ! directory present), and a writable directory is what the run needs.
+      ! Standalone callers of init also require a writable output directory.
       ex_outdir = output_directory_writable()
       if (.not. ex_outdir) then
-         call execute_command_line('mkdir -p output', exitstat=rc_outdir)
+         call execute_command_line('mkdir -p -- '//shell_path(trim(output_dir)), exitstat=rc_outdir)
          ex_outdir = output_directory_writable()
-         if (rc_outdir .ne. 0 .or. .not. ex_outdir) then
-            write(*,*) '(init.f90) ERROR: cannot create the ./output '//  &
-                       'directory the run writes to; create it and rerun.'
+         if (rc_outdir.ne.0.or..not.ex_outdir) then
+            write(*,'(A)') 'Cannot create output directory: '//trim(output_dir)
             error stop 1
          endif
-         write(*,*) '(init.f90) Created the ./output directory.'
       endif
 
       !---- Global options ----!
@@ -106,7 +101,7 @@
       else
          n_omp_threads = physical_core_count()
       endif
-      call omp_set_dynamic(.false.)
+      call omp_set_dynamic_c(0_c_int)
       call omp_set_num_threads(n_omp_threads)
       n_omp_obtained = 0
 !$omp parallel
@@ -196,12 +191,12 @@
             call get_environment_variable('EXHALE_SEED_HYDROSTATIC_CELLS', &
                                           seed_projection)
             if (len_trim(seed_projection) .eq. 0) then
-               call read_conserved_state('./output/conserved_state_IC.txt', &
-                    './output/Hydro_ioniz_IC.txt',                         &
-                    './output/Ion_species_IC.txt', u, f_sp, exact_restart)
+               call read_conserved_state(trim(output_dir)//'conserved_state_IC.txt', &
+                    trim(output_dir)//'Hydro_ioniz_IC.txt',                         &
+                    trim(output_dir)//'Ion_species_IC.txt', u, f_sp, exact_restart)
             else
                call conserved_state_not_read(                              &
-                    './output/conserved_state_IC.txt', 'the lower layer'// &
+                    trim(output_dir)//'conserved_state_IC.txt', 'the lower layer'// &
                     ' of the seed is projected (EXHALE_SEED_HYDROSTATIC_CELLS)')
             endif
          endif
@@ -485,11 +480,11 @@
       !----------------------------------!
 
       logical function output_directory_writable()
-      ! Whether a file can be created in ./output: a probe file is opened
+      ! Whether a file can be created in the output directory: a probe file is opened
       ! with status='replace' and deleted on close. Portable where an
       ! INQUIRE on the directory itself is not (see the caller).
       integer :: u, ios
-      open(newunit=u, file='output/.writable_probe', status='replace',   &
+      open(newunit=u, file=trim(output_dir)//'.writable_probe', status='replace',   &
            action='write', iostat=ios)
       output_directory_writable = (ios .eq. 0)
       if (ios .eq. 0) close(u, status='delete')

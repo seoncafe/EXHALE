@@ -22,7 +22,7 @@ the legacy ATES-compatible model. (Reference manual:
 ## Build
 
 ```bash
-make                    # gfortran (default); incremental
+make                    # ifx (default); incremental
 make FC=ifort           # ifort   (equivalently: make ifort)
 make FC=ifx             # ifx     (equivalently: make ifx)
 make check              # bitwise golden regression (see below)
@@ -50,7 +50,7 @@ automatically.
 
 ```bash
 chmod +x run_EXHALE.sh
-./run_EXHALE.sh           # gfortran
+./run_EXHALE.sh           # ifx (default)
 ./run_EXHALE.sh --ifort   # ifort
 ./run_EXHALE.sh --ifx     # ifx
 ```
@@ -81,6 +81,20 @@ lines by hand or start from `examples/` (Option B).
 make                                    # build ./EXHALE.x at the repo root
 cd examples/tutorial && ../../EXHALE.x  # reads ./input.inp, writes ./output/
 ```
+
+A direct run also accepts `EXHALE.x [input_file]`. With no argument it reads
+`input.inp` from the working directory; a missing input file is a startup
+error that names the path tried. Relative paths for `metals.inp`, `base.inp`,
+`opacity.inp`, the lower-atmosphere profile, and the spectrum are resolved
+beside the input file. Presence of `metals.inp`, `base.inp`, or `opacity.inp`
+enables the corresponding option.
+
+Add `Output directory: <path>` to the input to choose an absolute output path
+or one relative to the working directory. If omitted, `input.inp` uses
+`output/`, while `huang.inp` uses `huang/` and `cases/salz.inp` uses `salz/`
+in the working directory. EXHALE creates the directory. All run reports,
+including `EXHALE_setup.out` and `EXHALE_resolved.out`, are written there.
+`Load IC? True` reads its restart files from that same output directory.
 
 `OMP_NUM_THREADS` controls the OpenMP team (the ionization sweep, the rate
 tables, the carrier residual, the reconstructions and the hydrodynamic rows;
@@ -1590,7 +1604,7 @@ can be measured instead of argued. Read the exact behavior at the
 
 ## Output files
 
-All output is written to `output/` in the run directory.
+All output is written to the selected output directory (`output/` for the default `input.inp`).
 
 | File | Contents |
 |------|----------|
@@ -1614,7 +1628,7 @@ Every file starts with a `# columns ...` schema header, so analysis tools adapt
 to the column layout automatically. `examples/exhale_io.py` is the loader that
 reads those headers, and it is the one every new script should use: four
 independent column parsers exist in the tree already, and adding a fifth adds
-a fifth place for the schema to drift. `EXHALE_setup.out` in the run directory
+a fifth place for the schema to drift. `EXHALE_setup.out` in the output directory
 echoes the resolved configuration at startup: read it when debugging whether
 a key took effect. When **Load IC** is enabled the previous outputs are copied
 to `*_IC.txt` and read back as initial conditions for a restart run; both
@@ -1762,7 +1776,7 @@ directory, so the spectra always describe the same system as the simulation.
 Each parameter is resolved as
 
 ```
-EXHALE_TRANSIT_* environment override  >  ./EXHALE_resolved.out  >  ./input.inp  >  built-in default
+EXHALE_TRANSIT_* environment override  >  <output>/EXHALE_resolved.out  >  <input_file>  >  built-in default
 ```
 
 `EXHALE_resolved.out` is written by the wind solver after a `base.inp` or a

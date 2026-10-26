@@ -9,7 +9,8 @@ import time
 # WHERE THIS SCRIPT'S OWN MODULES COME FROM.  Three siblings are imported by
 # name -- exhale_transit_lib just below, roche_recon for the triaxial geometry
 # and he_line_metrics for the He 10830 fit -- and they live next to THIS file,
-# not next to the run: a run directory holds `input.inp` and `output/`, and the
+# not next to the run: by default a run directory holds `input.inp` and
+# `output/`, and the
 # script is started from there.  Started as `python3 <path>/EXHALE_transit.py`,
 # CPython puts this script's own directory (symlinks resolved) first on
 # sys.path and all three resolve, so that route was never broken.  Through
@@ -128,13 +129,14 @@ start = time.time()
 # measured distance between the two states travels into the same header.
 
 path = _tenv('PATH', '.')  # EXHALE's files destination folder (env override)
-Input_file = path + '/input.inp'
+Input_file = os.path.join(path, _tenv('INPUT_FILE', 'input.inp'))
+output_dir = os.path.join(path, _tenv('OUTPUT_DIR', 'output'))
 # A selection whose files are not there is refused with the reason, not with
 # a traceback: the usual case is a stationary solve, which writes no `_adv`
 # products (its evaluation, `Restart intent: stationary evaluate`, does).
 try:
 	Hydro_file, Ioniz_file, _state_selection = transit_state_files(
-	    path, _tenv('STATE', 'adv'))
+	    path, _tenv('STATE', 'adv'), output_dir=output_dir)
 except (FileNotFoundError, ValueError) as _exc:
 	sys.exit(str(_exc))
 
@@ -214,13 +216,13 @@ fig_name_oi   = _fig_name('OI')
 # core block. Rp/Mp/T0/a_orb/Mstar keep their legacy word positions; the
 # stellar radius / Teff use the same word positions as the Fortran; LEUV and
 # the 2D approximate method stay content-matched (last occurrence wins).
-_par = read_input_params(Input_file)
+_par = read_input_params(Input_file, output_dir=output_dir)
 if _par['resolved']:
 	print('(EXHALE_transit) Using the wind solver\'s resolved configuration '
 	      '(EXHALE_resolved.out): Rp = %.5f R_J, T0 = %.1f K'
 	      % (_par['Rp']/RJ, _par['T0']))
 else:
-	print('(EXHALE_transit) No EXHALE_resolved.out next to input.inp -- '
+	print('(EXHALE_transit) No EXHALE_resolved.out in output directory -- '
 	      'using input.inp values (stale if base.inp overrides them).')
 Rp    = _par['Rp']       # planet radius [m]
 Mp    = _par['Mp']       # planet mass [kg]
@@ -424,7 +426,8 @@ _adv          = read_adv_validity(Hydro_file)
 # The other state is only being located here, so it is not required to
 # exist: a stationary solve has no `_adv` products and that is not an error.
 _state_other  = transit_state_files(
-    path, 'solution' if _state_selection == 'adv' else 'adv', require=False)
+    path, 'solution' if _state_selection == 'adv' else 'adv', require=False,
+	output_dir=output_dir)
 _state_record = {
     'selection': _state_selection,
     'hydro': Hydro_file, 'ioniz': Ioniz_file,
@@ -1119,7 +1122,7 @@ data_nNaI  = np.concatenate((np.flip(nNaI_cm),  nNaI_cm ))*1.0e6
 # It follows the state selection: the level populations a line integrates
 # and the density and temperature it integrates them with come from one
 # state, never from two.
-OI_file = transit_state_oi_levels(path, _state_selection)
+OI_file = transit_state_oi_levels(path, _state_selection, output_dir=output_dir)
 do_OI = do_metals and os.path.exists(OI_file)
 if do_OI:
 	# cols 8,9,10 (0-indexed) = n(3P2), n(3P1), n(3P0) in cm^-3

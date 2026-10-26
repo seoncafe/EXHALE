@@ -612,14 +612,14 @@ There is no installation step beyond cloning.
 ```bash
 git clone https://github.com/seoncafe/EXHALE
 cd EXHALE
-make                                    # gfortran; make FC=ifort or FC=ifx
+make                                    # ifx; use make FC=gfortran or FC=ifort to override
 make check                              # bitwise regression over the case matrix
 make test                               # the assertion suites (physics, grid and gates, ...)
 ```
-The Makefile takes the compiler from `PATH` and, when that compiler's prefix
-carries an OpenBLAS (the conda-forge gfortran 16.2 of this machine does), links
-that prefix's LAPACK and records it in the rpath -- so the binary and its
-LAPACK share one libgfortran runtime; otherwise it links the system `-llapack`
+The Makefile uses `ifx` from `PATH` by default and links its MKL with
+`-qmkl=sequential`. With `make FC=gfortran`, it uses OpenBLAS from the compiler's
+prefix when available (as with the conda-forge gfortran 16.2 on this machine),
+records that path in the rpath, and otherwise links the system `-llapack`
 (`make LAPACK_LIBS='...'` overrides). OpenBLAS runs its own thread pool,
 independent of OpenMP and by default as wide as the machine: at startup the
 binary sets it to one thread unless `OPENBLAS_NUM_THREADS` is stated, and the
@@ -627,16 +627,27 @@ setup report says which library it found and what it set (the band
 factorizations of the stationary solve are too small to gain from a BLAS team:
 MEASURED 16.33 s against 16.32 s on the `wasp_full_newton` reload at 1 and 8
 BLAS threads, 2026-09-13). The compiler's path and version are part
-of the rebuild stamp: objects of one gfortran are never linked by another.
-The Intel compilers (`make FC=ifx`, `FC=ifort`) link MKL (`-qmkl=sequential`)
-by the same rule; `make FC=ifx OBJDIR=build_ifx EXE=EXHALE_ifx.x` builds a
-second binary beside the gfortran one.
+of the rebuild stamp: objects from different compilers are never linked together.
+`make FC=gfortran OBJDIR=build_gfortran EXE=EXHALE_gfortran.x` builds a
+separate GNU Fortran binary beside the default Intel binary.
 ```
 cd examples/tutorial && ../../EXHALE.x  # reads ./input.inp, writes ./output/
 ```
 
-The binary always reads `./input.inp` and writes `./output/` relative to the
-current working directory, so a run is simply a directory. `examples/` holds
+Run `EXHALE.x [input_file]`. With no argument, it reads `input.inp` in the
+working directory. A missing input file stops the run and names the path tried.
+Relative paths for `metals.inp`, `base.inp`, `opacity.inp`, the lower-atmosphere
+profile, and the spectrum are resolved from the input file's directory;
+presence of the first three files enables their respective options.
+
+The optional input line `Output directory: <path>` selects an absolute path or
+a path relative to the working directory. Without it, `input.inp` writes to
+`output/` for existing runs; any other input filename writes to a directory
+named after its stem in the working directory. For example,
+`EXHALE.x cases/salz.inp` writes to `salz/`. EXHALE creates the output
+directory when needed. Profiles, restart files, `EXHALE_setup.out`, and
+`EXHALE_resolved.out` are written inside it. The setup and resolved reports
+state the input path and output directory in effect. `examples/` holds
 nineteen ready-made configurations, one for each physics or solver option;
 copy one as a starting point. `./run_EXHALE.sh` instead opens a Tk interface
 that fills in the planetary parameters and builds and runs for you.
@@ -797,4 +808,4 @@ the Markdown memos of the development record.
 
 Kwang-Il Seon (KASI / UST)
 
-Last updated: 2026-10-19 06:01 KST
+Last updated: 2026-10-27 00:16 KST

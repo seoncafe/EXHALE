@@ -68,10 +68,10 @@
 
       subroutine open_trace()
       if (trace_opened) then
-         open(unit = trace_unit, file = './output/boundary_trace.txt',    &
+         open(unit = trace_unit, file = trim(output_dir)//'boundary_trace.txt',    &
               status = 'old', position = 'append')
       else
-         open(unit = trace_unit, file = './output/boundary_trace.txt')
+         open(unit = trace_unit, file = trim(output_dir)//'boundary_trace.txt')
          write(trace_unit,'(A)') '# the lower boundary at named points'// &
               ' of one evaluation'
          trace_opened = .true.
@@ -233,10 +233,10 @@
       integer :: j
       if (.not. ghost_record_armed()) return
       if (ghost_record_opened) then
-         open(unit = ghost_record_unit, file = './output/ghost_record.txt',&
+         open(unit = ghost_record_unit, file = trim(output_dir)//'ghost_record.txt',&
               status = 'old', position = 'append')
       else
-         open(unit = ghost_record_unit, file = './output/ghost_record.txt')
+         open(unit = ghost_record_unit, file = trim(output_dir)//'ghost_record.txt')
          write(ghost_record_unit,'(A)') '# the lower ghost of one'//      &
               ' evaluation, and the base continuity row it produces'
          write(ghost_record_unit,'(A)') '# ghost <label> <cell> p rho'//  &

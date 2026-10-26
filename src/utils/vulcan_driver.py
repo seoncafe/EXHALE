@@ -42,9 +42,9 @@ from run_lower import guillot_T, RJ, MJ                     # noqa: E402
 G_CGS = 6.67430e-8
 
 
-def read_input(run_dir):
+def read_input(run_dir, input_file="input.inp"):
     raw = {}
-    for ln in open(os.path.join(run_dir, 'input.inp')):
+    for ln in open(os.path.join(run_dir, input_file)):
         if ':' in ln:
             k, _, v = ln.partition(':')
             raw[k.strip()] = v.strip()
@@ -84,6 +84,8 @@ def write_guillot_atm(path, Teq, gs):
 def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument('run_dir')
+    ap.add_argument('--input-file', default='input.inp',
+                    help='input filename relative to run_dir or absolute')
     ap.add_argument('--r1bar', type=float, required=True,
                     help='radius of the 1-bar level [R_J] (transit radius)')
     ap.add_argument('--force', action='store_true', help='rerun VULCAN even if cached')
@@ -92,7 +94,7 @@ def main():
     a = ap.parse_args()
     run_dir = os.path.abspath(a.run_dir)
 
-    P = read_input(run_dir)
+    P = read_input(run_dir, a.input_file)
     name = P['name']
     gs = G_CGS * P['Mp'] * MJ / (a.r1bar * RJ) ** 2
     print('(vulcan_driver) %s: Mp=%.3f MJ Teq=%.0f K a=%.4f AU Teff=%.0f -> gs=%.0f cm/s2'

@@ -5192,7 +5192,7 @@
                                 dlnpsi)
 
       uu = 771
-      open(unit=uu, file='./output/element_flux_profile.txt',             &
+      open(unit=uu, file=trim(output_dir)//'element_flux_profile.txt',             &
            status='replace')
       write(uu,'(A)') '# elemental face fluxes of the state the '//       &
          'certification measured'

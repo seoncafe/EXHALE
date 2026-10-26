@@ -145,7 +145,7 @@
    ! The energy-band line ("[E_low...") is a bracket prefix, checked
    ! separately there. base.inp has its own list, built in read_base_inp.
    character(len=32), parameter :: known_keys(*) = [ character(len=32) ::    &
-      'Planet name', 'Log10 lower boundary', 'Planet radius', 'Planet mass', &
+      'Output directory', 'Planet name', 'Log10 lower boundary', 'Planet radius', 'Planet mass', &
       'Equilibrium temperature', 'Orbital distance', 'Escape radius',        &
       'He/H number ratio', '2D approximate method', 'Parent star mass',      &
       'Spectrum type', 'Spectrum file', 'Power-law index', 'Photon energy',  &
@@ -302,7 +302,7 @@
    select case (sp_type)
 
       case ('Load')          ! Load from file
-         sed_file    = get_word(req('Spectrum file'), 3)
+         sed_file    = companion_path(get_word(req('Spectrum file'), 3))
          do_read_sed = .true.
 
       case ('Power-law')
@@ -504,7 +504,7 @@
 			else if (lbl_match(line, 'Wind-AE seed')) then
 				windae_seed_file = trim(get_word(line, 3))
 			else if (lbl_match(line, 'Jlya RT file')) then
-				jlya_rt_file = get_word(line, 4)
+				jlya_rt_file = companion_path(get_word(line, 4))
 				jlya_mode    = 1
 			else if (lbl_match(line, 'Jlya escape-prob')) then
 				str = get_word(line, 3)
@@ -911,7 +911,7 @@
 				! Tested BEFORE 'Lower atmosphere', whose label is a prefix of
 				! this one (longest / most-specific first, as for the two
 				! "Wind-AE seed" keys).
-				lap_file = get_word(line, 4)
+				lap_file = companion_path(get_word(line, 4))
 			else if (lbl_match(line, 'Lower atmosphere')) then
 				! Lower-atmosphere pre-step (docs/lower_atmosphere_*).
 				str = get_word(line, 3)
@@ -3126,7 +3126,7 @@
    character(len=250), allocatable :: baselines(:)
    character(len=32),  allocatable :: base_keys(:)
 
-   inquire(file='base.inp', exist=ex)
+   inquire(file=companion_path('base.inp'), exist=ex)
    if (.not. ex) return
    write(*,*) '(input_read) Reading base.inp (lower-atmosphere handoff)..'
 
@@ -3142,7 +3142,7 @@
    do ie = 1, n_melem
       base_keys(6+ie) = trim(melem_name(ie))//'_H_base'
    enddo
-   open(newunit=ub, file='base.inp', status='old')
+   open(newunit=ub, file=companion_path('base.inp'), status='old')
    nb = 0
    do
       read(ub,'(A)',iostat=ios) line
@@ -3155,10 +3155,10 @@
       read(ub,'(A)') baselines(ib)
    enddo
    close(ub)
-   call refuse_duplicate_keys('base.inp', baselines, nb, base_keys, nkb)
+   call refuse_duplicate_keys(companion_path('base.inp'), baselines, nb, base_keys, nkb)
    deallocate(baselines, base_keys)
    id_base = ''
-   open(newunit=ub, file='base.inp', status='old')
+   open(newunit=ub, file=companion_path('base.inp'), status='old')
    do
       read(ub,'(A)',iostat=ios) line
       if (ios .ne. 0) exit
@@ -3439,13 +3439,14 @@
    ! base.inp is present.  The EXHALE code root is taken from the
    ! EXHALE_ROOT environment variable; it must be set to the EXHALE install
    ! directory so the generator scripts under src/utils/ can be located.
-   character(len=1024) :: root, cmd
+   character(len=4096) :: root
+   character(len=16384) :: cmd
    character(len=32)   :: r1str
    logical :: ex
    integer :: rc, cst
 
    if (lower_atm_mode .le. 0) return
-   inquire(file='base.inp', exist=ex)
+   inquire(file=companion_path('base.inp'), exist=ex)
    if (ex) then
       write(*,*) '(input_read) Lower atmosphere: existing base.inp found'//&
                  ' -- using it (delete it to regenerate).'
@@ -3471,15 +3472,19 @@
    if (lower_atm_mode .eq. 2) then
       write(*,*) '(input_read) Lower atmosphere: running VULCAN'//        &
                  ' photochemistry (first run takes hours; cached after).'
-      cmd = 'python3 '//trim(root)//'/src/utils/vulcan_driver.py . '//   &
+      cmd = 'python3 '//shell_path(trim(root)//'/src/utils/vulcan_driver.py')//' '// &
+            shell_path(companion_path('.'))//' --input-file '// &
+            shell_path(trim(inp_file(index(trim(inp_file),'/',back=.true.)+1:)))//' '//   &
             '--r1bar '//trim(r1str)
    else
       write(*,*) '(input_read) Lower atmosphere: analytic column.'
-      cmd = 'python3 '//trim(root)//'/src/utils/run_lower.py . '//       &
+      cmd = 'python3 '//shell_path(trim(root)//'/src/utils/run_lower.py')//' '// &
+            shell_path(companion_path('.'))//' --input-file '// &
+            shell_path(trim(inp_file(index(trim(inp_file),'/',back=.true.)+1:)))//' '//       &
             '--r1bar '//trim(r1str)
    endif
    call execute_command_line(trim(cmd), exitstat=rc, cmdstat=cst)
-   inquire(file='base.inp', exist=ex)
+   inquire(file=companion_path('base.inp'), exist=ex)
    if (rc .ne. 0 .or. cst .ne. 0 .or. .not. ex) then
       write(*,*) '(input_read) ERROR: lower-atmosphere generator failed'//&
                  ' (see messages above); no base.inp produced.'

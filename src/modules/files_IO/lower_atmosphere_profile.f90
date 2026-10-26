@@ -97,7 +97,7 @@
       public :: lap_steady_FHnuc_median, lap_steady_FHnuc_spread
 
       logical            :: lap_in_use = .false.
-      character(len=256) :: lap_file   = ''
+      character(len=8192) :: lap_file   = ''
 
       character(len=128) :: lap_solution_id    = ''
       character(len=64)  :: lap_source_code    = ''

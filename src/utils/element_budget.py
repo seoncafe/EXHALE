@@ -35,8 +35,8 @@ nothing else.
 Usage:
     python3 src/utils/element_budget.py [run_dir] [--tol 1e-8] [--adv]
 
-Reads <run_dir>/EXHALE_resolved.out (abundances, mass_per_H) and
-<run_dir>/output/Ion_species.txt (+ Hydro_ioniz.txt for the H closure);
+Reads <output_dir>/EXHALE_resolved.out (abundances, mass_per_H) and
+<output_dir>/Ion_species.txt (+ Hydro_ioniz.txt for the H closure);
 --adv checks the advection-corrected profiles instead. Exit status is 1 if
 any element misses its reservoir by more than --tol (relative).
 """
@@ -124,6 +124,8 @@ def element_stages(labels, sym):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('run_dir', nargs='?', default='.')
+    ap.add_argument('--output-dir', default='output',
+                    help='output directory relative to run_dir or absolute')
     ap.add_argument('--tol', type=float, default=1.0e-8,
                     help='max allowed relative departure from the reservoir')
     ap.add_argument('--adv', action='store_true',
@@ -131,9 +133,12 @@ def main():
     a = ap.parse_args()
 
     tag = '_adv' if a.adv else ''
-    res_file = os.path.join(a.run_dir, 'EXHALE_resolved.out')
-    ion_file = os.path.join(a.run_dir, 'output', 'Ion_species%s.txt' % tag)
-    hyd_file = os.path.join(a.run_dir, 'output', 'Hydro_ioniz%s.txt' % tag)
+    output_dir = os.path.join(a.run_dir, a.output_dir)
+    res_file = os.path.join(output_dir, 'EXHALE_resolved.out')
+    if not os.path.isfile(res_file):
+        res_file = os.path.join(a.run_dir, 'EXHALE_resolved.out')
+    ion_file = os.path.join(output_dir, 'Ion_species%s.txt' % tag)
+    hyd_file = os.path.join(output_dir, 'Hydro_ioniz%s.txt' % tag)
     for f in (res_file, ion_file, hyd_file):
         if not os.path.exists(f):
             raise SystemExit('missing %s' % f)

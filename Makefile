@@ -3,11 +3,12 @@
 #  run_EXHALE.sh used to perform).
 #
 #  Quick start:
-#     make              # build ./EXHALE.x with gfortran (default)
+#     make              # build ./EXHALE.x with ifx (default)
 #     make test         # run every test suite; nonzero exit if any failed
 #     make check        # byte-identical regression over the whole matrix
 #     make check CASES='wasp_full mol_base_handoff'   # ... over those cases
 #     make FC=ifort     # Intel classic        (or:  make ifort)
+#     make FC=gfortran  # GNU Fortran compiler
 #     make FC=ifx       # Intel LLVM compiler   (or:  make ifx)
 #     make -j           # parallel build
 #     make clean        # remove objects + .mod files (KEEP EXHALE.x)
@@ -40,7 +41,7 @@ EXE    := EXHALE.x
 # Override make's built-in default (f77), but keep any value passed on
 # the command line, e.g.  make FC=ifort
 ifeq ($(origin FC),default)
-  FC := gfortran
+  FC := ifx
 endif
 
 # ---- compiler-specific optimization / OpenMP / module-path flags -----
