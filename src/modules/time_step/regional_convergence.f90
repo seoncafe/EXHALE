@@ -161,8 +161,8 @@
       end subroutine
 
       subroutine regional_sample(dt,values)
-      ! Integrate linearly between accepted states, splitting at exact physical
-      ! window boundaries. Every accepted step contributes to the extrema.
+      ! Interpolate accepted state fields across exact window boundaries.
+      ! Only the portion after settling contributes to window extrema.
       real*8,intent(in) :: dt,values(:)
       real*8 :: a,b,h,remaining,end_fraction,x0(size(values)),x1(size(values))
       logical :: ok
@@ -204,14 +204,15 @@
             endif
             call evaluate_windows(elapsed+dt*a,ok)
             if(iw.eq.nwindow) then
-               ! The final saved state is the adopted endpoint, even when a
-               ! step crosses a window edge. Include it in the finite bound.
+               ! State fields use the adopted endpoint; field 49 uses the
+               ! accepted RK interval-average mass flow. Include each supplied
+               ! value in the final finite-window bound.
                minimum(:,iw)=min(minimum(:,iw),values)
                maximum(:,iw)=max(maximum(:,iw),values)
                call evaluate_windows(elapsed+dt,ok)
                ! The confirmation edge must be inside the allowed horizon.
-               ! Its adopted endpoint can lie just beyond that edge, as for
-               ! the ordinary time-budget stop; its range was checked above.
+               ! The accepted step may end beyond that edge; its supplied
+               ! values were included in the finite bound above.
                if(ok.and.elapsed+dt*a.le.maximum_seconds*(1d0+1d-12)) then
                   regional_passed=.true.;exit
                endif

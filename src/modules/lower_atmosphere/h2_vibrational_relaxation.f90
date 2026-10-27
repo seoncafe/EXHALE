@@ -21,9 +21,7 @@
    ! into excited v states (typically ~2 eV above the ground state) leads to
    ! the transformation of the vibrational energy into heat."
    !
-   ! ---------------------------------------------------------------------
    !  VALIDITY
-   ! ---------------------------------------------------------------------
    !  * COLLISION PARTNERS. Three are carried, and none of them is a fit any
    !    longer: atomic hydrogen from Lique (2015), helium from Jozwiak et
    !    al. (2024) and H2 from Le Bourlot, Pineau des Forets & Flower
@@ -379,15 +377,8 @@
    ! para) and Boltzmann averaged over the initial j of v = 1.  MEASURED
    ! here, 2.654e-15 cm^3 s^-1 at 808 K and 7.015e-15 at 1000 K.
    !
-   ! WHAT IT CHANGES.  Helium used to be left out of the collider sum for
-   ! want of a rate.  It is now in it, with its own coefficient, and the
-   ! statement that used to stand here -- that leaving it out understated
-   ! the de-excitation by an unknown amount -- is replaced by the size of
-   ! the term: helium is 9.3e-04 of the atomic-hydrogen coefficient at
-   ! 1000 K and 5.9e-04 at 800 K (MEASURED), so at the base helium density
-   ! of this configuration it carries about a part in a thousand of the
-   ! sum.  It is carried because it is physically present, not because it
-   ! moves a number here.
+   ! He collisions contribute through the Jozwiak et al. (2024) rate.
+   ! See the 20-8000 K tabulated range below.
    !
    ! RANGE.  20-8000 K, wider than this layer at both ends, with the end
    ! values held outside rather than extrapolated.  The set reaches v <= 3,
@@ -653,5 +644,4 @@
       f = q/(q + a_cascade_max)
    end function h2_vibrational_heat_fraction
 
-   ! End of module
    end module h2_vibrational_relaxation

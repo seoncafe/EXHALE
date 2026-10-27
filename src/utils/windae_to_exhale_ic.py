@@ -21,6 +21,7 @@ import numpy as np
 
 kB = 1.380649e-16
 mH = 1.67353284e-24  # H atom, matching EXHALE's mu (was 1.6726e-24, the proton)
+mHe_over_mH = 6.6464790722e-24/mH  # He atom over H atom, as wae_ic_writer.f90 uses
 
 def read_windsoln(fn):
     scales = None
@@ -62,7 +63,7 @@ def main():
     # --- nuclei density profile on the EXHALE grid ---
     # Wind-AE nuclei density rescaled to EXHALE composition:
     # rho = nH mH (1+4HeH)  =>  nH = rho/(mH (1+4HeH)); n_nuc = nH (1+HeH)
-    nH_w = rhow / (mH * (1.0 + 4.0*HeH))
+    nH_w = rhow / (mH * (1.0 + mHe_over_mH*HeH))
     nnuc_w = nH_w * (1.0 + HeH)
 
     lognnuc = np.interp(r, rw, np.log10(nnuc_w))
@@ -79,13 +80,26 @@ def main():
         # b0 = G Mp mu /(kB T0 Rp): recover from matching the windsoln
         # scale height just above Rmin instead of planet constants:
         # d ln n/d(1/r) ~ b0_eff
-        i1 = np.searchsorted(rw, rmin_w + 0.1)
+        # first wind point >= 0.1 Rp above Rmin; if the wind ends below
+        # that, the farthest point, with a warning (as wae_ic_writer.f90)
+        i1 = int(np.searchsorted(rw, rmin_w + 0.1))
+        if i1 >= len(rw):
+            i1 = len(rw) - 1
+            if not rw[i1] > rw[0]:
+                sys.exit('windae_to_exhale_ic: the wind solution has no '
+                         'point above its base; no scale height')
+            print('WARNING: no wind point 0.1 Rp above Rmin; scale height '
+                  f'from the farthest point, {rw[i1]-rmin_w:.5f} Rp above')
         b0_eff = ((np.log(nnuc_w[0]) - np.log(nnuc_w[i1]))
                   / (1.0/rw[0] - 1.0/rw[i1]))
         loghyd = np.log10(nbase) + b0_eff*(1.0/r[blo] - 1.0)/np.log(10.0)
         # blend exponent: 0 at r=1 -> 1 at rmin_w (linear in 1/r)
-        s = (1.0/1.0 - 1.0/r[blo]) / (1.0/1.0 - 1.0/rmin_w)
-        s = np.clip(s, 0.0, 1.0)
+        # Rmin <= 1 has no blend region: baseline below Rmin, wind at Rmin
+        if rmin_w > 1.0:
+            s = (1.0/1.0 - 1.0/r[blo]) / (1.0/1.0 - 1.0/rmin_w)
+            s = np.clip(s, 0.0, 1.0)
+        else:
+            s = np.where(r[blo] >= rmin_w, 1.0, 0.0)
         logw_at = np.interp(rmin_w, rw, np.log10(nnuc_w))
         hyd_at  = np.log10(nbase) + b0_eff*(1.0/rmin_w - 1.0)/np.log(10.0)
         lognnuc[blo] = loghyd + (logw_at - hyd_at)*s
@@ -93,7 +107,6 @@ def main():
         fHI[blo]  = 1.0 + (np.interp(rmin_w, rw, fHIw)  - 1.0)*s
         fHeI[blo] = 1.0 + (np.interp(rmin_w, rw, fHeIw) - 1.0)*s
         # velocity from mass-flux continuity (rho v r^2 = const at Rmin)
-        flux0 = (np.interp(rmin_w, rw, np.log10(nnuc_w)), )
         nn_rmin = 10.0**np.interp(rmin_w, rw, np.log10(nnuc_w))
         v_rmin = np.interp(rmin_w, rw, vw)
         v[blo] = v_rmin * (nn_rmin * rmin_w**2) / (10.0**lognnuc[blo] * r[blo]**2)
@@ -124,7 +137,7 @@ def main():
     ne   = nHII + nHeII + 2.0*nHeIII
     ntot = nH + nHe
     p = (ntot + ne) * kB * T
-    nmass = nHI + nHII + 4.0*(nHeI + nHeII + nHeIII)   # writer col 2 analog
+    nmass = nHI + nHII + mHe_over_mH*(nHeI + nHeII + nHeIII)   # writer col 2 analog
 
     with open(outdir + '/Hydro_ioniz_IC.txt', 'w') as f:
         f.write('# Wind-AE -> EXHALE IC (converted)\n')

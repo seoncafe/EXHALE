@@ -218,10 +218,8 @@
            - (coeff*x(1) + mup*mum*dr_step*(heaold + teq_cell%heat_extra   &
               + teq_cell%cond_diag*x(1) - cool))
 
-   ! End of subroutine
 	end subroutine T_equation
 
-   !-------------------------------------------------------------------!
    ! Scalar root-finder for the energy equation (Task 1: Brent).
    !
    ! T_equation is a single nonlinear equation in x = T/T0. With metal
@@ -230,7 +228,6 @@
    ! the first sign change scanning upward from a low floor structurally
    ! selects the lowest (physical) root, then Brent polishes it. Used only
    ! by the post-processor (one pass), so the scan cost is negligible.
-   !-------------------------------------------------------------------!
 
    ! Scalar residual of the energy equation at x = T/T0 (wraps T_equation).
    double precision function Tres(xx, params)
@@ -245,8 +242,9 @@
 
    ! Bracket the lowest physical root and polish it with Brent. x_guess is
    ! the eq value (T_in/T0) used to anchor the search window. On return
-   ! ok=.false. means no sign change was found in [0.05,4]*x_guess, and the
-   ! caller should fall back to the eq temperature.
+   ! ok=.false. means no sign change was found from
+   ! max(0.05*x_guess,1/T0) to 4*x_guess, or x_guess <= 0; the caller
+   ! can use its equilibrium T.
    subroutine solve_T_brent(params, x_guess, x_out, ok)
    real*8,  intent(in)  :: params(40), x_guess
    real*8,  intent(out) :: x_out
@@ -346,5 +344,4 @@
    root = b
    end subroutine brent_root
 
-	! End of module
 	end module equation_T

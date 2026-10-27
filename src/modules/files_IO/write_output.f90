@@ -313,12 +313,11 @@
                  pass_state_previous_generation,                          &
                  remove_pass_state_directory
 
-      ! THE IDENTITY OF THIS RUN, unique across runs and hosts: the wall
-      ! clock of the run start to the millisecond and the count of the
-      ! processor clock at that moment, 'yyyymmddThhmmss.sss_c<count>'.
-      ! Set once (establish_run_identity) and read by the pass state, whose
-      ! generations are named by it, so that two runs writing the same pass
-      ! number into one directory cannot publish two states under one name.
+      ! The run identity combines the wall-clock start to the millisecond
+      ! with a system_clock count, 'yyyymmddThhmmss.sss_c<count>'. It is set
+      ! once by establish_run_identity and names pass-state generations.
+      ! The two clocks reduce accidental name collisions but do not ensure
+      ! uniqueness across hosts or simultaneous processes.
       character(len=48), save :: run_identity = ''
 
       ! THE PASS STATE of the stationary outer iteration is published in
@@ -328,14 +327,12 @@
 
       contains
 
-      ! ------------------------------------------------------------------ !
 
       subroutine establish_run_identity()
-      ! Form run_identity from date_and_time (to the millisecond) and the
-      ! 64-bit system_clock count; both are standard Fortran. The clock
-      ! count differs between hosts started at the same millisecond, the
-      ! date between runs of one host. Called once at the start of the run;
-      ! a second call keeps the first identity.
+      ! Form run_identity from date_and_time (to the millisecond) and a
+      ! 64-bit system_clock count. These values do not guarantee a distinct
+      ! identity across hosts or simultaneous processes. Called once at
+      ! run start; a second call keeps the first identity.
       integer :: dt_values(8)
       integer(kind=8) :: clock_count
       if (len_trim(run_identity) .gt. 0) return
@@ -347,7 +344,6 @@
       run_identity = pass_state_safe_name(run_identity)
       end subroutine establish_run_identity
 
-      ! ------------------------------------------------------------------ !
 
       function pass_state_safe_name(raw) result(safe)
       ! The name with every character outside [A-Za-z0-9._-] replaced by
@@ -561,7 +557,7 @@
       ! of the pump cross section of the SAME table
       ! (h2_lw_band_photon_fraction_absorbed, lyman_werner.f90 sec. 2g); it
       ! matters only when the oxygen chemistry shares the band, and is
-      ! reported in output/FUV_bands.txt when it does.
+      ! reported in <output_dir>/FUV_bands.txt when it does.
       if (thereis_mol .and. F_LW_star .gt. 0.0d0 .and. flag .eq. 'eq') then
          open(unit = 4, file = trim(output_dir)//'Lyman_Werner.txt')
          write(4,'(A)') '# EXHALE schema 2'
@@ -665,10 +661,8 @@
          close(73)
       endif
 
-      ! End of subroutine
       end subroutine write_output
 
-      ! ------------------------------------------------------------------ !
 
       subroutine write_hydro_state_file(path, flag, rho, v, p, T, heat,   &
                                         cool, mrow, adv_T_status,         &
@@ -792,7 +786,6 @@
       close(unit_h)
       end subroutine write_hydro_state_file
 
-      ! ------------------------------------------------------------------ !
 
       subroutine write_species_state_file(path, flag, nhi, nhii, nhei,     &
                                           nheii, nheiii, nheiTR, nm,       &
@@ -953,7 +946,6 @@
       close(unit_i)
       end subroutine write_species_state_file
 
-      ! ------------------------------------------------------------------ !
 
       subroutine publish_pass_state_generation(pass_now, pass_statement, &
                                        rho, v, p, T, heat, cool, nhi,     &
@@ -962,14 +954,16 @@
       ! THE STATE ONE OUTER PASS OF THE STATIONARY ITERATION HANDS TO THE
       ! NEXT, published as ONE GENERATION:
       !
-      !    output/pass_state/<gen>/Hydro_ioniz.txt
-      !    output/pass_state/<gen>/Ion_species.txt
-      !    output/pass_state/<gen>/conserved_state.txt  (when writable)
-      !    output/pass_state/<gen>/manifest.txt
-      !    output/pass_state/current          (one line: <gen>)
+      !    <output_dir>/pass_state/<gen>/Hydro_ioniz.txt
+      !    <output_dir>/pass_state/<gen>/Ion_species.txt
+      !    <output_dir>/pass_state/<gen>/conserved_state.txt  (when writable)
+      !    <output_dir>/pass_state/<gen>/manifest.txt
+      !    <output_dir>/pass_state/current          (one line: <gen>)
       !
-      ! <gen> = r<run_identity>_p<pass>, so no two runs and no two passes
-      ! name one generation. A run stopped from outside (a wall-clock
+      ! <gen> = r<run_identity>_p<pass>; pass numbers distinguish
+      ! generations within a run. The time and clock based run identity
+      ! reduces accidental collisions across runs but does not guarantee
+      ! uniqueness across hosts or processes. A run stopped from outside (a wall-clock
       ! timeout, a kill) leaves the state of its last published pass behind
       ! instead of nothing. Copied to Hydro_ioniz_IC.txt / Ion_species_IC.txt
       ! (and conserved_state.txt to conserved_state_IC.txt, when present)
@@ -994,11 +988,11 @@
       ! publication of a directory, no 'current' at all):
       !
       !   1. the two state files and the manifest are written and closed in
-      !      output/pass_state/.<gen>.tmp/;
-      !   2. that directory is renamed onto output/pass_state/<gen> (one
+      !      <output_dir>/pass_state/.<gen>.tmp/;
+      !   2. that directory is renamed onto <output_dir>/pass_state/<gen> (one
       !      rename(2));
-      !   3. output/pass_state/current.part, holding <gen>, is written,
-      !      closed and renamed onto output/pass_state/current (one
+      !   3. <output_dir>/pass_state/current.part, holding <gen>, is written,
+      !      closed and renamed onto <output_dir>/pass_state/current (one
       !      rename(2): the single decision that publishes the generation);
       !   4. the generation 'current' named before step 3 is kept, and the
       !      one IT replaced (the previous_state_id of its manifest) is
@@ -1180,12 +1174,11 @@
       published_id = trim(gen_name)
       end subroutine publish_pass_state_generation
 
-      ! ------------------------------------------------------------------ !
 
       function pass_state_generation_name_valid(gen) result(valid)
       ! A generation name this writer can have made: 'r' followed by
       ! characters of [A-Za-z0-9._-] only. It is therefore one path
-      ! component inside output/pass_state and never '.' or '..', which is
+      ! component inside <output_dir>/pass_state and never '.' or '..', which is
       ! what makes a name read from a file safe to remove.
       character(len=*), intent(in) :: gen
       logical :: valid
@@ -1195,10 +1188,9 @@
       valid = (pass_state_safe_name(trim(gen)) .eq. trim(gen))
       end function pass_state_generation_name_valid
 
-      ! ------------------------------------------------------------------ !
 
       function pass_state_current_generation() result(gen)
-      ! The generation output/pass_state/current names, or '' when there is
+      ! The generation <output_dir>/pass_state/current names, or '' when there is
       ! none (or the line is not a generation name).
       character(len=96) :: gen
       integer :: unit_c, ios_c
@@ -1213,7 +1205,6 @@
       if (.not. pass_state_generation_name_valid(gen)) gen = ''
       end function pass_state_current_generation
 
-      ! ------------------------------------------------------------------ !
 
       function pass_state_previous_generation(gen) result(gen_prev)
       ! The previous_state_id the manifest of generation gen states, or ''
@@ -1239,7 +1230,6 @@
       if (.not. pass_state_generation_name_valid(gen_prev)) gen_prev = ''
       end function pass_state_previous_generation
 
-      ! ------------------------------------------------------------------ !
 
       subroutine remove_pass_state_directory(dir_path)
       ! Remove a directory of the pass state: the files a generation holds
@@ -1261,7 +1251,6 @@
               ' holds a file this writer did not write); left as it is'
       end subroutine remove_pass_state_directory
 
-      ! ------------------------------------------------------------------ !
 
       subroutine write_adv_validity_header(unit, T_status, comp_status,  &
                                            derived_state)
@@ -1410,7 +1399,6 @@
 
       end subroutine write_adv_validity_header
 
-      !-------------------------------------------------------------!
 
       function adv_column_outcome_name(outcome) result(nm)
       ! The word the header and the log use for a column outcome.
@@ -1560,20 +1548,19 @@
                      trim(adv_derived_state_fields(ds))
       end subroutine adv_derived_state_report
 
-      !-------------------------------------------------------------!
 
       subroutine write_oxygen_chemistry(v, T, nhi, nhii, nhei, nheii,     &
                                         nheiii, nheiTR, nm)
       ! The two records of an oxygen-chemistry run:
       !
-      !   output/Oxygen_chemistry.txt  the solved oxygen partition, the
+      !   <output_dir>/Oxygen_chemistry.txt  the solved oxygen partition, the
       !       O(1D) steady state, and the chemical against the advection
       !       time scale, cell by cell;
-      !   output/FUV_bands.txt         how deep each FUV band penetrates,
+      !   <output_dir>/FUV_bands.txt         how deep each FUV band penetrates,
       !       and the band-by-band energy ledger of gate G4.
       !
       ! WHY THE TIME SCALES ARE A REQUIRED OUTPUT AND NOT A DIAGNOSTIC.
-      ! With "Molecular carrier transport: True" -- the default of the option -- the
+      ! With "Molecular carrier transport: True" (the unstated choice when oxygen chemistry is on),
       ! carriers are transported, so a cell in which the chemistry is slow
       ! is SOLVED rather than assumed away. The time scales stay a required
       ! output for the other direction: they say where the answer is
@@ -1808,8 +1795,8 @@
       ! of the code: on a 2331 K base the thermal channel H2 + M -> H + H + M
       ! carries 70-97% of the net and the oxygen cycle a few percent, while
       ! on a 864 K base the oxygen family carries 96-99.6%. A run whose base is
-      ! hotter than it should be -- and every molecular run is, until the
-      ! H2O and CO infrared bands exist -- is answering a
+      ! hotter than it should be -- for example, when the optional
+      ! molecular infrared cooling is off -- is answering a
       ! different question, so the decomposition is written out instead of
       ! being left to be inferred from the partition.
       !
@@ -1896,8 +1883,9 @@
       ! metal cooling is atomic: the [O I] 63/145/44 um fine-structure
       ! lines, the O I and C I/C II lines. Moving those nuclei into
       ! molecules therefore SWITCHES THOSE COOLANTS OFF -- correctly, the
-      ! atoms are not there -- and the code has no H2O or CO infrared bands
-      ! to put in their place. H3+ is the only molecular coolant it carries.
+      ! atoms are not there. When Molecular IR bands is off, H2O and CO
+      ! infrared cooling does not replace those atomic lines. The option
+      ! includes H2, H2O, and CO bands when enabled; H3+ also cools.
       !
       ! That is the missing molecular infrared cooling arriving through the
       ! composition instead of through the temperature: A2 is the
@@ -1968,93 +1956,22 @@
             ' layer they are in is warmer than the same composition'//     &
             ' would really be.'
 
-      ! ---- FUV band penetration and the G4 band ledger ----
-      ! THE QUANTITY THAT IS CLOSED. For every band, the photons the beam
-      ! loses between the two ends of the column equal the absorptions the
-      ! model accounts for -- but only when every absorber of the band has a
-      ! rate. Two of the four bands have an absorber that takes photons out
-      ! of the beam without one, so the ledger below is written as three
-      ! separate statements rather than as one residual that would read as a
-      ! defect wherever the physics says otherwise.
-      !
-      ! (a) CLOSURE OF THE CONTINUUM ABSORBERS, band by band. In cell j the
-      !     H2O and OH rates are
-      !         j_s = sigma_s N_b tr exp(-tau_out) (1 - exp(-dtau))/dtau
-      !     (water_photolysis_rate), with tr the band's line transmission and
-      !     tau_out, dtau the CONTINUUM depth at the cell's star-ward face
-      !     and across the cell. Applied to the absorbers the columns record
-      !     for that cell, dN_H2O and dN_OH, the two rates take
-      !         j_H2O dN_H2O + j_OH dN_OH
-      !     photons out of the band there, while the beam's own loss between
-      !     the cell's two faces is
-      !         N_b tr exp(-tau_out) (1 - exp(-dtau))
-      !               = (j_H2O/sigma_H2O) dtau .
-      !     The two are the same number as long as the band's optical depth
-      !     is exactly sigma_H2O dN_H2O + sigma_OH dN_OH, which is how
-      !     fuv_band_optical_depth builds it apart from a clamp at negative
-      !     column. rel_diff is therefore round-off, and a residual says
-      !     either that a column has gone negative or that the depths and
-      !     the columns on this file are not one state. It holds whatever
-      !     the rate form is -- the two rates differ only by their cross
-      !     sections -- so it is NOT the test of the cell mean; (b) is.
-      !
-      ! (b) THE BEAM BUDGET. beam_loss = N_b (1 - T_line T_cont) at the
-      !     innermost face is what the beam loses over the whole column;
-      !     rated_ph is every absorption the model's rates account for. Their
-      !     difference is the beam that leaves without a rate. Band by band:
-      !       B1, B3, B4  no line absorber (T_line = 1) and both continuum
-      !                   absorbers rated, so the difference is a closure
-      !                   residual -- and it is the test of the cell-mean
-      !                   rate form, because
-      !                   sum_j N_b exp(-tau_out) (1 - exp(-dtau))
-      !                   telescopes to N_b (1 - exp(-tau)) exactly, at any
-      !                   grid spacing, only when the rate is the mean over
-      !                   the cell. A rate read at one point of the cell
-      !                   breaks it one-signed, by 30 percent in the
-      !                   Ly-alpha band of an HD 189733 b run
-      !                   (water_photolysis.f90).
-      !       B2          the band IS the 1215.67 A H I resonance line. The
-      !                   H I that scatters the stellar line out of the beam
-      !                   dissociates nothing and therefore carries no rate,
-      !                   so the difference is the share H I takes; near 1 it
-      !                   says the line is thick, which is not a defect.
-      !                   T_line is the erfc penetration of the stellar line
-      !                   (lya_rt.f90), rebuilt here from the T and n_HI on
-      !                   this file, through the same line-centre depth the
-      !                   band rate is built from.
-      !       LW          over 912-1201 A the same photons are taken by H2 in
-      !                   the Lyman-Werner lines and by H2O and OH in a
-      !                   continuum, out of ONE beam (water_photolysis.f90
-      !                   sec. 3). The H2 share IS rated and is counted in
-      !                   rated_ph -- its photon count is the cell mean of
-      !                   the PUMP cross section sigma_diss/p_eff, because
-      !                   the pumps that do not dissociate also take a photon
-      !                   out of the band -- and since 2026-09-06 T_line
-      !                   carries the column integral of that same cross
-      !                   section, so both sides are one normalization of one
-      !                   absorption and this is a CLOSURE residual, as it is
-      !                   for B3 and B4. Two things are left in it. The
-      !                   discretization: the rate is the cell mean of
-      !                   sigma_pump exp(-tau_cont) while the beam identity
-      !                   puts the line loss of a cell behind that cell's own
-      !                   continuum depth. And, where the star-ward column
-      !                   passes the top of the table's column axis, the
-      !                   clamped edge cross section drives the line-removed
-      !                   fraction past 1, where the beam is capped and the
-      !                   rate is not; the run warns about that column
-      !                   separately.
-      !
-      ! (c) THE ENERGY, which is exact by construction: every absorbed photon
-      !     carries <hv>_b, of which the threshold goes into the bond and the
-      !     rest into the gas, so absorbed = heat + bond cell by cell. It is
-      !     computed anyway, because a mismatch would mean the heating and
-      !     the rates had drifted apart. In the LW band only the fragment
-      !     kinetic energy of the dissociating fraction reaches the gas, so
-      !     there the 'bond' column is the fluorescence as well as the bond.
-      ! The band ledger is formed in ONE place, beside the heating assembly
-      ! (utils_ion_eq::fuv_band_absorption_ledger), because the energy of one
-      ! absorption event is the same energy the energy equation is charged.
-      ! This file writes what that routine returns and forms none of it.
+      ! FUV band photon and energy ledger. For each cell the continuum rate
+      ! j_s = sigma_s*N_b*T_line*exp(-tau_out)*(1-exp(-dtau))/dtau
+      ! counts H2O and OH absorption in the cell mean. The summed rates
+      ! close the continuum beam loss when columns and depths describe the
+      ! same state; rel_diff reports that closure.
+      ! beam_loss is the incident photon count minus transmitted photons.
+      ! For B3, B4 and LW, beam_loss minus rated absorption is a
+      ! closure residual. In B2, H I resonance scattering removes photons
+      ! without a dissociation rate, so the difference is its share.
+      ! In LW the H2 pump rate includes nondissociating absorptions; the
+      ! remaining discretization and table-edge limits are reported.
+      ! Absorbed energy equals deposited heat plus bond or fluorescence
+      ! energy. fuv_band_absorption_ledger forms these quantities beside
+      ! heating assembly; this routine writes them. The derivation and
+      ! measured band behavior are in
+      ! ../EXHALE_v1.00/md/a2_oxygen_option_design.md section G4.
       call fuv_band_absorption_ledger(T*T0, nhi*n0, nmol_eq(:,1),          &
                nox_eq(:,2), he_ground_singlet_density(nhei, nheiTR)*n0,   &
                (nhi + nhii)*n0 + 2.0d0*(nmol_eq(:,1) + nmol_eq(:,2))      &
@@ -2198,6 +2115,7 @@
                      ' column has gone negative, or that the'
       write(75,'(A)') '#     depths and the columns on this file are'//    &
                      ' not one state. It holds whatever the rate'
+      ! To Be Checked: comment and code disagree, see md/comment_revision_20261027.md
       write(75,'(A)') '#     form is, so it is NOT the test of the cell'// &
                      ' mean; the B1/B3/B4 rows of (b) are.'
       write(75,'(A)') '# band cont_absorbed_ph cont_beam_loss rel_diff'
@@ -2223,6 +2141,7 @@
       write(75,'(A)') '#       unrated_ph    their difference, and'//      &
                      ' unrated_frac its share of beam_loss_ph'
       write(75,'(A)') '#     WHAT unrated_frac MEANS, BAND BY BAND:'
+      ! To Be Checked: comment and code disagree, see md/comment_revision_20261027.md
       write(75,'(A)') '#       B1 B3 B4  no line absorber (T_line = 1)'//  &
                      ' and every absorber rated, so this is a'
       write(75,'(A)') '#                 CLOSURE residual and is'//        &
@@ -2351,8 +2270,8 @@
       ! The closure of paragraph (a): the continuum rates against the same
       ! cells re-formed from the optical-depth columns. This is the number
       ! that must be round-off. The beam budget of paragraph (b) is a
-      ! physical statement about each band and not a residual, so the two
-      ! bands that carry an absorber without a rate are reported separately.
+      ! physical statement about each band. B2 has unrated H I scattering;
+      ! the LW row has rated H2 pumping and a separate CO model.
       write(*,'(a,es9.2)') ' (write_output/eq) FUV band ledger: max'//     &
            ' |continuum rate sum/beam loss - 1| = ', worst
       if (F_Lya_star .gt. 0.0d0)                                           &
@@ -2367,7 +2286,7 @@
          write(*,'(a)') ' (write_output/eq) WARNING: the absorbers of'//   &
            ' the shared 912-1201 A band take more energy out of it'//      &
            ' than the band carries -- the shared-beam closure has'//       &
-           ' broken (see output/FUV_bands.txt).'
+           ' broken (see '//trim(output_dir)//'FUV_bands.txt).'
       if (mol_ir_bands) then
          write(*,'(a,3es10.3)') ' (write_output/eq) molecular IR bands,'// &
             ' column net H2/H2O/CO [erg cm^-2 s^-1]: ',                    &
@@ -2393,5 +2312,4 @@
 
       end subroutine write_oxygen_chemistry
 
-      ! End of module
       end module output_write

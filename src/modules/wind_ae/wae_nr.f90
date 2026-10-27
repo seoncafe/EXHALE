@@ -4,13 +4,20 @@
       ! Index conventions, array shapes (y(ne,m), s(ne,2*ne+1),
       ! c(ne,ne-nb+1,m+1)) and the difeq call order are preserved exactly;
       ! Fortran's native 1-based indexing replaces the C 1-based emulation.
-      ! No algorithmic changes (per the port plan).
+      !
+      ! Differences from upstream Wind-AE / Numerical Recipes solvde
+      ! (D20, 2026-10-27, md/windae_defect_fixes_20261027.md):
+      ! - In the error summary, km (the point of the largest correction of a
+      !   variable) starts at 0 and stays 0 when all corrections of that
+      !   variable are zero, and c(jv,1,km) then reads outside the array.
+      !   Here km starts at k1, so ermax is that zero correction.
+      ! - A non-finite correction (NaN/Inf) ends the solve with wae_err = 5;
+      !   upstream would apply it and iterate on to itmax.
       use wae_difeq, only: wae_difeq_eval
       use wae_status, only: wae_err
       implicit none
       contains
 
-      !---------------------------------------------------------------!
       subroutine wae_solvde(itmax, conv, slowc, scalv, indexv,         &
                             ne, nb, m, y, c, s)
       integer, intent(in)    :: itmax, ne, nb, m
@@ -74,7 +81,7 @@
             jv = indexv(j)
             errj = 0.0d0
             vmax = 0.0d0
-            km = 0
+            km = k1
             do k = k1, k2
                vz = abs(c(jv, 1, k))
                if (vz .gt. vmax) then
@@ -83,6 +90,9 @@
                end if
                errj = errj + vz
             end do
+            if (.not. (errj .le. huge(errj))) then
+               wae_err = 5; return     ! non-finite correction
+            end if
             err = err + errj/scalv(j)
             ermax(j) = c(jv, 1, km)/scalv(j)
             kmax(j) = km
@@ -106,7 +116,6 @@
       wae_err = 4   ! too many iterations -- graceful fail for continuation
       end subroutine wae_solvde
 
-      !---------------------------------------------------------------!
       subroutine wae_pinvs(ie1, ie2, je1, jsf, jc1, k, c, s, ne, nb, m)
       integer, intent(in)    :: ie1, ie2, je1, jsf, jc1, k, ne, nb, m
       real*8,  intent(inout) :: c(ne, ne-nb+1, m+1)
@@ -185,7 +194,6 @@
       deallocate(indxr, pscl)
       end subroutine wae_pinvs
 
-      !---------------------------------------------------------------!
       subroutine wae_red(iz1, iz2, jz1, jz2, jm1, jm2, jmf, ic1,       &
                          jc1, jcf, kc, c, s, ne, nb, m)
       integer, intent(in)    :: iz1, iz2, jz1, jz2, jm1, jm2, jmf
@@ -213,7 +221,6 @@
       end do
       end subroutine wae_red
 
-      !---------------------------------------------------------------!
       subroutine wae_bksub(ne, nb, jf, k1, k2, c, m)
       integer, intent(in)    :: ne, nb, jf, k1, k2, m
       real*8,  intent(inout) :: c(ne, ne-nb+1, m+1)

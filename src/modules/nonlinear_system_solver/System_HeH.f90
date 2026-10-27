@@ -15,20 +15,19 @@
 	! already costs about one and a half cell solves; inside the residual it
 	! would be paid once per evaluation instead of once per solve.
 	!
-	! The dependence is therefore closed OUTSIDE the solve: the equilibrium
-	! sweep re-forms the cell's field from the composition this solve
-	! returned and solves again (ionization_equilibrium,
-	! xuv_self_field_passes), which reaches the same self-consistent pair
-	! without putting the photon grid inside the Newton loop.  Every
-	! Jacobian in this family is therefore the exact Jacobian of the system
-	! it solves.  The same statement holds for System_HeH_metals,
-	! System_HeH_TR, System_HeH_TR_metals, System_HeH_mol,
-	! System_HeH_mol_metals and System_H.
+	! The field dependence is closed outside this residual. With
+	! xuv_self_field_passes > 1, ionization_equilibrium rebuilds the field
+	! from the returned composition and solves again. At its default of one
+	! pass, the outer coupled iteration updates the field between sweeps.
+	! Each Jacobian is exact for the fixed-field system it differentiates;
+	! this applies to System_H, System_HeH_metals, System_HeH_TR,
+	! System_HeH_TR_metals, System_HeH_mol and System_HeH_mol_metals.
 
 	use global_parameters
 	use ion_cell_state, only: ieq_cell
 	use ion_residual_core, only: heh_rows, heh_crow, heh_jac_local,   &
 	                            impose_transported_ionization_fractions, &
+	                             imposed_ionization_jacobian, &
 	                            ionization_row_gross
 	use charge_exchange, only: he_h_cx_fvec, he_h_cx_jac
 
@@ -96,7 +95,6 @@
 
 	return
 
-	! End of subroutine
 	end subroutine ion_system_HeH
 
 	! Analytic Jacobian of ion_system_HeH (Task 2). Rows:
@@ -143,7 +141,8 @@
 	call he_h_cx_jac(N_eq, fjac, ieq_cell%kcx_He0_Hp, ieq_cell%kcx_Hep_H0,  &
 	                 ieq_cell%kcx_Hepp_H0,                                 &
 	                 n_h, n_he, n_hi, n_hii, n_hei, n_heii, n_heiii)
+	! Apply the same transported-fraction constraints as the residual.
+	call imposed_ionization_jacobian(ieq_cell, N_eq, fjac)
 	end subroutine jac_system_HeH
 
-	! End of module
 	end module System_HeH

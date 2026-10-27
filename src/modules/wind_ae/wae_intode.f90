@@ -1,5 +1,5 @@
       module wae_intode
-      ! Outward (sonic point -> Rmax) IVP integration, ported from
+      ! Outward IVP integration to max(Rmax,1.1*sonic_radius), ported from
       ! wind-ae intode.c + the NR Bulirsch-Stoer stack (odeint, bsstep,
       ! mmid, pzextr). The ODE system reuses the already-ported
       ! derivative functions. y-vector layout here: y(1)=rho, y(2)=v,
@@ -33,7 +33,6 @@
       integer :: bs_nseq(0:IMAXX) = [0,2,4,6,8,10,12,14,16,18]
       contains
 
-      !---------------------------------------------------------------!
       subroutine wae_integrate_ode(sol_r, sol_rho, sol_v, sol_T,        &
                                    sol_Ys, sol_Ncol, sol_q, sol_z, npts_out)
       ! sol_* are full-grid arrays (length >= M+ADDPTS); rows 1..M hold
@@ -101,7 +100,6 @@
       sol_q(row) = (sol_r(row) - sol_r(1))/sol_z(row)
       end subroutine store_soln
 
-      !---------------------------------------------------------------!
       subroutine ode_system(xr, y, dydx)
       real*8, intent(in)  :: xr, y(NUMEQ)
       real*8, intent(out) :: dydx(NUMEQ)
@@ -120,7 +118,7 @@
       do j = 1, nsp
          dydx(3+nsp+j) = temp(j)
       end do
-      call wae_get_dYsdr(temp, vars, 1.0d4)     ! must come second
+      call wae_get_dYsdr(temp, vars, 1.0d4)     ! Keep neutral-fraction gradients in temp for dTdr.
       do j = 1, nsp
          dydx(3+j) = temp(j)
       end do
@@ -129,7 +127,6 @@
       call wae_get_dTdr(dydx(3), vars, dydx(1), temp, 1.0d4)
       end subroutine ode_system
 
-      !---------------------------------------------------------------!
       subroutine odeint(ystart, nvar, x1, x2, eps, h1, hmin, nok, nbad)
       integer, intent(in)    :: nvar
       real*8,  intent(inout) :: ystart(nvar)
@@ -166,7 +163,6 @@
       stop '(odeint) Too many steps'
       end subroutine odeint
 
-      !---------------------------------------------------------------!
       subroutine bsstep(y, dydx, nv, xx, htry, eps, yscal, hdid, hnext)
       integer, intent(in)    :: nv
       real*8,  intent(inout) :: y(nv), dydx(nv), xx
@@ -265,7 +261,6 @@
       end if
       end subroutine bsstep
 
-      !---------------------------------------------------------------!
       subroutine mmid(y, dydx, nvar, xs, htot, nstep, yout)
       integer, intent(in)  :: nvar, nstep
       real*8,  intent(in)  :: y(nvar), dydx(nvar), xs, htot
@@ -294,7 +289,6 @@
       end do
       end subroutine mmid
 
-      !---------------------------------------------------------------!
       subroutine pzextr(iest, xest, yest, yz, dy, nv)
       integer, intent(in)    :: iest, nv
       real*8,  intent(in)    :: xest, yest(nv)

@@ -1,7 +1,7 @@
       module composition
-      ! Single point that turns (rho, f_sp) into all species number
-      ! densities plus the free-electron (ne) and total-particle (n_tot)
-      ! densities, and converts between pressure and temperature.
+      ! Convert (rho, f_sp) to atomic H/He and metal-ion densities,
+      ! free-electron density (ne), and gas-particle density (n_tot),
+      ! and convert between pressure and temperature.
       !
       ! This collapses the three near-identical extraction blocks that were
       ! repeated in EXHALE_main (and the inline copies in energy_semi_implicit
@@ -56,7 +56,6 @@
 
       contains
 
-      ! ------------------------------------------------------!
 
       subroutine get_species_densities(rho, f_sp, nhi, nhii, nhei,     &
                                        nheii, nheiii, nheiTR, nm,       &
@@ -107,7 +106,6 @@
 
       end subroutine get_species_densities
 
-      ! ------------------------------------------------------!
 
       subroutine electron_and_particle_densities(rho, f_sp, nhi, nhii,  &
                                                  nhei, nheii, nheiii,   &
@@ -128,9 +126,8 @@
       real*8, dimension(1-Ng:N+Ng,4) :: nmol_l   ! molecules
       real*8, dimension(1-Ng:N+Ng,3) :: nox_l    ! OH H2O CO
 
-      ! molecular species: include their electrons and their (one
-      ! particle each) contribution to the EOS particle count.  nmol_l is
-      ! zero when thereis_mol is off, so the legacy path is unchanged.
+      ! Molecular ions contribute electrons, and each molecule is one
+      ! gas particle. When thereis_mol is off, the calls omit nmol_l.
       if (thereis_mol) then
          nmol_l(:,1) = rho*f_sp(:,isp_H2)
          nmol_l(:,2) = rho*f_sp(:,isp_H2p)
@@ -162,7 +159,6 @@
 
       end subroutine electron_and_particle_densities
 
-      ! ------------------------------------------------------!
 
       subroutine gas_particle_density(rho, f_sp, n_part)
       ! n_part = n_tot + n_e, the particle density of the thermal equation
@@ -197,7 +193,6 @@
       end subroutine gas_particle_density
 
 
-      ! ------------------------------------------------------!
 
       real*8 function he_ground_singlet_density_cell(nhei, nheiTR)
       ! Number density of neutral helium in its ground singlet, n(1^1S), in
@@ -237,7 +232,6 @@
 
       end function he_ground_singlet_density_cell
 
-      ! ------------------------------------------------------!
 
       function he_ground_singlet_density_column(nhei, nheiTR) result(nheiS)
       ! n(1^1S) over the whole grid, ghost cells included. Element by element
@@ -254,7 +248,6 @@
 
       end function he_ground_singlet_density_column
 
-      ! ------------------------------------------------------!
 
       subroutine comp_T_from_p(p, n_tot, ne, T)
       ! Adimensional ideal-gas inverse: T = p / (n_tot + ne).
@@ -263,7 +256,6 @@
       T = p/(n_tot + ne)
       end subroutine comp_T_from_p
 
-      ! ------------------------------------------------------!
 
       subroutine comp_p_from_T(T, n_tot, ne, p)
       ! Adimensional ideal-gas law: p = (n_tot + ne) * T.
@@ -272,7 +264,6 @@
       p = (n_tot + ne)*T
       end subroutine comp_p_from_T
 
-      ! ------------------------------------------------------!
       ! Base composition scalars. These functions are the SINGLE
       ! SOURCE of the base composition policy: mass_per_H, ntot_bc, rho_bc
       ! (set in input_read) all flow from here, so the policy cannot
@@ -286,7 +277,6 @@
       ! composition and the rho that calc_rho forms from the same table
       ! cannot disagree.  The metal weights melem_A the sum below adds are
       ! in the same unit, the hydrogen atom, not in u.
-      ! ------------------------------------------------------!
 
       real*8 function comp_mass_per_H()
       ! Gas mass per H nucleus [m_H]. H + He (bsp metadata) plus the trace
@@ -302,7 +292,6 @@
       endif
       end function comp_mass_per_H
 
-      ! ------------------------------------------------------!
 
       real*8 function mass_per_H_nucleus_without_He()
       ! Mass carried by one hydrogen nucleus together with the trace metals
@@ -321,13 +310,12 @@
       endif
       end function mass_per_H_nucleus_without_He
 
-      ! ------------------------------------------------------!
 
       real*8 function comp_ntot_bc()
-      ! Total nuclei density at the base in units of n0 (n0 = H+He nuclei).
-      ! Legacy H/He-only value is 1; the trace metals add their nuclei when
-      ! in the EOS budget.  With a molecular base the H nuclei bound into H2
-      ! no longer count as separate particles and are removed here, so the
+      ! Gas-particle density at the base in units of n0, the H+He nucleus
+      ! density. The atomic H/He value is 1; metals add particles when in
+      ! the EOS budget. With a molecular base, two H nuclei become one H2
+      ! particle, reducing this count, so the
       ! base particle count has a single definition (the metal terms first,
       ! then the H2 binding, as in the original input_read sequence).
       comp_ntot_bc = 1.0d0
@@ -337,7 +325,6 @@
       if (molecular_base) comp_ntot_bc = comp_ntot_bc - h2_bound_fraction()
       end function comp_ntot_bc
 
-      ! ------------------------------------------------------!
 
       real*8 function h2_mixing_ratio_base()
       ! H2 volume mixing ratio q_H2 = n_H2/(n_H2+n_H+n_He) at the base level.
@@ -353,7 +340,6 @@
       endif
       end function h2_mixing_ratio_base
 
-      ! ------------------------------------------------------!
 
       real*8 function h2_mixing_ratio_ceiling()
       ! Largest H2 volume mixing ratio q_H2 = n_H2/(n_H2+n_H+n_He) a mixture
@@ -371,7 +357,6 @@
       h2_mixing_ratio_ceiling = 0.5d0/(0.5d0 + HeH)
       end function h2_mixing_ratio_ceiling
 
-      ! ------------------------------------------------------!
 
       real*8 function h2_bound_fraction()
       ! Particles removed from the base budget, per (H+He) nucleus, by the H
@@ -390,22 +375,17 @@
       h2_bound_fraction = 0.5d0*base_h2_nuclei_fraction()/(1.0d0 + HeH)
       end function h2_bound_fraction
 
-      ! ------------------------------------------------------!
 
       real*8 function base_h2_nuclei_fraction()
-      ! Fraction x2 of the base's non-ionized HYDROGEN NUCLEI that are bound
-      ! into H2.
-      !
-      ! WHERE A LOWER-ATMOSPHERE PROFILE STATES THE HYDROGEN CENSUS,
-      ! x2 = 1 - h_atomic_share_base: the atomic share is the profile's own,
-      ! counted over every hydrogen-bearing species it carries
-      ! (apply_lower_atmosphere_profile), and every hydrogen nucleus that is
-      ! not atomic is put on H2, the one molecular carrier of hydrogen the
-      ! wind has.  The hydrogen of CH4, NH3 and H2O (1.3e-3 of the nuclei at
-      ! the LHS 1140 b match) then sits on H2 and not on atomic H, whose
-      ! abundance it would otherwise exceed sixtyfold there (ghost x_H 6.6e-4
-      ! against the profile's 1.1e-5, md/AN_matching_surface_diagnosis_
-      ! 20261007.md section 2).
+      ! Fraction x2 of the base's non-ionized hydrogen nuclei in the
+      ! non-atomic reservoir. A lower-atmosphere profile sets
+      ! x2 = 1 - h_atomic_share_base over all its hydrogen-bearing species
+      ! (apply_lower_atmosphere_profile). The wind assigns that reservoir
+      ! first to OH and H2O where present, then to H2
+      ! (reservoir_composition). The profile's CH4, NH3 and H2O hydrogen
+      ! contributed 1.3e-3 of nuclei at the LHS 1140 b match; assigning
+      ! all of it to atomic H would have exceeded the profile's atomic H
+      ! sixtyfold (md/AN_matching_surface_diagnosis_20261007.md section 2).
       !
       ! OTHERWISE (base.inp, or the equilibrium fit) the mixture is H, H2 and
       ! He alone, and
@@ -431,7 +411,6 @@
       base_h2_nuclei_fraction = 2.0d0*q*(1.0d0 + HeH)/(1.0d0 + q)
       end function base_h2_nuclei_fraction
 
-      ! ------------------------------------------------------!
 
       logical function base_h2_composition_imposed()
       ! Is the base molecular partition incoming data rather than something
@@ -448,7 +427,6 @@
       base_h2_composition_imposed = (q_h2_base .gt. 0.0d0) .and. thereis_mol
       end function base_h2_composition_imposed
 
-      ! ------------------------------------------------------!
 
       function element_ratio_HeH(f_sp) result(heh_cell)
       ! Helium-to-hydrogen ELEMENT ratio n_He/n_H per cell: nuclei counted
@@ -480,12 +458,10 @@
 
       end function element_ratio_HeH
 
-      ! ------------------------------------------------------!
 
       real*8 function comp_rho_bc()
       ! Base mass density [rho normalization]: gas mass per (H+He) nucleus.
       comp_rho_bc = comp_mass_per_H()/(1.0d0 + HeH)
       end function comp_rho_bc
 
-      ! End of module
       end module composition

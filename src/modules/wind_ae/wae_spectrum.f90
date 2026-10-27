@@ -1,10 +1,6 @@
       module wae_spectrum
-      ! Spectrum loading for the Wind-AE port.
-      ! Reads inputs/spectrum.inp (GLQ nodes, cross sections, ion. pots),
-      ! exactly the fields wind-ae's init_glq() consumes for the rate
-      ! calculation, with the C parsing. The mass fractions, atomic masses
-      ! and Ftot below are copied from the parameter list by
-      ! wae_continuation.
+      ! Load the caller-specified spectrum file using Wind-AE init_glq fields.
+      ! wae_continuation supplies mass fractions, atomic masses, and Ftot.
       use wae_config, only: wae_nspecies
       implicit none
 
@@ -30,7 +26,6 @@
       character(len=64) :: tok
 
       open(newunit=u, file=fname, status='old', action='read')
-      ! ---- header ----
       do
          read(u,'(A)',iostat=ios) line
          if (ios .ne. 0) stop '(wae_load_spectrum) unexpected EOF in header'
@@ -53,7 +48,6 @@
       allocate(wae_hc_over_wl(wae_npts), wae_wPhi_wl(wae_npts), &
                wae_sigma_wl(wae_npts, wae_nspecies))
 
-      ! ---- data rows ----
       i = 0
       do
          read(u,'(A)',iostat=ios) line
@@ -72,7 +66,6 @@
       if (i .lt. wae_npts) stop '(wae_load_spectrum) too few data rows'
       end subroutine wae_load_spectrum
 
-      ! ---- small CSV/token helpers ----
 
       subroutine after_colon(line, tok)
       ! token after ':' up to the first ',' (or end)

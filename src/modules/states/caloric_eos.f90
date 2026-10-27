@@ -197,7 +197,6 @@
 
       contains
 
-      ! ------------------------------------------------------!
 
       subroutine caloric_state_from_composition(rho, f_sp, ne, n_tot)
       ! Refresh the composition of each cell that the caloric maps read.  Called from
@@ -248,7 +247,6 @@
 
       end subroutine caloric_state_from_composition
 
-      ! ------------------------------------------------------!
 
       subroutine hold_caloric_mixture(rec)
       ! Copy the composition the caloric maps read into rec.
@@ -262,7 +260,6 @@
       endif
       end subroutine hold_caloric_mixture
 
-      ! ------------------------------------------------------!
 
       subroutine restore_caloric_mixture(rec)
       ! Put back the composition hold_caloric_mixture copied into rec. The
@@ -277,7 +274,6 @@
       endif
       end subroutine restore_caloric_mixture
 
-      ! ------------------------------------------------------!
 
       function caloric_eos_state_line() result(line)
       ! One line for the startup configuration report.
@@ -301,8 +297,9 @@
       ! at: (n_tot + n_e)/rho and n(H2)/(n_tot + n_e).  Both are ratios of
       ! number densities and so are unchanged by a change of density, which
       ! is why a reconstructed face state may use its owning cell's values.
-      ! is_molecular is .false. wherever the maps take the constant gamma_ad
-      ! branch, and the two ratios are then not defined.
+      ! is_molecular is .false. when no H2 is present. The monatomic
+      ! comparison option can still return true here; it suppresses the
+      ! rovibrational term in the downstream map.
       integer, intent(in)  :: j
       real*8,  intent(out) :: nk_per_rho, x2
       logical, intent(out) :: is_molecular
@@ -319,7 +316,6 @@
 
       end subroutine caloric_cell_mixture
 
-      ! ------------------------------------------------------!
 
       subroutine h2_rovibrational_table_grid(n_nodes, lnT_lo, dlnT,      &
                                              T_lo, T_hi)
@@ -339,7 +335,6 @@
 
       end subroutine h2_rovibrational_table_grid
 
-      ! ------------------------------------------------------!
 
       subroutine h2_rovibrational_table_node(i, u_node, dudlnT_node)
       ! Node i of the table: u_rv [K] and T c_rv [K] at that temperature.
@@ -352,11 +347,8 @@
 
       end subroutine h2_rovibrational_table_node
 
-      ! ------------------------------------------------------!
 
-      ! ------------------------------------------------------!
       ! The H2 rovibrational ladder
-      ! ------------------------------------------------------!
 
       subroutine build_h2_rovibrational_table()
       ! Tabulate u_rv and T c_rv on the logarithmic grid, from the exact sum.
@@ -375,7 +367,6 @@
 
       end subroutine build_h2_rovibrational_table
 
-      ! ------------------------------------------------------!
 
       subroutine h2_rovibrational_sum(TK, u_rv, c_rv, Q)
       ! Internal partition function Q, mean rovibrational energy
@@ -421,7 +412,6 @@
 
       end subroutine h2_rovibrational_sum
 
-      ! ------------------------------------------------------!
 
       double precision function h2_partition_function(TK) result(Q)
       ! Internal (rovibrational) partition function of H2 X^1 Sigma_g^+ at
@@ -446,7 +436,6 @@
 
       end function h2_partition_function
 
-      ! ------------------------------------------------------!
 
       subroutine h2_rovibrational_energy_and_heat_capacity(TK, u_rv, c_rv)
       ! The same two quantities from the cubic Hermite table.  Outside the
@@ -510,9 +499,7 @@
 
       end subroutine h2_rovibrational_energy_and_heat_capacity
 
-      ! ------------------------------------------------------!
       ! The maps
-      ! ------------------------------------------------------!
 
       real*8 function internal_energy_of_mixture(x2, T)
       ! Internal energy per (n_tot + n_e) of a gas in which a fraction x2 of
@@ -530,7 +517,6 @@
 
       end function internal_energy_of_mixture
 
-      ! ------------------------------------------------------!
 
       real*8 function heat_capacity_of_mixture(x2, T)
       ! C_V/((n_tot + n_e) k) = 1/(gamma_eff - 1) of the same mixture.
@@ -545,7 +531,6 @@
 
       end function heat_capacity_of_mixture
 
-      ! ------------------------------------------------------!
 
       real*8 function h2_particle_fraction(j)
       ! n(H2)/(n_tot + n_e) of cell j; zero where the cell has no molecules.
@@ -561,7 +546,6 @@
       endif
       end function h2_particle_fraction
 
-      ! ------------------------------------------------------!
 
       real*8 function internal_energy_per_particle(j, T)
       ! The mixture energy above at the composition of cell j.
@@ -578,7 +562,6 @@
 
       end function internal_energy_per_particle
 
-      ! ------------------------------------------------------!
 
       real*8 function heat_capacity_per_particle(j, T)
       ! The mixture heat capacity above at the composition of cell j.
@@ -595,7 +578,6 @@
 
       end function heat_capacity_per_particle
 
-      ! ------------------------------------------------------!
 
       real*8 function adiabatic_index_at_T(j, T)
       ! gamma_eff = 1 + (n_tot + n_e) k/C_V of this cell at code temperature T.
@@ -612,7 +594,6 @@
 
       end function adiabatic_index_at_T
 
-      ! ------------------------------------------------------!
 
       real*8 function temperature_of_mixture(x2, u_in)
       ! Invert internal_energy_of_mixture for T.  With the vibrational ladder
@@ -677,7 +658,6 @@
 
       end function temperature_of_mixture
 
-      ! ------------------------------------------------------!
 
       real*8 function temperature_from_energy_per_particle(j, u_in)
       ! The inverse above at the composition of cell j.
@@ -697,7 +677,6 @@
 
       end function temperature_from_energy_per_particle
 
-      ! ------------------------------------------------------!
 
       real*8 function pressure_from_energy_density(j, rho_c, rho_e)
       ! p from the internal energy density rho e of a state whose composition
@@ -721,7 +700,6 @@
 
       end function pressure_from_energy_density
 
-      ! ------------------------------------------------------!
 
       real*8 function energy_density_from_pressure(j, rho_c, p)
       ! The inverse map, rho e from p.  Direct: T = p/(n_tot + n_e) needs no
@@ -741,7 +719,6 @@
 
       end function energy_density_from_pressure
 
-      ! ------------------------------------------------------!
 
       real*8 function adiabatic_index_from_state(j, rho_c, p)
       ! gamma_eff of a state (rho_c, p) at the composition of cell j.  Used by
@@ -760,5 +737,4 @@
 
       end function adiabatic_index_from_state
 
-      ! End of module
       end module caloric_eos

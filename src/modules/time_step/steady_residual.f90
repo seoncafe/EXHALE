@@ -1,42 +1,17 @@
       module steady_residual_mod
-      ! Finite-volume STEADY residual  R = -du/dt  (zero at a true steady
-      ! state), shared by the EXHALE_RESIDUAL diagnostic, the in-loop
-      ! convergence monitor, and the steady-state Newton/PTC solver.
-      !
-      !   R(:,1) = dF - S                          (mass)
-      !   R(:,2) = dF - S - F_mu                   (momentum)
-      !   R(:,3) = dF_E - S_E - (heat-cool)
-      !                       - (w F_mu + q_mu + conduction)
-      !                       + div q_d                        (energy)
-      !
-      ! q_d is the interdiffusion enthalpy flux of a mixture whose elements
-      ! move relative to one another (He_diffusion; Cook 2009, Phys. Fluids
-      ! 21, 055109, eqs. 11-13), formed from the composition of the state by
-      ! interdiffusion_enthalpy_divergence_of_state (binary_element_
-      ! diffusion) and identically zero, with no arithmetic, when the
-      ! elements do not move.  The composition is therefore an argument of
-      ! every assembly: the energy row of a diffusing mixture is not a
-      ! function of u, n_part, heat and cool alone.
-      !
-      ! dF, S come from the existing Reconstruct + RK_rhs. heat/cool are
-      ! supplied by the caller, which decides how they were obtained: the
-      ! in-loop monitor reuses the current step's values; the diagnostic
-      ! and the Newton residual first call ioniz_eq (local
-      ! ionization-equilibrium elimination) to get heat/cool consistent
-      ! with u.
-      !
-      ! The molecular-transport terms are the operator-split stage that
-      ! viscous_conduction_step relaxes in the marching loop, evaluated by
-      ! the SAME routine (viscous_conduction_sources) from the same
-      ! tridiagonal operator, so the Newton solver solves exactly the system
-      ! the marching relaxes. They vanish identically unless "Viscosity:" /
-      ! "Conduction:" are set. The caller passes n_part = n_tot + n_e (the
-      ! adimensional particle count) rather than T itself, so that T = p/n_part
-      ! stays a function of the unknowns and the temperature dependence of
-      ! the conduction operator is picked up by the residual's linearization.
-      !
-      ! The reconstruction scheme is whatever use_plm/use_weno3/rec_method
-      ! currently select; callers set WENO3 for a production residual.
+      ! Finite-volume stationary residual R=-du/dt, shared by diagnostics,
+      ! the convergence monitor, and Newton/PTC:
+      !   R_mass = dF-S
+      !   R_momentum = dF-S-F_mu
+      !   R_energy = dF_E-S_E-(heat-cool)-(w F_mu+q_mu+conduction)+div q_d
+      ! Interdiffusion enthalpy q_d is evaluated from current composition
+      ! (Cook 2009, Phys. Fluids 21, 055109, eqs. 11-13); it is zero
+      ! without element diffusion. Heat/cool come from the caller, which
+      ! either reuses the marching values or computes equilibrium rates.
+      ! Viscous and conductive terms use viscous_conduction_sources and
+      ! vanish when their options are off. The caller supplies
+      ! n_part=n_tot+n_e so T=p/n_part varies with the unknowns.
+      ! Reconstruction follows use_plm/use_weno3/rec_method.
 
       use global_parameters
       use grid_construction, only: spherical_cell_volume
@@ -201,7 +176,6 @@
       endif
       end subroutine restore_conservation_rows
 
-      ! ------------------------------------------------------!
 
       subroutine reconstruction_continuation_rhs(u_in, WL, WR, dF, S)
       ! Right-hand side of the homotopy between the two discretizations,
@@ -300,9 +274,7 @@
 
       end subroutine reconstruction_continuation_rhs
 
-      ! ------------------------------------------------------!
 
-      ! ------------------------------------------------------!
 
       subroutine assemble_residual(u, n_part, f_sp, heat, cool, R)
       real*8, dimension(3,1-Ng:N+Ng), intent(in)  :: u
@@ -495,7 +467,6 @@
 
       end subroutine assemble_residual
 
-      ! ------------------------------------------------------!
 
       subroutine state_scales_of_cell(jcell, rho_in, mom_in, ene_in,    &
                                       d1, d2, d3, vv, cs)
@@ -547,7 +518,6 @@
       d3 = max(abs(ene_in),                tiny(1.0d0))
       end subroutine state_scales_of_cell
 
-      ! ------------------------------------------------------!
 
       subroutine store_row_terms(u, dF, S, heat, cool, Smom, Sene, Sidf)
       ! Keep the terms of each row as RK_rhs and the ionization sweep have
@@ -586,7 +556,6 @@
       state_of_row_terms = u
       end subroutine store_row_terms
 
-      ! ------------------------------------------------------!
 
       subroutine refresh_row_terms(u)
       ! Make the stored row terms the ones of the state u. Normally a no-op:
@@ -637,7 +606,6 @@
       state_of_row_terms = u
       end subroutine refresh_row_terms
 
-      ! ------------------------------------------------------!
 
       subroutine face_mass_flux_of_state(rho_state, Frho)
       ! THE FACE MASS FLUX EVERY SPECIES ROW RIDES ON.  A transported species
@@ -681,33 +649,20 @@
 
       end subroutine face_mass_flux_of_state
 
-      ! ------------------------------------------------------!
 
       double precision function mass_flux_row_scale(j, u) result(s)
-      ! THE CONTINUITY ROW'S OWN LARGEST TERM:
-      !
-      !   s_1(j) = max( |F_{j-1/2}| r_{j-1/2}^2, |F_{j+1/2}| r_{j+1/2}^2 )
-      !            / dV_j ,   dV_j = ( r_{j+1/2}^3 - r_{j-1/2}^3 ) / 3
-      !
-      ! dV_j is the volume RK_rhs divides the flux difference by, so R_1/s_1
-      ! is exactly the fractional change of the mass flux across the cell. The
-      ! mass row has no source (Source.f90, S(1) = 0), so that fraction is the
-      ! whole of what the row says.
-      !
-      ! WHY NOT rho (|v| + c_s)/dr, WHICH IS WHAT THIS WAS. That is the state
-      ! scale times the cell's signal-crossing rate, and nothing in the
-      ! continuity row moves at c_s. MEASURED: dividing by it gives
-      ! identically the fractional flux error
-      ! per cell TIMES the local Mach number, verified to one percent on a
-      ! converged state at r = 1.001 to 2.1. In a quasi-hydrostatic layer at
-      ! Mach 5e-5 that is a factor 2e4 of blindness -- a tolerance of 1e-5 at
-      ! r = 1.01 admitted a mass flux changing by 19 percent from one cell to
-      ! the next, and the 1 microbar hot-Uranus rung was accepted with a flux
-      ! 30 percent out at 1.03 R_p while every residual read 3e-6.
-      !
+      ! Continuity-row scale is its largest face-flux term:
+      !   s_1(j) = max(|F_-| r_-^2, |F_+| r_+^2)/dV_j,
+      !   dV_j = (r_+^3 - r_-^3)/3.
+      ! RK_rhs divides the flux difference by this volume; with no mass
+      ! source (Source.f90, S(1)=0), |R_1|/s_1 is the fractional mass-flux
+      ! change across this cell. The former rho(|v|+c_s)/dr scale multiplied
+      ! that fraction by local Mach number and hid quasi-hydrostatic flux
+      ! changes.
       ! The face mass flux is single signed over the whole column on every
       ! state measured, so the max cannot vanish by cancellation the way the
       ! cell-centred rho v r^2 does at the base (section 2).
+      ! See ../EXHALE_v1.00/md/Update_EXHALE_stage1.md section 143.
       integer,                        intent(in) :: j
       real*8, dimension(3,1-Ng:N+Ng), intent(in) :: u
       call refresh_row_terms(u)
@@ -716,45 +671,19 @@
       s = max(s, tiny(1.0d0))
       end function mass_flux_row_scale
 
-      ! ------------------------------------------------------!
 
       double precision function mass_row_rounding_floor(j, u) result(f)
       ! THE ROUNDING FLOOR OF THE CONTINUITY ROW OF CELL j, in the units the
       ! row is judged in: |R_1|/s_1, the fractional change of the mass flux
       ! across the cell.
-      !
-      ! The row is a difference of two face fluxes over the cell volume,
-      !
-      !     R_1(j) = ( A_+ F_+  -  A_- F_- ) / dV_j ,
-      !
-      ! and each interface flux is assembled from the two reconstructed
-      ! states and from their JUMPS. Where the column is nearly hydrostatic
-      ! the jumps stand many decades below the states themselves, so a
-      ! correctly rounded interface flux carries the last bit of the
-      ! O(rho c_s) quantities the Riemann solve is built from and not the
-      ! last bit of its own value rho v (MEASURED, N33: the first quantity
-      ! of the assembly that steps is the interface flux, by 4.8e-16 of an
-      ! O(1) state, where its own value is smaller by 3.2e5 to 5.9e6). The
-      ! smallest flux difference the arithmetic can resolve at that face is
-      ! therefore
-      !
-      !     eps * rho ( |v| + c_s ) * A / dV_j ,
-      !
-      ! the momentum the cell would carry at its own fastest signal speed,
-      ! and dividing by the row's own scale s_1 = max_faces|A F| / dV_j
-      ! leaves
-      !
-      !     f(j) = eps * max_faces[ rho (|v| + c_s) A ] / max_faces| A F | ,
-      !
-      ! which is one ulp in the wind, where the flux IS the momentum of the
-      ! cell, and about eps/Mach in a layer whose flux is a tiny residue of
-      ! it. Nothing in the continuity row moves at c_s -- that is why the
-      ! row's SCALE is the flux and not this quantity (mass_flux_row_scale)
-      ! -- but the rounding of the row does, because the cancellation that
-      ! forms the flux happens between quantities of that size.
-      !
-      ! rho(|v| + c_s) is the momentum unknown's own state scale
-      ! (state_scales_of_cell), taken at the two cells the faces separate.
+      !   R_1(j) = (A_+ F_+ - A_- F_-)/dV_j,
+      !   f(j) = eps * max_faces[rho(|v|+c_s)A]/max_faces|A F|.
+      ! The Riemann face flux is assembled from O(rho c_s) state terms;
+      ! cancellation leaves about one ulp in a wind and eps/Mach in a
+      ! nearly hydrostatic layer. This is a rounding bound, not the
+      ! physical mass-row scale s_1. The two face cells supply
+      ! rho(|v|+c_s) through state_scales_of_cell.
+      ! See ../EXHALE_v1.00/md/certification_tolerance_anchoring_20260910.md section 9.
       integer,                        intent(in) :: j
       real*8, dimension(3,1-Ng:N+Ng), intent(in) :: u
       real*8 :: d1, d3, vv, cs, dm, dp, ap, am, sc
@@ -768,7 +697,6 @@
            /spherical_cell_volume(j)/max(sc, tiny(1.0d0))
       end function mass_row_rounding_floor
 
-      ! ------------------------------------------------------!
 
       logical function mass_floor_scan_armed() result(on)
       ! EXHALE_MASS_FLOOR_SCAN=1 arms the measurement of the continuity
@@ -779,7 +707,6 @@
       on = (trim(env) .eq. '1')
       end function mass_floor_scan_armed
 
-      ! ------------------------------------------------------!
 
       subroutine mass_row_rounding_floor_scan(u, n_part, f_sp, heat, cool, &
                                               Rgiven)
@@ -874,7 +801,6 @@
       flush(6)
       end subroutine mass_row_rounding_floor_scan
 
-      ! ------------------------------------------------------!
 
       double precision function momentum_row_scale(j, u) result(s)
       ! THE LARGEST PHYSICAL TERM OF THE MOMENTUM EQUATION IN THIS CELL:
@@ -950,7 +876,6 @@
       s = max(momentum_largest_term(j), tiny(1.0d0))
       end function momentum_row_scale
 
-      ! ------------------------------------------------------!
 
       double precision function energy_row_scale(j, u) result(s)
       ! THE ENERGY ROW'S OWN LARGEST TERM:
@@ -976,59 +901,15 @@
       s = max(energy_largest_term(j), tiny(1.0d0))
       end function energy_row_scale
 
-      ! ------------------------------------------------------!
 
       double precision function residual_row_scale(k, j, u) result(s)
-      ! The scale that makes residual row k of cell j dimensionless. This is
-      ! the ONLY definition of that scale in the code; the steady solver's
-      ! convergence measure (steady_newton.f90) reads it from here.
-      !
-      ! EVERY ROW IS DIVIDED BY THE LARGEST TERM IT ITSELF CONTAINS -- the
-      ! flux it differences, the source it is balanced against, and for the
-      ! energy row the two radiative terms it is the difference of. The three
-      ! expressions are written out and justified at mass_flux_row_scale,
-      ! momentum_row_scale and energy_row_scale above; all three are already
-      ! computed by RK_rhs and the ionization sweep, so the cost is the max.
-      !
-      ! WHAT THIS REPLACES, AND WHY.  Until section 143 the scale was
-      !     s_k(j) = D_k(j) ( |v_j| + c_s,j ) / dr_j
-      ! with D_k the cell's state scale: an upper bound on how fast row k
-      ! could move the cell's content if its whole inventory travelled at the
-      ! signal speed. That is a bound, but on the wrong quantity -- nothing in
-      ! any of these rows moves at c_s -- and in a quasi-hydrostatic layer it
-      ! is enormous compared with the terms the row actually holds. Measured
-      ! consequences, all on states the old measure accepted at 1e-5 or better:
-      !
-      !   mass       R_1/s_1 was identically the fractional flux error per
-      !              cell TIMES the local Mach number (verified to one percent
-      !              at ten radii), so at Mach 5e-5 the gate was blind by 2e4
-      !              and passed a mass flux 30 percent out at 1.03 R_p;
-      !   momentum   the largest term of the equation over F_0 reaches 4.4e5
-      !              in the layer, so a row reading 1e-8 on the old scale
-      !              still displaced the wind's mass flux measurably in a
-      !              crossing time;
-      !   energy     the layer's row was out by 1.7e-3 to 4.7e-3 of its own
-      !              terms, and cell 1 by 99 percent, while reading 1e-8 to
-      !              1e-4 on the old scale.
-      !
-      ! THE MOMENTUM ROW'S GRAVITATIONAL BOUND IS NOT A SEPARATE CASE ANY
-      ! MORE. Section 62.3 added max(..., rho |dPhi/dr|) because the old
-      ! scale could not see gravity; the weight is now one of the three
-      ! terms s_2 is the max over, taken from the discretization the row was
-      ! assembled by, so the two are one term and not two.
-      !
-      ! THIS SCALES THE MEASURE, NOT THE SOLVER. cell_state_scales
-      ! (steady_newton.f90) keeps the state scales D_k for the Newton system
-      ! and the line-search merit. Rescaling those with these quantities was
-      ! tried and measured: the mass row's version varies by a factor 9 across
-      ! the first two cells and left the hot-Uranus solve with no descent
-      ! direction after 179 iterations against 9 for the measure-only build.
-      ! So the merit and the
-      ! acceptance test are deliberately no longer one expression apart.
-      !
-      ! There is no region switch in any row: the same expression holds at
-      ! every cell, which is what makes the wind's and the layer's numbers
-      ! commensurable.
+      ! Row k at cell j is divided by its largest physical term: face
+      ! flux, source, and (for energy) the separate radiative heat/cool terms.
+      ! mass_flux_row_scale, momentum_row_scale, and energy_row_scale define
+      ! the terms. The same rule applies at every radius. cell_state_scales
+      ! still supplies state scales to the Newton system and line-search
+      ! merit; these residual scales determine certification only.
+      ! See ../EXHALE_v1.00/md/Update_EXHALE_stage1.md section 143.
       integer,                        intent(in) :: k, j
       real*8, dimension(3,1-Ng:N+Ng), intent(in) :: u
       select case (k)
@@ -1038,7 +919,6 @@
       end select
       end function residual_row_scale
 
-      ! ------------------------------------------------------!
 
       double precision function carrier_row_scale(j, nH, vc, cs) result(s)
       ! The scale that makes the transported-carrier row of cell j
@@ -1073,35 +953,14 @@
       s = nH*(abs(vc) + cs)/max(dr_j(j)*R0, 1.0d0)
       end function carrier_row_scale
 
-      ! ------------------------------------------------------!
 
       subroutine relnorm_over_cells(Res, u, ja, jb, rc)
-      ! THE relative residual of each row over the cells [ja:jb]:
-      !
-      !     rc(k) = max_{j in [ja:jb]}  |R_kj| / s_kj ,
-      !
-      ! every cell divided by ITS OWN row scale (residual_row_scale) and the
-      ! maximum taken of those ratios. "Every cell is steady on the scale its
-      ! own physics sets", which is what this norm has always been described
-      ! as and, until section 145, was not.
-      !
-      ! WHAT THIS REPLACES, AND WHY. There
-      ! were two forms and neither was this one:
-      !
-      !   volume weighted   sum_j |R_kj| V_j / sum_j s_kj V_j
-      !   ratio of maxima   max_j |R_kj|     / max_j s_kj
-      !
-      ! The first lets a cell be paid for by the volume of the others; the
-      ! second takes the two maxima independently, and they are not in the
-      ! same cell, since s ~ 1/dr is largest in the smallest cells at the
-      ! base while |R| need not be. MEASURED on the two states of section
-      ! 144.5, both accepted at ||R|| ~ 1e-5 under the volume-weighted form:
-      ! the hot Uranus carries a mass row at 3.10e-5 and an energy row at
-      ! 2.17e-3 in cell 3 -- 218 times the accepted number -- and WASP-121b
-      ! carries seventy cells above 1e-5, fifty of them in the WIND between
-      ! 1.30 and 2.00 R_p. Under this form the same solves converge with no
-      ! cell of any row above the tolerance, in two to four more JFNK
-      ! iterations, at the same mass-loss rate to the printed digit.
+      ! Relative residual of each row over cells [ja:jb]:
+      !   rc(k) = max_{j in [ja:jb]} |R_kj|/s_kj.
+      ! Divide each cell by its own residual_row_scale, then take the
+      ! maximum: every cell must meet its local physical scale. Earlier
+      ! volume-weighted and ratio-of-maxima forms hid failing cells.
+      ! See ../EXHALE_v1.00/md/Update_EXHALE_stage1.md section 145.3.
       real*8, dimension(3,1-Ng:N+Ng), intent(in)  :: Res, u
       integer,                        intent(in)  :: ja, jb
       real*8, dimension(3),           intent(out) :: rc
@@ -1117,7 +976,6 @@
       enddo
       end subroutine relnorm_over_cells
 
-      ! ------------------------------------------------------!
 
       subroutine residual_norms(R, u, rc)
       ! The relative residual rate of each row over the WHOLE physical column
@@ -1140,7 +998,6 @@
       rc = max(rc_wind, rc_layer)
       end subroutine residual_norms
 
-      ! ------------------------------------------------------!
 
       subroutine write_residual_breakdown(Res, u, heat, cool, tag)
       ! BOTH NUMBERS, EVERY TIME A RESIDUAL IS REPORTED.
@@ -1235,41 +1092,20 @@
       end subroutine write_residual_breakdown
 
       subroutine flux_spread_of_state(u, spread, fmean)
-      ! THE FLUX GATE: the radial spread of the mass flux the scheme
-      ! CONSERVES, over the wind window [j_flux:N], i.e. over r >= r_flux:
-      !
-      !     spread = ( max_f F_f - min_f F_f ) / |mean_f F_f| ,
-      !     F_f    = F_{f+1/2} r_{f+1/2}^2 , the Riemann face mass flux,
-      !
-      ! taken over the faces bounding those cells, excluding the outermost
-      ! face of the domain, whose state is a ghost extrapolation.
-      !
-      ! WHY THE FACE AND NOT rho v r^2 AT THE CELL CENTRE, which this was.
-      ! The finite-volume update moves the face flux; the cell-centred product
-      ! is a reconstruction of the state and is not the conserved quantity, and
-      ! the mass row's own residual is the fractional change of the FACE flux
-      ! across a cell (mass_flux_row_scale). MEASURED on the two accepted
-      ! states: above r = 1.10 the face
-      ! flux takes ONE double-precision value over three hundred cells, while
-      ! the cell-centred product read 2.5e-4 over the same window -- and the
-      ! sum of the mass row's own fractions bounds the face flux's
-      ! total variation at 3.2e-10 there. The gate was reporting the
-      ! difference between two functionals, not a failure of conservation, and
-      ! it did so by six orders.
-      !
-      ! It also removes the cell-1 artifact for free: the centred product there
-      ! is -21 times the wind flux and changes sign, while both of that
-      ! cell's faces
-      ! carry inflow of order the wind flux.
-      !
+      ! Flux gate on the conserved Riemann face mass flux over [j_flux:N]:
+      !   spread = (max_f F_f - min_f F_f)/|mean_f F_f|,
+      !   F_f = F_(f+1/2) r_(f+1/2)^2.
+      ! Include faces bounding the window's cells, except the outermost
+      ! ghost-extrapolated face. The mass row differences this face flux;
+      ! cell-centered rho v r^2 is not the conserved discrete quantity.
       ! THE SIGN IS KEPT. A window in which the flux reverses is not steady,
       ! and with the magnitude alone that would read as a small spread.
+      ! See ../EXHALE_v1.00/md/Update_EXHALE_stage1.md section 145.1.
       real*8, dimension(3,1-Ng:N+Ng), intent(in)  :: u
       real*8,                         intent(out) :: spread, fmean
       call flux_spread_over_faces(u, j_flux, spread, fmean)
       end subroutine flux_spread_of_state
 
-      ! ------------------------------------------------------------- !
 
       subroutine flux_spread_above_radius(u, r_min, spread, fmean)
       ! The same spread of the same quantity, over an ARBITRARY inner radius,
@@ -1289,7 +1125,6 @@
       call flux_spread_over_faces(u, ja, spread, fmean)
       end subroutine flux_spread_above_radius
 
-      ! ------------------------------------------------------------- !
 
       subroutine flux_spread_over_faces(u, ja, spread, fmean)
       ! The one implementation both of the above call: the spread of
@@ -1316,7 +1151,6 @@
       spread = (fmx - fmn)/max(abs(fmean), 1.0d-30)
       end subroutine flux_spread_over_faces
 
-      ! ------------------------------------------------------!
 
       logical function row_terms_describe_state(u) result(ok)
       ! WHETHER THE STORED ROW TERMS BELONG TO THE STATE u.
@@ -1334,7 +1168,6 @@
       ok = all(state_of_row_terms .eq. u)
       end function row_terms_describe_state
 
-      ! ------------------------------------------------------!
 
       pure integer function n_cells_without_chemical_root(acc_n)        &
                                                             result(n_no)
@@ -1375,63 +1208,28 @@
       n_no = acc_n(4) + acc_n(6)
       end function n_cells_without_chemical_root
 
-      ! ------------------------------------------------------!
 
       logical function steady_gates_met(rnorm, u, resid_tol, fspread,   &
                                         carrier_is_unknown,             &
                                         carrier_relnorm,                &
                                         n_no_chem_root) result(ok)
-      ! THE ACCEPTANCE TEST of a steady state, and the ONLY one: every
-      ! route that may stop a run on "the equations are satisfied" -- the
-      ! JFNK and PTC solves, and the marching loop under "Resid tol:" --
-      ! calls this function, so ONE definition of "accepted" exists. It
-      ! lives here, with the residual and the flux functional it combines,
-      ! rather than inside either solver, because neither solver owns the
-      ! definition; the carrier state the third gate needs is passed in for
-      ! the same reason.
-      !
-      !   residual gate   ||R|| < resid_tol
-      !                   nothing in the column is changing, each row measured
-      !                   as the fraction of its own largest term
-      !                   (residual_row_scale).
-      !   flux gate       spread of rho v r^2 over r >= r_flux < flux_spread_th
-      !                   the wind carries ONE mass flux at every altitude
-      !                   (ATES / CETIMB), which no residual norm says: a
-      !                   slowly varying flux has a small local derivative, so
-      !                   the two states of section 126.6 differ by a factor
-      !                   25 in the spread and by only 1.9 to 5.7 in every
-      !                   residual norm that was tried (section 133).
-      !   chemistry gate  no cell of the state carries a composition that is
-      !                   not a root of the chemical network (acceptance
-      !                   class 4, n_cells_without_chemical_root). Heat and
-      !                   cool in the energy row are evaluated on the
-      !                   accepted composition, so on such a cell the row is
-      !                   a number computed on a state the chemistry does not
-      !                   describe and it says nothing about how far the
-      !                   hydrodynamics is from steady. The count is passed in
-      !                   because it belongs to the equilibrium sweep of the
-      !                   state being judged, not to the residual.
-      !                   A CALLER THAT OMITS IT MAKES NO STATEMENT ABOUT THE
-      !                   CHEMISTRY of the state, and the gate then rests on
-      !                   the other three; the marching stop is such a caller
-      !                   today, because the marching loop does not ask
-      !                   ioniz_eq for the ledger of its sweep.
-      !   carrier gate    the carrier row balances to carrier_resid_th of its
-      !                   own largest terms (section 139). Applied only where
-      !                   n(H2) is among the unknowns, which the caller states
-      !                   through carrier_is_unknown: it is a gate of its own
-      !                   and not a row of ||R|| because the two are not
-      !                   calibrated against each other.
-      !
-      ! flux_spread_th <= 0 disables the flux gate and leaves the residual
-      ! alone in charge, which is what a run gets by asking for it explicitly.
-      !
-      ! WHY THE MARCHING LOOP PASSES carrier_is_unknown = .false. Its carriers
-      ! are moved by the operator-split transport step, not solved for, so no
-      ! carrier residual OF A SOLVE exists for that state; gating its stop on
-      ! the last solve's number would be reporting a measurement the state
-      ! never had. A coupled-carrier run reaches its answer through the JFNK
-      ! finish, which passes the measurement it did make.
+      ! Common steady-state gate for JFNK, PTC, and the marching stop when
+      ! "Resid tol:" is set. The residual must satisfy ||R|| < resid_tol,
+      ! with each row scaled by its own largest term (residual_row_scale).
+      ! The face mass-flux spread of rho*v*r^2 above r_flux must be below
+      ! flux_spread_th: a small local residual need not give a constant mass
+      ! flow (ATES/CETIMB; sections 126.6 and 133 report a 25-fold spread
+      ! difference versus residual-norm ratios of 1.9 to 5.7).
+      ! When supplied, n_no_chem_root must be zero: heat/cool evaluated on a
+      ! composition without a chemical root cannot certify that state.
+      ! The marching caller omits the chemistry count because its sweep does
+      ! not provide that ledger. For solved H2 carrier unknowns, the carrier
+      ! residual must be below carrier_resid_th (section 139); it has its
+      ! own row scale and is not calibrated against ||R||. The marching
+      ! caller sets carrier_is_unknown=.false. because its split transport
+      ! step has no carrier residual for the current state; JFNK supplies
+      ! the residual when it solves the coupled carrier.
+      ! flux_spread_th <= 0 disables the flux gate by explicit request.
       real*8,                         intent(in)  :: rnorm, resid_tol
       real*8, dimension(3,1-Ng:N+Ng), intent(in)  :: u
       real*8,                         intent(out) :: fspread
@@ -1448,5 +1246,4 @@
       if (present(n_no_chem_root)) ok = ok .and. (n_no_chem_root .eq. 0)
       end function steady_gates_met
 
-      ! End of module
       end module steady_residual_mod

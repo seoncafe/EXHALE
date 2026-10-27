@@ -1,6 +1,5 @@
       double precision function dpmpar(i)
       integer i
-      !     **********
       
       !     Function dpmpar
       
@@ -30,7 +29,6 @@
       !     Argonne National Laboratory. MINPACK Project. November 1996.
       !     Burton S. Garbow, Kenneth E. Hillstrom, Jorge J. More'
       
-      !     **********
       integer mcheps(4)
       integer minmag(4)
       integer maxmag(4)

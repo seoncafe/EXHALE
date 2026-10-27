@@ -1,156 +1,31 @@
       module molecular_seed
-      ! THE MOLECULAR STATE IMPLIED BY A SOLVED ATOMIC STATE OF THE SAME
-      ! WIND, written as an initialization file and nothing else.
-      !
-      ! WHY IT EXISTS. A molecular run carries four unknowns an atomic run
-      ! does not (H2, H2+, H3+, HeH+), so the restart contract calls an
-      ! atomic state file "a state of another equation set" and refuses it
-      ! (load_IC, tokens mol/carrier/carrier_newton/oxychem/iontrans). The
-      ! refusal is right: the file does not carry the molecular unknowns.
-      ! The opening is therefore to WRITE them -- to take the atomic
-      ! solution's rho, v, p and its 34 species columns, state a hydrogen
-      ! partition explicitly, close the equation of state on the result, and
-      ! write the 38-column state that the molecular run can load.
-      !
-      ! WHAT IT IS NOT. The written state is an initialization seed and says
-      ! so in its own header (certified=F, cert_reason=molecular_seed,
-      ! mode=init). It is not stationary under the molecular equations: the
-      ! partition is imposed, the molecular ions start at zero, and the
-      ! first chemical sweep moves all of them. Nothing here claims that
-      ! only the chemistry will move.
-      !
-      ! THE PARTITION. The fraction of hydrogen NUCLEI bound into H2 is the
-      ! one the lower-atmosphere handoff states,
-      !
-      !     x2 = 2 q (1 + He/H)/(1 + q),    q = q_H2_base,
-      !
-      ! the same conversion from a mixture mixing ratio to a nucleus
-      ! fraction that composition.f90 (base_h2_nuclei_fraction) and
-      ! lower_column.f90 (mu_mixture) use, so there is one definition of
-      ! "how molecular is the base". It is applied to each cell's own
-      ! hydrogen-nucleus budget, taken from the production census
-      ! (element_nuclei_and_charge), and capped by the neutral hydrogen that
-      ! cell actually has:
-      !
-      !     delta = min(x2 n_H,nuclei , n_HI),  n_H2 += delta/2, n_HI -= delta
-      !
-      ! which is the form set_IC uses for a cold molecular start. A fraction
-      ! of the NEUTRAL budget would be a different statement and would agree
-      ! with this one only in fully neutral gas; in the ionized wind above
-      ! the front the two differ by the ionization fraction.
-      !
-      ! Carrying a base partition through the whole column is an
-      ! initialization choice and not a boundary statement: the cap is what
-      ! keeps the hot, ionized cells atomic, and the molecular ions are left
-      ! at zero for the first sweep to find their roots.
-      !
-      ! THE THERMODYNAMIC INVARIANT, STATED. Two H atoms into one H2
-      ! molecule keep the nuclei and the mass but remove half a particle per
-      ! converted pair, so with the electrons and the other species
-      ! unchanged n_new = n_old - delta/2 and p = n k_B T: rho, v, p and T
-      ! cannot all be kept. Which one is dropped is a choice and is written
-      ! into the file:
-      !
-      !   invariant=p  keep rho, v, p; T = p/((n_tot + n_e) k_B) follows from
-      !                the new particle census. Keeps the pressure-force
-      !                profile of the source wind, which is what a nearly
-      !                hydrostatic column is held up by.
-      !   invariant=T  keep rho, v, T; p = (n_tot + n_e) k_B T follows. Keeps
-      !                the rate coefficients of the source state and moves
-      !                the pressure gradient instead.
-      !
-      ! Neither keeps the chemical or the energy equilibrium of the source.
-      ! The energy is closed with the production caloric equation of state
-      ! in both cases (W_to_U / U_to_W of Conversion), and the round trip
-      ! through it is measured and reported.
-      !
-      ! WHERE THE REQUESTED FRACTION COMES FROM, and why there are three
-      ! answers. EXHALE_MOLECULAR_SEED_X2 takes
-      !
-      !   (absent)  the handoff's x2, one number for the whole column: the
-      !             base partition extended to the outer boundary. It is a
-      !             boundary statement carried where the boundary does not
-      !             reach, and at x2 near 1 it takes every neutral hydrogen
-      !             atom the wind has.
-      !   local     the H2 content that HOLDS in each cell: the smaller of
-      !             the thermochemical fit q_H2(p, T) (Visscher/Koskinen,
-      !             converted with x2 = 2 q (1 + He/H)/(1 + q) and clipped
-      !             at the element-ratio ceiling, the branch set_IC takes
-      !             when no handoff states the base) and the root of that
-      !             cell's own H2 carrier row, production over loss rate,
-      !             with the photodissociation, the photoionization and the
-      !             ion channels in it (carrier_h2_chemical_root).
-      !
-      !             WHY THE SMALLER OF THE TWO, and it is a physical
-      !             statement and not a safeguard. The fit is the balance of
-      !             the three-body association against the thermal
-      !             dissociation; it is what holds at the base, where the
-      !             gas is dense, neutral and shielded. In an irradiated
-      !             outer wind it is not the balance that holds -- the gas
-      !             is there at a low temperature because it expanded, the
-      !             star dissociates its H2, and half its hydrogen is
-      !             ionized -- and the fit knows none of that and returns a
-      !             large H2 because the temperature alone is low. MEASURED
-      !             on LHS 1140 b: the fit alone put 13 to 21
-      !             percent of the gas into H2 from 5.9 R_p out to 29 R_p,
-      !             80 to 360 times the root of its own row, with atomic H
-      !             four decades BELOW the molecule it is made from, and no
-      !             substep of the carrier operator could integrate that
-      !             state, so the relaxation of the stationary route kept no
-      !             step at all. A seed may not assert an equilibrium that
-      !             does not hold in the cell it asserts it for; where the
-      !             two disagree the one that holds is the smaller, because
-      !             each is a balance the gas would reach if it were the
-      !             only one, and the faster of the two sets the content.
-      !             The crossover radius and the number of cells the root
-      !             governs are reported and written into the state files.
-      !
-      !             THE ROOT NEEDS THE MOLECULAR IONS. The production of H2
-      !             runs through H2+ and HeH+, which an atomic state does
-      !             not carry, so the root is taken after the fit has been
-      !             applied and one equilibrium sweep has solved the ions
-      !             against it; that sweep's composition is then discarded
-      !             and the partition is re-applied to the ATOMIC state, so
-      !             the ionization state the seed writes is the one it was
-      !             handed and not one this module solved.
-      !   a number in [0,1]  that fraction, for every cell. 0 transfers
-      !             nothing, so in the PHYSICAL COLUMN every species column,
-      !             the nuclei and the chosen primitive invariants come back
-      !             unchanged. It is not the identity on the two lower
-      !             ghosts: load_IC fills those from the molecular reservoir
-      !             row, which carries H2, and the transfer then empties that
-      !             H2 into H I there. MEASURED 2026-09-21 on
-      !             molecular_photochem_gj1132_kzzprofile/HeH9: the 500
-      !             physical cells stand 1.3e-15 from the atomic wind they
-      !             came from, and the whole temperature displacement the
-      !             conversion reports, 4.9884e-02, lives in those two rows.
-      !
-      ! A zero H2 column is a legitimate test and a poor seed: with the
-      ! carrier transported, a LOADED state's H2 column is the authority and
-      ! the sweep is handed it rather than solving for it
-      ! (ionization_equilibrium, "with the carriers transported, their
-      ! partition is not a local root any more"), so H2 = 0 stays 0. The value used, and where it came from, is written
-      ! into both state files.
-      !
-      ! HOW IT IS ASKED FOR. Environment variable EXHALE_MOLECULAR_SEED set
-      ! to the directory holding the atomic state (its Hydro_ioniz_IC.txt
-      ! and Ion_species_IC.txt). The run is configured by the TARGET
-      ! molecular input.inp with "Load IC? True"; the loader reads the
-      ! atomic pair from that directory, this module builds the molecular
-      ! state, the run writes output/Hydro_ioniz_IC.txt and
-      ! output/Ion_species_IC.txt and stops. EXHALE_MOLECULAR_SEED_INVARIANT
-      ! selects p (default) or T. Documented in md/input_schema.md
-      ! appendix D.
-      !
-      ! WHICH CONVERSION PRODUCED A STATE'S SEED travels with the state.
-      ! Every state file carries one '# molecular_seed' line: the converting
-      ! run states the directory it read, the invariant it kept and the x2
-      ! source it used, a run that only solves restates the sentence of the
-      ! state it was handed (load_IC calls
-      ! molecular_seed_statement_from_line), and a state that came out of no
-      ! conversion says so. Without it the mode and the invariant are lost at
-      ! the first solve, and the only record left is the log of the run that
-      ! converted.
+      ! Convert a solved atomic state into a molecular initialization pair.
+      ! The output is a seed (certified=F, cert_reason=molecular_seed), not a
+      ! stationary molecular solution: molecular ions start at zero and the
+      ! first chemical sweep may move every species and the wind.
+      ! For scalar q_H2_base, x2 = 2*q*(1+He/H)/(1+q) is the fraction of
+      ! hydrogen nuclei assigned to H2. A profile supplies its non-atomic
+      ! neutral-H reservoir through base_h2_nuclei_fraction.
+      ! To Be Checked: comment and code disagree, see md/comment_revision_20261027.md
+      ! In each cell delta=min(x2*n_H,nuclei,n_HI); n_H2 gains delta/2 and
+      ! n_HI loses delta. The neutral cap keeps ionized cells admissible.
+      ! H2 formation changes the particle count while preserving nuclei and
+      ! mass, so rho, v, p and T cannot all stay fixed. The invariant is p
+      ! (default, recompute T) or T (recompute p); W_to_U and U_to_W close
+      ! the energy with the production caloric equation of state.
+      ! EXHALE_MOLECULAR_SEED_X2 absent uses the handoff fraction; `local`
+      ! takes the smaller of the local thermochemical q_H2(p,T) fit and the
+      ! cell's H2 carrier-row root, including photodestruction. The root is
+      ! evaluated after a sweep supplies molecular ions, but the written
+      ! ionization state remains that of the atomic input. A numeric [0,1]
+      ! value states the fraction throughout the physical column; zero
+      ! leaves that column unchanged but not necessarily the lower ghosts.
+      ! EXHALE_MOLECULAR_SEED names the atomic IC directory; the target run
+      ! uses "Load IC? True". The conversion writes Hydro_ioniz_IC.txt and
+      ! Ion_species_IC.txt, then stops. The # molecular_seed header records
+      ! the source directory, invariant and x2 source for descendant states.
+      ! Options, tests and measured limits are in
+      ! ../EXHALE_v1.00/md/input_schema.md appendix D.3.
 
       use global_parameters
       use species_table, only: isp_HI, isp_HII, isp_H2, n_mion
@@ -242,7 +117,6 @@
 
       contains
 
-      ! ------------------------------------------------------!
 
       subroutine molecular_seed_configure()
       ! Read the three environment variables once, at startup, and refuse an
@@ -308,7 +182,6 @@
 
       end subroutine molecular_seed_configure
 
-      ! ------------------------------------------------------!
 
       ! One line per 25 cells of the fit against the row's own root, under
       ! the switch the carrier operator already uses.  Default off.
@@ -320,13 +193,11 @@
       molecular_seed_debug_on = (trim(env) .eq. '1')
       end function molecular_seed_debug_on
 
-      ! ------------------------------------------------------------- !
 
       logical function molecular_seed_on()
       molecular_seed_on = seed_on
       end function molecular_seed_on
 
-      ! ------------------------------------------------------!
 
       function molecular_seed_state_file(base) result(path)
       ! Where the restart pair is read from. The seed run reads the ATOMIC
@@ -341,7 +212,6 @@
       endif
       end function molecular_seed_state_file
 
-      ! ------------------------------------------------------!
 
       logical function molecular_seed_option_may_differ(name)
       ! WHICH OPTION TOKENS A SEED CONVERSION MAY FIND DIFFERENT between the
@@ -367,7 +237,6 @@
          .or. trim(name) .eq. 'iontrans' )
       end function molecular_seed_option_may_differ
 
-      ! ------------------------------------------------------!
 
       subroutine molecular_seed_from_atomic_state(W, f_sp, T)
       ! Build the molecular state implied by the loaded atomic one, in
@@ -857,7 +726,6 @@
       enddo
       end subroutine transfer_h2
 
-      ! ------------------------------------------------------------- !
 
       subroutine root_of_the_solved_cells(n_root_in, x2r, ok)
       ! The own-row root x2 = 2 n(H2)/n_H of every cell.  A cell the sweep
@@ -905,7 +773,6 @@
 
       end subroutine molecular_seed_from_atomic_state
 
-      ! ------------------------------------------------------!
 
       real*8 function max_rel_change(a, b)
       ! Largest relative change between two columns over the whole grid,
@@ -922,7 +789,6 @@
       enddo
       end function max_rel_change
 
-      ! ------------------------------------------------------!
 
       subroutine report_molecular_seed()
       ! Everything the conversion did, on the run log, in the order the
@@ -996,7 +862,6 @@
            ' written state (p round trip): ', rec_eos_close
       end subroutine report_molecular_seed
 
-      ! ------------------------------------------------------!
 
       subroutine write_molecular_seed_header(unit)
       ! The two lines that say a state file is a molecular seed and what
@@ -1051,7 +916,6 @@
            ' the cell''s own H2 row) in every cell'
       end subroutine write_molecular_seed_header
 
-      ! ------------------------------------------------------!
 
       character(len=40) function stated_x2_phrase()
       ! The requested hydrogen-nuclei fraction, which is a number only when
@@ -1063,7 +927,6 @@
          write(stated_x2_phrase,'(A,ES14.7)') '; x2 ', seed_x2_stated
       end function stated_x2_phrase
 
-      ! ------------------------------------------------------!
 
       subroutine molecular_seed_statement_from_line(line)
       ! The '# molecular_seed ...' sentence of a state file this run reads,

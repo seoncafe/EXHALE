@@ -27,12 +27,10 @@
    ! All feedback is gated by use_excited_H; when off, the module is inert and
    ! the global feedback arrays stay zero, so the build reproduces the no-excited-H result.
    !
-   ! Coupling is DECOUPLED (lagged-explicit): excited_H_update is called once
-   ! per timestep from EXHALE_main BEFORE the ionization/energy solve, fills the
-   ! module-level feedback/diagnostic arrays in global_parameters from the
-   ! current state, and those frozen arrays are read inside ioniz_eq -- never
-   ! inside its Newton iteration. The single relaxation then converges hydro,
-   ! ionization and the Balmer feedback together.
+   ! Coupling is lagged within each ionization sweep: excited_H_update fills
+   ! the feedback arrays before ioniz_eq reads them. Time marching updates the
+   ! field in EXHALE_main; stationary boundary closure and Newton evaluations
+   ! also refresh it for their current states.
 
    use global_parameters
    use species_table, only: n_mion, mion_fsp, isp_H2p, isp_HeHp
@@ -97,7 +95,6 @@
 
    contains
 
-   ! --------------------------------------------------------------- !
 
    subroutine excited_H_allocate_arrays
    ! Allocate the grid-sized module arrays once the number of cells N is
@@ -117,7 +114,6 @@
 
    end subroutine excited_H_allocate_arrays
 
-   ! --------------------------------------------------------------- !
 
    subroutine excited_H_update(T_in, n_in, f_sp_in, v_in, rel_change)
    ! Fill the global excited-H feedback (gph_balmer_HI, heat_balmer) and
@@ -228,7 +224,7 @@
       enddo
    else if (jlya_mode .eq. 2) then
       ! (c) In-line escape-probability RT (Neufeld/Harrington wing escape),
-      ! evaluated from the current state every timestep. Fills taulya too.
+      ! evaluated from the current state on each update. Fills taulya too.
       call jlya_escape_prob(T_K, nhi, nhii, nheii, nheiii, ne, v_in,     &
                             Jlya_arr, taulya)
    else
@@ -304,7 +300,6 @@
 
    end subroutine excited_H_update
 
-   ! --------------------------------------------------------------- !
 
    subroutine n2_populations(T, n1s, nHII_l, nHeII_l, nHeIII_l, ne_l, Jlya, &
                              gam_ion_2s, gam_ion_2p, chem_n2, n2s, n2p)
@@ -341,7 +336,6 @@
 
    end subroutine n2_populations
 
-   ! --------------------------------------------------------------- !
 
    subroutine n2_rate_matrix(T, n1s, nHII_l, nHeII_l, nHeIII_l, ne_l,     &
                              Jlya, gam_ion_2s, gam_ion_2p, chem_n2,       &
@@ -428,7 +422,6 @@
 
    end subroutine n2_rate_matrix
 
-   ! --------------------------------------------------------------- !
 
    subroutine excited_hydrogen_level_residual(T_in, n_in, f_sp_in,        &
                                               res, scale, ok, why)
@@ -535,7 +528,6 @@
 
    end subroutine excited_hydrogen_level_residual
 
-   ! --------------------------------------------------------------- !
 
    real*8 function gamma_n2_balmer()
    ! n=2 photoionization rate [s^-1] in the stellar Balmer continuum, the
@@ -564,7 +556,6 @@
 
    end function gamma_n2_balmer
 
-   ! --------------------------------------------------------------- !
 
    real*8 function heat_n2_balmer()
    ! Photoelectric heating per H(n=2) atom [erg s^-1]: the integrand of
@@ -583,7 +574,6 @@
 
    end function heat_n2_balmer
 
-   ! --------------------------------------------------------------- !
 
    subroutine balmer_band_integrals(gam2, hpe2)
    ! The two band integrals of the Balmer continuum, over the same nodes:
@@ -725,7 +715,6 @@
 
    end subroutine balmer_band_integrals
 
-   ! --------------------------------------------------------------- !
 
    subroutine sed_segment_balmer(a, b, e1, f1, e2, f2, Kg, Kh, sg, sh)
    ! The two Balmer integrands of a loaded table, integrated in closed form
@@ -773,7 +762,6 @@
 
    end subroutine sed_segment_balmer
 
-   ! --------------------------------------------------------------- !
 
    real*8 function power_law_moment(a, b, e0, f0, p, q)
    ! INT_a^b f0 (E/e0)^p E^q dE, the exact integral of a power-law field
@@ -805,7 +793,6 @@
 
    end function power_law_moment
 
-   ! --------------------------------------------------------------- !
 
    real*8 function power_moment(a, b, q)
    ! INT_a^b E^q dE, the same expression with a unit field.
@@ -815,7 +802,6 @@
 
    end function power_moment
 
-   ! --------------------------------------------------------------- !
 
    subroutine stop_if_balmer_band_unstated
    ! The Balmer continuum can only be integrated over a band the run's
@@ -854,7 +840,7 @@
       write(*,'(A,A)')  '    SED file             : ', trim(sed_file)
    write(*,*) '   remedies (there is no key to continue):'
    write(*,*) '      remove "Stellar Teff [K]:" and "Stellar radius'//    &
-              ' [R_sun]:" from input.inp,'
+              ' [R_sun]:" from '//trim(inp_file)//','
    write(*,*) '      which is what arms the excited-hydrogen coupling'//  &
               ' (input_read.f90 use_excited_H); or'
    write(*,'(A,ES12.5,A)')                                                &
@@ -864,7 +850,6 @@
 
    end subroutine stop_if_balmer_band_unstated
 
-   ! --------------------------------------------------------------- !
 
    subroutine load_jlya_rt
    ! Read an externally-computed Ly-alpha mean-intensity profile J_lya(r) from
@@ -932,10 +917,9 @@
                          ' Jlya RT points from ', trim(jlya_rt_file)
    end subroutine load_jlya_rt
 
-   ! --------------------------------------------------------------- !
 
    subroutine write_excited_H
-   ! Dump the cell-by-cell excited-H diagnostic to output/Excited_H.txt for
+   ! Dump the cell-by-cell excited-H diagnostic to <output_dir>/Excited_H.txt for
    ! validation against Huang et al. (2023) Figs. 11/27 (proton source) and
    ! Figs. 10/26 (heating budget). All quantities cgs; written for the last
    ! converged outer pass.
@@ -973,5 +957,4 @@
    close(72)
    end subroutine write_excited_H
 
-   ! End of module
    end module excited_hydrogen

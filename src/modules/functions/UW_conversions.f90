@@ -10,7 +10,6 @@
       
       contains
       
-      !-----------------------------------------------------------!
       
       ! Conservative to primitive (one component).
       ! jcell names the cell whose COMPOSITION this state has: for a cell
@@ -30,7 +29,6 @@
  
       end subroutine U_to_W_comp
       
-      !-----------------------------------------------------------!
       
       ! Primitive to conservative (one component); jcell as above.
       subroutine W_to_U_comp(W_in,U_out,jcell)
@@ -45,7 +43,6 @@
  
       end subroutine W_to_U_comp
       
-      !-----------------------------------------------------------!
       
       ! Primitive to conservative
       subroutine W_to_U(W_in,U_out)
@@ -78,7 +75,6 @@
  
       end subroutine W_to_U
       
-      !-----------------------------------------------------------!
       
       ! Conservative to primitive
       subroutine U_to_W(U_in,W_out)
@@ -108,7 +104,6 @@
  
       end subroutine U_to_W
 
-      !-----------------------------------------------------------!
 
       ! Is the conservative state thermodynamically admissible, i.e. does
       ! every physical cell carry a positive mass density AND a positive
@@ -155,7 +150,6 @@
 
       end function positive_density_and_internal_energy
 
-      !-----------------------------------------------------------!
 
       ! The test above for ONE cell (rho, rho v, E): finite, rho > 0 and
       ! rho e > 0, evaluated without overflow. The single definition every
@@ -190,7 +184,6 @@
 
       end function admissible_conserved_cell
 
-      !-----------------------------------------------------------!
 
       ! Conservative to primitive on the interior cells 1..N only; the
       ! ghost columns of W_out are set to zero. For a state whose ghosts
@@ -210,7 +203,5 @@
       
       end subroutine U_to_W_interior
         
-      !-----------------------------------------------------------!
       
-      ! End of module
       end module Conversion

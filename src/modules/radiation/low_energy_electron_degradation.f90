@@ -17,9 +17,7 @@
    ! low_energy_electron_tables.f90; provenance and digests are in that
    ! file's header.
    !
-   ! ---------------------------------------------------------------------
    !  WHAT THE TABLES ARE, read from the paper and the files
-   ! ---------------------------------------------------------------------
    !
    !  * The gas. Primordial H and He. Section 7: "we let x_i be the density
    !    of H II relative to the total hydrogen density and assume that this
@@ -76,9 +74,7 @@
    !    The statistical noise of 1e5 trials is in the numbers: n_ion,HeI
    !    near its 24.6 eV threshold comes in steps of 1e-4 (tens of events).
    !
-   ! ---------------------------------------------------------------------
    !  HOW EACH COLUMN ENTERS THE CODE
-   ! ---------------------------------------------------------------------
    !
    !  * Heat: f_heat E, as the existing partition's f_heat E0.
    !  * Ionization: n_ion,HI and n_ion,HeI are added to the secondary
@@ -97,9 +93,7 @@
    !    energy locally; that transfer is not followed here, so the heat
    !    below 30 eV is a lower bound where H I is Ly-alpha-thick.
    !
-   ! ---------------------------------------------------------------------
    !  VALIDITY, and where our models sit relative to it
-   ! ---------------------------------------------------------------------
    !
    !  * Composition. The tables are for He/H = 0.087 (0.08/0.92). Our runs
    !    reach He/H 2-9. As in electron_energy_degradation ("Helium
@@ -204,9 +198,7 @@
 
    contains
 
-   ! ================================================================= !
    !  Startup: the energy map of the spectral grid
-   ! ================================================================= !
 
    subroutine low_energy_electron_energy_grid(e_v, e_th, E_top)
    ! E_top is E_sec_ion: the window ends where the existing partition
@@ -301,9 +293,7 @@
    w = (xc - lee_x(m))/(lee_x(m+1) - lee_x(m))
    end subroutine low_energy_x_bracket
 
-   ! ================================================================= !
    !  The tables as the authors interpolate them
-   ! ================================================================= !
 
    pure subroutine furlanetto2010_deposition(E, x, f_ion, f_heat, f_exc,   &
                                              n_Lya, n_HI, n_HeI, n_HeII)
@@ -347,9 +337,7 @@
       end function bilinear
    end subroutine furlanetto2010_deposition
 
-   ! ================================================================= !
    !  The cell partition
-   ! ================================================================= !
 
    pure subroutine low_energy_electron_partition(x, n_HI, n_HeI, n_H2, lp)
    ! The partition of one cell on the table rows. x is the ionized
@@ -433,9 +421,7 @@
    k_HeI  = lp%k_HeI (k) + w*(lp%k_HeI (k+1) - lp%k_HeI (k))
    end subroutine low_energy_electron_shares_at
 
-   ! ================================================================= !
    !  The partition of one absorber's photoelectrons on the photon grid
-   ! ================================================================= !
 
    pure subroutine photoelectron_partition_on_grid(pep, lp, iabs,          &
                                                    f_heat, c_HI, c_HeI, c_H2)
@@ -483,9 +469,7 @@
 
    end subroutine photoelectron_partition_on_grid
 
-   ! ================================================================= !
    !  The partition of one electron of a given energy
-   ! ================================================================= !
 
    pure subroutine photoelectron_partition_at_energy(cp, E0, f_heat,      &
                                                      k_HI, k_HeI, k_H2)
@@ -535,5 +519,4 @@
 
    end subroutine photoelectron_partition_at_energy
 
-   ! End of module
    end module low_energy_electron_degradation

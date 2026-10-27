@@ -1,11 +1,6 @@
 	module ion_cell_state
-	! Named-field cell state for the equilibrium ionization residuals. It
-	! replaces reading the position-packed params() inside the residuals.
-	! params stays as the MINPACK transport argument
-	! (hybrd1/fdjac1/solve_ieq), but
-	! the converted equilibrium systems no longer read it -- they read the
-	! named fields below instead. The field names follow the physical
-	! quantities of the equilibrium params layout.
+	! Named physical quantities for equilibrium ionization residuals.
+	! MINPACK still transports params; the converted residuals read these fields.
 	!
 	! The ionization cell sweep (ioniz_eq) is OpenMP-parallel over cells, so
 	! the single module instance is threadprivate: each thread fills its own
@@ -26,7 +21,7 @@
 	! has not been filled yet is the state of a cell with no gas and no
 	! rates: no photoionization, no recombination, no collisional or
 	! charge-exchange channel, no third body, and no imposed carrier
-	! partition (the three x_*_fixed flags false). That is the only value
+	! partition (all x_*_fixed flags false). That is the only value
 	! this type has an unambiguous meaning for. The invariant matters most
 	! for the grid-sized arrays of ionization_equilibrium (bg_cell,
 	! ieq_rate_cell and the two solver copies), which are allocated before
@@ -194,15 +189,12 @@
 		logical :: x_hetr_fixed = .false.
 		integer :: x_hetr_row = 0
 		real*8 :: x_hetr_fix = 0.0d0
-		! THE H2 PARTITION OF THE NON-IONIZED HYDROGEN, stated by the
-		! lower-boundary reservoir (the base handoff) for a lower ghost.
-		! The handoff gives x2 = 2 n(H2)/(2 n(H2) + n(H I)), the fraction
-		! of the NEUTRAL hydrogen nuclei bound in H2 (the lower-atmosphere
-		! model never saw the wind's ionizing field); the ionized fraction
-		! is the ghost's own. The row the H2 balance (4) is replaced by is
-		! therefore
-		!     x(4) - x2 (1 - x_ion(x)) = 0,
-		!     x_ion = x(1) + x(5) + x(6) + x(7)
+		! The lower-boundary reservoir sets x2, the non-atomic share
+		! of its non-ionized hydrogen nuclei. For a lower-atmosphere
+		! profile this includes H in OH and H2O; without those species it
+		! is the H2 share. The ghost solves x(4) - x2*(1-x_ion) + x_O = 0,
+		! where x_ion = x(1)+x(5)+x(6)+x(7) and
+		! x_O = [n(OH)+2*n(H2O)]/n_H (zero without oxygen carriers).
 		! (h2_fraction_of_reservoir), solved TOGETHER with the ionization
 		! rows: x_ion is an unknown of the same solve, not the value of a
 		! previous pass. Pinning x(4) at x2 (1 - x_ion) of a previous
@@ -394,16 +386,15 @@
 	x_ion = x(1) + x(5) + x(6) + x(7)
 	end function ionized_hydrogen_nuclei_fraction
 
-	! The H2 row of a reservoir cell whose neutral hydrogen partition x2
-	! is stated (x_h2_neutral_partition_fixed): x(4) = x2 (1 - x_ion),
-	! the H2 nuclei fraction of ALL the hydrogen when x2 of the
-	! non-ionized hydrogen is bound in H2 and x_ion is ionized.
+	! Reservoir H2 fraction of all H nuclei: x2*(1-x_ion), minus the
+	! optional OH/H2O hydrogen share. x2 is the non-atomic fraction of
+	! the non-ionized reservoir; x_ion is the local ionized fraction.
 	pure double precision function h2_fraction_of_reservoir(x2, x_ion, x_oxygen)     &
 	                                                         result(x_h2)
 	real*8, intent(in) :: x2, x_ion
 	real*8, optional, intent(in) :: x_oxygen
-	! x2 states the neutral molecular hydrogen budget. Explicit OH/H2O
-	! take their nuclei from that budget, preserving its atomic complement.
+	! x2 is the non-atomic budget of neutral hydrogen. Explicit OH/H2O
+	! take their nuclei from it, preserving its atomic complement.
 	! Validity: admissible compositions have x2*(1-x_ion) >= x_oxygen.
 	x_h2 = x2*(1.0d0 - x_ion)
 	if (present(x_oxygen)) x_h2 = x_h2 - x_oxygen

@@ -30,7 +30,6 @@
 
       contains
 
-      !----------------------------------------------------------!
 
       subroutine read_opacity_input
       integer :: io, eq_pos, n_set
@@ -104,7 +103,6 @@
 
       end subroutine read_opacity_input
 
-      !----------------------------------------------------------!
 
       subroutine to_upper(s)
       character(len = :), allocatable, intent(inout) :: s
@@ -126,5 +124,4 @@
       endif
       end subroutine to_upper_char
 
-      ! End of module
       end module opacity_input

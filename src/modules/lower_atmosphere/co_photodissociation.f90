@@ -8,7 +8,6 @@
       ! with that channel it is the whole of the one-sided CO destruction
       ! model.
       !
-      ! ---------------------------------------------------------------
       ! 1. THE RATE, AND WHY IT IS NOT WRITTEN AS VISSER'S k0 THETA
       !
       ! Visser, van Dishoeck and Black (2009), A&A 503, 323, sec. 3.3
@@ -16,12 +15,8 @@
       !
       !     k_i = chi k0_i Theta_i exp(-gamma A_V) ,
       !
-      ! with k0_i the unattenuated rate IN A STATED RADIATION FIELD.  Their
-      ! sec. 3.2 says how much that statement matters: "Clearly, the rate
-      ! depends on the choice of radiation field.  If we adopt Habing
-      ! (1968), Gondhalekar et al. (1980) or Mathis et al. (1983) instead of
-      ! Draine (1978), the photodissociation rate becomes 2.0, 2.0 or
-      ! 2.3 x 10^-10 s^-1, respectively", against their own 2.6e-10.
+      ! k0_i depends on the stated radiation field (Visser et al. 2009,
+      ! sec. 3.2).
       !
       ! EXHALE has a band flux and not an interstellar field, so k0 is not
       ! the quantity to carry.  What is carried is the band-mean CO
@@ -44,7 +39,6 @@
       ! geometric factor is applied, because applying one would give the
       ! four absorbers of one beam two different geometries.
       !
-      ! ---------------------------------------------------------------
       ! 2. THE BAND-MEAN CROSS SECTION, AND THE WINDOW CO ACTUALLY ABSORBS IN
       !
       ! The beam is 912-1201 A (lyman_werner.f90 sec. 1).  CO does not
@@ -68,10 +62,8 @@
       !
       !     sigma_CO_band = 1.0160e-17 cm^2
       !
-      ! and the same integral over 912-1110 A alone, the band as it stood
-      ! before the Lyman-Werner interval was renormalized, is 1.5496e-17
-      ! cm^2.  The ratio of the two is the flat-F_lambda share of the beam's
-      ! photons that lie in the CO window.
+      ! The former 912-1110 A normalization is recorded in
+      ! ../EXHALE_v1.00/md/b3b_co_destruction_design_20260906.md sec. 7.1.
       !
       ! FLAT F_LAMBDA IS ASSUMED FOR BOTH SPECTRUM TYPES, and that is a
       ! stated approximation rather than an oversight.  With
@@ -84,25 +76,10 @@
       ! error it would remove is the tilt of the stellar spectrum across
       ! 912-1118 A, which is the same tilt the other three already carry.
       !
-      ! CROSS-CHECK AGAINST VISSER'S OWN NORMALIZATION.  Their k0 belongs to
-      ! the Draine (1978) field, whose 912-1110 A photon flux at chi = 1 is
-      ! 1.232e7 cm^-2 s^-1 (Draine & Bertoldi 1996 Table 1, the F/chi column,
-      ! READ through lyman_werner.f90 sec. 1).  Their Table 6 header gives
-      ! k0 = 2.590e-10 s^-1, so the cross section implied by their data over
-      ! that band is 2.102e-17 cm^2 against the 1.550e-17 measured above on
-      ! the same band: OUR VALUE IS 26 PER CENT LOWER (MEASURED).  Visser
-      ! state their absolute rate accuracy as "about 20%" (their sec. 3.5),
-      ! so the two do not quite meet inside that figure and the difference
-      ! is recorded here rather than absorbed.  Two things it can be: the
-      ! Draine field is redder across 912-1118 A than a flat F_lambda and so
-      ! weights the strong 1076 A band more heavily, and the 0.1 nm
-      ! continuum table is a different reduction of the same molecular data
-      ! from the band-resolved line list the shielding function is built on.
-      ! The cross-section route is kept, because it is the run's own beam
-      ! that multiplies it.  The test co_shielding_table.f90 measures this
-      ! ratio, so it cannot drift unrecorded.
+      ! Visser's Draine-field normalization differs by 26% on the
+      ! 912-1110 A comparison band (same record, sec. 7.1). The cross-section
+      ! route uses this run's beam and is checked by physics_probe.
       !
-      ! ---------------------------------------------------------------
       ! 3. THE PHOTON ENERGY OF ONE DISSOCIATION EVENT
       !
       ! The fragments leave with hv - D0(CO), and D0(CO) comes from the one
@@ -115,17 +92,11 @@
       ! only 0.62 eV above the 11.1157 eV threshold, so a deposit taken from
       ! it would be an artefact of those edges.
       !
-      ! What is used is the OSCILLATOR-STRENGTH WEIGHTED MEAN over Visser's
-      ! Table 1, sum_i f_i hv_i / sum_i f_i over the 37 bands.  MEASURED
-      ! here from that table: 12.8674 eV, so the deposit is
-      ! 12.8674 - 11.1157 = 1.7517 eV per event.  Weighting instead by
-      ! f_i eta_i (eta the dissociation efficiency of the band, also in
-      ! their Table 1) gives 12.9149 eV and by f_i eta_i lambda_i (the
-      ! photon flux of a flat F_lambda) 12.8823 eV, so the choice of weight
-      ! is worth 0.05 eV out of 1.75 and the constant below is not sensitive
-      ! to it.
+      ! Use the oscillator-strength weighted mean of Visser et al. (2009)
+      ! Table 1: sum_i f_i hv_i / sum_i f_i = 12.8674 eV, giving
+      ! 12.8674 - 11.1157 = 1.7517 eV of fragment energy per event.
+      ! The alternative weight comparisons are in the same record, sec. 7.2.
       !
-      ! ---------------------------------------------------------------
       ! 4. THE CELL MEAN, AND WHY A FACE VALUE WILL NOT DO
       !
       ! Theta falls by more than three decades along the CO column axis of
@@ -145,7 +116,6 @@
       ! seg_dex criterion for BOTH columns and the seg_dtau criterion for
       ! the continuum, so the finest of the three wins.
       !
-      ! ---------------------------------------------------------------
       ! References: Visser, van Dishoeck & Black (2009), A&A 503, 323
       ! (publisher PDF, references/Visser_2009A&A_503_323.pdf), Table 1
       ! (the 37 bands, their wavelengths, oscillator strengths and
@@ -171,7 +141,7 @@
       ! band photon flux, and sigma_CO_band below is normalized per photon
       ! of that band.  It is repeated here rather than imported because
       ! importing lyman_werner would make the CO rate depend on the H2
-      ! self-shielding table; the test co_shielding_table.f90 asserts the
+      ! self-shielding table; physics_probe/co_destruction.f90 checks the
       ! two are the same number.
       real(dp), parameter :: e_lw_photon_erg = 1.88021d-11
 
@@ -346,5 +316,4 @@
               0.0d0)
       end function heat_per_co_dissociation
 
-      ! End of module
       end module co_photodissociation

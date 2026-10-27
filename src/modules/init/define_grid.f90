@@ -22,7 +22,7 @@
       integer :: j
       ! Base resolution of the Mixed grid: N_low uniform cells of size drc
       ! [R_p] on the base, then N_up stretched cells out to r_max. Both come
-      ! from input.inp ("Base grid [dr,cells]:") and default to the historical
+      ! from the selected input ("Base grid [dr,cells]:") and default to
       ! hardcoded values 2.0e-4 and 50; see the scale-height requirement
       ! documented with dr_base in parameters.f90.
       integer :: N_low
@@ -100,7 +100,6 @@
             r(j) = 1.0d0 + (dble(j) - 0.5d0)*dr
          enddo
 
-      !--------------------------------------------------
 
       case ('Stretched')
 
@@ -125,7 +124,6 @@
          enddo
          r(1-Ng:nc+Ng) = (/ (2.0d0*x0**j/(1.0d0 + x0), j = 1-Ng,nc+Ng) /)
 
-      !--------------------------------------------------
 
       case ('Mixed')
 
@@ -197,7 +195,6 @@
             r(nc+j) = 2.0*r(nc+j-1) - r(nc+j-2)
          enddo
        
-       !--------------------------------------------------
 
       case default
 
@@ -302,7 +299,6 @@
       outer_shells_width_ratio = 0.0d0
       if (n_outer_shells .gt. 0) call append_outer_shells(nc)
 
-      !-----------------------------!
       
       ! Select relevant domain for constant momentum
       do j = 1-Ng,N+Ng
@@ -336,7 +332,7 @@
                     'to mid-domain (r >= '
          write(*,'(A,F6.3,A)') '        ',                                   &
                     1.0d0+0.5d0*(domain_outer_radius()-1.0d0),               &
-                    ' R_p). Set a smaller "Escape radius [R_p]:" in input.inp.'
+                    ' R_p). Set a smaller "Escape radius [R_p]:" in '//trim(inp_file)//'.'
       endif
       ! The window is a range of PHYSICAL cells, so its first index is cell 1
       ! even when the escape radius sits at or below the base: the ghosts
@@ -381,10 +377,8 @@
          endif
       enddo
 
-      ! End of subroutine
       end subroutine define_grid
 
-      ! ---------------------------------------------------------------- !
 
       subroutine append_outer_shells(nc)
       ! SHELLS BEYOND THE OUTER FACE OF THE CONSTRUCTED GRID.
@@ -490,7 +484,6 @@
 
       end subroutine append_outer_shells
 
-      ! ---------------------------------------------------------------- !
 
       subroutine shell_spacing_sum(x, m, sx, dsx)
       ! S(x) = sum_{i=0}^{m-1} x^i + x^m/2 and its derivative, by Horner's
@@ -508,7 +501,6 @@
       enddo
       end subroutine shell_spacing_sum
 
-      ! ---------------------------------------------------------------- !
 
       real*8 function domain_outer_radius()
       ! THE OUTER RADIUS OF THE DOMAIN THE RUN SOLVES [R_p]: the outer face
@@ -524,7 +516,6 @@
       endif
       end function domain_outer_radius
 
-      ! ---------------------------------------------------------------- !
 
       subroutine spherical_face_area_and_cell_volume(face_area,          &
                                                      cell_volume)
@@ -590,7 +581,6 @@
 
       end subroutine spherical_face_area_and_cell_volume
 
-      ! ---------------------------------------------------------------- !
 
       real*8 function spherical_cell_volume(j)
       ! THE ONE EXPRESSION FOR THE SHELL VOLUME OF ONE CELL, the value the
@@ -630,7 +620,6 @@
 
       end function spherical_cell_volume
 
-      ! ---------------------------------------------------------------- !
 
       ! Index of the cell whose center lies nearest a given radius [R_p].
       ! minloc counts positions from 1 whatever the declared lower bound of
@@ -643,5 +632,4 @@
       j_near = minloc(abs(r - r_target), dim = 1) + lbound(r,1) - 1
       end function cell_nearest_radius
       
-      ! End of module
       end module grid_construction

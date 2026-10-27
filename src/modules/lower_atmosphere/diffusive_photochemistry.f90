@@ -8,45 +8,18 @@
       !           - n_i D_i [ 1/H_i - 1/H_atm ]        (f_i = n_i/n_tot)
       !
       ! for the molecular carriers i = H2, OH, H2O, CO, and, in the same
-      ! block system, the carried ionization stages of hydrogen and helium
-      ! (H+, He+, He++) and the He 2^3S level, whose rows are the stage
-      ! fluxes of ionization_stage_transport (section 2).  This header
-      ! states what was built and what was measured, not what was intended.
+      ! block system, the transported H+, He+, He++, and He 2^3S stages
+      ! (ionization_stage_transport, section 2).
       !
-      ! ---------------------------------------------------------------
-      ! 1. WHY THE CARRIERS CANNOT BE A LOCAL STEADY STATE
+      ! 1. TRANSPORT REGIME
+      ! Local chemistry applies where reaction is faster than advection and
+      ! diffusion. The comparison for the HD 189733 b base is in
+      ! ../EXHALE_v1.00/md/a2_oxygen_option_design.md, M3 result.
+      ! Each run writes the three local timescales to Oxygen_chemistry.txt.
       !
-      ! Everywhere else in EXHALE the composition of a cell is the root of a
-      ! local algebraic system: the partition of an element among its stages
-      ! is recomputed from scratch each step by ioniz_eq.  That is correct
-      ! wherever the chemistry is fast compared with the flow, and it is the
-      ! reason the code can carry thirty ion stages cheaply.
-      !
-      ! The measurement that motivated this module says it is not correct
-      ! for H2 at a cool base: at the HD 189733 b 1-microbar
-      ! level tau_chem(H2)/tau_adv is 0.20 to 1.67 on H/v, and 16.4 when the
-      ! two are compared at the same pressure, against 1e-3 on HD 209458 b.
-      !
-      ! WHAT WAS THEN MEASURED IN EXHALE'S OWN STRUCTURE, AND IT IS NOT THE
-      ! SAME NUMBER.  That ratio was built from the PHOTOCHEMICAL model's
-      ! scale height and velocity at that pressure.  In an EXHALE run of the
-      ! same planet the base cell has v = 0 EXACTLY -- the lower boundary
-      ! condition puts it there -- and the flow time r/|v| in the cells above
-      ! it is 1e8-2e8 s against tau_chem(H2) = 178-552 s.  The diffusive time
-      ! of the base cell is 8.0e5 s with K_zz = 0, i.e. 4500 chemical times,
-      ! and 634 s with K_zz = 1e9, i.e. 3.6.  So in this code's structure the
-      ! base partition is a LOCAL quantity, and transport is not the term
-      ! that decides it; what transport does decide is the profile of a
-      ! species with no chemistry of its own, which here is CO.
-      !
-      ! That is why every run writes tau_chem, tau_adv AND the diffusive time
-      ! of each cell to output/Oxygen_chemistry.txt: the regime is a
-      ! measurement of the run, not a property of the option.
-      !
-      ! ---------------------------------------------------------------
       ! 2. WHICH SPECIES ARE TRANSPORTED, AND WHY THE OTHERS ARE NOT
       !
-      ! THE SET IS A PROPERTY OF THE RUN (carrier_set_init), up to eight
+      ! THE SET IS A PROPERTY OF THE RUN (carrier_set_init), up to eleven
       ! rows a cell (n_carrier_max):
       !  - H2, with "Molecular carrier transport: True" in a molecular run;
       !    OH, H2O and CO behind it when the oxygen chemistry is on;
@@ -56,7 +29,9 @@
       !    stage (ionization_stage_transport, equation 1); H I and He I are
       !    the closing stages, one minus the carried ones, and not rows;
       !  - the He 2^3S level, with "He 2^3S transport: True" on top of the
-      !    carried helium stages, as a fourth state of the helium partition.
+      !    carried helium stages, as a fourth state of the helium partition;
+      !  - H2+, H3+, and (with helium) HeH+ when molecular carrier transport
+      !    is on, after the level in the fixed index order.
       ! A configuration that solves a later row without an earlier one (the
       ! stages without the molecular carriers, say) keeps the unsolved rows
       ! as identity rows (carrier_solved).
@@ -73,14 +48,10 @@
       ! an implicit step carries a short-lived species at no cost: it simply
       ! relaxes to its own local balance.
       !
-      ! NOT transported, and closed by their local balance instead:
-      !  - H2+, H3+, HeH+.  Measured on the HD 209458 b molecular example
-      !    over the cells that hold H2 (r = 1.000-1.018 R_p), the three of
-      !    them together carry at most 1.2e-9 of the H nuclei.  Leaving them
-      !    local is therefore a closure statement at that level and not a
-      !    leak: the H-nucleus budget is closed against the ELEMENT total,
-      !    not against a sum of transported species, so whatever they hold
-      !    is simply not available to the carriers.
+      ! Molecular ions H2+, H3+, and HeH+ are transported with the
+      ! molecular carriers; the former local-only approximation is recorded
+      ! in the same M3 result.
+      ! Species still closed by their local balance include:
       !  - O(1D).  Its lifetime is 1.6e-3 s at the HD 189733 b base and it
       !    has one sink; the design's sec. 2.3 states the case, and it is the
       !    same argument as above rather than a different one.
@@ -91,19 +62,15 @@
       !    write-back below moves nuclei between a carrier and the closure
       !    species of its element, so no element can drift.
       !
-      ! The one term this drops that is not small everywhere is the AMBIPOLAR
-      ! field.  The four molecular carriers are neutral, so eq. (2) of the
-      ! design has no (Z e E)/(k T) term for any of them; for them the field
-      ! is not neglected, it is absent.  The carried ionization stages ARE
-      ! charged, and for them it is neglected: they move with their
-      ! element's nucleus flux plus the eddy term, with no molecular
-      ! diffusion and no ambipolar drift against their own neutral
-      ! (carrier_diffusivities sets their D to zero; the validity
-      ! of the one-velocity approximation is measured in
-      ! ionization_stage_transport).  settling_coefficient in
-      ! binary_element_diffusion builds the field for the element operator.
+      ! The ambipolar field is omitted where charged carriers move relative
+      ! to neutral gas. H2, OH, H2O, and CO are neutral and have no such term.
+      ! Carried H+, He+, and He++ ride their element nucleus flux plus eddy
+      ! mixing; the molecular ions have zero relative molecular diffusion
+      ! and retain eddy mixing. carrier_diffusivities sets their D to zero.
+      ! ionization_stage_transport measures the one-velocity approximation
+      ! for atomic stages; settling_coefficient in binary_element_diffusion
+      ! builds the field for the element operator.
       !
-      ! ---------------------------------------------------------------
       ! 3. THE COEFFICIENTS
       !
       ! MOLECULAR DIFFUSION D_i.  Blanc's law over the background carriers
@@ -151,7 +118,6 @@
       ! alpha_T for H2O, OH or CO in an H2/He bath, and the element operator
       ! makes the same choice for the same reason.
       !
-      ! ---------------------------------------------------------------
       ! 4. THE CHEMISTRY IS THE SAME CHEMISTRY
       !
       ! P_i - L_i is not written here.  It is obtained by calling the very
@@ -181,7 +147,6 @@
       ! layer responds within the relaxation instead of only between Picard
       ! passes.
       !
-      ! ---------------------------------------------------------------
       ! 5. BOUNDARY CONDITIONS
       !
       ! WHETHER THE BASE FACE IS AN INFLOW is decided by the wind's mass
@@ -226,7 +191,6 @@
       ! gives the reason, a ghost-built face flux measured to draw carriers
       ! inward; no output file flags a carrier that is not negligible there.
       !
-      ! ---------------------------------------------------------------
       ! 6. DISCRETIZATION AND THE SIMPLEX
       !
       ! Cell-centred f_i, face-centred fluxes on r_edg, one backward-Euler
@@ -293,14 +257,13 @@
       ! not arise: the H total is the element, so transporting the partition
       ! 2 n_H2/n_H IS transporting what the gate measures.
       !
-      ! ---------------------------------------------------------------
       ! 7. VALIDITY
       !
       ! The same range the reaction set has (oxygen_rates header): this is
       ! valid where the base H2/H partition is kinetic and set by the oxygen
       ! cycle.  Transport moves the boundary of validity outward, it does not
       ! remove it -- design sec. 9 -- and the Damkohler profile in
-      ! output/Oxygen_chemistry.txt is where each run states its own.
+      ! <output_dir>/Oxygen_chemistry.txt is where each run states its own.
       !
       ! References: Banks & Kockarts (1973), Aeronomy, Part B, ch. 15 (the
       ! diffusive flux and the rigid-sphere coefficient); Draine & Bertoldi
@@ -725,23 +688,24 @@
       ! exists for -- and the oxygen cycle adds OH, H2O and CO behind it.
       ! Measured on the converged He/H = 0.0793 hot Uranus, the H2 chemical
       ! time is 0.02 to 1.3 times the flow time r/|v| across the front,
-      ! while the three molecular ions that are left local sit at 1e-9 to
-      ! 5e-5 of it and hold at most 2e-8 of the H nuclei, so the split
-      ! between carried and local is a measurement and not a convention.
+      ! while the three molecular ions, then treated locally, had chemical
+      ! times of 1e-9 to 5e-5 of it and held at most 2e-8 of the H nuclei.
+      ! This is a historical measurement; they are now carried when
+      ! molecular carrier transport is on.
       !
       ! n_carrier_max dimensions every array; n_carrier is how many of them
-      ! this run solves, set once by carrier_set_init.  The inactive columns
-      ! stay at zero -- the species behind them do not exist without the
-      ! oxygen chemistry -- so the whole-array statements below are exact.
+      ! this run solves, set once by carrier_set_init. Some unsolved columns
+      ! hold background fractions (carrier_state); their equations are
+      ! identity rows and carrier_solved excludes them from active loops.
       !
       ! THE IONIZATION STAGES ARE THE NEXT THREE, AND THAT IS FOR A REASON.
       ! Their indices have to be constants -- the ionization rows, the
       ! write-back and the element budget all name them -- and the four
       ! molecular indices have to keep the values they have, so the only
-      ! place left is behind them.  The He 2^3S level ("He 2^3S
-      ! transport") is the last, behind the stages it shares the helium
-      ! simplex with.
-      ! That makes the solved set non-contiguous in the one configuration
+      ! place left is behind them. The He 2^3S level ("He 2^3S
+      ! transport") follows the stages it shares the helium simplex with;
+      ! the molecular ions have indices after it.
+      ! The solved set can be non-contiguous in configurations
       ! that carries H2 and the stages without the oxygen cycle, which is why
       ! carrier_solved exists below: n_carrier is the LAST index solved and
       ! carrier_solved says which of 1..n_carrier actually are.
@@ -951,7 +915,6 @@
       real(dp), public :: bound_last_dabs = 0.0d0
       real(dp), public :: bound_last_entry = 0.0d0
       logical,  public :: bound_last_fraction = .false.
-      ! ---------------------------------------------------------------- !
       ! A DIAGNOSTIC EXPERIMENT, DEFAULT OFF.  WHAT IT MEASURES: the
       ! movement bound is one
       ! scalar over a column that holds a slow H2 front and a far wind, and
@@ -1096,13 +1059,8 @@
       ! reserved from the helium simplex, from the neutral closure of the
       ! chemistry rows and from the write-back's remainder alike.
       real(dp), dimension(:), allocatable :: cbg_nHemol
-      ! THE FACE STATE THE IONIZATION STAGE ROWS RIDE ON, frozen over one
-      ! interval exactly as the transport coefficients are: the element
-      ! nucleus face flux of each element, its face nucleus density, the
-      ! face eddy coefficient and the face spacing.  They come from
-      ! hydrogen_and_helium_nucleus_face_flux, which reads the element
-      ! operator's one public flux; nothing here rebuilds a face
-      ! coefficient of that operator.
+      ! Cached ionization-stage face flux, density, K_zz and spacing;
+      ! carrier_stage_face_state reads the element operator for each interval.
       real(dp), dimension(:,:), allocatable :: stg_Nel, stg_nelf
       real(dp), dimension(:),   allocatable :: stg_Kf, stg_drf
       ! The stage sum identity of the last stationary evaluation, the face
@@ -1246,7 +1204,7 @@
       !     tau_form = 1/(k_8597 n_O)     [record only, never a row]
       !
       ! tau_res uses the code's own two timescale definitions, the same ones
-      ! output/Oxygen_chemistry.txt already writes for H2, with the CO
+      ! <output_dir>/Oxygen_chemistry.txt already writes for H2, with the CO
       ! diffusion coefficient in place of the H2 one; T5.2's gradient-scale
       ! form needs a gradient scale this code does not form and is a later
       ! refinement.  A cell is IN DOMAIN when tau_dest <= f_dom tau_res.
@@ -1797,7 +1755,6 @@
       endif
       end subroutine carrier_set_init
 
-      ! ------------------------------------------------------------- !
 
       ! Diagnostics of the last transport step: Newton iterations, the
       ! relative residual it stopped at, how many cells needed the element
@@ -1811,7 +1768,6 @@
       worst  = pct_worst_limit
       end subroutine carrier_transport_diagnostics
 
-      ! ------------------------------------------------------------- !
 
       ! How far the retry controller halved the substep of the last
       ! interval: 0 when the first attempt settled it, carrier_retry_max
@@ -1821,7 +1777,6 @@
       nh = pct_retry_halvings
       end function carrier_last_interval_halvings
 
-      ! ------------------------------------------------------------- !
 
       ! Did an element constraint of the last limiter call move cell j?
       ! Out of range, or before any solve has run, the answer is no: there
@@ -1834,7 +1789,6 @@
       bound = pct_cell_constrained(j)
       end function carrier_cell_is_constrained
 
-      ! ------------------------------------------------------------- !
 
       ! HOW A STALLING NEWTON ITERATION STOPPED, as a statement about the
       ! residual it is stopping at rather than about the caller.
@@ -1868,7 +1822,6 @@
       endif
       end function carrier_stall_class
 
-      ! ------------------------------------------------------------- !
 
       ! IS THE STATE THAT IS ABOUT TO BE WRITTEN BACK A SOLUTION?
       !
@@ -2016,7 +1969,6 @@
       endif
       end subroutine carrier_returned_state_verdict
 
-      ! ------------------------------------------------------------- !
 
       ! The verdict on the state the last carrier solve of the RUN
       ! returned.  It belongs to whichever interval produced it and to no
@@ -2071,7 +2023,6 @@
       end select
       end function carrier_solve_status_text
 
-      ! ------------------------------------------------------------- !
 
       ! THE DOMAIN RECORD OF THE ONE-SIDED CO MODEL, taken on the state an
       ! accepted carrier step hands on.  It reads and never writes the
@@ -2195,7 +2146,6 @@
       f = co_domain_f_dom
       end function carrier_co_domain_f_dom
 
-      ! ------------------------------------------------------------- !
 
       ! TEST ONLY: a distinct amount into each ledger family of the domain
       ! record, so that the composition rules and the non-restoration can be
@@ -2280,7 +2230,6 @@
       nsubsteps = carrier_roundoff_substeps
       end subroutine carrier_roundoff_limited_record
 
-      ! ------------------------------------------------------------- !
 
       ! The rows the last verdict refused, at most carrier_refused_rows_max
       ! of them, and the two scales each was measured against.  A row is
@@ -2306,7 +2255,6 @@
       terms_full = refused_full(k)
       end subroutine carrier_refused_row
 
-      ! ------------------------------------------------------------- !
 
       ! Keep the rows a refusal rests on, with both scales, before the
       ! restore erases the assembly they came from.  A row that the verdict
@@ -2388,7 +2336,6 @@
       pct_Dco = D_state
       end subroutine carrier_diffusivities_of_state
 
-      ! ------------------------------------------------------------- !
 
       ! The coupled carrier transport-chemistry system advanced by backward
       ! Euler over the interval dt_code of each cell (adimensional, as the
@@ -2604,7 +2551,6 @@
 
       end subroutine photochemical_transport_step
 
-      ! ------------------------------------------------------------- !
 
       ! THE WORST ROW A REFUSAL RESTED ON, with both scales it was measured
       ! against: the largest |res|/physical terms among the rows kept by
@@ -2637,7 +2583,6 @@
       enddo
       end subroutine exhausted_worst_row
 
-      ! ------------------------------------------------------------- !
 
       ! COVER THE INTERVAL dt_code WITH ACCEPTED CARRIER SUBSTEPS, or cover
       ! none of it.  This is the body of the step above with the stop taken
@@ -2906,7 +2851,7 @@
       ! the element limiter touched, and how far the base partition moved.
       ! EXHALE_CARRIER_ROW_TERMS=1 records the terms of every carrier row
       ! and writes them once per certification to
-      ! output/carrier_row_terms.txt.  Default off; nothing in the solution
+      ! <output_dir>/carrier_row_terms.txt.  Default off; nothing in the solution
       ! reads the record, so the run it is switched on in is the run it is
       ! switched off in.
       logical function carrier_row_terms_on()
@@ -2915,7 +2860,6 @@
       carrier_row_terms_on = (trim(env) .eq. '1')
       end function carrier_row_terms_on
 
-      ! ------------------------------------------------------------- !
 
       ! THE CARRIER ROWS OF THE LAST ASSEMBLY, TERM BY TERM.  One line per
       ! (cell, solved carrier): the transport terms, the chemical
@@ -3002,7 +2946,6 @@
       enddo
       end function h2chan_header
 
-      ! ------------------------------------------------------------- !
 
       logical function carrier_debug_on()
       character(len=8) :: env
@@ -3012,7 +2955,6 @@
       carrier_debug_on = (trim(env) .eq. '1')
       end function carrier_debug_on
 
-      ! ------------------------------------------------------------- !
 
       ! THE SPECIES THIS RUN'S CARRIER OPERATOR TRANSPORTS, as a mask over
       ! the f_sp columns, so that the elemental map is asked about the set
@@ -3029,7 +2971,6 @@
       enddo
       end subroutine carrier_species_mask
 
-      ! ------------------------------------------------------------- !
 
       ! The carrier mixing ratios of the current state, and the element
       ! headroom each of them is limited against.
@@ -3324,7 +3265,6 @@
 
       end subroutine carrier_state
 
-      ! ------------------------------------------------------------- !
 
       ! The row scales of the last carrier residual assembly: terms_full is
       ! the sum of the magnitudes of every term of the row, the time term
@@ -3339,7 +3279,6 @@
       if (allocated(row_terms_phys)) terms_physical = row_terms_phys(1:N,:)
       end subroutine carrier_row_scales
 
-      ! ------------------------------------------------------------- !
 
       ! Cell and carrier that the last fixed-wind relaxation moved most.
       subroutine carrier_drift_location(j, ic)
@@ -3348,7 +3287,6 @@
       ic = pct_drift_ic
       end subroutine carrier_drift_location
 
-      ! ------------------------------------------------------------- !
 
       subroutine save_carrier_module_state(s)
       type(carrier_module_state), intent(out) :: s
@@ -3524,7 +3462,6 @@
       if (ok) ok = all(kept .eqv. live)
       end function same_1d_logical
 
-      ! ------------------------------------------------------------- !
 
       ! HOLD ASIDE EVERYTHING ONE CARRIER TRANSPORT ATTEMPT WRITES, and put
       ! it back.  The list is the module's own state, item by item: the
@@ -3599,7 +3536,6 @@
       endif
       end function carrier_checkpoint_matches
 
-      ! ------------------------------------------------------------- !
 
       subroutine save_thermochemical_state(s, f_sp, p, T, heat, cool, eta)
       ! Hold aside everything one trial of the relaxation writes (the
@@ -3620,7 +3556,6 @@
       call carrier_checkpoint_take(s%carriers)
       end subroutine save_thermochemical_state
 
-      ! ------------------------------------------------------------- !
 
       subroutine restore_thermochemical_state(s, rho, f_sp, p, T, heat,   &
                                               cool, eta)
@@ -3678,7 +3613,6 @@
            .and. (a%stall      .eq. b%stall)
       end function verdicts_agree
 
-      ! ------------------------------------------------------------- !
 
       ! Is the state (rho, v, f_sp) a steady state OF THE CARRIER EQUATION,
       ! and where is it least so? The temperature of that state is the one
@@ -3812,22 +3746,10 @@
                                rnorm_unused)
       endif
 
-      ! THE SCALE IS THE ROW'S OWN LARGEST TERMS, and that is a change.
-      ! It used to be carrier_row_scale, n_H(|v|+c_s)/dr -- the flux
-      ! divergence the cell would carry if its WHOLE hydrogen inventory moved
-      ! at the signal speed. That is a bound on the row, but it is not the
-      ! row's own term, and measured on the He/H = 0.0793 hot Uranus it
-      ! exceeds the sum of the terms the row actually balances by 10^2.7 to
-      ! 10^6.4. A state the steady solver accepted at info = 0 then reported
-      ! a carrier
-      ! residual of 1.6e-4 while carrying 0.60 of its own terms at the H2
-      ! front, and the outer loop had no way to see that the state it was
-      ! handing over was not a carrier steady state at all.
-      !
-      ! Section 133 already made "a bound on that row's own largest term" the
-      ! principle for every hydrodynamic row. This is the carrier row on the
-      ! same principle, and the quantity it needs is the one
-      ! carrier_residual has always computed for its own Newton: row_terms.
+      ! The stationary residual is normalized by the physical row terms,
+      ! not the full hydrogen signal-speed bound. The measured discrepancy
+      ! is recorded in ../EXHALE_v1.00/md/p50_carrier_wind_alternation.md
+      ! section 2.
       !
       ! THE SCALE HERE IS row_terms_phys, the same sum without the time
       ! term.  This routine asks whether a state is STATIONARY, a question
@@ -3913,7 +3835,6 @@
       if (present(terms_out)) terms_out = row_terms_phys(1:N,:)
       end subroutine carrier_steady_residual
 
-      ! ------------------------------------------------------------- !
 
       ! The record of the base face flux of H2 (declaration of
       ! base_face_h2_measured), from the base_face_flux of
@@ -3928,7 +3849,6 @@
       base_face_h2_flux_dif_cgs = bff(ic_H2,2)
       end subroutine carrier_record_base_face_flux
 
-      ! ------------------------------------------------------------- !
 
       ! COLUMN scale of carrier ic's unknown in cell j [cm^-3]: the carrier
       ! density itself plus the amount of it a signal crossing would carry at
@@ -3983,7 +3903,6 @@
       if (allocated(headroom_car)) nmax = headroom_car(j,ic)
       end function carrier_headroom
 
-      ! ------------------------------------------------------------- !
 
       ! WHETHER THE ELEMENT BUDGET EXISTS AT ALL, which is a question about
       ! the state and not about a magnitude.  The budget is a product of the
@@ -3997,7 +3916,6 @@
       carrier_headroom_known = allocated(headroom_car)
       end function carrier_headroom_known
 
-      ! ------------------------------------------------------------- !
 
       ! Test only: no production path calls this.  The element budget is a
       ! property of a state this module has assembled, and the projection
@@ -4013,7 +3931,6 @@
       headroom_set = .true.
       end subroutine carrier_headroom_set_for_test
 
-      ! ------------------------------------------------------------- !
 
       ! THE LARGEST DENSITY CARRIER ic CAN REACH IN A CELL [cm^-3]: the free
       ! density of the element it is made of, divided by the nuclei of that
@@ -4090,7 +4007,6 @@
       end select
       end function carrier_element_headroom
 
-      ! ------------------------------------------------------------- !
 
       ! The cell's signal-crossing rate (|v| + c_s)/dr [1/s], from the same
       ! background the carrier rows are assembled on.
@@ -4108,7 +4024,6 @@
       enddo
       end subroutine carrier_signal_rate
 
-      ! ------------------------------------------------------------- !
 
       ! THE MATERIAL ADVECTION OF EVERY TRANSPORTED CARRIER, as the
       ! divergence of the face species fluxes the hydrodynamic stages carry.
@@ -4125,17 +4040,10 @@
       ! time [cm^-3 s^-1], and it is the inverse of the conversion
       ! carrier_mass_fractions applies on the way in.
       !
-      ! WHY IT IS NOT A CELL-VELOCITY UPWIND DIFFERENCE ANY MORE.  Earlier
-      ! the stationary rows and the fixed-wind relaxation carried
-      ! n_tot v df/dr plus a deferred van Leer correction while the marching
-      ! stages carried this divergence.  Two discretizations of one term have
-      ! two fixed points, so the state a Newton converges on and the state
-      ! the marching converges on were not the same object; the acceptance
-      ! contract requires that they be.  The cell-velocity form also had the
-      ! two failures the header of species_face_flux.f90 records: a cell
-      ! whose two face fluxes straddle zero had no advective term at all,
-      ! and a cell outflowing at both faces could be evacuated of a species
-      ! its density does not lose.
+      ! The former cell-velocity discretization and its distinct fixed
+      ! point are recorded in ../EXHALE_v1.00/md/b4_spatial_operator_design_20260906.md
+      ! section 4. The same face-flux divergence is used in marching and
+      ! stationary carrier equations.
       !
       ! The base face carries no special case: where the face mass flux
       ! flows inward the face composition is reconstructed from the ghosts,
@@ -4208,7 +4116,6 @@
 
       end subroutine carrier_advective_divergence
 
-      ! ------------------------------------------------------------- !
 
       ! The two face coefficients of the advective term, in the row's own
       ! units per unit of the face MASS fraction:
@@ -4236,7 +4143,6 @@
       enddo
       end subroutine carrier_advective_face_coefficients
 
-      ! ------------------------------------------------------------- !
 
       ! One carrier as a mass fraction of the mixture, WITH BOTH GHOST
       ! RULES OF THE CARRIER COLUMN APPLIED HERE AND NOWHERE ELSE, so that
@@ -4289,7 +4195,6 @@
       where (Y .lt. 0.0d0) Y = 0.0d0
       end subroutine carrier_face_mass_fraction
 
-      ! ------------------------------------------------------------- !
 
       ! THE SAME OUTFLOW CONTINUATION ON THE CARRIER STATE ITSELF, for the
       ! places that need a ghost VALUE and not a face fraction: the element
@@ -4306,7 +4211,6 @@
       enddo
       end subroutine carrier_outflow_ghost
 
-      ! ------------------------------------------------------------- !
 
       ! Whether something below the base states this carrier's partition.
       ! Only the molecular handoff does -- base.inp's q_H2_base, or the
@@ -4319,7 +4223,6 @@
       imposed = (ic .eq. ic_H2) .and. base_h2_composition_imposed()
       end function carrier_base_composition_imposed
 
-      ! ------------------------------------------------------------- !
 
       ! The two state quantities the advective term of a carrier row is
       ! built from: the mixture mass per unit of f_sp, and the face mass
@@ -4345,7 +4248,6 @@
       call face_mass_flux_of_state(rho, Frho)
       end subroutine carrier_advective_state
 
-      ! ------------------------------------------------------------- !
 
       ! Grid and step in physical units.
       subroutine carrier_geometry(dt_code, rp, rep, dt_phys)
@@ -4358,7 +4260,6 @@
       where (dt_phys .lt. 1.0d-30) dt_phys = 1.0d-30
       end subroutine carrier_geometry
 
-      ! ------------------------------------------------------------- !
 
       ! Molecular diffusion coefficient of each transported carrier in the
       ! background mixture, by Blanc's law over the rigid-sphere pairs
@@ -4511,7 +4412,6 @@
       m = species_mass_amu(carrier_species_index(ic))
       end function carrier_mass_amu
 
-      ! ------------------------------------------------------------- !
 
       ! WHETHER CARRIER ic IS AN IONIZATION STAGE OF AN ELEMENT, and
       ! therefore a fraction of that element's NUCLEI carried on that
@@ -4551,7 +4451,6 @@
       nucfrac = carrier_is_ionization_stage(ic) .or. (ic .eq. ic_HeTR)
       end function carrier_is_nucleus_fraction
 
-      ! ------------------------------------------------------------- !
 
       ! THE ELEMENT WHOSE NUCLEI AN IONIZATION STAGE PARTITIONS, as the
       ! index of the element inventory: hydrogen for x(H II), helium for
@@ -4567,7 +4466,6 @@
       endif
       end function carrier_stage_element
 
-      ! ------------------------------------------------------------- !
 
       ! The nucleus density [cm^-3] of the element an ionization stage
       ! partitions, in cell j, from the frozen background of the step
@@ -4583,7 +4481,6 @@
       endif
       end function carrier_stage_nucleus_density
 
-      ! ------------------------------------------------------------- !
 
       ! THE DENSITY CARRIER ic's UNKNOWN IS A FRACTION OF, in cell j
       ! [cm^-3]: the element's nucleus density for an ionization stage and
@@ -4603,7 +4500,6 @@
       endif
       end function carrier_nucleus_reference
 
-      ! ------------------------------------------------------------- !
 
       ! The species densities [cm^-3] of every carrier in cell j, each from
       ! its own reference density above.  One place, so that the chemistry
@@ -4620,7 +4516,6 @@
       enddo
       end subroutine carrier_cell_densities
 
-      ! ------------------------------------------------------------- !
 
       ! Face gradient and drift coefficients of each carrier, and the
       ! Peclet-hybrid donor switch.  Faces 0 and N are left at zero, which
@@ -4651,16 +4546,12 @@
       ! measures its rows and for the fixed-wind relaxation that drives them
       ! to zero.
       !
-      ! THE OUTER FACE.  Molecular diffusion and the settling drift
-      ! G = (m_c - mbar) g_eff/(kT) are Chapman-Enskog coefficients of a
-      ! COLLISIONAL mixture, and the outermost cells of these domains are
-      ! transitional.  MEASURED 2026-09-23 with collisional_validity.py on
-      ! the current LHS 1140 b states: Kn_bulk 0.06-0.14 at the top cell
-      ! (29 R_p), the largest species value 0.41-0.59, exobase above the
-      ! domain.  That is not Kn > 1, so the zero face flux is a closure
-      ! chosen for the reason below, not a property of collisionless gas.
-      ! The composition still leaves through that face, by advection, which
-      ! is a statement about the bulk motion and not about the collisions.
+      ! THE OUTER FACE. Molecular diffusion and gravitational settling
+      ! assume a collisional mixture. The outer closure is a chosen zero
+      ! relative flux; advection still carries composition through the face.
+      ! The stored Knudsen-number comparison is stale after the momentum-
+      ! transfer coefficient change (../EXHALE_v1.00/md/lhs1140b_p14_outer_closure_20260923.md
+      ! section 4) and is not used to justify this boundary condition.
       !
       ! The alternative -- forming the outer face from the ghost the way an
       ! interior face is formed -- was measured and is not defensible.  With
@@ -4732,7 +4623,6 @@
       enddo
       end subroutine carrier_face_coefficients
 
-      ! ------------------------------------------------------------- !
 
       ! THE FACE STATE THE IONIZATION STAGE ROWS RIDE ON, frozen over one
       ! interval exactly as the carrier face coefficients above are: the
@@ -4805,7 +4695,6 @@
 
       end subroutine carrier_stage_face_state
 
-      ! ------------------------------------------------------------- !
 
       ! THE FACE FLUX OF ONE IONIZATION STAGE ROW AND ITS TWO DERIVATIVES,
       ! in the shape the carrier residual stores every face flux in, so
@@ -4853,7 +4742,6 @@
 
       end subroutine carrier_stage_face_flux
 
-      ! ------------------------------------------------------------- !
 
       ! THE IDENTITY THAT SAYS MOVING CHARGE BETWEEN STAGES CANNOT MOVE A
       ! NUCLEUS, measured on the state in hand:
@@ -4964,7 +4852,6 @@
 
       end subroutine ionization_stage_nucleus_sum
 
-      ! ------------------------------------------------------------- !
 
       ! The identity above as the last stationary evaluation measured it,
       ! and whether an evaluation has measured it at all.  The
@@ -4987,7 +4874,6 @@
       if (present(g)) g = stage_sum_g(ien)
       end subroutine ionization_stage_sum_measure
 
-      ! ------------------------------------------------------------- !
 
       ! Rebuild the photolysis and Lyman-Werner rates from the CURRENT
       ! carrier columns and store them on the frozen cell state, so the
@@ -5028,7 +4914,6 @@
       enddo
       end subroutine carrier_photolysis
 
-      ! ------------------------------------------------------------- !
 
       ! The H nuclei cell j's transported carriers may hold [cm^-3].
       !
@@ -5073,7 +4958,6 @@
                                    carrier_solved(ic_H3p))
       end function hydrogen_available_to_carriers
 
-      ! ------------------------------------------------------------- !
 
       ! Test only: install the frozen helium background the projection's
       ! bound and the chemistry rows' neutral closure are formed from --
@@ -5093,7 +4977,6 @@
       cbg_nheiTR = nHe_TR
       end subroutine carrier_helium_background_set_for_test
 
-      ! ------------------------------------------------------------- !
 
       ! THE HELIUM NUCLEI THE TWO IONIZED STAGES OF CELL j MAY HOLD
       ! [cm^-3].
@@ -5138,7 +5021,6 @@
       breach = carrier_helium_singlet_under_zero
       end function carrier_helium_singlet_breach
 
-      ! ------------------------------------------------------------- !
 
       ! WITH THE He 2^3S LEVEL CARRIED ("He 2^3S transport") it is not
       ! reserved: it is the third carried state of the same simplex, and
@@ -5152,7 +5034,6 @@
       if (nHe .lt. 0.0d0) nHe = 0.0d0
       end function carrier_helium_available_to_stages
 
-      ! ------------------------------------------------------------- !
 
       ! THE NEUTRAL HELIUM OF A TRIAL STAGE PARTITION in cell j [cm^-3]:
       ! the ground singlet that closes the element, and the whole neutral
@@ -5189,7 +5070,6 @@
       n_hei   = n_heiSI + n_heiTR
       end subroutine carrier_helium_neutral_of_partition
 
-      ! ------------------------------------------------------------- !
 
       ! THE REFERENCE DENSITY OF A CARRIER [cm^-3]: the free density of the
       ! element the carrier is made of, which is the largest density that
@@ -5244,7 +5124,6 @@
       end select
       end function carrier_element_reference_density
 
-      ! ------------------------------------------------------------- !
 
       ! Density perturbation [cm^-3] with which the chemistry rows of one
       ! carrier are differentiated (the Jacobian block of solve_carriers).
@@ -5273,11 +5152,10 @@
                1.0d-300)
       end function carrier_source_derivative_step
 
-      ! ------------------------------------------------------------- !
 
-      ! Chemical production minus loss of the four carriers in cell j, at the
-      ! trial densities nc(1..4) [cm^-3].  The rows are the SAME rows the
-      ! local equilibrium solve uses (sec. 4); nothing is rewritten here.
+      ! Chemical production minus loss of each active carrier in cell j,
+      ! at trial densities nc [cm^-3]. The H/He/molecular rows reuse the
+      ! local equilibrium kernels; CO has the one-sided sink below.
       subroutine carrier_source(j, nc, nH_free, nO_free, src,             &
                                 sprod, sloss, sphot, sh2chan)
       integer,  intent(in)  :: j
@@ -5816,7 +5694,6 @@
 
       end subroutine carrier_source
 
-      ! ------------------------------------------------------------- !
 
       ! Face flux of one carrier and its two derivatives.  The drift term is
       ! linear in f (not the X(1-X) form of the element operator, whose two
@@ -5846,7 +5723,6 @@
       dJr = (-Agr - Bst*wr)*wcr
       end subroutine carrier_face_flux
 
-      ! ------------------------------------------------------------- !
 
       ! WHETHER THE ENERGY EQUATION CARRIES THE ENTHALPY OF THE RELATIVE
       ! TRANSPORT OF THIS OPERATOR'S CARRIERS: the molecular carriers
@@ -5881,7 +5757,6 @@
            carrier_solved(ic_Hp)
       end function ionization_stage_enthalpy_active
 
-      ! ------------------------------------------------------------- !
 
       ! Which species of the table are the transported molecular carriers
       ! of this run.
@@ -5899,7 +5774,6 @@
       enddo
       end subroutine molecular_carrier_species
 
-      ! ------------------------------------------------------------- !
 
       subroutine recoiling_nucleus_enthalpies(f_sp, j, kTe, urv, car_bsp, &
                                               hbH, hbO, hbC)
@@ -5972,7 +5846,6 @@
       if (nCnuc .gt. 0.0d0) hbC = eC/nCnuc
       end subroutine recoiling_nucleus_enthalpies
 
-      ! ------------------------------------------------------------- !
 
       subroutine molecular_carrier_enthalpy_face_flux(rho, Tcode, f_sp, q)
       ! THE SENSIBLE ENTHALPY FLUX OF THE MOLECULAR CARRIERS at the faces
@@ -6116,7 +5989,6 @@
       enddo
       end subroutine molecular_carrier_enthalpy_face_flux
 
-      ! ------------------------------------------------------------- !
 
       subroutine ionization_stage_enthalpy_face_flux(rho, Tcode, f_sp, q)
       ! THE SENSIBLE ENTHALPY THE IONIZATION STAGES CARRY BY MOVING
@@ -6261,7 +6133,6 @@
       enddo
       end subroutine ionization_stage_enthalpy_face_flux
 
-      ! ------------------------------------------------------------- !
 
       subroutine element_carrier_enthalpy_face_flux(rho, Tcode, f_sp, q, &
                                                    Frho_cgs_in)
@@ -6373,7 +6244,6 @@
       enddo
       end subroutine element_carrier_enthalpy_face_flux
 
-      ! ------------------------------------------------------------- !
 
       subroutine carrier_enthalpy_divergence_of_state(rho, Tcode, f_sp,  &
                                                       divq, q_out,       &
@@ -6427,7 +6297,6 @@
       if (present(q_out)) q_out = q
       end subroutine carrier_enthalpy_divergence_of_state
 
-      ! ------------------------------------------------------------- !
 
       subroutine helium_metastable_excitation_energy_divergence(rho,     &
                                         Tcode, f_sp, divq, q_out)
@@ -6517,7 +6386,6 @@
       if (present(q_out)) q_out = q
       end subroutine helium_metastable_excitation_energy_divergence
 
-      ! ------------------------------------------------------------- !
 
       ! Residual of the backward-Euler transport-chemistry system, and the
       ! face-flux derivatives the Jacobian needs.  rnorm is the largest
@@ -6766,14 +6634,8 @@
             rr  = rr + Kj*(sR*Jf(j,ic) - sL*Jf(j-1,ic))
             dsc = dsc + Kj*(sR*abs(Jf(j,ic)) + sL*abs(Jf(j-1,ic)))
             dph = dph + Kj*(sR*abs(Jf(j,ic)) + sL*abs(Jf(j-1,ic)))
-            ! THE MATERIAL ADVECTION IS THE DIVERGENCE OF THE MASS ROW'S
-            ! OWN FACE FLUXES, the same expression the Runge-Kutta stages
-            ! subtract from rho Y_c, so that a marched state and a Newton
-            ! state are states of one equation.  The base face needs no
-            ! special case: the face composition is reconstructed from the
-            ! ghosts wherever the face mass flux flows inward, which is the
-            ! handoff partition where a handoff states one and the base
-            ! cell's own where none does.
+            ! Add the carrier_advective_divergence face-flux term.
+            ! Its base-face composition is described at that routine.
             if (advect) then
                rr  = rr + adv(j,ic)
                dsc = dsc + advmag(j,ic)
@@ -6909,12 +6771,10 @@
       endif
       end subroutine carrier_residual
 
-      ! ------------------------------------------------------------- !
 
       ! Newton solve of the coupled system, block-tridiagonal in space with
-      ! 4x4 blocks.  The chemistry Jacobian is a forward difference of the
-      ! same rows the residual calls, so a change to the network reaches the
-      ! Jacobian without a second edit.
+      ! dense n_carrier x n_carrier blocks (up to n_carrier_max). The chemistry
+      ! Jacobian is a forward difference of the residual rows.
       subroutine solve_carriers(fc, fc_old, nrho, wfac, dt_phys, rp,     &
                                 rep, msum, Frho, Agrd, Bdrf, updrf, TK,  &
                                 sigrate,                                 &
@@ -7418,7 +7278,6 @@
 
       end subroutine solve_carriers
 
-      ! ------------------------------------------------------------- !
 
       ! Block-tridiagonal Thomas sweep with dense n_carrier x n_carrier
       ! blocks.  Written here because the element operator's scalar Thomas
@@ -7519,7 +7378,6 @@
       enddo
       end subroutine block_thomas
 
-      ! ------------------------------------------------------------- !
 
       ! Hold the carriers inside the element simplex: the H nuclei they
       ! carry cannot exceed what the cell has left for them, and the same for
@@ -7647,7 +7505,6 @@
       enddo
       end subroutine limit_to_element_budget
 
-      ! ------------------------------------------------------------- !
 
       ! RETURN THE IONIZATION STAGE FRACTIONS OF EVERY CELL AND GHOST TO
       ! THE SIMPLEX, element by element, through the one projection of
@@ -7808,7 +7665,6 @@
       endif
       end subroutine carrier_ionization_stage_projection
 
-      ! ------------------------------------------------------------- !
 
       ! Write the solved carriers back into f_sp, moving the nucleus
       ! difference into the closure species of each element so that no
@@ -8022,7 +7878,6 @@
       enddo
       end subroutine carrier_write_back
 
-      ! ------------------------------------------------------------- !
 
       ! THE H2 CONTENT EACH CELL'S OWN ROW WOULD SETTLE AT, at this state,
       ! with transport left out: the density at which the row's chemical
@@ -8176,7 +8031,6 @@
       endif
       end subroutine carrier_h2_chemical_root
 
-      ! ------------------------------------------------------------- !
 
       ! WHAT THE FIXED WIND FEELS OF A TRIAL, cell by cell: the relative
       ! change of the cell's PARTICLE COUNT, (n_tot + n_e), which at a fixed
@@ -8195,19 +8049,9 @@
       ! therefore loose exactly where the carrier is negligible and tight
       ! exactly where it is not, with no threshold beyond `trust` itself.
       !
-      ! WHAT THE OLD MEASURE DID, MEASURED.  It compared the
-      ! largest ABSOLUTE change of any carrier column against the largest H2
-      ! mixing ratio of the entry state, one number for the whole grid.  On
-      ! LHS 1140 b that reference is the base value, so the allowance was an
-      ! absolute 1.9e-03 anywhere, and the bound was refused on every pass at
-      ! a cell of the base or the front and NEVER at the cells the
-      ! certification is about: cell 3 (r = 1.0006, change 7.4e-05 of an
-      ! entry 6.8e-03) on the seed whose base is the row's own root, cell 143
-      ! (r = 1.0543, change 5.97e-04 of an entry 4.73e-03) on the seed whose
-      ! base is the handoff's.  The wind cells that carry the refusing row
-      ! changed by 1.4e-08 a pass, four decades inside the allowance, and
-      ! were passengers on whatever trial length the saturating cell left.
-      ! EXHALE_CARRIER_BOUND_FRACTION=1 restores that measure.
+      ! Earlier carrier-fraction comparisons: see
+      ! ../EXHALE_v1.00/md/lhs1140b_stationary_L7e_20260915.md
+      ! sections 2 and 7. EXHALE_CARRIER_BOUND_FRACTION=1 restores that measure.
       subroutine carrier_particle_count_change(nsum_now, nsum_entry, jw, dw)
       real(dp), dimension(1-Ng:N+Ng), intent(in)  :: nsum_now, nsum_entry
       integer,  intent(out) :: jw
@@ -8226,7 +8070,6 @@
       enddo
       end subroutine carrier_particle_count_change
 
-      ! ------------------------------------------------------------- !
 
       ! EXHALE_CARRIER_BOUND_FRACTION=1 puts the movement bound back on the
       ! carrier fraction against the column's largest H2 mixing ratio, the
@@ -8238,7 +8081,6 @@
       carrier_bound_on_fraction = (trim(env) .eq. '1')
       end function carrier_bound_on_fraction
 
-      ! ------------------------------------------------------------- !
 
       ! READ THE DIAGNOSTIC INTERVAL MASK ONCE, AND SAY WHAT IT IS.
       ! The declaration of interval_mask_mode carries what this mask measures and
@@ -8313,7 +8155,6 @@
       write(*,'(A)') '      no cell is excluded from the certification'
       end subroutine carrier_interval_mask_setup
 
-      ! ------------------------------------------------------------- !
 
       ! THE RELATIVE PARTICLE-COUNT CHANGE OF A TRIAL ON THE TWO SETS THE
       ! DIAGNOSTIC MASK DEFINES: the selection set, which chooses the
@@ -8343,7 +8184,6 @@
       enddo
       end subroutine particle_count_change_by_mask_set
 
-      ! ------------------------------------------------------------- !
 
       ! The diagnostic keys, read once for the run.  With none of them set
       ! every switch below stays at the value it is declared with and the
@@ -8395,7 +8235,6 @@
       endif
       end subroutine carrier_jacobian_options_setup
 
-      ! ------------------------------------------------------------- !
 
       ! d adv(j,ic) / d f_c(k,ic) for k = j-1, j, j+1, by a central
       ! difference of carrier_advective_divergence, which is the FULL
@@ -8471,7 +8310,6 @@
       enddo
       end subroutine carrier_advective_band_derivative
 
-      ! ------------------------------------------------------------- !
 
       ! THE ACTION OF THE ASSEMBLED JACOBIAN AGAINST THE ACTION OF THE
       ! OPERATOR, row by row, on a direction concentrated on the cells the
@@ -8579,7 +8417,6 @@
            ' the band of its row: ', carrier_reconstruction_band_dropped
       end subroutine carrier_jacobian_action_report
 
-      ! ------------------------------------------------------------- !
 
       ! THE LARGEST COMPOSITION CHANGE OF A TRIAL AND WHERE IT STANDS.
       ! It is the movement bound of the relaxation only under
@@ -8625,7 +8462,6 @@
       enddo
       end subroutine carrier_worst_composition_change
 
-      ! ------------------------------------------------------------- !
 
       ! The largest change of a solved carrier between two carrier states,
       ! each carrier against its OWN scale xref (the largest fraction that
@@ -8648,7 +8484,6 @@
       carrier_displacement_on_own_scale = d
       end function carrier_displacement_on_own_scale
 
-      ! ------------------------------------------------------------- !
 
       ! What ended a relaxation pass, in words, for the caller's log.
       function carrier_relax_outcome_text(outcome) result(txt)
@@ -8674,7 +8509,6 @@
       end select
       end function carrier_relax_outcome_text
 
-      ! ------------------------------------------------------------- !
 
       ! Why one trial of the relaxation was undone, in words, for the
       ! trial-by-trial log of a pass (EXHALE_CARRIER_DEBUG=1).  The codes
@@ -8691,7 +8525,6 @@
       end select
       end function carrier_trial_refusal_text
 
-      ! ------------------------------------------------------------- !
 
       ! THE PRESSURE AND THE TEMPERATURE OF A COMPOSITION AT A FIXED
       ! CONSERVED STATE.  At a wind that does not move the quantities held
@@ -8728,7 +8561,6 @@
       call comp_T_from_p(p, ntot, ne, T)
       end subroutine pressure_and_temperature_at_fixed_conserved_state
 
-      ! ------------------------------------------------------------- !
 
       ! THE CHEMISTRY OF A COMPOSITION AT A FIXED CONSERVED STATE.
       !
@@ -8909,7 +8741,6 @@
       if (present(increment)) increment = dT
       end subroutine equilibrate_chemistry_at_fixed_conserved_state
 
-      ! ------------------------------------------------------------- !
 
       logical function thermal_state_admissible(p, T, heat, cool, eta)   &
                        result(adm)
@@ -8926,7 +8757,6 @@
             .and. all(abs(eta(1:N)) .le. huge(1.0d0))
       end function thermal_state_admissible
 
-      ! ------------------------------------------------------------- !
 
       function chem_closure_reason_text(why) result(txt)
       integer, intent(in) :: why
@@ -8941,7 +8771,6 @@
       end select
       end function chem_closure_reason_text
 
-      ! ------------------------------------------------------------- !
 
       ! Relax the carriers towards their steady state at a fixed wind, for
       ! the Picard loop of the steady solver.  Same shape as
@@ -9442,6 +9271,5 @@
       if (present(outcome)) outcome = ending
       end subroutine relax_photochemical_composition
 
-      ! End of module
 
       end module diffusive_photochemistry

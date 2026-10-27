@@ -173,7 +173,6 @@
 	public :: is_HI, is_HII, is_H2, is_HeI_SI, is_HeII, is_HeIII, is_HeITR
 	public :: is_met0, n_species_max, n_fraction_rows_max
 
-	! ---------------------------------------------------------------
 	! Species slots. Every species the network can carry has a fixed slot in
 	! the density array, present or not; a species the cell does not carry
 	! keeps density zero and contributes zero to every row it appears in, so
@@ -350,7 +349,6 @@
 	! than a per cent, which is far inside what a starting point needs.
 	integer, parameter :: n_neutrality_sweep = 8
 
-	! ---------------------------------------------------------------
 	! TRACE-SPECIES HOLDOUT (the CEA treatment).
 	!
 	! A species the network holds far below its element has a balance row
@@ -396,7 +394,6 @@
 	! Times one rung may re-partition and re-solve after a re-admission.
 	integer, parameter :: max_partition_cycle = 3
 
-	! ---------------------------------------------------------------
 	! Cell state of the solve in progress. The equilibrium sweep is
 	! OpenMP-parallel over cells and the residual is reached through
 	! MINPACK, which carries no user context, so this is threadprivate
@@ -455,7 +452,6 @@
 	! metal rows. See set_turnover_scales_at_field for why the widening is
 	! not optional here.
 	real*8,  save :: row_scale(n_fraction_rows_max)
-	! ---------------------------------------------------------------
 	! Opt-in state dump of a continuation that failed to reach the full
 	! field.
 	! Off unless the environment variable EXHALE_CCE_DUMP names a file, and
@@ -494,7 +490,6 @@
 
 	contains
 
-	!----------------------------------!
 
 	subroutine equilibrium_from_molecular_limit(x, nx, mbase, iox, n_e_ref, &
 	                                            p_bar, reached_full_field,  &
@@ -753,7 +748,6 @@
 
 	end subroutine equilibrium_from_molecular_limit
 
-	!----------------------------------!
 
 	subroutine set_turnover_scales_at_field(n_e_ref, photo_scale)
 	! Turnover scale of every row of the cell's fraction-layout system at a
@@ -807,7 +801,6 @@
 
 	end subroutine set_turnover_scales_at_field
 
-	!----------------------------------!
 
 	subroutine set_molecular_network_layout(nx, mbase, iox)
 	! Which species this cell carries, which balance row of the fraction
@@ -934,7 +927,6 @@
 
 	end subroutine set_molecular_network_layout
 
-	!----------------------------------!
 
 	logical function seed_species_of_cell(isp)
 	! Whether the SEED has to start this species positive: a species the
@@ -946,7 +938,6 @@
 	seed_species_of_cell = species_exists(isp) .and. .not. species_fixed(isp)
 	end function seed_species_of_cell
 
-	!----------------------------------!
 
 	subroutine set_rung_partition(sden)
 	! Split the cell's species into the ones the Newton system iterates on
@@ -1007,7 +998,6 @@
 
 	end subroutine set_rung_partition
 
-	!----------------------------------!
 
 	subroutine constrained_network_layout_of_cell(nx, mbase, iox, sden,    &
 	                              n_unknown_out, n_reaction_row_out,       &
@@ -1045,7 +1035,6 @@
 
 	end subroutine constrained_network_layout_of_cell
 
-	!----------------------------------!
 
 	subroutine constrained_network_balance_rows_of_cell(sden, fvec)
 	! The balance rows this network assembles for the cell standing in
@@ -1069,7 +1058,6 @@
 
 	end subroutine constrained_network_balance_rows_of_cell
 
-	!----------------------------------!
 
 	subroutine constrained_equilibrium_residual(nu, u, fres, iflag, params)
 	! Residual of the constrained system at log-densities u, at the current
@@ -1115,7 +1103,6 @@
 	return
 	end subroutine constrained_equilibrium_residual
 
-	!----------------------------------!
 
 	double precision function bounded_log_ratio(v) result(w)
 	! The exponent actually used to form a density, n = n_ref exp(w), from
@@ -1139,7 +1126,6 @@
 	w = min(max(v - u_shift, -ln_ratio_max), ln_ratio_max)
 	end function bounded_log_ratio
 
-	!----------------------------------!
 
 	subroutine network_balance_rows(sden, fvec)
 	! Every balance row of the cell's fraction-layout system, evaluated at
@@ -1264,8 +1250,9 @@
 
 	! The reservoir's partition of the non-ionized hydrogen replaces the H2
 	! balance, in the fraction units of the system it is judged by: x(4)
-	! = 2 n(H2)/n_H against x2 (1 - x_ion), with x_ion the hydrogen nuclei
-	! in H+, H2+ (two), H3+ (three) and HeH+ (one).
+	! = 2 n(H2)/n_H against x2*(1-x_ion)-x_O, with x_ion the H
+	! nuclei in H+, H2+ (two), H3+ (three), and HeH+ (one), and
+	! x_O = [n(OH)+2*n(H2O)]/n_H (zero without oxygen carriers).
 	if (h2_is_reservoir_partition) then
 		fvec(4) = 2.0d0*sden(is_H2)/nuclei_H                              &
 		        - h2_fraction_of_reservoir(h2_reservoir_partition,        &
@@ -1276,7 +1263,6 @@
 
 	end subroutine network_balance_rows
 
-	!----------------------------------!
 
 	subroutine element_conservation_rows(sden, cons)
 	! The dimensionless element conservation statements, in the canonical
@@ -1326,7 +1312,6 @@
 
 	end subroutine element_conservation_rows
 
-	!----------------------------------!
 
 	subroutine place_held_species(sden)
 	! Restore every held species from its OWN balance row at the composition
@@ -1385,7 +1370,6 @@
 
 	end subroutine place_held_species
 
-	!----------------------------------!
 
 	double precision function full_network_residual(sden) result(res)
 	! Largest scaled residual of the COMPLETE system at a composition: every
@@ -1418,7 +1402,6 @@
 
 	end function full_network_residual
 
-	!----------------------------------!
 
 	subroutine molecular_limit_composition(sden, p_bar, n_e_ref,          &
 	                                       photo_scale, ok)
@@ -1556,7 +1539,6 @@
 
 	end subroutine molecular_limit_composition
 
-	!----------------------------------!
 
 	subroutine molecular_limit_stages(sden, p_bar, photo_scale, n_e)
 	! The H2 partition and the ionization stages of every element at a GIVEN
@@ -1692,7 +1674,6 @@
 
 	end subroutine molecular_limit_stages
 
-	!----------------------------------!
 
 	double precision function element_nuclei_of_species(isp) result(n_el)
 	! Nuclei density of the element whose budget a species belongs to. The
@@ -1715,7 +1696,6 @@
 
 	end function element_nuclei_of_species
 
-	!----------------------------------!
 
 	subroutine ionization_stage_fractions(u0, u1, d1, d2, top, f0, f1, f2, &
 	                                      u02)
@@ -1770,7 +1750,6 @@
 
 	end subroutine ionization_stage_fractions
 
-	!----------------------------------!
 
 	subroutine fraction_layout_from_densities(sden, x, nx)
 	! Species densities back to the stage fractions of the cell's own
@@ -1813,13 +1792,11 @@
 
 	end subroutine fraction_layout_from_densities
 
-	! ===============================================================
 	!  Opt-in diagnostic of a continuation that did not reach the full
 	!  field.
 	!  Nothing below runs unless EXHALE_CCE_DUMP is set, or unless the
 	!  standalone driver calls cce_probe_from_dump. No production path
 	!  reaches any of it.
-	! ===============================================================
 
 	subroutine cce_dump_paths_read()
 	! Read once, serially, before any parallel sweep: the file names of the
@@ -1830,7 +1807,6 @@
 	call get_environment_variable('EXHALE_CCE_DUMP_OK', cce_dump_path_ok)
 	end subroutine cce_dump_paths_read
 
-	!----------------------------------!
 
 	subroutine write_continuation_dump(path, already, n_e_ref, p_bar,      &
 	                                   nx, mbase, iox, lam_ref, lam_try,   &
@@ -1928,7 +1904,6 @@
 
 	end subroutine write_continuation_dump
 
-	!----------------------------------!
 
 	subroutine hydrogen_helium_row_terms(sden, lbl, val, nt, irow)
 	! Every signed term of the H+ balance (irow = 1) or the He+ balance
@@ -2033,7 +2008,6 @@
 
 	end subroutine hydrogen_helium_row_terms
 
-	!----------------------------------!
 
 	subroutine add_term(lbl, val, nt, name, v)
 	character(len=*), intent(inout) :: lbl(*)
@@ -2046,7 +2020,6 @@
 	val(nt) = v
 	end subroutine add_term
 
-	!----------------------------------!
 
 	subroutine jacobian_by_differences(u, fbase, fjac, rule, eta)
 	! Numerical Jacobian of the reduced constrained system at u, by one of
@@ -2104,7 +2077,6 @@
 
 	end subroutine jacobian_by_differences
 
-	!----------------------------------!
 
 	subroutine cce_probe_from_dump(fname)
 	! Standalone re-evaluation of a saved failed continuation. Reads the
@@ -2461,5 +2433,4 @@
 
 	end subroutine cce_probe_from_dump
 
-	! End of module
 	end module constrained_chemical_equilibrium

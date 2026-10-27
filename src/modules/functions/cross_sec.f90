@@ -557,10 +557,8 @@
       
       endif
 
-      ! End of function
       end function
       
-      !----------------------------------------
       
       !----- HeI -----! 
       
@@ -600,10 +598,8 @@
                                      3.188d0, 2.039d0, 4.434d-1, 2.136d0)
       endif
 
-      ! End of function
       end function sigma_HeI
       
-      !----------------------------------------
       
       ! HeI(23S) triplet photoionization cross section.
       ! Two Verner+1996 (VFKY96) single-shell forms joined by a power-law
@@ -657,10 +653,8 @@
          sigma_HeI23S = 10.0d0**(mb*(logE - x3) + y3b)
       endif
 
-      ! End of function
       end function sigma_HeI23S
       
-      !----------------------------------------
 
       !----- Metal photoionization (Verner et al. 1996) -----!
       !
@@ -708,7 +702,6 @@
 
       end function sigma_VFKY96
 
-      !--------------!
 
       double precision function sigma_Verner96(E,E_th,E_0,s_0,y_a,P,y_w,l)
       real*8, intent(in) :: E,E_th,E_0,s_0,y_a,P,y_w
@@ -728,69 +721,16 @@
 
       end function sigma_Verner96
 
-      !--------------!
 
-      ! H2 TOTAL PHOTOABSORPTION cross section.
-      !
-      ! WHAT THIS REPLACED, AND WHY (E1b).  It used to be the three-piece
-      ! analytic fit of Yan, Sadeghpour & Dalgarno (1998), ApJ 496, 1044,
-      ! Eqs. 17-19 throughout.  Those three pieces DO NOT MEET at the two
-      ! energies where the paper joins them; evaluated on either side, in
-      ! units of 1e-18 cm^2,
-      !
-      !     18 eV   Eq. 17 gives 5.693, Eq. 18 gives 9.787   (x 1.719)
-      !     85 eV   Eq. 18 gives 0.1281, Eq. 19 gives 0.0793 (x 0.619)
-      !
-      ! Both formulas were re-derived by hand from the published
-      ! coefficients, so this is a property of the fit as published and not
-      ! a transcription error.  A 72 per cent step in an opacity is a
-      ! physical defect: the JFNK residual differentiates it, and the H2
-      ! destruction rate jumps across it.
-      !
-      ! WHAT IS USED NOW.  Over the range it was measured, the MEASUREMENT
-      ! is used, taken from the paper that made it:
-      !
-      !   Samson, J. A. R., & Haddad, G. N. 1994, J. Opt. Soc. Am. B 11,
-      !   277, "Total photoabsorption cross sections of H2 from 18 to
-      !   113 eV", their TABLE 1, "Recommended Total Photoabsorption Cross
-      !   Sections of H2 from 18 eV to 300 eV", 72 rows.
-      !
-      ! Their stated accuracy is +/-2% to +/-3% over 18-113 eV, the measured
-      ! range, and +/-3% to +/-4% from 113 to 300 eV.  Yan Eq. 18 is not
-      ! used at all: the table covers its whole range.
-      !
-      !   15.4 <= E < 18 eV : k_bx * Backx et al. (1976) Table 1
-      !   18 <= E <= 300 eV : Samson & Haddad (1994) Table 1
-      !   E > 300 eV        : k_hi * Yan Eq. 19     (E^-7/2 sum-rule tail)
-      !
-      ! all tables interpolated in log sigma against log E, and
-      !   k_bx = 9.85/Backx(18)     = 1.016415
-      !   k_hi = 0.00154/Eq19(300)  = 0.885805
-      !
-      ! NO PIECE OF THE YAN FIT SURVIVES BELOW 300 eV.
-      !
-      ! WHY THE TABLE IS THIS ONE AND NOT CHUNG'S.  Chung, Lee, Masuoka &
-      ! Samson (1993) Table II carries a sigma(abs) column over
-      ! 18.076-124 eV, and this code used to take it from there.  It is the
-      ! SAME data: their text says "Values for a(abs) were taken from the
-      ! data of Samson and Haddad" and their reference 31 is
-      ! "J. A. R. Samson and G. N. Haddad, J. Opt. Soc. Am. (submitted)",
-      ! the paper above.  Checked row by row at the 50 energies the two
-      ! tables share, 49 agree exactly and one differs in its last digit
-      ! (62 eV, 0.237 against 0.236, 0.42 per cent).  The original is used
-      ! because it reaches 300 eV where Chung's stops at 124, so the
-      ! high-energy join moves out of the band the wind actually absorbs
-      ! in.  Chung's Table II is still the source of the H+/H2+ BRANCHING
-      ! (frac_H2_dissociative_ionization) and of the neutral fraction
-      ! (h2_photo_channels), both of which are ratios and are unaffected.
-      !
-      ! 15.4-18 eV: A TABLE, from the experiment the other two normalize to.
-      !
-      !   Backx, C., Wight, G. R., & Van der Wiel, M. J. 1976, J. Phys. B 9,
-      !   315, "Oscillator strengths (10-70 eV) for absorption, ionization
-      !   and dissociation in H2, HD and D2, obtained by an electron-ion
-      !   coincidence method", their TABLE 1, column f^0(E).
-      !
+      ! H2 total photoabsorption cross section [Mb = 1e-18 cm^2].
+      ! e_th_H2 <= E < 18 eV: Backx, Wight & Van der Wiel (1976), Table 1,
+      ! scaled by 9.85/Backx(18) to join the measured endpoint.
+      ! 18 <= E <= 300 eV: Samson & Haddad (1994), Table 1.
+      ! E > 300 eV: Yan, Sadeghpour & Dalgarno (1998), Eq. 19,
+      ! scaled to join the table at 300 eV. Each table is log-log interpolated.
+      ! The continuum is zero below e_th_H2; the Lyman-Werner bands are
+      ! treated separately. Experimental comparisons and superseded fits:
+      ! ../EXHALE_v1.00/docs/Update_EXHALE_stage1.pdf section 151.10.
       ! UNITS AND NORMALIZATION, taken from the paper and not assumed.  Their
       ! Fig. 2 plots f^0(E) in eV^-1 with a x10^-1 axis multiplier and the
       ! table is in 10^-2 eV^-1; the absolute scale is fixed by the TRK sum
@@ -801,56 +741,11 @@
       ! assumed: it puts Backx at 7.628 Mb at 20 eV and 2.700 at 30 eV
       ! against Samson & Haddad's 7.65 and 2.71, i.e. 0.3 and 0.4 per cent.
       ! (A factor 100 instead would put them 9 per cent low.)
-      !
-      ! THE JOIN.  Backx gives 9.691 Mb at 18 eV where Samson & Haddad give
-      ! 9.850, so the branch is scaled by k_bx = 1.016415 to meet the table
-      ! exactly.  THAT 1.6 PER CENT IS A MEASURED DIFFERENCE BETWEEN TWO
-      ! INDEPENDENT EXPERIMENTS, not a fitted constant, and it is inside
-      ! both quoted accuracies.
-      !
-      ! HOW BIG THE CORRECTION IS.  The branch this replaced was Yan Eq. 17
-      ! scaled by a continuity constant.  Eq. 17 falls to 0.10 (0.17 after
-      ! scaling) at 15.4 eV, where the measurement is 14.5: the analytic fit
-      ! went to ZERO at the ionization threshold, which no photoionization
-      ! cross section does.  The error ran from a factor 85 at threshold to
-      ! 1.7 at 18 eV.
-      !
-      ! AN EARLIER VERSION OF THIS BRANCH was digitized from Fig. 1 of Chan,
-      ! Cooper & Brion (1992), Chem. Phys. 168, 375, whose Tables 1-4 give
-      ! only the discrete Lyman and Werner transitions.  That reading is kept
-      ! in section 151.10 of docs/Update_EXHALE_stage1.pdf as a cross-check -- it
-      ! agrees with the table used here to 2 per cent at 16 eV and 6 per cent
-      ! at 17 eV -- and is not used in the code.  A table beats a figure.
-      !
-      ! WHAT IS EXCLUDED.  The table is evaluated only at and above the code
-      ! threshold, 15.4 eV.  Its 15.0 eV row is carried so the interpolation
       ! into 15.4 has a left end; it is never returned.  Below the
       ! ionization potential the spectrum is the discrete Lyman and Werner
       ! band system, which this code carries separately as Lyman-Werner
       ! photodissociation and must not add to an ionization-continuum
       ! opacity twice.
-      !
-      ! THE SPREAD BETWEEN EXPERIMENTS IS THE REAL UNCERTAINTY.  Compared at
-      ! the energies all three cover (section 151.10 has the table):
-      ! Backx/Samson-Haddad runs 0.98 to 1.03 over 18-31 eV and 1.06 to 1.23
-      ! over 32-68 eV; Lee, Carlson & Judge (1976), JQSRT 16, 873 runs 0.92
-      ! to 0.96 over 18-31 eV and 1.0 to 1.5 above.  So sigma_H2 is good to
-      ! a few per cent below about 30 eV and to 10-20 per cent above it,
-      ! whatever any single paper's quoted accuracy says.
-      !
-      ! WHAT THE HIGH JOIN COSTS, and it is a real tension.  Eq. 19 agrees
-      ! with the table to 0.33 per cent at 113 eV (0.033270 against
-      ! 0.033160), so over the measured range the sum-rule tail and the
-      ! measurement are the same curve.  They part company above it: at
-      ! 300 eV the table reads 0.00154 and Eq. 19 gives 0.00174, and Yan et
-      ! al. say why in their section 4 -- they RAISED the 300 eV point from
-      ! 1.54e-21 to 1.75e-21 cm^2 precisely because the S(2) sum rules were
-      ! not satisfied with the measured value.  So k_hi = 0.886 carries the
-      ! measured normalization into the tail and gives up 12 per cent of
-      ! their sum-rule correction.  Continuity is chosen over the sum rule
-      ! here because a step in an opacity is what this whole change exists
-      ! to remove, and because 300 eV is four decades below the peak of the
-      ! cross section: sigma_H2(300) is 1.5e-3 against 9.85 at 18 eV.
       !
       ! Chung and Samson & Haddad tabulate megabarns, which are already
       ! 1e-18 cm^2; the Yan pieces are in barns and are converted
@@ -956,7 +851,6 @@
 
       end function sigma_H2
 
-      !--------------!
 
       ! The one surviving continuity constant of sigma_H2: the ratio of the
       ! measured table endpoint at 300 eV to Eq. 19 evaluated there.
@@ -973,87 +867,26 @@
       sigma_H2_k_hi = a0/(sb*1.0d-6)
       end function sigma_H2_k_hi
 
-      !--------------!
 
-      ! Fraction of an H2 PHOTOIONIZATION that is DISSOCIATIVE,
-      !
+      ! Fraction of ionizing H2 absorption yielding H + H+ + e- rather than
+      ! H2+ + e-. The thresholds are 18.076 and 15.425927 eV, respectively.
+      ! Chung, Lee, Masuoka & Samson (1993), Table II, tabulate the two
+      ! partial cross sections from 18 to 124 eV. The implemented fraction is
+      ! f_di = sigma(H+)/[sigma(H+) + sigma(H2+)], linearly interpolated in E.
+      ! Above 124 eV it holds the final measured value (0.2048); this is an
+      ! extrapolation. The fraction does not add opacity to sigma_H2.
+      ! The measured H+ signal includes double-ionization events;
+      ! h2_photo_channels assigns their two protons separately and removes
+      ! neutral dissociation from the total absorption when selected.
+      ! Comparisons with other measurements and the corrected interpretation
+      ! of Yan et al. (1998) are in
+      ! ../EXHALE_v1.00/docs/Update_EXHALE_stage1.pdf section 130.3.
       !     H2 + hv -> H + H+ + e-      (threshold 18.076 eV),
       !
       ! as opposed to the non-dissociative channel
       !
       !     H2 + hv -> H2+ + e-         (threshold 15.4 eV).
       !
-      ! sigma_H2 above is the TOTAL photoionization cross section, so this is
-      ! a BRANCHING of a cross section the code already carries and not an
-      ! extra opacity: the rate at which photons destroy H2 does not change,
-      ! only what the destruction leaves behind. The dissociative channel
-      ! puts a proton and an H atom into the gas instead of an H2+ ion, so it
-      ! bypasses the H3+ chain (H2+ + H2 -> H3+ + H) altogether.
-      !
-      ! SOURCE. Chung, Lee, Masuoka & Samson (1993), J. Chem. Phys. 99, 885,
-      ! "Dissociative photoionization of H2 from 18 to 124 eV", their
-      ! TABLE II, which tabulates sigma(H+) and sigma(H2+) at 69 energies
-      ! from the threshold to 124 eV. The table below is
-      !
-      !     f_di(E) = sigma(H+) / [ sigma(H+) + sigma(H2+) ] ,
-      !
-      ! the share of the IONIZATIONS that release a proton, linearly
-      ! interpolated in E. Their two partial columns reproduce their own
-      ! ratio column to better than 0.5% at every row, and their sum
-      ! reproduces their sigma(abs) column exactly except at the ten rows
-      ! flagged with their footnote b (33-41 eV), where the photoionization
-      ! yield is below unity and the difference is their Table I neutral
-      ! cross section -- both checks were run on the transcription.
-      !
-      ! WHY NOT THE NUMBERS QUOTED BY YAN, SADEGHPOUR & DALGARNO (1998).
-      ! Their section 4 says the dissociative "ratio to the total
-      ! photoionization cross section increases from zero at the threshold of
-      ! 18.08 eV to 0.284 at 76 eV and then decreases slowly to 0.258 at
-      ! 124 eV". Those two numbers are Chung et al.'s H+/H2+ COLUMN, whose
-      ! caption reads "the partial cross sections sigma(H+), sigma(H2+), and
-      ! the ratio H+/H2+": they are a ratio to the H2+ partial cross section,
-      ! not to the total. The ratio to the total is r/(1+r) -- 0.221 at
-      ! 76 eV and 0.205 at 124 eV -- so taking the quoted numbers as a
-      ! branching of sigma_H2 overstates the channel by a factor 1.26-1.28
-      ! above 70 eV, and, because the true curve rises within 0.03 eV of
-      ! threshold to a 0.02 plateau instead of ramping linearly, understates
-      ! it by up to 20x below 20 eV. It also misses the Q1 Rydberg
-      ! autoionization resonance, which takes f_di to 0.109 at 35 eV and back
-      ! down to 0.091 at 37.5 eV.
-      !
-      ! MEASUREMENT UNCERTAINTY, as the source states it: "An estimate of the
-      ! total uncertainty in the data is about +/-4%-5%"; the ionization
-      ! yields used between 18 and 28 eV are unity "within an accuracy of
-      ! about +/-5%". Against other determinations their H+ data lie 0%-5%
-      ! below Backx, Wight & van der Wiel over 18-33 eV (26% at 70 eV), and
-      ! within 5% of Kossmann et al. over 25-75 eV (11%-20% below them over
-      ! 75-110 eV).
-      !
-      ! ABOVE 124 eV, the top of the measured range, f_di is held at its
-      ! 124 eV value, 0.2048. The source quotes no higher-energy data. The
-      ! curve is nearly flat over its last 50 eV (0.2219 at 74 eV to 0.2048
-      ! at 124 eV), so holding it is a mild extrapolation, but it is an
-      ! extrapolation.
-      !
-      ! TWO THINGS THIS BRANCHING CARRIES THAT IT DOES NOT NAME, both stated
-      ! by the source and both confined to where sigma_H2 is already small.
-      !  * DOUBLE IONIZATION. Chung et al.'s eqs. (3)-(4) note that "the
-      !    branching ratio H+/(H+ + H2+) is understood to include both single
-      !    and double ionization where appropriate", and their section on
-      !    Fig. 4 says that "by 80 eV about 20% of sigma(H+) comes from
-      !    double ionization. This percentage remains fairly constant towards
-      !    higher energies." Because their sigma(H+) counts PROTONS and a
-      !    double ionization yields two, using f_di as a share of the H2
-      !    ionization rate gives the PROTON source rate correctly; what it
-      !    mis-assigns is the co-product, since those events leave no H atom
-      !    and no H2+. Above 80 eV that is about 4% of the H2 ionizations.
-      !  * NEUTRAL DISSOCIATION over 33-41 eV. sigma_H2 above follows Samson
-      !    & Haddad's ABSORPTION cross section there (it is 1.76 against
-      !    Chung et al.'s sigma(abs) 1.74 and their ionization sum 1.699 at
-      !    34 eV), so the H2 destruction rate the code applies in that band
-      !    includes the neutral channel H2 + hv -> H + H, up to 7% of it at
-      !    37.5 eV, and the 1 - f_di branch hands that share to H2+. This is
-      !    a property of the cross-section fit, not of the branching.
       double precision function frac_H2_dissociative_ionization(E)
       real*8, intent(in) :: E
       integer :: k
@@ -1107,7 +940,6 @@
 
       end function frac_H2_dissociative_ionization
 
-      !--------------!
       !----- Metal photoionization: the sum over the shells -----!
 
       ! TOTAL photoabsorption cross section [1e-18 cm^2 = Mb] of the metal
@@ -1165,7 +997,6 @@
 
       end function metal_photoion_sigma
 
-      !--------------!
 
       ! The energies at which the photoabsorption of metal photo-table
       ! column k turns on above its own ionization threshold: the K and L
@@ -1191,7 +1022,6 @@
 
       end subroutine metal_subshell_turn_on
 
-      !--------------!
 
       ! PARTIAL photoabsorption cross section [Mb] of ONE shell of metal
       ! photo-table column k: is = 0 is the outer shell, is = 1 ...
@@ -1227,7 +1057,6 @@
 
       end function metal_shell_photoion_sigma
 
-      !--------------!
 
       ! What ONE absorption in shell is (0 = outer) of metal photo-table
       ! column k hands on, beyond the photon's own energy [eV]:
@@ -1274,7 +1103,5 @@
 
       end subroutine metal_shell_relaxation
 
-      !----------------------------------------
 
-      ! End of module
       end module Cross_sections

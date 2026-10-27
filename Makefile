@@ -229,7 +229,7 @@ SRC := \
   src/modules/init/molecular_seed_from_atomic_state.f90 \
   src/modules/init/blas_thread_policy.f90 \
   src/modules/init/init.f90 \
-  $(wildcard src/modules/wind_ae/wae_*.f90) \
+  $(wildcard src/modules/wind_ae/*.f90) \
   src/EXHALE_main.f90
 
 # objects (flat in $(OBJDIR)); let make find the sources in their subdirs
@@ -237,6 +237,7 @@ OBJ     := $(addprefix $(OBJDIR)/,$(notdir $(SRC:.f90=.o)))
 DEPFILE := $(OBJDIR)/.deps.mk
 vpath %.f90 $(sort $(dir $(SRC)))
 
+# Program units are in src/, modules in src/modules/, tests in src/tests/.
 # ---- Wind-AE IC generator (standalone tree; not built by `all`) ------
 # wind_ae_ic.x reads an EXHALE input.inp, solves the Murray-Clay/Broome
 # Wind-AE wind (ported to Fortran under src/modules/wind_ae/), and writes
@@ -244,15 +245,16 @@ vpath %.f90 $(sort $(dir $(SRC)))
 # module deps); inter-module order is auto-resolved by fortdep.py. Build
 # with:  make wind_ae_ic.x
 WAE_DIR := src/modules/wind_ae
+WAE_PROGRAM := src/wind_ae_ic.f90
 # standalone build EXCLUDES wae_exhale_bridge.f90 (it alone uses EXHALE's
 # global_parameters; it is linked only into EXHALE.x for "IC mode: windae").
 WAE_SRC := $(filter-out $(WAE_DIR)/wae_exhale_bridge.f90, \
-             $(sort $(wildcard $(WAE_DIR)/wae_*.f90)))
+             $(sort $(wildcard $(WAE_DIR)/*.f90)))
 WAE_OBJ := $(addprefix $(OBJDIR)/,$(notdir $(WAE_SRC:.f90=.o))) \
-           $(PROGDIR)/wind_ae_ic.o
+           $(addprefix $(PROGDIR)/,$(notdir $(WAE_PROGRAM:.f90=.o)))
 WAE_EXE := wind_ae_ic.x
 WAE_DEPFILE := $(OBJDIR)/.deps_wae.mk
-vpath %.f90 $(WAE_DIR)
+vpath %.f90 src $(WAE_DIR)
 
 # ---- diffusion unit tests (standalone; not built by `all`) -----------
 # diffusion_tests.x exercises binary_element_diffusion on synthetic columns
@@ -305,9 +307,10 @@ ECT_DEPFILE := $(OBJDIR)/.deps_ect.mk
 # It links the same modules the equilibrium sweep uses (everything but the
 # main program), so the coefficients it evaluates are the production ones,
 # and it needs LAPACK for the singular values.
+CCE_PROGRAM := src/constrained_equilibrium_probe.f90
 CCE_SRC := $(filter-out src/EXHALE_main.f90,$(SRC))
 CCE_OBJ := $(addprefix $(OBJDIR)/,$(notdir $(CCE_SRC:.f90=.o))) \
-           $(PROGDIR)/constrained_equilibrium_probe.o
+           $(addprefix $(PROGDIR)/,$(notdir $(CCE_PROGRAM:.f90=.o)))
 CCE_EXE := cce_probe.x
 CCE_DEPFILE := $(OBJDIR)/.deps_cce.mk
 
@@ -530,11 +533,3 @@ ifneq ($(filter element_census_tests element_census_tests.x,$(MAKECMDGOALS)),)
 -include $(ECT_DEPFILE)
 endif
 endif
-
-# Internal diagnostic subprograms included by the main program.
-$(OBJDIR)/EXHALE_main.o: src/stationary_state_capture.inc src/stationary_residual_record.inc
-$(OBJDIR)/EXHALE_main.o: src/gas_admissible_perturbation.inc
-$(OBJDIR)/EXHALE_main.o: src/carrier_balance_record.inc
-$(OBJDIR)/EXHALE_main.o: src/frozen_derivative_steps.inc
-
-$(OBJDIR)/EXHALE_main.o: src/live_residual_derivatives.inc

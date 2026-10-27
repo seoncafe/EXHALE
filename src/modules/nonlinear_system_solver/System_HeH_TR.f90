@@ -97,8 +97,6 @@
 
 	return
 
-	! End of subroutine
 	end subroutine ion_system_HeH_TR
 	
-	! End of module
 	end module System_HeH_TR

@@ -212,8 +212,10 @@
 	! base equilibrium is strongly molecular; a zero-H2 start makes the base
 	! solve land on / fail into the spurious atomic root).
 	!
-	! WHERE x2 COMES FROM. The fraction of H nuclei bound into H2 has one
-	! source, the same one the inflowing ghost uses:
+	! WHERE x2 COMES FROM. In profile mode x2 is the non-atomic
+	! neutral-H fraction; otherwise it is the H2-bound fraction.
+	! To Be Checked: comment and code disagree, see md/comment_revision_20261027.md
+	! The inflowing ghost reads the same source:
 	!   - a lower-atmosphere handoff (base.inp q_H2_base, or the profile value
 	!     at the matching level) states it, and then base_h2_nuclei_fraction()
 	!     is that number and the whole column starts on it;
@@ -334,10 +336,8 @@
 	enddo
 	close(77)
 
-	! End of subroutine
 	end subroutine set_IC
 
-	!-------------------------------------------------------!
 
 	subroutine select_IC_auto
 	! Automatic IC-family selection ("IC mode: auto"); v2 decision tree.
@@ -386,10 +386,8 @@
 	! which starts after set_IC).
 	force_start = (transonic_ic .or. hot_parker_ic) .and. .not. do_only_pp
 
-	! End of subroutine
 	end subroutine select_IC_auto
 
-	!-------------------------------------------------------!
 
 	subroutine wind_profile(rho_w, v_w, c2, ok)
 	! Transonic isothermal-wind initial profile via the algebraic (Bernoulli)
@@ -456,10 +454,8 @@
 		rho_w(j) = Mdot/(v_w(j)*r(j)*r(j))
 	enddo
 
-	! End of subroutine
 	end subroutine wind_profile
 
-	!-------------------------------------------------------!
 
 	subroutine find_sonic(c2, rc, have_rc)
 	! Locate the transonic (sonic) point r_c in [1, r_out] (1 the base
@@ -512,8 +508,6 @@
 	rc = 0.5d0*(rlo + rhi)
 	have_rc = .true.
 
-	! End of subroutine
 	end subroutine find_sonic
 
-	! End of module
 	end module initial_conditions

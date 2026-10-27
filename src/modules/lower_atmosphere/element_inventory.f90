@@ -163,7 +163,6 @@
 
       contains
 
-      ! ------------------------------------------------------------- !
 
       ! NUCLEI OF ELEMENT ie CARRIED BY ONE PARTICLE OF f_sp SPECIES isp.
       ! The one place a stoichiometric coefficient of this map is read, and
@@ -201,7 +200,6 @@
       enddo
       end function nuclei_per_particle
 
-      ! ------------------------------------------------------------- !
 
       ! THE LARGEST DENSITY SPECIES isp CAN REACH ON A BUDGET OF ELEMENT ie
       ! [cm^-3]: the budget divided by the nuclei of that element one
@@ -226,7 +224,6 @@
       nmax = budget/dble(nu)
       end function element_box_side
 
-      ! ------------------------------------------------------------- !
 
       ! THE SPECIES A CARRIER OPERATOR CAN TRANSPORT, as a mask over the
       ! f_sp columns. Optional molecular ions and the He triplet add to the
@@ -253,7 +250,6 @@
       if (present(triplet_carried)) carried(isp_HeTR) = triplet_carried
       end subroutine carrier_species_that_hold
 
-      ! ------------------------------------------------------------- !
 
       ! THE INVENTORY AND THE CONSTRAINTS OF ONE CELL.
       !
@@ -328,7 +324,6 @@
 
       end subroutine element_inventory_of_cell
 
-      ! ------------------------------------------------------------- !
 
       ! THE CONSTRAINTS OF A CANDIDATE STATE AGAINST A FROZEN BUDGET.
       !
@@ -354,7 +349,6 @@
       call budgets_and_breach(inv, element_free_frozen)
       end subroutine element_inventory_of_candidate
 
-      ! ------------------------------------------------------------- !
 
       ! The budgets of context (b) and the breach of context (c), from an
       ! inventory whose groups are already counted and an element density
@@ -403,7 +397,6 @@
       enddo
       end subroutine budgets_and_breach
 
-      ! ------------------------------------------------------------- !
 
       ! One species' nuclei added to the totals and to the group it belongs
       ! to.  THE GROUPS ARE THE CONDITIONAL BUDGET'S: what decides
@@ -449,7 +442,6 @@
       endif
       end subroutine add_nuclei
 
-      ! ------------------------------------------------------------- !
 
       ! .true. for an oxygen or carbon stage above the neutral one.
       logical function stage_above_neutral(isp) result(above)
@@ -464,7 +456,6 @@
       enddo
       end function stage_above_neutral
 
-      ! ------------------------------------------------------------- !
 
       ! The breach of one constraint as a fraction of the budget it is
       ! measured against, and the occupancy of that budget.  With no nuclei
@@ -485,7 +476,6 @@
       endif
       end subroutine relative_breach
 
-      ! ------------------------------------------------------------- !
 
       ! THE ELEMENT DENSITIES THE CARRIER OPERATOR SPENDS, cell by cell
       ! [cm^-3]: the hydrogen a step can move, which is the element total
@@ -543,7 +533,6 @@
       endif
       end subroutine carrier_element_totals
 
-      ! ------------------------------------------------------------- !
 
       ! THE HYDROGEN NUCLEI THE TRANSPORTED CARRIERS OF A CELL MAY HOLD
       ! [cm^-3]: the hydrogen a step can move, less the nuclei sitting in
@@ -582,7 +571,6 @@
       nH = max(nH, 0.0d0)
       end function carrier_hydrogen_budget
 
-      ! ------------------------------------------------------------- !
 
       ! WHETHER THE SHARED CONSTRAINT IS WHAT A STATE IS JUDGED BY.
       ! EXHALE_INVENTORY_SHARED=0 judges by the separate box sides of the
@@ -596,7 +584,6 @@
       on = (trim(env) .ne. '0')
       end function inventory_judges_the_shared_constraint
 
-      ! ------------------------------------------------------------- !
 
       ! THE SHARED CONSTRAINT OF ONE CELL AS A SIGNED QUANTITY, AND ITS
       ! DERIVATIVES, so that a step control can carry the constraint in its
@@ -689,7 +676,6 @@
 
       end subroutine element_constraint_derivatives
 
-      ! ------------------------------------------------------------- !
 
       ! THE BREACH OF ONE CARRIER AGAINST ITS OWN BOX SIDE, as a fraction of
       ! that side.  This is the separate bound each carrier carries today:
@@ -723,7 +709,6 @@
       call relative_breach(inv%n_of_species(isp), side, b, occ)
       end function carrier_box_breach
 
-      ! ------------------------------------------------------------- !
 
       ! WHETHER A STATE IS ADMISSIBLE, by the size of its worst breach and
       ! not by a count of cells.
@@ -755,7 +740,6 @@
       endif
       end function inventory_is_feasible
 
-      ! ------------------------------------------------------------- !
 
       ! THE WORST BREACH OF A CELL and the element that carries it.
       double precision function inventory_worst_violation(inv, ie_worst)  &
@@ -773,7 +757,6 @@
       enddo
       end function inventory_worst_violation
 
-      ! ------------------------------------------------------------- !
 
       ! THE HELIUM TO HYDROGEN NUCLEUS RATIO OF A CELL, from the same
       ! inventory the carrier budgets come from.  Zero where the cell has no
@@ -786,7 +769,6 @@
          y = inv%n_total(ien_He)/inv%n_total(ien_H)
       end function helium_to_hydrogen
 
-      ! ------------------------------------------------------------- !
 
       ! THE LARGEST DEPARTURE OF AN ELEMENT RATIO FROM THE BASE CELL'S, and
       ! the cell that carries it.  ratio(1) is the base cell's, which is the
@@ -820,7 +802,6 @@
       enddo
       end subroutine ratio_departure_from_the_base
 
-      ! ------------------------------------------------------------- !
 
       ! WHETHER AN ELEMENT RATIO OF THIS RUN MAY DEPART FROM THE RESERVOIR.
       ! True only while an operator transports an element: with helium
@@ -830,7 +811,6 @@
       may = he_diffusion
       end function element_ratio_may_depart
 
-      ! ------------------------------------------------------------- !
 
       logical function element_inventory_report_on() result(on)
       ! EXHALE_INVENTORY_REPORT=1 prints the inventory verdict of a state.
@@ -840,7 +820,6 @@
       on = (trim(env) .eq. '1')
       end function element_inventory_report_on
 
-      ! ------------------------------------------------------------- !
 
       ! THE VERDICT OF A STATE, one block of lines under
       ! EXHALE_INVENTORY_REPORT=1: the worst breach of each element with the

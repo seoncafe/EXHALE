@@ -354,7 +354,7 @@
 	! The heating of a cell is a sum of physically distinct deposits. There
 	! is ONE list of them: heating_of_composition fills every column of
 	! heat_chan, the total it returns is the sum of those columns in this
-	! order, and the header of output/Heating_breakdown.txt is built from the
+	! order, and the header of <output_dir>/Heating_breakdown.txt is built from the
 	! names below. A deposit therefore cannot exist in the energy equation
 	! and be missing from the breakdown, which is what two hand-maintained
 	! copies of the sum allowed.
@@ -378,7 +378,7 @@
 	!  20    energy defects of the charge-exchange reactions
 	integer, parameter :: n_heat_channel = 20
 	! Named index of the one channel a consumer outside this module reads
-	! on its own: output/Lyman_Werner.txt writes the Lyman-Werner fragment
+	! on its own: <output_dir>/Lyman_Werner.txt writes the Lyman-Werner fragment
 	! deposit beside the rate it belongs to, and takes it from the array
 	! the sweep filled rather than re-forming it there.
 	integer, parameter :: ih_H2_LW_dissoc = 13
@@ -487,7 +487,7 @@
 	! The fuller treatment is instead the solved J_Lya(r) of lya_rt as B2's
 	! field: it would also carry the internally generated Ly-alpha of
 	! the recombination cascade, which a stellar transmission cannot. The
-	! band is reported separately in output/FUV_bands.txt so that a run
+	! band is reported separately in <output_dir>/FUV_bands.txt so that a run
 	! whose oxygen chemistry turns on B2 can be read off.
 	!
 	! Note that setting "Stellar Lya flux" for the n = 2 pumping therefore
@@ -519,7 +519,6 @@
 	F = dayside_dilution()*F
 	end function fuv_band_flux
 
-	! ------------------------------------------------------------- !
 
 	! The 912-2304 A photon field of the molecular layer, solved once for
 	! ALL of its absorbers: H2 in the Lyman and Werner lines, H2O and OH in
@@ -675,7 +674,7 @@
 	!
 	! THE TWO LINES BELOW COME FROM ONE TABLE and are the two faces of one
 	! absorption: f_shield is the suppression of the photodissociation RATE,
-	! which the run reports in output/Lyman_Werner.txt at each cell's own
+	! which the run reports in <output_dir>/Lyman_Werner.txt at each cell's own
 	! column, and A is the SHARE of the band the same lines remove.  Until
 	! 2026-09-06 A was the Draine & Bertoldi (1996) eq. (39) equivalent
 	! width of a narrower band, and the two disagreed by 45 per cent
@@ -914,7 +913,6 @@
 	end subroutine fuv_lw_photon_field
 
 	
-	! ------------------------------------------------------------- !
 
 	! The share of a photon's energy that a photoionization event turns into
 	! heat: the photoelectron's (E - I)/E, or the whole photon (1) under the
@@ -1099,7 +1097,6 @@
 
 	end subroutine advance_starward_columns
 
-	! ------------------------------------------------------------- !
 
 	subroutine photoionization_field_at_cell_H(j, N1_out, nhi_j, xion_j,  &
 	                          sec_on, P_HI_j, h1_HI_j, heat_j, q_j)
@@ -1143,7 +1140,6 @@
 	real*8 :: dr_cell
 	real*8, dimension(Nl) :: int_f,int_1,int_q,int_H
 
-	!----------------------------------!
 
 		! Initialization of integrands
 		Hea_1  = 0.0d0
@@ -1161,24 +1157,9 @@
 		dr_cell = dr_j(j)*R0*opa_pf(j)
 		dtauE = s_hi*nhi_j*dr_cell*1.0d-18
 
-		! Initial integrands. int_f is the attenuated stellar flux of this
-		! cell weighted by the cell's cross-section factor opa_pf(j) = f(p):
-		! the pressure broadening of opacity model 'P' (opacity_pT_factor;
-		! f = 1 for every other model, so this weight is then exactly 1).
-		! INVARIANT: the photons a cell removes from the beam are the photons
-		! it absorbs. The depths above already carry f (calc_column_dens),
-		! so the beam loses f*sigma*n*dr across the cell, and the local
-		! ionization, heating and absorbed energy must carry the same f, i.e.
-		! the cross section that acts locally is f*sigma as well.  Every
-		! integrand below is linear in exactly one cross section, so folding f
-		! once into the flux weight they share is identical to multiplying each
-		! cross section by it.
-		!
-		! The attenuation is the MEAN over the cell, exp(-tau_out)
-		! (1 - exp(-dtau))/dtau, not the inner-face value: the rate of the
-		! cell is the rate averaged over the cell, and only the mean makes
-		! the photons the cell absorbs equal the photons the beam loses
-		! across it (utils, cell_mean_attenuation).
+		! Hydrogen-only integrals use opa_pf(j)*F_XUV times the cell mean
+		! exp(-tau_out)*(1-exp(-dtau))/dtau. The same photon-balance
+		! argument is at photoionization_field_at_cell_HHe below.
 		int_f = F_XUV*cell_mean_attenuation(tauE_out, dtauE)*opa_pf(j)
 		! Secondary-ionization energy partition for this cell. Hydrogen is the
 		! only target on this path, so this is the n_HeI -> 0, n_H2 -> 0 limit
@@ -1246,7 +1227,6 @@
 
 	end subroutine photoionization_field_at_cell_H
 
-	! ------------------------------------------------------------- !
 
 
 	subroutine PH_heat_H(nhi, xion, P_HI,heat,q, heat_of_one_HI)
@@ -1299,7 +1279,6 @@
    real*8, dimension(1-Ng:N+Ng),intent(out),optional ::  heat_of_one_HI
    real*8, dimension(1-Ng:N+Ng) ::  h1_HI
 
-	!----------------------------------!
 
 	sec_on = use_sec_ion .and. sec_ion_active
 
@@ -1325,7 +1304,6 @@
 
 	end subroutine PH_heat_H
 
-	! ------------------------------------------------------------- !
 	
 	subroutine photoionization_field_at_cell_HHe(j,                       &
 	             N1_out,N15_out,N2_out,NTR_out,NH2_out,Nm_out,            &
@@ -1447,7 +1425,6 @@
       real*8 :: reuse_inputs(17+n_mphot+n_mion),reuse_nh2
       logical :: reuse_flags(5),reuse_this_cell
 
-	!----------------------------------!
 
       reuse_this_cell=.false.
       if (stellar_reuse_active) then
@@ -2015,7 +1992,6 @@
       endif
 	end subroutine photoionization_field_at_cell_HHe
 
-	! ------------------------------------------------------------- !
 
 	subroutine PH_heat_HHe(nhi,nhei,nheii,nheiTR, nm, xion,       &
 				     P_HI,P_HeI,P_HeII,P_HeITR, P_m,       &
@@ -2158,7 +2134,6 @@
 	! exact rather than a separately accumulated approximation of it.
 	real*8, dimension(1-Ng:N+Ng,6),intent(out),optional :: heat_chan
 
-	!----------------------------------!
 
 	! Ground singlet n(1^1S): the summed neutral helium when the metastable
 	! is not tracked, and the clamped difference n(He I) - n(2^3S) when it
@@ -2187,7 +2162,6 @@
 	if (present(f_vibq)) fvq = f_vibq
 	if (present(e_vibq)) evq = e_vibq
 
-    !----------------------------------!
 
 	! The field of every cell, from the columns of the ONE composition this
 	! routine was given: the lagged form of the sweep described at
@@ -2256,10 +2230,8 @@
 	if (present(heat_of_one_H2))   heat_of_one_H2   = h1_H2
 	if (present(heat_of_one_mion)) heat_of_one_mion = h1_m
 
-	! End of subroutine
 	end subroutine PH_heat_HHe
 
-	! ------------------------------------------------------------- !
 
 	subroutine photoheating_of_composition(h1_HI,h1_HeI,h1_HeII,h1_HeTR,  &
 	                                       h1_H2, h1_m,                   &
@@ -2310,7 +2282,6 @@
 
 	end subroutine photoheating_of_composition
 
-	!----------------------------------!
 
 	pure subroutine photoheating_of_cell(h1_HI,h1_HeI,h1_HeII,h1_HeTR,    &
 	                                     h1_H2, h1_m,                     &
@@ -2363,7 +2334,6 @@
 
 	end subroutine photoheating_of_cell
 
-	!----------------------------------!
 
 	subroutine heating_of_composition(T_K,                                &
 	         nhi,nhii,nhei,nheii,nheiii,nheiTR, nm, nmol, nox, ne, n_tot, &
@@ -2726,7 +2696,6 @@
 
 	end subroutine heating_of_composition
 
-	!----------------------------------!
 
 	subroutine fuv_band_absorption_ledger(T_K, nhi, nh2, nh2o, nheiS,    &
 	         nH_nuc,                                                     &
@@ -2737,7 +2706,7 @@
 	! The COLUMN-INTEGRATED photon and energy ledger of the four FUV bands,
 	! per unit area of the star-ward column: what each band's absorbers take
 	! out of the beam, what that carries, and how much of it reaches the gas.
-	! output/FUV_bands.txt writes what this returns and forms none of it.
+	! <output_dir>/FUV_bands.txt writes what this returns and forms none of it.
 	!
 	! WHY IT LIVES BESIDE THE HEATING ASSEMBLY. The energy of one absorption
 	! event -- the excess of a photolysis photon over the bond, the kinetic
@@ -2930,7 +2899,6 @@
       bond_col = absen - heat_col
 	end subroutine fuv_band_absorption_ledger
 	
-	!----------------------------------!
 	
 	subroutine chemical_rate_coefficients(T_K,                            &
 	              rchiiB, rcheiiB, rcheiiiB, rec_m,                        &
@@ -3015,7 +2983,6 @@
 
 	end subroutine chemical_rate_coefficients
 
-	!---------------------------------------------------!
 
 	subroutine eval_cool(T_K,nhi,nhii,nhei,nheii,nheiii, nm,        &
 				   rchiiB,rcheiiB,rcheiiiB, rec_m,             &
@@ -3216,10 +3183,8 @@
 	enddo
 	!$omp end parallel do
 
-	! End of subroutine
 	end subroutine eval_cool
 
-	!---------------------------------------------------!
 
 	subroutine eval_cool_cells(j_lo,j_hi, ect,                       &
 	                   T_K,nhi,nhii,nheiS,nheiTR,nheii,nheiii, nm,   &
@@ -3417,13 +3382,11 @@
 		if (present(cool_chan)) cool_chan(j,:) = chan
 	enddo
 
-	! End of subroutine
 	!$ if (ec_prof_on) then
 	!$    ect(2) = ect(2) + (omp_get_wtime() - ec_tstart); ec_tstart = omp_get_wtime()
 	!$ endif
 	end subroutine eval_cool_cells
 
-	! ------------------------------------------------------------- !
 
 	subroutine write_cool_breakdown_eq(T_in,n_in,f_sp_in)
 	! Diagnostic. Dump the radiative cooling rate in each channel vs
@@ -3572,10 +3535,9 @@
 
 	end subroutine write_cool_breakdown_eq
 
-	! ------------------------------------------------------------- !
 
 	subroutine write_heat_breakdown_eq(T_in,n_in,f_sp_in)
-	! Diagnostic. Dump output/Heating_breakdown.txt: the volumetric heating
+	! Diagnostic. Dump <output_dir>/Heating_breakdown.txt: the volumetric heating
 	! rate of each channel of heat_channel_name against radius, in cgs
 	! erg cm^-3 s^-1.
 	!
@@ -3664,7 +3626,6 @@
 
 	end subroutine write_heat_breakdown_eq
 
-	!----------------------------------!
 
 	! Various coefficients for HeI triplet chemistry. The electron-impact
 	! rates are those of Cool_coeff.f90 (their block header). q13 is the
@@ -3714,10 +3675,8 @@
 	! f_penning_HeI23S.
 	Q31 = ioniz_HeI23S_H(T_K)
 
-   ! End of subroutine
 	end subroutine HeITR_coeffs
 
-	! ------------------------------------------------------------- !
 
 	! Fraction of the photons emitted in a cell that the cell itself absorbs,
 	! 1 - exp(-tau), for a cell optical depth tau >= 0. Formed as
@@ -3738,7 +3697,6 @@
 	endif
 	end function absorbed_photon_fraction
 
-	! ------------------------------------------------------------- !
 
 	! THE GROUND-CAPTURE ESCAPE WEIGHTS of the three recombinations, cell by
 	! cell. A capture into the ground level of the recombined species r
@@ -3802,7 +3760,6 @@
 
 	end subroutine ground_capture_escape_weights
 
-	! ------------------------------------------------------------- !
 
 	! (1 - exp(-tau))/tau for tau >= 0, the fraction of a cell's photons the
 	! cell absorbs divided by its optical depth: 1 at tau -> 0, 1/tau at
@@ -3819,7 +3776,6 @@
 	g = one_minus_exp_over_x(tau)
 	end function absorbed_fraction_over_tau
 
-	! ------------------------------------------------------------- !
 
 	! Cross sections [1e-18 cm^2] of the on-the-spot absorbers at the
 	! channel energies otsp_E: otsp_sab(1..4,c) for H I, He I (ground),
@@ -3916,7 +3872,6 @@
 	!$omp end critical (on_the_spot_cross_section_table)
 	end subroutine on_the_spot_cross_sections
 
-	! ------------------------------------------------------------- !
 
 	! THE HE I 584 A LINE AS AN ABSORBER: the mean cross section [1e-18
 	! cm^2] of one He I atom for a 584 A photon, the quantity Wood, Mathis
@@ -3936,7 +3891,6 @@
 	    /sqrt(2.0d0*kb_erg*max(T, 1.0d0)/m_He_atom)*1.0d18
 	end function He_I_584_mean_cross_section
 
-	! ------------------------------------------------------------- !
 
 	! ONE CHANNEL OF ONE CELL: P photons per unit volume and time of
 	! channel ic (energy otsp_E(ic) plus the capture kinetic energy Ek [eV]
@@ -4158,7 +4112,6 @@
 	heat = heat + heat_c/erg2eV
 	end subroutine absorb_recombination_channel
 
-	! ------------------------------------------------------------- !
 
 	! THE PHOTOELECTRONS OF n_ev ABSORPTIONS per unit volume and time, each
 	! of energy E0 [eV], in a cell whose photoelectron partition cp is
@@ -4181,7 +4134,6 @@
 	sec_H2 = sec_H2 + n_ev*kH2
 	end subroutine recombination_photoelectron_deposit
 
-	! ------------------------------------------------------------- !
 
 	! RECOMBINATION RADIATION ABSORBED ON THE SPOT: the ionizing photons the
 	! recombinations of H II, He II and He III emit, absorbed in the cell
@@ -4687,5 +4639,4 @@
 	end function capture_kinetic_energy_eV
 
 
-	! End of module
 	end module utils_ion_eq

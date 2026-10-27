@@ -175,7 +175,6 @@
 
       contains
 
-      ! ------------------------------------------------------------------ !
 
       subroutine ionization_stage_face_fractions(xion, Nel, xf, xclose)
       ! THE FACE FRACTIONS OF ONE ELEMENT'S STAGES, closing the simplex at
@@ -218,7 +217,6 @@
 
       end subroutine ionization_stage_face_fractions
 
-      ! ------------------------------------------------------------------ !
 
       subroutine ionization_stage_face_flux(xion, Nel, n_elf, Kf, drf,    &
                                             xf, xclose, Fk, Fclose,       &
@@ -299,7 +297,6 @@
 
       end subroutine ionization_stage_face_flux
 
-      ! ------------------------------------------------------------------ !
 
       function ionization_stage_sum_scale_ratio_limit(nk) result(g)
       ! THE LARGEST VALUE g = S/S' CAN TAKE at a face of an element carrying
@@ -342,7 +339,6 @@
       endif
       end function ionization_stage_sum_scale_ratio_limit
 
-      ! ------------------------------------------------------------------ !
 
       function ionization_stage_sum_rounding_bound(nk, g) result(dbound)
       ! WHAT IDENTITY (2) CAN STAND AT IN FLOATING POINT for an element
@@ -350,42 +346,16 @@
       ! relative to max(|N_el(f)|, |F_close(f)| + sum_k |F_k(f)|) at the
       ! face.  This is the one place the number is formed; the certification
       ! gates the identity against it.
-      !
-      ! The identity is ALGEBRAIC and carries no truncation error, so what a
-      ! tolerance on it clears is the rounding of the sums alone.  On the
-      ! path from the carried cell fractions to the measured difference
-      ! there are 5 nk + 2 rounding events:
-      !
-      !    nk   forming x_close = 1 - sum_k x_k
-      !     1   the product x_close N
-      !    nk   subtracting each eddy term from the closing flux
-      !   2nk   each carried stage's product and its sum with its eddy term
-      !    nk   summing the nk + 1 fluxes in the measure
-      !     1   the final difference
-      !
-      ! each bounded by eps times a quantity no larger than S of (4), and the
-      ! measure divides by max(|N|, S' - |N|) >= S'/2, so
-      !
-      !    d  <=  2 (5 nk + 2) eps g ,      g = S/S' .                     (5)
-      !
+      ! The stage-sum identity is algebraic, so its tolerance covers only
+      ! rounding. At a face with g=S/S' from ionization_stage_nucleus_sum,
+      ! d <= 2*(5*nk+2)*epsilon(1.0d0)*g; use the algebraic maximum of g
+      ! when no measured value is supplied. The 5*nk+2 count includes
+      ! closure, stage fluxes, summation and final subtraction.
+      ! Derivation and measured bounds:
+      ! ../EXHALE_v1.00/md/certification_tolerance_anchoring_20260910.md Anchor (8).
       ! eps = epsilon(1.0d0) is conservative by two, one rounding being
       ! bounded by the unit roundoff eps/2.
       !
-      ! g IS MEASURED at the face the identity was measured at and passed in
-      ! (ionization_stage_nucleus_sum returns it beside the measure), so the
-      ! bound is the rounding of that face and not of the worst face the
-      ! construction admits.  Without it the value returned is the bound at
-      ! the algebraic ceiling of g, 4.663e-15 for hydrogen (nk = 1) and
-      ! 1.066e-14 for helium (nk = 2), which is what a caller with no
-      ! measured g gets.
-      !
-      ! VALIDATED BY EXECUTION.  On manufactured columns spanning K_0 = 0 to
-      ! 1e15 cm^2 s^-1 the largest measure reaches 0.0703 (hydrogen) and
-      ! 0.0580 (helium) of the bound at the face's own g, and the production
-      ! states reach 0.06 to 0.08 of it (their worst faces carry g = 1 to
-      ! five decimals, the advective nucleus flux dominating the eddy term
-      ! there); a broken construction of the same identity stands at 1.5e-4
-      ! to 3.6e-4, ten decades higher.
       integer,          intent(in) :: nk
       real*8, optional, intent(in) :: g
       real*8 :: dbound, gg
@@ -394,7 +364,6 @@
       dbound = 2.0d0*dble(5*nk + 2)*epsilon(1.0d0)*gg
       end function ionization_stage_sum_rounding_bound
 
-      ! ------------------------------------------------------------------ !
 
       subroutine ionization_stage_divergence(Fk, Fclose, Dk, Dclose)
       ! EQUATION (3) OF THE HEADER: the cell divergence of the stage face
@@ -434,7 +403,6 @@
 
       end subroutine ionization_stage_divergence
 
-      ! ------------------------------------------------------------------ !
 
       subroutine ionization_stage_face_jacobian(Nel, n_elf, Kf, drf,      &
                                                 dFdl, dFdr)
@@ -483,7 +451,6 @@
 
       end subroutine ionization_stage_face_jacobian
 
-      ! ------------------------------------------------------------------ !
 
       subroutine ionization_stage_row_jacobian(dFdl, dFdr, aa, bb, cc)
       ! THE TRIDIAGONAL ROW OF THE STAGE DIVERGENCE (3), from the face
@@ -522,7 +489,6 @@
 
       end subroutine ionization_stage_row_jacobian
 
-      ! ------------------------------------------------------------------ !
 
       subroutine stage_simplex_projection(xion, xsum_max)
       ! THE ADMISSIBLE SET OF THE CARRIED FRACTIONS IS THE SIMPLEX.  Each
@@ -589,7 +555,6 @@
 
       end subroutine stage_simplex_projection
 
-      ! ------------------------------------------------------------------ !
 
       subroutine hydrogen_and_helium_nucleus_face_flux(rho, Tcode, f_sp,  &
                             Frho_cgs, N_H, N_He, n_Hf, n_Hef, Kf, drf,    &

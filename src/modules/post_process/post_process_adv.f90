@@ -1,22 +1,11 @@
 	module post_processing
-	! Subroutine to correct the output ionization profiles
-	!	taking into account the ionization term
-	!
-	! Composition approximation (documented): the _adv reconstruction treats the
-	! gas as H/He + trace metals and EXCLUDES the molecular species (H2, H2+,
-	! H3+, HeH+). The advection correction receives only the H/He (nhi..nheiTR)
-	! and metal (nm_in) densities; the molecular densities are not passed in and
-	! are not re-solved here, so calc_ne, calc_ntot and
-	! hydrogen_helium_nuclei_density below are called WITHOUT the nmol argument
-	! (and, for the last, without the oxygen carriers either). In a molecular
-	! run this omits the neutral-H2 particle count and the molecular-ion
-	! electrons from the _adv n_tot/ne, and nh = nhi+nhii counts only the free
-	! H nuclei. This is acceptable where the _adv
-	! post-process is used (atomic/ionized escape flow); a molecular base needs
-	! a molecular-aware post-process instead. Trace metals may now be solved
-	! together with the molecular network, and pp_metal_mode carries the metal
-	! stages here as usual -- but on that same molecule-free H/He background, so
-	! _adv metal profiles inside the molecular layer inherit the approximation.
+	! Advective correction of H/He and trace-metal ionization profiles.
+	! The _adv state omits H2, H2+, H3+, and HeH+: those densities are not
+	! inputs or re-solved here. calc_ne, calc_ntot, and
+	! hydrogen_helium_nuclei_density therefore omit molecular particles
+	! and electrons, and nh=nhi+nhii counts only free H nuclei. Results
+	! describe atomic/ionized escape flow; molecular-base and metal profiles
+	! inside a molecular layer inherit this approximation.
 
 	use global_parameters
 	use ion_cell_state, only: ieq_cell, adv_cell, teq_cell
@@ -69,96 +58,47 @@
 	! Validity limits of the advection correction (see post_process_adv, where
 	! both are used and their derivation is written out).
 	!
-	! Da_local_equilibrium: above this Damkohler number the gas relaxes to the
-	! local ionization equilibrium many times over while it crosses the cell,
-	! so the equilibrium solution already solves the advection ODE. The number
-	! is formed with the SLOWEST-relaxing species of the solved system (see
-	! post_process_adv): the advection systems solve all H/He populations at
-	! once, so pinning the cell to equilibrium is legitimate only when every
-	! one of them is locally equilibrated.
+	! Da_local_equilibrium uses the smallest listed population-rate estimate.
+	! Fast relaxation permits the local-equilibrium approximation when that
+	! equilibrium varies slowly over the relaxation length. This estimate is
+	! not an eigenvalue of the coupled reaction Jacobian.
 	real*8, parameter :: Da_local_equilibrium = 1.0d2
-	! xHII_adv_min: the residuals carry the NEUTRAL fraction and the ion
-	! density is extracted as (1-x_HI)*n_h, so an equilibrium ion fraction
-	! below this cannot be represented to better than ~1% by a solver whose
-	! absolute resolution on x_HI is sqrt(eps) = 1.5e-8.
+	! xHII_adv_min avoids extracting trace ions by subtracting x_HI from 1.
+	! sqrt(eps)=1.5e-8 is the MINPACK step tolerance and relative Jacobian
+	! perturbation, not a bound on root accuracy; the measured loss of trace
+	! ions motivating this guard is recorded in condition (iii) below.
 	real*8, parameter :: xHII_adv_min = 1.0d-6
-	! THE MEASURE AND THE FRACTION A CORRECTED ROW IS ACCURATE TO. The
-	! measure is the mass row of the state the post-process is handed,
-	! divided by the largest term the row itself contains, |R_1(j)|/s_1(j),
-	! which is the fractional change of the FACE mass flux across cell j
-	! (steady_residual.f90, mass_flux_row_scale) and the same operator the
-	! stationary certification measures that row by. The fraction it is
-	! compared with is adv_conditional_tol (output_write), which is where
-	! the first-order argument is written out: a row at or below it is a
-	! conditional correction accurate to that fraction of itself, a row
-	! above it keeps the run's own value. The certification's own verdict
-	! on the WHOLE state, made with cert_tol_mass, is a separate statement
-	! and travels in the file header beside this one.
-	! Where the enthalpy flux of the mass-flux divergence is reported as
-	! larger than both terms the steady balance keeps. It is a SENSITIVITY
-	! statement about the answer and no longer a refusal (the block in
-	! post_process_adv says why): unity is the point at which the term the
-	! non-stationarity of the recorded flow puts into the energy equation
-	! exceeds the terms the equation keeps, so above it the temperature the
-	! equation returns is set by that term. It is not a stationarity
-	! certificate: a ratio below one is reached with a mass divergence of
-	! any size whenever the kept terms are large.
+	! Correct a cell only if its production mass residual satisfies
+	! |R_1(j)|/s_1(j) <= adv_conditional_tol (steady_residual.f90,
+	! mass_flux_row_scale; output_write). This is the fractional face
+	! mass-flux change across the cell and bounds the conditional correction
+	! error. Whole-state certification uses cert_tol_mass separately and is
+	! recorded in the file header. enthalpy_ratio_report_level=1 reports
+	! when mass-divergence enthalpy exceeds the retained energy terms; this
+	! is a sensitivity measure, not a stationarity certificate.
 	real*8, parameter :: enthalpy_ratio_report_level = 1.0d0
 
-	! THE STEP OF THE RECURSION. Every equation this post-process integrates
-	! along the flow is an ODE in r, dy/dr = F(y, r): the ionization balance
-	! v dx/dr = R(x) of the H, HeH and HeH_TR advection systems, and the steady
-	! internal-energy equation (the statement before the energy loop). Both are
-	! stiff wherever the chemistry or the radiative balance relaxes within a
-	! cell (a Damkohler number above one). Each is advanced cell by cell with
-	! ONE rule, the backward differentiation formula of order two on the
-	! nonuniform grid (variable-step BDF2):
+	! Integrate ionization and internal-energy ODEs along r with
+	! variable-step BDF2, using all rates and velocities at r_j:
+	! y_j-a1 y_{j-1}+a2 y_{j-2}=g h_j F(y_j,r_j),
+	! h_j=r_j-r_{j-1}, w=h_j/h_{j-1},
+	! a1=(1+w)^2/(1+2w), a2=w^2/(1+2w), g=(1+w)/(1+2w).
+	! These are the derivative weights of the quadratic through three
+	! nodes (Li & Liao 2022, arXiv:2201.00527, eq. 1.4; Hairer,
+	! Norsett & Wanner, Solving Ordinary Differential Equations I,
+	! 2nd ed., sect. III.5, not re-read here). At w=1 they give
+	! (3/2)y_j-2y_{j-1}+(1/2)y_{j-2}=h F_j. The local error is O(h^3).
 	!
-	!     y_j - a1 y_{j-1} + a2 y_{j-2} = g h_j F(y_j, r_j) ,
-	!     h_j = r_j - r_{j-1},  w = h_j/h_{j-1},
-	!     a1 = (1+w)^2/(1+2w),  a2 = w^2/(1+2w),  g = (1+w)/(1+2w) .
-	!
-	! Derivation: the left side over g h_j is dP/dr at r_j for P the quadratic
-	! through (r_{j-2},y_{j-2}), (r_{j-1},y_{j-1}), (r_j,y_j), since
-	! dP/dr(r_j) = y_j (2h_j + h_{j-1})/(h_j (h_j + h_{j-1}))
-	!            - y_{j-1} (h_j + h_{j-1})/(h_j h_{j-1})
-	!            + y_{j-2} h_j/(h_{j-1} (h_j + h_{j-1})) ;
-	! multiplying by g h_j = h_j (h_j + h_{j-1})/(2h_j + h_{j-1}) gives the
-	! weights above. This is the variable-step BDF2 formula in the form
-	! D2 v^n = d0(r_n,0) dv^n + d1(r_n,0) dv^{n-1} of Li & Liao, "Stability
-	! of variable-step BDF2 and BDF3 methods", arXiv:2201.00527 (2022),
-	! eq. (1.4), which was read for this; the textbook source they cite is
-	! Hairer, Norsett & Wanner, Solving Ordinary Differential Equations I,
-	! 2nd ed., sect. III.5 (not re-read here). At w = 1 they are the constant-step BDF2, (3/2) y_j - 2 y_{j-1}
-	! + (1/2) y_{j-2} = h F_j. The formula is exact for quadratics, so its
-	! local error is O(h^3) and the recursion is second order in the cell
-	! width. The same weights differentiate the known profiles the energy
-	! equation holds (the density), so every r-derivative of a step is taken
-	! at r_j by one rule, and every other factor of the step (the rates, the
-	! heating and cooling, the velocity that makes the residence time) is the
-	! value at r_j.
-	!
-	! The recursion is started, and restarted after every cell it does not
-	! integrate (a refused or failed cell), by backward Euler,
-	! y_j - y_{j-1} = h_j F(y_j, r_j): one step of local error O(h^2), which
-	! leaves the global order two. A BDF2 step whose populations or root are
-	! not admissible (a negative population, no temperature root) is retaken
-	! by backward Euler, which keeps the populations of a linear rate system
-	! nonnegative; the log counts both.
-	!
-	! WHY NOT THE TRAPEZOID RULE. It is second order and A-stable but not
-	! L-stable: its amplification factor (1 + z/2)/(1 - z/2) tends to -1 as
-	! z = -Da -> -infinity, so a population that relaxes within the cell does
-	! not settle on its local equilibrium but alternates about it from cell to
-	! cell. BDF2, like backward Euler, is L-stable: both amplification roots
-	! of its step tend to zero there, so in the stiff limit it returns the
-	! local equilibrium.
-	!
-	! ZERO-STABILITY. Variable-step BDF2 is zero-stable for step ratios
-	! w <= 1 + sqrt(2) (R. D. Grigorieff 1983, Numer. Math. 42, 359, as
-	! cited by Li & Liao above; the 1983 paper was not read); a cell whose
-	! ratio exceeds that bound is integrated by backward Euler. The Mixed
-	! grids of the LHS 1140 b states have w <= 1.018 (MEASURED 2026-09-27).
+	! Start or restart after a refused cell with backward Euler. Retake a
+	! BDF2 step with inadmissible populations or no temperature root by
+	! backward Euler. Its local error is O(h^2); both methods settle stiff
+	! relaxation, whereas trapezoid has amplification
+	! (1+z/2)/(1-z/2) -> -1 for z=-Da -> -infinity.
+	! Variable-step BDF2 uses w <= 1+sqrt(2) for zero stability
+	! (Grigorieff 1983, Numer. Math. 42, 359, cited by Li & Liao;
+	! the 1983 paper was not read);
+	! larger ratios use backward Euler. Measured LHS 1140 b Mixed grids
+	! have w <= 1.018 (2026-09-27).
 	real*8, parameter :: bdf2_step_ratio_limit = 2.414213562373095d0
 
 	! Advection-corrected H/He ionized fractions for the current cell, pinned
@@ -187,31 +127,17 @@
 
 	contains
 
-	! Thermal Damkohler number of a cell: how many times over the local net
-	! radiative rate could rewrite the internal energy of the gas while the
-	! gas crosses the cell.
-	!   t_cross  residence time of the gas in the cell [s]
-	!   q_rad    magnitude of the local net radiative rate,
-	!            |heating - cooling| [erg cm^-3 s^-1]
-	!   u_th     internal energy density of the cell [erg cm^-3]
-	!
-	! Da >> 1: the gas reaches the local radiative balance while it is in the
-	! cell, so the temperature there is set by heating = cooling and what the
-	! gas carried in has been forgotten; the advected energy balance can only
-	! add integration error, and the temperature to keep is the one the run's
-	! own energy equation converged to, which carries every channel the run
-	! solved (the post-process carries fewer; see the heating block below).
-	! Da << 1: the temperature is carried by the flow and the advected balance
-	! is what sets it.
-	!
-	! This is the energy counterpart of the Damkohler condition (ii) of the
-	! ionization validity block below, and it is what makes the v -> 0 limit
-	! of the temperature correction a statement about the flow rather than
-	! about the sign of v: t_cross = dr/v grows without bound as v -> 0, so at
-	! any nonzero radiative rate the correction switches ITSELF off before the
-	! step it is built on loses its meaning. Unity is not a
-	! tunable threshold: it is the statement that one of the two terms of the
-	! equation is larger than the other.
+	! Thermal Damkohler number Da=t_cross |heat-cool|/u_th, with
+	! t_cross in s, net rate in erg cm^-3 s^-1, and u_th in erg cm^-3.
+	! Da compares the net thermal-energy change over one crossing with
+	! the cell's current energy. The code retains the run's temperature
+	! for Da > 1 and permits an advected correction for Da <= 1.
+	! Near heat=cool, |heat-cool| may be small even when the local
+	! relaxation rate is large; Da does not measure that rate. As v -> 0
+	! with nonzero net rate, t_cross grows and the correction switches
+	! off before its outward-flow ODE loses meaning.
+	! For u_th <= 0, return a large Da because no thermal state can be
+	! advanced from that cell.
 	pure real*8 function thermal_damkohler_number(t_cross, q_rad, u_th)
 	real*8, intent(in) :: t_cross, q_rad, u_th
 
@@ -225,42 +151,24 @@
 
 	end function thermal_damkohler_number
 
-	! Size of the enthalpy flux of the mass-flux divergence against the two
-	! terms the steady internal-energy balance keeps, on one cell. Written
-	! out, the equation is
-	!
-	!     rho v de/dr  -  p v dln(rho)/dr  +  h div(rho v)  =  heat - cool
-	!
-	! differenced by the step of the recursion (bdf2_step_ratio_limit): every
-	! r-derivative at r_j is (f_j - f_hist)/dr_step, with f_hist the history
-	! a1 f_{j-1} - a2 f_{j-2} (backward Euler: f_{j-1}) and dr_step = g h_j
-	! (backward Euler: h_j). With the common 1/dr_step divided out its three
-	! terms are, in the variables of the residual,
-	!
-	!     q_adv  = |rho v (e_j - e_hist)|
-	!     q_prs  = |w v (rho_j - rho_hist)|          w = p/rho
-	!     q_enth = |h div(rho v) dr_step|            h = e + w
-	!
-	! The third vanishes for a stationary mass flux and for nothing else, so
-	! this ratio is how much of the equation the non-stationarity of the
-	! recorded flow carries, and above one the temperature the equation
-	! returns is set by that term rather than by the balance.
-	!
-	! IT IS A SENSITIVITY DIAGNOSTIC AND NOT A STATIONARITY CERTIFICATE.
-	! The ratio is the size of one term against two others, so it falls below
-	! one at any size of the mass divergence once the kept terms are large
-	! enough: a cell can carry a large continuity residual and a small ratio
-	! at the same time. Stationarity of the cell is decided in
-	! post_process_adv by the mass row of the state itself, the operator the
-	! stationary certification uses; this ratio is reported next to it, with
-	! enthalpy_ratio_report_level as the level at which the term dominates.
-	!
-	! The arguments are the cell (subscript up) and the history of the step
-	! into it (subscript hist), the values the residual evaluates the state at.
+	! Diagnostic ratio of the mass-divergence enthalpy term to retained
+	! terms in rho v de/dr-p v dln(rho)/dr+h div(rho v)=heat-cool.
+	! With derivatives from the BDF2 or backward-Euler history divided by
+	! dr_step, use
+	! q_adv=|rho v(e_j-e_hist)|,
+	! q_prs=|(p/rho) v(rho_j-rho_hist)|,
+	! q_enth=|h div(rho v) dr_step|, h=e+p/rho.
+	! The ratio q_enth/max(q_adv,q_prs,1e-99) exceeds one when the omitted mass
+	! divergence can set the corrected temperature. It is a sensitivity
+	! diagnostic; 1e-99 makes the all-zero case zero, not 0/0. A small
+	! ratio alone cannot certify a stationary mass row;
+	! that decision uses |R_1|/s_1 in post_process_adv. The report uses
+	! enthalpy_ratio_report_level=1. Arguments are the cell and its step
+	! history.
 	pure real*8 function enthalpy_flux_term_ratio(h_up, div_rhov, dr_step, &
 	                     rho_up, v_up, e_up, e_hist, w_up, rho_hist)
 	real*8, intent(in) :: h_up      ! enthalpy per unit mass of the cell
-	real*8, intent(in) :: div_rhov  ! divergence of the mass flux [1/length]
+	real*8, intent(in) :: div_rhov  ! div(rho v), in code density/time units
 	real*8, intent(in) :: dr_step   ! width the step multiplies F by
 	real*8, intent(in) :: rho_up    ! density of the cell
 	real*8, intent(in) :: v_up      ! velocity of the cell
@@ -341,7 +249,7 @@
 	! Passes of the post-process (the outer loop below).
 	integer, parameter :: n_pp_passes = 10
 	 
-	real*8, dimension(1-Ng:N+Ng) ::  T_K,p_out,T_out     ! Dimensional temperature
+	real*8, dimension(1-Ng:N+Ng) ::  T_K,p_out,T_out     ! T_K is in K; p_out and T_out use code units.
 	real*8, dimension(1-Ng:N+Ng) ::  nh,nhe,ne,n_tot
 	! Metal electron density [cgs]: the metal part of ne (X+ once, X++ twice),
 	! handed to the advection residuals as adv_cell%xe_metal. Zero when metals
@@ -552,9 +460,8 @@
 	integer, dimension(1-Ng:N+Ng) :: adv_T_status, adv_comp_status
 
 
-   ! 60 entries to match the ion_system_HeH_metals / ion_system_metals_pp
-   ! dummy length used by the pp_metals=2 re-solve (only 1-11 are consumed;
-   ! the advection systems use 1-22).
+   ! Legacy MINPACK argument sized for ion_system_metals_pp. The residuals
+   ! read named cell-state fields; params is not consumed.
    real*8, dimension(60) :: params
    real*8, dimension(40) :: paramsT
       
@@ -629,9 +536,7 @@
    integer :: n_bdf2_T, n_be_T, n_bdf2_T_retaken
       
       
-   !----------------------------------------------------------!      
       
-   ! Global parameters
       
    ! Numerical tolerance for system solution
    tol = sqrt(dpmpar(1))
@@ -715,14 +620,11 @@
       enddo
    endif
 
-   !----------------------------------!
 	
-	! Preliminary profiles extraction
 	
 	! Dimensional total number density profile and temperature
 	T_K = T_in*T0
 	         
-   ! Initialize vectors
    nhi    = nhi_in*n0
 	nhii   = nhii_in*n0
    if (thereis_He) then
@@ -759,7 +661,6 @@
 		nheiTR = 0.0
 	endif
 
-	!----------------------------------!
 
 	! Select the metal treatment for the post-process (set via 'pp_metals'
 	! in metals.inp -> pp_metal_mode). Metals are off => zero either way.
@@ -792,7 +693,6 @@
 		enddo
 	endif
 
-	!----------------------------------!
 
 	! Non-converged cell solves, accumulated over every pass (see declaration)
 	n_adv_noconv   = 0
@@ -941,75 +841,26 @@
 		endif
 	endif
 
-   !----------------------------------!
 
-	!---- How far from stationary is the flow of this cell? ----!
+	! The steady advection correction is conditional on the recorded
+	! flow's mass row: |R_1|/s_1 <= adv_conditional_tol. The measure is the
+	! fractional change of numerical face mass flux across a cell, obtained
+	! from assemble_residual and residual_row_scale, as in stationary
+	! certification. The file records it as adv_mass_row for every row;
+	! whole-state certification with cert_tol_mass is separate.
 	!
-	! Every equation this post-process solves is a STEADY equation integrated
-	! along the recorded flow, and the flow it integrates along carries a
-	! fractional change of the face mass flux across the cell. Without a mass
-	! source a physically stationary atmosphere satisfies div(rho v) = 0, so
-	! that change measures how far the state departs from the one the steady
-	! equations describe, and the terms those equations drop are the ones the
-	! mass divergence puts into them: each is the measure times a term they
-	! keep. THE CORRECTION IS THEREFORE FIRST ORDER IN THE MEASURE, and a
-	! cell is corrected exactly where the measure is small enough for that
-	! error to be the stated one (adv_conditional_tol, output_write: one
-	! percent of the correction itself). Where it is not, the equation
-	! returns a temperature the gas does not have and the cell is REFUSED
-	! (MEASURED on backup/regression/hydrostatic_column, whose mass flux
-	! falls about 8 percent from one cell to the next: the exact equation
-	! reads that as a compression at the same rate and reaches 1.7e7 K in a
-	! 1124 K column, while the same equation with the enthalpy flux term
-	! dropped gives the adiabat of the supplied density, 0.78 K). A refused
-	! cell keeps the run's own temperature and the equilibrium composition at
-	! that temperature, exactly as the thermal Damkohler condition below
-	! keeps them where the local radiative balance rather than the flow sets
-	! the state.
+	! A larger mass residual makes omitted divergence terms comparable to
+	! the retained steady terms and refuses both thermal and ionization
+	! corrections. The cell retains the run's temperature and equilibrium
+	! composition. In backup/regression/hydrostatic_column, about 8% mass
+	! flux change per cell drove the full equation to 1.7e7 K from 1124 K;
+	! omitting enthalpy divergence yielded a 0.78 K adiabat. Outflow sign
+	! and local Damkohler tests alone do not detect this error.
 	!
-	! THE OPERATOR IS THE PRODUCTION MASS ROW, AND ITS VALUE TRAVELS WITH
-	! EVERY ROW. The mass balance of the run is a finite-volume one:
-	! the numerical FACE fluxes of the Riemann solve, differenced over the
-	! cell's own control volume. A center-to-center difference of rho v r^2 is
-	! the same quantity in the continuum and a different discrete test, and a
-	! finite-volume steady state can carry a small mass row while the
-	! center-sampled rho v r^2 is not constant. So the state is handed to
-	! assemble_residual and its mass row read back through
-	! residual_row_scale, the two routines the stationary certification calls
-	! (certification.f90, hydro_row_entry); the ratio |R_1|/s_1 is the
-	! fractional change of the face mass flux across the cell. Nothing of
-	! that arithmetic is restated here, and the ratio of every row is written
-	! out as the adv_mass_row column, so a reader has the condition of each
-	! row and not only its verdict. The certification's own verdict on the
-	! whole state, taken with cert_tol_mass, is a different statement and is
-	! reported beside this one in the file header.
-	!
-	! THE REFUSAL COVERS THE COMPOSITION TOO. The ionization correction of a
-	! cell is the same kind of object: the steady advection-ionization ODE
-	! along the same flow. A cell whose mass row is above the fraction has no
-	! accurate advective ionization correction either, so the refusal is applied to the
-	! ionization validity below as well and the cell keeps the equilibrium
-	! composition at the run's temperature. Its own conditions (i) and (ii) do
-	! not cover these cells: (i) tests the SIGN of v and (ii) the ratio of the
-	! residence time to the ionization relaxation time, and both are satisfied
-	! by a fast, well-directed outflow whose mass flux changes by a large
-	! fraction of itself across every cell.
-	!
-	! CONTINUITY IS NECESSARY AND NOT SUFFICIENT. A stationary mass row says
-	! nothing about the momentum and energy rows of the same state, and the
-	! certification of the input state, reported in the header of the files
-	! written at the end, is what carries those; a row of this file is a
-	! conditional correction on the recorded wind either way, never a
-	! self-consistent solution (write_adv_validity_header).
-	!
-	! FORMED ONCE, ON THE STATE HANDED IN. rho, v and r are the recorded
-	! profile and the post-process never changes them, so the refusal is a
-	! property of that state; it is evaluated on the first pass, at the run's
-	! own temperature and the mean molecular weight of the composition the
-	! equilibrium solve returned. Recomputing it per pass would let the
-	! refused set move with the iterate, and every pass feeds its upwind
-	! cascade from that set, so the converged _adv product would depend on the
-	! iteration history.
+	! A small mass row is necessary but does not establish momentum or
+	! energy balance. Evaluate the refusal once on the input state at the
+	! first pass, using its equilibrium composition, so the refused set
+	! does not depend on iteration history (write_adv_validity_header).
 	if (k == 1) then
 		call calc_mmw(nh,nhe,ne,mmw_in,nm_w)
 
@@ -1238,7 +1089,6 @@
 		enddo
 	endif
 
-   !----------------------------------!
 
 	!---- Where is the advection correction valid? ----!
 	!
@@ -1258,13 +1108,12 @@
 	!  (ii)  Da = (dr/v_el)*nu_relax > Da_local_equilibrium -- PHYSICAL. The
 	!        Damkohler number compares the time the gas spends in the cell with
 	!        the relaxation time of the level populations. Da >> 1 means the
-	!        populations relax to local equilibrium many times over while the
-	!        gas crosses the cell, so the equilibrium solution IS the solution
-	!        of the ODE and the correction can only add integration error.
+	!        populations approach local equilibrium rapidly. Neglecting
+	!        advection is an approximation when that equilibrium varies slowly
+	!        over the relaxation length; it is not an exact ODE solution.
 	!
-	!        nu_relax is the SLOWEST relaxation rate among the species the
-	!        advection system actually solves, each one being the total rate at
-	!        which its own population is destroyed and re-formed:
+	!        nu_relax is the minimum of these frozen population-rate estimates,
+	!        without diagonalizing the coupled reaction Jacobian:
 	!           H I/H II      : P_HI + (a_ion_HI + alpha_HII)*n_e
 	!           He I/He II    : P_HeI
 	!                           + (a_ion_HeI + alpha_HeII + alpha_HeI23S)*n_e
@@ -1293,14 +1142,12 @@
 	!        equilibrium solve used.
 	!
 	!  (iii) x_HII,eq < xHII_adv_min -- NUMERICAL. The residuals carry the
-	!        neutral fraction x_HI and the ion density is extracted as
-	!        (1-x_HI)*n_h, so the ion fraction inherits the solver's ABSOLUTE
-	!        resolution on x_HI: xtol = sqrt(eps) = 1.5e-8, which is also the
-	!        forward-difference step of the MINPACK Jacobian. Below 1e-6 the
-	!        extracted ion fraction is worse than 1% relative, and in a
-	!        shielded base with x_HII,eq ~ 1e-13 it is quantized at 1e-8 with
-	!        an arbitrary sign -- a negative ion density that the upwind
-	!        cascade then carries into the cells above.
+	!        neutral fraction x_HI, with ions extracted as (1-x_HI)*n_h.
+	!        MINPACK uses xtol=sqrt(eps)=1.5e-8 and a relative finite-difference
+	!        perturbation of that size; neither is an absolute root-error bound.
+	!        In the shielded-base case x_HII,eq~1e-13, extracted fractions were
+	!        observed at about 1e-8 with either sign, contaminating the upwind
+	!        history. The 1e-6 cutoff avoids that measured trace-ion failure.
 	!
 	! (i) and (ii) are statements about the flow and (iii) about the
 	! representation of the unknown, so none of them depends on whether metal
@@ -1392,7 +1239,6 @@
 		endif
 	enddo
 
-   !----------------------------------!
 
    ! Evolve the species with the advection term kept, in the ODE form
    ! v dx/dr = R(x), cell by cell upward by the step of the recursion
@@ -1453,7 +1299,6 @@
 
 		enddo
 
-		   ! Force condition of zero helium
 		   nheiS  = 0.0
 		   nhei   = 0.0
 		   nheii  = 0.0
@@ -1501,7 +1346,6 @@
 			! density the recombination terms of the residual see.
 			adv_cell%xe_metal = ne_metal(j)/max(nh(j),1.0d-30)
 
-			! Add more if HeITR is present
 			if (thereis_HeITR) then
 				adv_cell%rcheiTR = rcheiTR(j)
 				adv_cell%A31 = A31
@@ -1561,7 +1405,6 @@
 	endif ! End if thereis_He
 	      
       
-   !---------------------------------------------------------
       
    !------- Fix stationarity of new pressure profile -------!
       
@@ -1576,7 +1419,6 @@
 	call hydrogen_helium_nuclei_density(nhi,nhii,nhei,nheii,nheiii,nh,nhe)
    call calc_ne(nhii,nheii,nheiii,ne,nm_w)
 
-	!----------------------------------!
 
 	!---- Re-solve metal ionization (pp_metals=2) ----!
 	! Recompute the metal ionization balance per cell at the advection-
@@ -1695,7 +1537,6 @@
 		enddo
 	endif
 
-	!----------------------------------!
 
 	!---- THE COUNTS OF THE COMPOSITION THE PASS NOW HOLDS ----!
 	! Every composition update of the pass is final here: the H/He sweep,
@@ -1721,7 +1562,6 @@
 	! (heating_of_current_composition, below)
 	call heating_of_current_composition(theat)
 
-	!----------------------------------!
 	
 	!---- Solve stationary energy equation ----!
 	! This procedure uses the same velocity profile and 
@@ -1759,78 +1599,19 @@
 	Da_thermal_max   = 0.0d0
 	r_Da_thermal_max = 0.0d0
 
-	!---- What the energy correction solves ----!
-	!
-	! The equation solved cell by cell below (T_equation) is the steady
-	! internal-energy equation of the supplied profile,
-	!
-	!     div(u v) + p div(v)  =  heating - cooling
-	!   = rho v de/dr  -  p v dln(rho)/dr  +  h div(rho v)             (E)
-	!
-	! differenced by the step of the recursion (bdf2_step_ratio_limit;
-	! the residual term by term in T_equation), with u the internal
-	! energy density, e the internal
-	! energy per unit mass and h = e + p/rho the enthalpy per unit mass. The
-	! two forms are one equation: div(rho e v) = e div(rho v) + rho v de/dr,
-	! and p div(v) = (p/rho) div(rho v) - p v dln(rho)/dr.
-	!
-	! The third term is the enthalpy flux carried by the divergence of the
-	! mass flux, h div(rho v) = h (1/r^2) d(rho v r^2)/dr. It vanishes for a
-	! stationary mass flux rho v r^2 = const and for nothing else, so a
-	! correction built without it describes a converged wind and no other
-	! state. It is handed to the residual through teq_cell%div_rhov, whose
-	! algebra T_equation states.
-	!
-	! WHICH DIVERGENCE, AND WHY. div(rho v) is the MASS ROW OF THE STATE: the
-	! face mass fluxes of the Riemann solve of the state differenced over the
-	! cell's own control volume, (A_{j+1/2} F_{j+1/2} - A_{j-1/2} F_{j-1/2})/dV_j
-	! (RK_rhs), the operator condition (iv) above and the stationary
-	! certification read. It is the divergence at the cell centre to second
-	! order, the point at which the step evaluates every other factor, and
-	! it is an exact zero wherever the two faces carry the same flux.
-	!
-	! Until 2026-09-27 the same operator was applied to the CELL-CENTRED
-	! rho v r^2 of r(j-1) and r(j), the two points of the upwind difference
-	! used then. That quantity is not the mass flux of a finite-volume state,
-	! and at the base of a quasi-hydrostatic layer it carries the odd-even
-	! pattern of the cell-centred velocity. MEASURED on the certified
-	! LHS 1140 b state of He/H = 1.6 on 500 cells: at 1.0010-1.0014 R_p the
-	! cell-centred rho v r^2 steps between 1.8e12 and 3.4e12 (v = 0.13,
-	! 0.25, 0.21 cm/s) while the face mass flux changes by 1e-10 of itself
-	! across each cell (the adv_mass_row column). Its difference put an
-	! enthalpy flux 77 times the kept terms into the equation at 1.0010 R_p,
-	! and the temperature returned at the first corrected cell, 805 / 4008 /
-	! 579 K on 500 / 1000 / 2000 cells against a run temperature of 1465 /
-	! 1272 / 1039 K there, was set by it and carried by the recursion up to
-	! 1.1 R_p.
-	!
-	! WHAT THE TERM IS WORTH. MEASURED 2026-09-08 on
-	! backup/regression/hydrostatic_column, a 300-step mechanical column whose
-	! mass flux rho v r^2 runs over seven orders of magnitude across the
-	! domain: without the third term the temperature is the upwind recursion
-	! of the first two, whose continuum form is the adiabat T proportional to
-	! rho^(gamma-1), and it falls from 1138 K at the base to 0.78 K at
-	! 1.396 R_p while the run's own stays between 1084 and 1182 K. With the
-	! third term the same column rises instead, to 1.7e7 K at 1.40 R_p and
-	! 1.6e9 K at 2.96 R_p, because its mass flux falls by about 8 percent
-	! from one cell to the next and (E) reads that as a compression at the
-	! same rate. Both numbers are solutions of an equation on a state that
-	! does not satisfy continuity, and neither is a temperature the gas has.
-	! The term is therefore not a correction to that state, it is the state.
-	! Such a cell is refused by condition (iv) of the validity block above,
-	! which asks the mass row of the state itself; the size of this term
-	! against the other two is reported next to that verdict as the
-	! sensitivity of the answer, and the cells the condition refuses keep the
-	! run's own temperature below.
-	!
-	! The check on the restored term is the case with a solution in closed
-	! form: with heating and cooling negligible (E) integrates to
-	! w = p/rho proportional to rho^(gamma-1) F^(-gamma), F = rho v r^2, and
-	! marching a column of constant density and F = r with this step
-	! reproduces that solution at second order in the cell width: departure
-	! 4.4e-4, 1.1e-4, 2.8e-5, 7.0e-6 on 50 to 400 cells of a stretched grid,
-	! observed order 1.99, against 0.999 for backward Euler at every step
-	! (MEASURED 2026-09-27, src/tests/adv_static_limit, rows N4 and N5).
+	! The temperature correction solves the supplied profile's steady
+	! internal-energy equation (T_equation):
+	! div(rho*e*v) + p*div(v) = heating - cooling
+	! = rho*v*de/dr - p*v*dln(rho)/dr + h*div(rho*v), h=e+p/rho.
+	! The last term vanishes only where the state's mass flux is stationary.
+	! teq_cell%div_rhov receives the signed divergence of the Riemann face
+	! mass flux over the cell's spherical control volume, the same mass row
+	! used by RK_rhs and stationary certification. This avoids a spurious
+	! cell-centered odd-even difference at a nearly hydrostatic base.
+	! A correction on a state that fails continuity is not a physical gas
+	! temperature; the mass-row validity gate keeps that cell's run T.
+	! The correction to the divergence and measured profile effects are in
+	! ../EXHALE_v1.00/md/Update_EXHALE_stage3.md section 29.10.
 
 	! THE TRANSPORT TERMS. A run with heat conduction, or with the enthalpy
 	! flux of diffusing elements or transported carriers, solved an energy
@@ -1909,15 +1690,13 @@
 		endif
 		dr = r(j) - r(j-1)
 
-		! Local radiative balance (thermal_damkohler_number, this module): the
-		! gas that spends longer in the cell than the local net radiative rate
-		! needs to rewrite its internal energy has forgotten what it carried
-		! in, so its temperature there is the root of heating = cooling and
-		! not of the advected balance. The temperature to keep is then the
-		! run's own, which is the root of that same local balance with every
-		! channel the run solved. The pair is formed at the state the pass
-		! starts from, since the correction has to be decided before the
-		! temperature is solved for.
+		! Evaluate Da with updated-composition heating, start-of-pass cooling,
+		! and the current temperature and particle count.
+		! For Da>1 the code retains T_in instead of solving the advected
+		! energy equation. This net-rate test does not establish a local
+		! heat=cool root; near balance, it may miss fast thermal relaxation.
+		! Decide before solving the corrected temperature.
+		! To Be Checked: comment and code disagree, see md/comment_revision_20261027.md
 		t_cross_E = dr*R0/(vp*v0)
 		q_rad     = abs(theat(j)*q0 - tcool_in(j))
 		u_th      = (n_tot(j) + ne(j))*kb_erg*T0                          &
@@ -2016,13 +1795,8 @@
 		   ' cells kept at the equilibrium ionization.'
 	endif
 
-	! Report how many cells kept the run's own temperature because the local
-	! radiative balance, not the flow, sets the temperature there, and how
-	! close to that condition the rest of the column came. The largest
-	! Damkohler number is reported whether or not any cell crossed unity: it
-	! is the margin of the condition on this state, and a column that stays
-	! three orders of magnitude below it and one that sits at 0.95 are
-	! different statements about the same verdict.
+	! Report cells retained by the net-rate thermal Da>1 test and its maximum.
+	! This test does not establish a local thermal-equilibrium root.
 	write(*,'(a,i0,a,i0,a,es9.2,a,f7.4,a)')                                  &
 	   ' (post_process_adv) energy correction: ', n_T_local, ' of ',          &
 	   N+2*Ng-2, ' cells kept the run temperature (thermal Damkohler > 1);'   &
@@ -2100,12 +1874,11 @@
 	   ' BDF2 and ', n_be_T, ' backward Euler (', n_bdf2_T_retaken,         &
 	   ' retaken from BDF2).'
 
-	! Report how many cells fell back to the eq temperature: a non-positive
-	! root (any run) or, with metals on, one outside the 0.5-2x band.
+	! Report no-bracket, nonpositive, and out-of-band cell outcomes.
 	if (n_pp_reject > 0) then
 		write(*,'(a,i0,a,i0,a)') ' (post_process_adv) T solve: ',            &
 		   n_pp_reject, ' of ', N+2*Ng-2,                                     &
-		   ' cells fell back to eq T (non-positive or out-of-band root).'
+		   ' cells fell back to eq T (no bracket, non-positive or out-of-band root).'
 	endif
 
 	! Report the cell solves that did not converge and were therefore left at
@@ -2128,7 +1901,6 @@
 		   //' already at the cancellation floor of their own terms; the'     &
 		   //' iterate is the root and was kept.'
 
-   ! ---------------------------- !
       
 	!---- Update cooling rates ----!
 
@@ -2145,7 +1917,6 @@
 	! Adimensionalize
 	tcool = tcool/q0
 
-	!----------------------------------!
  
    ! Adimensionalize ion densities before writing
    nhi_w    = nhi/n0
@@ -2155,7 +1926,6 @@
    nheiii_w = nheiii/n0
    nheiTR_w = nheiTR/n0
 
-   !----------------------------------!
       
    ! THE DERIVED STATE (adv_derived_state, output_write): how the solves
    ! that produced the rows about to be written ended, as a whole. The
@@ -2278,13 +2048,9 @@
 
 	end subroutine pin_cell_to_equilibrium
 
-	! THE HEATING OF THE COMPOSITION THE PASS HOLDS NOW [code units]. The
-	! photoheating of ONE particle of each absorber, from the same attenuated
-	! field the equilibrium pass used, and then the ONE heating assembly
-	! (utils_ion_eq) contracted with the densities of the pass. This is the
-	! same routine the ionization sweep and the heating breakdown call, so
-	! the _adv energy solve balances the heating the run's own energy
-	! equation deposits and cannot drift from it.
+	! Heating of the current composition [code units]. Use the shared
+	! heating_of_composition assembly with the attenuated field recomputed
+	! from this pass, subject to the molecular and oxygen omissions below.
 	!
 	! The composition reconstructed here carries no molecular and no oxygen
 	! carriers (see the header of this module), which is what the two
@@ -2490,13 +2256,12 @@
 	outcome = T_root_found
 	T_root  = T_in(jc)
 
-	! Solve the scalar energy equation by bracketing the physical (lowest)
-	! root + Brent when metal cooling is on (the default). The metal-cooled
-	! residual is non-monotone and has a second, spurious hot root that a
-	! Newton/Powell solve (hybrd1) could land on; bracketing from below
-	! selects the physical root structurally. With "Brent solver: False"
-	! (use_brent_tsolve = .false.) the MINPACK solve + 2x-band reject is used
-	! instead. Metals-off always takes the MINPACK solve (monotone residual).
+	! With metals and use_brent_tsolve, solve_T_brent searches upward for
+	! the first bracket in [max(0.05*T_in,1 K),4*T_in] to avoid a hot root
+	! of the non-monotone residual. This is the first root in that search
+	! range, not a proof of physical uniqueness. "Brent solver: False"
+	! selects MINPACK and the [0.5,2]*T_in rejection band. Metals-off uses
+	! MINPACK without that temperature band.
 	if (pp_metal_on .and. use_brent_tsolve) then
 		call solve_T_brent(paramsT, T_in(jc), xT(1), ok_brent)
 		if (.not. ok_brent) then
@@ -2571,7 +2336,6 @@
 	T_root = xT(1)
 	end subroutine energy_step
 
-	!------------------------------------------------------------------!
 
 	subroutine transport_terms_of_profile(Tprof)
 	! The conduction triplets of the temperature profile Tprof [code units]
@@ -2607,7 +2371,6 @@
 	endif
 	end subroutine transport_terms_of_profile
 
-	!------------------------------------------------------------------!
 
 	subroutine set_transport_terms_of_cell(jc)
 	! The transport heating of cell jc for the energy residual: the
@@ -2638,7 +2401,6 @@
 	teq_cell%cond_diag  = pp_cond_di(jc)
 	end subroutine set_transport_terms_of_cell
 
-	!------------------------------------------------------------------!
 
 	real*8 function energy_residual_of_cell(jc)
 	! The residual of the energy equation of corrected cell jc at the
@@ -2681,83 +2443,37 @@
 	energy_residual_of_cell = fv(1)
 	end function energy_residual_of_cell
 
-	!------------------------------------------------------------------!
 
 	subroutine energy_column_newton()
-	! THE CORRECTED CELLS SOLVED TOGETHER. Unknowns: the temperatures of the
-	! cells the marching sweep corrected; every other cell is a fixed value.
-	! Equations: their energy residuals (energy_residual_of_cell), each a
-	! function of the temperatures two cells below (the histories of the
-	! step), its own and one above (conduction), so the Jacobian is banded
-	! with two sub- and one super-diagonal. It is formed by one-sided
-	! differences at fixed transport coefficients, and the conductivity and
-	! the enthalpy flux divergence are re-evaluated at every iterate. A step
-	! moves no temperature by more than 30 per cent of itself.
-	!
-	! HOW IT STOPS AND HOW IT IS JUDGED. The iteration stops when no
-	! temperature moves by more than 1e-10 of itself, or after 100
-	! iterations: that is its stopping rule and decides nothing. The column
-	! is then judged on its RESIDUAL. With the transport coefficients and
+	! Solve corrected-cell temperatures and cells without a marching root
+	! together; other cells are fixed. Each energy residual depends on two
+	! temperatures below, its own, and one above through conduction, so the
+	! finite-difference Jacobian has two sub- and one super-diagonal.
+	! Recompute conductivity and enthalpy fluxes at every iterate, limiting
+	! each step to 30 percent of the current temperature.
+	! The iteration stops at relative step 1e-10 or 100 iterations. Accept
+	! only after evaluating all final energy rows at their final profile:
+	! |R| <= atol_E + cert_tol_energy*S_E, S_E=max|grouped physical term|.
+	! atol_E = 10*eps*(sum|grouped terms| + |rho*v*e_j| +
+	! |rho*v*e_hist| + |c_lo*T_below| + |c_di*T| + |c_up*T_above|).
+	! The floor covers cancellation in advection and conduction before
+	! grouping. Reject LU failure, nonfinite terms, nonpositive T, or a
+	! residual above this tolerance; report the first or worst unknown.
+	! The conduction-coupled root has no 0.5-2*T_in band. Cells that the
+	! one-cell marching solve could not root also enter the coupled solve;
+	! EXHALE_ADV_COLUMN_EXCLUDE_UNROOTED=1 fixes them for measurement only.
+	! A rejected column returns the marching profile and labels every
+	! corrected unknown adv_failed. The measured rounding floor, temperature
+	! range and unrooted cells are in
+	! ../EXHALE_v1.00/md/Update_EXHALE_stage3.md section 55.
+	! The returned profile is then judged on its RESIDUAL. With the transport coefficients and
 	! the enthalpy divergences formed again at the final profile (the state
 	! the rows describe), the energy row of every unknown is evaluated in
 	! erg cm^-3 s^-1, R = q0 fvec/(mup mum dr_step), together with its seven
 	! physically grouped terms (energy_row_grouped_terms: the advective
 	! energy divergence div(rho e v) as one term, the p div(v) work, the
 	! heating, the cooling, the conduction divergence and the two enthalpy
-	! divergences). The column CONVERGES ON ITS RESIDUAL when, in every
-	! unknown,
-	!     |R| <= atol_E + rtol_E S_E ,  rtol_E = cert_tol_energy (1e-6),
-	!     S_E = max |grouped term| ,
-	!     atol_E = 10 eps ( sum |grouped terms| + |rho v e_j| + |rho v e_hist|
-	!                       + |c_lo T_below| + |c_di T| + |c_up T_above| ) ,
-	! the energy row's own tolerance in the stationary certification, over
-	! the largest physical term of that row, and atol_E the rounding floor of
-	! the row: eps times the parts the row is ASSEMBLED from, the two halves
-	! of the advective difference and the three face terms of the conduction
-	! divergence among them. MEASURED 2026-10-01 on the three LHS 1140 b
-	! conduction states (fiducial atomic, molecular photochemical s1,
-	! molecular scalar He/H 1.45 s1), with the iteration continued three
-	! Newton steps past its step test (EXHALE_ADV_COLUMN_FLOOR_IT=3): the
-	! stagnated |R| is at most 0.82, 0.99 and 0.73 eps of that sum, so the
-	! margin 10 is a factor 10 above the measured floor. The grouped sum
-	! alone under-states the floor by 1e3 to 1e5 (the same runs: |R| up to
-	! 4.6e4, 1.4e4 and 4.1e3 eps of it), because the conduction divergence
-	! is a small difference of three large face terms. The log line of
-	! every column reports both measures. It is REJECTED, in the order the
-	! tests are made, when
-	!   linear_solve   the banded LU of the Jacobian fails (col_cell: the
-	!                  unknown of the zero pivot);
-	!   nonfinite      a residual, a step or a term of the final rows is not
-	!                  a finite number (col_cell: the first such unknown);
-	!   non_positive_T a temperature of the result is not positive;
-	!   residual_above_tolerance  the test above fails (col_cell: the unknown
-	!                  with the largest |R|/(atol_E + rtol_E S_E)).
-	! NO TEMPERATURE BAND. Until 2026-10-01 a result outside 0.5 to 2 times
-	! the run's own temperature was rejected when metal cooling is on. That
-	! band guards the cell-by-cell Brent solve (energy_step) against the
-	! spurious hot root of the non-monotone metal-cooled residual, and that
-	! solve keeps it. Applied to the conduction-coupled column it refused a
-	! root of the corrected equation: MEASURED on the molecular
-	! photochemical conduction state, cell 437 (10.35 R_p) at 2445 K against
-	! the run's 1218 K closed to 9.5e-12 of its largest term, compression
-	! work against photoheating and conduction with the cooling four orders
-	! below them (md/Update_EXHALE_stage3.md section 55).
-	! THE CELLS THE MARCHING STEP FOUND NO ROOT FOR are unknowns too. The
-	! cell-by-cell energy step brackets its root in [0.05, 4] T_in (Brent)
-	! or refuses a root outside [0.5, 2] T_in (the metal-cooled residual),
-	! guards of that one-cell solve against the spurious hot root. Where the
-	! conduction-coupled column puts the root outside them, the cell has no
-	! marching root although the column has one: MEASURED on the molecular
-	! photochemical conduction state, three cells at 24.5 to 28.5 R_p with
-	! their column root at 4.0 to 4.3 T_in. Such a cell starts from the run's
-	! own temperature, the residual test decides it with the rest, and a
-	! converged column writes it adv_corrected; the record counts them
-	! (cells_marching_unrooted). EXHALE_ADV_COLUMN_EXCLUDE_UNROOTED=1 makes
-	! them fixed values again (measurement only).
-	! A rejected solve returns the marching profile of the pass, and EVERY
-	! unknown of the rejected set is written adv_failed: the coupled solve
-	! failed as one, so no row of it carries a correction the solve
-	! produced.
+	! divergences).
 	integer, parameter :: kl = 2, ku = 1, ldab = 2*kl + ku + 1
 	integer, parameter :: it_max = 100
 	integer, allocatable :: cells(:), pos(:), ipiv_c(:)
@@ -3007,10 +2723,9 @@
 	!   terms(9)  enthalpy flux divergence of the element fluxes (heating)
 	!   terms(10) enthalpy flux divergence of the carrier fluxes (heating)
 	!   terms(11) the residual of the row, left side minus right side
-	!   terms(12) rho v e_j, the first half of the advective difference
-	!   terms(13) rho v e_hist, its second half (terms(2) = 12 - 13, over
-	!             the step width): the two numbers whose difference the
-	!             rounding of the advective term is set by
+	!   terms(12) rho v e_j/dr_step, the first half of the advective difference
+	!   terms(13) rho v e_hist/dr_step, its second half; terms(2)=12-13.
+	!             Both already include division by the step width and q0.
 	!   terms(14) |c_lo T_below| + |c_di T| + |c_up T_above|, the magnitudes
 	!             of the three parts the conduction divergence is the sum of
 	!             (the face fluxes whose difference sets its rounding)
@@ -3201,10 +2916,8 @@
 		     ' values of the column (measurement only).'
 	end subroutine read_column_energy_solve_controls
 
-	! End of subroutine
 	end subroutine post_process_adv
 
-	! ----------------------------------------------------------------- !
 
 	! Residual for the metal-only re-solve (pp_metals=2). Reuses the full
 	! coupled H/He+metal balance (ion_system_HeH_metals, including the Huang
@@ -3229,5 +2942,4 @@
 
 	end subroutine ion_system_metals_pp
 
-	! End of module
 	end module post_processing

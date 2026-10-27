@@ -13,7 +13,6 @@
       ! ion chemistry.  Absent it, EXHALE's network keeps a base far more
       ! molecular than photochemical models of the same layer give.
       !
-      ! ---------------------------------------------------------------
       ! 1. Band and unattenuated rate
       !
       ! THE BAND IS 912-1201 A.  912 A is the H Lyman edge, shortward of
@@ -81,7 +80,6 @@
       ! strongly tilted; a spectrum concentrated at one end of the band
       ! (a single dominant emission line) is outside that range.
       !
-      ! ---------------------------------------------------------------
       ! 2. Self-shielding: A TABLE, not a fit
       !
       ! The pumping lines saturate, so the rate falls far faster than any
@@ -107,14 +105,10 @@
       ! carries.  Replacing one fit by the other would swap one wrong curve
       ! for another, so the calculation itself is tabulated instead.
       !
-      ! THIS REVERSES A DECISION.  Update_EXHALE_stage1 sec. 116 moved the rate from
-      ! DB96 to R14 on the strength of R14's own finding that DB96
-      ! overestimates the shielding factor by about 3 at T = 100 K.  That
-      ! finding is not in doubt -- it is reproduced from our own CLOUDY deck,
-      ! DB96/CLOUDY = 2.27-3.38 for 1e17 <= N_H2 <= 5e20 at 100 K.  What the
-      ! measurement adds is that the sign of the DB96 error reverses between
-      ! 100 K and 900 K, so a fit built to remove the 100 K excess keeps
-      ! removing it after it has gone.  Our layer runs at 865-2724 K.
+      ! The earlier fit choice and its temperature-dependent error are
+      ! recorded in ../EXHALE_v1.00/md/p38_line_overlap_shielding.md
+      ! sections 3 and 6. The sign of the DB96 error reverses between
+      ! 100 K and 900 K; the layer runs at 865-2724 K.
       !
       ! 2a. NEITHER FIT IS CARRIED.  The Draine & Bertoldi (1996) eq. (37)
       ! and Richings, Schaye & Oppenheimer (2014) eqs. (3.12)-(3.15)
@@ -173,7 +167,6 @@
       ! longer; that refinement is NOT IMPLEMENTED, and no key asks for it,
       ! so the dilution applied here is the optically thin one.
       !
-      ! ---------------------------------------------------------------
       ! 2g. THE BEAM LOSES WHAT THE TABLE RATES, AND IT IS ONE NUMBER
       !
       ! The photons a beam loses to the lines over a star-ward column N are
@@ -207,28 +200,9 @@
       ! 6.6 at 1e18 cm^-2 and 2700 K, with a sign change between them.  The
       ! band share A is therefore the table's column integral (sec. 2g).
       !
-      ! 3a. WHAT WAS MEASURED, AND HOW IT WAS CLOSED.  The 45 per cent
-      ! excess of the FUV band ledger was two WAVELENGTH BANDS, not two
-      ! fits.  MEASURED (2026-09-06 with the table then shipped): the column
-      ! integral
-      ! of sigma_diss/p_eff reached 1.5154 at the top of the column axis,
-      ! where a share of the band cannot pass 1, and 1.5154 is the photon
-      ! content of 912-1200 A over that of 912-1110 A for the flat-F_lambda
-      ! spectrum the table is built on, 1.5193.  The table sampled
-      ! 911.75-1200 A while being normalized per photon of 912-1110 A, and
-      ! the beam lost the DB96 eq. (39) equivalent width of 912-1110 A
-      ! alone.  On the oxygen_chemistry state the ledger rated 1.4544 line
-      ! photons for every one the beam lost, and 249.4 erg cm^-2 s^-1 of
-      ! band energy against an incident 171.5.
-      !
-      ! Both halves were repaired at once and in one direction, which is the
-      ! direction that keeps every absorber the line list has: the band is
-      ! now 912-1201 A everywhere (the FUV band list, the incident flux key,
-      ! the table's normalization and its line list), and the beam's loss is
-      ! the table's own pump absorption instead of eq. (39).
-      ! md/p38_line_overlap_shielding.md sec. 4.4 states what the wider
-      ! band is worth to the RATE: f_shield at 1300 K is 1.03x larger at
-      ! N_H2 = 1e19 cm^-2 and 3.7x larger at 4.4e21 than on 912-1110 A.
+      ! The 912-1201 A beam and line list use one normalization; the beam
+      ! loses the table's pump absorption. Earlier band-ledger measurements:
+      ! ../EXHALE_v1.00/md/Update_EXHALE_stage2.md section 7, item LW-NORM-B.
       !
       ! 3b. WHAT THE DB96 NORMALIZATION IS STILL GOOD FOR.  DB96 built their
       ! Tables 1 and 2 at the flat-F_lam spectrum of their eq. (24), chi = 1
@@ -306,7 +280,6 @@
       !    share carries that unquantified, and it is the weakest link left
       !    in the oxygen-chemistry beam split.
       !
-      ! ---------------------------------------------------------------
       ! 4. What shields the band besides the H2 lines
       !  - Dust: EXHALE's metals are atomic and trace, so there are no
       !    grains, and the dust part of DB96 eq. (40) is identically 1.
@@ -337,7 +310,6 @@
       !    larger than in the PDRs DB96 fitted, so this is the least
       !    controlled of the three; it can only reduce the rate.
       !
-      ! ---------------------------------------------------------------
       ! 5. Heating
       !
       ! The fragments of a Solomon-process dissociation leave with kinetic
@@ -360,7 +332,6 @@
       ! the gas, so it is NOT a thermal sink of this channel.  (A thermal
       ! dissociation-energy sink for R12/R14 is a separate open item.)
       !
-      ! ---------------------------------------------------------------
       ! References: h2_self_shielding_table.f90 (the line-by-line
       ! calculation the rate uses, with the trapping ratio from level-
       ! resolved CLOUDY c25.00 runs);
@@ -645,5 +616,4 @@
               T, n_H, tau_out, tau_in)
       end function lyman_werner_band_absorption_rate_cell_mean
 
-      ! End of module
       end module lyman_werner_photodissociation

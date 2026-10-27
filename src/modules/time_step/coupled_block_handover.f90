@@ -1,61 +1,19 @@
       module coupled_block_handover
-      ! THE STATE AT WHICH THE WIND-COMPOSITION ALTERNATION STOPS, AND THE
-      ! ONE STATEMENT THAT LETS THE COUPLED CARRIER BLOCK BE ENTERED FROM
-      ! IT.
+      ! Record the wind-composition alternation state before entry to the
+      ! coupled carrier solve. At a held wind, composition relaxation may
+      ! repeatedly reach its movement bound while joint residual progress
+      ! stops; the coupled solve then advances wind and carriers together.
       !
-      ! WHAT THE ALTERNATION IS AND WHERE IT STOPS. The stationary outer
-      ! iteration solves the wind at a held composition and then relaxes
-      ! the composition at that held wind. The relaxation is bounded: one
-      ! pass may move the composition by at most the movement bound, and a
-      ! relaxation that meets the bound has moved as far as a held wind
-      ! admits and no further. Where the joint distance of the state stops
-      ! falling AND the relaxation keeps ending on that bound, the
-      ! composition the carrier rows need lies outside the range in which
-      ! holding the wind is admissible, and no shorter step reaches it.
-      ! That is the state this module names, and the remedy is to stop
-      ! holding the wind: the wind and the transported balances become one
-      ! map of one vector.
+      ! The stall-declaring pass takes no relaxation, so entry uses the last
+      ! pass that did: its conserved state u, composition f_sp, derived
+      ! primitive state, face mass flux, residual measures, and bound evidence.
+      ! The relaxations hold u fixed; the caller recomputes p and T from
+      ! this u and f_sp. No fields from different passes are combined.
       !
-      ! WHY A STATE TRANSITION AND NOT A TEST ON THE LAST TOKEN. The pass
-      ! that declares the stall takes no composition update, so on that
-      ! pass no relaxation runs and the relaxation's outcome token holds
-      ! "nothing to advance". A condition that reads the live token on that
-      ! pass can never be met. The transition below is taken from a
-      ! RECORDED state instead: the entry snapshot, written by the last
-      ! pass in which a relaxation actually ran.
-      !
-      ! THE ONE COHERENT STATE THE COUPLED SOLVE CONSUMES is the pair
-      ! (u, f_sp) the snapshot carries, with the primitive arrays rho, v,
-      ! p, T and the face mass flux Frho_elem that belong to that pair.
-      ! Both fixed-wind relaxations hold the CONSERVED state: the element
-      ! relaxation is given rho and v and does not write them, and the
-      ! carrier relaxation is given u and does not write it. So the
-      ! conserved state the relaxation was entered at and the composition
-      ! it returned are one state and not two thermodynamic stages; p and T
-      ! are those of that pair, recomputed by the caller from u and f_sp
-      ! after the relaxation. The residual evidence beside it was measured
-      ! on that same pair. Nothing here is combined with a field of any
-      ! other pass.
-      !
-      ! WHAT THE SNAPSHOT IS FOR, BESIDES THE STATE. The bound value, the
-      ! exact ending of the relaxation, the cell the bound was refused at,
-      ! the two residual norms with their own row terms and their worst
-      ! cells, the progress reference of that pass and the two stall counts
-      ! are recorded with it, so the transition is judged on the pass that
-      ! produced the evidence and the log line names that pass.
-      !
-      ! THE SNAPSHOT IS SEALED AT THE TRANSITION. A generation counter is
-      ! raised at every write. The acceptance below is given the generation
-      ! the fresh residual was evaluated at and refuses a generation that
-      ! has moved, so a residual measured on one snapshot can never
-      ! authorize another. Once accepted, the snapshot is immutable: a
-      ! later write is refused, and a second acceptance is refused, so the
-      ! transition is taken exactly once per run.
-      !
-      ! WHAT THIS MODULE DOES NOT DO. It evaluates no residual. The caller
-      ! owns the operators and evaluates them on the snapshot's own arrays;
-      ! this module holds the state, states the transition and compares the
-      ! fresh numbers with the recorded ones.
+      ! Each snapshot write advances its generation. Entry requires a fresh
+      ! residual from that generation, then seals the snapshot and permits
+      ! one transition. This module records and compares states; the caller
+      ! evaluates the residual.
       implicit none
       private
 
@@ -178,7 +136,6 @@
 
       contains
 
-      ! --------------------------------------------------------------- !
 
       subroutine record_coupled_entry_state(snap, evidence, u, f_sp,      &
                                             rho, v, p, T, Frho_elem,      &
@@ -210,7 +167,6 @@
       written         = .true.
       end subroutine record_coupled_entry_state
 
-      ! --------------------------------------------------------------- !
 
       subroutine coupled_entry_stall_transition(snap, on_stall_enabled,   &
                        already_entered, carrier_rows_transported,         &
@@ -266,7 +222,6 @@
       state_now = alternation_stalled_at_bound
       end subroutine coupled_entry_stall_transition
 
-      ! --------------------------------------------------------------- !
 
       subroutine accept_coupled_block_entry(snap, generation_evaluated,   &
                        state_fits_here,                                   &
@@ -355,7 +310,6 @@
       state_now       = coupled_block_entry
       end subroutine accept_coupled_block_entry
 
-      ! --------------------------------------------------------------- !
 
       logical function coupled_entry_state_fits(snap, u, f_sp, rho, v, p, &
                                                 T, Frho_elem) result(fits)
@@ -379,7 +333,6 @@
       fits = .true.
       end function coupled_entry_state_fits
 
-      ! --------------------------------------------------------------- !
 
       subroutine restore_coupled_entry_state(snap, u, f_sp, rho, v, p, T, &
                                              Frho_elem, restored)
@@ -407,7 +360,6 @@
       restored  = .true.
       end subroutine restore_coupled_entry_state
 
-      ! --------------------------------------------------------------- !
 
       integer function n_coupled_block_entries() result(n)
       ! How many times this run entered the coupled block from a recorded
@@ -415,7 +367,6 @@
       n = n_block_entries
       end function n_coupled_block_entries
 
-      ! --------------------------------------------------------------- !
 
       function coupled_entry_refusal_text(why) result(text)
       integer, intent(in) :: why
@@ -456,7 +407,6 @@
       end select
       end function coupled_entry_refusal_text
 
-      ! --------------------------------------------------------------- !
 
       real*8 function relative_gap(a, b) result(g)
       ! |a - b| over the larger of the two magnitudes: the distance
@@ -473,7 +423,6 @@
       endif
       end function relative_gap
 
-      ! --------------------------------------------------------------- !
 
       subroutine copy_1d(dst, src)
       real*8, allocatable, intent(inout) :: dst(:)
@@ -485,7 +434,6 @@
       dst = src
       end subroutine copy_1d
 
-      ! --------------------------------------------------------------- !
 
       subroutine copy_2d(dst, src)
       real*8, allocatable, intent(inout) :: dst(:,:)

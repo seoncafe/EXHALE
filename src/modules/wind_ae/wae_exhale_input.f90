@@ -1,9 +1,7 @@
       module wae_exhale_input
-      ! Front-end that maps an EXHALE input.inp to the Wind-AE planet
-      ! parameters. Fills the planet/star/flux/composition
-      ! fields of wae_par; the base BCs (Rmin, rho_rmin, Ncol_sp, ...) are
-      ! NOT set here -- those are inherited from the continuation seed and
-      ! ramped, exactly as the Python wrapper does.
+      ! Read the selected EXHALE input into Wind-AE planet, star, flux,
+      ! composition, base temperature, and tidal-force parameters.
+      ! Rmin, rho_rmin, and Ncol_sp remain inherited from the seed.
       use wae_config, only: nsp => wae_nspecies, T0 => wae_T0
       use wae_types,  only: wae_paramlist
       use wae_params, only: wae_par
@@ -28,7 +26,7 @@
       real*8, parameter :: SIGSB = 5.6705d-5
       real*8, parameter :: PIc  = 3.141592653589793d0
 
-      ! values read from EXHALE input.inp the caller may also want
+      ! Selected-input values also exposed to the caller.
       real*8  :: exh_HeH = 0.0d0, exh_LEUV = 0.0d0, exh_LX = 0.0d0
       real*8  :: exh_Teff = 0.0d0, exh_Rstar = 0.0d0, exh_Teq = 0.0d0
       real*8  :: exh_lognbase = 14.0d0
@@ -67,7 +65,6 @@
       end do
       close(u)
 
-      ! --- map to wind-ae PARAMLIST ---
       wae_par%Mp        = MpMJ*MJ
       wae_par%Rp        = RpRJ*RJ
       wae_par%Mstar     = MsMsun*MSUN
@@ -84,8 +81,8 @@
       wae_par%atomic_mass(1) = 1.67353284d-24
       wae_par%atomic_mass(2) = 6.6464790722d-24
       ! Composition: He/H NUMBER ratio -> H/He MASS fractions. Wind-AE forms
-      ! every number density as n_j = rho HX(j)/atomic_mass(j) (wae_soe.f90
-      ! 138, 166, 216; wae_glq_rates.f90 67), so the number ratio it solves
+      ! every number density as n_j = rho HX(j)/atomic_mass(j), so the
+      ! number ratio it solves
       ! at is (HX(2)/m_He)/(HX(1)/m_H). Converting with the same mass ratio
       ! the solver is handed just above makes that ratio equal exh_HeH
       ! exactly, for any He/H.
@@ -101,7 +98,6 @@
       if (exh_spherical) wae_par%tidalforce = 0.0d0
       end subroutine wae_read_exhale_input
 
-      ! ---- helpers ----
       logical function has(line, key)
       character(len=*), intent(in) :: line, key
       has = index(line, key) .gt. 0

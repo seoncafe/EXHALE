@@ -40,6 +40,7 @@
 	                             metal_fractions, metal_electron_sum,     &
 	                             metal_rows,                             &
 	                             impose_transported_ionization_fractions, &
+	                             imposed_ionization_jacobian, &
 	                             ionization_row_gross
 	use charge_exchange, only: cx_add_to_fvec, cx_add_to_jac,             &
 	                           he_h_cx_fvec, he_h_cx_jac
@@ -108,7 +109,7 @@
 	real*8  :: x(N_eq),fvec(N_eq)
 	real*8  :: params(60)
 
-	! H/He coefficients (params 1-11)
+	! H/He coefficients from ieq_cell.
 	real*8  :: g_hi,g_hei,g_heii        ! photoionization
 	real*8  :: a_hii,a_heii,a_heiii     ! recombination
 	real*8  :: b_hi,b_hei,b_heii        ! collisional ionization
@@ -303,6 +304,8 @@
          fjac(ix+1,:) = 0.0d0;  fjac(ix+1,ix+1) = 1.0d0
       endif
    enddo
+   ! Apply the same transported-fraction constraints as the residual.
+   call imposed_ionization_jacobian(ieq_cell, N_eq, fjac)
    end subroutine jac_system_HeH_metals
 
 	end module System_HeH_metals

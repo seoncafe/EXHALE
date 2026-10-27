@@ -31,7 +31,6 @@
       ! the single statement of what each channel charges, and it carries the
       ! source of every entry.
       !
-      ! ------------------------------------------------------------------
       ! HOW THE SPLIT IS BUILT, and what each piece is measured from.
       !
       ! Write the event counts per unit time as N_M, N_S, N_D (channels M,
@@ -90,7 +89,6 @@
       ! particle multiplicity belongs; detector response belongs in the
       ! data inversion and particle multiplicity in the reaction source.
       !
-      ! ------------------------------------------------------------------
       ! RANGE OF VALIDITY, stated because none of the three inputs covers
       ! the whole grid.
       !
@@ -182,57 +180,26 @@
               'H2 -> H+ + H+ + 2e      ',                                 &
               'H2 -> H + H             ' /)
 
-      ! Which double-ionization model is in force.  The value below is only
-      ! the state before a run is configured: set_energy_vectors copies the
-      ! resolved input key `H2 double ionization` here, and that key
-      ! DEFAULTS TO 'chung80'.  Selecting 'off' reproduces the pre-E1
-      ! arithmetic exactly.
-      !   'off'      q_D(E) = 0.  Double ionization stays inside the single
-      !              dissociative channel, as it was before E1.
-      !   'chung80'  q_D(E) = 0 below 51.4 eV, ramped linearly in E to 0.20
-      !              at 80 eV and held at 0.20 above.  Chung et al. (1993),
-      !              p. 888, discussing their Fig. 4: "the contribution to
-      !              H+ from double ionization is small near the double
-      !              ionization threshold.  However, by 80 eV about 20% of
-      !              sigma(H+) comes from double ionization.  This
-      !              percentage remains fairly constant towards higher
-      !              energies."  sigma(H+) is the detector signal of the
-      !              header, one count per event, so 20 per cent of it is
-      !              the EVENT fraction q_D = N_D/(N_S + N_D) and not a
-      !              proton share.  The ramp between 51.4 and 80 eV is NOT
-      !              in the source: "small" is all it says there.
-      !   'yan_rho'  q_D(E) built from the double-to-single ionization RATIO
-      !              rho_D = N_D/(N_M + N_S) of Yan et al. (1998) sec. 4:
-      !              "At 110 eV, the measured ratio of double to single
-      !              ionization is 0.038. The asymptotic ratio is predicted
-      !              to be 0.0225 (Sadeghpour & Dalgarno 1993)."
-      !              rho_D is ramped from 0 at 51.4 eV to 0.038 at 110 eV
-      !              and relaxed to 0.0225 by 300 eV.  The ramp and the
-      !              relaxation are BOTH interpolations between two
-      !              published numbers, not measurements.  The conversion
-      !              to the event fraction is exact:
-      !                q_D = rho_D/(1 + rho_D) * (1 + r)/r
-      !              with r = (N_S + N_D)/N_M the detector ratio, which is
-      !              q_D = [rho_D/(1 + rho_D)]/f_di in the tabulated
-      !              fraction.  It is admissible only where rho_D <= r; an
-      !              inadmissible pair of published numbers is a stated
-      !              model restriction and stops the run, never a clip,
-      !              because clipping would redefine the measured
-      !              observable.  The two published numbers are admissible
-      !              everywhere the code uses them (MEASURED over
-      !              51.4-2000 eV in steps of 0.01 eV: q_D runs from 0 at
-      !              the threshold to 0.17463 at 110 eV).
-      !
-      ! THE TWO MODELS DISAGREE and that is the point of having both: at
-      ! 110 eV 'chung80' gives q_D = 0.200 against 'yan_rho' 0.1746, i.e.
-      ! rho_D = 0.0438 against 0.0380, 15 per cent more double ionization.
-      ! Neither is "the" answer; running both is how the uncertainty is
-      ! reported.
+      ! set_energy_vectors selects the resolved `H2 double ionization` key;
+      ! default 'chung80'. 'off' sets q_D(E)=0 for a historical comparison.
+      ! 'chung80': q_D=0 below 51.4 eV, interpolates to 0.20 at 80 eV,
+      ! then holds 0.20. Chung et al. (1993), Fig. 4 discussion, give
+      ! about 20% of the H+ detector signal at 80 eV; the lower ramp is
+      ! a model interpolation, not a measured energy dependence.
+      ! 'yan_rho': Yan et al. (1998), section 4, give double-to-single
+      ! ratio rho_D=0.038 at 110 eV, approaching 0.0225 (Sadeghpour &
+      ! Dalgarno 1993). The ramps to 110 eV and 300 eV interpolate these
+      ! published values. Convert to detector event fraction with
+      ! q_D = rho_D/(1+rho_D)*(1+r)/r = [rho_D/(1+rho_D)]/f_di,
+      ! r=(N_S+N_D)/N_M. This requires rho_D <= r; reject a violation
+      ! rather than clipping the published ratio. Neither model resolves
+      ! the full energy-dependent branching measurement.
+      ! Comparison and measured sensitivity:
+      ! ../EXHALE_v1.00/docs/Update_EXHALE_stage1.pdf section 151.6.
       character(len=16) :: h2_double_ionization_model = 'off'
 
       contains
 
-      !--------------!
 
       real*8 function frac_H2_neutral_dissociation(E)
       ! sigma_n/sigma(abs), the share of H2 photoabsorptions that leave two
@@ -278,7 +245,6 @@
 
       end function frac_H2_neutral_dissociation
 
-      !--------------!
 
       real*8 function frac_H2_double_of_proton_events(E)
       ! q_D(E) = N_D/(N_S + N_D): among the H2 photoionization events that
@@ -348,7 +314,6 @@
 
       end function frac_H2_double_of_proton_events
 
-      !--------------!
 
       subroutine h2_channel_cross_sections(E, sigma_tot, sig)
       ! The four mutually exclusive channel cross sections at photon energy
@@ -385,7 +350,6 @@
 
       end subroutine h2_channel_cross_sections
 
-      !--------------!
 
       subroutine h2_photoabsorption_cross_sections(E, sigma_tot,          &
                                                    resolve_neutral, sig)
@@ -432,7 +396,6 @@
 
       end subroutine h2_photoabsorption_cross_sections
 
-      !--------------!
 
       subroutine h2_channel_stoichiometry(ich, dH2, dH2p, dH, dHp, dele)
       ! Change in the count of each species per ONE photon event in channel
@@ -467,9 +430,7 @@
 
       end subroutine h2_channel_stoichiometry
 
-      !--------------!
 
-      ! ==================================================================
       ! THE PHOTON ENERGY LEDGER OF ONE H2 PHOTOEVENT
       !
       ! One absorbed photon of energy E delivers E and nothing else.  The
@@ -506,7 +467,6 @@
       !                leaves the cell as prompt line radiation rather than
       !                as heat.
       !
-      ! ------------------------------------------------------------------
       ! RECIPIENT TABLE, one row per channel, with the source of each entry.
       !
       !  (M) H2 + hv -> H2+ + e-
@@ -607,7 +567,6 @@
       !        Positive wherever f_n is nonzero (32-41.5 eV), where the
       !        smallest value is 32 - 24.876 = 7.1 eV.
       !      e_electron  = 0: the channel makes no electron.
-      ! ==================================================================
 
       subroutine h2_channel_energy_recipients(ich, E, e_reservoir,        &
                                      e_electron, e_fragment, e_radiated)
@@ -651,7 +610,6 @@
 
       end subroutine h2_channel_energy_recipients
 
-      !--------------!
 
       real*8 function h2_double_fragment_kinetic_energy() result(e_ker)
       ! Kinetic energy release [eV] of the two protons of one H2 double
@@ -666,7 +624,6 @@
       e_ker = e_th_H2_dd - (h2_dissociation_energy_eV() + 2.0d0*e_th_HI)
       end function h2_double_fragment_kinetic_energy
 
-      !--------------!
 
       real*8 function h2_channel_electron_share(ich, E) result(f)
       ! Share of the absorbed photon energy that leaves as photoelectron
@@ -683,7 +640,6 @@
       if (E .gt. 0.0d0) f = e_ele/E
       end function h2_channel_electron_share
 
-      !--------------!
 
       real*8 function h2_channel_prompt_heat_share(ich, E) result(f)
       ! Share of the absorbed photon energy that is deposited as heat
@@ -700,7 +656,6 @@
       if (E .gt. 0.0d0) f = e_frg/E
       end function h2_channel_prompt_heat_share
 
-      !--------------!
 
       real*8 function h2_channel_radiated_share(ich, E) result(f)
       ! Share of the absorbed photon energy that leaves the cell as prompt

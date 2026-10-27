@@ -103,7 +103,6 @@
 
       contains
 
-      ! ------------------------------------------------------!
 
       logical function element_census_on()
       ! EXHALE_ELEMENT_ASSERT = 1 (report) or 2 (report and stop).
@@ -112,7 +111,6 @@
       element_census_on = (trim(env) .eq. '1') .or. (trim(env) .eq. '2')
       end function element_census_on
 
-      ! ------------------------------------------------------!
 
       logical function element_census_fatal()
       character(len=8) :: env
@@ -120,7 +118,6 @@
       element_census_fatal = (trim(env) .eq. '2')
       end function element_census_fatal
 
-      ! ------------------------------------------------------!
 
       real*8 function element_census_tolerance()
       character(len=32) :: env
@@ -134,7 +131,6 @@
       endif
       end function element_census_tolerance
 
-      ! ------------------------------------------------------!
 
       character(len=5) function element_name(ie)
       integer, intent(in) :: ie
@@ -147,7 +143,6 @@
       endif
       end function element_name
 
-      ! ------------------------------------------------------!
 
       subroutine element_nuclei_and_charge(rho, f_sp, n_nuc, n_chg,       &
                                            rho_comp)
@@ -213,7 +208,6 @@
 
       end subroutine element_nuclei_and_charge
 
-      ! ------------------------------------------------------!
 
       subroutine element_census_take(label, rho, f_sp, snap)
       ! Record the elemental content of (rho, f_sp) under a label.  A no-op
@@ -239,7 +233,6 @@
 
       end subroutine element_census_take
 
-      ! ------------------------------------------------------!
 
       subroutine element_census_verify(snap, rho, f_sp, rho_is_fixed)
       ! Compare the state (rho, f_sp) against the recorded snapshot.
@@ -247,8 +240,8 @@
       ! Gated always: the ratio n_El/n_H of every element other than hydrogen.
       ! Gated when rho_is_fixed: the absolute nucleus density of every
       ! element, hydrogen included.
-      ! Reported always: the mass closure sum(species mass)/rho of the state,
-      ! which is where a moved n_H denominator shows up.
+      ! On failure, also report the mass closure sum(species mass)/rho,
+      ! which shows a moved n_H denominator.
       !
       ! On failure the element, the cell, its radius, the before/after totals
       ! and every species that carries the element in that cell are printed,
@@ -366,7 +359,6 @@
 
       end subroutine element_census_verify
 
-      ! ------------------------------------------------------!
 
       subroutine element_census_reservoir(label, rho, f_sp)
       ! The ABSOLUTE statement, against the reservoirs the run resolved --
@@ -377,9 +369,9 @@
       !     n_El/n_H  =  (El/H)_resolved      (He/H, and melem_ab per metal)
       !     n_H       =  rho / mass_per_H
       !
-      ! Helium is exempt when the element-diffusion operator is on: He/H is
-      ! then a solved profile, not a column invariant (element_budget.py makes
-      ! the same exemption and checks the base cell instead).
+      ! With element diffusion, He/H is a solved profile, so the helium
+      ! reservoir-ratio check and the fixed-composition hydrogen mass check
+      ! are skipped (element_budget.py checks the base helium ratio).
       character(len=*),                       intent(in) :: label
       real*8, dimension(1-Ng:N+Ng),           intent(in) :: rho
       real*8, dimension(1-Ng:N+Ng,n_species), intent(in) :: f_sp
@@ -449,7 +441,6 @@
 
       end subroutine element_census_reservoir
 
-      ! ------------------------------------------------------!
 
       subroutine report_carriers(j, ie, f_sp, rho)
       ! Every species that carries element ie in cell j, after the step (the

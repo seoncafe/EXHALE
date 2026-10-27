@@ -163,26 +163,12 @@
    ! first interior cell, and the contact upwinded on the direction the
    ! matching returns, with the reservoir owning the level at rest.
    !
-   ! v2 replaced v1's cubic smoothstep handover of the entropy source, whose
-   ! value at zero was the average of the two isentropes.  A state written
-   ! under one model and read under the other is the same physical column,
-   ! but its residual and its certificate are the other model's; load_IC
-   ! says so at the read and loads the state anyway.
-   !
-   ! v3 adds the ghost's composition to the model.  Under v2 the boundary
-   ! took whatever composition the sweep returned for the two lower ghost
-   ! cells, and that composition was a function of the one the sweep was
-   ! ENTERED at: on one frozen physical column, reservoir, spectrum and
-   ! executable, two entry compositions returned ghosts 4.7e-3 to 5.5e-2
-   ! apart in their trace ions, both accepted by every test the sweep
-   ! applies, and the base continuity row of the first physical cell read
-   ! 8.335e-08 in one and 2.923e-09 in the other.  v3 states two things
-   ! the state had no way to carry before: WHICH composition the ghost solve
-   ! starts from (base_ghost_composition_seed_id below), and that the
-   ! composition it returns is a fixed point of that same solve to a stated
-   ! accuracy (ionization_equilibrium,
-   ! ghost_composition_fixed_point_move and ghost_count_fixed_point_move),
-   ! so that the ghost no longer remembers the seed.
+   ! v2 replaced v1's entropy-source handover. v3 made the ghost
+   ! composition seed and its fixed-point convergence part of the model
+   ! identity. A restart may load a state from another boundary model,
+   ! but its residual and certificate then belong to the current model.
+   ! The measured v2 seed dependence is recorded in
+   ! ../EXHALE_v1.00/md/lhs1140b_p1_step2_20260920.md.
    !
    ! v4 puts the face on the level (see "THE BASE LEVEL IS THE FACE" above):
    ! the reservoir is the face state it owns, where v3 carried it from the
@@ -231,9 +217,10 @@
    !
    ! What the composition sweep measures IN the lower ghost, as opposed to
    ! what the reservoir above prescribes FOR it.  The two are counts of
-   ! different quantities AT DIFFERENT RADII: the prescribed count is a
-   ! count of nuclei corrected for H2 binding, resolved at startup from the
-   ! base mixing ratio AT THE LEVEL r_base_level, and the solved count is
+   ! different quantities AT DIFFERENT RADII: the prescribed count is
+   ! the gas-particle-plus-electron count per unit
+   ! mass at the base level, resolved at startup from its composition, and
+   ! the solved count is
    ! the ghost cell's own heavy-particle count at the composition the sweep
    ! returned, at the ghost's own radius one cell lower.  MEASURED on the
    ! hot-Uranus molecular state of LHS 1140 b: 8.402582811444896e-01 at the
@@ -309,38 +296,13 @@
    ! overrides it for a control experiment; nothing else reads that variable.
    real*8, save :: base_face_mach_blend = 1.0d-8
 
-   ! WHICH QUANTITY THE DIRECTION OF THE CONTACT IS READ FROM.
-   !
    ! The contact moves with the gas, so the side that owns the face is the
    ! side the MASS FLUX at the level comes from.  Three quantities are
    ! candidates for its sign and they are not the same number:
    !
-   !   the first interior cell's own product rho_1 v_1 r_1^2.  AT A BASE
-   !   THAT CARRIES A COLLOCATED ODD-EVEN VELOCITY MODE THIS IS NOT A FLUX:
-   !   MEASURED on the certified LHS 1140 b atomic state, the Riemann face
-   !   flux is +1.00000 F_wind at every face of the grid including this one
-   !   while the cell-centred product reads -2.00 F_wind at cell 1 and -2.27
-   !   at cell 2 (the hot-Uranus base reads -196 F_wind against a face
-   !   flux of +0.98).  It is not used.
-   !
-   !   the matched face velocity v_b of (C-).  This is the face's own
-   !   velocity and it is what characteristic theory names, but at the
-   !   operating point of this code it does not RESOLVE the direction: v_b
-   !   carries (p_res - p_i)/(rho_i c_i), and a converged state leaves that
-   !   pressure difference at about 1e-4 of p, which at a base Mach number
-   !   of 3e-7 is a velocity two orders above the flow's own.  MEASURED on
-   !   the three certified LHS 1140 b states (atomic HeH2.13, molecular
-   !   HeH2.13, molecular HeH9.7): v_b = -7.25, -2.10 and -3.41 cm/s while
-   !   the level carries the wind's own outward flux and the base face
-   !   budget is flat to 1.6e-5, 3.6e-4 and 4.7e-4 of it.  So v_b answers
-   !   only where nothing better does.
-   !
-   !   the mass flux the state carries, read WHERE the cell-centred product
-   !   IS a flux: the wind window r >= r_flux that the convergence gate is
-   !   already defined on.  In a state whose mass flux is conserved that is
-   !   the flux through this face as well, and it is the only one of the
-   !   three that resolves the direction on a converged wind.
-   !
+   ! The first-cell rho*v*r^2 can have the opposite sign from the Riemann
+   ! face flux in an odd-even velocity mode. At a low-Mach base the matched
+   ! face velocity can instead reflect the finite pressure mismatch.
    ! So the direction is the window's where the window has standing (below),
    ! and the matched face velocity's where it has none -- a cold start, a
    ! column at rest, a state that is not a wind.  The face flux itself is
@@ -352,93 +314,28 @@
    ! carry a flux the wind does not yet, and then this reads the wind's sign
    ! and not the base's.  The branch it selects is still an admissible
    ! boundary condition, and no converged state has the two disagreeing.
+   ! Measurements: ../EXHALE_v1.00/md/Update_EXHALE_stage2.md section 11 (L21).
 
-   ! WHEN THE WIND WINDOW HAS STANDING TO SPEAK, AND ON WHAT SCALE.
-   !
-   ! Two conditions, both of them properties of the window's own flux
-   ! profile: it must carry a flux at all, and it must carry ONE flux -- a
-   ! window that carries a wind carries the same rho v r^2 at every altitude
-   ! in it.  The second is a property of the SHAPE of the profile and has no
-   ! scale of its own, so it is read as the window's relative spread
-   !
-   !     d_window = sqrt( <F^2> - <F>^2 ) / |<F>| ,   F = rho v r^2 ,
-   !
-   ! the relative standard deviation of the flux over r >= r_flux, averaged
-   ! over the physical cells of the window.
-   !
-   ! WHY THE STANDARD DEVIATION AND NOT (max - min)/|mean|.  The range is not
-   ! a differentiable function of the state: its two extrema are carried by
-   ! particular cells, and where the cell that carries one of them changes
-   ! the range keeps its value but changes its slope.  MEASURED on the
-   ! certified LHS 1140 b state of `.L14/x003_HeH2.13` with one window cell
-   ! swept through the argmax: the two one-sided derivatives
-   ! of the face density converge at three step sizes to -242.2 and +0.0128,
-   ! a slope jump of 1.9e4 at a point where the value itself is continuous.
-   ! The second moment has no argmax: it is a polynomial in the state divided
-   ! by the mean, so it is smooth wherever the mean is nonzero.
-   !
-   ! THE THRESHOLD IS THE MEASURED SEPARATION OF THE TWO POPULATIONS, chosen
-   ! the way flux_spread_th_default was (parameters.f90): the geometric middle
-   ! of the gap, to one digit, fitted to no single state.  MEASURED 2026-09-17
-   ! on d_window, over this window, on the physical cells of every written
-   ! state of the two LHS 1140 b catalogs and of the regression fixtures:
-   !
-   !   certified stationary states, 302 of them
-   !                               4.06e-05 to 1.82e-04, median 6.09e-05
-   !   the stalled 0.02 transient  1.90e-04
-   !   ---------------------------- the gap, a factor 73 wide ---------------
-   !   a converged carrier reload  1.39e-02 (carrier_elem_newton)
-   !   a partly relaxed reload     1.51e-02 (carrier_model_a_newton's IC)
-   !   states that are not winds   4.43e-02 (wasp_he23off), 4.45e-02
-   !                               (wasp_full), 1.63e-01 (hp_front),
-   !                               1.83e-01 (mol_base_handoff), 2.24e-01
-   !                               (carrier_elem_newton's IC), 7.87e-01
-   !                               (lower_profile), 8.22e-01
-   !                               (atomic_elem_newton), 2.40e+00
-   !                               (hydrostatic_column)
-   !
-   ! sqrt(1.90e-04 * 1.39e-02) = 1.6e-03, and 2e-03 to one digit: 10 times
-   ! above the loosest state that is a wind and 7 times below the tightest
-   ! state that is not one, so the two populations of WRITTEN states sit
-   ! decades away from the threshold on either side.
-   !
-   ! THE ITERATES OF A STEADY SOLVE ARE NOT WRITTEN STATES, and they do
-   ! cross it. MEASURED 2026-09-29 on the stalled LHS 1140 b molecular
-   ! continuations (.P1/s2_continuation/wm8_0.3169, wm6_0.3347, kzz7_1.09,
-   ! stage exports of every pass): the solves that converged returned
-   ! d_window = 8.4e-5 to 1.4e-4 with the reservoir owning the level (lower
-   ! ghosts at 232-234 K), and every solve that failed returned
-   ! d_window = 2.000e-3 to 4.1e-3 with the interior owning it (ghosts at
-   ! 1136-1413 K), several of them at 2.000e-3 to four digits. A solve that
-   ! enters at a written state, is pushed across the threshold by its first
-   ! steps and has to cross it again to reach the root meets a residual
-   ! that steps where it crosses; the passes alternated between the two
-   ! for 60 to 80 passes. So the direction is HELD through each steady
-   ! solve (hold_base_contact_direction_from_entry below) and the state
-   ! the solve returns is judged by this rule again.
+   ! The wind window contributes only when it carries nonzero, coherent
+   ! mass flux. Its relative spread is
+   ! d_window = sqrt(<F^2>-<F>^2)/abs(<F>), F=rho*v*r^2,
+   ! averaged over physical cells at r >= r_flux. The standard deviation
+   ! is smooth through changes of the extremal cell, unlike a range.
+   ! The threshold is the measured gap between stationary winds and
+   ! nonstationary states. Hold the chosen contact direction through one
+   ! steady solve; otherwise an iterate crossing the threshold changes
+   ! the boundary residual discontinuously. Judge the returned state again.
+   ! Derivation and measurements: ../EXHALE_v1.00/md/lhs1140b_stationary_L26_20260916.md.
    real*8, save :: base_wind_window_spread  = 2.0d-3
 
-   ! THE AMPLITUDE BELOW WHICH THE WINDOW CARRIES NO FLUX AT ALL.
-   !
-   ! d_window is scale free: it is unchanged when the whole window flux is
-   ! multiplied by a constant, so on a window at rest its shape would still
-   ! decide the branch while its flux says nothing.  The window therefore
-   ! has standing only above a face-mapped Mach number of this size, and
-   ! below it the matched face velocity answers.
-   !
-   ! THE VALUE IS SET SO THAT IT ACTS ON NO STATE THE CODE MEETS.  MEASURED
-   ! face-mapped window Mach numbers: 1.13e-08 on the certified 0.03
-   ! LHS 1140 b state, 7.49e-09 on the stalled 0.02 transient, 3.75e-06 on a
-   ! cold start of the same case, and 3.7e-09 at the
-   ! cold start of the wasp_full regression case, which is the smallest any
-   ! state has been measured at.  1e-12 stands 3700 times below that and 1e4
-   ! below the certified operating point, and the rounding floor of M_wind on
-   ! a window of a few hundred cells is sixteen decades below the flux
-   ! itself.
-   !
-   ! EXHALE_BASE_WIND_AMPLITUDE=<value> overrides it and
-   ! EXHALE_BASE_WIND_SPREAD=<value> the threshold above, which is how the
-   ! sensitivity of the answer to the two scales is measured.
+   ! A scale-free d_window can select a wind branch even as all window
+   ! fluxes approach zero. Below face-mapped window Mach 1e-12, let the
+   ! matched local face velocity determine the contact direction instead.
+   ! The threshold lies below the measured wind and cold-start amplitudes.
+   ! EXHALE_BASE_WIND_AMPLITUDE and EXHALE_BASE_WIND_SPREAD override the
+   ! amplitude and spread thresholds for sensitivity measurements.
+   ! Threshold measurement:
+   ! ../EXHALE_v1.00/md/lhs1140b_stationary_L26_20260916.md.
    real*8, save :: base_wind_window_amplitude = 1.0d-12
    logical, save :: base_branch_options_read = .false.
 
@@ -449,38 +346,13 @@
    !   1 -> the reservoir states its INCOMING ACOUSTIC INVARIANT at rest,
    !                                                      p_b + rho c v_b = p_res.
    !
-   ! THE VALUE IS 0 AND THE ALTERNATIVE IS RECORDED BECAUSE IT WAS MEASURED
-   ! AND REJECTED, not because it is a tuning knob.  Both forms are admissible
-   ! pairs with the entropy and both are exactly well balanced at rest, where
-   ! v_i = 0 makes them identical.  They differ on a MOVING solution, and the
-   ! difference is not small:
-   !
-   !                                weight 0    weight 1
-   !   |R|, acoustic reflection      0.956       0.0024
-   !   R_mom(1)/rho g, at rest       3.53e-4     1.75e-4
-   !   R_mom(1)/rho g, steady wind   1.97e-4     1.32e-1
-   !
-   ! The last row is the one that decides it.  Driving an EXACT steady
-   ! isentropic inflow through the boundary (the manufactured solution of the
-   ! design note's test C, base Mach 1e-3), weight 0 leaves cell 1 at 0.68 of
-   ! the interior truncation error -- the boundary is as accurate as the
-   ! scheme it bounds -- while weight 1 leaves it 460 times ABOVE it.  The
-   ! reason is that p_b + rho c v_b = p_res makes the static pressure at the
-   ! face fall below the reservoir's by rho c v_b, i.e. by a fraction M of the
-   ! pressure, where a real reservoir's Bernoulli drop is rho v^2/2, a
-   ! fraction M^2.  Weight 1 over-states it by 1/M and turns the wind's own
-   ! mass flux into a base pressure error, which the momentum residual then
-   ! multiplies by H/dr.
-   !
-   ! So the reflection weight 0 leaves standing is NOT a defect of this pair;
-   ! it is what any reservoir that holds a STATIC quantity does to sound
-   ! (density instead of pressure gives the same |R|), and the ghost closure
-   ! this module replaced measured 0.953.  Making the boundary transparent to
-   ! sound without corrupting the steady state needs a RELAXATION form, in
-   ! which the incoming amplitude is driven toward the reservoir at a finite
-   ! rate; that form is not a function of the instantaneous state, so it does
-   ! not have a fixed point the steady residual can express.  It is an open
-   ! item, not a setting.
+   ! Use weight 0: fixing static pressure preserves the manufactured
+   ! steady isentropic inflow's momentum balance. Weight 1 reduces
+   ! acoustic reflection but introduces a pressure error linear in Mach
+   ! number where the physical Bernoulli correction is quadratic.
+   ! A transparent boundary would require a time-dependent relaxation,
+   ! which this stationary boundary does not implement.
+   ! Comparison: ../EXHALE_v1.00/md/phaseC_characteristic_base_bc.md.
    real*8, parameter :: base_incoming_invariant_weight = 0.0d0
 
    ! A compatibility relation is a linear relation; far from a solution it can
@@ -623,7 +495,6 @@
 
    contains
 
-   !------------------------------------------!
 
    subroutine report_base_face_state(tag)
    ! What the base face condition did at its last evaluation: which branch,
@@ -659,7 +530,6 @@
         n_base_ghost_equilibrium_unreachable
    end subroutine report_base_face_state
 
-   !------------------------------------------!
 
    subroutine set_base_reservoir(p_level, T_level, nhat_level, r_level)
    ! Record the lower atmosphere's (p, T, composition) at the base level.
@@ -676,7 +546,6 @@
    r_base_level        = r_level
    end subroutine set_base_reservoir
 
-   !------------------------------------------!
 
    subroutine set_base_ghost_counts(n_heavy, n_electron)
    ! The heavy-particle and electron counts of the lower ghost at the
@@ -689,7 +558,6 @@
    base_ghost_counts_measured = .true.
    end subroutine set_base_ghost_counts
 
-   !------------------------------------------!
 
    subroutine set_base_ghost_closure(residual, passes)
    ! What the ghost's H2 partition closed to, from the sweep that solved it.
@@ -700,7 +568,6 @@
    base_ghost_closure_measured = .true.
    end subroutine set_base_ghost_closure
 
-   !------------------------------------------!
 
    subroutine set_base_ghost_fixed_point(move, thermal_move, passes,      &
                                          move_tol, count_tol)
@@ -717,7 +584,6 @@
    base_ghost_fixed_point_measured = .true.
    end subroutine set_base_ghost_fixed_point
 
-   !------------------------------------------!
 
    function ghost_composition_seed_source() result(src)
    ! EXHALE_GHOST_COMPOSITION_SEED, read once for the run and announced only
@@ -736,7 +602,6 @@
    src = ghost_seed_source_env
    end function ghost_composition_seed_source
 
-   !------------------------------------------!
 
    logical function ghost_composition_seed_armed() result(on)
    character(len=256) :: src
@@ -744,7 +609,6 @@
    on  = (len_trim(src) .gt. 0)
    end function ghost_composition_seed_armed
 
-   !------------------------------------------!
 
    subroutine set_state_file_ghost_rows(f_rows)
    ! The lower ghost rows a restart pair carries, kept before load_IC
@@ -755,7 +619,6 @@
    state_file_ghost_row_have = .true.
    end subroutine set_state_file_ghost_rows
 
-   !------------------------------------------!
 
    subroutine set_previous_sweep_ghost_rows(f_rows)
    ! The lower ghost composition the last sweep of this run returned.
@@ -764,7 +627,6 @@
    previous_sweep_ghost_row_have = .true.
    end subroutine set_previous_sweep_ghost_rows
 
-   !------------------------------------------!
 
    subroutine lower_ghost_seed_rows(f_entry, f_seed, source_used)
    ! THE COMPOSITION THE LOWER GHOST CELLS ARE HANDED, per unit mass, in the
@@ -810,7 +672,6 @@
    endif
    end subroutine lower_ghost_seed_rows
 
-   !------------------------------------------!
 
    subroutine read_supplied_ghost_rows(path, ok)
    ! A file of lower ghost rows, in the format write_ghost_seed_rows writes:
@@ -852,7 +713,6 @@
         ' state is used'
    end subroutine read_supplied_ghost_rows
 
-   !------------------------------------------!
 
    subroutine write_ghost_seed_rows(f_rows)
    ! EXHALE_GHOST_SEED_WRITE=<path>, default off: the lower ghost rows as
@@ -882,7 +742,6 @@
         ' composition was written to '//trim(path)
    end subroutine write_ghost_seed_rows
 
-   !------------------------------------------!
 
    subroutine set_base_ghost_state_record(j, ntot, ne_cell, x_h2, x_h2p,  &
                                           x_h3p, x_hehp, x_hii, x_heii,  &
@@ -913,7 +772,6 @@
    ghost_state_recorded          = .true.
    end subroutine set_base_ghost_state_record
 
-   !------------------------------------------!
 
    subroutine report_base_boundary_model(tag)
    ! WHICH LOWER BOUNDARY THIS RUN IS SOLVING, in one block: the model, the
@@ -963,12 +821,10 @@
    endif
    end subroutine report_base_boundary_model
 
-   !------------------------------------------!
 
    function base_boundary_model_id() result(id)
-   ! The identity of the lower boundary this run builds: v5 with the
-   ! well-balanced reconstruction, v4 without it (the comment at
-   ! base_boundary_model_id_equilibrium says what the two are).
+   ! The boundary identity is v7 with well-balanced reconstruction
+   ! and v6 otherwise (base_boundary_model_id_equilibrium).
    character(len=:), allocatable :: id
    if (well_balanced) then
       id = base_boundary_model_id_equilibrium
@@ -977,7 +833,6 @@
    endif
    end function base_boundary_model_id
 
-   !------------------------------------------!
 
    subroutine interior_state_at_level_face(W1, nhat1, T1, Wi, T_i)
    ! The first interior cell carried to the level face r_edg(0): the
@@ -1050,7 +905,6 @@
    Wi(2) = W1(1)*W1(2)*r1*r1/(rho_i*rb*rb)
    end subroutine interior_state_at_level_face
 
-   !------------------------------------------!
 
    subroutine continue_hydrostatic_isentrope(jcomp, nhat, r_a, rho_a, T_a,  &
                                              r_b, rho_b, T_b)
@@ -1116,7 +970,6 @@
 
    end subroutine continue_hydrostatic_isentrope
 
-   !------------------------------------------!
 
    real*8 function isentropic_density_at_pressure(jcomp, rho_a, p_a, T_a,  &
                                                   p_b)
@@ -1136,7 +989,6 @@
    isentropic_density_at_pressure = rho_a*exp(log(p_b/p_a)/gam)
    end function isentropic_density_at_pressure
 
-   !------------------------------------------!
 
    real*8 function characteristic_branch_weight(x)
    ! C1 handover from 0 at x >= 1 to 1 at x <= -1, the cubic smoothstep.
@@ -1161,7 +1013,6 @@
    endif
    end function characteristic_branch_weight
 
-   !------------------------------------------!
 
    subroutine read_base_branch_options()
    ! The three scales of the condition, overridable for a control
@@ -1203,7 +1054,6 @@
    base_contact_per_evaluation = (trim(env) .eq. '1')
    end subroutine read_base_branch_options
 
-   !------------------------------------------!
 
    subroutine wind_window_mass_flux(W, F_wind, d_window, have_F)
    ! The mass flux the state carries AND HOW COHERENT IT IS, read where the
@@ -1279,7 +1129,6 @@
    endif
    end subroutine wind_window_mass_flux
 
-   !------------------------------------------!
 
    subroutine characteristic_base_face_state(W1, nhat1, T1, F_wind,       &
                                              d_window, have_F, Wface, Wi)
@@ -1540,7 +1389,6 @@
 
    end subroutine characteristic_base_face_state
 
-   !------------------------------------------!
 
    subroutine reservoir_state_at_level(rho_res, T_res, p_res)
    ! The lower atmosphere's own state at the base level, which is the face:
@@ -1551,7 +1399,6 @@
    rho_res = base_reservoir_p/(base_reservoir_nhat*base_reservoir_T)
    end subroutine reservoir_state_at_level
 
-   !------------------------------------------!
 
    subroutine reservoir_face_state(Wface)
    ! The reservoir at the face, at rest. This is the whole boundary when the
@@ -1565,7 +1412,6 @@
    Wface(3) = p_res
    end subroutine reservoir_face_state
 
-   !------------------------------------------!
 
    subroutine require_base_face_at_level()
    ! The face the condition is imposed at must be the level the reservoir
@@ -1584,7 +1430,6 @@
    endif
    end subroutine require_base_face_at_level
 
-   !------------------------------------------!
 
    real*8 function base_reservoir_temperature_at(rq) result(T_res)
    ! The temperature of the lower atmosphere at radius rq, on the
@@ -1641,7 +1486,6 @@
                                        rho_q, T_res)
    end function base_reservoir_temperature_at
 
-   !------------------------------------------!
 
    real*8 function hydrostatic_pressure_on_profile(nhat, r_f, p_f, rq)     &
                                                    result(p_q)
@@ -1674,7 +1518,6 @@
    p_q = p_f*exp(s/nhat)
    end function hydrostatic_pressure_on_profile
 
-   !------------------------------------------!
 
    subroutine base_ghost_averages(Wface, Wghost, Wface_lower)
    ! Ghost CELL AVERAGES that are consistent with the face state, and the
@@ -1849,7 +1692,6 @@
 
    end subroutine base_ghost_averages
 
-   !------------------------------------------!
 
    subroutine base_boundary_states(W, Wface, Wghost, Wface_lower)
    ! The single entry point.  Everything the lower boundary states is derived
@@ -1896,7 +1738,6 @@
 
    end subroutine base_boundary_states
 
-   !------------------------------------------!
 
    subroutine hold_base_contact_direction_from_entry()
    ! Called before a steady solve: the direction of the contact is fixed by
@@ -1911,7 +1752,6 @@
    base_contact_evals_other = 0
    end subroutine hold_base_contact_direction_from_entry
 
-   !------------------------------------------!
 
    subroutine hold_base_contact_direction(reverse)
    ! Called before a steady solve that is to run on a STATED side of the
@@ -1925,7 +1765,6 @@
    base_contact_evals_other = 0
    end subroutine hold_base_contact_direction
 
-   !------------------------------------------!
 
    subroutine release_base_contact_direction(held, reverse, n_evals,        &
                                              n_other)
@@ -1943,7 +1782,6 @@
    base_contact_held    = .false.
    end subroutine release_base_contact_direction
 
-   !------------------------------------------!
 
    logical function base_contact_reverses_in_state(W) result(reverse)
    ! The side the rule of characteristic_base_face_state selects on the
@@ -1963,5 +1801,4 @@
    base_contact_hold_on = hold_was_on
    end function base_contact_reverses_in_state
 
-   ! End of module
    end module base_boundary

@@ -310,17 +310,13 @@
       ! advection contributes +rho|v|/dr to the diagonal and the same amount,
       ! negated, to the donor neighbor and to nothing else.
       !
-      ! What is measured, before the clip: the excursion outside [0,1] is
-      ! NEGATIVE in every case tested -- the solve stays strictly inside the
-      ! range and does not reach the clip at all.  -9.2e-4 on the strong-drift
-      ! column of test T14, -8.6e-3 on the pure-helium band of T13, -1.05e-1
-      ! on the LHS 1140 b wind; the lagged form overshot the same T14 column
-      ! by +0.514.  So the clip is an assertion at both ends, and the
-      ! excursions are measured every step and exposed
-      ! (he_fraction_over_one / he_fraction_under_zero) rather than asserted.
+      ! The clip asserts 0 <= X <= 1 after the solve; each step also
+      ! reports the signed pre-clip excursions. The measured bounds and
+      ! former lagged-form overshoot are recorded in
+      ! ../EXHALE_v1.00/md/binary_diffusion_design.md.
       !
-      ! Gated on he_diffusion (default .false.); when off the module is never
-      ! entered, so flag-off runs are byte-identical to before.
+      ! Helium element diffusion is gated on he_diffusion (default
+      ! .false.); species advection also runs when carrier rows are declared.
 
       use global_parameters
       ! The one spherical geometry of this grid: face areas r_edg^2 and the
@@ -462,7 +458,7 @@
       public :: face_mass_flux_cgs
 
       ! THE ELEMENTAL FACE FLUXES OF A STATE, as a radial profile
-      ! (output/element_flux_profile.txt) and, with a lower-atmosphere
+      ! (<output_dir>/element_flux_profile.txt) and, with a lower-atmosphere
       ! profile in use, reduced over the two windows the flux closure reads.
       ! A statement about ONE state, written by the evaluation that measures
       ! that state (the certification) on that state's own Riemann face mass
@@ -798,7 +794,6 @@
 
       contains
 
-      ! ------------------------------------------------------------------ !
 
       subroutine element_diffusion_step(rho, Tcode, f_sp, dt_code,        &
                                         closed_base, Jface_out, Frho_in,  &
@@ -972,9 +967,9 @@
       ! profile at the matching level), so the base cell and the inner ghosts
       ! carry it as a DIRICHLET value and the operator solves rows 2..N
       ! against it.  It is not an inflow condition: a Dirichlet value drives
-      ! a diffusive flux through the base face whichever way the bulk gas
-      ! moves and whether or not it moves at all, and the flux it drives is
-      ! recorded below as this boundary condition's budget entry.  The
+      ! a diffusive flux through the first solved face even with zero
+      ! bulk velocity; face 0 itself has zero diffusive flux. Both faces
+      ! are recorded below in the boundary budget.  The
       ! closed-column tests set closed_base and get a zero-flux inner
       ! boundary instead; production runs never do.
       X_base = m_He_amu*HeH/(m_1 + m_He_amu*HeH)
@@ -1023,10 +1018,9 @@
 
       ! --- diffusive face flux actually carried by the step, with the
       ! coefficients of the matrix that was solved and the new X (test T1b).
-      ! Face 0 is always evaluated: it is the flux the base boundary
-      ! condition above drives, the budget entry that says how much helium
-      ! the lower atmosphere put through the level in this step, and a
-      ! quantity a zero bulk velocity does not make zero.
+      ! Face 0 is evaluated for the boundary record; its diffusive
+      ! flux is zero. The Dirichlet reservoir can drive a diffusive flux
+      ! through the first solved face even when bulk velocity is zero.
       do j = 0, N
          call element_face_flux(Xhe(j), Xhe(j+1), Agrd(j), Bdrf(j),       &
                                 updrf(j), Jf(j), dJl, dJr)
@@ -1196,7 +1190,6 @@
 
       end subroutine element_diffusion_step
 
-      ! ------------------------------------------------------------------ !
 
       subroutine element_base_flux_report(line, evaluation_expected)
       ! The base budget entry written as one line, with the evaluation it
@@ -1250,7 +1243,6 @@
       endif
       end subroutine element_base_flux_report
 
-      ! ------------------------------------------------------------------ !
 
       logical function every_species_is_finite(f_sp) result(ok)
       ! Whether a species vector is a vector of ordinary reals: no NaN and no
@@ -1264,7 +1256,6 @@
       ok = all(f_sp .eq. f_sp) .and. all(abs(f_sp) .le. huge(1.0d0))
       end function every_species_is_finite
 
-      ! ------------------------------------------------------------------ !
 
       pure function element_step_outcome_text(outcome) result(text)
       ! One of the five names element_step_last_status (or a status
@@ -1288,7 +1279,6 @@
       end select
       end function element_step_outcome_text
 
-      ! ------------------------------------------------------------------ !
 
       subroutine metal_hydrogen_ratio_departure(f_sp, qdep, n_vanished)
       ! Departure of the metal/hydrogen nucleus ratio from the reservoir
@@ -1355,7 +1345,6 @@
 
       end subroutine metal_hydrogen_ratio_departure
 
-      ! ------------------------------------------------------------------ !
 
       subroutine relax_element_composition(rho, Tcode, f_sp, Frho,         &
                                            omega, map_distance, nstep,     &
@@ -1715,7 +1704,6 @@
 
       end subroutine relax_element_composition
 
-      ! ------------------------------------------------------------------ !
 
       real*8 function element_composition_distance(Ya, Yb, Yres)          &
              result(d)
@@ -1739,7 +1727,6 @@
       enddo
       end function element_composition_distance
 
-      ! ------------------------------------------------------------------ !
 
       logical function residual_norm_is_admissible(x) result(ok)
       ! A RESIDUAL NORM IS A FINITE NONNEGATIVE NUMBER, and a progress
@@ -1756,7 +1743,6 @@
       ok = (x .eq. x) .and. (abs(x) .le. huge(1.0d0)) .and. (x .ge. 0.0d0)
       end function residual_norm_is_admissible
 
-      ! ------------------------------------------------------------------ !
 
       subroutine element_transport_residual_norm(rho, Tcode, f_sp, Frho,  &
                                  rnorm, jworst, ielem, res_abs, scale_abs,&
@@ -1848,7 +1834,6 @@
       enddo
       end subroutine element_transport_residual_norm
 
-      ! ------------------------------------------------------------------ !
 
       real*8 function median_of(a)
       ! Median of a, by insertion sort of a local copy (the arrays here are
@@ -1876,7 +1861,6 @@
       endif
       end function median_of
 
-      ! ------------------------------------------------------------------ !
 
       subroutine element_nucleus_counts(f_sp, nucH, nucHe)
       ! Element (nucleus) counts per unit mass, over every species that
@@ -1903,7 +1887,6 @@
 
       end subroutine element_nucleus_counts
 
-      ! ------------------------------------------------------------------ !
 
       subroutine carrier_counts(f_sp, carH, carHe, mcarH)
       ! Collision-partner (CARRIER) counts per unit mass of the two
@@ -1949,7 +1932,6 @@
 
       end subroutine carrier_counts
 
-      ! ------------------------------------------------------------------ !
       !  Pair diffusion coefficients (memo 2.6, eqs. 8-10)
       !
       !  All three are the Chapman-Enskog first approximation
@@ -1957,10 +1939,9 @@
       !      Omega^(1,1) = sqrt(kT/2 pi mu) int_0^inf e^-gam^2 gam^5 Q^(1) dgam,
       !      gam^2 = mu g^2/(2 k T),
       !  evaluated with the momentum-transfer cross section Q^(1) of the
-      !  interaction the pair actually has.  n is the total nucleus density in
-      !  every case, so the three are directly comparable and the mixture rule
-      !  below can add their inverses.
-      ! ------------------------------------------------------------------ !
+      !  interaction the pair actually has.  n is the total
+      !  carrier-particle density in every case, so the
+      !  three coefficients use the same density in the mixture rule.
 
       real*8 function hard_sphere_pair_diffusion(TK, ntot, A_s, A_t)
       ! NEUTRAL-NEUTRAL.  Banks & Kockarts (1973), Aeronomy Part B: the
@@ -1980,7 +1961,6 @@
                                    *sqrt(TK)/ntot
       end function hard_sphere_pair_diffusion
 
-      ! ------------------------------------------------------------------ !
 
       real*8 function polarization_pair_diffusion(TK, ntot, alpha_n,       &
                                                   Z_ion, mu_g)
@@ -2034,7 +2014,6 @@
              *sqrt(max(alpha_n*mu_g, 1.0d-60)))
       end function polarization_pair_diffusion
 
-      ! ------------------------------------------------------------------ !
 
       real*8 function coulomb_pair_diffusion(TK, ntot, ne, Z_s, Z_t, mu_g)
       ! ION-ION.  Screened Coulomb, momentum-transfer cross section
@@ -2059,7 +2038,6 @@
              *coulomb_logarithm(TK, ne, zz))
       end function coulomb_pair_diffusion
 
-      ! ------------------------------------------------------------------ !
 
       real*8 function coulomb_logarithm(TK, ne, zz)
       ! ln(Lambda) = ln(lambda_D/b_90) with the Debye length screened by the
@@ -2080,7 +2058,6 @@
                                   /(max(zz, 1.0d0)*e_esu*e_esu)), 1.0d0)
       end function coulomb_logarithm
 
-      ! ------------------------------------------------------------------ !
 
       real*8 function stage_pair_diffusion(TK, ntot, ne, Z_s, m_s, al_s,   &
                                                        Z_t, m_t, al_t)
@@ -2108,7 +2085,6 @@
 
       end function stage_pair_diffusion
 
-      ! ------------------------------------------------------------------ !
 
       subroutine stage_mixture_diffusion(TK, ntot, ne, nsA, yA, ZA, mA,    &
                                          alA, nsB, yB, ZB, mB, alB,        &
@@ -2176,7 +2152,6 @@
 
       end subroutine stage_mixture_diffusion
 
-      ! ------------------------------------------------------------------ !
 
       subroutine carrier_fractions(f_sp, ns, isp_list, yc)
       ! Fraction of an element's collision partners in each of its stages,
@@ -2209,7 +2184,6 @@
 
       end subroutine carrier_fractions
 
-      ! ------------------------------------------------------------------ !
 
       subroutine helium_hydrogen_diffusion(rho, Tcode, f_sp, Deff, Dneut,  &
                                            idom)
@@ -2254,7 +2228,6 @@
 
       end subroutine helium_hydrogen_diffusion
 
-      ! ------------------------------------------------------------------ !
 
       subroutine mean_charges_and_electrons(f_sp, zb1, zbHe, ne_rel)
       ! Mean charge of each component per CARRIER and the free-electron
@@ -2302,7 +2275,6 @@
 
       end subroutine mean_charges_and_electrons
 
-      ! ------------------------------------------------------------------ !
 
       subroutine settling_coefficient(rho, Tcode, f_sp, Gco, dmeff, zb1,   &
                                       eEout, dlnpsi_out, geff_out)
@@ -2311,7 +2283,8 @@
       ! g_eff = -(1/rho) dp/dr of the mixture (module header):
       !
       !   dmeff = (m_He - m_c1) - (Zbar_He - Zbar_c1) eE/(m_H g_eff)  [m_H]
-      !   G     = dmeff m_H g_eff/(k T) + alpha_T dlnT/dr        [1/cm]
+      !   G     = dmeff m_H g_eff/(k T) + alpha_T dlnT/dr
+      !           - dln(psi)/dr                                  [1/cm]
       !
       ! with CARRIER quantities: m_c1 = m_1 mcarH is the mass of component 1
       ! per collision partner (m_1 is its mass per hydrogen nucleus and mcarH
@@ -2430,7 +2403,6 @@
 
       end subroutine settling_coefficient
 
-      ! ------------------------------------------------------------------ !
 
       subroutine mixture_pressure_acceleration(rho, Tcode, f_sp, geff)
       ! The settling acceleration of the mixture,
@@ -2476,7 +2448,6 @@
 
       end subroutine mixture_pressure_acceleration
 
-      ! ------------------------------------------------------------------ !
 
       function relative_settling_mass(rho, Tcode, f_sp) result(dmeff)
       ! Diagnostic: the relative settling mass of helium against component 1,
@@ -2493,7 +2464,6 @@
 
       end function relative_settling_mass
 
-      ! ------------------------------------------------------------------ !
 
       subroutine drift_and_gradient_face_coefficients(rho_phys, Dco, Gco,  &
                                                       rp, Agrd, Bdrf, updrf)
@@ -2553,7 +2523,6 @@
 
       end subroutine drift_and_gradient_face_coefficients
 
-      ! ------------------------------------------------------------------ !
 
       subroutine element_face_flux(Xl, Xr, Agr, Bst, upw, Jf, dJl, dJr)
       ! The helium mass flux through one face and its two slopes,
@@ -2592,7 +2561,6 @@
 
       end subroutine element_face_flux
 
-      ! ------------------------------------------------------------------ !
 
       subroutine element_advective_divergence(Y, Frho, dvF, dvM, Yf_out,   &
                                               Fs_out)
@@ -2642,7 +2610,6 @@
 
       end subroutine element_advective_divergence
 
-      ! ------------------------------------------------------------------ !
 
       subroutine element_advective_face_coefficients(Frho, advj, advm)
       ! The two face coefficients of that divergence, in code units per unit
@@ -2676,7 +2643,6 @@
       enddo
       end subroutine element_advective_face_coefficients
 
-      ! ------------------------------------------------------------------ !
 
       subroutine solve_mass_fraction(Xold, Xhe, rho_phys, dt_phys,          &
                                      Frho, cadvf, Agrd, Bdrf, updrf,        &
@@ -2935,7 +2901,6 @@
 
       end subroutine solve_mass_fraction
 
-      ! ------------------------------------------------------------------ !
 
       subroutine composition_residual(Xold, Xhe, rho_phys, dt_phys,       &
                                       Frho, cadvf, Agrd, Bdrf,            &
@@ -3058,7 +3023,6 @@
 
       end subroutine composition_residual
 
-      ! ------------------------------------------------------------------ !
 
       subroutine project_elements(f_sp, Xhe, msum, scale_metals)
       ! Nonnegative projection of the species vector onto the new element
@@ -3221,7 +3185,6 @@
 
       end subroutine project_elements
 
-      ! ------------------------------------------------------------------ !
 
       subroutine element_transport_residual(rho, Tcode, f_sp, Frho,       &
                                  res_he, sc_he, ok_he,                    &
@@ -3511,7 +3474,6 @@
 
       end subroutine element_transport_residual
 
-      ! ------------------------------------------------------------------ !
 
       subroutine element_nucleus_face_flux(rho, Tcode, f_sp, Frho,        &
                                            Fadv, Jdif, n_el, m_one, n_one)
@@ -3656,7 +3618,6 @@
 
       end subroutine element_nucleus_face_flux
 
-      ! ------------------------------------------------------------------ !
 
       subroutine helium_diffusive_face_flux(rho, Tcode, f_sp, Jdif)
       ! The diffusive helium mass flux of the state (rho, Tcode, f_sp) at
@@ -3702,7 +3663,6 @@
 
       end subroutine helium_diffusive_face_flux
 
-      ! ------------------------------------------------------------------ !
 
       subroutine trace_element_diffusive_face_flux(rho, Tcode, f_sp, JX)
       ! The diffusive MASS flux of every trace metal element relative to the
@@ -3758,7 +3718,6 @@
 
       end subroutine trace_element_diffusive_face_flux
 
-      ! ------------------------------------------------------------------ !
 
       logical function interdiffusion_enthalpy_active()
       ! Whether the energy equation carries the interdiffusion enthalpy
@@ -3770,7 +3729,6 @@
                                        .and. interdiffusion_enthalpy_flux
       end function interdiffusion_enthalpy_active
 
-      ! ------------------------------------------------------------------ !
 
       subroutine component_specific_enthalpies(Tcode, f_sp, hHe, h1,      &
                                                hHgrp, hX)
@@ -3905,7 +3863,6 @@
 
       end subroutine component_specific_enthalpies
 
-      ! ------------------------------------------------------------------ !
 
       subroutine interdiffusion_enthalpy_face_flux(Tcode, f_sp, Jhe, qd,  &
                                                    JX)
@@ -3985,7 +3942,6 @@
 
       end subroutine interdiffusion_enthalpy_face_flux
 
-      ! ------------------------------------------------------------------ !
 
       subroutine interdiffusion_enthalpy_divergence(qd, divq)
       ! The divergence of the face flux qd [erg cm^-2 s^-1] in every cell
@@ -4031,7 +3987,6 @@
 
       end subroutine interdiffusion_enthalpy_divergence
 
-      ! ------------------------------------------------------------------ !
 
       real*8 function interdiffusion_enthalpy_scale()
       ! A CONTINUATION FACTOR, NOT PHYSICS. Measurement key
@@ -4074,7 +4029,6 @@
       interdiffusion_enthalpy_scale = enthalpy_scale
       end function interdiffusion_enthalpy_scale
 
-      ! ------------------------------------------------------------------ !
 
       subroutine interdiffusion_enthalpy_divergence_of_state(rho, Tcode,  &
                                                              f_sp, divq,  &
@@ -4088,7 +4042,7 @@
       ! interdiffusion_enthalpy_divergence -- the same three steps the
       ! marching update takes with the fluxes of its own element step.
       ! Zero, with no arithmetic, unless interdiffusion_enthalpy_active().
-      ! Writes no module state.  qd_out (optional) returns the face flux.
+      ! The scale is cached on first use; qd_out returns the face flux.
       real*8, dimension(1-Ng:N+Ng),           intent(in)  :: rho, Tcode
       real*8, dimension(1-Ng:N+Ng,n_species), intent(in)  :: f_sp
       real*8, dimension(1-Ng:N+Ng),           intent(out) :: divq
@@ -4108,7 +4062,6 @@
 
       end subroutine interdiffusion_enthalpy_divergence_of_state
 
-      ! ------------------------------------------------------------------ !
 
       subroutine reinstate_diffusion_diagnostics(over, under, steps,      &
                                                  resid, trace)
@@ -4131,7 +4084,6 @@
               'module diagnostics were NOT reinstated'
       end subroutine reinstate_diffusion_diagnostics
 
-      ! ------------------------------------------------------------------ !
 
       subroutine trace_element_transport_coefficients(im, f_sp, rho, TK,   &
                      ntot_phys, ne_phys, yH, mcarH, zb1, eEf, geff, dlnpsi, &
@@ -4227,7 +4179,6 @@
 
       end subroutine trace_element_transport_coefficients
 
-      ! ------------------------------------------------------------------ !
 
       subroutine trace_face_coefficients(nHl, Dco, Gco, rp, PL, PR)
       ! Face coefficients of the trace-element flux in the mixing ratio,
@@ -4264,7 +4215,6 @@
       enddo
       end subroutine trace_face_coefficients
 
-      ! ------------------------------------------------------------------ !
 
       subroutine trace_composition_residual(fXold, fX, nHl, dt_phys,     &
                                             PL, PR, Frho, wY, cadvX,      &
@@ -4371,7 +4321,6 @@
 
       end subroutine trace_composition_residual
 
-      ! ------------------------------------------------------------------ !
 
       subroutine solve_trace_element_in_hydrogen(nX, nHl, Dco, Gco, fbase,  &
                                                  dt_phys, rp, Frho,        &
@@ -4544,7 +4493,6 @@
 
       end subroutine solve_trace_element_in_hydrogen
 
-      ! ------------------------------------------------------------------ !
 
       logical function species_advection_active()
       ! Whether any species mass fraction is transported on the face mass
@@ -4555,7 +4503,6 @@
                                  carrier_rows_advected()
       end function species_advection_active
 
-      ! ------------------------------------------------------------------ !
 
       logical function element_rows_advected()
       ! The element mass fractions are transported exactly where the element
@@ -4563,7 +4510,6 @@
       element_rows_advected = he_diffusion .and. thereis_He
       end function element_rows_advected
 
-      ! ------------------------------------------------------------------ !
 
       logical function carrier_rows_advected()
       ! The carriers are transported exactly where the photochemical
@@ -4571,7 +4517,6 @@
       carrier_rows_advected = (n_car .gt. 0)
       end function carrier_rows_advected
 
-      ! ------------------------------------------------------------------ !
 
       subroutine advected_carrier_reset()
       ! Empty the declared set.  The declaration is made once per run, after
@@ -4581,7 +4526,6 @@
       car_ready = .false.
       end subroutine advected_carrier_reset
 
-      ! ------------------------------------------------------------------ !
 
       subroutine advected_carrier_register(isp, base_imposed)
       ! Declare one carrier species of the transported set.  isp is its
@@ -4615,13 +4559,11 @@
 
       end subroutine advected_carrier_register
 
-      ! ------------------------------------------------------------------ !
 
       integer function advected_carrier_count()
       advected_carrier_count = n_car
       end function advected_carrier_count
 
-      ! ------------------------------------------------------------------ !
 
       logical function advected_carrier_state_ready()
       ! Whether the carriers of the step just taken were advected and are
@@ -4630,7 +4572,6 @@
       advected_carrier_state_ready = car_ready
       end function advected_carrier_state_ready
 
-      ! ------------------------------------------------------------------ !
 
       subroutine advected_carrier_fractions(f_sp, fc)
       ! The advected carriers, in the units f_sp counts them in: a number
@@ -4653,7 +4594,6 @@
 
       end subroutine advected_carrier_fractions
 
-      ! ------------------------------------------------------------------ !
 
       subroutine advected_carrier_state_consumed()
       ! The advected composition has been taken up by the operator that
@@ -4663,7 +4603,6 @@
       car_ready = .false.
       end subroutine advected_carrier_state_consumed
 
-      ! ------------------------------------------------------------------ !
 
       subroutine mixture_mass_sum(f_sp, msum)
       ! Mass of the mixture per unit of f_sp, = rho/(n0 mu).  It is the
@@ -4677,7 +4616,6 @@
 
       end subroutine mixture_mass_sum
 
-      ! ------------------------------------------------------------------ !
 
       subroutine mixture_mass_split(f_sp, nucH, nucHe, mass1, msum, mmet)
       ! THE MASS A CELL'S SPECIES ACTUALLY CARRY, split into the two
@@ -4746,7 +4684,6 @@
 
       end subroutine mixture_mass_split
 
-      ! ------------------------------------------------------------------ !
 
       subroutine element_mass_fractions(f_sp, Y)
       ! The transported element mass fractions of a species vector: helium in
@@ -4779,7 +4716,6 @@
 
       end subroutine element_mass_fractions
 
-      ! ------------------------------------------------------------------ !
 
       subroutine species_advection_begin_step(f_sp)
       ! Read the composition the step begins with out of the species vector,
@@ -4811,7 +4747,6 @@
 
       end subroutine species_advection_begin_step
 
-      ! ------------------------------------------------------------------ !
 
       subroutine carrier_mass_fractions(f_sp, Y)
       ! The declared carriers as mass fractions of the mixture, with the
@@ -4855,7 +4790,6 @@
 
       end subroutine carrier_mass_fractions
 
-      ! ------------------------------------------------------------------ !
 
       subroutine species_advection_stage(stage, rho_n, rho_in, rho_new,   &
                                          Frho, dt_loc)
@@ -4922,7 +4856,6 @@
 
       end subroutine species_advection_stage
 
-      ! ------------------------------------------------------------------ !
 
       subroutine species_advection_project(f_sp)
       ! Write the advected element composition into the species vector: the
@@ -4948,7 +4881,6 @@
 
       end subroutine species_advection_project
 
-      ! ------------------------------------------------------------------ !
 
       subroutine project_element_mass_fractions(f_sp, Y)
       ! Write the element TOTALS of a species vector from the element mass
@@ -5018,7 +4950,6 @@
 
       end subroutine project_element_mass_fractions
 
-      ! ------------------------------------------------------------------ !
 
       logical function diffusion_check_on()
       ! EXHALE_DIFFUSION_CHECK=1 turns on the stderr diagnostic written each
@@ -5029,7 +4960,6 @@
       diffusion_check_on = (trim(envv) .eq. '1')
       end function diffusion_check_on
 
-      ! ------------------------------------------------------------------ !
 
       logical function element_flux_profile_on()
       ! Whether the elemental face flux profile of a measured state is
@@ -5040,7 +4970,6 @@
       element_flux_profile_on = diffusion_check_on() .or. lap_in_use
       end function element_flux_profile_on
 
-      ! ------------------------------------------------------------------ !
 
       subroutine face_mass_flux_cgs(Frho, msum, Fcgs)
       ! A face mass flux in the code units of the mass row, returned in
@@ -5066,75 +4995,30 @@
       enddo
       end subroutine face_mass_flux_cgs
 
-      ! ------------------------------------------------------------------ !
 
       subroutine write_element_flux_profile(rho, Tcode, f_sp, Frho)
-      ! Radial profile of the elemental face fluxes of ONE STATE, written to
-      ! ./output/element_flux_profile.txt and replaced at every call.  The
-      ! caller is the certification, which measures every state the run
-      ! writes -- the loaded state of an evaluation, the returned state of a
-      ! stationary solve and the final state of a march -- so after a run the
-      ! file holds the state the run wrote.  The fluxes it writes are:
-      !
+      ! Write one state's elemental face fluxes to
+      ! <output_dir>/element_flux_profile.txt; certification calls this for
+      ! the loaded, returned or final state and replaces the file each time.
       !   F_He(r_f) = 4 pi r_f^2 ( F_rho Y_He + J )         [g/s]
       !   F_H (r_f) = 4 pi r_f^2 ( F_rho (1 - Y_He) - J )   [g/s]
-      !
-      ! A binary mixture has ONE independent diffusive flux, so the hydrogen
-      ! element carries -J against the helium element's +J, and the two
-      ! advective parts add up to the face mass flux.  Both halves come from
-      ! element_nucleus_face_flux, the one public spelling of the element
-      ! flux: Y_He(f) is therefore the reconstructed, limited and upwinded
-      ! face mass fraction the transport rows put on the face, and not a
-      ! one-sided pick of a cell value.  The total mass flux
-      ! 4 pi r_f^2 F_rho is written beside them: at a steady state all three
-      ! are constant with radius, and the comparison of their radial spreads
-      ! is the pass criterion.  dmeff is the face-averaged relative settling
-      ! mass of the ambipolar diagnostic (3 neutral, 2.5 H+ plasma,
-      ! 5/3 He++ plasma).
-      !
+      ! element_nucleus_face_flux supplies the limited, upwind face fraction;
+      ! face_mass_flux_of_state supplies the same signed Riemann F_rho used by
+      ! the mass and element rows. The file also writes 4*pi*r_f^2*F_rho,
+      ! dmeff and the stage-resolved effective and neutral coefficients.
+      ! For a lower-atmosphere profile it reports each element's median flux
+      ! and radial spread over two windows: (a) the overlap up to r(p_top),
+      ! starting at the first face whose five-face mass-flux spread is <10%;
+      ! if none qualifies, start at 1.02 R_p and mark the fallback; an empty
+      ! window stays empty; (b) the stationary escape region r >= r_esc.
+      ! The latter represents the matching flux only in a stationary state.
+      ! The prior cell-centered flux mismatch and its measurement are in
+      ! ../EXHALE_v1.00/md/Update_EXHALE_stage3.md section 10.
       ! THE FACE MASS FLUX THE PROFILE IS WRITTEN ON is Frho, the Riemann
       ! face mass flux of this state that its own mass row differences
       ! (face_mass_flux_of_state), the one the elemental row of the same
       ! state rides on; face_mass_flux_cgs puts it in g cm^-2 s^-1.  The face
-      ! mean of the cell-centred rho and v is not that flux: near the base
-      ! the cell-centred velocity carries a collocated two-cell odd-even mode
-      ! the Riemann flux does not carry, which at faces 1 to 4 of the
-      ! certified LHS 1140 b kzz1e9 He/H 0.55 state puts the face mean at
-      ! -1.07e9, +1.16e8, -3.8e7 and +5.9e7 g/s against a wind the Riemann
-      ! flux carries at 3.93e7 g/s through every face (MEASURED
-      ! 2026-09-24).
-      !
-      ! With a lower-atmosphere profile in use the routine also reduces each
-      ! elemental flux to ONE number -- its median and its relative radial
-      ! spread -- over each of TWO radial windows, for write_resolved_config
-      ! and the flux closure.
-      !
-      ! (a) The OVERLAP window, the interval both models describe.  Its upper
-      !     edge is the radius the profile reaches, r(p_top).  Its lower edge
-      !     is MEASURED rather than assumed: the first face at which the
-      !     5-face moving spread of the face mass flux 4 pi r^2 F_rho falls
-      !     below 10 percent, which leaves out the faces over which the mass
-      !     flux of the state is not yet constant -- a base transient of a
-      !     state that is still marching.  On a stationary state no face is
-      !     left out: the first face the 5-face test can be centred on
-      !     qualifies.  When no face qualifies the edge falls back to
-      !     1.02 R_p and lap_flux_r_lo_measured says so.  An empty window is
-      !     recorded as empty and never replaced by a number from outside it.
-      !
-      ! (b) The STEADY-FLUX window, r >= r_esc, i.e. the [j_min:N] escape
-      !     region the solver uses to declare the wind steady.  At a steady
-      !     state the elemental flux 4 pi r^2 (F_rho Y + J) is independent of
-      !     radius, so the flux measured there IS the flux through the
-      !     matching level.  That identity is why this window is a legitimate
-      !     statement about the handoff and not a different quantity, and it
-      !     is the only window wide enough on a planet whose lower-atmosphere
-      !     column spans ~0.01 R_p.
-      !
-      ! The last three columns are the stage-resolved friction of memo 2.6:
-      ! the effective coefficient D_eff of the cell, the all-neutral
-      ! hard-sphere coefficient of the same cell, their ratio (which is the
-      ! Coulomb suppression where both elements are ionized), and the name of
-      ! the stage pair carrying the largest share of the friction.
+      ! mean of the cell-centered rho and v is not the Riemann flux.
       real*8, dimension(1-Ng:N+Ng),           intent(in) :: rho, Tcode
       real*8, dimension(1-Ng:N+Ng,n_species), intent(in) :: f_sp
       ! The Riemann face mass flux of this state, in the code units of the
@@ -5254,7 +5138,6 @@
 
       end subroutine write_element_flux_profile
 
-      ! ------------------------------------------------------------------ !
 
       subroutine reduce_element_flux_windows(nf, r_f, FH_f, FHe_f, M_f,  &
                                              FHn_f)
@@ -5351,12 +5234,11 @@
 
       end subroutine reduce_element_flux_windows
 
-      ! ------------------------------------------------------------------ !
 
       logical function element_row_terms_on()
       ! EXHALE_ELEMENT_ROW_TERMS=1 writes the helium element row of every
       ! state the certification measures, term by term, to
-      ! output/element_row_terms.txt.  Default off; nothing in the solution
+      ! <output_dir>/element_row_terms.txt.  Default off; nothing in the solution
       ! reads the record, so the run it is switched on in is the run it is
       ! switched off in.
       character(len=8) :: envv
@@ -5364,7 +5246,6 @@
       element_row_terms_on = (trim(envv) .eq. '1')
       end function element_row_terms_on
 
-      ! ------------------------------------------------------------------ !
 
       subroutine element_row_terms_write(fname, terms)
       ! THE HELIUM ELEMENT ROW OF ONE STATE, TERM BY TERM: one line for each
@@ -5429,7 +5310,6 @@
       close(u)
       end subroutine element_row_terms_write
 
-      ! ------------------------------------------------------------------ !
 
       subroutine median_and_spread(a, med, sprd)
       ! Median and relative radial spread (max - min)/|median| of one window.
@@ -5439,15 +5319,12 @@
       sprd = (maxval(a) - minval(a))/max(abs(med), 1.0d-99)
       end subroutine median_and_spread
 
-      ! ------------------------------------------------------------------ !
 
       subroutine report_step(Xhe, rho_phys, mass_resid,                    &
                              Xover, Xunder, qdep, n_vanished)
-      ! Diagnostic written each step (EXHALE_DIFFUSION_CHECK=1): the range of X, the
-      ! largest |J_He + J_1| over the faces, the largest relative change of the
-      ! mixture's own mass sum across the step (mixture_mass_split, the mass
-      ! the operator is not allowed to move), the total helium mass in the
-      ! domain, how far the solve left
+      ! Diagnostic written each step (EXHALE_DIFFUSION_CHECK=1): the range of X,
+      ! the mixture-mass closure error, total helium mass in the domain,
+      ! and how far the solve left
       ! [0,1] before the clamp, and the metal census.
       !
       ! X over / under are the excursions the clamp removed, signed so that a
@@ -5499,5 +5376,4 @@
 
       end subroutine report_step
 
-      ! End of module
       end module binary_element_diffusion

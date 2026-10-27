@@ -2,15 +2,9 @@
    ! Atomic data and rate coefficients of the hydrogen n=2 manifold and of the
    ! Ly-alpha line, in one place.
    !
-   ! Both the H(n=2) statistical-equilibrium solver (excited_hydrogen.f90) and
-   ! the Ly-alpha escape-probability transfer (lya_rt.f90) need the same
-   ! constants (A_2p1s, A_2s1s, the statistical weights, the line opacity
-   ! constant) and the same collisional rate coefficients. They used to carry
-   ! private copies of both. The copies drifted: the reverse-rate expressions
-   ! written out inside n2_populations evaluated their statistical weights
-   ! against shadowing dummy arguments and so disagreed with the identical
-   ! expressions a few lines further down in the same file. Keeping one
-   ! definition here removes that failure mode.
+   ! excited_hydrogen and lya_rt share these atomic constants and rates.
+   ! Keep g1s, g2s, and g2p here: same-named dummy arguments once shadowed
+   ! the statistical weights in the reverse rates.
    !
    ! Collisional excitation and de-excitation 1s <-> 2s, 2p: the one rate
    ! set of Cool_coeff.f90 (CHIANTI v11 / Anderson et al. 2000), which the
@@ -88,7 +82,6 @@
 
    contains
 
-   ! --------------------------------------------------------------- !
    ! Collisional rate coefficients [cm^3 s^-1]. T in K.
 
    real*8 function c1s2s_rate(T)
@@ -197,7 +190,6 @@
         *l_mixing_rate_2s2p(T, ne_l, nHII_l, nHeII_l, nHeIII_l)
    end function l_mixing_rate_2p2s
 
-   ! --------------------------------------------------------------- !
    ! Recombination into the n=2 levels [cm^3 s^-1]. Every case-B
    ! recombination passes through n = 2, so the 2s and 2p sources sum to the
    ! case-B coefficient the ionization balance removes protons with
@@ -226,7 +218,6 @@
    alpha_2p_hydrogen = alpha_B_hydrogen(T) - alpha_2s_hydrogen(T)
    end function alpha_2p_hydrogen
 
-   ! --------------------------------------------------------------- !
 
    real*8 function n2p_destruction_rate(T, ne_l, nHII_l, nHeII_l, nHeIII_l, &
                                         gam_ion_2s, gam_ion_2p)
@@ -259,5 +250,4 @@
 
    end function n2p_destruction_rate
 
-   ! End of module
    end module hydrogen_n2_rates

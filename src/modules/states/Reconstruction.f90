@@ -80,7 +80,6 @@
 
       select case (rec_method)
       
-         !-----------------------------------------------!
          
          case ('PLM')      ! Piecewise linear reconstruction
 
@@ -125,38 +124,17 @@
             ! discontinuity is still nullified.  Eq. (62) is the two
             ! together.
             !
-            ! The floor used here is eps_k = (dr_j q_s,k)^2 for component k,
-            ! with q_s,k the largest |W_k| of cells j-1, j, j+1 of the
-            ! cell-average primitive (for the pressure the cell pressure,
-            ! also under the well-balanced option, where the data the
-            ! stencil reconstructs are departures from the cell's
-            ! equilibrium): the h^2 scaling of Eq. (62) read with the LOCAL
-            ! cell width, which a grid whose spacing varies by a factor of
-            ! 20 admits, and the solution scale of Eq. (65) read with the
-            ! local amplitude of the component, the same floor
-            ! Reconstruct_scalar uses.  A stencil of zeros has tau = 0 and
-            ! b = 0 and takes the linear weights, S = 1.  The face values
-            ! then commute with a rescaling W_k -> c W_k (MEASURED,
-            ! src/tests/weno3_primitive_floor: departure <= 4.3e-16 for
-            ! c = 1e-12 .. 1e12), which the floor eps = dr_j^2 used before
-            ! 2026-10-09 did not (2.3e-4 to 6.0e-3 on smooth and stored
-            ! states, 1.7e3 at a step): in the outer layer, where rho and p
-            ! are 1e-10 in code units against dr_j^2 of 1e-2 to 0.2, that
-            ! floor made the weights linear and a jump there was
-            ! reconstructed with an overshoot of 1/6 of the jump and a
-            ! negative face (md/weno3_primitive_floor_tests_20261008.md).
-            ! On smooth data both floors keep the third order of the face
-            ! values without the well-balanced option (rate 3.00-3.01).
-            ! WITH `Well balanced: True` THE PRESSURE FACE VALUES ARE
-            ! SECOND ORDER (rate 1.99-2.06 on a heated and on a hydrostatic
-            ! profile, MEASURED, for either floor): the reconstruction of
-            ! the departure from each cell's own equilibrium, continued
-            ! through the face with the cell's density on one side and the
-            ! neighbour's on the other, is the second-order well-balanced
-            ! construction of Kaeppeli and Mishra (2016, A&A 587, A94); the
-            ! floor does not set that.  Neither floor keeps a face positive
-            ! across a jump of ratio above about 1/dr^2;
-            ! positivity_limited_faces remains necessary.
+            ! Use eps_k=(dr_j*q_s,k)^2, where q_s,k is the largest
+            ! |W_k| in cells j-1,j,j+1. This local, solution-scaled floor
+            ! follows Yamaleev & Carpenter (2009), Eq. 65, on a stretched
+            ! grid, and preserves W_k -> c*W_k scaling of the face values.
+            ! The prior dr_j^2 floor could make outer low-amplitude weights
+            ! linear across a jump and produce a negative face; the
+            ! positivity limiter remains necessary across strong jumps.
+            ! Smooth primitive face values are third order without well
+            ! balancing. With `Well balanced: True`, pressure face values
+            ! are second order by the Kaeppeli & Mishra (2016) construction.
+            ! Current local-floor decision: ../EXHALE_v1.00/md/Update_EXHALE_stage3.md section 127.
             !
             ! WHAT THIS IS NOT.  The ESWENO scheme of that paper is its
             ! Eq. (9) with P, Q and S of Eqs. (31) and (35) to (37)
@@ -330,10 +308,8 @@
       ! departures of the face states the two steps above rewrote.
       if (well_balanced) call well_balanced_face_departures(WL_out,WR_out)
 
-      ! End of subroutine
       end subroutine Reconstruct
 
-      !-----------------------------------------------!
 
       subroutine hydrostatic_equilibrium_of_each_cell(u_in)
       ! The two face values of the local hydrostatic equilibrium of every
@@ -384,7 +360,6 @@
 
       end subroutine hydrostatic_equilibrium_of_each_cell
 
-      !-----------------------------------------------!
 
       subroutine well_balanced_face_departures(WL,WR)
       ! Finish the well-balanced face data: the equilibrium mismatch of every
@@ -421,7 +396,6 @@
 
       end subroutine well_balanced_face_departures
 
-      !-----------------------------------------------!
 
       subroutine weno3_geometry_coefficients(C1,C2,D1,D2)
       ! Grid-dependent coefficients of the WENO3 reconstruction: the two
@@ -458,10 +432,8 @@
          D2(j) = dV(j-1)/(dV(j) + dV(j+1))
       enddo
 
-      ! End of subroutine
       end subroutine weno3_geometry_coefficients
 
-      !-----------------------------------------------!
 
       subroutine Reconstruct_scalar(q,qL,qR)
       ! Reconstruct ONE cell-centered scalar to the two sides of every face
@@ -559,148 +531,31 @@
 
       end select
 
-      ! End of subroutine
       end subroutine Reconstruct_scalar
 
-      !-----------------------------------------------!
 
       subroutine positivity_limited_faces(u_in,WL,WR)
 
-      ! Scale each face state CONTINUOUSLY toward its own cell average, by the
-      ! largest factor that keeps rho > 0 and p > 0 there.
-      !
-      !     W_face  <-  W_avg + theta ( W_rec - W_avg ),   theta in [0,1]
-      !     theta   =   min over rho and p of  (q_avg - eps)/(q_avg - q_rec)
-      !
-      ! ATTRIBUTION, and where this departs from what it cites. The idea is
-      ! the linear scaling limiter of Zhang and Shu (2010, J. Comput. Phys.,
-      ! 229, 8918; doi:10.1016/j.jcp.2010.08.016; the publisher PDF is
-      ! references/Zhang_2010JCP_229_8918.pdf), their Section 2.2. This is
-      ! NOT their limiter, and the differences matter:
-      !
-      !   * They scale the CONSERVED vector w = (rho, m, E), in two steps:
-      !     density first about the cell average, their Eqs. (2.4) and (2.5)
-      !     with theta_1 = min{(rho_avg - eps)/(rho_avg - rho_min), 1}, then
-      !     the whole vector, their Eqs. (2.10) and (2.11), with theta_2 the
-      !     root t_eps of the QUADRATIC in their Eq. (2.12),
-      !     p[(1 - t) w_avg + t w_rec] = eps. This routine scales the
-      !     PRIMITIVE vector (rho, v, p) in one step, so its theta is the
-      !     root of a linear equation in p and not of their quadratic.
-      !     The two are not the same number. Along their path rho, m and E
-      !     are linear in t and p(t) = (gamma-1)(E - m^2/(2 rho)) is CONCAVE
-      !     in t, so p(t) is never below the straight line between p_avg and
-      !     p_rec that this routine interpolates: at equal eps this theta is
-      !     the smaller of the two, that is the more restrictive one, never
-      !     the less safe one. Measured at a Mach 60 state with eps = 1e-3
-      !     p_avg: theta = 0.85629 here against t_eps = 0.94910 from their
-      !     Eq. (2.12).
-      !
-      !   * Their theta is one number per CELL, the minimum over that cell's
-      !     quadrature points, which is what leaves the cell average of the
-      !     limited polynomial equal to w_avg (the conservativity property of
-      !     their Section 2.2). Here theta is one number per FACE STATE, so a
-      !     cell whose two ends are scaled by different factors no longer
-      !     reconstructs to its own average. Measured departure on a cell
-      !     with both ends limited: 8.3e-2 of the cell average, against
-      !     round-off if the cell's minimum theta is used for both ends.
-      !
-      !   * Their floor is absolute, eps = 10^-13 in their computations and
-      !     eps = min_j {10^-13, rho_avg, p(w_avg)} in their implementation
-      !     flowchart. Here it is relative, one unit in the last place of the
-      !     cell average.
-      !
-      ! What carries over is their Lemma 2.5: the limited value is a convex
-      ! combination of an admissible cell average with the reconstruction, so
-      ! it stays admissible, and no quadrature enters that argument. Their
-      ! Theorem 2.1 does NOT carry over. It concludes that the next CELL
-      ! AVERAGE is admissible, and its hypotheses are the N-point Legendre
-      ! Gauss-Lobatto set of their Eq. (1.7) with 2N - 3 >= k (a
-      ! finite-volume reconstruction to two face values supplies only N = 2,
-      ! which covers the k = 1 of PLM and not the k = 2 of WENO3; their
-      ! Remark 2.6 names finite-volume WENO as the open case) and the CFL
-      ! condition of their Eq. (2.1), which nothing here imposes.
-      !
+      ! Keep reconstructed primitive face states rho and p positive by scaling
+      ! each toward its own admissible cell average:
+      ! W_face = W_avg + theta*(W_rec - W_avg), 0 <= theta <= 1.
+      ! theta is the smaller linear floor crossing for rho and p; the floor
+      ! is epsilon(1.0d0) times the corresponding cell average and the final
+      ! values are clamped to that floor to survive cancellation rounding.
+      ! This follows the convex scaling idea of Zhang & Shu (2010), section
+      ! 2.2, but uses primitive variables and a separate theta for each face;
+      ! their cell-average positivity theorem does not apply here. PLM and
+      ! WENO3 extrapolation is valid on smooth stencils and does not itself
+      ! guarantee positive face states. An inadmissible cell average cannot be
+      ! repaired here. The outermost face uses the last cell average.
+      ! The continuous limiter replaced a discontinuous switch; measurements
+      ! and the derivation are in ../EXHALE_v1.00/md/p49_front_energy_mode.md.
       ! Pressure positivity of the SCALED state is not at issue in this form:
       ! p is itself one of the scaled variables, so the limited face carries
       ! the pressure the scaling put there and its internal energy
       ! p/(gamma-1) has the same sign. The nonlinear map that forces their
       ! quadratic has no counterpart here.
       !
-      ! WHY IT IS CONTINUOUS AND WHY THAT IS THE POINT (docs/Update_EXHALE_stage1.pdf
-      ! section 138; the measurement is P49). This routine used to be a hard
-      ! reconstructed rho or p crossed zero, the WHOLE face pair was replaced
-      ! by the two cell averages. That is a STEP DISCONTINUITY of the residual
-      ! F(Y), and it is what stopped the molecular reload's steady solve.
-      ! Measured on the hot Uranus hand-off:
-      ! the WENO3 left density at the face of cell 273 (r = 1.2324 R_p) sat at
-      ! 2.50e-15 against cell averages of 1e-4, eleven orders below and
-      ! positive by a hair, so the iterate sat exactly on the switching
-      ! surface. Raising the neighboring cell's density by one part in 1e9
-      ! tipped it through zero, the face density jumped to 4.17e-6, the mass
-      ! residual of cell 273 jumped by a factor 97, and the merit jumped from
-      ! 202.5 to 945.1, BY THE SAME FACTOR 4.67 at every step size from 1e-2
-      ! to 1e-9, which is a jump and not a slope. Every direction the solver
-      ! could build put its largest scaled component at that face, so all of
-      ! them ascended: the Newton/PTC step at every damping over six decades
-      ! and all ten damped Gauss-Newton steps, by factors 4.7 to 27.8. With
-      ! the scaling above the face value crosses zero continuously instead,
-      ! and the merit has a slope there rather than a step.
-      !
-      ! THE FLOOR eps. The switch this replaces tested q > 0, so its floor was
-      ! zero; eps = 0 here would scale the face value to EXACTLY zero and hand
-      ! the HLLC solver sqrt(gamma p/0). The floor used is therefore the
-      ! smallest one that is not a chosen number: one unit in the last place of
-      ! the cell average, eps = epsilon(1.0d0)*q_avg. It introduces no
-      ! dimensional constant and no tuning, and the residual jump that survives
-      ! at the crossing is 2.2e-16 of the cell average, round-off, against
-      ! the factor 1.7e9 the hard switch made.
-      !
-      ! THE FLOOR IS DELIVERED BY A CLAMP AFTER THE UPDATE. eps is one unit
-      ! in the last place of q_avg, and q_avg + theta (q_rec - q_avg) is then
-      ! a cancellation whose result is decided by the rounding of the product
-      ! rather than by theta: MEASURED over 200000 reconstructed values that
-      ! cross zero, the bare update is EXACTLY ZERO for 1013 of them and never
-      ! negative.
-      ! Zero is the value this floor exists to avoid: a zero face density
-      ! divides in v = m/rho and in the sound speed of Num_Fluxes.f90. The
-      ! scaled density and pressure are therefore clamped to eps after the
-      ! update, q <- max(q_avg + theta (q_rec - q_avg), eps), the same number
-      ! in exact arithmetic (2026-09-07; moves only runs in which the limiter
-      ! fired, and those by one ulp except where the zero would have divided).
-      !
-      ! BYTE-IDENTITY. A face whose reconstruction is admissible has theta = 1
-      ! and is NOT rewritten (W_avg + 1*(W - W_avg) is not bitwise W), so every
-      ! run in which the guard never fired is unchanged to the bit. Runs in
-      ! which it did fire move, and by more than the floor: the old switch
-      ! replaced both states of a face and this scales only the offending one.
-      !
-      ! Validity of the reconstruction, and why the limiter is needed. PLM and
-      ! WENO3 both extrapolate the PRIMITIVE variables (rho, v, p) to a face
-      ! with slopes taken from the neighboring cells, which is a valid
-      ! approximation only while the solution varies smoothly across the
-      ! stencil. It has no positivity property of its own: a face value can
-      ! cross zero while every cell average on the stencil is positive. The
-      ! state that does it here is a hypersonic layer, where the pressure the
-      ! scheme recovers as p = (gamma-1)(E - rho v^2/2) is the difference of two
-      ! nearly equal numbers: at Mach 60 the thermal pressure is 2e-4 of the
-      ! total energy density, so a reconstruction across the neighboring jump
-      ! tips it negative and the HLLC sound speed sqrt(gamma p/rho) takes the
-      ! square root of it (Num_Fluxes.f90; the abort of TO_BE_DONE item (O)).
-      !
-      ! The cell averages are the only states the update guarantees admissible,
-      ! so the repair is built from them. Scaling the whole increment keeps the
-      ! face state a convex combination of the reconstruction and an admissible
-      ! state, so it is the same scheme at reduced order, not a change of the
-      ! equations.
-      !
-      ! Face j takes its left state from cell j and its right state from cell
-      ! j+1, which is the pairing the two loops below use. The outermost face
-      ! has no cell j+1, so it falls back on the last cell average, the
-      ! zero-gradient state the outer BC reconstructs to in any case.
-      !
-      ! If a CELL AVERAGE is itself non-positive the state is unphysical before
-      ! any reconstruction and nothing here can repair it; that face is left as
-      ! it is, and the NaN detector of the marching loop reports it.
 
       real*8, dimension(3,1-Ng:N+Ng), intent(in)    :: u_in
       real*8, dimension(3,1-Ng:N+Ng), intent(inout) :: WL,WR
@@ -752,11 +607,9 @@
          endif
       enddo
 
-      ! End of subroutine
       end subroutine positivity_limited_faces
 
 
-      !-----------------------------------------------!
 
       double precision function positivity_scaling(rho_f, p_f, rho_a, p_a)  &
                                                                  result(th)
@@ -774,7 +627,6 @@
       th = min(th, positive_variable_scaling(p_f,   p_a))
       end function positivity_scaling
 
-      !-----------------------------------------------!
 
       double precision function positive_variable_scaling(q_f, q_a) result(th)
       ! One variable's share of the scaling: the theta that puts
@@ -799,5 +651,4 @@
       end function positive_variable_scaling
 
 
-      ! End of module
       end module Reconstruction_step

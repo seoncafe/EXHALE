@@ -3,9 +3,11 @@
       double precision tol
       double precision x(n),fvec(n),wa(lwa),params(*)
       external fcn
-      !     **********
       
       !     subroutine hybrd1
+      !     The MINPACK synopsis below retains its original callback form.
+      !     EXHALE callbacks also receive params as their final argument.
+      !     The EXHALE hybrd1 call also has a final params argument.
       
       !     the purpose of hybrd1 is to find a zero of a system of
       !     n nonlinear functions in n variables by a modification
@@ -29,10 +31,8 @@
       !         subroutine fcn(n,x,fvec,iflag)
       !         integer n,iflag
       !         double precision x(n),fvec(n)
-      !         ----------
       !         calculate the functions at x and
       !         return this vector in fvec.
-      !         ---------
       !         return
       !         end
       
@@ -86,7 +86,6 @@
       !     argonne national laboratory. minpack project. march 1980.
       !     burton s. garbow, kenneth e. hillstrom, jorge j. more
       
-      !     **********
       integer index,j,lr,maxfev,ml,mode,mu,nfev,nprint
       double precision epsfcn,factor,one,xtol,zero
       data factor,one,zero /1.0d2,1.0d0,0.0d0/

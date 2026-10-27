@@ -47,8 +47,6 @@
   	fvec(1) =  xhi_hist - x(1)					&
   		    + c1*(-(ghi+ionhi*xe*n_h)*xhi + ahii*xhii*xe*n_h)
   		   
-	! End of subroutine
 	end subroutine adv_implicit_H
 	
-	! End of module
 	end module System_implicit_adv_H

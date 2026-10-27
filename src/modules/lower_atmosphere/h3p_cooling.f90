@@ -17,31 +17,18 @@
       !
       ! the 4 pi being the one conversion from the emission into a steradian.
       !
-      ! WHY NOT THE MILLER ET AL. (2013) FIT.  The LTE function of Miller,
-      ! Stallard, Tennyson & Melin (2013, J. Phys. Chem. A 117, 9770,
-      ! Table 5) lies above MiZATeP by a factor 1.10 at 900 K, 1.48 at
-      ! 1500 K, 1.89 at 2000 K and 2.1 at 3000 K, and it is the outlier: the
-      ! NMT line list those authors say they summed, summed in LTE with their
-      ! own partition function, agrees with MiZATeP to 1 per cent from 300 to
-      ! 2000 K and falls below their curve by nearly the same factors
-      ! there (0.532 at 2000 K); their own computed Table 4 values carry
-      ! the excess, so it is not the fit
-      ! (md/h3p_cooling_cause_20261010.md; Mizus et al. 2017 Table 7 lists
-      ! the ratio as 0.529 at 2000 K).  From 50 to 700 K the two agree to
-      ! 4 per cent.
+      ! Miller et al. (2013) Table 5 exceeds the MiZATeP LTE function
+      ! above 700 K; the line-list comparison is recorded in
+      ! ../EXHALE_v1.00/md/h3p_cooling_cause_20261010.md.
       !
       ! INTERPOLATION BETWEEN THE NODES.  ln W is linear in 1/T between
       ! adjacent 1 K nodes, i.e. each interval is a Boltzmann factor
       ! W = W_k exp[-Theta_k (1/T - 1/T_k)], the form an emission sum
       ! weighted by exp(-E_u/kT) has locally.  The table rises strictly
       ! (checked by the generator), so the interpolant is monotone and
-      ! cannot overshoot a node.  MEASURED at every half-integer temperature
-      ! from 20.5 to 4999.5 K against the full MiZATeP emission sum divided
-      ! by its summed partition function: interpolation error at most
-      ! 4.2e-4 (30-100 K), 2.3e-4 (100-300 K), 1.2e-4 (20-30 K) and 6e-7
-      ! above 300 K; the file's own nodes stand within 2.7e-4 of that sum
-      ! (1e-4 above 30 K).  ln W linear in T instead would be 4.3e-3 at
-      ! 20-30 K and 1.2e-3 at 30-100 K.
+      ! cannot overshoot a node. The half-integer interpolation errors and alternative interpolant
+      ! are in ../EXHALE_v1.00/md/h3p_cooling_mizatep_implementation_20261010.md
+      ! section "Interpolation and domain".
       !
       ! TEMPERATURE DOMAIN.  The table runs from 20 K, the lowest
       ! temperature of Mizus et al. (2017) Table 7 (the file's rows below
@@ -203,7 +190,6 @@
 
       contains
 
-      ! ------------------------------------------------------------------ !
 
       ! Zero the evaluation history above, so that what follows is counted
       ! on its own.
@@ -217,7 +203,6 @@
       h3p_evaluations_nonfinite_collider = 0
       end subroutine h3p_reset_domain_records
 
-      ! ------------------------------------------------------------------ !
 
       ! Whether x is an ordinary real: no NaN and no infinity.  NaN fails
       ! every comparison including with itself and an infinity exceeds the
@@ -276,7 +261,6 @@
       endif
       end function h3p_collider_domain
 
-      ! ------------------------------------------------------------------ !
 
       ! LTE emission of one H3+ molecule into one steradian, W(T)
       ! [W molecule^-1 sr^-1], from the MiZATeP cooling function with the
@@ -323,7 +307,6 @@
           *joule_per_erg
       end function h3p_lte_emission_mizatep
 
-      ! ------------------------------------------------------------------ !
 
       ! Non-LTE departure factor s(T, n_H2), Miller+2013 Table 6, a power law
       ! in n_H2 between the tabulated columns and linear in T between the
@@ -421,7 +404,6 @@
       s    = (1.d0-ft)*s_cooler_row + ft*s_warmer_row
       end function s_table
 
-      ! ------------------------------------------------------------------ !
 
       ! Volumetric H3+ cooling rate [erg s^-1 cm^-3]:
       !   Lambda = n_H3+ * 4 pi * W(T) * s(T,n_H2) * 1e7.
@@ -431,7 +413,6 @@
                 *h3p_nonlte_factor(T,nH2)*1.0d7
       end function h3p_cooling_rate
 
-      ! ------------------------------------------------------------------ !
 
       ! NET H3+ infrared cooling [erg s^-1 cm^-3]: the emission above minus
       ! the absorption of the thermal infrared radiation of the lower
@@ -513,5 +494,4 @@
                              *h3p_nonlte_factor(T,nH2)*W_dil*1.0d7
       end function h3p_net_cooling_rate
 
-      ! End of module
       end module h3p_cooling

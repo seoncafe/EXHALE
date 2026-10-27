@@ -1,42 +1,14 @@
       module attempted_step
-      ! THE ATTEMPTED-STEP CONTROLLER: one checkpoint, one trial, one
-      ! adoption boundary.
+      ! Checkpoint, test, and adopt one marching step. EXHALE_main performs
+      ! rows 1-12 before the adoption boundary preceding update_map_end_step.
+      ! A refused trial restores physical state and accumulations, then
+      ! reduces dt subject to a retry cap. Attempt counts and diagnostic
+      ! extrema are saved but not restored; they describe all trials.
       !
-      ! The marching loop of EXHALE_main takes one step as fourteen
-      ! operations in a fixed order. Rows 1 through 12
-      ! change the physical state; the adoption boundary sits immediately
-      ! before update_map_end_step, which is the first point at which the
-      ! state of the step is complete. This module owns
-      !
-      !   (a) the checkpoint of everything rows 1 to 12 write, taken before
-      !       row 1 and restored on a rejected attempt;
-      !   (b) the acceptance predicate evaluated at the boundary;
-      !   (c) the step-size policy of a rejection and the retry cap;
-      !   (d) the counters of the outer loop, kept apart from the counters
-      !       of the nested hydrodynamic retry.
-      !
-      ! WHAT THIS MODULE DOES NOT CLAIM. A demonstration that the controller
-      ! restores state is a demonstration about memory, not about physics.
-      ! The energy instrument below closes the THERMAL budget of the source
-      ! step; the Shapiro filter of row 12 still alters the adopted state
-      ! with no source behind it, so a step the controller adopts while the
-      ! filter is active is a step that was RESTORABLE AND ADMISSIBLE, not
-      ! a step whose sources balance. That is the remaining part of the
-      ! interim contract of the design document, and it
-      ! ends when the energy the filter removes is budgeted. No tolerance
-      ! anywhere is loosened to make it pass.
-      !
-      ! THE THREE COUNTER CLASSES.
-      !   1 physical accumulations   restored on a rejected attempt, so a
-      !                              rejected trial leaves no contribution:
-      !                              the CO ceiling record, t_phys,
-      !                              n_steps_accepted, the physical ledger
-      !                              family.
-      !   2 attempt statistics       never restored: they count attempts.
-      !   3 diagnostic extrema       kept, not restored, and never reported
-      !                              as a property of the adopted state.
-      ! Classes 2 and 3 are SAVED here anyway, so that the tests can assert
-      ! that they did not move back; the restore skips them.
+      ! The thermal source budget is checked here. When the Shapiro filter
+      ! is active, it changes the adopted state without a budgeted source;
+      ! adoption then establishes restorable, admissible state only. The
+      ! filter's energy change remains an open budget requirement.
 
       use, intrinsic :: ieee_arithmetic, only: ieee_is_finite
       use global_parameters
@@ -113,7 +85,6 @@
       implicit none
       private
 
-      ! ---------------------------------------------------------------- !
       ! THE FOURTEEN OPERATIONS, in a fixed numbering. A
       ! rejection names the operation it came from with these.
       integer, parameter, public :: as_op_dt          =  0
@@ -136,7 +107,6 @@
       integer, parameter, public :: as_op_boundary    = 13
       integer, parameter, public :: as_op_last        = 13
 
-      ! ---------------------------------------------------------------- !
       ! THE RETRY CAP AND THE STEP-SIZE POLICY.
       !
       ! n_step_retry_max = 8 gives the outer controller a floor of dt/2^8,
@@ -164,7 +134,6 @@
       ! which nothing happens cannot divide by zero.
       real*8, parameter, public :: as_scale_floor = 1.0d-300
 
-      ! ---------------------------------------------------------------- !
       ! WHY AN ATTEMPT WAS REFUSED.
       ! Codes 0 to 9 ARE certification's cert_step_* codes, so that the
       ! controller and the evaluator name a refusal with one number. 10,
@@ -197,38 +166,14 @@
       ! the energy row summed over the grid.
       integer, parameter, public :: as_reject_source_energy = 14
 
-      ! ---------------------------------------------------------------- !
-      ! THE CHECKPOINT. Membership rule: an item is in it if some operation
-      ! of rows 1 to 12 writes it and some later read of it, in this step
-      ! or a later one, precedes a write. Quantities row 3 rebuilds from u
-      ! and f_sp before anything reads them (W, rho, v, p, T, the species
-      ! densities, n_e, n_tot) are NOT saved; the tests hash them so that
-      ! this is a checked property and not an assumption.
-      !
-      ! FIVE MORE QUANTITIES ARE REBUILT AND NOT SAVED, and they are named
-      ! here because each of them is module state that an attempt writes and
-      ! the next one reads, so the rule alone does not say which side of it
-      ! they fall on. All five are FUNCTIONS OF (u, f_sp), which is what
-      ! makes rebuilding them the right answer: saving them would store a
-      ! second copy of information the checkpoint already holds, and two
-      ! copies of one thing can disagree.
-      !
-      !  * the caloric composition of caloric_eos (caloric_mixture_active,
-      !    nk_per_mass, x_h2, molecular_cell), a function of f_sp alone
-      !    (both arrays are ratios of number densities), refreshed by
-      !    get_species_densities;
-      !  * the lower boundary's face states in BC_Apply (base_face_W,
-      !    base_face_lower_W), functions of the first interior cell average
-      !    and that composition, refreshed by Apply_BC.
-      !
-      ! rebuild_state_from_checkpoint rebuilds both, in that order and
-      ! BEFORE the primitive state, because the pressure map reads the
-      ! first and the boundary reads the second. A restore that left either
-      ! standing would hand the next attempt a base face and a pressure
-      ! belonging to the refused one: MEASURED at 9.1162e-05 relative on
-      ! the base cell velocity of backup/regression/hydrostatic_column
-      ! before the order was stated, and at zero after
-      ! (attempted_step suite row rejected_pass_leaves_no_state_behind).
+      ! Checkpoint an item only if a step operation writes it and a later
+      ! read precedes its next write. The conserved u and fractions f_sp
+      ! are saved; row 3 rebuilds W, rho, v, p, T and species densities.
+      ! Rebuild the caloric composition from f_sp before U_to_W, then
+      ! Apply_BC to restore base_face_W and base_face_lower_W from the
+      ! restored interior. These derived arrays are not separate saved
+      ! state; rollback tests hash them after reconstruction.
+      ! See ../EXHALE_v1.00/md/Update_EXHALE_stage2.md section 7 (N16d).
       type, public :: attempted_step_checkpoint
          logical :: taken = .false.
 
@@ -330,7 +275,6 @@
          integer :: n_conduction_floor_cells = 0
       end type attempted_step_checkpoint
 
-      ! ---------------------------------------------------------------- !
       ! WHAT THE ACCEPTANCE PREDICATE FOUND, at one adoption boundary.
       type, public :: attempted_step_verdict
          logical :: accepted = .true.
@@ -385,7 +329,6 @@
          real*8  :: identity_scale    = 0.0d0
       end type attempted_step_verdict
 
-      ! ---------------------------------------------------------------- !
       ! OUTER-LOOP COUNTERS, kept apart from the nested hydrodynamic
       ! retry's (class 2: attempt statistics, never restored).
       ! EACH LOOP COUNTS ITS OWN ATTEMPTS AND NOTHING ELSE: an outer
@@ -406,7 +349,6 @@
       ! certification reads them to refuse a state whose history contains
       ! one, and it cannot use this module.
 
-      ! ---------------------------------------------------------------- !
       ! A PRESCRIBED STEP IN SECONDS in place of the CFL step, read by the
       ! marching loop of EXHALE_main. It exists so that one interval can be
       ! covered by one step, by two, by four and by eight from the same
@@ -414,7 +356,6 @@
       ! successive differences; 0 keeps the CFL step.
       real*8, save, public :: as_fixed_dt_seconds = 0.0d0
 
-      ! ---------------------------------------------------------------- !
       ! THE TWO MARKS OF THE SOURCE STEP. The marching loop takes the
       ! thermal energy of the grid immediately before the coupled source
       ! step and immediately after it; the difference is what the source
@@ -433,7 +374,6 @@
       logical, save :: marked_before_sources = .false.
       logical, save :: marked_after_sources  = .false.
 
-      ! ---------------------------------------------------------------- !
       ! THE STEP-DOUBLING INTEGRATION-ERROR ESTIMATE. Every
       ! n_err_every accepted steps the same step
       ! is retaken from the same checkpoint as two of dt/2, and
@@ -465,7 +405,6 @@
       ! argued.
       real*8,  save, public :: error_estimate_seconds = 0.0d0
 
-      ! ---------------------------------------------------------------- !
       ! THE ROW CLASSES OF THE ESTIMATE. A conservative density, a species
       ! fraction, an element mass fraction and a temperature are different
       ! physical quantities held in different units, so one absolute floor
@@ -499,65 +438,14 @@
             'the transported element fractions ',                          &
             'the electron fraction and T       ' ]
 
-      ! THE ORDER OF EACH ROW CLASS IS THE ORDER OF THE INTEGRATOR THAT
-      ! CARRIES IT, AND THE ESTIMATOR CONVENTION.
-      !
-      ! The trajectory the run keeps is the FULL step, the one the
-      ! acceptance predicate was evaluated on. For a class whose update has
-      ! order p the leading local error of one step of length H is
-      ! C H^(p+1), so
-      !
-      !   Delta = q(H) - q(H/2 twice) = C H^(p+1) (1 - 2^-p),
-      !
-      ! and the local error of the RETAINED full step is Delta/(1 - 2^-p),
-      ! which is err_full_step_factor below. (Had the two-half result been
-      ! retained the factor would be 1/(2^p - 1) instead: the two
-      ! conventions describe different states.)
-      !
-      ! p IS NOT ONE NUMBER FOR THE WHOLE UPDATE, because the classes are
-      ! not advanced by one integrator:
-      !
-      !  * the three conservative rows ARE the three-stage Runge-Kutta of
-      !    the hydrodynamics, whose local error is H^4, and the electron
-      !    fraction and the temperature are algebraic functions of that
-      !    update and inherit its order. p = 3 for both classes.
-      !  * the transported species fractions and the transported element
-      !    mass fractions are advected in a stage composed with the source
-      !    at FIRST order, and the splitting error, not the stage, is what
-      !    their difference measures. p = 1 for both classes.
-      !
-      ! MEASURED on backup/regression/hydrostatic_column in physical mode,
-      ! one macrostep refused at every interval the policy offers so that
-      ! the same entry state is retaken at H, then 0.2 H, then 0.04 H, with
-      ! every class measured at each. The ratios
-      ! log(Delta_i/Delta_i+1)/log(H_i/H_i+1), which are p + 1:
-      !
-      !   the conservative rows        3.9966  3.9967  4.0104  3.9978
-      !   the electron fraction and T  3.9962  3.9926  3.9867
-      !   the transported species      1.9987  1.9799
-      !
-      ! The suite rows temporal_order_of_* re-measure one ladder of each
-      ! order on every run, so a change that breaks either order is visible
-      ! without taking the ladder by hand. The element class carries no
-      ! ladder of its own: it exists only where the element-diffusion
-      ! operator runs, and it is advected by the same first-order
-      ! composition, so it is given the species class's order and that is
-      ! an assignment by construction, not a measurement.
-      !
-      ! WHY IT WAS ONE NUMBER BEFORE, AND WHY THAT NUMBER WAS 1. A state
-      ! that a refused pass left behind reached the base face of the next
-      ! pass, an O(H) error in one face of one stage of a step of H/2,
-      ! which is an O(H^2) contribution to every class's difference and was
-      ! 40 times the real one. Every class then read as H^2 and p = 1 was
-      ! calibrated on it. With that state rebuilt on every restore the
-      ! ladders above are the integrators'.
-      !
-      ! p ALSO FIXES THE STEP-SIZE POLICY: attempted_step_reduced_dt
-      ! reduces by 0.9 e^(-1/(p+1)), and the p it uses is the DECIDING
-      ! class's, the class whose lower bound is the estimate the gate read.
-      ! Sizing the next interval by the exponent of a class that did not
-      ! refuse the step would use an order nothing about this rejection
-      ! measured.
+      ! The retained full step has local error Delta/(1 - 2^-p), where
+      ! Delta = q(H) - q(H/2 twice) and p is the order of its row class.
+      ! RK3 hydrodynamic rows and algebraic electron fraction/T use p=3;
+      ! first-order split species and element transport use p=1. The element
+      ! assignment follows its integrator, not a separate measured ladder.
+      ! attempted_step_reduced_dt uses the deciding class's p and multiplies
+      ! the interval by 0.9 e^(-1/(p+1)).
+      ! See ../EXHALE_v1.00/md/Update_EXHALE_stage2.md section 7 (N16e).
       integer, parameter, public :: err_order_p(n_err_class) =             &
                                     [ 3, 1, 1, 3 ]
       real*8,  parameter, public :: err_full_step_factor(n_err_class) =    &
@@ -697,9 +585,7 @@
 
       contains
 
-      ! ================================================================ !
       ! 1. THE CHECKPOINT
-      ! ================================================================ !
 
       subroutine attempted_step_checkpoint_take(chk, u, f_sp, heat, cool,  &
                                                 eta, n_halve, n_halvings,  &
@@ -831,7 +717,6 @@
       chk%taken = .true.
       end subroutine attempted_step_checkpoint_take
 
-      ! ---------------------------------------------------------------- !
 
       subroutine attempted_step_checkpoint_restore(chk, u, f_sp, heat,     &
                                                    cool, eta)
@@ -924,7 +809,6 @@
       ledger_family    = chk%ledger_family
       end subroutine attempted_step_checkpoint_restore
 
-      ! ---------------------------------------------------------------- !
 
       logical function attempted_step_checkpoint_matches(chk, u, f_sp,     &
                              heat, cool, eta, first_mismatch) result(ok)
@@ -1053,7 +937,6 @@
       if (present(first_mismatch)) first_mismatch = bad
       end function attempted_step_checkpoint_matches
 
-      ! ---------------------------------------------------------------- !
 
       real*8 function attempted_step_checkpoint_checksum(u, f_sp, heat,    &
                              cool, eta) result(h)
@@ -1101,9 +984,7 @@
       h = h + t_phys + dble(n_steps_accepted)
       end function attempted_step_checkpoint_checksum
 
-      ! ================================================================ !
       ! 2. THE ACCEPTANCE PREDICATE AT THE ADOPTION BOUNDARY
-      ! ================================================================ !
 
       subroutine attempted_step_evaluate(chk, u, W, T, f_sp, heat, cool,   &
                              dt_g, u_hydro, L_hydro, n_no_chem_root,       &
@@ -1150,7 +1031,6 @@
                                           dt_g, verd)
       end subroutine attempted_step_evaluate
 
-      ! ---------------------------------------------------------------- !
 
       subroutine attempted_step_thermal_energy_before_sources(u)
       ! The thermal energy of the grid immediately BEFORE the coupled
@@ -1163,7 +1043,6 @@
       marked_after_sources  = .false.
       end subroutine attempted_step_thermal_energy_before_sources
 
-      ! ---------------------------------------------------------------- !
 
       subroutine attempted_step_thermal_energy_after_sources(u, dt_cell,   &
                                                              heat, cool)
@@ -1184,7 +1063,6 @@
       marked_after_sources = .true.
       end subroutine attempted_step_thermal_energy_after_sources
 
-      ! ---------------------------------------------------------------- !
 
       real*8 function thermal_energy_sum(u) result(s)
       ! sum_j dV_j [ u(3,j) - rho v^2/2 ], the conserved energy row minus
@@ -1203,53 +1081,20 @@
       enddo
       end function thermal_energy_sum
 
-      ! ---------------------------------------------------------------- !
 
       subroutine attempted_step_energy_identity(chk, u, W, T, f_sp, heat,  &
                                  cool, dt_g, verd)
-      ! THE THERMAL IDENTITY OF THE ATTEMPTED STEP, summed over the
-      ! physical cells:
-      !
-      !   sum_j dV_j [ u_th^{n+1} - u_th^n ]_j
-      !       =  sum_j dV_j dt (heat - cool)_j
-      !        +  the transport contribution to the thermal energy
-      !
-      ! and the residual reported and gated is the difference of the two
-      ! sides, which is the closure of the SOURCE STEP alone.
-      !
-      ! WHY THE RESERVOIR IS NOT ON THE LEFT.
-      ! The target thermal-energy closure is written as
-      ! Delta u_th + Delta u_form = integral Q_ext, with Q_ext carrying
-      ! only exchanges with the radiation field. THIS CODE'S heat AND cool
-      ! ARE NOT THAT Q_ext: they are the NET THERMAL source. Term by term,
-      ! photoionization deposits h nu - E_th and never h nu, so the
-      ! potential the photon paid never passes through the thermal pool;
-      ! collisional ionization takes E_th out of the electrons as the coio
-      ! term of eval_cool; radiative recombination lets the potential leave
-      ! as a photon and keeps only the electron's kinetic energy in reco;
-      ! and every collisional reaction heat of the molecular, Penning,
-      ! associative, Lyman-Werner and oxygen channels is a difference of
-      ! the one species formation-energy table. So heat - cool already
-      ! carries every reservoir transfer that exchanges with u_th, and
-      ! adding sum_s eps_s Delta n_s on top of it would count each
-      ! collisional transfer twice AND charge the gas for the ionization
-      ! energy the photons paid. Delta u_form is therefore REPORTED beside
-      ! the row as the reservoir's own change, never added to it.
-      !
-      ! WHY THE TRANSPORT CONTRIBUTION IS ON THE RIGHT. T1.5 constrains a
-      ! LOCAL source step at fixed volume and fixed mass; an attempted step
-      ! is that source step plus the hydrodynamic stages, the diffusion and
-      ! carrier operators, the boundary condition, the conduction stage and
-      ! the filter, none of whose thermal contribution is in heat - cool.
-      ! That contribution is MEASURED, not modeled: the marching loop
-      ! marks the thermal energy on both sides of the source step, the
-      ! difference of the marks is what the sources did, and the rest of
-      ! the step's thermal change is by definition what transport did.
-      !
-      ! WITHOUT THE MARKS the transport contribution is not measured, and
-      ! the residual falls back to the whole-step imbalance
-      ! d_u_th - q_ext_dt, which is not a closed budget and is reported as
-      ! such (transport_measured is .false. and the gate is inert).
+      ! Sum the physical-cell thermal identity:
+      !   sum_j dV_j Delta u_th = sum_j dV_j dt(heat-cool)
+      !                         + measured transport contribution.
+      ! heat and cool are NET THERMAL sources: photoheating deposits
+      ! h nu - E_th, collisional ionization removes E_th, and the reaction
+      ! terms already carry formation-energy transfers. Therefore
+      ! Delta u_form is reported separately and not added to this row.
+      ! The marching marks bracket the local source step; their difference
+      ! measures its heat, and the remainder is transport. Without marks,
+      ! transport_measured is false and this budget does not gate.
+      ! See ../EXHALE_v1.00/md/Update_EXHALE_stage2.md section 7 (B3c).
       type(attempted_step_checkpoint), intent(in) :: chk
       real*8, dimension(3,1-Ng:N+Ng),         intent(in) :: u, W
       real*8, dimension(1-Ng:N+Ng),           intent(in) :: T, heat, cool
@@ -1346,9 +1191,7 @@
       end subroutine attempted_step_energy_identity
 
 
-      ! ================================================================ !
       ! 3. THE REJECTION POLICY, THE COUNTERS AND THE PROBES
-      ! ================================================================ !
 
       real*8 function attempted_step_reduced_dt(dt_in, reason) result(dt_o)
       ! The factor a rejection applies. 0.5 on an admissibility or a
@@ -1380,7 +1223,6 @@
       endif
       end function attempted_step_reduced_dt
 
-      ! ---------------------------------------------------------------- !
 
       real*8 function attempted_step_bound_next_dt(dt_cfl, dt_accepted)    &
                       result(dt_o)
@@ -1397,7 +1239,6 @@
       endif
       end function attempted_step_bound_next_dt
 
-      ! ---------------------------------------------------------------- !
 
       subroutine attempted_step_note_step(verd)
       ! One rejection, recorded. The physical accumulations are restored by
@@ -1413,43 +1254,21 @@
             n_reject_by_operation(verd%operation) + 1
       end subroutine attempted_step_note_step
 
-      ! ---------------------------------------------------------------- !
 
       subroutine attempted_step_error_estimate(u_full, f_sp_full,          &
                                                T_full, ne_full,            &
                                                u_half, f_sp_half,          &
                                                T_half, ne_half, est)
-      ! THE LOCAL ERROR OF THE STEP THE RUN KEEPS, over its tolerance, ON
-      ! EVERY QUANTITY THE STEP ADVANCED and not on the three conservative
-      ! rows alone:
-      !
-      !   e = max over the physical cells, the row classes and the rows of
-      !         |q(H) - q(H/2, twice)| / [ (1 - 2^-p(class)) scale(q) ].
-      !
-      ! The retained trajectory is the full step, whose local error is
-      ! larger than the difference by err_full_step_factor = 1/(1 - 2^-p)
-      ! OF THE CLASS THE ROW BELONGS TO, because the classes are advanced
-      ! by integrators of different order; the derivation and the ladder
-      ! that measured each p are at their declaration. The
-      ! two half steps ran the WHOLE operator split from the same
-      ! checkpoint and over the same interval as the full step, so this is
-      ! an estimate of the split at a common endpoint and not of one
-      ! operator.
-      !
-      ! WHY THE SPECIES ROWS ARE HERE. A backward-Euler chemical step can
-      ! solve its nonlinear equations to any tolerance and still have a
-      ! large temporal error, and the chemistry is where the shortest time
-      ! scales of this problem are, so an estimate taken on the
-      ! hydrodynamic rows alone reports the accuracy of the smoothest part
-      ! of the update. The rows below are the carrier fractions the
-      ! chemistry transports and evolves; every other stage reaches the
-      ! estimate through the electron fraction and the temperature, which
-      ! are the two quantities the opacity, the rate coefficients and the
-      ! caloric equation of state are functions of.
-      !
+      ! Error of the retained full step over every advanced row class:
+      !   e = max |q(H)-q(H/2 twice)| / [(1-2^-p(class)) scale(q)].
+      ! The paired trials run the whole operator split from one checkpoint.
+      ! Species fractions belong in the estimate because a converged
+      ! chemical solve can still have temporal error; electron fraction and
+      ! T carry the other composition-dependent stages.
       ! THE SCALES ARE THE QUANTITY'S OWN. Each class states its scale
       ! where it is formed; none of them is the flat absolute floor of a
       ! code-unit density.
+      ! See ../EXHALE_v1.00/md/Update_EXHALE_stage2.md section 7 (N16e).
       real*8, dimension(3,1-Ng:N+Ng),         intent(in) :: u_full, u_half
       real*8, dimension(1-Ng:N+Ng,n_species), intent(in) :: f_sp_full
       real*8, dimension(1-Ng:N+Ng,n_species), intent(in) :: f_sp_half
@@ -1625,7 +1444,6 @@
          n_error_estimates_unresolved = n_error_estimates_unresolved + 1
       end subroutine attempted_step_error_estimate
 
-      ! ---------------------------------------------------------------- !
 
       subroutine take_row(est, icl, d, sc, q, j, k)
       ! One row of one class, scaled by the retained-step factor, kept if
@@ -1652,7 +1470,6 @@
       endif
       end subroutine take_row
 
-      ! ---------------------------------------------------------------- !
 
       double precision function species_budget_fraction(isp, nd, nH, nO,   &
                                nC) result(f_max)
@@ -1682,7 +1499,6 @@
       endif
       end function species_budget_fraction
 
-      ! ---------------------------------------------------------------- !
 
       double precision function inner_error_of_class(icl, j, krow, q)      &
                                result(e_in)
@@ -1732,7 +1548,6 @@
       end select
       end function inner_error_of_class
 
-      ! ---------------------------------------------------------------- !
 
       subroutine attempted_step_species_rows(rows, nrow)
       ! THE SPECIES ROWS OF THE ESTIMATE: the carrier fractions of the
@@ -1757,7 +1572,6 @@
       endif
       end subroutine attempted_step_species_rows
 
-      ! ---------------------------------------------------------------- !
 
       subroutine attempted_step_inner_error_reset()
       ! Called when an error-control transaction starts or restarts, so
@@ -1774,7 +1588,6 @@
       inner_error_carrier_row = 0.0d0
       end subroutine attempted_step_inner_error_reset
 
-      ! ---------------------------------------------------------------- !
 
       subroutine attempted_step_note_inner_error(d_comp, rel_T, carr_row)
       ! What one pass's nonlinear solves left behind, CELL BY CELL, in the
@@ -1811,7 +1624,6 @@
          inner_error_carrier_row = carr_row
       end subroutine attempted_step_note_inner_error
 
-      ! ---------------------------------------------------------------- !
 
       subroutine attempted_step_read_environment()
       ! The duty cycle of the integration-error estimate and the prescribed
@@ -1830,7 +1642,6 @@
       if (len_trim(env) .gt. 0) read(env,*) as_fixed_dt_seconds
       end subroutine attempted_step_read_environment
 
-      ! ---------------------------------------------------------------- !
 
       subroutine attempted_step_report(n_halvings)
       ! The end-of-run block. The two attempt counts are printed with their
@@ -1905,7 +1716,6 @@
       endif
       end subroutine attempted_step_report
 
-      ! ---------------------------------------------------------------- !
 
       function attempted_step_reason_text(reason) result(s)
       ! Codes 0 to 9 are certification's and are named there, so a refusal
@@ -1947,9 +1757,7 @@
       end select
       end function attempted_step_operation_text
 
-      ! ================================================================ !
       ! 4. HELPERS
-      ! ================================================================ !
 
       real*8 function dvol(j) result(dv)
       ! The cell volume in code units, r^2 dr of the spherical grid, the

@@ -33,7 +33,6 @@
       end select
       end function wae_eval_eqn
 
-      !---------------------------------------------------------------!
       subroutine set_vars(k, x, y, kv, km1, avg, ymod, m, ne)
       integer, intent(in) :: k, m, ne
       real*8,  intent(in) :: x(m), y(ne,m), ymod(0:ne,0:1)
@@ -67,7 +66,6 @@
       wae_erf_norm = 1.0d0 - erf((kv%v-par%erf_drop(1))/par%erf_drop(2))
       end subroutine set_erf_norm_k2
 
-      !---------------------------------------------------------------!
       real*8 function spv_eqn(k, x, y, ymod, m, ne)
       integer, intent(in) :: k, m, ne
       real*8,  intent(in) :: x(m), y(ne,m), ymod(0:ne,0:1)

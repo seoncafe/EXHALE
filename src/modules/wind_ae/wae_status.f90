@@ -7,6 +7,7 @@
       !   2 get_dvdr erroneous weight
       !   3 linearize_dvdr_crit negative sqrt argument
       !   4 solvde too many iterations
+      !   5 solvde non-finite correction
       implicit none
       integer :: wae_err = 0
       end module wae_status

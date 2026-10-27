@@ -87,8 +87,6 @@
 	                      heh_loc, n_h, adv_cell%kcx_He0_Hp,              &
 	                      adv_cell%kcx_Hep_H0, adv_cell%kcx_Hepp_H0)
 
-	! End of subroutine
 	end subroutine adv_implicit_HeH
 	
-	! End of module
 	end module System_implicit_adv_HeH

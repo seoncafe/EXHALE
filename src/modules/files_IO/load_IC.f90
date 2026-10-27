@@ -45,7 +45,7 @@
                                set_state_file_ghost_rows
       ! WHERE THE RESTART PAIR IS READ FROM, and which option tokens a
       ! molecular seed conversion is allowed to find different. Both are
-      ! no-ops for an ordinary restart: the path is 'output/..._IC.txt' and
+      ! no-ops for an ordinary restart: the path is '<output_dir>/..._IC.txt' and
       ! no token may differ that the input did not name.
       use molecular_seed, only: molecular_seed_state_file,                &
                                 molecular_seed_option_may_differ,         &
@@ -184,7 +184,6 @@
       character(len=64) :: state_id = ''
    end type file_certification_claim
 
-   ! ------------------------------------------------------------------ !
    ! THE RESTART METADATA BLOCK
    !
    ! WHAT IT IS FOR. The state files carry the state; what they carried until
@@ -254,7 +253,6 @@
    ! provenance line; empty where the file states none.
    character(len=meta_len) :: ic_boundary_model = ''
 
-   ! ------------------------------------------------------------------ !
    ! THE TOKENS OF THE 'options' FIELD, AND WHICH OF THEM A RESTART MAY BE
    ! ALLOWED TO CHANGE.
    !
@@ -499,7 +497,6 @@
       real*8, dimension(3,1-Ng:N+Ng), intent(out) :: W
 
 
-	   !-------------------------------------!
 
       ! The IC files carry one record per cell, N + 2*Ng rows. Since N is a
       ! runtime value ("Grid cells:"), a restart file written at a different
@@ -1044,8 +1041,8 @@
       enddo
 
       ! ---- an oxygen-chemistry run restarted from a state without it ----
-      ! A pre-oxygen-chemistry file has no OH / H2O / CO columns, so the
-      ! loader leaves them at zero. Starting the option from zero is not
+      ! A file written before oxygen chemistry has no OH / H2O / CO
+      ! columns, so the loader initially leaves them at zero. Starting the option from zero is not
       ! neutral: zero is itself a root of the water cycle, and hybrd1 is
       ! already known to be bistable from a zero molecular seed
       ! (ionization_equilibrium), so the run would sit in the empty basin.
@@ -1057,8 +1054,8 @@
       ! Both elements stay conserved: what goes into the carriers is taken
       ! out of the ion stages of the SAME element, in proportion, and the H
       ! nuclei the carriers hold are taken out of atomic H (and out of H2 if
-      ! atomic H runs short). A file that already carries the columns is left
-      ! alone.
+      ! atomic H runs short). A file with nonzero carrier densities in any
+      ! physical cell is left alone.
       if (thereis_oxychem) then
          ox_seeded = (sum(abs(nsp_l(1:N,isp_OH)))                          &
                     + sum(abs(nsp_l(1:N,isp_H2O)))                         &
@@ -1109,8 +1106,8 @@
             composition_changed_here = .true.
             if (len_trim(composition_changed_why) .eq. 0)                 &
                composition_changed_why = 'the oxygen carriers were seeded'
-            write(*,'(A)') ' (load_IC) the restart file carries no OH /'// &
-               ' H2O / CO columns; seeding them from the chemical'
+            write(*,'(A)') ' (load_IC) all OH / H2O / CO densities are zero'// &
+               ' over the physical cells; seeding them from the chemical'
             write(*,'(A)') '   equilibrium of the loaded (T, H2/H) and'//  &
                ' the loaded oxygen and carbon totals.'
          endif
@@ -1142,83 +1139,17 @@
                     nsp_l(:,isp_HeII), nsp_l(:,isp_HeIII),                    &
                     rho_dim, nm_l, nmol_l, nox_l)
 
-      ! WHICH OF THE TWO HALVES OF THE FILE IS THE MASS DENSITY.
-      !
-      ! The pair states the density twice: the rho column of Hydro_ioniz, and
-      ! the species densities of Ion_species, which weigh sum_i m_i n_i. They
-      ! are the same number only while the composition closes its own mass,
-      ! sum_i f_i A_i = 1, which is the DEFINITION of f_sp and not a tolerance.
-      ! Where the two disagree the loader has to choose, and until now it chose
-      ! the species and silently moved the conserved density onto them.
-      !
-      ! MEASURED (2026-09-15). The composition of a state written at
-      ! the end of a stationary solve does not close its own mass: the
-      ! departure grows by about 1e-14 per outer pass, monotonically, reaching
-      ! 5.1e-13 after the 19 passes of LHS1140b/models/.L14/x003_HeH2.13 and
-      ! 6.2e-13 after the 24 of x003_HeH9.7 (the element operator's own test
-      ! compares a step's closure with the ENTRY closure of that step, so a
-      ! monotone ratchet is never refused). Rebuilding the density from the
-      ! species therefore hands the restart a state whose conserved mass is
-      ! some 2000 ulp from the one that was certified -- and the hydrodynamic rows
-      ! of a subsonic base cancel their largest term by 1e+6, so that is not a
-      ! small difference to them: the mass row of that state re-read at
-      ! 3.444e-08 (cell 20) against the 3.764e-08 (cell 7) it was written at,
-      ! and the momentum row at 4.495e-13 against 1.960e-14.
-      !
-      ! THE CONSERVED VARIABLE IS THE AUTHORITY. rho is what the hydrodynamics
-      ! advances and what the residual is a function of; the composition is an
-      ! eliminated variable that the first sweep re-solves anyway. So the
-      ! density is taken from its own column and the loaded species are
-      ! projected onto it by one factor per cell, which leaves every element
-      ! ratio and every ionization split exactly where the file put them and
-      ! makes the composition close the density it is a composition of. With
-      ! that, rho round-trips to the last bit and the mass row of the state
-      ! above re-reads at 3.764e-08 at cell 7, the value it was written at.
-      !
-      ! WHEN THE SPECIES ARE THE AUTHORITY INSTEAD, AND IT IS DECIDED BY WHAT
-      ! THIS LOADER DID AND NOT BY HOW BIG THE DISAGREEMENT IS.  The blocks
-      ! above change the composition on purpose -- the loaded H/He is carried
-      ! onto the input's He/H, an element the file does not carry is rebuilt
-      ! at its abundance, a reservoir the handoff moved is rescaled, the
-      ! oxygen carriers of a pre-oxygen-chemistry file are seeded -- and each
-      ! of them SAYS SO (composition_changed_here).  A molecular seed is not
-      ! in this list on purpose: it reads an ATOMIC pair here, which is
-      ! self-consistent, and builds the molecular state afterwards.  The loader knows its own
-      ! intent, so the intent decides: where it changed the composition the
-      ! file's rho describes a gas this run is not loading and the density
-      ! follows the composition; where it did not, the state is a restart of
-      ! the same equations and the conserved density is the authority.
-      !
-      ! (This replaces a test on the size of the departure, which was the
-      ! Codex review's point of 2026-09-15: a magnitude cannot tell a
-      ! deliberate change from a damaged file, and a damaged file would have
-      ! been accepted as a deliberate one.)
-      !
-      ! AND A RESTART OF THE SAME EQUATIONS IS ALLOWED ONLY ROUNDING.  Below
-      ! restart_density_rounding_tol the two halves agree to what the writer
-      ! and the sweep's projection leave (4e-16 on a state this
-      ! code writes, 6e-13 on the longest solve before that projection
-      ! existed).  Between that and restart_density_agreement_tol the pair is
-      ! loaded and the departure reported.
-      !
-      ! ABOVE IT, AND ONLY FOR A PAIR THAT CLAIMS TO BE THIS CODE'S OWN, THE
-      ! PAIR IS REFUSED: two halves of one state that disagree by more than a
-      ! part in 1e8, with no block of this loader having touched either, is a
-      ! damaged or mismatched pair, and loading it would be choosing silently
-      ! between two different gases.
-      !
-      ! A FILE WITH NO RESTART METADATA BLOCK MAKES NO SUCH CLAIM and is not
-      ! refused.  It was written before the block existed, under a mass policy
-      ! this loader cannot check, and the run already marks everything it
-      ! writes `restart_input=provenance_unknown` for exactly that reason.
-      ! MEASURED (2026-09-15): every one of the forty archived pairs of
-      ! LHS1140b/archive_20260830 sampled disagrees by 1.4e-03 to 7.1e-03, and
-      ! so do the pinned fixtures backup/regression/atomic_elem_newton/IC
-      ! (1.288e-03) and wasp_full_newton/IC -- all written on 2026-09-08/09 by
-      ! git 35d9dd5d3ca7.  Those are seeds the campaign is entitled to use.
-      ! For them the density cannot be the authority either: it is another
-      ! generation's number under another mass policy, so the composition is,
-      ! which is what this loader did before, and the departure is reported.
+      ! Hydro_ioniz rho and sum_i m_i*n_i from Ion_species describe the same
+      ! gas only when the species close its mass. For a same-equation restart,
+      ! the conserved rho column is authoritative and the species are projected
+      ! onto it without changing element ratios or ionization splits.
+      ! If this loader deliberately changed the composition, rho instead
+      ! follows that composition. A pair without restart metadata and with a
+      ! larger mismatch also follows the species under its unknown mass policy.
+      ! Other mismatches above restart_density_agreement_tol are refused;
+      ! those above restart_density_rounding_tol are reported.
+      ! The measured drift, restart tests, and decision history are in
+      ! ../EXHALE_v1.00/md/lhs1140b_stationary_L18_20260915.md section 11.
       mass_dev = 0.0d0
       j_mass   = 0
       do j = 1, N
@@ -1312,34 +1243,14 @@
          enddo
       enddo
 
-      ! ---- THE LOWER GHOST ROWS OF THE FILE ARE NOT READ ----
-      !
-      ! The two rows below the base are BOUNDARY DATA, not part of the state:
-      ! the boundary-state operation derives them from the physical column
-      ! and the prescribed reservoir at the first Apply_BC of the run, and a
-      ! file cannot state them. Reading them made the reconstructed boundary
-      ! a function of the file as well as of the state: with the physical
-      ! cells and every declared input held fixed and only these two species
-      ! rows exchanged for another admissible ghost, the cell-1 continuity
-      ! row of one hot-Uranus molecular state reads 9.06, 15.98, 425 or
-      ! 7.4e8 of its own rounding floors, and one of those ghosts reverses
-      ! the sign of the base face mass flux (MEASURED).
-      !
-      ! WHAT REPLACES THEM. The composition of the gas the reservoir holds at
-      ! the base level (base_reservoir_composition_row below), and, for the
-      ! thermodynamic row, the first physical cell -- a placeholder that the
-      ! first Apply_BC overwrites with the ghost cell averages of the
-      ! boundary's own hydrostatic isentrope. Both are functions of the
-      ! physical column and the declared inputs alone, so two files that
-      ! differ only in these rows now load as one state.
-      !
-      ! THE UPPER GHOSTS ARE STILL READ: they are the free-outflow
-      ! continuation's, the composition sweep starts its columns there, and
-      ! nothing in this item changes that boundary.
-      ! The rows the file carried are kept before they are replaced. They
-      ! are the ghost the solve that wrote the state returned, and the
-      ! measurement key EXHALE_GHOST_COMPOSITION_SEED can hand them back to
-      ! the composition sweep; nothing else reads them.
+      ! Ignore the two lower ghost rows in the state files: they are
+      ! boundary data, recomputed from the physical column and prescribed
+      ! reservoir. Seed their composition from base_reservoir_composition_row
+      ! and their thermodynamic state from cell 1 until Apply_BC replaces it.
+      ! Read the upper free-outflow ghosts for the composition sweep.
+      ! Preserve the file's lower ghosts only for the optional diagnostic
+      ! EXHALE_GHOST_COMPOSITION_SEED; no ordinary load uses them.
+      ! Ghost-sensitivity measurements: ../EXHALE_v1.00/md/lhs1140b_stationary_D5a_20260918.md section 4.
       call set_state_file_ghost_rows(f_sp(1-Ng:0,:))
 
       call base_reservoir_composition_row(f_sp(1,:), f_sp_base_row)
@@ -1365,12 +1276,9 @@
       W(2,:) = v
       W(3,:) = p
 
-      ! End of subroutine
       end subroutine load_IC
 
-      !-------------------------------------!
 
-      !-------------------------------------!
 
       subroutine parse_boundary_model_line(line)
       ! WHICH LOWER BOUNDARY MODEL THE STATE WAS PRODUCED UNDER, from the
@@ -1391,7 +1299,6 @@
       ic_boundary_model = adjustl(t(pos+1:))
       end subroutine parse_boundary_model_line
 
-      !-------------------------------------!
 
       subroutine report_boundary_model_of_the_restart
       ! One line on what the state says about its lower boundary.
@@ -1422,11 +1329,9 @@
       endif
       end subroutine report_boundary_model_of_the_restart
 
-      !-------------------------------------!
 
 
 
-      !-------------------------------------!
 
       subroutine build_restart_metadata(blk)
       ! THE CONFIGURATION THIS RUN'S STATE IS A STATE OF, one field per
@@ -1509,11 +1414,10 @@
            ' set IAU2015+CODATA2018 RJ[cm] '//trim(meta_num(RJ))//               &
            ' kB[erg/K] '//trim(meta_num(kb_erg))
 
-      ! WHICH EQUATIONS THE STATE SOLVES. Every token here is a switch that
-      ! adds or removes an equation, an unknown or a source term of the
-      ! system, so a difference means the file's state solves another
-      ! system and is refused unless the input named that token (decision
-      ! 21). The numeric inputs (fluxes, tolerances, abundance-independent
+      ! OPTIONS OF THE WRITING RUN. Most tokens select equations, unknowns,
+      ! or source terms and require a named option change when they differ.
+      ! carrier_newton records the solve route and may differ without a
+      ! named option change (opt_is_route; decision 21). The numeric inputs (fluxes, tolerances, abundance-independent
       ! rates) are NOT here: they change the coefficients of the same
       ! system, and a state carried across such a change is a legitimate
       ! starting point whose residual simply is not zero.
@@ -1553,7 +1457,6 @@
            trim(blk(imeta_source))//' restart_input=provenance_unknown'
       end subroutine build_restart_metadata
 
-      !-------------------------------------!
 
       subroutine write_restart_metadata_header(unit)
       ! The block, as '#' comment lines. Every reader of these files skips
@@ -1576,7 +1479,6 @@
       enddo
       end subroutine write_restart_metadata_header
 
-      !-------------------------------------!
 
       character(len=24) function meta_num(x)
       ! ES23.16 carries seventeen significant digits, so the decimal written
@@ -1586,7 +1488,6 @@
       meta_num = adjustl(meta_num)
       end function meta_num
 
-      !-------------------------------------!
 
       character(len=1) function tf(flag)
       logical, intent(in) :: flag
@@ -1594,7 +1495,6 @@
       if (flag) tf = 'T'
       end function tf
 
-      !-------------------------------------!
 
       character(len=opt_value_len) function opt_value(name)
       ! THE VALUE OF ONE OPTION TOKEN, one statement per token. The names
@@ -1675,7 +1575,6 @@
       end select
       end function opt_value
 
-      !-------------------------------------!
 
       character(len=opt_value_len) function opt_field_value(s, name)
       ! The value of '<name>=' in an options field, or '<absent>' when the
@@ -1706,7 +1605,6 @@
       endif
       end function opt_field_value
 
-      !-------------------------------------!
 
       character(len=opt_value_len) function factor_token_text(s)
       ! The text of a continuation factor 0 <= s < 1 in the options field.
@@ -1719,7 +1617,6 @@
       factor_token_text = adjustl(factor_token_text)
       end function factor_token_text
 
-      !-------------------------------------!
 
       integer function factor_token_kind(text, s)
       ! WHAT THE VALUE OF A FACTOR TOKEN (cond, interdiff_enth) IS, and the
@@ -1776,7 +1673,6 @@
       factor_token_kind = factor_kind_exact
       end function factor_token_kind
 
-      !-------------------------------------!
 
       subroutine append_option_change(text)
       ! One line onto the state's option-change history. A full history
@@ -1799,7 +1695,6 @@
            ' earlier changes are not recorded (history length reached)'
       end subroutine append_option_change
 
-      !-------------------------------------!
 
       subroutine collect_option_change_line(line)
       ! An 'option_change' or 'route_change' line the loaded state already
@@ -1817,7 +1712,6 @@
       call append_option_change(trim(t))
       end subroutine collect_option_change_line
 
-      !-------------------------------------!
 
       subroutine parse_restart_metadata_line(line, blk)
       ! Store one '# <field> ...' line under its field name. A line whose
@@ -1856,7 +1750,6 @@
       enddo
       end subroutine parse_restart_metadata_line
 
-      !-------------------------------------!
 
       subroutine verify_restart_metadata(meta_h, meta_i)
       ! THE CONFIGURATION THE RESTART FILES STATE, AGAINST THE ONE THIS RUN
@@ -1976,7 +1869,6 @@
       endif
       end subroutine verify_restart_metadata
 
-      !-------------------------------------!
 
       subroutine refuse_unequal_field(ifield, meta_file, meta_run)
       ! A field whose comparison is EXACT: the text of the field is the
@@ -2000,7 +1892,6 @@
       error stop 1
       end subroutine refuse_unequal_field
 
-      !-------------------------------------!
 
       subroutine compare_options_field(s_file, s_run, s_source)
       ! THE OPTIONS FIELD, TOKEN BY TOKEN.
@@ -2245,7 +2136,6 @@
       endif
       end subroutine compare_options_field
 
-      !-------------------------------------!
 
       integer function count_char(s, c)
       character(len=*), intent(in) :: s
@@ -2257,7 +2147,6 @@
       enddo
       end function count_char
 
-      !-------------------------------------!
 
       character(len=meta_len) function source_body(s_source)
       ! What the loaded file says produced it, without the field's own tag:
@@ -2271,7 +2160,6 @@
       source_body = adjustl(s_source(p+1:))
       end function source_body
 
-      !-------------------------------------!
 
       subroutine compare_reservoir_field(s_file, s_run)
       ! The elemental reservoir, element by element. The file carries the
@@ -2318,7 +2206,6 @@
       enddo
       end subroutine compare_reservoir_field
 
-      !-------------------------------------!
 
       subroutine refuse_reservoir_element(name, value, has, lacks)
       character(len=*), intent(in) :: name, has, lacks
@@ -2332,7 +2219,6 @@
       error stop 1
       end subroutine refuse_reservoir_element
 
-      !-------------------------------------!
 
       subroutine parse_reservoir_field(s, names, values, n_out)
       ! 'reservoir He/H <v> [<El>/H <v> ...]' -> the pairs it carries.
@@ -2376,7 +2262,6 @@
       enddo
       end subroutine parse_reservoir_field
 
-      !-------------------------------------!
 
       subroutine report_deviating_heh_cell(j_dev, heh_dev_cell, dev)
       ! The cell that decided the He/H comparison: its index, its radius,
@@ -2400,7 +2285,6 @@
          dev, ', threshold', heh_dev_tol
       end subroutine report_deviating_heh_cell
 
-      !-------------------------------------!
 
       subroutine next_coupling_field(rest, key, val, got)
       ! Take the next 'key=value' field off what is left of a '# coupling:'
@@ -2430,7 +2314,6 @@
       enddo
       end subroutine next_coupling_field
 
-      !-------------------------------------!
 
       subroutine parse_certification_claim(line, claim, fname)
       ! THE STATIONARY CLAIM ONE STATE FILE MAKES ABOUT THE STATE IT CARRIES,
@@ -2485,7 +2368,6 @@
       enddo
       end subroutine parse_certification_claim
 
-      !-------------------------------------!
 
       subroutine refuse_coupling_header(fname, line, why)
       ! A '# coupling:' header that cannot be read as one statement about one
@@ -2497,7 +2379,6 @@
       error stop 1
       end subroutine refuse_coupling_header
 
-      !-------------------------------------!
 
       subroutine adopt_certification_claim(claim_h, claim_i)
       ! THE ONE PAIR THE TWO HALVES OF THE STATE STATE, into the imported
@@ -2534,7 +2415,7 @@
          write(*,'(A)') '   Hydro_ioniz_IC.txt: state_id='//trim(sid_stated_h)
          write(*,'(A)') '   Ion_species_IC.txt: state_id='//trim(sid_stated_i)
          write(*,'(A)') '   take both files from one directory'//          &
-              ' output/pass_state/<state_id>/'
+              ' '//trim(output_dir)//'pass_state/<state_id>/'
          error stop 1
       endif
       if (claim_h%state_id_present .and.                                   &
@@ -2595,7 +2476,6 @@
       endif
       end subroutine adopt_certification_claim
 
-      !-------------------------------------!
 
       subroutine parse_coupling_header(line)
       ! Read the '# coupling: key=value ...' line of a restart file. Unknown
@@ -2646,7 +2526,6 @@
       enddo
       end subroutine parse_coupling_header
 
-      !-------------------------------------!
 
       logical function comment_field_is(line, name)
       ! Is this comment line's FIRST token the field 'name'? The header
@@ -2667,7 +2546,6 @@
       endif
       end function comment_field_is
 
-      !-------------------------------------!
 
       logical function is_comment(line)
       ! True if the (left-adjusted) line starts with '#'
@@ -2677,7 +2555,6 @@
       is_comment = (len_trim(t) .gt. 0 .and. t(1:1) .eq. '#')
       end function is_comment
 
-      !-------------------------------------!
 
       subroutine parse_labels(line, labels, nlab)
       ! Split a "# columns r[Rp] HI HII ..." line into its column labels
@@ -2716,7 +2593,6 @@
       enddo
       end subroutine parse_labels
 
-      !-------------------------------------!
 
       integer function species_column(label)
       ! f_sp column for a species label (0 = unknown/ignored, e.g. r[Rp])
@@ -2749,7 +2625,6 @@
       end select
       end function species_column
 
-      !-------------------------------------!
 
       subroutine verify_restart_radii(r_file, fname)
       ! THE GRID BELONGS TO THE RUN, NOT TO THE STATE FILE.
@@ -2765,8 +2640,8 @@
       ! writer's ghost convention changed (docs/Update_EXHALE_stage1.pdf
       ! section 169), so files written before it carry ghosts of their own.
       !
-      ! Tolerance 1e-10 relative: the writer emits list-directed reals with
-      ! 17 significant digits, so a restart on the grid the state was written
+      ! Tolerance 1e-10 relative: the current writer emits ES25.17E3
+      ! reals, so a restart on the grid the state was written
       ! on reproduces every center to round-off, while any other grid moves a
       ! center by many orders of magnitude more (MEASURED 2026-09-05: the
       ! smallest real grid difference in the tree, 3.3e-4). The coarsest
@@ -2838,7 +2713,6 @@
       endif
       end subroutine verify_restart_radii
 
-      !-------------------------------------!
 
       subroutine scatter_row(j, vals, col2fsp, nlab, nsp_l, r_file)
       ! Store one data record: vals(1) is the cell center the file states,
@@ -2856,5 +2730,4 @@
       enddo
       end subroutine scatter_row
 
-      ! End of module
       end module IC_load

@@ -202,7 +202,7 @@
       integer, parameter :: cx_B2_Hep_H0 = 25   ! He+ + H0 -> He0 + H+
 
       ! Master switch for the He <-> H charge-exchange pair (default on). Set
-      ! from input.inp ("He_H_charge_exchange: False") by input_read.
+      ! from the selected input ("He_H_charge_exchange: False") by input_read.
       logical, save :: he_h_charge_exchange = .true.
 
       ! He2+ + H0 -> He+(1s) + H+ + photon: rate coefficient from the
@@ -490,24 +490,12 @@
       ! populations by collisions; the partition function is therefore the
       ! sum over the populated manifold.
       !
-      ! WHAT DETAILED BALANCE REQUIRES WHEN THE LEVELS ARE NOT THERMAL.
-      ! Microscopic reversibility holds level by level, g_a k(a->c) =
-      ! g_c k(c->a) exp(-(E_c - E_a)/kT) for any two levels a, c of the
-      ! reactant and product pairs, whatever the level populations are. A
-      ! thermal rate coefficient is a population-weighted sum of these, so
-      ! a function of T alone exists only when the populations are
-      ! themselves functions of T. Write the forward as the code applies
-      ! it (the source's rate for every level of the reactant) with a
-      ! branching b_c into the product levels c, and let p_c be the actual
-      ! fractional populations of the product species. The reverse then is
-      !   k_r = k_f [Q(X^s) Q(Y^(t+1)) / Q(Y^t)] exp(-dE/kT)
-      !         x sum_c p_c b_c exp(E_c/kT)/g_c ,
-      ! so the product's partition function enters as the inverse of that
-      ! sum. With Boltzmann populations p_c = g_c exp(-E_c/kT)/Q it is Q
-      ! for ANY branching; with thermal branching it is Q for ANY
-      ! populations. Only when the metastables are empty AND the forward
-      ! lands in the ground term alone does it become the ground-term
-      ! weight G (the low-density limit, where it is G/p_ground).
+      ! Microscopic reversibility is imposed level by level. Nonthermal
+      ! product populations introduce population and branching factors;
+      ! a thermal partition function is recovered for Boltzmann populations
+      ! or thermal product branching. Derivation and measured limits:
+      ! ../EXHALE_v1.00/md/charge_exchange_detailed_balance_20260924.md
+      ! section 12.3, item 3.
       !
       ! THE REVERSE AT ANY DENSITY. Write p_c = beta_c g_c exp(-E_c/kT)/Q,
       ! beta_c the departure coefficient of product level c from Boltzmann.
@@ -537,23 +525,10 @@
       ! The departure coefficients are those of
       ! metastable_level_populations, the five-level statistical
       ! equilibrium of N I, S II and C I (exactly the levels of this table)
-      ! at the cell's (T, n_e), with the CHIANTI 11.0.2 A-values and
-      ! electron collision strengths. MEASURED against the full CHIANTI
-      ! model (all levels, electron and proton collisions, ChiantiPy 0.15.2)
-      ! the term departures agree within 0.1% at 3e3 and 1e4 K for 1e2 <=
-      ! n_e <= 1e10 cm^-3, and within 2% at 2e4 K, where the levels above
-      ! the five cascade into them. CHIANTI carries no collisions with
-      ! neutral hydrogen, so in a neutral gas of low n_e the populations err
-      ! toward the low-density limit. VALIDITY: every density; the
-      ! remaining uncertainty is the branching assumed where the source
-      ! gives none. The ground-branching limit of those pairs, MEASURED on
-      ! CHIANTI's populations at the densities of the wasp_full wind (n_e =
-      ! 3e8 - 4e9 cm^-3), is 0.99 of this Q for Fe II and 1.00 for Fe III,
-      ! S II, N II, O I and C I at 1e4 K and n_e = 1e9, and 0.94 (Fe II) at
-      ! n_e = 1e7; at 2e4 K it is 0.90 (Fe II), 0.94 (Fe III) (ratios on
-      ! CHIANTI's own level set). The exception is Ca II, whose 3d 2D
-      ! CHIANTI leaves below Boltzmann there (G/p_ground = 0.81 Q at 1e4 K,
-      ! n_e = 1e9; 0.53 Q at 2e4 K); no carried pair is derived through it.
+      ! at the cell's (T, n_e), with CHIANTI 11.0.2 A-values and electron
+      ! collision strengths. Neutral-H collisions are absent, so low-n_e
+      ! populations in a neutral gas approach the low-density limit;
+      ! the full-model comparisons are in the same record.
       !
       ! The populated-manifold Q is also finite and independent
       ! of any Rydberg or pressure cut-off, which an LTE sum over all bound
@@ -986,7 +961,6 @@
       k = log_log_table(T, T_n2p, k_n2p)
       end function electron_capture_N2p_from_H
 
-      ! ---------------------------------------------------------------
       ! THE FIVE-LEVEL STATISTICAL EQUILIBRIUM OF N I, S II AND C I.
       ! The levels are the populated manifold of q_level_energy (data at
       ! lp_E). Processes: spontaneous radiative decay (lp_A) and electron
@@ -1831,37 +1805,11 @@
       ! print the 1200 K values (4.0e-9, 1.71e-9, 9.46e-10) as constants,
       ! which also sets them at 300 - 1200 K, where the paper gives up to
       ! 1.85 times more.
-      ! ABOVE 1200 K THE 1200 K VALUE IS HELD, and this is why. The measured
-      ! H+ + Fe cross section (Fig. 1, read from the page image) runs from
-      ! 8 eV (laboratory; 7.86 eV in the center of mass) to 500 eV and
-      ! is nearly flat, 9.8e-16 cm^2 at 8 eV falling to 7.8e-16 at 500 eV
-      ! (log-log slope -0.045); the paper says the cross sections "show an
-      ! increase in magnitude with decreasing ion energy". A Maxwellian at
-      ! 1e4 K draws all of its rate from below 7.9 eV, so no temperature of
-      ! these winds is covered by the measurement itself: every thermal
-      ! rate is an extrapolation below the lowest measured energy. DERIVED
-      ! Maxwellian averages at 3e3, 5e3, 1e4, 2e4 K:
-      !   (a) the measured cross section held at its 8 eV value below it:
-      !       0.79, 1.01, 1.43, 2.02 x 1e-9 (its measured slope continued
-      !       down instead: 0.88, 1.12, 1.53, 2.10);
-      !   (b) the measured cross section joined, log-log, to the paper's own
-      !       low-energy extrapolation (the Table I cross sections, which
-      !       times the rms speed give the Table I rates, placed at
-      !       E = 3kT/2): 4.21, 4.06, 3.96, 3.91 x 1e-9.
-      ! (b) is the source's statement: the Table I extrapolation was
-      ! accepted by the authors only where it fits the lowest measured
-      ! points to +-10%, and the join between 0.16 and 7.9 eV has slope
-      ! -0.51, the E^-1/2 of capture by the ion-induced dipole attraction,
-      ! which is what a cross section rising toward low energy, as the
-      ! measured one does, follows there. (a) is a lower bound that assumes
-      ! the rise stops at the lowest measured point. The held 3.97e-9 is
-      ! (b) to 6% over 3e3 - 2e4 K and continuous with Table I at 1200 K,
-      ! so it is carried; the band (a) - (b), 1.4e-9 - 4.0e-9 at 1e4 K, is
-      ! within the paper's "factor of 2.2 at the lowest energies" and is the
-      ! uncertainty of this rate in a wind. As a secondary cross-check only,
-      ! Pequignot & Aldrovandi (1986), A&A 161, 169, p. 172 (read), quote
-      ! "beta(H+, Fe) = 2.7 10^-9 cm^3 s^-1 inferred from Rutherford and
-      ! Vroom (1972) around 10^4 K" (symbols as typeset), inside the band.
+      ! Above 1200 K the Table I endpoint is held. The measured cross
+      ! sections start above thermal collision energies, so this is an
+      ! extrapolation; Maxwellian alternatives and the uncertainty band are
+      ! in ../EXHALE_v1.00/md/charge_exchange_detailed_balance_20260924.md
+      ! section 11.8.
       ! VALIDITY: 300 - 1200 K as tabulated; above 1200 K the held value
       ! is (b) within 6% up to 2e4 K, with the band above. For O+ and N+
       ! the same construction (b) gives 1.6e-9, 1.3e-9, 1.1e-9 and 1.05e-9,
@@ -2157,46 +2105,10 @@
       !       function); the
       !       detailed-balance form only moves the tabulation to the
       !       exothermic direction, where the table interpolates well.
-      !       The rate table of an earlier calculation of this direction,
-      !       Kimura, Lane, Dalgarno & Dixson (1993), ApJ 405, 801, Table 3
-      !       (read), which Huang et al. (2023) Table 4 carry through the
-      !       low branch of the Glover & Jappsen (2007) R27 fit, is not
-      !       carried: it is 5100x the carried B1 at 1e4 K, 570x at 2e4 K
-      !       and 560x at 1e5 K, and it is not the Maxwellian average of
-      !       Kimura et al.'s own Table 1 cross sections either (that
-      !       average is 6e-8 of Table 3 at 1e4 K and 1/220 at 1e5 K;
-      !       DERIVED, the Table 1 energies read as c.m.). Below 2e4 K
-      !       Kimura et al.'s rate is
-      !       set by the cross section within a few eV of the 11 eV
-      !       threshold, which the paper does not tabulate (its Table 1
-      !       starts at 20 eV), and its table implies activation energies
-      !       of 15 eV between 6000 and 8000 K and 4.3 eV between 8000 and
-      !       1e4 K, neither the 11 eV of the threshold; the exothermic
-      !       channel at those temperatures samples collision energies of a
-      !       few eV, where Zygelman et al. computed the cross sections
-      !       directly (their Fig. 8, 1 - 100 eV). The reverse of the
-      !       better-determined direction is therefore the one carried.
-      !       THE THRESHOLD LAW DECIDES IT. For an endothermic rate the
-      !       Tolman activation energy E_a = -d ln k/d(1/kT) equals the mean
-      !       energy of the reacting collisions less (3/2) kT, and every
-      !       reacting collision carries at least the 10.989 eV, so
-      !       E_a >= 10.989 eV - (3/2) kT, and a chord between two
-      !       temperatures can be no lower than that bound at the upper one.
-      !       Kimura et al.'s Table 3 (read from the ADS scan: 4.7e-22,
-      !       7.4e-19, 2.6e-18, 2.7e-16, 3.7e-15 at 6e3, 8e3, 1e4, 2e4,
-      !       4e4 K) gives 4.33 eV between 8e3 and 1e4 K against a bound of
-      !       9.70 eV, and 8.00 against 8.40 between 1e4 and 2e4 K; its
-      !       2-digit values cannot account for that (the first needs a
-      !       factor 16.7 over the chord, the table has 3.5). The table is
-      !       not consistent with its own Table 1 either: the charge-
-      !       transfer cross section there is 3.7e-23 cm^2 at 20 eV and
-      !       falls toward threshold (their Fig. 1), and holding it at
-      !       3.7e-23 all the way down to 10.99 eV gives at most 2.4e-21,
-      !       2.4e-17 and 7.4e-16 cm^3 s^-1 at 1e4, 4e4 and 1e5 K, 1e3,
-      !       150 and 200 times below the Table 3 values (DERIVED). The
-      !       computed cross sections of Loreau et al. (2014) and Kimura
-      !       et al.'s Table 1 agree within 25% at 20 eV (c.m.) and fall
-      !       steeply toward the threshold, as the law requires.
+      !       Kimura et al. (1993) Table 3 is not used: its rates fail the
+      !       threshold-law and cross-section checks. The published-data
+      !       comparison is in ../EXHALE_v1.00/md/charge_exchange_detailed_balance_20260924.md
+      !       section 10.5.
       !
       !   B2  He+ + H -> He + H+ + photon      RADIATIVE charge transfer
       !       Stancil, Lepp & Dalgarno (1998), ApJ 509, 1, Table 1 row (19),
@@ -2522,7 +2434,6 @@
       endif
       end subroutine cx_dens_lin
 
-      ! ================================================================
       ! Dedicated He <-> H charge exchange (Huang 2023, Table 4, group B,
       ! and the He2+ + H capture Table 4 does not carry). Applied by every
       ! ionization system that contains He, so it is not tied to the metal
@@ -2538,7 +2449,6 @@
       ! recombines He (HeIII->HeII). The three rate coefficients come from
       ! he_h_cx_rates. Gated by he_h_charge_exchange (default .true.): each
       ! routine adds nothing when the switch is off.
-      ! ================================================================
 
       ! Rate coefficients [cm^3 s^-1] of the He<->H pair at temperature T [K].
       ! k_He0_Hp is B1 (He0+H+), k_Hep_H0 is B2 (He++H0). The formulas live in
@@ -2660,18 +2570,12 @@
       ! SOURCE. West, Lane & Cohen (1982), Phys. Rev. A 26, 3164, read from
       ! the published pages: the cross section for radiative transfer to
       ! He+(1s) over 0.1 - 1000 eV (c.m.), their Fig. 4 (linear axis) and
-      ! Fig. 6 (log axes), with the low-energy structure in Fig. 5 (0.01 -
-      ! 0.3 eV; predissociation resonances, of which "only the widest" are
-      ! resolved). The paper gives no rate coefficient. The table below is
-      ! the Maxwellian average of that cross section (DERIVED): Fig. 5(a)
-      ! from 0.0125 eV, Fig. 5(b) above 0.1 eV, Fig. 6 above 0.3 eV and
-      ! Fig. 4 above 4.5 eV, digitized (Figs. 4 and 6 agree within 3% over
-      ! 0.15 - 3 eV), the resolved resonances included (they raise the
-      ! energy average of the cross section by 6% over 0.01 - 0.1 eV and
-      ! 12% over 0.1 - 0.3 eV, and the rate by 8% at 1e3 K, 1.5% at
-      ! 1e4 K), power laws continued from the neighboring decade outside
-      ! 0.0125 - 60 eV. Log-log interpolated, held at the end points,
-      ! 100 K - 1e5 K.
+      ! Fig. 6 (log axes), with the low-energy resonances in Fig. 5.
+      ! The coefficient below is the Maxwellian average, log-log
+      ! interpolated over 100-1e5 K and held at the table edges.
+      ! Digitization, resonance, and continuation checks: see
+      ! ../EXHALE_v1.00/md/charge_exchange_detailed_balance_20260924.md
+      ! section 12.9.
       !
       ! RANGE AND UNCERTAINTY. Digitization about 3%; resonances narrower
       ! than those resolved are not in Fig. 5 and could add a few percent
@@ -2685,13 +2589,8 @@
       ! the Coulomb-trajectory values they plot in Fig. 6 (Winter & Lane;
       ! 0.034 a0^2 at 100 eV, falling steeply below) give below 1e-15 at
       ! 1e5 K, 0.5% of this rate, if taken as zero below 100 eV (DERIVED).
-      ! Over 1e3 - 3e4 K the rate is 1.6 - 2.0e-13, 16 - 20 times the
-      ! constant 1.0e-14 of Kingdon & Ferland (1996) Table 1 row He+2
-      ! carried before 2026-09-26. That constant is not an average of these
-      ! cross sections: their Section 2 sets every reaction without a
-      ! significant non-radiative channel to "1 x 10^-14 (see Butler,
-      ! Guberman, & Dalgarno 1977)", and the He+2 row carries the same
-      ! 1.00(-5) and footnote as Li+3, Be+2, B+3 and Ne+2.
+      ! The former Kingdon & Ferland (1996) constant and measured rate
+      ! comparison are in the same record, section 12.9.
       ! The photon carries the whole defect: no collisional reverse, and no
       ! heat to the gas (charge_exchange_heating).
       double precision function radiative_electron_capture_Hepp_from_H(T) &
@@ -2869,9 +2768,7 @@
       fvec(3) = fvec(3) - c1_he*rr3
       end subroutine he_h_cx_fvec_adv
 
-      ! ================================================================
       ! CHARGE-EXCHANGE HEATING
-      ! ================================================================
 
       ! Volumetric heat [erg cm^-3 s^-1] that the charge-exchange reactions
       ! this module applies deliver to the translational energy of the gas,

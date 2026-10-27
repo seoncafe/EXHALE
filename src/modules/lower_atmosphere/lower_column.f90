@@ -28,8 +28,9 @@
       ! Approximations (documented): isothermal column at T_eq; spherical
       ! gravity g = GM/r^2 (the Roche/tidal correction to the column is a
       ! refinement -- Koskinen 2022 use equipotentials, which matters near
-      ! RLO); chemical equilibrium only (photochemistry UNDERESTIMATES H
-      ! dissociation at Teff ~ 1000-2000 K -- the external-handoff hook);
+      ! RLO); chemical equilibrium only (omitting photochemistry can
+      ! underestimate H dissociation near 1000-2000 K; the external handoff
+      ! can supply that state);
       ! mu is the H2/H/He mean molecular weight only (the trace-metal mass is
       ! neglected in the column mu, a << 1% effect at solar metallicity).
       !
@@ -64,7 +65,6 @@
 
       contains
 
-      ! ------------------------------------------------------------------ !
 
       ! Chemical-equilibrium H2 volume mixing ratio q_H2(p,T) for an H/He gas
       ! (Koskinen et al. 2022, ApJ 929, 52, Eq. 11, quoting Visscher et al.
@@ -148,7 +148,6 @@
       if (qh2 .gt. 1.0d0) qh2 = 1.0d0
       end function q_h2_equilibrium
 
-      ! ------------------------------------------------------------------ !
 
       ! Mean molecular weight of the H2/H/He mixture at (p,T), in units of the
       ! hydrogen ATOM (mh_g above, the unit it is multiplied by here and the
@@ -174,7 +173,6 @@
       mu = (1.0d0 + m_He_over_m_H*fhe)/npart
       end function mu_mixture
 
-      ! ------------------------------------------------------------------ !
 
       ! Integrate the isothermal hypsometric relation
       !   d ln p / dr = - mu(p,T) m_H g(r) / (k T),   g = G M / r^2,
@@ -260,5 +258,4 @@
 
       end subroutine lower_column_solve
 
-      ! End of module
       end module lower_column

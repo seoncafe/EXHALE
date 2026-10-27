@@ -1,25 +1,12 @@
       module S_estimate_ROE
-      ! Star state of the Riemann problem at a cell face, as the
-      ! approximate-state solvers of Toro (2009) chapter 9 build it: the
-      ! primitive-variable estimate (eq. 9.20), the two-rarefaction estimate
-      ! (eq. 9.32) and the two-shock estimate (eq. 9.42), selected by the
-      ! pressure ratio of the two sides, with the vacuum condition of
-      ! eq. 4.76 tested before any of them.
-      !
-      ! VALIDITY: one ideal gas with a CONSTANT adiabatic index on both
-      ! sides.  gam is that index; the caller passes the mean of the two
-      ! face gammas, which is that value exactly wherever the two sides
-      ! agree (every face of an atomic gas).  A run whose caloric EOS makes
-      ! the index vary across the front is refused the Roe flux at input
-      ! (input_read.f90).
-      !
-      ! The estimate carries a status because the star state need not exist.
-      ! Two rarefactions that separate fast enough leave vacuum between the
-      ! gas edges (ROE_STAR_VACUUM), and no branch is entitled to a star
-      ! pressure or a star density that is not positive
-      ! (ROE_STAR_INADMISSIBLE).  Sound speeds are formed only from a state
-      ! that passed that test, so no square root of a negative ratio is
-      ! taken and no NaN leaves this routine.
+      ! Toro (2009), chapter 9: estimate face star states using primitive
+      ! variables (eq. 9.20), two rarefactions (eq. 9.32), or two shocks
+      ! (eq. 9.42), after the vacuum test (eq. 4.76). Valid for one ideal
+      ! gas with constant gamma on both sides; the caller passes mean face
+      ! gamma, and input_read.f90 refuses Roe when the caloric EOS varies.
+      ! Separating rarefactions return ROE_STAR_VACUUM; a nonpositive star
+      ! pressure or density returns ROE_STAR_INADMISSIBLE. Sound speeds are
+      ! evaluated only for admissible states.
 
       implicit none
 
@@ -57,12 +44,10 @@
       ! other (Toro 2009, eq. 9.43 and the discussion of Q_user).
       real*8, parameter :: Q_user = 2.0d0
 
-      ! Extract left state
       rhoL = WL(1)
       uL   = WL(2)
       pL   = WL(3)
 
-      ! Extract right state
       rhoR = WR(1)
       uR   = WR(2)
       pR   = WR(3)
@@ -106,7 +91,6 @@
          return
       endif
 
-      !-------------------------------------------------------------!
 
       p_min = min(pL,pR)
       p_max = max(pL,pR)
@@ -160,9 +144,9 @@
 
       else
 
-         ! Two-shock (TSRS) estimate, Toro (2009) eq. 9.42, exact when both
-         ! nonlinear waves are shocks: one step of the shock relations from
-         ! the PVRS guess.  The star densities are the Rankine-Hugoniot
+         ! Two-shock (TSRS) estimate, Toro (2009) eq. 9.42: one approximate
+         ! step of the shock relations from the PVRS guess, without iterating
+         ! the nonlinear pressure equation. Star densities are the Rankine-Hugoniot
          ! compression ratios TIMES the upstream densities (Toro eq. 4.50),
          ! which is what makes them densities and not ratios.
          AL = 2.0d0/((gam+1.0d0)*rhoL)
@@ -187,7 +171,6 @@
 
       endif
 
-      !-------------------------------------------------------------!
 
       ! Sound speeds are formed only from a state with a positive pressure
       ! and positive densities.  The test is the negation of admissibility,
@@ -208,8 +191,6 @@
       star%c_R_star = sqrt(gam*star%p_star/star%rho_R_star)
       status = ROE_STAR_OK
 
-      ! End of subroutine
       end subroutine speed_estimate_ROE
 
-      ! End of module
       end module S_estimate_ROE

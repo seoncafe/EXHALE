@@ -74,27 +74,13 @@
 
       !---- Global options ----!
       
-      ! Set the number of threads used. The OpenMP regions are the ionization
-      ! sweep (ionization_equilibrium), the rate and cooling tables
-      ! (util_ion_eq), the carrier residual and Jacobian
-      ! (diffusive_photochemistry), the reconstructions (PLM_rec,
-      ! Reconstruction), the conserved/primitive conversions (UW_conversions),
-      ! the marching right-hand side (RK_rhs) and the stationary hydrodynamic
-      ! rows (hydrodynamic_rows). Measured 2026-09-28 on 2 x Xeon Gold 6154
-      ! (36 cores, 72 hardware threads), gfortran 16.2 -O3: the marching of
-      ! wasp_full (300 steps) speeds up 4.3x at 8 threads, 5.8x at 18 and
-      ! 6.3x at 36, and is slower at 72 (4.8x); one stationary outer pass of
-      ! a 500-cell molecular state speeds up 6.5x at 8, 12.2x at 18, 17.5x
-      ! at 36 and 17.1x at 72 (LHS1140b/models/.P1/omp_scaling_lart2).
-      ! A second hardware thread on a core adds nothing (72 against 36), so
-      ! the default is the number of physical cores. Policy: honor an
-      ! explicit OMP_NUM_THREADS (any value); otherwise default to the
-      ! physical cores available (physical_core_count).
-      ! Dynamic team adjustment is switched OFF so that the team size is the
-      ! one requested and the threadprivate scratch of the sweeps persists
-      ! across regions (OpenMP guarantees that only for a fixed team), and
-      ! the size actually obtained is reported. The thread pool of the
-      ! LAPACK library is a separate matter (blas_thread_policy).
+      ! Set OpenMP threads for ionization, radiation tables, species and
+      ! hydrodynamic work. Honor OMP_NUM_THREADS when set; otherwise use
+      ! physical_core_count for the available physical cores. Disable
+      ! dynamic teams so threadprivate sweep scratch persists across regions.
+      ! Report the team actually obtained; blas_thread_policy separately
+      ! controls the linked LAPACK library's thread pool.
+      ! Scaling measurement: ../EXHALE_v1.00/md/Update_EXHALE_stage3.md section 30.1.
       call get_environment_variable('OMP_NUM_THREADS', omp_env, status=omp_env_st)
       if (omp_env_st .eq. 0 .and. len_trim(omp_env) .gt. 0) then
          n_omp_threads = omp_get_max_threads()          ! user set it explicitly
@@ -127,7 +113,6 @@
       du  = 1.0
 	   dtu = 1.0
       
-      !------------------------------------------------!
       
       ! Construction of radial grid
       write(*,*) '    - Constructing the spatial grid..'
@@ -139,19 +124,16 @@
       ! takes the scalar he_kzz.
       call eddy_diffusion_on_grid
       
-      !------------------------------------------------!
       
       ! Construction of energy grid
       write(*,*) '    - Precalculating energy grid, cross section and flux vector..'
       call set_energy_vectors      
       
-      !------------------------------------------------!
       
       ! Pre-evaluate gravity at grid center and edges
       write(*,*) '    - Precalculating the gravitational potential..'
       call set_gravity_grid
       
-      !------------------------------------------------!
       
       !---- Initial conditions ----!
       exact_restart = .false.
@@ -160,7 +142,7 @@
 
          ! In-process Wind-AE warm-start IC ("IC mode: windae"): the ported
          ! Wind-AE solver builds an IC on the EXHALE grid and writes
-         ! output/*_IC.txt, which load_IC then ingests -- the whole
+         ! <output_dir>/*_IC.txt, which load_IC then ingests -- the whole
          ! EXHALE-input -> Wind-AE solve -> IC -> run is one invocation.
          write(*,*) '    - Generating Wind-AE warm-start IC in-process..'
          call wae_generate_ic()
@@ -210,7 +192,6 @@
 	      marching_step = 1
     	endif
       
-      !------------------------------------------------!
 
       ! Evaluate the composition of the initial state BEFORE the ghosts are
       ! filled. The lower boundary reads n_part_cell1 (the cell-1 particle
@@ -243,10 +224,8 @@
 
       write(*,*) '(init.f90) Done.'
       
-      ! End of subroutine
       end subroutine init
 
-      !----------------------------------!
 
       subroutine seed_layer_in_discrete_equilibrium(W)
       ! THE LOWER LAYER OF A MAPPED SEED PROJECTED ONTO THIS GRID'S DISCRETE
@@ -270,14 +249,14 @@
       !  - cell 1 is set so that its constant-density equilibrium reaches
       !    the reservoir pressure at the level face,
       !        p_1 + rho_1 (phi_c(1) - phi_i(0)) = p_reservoir ;
-      !  - cells 2 .. K so that the equilibrium mismatch of faces 1 .. K-1
-      !    vanishes (Reconstruction.f90, well_balanced_face_departures),
+      !  - cells 2 .. K+1 so that the equilibrium mismatch of faces
+      !    1 .. K vanishes (Reconstruction.f90,
+      !    well_balanced_face_departures),
       !        p_j+1 - p_j + rho_j+1 (phi_c(j+1) - phi_i(j))
       !                    + rho_j   (phi_i(j)   - phi_c(j)) = 0 ;
-      !  - every cell above K, the upper ghosts included, is scaled by the
-      !    one factor that balances face K as well (a uniform factor on rho
-      !    and p scales the mismatch of every face above it by the same
-      !    factor, so no join is made);
+      !  - every cell above K+1, including the upper ghosts, is scaled by
+      !    the same factor as cell K+1 (a uniform factor on rho and p
+      !    preserves the mismatch already present above the join);
       !  - the momentum of cells 1 .. K is set to the mass flux of cell K+1,
       !    rho v = F / r^2 with F = (rho v r^2)(K+1) after the scaling, and
       !    above K the velocity is divided by the density factor, so the
@@ -389,7 +368,6 @@
 
       end subroutine seed_layer_in_discrete_equilibrium
 
-      !----------------------------------!
 
       integer function physical_core_count()
       ! The physical cores this process may run on: the processors of its
@@ -437,7 +415,6 @@
       physical_core_count = max(1, n_cores)
       end function physical_core_count
 
-      !----------------------------------!
 
       subroutine cpu_list_parse(text, ids, n)
       ! The processor numbers of a Linux CPU list such as "0-3,8,10-11"
@@ -477,7 +454,6 @@
       enddo
       end subroutine cpu_list_parse
 
-      !----------------------------------!
 
       logical function output_directory_writable()
       ! Whether a file can be created in the output directory: a probe file is opened
@@ -490,5 +466,4 @@
       if (ios .eq. 0) close(u, status='delete')
       end function output_directory_writable
       
-      ! End of module
       end module Initialization

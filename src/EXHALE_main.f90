@@ -289,34 +289,20 @@
       ! coupling has time to feed back into the hydro before a stop is accepted.
       integer :: sec_flip_step = -1
 
-      ! Descending-crossing guard on the du-threshold triggers. du is the radial
-      ! spread of rho*v*r^2, so a SMALL du is evidence of relaxation only for a
-      ! state the marching loop has actually relaxed. On a freshly generated IC
-      ! (cold hydrostatic, transonic, Wind-AE, Parker) the profile is analytic
-      ! and smooth, and its du measures the smoothness of the formula rather than
-      ! the wind: measured du(1) = 1.85e-5 for the WASP-121b transonic IC, which
-      ! tripped both the Newton hand-off and the secondary-ionization flip on
-      ! step 1 and ran away to NaN. The Newton hand-off, the one du trigger
-      ! left (the stop and the secondary-ionization flip read the face flux
-      ! and the state change since 2026-10-09), is therefore armed only once du
-      ! has been seen at or above its threshold, and fires only on the way
-      ! back down. A state read back with "Load IC? True" was relaxed by the
-      ! marching loop of the run that wrote it, so its du is meaningful and
-      ! the trigger starts armed.
-      ! Set when the JFNK steady solver returned info=0 and its solution is
-      ! what ends the run. It is a stop condition of its own -- the marching
-      ! loop tests it directly -- because a Newton finish does not have to
-      ! satisfy the marching stop: it hands over at a face spread below
-      ! newton_flux_switch and converges on the residual and flux gates
-      ! instead.
+      ! Arm the Newton handoff after a monitor window sees the face
+      ! mass-flux spread fspread_gate at or above newton_flux_switch.
+      ! A later window below that switch, or a settled window below five
+      ! times it, may enter Newton after the reconstruction and retry gates.
+      ! Loaded ICs start armed; a newly generated IC must first visit the
+      ! upper side of the face-flux threshold. du remains a cell-centered
+      ! diagnostic (Update_EXHALE stage 3 section 127).
       logical :: newton_finished = .false.
       ! The JFNK finish converged and its RETURNED state does not meet the
       ! gate its last iterate met (info = 2, B5pre). The state is written as
       ! the final state with certified=F and the run exits 2: a stationarity
       ! claim that failed certification.
       logical :: newton_returned_uncertified = .false.
-      logical :: du_newton_armed = .false.   ! JFNK hand-off, and the secondary-
-                                             ! ionization flip sharing its test
+      logical :: du_newton_armed = .false.   ! face-flux Newton handoff armed
       ! Step at which the JFNK hand-off last returned info /= 0 (-1 = never),
       ! and how many times it has been offered a state. The hand-off is held
       ! for N_stall steps after a failure so the marching has moved the wind
@@ -338,16 +324,10 @@
       ! printed.
       real*8  :: fspread_103, fspread_110
       logical :: gates_met_now = .false.
-      ! THE ACCEPTANCE LEDGER OF THE LAST EQUILIBRIUM SWEEP THE RUN HELD,
-      ! and the certification the run makes from it. Every ioniz_eq call that
-      ! solves the composition of a state the run then keeps -- the initial
-      ! one, the restart equilibration, the marching loop's, and the steady
-      ! route's refresh after each solve -- writes it, so the count of cells
-      ! without a chemical root that reaches a certification belongs to the
-      ! sweep that produced the state being judged and not to some earlier
-      ! one. A Jacobian probe or a line-search trial does not write it: those
-      ! sweeps are tagged as candidates and the solver keeps their ledger
-      ! itself.
+      ! The last accepted ioniz_eq sweep records the composition and its
+      ! chemical-root ledger for certification. Initial, restart, marching,
+      ! and post-solve refresh sweeps update it; candidate Jacobian and line-
+      ! search evaluations keep separate ledgers.
       type(ioniz_eq_ledger) :: last_sweep
       type(cert_report)     :: cert_now
       integer               :: n_no_root_now = 0
@@ -379,28 +359,15 @@
       integer :: reload_eq_sweeps   = 0
       real*8  :: reload_eq_dnpart   = 0.0d0
 
-      ! HOW MANY OUTER ITERATIONS A STATIONARY SOLVE OF THIS RUN MAY TAKE.
-      ! One number for every route that enters
-      ! steady_wind_with_element_diffusion -- the direct steady route, the
-      ! marching hand-off and the stationary restart -- because the budget
-      ! is a property of the run and not of the door it came in by: the
-      ! three routes hand the same solver the same system, and the state
-      ! they hand it is not more or less solvable for having been reached by
-      ! marching. It is a stop of last resort, far above the iteration count
-      ! any converging solve takes (MEASURED: 13 on wasp_full_newton).
+      ! One 3000-iteration default cap for each stationary solve route.
+      ! It exceeds measured convergent solves (13 iterations on
+      ! wasp_full_newton) and is a last-resort stop.
       integer, parameter :: jfnk_outer_iterations_default = 3000
-      ! WHETHER A CAP WAS NAMED FOR THE RUN, and how many stationary solves
-      ! the run has entered. EXHALE_JFNK_MAXIT names an outer-iteration cap
-      ! that steady_newton applies to EACH solve, so a run that enters the
-      ! solve more than once -- the marching hand-off returns to marching on
-      ! info = 1 and offers the hand-off again N_stall steps later -- would
-      ! spend the cap once per entry and the number measured under it would
-      ! be the sum of several solves from different states. Under a named
-      ! cap the run therefore makes its FIRST entry into the stationary
-      ! route and no other.  Inside that entry the partitioned alternation
-      ! still solves once for each outer pass, each solve under the cap, so
-      ! a named cap bounds each pass's solve and does not make the entry one
-      ! solve (MEASURED 2026-09-23 on an LHS 1140 b molecular state).
+      ! EXHALE_JFNK_MAXIT caps each stationary solve. When named, the run
+      ! enters the stationary route only once; otherwise repeated marching
+      ! handoffs could spend the cap several times. The partitioned entry
+      ! may still contain several capped solves, one in each outer pass
+      ! (LHS 1140 b measurement, 2026-09-23).
       logical :: jfnk_run_cap_named       = .false.
       integer :: n_stationary_solves_run  = 0
       character(len=32) :: jfnk_cap_env
@@ -486,40 +453,29 @@
       ! Convergence stall detection (ported from ATES_extended)
       real*8  :: du_prev
       integer :: stall_count
-      ! THE MARCHING STOP (2026-10-09, update log stage 3 section 127). A
-      ! stationary finite-volume wind carries one NUMERICAL mass flux through
-      ! its faces, r_{j+1/2}^2 F_rho,j+1/2; the product of cell averages
-      ! rho_j v_j r_j^2 (du, mass_flux_spread) is a different, resolution-
-      ! dependent quantity, and next to the outer ghost it is not constant
-      ! on a converged state (MEASURED, md/weno3_local_floor_marching_stall_
-      ! diagnosis_20261009.md: a certified stationary wasp_full state with
-      ! face spread 5.3e-13 has du 3.6e-3 on 500 cells and 1.7e-3 on 1000).
-      ! The stop therefore reads the face spread over r >= r_flux
-      ! (fspread_gate, the steady solvers' gate quantity, against its own
-      ! marching threshold march_flux_spread_th) together with
-      ! the state change over one monitor window of N_resid steps:
-      !     chg_win = max over cells j = 1..N of |rho/rho_win - 1|,
-      !               |E/E_win - 1| and |(rho v) - (rho v)_win|/sqrt(rho E)_win.
-      ! Both are formed every N_resid steps in the monitor block; du is
-      ! still formed every step and printed as a diagnostic of the cell
-      ! averages, and it still drives the PLM -> WENO3 switch and the JFNK
-      ! hand-off (see there).  n_settled_windows counts consecutive windows
-      ! with chg_win < march_change_th while the face flux is not flat: the
-      ! stall net.
+      ! Marching stop: compare the numerical face mass-flux spread over
+      ! r >= r_flux with march_flux_th (initialized from march_flux_spread_th and
+      ! optionally overridden by EXHALE_MARCH_FLUX_TH) and the state change over one
+      ! N_resid monitor window. The latter is the maximum over physical
+      ! cells of |rho/rho_win-1|, |E/E_win-1|, and
+      ! |rho*v-(rho*v)_win|/sqrt(rho*E)_win.
+      ! Cell-centered du remains diagnostic and still selects reconstruction
+      ! and the Newton handoff. It does not measure the stationary face
+      ! balance: a certified wasp_full state has face spread 5.3e-13 but
+      ! du 3.6e-3 at 500 cells (1.7e-3 at 1000); see
+      ! md/weno3_local_floor_marching_stall_diagnosis_20261009.md and
+      ! Update_EXHALE stage 3 section 127. n_settled_windows counts
+      ! consecutive low-change windows where spread no longer falls
+      ! sufficiently and the direct convergence gate is unmet.
       real*8, allocatable :: u_win(:,:)
       real*8  :: chg_win, march_flux_th
       logical :: monitor_now, win_ready
       integer :: n_settled_windows, jj_win, j_chg_win
       real*8  :: chg_cell
-      ! THE STALL NET ASKS WHETHER THE FACE FLUX IS STILL FALLING. A window
-      ! whose state changes little (chg_win < march_change_th) is a stall
-      ! only if the face mass-flux spread has also stopped falling: it must
-      ! not have dropped by more than flux_fall_min (relative) since the
-      ! previous monitor window. Without this test the net ended wasp_full
-      ! at step 31 500 (both WENO3 floors, 2026-10-09) while the face spread
-      ! was still falling smoothly by 4-5% per 500-step window, from 7.5e-3
-      ! at step 5500 to 4.0e-4 (tmp diag cont_loc/cont_dr2, update log stage
-      ! 3 section 127): a slow relaxation, not a stall.
+      ! Count a low-change window as stalled only if face-flux spread
+      ! fell by no more than flux_fall_min since the previous window.
+      ! Without this guard, wasp_full stopped while spread was still falling
+      ! 4-5% per 500 steps (Update_EXHALE stage 3 section 127).
       real*8  :: fspread_win_prev
       real*8, parameter :: flux_fall_min = 1.0d-2
       logical :: flux_still_falling
@@ -534,27 +490,13 @@
       ! Decoupled outer iteration over the excited-H (H n=2) feedback
       real*8  :: exc_rel
 
-      ! The damped Picard alternation of the stationary route
-      ! (steady_wind_with_element_diffusion).
-      !
-      ! FOUR QUANTITIES, AND NO TWO OF THEM ARE THE SAME ONE:
-      !   carrier_residual_returned  the residual of the carrier operator at
-      !                              the composition the pass hands back,
-      !                              |res| over the sum of that row's own
-      !                              physical terms;
-      !   element_residual_returned  the residual of the elemental transport
-      !                              operator at the same composition, on
-      !                              the same kind of scale;
-      !   element_map_distance       the distance to the endpoint of the
-      !                              element relaxation's inner map, which
-      !                              may exit on its step budget, so it is a
-      !                              distance and not a residual;
-      !   *_displacement_pass        what the pass actually changed, which a
-      !                              bound or a damping factor shortens.
-      ! comp_residual is the composition's distance from the fixed point of its
-      ! own operators: the larger of the two RESIDUALS, over the halves that
-      ! could be measured.  comp_omega is the under-relaxation factor of the
-      ! element update.
+      ! Damped stationary wind-composition alternation. The carrier and
+      ! element residuals measure separate balances at the returned state;
+      ! comp_residual is their maximum over available halves. The element
+      ! map distance measures distance to the relaxation endpoint, which
+      ! may exhaust its step budget. The displacement variables measure
+      ! accepted changes after damping or movement bounds. comp_omega is
+      ! the element under-relaxation factor.
       real*8  :: comp_residual, comp_omega, element_map_distance
       real*8  :: element_residual_returned, element_displacement_pass
       real*8  :: carrier_residual_returned, composition_displacement_pass
@@ -592,24 +534,13 @@
       ! state, so the ratio the progress control reads can be logged with
       ! the two absolute numbers it came from.
       real*8, dimension(:,:), allocatable :: crc_res, crc_terms
-      ! HOW FAR ONE FIXED-WIND CARRIER PASS MAY MOVE THE COMPOSITION, as the
-      ! largest relative change of one cell's particle count n_tot + n_e
-      ! over the pass, enforced on the accepted step by
-      ! relax_photochemical_composition. This is the value the outer
-      ! iteration STARTS from. 1e-2 stands a factor 20 inside the measured
-      ! boundary of the steady solve's tolerance on the hot Uranus hand-off,
-      ! taken on the retired measure (a fraction of the largest H2 mixing
-      ! ratio of the entry state): the wind solve still accepted the
-      ! handed-over state at 0.2 and stopped accepting it at 0.4. The outer
-      ! iteration lengthens the bound after a converged solve that consumed
-      ! an update it had limited and shortens it after a solve that failed
-      ! (steady_wind_with_element_diffusion), and leaves this value where a
-      ! later entry reads the run's own setting.
-      !
-      ! EXHALE_CARRIER_TRUST overrides it and EXHALE_OUTER_PASSES the pass
-      ! cap, so the alternation can be run as a CONTINUATION that walks the
-      ! H2 front to where the carrier equation puts it (section 163); both
-      ! are diagnostics and neither is an input key.
+      ! Initial fixed-wind carrier movement bound: maximum relative
+      ! change of n_tot+n_e in one cell per pass. The initial 1e-2 bound is
+      ! 20 times below the measured hot-Uranus handoff limit of 0.2 on the
+      ! retired H2-mixing-ratio measure. Successful limited updates may
+      ! enlarge it; failed wind solves shrink it. EXHALE_CARRIER_TRUST
+      ! overrides this diagnostic bound and EXHALE_OUTER_PASSES the pass
+      ! cap (Update_EXHALE stage 3 section 163).
       real*8  :: carrier_trust = 1.0d-2
       integer :: outer_pass_cap = 20
 
@@ -639,16 +570,10 @@
       real*8 :: dt
       real*8, dimension(:), allocatable :: dt_loc
 
-      ! Positivity step control (see the retry_step loop). The three
-      ! counters themselves live in global_parameters, so the attempted-step
-      ! controller can checkpoint them as attempt statistics and assert that
-      ! a restore does not move them back. n_dt_halve_max bounds the
-      ! bisection: 20 halvings is a factor 1e-6 on dt, past which no step
-      ! size repairs the state. It stays 20 while the OUTER controller's cap
-      ! is 8 (n_step_retry_max), deliberately: the inner criterion is the
-      ! admissibility of one Runge-Kutta stage and its cost is one stage,
-      ! not a whole step, and the two counts are reported separately and
-      ! never added.
+      ! The inner RK-stage positivity retry allows 20 dt halvings, about
+      ! a 1e-6 reduction. The outer attempted-step cap is 8; its whole-step
+      ! retries are distinct from stage retries and counted separately.
+      ! The attempted-step checkpoint retains attempt statistics.
       integer :: n_dt_halve, n_dt_halvings, n_steps_dt_halved
       ! Cells whose internal energy one accepted step took from the adiabat.
       integer :: n_adiabat_cells
@@ -772,109 +697,25 @@
       ! Flux and source vectors
       real*8, dimension(:,:), allocatable :: dF,S
 
-      !------------------------------------------------!
-      ! THE COUPLED SOURCE STEP (rows 7 to 9).
-      !
-      ! csm_T_tol / csm_comp_tol are the fixed-point tolerances of the
-      ! composition-temperature pair, NOT accuracy tolerances of either
-      ! solve: each of the two solves keeps its own residual test (the energy
-      ! row at 1e-9 of its scale, the composition at the sweep's own
-      ! acceptance classes) and these say when the two have stopped moving
-      ! each other.
-      !
-      ! WHAT THEY BOUND IS THE ERROR OF THE ACCEPTED STATE, its distance
-      ! to the fixed point, and not the last step towards it.  The pass
-      ! sequence decays geometrically with a ratio theta the loop measures
-      ! from the sequence itself, so the error a pass leaves is
-      ! |theta/(1 - theta)| times that pass's own increment, a factor of
-      ! 0.07 to 0.28 at the measured |theta| of 0.07 to 0.22.  The loop
-      ! therefore stops when the ESTIMATED ERROR, carried into the test's
-      ! own norm by csm_err_safety, is within these two tolerances
-      ! (coupled_pair_geometric_error_estimate), each in the norm its own
-      ! tolerance is written in.  On a pass whose sequence gives no
-      ! estimate, the first two passes of a step or a pair the guards
-      ! refuse, the increment is the only bound the loop can state and the
-      ! test is taken on it, which is the test this loop applied on every
-      ! pass before item COST7.
-      !
-      ! WHAT THE ACCEPTED STATE IS THEN WORTH IS MEASURED and not
-      ! modeled: the probe at csm_err_probe walks the same sequence on to
-      ! an increment of 1e-12 and records the distance from there to the
-      ! state the test accepted.  The worst distance and what it costs are
-      ! at csm_err_safety.
-      !
-      ! THE ANCHOR IS THE TIGHTEST TEST THE ADOPTED STATE HAS TO PASS, and
-      ! that is the certification's composition rows: cert_tol_carrier_at(r)
-      ! and cert_tol_element_at(r), 1.0e-5 in the wind and reported below it
-      ! (certification.f90), measured on the composition this
-      ! step returns.  A pair that has stopped moving only
-      ! to 1e-7 carries a composition error of that size into rows whose
-      ! tolerance is 1e-8, so no state could certify however long it
-      ! marched.  1e-8 is therefore the loosest value the acceptance
-      ! interface admits, and it is what is set here.
-      !
-      ! WHAT IT COSTS AND WHAT LOOSENING IT WOULD BUY was MEASURED
-      ! 2026-09-06: a decade of tolerance is 1.3 passes and about 15 percent
-      ! of the wall time, so the tolerance is NOT the cost lever, and the
-      ! step's own truncation
-      ! error (5.3e-3 relative) is five decades above the loosest value
-      ! measured.  What the cost is made of is stated at csm_max_pass.
+      ! csm_T_tol and csm_comp_tol bound the accepted pair's distance to
+      ! its fixed point; the energy and composition solves have separate
+      ! residual tests. With a valid geometric ratio theta, compare
+      ! csm_err_safety*|theta/(1-theta)| times the last increment in each
+      ! tolerance's norm. Otherwise compare the increment itself.
+      ! The composition tolerance is 1e-8 so the returned pair can meet
+      ! the stricter certification rows; csm_err_probe measures accepted
+      ! states against a tighter fixed-point continuation.
+      ! See ../EXHALE_v1.00/md/coupled_source_loop_cost.md sections 7-8.
       real*8,  parameter :: csm_T_tol      = 1.0d-8
       real*8,  parameter :: csm_comp_tol   = 1.0d-8
-      ! Pass budget.  A pass costs one composition sweep and one temperature
-      ! solve, and the sweep is the expensive one, so this is the cost knob
-      ! of the whole step.  Exhaustion is a status, never a clamp.
-      !
-      ! WHAT THE COUNT IS.  MEASURED, in order of what was learned: the
-      ! attenuated field is the largest single term
-      ! of the sweep and is built from the composition the pass was HANDED,
-      ! so the front walks inward one cell a pass; carrying the solved
-      ! column forward removes the walk (10.10 to 7.13 passes) but costs
-      ! the field's thread width and does not pay at sixteen threads
-      ! (xuv_field_block_cells); the count is a LADDER of nested modes and
-      ! equals the SLOWEST of them, not their sum (10.09, then 7.16 with the
-      ! field's composition dependence removed, 4.94 with the temperature
-      ! removed too, 2.00 with the He recombination rates as well), so
-      ! removing a subordinate coupling changes nothing; and it is
-      ! arithmetic,
-      !   passes = 2 + log10(the step's own excursion
-      !                      / the increment the stopping test admits)
-      !                / (decades per pass) ,
-      ! every term measured (0.77 decades a pass on mol_base_handoff, 7.00
-      ! predicted against 6.93; 9.2 against 10.09 on wasp_full), tested
-      ! against a tolerance scan (1.34 passes a decade measured, 1.30
-      ! predicted) and shown not to be the cell solve (six decades of hybrd1
-      ! tolerance, no change).  The increment the test admits is the
-      ! tolerance divided by csm_err_safety*|theta/(1 - theta)|, since the
-      ! test is taken on the error and not on the increment, so on a pass
-      ! that carries an estimate the loop walks that many FEWER decades
-      ! than the tolerance alone would ask: MEASURED on mol_base_handoff
-      ! the factor is 0.18 on the temperature block and 0.21 on the
-      ! composition block, i.e. 0.74 and 0.69 decades.  What it is worth
-      ! in passes is far LESS than those decades over that rate, because
-      ! the estimate has to exist at the pass that exits and a step's pass
-      ! count is an integer: MEASURED 0.14 passes of 6.96 on
-      ! mol_base_handoff, where 48 of 300 exits carry an estimate, and
-      ! 0.08 of 10.09 on wasp_full, where 271 of 300 do (item COST7).  So
-      ! the error test is not a cost lever either; what it changes is what
-      ! the two tolerances bound.  The molecular path
-      ! carries two modes of
-      ! nearly equal cost, the composition and the temperature; the one lag
-      ! that limits the composition mode's RATE there is n_tot, the third
-      ! body of the three-body reactions, built from the entry composition
-      ! (worth 0.8 passes at most).
-      !
-      ! The tolerances above are unchanged and so is the fixed point: at the
-      ! fixed point a cell's entry and returned composition are one state,
-      ! so every ordering builds the same columns and the same field.
-      !
-      ! WHAT FOLLOWS FROM THAT LAW is that a sequence whose ratio is
-      ! already measured need not be walked term by term: three of its
-      ! terms give both the error it still carries and its limit.  The
-      ! error is what the stopping test above is taken on; the limit as
-      ! the next iterate is csm_extrap_on below, default off, with its own
-      ! guards.  Both read the one estimate,
-      ! coupled_pair_geometric_error_estimate.
+      ! csm_max limits coupled composition-temperature passes; exhaustion is
+      ! reported, never clamped into an accepted state. Each pass builds the
+      ! attenuated field from its entry composition. The slowest coupled
+      ! mode sets the count; changing a subordinate mode does not remove it.
+      ! The fixed point is unchanged because entry and returned composition
+      ! coincide there. Three passes estimate both the remaining error and
+      ! the guarded extrapolated iterate (csm_extrap_on, default off).
+      ! See ../EXHALE_v1.00/md/coupled_source_loop_cost.md sections 2-8.
       integer, parameter :: csm_max_pass   = 20
       real*8, dimension(:), allocatable :: u_th_old_csm, u_form_csm,       &
                                            u_form_old_csm, du_form_csm,    &
@@ -882,10 +723,10 @@
       real*8, dimension(:,:), allocatable :: f_sp_csm
       ! The last pass's movement of each cell separately: the relative move
       ! of its temperature and the largest absolute move of any of its
-      ! species fractions. The exit test is the statement that no cell moved
-      ! (maxval of these against the two tolerances), and the same two
-      ! numbers say WHICH cells are still moving, which is what the pass
-      ! count is made of.
+      ! species fractions. The exit test compares an estimated remaining
+      ! error when the geometric guards accept it, and otherwise compares
+      ! these increments with the two tolerances. The cell values also
+      ! identify where the pair is still moving.
       real*8, dimension(:), allocatable :: csm_dT_cell, csm_dc_cell
       ! Which cells were at rest after the PREVIOUS pass. A cell-local skip
       ! of the next pass would be exactly the statement that these stay at
@@ -917,57 +758,18 @@
       real*8  :: csm_mass_resid_run = 0.0d0
       integer :: csm_mass_resid_step = 0
 
-      !------------------------------------------------!
-      ! THE GEOMETRIC DECAY OF THE PASS SEQUENCE, AND WHAT IT IS READ FOR.
-      !
-      ! The pass count stated at csm_max_pass is arithmetic because the
-      ! loop's error decays geometrically with a ratio stable from the
-      ! second pass to the last.  A sequence of ratio theta whose last pass
-      ! moved by d_k stands
-      !     x_inf - x_k = sum_{m>=1} theta^m d_k = theta/(1 - theta) d_k
-      ! from its own limit, so THREE OF ITS TERMS GIVE BOTH the error the
-      ! iterate still carries and the limit itself.  Two things read that,
-      ! and they read it from ONE routine,
-      ! coupled_pair_geometric_error_estimate:
-      !   * the stopping test above, which is a statement about the ERROR
-      !     of the state it accepts and compares the estimate against
-      !     csm_T_tol and csm_comp_tol;
-      !   * the extrapolation below, which moves the pair to the LIMIT and
-      !     is default off.
-      !
-      ! THE OBJECT IS THE WHOLE STATE'S DOMINANT MODE, NOT A CELL'S RATIO.
-      ! A ratio taken component by component was MEASURED WORSE (12.00
-      ! against 11.05 passes) because the contraction
-      ! ratio spreads 200 percent from cell to cell while the front walks
-      ! through the grid and theta/(1 - theta) is unbounded as theta goes to
-      ! one.  What is stable is the Rayleigh quotient of the whole increment
-      ! vector, theta = <d_k, d_{k-1}> / <d_{k-1}, d_{k-1}>, the projection
-      ! of the error onto the dominant decay mode (0.07 to 0.22 in size,
-      ! stable from the second pass).  One such scalar is taken for the
-      ! temperature block and
-      ! one for the composition block, in the norms the stopping test itself
-      ! uses.
-      !
-      ! THE RATIO'S NORM IS NOT THE STOPPING TEST'S NORM, and that is the
-      ! one approximation in the estimate: theta is an L2 Rayleigh quotient
-      ! of the increment vectors, while the two tolerances are max-norm
-      ! tests that one cell and one species gate.  The estimated error is
-      ! therefore a MODEL of the remaining error and is good to a factor of
-      ! order one only where the modeled remainder is already small --
-      ! MEASURED at csm_x_reach, a candidate placed at the modeled limit
-      ! leaves twice the error the model predicts once the model is asked
-      ! to reach further than a factor of three, and MEASURED with the
-      ! probe the max-norm distance of a state accepted near the
-      ! tolerance is up to 2.4 times the projected estimate.  What the
-      ! accepted state is worth is therefore not argued from the model at
-      ! all: it is MEASURED against the fixed point itself by the probe at
-      ! csm_err_probe, and csm_err_safety is the factor that measurement
-      ! sets.
-      !
-      ! csm_geom_first_pass is the pass whose increment first belongs to
-      ! the geometric tail: the increment of pass 1 carries the step's
-      ! operator-split excursion, so the first usable pair is passes 2 and
-      ! 3 and no estimate exists before the third pass.
+      ! For a geometric pass sequence, the remaining pair error is
+      !   x_inf - x_k = [theta/(1-theta)] d_k,
+      ! theta = <d_k,d_(k-1)>/<d_(k-1),d_(k-1)> for the whole increment
+      ! vector (one scalar for temperature, one for composition).
+      ! coupled_pair_geometric_error_estimate supplies this model to the
+      ! stopping test and to guarded limit extrapolation (default off).
+      ! Its L2 ratio predicts a max-norm error only approximately; the
+      ! measured safety factor csm_err_safety accounts for that mismatch.
+      ! Pass 1 contains the split excursion, so the first estimate uses
+      ! passes 2 and 3 (csm_geom_first_pass). Without an estimate the
+      ! stopping test uses the last increment.
+      ! See ../EXHALE_v1.00/md/coupled_source_loop_cost.md sections 5-8.
       integer :: csm_geom_first_pass = 3
       ! An estimate is taken only where the two increments are a decaying
       ! single mode, and these say what that means.  |theta| must be
@@ -985,28 +787,11 @@
       ! ratio was not the sequence's.
       real*8 :: csm_geom_theta_max = 0.8d0
       real*8 :: csm_geom_model_tol = 0.5d0
-      ! THE ESTIMATE IS TAKEN IN A DIFFERENT NORM FROM THE TEST, AND THIS
-      ! IS THE FACTOR THAT COSTS.  theta is an L2 Rayleigh quotient of the
-      ! increment vectors, so |theta/(1 - theta)| times the increment is
-      ! the remainder of the L2-dominant mode; the two tolerances are
-      ! max-norm tests that one cell and one species gate, and that cell
-      ! is not in general the one the dominant mode lives in.  MEASURED
-      ! with the probe at csm_err_probe on mol_base_handoff at 300 steps,
-      ! the worst distance of the accepted state to its fixed point
-      ! against the factor the estimate is multiplied by, and the passes a
-      ! coupled step:
-      !     factor          1        2        3     increment test
-      !     worst dcomp  1.8e-08  1.0e-08  7.4e-09       --
-      !     over 1e-08   100/299    1/299    0/299       --
-      !     passes         6.14     6.76     6.82      6.96
-      ! The unfactored estimate therefore accepts states OUTSIDE
-      ! csm_comp_tol on a third of the steps of that case, which is the
-      ! one statement the tolerance is there to make, and the factor is
-      ! the smallest of the three that leaves none: 3.  The step from 2 to
-      ! 3 costs 0.06 passes, because past a factor of 2 most exits are
-      ! taken on the increment anyway, the guards refusing a pair whose
-      ! increments have reached round-off.  A bound exceeded on one step
-      ! in 300 is not a bound, which is why 2 is not the value.
+      ! The ratio theta uses the L2 dominant mode, while the pair tests
+      ! use maxima over cells and species. csm_err_safety = 3 accounts for
+      ! the measured mismatch: the unfactored estimate admitted states
+      ! beyond csm_comp_tol. See ../EXHALE_v1.00/md/coupled_source_loop_cost.md
+      ! section 7 (COST7).
       real*8 :: csm_err_safety = 3.0d0
       ! DIAGNOSTIC HOOK, default off: one line for each pass sequence the
       ! estimate is measured from and one for each candidate taken.
@@ -1063,28 +848,11 @@
       integer :: n_csm_probe_over_T = 0, n_csm_probe_over_c = 0
       real*8  :: csm_probe_worst_T = 0.0d0, csm_probe_worst_c = 0.0d0
 
-      !------------------------------------------------!
-      ! THE GEOMETRIC LIMIT OF THE PASS SEQUENCE AS THE NEXT ITERATE.
-      !
-      ! Taking the limit of the sequence above as the next iterate is what
-      ! these constants control.  It is an acceleration of the path and NOT
-      ! a change of what the loop returns: the limit is a CANDIDATE, the
-      ! loop continues from it, and the state that leaves still has to
-      ! satisfy the same stopping test, measured the same way, on a pass
-      ! taken from it.
-      !
-      ! WHAT IT IS WORTH NOW THAT THE STOPPING TEST IS TAKEN ON THE ERROR.
-      ! The passes it used to save were the passes the loop spent walking
-      ! the last factor 1/|theta| of the increment down to the tolerance,
-      ! and those are exactly the passes the error test no longer spends.
-      ! MEASURED on mol_base_handoff at 300 steps with the error test in
-      ! place, the count with the limit taken is the count without it,
-      ! where against the increment test it was worth 6.15 against 6.96.
-      ! The window the reach guard leaves is now the band between the
-      ! tolerance and csm_x_reach times it, a factor of two wide, so
-      ! almost no pass falls in it.  The default stays off, and the code
-      ! stays because the sequence it measures is what the stopping test
-      ! reads.
+      ! Guarded geometric extrapolation proposes the sequence limit as
+      ! the next iterate; it never replaces the pair acceptance test.
+      ! It is off by default because the error-based stopping test already
+      ! removes nearly all passes it formerly saved.
+      ! See ../EXHALE_v1.00/md/coupled_source_loop_cost.md section 8.
       logical :: csm_extrap_on    = .false.
       ! How many candidates one step may take. One, because a second is
       ! unreachable in practice and the measurement says so: an accepted
@@ -1100,33 +868,12 @@
       ! only where that pass made no progress at all.  The two rules are
       ! measured against each other at csm_x_reach.
       logical :: csm_extrap_strict = .false.
-      ! HOW FAR THE ONE-MODE MODEL REACHES, and this guard is what decides
-      ! whether the extrapolation pays at all.  Removing the modeled part
-      ! of the error leaves the part the model does not explain, and
-      ! MEASURED on mol_base_handoff that remainder is not small early in a
-      ! step: taken at the third pass the extrapolation leaves a
-      ! composition increment of 0.12 of the pass's own, against the 0.055
-      ! the plain pass would have left, because early in the sequence
-      ! several modes are alive (the ionization front is walking through
-      ! cells) and the mode the Rayleigh quotient measures is the one that
-      ! dominates the L2 norm, not the one that gates the max-norm stopping
-      ! test.  Late in the sequence one mode is left and the model is exact
-      ! to the same measurement.
-      !
-      ! What separates the two ends without tuning a pass number is the
-      ! size of the modeled remainder ITSELF: the candidate is taken only
-      ! where the estimated error is already within csm_x_reach times the
-      ! stopping tolerance, which is the stopping test itself at a
-      ! tolerance loosened by that factor.  The extrapolated state is then
-      ! inside the ball the loop is aiming for even if the model is wrong
-      ! by a factor of order one.
-      !
-      ! WHAT THE FACTOR IS WORTH was MEASURED on mol_base_handoff at 300
-      ! steps against a control of 6.96 passes, with the stopping test
-      ! taken on the increment as it then was: 6.61, 6.15, 6.36 at reach 1,
-      ! 2, 3 and 7.7 to 7.8 at 10 and above.  Above 3 the model is
-      ! asked for more than it has and the loop pays a pass for each
-      ! candidate its own next pass then undoes.
+      ! Extrapolate only when the modeled error is within
+      ! csm_x_reach times the stopping tolerance; early passes still
+      ! contain modes the single Rayleigh ratio does not describe.
+      ! At pass 3 on mol_base_handoff the candidate left 0.12 of that
+      ! pass's composition increment, versus 0.055 for a plain pass.
+      ! See ../EXHALE_v1.00/md/coupled_source_loop_cost.md section 6.
       real*8 :: csm_x_reach = 2.0d0
       ! The candidate is made ADMISSIBLE by construction and not by test:
       ! every constraint on it (each species fraction in [0,1], the He 2^3S
@@ -1167,7 +914,6 @@
       real*8  :: csm_x_damp_min_seen = 1.0d0
       character(len=32) :: csm_x_env
       
-      !------------------------------------------------! 
       
       ! Read planetary parameters from file
       call configure_run_paths
@@ -1271,7 +1017,6 @@
          end block
       endif
 
-      !------------------------------------------------!
 
       ! Is this run a molecular-seed conversion (EXHALE_MOLECULAR_SEED)?
       ! Asked before the state is read, because the answer says which pair
@@ -1304,8 +1049,8 @@
          call write_output(rho,v,p,T,heat,cool,eta,                    &
                            nhi,nhii,nhei,nheii,nheiii,nheiTR,nm,'eq')
          write(*,*) '(EXHALE_main) molecular seed written to'//         &
-                    ' output/Hydro_ioniz_IC.txt and'//                  &
-                    ' output/Ion_species_IC.txt; stopping.'
+                    ' '//trim(output_dir)//'Hydro_ioniz_IC.txt and'//                  &
+                    ' '//trim(output_dir)//'Ion_species_IC.txt; stopping.'
          stop
       endif
 
@@ -1360,11 +1105,12 @@
       endif
 
       ! Optional steady-residual diagnostic (env EXHALE_RESIDUAL=1): evaluate
-      ! the finite-volume steady residual R = du/dt of the loaded state and
-      ! stop. R = dF - S for mass/momentum and dF_E - S_E - (heat - cool) for
-      ! energy; at a true steady state R = 0, INDEPENDENT of how the run was
+      ! the finite-volume steady residual R = -d(u)/dt of the loaded state and
+      ! stop. The hydrodynamic and heating-cooling terms are supplemented
+      ! by enabled viscous, conductive, and relative-transport enthalpy
+      ! terms; at a true steady state R = 0, INDEPENDENT of how the run was
       ! stopped (du/dtu/stall). Reported as the max relative residual rate
-      ! max_j |R(j,k)| / max_j scale(k,j) over the whole physical column,
+      ! max_j [ |R(j,k)| / max(scale(k,j),1e-300) ] over physical cells,
       ! wind and below-escape layer normed separately and combined by the
       ! larger of the two (residual_norms). Used to rank candidate
       ! "converged" states (premature-dip vs true steady).
@@ -1443,7 +1189,7 @@
                    Frho_diag(jj)*r_edg(jj)*r_edg(jj)
            end do
            close(uu)
-           write(*,'(A)') ' (EXHALE_main) wrote output/residual_profile.txt'
+           write(*,'(A)') ' (EXHALE_main) wrote '//trim(output_dir)//'residual_profile.txt'
          end block
          call report_base_face_state('as the EXHALE_RESIDUAL diagnostic'//&
               ' left it')
@@ -1467,58 +1213,17 @@
          stop
       endif
 
-      ! Optional Newton-residual self-test (env EXHALE_NEWTON_TEST=1): verify
-      ! the vector residual F(Y) used by the steady solver reproduces the
-      ! diagnostic residual. (a) pack/unpack are exact inverses; (b) the
-      ! the same relative residual per component, computed from the vector
-      ! F(Y) by the solver's own convergence measure, equals the
-      ! EXHALE_RESIDUAL values. Validates increment (ii)-2 before the
-      ! Jacobian/PTC driver.
-      ! ---- Is the steady residual a function of its argument alone? --------
-      ! (env EXHALE_RESID_DETERMINISM=1.)  CONTRACT 1 OF THE RESIDUAL: with
-      ! identical complete inputs and identical branch data, F(Y) comes back
-      ! the same bits however many other states were evaluated and discarded
-      ! in between.
-      !
-      ! F is evaluated at the loaded state, then at other states, then at the
-      ! loaded state again, REUSING ONE OUTPUT WORKSPACE throughout so that
-      ! the workspace carries each evaluation's composition into the next
-      ! call.  The seed is named in every call and is the same every time, so
-      ! a residual that is a state function returns the same bits; anything
-      ! else means the workspace's leftover, or a module the evaluation
-      ! wrote, was read.
-      !
-      ! The interface is what makes this pass: eval_residual takes the seed as
-      ! one argument and writes the composition to another, and the two may not
-      ! be the same array, so a caller CANNOT hand the sweep its own previous
-      ! answer even by accident.  Before that separation the same test read
-      ! 1406 of 1500 entries differing by 3.0e-3 of the row scale
-      ! (Update_EXHALE_stage1.pdf section 146.3).
-      !
-      ! THE SYSTEM REPLAYED IS THE ONE A SOLVE WOULD CARRY.  The species-row
-      ! registry is empty until a solve registers it, so without the two
-      ! lines below this replay measures the three-unknown system in EVERY
-      ! configuration and says nothing about the carrier and element rows a
-      ! reload actually solves; the same statement, and the same two lines,
-      ! are at EXHALE_JAC_TEST.  The species slots of Y are then filled from
-      ! the state's own composition, exactly as the solve fills them.
-      !
-      ! THE STATES EVALUATED IN BETWEEN ARE THE PROBES OF A SOLVE, taken
-      ! through the production routines so that the replay is about the code
-      ! the solve runs:
-      !   trial 1, 2  hydrodynamic trial points, the size a line search takes;
-      !   trial 3     a species trial, moving every species slot, which no
-      !               three-unknown trial reaches;
-      !   the trust-region trial, an evaluation the caller DISCARDS, which is
-      !               what a point on a dogleg ray is (state_is_discarded);
-      !   the Jacobian-vector probe, jv_product, which holds the components
-      !               of its direction that sit on an active bound
-      !               (hold_the_active_bounds_of) and cuts its step to the
-      !               species box frozen just above.
-      ! A REJECTED MACROSTEP is not among them and cannot be: this driver
-      ! runs before the marching loop and stops the run, while a rejected
-      ! attempted step is a checkpoint restore inside that loop; replaying
-      ! after one needs a hook in the loop, which is not this item's.
+      ! EXHALE_NEWTON_TEST=1 compares the solver F(Y) with the diagnostic
+      ! residual and tests pack/unpack.
+      ! EXHALE_RESID_DETERMINISM=1 reevaluates the same complete state and
+      ! seed around discarded hydrodynamic, species, trust-region, and
+      ! Jacobian-vector trials, using one output workspace. Matching bits
+      ! require a residual independent of prior evaluations. Separate seed
+      ! and output arguments prevent accidental reuse of the previous
+      ! composition (Update_EXHALE_stage1.pdf section 146.3).
+      ! Species rows are registered before replay so the test covers the
+      ! configured stationary system. This pre-marching diagnostic does not
+      ! exercise a rejected macrostep, which requires an in-loop hook.
       call get_environment_variable('EXHALE_RESID_DETERMINISM', diag_env)
       if (trim(diag_env) .eq. '1') then
          call select_stationary_reconstruction
@@ -1777,7 +1482,7 @@
            end do
            close(uu)
            write(*,'(A)') ' (newton_test) wrote'//                       &
-                ' output/newton_residual_profile.txt'
+                ' '//trim(output_dir)//'newton_residual_profile.txt'
          end block
          write(*,*) '(EXHALE_main) EXHALE_NEWTON_TEST=1: done, stopping.'
          stop
@@ -1967,7 +1672,6 @@
          stop
       endif
 
-      !------------------------------------------------!
 
       ! Generate report of the current setup
       call write_setup_report
@@ -1978,12 +1682,10 @@
       ! what a restart is read against.
       call report_base_boundary_model('resolved configuration')
 
-	!---------------------------------------------------!
 
 	! Close outfile
 	close(unit = outfile)
 
-      !------------------------------------------------!
 
       !---- Start computation ----!
       
@@ -2054,17 +1756,18 @@
       ! for the whole run.
       carrier_transport_stop_on_failure = .false.
 
-      ! Staged secondary ionization: the SvS85 coupling starts applied only if
-      ! "Secondary_ionization: Immediate" was set; otherwise it is switched on
-      ! after the wind first converges without it (see the stage flip below).
+      ! The SvS85 coupling starts applied by default. With
+      ! "Secondary_ionization: Staged", it is enabled after a settled
+      ! monitor window outside the PLM and lambda-ramp stages.
       !
       ! The staging is a startup device, not a statement about the physics:
       ! from a cold IC the base feedback of the coupling amplifies the startup
       ! transient into a runaway, so the wind is first relaxed without it. A
       ! "Do only PP" run relaxes nothing -- it loads a wind that was itself
       ! converged WITH the coupling, leaves the loop after one pass, and then
+      ! To Be Checked: comment and code disagree, see md/comment_revision_20261027.md
       ! post-processes it, and post_process_adv runs every PH_heat_HHe call with
-      ! the coupling applied (it is armed unconditionally after the loop). Left
+      ! the coupling applied (it is enabled in the assignment below). Left
       ! staged, the one ionization_equilibrium call of such a run would use a
       ! different photoionization rate than the post-process beside it, and its
       ! Hydro_ioniz/Ion_species files would not be the equilibrium state the
@@ -2148,7 +1851,7 @@
          if (run_mode .eq. run_mode_phys) then
             if (ic_run_mode .eq. run_mode_phys) then
                if (.not. ic_t_phys_present) then
-                  write(*,*) '(EXHALE_main) ERROR: output/Hydro_ioniz_IC.txt'
+                  write(*,*) '(EXHALE_main) ERROR: '//trim(output_dir)//'Hydro_ioniz_IC.txt'
                   write(*,*) '  states mode=phys, so it claims to stand on a'
                   write(*,*) '  trajectory, but its t_phys field is missing'
                   write(*,*) '  or is not a finite non-negative number. The'
@@ -2185,9 +1888,8 @@
          endif
       endif
 
-      ! The du trigger of the JFNK hand-off starts armed only for a state
-      ! loaded from a previous EXHALE run (see the declarations); a generated
-      ! IC has to demonstrate a du above the threshold first.
+      ! Loaded ICs start with the Newton face-flux handoff armed. A fresh
+      ! IC must first produce fspread_gate >= newton_flux_switch.
       du_newton_armed = do_load_IC
 
       ! Two-stage reconstruction setup. input_read sets du_th_plm > 0 only when
@@ -2371,44 +2073,19 @@
             endif
             if (do_profile) tp_step0 = omp_get_wtime()
 
-            !-------------------------------------------------!
 
-            ! ============ THE ATTEMPTED STEP ============
-            ! The fourteen operations of the enumerated step are one trial:
-            ! rows 1 to 12 change the physical state, and the adoption
-            ! boundary is immediately before
-            ! update_map_end_step, the first point at which that state is
-            ! complete. A refused trial is restored from the checkpoint,
-            ! retaken at half dt, and leaves no contribution to any
-            ! physical accumulation.
+            ! Rows 1-12 form one attempted step; adoption precedes
+            ! update_map_end_step. A refusal restores the checkpoint and
+            ! retries with shorter dt without physical accumulation.
             !
-            ! THE STEP-DOUBLING ESTIMATE wraps the
-            ! whole thing: every n_err_every accepted steps of a physical
-            ! run the step is taken once at dt and then, from the same
-            ! checkpoint, as two of dt/2, and the difference is the
-            ! integration error of the WHOLE operator split. Off in
-            ! initialization mode, where a run makes no statement about a
-            ! trajectory and so has no integration error to bound.
-            !
-            ! THE UNIT OF ACCEPTANCE OF A SAMPLED STEP IS THE WHOLE
-            ! MACROSTEP, not one pass of it. The controller owns the
-            ! macro-interval H = dt_macro: the full pass covers H and the
-            ! two half passes cover 0.5*H each, so all three end at the
-            ! same t + H and their difference is a temporal discretization
-            ! error at a common time. Nothing inside a pass may change the
-            ! interval that pass covers. A refusal there rejects the
-            ! TRANSACTION, restores the state the macrostep began at,
-            ! shortens H and recomputes both comparison trajectories. The
-            ! estimate itself is a rejection criterion: a scaled error
-            ! above one refuses the macrostep with as_reject_int_error, so
-            ! the accepted state is the one whose estimate passed.
-            ! NESTED, because Fortran does not short-circuit .and.: with
-            ! the duty cycle off (n_err_every = 0, the default outside phys
-            ! mode) a single chained test evaluates mod(count, 0), an integer
-            ! division by zero that faults on every build. gfortran elides it
-            ! at -O1 and above and does not at -O0, which is why the -O0
-            ! build died before the first step. The nested form computes the
-            ! same value the short-circuited chain did.
+            ! Every n_err_every accepted physical steps, compare one full
+            ! interval H with two H/2 steps from the same state. A scaled
+            ! difference above one rejects the whole macrostep and recomputes
+            ! both trajectories at shorter H. Initialization mode omits this
+            ! trajectory error estimate.
+            ! The nested n_err_every guard is required because Fortran does
+            ! not short-circuit .and.; mod(step,0) would fault when the
+            ! diagnostic is off.
             n_err_passes = 1
             if (n_err_every .gt. 0 .and. run_mode .eq. run_mode_phys .and.&
                 marching_step .gt. 0) then
@@ -2602,9 +2279,9 @@
                n_dt_halvings = n_dt_halvings + 1
                dt     = 0.5d0*dt
                dt_loc = 0.5d0*dt_loc
-               ! Give up after n_dt_halve_max bisections: the state is then
-               ! inadmissible for a reason no step size repairs, and the NaN
-               ! detector below reports it with the profile.
+               ! After n_dt_halve_max bisections, leave the nested retry.
+               ! The attempted-step controller rejects the hydrodynamic stage
+               ! and retries the full step or reports budget exhaustion.
                if (n_dt_halve .le. n_dt_halve_max) cycle retry_step
                exit retry_step
             endif
@@ -2626,7 +2303,6 @@
             call adiabat_advection_stage(1,u(1,:),u,u1(1,:),               &
                                          face_flux(1,:),dt_loc)
 
-            !----------------------------
 
             ! SECOND RK STEP
 
@@ -2648,9 +2324,9 @@
                n_dt_halvings = n_dt_halvings + 1
                dt     = 0.5d0*dt
                dt_loc = 0.5d0*dt_loc
-               ! Give up after n_dt_halve_max bisections: the state is then
-               ! inadmissible for a reason no step size repairs, and the NaN
-               ! detector below reports it with the profile.
+               ! After n_dt_halve_max bisections, leave the nested retry.
+               ! The attempted-step controller rejects the hydrodynamic stage
+               ! and retries the full step or reports budget exhaustion.
                if (n_dt_halve .le. n_dt_halve_max) cycle retry_step
                exit retry_step
             endif
@@ -2665,7 +2341,6 @@
             call adiabat_advection_stage(2,u(1,:),u1,u2(1,:),              &
                                          face_flux(1,:),dt_loc)
 
-            !----------------------------
 
             ! THIRD RK STEP
 
@@ -2689,9 +2364,9 @@
                n_dt_halvings = n_dt_halvings + 1
                dt     = 0.5d0*dt
                dt_loc = 0.5d0*dt_loc
-               ! Give up after n_dt_halve_max bisections: the state is then
-               ! inadmissible for a reason no step size repairs, and the NaN
-               ! detector below reports it with the profile.
+               ! After n_dt_halve_max bisections, leave the nested retry.
+               ! The attempted-step controller rejects the hydrodynamic stage
+               ! and retries the full step or reports budget exhaustion.
                if (n_dt_halve .le. n_dt_halve_max) cycle retry_step
                exit retry_step
             endif
@@ -2776,7 +2451,6 @@
             ! Anything measured inside a stage must be measured out of line.
             if (update_map_n .gt. 0) u_umA = u
 
-		!------------------------------------------------!
  		
  		!---- Ionization Equilibrium ----!
  		
@@ -2835,7 +2509,7 @@
             ! (Cook 2009, eqs. 11-13; interdiffusion_enthalpy_face_flux
             ! states the physics), so every cell the step moved elements
             ! into or out of gains or loses
-            !    dt div(q_d) = dt [A_+ q_d(+) - A_- q_d(-)]/V
+            !   -dt div(q_d) = -dt [A_+ q_d(+) - A_- q_d(-)]/V
             ! of thermal energy, formed from the very element fluxes the step
             ! carried and on the faces and volumes of the element rows.
             ! The column sum is the difference of the boundary face fluxes,
@@ -2904,7 +2578,7 @@
             ! enthalpy with them (diffusive_photochemistry,
             ! molecular_carrier_enthalpy_face_flux and
             ! ionization_stage_enthalpy_face_flux), so the thermal energy of
-            ! every cell changes by dt div(q_car), formed from the carrier
+            ! every cell changes by -dt div(q_car), formed from the carrier
             ! fluxes of the composition the step returned.
             ! The step itself is backward Euler over substeps, so the fluxes
             ! of its end state times dt are the step's own to first order in
@@ -2925,59 +2599,17 @@
             if (use_excited_H) call excited_H_update(T,rho,f_sp,v,exc_rel)
 
 
-            !------------------------------------------------!
-            ! THE COUPLED SOURCE STEP (rows 7 to 9 of the enumerated step).
-            !
-            ! ONE local source step per cell at fixed volume, with the
-            ! temperature and the composition as its unknowns:
-            !
-            !    (a) the composition equilibrium at the returned T, with a
-            !        transported carrier entering as its imposed value;
-            !    (b) u_th(T,c) - u_th_old + sum_s eps_s (n_s - n_s_old)
-            !          = dt [ heat(c,T) - cool(c,T) ] .
-            !
-            ! WHAT THIS REPLACES.  The old rows 7 to 9 were: solve the
-            ! composition at the cell's T, rewrite rho from the composition,
-            ! rebuild the pressure at the same T from the NEW particle count
-            ! and push it into the energy row (the C1 projection: a change of
-            ! the conserved energy with no source), then solve the
-            ! temperature at the new composition against the energy the
-            ! projection had just written.  The projection is gone: no
-            ! comp_p_from_T, no W_to_U, and the energy row is anchored on
-            ! u_th_old, the thermal energy the cell actually had, with the
-            ! composition change entering through its formation energy.  The
-            ! density is gone as well: ioniz_eq takes it intent(in) (T2.1)
-            ! and returns its own mass sum as a check (T2.2).
-            !
-            ! FIXED POINT, NOT NEWTON, AND WHY.  The two solves are
-            ! whole-grid calls with different shapes: eval_cool integrates
-            ! the fine-structure line transfer over the columns before its
-            ! cell-local part, and the composition sweep rebuilds the
-            ! radiation field of the whole column.  A Newton iteration on the
-            ! coupled (T, c) system would need the derivative of the
-            ! composition with respect to T, which neither solve exposes and
-            ! which is not a cell-local quantity once the field is included.
-            ! What IS available is that each of the two solves is exact for
-            ! its own unknown at the other's value, so the composite map is a
-            ! fixed-point iteration whose error contracts by
-            ! (d u_th/d c)(d c/d T) / c_v per pass -- small wherever the
-            ! composition is not itself thermally driven, which is where the
-            ! coupling is weak, and slow exactly where the two are strongly
-            ! coupled.  The pass count is bounded and its exhaustion is a
-            ! reported status, never a silently accepted state.
-            !
-            ! THE PAIR THAT IS RETURNED.  The loop exits when the last pass
-            ! moved the temperature by at most csm_T_tol in relative terms
-            ! AND moved the composition by at most csm_comp_tol.  The state
-            ! that leaves is then (T, c) with c the equilibrium composition
-            ! of a temperature that differs from T by less than csm_T_tol,
-            ! and with the energy row of (b) satisfied to the energy solve's
-            ! own residual tolerance at exactly that c.  It is also the state
-            ! whose heating the run writes: at the fixed point the sweep's
-            ! entry composition and its returned composition agree to
-            ! csm_comp_tol, so the one-sweep rate lag that made the written
-            ! heat column and Heating_breakdown.txt two different numbers
-            ! closes with it.
+            ! The fixed-volume coupled source step solves composition at T
+            ! and u_th(T,c) - u_th_old = dt [heat(c,T) - cool(c,T)].
+            ! Transported carriers enter as imposed values. The rates are net
+            ! thermal sources and already include collisional transfers of
+            ! the formation reservoir; its change is measured separately.
+            ! A bounded fixed-point iteration joins the column radiation
+            ! sweep to the energy solve. With the semi-implicit solver it
+            ! ends only when estimated pair error (or the increment without
+            ! an estimate) meets both tolerances; the explicit solver takes
+            ! one pass. Exhaustion is a reported status.
+            ! See ../EXHALE_v1.00/md/Update_EXHALE_stage2.md section 7 (B3c).
             u_th_old_csm = u(3,:) - 0.5d0*rho*v**2.0d0
             ! The thermal energy the coupled source step starts from, for
             ! the T1.5 closure of that step alone: everything the attempted
@@ -3053,63 +2685,16 @@
                if (marching_step .gt. 0 .and. csm_uform_frac .gt. csm_uform_frac_run)&
                   csm_uform_frac_run = csm_uform_frac
 
-               ! (b) the temperature that closes the energy row at this
-               ! composition.
-               !
-               ! WHY du_form IS NOT PASSED HERE, AND WHAT IT WOULD TAKE.
-               ! The energy row reads
-               !   u_th(T,c) - u_th_old + sum_s eps_s dn_s = dt [Q_ext] ,
-               ! and it states that Q_ext carries ONLY the exchange with
-               ! the radiation field, every collisional reaction heat being
-               ! in the reservoir term instead.  This code's `heat` and
-               ! `cool` are not that quantity.  They are the NET THERMAL
-               ! source, and each of them already carries the reservoir
-               ! transfers of its own processes:
-               !   - photoionization deposits h nu - E_th, not h nu, so the
-               !     ionization potential the photon paid never passes
-               !     through the thermal pool at all (PH_heat_HHe, and the
-               !     recipient tables of h2_photo_channels);
-               !   - collisional ionization takes E_th out of the electrons
-               !     and it is the `coio` term of eval_cool
-               !     (util_ion_eq.f90:1799, e_th_HI_erg*a_ion_HI*nhi*ne);
-               !   - radiative recombination returns E_th as a photon that
-               !     leaves the cell, and the electron's own kinetic energy
-               !     is the `reco` term;
-               !   - the collisional molecular network, the two Penning
-               !     branches, the associative branch, the Lyman-Werner
-               !     fragment and fluorescence channels and the oxygen
-               !     channels are each deposited as a heat above, from the
-               !     same species formation-energy table this reservoir is
-               !     built from.
-               ! Adding sum_s eps_s dn_s to that row therefore counts every
-               ! collisional transfer twice and charges the gas for the
-               ! ionization energy that the photons paid.  MEASURED: with
-               ! the term added, wasp_full fails at step 0 with 368 cells
-               ! driven to the equation-of-state floor, the base cell asking
-               ! for 23.6 K in place of 2358 K, because the composition jump
-               ! from the cold isothermal initial condition to its
-               ! equilibrium is charged to the thermal pool; and on the
-               ! relaxed state of the B3a report the term is 28 percent of
-               ! the step's thermal budget (d_u_form = -2.31e-4 against
-               ! d_u_th = -8.16e-4), so it is not a small effect that could
-               ! be carried and reported.
-               !
-               ! What T1.6 asks for is reachable, and it is a redefinition
-               ! of `heat` and `cool` and not an addition to this row: the
-               ! photoheating would have to deposit the whole absorbed
-               ! photon, `coio` would have to leave the cooling sum, every
-               ! collisional reaction heat above would have to be deleted,
-               ! and the recombination photon's potential energy would have
-               ! to appear as a negative external exchange.  Those live in
-               ! util_ion_eq.f90, Cool_coeff.f90 and
-               ! electron_energy_degradation.f90.  Until that redefinition
-               ! is made, the reservoir term this code owes the row is
-               ! identically what `heat` and `cool` already carry, so what
-               ! is passed is the anchor u_th_old alone -- which is the part
-               ! of T1.6 that IS a defect of this row: the energy the step
-               ! starts from used to be rebuilt at the NEW composition (the
-               ! C1 projection) instead of being the energy the cell had.
-               ! The reservoir itself is measured every step and reported.
+               ! Close u_th(T,c) - u_th_old = dt [heat(c,T)-cool(c,T)] at
+               ! this composition. heat and cool are net thermal sources:
+               ! photoheating deposits h nu - E_th, collisional ionization
+               ! removes E_th, and reaction terms carry their formation
+               ! energy transfers. Adding sum_s eps_s dn_s here would count
+               ! those transfers twice and charge photons' ionization energy
+               ! to the thermal pool. The cold wasp_full comparison drove
+               ! base T to 23.6 K instead of 2358 K. A total-energy
+               ! reservoir row requires redefining heat/cool.
+               ! See ../EXHALE_v1.00/md/Update_EXHALE_stage2.md section 7 (B3c).
                if (use_semi_implicit_energy) then
                   if (do_profile) tp_b = omp_get_wtime()
                   call solve_energy_semi_implicit(u,W,dt_loc,heat,cool,    &
@@ -3443,7 +3028,6 @@
             exit trial
             enddo trial
 
-            !------------------------------------------------!
             ! ============ THE ADOPTION BOUNDARY ============
             ! The first point at which the physical state of the step is
             ! complete: row 12 is the last operation that writes u, and
@@ -3855,7 +3439,6 @@
 		! Evaluate momentum
 		mom = rho*v*r*r
 
-            !---------------------------------------------------!
         
             !--- Loop counters and escape condition ---!
             
@@ -3868,10 +3451,8 @@
             ! that the reported flux spread also reads.
             du = mass_flux_spread(mom)
 
-            ! Arm the du triggers the first time the flux spread is seen at or
-            ! above their thresholds; from then on only a descending crossing
-            ! can fire them (see the declarations of du_*_armed).
-            ! (The JFNK hand-off is armed on the face spread at the monitor
+            ! Newton arming is evaluated on fspread_gate at monitor windows
+            ! after the face flux has been assembled (see the handoff below).
             ! steps, where that spread is formed; see the hand-off below.)
 
             ! RELATIVE CHANGE OF THE CONSERVED STATE OVER THE STEP, as an
@@ -3905,29 +3486,20 @@
                endif
             enddo
 
-            ! Periodic steady-residual monitor (Resid tol option). R = du/dt
-            ! evaluated fresh on the current state (one Reconstruct + RK_rhs;
-            ! reuses this step's heat/cool, which near convergence are
-            ! consistent with the final u). du/dtu can be small at a premature
-            ! operator-split balance while R is large (premature WASP golden:
-            ! du,dtu tiny but R_energy ~ 30), so R is the trustworthy gate.
-            ! Reference diagnostics every N_resid steps. Per Caldiroli (2021,
-            ! ATES) and Koskinen (2013a, CETIMB) the CONVERGENCE DECISION is
-            ! flux-based: ATES stops at d(Mdot)/Mdot < 1e-3, which here is the
-            ! du<du_th test (du is the radial spread of rho*v*r^2); CETIMB asks
-            ! that rho*v*r^2 = F_c be constant with altitude. The steady residual
-            ! ||R|| (the maximum over cells of a cell's own scaled
-            ! reported FOR REFERENCE ONLY; it gates the stop solely when the user
-            ! explicitly requests it via "Resid tol:" (resid_th>0).
+            ! Every N_resid steps, measure R=-d(u)/dt on the current state,
+            ! after rebuilding its boundary. The residual uses this step's
+            ! heat/cool and each cell's own row scale. A small cell-centered
+            ! du or one-step dtu does not establish a small R (the premature
+            ! WASP state had R_energy about 30).
             !
-            ! WHEN IT DOES GATE, IT GATES ON THE SAME TEST THE STEADY SOLVERS
-            ! USE. steady_gates_met (steady_residual.f90) is the one definition
-            ! of an accepted steady state -- ||R|| < resid_th AND the mass flux
-            ! flat over r >= r_flux -- so a marched state and a JFNK solution
-            ! are accepted by the same statement. Before this was shared, the
-            ! marching loop accepted a WASP-121b state at a flux spread of
-            ! 9.9e-2, twenty times the default threshold the JFNK was
-            ! rejecting 1.9e-2 on.
+            ! ATES (Caldiroli 2021) and CETIMB (Koskinen 2013a) use the
+            ! constancy of rho*v*r^2 to judge continuum mass flow. Here the
+            ! gate uses the numerical face mass-flux spread fspread_gate;
+            ! cell-centered du is reported separately. When "Resid tol:" is
+            ! set, steady_gates_met decides acceptance from the residual and
+            ! the enabled flux, carrier, and chemistry gates. Before it,
+            ! a WASP-121b march accepted spread 9.9e-2 while Newton rejected
+            ! 1.9e-2 at its default threshold.
             monitor_now = (mod(marching_step, N_resid) .eq. 0)
             if (monitor_now) then
                ! THE STATE CHANGE OVER THE WINDOW (see chg_win at its
@@ -4388,21 +3960,10 @@
                if (regional_passed.or.regional_exhausted) exit
             endif
 
-            ! Production Newton finish ("Solver: Newton"): once the cheap
-            ! marching warm-up has flattened the face mass flux to a spread below newton_flux_switch
-            ! (the FLUX metric -- the radial spread of rho*v*r^2 -- consistent
-            ! with the flux-based convergence decision), hand over to the JFNK
-            ! steady solver to polish the rest of the way, refresh the
-            ! thermodynamic state from the solved u, and exit the loop (standard
-            ! final outputs and post-processing follow). Newton's quadratic local
-            ! convergence reaches the steady gate in far fewer steps than
-            ! continued marching.
-            ! THE HAND-OFF READS THE FACE MASS-FLUX SPREAD (newton_flux_switch
-            ! at its declaration), armed the first time a monitor step sees it
-            ! at or above the switch, and fired at a monitor step below it;
-            ! a state whose spread has settled (n_settled_windows, the stall
-            ! net of the marching stop) within 5 times the switch is handed
-            ! over too.
+            ! Enter Newton when the numerical face mass-flux spread crosses
+            ! below newton_flux_switch after first reaching it. A settled
+            ! monitor window below five times the switch may also enter.
+            ! Refresh thermodynamics from the returned conserved state.
             if (use_newton_solver .and. monitor_now .and. win_ready .and.  &
                 fspread_gate .ge. newton_flux_switch .and.                 &
                 .not.du_newton_armed) then
@@ -4418,16 +3979,11 @@
                  (n_settled_windows*N_resid .ge. N_stall .and.            &
                   fspread_gate .lt. 5.0d0*newton_flux_switch))) then
                if (use_sec_ion .and. .not.sec_ion_active) then
-               ! Newton may only be asked to solve the system the marched
-               ! state approximately satisfies. Flipping the secondary-
-               ! ionization coupling on in the same breath as starting JFNK
-               ! hands the solver a state that was relaxed WITHOUT the
-               ! coupling -- from there GMRES stagnates (info=2, no residual
-               ! reduction; measured on HD 209458 b, 2026-08-10). So flip
-               ! first, re-arm the marching stops exactly as the staged
-               ! activation above does, and let the wind re-relax under the
-               ! full physics; the JFNK hand-off re-fires once du crosses
-               ! the switch again after the N_stall hold.
+               ! Activate secondary ionization before Newton so the wind
+               ! can relax under the same physics the steady solve evaluates.
+               ! Simultaneous activation and Newton stalled GMRES on HD
+               ! 209458 b (2026-08-10). Hold stops for N_stall steps;
+               ! handoff resumes when face mass-flux spread meets its gate.
                   sec_ion_active = .true.
                   sec_flip_step  = marching_step
                   sec_ion_armed_step = marching_step
@@ -4531,7 +4087,6 @@
             ! change over the last N_stall steps; -1 until the window fills)
             write(*,*) marching_step,du,dtu,lev_rel
 				
-            !---------------------------------------------------!
             
             ! Detect NaNs
             do j = 1-Ng,N+Ng
@@ -4556,7 +4111,6 @@
          	enddo
             if(l_isnan) exit
             
-            !---------------------------------------------------!
             
             !--- Write to files every 1000th iteration---! 
             if (mod(marching_step,1000).eq.1) then
@@ -4610,7 +4164,6 @@
                      '  ioniz_eq fraction=', 100.0d0*tp_ion/tp_tot, ' %'
             endif
 
-      !---------------------------------------------------!
 
       ! End of temporal while loop
       enddo
@@ -4747,14 +4300,12 @@
       ! built from another composition (zero is the invariant holding).
       call report_base_face_cache_reads('marching run')
 
-      !---------------------------------------------------!
 
       ! The final physical u and composition are the accepted state. Derived
       ! sources and ghosts must be rebuilt from that pair before certification,
       ! exactly as a stationary reload does. A residual using old ghost
       ! averages is history dependent, even if the face cache was refreshed.
 
-      !---------------------------------------------------!
 
       ! Write final thermodynamic and ionization profiles
       write(*,*) '(EXHALE_main.f90) Writing final results to file..'
@@ -4825,7 +4376,6 @@
       ! the certification above measured (write_element_flux_profile).
       call write_resolved_config
 
-      !---------------------------------------------------!
 
       ! Post processing to include advection
       write(*,*) '(EXHALE_main.f90) Starting the post processing routine..'
@@ -4855,7 +4405,6 @@
             ' cell evaluation(s) floored at zero'
       endif
       
-      !---------------------------------------------------!                            
                                     
       ! Get CPU time
       finish = omp_get_wtime()
@@ -4872,11 +4421,9 @@
                                         n_sec,' s'
 100   format  (A17,I2,A3,I2,A3,F8.5,A2) 
       
-      !---------------------------------------------------!
       
       call steady_mass_loss_rate
 
-      !---------------------------------------------------!
 
       ! THE RUN'S EXIT STATUS SAYS WHETHER WHAT IT WROTE IS CERTIFIED.
       ! Everything is on disk by now -- the profiles, the breakdowns, the
@@ -4902,12 +4449,13 @@
       if (regional_enabled.and..not.regional_passed) stop 4
       call certification_stop_uncertified
 
-      !---------------------------------------------------!
 
       contains
 
       subroutine regional_state_sample(seconds)
-      ! Read the adopted state and physical cells only.
+      ! Read physical-cell state and the accepted step's RK-averaged mass flow.
+      ! The sound-speed scale assumes gamma=5/3 (monatomic gas).
+      ! To Be Checked: comment and code disagree, see md/comment_revision_20261027.md
       real*8,intent(in) :: seconds
       real*8 :: values(46*N+9),scale(46*N+9),q(46),norm(46)
       real*8 :: vol,gas,acoustic,flow(0:N),cs,hnuc
@@ -4986,7 +4534,6 @@
       include 'frozen_derivative_steps.inc'
       include 'live_residual_derivatives.inc'
 
-      ! ------------------------------------------------------!
 
       subroutine steady_mass_loss_rate
       ! THE MASS-LOSS RATE OF THE STATE NOW HELD, Mdot = 4 pi rho v r^2 [g/s],
@@ -5098,7 +4645,6 @@
 102   format (A32,F5.2,A4)
       end subroutine steady_mass_loss_rate
 
-      ! ------------------------------------------------------!
 
       subroutine stationary_claim_and_work_state_verdict(rep_stored,       &
                                                          rep_swept)
@@ -5165,26 +4711,14 @@
            ' cert_reason=', trim(state_certification_reason)
       end subroutine stationary_claim_and_work_state_verdict
 
-      ! ------------------------------------------------------!
 
       subroutine evaluation_state_dump(label, u_in, f_in, p_in, T_in)
-      ! THE STATE AND THE COMPOSITION-DERIVED MODULE STATE AT ONE NAMED
-      ! POINT OF THE STATIONARY EVALUATION, written only when
-      ! EXHALE_EVAL_STATE_DUMP is set.
-      !
-      ! WHY IT EXISTS.  The statements this route has to keep -- that the
-      ! loaded state is untouched, and that the products of the work state
-      ! do not move the work state -- are statements about arrays in memory.
-      ! The loader never writes its input files back, so an unchanged input
-      ! file proves nothing about either of them.
-      !
-      ! Two groups of columns.  The STATE columns are the ones passed in, so
-      ! a block can name the loaded state while the run holds the work
-      ! state.  The MODULE columns are the live composition-derived state
-      ! that the chemistry and the post-process read (the particle and
-      ! electron counts and the caloric mixture flags), which belongs to
-      ! whatever state the run holds at the moment of the call, and is
-      ! written as such.
+      ! Optional in-memory state record. When EXHALE_EVAL_STATE_DUMP is
+      ! nonempty and not "0", write the supplied physical-cell state and
+      ! the live composition-derived module counts and caloric flags to
+      ! eval_state_dump.txt. Supplied columns may name the loaded state
+      ! while module columns reflect the state held at this call; an
+      ! unchanged input file cannot establish either in-memory property.
       character(len=*), intent(in) :: label
       real*8, dimension(3,1-Ng:N+Ng),         intent(in) :: u_in
       real*8, dimension(1-Ng:N+Ng,n_species), intent(in) :: f_in
@@ -5232,7 +4766,6 @@
       close(77)
       end subroutine evaluation_state_dump
 
-      ! ------------------------------------------------------!
 
       subroutine base_mass_rows_of_this_evaluation(label, u_in, R_in)
       ! MEASUREMENT ONLY, default off. The signed continuity row of the base
@@ -5259,7 +4792,6 @@
       call base_mass_row_trace(label, jl, R1, Ffac, sc, fl)
       end subroutine base_mass_rows_of_this_evaluation
 
-      ! ------------------------------------------------------!
 
       subroutine ghost_record_of_this_evaluation(label, u_in, R_in)
       ! MEASUREMENT ONLY, default off (EXHALE_GHOST_RECORD). One record of
@@ -5293,7 +4825,6 @@
                               mass_row_rounding_floor(1, u_in))
       end subroutine ghost_record_of_this_evaluation
 
-      ! ------------------------------------------------------!
 
       real*8 function mass_flux_spread(mom_in)
       ! THE RADIAL SPREAD OF THE MASS FLUX rho v r^2 over the convergence
@@ -5302,14 +4833,12 @@
       !     spread = ( max_j F_j - min_j F_j ) / | mean_j F_j | ,
       !     F_j    = rho_j v_j r_j^2 .
       !
-      ! A steady spherical wind carries one mass flux at every radius, so
-      ! this is the statement that the marching has reached one: ATES
-      ! (Caldiroli et al. 2021) stops on the constancy of rho v r^2 and
-      ! CETIMB (Koskinen et al. 2013a) asks that F_c = rho v r^2 be constant
-      ! with altitude. It is evaluated once per step and read by the stop,
-      ! by the arming of the du triggers, by the secondary-ionization stage
-      ! flip, by the JFNK hand-off and by the flux spread the run reports,
-      ! so all of them speak about one number.
+      ! Continuum steady flow has constant rho v r^2. ATES (Caldiroli et
+      ! al. 2021) and CETIMB (Koskinen et al. 2013a) use that condition.
+      ! Here the cell-centered spread is recorded as du for reconstruction
+      ! selection and diagnostics; the discrete marching stop, secondary-
+      ! ionization staging, and Newton entry use numerical face mass flux
+      ! or windowed state change instead.
       !
       ! THE SIGN IS KEPT AND THE NORMALIZATION IS THE MEAN. Taking |F|
       ! before the extrema reads a window whose flux reverses -- an inflow
@@ -5326,29 +4855,17 @@
            /max(abs(sum(mom_in(j_min:N))/dble(N - j_min + 1)), 1.0d-30)
       end function mass_flux_spread
 
-      ! ------------------------------------------------------!
 
       subroutine write_operator_difference(step_no, du_now)
-      ! FIXED-STATE OPERATOR DIFFERENCE AT THE PLM -> WENO3 HAND-OFF.
-      !
-      ! The two-stage recipe replaces one discretization by another between
-      ! two time steps. What that costs is a property of the STATE and the
-      ! two operators alone, and it can be measured before any step is taken
-      ! with the new one: assemble the steady residual R = du/dt of the very
-      ! same interior cells twice, once with each scheme -- each with its own
-      ! ghost fill, its own reconstructed-face boundary states and its own
-      ! momentum pressure split -- and write both, row by row and cell by
-      ! cell, with the state, the local time step and the scale each row is
-      ! measured against.
-      !
-      ! R_WENO3 - R_PLM is the instantaneous change the hand-off makes to the
-      ! right-hand side; multiplied by the step it is the state change the
-      ! first step after it inherits, which is what the transient that
-      ! follows has to be compared with. Measured on the hot-Uranus molecular
-      ! case: dt |R|/|u| over the dtu window predicts the observed dtu of the
-      ! last PLM step to 0.5 percent and of
-      ! the first WENO3 step to 8 percent, so the transient there IS the
-      ! operator difference and not an instability of WENO3.
+      ! Measure the PLM -> WENO3 operator change on one interior state.
+      ! Assemble the stationary residual R=-du/dt with each scheme's own
+      ! ghost fill, boundary reconstruction, and momentum-pressure split;
+      ! write both rows with their scales and local time steps.
+      ! The right-hand-side change is -(R_WENO3-R_PLM). Its magnitude times
+      ! dt estimates the first post-handoff state change. On a hot-Uranus
+      ! molecular run, dt |R|/|u| predicted the last PLM dtu within 0.5%
+      ! and the first WENO3 dtu within 8%; the transient tracked the
+      ! operator change.
       integer, intent(in) :: step_no
       real*8,  intent(in) :: du_now
       integer :: jj, uu
@@ -5399,12 +4916,11 @@
               u(1,jj), u(2,jj), u(3,jj), dt_loc(jj)
       enddo
       close(uu)
-      write(*,'(A,I0)') ' (EXHALE_main) wrote output/opdiff_profile.txt '//&
+      write(*,'(A,I0)') ' (EXHALE_main) wrote '//trim(output_dir)//'opdiff_profile.txt '//&
            'at step ', step_no
 
       end subroutine write_operator_difference
 
-      ! ------------------------------------------------------!
 
       subroutine write_run_counter_report
       ! Everything a finished run has to say about ITSELF: how often each
@@ -5547,11 +5063,10 @@
             ' face state(s) scaled toward the cell average for positivity'
       endif
 
-      ! Boundary ghost cells whose linear extrapolation left rho > 0, p > 0
-      ! and was dropped to the zero-gradient state (the outer free-outflow
-      ! ghosts under WENO3). Silent
-      ! for a run whose boundary extrapolations stayed admissible, which is
-      ! the run an unguarded build produces.
+      ! Outer ghost cells whose boundary continuation produced a nonpositive
+      ! or nonfinite density or pressure and was replaced by the zero-gradient
+      ! copy of the outermost physical cell. Silent when every outer ghost
+      ! state stayed admissible.
       if (n_ghost_cells_positivity_limited .gt. 0) then
          write(*,'(A,I0,A)')                                                  &
             '     boundary: ', n_ghost_cells_positivity_limited,              &
@@ -5782,34 +5297,14 @@
 
       end subroutine write_run_counter_report
 
-      ! ------------------------------------------------------!
 
       subroutine coupled_pair_geometric_error_estimate
-      ! THE ERROR THE COUPLED PAIR STILL CARRIES, FROM THREE TERMS OF ITS
-      ! OWN PASS SEQUENCE.  Called on every pass, after the pass's two
-      ! increments have been measured and before the stopping test is
-      ! taken.  It is the ONE place the sequence's ratio is formed: the
-      ! stopping test reads the error it returns, and the extrapolation
-      ! reads the same ratio to place its candidate at the limit.
-      !
-      ! A sequence of ratio theta stands theta/(1 - theta) times its last
-      ! increment from its limit, so
-      !     csm_err = csm_err_safety * |theta/(1 - theta)|
-      !               * (this pass's increment)
-      ! in each of the two norms, the factor carrying the L2 quantity
-      ! theta is taken from into the max norm the test is taken in (see
-      ! csm_err_safety, where the measurement that sets it is written).
-      ! theta is the Rayleigh quotient of the whole increment VECTOR, one
-      ! scalar for the temperature block and one for the composition
-      ! block; see the constants' declaration for why a ratio taken cell
-      ! by cell cannot work and was measured not to.
-      !
-      ! WHERE THE SEQUENCE GIVES NO ESTIMATE the increment itself is
-      ! returned and csm_err_ok is false.  That is not a guess at the
-      ! error: it is the only bound the loop can state from what it has,
-      ! and it is the stricter of the two on this loop, since
-      ! csm_err_safety*|theta/(1 - theta)| is 0.2 to 0.7 at the |theta|
-      ! the guards admit here.
+      ! From three pair iterates, form each block's Rayleigh ratio theta
+      ! and return csm_err_safety*|theta/(1-theta)| times its last increment
+      ! in the stopping norm. The stopping test and guarded extrapolation
+      ! share this estimate. If the ratio is unavailable or refused by a
+      ! guard, return the increment and mark csm_err_ok false.
+      ! See ../EXHALE_v1.00/md/coupled_source_loop_cost.md sections 5-8.
       real*8  :: p11, p12, p22, q11, q12, q22, mT, mc
       integer :: j, isp
       logical :: geometric
@@ -5906,7 +5401,6 @@
 
       end subroutine coupled_pair_geometric_error_estimate
 
-      ! ------------------------------------------------------!
 
       subroutine coupled_pair_fixed_point_distance
       ! HOW FAR THE ACCEPTED STATE STOOD FROM THE FIXED POINT, MEASURED.
@@ -5946,7 +5440,6 @@
 
       end subroutine coupled_pair_fixed_point_distance
 
-      ! ------------------------------------------------------!
 
       subroutine coupled_pair_geometric_limit
       ! THE LIMIT OF THE COUPLED PASS SEQUENCE AS THE NEXT ITERATE, from
@@ -6092,7 +5585,6 @@
 
       end subroutine coupled_pair_geometric_limit
 
-      ! ------------------------------------------------------!
 
       subroutine coupled_pair_extrapolation_verdict
       ! WHETHER THE EXTRAPOLATED STATE WAS WORTH THE PASS, read from the
@@ -6153,7 +5645,6 @@
       endif
       end subroutine coupled_pair_extrapolation_verdict
 
-      ! ------------------------------------------------------!
 
       subroutine sources_and_ghosts_of_the_held_composition
       ! The same coupled lower ghost and held source operation as Newton.
@@ -6174,7 +5665,6 @@
       call molecular_carrier_densities_from_state(rho,f_sp)
       end subroutine sources_and_ghosts_of_the_held_composition
 
-      ! ------------------------------------------------------!
 
       subroutine certify_the_state_to_be_written(stationary_claim, tag)
       ! THE CERTIFICATION OF THE STATE A ROUTE IS ABOUT TO WRITE, made
@@ -6233,7 +5723,6 @@
       call restore_reconstruction_selection(final_reconstruction)
       end subroutine certify_the_state_to_be_written
 
-      ! ------------------------------------------------------!
 
       subroutine boundary_gas_state_from_conserved
       ! THE GHOST ROWS OF A WRITTEN STATE DESCRIBE THE CONSERVED GHOST CELLS.
@@ -6264,59 +5753,18 @@
       call molecular_carrier_densities_from_state(rho,f_sp)
       end subroutine boundary_gas_state_from_conserved
 
-      ! ------------------------------------------------------!
 
       subroutine stationary_state_of_the_loaded_restart
-      ! THE STATIONARY RESIDUAL AND CERTIFICATION OF A LOADED STATE, MEASURED
-      ! ON THE STATE AS LOADED, AND THE STATIONARY SOLVE ENTERED FROM IT
-      ! ("Restart intent: stationary").
-      !
-      ! WHY THE STATE AS LOADED. A stationary state is a state the equations
-      ! hold on; whether they hold is a question about THAT state and about
-      ! no other. Every path into the solver until now went through the
-      ! marching loop, which takes at least two CFL steps before it hands
-      ! off, and a step is a different state: the O(dt) kick of a reload
-      ! moves the state before anything measures it, so what was certified
-      ! was never the state the file carried. This route takes no step.
-      !
-      ! WHAT IS REBUILT, AND IN WHICH ORDER. Nothing of the conserved state
-      ! is touched; what is rebuilt is what is DERIVED from it, in the one
-      ! order in which each consumer reads a quantity that already belongs to
-      ! this state: the composition first, because the pressure map and the
-      ! boundary read it; the boundary second, so the face states are this
-      ! state's; then the primitive variables and the temperature. That is
-      ! the order rebuild_state_from_checkpoint uses, for the same reason.
-      !
-      ! THE LOADED COMPOSITION IS NOT PUT ON ITS OWN FIXED POINT FIRST, AND
-      ! THE VERDICT IS TAKEN ON THE PAIR AS STORED. A file's stationary claim
-      ! is a claim about the pair it stores, so the certification that answers
-      ! it is made on that pair, with the sources of that composition (step
-      ! 2 below), before any sweep moves the composition. One composition
-      ! sweep from the stored pair is then taken and measured (step 3): how
-      ! far the composition moves, and what the certification entries read
-      ! after it. That measurement is REPORTED and gates nothing; it is the
-      ! start of the stationary solve on the solve route. What
-      ! equilibrate_loaded_composition would do instead is iterate that
-      ! sweep to a fixed point and rebuild the conserved state from the
-      ! result, which moves u: a state whose composition is not the sweep's
-      ! own fixed point is a FINDING about the file, reported here as the
-      ! movement of the single sweep, and hiding it would make the
-      ! measurement answer for a state the file does not carry. It is
-      ! available, and reported when taken, as the second word "equilibrate".
-      !
-      ! THE RULE OF THE PRODUCTS. "Restart intent: stationary evaluate"
-      ! writes the stored pair and nothing else, and every certificate a
-      ! written file carries is the one measured on the state written in it:
-      ! Hydro_ioniz.txt, Ion_species.txt, conserved_state.txt and the
-      ! channel breakdowns carry the stored pair and the stored pair's
-      ! certificate, the _adv pair is derived from the stored pair and carries
-      ! its certificate as provenance, and the exit status is the stored
-      ! pair's verdict. The swept composition is never written; its entries
-      ! are in the run log only.
-      ! THE LOADED STATE, KEPT.  The conserved variables and the composition
-      ! the two files carry.  Nothing below writes to them: they are what the
-      ! file's own stationary claim is a claim about, and what every product
-      ! of this route is labeled against.
+      ! Evaluate and certify the loaded (u, f_sp) pair before any physical
+      ! step or composition update. Rebuild species densities, boundary,
+      ! primitives, and temperature in that dependency order.
+      ! Evaluate sources with the stored physical-cell composition held;
+      ! report one subsequent sweep without using it for the file's verdict.
+      ! "Restart intent: stationary evaluate" writes the stored pair and
+      ! its certificate to the profile, conserved-state and channel files;
+      ! the swept composition appears in the log only. The exit status is
+      ! the stored pair's verdict. A stationary solve starts from that pair.
+      ! See ../EXHALE_v1.00/md/Update_EXHALE_stage3.md section 88.
       real*8, dimension(3,1-Ng:N+Ng)         :: u_loaded
       real*8, dimension(1-Ng:N+Ng,n_species) :: f_sp_loaded
       real*8, dimension(1-Ng:N+Ng) :: p_loaded, T_loaded
@@ -6367,30 +5815,12 @@
       call evaluation_state_dump('loaded', u_loaded, f_sp_loaded,        &
                                  p_loaded, T_loaded)
 
-      ! (2) THE STORED PAIR: ITS SOURCES AND ITS CERTIFICATION, WHICH IS THE
-      ! VERDICT OF THIS EVALUATION.
-      !
-      ! The residual's energy row needs the heating and the cooling, and the
-      ! sources of the stored pair are those OF THE STORED COMPOSITION in the
-      ! field THAT COMPOSITION attenuates, at the state's own temperature.
-      ! One sweep with the composition of the cells above the lower ghosts
-      ! held (ioniz_eq_sources_of_held_composition) builds the rates from the
-      ! stored composition, contracts them with the stored densities and
-      ! hands the composition back unchanged; the two lower ghosts, which no
-      ! file stores, are solved by that sweep and derived by the boundary as
-      ! on every route. The mass and momentum rows are functions of (u, f_sp)
-      ! alone and so read the stored pair's own rows.
-      !
-      ! WHY NOT AFTER A SWEEP. The cell solve stops at a relative step of
-      ! sqrt(machine epsilon), so a sweep from a stored composition moves it
-      ! by that order, and the mass row of the wind is a rounding-level
-      ! quantity judged against a rounding-anchored tolerance. MEASURED on the
-      ! LHS 1140 b He/H 3.0 state (md/Update_EXHALE_stage3.md section 88):
-      ! the solve certified its state with the mass row at cell 246 at
-      ! 3.686e-12 against 3.7e-12; a verdict taken after one sweep read
-      ! 3.936e-12 there and refused, and the swept state, written and
-      ! evaluated again, read 3.686e-12 and certified. A verdict taken after
-      ! the sweep is therefore not a function of the stored state.
+      ! Certify the stored (u, f_sp) pair with sources evaluated at its own
+      ! composition and temperature. ioniz_eq_sources_of_held_composition
+      ! leaves physical-cell fractions unchanged; the unstored lower ghosts
+      ! are solved by the sweep and boundary. Mass and momentum use (u, f_sp).
+      ! A sweep before certification would judge a different state.
+      ! See ../EXHALE_v1.00/md/Update_EXHALE_stage3.md section 88.
       call sources_and_ghosts_of_the_held_composition
       dp_held = 0.0d0
       dT_held = 0.0d0
@@ -6672,7 +6102,6 @@
       stop
       end subroutine stationary_state_of_the_loaded_restart
 
-      ! ------------------------------------------------------!
 
       subroutine composition_sweep_movement_of_the_stored_pair(u_stored,   &
                                           f_stored, p_stored, cert_swept)
@@ -6742,11 +6171,10 @@
       call molecular_carrier_densities_from_state(rho,f_sp)
 
       ! THE MOVEMENT OF THE COMPOSITION, in the physical cells. Two
-      ! measures: the largest relative change of a species carrying at least
-      ! 1e-12 of the cell's mass (smaller fractions sit at the solve's
-      ! absolute floor and a relative change of them says nothing), and the
-      ! largest summed absolute change of the mass fractions of a cell, which
-      ! weighs every species by the mass it carries.
+      ! measures: the largest relative change where the stored f_sp is at
+      ! least 1e-12, and the largest sum of absolute f_sp changes in a cell.
+      ! f_sp is a species number density divided by rho; this sum does not
+      ! apply species masses.
       df_rel = 0.0d0;  j_rel = 0;  k_rel = 0
       df_l1  = 0.0d0;  j_l1  = 0
       do jm = 1, N
@@ -6848,53 +6276,18 @@
            ' (REPORTED ONLY: not the verdict, not written)')
       end subroutine composition_sweep_movement_of_the_stored_pair
 
-      ! ------------------------------------------------------!
 
       subroutine equilibrate_loaded_composition
-      ! PUT A STATE READ FROM A FILE ON ITS OWN EQUILIBRIUM COMPOSITION,
-      ! ONCE, BEFORE THE FIRST HYDRO STEP.
-      !
-      ! WHY. Hydro_ioniz_IC.txt and Ion_species_IC.txt carry the state to the
-      ! precision the writer emits, and the species fractions they carry are
-      ! therefore NOT the equilibrium fractions of the (rho, T) they sit
-      ! beside. The marching step is
-      !
-      !    hydro RK3  ->  T = p/(n_tot+n_e)  ->  ioniz_eq  ->  p = (n_tot+n_e) T
-      !
-      ! and its last stage rewrites the pressure at the particle count the
-      ! sweep just produced. On the first step of a restart that stage is not
-      ! a rate but a FINITE JUMP: the particle count moves by the whole
-      ! truncation error of the file, and the energy moves with it. Measured
-      ! on two states, the jump is the same size at CFL 0.6, 0.06, 0.006 and
-      ! 0.0006 -- it does not scale with dt, which
-      ! is what makes it a projection and not a term of the equation -- and it
-      ! reaches 6.2e-3 of the cell energy in one step at r = 1.10 on
-      ! WASP-121b, twelve times that step's entire hydro contribution.
-      !
-      ! WHAT IS HELD FIXED. rho, v and p -- the primitive state the file
-      ! carries -- and the composition is iterated to the fixed point of
-      !
-      !    f_sp  <-  ioniz_eq( rho, T )   with   T = p/(n_tot(f_sp) + n_e(f_sp))
-      !
-      ! so that the temperature is a derived, self-consistent quantity rather
-      ! than the file's second, independently truncated number. At that fixed
-      ! point the marching step's own sweep returns the composition it was
-      ! given, comp_p_from_T returns the pressure it started from, and the
-      ! projection is the identity to round-off. It is the SAME sweep the
-      ! marching loop and the steady residual call, with the same secondary-
-      ! ionization arming and the same excited-hydrogen refresh, called from
-      ! the one place where the two disagree.
-      !
-      ! It is a Picard iteration and it is not guaranteed to contract, so it
-      ! is capped and the achieved change in the particle count is reported;
-      ! a single sweep is its first iterate, and on the states measured the
-      ! second iterate already moves n_tot + n_e by less than 1e-12.
-      !
-      ! COST: a few ionization sweeps once per run, against 1e4 or more in the
-      ! loop. The alternative -- writing the restart files with more digits --
-      ! is cheaper still but only pushes the jump down by the digits added and
-      ! leaves T and p in the file independently rounded; this makes the state
-      ! self-consistent whatever the file's precision.
+      ! Before the first marching step, equilibrate a loaded state at
+      ! fixed rho, v and p:
+      !   f_sp <- ioniz_eq(rho, T),  T = p/(n_tot(f_sp)+n_e(f_sp)).
+      ! Independently rounded restart composition otherwise causes a finite
+      ! first-step energy jump that does not scale with dt. The same sweep
+      ! and secondary-ionization state are used as in marching; iteration
+      ! is capped because the Picard map need not contract. Report the
+      ! achieved particle-count change. At its fixed point the marching
+      ! pressure rebuild is the identity to rounding.
+      ! See ../EXHALE_v1.00/md/Update_EXHALE_stage1.md section 144.
       integer, parameter :: nsweep_max = 64
       ! Floor of the iteration, not a target accuracy: the cell solve stops at
       ! its own xtol = sqrt(machine epsilon), so the particle count it returns
@@ -7098,7 +6491,6 @@
            ' origin t_phys =', t_phys, ' s'
       end subroutine physical_handoff_check
 
-      ! ------------------------------------------------------!
 
       subroutine parse_update_map_request(spec)
       ! EXHALE_UPDATE_MAP=<f1,f2,...>, the time step sizes as FRACTIONS of
@@ -7129,7 +6521,6 @@
       enddo
       end subroutine parse_update_map_request
 
-      ! ------------------------------------------------!
 
       subroutine update_map_begin_step
       ! Restore the state, and (once) measure the steady residual of it.
@@ -7249,7 +6640,6 @@
       endif
       end subroutine update_map_begin_step
 
-      ! ------------------------------------------------!
 
       subroutine stop_on_exhausted_retry_budget
       ! THE RETRY BUDGET OF THE TRANSACTION IS SPENT. Reached from the
@@ -7270,10 +6660,10 @@
       ! state. Either way the run says what refused it, in which
       ! pass, at which interval, and how the refusals changed as
       ! the interval was narrowed; then it exits with status 2,
-      ! the status certification.f90 uses for a refused
-      ! stationary claim, so that one status means one thing to a
-      ! caller reading it from the shell. No fabricated state, no
-      ! floor clamp, no continuation.
+      ! the status certification.f90 also uses for a refused
+      ! stationary claim. The accompanying diagnostic distinguishes an
+      ! exhausted step retry from a certification refusal. No fabricated
+      ! state, floor clamp, or continuation follows.
       n_step_exhaustions = n_step_exhaustions + 1
       if (n_err_passes .eq. 3) then
          call attempted_step_checkpoint_restore(as_entry, u,     &
@@ -7384,34 +6774,18 @@
       call comp_T_from_p(p,n_tot,ne,T)
       end subroutine rebuild_state_from_checkpoint
 
-      ! ------------------------------------------------------------!
 
       subroutine update_map_end_step
-      ! G_dt = [Phi_dt(q) - q]/dt against the steady residual R(q), by row,
-      ! by cell, and by operator-split stage.
-      !
-      !   hydro      the SSP-RK3 of (dF - S) with Apply_BC after each stage
-      !   chem       the composition sweep, the pressure re-derived from T at
-      !              the post-sweep particle count, AND the semi-implicit
-      !              heating-cooling step, which stands inside this interval
-      !              (solve_energy_semi_implicit is called before the snapshot
-      !              that closes it).  It also carries whatever the
-      !              element-diffusion and carrier-transport steps did to
-      !              f_sp, since those change no conserved variable directly
-      !   boundary   the boundary update alone: the snapshots that bracket
-      !              this column enclose `call Apply_BC(u)` and nothing else.
-      !              Until 2026-09-21 this column was labeled `energy` and the
-      !              heating-cooling step was attributed to it, which MEASURED
-      !              read exactly zero in every row of eleven invocations
-      !              while the radiative source stood in `chem`
-      !   transport  viscosity and conduction (no-op unless asked for)
-      !   filter     the Shapiro filter (no-op unless asked for)
-      !
-      ! The steady residual contains the hydro and heating-cooling terms and
-      ! nothing else, so a non-zero chem, transport or filter column is a term
-      ! of the production map that the residual does not have -- and, for the
-      ! filter, one that the review says cannot be expected to share a fixed
-      ! point with it.
+      ! Compare G_dt = [Phi_dt(q)-q]/dt with the steady residual R(q)
+      ! by cell, row, and production step stage:
+      !   hydro: SSP-RK3 with each stage boundary;
+      !   chem: composition, pressure, thermal source, and species transport;
+      !   boundary: Apply_BC(u) only;
+      !   transport: viscosity/conduction when enabled;
+      !   filter: Shapiro increment when enabled.
+      ! A nonzero stage does not by itself identify a missing steady term;
+      ! the filter has no corresponding steady-residual term.
+      ! See ../EXHALE_v1.00/md/Update_EXHALE_stage2.md section 16.
       integer :: j, k
       real*8  :: dtl, g, gmax(3), rmax(3), dmax(3)
       real*8  :: smax(5,3)
@@ -7462,14 +6836,12 @@
       if (update_map_done .ge. update_map_n) max_steps = marching_step
       end subroutine update_map_end_step
 
-      ! ------------------------------------------------!
 
       subroutine update_map_carrier_row
-      ! G_c = [n(H2)_after - n(H2)_before]/dt against -R_carrier of the state
-      ! the step started from, cell by cell, in cm^-3 s^-1.  n(H2) is read out
-      ! of the state the step leaves, so this carries every stage of the
-      ! production map -- the hydro's change of rho at fixed f_sp included --
-      ! and not only the transport operator.
+      ! G_c = rho_before [f(H2)_after - f(H2)_before]/dt against
+      ! -R_carrier of the starting state, cell by cell, in cm^-3 s^-1.
+      ! The output also records the full H2 density difference over dt;
+      ! that separate rate includes the hydrodynamic change of rho.
       integer :: j, jw, jr
       real*8  :: gc, gmx, rmx, dmx, drel
       call get_species_densities(rho,f_sp,nhi,nhii,nhei,nheii,             &
@@ -7519,21 +6891,12 @@
       end function update_map_open
 
       subroutine report_marching_stop
-      ! A DU, DTU OR PLATEAU STOP IS A MARCHING STOP, NOT AN ACCEPTED STEADY
-      ! STATE, and the run now says so and prints the three gates measured on
-      ! the state it is stopping at.
-      !
-      ! The three are different concepts and the external review of
-      ! 2026-09-03 is explicit that they should not be
-      ! forced onto one threshold: du terminates the marching, the du
-      ! hand-off threshold decides when the JFNK is offered a state, and the
-      ! gates of steady_gates_met decide what may be called steady. This
-      ! routine only makes the third visible wherever the first fires; the
-      ! du window is deliberately NOT unified with the flux gate's window.
-      !
-      ! The gates are MEASURED here rather than read from the in-loop
-      ! monitor, which is not evaluated at all unless "Resid tol:" was given
-      ! and is otherwise stale.
+      ! Report residual, face-flux, and active carrier measures on a
+      ! marching stop, stall, or step cap. Recompute them on the stopping
+      ! state: the in-loop monitor runs every N_resid steps and may be stale.
+      ! "Resid tol:" controls acceptance, not measurement. A marching stop
+      ! does not itself certify a stationary state; the enabled steady gates
+      ! and certification decide that (Update_EXHALE_stage1.pdf section 145).
       real*8, dimension(3) :: rc_now
       real*8 :: fsp_now, fmean_now
       call assemble_residual(u, n_tot + ne, f_sp, heat, cool, Rres)
@@ -7625,7 +6988,6 @@
               ' and the boundary evaluation.'
       end subroutine assert_written_state_is_the_accepted_one
 
-      ! ------------------------------------------------!
 
       subroutine steady_wind_with_element_diffusion(maxit, dtau0,       &
                                                    use_jfnk, jfnk_info)
@@ -7667,14 +7029,10 @@
       ! state of the last hydrodynamic solve: a stationary wind at a
       ! composition whose own balance still refuses.
       !
-      ! A NONZERO HYDRODYNAMIC FLAG DOES NOT END THE LOOP BY ITSELF. info = 1
-      ! is the iteration budget, info = 2 a returned state a row refuses, and
-      ! both hand back a valid state on which the composition update still
-      ! makes progress: MEASURED on the atomic reload, the worst elemental
-      ! wind row stood at 2.61e-3 after the first budget-ended solve and at
-      ! 2.78e-4 after the update that followed it. Ending the
-      ! alternation on that flag discards what the pass achieved. The flag is
-      ! printed every pass.
+      ! A nonzero hydrodynamic flag alone does not end the alternation:
+      ! a valid returned wind can still support a productive composition
+      ! update. The flag is printed on every pass.
+      ! See ../EXHALE_v1.00/md/lhs1140b_stationary_L4e_20260914.md section 3.
       !
       ! WHAT CONTROLS THE PASSES. The quantity the joint acceptance waits on
       ! is the worst gated species row of the certification: the elemental
@@ -7744,11 +7102,10 @@
       ! evaluation is made and none of the lines below is printed. That is
       ! what an atomic run and a coupled carrier solve both do.
       !
-      ! maxit / dtau0 / use_jfnk select the steady solver and its budget:
-      ! every route passes jfnk_outer_iterations_default, the marching
-      ! hand-off starts the continuation from dtau0 = 1 and the two direct
-      ! routes from the CFL dt, and either route may use JFNK or
-      ! pseudo-transient continuation.
+      ! maxit / dtau0 / use_jfnk select the steady solver and its budget.
+      ! The marching hand-off passes dtau0 = 1. The stationary restart
+      ! passes 1 by default, or EXHALE_PTC_DTAU0 when set. The direct PTC
+      ! route passes its chosen CFL-based starting interval.
       integer, intent(in)  :: maxit
       real*8,  intent(in)  :: dtau0
       logical, intent(in)  :: use_jfnk
@@ -8480,76 +7837,16 @@
          ! header); the ending itself is announced with the others, below
          ! the summary line of the pass.
          !
-         ! TWO DISTANCES ARE MEASURED AND THEY ARE NOT THE SAME ONE.
-         ! prog_worst is the distance of the WHOLE STATE from
-         ! certification, read on the rows; comp_residual_last is the
-         ! residual of the COMPOSITION at the fixed point of its own
-         ! operators, which is what one pass of the alternation removes.
-         ! THE COMPOSITION NUMBERS QUOTED BELOW ARE THE SUPERSEDED MEASURE,
-         ! the endpoint distance of the element relaxation's inner map,
-         ! which is what this control was written against; the measure is
-         ! now the elemental transport residual of the returned state and
-         ! the two differ in size (a factor 21 on the hot molecular case,
-         ! MEASURED). What the passage below states is the SHAPE of the two
-         ! trajectories, and the measure those numbers were taken with is
-         ! the one EXHALE_ELEMENT_DRIFT_IS_MAP_DISTANCE=1 selects. The rows are
-         ! not monotone while the composition is still travelling: the
-         ! elemental transport row is a residual of the wind the last solve
-         ! returned, and a composition still far from its fixed point
-         ! changes that wind. MEASURED on LHS 1140 b at 0.10, 0.15 and 0.20
-         ! of the GJ 1132 spectrum, seeded from the certified 0.25 solution
-         ! and continued at dtau0 = 1e8: every pass had
-         ! hydro info = 0 with all three hydrodynamic rows inside their
-         ! tolerances, the element relaxation reached the fixed point of
-         ! its operator every pass, and its distance fell 6.62e-1 ->
-         ! 4.24e-1 -> 3.39e-1, while the gated elemental row rose 1.28e-2
-         ! -> 1.89e-2 -> 2.06e-2 -> 2.12e-2 and ended the loop here.
-         !
-         ! SHORTENING THE STEP IS THE WRONG RESPONSE WHERE THAT DISTANCE IS
-         ! FALLING, because the alternation contracts it by 1 - omega: on
-         ! the certified 0.30 case, whose composition travelled the same
-         ! distance (4.89e-1), omega stayed at 0.500 and the distance
-         ! halved every pass -- 4.89e-1, 2.67e-1, 1.39e-1, 7.11e-2, ... --
-         ! to certification at pass 13. Halving omega to 0.125 takes that
-         ! factor from 0.500 to 0.875 per pass, so the response to a rising
-         ! row made the composition travel more slowly and the loop then
-         ! declared it stagnant.
-         !
-         ! THE COMPOSITION DISTANCE ONLY MEANS THAT WHERE THE COMPOSITION IS
-         ! WHAT REFUSES THE STATE. The alternation is "solve the wind at
-         ! fixed composition, relax the composition at fixed wind": where
-         ! the wind half is what stands furthest from certification, the
-         ! second half is closing on the fixed point of a wind that is not
-         ! a solution, and its progress says nothing about the pair.
-         ! MEASURED on the same three cases at the pseudo-time start
-         ! dtau0 = 1, the solve the continuation above follows: the
-         ! hydrodynamic energy row stands at 6.3e-1 against 1e-6, a
-         ! distance of 6.3e5 against the elemental row's 5.8e2, and it
-         ! rises over the passes while the element distance falls 1.73e-1
-         ! -> 1.13e-1 -> 8.83e-2; spending the pass budget there would only
-         ! delay the continuation that does solve the wind, so that case
-         ! keeps the ending it had.
-         !
-         ! WHICH ENTRY CARRIES THE DISTANCE IS THE TEST, not whether the
-         ! hydrodynamic rows are inside their tolerances. A row 3 percent
-         ! outside its tolerance is a solved wind; MEASURED on the 0.05 XUV
-         ! rung of the ladder, whose hydrodynamic energy row crosses 1e-6
-         ! from below at two passes out of thirty (1.03e-6, 1.32e-6) while
-         ! the elemental row stands at 1.9e-2 of 1e-5, an inside-tolerance
-         ! test halved omega at exactly those two passes and left the
-         ! alternation creeping at a contraction of 1.14 per pass.
-         !
-         ! So a pass counts as progress when the joint distance fell, or
-         ! when the state's distance from certification is carried by an
-         ! entry other than a hydrodynamic row and the composition's own
-         ! distance fell. The composition distance is only informative once
-         ! two updates have been taken; before that the loop has no
-         ! measurement of its own contraction, and one pass of a far seed
-         ! is not evidence of stagnation, so those passes count as progress
-         ! too. A state whose composition has stopped closing, or whose
-         ! distance is carried by the wind, AND whose rows do not fall is
-         ! the stagnation this control was written for, and it still ends
-         ! the loop on outer_no_fall_max consecutive passes.
+         ! prog_worst is the whole state's distance from certification;
+         ! comp_residual_last is the composition's transport residual at
+         ! fixed wind. The earlier endpoint-map distance is a different
+         ! diagnostic (EXHALE_ELEMENT_DRIFT_IS_MAP_DISTANCE=1).
+         ! Count progress when the joint distance falls, or when a
+         ! nonhydrodynamic row dominates and composition distance falls.
+         ! Before two updates there is no contraction measurement. End at
+         ! outer_no_fall_max consecutive passes without either progress.
+         ! Decide before updating, so an ending returns its certified state.
+         ! See ../EXHALE_v1.00/md/Update_EXHALE_stage2.md section 11 (L14).
          !
          ! A PASS THROTTLED BY THE MOVEMENT BOUND IS NOT JUDGED BY THOSE
          ! TWO MEASURES, because neither can move on it. When the carrier
@@ -9763,7 +9060,6 @@
 
       end subroutine steady_wind_with_element_diffusion
 
-      ! ------------------------------------------------!
 
       subroutine write_diffusion_pass_profile(pass)
       ! Diagnostic (EXHALE_DIFFUSION_CHECK=1): append the element ratio and
@@ -9812,7 +9108,6 @@
 
       end subroutine write_diffusion_pass_profile
 
-      ! ------------------------------------------------------------- !
 
       subroutine write_stage_state(pass, stage, with_residual)
       ! THE STATE THE STATIONARY ALTERNATION HOLDS AT A NAMED STAGE OF ONE
@@ -9889,7 +9184,6 @@
       close(uu)
       end subroutine write_stage_state
 
-      ! ------------------------------------------------!
 
       subroutine write_state_of_the_pass(pass_now, bound_now, omega_now)
       ! THE STATE ONE OUTER PASS HANDS TO THE NEXT, published as a
@@ -9960,11 +9254,10 @@
       n_part_cell1 = npart1_hold
       if (pair_written)                                                   &
          write(*,'(A,I0,A,F8.3,A)') '    state of pass ', pass_now,       &
-              ' published as output/pass_state/'//trim(pass_state_id)//   &
+              ' published as '//trim(output_dir)//'pass_state/'//trim(pass_state_id)//   &
               ' (', omp_get_wtime() - t_write_start, ' s)'
       end subroutine write_state_of_the_pass
 
-      ! ------------------------------------------------!
 
       subroutine hold_state_before_composition_update(W_hold, E_hold)
       ! The state the composition update of the stationary alternation is
@@ -9988,66 +9281,17 @@
       E_hold = u(3,:)
       end subroutine hold_state_before_composition_update
 
-      ! ------------------------------------------------!
 
       subroutine rebuild_energy_at_held_pressure(pass_now, W_hold, E_hold)
-      ! "Composition update holds: pressure". The state the composition
-      ! update hands to the next hydrodynamic solve keeps the density, the
-      ! velocity and the pressure every physical cell had in the certified
-      ! state (W_hold). Its temperature is T = p/(n_tot + n_e) of the new
-      ! composition, and its total energy density is
-      !
-      !     E = (rho v)^2/(2 rho) + (rho e)(rho, p; new composition),
-      !
-      ! the caloric equation of state of the new mixture at the held
-      ! pressure (energy_density_from_pressure: 3/2 k per atom, ion and
-      ! electron plus the rovibrational energy of H2), with the kinetic part
-      ! the one u already carries, since rho and rho v are not touched.
-      !
-      ! WHY. At a base many decades subsonic the stationary wind rests on a
-      ! near-hydrostatic balance between the reservoir and the first cells.
-      ! A composition change at fixed E moves the pressure of a molecular
-      ! cell through its particle count and heat capacity; a pressure step
-      ! dp against the reservoir drives a face mass flux of order dp/c,
-      ! which there exceeds rho v by decades. Holding p leaves the pressure
-      ! force, the face pressures and the base face state as the solve
-      ! left them, and the composition change enters the energy row, where
-      ! the enthalpy it carries belongs.
-      !
-      ! THE CHEMISTRY IS CLOSED AT THE HELD PRESSURE. The relaxations close
-      ! the eliminated species (ions, electrons, the molecular ions) at the
-      ! temperature of the unchanged conserved state; at the held pressure
-      ! the temperature is another one (1 percent higher where the H2
-      ! carrier moved most, MEASURED on the well-mixed He/H 0.083 state),
-      ! so the chemistry handed over would not be the equilibrium of the
-      ! state it is handed over with, and a residual that eliminates it by
-      ! one sweep would read a composition still moving. Cycles of (T of
-      ! the held pressure at the current particle count; one equilibrium
-      ! sweep, the transported carriers held; T again) are taken until the
-      ! temperature stops moving, on the tolerance and cycle budget of the
-      ! closure at a fixed conserved state (chem_cycle_tol, chem_cycles_max
-      ! of diffusive_photochemistry), so the two contracts close the
-      ! chemistry to one standard. A sweep that returns a composition that
-      ! is not finite is undone and the rebuild is taken on the composition
-      ! the relaxations returned. The closure and the rebuild run only when
-      ! the update moved the pressure the unchanged u carries in at least
-      ! one cell; a composition that did not move is handed back untouched,
-      ! bit for bit, which is the fixed-point statement below.
-      !
-      ! ONE RULE IN EVERY CELL. Where the pressure u carries at the closed
-      ! composition equals the held pressure to the bit, E is already the
-      ! answer and u is left alone: every cell whose caloric map is the
-      ! constant-gamma one (e = p/(gamma - 1) does not depend on the
-      ! composition, so holding E and holding p are one statement there).
-      ! Elsewhere E is rebuilt. The equality test is exact on purpose: the
-      ! question is whether the two contracts give the same double, not
-      ! whether they are close.
-      !
-      ! THE BOUNDARY IS DERIVED AGAIN from the rebuilt interior and the new
-      ! composition (Apply_BC writes the ghosts and the cached face states
-      ! and nothing else), and the primitive state and the temperature are
-      ! re-formed from the rebuilt u, so u, W, p and T describe one gas.
-      !
+      ! "Composition update holds: pressure": keep rho, rho v and p of
+      ! the certified state while composition changes. Recompute
+      ! T = p/(n_tot + n_e) and
+      ! E = (rho v)^2/(2 rho) + (rho e)(rho,p; new composition)
+      ! with the mixture caloric equation of state. Holding p preserves the
+      ! near-hydrostatic base face. Close eliminated chemistry at this T on
+      ! the fixed-pressure pair using chem_cycle_tol/chem_cycles_max; undo
+      ! a nonfinite sweep. If p already agrees bitwise, leave E untouched.
+      ! Rebuild ghosts with Apply_BC and derive W and T from the new u.
       ! THE RECORD, one block for each pass. The energy the rebuild adds,
       ! the sum over the physical cells of (E_new - E_hold) V_j with V_j the
       ! shell volume of the cell (spherical_cell_volume, R_p^3 per
@@ -10061,6 +9305,7 @@
       ! relaxation path and not of the stationary equations: at a fixed
       ! point the composition does not move, nothing is rebuilt and the
       ! sum is zero.
+      ! See ../EXHALE_v1.00/md/lhs1140b_composition_update_pressure_20260924.md section 1.
       integer, intent(in) :: pass_now
       real*8,  intent(in) :: W_hold(3,1-Ng:N+Ng), E_hold(1-Ng:N+Ng)
       real*8  :: W_fixed_energy(3,1-Ng:N+Ng), W_after_closure(3,1-Ng:N+Ng)
@@ -10183,7 +9428,6 @@
            '; as rebuilt:', (p(jcell)/W_hold(3,jcell) - 1.0d0, jcell = 1, 3)
       end subroutine rebuild_energy_at_held_pressure
 
-      ! ------------------------------------------------!
 
       subroutine allocate_state_vectors
       ! Allocate the grid-sized state, flux and diagnostic vectors of the
@@ -10374,7 +9618,6 @@
 
       end subroutine allocate_state_vectors
 
-      ! End of program
       subroutine face_mass_flux_series_append
       ! DIAGNOSTIC ONLY (env EXHALE_FACE_MASS_FLUX_SERIES).  See the declaration
       ! block for what each column is.  face_flux is RK_integration's cached
@@ -10411,8 +9654,8 @@
       end subroutine face_mass_flux_series_append
 
       subroutine cell_mass_flux_spread_from(ja, sp)
-      ! Spread of the CELL-CENTRED rho v r^2 over [ja:N], (max - min)/mean,
-      ! evaluated from an arbitrary inner cell.
+      ! Spread of the cell-centered rho v r^2 over [ja:N]:
+      ! (max - min)/max(abs(mean), 1e-30).
       integer, intent(in)  :: ja
       real*8,  intent(out) :: sp
       integer :: jj

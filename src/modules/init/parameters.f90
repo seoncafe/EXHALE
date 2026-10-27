@@ -5,9 +5,9 @@
       
       integer, parameter :: outfile = 99  ! Unit number of report file
       ! Number of computational cells. Runtime value, set from the optional
-      ! input.inp key "Grid cells: <N>" and fixed for the rest of the run;
+      ! selected input key "Grid cells: <N>" and fixed for the run;
       ! without the key it keeps the 500 that used to be compiled in, so an
-      ! existing input.inp reproduces its earlier result. Every grid-sized
+      ! an input without the key uses 500 cells. Every grid-sized
       ! array below is allocated by allocate_grid_arrays once N is known;
       ! grid-sized arrays inside procedures are automatic (sized on entry),
       ! exactly as the energy-grid arrays dimension(Nl) already were.
@@ -64,7 +64,7 @@
       integer, parameter :: run_mode_init = 1
       integer, parameter :: run_mode_phys = 2
       integer :: run_mode = run_mode_init
-      ! Was the mode stated in input.inp, or derived from the other keys?
+      ! Was the mode stated in the selected input file, or derived from other keys?
       ! A defaulted mode is a reading of the input and is reported as such.
       logical :: run_mode_given = .false.
 
@@ -115,42 +115,16 @@
       character(len = :), allocatable :: p_name
       character(len = :), allocatable :: grid_type
 
-      ! ----- Base grid resolution ('Grid type: Mixed' only) -----
-      ! The Mixed grid stacks N_low_cells uniform cells of size dr_base [R_p]
-      ! on the base and fills the rest of the domain with N - N_low_cells
-      ! geometrically stretched cells out to r_max. Their product
-      ! dr_base*N_low_cells is the radial extent of the uniform region
-      ! (0.01 R_p with the defaults below), so refining the base at fixed
-      ! extent means dividing dr_base and multiplying N_low_cells by the same
-      ! factor. The Uniform and Stretched grid types ignore both values.
-      !
-      ! Physical requirement: the uniform cells must resolve the base density
-      ! scale height H = kT/(mu g). Where H/dr_base is of order a few cells,
-      ! the discretization supports a stationary 2*dr entropy (contact) mode
-      ! that nothing in the scheme damps -- HLLC resolves a contact of zero
-      ! speed exactly, the gravity source is cell-local, and the WENO3
-      ! pressure gradient only sees interface pressures. The measured
-      ! dependence is a 1e-2 alternating amplitude in ln(rho) for H/dr < 5
-      ! and 1e-4 for H/dr > 100. High-
-      ! gravity planets have the least margin: on the default grid the value
-      ! write_setup_report echoes is 26.9 cells per H at T_eq for
-      ! HD 189733 b against 102.3 for WASP-121 b.
-      !
-      ! The default width is the double 2.0d-4 written with a d exponent, so
-      ! the value is the one a reader of the key would spell: an input.inp
-      ! WITHOUT the key and one stating "Base grid [dr,cells]: 2.0e-4 50"
-      ! build the same grid to the bit (the list-directed read of 2.0e-4 into
-      ! a real*8 is this double). The grid is part of a stored
-      ! state: load_IC refuses a state whose cell centers differ from the
-      ! run's by more than 1e-10 relative. An input written before 2026-09-19
-      ! was run on the width 1.9999999494757503d-4 (the default-real literal
-      ! 2.0e-4), whose centers differ from this grid's by 3.8e-9 to 6.6e-9
-      ! relative; every such input beside stored results carries that width
-      ! as "Base grid [dr,cells]: 1.9999999494757503e-4 50"
-      ! (src/utils/pin_base_grid.py), and each preserved tree whose inputs
-      ! were not edited has a GRID_DEFAULT_NOTE.md at its root stating the
-      ! same line. The width a run used is recorded at round-trip precision
-      ! by write_resolved_config.
+      ! Mixed grid: N_low_cells uniform base cells of width dr_base [R_p],
+      ! followed by stretched cells to r_max. Their product fixes the base
+      ! region extent; Uniform and Stretched grids ignore both values.
+      ! Resolve the base density scale height H = kT/(mu*g) with these cells:
+      ! an under-resolved near-hydrostatic layer can support an alternating
+      ! contact/entropy mode under HLLC and WENO3.
+      ! dr_base_default = 2.0d-4 matches an explicit 2.0e-4 input bitwise.
+      ! Older stored states can use the previous default-real width and must
+      ! carry an explicitly pinned grid to satisfy load_IC's radius check.
+      ! Grid measurements and migration: ../EXHALE_v1.00/md/input_schema.md K33b.
       real*8, parameter :: dr_base_default = 2.0d-4
       real*8  :: dr_base     = dr_base_default  ! uniform base cell size [R_p]
       integer, parameter :: N_low_cells_default = 50
@@ -210,7 +184,7 @@
       logical :: do_read_sed   = .false.  ! Is numerical SED read from file
       logical :: is_monochr    = .false.  ! Is monochromatic radiation selected
       logical :: is_PL_sed     = .false.  ! Is the SED a power law
-      logical :: thereis_Xray  = .false.  ! Include only EUV band	
+      logical :: thereis_Xray  = .false.  ! Include X-ray band when true
       ! He metastable triplet: ON by default.  The 2^3S state carries the
       ! 10830 A observable and its channels feed the energy and electron
       ! budgets, so a run that does not say otherwise gets it.  The opt-out
@@ -341,8 +315,8 @@
       ! He/H diffusive separation:
       !  .false. (default) = He/H frozen at the input HeH everywhere (legacy);
       !  .true. = evolve the He element ratio with advection + molecular
-      !  diffusion (He settles, He/H falls with altitude).  Metals stay frozen
-      !  to H.  Off = byte-identical to legacy.
+      !  diffusion (He settles, He/H falls with altitude). Trace metals
+      !  can also diffuse when he_metal_diffusion is enabled.
       logical :: he_diffusion = .false.
       ! Eddy (turbulent) diffusion coefficient [cm^2/s] used with he_diffusion.
       ! Mixes the composition toward a uniform MASS fraction below the
@@ -366,7 +340,7 @@
       ! Ambipolar-corrected effective settling mass (ionized wind lifts
       !  He ions, reducing settling).  Default .true.; .false. = neutral Dm=3.
       logical :: he_ambipolar = .true.
-      ! Thermal-diffusion factor alpha_T for He (settling ~ (1+alpha_T)).
+      ! Thermal-diffusion factor alpha_T for He, multiplying dlnT/dr in G.
       !  Default 0 (off).  Runtime key "He_alphaT: <value>".
       real*8  :: he_alphaT = 0.0d0
       ! Also diffuse the trace metals (each element with its own mass and
@@ -439,9 +413,9 @@
       ! particle from the profile's own mass density and element ratios
       ! (apply_lower_atmosphere_profile).  Set only where a lower-atmosphere
       ! profile is in use; then base_h2_nuclei_fraction is 1 minus it, so
-      ! that the hydrogen of the trace molecules the wind does not carry
-      ! (CH4, NH3, H2O) goes onto H2, the inert majority carrier, and not
-      ! onto atomic H, the reactive trace species.  Negative (default) = not
+      ! the non-atomic hydrogen enters the molecular reservoir rather
+      ! than atomic H. Explicit OH/H2O carriers take their hydrogen first;
+      ! the remainder enters H2 (reservoir_composition).  Negative (default) = not
       ! stated, and the base partition follows from q_h2_base for an
       ! H, H2, He mixture (base.inp).
       real*8  :: h_atomic_share_base = -1.0d0
@@ -452,9 +426,8 @@
       real*8  :: p_base_bar = 1.0d-6
       ! molecular chemistry (H2/H2+/H3+/HeH+ in the coupled ionization
       ! equilibrium + H2 photoionization opacity/heating + H3+ IR cooling).
-      ! Key "Molecular chemistry: True".  v1 constraints: requires He; not
-      ! combined with trace metals (input_read errors out).  Default off =
-      ! byte-identical legacy.  docs/lower_atmosphere_coupling.*.
+      ! Key "Molecular chemistry: True". Requires He; trace metals
+      ! may be present. Default off. See docs/lower_atmosphere_coupling.*.
       logical :: thereis_mol = .false.
       ! Band-integrated stellar flux in the H2 Lyman-Werner bands
       ! (912-1201 A, i.e. 10.3-13.6 eV) AT THE PLANET'S ORBIT
@@ -505,8 +478,8 @@
       !
       ! Key "Molecular carrier transport: True|False". Its DEFAULT is not a
       ! constant: it is on whenever the oxygen chemistry is on, because a
-      ! local steady state is the wrong physics at the cool base that option
-      ! exists for -- tau_chem(H2)/tau_adv is of order unity there. Resolved
+      ! carrier continuity is solved with the oxygen chemistry rather than
+      ! imposing a local steady partition everywhere. Resolved
       ! in input_read
       ! once every key is parsed; carrier_transport_stated records whether
       ! the run said so itself, so the default can change without silently
@@ -619,7 +592,7 @@
       ! EOS mass/electron/particle policy. .true. (default) = metals enter
       ! the bulk gas budget consistently: their mass in rho_bc/calc_rho
       ! (hence mu, v0, p0, b0), their electrons in calc_ne/dp_bc, and
-      ! their nuclei in calc_ntot/the ghost pressure (ntot_bc) -- matching
+      ! their gas particles in calc_ntot/the ghost pressure (ntot_bc) -- matching
       ! the charge balance already used inside the MINPACK ionization
       ! systems. .false. = legacy trace approximation (H/He-only budget;
       ! metals enter ionization/cooling but not the bulk gas). Runtime
@@ -630,7 +603,7 @@
       ! eos_include_metals is off or metals are absent):
       real*8 :: mass_per_H = 1.0d0  ! gas mass per H nucleus [m_H]:
                                     !  1 + 4*HeH (+ sum melem_ab*melem_A)
-      real*8 :: ntot_bc    = 1.0d0  ! total nuclei density at base [n0]:
+      real*8 :: ntot_bc    = 1.0d0  ! gas particle density at base [n0]:
                                     !  (1 + HeH + sum melem_ab)/(1 + HeH)
       logical :: thereis_lowIP_metal = .false. ! An active metal whose neutral
                                           !  ionization potential lies below the
@@ -675,37 +648,18 @@
       ! same diluted B_nu(T0) `Base IR field` supplies, so each stops at its own
       ! radiative equilibrium temperature. See molecular_infrared_cooling.f90.
       logical :: mol_ir_bands   = .false.
-      ! H2 photoabsorption channels beyond the single dissociative one.
-      ! Both default to the pre-E1 arithmetic, which is why an old run
-      ! reproduces bit for bit.
-      !
-      ! h2_double_ionization selects the model for the share of the
-      ! photo-released protons that comes from H2 + hv -> H+ + H+ + 2e-,
-      ! a channel with a vertical threshold of 51.4 eV (Yan, Sadeghpour &
-      ! Dalgarno 1998, sec. 4). Accepted values:
-      !   'chung80'  DEFAULT. Chung, Lee, Masuoka & Samson (1993),
-      !              discussion of their Fig. 4: "by 80 eV about 20% of
-      !              sigma(H+) comes from double ionization. This
-      !              percentage remains fairly constant towards higher
-      !              energies", ramped from the 51.4 eV threshold.
-      !   'yan_rho'  built from the double-to-single ionization ratio of
-      !              Yan et al. (1998) sec. 4 (0.038 at 110 eV, asymptotic
-      !              0.0225 from Sadeghpour & Dalgarno 1993).
-      !   'off'      the channel is folded back into the single
-      !              dissociative one, d(E) = 0, which is what the code did
-      !              before this channel existed. Use it to reproduce a
-      !              pre-E1 result, not as a physical statement: the
-      !              reaction happens.
-      !
-      ! WHY 'chung80' IS THE DEFAULT. The reaction is real and measured;
-      ! what is not measured as a function of energy is d(E) itself. The
-      ! 20 percent is the number the source states outright, so it is the
-      ! one that carries. RANGE: the ramp between 51.4 and 80 eV is NOT in
-      ! the source, which says only that the contribution is "small" near
-      ! threshold. UNCERTAINTY: 'yan_rho' rests on different published
-      ! numbers and gives a double-to-single ratio 1.6 times larger at
-      ! 110 eV (0.038 against 0.023); running both is how that is reported,
-      ! and it moves n(H2+) by 25 percent of the channel's own effect.
+      ! H2 + hv -> H+ + H+ + 2e- begins at the vertical 51.4 eV threshold
+      ! (Yan, Sadeghpour & Dalgarno 1998, section 4). The selected model
+      ! partitions the H+ photoevent signal, not the total opacity.
+      ! 'chung80' (default): Chung et al. (1993), Fig. 4 discussion, infer
+      ! about 20% of sigma(H+) above 80 eV; the 51.4-80 eV ramp is an
+      ! interpolation, not a measurement. 'yan_rho': Yan et al. (1998)
+      ! use a double-to-single ratio 0.038 at 110 eV, approaching 0.0225
+      ! (Sadeghpour & Dalgarno 1993); interpolation is model dependent.
+      ! 'off' folds double events into the single dissociative channel
+      ! for comparison; it does not mean double ionization is absent.
+      ! The choice and measured sensitivity are in
+      ! ../EXHALE_v1.00/docs/Update_EXHALE_stage1.pdf section 151.6.
       character(len=16) :: h2_double_ionization = 'chung80'
       ! h2_neutral_dissociation resolves H2 + hv -> H + H, the absorptions
       ! that leave no ion. It is nonzero ONLY over 32-41.5 eV: the 33-41 eV
@@ -757,9 +711,8 @@
                                           !  1 = frozen (use converged eq metal
                                           !      densities, held fixed) (default);
                                           !  2 = re-solve metal ionization at the
-                                          !      post-process T/n_e (not yet
-                                          !      implemented; warns and falls
-                                          !      back to mode 1).
+                                          !      post-process T/n_e when metals and
+                                          !      helium are present.
                                           !  Default is 1 (frozen): the frozen
                                           !  _adv profile already tracks the eq
                                           !  solution closely, so the re-solve
@@ -823,7 +776,7 @@
       real*8  :: recon_lambda_step0 = 0.0d0  ! "Reconstruction continuation:" dlambda; <= 0 = off
       real*8  :: recon_lambda_dtu_tol = 1.2d0 ! lambda advances while dtu <= tol * dtu at the ramp start
       logical :: recon_lambda_adaptive = .true. ! .false. = ramp with no step control
-      logical :: spherical_domain = .false. ! Domain mode (set via input.inp):
+      logical :: spherical_domain = .false. ! Domain mode (set in the input file):
                                           !  .false. = full Roche potential,
                                           !   domain truncated at the Hill
                                           !   radius (default ATES behavior)
@@ -832,7 +785,7 @@
                                           !   (-b0/r), tidal + centrifugal terms
                                           !   dropped, domain extended to
                                           !   r_out_user [R_p] (Huang Case A-like)
-      integer :: ic_mode       = 0        ! IC selection mode (input.inp
+      integer :: ic_mode       = 0        ! IC selection mode (input file
                                           !  "IC mode: <word>"): 0 = cold
                                           !  hydrostatic (default), 1 =
                                           !  transonic, 2 = hot_parker,
@@ -845,7 +798,7 @@
                                           !  load_IC reads it). The explicit
                                           !  legacy keys below take
                                           !  precedence over auto.
-      logical :: transonic_ic  = .false.  ! IC type (set via input.inp,
+      logical :: transonic_ic  = .false.  ! IC type (set in the input file,
                                           !  "Transonic IC: True"; default off):
                                           !  .false. = isothermal hydrostatic
                                           !   atmosphere + v~0 seed (default);
@@ -863,12 +816,11 @@
                                           !  Falls back to the hydrostatic IC if
                                           !   no interior sonic point exists.
 
-      ! Hot-Parker IC (set via input.inp "Hot Parker IC: <Twind[K]>"; default
+      ! Hot-Parker IC (set in the input file "Hot Parker IC: <Twind[K]>"; default
       ! off): a transonic isothermal-wind IC built at a WARM effective wind
-      ! temperature T_wind_ic (instead of the cold base T0), with T and H/He
-      ! ionization ramped from the cold neutral base to the hot ionized wind, so
-      ! v, rho, T, and ionization all start close to the final escaping-wind state
-      ! (a p-winds-style Parker initial guess). Auto-enables force_start.
+      ! temperature T_wind_ic (instead of the cold base T0). It retains the
+      ! cold hydrostatic density and overlays Parker velocity plus a ramp in
+      ! T and H/He ionization from the cold base. Auto-enables force_start.
       logical :: hot_parker_ic = .false.
       real*8  :: T_wind_ic     = 1.0d4    ! effective wind temperature [K] for the IC
       ! Cold-base transition radius [R_p] for the hot-Parker IC: below it the IC
@@ -878,7 +830,7 @@
       ! a thermal runaway (see docs/initial_condition_benchmark, root-cause).
       real*8  :: hp_base_rtr   = 1.3d0    ! transition radius [R_p]; >1
 
-      ! Nonlinear-solver selection (set via input.inp; defaults = the upgraded
+      ! Nonlinear-solver selection (set in the input file; defaults = the upgraded
       ! solvers). use_newton_ieq: ionization equilibrium via the analytic-
       ! Jacobian Newton (+hybrd1 fallback) vs. legacy MINPACK hybrd1
       ! ("Newton solver: False"). use_brent_tsolve: the post-process energy
@@ -1067,10 +1019,10 @@
       real*8,parameter ::  e_th_MgII = 15.035d0  ! Threshold for MgII ionization
 
 	   ! Numerical constants
-      real*8 ::  CFL    = 0.6d0       ! CFL number; settable in input.inp via "CFL:" (lower = smaller dt, may damp a numerical limit cycle)
+      real*8 ::  CFL    = 0.6d0       ! CFL number; settable in the input file via "CFL:" (lower = smaller dt, may damp a numerical limit cycle)
       real*8 ::  du_th     = 1.0d-3   ! second number of "du_th [PLM,WENO3]:"; since 2026-10-10 it no longer stops the run (the marching stop is the face mass-flux spread and the state change, march_flux_spread_th / march_change_th, update log stage 3 section 127); it only decides with du_th_plm whether the run is two-stage.
       real*8 ::  du_th_plm = -1.0d0   ! stage-1 (PLM) threshold; if > du_th the run is two-stage: PLM until du<du_th_plm, then WENO3 to the marching stop. <=0 => single-stage.
-      real*8           ::  du                   ! Initial momentum variation
+      real*8           ::  du                   ! Cell-centered mass-flux spread
       real*8           ::  dtu                  ! Norm of time derivative
 
       ! Convergence stall detection (ported from ATES_extended): stop runs
@@ -1316,34 +1268,20 @@
       real*8  ::  T0          ! Temperature at lower boundary (K)
       real*8  ::  LX          ! Log10 X-Ray luminosity (erg/s)
       real*8  ::  LEUV        ! Log10 EUV luminosity (erg/s)
-      real*8  ::  J_XUV       ! Bolometric star XUV flux (erg/cm^2*s)
+      real*8  ::  J_XUV       ! Incident XUV flux at the orbit (erg/cm^2/s)
       real*8  ::  Mstar       ! Mass of companion star
       real*8  ::  Mrapp       ! Ratio M_star/M_p
       real*8  ::  atilde      ! Orbital radius in unit of R0 (a/R0)
       real*8  ::  r_esc       ! Escape radius for constant momentum
-      ! Flux gate (docs/Update_EXHALE_stage1.pdf section 133). The steady solve is
-      ! accepted only when BOTH the residual ||R|| < resid_tol AND the radial
-      ! spread of the Riemann FACE mass flux over r >= r_flux is below
-      ! flux_spread_th (section 145). The two
-      ! say different things: the residual that nothing is changing, the flux
-      ! that the wind carries one mass flux at every altitude.
-      !   flux_spread_th  "Flux spread tol: <tol> [<r_flux>]"; <=0 disables.
+      ! Accept a steady state only when both the residual is below resid_tol
+      ! and the radial spread of the signed Riemann face mass flux at or above
+      ! r_flux is below flux_spread_th; <= 0 disables the flux gate.
+      ! "Flux spread tol: <tol> [<r_flux>]" sets the threshold and the inner
+      ! window radius [R_p]. The residual tests stationarity and the face
+      ! flux tests mass conservation along the wind. The measured threshold
+      ! and prior cell-centered definition are in
+      ! ../EXHALE_v1.00/docs/Update_EXHALE_stage1.pdf sections 133 and 145.
       !   r_flux          inner edge of the window, in R_p.
-      ! Defaults are measured (section 133): every converged state in hand is
-      ! flat to 2.4e-3 - 4.8e-4 over r >= 1.2 R_p, while the state section
-      ! 126.6 showed the old measure could not reject reads 7.6e-2 there.
-      ! RE-DERIVED for the face-flux definition of section 145. The old
-      ! 5.0e-3 was calibrated against the CELL-CENTRED product; on the
-      ! conserved face flux it is not a gate at all. Measured face spread at
-      ! r >= r_flux over every state available on 2026-09-03:
-      !   accepted by the JFNK   1.0e-10 (the section 143 hot-Uranus root),
-      !                          3.9e-08, 4.0e-06, 3.8e-06
-      !   stopped on du only     1.1e-04, 1.0e-03, 3.2e-02, 3.2e-02
-      !   marching, 600 steps    4.0 to 1.4e+01
-      ! The two populations are separated by the interval 4e-6 to 1.1e-4;
-      ! 2e-5 is its geometric middle to one digit -- five times above the
-      ! loosest accepted state and six times below the tightest du stop --
-      ! and is not fitted to any one of them.
       real*8, parameter :: flux_spread_th_default = 2.0d-5
       real*8  ::  flux_spread_th = flux_spread_th_default
       real*8  ::  r_flux         = 1.2d0
@@ -1373,7 +1311,7 @@
       ! it to decide whether a restart column may be renormalized onto the
       ! reservoir the handoff states (see load_IC).
       logical, allocatable :: melem_from_handoff(:)
-      real*8  ::  rho_bc      ! Adimensional number density at origin
+      real*8  ::  rho_bc      ! Dimensionless mass density at base level
       real*8  ::  a_tau       ! Rate correction coefficient
       real*8  ::  PLind       ! Index of spectral power law
       real*8  ::  dp_bc       ! Boundary condition for pressure
@@ -1398,8 +1336,9 @@
       ! every other spectrum type.
       real*8, dimension(:), allocatable :: e_sed_node, F_sed_node
       real*8, dimension(:), allocatable :: s_hi,s_hei,s_heii,s_heiTR
-      ! H2 photoionization cross section on the energy grid (molecular;
-      ! Yan+1998 fit, filled in set_energy_vectors)
+      ! H2 photoabsorption cross section on the energy grid, filled by
+      ! set_energy_vectors from the Backx and Samson-Haddad tables and Yan tail.
+      ! Source and ranges: ../EXHALE_v1.00/md/Update_EXHALE_stage1.md section 151.10.
       real*8, dimension(:), allocatable :: s_h2
       ! The DISSOCIATIVE part of that cross section, s_h2 times the
       ! branching of frac_H2_dissociative_ionization: the sub-channel that
@@ -1483,8 +1422,8 @@
       !  jlya_mode = 2 -> in-line escape-probability RT (the static
       !                    plane-parallel damping-wing slab solution of
       !                    Neufeld 1990 eq. 3.27 / Harrington 1973 eq. 40),
-      !                    computed every timestep from the current state
-      !                    in excited_H_update (see lya_rt.f90).
+      !                    computed from the current state on each
+      !                    excited_H_update (see lya_rt.f90).
       integer :: jlya_mode  = 0
       character(len=8192) :: jlya_rt_file = 'jlya_rt.txt'
       ! ----- Ly-alpha radiative transfer ----- !
@@ -1523,7 +1462,7 @@
       ! Cell-by-cell feedback arrays injected into ioniz_eq (zero unless enabled):
       real*8, dimension(:), allocatable :: gph_balmer_HI ! extra HI photoion [s^-1]
       real*8, dimension(:), allocatable :: heat_balmer   ! extra heat [erg cm^-3 s^-1]
-      ! Cell-by-cell diagnostics for output/Excited_H.txt:
+      ! Cell-by-cell diagnostics for <output_dir>/Excited_H.txt:
       real*8, dimension(:), allocatable :: Jlya_arr    ! Lya mean intensity [cgs]
       real*8, dimension(:), allocatable :: n2s_arr     ! H(2s) density [cm^-3]
       real*8, dimension(:), allocatable :: n2p_arr     ! H(2p) density [cm^-3]
@@ -1767,5 +1706,4 @@
 
       end subroutine allocate_grid_arrays
 
-      ! End of module
       end module global_parameters

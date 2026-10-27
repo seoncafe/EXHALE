@@ -30,8 +30,8 @@
 	!     row_identity              x = 0 of an absent element, or of the
 	!                               unused X++ of a two-stage element
 	!     row_pinned_fraction       x - x_fix of a fraction the flow carries
-	!     row_imposed_reservoir     x(H2) - x2 (1 - x_ion) of a lower ghost
-	!                               that holds the base reservoir partition
+	!     row_imposed_reservoir     x(H2) - x2*(1-x_ion) + x_O of a lower
+	!                               ghost; x_O is zero without OH/H2O
 	!   row_element_conservation is the kind of the element rows of the
 	!   constrained continuation (constrained_chemical_equilibrium); no
 	!   fraction layout carries one.
@@ -172,7 +172,6 @@
 
 	contains
 
-	!----------------------------------!
 
 	pure integer function nuclei_of_species(slot, element_group) result(nu)
 	! Nuclei of the element of element_group (1 H, 2 He, 2 + e metal e)
@@ -211,7 +210,6 @@
 	end select
 	end function nuclei_of_species
 
-	!----------------------------------!
 
 	subroutine ionization_row_layout(layout, n_rows, has_he, has_triplet,  &
 	                                 has_molecules, has_oxygen_chemistry,  &
@@ -315,7 +313,6 @@
 
 	end subroutine ionization_row_layout
 
-	!----------------------------------!
 
 	subroutine mark_constraint_rows_of_cell(layout, cell, metal_ntot,      &
 	                                        metal_top)
@@ -387,7 +384,6 @@
 
 	end subroutine mark_constraint_rows_of_cell
 
-	!----------------------------------!
 
 	pure logical function is_constraint_row(row_kind)
 	integer, intent(in) :: row_kind
@@ -397,7 +393,6 @@
 	                     row_kind .eq. row_element_conservation)
 	end function is_constraint_row
 
-	!----------------------------------!
 
 	pure logical function finite_number(v)
 	! Whether v is an ordinary real number: neither a NaN nor an infinity,
@@ -410,7 +405,6 @@
 	                 .ne. int(z'7FF', 8))
 	end function finite_number
 
-	!----------------------------------!
 
 	subroutine element_group_turnover_reciprocal(layout, gross, inv,       &
 	                                             status,                   &
@@ -481,5 +475,4 @@
 	enddo
 	end subroutine element_group_turnover_reciprocal
 
-	! End of module
 	end module chemical_row_layout

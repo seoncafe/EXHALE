@@ -1,11 +1,8 @@
       module wae_exhale_bridge
-      ! In-process bridge: build a Wind-AE warm-start IC directly from
-      ! EXHALE's already-parsed parameters and grid, writing
-      ! output/{Hydro_ioniz,Ion_species}_IC.txt for load_IC. Invoked by
-      ! init.f90 when "IC mode: windae" (ic_mode=4). This module is the
-      ! ONLY place the Wind-AE tree touches EXHALE's global_parameters, so
-      ! the standalone wind_ae_ic.x build (which excludes this file) stays
-      ! self-contained.
+      ! Generate Wind-AE initial profiles in output_dir for load_IC.
+      ! init calls this when ic_mode=4 and Load IC is false.
+      ! This is the only Wind-AE module using EXHALE global_parameters;
+      ! the standalone wind_ae_ic.x target excludes it.
       use global_parameters, only: Mp, R0, Mstar, a_orb, T0, n0, HeH,    &
                                     J_XUV, b0, T_star_eff, R_star,        &
                                     spherical_domain, r, N, Ng,           &
@@ -43,11 +40,8 @@
       real*8, allocatable :: dr(:), drho(:), dv(:), dT(:), dHI(:), dHeI(:)
       real*8, allocatable :: rgrid(:)
 
-      ! Resolve the warm-start seed: an explicit CSV path from input.inp
-      ! ("Wind-AE seed:"), or the keyword 'grid'/'auto' to auto-pick the
-      ! nearest solution in inputdata/windae_grid/ to this planet's (Mp,Rp,flux)
-      ! -- a far shorter, more robust ramp than always starting from the single
-      ! fiducial HJ seed.
+      ! "Wind-AE seed:" in the selected input supplies a CSV path;
+      ! grid/auto selects the nearest (Mp,Rp,flux) in inputdata/windae_grid/.
       if (trim(windae_seed_file) .eq. 'grid' .or.                          &
           trim(windae_seed_file) .eq. 'auto') then
          call pick_nearest_seed(Mp, R0, J_XUV, 'inputdata/windae_grid', seedf)
@@ -62,15 +56,16 @@
       call cii_init(); call ciii_init(); call oii_init(); call oiii_init()
       call wae_load_spectrum(trim(specf))
       call load_seed(trim(seedf))
-      ! rho convergence scale from the loaded seed's base density, matching the
-      ! reference C code's 10^floor(log10(rho_rmin*0.01)); the self-consistent-BC ramp updates
-      ! it as rho_rmin changes. (The old "b0>120 -> 10" heuristic mis-scaled the
-      ! seed -- whose rho_rmin ~ 2e4 needs ~100 -- and stalled the first solve.)
+      ! Use the reference C density scale 10^floor(log10(rho_rmin*0.01));
+      ! the self-consistent boundary ramp updates it as rho_rmin changes.
       rhoscale = 10.0d0**floor(log10(par%rho_rmin*0.01d0))
       call setup_indices_scales()
-      ! EXHALE Domain mode -> tidalforce. The seed is converged WITH tidal
+      ! EXHALE Domain mode -> tidalforce: the seed is converged WITH tidal
       ! gravity (tidalforce=1); for a spherical domain, ramp it smoothly to 0
-      ! (a discrete 1->0 jump would disrupt the seed and stall the first solve).
+      ! (a discrete 1->0 jump would disrupt the seed and stall the first
+      ! solve).  A failure counts as a stalled attempt: an IC solved with
+      ! tidal gravity does not describe a spherical domain.
+      rc = 0
       if (spherical_domain) rc = ramp_tidal(0.0d0)
 
       ! targets from EXHALE globals
@@ -82,8 +77,10 @@
       end if
 
       ! Static-BC ramp first: fast for seed-adjacent hot Jupiters.
-      write(*,'(A)') '      (wae bridge) ramping seed -> this planet (static-BC ramp)...'
-      rc = ramp_to(Ftot_t, Mp, R0, Mstar, a_orb, Lstar_t)
+      if (rc .eq. 0) then
+         write(*,'(A)') '      (wae bridge) ramping seed -> this planet (static-BC ramp)...'
+         rc = ramp_to(Ftot_t, Mp, R0, Mstar, a_orb, Lstar_t)
+      end if
       if (rc .ne. 0) then
          ! static-BC ramp stalled -> strongly-bound / far-from-seed planet (e.g. HD189733b).
          ! Reload the seed and retry with the self-consistent-BC ramp: re-converge the base BCs and
@@ -93,8 +90,10 @@
          call load_seed(trim(seedf))
          rhoscale = 10.0d0**floor(log10(par%rho_rmin*0.01d0))
          call setup_indices_scales()
+         rc = 0
          if (spherical_domain) rc = ramp_tidal(0.0d0)
-         rc = ramp_to(Ftot_t, Mp, R0, Mstar, a_orb, Lstar_t, static_bcs=.false.)
+         if (rc .eq. 0) rc = ramp_to(Ftot_t, Mp, R0, Mstar, a_orb, Lstar_t, &
+                                     static_bcs=.false.)
       end if
       if (rc .ne. 0) then
          write(*,*) '      (wae bridge) RAMP FAILED (code', rc, ').'
@@ -103,9 +102,7 @@
          error stop '(wae_generate_ic) ramp failed'
       end if
 
-      ! optionally bank the converged relaxation solution as a reusable seed
-      ! ("Wind-AE seed out:"), e.g. the first spherical (tidalforce=0) solution
-      ! or one close to a hard target -- growing inputdata/windae_grid/.
+      ! Wind-AE seed out: optional CSV path for saving the converged seed.
       if (len_trim(windae_seed_out) .gt. 0) call dump_seed(trim(windae_seed_out))
 
       ! relax solution is in cy; integrate outward
@@ -145,7 +142,7 @@
       call wae_write_ic(dr, drho, dv, dT, dHI, dHeI, ntot, rgrid, ng_grid, &
                         log10(n0), T0, R0, HeH, par%Mstar/par%Mp,          &
                         par%semimajor/par%Rp, par%tidalforce, trim(output_dir))
-      write(*,'(A)') '      (wae bridge) wrote output/{Hydro_ioniz,'//    &
+      write(*,'(A)') '      (wae bridge) wrote '//trim(output_dir)//'{Hydro_ioniz,'//    &
                      'Ion_species}_IC.txt'
       end subroutine wae_generate_ic
 

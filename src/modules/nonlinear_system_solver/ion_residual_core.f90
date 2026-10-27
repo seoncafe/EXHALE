@@ -1,19 +1,9 @@
 	module ion_residual_core
-	! Helpers for the standard H/He ionization residual rows
-	! (with collisional ionization) and their analytic-Jacobian pieces, plus
-	! the TR-form H/He/triplet rows (Oklopcic form; electron-impact ionization
-	! of H0/He(1^1S)/He+ and of the He 2^3S metastable is included).
-	! The standard blocks are verbatim-shared by System_HeH and
-	! System_HeH_metals; the TR-form rows and the He 2^3S triplet
-	! row are shared by System_HeH_TR, System_HeH_TR_metals and System_HeH_mol.
-	! It also
-	! holds impose_transported_ionization_fractions, the substitution that
-	! replaces an ionization balance row by the fraction the flow carries;
-	! every system that can reach those rows calls that one routine. Only
-	! explicit-shape / assumed-size dummies are used here: assumed-shape (:)
-	! dummies can change gfortran -O3 code generation and break the
-	! byte-identical regression. The arithmetic order is
-	! kept exactly as in the original inline statements.
+	! Standard H/He ionization residuals and analytic Jacobians include
+	! collisional ionization. TR-form rows include electron-impact ionization
+	! of H0, He(1^1S), He+, and He(2^3S).
+	! impose_transported_ionization_fractions replaces the selected balance
+	! rows with transported fractions. Preserve the original arithmetic order.
 
 	! The one imported quantity is the Penning : associative branching of the
 	! He(2^3S) + H total ionization rate, kept in Cool_coeff.f90 next to the
@@ -147,7 +137,7 @@
 	! a comma-separated list of indices ("107,248").  Unset or empty, which
 	! is every run by default, nothing below is reached and no file is
 	! opened.  Named, every evaluation of the rows at one of those cells
-	! appends one line to ./output/stage_channels.txt carrying the gas
+	! appends one line to <output_dir>/stage_channels.txt carrying the gas
 	! branch, the cell, a call counter, the kernel's own arguments and the
 	! channels, so that the rows can be re-evaluated afterwards at the very
 	! state the run gave them.
@@ -705,36 +695,64 @@
 	! CALL IT LAST, after every term of the rows has been written and after
 	! any scaling of them, so that the row is exactly x - x_fix.
 	!
-	! This is the one place the substitution is written. Seven systems reach
-	! these rows, and seven transcriptions of one substitution is the drift
-	! the g2s/G2s shadowing of 2026-08-12 stands as the warning about.
+	! This routine defines the substitution for every system with these rows.
+	! The residual and its analytic Jacobian use this same row selection.
+	subroutine transported_fraction_row(cell, row, imposed, x_fixed)
+	type(ion_rates), intent(in) :: cell
+	integer, intent(in) :: row
+	logical, intent(out) :: imposed
+	real*8, intent(out) :: x_fixed
+	imposed = .false.
+	x_fixed = 0.0d0
+	select case (row)
+	case (1)
+		imposed = cell%x_hp_fixed; x_fixed = cell%x_hp_fix
+	case (2)
+		imposed = cell%x_heii_fixed; x_fixed = cell%x_heii_fix
+	case (3)
+		imposed = cell%x_heiii_fixed; x_fixed = cell%x_heiii_fix
+	case (5)
+		imposed = cell%x_h2p_fixed; x_fixed = cell%x_h2p_fix
+	case (6)
+		imposed = cell%x_h3p_fixed; x_fixed = cell%x_h3p_fix
+	case (7)
+		imposed = cell%x_hehp_fixed; x_fixed = cell%x_hehp_fix
+	end select
+	if (cell%x_hetr_fixed .and. row .eq. cell%x_hetr_row .and. row .gt. 0) then
+		imposed = .true.
+		x_fixed = cell%x_hetr_fix
+	endif
+	end subroutine transported_fraction_row
+
 	subroutine impose_transported_ionization_fractions(cell, x, fvec)
 	type(ion_rates), intent(in) :: cell
 	real*8, intent(in) :: x(*)
 	real*8 :: fvec(*)
-
-	! H II per H nucleus, carried by the transported proton
-	! (the key Ionization transport).
-	if (cell%x_hp_fixed) fvec(1) = x(1) - cell%x_hp_fix
-	! He II and He III per He nucleus, rows 2 and 3, carried by the same
-	! transported partition. A system that offers row 1 alone (System_H) is
-	! solved only in a mixture with no helium, where no helium fraction can
-	! be imposed, so these two rows exist wherever the flags can be set.
-	if (cell%x_heii_fixed)  fvec(2) = x(2) - cell%x_heii_fix
-	if (cell%x_heiii_fixed) fvec(3) = x(3) - cell%x_heiii_fix
-	! Molecular-ion rows of the molecular systems. The raw reaction rows
-	! remain available through mol_heh_rows for species transport.
-	if (cell%x_h2p_fixed) fvec(5) = x(5) - cell%x_h2p_fix
-	if (cell%x_h3p_fixed) fvec(6) = x(6) - cell%x_h3p_fix
-	if (cell%x_hehp_fixed) fvec(7) = x(7) - cell%x_hehp_fix
-	! The He 2^3S level per He nucleus, carried by the transported level
-	! (He 2^3S transport), in the row its balance holds in this system
-	! (tr_triplet_row: row 4 of the atomic triplet systems, row 8 of the
-	! molecular ones). The flag is set only where the system carries the
-	! level, so the row named is that balance.
-	if (cell%x_hetr_fixed .and. cell%x_hetr_row .gt. 0)                  &
-		fvec(cell%x_hetr_row) = x(cell%x_hetr_row) - cell%x_hetr_fix
+	integer :: row, last_row
+	logical :: imposed
+	real*8 :: x_fixed
+	last_row = 7
+	if (cell%x_hetr_fixed) last_row = max(last_row, cell%x_hetr_row)
+	do row = 1, last_row
+		call transported_fraction_row(cell, row, imposed, x_fixed)
+		if (imposed) fvec(row) = x(row) - x_fixed
+	enddo
 	end subroutine impose_transported_ionization_fractions
 
-	! End of module
+	! A fixed fraction has d(x - x_fixed)/dx equal to its identity row.
+	subroutine imposed_ionization_jacobian(cell, n_eq, fjac)
+	type(ion_rates), intent(in) :: cell
+	integer, intent(in) :: n_eq
+	real*8, intent(inout) :: fjac(n_eq,n_eq)
+	integer :: row
+	logical :: imposed
+	real*8 :: x_fixed
+	do row = 1, n_eq
+		call transported_fraction_row(cell, row, imposed, x_fixed)
+		if (.not. imposed) cycle
+		fjac(row,:) = 0.0d0
+		fjac(row,row) = 1.0d0
+	enddo
+	end subroutine imposed_ionization_jacobian
+
 	end module ion_residual_core

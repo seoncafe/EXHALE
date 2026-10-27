@@ -25,12 +25,8 @@
       ! acceptance of every kinetic row (|f_i| <= 1e-6 of its group's
       ! turnover, 1e-3 of its own gross rate for H3+).
       !
-      ! Neither test that stood before is a statement about each unknown:
-      ! an absolute step of 1e-11 (1 + max |x|) leaves a stage whose root
-      ! is 1e-11 at a relative error of order one, and MINPACK's relative
-      ! step on the scaled norm of all unknowns (hybrd1, xtol) is dominated
-      ! by the O(1) fractions, so a trace unknown is left unresolved
-      ! (md/Update_EXHALE_stage3.md sections 116.2, 116.6 and 118.1).
+      ! A norm-based stopping test can leave trace fractions unresolved.
+      ! See md/Update_EXHALE_stage3.md sections 116.2, 116.6, and 118.1.
       !
       ! Interfaces (matching the existing residuals so they can be passed as
       ! actual arguments):
@@ -47,10 +43,8 @@
       ! ionization-equilibrium solves the analytic-Jacobian Newton handled vs.
       ! how many fell back to MINPACK hybrd1.
       integer, save, public :: nt_calls = 0, nt_fallback = 0
-      ! Reproducible-validation switch: if the environment variable
-      ! EXHALE_FORCE_HYBRD1 is set (to a non-empty value), solve_ieq skips Newton
-      ! and always uses MINPACK hybrd1. Lets the same binary produce both the
-      ! Newton and the reference hybrd1 outputs for an A/B comparison.
+      ! EXHALE_FORCE_HYBRD1: any nonempty value selects MINPACK hybrd1
+      ! for every cell solve; otherwise use_newton_ieq selects the solver.
       logical, save :: nt_force = .false.
 
       contains
@@ -102,12 +96,8 @@
       integer :: info, info_m, info_r
       real*8  :: xsave(n), fvec(n), xm(n)
 
-      ! The EXHALE_FORCE_HYBRD1 validation switch is read ONCE, serially,
-      ! by newton_solver_read_environment (input_read calls it after the
-      ! keys); a caller that never called it runs with the switch off. The
-      ! lazy read that stood here was removed on 2026-09-13 (review P2): it
-      ! wrote two shared variables without synchronization and relied on
-      ! the main program's serial first sweep to be safe.
+      ! input_read calls newton_solver_read_environment once, before the
+      ! OpenMP cell sweep. Without that call, EXHALE_FORCE_HYBRD1 is off.
 
       xsave = x
       ! solve_ieq is called from the OpenMP-parallel ionization cell sweep; the

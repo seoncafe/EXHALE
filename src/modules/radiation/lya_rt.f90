@@ -1,19 +1,12 @@
    module lya_rt
    ! Ly-alpha radiative transfer by the escape-probability method,
-   ! computed IN-LINE (every timestep) from the current state.
+   ! evaluated in-line from the state passed to excited_H_update.
    !
-   ! Because the line is closed with an analytic escape probability rather than a
-   ! Monte Carlo, the field is cheap and is evaluated directly inside the run
-   ! (like the H(n=2) feedback) instead of an offline pass. The result
-   ! is the Voigt-profile-averaged Ly-alpha mean intensity J_lya(r) (Huang et al.
-   ! 2023 Eq. 11), which excited_hydrogen uses to pump H(n=2) when jlya_mode = 2.
-   ! The separate option of reading an externally-computed (e.g. real Monte Carlo)
-   ! J_lya(r) profile is kept as jlya_mode = 1 (load_jlya_rt in excited_hydrogen).
+   ! jlya_mode = 2 computes Voigt-averaged J_lya(r) in-line for
+   ! excited_hydrogen; jlya_mode = 1 reads an external J_lya profile.
    !
-   ! Why an escape probability, not Monte Carlo: the WASP-121b column is extremely
-   ! thick at line center (tau0 = 1.2e8 and a.tau0 = 1.2e5 at the base of the
-   ! stored wasp_full regression output), so an acceleration-free MC is
-   ! intractable and core-skipping is excluded.
+   ! The static optically thick slab uses this closure; its damping-wing
+   ! validity is stated below.
    !
    ! METHOD (plane-parallel, substellar column):
    !   Dnu_D(r) = nu_lya sqrt(2 kT/mu)/c                       Doppler width
@@ -56,15 +49,9 @@
    !              the escape probability entirely; it survives only in the
    !              stellar-beam penetration below, which is a one-flight
    !              transmission and a different question.
-   !              WHAT WAS HERE BEFORE (removed 2026-09-07, item LYA-BETA):
-   !              pi^(-1/4) sqrt(a/tau_c), the ONE-FLIGHT chance that a
-   !              photon drawn afresh from the whole Voigt profile lands
-   !              beyond the frequency at which the wing depth falls to
-   !              unity.  That is the complete-redistribution value, an
-   !              escape route partial redistribution does not give the
-   !              line; measured on the stored wasp_full column it exceeded
-   !              the published 1/<N> by 234x at the base and 14x at
-   !              r = 1.20 R_p.
+   !              Earlier escape-probability comparison: see
+   !              ../EXHALE_v1.00/md/Update_EXHALE_stage2.md section 7,
+   !              item LYA-BETA.
    !              VALIDITY.  The damping-wing solution requires
    !              (a tau)^(1/3) > 10 (Neufeld section Va).  Cells that fail
    !              it are counted by lya_wing_domain_record: there the closure
@@ -138,12 +125,11 @@
    real*8  :: lya_wing_worst      = huge(1.0d0)
 
    ! Diagnostic split of J_lya into internal (recomb+collisional) and stellar
-   ! contributions, filled each call for output/Excited_H.txt.
+   ! contributions, filled each call for <output_dir>/Excited_H.txt.
    real*8, dimension(:), allocatable :: jint_arr, jstar_arr
 
    contains
 
-   ! --------------------------------------------------------------- !
 
    subroutine lya_rt_allocate_arrays
    ! Allocate the grid-sized module arrays once the number of cells N is
@@ -157,7 +143,6 @@
 
    end subroutine lya_rt_allocate_arrays
 
-   ! --------------------------------------------------------------- !
 
    subroutine lya_line_center_optical_depth(T_K, nhi, tau, dtau, tau_out)
    ! Ly-alpha line-centre optical depth of the stellar beam, cell by cell.
@@ -215,7 +200,6 @@
 
    end subroutine lya_line_center_optical_depth
 
-   ! --------------------------------------------------------------- !
 
    elemental double precision function                                      &
                   lya_slab_source_position_factor(xi_in) result(phi_s)
@@ -291,7 +275,6 @@
 
    end function lya_slab_source_position_factor
 
-   ! --------------------------------------------------------------- !
 
    elemental double precision function                                      &
                   lya_slab_scatterings_before_escape(tau_up, tau_dn)        &
@@ -326,7 +309,6 @@
 
    end function lya_slab_scatterings_before_escape
 
-   ! --------------------------------------------------------------- !
 
    elemental double precision function                                      &
                   lya_wing_escape_probability(tau_up, tau_dn) result(beta)
@@ -346,7 +328,6 @@
 
    end function lya_wing_escape_probability
 
-   ! --------------------------------------------------------------- !
 
    elemental double precision function                                      &
                   lya_starward_escape_fraction(tau_up, tau_dn) result(f_up)
@@ -357,8 +338,8 @@
    ! population -- Neufeld's own remark under that equation is that the two
    ! fractions sum to one when there are no loss processes -- so they are a
    ! partition of the escape probability above and never two independent
-   ! probabilities to be multiplied.  A source plane sitting on a face loses
-   ! everything through the other one.
+   ! probabilities to be multiplied. A source plane on a face escapes through
+   ! that same face.
    real*8, intent(in) :: tau_up, tau_dn
 
    real*8 :: t_up, t_dn, t_tot
@@ -374,7 +355,6 @@
 
    end function lya_starward_escape_fraction
 
-   ! --------------------------------------------------------------- !
 
    subroutine lya_wing_domain_reset
    ! Zero the domain record of the damping-wing solution.
@@ -385,7 +365,6 @@
 
    end subroutine lya_wing_domain_reset
 
-   ! --------------------------------------------------------------- !
 
    subroutine lya_wing_domain_record(ncells_out, ncells_seen, worst,        &
                                      threshold)
@@ -406,7 +385,6 @@
 
    end subroutine lya_wing_domain_record
 
-   ! --------------------------------------------------------------- !
 
    ! Fraction of the incident stellar Ly-alpha line that reaches line-centre
    ! optical depth tau through gas at temperature T_K [K].
@@ -467,7 +445,6 @@
 
    end function lya_stellar_beam_transmission
 
-   ! --------------------------------------------------------------- !
 
    ! The erfc argument of that transmission per sqrt(line-centre depth):
    ! x1/(sqrt(2) Xs) = c sqrt(tau) with
@@ -492,7 +469,6 @@
 
    end function lya_wing_penetration_coefficient
 
-   ! --------------------------------------------------------------- !
 
    elemental subroutine lya_stellar_beam_transmission_cell_mean            &
                            (T_K, tau_out, dtau, tbar, tbar2)
@@ -579,7 +555,6 @@
 
    end subroutine lya_stellar_beam_transmission_cell_mean
 
-   ! --------------------------------------------------------------- !
 
    elemental double precision function                                      &
                   lya_photosphere_attenuation_cell_mean(tau_out, dtau)      &
@@ -618,7 +593,6 @@
 
    end function lya_photosphere_attenuation_cell_mean
 
-   ! --------------------------------------------------------------- !
 
    subroutine jlya_escape_prob(T_K, nhi, nhii, nheii, nheiii, ne, v_in,   &
                                Jlya, tau)
@@ -778,6 +752,5 @@
 
    end subroutine jlya_escape_prob
 
-   ! --------------------------------------------------------------- !
 
    end module lya_rt

@@ -1,3 +1,4 @@
+      ! MINPACK Project, Argonne National Laboratory; original routine r1updt.
       subroutine r1updt(m,n,s,ls,u,v,w,sing)
       integer m,n,ls
       logical sing

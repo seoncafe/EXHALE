@@ -1,11 +1,11 @@
       program wind_ae_ic
-      ! P2 deliverable: read an EXHALE input.inp, solve the Wind-AE wind
-      ! (ramp from a shipped seed with static BCs, then relax + outward
-      ! integrate), and write EXHALE Load-IC files. Metal-free H/He
-      ! warm-start IC generator -- no Python in the loop.
-      !
-      ! Usage: wind_ae_ic <EXHALE_input.inp> <seed.csv> <spectrum.inp> \
-      !                   <IC_dump_grid> <outdir> [rhoscale]
+      ! Generate metal-free H/He EXHALE Load-IC files from a Wind-AE seed.
+      ! Usage: ./wind_ae_ic.x <input_file> <seed.csv> <spectrum.inp>
+      !                   <IC_dump_grid> <outdir> [rhoscale] [seed_out.csv]
+      ! The optional rhoscale (density scale of the relaxation, in RHO0
+      ! units) replaces the seed-derived 10^floor(log10(0.01 rho_rmin)) on
+      ! the first ramp and on the retry after the seed is reloaded (D21,
+      ! 2026-10-27; before, the retry dropped it).
       use wae_config,      only: nsp => wae_nspecies, m => wae_m,         &
                                  ne => wae_ne, addpts => wae_addpts,      &
                                  RHO0 => wae_RHO0, T0 => wae_T0
@@ -28,6 +28,8 @@
       use wae_ic_writer,   only: wae_write_ic
       implicit none
       character(len=4096) :: exin, seed, specf, gridf, outdir, rhoarg, line, dumpf
+      logical :: have_rhoarg
+      real*8  :: rhoscale_arg
       real*8  :: Ftot_t, Mp_t, Rp_t, Mstar_t, a_t, Lstar_t, Rp_cgs, CS0
       integer :: i, j, row, ntot, tp, r, u, ios, ng
       real*8, allocatable :: sr(:), srho(:), sv(:), sT(:), sq(:), sz(:)
@@ -35,7 +37,7 @@
       real*8, allocatable :: dr(:), drho(:), dv(:), dT(:), dHI(:), dHeI(:)
 
       if (command_argument_count() .lt. 5) then
-         write(*,*) 'usage: wind_ae_ic <EXHALE_input.inp> <seed.csv> '//  &
+         write(*,*) 'usage: wind_ae_ic <input_file> <seed.csv> '//  &
                     '<spectrum.inp> <IC_dump_grid> <outdir> '//           &
                     '[rhoscale] [seed_out.csv]'
          stop 2
@@ -48,6 +50,12 @@
       ! optional arg 7: dump the converged solution as a reusable seed CSV
       dumpf = ''
       if (command_argument_count() .ge. 7) call get_command_argument(7, dumpf)
+      ! optional arg 6: relaxation density scale, applied after every seed load
+      have_rhoarg = (command_argument_count() .ge. 6)
+      rhoscale_arg = 0.0d0
+      if (have_rhoarg) then
+         call get_command_argument(6, rhoarg); read(rhoarg,*) rhoscale_arg
+      end if
 
       ! 1. EXHALE input -> target params (capture before load_seed overwrites)
       call wae_read_exhale_input(trim(exin))
@@ -63,27 +71,34 @@
       ! 3. seed (sets wae_par = seed params/BCs/composition + cy)
       call load_seed(trim(seed))
       rhoscale = 10.0d0**floor(log10(par%rho_rmin*0.01d0))  ! from seed base rho
-      if (command_argument_count() .ge. 6) then
-         call get_command_argument(6, rhoarg); read(rhoarg,*) rhoscale
-      end if
+      if (have_rhoarg) rhoscale = rhoscale_arg
       call setup_indices_scales()
-      ! tidalforce: the seed has it on (=1); for a spherical EXHALE domain ramp
-      ! it smoothly to 0 (a discrete jump would disrupt the tidally-converged
-      ! seed and stall the first relaxation).
+      ! For a spherical EXHALE domain, ramp tidalforce from the seed's 1
+      ! smoothly to 0 (a discrete jump would disrupt the tidally-converged
+      ! seed and stall the first relaxation).  A failure counts as a stalled
+      ! attempt: an IC solved with tidal gravity does not describe a
+      ! spherical domain.
+      r = 0
       if (exh_spherical) r = ramp_tidal(0.0d0)
 
       ! 4. ramp to EXHALE target params. Static-BC ramp first:
       !    fast for seed-adjacent planets. If it stalls (far-from-seed /
-      !    strongly-bound), reload the seed and retry with the self-consistent-BC ramp.
-      write(*,'(A)') ' (wind_ae_ic) ramping seed -> EXHALE planet (static-BC ramp)...'
-      r = ramp_to(Ftot_t, Mp_t, Rp_t, Mstar_t, a_t, Lstar_t)
+      !    strongly-bound), reload the seed and retry with the self-consistent-BC
+      !    ramp, with the same density scale as the first attempt.
+      if (r .eq. 0) then
+         write(*,'(A)') ' (wind_ae_ic) ramping seed -> EXHALE planet (static-BC ramp)...'
+         r = ramp_to(Ftot_t, Mp_t, Rp_t, Mstar_t, a_t, Lstar_t)
+      end if
       if (r .ne. 0) then
          write(*,'(A)') ' (wind_ae_ic) static-BC ramp stalled; retrying with self-consistent-BC ramp...'
          call load_seed(trim(seed))
          rhoscale = 10.0d0**floor(log10(par%rho_rmin*0.01d0))
+         if (have_rhoarg) rhoscale = rhoscale_arg
          call setup_indices_scales()
+         r = 0
          if (exh_spherical) r = ramp_tidal(0.0d0)
-         r = ramp_to(Ftot_t, Mp_t, Rp_t, Mstar_t, a_t, Lstar_t, static_bcs=.false.)
+         if (r .eq. 0) r = ramp_to(Ftot_t, Mp_t, Rp_t, Mstar_t, a_t, Lstar_t, &
+                                   static_bcs=.false.)
       end if
       if (r .ne. 0) then
          write(*,*) ' RAMP FAILED (code', r, '). Planet may be unreachable '// &

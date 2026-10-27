@@ -1,7 +1,6 @@
       subroutine qform(m,n,q,ldq,wa)
       integer m,n,ldq
       double precision q(ldq,m),wa(m)
-      !     **********
       
       !     subroutine qform
       
@@ -37,7 +36,6 @@
       !     argonne national laboratory. minpack project. march 1980.
       !     burton s. garbow, kenneth e. hillstrom, jorge j. more
       
-      !     **********
       integer i,j,jm1,k,l,minmn,np1
       double precision one,sum,temp,zero
       data one,zero /1.0d0,0.0d0/

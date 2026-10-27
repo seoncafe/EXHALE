@@ -1,6 +1,6 @@
       module metals_input
       ! Optional metals.inp reader: set trace-metal abundances at runtime
-      ! (no recompile). Format is one ion per line:
+      ! (no recompile). Each line states one abundance or named option:
       !
       !     <ION>  <abundance n_X/n_H by number>
       !
@@ -29,7 +29,6 @@
 
       contains
 
-      !----------------------------------------------------------!
 
       subroutine read_metals_input
       integer :: io, n_set
@@ -165,8 +164,8 @@
 
          ! 'eos_metals <0|1>' selects the bulk-gas metal policy:
          ! 1 (default) = metals contribute their mass (rho_bc, calc_rho,
-         !     hence mu/v0/p0/b0), electrons (calc_ne, dp_bc) and nuclei
-         !     (calc_ntot, ghost pressure) to the gas budget;
+         !     hence mu/v0/p0/b0), electrons (calc_ne, dp_bc) and gas
+         !     particles (calc_ntot, ghost pressure) to the gas budget;
          ! 0 = legacy trace approximation (H/He-only budget).
          if (trim(tok) == 'eos_metals' .or. trim(tok) == 'EOS_METALS') then
             call refuse_second_statement('eos_metals', iline, trimmed)
@@ -273,5 +272,4 @@
 
       end subroutine read_metals_input
 
-      ! End of module
       end module metals_input

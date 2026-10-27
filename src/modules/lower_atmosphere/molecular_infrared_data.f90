@@ -1,4 +1,3 @@
-!==============================================================================
 ! molecular_infrared_data -- tabulated input of molecular_infrared_cooling
 !
 ! GENERATED FILE.  Do not edit by hand; rerun
@@ -20,7 +19,6 @@
 !   (VizieR J/A+A/630/A58), electric quadrupole plus magnetic dipole.  Level
 !   term energies and statistical weights g = g_I (2J+1) come from the same
 !   table; (0,0) is the origin and (0,1) is placed by the (0,3) -> (0,1) row.
-!==============================================================================
       module molecular_infrared_data
 
       implicit none

@@ -1,5 +1,5 @@
    module  Read_input
-   ! Read input planetary parameters adn define
+   ! Read and validate the selected input file and derived options.
 
    use global_parameters
    use metals_input        ! optional metals.inp abundance reader
@@ -232,7 +232,7 @@
    X_Fe = 0.0d0
    call read_metals_input
 
-   ! ----- Read every line of input.inp into memory -----
+   ! Read every line of the selected input file into memory.
    ! The core block below is matched by LABEL: each key is anchored at the
    ! start of the left-trimmed line and terminated by its value separator
    ! (':', '?', whitespace, or '='), so the physical line order no longer
@@ -246,7 +246,7 @@
    ! a tolerance nobody chose (measured: valve_sens/eps5 carried "Resid tol"
    ! twice and ran on the second). refuse_duplicate_keys below stops the run
    ! and names both lines.
-   write(*,*) '(input_read.f90) Reading the input.inp file..'
+   write(*,*) '(input_read.f90) Reading input file: '//trim(inp_file)
    open(unit = 11, file = inp_file)
    nlines = 0
    do
@@ -788,28 +788,14 @@
 				str = get_word(line, 4)
 				he23s_transport = (str .eq. 'True' .or. str .eq. 'true')
 			else if (lbl_match(line, 'Coupled carrier solve')) then
-				! "Coupled carrier solve: True|False", DEFAULT False -- solve
-				! n(H2) (and the diffused element fractions) as Newton
-				! unknowns beside the three hydrodynamic ones, instead of
-				! the default alternation of a hydrodynamic solve with the
-				! fixed-wind transport relaxations, judged jointly by the
-				! certification of the refreshed state
-				! (steady_wind_with_element_diffusion). MEASURED on the two
-				! reloads of backup/regression (2026-09-11): the alternation
-				! brings every elemental wind
-				! row of the HD 209458 b reload inside 1e-5 in 12 passes
-				! and the hot-Uranus H2 wind row from 7.4e-2 to 2.2e-2 in
-				! 40 passes. True enters the coupled block from the first pass;
-				! its own certification judges the resulting physical state.
-				! On a molecular configuration it
-				! requires "Molecular carrier transport: True", because H2
-				! must be an unknown and not an eliminated variable;
-				! checked below, after every key is parsed.
-				! THREE VALUES, AND A WORD THAT IS NONE OF THEM STOPS THE
-				! RUN. "On stall" is two words, so the value is read as the
-				! pair (word 4, word 5); a silent fall-through to False
-				! would leave an input file asking for the block and a run
-				! that never enters it.
+				! "Coupled carrier solve: False|True|On stall"; default False.
+				! True solves n(H2) and transported element fractions with the
+				! hydrodynamic unknowns. False alternates the hydrodynamic solve
+				! with fixed-wind transport; On stall switches to the coupled solve
+				! when that alternation stalls. Molecular configurations require
+				! "Molecular carrier transport: True" for the coupled solve.
+				! Unknown values stop the run; "On stall" spans two input words.
+				! Route measurements: ../EXHALE_v1.00/md/PLAN_20260911_partitioned_solver.md section P7.
 				str = get_word(line, 4)
 				str2 = get_word(line, 5)
 				if (str .eq. 'True' .or. str .eq. 'true') then
@@ -873,7 +859,7 @@
 				write(*,*) '  carrier transport: True|False": the operator'
 				write(*,*) '  transports H2 whether or not the oxygen cycle'
 				write(*,*) '  is on, so the old name named the wrong thing.'
-				write(*,*) '  Replace the line in input.inp. Aborting.'
+				write(*,*) '  Replace the line in '//trim(inp_file)//'. Aborting.'
 				error stop 1
 			else if (lbl_match(line, 'Stellar FUV B1 flux')) then
 				! RETIRED 2026-09-06. Band B1 was 1110-1201 A, between the
@@ -1221,10 +1207,9 @@
 				! real H2 atmosphere carries below the H2 -> H front and the
 				! code did not: the H2 quadrupole and magnetic dipole line
 				! spectrum, and the H2O and CO vibration-rotation bands. Each
-				! emits in LTE and absorbs the same diluted B_nu(T0) the
-				! `Base IR field` closure supplies, so each stops cooling at
-				! its own radiative equilibrium temperature instead of running
-				! the layer down. Default False.
+				! emits in LTE. With `Base IR field` on, each also absorbs
+				! the diluted B_nu(T0) and approaches radiative equilibrium;
+				! with that field off, the bands emit into vacuum. Default False.
 				! H2O and CO need `Oxygen chemistry: True` to exist at all; H2
 				! needs `Molecular chemistry: True`. See
 				! molecular_infrared_cooling.f90.
@@ -1633,7 +1618,7 @@
 			write(*,*) '  <= 0. The stellar Ly-alpha beam (J_star) would be zero'
 			write(*,*) '  and the halfwidth/boost settings would do nothing.'
 			write(*,*) '  Add e.g. "Stellar Lya flux [erg/cm2/s]: 1.0e5" to'
-			write(*,*) '  input.inp, or disable escape-prob mode. Aborting.'
+			write(*,*) '  '//trim(inp_file)//', or disable escape-prob mode. Aborting.'
 			error stop 1
 		endif
 
@@ -2030,7 +2015,7 @@
       ! grid is normalized to R0 = R_p so r_max = r_out_user directly.
       if (r_out_user .le. 1.0d0) then
          write(*,*) '(input_read.f90) ERROR: Domain mode = Spherical '   // &
-                    'requires "Outer radius [R_p]:" > 1.0 in input.inp.'
+                    'requires "Outer radius [R_p]:" > 1.0 in '//trim(inp_file)//'.'
          error stop 1
       endif
       r_max = r_out_user
@@ -2201,7 +2186,7 @@
       write(*,*) '       network carries the H2 the particle count'//         &
                  ' already assumes;'
       write(*,*) '   (2) the base is ATOMIC -- remove'//                      &
-                 ' "Molecular base: True" from input.inp'
+                 ' "Molecular base: True" from '//trim(inp_file)
       write(*,*) '       and q_H2_base from base.inp, so neither the'//       &
                  ' particle count nor the'
       write(*,*) '       ghost composition claims molecules.'
@@ -2255,7 +2240,7 @@
       ntot_bc = ntot_bc_forced
       write(*,'(A)') ' (input_read) EXHALE_BASE_PARTICLE_COUNT: the'//    &
            ' base reservoir particle count is FORCED; this run is not'//  &
-           ' the configuration its input.inp describes.'
+           ' the configuration described in '//trim(inp_file)//'.'
       write(*,'(A,ES23.15E3)') '   ntot_bc from the base composition = ', &
            ntot_bc_of_composition
       write(*,'(A,ES23.15E3)') '   ntot_bc forced                    = ', &
@@ -2820,7 +2805,6 @@
    ! One owner, evaluated after every key is parsed.
    call carrier_set_init
 
-   ! End of subroutine
 
    contains
 
@@ -2904,9 +2888,7 @@
 
    end subroutine input_read
 
-   ! ------------------------------------------------------------------- !
 
-   ! --------------------------------------------------------------------- !
    ! Label matching, shared by the input.inp reader and read_base_inp.
    ! A key matches a line ONLY as a label: anchored at the start of the
    ! left-trimmed line and terminated by a value separator (':', '?',
@@ -2916,7 +2898,6 @@
    ! remaining prefix collision, "Wind-AE seed out" vs "Wind-AE seed" (they
    ! share a whitespace-separated prefix), is resolved by testing the longer
    ! key first in the keyword loop above (longest / most-specific first).
-   ! --------------------------------------------------------------------- !
 
    subroutine name_restart_option_change_token(tok)
    ! ONE TOKEN OF "Restart option change".
@@ -3010,7 +2991,6 @@
              c .eq. char(9) .or. c .eq. '=')
    end function is_sep
 
-   ! ------------------------------------------------------------------- !
 
    subroutine refuse_duplicate_keys(fname, lines, nl, keys, nk)
    ! Refuse a settings file that states the same key twice.
@@ -3071,7 +3051,6 @@
    endif
    end subroutine refuse_duplicate_keys
 
-   ! ------------------------------------------------------------------ !
 
    subroutine longest_key_of_line(line, keys, nk, kbest, lbest)
    ! Index and length of the LONGEST key in `keys` that matches `line` as a
@@ -3091,7 +3070,6 @@
    enddo
    end subroutine longest_key_of_line
 
-   ! ------------------------------------------------------------------ !
 
    subroutine read_base_inp
    ! Lower-atmosphere handoff file (optional; a missing file is a no-op).
@@ -3319,7 +3297,6 @@
 
    end subroutine read_base_inp
 
-   ! ------------------------------------------------------------------- !
 
    subroutine apply_lower_atmosphere_profile
    ! Set the base state and the elemental reservoirs from the lower-
@@ -3439,7 +3416,6 @@
 
    end subroutine apply_lower_atmosphere_profile
 
-   ! ------------------------------------------------------------------- !
 
    subroutine set_element_abundance(ie, ab)
    ! Store an El/H nuclei ratio in the named scalar of element index ie
@@ -3466,7 +3442,6 @@
    end select
    end subroutine set_element_abundance
 
-   ! ------------------------------------------------------------------- !
 
    subroutine run_lower_atm_prestep
    ! Invoke the lower-atmosphere generator (VULCAN or the analytic column)
@@ -3527,7 +3502,6 @@
    endif
    end subroutine run_lower_atm_prestep
       
-   ! ------------------------------------------------------- !
       
    function get_word(string_in,n_word)
 	! Function to read the nth_word in the current string
@@ -3630,7 +3604,6 @@
 	! End of get_word function
 	end function
       
-	!------------------------------------------!
 
 	subroutine retired_base_key(key)
 	! A lower-boundary key that no longer exists is an ERROR, not a warning.
@@ -3670,5 +3643,4 @@
 	error stop 1
 	end subroutine retired_base_key
 
-    ! End of module
 	end module Read_input

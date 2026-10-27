@@ -11,7 +11,6 @@
 
 	contains
 
-	!---------------------------------------------------!
 
 	double precision function sub_lyman_absorber_threshold_eV()
 	! Lowest ionization threshold [eV] of an active absorber whose threshold
@@ -47,7 +46,6 @@
 
 	end function sub_lyman_absorber_threshold_eV
 
-	!---------------------------------------------------!
 
 	double precision function photon_grid_floor_eV()
 	! Lowest photon energy [eV] the run's photon grid has to reach: the
@@ -71,15 +69,14 @@
 
 	end function photon_grid_floor_eV
 
-	!---------------------------------------------------!
 
 	subroutine read_sed(e_thr, n_thr)
 	! Subroutine to read the numerical SED from file, and to lay the photon
 	! grid out on it.
 	!	The file has to be formatted in two columns:
 	!	   1) bin central wavelength [Angstrom] 
-	!	   2) flux at the planet surface [erg cm^{-2} s^{-2} A^{-1}]
-	!	Data have to be order with increasing wavelength
+	!	   2) flux at the planet [erg cm^{-2} s^{-1} A^{-1}]
+	!	Rows must be ordered by increasing wavelength
 	!
 	! THE GRID IS BUILT FROM BIN EDGES, AND EVERY IONIZATION THRESHOLD OF AN
 	! ACTIVE ABSORBER IS ONE OF THEM. A photoionization rate is the rectangle
@@ -87,10 +84,9 @@
 	! its threshold: a bin that CONTAINS a threshold charges the absorber's
 	! cross section, read at the bin centre, over the part of the bin lying
 	! BELOW the threshold as well, where the absorber cannot absorb at all.
-	! This is the same reasoning the analytic types' grid is built on
-	! (set_energy_vectors), where
-	! the audit of 2026-09-05 measured the straddling error at P_HI 1.095x,
-	! P_HeI 1.016x and P_HeII 1.030x the exact integral.
+	! The same threshold rule applies to the analytic grid
+	! (set_energy_vectors); see ../EXHALE_v1.00/md/Update_EXHALE_stage2.md
+	! section 6, item 2c-SEDGRID.
 	!
 	! The layout, from the selected rows E_1 < E_2 < ... < E_N (ascending in
 	! energy; the file is ascending in wavelength):
@@ -165,7 +161,7 @@
 		! absorber is given the photons it can absorb. The rule is the
 		! same one the analytic types build their grid on
 		! (set_energy_vectors), written once in photon_grid_floor_eV.
-		! Only lowered: the [E_low,E_mid,E_high] line of input.inp states
+		! Only lowered: the [E_low,E_mid,E_high] line of the selected input states
 		! the band the run asks for, and no absorber below 13.6 eV being
 		! active leaves it as it stands.
 		e_grid_low = photon_grid_floor_eV()
@@ -292,19 +288,19 @@
 				enddo
 			endif
 			if (n_absorber .eq. 0) write(*,*) '      none; the floor is '//  &
-			   'the E_low of the [E_low,E_mid,E_high] line of input.inp'
+			   'the E_low of the [E_low,E_mid,E_high] line of '//trim(inp_file)
 
 			write(*,*) '   remedies (there is no key to continue):'
 			if (use_excited_H .and. e_th_HI_n2 .lt. e_min_seen) then
 				write(*,*) '      remove "Stellar Teff [K]:" and '//    &
-				           '"Stellar radius [R_sun]:" from input.inp,'
+				           '"Stellar radius [R_sun]:" from '//trim(inp_file)//','
 				write(*,*) '      which is what arms the '//            &
 				           'excited-hydrogen coupling '//              &
 				           '(input_read.f90 use_excited_H); or'
 			endif
 			if (thereis_HeITR .and. e_th_HeTR .lt. e_min_seen)             &
 				write(*,*) '      state "Include He23S? False" '//     &
-				           'in input.inp; or'
+				           'in '//trim(inp_file)//'; or'
 			if (n_metal_absorber .gt. 0)                                   &
 				write(*,*) '      remove the element(s) named above '//   &
 				           'from metals.inp; or'
@@ -496,10 +492,8 @@
 	
 	deallocate(wave_c,f_lam,en,fn,b_lo,b_hi,f_bin,t_in)
 
-	! End of subroutine
 	end subroutine read_sed
 	
-	! End of module
 	
       subroutine sed_band_fluxes(nb, w_lo, w_hi, F_band, covered)
       ! Band-integrated fluxes of the numerical SED over nb wavelength bands
@@ -517,13 +511,8 @@
       ! the band, the flux is interpolated at the two clipped edges, and the
       ! trapezoid of the clipped piece is added; a constant or a linear
       ! spectrum therefore integrates exactly whatever the nodes, and one
-      ! segment that covers the whole band is a valid integral. (Until
-      ! 2026-09-13 the clipped piece was weighted with the fluxes at the
-      ! UNCLIPPED nodes, which is not the integral of the stated
-      ! interpolation -- 0.8 percent low on a linear spectrum over a band
-      ! whose edges fall inside the segments -- and a band covered by one
-      ! segment was returned as zero because segments were counted instead
-      ! of coverage.)
+      ! segment that covers the whole band is a valid integral. Earlier integral and tests: see
+      ! ../EXHALE_v1.00/md/Update_EXHALE_stage2.md section 10, item S1.
       !
       ! covered(b) is true only when the table reaches BOTH edges of band b
       ! (first node <= w_lo, last node >= w_hi). A band the table does not
@@ -535,14 +524,9 @@
       ! The Lyman-Werner interval is 912-1201 A: the H Lyman edge to the
       ! start of band B2, which is also the red end of the line list the
       ! H2 self-shielding table is built from (lyman_werner.f90 sec. 1).
-      ! It ran to 1110 A until 2026-09-06, when the 1110-1201 A band B1 was
-      ! merged into it. No dilution is applied here because EXHALE's own SED
-      ! file is already AT THE PLANET, which is what read_sed's header
-      ! states. Checked against the stellar-surface route on the NARROWER
-      ! Lyman-Werner band, when it was the band: Gueymard's solar spectrum
-      ! integrated over 912-1110 A at the stellar surface and diluted to
-      ! 0.048 AU behind a 1.155 R_sun star gave 329 erg cm^-2 s^-1 against
-      ! the 343 the molecular cases carried, i.e. the two agreed to 4%.
+      ! No dilution is applied: EXHALE's SED is already at the planet.
+      ! The former 912-1110 A band and solar-surface flux comparison are in
+      ! ../EXHALE_v1.00/md/Update_EXHALE_stage1.md section 134.3.
       !
       ! Every one of these intervals is OUTSIDE the ionizing range read_sed
       ! retains (912 A is 13.6 eV, the H I edge, and everything longward is
@@ -623,7 +607,6 @@
       endif
       end subroutine sed_band_fluxes
 
-      ! ------------------------------------------------------------- !
 
       logical function sed_next_row(unit, w, f, io)
       ! Next data row of an SED file: blank lines and lines whose first

@@ -3,7 +3,6 @@
       ! to EXHALE as a table instead of the single-level scalars of base.inp.
       !
       ! Physics this module carries
-      ! ---------------------------
       ! A lower-atmosphere model (photochemistry + climate) solves the same
       ! gas EXHALE solves, over a pressure interval that reaches UP TO the
       ! level where EXHALE places its base (the matching surface, its top
@@ -26,9 +25,10 @@
       ! Schema: md/input_schema.md section 2d.  Example file:
       ! examples/17_lower_profile/lower_atmosphere_profile.dat.
       !
-      ! Interpolation.  Every intensive quantity is interpolated linearly in
-      ! log p, which is the variable both models solve on; the two codes'
-      ! radius scales are equal only if their hydrostatic integrations agree.
+      ! Matching-level quantities are interpolated linearly in log p;
+      ! K_zz on the wind grid is interpolated linearly in the file's radius.
+      ! The two codes' radius scales agree only if their hydrostatic
+      ! integrations agree.
       ! Extrapolation is never performed.  Above the shallowest level the file
       ! carries, K_zz takes that level's value (the eddy coefficient is a
       ! lower-atmosphere property and the file makes no statement above its
@@ -38,6 +38,7 @@
       ! scalar base.inp path of read_base_inp is unchanged, bit for bit.
 
       use global_parameters
+      use, intrinsic :: ieee_arithmetic, only: ieee_is_finite
 
       implicit none
 
@@ -115,9 +116,8 @@
       real*8  :: lap_trial_flux_He = 0.0d0
       integer :: lap_iteration    = -1
       logical :: lap_steady       = .false.
-      ! .true. only if both `iteration` and `trial_flux_H` were stated: a
-      ! hand-written profile is a legitimate one-shot input, it just cannot
-      ! be driven by the flux-closure iteration.
+      ! .true. when a nonnegative `iteration` is stated: a hand-written
+      ! profile without it remains a legitimate one-shot input.
       logical :: lap_iterable     = .false.
       real*8  :: lap_r_top_RJ     = -1.0d0
 
@@ -156,7 +156,6 @@
 
       contains
 
-      ! ------------------------------------------------------------------ !
 
       subroutine read_lower_atmosphere_profile
       ! Read the file named by the "Lower atmosphere profile:" key.  Absent
@@ -262,7 +261,6 @@
 
       end subroutine read_lower_atmosphere_profile
 
-      ! ------------------------------------------------------------------ !
 
       subroutine split_header(raw, key_s, val_s)
       ! "# key value ..." -> key (trailing ':' stripped) and the rest.
@@ -287,7 +285,6 @@
       endif
       end subroutine split_header
 
-      ! ------------------------------------------------------------------ !
 
       subroutine set_column_names(val_s)
       ! Store the names of the "# columns:" line, in file order.  Unknown
@@ -322,7 +319,6 @@
       enddo
       end subroutine set_column_names
 
-      ! ------------------------------------------------------------------ !
 
       integer function column_index(nm)
       ! Position of a named column, 0 if the file does not carry it.  Columns
@@ -340,7 +336,6 @@
       enddo
       end function column_index
 
-      ! ------------------------------------------------------------------ !
 
       subroutine locate_required_columns
       character(len=8), parameter :: need(*) = [ character(len=8) ::       &
@@ -356,7 +351,6 @@
       ic_kzz = column_index('Kzz')
       end subroutine locate_required_columns
 
-      ! ------------------------------------------------------------------ !
 
       subroutine validate_table
       ! Monotonicity, the overlap requirement, and the match level's coverage.
@@ -364,16 +358,35 @@
       ! extrapolation, so they are refusals, not warnings.
       integer :: ilev
       real*8  :: p_shallow, p_deepest
+      character(len=160) :: reason
 
       do ilev = 1, nlev
-         if (coltab(ilev, ic_p) .le. 0.0d0)                                &
-            call refuse('a non-positive pressure in column "p"')
+         if (.not. ieee_is_finite(coltab(ilev, ic_p))) then
+            write(reason,'(A,I0)') 'column "p" is not finite at level ', ilev
+            call refuse(trim(reason))
+         endif
+         if (coltab(ilev, ic_p) .le. 0.0d0) then
+            write(reason,'(A,I0)') 'column "p" is not positive at level ', ilev
+            call refuse(trim(reason))
+         endif
          logp(ilev) = log(coltab(ilev, ic_p))
       enddo
       do ilev = 2, nlev
          if (coltab(ilev, ic_p) .ge. coltab(ilev-1, ic_p))                 &
             call refuse('column "p" is not strictly decreasing (the table'//&
                         ' runs deep to shallow)')
+      enddo
+      ! Radius must increase as pressure falls for interpolation in radius.
+      do ilev = 1, nlev
+         if (.not. ieee_is_finite(coltab(ilev, ic_r))) then
+            write(reason,'(A,I0)') 'column "r" is not finite at level ', ilev
+            call refuse(trim(reason))
+         endif
+         if (ilev .eq. 1) cycle
+         if (coltab(ilev, ic_r) .le. coltab(ilev-1, ic_r)) then
+            write(reason,'(A,I0)') 'column "r" does not increase at level ', ilev
+            call refuse(trim(reason))
+         endif
       enddo
       p_deepest = coltab(1,    ic_p)
       p_shallow = coltab(nlev, ic_p)
@@ -402,7 +415,6 @@
       lap_r_top_RJ = value_at_pressure(ic_r, lap_p_top_bar)
       end subroutine validate_table
 
-      ! ------------------------------------------------------------------ !
 
       subroutine refuse(why)
       character(len=*), intent(in) :: why
@@ -412,13 +424,11 @@
       error stop 1
       end subroutine refuse
 
-      ! ------------------------------------------------------------------ !
 
       real*8 function value_at_pressure(icol, p_bar)
       ! Linear in log p, never extrapolated (the caller has already checked
       ! that p_bar is covered).  A target that falls exactly on a level
-      ! returns that level's value bit for bit, which is what makes a
-      ! single-level profile reproduce the scalar handoff exactly.
+      ! returns that tabulated level's value bit for bit.
       integer, intent(in) :: icol
       real*8,  intent(in) :: p_bar
       integer :: ilev, ilo
@@ -454,7 +464,6 @@
                           + wgt*(coltab(ilo+1, icol) - coltab(ilo, icol))
       end function value_at_pressure
 
-      ! ------------------------------------------------------------------ !
 
       subroutine lap_value_at_match(nm, val, found)
       ! Interpolated value of a named column at the matching level.
@@ -471,15 +480,13 @@
       found = .true.
       end subroutine lap_value_at_match
 
-      ! ------------------------------------------------------------------ !
 
       subroutine lap_value_at_radius(nm, r_RJ, val, found)
       ! Value of a named column at radius r_RJ [R_J], linear in r between
       ! the two profile levels that bracket it (the levels are ordered from
       ! the deepest, so r increases with the level index).  Outside the
       ! profile the nearer end is returned and found stays .true.: the
-      ! callers ask for radii within a cell of the matching level, which the
-      ! profile spans by construction (validate_table).
+      ! callers ask for radii near the matching level.
       character(len=*), intent(in)  :: nm
       real*8,           intent(in)  :: r_RJ
       real*8,           intent(out) :: val
@@ -508,7 +515,6 @@
       val = coltab(ilev, icol) + wgt*(coltab(ilev+1, icol) - coltab(ilev, icol))
       end subroutine lap_value_at_radius
 
-      ! ------------------------------------------------------------------ !
 
       subroutine lap_element_ratio_at_match(elname, val, found)
       ! El/H nuclei ratio at the matching level, from the column "X_<El>".
@@ -518,7 +524,6 @@
       call lap_value_at_match('X_'//trim(elname), val, found)
       end subroutine lap_element_ratio_at_match
 
-      ! ------------------------------------------------------------------ !
 
       subroutine eddy_diffusion_on_grid
       ! Fill kzz_cell, the eddy diffusion coefficient of every cell, once the
@@ -530,15 +535,10 @@
       ! 0.5*(a+a) is exactly a in IEEE double, and D + K_face is then the same
       ! sum of the same two operands as D + he_kzz.
       !
-      ! With a profile, K_zz is interpolated onto the grid through the
-      ! profile's own radius column: the cell radius selects the bracketing
-      ! levels, and the value is linear in log p between them.  Because the
-      ! radius -> log p map inside a bracket is itself taken linearly, this is
-      ! the same weight either way; the log-p statement is what fixes the
-      ! choice at the level of the schema.  Above the shallowest level the
-      ! file carries, the cell takes that level's value -- the eddy
-      ! coefficient is a lower-atmosphere property and the file makes no
-      ! statement above its top.
+      ! With a profile, each cell selects the bracketing levels in the
+      ! file's radius column and interpolates K_zz linearly in radius.
+      ! Above the shallowest level, it takes that level's value; the file
+      ! makes no statement about K_zz above its top.
       integer :: jc, ilev, ilo
       real*8  :: r_RJ, wgt
 
@@ -586,7 +586,6 @@
 
       end subroutine eddy_diffusion_on_grid
 
-      ! ------------------------------------------------------------------ !
 
       subroutine lap_report_provenance(iu)
       ! Provenance block for EXHALE_resolved.out, so the closure driver and
@@ -608,5 +607,4 @@
       write(iu,'(A)')       'lower_profile_notes       '//trim(lap_notes)
       end subroutine lap_report_provenance
 
-      ! End of module
       end module lower_atmosphere_profile

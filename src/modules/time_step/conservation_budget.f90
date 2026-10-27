@@ -165,7 +165,6 @@
 
       contains
 
-      ! ------------------------------------------------------!
 
       logical function conservation_budget_exports_left() result(more)
       ! Whether another assembly is to be exported.
@@ -190,7 +189,6 @@
       more = (exports_left .gt. 0)
       end function conservation_budget_exports_left
 
-      ! ------------------------------------------------------!
 
       subroutine conservation_budget_request_next(label)
       ! EXPORT THE NEXT ASSEMBLY UNDER A NAME, whatever the environment
@@ -208,7 +206,6 @@
       pending_label = label
       end subroutine conservation_budget_request_next
 
-      ! ------------------------------------------------------!
 
       subroutine write_conservation_budget_terms(u, WL, WR, dF, S, Rrow, &
                                                  heat, cool,             &
@@ -725,7 +722,6 @@
 
       end subroutine write_conservation_budget_terms
 
-      ! ------------------------------------------------------!
 
       real*8 function quiet_nan_value() result(x)
       ! A quiet NaN, for a column this branch does not define. It is formed
