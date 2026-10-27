@@ -1,9 +1,8 @@
    module J_incident
    ! Energy-dependent incident spectrum.
    !
-   ! ONE SPECTRUM TYPE BUILDS EVERY BAND. "Spectrum type:" in input.inp
-   ! states the
-   ! spectrum of the WHOLE photon grid, the XUV and the part below 13.6 eV
+   ! "Spectrum type:" states the field across the photon grid, including XUV
+   ! and energies below 13.6 eV
    ! alike -- the part where the He 2^3S metastable (4.80 eV) and the low-IP
    ! metals absorb:
    !   Power-law      J_inc below: the power law of "Power-law index",
@@ -276,6 +275,5 @@
    
    end function
    
-   ! End of module
    end module J_incident
    

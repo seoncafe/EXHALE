@@ -2,7 +2,6 @@
       integer n,lr
       double precision delta
       double precision r(lr),diag(n),qtb(n),x(n),wa1(n),wa2(n)
-      !     **********
 
       !     subroutine dogleg
       
@@ -58,7 +57,6 @@
       !     argonne national laboratory. minpack project. march 1980.
       !     burton s. garbow, kenneth e. hillstrom, jorge j. more
       
-      !     **********
       integer i,j,jj,jp1,k,l
       double precision alpha,bnorm,epsmch,gnorm,one,qnorm,sgnorm,sum,&
                        temp,zero

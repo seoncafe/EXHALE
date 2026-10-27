@@ -24,9 +24,7 @@
    ! The H2 terms below are IDENTICALLY ZERO when n(H2) = 0, and the routine
    ! then reduces, expression by expression, to the two-target atomic case.
    !
-   ! ---------------------------------------------------------------------
    !  VALIDITY, and where our own models sit relative to it
-   ! ---------------------------------------------------------------------
    !
    !  * Ionized fraction. Dalgarno et al. state eq. (14) "for x <= 0.1" and
    !    their eq. (13) fits carry "They should not be used for x > 0.1".
@@ -40,8 +38,8 @@
    !
    !  * Primary energy. Dalgarno et al. tabulate 30, 50, 100, 200, 500 and
    !    1000 eV; the interpolation below is linear in log10(E0) and CLAMPED
-   !    at both ends. Clamping below 30 eV is inert in practice because the
-   !    caller's secondary-ionization threshold is above it; clamping above
+   !    at both ends. Clamping below 30 eV is inert for this partition:
+   !    the caller applies it only at or above E_sec_ion = 30 eV. Clamping above
    !    1 keV freezes the coefficients at their most nearly asymptotic
    !    values, which is the behaviour the source describes at high energy.
    !    Shull & van Steenberg's Table 2 carries the footnote "These formulae
@@ -86,9 +84,7 @@
    !    (h2_vibrational_relaxation.f90). Without them the molecular heat
    !    fraction would be low by a factor of about three at 1 keV.
    !
-   ! ---------------------------------------------------------------------
    !  DISSOCIATIVE IONIZATION OF H2 (see docs/Update_EXHALE_stage1.pdf section 130)
-   ! ---------------------------------------------------------------------
    !  H2 + e -> H + H+ + 2e is carried, through dissoc_ion_per_H2p below:
    !  the secondary electrons make one such proton for every 22 H2+ ions.
    !  The photon side of the same channel is the H2 photoabsorption cross
@@ -284,7 +280,6 @@
    ! Smallest denominator treated as nonzero.
    real*8, parameter :: tiny_den = 1.0d-99
 
-   ! -------------------------------------------------------------------- !
    ! The cell's partition, held at the six tabulated primary energies. The
    ! expensive part -- the powers x^a -- is evaluated once per cell, and
    ! every absorber then costs one gather and one linear interpolation per
@@ -297,7 +292,6 @@
       logical :: molecular = .false.
    end type photoelectron_partition_t
 
-   ! -------------------------------------------------------------------- !
    ! Where each absorber's photoelectron energy E0 = hv - E_th falls in the
    ! Dalgarno energy grid. E0 depends only on the spectral bin and on the
    ! absorber's own threshold, both fixed for a run, so the bracket index and
@@ -319,9 +313,7 @@
 
    contains
 
-   ! ================================================================= !
    !  Startup: the energy-interpolation table
-   ! ================================================================= !
 
    subroutine photoelectron_energy_grid(e_v, e_th)
    ! Bracket index and weight of every (spectral bin, absorber) pair in the
@@ -398,10 +390,8 @@
    wt(k+1) = w
    end subroutine dalgarno_energy_node_weights
 
-   ! ================================================================= !
    !  Shull & van Steenberg (1985) fits: their equations (1) and (2)
    !  with the coefficients of their Table 2.
-   ! ================================================================= !
 
    ! A possible future refinement is to couple the SvS85 Ly-alpha excitation
    ! channel f_exc,Lya = 0.4766*(1-x^0.2735)^1.5221 to the Ly-alpha field of
@@ -419,9 +409,7 @@
       f = 0.0554d0*(1.0d0 - x**0.4614d0)**1.6660d0
    end function svs85_fion_HeI
 
-   ! ================================================================= !
    !  Dalgarno, Yan & Liu (1999)
-   ! ================================================================= !
 
    ! Ionized fraction to be used with the H2-He rows, their eq. (15). The
    ! H-H2-He mixture counts electrons per H and He NUCLEUS, the H2-He mixture
@@ -530,9 +518,7 @@
       W_eV = tab(1,k)*(1.0d0 + tab(3,k)*x**tab(2,k))
    end function dalgarno_mean_energy_per_ion_pair
 
-   ! ================================================================= !
    !  The cell partition
-   ! ================================================================= !
 
    pure subroutine photoelectron_energy_partition(x, n_HI, n_HeI, n_H2,   &
                                                   f_vib_heat, e_vib_bound, &
@@ -722,7 +708,7 @@
          ! Dissociation heat. The published "Dissociation" yield is the
          ! total, so the singlet route -- which releases 0.4 eV, not 5.4 --
          ! is subtracted out before the triplet energy is applied.
-         ! Reproduces the per-ion-pair dissociation heat Dalgarno et al.
+         ! Reproduces the dissociation heat per ion pair of Dalgarno et al.
          ! state in their sections 5.3 and 6 to 2% at 30 eV and 12% at
          ! 1 keV, against 10% and 44% for the same expression without the
          ! split.
@@ -799,5 +785,4 @@
 
    end subroutine photoelectron_shares
 
-   ! End of module
    end module electron_energy_degradation

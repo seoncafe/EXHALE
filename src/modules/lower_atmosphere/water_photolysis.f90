@@ -13,18 +13,14 @@
       ! The reaction set, the quantum yields and the band edges are carried
       ! in oxygen_rates, which this module reads rather than restating.
       !
-      ! ---------------------------------------------------------------
       ! 1. WHY BANDS AND NOT THE PHOTON ENERGY GRID
       !
-      ! The code's energy grid is built from the ionization thresholds of
-      ! the species the run carries: it starts at e_th_HI = 13.6 eV and is
-      ! lowered only to the He 2^3S edge or to the lowest active low-IP
-      ! metal threshold (set_energy_vectors, sed_read).  Water photolysis
-      ! lives at 912-2304 A, i.e. 5.4-13.6 eV, almost entirely BELOW that
-      ! grid; and for a power-law SED (is_PL_sed) the law is an XUV fit, so
-      ! extending it into the FUV is not a spectrum.  The band form with a
-      ! named incident flux is the precedent lyman_werner.f90 already sets
-      ! for exactly this reason, and this module follows it.
+      ! The photon grid follows active ionization thresholds. It may extend
+      ! below 13.6 eV for He 2^3S, low-IP metals, or H(n=2), whose Balmer
+      ! edge is 3.4 eV (set_energy_vectors, sed_read). Water photolysis
+      ! covers 912-2304 A (5.4-13.6 eV), but a grid node alone supplies no
+      ! physical FUV field: the power-law SED is an XUV fit. This module
+      ! therefore uses named incident band fluxes, as lyman_werner does.
       !
       ! The four bands are NOT free.  Their edges are fixed by the H2O
       ! branching ratios -- the three-body branch H2O + hv -> O + H + H
@@ -45,24 +41,18 @@
       !   * on the way IN, if the interval's flux were supplied both as
       !     'Stellar LW flux' and again inside a band reaching across it.
       !     Hence the first band IS the Lyman-Werner interval and carries
-      !     that key's flux alone, and B2 starts where it ends.  The band
-      !     was split at 1110 A between 2026-08 and 2026-09-06, with the
-      !     1110-1201 A half carried by a separate 'Stellar FUV B1 flux'
-      !     key; that key is retired and the parser stops a run that states
-      !     it.  The split put the H2 line absorber astride the edge -- the
-      !     self-shielding table's line list reaches 1201 A -- so the table
-      !     rated 45 per cent more line absorptions than the 912-1110 A
-      !     beam lost.  On the solar spectrum the HD 209458 b example uses,
-      !     the 912-1201 A integral is 481.0 erg cm^-2 s^-1 and its two
-      !     halves were 343.0 and 137.9.
+      !     that key's flux alone, and B2 starts where it ends.  The
+      !     retired 'Stellar FUV B1 flux' key is refused by the parser. Its
+      !     earlier split and measured ledger error are recorded in
+      !     ../EXHALE_v1.00/md/Update_EXHALE_stage2.md section 7,
+      !     item LW-NORM-B.
       !   * on the way DOWN, if each absorber attenuated its own private
       !     copy of the beam.  Section 3 below makes the three absorbers
       !     share one beam, so the photons one removes are gone for the
       !     others and the sum of what they absorb is exactly what the beam
       !     loses.  Gate G4 of the design measures that identity, and
-      !     output/FUV_bands.txt reports it band by band.
+      !     <output_dir>/FUV_bands.txt reports it band by band.
       !
-      ! ---------------------------------------------------------------
       ! 2. CROSS SECTIONS, AND THE BAND AVERAGE
       !
       ! The photodissociation cross sections are the 'photodissociation'
@@ -106,7 +96,7 @@
       ! CARRIES -- 13.5% more on B4.  With <hv>_b the absorbed energy is
       ! F_b (1 - exp(-tau_b)), which cannot exceed the incident flux
       ! whatever the state of the gas; that bound is what gate G4 of the
-      ! design asks of the band ledger, and output/FUV_bands.txt measures
+      ! design asks of the band ledger, and <output_dir>/FUV_bands.txt measures
       ! it.  The price is in the optically THIN limit, where the heating per
       ! dissociation is then wrong by the ratios above: low by 0 to 13.5%
       ! for H2O, and low for OH except on LW, where it is 3.0% high.  Both
@@ -185,7 +175,6 @@
       ! the line, 2.46e-18 at 1230 A), so the line-center value is right
       ! only as long as the band's energy is in the line.
       !
-      ! ---------------------------------------------------------------
       ! 3. ATTENUATION
       !
       ! H2O and OH absorb the FUV as CONTINUA, so no self-shielding function
@@ -282,7 +271,6 @@
       !    photons from the water cycle without the compensating oxygen
       !    release.  A network that lets CO react must add both.
       !
-      ! ---------------------------------------------------------------
       ! 4. HEATING
       !
       ! Each dissociation deposits hv - E_threshold as fragment kinetic
@@ -459,7 +447,7 @@
       ! Ly-alpha band, whose optical depth crosses unity inside a single
       ! cell.  The form above reduces to the rectangle rule as dtau -> 0
       ! and reproduces the closed form EXACTLY, cell by cell and summed
-      ! over the column, whatever the grid -- which output/FUV_bands.txt
+      ! over the column, whatever the grid -- which <output_dir>/FUV_bands.txt
       ! measures.
       double precision function water_photolysis_rate(F_band, ib, tau_out, &
                                 dtau, tr_lines) result(j)
@@ -529,5 +517,4 @@
       e = max(e_photon_flat_band(ib) - eth_OH_erg, 0.0d0)
       end function heat_per_hydroxyl_dissociation
 
-      ! End of module
       end module water_photolysis

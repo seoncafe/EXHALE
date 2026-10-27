@@ -3,42 +3,20 @@
       ! reactions of the molecular chemistry release into, or take out of, the
       ! gas.
       !
-      ! WHY IT IS NEEDED, AND WHY IT IS ON BY DEFAULT.  In an atomic gas the
-      ! ionization energy a photon spends is not a heating channel: the
-      ! photoelectron carries away hv - I(H), which PH_heat_HHe deposits, and
-      ! the I(H) itself comes back as a Lyman photon when H+ recombines
-      ! radiatively and leaves the gas.  In a MOLECULAR gas that return path
-      ! is different.  Follow one closed cycle:
-      !
-      !     H2 + hv  -> H2+ + e       photon pays I(H2) = 15.43 eV; the
-      !                               photoelectron keeps hv - I(H2) and
-      !                               PH_heat_HHe already deposits that
-      !     H2+ + H2 -> H3+ + H       + 1.70 eV
-      !     H3+ + e  -> H2 + H        + 9.25 eV   (DISSOCIATIVE: the energy
-      !                               goes into the fragments, not a photon)
-      !
-      ! The cycle returns to H2 having turned one H2 into H + H, and it has
-      ! left I(H2) - D0(H2) = 15.43 - 4.48 = 10.95 eV in the gas.  There is no
-      ! photon anywhere in it to carry that away.  A code that deposits only
-      ! the photoelectron therefore loses 10.95 eV per cycle, and on the
-      ! converged He/H = 0.0793 hot Uranus that loss is 81 per cent of the
-      ! total heating rate at 1.02 r_base.  Omitting it is not an
-      ! approximation of the molecular layer's energy budget; it is most of
-      ! it.  Hence the default is ON, and `Molecular reaction heat: False`
-      ! exists to reproduce the state the code was in before it.
+      ! Photoelectron heating excludes the ionization energy of H2. In a
+      ! closed molecular cycle, dissociative recombination returns the
+      ! fragment kinetic share to the gas: I(H2)-D0(H2) = 10.95 eV for
+      ! H2 -> H2+ -> H3+ -> H2 + H. The channel is on by default; the
+      ! former-cycle and hot-Uranus heating comparison is in
+      ! ../EXHALE_v1.00/md/Update_EXHALE_stage1.md section 141.5.
+      ! `Molecular reaction heat: False` selects the earlier ledger.
       !
       ! An atomic run cannot reach this module -- the caller gates on
       ! thereis_mol -- so every non-molecular result is unchanged to the bit
       ! either way.
       !
-      ! HOW LARGE.  Measured on the converged He/H = 0.0793 hot Uranus
-      ! (section 141 of docs/Update_EXHALE_stage1.pdf), the sum below is 2.4
-      ! times the whole
-      ! photoelectric heating rate over 1.00-1.05 r_base, falling through 1 at
-      ! 1.053 and to 1 percent by 1.10.  The argument above makes that ratio
-      ! I(H2)/(hv - I(H2)), so 2.4 corresponds to a mean absorbed photon of
-      ! 22 eV: a consistency check on the sum, not an independent derivation
-      ! of it.
+      ! Earlier hot-Uranus heating ratios and radial extent are in the
+      ! same record, section 141.5.
       !
       ! HOW IT IS BUILT.  Not as a list of reaction enthalpies -- a list can
       ! disagree with itself -- but from ONE table of species formation
@@ -194,7 +172,6 @@
       public :: dissociative_recombination_n2_eV
       public :: dissociative_recombination_n2_source
 
-      ! ------------------------------------------------------------------ !
       ! THE SPECIES FORMATION-ENERGY TABLE eps_s [eV].
       !
       ! REFERENCE STATE, one for the whole code: every element a neutral,
@@ -277,7 +254,6 @@
       !                   De - G_0 above; where the difference comes from was
       !                   not established, so the arithmetic that IS supported
       !                   by a primary text is what is used here.
-      ! ------------------------------------------------------------------ !
       real*8, parameter :: cm_to_eV  = 1.239841984d-4
       real*8, parameter :: eV_to_erg = 1.602176634d-12
 
@@ -313,7 +289,6 @@
       ! Coxon & Hajigeorgiou (1999) Tables 9 and 8; see above.
       real*8, parameter :: D0_HeHp_eV = (16448.84d0 - 1566.6764d0)*cm_to_eV
 
-      ! ------------------------------------------------------------------ !
       ! KEYS OF THE TABLE.  species_formation_energy is indexed by the f_sp
       ! species column of species_table (isp_HI = 1 to isp_CO = 40, the metal
       ! stages filling 7 to 33), so one integer names a species everywhere.
@@ -321,19 +296,16 @@
       ! are given keys past the end of that layout: the free electron, which
       ! is an identity of the charge balance rather than a solved column, and
       ! the two excited states whose populations live in arrays of their own.
-      ! ------------------------------------------------------------------ !
       integer, parameter :: isp_eps_electron = 41
       integer, parameter :: isp_eps_H_n2     = 42   ! H(n=2), 2s and 2p
       integer, parameter :: isp_eps_O1D      = 43   ! O(1D)
 
-      ! ------------------------------------------------------------------ !
       ! THE REACTIONS OF THE NETWORK, as stoichiometry rather than as
       ! energies.  Column ir holds up to three reactant and three product
       ! species keys, 0 meaning an unused slot; the third body M of R12, R13
       ! and R15 is on both sides and is left out of both.  The heat of ir is
       ! molecular_reaction_energy_eV(ir), formed from the table above, so no
       ! reaction energy is written down anywhere in this file.
-      ! ------------------------------------------------------------------ !
       integer, parameter :: n_mreac = 17
       integer, parameter :: ir_R5  =  1, ir_R6  =  2, ir_R7  =  3,        &
                             ir_R8  =  4, ir_R9  =  5, ir_R10 =  6,        &
@@ -388,7 +360,6 @@
         isp_HeHp, isp_HI,           0,                                    &
         isp_H2p,  isp_HeI,          0 /), (/ 3, n_mreac /) )
 
-      ! ------------------------------------------------------------------ !
       ! THE COLLISIONAL OXYGEN CHANNELS AND THE ASSOCIATIVE He(2^3S) BRANCH.
       !
       ! These are reactions of the SAME species table; they are kept in a
@@ -436,7 +407,6 @@
       ! diffusive_photochemistry counts the cells in which that second
       ! omission would matter, i.e. where this channel removes He+ faster
       ! than recombination does.
-      ! ------------------------------------------------------------------ !
       integer, parameter :: isp_OI_col  = mion_fsp(im_OI)
       integer, parameter :: isp_CII_col = mion_fsp(im_CII)
       integer, parameter :: n_oreac = 7
@@ -467,7 +437,6 @@
 
       contains
 
-      ! ------------------------------------------------------!
 
       subroutine molecular_chemical_heating(T_K, nhi, nhii, nheii, nheiS,  &
                                             nmol, ne, ntot, gamma_chem)
@@ -719,7 +688,6 @@
 
       end subroutine molecular_chemical_heating
 
-      ! ------------------------------------------------------!
 
       logical function reaction_heat_recipients_corrected() result(on)
       ! Whether the published product states of R5, R6 and R16 and the
@@ -751,7 +719,6 @@
 
       end function reaction_heat_recipients_corrected
 
-      ! ------------------------------------------------------!
 
       subroutine reaction_heat_recipient_validity_report()
       ! State once, on the run's own output, that the unit n = 2 recipient
@@ -789,7 +756,6 @@
 
       end subroutine reaction_heat_recipient_validity_report
 
-      ! ------------------------------------------------------!
 
       double precision function dissociative_recombination_n2_eV()        &
                                result(e)
@@ -801,7 +767,6 @@
 
       end function dissociative_recombination_n2_eV
 
-      ! ------------------------------------------------------!
 
       double precision function dissociative_recombination_n2_source      &
                                (T, n_H2p, n_HeHp, n_e) result(s)
@@ -843,7 +808,6 @@
 
       end function dissociative_recombination_n2_source
 
-      ! ------------------------------------------------------!
 
       double precision function species_formation_energy(isp) result(eps)
       ! Formation plus excitation energy [eV] of one particle of species
@@ -921,7 +885,6 @@
 
       end function species_formation_energy
 
-      ! ------------------------------------------------------!
 
       double precision function molecular_reaction_energy_eV(ir) result(q)
       ! Heat [eV] released by one event of reaction ir of the H2/He network,
@@ -945,7 +908,6 @@
 
       end function molecular_reaction_energy_eV
 
-      ! ------------------------------------------------------!
 
       double precision function oxygen_reaction_energy_eV(ir) result(q)
       ! Heat [eV] released by one event of channel ir of the collisional
@@ -969,7 +931,6 @@
 
       end function oxygen_reaction_energy_eV
 
-      ! ------------------------------------------------------!
 
       subroutine oxygen_chemical_heating(T_K, nhi, nh2, n_o0, nox,        &
                                          flux_O6, gamma_ox)
@@ -1022,7 +983,6 @@
 
       end subroutine oxygen_chemical_heating
 
-      ! ------------------------------------------------------!
 
       subroutine formation_energy_density(rho, f_sp, u_form, n_H_n2, n_O1D)
       ! The formation/excitation reservoir u_form = sum_s n_s eps_s
@@ -1063,7 +1023,5 @@
 
       end subroutine formation_energy_density
 
-      ! ------------------------------------------------------!
 
-      ! End of module
       end module molecular_reaction_heat

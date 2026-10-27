@@ -12517,6 +12517,482 @@ Section 151 found the control row \texttt{face\_state\_gap\_of\_the\_entry\_comp
   \texttt{make\ test}: v1.00 64/64 PASS; v1.10 69/69 PASS (\texttt{coupled\_block\_jacobian} and \texttt{boundary\_state} included).
 \end{itemize}
 
+\subsection{153. The probe of the matrix-free Jacobian action taken in the column-scaled unknowns, as in v1.10 (2026-10-18)}\label{153-the-probe-of-the-matrix-free-jacobian-action-taken-in-the-column-scaled-unknowns-as-in-v110-2026-10-18}
+
+User decision 2026-10-18: v1.00 takes the probe rule v1.10 adopted the same day (\texttt{EXHALE\_v1.10/md/jacobian\_probe\_length\_20261018.md}, section 7). Every number below is MEASURED on 2026-10-18 on v1.00 unless marked otherwise.
+
+\subsubsection{153.1 The rule}\label{1531-the-rule}
+
+\texttt{eps0\ =\ sqrt(epsilon)\ (1\ +\ \textbar{}\textbar{}Dc\^{}-1\ Y\textbar{}\textbar{})\ /\ \textbar{}\textbar{}Dc\^{}-1\ v\textbar{}\textbar{}}, Dc the state column scale (\texttt{state\_column\_scale}, formed by \texttt{cell\_state\_scales} exactly as in v1.10; the identity where none is formed yet). The displacement of the forward difference then has the length \texttt{sqrt(epsilon)(1\ +\ \textbar{}\textbar{}Dc\^{}-1\ Y\textbar{}\textbar{})} in the column-scaled unknowns whatever the direction. It is the only rule: the rule in the unknowns themselves (\texttt{sqrt(epsilon)(1\ +\ \textbar{}\textbar{}Y\textbar{}\textbar{})/\textbar{}\textbar{}v\textbar{}\textbar{}}, \texttt{probe\_length\_of\_the\_jacobian\_action}), the switch \texttt{jv\_probe\_on\_the\_column\_scales} and its key \texttt{EXHALE\_JV\_COLUMN\_SCALE} were deleted. \texttt{src/modules/time\_step/steady\_newton.f90}: \texttt{probe\_length\_in\_the\_column\_scaled\_unknowns}, \texttt{norm\_in\_the\_column\_scaled\_unknowns}, \texttt{probe\_step\_on\_the\_column\_scales} (now a quotient of the two), used by \texttt{jv\_product}, the coupled-block diagnostic, the additivity hook, the jump scan, and the \texttt{{[}image{]}} and \texttt{{[}diag\ 8{]}} prints (which state the probe arc and the step in column-scaled coordinates, \texttt{\textbar{}\textbar{}Dc\^{}-1\ D\ s\textbar{}\textbar{}}); \texttt{unknown\_is\_a\_logarithm} and two new header lines of the \texttt{EXHALE\_COUPLED\_JAC\_ACTION} file (\texttt{\#\ probe\ taken\ by\ the\ action}, \texttt{\#\ norm\ of\ the\ unknowns}). The v1.10 patch applied without conflict; the v1.10 change to \texttt{diffusive\_photochemistry.f90} (the molecular-ion advected carriers) was not taken, because v1.00 carries no molecular-ion carrier. The comment at the rule carries the v1.00 measurements below. Separately, the read of \texttt{EXHALE\_JV\_FRESH\_WEIGHTS} sat between the comment and the read of \texttt{EXHALE\_JV\_PROBE\_ARC}; the two blocks were put in order (no behavior change), and the survey row of \texttt{EXHALE\_JV\_PROBE\_ARC} that had quoted the other key\textquotesingle s comment was corrected.
+
+\subsubsection{153.2 Measurements on the v1.00 fixture}\label{1532-measurements-on-the-v100-fixture}
+
+\texttt{coupled\_block\_jacobian} seed (LHS 1140 b molecular, one carrier H2), cells 300-312, one thread. Control binary: v1.00 HEAD 7a001ea9 (\texttt{EXHALE.x} md5 \texttt{e1faf4d5}), rule chosen by \texttt{EXHALE\_JV\_COLUMN\_SCALE}; new binary \texttt{10214a0c} (final \texttt{ce2d2cca}, same numerics: see 153.3). \texttt{\textbar{}\textbar{}Y\textbar{}\textbar{}} = 475.00 (474.92 of it the ln n of H2), \texttt{\textbar{}\textbar{}Dc\^{}-1\ Y\textbar{}\textbar{}} = 475.98. Error = mean, over the rows the direction moves (response \textgreater= 1e-3 of the largest), of \texttt{\textbar{}Jv\ -\ J\_ref\textbar{}\ /\ max(\textbar{}Jv\textbar{},\ \textbar{}J\_ref\textbar{})}, \texttt{J\_ref} the central difference of the scan run (new binary, \texttt{EXHALE\_JV\_PROBE\_ARC} 1e-4 to 1e5) whose two central differences agree best: energy scalar 1.97e-5, carrier 1.97e-3.
+
+{\def\LTcaptype{none} % do not increment counter
+{\small
+\begin{longtable}[]{@{}>{\raggedright\arraybackslash}p{\dimexpr(\linewidth-10\tabcolsep)/5\relax}>{\raggedright\arraybackslash}p{\dimexpr(\linewidth-10\tabcolsep)/5\relax}>{\raggedright\arraybackslash}p{\dimexpr(\linewidth-10\tabcolsep)/5\relax}>{\raggedright\arraybackslash}p{\dimexpr(\linewidth-10\tabcolsep)/5\relax}>{\raggedright\arraybackslash}p{\dimexpr(\linewidth-10\tabcolsep)/5\relax}@{}}
+\toprule\noalign{}
+rule & energy probe scalar (relative change of E) & energy error & carrier probe scalar (ln n) & carrier error \\
+\midrule\noalign{}
+\endhead
+\bottomrule\noalign{}
+\endlastfoot
+before, `sqrt(eps)(1 + & & Y & & )/ \\
+column-scaled & 1.9713e-6 & 3.61e-7 & 1.9713e-6 & 2.98e-4 \\
+\end{longtable}
+}
+}
+
+The control binary with \texttt{EXHALE\_JV\_COLUMN\_SCALE=1} and the new binary give bitwise identical data lines of the diagnostic file on both directions. The energy V over the scan: 9.6e-6, 8.9e-7, 1.03e-7, 3.8e-8 (scalar 1.97e-7), 3.6e-7, 3.6e-6, ... 3.5e-3 (1.97e-2), 3.3e-2; the carrier V: 0.57 (1.97e-10) ... 3.7e-3, 3.0e-4, 3.5e-5 (1.97e-5), 9.8e-5, ... 9.6e-2. The worse of the two directions falls from 7.3e-3 to 3.0e-4. (The 7.37e-3 of section 7.5 of the v1.10 note used another reference; the difference is the choice of \texttt{J\_ref}.) Section 152.1\textquotesingle s observation "not changed" is resolved by this section.
+
+\texttt{coupled\_block\_jacobian} on the new rule: \texttt{eps1} = 1.9712882e-6 for both directions; carrier \texttt{e} 2.6786e-2 / 2.9001e-3 / 3.1939e-4 / 3.6116e-5, power 0.9581 (decade 0.1-1); energy \texttt{e} 7.4170e-7 / 1.1242e-7 / 3.9300e-8 / 3.5795e-7, smallest at 0.1, power 0.8194 (decade 0.001-0.01, the rounding branch); bounds 7.06e6 (carrier, species box) and 5.07e5 (energy, gas) multipliers; every row PASSES with the ladders unchanged. \texttt{run.sh} and \texttt{README.md} of the suite carry these numbers; \texttt{src/tests/krylov\_and\_dogleg/krylov\_and\_dogleg\_tests.f90} and \texttt{coupled\_block\_linear\_system.f90} were taken from v1.10 (they differed from v1.00 only in the probe rows).
+
+\subsubsection{153.3 Regression matrix, control against new binary}\label{1533-regression-matrix-control-against-new-binary}
+
+The 17 default cases of \texttt{backup/regression/run\_check.sh}, scratch copies, \texttt{REGRESSION\_EXE} set, one thread each, the cases\textquotesingle{} own \texttt{maxsteps}/\texttt{outer\_passes}; golden/ not touched. Data lines compared (headers excluded).
+
+\textbar{} case \textbar{} Newton \textbar{} iterations ctl / new \textbar{} info, final \texttt{\textbar{}\textbar{}R\textbar{}\textbar{}} ctl / new \textbar{} outputs \textbar{} max rel. root (rho, v, p, T) \textbar{} median rho v r\^{}2 \textbar{}
+\textbar-\/-\/-\textbar-\/-\/-\textbar-\/-\/-\textbar-\/-\/-\textbar-\/-\/-\textbar-\/-\/-\textbar-\/-\/-\textbar{}
+\textbar{} wasp\_full, wasp\_he23off, mol\_base\_handoff, mol\_metals, mol\_lyman\_werner, mol\_diffusion, mol\_ir\_bands, mol\_sec\_ion, mol\_carrier, lower\_profile, hydrostatic\_column, oxygen\_chemistry, hp\_zero\_seed, hp\_trace\_seed, hp\_front \textbar{} none reached (marching snapshots) \textbar{} - \textbar{} - \textbar{} bitwise identical (four files) \textbar{} 0 \textbar{} 0 \textbar{}
+\textbar{} wasp\_full\_newton \textbar{} 2 solves \textbar{} 15+14 / 15+14 \textbar{} 0, 1.263e-10 and 1.854e-11 / 0, 1.136e-10 and 1.942e-11 \textbar{} within 2.6e-11 (Ion\_species), residual column of \texttt{\_adv} 2.1e-10 of its column \textbar{} 6.3e-14 \textbar{} -2.2e-14 (log Mdot 13.28 both) \textbar{}
+\textbar{} iontrans\_metals \textbar{} 14 solves \textbar{} 14 13 13 12 12 12 12 11 10 9 9 9 8 8 (152) both \textbar{} 0 in every solve, last 5.898e-10 / 5.916e-10; ACCEPTED at pass 14 both \textbar{} within 7.0e-12 \textbar{} 6.4e-14 \textbar{} 1.5e-15 \textbar{}
+
+No case converged worse. \texttt{conserved\_state.txt} differs only in its \texttt{PAIR\_CHECKSUM} line, which hashes the provenance header. The final binary \texttt{ce2d2cca} (after the comment edits and the reorder of 153.1) reproduces the \texttt{10214a0c} outputs bitwise on \texttt{hp\_zero\_seed}, \texttt{iontrans\_metals} and \texttt{oxygen\_chemistry}, and the coupled-block numbers.
+
+\subsubsection{153.4 Checks}\label{1534-checks}
+
+\begin{itemize}
+\tightlist
+\item
+  \texttt{make}: no warnings; \texttt{make\ -q} 0.
+\item
+  \texttt{make\ test} (final binary): 64 of 64 PASS, \texttt{coupled\_block\_jacobian} and \texttt{krylov\_and\_dogleg} included.
+\item
+  \texttt{md/environment\_variable\_options\_survey\_20261012.md}: the row deleted, counts recounted from the literal reads of \texttt{src/}, continuation lines joined: 185 names (183 \texttt{EXHALE\_*}, 174 with production readers, 11 test-only); R-solver 62. The v1.10 survey\textquotesingle s sentence "v1.00 is unchanged" was corrected, and the v1.10 note records the application at the end of its section 7.
+\end{itemize}
+
+Not checked: the accuracy along production Krylov directions (the additivity hook was not run), and a converged v1.00 case with the logarithmic carrier in the Newton vector (no default case reaches one).
+
+\begin{center}\rule{0.5\linewidth}{0.5pt}\end{center}
+
+\subsection{154. Named input files and output directories (2026-10-26)}\label{154-named-input-files-and-output-directories-2026-10-26}
+
+\subsubsection{154.1 Implemented rule}\label{1541-implemented-rule}
+
+Both EXHALE trees accept \texttt{EXHALE.x\ {[}input\_file{]}}. Without an argument the
+input remains \texttt{input.inp}. A missing or unreadable input stops startup with
+the attempted path. \texttt{global\_parameters} owns \texttt{inp\_file}, \texttt{input\_directory},
+and \texttt{output\_dir}; \texttt{configure\_run\_paths} initializes them before the input
+reader runs. \texttt{companion\_path} resolves relative companion names beside the
+input file and preserves absolute names. The presence conventions for
+\texttt{metals.inp}, \texttt{base.inp}, and \texttt{opacity.inp} are unchanged. Spectrum paths,
+lower-atmosphere profiles, opacity tables, and an explicit Lyman-alpha
+radiation file use the same resolver. The lower-atmosphere Python invocation
+receives the input directory and selected filename.
+
+\texttt{Output\ directory:\ \textless{}path\textgreater{}} selects the output directory, relative to the
+working directory or absolute. When omitted, a file whose basename is
+\texttt{input.inp} uses \texttt{output/}; this exception preserves existing default runs.
+Other filenames use their stem in the working directory: \texttt{cases/model.inp}
+writes \texttt{model/}. Missing output directories are created. Paths passed to the
+shell are quoted without expansion. Empty and duplicate output declarations
+are rejected. Internal output buffers were enlarged to avoid truncating
+paths that exceed the former 40-, 48-, or 64-character limits.
+
+The output directory contains profiles, IC and conserved-state files,
+stationary pass states, diagnostic files, \texttt{EXHALE\_setup.out},
+\texttt{EXHALE\_resolved.out}, and \texttt{parse\_dump.txt}. The setup and resolved reports
+record the effective input and output paths. \texttt{Load\ IC?\ True} reads the
+selected output directory, including the conserved-state sidecar.
+Explicit diagnostic destinations supplied through environment variables
+retain their existing interpretation.
+
+Python plot/transit readers and diagnostics accept selected run/output
+locations, and prefer the resolved configuration in that output directory;
+they can still read reports from older runs. \texttt{pin\_base\_grid.py} additionally
+accepts a selected input filename for a single run. The GUI continues to
+write \texttt{input.inp}, preserve options it does not edit, and launch the solver
+without an input argument. Conversion and shielding-table scripts that
+already take explicit file paths, or do not read EXHALE run outputs, needed
+no interface change.
+
+\subsubsection{154.2 Corrections found during implementation}\label{1542-corrections-found-during-implementation}
+
+Intel\textquotesingle s existing \texttt{omp\_set\_dynamic(.false.)} call produced warning 5472 about
+passing a Fortran logical to C. The installed OpenMP header declares an
+integer argument. An explicit C interface now passes \texttt{0\_c\_int}, preserving
+the request to disable dynamic teams. This is the only execution change
+outside file selection and directory handling. The focused control
+comparisons below confirm identical profile data.
+
+Manual/HOWTO build instructions that still described GNU Fortran as the
+default were corrected after inspecting the actual Makefiles and launcher:
+bare \texttt{make} and the launcher default to \texttt{ifx}. The preexisting Makefile and
+launcher edits were preserved. The older report readers in existing tests
+were updated to the output-directory location; the isolated regional test
+now compiles its new \texttt{global\_parameters} dependency.
+
+\subsubsection{154.3 Verification under the revised user scope}\label{1543-verification-under-the-revised-user-scope}
+
+The user narrowed the verification scope while the original control matrix
+was running. That matrix was stopped; its incomplete products were retained
+in \texttt{/tmp/exhale\_named\_input\_validation/v100\_matrix\_parallel/} and the stop
+is recorded in \texttt{stopped\_by\_user.json}. There is no completed 17-case claim.
+The complete \texttt{make\ test} target was not run.
+
+{\def\LTcaptype{none} % do not increment counter
+{\small
+\begin{longtable}[]{@{}lll@{}}
+\toprule\noalign{}
+Check & v1.00 & v1.10 \\
+\midrule\noalign{}
+\endhead
+\bottomrule\noalign{}
+\endlastfoot
+Bare \texttt{make}, final build & exit 0, 0 warnings & exit 0, 0 warnings \\
+\texttt{make\ -q} after final edits & 0 & 0 \\
+Focused named-input suite & 26 PASS, 0 FAIL & 26 PASS, 0 FAIL \\
+Original binary vs. new default \texttt{hp\_zero\_seed} & 4/4 files bitwise equal & 4/4 files bitwise equal \\
+Named vs. default output & 4/4 files bitwise equal & 4/4 files bitwise equal \\
+Relative output override vs. default & 4/4 files bitwise equal & 4/4 files bitwise equal \\
+Absolute output override vs. default & 4/4 files bitwise equal & 4/4 files bitwise equal \\
+Restart from named output & exact conserved state loaded & exact conserved state loaded \\
+Focused Python checks & 5 passed, 1 inapplicable regional check skipped & 6 passed \\
+Regional module dependency check & not applicable & 25/25 scenarios passed \\
+Manual PDF build & 130 pages & 133 pages \\
+\texttt{git\ diff\ -\/-check} & passed & passed \\
+\end{longtable}
+}
+}
+
+Each of the four profile files has 504 data rows: \texttt{Hydro\_ioniz.txt},
+\texttt{Ion\_species.txt}, \texttt{Hydro\_ioniz\_adv.txt}, and \texttt{Ion\_species\_adv.txt}.
+Comparisons remove only lines starting with \texttt{\#} after whitespace. These
+headers contain build provenance and input checksums that legitimately
+change. The main review independently compared 16 file pairs in each tree
+(control, named, relative override, absolute override), all byte-identical.
+For the named case, the saved \texttt{\_IC} copies preserve the pair before the
+restart hook rewrites the live output files; those copies were used in the
+independent review. The restart check verifies actual loading, not equality
+of all reinitialized diagnostic columns after restart.
+
+Input conditions for control, default, named, and override runs:
+
+\begin{itemize}
+\tightlist
+\item
+  Physical input: Same \texttt{hp\_zero\_seed} input; override adds only the output key.
+\item
+  Companion and initial state: Same \texttt{base.inp} and the same two IC files.
+\item
+  Gravity, domain, spectrum, boundary, chemistry, enabled physics: Identical input statements and binary options within each tree.
+\item
+  Thread count: \texttt{OMP\_NUM\_THREADS=1}.
+\item
+  Step limit: \texttt{EXHALE\_MAXSTEPS=100} in both trees.
+\item
+  Restart check: Completed named state copied to the IC filenames in the named output directory.
+\end{itemize}
+
+The focused suite also checks input-relative metal abundances and the
+lower-atmosphere profile through the parser, and the resolved relative
+spectrum filename. It does not add a new opacity-table integration or a
+full Wind-AE calculation. Python tests cover selected report paths, transit
+file selection, lower-atmosphere input names, grid pinning, GUI imports and
+option retention, plus regional plot dispatch in v1.10. Tk widgets were
+mocked because the configured display could not be reached; no real GUI
+window was tested. Changed manual pages were rendered and visually checked
+for collisions, clipped text, and broken table layout.
+
+Evidence:
+
+\begin{itemize}
+\item
+  Final build logs: \texttt{/tmp/exhale\_named\_build/state3/build\_v100.log} and
+  \texttt{build\_v110.log}; the controller also records commands and exit status.
+\item
+  Focused measurements under \texttt{/tmp/exhale\_named\_input\_validation/}:
+  \texttt{focused\_v100\_final\_retry/result.json} and \texttt{focused\_v110\_final/result.json}.
+\item
+  Independent review and file manifest: \texttt{/tmp/exhale\_named\_input\_validation/final\_audit.json}.
+\item
+  Python records for v1.00: \texttt{/tmp/exhale\_v100\_python\_paths.\{json,log\}}.
+\item
+  Python records for v1.10: \texttt{/tmp/exhale\_v110\_python\_paths.\{json,log\}}.
+\item
+  Regional dependency test under \texttt{/tmp/exhale\_named\_input\_validation/}:
+  \texttt{regional\_test\_final/review.json}.
+\item
+  PDF build logs: \texttt{/tmp/exhale\_v100\_manual\_build.log} and
+  \texttt{/tmp/exhale\_v110\_manual\_build.log}; page images: \texttt{/tmp/exhale\_named\_manual\_review/}.
+\item
+  v1.00 original executable SHA-256:
+
+  \texttt{9a2139feb51399d09a0e729b22f155d1f103aaef7ace3f52432cbe2d07fb7dd8}
+\item
+  v1.00 final executable SHA-256:
+
+  \texttt{2266c9cf502c7e64be90df06fe56d3efc58734dd0ede53c8330698856bac51f8}
+\item
+  v1.10 original executable SHA-256:
+
+  \texttt{0eb78ea66334fdf9bd72cfef7ac43381688efdedfee1b1e0188e7bd7710983dc}
+\item
+  v1.10 final executable SHA-256:
+
+  \texttt{80bef8bb26abd023d98ee1f0737123784ef24272e790cdc4a4a466771b25b8f9}
+\end{itemize}
+
+\subsubsection{154.4 Changed files}\label{1544-changed-files}
+
+The lists below include ignored test/document files. Existing unrelated
+untracked files and the preexisting Makefile/launcher changes are excluded.
+The README changes preserve edits that were already present. The existing
+ignore rules hide \texttt{src/tests/} and some Markdown files from ordinary Git
+status output.
+
+Common to both trees:
+
+\begin{itemize}
+\tightlist
+\item
+  \texttt{EXHALE\_plots.py}
+\item
+  \texttt{EXHALE\_transit.py}
+\item
+  \texttt{README.md}
+\item
+  \texttt{docs/EXHALE\_user\_manual.pdf}
+\item
+  \texttt{docs/EXHALE\_user\_manual.tex}
+\item
+  \texttt{examples/exhale\_io.py}
+\item
+  \texttt{exhale\_transit\_lib.py}
+\item
+  \texttt{src/EXHALE\_main.f90}
+\item
+  \texttt{src/modules/files\_IO/conserved\_state\_restart.f90}
+\item
+  \texttt{src/modules/files\_IO/input\_read.f90}
+\item
+  \texttt{src/modules/files\_IO/load\_IC.f90}
+\item
+  \texttt{src/modules/files\_IO/lower\_atmosphere\_profile.f90}
+\item
+  \texttt{src/modules/files\_IO/metals\_input\_read.f90}
+\item
+  \texttt{src/modules/files\_IO/opacity\_input\_read.f90}
+\item
+  \texttt{src/modules/files\_IO/write\_output.f90}
+\item
+  \texttt{src/modules/files\_IO/write\_setup\_report.f90}
+\item
+  \texttt{src/modules/functions/binary\_element\_diffusion.f90}
+\item
+  \texttt{src/modules/functions/utilities.f90}
+\item
+  \texttt{src/modules/init/init.f90}
+\item
+  \texttt{src/modules/init/molecular\_seed\_from\_atomic\_state.f90}
+\item
+  \texttt{src/modules/init/parameters.f90}
+\item
+  \texttt{src/modules/init/set\_IC.f90}
+\item
+  \texttt{src/modules/nonlinear\_system\_solver/ion\_residual\_core.f90}
+\item
+  \texttt{src/modules/radiation/excited\_hydrogen.f90}
+\item
+  \texttt{src/modules/radiation/ionization\_equilibrium.f90}
+\item
+  \texttt{src/modules/radiation/util\_ion\_eq.f90}
+\item
+  \texttt{src/modules/states/boundary\_state\_trace.f90}
+\item
+  \texttt{src/modules/time\_step/certification.f90}
+\item
+  \texttt{src/modules/time\_step/conservation\_budget.f90}
+\item
+  \texttt{src/modules/time\_step/steady\_newton.f90}
+\item
+  \texttt{src/modules/wind\_ae/wae\_exhale\_bridge.f90}
+\item
+  \texttt{src/tests/grid\_and\_gates/base\_grid\_key\_reproduces\_default.sh}
+\item
+  \texttt{src/tests/grid\_and\_gates/base\_level\_single\_statement.sh}
+\item
+  \texttt{src/tests/grid\_and\_gates/coupled\_carrier\_h2\_row.sh}
+\item
+  \texttt{src/tests/grid\_and\_gates/direct\_steady\_setup\_report.sh}
+\item
+  \texttt{src/tests/grid\_and\_gates/ionization\_transport\_atomic.sh}
+\item
+  \texttt{src/tests/grid\_and\_gates/restart\_continuation\_factor.sh}
+\item
+  \texttt{src/tests/grid\_and\_gates/restart\_option\_change.sh}
+\item
+  \texttt{src/tests/marching\_stop/run.sh}
+\item
+  \texttt{src/tests/named\_input\_output/python\_paths.py}
+\item
+  \texttt{src/tests/named\_input\_output/run.sh}
+\item
+  \texttt{src/tests/run\_mode/run.sh}
+\item
+  \texttt{src/tests/spectrum\_type/spectrum\_type\_gate.sh}
+\item
+  \texttt{src/utils/collisional\_validity.py}
+\item
+  \texttt{src/utils/element\_budget.py}
+\item
+  \texttt{src/utils/element\_flux\_closure.py}
+\item
+  \texttt{src/utils/pin\_base\_grid.py}
+\item
+  \texttt{src/utils/run\_lower.py}
+\item
+  \texttt{src/utils/vulcan\_driver.py}
+\end{itemize}
+
+Additional files in v1.00 (52 files in this task, including common files):
+
+\begin{itemize}
+\tightlist
+\item
+  \texttt{README\_HOWTO.md}
+\item
+  \texttt{md/Update\_EXHALE\_stage3.md}
+\item
+  \texttt{md/input\_schema.md}
+\end{itemize}
+
+Additional files in v1.10 (57 files in this task, including common files):
+
+\begin{itemize}
+\tightlist
+\item
+  \texttt{src/carrier\_balance\_record.inc}
+\item
+  \texttt{src/frozen\_derivative\_steps.inc}
+\item
+  \texttt{src/live\_residual\_derivatives.inc}
+\item
+  \texttt{src/modules/time\_step/regional\_convergence.f90}
+\item
+  \texttt{src/stationary\_residual\_record.inc}
+\item
+  \texttt{src/stationary\_state\_capture.inc}
+\item
+  \texttt{src/tests/regional\_convergence/run.py}
+\item
+  \texttt{src/utils/regional\_convergence\_plots.py}
+\end{itemize}
+
+\subsubsection{154.5 Missing IC pair reported as missing (2026-10-26)}\label{1545-missing-ic-pair-reported-as-missing-2026-10-26}
+
+Found while checking section 154.1 with an IC pair placed in the wrong
+directory: \texttt{load\_IC} opened \texttt{Hydro\_ioniz\_IC.txt} without \texttt{status=\textquotesingle{}old\textquotesingle{}},
+so a missing file was created empty and the error named the wrong cause
+("has 0 data rows ... the file is truncated"). Now \texttt{load\_IC} inquires for
+both files of the pair first and stops with their paths when either is
+missing; the three opens of the pair carry \texttt{status=\textquotesingle{}old\textquotesingle{}}. Both trees.
+MEASURED (v1.00, \texttt{hp\_zero\_seed} without its IC pair): the run stops at
+"(load\_IC) ERROR: "Load IC? True" but the IC pair is not there" naming the
+two paths, and \texttt{output/} holds no empty IC file; with the pair present the
+named-input run is bitwise the default run as before. Build: 0 warnings,
+\texttt{make\ -q} 0, both trees.
+
+\subsection{155. Source structure survey and cleanup (2026-10-27)}\label{155-source-structure-survey-and-cleanup-2026-10-27}
+
+The source survey covered both active trees. Review accepted proposals 1-4, declined 5-12, and agreed to leave 13-18 unchanged. The decision, detailed inventory, and measured hashes are recorded in \texttt{md/source\_structure\_survey\_20261027.md} in both trees.
+
+Program units are in \texttt{src/}, modules in \texttt{src/modules/}, and tests in \texttt{src/tests/}. The standalone programs \texttt{wind\_ae\_ic.f90} and \texttt{constrained\_equilibrium\_probe.f90} were moved from their module directories to \texttt{src/}, preserving their contents byte for byte. Both Makefiles explicitly name the program sources and search their new location. Wind-AE module wildcards now include all \texttt{.f90} files in that module directory; its solver-global bridge remains excluded from the standalone executable.
+
+Removed four Python cache files in v1.00 and five in v1.10, their empty cache directories, the tracked \texttt{.DS\_Store} file in each tree, and each stale \texttt{build/wae\_ion\_pots.mod}. Source and Makefile searches confirmed that no current module provides or uses that stale module. Ignore rules were unchanged. In v1.10 only, removed five manual main-object include prerequisites and their comment; \texttt{fortdep.py} already generates those dependencies.
+
+Measured verification used the same zero-seed input and initial profiles with one OpenMP thread and a 100-step limit. Initial build queries returned 1, so both control binaries were rebuilt before reference calculations. Final builds had zero warnings, final build queries returned 0, and both standalone executables linked in both trees. All four profile files in each tree were bitwise identical to their control after excluding comment lines: eight successful comparisons. The named-input/output suite passed all 26 rows in each tree, with zero failures. The v1.10 clean build succeeded; touching \texttt{live\_residual\_derivatives.inc} recompiled the main object, and the following build query returned 0. Contrary to the brief\textquotesingle s prediction, the build stamp records Git revision and dirty state, not source paths. The v1.00 executable MD5 stayed identical because the tree was already dirty; v1.10 changed after the clean-to-dirty transition and clean rebuild. The Intel compiler emitted one existing format-width remark in the clean build, not a warning; the source documents the nonnegative-factor range for which that field width is sufficient.
+
+The program headers, README files, manuals, scripts, and test runners had no old-path mention needing replacement. The dependency scanner needed no change. User-manual PDFs were not regenerated because their text did not change. This update-log TeX/PDF was regenerated as requested. No physical calculation was changed, and the full regression matrix and aggregate test target were not run.
+
+The regenerated PDF exposed existing section 154 table and long-path overflow. Those tables were reformatted as lists and long paths split into directory and relative filename descriptions, preserving all recorded values.
+
+\subsection{156. Comment revision of all Fortran sources (2026-10-27)}\label{156-comment-revision-of-all-fortran-sources-2026-10-27}
+
+All Fortran sources and include files under \texttt{src/} were reviewed in both trees, including tests and standalone programs. Retained comments were compared with formulas, units, defaults, input and output paths, branches, callers, and returned values. Physical definitions, scientific sources and validity ranges, units and signs, default and guard rationales, open questions, external origins and licenses, and update-log pointers were retained. Repeated narrative, redundant labels, separators, and obsolete descriptions were shortened or removed. Only comment text changed.
+
+V1.10 was revised first, with a build after each edited directory. Of the 260 common source files, 226 were originally byte-identical and ten more had identical executable text. Revised comments were synchronized for these 236 pairs; the remaining 24 pairs were checked against their version-specific implementation. Comparison with the v1.00 Git revision succeeded for 107 tracked identical files; the other 119 identical test sources had no entry there and were checked against immutable pre-edit snapshots instead.
+
+Measured totals:
+
+\begin{itemize}
+\tightlist
+\item
+  V1.00: 260 source files checked, 210 changed; 75,739 comment lines before and 72,231 after; 117,344 code lines unchanged; 306 factual comment revision records.
+\item
+  V1.10: 275 source files checked, 211 changed; 75,871 comment lines before and 72,346 after; 120,485 code lines unchanged; 332 factual comment revision records.
+\end{itemize}
+
+A revision record counts one replacement block; follow-up corrections can revisit a block. Style-only edits and marker-only insertions are excluded from factual counts. Shared changes are counted as applied in each version, not as separate underlying mistakes. There are 38 distinct suspected code or test findings, with 37 marked source locations in v1.00 and 39 in v1.10. These include conditional physical or numerical discrepancies, stale executable diagnostics, and missing test assertions. Their executable text remains unchanged, as required for this comment-only task. Two short probes confirmed a missed subsonic root below the fixed velocity bracket and loss of attenuation accuracy beyond the subdivision cap; no production profile was regenerated.
+
+Quote-aware comparisons passed for all 535 sources. A stronger comparison also preserved every noncomment character, directive, and original blank line. All original open-question markers were retained. Every same-code pair has identical final comments. Bare builds completed with zero compiler warnings, and final build queries returned zero in both trees. In each tree, all 135 existing object MD5 hashes outside the required build-stamp and main-program exclusions matched the pre-edit values. Both standalone executables linked. All 126 test translation units in v1.00 and 132 in v1.10 compiled with zero warnings; diffusion and element-census test executables also linked. The named-input/output suite passed all 26 rows in each tree, including profile data identity and a restart from the named output directory. The full regression matrix and aggregate runtime test target were not run because no executable code changed.
+
+The detailed directory counts, all 38 findings with source locations and code evidence, numerical probe inputs and results, and verification limits are in \texttt{md/}, file \texttt{comment\_revision\_20261027.md}, copied identically to both trees. Historical measurements and published reference values were retained but not independently regenerated or revalidated against publisher articles.
+
+\textbf{Second pass (2026-10-27).} Recorded history, derivations, and experiment comparisons were replaced by verified record pointers while current equations, sources, ranges, decisions, warnings, and unrecorded evidence were retained. The latest instruction excludes \texttt{src/modules/wind\_ae/} and \texttt{src/wind\_ae\_ic.f90}; five v1.10 comment edits in the excluded directory were restored from fresh pre-pass snapshots. The included 238 / 253 sources retain every noncomment character, directive, and original blank line. Comment lines fell from 71,802 to 67,651 in v1.00 and from 71,915 to 67,764 in v1.10; blocks of at least 20 lines fell from 742 to 664 and 737 to 660, and blocks of at least 50 lines from 172 to 131 and 172 to 131. All 214 same-code comment pairs match. In-scope object MD5 identity, zero-warning directory builds and final build queries, test-program compilation, and named-input/output 26/26 passed in both trees. One new stale output-band diagnostic is marked at two sites in each tree; executable strings remain unchanged. Existing physics-probe READMEs and the molecular-hydrogen and charge-exchange records were corrected or marked historical where implementation inspection established staleness; no physical table or profile was regenerated. The block locations retained because no matching record exists, the factual corrections, exclusions, and validation limits are in \texttt{md/comment\_revision\_20261027.md}, section "Second pass (2026-10-27)". The full regression matrix and aggregate runtime tests were not run.
+
+\subsection{157. Bernoulli roots, attenuation, and imposed ionization derivatives (2026-10-27)}\label{157-bernoulli-roots-attenuation-and-imposed-ionization-derivatives-2026-10-27}
+
+D01, D02, D05, D06, D09, and D34 were corrected in both EXHALE trees. The subsonic isothermal speed is solved in logarithmic velocity with an equation-derived bracket and a cancellation-free sonic expansion. The geometric cell-mean attenuation uses resolved eight-point Gauss-Legendre segments and a truncated exponential tail, replacing the subdivision-count cap. Radius tables require finite, strictly increasing radii; invalid density or pressure returns zero base Mach number before evaluating the sound speed. The H, He/H, and He/H/metals analytic Jacobians now use the residual\textquotesingle s imposed-fraction selector and identity derivatives. The grid-window test uses a binary64 literal. The associated eight source markers were removed in each tree.
+
+MEASURED in both versions: the level-30 subsonic root is \texttt{9.35762296884024171e-14}, with Bernoulli residual \texttt{-7.10542735760100186e-15}. At zero outer optical depth and unit geometric factor, the cell means for widths 1000 and 5000 are \texttt{5.96347362323194235e-4} and \texttt{1.19269472464638823e-4}. The largest imposed-row finite-difference discrepancy is \texttt{2.675548671504657e-11}, below \texttt{1e-9}. The integral\textquotesingle s discarded-tail relative bound is below \texttt{4.3e-18}, and its segment quadrature bound is below \texttt{1.4e-19}, excluding floating-point roundoff and underflow.
+
+Two additional defects were corrected during the affected-path checks. A NaN pressure could pass table validation; it is now rejected before its logarithm, with the offending level identified. Optimized unit conversion could give different last bits for identical carrier residuals and time/density factors in the solve and its independent diagnostic. Both local factors are now explicitly stored with \texttt{VOLATILE}, preserving the independent recomputation and strict bitwise comparison. Control binaries reproduced the original failure; private bit-level instrumentation isolated the conversion rather than a physical-state mismatch.
+
+MEASURED final validation in each tree: bare build with zero warnings and \texttt{make\ -q} zero; selected grid checks 29/29, imposed-fraction checks 210/210, attenuation checks 60/60, the canonical single inner-shell driver 143/143, named-input/output checks 26/26, and coupled Jacobian checks 10/10. All four \texttt{hp\_zero\_seed} profile files at a 100-step cap are bitwise identical to the supplied control after excluding comment headers, with zero maximum relative difference in every column. The final named-input and profile checks were repeated after the unit-conversion correction. Complete temperature, velocity, density, and composition profiles were plotted and inspected, and matching physical inputs were recorded.
+
+The canonical inner-shell driver passes with its gfortran debug settings. An additional uniform ifx \texttt{-O3} build still fails its strict shell-sum bitwise assertion at 66 sampled energies while passing its Jacobian finite-difference check; this compiler-specific result is retained explicitly, and neither the cross-section formula nor tolerance was changed. The optional 17-case regression matrix and aggregate test target were not run. Full measurements, column differences, input conditions, hashes, figures, and compiler qualifications are in \texttt{md/defect\_fixes\_20261027.md} in both trees. The update-log TeX/PDF was not regenerated for this section.
+
+\subsection{158. Wind-AE port: eleven defects corrected, the mean-molecular-weight derivative on hold (2026-10-27)}\label{158-wind-ae-port-eleven-defects-corrected-the-mean-molecular-weight-derivative-on-hold-2026-10-27}
+
+The comment audit of section 156 found eleven suspected defects in the Fortran reimplementation of Wind-AE (\texttt{src/modules/wind\_ae/}, \texttt{src/wind\_ae\_ic.f90}), items D11-D21 of \texttt{md/comment\_revision\_20261027.md}. D16 and D17 were checked against the upstream C source (\texttt{wind-ae-main/wind\_ae/src/soe.c}) and are faithful copies of upstream behavior. User decision (2026-10-27): correct them physically, not as upstream has them, and record the difference from upstream in each file header ("Differences from upstream Wind-AE"). Record: \texttt{md/windae\_defect\_fixes\_20261027.md} (both trees).
+
+Corrected in both trees (sources byte-identical between the trees):
+
+\begin{itemize}
+\tightlist
+\item
+  D16: the electron density is computed from the composition unconditionally, so recombination cooling is nonzero when Ly-alpha cooling is off (upstream fills n\_e only inside its \texttt{lyacool} branch).
+\item
+  D17: recombination cooling uses T in K. The port, like upstream, used the dimensionless T/T0 in the Black (1981, MNRAS 197, 553, Table 3; 5e3-5e5 K) hydrogen fit and in the 3/2 k T term of the other species; at 1e4 K the hydrogen cooling was 26 times too small. The source and range are written at the code.
+\item
+  D11 (rate cache keyed on the columns only), D12 (sonic-column lower edge), D13 (convergence measure with signed cancellation and a success code on exhaustion), D14 and D15 (0/0 in the IC writer\textquotesingle s scale height and base blend), D19 (the no-transition sentinel turned the molecular layer off), D20 (\texttt{km\ =\ 0} index in the relaxation solver), D21 (the optional density scale lost on the retry path).
+\item
+  Found and corrected during the verification: a failed tidal ramp was silently ignored by \texttt{wind\_ae\_ic.f90} and the bridge, which produced an IC with tidal gravity partly on for a spherical domain (HD 209458 b gave 7.93e10 g/s, an invalid state); the ramp step could shrink without end (it now fails below 1e-6 and regrows after a success); \texttt{wae\_get\_mu} counts the Z - N\_e electrons already removed from a species\textquotesingle{} lowest state (no change for H and He). \texttt{src/utils/windae\_to\_exhale\_ic.py} received the D14/D15 guards and now uses m\_He/m\_H as the Fortran writer does, not 4. \texttt{docs/wind\_ae\_solver.tex} (v1.00 only) was corrected for the mu formula and the rate cache.
+\end{itemize}
+
+D18 (dmu/dr): the exact derivative of \texttt{wae\_get\_mu}, with the atomic-mass weights and the erfc molecular-blend term, was implemented and MEASURED. With the full term the HD 209458 b example (\texttt{examples/12\_windae\_ic\_hd209}) no longer converges: the tidal ramp stalls at tidalforce 0.0275 with the relaxation error at 2e-6 against 1e-10. The blend prescribes mu(v) without the heat source that the released particles carry, which upstream hides by keeping T continuous. Variants: D17 only, Mdot x0.868; D17 plus the atomic-mass weights without the erfc term, x0.963, converged; full D18, failed. User decision (2026-10-27): D18 ON HOLD, upstream dmu/dr restored, the derivative and the measurements recorded, marker \texttt{To\ Be\ Checked:\ D18\ on\ hold} at the two sites; Wind-AE is expected to be used rarely. The options (keep the exact term and change the example\textquotesingle s IC mode, add the blend\textquotesingle s heat source to Q as new physics, or drop the term) are in the record.
+
+MEASURED initial conditions with the final standalone \texttt{wind\_ae\_ic.x} against the pre-fix control (shipped seeds; Mdot the median of 4 pi r\^{}2 rho v over 1.1-1.9 R\_p; the percentages are the largest relative change over the grid):
+
+{\def\LTcaptype{none} % do not increment counter
+{\small
+\begin{longtable}[]{@{}>{\raggedright\arraybackslash}p{\dimexpr(\linewidth-14\tabcolsep)/7\relax}>{\raggedright\arraybackslash}p{\dimexpr(\linewidth-14\tabcolsep)/7\relax}>{\raggedright\arraybackslash}p{\dimexpr(\linewidth-14\tabcolsep)/7\relax}>{\raggedright\arraybackslash}p{\dimexpr(\linewidth-14\tabcolsep)/7\relax}>{\raggedright\arraybackslash}p{\dimexpr(\linewidth-14\tabcolsep)/7\relax}>{\raggedright\arraybackslash}p{\dimexpr(\linewidth-14\tabcolsep)/7\relax}>{\raggedright\arraybackslash}p{\dimexpr(\linewidth-14\tabcolsep)/7\relax}@{}}
+\toprule\noalign{}
+Example & Converged & Mdot control -\textgreater{} final {[}g/s{]} & rho & v & T & x\_HII \\
+\midrule\noalign{}
+\endhead
+\bottomrule\noalign{}
+\endlastfoot
+11, HD 189733 b & yes, self-consistent-BC path (2781 s vs 2024 s) & 5.739e10 -\textgreater{} 4.614e10 (x0.804) & 15.4\% & 28.0\% & 10.5\% & 15.2\% \\
+12, HD 209458 b & yes, static-BC path (67 s) & 4.629e10 -\textgreater{} 4.017e10 (x0.868) & 12.5\% & 16.0\% & 9.1\% & 45.8\% at 1.06 R\_p where x\_HII \textasciitilde{} 1e-3 \\
+\end{longtable}
+}
+}
+
+The HD 209458 b result equals the D17-only variant to the printed digits. Builds: zero warnings and \texttt{make\ -q} 0 in both trees; \texttt{make\ wind\_ae\_ic} links; \texttt{wind\_ae\_bridge\_composition} 8/8; \texttt{named\_input\_output} 26/26. Not run: in-process \texttt{IC\ mode:\ windae} runs, the \texttt{lyacool\ =\ 0} path, species beyond H and He, the D13 failure branches (its callers still ignore the return value). The README\_HOWTO and user-manual statements that both example ICs converge were checked against these runs and are true.
+
 \appendix
 \input{Update_EXHALE_appendix}
 \end{document}

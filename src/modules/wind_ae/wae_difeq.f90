@@ -29,14 +29,12 @@
       end if
       end subroutine wae_difeq_eval
 
-      !---------------------------------------------------------------!
       subroutine zero_ymod(ymod, ne)
       integer, intent(in) :: ne
       real*8, intent(out) :: ymod(0:ne,0:1)
       ymod = 0.0d0
       end subroutine zero_ymod
 
-      !---------------------------------------------------------------!
       subroutine set_bcs_base(s, y, ne, indexv, jsf)
       integer, intent(in)    :: ne, indexv(ne), jsf
       real*8,  intent(inout) :: s(ne, 2*ne+1)
@@ -53,7 +51,7 @@
          s(last, ne+indexv(j+5+nsp)) = 0.0d0
       end do
       s(last, jsf) = y(3,1) - par%rho_rmin
-      ! ionization fraction fixed at the base, all species
+      ! Neutral fractions fixed at the base for all species.
       do j = 0, nsp-1
          s(last-j-1, ne+indexv(1)) = 0.0d0
          s(last-j-1, ne+indexv(2)) = 0.0d0
@@ -81,7 +79,6 @@
       s(last-nsp-1, jsf) = y(4,1) - par%T_rmin
       end subroutine set_bcs_base
 
-      !---------------------------------------------------------------!
       subroutine set_bcs_sp(s, y, ne, indexv, jsf)
       integer, intent(in)    :: ne, indexv(ne), jsf
       real*8,  intent(inout) :: s(ne, 2*ne+1)
@@ -92,7 +89,7 @@
       integer :: j, i, M
       M = wae_m
 
-      ! Numerator (Bernoulli) condition at the sonic point
+      ! Vanishing wind-equation numerator at the sonic point.
       call get_bc_evals(varmod, eqn, eqn_pl, eqn_mi, M, y, ymod, SPCRITEQN, ne)
       s(1, ne+indexv(3)) = (eqn_pl%rho-eqn_mi%rho)/varmod%rho
       s(1, ne+indexv(1)) = (eqn_pl%v-eqn_mi%v)/varmod%v
@@ -104,7 +101,7 @@
       end do
       s(1, jsf) = eqn
 
-      ! velocity (Mach-1) condition at the sonic point
+      ! Velocity equals breezeparam times the local adiabatic sound speed.
       call get_bc_evals(varmod, eqn, eqn_pl, eqn_mi, M, y, ymod, SPVEQN, ne)
       s(2, ne+indexv(3)) = (eqn_pl%rho-eqn_mi%rho)/varmod%rho
       s(2, ne+indexv(1)) = (eqn_pl%v-eqn_mi%v)/varmod%v
@@ -134,7 +131,6 @@
       end do
       end subroutine set_bcs_sp
 
-      !---------------------------------------------------------------!
       subroutine set_interior_eqns(s, y, ne, indexv, jsf, k)
       integer, intent(in)    :: ne, indexv(ne), jsf, k
       real*8,  intent(inout) :: s(ne, 2*ne+1)
@@ -195,7 +191,6 @@
       call fill_row(s, last, indexv, ne, km1_pl, km1_mi, k_pl, k_mi, varmod, eqn, jsf)
       end subroutine set_interior_eqns
 
-      !---------------------------------------------------------------!
       subroutine fill_row(s, row, indexv, ne, km1_pl, km1_mi, k_pl, k_mi, varmod, eqn, jsf)
       ! Common pattern: s[row][indexv[var]]    = d(eqn)/d(var at k-1)
       !                 s[row][ne+indexv[var]] = d(eqn)/d(var at k)
@@ -223,7 +218,6 @@
       s(row, jsf) = eqn
       end subroutine fill_row
 
-      !---------------------------------------------------------------!
       subroutine get_bc_evals(varmod, eqn_eval, eqn_pl, eqn_mi, k, y, ymod, eqnnum, ne)
       ! Numerical derivative of `eqnnum` wrt each variable at a single
       ! boundary cell (ymod(:,1) only). Mirrors difeq.c:get_bc_evals.
@@ -278,7 +272,6 @@
       eqn_mi%z = wae_eval_eqn(k, x, y, ymod, eqnnum, 1, wae_m, ne)
       end subroutine get_bc_evals
 
-      !---------------------------------------------------------------!
       subroutine get_eqn_evals(varmod, eqn_eval, km1_pl, km1_mi, k_pl, k_mi, &
                                avg, k, y, ymod, eqnnum, species, ne)
       ! Numerical derivative of `eqnnum` wrt each variable at cells k-1

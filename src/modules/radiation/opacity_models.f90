@@ -44,7 +44,6 @@
 
       contains
 
-      !----------------------------------------------------------!
 
       subroutine load_opacity_tables
       ! Load each species's .opa file whose path was set in
@@ -66,7 +65,6 @@
 
       end subroutine load_opacity_tables
 
-      !----------------------------------------------------------!
 
       subroutine load_one(path, tab)
       character(len=*), intent(in)    :: path
@@ -112,7 +110,6 @@
 
       end subroutine load_one
 
-      !----------------------------------------------------------!
 
       double precision function photoion_sigma(sp, E)
       ! Returns sigma(E) for species sp ('HI','HeI','HeII','HeITR')
@@ -130,7 +127,6 @@
       end select
       end function photoion_sigma
 
-      !----------------------------------------------------------!
 
       double precision function analytic_sigma(sp, E)
       character(len=*), intent(in) :: sp
@@ -146,7 +142,6 @@
       end select
       end function analytic_sigma
 
-      !----------------------------------------------------------!
 
       double precision function constant_sigma(sp, E)
       ! Constant cross section above threshold:
@@ -177,7 +172,6 @@
       endif
       end function constant_sigma
 
-      !----------------------------------------------------------!
 
       double precision function tabulated_sigma(sp, E)
       character(len=*), intent(in) :: sp
@@ -202,7 +196,6 @@
       endif
       end function tabulated_sigma
 
-      !----------------------------------------------------------!
 
       double precision function loglog_interp(x, y, n, x0)
       ! Bisection + log-log linear interpolation. Falls back to linear
@@ -242,7 +235,6 @@
       endif
       end function loglog_interp
 
-      !----------------------------------------------------------!
 
       double precision function opacity_pT_factor(p_dyne)
       ! Pressure-broadening multiplier applied to the base cross
@@ -264,5 +256,4 @@
       endif
       end function opacity_pT_factor
 
-      ! End of module
       end module opacity_models

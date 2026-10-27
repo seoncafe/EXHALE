@@ -25,7 +25,7 @@
    rhoL = WR(1)
    rhoR = WL(1)       
    
-   ! Central ressure
+   ! Cell-center pressure.
    if (.not. well_balanced)                                              &
       pC = pressure_from_energy_density(j, u(1), u(3)-0.5*u(2)*u(2)/u(1))
    
@@ -50,11 +50,9 @@
    S(2) = - 0.5*(rhoL + rhoR)*(Gphi_i(j) - Gphi_i(j-1))/dr
    S(3) = 0.0
    
-   ! Add source term explicitly if PLM is used
+   ! Add the spherical pressure term for PLM.
    if (use_plm) S(2) = S(2) + (dAp-dAm)/dV*pC
 
-   ! End of subroutine
    end subroutine source
    
-   ! End of module
    end module source_func

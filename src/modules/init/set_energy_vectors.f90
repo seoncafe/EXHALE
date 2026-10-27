@@ -1,6 +1,5 @@
    module energy_vectors_construct
-   ! Construct energy grid for the computation of radiative
-	!      contributions and radiative equilibrium
+   ! Construct photon energy grids for radiation and photoelectron integrals.
       
    use global_parameters
    use species_table, only: n_mphot, n_mion, mion_ethr,                 &
@@ -152,7 +151,7 @@
 		! case that could raise the total is a band cut into more
 		! sub-intervals than its budget, which no configuration of this
 		! species table reaches (the widest, [e_abs_low, 13.6 eV], holds at
-		! most seven of them against a budget of twenty).
+		! most seven of them against a budget of 89).
 		!
 		! The bins are contiguous and de_v is the exact bin width, so
 		! sum(de_v) = e_top - e_sub_low exactly: the grid covers the whole
@@ -335,7 +334,6 @@
 		sigma_tab(:,k) = (/ (metal_photoion_sigma(k, e_v(i)), i = 1,Nl) /)
 	enddo
 
-	! --------------------------------------------------
 
 	! Incident flux.  The dayside dilution is global_parameters'
 	! dayside_dilution(), the single definition every stellar beam uses
@@ -362,7 +360,6 @@
 
 	endif
 	
-	! --------------------------------------------------
 
 	! Where each absorber's photoelectron energy E0 = hv - E_th falls in the
 	! Dalgarno energy grid of the secondary-ionization partition. Both e_v
@@ -384,10 +381,8 @@
 	! decided once here for every absorber (low_energy_electron_degradation).
 	call low_energy_electron_energy_grid(e_v, eth_abs, E_sec_ion)
 
-	! End of subroutine
     end subroutine set_energy_vectors
 
-    ! --------------------------------------------------
 
     subroutine ionization_thresholds_active(e_thr, n_thr)
     ! The ionization thresholds [eV] of every absorber the run carries: the
@@ -461,7 +456,6 @@
 
     end subroutine ionization_thresholds_active
 
-    ! --------------------------------------------------
 
     subroutine append_band(e_lo, e_hi, nbin, e_band_lo, e_band_hi,          &
                            n_band_bin, n_band)
@@ -480,7 +474,6 @@
 
     end subroutine append_band
 
-    ! --------------------------------------------------
 
     subroutine band_sub_boundaries(e_lo, e_hi, e_thr, n_thr, e_bnd, n_sub)
     ! Cut the band [e_lo, e_hi] at every ionization threshold that lies
@@ -532,7 +525,6 @@
 
     end subroutine band_sub_boundaries
 
-    ! --------------------------------------------------
 
     subroutine bins_by_log_width(e_bnd, n_sub, n_budget, n_bin)
     ! Share a band's budget of bins out over its n_sub sub-intervals in
@@ -602,7 +594,6 @@
 
     end subroutine bins_by_log_width
 
-    ! --------------------------------------------------
 
     subroutine geometric_band_edges(e_lo, e_hi, nbin, e_edge, k_edge)
     ! Append the UPPER edges of nbin geometrically spaced bins that partition
@@ -631,6 +622,5 @@
     end subroutine geometric_band_edges
 
 
-    ! End of module
     end module energy_vectors_construct
 

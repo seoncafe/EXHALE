@@ -40,8 +40,8 @@
 	! with the molecular fractions at zero its H/He/metal rows reduce to
 	! System_HeH_metals; both limits are shared code, not re-derived here.
 	!
-	! Solved with hybrd1 (numerical Jacobian), matching the molecular system;
-	! no analytic Jacobian is written for the merged residual.
+	! hybrd1_resolving_every_unknown runs hybrd1, then optional
+	! finite-difference Newton; no analytic Jacobian is written here.
 
 	use global_parameters, only: thereis_HeITR, thereis_oxychem, thereis_metals
 	use ion_cell_state,    only: ieq_cell, h2_fraction_of_reservoir,      &
@@ -200,7 +200,6 @@
 	mol_rows_by_element_turnover = .true.
 	end subroutine set_element_turnover_scales
 
-	!----------------------------------!
 
 	subroutine ion_system_HeH_mol_metals(N_eq,x,fvec,iflag,params)
 
@@ -400,5 +399,4 @@
 
 	end subroutine ion_system_HeH_mol_metals
 
-	! End of module
 	end module System_HeH_mol_metals

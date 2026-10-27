@@ -26,9 +26,7 @@
 !  sweep produced in double, and they enter here converted exactly.  What is
 !  evaluated in fv is the arithmetic of the operator on that composition.
 
-      ! ------------------------------------------------------!
       ! The caloric equation of state, at the composition caloric_eos holds
-      ! ------------------------------------------------------!
 
       subroutine h2_rovibrational_energy_and_heat_capacity_fv(TK, u_rv, c_rv)
       ! Mean rovibrational energy u_rv(T) [K] of one H2 molecule and its
@@ -96,7 +94,6 @@
 
       end subroutine h2_rovibrational_energy_and_heat_capacity_fv
 
-      ! ------------------------------------------------------!
 
       function internal_energy_of_mixture_fv(x2, T) result(e_out)
       ! Internal energy per (n_tot + n_e) in units of k T0.
@@ -112,7 +109,6 @@
 
       end function internal_energy_of_mixture_fv
 
-      ! ------------------------------------------------------!
 
       function heat_capacity_of_mixture_fv(x2, T) result(cv_out)
       ! C_V/((n_tot + n_e) k) = 1/(gamma_eff - 1).
@@ -128,7 +124,6 @@
 
       end function heat_capacity_of_mixture_fv
 
-      ! ------------------------------------------------------!
 
       function temperature_of_mixture_fv(x2, u_in) result(T_out)
       ! Invert internal_energy_of_mixture_fv for T: f(T) = 1.5 T
@@ -175,7 +170,6 @@
 
       end function temperature_of_mixture_fv
 
-      ! ------------------------------------------------------!
 
       function pressure_from_energy_density_fv(j, rho_c, rho_e) result(p_out)
       ! p from the internal energy density of a state whose composition is
@@ -196,7 +190,6 @@
 
       end function pressure_from_energy_density_fv
 
-      ! ------------------------------------------------------!
 
       function energy_density_from_pressure_fv(j, rho_c, p) result(e_out)
       integer,  intent(in) :: j
@@ -214,7 +207,6 @@
 
       end function energy_density_from_pressure_fv
 
-      ! ------------------------------------------------------!
 
       function adiabatic_index_from_state_fv(j, rho_c, p) result(gam)
       ! gamma_eff = 1 + (n_tot + n_e) k/C_V of a state (rho_c, p) at the
@@ -234,9 +226,7 @@
 
       end function adiabatic_index_from_state_fv
 
-      ! ------------------------------------------------------!
       ! Conservative <-> primitive
-      ! ------------------------------------------------------!
 
       subroutine U_to_W_comp_fv(U_in, W_out, jcell)
       real(fv), intent(in)  :: U_in(3)
@@ -250,7 +240,6 @@
 
       end subroutine U_to_W_comp_fv
 
-      ! ------------------------------------------------------!
 
       subroutine W_to_U_comp_fv(W_in, U_out, jcell)
       real(fv), intent(in)  :: W_in(3)
@@ -264,7 +253,6 @@
 
       end subroutine W_to_U_comp_fv
 
-      ! ------------------------------------------------------!
 
       subroutine U_to_W_fv(U_in, W_out)
       real(fv), intent(in)  :: U_in(3,1-Ng:N+Ng)
@@ -282,9 +270,7 @@
 
       end subroutine U_to_W_fv
 
-      ! ------------------------------------------------------!
       ! Reconstruction
-      ! ------------------------------------------------------!
 
       function minmod_mc_slope_fv(a, b, c) result(d)
       ! Generalized minmod (monotonized central) limited slope, theta = 2
@@ -308,7 +294,6 @@
 
       end function minmod_mc_slope_fv
 
-      ! ------------------------------------------------------!
 
       subroutine piecewise_linear_faces_fv(u_in, WL_rec, WR_rec,         &
                                            P_up, P_dn, dev_L, dev_R)
@@ -386,7 +371,6 @@
 
       end subroutine piecewise_linear_faces_fv
 
-      ! ------------------------------------------------------!
 
       subroutine weno3_geometry_coefficients_fv(C1, C2, D1, D2)
       ! Volume-weighted interpolation weights and stencil weights of the
@@ -425,7 +409,6 @@
 
       end subroutine weno3_geometry_coefficients_fv
 
-      ! ------------------------------------------------------!
 
       subroutine weno3_faces_fv(u_in, WL, WR, P_up, P_dn, dev_L, dev_R)
       ! Third-order WENO reconstruction with the nonlinear weights of
@@ -535,7 +518,6 @@
 
       end subroutine weno3_faces_fv
 
-      ! ------------------------------------------------------!
 
       subroutine reconstructed_face_boundary_states_fv(plm, WL_in, WR_in, &
                                                        WL_out, WR_out)
@@ -567,7 +549,6 @@
 
       end subroutine reconstructed_face_boundary_states_fv
 
-      ! ------------------------------------------------------!
 
       function positive_variable_scaling_fv(q_f, q_a) result(th)
       ! The theta that puts q_a + theta (q_f - q_a) on the floor
@@ -588,7 +569,6 @@
       th = max(0.0_fv, min(1.0_fv, th))
       end function positive_variable_scaling_fv
 
-      ! ------------------------------------------------------!
 
       function positivity_scaling_fv(rho_f, p_f, rho_a, p_a) result(th)
       real(fv), intent(in) :: rho_f, p_f, rho_a, p_a
@@ -599,7 +579,6 @@
       th = min(th, positive_variable_scaling_fv(p_f,   p_a))
       end function positivity_scaling_fv
 
-      ! ------------------------------------------------------!
 
       subroutine positivity_limited_faces_fv(u_in, WL, WR, n_scaled)
       ! Scale each face state continuously toward its own cell average by the
@@ -649,7 +628,6 @@
 
       end subroutine positivity_limited_faces_fv
 
-      ! ------------------------------------------------------!
 
       subroutine hydrostatic_equilibrium_of_each_cell_fv(u_in,P_up,P_dn, &
                        p_cell,rho_cell,dev_L,dev_R,dp_eq)
@@ -694,7 +672,6 @@
 
       end subroutine hydrostatic_equilibrium_of_each_cell_fv
 
-      ! ------------------------------------------------------!
 
       subroutine well_balanced_face_departures_fv(WL,WR,P_up,P_dn,       &
                        p_cell,rho_cell,pL_asm,pR_asm,dev_L,dev_R,dp_eq)
@@ -739,7 +716,6 @@
 
       end subroutine well_balanced_face_departures_fv
 
-      ! ------------------------------------------------------!
 
       subroutine reconstructed_faces_fv(plm, u_in, WL_out, WR_out,       &
                                         n_scaled, dev_L, dev_R, dp_eq)
@@ -802,9 +778,7 @@
 
       end subroutine reconstructed_faces_fv
 
-      ! ------------------------------------------------------!
       ! The interface flux
-      ! ------------------------------------------------------!
 
       subroutine physical_flux_fv(plm, W, PF, jcell)
       logical,  intent(in)  :: plm
@@ -831,7 +805,6 @@
 
       end subroutine physical_flux_fv
 
-      ! ------------------------------------------------------!
 
       subroutine lax_friedrichs_flux_fv(plm, WL, WR, NF, p_out, jL, jR)
       ! Rusanov flux: the average of the two physical fluxes plus a jump term
@@ -864,7 +837,6 @@
 
       end subroutine lax_friedrichs_flux_fv
 
-      ! ------------------------------------------------------!
 
       subroutine hlle_flux_fv(WL, WR, FL, FR, SL, SR, jL, jR, NF)
       ! Harten-Lax-van Leer flux with Einfeldt's wave bounds: positively
@@ -888,7 +860,6 @@
 
       end subroutine hlle_flux_fv
 
-      ! ------------------------------------------------------!
 
       subroutine riemann_star_state_fv(WL, WR, gam, u_star, cL_star,     &
                                        cR_star, status)
@@ -1006,7 +977,6 @@
 
       end subroutine riemann_star_state_fv
 
-      ! ------------------------------------------------------!
 
       subroutine interface_flux_fv(plm, WL, WR, NF, p_out, jL, jR,       &
                                    n_hlle, n_llf,                        &
@@ -1246,9 +1216,7 @@
 
       end subroutine interface_flux_fv
 
-      ! ------------------------------------------------------!
       ! The rows
-      ! ------------------------------------------------------!
 
       subroutine geometric_and_gravitational_source_fv(plm,j,dr,dAp,dAm, &
                                                        dV,u,WR,WL,S)
@@ -1289,7 +1257,6 @@
 
       end subroutine geometric_and_gravitational_source_fv
 
-      ! ------------------------------------------------------!
 
       subroutine flux_difference_and_source_of_scheme_fv(plm,u_in,WL,WR, &
                        dF,S,ff,fpr,face_q_up,face_q_dn,                  &
@@ -1425,7 +1392,6 @@
 
       end subroutine flux_difference_and_source_of_scheme_fv
 
-      ! ------------------------------------------------------!
 
       subroutine hydrodynamic_flux_difference_and_source(u8,WL8,WR8,dF8, &
                        S8,ff8,fp8,n_scaled,n_hlle,n_llf,               &

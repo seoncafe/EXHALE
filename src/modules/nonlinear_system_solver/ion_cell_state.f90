@@ -1,11 +1,6 @@
 	module ion_cell_state
-	! Named-field cell state for the equilibrium ionization residuals. It
-	! replaces reading the position-packed params() inside the residuals.
-	! params stays as the MINPACK transport argument
-	! (hybrd1/fdjac1/solve_ieq), but
-	! the converted equilibrium systems no longer read it -- they read the
-	! named fields below instead. The field names follow the physical
-	! quantities of the equilibrium params layout.
+	! Named physical quantities for equilibrium ionization residuals.
+	! MINPACK still transports params; the converted residuals read these fields.
 	!
 	! The ionization cell sweep (ioniz_eq) is OpenMP-parallel over cells, so
 	! the single module instance is threadprivate: each thread fills its own
@@ -199,13 +194,11 @@
 		!     x_O   = (n(OH) + 2 n(H2O))/n_H
 		! (h2_fraction_of_reservoir), solved TOGETHER with the ionization
 		! rows: x_ion is an unknown of the same solve, not the value of a
-		! previous pass. Pinning x(4) at x2 (1 - x_ion) of a previous
-		! state leaves 1 - x(4) of the hydrogen for H I and the ions, and
-		! where the ionization balance asks for more than that room no
-		! composition satisfies the rows (md/Update_EXHALE_stage3.md
-		! section 105: 0.0315 of ions against 0.0302 of room in the
-		! LHS 1140 b He/H 2e4 ghost). In the implicit row the neutral
-		! hydrogen left is (1 - x2)(1 - x_ion) >= 0 at every x_ion, so the
+		! previous pass. The earlier lagged pin could make the ionization
+		! balance infeasible; the measured LHS 1140 b example is in
+		! ../EXHALE_v1.00/md/Update_EXHALE_stage3.md section 105.
+		! The implicit row leaves neutral hydrogen
+		! (1 - x2)(1 - x_ion) >= 0 at every x_ion, so the
 		! row never empties the simplex. Exclusive with x_h2_fixed.
 		logical :: x_h2_neutral_partition_fixed = .false.
 		real*8 :: x_h2_neutral_partition = 0.0d0

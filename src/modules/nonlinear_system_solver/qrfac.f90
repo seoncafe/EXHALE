@@ -1,3 +1,4 @@
+      ! MINPACK Project, Argonne National Laboratory; original routine qrfac.
       subroutine qrfac(m,n,a,lda,pivot,ipvt,lipvt,rdiag,acnorm,wa)
       integer m,n,lda,lipvt
       integer ipvt(lipvt)

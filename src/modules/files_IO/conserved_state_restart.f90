@@ -1,10 +1,10 @@
       module conserved_state_restart
       ! THE EXACT CODE-UNIT STATE BESIDE THE DIMENSIONAL PAIR.
       !
-      ! output/conserved_state.txt holds the conserved variables
+      ! <output_dir>/conserved_state.txt holds the conserved variables
       ! u = (rho, rho v, E) and every species fraction f_sp of every cell,
       ! ghosts included, in code units and binary64, written as ES25.17E3
-      ! text (17 significant digits, which reproduces a binary64 value
+      ! text (18 significant decimal digits, sufficient to round-trip binary64
       ! exactly on reading). Hydro_ioniz.txt and Ion_species.txt remain the
       ! state files: they are what analysis reads and what a restart reads
       ! when no exact file is present. The exact file only removes the
@@ -12,7 +12,7 @@
       ! digits, then the energy rebuilt from p through the caloric equation
       ! of state), so a restart from it starts at the bits the run ended on.
       !
-      ! READ AS output/conserved_state_IC.txt, beside Hydro_ioniz_IC.txt and
+      ! READ AS <output_dir>/conserved_state_IC.txt, beside Hydro_ioniz_IC.txt and
       ! Ion_species_IC.txt. It is used only when every recorded condition
       ! matches the present run: format, shape (N, Ng, n_species), the
       ! checksums of the two dimensional files it was written with, the
@@ -65,7 +65,6 @@
 
       contains
 
-      ! ------------------------------------------------------------------ !
 
       subroutine write_conserved_state(path, hydro_path, ion_path, u,    &
                                        f_sp, written)
@@ -150,7 +149,6 @@
       if (present(written)) written = .true.
       end subroutine write_conserved_state
 
-      ! ------------------------------------------------------------------ !
 
       subroutine read_conserved_state(path, hydro_path, ion_path, u,     &
                                       f_sp, found)
@@ -333,7 +331,6 @@
            ' ghosts restored, lower ghosts rebuilt by the boundary.'
       end subroutine read_conserved_state
 
-      ! ------------------------------------------------------------------ !
 
       subroutine conserved_state_not_read(path, why)
       ! The notice of an exact state file that is present and not used.
@@ -352,7 +349,6 @@
            '****************************************'
       end subroutine conserved_state_not_read
 
-      ! ------------------------------------------------------------------ !
 
       subroutine remove_conserved_state(path)
       ! Remove an exact state file that no longer describes the dimensional
@@ -371,7 +367,6 @@
               ' removed; a restart will not use it (pair checksum).'
       end subroutine remove_conserved_state
 
-      ! ------------------------------------------------------------------ !
 
       subroutine skip_exact_write(path, why)
       character(len=*), intent(in) :: path, why
@@ -381,7 +376,6 @@
            ' dimensional pair is the restart of this state.'
       end subroutine skip_exact_write
 
-      ! ------------------------------------------------------------------ !
 
       subroutine pair_checksums(hydro_path, ion_path, ck_h, ck_i, why)
       character(len=*), intent(in) :: hydro_path, ion_path
@@ -394,7 +388,6 @@
          why = 'the dimensional pair is missing or unreadable'
       end subroutine pair_checksums
 
-      ! ------------------------------------------------------------------ !
 
       subroutine current_normalization(x, why)
       ! The code-unit scales and the planetary parameters a code-unit state
@@ -407,7 +400,6 @@
          why = 'nonfinite normalization or planetary parameter'
       end subroutine current_normalization
 
-      ! ------------------------------------------------------------------ !
 
       subroutine current_file_checksums(ck, why)
       ! The input files that define the physical problem: the stellar
@@ -441,7 +433,6 @@
          ck(9) = file_rolling_checksum(opa_file_HeITR)
       end subroutine current_file_checksums
 
-      ! ------------------------------------------------------------------ !
 
       integer(int64) function opacity_configuration_checksum(why) result(ck)
       character(len=*), intent(inout) :: why
@@ -462,7 +453,6 @@
       ck = h1*hash_mod + h2
       end function opacity_configuration_checksum
 
-      ! ------------------------------------------------------------------ !
 
       subroutine current_field_checksums(ck, why)
       ! The gravitational potential at centers and interfaces and the
@@ -477,7 +467,6 @@
       if (allocated(de_v))   ck(5) = array_checksum(de_v, why)
       end subroutine current_field_checksums
 
-      ! ------------------------------------------------------------------ !
 
       integer(int64) function array_checksum(x, why) result(ck)
       real*8, intent(in) :: x(:)
@@ -493,7 +482,6 @@
       ck = h1*hash_mod + h2
       end function array_checksum
 
-      ! ------------------------------------------------------------------ !
 
       subroutine current_species_names(names)
       ! The species order of f_sp, by name, as the run's species table
@@ -516,7 +504,6 @@
          'conserved_state_restart: a species of f_sp has no name'
       end subroutine current_species_names
 
-      ! ------------------------------------------------------------------ !
 
       subroutine require_writable_state(u, f_sp, why)
       ! The state a reader would accept: finite everywhere, admissible
@@ -547,7 +534,6 @@
       enddo
       end subroutine require_writable_state
 
-      ! ------------------------------------------------------------------ !
 
       logical function next_line_is(unit, expected, description, why)
       integer, intent(in) :: unit
@@ -565,7 +551,6 @@
       endif
       end function next_line_is
 
-      ! ------------------------------------------------------------------ !
 
       subroutine hash_real(h1, h2, x)
       ! The two rolling sums of file_rolling_checksum (utilities.f90) over
@@ -582,7 +567,6 @@
       enddo
       end subroutine hash_real
 
-      ! ------------------------------------------------------------------ !
 
       subroutine require_binary64(why)
       character(len=*), intent(inout) :: why

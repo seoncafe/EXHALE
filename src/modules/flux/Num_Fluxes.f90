@@ -1,11 +1,8 @@
       module Numerical_Fluxes
-      ! Collection of numerical flux functions
       
       use global_parameters
       use Conversion
-      ! S_estimate_HLLC (Toro's adaptive p_star estimate) used to be `use`d
-      ! here and never called: the HLLC branch below builds its own
-      ! Davis/Einfeldt speeds inline.  The module has been removed.
+      ! HLLC uses the minimum/maximum one-sided acoustic signal speeds below.
       use S_estimate_ROE
       use caloric_eos, only: energy_density_from_pressure,             &
                             adiabatic_index_from_state
@@ -20,74 +17,35 @@
       ! Only "Numerical flux: ROE" can raise it.
       integer :: n_faces_roe_hlle = 0
 
-      ! Faces at which the Lax-Friedrichs flux was the flux of the scheme,
-      ! that is the faces evaluated under "Numerical flux: LLF", summed over
-      ! a whole run and reported in the run summary.  The same routine is
-      ! also called by the positivity repair of RK_integration; those faces
-      ! are counted there (n_faces_flux_positivity_limited) and not here, so
-      ! that this counter reports the discretization the run selected and not
-      ! the repairs it needed.
+      ! Number of faces evaluated with the selected LLF scheme.
+      ! Positivity-repair faces are counted by n_faces_flux_positivity_limited.
       integer :: n_faces_llf = 0
 
-      ! ---- low-Mach scaling of the normal velocity jump -------------- !
-      ! "Low Mach velocity jump: True|False" (default False), acting on the
-      ! ROE branch only.  The normal velocity jump that enters the acoustic
-      ! expansion coefficients of the Roe dissipation is replaced by
-      !     dvel -> min(Ma_Roe, 1) dvel,   Ma_Roe = |U_Roe| / a_Roe
-      ! (Rieper 2011, J. Comput. Phys. 230, 5263, his eq. 3.15 with the
-      ! local Mach number 3.16, Ma = (|U|+|V|)/a from the Roe-averaged
-      ! velocities; in one dimension the tangential component V is absent,
-      ! so the factor is |U_Roe|/a_Roe).  Without it the upwind velocity
-      ! jump carries an artificial viscosity of the momentum that is one
-      ! order in the Mach number LARGER than the momentum update it damps
-      ! (his eq. 2.14), and the discrete solution does not follow the
-      ! incompressible limit of the continuous equations; with it the
-      ! viscosity is returned to the order of the update (his eq. 3.17).
-      ! The eigenvalues, the eigenvectors, the central flux, the
-      ! well-balanced pressure departure and the admissibility test are
-      ! untouched, and for Ma_Roe >= 1 the factor is exactly 1, so a
-      ! supersonic face is the unmodified Roe flux.
-      !
-      ! Validity.  The asymptotic sorting of his section 3.2 assumes the
-      ! local Mach number 3.16 and the global Mach number used as the
-      ! expansion parameter do not deviate substantially; where they do,
-      ! the factor is applied outside the regime it was derived in.  It is
-      ! an ACCURACY correction, not a stiffness one: his section 5 states
-      ! that the stiffness of the equations is not removed, explicit steps
-      ! keeping dt = O(Ma) and implicit solves remaining slowly convergent.
-      ! The same section says HLL, Rusanov and van Leer flux splitting are
-      ! not suited to the correction (too much diffusion on the shear and
-      ! entropy waves) and that an HLLC adaptation is possible but needs
-      ! its own derivation, which is why this option exists on the ROE
-      ! branch alone.
-      !
-      ! Default .false.: with it off every arithmetic operation of the
-      ! branch is the one the goldens were taken with.
+      ! "Low Mach velocity jump: True|False" defaults False and changes
+      ! only Roe acoustic dissipation: dvel -> min(Ma_Roe,1) dvel,
+      ! Ma_Roe=|U_Roe|/a_Roe. This is the one-dimensional form of Rieper
+      ! (2011, J. Comput. Phys. 230, 5263), eqs. 3.15-3.16; it reduces
+      ! low-Mach momentum viscosity from the excess order in eq. 2.14 to
+      ! the consistent order in eq. 3.17. Wave speeds, eigenvectors, central
+      ! flux, well-balanced pressure jump, and admissibility are unchanged.
+      ! The original Roe flux is recovered at Ma_Roe >= 1.
+      ! Validity: Rieper section 3.2 assumes local and global Mach numbers
+      ! do not differ substantially. This accuracy correction does not
+      ! remove low-Mach stiffness (section 5); HLL, Rusanov, and van Leer
+      ! splitting need different treatment, and HLLC requires a separate
+      ! derivation. The option is therefore limited to Roe. With it off,
+      ! the original Roe arithmetic is unchanged.
       logical :: low_mach_velocity_jump = .false.
 
       contains
       
-      ! Subroutine for the numerical flux.
       !
-      ! jL and jR name the cells the two face states were reconstructed
-      ! from.  Each side's total energy and sound speed are then built with
-      ! ITS OWN heat capacity, which is what the caloric EOS makes different
-      ! across a face inside the H2 front.
-      !
-      ! The one place a SINGLE gamma is still needed is the Roe average:
-      ! a_avg = sqrt((gamma-1)(H_avg - v_avg^2/2)) and the p_star estimate of
-      ! speed_estimate_ROE are both derived for one ideal gas on both sides
-      ! (a two-gamma Roe average needs the Vinokur-Montagne/Glaister
-      ! extension).  Feeding those two gammas would produce a wave speed
-      ! with no bound property, so they are given the arithmetic mean of the
-      ! two.  This is a WAVE-SPEED ESTIMATE, not a definition of the steady
-      ! state: the converged solution is the root of a residual built from
-      ! the conservative fluxes, and those carry each side's own EOS above.
-      ! Where the two sides agree -- every face of an atomic gas -- the mean
-      ! is that value exactly, (a + a)/2 = a being exact in binary
-      ! floating point, so nothing moves off the constant-gamma arithmetic.
-      ! The HLLC branch needs no such average: its Davis/Einfeldt speeds
-      ! min(v-c) / max(v+c) already take one sound speed per side.
+      ! jL/jR select each face state's caloric EOS for energy and sound speed.
+      ! Roe wave-speed estimates require one ideal-gas gamma; use the mean
+      ! of the face gammas. A two-gamma Roe average requires the
+      ! Vinokur-Montagne/Glaister extension. Conservative fluxes retain each
+      ! side's EOS; identical gammas preserve constant-gamma arithmetic.
+      ! HLLC bounds use each side's acoustic speeds.
       ! WELL-BALANCED OPTION ("Well balanced:").  With the optional arguments
       ! present the PRESSURE JUMP of the Riemann problem is not formed as
       ! pR - pL, the difference of two O(1) face pressures, but as
@@ -136,7 +94,6 @@
       dp_wb = 0.0d0
       if (wb) dp_wb = dp_eq + dev_R - dev_L
 
-      ! Exctract left state
       rhoL = WL(1)
       vL   = WL(2)
       pL   = WL(3)
@@ -145,7 +102,6 @@
       gam_L = adiabatic_index_from_state(jL,rhoL,pL)
       aL   = sqrt(gam_L*pL/rhoL)   
       
-      ! Exctract right state
       rhoR = WR(1)
       vR   = WR(2)
       pR   = WR(3)
@@ -155,7 +111,6 @@
       aR   = sqrt(gam_R*pR/rhoR)
       gam_face = 0.5*(gam_L + gam_R)
             
-      ! Evaluate numerical flux      
       select case(flux)
       
       case ('LLF') ! Local Lax Friedrichs
@@ -171,14 +126,12 @@
          !$omp atomic
          n_faces_llf = n_faces_llf + 1
 
-      !----------------------------------------------!
       
       case('HLLC') ! HLLC solver
             
          call W_to_U_comp(WL,uL,jL)
          call W_to_U_comp(WR,uR,jR)
    
-         ! Speed estimates
          SL = min(0.0,min(vL-aL, vR-aR))
          SR = max(0.0,max(vL+aL, vR+aR))
          phiL = rhoL*(SL-vL)
@@ -189,21 +142,17 @@
             S_star = (pR - pL + phiL*vL - phiR*vR)/(phiL - phiR)
          endif
          
-         ! HLLC state approximation
          
-         ! Left state
          usL(1) = 1.0
          usL(2) = S_star
          usL(3) = EL/rhoL + (S_star-vL)*(S_star + pL/phiL)            
          usL = rhoL*(SL-vL)/(SL-S_star)*usL
 
-         ! Right state
          usR(1) = 1.0
          usR(2) = S_star
          usR(3) = ER/rhoR + (S_star-vR)*(S_star + pR/phiR)           
          usR = rhoR*(SR-vR)/(SR-S_star)*usR
          
-         ! Evaluate HLLC flux 
          
          if(SL.ge.(0.0)) then
                
@@ -244,36 +193,26 @@
             endif
          endif
 
-      !----------------------------------------------!
       
       case ('ROE')
       
-         ! Construct averaged states
          
-         ! Auxiliary parameter
          s = sqrt(rhoL)/(sqrt(rhoL)+sqrt(rhoR))
          
-         ! Density
          rho_avg = sqrt(rhoL*rhoR)
          
-         ! Velocity
          v_avg = s*vL + (1.0-s)*vR
          
-         ! Entalpy
          H_avg = s*HL + (1.0-s)*HR
          
-         ! Sound speed
          a_avg = sqrt((gam_face-1.0)*(H_avg-0.5*v_avg*v_avg))
       
-      	!---------------------------------!
       	
-      	! Average eigenvalues
       
       	l1 = v_avg - a_avg
       	l2 = v_avg
       	l3 = v_avg + a_avg
       	
-      	!---------------------------------!
       
          ! Star state of the face Riemann problem, Toro (2009) chapter 9.
          ! It supplies the entropy fix below, and it says whether the
@@ -331,26 +270,21 @@
                   l3 = l3R*(l3-l3L)/(l3R-l3L)
             endif
 
-            !---------------------------------!
 
             ! Averaged eigenevectors
 
-            ! K1
             K1(1) = 1.0
             K1(2) = v_avg - a_avg
             K1(3) = H_avg - v_avg*a_avg
 
-            ! K2
             K2(1) = 1.0
             K2(2) = v_avg
             K2(3) = 0.5*v_avg*v_avg
 
-            ! K3
             K3(1) = 1.0
             K3(2) = v_avg + a_avg
             K3(3) = H_avg + v_avg*a_avg
 
-            !---------------------------------!
 
             ! Evaluate the conserved-variables differences.  Under the
             ! well-balanced option the pressure jump is the one built from the
@@ -361,23 +295,16 @@
             dp   = pR - PL
             if (wb) dp = dp_wb
 
-            ! Low-Mach scaling of the normal velocity jump, Rieper (2011)
-            ! eq. 3.15 with the local Mach number 3.16 of the Roe averages
-            ! (one dimension: no tangential component, so Ma = |U|/a).  It
-            ! enters a1 and a3, the two acoustic expansion coefficients, and
-            ! nothing else: a2 carries drho and dp only.  See the module
-            ! header for the validity of the correction.
+      ! Rieper (2011), eqs. 3.15-3.16: scale only acoustic coefficients a1/a3.
+      ! See the module header for the low-Mach validity range.
             if (low_mach_velocity_jump)                                  &
                dvel = min(abs(v_avg)/a_avg, 1.0d0)*dvel
 
-            ! Evaluate the expansion coefficients
             a1 = 0.5/a_avg**2.0*(dp - rho_avg*a_avg*dvel)
             a2 = drho - dp/a_avg**2.0
             a3 = 0.5/a_avg**2.0*(dp + rho_avg*a_avg*dvel)
 
-            !---------------------------------!
 
-            ! Evaluate the left and right fluxes
             call Phys_flux(WL,FL,jL)
             call Phys_flux(WR,FR,jR)
 
@@ -387,7 +314,6 @@
 
          endif
 
-         ! Output pressure
          p_out = 0.5*(pR + pL)
 
          ! p_out is the average of the two face pressures, on the Roe branch
@@ -405,10 +331,8 @@
 
       end select
 
-      ! End of subroutine
       end subroutine Num_flux
 
-      !-----------------------------------------------------------!
 
       ! Local Lax-Friedrichs (Rusanov) flux: the arithmetic average of the
       ! two physical fluxes plus a jump term carrying the largest signal
@@ -447,19 +371,16 @@
       real*8 :: a1
       real*8, intent(out) :: NF(3),p_out
 
-      ! Exctract left state
       rhoL = WL(1)
       vL   = WL(2)
       pL   = WL(3)
       aL   = sqrt(adiabatic_index_from_state(jL,rhoL,pL)*pL/rhoL)
 
-      ! Exctract right state
       rhoR = WR(1)
       vR   = WR(2)
       pR   = WR(3)
       aR   = sqrt(adiabatic_index_from_state(jR,rhoR,pR)*pR/rhoR)
 
-      ! Evaluate physical left and right flux
       call Phys_flux(WL,FL,jL)
       call Phys_flux(WR,FR,jR)
 
@@ -471,16 +392,12 @@
       call W_to_U_comp(WL,uL,jL)
       call W_to_U_comp(WR,uR,jR)
 
-      ! Evaluate numerical flux
       NF = 0.5*(FL + FR - a1*(uR-uL))
 
-      ! Output pressure
       p_out = 0.5*(pR + pL)
 
-      ! End of subroutine
       end subroutine lax_friedrichs_flux
 
-      !-----------------------------------------------------------!
 
       ! Harten-Lax-van Leer flux with Einfeldt's wave bounds (HLLE): the
       ! exact flux of the two-wave approximate Riemann problem whose signal
@@ -510,7 +427,6 @@
 
       else
 
-         ! Get vector of conservative variables
          call W_to_U_comp(WL,uL,jL)
          call W_to_U_comp(WR,uR,jR)
 
@@ -518,12 +434,9 @@
 
       endif
 
-      ! End of subroutine
       end subroutine hlle_flux
 
-      !-----------------------------------------------------------!
 
-      ! Subroutine to compute the physical flux function
       subroutine Phys_flux(W,PF,jcell)
       
       real*8, intent(in)  :: W(3)
@@ -531,13 +444,11 @@
       real*8 :: rho,v,p,E
       real*8, intent(out) :: PF(3)
       
-      ! Get physical variables
       rho = W(1)
       v   = W(2)
       p   = W(3)
       E   = 0.5*rho*v*v + energy_density_from_pressure(jcell,rho,p)
             
-      ! Output exact flux vector
       PF(1) = rho*v
       PF(2) = rho*v*v
       PF(3) = v*(E+p)
@@ -549,8 +460,6 @@
       ! face is the kinetic one alone.
       if (use_plm .and. .not. well_balanced) PF(2) = PF(2) + p
       
-      ! End of subroutine
       end subroutine Phys_flux     
       
-      ! End of module
       end module Numerical_Fluxes

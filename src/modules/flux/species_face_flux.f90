@@ -1,58 +1,19 @@
       module species_advective_transport
-      ! Advective transport of species mass fractions on the SAME faces, with
-      ! the SAME mass flux, as the density.
-      !
-      ! THE IDENTITY THIS MODULE EXISTS FOR.  There is one set of faces,
-      ! r_edg(1-Ng:N+Ng), and one mass flux per face, F_rho(j), the one the
-      ! Riemann solver returns and RK_rhs stores.  Every species mass flux is
-      ! that scalar multiplied by a face composition that sums to one,
-      !
-      !     F_s(j) = F_rho(j) Y_s^face(j),     sum_s Y_s^face(j) = 1,
-      !
-      ! so that
-      !
-      !     sum_s F_s(j) = F_rho(j)
-      !
-      ! holds by construction and not by tolerance.  Y_s is the species mass
-      ! fraction with the electron mass carried on its ion, so the free
-      ! electrons contribute no mass flux.  The closing member of the set is
-      ! not reconstructed: it is one minus the reconstructed others, which is
-      ! what makes the sum exact.
-      !
-      ! WHY THIS FORM AND NOT A CELL-VELOCITY UPWIND DIFFERENCE.  A cell can
-      ! then only lose what the mass row says it loses.  The two failures the
-      ! cell-centered forms each worked around separately do not arise:
-      !   * a cell whose two FACE velocities straddle zero has an advective
-      !     term of its own here, because the term is a difference of two face
-      !     fluxes and not a one-sided difference of cell values;
-      !   * a cell that is outflowing at both faces cannot be evacuated of a
-      !     trace element, because its species outflow is its mass outflow
-      !     multiplied by a fraction and the density is drained by exactly the
-      !     same fluxes.
-      !
-      ! THE UPWIND SIDE.  The face composition is taken from the side the face
-      ! MASS FLUX selects: F_rho(j) >= 0 takes the left state, F_rho(j) < 0
-      ! the right one.  With HLLC the same side is the one the contact wave
-      ! selects: in the star region the material speed is S_star and the mass
-      ! flux across the face is rho_star S_star with rho_star > 0, so the two
-      ! signs agree; where the fan is supersonic the face flux is the upwind
-      ! state's own rho v and the signs agree again.  ROE and the
-      ! Lax-Friedrichs flux return one flux without a contact state, so the
-      ! sign of F_rho is the only rule defined for them, and it is the rule
-      ! used for all three.  A face with F_rho = 0 carries no species flux and
-      ! its side is immaterial.
-      !
-      ! NO LOW-MACH DISSIPATION TERM.  The dissipation the
-      ! momentum and energy rows carry has an identically zero mass component,
-      ! so the species rows, which ride on the mass flux, carry none either.
-      !
-      ! BOUNDS.  A reconstructed face fraction is scaled back toward its own
-      ! donor cell average by the largest factor that keeps it in [0,1].  That
-      ! is a property of a mass fraction, not of a reconstruction, which is
-      ! why it is imposed here and not in Reconstruct_scalar.  How often it
-      ! fires and how far the reconstruction had left the range are counted
-      ! and exposed rather than assumed.
 
+      ! Species mass fractions use the density row's faces and mass flux:
+      ! F_s(j)=F_rho(j) Y_s^face(j), sum_s Y_s^face=1, hence
+      ! sum_s F_s(j)=F_rho(j). The final fraction closes the sum exactly;
+      ! ion-bound electron mass stays with its ion, with no free-electron
+      ! mass flux. Thus each cell loses species mass through the same flux
+      ! that drains its density, including across velocity reversals.
+      !
+      ! F_rho >= 0 selects the left donor, F_rho < 0 the right. This agrees
+      ! with the HLLC contact speed where its star density is positive;
+      ! Roe and Lax-Friedrichs have no contact state, so the mass-flux sign
+      ! defines the common rule. A zero mass flux carries no species.
+      ! Low-Mach contact dissipation has zero mass flux and does not enter
+      ! these rows. Reconstructed fractions are scaled toward a bounded
+      ! donor average until they lie in [0,1]; count and report each bound.
       use global_parameters
       use Reconstruction_step, only: Reconstruct_scalar
       use grid_construction, only: spherical_cell_volume
@@ -66,8 +27,9 @@
       public :: species_advective_update
       ! Number of FACE STATES whose reconstructed mass fraction left [0,1] and
       ! was scaled back toward its own donor cell average, summed over the
-      ! run, and the largest excursion seen before the scaling.  Zero means
-      ! the reconstruction stayed on the composition simplex everywhere.
+      ! run, and the largest excursion before scaling. Zero means every
+      ! individual reconstructed fraction stayed in [0,1]; their sum is not
+      ! bounded by this check.
       integer, public :: n_species_faces_bounded = 0
       real*8,  public :: species_face_excursion  = 0.0d0
       ! How far the UPDATED cell mass fraction left [0,1], signed so that a
@@ -85,7 +47,6 @@
 
       contains
 
-      !-----------------------------------------------!
 
       subroutine species_face_fraction(Y,Frho,Yf)
       ! Face composition of one species: the reconstruction of its cell mass
@@ -143,7 +104,6 @@
 
       end subroutine species_face_fraction
 
-      !-----------------------------------------------!
 
       subroutine species_face_flux(Frho,Yf,Fs)
       ! The species mass flux carried by a face: the face mass flux times the
@@ -154,7 +114,6 @@
       Fs = Frho*Yf
       end subroutine species_face_flux
 
-      !-----------------------------------------------!
 
       subroutine species_flux_divergence(Fs,divF,divmag)
       ! Divergence of one species face flux, per unit volume, on the faces,
@@ -164,19 +123,9 @@
       !     A_+ = r_{j+1/2}^2,  A_- = r_{j-1/2}^2,
       !     dV_j = ( r_{j+1/2}^3 - r_{j-1/2}^3 ) / 3 .
       !
-      ! THERE IS ONE OF THESE DIVERGENCES IN THE CODE, and every equation
-      ! that transports a species on the mass flux reads it here: the
-      ! Runge-Kutta stages below, the stationary carrier rows and the
-      ! stationary elemental rows.  Two spellings of one term give a marched
-      ! state and a Newton state that are different objects, which is what
-      ! the stationary rows carried until the cell-velocity upwind
-      ! difference was replaced by this call.
-      !
-      ! The volume itself is grid_construction's spherical_cell_volume, the
-      ! one expression for it: the hydrodynamic rows that drain the same cell
-      ! of mass divide by that value, and a species row that divided by a
-      ! second spelling of it would take a cell's composition away from the
-      ! mass it rides on at the size of the difference between the two.
+      ! Use this species-flux divergence for both Runge-Kutta and stationary
+      ! carrier/elemental rows. Use grid_construction spherical_cell_volume
+      ! so species and total mass share exactly the same volume.
       !
       ! divmag is the same expression with both fluxes taken in magnitude,
       ! A_+|F_s(j)| + A_-|F_s(j-1)| over dV_j: the size of the term, for a
@@ -205,7 +154,6 @@
 
       end subroutine species_flux_divergence
 
-      !-----------------------------------------------!
 
       subroutine species_advective_update(stage,nq,n_norm,Y_n,Y_in,Frho,  &
                                           rho_n,rho_in,rho_new,dt_loc,    &
@@ -261,11 +209,8 @@
       enddo
       call species_face_flux(Frho,Yclose,Fclose)
 
-      ! THE FACE IDENTITY, ASSERTED HERE AND NOT IN A TEST.
-      ! It is a statement about every face of every stage of every step, so
-      ! it is checked where it is built.  The faces checked are the ones the
-      ! update below uses, jlo-1 to N: the outer ghost faces bound no updated
-      ! cell and carry no species row to be consistent with.
+      ! Check sum_s F_s = F_rho on faces jlo-1:N used by this update;
+      ! outer ghost faces bound no updated cell.
       do j = jlo-1,N
          res = Fclose(j)
          do q = 1,n_norm
@@ -331,5 +276,4 @@
 
       end subroutine species_advective_update
 
-      ! End of module
       end module species_advective_transport

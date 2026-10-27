@@ -75,7 +75,6 @@
 
       contains
 
-      ! ------------------------------------------------------!
 
       subroutine select_stationary_reconstruction(previous)
       ! Install the reconstruction every stationary route evaluates and
@@ -100,7 +99,6 @@
 
       end subroutine select_stationary_reconstruction
 
-      ! ------------------------------------------------------!
 
       subroutine restore_reconstruction_selection(previous)
       ! Put back the selection select_stationary_reconstruction returned.
@@ -113,7 +111,6 @@
 
       end subroutine restore_reconstruction_selection
 
-      ! ------------------------------------------------------!
 
       subroutine stationary_face_mass_flux(u_state, f_sp_state, budget,   &
                                            r2_rho_v)
@@ -196,5 +193,4 @@
 
       end subroutine stationary_face_mass_flux
 
-      ! End of module
       end module stationary_operator

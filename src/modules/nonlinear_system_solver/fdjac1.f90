@@ -5,9 +5,10 @@
       double precision x(n),fvec(n),fjac(ldfjac,n),wa1(n),wa2(n), &
                        params(*)
       logical unit_step_floor
-      !     **********
       
       !     subroutine fdjac1
+      !     The MINPACK synopsis below retains its original callback form.
+      !     EXHALE callbacks also receive params as their final argument.
       
       !     this subroutine computes a forward-difference approximation
       !     to the n by n jacobian matrix associated with a specified
@@ -30,10 +31,8 @@
       !         subroutine fcn(n,x,fvec,iflag)
       !         integer n,iflag
       !         double precision x(n),fvec(n)
-      !         ----------
       !         calculate the functions at x and
       !         return this vector in fvec.
-      !         ----------
       !         return
       !         end
       
@@ -114,7 +113,6 @@
       !     argonne national laboratory. minpack project. march 1980.
       !     burton s. garbow, kenneth e. hillstrom, jorge j. more
       
-      !     **********
       integer i,j,k,msum
       double precision eps,epsmch,h,temp,one,zero
       double precision dpmpar

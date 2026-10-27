@@ -7,9 +7,10 @@
                        qtf(n),wa1(n),wa2(n),wa3(n),wa4(n),params(*)
       logical unit_step_floor
       external fcn
-      !     **********
       !           
       !     subroutine hybrd
+      !     The MINPACK synopsis below retains its original callback form.
+      !     EXHALE callbacks also receive params as their final argument.
       
       !     the purpose of hybrd is to find a zero of a system of
       !     n nonlinear functions in n variables by a modification
@@ -34,10 +35,8 @@
       !         subroutine fcn(n,x,fvec,iflag)
       !         integer n,iflag
       !         double precision x(n),fvec(n)
-      !         ----------
       !         calculate the functions at x and
       !         return this vector in fvec.
-      !         ---------
       !         return
       !         end
       
@@ -172,7 +171,6 @@
       !     argonne national laboratory. minpack project. march 1980.
       !     burton s. garbow, kenneth e. hillstrom, jorge j. more
       
-      !     **********
       integer i,iflag,iter,j,jm1,l,msum,ncfail,ncsuc,nslow1,nslow2
       integer iwa(1)
       logical jeval,sing

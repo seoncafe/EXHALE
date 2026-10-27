@@ -1,7 +1,6 @@
       double precision function enorm(n,x)
       integer n
       double precision x(n)
-      !     **********
       
       !     function enorm
       
@@ -37,7 +36,6 @@
       !     argonne national laboratory. minpack project. march 1980.
       !     burton s. garbow, kenneth e. hillstrom, jorge j. more
       
-      !     **********
       integer i
       double precision agiant,floatn,one,rdwarf,rgiant,s1,s2,s3,xabs,&
                        x1max,x3max,zero

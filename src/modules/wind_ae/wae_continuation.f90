@@ -5,6 +5,25 @@
       ! ramp_var/ramp_to with static_bcs=True (the base BCs stay at the
       ! seed values). In-memory guess hand-off replaces the C
       ! windsoln<->guess.inp file round-trip.
+      !
+      ! Differences from upstream Wind-AE (relax_wrapper.py), decided
+      ! 2026-10-27 (md/windae_defect_fixes_20261027.md):
+      ! - self_consistent_Ncol (D12): upstream sums n_i (r_i - r_{i-1}) from
+      !   the first point at or above R_sp, so the interval just below the
+      !   sonic point is counted.  Here the column above the sonic point,
+      !   int_{r_sp}^{r_out} n dr, is the trapezoid sum over the intervals
+      !   from row m outward.
+      ! - converge_Ncol_sp (D13): upstream tests |mean_j (goal-cur)/goal|,
+      !   where errors of opposite sign cancel, and substitutes
+      !   1e-10*goal(HI) for a zero goal.  Here the test is
+      !   max_j |goal-cur|/goal, a zero goal is floored at 1e-10 of the
+      !   largest goal (failure if all are zero), and running out of
+      !   iterations returns 2 instead of the success value 0.
+      ! - converge_mol_atomic (D19): upstream (and the Python erf_velocity)
+      !   turns the molecular layer off when no point has photoionization
+      !   heating above the PdV cooling (index 0), the same as when the
+      !   crossing lies near the base.  Here no crossing keeps the layer:
+      !   nothing in the solution says the molecular region ended.
       use wae_config,  only: nsp => wae_nspecies, m => wae_m, ne => wae_ne, &
                              nb => wae_nb, itmax => wae_itmax,             &
                              conv => wae_conv, slowc => wae_slowc,         &
@@ -25,7 +44,7 @@
       use wae_glq_rates, only: wae_glq_rates_eval
       implicit none
 
-      ! relaxation work arrays + indices/scales (set once)
+      ! Relaxation work arrays; boundary ramps update the density scale.
       real*8  :: cy(ne, m)            ! current relaxation solution (the guess)
       integer :: cv(ne)               ! indexv
       real*8  :: sv(ne)               ! scalv
@@ -144,14 +163,10 @@
             cur = trial
             if (.not. (flip .lt. 0.0d0 .and. delta .le. -0.5d0)) delta = delta*2.0d0
             failed = 0
-            ! self-consistent-BC (proactive, cheap): periodically check the molecular/atomic
-            ! transition and turn the bolometric layer off once the base enters
-            ! the wind. converge_mol_atomic does NO solve unless it actually
-            ! turns bolo off (drop_index<=10), so for a seed-adjacent planet
-            ! (bolo stays on) it is just a glq scan -- HD209458b stays fast,
-            ! while HD189733b turns bolo off early instead of waiting for a
-            ! 5-fail stall. The expensive base-BC/Ncol re-convergence stays
-            ! reactive only (the failed==5 branch above).
+      ! Every ten successful steps, check the molecular/atomic transition.
+      ! converge_mol_atomic solves only if a drop index in 1..10 switches
+      ! bolo off;
+      ! base/column reconvergence follows five consecutive failed steps.
             if (.not. static) then
                conv_cntr = conv_cntr + 1
                if (conv_cntr .ge. 10) then
@@ -193,9 +208,7 @@
       end if
       end function ramp_to
 
-      ! ====================================================================
       !  self-consistent boundary conditions
-      ! ====================================================================
 
       subroutine base_bcs(R_out, Rmax_out, rho_out, T_out)
       ! Port of relax_wrapper.base_bcs (defaults Kappa_opt=4e-3, Kappa_IR=1e-2,
@@ -222,8 +235,8 @@
                                *(2.0d0 - cy(4+j,1))
       end do
       mu = (wae_MH/mu_denom)*(1.0d0 - bolo) + par%molec_adjust*wae_MH*bolo
-      ! base pressure [microbar] from the current base state, rounded to nearest
-      ! 10, clamped >= 1 (matches np.round(P/10)*10 with a >=1 floor).
+      ! Base pressure [microbar], rounded to the nearest 10 and clamped >=1.
+      ! DNINT rounds ties away from zero; NumPy rounds ties to even.
       P = (cy(3,1)*RHO0)*wae_K*(cy(4,1)*T0)/mu
       base_press = dnint(P/10.0d0)*10.0d0
       if (base_press .lt. 1.0d0) base_press = 1.0d0
@@ -365,16 +378,16 @@
          end do
       end do
       call wae_integrate_ode(sr, srho, svv, sT, sYs, sNcol, sq, sz, ntot)
-      ! cumulative neutral column from the top down to the sonic point (row m)
+      ! Neutral column above the sonic point (row m) to the outer end of the
+      ! outward integration (row ntot): trapezoid rule on [r(row), r(row+1)]
+      ! for row = m..ntot-1.  The interval below row m lies under the sonic
+      ! point and is not part of this column (D12).
       csum = 0.0d0
-      do row = ntot, m, -1
-         if (row .gt. 1) then
-            dr = (sr(row)-sr(row-1))*par%Rp
-         else
-            dr = 0.0d0
-         end if
+      do row = m, ntot-1
+         dr = (sr(row+1)-sr(row))*par%Rp
          do j = 1, nsp
-            nneut = par%HX(j)*(srho(row)*RHO0)*sYs(row,j)/par%atomic_mass(j)
+            nneut = 0.5d0*(srho(row)*sYs(row,j) + srho(row+1)*sYs(row+1,j)) &
+                    *RHO0*par%HX(j)/par%atomic_mass(j)
             csum(j) = csum(j) + nneut*dr
          end do
       end do
@@ -385,26 +398,38 @@
       end subroutine self_consistent_Ncol
 
       integer function converge_Ncol_sp()
-      ! Port of relax_wrapper.converge_Ncol_sp: fixed-point the sonic-point
-      ! column-density BC to its self-consistent value (mean rel. diff < 8%),
-      ! re-solving each iteration. Best-effort for a warm-start IC: on a solve
-      ! failure it reverts and returns nonzero rather than the C code's
-      ! Ncol-raising retry ladder.
-      real*8  :: goal(nsp), cur(nsp), reldiff, ysave(ne, m)
+      ! Iterate the sonic-point column BC Ncol_sp to the column of the
+      ! solution above the sonic point (relax_wrapper.converge_Ncol_sp).
+      ! Converged when max_j |goal_j - Ncol_sp_j|/goal_j < 0.08 (D13).
+      ! Returns 0 converged; 1 a relaxation failed (previous state
+      ! restored); 2 no convergence within ten re-solves, or no neutral
+      ! column at all.
+      integer, parameter :: maxsolve = 10
+      real*8  :: goal(nsp), cur(nsp), reldiff, gfloor, ysave(ne, m)
       integer :: it, j, ierr
       converge_Ncol_sp = 0
-      do it = 1, 10
+      do it = 0, maxsolve
          call self_consistent_Ncol(goal)
+         gfloor = 1.0d-10*maxval(goal)
+         if (.not. (gfloor .gt. 0.0d0)) then
+            write(*,'(A)') '   converge_Ncol_sp: no neutral column above the'// &
+                           ' sonic point; BC left unchanged.'
+            converge_Ncol_sp = 2; return
+         end if
          do j = 1, nsp
-            if (goal(j) .eq. 0.0d0) goal(j) = 1.0d-10*goal(1)
+            if (goal(j) .eq. 0.0d0) goal(j) = gfloor
          end do
          cur = par%Ncol_sp
          reldiff = 0.0d0
          do j = 1, nsp
-            reldiff = reldiff + (goal(j)-cur(j))/goal(j)
+            reldiff = max(reldiff, abs(goal(j)-cur(j))/goal(j))
          end do
-         reldiff = abs(reldiff/dble(nsp))
          if (reldiff .lt. 0.08d0) return
+         if (it .eq. maxsolve) then
+            write(*,'(A,ES10.3)') '   converge_Ncol_sp: not converged after'// &
+               ' ten re-solves; max relative column error ', reldiff
+            converge_Ncol_sp = 2; return
+         end if
          ysave = cy
          par%Ncol_sp = goal
          ierr = solve()
@@ -421,6 +446,7 @@
       ! magnitude of PdV (adiabatic-expansion) cooling -- i.e. where the wind
       ! "launches". heat = sum_s n_neutral,s * heatarr_s (wae_glq_rates_eval,
       ! per volume); cool = (k_B T / (molec_adjust m_H)) v drho/dr (< 0).
+      ! Returns 0 when no grid point has that crossing.
       real*8  :: heat, cool, rho_p, T_p, v_p, drhodr, csmol2, molad
       real*8  :: rp(m), ionarr(nsp*(nsp+1)), heatarr(nsp), nneut
       integer :: i, j
@@ -494,15 +520,15 @@
       integer function converge_mol_atomic()
       ! Port of relax_wrapper.converge_mol_atomic_transition (the path used in
       ! the ramp). With the molecular layer already off (bolo<=0) it is a no-op.
-      ! Otherwise, if the molecular/atomic transition has reached the base (the
-      ! wind launches within ~10 cells of R_min, i.e. R_min is inside the wind),
-      ! turn the bolometric layer off; this is what lets a far-from-seed,
-      ! strongly-bound planet (whose solution is atomic, bolo=0) keep ramping.
+      ! Turn the bolometric layer off when photoionization heating first
+      ! exceeds the PdV cooling within ten points of the base (the base lies
+      ! in the wind).  Index 0 means no point has that crossing: the
+      ! molecular layer is kept, because nothing says it ended (D19).
       integer :: di
       converge_mol_atomic = 0
       if (par%bolo_heat_cool .le. 0.0d0) return
       di = erf_drop_index()
-      if (di .le. 10) then
+      if (di .ge. 1 .and. di .le. 10) then
          converge_mol_atomic = turn_off_bolo()
       end if
       end function converge_mol_atomic
@@ -513,6 +539,12 @@
       ! a port of the reference turn_off_tidal_grav. A discrete 1->0 jump would
       ! disrupt the tidally-converged seed and stall the first relaxation, so it
       ! must be ramped. Call after setup_indices_scales, before ramp_to.
+      ! After a failed step the step is halved; unlike the reference, which
+      ! keeps the reduced step to the end, a successful step lets it grow
+      ! again by 1.5, up to the initial 0.1.  The ramp fails after 15
+      ! consecutive failed steps or once the step falls below 1e-6 (no
+      ! solution path left; alternating tiny successes would otherwise
+      ! creep on without end).
       real*8, intent(in) :: goal
       real*8  :: cur, step, ysave(ne, m)
       integer :: fails
@@ -528,11 +560,13 @@
             par%tidalforce = min(goal, cur + step)
          end if
          if (solve() .eq. 0) then
-            cur = par%tidalforce; fails = 0
+            cur = par%tidalforce; fails = 0; step = min(0.1d0, 1.5d0*step)
          else
             cy = ysave; par%tidalforce = cur
             step = step/2.0d0; fails = fails + 1
-            if (fails .gt. 14) then
+            write(*,'(A,F8.5,A,ES9.2)') '   ...ramp_tidal: no solution past'// &
+               ' tidalforce ', cur, '; step ', step
+            if (fails .gt. 14 .or. step .lt. 1.0d-6) then
                write(*,'(A)') '   ...ramp_tidal failed.'
                ramp_tidal = 1; return
             end if
@@ -616,7 +650,6 @@
          9.11999999999999908d-06, 5.99999999999999946d-08,                 &
          9.11999999999999908d-06 /)
       open(newunit=u, file=wsfile, status='replace', action='write')
-      ! ---- header ----
       write(u,'(A,I0)') '#nspecies: ', nsp
       vars = '#vars: r,rho,v,T'
       do j = 1, nsp
@@ -654,7 +687,7 @@
       write(u,'(A,I0,A,F7.5,A,F7.5,A,I0)') '#flags: ', par%lyacool, ',',   &
          par%tidalforce, ',', par%bolo_heat_cool, ',', par%integrate_outward
       write(u,'(A)') '#add_prms: 0'
-      ! spectrum block (reconstructed; load_seed reads windae_spectrum.inp)
+      ! Spectrum block; load_seed skips it, and wae_load_spectrum reads a separate file.
       write(u,'(A,I0,A,I0,A)', advance='no') '#spec_prms: ', wae_npts, ',', &
          nsp, ',2009-01-01,scaled-solar,full,'
       do j = 1, 6
@@ -668,7 +701,6 @@
          write(u,'(*(ES24.17E2,:,","))') wae_hc_over_wl(row),              &
             wae_wPhi_wl(row), (wae_sigma_wl(row,j), j=1,nsp)
       end do
-      ! ---- data rows: first m relaxation points (inverse of load_seed) ----
       do row = 1, m
          r_phys = wae_x(row)*cy(2,row) + par%Rmin
          write(u,'(*(ES24.17E2,:,","))') r_phys, cy(3,row), cy(1,row),     &
@@ -737,7 +769,6 @@
       end if
       end subroutine pick_nearest_seed
 
-      ! ---- parsing helpers ----
       subroutine csv_after(line, vals, n)
       character(len=*), intent(in) :: line
       integer, intent(in) :: n
@@ -769,7 +800,7 @@
       subroutine phys_after(line)
       ! #phys_prms: HX(1..nsp), name(1..nsp), amass(1..nsp), molec_adjust
       character(len=*), intent(in) :: line
-      integer :: p, jj, b, L
+      integer :: p, jj, L
       character(len=64) :: tok
       p = index(line,':') + 1; L = len_trim(line)
       do jj = 1, nsp

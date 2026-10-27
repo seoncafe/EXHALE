@@ -7,7 +7,6 @@
       !     python3 src/utils/h2_shielding_table_line_by_line.py <abs_dir> <run_dir>
       ! Edit the script, not this file.
       !
-      ! ---------------------------------------------------------------
       ! WHAT IS TABULATED, AND WHY THREE THINGS AND NOT ONE
       !
       ! A Lyman-Werner band photon absorbed by H2 lifts it into B, C, B' or D.
@@ -41,30 +40,10 @@
       ! loses and the dissociations the rate spends are one absorption with
       ! one normalization.
       !
-      ! ---------------------------------------------------------------
-      ! WHY A LINE-BY-LINE CALCULATION AND NOT CLOUDY, AND NOT A FIT
+      ! Line overlap dominates pumping loss at molecular-base columns;
+      ! the measured line-by-line comparison is in
+      ! ../EXHALE_v1.00/md/p38_line_overlap_shielding.md sections 1 and 5.1.
       !
-      ! Both published fits and the level-resolved CLOUDY calculation that
-      ! stood here until 2026-09-03 shield ONE LINE AT A TIME.  At the columns
-      ! a planetary molecular base reaches that is not a correction but the
-      ! dominant term.  Measured, at n_H = 1e13 cm^-3, as the ratio of the
-      ! surviving pumping with the lines absorbing each other's beam to the
-      ! same calculation with each line alone:
-      !
-      !     N_H2 [cm^-2]     900 K    1300 K    1800 K    2700 K
-      !     1e19             0.73      0.62      0.47      0.30
-      !     1e20             0.45      0.33      0.22      0.096
-      !     1e21             0.080     0.042     0.019     0.0040
-      !     4.4e21           0.0047    0.0016    0.00056   0.000048
-      !
-      ! and the base of the molecular layer sits at N_H2 = 4.4e21.  Two
-      ! independent codes agree on this: the calculation tabulated here, and
-      ! the Meudon PDR code (Le Petit et al. 2006) with its exact UV line
-      ! transfer, which solves the transfer equation on one wavelength grid
-      ! carrying every H2 line at once.  They agree to 5-22 per cent over
-      ! 1e19 <= N_H2 <= 1e21 at 900, 1300 and 1800 K.
-      !
-      ! ---------------------------------------------------------------
       ! WHAT WAS CALCULATED
       !
       ! Plane-parallel slab, normally incident beam, flat F_lambda
@@ -72,13 +51,7 @@
       ! sigma_lw is calibrated to), normalized per photon of the flat
       ! 912-1201 A band -- the same band and the same mean band photon
       ! energy e_lw_photon_erg that lyman_werner.f90 converts F_LW with.
-      ! THE BAND AND THE LINE LIST ARE ONE INTERVAL.  Until 2026-09-06 the
-      ! normalization band stopped at 1110 A, where Draine & Bertoldi end
-      ! the Solomon process for interstellar v = 0 gas, while the line list
-      ! ran on to 1200 A, because at 700-3200 K the vibrationally excited
-      ! levels pump in lines longward of 1110 A.  The table then rated 45
-      ! per cent more absorptions than a 912-1110 A beam could lose.  The
-      ! band is now the interval the lines occupy.
+      ! The line list and photon normalization span the same 912-1201 A band.
       !
       !   tau(nu, N) = N sum_i x_i sigma_i(nu)
       !   pump_i(N)  = x_i (pi e^2/m c) f_i int phi_i(nu) F_nu e^-tau /(h nu) dnu
@@ -100,7 +73,6 @@
       ! and transprob_* files carry and the same the Meudon PDR code uses,
       ! so no line-list difference enters the comparison.
       !
-      ! ---------------------------------------------------------------
       ! THE ONE PIECE THAT IS NOT LINE-BY-LINE: THE TRAPPING
       !
       ! p_eff/p_single -- the suppression of the branching by re-absorption of
@@ -141,7 +113,6 @@
       ! between n_H = 1e12 and 1e14 at fixed T = 1300 K -- is the density
       ! response of the same quantity and still holds.
       !
-      ! ---------------------------------------------------------------
       ! CHECKS
       !
       !  - At 100 K the overlapping-line calculation reproduces the Draine &
@@ -167,7 +138,6 @@
       !    the lines can take.  MEASURED, and stated at
       !    h2_lw_band_photon_fraction_absorbed below.
       !
-      ! ---------------------------------------------------------------
       ! VALIDITY, AND WHERE IT STOPS
       !
       !  - TEMPERATURE 700-3200 K and DENSITY 1e12-1e14 cm^-3 are the grid.
@@ -185,7 +155,6 @@
       !    moves the shielding by at most 9% anywhere on the grid.
       !  - The ortho/para ratio is the LTE one at the imposed temperature.
       !
-      ! ---------------------------------------------------------------
       ! Reference: Draine & Bertoldi (1996) ApJ 468, 269 (the band, the
       ! normalization, the equivalent width, and the line-overlap statement of
       ! their sec. 5.2); Abgrall, Roueff & Drira (2000) A&AS 141, 297 (the
@@ -1209,7 +1178,7 @@
       ! The suppression of the dissociation rate relative to the top of the
       ! same column, sigma_diss(N)/sigma_diss(N_min).  It is a DIAGNOSTIC --
       ! the rate itself now comes from the cross section above -- and it is
-      ! what output/Lyman_Werner.txt reports.  At the bottom of the column
+      ! what <output_dir>/Lyman_Werner.txt reports.  At the bottom of the column
       ! axis the tabulated factor is 1 to 0.1 per cent, so the ratio is the
       ! optically thin limit there.
       double precision function h2_self_shielding_level_resolved(N_H2, T,   &
@@ -1262,5 +1231,4 @@
       w = (x - axis(i))/(axis(i+1) - axis(i))
       end subroutine h2_shield_locate
 
-      ! End of module
       end module h2_self_shielding_table

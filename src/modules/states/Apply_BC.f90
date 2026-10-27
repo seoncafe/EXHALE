@@ -2,6 +2,7 @@
    ! Implementation of boundary conditions
 
    use global_parameters
+   use, intrinsic :: ieee_arithmetic, only: ieee_is_finite
    use Conversion
    use grav_func, only: isothermal_wind_speed
    use caloric_eos, only: adiabatic_index_from_state, caloric_cell_mixture
@@ -17,9 +18,9 @@
    ! dropped to a zero-gradient copy of the last physical cell, summed over
    ! the whole run. Reported at the end of a run. The continuation of
    ! free_outflow_ghost is positive whenever cell N is, so a nonzero count
-   ! means cell N itself was not an admissible gas state, or the potential
-   ! difference across the ghost overflowed the exponential; it is a
-   ! statement about the interior, not about the boundary.
+   ! can also mean an underflow or overflow in the hydrostatic
+   ! exponential, or an inadmissible cell N. The count reports each
+   ! fallback to a cell-N copy.
    integer :: n_ghost_cells_positivity_limited = 0
 
    ! Mach number of the gas the lower boundary admits, and whether it ever
@@ -101,7 +102,6 @@
 
    contains
 
-   !------------------------------------------!
 
    real*8 function base_inflow_mach_number(W)
    ! |v|/c of the base ghost the lower boundary condition has just written,
@@ -115,6 +115,16 @@
    ! twice.
    real*8, intent(in) :: W(3,1-Ng:N+Ng)
    real*8 :: cs2
+   if (.not. ieee_is_finite(W(1,0)) .or. &
+       .not. ieee_is_finite(W(3,0))) then
+      base_inflow_mach_number = 0.0d0
+      return
+   endif
+   if (.not. (W(1,0) .gt. 0.0d0) .or. &
+       .not. (W(3,0) .gt. 0.0d0)) then
+      base_inflow_mach_number = 0.0d0
+      return
+   endif
    cs2 = adiabatic_index_from_state(0,W(1,0),W(3,0))*W(3,0)/W(1,0)
    if (.not. (cs2 .gt. 0.0d0)) then
       base_inflow_mach_number = 0.0d0
@@ -123,7 +133,6 @@
    endif
    end function base_inflow_mach_number
 
-   !------------------------------------------!
 
    subroutine check_base_inflow_is_subsonic(W,step)
    ! Record the base Mach number of this step and warn on the FIRST step at
@@ -217,10 +226,8 @@
    ! The input set this boundary state belongs to.
    call hold_boundary_state_inputs(u, W)
 
-   ! End of subroutine
    end subroutine Apply_BC
 
-   !------------------------------------------!
 
    subroutine hold_boundary_state_inputs(u, W)
    ! Record the input set the boundary was just derived from: the interior
@@ -236,7 +243,6 @@
    base_boundary_installed = .true.
    end subroutine hold_boundary_state_inputs
 
-   !------------------------------------------!
 
    subroutine hold_boundary_closure_inputs()
    ! The half of the input set that is reachable without an argument: the
@@ -255,7 +261,6 @@
    bc_res_version_hold = base_reservoir_prescription_version
    end subroutine hold_boundary_closure_inputs
 
-   !------------------------------------------!
 
    logical function base_boundary_closure_is_current() result(ok)
    ! Is the composition (and reservoir) the cached boundary was built from
@@ -281,7 +286,6 @@
                   .eq. bc_res_version_hold)
    end function base_boundary_closure_is_current
 
-   !------------------------------------------!
 
    logical function base_boundary_cache_is_current(u) result(ok)
    ! The whole input set: the composition and reservoir above AND the
@@ -298,7 +302,6 @@
    ok = all(u(:,1:N) .eq. bc_u_hold)
    end function base_boundary_cache_is_current
 
-   !------------------------------------------!
 
    subroutine report_base_face_cache_reads(tag)
    ! How many reads found the cache built from another composition and
@@ -311,7 +314,6 @@
    end subroutine report_base_face_cache_reads
    
 
-   !------------------------------------------!
 
    subroutine Apply_BC_W(W)
    ! Boundary conditions for primitive variables (in place)
@@ -339,10 +341,8 @@
       W(:,N+k) = Wex
    enddo
 
-   ! End of subroutine
    end subroutine Apply_BC_W
    
-   !------------------------------------------!
 
    subroutine free_outflow_ghost(W,k,Wg)
    ! One outer ghost CELL AVERAGE of the free-outflow boundary.
@@ -525,10 +525,8 @@
    Wg(2) = W(2,N)
    if (steady_wind_ghost) Wg(2) = v_ghost
 
-   ! End of subroutine
    end subroutine free_outflow_ghost
 
-   !------------------------------------------!
    
    subroutine Rec_BC(WL_in,WR_in,WL_out,WR_out)
    ! Boundary conditions for reconstructed variables
@@ -587,10 +585,8 @@
    WL_out(:,N+2) = WL_out(:,N+1)
    if (use_weno3) WL_out(:,N+2) = 2.0*WL_out(:,N+1) - WL_out(:,N)
 
-   ! End of subroutine
    end subroutine Rec_BC
 
-   !------------------------------------------!
 
    subroutine recompute_base_face_states
    ! Derive the three cached face states again, from the interior primitive
@@ -615,7 +611,6 @@
    endif
    end subroutine recompute_base_face_states
 
-   !------------------------------------------!
 
    subroutine shapiro_filter(u)
    ! Periodic 1-2-1 Shapiro (1970) low-pass filter on the conservative
@@ -636,5 +631,4 @@
    enddo
    end subroutine shapiro_filter
 
-   ! End of module
    end module BC_Apply

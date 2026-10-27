@@ -1,7 +1,7 @@
       module wae_params
       ! The parameter list of the Wind-AE port (the PARAMLIST of wind-ae's
       ! io.c, with the C field meanings) and the physical constants it is
-      ! built on. wae_exhale_input fills it from an EXHALE input.inp.
+      ! built on. wae_exhale_input fills it from the selected EXHALE input.
       use wae_types,  only: wae_paramlist
       implicit none
 
@@ -13,7 +13,7 @@
       real*8, parameter :: wae_G  = 6.67430d-8      ! CODATA 2018
       real*8, parameter :: wae_K  = 1.380649d-16    ! CODATA exact
       real*8, parameter :: wae_MH = 1.67353284d-24  ! H atom, CODATA 2018
-      real*8, parameter :: wae_CS0 = 1.0d0   ! set in init (sqrt(K*T0/MH))
+      real*8, parameter :: wae_CS0 = 1.0d0   ! Unused unit placeholder; load_seed sets wae_cs0_val.
 
       type(wae_paramlist) :: wae_par
       real*8 :: wae_cs0_val = 0.0d0

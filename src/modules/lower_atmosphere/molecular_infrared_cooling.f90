@@ -1,4 +1,3 @@
-!==============================================================================
 ! molecular_infrared_cooling
 !
 ! Net infrared exchange of the molecular layer with the atmosphere below it:
@@ -6,14 +5,9 @@
 ! dipole line spectrum, each emitting in LTE and each absorbing the diluted
 ! blackbody the unresolved lower atmosphere presents.
 !
-! WHY THIS EXISTS.  A converged Tier-2 molecular layer radiates itself down to
-! 190-400 K against an equilibrium temperature of 1100-1400 K, because the only
-! infrared coolants the code carried below the H2 -> H front were H3+ and the
-! ground-term fine-structure lines, treated as pure emitters into vacuum.  The
-! `Base IR field` closure (Update_EXHALE_stage1.pdf section 55) gave those two families
-! their incident field; it could not reach the rest of the layer, where the
-! coolants that matter in a real H2 atmosphere -- water, carbon monoxide and
-! molecular hydrogen itself -- were simply absent.  This module supplies them.
+! H2O, CO, and H2 provide infrared exchange in the molecular layer;
+! the earlier cold-layer diagnosis and run comparisons are in
+! ../EXHALE_v1.00/md/Update_EXHALE_stage1.md section 110.
 !
 ! THE PHYSICS.  For an optically thin layer in LTE the net radiative loss per
 ! unit volume of species X is
@@ -51,47 +45,30 @@
 ! the cross sections are built from already carry the stimulated-emission
 ! correction, so sigma_b is the coefficient that pairs with B_nu.
 !
-! It is that fixed point, not the magnitude of the rate, that answers item (G):
-! each channel stops cooling at its own radiative equilibrium temperature
-! instead of running the layer down to zero.  Because W multiplies only the
-! absorption, the equilibrium temperature is set by the ratio E/E^abs and is
-! therefore insensitive, to first order, to a grey escape probability applied
-! to both -- which is why the optically thin limit is enough to fix the
-! temperature even where the bands are marginally thick.
+! At fixed radiation temperature, applying the same escape factor to
+! emission and absorption changes the relaxation rate, not its fixed point.
 !
 ! VALIDITY.
-!  * Optically thin, and the run measures whether it still is.  No escape
-!    probability is applied.  The Planck-mean optical depth of the H2O and CO
-!    columns from each cell to the top of the domain is written to
-!    output/Cooling_breakdown.txt: on the 12000-step HD 189733 b
-!    oxygen-chemistry run the maxima are 2.5e-3 and 2.8e-3, and the
-!    column-integrated absorbed power reported in output/FUV_bands.txt,
-!    7.5e5 erg cm^-2 s^-1, sits 73x below the incident infrared flux
-!    W sigma T0^4 of 5.4e7 that bounds it.  The H2 lines are
-!    thinner still: the line-centre opacity of 0-0 S(1) at 17 um gives
-!    tau = 3e-4 over a scale height at n(H2) = 5e13 cm^-3 and 1000 K.  A
-!    configuration with a much deeper base has not been checked; if the
-!    reported depths approach unity the closure has left its range.  Note also
-!    that a grey escape probability would multiply BOTH terms of eq. (1) and
-!    so would barely move the equilibrium temperature, only the rate.
+!  * Optically thin: no escape probability is applied. The Planck-mean
+!    H2O and CO column depths are written to output/Cooling_breakdown.txt;
+!    if they approach unity this closure leaves its range. The earlier
+!    HD 189733 b optical-depth and absorbed-power comparisons are in
+!    ../EXHALE_v1.00/md/Update_EXHALE_stage1.md section 110.
 !  * LTE level populations.  The rotational levels of all three species
 !    thermalize far below the densities of this layer.  The H2 and H2O
-!    VIBRATIONAL levels are the constraint, and for H2 the margin is large:
-!    the critical density of v = 1, n_crit = A_10/gamma_10 (Hollenbach &
-!    McKee 1979, ApJS 41, 555, p. 576), is 2e6 to 6e6 cm^-3 over 900-1350 K
-!    with H2 as the collider and 5e4 to 8e4 cm^-3 with atomic H, from their
-!    A_10 = 8.3e-7 s^-1 (p. 583, J-averaged, Turner, Kirby-Docken & Dalgarno
-!    1977) and their eq. (6.29) rate coefficients.  The base carries
-!    1e13-1e14 cm^-3, seven to nine decades above it.  (Neither Hollenbach &
-!    McKee nor Burton, Hollenbach & Tielens 1990 gives a HELIUM collision
-!    rate for H2 v = 1, so a helium-dominated gas is outside both; leaving
-!    helium out of the collider sum understates the de-excitation rate,
-!    which errs on the side of NOT claiming LTE.)  Above the base the
-!    density falls,
-!    but so does the temperature, and the vibrational bands are a small share
-!    of the H2 emission there: 0.7% at 400 K, 5.7% at 500 K, 18% at 600 K and
-!    66% at 1000 K.  The LTE overestimate is therefore confined to the warm,
-!    dense part of the layer, where LTE is also best justified.
+!    VIBRATIONAL levels are the constraint. For H2,
+!    the relevant condition is that the local collider sum greatly exceeds
+!    the radiative decay rate. The current H, H2, and He v = 1 -> 0 rate
+!    coefficients are in h2_vibrational_relaxation.f90; its Le Bourlot et al.
+!    (1999) H2 rate is much smaller than the Hollenbach & McKee (1979) fit.
+!    The earlier critical-density estimates based on that fit are superseded;
+!    see ../EXHALE_v1.00/docs/molecular_hydrogen_treatment.tex,
+!    section "Infrared line cooling: LTE, stated explicitly". The base
+!    carries 1e13-1e14 cm^-3, but a helium-dominated, low-density column
+!    still requires a collider-specific LTE check. Above the base the
+!    density falls, and so does the temperature. Vibrational bands are
+!    0.7% of H2 emission at 400 K, 5.7% at 500 K, 18% at 600 K,
+!    and 66% at 1000 K; the LTE assumption matters most in warm gas.
 !  * Cross-section temperature range.  The H2O and CO tables run 50-2000 K and
 !    are clamped outside it.  Both molecules are largely dissociated above
 !    2000 K, and the oxygen option caps its transported CO at the chemical
@@ -99,14 +76,11 @@
 !    density.  The H2 line sum has no such limit in the ladder; it is
 !    tabulated on the 30 K to about 30100 K grid below (t_tab_hi) and the
 !    edge value is returned above that, where no H2 survives.
-!  * The lower atmosphere is taken to be black at these wavelengths and to
-!    radiate B_nu(T_rad).  H2-H2 and H2-He collision-induced absorption is what
-!    makes it black in the windows between the bands, and it is deliberately
-!    NOT a channel here: measured on the petitRADTRANS/HITRAN CIA tables, its
-!    optical depth per pressure scale height at a 1 microbar base is 2e-9
-!    (HD 189733 b) to 8e-9 (hot Uranus), and, scaling as n^2, reaches unity only
-!    near 0.2-0.4 bar.  It is a property of the reservoir below the base, not a
-!    local coolant of this domain.
+!  * The lower atmosphere is taken to be black at these wavelengths and
+!    radiates B_nu(T_rad). H2-H2 and H2-He collision-induced absorption
+!    supports that reservoir assumption; it is not a local coolant in this
+!    domain. Its former pressure-depth comparison is in
+!    ../EXHALE_v1.00/md/Update_EXHALE_stage1.md section 110.
 !  * The incident field is not attenuated by the intervening molecular column
 !    of the domain itself, in the same approximation `Base IR field` makes for
 !    H3+.
@@ -122,7 +96,6 @@
 ! The tables themselves are in molecular_infrared_data.f90; their provenance,
 ! validity ranges and cross-checks are in
 ! cooling_data/molecular_infrared_bands.py.
-!==============================================================================
       module molecular_infrared_cooling
 
       use molecular_infrared_data
@@ -178,11 +151,9 @@
 
       contains
 
-!------------------------------------------------------------------------------
 ! Build the emission and absorption functions for one radiating temperature.
 ! Called once per run, before any cell is evaluated: the tables are read
 ! concurrently by the OpenMP cell sweep and must not be built inside it.
-!------------------------------------------------------------------------------
       subroutine molecular_infrared_init(T_rad)
       implicit none
       real*8, intent(in) :: T_rad
@@ -265,10 +236,8 @@
 
       end subroutine molecular_infrared_init
 
-!------------------------------------------------------------------------------
 ! Band-mean cross sections at one gas temperature, interpolated in log T on the
 ! tabulated grid and clamped outside it (see the validity note in the header).
-!------------------------------------------------------------------------------
       subroutine band_cross_sections(T, sg_h2o, sg_co)
       implicit none
       real*8, intent(in)  :: T
@@ -286,10 +255,8 @@
 
       end subroutine band_cross_sections
 
-!------------------------------------------------------------------------------
 ! Bracket x in an ascending grid and return the linear weight in log x, clamped
 ! at both ends.
-!------------------------------------------------------------------------------
       subroutine locate_log(grid, n, x, j, w)
       implicit none
       integer, intent(in)  :: n
@@ -323,10 +290,8 @@
 
       end subroutine locate_log
 
-!------------------------------------------------------------------------------
 ! Int B_nu(T) dnu over [wl_lo, wl_hi] in micron, by Simpson in log lambda.
 ! [erg cm^-2 s^-1 sr^-1]
-!------------------------------------------------------------------------------
       real*8 function planck_band_integral(wl_lo, wl_hi, T) result(bint)
       implicit none
       real*8, intent(in) :: wl_lo, wl_hi, T
@@ -360,10 +325,8 @@
 
       end function planck_band_integral
 
-!------------------------------------------------------------------------------
 ! Interpolate one of the derived functions at a gas temperature.  The functions
 ! span many decades, so the interpolation is log-log.
-!------------------------------------------------------------------------------
       real*8 function tab_value(tabv, T) result(y)
       implicit none
       real*8, intent(in) :: tabv(n_tab), T
@@ -378,9 +341,7 @@
 
       end function tab_value
 
-!------------------------------------------------------------------------------
 ! Optically thin LTE emission per molecule [erg s^-1].
-!------------------------------------------------------------------------------
       real*8 function h2o_band_emission_lte(T) result(e)
       implicit none
       real*8, intent(in) :: T
@@ -405,10 +366,8 @@
       e = tab_value(emis_h2, T)
       end function h2_line_emission_lte
 
-!------------------------------------------------------------------------------
 ! Planck-mean cross section [cm^2/molecule], for the optical-depth diagnostic.
 ! ispec = 1 water, 2 carbon monoxide.
-!------------------------------------------------------------------------------
       real*8 function molecular_planck_cross_section(ispec, T) result(s)
       implicit none
       integer, intent(in) :: ispec
@@ -422,10 +381,8 @@
       endif
       end function molecular_planck_cross_section
 
-!------------------------------------------------------------------------------
 ! Net radiative loss [erg cm^-3 s^-1], equation (1).  W_dil = 0 recovers the
 ! optically thin emission into vacuum; W_dil = 1 with T = T_rad returns zero.
-!------------------------------------------------------------------------------
       real*8 function h2o_band_net_cooling_rate(T, nH2O, W_dil) result(lam)
       implicit none
       real*8, intent(in) :: T, nH2O, W_dil

@@ -100,10 +100,8 @@
    enddo
    !$omp end parallel do
    
-   ! End of subroutine
    end subroutine PLM_rec
    
-   !--------------------------------------------
    
    ! Minmod generalized slope limiter
    
@@ -122,10 +120,8 @@
       d(1,i) = minmod_mc_slope(a(1,i),b(1,i),c(1,i))
    enddo
    
-   ! End of subroutine
    end subroutine Minmod_MC
 
-   !--------------------------------------------
 
    real*8 function minmod_mc_slope(a,b,c) result(d)
    ! Generalized minmod (monotonized central) limited slope of one quantity
@@ -150,10 +146,8 @@
       d = 0.0
    endif     
    
-   ! End of function
    end function minmod_mc_slope
 
-   !--------------------------------------------
 
    subroutine PLM_rec_scalar(q,qL,qR)
    ! Piecewise linear reconstruction of ONE cell-centered scalar, with the
@@ -195,8 +189,6 @@
    enddo
    !$omp end parallel do
 
-   ! End of subroutine
    end subroutine PLM_rec_scalar
 
-   ! End of module
    end module PLM_reconstruction

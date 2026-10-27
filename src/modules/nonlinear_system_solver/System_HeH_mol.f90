@@ -138,7 +138,6 @@
 	! key).  Set with the coefficients, read by the rows.
 	logical, save :: mk_third_body_resolved
 
-	! ---------------------------------------------------------------
 	! Oxygen chemistry (the A2 option).
 	! Cell-invariant coefficients, hoisted once per cell by
 	! set_oxygen_coeffs exactly as the molecular ones are, and read by
@@ -449,9 +448,7 @@
 
 	end subroutine set_mol_turnover_rates
 
-	! ===============================================================
 	!  Oxygen chemistry (the A2 option)
-	! ===============================================================
 
 	! Rate coefficients and photolysis rates of the oxygen carriers that are
 	! invariant across a cell's Newton solve. Called once per cell from
@@ -631,7 +628,6 @@
 
 	end subroutine oxygen_carrier_rows
 
-	!----------------------------------!
 
 	! THE SCALE RECIPROCAL OF EVERY ROW OF A SOLVE, from the gross rates of
 	! the rows at one composition (the normalization stated at
@@ -806,7 +802,6 @@
 	return
 	end subroutine ion_system_HeH_mol
 
-	!----------------------------------!
 
 	! The eight balance rows of the molecular network, shared verbatim by
 	! System_HeH_mol and System_HeH_mol_metals. n_e is an INPUT so that the
@@ -1183,5 +1178,4 @@
 
 	end subroutine mol_heh_rows
 
-	! End of module
 	end module System_HeH_mol

@@ -1,11 +1,29 @@
       module wae_soe
-      ! System-of-equations physics, ported verbatim from wind-ae soe.c.
-      ! This module currently covers the LEAF physics functions that are
-      ! independently unit-gatable against the C oracle (same method as
-      ! the glq layer): get_mu, get_gamma, get_rad, get_ion_pot,
-      ! get_alpharec, get_spQ, get_dYsdr, get_dNcoldr, get_drhodr.
-      ! The dvdr/dTdr chain (with the dvdr_slope/last globals) and the
-      ! residual equations / eval_eqn dispatcher are added next.
+      ! Wind-AE soe.c: mean molecular weight, recombination, heating/cooling,
+      ! and the coupled wind derivatives, including sonic-point linearization.
+      ! Residual equations and their dispatcher are in wae_eqns.
+      !
+      ! Differences from upstream Wind-AE (soe.c), decided 2026-10-27 to
+      ! follow the physics rather than the upstream code
+      ! (md/windae_defect_fixes_20261027.md):
+      ! - Electron density in get_spQ: upstream sums n_e only inside
+      !   `if (lyacool)`, so recombination cooling sees n_e = 0 when Ly-alpha
+      !   cooling (and with it the line cooling) is off.  Here n_e is summed from the composition
+      !   unconditionally (D16).
+      ! - Recombination cooling temperature: upstream evaluates the H fit
+      !   and the 3/2 k_B T term of the other ions with the scaled
+      !   T/T0 (T0 = 1e4 K).  Here both take T in K (D17); the H fit is
+      !   Black (1981, MNRAS 197, 553, Table 3), defined for T in K.
+      ! - Mean molecular weight: upstream counts one free electron at most
+      !   for each nucleus (2 - Ys); here the electrons already removed
+      !   from the lowest state of the species (Z - N_e, as in the n_e sum)
+      !   are counted too, 2 + (Z - N_e) - Ys.  Identical for H and He.
+      ! - dmu/dr (D18, known, on hold by user decision 2026-10-27): upstream
+      !   uses -mu^2 * sum_j HX_j dYs_j/dr, which drops the m_H/m_j weights of
+      !   get_mu and the dependence of the molecular blend erfc(v) on v(r).
+      !   The exact derivative is known but not used: without the blend's
+      !   implicit heat source the HD 209458 b tidal ramp stalls.  This port
+      !   keeps the upstream form.
       use wae_config,   only: nsp => wae_nspecies, T0 => wae_T0,          &
                               RHO0 => wae_RHO0, gamma_atomic=>wae_gamma_atomic
       use wae_types,    only: wae_i_eqnvars
@@ -27,7 +45,10 @@
       real*8, parameter :: wae_PI  = 3.141592653589793d0
       real*8, parameter :: wae_SIGSB = 5.6705d-5
       real*8, parameter :: LYACOOL_COEFF = -7.5d-19
-      real*8, parameter :: LYACOOL_TEMP  = 118348.0d0/1.0d4   ! /T0
+      ! Ly-alpha collisional excitation cooling, Black (1981, MNRAS 197,
+      ! 553, Table 3): 7.5e-19 exp(-118348/T) n_e n(H) erg cm^-3 s^-1;
+      ! the threshold is stored in units of T0 because v%T is T/T0.
+      real*8, parameter :: LYACOOL_TEMP  = 118348.0d0/T0
 
       ! soe.c globals
       real*8 :: wae_erf_norm = 1.0d0
@@ -48,23 +69,40 @@
       rad = par%Rmin + v%q*v%z
       end subroutine wae_get_rad
 
-      subroutine wae_get_mu(mu, kv)
-      ! mean molecular weight incl. electrons; assumes species 1 = HI.
-      real*8, intent(out) :: mu
+      real*8 function wae_atomic_particle_number(kv)
+      ! Free particles (nuclei plus electrons) in the atomic gas, in units
+      ! of 1/m_H per gram: sum_j (m_H/m_j) HX_j (2 + (Z_j - N_e,j) - Ys_j).
+      ! Each species carries Z - N_e electrons already removed in its lowest
+      ! state and one more in its ionized fraction, as in the n_e sums.
       type(wae_i_eqnvars), intent(in) :: kv
       integer :: j
-      real*8  :: mu_atom, mu_mol, denom, serf
-      serf = 1.0d0 - erf((kv%v - par%erf_drop(1))/par%erf_drop(2))
-      serf = serf/wae_erf_norm
-      serf = serf*par%bolo_heat_cool
-      denom = 0.0d0
+      real*8  :: g
+      g = 0.0d0
       do j = 1, nsp
-         denom = denom + (par%atomic_mass(1)/par%atomic_mass(j)) *        &
-                 par%HX(j)*(2.0d0 - kv%Ys(j))
+         g = g + (par%atomic_mass(1)/par%atomic_mass(j))*par%HX(j)*       &
+                 (2.0d0 + dble(par%Z(j) - par%N_e(j)) - kv%Ys(j))
       end do
-      mu_atom = (1.0d0 - serf)*1.0d0/denom
-      mu_mol  = serf*par%molec_adjust
-      mu = mu_atom + mu_mol
+      wae_atomic_particle_number = g
+      end function wae_atomic_particle_number
+
+      real*8 function wae_molecular_fraction(kv)
+      ! Weight of the molecular layer, bolo_heat_cool*erfc((v-v_drop)/w)
+      ! normalized by wae_erf_norm; it blends mu and the bolometric terms.
+      type(wae_i_eqnvars), intent(in) :: kv
+      wae_molecular_fraction = par%bolo_heat_cool*                        &
+         (1.0d0 - erf((kv%v - par%erf_drop(1))/par%erf_drop(2)))/wae_erf_norm
+      end function wae_molecular_fraction
+
+      subroutine wae_get_mu(mu, kv)
+      ! Mean molecular weight in units of m_H (species 1 must be HI):
+      ! mu = (1 - s)/g + s*molec_adjust, with g the atomic particle number
+      ! and s the molecular-layer weight.
+      real*8, intent(out) :: mu
+      type(wae_i_eqnvars), intent(in) :: kv
+      real*8  :: serf
+      serf = wae_molecular_fraction(kv)
+      mu = (1.0d0 - serf)/wae_atomic_particle_number(kv)                  &
+           + serf*par%molec_adjust
       end subroutine wae_get_mu
 
       subroutine wae_get_alpharec(alpharec, kv, calc_lower_ion_state)
@@ -138,8 +176,8 @@
       end subroutine wae_get_drhodr
 
       subroutine wae_get_dYsdr(dYsdr, v, kk)
-      ! ionization-fraction derivative; folds glq_ionization (primary +
-      ! secondary) and recombination (get_alpharec).
+      ! Neutral-fraction gradient: recombination minus primary/secondary
+      ! ionization, divided by the flow speed; radius is in Rp units.
       real*8, intent(out) :: dYsdr(nsp)
       type(wae_i_eqnvars), intent(in) :: v
       real*8, intent(in)  :: kk
@@ -177,8 +215,9 @@
       end subroutine wae_get_dYsdr
 
       subroutine wae_get_spQ(spQ, v, kk)
-      ! total specific heating/cooling (photoheat + bolo + Lya + line +
-      ! recombination cooling).
+      ! Net specific heating/cooling in CS0^3/Rp units: photoheating,
+      ! bolometric exchange, Ly-alpha, line, and recombination cooling.
+      ! v%T is T/T0; every rate fit below is evaluated at T = v%T*T0 in K.
       real*8, intent(out) :: spQ
       type(wae_i_eqnvars), intent(in) :: v
       real*8, intent(in)  :: kk
@@ -188,13 +227,26 @@
       real*8  :: spQ_photoheat, spQ_lyacool, spQ_reccool, spQ_linecool
       real*8  :: spQ_boloheat, spQ_bolocool, serf
       real*8  :: kappa_opt, kappa_IR, nHIoverrho
-      real*8  :: alpha_hi(nsp), alpha_lo(nsp)
+      real*8  :: alpha_hi(nsp), alpha_lo(nsp), T_K
       real*8  :: ionarr(nsp*(nsp+1)), heatarr(nsp)
 
       kappa_opt = 4.0d-3
       kappa_IR  = 1.0d-2
       spQ = 0.0d0
+      T_K = v%T*T0
+
+      ! Electron density from the composition: Z - N_e electrons from the
+      ! lowest state of each species and one more from its ionized
+      ! fraction (the sum of wae_get_dYsdr).  Needed by the recombination
+      ! cooling whatever the Ly-alpha switch (D16).
       ne = 0.0d0
+      do j = 1, nsp
+         n_tot_j = RHO0*v%rho*par%HX(j)/par%atomic_mass(j)
+         n0_j = v%Ys(j)*n_tot_j
+         n_ion_j = (1.0d0 - v%Ys(j))*n_tot_j
+         eps = par%Z(j) - par%N_e(j)
+         ne = ne + n0_j*dble(eps) + n_ion_j*dble(eps+1)
+      end do
 
       ! photo-ionization heating
       call wae_glq_rates_eval(v%Ncol, v%Ys, ionarr, heatarr)
@@ -217,13 +269,6 @@
       end if
 
       if (par%lyacool .eq. 1) then
-         do j = 1, nsp
-            n_tot_j = RHO0*v%rho*par%HX(j)/par%atomic_mass(j)
-            n0_j = v%Ys(j)*n_tot_j
-            n_ion_j = (1.0d0 - v%Ys(j))*n_tot_j
-            eps = par%Z(j) - par%N_e(j)
-            ne = ne + n0_j*dble(eps) + n_ion_j*dble(eps+1)
-         end do
          nHIoverrho = v%Ys(1)*par%HX(1)/par%atomic_mass(1)
          spQ_lyacool = LYACOOL_COEFF*exp(-LYACOOL_TEMP/v%T)*nHIoverrho*ne
          spQ_lyacool = spQ_lyacool*(par%Rp/CS0**3)
@@ -274,7 +319,14 @@
          end do
       end if
 
-      ! recombination cooling
+      ! Recombination cooling (D17: T in K).  H: case A fit of Black (1981,
+      ! MNRAS 197, 553, Table 3), 2.85e-27 T^1/2 (5.914 - 0.5 ln T
+      ! + 0.01184 T^1/3) n_e n(H+) erg cm^-3 s^-1, stated valid for
+      ! 5e3 < T < 5e5 K; the bracket stays positive at all T (its minimum,
+      ! 0.14 at T = 2e6 K), so it is used as is outside that range.
+      ! Other ions: alpha_rec n_e n_ion (3/2) k_B T, the mean thermal energy
+      ! carried by a recombining electron (Broome 2026 PhD thesis, sec.
+      ! "Recombination Cooling").
       call wae_get_alpharec(alpha_hi, v, 1)
       call wae_get_alpharec(alpha_lo, v, 0)
       spQ_reccool = 0.0d0
@@ -282,18 +334,17 @@
          nIONoverrho = (1.0d0-v%Ys(j))*par%HX(j)/par%atomic_mass(j)
          n0overrho   = v%Ys(j)*par%HX(j)/par%atomic_mass(j)
          if (par%Z(j) .eq. 1) then
-            spQ_reccool = spQ_reccool - 2.85d-27*ne*nIONoverrho*sqrt(v%T) &
-               *(5.914d0 - 0.5d0*log(v%T) + 0.01184d0*v%T**(1.0d0/3.0d0))
+            spQ_reccool = spQ_reccool - 2.85d-27*ne*nIONoverrho*sqrt(T_K) &
+               *(5.914d0 - 0.5d0*log(T_K) + 0.01184d0*T_K**(1.0d0/3.0d0))
          else
             spQ_reccool = spQ_reccool - alpha_hi(j)*nIONoverrho*ne*       &
-                          (1.5d0*wae_K*v%T)
+                          (1.5d0*wae_K*T_K)
          end if
       end do
       spQ_reccool = spQ_reccool*(par%Rp/CS0**3)
       spQ = spQ + spQ_reccool
       end subroutine wae_get_spQ
 
-      !---------------------------------------------------------------!
       subroutine wae_get_dvdr(dvdr, v)
       ! velocity derivative (analytic + erf-weighted linearization near
       ! the sonic point); uses the dvdr_slope/last/q_last globals.
@@ -352,14 +403,19 @@
       end if
       end subroutine wae_get_dvdr
 
-      !---------------------------------------------------------------!
       subroutine wae_get_dTdr(dTdr, v, drhodr, dYsdr, kk)
+      ! dT/dr = (gamma-1)(Q mu/v + (T/rho) drho/dr) + (T/mu) dmu/dr.
       real*8, intent(out) :: dTdr
       type(wae_i_eqnvars), intent(in) :: v
       real*8, intent(in)  :: drhodr, dYsdr(nsp), kk
       real*8 :: mu, gamma, dmudr, spQ, dgdr
       integer :: j
       call wae_get_mu(mu, v)
+      ! dmu/dr as upstream: -mu^2 sum_j HX_j dYs_j/dr.  The exact derivative
+      ! of wae_get_mu (m_H/m_j weights and the erfc blend term) is known; it
+      ! is not used because, without the blend's implicit heat source, the
+      ! tidal ramp of HD 209458 b stalls (md/windae_defect_fixes_20261027.md).
+      ! To Be Checked: D18 on hold (user decision 2026-10-27), see md/windae_defect_fixes_20261027.md
       dgdr = 0.0d0
       do j = 1, nsp
          dgdr = dgdr - par%HX(j)*dYsdr(j)
@@ -370,7 +426,6 @@
       dTdr = (gamma-1.0d0)*(spQ/v%v*mu + v%T/v%rho*drhodr) + v%T/mu*dmudr
       end subroutine wae_get_dTdr
 
-      !---------------------------------------------------------------!
       real*8 function wae_get_component(v, compnum)
       type(wae_i_eqnvars), intent(in) :: v
       integer, intent(in) :: compnum
@@ -384,7 +439,6 @@
       wae_get_component = comp
       end function wae_get_component
 
-      !---------------------------------------------------------------!
       subroutine wae_get_component_derivs(derivs, v, compnum)
       use wae_types, only: wae_varlist
       type(wae_varlist), intent(out) :: derivs
@@ -428,7 +482,6 @@
       derivs%z = (cpl-cmi)/dvar
       end subroutine wae_get_component_derivs
 
-      !---------------------------------------------------------------!
       subroutine wae_linearize_dvdr_crit(x, y, m, ne)
       ! Setup once per iteration of dvdr_slope/last/q_last (L'Hopital at
       ! the critical point). Ported from soe.c:linearize_dvdr_crit.
@@ -490,6 +543,8 @@
       call wae_get_component_derivs(dQ, v, QCOMP)
       call wae_get_dYsdr(dYsdr, v, 1.0d4)
       call wae_get_dNcoldr(dNdr, v)
+      ! dmu/dr as upstream; the exact derivative is on hold (see wae_get_dTdr).
+      ! To Be Checked: D18 on hold (user decision 2026-10-27), see md/windae_defect_fixes_20261027.md
       dgdr = 0.0d0
       do j = 1, nsp
          dgdr = dgdr - par%HX(j)*dYsdr(j)

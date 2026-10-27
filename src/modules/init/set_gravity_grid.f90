@@ -10,14 +10,12 @@
       ! Subroutine to evaluate the gravitational potential on
       !    cell centers and edges
             
-      ! Evaluate gravity at cell centers
+      ! Evaluate the gravitational potential at cell centers.
       Gphi_c = (/ ( phi(r(j)), j = 1-Ng,N+Ng) /)
       
-      ! Evaluate gravity at cell interfaces
+      ! Evaluate the gravitational potential at cell interfaces.
       Gphi_i = (/ ( phi(r_edg(j)), j = 1-Ng,N+Ng) /)
       
-      ! End of subroutine
       end subroutine set_gravity_grid
       
-      ! End of module
       end module gravity_grid_construction

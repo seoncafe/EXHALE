@@ -2,10 +2,7 @@
 	! Coupled ionization-equilibrium system for H, He WITH the He 2^3S
 	! metastable triplet (HeITR) AND an arbitrary number of trace metals.
 	!
-	! This is the merge of System_HeH_TR (H/He + triplet) and
-	! System_HeH_metals (H/He + metals); the two were historically mutually
-	! exclusive because both placed their extra unknown at x(4). Here the
-	! He-triplet fraction keeps x(4) and the metals are shifted up by one:
+	! x(4) is the He 2^3S fraction; metal fractions begin at x(5):
 	!
 	!   x(1) = n_HII /n_H
 	!   x(2) = n_HeII/n_He
@@ -31,8 +28,8 @@
 	!    module arrays (set by set_metal_coeffs); charge exchange is added by
 	!    cx_add_to_fvec with cx_metal_base = 5 (metals shifted to row 5).
 	!
-	! Solved with hybrd1 (numerical Jacobian), matching the triplet system;
-	! no analytic Jacobian is provided for the merged residual.
+	! hybrd1_resolving_every_unknown runs hybrd1, then optional
+	! finite-difference Newton; no analytic Jacobian is provided here.
 
 	use global_parameters
 	use ion_cell_state, only: ieq_cell
@@ -54,7 +51,7 @@
 	real*8  :: x(N_eq),fvec(N_eq)
 	real*8  :: params(60)
 
-	! H/He/triplet coefficients (params 1-18, same layout as System_HeH_TR)
+	! H/He/triplet coefficients from ieq_cell, as in System_HeH_TR.
 	real*8  :: g_hi,g_hei,g_heii,g_heiTR        ! photoionization
 	real*8  :: b_hi,b_hei,b_heii,b_heiTR        ! collisional ionization
 	real*8  :: a_hii,a_heii,a_heiii,a_heiTR     ! recombination
@@ -166,8 +163,6 @@
 
 	return
 
-	! End of subroutine
 	end subroutine ion_system_HeH_TR_metals
 
-	! End of module
 	end module System_HeH_TR_metals

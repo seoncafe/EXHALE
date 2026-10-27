@@ -1,71 +1,23 @@
 module energy_semi_implicit
-   ! Implicit source step for the thermal energy of a cell, at fixed
-   ! composition and fixed heating.
+   ! Implicit thermal-energy source update at fixed composition and heating.
+   ! In the coupled temperature-composition step, T_start gives the source
+   ! evaluation temperature and u_th_old retains energy at the old
+   ! composition; rebuilding it at the new particle count would change
+   ! conserved energy without a source.
    !
-   ! WHERE IT SITS.  Since B3c this is the INNER step of the coupled
-   ! temperature-composition source step: the marching loop alternates it
-   ! with the composition sweep until the pair stops moving, so the
-   ! composition is fixed for one pass and not for the step.  Two things
-   ! follow, and both are optional arguments of solve_energy_semi_implicit
-   ! so that a caller advancing the temperature alone is unaffected: the
-   ! temperature the sources were evaluated at is handed in rather than
-   ! recovered from the pressure (T_start), and the energy the step starts
-   ! from is the thermal energy the cell HAD at its OLD composition
-   ! (u_th_old), not that energy rebuilt at the new particle count.  The
-   ! rebuild was the composition projection, and it changed the conserved
-   ! energy with no source behind it.
+   ! For each cell, E(T)-E_old = dt [heat-cool(T)], with caloric_eos energy:
+   ! (3/2)(n_tot+n_e) k T plus bound-H2 rovibrational energy, or the
+   ! monatomic T/(gamma_ad-1) branch. In energy per particle this is
+   ! R(T)=u(T)-u(T_old)-a[heat-cool(T)], a=dt/(n_tot+n_e).
    !
-   ! THE EQUATION.  With the composition frozen over the step and the
-   ! photoheating rate frozen at the state the step starts from, the energy
-   ! of one cell obeys
-   !
-   !    E(T) - E_old  =  dt [ heat - cool(T) ] ,
-   !
-   ! with E the internal energy of the cell from the caloric equation of
-   ! state the run uses (caloric_eos: (3/2)(n_tot+n_e) k T plus the
-   ! rovibrational energy of the bound H2 in the cell, or the monatomic
-   ! T/(gamma_ad - 1) when the mixture branch is inactive).  Everything below
-   ! is written per (n_tot + n_e), which is the form internal_energy_per_particle
-   ! returns, so the residual solved is
-   !
-   !    R(T) = u(T) - u(T_old) - a [ heat - cool(T) ] ,   a = dt/(n_tot+n_e) .
-   !
-   ! HOW IT IS SOLVED.  A safeguarded Newton-bisection hybrid on a physical
-   ! bracket.  The bracket ends are the floor of the equation-of-state
-   ! validity and a ceiling above the heating-only update; the search starts
-   ! from the explicit-Euler point, brackets the root as it goes, and once
-   ! both ends are known it takes a Newton step whenever that step stays
-   ! strictly inside the bracket and the bracket keeps halving, and bisects
-   ! otherwise.  The Newton derivative is exact in the equation-of-state term
-   ! (heat_capacity_per_particle) and a secant estimate in dcool/dT, which
-   ! only affects the path: the safeguard owns the convergence.
-   !
-   ! WHAT IS TESTED BEFORE THE UPDATE IS RETURNED.  The residual at the
-   ! RETURNED temperature, against |R|/scale with
-   ! scale = |E_old| + dt(|heat| + |cool|); admissibility (inside the bracket,
-   ! finite).  The cooling written back is cool(T_returned), evaluated there
-   ! and not at a previous iterate.  A cell that does not meet the tolerance
-   ! within the iteration budget, that has no bracket, or that reaches the
-   ! equation-of-state floor is a FAILURE with a named reason.  There is no
-   ! clamp: an unconverged temperature is never returned as a state.
-   !
-   ! WHAT A FAILURE DOES.  It is REPORTED, and nothing else happens here:
-   ! the routine writes one compact diagnostic line pair and returns its
-   ! status.  The caller refuses the whole attempted step on it (the B3a
-   ! controller restores the checkpoint and retakes the step at half dt), in
-   ! BOTH run modes: the leniency the initialization mode grants to a fixed
-   ! point that was not reached is about an iterate that exists, while a
-   ! failed energy update has produced no temperature at all, so there is no
-   ! state to march on.  NOTHING IS ASSEMBLED FROM A FAILED UPDATE: p, T,
-   ! cool and u are left as the call found them, and a caller must not read
-   ! them after a status other than ENERGY_UPDATE_OK.
-   !
-   ! THE FLOOR IS NOT A RESERVOIR.  Reaching the lower bracket end means the
-   ! balance asks for a temperature below the range in which the equation of
-   ! state and the rate fits are defined.  A floor that represents real
-   ! external heating would have to be a physically specified reservoir with
-   ! its heating budgeted, and that specification belongs to B1's target
-   ! system, not here.  Until it exists, the floor is a failure.
+   ! A bracketed Newton-bisection solve uses exact caloric heat capacity
+   ! and a secant cooling derivative. The bracket begins at the equation-
+   ! of-state floor and extends above the heating-only update. Acceptance
+   ! checks the returned state for finite T, bracket membership, and
+   ! |R|/scale, scale=|E_old|+dt(|heat|+|cool|). Cooling is reevaluated at
+   ! that T. Missing bracket, floor contact, or nonconvergence fails; the
+   ! caller restores the attempted step and halves dt. No failed update
+   ! modifies p, T, cool, or u. The floor is not a physical heat reservoir.
    use global_parameters
    use species_table, only: n_mion, mion_fsp,                        &
                             isp_HI, isp_HII, isp_HeI, isp_HeII,       &
@@ -239,7 +191,6 @@ module energy_semi_implicit
 
 contains
 
-   ! ------------------------------------------------------!
 
    logical function energy_is_finite(x)
    ! True for a normal or subnormal double, false for a NaN or an infinity.
@@ -247,7 +198,6 @@ contains
    energy_is_finite = (x .eq. x) .and. (abs(x) .le. huge(1.0d0))
    end function energy_is_finite
 
-   ! ------------------------------------------------------!
 
    integer function n_energy_floor_cells()
    ! Number of DISTINCT cells that have reached the temperature floor of the
@@ -263,7 +213,6 @@ contains
    enddo
    end function n_energy_floor_cells
 
-   ! ------------------------------------------------------!
 
    subroutine energy_balance_init(s, T_old, a, heat, cool0, T_floor,       &
                                   T_ceil, u_old_in)
@@ -409,7 +358,6 @@ contains
 
    end subroutine energy_balance_init
 
-   ! ------------------------------------------------------!
 
    subroutine energy_balance_update(s, cool_at_T_eval)
    ! Absorb the cooling the caller evaluated at s%T_eval, accept or reject
@@ -547,7 +495,6 @@ contains
 
    end subroutine energy_balance_update
 
-   ! ------------------------------------------------------!
 
    subroutine energy_balance_fail(s, j, status_in, reason_in, T_e, C,      &
                                   res_scaled_in, res_energy_in)
@@ -568,7 +515,6 @@ contains
    s%n_active      = s%n_active - 1
    end subroutine energy_balance_fail
 
-   ! ------------------------------------------------------!
 
    subroutine energy_balance_finish(s)
    ! Cells still active when the budget ran out.
@@ -583,7 +529,6 @@ contains
    enddo
    end subroutine energy_balance_finish
 
-   ! ------------------------------------------------------!
 
    subroutine energy_balance_reason_text(reason_in, text)
    integer, intent(in) :: reason_in
@@ -608,7 +553,6 @@ contains
    end select
    end subroutine energy_balance_reason_text
 
-   ! ------------------------------------------------------!
 
    subroutine solve_energy_semi_implicit(u, W, dt, heat, cool, f_sp, step, &
                                          status, T_start, u_th_old, du_form)

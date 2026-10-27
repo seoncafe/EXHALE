@@ -40,7 +40,6 @@
    end subroutine set_state_certified
 
 
-   ! ------------------------------------------------------------------ !
 
    subroutine write_row_layout_header(unit)
    ! The one line every profile file carries to say what its rows ARE.
@@ -63,9 +62,7 @@
         ' to ', Ng+N
    end subroutine write_row_layout_header
 
-   ! ------------------------------------------------------------------ !
 
-   ! ------------------------------------------------------------------ !
 
    integer(8) function file_rolling_checksum(fname) result(ck)
    ! A CHECKSUM OF A FILE'S BYTES, for provenance only.
@@ -73,8 +70,8 @@
    ! It is NOT a cryptographic digest and is deliberately not called one: two
    ! independent modular rolling sums,
    !     h_i <- mod( h_i * a_i + byte, 2^31 - 1 ),   a = (131, 8191),
-   ! packed into one 62-bit integer. Each rolling multiply-add stays below
-   ! 2^44 and the packed result below 2^62, so the arithmetic is exact in integer(8)
+   ! packed into one 62-bit integer. Each rolling multiply-add is below
+   ! 2^44 and the packed result is below 2^62, so arithmetic is exact in integer(8)
    ! on every compiler -- which a 64-bit FNV or CRC written in standard
    ! Fortran is not, since they rely on unsigned wraparound the language does
    ! not define.
@@ -104,7 +101,6 @@
    ck = h1*int(m,8) + h2
    end function file_rolling_checksum
 
-   ! ------------------------------------------------------------------ !
 
    subroutine write_provenance_header(unit)
    ! WHAT PRODUCED THIS FILE, so that a profile found on disk in a year can
@@ -167,54 +163,15 @@
    end subroutine write_provenance_header
 
    subroutine write_coupling_state_header(unit, state_id)
-   ! THE LINE THAT SAYS WHAT PHYSICS THE STATE IN THIS FILE WAS PRODUCED
-   ! UNDER, for every switch of the run that is NOT fixed by input.inp but
-   ! changes while the run converges.
-   !
-   ! WHY. A restart re-reads the state but re-derives the switches from
-   ! input.inp, and for a STAGED switch that is a different setting from the
-   ! one the state was converged under. Measured: the WASP-121b steady
-   ! solution was reached with the SvS85
-   ! secondary ionization armed at step 2242, the restart re-staged it, the
-   ! first ionization sweep moved the particle count by 8.1e-3 rather than
-   ! 2.6e-4, and the layer left the root by a peak-to-peak 4.3 times the wind
-   ! mass flux instead of 0.017.
-   !
-   ! WHAT IS IN IT. The census of every switch EXHALE_main changes inside the
-   ! marching loop, so a reader of this line knows the whole run state and not
-   ! just the part today's load_IC acts on:
-   !
-   !   sec_ion    the SvS85/Dalgarno photoelectron secondary-ionization
-   !              coupling, as applied when the file was written (T/F), and
-   !              the step it was armed at (-1 = never staged in)
-   !   recon      the discrete reconstruction operator in force, which is not
-   !              rec_method alone while the PLM -> WENO3 continuation of
-   !              section 148 is armed: the label comes from
-   !              reconstruction_operator_label() so that a file written
-   !              inside a ramp says so
-   !
-   ! WHAT LEFT IT, section 152. `valve` (valve_eps) and `fluxconst`
-   ! (base_flux_const) were the two switches the OLD base boundary chose for
-   ! itself, and the characteristic boundary has neither: there is no one-way
-   ! valve to smooth and no moving average standing in for a mass flux, so a
-   ! header that reported them would be reporting settings the run cannot
-   ! have. `load_IC`'s parser reads the fields it recognizes one at a time and
-   ! ignores the rest, so a file written before section 152 still restores its
-   ! sec_ion state and an older reader still finds `sec_ion` in a file written
-   ! after it.
-   !
-   ! It is a '#' comment, so no numeric parse and no golden changes: the
-   ! regression compares with grep -v '^ *#'.
-   !
-   ! The fields are formed by coupling_state_fields, which the provenance
-   ! line of the derived (_adv) products writes as well, so the two lines
-   ! cannot state different sets of fields.
-   !
-   ! state_id, present only for a generation of the pass state
-   ! (publish_pass_state_generation, write_output.f90), is appended as the
-   ! last field, state_id=<generation>, on both halves of the pair; load_IC
-   ! refuses a pair whose halves state different identities or only one of
-   ! them states one. Absent, the line is the one every other file carries.
+   ! Write the # coupling line that records the staged physics of this
+   ! state, independent of the selected input's current defaults.
+   ! sec_ion and sec_ion_step record secondary-ionization activation;
+   ! recon names the active reconstruction, including its continuation;
+   ! certified, cert_reason and mode describe the solve status.
+   ! coupling_state_fields also supplies the derived-product provenance.
+   ! A pass-state generation appends state_id to both halves of its pair;
+   ! load_IC refuses unequal or one-sided identities. Older lines omit it.
+   ! Header fields and restart behavior: ../EXHALE_v1.00/md/input_schema.md appendix D.2.
       integer, intent(in) :: unit
       character(len=*), intent(in), optional :: state_id
       if (present(state_id)) then
@@ -291,7 +248,6 @@
                      trim(ptr)//trim(mtok)
       endif
    end function coupling_state_fields
-	! ------------------------------------------------------!
 
 	subroutine calc_ne(nhii,nheii,nheiii,ne,nm,nmol)
 	! Calculate the free electron density.
@@ -348,10 +304,9 @@
 
 	end subroutine calc_ne
 	
-	! ------------------------------------------------------!
 
 	subroutine calc_ntot(nhi,nhii,nhei,nheii,nheiii,n_tot,nm,nmol,nox)
-	! Calculate the total atomic number density.
+	! Calculate gas-particle number density, excluding free electrons.
 	! Every species counts as ONE gas particle, so the base H/He/molecular
 	! contribution is accumulated with unit weight in the canonical bsp order
 	! of species_table; the optional nm adds the metal nuclei (all stages)
@@ -415,7 +370,6 @@
 
 	end subroutine calc_ntot
 
-	! ------------------------------------------------------!
 
 	subroutine hydrogen_helium_nuclei_density(nhi,nhii,nhei,nheii,nheiii,   &
 	                                          nh,nhe,nmol,nox)
@@ -462,7 +416,6 @@
 
 	end subroutine hydrogen_helium_nuclei_density
 
-	! ------------------------------------------------------!
 	
 	subroutine calc_rho(nhi,nhii,nhei,nheii,nheiii,n_out,nm,nmol,nox)
 	! Calculate the total mass density (adimensional).
@@ -533,7 +486,6 @@
 
 	end subroutine calc_rho
 
-	! ------------------------------------------------------!
 
 	subroutine calc_column_dens(nhi,nhei,nheii,nheiTR,N1,N15,N2,NTR)
 	! Calculates the column densities for given ionization profiles
@@ -549,7 +501,7 @@
 	! the domain depend on the ghost rule: a hydrostatic ghost past the
 	! Roche L1 ridge of 1e41 cm^-3 (MEASURED, WASP-52 b at 10 R_p, frozen
 	! f8a38866) shadowed every cell from the XUV. Cell j's column includes
-	! its own width (rectangle rule), N1(j) - N1(j+1) = n_HI(j) dr_j(j).
+	! its weighted width: N1(j)-N1(j+1) = n_HI(j) dr_j(j) R0 opa_pf(j).
     
 	integer :: j
 	real*8, dimension(1-Ng:N+Ng), intent(in)  :: nhi
@@ -583,10 +535,8 @@
 
 	enddo
 	
-	! End of subroutine
 	end subroutine calc_column_dens
 
-	! ------------------------------------------------------!
 
 	subroutine calc_column_dens_one(nsp, Ncol)
 	! Column density of a single species (same rectangle rule, opa_pf
@@ -602,7 +552,6 @@
 	enddo
 	end subroutine calc_column_dens_one
 
-	! ------------------------------------------------------!
 
 	subroutine calc_column_dens_metals(nm, Nm_col)
 	! Column densities for metals (same scheme as calc_column_dens,
@@ -631,46 +580,18 @@
 
 	end subroutine calc_column_dens_metals
 
-	! ------------------------------------------------------!
 
-	! (1 - exp(-x))/x for x >= 0, the ONE evaluation of that quotient in the
-	! code. It is the same mathematical function behind several physical
-	! quantities, each of which keeps its own name, limits and meaning and
-	! is evaluated through this: the fraction of the photons entering a
-	! cell that the cell absorbs per unit of its own optical depth
-	! (absorbed_fraction_per_unit_depth below, and through it the XUV cell
-	! mean and the FUV H2O/OH band rates), the same fraction for the locally
-	! absorbed recombination radiation (util_ion_eq.f90,
-	! absorbed_fraction_over_tau and absorbed_photon_fraction), the one-face
-	! escape probability of a uniformly emitting slab (Cool_coeff.f90,
-	! line_escape_probability_one_face) and the Sobolev escape probability
-	! of Ly-alpha (lya_rt.f90, beta_sob). x <= 0 returns the limit 1.
-	!
-	! THREE BRANCHES, AND WHY THE CLOSED FORM STARTS ONLY AT x = 1e-2.
-	! The closed form subtracts two numbers that approach each other as
-	! x -> 0: exp(-x) is rounded to a double near 1, whose spacing is
-	! eps/2 = 1.1e-16, so 1 - exp(-x) carries an absolute error of that
-	! size and the quotient a relative error of about eps/x. That error is
-	! not only an inaccuracy. As x moves continuously the rounded exp(-x)
-	! jumps from one double to the next, so the closed form is a STAIRCASE
-	! in x with relative steps of about eps/x, i.e. a discontinuous function
-	! of the densities x is formed from. MEASURED at x ~ 1.5e-7 (the H I
-	! threshold depth of an LHS 1140 b wind cell): steps of 4-5e-11 in the
-	! photoionization rate every 1.7e-11 in n(H I), enough for the
-	! composition iteration of the steady residual to find no fixed point
-	! and alternate between two states on either side of a step.
-	!   x < 1e-8          the three-term Taylor series 1 - x/2 + x^2/6,
-	!                     truncated at x^3/24, i.e. 4.2e-26 at x = 1e-8;
-	!   1e-8 <= x < 1e-2  the Taylor series through x^8, in Horner form,
-	!                     truncated at x^9/10!, i.e. below 3e-25 at
-	!                     x = 1e-2; its rounding is a few ulps and it is
-	!                     smooth to the last bit;
-	!   x >= 1e-2         the closed form, whose error eps/x is then at most
-	!                     2.2e-14 and falls as x grows; exp(-x) underflows
-	!                     harmlessly to 0 for large x, leaving 1/x.
-	! The switch at 1e-2 is where the closed form's error has fallen to
-	! 2.2e-14 while the series needs only nine terms to stay below 3e-25;
-	! the three branches agree to 1e-14 at both switch points.
+	! Evaluate A(x)=(1-exp(-x))/x for x>=0; return its limit 1 at
+	! x<=0. This one numerical form serves cell-mean absorption, locally
+	! absorbed recombination radiation, one-face slab escape, and Sobolev
+	! Ly-alpha escape; callers retain their distinct physical meanings.
+	! For x<1e-8 use 1-x/2+x^2/6; for 1e-8<=x<1e-2 use the
+	! Taylor series through x^8 in Horner form; otherwise use the closed
+	! form. The series avoid cancellation of 1-exp(-x) and its staircase
+	! in density-dependent optical depths. At x=1e-2 the closed-form
+	! relative rounding error is <=2.2e-14 and the series truncation is
+	! <3e-25. The measured steady-residual failure is in
+	! ../EXHALE_v1.00/md/Update_EXHALE_stage3.md section 58.
 	elemental double precision function one_minus_exp_over_x(x) result(g)
 	real*8, intent(in) :: x
 	if (x .le. 0.0d0) then
@@ -686,7 +607,6 @@
 	endif
 	end function one_minus_exp_over_x
 
-	! ------------------------------------------------------!
 
 	! (1 - exp(-d))/d, the fraction of the photons entering a cell that the
 	! cell absorbs, per unit of its own optical depth d.  This is the ONLY
@@ -701,7 +621,6 @@
 	fr = one_minus_exp_over_x(d)
 	end function absorbed_fraction_per_unit_depth
 
-	! ------------------------------------------------------!
 
 	! MEAN over one cell of the attenuation of the stellar beam, for a beam
 	! whose optical depth is tau_out at the cell's star-ward face and
@@ -736,55 +655,75 @@
 	! photons the beam loses, cell by cell and over the whole column.  The
 	! inner-face rule satisfies neither statement.
 	!
-	! THE 2D RATE CORRECTION.  With a_tau > 0 the field carries the further
-	! factor 1/(1 + a_tau tau), the geometry approximation selected by
-	! appx_mth (parameters.f90), which is not exponential in the column, so
-	! the product has no closed form.  The mean is then taken by composite
-	! three-point Gauss-Legendre in the depth across the cell, on segments at
-	! most seg_dtau wide; the rule is exact for polynomials of degree five, and
-	! its error on a segment of width h is h^7 f^(6)/2016000, i.e. a relative
-	! truncation of h^6/2016000, which is 1.2e-10 at seg_dtau = 0.25.
-	! a_tau = 0, the default and the only value for which the field is the
-	! pure exponential, takes the closed form above.
+	! With a_tau>0, integrate exp(-tau)/(1+a_tau*tau) across the cell.
+	! Only the first min(dtau,40) in optical depth is needed: monotonicity
+	! of 1/(1+a_tau*tau) bounds the discarded tail relative to the retained
+	! integral by exp(-40)/(1-exp(-40)) < 4.3e-18.
+	! Eight-point Gauss-Legendre uses width h<=0.25/(1+b), where
+	! b=a_tau/(1+a_tau*tau_left). For f=exp(-tau)/(1+a_tau*tau),
+	! |f^(16)|/f <= 16!*(1+b)^16. The Gauss error coefficient is
+	! (8!)^4/[17*(16!)^3]; hence each segment's relative quadrature error
+	! is <= C*16!*0.25^16*exp(0.25)*1.25 < 1.4e-19, before roundoff.
+	! These bounds require nonnegative optical depths and a_tau>0. The
+	! existing clipping supplies nonnegative depths. a_tau<=0 retains the
+	! exact exponential cell mean. Underflow and summation roundoff remain
+	! floating-point limits, not errors covered by the quadrature bound.
 	elemental double precision function cell_mean_attenuation(tau_out, dtau) &
 	                                   result(f)
 	real*8, intent(in) :: tau_out, dtau
-	! Three-point Gauss-Legendre on [0,1]: nodes (1 -+ sqrt(3/5))/2 and 1/2,
-	! weights 5/18, 8/18, 5/18.
-	integer, parameter :: n_gl = 3
-	real*8, parameter :: gl_s(n_gl) = (/ 0.1127016653792583d0,             &
-	                                     0.5d0,                            &
-	                                     0.8872983346207417d0 /)
-	real*8, parameter :: gl_w(n_gl) = (/ 5.0d0/18.0d0, 8.0d0/18.0d0,       &
-	                                     5.0d0/18.0d0 /)
-	real*8, parameter  :: seg_dtau  = 0.25d0
-	integer, parameter :: nseg_max  = 256
-	real*8  :: tau_face, dt, ds, s_lo, tau_s, acc
-	integer :: nseg, i, g
+	integer, parameter :: n_gl = 8
+	! Gauss-Legendre nodes and weights on [0,1], rounded to binary64.
+	real*8, parameter :: gl_s(n_gl) = (/                              &
+	  0.01985507175123188416d0, 0.1016667612931866302d0,              &
+	  0.2372337950418355071d0,  0.4082826787521750975d0,              &
+	  0.5917173212478249025d0,  0.7627662049581644929d0,              &
+	  0.8983332387068133698d0,  0.9801449282487681158d0 /)
+	real*8, parameter :: gl_w(n_gl) = (/                              &
+	  0.05061426814518812958d0, 0.1111905172266872353d0,              &
+	  0.1568533229389436437d0,  0.1813418916891809915d0,              &
+	  0.1813418916891809915d0,  0.1568533229389436437d0,              &
+	  0.1111905172266872353d0,  0.05061426814518812958d0 /)
+	real*8 :: tau_face, dt, extent, offset, width, tau_s, slope, geometry
+	integer :: g
 
-	tau_face = max(tau_out, 0.0d0)
-	dt       = max(dtau,    0.0d0)
-
+	tau_face = max(tau_out,0.0d0)
+	dt = max(dtau,0.0d0)
 	if (a_tau .le. 0.0d0) then
-		f = exp(-tau_face)*absorbed_fraction_per_unit_depth(dt)
-		return
+	   f = exp(-tau_face)*absorbed_fraction_per_unit_depth(dt)
+	   return
 	endif
-
-	nseg = min(max(int(dt/seg_dtau) + 1, 1), nseg_max)
-	ds   = 1.0d0/dble(nseg)
-	acc  = 0.0d0
-	do i = 0,nseg-1
-		s_lo = dble(i)*ds
-		do g = 1,n_gl
-			tau_s = tau_face + (s_lo + gl_s(g)*ds)*dt
-			acc   = acc + gl_w(g)*ds*exp(-tau_s)/(1.0d0 + a_tau*tau_s)
-		enddo
+	if (a_tau .le. 1.0d0) then
+	   geometry = 1.0d0/(1.0d0+a_tau*tau_face)
+	else
+	   geometry = (1.0d0/a_tau)/(1.0d0/a_tau+tau_face)
+	endif
+	if (dt .eq. 0.0d0) then
+	   f = exp(-tau_face)*geometry
+	   return
+	endif
+	f = 0.0d0
+	if (exp(-tau_face) .eq. 0.0d0) return
+	extent = min(dt,40.0d0)
+	offset = 0.0d0
+	do while (offset .lt. extent)
+	   if (a_tau .le. 1.0d0) then
+	      slope = a_tau/(1.0d0+a_tau*(tau_face+offset))
+	   else
+	      slope = 1.0d0/(1.0d0/a_tau+tau_face+offset)
+	   endif
+	   width = min(0.25d0/(1.0d0+slope),extent-offset)
+	   do g = 1,n_gl
+	      tau_s = tau_face+offset+gl_s(g)*width
+	      if (a_tau .le. 1.0d0) then
+	         geometry = 1.0d0/(1.0d0+a_tau*tau_s)
+	      else
+	         geometry = (1.0d0/a_tau)/(1.0d0/a_tau+tau_s)
+	      endif
+	      f = f + gl_w(g)*(width/dt)*exp(-tau_s)*geometry
+	   enddo
+	   offset = offset+width
 	enddo
-	f = acc
-
 	end function cell_mean_attenuation
-
-	! ------------------------------------------------------!
 
 	subroutine calc_mmw(nh,nhe,ne,mmw,nm)
 	! Calculate the mean molecular weight for a certain ionization profile.
@@ -821,8 +760,6 @@
 
 	mmw = mass_l/npart_l
 
-	! End of subroutine
 	end subroutine calc_mmw
 
-	! End of module
 	end module utils 

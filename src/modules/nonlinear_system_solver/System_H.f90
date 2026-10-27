@@ -4,6 +4,7 @@
 	use global_parameters
 	use ion_cell_state, only: ieq_cell
 	use ion_residual_core, only: impose_transported_ionization_fractions, &
+	                             imposed_ionization_jacobian, &
 	                             ionization_row_gross
 
 	implicit none
@@ -45,7 +46,6 @@
 	! and not this cell's local balance (ion_residual_core).
 	call impose_transported_ionization_fractions(ieq_cell, x, fvec)
 
-	! End of subroutine
 	end subroutine ion_system_H
 
 	! Analytic Jacobian of ion_system_H (Task 2). f1 = n_hi*g_hi + C1*n_e
@@ -65,6 +65,8 @@
 	C1    = n_hi*b_hi - a_hii*n_hii
 	! direct (-nh*g_hi + dC1/dx1 * n_e) + n_e coupling (C1*dne, dne=nh)
 	fjac(1,1) = -n_h*g_hi + (-n_h*b_hi - a_hii*n_h)*n_e + C1*n_h
+	! Apply the same transported-fraction constraints as the residual.
+	call imposed_ionization_jacobian(ieq_cell, Neq, fjac)
 	end subroutine jac_system_H
 
 	! THE POSITIVE ROOT OF THE H I <-> H II BALANCE OF ion_system_H, in
@@ -96,5 +98,4 @@
 	x = min(max(x, 0.0d0), 1.0d0)
 	end function hydrogen_ionization_balance_root
 
-	! End of module
 	end module System_H

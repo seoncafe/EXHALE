@@ -199,10 +199,12 @@ units. The base mean molecular weight blends the molecular value below the
 wind with the atomic value inside it,
 \[
 \mu = \frac{m_H}{D}\,(1-b) + b\,\mu_{\rm mol}, \qquad
-D = \sum_s \frac{m_H}{m_s}\,X_s\,(2-Y_s), \qquad \mu_{\rm mol}=2.3\,m_H,
+D = \sum_s \frac{m_H}{m_s}\,X_s\,(2+Z_s-N_{e,s}-Y_s), \qquad \mu_{\rm mol}=2.3\,m_H,
 \]
-where $b$ is the bolometric-transition flag ($1$ on, $0$ off) and $X_s$ the
-mass fraction. This routine is \textbf{bit-identical to the reference} on
+where $b$ is the bolometric-transition flag ($1$ on, $0$ off), $X_s$ the
+mass fraction and $Z_s-N_{e,s}$ the electrons already removed from the
+lowest state of species $s$ (zero for H and He; the reference writes
+$2-Y_s$, the same for H and He; changed 2026-10-27). This routine is \textbf{bit-identical to the reference} on
 the seed and on HD\,209458b/HD\,189733b: i.e.\ on both the $b=1$
 (molecular, $\mu=2.3\,m_H$) and $b=0$ (atomic, $\mu=m_H/D$) branches.
 
@@ -316,7 +318,13 @@ $\le2\times10^{-11}$ on three planets; and the continuation ramp
 reproduces the Python wrapper's mass-loss rate to five digits. A subtle
 quirk of the reference (the rate cache keys on column density only and
 ignores $Y_s$ changes) had to be reproduced exactly for the numerical
-Jacobian to match.
+Jacobian to match. Since 2026-10-27 the port no longer reproduces it: the
+stored rates are reused only when the columns, $Y_s$, $F_{\rm tot}$ and the
+composition all match, and the recombination cooling takes $T$ in K and an
+electron density independent of the Ly$\alpha$ switch
+(\code{md/windae\_defect\_fixes\_20261027.md}). These comparisons are
+therefore a record of the port as it stood, not a property of the present
+code.
 
 \paragraph{The bit-exact gates need one line restored (2026-08-19).} Those
 comparisons were run with Wind-AE's own \code{defs.h} constants. The port now

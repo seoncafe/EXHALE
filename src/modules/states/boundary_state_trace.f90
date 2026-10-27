@@ -55,7 +55,6 @@
 
       contains
 
-      ! ------------------------------------------------------!
 
       logical function boundary_trace_armed() result(on)
       ! EXHALE_BOUNDARY_TRACE, default off.
@@ -64,7 +63,6 @@
       on = (len_trim(env) .gt. 0 .and. trim(env) .ne. '0')
       end function boundary_trace_armed
 
-      ! ------------------------------------------------------!
 
       subroutine open_trace()
       if (trace_opened) then
@@ -78,7 +76,6 @@
       endif
       end subroutine open_trace
 
-      ! ------------------------------------------------------!
 
       real*8 function base_face_state_of_installed_state(u_in)            &
              result(dmax)
@@ -134,7 +131,6 @@
       enddo
       end function base_face_state_of_installed_state
 
-      ! ------------------------------------------------------!
 
       real*8 function relative_gap(a, b) result(d)
       real*8, intent(in) :: a, b
@@ -144,7 +140,6 @@
       if (s .gt. 0.0d0) d = abs(a - b)/s
       end function relative_gap
 
-      ! ------------------------------------------------------!
 
       subroutine report_base_face_state_consistency(label, u_in)
       ! One line naming the point of the evaluation and the gap above.
@@ -162,7 +157,6 @@
       close(trace_unit)
       end subroutine report_base_face_state_consistency
 
-      ! ------------------------------------------------------!
 
       subroutine base_mass_row_trace(label, jlast, R1, Ffac, sc, fl)
       ! The signed continuity row of the base cells, the two face mass
@@ -185,17 +179,15 @@
       close(trace_unit)
       end subroutine base_mass_row_trace
 
-      ! ------------------------------------------------------!
 
       logical function ghost_record_armed() result(on)
       ! EXHALE_GHOST_RECORD, default off. When it is set every evaluation
-      ! appends one record to ./output/ghost_record.txt.
+      ! appends one record to <output_dir>/ghost_record.txt.
       character(len=32) :: env
       call get_environment_variable('EXHALE_GHOST_RECORD', env)
       on = (len_trim(env) .gt. 0 .and. trim(env) .ne. '0')
       end function ghost_record_armed
 
-      ! ------------------------------------------------------!
 
       subroutine write_ghost_record(label, p_g, rho_g, T_g, base_row,     &
                                     F_lower, F_upper, row_scale, row_floor)

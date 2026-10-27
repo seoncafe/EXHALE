@@ -2,8 +2,18 @@
       ! Multifrequency ionization + heating rates, ported verbatim from
       ! wind-ae glq_rates.c : calc_gql_rates() (Shull & van Steenberg 1985
       ! energy partition; Dere 2007 secondary-ionization coefficients).
-      ! Faithful to the C arithmetic and evaluation order -- behavior
-      ! changes (e.g. Stage-2 spectrum binning) belong in a later revision.
+      ! Faithful to the C arithmetic and evaluation order, with one
+      ! difference from upstream Wind-AE (D11, 2026-10-27,
+      ! md/windae_defect_fixes_20261027.md):
+      ! - Rate reuse: upstream calc_gql_rates returns the stored rates
+      !   whenever the columns N are unchanged, although the rates also
+      !   depend on Ys (absorber fractions, electron background), Ftot and
+      !   the composition HX, m_j; perturbing Ys at fixed N (the finite-
+      !   difference derivatives) or ramping Ftot then gets stale rates.
+      !   Here the stored rates are reused only when N, Ys, Ftot, HX and the
+      !   atomic masses all equal those they were computed for.  The
+      !   spectrum tables are loaded once in a run (wae_load_spectrum
+      !   allocates them) and need no key.
       !
       ! Rate layout matches ionization_rate[]: for 0-based species j,
       ! ion(j*(nsp+1)+1)        = primary ionization rate,
@@ -17,10 +27,12 @@
       use wae_rate_coeffs, only: Rtab => wae_R
       implicit none
 
-      ! glq rate cache (mirrors the static last_N / ionization_rate /
-      ! heating_rate of calc_gql_rates).
+      ! Stored rates and every input they were computed from (upstream
+      ! keeps last_N only; see the header).
       logical :: wae_glq_have_cache = .false.
       real*8, allocatable :: wae_last_N(:), wae_ion_cache(:), wae_heat_cache(:)
+      real*8, allocatable :: wae_last_Ys(:), wae_last_HX(:), wae_last_amass(:)
+      real*8 :: wae_last_Ftot = 0.0d0
       contains
 
       subroutine wae_glq_rates_eval(N, Ys, ion, heat)
@@ -38,18 +50,13 @@
       real*8  :: tau_arr(npts), f_denom(npts), Phi(npts)
       logical :: recalc
 
-      ! --- cache, faithful to calc_gql_rates(): the prior rates are reused
-      ! whenever the column densities N are unchanged. NOTE this ignores
-      ! any change in Ys (a latent C quirk that matters when get_*_derivs
-      ! perturbs Ys at fixed Ncol); preserved here for C-comparability. ---
+      ! Reuse the stored rates only when every input is unchanged (D11).
       recalc = (.not. wae_glq_have_cache)
       if (wae_glq_have_cache) then
-         do j = 1, nsp
-            if (N(j) .ne. wae_last_N(j)) then
-               recalc = .true.
-               exit
-            end if
-         end do
+         recalc = any(N .ne. wae_last_N) .or. any(Ys .ne. wae_last_Ys)    &
+                  .or. (Ftot .ne. wae_last_Ftot)                          &
+                  .or. any(HX .ne. wae_last_HX)                           &
+                  .or. any(amass .ne. wae_last_amass)
       end if
       if (.not. recalc) then
          ion  = wae_ion_cache
@@ -125,12 +132,17 @@
          end do
       end do
 
-      ! save state for the next cache check (as calc_gql_rates does)
+      ! store the rates and their inputs for the next reuse check
       if (.not. allocated(wae_last_N)) then
          allocate(wae_last_N(nsp), wae_ion_cache(nsp*(nsp+1)),            &
-                  wae_heat_cache(nsp))
+                  wae_heat_cache(nsp), wae_last_Ys(nsp), wae_last_HX(nsp), &
+                  wae_last_amass(nsp))
       end if
       wae_last_N = N
+      wae_last_Ys = Ys
+      wae_last_Ftot = Ftot
+      wae_last_HX = HX
+      wae_last_amass = amass
       wae_ion_cache = ion
       wae_heat_cache = heat
       wae_glq_have_cache = .true.

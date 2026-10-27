@@ -1,6 +1,5 @@
 	module setup_report
-	! Contains subroutine to write the setup of the current 
-	!	simulation to file
+	! Write the setup summary, parser values, and resolved configuration.
 	
 	use global_parameters
 	use base_boundary, only: base_reservoir_prescription_version,       &
@@ -58,7 +57,6 @@
 	implicit none
 	contains
 	
-	! ------------------------------ !
 	
 	subroutine write_setup_report
 	! Write summary of the current simulation setup to file
@@ -336,7 +334,7 @@
       ' continuum attenuates it, not H I resonance scattering,'
 		write(outfile,*) &
       '  so the Ly-alpha photolysis rate is an upper bound'//             &
-      ' (see output/FUV_bands.txt)'
+      ' (see '//trim(output_dir)//'FUV_bands.txt)'
 		write(outfile,*) &
       '- Base H2/H partition: COMPUTED by the oxygen chemistry'//         &
       ' (q_H2_base is refused)'
@@ -347,12 +345,11 @@
       '- Molecules and metals solved in one system (shared electron density)'
 	write(outfile,'(A,I0)') &
       ' - Coupled equilibrium system size: N_eq = ', N_eq
-	! Photoelectron secondary ionization. The STAGED default is reported
-	! explicitly because "Staged" is not a synonym for "on": the coupling is
-	! then applied only after the wind first settles without it, so a run that
-	! is stopped at a fixed step count before converging never applies it at
-	! all. That is what silently excluded every molecular regression case
-	! from this physics until 2026-09-02.
+	! Photoelectron secondary ionization. Immediate application is the
+	! default; "Staged" delays the coupling until the marching state settles
+	! without it. A run stopped before that point never applies the coupling.
+	! This staging excluded every molecular regression case from the physics
+	! until 2026-09-02.
 	if (.not. use_sec_ion) then
 		write(outfile,*) &
          ' - Photoelectron secondary ionization: off'
@@ -809,10 +806,9 @@
 
 	end subroutine write_setup_report
 
-	! ------------------------------ !
 
 	subroutine write_parse_dump
-	! Dump every variable input_read derives from input.inp (plus any base.inp
+	! Dump values derived from the selected input (plus any base.inp
 	! override) to parse_dump.txt, one "name = value" line per variable, in the
 	! md/input_schema.md key order. Gated by EXHALE_PARSE_DUMP=1 in
 	! EXHALE_main and used by the parser-refactor regression corpus
@@ -1051,13 +1047,12 @@
 
 	end subroutine write_parse_dump
 
-	! ------------------------------ !
 
 	subroutine write_resolved_config
 	! Machine-readable record of the configuration the wind actually uses,
-	! written once the input.inp values and the optional base.inp handoff
+	! written after the selected input and optional base.inp handoff
 	! overrides (r_base/T_base/HeH_base) are resolved.  Consumers
-	! (EXHALE_transit.py) read these values instead of re-parsing input.inp,
+	! (EXHALE_transit.py) read these values instead of re-parsing the input,
 	! so a base.inp override of the radius/temperature/He ratio reaches the
 	! transit geometry as well.  Format: '# ' comments, then one
 	! 'key  value' pair per line.
@@ -1074,9 +1069,9 @@
 	write(u,'(A)') '# EXHALE resolved configuration (machine-readable).'
 	write(u,'(A)') 'input_file '//trim(inp_file)
 	write(u,'(A)') 'output_directory '//trim(output_dir)
-	write(u,'(A)') '# Values in effect after input.inp + base.inp resolution;'
+	write(u,'(A)') '# Values in effect after '//trim(inp_file)//' + base.inp resolution;'
 	write(u,'(A)') '# these are what the wind solver uses, and what'
-	write(u,'(A)') '# EXHALE_transit.py should use instead of input.inp.'
+	write(u,'(A)') '# EXHALE_transit.py should use instead of '//trim(inp_file)//'.'
 	write(u,'(A)') '# Reals are written to full double precision so a budget'
 	write(u,'(A)') '# check can use them without a round-off floor.'
 	write(u,'(A,ES23.15E3)') 'planet_radius_RJ          ', R0/RJ
@@ -1395,7 +1390,6 @@
 	close(u)
 	end subroutine write_resolved_config
 
-	! ------------------------------ !
 
 	function round_trip_decimal(val) result(s)
 	! The decimal spelling of a binary64 value that a list-directed read
@@ -1411,5 +1405,4 @@
 	s = adjustl(s)
 	end function round_trip_decimal
 
-	! End of module
 	end module setup_report

@@ -3,7 +3,6 @@
    ! Included processes: bremsstrahlung, collisional ionization,
    !     collisional excitation, recombination
    ! 
-   ! --------------------
    ! 
    ! - AC, 14/04/22: Added He metastable collisional strength 
    !	coefficients
@@ -2400,16 +2399,13 @@
 
    contains
 
-   !---------------------------------------------------!
 
-   ! =============================================================== !
    !  Default H/He recombination and collisional-ionization rates.   !
    !  Used unless legacy_hhe_rates = .true. (then the legacy HG97 /   !
    !  Abel fits below are taken instead) or atomic_rate_set_k22 =     !
    !  .true. (then the Koskinen et al. 2022 Table 1 fits of           !
    !  mol_rates are taken; the accessors near the end of this module  !
    !  are where all three sets meet).                                 !
-   ! =============================================================== !
 
    ! Badnell radiative recombination fit (2023 update of Badnell 2006,
    ! ApJS 167, 334; https://amdpp.phys.strath.ac.uk/tamoc/RR).
@@ -3010,7 +3006,6 @@
    gbar_ff = gff_avg(i)*(1.0d0-frac) + gff_avg(i+1)*frac
    end function gbar_ff
 
-   !---------------------------------------------------!
 
    !--- Recombination ---!
 
@@ -3023,7 +3018,6 @@
    end subroutine rec_HII_B_range
 
 
-   !--------------!
 
    ! Case B recombination coefficient of HeII
    subroutine rec_HeII_B_range(T,coeff_rec_HeII_B,j_lo,j_hi)
@@ -3034,7 +3028,6 @@
    end subroutine rec_HeII_B_range
 
 
-   !--------------!
 
    ! Case B recombination coefficient of HeIII
    subroutine rec_HeIII_B_range(T,coeff_rec_HeIII_B,j_lo,j_hi)
@@ -3045,7 +3038,6 @@
    end subroutine rec_HeIII_B_range
 
 
-   !---------------------------------------------------!
 
    !--- Collisional ionization ---!
 
@@ -3058,7 +3050,6 @@
    end subroutine ion_coeff_HI_range
 
 
-   !--------------!
 
    ! Collisional ionization rate for HeI
    subroutine ion_coeff_HeI_range(T,a_ion_coeff_HeI,j_lo,j_hi)
@@ -3069,7 +3060,6 @@
    end subroutine ion_coeff_HeI_range
 
 
-   !--------------!
 
    ! Collisional ionization rate for HeII
    subroutine ion_coeff_HeII_range(T,a_ion_coeff_HeII,j_lo,j_hi)
@@ -3080,7 +3070,6 @@
    end subroutine ion_coeff_HeII_range
 
    
-   !---------------------------------------------------!
    
    !--- Electron collisions among the He I levels of the network -------!
    ! The metastable network (Oklopcic & Hirata 2018, ApJL 855, L11,
@@ -3130,15 +3119,11 @@
    ! scaled fit (Sawey & Berrington was not read); its magnitude differs
    ! from Bray's table by +7% (1^1S - 2^3S), -4% (2^3S - 2^1S) and +2%
    ! (2^3S - 2^1P) at 5.62e3 K (MEASURED), which the scaling removes. The
-   ! alternative, extrapolating a fit through the table, has no data
-   ! behind it: the two-exponential fits a exp(bT) + c exp(dT) this code
-   ! carried before (coefficients from the ATES code, which calls them a
-   ! "fit of Bray (2000)"; they pass exactly through the four table values
-   ! 5.62e3-3.16e4 K) are 1.16, 1.12 and 1.10 times the strengths used
-   ! here at 1.5e3 K, 1.12, 1.10, 1.06 at 2e3 K, 1.01, 1.01, 1.00 at 5e3 K,
-   ! and fall away from the table above 3.2e4 K (2^3S - 2^1S: 0.73 of it
-   ! at 1e5 K) (MEASURED, cooling_data/fit_helium_triplet_cascade.py). The
-   ! strengths stay positive and finite as T -> 0 (0.0232, 0.821, 0.177
+   ! alternative, extrapolating the former two-exponential fit below
+   ! Bray's table, has no data there. Its measured comparison with the
+   ! adopted strengths is in
+   ! ../EXHALE_v1.00/md/atomic_sources_hhe_20260925.md section 1.
+   ! The strengths stay positive and finite as T -> 0 (0.0232, 0.821, 0.177
    ! at 1 K, MEASURED), so the rates are evaluated unclamped; below 1e3 K,
    ! where CHIANTI's range ends, they carry no accuracy claim.
    elemental double precision function upsilon_HeI_11S_23S(T)
@@ -3320,7 +3305,6 @@
    end subroutine coex_HeI_23S_21P
 
 
-   !--------------!
 
    ! Collisional-excitation cooling of the He 2^3S metastable within the
    ! triplet system [erg cm^3 s^-1 per (n_e n_2^3S)]: every excitation
@@ -3435,7 +3419,6 @@
    end function cooling_HeI_23S_singlets_n3
 
 
-   !--------------!
 
    ! Recombination coefficient of HeII on 23S state
    subroutine rec_HeII_23S(T,coeff_rec_HeII_23S)
@@ -3446,7 +3429,6 @@
 
    end subroutine rec_HeII_23S
 
-   !--------------!
 
    ! TOTAL ionization rate coefficient of the He 2^3S metastable in
    ! collisions with atomic hydrogen,
@@ -3503,7 +3485,6 @@
 
    end function ioniz_HeI23S_H
 
-   !--------------!
 
    ! TOTAL ionization rate coefficient of the He 2^3S metastable in
    ! collisions with molecular hydrogen,
@@ -3534,7 +3515,6 @@
    k = 5.408222d-12 * T**6.75388d-1 * exp(-6.96275d2/T)
    end function ioniz_HeI23S_H2
 
-   !--------------!
 
    ! Electron-impact collisional ionization of the He 2^3S metastable,
    ! He(2^3S) + e^- -> He^+ + 2e^-, Black (1981, MNRAS 197, 553, eq. 12,
@@ -3563,7 +3543,6 @@
 
 
 
-   !---------------------------------------------------!
 
    !--- Metal cooling (ported from AIOLOS photochem.cpp:95-127) ---!
    ! Functional form: Lambda(T) [erg cm^3 / s], per ion per electron.
@@ -3627,12 +3606,8 @@
    ! level and reproduces the coronal within-term channel to the accuracy
    ! of the Upsilon fits (1.9-7.8%). n_e or n_HI -> infinity saturates at
    ! the exact multilevel LTE emission sum_u f_u^Boltz A_ul h nu_ul (checked
-   ! to 1e-14 relative). The earlier two-level treatment of [O I] 63um and
-   ! [C II] 158um multiplied a two-level solution -- already normalized to
-   ! the TWO-LEVEL partition function -- by the ground-term Boltzmann
-   ! fraction of the lower level; that double normalization left its LTE
-   ! limit low by a factor (1 + (g_u/g_l) exp(-E/kT)), i.e. 2.7x for
-   ! [C II] 158um at the 530 K base of HD 189733 b.
+   ! to 1e-14 relative). The previous two-level normalization error is recorded
+   ! in ../EXHALE_v1.00/md/coronal_cutoff_width.md section 7.4.
    !
    ! Lambda_rem keeps the ground-term Boltzmann weighting of its lower
    ! levels (the convention of the CHIANTI curves it is fitted to). That is
@@ -3667,14 +3642,10 @@
    !                (20-1000 K, as tabulated in LAMDA oatom.dat)
    !     C II       Barinovs, van Hemert, Krems & Dalgarno (2005),
    !                ApJ 620, 537 (20-2000 K, LAMDA c+.dat)
-   ! These replace the k_H values of the earlier two-level branch (a
-   ! constant 4.0e-11 for [C II] 158um + H and 4.2e-11 (T/100)^0.67 for
-   ! [O I] 63um + H), which were flagged approximate and are 5-20x below
-   ! the quantum-scattering results above. H collisions on the ION N II are
-   ! included on the same footing as on the neutrals; they are not what
-   ! saturates N II at the base (n_crit,e of [N II] 205um is ~1e2 cm^-3),
-   ! they matter only in gas thin enough for the electron channel alone to
-   ! be subcritical.
+   ! Earlier two-level H-collision coefficients and their comparison
+   ! with these published rates are in the same record, section 7.4.
+   ! H collisions on N II matter only where the electron channel is
+   ! subcritical.
 
    ! Effective collision strength of one transition as a fit to the CHIANTI
    ! .scups values descaled with the natural cubic spline of CHIANTI's
@@ -4058,11 +4029,9 @@
                         f_3P2,f_3P1,f_3P0)
    end subroutine oxygen_ground_term_levels
 
-   !--------------!
 
 
 
-   !--------------!
 
 
    ! Value of a CHIANTI cooling table at one temperature -- the ONE definition
@@ -4140,11 +4109,9 @@
    endif
    end function pchip_slope
 
-   !--------------!
 
 
 
-   !--------------!
 
    ! Closed-form analytic fits to the CHIANTI v11 cooling curves
    ! (cooling_data/fit_cooling_formulas.py; cf. metal_cooling_chianti.txt).
@@ -4231,21 +4198,11 @@
 
 
 
-   !---------------------------------------------------!
 
    !--- Validity floor of the coronal line-cooling fits ----------------!
-   ! Every metal line-cooling coefficient in this module is a fit to, or
-   ! an interpolation of, a CHIANTI optically thin curve tabulated over
-   ! 1e3-1e5 K: the analytic C/N/O and Mg/Ca/Na/Fe forms, and the 1-D /
-   ! 2-D tables (whose log10(T) axis starts exactly at 3.0 and which
-   ! otherwise hold their edge value indefinitely below it). Below that
-   ! floor the fitted exponentials are unconstrained by the data behind
-   ! them, and the softest one dominates: for O I it is exp(-930.111/T),
-   ! whose 930 K matches NO [O I] ground-term splitting (the splittings
-   ! are 227.7 K and 326.6 K); for C I it is exp(-2351.38/T) against
-   ! splittings of 23.6 K and 62.4 K. Evaluated at the ~240 K base of
-   ! HD 189733 b those components supplied 99.7% of the O I cooling rate
-   ! and drove the base to a fifth of T_eq.
+   ! CHIANTI coronal fits and tables are constrained over 1e3-1e5 K.
+   ! Their low-temperature extrapolation was measured in
+   ! ../EXHALE_v1.00/md/coronal_cutoff_width.md sections 1 and 7.
    !
    ! Physically, at T far below 1e3 K the only metal transitions still
    ! collisionally excitable are the ground-term fine-structure lines,
@@ -4271,18 +4228,9 @@
    ! guard's own log slope within an order of magnitude of the 8.3-8.7 the
    ! cooling function already has inside the fitted range.
    !
-   ! WHAT THE GUARD NOW DOES. That bound was set while the ground-term
-   ! fine-structure floors of C I, N II and the [O I] 145.5um channel were
-   ! still coronal, and they dominated everything the guard removed. Now
-   ! that all four split ground terms are solved in statistical
-   ! equilibrium, no coronal term reaching below 1e3 K is left: the softest
-   ! exponential surviving in any of the remainders is exp(-16400/T), which
-   ! at 500 K is 1e-15 of its 1e4 K value. The guard is back to its stated
-   ! job -- refusing to extrapolate a fit below the data it was made from --
-   ! and the base is no longer sensitive to w: the local balance
-   ! temperature of the base cell is identical to six digits over
-   ! w = 0.02-1.2 for all four planet runs, against a 500-650 K spread
-   ! before (md/coronal_cutoff_width.md section 7).
+   ! With the ground terms solved explicitly, the remaining coronal
+   ! contributions are negligible below the fit floor; see the same record,
+   ! section 7 for the measured width sensitivity.
    ! The legacy AIOLOS branch (cno_chianti = .false.) is deliberately NOT
    ! guarded: its constant floors (1.0e-24 etc.) are crude stand-ins for
    ! fine-structure cooling, not extrapolated coronal fits.
@@ -4306,21 +4254,12 @@
    endif
    end function coronal_excitation_cutoff
 
-   !---------------------------------------------------!
 
    !--- Ground-term fine-structure line transfer -----------------------!
-   ! HISTORY. AIOLOS (chemistry.cpp:1006) multiplies its gray escape
-   ! optical depth by an arbitrary 1e8, which drives beta -> 0 and so
-   ! switches metal-line cooling off entirely. EXHALE replaced that with
-   ! beta = 1 (fully optically thin), which is the right limit for the
-   ! thin wind but overestimates the cooling of the dense base, where the
-   ! dominant coolant lines are measured to be optically thick (tau ~ 3,
-   ! beta ~ 0.16, for [O I] 63um through the HD 189733 b base). Both were gray in the
-   ! XUV continuum opacity, which has nothing to do with line trapping.
-   ! What follows computes the LINE-CENTER optical depth of the ground-term
-   ! fine-structure lines the cooling assembly solves explicitly, derives
-   ! beta from it, and (with "Base IR field" on) the thermal infrared field
-   ! those same lines absorb from the lower atmosphere.
+   ! The eight ground-term lines use their line-center optical depths;
+   ! their emission, absorption, and incident base field share the same
+   ! atomic data. Earlier gray treatments and measurements are in
+   ! ../EXHALE_v1.00/md/resonance_line_trapping.md.
    !
    ! SCOPE. Trapping, and the incident base infrared field that goes with
    ! it, are applied to the eight ground-term fine-structure lines of C I,
@@ -4365,18 +4304,10 @@
    ! enough to de-excite the ion before the trapped photon works its way
    ! out, i.e. unless
    !   ne >~ n_crit,eff = beta A_ul / q_ul,   q_ul = coll_rate_prefactor Ups/(gu sqrt(T)).
-   ! For these lines A_ul ~ 1e8 s^-1, so even at beta ~ 1e-4 the escape
-   ! rate beta A_ul ~ 1e4 s^-1 leaves n_crit,eff ~ 1e10-1e15 cm^-3, one to
-   ! six decades above the ne these winds reach (max 4.3e9 cm^-3 in the
-   ! WASP-121 b run). beta = 1 is therefore the correct EFFECTIVE
-   ! treatment for them here, and the bracket was measured to remove only
-   ! 0.02% of the total radiative losses of WASP-121 b, 0.002% of
-   ! HD 209458 b and 0.0015% of HD 189733 b, confined to the innermost
-   ! ~0.007 R_p. The forbidden fine-structure lines above are the opposite
-   ! case (A_ul ~ 1e-5-1e-3 s^-1, n_crit,eff ~ 1e0-1e5 cm^-3), which is
-   ! why they, and only they, need beta. The approximation would have to
-   ! be revisited for a base an order of magnitude denser in ne, or for a
-   ! line whose ne q_ul is comparable to beta A_ul.
+   ! For these permitted lines A_ul ~ 1e8 s^-1 and the wind remains
+   ! below n_crit,eff; the measured loss fractions are in the same record.
+   ! Forbidden fine-structure lines have much lower A_ul and require beta.
+   ! Revisit this limit when ne*q_ul approaches beta*A_ul.
    ! Measurement and derivation: md/resonance_line_trapping.md.
 
    ! Line-center absorption coefficient [cm^-1] of a two-level line whose
@@ -4637,7 +4568,6 @@
    enddo
    end subroutine fine_structure_line_transfer
 
-   !---------------------------------------------------!
 
    !--- Metal recombination rates (Badnell 2006 RR + adf09 DR) ---!
    ! Total (RR+DR) recombination, replacing the Aldrovandi & Pequignot
@@ -4770,7 +4700,6 @@
                    + alpha_dr_metal(daughter,T)
    end function alpha_rec_metal
 
-   !--------------!
 
    ! Iron recombination (RR+DR total), Huang+2023 (ApJ 951, 123) Eqs (5)-(6).
    ! Form:  alpha(T) = A*T^-1.5*exp(-T0/T)*(1 + B*exp(-T1/T))      [DR]
@@ -4837,7 +4766,6 @@
    end select
    end function metal_recombination_coefficient
 
-   !---------------------------------------------------!
 
    !--- Metal collisional ionization rates (Voronov 1997) ---!
    ! Q(T) = A * (1 + P*sqrt(U)) / (X+U) * U^K * exp(-U)
@@ -5005,7 +4933,6 @@
    end select
    end function metal_collisional_ionization_coefficient
 
-   ! ---------------------------------------------------------------- !
 
    ! The coefficients below are the ONE definition of each rate: the grid
    ! routines above evaluate these same elemental functions over their cell
@@ -5034,7 +4961,6 @@
 
    end function alpha_rec_HII_B
 
-   !--------------!
 
    ! Case B recombination coefficient of HeII
    elemental double precision function alpha_rec_HeII_B(T)
@@ -5058,7 +4984,6 @@
 
    end function alpha_rec_HeII_B
 
-   !--------------!
 
    ! Case B recombination coefficient of HeIII
    elemental double precision function alpha_rec_HeIII_B(T)
@@ -5076,7 +5001,6 @@
 
    end function alpha_rec_HeIII_B
 
-   !--------------!
 
    ! THE GROUND CAPTURES of the three ions [cm^3 s^-1], one definition
    ! each (ground_capture_milne), whichever "Atomic rate set:" gives
@@ -5096,7 +5020,6 @@
    alpha_1_HeII = ground_capture_milne(T, 3)
    end function alpha_1_HeII
 
-   !--------------!
 
    ! He I CASE-B RECOMBINATION BY SPIN SYSTEM. A capture into a triplet
    ! level cascades into 2^3S (the triplets reach 1^1S only through the
@@ -5159,7 +5082,6 @@
         (1.0d0 - case_b_triplet_share_HeI(T))*alpha_rec_HeII_B(T)
    end function alpha_rec_HeII_excited_singlets
 
-   !--------------!
 
    ! THE RECOMBINATION COEFFICIENTS THE IONIZATION BALANCE REMOVES IONS
    ! WITH [cm^3 s^-1]. A capture into the ground level emits a photon
@@ -5216,7 +5138,6 @@
    alpha_rec_HeIII_net = alpha_rec_HeIII_B(T) + y_HeII*alpha_1_HeII(T)
    end function alpha_rec_HeIII_net
 
-   !--------------!
 
    ! Kinetic energy removed from the electron gas by captures of rate
    ! coefficient alpha [erg cm^3 s^-1]: k T [(3/2) alpha + dalpha/dln T]
@@ -5229,7 +5150,6 @@
                             + (a_hi - a_lo)/(2.0d0*dlnT_capture))
    end function capture_energy_loss_rate
 
-   !--------------!
 
    ! RECOMBINATION COOLING [erg cm^3 s^-1 per (n_e n_ion)]: the kinetic
    ! energy of the captured electrons, from the relation at dlnT_capture
@@ -5298,7 +5218,6 @@
                          alpha_rec_HeIII_net(T*exp(dlnT_capture),y_HeII))
    end function lambda_rec_HeIII
 
-   !--------------!
 
    ! Collisional ionization rate for HI
    elemental double precision function ci_rate_HI(T)
@@ -5326,7 +5245,6 @@
 
    end function ci_rate_HI
 
-   !--------------!
 
    ! Collisional ionization rate for HeI
    elemental double precision function ci_rate_HeI(T)
@@ -5352,7 +5270,6 @@
 
    end function ci_rate_HeI
 
-   !--------------!
 
    ! Collisional ionization rate for HeII
    elemental double precision function ci_rate_HeII(T)
@@ -5371,7 +5288,6 @@
    end function ci_rate_HeII
 
 
-   !--------------!
 
    !--- Electron-impact excitation of H I ------------------------------!
    ! ONE rate set for the 1s -> 2s and 1s -> 2p excitation, used by the
@@ -5464,7 +5380,6 @@
                     *exp(-140671.201d0/T)
    end function lambda_coex_HI
 
-   !--------------!
 
    ! Collisional-excitation cooling of He I out of the 1^1S ground level
    ! [erg cm^3 s^-1 per (n_e n_1^1S)], coronal limit (every excitation
@@ -5514,7 +5429,6 @@
                               *exp(-240448.382d0/T)
    end function lambda_coex_HeI_except_23S
 
-   !--------------!
 
    ! Collisional-excitation cooling of He II [erg cm^3 s^-1 per
    ! (n_e n_He+)], coronal limit, summed over the upper levels of the
@@ -5533,7 +5447,6 @@
                     *exp(-473383.427d0/T)
    end function lambda_coex_HeII
 
-   !--------------!
 
    ! Legacy metal line cooling ("cno_cool 0" in metals.inp): the AIOLOS
    ! fits of C I, C II, O I and O II (see the provenance note at the top
@@ -5563,7 +5476,6 @@
                          *(1.0d0 + (T/0.75d4)**0.5d0)
    end function lambda_line_OII
 
-   !--------------!
 
    ! Grid forms of the metal rates, by the ion's canonical species_table
    ! index (im_* constants); the case lists are those of
@@ -5583,7 +5495,6 @@
    end subroutine rec_coeff_by_ion_range
 
 
-   !--------------!
 
    ! Collisional ionization rate of the ion: ion -> ion+1.
    subroutine ion_coeff_by_ion_range(i,T,out,j_lo,j_hi)
@@ -5598,7 +5509,6 @@
    end subroutine ion_coeff_by_ion_range
 
 
-   !--------------!
 
    ! Radiative line-cooling coefficient of one metal ion [erg cm^3 s^-1 per
    ! (n_e n_ion)] at the temperature Ts, electron density nes and H I
@@ -5674,7 +5584,6 @@
    end select
    end function metal_line_cooling_coefficient
 
-   !--------------!
 
    ! THE RADIATIVE COOLING OF ONE CELL of atomic and ionized gas, channel
    ! by channel [erg cm^-3 s^-1]. This is the ONE assembly: eval_cool
@@ -5809,10 +5718,8 @@
 
    end subroutine radiative_cooling_of_cell
 
-   !--------------!
 
 
-   !--------------!
 
    ! Bilinear value of a 2-D (T, ne) cooling table at one cell. This is the
    ! ONE definition (cool_FeII_ne_value). The (log T, log n_e) axes are
@@ -5861,7 +5768,6 @@
    endif
    end function cool_table_value_2d
 
-   !--------------!
 
    !--- Density-resolved line cooling above the ground term ------------!
    ! (C/N/O below; Ca II and Mg I, whose tables carry the whole ion, are
@@ -6011,7 +5917,6 @@
    end select
    end function metal_cooling_above_ground_term
 
-   !--------------!
 
    ! Density-dependent Fe II coefficient Lambda_eff(T,ne) per (n_e n_FeII).
    ! The table is selected here and nowhere else (the one caller is
@@ -6021,8 +5926,6 @@
    cool_FeII_ne_value = cool_table_value_2d(cool_logL_FeII_ne, Ts, nes)
    end function cool_FeII_ne_value
 
-   !--------------!
 
 
-   ! End of module
    end module Cooling_Coefficients

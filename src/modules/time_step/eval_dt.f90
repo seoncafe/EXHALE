@@ -10,69 +10,26 @@
    contains
 
    subroutine eval_dt(W,dt,dt_loc)
-   ! THE EXPLICIT-STABLE INTERVAL OF THE STATE, cell by cell and as a
-   ! minimum over the cells that are evolved.
+   ! Explicit stability interval for evolved cells 1..N. dt is their
+   ! minimum; dt_loc uses each cell interval under "Time stepping: Local"
+   ! and otherwise equals dt. The stationary fixed point is dt-independent.
    !
-   ! dt     = global step (the minimum over the evolved cells 1..N).
-   ! dt_loc = the same restriction held cell by cell, the pseudo-time the RK
-   !          stages and the source updates advance one cell with.  With
-   !          "Time stepping: Local" each cell takes its own interval (the
-   !          fixed point dF = S, heating = cooling, is dt-independent);
-   !          otherwise dt_loc is uniformly the global dt.
+   ! RK_rhs uses spherical finite-volume divergence:
+   !   dF_j=(A_+ F_+ - A_- F_-)/V_j,
+   !   A=r^2, V_j=(r_+^3-r_-^3)/3.
+   ! SSP-RK3 has forward-Euler SSP coefficient 1. Face Riemann signals
+   ! satisfy S_f=max(|v|+c) over the bounding states, giving
+   !   dt_j=CFL*V_j/max(A_- S_-,A_+ S_+), CFL<=1.
+   ! In the Cartesian uniform limit this is CFL*dr/(|v|+c), with input
+   ! "CFL:" default 0.6. Replacing max by the sum prevents opposing fans
+   ! from meeting and corresponds to CFL/2 on a uniform grid.
    !
-   ! THE RESTRICTION, DERIVED FOR THE SCHEME IN USE.
-   !
-   ! The hydrodynamic row of cell j is assembled in RK_rhs as the spherical
-   ! finite-volume divergence
-   !
-   !     dF_j = ( A_{j+1/2} F_{j+1/2} - A_{j-1/2} F_{j-1/2} ) / V_j ,
-   !     A = r^2 ,   V_j = ( r_{j+1/2}^3 - r_{j-1/2}^3 )/3 ,
-   !
-   ! and integrated by SSP-RK3, every stage of which is a convex combination
-   ! of forward-Euler steps of the same length dt (SSP coefficient 1), so
-   ! the restriction is the forward-Euler one of that divergence.
-   !
-   ! F at a face is a Riemann flux of the two reconstructed states bounding
-   ! the face (HLLC, Roe or Rusanov, with PLM or WENO3 reconstruction).
-   ! Every one of them is built from the waves of that face's Riemann
-   ! problem, whose fastest signal is bounded by
-   !
-   !     S_{j+1/2} = max( |v| + c )  over the two states bounding the face.
-   !
-   ! Godunov's condition is that the fan opened at a face has not left the
-   ! cell it enters when the step ends.  Written with the geometry the
-   ! divergence above actually uses, the face carries signal into cell j at
-   ! the rate A_f S_f per unit volume V_j, so
-   !
-   !     dt_j = CFL * V_j / max( A_{j-1/2} S_{j-1/2} , A_{j+1/2} S_{j+1/2} )
-   !
-   ! with the Godunov number CFL <= 1.  In the Cartesian uniform limit
-   ! A_{j-1/2} = A_{j+1/2} = A and V_j = A dr this is CFL*dr/(|v| + c), the
-   ! convention the "CFL:" key carries (default 0.6), so the input number
-   ! keeps its meaning.  The stricter condition that the two fans of a cell
-   ! may not meet each other inside it replaces the max by the sum of the
-   ! two face terms, which is the same restriction at CFL/2.
-   !
-   ! In spherical geometry V_j/A_{j+1/2} < dr_j < V_j/A_{j-1/2}: the outer
-   ! face of a cell is the binding one, and the cell-centred width dr_j is
-   ! not an upper bound of the interval on either face.  On the base grids
-   ! used here dr/r is 2e-4 and the two differ by that much; on the
-   ! stretched outer grid dr/r reaches order unity and they do not.
-   !
-   ! WHICH CELLS ARE RESTRICTED, AND WHERE THE GHOSTS ENTER.  Only cells
-   ! 1..N are evolved: the ghost rows are overwritten by Apply_BC after
-   ! every stage, so a ghost's own width is not a stability requirement and
-   ! the lowest ghost does not even carry a width of its own (define_grid
-   ! copies dr_j(1-Ng) from the cell above it).  The ghosts nevertheless
-   ! bound the two boundary faces r_edg(0) and r_edg(N), which are faces of
-   ! the evolved cells 1 and N, so the base Riemann problem restricts cell 1
-   ! with the reservoir's own signal speed although no ghost cell is
-   ! evolved, and the outer one restricts cell N.
-   !
-   ! VALIDITY.  S_f is formed from the CELL AVERAGES bounding the face, not
-   ! from the reconstructed face states, which can carry a larger |v| + c
-   ! inside a steep cell; that margin is the one the Godunov number below 1
-   ! leaves, and it is the margin this expression has always carried.
+   ! Spherical geometry has V_j/A_+ < dr_j < V_j/A_-; with equal face
+   ! speeds the outer face gives the tighter limit. In general the face
+   ! with larger A_f S_f binds. Ghost cells supply boundary Riemann states
+   ! at r_edg(0) and r_edg(N). S_f uses cell averages rather than
+   ! reconstructed states; the latter can have larger |v|+c, and the
+   ! selected CFL below one supplies the assumed margin.
    real*8, dimension(3,1-Ng:N+Ng), intent(in) :: W
    real*8, dimension(1-Ng:N+Ng) :: rho,v,p,cs
    real*8, dimension(0:N) :: s_face
@@ -81,7 +38,6 @@
    real*8, intent(out) :: dt
    real*8, dimension(1-Ng:N+Ng), intent(out) :: dt_loc
 
-   ! Extract physical variables
    rho = W(1,:)
    v   = W(2,:)
    p   = W(3,:)
@@ -124,8 +80,6 @@
       dt_loc = dt
    endif
 
-   ! End of subroutine
    end subroutine eval_dt
 
-   ! End of module
    end module eval_time_step

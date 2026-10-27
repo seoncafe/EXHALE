@@ -2,13 +2,8 @@
       ! Rate coefficients and thermodynamic data for the oxygen-hydrogen
       ! chemistry of the A2 option.
       !
-      ! THIS MODULE IS IN THE BUILD (SRC in the Makefile).  It carries the
-      ! coefficients, their sources and their validity ranges, plus the
-      ! thermodynamic data that generates the reverse rates; the oxygen
-      ! carrier rows of System_HeH_mol, the transport of
-      ! diffusive_photochemistry and the FUV bands of water_photolysis read
-      ! them.  They act only where the oxygen chemistry is switched on
-      ! (thereis_oxychem), so a run without it never evaluates one.
+      ! Active only with thereis_oxychem; the carrier, reaction and FUV
+      ! modules read the rates and thermodynamic data defined here.
       !
       ! Units are cgs throughout: two-body rates in cm^3 s^-1, three-body
       ! rates in cm^6 s^-1 (the low-pressure limit k0), T in K.  EXHALE
@@ -16,7 +11,6 @@
       ! heavy-particle and the electron temperature; none of these reactions
       ! has an electron in it.
       !
-      ! ---------------------------------------------------------------
       ! SOURCES AND THE TWO-NETWORK RULE
       !
       ! Every coefficient is transcribed from a named publication, and every
@@ -34,7 +28,6 @@
       ! Where the two disagree the disagreement is recorded here with its
       ! size, in the way mol_rates.f90 records the R16-R20 discrepancies.
       !
-      ! ---------------------------------------------------------------
       ! REVERSE RATES: THERMODYNAMIC REVERSAL, NOT A SECOND TRANSCRIPTION
       !
       ! O1, O2, O8, O9 and O10 all run close to cancellation on a hot base
@@ -54,7 +47,6 @@
       ! holds by construction and the hot limit reduces to chemical
       ! equilibrium.
       !
-      ! ---------------------------------------------------------------
       ! THERMODYNAMIC DATA: NIST SHOMATE
       !
       ! Shomate coefficients A-G for H, H2, O, OH, H2O, CO and C,
@@ -126,7 +118,6 @@
       ! (Active Thermochemical Tables) OH enthalpy must change the OH F
       ! coefficient below by -1.71 and say so.
       !
-      ! ---------------------------------------------------------------
       ! THIRD BODY M (O8, O9)
       !
       ! Both three-body reactions are given as the low-pressure limit k0 with
@@ -142,7 +133,6 @@
       ! falloff function are numerically irrelevant there.  They are carried
       ! anyway because the option is meant to run down to the 1e-4 bar level.
       !
-      ! ---------------------------------------------------------------
       ! VALIDITY RANGE OF THE SET AS A WHOLE
       !
       ! This set is valid where the base H2/H partition is kinetic and set by
@@ -155,7 +145,6 @@
       ! HD 209458 b 1-microbar level; sulfur is excluded by decision D8 of
       ! the design.
       !
-      ! ---------------------------------------------------------------
       ! REACTIONS NOT IN THIS MODULE, AND WHY
       !
       ! O8, O9, O10 and O12 below are transcribed but are NOT part of the
@@ -222,7 +211,6 @@
       ! Standard-state pressure, 1 bar [dyn cm^-2]
       real(dp), parameter :: p_std_cgs = 1.0d6
 
-      ! ---------------------------------------------------------------
       ! Species indices for the THERMODYNAMIC TABLE of this module.  The
       ! prefix is ith_ and not isp_ on purpose: species_table already owns
       ! isp_H2 / isp_OH / isp_H2O / isp_CO as f_sp COLUMN numbers (34, 38,
@@ -332,7 +320,6 @@
           0.0d0,0.0d0,0.0d0,0.0d0,0.0d0,0.0d0,0.0d0                       &
         /), (/ 7, n_shom_max, n_ox_sp /) )
 
-      ! ---------------------------------------------------------------
       ! FUV bands for the photolysis channels O3-O5 (H2O) and O7 (OH).
       !
       ! The band edges are fixed by the branching-ratio intervals and by the
@@ -355,9 +342,9 @@
       ! (md/p38_line_overlap_shielding.md sec. 4.4).  So 912-1201 A is one
       ! interval with one line absorber, and splitting it at 1110 A would
       ! normalize the H2 pumping per photon of a band narrower than the band
-      ! the lines drink from.  That is what the 1110 A edge did until
-      ! 2026-09-06, and it made the table rate 45 per cent more absorptions
-      ! than the beam lost.
+      ! the lines drink from. The former 1110 A split and its photon-ledger discrepancy are
+      ! recorded in ../EXHALE_v1.00/md/Update_EXHALE_stage2.md section 7,
+      ! item LW-NORM-B.
       !
       ! Over 912-1201 A the SAME photons are absorbed by H2 in lines and by
       ! H2O and OH in a continuum, so the interval must be ONE band with ONE
@@ -510,9 +497,7 @@
 
       contains
 
-! =====================================================================
 !  Rate coefficients
-! =====================================================================
 
       ! O1: OH + H2 -> H2O + H
       !     k = 3.6e-16 T^1.52 exp(-1740/T) cm^3 molecule^-1 s^-1,
@@ -783,9 +768,7 @@
       Pr = k0*n_M/kinf
       k  = kinf*Pr/(1.0d0 + Pr)
       end function
-! =====================================================================
 !  Thermodynamics and detailed balance
-! =====================================================================
 
       ! Temperature at which the Shomate polynomials are evaluated: T
       ! clamped to the tabulated range of the species.

@@ -1,11 +1,7 @@
       module hydrodynamic_rows_double
-      ! The hydrodynamic rows of the stationary residual in DOUBLE
-      ! precision, from the kind-generic text of
-      ! hydrodynamic_rows_body.inc.  This instantiation exists to be
-      ! compared: it must reproduce Reconstruction_step, Numerical_Fluxes,
-      ! source_func and RK_integration bit for bit on any state, which is
-      ! what makes the quadruple instantiation below a measurement of the
-      ! ARITHMETIC and not of a second discretization.
+      ! Double-precision finite-volume rows from hydrodynamic_rows_body.inc.
+      ! This instantiation must match Reconstruction_step, Numerical_Fluxes,
+      ! source_func, and RK_integration bitwise for the precision comparison.
 
       use global_parameters
       use caloric_eos, only: caloric_cell_mixture,                       &
@@ -33,20 +29,13 @@
 
       end module hydrodynamic_rows_double
 
-      !-----------------------------------------------------------!
 
       module hydrodynamic_rows_quadruple
-      ! The same rows in QUADRUPLE precision, from the same text.  The
-      ! composition, the heating and the cooling remain double: what is
-      ! evaluated here is the arithmetic of the finite-volume operator on a
-      ! given composition, which is where the residual's non-smoothness
-      ! floor is (docs/Update_EXHALE_stage2.pdf: the Roe flux of a face in
-      ! the near-hydrostatic base layer is built from state jumps 3e5 to
-      ! 6e6 times smaller than the states, so it carries the last bit of
-      ! O(1) quantities, and the row divides the flux difference by the cell
-      ! volume, multiplying that by r^2/dV = 5.1e3 at the base).  Eighteen
-      ! decades of extra mantissa put that floor below every other quantity
-      ! of the row.
+      ! Quadruple-precision finite-volume arithmetic on double-precision
+      ! composition, heating, and cooling. Near the hydrostatic base, Roe
+      ! face jumps are 3e5-6e6 times smaller than their states, and r^2/dV
+      ! reaches 5.1e3 (docs/Update_EXHALE_stage2.pdf). The wider mantissa
+      ! lowers the measured residual roundoff floor by about 18 decades.
 
       use global_parameters
       use caloric_eos, only: caloric_cell_mixture,                       &
@@ -71,60 +60,25 @@
 
       end module hydrodynamic_rows_quadruple
 
-      !-----------------------------------------------------------!
 
       module hydrodynamic_rows
-      ! WHICH ARITHMETIC THE STATIONARY RESIDUAL'S HYDRODYNAMIC ROWS ARE
-      ! ASSEMBLED IN, and what changes it.
+      ! Stationary hydrodynamic rows use the production double-precision
+      ! routines by default. EXHALE_RESID_QUAD=1 selects the same finite-volume
+      ! reconstruction, Roe/HLLE flux, and sources in quadruple precision;
+      ! rows, face fluxes, pressures, and sources are returned in double.
       !
-      ! Default: the production routines (Reconstruct, RK_rhs, Num_flux,
-      ! source), in double, reached through
-      ! steady_residual_mod.reconstruction_continuation_rhs.  Nothing here
-      ! is called and nothing is different.
+      ! This diagnostic tests the measured 1.0e-11 to 1.6e-11 residual
+      ! roundoff floor along a preconditioned Krylov direction, flat over 5.4
+      ! decades of sampling spacing (docs/Update_EXHALE_stage2.pdf). Near
+      ! the base, face-state cancellation reaches 3e5-6e6 and the row
+      ! amplifies flux roundoff by r^2/dV. A well-balanced flux difference
+      ! addresses that floor physically; extra precision diagnoses it.
       !
-      ! EXHALE_RESID_QUAD=1 arms a CONTROL EXPERIMENT.  It replaces those
-      ! four routines, for the stationary evaluations only, by the
-      ! quadruple-precision instantiation of one kind-generic text, from the
-      ! conserved state through the reconstruction (the PLM limiter, the
-      ! WENO3 weights), the Riemann flux (Roe with its entropy fix, the HLLE
-      ! fallback), the geometric and gravitational sources and the division
-      ! by the cell volume, rounded to double once, at the row.
-      !
-      ! WHAT IT IS FOR.  The stationary residual carries a non-smoothness
-      ! floor of 1.0e-11 to 1.6e-11 along a preconditioned Krylov direction,
-      ! flat over 5.4 decades of sampling spacing, and that floor is the
-      ! ROUNDING of the flux assembly: the base-layer face states
-      ! cancel to 3e5 to 6e6, so the interface flux carries the last bit of
-      ! O(1) quantities, and the row multiplies it by r^2/dV.  Divided by
-      ! the small increment a preconditioned direction produces, that floor
-      ! IS the additivity defect of the finite-difference Jacobian action,
-      ! which is why the Krylov cycle spends every product at a
-      ! true relative residual near one.  If the same residual with the
-      ! floor eighteen decades lower lets the Krylov cycle converge, the
-      ! diagnosis is confirmed before any discretization is changed.
-      !
-      ! IT IS NOT A DISCRETIZATION AND NOTHING IS ADOPTED FROM IT.  The
-      ! equations, the scheme, the boundary construction and the
-      ! composition are the same; only the width of the mantissa the
-      ! arithmetic runs in is different, and it is off unless the
-      ! environment names it.  The physically right treatment of the floor
-      ! is a well-balanced flux difference at the base, not extra precision.
-      !
-      ! Restrictions of this assembly, each of which stops the run rather than
-      ! silently evaluating something else: the low-Mach contact-mode
-      ! dissipation flux is not part of the generic text, the
-      ! reconstruction flags must be the consistent pair the schemes are
-      ! selected by, and a reconstruction continuation strictly between the
-      ! two schemes is refused because the momentum row's terms are read
-      ! off by a single-scheme rule (the_generic_text_is_usable).
-      !
-      ! WHAT IT HANDS BACK BESIDE THE ROWS.  The face flux, the face
-      ! pressure and, under the well-balanced key, the face departures the
-      ! momentum row was assembled from, all in the module arrays of
-      ! RK_integration that every later reader of them uses
-      ! (store_the_interface_fluxes).  That is what lets the momentum row's
-      ! terms and its reference scale describe the state just
-      ! assembled here and not the last state RK_rhs saw.
+      ! The generic rows refuse low-Mach contact dissipation, inconsistent
+      ! reconstruction flags, and 0 < recon_lambda < 1, whose blended
+      ! momentum terms cannot be recovered from one pair of face departures.
+      ! They store the current face flux, pressure, and well-balanced
+      ! departures in RK_integration arrays for later row diagnostics.
 
       use global_parameters
       use RK_integration, only: face_flux, face_p, face_q_up, face_q_dn
@@ -156,20 +110,12 @@
 
       contains
 
-      ! ------------------------------------------------------!
 
       integer function generic_precision_rows_selected() result(mode)
-      ! EXHALE_RESID_QUAD: absent or anything else ROWS_PRODUCTION, 1
-      ! ROWS_QUADRUPLE, 2 ROWS_GENERIC_DOUBLE.  Read at every call rather than
-      ! cached, so that a test can arm and disarm it inside one process; the
-      ! read costs microseconds against a residual evaluation of
-      ! milliseconds.
-      !
-      ! Mode 2 is the control OF the control: the same generic text at the
-      ! double kind, which must reproduce the production routines bit for
-      ! bit.  A whole run under it that is bitwise the production run is the
-      ! strongest form of that assertion, because it exercises every state
-      ! the solve visits and not one stated by a test.
+      ! EXHALE_RESID_QUAD: 1 selects quadruple generic rows; 2 selects
+      ! double generic rows for bitwise comparison with production; all
+      ! other values select production. Read on each call so a test can
+      ! change modes within one process.
       character(len=32) :: env
       integer :: st, ln
       mode = ROWS_PRODUCTION
@@ -185,7 +131,6 @@
       end select
       end function generic_precision_rows_selected
 
-      ! ------------------------------------------------------!
 
       subroutine hydrodynamic_rows_in_double_precision(u,WL,WR,dF,S)
       ! The generic text at kind(1.0d0).  Not on any run's path: it is the
@@ -203,7 +148,6 @@
                                       n_scaled,n_hlle,n_llf)
       end subroutine hydrodynamic_rows_in_double_precision
 
-      ! ------------------------------------------------------!
 
       subroutine hydrodynamic_rows_in_quadruple_precision(u,WL,WR,dF,S)
       real*8, dimension(3,1-Ng:N+Ng), intent(in)  :: u
@@ -224,30 +168,15 @@
                                       n_scaled,n_hlle,n_llf)
       end subroutine hydrodynamic_rows_in_quadruple_precision
 
-      ! ------------------------------------------------------!
 
       subroutine store_the_interface_fluxes(ff,fp,fqu,fqd,               &
                                             n_scaled,n_hlle,n_llf)
-      ! The face data the rows were differenced from, in the arrays every
-      ! later reader of them uses (the species face flux, the flux gate,
-      ! the jump scan, the momentum row's terms), and the three counters of
-      ! the run summary.
-      !
-      ! THE FACE DEPARTURES BELONG TO THE STATE THAT WAS JUST ASSEMBLED.
-      ! Under the well-balanced option the momentum row's pressure-gradient
-      ! term is the gradient of the departure, (A+ q_up - A- q_dn)/dV under
-      ! PLM and (q_up - q_dn)/dr under WENO3
-      ! (momentum_row_terms_of_cell, RK_rhs.f90), so a reader handed the
-      ! row without them would form that term from whatever face data was
-      ! last left in the module: the previous evaluation's, or the zeros of
-      ! the first allocation.  With the key off the row carries the cell's
-      ! own pressure instead, nothing reads these two arrays, and they are
-      ! left as they stand.
-      !
-      ! There is one pair of departures to store because this assembly evaluates
-      ! ONE reconstruction: the_generic_text_is_usable refuses a
-      ! reconstruction continuation with 0 < lambda < 1, where the blended
-      ! row is not the row of any single pair.
+      ! Store the current face fluxes, pressure, and run counters.
+      ! With well_balanced, store the departures used in the momentum row:
+      ! (A+ q_up - A- q_dn)/dV for PLM, (q_up - q_dn)/dr for WENO3
+      ! (momentum_row_terms_of_cell, RK_rhs.f90). Without it, the row uses
+      ! cell pressure and the departure arrays are not read. A single pair
+      ! suffices because the_generic_text_is_usable rejects 0 < lambda < 1.
       real*8, dimension(3,1-Ng:N+Ng), intent(in) :: ff
       real*8, dimension(1-Ng:N+Ng),   intent(in) :: fp
       real*8, dimension(1-Ng:N+Ng),   intent(in) :: fqu, fqd
@@ -269,23 +198,15 @@
       n_faces_llf                = n_faces_llf + n_llf
       end subroutine store_the_interface_fluxes
 
-      ! ------------------------------------------------------!
 
       subroutine the_generic_text_is_usable()
-      ! The three configurations the generic text does not carry.  All of
-      ! them stop the run: a control experiment that quietly evaluated a different
-      ! operator would answer a question nobody asked.
-      !
-      ! A RECONSTRUCTION CONTINUATION STRICTLY INSIDE (0,1) IS ONE OF THEM.
-      ! The generic text does blend the two schemes' rows there, as
-      ! reconstruction_continuation_rhs does, but the momentum row's terms
-      ! are then not recoverable: the face-pressure difference carries
-      ! weight one under WENO3 and zero under PLM and
-      ! momentum_row_terms_of_state reads that weight off the scheme flags,
-      ! a single-scheme rule, while the two schemes give each interface
-      ! different well-balanced departures so that no one pair satisfies
-      ! the blended row's identity.  The endpoints lambda <= 0 and
-      ! lambda >= 1 are a single scheme and are carried.
+      ! Reject configurations the generic rows cannot reproduce: low-Mach
+      ! contact dissipation, inconsistent reconstruction flags, and
+      ! 0 < recon_lambda < 1. In the blended case, the WENO3 face-pressure
+      ! term has weight one and the PLM term zero, while
+      ! momentum_row_terms_of_state reads a single scheme flag; one pair of
+      ! well-balanced departures cannot reconstruct the blended row.
+      ! The endpoints select a single scheme.
       if (recon_lambda_on) then
          if (recon_lambda .gt. 0.0d0 .and. recon_lambda .lt. 1.0d0) then
             write(*,*) 'ERROR: EXHALE_RESID_QUAD does not carry the',    &
@@ -309,7 +230,6 @@
       endif
       end subroutine the_generic_text_is_usable
 
-      ! ------------------------------------------------------!
 
       subroutine cpu_seconds(t)
       ! Wall-clock seconds from the system clock, for the cost measurement.

@@ -99,14 +99,10 @@
       !     that table within 3% at 500-5000 K and is 18% below it at
       !     10000 K, where the table's 2.33e-9 exceeds the Langevin value
       !     (rk_R19_HeHp_H).
-      !   * He+ + H2 BELOW ~650 K.  R17 is the dissociative charge transfer,
-      !     and the Koskinen Table-1 form for it, 1e-9 exp(-5700/T) (Moses
-      !     & Bass 2000), is an extrapolation there: three thermal
-      !     measurements put that channel at 1.1e-13 to 1.5e-13 over
-      !     15-300 K where the fit gives 5.6e-18 at 300 K.  The numbers and
-      !     the sources are at R17.  Not overruled here, because replacing
-      !     it needs the two measurements' own papers, which were not
-      !     obtained.
+      !   * He+ + H2 below ~650 K: R17 now includes the measured
+      !     Boehringer & Arnold (1986) two-body term, subtracts the R23
+      !     radiative branch, and adds the Koskinen Arrhenius term. See R17
+      !     below and ../EXHALE_v1.00/md/Update_EXHALE_stage2.md section 11.
       !
       ! NOTE (Koskinen 2022 baseline): neutral H2 photodissociation through
       ! the Lyman-Werner bands is NOT part of their Table 1; their
@@ -159,12 +155,10 @@
       public :: k3b_H_H_to_H2_atomic_H, k3b_H_H_to_H2_monatomic,         &
                 h2_association_collider_density
 
-      ! ------------------------------------------------------------------ !
       ! H2 THERMOCHEMISTRY
       !
-      ! ONE LEVEL SET.  The internal partition function of H2 that the
-      ! equilibrium constant below is built from is h2_partition_function of
-      ! caloric_eos: the Boltzmann sum over the observed bound rovibrational
+      ! The H2 equilibrium constant uses caloric_eos::h2_partition_function:
+      ! the Boltzmann sum over the observed bound rovibrational
       ! ladder of H2 X^1 Sigma_g^+, 302 levels to 36118 cm^-1, of Roueff et
       ! al. (2019), A&A 630, A58, table 2.  It is the same sum whose first
       ! moment is the rovibrational internal energy the caloric equation of
@@ -237,7 +231,6 @@
       real*8,  parameter :: T_keq_hi = 2.0d4
       real*8,  save      :: keq_lnT(n_keq), keq_lnK(n_keq)
       logical, save      :: keq_table_ready = .false.
-      ! ------------------------------------------------------------------ !
 
       contains
 
@@ -710,12 +703,10 @@
       k = k3b_H_H_to_H2(T)*n
       end function
 
-      ! ------------------------------------------------------------------ !
       ! H + H <-> H2 equilibrium constant and its rovibrational partition
       ! function. See the H2 THERMOCHEMISTRY block above the contains
       ! statement for the constants, the table and its error, and R12 for
       ! what the equilibrium constant is used for.
-      ! ------------------------------------------------------------------ !
 
       ! The internal partition function of H2 is NOT defined here.  It is
       ! h2_partition_function of caloric_eos, the Boltzmann sum over the
@@ -723,22 +714,9 @@
       ! level set generates both the equilibrium constant below and the
       ! rovibrational internal energy of the equation of state.
       !
-      ! WHAT THE LADDER REPLACED, AND BY HOW MUCH.  Until 2026-09-06 this
-      ! module summed its own model ladder from the Huber and Herzberg
-      ! (1979) constants (we = 4401.213, we xe = 121.336, Be = 60.853,
-      ! alpha_e = 3.062 cm^-1), a rigid rotor with a vibration-rotation
-      ! coupling and no centrifugal distortion, truncated where a level
-      ! passed D0.  Against the observed ladder that model places the levels
-      ! too HIGH -- already in v = 0 the J = 1, 2, 3, 5 levels stand +0.21,
-      ! +2.21, +9.11 and +56.8 K above the observed ones, the J^4 signature
-      ! of the missing distortion term -- so it underpopulates the ladder.
-      ! MEASURED, mean internal energy of the model ladder against the
-      ! observed one: 0.63 % low at 300 K, 1.8 % at 1000 K, 3.1 % at 2000 K,
-      ! 5.1 % at 4000 K, 8.3 % at 8000 K; partition function 0.46 % low at
-      ! 300 K, 1.76 % at 1000 K, 3.65 % at 2000 K, 7.7 % at 4000 K.  Of the
-      ! 8000 K gap only 3.1 % comes from the 55 levels the model ladder does
-      ! not reach; the rest is placement.  K_eq rises by the partition
-      ! function ratio, and the dissociation rate R12 falls by it.
+      ! The observed Roueff et al. (2019) ladder replaces the Huber and
+      ! Herzberg (1979) rigid-rotor approximation; it supplies the partition
+      ! function used in K_eq and hence the detailed-balance R12 rate.
       !
       ! Build the ln K_eq table. Called from EXHALE_main before any parallel
       ! region opens; idempotent, so a second call costs nothing.
@@ -882,12 +860,9 @@
       ! because it is the over-barrier branch and it is what the data above
       ! 400 K show.
       !
-      ! VERIFICATION against Johnsen et al.'s Fig. 3, the only measurement
-      ! of the rising branch: the sum gives 1.03e-13 at 300 K (read 1.05e-13),
-      ! 9.6e-14 at 400 K (1.35e-13), 1.01e-13 at 500 K (2.0e-13), 1.60e-13 at
-      ! 600 K (2.5e-13) and 3.7e-13 at 700 K (3.0e-13) -- inside a factor 2
-      ! everywhere, against the 200x and 2e4x the Arrhenius alone was out by
-      ! at 400 and 300 K.
+      ! The comparison with Johnsen et al. (1980) Fig. 3 is in
+      ! ../EXHALE_v1.00/md/lhs1140b_stationary_L7f_20260915.md sec. 3.3;
+      ! the summed coefficient lies within a factor two over 300-700 K.
       !
       ! VALIDITY RANGE, and what is extrapolation.  The measured bracket is
       ! 18-408 K (Boehringer & Arnold) and 78-330 K (Johnsen et al.); above
@@ -1014,7 +989,6 @@
       enddo
       end function
 
-      ! ------------------------------------------------------------------ !
       ! R20 OF KOSKINEN TABLE 1 IS NOT IN THIS MODULE, and the reason is the
       ! paper it cites.  Table 1 gives He+ + H2 -> HeH+ + H as 4.2e-13,
       ! T-independent, citing Schauer, Jefferts, Barlow & Dunn (1989),
@@ -1050,25 +1024,10 @@
       ! carried; a coefficient that is identically zero over the whole
       ! domain is not a rate.
       !
-      ! WHAT REMOVING IT DOES, measured rather than argued
-      ! (molecular_scalar_gj1132_kzz1e9 at He/H = 2.13, first cell, with the
-      ! ionization re-solved on both sides).  At the SHARE level R20 looked
-      ! decisive: it carried 25 to 30 percent of the H2 loss and, with R18
-      ! consuming the HeH+ it made, about half of it.  With the balance
-      ! actually re-solved it is not, and the reason is worth stating:
-      ! helium ions in that layer are SINK-limited, so removing one He+ sink
-      ! raises n(He+) until the others carry the same flux.
-      !
-      !   at 1023 K   n(He+) x 1.11, n(HeH+) / 487, n(H2+) x 0.71,
-      !               total H2 loss  1.916e+03 -> 1.904e+03  (-0.7 %)
-      !   at  629 K   n(He+) x 4.4,  n(HeH+) / 8.0e4, n(H+) x 3.9,
-      !               total H2 loss  4.455e+03 -> 4.443e+03  (-0.3 %)
-      !
-      ! So the repair rewires the HeH+ and H+ budgets of the base layer by
-      ! four to five decades and by a factor 4, and leaves the NET H2
-      ! destruction there where it was.  It is made because the channel is
-      ! not supported by its source, not because of what it moves.
-      ! ------------------------------------------------------------------ !
+      ! The re-solved ionization and H2-loss comparison after removing R20
+      ! is in ../EXHALE_v1.00/md/lhs1140b_stationary_L7f_20260915.md
+      ! section 3.2. The channel is excluded because its cited measurement
+      ! does not support the Table-1 coefficient.
 
       ! H2+ + He -> HeH+ + H                             (Black 1978)
       !
@@ -1088,40 +1047,15 @@
       ! Munoz (2025), A&A 698, A199, Table A.6 and network row 197, which is
       ! where the omission was noticed.
       !
-      ! VALIDITY, in the source's own words (p. 126, verbatim):
+      ! VALIDITY. Black's rate k = 3e-10 exp(-6717/T) cm^3 s^-1
+      ! assumes a thermal H2+ vibrational distribution. His source quote
+      ! and caution about nonthermal populations are in
+      ! ../EXHALE_v1.00/md/lhs1140b_stationary_L7f_20260915.md
+      ! section 3.4.
       !
-      !   "is also a significant source of HeH+. This reaction is
-      !   substantially endothermic for ground-state H2+; however, it is
-      !   rapid for H2+ with v > 3, states which may be well populated at
-      !   T > 5000 K. Cross sections for reaction (12) have been determined
-      !   by Chupka, Berkowitz, and Russell (1969) for specific v. When
-      !   these cross section data are integrated over a Maxwellian velocity
-      !   distribution and averaged over a thermal distribution of
-      !   vibrational populations of H2+, we find an approximate
-      !   representation of the rate coefficient
-      !       k12 ~ 3 x 10^-10 exp(-6717/T) cm^3 s^-1.
-      !   This result is in harmony with the rate measured by Neynaber and
-      !   Magnuson (1973)."
-      !
-      ! and, on the assumption that carries it:
-      !
-      !   "In what follows, the populations of vibrational states of H2+ are
-      !   assumed to be thermalized at the kinetic temperature."
-      !
-      ! WHICH WAY THE ASSUMPTION ERRS, in the source's own words rather than
-      ! by argument here (p. 126):
-      !
-      !   "If, however, the rate of reaction (10) is as large as suggested
-      !   recently by Bottcher (1976), then some excited vibrational states
-      !   may have nonthermal populations, and the predicted abundances of
-      !   H2+ and HeH+ may be overestimates."
-      !
-      ! So this coefficient is an APPROXIMATION VALID UNDER AN ASSUMED
-      ! THERMAL H2+ VIBRATIONAL DISTRIBUTION -- not a bound in either
-      ! direction -- and the sentence above states only which way it would
-      ! err if that distribution is not thermal.  WHETHER IT IS thermal here
-      ! is a comparison of time scales, and this layer's is not favourable:
-      ! at the base of the LHS 1140 b molecular case the H2+ lifetime
+      ! The coefficient is used outside its thermal-population
+      ! assumption in this layer. At the molecular base,
+      ! the H2+ lifetime in the LHS 1140 b case
       ! against R5, R8 and R9 is 1/(k5 n_e + k8 n(H2) + k9 n(H I)), of order
       ! 1e-3 s, while the radiative vibrational relaxation of H2+ is of
       ! order 1 s and the collisional one is carried by the same collisions
@@ -1134,32 +1068,15 @@
       ! Values: 4.4e-16 at 500 K, 1.0e-11 at 2000 K, 7.8e-11 at 5000 K,
       ! 1.5e-10 at 10^4 K.
       !
-      ! THE OTHER TWO HeH+ SOURCES OF THAT PAPER, and why only one is here.
-      ! Black's rate table lists three:
-      !   (12) H2+ + He -> HeH+ + H          3.0e-10 exp(-6717/T)  -- this
-      !   (13) He* + H2 -> HeH+ + H + e      1e-9                  -- carried
-      !        already, as the associative branch (1 - f_penning_HeI23S) of
-      !        the He(2^3S) + H2 ionization in row 7 of mol_heh_rows, with
-      !        the Garcia Munoz (2025) coefficient and branching rather than
-      !        Black's single 1e-9
-      !   (14) H+ + He -> HeH+* -> HeH+ + hv 1e-18                 -- NOT
-      !        carried.  It is not a measurement: Black introduces it as a
-      !        PROPOSAL ("Dabrowski and Herzberg (1977) have proposed that
-      !        there is a substantial probability of forming HeH+ by
-      !        vibrational inverse predissociation") argued from a count of
-      !        quasi-bound levels ("The number of quasi-bound levels of HeH+
-      !        and its large dipole moment suggest a large rate coefficient"),
-      !        and adopting an unmeasured 1978 estimate into a channel is
-      !        what put R20 in this network in the first place.
-      !        WHAT BLACK'S 1e-18 WOULD DO on one earlier model profile
-      !        (first cell at 1023 K; not re-measured for the present
-      !        equations): 1e-18 n(H+) n(He) = 55 cm^-3 s^-1 against 0.15
-      !        for reaction (12), so it would be the dominant HeH+ source and
-      !        would raise n(HeH+) from 7.7e-05 to ~3e-02 cm^-3, still 1e-13
-      !        of the helium, and the H2 loss it drives through R18 would be
-      !        0.8 percent of the total instead of 0.002.  These numbers
-      !        bound the proposed coefficient, not the physical channel.
-      !        A COMPUTED RATE EXISTS and is not used here: Courtney et al.
+      ! Black's reaction (13), He* + H2 -> HeH+ + H + e, is carried
+      ! through the associative branch of He(2^3S) + H2 ionization in
+      ! mol_heh_rows, with Garcia Munoz (2025) branching. His proposed
+      ! reaction (14), H+ + He -> HeH+ + hv, is not carried: the stated
+      ! 1e-18 cm^3 s^-1 was an estimate from a level count, not a
+      ! measurement. Its former-profile effect is in the same record,
+      ! section 3.4; that experiment does not bound the physical channel.
+      !
+      ! A computed rate exists and is not used here: Courtney et al.
       !        (2021), ApJ 919, 70, Sect. 2.1, compute the radiative
       !        association He + H+ -> HeH+ + hv (their reaction 5; rate
       !        coefficients in Fig. 1, LTE fit in Table 2), in the LTE and
@@ -1232,5 +1149,4 @@
       k = 7.2d-15
       end function
 
-      ! End of module
       end module mol_rates

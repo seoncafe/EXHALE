@@ -89,27 +89,9 @@
 	! a block the cells do not depend on each other and are solved together,
 	! across blocks they are solved in order.
 	!
-	! MEASURED 2026-09-07, wasp_full at 300 steps, one private binary per
-	! width, wall time at one and at sixteen threads:
-	!
-	!     width        passes    1 thread   16 threads
-	!     whole grid    10.10     136.3 s      17.0 s
-	!        64          9.51     133.4 s      18.6 s
-	!        16          8.05     109.4 s      28.0 s
-	!         8          7.13     103.4 s      42.5 s
-	!         4          7.14      99.0 s      47.9 s
-	!         2          7.19     106.3 s      62.2 s
-	!         1          8.10     112.3 s      99.3 s
-	!
-	! THE SUBSTITUTION DOES NOT PAY, and the reason is in the table rather
-	! than in the physics. It removes the part of the lag that walks the
-	! ionization front inward one cell per pass, and the pass count falls
-	! from 10.10 to 7.13 at its best width; but a pass costs the same field
-	! work either way, and the field of a whole grid is a single loop over
-	! independent cells that a machine solves all at once. A narrow block
-	! gives that width up, and sixteen threads recover more than the pass
-	! count saves. The width that keeps the parallel front (64) has almost
-	! no pass saving left. Hence zero.
+	! A whole-grid field keeps the parallel cell solve and is the measured
+	! faster default at sixteen threads. See
+	! ../EXHALE_v1.00/md/Update_EXHALE_stage2.md section 7, item COST3.
 	!
 	! The width is a compile-time constant and NOT a function of the thread
 	! count, deliberately: the run's answer must not depend on how many
@@ -159,32 +141,11 @@
 	! transport` makes it: with H2 a Newton unknown the same measurement
 	! falls from 3.2e-03 to 9.7e-10 in the acceptance measure.
 	!
-	! MEASURED 2026-09-07, one private binary per count, wasp_full at 300
-	! steps, wall time at one and at sixteen threads:
-	!
-	!     passes   coupled passes   1 thread   16 threads
-	!        1         10.09          139.3 s     17.7 s
-	!        2         10.01          229.9 s     25.2 s
-	!        8         10.01          259.9 s     26.8 s
-	!
-	! THE SELF-CONSISTENT FIELD DOES NOT PAY, and the reason is that the
-	! outer pass count is not set by this mode.  Closing the cell's own lag
-	! moves that count by 0.8 percent and costs 1.65x; on mol_base_handoff
-	! (1500 steps) it moves it the wrong way, 7.19 -> 7.24, and costs 2.0x
-	! (273.5 s -> 548.6 s).
-	!
-	! AND IT IS NOT THE MODE THE CARRIED-COLUMN SCHEME LEAVES EITHER, which
-	! is what this measurement was expected to show.  COST3 cut the pass
-	! count 10.10 -> 7.13 by carrying the star-ward columns forward
-	! (xuv_field_block_cells = 8) and read what remained as the cell's own
-	! optical depth.  MEASURED with one binary carrying BOTH levers
-	! (block 8, four self-field passes): 7.20 passes, 190.1 s, against
-	! COST3's 7.13 and 103.4 s for the columns alone.  With both of the
-	! stellar field's lags closed, seven passes remain, so what sets them is
-	! not the field: it is the temperature/composition alternation of the
-	! coupled step and the two couplings documented as lagged one sweep --
-	! the H(n=2) Balmer continuum and the locally absorbed He recombination
-	! radiation.  Which of those dominates is not measured here.  Hence one.
+	! The self-field passes do not reduce total wall time at the tested
+	! columns, so the default is one. See
+	! ../EXHALE_v1.00/md/Update_EXHALE_stage2.md section 7,
+	! item FIELD-SELF. The attribution of the remaining outer passes in
+	! that record was superseded by item COST4.
 	!
 	! The loop does NOT narrow the parallel front, unlike the other lever:
 	! a cell reads only the star-ward columns of the cells outside it, which
@@ -209,7 +170,7 @@
 	! the rows can be re-evaluated offline in another precision and the
 	! coefficient sets of successive composition passes compared. Cell index
 	! from EXHALE_IEQ_DUMP_CELL (ieq_cell_dump_requested, read once); the
-	! file is ieq_cell_dump.txt in the run directory. Measurement only:
+	! file is <output_dir>/ieq_cell_dump.txt. Measurement only:
 	! nothing in the solution reads what is written. The two tags are set
 	! by the caller of the sweep that knows them (eval_residual of
 	! steady_newton: its residual-evaluation count and composition pass),
@@ -251,7 +212,8 @@
 	! ---- THE BASE HANDOFF'S OWN CLOSURE, IN A LOWER GHOST CELL ----
 	!
 	! The handoff states the molecular partition of the NON-IONIZED
-	! hydrogen, so what it imposes on a ghost is x_H2 = x2 (1 - x_ion), and
+	! hydrogen, so the ghost has x_H2 = x2 (1 - x_ion) - x_O, where x_O
+	! is the H-nucleus share in OH and H2O, and
 	! x_ion is the ionization the wind's field produces in that same ghost:
 	! the two are one system and neither is data for the other. They are
 	! solved as one: the H2 row of the ghost's molecular system IS that
@@ -261,7 +223,7 @@
 	!
 	! THE TOLERANCE IS ON THE STATED EQUATION and is absolute in x_H2, a
 	! fraction of the cell's hydrogen nuclei: the pair is closed when
-	! |x_H2 - x2 (1 - x_ion)| at the state the solve returned is below
+	! |x_H2 - x2 (1 - x_ion) + x_O| in the returned state is below
 	! this. impose_transported_fractions places the returned state on the
 	! row, so a closed pair is the ordinary outcome and the residual is
 	! rounding; the test stays as the statement of what the boundary is
@@ -274,7 +236,7 @@
 	! that caller refuses it (ieq_state_may_be_refused).
 	real*8,  parameter :: base_ghost_closure_tol    = 1.0d-10
 	! What the closure reached in this sweep: the largest residual of
-	! x_H2 - x2 (1 - x_ion) left in a lower ghost, and the most passes any
+	! x_H2 - x2 (1 - x_ion) + x_O left in a lower ghost, and the most passes any
 	! of them took. Reduced over the cell loop and handed to base_boundary,
 	! which reports them with the reservoir.
 	real*8,  save :: ghost_closure_res_sweep  = 0.0d0
@@ -289,15 +251,9 @@
 	! the entry state as well as of the physical column and the declared
 	! inputs.
 	!
-	! WHY IT NEEDS ITS OWN STATEMENT. Every measure the sweep already applies
-	! is satisfied at ghosts 5 per cent apart in their trace ions: on one
-	! frozen physical column, reservoir, spectrum and executable, two entry
-	! compositions return ghosts 4.7e-3 (H II, He II) to 5.5e-2 (H2+) apart,
-	! both accepted at reaction residuals of about 3e-26, both with the
-	! imposed H2 partition closed to 0.0, both with hybrd1 answering info = 1,
-	! and the difference does not close over six decades of the inner stopping
-	! accuracy.
-	! The acceptance tests are blind in the direction the base mass row reads.
+	! Accepted reaction roots can return distinct lower ghosts from
+	! distinct seeds; see ../EXHALE_v1.00/md/Update_EXHALE_stage2.md
+	! section 14, P1 step 1b.
 	!
 	! WHAT IS COMPARED, AND IN WHICH UNITS. Each species of the two lower
 	! ghost cells, in the f_sp layout, which is the species' number density
@@ -316,35 +272,11 @@
 	! is not closed until the rates the ghost was solved with belong to the
 	! ghost's own count.
 	!
-	! THE ACCURACY, AND WHY THIS NUMBER. It is bracketed from above by what
-	! the base continuity row can resolve and from below by what the
-	! composition solve delivers, and one decade satisfies both.
-	!   Above: that row is a near-cancellation of two face fluxes, so it reads
-	! the ghost with a large gain. MEASURED on the LHS 1140 b hot-Uranus
-	! molecular state, a ghost that moves by 4.1e-9 in its hydrogen partition
-	! (x_HII 8.848e-7 against 8.888e-7, x_H2 by 3.9e-9) takes that row from
-	! 3.90 to 111.3 of its own rounding floors, i.e. 107.4 floors per 4.1e-9
-	! of composition, so ONE rounding floor of the row is bought by 3.8e-11
-	! (the f_sp layout and that partition differ by the hydrogen nuclei per
-	! unit mass, 0.75 there, which is an O(1) factor). A move of 1e-11 is a
-	! quarter of one rounding floor of the row that reads it.
-	!   Below: the composition solve stops at sqrt(dpmpar(1)) = 1.49e-8 and
-	! pins the returned ghost to a plateau in the composition's own units.
-	! MEASURED on examples/15_molecular with the carriers transported, where
-	! the map's gain in the H3+ direction is close to one, the sweep settles
-	! into an exact two-cycle whose largest move is 6.5e-12 (H I) and whose
-	! H3+ leg is 2.2e-12; tightening the inner stop to 1e-12 takes the whole
-	! sweep under this accuracy in two applications.
-	!   A relative statement per species cannot be made at all there: 2.2e-12
-	! of composition is 5.1e-3 OF H3+'s own value at 4.2e-10 of the cell, and
-	! 1.5e-2 of H2+'s at 4.7e-18, while the same move is 0.06 of one rounding
-	! floor of the base row.
-	!
-	! THE PASS BOUND. The furthest seed the boundary can present is the
-	! reservoir row, 9.7e-1 from the ghost in H II, and the map's MEASURED
-	! gain from seed to returned ghost is 4.9e-3 (the same memo, section 6.1),
-	! so four applications carry that seed to 5e-10. Twenty passes is five
-	! times what the measured contraction needs from the worst seed.
+	! ACCURACY. The composition move is limited to 1e-11 in f_sp units,
+	! the particle-count move to 1e-6 relative, and at most twenty map
+	! applications are allowed. These bounds resolve the base mass row while
+	! remaining above the inner solve's numerical cycle; the measured
+	! brackets are in the same record, P1 step 2b.
 	!
 	! A BOUNDARY THAT CANNOT REACH IT FAILS LOUDLY, with the numbers, exactly
 	! as the ghost's H2 partition closure does: a ghost that is not a fixed
@@ -421,7 +353,7 @@
 	! Oxygen-chemistry state (the A2 option; all zero unless
 	! thereis_oxychem).  Written by the equilibrium solve, read by
 	! write_output for output/Ion_species.txt, output/Oxygen_chemistry.txt
-	! and output/FUV_bands.txt, and by the heat breakdown.
+	! and <output_dir>/FUV_bands.txt, and by the heat breakdown.
 	!   nox_eq   cols 1 OH, 2 H2O, 3 CO [cm^-3]
 	!   n_o1d_eq O(1D) density from its local steady state [cm^-3]
 	!   NH2O_col, NOH_col   star-ward columns of the two FUV absorbers
@@ -589,7 +521,7 @@
 	!
 	! The lower boundary is built on the two lower ghost cells, and the
 	! sweep refuses a ghost it could not solve: a base handoff partition
-	! x_H2 = x2 (1 - x_ion) that did not close against the ghost's own
+	! x_H2 = x2 (1 - x_ion) - x_O that did not close against the ghost's own
 	! ionization balance (base_ghost_closure_tol), or a ghost composition
 	! that did not reach a fixed point of the sweep that returns it
 	! (ghost_composition_fixed_point_tol). The composition map is then not
@@ -854,23 +786,9 @@
 	! admissible state at all: a projection onto the element budget that
 	! still lies outside the simplex once the transported fractions are
 	! imposed on it.
-	! MEASURED on the sixteen default regression cases, 2026-09-06. Fifteen
-	! of them accept NO non-root at all; every amnesty event of the matrix
-	! belongs to the step-0 sweep of oxygen_chemistry, and its 115 events
-	! fall in two populations with nearly four empty decades between them:
-	!   res 1e-6 to 8.9   111 events, cells 1 to 185, the cold-start
-	!                     transient (16 at 1e-6, 38 at 1e-5, 24 at 1e-4,
-	!                     10 at 1e-3, 5 at 1e-2, 14 at 1e-1, 4 in [1,9))
-	!   res 8.6e4 to 1.5e5  4 events, cells 85 to 88 -- and cells 85 to 88
-	!                     are exactly the four the energy update then fails
-	!                     on, asking for a temperature below the floor.
-	! Nothing lies between 8.9 and 8.6e4. The cap is the smallest power of
-	! ten at least 3x above the largest event of the first population
-	! (3 x 8.9 = 27), which also clears the res ~28 amnesty events the
-	! metals-on molecular gates were measured to accept in 2026-08 (those
-	! gates accept no non-root at all today: the constrained continuation
-	! reaches those cells). It sits 11x above the first population and 860x
-	! below the second.
+	! ieq_nonroot_res_cap = 1e2 separates the measured cold-start
+	! transients from severe non-roots. The case matrix and threshold choice
+	! are in ../EXHALE_v1.00/md/Update_EXHALE_stage2.md section 7.
 	real*8, parameter :: ieq_nonroot_res_cap = 1.0d2
 
 	! The acceptance statistics of the He-branch equilibrium solves
@@ -910,7 +828,7 @@
 	real*8,  allocatable, save :: ieq_cell_acceptance_res(:)
 	! EXHALE_IEQ_CLASS_RECORD set (to anything): after every sweep the
 	! class and residual of each cell are rewritten to
-	! output/ieq_acceptance_classes.txt, so the file holds the last sweep
+	! <output_dir>/ieq_acceptance_classes.txt, so the file holds the last sweep
 	! of the run, with, row by row at the accepted state, the share of its
 	! group's turnover each kinetic row carries and the row against its own
 	! gross rate (normalized_reaction_residual, turnover_share_out and
@@ -1084,7 +1002,6 @@
 
 	end subroutine molecular_carrier_densities_from_state
 
-	!----------------------------------!
 
 	subroutine ioniz_eq(T_in,n_io,f_sp_io,heat_out,cool_out,q,sweep_ledger,&
 	                    rho_recon)
@@ -1416,7 +1333,6 @@
    ! re-formed from the composition the sweep returns.
    real*8, dimension(1-Ng:N+Ng),intent(out) :: q
 
-   !----------------------------------------------------------!      
    ! Global parameters
       
    ! Numerical tolerance for system solution
@@ -1500,10 +1416,9 @@
 	! and the ionization the base handoff's partition is stated against, and
 	! the cells are then solved in that context. The lower boundary is built
 	! on the two lower ghost cells, so a ghost that is not a fixed point of
-	! this map is a boundary that is a function of the composition the run was
-	! entered at, and MEASURED it is: two entry compositions return ghosts
-	! 4.7e-3 to 5.5e-2 apart in their trace ions, both accepted by every test
-	! the sweep applies.
+	! this map depends on the entry composition; measured seed dependence
+	! is in ../EXHALE_v1.00/md/Update_EXHALE_stage2.md section 14,
+	! P1 step 1b.
 	!
 	! The map is therefore applied again, at the ghost it returned and at the
 	! composition the cells above the ghosts were HANDED, until the ghost and
@@ -1544,7 +1459,6 @@
 	! the sweep returns.
 	n_ghost_h2_open          = 0
 
-	!----------------------------------!
 	
 	! Preliminary profiles exctraction
 	
@@ -1701,7 +1615,6 @@
 		opa_pf(j) = opacity_pT_factor((nh(j)+nhe(j)+ne(j))*kb_erg*T_K(j))
 	enddo
 
-	!----------------------------------!
 
 	! The FUV photon field of the molecular layer, for ALL of its absorbers
 	! at once: H2 in the Lyman and Werner lines (Draine & Bertoldi 1996) and
@@ -1735,7 +1648,6 @@
 		endif
 	endif
 
-	!----------------------------------!
 
     !---- The inputs of the photoelectron partition ----!
 
@@ -1878,7 +1790,6 @@
 	endif
 
 
-   !----------------------------------!
 
    ! Ionization equilibrium system solution
 
@@ -2432,12 +2343,12 @@
 		! (default(none)), as in the three other cell loops of this routine.
 		! A variable in shared() is read here, or written only in the element
 		! of the loop's own cell j; one the loop writes for its own cell and
-		! then reads (a per-cell scratch) is private; a count or extremum over
+		! then reads (a cell scratch) is private; a count or extremum over
 		! cells is a reduction; the solver scratch and the cell state the
 		! residual routines read are threadprivate module variables (sys_x,
 		! info, ieq_cell, met_*, mk*, cx_*). A new variable the compiler
 		! reports as unspecified has to be placed in one of those classes:
-		! meg_g02, a per-cell scratch left under default(shared), made every
+		! meg_g02, a cell scratch left under default(shared), made every
 		! metals-on run at more than one thread take another cell's X++
 		! photoionization rate.
 		!$omp parallel do default(none) schedule(dynamic,8) copyin(cx_metal_base) &
@@ -2790,7 +2701,7 @@
 				! balance and the handoff fraction x2 applies to the
 				! hydrogen nuclei that are left. The row this sweep solves
 				! is x(4) = 2 n(H2)/n_H over ALL the hydrogen nuclei, so
-				! the equation is x(4) = x2 (1 - x_ion), with x_ion the
+				! the equation is x(4) = x2 (1 - x_ion) - x_O, with x_ion the
 				! ionized hydrogen-nucleus fraction: H+ and the nuclei held
 				! in H2+, H3+ and HeH+ with the multiplicities x(5), x(6),
 				! x(7) carry.
@@ -3466,7 +3377,7 @@
 					write(*,'(A,I0,A,I0,A)') '   ghost cell ', j,         &
 						'   passes ', it_self, ''
 					write(*,'(A,ES12.5,A,ES12.5)') '   residual of x_H2 -'//&
-						' x2 (1 - x_ion) at the returned state ',         &
+						' x2 (1 - x_ion) + x_O at the returned state ',         &
 						ghost_closure_res, '   tolerance ',               &
 						base_ghost_closure_tol
 					flush(6)
@@ -4017,7 +3928,6 @@
 	ieq_sweep_ledger_last = ledger_sweep
 
 
-	!----------------------------------!
 
 	! THE COMPOSITION THIS SWEEP RETURNS WEIGHS THE DENSITY IT WAS GIVEN.
 	!
@@ -4032,14 +3942,8 @@
 	! weighted sum of them, so the closure leaves 1 by a few units in the
 	! last place at every sweep and in the same direction.
 	!
-	! MEASURED (2026-09-15): without this
-	! projection the departure RATCHETS, about 1e-14 per outer pass of a
-	! stationary solve, reaching 5.1e-13 after nineteen passes and 6.2e-13
-	! after twenty-four. Nothing bounded it -- the element operator's own
-	! test compares a step's closure with the ENTRY closure of that step
-	! and is blind to a monotone drift by construction -- and a state that
-	! carries it is a state whose two halves describe two gases, which is
-	! what a restart then has to choose between.
+	! The accumulated unprojected mass drift is measured in
+	! ../EXHALE_v1.00/md/Update_EXHALE_stage2.md section 11, item L19.
 	!
 	! THE DENSITY IS THE CONSERVED QUANTITY AND THE COMPOSITION IS THE
 	! PARTITION ON IT, so the composition is put on the density and never
@@ -4247,7 +4151,7 @@
 	! the ONE assembly in utils_ion_eq. The rates it contracts are the
 	! pre-sweep ones described above; the densities are the post-sweep ones
 	! extracted just now. The channel array it fills is heat_channel_state,
-	! which is what output/Heating_breakdown.txt writes, so that file and
+	! which is what <output_dir>/Heating_breakdown.txt writes, so that file and
 	! the heat column of Hydro_ioniz.txt describe one state.
 	call heating_of_composition(T_K,                                      &
 	         nhi,nhii,nhei,nheii,nheiii,nheiTR, nm, nmol_eq, nox_eq,      &
@@ -4275,7 +4179,6 @@
 	               cool, nheiTR=nheiTR, a_ion_HeITR=aTR_post,              &
 	               nmol=nmol_eq, nox=nox_eq)
 
-	!----------------------------------!
 
 	! Density with atomic numbers (nm adds the metal mass under the
 	! eos_metals policy)
@@ -4544,7 +4447,6 @@
 	contains
 
 
-	!----------------------------------!
 
 	real*8 function ghost_composition_distance(f_a, f_b) result(d)
 	! HOW FAR TWO GHOST COMPOSITIONS STAND APART, in the units the
@@ -4567,7 +4469,6 @@
 	enddo
 	end function ghost_composition_distance
 
-	!----------------------------------!
 
 	real*8 function ghost_count_distance(np_a, np_b) result(d)
 	! The same comparison for the ghost's heavy-particle plus electron count.
@@ -4582,7 +4483,6 @@
 	enddo
 	end function ghost_count_distance
 
-	!----------------------------------!
 
 	subroutine ghost_fixed_point_not_reached(npass, move, thermal_move, what)
 	! A BOUNDARY NOTHING STANDS BEHIND IS REFUSED, with the numbers, as the
@@ -4614,14 +4514,12 @@
 		error stop 'ioniz_eq: the ghost composition is not a fixed point'
 	end subroutine ghost_fixed_point_not_reached
 
-	! End of subroutine
 	end subroutine ioniz_eq
 
-	!----------------------------------!
 
 	subroutine record_acceptance_classes_of_sweep()
 	! The acceptance class and the normalized reaction residual of every
-	! cell the last sweep solved, written over output/ieq_acceptance_
+	! cell the last sweep solved, written over <output_dir>/ieq_acceptance_
 	! classes.txt when EXHALE_IEQ_CLASS_RECORD is set (declaration of
 	! ieq_class_record_on). Called once per sweep, outside the cell loop.
 	integer :: jc, ju, ios, nr, i
@@ -4661,7 +4559,6 @@
 	ieq_class_record_requested = ieq_class_record_on
 	end function ieq_class_record_requested
 
-	!----------------------------------!
 
 	logical function ionization_fractions_physical(x,n,mbase) result(ok)
 	! Is a root of the equilibrium system a physically admissible state?
@@ -4796,7 +4693,6 @@
 
 	end function ionization_fractions_physical
 
-	!----------------------------------!
 
 	subroutine ionization_balance_at_fixed_ne(x,n,mbase,n_e)
 	! Stage fractions of each element in its OWN ionization balance at a
@@ -4881,7 +4777,6 @@
 
 	end subroutine ionization_balance_at_fixed_ne
 
-	!----------------------------------!
 
 	real*8 function element_budget_violation(x,n,mbase) result(viol)
 	! How far a root of an equilibrium system lies outside the physically
@@ -4942,7 +4837,6 @@
 
 	end function element_budget_violation
 
-	!----------------------------------!
 
 	double precision function normalized_reaction_residual(x,n,mbase,       &
 	                                    row_out,scale_out,refusal_reason,   &
@@ -4973,13 +4867,9 @@
 	! and OH, H2O with oxygen (chemical_row_layout). In the atomic layouts H+
 	! is the only hydrogen row, so its measure is |f_1|/(P_1 + L_1).
 	!
-	! The scale is the turnover at the candidate and not an upper bound on
-	! it. The bound that stood here (every reactant at the whole of its
-	! element, the He 2^3S level at all of the helium in the Penning term)
-	! exceeded the gross H+ rate of the LHS 1140 b atomic state by 3.9e12 at
-	! its base and 2.1e2 at 26 R_p (MEASURED, md/Update_EXHALE_stage3.md
-	! section 106.4), so the tolerance admitted an H+ move of 1 per cent
-	! inside about 1.35 R_p.
+	! The scale is the turnover at the candidate, not a bound on it;
+	! the earlier bound and its measured error are in
+	! ../EXHALE_v1.00/md/Update_EXHALE_stage3.md section 106.4.
 	!
 	! CONSTRAINT ROWS (an absent element's identity rows, the unused X++ of
 	! a two-stage element, a transported fraction x - x_fix, the lower
@@ -5023,13 +4913,9 @@
 	! epsilon(1) |x_i|, below the resolution of x_i itself, is the special
 	! case of it), or the species and its root both stand below
 	! absent_element_density in nuclei, (|x_i| + dx_i) n_E <= 1e-30 cm^-3
-	! (the species is absent). Such a row is at its root to the resolution
-	! of the state, and no representable composition is closer to it: on
-	! the column without ionizing radiation (regression case
-	! hydrostatic_column) x(H+) <= 4e-17 above 1.0097 R_p carries an H+ row
-	! out of balance by 1e-6 to 1e-3 of its gross rate, whose correction is
-	! of the order of x(H+) itself (MEASURED, md/Update_EXHALE_stage3.md
-	! section 112.5). A row of a group with no turnover and a nonzero
+	! (the species is absent). This resolution floor is measured in
+	! ../EXHALE_v1.00/md/Update_EXHALE_stage3.md section 112.5.
+	! A row of a group with no turnover and a nonzero
 	! imbalance, and a nonfinite row, are never floored. The row's measure
 	! is then 0 and resolution_floor_out marks it.
 	!
@@ -5244,7 +5130,6 @@
 
 	end function normalized_reaction_residual
 
-	!----------------------------------!
 
 	double precision function quiet_nan()
 	! A quiet NaN, formed from its bit pattern so that no arithmetic on a
@@ -5252,7 +5137,6 @@
 	quiet_nan = transfer(int(z'7FF8000000000000', 8), 1.0d0)
 	end function quiet_nan
 
-	!----------------------------------!
 
 	subroutine keep_background_of_adopted_state
 	! bg_cell_adopted <- bg_cell. Called by the steady solver right after it
@@ -5264,7 +5148,6 @@
 	bg_cell_adopted = bg_cell
 	end subroutine keep_background_of_adopted_state
 
-	!----------------------------------!
 
 	subroutine keep_background_of_best_iterate
 	! bg_cell_best <- bg_cell_adopted. Called where the steady solver records
@@ -5275,7 +5158,6 @@
 	bg_cell_best = bg_cell_adopted
 	end subroutine keep_background_of_best_iterate
 
-	!----------------------------------!
 
 	subroutine adopt_background_of_best_iterate
 	! bg_cell_adopted <- bg_cell_best. Called where the steady solver returns
@@ -5286,7 +5168,6 @@
 	bg_cell_adopted = bg_cell_best
 	end subroutine adopt_background_of_best_iterate
 
-	!----------------------------------!
 
 	subroutine install_background_of_adopted_state
 	! bg_cell <- bg_cell_adopted. The last thing the steady solver does, so
@@ -5297,7 +5178,6 @@
 	bg_cell = bg_cell_adopted
 	end subroutine install_background_of_adopted_state
 
-	!----------------------------------!
 
 	logical function transported_rows_exist() result(any_row)
 	! Does the transport-chemistry operator have a row to solve in this run?
@@ -5319,7 +5199,6 @@
 	          ionization_transport
 	end function transported_rows_exist
 
-	!----------------------------------!
 
 	logical function finite_real(x)
 	! Whether x is an ordinary real number: not a NaN, not an infinity.
@@ -5334,7 +5213,6 @@
 	finite_real = (x .eq. x) .and. (abs(x) .le. huge(x))
 	end function finite_real
 
-	!----------------------------------!
 
 	logical function mass_projection_of_the_sweep() result(on)
 	! Whether the composition a sweep returns is put on the density the
@@ -5355,7 +5233,6 @@
 	on = mass_projection_on
 	end function mass_projection_of_the_sweep
 
-	!----------------------------------!
 
 	subroutine set_ioniz_eq_sweep_state_kind(kind)
 	! Tag the state the following ioniz_eq sweeps are evaluating:
@@ -5370,7 +5247,6 @@
 	ieq_sweep_state_kind = kind
 	end subroutine set_ioniz_eq_sweep_state_kind
 
-	!----------------------------------!
 
 	subroutine set_ioniz_eq_state_may_be_refused(on)
 	! Declared by a caller around its own ioniz_eq call: .true. when it
@@ -5381,7 +5257,6 @@
 	ieq_state_may_be_refused = on
 	end subroutine set_ioniz_eq_state_may_be_refused
 
-	!----------------------------------!
 
 	subroutine add_to_ioniz_eq_ledger(a)
 	! Add one sweep's totals to the ledger of the state kind currently
@@ -5398,7 +5273,6 @@
 	end select
 	end subroutine add_to_ioniz_eq_ledger
 
-	!----------------------------------!
 
 	subroutine accumulate_ioniz_eq_ledger(tot, a)
 	! tot <- tot + a, counters summed and the "largest seen" fields maxed.
@@ -5427,7 +5301,6 @@
 	tot%n_ghost_open  = tot%n_ghost_open  + a%n_ghost_open
 	end subroutine accumulate_ioniz_eq_ledger
 
-	!----------------------------------!
 
 	subroutine write_ioniz_eq_acceptance_report
 	! End-of-run acceptance report, one block per state kind: the states the
@@ -5447,7 +5320,6 @@
 		'steady-solver probes (states the run did not adopt)')
 	end subroutine write_ioniz_eq_acceptance_report
 
-	!----------------------------------!
 
 	subroutine write_one_ioniz_eq_ledger(led, label)
 	! The acceptance block of one ledger. Silent for a ledger nothing was
@@ -5540,7 +5412,6 @@
 
 	end subroutine write_one_ioniz_eq_ledger
 
-	!----------------------------------!
 
 	integer function residual_decade(res) result(ib)
 	! Decade bin of a normalized reaction residual for the run-wide
@@ -5568,7 +5439,6 @@
 	endif
 	end function residual_decade
 
-	!----------------------------------!
 
 	subroutine impose_transported_fractions(x, nx, iox)
 	! THE UNKNOWNS A TRANSPORT SOLVE OWNS START AT THEIR IMPOSED VALUES.
@@ -5610,7 +5480,6 @@
 		             x, iox, ieq_cell%n_ofam, ieq_cell%nh))
 	end subroutine impose_transported_fractions
 
-	!----------------------------------!
 
 	subroutine report_accepted_cell_state(j, acc_class, acc_res, info_solver,&
 	                                      x, nx, name_x4)
@@ -5632,7 +5501,6 @@
 	     ' x(H+) ', x(1), ' '//trim(name_x4)//' ', x(min(4,nx))
 	end subroutine report_accepted_cell_state
 
-	!----------------------------------!
 
 	! What unknown min(4,N_eq) of the ATOMIC layouts is: the He 2^3S
 	! fraction wherever the triplet is tracked (System_HeH_TR and
@@ -5650,7 +5518,6 @@
 	endif
 	end function unknown_4_name_atomic
 
-	!----------------------------------!
 
 	! WHETHER A CELL'S SOLVES ARE TO BE WRITTEN OUT (EXHALE_IEQ_DUMP_CELL),
 	! read once for the run and announced only when set.
@@ -5675,7 +5542,6 @@
 	ieq_dump_pass_tag = pass_tag
 	end subroutine set_ieq_cell_dump_tags
 
-	!----------------------------------!
 
 	subroutine record_heh_tr_cell_solve(j, iatt, it_self, x_start, x_ret, &
 	           nx, info_solver, tol_solver, T_cell, n_dim_cell, n_tot_cell,&
@@ -5809,7 +5675,6 @@
 	!$omp end critical (ieq_cell_dump)
 	end subroutine record_heh_tr_cell_solve
 
-	!----------------------------------!
 
 	subroutine probe_photoionization_rates_of_the_cell(j, N1o, N15o, N2o, &
 	           NTRo, NH2o, Nmo, nhi_j, nheiS_j, nheii_j, nheiTR_j, nh2_j,  &
@@ -5929,7 +5794,6 @@
 	!$omp end critical (ieq_rate_probe)
 	end subroutine probe_photoionization_rates_of_the_cell
 
-	!----------------------------------!
 
 	subroutine set_molecular_decay_cells(cells, ncell)
 	! WHICH CELLS THE CHEMICAL-DECAY DIAGNOSTIC MEASURES AT. It has to be
@@ -5948,7 +5812,6 @@
 	enddo
 	end subroutine set_molecular_decay_cells
 
-	!----------------------------------!
 
 	subroutine molecular_decay_rate_of_the_cell(j, k, name, lam_row,       &
 	                                            lam_slow, lam_fast, have)
@@ -5986,7 +5849,6 @@
 	have     = .true.
 	end subroutine molecular_decay_rate_of_the_cell
 
-	!----------------------------------!
 
 	subroutine measure_molecular_decay_rates(j, x, nx, mbase, n_e_ref)
 	! THE CHEMICAL DECAY RATES OF THE LOCAL REACTION SYSTEM AT ONE CELL,
@@ -6174,7 +6036,6 @@
 	ieq_decay_have(islot) = .true.
 	end subroutine measure_molecular_decay_rates
 
-	!----------------------------------!
 
 	subroutine stable_chemical_decay_spectrum(wr, wi, slow, fast, stable)
 	! The decay rates of a finite reaction Jacobian spectrum with the
@@ -6196,7 +6057,6 @@
 	slow = minval(-wr);  fast = maxval(-wr);  stable = .true.
 	end subroutine stable_chemical_decay_spectrum
 
-	!----------------------------------!
 
 	subroutine molecular_network_rows(n, x, fv, iflag, par, mbase)
 	! The molecular reaction system of this cell, with or without the metal
@@ -6218,7 +6078,6 @@
 	end subroutine molecular_network_rows
 
 
-	! ------------------------------------------------------!
 
 	pure integer function nonroot_acceptance_class(res) result(c)
 	! WHICH OF THE TWO NON-ROOT CLASSES A CANDIDATE FALLS IN, and the single
@@ -6239,7 +6098,6 @@
 	endif
 	end function nonroot_acceptance_class
 
-	!----------------------------------!
 
 	subroutine nonroot_streak_update(acc_class,j,step,radius,T,dens,n_e,   &
 	                                 info,viol,res,x,n)
@@ -6317,7 +6175,6 @@
 
 	end subroutine nonroot_streak_update
 
-	!----------------------------------!
 
 	subroutine report_acceptance_event(label,j,step,radius,T,info,viol,res)
 	! One line per NON-ROOT acceptance (nonroot_streak_update), with the
@@ -6349,7 +6206,6 @@
 	!$omp end critical (ieq_acc_report)
 	end subroutine report_acceptance_event
 
-	!----------------------------------!
 
 	subroutine clamp_fractions_to_element_budget(x,n,mbase)
 	! Move a root that lies just outside the physically allowed states onto the
@@ -6462,7 +6318,6 @@
 
 	end subroutine clamp_fractions_to_element_budget
 
-	!----------------------------------!
 
 	subroutine dissociation_ionization_balance_at_fixed_ne(x,n,mbase,n_e,   &
 	                                                       p_bar,T_gas)
@@ -6530,7 +6385,6 @@
 
 	end subroutine dissociation_ionization_balance_at_fixed_ne
 
-	!----------------------------------!
 
 	subroutine metal_ionization_balance_at_fixed_ne(x,n,mbase,n_e)
 	! Metal stage fractions in each element's OWN ionization balance at a
@@ -6580,9 +6434,7 @@
 
 	end subroutine metal_ionization_balance_at_fixed_ne
 
-	! End of module
 
-	!----------------------------------!
 	! THE ELIMINATED-SPECIES CLOSURE, MEASURED ON A STATE
 	!
 	! Every run eliminates the neutral stage of each
@@ -6632,7 +6484,6 @@
 	ws%minv = mol_inv_turnover
 	end subroutine save_ieq_closure_scratch
 
-	!----------------------------------!
 
 	subroutine restore_ieq_closure_scratch(ws)
 	type(ieq_closure_scratch), intent(in) :: ws
@@ -6653,7 +6504,6 @@
 	mol_inv_turnover = ws%minv
 	end subroutine restore_ieq_closure_scratch
 
-	!----------------------------------!
 
 	logical function ieq_closure_scratch_matches(ws) result(same)
 	! Bit comparison of the live scratch against the copy taken before a
@@ -6676,7 +6526,6 @@
 	if (same) same = ion_rates_match(now%cell, ws%cell)
 	end function ieq_closure_scratch_matches
 
-	!----------------------------------!
 
 	logical function ion_rates_match(a, b) result(same)
 	! The cell rate state compared through the quantities the closure
@@ -6704,7 +6553,6 @@
 	  .and. (a%n_ofam .eq. b%n_ofam) .and. (a%n_co .eq. b%n_co)
 	end function ion_rates_match
 
-	!----------------------------------!
 
 	function pack_mol_coefficients() result(c)
 	! The molecular and oxygen rate coefficients of System_HeH_mol in one
@@ -6716,7 +6564,6 @@
 	      ok1, ok1r, ok2, ok2r, ok6, oj3, oj4, oj5, oj7 ]
 	end function pack_mol_coefficients
 
-	!----------------------------------!
 
 	subroutine unpack_mol_coefficients(c)
 	real*8, intent(in) :: c(27)
@@ -6730,7 +6577,6 @@
 	oj7  = c(27)
 	end subroutine unpack_mol_coefficients
 
-	!----------------------------------!
 
 	integer function ieq_triplet_row() result(ir)
 	! Row of the He 2^3S level balance in the system the run solves
@@ -6743,7 +6589,6 @@
 	if (thereis_mol) ir = 8
 	end function ieq_triplet_row
 
-	!----------------------------------!
 
 	subroutine ieq_install_cell(j)
 	! Put cell j back into the scratch the residual rows read: the rate
@@ -6774,7 +6619,6 @@
 	endif
 	end subroutine ieq_install_cell
 
-	!----------------------------------!
 
 	subroutine ieq_state_vector(j, rho, f_sp, x, nx)
 	! The composition of cell j in the fraction layout of the system the
@@ -6823,7 +6667,6 @@
 	endif
 	end subroutine ieq_state_vector
 
-	!----------------------------------!
 
 	subroutine ionization_closure_residual_cell(j, x, nx, res, rowres)
 	! The normalized reaction residual of ONE cell at a GIVEN composition,
@@ -6844,7 +6687,6 @@
 		     'was NOT reinstated after the isolated evaluation'
 	end subroutine ionization_closure_residual_cell
 
-	!----------------------------------!
 
 	subroutine ionization_closure_residual_profile(rho, f_sp, res,       &
 	                                               res_triplet, ok, why)
@@ -6929,7 +6771,6 @@
 	ok = .true.
 	end subroutine ionization_closure_residual_profile
 
-	!----------------------------------!
 
 	subroutine save_ieq_rate_state(s)
 	! Hold aside the rate state of every cell, allocation status included.
@@ -6949,7 +6790,6 @@
 	s%iox_stored   = ieq_iox_stored
 	end subroutine save_ieq_rate_state
 
-	!----------------------------------!
 
 	subroutine restore_ieq_rate_state(s)
 	! Put back what save_ieq_rate_state held: the module comes back to the
@@ -6989,7 +6829,6 @@
 	ieq_iox_stored   = s%iox_stored
 	end subroutine restore_ieq_rate_state
 
-	!----------------------------------!
 
 	subroutine put_back_ieq_1d(kept, live)
 	real*8, allocatable, intent(in)    :: kept(:)
@@ -7001,6 +6840,5 @@
 	endif
 	end subroutine put_back_ieq_1d
 
-	!----------------------------------!
 
 	end module ionization_equilibrium

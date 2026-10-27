@@ -44,43 +44,17 @@
       ! formed.  Filled only when well_balanced is set.
       real*8, dimension(:),   allocatable :: equilibrium_pressure_force
 
-      ! THE THREE PHYSICAL TERMS OF EVERY CELL'S MOMENTUM ROW, as the
-      ! evaluation that produced dF and S assembled them.  The equation is
-      !
-      !   d(rho v)/dt + div(rho v v) + dp/dr + rho dphi/dr = S_visc
-      !                  ^ram          ^pressure ^gravity
-      !
-      ! and these are its three left-hand terms, gathered out of the pieces
-      ! the discretization splits them into:
-      !
-      !   momentum_ram_divergence(j)     the momentum flux divergence
-      !                                  WITHOUT the pressure
-      !   momentum_pressure_gradient(j)  the whole spherical pressure
-      !                                  gradient the row carries
-      !   momentum_gravity(j)            rho dphi/dr as `source` forms it,
-      !                                  and the equilibrium pressure force
-      !                                  under the well-balanced option, where
-      !                                  the row itself carries neither
-      !
-      ! The three add up to the assembled row dF(2,j) - S(2,j) exactly.
-      !
-      ! WHAT READS THEM, AND WHY THE DISCRETIZATION'S PIECES ARE NOT THESE
-      ! TERMS.  The momentum row's reference scale is the largest PHYSICAL
-      ! term of the equation (momentum_row_scale, steady_residual), and
-      ! dF(2) and S(2) are not those terms: under PLM the pressure sits
-      ! partly in the momentum flux, which Phys_flux gives p, and partly in
-      ! the source, which carries the geometric term (A+ - A-) p_c/dV with
-      ! the opposite sign, so each of the two holds an O(2 p/r) part that
-      ! cancels against the other.  A scale built from them therefore reads
-      ! 2 p/r on a uniform pressure at rest, where the physical force is
-      ! zero, and under WENO3, where the whole gradient is one number
-      ! (p_R - p_L)/dr, it reads |dp/dr| ~ |rho g| in a near-hydrostatic
-      ! cell only because the two balance there.  Gathering the pieces back
-      ! into the terms of the equation is what these arrays are for.
-      ! Nothing here changes dF or S.
-      !
-      ! THE LOWEST GHOST CELL HAS NO LOWER FACE and carries no equation, so
-      ! its entry is zero, as its rows are.
+      ! Physical terms of the assembled momentum row:
+      !   d(rho v)/dt + div(rho v v) + dp/dr + rho dphi/dr = S_visc.
+      ! momentum_ram_divergence excludes pressure;
+      ! momentum_pressure_gradient contains its full spherical gradient;
+      ! momentum_gravity contains rho dphi/dr, or the equilibrium pressure
+      ! force under well_balanced. Their sum equals dF(2,j)-S(2,j).
+      ! Under PLM, pressure is split between the flux and geometric source;
+      ! separately scaling those terms would give O(2p/r) at uniform
+      ! pressure. momentum_row_scale uses these physical terms instead.
+      ! The lowest ghost cell has no lower face or equation, so its entries
+      ! are zero.
       real*8, dimension(:),   allocatable :: momentum_ram_divergence
       real*8, dimension(:),   allocatable :: momentum_pressure_gradient
       real*8, dimension(:),   allocatable :: momentum_gravity
@@ -166,26 +140,12 @@
       damp_lowmach = low_mach_damping_active()
       if (damp_lowmach) call contact_mode_dissipation_flux(u_in,Ddis)
 
-      ! TWO LOOPS, ONE OVER FACES AND ONE OVER CELLS, AND WHY.  The Riemann
-      ! problem at a face is a function of that face's own two reconstructed
-      ! states, and the flux difference of a cell is a function of its own
-      ! two faces: both are local, and the only thing that tied them into a
-      ! single sequential loop was the reuse of the previous cell's
-      ! right-hand flux as this cell's left-hand one.  Every flux is stored
-      ! in face_flux / face_p in any case -- the positivity repair below
-      ! rebuilds a cell from them -- so the face loop writes exactly what the
-      ! cell loop reads and the reuse buys nothing.  Split that way both
-      ! loops run over independent indices, in ONE parallel region: the
-      ! barrier that closes the first !$omp do is what makes every face flux
-      ! visible to the cell loop.
-      !
-      ! BITWISE IDENTICAL TO THE SEQUENTIAL FORM, at any number of threads.
-      ! Each face carries the same Num_flux call with the same arguments --
-      ! face j lies between cells j and j+1, and the outermost face of the
-      ! ghost range has no cell j+1 and so takes the composition of the last
-      ! cell that exists -- and each cell the same flux differences of the
-      ! same two stored fluxes.  Neither loop contains a reduction, so no
-      ! sum changes order.
+      ! Independent face and cell loops share face_flux/face_p. The
+      ! implicit barrier after the first OpenMP do exposes all face fluxes
+      ! before cell differences are formed. Each face uses the same
+      ! Num_flux arguments and each cell the same stored faces as in the
+      ! sequential calculation; no reduction changes summation order.
+      ! The outermost face uses the last existing cell's composition.
       !$omp parallel default(shared)                                    &
       !$omp   private(j,dr,rp,rm,dAp,dAm,dV,Fp,Fm,pL,pR,qp,qm,dF3p)
 
@@ -285,10 +245,8 @@
       ! data and S, and writes nothing the rows are built from.
       call momentum_row_terms_of_state(WL,WR,S)
 
-      ! End of subroutine
       end subroutine RK_rhs
 
-      !-----------------------------------------------------------!
 
       subroutine equilibrium_pressure_force_of_state(u_in)
       ! THE MAGNITUDE OF THE PRESSURE FORCE OF EACH CELL'S OWN HYDROSTATIC
@@ -343,10 +301,8 @@
          enddo
       endif
 
-      ! End of subroutine
       end subroutine equilibrium_pressure_force_of_state
 
-      !-----------------------------------------------------------!
 
       subroutine momentum_row_terms_of_cell(dr,dAp,dAm,dV,              &
                                             Fp2,Fm2,pR,pL,qp,qm,        &
@@ -409,10 +365,8 @@
          pgrad  = pgrad + p_flux - (S2 + weight)
       endif
 
-      ! End of subroutine
       end subroutine momentum_row_terms_of_cell
 
-      !-----------------------------------------------------------!
 
       subroutine momentum_row_terms_of_state(WL,WR,S)
       ! The three terms of every cell's momentum row, from the face data the
@@ -473,10 +427,8 @@
                  momentum_gravity(j))
       enddo
 
-      ! End of subroutine
       end subroutine momentum_row_terms_of_state
 
-      !-----------------------------------------------------------!
 
       ! Repair an RK stage that left the admissible set rho > 0, rho e > 0 by
       ! replacing, at the offending cells only, the high-order interface
@@ -746,8 +698,6 @@
          n_faces_flux_positivity_limited =                              &
             n_faces_flux_positivity_limited + n_repl
 
-      ! End of subroutine
       end subroutine positivity_limited_fluxes
 
-      ! End of module
       end module RK_integration

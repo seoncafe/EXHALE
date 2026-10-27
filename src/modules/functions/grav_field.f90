@@ -9,9 +9,8 @@
       
       contains
       
-      !-------------------------------------------------------!
       
-      ! Gravitational field strenght (function)
+      ! Gravitational potential [code-unit energy per mass].
       double precision function phi(r_in)
       real*8, intent(in)  :: r_in
 
@@ -27,10 +26,8 @@
          	 (atilde*Mrapp/(1.0+Mrapp)-r_in)**2.0
       endif
 
-      ! End of function
       end function phi
       
-      !-------------------------------------------------------!
       
       ! Gravitational field gradient
       double precision function Dphi(r_in)
@@ -46,10 +43,8 @@
          	 (atilde*Mrapp/(1.0+Mrapp)-r_in)
       endif
 
-      ! End of function
       end function Dphi
 
-      !-------------------------------------------------------!
 
       double precision function isothermal_wind_speed(Kr, c2, cs,      &
                                                       supersonic)
@@ -63,7 +58,7 @@
       ! one root when Kr >= h(cs); bisection is unconditionally robust.
       real*8, intent(in)  :: Kr, c2, cs
       logical, intent(in) :: supersonic
-      real*8 :: vlo, vhi, vmid, hmid
+      real*8 :: vlo, vhi, vmid, hmid, log_lo, log_hi, log_mid, level
       integer :: it
 
       if (supersonic) then
@@ -75,34 +70,56 @@
             vhi = 2.0d0*vhi
          enddo
       else
-         vhi = cs
-         vlo = cs*1.0d-12                  ! h -> +inf as v -> 0, so a root exists
+         ! For q=ln(v/cs), solve exp(2q)/2-q=level on q<=0.
+         ! level>=1/2 is the stated Bernoulli-domain condition. The lower
+         ! endpoint -level-1 has residual >1, even for exponentially small
+         ! speeds; logarithmic bisection resolves them without a velocity floor.
+         level = Kr/c2 + log(cs)
+         if (level .eq. 0.5d0) then
+            isothermal_wind_speed = cs
+            return
+         endif
+         log_lo = -level - 1.0d0
+         log_hi = 0.0d0
+         do it = 1, 200
+            log_mid = 0.5d0*(log_lo + log_hi)
+            ! Near the sonic minimum, subtracting 1/2 loses q^2.
+            ! The series through q^8 avoids that cancellation for |q|<1e-3.
+            if (abs(log_mid) .lt. 1.0d-3) then
+               hmid = log_mid**2*(1.0d0+log_mid*(2.0d0/3.0d0+log_mid*   &
+                  (1.0d0/3.0d0+log_mid*(2.0d0/15.0d0+log_mid*          &
+                  (2.0d0/45.0d0+log_mid*(4.0d0/315.0d0+                &
+                  log_mid/315.0d0))))))
+            else
+               hmid = 0.5d0*exp(2.0d0*log_mid)-log_mid-0.5d0
+            endif
+            if (hmid .lt. level-0.5d0) then
+               log_hi = log_mid
+            else
+               log_lo = log_mid
+            endif
+            if (abs(log_hi-log_lo) .le. 4.0d0*epsilon(log_mid)*           &
+                max(1.0d0,abs(log_mid))) exit
+         enddo
+         ! A speed below the representable exponential range underflows to
+         ! zero; no finite velocity floor replaces that physical limit.
+         isothermal_wind_speed = exp(log(cs)+0.5d0*(log_lo+log_hi))
+         return
       endif
 
       do it = 1, 200
          vmid = 0.5d0*(vlo + vhi)
          hmid = 0.5d0*vmid*vmid - c2*log(vmid)
-         if (supersonic) then
-            ! h increasing: if h<Kr the root is to the right
-            if (hmid .lt. Kr) then
-               vlo = vmid
-            else
-               vhi = vmid
-            endif
+         ! The subsonic branch has returned; h increases on this branch.
+         if (hmid .lt. Kr) then
+            vlo = vmid
          else
-            ! h decreasing: if h<Kr the root is to the left (smaller v)
-            if (hmid .lt. Kr) then
-               vhi = vmid
-            else
-               vlo = vmid
-            endif
+            vhi = vmid
          endif
          if (abs(vhi - vlo) .lt. 1.0d-12*max(vmid,1.0d-30)) exit
       enddo
       isothermal_wind_speed = 0.5d0*(vlo + vhi)
 
-      ! End of function
       end function isothermal_wind_speed
       
-      ! End of module
       end module grav_func

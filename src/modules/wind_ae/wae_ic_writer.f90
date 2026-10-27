@@ -1,10 +1,20 @@
       module wae_ic_writer
-      ! Convert a Wind-AE windsoln onto the EXHALE grid and write
-      ! output/{Hydro_ioniz,Ion_species}_IC.txt for EXHALE's `Load IC`.
-      ! Faithful Fortran port of src/utils/windae_to_exhale_ic.py
-      ! (validated 2026-06-13). np_interp() matches numpy.interp (linear,
-      ! endpoint-clamped). Below Wind-AE's Rmin: hydrostatic blend to the
-      ! EXHALE base anchor; above Rmax: flux-conserving extrapolation.
+      ! Write {Hydro_ioniz,Ion_species}_IC.txt in the supplied outdir.
+      ! Fortran port of src/utils/windae_to_exhale_ic.py.
+      ! np_interp is linear and endpoint-clamped, matching numpy.interp.
+      ! Below Rmin use the hydrostatic base blend; above Rmax conserve flux.
+      !
+      ! Differences from src/utils/windae_to_exhale_ic.py (2026-10-27,
+      ! md/windae_defect_fixes_20261027.md):
+      ! - Scale-height point (D14): the script takes the first wind point at
+      !   least 0.1 Rp above Rmin and divides 0/0 when none exists.  Here
+      !   the farthest wind point is used then, with a warning; a wind
+      !   solution with no point above Rmin stops the writer.
+      ! - Base blend (D15): the weight (1 - 1/r)/(1 - 1/Rmin) is 0/0 when
+      !   the wind base is at Rmin = 1 Rp.  That case has no blend region:
+      !   points below Rmin take the hydrostatic baseline (weight 0), the
+      !   point at Rmin the wind value (weight 1), the limits of the
+      !   formula at r <= 1 and r = Rmin.
       implicit none
       ! H atom mass, the density unit the IC is written in (matches mu in
       ! parameters.f90 and wae_MH).
@@ -48,12 +58,10 @@
       end function np_interp
 
       real*8 function phiR(r, Mrapp, atilde, tidalf)
-      ! Roche potential / b0 (dimensionless), matching grav_field.f90::phi and
-      ! wae_soe d1_phi: planetary -1/r plus the stellar-tidal + centrifugal
-      ! terms scaled by tidalf (0 => spherical, 1 => full Roche). Used to give
-      ! the sub-Rmin hydrostatic base blend the SAME gravity EXHALE integrates
-      ! with, so dp/dr is Roche-consistent there (kills the j_min momentum
-      ! residual that the legacy spherical 1/r blend left behind).
+      ! Roche potential / b0, matching grav_field.f90::phi and wae_soe d1_phi.
+      ! tidalf=0 gives planetary -1/r; tidalf=1 includes stellar and
+      ! centrifugal terms. The base density uses this potential before
+      ! blending to the wind; the blend need not be hydrostatic.
       real*8, intent(in) :: r, Mrapp, atilde, tidalf
       phiR = -1.0d0/r                                                     &
              - tidalf*( Mrapp/(atilde - r)                               &
@@ -75,6 +83,7 @@
       real*8  :: rwR(nw), nnuc_w(nw), lognnuc_w(nw), fHIw(nw), fHeIw(nw)
       real*8  :: lognnuc(ng), T(ng), v(ng), fHI(ng), fHeI(ng), r(ng)
       real*8  :: nbase, rmin_w, rmax_w, b0_eff, ln10, sblend, logw_at, hyd_at
+      real*8, parameter :: dr_scale_height = 0.1d0   ! [Rp]
       real*8  :: nn_rmin, v_rmin, T_rmin_w, fHI_rmin, fHeI_rmin
       real*8  :: nH, nHe, nHI, nHII, nHeI, nHeII, ne, ntot, p, nmass
       integer :: i, i1, u
@@ -100,13 +109,25 @@
          fHeI(i) = np_interp(r(i), rwR, fHeIw, nw)
       end do
 
-      ! b0_eff from the windsoln scale height just above Rmin
-      i1 = 1
+      ! b0_eff from the windsoln scale height just above Rmin: the first
+      ! wind point at least dr_scale_height above Rmin, else the farthest
+      ! wind point (D14).
+      i1 = nw
       do i = 1, nw
-         if (rwR(i) .ge. rmin_w + 0.1d0) then
+         if (rwR(i) .ge. rmin_w + dr_scale_height) then
             i1 = i; exit
          end if
       end do
+      if (.not. (rwR(i1) .gt. rwR(1))) then
+         write(*,'(A)') ' (wae_write_ic) the wind solution has no point'//  &
+                        ' above its base; no scale height can be formed.'
+         error stop '(wae_write_ic) degenerate wind solution'
+      end if
+      if (rwR(i1) .lt. rmin_w + dr_scale_height) then
+         write(*,'(A,F8.5,A)') ' (wae_write_ic) WARNING: no wind point 0.1 Rp'// &
+            ' above Rmin; scale height taken from the farthest point,',      &
+            rwR(i1) - rmin_w, ' Rp above Rmin.'
+      end if
       b0_eff = (log(nnuc_w(1)) - log(nnuc_w(i1))) /                      &
                (1.0d0/rwR(1) - 1.0d0/rwR(i1))
       logw_at = np_interp(rmin_w, rwR, lognnuc_w, nw)
@@ -123,9 +144,17 @@
 
       do i = 1, ng
          if (r(i) .le. rmin_w) then
-            ! below Rmin: hydrostatic blend to EXHALE base anchor
-            sblend = (1.0d0 - 1.0d0/r(i)) / (1.0d0 - 1.0d0/rmin_w)
-            sblend = min(max(sblend, 0.0d0), 1.0d0)
+            ! Below Rmin, blend the hydrostatic baseline (weight 0 at
+            ! r = 1) to the wind (weight 1 at Rmin).  With Rmin <= 1 there
+            ! is no blend region: baseline below Rmin, wind at Rmin (D15).
+            if (rmin_w .gt. 1.0d0) then
+               sblend = (1.0d0 - 1.0d0/r(i)) / (1.0d0 - 1.0d0/rmin_w)
+               sblend = min(max(sblend, 0.0d0), 1.0d0)
+            else if (r(i) .ge. rmin_w) then
+               sblend = 1.0d0
+            else
+               sblend = 0.0d0
+            end if
             lognnuc(i) = (lognbase - (phiR(r(i), Mrapp, atilde, tidalf)  &
                          - phiR(1.0d0, Mrapp, atilde, tidalf))*b0_eff/ln10) &
                          + (logw_at - hyd_at)*sblend

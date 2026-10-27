@@ -7,9 +7,7 @@
       ! lacks; it supplies the physical damping of the near-base momentum
       ! imbalance ("breathing base").
       !
-      ! -------------------------------------------------------------------
       ! 1. Equations
-      ! -------------------------------------------------------------------
       ! Koskinen et al. (2022) write the bulk momentum and energy equations
       ! as their Eqs. (B2) and (B3),
       !
@@ -57,9 +55,7 @@
       !
       !   S_E = w F_mu + q_mu + (1/r^2) d/dr(r^2 kappa dT/dr) .        (3)
       !
-      ! -------------------------------------------------------------------
       ! 2. Transport coefficients
-      ! -------------------------------------------------------------------
       ! Neither Koskinen et al. (2013a) nor (2022) prints mu(T) or kappa(T);
       ! O'Neill & Chorlton (1989) is cited there only as the textbook source
       ! of the dissipation functional.  We therefore use the atomic-hydrogen
@@ -138,9 +134,7 @@
       ! al. 2013a note that conduction and viscosity are not important in the
       ! thermosphere of HD 209458 b).
       !
-      ! -------------------------------------------------------------------
       ! 3. Code units
-      ! -------------------------------------------------------------------
       ! Lengths in R0, velocities in v0 = sqrt(k T0/m_H), densities in
       ! rho0 = n0 m_H, temperatures in T0, so a force density scales with
       ! rho0 v0^2/R0 and an energy-density rate with q0 = rho0 v0^3/R0.
@@ -151,9 +145,7 @@
       !              (= (15/4) mu_code only for the Watson value (4) of a
       !              neutral atomic gas; not for the mixture value (4')).
       !
-      ! -------------------------------------------------------------------
       ! 4. Discretization and boundary conditions
-      ! -------------------------------------------------------------------
       ! Finite volume on the existing grid, with the same face areas and cell
       ! volume RK_rhs uses: A_j+1/2 = r_edg(j)^2, dV_j = (r_edg(j)^3 -
       ! r_edg(j-1)^3)/3.  Both operators are assembled ONCE, as tridiagonal
@@ -179,7 +171,6 @@
       ! into the outflow.  A vanishing diffusive flux is the correct
       ! condition for a supersonic outflow boundary.
       !
-      ! -------------------------------------------------------------------
       ! Runtime switches (both default OFF, so a run without the keys is
       ! byte-identical to the inviscid code):
       !   "Viscosity: True"     -> visc_on, calibrated mu(T) of (5) + q_mu
@@ -190,9 +181,7 @@
       !                            EXHALE_CONDUCTION_SCALE as its
       !                            continuation factor
       !
-      ! -------------------------------------------------------------------
       ! 5. What the transport stage returns, and what it refuses to return
-      ! -------------------------------------------------------------------
       ! The Crank-Nicolson stage returns a state only when every cell of it
       ! is admissible: the tridiagonal eliminations completed, every solved
       ! value is finite, and every solved temperature is at or above the
@@ -408,7 +397,6 @@
 
       contains
 
-      ! ------------------------------------------------------!
 
       ! Number of DISTINCT cells that have reached the temperature floor of
       ! the transport stage at least once.
@@ -423,25 +411,21 @@
       enddo
       end function n_conduction_floor_cells
 
-      ! ------------------------------------------------------!
 
       logical function viscosity_active()
       viscosity_active = (visc_on .or. visc_mu0 .gt. 0.0d0)
       end function viscosity_active
 
-      ! ------------------------------------------------------!
 
       logical function conduction_active()
       conduction_active = cond_on
       end function conduction_active
 
-      ! ------------------------------------------------------!
 
       logical function transport_active()
       transport_active = (viscosity_active() .or. conduction_active())
       end function transport_active
 
-      ! ------------------------------------------------------!
 
       subroutine dynamic_viscosity(Tcell, visc)
       ! Dynamic viscosity in CODE units, Eq. (5) (or the diagnostic
@@ -469,7 +453,6 @@
       enddo
       end subroutine dynamic_viscosity
 
-      ! ------------------------------------------------------!
 
       real*8 function conduction_scale()
       ! A CONTINUATION FACTOR, NOT PHYSICS. Measurement key
@@ -509,7 +492,6 @@
       conduction_scale = scale
       end function conduction_scale
 
-      ! ------------------------------------------------------!
 
       subroutine thermal_conductivity(Tcell, f_sp, kap)
       ! Heat conduction coefficient of the mixture, Eq. (4'), in CODE
@@ -581,7 +563,6 @@
       enddo
       end subroutine thermal_conductivity
 
-      ! ------------------------------------------------------!
 
       real*8 function h2_conductivity(TK)
       ! Thermal conductivity of molecular hydrogen [erg cm^-1 s^-1 K^-1] at
@@ -599,7 +580,6 @@
                                   *einstein_heat_capacity(theta_v_H2/TK))
       end function h2_conductivity
 
-      ! ------------------------------------------------------!
 
       pure real*8 function einstein_heat_capacity(x)
       ! Einstein function E(x) = x^2 e^x/(e^x - 1)^2 of Eq. (4''), the
@@ -631,7 +611,6 @@
       endif
       end function einstein_heat_capacity
 
-      ! ------------------------------------------------------!
 
       subroutine viscous_momentum_coeffs(Tcell, alo, adi, aup, dcl, dcd, dcu)
       ! Tridiagonal coefficients of the radial viscous force (1),
@@ -698,7 +677,6 @@
 
       end subroutine viscous_momentum_coeffs
 
-      ! ------------------------------------------------------!
 
       real*8 function conduction_base_level_T(Tcell) result(Tb)
       ! THE BASE BOUNDARY CONDITION OF THERMAL CONDUCTION, stated here and
@@ -742,7 +720,6 @@
       if (.not. (Tb .gt. 0.0d0)) Tb = Tcell(0)
       end function conduction_base_level_T
 
-      ! ------------------------------------------------------!
 
       subroutine thermal_conduction_coeffs(Tcell, f_sp, blo, bdi, bup)
       ! Tridiagonal coefficients of (1/r^2) d/dr(r^2 kappa dT/dr):
@@ -786,7 +763,6 @@
 
       end subroutine thermal_conduction_coeffs
 
-      ! ------------------------------------------------------!
 
       subroutine viscous_momentum_source(vel, Tcell, Fv)
       ! Radial viscous force density (1), code units, on cells 1..N.
@@ -802,7 +778,6 @@
       enddo
       end subroutine viscous_momentum_source
 
-      ! ------------------------------------------------------!
 
       subroutine viscous_dissipation(vel, Tcell, qv)
       ! Viscous dissipation (2), q_mu = (4/3) mu (dw/dr - w/r)^2 >= 0.
@@ -822,7 +797,6 @@
       enddo
       end subroutine viscous_dissipation
 
-      ! ------------------------------------------------------!
 
       subroutine thermal_conduction_source(Tcell, f_sp, Qc)
       ! Heat conduction source (1/r^2) d/dr(r^2 kappa dT/dr), code units.
@@ -855,7 +829,6 @@
            *((r_edg(1)**3 - r_edg(0)**3)/3.0d0)/(r_edg(0)*r_edg(0))
       end subroutine thermal_conduction_source
 
-      ! ------------------------------------------------------!
 
       subroutine heat_conducted_into_lower_atmosphere(Tcell, f_sp)
       ! The conductive heat flux through the base face of the state
@@ -895,7 +868,6 @@
       lower_atmosphere_heat_measured = .true.
       end subroutine heat_conducted_into_lower_atmosphere
 
-      ! ------------------------------------------------------!
 
       subroutine viscous_conduction_sources(vel, Tcell, f_sp, Smom, Sene)
       ! The pair that enters the conserved-variable equations:
@@ -916,7 +888,6 @@
       Sene = vel*Smom + qv + Qc
       end subroutine viscous_conduction_sources
 
-      ! ------------------------------------------------------!
 
       logical function is_finite(x)
       ! .true. for a normal or subnormal number: neither a NaN (x /= x) nor
@@ -925,7 +896,6 @@
       is_finite = (x .eq. x) .and. (abs(x) .le. huge(x))
       end function is_finite
 
-      ! ------------------------------------------------------!
 
       subroutine solve_tridiagonal(dlo, ddi, dup, rhs, sol, ok)
       ! Thomas algorithm for the N x N tridiagonal system
@@ -961,7 +931,6 @@
       enddo
       end subroutine solve_tridiagonal
 
-      ! ------------------------------------------------------!
 
       real*8 function conduction_temperature_floor()
       ! Lower end of the range in which the equation of state, the cooling
@@ -972,7 +941,6 @@
       conduction_temperature_floor = max(T_floor_code_min, T_eos_floor_K/T0)
       end function conduction_temperature_floor
 
-      ! ------------------------------------------------------!
 
       subroutine conduction_reason_text(reason_in, text)
       integer, intent(in) :: reason_in
@@ -991,7 +959,6 @@
       end select
       end subroutine conduction_reason_text
 
-      ! ------------------------------------------------------!
 
       subroutine conduction_report(stat, reason, j_bad, nfail, step,      &
                                    T_sol, T_flr, deficit, status)
@@ -1032,7 +999,6 @@
                      ' at half the interval.'
       end subroutine conduction_report
 
-      ! ------------------------------------------------------!
 
       subroutine viscous_conduction_step(u, W, Tcell, n_part, f_sp, dt,  &
                                          step, status)
@@ -1288,5 +1254,4 @@
 
       end subroutine viscous_conduction_step
 
-      ! End of module
       end module viscous_conduction

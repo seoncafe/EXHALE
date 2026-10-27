@@ -28,7 +28,6 @@
       ! (Fig. 6).  In no cases is the difference between the approximate
       ! rates and the full model more than 40%."
       !
-      ! ---------------------------------------------------------------
       ! 1. WHICH TABLE IS SHIPPED, AND THE DOMAIN THAT COMES WITH IT
       !
       ! The paper gives four parameter sets.  The one carried here is
@@ -67,7 +66,6 @@
       ! Table 7.  No shipped set is closer on both axes at once, which is
       ! why the excitation temperature is the axis the choice was made on.
       !
-      ! ---------------------------------------------------------------
       ! 2. THE GRID, AND WHAT HAPPENS OUTSIDE IT
       !
       !     log10 N(12CO) [cm^-2] :  0, 13, 14, 15, 16, 17, 18, 19
@@ -94,7 +92,6 @@
       ! a column of exactly zero) the same edge value is returned, and there
       ! it is the unshielded limit Theta = 1 that the table itself carries.
       !
-      ! ---------------------------------------------------------------
       ! References: Visser, van Dishoeck & Black (2009), A&A 503, 323
       ! (publisher PDF, references/Visser_2009A&A_503_323.pdf): sec. 3.3
       ! eq. (2), secs. 4.4, 5.1 and 5.2, Table 6 (Online Material p. 1) for
@@ -259,5 +256,4 @@
       T = 512.0d0
       end function co_shield_tex_limit_K
 
-      ! End of module
       end module co_self_shielding_table

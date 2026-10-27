@@ -227,6 +227,18 @@ after the element-projection mass fix.
 \section{The level-distribution assumptions}
 
 \subsection{Infrared line cooling: LTE, stated explicitly}
+
+\noindent\textbf{Implementation note (2026-10-27).}
+The critical-density comparisons in this memo use the older Hollenbach--McKee
+coefficients and are stale for the current implementation. The H, H$_2$, and
+He collider coefficients are now defined in
+\texttt{h2\_vibrational\_relaxation.f90}. The relevant LTE condition is that
+the local sum of collisional de-excitation rates greatly exceed radiative
+decay. The quoted critical densities, including the later decision table,
+must be recomputed with those current coefficients and the local collider
+mixture before they are used to claim LTE. This comment-review task did not
+rerun that calculation; the historical values below are retained as records.
+
 \label{sec:ir}
 
 \texttt{molecular\_infrared\_cooling.f90} evaluates the H$_2$ line emission
@@ -667,7 +679,7 @@ be complete.
   cross section for H$_2$ in its ground vibrational state; a vibrationally hot
   molecule has a lower threshold and different near-edge structure. The
   branching between its two product channels
-  (\texttt{frac\_H2\_dissociative\_ionization}, Sec.~\ref{sec:h2-photo-branch})
+  (\texttt{frac\_\allowbreak H2\_\allowbreak dissociative\_\allowbreak ionization}, Sec.~\ref{sec:h2-photo-branch})
   carries the same assumption: it is measured on a room-temperature target.
 \item \textbf{Diffusion.} \texttt{binary\_element\_diffusion.f90} gives H$_2$
   the static dipole polarizability $\alpha = 5.315\,a_0^3$
@@ -996,7 +1008,7 @@ and with $\text{rest} < 0$ the carriers keep what they hold while the closure
 cannot go negative, so the written element total exceeds the handed one by
 $|\text{rest}|$: nuclei are created. The same shape appears in the oxygen and
 carbon deposits of the same routine
-(\texttt{diffusive\_photochemistry.f90}). Only
+(\texttt{diffusive\_\allowbreak photochemistry.\allowbreak f90}). Only
 \texttt{element\_census\_verify} under \texttt{EXHALE\_ELEMENT\_ASSERT} $=1$
 or $2$ sees it, and that is off by default. The finding is recorded and the
 clamp is unchanged; it is not a defect of a rate but of the reconciliation
@@ -1063,6 +1075,17 @@ product is still not a molecular stationary solution, and the writer says so
 in its own header.
 
 \section{Validity ranges}
+
+\noindent\textbf{Historical model status (2026-10-27).}
+The comparisons and table below retain their original model states. In
+particular, the H$_2$ photoabsorption row describes an older Yan-only fit;
+current \texttt{sigma\_H2} uses measured tables and a high-energy Yan tail.
+The statements that helium vibrational collision rates are unavailable and
+the quoted critical-density comparisons are also stale for the current
+collider coefficients. These entries require a new evaluation with the
+current cross sections, collider mixture, and relaxation rates before they
+are used as current validity judgments.
+
 \label{sec:validity}
 
 Table~\ref{tab:validity} collects every range in one place: what each
@@ -1282,7 +1305,7 @@ H$_2$ vibrational energy:
   & the full stellar spectrum above threshold
   & Inside in energy; the vibrational-state assumption is unquantified \\
 \addlinespace
-\texttt{frac\_H2\_dissociative\_ionization}
+\texttt{frac\_\allowbreak H2\_\allowbreak dissociative\_\allowbreak ionization}
   & Chung et al.\ (1993) Table~II, $18.076$--$124$~eV, room-temperature
     target, stated uncertainty $\pm4$--$5\%$
   & the full stellar spectrum above $18.076$~eV
@@ -1309,7 +1332,7 @@ H$_2$ solved as a LOCAL chemical equilibrium (the closure itself)
     net chemical rate at $1.05$ and $1.15\,R_p$, and only at $1.25\,R_p$ does
     the chemistry win ($0.6$). Inside beyond about $1.25\,R_p$ and at a base
     where $v=0$. The transport operator that removes the restriction is
-    \texttt{diffusive\_photochemistry.f90}; it is default off for a
+    \texttt{diffusive\_\allowbreak photochemistry.\allowbreak f90}; it is default off for a
     molecular-only run \\
 \end{longtable}
 

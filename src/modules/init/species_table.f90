@@ -41,7 +41,7 @@
       ! "stage" is also the net ionic charge, used for the bremsstrahlung
       ! Z^2 weight and for the free-electron sum inside the MINPACK system.
       ! Top stages are inert: not photo-ionized further and not line coolants
-      ! in this set. For C/O/N/Mg/Si/Ca the top stage solved is the doubly
+      ! in this set. For C/O/N/Mg/Si/Ca/Fe the top stage solved is the doubly
       ! ionized (++); for Na/K/S the top stage is the singly ionized (+),
       ! i.e. only two stages are carried (melem_top = 1).
 

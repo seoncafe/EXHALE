@@ -1,71 +1,22 @@
       module certification
-      ! ONE EVALUATOR OF THE EQUATIONS A RUN IS ACTUALLY SOLVING, AND THE
-      ! CONTEXTS THAT READ IT.
+      ! Certify the active equations of a state: hydrodynamic, transported
+      ! carrier, elemental transport, excited-level, and eliminated-species
+      ! closure balances. Each row is not_applicable, evaluated with its
+      ! residual scale and floor, or unavailable. An active unavailable row
+      ! cannot certify the state: carrier_steady_residual may otherwise
+      ! return zero when its frozen background is unready.
       !
-      ! WHAT IT IS FOR. Until now "converged" was a statement about three
-      ! hydrodynamic rows, a mass-flux spread, sometimes a carrier norm and,
-      ! since the acceptance-class contract, a count of cells without a
-      ! chemical root. A run that also solves an elemental transport balance,
-      ! a level population or a set of eliminated species reached its answer
-      ! with nothing said about those equations at all. The evaluator here
-      ! lists EVERY equation the configuration makes independent and returns,
-      ! for each, one of three statuses:
+      ! The elemental, 2s/2p, and closure evaluators use the current state
+      ! without solving or modifying it. The closure measure is the cell
+      ! sweep's root measure: acceptance classes 1, 2, 3, and 5 meet
+      ! ieq_res_tol; classes 4 and 6 do not.
       !
-      !   not_applicable  the configuration does not carry the unknown
-      !   evaluated       a residual of that equation was measured ON THIS
-      !                   STATE, with its row measure, its scale and its floor
-      !   unavailable     the equation is active and no state-consistent
-      !                   measurement of it exists; NEVER reported as a zero
-      !
-      ! The third status is the point. carrier_steady_residual returns zeros
-      ! when the frozen background is not ready, which at the call site is
-      ! indistinguishable from a balanced carrier; an active equation with no
-      ! evaluator returns nothing at all. Both now say so, and a state
-      ! carrying either is written and NOT certified.
-      !
-      ! WHAT IS EVALUATED. Every equation of the inventory that the
-      ! configuration makes independent:
-      !
-      !   the three hydrodynamic rows
-      !   each transported carrier balance
-      !   the He/H partition and the trace
-      !     elemental transport balances
-      !   the He 2^3S and H(n=2) level
-      !     balances
-      !   the eliminated-species closure of
-      !     the coupled cell system
-      !
-      ! The last three kinds are the state-consistent evaluators of step 4
-      ! of the contract: a stationary residual of the elemental transport
-      ! (element_transport_residual), a residual of the 2s/2p level balance
-      ! at the state's field and populations
-      ! (excited_hydrogen_level_residual), and the reaction residual of the
-      ! closure at the state's composition and the sweep's own rates
-      ! (ionization_closure_residual_profile). None of them solves anything
-      ! and none of them writes f_sp, rho or a ledger.
-      !
-      ! The closure measure IS the measure the cell sweep judges a root by,
-      ! so a cell of acceptance class 1, 2, 3 or 5 reads at or below
-      ! ieq_res_tol and a class-4 or class-6 cell above it, and a certification is
-      ! refused when any cell is above it.
-      !
-      ! THE ROW MEASURE. The maximum over the physical cells of
-      ! |res| / max(scale, floor), never a volume average: a front or a thin
-      ! layer must not be averaged away by the wind that carries most of the
-      ! volume. The volume average is reported beside it, and is never
-      ! decisive; the carrier `rvol` is the case it was raised for.
-      ! The scales are the ones the residual code already
-      ! defines: residual_row_scale for the hydrodynamic rows (the largest
-      ! term the row itself contains) and row_terms for a carrier row (the
-      ! sum of the magnitudes of the terms that row balances, with the
-      ! absolute floor carrier_residual builds into it).
-      !
-      ! NO SIDE EFFECTS. The carrier balance is measured inside an isolated
-      ! workspace: every module array carrier_steady_residual writes is held
-      ! aside before the call and put back after it, allocation status
-      ! included (save_carrier_module_state / restore_carrier_module_state,
-      ! diffusive_photochemistry.f90). A certification is a measurement of a
-      ! state, not an operation on it.
+      ! The decisive row measure is max over physical cells of
+      ! |res|/max(scale,floor); the volume average is diagnostic only.
+      ! Hydrodynamic scales use residual_row_scale; carrier scales use
+      ! row_terms and the floor in carrier_residual. Carrier evaluation
+      ! saves and restores all affected module state, including allocation
+      ! status (diffusive_photochemistry.f90).
 
       use global_parameters
       use Conversion,               only: U_to_W
@@ -214,73 +165,22 @@
            + 2                &  ! the He 2^3S and H(n=2) level balances
            + n_system_variant    ! the eliminated-species closures
 
-      ! TOLERANCES, one per kind of row, named so that the report says which
-      ! number refused a state. THE CONVERGENCE STUDY OF CONTRACT SECTION 9
-      ! FIXES THEM (A2tol, 2026-09-06); none was chosen to make a present
-      ! snapshot pass, and section 9.6 of that study records that most of
-      ! the matrix does not pass at these values.
-      !
-      ! ONE NUMBER PER HYDRODYNAMIC ROW, NOT ONE FOR THE THREE. On the same
-      ! converged state the three rows reach values seven decades apart
-      ! (MEASURED, wasp_full_newton at "Resid tol" 1e-7: mass 2.630e-13,
-      ! momentum 1.280e-09, energy 4.700e-06) and their one-ulp arithmetic
-      ! floors are two decades apart (1.018e-13, 5.127e-12, 1.643e-11). A
-      ! single number either certifies a mass row eight decades above its
-      ! own floor or refuses an energy row no solve in this code has
-      ! reached. Each value below is that measured anchor with about a
-      ! decade of margin, and each stands at least a decade above its row's
-      ! floor: 29x for mass, 2000x for momentum, 3e6x for energy.
-      !
-      ! THEY NO LONGER INHERIT "Resid tol". Section 9.2 MEASURED a
-      ! structural factor of 41 to 47 between the target a JFNK solve is
-      ! given and the row the state it hands back actually carries, because
-      ! the completion flag was decided before the state's own residual was
-      ! re-measured. An inherited resid_th was therefore a condition the
-      ! solver could not meet whatever the state was.
-      !
-      ! RE-ANCHORED (2026-09-06).
-      ! With the self-consistent residual the returned row is 0.36 to 0.93
-      ! of the solve's target, and wasp_full_newton at "Resid tol" 1e-8
-      ! reaches mass 2.6e-13, momentum 1.3e-9, energy 6.275e-10. Mass and
-      ! momentum keep their section-9 values. The energy value moves from
-      ! 5e-5, which had been anchored on the lagged-gate energy row
-      ! 4.700e-06 and refused nothing, to 1e-6: a decade above 1.212e-07,
-      ! the largest energy row of any state in that study whose solve met
-      ! its own target, and 5.7e4x above its floor 1.765e-11.
+      ! Separate tolerances identify which conservation row refuses a
+      ! state. Current anchors are mass 3e-12 where arithmetic resolves it,
+      ! momentum 1e-8, and energy 1e-6. They are independent of the
+      ! solver's "Resid tol"; the energy anchor follows the returned state's
+      ! self-consistent row, not the older lagged completion flag.
+      ! See ../EXHALE_v1.00/md/a2_certification_contract_20260906.md section 9.
       real*8, parameter, public :: cert_tol_mass     = 3.0d-12
       real*8, parameter, public :: cert_tol_momentum = 1.0d-8
       real*8, parameter, public :: cert_tol_energy   = 1.0d-6
-      ! THE MASS ROW'S TOLERANCE IS A FUNCTION OF THE CELL, cert_tol_mass_at
-      ! below, and every reader of it goes through that accessor. The
-      ! constant above is the FLOOR of that function: where the arithmetic
-      ! permits it, the row is held to 3e-12 and to nothing looser.
-      !
-      ! WHY A FIXED NUMBER ALONE REFUSES STATES THAT CARRY NO SIGNAL. The
-      ! mass row is a difference of two face fluxes over a cell volume, and
-      ! in a nearly hydrostatic base layer that difference is formed
-      ! between quantities the Riemann solve builds from the cell's whole
-      ! momentum at its own signal speed, so its rounding is about eps/Mach
-      ! of the flux and not eps of it (mass_row_rounding_floor,
-      ! steady_residual.f90, states the derivation; N33 measured the
-      ! phenomenon). MEASURED at the base of the three fixtures of item
-      ! P16: the estimated floor is 5.7E-14 on `wasp_full_newton` (Mach
-      ! 3.9e-3), 9.3E-13 on the hot-Uranus carrier reload (Mach 2.4e-4) and
-      ! 3.2E-11 on the HD 209458 b element reload (Mach 5.1e-6), four
-      ! decades across three states of one code. A single 3e-12 therefore
-      ! holds one of them to eight ulps of its own base layer and another
-      ! to a tenth of one ulp.
-      !
-      ! c_round, THE ONE NUMBER ANCHORED, and how it was measured. One ulp
-      ! is added to the density of every cell and the whole flux assembly is
-      ! run again; the STEP the row takes is the non-smoothness the assembly
-      ! carries, and the ratio of that step to the estimate above is what
-      ! the margin has to cover. MEASURED (P16, EXHALE_MASS_FLOOR_SCAN, the
-      ! largest ratio over all 500 cells of each state as loaded):
-      ! `wasp_full_newton` 1.59, HD 209458 b 1.89, hot-Uranus 2.68. The
-      ! value below stands 3.7 times above the largest of them, and N33's
-      ! independent reading of the same floor against its own bound was 5.5
-      ! to 12, so a decade is the margin the two measurements together
-      ! support; nothing larger is measured and nothing larger is taken.
+      ! The continuity tolerance is cell-dependent through
+      ! cert_tol_mass_at. cert_tol_mass = 3e-12 is its resolved floor;
+      ! near a hydrostatic base the flux difference has a rounding scale
+      ! of order epsilon/Mach, so a fixed tolerance can ask for less than
+      ! one resolvable increment. cert_mass_round_margin = 10 covers the
+      ! measured one-ulp flux-assembly steps with a 3.7-fold margin.
+      ! See ../EXHALE_v1.00/md/certification_tolerance_anchoring_20260910.md section 9.
       real*8, parameter, public :: cert_mass_round_margin = 1.0d1
       ! THE CEILING OF THE ANCHORED TOLERANCE. |R_1|/s_1 is the fractional
       ! change of the mass flux across the cell, so a row at 1 says the
@@ -685,7 +585,6 @@
          logical :: rows_finite           = .true.
       end type cert_evaluation_facts
 
-      ! ---------------------------------------------------------------- !
       ! THE PHYSICAL-STEP VERDICT (context cert_context_physical_step).
       ! Contract section 3 asks the adoption boundary of a marching step
       ! for: the time-discrete balances of every active equation within
@@ -789,7 +688,6 @@
 
       contains
 
-      ! ------------------------------------------------------!
 
       logical function trial_state_is_admissible(f) result(ok)
       ! THE STATIONARY NEWTON TRIAL CONTEXT: a
@@ -807,7 +705,6 @@
            (f%n_no_chem_root_trial .le. f%n_no_chem_root_state)
       end function trial_state_is_admissible
 
-      ! ------------------------------------------------------!
 
       logical function probe_direction_is_usable(f) result(ok)
       ! THE PROBE CONTEXT: a residual sample
@@ -827,7 +724,6 @@
       ok = trial_state_is_admissible(g)
       end function probe_direction_is_usable
 
-      ! ------------------------------------------------------!
 
       integer function certification_active_equation_count(rep) result(n)
       ! How many equations of the inventory the configuration makes
@@ -840,7 +736,6 @@
       enddo
       end function certification_active_equation_count
 
-      ! ------------------------------------------------------!
 
       function certification_last_report() result(rep)
       ! The last stationary certification made in this run.
@@ -848,18 +743,16 @@
       rep = cert_last
       end function certification_last_report
 
-      ! ------------------------------------------------------!
 
       subroutine certification_note_stationarity_claim(claimed)
-      ! Whether the stop that ended the run DECLARED a stationary state: the
-      ! du-threshold stop, the residual gate met while marching, or the
-      ! steady finish returning info = 0. A stall, a step cap, a NaN and
-      ! "do only PP" are not such stops.
+      ! Whether the run ended by a stationary claim: the residual and
+      ! face-flux gates while marching, or a successful steady solve.
+      ! Marching-only stops, stalls, caps, NaNs, and post-processing do not
+      ! make that claim.
       logical, intent(in) :: claimed
       stationarity_claimed = claimed
       end subroutine certification_note_stationarity_claim
 
-      ! ------------------------------------------------------!
 
       subroutine certification_note_stationary_solve_failed(failed)
       ! Whether the stationary solve of a steady route returned info /= 0
@@ -868,7 +761,6 @@
       stationary_solve_failed = failed
       end subroutine certification_note_stationary_solve_failed
 
-      ! ------------------------------------------------------!
 
       subroutine certification_stop_uncertified()
       ! A RUN WHOSE FINAL STATE IS NOT CERTIFIED EXITS NONZERO, after its
@@ -912,7 +804,6 @@
       stop 2
       end subroutine certification_stop_uncertified
 
-      ! ------------------------------------------------------!
 
       subroutine certification_row_measure(nc, jsplit, res, scale, rmax,  &
                                            jworst, ok_finite, wvol, rvol)
@@ -979,7 +870,6 @@
       endif
       end subroutine certification_row_measure
 
-      ! ------------------------------------------------------!
 
       double precision function cert_tol_mass_at(j, u) result(tol)
       ! THE CONTINUITY ROW'S TOLERANCE AT ONE CELL, and the only reader of
@@ -1016,7 +906,6 @@
                                  tol, dist, within, anchored)
       end function cert_tol_mass_at
 
-      ! ------------------------------------------------------!
 
       pure subroutine mass_row_cell_verdict(q, floor_q, tol, dist,        &
                                             within, anchored, status)
@@ -1072,7 +961,6 @@
       endif
       end subroutine mass_row_cell_verdict
 
-      ! ------------------------------------------------------!
 
       pure function cert_mass_gate_name(anchored) result(nm)
       ! WHICH OF THE TWO GATES SET THE CONTINUITY ROW'S TOLERANCE AT A
@@ -1087,7 +975,6 @@
       endif
       end function cert_mass_gate_name
 
-      ! ------------------------------------------------------!
 
       pure function cert_tol_element_at(rr) result(tol)
       ! THE ELEMENTAL TRANSPORT TOLERANCE AT ONE RADIUS, and the only
@@ -1100,7 +987,6 @@
       if (rr .ge. cert_regime_wind_r) tol = cert_tol_element_wind
       end function cert_tol_element_at
 
-      ! ------------------------------------------------------!
 
       pure function cert_tol_carrier_at(rr) result(tol)
       ! The same for a transported carrier row. The two are separate
@@ -1112,7 +998,6 @@
       if (rr .ge. cert_regime_wind_r) tol = cert_tol_carrier_wind
       end function cert_tol_carrier_at
 
-      ! ------------------------------------------------------!
 
       subroutine certification_species_row_gate(nc, is_carrier, res,      &
                                                 scale, dgate, rgate,      &
@@ -1155,7 +1040,6 @@
                                                  absent)
       end subroutine certification_species_row_gate
 
-      ! ------------------------------------------------------!
 
       subroutine certification_species_row_gate_candidate(nc, is_carrier,  &
                                                 res, scale, dgate, rgate,  &
@@ -1188,7 +1072,6 @@
                                                  absent)
       end subroutine certification_species_row_gate_candidate
 
-      ! ------------------------------------------------------!
 
       pure subroutine species_row_distance_over_gated_cells(nc, tol, res,  &
                                                 scale, dgate, rgate,       &
@@ -1220,7 +1103,6 @@
       enddo
       end subroutine species_row_distance_over_gated_cells
 
-      ! ------------------------------------------------------!
 
       subroutine certification_row_measure_over(nc, res, scale, rlo, rhi,  &
                                                 rmax, jworst)
@@ -1247,7 +1129,6 @@
       enddo
       end subroutine certification_row_measure_over
 
-      ! ------------------------------------------------------!
 
       subroutine fill_regime_measures(ent, res, scale)
       ! The regime split and the probe-radius reading of one entry, taken
@@ -1279,7 +1160,6 @@
            abs(res(ent%jprobe))/max(scale(ent%jprobe), cert_scale_floor)
       end subroutine fill_regime_measures
 
-      ! ------------------------------------------------------!
 
       subroutine gate_species_row(ent, is_carrier, res, scale, absent)
       ! THE VERDICT OF A ROW WHOSE TOLERANCE IS A FUNCTION OF THE RADIUS.
@@ -1320,7 +1200,6 @@
       ent%within_tol = ent%finite .and. (dgate .lt. 1.0d0)
       end subroutine gate_species_row
 
-      ! ------------------------------------------------------!
 
       subroutine fill_candidate_gate(ent, is_carrier, res, scale, absent)
       ! THE CANDIDATE GATING OF ONE ROW, from the res, scale and absence
@@ -1350,7 +1229,6 @@
                   fin_low)
       end subroutine fill_candidate_gate
 
-      ! ------------------------------------------------------!
 
       function certification_entry_index(rep, name) result(idx)
       ! The index of the entry of that name, 0 if the inventory has none.
@@ -1367,7 +1245,6 @@
       enddo
       end function certification_entry_index
 
-      ! ------------------------------------------------------!
 
       function anchor_report_on() result(on)
       ! Whether the run asks for the anchoring block (EXHALE_CERT_ANCHOR=1):
@@ -1381,7 +1258,6 @@
       on = (trim(env) .eq. '1')
       end function anchor_report_on
 
-      ! ------------------------------------------------------!
 
       function anchor_probe_radius() result(rp)
       ! The radius EXHALE_CERT_ANCHOR_R names, at which every row is read
@@ -1397,7 +1273,6 @@
       if (ios .ne. 0) rp = 0.0d0
       end function anchor_probe_radius
 
-      ! ------------------------------------------------------!
 
       subroutine certification_evaluate(context, u, Res, f_sp,            &
                                         resid_tol, n_no_chem_root,        &
@@ -1774,7 +1649,6 @@
 
       end subroutine certification_evaluate
 
-      ! ------------------------------------------------------!
 
       subroutine certification_reports_side_by_side(rep_a, label_a,       &
                                                     rep_b, label_b)
@@ -1830,7 +1704,6 @@
          end subroutine side_line
       end subroutine certification_reports_side_by_side
 
-      ! ------------------------------------------------------!
 
       subroutine certification_report_verdict(rep, candidate_gating,       &
                                               certified, n_failing)
@@ -1885,7 +1758,6 @@
       if (.not. rep%carrier_history_ok) certified = .false.
       end subroutine certification_report_verdict
 
-      ! ------------------------------------------------------!
 
       subroutine carrier_rows_of_state(rho, v, f_sp, cres, cterms, cabsent)
       ! The carrier balance of a state, measured INSIDE AN ISOLATED
@@ -1930,7 +1802,6 @@
               'state was NOT reinstated after the isolated evaluation'
       end subroutine carrier_rows_of_state
 
-      ! ------------------------------------------------------!
 
       subroutine hydro_row_entry(rep, k, name, u, Res)
       ! Row k of the hydrodynamic system, measured on the state (u, Res)
@@ -1978,7 +1849,6 @@
       endif
       end subroutine hydro_row_entry
 
-      ! ------------------------------------------------------!
 
       subroutine mass_row_verdict(ent, rr, ss, u)
       ! THE CONTINUITY ROW'S VERDICT ON A PHYSICAL STATE: the rounding floor
@@ -1998,7 +1868,6 @@
       call mass_row_column_verdict(N, rr, ss, floors, ent)
       end subroutine mass_row_verdict
 
-      ! ------------------------------------------------------!
 
       pure subroutine mass_row_column_verdict(nc, rr, ss, floors, ent)
       ! THE CONTINUITY ROW'S VERDICT, TAKEN CELL BY CELL, because its
@@ -2047,7 +1916,6 @@
       ent%within_tol = ent%finite .and. wi_bind
       end subroutine mass_row_column_verdict
 
-      ! ------------------------------------------------------!
 
       subroutine carrier_row_entry(rep, ic, cres, cterms, cabsent)
       ! The steady balance of one transported carrier, transport minus
@@ -2108,7 +1976,6 @@
       call gate_species_row(rep%e(idx), .true., rr, ss, absent = aa)
       end subroutine carrier_row_entry
 
-      ! ------------------------------------------------------!
 
       subroutine transport_row_entry(rep, name, active, measured, res,    &
                                      scale, units_floor, tol_whole_column)
@@ -2165,7 +2032,6 @@
       endif
       end subroutine transport_row_entry
 
-      ! ------------------------------------------------------!
 
       subroutine unit_scale_entry(rep, name, active, measured, res, tol,   &
                                   why, units_floor)
@@ -2206,7 +2072,6 @@
                               (rep%e(idx)%row_max .le. rep%e(idx)%tol)
       end subroutine unit_scale_entry
 
-      ! ------------------------------------------------------!
 
       subroutine mass_closure_of_state(rho, f_sp, dev, jworst)
       ! max_j |sum_i f_i A_i - 1| over the physical cells, and where it sits.
@@ -2257,7 +2122,6 @@
       enddo
       end subroutine mass_closure_of_state
 
-      ! ------------------------------------------------------!
 
       subroutine h3p_cooling_domain_map_of_state(rho, f_sp, T, rep)
       ! WHERE THE H3+ COOLING MODEL STANDS ON THIS STATE: the cells of the
@@ -2324,7 +2188,6 @@
       rep%h3p_cell_map_known = .true.
       end subroutine h3p_cooling_domain_map_of_state
 
-      ! ------------------------------------------------------!
 
       integer function base_contact_direction_agreement(s_wind, M_wind,  &
                         flux_base, window_mean, window_available)
@@ -2352,7 +2215,6 @@
       endif
       end function base_contact_direction_agreement
 
-      ! ------------------------------------------------------!
 
       subroutine ionization_stage_sum_entry(rep, ien, dmax, jworst,       &
                                             known, g)
@@ -2444,7 +2306,6 @@
       rep%e(idx)%units_floor = scale_text
       end subroutine ionization_stage_sum_entry
 
-      ! ------------------------------------------------------!
 
       subroutine add_entry(rep, name, status, reason, ient)
       ! THE ONE PLACE A REPORT GAINS AN ENTRY, AND THE ONLY PLACE AN ENTRY
@@ -2490,7 +2351,6 @@
       rep%e(ient)%reason      = reason
       end subroutine add_entry
 
-      ! ------------------------------------------------------!
 
       integer function active_system_variant() result(iv)
       ! Which of the seven coupled cell systems the
@@ -2510,7 +2370,6 @@
       endif
       end function active_system_variant
 
-      ! ------------------------------------------------------!
 
       function system_variant_name(iv) result(nm)
       integer, intent(in) :: iv
@@ -2527,7 +2386,6 @@
       end select
       end function system_variant_name
 
-      ! ------------------------------------------------------!
 
       subroutine read_validity_states(rep)
       ! The five validity states, read from the producers
@@ -2645,7 +2503,6 @@
       rep%n_specified_external_reservoir = -1
       end subroutine read_validity_states
 
-      ! ------------------------------------------------------!
 
       subroutine certification_report_write(rep, label, face_budget)
       ! One block per certification, with every entry of the inventory, its
@@ -3063,7 +2920,6 @@
       write(*,'(A)') ' '
       end subroutine certification_report_write
 
-      ! ------------------------------------------------------!
 
       function candidate_gate_report_on() result(on)
       ! Whether the run asks for the candidate gating to be printed beside
@@ -3076,7 +2932,6 @@
       on = (trim(env) .eq. '1')
       end function candidate_gate_report_on
 
-      ! ------------------------------------------------------!
 
       subroutine write_candidate_gate_block(rep)
       ! THE CANDIDATE GATING BESIDE THE VERDICT (cert_gate_candidate_first_
@@ -3164,7 +3019,6 @@
            ' refused by ', trim(why)
       end subroutine write_candidate_gate_block
 
-      ! ------------------------------------------------------!
 
       subroutine append_refusal(buf, item)
       ! One more refusing item in a '; '-separated list.
@@ -3177,7 +3031,6 @@
       endif
       end subroutine append_refusal
 
-      ! ------------------------------------------------------!
 
       function wind_certification_token(rep) result(tok)
       ! The one word the state file carries beside certified=T when the
@@ -3196,7 +3049,6 @@
       enddo
       end function wind_certification_token
 
-      ! ------------------------------------------------------!
 
       subroutine write_wind_certification_line(rep)
       ! WHAT A CERTIFIED STATE WITH SPECIES ROWS IS CERTIFIED IN, in one
@@ -3240,7 +3092,6 @@
       endif
       end subroutine write_wind_certification_line
 
-      ! ------------------------------------------------------!
 
       subroutine write_validity(name, n)
       character(len=*), intent(in) :: name
@@ -3252,7 +3103,6 @@
       endif
       end subroutine write_validity
 
-      ! ------------------------------------------------------!
 
       subroutine certification_evaluate_physical_step(u_old, u, u_hydro,  &
                              W, T, f_sp, f_sp_old, dt_g, L_hydro,          &
@@ -3443,7 +3293,6 @@
       endif
       end subroutine certification_evaluate_physical_step
 
-      ! ------------------------------------------------------!
 
       subroutine element_nucleus_sums(fs, s_H, s_He)
       ! The hydrogen and helium nucleus totals of one cell, in the units of
@@ -3463,7 +3312,6 @@
       if (thereis_oxychem) s_H = s_H + fs(38) + 2.0d0*fs(39)
       end subroutine element_nucleus_sums
 
-      ! ------------------------------------------------------!
 
       real*8 function max_defect(dcur, d, j, k, jbad, ibad) result(dout)
       real*8,  intent(in)    :: dcur, d
@@ -3475,7 +3323,6 @@
       endif
       end function max_defect
 
-      ! ------------------------------------------------------!
 
       subroutine step_refuse(verd, reason, op, j, k, m, tol, what)
       type(cert_step_verdict), intent(inout) :: verd
@@ -3492,7 +3339,6 @@
       verd%what      = what
       end subroutine step_refuse
 
-      ! ------------------------------------------------------!
 
       function cert_step_reason_text(reason) result(s)
       integer, intent(in) :: reason
@@ -3514,7 +3360,5 @@
       end select
       end function cert_step_reason_text
 
-      ! ------------------------------------------------------!
 
-      ! End of module
       end module certification
